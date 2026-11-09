@@ -106,7 +106,7 @@ extension AppModel {
 				problems.append("\(url.lastPathComponent): \(error)")
 			}
 		}
-		var message = added == 1 ? "Imported one new transaction." : "Imported \(added) new transactions."
+		var message = added == 0 ? "Imported no new transactions." : added == 1 ? "Imported one new transaction." : "Imported \(added) new transactions."
 		if skipped > 0 { message += skipped == 1 ? " Skipped one already existing transaction." : " Skipped \(skipped) already existing transactions." }
 		if !problems.isEmpty { message += "\n\n" + problems.joined(separator: "\n") }
 		alert = AlertMessage(title: "Transaction Import", message: message)

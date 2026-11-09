@@ -492,42 +492,14 @@ final class AppModel {
 	}
 
 	func importTransactions(_ imported: [Transaction], into account: Account) -> (added: Int, skipped: Int) {
-		let existing = Set(ledger.transactions(ofAccount: account.id).map(ImportKey.init))
-		var seen = Set<ImportKey>()
-		var added: [Transaction] = []
-		var skipped = 0
+		let rows = imported.map { t -> Transaction in var t = t; t.accountID = account.id; t.isNew = true; return t }
+		var (added, skipped) = ImportMatching.split(imported: rows, existing: ledger.transactions(ofAccount: account.id))
 		var ledgerWithNew = ledger
-		for var t in imported {
-			t.accountID = account.id
-			let key = ImportKey(t)
-			if existing.contains(key) || seen.contains(key) {
-				skipped += 1
-				continue
-			}
-			seen.insert(key)
-			t.isNew = true
-			added.append(t)
-		}
 		ledgerWithNew.update(added)
 		let categorizer = Categorizer(ledger: ledgerWithNew)
 		for i in added.indices { categorizer.categorize(&added[i]) }
 		commit(added)
 		return (added.count, skipped)
-	}
-}
-
-/// Identity of an imported transaction: date, amount, counterparty, and purpose.
-struct ImportKey: Hashable {
-	let day: Day
-	let amount: Int64
-	let name: String
-	let purpose: String
-
-	init(_ t: Transaction) {
-		day = t.bookingDate
-		amount = t.amountMinor
-		name = TextFolding.fold(t.name)
-		purpose = TextFolding.fold(t.purpose).filter { !$0.isWhitespace }
 	}
 }
 
