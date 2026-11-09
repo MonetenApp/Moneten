@@ -10,7 +10,7 @@ The Mac App Store adds usage rules to every app that conflict with the GPL's ban
 
 ## Decision
 
-The app and all packages in this repository are licensed under GPL-3.0-or-later. The project ships outside the Mac App Store, signed with a Developer ID and notarized. Extensions are separate works, and their authors pick their own license. The project recommends MIT for extensions in the catalog.
+The app and all packages in this repository are licensed under GPL-3.0-or-later. The project ships outside the Mac App Store, signed with a Developer ID and notarized. Extensions talk to the app only through the extension API. Whether a script that calls a GPL program's API must itself be under the GPL depends on how close that link is, and the [FSF FAQ](https://www.gnu.org/licenses/gpl-faq.html.en#IfInterpreterIsGPL) does not settle it for this case. Until a reviewed additional permission under GPL section 7 says otherwise, extensions in the catalog must use a GPL-compatible license. The project recommends MIT.
 
 ## Consequences
 

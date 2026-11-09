@@ -24,7 +24,7 @@ HNHBS:5:1+1'
 
 1. The client opens a dialog with its user ID, its product registration number, the PIN, and an `HKTAN` segment for strong customer authentication.
 2. The bank answers with the bank parameter data (BPD), which lists supported business transactions, versions, and TAN methods, and the user parameter data (UPD), which lists the user's accounts and permissions. The client caches both.
-3. The client sends business transactions. Common ones are `HKSPA` for SEPA account details, `HKSAL` for balances, `HKKAZ` for transactions in MT940, `HKCAZ` for transactions in CAMT, `HKWPD` for securities in MT535, `HKCCS` for a SEPA transfer, `HKIPZ` for an instant transfer, and `HKVPP` for the payee check.
+3. The client sends business transactions. Common ones are `HKSPA` for SEPA account details, `HKSAL` for balances, `HKKAZ` for transactions in MT940, `HKCAZ` for transactions in CAMT, `HKWPD` for securities in MT535, `HKCCS` for a SEPA transfer, `HKIPZ` for an instant transfer, `HKVPP` for the payee check, and `HKVPA` to confirm a transfer after the payee check ([Commerzbank VoP guide](https://www.commerzbank.com/ms/documents/en/vop-verification-of-payee-guide.pdf)).
 4. If the bank has more data, it returns code `3040` with a touchdown point. The client repeats the request with that point.
 5. The client ends the dialog with `HKEND`.
 
@@ -32,7 +32,7 @@ Return codes tell the client what happened. `0010` means success, `0030` means a
 
 ## How TANs work
 
-PSD2 requires strong customer authentication. For reading data, most banks ask for it every 90 to 180 days. Some ask at every login. For payments, banks always ask.
+PSD2 requires strong customer authentication. For reading data, most banks ask for it every 90 to 180 days. Some ask at every login. For payments, banks ask in most cases, but the rules allow exemptions, for example for trusted payees and some transfers between your own accounts ([Delegated Regulation 2018/389](https://eur-lex.europa.eu/legal-content/en/ALL/?uri=CELEX%3A32018R0389), articles 13 to 18).
 
 1. The client sends the order together with `HKTAN` in process 4.
 2. The bank answers with a challenge. It is a text prompt, a photoTAN image, a chipTAN flicker code, or a request to approve in the bank's app (decoupled).

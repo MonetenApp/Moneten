@@ -7,7 +7,9 @@ This page lists the core types in the `Domain` module. It is the target for v0.3
 | Type | Fields | Rules |
 |---|---|---|
 | `Currency` | `code: String` | ISO 4217 code, three uppercase letters. |
-| `Money` | `minorUnits: Int64`, `currency: Currency` | Exact integer arithmetic. Adding two amounts with different currencies throws an error. The type never converts currencies. No `Double` anywhere. |
+| `Money` | `minorUnits: Int64`, `currency: Currency` | Exact integer arithmetic for settled amounts. Adding two amounts with different currencies throws an error. The type never converts currencies. No `Double` anywhere. |
+| `Quote` | `value: Decimal`, `currency: Currency` | A price with more decimal places than the currency, for example a share price of 12.3456 euros. Valuations round to `Money` once, at the end. |
+| `Totals` | `[Currency: Money]` | A sum across accounts keeps one total per currency. Exchange rates are out of scope until after v0.3. |
 | `Quantity` | `value: Decimal` | Number of shares or units in a securities account. |
 | `IBAN` | `value: String` | Validated with the ISO 13616 checksum when parsed. |
 
@@ -60,14 +62,14 @@ Secrets are not part of the model. The Keychain stores the PIN for a connection 
 | Type | Fields |
 |---|---|
 | `Security` | `isin?`, `wkn?`, `name` |
-| `Holding` | `accountID`, `date`, `security`, `quantity: Quantity`, `price: Money?`, `marketValue: Money`, `purchaseValue: Money?` |
+| `Holding` | `accountID`, `date`, `security`, `quantity: Quantity`, `price: Quote?`, `marketValue: Money`, `purchaseValue: Money?` |
 
 ## Payments (v0.2)
 
 | Type | Fields |
 |---|---|
-| `PaymentOrder` | `id`, `accountID`, `kind: .sepa` or `.instant`, `payee: Counterparty`, `amount`, `purpose`, `endToEnd?`, `executionDate?` |
-| `PaymentState` | `draft`, `payeeCheck(PayeeCheckResult)`, `confirmed`, `needsChallenge(Challenge)`, `submitted`, `accepted`, `rejected(reason)`, `unknown` |
+| `PaymentOrder` | `id`, `accountID`, `kind: .sepa` or `.instant`, `payee: Counterparty`, `amount`, `purpose`, `endToEnd?`, `executionDate?`, `payeeCheckID?` |
+| `PaymentState` | `draft`, `payeeCheck(PayeeCheckResult)`, `confirmed`, `needsChallenge(Challenge)`, `submitted`, `accepted`, `rejected(reason)`, `unknown`. A change to payee, IBAN, or amount returns the order to `draft`. |
 | `PayeeCheckResult` | `match`, `closeMatch(suggestedName)`, `noMatch`, `notPossible` |
 
 ## Import

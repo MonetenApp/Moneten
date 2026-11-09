@@ -16,22 +16,22 @@ The second user is a developer who wants to add a bank or service. They should b
 
 ## What the project promises
 
-- Your data stays on your Mac, in an encrypted database. The app sends nothing to the project.
+- With FinTS and extensions, your data stays on your Mac, in an encrypted database. The app sends nothing to the project.
 - The full app is open source under the GPL. Anyone can build it, audit it, or fork it.
 - Every core feature works without paying. That includes FinTS banking, extensions, categories, rules, charts, import, and transfers.
 - You can export everything in open formats at any time.
-- Extensions can read data. They can never send money. Payments go only through FinTS or a licensed provider.
+- The extension API has no payment functions. The app sends payments only through FinTS or a licensed provider. An extension is still code with access to your login for one service, so the catalog reviews every extension before it ships.
 
 ## How the project pays for itself
 
-The app is free. An optional subscription connects banks through finAPI, a licensed German account information service. The subscription is for people whose bank has no FinTS access, or who do not want to deal with FinTS setup. Its price covers finAPI's per-user fee, payment fees, and the small server that holds the finAPI credentials. It never becomes a requirement for core features.
+The app is free. An optional subscription connects banks through finAPI, a licensed German account information service. With the subscription, finAPI receives and stores your account data under its own terms, and the app explains that before you connect a bank. The subscription is for people whose bank has no FinTS access, or who do not want to deal with FinTS setup. Its price covers finAPI's per-user fee, payment fees, and the small server that holds the finAPI credentials. It never becomes a requirement for core features.
 
 Donations and sponsorships are welcome. They do not buy features.
 
 ## What the project does not do
 
 - No Windows, Linux, iPhone, or iPad app before v0.3. The Mac app comes first. An iOS app may follow because SwiftUI makes that cheaper later.
-- No cloud service that stores your transactions.
+- No project server that stores your transactions.
 - No business banking features such as EBICS or approvals by two people.
 - No budgeting method that forces a workflow on you. Categories and charts come first. Budgets may follow.
 - No scraping of bank websites in the core app. Scrapers are extensions, maintained by their authors.

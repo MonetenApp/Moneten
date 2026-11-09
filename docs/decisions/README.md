@@ -10,7 +10,7 @@ Each file records one architecture decision with its context, the choice, and wh
 | [0004](0004-moneymoney-compatible-extension-api.md) | Make the extension API compatible with MoneyMoney | Accepted |
 | [0005](0005-grdb-and-sqlcipher.md) | Store data in SQLite with GRDB and SQLCipher | Proposed |
 | [0006](0006-license-gpl-3.md) | License the app under GPL-3.0-or-later | Accepted |
-| [0007](0007-optional-finapi-subscription.md) | Offer finAPI as an optional subscription | Accepted |
+| [0007](0007-optional-finapi-subscription.md) | Offer finAPI as an optional subscription | Proposed |
 | [0008](0008-payments-only-through-licensed-channels.md) | Send payments only through FinTS or finAPI | Accepted |
 
 A decision with status Proposed waits on a prototype or an outside answer. Its file names what settles it.

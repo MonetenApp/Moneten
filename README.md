@@ -1,6 +1,6 @@
 # MonetenMoneten
 
-MonetenMoneten is an open source banking app for the Mac. It fetches balances and transactions from German banks, sorts them into categories, and shows where your money goes. Your data stays encrypted on your Mac. There is no account, no server, and no telemetry.
+MonetenMoneten is an open source banking app for the Mac. It fetches balances and transactions from German banks, sorts them into categories, and shows where your money goes. With FinTS and extensions, your data stays encrypted on your Mac. You need no account, the project runs no server, and the app sends no telemetry. Only the optional subscription passes data through a provider.
 
 > [!NOTE]
 > MonetenMoneten is in the planning phase. There is no app to download yet. The [roadmap](docs/roadmap.md) shows what ships in v0.1, v0.2, and v0.3.
@@ -20,7 +20,7 @@ MonetenMoneten is an open source banking app for the Mac. It fetches balances an
 The app is a native macOS app in Swift and SwiftUI. It talks to banks in two ways:
 
 1. FinTS, the standard interface of German banks. This is free and built in.
-2. Extensions. An extension is a Lua script that fetches data from one service, for example a broker, a credit card portal, or a crypto exchange. Extensions run in a sandboxed process and can only fetch data. They can never send money.
+2. Extensions. An extension is a Lua script that fetches data from one service, for example a broker, a credit card portal, or a crypto exchange. Each extension runs in a sandboxed process. The extension API has no payment functions, and the app sends payments only through FinTS or finAPI.
 
 Read [architecture](docs/architecture.md) for the modules and the data model, and [decisions](docs/decisions/) for why the project is built this way.
 
@@ -34,6 +34,6 @@ The project needs Swift developers, people who know FinTS, and extension authors
 
 ## License
 
-MonetenMoneten is licensed under the [GNU General Public License v3.0 or later](LICENSE). Extensions are separate works, and each extension author picks its license.
+MonetenMoneten is licensed under the [GNU General Public License v3.0 or later](LICENSE). Extensions in the catalog use a GPL-compatible license such as MIT. [ADR 0006](docs/decisions/0006-license-gpl-3.md) explains why.
 
 MonetenMoneten is not affiliated with MoneyMoney, MRH applications GmbH, Banking4, or Subsembly GmbH.

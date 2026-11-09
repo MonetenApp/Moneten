@@ -71,7 +71,7 @@ enum Challenge {
 
 One enum means one set of dialogs in the app. A pushTAN from FinTS, an app approval in an extension, and the finAPI web form all reach the user through the same screens.
 
-Only `FinTSConnector` and `FinAPIConnector` conform to `PaymentConnector`. `ExtensionConnector` does not, so the compiler rejects any code path that would send money through an extension.
+Only `FinTSConnector` and `FinAPIConnector` conform to `PaymentConnector`. `ExtensionConnector` does not, so the app itself never sends a payment through an extension. This does not stop a malicious extension from submitting a form on a bank website it is allowed to reach. The sandbox limits which hosts it reaches, and the catalog review is the protection against that case.
 
 ## A sync is a state machine
 
@@ -89,7 +89,7 @@ The state lives in one `SyncState` value per connection. The UI reads it to show
 FinTS returns transactions without a stable ID. A second sync returns the same rows again, and a pending card payment comes back later as a booked one with a different date or text. `Domain` handles this with two pure functions:
 
 - `fingerprint(_:)` builds an identity from the account, booking date, amount, counterparty IBAN, end-to-end reference, and normalized purpose text. Identical rows on the same day get an occurrence index.
-- `reconcile(existing:incoming:)` matches incoming rows to stored ones. It replaces a pending row with its booked version when the amount and counterparty match within a few days.
+- `reconcile(existing:incoming:)` matches incoming rows to stored ones, one to one. It replaces a pending row with its booked version only when exactly one pending row matches the amount and counterparty within a few days. If two pending rows could match, for example two identical coffees on one day, it keeps all rows and marks them for review instead of guessing. Categories and notes move to the booked row.
 
 If a source gives a stable ID, as some extensions do with `transactionId`, the app uses that ID and skips the fingerprint.
 
@@ -102,7 +102,8 @@ Bank responses, extension results, and import files are untrusted input. Each co
 - The database is encrypted with SQLCipher. Its key is a random 256-bit value in the macOS Keychain, readable only by MonetenMoneten, and unlocked with Touch ID or the login password.
 - Bank PINs live in the Keychain, one item per connection. They never enter the database or a log.
 - TANs are never stored.
-- Logs redact PINs, TANs, IBANs, and amounts by default. A debug switch in the settings turns on full logs for one sync, and the app warns before you share them.
+- Logs never contain PINs, TANs, passwords, cookies, or tokens. The app removes them from its own output, from HBCI4Swift output, and from recorded HTTP traffic, and no setting turns that off.
+- Logs also redact IBANs, names, and amounts by default. A debug switch shows those for one sync, and the app warns before you share the log.
 
 ## Extensions run in a sandbox
 
@@ -119,11 +120,11 @@ The API follows the [MoneyMoney Web Banking API](https://moneymoney.app/api/webb
 A transfer moves through these states, and the app saves every step:
 
 ```
-draft → payeeCheck → confirmed → needsChallenge → submitted → accepted
-                                                             ↘ rejected
+draft → payeeCheck → confirmed → (needsChallenge) → submitted → accepted
+                                                               ↘ rejected
 ```
 
-`payeeCheck` shows the result of the Verification of Payee check from the bank. You confirm the transfer after you see that result, never before. A crash or a lost connection leaves the payment in a saved state, and the app shows it as "unknown" until the bank confirms or rejects it. The app never resends a payment on its own.
+`payeeCheck` asks the bank for the Verification of Payee result with `HKVPP`. You confirm the transfer after you see that result, never before. The app then sends the transfer together with `HKVPA`, which binds it to the checked payee. Any change to payee, IBAN, or amount after the check sends the payment back to `draft`. The bank may skip the TAN step, for example for a trusted payee, so `needsChallenge` is optional. A crash or a lost connection leaves the payment in a saved state, and the app shows it as "unknown" until the bank confirms or rejects it. The app never resends a payment on its own.
 
 ## The app ships outside the App Store
 

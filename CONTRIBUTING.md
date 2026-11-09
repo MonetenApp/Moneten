@@ -17,7 +17,7 @@ For a bug fix or a small change, open a pull request. For a larger change, open 
 
 1. Tests for the behavior you add or change. Tests for FinTS and extensions replay recorded responses from `Fixtures/` and never contact a real bank.
 2. A green CI run.
-3. Screenshots in light and dark mode for any change to the interface.
+3. Screenshots in light and dark mode for any change to the interface. Use made-up names, IBANs, and amounts, never your own data.
 4. No personal data. Remove names, IBANs, account numbers, and amounts from fixtures and logs before you commit them.
 
 ## Licensing

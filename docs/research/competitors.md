@@ -34,4 +34,4 @@ Banking4 is closed source software by Subsembly GmbH in Munich, for Windows, mac
 
 ## What follows for MonetenMoneten
 
-No other app combines open source code, a native Mac interface, FinTS with securities, and an open extension API. Users accept one-time prices around 40 euros and push back on subscriptions. The optional subscription must therefore be cheap and must add something the free app cannot do.
+Among the apps on this page, none combines open source code, a native Mac interface, FinTS with securities, and an open extension API. Banking4 sells its private edition for 40 euros once, and MoneyMoney's move to a subscription drew criticism in the linked reports. That suggests, without proof, that the optional subscription must be cheap and must add something the free app cannot do. User research should test this before v0.3.
