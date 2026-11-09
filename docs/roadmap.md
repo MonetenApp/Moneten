@@ -17,7 +17,7 @@ Fetch, categorize, and understand your money. Read-only.
 | [add-account-management](../openspec/changes/add-account-management/proposal.md) | `account-management` | 21 | [#3](https://github.com/alexander-schneider/MonetenMoneten/issues/3), [#5](https://github.com/alexander-schneider/MonetenMoneten/issues/5) |
 | [add-account-refresh](../openspec/changes/add-account-refresh/proposal.md) | `account-refresh` | 29 | [#6](https://github.com/alexander-schneider/MonetenMoneten/issues/6), [#7](https://github.com/alexander-schneider/MonetenMoneten/issues/7), [#40](https://github.com/alexander-schneider/MonetenMoneten/issues/40) |
 | [add-account-setup](../openspec/changes/add-account-setup/proposal.md) | `account-setup` | 21 | [#5](https://github.com/alexander-schneider/MonetenMoneten/issues/5), [#13](https://github.com/alexander-schneider/MonetenMoneten/issues/13) |
-| [add-app-lock](../openspec/changes/add-app-lock/proposal.md) | `app-lock` | 21 | [#4](https://github.com/alexander-schneider/MonetenMoneten/issues/4) |
+| [add-app-lock](../openspec/changes/add-app-lock/proposal.md) | `app-lock` | 21 | [#4](https://github.com/alexander-schneider/MonetenMoneten/issues/4), [#26](https://github.com/alexander-schneider/MonetenMoneten/issues/26) |
 | [add-app-settings](../openspec/changes/add-app-settings/proposal.md) | `app-settings` | 8 | [#5](https://github.com/alexander-schneider/MonetenMoneten/issues/5) |
 | [add-categories](../openspec/changes/add-categories/proposal.md) | `categories` | 20 | [#18](https://github.com/alexander-schneider/MonetenMoneten/issues/18) |
 | [add-categorization-rules](../openspec/changes/add-categorization-rules/proposal.md) | `categorization-rules` | 18 | [#19](https://github.com/alexander-schneider/MonetenMoneten/issues/19) |
@@ -30,7 +30,7 @@ Fetch, categorize, and understand your money. Read-only.
 | [add-file-import](../openspec/changes/add-file-import/proposal.md) | `transaction-import` | 24 | [#22](https://github.com/alexander-schneider/MonetenMoneten/issues/22), [#23](https://github.com/alexander-schneider/MonetenMoneten/issues/23) |
 | [add-fints-banking](../openspec/changes/add-fints-banking/proposal.md) | `fints-banking` | 25 | [#9](https://github.com/alexander-schneider/MonetenMoneten/issues/9), [#10](https://github.com/alexander-schneider/MonetenMoneten/issues/10), [#11](https://github.com/alexander-schneider/MonetenMoneten/issues/11), [#12](https://github.com/alexander-schneider/MonetenMoneten/issues/12), [#13](https://github.com/alexander-schneider/MonetenMoneten/issues/13) |
 | [add-localization-and-formatting](../openspec/changes/add-localization-and-formatting/proposal.md) | `localization-and-formatting` | 18 | [#5](https://github.com/alexander-schneider/MonetenMoneten/issues/5) |
-| [add-login-credentials](../openspec/changes/add-login-credentials/proposal.md) | `login-credentials` | 15 | [#4](https://github.com/alexander-schneider/MonetenMoneten/issues/4), [#13](https://github.com/alexander-schneider/MonetenMoneten/issues/13) |
+| [add-login-credentials](../openspec/changes/add-login-credentials/proposal.md) | `login-credentials` | 15 | [#4](https://github.com/alexander-schneider/MonetenMoneten/issues/4), [#13](https://github.com/alexander-schneider/MonetenMoneten/issues/13), [#26](https://github.com/alexander-schneider/MonetenMoneten/issues/26) |
 | [add-main-window](../openspec/changes/add-main-window/proposal.md) | `main-window` | 28 | [#5](https://github.com/alexander-schneider/MonetenMoneten/issues/5) |
 | [add-moneymoney-migration](../openspec/changes/add-moneymoney-migration/proposal.md) | `moneymoney-migration` | 17 | [#24](https://github.com/alexander-schneider/MonetenMoneten/issues/24) |
 | [add-notifications-and-menu-bar](../openspec/changes/add-notifications-and-menu-bar/proposal.md) | `notifications-and-menu-bar` | 16 | [#40](https://github.com/alexander-schneider/MonetenMoneten/issues/40) |
@@ -40,7 +40,7 @@ Fetch, categorize, and understand your money. Read-only.
 | [add-tan-handling](../openspec/changes/add-tan-handling/proposal.md) | `tan-handling` | 28 | [#13](https://github.com/alexander-schneider/MonetenMoneten/issues/13) |
 | [add-transaction-list](../openspec/changes/add-transaction-list/proposal.md) | `transaction-list` | 20 | [#5](https://github.com/alexander-schneider/MonetenMoneten/issues/5) |
 | [add-transaction-search-and-filters](../openspec/changes/add-transaction-search-and-filters/proposal.md) | `transaction-search-and-filters` | 21 | [#20](https://github.com/alexander-schneider/MonetenMoneten/issues/20) |
-| [add-web-banking-extensions](../openspec/changes/add-web-banking-extensions/proposal.md) | `web-banking-extensions` | 79 | [#14](https://github.com/alexander-schneider/MonetenMoneten/issues/14), [#15](https://github.com/alexander-schneider/MonetenMoneten/issues/15) |
+| [add-web-banking-extensions](../openspec/changes/add-web-banking-extensions/proposal.md) | `web-banking-extensions` | 79 | [#14](https://github.com/alexander-schneider/MonetenMoneten/issues/14), [#15](https://github.com/alexander-schneider/MonetenMoneten/issues/15), [#26](https://github.com/alexander-schneider/MonetenMoneten/issues/26) |
 
 ### Issues
 
