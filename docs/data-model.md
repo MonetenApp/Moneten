@@ -17,7 +17,7 @@ This page lists the core types in the `Domain` module. It is the target for v0.3
 
 | Type | Fields |
 |---|---|
-| `Connection` | `id`, `name`, `source: ConnectionSource`, `lastSync: Date?` |
+| `Connection` | `id`, `name`, `source: ConnectionSource`, `savesPIN: Bool`, `lastSync: Date?` |
 | `ConnectionSource` | `.fints(bankCode, userID, customerID?, tanMethod?)`, `.extension(extensionID, service)`, `.finAPI(bankConnectionID)` (v0.3) |
 | `AccountGroup` | `id`, `name`, `order`, `parentID?` |
 | `Account` | `id`, `connectionID?`, `groupID?`, `kind: AccountKind`, `name`, `owner?`, `iban: IBAN?`, `accountNumber?`, `bankCode?`, `currency`, `isHidden` |
@@ -26,7 +26,7 @@ This page lists the core types in the `Domain` module. It is the target for v0.3
 
 An account without a `connectionID` is a manual account. You fill it by hand or by import.
 
-Secrets are not part of the model. The Keychain stores the PIN for a connection under the connection's `id`.
+A saved PIN is a `Credential` row with `connectionID` and `secret` inside the encrypted database. It exists only when `savesPIN` is on. Without it, the app keeps the PIN in memory until it locks or quits.
 
 ## Transactions
 

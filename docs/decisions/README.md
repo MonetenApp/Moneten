@@ -12,5 +12,6 @@ Each file records one architecture decision with its context, the choice, and wh
 | [0006](0006-license-gpl-3.md) | License the app under GPL-3.0-or-later | Accepted |
 | [0007](0007-optional-finapi-subscription.md) | Offer finAPI as an optional subscription | Proposed |
 | [0008](0008-payments-only-through-licensed-channels.md) | Send payments only through FinTS or finAPI | Accepted |
+| [0009](0009-database-password-as-in-moneymoney.md) | Protect the database with a password and save PINs only on request, as MoneyMoney does | Accepted |
 
 A decision with status Proposed waits on a prototype or an outside answer. Its file names what settles it.

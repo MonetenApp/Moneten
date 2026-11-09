@@ -97,10 +97,14 @@ If a source gives a stable ID, as some extensions do with `transactionId`, the a
 
 Bank responses, extension results, and import files are untrusted input. Each connector and each import parser turns raw data into `Domain` types at its edge and rejects what it cannot parse with an error that names the field. Code inside `Domain`, `Storage`, and `App` trusts those types and does not check them again.
 
-## Secrets stay in the Keychain
+## The database password protects everything
 
-- The database is encrypted with SQLCipher. Its key is a random 256-bit value in the macOS Keychain, readable only by MonetenMoneten, and unlocked with Touch ID or the login password.
-- Bank PINs live in the Keychain, one item per connection. They never enter the database or a log.
+MonetenMoneten handles secrets the way MoneyMoney does. [ADR 0009](decisions/0009-database-password-as-in-moneymoney.md) has the details.
+
+- The database is encrypted with SQLCipher. The key comes from the database password that you set at first launch or later.
+- Saving the password in the Keychain is optional. You need it saved to unlock automatically at launch, with Touch ID, or with an Apple Watch.
+- The app locks after a set time without activity, and optionally when the main window closes.
+- A PIN is saved only if you turn on saving for that connection, and then only inside the encrypted database. Otherwise the app asks once and keeps it in memory until the app locks or quits.
 - TANs are never stored.
 - Logs never contain PINs, TANs, passwords, cookies, or tokens. The app removes them from its own output, from HBCI4Swift output, and from recorded HTTP traffic, and no setting turns that off.
 - Logs also redact IBANs, names, and amounts by default. A debug switch shows those for one sync, and the app warns before you share the log.

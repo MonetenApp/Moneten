@@ -125,9 +125,9 @@ A row with "Not in the sources" means the feature may exist, but none of the sou
 | Feature | MonetenMoneten |
 |---|---|
 | Encrypted database with 256-bit AES | v0.1 [#4](https://github.com/alexander-schneider/MonetenMoneten/issues/4) with SQLCipher |
-| The database password is the key. Storing it in the Keychain is optional. | Different design. MonetenMoneten keeps a random key in the Keychain and unlocks it with Touch ID. See [ADR 0005](../decisions/0005-grdb-and-sqlcipher.md). |
-| PINs saved only if you choose | Different design. v0.1 [#4](https://github.com/alexander-schneider/MonetenMoneten/issues/4) saves PINs in the Keychain, which automatic refresh needs. |
-| Lock when the main window closes, lock after inactivity, unlock with Touch ID or Apple Watch | v0.1 [#4](https://github.com/alexander-schneider/MonetenMoneten/issues/4) |
+| The database password is the key. Storing it in the Keychain is optional. | v0.1 [#4](https://github.com/alexander-schneider/MonetenMoneten/issues/4), the same design. See [ADR 0009](../decisions/0009-database-password-as-in-moneymoney.md). |
+| PINs saved only if you choose | v0.1 [#4](https://github.com/alexander-schneider/MonetenMoneten/issues/4), [#13](https://github.com/alexander-schneider/MonetenMoneten/issues/13), the same design |
+| Lock when the main window closes, lock after inactivity, unlock automatically at launch, unlock with Touch ID or Apple Watch | v0.1 [#4](https://github.com/alexander-schneider/MonetenMoneten/issues/4) |
 | Certificate pinning for bank servers, with a fingerprint check for unknown certificates | After v0.3 |
 | Signed app and signed updates | v0.1 [#25](https://github.com/alexander-schneider/MonetenMoneten/issues/25) |
 | Database backup | v0.1 [#4](https://github.com/alexander-schneider/MonetenMoneten/issues/4) |
