@@ -4,14 +4,31 @@ Thank you for helping. This page explains how to find work, how to propose a cha
 
 ## Find something to work on
 
-- The [roadmap](docs/roadmap.md) lists every planned issue by release.
+- The [roadmap](docs/roadmap.md) lists every change and every issue by release.
+- Each change in [openspec/changes](openspec/changes/) has a proposal that explains why it exists and specs that say what the app must do.
 - Issues labeled `kind: prototype` settle open decisions. They are a good start if you like to explore.
 - To add a bank or service, write an extension. The author guide arrives with v0.1.
 - To request support for a bank, open an issue with the **Bank or service request** template.
 
+## How a change moves from spec to code
+
+The project uses [OpenSpec](https://github.com/Fission-AI/OpenSpec). Install it with `npm install -g @fission-ai/openspec`.
+
+1. **Pick a change.** `openspec list` shows all changes. `openspec show <change>` prints its proposal and specs.
+2. **Plan it.** A change starts with a proposal and specs. Before you write code, add `design.md` and `tasks.md`. `openspec status --change <change>` names the next missing file, and `openspec instructions <file> --change <change>` explains how to write it. With Claude Code, `/opsx:apply <change>` does both steps with you.
+3. **Build it.** Work through `tasks.md` and check off each task. Every scenario in the specs becomes a test or a documented manual check.
+4. **Archive it.** When the pull request is merged, `openspec archive <change>` moves the requirements into [openspec/specs](openspec/specs/). From then on they describe what is built.
+
+Run `openspec validate --all --strict` before you open a pull request.
+
 ## Propose a change
 
-For a bug fix or a small change, open a pull request. For a larger change, open an issue first and describe the problem. A change to a decision in [docs/decisions](docs/decisions/) needs a new decision record.
+For a bug fix that restores specified behavior, open a pull request. For new or different behavior, change the spec first.
+
+- To change a planned behavior, edit the spec in its change folder and say why in the pull request.
+- To add a behavior, create a change with `openspec new change <name>` or with `/opsx:propose` in Claude Code. [openspec/config.yaml](openspec/config.yaml) holds the writing rules.
+- A proposal lists what was observed in MoneyMoney and what MonetenMoneten decides on its own. [MoneyMoney analysis](docs/research/moneymoney-analysis.md) is the reference.
+- A change to a decision in [docs/decisions](docs/decisions/) needs a new decision record.
 
 ## What a pull request needs
 

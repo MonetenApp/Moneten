@@ -2,6 +2,8 @@
 
 This page lists the core types in the `Domain` module. It is the target for v0.3. Fields marked (v0.2) or (v0.3) arrive in that release. [Architecture](architecture.md) explains how the types are used.
 
+The specs in [openspec/changes](../openspec/changes/) define the behavior. Where this page and a spec differ, the spec wins, and the design of that change updates this page.
+
 ## Money and quantities
 
 | Type | Fields | Rules |
@@ -45,7 +47,7 @@ A saved PIN is a `Credential` row with `connectionID` and `secret` inside the en
 | `sourceID` | `String?` | Stable ID from the source, if it has one. |
 | `fingerprint` | `String` | Identity for sources without `sourceID`. See [architecture](architecture.md#transactions-need-an-identity-the-bank-does-not-give). |
 | `categoryID` | `UUID?` | |
-| `categorizedBy` | `.manual`, `.rule(UUID)`, or `.none` | Manual choices are never overwritten by rules. |
+| `categorizedBy` | `.manual`, `.rule(UUID)`, or `.none` | A manual choice survives a refresh. Only "Apply to all transactions." for a changed rule replaces it. |
 | `note` | `String?` | A comment you write. |
 | `isChecked` | `Bool` | You checked this transaction off. |
 | `splits` | `[Split]` | Empty for most transactions. If present, the parts carry the categories instead of the transaction. |
@@ -55,10 +57,8 @@ A saved PIN is a `Credential` row with `connectionID` and `secret` inside the en
 
 | Type | Fields | Rules |
 |---|---|---|
-| `Category` | `id`, `parentID?`, `name`, `order`, `isHidden`, `excludeFromCharts` | A tree. Deleting a category moves its transactions to the parent. `excludeFromCharts` is for transfers between your own accounts. |
+| `Category` | `id`, `parentID?`, `name`, `order`, `color`, `showInDiagrams`, `sidebarAmount`, `restrictedToAccountID?`, `rule?` | A tree. Deleting a category moves its transactions to "Uncategorized". `showInDiagrams` is off for transfers between your own accounts. `rule` is one expression in the rule language of the spec `categorization-rules`. When the rules of several categories match, the first category in sidebar order wins. |
 | `Split` | `amount: Money`, `categoryID?`, `note?` | The amounts of all splits add up to the transaction amount. |
-| `Rule` | `id`, `order`, `match: .all` or `.any`, `conditions: [Condition]`, `categoryID` | Rules run in `order`. The first match wins. |
-| `Condition` | `field`, `op`, `value` | `field` is one of counterparty name, counterparty IBAN, purpose, amount, account, transaction code. `op` is one of contains, equals, starts with, matches regex, less than, greater than. |
 
 ## Securities (v0.2)
 

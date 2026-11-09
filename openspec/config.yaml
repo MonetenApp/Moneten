@@ -1,0 +1,57 @@
+schema: spec-driven
+
+# Project context. OpenSpec gives this text to an agent before it writes an artifact.
+# It holds only what an agent cannot learn from the repository.
+context: |
+  MonetenMoneten is an open source banking app for the Mac. Nothing is built yet.
+  The specs in openspec/changes describe the complete target behavior. A change moves
+  into openspec/specs only when its code is merged and the change is archived.
+
+  Reference product. The behavior target is MoneyMoney 2.5.3 for macOS.
+  docs/research/moneymoney-analysis.md records what was observed and how.
+  A user who switches must find the same behavior, unless a proposal names a difference
+  under "Decided for MonetenMoneten".
+
+  Fixed decisions. Read docs/decisions before you write a design. In short:
+  native macOS app in Swift and SwiftUI, local-first with no project server,
+  GRDB with SQLCipher, the database password is the key, FinTS through HBCI4Swift,
+  a Lua extension API that is compatible with MoneyMoney, GPL-3.0-or-later,
+  payments only through FinTS or the licensed aggregator and never through extensions,
+  an optional finAPI subscription that the app never requires.
+
+  Language. Write every artifact in English. Use short sentences, active voice,
+  present tense, and one term for one thing. Do not use em dashes or en dashes.
+
+  Naming. A requirement calls the product "the app". A requirement never names MoneyMoney.
+  Proposals and designs can name it. A spec names MoneyMoney only in its Purpose, and only
+  when the capability is about compatibility with MoneyMoney or migration from it.
+  A requirement about a command line tool names the tool as the actor.
+
+  Data in examples. Never use real names, IBANs, account numbers, or amounts.
+  Use made-up people and the test IBAN DE02120300000000202051.
+
+  Planning data. Each change stores its release in .openspec.yaml as x-milestone
+  with one of v0.1, v0.2, v0.3, or later. x-issues lists the GitHub issue numbers
+  that track the work. A change with x-milestone later has no issues yet.
+
+  Tests. Tests never contact a real bank. FinTS and extension tests replay recorded
+  responses from Fixtures/.
+
+rules:
+  proposal:
+    - Keep the four template sections and add a fifth section named "Reference behavior".
+    - In "Reference behavior", list under "Observed in MoneyMoney 2.5.3" what the analysis shows, and under "Decided for MonetenMoneten" every behavior that was not observed or that differs on purpose.
+    - In "Impact", state the milestone, the GitHub issues, the modules from docs/architecture.md, and the decision records that apply.
+  specs:
+    - Start each requirement with one sentence in the form "The app SHALL ...". State one behavior per requirement.
+    - Keep the text between the requirement heading and the first scenario under 500 characters.
+    - Give every requirement at least one scenario. Use GIVEN for the starting state when it matters, then WHEN, THEN, and AND.
+    - Use concrete values in scenarios, for example an amount, a date, or a label.
+    - Write interface labels as the English interface shows them, in quotation marks.
+    - Describe behavior that a user or another program can observe. Leave out class names, libraries, and database tables.
+  design:
+    - Link the decision records that the design depends on. A design that changes a decision needs a new decision record first.
+    - Name the module from docs/architecture.md that owns each part.
+  tasks:
+    - Write tasks that one person can finish and verify in one sitting.
+    - Put the test for a rule about money, categories, or transaction identity before the code that satisfies it.

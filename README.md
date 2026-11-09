@@ -3,7 +3,7 @@
 MonetenMoneten is an open source banking app for the Mac. It fetches balances and transactions from German banks, sorts them into categories, and shows where your money goes. With FinTS and extensions, your data stays encrypted on your Mac. You need no account, the project runs no server, and the app sends no telemetry. Only the optional subscription passes data through a provider.
 
 > [!NOTE]
-> MonetenMoneten is in the planning phase. There is no app to download yet. The [roadmap](docs/roadmap.md) shows what ships in v0.1, v0.2, and v0.3.
+> MonetenMoneten is in the planning phase. There is no app to download yet. The complete behavior of the app is specified in [openspec/changes](openspec/changes/). The [roadmap](docs/roadmap.md) shows what ships in v0.1, v0.2, and v0.3.
 
 ## What you get in v0.3
 
@@ -24,6 +24,16 @@ The app is a native macOS app in Swift and SwiftUI. It talks to banks in two way
 2. Extensions. An extension is a Lua script that fetches data from one service, for example a broker, a credit card portal, or a crypto exchange. Each extension runs in a sandboxed process. The extension API has no payment functions, and the app sends payments only through FinTS or finAPI.
 
 Read [architecture](docs/architecture.md) for the modules and the data model, and [decisions](docs/decisions/) for why the project is built this way.
+
+## How the project is planned
+
+The project uses [OpenSpec](https://github.com/Fission-AI/OpenSpec). Every behavior of the app is written down as a requirement with testable scenarios before any code exists.
+
+- [openspec/changes](openspec/changes/) holds one folder for each planned change. A change has a proposal and the specs that it adds.
+- [openspec/specs](openspec/specs/) holds the specs of what is built. It is empty until the first change is merged.
+- [MoneyMoney analysis](docs/research/moneymoney-analysis.md) records the behavior that the specs start from, and [MoneyMoney features](docs/research/moneymoney-features.md) maps each feature to its change.
+
+[CONTRIBUTING.md](CONTRIBUTING.md) explains how to work on a change.
 
 ## Why this project exists
 

@@ -1,0 +1,211 @@
+# Spec Delta
+
+## Purpose
+
+A user who switches brings years of categorized transactions. This capability defines how the app reads accounts, categories, and transactions from an installed copy of MoneyMoney through its documented scripting interface. The requirements call MoneyMoney the source app. The capability also defines how the user checks the result before anything is stored and what the app reports afterwards.
+
+## ADDED Requirements
+
+### Requirement: Migration command
+
+The app SHALL offer a migration command in the File menu and in the empty state of a database without accounts. The label of the command names the source app. The command starts an assistant with the steps check, summary, import, and report.
+
+#### Scenario: New user
+
+- **GIVEN** a new database without accounts
+- **WHEN** the user looks at the main window
+- **THEN** the empty state offers the migration command next to the way to add the first account
+
+### Requirement: Preconditions are checked first
+
+The app SHALL check, before it reads any data, that the source app is installed, is running, and has an unlocked database, and that macOS allows the app to control it. For each failed check the assistant says what the user must do and offers to check again.
+
+#### Scenario: Source app is locked
+
+- **GIVEN** the source app runs and shows its lock screen
+- **WHEN** the user starts the assistant
+- **THEN** the assistant asks the user to unlock the source app and offers "Check again"
+
+#### Scenario: Automation not allowed
+
+- **WHEN** the user denied the macOS request to control the source app
+- **THEN** the assistant names the place in System Settings where the permission is granted
+
+#### Scenario: Source app not installed
+
+- **WHEN** the source app is not on the Mac
+- **THEN** the assistant says so and offers the file import as the other way to bring in transactions
+
+### Requirement: The source is only read
+
+The app SHALL use only the export commands of the source app. It creates, changes, and deletes nothing in the source app and its data folder.
+
+#### Scenario: After a migration
+
+- **WHEN** the migration finishes
+- **THEN** the source app shows the same accounts, transactions, categories, checkmarks, and comments as before
+
+### Requirement: Summary before the import
+
+The app SHALL show a summary after it read the source and before it stores anything. The summary states the number of account groups, accounts, categories, rules, and transactions, the date of the oldest and the newest transaction, and what cannot be migrated. The user continues with "Import" or leaves with "Cancel".
+
+#### Scenario: Summary
+
+- **GIVEN** a source with 2 groups, 5 accounts, 30 categories, and 18,400 transactions from 2014 to 2026
+- **WHEN** the reading finishes
+- **THEN** the summary shows these numbers and the two dates
+
+#### Scenario: Cancel
+
+- **WHEN** the user chooses "Cancel" in the summary
+- **THEN** the database is unchanged
+
+### Requirement: Account groups and accounts
+
+The app SHALL create the account groups and accounts of the source with their names, their order and nesting, and for each account the type, the IBAN or account number, the bank code, the currency, the owner, and the last known balance with its date. Accounts start without a bank access.
+
+#### Scenario: Group tree
+
+- **GIVEN** the source has the group "Private" with the accounts "Giro" and "Savings", in this order
+- **WHEN** the migration finishes
+- **THEN** the sidebar shows "Private" with "Giro" above "Savings", each with the balance from the source
+
+#### Scenario: No bank access yet
+
+- **WHEN** the user selects a migrated account
+- **THEN** the account shows that it is not connected to a bank and offers to connect it
+
+### Requirement: Categories
+
+The app SHALL create the categories and category groups of the source with their names, order, and nesting. The default category of the source maps to "Uncategorized". A category that already exists at the same place in the tree is used and not created twice.
+
+#### Scenario: Tree and default
+
+- **GIVEN** the source has the group "Household" with the categories "Food" and "Pets", and a default category named "Sonstiges"
+- **WHEN** the migration finishes
+- **THEN** the sidebar shows "Household" with "Food" and "Pets"
+- **AND** transactions of "Sonstiges" are in "Uncategorized"
+
+### Requirement: Rules
+
+The app SHALL take over the categorization rule of each category when the export of the source contains it, without changing its text. A rule that the app cannot parse is stored as text, marked as invalid in the category settings, and listed in the report.
+
+#### Scenario: Rule taken over
+
+- **GIVEN** the category "Salary" has the rule `"Lohn" OR "Gehalt"` in the source and the export contains it
+- **WHEN** the migration finishes
+- **THEN** the category "Salary" has the same rule
+
+#### Scenario: Export without rules
+
+- **WHEN** the export of the source contains no rules
+- **THEN** the report says that rules were not migrated and that the user can copy them by hand from the category settings of the source app
+
+### Requirement: Transactions
+
+The app SHALL create every transaction of the source with its booking date, value date, amount, currency, counterparty name, counterparty account and bank code, purpose, booking text, SEPA references, and the state booked or pending.
+
+#### Scenario: Counts and balances match
+
+- **GIVEN** the account "Giro" has 6,200 transactions and a balance of 1.234,56 € in the source
+- **WHEN** the migration finishes
+- **THEN** the account "Giro" has 6,200 transactions and shows 1.234,56 €
+
+### Requirement: Category, comment, and checkmark of each transaction
+
+The app SHALL keep the category, the comment, and the checkmark of each transaction. A migrated category counts as assigned by hand, so that the rules of the app do not move it.
+
+#### Scenario: Manual category survives
+
+- **GIVEN** a transaction with the purpose "REWE" that the user put into "Gifts" in the source, and a rule of "Food" that matches "REWE"
+- **WHEN** the migration finishes and a refresh runs later
+- **THEN** the transaction is in "Gifts", with its comment and its checkmark
+
+### Requirement: Migration is all or nothing
+
+The app SHALL store the result of a migration run completely or not at all. When the user cancels during the import, or an error occurs, the database is as it was before the run.
+
+#### Scenario: Source app quits during the import
+
+- **WHEN** the source app quits while the app still reads transactions
+- **THEN** the assistant reports that the source app is no longer reachable
+- **AND** no account, category, or transaction of this run is stored
+
+### Requirement: Progress
+
+The app SHALL show progress during reading and importing with the current account and the number of transactions done, and offer "Cancel" at every point.
+
+#### Scenario: Large source
+
+- **WHEN** the source has 150,000 transactions
+- **THEN** the assistant shows a line such as "Giro, 20,000 of 150,000 transactions" and stays responsive
+
+### Requirement: Repeated runs add only what is new
+
+The app SHALL recognize accounts, categories, and transactions from an earlier run. A later run adds only new objects and creates no duplicate. Changes that the user made in the app since the earlier run stay.
+
+#### Scenario: Second run a week later
+
+- **GIVEN** a first run migrated 18,400 transactions, and the source fetched 35 more since then
+- **WHEN** the user runs the migration again
+- **THEN** the summary shows 35 new transactions and the import adds exactly these
+
+#### Scenario: Category changed in the app
+
+- **GIVEN** the user moved a migrated transaction from "Food" to "Pets" in the app
+- **WHEN** the migration runs again
+- **THEN** the transaction stays in "Pets"
+
+### Requirement: Migration into a database with accounts
+
+The app SHALL match an account of the source with an existing account of the app by IBAN, or by bank code and account number. Transactions go into the matched account, and transactions that the account already holds are skipped. Accounts without a match are created.
+
+#### Scenario: Account already set up through FinTS
+
+- **GIVEN** the app has a FinTS account with the IBAN DE02120300000000202051 and transactions since August 2026, and the source has the same account with transactions since 2014
+- **WHEN** the migration finishes
+- **THEN** the account holds the history since 2014 and no transaction twice
+
+### Requirement: Connect a migrated account to its bank
+
+The app SHALL attach a bank access to a migrated account when the add account assistant finds an account with the same IBAN, or the same bank code and account number. The account keeps its transactions, categories, comments, and checkmarks, and the first refresh adds no duplicates.
+
+#### Scenario: Add the bank after the migration
+
+- **GIVEN** the migrated account "Giro" with the IBAN DE02120300000000202051 and 6,200 transactions
+- **WHEN** the user adds the bank with "Add Account..." and the bank reports that IBAN
+- **THEN** the assistant marks the account as already present and offers to connect it
+- **AND** after the first refresh "Giro" has its 6,200 transactions plus the new ones
+
+### Requirement: Portfolio accounts
+
+The app SHALL create portfolio accounts of the source as accounts and, when securities accounts are available in the app, their current positions with name, ISIN, quantity, price, and purchase price. Without that feature the report lists the positions as not migrated.
+
+#### Scenario: Version without securities
+
+- **GIVEN** a version of the app without securities accounts and a source with one portfolio
+- **WHEN** the migration finishes
+- **THEN** the portfolio exists as an account and the report says that its positions were not migrated
+
+### Requirement: Report
+
+The app SHALL show a report after the import. The report lists for each account the number of migrated transactions and the balance next to the numbers of the source, and it lists what was not migrated with the reason. The user can save the report as a text file.
+
+#### Scenario: Everything matches
+
+- **WHEN** all counts and balances equal those of the source
+- **THEN** the report shows a match for every account
+
+#### Scenario: Not migrated
+
+- **WHEN** the migration finishes
+- **THEN** the report names login data, templates, standing orders, statements, budgets, and account icons as not migrated, each with one sentence that says why or what to do
+
+### Requirement: The report contains no secrets
+
+The app SHALL write account names, counts, and balances to the report and no login data. The report says that it contains financial data before the user saves it.
+
+#### Scenario: Save the report
+
+- **WHEN** the user chooses "Save Report..."
+- **THEN** the app says that the file contains account names and balances and saves it after the user confirms

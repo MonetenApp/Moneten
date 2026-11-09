@@ -1,0 +1,1092 @@
+# Spec Delta
+
+## Purpose
+
+Web banking extensions are Lua scripts that fetch accounts, balances, transactions, and securities from services without FinTS. This capability defines how the app installs, isolates, and runs these scripts, and the complete programming interface that the app offers to them. The interface is compatible with the Web Banking API that MoneyMoney publishes, so that extensions written for MoneyMoney run without changes.
+
+## ADDED Requirements
+
+### Requirement: Install by file
+
+The app SHALL treat every file with the extension `.lua` in the "Extensions" folder of the data folder as an installed extension. A file that is added, changed, or removed takes effect without a restart of the app.
+
+#### Scenario: Add a file while the app runs
+
+- **GIVEN** the app is running and the settings tab "Extensions" is open
+- **WHEN** the user copies `Demo.lua` into the "Extensions" folder
+- **THEN** the extension "Demo" appears in the list without a restart
+
+#### Scenario: Remove a file
+
+- **GIVEN** the extension "Demo" is installed
+- **WHEN** the user deletes `Demo.lua` from the "Extensions" folder
+- **THEN** the extension disappears from the list
+- **AND** its services disappear from the add account assistant
+
+### Requirement: Registration with WebBanking
+
+The app SHALL accept a script as a web banking extension when the script calls `WebBanking{}` with a numeric `version`. The fields `url`, `services`, and `description` are optional. The script text is UTF-8.
+
+#### Scenario: Valid registration
+
+- **WHEN** a script starts with `WebBanking{version = 1.00, url = "https://bank.example/onlinebanking", services = {"Premium Account"}, description = "Demo"}`
+- **THEN** the app lists the extension with the description "Demo" and the version 1.00
+
+#### Scenario: Missing version
+
+- **WHEN** a script calls `WebBanking{services = {"Premium Account"}}` without `version`
+- **THEN** the app does not offer the service "Premium Account"
+- **AND** the log names the file and says that `version` is missing
+
+### Requirement: Scripts load without errors
+
+The app SHALL load a script once to read its registration. A script with a syntax error or a run-time error at load time is not usable, and the app shows the file name, the line, and the message in the log and in the list of extensions.
+
+#### Scenario: Syntax error
+
+- **WHEN** `Broken.lua` has a syntax error in line 12
+- **THEN** the list of extensions shows "Broken" as not usable with the message for line 12
+- **AND** no service of that file is offered
+
+### Requirement: List of installed extensions
+
+The app SHALL list all installed extensions in the settings tab "Extensions" with the name, the description, and the version of each one. The name is the file name without `.lua`.
+
+#### Scenario: Two extensions
+
+- **GIVEN** the files `Demo.lua` with version 1.00 and `Broker.lua` with version 2.31 are installed
+- **WHEN** the user opens the settings tab "Extensions"
+- **THEN** the list shows "Demo" with "Version 1.00" and "Broker" with "Version 2.31", each with its description
+
+### Requirement: Remove an extension in the settings
+
+The app SHALL let the user remove an installed extension from the settings. The app moves the file to the Trash. Accounts that used the extension keep their transactions and show that their extension is missing.
+
+#### Scenario: Remove an extension that an account uses
+
+- **GIVEN** the account "Broker Depot" uses the extension "Broker"
+- **WHEN** the user removes "Broker" and confirms
+- **THEN** `Broker.lua` is in the Trash
+- **AND** the account "Broker Depot" still shows its data and reports at the next refresh that the extension "Broker" is not installed
+
+### Requirement: Warning before the first run
+
+The app SHALL ask the user before it first runs an extension that does not come from the catalog. The warning says that the script receives the login data of the service and that nobody from the project has reviewed it. The app asks again when the content of the file changes.
+
+#### Scenario: First use
+
+- **GIVEN** the user copied `Demo.lua` into the "Extensions" folder
+- **WHEN** the user picks the service "Premium Account" in the add account assistant
+- **THEN** the app shows the warning with the buttons "Cancel" and "Continue"
+- **AND** the script does not run before the user chooses "Continue"
+
+#### Scenario: Changed file
+
+- **GIVEN** the user allowed `Demo.lua` yesterday
+- **WHEN** the file content changes and a refresh starts
+- **THEN** the app does not run the script and asks for the confirmation again
+
+### Requirement: Services in the assistant
+
+The app SHALL offer every name in the `services` array of an installed extension under "Other" in the add account assistant.
+
+#### Scenario: Service appears
+
+- **GIVEN** an installed extension with `services = {"Premium Account"}`
+- **WHEN** the user opens "Add Account..." and opens the menu "Other"
+- **THEN** the menu contains "Premium Account"
+
+### Requirement: Login fields
+
+The app SHALL ask for the login data of an extension service in a dialog with a user name field, a password field, and up to two more fields. Without a manifest the dialog has the fields "Username" and "Password".
+
+#### Scenario: Default fields
+
+- **GIVEN** an extension without a manifest
+- **WHEN** the user picks its service in the assistant and continues
+- **THEN** the dialog shows the fields "Username" and "Password"
+
+#### Scenario: Fields from the manifest
+
+- **GIVEN** a manifest that names the fields "Email address", "API key", and no password
+- **WHEN** the user picks the service in the assistant and continues
+- **THEN** the dialog shows "Email address" and "API key" and no password field
+
+### Requirement: Manifest
+
+The app SHALL read an optional manifest file with the same base name as the script. The manifest lists the hosts that the extension contacts, the labels and input rules of the login fields for each service, and the lowest API version that the script needs.
+
+#### Scenario: Manifest found
+
+- **GIVEN** `Broker.lua` and a manifest for "Broker" that lists the host `api.broker.example`
+- **WHEN** the user opens the details of "Broker" in the settings
+- **THEN** the app shows `api.broker.example` as the only host the extension contacts
+
+#### Scenario: Newer API needed
+
+- **GIVEN** a manifest that needs API version 3 and an app that offers API version 2
+- **WHEN** the app loads the extension
+- **THEN** the extension is not usable and the list says that it needs a newer version of the app
+
+### Requirement: Host limits
+
+The app SHALL let an extension with a manifest contact only the hosts in the manifest. For an extension without a manifest, the app SHALL ask the user to allow each host at the first contact and remember the answer for that extension. A blocked request fails with an error that names the host.
+
+#### Scenario: Host not in the manifest
+
+- **GIVEN** a manifest that lists only `api.broker.example`
+- **WHEN** the script calls `connection:get("https://tracker.example/pixel")`
+- **THEN** the request is not sent
+- **AND** the refresh ends with an error that names `tracker.example`
+
+#### Scenario: No manifest, new host
+
+- **GIVEN** an extension without a manifest, during a refresh that the user started
+- **WHEN** the script contacts `www.bank.example` for the first time
+- **THEN** the app asks whether "Demo" may contact `www.bank.example`
+- **AND** after "Allow" the request is sent and the app does not ask again for this host
+
+### Requirement: Isolation
+
+The app SHALL run each extension session in its own process that can reach the network and nothing else. The script cannot read or write files, start programs, or read the data of another bank access. The process ends when the session ends.
+
+#### Scenario: No file access
+
+- **WHEN** a script calls `io.open("/etc/hosts")`
+- **THEN** the call fails because `io` is not available
+- **AND** the refresh ends with an error that names the line
+
+#### Scenario: Other access is invisible
+
+- **GIVEN** two bank accesses that use the same extension
+- **WHEN** the script runs for the first access
+- **THEN** `LocalStorage` and the login data contain only the values of the first access
+
+### Requirement: Lua runtime
+
+The app SHALL run scripts with Lua 5.4 and the standard libraries for strings, tables, math, UTF-8, and time. The functions `os.execute`, `os.remove`, `os.rename`, `os.tmpname`, `os.getenv`, `load`, `loadstring`, `dofile`, `require`, and the library `io` are not available.
+
+#### Scenario: Standard library
+
+- **WHEN** a script calls `os.time{year=2026, month=11, day=9}` and `string.format("%.2f", 42)`
+- **THEN** both calls work as in Lua 5.4
+
+#### Scenario: Removed function
+
+- **WHEN** a script calls `require("socket")`
+- **THEN** the script stops with an error that says that `require` is not available
+
+### Requirement: Global variables
+
+The app SHALL define the globals `version`, `url`, `services`, and `description` with the values from `WebBanking{}`, and `extensionName` with the name of the extension.
+
+#### Scenario: Read the registration
+
+- **GIVEN** the file `Demo.lua` with `WebBanking{version = 1.00, description = "Demo"}`
+- **WHEN** the script calls `print(extensionName, version, description)`
+- **THEN** the log shows "Demo", 1.0, and "Demo"
+
+### Requirement: Output and errors of a script
+
+The app SHALL write the output of `print` to the log. A call of `error` stops the script. The app shows the message in the log and, when a dialog or an account is waiting for the result, also there.
+
+#### Scenario: Print
+
+- **WHEN** a script calls `print("Fetching page 2")`
+- **THEN** the log shows "Fetching page 2" with the name of the extension
+
+#### Scenario: Error during refresh
+
+- **WHEN** a script calls `error("Unexpected page")` in `RefreshAccount`
+- **THEN** the account shows a failed refresh with the message "Unexpected page"
+
+### Requirement: Order of calls
+
+The app SHALL call the entry points in a fixed order. For a new bank access the order is `SupportsBank`, the login function, `ListAccounts`, `RefreshAccount` for each account, and `EndSession`. For a refresh the order is `SupportsBank`, the login function, `RefreshAccount` for each account, and `EndSession`.
+
+#### Scenario: Refresh of two accounts
+
+- **GIVEN** a bank access with two accounts
+- **WHEN** a refresh runs
+- **THEN** the script receives `SupportsBank`, one login, two calls of `RefreshAccount`, and `EndSession`, in this order
+
+#### Scenario: Failure after login
+
+- **WHEN** the login succeeds and `RefreshAccount` stops with an error
+- **THEN** the app still calls `EndSession`
+
+### Requirement: SupportsBank
+
+The app SHALL call `SupportsBank(protocol, bankCode)` to find the extension for a bank access. `protocol` is `ProtocolWebBanking` or `ProtocolFinTS`. `bankCode` is a service name or a Bankleitzahl. The extension is responsible when it returns `true` or a URL, and not responsible when it returns `false`.
+
+#### Scenario: Service name
+
+- **WHEN** the app calls `SupportsBank(ProtocolWebBanking, "Premium Account")` and the script returns `true`
+- **THEN** the app uses this extension for the access
+
+#### Scenario: URL as answer
+
+- **WHEN** the script returns `"https://bank.example/login"`
+- **THEN** the app uses this extension, and the global `url` has that value for the rest of the session
+
+### Requirement: Extensions add accounts to a FinTS access
+
+The app SHALL ask the installed extensions with `ProtocolFinTS` and the Bankleitzahl when a FinTS access is set up or refreshed. A responsible extension can add accounts that the bank does not offer through FinTS. `ListAccounts` then receives the accounts that are already known.
+
+#### Scenario: Credit card next to a giro account
+
+- **GIVEN** a FinTS access with the Bankleitzahl 12030000 and one giro account, and an extension that returns `true` for `SupportsBank(ProtocolFinTS, "12030000")`
+- **WHEN** the user runs "Look for New Accounts..."
+- **THEN** `ListAccounts` receives the giro account in `knownAccounts`
+- **AND** a credit card account that the script returns is offered to the user
+
+### Requirement: InitializeSession
+
+The app SHALL call `InitializeSession(protocol, bankCode, username, customer, password, credential)` to log in when the script does not define `InitializeSession2`. `customer` and `credential` hold the second and third field and are empty when the access has no such field. No return value or `nil` means success, `LoginFailed` means rejected login data, and a string is an error message.
+
+#### Scenario: Success
+
+- **WHEN** `InitializeSession` returns nothing
+- **THEN** the app continues with the next entry point
+
+#### Scenario: Error message
+
+- **WHEN** `InitializeSession` returns `"The service is under maintenance."`
+- **THEN** the session ends and the accounts of the access show that message
+
+### Requirement: Rejected login data stops automatic refresh
+
+The app SHALL, after a login function returns `LoginFailed`, tell the user that the login data was rejected and stop every automatic refresh of the accounts of that access until the user enters the login data again.
+
+#### Scenario: Wrong password
+
+- **GIVEN** an access with a saved password that the service no longer accepts
+- **WHEN** the login returns `LoginFailed` during an automatic refresh
+- **THEN** the accounts show that the login failed
+- **AND** the next automatic refresh skips this access
+- **AND** after the user enters the login data with "Edit Login Data...", the refresh runs again
+
+### Requirement: InitializeSession2
+
+The app SHALL call `InitializeSession2(protocol, bankCode, step, credentials, interactive, hbciTanMethods, session)` when the script defines it. The first call has `step` 1 and the login data in `credentials` in the order of the dialog fields. The function returns `nil`, `LoginFailed`, an error message, or a challenge table.
+
+#### Scenario: First call
+
+- **GIVEN** an access with the fields "Username" and "Password"
+- **WHEN** a refresh that the user started logs in
+- **THEN** the script receives `step` 1, `credentials` with the user name at index 1 and the password at index 2, `interactive` true, and `session` "refresh"
+
+#### Scenario: Both login functions exist
+
+- **WHEN** a script defines `InitializeSession` and `InitializeSession2`
+- **THEN** the app calls only `InitializeSession2`
+
+### Requirement: Session reason
+
+The app SHALL pass the reason of the session in `session` as `"refresh"`, `"new account"`, `"statement"`, or `"tan media"`. The app never passes `"payment"`. `hbciTanMethods` holds the TAN methods of the FinTS access for `ProtocolFinTS` and is an empty array otherwise.
+
+#### Scenario: Account setup
+
+- **WHEN** the user adds a service in the assistant
+- **THEN** the script receives `session` "new account"
+
+### Requirement: Challenge tables
+
+The app SHALL treat a returned table as a two-factor challenge when at least one of the fields `challenge`, `label`, `tanMethod`, or `tanMethods` is set. The app reads the fields `challenge`, `label`, `title`, `poll`, `tanMethod`, `tanMethods`, `button`, `startCode`, `appToApp`, and `state`.
+
+#### Scenario: Shortest challenge
+
+- **WHEN** the login function returns `{label="mobileTAN"}`
+- **THEN** the app shows a dialog with one entry field labeled "mobileTAN"
+
+#### Scenario: Title and button
+
+- **WHEN** the function returns `{title="Enter the code from the SMS.", label="Code", button="next"}`
+- **THEN** the dialog shows the title above the field and its confirm button reads "Next"
+
+#### Scenario: Table without challenge fields
+
+- **WHEN** the login function returns `{foo="bar"}`
+- **THEN** the app does not show a dialog and ends the session with an error that says that the return value is not valid
+
+### Requirement: Follow-up calls after a challenge
+
+The app SHALL call the same function again after each challenge. `step` grows by 1, or by 2 when the challenge named a `tanMethod` directly. `credentials[1]` holds the answer of the user, `credentials[2]` a localized cancel message, and `credentials[3]` is true while another polling attempt is allowed.
+
+#### Scenario: Entered code
+
+- **GIVEN** the script returned `{label="Code"}` at `step` 1
+- **WHEN** the user enters "123456" and confirms
+- **THEN** the app calls the function with `step` 2 and `credentials[1]` "123456"
+
+#### Scenario: Direct TAN method
+
+- **GIVEN** the script returned `{label="Code", tanMethod={name="SMS", tanLength=6}}` at `step` 1
+- **WHEN** the user enters the code
+- **THEN** the app calls the function with `step` 3
+
+#### Scenario: User cancels
+
+- **WHEN** the user cancels the dialog
+- **THEN** the session ends, the app calls `EndSession` if the login already succeeded, and the accounts show that the user canceled
+
+### Requirement: Entry of a TAN or code
+
+The app SHALL show an instruction text and an entry field for a challenge with a text in `challenge` and a `label`. A `tanMethod` sets the length and the allowed characters. Without a `tanMethod` the field accepts any text. The app removes HTML tags from the text.
+
+#### Scenario: Six digits
+
+- **GIVEN** the challenge `{title="Enter the code.", label="Code", tanMethod={name="SMS", tanLength=6, isNumeric=true}}`
+- **WHEN** the user types "12a456"
+- **THEN** the field does not accept the letter, and the confirm button stays disabled until six digits are entered
+
+### Requirement: Image challenge
+
+The app SHALL show the image when `challenge` holds the binary data of a PNG or JPEG image, for example a photoTAN graphic or an image captcha. With a `label` the dialog also has an entry field.
+
+#### Scenario: photoTAN image
+
+- **WHEN** the function returns `{label="photoTAN", challenge=image}` and `image` is PNG data
+- **THEN** the dialog shows the image and an entry field labeled "photoTAN"
+
+### Requirement: QR code challenge
+
+The app SHALL draw a QR code when `challenge` is an `https://` URL and `tanMethod.name` equals `MM.localizeText("QR Code")`. Without a `label` the app treats the challenge as a decoupled method. With a `label` the dialog also has an entry field.
+
+#### Scenario: QR code with polling
+
+- **WHEN** the function returns `{challenge="https://bank.example/qr/abc", tanMethod={name=MM.localizeText("QR Code")}, poll=true}`
+- **THEN** the dialog shows the QR code and a waiting notice
+- **AND** the app calls the function again until it returns `nil` or an error
+
+#### Scenario: Other method name
+
+- **WHEN** the function returns the same URL with `tanMethod={name="Scan"}` and a `label`
+- **THEN** the dialog shows the URL as text and the entry field, and no QR code
+
+### Requirement: Decoupled challenge
+
+The app SHALL show a waiting notice with a cancel button for a challenge with `poll=true` and no `label`. The app calls the function again and again with the same `step` until it returns `nil` or an error message. The app sets `credentials[3]` to false for the last allowed attempt.
+
+#### Scenario: Approval in the banking app
+
+- **GIVEN** the script returns `{challenge="Confirm the login in your banking app.", poll=true}`
+- **WHEN** the user approves in the banking app and the script returns `nil` at the next call
+- **THEN** the dialog closes and the session continues
+
+#### Scenario: No approval in time
+
+- **WHEN** the app calls the function with `credentials[3]` false and the script returns `credentials[2]`
+- **THEN** the session ends with the localized cancel message
+
+#### Scenario: Known app method
+
+- **WHEN** the challenge has `tanMethod={name="pushTAN"}` and no `title`
+- **THEN** the app shows its own instruction text for pushTAN
+
+### Requirement: Choice of the TAN method
+
+The app SHALL show a selection dialog for a challenge with `tanMethods`, and ignore `challenge`, `label`, and `tanMethod` of that table. The next call receives the table of the chosen method in `credentials[1]`. The app remembers the choice by `hbciMethod` for the access and preselects it next time.
+
+#### Scenario: Two methods
+
+- **GIVEN** the challenge `{tanMethods={{name="pushTAN", hbciMethod="700"}, {name="mobileTAN", hbciMethod="701", mediumName="+49 *** 4567"}}}`
+- **WHEN** the user chooses "mobileTAN"
+- **THEN** the next call has `credentials[1].name` "mobileTAN", `credentials[1].hbciMethod` "701", and a `label` that the app derived from the name
+- **AND** at the next login "mobileTAN" is preselected
+
+#### Scenario: Method with an error message
+
+- **WHEN** a method has `errorMessage="Activate this method on the website first."`
+- **THEN** the dialog shows the method with that message and the user cannot choose it
+
+#### Scenario: Push already triggered
+
+- **WHEN** the table has `tanMethods` and `poll=true`
+- **THEN** the selection dialog stays open while the app polls the function for the first app method in the list
+
+### Requirement: TAN method tables
+
+The app SHALL read these fields of a TAN method table. `name` is required. `mediumName`, `hbciMethod`, `errorMessage`, `tanLength` with the default 6, `minLength`, `maxLength`, `isNumeric` with the default true, `isUppercase`, and `isPreferred` are optional. The app adds `label` to the tables that it passes to the script.
+
+#### Scenario: Letters allowed
+
+- **GIVEN** a challenge with `tanMethod={name="Code", minLength=4, maxLength=8, isNumeric=false}`
+- **WHEN** the user types "ab12"
+- **THEN** the field shows "AB12" and the confirm button is enabled
+
+#### Scenario: Preferred method
+
+- **WHEN** `tanMethods` holds a method with `isPreferred=true` and the user has not chosen before
+- **THEN** that method is preselected
+
+### Requirement: Captcha challenge
+
+The app SHALL show a captcha in an embedded browser when `challenge` is the script URL of Google reCAPTCHA, hCaptcha, FriendlyCaptcha, or Amazon WAF. The URL carries the `sitekey`, and optionally `type=checkbox` and `referer`. The app tries an invisible variant without the user first. The next call receives the solution token in `credentials[1]`.
+
+#### Scenario: Visible reCAPTCHA
+
+- **WHEN** the function returns `{challenge="https://www.recaptcha.net/recaptcha/api.js?sitekey=KEY&type=checkbox&referer=https%3A%2F%2Fbank.example%2Flogin"}`
+- **THEN** the app shows the checkbox captcha for the page `https://bank.example/login`
+- **AND** after the user solves it, the next call has the token in `credentials[1]`
+
+### Requirement: Approval in a browser window
+
+The app SHALL open any other `https://` URL in `challenge` in its own browser window when the host is allowed for the extension. When the website redirects to the redirect address, the app closes the window and passes the parameter `code`, or else `access_token`, `auth_code`, or `tokenid`, in `credentials[1]`.
+
+#### Scenario: OAuth authorization
+
+- **GIVEN** the function returns `{challenge="https://auth.broker.example/authorize?client_id=abc", state="xyz"}`
+- **WHEN** the user signs in and the website redirects with `code=4711&state=xyz`
+- **THEN** the next call has `credentials[1]` "4711"
+
+#### Scenario: State is missing
+
+- **WHEN** the table has no `state` and the URL has no `state` parameter
+- **THEN** the app appends a random `state` value to the URL and accepts only a redirect with that value
+
+#### Scenario: Host not allowed
+
+- **WHEN** the URL has a host that the manifest does not list
+- **THEN** the session ends with an error that names the host
+
+### Requirement: App-to-app challenge
+
+The app SHALL show the URL in `challenge` as a QR code and not open it in a browser when `appToApp` holds the name of a banking app. The instruction text names that app.
+
+#### Scenario: Start the banking app by phone camera
+
+- **WHEN** the function returns `{challenge="https://bank.example/app/approve/abc", appToApp="Example Banking", poll=true}`
+- **THEN** the dialog shows a QR code and asks the user to scan it with the phone to open "Example Banking"
+
+### Requirement: Start code of a chipTAN challenge
+
+The app SHALL put the value of `startCode` into the instruction text that it creates for a chipTAN method.
+
+#### Scenario: Manual chipTAN
+
+- **WHEN** the function returns `{label="TAN", startCode="88123456", tanMethod={name="chipTAN manuell"}}`
+- **THEN** the instruction text contains the start code 88123456
+
+### Requirement: Challenges in the background
+
+The app SHALL pass `interactive` as true when the user started the session and as false for an automatic refresh. When a script returns a challenge in a session with `interactive` false, the app shows no dialog, ends the session, and marks the accounts as waiting for an approval.
+
+#### Scenario: Automatic refresh needs a TAN
+
+- **GIVEN** an automatic refresh in the background
+- **WHEN** the login function returns `{label="TAN"}`
+- **THEN** no dialog appears
+- **AND** the accounts say that the service asks for an approval and that the user must start the refresh
+
+### Requirement: ListAccounts
+
+The app SHALL call `ListAccounts(knownAccounts)` during setup and expect an array of account tables or an error message. The app ignores an account without `accountNumber`.
+
+#### Scenario: One account
+
+- **WHEN** `ListAccounts` returns `{{name="Premium Account", owner="Erika Mustermann", accountNumber="111222333444", bankCode="80007777", currency="EUR", type=AccountTypeGiro}}`
+- **THEN** the assistant offers one giro account "Premium Account" in EUR
+
+#### Scenario: Missing account number
+
+- **WHEN** one of two returned accounts has no `accountNumber`
+- **THEN** the assistant offers only the other account
+
+### Requirement: Account tables
+
+The app SHALL read and pass the account fields `name`, `owner`, `accountNumber`, `subAccount`, `portfolio`, `bankCode`, `currency`, `iban`, `bic`, and `type`. The values of `type` are `AccountTypeGiro`, `AccountTypeSavings`, `AccountTypeFixedTermDeposit`, `AccountTypeLoan`, `AccountTypeCreditCard`, `AccountTypePortfolio`, and `AccountTypeOther`.
+
+#### Scenario: Portfolio
+
+- **WHEN** an account table has `portfolio=true` and `type=AccountTypePortfolio`
+- **THEN** the app creates a portfolio account
+
+#### Scenario: Same table at refresh
+
+- **WHEN** the app calls `RefreshAccount` for an account that `ListAccounts` returned with `subAccount="01"`
+- **THEN** the `account` parameter has `subAccount` "01" and the other fields as returned
+
+### Requirement: Account type when the script gives none
+
+The app SHALL derive the account type from the account number and the name when `type` is missing. An account number with 16 characters or with masked digits counts as a credit card. A given type is taken as it is. The app sets the type only when it creates the account and does not change it at a refresh.
+
+#### Scenario: Masked number
+
+- **WHEN** an account has `accountNumber="5232 xxxx xxxx 1234"` and no `type`
+- **THEN** the app creates a credit card account
+
+#### Scenario: Type changed by the user
+
+- **GIVEN** the user changed the type of an account to "Savings account"
+- **WHEN** a refresh runs
+- **THEN** the type stays "Savings account"
+
+### Requirement: RefreshAccount
+
+The app SHALL call `RefreshAccount(account, since, isKnownTransactionId, step, credentials, interactive)` for each account. `since` is the booking day from which transactions are needed as a POSIX time stamp, and 0 for a portfolio. The function returns a result table, a challenge table, or an error message.
+
+#### Scenario: Balance and transactions
+
+- **WHEN** the function returns `{balance=42.00, transactions={{bookingDate=1325764800, purpose="Hello World!", amount=42.00}}}`
+- **THEN** the account shows the balance 42,00 € and one transaction with the purpose "Hello World!" on 5 January 2012
+
+#### Scenario: Challenge for one account
+
+- **WHEN** the function returns `{label="TAN"}` at `step` 1
+- **THEN** the app shows the dialog and calls the function for the same account with `step` 2 and the answer in `credentials[1]`
+
+### Requirement: Result table of RefreshAccount
+
+The app SHALL read the fields `balance`, `balances`, `pendingBalance`, `transactions`, `securities`, and `bonusPoints`. `balances` is an array of pairs of an amount and a currency for an account with balances in several currencies.
+
+#### Scenario: Several currencies
+
+- **WHEN** the function returns `balances={{100.00, "EUR"}, {25.50, "USD"}}`
+- **THEN** the account shows both balances with their currency
+
+#### Scenario: Pending sum and bonus points
+
+- **WHEN** the function returns `pendingBalance=-19.99` and `bonusPoints=1200`
+- **THEN** the account shows a pending sum of -19,99 € and 1.200 bonus points
+
+### Requirement: Missing parts of a result
+
+The app SHALL show an error for the account when the result of a portfolio has no `securities`, or when the result of another account has no balance or no `transactions`. The message says which part could not be fetched.
+
+#### Scenario: No transactions field
+
+- **WHEN** the result of a giro account is `{balance=10.00}`
+- **THEN** the account shows that the transactions could not be fetched
+- **AND** the balance 10,00 € is stored
+
+### Requirement: Transaction tables
+
+The app SHALL read these transaction fields. `amount` and `bookingDate` are required. `name`, `accountNumber`, `bankCode`, `currency`, `valueDate`, `purpose`, `bookingText`, `endToEndReference`, `mandateReference`, `creditorId`, `returnReason`, and `booked` are optional. Dates are POSIX time stamps. Lines of the purpose are separated by line breaks.
+
+#### Scenario: Full transaction
+
+- **WHEN** a transaction has `name="Stadtwerke Musterstadt"`, `accountNumber="DE02120300000000202051"`, `bankCode="BYLADEM1001"`, `amount=-89.00`, `currency="EUR"`, `bookingDate=1794182400`, `purpose="Abschlag\nNovember"`, and `endToEndReference="E2E-1"`
+- **THEN** the list shows a withdrawal of 89,00 € to "Stadtwerke Musterstadt" with a purpose of two lines
+- **AND** the details show the IBAN, the BIC, and the end-to-end reference
+
+#### Scenario: Missing amount
+
+- **WHEN** one transaction in the array has no `amount`
+- **THEN** the account shows an error that says that a transaction has no amount
+
+### Requirement: Booking codes of a transaction
+
+The app SHALL read and store the optional transaction fields `transactionCode`, `textKeyExtension`, `purposeCode`, `bookingKey`, `primanotaNumber`, and `batchReference`.
+
+#### Scenario: SEPA purpose code
+
+- **WHEN** a transaction has `purposeCode="SALA"` and `transactionCode=153`
+- **THEN** both values are stored with the transaction and are part of every export that has these fields
+
+### Requirement: Pending transactions from extensions
+
+The app SHALL store a transaction with `booked=false` as pending and a transaction with `booked=true` or without the field as booked.
+
+#### Scenario: Card authorization
+
+- **WHEN** a transaction has `booked=false`
+- **THEN** the list shows it as pending
+
+### Requirement: New and known transactions
+
+The app SHALL store a returned transaction as new when the database does not hold it and discard it as a duplicate otherwise. The script returns the newest transactions first, and the app accepts any order.
+
+#### Scenario: Second refresh returns the same rows
+
+- **GIVEN** a refresh stored 5 transactions
+- **WHEN** the next refresh returns the same 5 transactions and 1 more
+- **THEN** the account has 6 transactions
+
+### Requirement: Transaction identifiers
+
+The app SHALL store `transactionId` for booked transactions and pass the function `isKnownTransactionId` to `RefreshAccount`. The function returns the stored transaction with the fields `name`, `accountNumber`, `purpose`, `amount`, `currency`, `bookingDate`, `valueDate`, and `booked`, or `nil` when the identifier is empty, unknown, known only for a pending transaction, or stored more than once in the account.
+
+#### Scenario: Stop paging at a known transaction
+
+- **GIVEN** a booked transaction with `transactionId` "T-100" is stored for the account
+- **WHEN** the script calls `isKnownTransactionId("T-100")`
+- **THEN** the call returns a table with the amount and the booking date of that transaction
+
+#### Scenario: Unknown identifier
+
+- **WHEN** the script calls `isKnownTransactionId("T-999")` and no such transaction is stored
+- **THEN** the call returns `nil`
+
+### Requirement: Scope of an error in RefreshAccount
+
+The app SHALL limit an error message from the first call of `RefreshAccount` to that account and continue with the next account. An error message from a follow-up call after a challenge ends the whole session.
+
+#### Scenario: One account fails
+
+- **GIVEN** an access with the accounts A and B
+- **WHEN** `RefreshAccount` returns `"Account is closed."` for A at `step` 1
+- **THEN** A shows the message and the app calls `RefreshAccount` for B
+
+#### Scenario: Failure after a challenge
+
+- **WHEN** `RefreshAccount` returns an error message for A at `step` 2
+- **THEN** the app does not call `RefreshAccount` for B and calls `EndSession`
+
+### Requirement: Security tables
+
+The app SHALL read these fields of a security. `name`, `isin`, `securityNumber`, `quantity`, `currencyOfQuantity`, `purchasePrice`, `currencyOfPurchasePrice`, `exchangeRateOfPurchasePrice`, `price`, `currencyOfPrice`, `exchangeRateOfPrice`, `amount`, `originalAmount`, `currencyOfOriginalAmount`, `market`, and `tradeTimestamp`.
+
+#### Scenario: Shares
+
+- **WHEN** a result has `securities={{name="Muster AG", isin="DE0001234567", quantity=10, price=12.50, purchasePrice=10.00, amount=125.00, market="Xetra", tradeTimestamp=1794182400}}`
+- **THEN** the portfolio shows "Muster AG" with 10 shares, the last quote 12,50 €, and the value 125,00 €
+
+#### Scenario: Nominal amount
+
+- **WHEN** a security has `quantity=5000` and `currencyOfQuantity="EUR"`
+- **THEN** the app shows the quantity as a nominal amount of 5.000,00 € and not as a number of shares
+
+### Requirement: FetchStatements
+
+The app SHALL call the optional function `FetchStatements(accounts, knownIdentifiers, step, credentials, interactive)` once per session with all affected accounts when statements are downloaded for the access. `knownIdentifiers` has the identifiers of documents that are already stored as keys. The function returns a table with the array `statements`, a challenge table, or an error message.
+
+#### Scenario: Script without the function
+
+- **WHEN** a script does not define `FetchStatements`
+- **THEN** the app does not offer a statement download for accesses that use this extension
+
+#### Scenario: Known document
+
+- **GIVEN** a stored document with the identifier "doc-17"
+- **WHEN** the app calls `FetchStatements`
+- **THEN** `knownIdentifiers["doc-17"]` is set
+- **AND** a returned document with that identifier is not stored twice
+
+### Requirement: Statement tables
+
+The app SHALL read the statement fields `pdf`, `identifier`, `name`, `filename`, `creationDate`, `timezone`, and `account`. `pdf` is required and holds a PDF document or a ZIP archive, from which the app takes every PDF file. Without `account` the document belongs to the current account.
+
+#### Scenario: ZIP archive
+
+- **WHEN** `pdf` holds a ZIP archive with three PDF files
+- **THEN** the app stores three statements
+
+#### Scenario: Not a PDF
+
+- **WHEN** `pdf` holds an HTML page
+- **THEN** the app stores nothing and reports that the downloaded file is not in PDF format
+
+### Requirement: EndSession
+
+The app SHALL call `EndSession()` at the end of every session with a successful login. An error message from `EndSession` goes to the log and does not undo the data that was fetched.
+
+#### Scenario: Logout fails
+
+- **WHEN** `EndSession` returns `"Logout failed."` after a successful refresh
+- **THEN** the new transactions stay stored and the log shows the message
+
+### Requirement: Connection requests
+
+The app SHALL offer `Connection()` and `connection:request(method, url, postContent, postContentType, headers)` with the methods GET, POST, PUT, PATCH, and DELETE. The call returns `content`, `charset`, `mimeType`, `filename`, and `headers`. The first URL must be absolute. A later URL can be relative to the last requested URL.
+
+#### Scenario: Form post
+
+- **WHEN** a script calls `connection:request("POST", "https://bank.example/login", "username=foo&password=bar", "application/x-www-form-urlencoded; charset=UTF-8")`
+- **THEN** the call returns the page content, the character set "UTF-8", and the MIME type "text/html"
+
+#### Scenario: Relative URL
+
+- **GIVEN** the last request went to `https://bank.example/onlinebanking/start`
+- **WHEN** the script calls `connection:get("accounts")`
+- **THEN** the app requests `https://bank.example/onlinebanking/accounts`
+
+#### Scenario: Plain HTTP
+
+- **WHEN** a script requests `http://bank.example/`
+- **THEN** the request is not sent and the script stops with an error
+
+### Requirement: HTTP errors
+
+The app SHALL stop the script and show an error when the server answers a request with an HTTP error status. When the request header `Accept` is `application/json`, the app returns the response to the script and does not stop it.
+
+#### Scenario: Error page
+
+- **WHEN** a request without an `Accept` header gets the status 503
+- **THEN** the script stops and the account shows an error with the status 503
+
+#### Scenario: JSON API
+
+- **WHEN** a request with `headers={Accept="application/json"}` gets the status 401 and a JSON body
+- **THEN** the call returns the body and the script continues
+
+### Requirement: Connection shortcuts and state
+
+The app SHALL offer `connection:get(url)`, `connection:post(url, postContent, postContentType)`, `connection:close()`, and `connection:getBaseURL()`, which returns the last requested URL. Open connections close when the script ends. The character set and MIME type come from the response header and from `<meta>` tags.
+
+#### Scenario: Base URL
+
+- **WHEN** a script calls `connection:get("https://bank.example/a/b")` and then `connection:getBaseURL()`
+- **THEN** the second call returns "https://bank.example/a/b"
+
+### Requirement: Cookies
+
+The app SHALL keep one cookie store per script run that all connections of the run share. The app fills it from response headers and `<meta>` tags and clears it after the run. `connection:setCookie(cookie)` adds or changes a cookie in the format of `Set-Cookie`. `connection:getCookies()` returns the cookies for the last requested URL in the format of the `Cookie` header.
+
+#### Scenario: Set and read
+
+- **GIVEN** the last request went to `https://bank.example/`
+- **WHEN** the script calls `connection:setCookie("SESSION=foobar; path=/")` and then `connection:getCookies()`
+- **THEN** the result contains "SESSION=foobar"
+
+#### Scenario: New run
+
+- **WHEN** the next refresh starts a new run
+- **THEN** the cookie store is empty unless the script restored a connection from `LocalStorage`
+
+### Requirement: User agent and language of a connection
+
+The app SHALL send the value of `connection.useragent` as the `User-Agent` header and the value of `connection.language` as the `Accept-Language` header. The default language is the language of macOS.
+
+#### Scenario: Custom user agent
+
+- **WHEN** a script sets `connection.useragent = "Mozilla/5.0 (compatible; " .. MM.productName .. "/" .. MM.productVersion .. ")"` and sends a request
+- **THEN** the request has that `User-Agent` header
+
+### Requirement: HTML documents
+
+The app SHALL offer `HTML(content, charset)` to parse an HTML document. Without `charset` the character set comes from the `<meta>` tags. `html:xpath(query)` selects elements with an XPath 1.0 expression with tag and attribute names in lower case. `html:html()` returns new formatted HTML in UTF-8.
+
+#### Scenario: Fill a login form
+
+- **GIVEN** `html = HTML(connection:get("https://bank.example/login"))`
+- **WHEN** the script calls `html:xpath("//input[@name='pin']"):attr("value", "12345")`
+- **THEN** the input field `pin` has the value "12345" in the document
+
+### Requirement: Element lists
+
+The app SHALL offer these methods on the result of `xpath`. `length()`, `get(n)` with an index from 1 and an empty list for an invalid index, `each(function (index, element))` which stops when the function returns false, `reverse()`, `children()`, and `xpath(query)` with a relative expression that starts with a period.
+
+#### Scenario: Iterate rows
+
+- **GIVEN** a table with 3 rows
+- **WHEN** the script calls `html:xpath("//tr"):each(function (index, element) print(index .. "=" .. element:text()) end)`
+- **THEN** the log has three lines that start with "1=", "2=", and "3="
+
+#### Scenario: Invalid index
+
+- **WHEN** the script calls `elements:get(5):length()` on a list with 2 elements
+- **THEN** the result is 0
+
+### Requirement: Element content and attributes
+
+The app SHALL offer `text()` for the combined text of the elements and their children, `attr(attribute)` to read an attribute of the first element, and `attr(attribute, value)` to set an attribute on all elements.
+
+#### Scenario: Read text and link
+
+- **GIVEN** the element `<a href="/logout">Log <b>out</b></a>`
+- **WHEN** the script calls `text()` and `attr("href")`
+- **THEN** the results are "Log out" and "/logout"
+
+### Requirement: Form helpers
+
+The app SHALL offer `val()` for the value of a form field, `select(value)` to choose one option of a `<select>` list, `click()` on a link, submit button, or image button, and `submit()` on a form. `click` and `submit` return `method`, `url`, `postContent`, and `postContentType` for `connection:request`. `val` and `select` respect `disabled`.
+
+#### Scenario: Submit a login form
+
+- **GIVEN** a form with the method POST, the action `/login`, and the filled fields `user` and `pin`
+- **WHEN** the script calls `connection:request(html:xpath("//input[@name='loginbutton']"):click())`
+- **THEN** the app posts `user` and `pin`, URL-encoded, to `/login`, with the value of the clicked button
+
+#### Scenario: Form without a button
+
+- **WHEN** the script calls `html:xpath("//form"):submit()`
+- **THEN** the returned parameters contain the input values and no value of a submit button
+
+### Requirement: JSON
+
+The app SHALL offer `JSON(json):dictionary()` to turn a JSON document into Lua tables, and `JSON():set(fields):json()` to turn Lua tables into a JSON document.
+
+#### Scenario: Parse
+
+- **WHEN** a script calls `JSON('{"balance": 42.5, "items": [1, 2]}'):dictionary()`
+- **THEN** the result is a table with `balance` 42.5 and `items` with the two elements 1 and 2
+
+#### Scenario: Create
+
+- **WHEN** a script calls `JSON():set({user="foo"}):json()`
+- **THEN** the result is a JSON document with the member `user` and the value "foo"
+
+### Requirement: PDF text
+
+The app SHALL offer `PDF(pdf):text()`, which returns the plain text of a PDF document as well as the document allows.
+
+#### Scenario: Statement text
+
+- **GIVEN** `pdf` holds a PDF with the line "Kontostand 1.234,56 EUR"
+- **WHEN** the script calls `PDF(pdf):text()`
+- **THEN** the result contains "Kontostand 1.234,56 EUR"
+
+### Requirement: LocalStorage
+
+The app SHALL offer the global table `LocalStorage`, whose content survives the run. The storage is separate for each bank access, is saved after the run, and is restored at the next run. It is empty after the access is set up again. The app keeps it inside the encrypted database.
+
+#### Scenario: Device key
+
+- **GIVEN** the first run sets `LocalStorage.deviceKey` to a key table
+- **WHEN** the next refresh runs
+- **THEN** `LocalStorage.deviceKey` has the same value
+
+#### Scenario: Access set up again
+
+- **WHEN** the user removes the accounts of the access and adds the service again
+- **THEN** `LocalStorage.deviceKey` is `nil` in the first run
+
+### Requirement: Values that LocalStorage keeps
+
+The app SHALL save numbers, booleans, strings with any bytes, and nested tables as they are. A `Connection` object is saved with its last URL, cookies, user agent, and language. An `HTML` object is saved as HTML text and parsed again. Functions and other objects are not saved and are `nil` at the next run.
+
+#### Scenario: Session survives a restart
+
+- **GIVEN** a run stores `LocalStorage.connection = connection` after the login
+- **WHEN** the app restarts and the next run calls `LocalStorage.connection:get("/accounts")`
+- **THEN** the request goes to the same host with the cookies of the earlier run
+
+#### Scenario: Function value
+
+- **WHEN** a run stores a function in `LocalStorage.callback`
+- **THEN** `LocalStorage.callback` is `nil` at the next run
+
+### Requirement: Status, debug output, and sleep
+
+The app SHALL offer `MM.printStatus(...)`, which writes to the log and shows the text as the status of the running session, `MM.printDebug(...)`, which writes a debug line to the log only, and `MM.sleep(seconds)`, which pauses the script.
+
+#### Scenario: Status line
+
+- **WHEN** a script calls `MM.printStatus("Loading page", 2)` during a refresh
+- **THEN** the refresh status of the account shows "Loading page 2" and the log has the same line
+
+### Requirement: Localization helpers
+
+The app SHALL offer `MM.localizeText(str)`, which returns the translation of an English interface text or the text itself when the app has none, `MM.localizeDate(format, date)`, `MM.localizeNumber(format, num)`, and `MM.localizeAmount(format, amount, currency)`. `format` is optional and follows Unicode Technical Standard 35.
+
+#### Scenario: German interface
+
+- **GIVEN** the app runs in German
+- **WHEN** a script calls `MM.localizeText("QR Code")` and `MM.localizeAmount(1234.5, "EUR")`
+- **THEN** the results are the German name of the QR code method and "1.234,50 €"
+
+#### Scenario: Unknown text
+
+- **WHEN** a script calls `MM.localizeText("Fnord")`
+- **THEN** the result is "Fnord"
+
+#### Scenario: Number format
+
+- **WHEN** a script calls `MM.localizeNumber("0.00;-0.00", -5)`
+- **THEN** the result is "-5,00" in a German locale
+
+### Requirement: Time helpers
+
+The app SHALL offer `MM.time()`, which returns the current POSIX time with milliseconds as a fraction, `MM.timezone()`, which returns the name of the local time zone or "GMT", and `MM.gmtOffset(timezone, timestamp)`, which returns the offset from GMT in seconds with daylight saving time.
+
+#### Scenario: Offset in summer
+
+- **WHEN** a script calls `MM.gmtOffset("Europe/Berlin", 1783677600)` for a day in July 2026
+- **THEN** the result is 7200
+
+### Requirement: Date calculations
+
+The app SHALL offer `MM.date` in four forms. Without parameters it returns the current time as a whole POSIX time stamp. With an offset such as `"-30D"` or `"1M"` it shifts a time stamp by days, weeks, months, quarters, or years. With `"*t"` it returns a table with `timestamp`, `year`, `month`, `day`, and `isBusinessDay`. With a table it builds a time stamp from `year`, `month`, `day`, `hour`, `min`, `sec`, `from`, and `to`.
+
+#### Scenario: One month back
+
+- **WHEN** a script calls `MM.date(nil, "-1M")` on 9 November 2026
+- **THEN** the result is a time stamp on 9 October 2026
+
+#### Scenario: Bank holiday
+
+- **GIVEN** a bank access in Germany
+- **WHEN** a script calls `MM.date(MM.date{year=2026, month=12, day=25}, "*t")`
+- **THEN** the table has `day` 25 and `isBusinessDay` false
+
+#### Scenario: Defaults of the table form
+
+- **WHEN** a script calls `MM.date{year=2026, month=9, day=3, from="Europe/Berlin"}`
+- **THEN** the result is the time stamp of 12:00 on 3 September 2026 in Berlin
+
+### Requirement: Text encoding helpers
+
+The app SHALL offer `MM.urlencode(str, charset)` with the default character set ISO-8859-1, `MM.urldecode(urlencoded)`, `MM.toEncoding(charset, str, bom)`, `MM.fromEncoding(charset, data)`, `MM.utf8len(str)`, `MM.utf8sub(str, start, end)`, and `MM.utf8lower(str)`.
+
+#### Scenario: URL encoding
+
+- **WHEN** a script calls `MM.urlencode("Müller")` and `MM.urlencode("Müller", "UTF-8")`
+- **THEN** the results are "M%FCller" and "M%C3%BCller"
+- **AND** `MM.urldecode("M%FCller")` returns "Müller"
+
+#### Scenario: Characters and bytes
+
+- **WHEN** a script calls `MM.utf8len("Bäcker")`, `MM.utf8sub("Bäcker", 2, 3)`, and `MM.utf8lower("BÄCKER")`
+- **THEN** the results are 6, "äc", and "bäcker"
+
+### Requirement: Binary encoding helpers
+
+The app SHALL offer `MM.base64(data, linebreaks)`, `MM.base64urlencode(data)` without padding, `MM.base64decode(encoded)`, which also accepts the URL-safe form and line breaks, `MM.binToHex(data)` with upper case output, and `MM.hexToBin(hex)`, which ignores case and colons and returns `nil` for invalid input.
+
+#### Scenario: Round trip
+
+- **WHEN** a script calls `MM.base64decode(MM.base64urlencode("\xfb\xff"))`
+- **THEN** the result is the two bytes FB FF, and the encoded text is "-_8"
+
+#### Scenario: Invalid hex
+
+- **WHEN** a script calls `MM.hexToBin("XY")`
+- **THEN** the result is `nil`
+
+### Requirement: Hashes and message authentication codes
+
+The app SHALL offer `MM.sha512`, `MM.sha256`, `MM.sha1`, `MM.sha3_256`, and `MM.md5`, which return the hash as hexadecimal text in upper case, and `MM.hmac512`, `MM.hmac384`, `MM.hmac256`, and `MM.hmac1` with the parameters `key` and `data`, which return binary data.
+
+#### Scenario: SHA-256 of an empty text
+
+- **WHEN** a script calls `MM.sha256("")`
+- **THEN** the result is "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855"
+
+#### Scenario: HMAC as hex
+
+- **WHEN** a script calls `MM.binToHex(MM.hmac256("key", "data"))`
+- **THEN** the result is 64 hexadecimal characters
+
+### Requirement: Random values
+
+The app SHALL offer `MM.random(length)`, which returns that many random bytes from a cryptographic source, and `MM.uuid()`, which returns a random version 4 UUID in lower case.
+
+#### Scenario: Nonce
+
+- **WHEN** a script calls `MM.random(16)` twice
+- **THEN** each result has 16 bytes and the two results differ
+
+### Requirement: Environment values
+
+The app SHALL offer `MM.productName` with the value "MonetenMoneten", `MM.productVersion` as text, `MM.productBuild` as a number, `MM.apiVersion` as a number, `MM.language` with the language code of the interface, and `MM.deviceUuid` with a random identifier that the app creates once and keeps.
+
+#### Scenario: Stable device identifier
+
+- **WHEN** two refreshes on different days read `MM.deviceUuid`
+- **THEN** both get the same UUID
+
+#### Scenario: Language
+
+- **GIVEN** the interface language is German
+- **WHEN** a script reads `MM.language`
+- **THEN** the value is "de"
+
+### Requirement: Build variant values
+
+The app SHALL set exactly one of `MM.DEBUG`, `MM.BETA`, and `MM.RETAIL` to an empty string and the others to `nil`. `MM.APPSTORE` is always `nil`.
+
+#### Scenario: Release build
+
+- **WHEN** a script in a release build evaluates `MM.RETAIL ~= nil` and `MM.DEBUG ~= nil`
+- **THEN** the results are true and false
+
+### Requirement: RSA functions
+
+The app SHALL offer `MM.rsaGenerateKeys(bits)` for 512 to 4096 bits, `MM.rsaSign` and `MM.rsaVerify` with the algorithm `"pkcs1-v1_5 sha256"`, `MM.rsaEncrypt` and `MM.rsaDecrypt` with `"pkcs1-oaep sha256"` or `"pkcs1-oaep sha512"`, `MM.rsaEncrypt` also with `"pkcs1-oaep sha256 sha1"`, and `MM.rsaPkcs1(modulus, exponent, data)`. Key tables use the binary fields `n`, `e`, `d`, `p`, `q`, `dmp1`, `dmq1`, and `iqmp`.
+
+#### Scenario: Sign and verify
+
+- **GIVEN** `key = MM.rsaGenerateKeys(2048)`
+- **WHEN** a script calls `MM.rsaVerify(key, "data", MM.rsaSign(key, "data", "pkcs1-v1_5 sha256"), "pkcs1-v1_5 sha256")`
+- **THEN** the result is true, and the signature has 256 bytes
+
+#### Scenario: Unknown algorithm
+
+- **WHEN** a script calls `MM.rsaSign(key, "data", "pss sha256")`
+- **THEN** the result is `nil`
+
+#### Scenario: Invalid key length
+
+- **WHEN** a script calls `MM.rsaGenerateKeys(128)`
+- **THEN** the result is `nil`
+
+### Requirement: Elliptic curve functions
+
+The app SHALL offer `MM.ecGenerateKeys(curve)` for named curves such as `"prime256v1"` and for `"ed25519"`, and `MM.ecSign` and `MM.ecVerify` with the algorithms `"ecdsa sha256"`, `"ecdsa sha512"`, and `"eddsa"`. ECDSA key tables have `curve`, `x`, `y`, and `d`. Ed25519 key tables have `curve`, `x`, and `d`. ECDSA signatures are DER-encoded. EdDSA signatures are 64 raw bytes.
+
+#### Scenario: Ed25519 signature
+
+- **GIVEN** `key = MM.ecGenerateKeys("ed25519")`
+- **WHEN** a script calls `MM.ecSign(key, "message", "eddsa")`
+- **THEN** the result has 64 bytes, and `MM.ecVerify(key, "message", signature, "eddsa")` is true
+
+#### Scenario: Unknown curve
+
+- **WHEN** a script calls `MM.ecGenerateKeys("fnord")`
+- **THEN** the result is `nil`
+
+#### Scenario: Wrong data
+
+- **WHEN** a script verifies a valid signature against other data
+- **THEN** `MM.ecVerify` returns false
+
+### Requirement: AES functions
+
+The app SHALL offer `MM.aes256encrypt(key, iv, data, algorithm, aad)` and `MM.aes256decrypt(key, iv, encrypted, algorithm, aad, tag)` with a key of 32 bytes. The algorithm is `"aes256 cbc"` by default, with a 16 byte vector and PKCS#7 padding, or `"aes256 gcm"`, with a 12 byte vector, required `aad`, and a 16 byte tag as the second result of the encryption.
+
+#### Scenario: CBC round trip
+
+- **WHEN** a script encrypts "secret" with a 32 byte key and a 16 byte vector and decrypts the result with the same values
+- **THEN** the result is "secret"
+
+#### Scenario: GCM with a wrong tag
+
+- **WHEN** a script calls `MM.aes256decrypt` with `"aes256 gcm"` and a changed tag
+- **THEN** the result is `nil`
+
+#### Scenario: Wrong key length
+
+- **WHEN** a script calls `MM.aes256encrypt` with a key of 16 bytes
+- **THEN** the result is `nil`
+
+### Requirement: Key format functions
+
+The app SHALL offer `MM.pkcs8decode(data)`, which reads a private or public RSA, EC, or Ed25519 key from PEM or DER and returns a key table with the field `type`, `MM.rsaPkcs8(key)`, which returns the public key as a PEM block, and `MM.rsaPkcs8decode(pem)`, which returns `n` and `e` of a public RSA key. Each returns `nil` when it cannot read the key.
+
+#### Scenario: API key pasted by the user
+
+- **GIVEN** `apiKeyPem` holds an Ed25519 private key in PEM format
+- **WHEN** a script calls `MM.pkcs8decode(apiKeyPem)`
+- **THEN** the result is a table with `type` "ed25519" and the fields `curve`, `x`, and `d`
+
+#### Scenario: Not a key
+
+- **WHEN** a script calls `MM.pkcs8decode("hello")`
+- **THEN** the result is `nil`
+
+### Requirement: No payments through extensions
+
+The app SHALL not offer any function, entry point, or session reason that sends a payment through an extension. An account that an extension provides is read-only in the app.
+
+#### Scenario: Payment commands
+
+- **GIVEN** the selected account comes from an extension
+- **WHEN** the user opens "New Bank Transfer..."
+- **THEN** the account is not offered as the source account
+
+#### Scenario: Script with a payment function
+
+- **WHEN** a script written for another app defines extra functions for payments
+- **THEN** the app never calls them, and the extension still works for reading
+
+### Requirement: Errors of an extension appear on the account
+
+The app SHALL show every error of an extension session on the affected accounts with the message of the script, the name of the extension, and the time, and write it to the log. An error in one access does not stop the refresh of other accesses.
+
+#### Scenario: Two services
+
+- **GIVEN** one access with the extension "Demo" and one FinTS access
+- **WHEN** the script of "Demo" stops with an error during "Refresh All Accounts"
+- **THEN** the "Demo" accounts show the error
+- **AND** the FinTS accounts refresh as usual
