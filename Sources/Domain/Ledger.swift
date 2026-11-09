@@ -18,6 +18,8 @@ public struct Ledger: Sendable {
 
 	private var transactionIndex: [UUID: Int] = [:]
 	private var searchText: [UUID: String] = [:]
+	/// The number of new transactions per account.
+	public private(set) var newTransactionCounts: [UUID: Int] = [:]
 
 	public init(groups: [AccountGroup] = [], accounts: [Account] = [], categories: [Category] = [], transactions: [Transaction] = []) {
 		self.groups = groups
@@ -32,6 +34,13 @@ public struct Ledger: Sendable {
 		transactionIndex = Dictionary(uniqueKeysWithValues: transactions.enumerated().map { ($0.element.id, $0.offset) })
 		let accountsByID = Dictionary(uniqueKeysWithValues: accounts.map { ($0.id, $0) })
 		searchText = Dictionary(uniqueKeysWithValues: transactions.map { ($0.id, Self.searchText(of: $0, account: accountsByID[$0.accountID])) })
+		countNew()
+	}
+
+	private mutating func countNew() {
+		var counts: [UUID: Int] = [:]
+		for t in transactions where t.isNew { counts[t.accountID, default: 0] += 1 }
+		newTransactionCounts = counts
 	}
 
 	static func searchText(of t: Transaction, account: Account?) -> String {
@@ -142,12 +151,6 @@ public struct Ledger: Sendable {
 		return sums
 	}
 
-	public var newTransactionCounts: [UUID: Int] {
-		var counts: [UUID: Int] = [:]
-		for t in transactions where t.isNew { counts[t.accountID, default: 0] += 1 }
-		return counts
-	}
-
 	// MARK: Filtering
 
 	public func transactions(in scope: LedgerScope, filter: TransactionFilter = TransactionFilter()) -> [Transaction] {
@@ -164,6 +167,8 @@ public struct Ledger: Sendable {
 			base = transactions.filter { ids.contains($0.categoryID ?? defaultID ?? UUID()) }
 		}
 		let words = TextFolding.words(filter.searchText).map(String.init)
+		let categoryFilter = filter.categoryID.map { categoryIDs(inTree: $0) }
+		let defaultID = defaultCategory?.id ?? UUID()
 		return base.filter { t in
 			guard filter.period.contains(t.bookingDate) else { return false }
 			switch filter.status {
@@ -180,10 +185,7 @@ public struct Ledger: Sendable {
 				if let min, value < min { return false }
 				if let max, value > max { return false }
 			}
-			if let c = filter.categoryID {
-				let ids = categoryIDs(inTree: c)
-				if !ids.contains(t.categoryID ?? defaultCategory?.id ?? UUID()) { return false }
-			}
+			if let categoryFilter, !categoryFilter.contains(t.categoryID ?? defaultID) { return false }
 			if let a = filter.accountID, t.accountID != a { return false }
 			if !words.isEmpty {
 				let haystack = searchText[t.id] ?? ""
@@ -217,7 +219,7 @@ public struct Ledger: Sendable {
 			}
 			searchText[t.id] = Self.searchText(of: t, account: accountsByID[t.accountID])
 		}
-		if needsSort { rebuildIndexes() }
+		if needsSort { rebuildIndexes() } else { countNew() }
 	}
 
 	public mutating func remove(transactionIDs ids: Set<UUID>) {
