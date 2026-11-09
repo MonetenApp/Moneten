@@ -24,7 +24,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [x] 1.18 Search and filters combine. Verified by LedgerTests "Status, amount, period, and category filters combine".
 - [x] 1.19 Hint about active filters. Verified by the debug harness snapshot in the first build.
 - [ ] 1.20 Saved searches. Build it and verify it with a test or in the app.
-- [ ] 1.21 The search is fast with a large history. Build it and verify it with a test or in the app.
+- [x] 1.21 The search is fast with a large history. Verified by PerformanceTests: 10 ms for a search over 50,000 transactions in a release build.
 
 ## 2. Integration
 

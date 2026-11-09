@@ -46,5 +46,4 @@ task.executableURL = URL(fileURLWithPath: "/usr/bin/iconutil")
 task.arguments = ["-c", "icns", iconset.path, "-o", base.appendingPathComponent("AppIcon.icns").path]
 try task.run()
 task.waitUntilExit()
-try draw(size: 512).representation(using: .png, properties: [:])!.write(to: base.appendingPathComponent("AppIcon-preview.png"))
 print("wrote AppIcon.icns")

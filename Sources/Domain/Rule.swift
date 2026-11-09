@@ -15,6 +15,8 @@ public struct RuleSubject: Sendable {
 	public var remoteAccounts: [String]
 	public var currency: String
 	public var amount: Decimal
+	/// The folded words of every field, computed once so that many rules can test one transaction fast.
+	let words: [RuleField: [[Substring]]]
 
 	public init(name: String = "", purpose: String = "", bookingText: String = "", endToEndReference: String = "", mandateReference: String = "", creditorID: String = "",
 		comment: String = "", localAccounts: [String] = [], remoteAccounts: [String] = [], currency: String = "EUR", amount: Decimal = 0) {
@@ -29,6 +31,17 @@ public struct RuleSubject: Sendable {
 		self.remoteAccounts = remoteAccounts
 		self.currency = currency
 		self.amount = amount
+		var words: [RuleField: [[Substring]]] = [:]
+		let texts: [(RuleField, [String])] = [(.name, [name]), (.purpose, [purpose]), (.bookingText, [bookingText]), (.reference, [endToEndReference]),
+			(.mandate, [mandateReference]), (.creditorID, [creditorID]), (.comment, [comment]), (.localAccount, localAccounts), (.remoteAccount, remoteAccounts), (.currency, [currency])]
+		for (field, values) in texts {
+			if field == .localAccount || field == .remoteAccount {
+				words[field] = values.map { [Substring(TextFolding.fold(TextFolding.accountKey($0)))] }
+			} else {
+				words[field] = values.map { TextFolding.words($0) }
+			}
+		}
+		self.words = words
 	}
 
 	public init(_ t: Transaction, account: Account?) {
@@ -148,16 +161,9 @@ public struct Rule: Sendable {
 			}
 		case let .phrase(patterns, field):
 			let fields = field.map { [$0] } ?? RuleField.unqualified
+			let p = patterns.map(\.pattern)
 			return fields.contains { f in
-				s.text(of: f).contains { text in
-					let words: [Substring]
-					if f == .localAccount || f == .remoteAccount {
-						words = [Substring(TextFolding.fold(TextFolding.accountKey(text)))]
-					} else {
-						words = TextFolding.words(text)
-					}
-					return containsPhrase(patterns.map(\.pattern), in: words)
-				}
+				(s.words[f] ?? []).contains { containsPhrase(p, in: $0) }
 			}
 		}
 	}
