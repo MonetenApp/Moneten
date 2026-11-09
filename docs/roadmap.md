@@ -1,6 +1,6 @@
 # Roadmap
 
-This page lists what ships in each release up to v0.3. Each row links to the GitHub issue that holds the scope and the definition of done. The issues are the source of truth. This page is generated from them.
+This page lists what ships in each release up to v0.3. Each row links to the GitHub issue that holds the scope and the definition of done. The issues are the source of truth. Run `python3 scripts/roadmap.py` to regenerate this page from them.
 
 ## v0.1 Read
 
@@ -65,7 +65,7 @@ Connect banks without FinTS through an optional subscription, and install extens
 | [#35 Build the subscription service in a separate repository](https://github.com/alexander-schneider/monetenmoneten/issues/35) | area: service | #34 |
 | [#36 Build the finAPI connector](https://github.com/alexander-schneider/monetenmoneten/issues/36) | area: service | #35, #6 |
 | [#37 Install and update extensions from a signed catalog](https://github.com/alexander-schneider/monetenmoneten/issues/37) | area: extensions | #15 |
-| [#38 Review the subscription service security before launch](https://github.com/alexander-schneider/monetenmoneten/issues/38) | area: release, area: service | #36, #37 |
+| [#38 Review the subscription service security before launch](https://github.com/alexander-schneider/monetenmoneten/issues/38) | area: service, area: release | #36, #37 |
 
 ## After v0.3
 
