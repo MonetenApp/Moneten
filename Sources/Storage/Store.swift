@@ -77,10 +77,12 @@ public final class Store: Sendable {
 		}
 	}
 
-	/// Copies the encrypted database to a file. The copy opens with the same password.
+	/// Copies the encrypted database file. The copy opens with the password of this moment.
+	/// The read transaction keeps writers out while the file is copied.
 	public func backup(to url: URL) throws {
-		try queue.writeWithoutTransaction { db in
-			try db.execute(sql: "VACUUM INTO ?", arguments: [url.path])
+		try queue.read { _ in
+			try? FileManager.default.removeItem(at: url)
+			try FileManager.default.copyItem(at: URL(fileURLWithPath: queue.path), to: url)
 		}
 	}
 

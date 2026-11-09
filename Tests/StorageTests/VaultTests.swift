@@ -74,6 +74,19 @@ struct VaultTests {
 		#expect(ledger.defaultCategory?.name == "Uncategorized")
 	}
 
+	@Test("A backup opens with the same password")
+	func backup() throws {
+		let vault = Vault(folder: folder)
+		let store = try vault.create(password: "pw-backup", starterCategories: [])
+		_ = try sampleData(store)
+		let copy = folder.root.appendingPathComponent("Backup.sqlite")
+		try store.backup(to: copy)
+		let other = DataFolder(root: folder.root.appendingPathComponent("Other"))
+		try other.createFolders()
+		try FileManager.default.copyItem(at: copy, to: other.databaseFile)
+		#expect(try Vault(folder: other).open(password: "pw-backup").loadLedger().transactions.count == 1)
+	}
+
 	@Test("A missing database means a new start")
 	func emptyFolder() throws {
 		#expect(try Vault(folder: folder).state() == .empty)

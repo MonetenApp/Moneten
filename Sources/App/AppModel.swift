@@ -469,7 +469,7 @@ final class AppModel {
 		var f = TransactionFilter()
 		f.period = range
 		let sum = ledger.transactions(in: .category(category.id), filter: f).filter { !$0.isPending }.reduce(Int64(0)) { $0 + $1.amountMinor }
-		return Money(minorUnits: sum, currency: category.currency)
+		return sum == 0 ? nil : Money(minorUnits: sum, currency: category.currency)
 	}
 
 	// MARK: Migration
