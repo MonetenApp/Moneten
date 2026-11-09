@@ -65,6 +65,21 @@ extension AppModel {
 		}
 	}
 
+	func backupDatabase() {
+		guard let store else { return }
+		let panel = NSSavePanel()
+		panel.title = "Backup Database"
+		panel.message = "A copy of the MonetenMoneten database will be saved. It opens with the current database password. This function does not replace a regular backup of your Mac."
+		panel.nameFieldStringValue = "MonetenMoneten-\(Day.today()).sqlite"
+		guard panel.runModal() == .OK, let url = panel.url else { return }
+		do {
+			try store.backup(to: url)
+			alert = AlertMessage(title: "Backup Database", message: hasPassword ? "The copy has been saved." : "The copy has been saved. No database password protects it, so it opens only on this Mac. Set a password to open backups on other Macs.")
+		} catch {
+			alert = AlertMessage(title: "Could not create backup of database file.", message: String(describing: error))
+		}
+	}
+
 	func importFile() {
 		guard let account = selectedAccount else { return }
 		let panel = NSOpenPanel()

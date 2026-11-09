@@ -24,6 +24,7 @@ public struct Vault: Sendable {
 		case pathIsFolder(String)
 		case writeProtected(String)
 		case unreadable(String)
+		case keyNotInKeychain
 
 		public var description: String {
 			switch self {
@@ -33,6 +34,8 @@ public struct Vault: Sendable {
 			case let .pathIsFolder(path): "The database file should be a file and not a directory.\n\n\(path)"
 			case let .writeProtected(path): "The database file is write-protected.\n\n\(path)"
 			case let .unreadable(detail): "Could not open database.\n\n\(detail)"
+			case .keyNotInKeychain:
+				"No database password is set, and the key of the database could not be read from the Keychain. This happens when a new build of the app has a different signature than the build that created the database. Open the database with that build and set a database password."
 			}
 		}
 	}
@@ -53,8 +56,12 @@ public struct Vault: Sendable {
 		let size = (try? FileManager.default.attributesOfItem(atPath: path)[.size] as? Int) ?? 0
 		if size == 0 { throw Failure.fileIsEmpty(path) }
 		if !FileManager.default.isWritableFile(atPath: path) { throw Failure.writeProtected(path) }
-		return try keyKeychain.read(account: folder.keychainAccount) != nil ? .randomKey : .password
+		return FileManager.default.fileExists(atPath: noPasswordMarker.path) ? .randomKey : .password
 	}
+
+	/// An empty file that says the database has no password and its key is in the Keychain.
+	/// It holds neither the key nor a password.
+	var noPasswordMarker: URL { folder.databaseFolder.appendingPathComponent("NoPassword") }
 
 	/// Creates a new database. Without a password, a random key in the Keychain protects it.
 	public func create(password: String?, starterCategories: [Domain.Category]) throws -> Store {
@@ -65,6 +72,7 @@ public struct Vault: Sendable {
 		} else {
 			key = Self.randomKey()
 			try keyKeychain.write(key, account: folder.keychainAccount)
+			FileManager.default.createFile(atPath: noPasswordMarker.path, contents: Data())
 		}
 		let store = try openDatabase(key: key)
 		try store.write { db in
@@ -79,13 +87,14 @@ public struct Vault: Sendable {
 
 	/// Opens a database that has no password with the random key from the Keychain.
 	public func openWithRandomKey() throws -> Store {
-		guard let key = try keyKeychain.read(account: folder.keychainAccount) else { throw Failure.incorrectPassword }
+		guard let key = try? keyKeychain.read(account: folder.keychainAccount) else { throw Failure.keyNotInKeychain }
 		return try openDatabase(key: key)
 	}
 
 	/// Sets the first password of a database that had a random key.
 	public func setPassword(_ password: String, on store: Store) throws {
 		try store.queue.write { db in try db.changePassphrase(password) }
+		try? FileManager.default.removeItem(at: noPasswordMarker)
 		try keyKeychain.delete(account: folder.keychainAccount)
 	}
 

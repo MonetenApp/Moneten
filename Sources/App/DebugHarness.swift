@@ -1,6 +1,7 @@
 import AppKit
 import Domain
 import Foundation
+import SwiftUI
 
 /// Lets a developer drive the app and capture its windows as images, for checks without a screen.
 ///
@@ -47,6 +48,8 @@ final class DebugHarness {
 		guard let model else { return }
 		switch command {
 		case "snapshot": snapshot(argument)
+		case "sidebarsnapshot": sidebarSnapshot(argument)
+		case "setpassword": model.setPassword(argument)
 		case "create": model.createDatabase(password: argument.isEmpty ? nil : argument)
 		case "unlock": log("unlock \(model.unlock(password: argument))")
 		case "lock": model.lock()
@@ -82,6 +85,25 @@ final class DebugHarness {
 			log("phase=\(model.phase) accounts=\(model.ledger.accounts.count) transactions=\(model.ledger.transactions.count) visible=\(model.visibleTransactions.count) selection=\(String(describing: model.selection))")
 		case "quit": NSApp.terminate(nil)
 		default: log("unknown command \(command)")
+		}
+	}
+
+	/// Draws the sidebar in a plain window that is off screen, because the sidebar of the main
+	/// window uses a material that only the window server draws.
+	private func sidebarSnapshot(_ name: String) {
+		guard let model else { return }
+		let host = NSHostingView(rootView: SidebarView().environment(model).frame(width: 340, height: 900))
+		let window = NSWindow(contentRect: NSRect(x: -5000, y: -5000, width: 340, height: 900), styleMask: [.borderless], backing: .buffered, defer: false)
+		window.contentView = host
+		window.orderFrontRegardless()
+		DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+			host.layoutSubtreeIfNeeded()
+			if let rep = host.bitmapImageRepForCachingDisplay(in: host.bounds) {
+				host.cacheDisplay(in: host.bounds, to: rep)
+				try? rep.representation(using: .png, properties: [:])?.write(to: self.folder.appendingPathComponent("\(name)-sidebar.png"))
+			}
+			window.orderOut(nil)
+			self.log("sidebarsnapshot \(name)")
 		}
 	}
 

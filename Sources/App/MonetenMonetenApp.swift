@@ -99,6 +99,9 @@ struct AppCommands: Commands {
 				.keyboardShortcut("i")
 				.disabled(!unlocked || model.selection == nil)
 		}
+		CommandMenu("Tools") {
+			Button("Backup Database...") { model.backupDatabase() }.disabled(!unlocked)
+		}
 		CommandGroup(after: .windowList) {
 			Button("Main Window") { openWindow(id: "main") }.keyboardShortcut("0")
 		}
