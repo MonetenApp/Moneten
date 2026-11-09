@@ -1,0 +1,16 @@
+# Decisions
+
+Each file records one architecture decision with its context, the choice, and what follows from it. A decision is not edited after it is accepted. A new decision replaces it and links back.
+
+| ADR | Decision | Status |
+|---|---|---|
+| [0001](0001-native-mac-app-in-swift.md) | Build a native Mac app in Swift and SwiftUI | Accepted |
+| [0002](0002-local-first-no-server.md) | Keep all data on the Mac, run no server for core features | Accepted |
+| [0003](0003-fints-through-hbci4swift.md) | Use HBCI4Swift for FinTS | Proposed |
+| [0004](0004-moneymoney-compatible-extension-api.md) | Make the extension API compatible with MoneyMoney | Accepted |
+| [0005](0005-grdb-and-sqlcipher.md) | Store data in SQLite with GRDB and SQLCipher | Proposed |
+| [0006](0006-license-gpl-3.md) | License the app under GPL-3.0-or-later | Accepted |
+| [0007](0007-optional-finapi-subscription.md) | Offer finAPI as an optional subscription | Accepted |
+| [0008](0008-payments-only-through-licensed-channels.md) | Send payments only through FinTS or finAPI | Accepted |
+
+A decision with status Proposed waits on a prototype or an outside answer. Its file names what settles it.

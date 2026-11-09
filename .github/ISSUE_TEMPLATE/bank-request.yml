@@ -1,0 +1,26 @@
+name: Bank or service request
+description: Ask for support of a bank, broker, or other service.
+labels: ["bank request"]
+body:
+  - type: input
+    id: name
+    attributes:
+      label: Bank or service
+    validations:
+      required: true
+  - type: dropdown
+    id: access
+    attributes:
+      label: Which access does it offer?
+      options:
+        - FinTS
+        - Only a website or app
+        - A public API
+        - I do not know
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: What you want to see
+      description: For example the account types, securities, or credit cards.
