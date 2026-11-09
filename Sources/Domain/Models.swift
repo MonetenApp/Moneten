@@ -1,0 +1,211 @@
+import Foundation
+
+public enum AccountKind: String, Codable, Sendable, CaseIterable {
+	case giro, savings, fixedTermDeposit, loan, creditCard, portfolio, cash, other
+
+	public var title: String {
+		switch self {
+		case .giro: "Giro account"
+		case .savings: "Savings account"
+		case .fixedTermDeposit: "Fixed term deposit"
+		case .loan: "Loan account"
+		case .creditCard: "Credit card"
+		case .portfolio: "Portfolio"
+		case .cash: "Cash"
+		case .other: "Other"
+		}
+	}
+}
+
+/// Where an account gets its data from.
+public enum AccountSource: String, Codable, Sendable {
+	/// An offline account. The user enters every transaction.
+	case offline
+	/// Taken over from MoneyMoney. The account has no bank access yet.
+	case migrated
+}
+
+public struct AccountGroup: Identifiable, Hashable, Sendable, Codable {
+	public var id: UUID
+	public var name: String
+	public var parentID: UUID?
+	public var position: Int
+	public var showSum: Bool
+	public var isExpanded: Bool
+
+	public init(id: UUID = UUID(), name: String, parentID: UUID? = nil, position: Int, showSum: Bool = true, isExpanded: Bool = true) {
+		self.id = id
+		self.name = name
+		self.parentID = parentID
+		self.position = position
+		self.showSum = showSum
+		self.isExpanded = isExpanded
+	}
+}
+
+public struct Account: Identifiable, Hashable, Sendable, Codable {
+	public var id: UUID
+	public var groupID: UUID?
+	public var position: Int
+	public var name: String
+	public var kind: AccountKind
+	public var source: AccountSource
+	public var currency: String
+	public var iban: String?
+	public var bic: String?
+	public var accountNumber: String?
+	public var bankCode: String?
+	public var bankName: String?
+	public var owner: String?
+	/// The balance that the bank reported. Offline accounts compute their balance instead.
+	public var bankBalanceMinor: Int64?
+	public var bankBalanceDate: Date?
+	/// The balance before the oldest transaction. Charts start from it.
+	public var initialBalanceMinor: Int64
+	public var isClosed: Bool
+	public var comment: String?
+	/// The identifier of the account in the program it came from.
+	public var sourceID: String?
+
+	public init(id: UUID = UUID(), groupID: UUID? = nil, position: Int, name: String, kind: AccountKind, source: AccountSource, currency: String = "EUR",
+		iban: String? = nil, bic: String? = nil, accountNumber: String? = nil, bankCode: String? = nil, bankName: String? = nil, owner: String? = nil,
+		bankBalanceMinor: Int64? = nil, bankBalanceDate: Date? = nil, initialBalanceMinor: Int64 = 0, isClosed: Bool = false, comment: String? = nil, sourceID: String? = nil) {
+		self.id = id
+		self.groupID = groupID
+		self.position = position
+		self.name = name
+		self.kind = kind
+		self.source = source
+		self.currency = currency
+		self.iban = iban
+		self.bic = bic
+		self.accountNumber = accountNumber
+		self.bankCode = bankCode
+		self.bankName = bankName
+		self.owner = owner
+		self.bankBalanceMinor = bankBalanceMinor
+		self.bankBalanceDate = bankBalanceDate
+		self.initialBalanceMinor = initialBalanceMinor
+		self.isClosed = isClosed
+		self.comment = comment
+		self.sourceID = sourceID
+	}
+
+	public var isOffline: Bool { source == .offline }
+}
+
+/// The amount that a category shows next to its name in the sidebar.
+public enum SidebarAmount: String, Codable, Sendable, CaseIterable {
+	case none, currentMonth, currentQuarter, currentYear, totalSum
+
+	public var title: String {
+		switch self {
+		case .none: "No amount"
+		case .currentMonth: "Current month"
+		case .currentQuarter: "Current quarter"
+		case .currentYear: "Current year"
+		case .totalSum: "Total sum"
+		}
+	}
+}
+
+public struct Category: Identifiable, Hashable, Sendable, Codable {
+	public var id: UUID
+	public var parentID: UUID?
+	public var position: Int
+	public var name: String
+	public var isGroup: Bool
+	/// The one category that holds every transaction without another category. Its name is "Uncategorized".
+	public var isDefault: Bool
+	/// A color as "#RRGGBB".
+	public var color: String?
+	public var currency: String
+	public var showInDiagrams: Bool
+	public var sidebarAmount: SidebarAmount
+	/// An account or account group. The rule applies only to its transactions.
+	public var restrictedToID: UUID?
+	/// The categorization rule in the rule language. Empty for no rule.
+	public var rule: String
+	public var isExpanded: Bool
+	public var sourceID: String?
+
+	public init(id: UUID = UUID(), parentID: UUID? = nil, position: Int, name: String, isGroup: Bool = false, isDefault: Bool = false, color: String? = nil, currency: String = "EUR",
+		showInDiagrams: Bool = true, sidebarAmount: SidebarAmount = .totalSum, restrictedToID: UUID? = nil, rule: String = "", isExpanded: Bool = true, sourceID: String? = nil) {
+		self.id = id
+		self.parentID = parentID
+		self.position = position
+		self.name = name
+		self.isGroup = isGroup
+		self.isDefault = isDefault
+		self.color = color
+		self.currency = currency
+		self.showInDiagrams = showInDiagrams
+		self.sidebarAmount = sidebarAmount
+		self.restrictedToID = restrictedToID
+		self.rule = rule
+		self.isExpanded = isExpanded
+		self.sourceID = sourceID
+	}
+}
+
+/// How a transaction got its category.
+public enum Categorization: String, Codable, Sendable {
+	case none, rule, manual
+}
+
+public struct Transaction: Identifiable, Hashable, Sendable, Codable {
+	public var id: UUID
+	public var accountID: UUID
+	public var bookingDate: Day
+	public var valueDate: Day?
+	public var amountMinor: Int64
+	public var currency: String
+	/// The counterparty: payee of a withdrawal, payer of a deposit.
+	public var name: String
+	public var purpose: String
+	public var counterpartyIBAN: String?
+	public var counterpartyBIC: String?
+	public var bookingText: String?
+	public var endToEndReference: String?
+	public var mandateReference: String?
+	public var creditorID: String?
+	public var comment: String?
+	public var isChecked: Bool
+	public var isPending: Bool
+	public var categoryID: UUID?
+	public var categorizedBy: Categorization
+	/// True from the moment the transaction arrives until the user has seen it.
+	public var isNew: Bool
+	public var sourceID: String?
+	public var createdAt: Date
+
+	public init(id: UUID = UUID(), accountID: UUID, bookingDate: Day, valueDate: Day? = nil, amountMinor: Int64, currency: String = "EUR", name: String, purpose: String = "",
+		counterpartyIBAN: String? = nil, counterpartyBIC: String? = nil, bookingText: String? = nil, endToEndReference: String? = nil, mandateReference: String? = nil,
+		creditorID: String? = nil, comment: String? = nil, isChecked: Bool = false, isPending: Bool = false, categoryID: UUID? = nil, categorizedBy: Categorization = .none,
+		isNew: Bool = false, sourceID: String? = nil, createdAt: Date = Date()) {
+		self.id = id
+		self.accountID = accountID
+		self.bookingDate = bookingDate
+		self.valueDate = valueDate
+		self.amountMinor = amountMinor
+		self.currency = currency
+		self.name = name
+		self.purpose = purpose
+		self.counterpartyIBAN = counterpartyIBAN
+		self.counterpartyBIC = counterpartyBIC
+		self.bookingText = bookingText
+		self.endToEndReference = endToEndReference
+		self.mandateReference = mandateReference
+		self.creditorID = creditorID
+		self.comment = comment
+		self.isChecked = isChecked
+		self.isPending = isPending
+		self.categoryID = categoryID
+		self.categorizedBy = categorizedBy
+		self.isNew = isNew
+		self.sourceID = sourceID
+		self.createdAt = createdAt
+	}
+
+	public var amount: Money { Money(minorUnits: amountMinor, currency: currency) }
+}

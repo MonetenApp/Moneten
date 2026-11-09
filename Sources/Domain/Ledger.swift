@@ -1,0 +1,261 @@
+import Foundation
+
+/// What the content view shows: everything, one account, one account group, or one category.
+public enum LedgerScope: Hashable, Sendable {
+	case account(UUID)
+	case accountGroup(UUID)
+	case category(UUID)
+}
+
+/// All accounts, categories, and transactions in memory, with the lookups that the views need.
+///
+/// The app loads the ledger once after unlocking and changes it together with the database.
+public struct Ledger: Sendable {
+	public private(set) var groups: [AccountGroup] = []
+	public private(set) var accounts: [Account] = []
+	public private(set) var categories: [Category] = []
+	public private(set) var transactions: [Transaction] = []
+
+	private var transactionIndex: [UUID: Int] = [:]
+	private var searchText: [UUID: String] = [:]
+
+	public init(groups: [AccountGroup] = [], accounts: [Account] = [], categories: [Category] = [], transactions: [Transaction] = []) {
+		self.groups = groups
+		self.accounts = accounts
+		self.categories = categories
+		self.transactions = transactions
+		rebuildIndexes()
+	}
+
+	private mutating func rebuildIndexes() {
+		transactions.sort { ($0.bookingDate, $0.createdAt) > ($1.bookingDate, $1.createdAt) }
+		transactionIndex = Dictionary(uniqueKeysWithValues: transactions.enumerated().map { ($0.element.id, $0.offset) })
+		let accountsByID = Dictionary(uniqueKeysWithValues: accounts.map { ($0.id, $0) })
+		searchText = Dictionary(uniqueKeysWithValues: transactions.map { ($0.id, Self.searchText(of: $0, account: accountsByID[$0.accountID])) })
+	}
+
+	static func searchText(of t: Transaction, account: Account?) -> String {
+		let amount = t.amount.decimal
+		let plain = "\(amount)"
+		let comma = plain.replacingOccurrences(of: ".", with: ",")
+		let parts: [String?] = [t.name, t.purpose, t.bookingText, t.endToEndReference, t.mandateReference, t.creditorID, t.comment,
+			t.counterpartyIBAN, t.counterpartyBIC, account?.name, plain, comma, Self.twoDecimals(amount, separator: ","), Self.twoDecimals(amount, separator: ".")]
+		return TextFolding.fold(parts.compactMap { $0 }.joined(separator: "\u{1}"))
+	}
+
+	private static func twoDecimals(_ d: Decimal, separator: String) -> String {
+		let n = NSDecimalNumber(decimal: d).doubleValue
+		return String(format: "%.2f", n).replacingOccurrences(of: ".", with: separator)
+	}
+
+	// MARK: Lookups
+
+	public func account(_ id: UUID) -> Account? { accounts.first { $0.id == id } }
+	public func group(_ id: UUID) -> AccountGroup? { groups.first { $0.id == id } }
+	public func category(_ id: UUID) -> Category? { categories.first { $0.id == id } }
+	public func transaction(_ id: UUID) -> Transaction? { transactionIndex[id].map { transactions[$0] } }
+
+	public var defaultCategory: Category? { categories.first { $0.isDefault } }
+
+	public func childGroups(of parent: UUID?) -> [AccountGroup] {
+		groups.filter { $0.parentID == parent }.sorted { $0.position < $1.position }
+	}
+
+	public func accounts(inGroup group: UUID?) -> [Account] {
+		accounts.filter { $0.groupID == group }.sorted { $0.position < $1.position }
+	}
+
+	/// The accounts of a group and of all its subgroups.
+	public func accountIDs(inGroupTree group: UUID) -> Set<UUID> {
+		var ids = Set(accounts(inGroup: group).map(\.id))
+		for child in childGroups(of: group) { ids.formUnion(accountIDs(inGroupTree: child.id)) }
+		return ids
+	}
+
+	public func childCategories(of parent: UUID?) -> [Category] {
+		categories.filter { $0.parentID == parent && !$0.isDefault }.sorted { $0.position < $1.position }
+	}
+
+	/// All categories from top to bottom as the sidebar shows them, with "Uncategorized" last.
+	public var categoriesInSidebarOrder: [Category] {
+		var result: [Category] = []
+		func walk(_ parent: UUID?) {
+			for c in childCategories(of: parent) {
+				result.append(c)
+				walk(c.id)
+			}
+		}
+		walk(nil)
+		if let d = defaultCategory { result.append(d) }
+		return result
+	}
+
+	public func categoryIDs(inTree root: UUID) -> Set<UUID> {
+		var ids: Set<UUID> = [root]
+		for c in categories where c.parentID == root { ids.formUnion(categoryIDs(inTree: c.id)) }
+		return ids
+	}
+
+	/// The category of a transaction, with transactions without a category in the default category.
+	public func effectiveCategoryID(of t: Transaction) -> UUID? {
+		t.categoryID ?? defaultCategory?.id
+	}
+
+	/// A path such as "Living › Groceries".
+	public func categoryPath(_ id: UUID?) -> String {
+		guard let id, var c = category(id) else { return defaultCategory?.name ?? "" }
+		var names = [c.name]
+		while let p = c.parentID, let parent = category(p) {
+			names.insert(parent.name, at: 0)
+			c = parent
+		}
+		return names.joined(separator: " › ")
+	}
+
+	// MARK: Balances
+
+	public func transactions(ofAccount id: UUID) -> [Transaction] {
+		transactions.filter { $0.accountID == id }
+	}
+
+	/// The balance in the sidebar. The bank's balance where there is one, otherwise the computed one.
+	public func balance(of account: Account) -> Money {
+		if let b = account.bankBalanceMinor { return Money(minorUnits: b, currency: account.currency) }
+		return computedBalance(of: account)
+	}
+
+	/// The initial balance plus all booked transactions.
+	public func computedBalance(of account: Account, through day: Day? = nil) -> Money {
+		var sum = account.initialBalanceMinor
+		for t in transactions where t.accountID == account.id && !t.isPending {
+			if let day, t.bookingDate > day { continue }
+			sum += t.amountMinor
+		}
+		return Money(minorUnits: sum, currency: account.currency)
+	}
+
+	public func sum(ofGroup group: UUID) -> MoneySums {
+		var sums = MoneySums()
+		for id in accountIDs(inGroupTree: group) {
+			if let a = account(id), !a.isClosed { sums.add(balance(of: a)) }
+		}
+		return sums
+	}
+
+	public var newTransactionCounts: [UUID: Int] {
+		var counts: [UUID: Int] = [:]
+		for t in transactions where t.isNew { counts[t.accountID, default: 0] += 1 }
+		return counts
+	}
+
+	// MARK: Filtering
+
+	public func transactions(in scope: LedgerScope, filter: TransactionFilter = TransactionFilter()) -> [Transaction] {
+		let base: [Transaction]
+		switch scope {
+		case let .account(id):
+			base = transactions.filter { $0.accountID == id }
+		case let .accountGroup(id):
+			let ids = accountIDs(inGroupTree: id)
+			base = transactions.filter { ids.contains($0.accountID) }
+		case let .category(id):
+			let ids = categoryIDs(inTree: id)
+			let defaultID = defaultCategory?.id
+			base = transactions.filter { ids.contains($0.categoryID ?? defaultID ?? UUID()) }
+		}
+		let words = TextFolding.words(filter.searchText).map(String.init)
+		return base.filter { t in
+			guard filter.period.contains(t.bookingDate) else { return false }
+			switch filter.status {
+			case .all: break
+			case .checked: if !t.isChecked { return false }
+			case .unchecked: if t.isChecked { return false }
+			}
+			switch filter.amount {
+			case .all: break
+			case .deposits: if t.amountMinor <= 0 { return false }
+			case .withdrawals: if t.amountMinor >= 0 { return false }
+			case let .range(min, max):
+				let value = abs(t.amountMinor)
+				if let min, value < min { return false }
+				if let max, value > max { return false }
+			}
+			if let c = filter.categoryID {
+				let ids = categoryIDs(inTree: c)
+				if !ids.contains(t.categoryID ?? defaultCategory?.id ?? UUID()) { return false }
+			}
+			if let a = filter.accountID, t.accountID != a { return false }
+			if !words.isEmpty {
+				let haystack = searchText[t.id] ?? ""
+				if !words.allSatisfy({ haystack.contains($0) }) { return false }
+			}
+			return true
+		}
+	}
+
+	// MARK: Changes
+
+	public mutating func replace(groups: [AccountGroup]? = nil, accounts: [Account]? = nil, categories: [Category]? = nil, transactions: [Transaction]? = nil) {
+		if let groups { self.groups = groups }
+		if let accounts { self.accounts = accounts }
+		if let categories { self.categories = categories }
+		if let transactions { self.transactions = transactions }
+		rebuildIndexes()
+	}
+
+	/// Replaces transactions with the same identifier. Faster than `replace` for a handful of rows.
+	public mutating func update(_ changed: [Transaction]) {
+		var needsSort = false
+		let accountsByID = Dictionary(uniqueKeysWithValues: accounts.map { ($0.id, $0) })
+		for t in changed {
+			if let i = transactionIndex[t.id] {
+				if transactions[i].bookingDate != t.bookingDate { needsSort = true }
+				transactions[i] = t
+			} else {
+				transactions.append(t)
+				needsSort = true
+			}
+			searchText[t.id] = Self.searchText(of: t, account: accountsByID[t.accountID])
+		}
+		if needsSort { rebuildIndexes() }
+	}
+
+	public mutating func remove(transactionIDs ids: Set<UUID>) {
+		transactions.removeAll { ids.contains($0.id) }
+		rebuildIndexes()
+	}
+
+	public mutating func upsert(_ account: Account) {
+		if let i = accounts.firstIndex(where: { $0.id == account.id }) { accounts[i] = account } else { accounts.append(account) }
+	}
+
+	public mutating func upsert(_ group: AccountGroup) {
+		if let i = groups.firstIndex(where: { $0.id == group.id }) { groups[i] = group } else { groups.append(group) }
+	}
+
+	public mutating func upsert(_ category: Category) {
+		if let i = categories.firstIndex(where: { $0.id == category.id }) { categories[i] = category } else { categories.append(category) }
+	}
+}
+
+public struct TransactionFilter: Hashable, Sendable {
+	public enum Status: Hashable, Sendable { case all, checked, unchecked }
+	public enum AmountFilter: Hashable, Sendable {
+		case all, deposits, withdrawals
+		/// Absolute amounts in minor units.
+		case range(min: Int64?, max: Int64?)
+	}
+
+	public var searchText = ""
+	public var period = DayRange.all
+	public var status = Status.all
+	public var amount = AmountFilter.all
+	public var categoryID: UUID?
+	public var accountID: UUID?
+
+	public init() {}
+
+	public var isActive: Bool {
+		period != .all || status != .all || amount != .all || categoryID != nil || accountID != nil
+	}
+}
