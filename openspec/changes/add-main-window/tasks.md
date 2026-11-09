@@ -31,7 +31,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [x] 1.25 Standard editing commands. Verified by the standard Edit menu of SwiftUI.
 - [ ] 1.26 Usable with the keyboard and with VoiceOver. Build it and verify it with a test or in the app.
 - [ ] 1.27 About and help commands. Built in part: help points to the project on GitHub. Finish it and verify it with a test or in the app.
-- [ ] 1.28 Stay responsive with a large database. Built in part: not measured with 50,000 transactions. Finish it and verify it with a test or in the app.
+- [ ] 1.28 Stay responsive with a large database. Built in part: PerformanceTests measure 10 ms for a search and 3 ms for a category view at 50,000 transactions; the views themselves were not measured. Finish it and verify it with a test or in the app.
 
 ## 2. Integration
 
