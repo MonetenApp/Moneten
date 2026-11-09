@@ -137,7 +137,7 @@ The optional finAPI subscription (v0.3) needs a server that holds the finAPI cli
 ## Repository layout
 
 ```
-monetenmoneten/
+MonetenMoneten/
 ├── App/                     Xcode app target
 ├── Packages/
 │   ├── Domain/

@@ -9,7 +9,8 @@ MonetenMoneten is an open source banking app for the Mac. It fetches balances an
 
 - Accounts from any German bank that offers FinTS, with pushTAN, photoTAN, and chipTAN.
 - Accounts from other services through extensions that anyone can write in Lua. MonetenMoneten runs most extensions written for MoneyMoney without changes.
-- Categories, rules that categorize new transactions, search, and charts.
+- Categories, split transactions, rules that categorize new transactions, search, and charts.
+- Automatic refresh with a notification when new transactions arrive.
 - Import from CSV, CAMT, MT940, and MoneyMoney.
 - SEPA transfers with the payee check (Verification of Payee).
 - Securities accounts.

@@ -10,7 +10,14 @@ import subprocess
 AFTER_V03 = [
 	"Sync between your Macs through iCloud.",
 	"An app for iPhone and iPad that reuses the `Domain`, `Storage`, and connector packages.",
-	"Budgets.",
+	"Budgets and a dashboard.",
+	"PDF account statements through FinTS.",
+	"Standing orders, scheduled transfers, templates, and pasting bank details from the clipboard.",
+	"Outbox, batch transfers, foreign currency transfers, and SEPA direct debits.",
+	"Import and export extensions compatible with MoneyMoney, and AppleScript automation.",
+	"Certificate pinning for bank servers.",
+	"HBCI chip cards and key files.",
+	"Printing and printable reports.",
 ]
 
 

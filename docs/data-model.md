@@ -46,14 +46,17 @@ Secrets are not part of the model. The Keychain stores the PIN for a connection 
 | `fingerprint` | `String` | Identity for sources without `sourceID`. See [architecture](architecture.md#transactions-need-an-identity-the-bank-does-not-give). |
 | `categoryID` | `UUID?` | |
 | `categorizedBy` | `.manual`, `.rule(UUID)`, or `.none` | Manual choices are never overwritten by rules. |
-| `note` | `String?` | |
+| `note` | `String?` | A comment you write. |
+| `isChecked` | `Bool` | You checked this transaction off. |
+| `splits` | `[Split]` | Empty for most transactions. If present, the parts carry the categories instead of the transaction. |
 | `importBatchID` | `UUID?` | Set when the row came from a file import. |
 
 ## Categories and rules
 
 | Type | Fields | Rules |
 |---|---|---|
-| `Category` | `id`, `parentID?`, `name`, `order`, `isHidden` | A tree. Deleting a category moves its transactions to the parent. |
+| `Category` | `id`, `parentID?`, `name`, `order`, `isHidden`, `excludeFromCharts` | A tree. Deleting a category moves its transactions to the parent. `excludeFromCharts` is for transfers between your own accounts. |
+| `Split` | `amount: Money`, `categoryID?`, `note?` | The amounts of all splits add up to the transaction amount. |
 | `Rule` | `id`, `order`, `match: .all` or `.any`, `conditions: [Condition]`, `categoryID` | Rules run in `order`. The first match wins. |
 | `Condition` | `field`, `op`, `value` | `field` is one of counterparty name, counterparty IBAN, purpose, amount, account, transaction code. `op` is one of contains, equals, starts with, matches regex, less than, greater than. |
 

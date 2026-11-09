@@ -6,6 +6,8 @@ Status: Proposed
 
 Some banks have no FinTS access, and some users do not want to set up FinTS. Commercial providers solve that. [finAPI](https://www.finapi.io/en/prices/) is a German provider registered with BaFin as an account information service and licensed for payment initiation. It sells only to companies. For a consumer subscription, its public price list adds a PSD2 license fee to the access fee. The smallest setup costs 260 euros per month before VAT, and about 1.30 euros per subscriber at 1,000 subscribers. [Banking API providers](../research/banking-apis.md) has the details.
 
+MoneyMoney runs its own PSD2 online service as a paid add-on for 39.99 euros per year ([MoneyMoney features](../research/moneymoney-features.md#prices)). That is the price users will compare against.
+
 GoCardless Bank Account Data, formerly Nordigen, used to be free, but a [developer report](https://dev.to/johnfrandsen/gocardless-bank-account-data-alternatives-what-to-use-when-signups-are-disabled-326d) says it no longer accepts new sign-ups. Enable Banking offers free sign-up, but it covers only PSD2 accounts and no securities.
 
 ## Decision

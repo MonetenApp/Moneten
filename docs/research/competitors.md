@@ -6,7 +6,8 @@ This page records what other banking apps for German users do, as of November 20
 
 MoneyMoney is a closed source Mac app by MRH applications GmbH.
 
-- It connects banks through FinTS and, for banks without FinTS, through PSD2 interfaces ([ifun.de](https://www.ifun.de/moneymoney-unterstuetzt-umsatzabruf-ueber-psd2-155772/)).
+- It connects banks through FinTS. For banks without FinTS, a PSD2 online service reads transactions through MoneyMoney's own server. The service is a paid add-on for 39.99 euros per year, and MoneyMoney's developer is registered with BaFin as an account information service to run it ([PSD2 page](https://moneymoney.app/psd2/), [security page](https://moneymoney.app/security/)).
+- [MoneyMoney features](moneymoney-features.md) lists every feature and where it lands in MonetenMoneten.
 - Services without FinTS, for example Trade Republic and American Express, connect through "Web Banking" modules that read the provider's website. These modules break when the website changes. [ifun.de](https://www.ifun.de/mac-banking-moneymoney-verbessert-europa-unterstuetzung-236147/) and [Softpedia's changelog](https://mac.softpedia.com/progChangelog/MoneyMoney-Changelog-108659.html) report several such fixes.
 - It has a public [Lua extension API](https://moneymoney.app/api/webbanking/). Community extensions exist for Qonto, Bitpanda, Binance, Monzo, and others ([GitHub topic](https://github.com/topics/moneymoneyapp)).
 - Four new shareholders now hold 90 percent of the developer ([ifun.de](https://www.ifun.de/banking-app-moneymoney-neues-logo-und-neue-miteigentuemer-250904/)). The license price doubled from 39.99 to 79.99 euros ([ifun.de](https://www.ifun.de/moneymoney-verdoppelt-preis-support-weiter-unter-druck-287998/)), and the developer announced a subscription ([ifun.de](https://www.ifun.de/moneymoney-wechselt-zum-abo-was-fuer-bestandskunden-gilt-294473/)).
