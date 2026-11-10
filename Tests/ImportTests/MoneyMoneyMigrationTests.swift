@@ -1,5 +1,7 @@
 import Domain
+import CoreGraphics
 import Foundation
+import ImageIO
 import Testing
 @testable import Import
 
@@ -85,6 +87,54 @@ struct MoneyMoneyMigrationTests {
 		let ledger = Ledger(groups: p.groups, accounts: p.accounts, categories: p.categories, transactions: p.transactions)
 		let giro = try #require(p.accounts.first { $0.name == "Giro" })
 		#expect(ledger.computedBalance(of: giro).minorUnits == 123_456)
+	}
+
+	/// A 32-point icon like those of MoneyMoney: a band in one color with a dark outline and a white
+	/// highlight on a transparent background.
+	func icon(_ r: UInt8, _ g: UInt8, _ b: UInt8) throws -> Data {
+		let space = try #require(CGColorSpace(name: CGColorSpace.sRGB))
+		let context = try #require(CGContext(data: nil, width: 32, height: 32, bitsPerComponent: 8, bytesPerRow: 0, space: space,
+			bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+		context.setFillColor(CGColor(srgbRed: 0.1, green: 0.1, blue: 0.1, alpha: 1))
+		context.fill(CGRect(x: 7, y: 3, width: 18, height: 26))
+		context.setFillColor(CGColor(srgbRed: CGFloat(r) / 255, green: CGFloat(g) / 255, blue: CGFloat(b) / 255, alpha: 1))
+		context.fill(CGRect(x: 8, y: 4, width: 16, height: 24))
+		context.setFillColor(CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 1))
+		context.fill(CGRect(x: 10, y: 24, width: 4, height: 2))
+		let image = try #require(context.makeImage())
+		let data = NSMutableData()
+		let destination = try #require(CGImageDestinationCreateWithData(data, "public.png" as CFString, 1, nil))
+		CGImageDestinationAddImage(destination, image, nil)
+		#expect(CGImageDestinationFinalize(destination))
+		return data as Data
+	}
+
+	@Test("The color of a category comes from its icon, without outline and highlight")
+	func iconColor() throws {
+		#expect(MoneyMoneyMigration.iconColor(try icon(0x34, 0x78, 0xF6)) == "#3478F6")
+		#expect(MoneyMoneyMigration.iconColor(try icon(0xE8, 0x8A, 0x2E)) == "#E88A2E")
+		// A gray icon keeps its gray, darkened a little by the outline.
+		let gray = try #require(MoneyMoneyMigration.iconColor(try icon(0x90, 0x90, 0x90)))
+		#expect(gray.dropFirst(1).prefix(2) == gray.dropFirst(3).prefix(2))
+		#expect(MoneyMoneyMigration.iconColor(Data("not an image".utf8)) == nil)
+	}
+
+	@Test("Categories take the color of MoneyMoney, and a later run fills in colors the user did not set")
+	func categoryColors() throws {
+		var withIcons = categories
+		withIcons[1]["icon"] = try icon(0x34, 0x78, 0xF6)
+		withIcons[2]["icon"] = try icon(0xE8, 0x8A, 0x2E)
+		let first = try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(accounts), categories: try plist(withIcons), transactions: try plist(transactions), into: Ledger())
+		#expect(first.categories.map(\.color) == [nil, "#3478F6", "#E88A2E"])
+		#expect(first.updatedCategories.isEmpty)
+		// An earlier run without colors, and the user gave "Pets" a color of their own.
+		var earlier = try plan().categories
+		earlier[2].color = "#00FF00"
+		let ledger = Ledger(categories: earlier)
+		let later = try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(accounts), categories: try plist(withIcons), transactions: try plist(transactions), into: ledger)
+		#expect(later.categories.isEmpty)
+		#expect(later.updatedCategories.map(\.name) == ["Food"])
+		#expect(later.updatedCategories.first?.color == "#3478F6")
 	}
 
 	@Test("Categories keep their tree and the default maps to Uncategorized")

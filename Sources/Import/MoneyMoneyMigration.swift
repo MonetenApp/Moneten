@@ -1,5 +1,7 @@
 import Domain
+import CoreGraphics
 import Foundation
+import ImageIO
 
 /// Turns the AppleScript exports of MoneyMoney into accounts, categories, and transactions.
 ///
@@ -16,6 +18,8 @@ public struct MoneyMoneyMigration: Sendable {
 		public var updatedAccounts: [Account] = []
 		/// Transactions of an earlier run that were pending and are booked now.
 		public var updatedTransactions: [Transaction] = []
+		/// Categories of an earlier run without a color of their own, with the color of MoneyMoney.
+		public var updatedCategories: [Domain.Category] = []
 		/// Accounts and transactions that an earlier run already brought in.
 		public var skippedAccounts = 0
 		public var skippedTransactions = 0
@@ -24,6 +28,7 @@ public struct MoneyMoneyMigration: Sendable {
 
 		public var isEmpty: Bool {
 			groups.isEmpty && accounts.isEmpty && categories.isEmpty && transactions.isEmpty && updatedAccounts.isEmpty && updatedTransactions.isEmpty
+				&& updatedCategories.isEmpty
 		}
 	}
 
@@ -192,17 +197,55 @@ public struct MoneyMoneyMigration: Sendable {
 			let position = positions[parent, default: 0]
 			positions[parent] = position + 1
 			let isGroup = (item["group"] as? Bool) == true
+			let color = (item["icon"] as? Data).flatMap(Self.iconColor)
 			if let existing = known.first(where: { $0.sourceID == source || ($0.name == name && $0.parentID == parent && !$0.isDefault) }) {
 				map[source] = existing.id
 				if isGroup { parents[indentation] = existing.id }
+				// A category of an earlier run gets the color of MoneyMoney, unless the user chose one.
+				if let color, existing.color == nil, !plan.categories.contains(where: { $0.id == existing.id }) {
+					var updated = existing
+					updated.color = color
+					plan.updatedCategories.append(updated)
+				}
 				continue
 			}
-			let c = Domain.Category(parentID: parent, position: position, name: name, isGroup: isGroup,
+			let c = Domain.Category(parentID: parent, position: position, name: name, isGroup: isGroup, color: color,
 				currency: (item["currency"] as? String) ?? "EUR", rule: Self.string(item["rules"]) ?? "", sourceID: source)
 			plan.categories.append(c)
 			map[source] = c.id
 			if isGroup { parents[indentation] = c.id }
 		}
+	}
+
+	/// The color of a MoneyMoney category, such as "#4A90E2". The export has no color, but MoneyMoney
+	/// draws the icon of a category in its color, so this is the mean of the opaque colored pixels of
+	/// the icon, or of its opaque pixels when the icon is gray. Nil for an empty or unreadable icon.
+	static func iconColor(_ data: Data) -> String? {
+		guard let source = CGImageSourceCreateWithData(data as CFData, nil), let image = CGImageSourceCreateImageAtIndex(source, 0, nil),
+			let space = CGColorSpace(name: CGColorSpace.sRGB) else { return nil }
+		let width = min(image.width, 64), height = min(image.height, 64)
+		guard width > 0, height > 0 else { return nil }
+		var pixels = [UInt8](repeating: 0, count: width * height * 4)
+		let drawn = pixels.withUnsafeMutableBytes { buffer -> Bool in
+			guard let context = CGContext(data: buffer.baseAddress, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4,
+				space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return false }
+			context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+			return true
+		}
+		guard drawn else { return nil }
+		var colored = (0.0, 0.0, 0.0, 0.0), opaque = (0.0, 0.0, 0.0, 0.0)
+		for i in stride(from: 0, to: pixels.count, by: 4) where pixels[i + 3] >= 128 {
+			let alpha = Double(pixels[i + 3])
+			let r = Double(pixels[i]) * 255 / alpha, g = Double(pixels[i + 1]) * 255 / alpha, b = Double(pixels[i + 2]) * 255 / alpha
+			opaque = (opaque.0 + r, opaque.1 + g, opaque.2 + b, opaque.3 + 1)
+			let high = max(r, g, b), low = min(r, g, b)
+			// Outlines, shadows, and highlights are dark or gray. They would pull the color toward gray.
+			if high > 40, (high - low) / high > 0.25 { colored = (colored.0 + r, colored.1 + g, colored.2 + b, colored.3 + 1) }
+		}
+		let sum = colored.3 > 0 ? colored : opaque
+		guard sum.3 > 0 else { return nil }
+		func byte(_ v: Double) -> Int { min(255, max(0, Int((v / sum.3).rounded()))) }
+		return String(format: "#%02X%02X%02X", byte(sum.0), byte(sum.1), byte(sum.2))
 	}
 
 	/// Lists the groups whose balance in MoneyMoney differs from the sum of their accounts.

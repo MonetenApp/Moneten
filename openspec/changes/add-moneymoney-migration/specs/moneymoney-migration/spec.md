@@ -209,3 +209,13 @@ The app SHALL write account names, counts, and balances to the report and no log
 
 - **WHEN** the user chooses "Save Report..."
 - **THEN** the app says that the file contains account names and balances and saves it after the user confirms
+
+### Requirement: Category colors
+
+The app SHALL give each category the color it has in the source. The export of the source has no color, but the source draws the icon of a category in its color, so the app takes the color of the icon. A later run gives the color to categories of an earlier run that have no color of their own.
+
+#### Scenario: Category colors
+
+- **GIVEN** "Food" has a blue icon in the source, and an earlier run created "Pets" without a color and the user then colored it green
+- **WHEN** the migration runs again
+- **THEN** "Food" is blue and "Pets" stays green

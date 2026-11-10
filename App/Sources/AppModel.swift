@@ -560,7 +560,7 @@ final class AppModel {
 	func runMigration(plan: MoneyMoneyMigration.Plan) throws {
 		guard let store else { return }
 		let starters = replaceableStarterCategories
-		try store.save(groups: plan.groups, accounts: plan.accounts + plan.updatedAccounts, categories: plan.categories,
+		try store.save(groups: plan.groups, accounts: plan.accounts + plan.updatedAccounts, categories: plan.categories + plan.updatedCategories,
 			transactions: plan.transactions + plan.updatedTransactions)
 		for c in starters { try? store.deleteCategory(c.id) }
 		ledger = try store.loadLedger()
