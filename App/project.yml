@@ -42,6 +42,23 @@ targets:
         INFOPLIST_FILE: Info.plist
         CODE_SIGN_ENTITLEMENTS: MonetenMoneten.entitlements
         ENABLE_HARDENED_RUNTIME: $(MONETENMONETEN_HARDENED_RUNTIME)
+  # The FinTS prototype of issue #11. It runs in the terminal. App/FinTSProbe/main.swift explains it.
+  FinTSProbe:
+    type: application
+    platform: macOS
+    sources:
+      - path: FinTSProbe
+    dependencies:
+      # Built from Vendor/HBCI4Swift by scripts/build-hbci4swift.sh.
+      - framework: ../.build/hbci4swift/HBCI4Swift.framework
+        embed: true
+        codeSign: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.alexander-schneider.FinTSProbe
+        PRODUCT_NAME: FinTSProbe
+        GENERATE_INFOPLIST_FILE: YES
+        ENABLE_HARDENED_RUNTIME: $(MONETENMONETEN_HARDENED_RUNTIME)
 schemes:
   MonetenMoneten:
     build:
@@ -51,3 +68,9 @@ schemes:
       config: Debug
     archive:
       config: Release
+  FinTSProbe:
+    build:
+      targets:
+        FinTSProbe: all
+    run:
+      config: Debug
