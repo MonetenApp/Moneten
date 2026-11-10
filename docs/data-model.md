@@ -1,34 +1,42 @@
 # Data model
 
-This page lists the core types in the `Domain` module. It is the target for v0.3. Fields marked (v0.2) or (v0.3) arrive in that release. [Architecture](architecture.md) explains how the types are used.
+This page lists the types in the `Domain` module and the tables that store them. The first sections describe what the code holds today. The last section lists the types that the specs add later. [Architecture](architecture.md) explains how the types are used.
 
-The specs in [openspec/changes](../openspec/changes/) define the behavior. Where this page and a spec differ, the spec wins, and the design of that change updates this page.
+The specs in [openspec/changes](../openspec/changes/) define the behavior. Where this page and a spec differ, the spec wins, and the change that builds the behavior updates this page.
 
-## Money and quantities
+## Money and days
 
 | Type | Fields | Rules |
 |---|---|---|
-| `Currency` | `code: String` | ISO 4217 code, three uppercase letters. |
-| `Money` | `minorUnits: Int64`, `currency: Currency` | Exact integer arithmetic for settled amounts. Adding two amounts with different currencies throws an error. The type never converts currencies. No `Double` anywhere. |
-| `Quote` | `value: Decimal`, `currency: Currency` | A price with more decimal places than the currency, for example a share price of 12.3456 euros. Valuations round to `Money` once, at the end. |
-| `Totals` | `[Currency: Money]` | A sum across accounts keeps one total per currency. Exchange rates are out of scope until after v0.3. |
-| `Quantity` | `value: Decimal` | Number of shares or units in a securities account. |
-| `IBAN` | `value: String` | Validated with the ISO 13616 checksum when parsed. |
+| `Money` | `minorUnits: Int64`, `currency: String` | Exact integer amounts in the smallest unit of the currency, for example cents. `Currency.exponent(of:)` gives the number of decimal places of an ISO 4217 code. No `Double` stores an amount. |
+| `MoneySums` | `byCurrency: [String: Int64]` | A sum across accounts or transactions keeps one total per currency and never converts. |
+| `Day` | `rawValue: Int` | A calendar day as the number yyyymmdd, without a time and without a time zone. Booking and value dates are days. |
 
-## Connections and accounts
+`AmountParser.decimal(from:)` reads amounts that the user types, such as `1.250,00`, `-89,00`, or `1250.00`.
+
+## Accounts
 
 | Type | Fields |
 |---|---|
-| `Connection` | `id`, `name`, `source: ConnectionSource`, `savesPIN: Bool`, `lastSync: Date?` |
-| `ConnectionSource` | `.fints(bankCode, userID, customerID?, tanMethod?)`, `.extension(extensionID, service)`, `.finAPI(bankConnectionID)` (v0.3) |
-| `AccountGroup` | `id`, `name`, `order`, `parentID?` |
-| `Account` | `id`, `connectionID?`, `groupID?`, `kind: AccountKind`, `name`, `owner?`, `iban: IBAN?`, `accountNumber?`, `bankCode?`, `currency`, `isHidden` |
+| `AccountGroup` | `id`, `name`, `parentID?`, `position`, `showSum`, `isExpanded` |
+| `Account` | `id`, `groupID?`, `position`, `name`, `kind`, `source`, `currency`, `iban?`, `bic?`, `accountNumber?`, `bankCode?`, `bankName?`, `owner?`, `bankBalanceMinor?`, `bankBalanceDate?`, `initialBalanceMinor`, `isClosed`, `comment?`, `sourceID?` |
 | `AccountKind` | `giro`, `savings`, `fixedTermDeposit`, `loan`, `creditCard`, `portfolio`, `cash`, `other` |
-| `BalanceSnapshot` | `accountID`, `date`, `booked: Money`, `pending: Money?` |
+| `AccountSource` | `offline` for an account that the user fills by hand or by import, `migrated` for an account taken over from MoneyMoney |
 
-An account without a `connectionID` is a manual account. You fill it by hand or by import.
+Groups and accounts share one `position` order inside their parent group, so the sidebar can mix them as MoneyMoney does.
 
-A saved PIN is a `Credential` row with `connectionID` and `secret` inside the encrypted database. It exists only when `savesPIN` is on. Without it, the app keeps the PIN in memory until it locks or quits.
+An account with a `bankBalanceMinor` shows that balance. Other accounts show `initialBalanceMinor` plus their booked transactions. A migrated account gets the initial balance that makes both numbers end at the same value.
+
+A closed account keeps its transactions, shows no balance in the sidebar, and is left out of the sum of its group.
+
+## Categories
+
+| Type | Fields | Rules |
+|---|---|---|
+| `Category` | `id`, `parentID?`, `position`, `name`, `isGroup`, `isDefault`, `color?`, `currency`, `showInDiagrams`, `sidebarAmount`, `restrictedToID?`, `rule`, `isExpanded`, `sourceID?` | A tree. Exactly one category has `isDefault` set. It is "Uncategorized" and holds every transaction without a category. `color` is `#RRGGBB`. Without a color, a category shows the palette color of its top-level category. `restrictedToID` is an account or an account group. `rule` is text in the rule language of the spec `categorization-rules`, and an empty rule means no rule. |
+| `SidebarAmount` | `none`, `currentMonth`, `currentQuarter`, `currentYear`, `totalSum` | The sum that the sidebar shows next to the category. |
+
+When the rules of several categories match a transaction, the first category in sidebar order wins.
 
 ## Transactions
 
@@ -36,48 +44,45 @@ A saved PIN is a `Credential` row with `connectionID` and `secret` inside the en
 |---|---|---|
 | `id` | `UUID` | Local identity. |
 | `accountID` | `UUID` | |
-| `status` | `pending` or `booked` | |
-| `bookingDate` | `Date` | Day precision. |
-| `valueDate` | `Date?` | |
-| `amount` | `Money` | Negative for debits. |
-| `counterparty` | `Counterparty?` | `name`, `iban`, `bic`. |
-| `purpose` | `String` | Remittance text, newlines kept. |
-| `references` | `References` | `endToEnd`, `mandate`, `creditorID`, `bankReference`. |
-| `transactionCode` | `String?` | The bank's business transaction code (Geschäftsvorfallcode, GVC). |
-| `sourceID` | `String?` | Stable ID from the source, if it has one. |
-| `fingerprint` | `String` | Identity for sources without `sourceID`. See [architecture](architecture.md#transactions-need-an-identity-the-bank-does-not-give). |
-| `categoryID` | `UUID?` | |
-| `categorizedBy` | `.manual`, `.rule(UUID)`, or `.none` | A manual choice survives a refresh. Only "Apply to all transactions." for a changed rule replaces it. |
-| `note` | `String?` | A comment you write. |
-| `isChecked` | `Bool` | You checked this transaction off. |
-| `splits` | `[Split]` | Empty for most transactions. If present, the parts carry the categories instead of the transaction. |
-| `importBatchID` | `UUID?` | Set when the row came from a file import. |
+| `bookingDate` | `Day` | |
+| `valueDate` | `Day?` | |
+| `amountMinor`, `currency` | `Int64`, `String` | Negative for withdrawals. `amount` returns both as `Money`. |
+| `name` | `String` | The counterparty: payee of a withdrawal, payer of a deposit. |
+| `purpose` | `String` | Remittance text. |
+| `counterpartyIBAN`, `counterpartyBIC` | `String?` | |
+| `bookingText` | `String?` | The kind of booking as the bank names it, for example "SEPA-BASISLASTSCHRIFT". |
+| `endToEndReference`, `mandateReference`, `creditorID` | `String?` | SEPA references. |
+| `comment` | `String?` | A comment that the user writes. |
+| `isChecked` | `Bool` | The user checked this transaction off. |
+| `isPending` | `Bool` | Not booked yet. Pending transactions count toward neither the balance nor the category sums in the sidebar. |
+| `categoryID` | `UUID?` | `nil` means "Uncategorized". |
+| `categorizedBy` | `Categorization` | `manual`, `rule`, or `none`. A rule never replaces a manual category. Only "Apply to all transactions." for a changed rule does. |
+| `isNew` | `Bool` | Set on import, cleared when the user has seen the transaction. |
+| `sourceID` | `String?` | The identifier in the program the transaction came from, for example `moneymoney:<id>`. A second migration skips known identifiers. |
+| `createdAt` | `Date` | |
 
-## Categories and rules
+A file import has no stable identifier per row. `ImportMatching` treats two transactions as the same when the day, the amount, the name, and the purpose match. It counts equal rows, so two identical rows in one file add two transactions.
 
-| Type | Fields | Rules |
+## Tables
+
+`Sources/Storage/Schema.swift` holds the migrations of the encrypted database. Each table stores one type with the same field names:
+
+| Table | Type |
+|---|---|
+| `accountGroup` | `AccountGroup` |
+| `account` | `Account` |
+| `category` | `Category` |
+| `bankTransaction` | `Transaction` |
+
+Migration `v1` creates the tables. Migration `v2` drops the table `setting`, which no code used. App settings live in `UserDefaults`.
+
+## Types that the specs add later
+
+| Type | Arrives with | Purpose |
 |---|---|---|
-| `Category` | `id`, `parentID?`, `name`, `order`, `color`, `showInDiagrams`, `sidebarAmount`, `restrictedToAccountID?`, `rule?` | A tree. Deleting a category moves its transactions to "Uncategorized". `showInDiagrams` is off for transfers between your own accounts. `rule` is one expression in the rule language of the spec `categorization-rules`. When the rules of several categories match, the first category in sidebar order wins. |
-| `Split` | `amount: Money`, `categoryID?`, `note?` | The amounts of all splits add up to the transaction amount. |
-
-## Securities (v0.2)
-
-| Type | Fields |
-|---|---|
-| `Security` | `isin?`, `wkn?`, `name` |
-| `Holding` | `accountID`, `date`, `security`, `quantity: Quantity`, `price: Quote?`, `marketValue: Money`, `purchaseValue: Money?` |
-
-## Payments (v0.2)
-
-| Type | Fields |
-|---|---|
-| `PaymentOrder` | `id`, `accountID`, `kind: .sepa` or `.instant`, `payee: Counterparty`, `amount`, `purpose`, `endToEnd?`, `executionDate?`, `payeeCheckID?` |
-| `PaymentState` | `draft`, `payeeCheck(PayeeCheckResult)`, `confirmed`, `needsChallenge(Challenge)`, `submitted`, `accepted`, `rejected(reason)`, `unknown`. A change to payee, IBAN, or amount returns the order to `draft`. |
-| `PayeeCheckResult` | `match`, `closeMatch(suggestedName)`, `noMatch`, `notPossible` |
-
-## Import
-
-| Type | Fields |
-|---|---|
-| `ImportBatch` | `id`, `source: .csv`, `.camt`, `.mt940`, or `.moneyMoney`, `fileName`, `importedAt`, `accounts`, `transactions`, `categories` |
-| `CSVProfile` | Column mapping, date format, decimal separator, encoding. Saved per bank so the second import of the same format needs no setup. |
+| `Connection`, `ConnectionSource` | v0.1, FinTS | A bank access: FinTS user, extension, or finAPI (v0.3). An account without a connection stays an offline account. |
+| Saved PIN | v0.1, FinTS | A PIN saved inside the encrypted database, only when the user turns saving on for a connection. |
+| Transaction fingerprint | v0.1, FinTS | Identity for bank data without a stable ID, and the match of a pending transaction to its booked version. See [architecture](architecture.md#transactions-need-an-identity-the-bank-does-not-give). |
+| `Split` | v0.1 | Parts of a transaction with their own amounts and categories. The parts add up to the transaction amount. |
+| `Security`, `Holding` | v0.2 | Securities accounts with quantity, price, market value, and purchase value. |
+| `PaymentOrder`, `PaymentState` | v0.2 | SEPA transfers with the payee check. See [architecture](architecture.md#payments-are-a-separate-state-machine). |

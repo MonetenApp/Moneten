@@ -46,7 +46,7 @@ Fetch, categorize, and understand your money. Read-only.
 
 | Issue | Labels | Depends on |
 |---|---|---|
-| [#1 Set up the Xcode project, packages, and CI](https://github.com/alexander-schneider/MonetenMoneten/issues/1) | area: foundation | None |
+| [#1 Set up the Swift package and CI](https://github.com/alexander-schneider/MonetenMoneten/issues/1) | area: foundation | None |
 | [#2 Prototype GRDB with SQLCipher through Swift Package Manager](https://github.com/alexander-schneider/MonetenMoneten/issues/2) | area: foundation, kind: prototype | None |
 | [#3 Define the core domain types](https://github.com/alexander-schneider/MonetenMoneten/issues/3) | area: foundation | #1 |
 | [#4 Build the encrypted store, migrations, and Keychain access](https://github.com/alexander-schneider/MonetenMoneten/issues/4) | area: foundation | #2, #3 |

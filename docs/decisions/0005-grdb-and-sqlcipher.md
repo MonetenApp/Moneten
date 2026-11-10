@@ -20,7 +20,7 @@ Through Swift Package Manager, GRDB links the SQLite of the system, which cannot
 
 A comparison on 2026-11-10 showed the following:
 
-- `sqlcipher/GRDB.swift` is a GitHub fork of `groue/GRDB.swift`, owned by the SQLCipher organization of Zetetic. A Zetetic developer maintains it. The same developer contributed the SQLCipher changes of GRDB 7.10.
+- The fork is a GitHub fork of [groue/GRDB.swift](https://github.com/groue/GRDB.swift), owned by the SQLCipher organization of Zetetic. A Zetetic developer maintains it. The same developer contributed the SQLCipher changes of GRDB 7.10.
 - Against the upstream commit that it merges, the fork changes only `Package.swift`, which turns on the commented "GRDB+SQLCipher" lines, and `README.md`. The Swift code of GRDB is the same.
 - The fork tag v7.12.0 is upstream v7.12.0 plus four commits that fix typos in comments, documentation, and one assertion message.
 - The fork followed the releases 7.10.0, 7.11.0, 7.11.1, and 7.12.0 within zero to five days.
@@ -50,7 +50,7 @@ The first build settled the open question of this decision. It builds with GRDB 
 
 ## Consequences
 
-- SQL migrations are plain files in the repository and reviewable.
+- The migrations are Swift code in `Sources/Storage/Schema.swift` and reviewable.
 - The file is unreadable without the key, also in Time Machine backups.
 - If the user forgets the database password, the data is lost.
 - Each GRDB update waits for the matching tag of the fork, usually a few days.

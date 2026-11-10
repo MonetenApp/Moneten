@@ -2,7 +2,11 @@
 
 This page explains how MonetenMoneten is split into modules, how data flows from a bank into the database, and why each boundary sits where it does. The exact fields of each type are in [data model](data-model.md). The reasons behind the big choices are in [decisions](decisions/).
 
+The first build has four modules: `Domain`, `Storage`, `Import`, and `App`. Bank access, extensions, payments, and the log are planned. Each section below says when it describes the plan.
+
 ## The modules and what each one owns
+
+The diagram shows the target design.
 
 ```
 ┌───────────────────────── MonetenMoneten.app (SwiftUI) ─────────────────────────┐
@@ -26,23 +30,32 @@ This page explains how MonetenMoneten is split into modules, how data flows from
              └────────────────┘
 ```
 
-The repository is one Swift package workspace with an Xcode app target:
+The repository is one Swift package ([ADR 0010](decisions/0010-swift-package-and-macos-15.md)). `App` is an executable target, and `scripts/build-app.sh` wraps it into `MonetenMoneten.app`. These modules exist:
 
 | Module | Owns | Depends on |
 |---|---|---|
-| `Domain` | Types, money arithmetic, the rule engine, de-duplication, the sync and payment state machines | Nothing |
-| `Storage` | The encrypted database, migrations, queries, Keychain access | `Domain`, GRDB |
+| `Domain` | Types, money arithmetic, the in-memory `Ledger`, the rule engine, categorization, import matching, chart data | Nothing |
+| `Storage` | The encrypted database, migrations, loading and saving the ledger, Keychain access | `Domain`, GRDB |
+| `Import` | The MoneyMoney migration and the CSV, CAMT, and MT940 parsers. `TransactionFileImporter.parse` returns `[Transaction]`, and `MoneyMoneyMigration.plan` returns a `Plan` that the app shows before it stores anything. | `Domain` |
+| `App` | SwiftUI views, the `AppModel`, window and menu wiring | All of the above |
+
+These modules are planned:
+
+| Module | Owns | Depends on |
+|---|---|---|
 | `FinTSConnector` | Bank lookup, FinTS dialogs, TAN handling, mapping FinTS data to `Domain` types | `Domain`, HBCI4Swift |
 | `ExtensionConnector` | Starting the XPC host, mapping extension results to `Domain` types | `Domain` |
 | `ExtensionHost` | The XPC service that runs one Lua extension with the MoneyMoney-compatible API | Lua 5.4 |
 | `FinAPIConnector` | finAPI login through its web form and data mapping (v0.3) | `Domain` |
-| `Import` | File parsers that return an `ImportBatch` | `Domain` |
 | `ext` | A command line tool that runs and tests an extension without the app | `ExtensionHost` |
-| `App` | SwiftUI views, view models, window and menu wiring | All of the above |
+
+The sync and payment state machines described below will live in `Domain`.
 
 `Domain` has no dependencies so that every rule about money, categories, and transaction identity can be tested in milliseconds without a database, a network, or a bank.
 
 ## Every bank speaks through one protocol
+
+This section is the plan for the connectors.
 
 FinTS, extensions, and finAPI differ in almost everything. The app hides that behind one protocol in `Domain`:
 
@@ -75,6 +88,8 @@ Only `FinTSConnector` and `FinAPIConnector` conform to `PaymentConnector`. `Exte
 
 ## A sync is a state machine
 
+This section is the plan for bank access.
+
 A sync of one connection moves through fixed states:
 
 ```
@@ -86,7 +101,9 @@ The state lives in one `SyncState` value per connection. The UI reads it to show
 
 ## Transactions need an identity the bank does not give
 
-FinTS returns transactions without a stable ID. A second sync returns the same rows again, and a pending card payment comes back later as a booked one with a different date or text. `Domain` handles this with two pure functions:
+Today the app gets transactions from the MoneyMoney migration and from files. A migrated transaction keeps its MoneyMoney ID in `sourceID`, so a second migration skips it. A file has no IDs, so `ImportMatching.split(imported:existing:)` treats two transactions as the same when the day, the amount, the name, and the purpose match. It counts equal rows, so two identical rows in one file add two transactions.
+
+FinTS needs more. It returns transactions without a stable ID. A second sync returns the same rows again, and a pending card payment comes back later as a booked one with a different date or text. The plan is two pure functions in `Domain`:
 
 - `fingerprint(_:)` builds an identity from the account, booking date, amount, counterparty IBAN, end-to-end reference, and normalized purpose text. Identical rows on the same day get an occurrence index.
 - `reconcile(existing:incoming:)` matches incoming rows to stored ones, one to one. It replaces a pending row with its booked version only when exactly one pending row matches the amount and counterparty within a few days. If two pending rows could match, for example two identical coffees on one day, it keeps all rows and marks them for review instead of guessing. Categories and notes move to the booked row.
@@ -95,21 +112,26 @@ If a source gives a stable ID, as some extensions do with `transactionId`, the a
 
 ## External data is parsed once, at the edge
 
-Bank responses, extension results, and import files are untrusted input. Each connector and each import parser turns raw data into `Domain` types at its edge and rejects what it cannot parse with an error that names the field. Code inside `Domain`, `Storage`, and `App` trusts those types and does not check them again.
+Bank responses, extension results, and import files are untrusted input. Each import parser, and later each connector, turns raw data into `Domain` types at its edge and rejects what it cannot parse with an error that names the field. Code inside `Domain`, `Storage`, and `App` trusts those types and does not check them again.
 
 ## The database password protects everything
 
 MonetenMoneten handles secrets the way MoneyMoney does. [ADR 0009](decisions/0009-database-password-as-in-moneymoney.md) has the details.
 
-- The database is encrypted with SQLCipher. The key comes from the database password that you set at first launch or later.
+- The database is encrypted with SQLCipher. The key comes from the database password that you set at first launch or later. Until you set one, a random key in the Keychain protects the database.
 - Saving the password in the Keychain is optional. You need it saved to unlock automatically at launch, with Touch ID, or with an Apple Watch.
 - The app locks after a set time without activity, and optionally when the main window closes.
+
+The rest of this list is the plan for bank access and the log:
+
 - A PIN is saved only if you turn on saving for that connection, and then only inside the encrypted database. Otherwise the app asks once and keeps it in memory until the app locks or quits.
 - TANs are never stored.
 - Logs never contain PINs, TANs, passwords, cookies, or tokens. The app removes them from its own output, from HBCI4Swift output, and from recorded HTTP traffic, and no setting turns that off.
 - Logs also redact IBANs, names, and amounts by default. A debug switch shows those for one sync, and the app warns before you share the log.
 
 ## Extensions run in a sandbox
+
+This section is the plan for extensions.
 
 Each extension runs in its own XPC process with only the network client entitlement. The host enforces three limits:
 
@@ -120,6 +142,8 @@ Each extension runs in its own XPC process with only the network client entitlem
 The API follows the [MoneyMoney Web Banking API](https://moneymoney.app/api/webbanking/), so most existing extensions run without changes. [ADR 0004](decisions/0004-moneymoney-compatible-extension-api.md) lists what is compatible and what MonetenMoneten adds.
 
 ## Payments are a separate state machine
+
+This section is the plan for payments (v0.2).
 
 A transfer moves through these states, and the app saves every step:
 
@@ -132,7 +156,7 @@ draft → payeeCheck → confirmed → (needsChallenge) → submitted → accept
 
 ## The app ships outside the App Store
 
-MonetenMoneten is signed with a Developer ID, notarized by Apple, and updated through Sparkle. The App Store is not an option because its terms conflict with the GPL. [ADR 0006](decisions/0006-license-gpl-3.md) has the details.
+Releases will be signed with a Developer ID, notarized by Apple, and updated through Sparkle. Until then, `scripts/build-app.sh` signs ad hoc, or with the identity in `CODESIGN_IDENTITY`. The App Store is not an option because its terms conflict with the GPL. [ADR 0006](decisions/0006-license-gpl-3.md) has the details.
 
 ## The subscription service is a separate project
 
@@ -142,17 +166,16 @@ The optional finAPI subscription (v0.3) needs a server that holds the finAPI cli
 
 ```
 MonetenMoneten/
-├── App/                     Xcode app target
-├── Packages/
+├── Package.swift            The Swift package
+├── Sources/
 │   ├── Domain/
 │   ├── Storage/
-│   ├── FinTSConnector/
-│   ├── ExtensionConnector/
-│   ├── ExtensionHost/
-│   ├── FinAPIConnector/     (v0.3)
-│   └── Import/
-├── Tools/ext/               Extension command line tool
-├── Extensions/              Example extensions
-├── Fixtures/                Recorded bank responses for tests, anonymized
+│   ├── Import/
+│   └── App/
+├── Tests/                   One test target per library module
+├── scripts/                 Test, build, and check scripts, and the app bundle files
+├── openspec/                Specs of every change
 └── docs/
 ```
+
+The planned modules get their own folders under `Sources/`. Recorded bank responses for tests arrive with the FinTS connector.

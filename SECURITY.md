@@ -10,7 +10,11 @@ Include the version, the steps to reproduce, and the impact you expect. The main
 
 ## What the app protects
 
-- The database is encrypted with SQLCipher. Its key comes from your database password.
+- The database is encrypted with SQLCipher. Its key comes from your database password. Until you set one, a random key in the Keychain protects the database.
+- The app locks after a set time without activity, and you unlock it with the password or Touch ID.
+
+Bank access, extensions, and payments are not built yet. When they arrive, these rules apply:
+
 - Bank PINs are saved only if you choose, and then only inside the encrypted database.
 - Logs never contain PINs, TANs, passwords, cookies, or tokens, and no setting turns that off.
 - TANs are never stored.

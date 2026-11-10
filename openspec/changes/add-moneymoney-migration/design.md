@@ -8,7 +8,7 @@ The app keeps all accounts, categories, and transactions of the open database in
 
 ## Decisions
 
-- `Import/MoneyMoneyMigration.swift` runs `export accounts`, `export categories`, and `export transactions ... as "plist"` through `/usr/bin/osascript`. macOS asks the user once whether MonetenMoneten may control MoneyMoney.
+- `Sources/Import/MoneyMoneyMigration.swift` runs `export accounts`, `export categories`, and `export transactions ... as "plist"` through `/usr/bin/osascript`. macOS asks the user once whether MonetenMoneten may control MoneyMoney.
 - The exports are flat lists. `indentation` gives the nesting and `group` marks a group. The structure was checked on 2026-11-10 against a real export with 58 accounts and groups, 23 categories, and 30,539 transactions. Only key names, types, and counts were looked at.
 - An account has no `iban` or `bic` key. `accountNumber` holds the IBAN and `bankCode` the BIC, so the migration takes a valid IBAN from `accountNumber` and a BIC from `bankCode`.
 - `export categories` contains the rule of each category in `rules`. The migration takes it over unchanged. All 12 rules of the real export parse, and replayed over all transactions they pick the category that MoneyMoney shows wherever MoneyMoney applied rules.

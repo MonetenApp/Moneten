@@ -14,7 +14,7 @@ The app keeps all accounts, categories, and transactions of the open database in
 
 ## Decisions
 
-- `Domain/Rule.swift` holds a tokenizer and a recursive descent parser. Precedence is `NOT`, then `AND`, then `OR`. Two expressions without an operator are joined with `AND`.
+- `Sources/Domain/Rule.swift` holds a tokenizer and a recursive descent parser. Precedence is `NOT`, then `AND`, then `OR`. Two expressions without an operator are joined with `AND`.
 - A term matches whole words. The text of a field is folded (lower case, composed Unicode, ä to ae, ß to ss) and split at white space. A phrase matches a run of words. `*` and `?` match inside one word. This is why `"Kundennummer 67890*"` is needed when a slash follows the number, as the MoneyMoney help says.
 - Account fields compare without spaces, so `local_account:"DE02 1203 ..."` matches.
 - Regular expressions are case-insensitive and run on the unfolded text of each field.
