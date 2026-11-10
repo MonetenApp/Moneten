@@ -84,7 +84,7 @@ struct BalanceBarChart: View {
 		// A click on a bar sets the period filter to its time, so the list shows its transactions.
 		.onTapGesture { if let bar = hovered { model.select(bar: PeriodChoice(bar: bar, monthly: monthly)) } }
 		.help("Click a bar to show its transactions")
-		.chartStyle(currency: currency, amounts: AmountAxis(values: bars.map { Format.chartValue($0.minorUnits, currency) }),
+		.chartStyle(currency: currency, amounts: AmountAxis(values: bars.map { Format.chartValue($0.minorUnits, currency) }, unit: Format.chartValue(1, currency)),
 			dates: Self.dateFormat(dates.unit), marks: dates.marks.map { $0.date() })
 	}
 
@@ -170,7 +170,8 @@ struct CategoryBarChart: View {
 		.chartXSelection(value: $pointer)
 		.onTapGesture { if let s = hovered { model.select(bar: PeriodChoice(start: s.start, chartPeriod: period)) } }
 		.help("Click a bar to show its transactions")
-		.chartStyle(currency: currency, amounts: AmountAxis(values: sums.flatMap { [Format.chartValue($0.deposits, currency), Format.chartValue($0.withdrawals, currency)] }),
+		.chartStyle(currency: currency, amounts: AmountAxis(values: sums.flatMap { [Format.chartValue($0.deposits, currency), Format.chartValue($0.withdrawals, currency)] },
+				unit: Format.chartValue(1, currency)),
 			dates: dateAxis.format, values: dateAxis.values, marks: sums.count <= 12 ? sums.map { $0.start.date() } : nil)
 	}
 
@@ -229,7 +230,9 @@ extension View {
 	/// three round amounts on the trailing side, in the format of the list: whole amounts without cents, and a step such as 2,5 € with its decimals.
 	/// `marks` puts the dates at exactly these days instead of `values`.
 	func chartStyle(currency: String, amounts: AmountAxis, dates format: Date.FormatStyle, values: AxisMarkValues = .automatic, marks: [Date]? = nil) -> some View {
-		chartXAxis {
+		// The marks are whole multiples of the smallest amount of the currency, so its decimal places suffice.
+		let decimals = max(0, Int((-log10(Format.chartValue(1, currency))).rounded()))
+		return chartXAxis {
 			if let marks {
 				AxisMarks(position: .top, values: marks) { _ in
 					AxisGridLine().foregroundStyle(.quaternary)
@@ -248,7 +251,7 @@ extension View {
 				AxisGridLine().foregroundStyle(.quinary)
 				AxisValueLabel {
 					if let amount = value.as(Double.self) {
-						Text(Decimal(amount).formatted(.currency(code: currency).precision(.fractionLength(0...2))))
+						Text(Decimal(amount).formatted(.currency(code: currency).precision(.fractionLength(0...decimals))))
 					}
 				}
 			}

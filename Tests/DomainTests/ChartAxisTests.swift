@@ -24,6 +24,14 @@ struct ChartAxisTests {
 		#expect(AmountAxis(values: [3_000, -2_000]).marks == [-2_000, 0, 2_000])
 	}
 
+	@Test("Marks are whole multiples of the smallest amount of the currency")
+	func smallestAmount() {
+		#expect(AmountAxis(values: [0, 0.01]).marks == [0, 0.01])
+		#expect(AmountAxis(values: [0.09]).marks.allSatisfy { abs($0 * 100 - ($0 * 100).rounded()) < 1e-9 })
+		#expect(AmountAxis(values: [0.003], unit: 0.001).marks == [0, 0.001, 0.002, 0.003])
+		#expect(AmountAxis(values: [9.9]).marks == [0, 2.5, 5, 7.5])
+	}
+
 	@Test("No amounts show only zero")
 	func empty() {
 		#expect(AmountAxis(values: [0, 0]).marks == [0])

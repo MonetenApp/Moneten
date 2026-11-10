@@ -9,7 +9,9 @@ public struct AmountAxis: Equatable, Sendable {
 	public var upper: Double
 	public var marks: [Double]
 
-	public init(values: [Double], count: Int = 3) {
+	/// `unit` is the smallest amount of the currency, such as 0.01 for EUR. A step is a whole
+	/// multiple of it, so that every mark is an amount the currency can show.
+	public init(values: [Double], count: Int = 3, unit: Double = 0.01) {
 		let low = min(0, values.min() ?? 0)
 		let high = max(0, values.max() ?? 0)
 		guard high > low else {
@@ -17,8 +19,9 @@ public struct AmountAxis: Equatable, Sendable {
 			return
 		}
 		// The smallest round step that gives at most one mark more than `count`.
-		let magnitude = pow(10, (log10((high - low) / Double(max(1, count)))).rounded(.down))
+		let magnitude = max(unit, pow(10, (log10((high - low) / Double(max(1, count)))).rounded(.down)))
 		let step = [1, 2, 2.5, 5, 10, 20].map { $0 * magnitude }
+			.filter { abs(($0 / unit) - ($0 / unit).rounded()) < 1e-6 }
 			.first { ((high / $0).rounded(.down) - (low / $0).rounded(.up)) + 1 <= Double(count + 1) } ?? 20 * magnitude
 		// A little room past the longest bar, so that it does not touch the edge of the chart.
 		let room = (high - low) * 0.04
