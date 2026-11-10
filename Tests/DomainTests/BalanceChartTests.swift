@@ -1,0 +1,51 @@
+import Foundation
+import Testing
+@testable import Domain
+
+@Suite("Balance bar chart")
+struct BalanceChartTests {
+	let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline, initialBalanceMinor: 50_000)
+
+	func ledger(_ rows: [(Day, Int64)]) -> Ledger {
+		Ledger(accounts: [giro], transactions: rows.map { Transaction(accountID: giro.id, bookingDate: $0.0, amountMinor: $0.1, name: "Row") })
+	}
+
+	@Test("One month shows one bar for the balance at the end of each day")
+	func oneMonth() {
+		let l = ledger([(Day(year: 2026, month: 9, day: 1), 10_000), (Day(year: 2026, month: 10, day: 10), -2_000)])
+		let october = DayRange(start: Day(year: 2026, month: 10, day: 1), end: Day(year: 2026, month: 10, day: 31))
+		let bars = l.balanceBars(accountIDs: [giro.id], range: october, maxBars: 200)
+		#expect(bars.count == 31)
+		#expect(bars.first?.start == Day(year: 2026, month: 10, day: 1))
+		#expect(bars.first?.end == Day(year: 2026, month: 10, day: 2))
+		#expect(bars[8].minorUnits == 60_000)
+		#expect(bars[9].minorUnits == 58_000)
+	}
+
+	@Test("Overdrawn days point down from the zero line")
+	func overdrawn() {
+		let l = ledger([(Day(year: 2026, month: 10, day: 27), -62_000), (Day(year: 2026, month: 10, day: 30), 20_000)])
+		let range = DayRange(start: Day(year: 2026, month: 10, day: 26), end: Day(year: 2026, month: 10, day: 31))
+		let bars = l.balanceBars(accountIDs: [giro.id], range: range, maxBars: 200)
+		#expect(bars.map(\.minorUnits) == [-12_000, -12_000, -12_000, 8_000, 8_000])
+	}
+
+	@Test("Ten years of daily balances share bars with their average")
+	func tenYears() {
+		let start = Day(year: 2016, month: 11, day: 1)
+		let l = ledger([(start, 0), (Day(year: 2016, month: 11, day: 2), 10_000), (Day(year: 2026, month: 10, day: 31), 0)])
+		let bars = l.balanceBars(accountIDs: [giro.id], range: DayRange(start: nil, end: Day(year: 2026, month: 10, day: 31)), maxBars: 300)
+		#expect(bars.count <= 300)
+		#expect(bars.first?.start == start)
+		#expect(bars.last?.end == Day(year: 2026, month: 11, day: 1))
+		let firstDays = Calendar.current.dateComponents([.day], from: bars[0].start.date(), to: bars[0].end.date()).day
+		#expect(firstDays == 14)
+		// The first bar averages one day at 500,00 € with thirteen days at 600,00 €.
+		#expect(bars[0].minorUnits == (50_000 + 13 * 60_000) / 14)
+	}
+
+	@Test("An account without transactions has no bars")
+	func empty() {
+		#expect(ledger([]).balanceBars(accountIDs: [giro.id], maxBars: 100).isEmpty)
+	}
+}

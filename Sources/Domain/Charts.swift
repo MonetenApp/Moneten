@@ -6,6 +6,21 @@ public struct BalancePoint: Hashable, Sendable, Identifiable {
 	public var id: Int { day.rawValue }
 }
 
+/// One bar of the balance chart: the average end-of-day balance from `start` up to `end`, which is
+/// the first day after the bar.
+public struct BalanceBar: Hashable, Sendable, Identifiable {
+	public var start: Day
+	public var end: Day
+	public var minorUnits: Int64
+	public var id: Int { start.rawValue }
+
+	public init(start: Day, end: Day, minorUnits: Int64) {
+		self.start = start
+		self.end = end
+		self.minorUnits = minorUnits
+	}
+}
+
 public struct PeriodSum: Hashable, Sendable, Identifiable {
 	public var start: Day
 	public var deposits: Int64
@@ -16,7 +31,7 @@ public struct PeriodSum: Hashable, Sendable, Identifiable {
 public enum ChartPeriod: String, CaseIterable, Sendable {
 	case month, quarter, year
 
-	func start(of day: Day) -> Day {
+	public func start(of day: Day) -> Day {
 		switch self {
 		case .month: day.firstOfMonth
 		case .quarter: day.firstOfQuarter
@@ -41,6 +56,39 @@ extension Ledger {
 			if range.contains(day) { points.append(BalancePoint(day: day, minorUnits: balance)) }
 		}
 		return points
+	}
+
+	/// One bar for each day of the range, from the oldest transaction to today with "Show All". When
+	/// more than `maxBars` bars would not fit, neighboring days share one bar with their average
+	/// balance, in steps of 2, 3, 7, 14, 30, or more days.
+	public func balanceBars(accountIDs: Set<UUID>, range: DayRange = .all, maxBars: Int, calendar: Calendar = .current) -> [BalanceBar] {
+		let daily = dailyBalances(accountIDs: accountIDs)
+		guard let first = daily.first?.day, let last = daily.last?.day else { return [] }
+		let start = max(range.start ?? first, first)
+		let end = range.end ?? max(Day.today(calendar: calendar), last)
+		guard start <= end else { return [] }
+		var balances: [Int64] = []
+		var index = 0
+		var current: Int64 = 0
+		var day = start
+		while day <= end {
+			while index < daily.count, daily[index].day <= day {
+				current = daily[index].minorUnits
+				index += 1
+			}
+			balances.append(current)
+			day = day.adding(days: 1, calendar: calendar)
+		}
+		let step = Self.barStep(days: balances.count, maxBars: max(1, maxBars))
+		return stride(from: 0, to: balances.count, by: step).map { i in
+			let slice = balances[i..<min(i + step, balances.count)]
+			return BalanceBar(start: start.adding(days: i, calendar: calendar), end: start.adding(days: i + slice.count, calendar: calendar),
+				minorUnits: slice.reduce(0, +) / Int64(slice.count))
+		}
+	}
+
+	static func barStep(days: Int, maxBars: Int) -> Int {
+		[1, 2, 3, 7, 14, 30, 61, 91, 182, 365].first { (days + $0 - 1) / $0 <= maxBars } ?? (days + maxBars - 1) / maxBars
 	}
 
 	/// Average daily balance per month. Days without transactions carry the balance of the day before.

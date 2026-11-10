@@ -30,45 +30,82 @@ struct BalanceChart: View {
 		let accounts = accountIDs.compactMap { model.ledger.account($0) }.filter { !$0.isClosed }
 		let currency = accounts.first?.currency ?? "EUR"
 		let ids = Set(accounts.filter { $0.currency == currency && $0.kind != .portfolio }.map(\.id))
-		let range = model.filter.period
-		let monthly = model.balanceMode == .monthlyAverage || model.selection.map { if case .group = $0 { true } else { false } } == true
-		let points = monthly ? model.ledger.monthlyAverageBalances(accountIDs: ids, range: range) : model.ledger.dailyBalances(accountIDs: ids, range: range)
-		if points.isEmpty {
-			Text(accounts.count == 1 ? "No transactions; no bar chart." : "No transactions; no bar chart.")
-				.foregroundStyle(.secondary)
-				.frame(maxWidth: .infinity, maxHeight: .infinity)
-		} else {
-			Chart(points) { p in
-				if monthly {
-					BarMark(x: .value("Month", p.day.date(), unit: .month), y: .value("Balance", Double(p.minorUnits) / 100))
-						.foregroundStyle(p.minorUnits < 0 ? Color.red.gradient : Color.accentColor.gradient)
-				} else {
-					AreaMark(x: .value("Day", p.day.date(), unit: .day), y: .value("Balance", Double(p.minorUnits) / 100))
-						.interpolationMethod(.stepEnd)
-						.foregroundStyle(Color.accentColor.opacity(0.25).gradient)
-					LineMark(x: .value("Day", p.day.date(), unit: .day), y: .value("Balance", Double(p.minorUnits) / 100))
-						.interpolationMethod(.stepEnd)
-						.foregroundStyle(Color.accentColor)
-				}
+		let monthly = model.balanceMode == .monthlyAverage
+		GeometryReader { geometry in
+			// A bar is at least 4 points wide, so long periods are averaged instead of drawn as hairlines.
+			let bars = monthly
+				? model.ledger.monthlyAverageBalances(accountIDs: ids, range: model.filter.period)
+					.map { BalanceBar(start: $0.day, end: $0.day.adding(months: 1), minorUnits: $0.minorUnits) }
+				: model.ledger.balanceBars(accountIDs: ids, range: model.filter.period, maxBars: max(1, Int(geometry.size.width / 4)))
+			if bars.isEmpty {
+				Text("No transactions; no bar chart.")
+					.foregroundStyle(.secondary)
+					.frame(maxWidth: .infinity, maxHeight: .infinity)
+			} else {
+				BalanceBarChart(bars: bars, currency: currency, monthly: monthly, width: geometry.size.width)
 			}
-			.chartYAxis {
-				AxisMarks { v in
-					AxisGridLine()
-					AxisValueLabel { if let d = v.as(Double.self) { Text(Format.money(Money(Decimal(d), currency: currency))) } }
-				}
-			}
-			.chartYAxisLabel(monthly ? "Monthly average balance" : "Daily balance")
 		}
+	}
+}
+
+/// The bars of `BalanceChart`. The pointer lives here, so moving it redraws the chart without
+/// computing the bars again.
+struct BalanceBarChart: View {
+	let bars: [BalanceBar]
+	let currency: String
+	let monthly: Bool
+	let width: CGFloat
+	@State private var pointer: Date?
+
+	var body: some View {
+		let hovered = pointer.flatMap { p in bars.first { $0.start.date() <= p && p < $0.end.date() } }
+		// Wide bars get a gap between them. Narrow bars touch, or the gaps would hide them.
+		let gap = width / CGFloat(bars.count) >= 6 ? 0.2 : 0
+		Chart {
+			ForEach(bars) { bar in
+				Self.mark(bar, gap: gap, dimmed: hovered != nil && hovered != bar)
+			}
+			RuleMark(y: .value("Zero", 0))
+				.lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
+				.foregroundStyle(.secondary)
+			if let bar = hovered {
+				RuleMark(x: .value("Pointer", bar.start.date()))
+					.foregroundStyle(.clear)
+					.annotation(position: .top, spacing: 0, overflowResolution: .init(x: .fit(to: .chart), y: .fit(to: .chart))) {
+						ChartValueLabel(title: Self.title(of: bar, monthly: monthly), value: Money(minorUnits: bar.minorUnits, currency: currency))
+					}
+			}
+		}
+		.chartYScale(domain: .automatic(includesZero: true))
+		.chartXSelection(value: $pointer)
+		.chartStyle(currency: currency)
+	}
+
+	private static func mark(_ bar: BalanceBar, gap: Double, dimmed: Bool) -> some ChartContent {
+		let start = bar.start.date()
+		let end = start.addingTimeInterval(bar.end.date().timeIntervalSince(start) * (1 - gap))
+		return RectangleMark(xStart: .value("From", start), xEnd: .value("To", end),
+			yStart: .value("Zero", 0.0), yEnd: .value("Balance", Double(bar.minorUnits) / 100))
+			.foregroundStyle(bar.minorUnits < 0 ? Color.red : Color.accentColor)
+			.opacity(dimmed ? 0.45 : 1)
+	}
+
+	private static func title(of bar: BalanceBar, monthly: Bool) -> String {
+		if monthly { return Format.monthTitle(bar.start) + ", average" }
+		let last = bar.end.adding(days: -1)
+		return last == bar.start ? Format.day(bar.start) : "\(Format.day(bar.start)) to \(Format.day(last)), average"
 	}
 }
 
 struct CategoryBars: View {
 	@Environment(AppModel.self) private var model
 	let rows: [Transaction]
+	@State private var pointer: Date?
 
 	var body: some View {
 		@Bindable var model = model
 		let sums = model.ledger.periodSums(of: rows, period: model.chartPeriod)
+		let currency = rows.first?.currency ?? "EUR"
 		VStack(alignment: .trailing, spacing: 4) {
 			Picker("", selection: $model.chartPeriod) {
 				Text("M").help("Monthly view").tag(ChartPeriod.month)
@@ -80,12 +117,30 @@ struct CategoryBars: View {
 			if sums.isEmpty {
 				Text("No transactions; no bar chart.").foregroundStyle(.secondary).frame(maxWidth: .infinity, maxHeight: .infinity)
 			} else {
-				Chart(sums) { s in
-					BarMark(x: .value("Period", s.start.date(), unit: unit), y: .value("Deposits", Double(s.deposits) / 100))
-						.foregroundStyle(Color.green.gradient)
-					BarMark(x: .value("Period", s.start.date(), unit: unit), y: .value("Withdrawals", Double(s.withdrawals) / 100))
-						.foregroundStyle(Color.red.gradient)
+				let hovered = pointer.flatMap { p in sums.first { model.chartPeriod.start(of: Day(p)) == $0.start } }
+				Chart {
+					ForEach(sums) { s in
+						BarMark(x: .value("Period", s.start.date(), unit: unit), y: .value("Deposits", Double(s.deposits) / 100))
+							.foregroundStyle(Color.green)
+							.opacity(hovered == nil || hovered == s ? 1 : 0.45)
+						BarMark(x: .value("Period", s.start.date(), unit: unit), y: .value("Withdrawals", Double(s.withdrawals) / 100))
+							.foregroundStyle(Color.red)
+							.opacity(hovered == nil || hovered == s ? 1 : 0.45)
+					}
+					RuleMark(y: .value("Zero", 0))
+						.lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
+						.foregroundStyle(.secondary)
+					if let s = hovered {
+						RuleMark(x: .value("Pointer", s.start.date(), unit: unit))
+							.foregroundStyle(.clear)
+							.annotation(position: .top, spacing: 0, overflowResolution: .init(x: .fit(to: .chart), y: .fit(to: .chart))) {
+								ChartValueLabel(title: title(of: s.start),
+									value: Money(minorUnits: s.deposits, currency: currency), second: Money(minorUnits: s.withdrawals, currency: currency))
+							}
+					}
 				}
+				.chartXSelection(value: $pointer)
+				.chartStyle(currency: currency)
 			}
 		}
 	}
@@ -95,6 +150,61 @@ struct CategoryBars: View {
 		case .month: .month
 		case .quarter: .quarter
 		case .year: .year
+		}
+	}
+
+	private func title(of start: Day) -> String {
+		switch model.chartPeriod {
+		case .month: Format.monthTitle(start)
+		case .quarter: "Q\((start.month - 1) / 3 + 1) \(String(start.year))"
+		case .year: String(start.year)
+		}
+	}
+}
+
+/// The date and the exact amount of the bar under the pointer.
+struct ChartValueLabel: View {
+	let title: String
+	let value: Money
+	/// The withdrawals of a category bar, below the deposits.
+	var second: Money?
+
+	var body: some View {
+		VStack(alignment: .leading, spacing: 2) {
+			Text(title).font(.caption).foregroundStyle(Palette.detail)
+			if let second {
+				Text("Deposits: \(Format.money(value))").font(.callout).monospacedDigit()
+				Text("Withdrawals: \(Format.money(second))").font(.callout).monospacedDigit()
+			} else {
+				AmountText(money: value).font(.callout.weight(.semibold))
+			}
+		}
+		.padding(.horizontal, 8)
+		.padding(.vertical, 5)
+		.background(.regularMaterial, in: .rect(cornerRadius: 6))
+		.overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(.separator))
+	}
+}
+
+extension View {
+	/// The axes of every bar chart: months on top with a line at each, as in MoneyMoney, and three
+	/// amounts without cents on the trailing side, in the format of the list.
+	func chartStyle(currency: String) -> some View {
+		chartXAxis {
+			AxisMarks(position: .top, values: .automatic(desiredCount: 6)) { _ in
+				AxisGridLine().foregroundStyle(.quaternary)
+				AxisValueLabel(format: .dateTime.month(.abbreviated).year(.twoDigits))
+			}
+		}
+		.chartYAxis {
+			AxisMarks(position: .trailing, values: .automatic(desiredCount: 3)) { value in
+				AxisGridLine().foregroundStyle(.quinary)
+				AxisValueLabel {
+					if let amount = value.as(Double.self) {
+						Text(Decimal(amount).formatted(.currency(code: currency).precision(.fractionLength(0))))
+					}
+				}
+			}
 		}
 	}
 }

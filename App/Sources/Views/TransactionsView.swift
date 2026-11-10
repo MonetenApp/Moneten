@@ -169,7 +169,7 @@ struct FilterBar: View {
 				}
 			}
 			Spacer()
-			if model.selection.flatMap({ if case .account = $0 { true } else { nil } }) == true, model.viewMode != .list {
+			if model.selection.flatMap({ if case .category = $0 { nil } else { true } }) == true, model.viewMode == .barChart {
 				Picker("", selection: $model.balanceMode) {
 					Text("D").help("Daily balance").tag(BalanceMode.daily)
 					Text("M").help("Monthly average balance").tag(BalanceMode.monthlyAverage)
