@@ -266,9 +266,12 @@ enum DemoData {
 		model.addOfflineAccount(name: "Travel Card", kind: .creditCard, currency: "USD", groupID: group)
 		guard let card = model.ledger.accounts.first(where: { $0.name == "Travel Card" }) else { return }
 		let today = Day.today()
-		let ts = (0..<40).map { i in
-			Transaction(accountID: card.id, bookingDate: today.adding(days: -i * 9), amountMinor: i % 5 == 0 ? 60_000 : -Int64(2_500 + i * 731),
-				currency: "USD", name: i % 5 == 0 ? "Payment" : "Diner", purpose: "Card")
+		// Explicit types: the compiler of CI gives up on this closure otherwise.
+		let ts = (0..<40).map { (i: Int) -> Transaction in
+			let payment: Bool = i % 5 == 0
+			let amount: Int64 = payment ? 60_000 : -Int64(2_500 + i * 731)
+			let day: Day = today.adding(days: -i * 9)
+			return Transaction(accountID: card.id, bookingDate: day, amountMinor: amount, currency: "USD", name: payment ? "Payment" : "Diner", purpose: "Card")
 		}
 		_ = model.importTransactions(ts, into: card)
 	}
