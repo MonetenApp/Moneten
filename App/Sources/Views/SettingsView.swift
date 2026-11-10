@@ -33,7 +33,7 @@ struct SecuritySettings: View {
 		SheetForm {
 			Section {
 				LabeledContent {
-					Button(model.hasPassword ? "Change..." : "Set...") {
+					Button(model.hasPassword ? "Change Database Password..." : "Set Database Password...") {
 						model.sheet = model.hasPassword ? .changePassword : .setPassword
 						NSApp.keyWindow?.close()
 					}
@@ -81,12 +81,16 @@ struct SecuritySettings: View {
 	/// The minutes that the picker offers. A value from an earlier version stays selectable.
 	private var lockAfterChoices: [Int] {
 		let choices = [1, 2, 5, 10, 15, 30, 60]
-		return lockAfterEnabled && !choices.contains(lockAfterMinutes) ? (choices + [lockAfterMinutes]).sorted() : choices
+		return lockAfterEnabled && !choices.contains(storedMinutes) ? (choices + [storedMinutes]).sorted() : choices
 	}
+
+	/// The minutes after which the app locks. A stored 0 from the old number field locks after 5,
+	/// as in `AppModel`, so the picker shows what the app does.
+	private var storedMinutes: Int { lockAfterMinutes > 0 ? lockAfterMinutes : 5 }
 
 	/// 0 is "Never". Any other value turns the inactivity lock on with that number of minutes.
 	private var lockAfter: Binding<Int> {
-		Binding(get: { lockAfterEnabled ? lockAfterMinutes : 0 }, set: { minutes in
+		Binding(get: { lockAfterEnabled ? storedMinutes : 0 }, set: { minutes in
 			lockAfterEnabled = minutes > 0
 			if minutes > 0 { lockAfterMinutes = minutes }
 		})
