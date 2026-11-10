@@ -9,7 +9,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [x] 1.3 A locked app shows no data. Verified by the main window shows only the lock screen, see the debug harness snapshot in the first build.
 - [x] 1.4 Locking closes the database. Verified by AppModel.lock closes the store and empties the ledger.
 - [ ] 1.5 Lock when the main window closes. Built in part: setting and handler exist. Finish it and verify it with a test or in the app.
-- [ ] 1.6 Lock after inactivity. Built in part: setting, activity monitor, and wake check exist. Finish it and verify it with a test or in the app.
+- [ ] 1.6 Lock after inactivity. Built in part: setting, activity monitor, and wake check exist; the setting is on with 10 minutes by default (Settings snapshot of a new installation). Finish it and verify the lock after the time in the app.
 - [ ] 1.7 Unlock automatically at launch. Built in part: reads the password from the Keychain at launch. Finish it and verify it with a test or in the app.
 - [ ] 1.8 Unlock with Touch ID. Built: its own setting "Unlock with Touch ID"; the lock screen asks at once and keeps "Open with Touch ID" for another try after a cancel. Verify it in the app with a registered finger.
 - [ ] 1.9 Unlock with Apple Watch. Built: its own setting "Unlock with Apple Watch"; with both settings on, one request offers both and the button reads "Open with Touch ID or Apple Watch". Verified: without a watch in range the lock screen shows "No Apple Watch was detected nearby." and the password field, in the debug harness. Verify the confirmation on a watch.

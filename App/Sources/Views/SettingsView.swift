@@ -21,8 +21,8 @@ struct SettingsView: View {
 struct SecuritySettings: View {
 	@Environment(AppModel.self) private var model
 	@AppStorage(Preference.lockOnClose) private var lockOnClose = false
-	@AppStorage(Preference.lockAfterEnabled) private var lockAfterEnabled = false
-	@AppStorage(Preference.lockAfterMinutes) private var lockAfterMinutes = 5
+	@AppStorage(Preference.lockAfterEnabled) private var lockAfterEnabled = true
+	@AppStorage(Preference.lockAfterMinutes) private var lockAfterMinutes = Preference.defaultLockAfterMinutes
 	@AppStorage(Preference.unlockAutomatically) private var unlockAutomatically = false
 	@AppStorage(Preference.unlockWithTouchID) private var unlockWithTouchID = false
 	@AppStorage(Preference.unlockWithAppleWatch) private var unlockWithAppleWatch = false
@@ -85,8 +85,9 @@ struct SecuritySettings: View {
 	}
 
 	/// The minutes after which the app locks, read as `AppModel` reads them: a stored 0 from the old
-	/// number field means 5 and anything below 1 means 1, so the picker shows what the app does.
-	private var storedMinutes: Int { max(1, lockAfterMinutes == 0 ? 5 : lockAfterMinutes) }
+	/// number field means the default of 10 and anything below 1 means 1, so the picker shows what
+	/// the app does.
+	private var storedMinutes: Int { max(1, lockAfterMinutes == 0 ? Preference.defaultLockAfterMinutes : lockAfterMinutes) }
 
 	/// 0 is "Never". Any other value turns the inactivity lock on with that number of minutes.
 	private var lockAfter: Binding<Int> {

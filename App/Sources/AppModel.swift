@@ -67,13 +67,24 @@ enum PeriodChoice: Hashable {
 /// Settings that the app needs before the database is open. They hold no personal data.
 enum Preference {
 	static let lockOnClose = "lockWhenMainWindowIsClosed"
-	static let lockAfterMinutes = "lockAfterMinutes"
+	/// Version 1 stored "lockAfterMinutes" also while the lock was off, as the suggestion of the
+	/// old number field. The new key starts at the default of 10 minutes.
+	static let lockAfterMinutes = "lockAfterInactivityMinutes"
 	static let lockAfterEnabled = "lockAfterInactivity"
 	static let unlockAutomatically = "unlockAutomatically"
 	static let unlockWithTouchID = "unlockWithTouchID"
 	static let unlockWithAppleWatch = "unlockWithAppleWatch"
 	static let viewMode = "viewMode"
 	static let balanceMode = "balanceMode"
+
+	/// The app locks after 10 minutes without activity unless the user turns it off. MoneyMoney has
+	/// this off and suggests 5 minutes; the owner chose on with 10 minutes.
+	static let defaultLockAfterMinutes = 10
+
+	/// The values of settings the user has not changed.
+	static func registerDefaults() {
+		UserDefaults.standard.register(defaults: [lockAfterEnabled: true, lockAfterMinutes: defaultLockAfterMinutes])
+	}
 }
 
 @MainActor
@@ -144,6 +155,7 @@ final class AppModel {
 	private var idleTimer: Timer?
 
 	init() {
+		Preference.registerDefaults()
 		start()
 		installActivityMonitor()
 	}
@@ -281,7 +293,8 @@ final class AppModel {
 	private func checkIdle() {
 		let d = UserDefaults.standard
 		guard phase == .unlocked, d.bool(forKey: Preference.lockAfterEnabled) else { return }
-		let minutes = max(1, d.integer(forKey: Preference.lockAfterMinutes) == 0 ? 5 : d.integer(forKey: Preference.lockAfterMinutes))
+		let stored = d.integer(forKey: Preference.lockAfterMinutes)
+		let minutes = max(1, stored == 0 ? Preference.defaultLockAfterMinutes : stored)
 		if Date().timeIntervalSince(lastActivity) >= Double(minutes) * 60 { lock() }
 	}
 
