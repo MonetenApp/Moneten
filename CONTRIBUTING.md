@@ -19,7 +19,7 @@ The project uses [OpenSpec](https://github.com/Fission-AI/OpenSpec). Install it 
 3. **Build it.** Work through `tasks.md` and check off each task. Every scenario in the specs becomes a test or a documented manual check.
 4. **Archive it.** When the pull request is merged, `openspec archive <change>` moves the requirements into [openspec/specs](openspec/specs/). From then on they describe what is built.
 
-Run `openspec validate --all --strict` before you open a pull request.
+Run `scripts/check.sh` before you open a pull request. It checks the links and paths in the docs, validates the specs, looks for unused code with [Periphery](https://github.com/peripheryapp/periphery), and runs the tests. Install Periphery with `brew install periphery`.
 
 ## Propose a change
 
@@ -32,7 +32,7 @@ For a bug fix that restores specified behavior, open a pull request. For new or 
 
 ## What a pull request needs
 
-1. Tests for the behavior you add or change. Tests for FinTS and extensions replay recorded responses from `Fixtures/` and never contact a real bank.
+1. Tests for the behavior you add or change. Tests never contact a real bank. Tests for FinTS and extensions will replay recorded responses.
 2. A green CI run.
 3. Screenshots in light and dark mode for any change to the interface. Use made-up names, IBANs, and amounts, never your own data.
 4. No personal data. Remove names, IBANs, account numbers, and amounts from fixtures and logs before you commit them.
