@@ -33,6 +33,7 @@ You need macOS 15 or newer, Xcode 16.3 or newer, and [XcodeGen](https://github.c
 scripts/test.sh                 # run the tests of the libraries
 scripts/generate-project.sh     # write App/MonetenMoneten.xcodeproj, then open it in Xcode
 scripts/build-app.sh            # build dist/MonetenMoneten.app
+scripts/build-app.sh developer-id   # sign it with the Developer ID of the team, for other Macs
 open dist/MonetenMoneten.app
 ```
 
@@ -40,7 +41,7 @@ To sign with your team, create `App/Local.xcconfig` as `App/Signing.xcconfig` de
 
 The app keeps its data in `~/Library/Application Support/MonetenMoneten`. To try it with another folder, start it with `open --env MONETENMONETEN_DATA_DIR=/path/to/folder dist/MonetenMoneten.app`.
 
-A build without a Developer ID is signed ad hoc. Every new build has a new signature, and the Keychain does not hand the entries of an older build to a newer one. Set a database password when you rebuild often. [ADR 0010](docs/decisions/0010-swift-package-and-macos-15.md) explains the build.
+A build without a team is signed to run locally. Every new build then has a new signature, and the Keychain does not hand the entries of an older build to a newer one. Set a database password when you rebuild often, or sign with a team. [ADR 0011](docs/decisions/0011-app-target-in-an-xcode-project.md) explains the build.
 
 ## How the project is planned
 

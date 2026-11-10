@@ -14,6 +14,7 @@ Status: Accepted
 - The app target lives in `App/`: its sources, `Info.plist`, entitlements, and resources. [XcodeGen](https://github.com/yonaskolb/XcodeGen) writes `App/MonetenMoneten.xcodeproj` from `App/project.yml`. `scripts/generate-project.sh` runs it and copies the `Package.resolved` of the package into the project, so that Xcode builds the same versions. The generated project is not in git.
 - `scripts/build-app.sh` builds the app with `xcodebuild` into `dist/MonetenMoneten.app`.
 - `App/Signing.xcconfig` holds the signing settings. The team ID goes into `App/Local.xcconfig`, which git ignores. Without a team, Xcode signs to run locally and leaves out the hardened runtime.
+- Releases are signed with the Developer ID of the team Adanos Software GmbH. Xcode manages that certificate in the team account, so no private key leaves Apple. `scripts/build-app.sh developer-id` archives the app and exports it with this certificate. It needs an Xcode account of the team with the Admin or Account Holder role. CI will need an App Store Connect API key for the same.
 - `App/project.yml` holds the version. The build number is the number of commits.
 - HBCI4Swift joins the project as its own Xcode project, without changes. Issue #11 checks this first.
 
