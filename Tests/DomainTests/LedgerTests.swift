@@ -36,6 +36,15 @@ struct LedgerTests {
 		#expect(l.nextTreePosition(in: sub.id) == 0)
 	}
 
+	@Test("The sum of a group leaves out closed accounts")
+	func groupSumWithoutClosed() {
+		let group = AccountGroup(name: "Old banks", position: 0)
+		let open = Account(groupID: group.id, position: 0, name: "Giro", kind: .giro, source: .migrated, bankBalanceMinor: 10_000)
+		let closed = Account(groupID: group.id, position: 1, name: "Loan", kind: .other, source: .migrated, bankBalanceMinor: -500_000, isClosed: true)
+		let l = Ledger(groups: [group], accounts: [open, closed])
+		#expect(l.sum(ofGroup: group.id).byCurrency == ["EUR": 10_000])
+	}
+
 	@Test("Newest first")
 	func order() {
 		#expect(ledger().transactions.map(\.name) == ["Kiosk", "Stadtwerke Musterstadt", "Bäckerei Gutbrot", "Beispiel GmbH"])
