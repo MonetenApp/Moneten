@@ -52,7 +52,9 @@ struct SidebarView: View {
 				Spacer()
 			}
 			.padding(.horizontal, 8)
-			.padding(.vertical, 4)
+			// The sidebar floats 8 points above the window edge. Without padding below, the button
+			// sits 15 points above the edge, in line with the centered text of the status line.
+			.padding(.top, 4)
 		}
 	}
 }

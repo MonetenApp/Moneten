@@ -18,9 +18,8 @@ struct TransactionsView: View {
 				Divider()
 			}
 			FilterBar()
-			Divider()
+			// The bordered table draws the lines above and below itself.
 			TransactionTable(rows: rows)
-			Divider()
 			StatusLine(rows: rows)
 		}
 		.searchable(text: $model.filter.searchText, placement: .toolbar, prompt: "Search")
@@ -718,6 +717,9 @@ struct TransactionMenu: View {
 }
 
 struct StatusLine: View {
+	/// Also the height of the bar below the sidebar, so that its button lines up with this text.
+	static let height: CGFloat = 30
+
 	@Environment(AppModel.self) private var model
 	let rows: [Transaction]
 
@@ -725,20 +727,26 @@ struct StatusLine: View {
 		let selected = rows.filter { model.selectedTransactions.contains($0.id) }
 		let shown = selected.count > 1 ? selected : rows
 		let sums = shown.reduce(into: MoneySums()) { $0.add($1.amount) }
-		HStack {
-			if model.filter.isActive {
-				Label("A filter is active; some entries might be hidden.", systemImage: "line.3.horizontal.decrease.circle")
-					.foregroundStyle(.secondary)
+		// As in MoneyMoney, the count is centered in 11 points. The filter note stays at the leading edge.
+		ZStack {
+			HStack(spacing: 12) {
+				Text(selected.count > 1 ? "\(selected.count) of \(rows.count) transactions" : (rows.count == 1 ? "1 transaction" : "\(rows.count.formatted()) transactions"))
+					.foregroundStyle(Palette.detail)
+				Text("Sum: \(sums.isEmpty ? Format.money(0, "EUR") : Format.sums(sums))")
+					.monospacedDigit()
+					.textSelection(.enabled)
 			}
-			Spacer()
-			Text(selected.count > 1 ? "\(selected.count) of \(rows.count) transactions" : (rows.count == 1 ? "1 transaction" : "\(rows.count.formatted()) transactions"))
-				.foregroundStyle(Palette.detail)
-			Text("Sum: \(sums.isEmpty ? Format.money(0, "EUR") : Format.sums(sums))")
-				.monospacedDigit()
-				.textSelection(.enabled)
+			if model.filter.isActive {
+				HStack {
+					Label("A filter is active; some entries might be hidden.", systemImage: "line.3.horizontal.decrease.circle")
+						.foregroundStyle(.secondary)
+						.lineLimit(1)
+					Spacer()
+				}
+			}
 		}
-		.font(.callout)
+		.font(.system(size: 11))
 		.padding(.horizontal, 16)
-		.padding(.vertical, 8)
+		.frame(height: StatusLine.height)
 	}
 }
