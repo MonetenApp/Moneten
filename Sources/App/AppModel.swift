@@ -518,7 +518,7 @@ final class AppModel {
 		}
 	}
 
-	func importTransactions(_ imported: [Transaction], into account: Account) -> (added: Int, skipped: Int) {
+	func importTransactions(_ imported: [Transaction], into account: Account) -> (added: Int, booked: Int, skipped: Int) {
 		let rows = imported.map { t -> Transaction in var t = t; t.accountID = account.id; t.isNew = true; return t }
 		var (added, booked, skipped) = ImportMatching.split(imported: rows, existing: ledger.transactions(ofAccount: account.id))
 		var ledgerWithNew = ledger
@@ -526,7 +526,7 @@ final class AppModel {
 		let categorizer = Categorizer(ledger: ledgerWithNew)
 		for i in added.indices { categorizer.categorize(&added[i]) }
 		commit(added + booked)
-		return (added.count, skipped + booked.count)
+		return (added.count, booked.count, skipped)
 	}
 }
 
