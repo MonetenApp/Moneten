@@ -71,6 +71,7 @@ final class DebugHarness {
 		case "storepassword": log("storepassword \((try? model.vault.storePassword(argument)) != nil)")
 		case "removepassword": try? model.vault.removeStoredPassword()
 		case "seed": DemoData.seed(model)
+		case "history": DemoData.history(model)
 		case "bulk":
 			// "<count>" spreads the transactions over the existing accounts, "<count> <accounts>" over new ones.
 			let numbers = argument.split(separator: " ").compactMap { Int($0) }
@@ -219,6 +220,28 @@ enum DemoData {
 			}
 			_ = model.importTransactions(ts, into: account)
 		}
+	}
+
+	/// Ten years of a current account: salary and rent, an overdraft in the first year, and a few
+	/// large sums that stay a week, so a few bars are far longer than the others.
+	@MainActor
+	static func history(_ model: AppModel) {
+		model.addOfflineAccount(name: "History", kind: .giro, currency: "EUR", groupID: nil)
+		guard let account = model.ledger.accounts.first(where: { $0.name == "History" }) else { return }
+		let today = Day.today()
+		var ts: [Transaction] = []
+		for m in 0..<120 {
+			let month = today.firstOfMonth.adding(months: -m)
+			ts.append(Transaction(accountID: account.id, bookingDate: month.adding(days: 1), amountMinor: -95_000, name: "Wohnbau Musterstadt eG", purpose: "Miete"))
+			ts.append(Transaction(accountID: account.id, bookingDate: month.adding(days: 25), amountMinor: m > 110 ? 80_000 : 100_000, name: "Beispiel GmbH", purpose: "Gehalt"))
+			if [9, 26, 31, 50].contains(m) {
+				let amount = Int64(25_000_000 + m * 1_000_000)
+				ts.append(Transaction(accountID: account.id, bookingDate: month.adding(days: 3), amountMinor: amount, name: "Max Mustermann", purpose: "Umbuchung"))
+				ts.append(Transaction(accountID: account.id, bookingDate: month.adding(days: 10), amountMinor: -amount, name: "Max Mustermann", purpose: "Umbuchung"))
+			}
+		}
+		_ = model.importTransactions(ts.filter { $0.bookingDate <= today }, into: account)
+		model.navigate(to: .account(account.id))
 	}
 
 	@MainActor

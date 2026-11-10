@@ -63,6 +63,8 @@ struct BalanceBarChart: View {
 		let hovered = pointer.flatMap { p in bars.first { $0.start.date() <= p && p < $0.end.date() } }
 		// Wide bars get a gap between them. Narrow bars touch, or the gaps would hide them.
 		let gap = width / CGFloat(bars.count) >= 6 ? 0.2 : 0
+		// A label is about 70 points wide and starts at its mark.
+		let dates = DateAxis(from: bars.first!.start, to: bars.last!.end, trailing: 70 / max(70, width))
 		Chart {
 			ForEach(bars) { bar in
 				Self.mark(bar, currency: currency, gap: gap, dimmed: hovered != nil && hovered != bar)
@@ -78,22 +80,20 @@ struct BalanceBarChart: View {
 					}
 			}
 		}
-		.chartYScale(domain: .automatic(includesZero: true))
 		.chartXSelection(value: $pointer)
 		// A click on a bar sets the period filter to its time, so the list shows its transactions.
 		.onTapGesture { if let bar = hovered { model.select(bar: PeriodChoice(bar: bar, monthly: monthly)) } }
 		.help("Click a bar to show its transactions")
-		.chartStyle(currency: currency, dates: Self.dateAxis(from: bars.first!.start, to: bars.last!.end))
+		.chartStyle(currency: currency, amounts: AmountAxis(values: bars.map { Format.chartValue($0.minorUnits, currency) }),
+			dates: Self.dateFormat(dates.unit), marks: dates.marks.map { $0.date() })
 	}
 
-	/// Days on the axis for two months or less, otherwise about six month starts. Automatic marks
-	/// fall every two weeks on a quarter, and a month label would then repeat.
-	private static func dateAxis(from start: Day, to end: Day) -> (AxisMarkValues, Date.FormatStyle) {
-		let span = Calendar.current.dateComponents([.day, .month], from: start.date(), to: end.date())
-		if (span.day ?? 0) + 31 * (span.month ?? 0) <= 62 {
-			return (.automatic(desiredCount: 6), .dateTime.day().month(.abbreviated))
+	private static func dateFormat(_ unit: DateAxis.Unit) -> Date.FormatStyle {
+		switch unit {
+		case .day: .dateTime.day().month(.abbreviated)
+		case .month: .dateTime.month(.abbreviated).year()
+		case .year: .dateTime.year()
 		}
-		return (.stride(by: .month, count: max(1, (span.month ?? 0) / 6)), .dateTime.month(.abbreviated).year(.twoDigits))
 	}
 
 	private static func mark(_ bar: BalanceBar, currency: String, gap: Double, dimmed: Bool) -> some ChartContent {
@@ -170,7 +170,8 @@ struct CategoryBarChart: View {
 		.chartXSelection(value: $pointer)
 		.onTapGesture { if let s = hovered { model.select(bar: PeriodChoice(start: s.start, chartPeriod: period)) } }
 		.help("Click a bar to show its transactions")
-		.chartStyle(currency: currency, dates: dateAxis, marks: sums.count <= 12 ? sums.map { $0.start.date() } : nil)
+		.chartStyle(currency: currency, amounts: AmountAxis(values: sums.flatMap { [Format.chartValue($0.deposits, currency), Format.chartValue($0.withdrawals, currency)] }),
+			dates: dateAxis.format, values: dateAxis.values, marks: sums.count <= 12 ? sums.map { $0.start.date() } : nil)
 	}
 
 	private var unit: Calendar.Component {
@@ -182,10 +183,10 @@ struct CategoryBarChart: View {
 	}
 
 	/// One label at each bar while they fit, so empty months between bars get none.
-	private var dateAxis: (AxisMarkValues, Date.FormatStyle) {
+	private var dateAxis: (values: AxisMarkValues, format: Date.FormatStyle) {
 		switch period {
-		case .month: (.automatic(desiredCount: 6), .dateTime.month(.abbreviated).year(.twoDigits))
-		case .quarter: (.automatic(desiredCount: 6), .dateTime.quarter().year(.twoDigits))
+		case .month: (.automatic(desiredCount: 6), .dateTime.month(.abbreviated).year())
+		case .quarter: (.automatic(desiredCount: 6), .dateTime.quarter().year())
 		case .year: (.automatic(desiredCount: 6), .dateTime.year())
 		}
 	}
@@ -224,25 +225,26 @@ struct ChartValueLabel: View {
 }
 
 extension View {
-	/// The axes of every bar chart: dates on top with a line at each, as in MoneyMoney, and three
-	/// amounts without cents on the trailing side, in the format of the list.
-	/// `marks` puts the dates at exactly these days instead of `dates.values`.
-	func chartStyle(currency: String, dates: (values: AxisMarkValues, format: Date.FormatStyle), marks: [Date]? = nil) -> some View {
+	/// The axes of every bar chart: dates on top with a line at each, as in MoneyMoney, and about
+	/// three round amounts without cents on the trailing side, in the format of the list.
+	/// `marks` puts the dates at exactly these days instead of `values`.
+	func chartStyle(currency: String, amounts: AmountAxis, dates format: Date.FormatStyle, values: AxisMarkValues = .automatic, marks: [Date]? = nil) -> some View {
 		chartXAxis {
 			if let marks {
 				AxisMarks(position: .top, values: marks) { _ in
 					AxisGridLine().foregroundStyle(.quaternary)
-					AxisValueLabel(format: dates.format)
+					AxisValueLabel(format: format)
 				}
 			} else {
-				AxisMarks(position: .top, values: dates.values) { _ in
+				AxisMarks(position: .top, values: values) { _ in
 					AxisGridLine().foregroundStyle(.quaternary)
-					AxisValueLabel(format: dates.format)
+					AxisValueLabel(format: format)
 				}
 			}
 		}
+		.chartYScale(domain: amounts.lower...amounts.upper)
 		.chartYAxis {
-			AxisMarks(position: .trailing, values: .automatic(desiredCount: 3)) { value in
+			AxisMarks(position: .trailing, values: amounts.marks) { value in
 				AxisGridLine().foregroundStyle(.quinary)
 				AxisValueLabel {
 					if let amount = value.as(Double.self) {

@@ -24,6 +24,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [ ] 1.18 A click on a bar selects its period. Built: a click on a balance bar sets its day, days, or month as the period of the list, and a click on a category bar its month, quarter, or year. The chart keeps its period, so the other bars stay; the debug harness command `period bar` shows this. Verify it with a click in the app.
 - [x] 1.19 Charts stay current. Verified by charts read the ledger on every change.
 - [x] 1.20 Charts follow the appearance. Verified by dark mode, see the debug harness snapshot in the first build.
+- [x] 1.21 The amount axis reaches from the lowest to the highest bar and always shows zero, with about three round amounts; the date axis shows days, months with the year, or years, and leaves out a label the edge would cut off. Verified by "Chart axes" and snapshots of ten years, twelve months, and one month of the debug harness command `history`.
 
 ## 2. Integration
 
