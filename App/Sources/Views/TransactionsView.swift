@@ -717,7 +717,7 @@ struct TransactionMenu: View {
 }
 
 struct StatusLine: View {
-	/// Also the height of the bar below the sidebar, so that its button lines up with this text.
+	/// The height of the status line below the list.
 	static let height: CGFloat = 30
 
 	@Environment(AppModel.self) private var model

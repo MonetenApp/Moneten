@@ -30,32 +30,46 @@ struct SidebarView: View {
 		.listStyle(.sidebar)
 		.safeAreaInset(edge: .bottom, spacing: 0) {
 			HStack {
-				Menu {
-					Button("Add account") { model.sheet = .newAccount }
-					Button("Add account group") { model.sheet = .newGroup }
-					Divider()
-					Button("Add category") { model.sheet = .newCategory(isGroup: false) }
-					Button("Add category group") { model.sheet = .newCategory(isGroup: true) }
-					Divider()
-					Button("Import from MoneyMoney...") { model.sheet = .migration }
-				} label: {
-					Image(systemName: "plus")
-						.font(.body.weight(.medium))
-						.frame(width: 28, height: 28)
-						.contentShape(.rect)
-				}
-				.menuStyle(.button)
-				.buttonStyle(.borderless)
-				.menuIndicator(.hidden)
-				.fixedSize()
-				.help("Add item")
+				AddMenuButton()
 				Spacer()
 			}
-			.padding(.horizontal, 8)
-			// The sidebar floats 8 points above the window edge. Without padding below, the button
-			// sits 15 points above the edge, in line with the centered text of the status line.
+			// The sidebar floats with corners of about 20 points. A round button of 24 points, 8 points
+			// from the bottom and the leading edge, sits concentric in the corner: 12 + 8 = 20.
+			.padding(.leading, 8)
+			.padding(.bottom, 8)
 			.padding(.top, 4)
 		}
+	}
+}
+
+/// The add menu below the sidebar, with a round highlight under the pointer.
+struct AddMenuButton: View {
+	@Environment(AppModel.self) private var model
+	@State private var hovered = false
+
+	var body: some View {
+		Menu {
+			Button("Add account") { model.sheet = .newAccount }
+			Button("Add account group") { model.sheet = .newGroup }
+			Divider()
+			Button("Add category") { model.sheet = .newCategory(isGroup: false) }
+			Button("Add category group") { model.sheet = .newCategory(isGroup: true) }
+			Divider()
+			Button("Import from MoneyMoney...") { model.sheet = .migration }
+		} label: {
+			Image(systemName: "plus")
+				.font(.system(size: 13, weight: .medium))
+				.frame(width: 24, height: 24)
+				.background(.primary.opacity(hovered ? 0.1 : 0), in: .circle)
+				.contentShape(.circle)
+		}
+		.menuStyle(.button)
+		.buttonStyle(.plain)
+		.menuIndicator(.hidden)
+		.fixedSize()
+		.onHover { hovered = $0 }
+		.animation(.easeOut(duration: 0.15), value: hovered)
+		.help("Add item")
 	}
 }
 
