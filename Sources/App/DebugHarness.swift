@@ -5,7 +5,9 @@ import SwiftUI
 
 /// Lets a developer drive the app and capture its windows as images, for checks without a screen.
 ///
-/// Active only when the environment variable `MONETENMONETEN_DEBUG_DIR` names a folder. Commands
+/// Active only in debug builds (`scripts/build-app.sh debug`) and only when the environment variable
+/// `MONETENMONETEN_DEBUG_DIR` names a folder. Release builds leave it out, because any local process
+/// can post the notifications, including commands that unlock or re-key the database. Commands
 /// arrive as distributed notifications named `io.github.monetenmoneten.debug` with the keys
 /// `command` and `argument`. Snapshots are drawn by the app itself and need no screen recording.
 @MainActor
@@ -16,6 +18,12 @@ final class DebugHarness {
 	weak var model: AppModel?
 
 	static func installIfRequested(model: AppModel) {
+		#if DEBUG
+		install(model: model)
+		#endif
+	}
+
+	private static func install(model: AppModel) {
 		guard shared == nil, let path = ProcessInfo.processInfo.environment["MONETENMONETEN_DEBUG_DIR"], !path.isEmpty else { return }
 		let harness = DebugHarness(folder: URL(fileURLWithPath: path), model: model)
 		shared = harness

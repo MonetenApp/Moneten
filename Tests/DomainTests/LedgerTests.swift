@@ -108,4 +108,18 @@ struct LedgerTests {
 		let second = ImportMatching.split(imported: file, existing: first.new)
 		#expect(second.new.isEmpty && second.skipped == 2)
 	}
+
+	@Test("A booked row books the matching pending row instead of being skipped")
+	func importBooksPending() {
+		let day = Day(year: 2026, month: 11, day: 3)
+		var pendingRow = Transaction(accountID: giro.id, bookingDate: day, amountMinor: -8_900, name: "Stadtwerke", purpose: "Abschlag")
+		pendingRow.isPending = true
+		var bookedRow = pendingRow
+		bookedRow.id = UUID()
+		bookedRow.isPending = false
+		let result = ImportMatching.split(imported: [bookedRow], existing: [pendingRow])
+		#expect(result.new.isEmpty && result.skipped == 0)
+		#expect(result.booked.map(\.id) == [pendingRow.id] && result.booked[0].isPending == false)
+		#expect(ImportMatching.split(imported: [pendingRow], existing: [pendingRow]).skipped == 1)
+	}
 }

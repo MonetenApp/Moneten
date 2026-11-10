@@ -34,6 +34,15 @@ struct FileImportTests {
 		#expect(ts[0].purpose == "Dinner")
 	}
 
+	@Test("Amounts with thousands separators in German and English notation")
+	func groupedAmounts() throws {
+		let text = "Date,Payee,Memo,Amount\n2026-11-01,Landlord,Rent,\"-1,250.00\"\n2026-11-02,Employer,Salary,\"3,000.00\"\n"
+		let ts = try TransactionFileImporter.parse(Data(text.utf8))
+		#expect(ts.map(\.amountMinor) == [-125_000, 300_000])
+		let cases = [("1.250,00", "1250"), ("1,250.00", "1250"), ("€1,234.56", "1234.56"), ("1\u{202F}234,56", "1234.56"), ("-89,00", "-89"), ("1250.00", "1250"), ("1.250.000", "1250000")]
+		for (text, value) in cases { #expect(AmountParser.decimal(from: text) == Decimal(string: value), "\(text)") }
+	}
+
 	@Test("CSV with separate debit and credit columns")
 	func debitCredit() throws {
 		let text = "Datum;Name;Soll;Haben\n01.11.2026;Kiosk;12,30;\n02.11.2026;Erika Mustermann;;50,00\n"
@@ -74,6 +83,24 @@ struct FileImportTests {
 		#expect(ts[0].endToEndReference == "E2E-1" && ts[0].mandateReference == "M-1" && ts[0].creditorID == "DE98ZZZ09999999999")
 		#expect(ts[0].counterpartyIBAN == "DE02120300000000202051" && ts[0].bookingText == "SEPA-BASISLASTSCHRIFT")
 		#expect(ts[1].amountMinor == 125_000 && ts[1].name == "Erika Mustermann")
+	}
+
+	@Test("MT940 reversals book the opposite sign, and a cut-off line is skipped")
+	func mt940Reversal() throws {
+		let text = """
+		:20:STARTUMS
+		:25:12030000/202051
+		:60F:C261031EUR1000,00
+		:61:2611031103D50,00NDDTNONREF
+		:61:2611041104RD50,00NDDTNONREF
+		:61:2611051105C20,00NTRFNONREF
+		:61:2611061106RC20,00NTRFNONREF
+		:61:2611071107R
+		:62F:C261107EUR1000,00
+		-
+		"""
+		let ts = try TransactionFileImporter.parse(Data(text.utf8))
+		#expect(ts.map(\.amountMinor) == [-5_000, 5_000, 2_000, -2_000])
 	}
 
 	@Test("camt.053 with a debit and a pending credit")

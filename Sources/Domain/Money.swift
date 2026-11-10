@@ -60,20 +60,27 @@ public struct MoneySums: Hashable, Sendable {
 }
 
 public enum AmountParser {
-	/// Parses "1.250,00", "-89,00", "1250.00", or "89" into a decimal.
+	/// Parses "1.250,00", "1,250.00", "-89,00", "1250.00", or "89" into a decimal.
 	///
-	/// A comma marks the decimal separator when the text has one. Otherwise a point does,
-	/// unless the text has several points, which are then thousands separators.
+	/// When the text has both a comma and a point, the last one is the decimal separator.
+	/// With only commas, a single comma is the decimal separator. With only points, a single
+	/// point is the decimal separator, and several points are thousands separators.
 	public static func decimal(from text: String) -> Decimal? {
-		var s = text.trimmingCharacters(in: .whitespaces)
+		var s = String(String.UnicodeScalarView(text.unicodeScalars.filter { !CharacterSet.whitespaces.contains($0) }))
 			.replacingOccurrences(of: "\u{2212}", with: "-")
-			.replacingOccurrences(of: " ", with: "")
-			.replacingOccurrences(of: "\u{00A0}", with: "")
 			.replacingOccurrences(of: "€", with: "")
 		guard !s.isEmpty else { return nil }
-		if s.contains(",") {
-			s = s.replacingOccurrences(of: ".", with: "").replacingOccurrences(of: ",", with: ".")
-		} else if s.filter({ $0 == "." }).count > 1 {
+		let commas = s.filter { $0 == "," }.count
+		let points = s.filter { $0 == "." }.count
+		if commas > 0 && points > 0 {
+			let decimalMark: Character = s.lastIndex(of: ",")! > s.lastIndex(of: ".")! ? "," : "."
+			let grouping = decimalMark == "," ? "." : ","
+			s = s.replacingOccurrences(of: grouping, with: "").replacingOccurrences(of: ",", with: ".")
+		} else if commas > 1 {
+			s = s.replacingOccurrences(of: ",", with: "")
+		} else if commas == 1 {
+			s = s.replacingOccurrences(of: ",", with: ".")
+		} else if points > 1 {
 			s = s.replacingOccurrences(of: ".", with: "")
 		}
 		if s.hasPrefix("+") { s.removeFirst() }

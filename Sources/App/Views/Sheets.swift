@@ -206,7 +206,7 @@ struct AccountSettingsSheet: View {
 									// Sets the initial balance so that the computed balance meets the balance of the bank.
 									if let bank = original.bankBalanceMinor {
 										let booked = model.ledger.computedBalance(of: original).minorUnits - original.initialBalanceMinor
-										initialBalance = Format.money(bank - booked, original.currency)
+										initialBalance = Format.editableAmount(bank - booked, original.currency)
 									}
 								}
 								.disabled(original.bankBalanceMinor == nil)
@@ -219,7 +219,7 @@ struct AccountSettingsSheet: View {
 			}
 			.onAppear {
 				account = original
-				initialBalance = Format.money(original.initialBalanceMinor, original.currency)
+				initialBalance = Format.editableAmount(original.initialBalanceMinor, original.currency)
 			}
 			.confirmationDialog("Are you sure you want to remove the account \(original.name)?", isPresented: $confirmRemove) {
 				Button("Remove", role: .destructive) {
@@ -341,7 +341,7 @@ struct TransactionSheet: View {
 		name = t.name
 		purpose = t.purpose
 		isDeposit = t.amountMinor > 0
-		amount = Format.money(Money(minorUnits: abs(t.amountMinor), currency: t.currency)).replacingOccurrences(of: "€", with: "").trimmingCharacters(in: .whitespaces)
+		amount = Format.editableAmount(abs(t.amountMinor), t.currency)
 		categoryID = t.categoryID
 		comment = t.comment ?? ""
 	}

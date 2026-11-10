@@ -12,13 +12,19 @@ public struct MoneyMoneyMigration: Sendable {
 		public var accounts: [Account] = []
 		public var categories: [Domain.Category] = []
 		public var transactions: [Transaction] = []
+		/// Accounts of an earlier run with the newer balance from MoneyMoney.
+		public var updatedAccounts: [Account] = []
+		/// Transactions of an earlier run that were pending and are booked now.
+		public var updatedTransactions: [Transaction] = []
 		/// Accounts and transactions that an earlier run already brought in.
 		public var skippedAccounts = 0
 		public var skippedTransactions = 0
 		public var portfolioAccounts: [String] = []
 		public var notes: [String] = []
 
-		public var isEmpty: Bool { groups.isEmpty && accounts.isEmpty && categories.isEmpty && transactions.isEmpty }
+		public var isEmpty: Bool {
+			groups.isEmpty && accounts.isEmpty && categories.isEmpty && transactions.isEmpty && updatedAccounts.isEmpty && updatedTransactions.isEmpty
+		}
 	}
 
 	public enum Failure: Error, CustomStringConvertible {
@@ -57,21 +63,29 @@ public struct MoneyMoneyMigration: Sendable {
 		var categoryMap: [String: UUID?] = [:]
 		mapCategories(rawCategories, ledger: ledger, plan: &plan, map: &categoryMap)
 
-		let existingSourceIDs = Set(ledger.transactions.compactMap(\.sourceID))
+		let existing = Dictionary(ledger.transactions.compactMap { t in t.sourceID.map { ($0, t) } }, uniquingKeysWith: { first, _ in first })
 		var sums: [UUID: Int64] = [:]
 		for raw in rawTransactions {
 			guard let accountSource = raw["accountUuid"] as? String, let accountID = accountMap[accountSource] else { continue }
 			let id = (raw["id"] as? Int).map { "moneymoney:\($0)" }
-			if let id, existingSourceIDs.contains(id) {
-				plan.skippedTransactions += 1
-				continue
-			}
 			let currency = (raw["currency"] as? String) ?? "EUR"
 			let amount = Money(Decimal((raw["amount"] as? Double) ?? 0), currency: currency)
 			let booking = (raw["bookingDate"] as? Date).map { Day($0, calendar: calendar) } ?? Day.today(calendar: calendar)
+			let pending = !((raw["booked"] as? Bool) ?? true)
+			if let id, var known = existing[id] {
+				if known.isPending && !pending {
+					known.isPending = false
+					known.bookingDate = booking
+					known.valueDate = (raw["valueDate"] as? Date).map { Day($0, calendar: calendar) }
+					known.amountMinor = amount.minorUnits
+					plan.updatedTransactions.append(known)
+				} else {
+					plan.skippedTransactions += 1
+				}
+				continue
+			}
 			var categoryID: UUID?
 			if let c = raw["categoryUuid"] as? String, let mapped = categoryMap[c] { categoryID = mapped }
-			let pending = !((raw["booked"] as? Bool) ?? true)
 			let t = Transaction(accountID: accountID, bookingDate: booking,
 				valueDate: (raw["valueDate"] as? Date).map { Day($0, calendar: calendar) },
 				amountMinor: amount.minorUnits, currency: currency,
@@ -125,14 +139,6 @@ public struct MoneyMoneyMigration: Sendable {
 			let bankCode = Self.string(item["bankCode"])
 			let iban = Self.string(item["iban"]) ?? number.flatMap { Self.isIBAN($0) ? $0 : nil }
 			let bic = Self.string(item["bic"]) ?? bankCode.flatMap { Self.isBIC($0) ? $0 : nil }
-			if let existing = ledger.accounts.first(where: { a in
-				a.sourceID == source || (iban != nil && a.iban.map(TextFolding.accountKey) == iban.map(TextFolding.accountKey))
-					|| (bankCode != nil && number != nil && a.bankCode == bankCode && a.accountNumber == number)
-			}) {
-				map[source] = existing.id
-				plan.skippedAccounts += 1
-				continue
-			}
 			var balanceMinor: Int64?
 			var currency = (item["currency"] as? String) ?? "EUR"
 			if let balance = item["balance"] as? [[Any]], let first = balance.first, first.count >= 2,
@@ -140,13 +146,28 @@ public struct MoneyMoneyMigration: Sendable {
 				currency = c
 				balanceMinor = Money(Decimal(amount), currency: c).minorUnits
 			}
+			let balanceDate = (item["balanceDate"] as? Date) ?? (item["refreshTimestamp"] as? Date)
+			// The MoneyMoney identifier decides first, so that two accounts with the same IBAN stay apart.
+			if var existing = ledger.accounts.first(where: { $0.sourceID == source }) ?? ledger.accounts.first(where: { a in
+				(iban != nil && a.iban.map(TextFolding.accountKey) == iban.map(TextFolding.accountKey))
+					|| (bankCode != nil && number != nil && a.bankCode == bankCode && a.accountNumber == number)
+			}) {
+				map[source] = existing.id
+				plan.skippedAccounts += 1
+				if existing.source == .migrated, let balanceMinor, existing.bankBalanceMinor != balanceMinor || existing.bankBalanceDate != balanceDate {
+					existing.bankBalanceMinor = balanceMinor
+					existing.bankBalanceDate = balanceDate
+					plan.updatedAccounts.append(existing)
+				}
+				continue
+			}
 			let isPortfolio = (item["portfolio"] as? Bool) == true
 			if isPortfolio { plan.portfolioAccounts.append(name) }
 			let account = Account(groupID: parent, position: position, name: name,
 				kind: isPortfolio ? .portfolio : Self.kind(item["type"] as? String),
 				source: .migrated, currency: currency, iban: iban, bic: bic,
 				accountNumber: number, bankCode: bankCode, owner: Self.string(item["owner"]),
-				bankBalanceMinor: balanceMinor, bankBalanceDate: (item["balanceDate"] as? Date) ?? (item["refreshTimestamp"] as? Date),
+				bankBalanceMinor: balanceMinor, bankBalanceDate: balanceDate,
 				comment: Self.string(item["comment"]), sourceID: source)
 			plan.accounts.append(account)
 			map[source] = account.id
@@ -287,21 +308,24 @@ public enum MoneyMoneyExporter {
 	static func run(_ script: String) async throws -> Data {
 		guard isInstalled else { throw Failure.notInstalled }
 		return try await withCheckedThrowingContinuation { continuation in
-			let process = Process()
-			process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-			process.arguments = ["-e", script]
-			let out = Pipe()
-			let err = Pipe()
-			process.standardOutput = out
-			process.standardError = err
-			let output = DataCollector()
-			out.fileHandleForReading.readabilityHandler = { h in output.append(h.availableData) }
-			process.terminationHandler = { p in
-				out.fileHandleForReading.readabilityHandler = nil
-				output.append(out.fileHandleForReading.readDataToEndOfFile())
+			// One thread reads the whole output, so the export arrives in order however large it is.
+			DispatchQueue.global(qos: .userInitiated).async {
+				let process = Process()
+				process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+				process.arguments = ["-e", script]
+				let out = Pipe()
+				let err = Pipe()
+				process.standardOutput = out
+				process.standardError = err
+				do { try process.run() } catch {
+					continuation.resume(throwing: Failure.failed(error.localizedDescription))
+					return
+				}
+				let output = out.fileHandleForReading.readDataToEndOfFile()
 				let message = String(data: err.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-				if p.terminationStatus == 0 {
-					continuation.resume(returning: output.data)
+				process.waitUntilExit()
+				if process.terminationStatus == 0 {
+					continuation.resume(returning: output)
 				} else if message.contains("-2720") || message.localizedCaseInsensitiveContains("locked") {
 					continuation.resume(throwing: Failure.locked)
 				} else if message.contains("-1743") {
@@ -310,24 +334,6 @@ public enum MoneyMoneyExporter {
 					continuation.resume(throwing: Failure.failed(message.trimmingCharacters(in: .whitespacesAndNewlines)))
 				}
 			}
-			do { try process.run() } catch { continuation.resume(throwing: Failure.failed(error.localizedDescription)) }
 		}
-	}
-}
-
-final class DataCollector: @unchecked Sendable {
-	private let lock = NSLock()
-	private var buffer = Data()
-
-	func append(_ d: Data) {
-		lock.lock()
-		buffer.append(d)
-		lock.unlock()
-	}
-
-	var data: Data {
-		lock.lock()
-		defer { lock.unlock() }
-		return buffer
 	}
 }

@@ -122,6 +122,40 @@ struct MoneyMoneyMigrationTests {
 		#expect(second.skippedTransactions == 4)
 	}
 
+	@Test("A later run updates the bank balance and books what was pending")
+	func laterRun() throws {
+		let first = try plan()
+		let ledger = Ledger(groups: first.groups, accounts: first.accounts, categories: first.categories, transactions: first.transactions)
+		var newerAccounts = accounts
+		newerAccounts[1]["balance"] = [[1524.56, "EUR"]]
+		var rows = transactions["transactions"] as! [[String: Any]]
+		rows[2]["booked"] = true
+		rows.append(["id": 5, "accountUuid": "A1", "bookingDate": date(2026, 11, 9), "amount": 300.0, "currency": "EUR", "name": "Erika Mustermann", "purpose": "Rückzahlung", "booked": true])
+		let second = try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(newerAccounts), categories: try plist(categories),
+			transactions: try plist(["transactions": rows]), into: ledger)
+		#expect(second.accounts.isEmpty && second.transactions.map(\.name) == ["Erika Mustermann"])
+		let giro = try #require(second.updatedAccounts.first)
+		#expect(second.updatedAccounts.count == 1 && giro.name == "Giro" && giro.bankBalanceMinor == 152_456)
+		#expect(second.updatedTransactions.map(\.sourceID) == ["moneymoney:3"] && second.updatedTransactions[0].isPending == false)
+
+		var after = ledger
+		after.replace(accounts: [giro] + ledger.accounts.filter { $0.id != giro.id })
+		after.update(second.transactions + second.updatedTransactions)
+		#expect(after.computedBalance(of: giro) == after.balance(of: giro))
+	}
+
+	@Test("Accounts with the same IBAN stay apart on a later run")
+	func sameIBAN() throws {
+		var twins = accounts
+		twins[2]["accountNumber"] = "DE02120300000000202051"
+		let first = try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(twins), categories: try plist(categories), transactions: try plist(transactions), into: Ledger())
+		#expect(first.accounts.count == 3)
+		let ledger = Ledger(groups: first.groups, accounts: first.accounts, categories: first.categories)
+		let second = try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(twins), categories: try plist(categories), transactions: try plist(transactions), into: ledger)
+		let savings = try #require(first.accounts.first { $0.name == "Savings" })
+		#expect(second.transactions.filter { $0.accountID == savings.id }.map(\.name) == ["Zinsen"])
+	}
+
 	@Test("An account is matched by IBAN")
 	func matchByIBAN() throws {
 		let existing = Account(position: 0, name: "Mein Giro", kind: .giro, source: .offline, iban: "DE02 1203 0000 0000 2020 51")

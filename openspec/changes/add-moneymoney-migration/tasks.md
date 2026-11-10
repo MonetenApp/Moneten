@@ -15,7 +15,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [x] 1.9 Category, comment, and checkmark of each transaction. Verified by MoneyMoneyMigrationTests "Categories keep their tree...".
 - [x] 1.10 Migration is all or nothing. Verified by one database transaction stores the whole plan.
 - [ ] 1.11 Progress. Built in part: one line per export step, no counts. Finish it and verify it with a test or in the app.
-- [x] 1.12 Repeated runs add only what is new. Verified by MoneyMoneyMigrationTests "A second run adds only what is new".
+- [x] 1.12 Repeated runs add only what is new. Verified by MoneyMoneyMigrationTests "A second run adds only what is new", "A later run updates the bank balance and books what was pending", and "Accounts with the same IBAN stay apart on a later run".
 - [x] 1.13 Migration into a database with accounts. Verified by MoneyMoneyMigrationTests "An account is matched by IBAN".
 - [ ] 1.14 Connect a migrated account to its bank. Build it and verify it with a test or in the app.
 - [ ] 1.15 Portfolio accounts. Built in part: taken over with their balance, no positions. Finish it and verify it with a test or in the app.
