@@ -1,3 +1,4 @@
+#if DEBUG || PERF_HARNESS
 import AppKit
 import Domain
 import Foundation
@@ -183,3 +184,4 @@ final class MainThreadWatchdog: Sendable {
 		return result == KERN_SUCCESS ? info.phys_footprint : 0
 	}
 }
+#endif

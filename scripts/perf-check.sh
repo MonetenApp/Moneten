@@ -62,8 +62,13 @@ wait_for() {
 	done
 }
 
+started=$(($(date +%s) + 60))
 until grep -q "^phase=" "$LOG" 2>/dev/null; do
 	alive || died "at launch"
+	if [ "$(date +%s)" -ge "$started" ]; then
+		echo "The app did not answer within 60 seconds of its launch." >&2
+		exit 1
+	fi
 	send state
 	sleep 1
 done

@@ -87,7 +87,9 @@ final class DebugHarness {
 			}
 		case "scrolltable": scrollTables { argument == "end" ? $0 - 1 : min(Int(argument) ?? 0, $0 - 1) }
 		case "select": select(argument)
+		#if DEBUG || PERF_HARNESS
 		case "perf": Task { await runPerf() }
+		#endif
 		case "view": model.viewMode = ViewMode(rawValue: argument) ?? .list
 		case "balance": model.balanceMode = BalanceMode(rawValue: argument) ?? .daily
 		case "search": model.filter.searchText = argument
