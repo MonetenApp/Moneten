@@ -8,7 +8,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [x] 1.2 Newest transactions first. Verified by LedgerTests "Newest first".
 - [ ] 1.3 Details from the bank. Built in part: the transaction sheet shows the details. Finish it and verify it with a test or in the app.
 - [x] 1.4 Account name in group and category views. Verified by the debug harness snapshot in the first build.
-- [ ] 1.5 Pending transactions look different. Built in part: italic with a "Pending" label instead of hatching. Finish it and verify it with a test or in the app.
+- [ ] 1.5 Pending transactions look different. Built in part: italic with a "Pending" label instead of hatching; the header shows "Pending" with the sum of the pending transactions of the view and nothing without them, see the debug harness snapshot. Finish the hatching and verify it in the app.
 - [x] 1.6 New transactions are marked. Verified by a dot in the row, see the debug harness snapshot in the first build.
 - [ ] 1.7 Text can be selected and copied. Built in part: text selection is on. Finish it and verify it with a test or in the app.
 - [x] 1.8 Several rows can be selected. Verified by the table allows a multiple selection.

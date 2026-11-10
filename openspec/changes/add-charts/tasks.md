@@ -21,7 +21,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [x] 1.15 Pie charts of deposits and withdrawals. Verified by the debug harness snapshot in the first build.
 - [x] 1.16 Categories can be left out of charts. Verified by "Show in diagrams".
 - [ ] 1.17 Values on hover. Built: balance and category bars show the date or period and the exact amount under the pointer; a snapshot with a preset pointer shows the label. Pie slices show nothing yet. Finish it and verify it with the pointer in the app.
-- [ ] 1.18 A click on a bar selects its period. Build it and verify it with a test or in the app.
+- [ ] 1.18 A click on a bar selects its period. Built: a click on a balance bar sets its day, days, or month as the period, and a click on a category bar its month, quarter, or year. Verify it with a click in the app.
 - [x] 1.19 Charts stay current. Verified by charts read the ledger on every change.
 - [x] 1.20 Charts follow the appearance. Verified by dark mode, see the debug harness snapshot in the first build.
 

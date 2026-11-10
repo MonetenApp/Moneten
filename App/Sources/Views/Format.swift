@@ -30,6 +30,14 @@ enum Format {
 		d.date().formatted(.dateTime.day(.twoDigits).month(.twoDigits).year(.defaultDigits))
 	}
 
+	/// "Today, 09:41", "Yesterday, 21:19", or the date and the time.
+	static func dayAndTime(_ date: Date, calendar: Calendar = .current) -> String {
+		let time = date.formatted(date: .omitted, time: .shortened)
+		if calendar.isDateInToday(date) { return "Today, \(time)" }
+		if calendar.isDateInYesterday(date) { return "Yesterday, \(time)" }
+		return date.formatted(date: .abbreviated, time: .shortened)
+	}
+
 	static func monthTitle(_ d: Day) -> String {
 		d.date().formatted(.dateTime.month(.wide).year())
 	}

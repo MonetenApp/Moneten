@@ -35,6 +35,21 @@ enum PeriodChoice: Hashable {
 	case year(Day)
 	case custom(Day, Day)
 
+	/// The period of a bar in the balance chart: its day or days, or its month.
+	init(bar: BalanceBar, monthly: Bool) {
+		let last = bar.end.adding(days: -1)
+		self = monthly ? .month(bar.start) : .custom(bar.start, last)
+	}
+
+	/// The period of a bar in a category chart.
+	init(start: Day, chartPeriod: ChartPeriod) {
+		switch chartPeriod {
+		case .month: self = .month(start)
+		case .quarter: self = .quarter(start)
+		case .year: self = .year(start)
+		}
+	}
+
 	func range(today: Day = .today()) -> DayRange {
 		switch self {
 		case .all: .all

@@ -51,6 +51,7 @@ struct BalanceChart: View {
 /// The bars of `BalanceChart`. The pointer lives here, so moving it redraws the chart without
 /// computing the bars again.
 struct BalanceBarChart: View {
+	@Environment(AppModel.self) private var model
 	let bars: [BalanceBar]
 	let currency: String
 	let monthly: Bool
@@ -78,6 +79,9 @@ struct BalanceBarChart: View {
 		}
 		.chartYScale(domain: .automatic(includesZero: true))
 		.chartXSelection(value: $pointer)
+		// A click on a bar sets the period filter to its time, so the list shows its transactions.
+		.onTapGesture { if let bar = hovered { model.period = PeriodChoice(bar: bar, monthly: monthly) } }
+		.help("Click a bar to show its transactions")
 		.chartStyle(currency: currency, dates: Self.dateAxis(from: bars.first!.start, to: bars.last!.end))
 	}
 
@@ -133,6 +137,7 @@ struct CategoryBars: View {
 
 /// The bars of `CategoryBars`. The pointer lives here, so moving it does not sum the rows again.
 struct CategoryBarChart: View {
+	@Environment(AppModel.self) private var model
 	let sums: [PeriodSum]
 	let period: ChartPeriod
 	let currency: String
@@ -162,6 +167,8 @@ struct CategoryBarChart: View {
 			}
 		}
 		.chartXSelection(value: $pointer)
+		.onTapGesture { if let s = hovered { model.period = PeriodChoice(start: s.start, chartPeriod: period) } }
+		.help("Click a bar to show its transactions")
 		.chartStyle(currency: currency, dates: dateAxis, marks: sums.count <= 12 ? sums.map { $0.start.date() } : nil)
 	}
 

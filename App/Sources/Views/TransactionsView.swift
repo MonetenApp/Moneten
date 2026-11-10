@@ -9,7 +9,7 @@ struct TransactionsView: View {
 		@Bindable var model = model
 		let rows = model.visibleTransactions
 		VStack(spacing: 0) {
-			HeaderView()
+			HeaderView(rows: rows)
 			if model.viewMode != .list {
 				ChartArea(rows: rows)
 					.frame(height: 230)
@@ -31,8 +31,11 @@ struct TransactionsView: View {
 
 struct HeaderView: View {
 	@Environment(AppModel.self) private var model
+	let rows: [Transaction]
 
 	var body: some View {
+		// "Pending" with the sum of the transactions of the view that the bank has not booked yet.
+		let pending = rows.filter(\.isPending).reduce(into: MoneySums()) { $0.add($1.amount) }
 		HStack(alignment: .center, spacing: 10) {
 			HeaderIcon()
 			VStack(alignment: .leading, spacing: 2) {
@@ -56,14 +59,17 @@ struct HeaderView: View {
 				case let .account(id):
 					if let a = model.ledger.account(id) {
 						AmountText(money: model.ledger.balance(of: a)).font(.title2)
-						if let date = a.bankBalanceDate {
-							Text("Balance at \(date.formatted(date: .abbreviated, time: .shortened))").font(.subheadline).foregroundStyle(Palette.detail)
-						}
 					}
 				case let .group(id):
 					Text(Format.sums(model.ledger.sum(ofGroup: id))).font(.title2).monospacedDigit()
 				default:
 					EmptyView()
+				}
+				if !pending.isEmpty {
+					Text("Pending: \(Format.sums(pending))").font(.subheadline).monospacedDigit().foregroundStyle(Palette.detail)
+				}
+				if case let .account(id) = model.selection, let date = model.ledger.account(id)?.bankBalanceDate {
+					Text("Balance as of \(Format.dayAndTime(date))").font(.subheadline).foregroundStyle(Palette.detail)
 				}
 			}
 		}
