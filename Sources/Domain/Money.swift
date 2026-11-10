@@ -85,8 +85,8 @@ public enum AmountParser {
 		}
 		if s.hasPrefix("+") { s.removeFirst() }
 		let allowed = CharacterSet(charactersIn: "-0123456789.")
-		guard s.unicodeScalars.allSatisfy({ allowed.contains($0) }),
-			s.filter({ $0 == "-" }).count <= 1, !s.dropFirst().contains("-") else { return nil }
+		guard s.unicodeScalars.allSatisfy({ allowed.contains($0) }), s.contains(where: \.isNumber),
+			s.filter({ $0 == "." }).count <= 1, s.filter({ $0 == "-" }).count <= 1, !s.dropFirst().contains("-") else { return nil }
 		return Decimal(string: s, locale: Locale(identifier: "en_US_POSIX"))
 	}
 }
