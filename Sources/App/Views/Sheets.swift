@@ -387,7 +387,6 @@ struct SetPasswordSheet: View {
 
 struct ChangePasswordSheet: View {
 	@Environment(AppModel.self) private var model
-	@Environment(\.dismiss) private var dismiss
 	@State private var current = ""
 	@State private var new = ""
 	@State private var repeated = ""

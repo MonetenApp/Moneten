@@ -5,8 +5,6 @@ public struct Day: Hashable, Comparable, Sendable, Codable, CustomStringConverti
 	/// The day as the number yyyymmdd, for example 20261109.
 	public let rawValue: Int
 
-	public init(rawValue: Int) { self.rawValue = rawValue }
-
 	public init(year: Int, month: Int, day: Int) {
 		rawValue = year * 10_000 + month * 100 + day
 	}

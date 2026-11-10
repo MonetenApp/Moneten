@@ -18,7 +18,7 @@ let package = Package(
 		.executableTarget(name: "App", dependencies: ["Domain", "Storage", "Import"]),
 		.testTarget(name: "DomainTests", dependencies: ["Domain"]),
 		.testTarget(name: "StorageTests", dependencies: ["Storage"]),
-		.testTarget(name: "ImportTests", dependencies: ["Import"], resources: [.copy("Fixtures")]),
+		.testTarget(name: "ImportTests", dependencies: ["Import"]),
 	],
 	swiftLanguageModes: [.v6]
 )

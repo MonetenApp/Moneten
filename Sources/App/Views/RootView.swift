@@ -1,4 +1,3 @@
-import Domain
 import SwiftUI
 
 struct RootView: View {

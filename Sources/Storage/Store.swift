@@ -63,20 +63,6 @@ public final class Store: Sendable {
 		}
 	}
 
-	public func setting(_ key: String) throws -> String? {
-		try queue.read { db in try String.fetchOne(db, sql: "SELECT value FROM setting WHERE key = ?", arguments: [key]) }
-	}
-
-	public func setSetting(_ key: String, _ value: String?) throws {
-		try queue.write { db in
-			if let value {
-				try db.execute(sql: "INSERT INTO setting(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", arguments: [key, value])
-			} else {
-				try db.execute(sql: "DELETE FROM setting WHERE key = ?", arguments: [key])
-			}
-		}
-	}
-
 	/// Copies the encrypted database file. The copy opens with the password of this moment.
 	/// The read transaction keeps writers out while the file is copied.
 	public func backup(to url: URL) throws {

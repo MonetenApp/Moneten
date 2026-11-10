@@ -133,11 +133,9 @@ public struct RuleSyntaxError: Error, Equatable, Sendable, CustomStringConvertib
 }
 
 public struct Rule: Sendable {
-	public let text: String
 	public let expression: RuleExpression
 
 	public init(parsing text: String) throws(RuleSyntaxError) {
-		self.text = text
 		var parser = RuleParser(text)
 		expression = try parser.parse()
 	}

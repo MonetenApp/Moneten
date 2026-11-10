@@ -11,7 +11,7 @@ BUILD="$(git rev-list --count HEAD 2>/dev/null || echo 1)"
 
 # --disable-keychain keeps the package manager from waiting for a Keychain prompt about GitHub.
 swift build --disable-keychain -c "$CONFIG" --product MonetenMoneten
-BIN="$(swift build -c "$CONFIG" --show-bin-path)"
+BIN="$(swift build --disable-keychain -c "$CONFIG" --show-bin-path)"
 
 APP=dist/MonetenMoneten.app
 rm -rf "$APP"

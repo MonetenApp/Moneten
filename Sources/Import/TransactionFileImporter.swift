@@ -38,7 +38,7 @@ public enum TransactionFileImporter {
 		return String(data: data, encoding: .windowsCP1252) ?? String(decoding: data, as: UTF8.self)
 	}
 
-	public static func parse(_ data: Data, fileName: String = "", currency: String = "EUR") throws -> [Transaction] {
+	public static func parse(_ data: Data, currency: String = "EUR") throws -> [Transaction] {
 		guard !data.isEmpty else { throw Failure.empty }
 		let text = decode(data)
 		guard let format = detect(text) else { throw Failure.unsupported }
@@ -68,7 +68,6 @@ enum CSVParser {
 	static let ibanKeys = ["iban", "kontonummer/iban", "iban zahlungsbeteiligter", "gegenkonto", "kontonummer", "iban auftraggeber"]
 	static let bicKeys = ["bic", "bic (swift-code)", "bic zahlungsbeteiligter", "blz"]
 	static let currencyKeys = ["währung", "waehrung", "currency", "wahrung"]
-	static let categoryKeys = ["kategorie", "category"]
 	static let commentKeys = ["notiz", "comment", "kommentar", "note"]
 	static let e2eKeys = ["kundenreferenz", "end-to-end-referenz", "end-to-end reference", "e2e"]
 	static let mandateKeys = ["mandatsreferenz", "mandate reference"]

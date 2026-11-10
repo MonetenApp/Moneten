@@ -98,7 +98,7 @@ extension AppModel {
 					problems.append("\(url.lastPathComponent): The file is too large. Please choose a file with a maximum size of 100 MB.")
 					continue
 				}
-				let parsed = try TransactionFileImporter.parse(data, fileName: url.lastPathComponent, currency: account.currency)
+				let parsed = try TransactionFileImporter.parse(data, currency: account.currency)
 				let result = importTransactions(parsed, into: account)
 				added += result.added
 				skipped += result.skipped
