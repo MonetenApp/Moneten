@@ -470,10 +470,11 @@ final class AppModel {
 
 	// MARK: Categories
 
-	func addCategory(name: String, isGroup: Bool, parentID: UUID?) {
+	func addCategory(name: String, isGroup: Bool, parentID: UUID?, assigning ids: Set<UUID> = []) {
 		let position = (ledger.childCategories(of: parentID).map(\.position).max() ?? -1) + 1
 		let c = Domain.Category(parentID: parentID, position: position, name: name, isGroup: isGroup)
 		save(category: c)
+		if !ids.isEmpty, ledger.category(c.id) != nil { assign(category: c.id, to: ids) }
 		selection = .category(c.id)
 	}
 
@@ -595,7 +596,8 @@ struct AlertMessage: Identifiable {
 enum SheetKind: Identifiable, Equatable {
 	case newAccount
 	case newGroup
-	case newCategory(isGroup: Bool)
+	/// `assigning` are the transactions that "Add category" in "Assign Category" moves into it.
+	case newCategory(isGroup: Bool, assigning: Set<UUID> = [])
 	case accountSettings(UUID)
 	case groupSettings(UUID)
 	case categorySettings(UUID)

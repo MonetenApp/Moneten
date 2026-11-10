@@ -443,7 +443,9 @@ struct CategoryRibbon: View {
 		let ledger = model.ledger
 		let category = ledger.effectiveCategoryID(of: transaction).flatMap { ledger.category($0) }.flatMap { $0.isDefault ? nil : $0 }
 		Button {
-			CategoryChoices.popUp(model: model, ids: [transaction.id])
+			// Like the context menu, the ribbon of a selected row acts on the whole selection.
+			let selection = model.selectedTransactions
+			CategoryChoices.popUp(model: model, ids: selection.contains(transaction.id) ? selection : [transaction.id])
 		} label: {
 			Group {
 				if let category {
@@ -641,7 +643,7 @@ struct CategoryChoices: View {
 			.disabled(c.isGroup || isRestricted(c, transactions))
 		}
 		Divider()
-		Button("Add category") { model.sheet = .newCategory(isGroup: false) }
+		Button("Add category") { model.sheet = .newCategory(isGroup: false, assigning: ids) }
 	}
 
 	private func isRestricted(_ c: Domain.Category, _ ts: [Transaction]) -> Bool {
@@ -668,7 +670,7 @@ struct CategoryChoices: View {
 			menu.addItem(item)
 		}
 		menu.addItem(.separator())
-		menu.addItem(ActionMenuItem(title: "Add category") { model.sheet = .newCategory(isGroup: false) })
+		menu.addItem(ActionMenuItem(title: "Add category") { model.sheet = .newCategory(isGroup: false, assigning: ids) })
 		menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
 	}
 }

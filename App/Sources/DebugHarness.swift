@@ -115,6 +115,8 @@ final class DebugHarness {
 			case "transaction": model.sheet = .transaction(model.visibleTransactions.first?.id)
 			default: model.sheet = nil
 			}
+		// What "Add category" in "Assign Category" does with the selected rows.
+		case "newcategory": model.addCategory(name: argument, isGroup: false, parentID: nil, assigning: model.selectedTransactions)
 		case "selectRows": model.selectedTransactions = Set(model.visibleTransactions.prefix(Int(argument) ?? 1).map(\.id))
 		case "state":
 			log("phase=\(model.phase) accounts=\(model.ledger.accounts.count) transactions=\(model.ledger.transactions.count) visible=\(model.visibleTransactions.count) selection=\(String(describing: model.selection))")
