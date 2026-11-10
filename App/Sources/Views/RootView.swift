@@ -45,6 +45,9 @@ struct LockView: View {
 	@State private var password = ""
 	@State private var wrong = false
 	@State private var showHelp = false
+	/// The unlock methods that are on and that macOS can use now, and why the others cannot.
+	@State private var available: [UnlockMethod] = []
+	@State private var unavailable: [String] = []
 	@FocusState private var focused: Bool
 
 	var body: some View {
@@ -59,12 +62,15 @@ struct LockView: View {
 			if wrong {
 				Text("Incorrect password!").foregroundStyle(.red)
 			}
+			ForEach(unavailable, id: \.self) { reason in
+				Text(reason).font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 360)
+			}
 			HStack {
-				if model.touchIDEnabled {
+				if !available.isEmpty {
 					Button {
-						model.unlockWithTouchID()
+						model.unlock(with: available)
 					} label: {
-						Label("Open with Touch ID or Apple Watch", systemImage: "touchid")
+						Label("Open with \(UnlockMethod.names(available))", systemImage: available == [.appleWatch] ? "applewatch" : "touchid")
 					}
 				}
 				Button("Open", action: submit).keyboardShortcut(.defaultAction).disabled(password.isEmpty)
@@ -76,7 +82,11 @@ struct LockView: View {
 		.frame(maxWidth: .infinity, maxHeight: .infinity)
 		.onAppear {
 			focused = true
-			if model.touchIDEnabled { model.unlockWithTouchID() }
+			// A method that macOS cannot use now, for example Touch ID with the lid closed, starts no request.
+			let reasons = model.unlockMethods.map { ($0, $0.unavailableReason(for: .lockScreen)) }
+			available = reasons.filter { $0.1 == nil }.map(\.0)
+			unavailable = reasons.compactMap(\.1)
+			if !available.isEmpty { model.unlock(with: available) }
 		}
 		.onChange(of: password) { _, _ in wrong = false }
 		.task(id: password) {

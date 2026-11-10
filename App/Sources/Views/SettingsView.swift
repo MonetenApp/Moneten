@@ -1,4 +1,3 @@
-import LocalAuthentication
 import SwiftUI
 
 struct SettingsView: View {
@@ -21,6 +20,7 @@ struct SecuritySettings: View {
 	@AppStorage(Preference.lockAfterMinutes) private var lockAfterMinutes = 5
 	@AppStorage(Preference.unlockAutomatically) private var unlockAutomatically = false
 	@AppStorage(Preference.unlockWithTouchID) private var unlockWithTouchID = false
+	@AppStorage(Preference.unlockWithAppleWatch) private var unlockWithAppleWatch = false
 	@State private var askPasswordFor: String?
 	@State private var password = ""
 	@State private var message: String?
@@ -44,7 +44,8 @@ struct SecuritySettings: View {
 					Text("minutes of inactivity")
 				}
 				Toggle("Unlock automatically at application start", isOn: keychainToggle(Preference.unlockAutomatically, $unlockAutomatically))
-				Toggle("Unlock with Touch ID or Apple Watch", isOn: keychainToggle(Preference.unlockWithTouchID, $unlockWithTouchID))
+				Toggle("Unlock with Touch ID", isOn: keychainToggle(Preference.unlockWithTouchID, $unlockWithTouchID))
+				Toggle("Unlock with Apple Watch", isOn: keychainToggle(Preference.unlockWithAppleWatch, $unlockWithAppleWatch))
 			}
 			.disabled(!model.hasPassword)
 			if !model.hasPassword {
@@ -73,17 +74,15 @@ struct SecuritySettings: View {
 		Binding(get: { value.wrappedValue }, set: { on in
 			message = nil
 			if on {
-				if key == Preference.unlockWithTouchID {
-					var error: NSError?
-					guard LAContext().canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometricsOrCompanion, error: &error) else {
-						message = "Touch ID and Apple Watch are not set up on this Mac. Set them up in System Settings → Touch ID & Password first."
-						return
-					}
+				if let method = UnlockMethod.allCases.first(where: { $0.preference == key }),
+				   let reason = method.unavailableReason(for: .settings) {
+					message = reason
+					return
 				}
 				askPasswordFor = key
 			} else {
 				value.wrappedValue = false
-				if !unlockAutomatically && !unlockWithTouchID { try? model.vault.removeStoredPassword() }
+				if !unlockAutomatically && !unlockWithTouchID && !unlockWithAppleWatch { try? model.vault.removeStoredPassword() }
 			}
 		})
 	}

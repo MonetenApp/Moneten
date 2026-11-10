@@ -2,7 +2,6 @@ import AppKit
 import Domain
 import Foundation
 import Import
-import LocalAuthentication
 import Observation
 import Storage
 
@@ -56,6 +55,7 @@ enum Preference {
 	static let lockAfterEnabled = "lockAfterInactivity"
 	static let unlockAutomatically = "unlockAutomatically"
 	static let unlockWithTouchID = "unlockWithTouchID"
+	static let unlockWithAppleWatch = "unlockWithAppleWatch"
 	static let viewMode = "viewMode"
 	static let balanceMode = "balanceMode"
 }
@@ -156,13 +156,14 @@ final class AppModel {
 		}
 	}
 
-	var touchIDEnabled: Bool { hasPassword && UserDefaults.standard.bool(forKey: Preference.unlockWithTouchID) && vault.storedPassword() != nil }
+	/// The unlock methods whose setting is on. They need the database password in the Keychain.
+	var unlockMethods: [UnlockMethod] {
+		guard hasPassword, vault.storedPassword() != nil else { return [] }
+		return UnlockMethod.allCases.filter { UserDefaults.standard.bool(forKey: $0.preference) }
+	}
 
-	func unlockWithTouchID() {
-		let context = LAContext()
-		var error: NSError?
-		guard context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometricsOrCompanion, error: &error) else { return }
-		context.evaluatePolicy(.deviceOwnerAuthenticationWithBiometricsOrCompanion, localizedReason: "open the MonetenMoneten database") { ok, _ in
+	func unlock(with methods: [UnlockMethod]) {
+		UnlockMethod.authenticate(methods) { ok in
 			Task { @MainActor in
 				guard ok, let pw = self.vault.storedPassword() else { return }
 				self.unlock(password: pw)

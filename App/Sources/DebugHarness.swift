@@ -61,6 +61,8 @@ final class DebugHarness {
 		case "create": model.createDatabase(password: argument.isEmpty ? nil : argument)
 		case "unlock": log("unlock \(model.unlock(password: argument))")
 		case "lock": model.lock()
+		case "storepassword": log("storepassword \((try? model.vault.storePassword(argument)) != nil)")
+		case "removepassword": try? model.vault.removeStoredPassword()
 		case "seed": DemoData.seed(model)
 		case "select":
 			if let a = model.ledger.accounts.first(where: { $0.name == argument }) { model.navigate(to: .account(a.id)) }
