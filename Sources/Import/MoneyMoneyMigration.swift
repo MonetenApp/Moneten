@@ -150,8 +150,9 @@ public struct MoneyMoneyMigration: Sendable {
 			// The MoneyMoney identifier decides. IBAN or account number match only accounts without one,
 			// so that two MoneyMoney accounts with the same IBAN stay apart.
 			if var existing = ledger.accounts.first(where: { $0.sourceID == source }) ?? ledger.accounts.first(where: { a in
-				a.sourceID == nil && (iban != nil && a.iban.map(TextFolding.accountKey) == iban.map(TextFolding.accountKey))
-					|| (bankCode != nil && number != nil && a.bankCode == bankCode && a.accountNumber == number)
+				a.sourceID == nil && (
+					(iban != nil && a.iban.map(TextFolding.accountKey) == iban.map(TextFolding.accountKey))
+						|| (bankCode != nil && number != nil && a.bankCode == bankCode && a.accountNumber == number))
 			}) {
 				map[source] = existing.id
 				plan.skippedAccounts += 1

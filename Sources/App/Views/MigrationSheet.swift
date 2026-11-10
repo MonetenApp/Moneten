@@ -43,6 +43,9 @@ struct MigrationSheet: View {
 					LabeledContent("Accounts", value: plan.accounts.count.formatted())
 					LabeledContent("Categories", value: plan.categories.count.formatted())
 					LabeledContent("Transactions", value: plan.transactions.count.formatted())
+					if !plan.updatedAccounts.isEmpty || !plan.updatedTransactions.isEmpty {
+						LabeledContent("Updated", value: "\(plan.updatedAccounts.count) balances, \(plan.updatedTransactions.count.formatted()) booked transactions")
+					}
 				}
 				if !plan.notes.isEmpty {
 					Section("Notes") {

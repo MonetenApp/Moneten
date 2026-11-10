@@ -148,6 +148,7 @@ struct MoneyMoneyMigrationTests {
 	func sameIBAN() throws {
 		var twins = accounts
 		twins[2]["accountNumber"] = "DE02120300000000202051"
+		twins[2]["bankCode"] = "BYLADEM1001"
 		let first = try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(twins), categories: try plist(categories), transactions: try plist(transactions), into: Ledger())
 		#expect(first.accounts.count == 3)
 		let ledger = Ledger(groups: first.groups, accounts: first.accounts, categories: first.categories)

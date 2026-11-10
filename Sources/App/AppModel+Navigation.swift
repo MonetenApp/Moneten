@@ -82,7 +82,9 @@ extension AppModel {
 		}
 		let panel = NSSavePanel()
 		panel.title = "Backup Database"
-		panel.message = "A copy of the MonetenMoneten database will be saved. It opens with the current database password. This function does not replace a regular backup of your Mac."
+		panel.message = hasPassword
+			? "A copy of the MonetenMoneten database will be saved. It opens with the current database password. This function does not replace a regular backup of your Mac."
+			: "A copy of the MonetenMoneten database will be saved. It opens only on this Mac, with the key in the Keychain. This function does not replace a regular backup of your Mac."
 		panel.nameFieldStringValue = "MonetenMoneten-\(Day.today()).sqlite"
 		guard panel.runModal() == .OK, let url = panel.url else { return }
 		do {
@@ -103,6 +105,7 @@ extension AppModel {
 		guard panel.runModal() == .OK else { return }
 		var added = 0
 		var skipped = 0
+		var booked = 0
 		var problems: [String] = []
 		for url in panel.urls {
 			do {
@@ -115,11 +118,13 @@ extension AppModel {
 				let result = importTransactions(parsed, into: account)
 				added += result.added
 				skipped += result.skipped
+				booked += result.booked
 			} catch {
 				problems.append("\(url.lastPathComponent): \(error)")
 			}
 		}
 		var message = added == 0 ? "Imported no new transactions." : added == 1 ? "Imported one new transaction." : "Imported \(added) new transactions."
+		if booked > 0 { message += booked == 1 ? " Booked one pending transaction." : " Booked \(booked) pending transactions." }
 		if skipped > 0 { message += skipped == 1 ? " Skipped one already existing transaction." : " Skipped \(skipped) already existing transactions." }
 		if !problems.isEmpty { message += "\n\n" + problems.joined(separator: "\n") }
 		alert = AlertMessage(title: "Transaction Import", message: message)
