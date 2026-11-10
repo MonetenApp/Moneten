@@ -41,6 +41,7 @@ struct FileImportTests {
 		#expect(ts.map(\.amountMinor) == [-125_000, 300_000])
 		let cases = [("1.250,00", "1250"), ("1,250.00", "1250"), ("€1,234.56", "1234.56"), ("1\u{202F}234,56", "1234.56"), ("-89,00", "-89"), ("1250.00", "1250"), ("1.250.000", "1250000")]
 		for (text, value) in cases { #expect(AmountParser.decimal(from: text) == Decimal(string: value), "\(text)") }
+		for text in ["1.250,00,5", "-", "1,2,3.4.5"] { #expect(AmountParser.decimal(from: text) == nil, "\(text)") }
 	}
 
 	@Test("CSV with separate debit and credit columns")

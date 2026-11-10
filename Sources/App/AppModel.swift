@@ -487,6 +487,7 @@ final class AppModel {
 			transactions: plan.transactions + plan.updatedTransactions)
 		for c in starters { try? store.deleteCategory(c.id) }
 		ledger = try store.loadLedger()
+		if case let .category(id) = selection, ledger.category(id) == nil { selection = nil }
 		if selection == nil, let g = ledger.childGroups(of: nil).first { selection = .group(g.id) }
 	}
 

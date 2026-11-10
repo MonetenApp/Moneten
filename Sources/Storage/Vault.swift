@@ -81,8 +81,15 @@ public struct Vault: Sendable {
 		return store
 	}
 
+	/// Opens a database with its password. A marker and a random key that an interrupted
+	/// `setPassword` left behind are removed, because the password opens the database now.
 	public func open(password: String) throws -> Store {
-		try openDatabase(key: password)
+		let store = try openDatabase(key: password)
+		if FileManager.default.fileExists(atPath: noPasswordMarker.path) {
+			try? FileManager.default.removeItem(at: noPasswordMarker)
+			try? keyKeychain.delete(account: folder.keychainAccount)
+		}
+		return store
 	}
 
 	/// Opens a database that has no password with the random key from the Keychain.
