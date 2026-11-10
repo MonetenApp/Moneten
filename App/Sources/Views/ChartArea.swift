@@ -81,12 +81,14 @@ struct BalanceBarChart: View {
 		.chartStyle(currency: currency, dates: Self.dateAxis(from: bars.first!.start, to: bars.last!.end))
 	}
 
-	/// Months on the axis, or days when the chart covers two months or less, so labels never repeat.
+	/// Days on the axis for two months or less, otherwise about six month starts. Automatic marks
+	/// fall every two weeks on a quarter, and a month label would then repeat.
 	private static func dateAxis(from start: Day, to end: Day) -> (AxisMarkValues, Date.FormatStyle) {
-		let days = Calendar.current.dateComponents([.day], from: start.date(), to: end.date()).day ?? 0
-		return days <= 62
-			? (.automatic(desiredCount: 6), .dateTime.day().month(.abbreviated))
-			: (.automatic(desiredCount: 6), .dateTime.month(.abbreviated).year(.twoDigits))
+		let span = Calendar.current.dateComponents([.day, .month], from: start.date(), to: end.date())
+		if (span.day ?? 0) + 31 * (span.month ?? 0) <= 62 {
+			return (.automatic(desiredCount: 6), .dateTime.day().month(.abbreviated))
+		}
+		return (.stride(by: .month, count: max(1, (span.month ?? 0) / 6)), .dateTime.month(.abbreviated).year(.twoDigits))
 	}
 
 	private static func mark(_ bar: BalanceBar, currency: String, gap: Double, dimmed: Bool) -> some ChartContent {
