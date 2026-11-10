@@ -67,6 +67,19 @@ extension AppModel {
 
 	func backupDatabase() {
 		guard let store else { return }
+		if !hasPassword {
+			let warning = NSAlert()
+			warning.messageText = "No database password is set."
+			warning.informativeText = "The copy opens only on this Mac and with this user account, with the key in the Keychain. Setting a database password later deletes that key, and the copy can then no longer be opened."
+			warning.addButton(withTitle: "Set Database Password...")
+			warning.addButton(withTitle: "Back Up Anyway")
+			warning.addButton(withTitle: "Cancel")
+			switch warning.runModal() {
+			case .alertFirstButtonReturn: sheet = .setPassword; return
+			case .alertSecondButtonReturn: break
+			default: return
+			}
+		}
 		let panel = NSSavePanel()
 		panel.title = "Backup Database"
 		panel.message = "A copy of the MonetenMoneten database will be saved. It opens with the current database password. This function does not replace a regular backup of your Mac."
@@ -74,7 +87,7 @@ extension AppModel {
 		guard panel.runModal() == .OK, let url = panel.url else { return }
 		do {
 			try store.backup(to: url)
-			alert = AlertMessage(title: "Backup Database", message: hasPassword ? "The copy has been saved." : "The copy has been saved. No database password protects it, so it opens only on this Mac. Set a password to open backups on other Macs.")
+			alert = AlertMessage(title: "Backup Database", message: "The copy has been saved.")
 		} catch {
 			alert = AlertMessage(title: "Could not create backup of database file.", message: String(describing: error))
 		}

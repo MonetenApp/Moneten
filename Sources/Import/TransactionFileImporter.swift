@@ -117,9 +117,10 @@ enum CSVParser {
 			if let a = value(amountCol) {
 				amount = AmountParser.decimal(from: a)
 			} else {
-				let d = value(debitCol).flatMap(AmountParser.decimal(from:)).map { -abs($0) } ?? 0
-				let c = value(creditCol).flatMap(AmountParser.decimal(from:)).map { abs($0) } ?? 0
-				amount = d + c
+				// An empty debit or credit cell counts as zero. A cell that cannot be read is an error.
+				let d = value(debitCol).map { AmountParser.decimal(from: $0).map { -abs($0) } } ?? 0
+				let c = value(creditCol).map { AmountParser.decimal(from: $0).map { abs($0) } } ?? 0
+				if let d, let c { amount = d + c }
 			}
 			guard let amount else { throw TransactionFileImporter.Failure.line(offset + 1, "The amount cannot be read.") }
 			let cur = value(currencyCol) ?? currency
