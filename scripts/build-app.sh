@@ -1,21 +1,46 @@
 #!/bin/sh
 # Builds dist/MonetenMoneten.app with Xcode.
-#   scripts/build-app.sh          release build
-#   scripts/build-app.sh debug    debug build
+#   scripts/build-app.sh                 release build, signed with the team in App/Local.xcconfig
+#   scripts/build-app.sh debug           debug build
+#   scripts/build-app.sh developer-id    release build, archived and signed with the Developer ID
+#                                        of the team, for other Macs; not notarized yet
 # Without a team in App/Local.xcconfig, Xcode signs to run locally. App/Signing.xcconfig explains it.
+# The Developer ID certificate is managed by Xcode in the team account. The Developer ID build
+# needs an Xcode account of the team with the Admin or Account Holder role.
 set -e
 cd "$(dirname "$0")/.."
 CONFIG=Release
-[ "$1" = debug ] && CONFIG=Debug
+case "$1" in
+	"") ;;
+	debug) CONFIG=Debug ;;
+	developer-id) ARCHIVE=.build/xcode/MonetenMoneten.xcarchive ;;
+	*) echo "usage: scripts/build-app.sh [debug | developer-id]" >&2; exit 2 ;;
+esac
 BUILD="$(git rev-list --count HEAD 2>/dev/null || echo 1)"
 
 scripts/generate-project.sh
-xcodebuild -project App/MonetenMoneten.xcodeproj -scheme MonetenMoneten -configuration "$CONFIG" \
-	-derivedDataPath .build/xcode -disableAutomaticPackageResolution -quiet \
-	CURRENT_PROJECT_VERSION="$BUILD" build
+XCODEBUILD="xcodebuild -project App/MonetenMoneten.xcodeproj -scheme MonetenMoneten -configuration $CONFIG -derivedDataPath .build/xcode -disableAutomaticPackageResolution -quiet"
+if [ -z "$ARCHIVE" ]; then
+	$XCODEBUILD CURRENT_PROJECT_VERSION="$BUILD" build
+	PRODUCT=".build/xcode/Build/Products/$CONFIG/MonetenMoneten.app"
+else
+	rm -rf "$ARCHIVE" .build/xcode/export
+	$XCODEBUILD -archivePath "$ARCHIVE" -allowProvisioningUpdates CURRENT_PROJECT_VERSION="$BUILD" archive
+	cat > .build/xcode/ExportOptions.plist <<-EOF
+	<?xml version="1.0" encoding="UTF-8"?>
+	<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+	<plist version="1.0"><dict>
+	<key>method</key><string>developer-id</string>
+	<key>signingStyle</key><string>automatic</string>
+	</dict></plist>
+	EOF
+	xcodebuild -exportArchive -archivePath "$ARCHIVE" -exportOptionsPlist .build/xcode/ExportOptions.plist \
+		-exportPath .build/xcode/export -allowProvisioningUpdates >/dev/null
+	PRODUCT=.build/xcode/export/MonetenMoneten.app
+fi
 
 rm -rf dist/MonetenMoneten.app
 mkdir -p dist
-cp -R ".build/xcode/Build/Products/$CONFIG/MonetenMoneten.app" dist/
+cp -R "$PRODUCT" dist/
 codesign --verify --strict --deep dist/MonetenMoneten.app
-echo "Built dist/MonetenMoneten.app ($CONFIG, build $BUILD), $(codesign -dv dist/MonetenMoneten.app 2>&1 | grep -m1 -E '^(Authority|Signature)=')"
+echo "Built dist/MonetenMoneten.app ($CONFIG, build $BUILD), $(codesign -dv --verbose=2 dist/MonetenMoneten.app 2>&1 | grep -m1 -E '^(Authority|Signature)=')"
