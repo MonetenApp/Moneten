@@ -226,7 +226,7 @@ struct ChartValueLabel: View {
 
 extension View {
 	/// The axes of every bar chart: dates on top with a line at each, as in MoneyMoney, and about
-	/// three round amounts without cents on the trailing side, in the format of the list.
+	/// three round amounts on the trailing side, in the format of the list: whole amounts without cents, and a step such as 2,5 € with its decimals.
 	/// `marks` puts the dates at exactly these days instead of `values`.
 	func chartStyle(currency: String, amounts: AmountAxis, dates format: Date.FormatStyle, values: AxisMarkValues = .automatic, marks: [Date]? = nil) -> some View {
 		chartXAxis {
@@ -248,7 +248,7 @@ extension View {
 				AxisGridLine().foregroundStyle(.quinary)
 				AxisValueLabel {
 					if let amount = value.as(Double.self) {
-						Text(Decimal(amount).formatted(.currency(code: currency).precision(.fractionLength(0))))
+						Text(Decimal(amount).formatted(.currency(code: currency).precision(.fractionLength(0...2))))
 					}
 				}
 			}
