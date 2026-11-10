@@ -65,8 +65,9 @@ struct AmountText: View {
 /// purposes, and counts, so data uses these colors. Labels and empty states keep `.secondary`.
 enum Palette {
 	/// Text below or beside the main text, such as a purpose or a count: about 8:1 on white. As in
-	/// MoneyMoney, the weight of the main text sets the hierarchy, not a faint color.
-	static let detail = Color(nsColor: .labelColor).opacity(0.82)
+	/// MoneyMoney, the weight of the main text sets the hierarchy, not a faint color. A hierarchical
+	/// style, so it turns light on a selected table row like the system colors do.
+	static var detail: AnyShapeStyle { AnyShapeStyle(.primary.opacity(0.82)) }
 	/// Negative amounts and error messages. The system red reaches only 3.6:1 on white, so light mode
 	/// uses a darker red with 5.7:1. Dark mode keeps the system red, 4.9:1 on the dark window.
 	static let red = Color(nsColor: NSColor(name: "textRed") { appearance in

@@ -310,7 +310,7 @@ struct TransactionTable: View {
 				}
 				.width(22)
 				TableColumn("Date") { (t: Transaction) in
-					Text(Format.day(t.bookingDate)).monospacedDigit().foregroundStyle(t.isPending ? Palette.detail : Color.primary)
+					Text(Format.day(t.bookingDate)).monospacedDigit().foregroundStyle(t.isPending ? Palette.detail : AnyShapeStyle(.primary))
 				}
 				.width(min: 76, ideal: 84, max: 100)
 				TableColumn("Name / Purpose") { (t: Transaction) in
@@ -325,7 +325,7 @@ struct TransactionTable: View {
 				}
 				TableColumn("Category") { (t: Transaction) in
 					Text(model.ledger.categoryPath(t.categoryID)).lineLimit(1)
-						.foregroundStyle(t.categoryID == nil ? Palette.detail : Color.primary)
+						.foregroundStyle(t.categoryID == nil ? Palette.detail : AnyShapeStyle(.primary))
 				}
 				.width(min: 80, ideal: 160)
 				TableColumn("Amount") { (t: Transaction) in
