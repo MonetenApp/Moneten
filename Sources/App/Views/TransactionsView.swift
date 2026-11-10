@@ -33,9 +33,10 @@ struct HeaderView: View {
 	@Environment(AppModel.self) private var model
 
 	var body: some View {
-		HStack(alignment: .firstTextBaseline) {
+		HStack(alignment: .center, spacing: 10) {
+			HeaderIcon()
 			VStack(alignment: .leading, spacing: 2) {
-				Text(model.title).font(.title2.bold())
+				Text(model.title).font(.title2.bold()).lineLimit(1)
 				if let account = model.selectedAccount {
 					HStack(spacing: 8) {
 						if let iban = account.iban { Text(Format.iban(iban)) }
@@ -56,7 +57,7 @@ struct HeaderView: View {
 					if let a = model.ledger.account(id) {
 						AmountText(money: model.ledger.balance(of: a)).font(.title2)
 						if let date = a.bankBalanceDate {
-							Text("Balance at \(date.formatted(date: .abbreviated, time: .shortened))").font(.caption).foregroundStyle(.secondary)
+							Text("Balance at \(date.formatted(date: .abbreviated, time: .shortened))").font(.subheadline).foregroundStyle(.secondary)
 						}
 					}
 				case let .group(id):
@@ -66,8 +67,35 @@ struct HeaderView: View {
 				}
 			}
 		}
-		.padding(.horizontal)
-		.padding(.vertical, 10)
+		.padding(.horizontal, 16)
+		.padding(.top, 12)
+		.padding(.bottom, 8)
+	}
+}
+
+/// The icon of the selected account, group, or category, as MoneyMoney shows it beside the title.
+struct HeaderIcon: View {
+	@Environment(AppModel.self) private var model
+
+	var body: some View {
+		Group {
+			switch model.selection {
+			case let .account(id):
+				Image(systemName: model.ledger.account(id)?.kind.symbol ?? "tray")
+			case .group:
+				Image(systemName: "folder")
+			case let .category(id):
+				if let c = model.ledger.category(id) {
+					Image(systemName: c.isGroup ? "folder.fill" : "circle.fill")
+						.foregroundStyle(CategoryColors.color(of: c, in: model.ledger))
+				}
+			case nil:
+				EmptyView()
+			}
+		}
+		.font(.title2)
+		.foregroundStyle(.secondary)
+		.frame(width: 28, height: 28)
 	}
 }
 
@@ -78,11 +106,15 @@ struct FilterBar: View {
 
 	var body: some View {
 		@Bindable var model = model
-		HStack(spacing: 14) {
-			Toggle(isOn: $model.keepFilters) { Image(systemName: model.keepFilters ? "pin.fill" : "pin") }
-				.toggleStyle(.button)
-				.buttonStyle(.borderless)
-				.help("Save filter bar")
+		HStack(spacing: 16) {
+			Toggle(isOn: $model.keepFilters) {
+				Image(systemName: model.keepFilters ? "pin.fill" : "pin")
+					.frame(width: 22, height: 22)
+					.contentShape(.rect)
+			}
+			.toggleStyle(.button)
+			.buttonStyle(.borderless)
+			.help("Save filter bar")
 			filterMenu("Period:", title: periodTitle) {
 				Button("Show All") { model.period = .all }
 				Divider()
@@ -147,7 +179,7 @@ struct FilterBar: View {
 			}
 		}
 		.font(.callout)
-		.padding(.horizontal)
+		.padding(.horizontal, 16)
 		.padding(.vertical, 6)
 	}
 
@@ -285,12 +317,10 @@ struct TransactionTable: View {
 				}
 				.width(min: 80, ideal: 160)
 				TableColumn("Amount") { (t: Transaction) in
-					HStack {
-						Spacer()
-						AmountText(money: t.amount).opacity(t.isPending ? 0.6 : 1)
-					}
+					AmountText(money: t.amount).opacity(t.isPending ? 0.6 : 1)
 				}
 				.width(min: 90, ideal: 110)
+				.alignment(.trailing)
 			} rows: {
 				ForEach(rows) { t in
 					TableRow(t).draggable(draggedIDs(for: t))
@@ -318,7 +348,11 @@ struct TransactionCell: View {
 			HStack(spacing: 4) {
 				Text(transaction.name.isEmpty ? (transaction.bookingText ?? "") : transaction.name).fontWeight(.medium).lineLimit(1)
 				if transaction.isPending {
-					Text("Pending").font(.caption2).padding(.horizontal, 4).background(Capsule().strokeBorder(.secondary))
+					Text("Pending")
+						.font(.subheadline)
+						.foregroundStyle(.secondary)
+						.padding(.horizontal, 6)
+						.background(Capsule().strokeBorder(.tertiary))
 				}
 				if transaction.isNew {
 					Circle().fill(.tint).frame(width: 6, height: 6).help("New transaction")
@@ -418,7 +452,7 @@ struct StatusLine: View {
 				.textSelection(.enabled)
 		}
 		.font(.callout)
-		.padding(.horizontal)
-		.padding(.vertical, 5)
+		.padding(.horizontal, 16)
+		.padding(.vertical, 8)
 	}
 }

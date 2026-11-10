@@ -19,6 +19,8 @@ struct MainView: View {
 			}
 		}
 		.navigationTitle(model.title)
+		// The header of the detail view shows the title with its icon and balance, as in MoneyMoney.
+		.toolbar(removing: .title)
 		.toolbar {
 			ToolbarItemGroup(placement: .navigation) {
 				Button { model.goBack() } label: { Image(systemName: "chevron.left") }
@@ -26,10 +28,7 @@ struct MainView: View {
 				Button { model.goForward() } label: { Image(systemName: "chevron.right") }
 					.help("Next view").disabled(!model.canGoForward)
 			}
-			ToolbarItemGroup(placement: .primaryAction) {
-				Button { model.lock() } label: { Image(systemName: "lock") }
-					.help(model.hasPassword ? "Lock MonetenMoneten" : "Set a database password to lock MonetenMoneten")
-					.disabled(!model.hasPassword)
+			ToolbarItem(placement: .primaryAction) {
 				Picker("View", selection: $model.viewMode) {
 					Image(systemName: "list.bullet").help("Show list only").tag(ViewMode.list)
 					Image(systemName: "chart.bar").help("Show bar chart").tag(ViewMode.barChart)
@@ -37,6 +36,11 @@ struct MainView: View {
 				}
 				.pickerStyle(.segmented)
 				.help("View")
+			}
+			ToolbarItem(placement: .primaryAction) {
+				Button { model.lock() } label: { Image(systemName: "lock") }
+					.help(model.hasPassword ? "Lock MonetenMoneten" : "Set a database password to lock MonetenMoneten")
+					.disabled(!model.hasPassword)
 			}
 		}
 		.sheet(item: $model.sheet) { kind in
