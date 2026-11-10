@@ -1,5 +1,6 @@
 .build/
 .swiftpm/
 dist/
-*.xcodeproj/xcuserdata/
 .DS_Store
+App/MonetenMoneten.xcodeproj/
+App/Local.xcconfig
