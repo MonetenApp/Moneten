@@ -2,21 +2,21 @@ import Foundation
 import Security
 
 /// Generic password entries in the login Keychain of the user. Entries stay on this Mac.
-public struct Keychain: Sendable {
-	public let service: String
+struct Keychain: Sendable {
+	let service: String
 
-	public init(service: String) {
+	init(service: String) {
 		self.service = service
 	}
 
-	public struct Failure: Error, CustomStringConvertible {
-		public let status: OSStatus
-		public var description: String {
+	struct Failure: Error, CustomStringConvertible {
+		let status: OSStatus
+		var description: String {
 			(SecCopyErrorMessageString(status, nil) as String?) ?? "Keychain error \(status)"
 		}
 	}
 
-	public func read(account: String) throws -> String? {
+	func read(account: String) throws -> String? {
 		let query: [String: Any] = [
 			kSecClass as String: kSecClassGenericPassword,
 			kSecAttrService as String: service,
@@ -31,7 +31,7 @@ public struct Keychain: Sendable {
 		return String(data: data, encoding: .utf8)
 	}
 
-	public func write(_ value: String, account: String) throws {
+	func write(_ value: String, account: String) throws {
 		let base: [String: Any] = [
 			kSecClass as String: kSecClassGenericPassword,
 			kSecAttrService as String: service,
@@ -49,7 +49,7 @@ public struct Keychain: Sendable {
 		guard status == errSecSuccess else { throw Failure(status: status) }
 	}
 
-	public func delete(account: String) throws {
+	func delete(account: String) throws {
 		let query: [String: Any] = [
 			kSecClass as String: kSecClassGenericPassword,
 			kSecAttrService as String: service,

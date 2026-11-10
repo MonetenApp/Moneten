@@ -96,6 +96,10 @@ enum Schema {
 				t.column("value", .text).notNull()
 			}
 		}
+		m.registerMigration("v2") { db in
+			// App settings live in UserDefaults. The table never held data.
+			try db.drop(table: "setting")
+		}
 		return m
 	}
 }

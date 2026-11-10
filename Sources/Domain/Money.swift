@@ -29,12 +29,11 @@ public struct Money: Hashable, Sendable, Codable, Comparable {
 
 	public static func < (lhs: Money, rhs: Money) -> Bool { lhs.minorUnits < rhs.minorUnits }
 
-	public static func zero(_ currency: String) -> Money { Money(minorUnits: 0, currency: currency) }
 }
 
-public enum Currency {
+enum Currency {
 	/// Number of decimal places of an ISO 4217 currency.
-	public static func exponent(of code: String) -> Int {
+	static func exponent(of code: String) -> Int {
 		switch code.uppercased() {
 		case "JPY", "KRW", "ISK", "CLP", "VND", "XOF", "XAF": 0
 		case "BHD", "KWD", "OMR", "JOD", "TND": 3

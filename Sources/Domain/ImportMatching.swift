@@ -7,9 +7,14 @@ import Foundation
 /// equal rows adds two transactions the first time and none the second time.
 public enum ImportMatching {
 	public struct Key: Hashable, Sendable {
+		// The synthesized Hashable conformance reads these properties, which Periphery cannot see.
+		// periphery:ignore
 		let day: Day
+		// periphery:ignore
 		let amount: Int64
+		// periphery:ignore
 		let name: String
+		// periphery:ignore
 		let purpose: String
 
 		public init(_ t: Transaction) {

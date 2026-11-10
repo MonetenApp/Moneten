@@ -4,7 +4,6 @@ import SwiftUI
 
 struct MigrationSheet: View {
 	@Environment(AppModel.self) private var model
-	@Environment(\.dismiss) private var dismiss
 
 	enum Step {
 		case intro
