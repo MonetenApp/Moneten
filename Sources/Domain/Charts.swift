@@ -65,22 +65,10 @@ extension Ledger {
 	public func balanceBars(accountIDs: Set<UUID>, range: DayRange = .all, maxBars: Int, calendar: Calendar = .current) -> [BalanceBar] {
 		let daily = dailyBalances(accountIDs: accountIDs)
 		guard let first = daily.first?.day else { return [] }
-		let latest = Day.today(calendar: calendar)
+		let today = Day.today(calendar: calendar)
 		let start = range.start ?? first
-		let end = min(range.end ?? latest, latest)
-		guard start <= end else { return [] }
-		var balances: [Int64] = []
-		var index = 0
-		var current = accountIDs.compactMap { account($0) }.reduce(Int64(0)) { $0 + $1.initialBalanceMinor }
-		var day = start
-		while day <= end {
-			while index < daily.count, daily[index].day <= day {
-				current = daily[index].minorUnits
-				index += 1
-			}
-			balances.append(current)
-			day = day.adding(days: 1, calendar: calendar)
-		}
+		let balances = endOfDayBalances(daily, accountIDs: accountIDs, from: start, through: min(range.end ?? today, today), calendar: calendar)
+			.map(\.minorUnits)
 		let step = Self.barStep(days: balances.count, maxBars: max(1, maxBars))
 		return stride(from: 0, to: balances.count, by: step).map { i in
 			let slice = balances[i..<min(i + step, balances.count)]
@@ -93,35 +81,42 @@ extension Ledger {
 		[1, 2, 3, 7, 14, 30, 61, 91, 182, 365].first { (days + $0 - 1) / $0 <= maxBars } ?? (days + maxBars - 1) / maxBars
 	}
 
-	/// Average daily balance per month. Days without transactions carry the balance of the day before.
+	/// The mean of the end-of-day balances of each calendar month of the range, never past today.
+	/// "Show All" starts with the month of the oldest transaction. Days before the first transaction
+	/// count with the initial balance, as in `balanceBars`.
 	public func monthlyAverageBalances(accountIDs: Set<UUID>, range: DayRange = .all, calendar: Calendar = .current) -> [BalancePoint] {
 		let daily = dailyBalances(accountIDs: accountIDs)
-		guard let first = daily.first else { return [] }
+		guard let first = daily.first?.day else { return [] }
+		let today = Day.today(calendar: calendar)
+		let lastDay = range.end.map { $0.firstOfMonth.adding(months: 1, calendar: calendar).adding(days: -1, calendar: calendar) } ?? today
+		let series = endOfDayBalances(daily, accountIDs: accountIDs, from: (range.start ?? first).firstOfMonth, through: min(lastDay, today), calendar: calendar)
+		var months: [BalancePoint] = []
+		var days: [Int64] = []
+		for point in series {
+			if months.last?.day != point.day.firstOfMonth {
+				months.append(BalancePoint(day: point.day.firstOfMonth, minorUnits: 0))
+				days.append(0)
+			}
+			months[months.count - 1].minorUnits += point.minorUnits
+			days[days.count - 1] += 1
+		}
+		return zip(months, days).map { BalancePoint(day: $0.day, minorUnits: $0.minorUnits / $1) }
+	}
+
+	/// The balance at the end of each day from `start` through `end`. Days before the first
+	/// transaction carry the initial balances of the accounts.
+	private func endOfDayBalances(_ daily: [BalancePoint], accountIDs: Set<UUID>, from start: Day, through end: Day, calendar: Calendar) -> [BalancePoint] {
 		var result: [BalancePoint] = []
 		var index = 0
-		var current = first.minorUnits
-		var month = first.day.firstOfMonth
-		let last = Day.today(calendar: calendar)
-		while month <= last {
-			let next = month.adding(months: 1, calendar: calendar)
-			var total: Int64 = 0
-			var days: Int64 = 0
-			var day = month
-			while day < next && day <= last {
-				while index < daily.count, daily[index].day <= day {
-					current = daily[index].minorUnits
-					index += 1
-				}
-				if day >= first.day {
-					total += current
-					days += 1
-				}
-				day = day.adding(days: 1, calendar: calendar)
+		var current = accountIDs.compactMap { account($0) }.reduce(Int64(0)) { $0 + $1.initialBalanceMinor }
+		var day = start
+		while day <= end {
+			while index < daily.count, daily[index].day <= day {
+				current = daily[index].minorUnits
+				index += 1
 			}
-			if days > 0, range.contains(month) || range.contains(next.adding(days: -1, calendar: calendar)) {
-				result.append(BalancePoint(day: month, minorUnits: total / days))
-			}
-			month = next
+			result.append(BalancePoint(day: day, minorUnits: current))
+			day = day.adding(days: 1, calendar: calendar)
 		}
 		return result
 	}

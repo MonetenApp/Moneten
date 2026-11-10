@@ -72,6 +72,25 @@ struct BalanceChartTests {
 		#expect(bars.last?.start == today)
 	}
 
+	@Test("The monthly average is the mean of the daily balances of the month")
+	func monthlyAverage() {
+		let account = Account(position: 0, name: "April", kind: .giro, source: .offline)
+		let april = Ledger(accounts: [account], transactions: [
+			Transaction(accountID: account.id, bookingDate: Day(year: 2026, month: 4, day: 1), amountMinor: 100_000, name: "In"),
+			Transaction(accountID: account.id, bookingDate: Day(year: 2026, month: 4, day: 16), amountMinor: 100_000, name: "In"),
+		])
+		let range = DayRange(start: Day(year: 2026, month: 4, day: 1), end: Day(year: 2026, month: 4, day: 30))
+		#expect(april.monthlyAverageBalances(accountIDs: [account.id], range: range).map(\.minorUnits) == [150_000])
+	}
+
+	@Test("Days before the first transaction count with the initial balance in the monthly average")
+	func monthlyAverageBeforeFirstTransaction() {
+		let l = ledger([(Day(year: 2026, month: 10, day: 15), -20_000)])
+		let october = DayRange(start: Day(year: 2026, month: 10, day: 1), end: Day(year: 2026, month: 10, day: 31))
+		let expected: Int64 = (14 * 50_000 + 17 * 30_000) / 31
+		#expect(l.monthlyAverageBalances(accountIDs: [giro.id], range: october).map(\.minorUnits) == [expected])
+	}
+
 	@Test("An account without transactions has no bars")
 	func empty() {
 		#expect(ledger([]).balanceBars(accountIDs: [giro.id], maxBars: 100).isEmpty)

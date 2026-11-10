@@ -162,7 +162,7 @@ struct CategoryBarChart: View {
 			}
 		}
 		.chartXSelection(value: $pointer)
-		.chartStyle(currency: currency, dates: dateAxis)
+		.chartStyle(currency: currency, dates: dateAxis, marks: sums.count <= 12 ? sums.map { $0.start.date() } : nil)
 	}
 
 	private var unit: Calendar.Component {
@@ -173,13 +173,12 @@ struct CategoryBarChart: View {
 		}
 	}
 
-	/// One label per bar while they fit, so a single month never gets several labels.
+	/// One label at each bar while they fit, so empty months between bars get none.
 	private var dateAxis: (AxisMarkValues, Date.FormatStyle) {
-		let values: AxisMarkValues = sums.count <= 12 ? .stride(by: unit) : .automatic(desiredCount: 6)
 		switch period {
-		case .month: return (values, .dateTime.month(.abbreviated).year(.twoDigits))
-		case .quarter: return (values, .dateTime.quarter().year(.twoDigits))
-		case .year: return (values, .dateTime.year())
+		case .month: (.automatic(desiredCount: 6), .dateTime.month(.abbreviated).year(.twoDigits))
+		case .quarter: (.automatic(desiredCount: 6), .dateTime.quarter().year(.twoDigits))
+		case .year: (.automatic(desiredCount: 6), .dateTime.year())
 		}
 	}
 
@@ -219,11 +218,19 @@ struct ChartValueLabel: View {
 extension View {
 	/// The axes of every bar chart: dates on top with a line at each, as in MoneyMoney, and three
 	/// amounts without cents on the trailing side, in the format of the list.
-	func chartStyle(currency: String, dates: (values: AxisMarkValues, format: Date.FormatStyle)) -> some View {
+	/// `marks` puts the dates at exactly these days instead of `dates.values`.
+	func chartStyle(currency: String, dates: (values: AxisMarkValues, format: Date.FormatStyle), marks: [Date]? = nil) -> some View {
 		chartXAxis {
-			AxisMarks(position: .top, values: dates.values) { _ in
-				AxisGridLine().foregroundStyle(.quaternary)
-				AxisValueLabel(format: dates.format)
+			if let marks {
+				AxisMarks(position: .top, values: marks) { _ in
+					AxisGridLine().foregroundStyle(.quaternary)
+					AxisValueLabel(format: dates.format)
+				}
+			} else {
+				AxisMarks(position: .top, values: dates.values) { _ in
+					AxisGridLine().foregroundStyle(.quaternary)
+					AxisValueLabel(format: dates.format)
+				}
 			}
 		}
 		.chartYAxis {
