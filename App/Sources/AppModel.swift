@@ -95,7 +95,23 @@ final class AppModel {
 
 	var selection: SidebarSelection?
 	var filter = TransactionFilter()
-	var period: PeriodChoice = .all { didSet { filter.period = period.range() } }
+	var period: PeriodChoice = .all {
+		didSet {
+			filter.period = period.range()
+			if !choosingBar { chartRange = filter.period }
+		}
+	}
+	/// The period of the charts. A click on a bar narrows the list to that bar and keeps this, so
+	/// the other bars stay and the user can click the next one. Every other choice sets both.
+	private(set) var chartRange = DayRange.all
+	private var choosingBar = false
+
+	/// Shows the transactions of a clicked bar in the list.
+	func select(bar period: PeriodChoice) {
+		choosingBar = true
+		self.period = period
+		choosingBar = false
+	}
 	var keepFilters = false
 	var viewMode: ViewMode = ViewMode(rawValue: UserDefaults.standard.string(forKey: Preference.viewMode) ?? "") ?? .barChart {
 		didSet { UserDefaults.standard.set(viewMode.rawValue, forKey: Preference.viewMode) }
@@ -286,6 +302,14 @@ final class AppModel {
 	var visibleTransactions: [Transaction] {
 		guard let selection else { return [] }
 		return ledger.transactions(in: selection.scope, filter: filter)
+	}
+
+	/// The transactions of the bar charts: the filters of the list, but over the period of the charts.
+	var chartTransactions: [Transaction] {
+		guard let selection else { return [] }
+		var f = filter
+		f.period = chartRange
+		return ledger.transactions(in: selection.scope, filter: f)
 	}
 
 	/// New transactions count as seen when the user opens their account.

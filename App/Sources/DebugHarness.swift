@@ -99,6 +99,8 @@ final class DebugHarness {
 			case "12m": model.period = .months12
 			case "year": model.period = .year(Day.today().firstOfYear)
 			case "month": model.period = .month(Day.today().firstOfMonth)
+			// What a click on the bar of the current month does.
+			case "bar": model.select(bar: .month(Day.today().firstOfMonth))
 			default: model.period = .all
 			}
 		case "sheet":

@@ -11,7 +11,8 @@ struct ChartArea: View {
 		case (.pieChart, _):
 			CategoryPie(rows: rows)
 		case (.barChart, .category?):
-			CategoryBars(rows: rows)
+			// After a click on a bar, the list shows that bar and the chart keeps all of them.
+			CategoryBars(rows: model.filter.period == model.chartRange ? rows : model.chartTransactions)
 		case let (.barChart, .account(id)?):
 			BalanceChart(accountIDs: [id])
 		case let (.barChart, .group(id)?):
@@ -34,9 +35,9 @@ struct BalanceChart: View {
 		GeometryReader { geometry in
 			// A bar is at least 4 points wide, so long periods are averaged instead of drawn as hairlines.
 			let bars = monthly
-				? model.ledger.monthlyAverageBalances(accountIDs: ids, range: model.filter.period)
+				? model.ledger.monthlyAverageBalances(accountIDs: ids, range: model.chartRange)
 					.map { BalanceBar(start: $0.day, end: $0.day.adding(months: 1), minorUnits: $0.minorUnits) }
-				: model.ledger.balanceBars(accountIDs: ids, range: model.filter.period, maxBars: max(1, Int(geometry.size.width / 4)))
+				: model.ledger.balanceBars(accountIDs: ids, range: model.chartRange, maxBars: max(1, Int(geometry.size.width / 4)))
 			if bars.isEmpty {
 				Text("No transactions; no bar chart.")
 					.foregroundStyle(.secondary)
@@ -80,7 +81,7 @@ struct BalanceBarChart: View {
 		.chartYScale(domain: .automatic(includesZero: true))
 		.chartXSelection(value: $pointer)
 		// A click on a bar sets the period filter to its time, so the list shows its transactions.
-		.onTapGesture { if let bar = hovered { model.period = PeriodChoice(bar: bar, monthly: monthly) } }
+		.onTapGesture { if let bar = hovered { model.select(bar: PeriodChoice(bar: bar, monthly: monthly)) } }
 		.help("Click a bar to show its transactions")
 		.chartStyle(currency: currency, dates: Self.dateAxis(from: bars.first!.start, to: bars.last!.end))
 	}
@@ -167,7 +168,7 @@ struct CategoryBarChart: View {
 			}
 		}
 		.chartXSelection(value: $pointer)
-		.onTapGesture { if let s = hovered { model.period = PeriodChoice(start: s.start, chartPeriod: period) } }
+		.onTapGesture { if let s = hovered { model.select(bar: PeriodChoice(start: s.start, chartPeriod: period)) } }
 		.help("Click a bar to show its transactions")
 		.chartStyle(currency: currency, dates: dateAxis, marks: sums.count <= 12 ? sums.map { $0.start.date() } : nil)
 	}
