@@ -4,6 +4,7 @@ import Foundation
 import Import
 import Observation
 import Storage
+import SwiftUI
 
 enum SidebarSelection: Hashable {
 	case account(UUID)
@@ -97,6 +98,8 @@ final class AppModel {
 	/// Changes when many transactions change at once, so that the transaction table starts over
 	/// instead of inserting thousands of rows one by one. See `TransactionTable`.
 	private(set) var tableGeneration = 0
+	/// Column widths and order of the transaction table. They live here, so a new table keeps them.
+	var transactionColumns = TableColumnCustomization<Transaction>()
 
 	private var lastActivity = Date()
 	private var eventMonitor: Any?

@@ -69,6 +69,17 @@ final class DebugHarness {
 		case "removepassword": try? model.vault.removeStoredPassword()
 		case "seed": DemoData.seed(model)
 		case "bulk": DemoData.bulk(model, count: Int(argument) ?? 30_000)
+		case "columnwidth":
+			// "<title> <width>" sets a column of the transaction table, "" logs every width.
+			let parts = argument.split(separator: " ")
+			func tables(in view: NSView) -> [NSTableView] { (view as? NSTableView).map { [$0] } ?? view.subviews.flatMap(tables) }
+			for table in NSApp.windows.compactMap(\.contentView).flatMap(tables) where table.tableColumns.contains(where: { $0.title == "Amount" }) {
+				if parts.count == 2, let width = Double(parts[1]), let column = table.tableColumns.first(where: { $0.title == String(parts[0]) }) {
+					column.width = width
+					NotificationCenter.default.post(name: NSTableView.columnDidResizeNotification, object: table, userInfo: ["NSTableColumn": column, "NSOldWidth": width])
+				}
+				log("columnwidth " + table.tableColumns.map { "\($0.title)=\(Int($0.width))" }.joined(separator: " "))
+			}
 		case "scrolltable":
 			// Scrolls the transaction table to a row, or to the last row with "end".
 			func tables(in view: NSView) -> [NSTableView] { (view as? NSTableView).map { [$0] } ?? view.subviews.flatMap(tables) }
@@ -161,8 +172,9 @@ enum DemoData {
 		let today = Day.today()
 		let names = ["REWE Markt", "Bäckerei Gutbrot", "Stadtwerke Musterstadt", "Beispiel GmbH", "Max Mustermann", "Tankstelle"]
 		for (n, account) in accounts.enumerated() {
-			let ts = stride(from: n, to: count, by: accounts.count).map { i in
-				Transaction(accountID: account.id, bookingDate: today.adding(days: -(i / 8)), amountMinor: Int64(-(i % 9_000) - 100),
+			let ts = stride(from: n, to: count, by: accounts.count).map { (i: Int) -> Transaction in
+				let amount = Int64(-(i % 9_000) - 100)
+				return Transaction(accountID: account.id, bookingDate: today.adding(days: -(i / 8)), amountMinor: amount,
 					name: names[i % names.count], purpose: i % 3 == 0 ? "" : "Purpose \(i)")
 			}
 			_ = model.importTransactions(ts, into: account)

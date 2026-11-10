@@ -302,37 +302,43 @@ struct TransactionTable: View {
 			}
 			.frame(maxWidth: .infinity)
 		} else {
-			Table(of: Transaction.self, selection: $model.selectedTransactions) {
+			Table(of: Transaction.self, selection: $model.selectedTransactions, columnCustomization: $model.transactionColumns) {
 				TableColumn("") { (t: Transaction) in
 					Toggle("", isOn: Binding(get: { t.isChecked }, set: { _ in model.toggleChecked(t.id) }))
 						.toggleStyle(.checkbox)
 						.labelsHidden()
 				}
 				.width(22)
+				.customizationID("check")
 				TableColumn("Date") { (t: Transaction) in
 					Text(Format.day(t.bookingDate)).monospacedDigit().foregroundStyle(t.isPending ? Palette.detail : AnyShapeStyle(.primary))
 				}
 				.width(min: 76, ideal: 84, max: 100)
+				.customizationID("date")
 				TableColumn("Name / Purpose") { (t: Transaction) in
 					TransactionCell(transaction: t)
 				}
 				.width(min: 240, ideal: 520)
+				.customizationID("name")
 				if showsAccount {
 					TableColumn("Account") { (t: Transaction) in
 						Text(model.ledger.account(t.accountID)?.name ?? "").foregroundStyle(Palette.detail).lineLimit(1)
 					}
 					.width(min: 80, ideal: 140)
+					.customizationID("account")
 				}
 				TableColumn("Category") { (t: Transaction) in
 					Text(model.ledger.categoryPath(t.categoryID)).lineLimit(1)
 						.foregroundStyle(t.categoryID == nil ? Palette.detail : AnyShapeStyle(.primary))
 				}
 				.width(min: 80, ideal: 160)
+				.customizationID("category")
 				TableColumn("Amount") { (t: Transaction) in
 					AmountText(money: t.amount).italic(t.isPending)
 				}
 				.width(min: 90, ideal: 110)
 				.alignment(.trailing)
+				.customizationID("amount")
 			} rows: {
 				ForEach(rows) { t in
 					TableRow(t).draggable(draggedIDs(for: t))
