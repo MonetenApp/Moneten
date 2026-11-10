@@ -1,0 +1,5 @@
+# Unused-code check, run by scripts/check.sh.
+# The models are Codable records: GRDB reads and writes their properties, which Periphery cannot see.
+retain_codable_properties: true
+relative_results: true
+strict: true
