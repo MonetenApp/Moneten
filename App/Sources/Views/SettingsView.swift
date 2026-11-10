@@ -84,9 +84,9 @@ struct SecuritySettings: View {
 		return lockAfterEnabled && !choices.contains(storedMinutes) ? (choices + [storedMinutes]).sorted() : choices
 	}
 
-	/// The minutes after which the app locks. A stored 0 from the old number field locks after 5,
-	/// as in `AppModel`, so the picker shows what the app does.
-	private var storedMinutes: Int { lockAfterMinutes > 0 ? lockAfterMinutes : 5 }
+	/// The minutes after which the app locks, read as `AppModel` reads them: a stored 0 from the old
+	/// number field means 5 and anything below 1 means 1, so the picker shows what the app does.
+	private var storedMinutes: Int { max(1, lockAfterMinutes == 0 ? 5 : lockAfterMinutes) }
 
 	/// 0 is "Never". Any other value turns the inactivity lock on with that number of minutes.
 	private var lockAfter: Binding<Int> {
