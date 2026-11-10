@@ -106,6 +106,13 @@ final class AppModel {
 	private(set) var chartRange = DayRange.all
 	private var choosingBar = false
 
+	/// A period from the period menu: it sets the list and the charts, also when the list already
+	/// shows it after a click on a bar.
+	func choose(period: PeriodChoice) {
+		self.period = period
+		chartRange = filter.period
+	}
+
 	/// Shows the transactions of a clicked bar in the list.
 	func select(bar period: PeriodChoice) {
 		choosingBar = true

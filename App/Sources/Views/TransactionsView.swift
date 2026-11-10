@@ -122,25 +122,25 @@ struct FilterBar: View {
 			.buttonStyle(.borderless)
 			.help("Save filter bar")
 			filterMenu("Period:", title: periodTitle) {
-				Button("Show All") { model.period = .all }
+				Button("Show All") { model.choose(period: .all) }
 				Divider()
-				Button("30 Days") { model.period = .days30 }
-				Button("90 Days") { model.period = .days90 }
-				Button("12 Months") { model.period = .months12 }
+				Button("30 Days") { model.choose(period: .days30) }
+				Button("90 Days") { model.choose(period: .days90) }
+				Button("12 Months") { model.choose(period: .months12) }
 				Divider()
 				ForEach(0..<3, id: \.self) { i in
 					let m = Day.today().firstOfMonth.adding(months: -i)
-					Button(Format.monthTitle(m)) { model.period = .month(m) }
+					Button(Format.monthTitle(m)) { model.choose(period: .month(m)) }
 				}
 				Divider()
 				ForEach(0..<3, id: \.self) { i in
 					let q = Day.today().firstOfQuarter.adding(months: -3 * i)
-					Button("Q\((q.month - 1) / 3 + 1) \(String(q.year))") { model.period = .quarter(q) }
+					Button("Q\((q.month - 1) / 3 + 1) \(String(q.year))") { model.choose(period: .quarter(q)) }
 				}
 				Divider()
 				ForEach(0..<3, id: \.self) { i in
 					let y = Day.today().firstOfYear.adding(months: -12 * i)
-					Button(String(y.year)) { model.period = .year(y) }
+					Button(String(y.year)) { model.choose(period: .year(y)) }
 				}
 				Divider()
 				Button("Custom...") { customPeriod = true }
@@ -246,7 +246,7 @@ struct CustomPeriodView: View {
 			SheetButtons {
 				Spacer()
 				Button("Apply") {
-					model.period = .custom(Day(from), Day(to))
+					model.choose(period: .custom(Day(from), Day(to)))
 					dismiss()
 				}
 				.keyboardShortcut(.defaultAction)
