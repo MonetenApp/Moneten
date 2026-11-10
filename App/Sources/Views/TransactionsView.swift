@@ -336,10 +336,12 @@ struct TransactionTable: View {
 					HStack(spacing: 5) {
 						AmountText(money: t.amount, showsCurrency: t.currency != currency)
 							.font(.system(size: 18))
+							.modifier(PendingValue(pending: t.isPending))
 						CheckBox(isOn: t.isChecked) { model.toggleChecked(t.id) }
 					}
 					.padding(.trailing, 2)
-					.rowChrome(t, alignment: .trailing)
+					// "Pending" goes on the amount only: on the cell it would replace the state of the checkbox.
+					.rowChrome(t, alignment: .trailing, announcesPending: false)
 				}
 				.width(min: 120, ideal: 150)
 				.alignment(.trailing)
@@ -443,9 +445,13 @@ struct CategoryRibbon: View {
 		let ledger = model.ledger
 		let category = ledger.effectiveCategoryID(of: transaction).flatMap { ledger.category($0) }.flatMap { $0.isDefault ? nil : $0 }
 		Button {
-			// Like the context menu, the ribbon of a selected row acts on the whole selection.
-			let selection = model.selectedTransactions
-			CategoryChoices.popUp(model: model, ids: selection.contains(transaction.id) ? selection : [transaction.id])
+			// Like the context menu, the ribbon of a selected row acts on the whole selection, but only on
+			// the rows that are still visible: a search keeps the selection of rows it hides.
+			var ids: Set<UUID> = [transaction.id]
+			if model.selectedTransactions.contains(transaction.id), model.selectedTransactions.count > 1 {
+				ids = model.selectedTransactions.intersection(model.visibleTransactions.map(\.id))
+			}
+			CategoryChoices.popUp(model: model, ids: ids)
 		} label: {
 			Group {
 				if let category {
@@ -617,11 +623,11 @@ extension View {
 	/// Fills the cell, so that the row is 55 points high with its inset, and draws the line below
 	/// the row and, for a pending transaction, the bands. The line of SwiftUI is hidden: it starts
 	/// indented and sits in the gap between the rows.
-	func rowChrome(_ t: Transaction, alignment: Alignment = .leading) -> some View {
+	func rowChrome(_ t: Transaction, alignment: Alignment = .leading, announcesPending: Bool = true) -> some View {
 		frame(maxWidth: .infinity, minHeight: 55 - 2 * RowChrome.inset, maxHeight: .infinity, alignment: alignment)
 			.background { RowChrome(pending: t.isPending) }
 			.listRowSeparator(.hidden)
-			.modifier(PendingValue(pending: t.isPending))
+			.modifier(PendingValue(pending: announcesPending && t.isPending))
 	}
 }
 
