@@ -7,70 +7,70 @@ struct CategorySettingsSheet: View {
 	let categoryID: UUID
 	@State private var category: Domain.Category?
 	@State private var color = Color.accentColor
+	@State private var originalColor = Color.accentColor
 	@State private var ruleError: String?
 	@State private var askApply = false
 	@State private var showHelp = false
 	@State private var confirmRemove = false
 
 	var body: some View {
-		VStack(alignment: .leading, spacing: 14) {
+		SheetFrame(title: "Settings for \(category?.name ?? "")", width: 520, onConfirm: save, leading: {
+			if category?.isDefault == false {
+				Button("Remove Category...", role: .destructive) { confirmRemove = true }
+			}
+		}) {
 			if let binding = Binding($category) {
-				Text("Settings for \(binding.wrappedValue.name)").font(.headline)
-				Form {
-					TextField("Name:", text: binding.name).disabled(false)
-					if !binding.wrappedValue.isDefault {
-						ColorPicker("Color:", selection: $color, supportsOpacity: false)
+				let c = binding.wrappedValue
+				Section {
+					TextField("Name", text: binding.name)
+					if !c.isDefault {
+						LabeledContent("Color") { ColorSwatches(selection: $color) }
 					}
 					Toggle("Show in diagrams", isOn: binding.showInDiagrams)
 						.help("Turn this off for transfers between your own accounts.")
-					Picker("Display in sidebar:", selection: binding.sidebarAmount) {
+					Picker("Display in sidebar", selection: binding.sidebarAmount) {
 						ForEach(SidebarAmount.allCases, id: \.self) { Text($0.title).tag($0) }
 					}
-					if !binding.wrappedValue.isDefault && !binding.wrappedValue.isGroup {
-						Picker("Restrict to:", selection: binding.restrictedToID) {
+					if !c.isDefault && !c.isGroup {
+						Picker("Restrict to", selection: binding.restrictedToID) {
 							Text("All accounts").tag(UUID?.none)
 							ForEach(model.ledger.groups) { Text($0.name).tag(UUID?.some($0.id)) }
 							ForEach(model.ledger.accounts) { Text($0.name).tag(UUID?.some($0.id)) }
 						}
 					}
 				}
-				if !binding.wrappedValue.isDefault && !binding.wrappedValue.isGroup {
-					HStack {
-						Text("Rules for automatic categorization:")
-						Spacer()
-						Button { showHelp = true } label: { Image(systemName: "questionmark.circle") }
-							.buttonStyle(.borderless)
-							.help("Help")
-							.popover(isPresented: $showHelp) { RuleHelp() }
+				if !c.isDefault && !c.isGroup {
+					Section {
+						TextEditor(text: binding.rule)
+							.font(.system(.body, design: .monospaced))
+							.scrollContentBackground(.hidden)
+							.frame(height: 88)
+							.onChange(of: c.rule) { _, text in validate(text) }
+					} header: {
+						HStack {
+							Text("Rules for automatic categorization")
+							Spacer()
+							Button { showHelp = true } label: { Image(systemName: "questionmark.circle") }
+								.buttonStyle(.borderless)
+								.help("Help")
+								.popover(isPresented: $showHelp) { RuleHelp() }
+						}
+					} footer: {
+						if let ruleError {
+							Text(ruleError).foregroundStyle(.red)
+						} else if !c.rule.isEmpty {
+							let count = matchCount(c)
+							Text(count == 1 ? "The rule matches 1 transaction." : "The rule matches \(count) transactions.")
+								.foregroundStyle(.secondary)
+						}
 					}
-					TextEditor(text: binding.rule)
-						.font(.system(.body, design: .monospaced))
-						.frame(height: 90)
-						.border(Color.secondary.opacity(0.3))
-						.onChange(of: binding.wrappedValue.rule) { _, text in validate(text) }
-					if let ruleError {
-						Text(ruleError).foregroundStyle(.red).font(.callout)
-					} else if !binding.wrappedValue.rule.isEmpty {
-						let count = matchCount(binding.wrappedValue)
-						Text(count == 1 ? "The rule matches 1 transaction." : "The rule matches \(count) transactions.")
-							.font(.callout).foregroundStyle(.secondary)
-					}
-				}
-				HStack {
-					if !binding.wrappedValue.isDefault {
-						Button("Remove Category...", role: .destructive) { confirmRemove = true }
-					}
-					Spacer()
-					Button("Cancel", role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction)
-					Button("OK", action: save).keyboardShortcut(.defaultAction).disabled(ruleError != nil)
 				}
 			}
 		}
-		.padding(20)
-		.frame(width: 540)
 		.onAppear {
 			category = model.ledger.category(categoryID)
-			color = Color(hex: category?.color) ?? .accentColor
+			color = category.map { CategoryColors.color(of: $0, in: model.ledger) } ?? .accentColor
+			originalColor = color
 		}
 		.confirmationDialog("Should this categorization rule be applied to the existing transactions now?", isPresented: $askApply) {
 			Button("Apply only to not yet categorized transactions.") { apply(.uncategorizedOnly) }
@@ -104,16 +104,18 @@ struct CategorySettingsSheet: View {
 		return model.ledger.transactions.reduce(0) { $0 + (rule.matches(RuleSubject($1, account: model.ledger.account($1.accountID))) ? 1 : 0) }
 	}
 
-	private func save() {
-		guard var c = category else { return }
-		if !c.isDefault { c.color = color.hex }
+	/// Saves and closes, or keeps the sheet open to ask whether a changed rule applies to existing transactions.
+	private func save() -> Bool {
+		guard ruleError == nil, var c = category else { return ruleError == nil }
+		// A category keeps the inherited palette color until the user picks one.
+		if !c.isDefault, color.hex != originalColor.hex { c.color = color.hex }
 		let ruleChanged = c.rule != model.ledger.category(categoryID)?.rule
 		model.save(category: c)
 		if ruleChanged, !c.rule.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
 			askApply = true
-		} else {
-			dismiss()
+			return false
 		}
+		return true
 	}
 
 	private func apply(_ mode: RuleApplication) {
@@ -151,5 +153,72 @@ struct RuleHelp: View {
 			Text(code).font(.system(.body, design: .monospaced)).textSelection(.enabled)
 			Text(text).font(.callout).foregroundStyle(.secondary)
 		}
+	}
+}
+
+/// The palette of category colors as swatches, with the system color panel for any other color.
+struct ColorSwatches: View {
+	@Binding var selection: Color
+
+	var body: some View {
+		HStack(spacing: 6) {
+			ForEach(Array(CategoryColors.palette.enumerated()), id: \.offset) { _, color in
+				let selected = color.hex == selection.hex
+				Button { selection = color } label: {
+					Circle()
+						.fill(color)
+						.frame(width: 16, height: 16)
+						.padding(3)
+						.overlay(Circle().strokeBorder(selected ? Color.primary : .clear, lineWidth: 2))
+						.contentShape(Circle())
+				}
+				.buttonStyle(.plain)
+				.help(selected ? "Selected color" : "Choose this color")
+			}
+			OtherColorButton(selection: $selection)
+				.help("Other color")
+		}
+	}
+}
+
+/// The last swatch: a color wheel that opens the system color panel for any other color.
+/// It shows the chosen color when that color is not in the palette.
+struct OtherColorButton: View {
+	@Binding var selection: Color
+	@State private var relay = ColorPanelRelay()
+
+	var body: some View {
+		let custom = !CategoryColors.palette.contains { $0.hex == selection.hex }
+		Button {
+			relay.open(selection) { selection = $0 }
+		} label: {
+			Circle()
+				.fill(custom ? AnyShapeStyle(selection) : AnyShapeStyle(AngularGradient(colors: [.red, .yellow, .green, .cyan, .blue, .purple, .red], center: .center)))
+				.frame(width: 16, height: 16)
+				.padding(3)
+				.overlay(Circle().strokeBorder(custom ? Color.primary : .clear, lineWidth: 2))
+				.contentShape(Circle())
+		}
+		.buttonStyle(.plain)
+	}
+}
+
+/// Receives the changes of the shared color panel and passes them on.
+@MainActor
+final class ColorPanelRelay: NSObject {
+	private var onChange: ((Color) -> Void)?
+
+	func open(_ color: Color, onChange: @escaping (Color) -> Void) {
+		self.onChange = onChange
+		let panel = NSColorPanel.shared
+		panel.showsAlpha = false
+		panel.color = NSColor(color)
+		panel.setTarget(self)
+		panel.setAction(#selector(changed(_:)))
+		panel.orderFront(nil)
+	}
+
+	@objc func changed(_ panel: NSColorPanel) {
+		onChange?(Color(nsColor: panel.color))
 	}
 }
