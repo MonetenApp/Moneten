@@ -316,9 +316,14 @@ struct TransactionTable: View {
 			// A pending transaction is hatched.
 			// Amounts omit the currency only when the whole view has one. A mixed group keeps it on every row.
 			let currency = rows.first.flatMap { first in rows.allSatisfy { $0.currency == first.currency } ? first.currency : nil }
-			Table(of: Transaction.self, selection: $model.selectedTransactions, columnCustomization: $model.transactionColumns) {
+			// The rows go in as a collection and carry no modifier. A ForEach of rows, and even more a
+			// modifier on a row such as .draggable or .itemProvider, makes SwiftUI build a view graph for
+			// every one of 50,000 rows on each change of the view, which took most of a second. The cells
+			// are built for the visible rows only, so they carry the drag, and its payload is made when
+			// a drag starts.
+			Table(rows, selection: $model.selectedTransactions, columnCustomization: $model.transactionColumns) {
 				TableColumn("Date") { (t: Transaction) in
-					DateCell(transaction: t, model: model).rowChrome(t)
+					DateCell(transaction: t, model: model).rowChrome(t).draggable(draggedIDs(for: t))
 				}
 				// The table starts the first cell 6 points from the edge of the row. With the gap of 17
 				// points, the name then starts 118 points from the edge, as in MoneyMoney.
@@ -327,7 +332,7 @@ struct TransactionTable: View {
 				// A group or category view names the account below the purpose of a selected row.
 				TableColumn("Name / Purpose") { (t: Transaction) in
 					let account = showsAccount && model.selectedTransactions.contains(t.id) ? model.ledger.account(t.accountID)?.name : nil
-					TransactionCell(transaction: t, account: account).padding(.trailing, 12).rowChrome(t)
+					TransactionCell(transaction: t, account: account).padding(.trailing, 12).rowChrome(t).draggable(draggedIDs(for: t))
 				}
 				.width(min: 240, ideal: 520)
 				.customizationID("name")
@@ -342,14 +347,11 @@ struct TransactionTable: View {
 					.padding(.trailing, 2)
 					// "Pending" goes on the amount only: on the cell it would replace the state of the checkbox.
 					.rowChrome(t, alignment: .trailing, announcesPending: false)
+					.draggable(draggedIDs(for: t))
 				}
 				.width(min: 120, ideal: 150)
 				.alignment(.trailing)
 				.customizationID("amount")
-			} rows: {
-				ForEach(rows) { t in
-					TableRow(t).draggable(draggedIDs(for: t))
-				}
 			}
 			.tableStyle(.bordered(alternatesRowBackgrounds: false))
 			.tableColumnHeaders(.hidden)
