@@ -48,10 +48,28 @@ extension Color {
 
 struct AmountText: View {
 	let money: Money
+	/// Sidebar amounts are secondary to the names beside them. Negative amounts stay red.
+	var secondary = false
 	var body: some View {
 		Text(Format.money(money))
 			.monospacedDigit()
-			.foregroundStyle(money.isNegative ? Color.red : Color.primary)
+			.foregroundStyle(money.isNegative ? AnyShapeStyle(Color.red) : secondary ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
+	}
+}
+
+/// The color of a category: its own color, else the color of its top-level category from a fixed
+/// palette, so that the sidebar and the pie chart show the same color for the same category.
+enum CategoryColors {
+	static let palette: [Color] = [.blue, .orange, .green, .pink, .purple, .teal, .yellow, .indigo, .mint, .brown, .cyan, .red]
+
+	static func color(of category: Domain.Category, in ledger: Ledger) -> Color {
+		if let own = Color(hex: category.color) { return own }
+		if category.isDefault { return .gray }
+		var root = category
+		while let parent = root.parentID.flatMap({ ledger.category($0) }) { root = parent }
+		if let own = Color(hex: root.color) { return own }
+		let index = ledger.childCategories(of: nil).firstIndex { $0.id == root.id } ?? 0
+		return palette[index % palette.count]
 	}
 }
 

@@ -6,30 +6,29 @@ struct SidebarView: View {
 
 	var body: some View {
 		let selection = Binding<SidebarSelection?>(get: { model.selection }, set: { model.navigate(to: $0) })
-		VStack(spacing: 0) {
-			List(selection: selection) {
-				if !model.hasPassword {
-					Button {
-						model.sheet = .setPassword
-					} label: {
-						Label("No database password protects your data. Set one now.", systemImage: "exclamationmark.shield")
-							.font(.callout)
-							.foregroundStyle(.orange)
-					}
-					.buttonStyle(.plain)
+		List(selection: selection) {
+			if !model.hasPassword {
+				Button {
+					model.sheet = .setPassword
+				} label: {
+					Label("No database password protects your data. Set one now.", systemImage: "exclamationmark.shield")
+						.font(.callout)
+						.foregroundStyle(.orange)
 				}
-				Section("Accounts") {
-					AccountTree(parent: nil)
-				}
-				Section("Categories") {
-					CategoryTree(parent: nil)
-					if let d = model.ledger.defaultCategory {
-						CategoryRow(category: d).tag(SidebarSelection.category(d.id))
-					}
+				.buttonStyle(.plain)
+			}
+			Section("Accounts") {
+				AccountTree(parent: nil)
+			}
+			Section("Categories") {
+				CategoryTree(parent: nil)
+				if let d = model.ledger.defaultCategory {
+					CategoryRow(category: d).tag(SidebarSelection.category(d.id))
 				}
 			}
-			.listStyle(.sidebar)
-			Divider()
+		}
+		.listStyle(.sidebar)
+		.safeAreaInset(edge: .bottom, spacing: 0) {
 			HStack {
 				Menu {
 					Button("Add account") { model.sheet = .newAccount }
@@ -41,15 +40,19 @@ struct SidebarView: View {
 					Button("Import from MoneyMoney...") { model.sheet = .migration }
 				} label: {
 					Image(systemName: "plus")
+						.font(.body.weight(.medium))
+						.frame(width: 28, height: 28)
+						.contentShape(.rect)
 				}
-				.menuStyle(.borderlessButton)
+				.menuStyle(.button)
+				.buttonStyle(.borderless)
 				.menuIndicator(.hidden)
 				.fixedSize()
 				.help("Add item")
 				Spacer()
 			}
-			.padding(.horizontal, 10)
-			.padding(.vertical, 6)
+			.padding(.horizontal, 8)
+			.padding(.vertical, 4)
 		}
 	}
 }
@@ -85,9 +88,10 @@ struct GroupRow: View {
 			Label(group.name, systemImage: "folder")
 			Spacer()
 			if group.showSum {
-				Text(Format.sums(model.ledger.sum(ofGroup: group.id)))
+				let sums = model.ledger.sum(ofGroup: group.id)
+				Text(Format.sums(sums))
 					.monospacedDigit()
-					.foregroundStyle(.secondary)
+					.foregroundStyle(sums.amounts.contains(where: \.isNegative) && sums.amounts.count == 1 ? AnyShapeStyle(Color.red) : AnyShapeStyle(.secondary))
 			}
 		}
 		.dropDestination(for: String.self) { items, _ in
@@ -120,15 +124,17 @@ struct AccountRow: View {
 			}
 			if newCount > 0 {
 				Text("\(newCount)")
-					.font(.caption2.bold())
-					.padding(.horizontal, 5)
+					.font(.subheadline.weight(.semibold))
+					.monospacedDigit()
+					.padding(.horizontal, 6)
+					.padding(.vertical, 1)
 					.background(Capsule().fill(.tint))
 					.foregroundStyle(.white)
 			}
 			Spacer()
 			// A closed account stays in the sidebar without its balance, as in MoneyMoney.
 			if !account.isClosed {
-				AmountText(money: balance)
+				AmountText(money: balance, secondary: true)
 			}
 		}
 		.draggable(account.id.uuidString)
@@ -179,12 +185,12 @@ struct CategoryRow: View {
 				Text(category.name)
 			} icon: {
 				Image(systemName: category.isGroup ? "folder" : "circle.fill")
-					.foregroundStyle(Color(hex: category.color) ?? .accentColor)
+					.foregroundStyle(CategoryColors.color(of: category, in: model.ledger))
 					.font(category.isGroup ? .body : .caption)
 			}
 			Spacer()
 			if let amount = model.sidebarAmount(of: category) {
-				AmountText(money: amount).foregroundStyle(.secondary)
+				AmountText(money: amount, secondary: true)
 			}
 		}
 		.dropDestination(for: String.self) { items, _ in

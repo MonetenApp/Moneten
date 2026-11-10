@@ -106,8 +106,8 @@ struct CategoryPie: View {
 	var body: some View {
 		let parent: UUID? = { if case let .category(id) = model.selection, !model.ledger.childCategories(of: id).isEmpty { return id }; return nil }()
 		let totals = model.ledger.categoryTotals(of: rows, below: parent)
-		let withdrawals = totals.filter { $0.minorUnits < 0 }.map { (name: $0.category.name, value: Double(-$0.minorUnits) / 100, color: $0.category.color) }
-		let deposits = totals.filter { $0.minorUnits > 0 }.map { (name: $0.category.name, value: Double($0.minorUnits) / 100, color: $0.category.color) }
+		let withdrawals = totals.filter { $0.minorUnits < 0 }.map { (name: $0.category.name, value: Double(-$0.minorUnits) / 100, color: CategoryColors.color(of: $0.category, in: model.ledger)) }
+		let deposits = totals.filter { $0.minorUnits > 0 }.map { (name: $0.category.name, value: Double($0.minorUnits) / 100, color: CategoryColors.color(of: $0.category, in: model.ledger)) }
 		HStack(spacing: 30) {
 			pie("Withdrawals", withdrawals)
 			pie("Deposits", deposits)
@@ -115,7 +115,7 @@ struct CategoryPie: View {
 	}
 
 	@ViewBuilder
-	private func pie(_ title: String, _ slices: [(name: String, value: Double, color: String?)]) -> some View {
+	private func pie(_ title: String, _ slices: [(name: String, value: Double, color: Color)]) -> some View {
 		VStack {
 			Text(title).font(.headline)
 			if slices.isEmpty {
@@ -125,6 +125,8 @@ struct CategoryPie: View {
 					SectorMark(angle: .value(title, s.value), innerRadius: .ratio(0.5), angularInset: 1)
 						.foregroundStyle(by: .value("Category", s.name))
 				}
+				// The same colors as the category dots in the sidebar.
+				.chartForegroundStyleScale(domain: slices.map(\.name), range: slices.map(\.color))
 				.chartLegend(position: .trailing, alignment: .center)
 			}
 		}
