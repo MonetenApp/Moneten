@@ -64,7 +64,7 @@ struct BalanceBarChart: View {
 		// Wide bars get a gap between them. Narrow bars touch, or the gaps would hide them.
 		let gap = width / CGFloat(bars.count) >= 6 ? 0.2 : 0
 		// A label is about 70 points wide and starts at its mark.
-		let dates = DateAxis(from: bars.first!.start, to: bars.last!.end, trailing: 70 / max(70, width))
+		let dates = DateAxis(from: bars.first!.start, to: bars.last!.end, trailing: Double(70 / max(70, width)))
 		Chart {
 			ForEach(bars) { bar in
 				Self.mark(bar, currency: currency, gap: gap, dimmed: hovered != nil && hovered != bar)
