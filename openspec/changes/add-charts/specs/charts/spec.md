@@ -104,7 +104,7 @@ The app SHALL combine neighboring days into one bar with their average balance w
 
 ### Requirement: Balance chart of an account group
 
-The app SHALL draw the balance chart of an account group as the sum of the balances of its accounts for each day. Accounts in different currencies are not added. The app draws one chart for each currency.
+The app SHALL draw the balance chart of an account group as the sum of the balances of its accounts for each day. Accounts in different currencies are not added. The app draws one chart for each currency and shows one of them at a time, first the currency of most accounts, with a picker for the others. The category bars and the pie charts do the same with the transactions of each currency.
 
 #### Scenario: Two euro accounts
 

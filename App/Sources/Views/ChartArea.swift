@@ -26,12 +26,22 @@ struct ChartArea: View {
 struct BalanceChart: View {
 	@Environment(AppModel.self) private var model
 	let accountIDs: Set<UUID>
+	/// The currency the user picked for a group with accounts in several currencies.
+	@State private var picked: String?
 
 	var body: some View {
-		let accounts = accountIDs.compactMap { model.ledger.account($0) }.filter { !$0.isClosed }
-		let currency = accounts.first?.currency ?? "EUR"
-		let ids = Set(accounts.filter { $0.currency == currency && $0.kind != .portfolio }.map(\.id))
+		let accounts = accountIDs.compactMap { model.ledger.account($0) }.filter { !$0.isClosed && $0.kind != .portfolio }
+		let currencies = ChartCurrency.ranked(accounts.map(\.currency))
+		let currency = ChartCurrency.current(currencies, picked: picked)
+		let ids = Set(accounts.filter { $0.currency == currency }.map(\.id))
 		let monthly = model.balanceMode == .monthlyAverage
+		VStack(alignment: .trailing, spacing: 4) {
+			ChartCurrency.Picker(currencies: currencies, current: currency, picked: $picked)
+			bars(ids: ids, currency: currency, monthly: monthly)
+		}
+	}
+
+	private func bars(ids: Set<UUID>, currency: String, monthly: Bool) -> some View {
 		GeometryReader { geometry in
 			// A bar is at least 4 points wide, so long periods are averaged instead of drawn as hairlines.
 			let bars = monthly
@@ -115,22 +125,63 @@ struct BalanceBarChart: View {
 struct CategoryBars: View {
 	@Environment(AppModel.self) private var model
 	let rows: [Transaction]
+	@State private var picked: String?
 
 	var body: some View {
 		@Bindable var model = model
-		let sums = model.ledger.periodSums(of: rows, period: model.chartPeriod)
+		let currencies = ChartCurrency.ranked(rows.map(\.currency))
+		let currency = ChartCurrency.current(currencies, picked: picked)
+		let sums = model.ledger.periodSums(of: ChartCurrency.rows(rows, in: currency, of: currencies), period: model.chartPeriod)
 		VStack(alignment: .trailing, spacing: 4) {
-			Picker("", selection: $model.chartPeriod) {
-				Text("M").help("Monthly view").tag(ChartPeriod.month)
-				Text("Q").help("Quarterly view").tag(ChartPeriod.quarter)
-				Text("Y").help("Yearly view").tag(ChartPeriod.year)
+			HStack(spacing: 8) {
+				ChartCurrency.Picker(currencies: currencies, current: currency, picked: $picked)
+				Picker("", selection: $model.chartPeriod) {
+					Text("M").help("Monthly view").tag(ChartPeriod.month)
+					Text("Q").help("Quarterly view").tag(ChartPeriod.quarter)
+					Text("Y").help("Yearly view").tag(ChartPeriod.year)
+				}
+				.pickerStyle(.segmented)
+				.fixedSize()
 			}
-			.pickerStyle(.segmented)
-			.fixedSize()
 			if sums.isEmpty {
 				Text("No transactions; no bar chart.").foregroundStyle(.secondary).frame(maxWidth: .infinity, maxHeight: .infinity)
 			} else {
-				CategoryBarChart(sums: sums, period: model.chartPeriod, currency: rows.first?.currency ?? "EUR")
+				CategoryBarChart(sums: sums, period: model.chartPeriod, currency: currency)
+			}
+		}
+	}
+}
+
+/// Amounts in different currencies do not add up, so a chart shows one currency at a time: first
+/// the one of most accounts or rows, and the others through a picker.
+enum ChartCurrency {
+	/// The currencies, the most frequent first.
+	static func ranked(_ currencies: [String]) -> [String] {
+		let counts = Dictionary(grouping: currencies, by: { $0 }).mapValues(\.count)
+		return counts.keys.sorted { (counts[$0]!, $1) > (counts[$1]!, $0) }
+	}
+
+	static func current(_ ranked: [String], picked: String?) -> String {
+		picked.flatMap { ranked.contains($0) ? $0 : nil } ?? ranked.first ?? "EUR"
+	}
+
+	/// The rows in the shown currency. A view in one currency keeps its rows as they are.
+	static func rows(_ rows: [Transaction], in currency: String, of ranked: [String]) -> [Transaction] {
+		ranked.count > 1 ? rows.filter { $0.currency == currency } : rows
+	}
+
+	struct Picker: View {
+		let currencies: [String]
+		let current: String
+		@Binding var picked: String?
+
+		var body: some View {
+			if currencies.count > 1 {
+				SwiftUI.Picker("", selection: Binding(get: { current }, set: { picked = $0 })) {
+					ForEach(currencies, id: \.self) { Text($0).help("Amounts in \($0)").tag($0) }
+				}
+				.pickerStyle(.segmented)
+				.fixedSize()
 			}
 		}
 	}
@@ -262,34 +313,101 @@ extension View {
 struct CategoryPie: View {
 	@Environment(AppModel.self) private var model
 	let rows: [Transaction]
+	@State private var picked: String?
 
 	var body: some View {
-		let parent: UUID? = { if case let .category(id) = model.selection, !model.ledger.childCategories(of: id).isEmpty { return id }; return nil }()
-		let totals = model.ledger.categoryTotals(of: rows, below: parent)
-		let withdrawals = totals.filter { $0.minorUnits < 0 }.map { (name: $0.category.name, value: Double(-$0.minorUnits) / 100, color: CategoryColors.color(of: $0.category, in: model.ledger)) }
-		let deposits = totals.filter { $0.minorUnits > 0 }.map { (name: $0.category.name, value: Double($0.minorUnits) / 100, color: CategoryColors.color(of: $0.category, in: model.ledger)) }
-		HStack(spacing: 30) {
-			pie("Withdrawals", withdrawals)
-			pie("Deposits", deposits)
+		let currencies = ChartCurrency.ranked(rows.map(\.currency))
+		let currency = ChartCurrency.current(currencies, picked: picked)
+		let slices = Self.slices(of: ChartCurrency.rows(rows, in: currency, of: currencies), in: model)
+		VStack(alignment: .trailing, spacing: 4) {
+			ChartCurrency.Picker(currencies: currencies, current: currency, picked: $picked)
+			HStack(spacing: 30) {
+				PieChart(title: "Withdrawals", slices: slices.withdrawals)
+				PieChart(title: "Deposits", slices: slices.deposits)
+			}
 		}
 	}
 
-	@ViewBuilder
-	private func pie(_ title: String, _ slices: [(name: String, value: Double, color: Color)]) -> some View {
+	/// The categories of the view, or the subcategories of the selected category, split into
+	/// withdrawals and deposits. The rows are in one currency.
+	static func slices(of rows: [Transaction], in model: AppModel) -> (withdrawals: [PieSlice], deposits: [PieSlice]) {
+		let parent: UUID? = { if case let .category(id) = model.selection, !model.ledger.childCategories(of: id).isEmpty { return id }; return nil }()
+		let totals = model.ledger.categoryTotals(of: rows, below: parent)
+		let currency = rows.first?.currency ?? "EUR"
+		func slice(_ category: Domain.Category, _ minorUnits: Int64) -> PieSlice {
+			PieSlice(id: category.id, name: category.name, money: Money(minorUnits: abs(minorUnits), currency: currency),
+				color: CategoryColors.color(of: category, in: model.ledger))
+		}
+		return (totals.filter { $0.minorUnits < 0 }.map { slice($0.category, $0.minorUnits) },
+			totals.filter { $0.minorUnits > 0 }.map { slice($0.category, $0.minorUnits) })
+	}
+}
+
+struct PieSlice: Identifiable, Equatable {
+	let id: UUID
+	let name: String
+	let money: Money
+	let color: Color
+	var value: Double { Format.chartValue(money.minorUnits, money.currency) }
+}
+
+/// One ring of `CategoryPie`. Under the pointer, the slice stands out and the middle of the ring
+/// names its category, amount, and share. The pointer lives here, so moving it does not sum the rows again.
+struct PieChart: View {
+	let title: String
+	let slices: [PieSlice]
+	@State private var pointer: Double?
+
+	/// `pointer` presets the pointer, for a snapshot of the debug harness.
+	init(title: String, slices: [PieSlice], pointer: Double? = nil) {
+		self.title = title
+		self.slices = slices
+		_pointer = State(initialValue: pointer)
+	}
+
+	var body: some View {
 		VStack {
 			Text(title).font(.headline)
 			if slices.isEmpty {
 				Text("No transactions; no pie chart.").foregroundStyle(.secondary).frame(maxHeight: .infinity)
 			} else {
-				Chart(slices, id: \.name) { s in
+				let total = slices.reduce(0) { $0 + $1.value }
+				let hovered = pointer.flatMap(slice(at:))
+				Chart(slices) { s in
 					SectorMark(angle: .value(title, s.value), innerRadius: .ratio(0.5), angularInset: 1)
 						.foregroundStyle(by: .value("Category", s.name))
+						.opacity(hovered == nil || hovered == s ? 1 : 0.45)
 				}
 				// The same colors as the category dots in the sidebar.
 				.chartForegroundStyleScale(domain: slices.map(\.name), range: slices.map(\.color))
 				.chartLegend(position: .trailing, alignment: .center)
+				.chartAngleSelection(value: $pointer)
+				.chartBackground { proxy in
+					GeometryReader { geometry in
+						if let s = hovered, let plot = proxy.plotFrame {
+							let frame = geometry[plot]
+							VStack(spacing: 2) {
+								Text(s.name).font(.caption).foregroundStyle(Palette.detail).lineLimit(1)
+								AmountText(money: s.money).font(.callout.weight(.semibold)).lineLimit(1).minimumScaleFactor(0.6)
+								Text((s.value / total).formatted(.percent.precision(.fractionLength(0...1)))).font(.caption).foregroundStyle(Palette.detail)
+							}
+							.frame(width: min(frame.width, frame.height) * 0.48)
+							.position(x: frame.midX, y: frame.midY)
+						}
+					}
+				}
 			}
 		}
 		.frame(maxWidth: .infinity)
+	}
+
+	/// The slice that covers a value of the angle scale, which runs from 0 to the sum of the slices.
+	private func slice(at value: Double) -> PieSlice? {
+		var end = 0.0
+		for s in slices {
+			end += s.value
+			if value <= end { return s }
+		}
+		return slices.last
 	}
 }

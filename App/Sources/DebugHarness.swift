@@ -76,6 +76,14 @@ final class DebugHarness {
 				g.groupsByAccount = true
 				model.save(group: g)
 			}
+		case "usd": DemoData.usdAccount(model)
+		case "piesnapshot":
+			// The withdrawals ring with the pointer in the middle of its first slice.
+			let rows = model.visibleTransactions
+			let ranked = ChartCurrency.ranked(rows.map(\.currency))
+			let slices = CategoryPie.slices(of: ChartCurrency.rows(rows, in: ChartCurrency.current(ranked, picked: nil), of: ranked), in: model).withdrawals
+			offscreenSnapshot(PieChart(title: "Withdrawals", slices: slices, pointer: slices.first.map { $0.value / 2 }).frame(height: 230).environment(model),
+				width: 520, name: "\(argument)-pie")
 		case "history": DemoData.history(model)
 		case "bulk":
 			// "<count>" spreads the transactions over the existing accounts, "<count> <accounts>" over new ones.
@@ -249,6 +257,20 @@ enum DemoData {
 		}
 		_ = model.importTransactions(ts.filter { $0.bookingDate <= today }, into: account)
 		model.navigate(to: .account(account.id))
+	}
+
+	/// A credit card in US dollars in the group "Private" of `seed`, for a group with two currencies.
+	@MainActor
+	static func usdAccount(_ model: AppModel) {
+		let group = model.ledger.groups.first { $0.name == "Private" }?.id
+		model.addOfflineAccount(name: "Travel Card", kind: .creditCard, currency: "USD", groupID: group)
+		guard let card = model.ledger.accounts.first(where: { $0.name == "Travel Card" }) else { return }
+		let today = Day.today()
+		let ts = (0..<40).map { i in
+			Transaction(accountID: card.id, bookingDate: today.adding(days: -i * 9), amountMinor: i % 5 == 0 ? 60_000 : -Int64(2_500 + i * 731),
+				currency: "USD", name: i % 5 == 0 ? "Payment" : "Diner", purpose: "Card")
+		}
+		_ = model.importTransactions(ts, into: card)
 	}
 
 	@MainActor
