@@ -32,14 +32,19 @@ public struct AccountGroup: Identifiable, Hashable, Sendable, Codable {
 	public var position: Int
 	public var showSum: Bool
 	public var isExpanded: Bool
+	/// "Group transactions by account": the list of the group shows the transactions of each account
+	/// under a heading with its name.
+	public var groupsByAccount: Bool
 
-	public init(id: UUID = UUID(), name: String, parentID: UUID? = nil, position: Int, showSum: Bool = true, isExpanded: Bool = true) {
+	public init(id: UUID = UUID(), name: String, parentID: UUID? = nil, position: Int, showSum: Bool = true, isExpanded: Bool = true,
+		groupsByAccount: Bool = false) {
 		self.id = id
 		self.name = name
 		self.parentID = parentID
 		self.position = position
 		self.showSum = showSum
 		self.isExpanded = isExpanded
+		self.groupsByAccount = groupsByAccount
 	}
 }
 

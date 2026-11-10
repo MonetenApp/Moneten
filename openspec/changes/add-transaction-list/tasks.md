@@ -7,7 +7,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [x] 1.1 One row per transaction. Verified by the debug harness snapshot in the first build.
 - [x] 1.2 Newest transactions first. Verified by LedgerTests "Newest first".
 - [ ] 1.3 Details from the bank. Built in part: the transaction sheet shows the details. Finish it and verify it with a test or in the app.
-- [x] 1.4 Account name in group and category views. Verified by the debug harness snapshot of the group "Private" with two rows selected: each names "Girokonto" below the purpose. Grouping by account is not built yet.
+- [x] 1.4 Account name in group and category views. Verified by the debug harness snapshot of the group "Private" with two rows selected: each names "Girokonto" below the purpose; with "Group transactions by account" on, the heading "Girokonto" stands above its rows (debug harness `groupbyaccount Private`).
 - [x] 1.5 Pending transactions look different. Verified by the debug harness snapshot: the row is hatched across all cells, and the header shows "Pending" with the sum of the pending transactions of the view and nothing without them.
 - [x] 1.6 New transactions are marked. Verified by a dot in the row, see the debug harness snapshot in the first build.
 - [ ] 1.7 Text can be selected and copied. Built in part: text selection is on. Finish it and verify it with a test or in the app.

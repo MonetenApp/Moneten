@@ -249,6 +249,7 @@ struct GroupSettingsSheet: View {
 				Section {
 					TextField("Name", text: binding.name)
 					Toggle("Display balance in sidebar", isOn: binding.showSum)
+					Toggle("Group transactions by account", isOn: binding.groupsByAccount)
 				}
 			}
 		}

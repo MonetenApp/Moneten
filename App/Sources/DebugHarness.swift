@@ -71,6 +71,11 @@ final class DebugHarness {
 		case "storepassword": log("storepassword \((try? model.vault.storePassword(argument)) != nil)")
 		case "removepassword": try? model.vault.removeStoredPassword()
 		case "seed": DemoData.seed(model)
+		case "groupbyaccount":
+			if var g = model.ledger.groups.first(where: { $0.name == argument }) {
+				g.groupsByAccount = true
+				model.save(group: g)
+			}
 		case "history": DemoData.history(model)
 		case "bulk":
 			// "<count>" spreads the transactions over the existing accounts, "<count> <accounts>" over new ones.

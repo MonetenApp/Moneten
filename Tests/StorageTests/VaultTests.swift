@@ -1,6 +1,7 @@
 import Domain
 import Foundation
 import Testing
+import GRDB
 @testable import Storage
 
 @Suite("Encrypted database")
@@ -127,5 +128,23 @@ struct VaultTests {
 		try folder.createFolders()
 		FileManager.default.createFile(atPath: folder.databaseFile.path, contents: Data())
 		#expect(throws: Vault.Failure.self) { try Vault(folder: folder).state() }
+	}
+}
+
+@Suite("Schema migrations")
+struct SchemaTests {
+	@Test("v2 keeps the groups of a v1 database and lists them without grouping by account")
+	func groupsByAccount() throws {
+		let queue = try DatabaseQueue()
+		try Schema.migrator.migrate(queue, upTo: "v1")
+		let id = UUID()
+		try queue.write { db in
+			try db.execute(sql: "INSERT INTO accountGroup (id, name, position, showSum, isExpanded) VALUES (?, 'Private', 0, 1, 1)", arguments: [id])
+		}
+		try Schema.migrator.migrate(queue)
+		let groups = try queue.read { db in try AccountGroup.fetchAll(db) }
+		#expect(groups.map(\.name) == ["Private"])
+		#expect(groups.first?.groupsByAccount == false)
+		#expect(try queue.read { db in try db.tableExists("setting") } == false)
 	}
 }

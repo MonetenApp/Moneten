@@ -321,37 +321,26 @@ struct TransactionTable: View {
 			// every one of 50,000 rows on each change of the view, which took most of a second. The cells
 			// are built for the visible rows only, so they carry the drag, and its payload is made when
 			// a drag starts.
-			Table(rows, selection: $model.selectedTransactions, columnCustomization: $model.transactionColumns) {
-				TableColumn("Date") { (t: Transaction) in
-					DateCell(transaction: t, model: model).rowChrome(t).draggable(draggedIDs(for: t))
-				}
-				// The table starts the first cell 6 points from the edge of the row. With the gap of 17
-				// points, the name then starts 118 points from the edge, as in MoneyMoney.
-				.width(95)
-				.customizationID("date")
-				// A group or category view names the account below the purpose of a selected row.
-				TableColumn("Name / Purpose") { (t: Transaction) in
-					let account = showsAccount && model.selectedTransactions.contains(t.id) ? model.ledger.account(t.accountID)?.name : nil
-					TransactionCell(transaction: t, account: account).padding(.trailing, 12).rowChrome(t).draggable(draggedIDs(for: t))
-				}
-				.width(min: 240, ideal: 520)
-				.customizationID("name")
-				// The checkmark sits 11 points right of the amount, as in MoneyMoney.
-				TableColumn("Amount") { (t: Transaction) in
-					HStack(spacing: 5) {
-						AmountText(money: t.amount, showsCurrency: t.currency != currency)
-							.font(.system(size: 18))
-							.modifier(PendingValue(pending: t.isPending))
-						CheckBox(isOn: t.isChecked) { model.toggleChecked(t.id) }
+			let sections = accountSections
+			Group {
+				if let sections {
+					// "Group transactions by account": a heading with the account name above its rows. The
+					// sections need a ForEach of rows, which SwiftUI builds for every row, so only a group
+					// with this option pays for it.
+					Table(of: Transaction.self, selection: $model.selectedTransactions, columnCustomization: $model.transactionColumns) {
+						columns(currency: currency)
+					} rows: {
+						ForEach(sections, id: \.account.id) { section in
+							Section(section.account.name) {
+								ForEach(section.rows) { TableRow($0) }
+							}
+						}
 					}
-					.padding(.trailing, 2)
-					// "Pending" goes on the amount only: on the cell it would replace the state of the checkbox.
-					.rowChrome(t, alignment: .trailing, announcesPending: false)
-					.draggable(draggedIDs(for: t))
+				} else {
+					Table(rows, selection: $model.selectedTransactions, columnCustomization: $model.transactionColumns) {
+						columns(currency: currency)
+					}
 				}
-				.width(min: 120, ideal: 150)
-				.alignment(.trailing)
-				.customizationID("amount")
 			}
 			.tableStyle(.bordered(alternatesRowBackgrounds: false))
 			.tableColumnHeaders(.hidden)
@@ -366,6 +355,62 @@ struct TransactionTable: View {
 			// account scrolled to the middle to its group, the app hung, and SwiftUI aborted when its
 			// view graph ran out of space. Edits inside one view still update single rows.
 			.id([AnyHashable(model.selection), AnyHashable(model.filter), AnyHashable(model.tableGeneration)])
+		}
+	}
+
+	@TableColumnBuilder<Transaction, Never>
+	private func columns(currency: String?) -> some TableColumnContent<Transaction, Never> {
+			TableColumn("Date") { (t: Transaction) in
+				DateCell(transaction: t, model: model).rowChrome(t).draggable(draggedIDs(for: t))
+			}
+			// The table starts the first cell 6 points from the edge of the row. With the gap of 17
+			// points, the name then starts 118 points from the edge, as in MoneyMoney.
+			.width(95)
+			.customizationID("date")
+			// A group or category view names the account below the purpose of a selected row.
+			TableColumn("Name / Purpose") { (t: Transaction) in
+				let account = showsAccount && !groupedByAccount && model.selectedTransactions.contains(t.id) ? model.ledger.account(t.accountID)?.name : nil
+				TransactionCell(transaction: t, account: account).padding(.trailing, 12).rowChrome(t).draggable(draggedIDs(for: t))
+			}
+			.width(min: 240, ideal: 520)
+			.customizationID("name")
+			// The checkmark sits 11 points right of the amount, as in MoneyMoney.
+			TableColumn("Amount") { (t: Transaction) in
+				HStack(spacing: 5) {
+					AmountText(money: t.amount, showsCurrency: t.currency != currency)
+						.font(.system(size: 18))
+						.modifier(PendingValue(pending: t.isPending))
+					CheckBox(isOn: t.isChecked) { model.toggleChecked(t.id) }
+				}
+				.padding(.trailing, 2)
+				// "Pending" goes on the amount only: on the cell it would replace the state of the checkbox.
+				.rowChrome(t, alignment: .trailing, announcesPending: false)
+				.draggable(draggedIDs(for: t))
+			}
+			.width(min: 120, ideal: 150)
+			.alignment(.trailing)
+			.customizationID("amount")
+	}
+
+	/// True for a group with "Group transactions by account". Its headings name the accounts.
+	private var groupedByAccount: Bool {
+		guard case let .group(id) = model.selection else { return false }
+		return model.ledger.group(id)?.groupsByAccount == true
+	}
+
+	/// The rows of each account in the order of the sidebar, or nil when the view is not grouped.
+	private var accountSections: [(account: Account, rows: [Transaction])]? {
+		guard groupedByAccount, case let .group(id) = model.selection else { return nil }
+		let byAccount = Dictionary(grouping: rows, by: \.accountID)
+		return orderedAccounts(in: id).compactMap { a in byAccount[a.id].map { (a, $0) } }
+	}
+
+	private func orderedAccounts(in group: UUID) -> [Account] {
+		model.ledger.accountTree(in: group).flatMap { item -> [Account] in
+			switch item {
+			case let .account(a): [a]
+			case let .group(g): orderedAccounts(in: g.id)
+			}
 		}
 	}
 
@@ -389,7 +434,12 @@ struct TransactionCell: View {
 				}
 			}
 			// A row without a purpose keeps the empty line, so that every row is the same height.
-			Text(transaction.purpose.isEmpty ? " " : transaction.purpose).foregroundStyle(Palette.detail).lineLimit(1)
+			// As in MoneyMoney, the purpose takes one line, its lines joined with spaces. The whole text
+			// is in the help tag and in the transaction sheet.
+			Text(transaction.purpose.isEmpty ? " " : transaction.purpose.split(whereSeparator: \.isNewline).joined(separator: " "))
+				.foregroundStyle(Palette.detail)
+				.lineLimit(1)
+				.help(transaction.purpose)
 			if let account {
 				Label(account, systemImage: "building.columns")
 					.font(.system(size: 12))

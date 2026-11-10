@@ -19,7 +19,8 @@ The app SHALL show one row for each transaction of the selected account, account
 #### Scenario: Purpose with several lines
 
 - **WHEN** a transaction has a purpose with three lines
-- **THEN** the row shows all three lines
+- **THEN** the row shows them in one line, joined with spaces, as MoneyMoney does
+- **AND** the help tag of the purpose and the transaction sheet show all three lines
 
 ### Requirement: Newest transactions first
 

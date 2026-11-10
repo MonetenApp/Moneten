@@ -91,12 +91,18 @@ enum Schema {
 				t.column("sourceID", .text).indexed()
 				t.column("createdAt", .datetime).notNull()
 			}
-			// No code uses this table. App settings live in UserDefaults. The next migration that
-			// changes the schema drops it, so that no build needs a migration for this alone.
+			// No code uses this table. App settings live in UserDefaults. Migration v2 drops it.
 			try db.create(table: "setting") { t in
 				t.column("key", .text).primaryKey()
 				t.column("value", .text).notNull()
 			}
+		}
+		// A group can list its transactions by account. The unused table "setting" of v1 goes.
+		m.registerMigration("v2") { db in
+			try db.alter(table: "accountGroup") { t in
+				t.add(column: "groupsByAccount", .boolean).notNull().defaults(to: false)
+			}
+			try db.drop(table: "setting")
 		}
 		return m
 	}
