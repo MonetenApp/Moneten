@@ -8,7 +8,7 @@ The transaction list shows what happened in an account, an account group, or a c
 
 ### Requirement: One row per transaction
 
-The app SHALL show one row for each transaction of the selected account, account group, or category. A row shows the booking date, the counterparty name, the purpose, the category, and the amount with its sign and currency.
+The app SHALL show one row for each transaction of the selected account, account group, or category. A row shows the booking date, the counterparty name, the purpose, the category, and the amount with its sign and currency. As in MoneyMoney, the category is a badge in the color of the category below the booking date, not a column of its own, and every row has the same height.
 
 #### Scenario: Card payment
 

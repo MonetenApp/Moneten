@@ -313,34 +313,36 @@ struct TransactionTable: View {
 					Toggle("", isOn: Binding(get: { t.isChecked }, set: { _ in model.toggleChecked(t.id) }))
 						.toggleStyle(.checkbox)
 						.labelsHidden()
+						.pendingHatch(t.isPending, alignment: .center)
 				}
 				.width(22)
 				.customizationID("check")
+				// As in MoneyMoney, the category is a badge below the date, and a pending transaction is
+				// hatched. Every row has two lines, so all rows are the same height.
 				TableColumn("Date") { (t: Transaction) in
-					Text(Format.day(t.bookingDate)).monospacedDigit().foregroundStyle(t.isPending ? Palette.detail : AnyShapeStyle(.primary))
+					VStack(alignment: .leading, spacing: 3) {
+						Text(Format.day(t.bookingDate)).monospacedDigit()
+						CategoryBadge(categoryID: t.categoryID, ledger: model.ledger)
+					}
+					.pendingHatch(t.isPending)
 				}
-				.width(min: 76, ideal: 84, max: 100)
+				.width(min: 84, ideal: 120, max: 200)
 				.customizationID("date")
 				TableColumn("Name / Purpose") { (t: Transaction) in
-					TransactionCell(transaction: t)
+					TransactionCell(transaction: t).pendingHatch(t.isPending)
 				}
 				.width(min: 240, ideal: 520)
 				.customizationID("name")
 				if showsAccount {
 					TableColumn("Account") { (t: Transaction) in
 						Text(model.ledger.account(t.accountID)?.name ?? "").foregroundStyle(Palette.detail).lineLimit(1)
+							.pendingHatch(t.isPending)
 					}
 					.width(min: 80, ideal: 140)
 					.customizationID("account")
 				}
-				TableColumn("Category") { (t: Transaction) in
-					Text(model.ledger.categoryPath(t.categoryID)).lineLimit(1)
-						.foregroundStyle(t.categoryID == nil ? Palette.detail : AnyShapeStyle(.primary))
-				}
-				.width(min: 80, ideal: 160)
-				.customizationID("category")
 				TableColumn("Amount") { (t: Transaction) in
-					AmountText(money: t.amount).italic(t.isPending)
+					AmountText(money: t.amount).pendingHatch(t.isPending, alignment: .trailing)
 				}
 				.width(min: 90, ideal: 110)
 				.alignment(.trailing)
@@ -377,13 +379,6 @@ struct TransactionCell: View {
 		VStack(alignment: .leading, spacing: 1) {
 			HStack(spacing: 4) {
 				Text(transaction.name.isEmpty ? (transaction.bookingText ?? "") : transaction.name).fontWeight(.semibold).lineLimit(1)
-				if transaction.isPending {
-					Text("Pending")
-						.font(.subheadline)
-						.foregroundStyle(Palette.detail)
-						.padding(.horizontal, 6)
-						.background(Capsule().strokeBorder(.secondary))
-				}
 				if transaction.isNew {
 					Circle().fill(.tint).frame(width: 6, height: 6).help("New transaction")
 				}
@@ -391,12 +386,74 @@ struct TransactionCell: View {
 					Image(systemName: "note.text").foregroundStyle(.yellow).help(comment)
 				}
 			}
-			if !transaction.purpose.isEmpty {
-				Text(transaction.purpose).font(.callout).foregroundStyle(Palette.detail).lineLimit(1)
+			// A row without a purpose keeps the empty line, so that every row is the same height.
+			Text(transaction.purpose.isEmpty ? " " : transaction.purpose).font(.callout).foregroundStyle(Palette.detail).lineLimit(1)
+		}
+		.textSelection(.enabled)
+	}
+}
+
+/// The category of a transaction as a small label tinted in the color of the category, with the
+/// whole path on hover. An uncategorized transaction keeps the line empty.
+/// The ledger comes from the table: AppKit can build a cell outside the environment of the window,
+/// and a cell that reads the model from the environment then stops the app.
+struct CategoryBadge: View {
+	let categoryID: UUID?
+	let ledger: Ledger
+
+	var body: some View {
+		if let id = categoryID, let category = ledger.category(id), !category.isDefault {
+			let color = CategoryColors.color(of: category, in: ledger)
+			Text(category.name)
+				.font(.caption)
+				.lineLimit(1)
+				.padding(.horizontal, 5)
+				.padding(.vertical, 1)
+				.background(color.opacity(0.22), in: .rect(cornerRadius: 4))
+				.overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(color.opacity(0.45), lineWidth: 0.5))
+				.help(ledger.categoryPath(id))
+		} else {
+			Text(" ").font(.caption).padding(.vertical, 1)
+		}
+	}
+}
+
+/// Thin diagonal lines behind the cells of a transaction the bank has not booked yet. The lines are
+/// placed in window coordinates, so they continue from one cell of the row to the next.
+struct PendingHatch: View {
+	static let line = Color(nsColor: NSColor(name: "pendingHatch") { appearance in
+		appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? NSColor(white: 0.27, alpha: 1) : NSColor(white: 0.84, alpha: 1)
+	})
+
+	var body: some View {
+		GeometryReader { geometry in
+			let origin = geometry.frame(in: .global).origin
+			Canvas { context, size in
+				let spacing: CGFloat = 6
+				var path = Path()
+				// The first line starts left of the cell, at a multiple of the spacing in window coordinates.
+				var x = -((origin.x + origin.y).truncatingRemainder(dividingBy: spacing)) - size.height
+				while x < size.width {
+					path.move(to: CGPoint(x: x, y: size.height))
+					path.addLine(to: CGPoint(x: x + size.height, y: 0))
+					x += spacing
+				}
+				// Opaque, so that the lines look the same where two cells overlap.
+				context.stroke(path, with: .color(Self.line), lineWidth: 1)
 			}
 		}
-		.italic(transaction.isPending)
-		.textSelection(.enabled)
+		.accessibilityHidden(true)
+	}
+}
+
+extension View {
+	/// Fills the cell, and hatches it when the transaction is pending.
+	func pendingHatch(_ pending: Bool, alignment: Alignment = .leading) -> some View {
+		frame(maxWidth: .infinity, maxHeight: .infinity, alignment: alignment)
+			.background {
+				if pending { PendingHatch().padding(.horizontal, -10).padding(.vertical, -4) }
+			}
+			.accessibilityValue(pending ? "Pending" : "")
 	}
 }
 
