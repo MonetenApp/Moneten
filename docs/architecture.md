@@ -173,6 +173,9 @@ MonetenMoneten/
 │   └── Import/
 ├── Tests/                   One test target per library
 ├── App/                     The app target: project.yml, sources, Info.plist, resources
+│   └── FinTSProbe/          The FinTS prototype of issue #11
+├── Vendor/
+│   └── HBCI4Swift/          Git submodule, unchanged
 ├── scripts/                 Test, build, project, and check scripts
 ├── openspec/                Specs of every change
 └── docs/

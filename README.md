@@ -27,7 +27,7 @@ Read [architecture](docs/architecture.md) for the modules and the data model, an
 
 ## Build and run
 
-You need macOS 15 or newer, Xcode 16.3 or newer, and [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`).
+You need macOS 15 or newer, Xcode 16.3 or newer, and [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`). HBCI4Swift is a Git submodule. `scripts/generate-project.sh` fetches and builds it when needed.
 
 ```sh
 scripts/test.sh                 # run the tests of the libraries
