@@ -35,18 +35,22 @@ public enum ImportMatching {
 		var new: [Transaction] = []
 		var booked: [Transaction] = []
 		var skipped = 0
+		func takeBooked(_ key: Key) -> Bool {
+			guard let n = available[key], n > 0 else { return false }
+			available[key] = n - 1
+			return true
+		}
 		for t in imported {
 			let key = Key(t)
-			if let n = available[key], n > 0 {
-				available[key] = n - 1
+			if t.isPending {
+				// A pending row matches a pending row first, so that it never uses up a booked match.
+				if pending[key]?.popLast() != nil || takeBooked(key) { skipped += 1 } else { new.append(t) }
+			} else if takeBooked(key) {
 				skipped += 1
 			} else if var match = pending[key]?.popLast() {
-				if t.isPending {
-					skipped += 1
-				} else {
-					match.isPending = false
-					booked.append(match)
-				}
+				match.isPending = false
+				match.valueDate = t.valueDate ?? match.valueDate
+				booked.append(match)
 			} else {
 				new.append(t)
 			}

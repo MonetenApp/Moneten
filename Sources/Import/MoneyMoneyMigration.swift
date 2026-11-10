@@ -147,9 +147,10 @@ public struct MoneyMoneyMigration: Sendable {
 				balanceMinor = Money(Decimal(amount), currency: c).minorUnits
 			}
 			let balanceDate = (item["balanceDate"] as? Date) ?? (item["refreshTimestamp"] as? Date)
-			// The MoneyMoney identifier decides first, so that two accounts with the same IBAN stay apart.
+			// The MoneyMoney identifier decides. IBAN or account number match only accounts without one,
+			// so that two MoneyMoney accounts with the same IBAN stay apart.
 			if var existing = ledger.accounts.first(where: { $0.sourceID == source }) ?? ledger.accounts.first(where: { a in
-				(iban != nil && a.iban.map(TextFolding.accountKey) == iban.map(TextFolding.accountKey))
+				a.sourceID == nil && (iban != nil && a.iban.map(TextFolding.accountKey) == iban.map(TextFolding.accountKey))
 					|| (bankCode != nil && number != nil && a.bankCode == bankCode && a.accountNumber == number)
 			}) {
 				map[source] = existing.id
