@@ -127,37 +127,47 @@ struct FirstLaunchView: View {
 struct PasswordForm: View {
 	var confirmTitle: String
 	var requireWarning: Bool
+	var onCancel: (() -> Void)? = nil
 	var onConfirm: (String) -> Void
 	@State private var password = ""
 	@State private var repeated = ""
 	@State private var understood = false
 
 	var body: some View {
-		Form {
-			SecureField("New password:", text: $password)
-			SecureField("Repeat new password:", text: $repeated)
-			if !password.isEmpty {
-				LabeledContent("Strength:") {
-					Text(PasswordStrength.grade(password)).foregroundStyle(PasswordStrength.color(password))
+		VStack(spacing: 0) {
+			SheetForm {
+				Section {
+					SecureField("New password", text: $password, prompt: Text("Required"))
+					SecureField("Repeat new password", text: $repeated, prompt: Text("Required"))
+					if !password.isEmpty {
+						LabeledContent("Strength") {
+							Text(PasswordStrength.grade(password)).foregroundStyle(PasswordStrength.color(password))
+						}
+					}
+				} footer: {
+					if !repeated.isEmpty, repeated != password {
+						Text("The new passwords differ.").foregroundStyle(.red)
+					} else {
+						Text("The database password encrypts your login credentials, account balances, and transactions. Nobody can recover a forgotten password. Without it the data is lost.")
+							.foregroundStyle(.secondary)
+					}
+				}
+				if requireWarning {
+					Section {
+						Toggle("I understand that a forgotten password cannot be recovered.", isOn: $understood)
+					}
 				}
 			}
-			if !repeated.isEmpty, repeated != password {
-				Text("The new passwords differ.").foregroundStyle(.red)
-			}
-			Text("The database password encrypts your login credentials, account balances, and transactions. Nobody can recover a forgotten password. Without it the data is lost.")
-				.font(.callout)
-				.foregroundStyle(.secondary)
-			if requireWarning {
-				Toggle("I understand that a forgotten password cannot be recovered.", isOn: $understood)
-			}
-			HStack {
+			SheetButtons {
 				Spacer()
+				if let onCancel {
+					Button("Cancel", role: .cancel, action: onCancel).keyboardShortcut(.cancelAction)
+				}
 				Button(confirmTitle) { onConfirm(password) }
 					.keyboardShortcut(.defaultAction)
 					.disabled(password.isEmpty || password != repeated || (requireWarning && !understood))
 			}
 		}
-		.formStyle(.grouped)
 	}
 }
 

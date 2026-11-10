@@ -230,17 +230,23 @@ struct CustomPeriodView: View {
 	@State private var to = Date()
 
 	var body: some View {
-		Form {
-			DatePicker("From", selection: $from, displayedComponents: .date)
-			DatePicker("To", selection: $to, displayedComponents: .date)
-			Button("Apply") {
-				model.period = .custom(Day(from), Day(to))
-				dismiss()
+		VStack(spacing: 0) {
+			SheetForm {
+				Section {
+					DatePicker("From", selection: $from, displayedComponents: .date)
+					DatePicker("To", selection: $to, displayedComponents: .date)
+				}
 			}
-			.keyboardShortcut(.defaultAction)
+			SheetButtons {
+				Spacer()
+				Button("Apply") {
+					model.period = .custom(Day(from), Day(to))
+					dismiss()
+				}
+				.keyboardShortcut(.defaultAction)
+			}
 		}
-		.padding()
-		.frame(width: 280)
+		.frame(width: 300)
 	}
 }
 
@@ -251,19 +257,25 @@ struct CustomAmountView: View {
 	@State private var max = ""
 
 	var body: some View {
-		Form {
-			TextField("min. amount", text: $min)
-			TextField("max. amount", text: $max)
-			Button("Apply") {
-				let lo = AmountParser.decimal(from: min).map { Money($0, currency: "EUR").minorUnits }
-				let hi = AmountParser.decimal(from: max).map { Money($0, currency: "EUR").minorUnits }
-				model.filter.amount = .range(min: lo, max: hi)
-				dismiss()
+		VStack(spacing: 0) {
+			SheetForm {
+				Section {
+					TextField("Minimum", text: $min, prompt: Text("0,00")).multilineTextAlignment(.trailing).monospacedDigit()
+					TextField("Maximum", text: $max, prompt: Text("0,00")).multilineTextAlignment(.trailing).monospacedDigit()
+				}
 			}
-			.keyboardShortcut(.defaultAction)
+			SheetButtons {
+				Spacer()
+				Button("Apply") {
+					let lo = AmountParser.decimal(from: min).map { Money($0, currency: "EUR").minorUnits }
+					let hi = AmountParser.decimal(from: max).map { Money($0, currency: "EUR").minorUnits }
+					model.filter.amount = .range(min: lo, max: hi)
+					dismiss()
+				}
+				.keyboardShortcut(.defaultAction)
+			}
 		}
-		.padding()
-		.frame(width: 260)
+		.frame(width: 300)
 	}
 }
 

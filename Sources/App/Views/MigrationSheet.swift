@@ -19,66 +19,96 @@ struct MigrationSheet: View {
 	@State private var task: Task<Void, Never>?
 
 	var body: some View {
-		VStack(alignment: .leading, spacing: 14) {
-			Text("Import from MoneyMoney").font(.headline)
+		SheetFrame(title: "Import from MoneyMoney", confirmTitle: confirmTitle, cancelTitle: cancelTitle, width: 500,
+			onCancel: { task?.cancel() }, onConfirm: confirm) {
 			switch step {
 			case .intro:
-				Text("MonetenMoneten reads your account groups, accounts, categories, and transactions from MoneyMoney through its AppleScript export. MoneyMoney stays unchanged.")
-				Text("MoneyMoney must be running and unlocked. macOS asks once whether MonetenMoneten may control MoneyMoney. Allow it.")
-					.foregroundStyle(.secondary)
-				buttons(cancel: "Cancel", confirm: "Start") { start() }
+				Section {
+					Label("MonetenMoneten reads your account groups, accounts, categories with their rules, and transactions through the AppleScript export of MoneyMoney. MoneyMoney stays unchanged.", systemImage: "arrow.down.doc")
+					Label("MoneyMoney must be running and unlocked. macOS asks once whether MonetenMoneten may control MoneyMoney. Allow it.", systemImage: "lock.open")
+						.foregroundStyle(.secondary)
+				}
 			case let .reading(what):
-				HStack { ProgressView().controlSize(.small); Text(what) }
-				buttons(cancel: "Cancel", confirm: nil) {}
+				Section {
+					HStack(spacing: 8) { ProgressView().controlSize(.small); Text(what) }
+				}
 			case let .summary(plan):
 				summary(plan)
-				buttons(cancel: "Cancel", confirm: plan.isEmpty ? nil : "Import") { commit(plan) }
 			case .importing:
-				HStack { ProgressView().controlSize(.small); Text("Importing...") }
+				Section {
+					HStack(spacing: 8) { ProgressView().controlSize(.small); Text("Importing...") }
+				}
 			case let .done(plan):
-				Label("Finished!", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
-				report(plan)
-				HStack { Spacer(); Button("Done") { dismiss() }.keyboardShortcut(.defaultAction) }
+				Section {
+					Label("Finished!", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
+					LabeledContent("Accounts", value: plan.accounts.count.formatted())
+					LabeledContent("Categories", value: plan.categories.count.formatted())
+					LabeledContent("Transactions", value: plan.transactions.count.formatted())
+				}
+				if !plan.notes.isEmpty {
+					Section("Notes") {
+						ForEach(plan.notes, id: \.self) { Text($0).foregroundStyle(.secondary) }
+					}
+				}
 			case let .failed(message):
-				Label(message, systemImage: "exclamationmark.triangle").foregroundStyle(.orange)
-					.fixedSize(horizontal: false, vertical: true)
-				buttons(cancel: "Cancel", confirm: "Check again") { start() }
+				Section {
+					Label(message, systemImage: "exclamationmark.triangle")
+						.foregroundStyle(.orange)
+						.fixedSize(horizontal: false, vertical: true)
+				}
 			}
 		}
-		.padding(20)
-		.frame(width: 520)
 		.onDisappear { task?.cancel() }
 	}
 
-	private func buttons(cancel: String, confirm: String?, action: @escaping () -> Void) -> some View {
-		HStack {
-			Spacer()
-			Button(cancel, role: .cancel) { task?.cancel(); dismiss() }.keyboardShortcut(.cancelAction)
-			if let confirm { Button(confirm, action: action).keyboardShortcut(.defaultAction) }
+	private var confirmTitle: String? {
+		switch step {
+		case .intro: "Start"
+		case let .summary(plan): plan.isEmpty ? nil : "Import"
+		case .done: "Done"
+		case .failed: "Check again"
+		case .reading, .importing: nil
 		}
 	}
 
+	private var cancelTitle: String? {
+		switch step {
+		case .done, .importing: nil
+		default: "Cancel"
+		}
+	}
+
+	/// Returns true when the sheet closes.
+	private func confirm() -> Bool {
+		switch step {
+		case .intro, .failed: start(); return false
+		case let .summary(plan): commit(plan); return false
+		case .done: return true
+		case .reading, .importing: return false
+		}
+	}
+
+	@ViewBuilder
 	private func summary(_ plan: MoneyMoneyMigration.Plan) -> some View {
-		VStack(alignment: .leading, spacing: 6) {
-			if plan.isEmpty {
+		if plan.isEmpty {
+			Section {
 				Text("Everything from MoneyMoney is already here. There is nothing new to import.")
-			} else {
-				Text("This will be imported:")
-				Text("• \(plan.groups.count) account groups and \(plan.accounts.count) accounts")
-				Text("• \(plan.categories.count) categories with \(plan.categories.filter { !$0.rule.isEmpty }.count) rules")
-				Text("• \(plan.transactions.count.formatted()) transactions")
 			}
-			if plan.skippedTransactions > 0 || plan.skippedAccounts > 0 {
-				Text("Already present and skipped: \(plan.skippedAccounts) accounts, \(plan.skippedTransactions.formatted()) transactions.")
-					.foregroundStyle(.secondary)
+		} else {
+			Section {
+				LabeledContent("Account groups", value: plan.groups.count.formatted())
+				LabeledContent("Accounts", value: plan.accounts.count.formatted())
+				LabeledContent("Categories", value: plan.categories.count.formatted())
+				LabeledContent("Rules", value: plan.categories.filter { !$0.rule.isEmpty }.count.formatted())
+				LabeledContent("Transactions", value: plan.transactions.count.formatted())
+			} header: {
+				Text("This will be imported")
+			} footer: {
+				if plan.skippedTransactions > 0 || plan.skippedAccounts > 0 {
+					Text("Already present and skipped: \(plan.skippedAccounts) accounts, \(plan.skippedTransactions.formatted()) transactions.")
+						.foregroundStyle(.secondary)
+				}
 			}
-		}
-	}
-
-	private func report(_ plan: MoneyMoneyMigration.Plan) -> some View {
-		VStack(alignment: .leading, spacing: 6) {
-			Text("Imported \(plan.accounts.count) accounts, \(plan.categories.count) categories, and \(plan.transactions.count.formatted()) transactions.")
-			ForEach(plan.notes, id: \.self) { Text($0).font(.callout).foregroundStyle(.secondary) }
 		}
 	}
 
