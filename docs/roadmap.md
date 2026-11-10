@@ -74,6 +74,8 @@ Fetch, categorize, and understand your money. Read-only.
 | [#26 Review security before the first public release](https://github.com/alexander-schneider/MonetenMoneten/issues/26) | area: release | #13, #15, #25 |
 | [#39 Split a transaction across several categories](https://github.com/alexander-schneider/MonetenMoneten/issues/39) | area: core | #18 |
 | [#40 Refresh accounts automatically and notify about new transactions](https://github.com/alexander-schneider/MonetenMoneten/issues/40) | area: core | #13, #5 |
+| [#42 Run the YAXI extension for MoneyMoney unchanged as a compatibility test](https://github.com/alexander-schneider/MonetenMoneten/issues/42) | area: extensions | #14, #15, #16, #43 |
+| [#43 Check whether MoneyMoney sends payments through extensions](https://github.com/alexander-schneider/MonetenMoneten/issues/43) | area: extensions, area: payments, kind: prototype | None |
 
 ## v0.2 Pay
 
@@ -122,6 +124,7 @@ Connect banks without FinTS through an optional subscription, and install extens
 | [#36 Build the finAPI connector](https://github.com/alexander-schneider/MonetenMoneten/issues/36) | area: service | #35, #6 |
 | [#37 Install and update extensions from a signed catalog](https://github.com/alexander-schneider/MonetenMoneten/issues/37) | area: extensions | #15 |
 | [#38 Review the subscription service security before launch](https://github.com/alexander-schneider/MonetenMoneten/issues/38) | area: service, area: release | #36, #37 |
+| [#44 Prototype YAXI as a bank access next to FinTS and finAPI](https://github.com/alexander-schneider/MonetenMoneten/issues/44) | area: service, kind: prototype | #6 |
 
 ## Later
 
