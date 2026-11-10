@@ -7,9 +7,15 @@ options:
     macOS: "15.0"
   createIntermediateGroups: true
   generateEmptyDirectories: false
+# Perf is optimized like Release and contains the debug harness, for scripts/perf-check.sh.
+configs:
+  Debug: debug
+  Release: release
+  Perf: release
 configFiles:
   Debug: Signing.xcconfig
   Release: Signing.xcconfig
+  Perf: Signing.xcconfig
 settings:
   base:
     SWIFT_VERSION: "6.0"
@@ -42,6 +48,9 @@ targets:
         INFOPLIST_FILE: Info.plist
         CODE_SIGN_ENTITLEMENTS: MonetenMoneten.entitlements
         ENABLE_HARDENED_RUNTIME: $(MONETENMONETEN_HARDENED_RUNTIME)
+      configs:
+        Perf:
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) PERF_HARNESS
   # The FinTS prototype of issue #11. It runs in the terminal. App/FinTSProbe/main.swift explains it.
   FinTSProbe:
     type: application

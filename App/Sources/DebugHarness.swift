@@ -5,11 +5,13 @@ import SwiftUI
 
 /// Lets a developer drive the app and capture its windows as images, for checks without a screen.
 ///
-/// Active only in debug builds (`scripts/build-app.sh debug`) and only when the environment variable
-/// `MONETENMONETEN_DEBUG_DIR` names a folder. Release builds leave it out, because any local process
-/// can post the notifications, including commands that unlock or re-key the database. Commands
-/// arrive as distributed notifications named `io.github.monetenmoneten.debug` with the keys
-/// `command` and `argument`. Snapshots are drawn by the app itself and need no screen recording.
+/// Active only in debug builds (`scripts/build-app.sh debug`) and in the optimized Perf build of
+/// `scripts/perf-check.sh`, and only when the environment variable `MONETENMONETEN_DEBUG_DIR` names
+/// a folder. Release builds leave it out, because any local process can post the notifications,
+/// including commands that unlock or re-key the database. Commands arrive as distributed
+/// notifications named `io.github.monetenmoneten.debug` with the keys `command` and `argument`.
+/// A notification whose object is a path reaches only the app with that debug folder. Snapshots are
+/// drawn by the app itself and need no screen recording.
 @MainActor
 final class DebugHarness {
 	static var shared: DebugHarness?
@@ -18,7 +20,7 @@ final class DebugHarness {
 	weak var model: AppModel?
 
 	static func installIfRequested(model: AppModel) {
-		#if DEBUG
+		#if DEBUG || PERF_HARNESS
 		install(model: model)
 		#endif
 	}
@@ -28,6 +30,7 @@ final class DebugHarness {
 		let harness = DebugHarness(folder: URL(fileURLWithPath: path), model: model)
 		shared = harness
 		DistributedNotificationCenter.default().addObserver(forName: Notification.Name("io.github.monetenmoneten.debug"), object: nil, queue: .main) { note in
+			if let target = note.object as? String, target != path { return }
 			let command = note.userInfo?["command"] as? String ?? ""
 			let argument = note.userInfo?["argument"] as? String ?? ""
 			MainActor.assumeIsolated { harness.run(command, argument) }
@@ -40,7 +43,7 @@ final class DebugHarness {
 		try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
 	}
 
-	private func log(_ text: String) {
+	func log(_ text: String) {
 		let url = folder.appendingPathComponent("debug.log")
 		let line = Data((text + "\n").utf8)
 		if let h = try? FileHandle(forWritingTo: url) {
@@ -68,30 +71,23 @@ final class DebugHarness {
 		case "storepassword": log("storepassword \((try? model.vault.storePassword(argument)) != nil)")
 		case "removepassword": try? model.vault.removeStoredPassword()
 		case "seed": DemoData.seed(model)
-		case "bulk": DemoData.bulk(model, count: Int(argument) ?? 30_000)
+		case "bulk":
+			// "<count>" spreads the transactions over the existing accounts, "<count> <accounts>" over new ones.
+			let numbers = argument.split(separator: " ").compactMap { Int($0) }
+			DemoData.bulk(model, count: numbers.first ?? 30_000, newAccounts: numbers.dropFirst().first ?? 0)
 		case "columnwidth":
 			// "<title> <width>" sets a column of the transaction table, "" logs every width.
 			let parts = argument.split(separator: " ")
-			func tables(in view: NSView) -> [NSTableView] { (view as? NSTableView).map { [$0] } ?? view.subviews.flatMap(tables) }
-			for table in NSApp.windows.compactMap(\.contentView).flatMap(tables) where table.tableColumns.contains(where: { $0.title == "Amount" }) {
+			for table in transactionTables() {
 				if parts.count == 2, let width = Double(parts[1]), let column = table.tableColumns.first(where: { $0.title == String(parts[0]) }) {
 					column.width = width
 					NotificationCenter.default.post(name: NSTableView.columnDidResizeNotification, object: table, userInfo: ["NSTableColumn": column, "NSOldWidth": width])
 				}
 				log("columnwidth " + table.tableColumns.map { "\($0.title)=\(Int($0.width))" }.joined(separator: " "))
 			}
-		case "scrolltable":
-			// Scrolls the transaction table to a row, or to the last row with "end".
-			func tables(in view: NSView) -> [NSTableView] { (view as? NSTableView).map { [$0] } ?? view.subviews.flatMap(tables) }
-			for table in NSApp.windows.compactMap(\.contentView).flatMap(tables) where table.numberOfRows > 0 {
-				table.scrollRowToVisible(argument == "end" ? table.numberOfRows - 1 : min(Int(argument) ?? 0, table.numberOfRows - 1))
-				log("scrolltable rows=\(table.numberOfRows)")
-			}
-		case "select":
-			if let a = model.ledger.accounts.first(where: { $0.name == argument }) { model.navigate(to: .account(a.id)) }
-			else if let g = model.ledger.groups.first(where: { $0.name == argument }) { model.navigate(to: .group(g.id)) }
-			else if let c = model.ledger.categories.first(where: { $0.name == argument }) { model.navigate(to: .category(c.id)) }
-			else { log("select: not found \(argument)") }
+		case "scrolltable": scrollTables { argument == "end" ? $0 - 1 : min(Int(argument) ?? 0, $0 - 1) }
+		case "select": select(argument)
+		case "perf": Task { await runPerf() }
 		case "view": model.viewMode = ViewMode(rawValue: argument) ?? .list
 		case "balance": model.balanceMode = BalanceMode(rawValue: argument) ?? .daily
 		case "search": model.filter.searchText = argument
@@ -119,6 +115,34 @@ final class DebugHarness {
 		case "quit": NSApp.terminate(nil)
 		default: log("unknown command \(command)")
 		}
+	}
+
+	/// The tables of transactions in all windows, told apart from the sidebar by their amount column.
+	func transactionTables() -> [NSTableView] {
+		func tables(in view: NSView) -> [NSTableView] {
+			if let table = view as? NSTableView {
+				return table.tableColumns.contains { $0.title == "Amount" } ? [table] : []
+			}
+			return view.subviews.flatMap(tables)
+		}
+		return NSApp.windows.compactMap(\.contentView).flatMap(tables)
+	}
+
+	/// Scrolls every transaction table to the row that `row` picks from the number of rows.
+	func scrollTables(to row: (Int) -> Int) {
+		for table in transactionTables() where table.numberOfRows > 0 {
+			table.scrollRowToVisible(row(table.numberOfRows))
+			log("scrolltable rows=\(table.numberOfRows)")
+		}
+	}
+
+	/// Selects the account, group, or category with this name.
+	func select(_ name: String) {
+		guard let model else { return }
+		if let a = model.ledger.accounts.first(where: { $0.name == name }) { model.navigate(to: .account(a.id)) }
+		else if let g = model.ledger.groups.first(where: { $0.name == name }) { model.navigate(to: .group(g.id)) }
+		else if let c = model.ledger.categories.first(where: { $0.name == name }) { model.navigate(to: .category(c.id)) }
+		else { log("select: not found \(name)") }
 	}
 
 	/// Draws the sidebar in a plain window that is off screen, because the sidebar of the main
@@ -163,18 +187,29 @@ final class DebugHarness {
 
 /// Made-up accounts and transactions for development and screenshots.
 enum DemoData {
-	/// Many made-up transactions spread over all accounts, for checks with a long history.
-	/// The accounts share the days, so a group view interleaves their transactions.
+	/// Many made-up transactions for checks with a long history. Spread over all accounts, the
+	/// accounts share the days, so a group view interleaves their transactions. Spread over
+	/// `newAccounts` new accounts in a new group "Bulk", each account covers its own span of days, the
+	/// newest first, the way an old account and the one that replaced it do. A group view then shows
+	/// thousands of rows of other accounts above the rows of one account.
 	@MainActor
-	static func bulk(_ model: AppModel, count: Int) {
-		let accounts = model.ledger.accounts
+	static func bulk(_ model: AppModel, count: Int, newAccounts: Int = 0) {
+		var accounts = model.ledger.accounts
+		if newAccounts > 0 {
+			model.addGroup(name: "Bulk")
+			guard let group = model.ledger.groups.first(where: { $0.name == "Bulk" })?.id else { return }
+			for n in 1...newAccounts { model.addOfflineAccount(name: "Account \(n)", kind: .giro, currency: "EUR", groupID: group) }
+			accounts = model.ledger.accounts(inGroup: group)
+			model.navigate(to: .group(group))
+		}
 		guard !accounts.isEmpty else { return }
 		let today = Day.today()
 		let names = ["REWE Markt", "Bäckerei Gutbrot", "Stadtwerke Musterstadt", "Beispiel GmbH", "Max Mustermann", "Tankstelle"]
 		for (n, account) in accounts.enumerated() {
 			let ts = stride(from: n, to: count, by: accounts.count).map { (i: Int) -> Transaction in
+				let slot = newAccounts > 0 ? n * count / accounts.count + i / accounts.count : i
 				let amount = Int64(-(i % 9_000) - 100)
-				return Transaction(accountID: account.id, bookingDate: today.adding(days: -(i / 8)), amountMinor: amount,
+				return Transaction(accountID: account.id, bookingDate: today.adding(days: -(slot / 8)), amountMinor: amount,
 					name: names[i % names.count], purpose: i % 3 == 0 ? "" : "Purpose \(i)")
 			}
 			_ = model.importTransactions(ts, into: account)
