@@ -100,6 +100,9 @@ struct MigrationSheet: View {
 				LabeledContent("Categories", value: plan.categories.count.formatted())
 				LabeledContent("Rules", value: plan.categories.filter { !$0.rule.isEmpty }.count.formatted())
 				LabeledContent("Transactions", value: plan.transactions.count.formatted())
+				if !plan.updatedAccounts.isEmpty || !plan.updatedTransactions.isEmpty {
+					LabeledContent("Updated", value: "\(plan.updatedAccounts.count) balances, \(plan.updatedTransactions.count.formatted()) booked transactions")
+				}
 			} header: {
 				Text("This will be imported")
 			} footer: {
@@ -121,8 +124,7 @@ struct MigrationSheet: View {
 				step = .reading("Reading transactions... This can take a minute for a long history.")
 				let transactions = try await MoneyMoneyExporter.exportTransactions()
 				try Task.checkCancellation()
-				model.removeUnusedStarterCategories()
-				let ledger = model.ledger
+				let ledger = model.ledgerForMigration
 				let plan = try await Task.detached {
 					try MoneyMoneyMigration().plan(accounts: accounts, categories: categories, transactions: transactions, into: ledger)
 				}.value

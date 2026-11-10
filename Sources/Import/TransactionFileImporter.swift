@@ -237,9 +237,11 @@ enum MT940Parser {
 			booking = Day(year: by, month: bm, day: bd)
 			i += 4
 		}
-		var negative = false
-		if chars[i] == "R" { i += 1 }
-		if chars[i] == "D" { negative = true }
+		// RC is the reversal of a credit and books a debit. RD is the reversal of a debit and books a credit.
+		let isReversal = chars[i] == "R"
+		if isReversal { i += 1 }
+		guard i < chars.count, chars[i] == "C" || chars[i] == "D" else { return nil }
+		let negative = (chars[i] == "D") != isReversal
 		i += 1
 		if i < chars.count, chars[i].isLetter { i += 1 }
 		var amountText = ""

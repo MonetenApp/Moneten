@@ -87,6 +87,19 @@ struct VaultTests {
 		#expect(try Vault(folder: other).open(password: "pw-backup").loadLedger().transactions.count == 1)
 	}
 
+	@Test("A backup replaces an older backup but never the open database")
+	func backupTarget() throws {
+		let store = try Vault(folder: folder).create(password: "pw-backup", starterCategories: [])
+		_ = try sampleData(store)
+		let copy = folder.root.appendingPathComponent("Backup.sqlite")
+		try Data("old backup".utf8).write(to: copy)
+		try store.backup(to: copy)
+		#expect(try Data(contentsOf: copy) == Data(contentsOf: folder.databaseFile))
+		#expect(throws: CocoaError.self) { try store.backup(to: folder.databaseFile) }
+		#expect(try store.loadLedger().transactions.count == 1)
+		#expect(try FileManager.default.contentsOfDirectory(atPath: folder.root.path).filter { $0.hasSuffix(".partial") }.isEmpty)
+	}
+
 	@Test("A missing database means a new start")
 	func emptyFolder() throws {
 		#expect(try Vault(folder: folder).state() == .empty)

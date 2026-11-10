@@ -15,9 +15,9 @@ The app keeps all accounts, categories, and transactions of the open database in
 - A group carries a balance. MoneyMoney leaves closed accounts out of that sum, but the export has no field that marks an account as closed. A real export showed this for one closed account with a balance other than zero. The migration takes every account over as open and names each group with a different sum in the report, so that the user can mark the closed accounts.
 - Booking dates arrive as local midnight and become days in the current calendar.
 - The initial balance of each account is the bank balance minus all booked transactions, so the computed balance ends at the bank balance.
-- Each transaction keeps `moneymoney:<id>` as its source identifier. A second run skips known identifiers. An account matches by source identifier, IBAN, or bank code and account number.
+- Each transaction keeps `moneymoney:<id>` as its source identifier. A second run skips known identifiers, except that a transaction that was pending and is booked now becomes booked with the date and amount from the source. An account matches by source identifier first, then by IBAN or by bank code and account number. A migrated account takes the newer balance of the source.
 - Migrated categories count as assigned by hand.
-- When the database has no transactions yet, the starter categories are removed before the plan is made.
+- When the database has no transactions yet, the plan leaves out the starter categories, and they are removed after the user confirms the import. Categories the user made stay.
 
 ## Risks / Trade-offs
 

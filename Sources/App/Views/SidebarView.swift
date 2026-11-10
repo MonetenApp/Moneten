@@ -204,7 +204,7 @@ struct CategoryRow: View {
 			Button("Add Category Group") { model.sheet = .newCategory(isGroup: true) }
 			if !category.isDefault {
 				Divider()
-				Button("Remove...") { model.remove(category: category.id) }
+				Button("Remove...") { model.sheet = .categorySettings(category.id) }
 			}
 			Divider()
 			Button("Settings...") { model.sheet = .categorySettings(category.id) }

@@ -111,8 +111,14 @@ final class AppModel {
 			case .empty:
 				phase = .firstLaunch
 			case .randomKey:
-				hasPassword = false
-				try open(try vault.openWithRandomKey())
+				do {
+					hasPassword = false
+					try open(try vault.openWithRandomKey())
+				} catch Vault.Failure.incorrectPassword {
+					// Setting the first password stopped after the key had changed. The password opens it.
+					hasPassword = true
+					phase = .locked
+				}
 			case .password:
 				hasPassword = true
 				if UserDefaults.standard.bool(forKey: Preference.unlockAutomatically), let pw = vault.storedPassword(), let s = try? vault.open(password: pw) {
@@ -476,30 +482,38 @@ final class AppModel {
 
 	func runMigration(plan: MoneyMoneyMigration.Plan) throws {
 		guard let store else { return }
-		try store.save(groups: plan.groups, accounts: plan.accounts, categories: plan.categories, transactions: plan.transactions)
+		let starters = replaceableStarterCategories
+		try store.save(groups: plan.groups, accounts: plan.accounts + plan.updatedAccounts, categories: plan.categories,
+			transactions: plan.transactions + plan.updatedTransactions)
+		for c in starters { try? store.deleteCategory(c.id) }
 		ledger = try store.loadLedger()
 		if selection == nil, let g = ledger.childGroups(of: nil).first { selection = .group(g.id) }
 	}
 
-	/// Removes the starter categories while the database has no transactions, so that a
-	/// migration brings in the categories of MoneyMoney without a second set beside them.
-	func removeUnusedStarterCategories() {
-		guard let store, ledger.transactions.isEmpty else { return }
-		for c in ledger.categories where !c.isDefault && c.sourceID == nil && c.parentID == nil {
-			try? store.deleteCategory(c.id)
-		}
-		ledger = (try? store.loadLedger()) ?? ledger
+	/// The ledger that a migration plan is built against. While the database has no transactions, it
+	/// leaves out the starter categories, which the migration replaces with the categories of MoneyMoney.
+	var ledgerForMigration: Ledger {
+		let removed = Set(replaceableStarterCategories.flatMap { ledger.categoryIDs(inTree: $0.id) })
+		var l = ledger
+		l.replace(categories: ledger.categories.filter { !removed.contains($0.id) })
+		return l
+	}
+
+	private var replaceableStarterCategories: [Domain.Category] {
+		guard ledger.transactions.isEmpty else { return [] }
+		let names = Set(StarterCategories.make().filter { $0.parentID == nil && !$0.isDefault }.map(\.name))
+		return ledger.categories.filter { !$0.isDefault && $0.sourceID == nil && $0.parentID == nil && names.contains($0.name) }
 	}
 
 	func importTransactions(_ imported: [Transaction], into account: Account) -> (added: Int, skipped: Int) {
 		let rows = imported.map { t -> Transaction in var t = t; t.accountID = account.id; t.isNew = true; return t }
-		var (added, skipped) = ImportMatching.split(imported: rows, existing: ledger.transactions(ofAccount: account.id))
+		var (added, booked, skipped) = ImportMatching.split(imported: rows, existing: ledger.transactions(ofAccount: account.id))
 		var ledgerWithNew = ledger
 		ledgerWithNew.update(added)
 		let categorizer = Categorizer(ledger: ledgerWithNew)
 		for i in added.indices { categorizer.categorize(&added[i]) }
-		commit(added)
-		return (added.count, skipped)
+		commit(added + booked)
+		return (added.count, skipped + booked.count)
 	}
 }
 

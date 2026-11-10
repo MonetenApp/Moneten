@@ -65,10 +65,20 @@ public final class Store: Sendable {
 
 	/// Copies the encrypted database file. The copy opens with the password of this moment.
 	/// The read transaction keeps writers out while the file is copied.
+	/// An existing file at the target is replaced only after the copy is complete.
 	public func backup(to url: URL) throws {
-		try queue.read { _ in
-			try? FileManager.default.removeItem(at: url)
-			try FileManager.default.copyItem(at: URL(fileURLWithPath: queue.path), to: url)
+		let source = URL(fileURLWithPath: queue.path)
+		guard url.resolvingSymlinksInPath().standardizedFileURL != source.resolvingSymlinksInPath().standardizedFileURL else {
+			throw CocoaError(.fileWriteFileExists, userInfo: [NSLocalizedDescriptionKey: "A backup cannot replace the open database. Choose another location."])
+		}
+		let fm = FileManager.default
+		let temporary = url.deletingLastPathComponent().appendingPathComponent(".\(url.lastPathComponent).\(UUID().uuidString).partial")
+		defer { try? fm.removeItem(at: temporary) }
+		try queue.read { _ in try fm.copyItem(at: source, to: temporary) }
+		if fm.fileExists(atPath: url.path) {
+			_ = try fm.replaceItemAt(url, withItemAt: temporary)
+		} else {
+			try fm.moveItem(at: temporary, to: url)
 		}
 	}
 
