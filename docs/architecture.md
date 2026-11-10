@@ -120,7 +120,7 @@ MonetenMoneten handles secrets the way MoneyMoney does. [ADR 0009](decisions/000
 
 - The database is encrypted with SQLCipher. The key comes from the database password that you set at first launch or later. Until you set one, a random key in the Keychain protects the database.
 - Saving the password in the Keychain is optional. You need it saved to unlock automatically at launch, with Touch ID, or with an Apple Watch.
-- The app locks after a set time without activity, and optionally when the main window closes.
+- You can make the app lock after a set time without activity or when the main window closes.
 
 The rest of this list is the plan for bank access and the log:
 

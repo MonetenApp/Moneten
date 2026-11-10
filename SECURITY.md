@@ -11,7 +11,7 @@ Include the version, the steps to reproduce, and the impact you expect. The main
 ## What the app protects
 
 - The database is encrypted with SQLCipher. Its key comes from your database password. Until you set one, a random key in the Keychain protects the database.
-- The app locks after a set time without activity, and you unlock it with the password or Touch ID.
+- You can make the app lock after a set time without activity or when the main window closes. It then opens only with the password, or with Touch ID or an Apple Watch if you turn that on.
 
 Bank access, extensions, and payments are not built yet. When they arrive, these rules apply:
 
