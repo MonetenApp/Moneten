@@ -5,7 +5,9 @@ let package = Package(
 	name: "MonetenMoneten",
 	platforms: [.macOS(.v15)],
 	products: [
-		.executable(name: "MonetenMoneten", targets: ["App"]),
+		.library(name: "Domain", targets: ["Domain"]),
+		.library(name: "Storage", targets: ["Storage"]),
+		.library(name: "Import", targets: ["Import"]),
 	],
 	dependencies: [
 		// The fork of GRDB that Zetetic maintains links SQLCipher instead of the system SQLite.
@@ -15,7 +17,6 @@ let package = Package(
 		.target(name: "Domain"),
 		.target(name: "Storage", dependencies: ["Domain", .product(name: "GRDB", package: "GRDB.swift")]),
 		.target(name: "Import", dependencies: ["Domain"]),
-		.executableTarget(name: "App", dependencies: ["Domain", "Storage", "Import"]),
 		.testTarget(name: "DomainTests", dependencies: ["Domain"]),
 		.testTarget(name: "StorageTests", dependencies: ["Storage"]),
 		.testTarget(name: "ImportTests", dependencies: ["Import"]),

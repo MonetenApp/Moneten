@@ -1,5 +1,8 @@
-# Unused-code check, run by scripts/check.sh.
+# Unused-code check, run by scripts/check.sh on the Xcode project, which builds the app and the libraries.
 # The models are Codable records: GRDB reads and writes their properties, which Periphery cannot see.
+project: App/MonetenMoneten.xcodeproj
+schemes:
+  - MonetenMoneten
 retain_codable_properties: true
 relative_results: true
 strict: true

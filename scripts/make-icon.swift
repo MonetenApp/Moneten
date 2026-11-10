@@ -1,4 +1,4 @@
-// Draws the app icon and writes scripts/bundle/AppIcon.icns. Run: swift scripts/bundle/make-icon.swift
+// Draws the app icon and writes App/Resources/AppIcon.icns. Run: swift scripts/make-icon.swift
 import AppKit
 
 func draw(size: CGFloat) -> NSBitmapImageRep {
@@ -31,7 +31,7 @@ func draw(size: CGFloat) -> NSBitmapImageRep {
 	return rep
 }
 
-let base = URL(fileURLWithPath: CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : "scripts/bundle")
+let base = URL(fileURLWithPath: CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : "App/Resources")
 let iconset = FileManager.default.temporaryDirectory.appendingPathComponent("AppIcon.iconset")
 try? FileManager.default.removeItem(at: iconset)
 try FileManager.default.createDirectory(at: iconset, withIntermediateDirectories: true)
