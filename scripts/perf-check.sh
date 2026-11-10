@@ -30,7 +30,7 @@ PID=$!
 report() {
 	[ -f "$LOG" ] && awk -F '[ =]' 'BEGIN { printf "%-30s %9s %10s %13s  %s\n", "scenario", "stall_ms", "budget_ms", "footprint_mb", "result" }
 		/^perf .* stall_ms=/ { printf "%-30s %9s %10s %13s  %s\n", $2, $4, $6, $8, $10; next } /^perf / { print }' "$LOG"
-	kill $PID 2>/dev/null
+	kill $PID 2>/dev/null || true
 	rm -rf "$WORK"
 }
 trap report EXIT
