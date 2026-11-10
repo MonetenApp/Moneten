@@ -19,6 +19,8 @@ The project uses [OpenSpec](https://github.com/Fission-AI/OpenSpec). Install it 
 3. **Build it.** Work through `tasks.md` and check off each task. Every scenario in the specs becomes a test or a documented manual check.
 4. **Archive it.** When the pull request is merged, `openspec archive <change>` moves the requirements into [openspec/specs](openspec/specs/). From then on they describe what is built.
 
+To build the app, you need Xcode and XcodeGen. The [README](README.md#build-and-run) has the commands.
+
 Run `scripts/check.sh` before you open a pull request. It checks the links and paths in the docs, validates the specs, looks for unused code with [Periphery](https://github.com/peripheryapp/periphery), and runs the tests. Install Periphery 3.8.0, the version that CI uses, with `brew install periphery`. Its repository is archived, so 3.8.0 is the last release.
 
 ## Propose a change
