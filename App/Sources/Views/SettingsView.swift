@@ -63,7 +63,7 @@ struct SecuritySettings: View {
 				Text("Unlock")
 			} footer: {
 				if let message {
-					Text(message).foregroundStyle(.red)
+					Text(message).foregroundStyle(Palette.red)
 				} else {
 					Text(model.hasPassword
 						? "Each of these settings keeps the database password in the Keychain of this Mac."
@@ -143,7 +143,7 @@ struct PasswordPromptSheet: View {
 				SecureField("Database password", text: $password, prompt: Text("Required"))
 			} footer: {
 				if let error {
-					Text(error).foregroundStyle(.red)
+					Text(error).foregroundStyle(Palette.red)
 				} else {
 					Text("The password is stored in the Keychain of this Mac.").foregroundStyle(.secondary)
 				}

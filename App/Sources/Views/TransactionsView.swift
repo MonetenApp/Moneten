@@ -47,7 +47,7 @@ struct HeaderView: View {
 						}
 					}
 					.font(.callout)
-					.foregroundStyle(.secondary)
+					.foregroundStyle(Palette.detail)
 				}
 			}
 			Spacer()
@@ -57,7 +57,7 @@ struct HeaderView: View {
 					if let a = model.ledger.account(id) {
 						AmountText(money: model.ledger.balance(of: a)).font(.title2)
 						if let date = a.bankBalanceDate {
-							Text("Balance at \(date.formatted(date: .abbreviated, time: .shortened))").font(.subheadline).foregroundStyle(.secondary)
+							Text("Balance at \(date.formatted(date: .abbreviated, time: .shortened))").font(.subheadline).foregroundStyle(Palette.detail)
 						}
 					}
 				case let .group(id):
@@ -185,7 +185,7 @@ struct FilterBar: View {
 
 	private func filterMenu<Content: View>(_ label: String, title: String, @ViewBuilder content: () -> Content) -> some View {
 		HStack(spacing: 4) {
-			Text(label).foregroundStyle(.secondary)
+			Text(label).foregroundStyle(Palette.detail)
 			Menu(title, content: content)
 				.menuStyle(.borderlessButton)
 				.fixedSize()
@@ -310,7 +310,7 @@ struct TransactionTable: View {
 				}
 				.width(22)
 				TableColumn("Date") { (t: Transaction) in
-					Text(Format.day(t.bookingDate)).monospacedDigit().foregroundStyle(t.isPending ? .secondary : .primary)
+					Text(Format.day(t.bookingDate)).monospacedDigit().foregroundStyle(t.isPending ? Palette.detail : Color.primary)
 				}
 				.width(min: 76, ideal: 84, max: 100)
 				TableColumn("Name / Purpose") { (t: Transaction) in
@@ -319,17 +319,17 @@ struct TransactionTable: View {
 				.width(min: 240, ideal: 520)
 				if showsAccount {
 					TableColumn("Account") { (t: Transaction) in
-						Text(model.ledger.account(t.accountID)?.name ?? "").foregroundStyle(.secondary).lineLimit(1)
+						Text(model.ledger.account(t.accountID)?.name ?? "").foregroundStyle(Palette.detail).lineLimit(1)
 					}
 					.width(min: 80, ideal: 140)
 				}
 				TableColumn("Category") { (t: Transaction) in
 					Text(model.ledger.categoryPath(t.categoryID)).lineLimit(1)
-						.foregroundStyle(t.categoryID == nil ? .secondary : .primary)
+						.foregroundStyle(t.categoryID == nil ? Palette.detail : Color.primary)
 				}
 				.width(min: 80, ideal: 160)
 				TableColumn("Amount") { (t: Transaction) in
-					AmountText(money: t.amount).opacity(t.isPending ? 0.6 : 1)
+					AmountText(money: t.amount).italic(t.isPending)
 				}
 				.width(min: 90, ideal: 110)
 				.alignment(.trailing)
@@ -358,13 +358,13 @@ struct TransactionCell: View {
 	var body: some View {
 		VStack(alignment: .leading, spacing: 1) {
 			HStack(spacing: 4) {
-				Text(transaction.name.isEmpty ? (transaction.bookingText ?? "") : transaction.name).fontWeight(.medium).lineLimit(1)
+				Text(transaction.name.isEmpty ? (transaction.bookingText ?? "") : transaction.name).fontWeight(.semibold).lineLimit(1)
 				if transaction.isPending {
 					Text("Pending")
 						.font(.subheadline)
-						.foregroundStyle(.secondary)
+						.foregroundStyle(Palette.detail)
 						.padding(.horizontal, 6)
-						.background(Capsule().strokeBorder(.tertiary))
+						.background(Capsule().strokeBorder(.secondary))
 				}
 				if transaction.isNew {
 					Circle().fill(.tint).frame(width: 6, height: 6).help("New transaction")
@@ -374,7 +374,7 @@ struct TransactionCell: View {
 				}
 			}
 			if !transaction.purpose.isEmpty {
-				Text(transaction.purpose).font(.callout).foregroundStyle(.secondary).lineLimit(1)
+				Text(transaction.purpose).font(.callout).foregroundStyle(Palette.detail).lineLimit(1)
 			}
 		}
 		.italic(transaction.isPending)
@@ -458,7 +458,7 @@ struct StatusLine: View {
 			}
 			Spacer()
 			Text(selected.count > 1 ? "\(selected.count) of \(rows.count) transactions" : (rows.count == 1 ? "1 transaction" : "\(rows.count.formatted()) transactions"))
-				.foregroundStyle(.secondary)
+				.foregroundStyle(Palette.detail)
 			Text("Sum: \(sums.isEmpty ? Format.money(0, "EUR") : Format.sums(sums))")
 				.monospacedDigit()
 				.textSelection(.enabled)

@@ -405,7 +405,7 @@ struct ChangePasswordSheet: View {
 			Section {
 				SecureField("Current password", text: $current, prompt: Text("Required"))
 			} footer: {
-				if let error { Text(error).foregroundStyle(.red) }
+				if let error { Text(error).foregroundStyle(Palette.red) }
 			}
 			Section {
 				SecureField("New password", text: $new, prompt: Text("Required"))
@@ -415,7 +415,7 @@ struct ChangePasswordSheet: View {
 				}
 			} footer: {
 				if !repeated.isEmpty, repeated != new {
-					Text("The new passwords differ.").foregroundStyle(.red)
+					Text("The new passwords differ.").foregroundStyle(Palette.red)
 				} else {
 					Text("Nobody can recover a forgotten database password.").foregroundStyle(.secondary)
 				}

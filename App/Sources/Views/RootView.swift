@@ -64,7 +64,7 @@ struct LockView: View {
 				.focused($focused)
 				.onSubmit(submit)
 			if wrong {
-				Text("Incorrect password!").foregroundStyle(.red)
+				Text("Incorrect password!").foregroundStyle(Palette.red)
 			}
 			ForEach(unavailable, id: \.self) { reason in
 				Text(reason).font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 360)
@@ -175,7 +175,7 @@ struct PasswordForm: View {
 					}
 				} footer: {
 					if !repeated.isEmpty, repeated != password {
-						Text("The new passwords differ.").foregroundStyle(.red)
+						Text("The new passwords differ.").foregroundStyle(Palette.red)
 					} else {
 						Text("The database password encrypts your login credentials, account balances, and transactions. Nobody can recover a forgotten password. Without it the data is lost.")
 							.foregroundStyle(.secondary)

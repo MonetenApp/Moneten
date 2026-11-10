@@ -91,7 +91,8 @@ struct GroupRow: View {
 				let sums = model.ledger.sum(ofGroup: group.id)
 				Text(Format.sums(sums))
 					.monospacedDigit()
-					.foregroundStyle(sums.amounts.contains(where: \.isNegative) && sums.amounts.count == 1 ? AnyShapeStyle(Color.red) : AnyShapeStyle(.secondary))
+					.fontWeight(.medium)
+					.foregroundStyle(sums.amounts.contains(where: \.isNegative) && sums.amounts.count == 1 ? Palette.red : Color.primary)
 			}
 		}
 		.dropDestination(for: String.self) { items, _ in
@@ -134,7 +135,7 @@ struct AccountRow: View {
 			Spacer()
 			// A closed account stays in the sidebar without its balance, as in MoneyMoney.
 			if !account.isClosed {
-				AmountText(money: balance, secondary: true)
+				AmountText(money: balance).fontWeight(.medium)
 			}
 		}
 		.draggable(account.id.uuidString)
@@ -190,7 +191,7 @@ struct CategoryRow: View {
 			}
 			Spacer()
 			if let amount = model.sidebarAmount(of: category) {
-				AmountText(money: amount, secondary: true)
+				AmountText(money: amount).fontWeight(.medium)
 			}
 		}
 		.dropDestination(for: String.self) { items, _ in

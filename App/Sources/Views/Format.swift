@@ -54,13 +54,26 @@ extension Color {
 
 struct AmountText: View {
 	let money: Money
-	/// Sidebar amounts are secondary to the names beside them. Negative amounts stay red.
-	var secondary = false
 	var body: some View {
 		Text(Format.money(money))
 			.monospacedDigit()
-			.foregroundStyle(money.isNegative ? AnyShapeStyle(Color.red) : secondary ? AnyShapeStyle(.secondary) : AnyShapeStyle(.primary))
+			.foregroundStyle(money.isNegative ? Palette.red : Color.primary)
 	}
+}
+
+/// Text colors for data. `.secondary` is 50 % black, about 3.9:1 on white, too faint for amounts,
+/// purposes, and counts, so data uses these colors. Labels and empty states keep `.secondary`.
+enum Palette {
+	/// Text below or beside the main text, such as a purpose or a count: about 8:1 on white. As in
+	/// MoneyMoney, the weight of the main text sets the hierarchy, not a faint color.
+	static let detail = Color(nsColor: .labelColor).opacity(0.82)
+	/// Negative amounts and error messages. The system red reaches only 3.6:1 on white, so light mode
+	/// uses a darker red with 5.7:1. Dark mode keeps the system red, 4.9:1 on the dark window.
+	static let red = Color(nsColor: NSColor(name: "textRed") { appearance in
+		appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+			? .systemRed
+			: NSColor(srgbRed: 0xC4 / 255, green: 0x26 / 255, blue: 0x2E / 255, alpha: 1)
+	})
 }
 
 /// The color of a category: its own color, else the color of its top-level category from a fixed

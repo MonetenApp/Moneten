@@ -57,7 +57,7 @@ struct CategorySettingsSheet: View {
 						}
 					} footer: {
 						if let ruleError {
-							Text(ruleError).foregroundStyle(.red)
+							Text(ruleError).foregroundStyle(Palette.red)
 						} else if !c.rule.isEmpty {
 							let count = matchCount(c)
 							Text(count == 1 ? "The rule matches 1 transaction." : "The rule matches \(count) transactions.")

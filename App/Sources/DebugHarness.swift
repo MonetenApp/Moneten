@@ -61,6 +61,7 @@ final class DebugHarness {
 		case "create": model.createDatabase(password: argument.isEmpty ? nil : argument)
 		case "unlock": log("unlock \(model.unlock(password: argument))")
 		case "lock": model.lock()
+		case "appearance": NSApp.appearance = NSAppearance(named: argument == "dark" ? .darkAqua : .aqua)
 		case "settingssnapshot":
 			offscreenSnapshot(SecuritySettings().environment(model), width: 500, name: "\(argument)-security")
 			offscreenSnapshot(AboutSettings().environment(model), width: 500, name: "\(argument)-general")
