@@ -281,9 +281,7 @@ enum DemoData {
 			}
 		}
 		ts.append(Transaction(accountID: giro.id, bookingDate: today, amountMinor: -4_250, name: "Tankstelle", purpose: "KARTENZAHLUNG", isPending: true, isNew: true))
-		let imported = model.importTransactions(ts.filter { $0.accountID == giro.id }, into: giro)
-		_ = model.importTransactions(ts.filter { $0.accountID == savings.id }, into: savings)
-		_ = imported
+		// The rules come first, so that the import categorizes the transactions.
 		if var groceries = model.ledger.categories.first(where: { $0.name == "Groceries" }) {
 			groceries.rule = #""REWE" OR "Bäckerei*""#
 			model.save(category: groceries)
@@ -292,5 +290,8 @@ enum DemoData {
 			rent.rule = #"name:"Wohnbau*" AND amount<0"#
 			model.save(category: rent)
 		}
+		let imported = model.importTransactions(ts.filter { $0.accountID == giro.id }, into: giro)
+		_ = model.importTransactions(ts.filter { $0.accountID == savings.id }, into: savings)
+		_ = imported
 	}
 }

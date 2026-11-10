@@ -308,50 +308,52 @@ struct TransactionTable: View {
 			}
 			.frame(maxWidth: .infinity)
 		} else {
+			// As in MoneyMoney: no column headers and no stripes, a line between rows, the category as a
+			// ribbon below the date, the amount larger and without the currency of the view, and the
+			// checkmark at the end. Every row is the same height, and a pending transaction is hatched.
+			let currency = rows.first?.currency
 			Table(of: Transaction.self, selection: $model.selectedTransactions, columnCustomization: $model.transactionColumns) {
-				TableColumn("") { (t: Transaction) in
-					Toggle("", isOn: Binding(get: { t.isChecked }, set: { _ in model.toggleChecked(t.id) }))
-						.toggleStyle(.checkbox)
-						.labelsHidden()
-						.pendingHatch(t.isPending, alignment: .center)
-				}
-				.width(22)
-				.customizationID("check")
-				// As in MoneyMoney, the category is a badge below the date, and a pending transaction is
-				// hatched. Every row has two lines, so all rows are the same height.
 				TableColumn("Date") { (t: Transaction) in
-					VStack(alignment: .leading, spacing: 3) {
-						Text(Format.day(t.bookingDate)).monospacedDigit()
-						CategoryBadge(categoryID: t.categoryID, ledger: model.ledger)
-					}
-					.pendingHatch(t.isPending)
+					DateCell(transaction: t, ledger: model.ledger).rowChrome(t)
 				}
-				.width(min: 84, ideal: 120, max: 200)
+				.width(min: 96, ideal: 112, max: 180)
 				.customizationID("date")
 				TableColumn("Name / Purpose") { (t: Transaction) in
-					TransactionCell(transaction: t).pendingHatch(t.isPending)
+					TransactionCell(transaction: t).rowChrome(t)
 				}
 				.width(min: 240, ideal: 520)
 				.customizationID("name")
 				if showsAccount {
 					TableColumn("Account") { (t: Transaction) in
 						Text(model.ledger.account(t.accountID)?.name ?? "").foregroundStyle(Palette.detail).lineLimit(1)
-							.pendingHatch(t.isPending)
+							.rowChrome(t)
 					}
 					.width(min: 80, ideal: 140)
 					.customizationID("account")
 				}
 				TableColumn("Amount") { (t: Transaction) in
-					AmountText(money: t.amount).pendingHatch(t.isPending, alignment: .trailing)
+					AmountText(money: t.amount, showsCurrency: t.currency != currency)
+						.font(.system(size: 17))
+						.rowChrome(t, alignment: .trailing)
 				}
-				.width(min: 90, ideal: 110)
+				.width(min: 90, ideal: 120)
 				.alignment(.trailing)
 				.customizationID("amount")
+				TableColumn("Checked") { (t: Transaction) in
+					Toggle("", isOn: Binding(get: { t.isChecked }, set: { _ in model.toggleChecked(t.id) }))
+						.toggleStyle(.checkbox)
+						.labelsHidden()
+						.rowChrome(t, alignment: .center)
+				}
+				.width(22)
+				.customizationID("check")
 			} rows: {
 				ForEach(rows) { t in
 					TableRow(t).draggable(draggedIDs(for: t))
 				}
 			}
+			.tableColumnHeaders(.hidden)
+			.alternatingRowBackgrounds(.disabled)
 			.contextMenu(forSelectionType: UUID.self) { ids in
 				TransactionMenu(ids: ids)
 			} primaryAction: { ids in
@@ -376,84 +378,143 @@ struct TransactionCell: View {
 	let transaction: Transaction
 
 	var body: some View {
-		VStack(alignment: .leading, spacing: 1) {
+		VStack(alignment: .leading, spacing: 2) {
 			HStack(spacing: 4) {
 				Text(transaction.name.isEmpty ? (transaction.bookingText ?? "") : transaction.name).fontWeight(.semibold).lineLimit(1)
-				if transaction.isNew {
-					Circle().fill(.tint).frame(width: 6, height: 6).help("New transaction")
-				}
 				if let comment = transaction.comment {
 					Image(systemName: "note.text").foregroundStyle(.yellow).help(comment)
 				}
 			}
 			// A row without a purpose keeps the empty line, so that every row is the same height.
-			Text(transaction.purpose.isEmpty ? " " : transaction.purpose).font(.callout).foregroundStyle(Palette.detail).lineLimit(1)
+			Text(transaction.purpose.isEmpty ? " " : transaction.purpose).foregroundStyle(Palette.detail).lineLimit(1)
 		}
 		.textSelection(.enabled)
 	}
 }
 
-/// The category of a transaction as a small label tinted in the color of the category, with the
-/// whole path on hover. An uncategorized transaction keeps the line empty.
+/// The date with the dot of a new transaction left of it, and the category ribbon below.
 /// The ledger comes from the table: AppKit can build a cell outside the environment of the window,
 /// and a cell that reads the model from the environment then stops the app.
-struct CategoryBadge: View {
+struct DateCell: View {
+	let transaction: Transaction
+	let ledger: Ledger
+
+	var body: some View {
+		VStack(alignment: .leading, spacing: 3) {
+			Text(Format.day(transaction.bookingDate))
+				.monospacedDigit()
+				.foregroundStyle(Palette.detail)
+				.overlay(alignment: .leading) {
+					if transaction.isNew {
+						Circle().fill(.tint).frame(width: 7, height: 7).offset(x: -11).help("New transaction")
+					}
+				}
+			CategoryRibbon(categoryID: transaction.categoryID, ledger: ledger)
+		}
+		.padding(.leading, 4)
+	}
+}
+
+/// The category of a transaction as a ribbon in the color of the category, from the edge of the row
+/// to the end of the date column, with the whole path on hover. An uncategorized transaction keeps
+/// the line empty.
+struct CategoryRibbon: View {
 	let categoryID: UUID?
 	let ledger: Ledger
 
 	var body: some View {
 		if let id = categoryID, let category = ledger.category(id), !category.isDefault {
-			let color = CategoryColors.color(of: category, in: ledger)
-			Text(category.name)
-				.font(.caption)
+			Text(category.name.uppercased())
+				.font(.system(size: 10, weight: .bold))
+				.kerning(0.4)
+				.foregroundStyle(.white)
 				.lineLimit(1)
-				.padding(.horizontal, 5)
-				.padding(.vertical, 1)
-				.background(color.opacity(0.22), in: .rect(cornerRadius: 4))
-				.overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(color.opacity(0.45), lineWidth: 0.5))
+				.padding(.leading, RowChrome.edge + 4)
+				.padding(.trailing, 10)
+				.frame(maxWidth: .infinity, minHeight: 16, alignment: .leading)
+				// Muted like the ribbons of MoneyMoney, so that white text stays readable on light colors.
+				.background(CategoryColors.color(of: category, in: ledger).mix(with: Color(white: 0.4), by: 0.35), in: RibbonShape())
+				.padding(.leading, -RowChrome.edge - 4)
 				.help(ledger.categoryPath(id))
 		} else {
-			Text(" ").font(.caption).padding(.vertical, 1)
+			Text(" ").font(.system(size: 10, weight: .bold)).frame(minHeight: 16)
 		}
 	}
 }
 
-/// Thin diagonal lines behind the cells of a transaction the bank has not booked yet. The lines are
-/// placed in window coordinates, so they continue from one cell of the row to the next.
-struct PendingHatch: View {
-	static let line = Color(nsColor: NSColor(name: "pendingHatch") { appearance in
-		appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? NSColor(white: 0.27, alpha: 1) : NSColor(white: 0.84, alpha: 1)
+/// A band with a notch at its trailing end.
+struct RibbonShape: Shape {
+	func path(in rect: CGRect) -> Path {
+		let notch = rect.height * 0.4
+		var path = Path()
+		path.move(to: CGPoint(x: rect.minX, y: rect.minY))
+		path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
+		path.addLine(to: CGPoint(x: rect.maxX - notch, y: rect.midY))
+		path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+		path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
+		path.closeSubpath()
+		return path
+	}
+}
+
+/// The background of every cell of a row: the line below the row, and diagonal bands when the bank
+/// has not booked the transaction yet. Each cell draws its part a little past its edges, so that
+/// the parts meet across the gaps between the columns. The colors are opaque, so that overlapping
+/// parts look the same, and the bands are placed in window coordinates, so they continue from one
+/// cell to the next.
+struct RowChrome: View {
+	/// The distance from a cell to the edge of its row, and to the next cell.
+	static let edge: CGFloat = 10
+	/// The vertical distance from a cell to the edge of its row.
+	static let inset: CGFloat = 4
+
+	static let band = Color(nsColor: NSColor(name: "pendingBand") { appearance in
+		appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? NSColor(white: 0.19, alpha: 1) : NSColor(white: 0.94, alpha: 1)
 	})
+	static let separator = Color(nsColor: NSColor(name: "rowSeparator") { appearance in
+		appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? NSColor(white: 0.24, alpha: 1) : NSColor(white: 0.88, alpha: 1)
+	})
+
+	let pending: Bool
+	@Environment(\.backgroundProminence) private var prominence
 
 	var body: some View {
 		GeometryReader { geometry in
 			let origin = geometry.frame(in: .global).origin
 			Canvas { context, size in
-				let spacing: CGFloat = 6
-				var path = Path()
-				// The first line starts left of the cell, at a multiple of the spacing in window coordinates.
-				var x = -((origin.x + origin.y).truncatingRemainder(dividingBy: spacing)) - size.height
-				while x < size.width {
-					path.move(to: CGPoint(x: x, y: size.height))
-					path.addLine(to: CGPoint(x: x + size.height, y: 0))
-					x += spacing
+				let selected = prominence == .increased
+				if pending {
+					let period: CGFloat = 20
+					var bands = Path()
+					// A band at every multiple of the period in window coordinates, leaning to the right.
+					var x = -((origin.x + origin.y + size.height).truncatingRemainder(dividingBy: period)) - size.height
+					while x < size.width {
+						bands.move(to: CGPoint(x: x, y: size.height))
+						bands.addLine(to: CGPoint(x: x + size.height, y: 0))
+						bands.addLine(to: CGPoint(x: x + size.height + period / 2, y: 0))
+						bands.addLine(to: CGPoint(x: x + period / 2, y: size.height))
+						bands.closeSubpath()
+						x += period
+					}
+					context.fill(bands, with: selected ? .color(.white.opacity(0.12)) : .color(Self.band))
 				}
-				// Opaque, so that the lines look the same where two cells overlap.
-				context.stroke(path, with: .color(Self.line), lineWidth: 1)
+				if !selected {
+					context.fill(Path(CGRect(x: 0, y: size.height - 1, width: size.width, height: 1)), with: .color(Self.separator))
+				}
 			}
 		}
+		.padding(.horizontal, -Self.edge)
+		.padding(.vertical, -Self.inset)
 		.accessibilityHidden(true)
 	}
 }
 
 extension View {
-	/// Fills the cell, and hatches it when the transaction is pending.
-	func pendingHatch(_ pending: Bool, alignment: Alignment = .leading) -> some View {
-		frame(maxWidth: .infinity, maxHeight: .infinity, alignment: alignment)
-			.background {
-				if pending { PendingHatch().padding(.horizontal, -10).padding(.vertical, -4) }
-			}
-			.accessibilityValue(pending ? "Pending" : "")
+	/// Fills the cell and draws the line below the row and, for a pending transaction, the bands.
+	func rowChrome(_ t: Transaction, alignment: Alignment = .leading) -> some View {
+		frame(maxWidth: .infinity, minHeight: 47, maxHeight: .infinity, alignment: alignment)
+			.background { RowChrome(pending: t.isPending) }
+			.accessibilityValue(t.isPending ? "Pending" : "")
 	}
 }
 

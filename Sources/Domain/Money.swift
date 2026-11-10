@@ -27,6 +27,9 @@ public struct Money: Hashable, Sendable, Codable, Comparable {
 
 	public var isNegative: Bool { minorUnits < 0 }
 
+	/// The number of decimal places of the currency, such as 2 for EUR.
+	public var decimalPlaces: Int { Currency.exponent(of: currency) }
+
 	public static func < (lhs: Money, rhs: Money) -> Bool { lhs.minorUnits < rhs.minorUnits }
 
 }

@@ -3,8 +3,18 @@ import Foundation
 import SwiftUI
 
 enum Format {
+	/// An amount with its currency, such as "−42,50 €", with a minus sign as in MoneyMoney.
 	static func money(_ m: Money) -> String {
-		m.decimal.formatted(.currency(code: m.currency))
+		minus(m.decimal.formatted(.currency(code: m.currency)))
+	}
+
+	/// An amount without its currency, such as "−42,50", for a list in one currency.
+	static func amount(_ m: Money) -> String {
+		minus(m.decimal.formatted(.number.precision(.fractionLength(m.decimalPlaces))))
+	}
+
+	private static func minus(_ text: String) -> String {
+		text.replacingOccurrences(of: "-", with: "\u{2212}")
 	}
 
 	static func money(_ minor: Int64, _ currency: String) -> String {
@@ -67,8 +77,9 @@ extension Color {
 
 struct AmountText: View {
 	let money: Money
+	var showsCurrency = true
 	var body: some View {
-		Text(Format.money(money))
+		Text(showsCurrency ? Format.money(money) : Format.amount(money))
 			.monospacedDigit()
 			.foregroundStyle(money.isNegative ? Palette.red : Color.primary)
 	}

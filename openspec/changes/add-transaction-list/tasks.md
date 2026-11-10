@@ -4,7 +4,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 
 ## 1. Requirements
 
-- [x] 1.1 One row per transaction. Verified by the debug harness snapshot in the first build; the category badge below the date by the snapshot of `seed`.
+- [x] 1.1 One row per transaction. Verified by the debug harness snapshot in the first build.
 - [x] 1.2 Newest transactions first. Verified by LedgerTests "Newest first".
 - [ ] 1.3 Details from the bank. Built in part: the transaction sheet shows the details. Finish it and verify it with a test or in the app.
 - [x] 1.4 Account name in group and category views. Verified by the debug harness snapshot in the first build.
@@ -24,6 +24,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [ ] 1.18 Services for selected text. Build it and verify it with a test or in the app.
 - [x] 1.19 Empty states. Verified by the debug harness snapshot in the first build.
 - [ ] 1.20 The list stays fluid with a large history. Build it and verify it with a test or in the app.
+- [x] 1.21 Row layout. Verified by the snapshots of the debug harness commands `seed` and `history` in light and dark mode, with two rows selected.
 
 ## 2. Integration
 

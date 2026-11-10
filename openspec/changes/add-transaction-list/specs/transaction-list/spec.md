@@ -8,7 +8,7 @@ The transaction list shows what happened in an account, an account group, or a c
 
 ### Requirement: One row per transaction
 
-The app SHALL show one row for each transaction of the selected account, account group, or category. A row shows the booking date, the counterparty name, the purpose, the category, and the amount with its sign and currency. As in MoneyMoney, the category is a badge in the color of the category below the booking date, not a column of its own, and every row has the same height.
+The app SHALL show one row for each transaction of the selected account, account group, or category. A row shows the booking date, the counterparty name, the purpose, the category, and the amount with its sign and currency.
 
 #### Scenario: Card payment
 
@@ -321,3 +321,14 @@ The app SHALL scroll, select, and update the list without visible delay for a vi
 - **GIVEN** an account group with 50,000 transactions
 - **WHEN** the user scrolls from the top to the bottom of the list
 - **THEN** rows appear without blank areas and without stutter
+
+### Requirement: Row layout
+
+The app SHALL lay out a row as MoneyMoney does. The category is a ribbon in the color of the category below the booking date, not a column of its own. The amount omits the currency when it is the currency of the view, and it shows a minus sign. The checkmark is at the end of the row. The list has no column headers, a line separates the rows, and every row has the same height.
+
+#### Scenario: Categorized card payment
+
+- **GIVEN** the account "Giro" in EUR has a booked transaction of -42,50 € in the category "Groceries"
+- **WHEN** the user selects "Giro" in the sidebar
+- **THEN** the row shows the ribbon "GROCERIES" below the date and the amount "−42,50" without "€"
+- **AND** the checkmark is right of the amount
