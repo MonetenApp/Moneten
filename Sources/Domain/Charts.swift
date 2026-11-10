@@ -64,8 +64,8 @@ extension Ledger {
 	/// steps of 2, 3, 7, 14, 30, or more days.
 	public func balanceBars(accountIDs: Set<UUID>, range: DayRange = .all, maxBars: Int, calendar: Calendar = .current) -> [BalanceBar] {
 		let daily = dailyBalances(accountIDs: accountIDs)
-		guard let first = daily.first?.day, let last = daily.last?.day else { return [] }
-		let latest = max(Day.today(calendar: calendar), last)
+		guard let first = daily.first?.day else { return [] }
+		let latest = Day.today(calendar: calendar)
 		let start = range.start ?? first
 		let end = min(range.end ?? latest, latest)
 		guard start <= end else { return [] }
@@ -101,7 +101,7 @@ extension Ledger {
 		var index = 0
 		var current = first.minorUnits
 		var month = first.day.firstOfMonth
-		let last = max(daily.last!.day, Day.today(calendar: calendar))
+		let last = Day.today(calendar: calendar)
 		while month <= last {
 			let next = month.adding(months: 1, calendar: calendar)
 			var total: Int64 = 0

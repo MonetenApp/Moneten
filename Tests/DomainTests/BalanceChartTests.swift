@@ -63,6 +63,15 @@ struct BalanceChartTests {
 		#expect(bars[0].minorUnits == (50_000 + 13 * 60_000) / 14)
 	}
 
+	@Test("A transaction dated in the future does not extend the chart past today")
+	func futureTransaction() {
+		let today = Day.today()
+		let l = ledger([(today.adding(days: -3), 1_000), (today.adding(days: 7), -500)])
+		let bars = l.balanceBars(accountIDs: [giro.id], maxBars: 200)
+		#expect(bars.count == 4)
+		#expect(bars.last?.start == today)
+	}
+
 	@Test("An account without transactions has no bars")
 	func empty() {
 		#expect(ledger([]).balanceBars(accountIDs: [giro.id], maxBars: 100).isEmpty)
