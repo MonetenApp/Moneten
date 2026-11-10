@@ -20,10 +20,11 @@ enum UnlockMethod: CaseIterable {
 		}
 	}
 
-	/// Where a reason is shown. The settings explain how to set a method up, the lock screen what is missing now.
+	/// Where a reason is shown. The settings refuse a method only while it is not set up, and the
+	/// lock screen also names what is missing right now, such as a closed lid.
 	enum Place { case settings, lockScreen }
 
-	/// Nil when macOS can use the method now, otherwise why it cannot.
+	/// Nil when the method can be used at this place, otherwise why it cannot.
 	func unavailableReason(for place: Place) -> String? {
 		let context = LAContext()
 		var error: NSError?
@@ -33,17 +34,17 @@ enum UnlockMethod: CaseIterable {
 		case (.touchID, .biometryNotEnrolled):
 			return "Touch ID is not set up. Add a fingerprint in System Settings → Touch ID & Password first."
 		case (.touchID, .biometryLockout):
-			return "macOS has locked Touch ID after too many failed attempts. Enter the database password."
+			return place == .settings ? nil : "macOS has locked Touch ID after too many failed attempts. Enter the database password."
 		case (.touchID, .biometryDisconnected):
-			return "Touch ID is not available while the lid is closed."
+			return place == .settings ? nil : "Touch ID is not available while the lid is closed."
 		case (.touchID, .biometryNotAvailable):
 			// With the lid closed, a Mac with a sensor can report the sensor as missing.
-			return context.biometryType == .touchID
-				? "Touch ID is not available right now, for example while the lid is closed."
-				: "This Mac has no Touch ID sensor."
+			if context.biometryType != .touchID { return "This Mac has no Touch ID sensor." }
+			return place == .settings ? nil : "Touch ID is not available right now, for example while the lid is closed."
 		case (.appleWatch, .companionNotAvailable):
+			// macOS reports a watch that is not set up and one that is out of range the same way.
 			return place == .settings
-				? "No Apple Watch is set up to unlock this Mac. Turn it on in System Settings → Touch ID & Password first."
+				? "No Apple Watch can unlock this Mac right now. Turn it on in System Settings → Touch ID & Password, and keep the watch nearby."
 				: "No Apple Watch was detected nearby."
 		case (_, .passcodeNotSet):
 			return "Your Mac user account has no login password."
