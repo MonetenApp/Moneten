@@ -74,6 +74,20 @@ public struct Ledger: Sendable {
 		accounts.filter { $0.groupID == group }.sorted { $0.position < $1.position }
 	}
 
+	/// The position after the last group or account of a group.
+	public func nextTreePosition(in parent: UUID?) -> Int {
+		(accountTree(in: parent).map(\.position).max() ?? -1) + 1
+	}
+
+	/// The subgroups and accounts of a group in one list, ordered by position, as the sidebar shows them.
+	/// At the same position a group comes first.
+	public func accountTree(in parent: UUID?) -> [AccountTreeItem] {
+		let items = childGroups(of: parent).map(AccountTreeItem.group) + accounts(inGroup: parent).map(AccountTreeItem.account)
+		return items.enumerated().sorted { a, b in
+			(a.element.position, a.offset) < (b.element.position, b.offset)
+		}.map(\.element)
+	}
+
 	/// The accounts of a group and of all its subgroups.
 	public func accountIDs(inGroupTree group: UUID) -> Set<UUID> {
 		var ids = Set(accounts(inGroup: group).map(\.id))
@@ -259,5 +273,25 @@ public struct TransactionFilter: Hashable, Sendable {
 
 	public var isActive: Bool {
 		period != .all || status != .all || amount != .all || categoryID != nil || accountID != nil
+	}
+}
+
+/// A row of the account tree: a group or an account.
+public enum AccountTreeItem: Identifiable, Sendable {
+	case group(AccountGroup)
+	case account(Account)
+
+	public var id: UUID {
+		switch self {
+		case let .group(g): g.id
+		case let .account(a): a.id
+		}
+	}
+
+	public var position: Int {
+		switch self {
+		case let .group(g): g.position
+		case let .account(a): a.position
+		}
 	}
 }
