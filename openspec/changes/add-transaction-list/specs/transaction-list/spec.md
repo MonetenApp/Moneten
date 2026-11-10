@@ -325,7 +325,7 @@ The app SHALL scroll, select, and update the list without visible delay for a vi
 
 ### Requirement: Row layout
 
-The app SHALL lay out a row as MoneyMoney does. The category is a ribbon in the color of the category below the booking date, not a column of its own. The amount omits the currency when it is the currency of the view, and it shows a minus sign. The checkmark is at the end of the row. The list has no column headers, a line separates the rows, and every row has the same height.
+The app SHALL lay out a row as MoneyMoney does. The category is a ribbon in the color of the category below the booking date, not a column of its own. The amount omits the currency when it is the currency of the view, and it shows a minus sign. The checkmark is at the end of the row. The list has no column headers, a line separates the rows, and every row has the same height, except that a selected row of a group or category view adds the line with its account.
 
 #### Scenario: Categorized card payment
 

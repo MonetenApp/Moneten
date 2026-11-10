@@ -314,7 +314,8 @@ struct TransactionTable: View {
 			// across the full width with a line below each, the category as a ribbon below the date,
 			// the amount larger and without the currency of the view, and the checkmark at the end.
 			// A pending transaction is hatched.
-			let currency = rows.first?.currency
+			// Amounts omit the currency only when the whole view has one. A mixed group keeps it on every row.
+			let currency = rows.first.flatMap { first in rows.allSatisfy { $0.currency == first.currency } ? first.currency : nil }
 			Table(of: Transaction.self, selection: $model.selectedTransactions, columnCustomization: $model.transactionColumns) {
 				TableColumn("Date") { (t: Transaction) in
 					DateCell(transaction: t, model: model).rowChrome(t)
@@ -516,8 +517,9 @@ struct CheckBox: View {
 				.contentShape(Rectangle())
 		}
 		.buttonStyle(.plain)
-		.accessibilityLabel("Checked")
-		.accessibilityValue(isOn ? "On" : "Off")
+		.accessibilityLabel("Checkmark")
+		.accessibilityValue(isOn ? "Checked" : "Unchecked")
+		.accessibilityAddTraits(.isToggle)
 	}
 }
 
@@ -543,11 +545,23 @@ struct RowChrome: View {
 	@Environment(\.backgroundProminence) private var prominence
 
 	var body: some View {
+		let selected = prominence == .increased
+		ZStack(alignment: .bottom) {
+			// Only pending rows need the window position, so the others skip the geometry reader.
+			if pending { bands(selected: selected) }
+			if !selected { Self.separator.frame(height: 1) }
+		}
+		.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+		.padding(.horizontal, -Self.halfGap)
+		.padding(.vertical, -Self.inset)
+		.accessibilityHidden(true)
+	}
+
+	private func bands(selected: Bool) -> some View {
 		GeometryReader { geometry in
 			let origin = geometry.frame(in: .global).origin
 			Canvas { context, size in
-				let selected = prominence == .increased
-				if pending {
+				do {
 					// Bands of 9 points every 18 points, at about 60 degrees, as in MoneyMoney.
 					let period: CGFloat = 18
 					let slant = size.height * 0.58
@@ -564,20 +578,24 @@ struct RowChrome: View {
 					}
 					context.fill(bands, with: selected ? .color(.white.opacity(0.12)) : .color(Self.band))
 				}
-				if !selected {
-					context.fill(Path(CGRect(x: 0, y: size.height - 1, width: size.width, height: 1)), with: .color(Self.separator))
-				}
 			}
 		}
-		.padding(.horizontal, -Self.halfGap)
-		.padding(.vertical, -Self.inset)
-		.accessibilityHidden(true)
 	}
 }
 
 extension View {
 	/// A light background under the pointer, for a control in a bar that has no border of its own.
 	func hoverHighlight() -> some View { modifier(HoverHighlight()) }
+}
+
+/// VoiceOver reads "Pending" on the cells of a pending row. Other cells keep their own value, such
+/// as the state of the checkbox.
+struct PendingValue: ViewModifier {
+	let pending: Bool
+
+	func body(content: Content) -> some View {
+		if pending { content.accessibilityValue("Pending") } else { content }
+	}
 }
 
 struct HoverHighlight: ViewModifier {
@@ -601,7 +619,7 @@ extension View {
 		frame(maxWidth: .infinity, minHeight: 55 - 2 * RowChrome.inset, maxHeight: .infinity, alignment: alignment)
 			.background { RowChrome(pending: t.isPending) }
 			.listRowSeparator(.hidden)
-			.accessibilityValue(t.isPending ? "Pending" : "")
+			.modifier(PendingValue(pending: t.isPending))
 	}
 }
 
@@ -727,8 +745,18 @@ struct StatusLine: View {
 		let selected = rows.filter { model.selectedTransactions.contains($0.id) }
 		let shown = selected.count > 1 ? selected : rows
 		let sums = shown.reduce(into: MoneySums()) { $0.add($1.amount) }
-		// As in MoneyMoney, the count is centered in 11 points. The filter note stays at the leading edge.
-		ZStack {
+		// As in MoneyMoney, the count is centered in 11 points. The filter note takes the leading third
+		// and truncates before it reaches the count.
+		HStack(spacing: 12) {
+			Group {
+				if model.filter.isActive {
+					Label("A filter is active; some entries might be hidden.", systemImage: "line.3.horizontal.decrease.circle")
+						.foregroundStyle(.secondary)
+						.lineLimit(1)
+						.help("A filter is active; some entries might be hidden.")
+				}
+			}
+			.frame(maxWidth: .infinity, alignment: .leading)
 			HStack(spacing: 12) {
 				Text(selected.count > 1 ? "\(selected.count) of \(rows.count) transactions" : (rows.count == 1 ? "1 transaction" : "\(rows.count.formatted()) transactions"))
 					.foregroundStyle(Palette.detail)
@@ -736,14 +764,9 @@ struct StatusLine: View {
 					.monospacedDigit()
 					.textSelection(.enabled)
 			}
-			if model.filter.isActive {
-				HStack {
-					Label("A filter is active; some entries might be hidden.", systemImage: "line.3.horizontal.decrease.circle")
-						.foregroundStyle(.secondary)
-						.lineLimit(1)
-					Spacer()
-				}
-			}
+			.fixedSize()
+			// As wide as the note, so that the count stays in the middle and the note truncates first.
+			Color.clear.frame(maxWidth: .infinity, maxHeight: 0)
 		}
 		.font(.system(size: 11))
 		.padding(.horizontal, 16)

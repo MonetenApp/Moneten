@@ -64,6 +64,8 @@ struct LedgerTests {
 	func searchAmount() {
 		#expect(search("89,00") == ["Stadtwerke Musterstadt"])
 		#expect(search("-23,45") == ["Bäckerei Gutbrot"])
+		// The list shows the minus sign U+2212. An amount copied from there matches too.
+		#expect(search("\u{2212}23,45") == ["Bäckerei Gutbrot"])
 	}
 
 	@Test("Status, amount, period, and category filters combine")

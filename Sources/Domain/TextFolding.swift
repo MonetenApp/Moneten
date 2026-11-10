@@ -4,6 +4,8 @@ public enum TextFolding {
 	/// Lower case, composed Unicode, umlauts and ß spelled out. "Bäckerei" becomes "baeckerei".
 	public static func fold(_ text: String) -> String {
 		var s = text.precomposedStringWithCanonicalMapping.lowercased()
+		// The list shows amounts with the minus sign U+2212. Copied from there, they still match.
+		if s.contains("\u{2212}") { s = s.replacingOccurrences(of: "\u{2212}", with: "-") }
 		if s.contains(where: { "äöüß".contains($0) }) {
 			s = s.replacingOccurrences(of: "ä", with: "ae")
 				.replacingOccurrences(of: "ö", with: "oe")
