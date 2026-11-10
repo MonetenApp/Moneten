@@ -27,13 +27,16 @@ Read [architecture](docs/architecture.md) for the modules and the data model, an
 
 ## Build and run
 
-You need macOS 15 or newer and Swift 6.1 or newer. The Command Line Tools are enough. Xcode works too and opens `Package.swift` directly.
+You need macOS 15 or newer, Xcode 16.3 or newer, and [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`).
 
 ```sh
-scripts/test.sh                 # run the tests
+scripts/test.sh                 # run the tests of the libraries
+scripts/generate-project.sh     # write App/MonetenMoneten.xcodeproj, then open it in Xcode
 scripts/build-app.sh            # build dist/MonetenMoneten.app
 open dist/MonetenMoneten.app
 ```
+
+To sign with your team, create `App/Local.xcconfig` as `App/Signing.xcconfig` describes.
 
 The app keeps its data in `~/Library/Application Support/MonetenMoneten`. To try it with another folder, start it with `open --env MONETENMONETEN_DATA_DIR=/path/to/folder dist/MonetenMoneten.app`.
 

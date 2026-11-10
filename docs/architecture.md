@@ -30,7 +30,7 @@ The diagram shows the target design.
              └────────────────┘
 ```
 
-The repository is one Swift package ([ADR 0010](decisions/0010-swift-package-and-macos-15.md)). `App` is an executable target, and `scripts/build-app.sh` wraps it into `MonetenMoneten.app`. These modules exist:
+The libraries are one Swift package at the root of the repository. The app target is an Xcode project in `App/`, generated from `App/project.yml` ([ADR 0011](decisions/0011-app-target-in-an-xcode-project.md)). These modules exist:
 
 | Module | Owns | Depends on |
 |---|---|---|
@@ -156,7 +156,7 @@ draft → payeeCheck → confirmed → (needsChallenge) → submitted → accept
 
 ## The app ships outside the App Store
 
-Releases will be signed with a Developer ID, notarized by Apple, and updated through Sparkle. Until then, `scripts/build-app.sh` signs ad hoc, or with the identity in `CODESIGN_IDENTITY`. The App Store is not an option because its terms conflict with the GPL. [ADR 0006](decisions/0006-license-gpl-3.md) has the details.
+Releases will be signed with a Developer ID, notarized by Apple, and updated through Sparkle. Until then, `scripts/build-app.sh` signs with the team in `App/Local.xcconfig`, or to run locally without a team. The App Store is not an option because its terms conflict with the GPL. [ADR 0006](decisions/0006-license-gpl-3.md) has the details.
 
 ## The subscription service is a separate project
 
@@ -166,14 +166,14 @@ The optional finAPI subscription (v0.3) needs a server that holds the finAPI cli
 
 ```
 MonetenMoneten/
-├── Package.swift            The Swift package
+├── Package.swift            The Swift package of the libraries
 ├── Sources/
 │   ├── Domain/
 │   ├── Storage/
-│   ├── Import/
-│   └── App/
-├── Tests/                   One test target per library module
-├── scripts/                 Test, build, and check scripts, and the app bundle files
+│   └── Import/
+├── Tests/                   One test target per library
+├── App/                     The app target: project.yml, sources, Info.plist, resources
+├── scripts/                 Test, build, project, and check scripts
 ├── openspec/                Specs of every change
 └── docs/
 ```

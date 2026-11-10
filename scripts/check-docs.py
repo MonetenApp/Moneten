@@ -2,7 +2,8 @@
 """Checks that the documentation points at things that exist.
 
 - Every relative Markdown link resolves to a file, and its #anchor to a heading.
-- Every path in code font exists, read from the repository root or from the folder of the doc.
+- Every path in code font exists, read from the repository root or from the folder of the doc,
+  or git ignores it.
 - Every folder and file in a layout tree that starts with "MonetenMoneten/" exists.
 - Every name in code font in docs/data-model.md, above its section on later types, is declared
   in Sources/ or is a table of the database.
@@ -50,7 +51,10 @@ def anchors(path):
 
 
 def path_exists(md, path):
-	return (ROOT / path).exists() or (md.parent / path).exists()
+	"""A path exists, or git ignores it, as for a local file such as App/Local.xcconfig that each developer creates."""
+	if (ROOT / path).exists() or (md.parent / path).exists():
+		return True
+	return subprocess.run(["git", "check-ignore", "-q", path], cwd=ROOT).returncode == 0
 
 
 def check_links_and_paths(md, rel):
