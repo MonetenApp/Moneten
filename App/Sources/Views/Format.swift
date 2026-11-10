@@ -78,10 +78,12 @@ extension Color {
 struct AmountText: View {
 	let money: Money
 	var showsCurrency = true
+	/// Increased on a selected table row, where red would be hard to read on the accent color.
+	@Environment(\.backgroundProminence) private var prominence
 	var body: some View {
 		Text(showsCurrency ? Format.money(money) : Format.amount(money))
 			.monospacedDigit()
-			.foregroundStyle(money.isNegative ? Palette.red : Color.primary)
+			.foregroundStyle(money.isNegative && prominence != .increased ? Palette.red : Color.primary)
 	}
 }
 

@@ -112,7 +112,7 @@ struct FilterBar: View {
 
 	var body: some View {
 		@Bindable var model = model
-		HStack(spacing: 16) {
+		HStack(spacing: 6) {
 			Toggle(isOn: $model.keepFilters) {
 				Image(systemName: model.keepFilters ? "pin.fill" : "pin")
 					.frame(width: 22, height: 22)
@@ -120,6 +120,7 @@ struct FilterBar: View {
 			}
 			.toggleStyle(.button)
 			.buttonStyle(.borderless)
+			.hoverHighlight()
 			.help("Save filter bar")
 			filterMenu("Period:", title: periodTitle) {
 				Button("Show All") { model.choose(period: .all) }
@@ -185,7 +186,8 @@ struct FilterBar: View {
 			}
 		}
 		.font(.callout)
-		.padding(.horizontal, 16)
+		// The highlight of each control adds 6 points, so the bar keeps its text 16 points from the edge.
+		.padding(.horizontal, 10)
 		.padding(.vertical, 6)
 	}
 
@@ -196,6 +198,7 @@ struct FilterBar: View {
 				.menuStyle(.borderlessButton)
 				.fixedSize()
 		}
+		.hoverHighlight()
 	}
 
 	private var periodTitle: String {
@@ -317,23 +320,17 @@ struct TransactionTable: View {
 				TableColumn("Date") { (t: Transaction) in
 					DateCell(transaction: t, model: model).rowChrome(t)
 				}
-				// With the gap of 17 points, the name starts 118 points from the edge, as in MoneyMoney.
-				.width(101)
+				// The table starts the first cell 6 points from the edge of the row. With the gap of 17
+				// points, the name then starts 118 points from the edge, as in MoneyMoney.
+				.width(95)
 				.customizationID("date")
+				// A group or category view names the account below the purpose of a selected row.
 				TableColumn("Name / Purpose") { (t: Transaction) in
-					TransactionCell(transaction: t).padding(.trailing, 12).rowChrome(t)
+					let account = showsAccount && model.selectedTransactions.contains(t.id) ? model.ledger.account(t.accountID)?.name : nil
+					TransactionCell(transaction: t, account: account).padding(.trailing, 12).rowChrome(t)
 				}
 				.width(min: 240, ideal: 520)
 				.customizationID("name")
-				if showsAccount {
-					TableColumn("Account") { (t: Transaction) in
-						Text(model.ledger.account(t.accountID)?.name ?? "").foregroundStyle(Palette.detail).lineLimit(1)
-							.padding(.trailing, 12)
-							.rowChrome(t)
-					}
-					.width(min: 80, ideal: 140)
-					.customizationID("account")
-				}
 				// The checkmark sits 11 points right of the amount, as in MoneyMoney.
 				TableColumn("Amount") { (t: Transaction) in
 					HStack(spacing: 5) {
@@ -376,6 +373,8 @@ struct TransactionTable: View {
 
 struct TransactionCell: View {
 	let transaction: Transaction
+	/// The account of the transaction, shown in a third line.
+	var account: String?
 
 	var body: some View {
 		VStack(alignment: .leading, spacing: 4) {
@@ -387,6 +386,12 @@ struct TransactionCell: View {
 			}
 			// A row without a purpose keeps the empty line, so that every row is the same height.
 			Text(transaction.purpose.isEmpty ? " " : transaction.purpose).foregroundStyle(Palette.detail).lineLimit(1)
+			if let account {
+				Label(account, systemImage: "building.columns")
+					.font(.system(size: 12))
+					.foregroundStyle(Palette.detail)
+					.lineLimit(1)
+			}
 		}
 		.font(.system(size: 13))
 		.textSelection(.enabled)
@@ -406,20 +411,23 @@ struct DateCell: View {
 				.font(.system(size: 12))
 				.monospacedDigit()
 				.foregroundStyle(Palette.detail)
-				.padding(.leading, 17)
+				.padding(.leading, 17 - DateCell.cellInset)
 				.padding(.top, 1)
 				.overlay(alignment: .leading) {
 					if transaction.isNew {
-						Circle().fill(.tint).frame(width: 6, height: 6).padding(.leading, 6).help("New transaction")
+						Circle().fill(.tint).frame(width: 6, height: 6).help("New transaction")
 					}
 				}
 			// The ribbon is wider than the column and reaches into the gap before the name. As an
 			// overlay it leaves the cell as wide as the column, so the backgrounds of the cells meet.
 			Color.clear
 				.frame(height: 14)
-				.overlay(alignment: .leading) { CategoryRibbon(transaction: transaction, model: model) }
+				.overlay(alignment: .leading) { CategoryRibbon(transaction: transaction, model: model).padding(.leading, -DateCell.cellInset) }
 		}
 	}
+
+	/// The distance from the edge of the row to the first cell. The ribbon starts at the edge.
+	static let cellInset: CGFloat = 6
 }
 
 /// The category as a ribbon from the edge of the row, 113 points wide, with the whole path on
@@ -429,6 +437,7 @@ struct DateCell: View {
 struct CategoryRibbon: View {
 	let transaction: Transaction
 	let model: AppModel
+	@State private var hovered = false
 
 	var body: some View {
 		let ledger = model.ledger
@@ -438,25 +447,37 @@ struct CategoryRibbon: View {
 		} label: {
 			Group {
 				if let category {
-					Text(category.name.uppercased())
-						.font(.system(size: 10, weight: .bold))
-						.kerning(0.2)
-						.foregroundStyle(.white.opacity(0.95))
-						.lineLimit(1)
-						.padding(.leading, 4)
-						.padding(.trailing, 10)
-						.frame(width: 113, height: 14, alignment: .leading)
-						// Muted toward gray like the ribbons of MoneyMoney, so that white text stays readable.
-						.background(CategoryColors.color(of: category, in: ledger).mix(with: Color(white: 0.6), by: 0.5), in: RibbonShape())
+					ribbon(category.name.uppercased(), CategoryColors.color(of: category, in: ledger).mix(with: Color(white: 0.6), by: 0.5))
+						// The pointer lightens the ribbon, so that it reads as a control.
+						.overlay { RibbonShape().fill(.white.opacity(hovered ? 0.18 : 0)) }
 				} else {
-					Color.clear.frame(width: 113, height: 14)
+					// An uncategorized row shows a gray ribbon only under the pointer.
+					ribbon("Category".uppercased(), Color(white: 0.55))
+						.opacity(hovered ? 0.6 : 0)
 				}
 			}
 			.contentShape(Rectangle())
 		}
 		.buttonStyle(.plain)
 		.fixedSize()
+		.onHover { hovered = $0 }
+		.animation(.easeOut(duration: 0.15), value: hovered)
 		.help(category.map { ledger.categoryPath($0.id) } ?? "Assign Category")
+	}
+}
+
+extension CategoryRibbon {
+	/// Muted toward gray like the ribbons of MoneyMoney, so that white text stays readable.
+	fileprivate func ribbon(_ text: String, _ color: Color) -> some View {
+		Text(text)
+			.font(.system(size: 10, weight: .bold))
+			.kerning(0.2)
+			.foregroundStyle(.white.opacity(0.95))
+			.lineLimit(1)
+			.padding(.leading, 4)
+			.padding(.trailing, 10)
+			.frame(width: 113, height: 14, alignment: .leading)
+			.background(color, in: RibbonShape())
 	}
 }
 
@@ -552,6 +573,24 @@ struct RowChrome: View {
 		.padding(.horizontal, -Self.halfGap)
 		.padding(.vertical, -Self.inset)
 		.accessibilityHidden(true)
+	}
+}
+
+extension View {
+	/// A light background under the pointer, for a control in a bar that has no border of its own.
+	func hoverHighlight() -> some View { modifier(HoverHighlight()) }
+}
+
+struct HoverHighlight: ViewModifier {
+	@State private var hovered = false
+
+	func body(content: Content) -> some View {
+		content
+			.padding(.horizontal, 6)
+			.padding(.vertical, 3)
+			.background(.primary.opacity(hovered ? 0.08 : 0), in: .rect(cornerRadius: 5))
+			.onHover { hovered = $0 }
+			.animation(.easeOut(duration: 0.15), value: hovered)
 	}
 }
 

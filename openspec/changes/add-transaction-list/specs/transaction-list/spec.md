@@ -54,13 +54,14 @@ The app SHALL show each detail that the bank delivered for a transaction with it
 
 ### Requirement: Account name in group and category views
 
-The app SHALL show the account of each transaction in a view that lists transactions of more than one account. For an account group, the option "Group transactions by account" in the group settings puts the transactions of each account under a heading with the account name.
+The app SHALL show the account of a selected transaction in a view that lists transactions of more than one account, as a line below the purpose. The list has no account column. For an account group, the option "Group transactions by account" in the group settings puts the transactions of each account under a heading with the account name.
 
 #### Scenario: Mixed list
 
 - **GIVEN** the group "Private" with the accounts "Giro" and "Savings"
 - **WHEN** the user selects "Private"
-- **THEN** each row names its account, and both accounts share one list ordered by date
+- **THEN** both accounts share one list ordered by date
+- **AND** a selected row names its account below the purpose
 
 #### Scenario: Grouped by account
 
