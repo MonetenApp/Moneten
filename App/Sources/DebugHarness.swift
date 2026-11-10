@@ -98,6 +98,7 @@ final class DebugHarness {
 			case "90": model.period = .days90
 			case "12m": model.period = .months12
 			case "year": model.period = .year(Day.today().firstOfYear)
+			case "month": model.period = .month(Day.today().firstOfMonth)
 			default: model.period = .all
 			}
 		case "sheet":

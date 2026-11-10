@@ -11,6 +11,11 @@ enum Format {
 		money(Money(minorUnits: minor, currency: currency))
 	}
 
+	/// An amount in major units for a chart, with the decimal places of its currency.
+	static func chartValue(_ minor: Int64, _ currency: String) -> Double {
+		NSDecimalNumber(decimal: Money(minorUnits: minor, currency: currency).decimal).doubleValue
+	}
+
 	/// An amount for a text field, such as "1234.56": no currency sign, no thousands separators, and
 	/// ASCII digits in every locale, so that `AmountParser` reads it back unchanged.
 	static func editableAmount(_ minor: Int64, _ currency: String) -> String {

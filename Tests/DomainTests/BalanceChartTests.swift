@@ -27,7 +27,26 @@ struct BalanceChartTests {
 		let l = ledger([(Day(year: 2026, month: 10, day: 27), -62_000), (Day(year: 2026, month: 10, day: 30), 20_000)])
 		let range = DayRange(start: Day(year: 2026, month: 10, day: 26), end: Day(year: 2026, month: 10, day: 31))
 		let bars = l.balanceBars(accountIDs: [giro.id], range: range, maxBars: 200)
-		#expect(bars.map(\.minorUnits) == [-12_000, -12_000, -12_000, 8_000, 8_000])
+		#expect(bars.map(\.minorUnits) == [50_000, -12_000, -12_000, -12_000, 8_000, 8_000])
+	}
+
+	@Test("Days of the period before the first transaction show the initial balance")
+	func beforeFirstTransaction() {
+		let l = ledger([(Day(year: 2026, month: 10, day: 15), -20_000)])
+		let october = DayRange(start: Day(year: 2026, month: 10, day: 1), end: Day(year: 2026, month: 10, day: 31))
+		let bars = l.balanceBars(accountIDs: [giro.id], range: october, maxBars: 200)
+		#expect(bars.count == 31)
+		#expect(bars.prefix(14).allSatisfy { $0.minorUnits == 50_000 })
+		#expect(bars.suffix(17).allSatisfy { $0.minorUnits == 30_000 })
+	}
+
+	@Test("The chart ends today, also when the period reaches into the future")
+	func endsToday() {
+		let today = Day.today()
+		let l = ledger([(today.adding(days: -10), 1_000)])
+		let bars = l.balanceBars(accountIDs: [giro.id], range: DayRange(start: today.adding(days: -5), end: today.adding(days: 20)), maxBars: 200)
+		#expect(bars.count == 6)
+		#expect(bars.last?.start == today)
 	}
 
 	@Test("Ten years of daily balances share bars with their average")

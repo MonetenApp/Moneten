@@ -58,18 +58,20 @@ extension Ledger {
 		return points
 	}
 
-	/// One bar for each day of the range, from the oldest transaction to today with "Show All". When
-	/// more than `maxBars` bars would not fit, neighboring days share one bar with their average
-	/// balance, in steps of 2, 3, 7, 14, 30, or more days.
+	/// One bar for each day of the range, never past today. "Show All" starts at the oldest
+	/// transaction. Days before the first transaction show the initial balance. When more than
+	/// `maxBars` bars would not fit, neighboring days share one bar with their average balance, in
+	/// steps of 2, 3, 7, 14, 30, or more days.
 	public func balanceBars(accountIDs: Set<UUID>, range: DayRange = .all, maxBars: Int, calendar: Calendar = .current) -> [BalanceBar] {
 		let daily = dailyBalances(accountIDs: accountIDs)
 		guard let first = daily.first?.day, let last = daily.last?.day else { return [] }
-		let start = max(range.start ?? first, first)
-		let end = range.end ?? max(Day.today(calendar: calendar), last)
+		let latest = max(Day.today(calendar: calendar), last)
+		let start = range.start ?? first
+		let end = min(range.end ?? latest, latest)
 		guard start <= end else { return [] }
 		var balances: [Int64] = []
 		var index = 0
-		var current: Int64 = 0
+		var current = accountIDs.compactMap { account($0) }.reduce(Int64(0)) { $0 + $1.initialBalanceMinor }
 		var day = start
 		while day <= end {
 			while index < daily.count, daily[index].day <= day {

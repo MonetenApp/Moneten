@@ -63,7 +63,7 @@ struct BalanceBarChart: View {
 		let gap = width / CGFloat(bars.count) >= 6 ? 0.2 : 0
 		Chart {
 			ForEach(bars) { bar in
-				Self.mark(bar, gap: gap, dimmed: hovered != nil && hovered != bar)
+				Self.mark(bar, currency: currency, gap: gap, dimmed: hovered != nil && hovered != bar)
 			}
 			RuleMark(y: .value("Zero", 0))
 				.lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
@@ -78,14 +78,22 @@ struct BalanceBarChart: View {
 		}
 		.chartYScale(domain: .automatic(includesZero: true))
 		.chartXSelection(value: $pointer)
-		.chartStyle(currency: currency)
+		.chartStyle(currency: currency, dates: Self.dateAxis(from: bars.first!.start, to: bars.last!.end))
 	}
 
-	private static func mark(_ bar: BalanceBar, gap: Double, dimmed: Bool) -> some ChartContent {
+	/// Months on the axis, or days when the chart covers two months or less, so labels never repeat.
+	private static func dateAxis(from start: Day, to end: Day) -> (AxisMarkValues, Date.FormatStyle) {
+		let days = Calendar.current.dateComponents([.day], from: start.date(), to: end.date()).day ?? 0
+		return days <= 62
+			? (.automatic(desiredCount: 6), .dateTime.day().month(.abbreviated))
+			: (.automatic(desiredCount: 6), .dateTime.month(.abbreviated).year(.twoDigits))
+	}
+
+	private static func mark(_ bar: BalanceBar, currency: String, gap: Double, dimmed: Bool) -> some ChartContent {
 		let start = bar.start.date()
 		let end = start.addingTimeInterval(bar.end.date().timeIntervalSince(start) * (1 - gap))
 		return RectangleMark(xStart: .value("From", start), xEnd: .value("To", end),
-			yStart: .value("Zero", 0.0), yEnd: .value("Balance", Double(bar.minorUnits) / 100))
+			yStart: .value("Zero", 0.0), yEnd: .value("Balance", Format.chartValue(bar.minorUnits, currency)))
 			.foregroundStyle(bar.minorUnits < 0 ? Color.red : Color.accentColor)
 			.opacity(dimmed ? 0.45 : 1)
 	}
@@ -100,12 +108,10 @@ struct BalanceBarChart: View {
 struct CategoryBars: View {
 	@Environment(AppModel.self) private var model
 	let rows: [Transaction]
-	@State private var pointer: Date?
 
 	var body: some View {
 		@Bindable var model = model
 		let sums = model.ledger.periodSums(of: rows, period: model.chartPeriod)
-		let currency = rows.first?.currency ?? "EUR"
 		VStack(alignment: .trailing, spacing: 4) {
 			Picker("", selection: $model.chartPeriod) {
 				Text("M").help("Monthly view").tag(ChartPeriod.month)
@@ -117,44 +123,66 @@ struct CategoryBars: View {
 			if sums.isEmpty {
 				Text("No transactions; no bar chart.").foregroundStyle(.secondary).frame(maxWidth: .infinity, maxHeight: .infinity)
 			} else {
-				let hovered = pointer.flatMap { p in sums.first { model.chartPeriod.start(of: Day(p)) == $0.start } }
-				Chart {
-					ForEach(sums) { s in
-						BarMark(x: .value("Period", s.start.date(), unit: unit), y: .value("Deposits", Double(s.deposits) / 100))
-							.foregroundStyle(Color.green)
-							.opacity(hovered == nil || hovered == s ? 1 : 0.45)
-						BarMark(x: .value("Period", s.start.date(), unit: unit), y: .value("Withdrawals", Double(s.withdrawals) / 100))
-							.foregroundStyle(Color.red)
-							.opacity(hovered == nil || hovered == s ? 1 : 0.45)
-					}
-					RuleMark(y: .value("Zero", 0))
-						.lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
-						.foregroundStyle(.secondary)
-					if let s = hovered {
-						RuleMark(x: .value("Pointer", s.start.date(), unit: unit))
-							.foregroundStyle(.clear)
-							.annotation(position: .top, spacing: 0, overflowResolution: .init(x: .fit(to: .chart), y: .fit(to: .chart))) {
-								ChartValueLabel(title: title(of: s.start),
-									value: Money(minorUnits: s.deposits, currency: currency), second: Money(minorUnits: s.withdrawals, currency: currency))
-							}
-					}
-				}
-				.chartXSelection(value: $pointer)
-				.chartStyle(currency: currency)
+				CategoryBarChart(sums: sums, period: model.chartPeriod, currency: rows.first?.currency ?? "EUR")
 			}
 		}
 	}
+}
+
+/// The bars of `CategoryBars`. The pointer lives here, so moving it does not sum the rows again.
+struct CategoryBarChart: View {
+	let sums: [PeriodSum]
+	let period: ChartPeriod
+	let currency: String
+	@State private var pointer: Date?
+
+	var body: some View {
+		let hovered = pointer.flatMap { p in sums.first { period.start(of: Day(p)) == $0.start } }
+		Chart {
+			ForEach(sums) { s in
+				BarMark(x: .value("Period", s.start.date(), unit: unit), y: .value("Deposits", Format.chartValue(s.deposits, currency)))
+					.foregroundStyle(Color.green)
+					.opacity(hovered == nil || hovered == s ? 1 : 0.45)
+				BarMark(x: .value("Period", s.start.date(), unit: unit), y: .value("Withdrawals", Format.chartValue(s.withdrawals, currency)))
+					.foregroundStyle(Color.red)
+					.opacity(hovered == nil || hovered == s ? 1 : 0.45)
+			}
+			RuleMark(y: .value("Zero", 0))
+				.lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
+				.foregroundStyle(.secondary)
+			if let s = hovered {
+				RuleMark(x: .value("Pointer", s.start.date(), unit: unit))
+					.foregroundStyle(.clear)
+					.annotation(position: .top, spacing: 0, overflowResolution: .init(x: .fit(to: .chart), y: .fit(to: .chart))) {
+						ChartValueLabel(title: title(of: s.start),
+							value: Money(minorUnits: s.deposits, currency: currency), second: Money(minorUnits: s.withdrawals, currency: currency))
+					}
+			}
+		}
+		.chartXSelection(value: $pointer)
+		.chartStyle(currency: currency, dates: dateAxis)
+	}
 
 	private var unit: Calendar.Component {
-		switch model.chartPeriod {
+		switch period {
 		case .month: .month
 		case .quarter: .quarter
 		case .year: .year
 		}
 	}
 
+	/// One label per bar while they fit, so a single month never gets several labels.
+	private var dateAxis: (AxisMarkValues, Date.FormatStyle) {
+		let values: AxisMarkValues = sums.count <= 12 ? .stride(by: unit) : .automatic(desiredCount: 6)
+		switch period {
+		case .month: return (values, .dateTime.month(.abbreviated).year(.twoDigits))
+		case .quarter: return (values, .dateTime.quarter().year(.twoDigits))
+		case .year: return (values, .dateTime.year())
+		}
+	}
+
 	private func title(of start: Day) -> String {
-		switch model.chartPeriod {
+		switch period {
 		case .month: Format.monthTitle(start)
 		case .quarter: "Q\((start.month - 1) / 3 + 1) \(String(start.year))"
 		case .year: String(start.year)
@@ -187,13 +215,13 @@ struct ChartValueLabel: View {
 }
 
 extension View {
-	/// The axes of every bar chart: months on top with a line at each, as in MoneyMoney, and three
+	/// The axes of every bar chart: dates on top with a line at each, as in MoneyMoney, and three
 	/// amounts without cents on the trailing side, in the format of the list.
-	func chartStyle(currency: String) -> some View {
+	func chartStyle(currency: String, dates: (values: AxisMarkValues, format: Date.FormatStyle)) -> some View {
 		chartXAxis {
-			AxisMarks(position: .top, values: .automatic(desiredCount: 6)) { _ in
+			AxisMarks(position: .top, values: dates.values) { _ in
 				AxisGridLine().foregroundStyle(.quaternary)
-				AxisValueLabel(format: .dateTime.month(.abbreviated).year(.twoDigits))
+				AxisValueLabel(format: dates.format)
 			}
 		}
 		.chartYAxis {
