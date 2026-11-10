@@ -169,12 +169,13 @@ The app SHALL keep an "Initial balance" for each account. At setup the app sets 
 
 ### Requirement: Mark an account as closed
 
-The app SHALL offer the option "The account has been closed" in the account settings. A closed account keeps its transactions, is left out of every refresh, and is left out of the dashboard. The sidebar still lists it.
+The app SHALL offer the option "The account has been closed" in the account settings. A closed account keeps its transactions, is left out of every refresh, and is left out of the dashboard and of the sum of its group. The sidebar still lists it, without its balance.
 
 #### Scenario: Close an account
 
 - **WHEN** the user turns on "The account has been closed" and clicks "OK"
-- **THEN** the account stays in the sidebar with all its transactions
+- **THEN** the account stays in the sidebar with all its transactions and without its balance
+- **AND** the sum of its group no longer contains its balance
 - **AND** "Refresh All Accounts" does not contact the bank for this account
 
 #### Scenario: Offline account

@@ -183,7 +183,8 @@ public struct MoneyMoneyMigration: Sendable {
 	}
 
 	/// Lists the groups whose balance in MoneyMoney differs from the sum of their accounts.
-	/// MoneyMoney can leave an account out of the sum of its group, and the export does not say so.
+	/// MoneyMoney leaves closed accounts out of the sum of their group, and the export does not say
+	/// which accounts are closed.
 	static func groupSumNotes(_ raw: [[String: Any]]) -> [String] {
 		func balances(_ item: [String: Any]) -> [String: Decimal] {
 			var r: [String: Decimal] = [:]
@@ -206,7 +207,7 @@ public struct MoneyMoneyMigration: Sendable {
 			let shown = balances(item)
 			let currencies = Set(shown.keys).union(sum.keys)
 			if currencies.contains(where: { shown[$0, default: 0] != sum[$0, default: 0] }) {
-				notes.append("The group \"\(item["name"] as? String ?? "")\" has a different balance in MoneyMoney than the sum of its accounts. MoneyMoney leaves some accounts out of the sum of their group. MonetenMoneten adds all open accounts.")
+				notes.append("The group \"\(item["name"] as? String ?? "")\" has a different balance in MoneyMoney than the sum of its accounts. MoneyMoney leaves closed accounts out of the sum, and its export does not say which accounts are closed. Turn on \"The account has been closed\" in the settings of each closed account of this group.")
 			}
 		}
 		return notes

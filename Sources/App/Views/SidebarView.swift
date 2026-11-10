@@ -69,10 +69,8 @@ struct AccountTree: View {
 				}
 				.tag(SidebarSelection.group(group.id))
 			case let .account(account):
-				if !account.isClosed || model.selection == .account(account.id) {
-					AccountRow(account: account)
-						.tag(SidebarSelection.account(account.id))
-				}
+				AccountRow(account: account)
+					.tag(SidebarSelection.account(account.id))
 			}
 		}
 	}
@@ -128,7 +126,10 @@ struct AccountRow: View {
 					.foregroundStyle(.white)
 			}
 			Spacer()
-			AmountText(money: balance)
+			// A closed account stays in the sidebar without its balance, as in MoneyMoney.
+			if !account.isClosed {
+				AmountText(money: balance)
+			}
 		}
 		.draggable(account.id.uuidString)
 		.contextMenu {
