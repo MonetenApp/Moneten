@@ -23,6 +23,8 @@ To build the app, you need Xcode and XcodeGen. The [README](README.md#build-and-
 
 Run `scripts/check.sh` before you open a pull request. It checks the links and paths in the docs, validates the specs, looks for unused code with [Periphery](https://github.com/peripheryapp/periphery), and runs the tests. Install Periphery 3.8.0, the version that CI uses, with `brew install periphery`. Its repository is archived, so 3.8.0 is the last release.
 
+`Tests/DomainTests/PerformanceTests.swift` builds a ledger of 50,000 transactions and measures the build, an import of 2,000 rows, the search, and a category view, each as the fastest of three runs. Its budgets hold for a release build, because a debug build is several times slower: run `scripts/test.sh -c release -Xswiftc -enable-testing --filter PerformanceTests`. CI runs it as its own step.
+
 CI also runs `scripts/perf-check.sh`. It starts the optimized `Perf` build, which contains the debug harness, with a temporary data folder and 50,000 made-up transactions in 10 accounts, and runs the scenarios in [App/Sources/PerfCheck.swift](App/Sources/PerfCheck.swift), such as switching from a scrolled account to its group. It prints the longest main-thread stall and the memory of each scenario. A stall over the half second of the spec is reported as slow. The check fails when a stall exceeds 10 seconds, when the table misses rows of the view, or when the app crashes. Find the cause with `sample` while the scenario runs. Add a scenario for every slow path you fix. The app window appears on the screen while the check runs.
 
 ## Propose a change

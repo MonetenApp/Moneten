@@ -30,11 +30,16 @@ public struct Ledger: Sendable {
 	}
 
 	private mutating func rebuildIndexes() {
-		transactions.sort { ($0.bookingDate, $0.createdAt) > ($1.bookingDate, $1.createdAt) }
-		transactionIndex = Dictionary(uniqueKeysWithValues: transactions.enumerated().map { ($0.element.id, $0.offset) })
+		sortAndIndex()
 		let accountsByID = Dictionary(uniqueKeysWithValues: accounts.map { ($0.id, $0) })
 		searchText = Dictionary(uniqueKeysWithValues: transactions.map { ($0.id, Self.searchText(of: $0, account: accountsByID[$0.accountID])) })
 		countNew()
+	}
+
+	/// The order and the positions only. The search texts of unchanged rows stay as they are.
+	private mutating func sortAndIndex() {
+		transactions.sort { ($0.bookingDate, $0.createdAt) > ($1.bookingDate, $1.createdAt) }
+		transactionIndex = Dictionary(uniqueKeysWithValues: transactions.enumerated().map { ($0.element.id, $0.offset) })
 	}
 
 	private mutating func countNew() {
@@ -44,17 +49,28 @@ public struct Ledger: Sendable {
 	}
 
 	static func searchText(of t: Transaction, account: Account?) -> String {
-		let amount = t.amount.decimal
-		let plain = "\(amount)"
-		let comma = plain.replacingOccurrences(of: ".", with: ",")
+		let amounts = amountTexts(t.amountMinor, decimals: t.amount.decimalPlaces)
 		let parts: [String?] = [t.name, t.purpose, t.bookingText, t.endToEndReference, t.mandateReference, t.creditorID, t.comment,
-			t.counterpartyIBAN, t.counterpartyBIC, account?.name, plain, comma, Self.twoDecimals(amount, separator: ","), Self.twoDecimals(amount, separator: ".")]
+			t.counterpartyIBAN, t.counterpartyBIC, account?.name] + amounts
 		return TextFolding.fold(parts.compactMap { $0 }.joined(separator: "\u{1}"))
 	}
 
-	private static func twoDecimals(_ d: Decimal, separator: String) -> String {
-		let n = NSDecimalNumber(decimal: d).doubleValue
-		return String(format: "%.2f", n).replacingOccurrences(of: ".", with: separator)
+	/// An amount as a user types it into the search: without trailing zeros ("-23.4", "-23,4") and
+	/// with two decimals ("-23,40", "-23.40"). Integer arithmetic, because formatting a Decimal or a
+	/// Double for each of 50,000 transactions took most of the time of building the ledger.
+	static func amountTexts(_ minor: Int64, decimals: Int) -> [String] {
+		let sign = minor < 0 ? "-" : ""
+		let magnitude = minor.magnitude
+		let scale = UInt64(pow(10, Double(decimals)))
+		let whole = magnitude / scale
+		var fraction = decimals > 0 ? String(magnitude % scale) : ""
+		fraction = String(repeating: "0", count: max(0, decimals - fraction.count)) + fraction
+		while fraction.hasSuffix("0") { fraction.removeLast() }
+		let plain = fraction.isEmpty ? "\(sign)\(whole)" : "\(sign)\(whole).\(fraction)"
+		// Two decimals, rounded half away from zero for a currency with three.
+		let cents = decimals >= 2 ? (magnitude * 100 + scale / 2) / scale : magnitude * (100 / scale)
+		let two = "\(sign)\(cents / 100)" + "." + (cents % 100 < 10 ? "0" : "") + "\(cents % 100)"
+		return [plain, plain.replacingOccurrences(of: ".", with: ","), two.replacingOccurrences(of: ".", with: ","), two]
 	}
 
 	// MARK: Lookups
@@ -216,7 +232,8 @@ public struct Ledger: Sendable {
 		if let accounts { self.accounts = accounts }
 		if let categories { self.categories = categories }
 		if let transactions { self.transactions = transactions }
-		rebuildIndexes()
+		// The search text holds the account name, so only new accounts or transactions build it again.
+		if accounts != nil || transactions != nil { rebuildIndexes() } else { countNew() }
 	}
 
 	/// Replaces transactions with the same identifier. Faster than `replace` for a handful of rows.
@@ -233,16 +250,29 @@ public struct Ledger: Sendable {
 			}
 			searchText[t.id] = Self.searchText(of: t, account: accountsByID[t.accountID])
 		}
-		if needsSort { rebuildIndexes() } else { countNew() }
+		// An import of 2,000 rows into 50,000 sorts again but builds the search text of the new rows only.
+		if needsSort { sortAndIndex() }
+		countNew()
 	}
 
 	public mutating func remove(transactionIDs ids: Set<UUID>) {
 		transactions.removeAll { ids.contains($0.id) }
-		rebuildIndexes()
+		for id in ids { searchText[id] = nil }
+		sortAndIndex()
+		countNew()
 	}
 
 	public mutating func upsert(_ account: Account) {
-		if let i = accounts.firstIndex(where: { $0.id == account.id }) { accounts[i] = account } else { accounts.append(account) }
+		if let i = accounts.firstIndex(where: { $0.id == account.id }) {
+			let renamed = accounts[i].name != account.name
+			accounts[i] = account
+			// The search text holds the account name.
+			if renamed {
+				for t in transactions where t.accountID == account.id { searchText[t.id] = Self.searchText(of: t, account: account) }
+			}
+		} else {
+			accounts.append(account)
+		}
 	}
 
 	public mutating func upsert(_ group: AccountGroup) {

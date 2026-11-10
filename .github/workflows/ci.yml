@@ -27,6 +27,9 @@ jobs:
       - run: swift --version
       - run: brew install xcodegen
       - run: scripts/test.sh
+      - name: Domain performance
+        # The budgets of PerformanceTests hold for a release build only. See CONTRIBUTING.md.
+        run: scripts/test.sh -c release -Xswiftc -enable-testing --filter PerformanceTests
       - run: scripts/build-app.sh debug
       - name: UI performance
         run: scripts/perf-check.sh

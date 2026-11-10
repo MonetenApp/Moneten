@@ -60,12 +60,51 @@ struct LedgerTests {
 		#expect(search(decomposed) == ["Bäckerei Gutbrot"])
 	}
 
+	@Test("The search follows changes: a renamed account, an update, and a removal")
+	func searchAfterChanges() {
+		var l = ledger()
+		var f = TransactionFilter()
+		var renamed = giro
+		renamed.name = "Haushaltskonto"
+		l.upsert(renamed)
+		l.replace()
+		f.searchText = "haushaltskonto"
+		#expect(l.transactions(in: .account(giro.id), filter: f).count == 4)
+		var kiosk = l.transactions.first { $0.name == "Kiosk" }!
+		kiosk.purpose = "Zeitung"
+		kiosk.bookingDate = Day(year: 2026, month: 1, day: 1)
+		l.update([kiosk, Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 5), amountMinor: -500, name: "Optiker")])
+		f.searchText = "zeitung"
+		#expect(l.transactions(in: .account(giro.id), filter: f).map(\.name) == ["Kiosk"])
+		f.searchText = "optiker"
+		#expect(l.transactions(in: .account(giro.id), filter: f).map(\.name) == ["Optiker"])
+		#expect(l.transactions.first?.name == "Optiker")
+		l.remove(transactionIDs: [kiosk.id])
+		f.searchText = "zeitung"
+		#expect(l.transactions(in: .account(giro.id), filter: f).isEmpty)
+	}
+
 	@Test("The search finds exact amounts")
 	func searchAmount() {
 		#expect(search("89,00") == ["Stadtwerke Musterstadt"])
 		#expect(search("-23,45") == ["Bäckerei Gutbrot"])
 		// The list shows the minus sign U+2212. An amount copied from there matches too.
 		#expect(search("\u{2212}23,45") == ["Bäckerei Gutbrot"])
+	}
+
+	@Test("The search text holds each amount as typed: plain, with comma or point, and with two decimals")
+	func amountSearchText() {
+		func text(_ minor: Int64, _ currency: String = "EUR") -> [String] {
+			let t = Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 1, day: 1), amountMinor: minor, currency: currency, name: "")
+			return Ledger.searchText(of: t, account: nil).split(separator: "\u{1}").map(String.init)
+		}
+		#expect(text(-2_345) == ["-23.45", "-23,45", "-23,45", "-23.45"])
+		#expect(text(-2_340) == ["-23.4", "-23,4", "-23,40", "-23.40"])
+		#expect(text(100_000) == ["1000", "1000", "1000,00", "1000.00"])
+		#expect(text(5) == ["0.05", "0,05", "0,05", "0.05"])
+		#expect(text(0) == ["0", "0", "0,00", "0.00"])
+		#expect(text(1_234, "JPY") == ["1234", "1234", "1234,00", "1234.00"])
+		#expect(text(12_345, "KWD") == ["12.345", "12,345", "12,35", "12.35"])
 	}
 
 	@Test("Status, amount, period, and category filters combine")

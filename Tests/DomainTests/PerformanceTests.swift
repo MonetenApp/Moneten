@@ -15,19 +15,37 @@ struct PerformanceTests {
 			ts.append(Transaction(accountID: a.id, bookingDate: Day(year: 2014 + i % 12, month: 1 + i % 12, day: 1 + i % 28), amountMinor: Int64(i % 2 == 0 ? -(i % 9_000) : i % 50_000),
 				name: "Haendler\(i % 70) Musterstadt", purpose: "Rechnung \(i) Kundennummer \(i * 7)", categoryID: i % 4 == 0 ? categories[i % 60].id : nil))
 		}
-		let clock = ContinuousClock()
 		var ledger = Ledger()
-		let build = clock.measure { ledger = Ledger(accounts: accounts, categories: categories, transactions: ts) }
+		let build = fastest { ledger = Ledger(accounts: accounts, categories: categories, transactions: ts) }
 		var f = TransactionFilter()
 		f.searchText = "kundennummer 7"
 		var count = 0
-		let search = clock.measure { count = ledger.transactions(in: .accountGroup(UUID()), filter: f).count + ledger.transactions(in: .account(accounts[0].id), filter: f).count }
-		let category = clock.measure { _ = ledger.transactions(in: .category(categories[3].id)) }
+		let search = fastest { count = ledger.transactions(in: .accountGroup(UUID()), filter: f).count + ledger.transactions(in: .account(accounts[0].id), filter: f).count }
+		let category = fastest { _ = ledger.transactions(in: .category(categories[3].id)) }
+		let imported = (0..<2_000).map { i in
+			Transaction(accountID: accounts[i % accounts.count].id, bookingDate: Day(year: 2026, month: 11, day: 1 + i % 28), amountMinor: -Int64(i),
+				name: "Neu \(i)", purpose: "Import \(i)")
+		}
+		let update = fastest { var copy = ledger; copy.update(imported) }
 		let categorizer = Categorizer(ledger: ledger)
-		let rules = clock.measure { for t in ts.prefix(5_000) { _ = categorizer.category(for: t) } }
-		print("build \(build), search \(search) (\(count) rows), category \(category), 5,000 categorizations \(rules)")
+		let rules = fastest { for t in ts.prefix(5_000) { _ = categorizer.category(for: t) } }
+		print("build \(build), import of 2,000 \(update), search \(search) (\(count) rows), category \(category), 5,000 categorizations \(rules)")
+		#expect(count > 0)
+		// A debug build runs several times slower than the app and depends on the load of the machine,
+		// so the budgets hold for a release build only: `scripts/test.sh -c release -Xswiftc -enable-testing
+		// --filter PerformanceTests`, which CI runs as its own step.
+		#if !DEBUG
 		#expect(search < .milliseconds(150))
 		#expect(category < .milliseconds(100))
-		#expect(build < .seconds(3))
+		#expect(build < .seconds(1))
+		#expect(update < .milliseconds(300))
+		#endif
+	}
+
+	/// The fastest of three runs. A shared CI machine sometimes stalls one run for longer than the
+	/// budget, which made this test fail at random; a slow change still makes every run slow.
+	private func fastest(_ work: () -> Void) -> Duration {
+		let clock = ContinuousClock()
+		return (0..<3).map { _ in clock.measure(work) }.min()!
 	}
 }
