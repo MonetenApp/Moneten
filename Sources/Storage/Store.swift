@@ -43,6 +43,14 @@ public final class Store: Sendable {
 		}
 	}
 
+	/// Clears the "new" mark of every transaction of an account in one statement. Saving each
+	/// transaction took seconds on the main thread after an import of thousands of rows.
+	public func markSeen(account id: UUID) throws {
+		_ = try queue.write { db in
+			try Transaction.filter(Column("accountID") == id && Column("isNew") == true).updateAll(db, Column("isNew").set(to: false))
+		}
+	}
+
 	public func deleteTransactions(_ ids: [UUID]) throws {
 		_ = try queue.write { db in try Transaction.deleteAll(db, keys: ids) }
 	}

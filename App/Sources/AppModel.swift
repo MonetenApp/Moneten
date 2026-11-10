@@ -94,6 +94,9 @@ final class AppModel {
 	var alert: AlertMessage?
 	var sheet: SheetKind?
 	var settingsTab = SettingsTab.security
+	/// Changes when many transactions change at once, so that the transaction table starts over
+	/// instead of inserting thousands of rows one by one. See `TransactionTable`.
+	private(set) var tableGeneration = 0
 
 	private var lastActivity = Date()
 	private var eventMonitor: Any?
@@ -271,9 +274,8 @@ final class AppModel {
 	private func markSeen() {
 		guard case let .account(id) = selection, let store else { return }
 		var seen = ledger.transactions(ofAccount: id).filter(\.isNew)
-		guard !seen.isEmpty else { return }
+		guard !seen.isEmpty, (try? store.markSeen(account: id)) != nil else { return }
 		for i in seen.indices { seen[i].isNew = false }
-		try? store.save(seen)
 		ledger.update(seen)
 	}
 
@@ -460,6 +462,7 @@ final class AppModel {
 			RuleApplier.apply(category: category, rule: rule, to: ledger.transactions, ledger: ledger, mode: mode)
 		}.value
 		commit(changed)
+		tableGeneration += 1
 		alert = AlertMessage(title: "Categorized transactions: \(changed.count)", message: "")
 	}
 
@@ -489,6 +492,7 @@ final class AppModel {
 			transactions: plan.transactions + plan.updatedTransactions)
 		for c in starters { try? store.deleteCategory(c.id) }
 		ledger = try store.loadLedger()
+		tableGeneration += 1
 		if case let .category(id) = selection, ledger.category(id) == nil { selection = nil }
 		if selection == nil, let g = ledger.childGroups(of: nil).first { selection = .group(g.id) }
 	}
@@ -528,6 +532,7 @@ final class AppModel {
 		let categorizer = Categorizer(ledger: ledgerWithNew)
 		for i in added.indices { categorizer.categorize(&added[i]) }
 		commit(added + booked)
+		tableGeneration += 1
 		return (added.count, booked.count, skipped)
 	}
 }

@@ -68,6 +68,14 @@ final class DebugHarness {
 		case "storepassword": log("storepassword \((try? model.vault.storePassword(argument)) != nil)")
 		case "removepassword": try? model.vault.removeStoredPassword()
 		case "seed": DemoData.seed(model)
+		case "bulk": DemoData.bulk(model, count: Int(argument) ?? 30_000)
+		case "scrolltable":
+			// Scrolls the transaction table to a row, or to the last row with "end".
+			func tables(in view: NSView) -> [NSTableView] { (view as? NSTableView).map { [$0] } ?? view.subviews.flatMap(tables) }
+			for table in NSApp.windows.compactMap(\.contentView).flatMap(tables) where table.numberOfRows > 0 {
+				table.scrollRowToVisible(argument == "end" ? table.numberOfRows - 1 : min(Int(argument) ?? 0, table.numberOfRows - 1))
+				log("scrolltable rows=\(table.numberOfRows)")
+			}
 		case "select":
 			if let a = model.ledger.accounts.first(where: { $0.name == argument }) { model.navigate(to: .account(a.id)) }
 			else if let g = model.ledger.groups.first(where: { $0.name == argument }) { model.navigate(to: .group(g.id)) }
@@ -144,6 +152,23 @@ final class DebugHarness {
 
 /// Made-up accounts and transactions for development and screenshots.
 enum DemoData {
+	/// Many made-up transactions spread over all accounts, for checks with a long history.
+	/// The accounts share the days, so a group view interleaves their transactions.
+	@MainActor
+	static func bulk(_ model: AppModel, count: Int) {
+		let accounts = model.ledger.accounts
+		guard !accounts.isEmpty else { return }
+		let today = Day.today()
+		let names = ["REWE Markt", "Bäckerei Gutbrot", "Stadtwerke Musterstadt", "Beispiel GmbH", "Max Mustermann", "Tankstelle"]
+		for (n, account) in accounts.enumerated() {
+			let ts = stride(from: n, to: count, by: accounts.count).map { i in
+				Transaction(accountID: account.id, bookingDate: today.adding(days: -(i / 8)), amountMinor: Int64(-(i % 9_000) - 100),
+					name: names[i % names.count], purpose: i % 3 == 0 ? "" : "Purpose \(i)")
+			}
+			_ = model.importTransactions(ts, into: account)
+		}
+	}
+
 	@MainActor
 	static func seed(_ model: AppModel) {
 		model.addGroup(name: "Private")

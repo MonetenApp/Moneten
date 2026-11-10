@@ -100,6 +100,23 @@ struct VaultTests {
 		#expect(try FileManager.default.contentsOfDirectory(atPath: folder.root.path).filter { $0.hasSuffix(".partial") }.isEmpty)
 	}
 
+	@Test("Marking an account as seen clears only its new transactions")
+	func markSeen() throws {
+		let store = try Vault(folder: folder).create(password: "korrekt-pferd-batterie-heftklammer", starterCategories: [])
+		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
+		let savings = Account(position: 1, name: "Savings", kind: .savings, source: .offline)
+		func new(_ account: Account) -> Transaction {
+			var t = Transaction(accountID: account.id, bookingDate: Day(year: 2026, month: 11, day: 1), amountMinor: -100, name: "Shop")
+			t.isNew = true
+			return t
+		}
+		try store.save(accounts: [giro, savings], transactions: [new(giro), new(giro), new(savings)])
+		try store.markSeen(account: giro.id)
+		let ledger = try store.loadLedger()
+		#expect(ledger.transactions(ofAccount: giro.id).allSatisfy { !$0.isNew })
+		#expect(ledger.transactions(ofAccount: savings.id).allSatisfy { $0.isNew })
+	}
+
 	@Test("A missing database means a new start")
 	func emptyFolder() throws {
 		#expect(try Vault(folder: folder).state() == .empty)
