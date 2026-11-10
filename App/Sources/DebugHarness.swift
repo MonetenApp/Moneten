@@ -61,6 +61,9 @@ final class DebugHarness {
 		case "create": model.createDatabase(password: argument.isEmpty ? nil : argument)
 		case "unlock": log("unlock \(model.unlock(password: argument))")
 		case "lock": model.lock()
+		case "settingssnapshot":
+			offscreenSnapshot(SecuritySettings().environment(model), width: 500, name: "\(argument)-security")
+			offscreenSnapshot(AboutSettings().environment(model), width: 500, name: "\(argument)-general")
 		case "storepassword": log("storepassword \((try? model.vault.storePassword(argument)) != nil)")
 		case "removepassword": try? model.vault.removeStoredPassword()
 		case "seed": DemoData.seed(model)
@@ -102,18 +105,24 @@ final class DebugHarness {
 	/// window uses a material that only the window server draws.
 	private func sidebarSnapshot(_ name: String) {
 		guard let model else { return }
-		let host = NSHostingView(rootView: SidebarView().environment(model).frame(width: 340, height: 900))
-		let window = NSWindow(contentRect: NSRect(x: -5000, y: -5000, width: 340, height: 900), styleMask: [.borderless], backing: .buffered, defer: false)
+		offscreenSnapshot(SidebarView().environment(model).frame(height: 900), width: 340, name: "\(name)-sidebar")
+	}
+
+	/// Draws a view in a window outside the screen, as tall as the view wants to be.
+	private func offscreenSnapshot(_ view: some View, width: CGFloat, name: String) {
+		let host = NSHostingView(rootView: view.frame(width: width).background(.windowBackground))
+		let size = host.fittingSize
+		let window = NSWindow(contentRect: NSRect(x: -5000, y: -5000, width: width, height: size.height), styleMask: [.borderless], backing: .buffered, defer: false)
 		window.contentView = host
 		window.orderFrontRegardless()
 		DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
 			host.layoutSubtreeIfNeeded()
 			if let rep = host.bitmapImageRepForCachingDisplay(in: host.bounds) {
 				host.cacheDisplay(in: host.bounds, to: rep)
-				try? rep.representation(using: .png, properties: [:])?.write(to: self.folder.appendingPathComponent("\(name)-sidebar.png"))
+				try? rep.representation(using: .png, properties: [:])?.write(to: self.folder.appendingPathComponent("\(name).png"))
 			}
 			window.orderOut(nil)
-			self.log("sidebarsnapshot \(name)")
+			self.log("snapshot \(name) \(Int(host.bounds.width))x\(Int(host.bounds.height))")
 		}
 	}
 

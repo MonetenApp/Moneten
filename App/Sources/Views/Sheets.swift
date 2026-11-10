@@ -61,7 +61,7 @@ extension SheetFrame where Leading == EmptyView {
 	}
 }
 
-/// A grouped form that is as tall as its content, for sheets and popovers.
+/// A grouped form that is as tall as its content, for sheets, popovers, and the settings window.
 struct SheetForm<Content: View>: View {
 	@ViewBuilder var content: Content
 

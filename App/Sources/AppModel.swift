@@ -93,6 +93,7 @@ final class AppModel {
 	/// A message for an alert.
 	var alert: AlertMessage?
 	var sheet: SheetKind?
+	var settingsTab = SettingsTab.security
 
 	private var lastActivity = Date()
 	private var eventMonitor: Any?
