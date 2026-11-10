@@ -308,52 +308,52 @@ struct TransactionTable: View {
 			}
 			.frame(maxWidth: .infinity)
 		} else {
-			// As in MoneyMoney: no column headers and no stripes, a line between rows, the category as a
-			// ribbon below the date, the amount larger and without the currency of the view, and the
-			// checkmark at the end. Every row is the same height, and a pending transaction is hatched.
+			// As in MoneyMoney, measured in its window: no column headers and no stripes, rows of 55 points
+			// across the full width with a line below each, the category as a ribbon below the date,
+			// the amount larger and without the currency of the view, and the checkmark at the end.
+			// A pending transaction is hatched.
 			let currency = rows.first?.currency
 			Table(of: Transaction.self, selection: $model.selectedTransactions, columnCustomization: $model.transactionColumns) {
 				TableColumn("Date") { (t: Transaction) in
-					DateCell(transaction: t, ledger: model.ledger).rowChrome(t)
+					DateCell(transaction: t, model: model).rowChrome(t)
 				}
-				.width(min: 96, ideal: 112, max: 180)
+				// With the gap of 17 points, the name starts 118 points from the edge, as in MoneyMoney.
+				.width(101)
 				.customizationID("date")
 				TableColumn("Name / Purpose") { (t: Transaction) in
-					TransactionCell(transaction: t).rowChrome(t)
+					TransactionCell(transaction: t).padding(.trailing, 12).rowChrome(t)
 				}
 				.width(min: 240, ideal: 520)
 				.customizationID("name")
 				if showsAccount {
 					TableColumn("Account") { (t: Transaction) in
 						Text(model.ledger.account(t.accountID)?.name ?? "").foregroundStyle(Palette.detail).lineLimit(1)
+							.padding(.trailing, 12)
 							.rowChrome(t)
 					}
 					.width(min: 80, ideal: 140)
 					.customizationID("account")
 				}
+				// The checkmark sits 11 points right of the amount, as in MoneyMoney.
 				TableColumn("Amount") { (t: Transaction) in
-					AmountText(money: t.amount, showsCurrency: t.currency != currency)
-						.font(.system(size: 17))
-						.rowChrome(t, alignment: .trailing)
+					HStack(spacing: 5) {
+						AmountText(money: t.amount, showsCurrency: t.currency != currency)
+							.font(.system(size: 18))
+						CheckBox(isOn: t.isChecked) { model.toggleChecked(t.id) }
+					}
+					.padding(.trailing, 2)
+					.rowChrome(t, alignment: .trailing)
 				}
-				.width(min: 90, ideal: 120)
+				.width(min: 120, ideal: 150)
 				.alignment(.trailing)
 				.customizationID("amount")
-				TableColumn("Checked") { (t: Transaction) in
-					Toggle("", isOn: Binding(get: { t.isChecked }, set: { _ in model.toggleChecked(t.id) }))
-						.toggleStyle(.checkbox)
-						.labelsHidden()
-						.rowChrome(t, alignment: .center)
-				}
-				.width(22)
-				.customizationID("check")
 			} rows: {
 				ForEach(rows) { t in
 					TableRow(t).draggable(draggedIDs(for: t))
 				}
 			}
+			.tableStyle(.bordered(alternatesRowBackgrounds: false))
 			.tableColumnHeaders(.hidden)
-			.alternatingRowBackgrounds(.disabled)
 			.contextMenu(forSelectionType: UUID.self) { ids in
 				TransactionMenu(ids: ids)
 			} primaryAction: { ids in
@@ -378,9 +378,9 @@ struct TransactionCell: View {
 	let transaction: Transaction
 
 	var body: some View {
-		VStack(alignment: .leading, spacing: 2) {
+		VStack(alignment: .leading, spacing: 4) {
 			HStack(spacing: 4) {
-				Text(transaction.name.isEmpty ? (transaction.bookingText ?? "") : transaction.name).fontWeight(.semibold).lineLimit(1)
+				Text(transaction.name.isEmpty ? (transaction.bookingText ?? "") : transaction.name).fontWeight(.bold).lineLimit(1)
 				if let comment = transaction.comment {
 					Image(systemName: "note.text").foregroundStyle(.yellow).help(comment)
 				}
@@ -388,64 +388,82 @@ struct TransactionCell: View {
 			// A row without a purpose keeps the empty line, so that every row is the same height.
 			Text(transaction.purpose.isEmpty ? " " : transaction.purpose).foregroundStyle(Palette.detail).lineLimit(1)
 		}
+		.font(.system(size: 13))
 		.textSelection(.enabled)
 	}
 }
 
-/// The date with the dot of a new transaction left of it, and the category ribbon below.
-/// The ledger comes from the table: AppKit can build a cell outside the environment of the window,
-/// and a cell that reads the model from the environment then stops the app.
+/// The date with the dot of a new transaction left of it, and the category ribbon below, at the
+/// height of the purpose. The model comes from the table: AppKit can build a cell outside the
+/// environment of the window, and a cell that reads the model from the environment stops the app.
 struct DateCell: View {
 	let transaction: Transaction
-	let ledger: Ledger
+	let model: AppModel
 
 	var body: some View {
-		VStack(alignment: .leading, spacing: 3) {
+		VStack(alignment: .leading, spacing: 5) {
 			Text(Format.day(transaction.bookingDate))
+				.font(.system(size: 12))
 				.monospacedDigit()
 				.foregroundStyle(Palette.detail)
+				.padding(.leading, 17)
+				.padding(.top, 1)
 				.overlay(alignment: .leading) {
 					if transaction.isNew {
-						Circle().fill(.tint).frame(width: 7, height: 7).offset(x: -11).help("New transaction")
+						Circle().fill(.tint).frame(width: 6, height: 6).padding(.leading, 6).help("New transaction")
 					}
 				}
-			CategoryRibbon(categoryID: transaction.categoryID, ledger: ledger)
+			// The ribbon is wider than the column and reaches into the gap before the name. As an
+			// overlay it leaves the cell as wide as the column, so the backgrounds of the cells meet.
+			Color.clear
+				.frame(height: 14)
+				.overlay(alignment: .leading) { CategoryRibbon(transaction: transaction, model: model) }
 		}
-		.padding(.leading, 4)
 	}
 }
 
-/// The category of a transaction as a ribbon in the color of the category, from the edge of the row
-/// to the end of the date column, with the whole path on hover. An uncategorized transaction keeps
-/// the line empty.
+/// The category as a ribbon from the edge of the row, 113 points wide, with the whole path on
+/// hover. A click opens the categories to assign, also where an uncategorized transaction has no
+/// ribbon, as in MoneyMoney. The menu is built on the click: a SwiftUI menu in every row built its
+/// items for every row and slowed the list down.
 struct CategoryRibbon: View {
-	let categoryID: UUID?
-	let ledger: Ledger
+	let transaction: Transaction
+	let model: AppModel
 
 	var body: some View {
-		if let id = categoryID, let category = ledger.category(id), !category.isDefault {
-			Text(category.name.uppercased())
-				.font(.system(size: 10, weight: .bold))
-				.kerning(0.4)
-				.foregroundStyle(.white)
-				.lineLimit(1)
-				.padding(.leading, RowChrome.edge + 4)
-				.padding(.trailing, 10)
-				.frame(maxWidth: .infinity, minHeight: 16, alignment: .leading)
-				// Muted like the ribbons of MoneyMoney, so that white text stays readable on light colors.
-				.background(CategoryColors.color(of: category, in: ledger).mix(with: Color(white: 0.4), by: 0.35), in: RibbonShape())
-				.padding(.leading, -RowChrome.edge - 4)
-				.help(ledger.categoryPath(id))
-		} else {
-			Text(" ").font(.system(size: 10, weight: .bold)).frame(minHeight: 16)
+		let ledger = model.ledger
+		let category = ledger.effectiveCategoryID(of: transaction).flatMap { ledger.category($0) }.flatMap { $0.isDefault ? nil : $0 }
+		Button {
+			CategoryChoices.popUp(model: model, ids: [transaction.id])
+		} label: {
+			Group {
+				if let category {
+					Text(category.name.uppercased())
+						.font(.system(size: 10, weight: .bold))
+						.kerning(0.2)
+						.foregroundStyle(.white.opacity(0.95))
+						.lineLimit(1)
+						.padding(.leading, 4)
+						.padding(.trailing, 10)
+						.frame(width: 113, height: 14, alignment: .leading)
+						// Muted toward gray like the ribbons of MoneyMoney, so that white text stays readable.
+						.background(CategoryColors.color(of: category, in: ledger).mix(with: Color(white: 0.6), by: 0.5), in: RibbonShape())
+				} else {
+					Color.clear.frame(width: 113, height: 14)
+				}
+			}
+			.contentShape(Rectangle())
 		}
+		.buttonStyle(.plain)
+		.fixedSize()
+		.help(category.map { ledger.categoryPath($0.id) } ?? "Assign Category")
 	}
 }
 
 /// A band with a notch at its trailing end.
 struct RibbonShape: Shape {
 	func path(in rect: CGRect) -> Path {
-		let notch = rect.height * 0.4
+		let notch: CGFloat = 7
 		var path = Path()
 		path.move(to: CGPoint(x: rect.minX, y: rect.minY))
 		path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
@@ -457,22 +475,48 @@ struct RibbonShape: Shape {
 	}
 }
 
+/// A square checkbox that stays opaque on hatched rows, 14 points like the one of MoneyMoney.
+struct CheckBox: View {
+	let isOn: Bool
+	let toggle: () -> Void
+
+	static let box = Color(nsColor: NSColor(name: "checkBox") { appearance in
+		appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? NSColor(white: 0.36, alpha: 1) : NSColor(white: 0.78, alpha: 1)
+	})
+
+	var body: some View {
+		Button(action: toggle) {
+			RoundedRectangle(cornerRadius: 3)
+				.fill(isOn ? AnyShapeStyle(.tint) : AnyShapeStyle(Self.box))
+				.frame(width: 14, height: 14)
+				.overlay {
+					if isOn { Image(systemName: "checkmark").font(.system(size: 9, weight: .bold)).foregroundStyle(.white) }
+				}
+				.padding(6)
+				.contentShape(Rectangle())
+		}
+		.buttonStyle(.plain)
+		.accessibilityLabel("Checked")
+		.accessibilityValue(isOn ? "On" : "Off")
+	}
+}
+
 /// The background of every cell of a row: the line below the row, and diagonal bands when the bank
-/// has not booked the transaction yet. Each cell draws its part a little past its edges, so that
-/// the parts meet across the gaps between the columns. The colors are opaque, so that overlapping
-/// parts look the same, and the bands are placed in window coordinates, so they continue from one
-/// cell to the next.
+/// has not booked the transaction yet. A cell reaches half the gap between the columns past each
+/// side and the vertical inset of the row past its top and bottom, so the parts of a row meet
+/// without overlapping. The bands are translucent, so a selection shows through, and they are
+/// placed in window coordinates, so they continue from one cell to the next.
 struct RowChrome: View {
-	/// The distance from a cell to the edge of its row, and to the next cell.
-	static let edge: CGFloat = 10
-	/// The vertical distance from a cell to the edge of its row.
+	/// Half the gap of 17 points that the full-width table style of SwiftUI leaves between cells.
+	static let halfGap: CGFloat = 8.5
+	/// The space that SwiftUI leaves above and below the cells of a row.
 	static let inset: CGFloat = 4
 
 	static let band = Color(nsColor: NSColor(name: "pendingBand") { appearance in
-		appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? NSColor(white: 0.19, alpha: 1) : NSColor(white: 0.94, alpha: 1)
+		appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? NSColor(white: 1, alpha: 0.06) : NSColor(white: 0, alpha: 0.05)
 	})
 	static let separator = Color(nsColor: NSColor(name: "rowSeparator") { appearance in
-		appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? NSColor(white: 0.24, alpha: 1) : NSColor(white: 0.88, alpha: 1)
+		appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? NSColor(white: 0.07, alpha: 1) : NSColor(white: 0.88, alpha: 1)
 	})
 
 	let pending: Bool
@@ -484,14 +528,16 @@ struct RowChrome: View {
 			Canvas { context, size in
 				let selected = prominence == .increased
 				if pending {
-					let period: CGFloat = 20
+					// Bands of 9 points every 18 points, at about 60 degrees, as in MoneyMoney.
+					let period: CGFloat = 18
+					let slant = size.height * 0.58
 					var bands = Path()
-					// A band at every multiple of the period in window coordinates, leaning to the right.
-					var x = -((origin.x + origin.y + size.height).truncatingRemainder(dividingBy: period)) - size.height
+					let phase = (origin.x + (origin.y + size.height) * 0.58).truncatingRemainder(dividingBy: period)
+					var x = -phase - slant
 					while x < size.width {
 						bands.move(to: CGPoint(x: x, y: size.height))
-						bands.addLine(to: CGPoint(x: x + size.height, y: 0))
-						bands.addLine(to: CGPoint(x: x + size.height + period / 2, y: 0))
+						bands.addLine(to: CGPoint(x: x + slant, y: 0))
+						bands.addLine(to: CGPoint(x: x + slant + period / 2, y: 0))
 						bands.addLine(to: CGPoint(x: x + period / 2, y: size.height))
 						bands.closeSubpath()
 						x += period
@@ -503,19 +549,88 @@ struct RowChrome: View {
 				}
 			}
 		}
-		.padding(.horizontal, -Self.edge)
+		.padding(.horizontal, -Self.halfGap)
 		.padding(.vertical, -Self.inset)
 		.accessibilityHidden(true)
 	}
 }
 
 extension View {
-	/// Fills the cell and draws the line below the row and, for a pending transaction, the bands.
+	/// Fills the cell, so that the row is 55 points high with its inset, and draws the line below
+	/// the row and, for a pending transaction, the bands. The line of SwiftUI is hidden: it starts
+	/// indented and sits in the gap between the rows.
 	func rowChrome(_ t: Transaction, alignment: Alignment = .leading) -> some View {
-		frame(maxWidth: .infinity, minHeight: 47, maxHeight: .infinity, alignment: alignment)
+		frame(maxWidth: .infinity, minHeight: 55 - 2 * RowChrome.inset, maxHeight: .infinity, alignment: alignment)
 			.background { RowChrome(pending: t.isPending) }
+			.listRowSeparator(.hidden)
 			.accessibilityValue(t.isPending ? "Pending" : "")
 	}
+}
+
+/// The categories to assign to transactions, for the context menu and the category ribbon.
+/// It takes the model, so that a table cell can build it.
+struct CategoryChoices: View {
+	let model: AppModel
+	let ids: Set<UUID>
+
+	var body: some View {
+		let transactions = ids.compactMap { model.ledger.transaction($0) }
+		ForEach(model.ledger.categoriesInSidebarOrder) { c in
+			let current = transactions.allSatisfy { model.ledger.effectiveCategoryID(of: $0) == c.id }
+			Button {
+				model.assign(category: c.id, to: ids)
+			} label: {
+				if current { Label(model.ledger.categoryPath(c.id), systemImage: "checkmark") } else { Text(model.ledger.categoryPath(c.id)) }
+			}
+			.disabled(c.isGroup || isRestricted(c, transactions))
+		}
+		Divider()
+		Button("Add category") { model.sheet = .newCategory(isGroup: false) }
+	}
+
+	private func isRestricted(_ c: Domain.Category, _ ts: [Transaction]) -> Bool {
+		Self.isRestricted(c, ts, in: model.ledger)
+	}
+
+	static func isRestricted(_ c: Domain.Category, _ ts: [Transaction], in ledger: Ledger) -> Bool {
+		guard let r = c.restrictedToID else { return false }
+		let allowed: Set<UUID> = ledger.account(r) != nil ? [r] : ledger.accountIDs(inGroupTree: r)
+		return !ts.allSatisfy { allowed.contains($0.accountID) }
+	}
+
+	/// The same choices as a menu at the pointer, for the category ribbon.
+	@MainActor
+	static func popUp(model: AppModel, ids: Set<UUID>) {
+		let ledger = model.ledger
+		let transactions = ids.compactMap { ledger.transaction($0) }
+		let menu = NSMenu()
+		menu.autoenablesItems = false
+		for c in ledger.categoriesInSidebarOrder {
+			let item = ActionMenuItem(title: ledger.categoryPath(c.id)) { model.assign(category: c.id, to: ids) }
+			item.state = transactions.allSatisfy { ledger.effectiveCategoryID(of: $0) == c.id } ? .on : .off
+			item.isEnabled = !c.isGroup && !isRestricted(c, transactions, in: ledger)
+			menu.addItem(item)
+		}
+		menu.addItem(.separator())
+		menu.addItem(ActionMenuItem(title: "Add category") { model.sheet = .newCategory(isGroup: false) })
+		menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
+	}
+}
+
+/// A menu item that runs a closure.
+final class ActionMenuItem: NSMenuItem {
+	private let handler: () -> Void
+
+	init(title: String, handler: @escaping () -> Void) {
+		self.handler = handler
+		super.init(title: title, action: #selector(run), keyEquivalent: "")
+		target = self
+	}
+
+	@available(*, unavailable)
+	required init(coder: NSCoder) { fatalError("not used") }
+
+	@objc private func run() { handler() }
 }
 
 struct TransactionMenu: View {
@@ -534,17 +649,7 @@ struct TransactionMenu: View {
 			}
 			Divider()
 			Menu("Assign Category") {
-				ForEach(model.ledger.categoriesInSidebarOrder) { c in
-					let current = transactions.allSatisfy { model.ledger.effectiveCategoryID(of: $0) == c.id }
-					Button {
-						model.assign(category: c.id, to: ids)
-					} label: {
-						if current { Label(model.ledger.categoryPath(c.id), systemImage: "checkmark") } else { Text(model.ledger.categoryPath(c.id)) }
-					}
-					.disabled(c.isGroup || isRestricted(c, transactions))
-				}
-				Divider()
-				Button("Add category") { model.sheet = .newCategory(isGroup: false) }
+				CategoryChoices(model: model, ids: ids)
 			}
 			if case let .category(id) = model.selection, model.ledger.defaultCategory?.id != id {
 				Button("Remove Transaction from Category") { model.assign(category: nil, to: ids) }
@@ -560,12 +665,6 @@ struct TransactionMenu: View {
 			}
 			Button(ids.count == 1 ? "Delete Transaction..." : "Delete Transactions...") { confirmDelete(ids) }
 		}
-	}
-
-	private func isRestricted(_ c: Domain.Category, _ ts: [Transaction]) -> Bool {
-		guard let r = c.restrictedToID else { return false }
-		let allowed: Set<UUID> = model.ledger.account(r) != nil ? [r] : model.ledger.accountIDs(inGroupTree: r)
-		return !ts.allSatisfy { allowed.contains($0.accountID) }
 	}
 
 	private func confirmDelete(_ ids: Set<UUID>) {
