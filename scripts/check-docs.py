@@ -54,7 +54,8 @@ def path_exists(md, path):
 	"""A path exists, or git ignores it, as for a local file such as App/Local.xcconfig that each developer creates."""
 	if (ROOT / path).exists() or (md.parent / path).exists():
 		return True
-	return subprocess.run(["git", "check-ignore", "-q", path], cwd=ROOT).returncode == 0
+	# A pattern such as "App/MonetenMoneten.xcodeproj/" matches only folders, so ask for both forms.
+	return any(subprocess.run(["git", "check-ignore", "-q", p], cwd=ROOT).returncode == 0 for p in (path, path + "/"))
 
 
 def check_links_and_paths(md, rel):
