@@ -48,6 +48,9 @@ struct FileImportTests {
 		let text = "Datum;Name;Soll;Haben\n01.11.2026;Kiosk;12,30;\n02.11.2026;Erika Mustermann;;50,00\n"
 		let ts = try TransactionFileImporter.parse(Data(text.utf8))
 		#expect(ts.map(\.amountMinor) == [-1_230, 5_000])
+		#expect(throws: TransactionFileImporter.Failure.line(2, "The amount cannot be read.")) {
+			try TransactionFileImporter.parse(Data("Datum;Name;Soll;Haben\n01.11.2026;Kiosk;zwölf;\n".utf8))
+		}
 	}
 
 	@Test("A CSV file without a date column is rejected")

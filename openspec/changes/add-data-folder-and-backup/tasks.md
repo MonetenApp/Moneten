@@ -12,7 +12,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [x] 1.6 Back up the database while the app runs. Verified by "Backup Database..." in the Tools menu.
 - [x] 1.7 Explain what the backup command covers. Verified by the save panel explains it.
 - [x] 1.8 A backup opens with the password of its time. Verified by VaultTests "A backup opens with the same password".
-- [x] 1.9 Warn about a backup without a password. Verified by the result message warns.
+- [ ] 1.9 Warn about a backup without a password. Built: a warning before the save panel offers "Set Database Password...", "Back Up Anyway", and "Cancel". Verify it in the app.
 - [ ] 1.10 Restore a database file. Build it and verify it with a test or in the app.
 - [ ] 1.11 Move to another Mac. Build it and verify it with a test or in the app.
 - [ ] 1.12 No synchronization between copies. Build it and verify it with a test or in the app.
