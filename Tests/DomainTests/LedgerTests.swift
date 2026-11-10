@@ -121,5 +121,8 @@ struct LedgerTests {
 		#expect(result.new.isEmpty && result.skipped == 0)
 		#expect(result.booked.map(\.id) == [pendingRow.id] && result.booked[0].isPending == false)
 		#expect(ImportMatching.split(imported: [pendingRow], existing: [pendingRow]).skipped == 1)
+		// The same file again, with the pending row first, changes nothing.
+		let again = ImportMatching.split(imported: [pendingRow, bookedRow], existing: [bookedRow, pendingRow])
+		#expect(again.new.isEmpty && again.booked.isEmpty && again.skipped == 2)
 	}
 }

@@ -61,6 +61,7 @@ enum CSVParser {
 	static let amountKeys = ["betrag", "amount", "umsatz", "betrag (eur)", "betrag (€)", "betrag eur", "value"]
 	static let debitKeys = ["soll", "debit", "ausgang", "belastung"]
 	static let creditKeys = ["haben", "credit", "eingang", "gutschrift"]
+	static let markerKeys = ["s/h", "soll/haben", "soll / haben", "haben/soll", "d/c", "debit/credit", "cr/dr", "dr/cr"]
 	static let nameKeys = ["empfänger", "auftraggeber", "name", "zahlungsempfänger", "zahlungspflichtiger", "beguenstigter/zahlungspflichtiger", "auftraggeber / begünstigter",
 		"zahlungsempfänger*in", "zahlungspflichtige*r", "payee", "counterparty", "gegenkonto name", "name zahlungsbeteiligter", "empfänger/auftraggeber", "partner"]
 	static let purposeKeys = ["verwendungszweck", "purpose", "beschreibung", "description", "memo", "buchungsdetails", "vorgang/verwendungszweck", "reference"]
@@ -90,6 +91,7 @@ enum CSVParser {
 		let amountCol = column(amountKeys)
 		let debitCol = column(debitKeys)
 		let creditCol = column(creditKeys)
+		let markerCol = column(markerKeys)
 		let nameCol = column(nameKeys)
 		let purposeCol = column(purposeKeys)
 		let textCol = column(bookingTextKeys)
@@ -116,6 +118,12 @@ enum CSVParser {
 			var amount: Decimal?
 			if let a = value(amountCol) {
 				amount = AmountParser.decimal(from: a)
+				// A marker column says whether an unsigned amount is a debit (S, D, DR) or a credit (H, C, CR).
+				if let marker = value(markerCol)?.uppercased(), let a = amount {
+					if ["S", "D", "DR", "SOLL", "DEBIT"].contains(marker) { amount = -abs(a) }
+					else if ["H", "C", "CR", "HABEN", "CREDIT"].contains(marker) { amount = abs(a) }
+					else { amount = nil }
+				}
 			} else {
 				// An empty debit or credit cell counts as zero. A cell that cannot be read is an error.
 				let d = value(debitCol).map { AmountParser.decimal(from: $0).map { -abs($0) } } ?? 0

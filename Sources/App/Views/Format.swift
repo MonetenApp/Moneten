@@ -11,10 +11,10 @@ enum Format {
 		money(Money(minorUnits: minor, currency: currency))
 	}
 
-	/// An amount for a text field: no currency sign and no thousands separators, so that
-	/// `AmountParser` reads it back unchanged in every locale.
+	/// An amount for a text field, such as "1234.56": no currency sign, no thousands separators, and
+	/// ASCII digits in every locale, so that `AmountParser` reads it back unchanged.
 	static func editableAmount(_ minor: Int64, _ currency: String) -> String {
-		Money(minorUnits: minor, currency: currency).decimal.formatted(.number.grouping(.never))
+		"\(Money(minorUnits: minor, currency: currency).decimal)"
 	}
 
 	static func sums(_ s: MoneySums) -> String {

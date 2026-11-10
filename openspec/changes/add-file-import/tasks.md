@@ -11,12 +11,12 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [x] 1.5 Empty and oversized files. Verified by FileImportTests "An empty file is rejected"; files over 100 MB are refused.
 - [x] 1.6 CSV structure detection. Verified by FileImportTests "CSV with a preamble, semicolons, and German numbers".
 - [ ] 1.7 CSV date detection. Built in part: German and ISO dates; no detection of American dates. Finish it and verify it with a test or in the app.
-- [x] 1.8 CSV amount detection. Verified by FileImportTests "CSV with separate debit and credit columns".
+- [x] 1.8 CSV amount detection. Verified by FileImportTests "CSV with separate debit and credit columns", including a marker column with S and H.
 - [x] 1.9 CSV columns by header keywords. Verified by FileImportTests "CSV with commas, ISO dates...".
 - [ ] 1.10 CSV preview. Build it and verify it with a test or in the app.
 - [ ] 1.11 CSV profiles. Build it and verify it with a test or in the app.
 - [ ] 1.12 Categories from a CSV file. Build it and verify it with a test or in the app.
-- [x] 1.13 CAMT import. Verified by FileImportTests "camt.053 with a debit and a pending credit".
+- [ ] 1.13 CAMT import. Built in part: verified by FileImportTests "camt.053 with a debit and a pending credit". An entry with several transaction details still becomes one transaction. Finish it and verify it with a test.
 - [x] 1.14 MT940 import. Verified by FileImportTests "MT940 with a structured field 86".
 - [x] 1.15 Several files at once. Verified by the open panel allows several files.
 - [ ] 1.16 File belongs to another account. Build it and verify it with a test or in the app.

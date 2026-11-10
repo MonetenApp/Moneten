@@ -499,10 +499,22 @@ final class AppModel {
 		return l
 	}
 
+	/// Root starter categories that the user has not changed: the same name, rule, and kind, and only
+	/// unchanged starter subcategories below. A changed or extended tree stays.
 	private var replaceableStarterCategories: [Domain.Category] {
 		guard ledger.transactions.isEmpty else { return [] }
-		let names = Set(StarterCategories.make().filter { $0.parentID == nil && !$0.isDefault }.map(\.name))
-		return ledger.categories.filter { !$0.isDefault && $0.sourceID == nil && $0.parentID == nil && names.contains($0.name) }
+		let template = StarterCategories.make()
+		func same(_ a: Domain.Category, _ b: Domain.Category) -> Bool {
+			a.name == b.name && a.isGroup == b.isGroup && a.rule == b.rule && a.sourceID == nil && !a.isDefault
+		}
+		return ledger.categories.filter { root in
+			guard root.parentID == nil, let starter = template.first(where: { $0.parentID == nil && same(root, $0) }) else { return false }
+			let starterChildren = template.filter { $0.parentID == starter.id }
+			return ledger.categoryIDs(inTree: root.id).subtracting([root.id]).allSatisfy { id in
+				guard let c = ledger.category(id), c.parentID == root.id else { return false }
+				return starterChildren.contains { same(c, $0) }
+			}
+		}
 	}
 
 	func importTransactions(_ imported: [Transaction], into account: Account) -> (added: Int, skipped: Int) {

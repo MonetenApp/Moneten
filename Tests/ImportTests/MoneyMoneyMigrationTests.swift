@@ -154,6 +154,13 @@ struct MoneyMoneyMigrationTests {
 		let second = try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(twins), categories: try plist(categories), transactions: try plist(transactions), into: ledger)
 		let savings = try #require(first.accounts.first { $0.name == "Savings" })
 		#expect(second.transactions.filter { $0.accountID == savings.id }.map(\.name) == ["Zinsen"])
+
+		// An account added in MoneyMoney later with the same IBAN is a new account too.
+		let onlyGiro = try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(Array(twins.prefix(2))), categories: try plist(categories),
+			transactions: try plist(["transactions": [] as [Any]]), into: Ledger())
+		let later = try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(twins), categories: try plist(categories),
+			transactions: try plist(transactions), into: Ledger(groups: onlyGiro.groups, accounts: onlyGiro.accounts))
+		#expect(later.accounts.contains { $0.name == "Savings" } && later.updatedAccounts.allSatisfy { $0.name == "Giro" })
 	}
 
 	@Test("An account is matched by IBAN")
