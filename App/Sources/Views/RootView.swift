@@ -48,8 +48,10 @@ struct LockView: View {
 	/// The unlock methods that are on and that macOS can use now, and why the others cannot.
 	@State private var available: [UnlockMethod] = []
 	@State private var unavailable: [String] = []
-	/// The methods that are on, read once, because reading them reads the password from the Keychain.
+	/// The methods that are on, and the switches they were read for. Reading them reads the password
+	/// from the Keychain, so that happens only when a switch changes.
 	@State private var enabled: [UnlockMethod] = []
+	@State private var switches: [UnlockMethod]?
 	@FocusState private var focused: Bool
 
 	var body: some View {
@@ -85,7 +87,6 @@ struct LockView: View {
 		.onAppear {
 			focused = true
 			// A method that macOS cannot use now, for example Touch ID with the lid closed, starts no request.
-			enabled = model.unlockMethods
 			refreshAvailability()
 			if !available.isEmpty { model.unlock(with: available) }
 		}
@@ -111,6 +112,11 @@ struct LockView: View {
 	}
 
 	private func refreshAvailability() {
+		let on = UnlockMethod.allCases.filter { UserDefaults.standard.bool(forKey: $0.preference) }
+		if on != switches {
+			switches = on
+			enabled = model.unlockMethods
+		}
 		let reasons = enabled.map { ($0, $0.unavailableReason(for: .lockScreen)) }
 		available = reasons.filter { $0.1 == nil }.map(\.0)
 		unavailable = reasons.compactMap(\.1)
