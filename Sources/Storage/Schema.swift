@@ -91,14 +91,12 @@ enum Schema {
 				t.column("sourceID", .text).indexed()
 				t.column("createdAt", .datetime).notNull()
 			}
+			// No code uses this table. App settings live in UserDefaults. The next migration that
+			// changes the schema drops it, so that no build needs a migration for this alone.
 			try db.create(table: "setting") { t in
 				t.column("key", .text).primaryKey()
 				t.column("value", .text).notNull()
 			}
-		}
-		m.registerMigration("v2") { db in
-			// App settings live in UserDefaults. The table never held data.
-			try db.drop(table: "setting")
 		}
 		return m
 	}

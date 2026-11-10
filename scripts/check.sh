@@ -6,6 +6,9 @@ set -e
 cd "$(dirname "$0")/.."
 python3 scripts/check-docs.py
 openspec validate --all --strict --no-interactive
-swift build --disable-keychain --build-tests --build-system native --scratch-path .build/periphery 2>&1 | grep -E "error:|Build complete" || true
+if ! swift build --disable-keychain --build-tests --build-system native --scratch-path .build/periphery > .build/periphery.log 2>&1; then
+	cat .build/periphery.log
+	exit 1
+fi
 periphery scan --skip-build --index-store-path .build/periphery/debug/index/store
 scripts/test.sh

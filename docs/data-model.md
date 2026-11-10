@@ -74,7 +74,7 @@ A file import has no stable identifier per row. `ImportMatching` treats two tran
 | `category` | `Category` |
 | `bankTransaction` | `Transaction` |
 
-Migration `v1` creates the tables. Migration `v2` drops the table `setting`, which no code used. App settings live in `UserDefaults`.
+Migration `v1` creates the tables. It also creates the table `setting`, which no code uses, because app settings live in `UserDefaults`. The next migration that changes the schema drops it.
 
 ## Types that the specs add later
 
