@@ -90,7 +90,10 @@ public struct MoneyMoneyMigration: Sendable {
 			guard let balance = plan.accounts[i].bankBalanceMinor else { continue }
 			plan.accounts[i].initialBalanceMinor = balance - sums[plan.accounts[i].id, default: 0]
 		}
-		plan.notes.append("MoneyMoney does not export its categorization rules. Copy them from the category settings of MoneyMoney into the category settings of MonetenMoneten.")
+		if !rawCategories.contains(where: { Self.string($0["rules"]) != nil }) {
+			plan.notes.append("The export contains no categorization rules. Copy them from the category settings of MoneyMoney into the category settings of MonetenMoneten.")
+		}
+		plan.notes += Self.groupSumNotes(rawAccounts)
 		if !plan.portfolioAccounts.isEmpty {
 			plan.notes.append("Portfolio accounts were taken over with their balance. Their positions follow when securities accounts are supported.")
 		}
@@ -117,9 +120,11 @@ public struct MoneyMoneyMigration: Sendable {
 				}
 				continue
 			}
-			let iban = Self.string(item["iban"])
+			// MoneyMoney puts the IBAN into `accountNumber` and the BIC into `bankCode`.
 			let number = Self.string(item["accountNumber"])
 			let bankCode = Self.string(item["bankCode"])
+			let iban = Self.string(item["iban"]) ?? number.flatMap { Self.isIBAN($0) ? $0 : nil }
+			let bic = Self.string(item["bic"]) ?? bankCode.flatMap { Self.isBIC($0) ? $0 : nil }
 			if let existing = ledger.accounts.first(where: { a in
 				a.sourceID == source || (iban != nil && a.iban.map(TextFolding.accountKey) == iban.map(TextFolding.accountKey))
 					|| (bankCode != nil && number != nil && a.bankCode == bankCode && a.accountNumber == number)
@@ -139,7 +144,7 @@ public struct MoneyMoneyMigration: Sendable {
 			if isPortfolio { plan.portfolioAccounts.append(name) }
 			let account = Account(groupID: parent, position: position, name: name,
 				kind: isPortfolio ? .portfolio : Self.kind(item["type"] as? String),
-				source: .migrated, currency: currency, iban: iban, bic: Self.string(item["bic"]),
+				source: .migrated, currency: currency, iban: iban, bic: bic,
 				accountNumber: number, bankCode: bankCode, owner: Self.string(item["owner"]),
 				bankBalanceMinor: balanceMinor, bankBalanceDate: (item["balanceDate"] as? Date) ?? (item["refreshTimestamp"] as? Date),
 				comment: Self.string(item["comment"]), sourceID: source)
@@ -175,6 +180,54 @@ public struct MoneyMoneyMigration: Sendable {
 			map[source] = c.id
 			if isGroup { parents[indentation] = c.id }
 		}
+	}
+
+	/// Lists the groups whose balance in MoneyMoney differs from the sum of their accounts.
+	/// MoneyMoney can leave an account out of the sum of its group, and the export does not say so.
+	static func groupSumNotes(_ raw: [[String: Any]]) -> [String] {
+		func balances(_ item: [String: Any]) -> [String: Decimal] {
+			var r: [String: Decimal] = [:]
+			for case let entry as [Any] in (item["balance"] as? [Any]) ?? [] where entry.count >= 2 {
+				if let amount = entry[0] as? Double, let currency = entry[1] as? String {
+					r[currency, default: 0] += Money(Decimal(amount), currency: currency).decimal
+				}
+			}
+			return r
+		}
+		var notes: [String] = []
+		for (i, item) in raw.enumerated() where (item["group"] as? Bool) == true {
+			let indentation = (item["indentation"] as? Int) ?? 0
+			var sum: [String: Decimal] = [:]
+			for child in raw[(i + 1)...] {
+				if ((child["indentation"] as? Int) ?? 0) <= indentation { break }
+				if (child["group"] as? Bool) == true { continue }
+				for (c, v) in balances(child) { sum[c, default: 0] += v }
+			}
+			let shown = balances(item)
+			let currencies = Set(shown.keys).union(sum.keys)
+			if currencies.contains(where: { shown[$0, default: 0] != sum[$0, default: 0] }) {
+				notes.append("The group \"\(item["name"] as? String ?? "")\" has a different balance in MoneyMoney than the sum of its accounts. MoneyMoney leaves some accounts out of the sum of their group. MonetenMoneten adds all open accounts.")
+			}
+		}
+		return notes
+	}
+
+	static func isIBAN(_ value: String) -> Bool {
+		let s = value.replacingOccurrences(of: " ", with: "").uppercased()
+		guard s.count >= 15, s.count <= 34, s.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber) }),
+			s.prefix(2).allSatisfy(\.isLetter), s.dropFirst(2).prefix(2).allSatisfy(\.isNumber) else { return false }
+		var remainder = 0
+		for ch in s.dropFirst(4) + s.prefix(4) {
+			let digits = ch.isNumber ? String(ch) : String(Int(ch.asciiValue!) - 55)
+			for d in digits { remainder = (remainder * 10 + Int(String(d))!) % 97 }
+		}
+		return remainder == 1
+	}
+
+	static func isBIC(_ value: String) -> Bool {
+		let s = value.uppercased()
+		guard s.count == 8 || s.count == 11, s.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber) }) else { return false }
+		return s.prefix(6).allSatisfy(\.isLetter)
 	}
 
 	static func string(_ value: Any?) -> String? {

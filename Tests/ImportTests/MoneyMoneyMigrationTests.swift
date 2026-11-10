@@ -3,7 +3,9 @@ import Foundation
 import Testing
 @testable import Import
 
-/// Synthetic exports with the structure of MoneyMoney 2.5.3. All names and numbers are made up.
+/// Synthetic exports with the structure of a real MoneyMoney export, checked on 2026-11-10:
+/// accounts carry the IBAN in `accountNumber` and the BIC in `bankCode` and have no `iban` key,
+/// groups carry their balance, and categories carry their rules. All names and numbers are made up.
 @Suite("MoneyMoney migration")
 struct MoneyMoneyMigrationTests {
 	var calendar: Calendar {
@@ -23,9 +25,9 @@ struct MoneyMoneyMigrationTests {
 
 	var accounts: [[String: Any]] {
 		[
-			["uuid": "G1", "name": "Private", "group": true, "indentation": 0, "type": "Account group", "balance": [] as [Any]],
-			["uuid": "A1", "name": "Giro", "group": false, "indentation": 1, "type": "Giro account", "iban": "DE02120300000000202051",
-				"accountNumber": "202051", "bankCode": "12030000", "currency": "EUR", "owner": "Erika Mustermann", "portfolio": false,
+			["uuid": "G1", "name": "Private", "group": true, "indentation": 0, "type": "Account group", "balance": [[1734.56, "EUR"]], "attributes": [String: String]()],
+			["uuid": "A1", "name": "Giro", "group": false, "indentation": 1, "type": "Giro account",
+				"accountNumber": "DE02120300000000202051", "bankCode": "BYLADEM1001", "attributes": [String: String](), "currency": "EUR", "owner": "Erika Mustermann", "portfolio": false,
 				"balance": [[1234.56, "EUR"]]],
 			["uuid": "A2", "name": "Savings", "group": false, "indentation": 1, "type": "Savings account", "currency": "EUR", "portfolio": false,
 				"balance": [[500.0, "EUR"]]],
@@ -36,10 +38,10 @@ struct MoneyMoneyMigrationTests {
 
 	var categories: [[String: Any]] {
 		[
-			["uuid": "C1", "name": "Household", "group": true, "default": false, "indentation": 0, "currency": "EUR"],
-			["uuid": "C2", "name": "Food", "group": false, "default": false, "indentation": 1, "currency": "EUR"],
-			["uuid": "C3", "name": "Pets", "group": false, "default": false, "indentation": 1, "currency": "EUR"],
-			["uuid": "C9", "name": "Sonstiges", "group": false, "default": true, "indentation": 0, "currency": "EUR"],
+			["uuid": "C1", "name": "Household", "group": true, "default": false, "indentation": 0, "currency": "EUR", "rules": ""],
+			["uuid": "C2", "name": "Food", "group": false, "default": false, "indentation": 1, "currency": "EUR", "rules": "REWE OR \"Bäckerei*\""],
+			["uuid": "C3", "name": "Pets", "group": false, "default": false, "indentation": 1, "currency": "EUR", "rules": ""],
+			["uuid": "C9", "name": "Sonstiges", "group": false, "default": true, "indentation": 0, "currency": "EUR", "rules": ""],
 		]
 	}
 
@@ -71,7 +73,9 @@ struct MoneyMoneyMigrationTests {
 		#expect(giro.position < savings.position)
 		#expect(giro.kind == .giro && savings.kind == .savings)
 		#expect(giro.bankBalanceMinor == 123_456)
-		#expect(giro.iban == "DE02120300000000202051")
+		#expect(giro.iban == "DE02120300000000202051" && giro.bic == "BYLADEM1001")
+		#expect(giro.accountNumber == "DE02120300000000202051")
+		#expect(p.accounts.first { $0.name == "Savings" }?.iban == nil)
 		#expect(p.portfolioAccounts == ["Depot"])
 	}
 
@@ -124,5 +128,35 @@ struct MoneyMoneyMigrationTests {
 		let p = try plan(into: Ledger(accounts: [existing]))
 		#expect(!p.accounts.contains { $0.name == "Giro" })
 		#expect(p.transactions.filter { $0.accountID == existing.id }.count == 3)
+	}
+
+	@Test("Rules come over with the categories, and the report mentions rules only when the export has none")
+	func rules() throws {
+		let p = try plan()
+		#expect(p.categories.first { $0.name == "Food" }?.rule == "REWE OR \"Bäckerei*\"")
+		#expect(!p.notes.contains { $0.contains("rules") })
+		var noRules = categories
+		for i in noRules.indices { noRules[i]["rules"] = "" }
+		let q = try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(accounts), categories: try plist(noRules), transactions: try plist(transactions), into: Ledger())
+		#expect(q.notes.contains { $0.contains("no categorization rules") })
+	}
+
+	@Test("The report names a group whose balance in MoneyMoney leaves out an account")
+	func groupSum() throws {
+		#expect(try plan().notes.allSatisfy { !$0.contains("group") })
+		var changed = accounts
+		changed[0]["balance"] = [[1234.56, "EUR"]]
+		let q = try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(changed), categories: try plist(categories), transactions: try plist(transactions), into: Ledger())
+		#expect(q.notes.contains { $0.contains("\"Private\"") })
+	}
+
+	@Test("IBAN and BIC are recognized")
+	func ibanAndBIC() {
+		#expect(MoneyMoneyMigration.isIBAN("DE02120300000000202051"))
+		#expect(MoneyMoneyMigration.isIBAN("DE02 1203 0000 0000 2020 51"))
+		#expect(!MoneyMoneyMigration.isIBAN("DE03120300000000202051"))
+		#expect(!MoneyMoneyMigration.isIBAN("202051"))
+		#expect(MoneyMoneyMigration.isBIC("BYLADEM1001") && MoneyMoneyMigration.isBIC("BYLADEM1"))
+		#expect(!MoneyMoneyMigration.isBIC("12030000"))
 	}
 }

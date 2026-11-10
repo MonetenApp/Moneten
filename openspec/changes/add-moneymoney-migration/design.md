@@ -9,7 +9,10 @@ The app keeps all accounts, categories, and transactions of the open database in
 ## Decisions
 
 - `Import/MoneyMoneyMigration.swift` runs `export accounts`, `export categories`, and `export transactions ... as "plist"` through `/usr/bin/osascript`. macOS asks the user once whether MonetenMoneten may control MoneyMoney.
-- The exports are flat lists. `indentation` gives the nesting and `group` marks a group. The field names follow the open source library [rust-moneymoney](https://github.com/gronke/rust-moneymoney), which parses the same exports.
+- The exports are flat lists. `indentation` gives the nesting and `group` marks a group. The structure was checked on 2026-11-10 against a real export with 58 accounts and groups, 23 categories, and 30,539 transactions. Only key names, types, and counts were looked at.
+- An account has no `iban` or `bic` key. `accountNumber` holds the IBAN and `bankCode` the BIC, so the migration takes a valid IBAN from `accountNumber` and a BIC from `bankCode`.
+- `export categories` contains the rule of each category in `rules`. The migration takes it over unchanged. All 12 rules of the real export parse, and replayed over all transactions they pick the category that MoneyMoney shows wherever MoneyMoney applied rules.
+- A group carries a balance. MoneyMoney can leave an account out of that sum, and the export does not say which or why. MonetenMoneten adds all open accounts and names each group with a different sum in the report.
 - Booking dates arrive as local midnight and become days in the current calendar.
 - The initial balance of each account is the bank balance minus all booked transactions, so the computed balance ends at the bank balance.
 - Each transaction keeps `moneymoney:<id>` as its source identifier. A second run skips known identifiers. An account matches by source identifier, IBAN, or bank code and account number.
@@ -18,5 +21,5 @@ The app keeps all accounts, categories, and transactions of the open database in
 
 ## Risks / Trade-offs
 
-- The structure of the exports was not checked against MoneyMoney 2.5.3, because MoneyMoney was locked during the build. The tests use synthetic exports with the documented structure.
-- MoneyMoney exports no rules. The report says so.
+- The tests use synthetic exports with the structure of the real export. No real names or amounts are in the repository.
+- A transaction can have another currency than its account, for example USD on a EUR account. Sums over such transactions add their amounts without conversion. Foreign currencies get their own change.

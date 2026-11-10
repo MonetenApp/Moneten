@@ -354,7 +354,7 @@ final class AppModel {
 	}
 
 	func addOfflineAccount(name: String, kind: AccountKind, currency: String, groupID: UUID?) {
-		let position = (ledger.accounts(inGroup: groupID).map(\.position).max() ?? -1) + 1
+		let position = ledger.nextTreePosition(in: groupID)
 		let a = Account(groupID: groupID, position: position, name: name, kind: kind, source: .offline, currency: currency)
 		save(account: a)
 		selection = .account(a.id)
@@ -362,7 +362,7 @@ final class AppModel {
 
 	func addGroup(name: String) {
 		guard let store else { return }
-		let g = AccountGroup(name: name, position: (ledger.childGroups(of: nil).map(\.position).max() ?? -1) + 1)
+		let g = AccountGroup(name: name, position: ledger.nextTreePosition(in: nil))
 		do {
 			try store.save(g)
 			ledger.upsert(g)
@@ -381,7 +381,7 @@ final class AppModel {
 	func move(account id: UUID, toGroup groupID: UUID?) {
 		guard var a = ledger.account(id), a.groupID != groupID else { return }
 		a.groupID = groupID
-		a.position = (ledger.accounts(inGroup: groupID).map(\.position).max() ?? -1) + 1
+		a.position = ledger.nextTreePosition(in: groupID)
 		save(account: a)
 	}
 

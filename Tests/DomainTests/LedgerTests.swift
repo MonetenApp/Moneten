@@ -23,6 +23,19 @@ struct LedgerTests {
 		return ledger().transactions(in: .account(giro.id), filter: f).map(\.name)
 	}
 
+	@Test("Accounts and subgroups of a group share one order")
+	func accountTree() {
+		let top = AccountGroup(name: "Private", position: 0)
+		let sub = AccountGroup(name: "Old banks", parentID: top.id, position: 2)
+		let first = Account(groupID: top.id, position: 0, name: "Giro", kind: .giro, source: .offline)
+		let second = Account(groupID: top.id, position: 1, name: "Savings", kind: .savings, source: .offline)
+		let last = Account(groupID: top.id, position: 3, name: "Card", kind: .creditCard, source: .offline)
+		let l = Ledger(groups: [sub, top], accounts: [last, second, first])
+		#expect(l.accountTree(in: top.id).map(\.id) == [first.id, second.id, sub.id, last.id])
+		#expect(l.nextTreePosition(in: top.id) == 4)
+		#expect(l.nextTreePosition(in: sub.id) == 0)
+	}
+
 	@Test("Newest first")
 	func order() {
 		#expect(ledger().transactions.map(\.name) == ["Kiosk", "Stadtwerke Musterstadt", "Bäckerei Gutbrot", "Beispiel GmbH"])

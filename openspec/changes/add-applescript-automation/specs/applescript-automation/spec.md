@@ -23,7 +23,7 @@ The app SHALL publish a scripting dictionary with the commands `export accounts`
 
 ### Requirement: Export accounts
 
-The app SHALL return an XML property list of all accounts and account groups for `export accounts`, in sidebar order. Each entry has the keys `uuid`, `name`, `group`, `indentation`, `accountNumber`, `bankCode`, `iban`, `bic`, `owner`, `currency`, `type`, `portfolio`, `balance` with one amount for each currency, `refreshTimestamp`, and `attributes`.
+The app SHALL return an XML property list of all accounts and account groups for `export accounts`, in sidebar order. Each entry has the keys `uuid`, `name`, `group`, `indentation`, `accountNumber`, `bankCode`, `owner`, `currency`, `type`, `portfolio`, `balance` with one amount for each currency, `refreshTimestamp`, `attributes`, and `icon`. `accountNumber` holds the IBAN when the account has one, and `bankCode` holds the BIC. A group has the sum of its accounts in `balance`.
 
 #### Scenario: One group with one account
 
@@ -91,7 +91,7 @@ The app SHALL return an XML property list as the result of `export transactions`
 
 ### Requirement: Keys of an exported transaction
 
-The app SHALL give each transaction in the property list the keys `id`, `accountUuid`, `booked`, `bookingDate`, `valueDate`, `name`, `accountNumber`, `bankCode`, `amount`, `currency`, `purpose`, `bookingText`, `endToEndReference`, `mandateReference`, `creditorId`, `returnReason`, `checkmark`, `category`, `categoryUuid`, and `comment`. A key without a value is left out.
+The app SHALL give each transaction in the property list the keys `id`, `accountUuid`, `booked`, `bookingDate`, `valueDate`, `name`, `accountNumber`, `bankCode`, `amount`, `currency`, `purpose`, `bookingText`, `endToEndReference`, `mandateReference`, `creditorId`, `returnReason`, `checkmark`, `category`, `categoryId`, `categoryUuid`, and `comment`. A key without a value is left out.
 
 #### Scenario: Booked transaction
 

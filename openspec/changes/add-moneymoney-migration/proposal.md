@@ -46,7 +46,7 @@ None.
 
 - The whole capability is specific to MonetenMoneten. Its scope comes from issue #24.
 - The keys of the property lists are not documented on the website. Before the design starts, record a real export from a test database and fix the field mapping against it.
-- Issue #24 expects that rules cannot be migrated. The plan for this change expects that they can. The spec migrates a rule when the category export contains it and lists it in the report when it does not. The recorded export settles which case applies.
+- Issue #24 expects that rules cannot be migrated. The plan for this change expects that they can. The spec migrates a rule when the category export contains it and lists it in the report when it does not. A real export, checked on 2026-11-10, contains the rules.
 - Migrated accounts start as accounts without a bank access, because login data cannot be read. The add account assistant attaches a bank access to a migrated account when the IBAN or account number fits.
 - Portfolio accounts are migrated as accounts. Their positions follow when securities accounts are available in v0.2.
 - A split transaction arrives as MoneyMoney exports it. If the export lists the parts as separate transactions, the app keeps them as separate transactions and says so in the report.

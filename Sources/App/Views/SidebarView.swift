@@ -59,17 +59,21 @@ struct AccountTree: View {
 	let parent: UUID?
 
 	var body: some View {
-		ForEach(model.ledger.childGroups(of: parent)) { group in
-			DisclosureGroup(isExpanded: Binding(get: { group.isExpanded }, set: { var g = group; g.isExpanded = $0; model.save(group: g) })) {
-				AccountTree(parent: group.id)
-			} label: {
-				GroupRow(group: group)
+		ForEach(model.ledger.accountTree(in: parent)) { item in
+			switch item {
+			case let .group(group):
+				DisclosureGroup(isExpanded: Binding(get: { group.isExpanded }, set: { var g = group; g.isExpanded = $0; model.save(group: g) })) {
+					AccountTree(parent: group.id)
+				} label: {
+					GroupRow(group: group)
+				}
+				.tag(SidebarSelection.group(group.id))
+			case let .account(account):
+				if !account.isClosed || model.selection == .account(account.id) {
+					AccountRow(account: account)
+						.tag(SidebarSelection.account(account.id))
+				}
 			}
-			.tag(SidebarSelection.group(group.id))
-		}
-		ForEach(model.ledger.accounts(inGroup: parent).filter { !$0.isClosed || model.selection == .account($0.id) }) { account in
-			AccountRow(account: account)
-				.tag(SidebarSelection.account(account.id))
 		}
 	}
 }

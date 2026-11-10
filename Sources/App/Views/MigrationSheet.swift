@@ -65,7 +65,7 @@ struct MigrationSheet: View {
 			} else {
 				Text("This will be imported:")
 				Text("• \(plan.groups.count) account groups and \(plan.accounts.count) accounts")
-				Text("• \(plan.categories.count) categories")
+				Text("• \(plan.categories.count) categories with \(plan.categories.filter { !$0.rule.isEmpty }.count) rules")
 				Text("• \(plan.transactions.count.formatted()) transactions")
 			}
 			if plan.skippedTransactions > 0 || plan.skippedAccounts > 0 {
