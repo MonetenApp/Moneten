@@ -101,23 +101,34 @@ public class FinTSProbeJava {
 			return withoutPin(text)
 				.replaceAll("\\b[A-Z]{2}\\d{2}[A-Z0-9]{10,30}\\b", "IBAN…")
 				.replaceAll("\\d+(?:[.,]\\d+)*\\s?(?:EUR|€|USD|CHF)", "…")
-				.replaceAll("\\b\\d{1,3}(?:\\.\\d{3})*,\\d{2}\\b", "…")
+				.replaceAll("\\b\\d+(?:\\.\\d{3})*,\\d{1,2}\\b", "…")
 				.replaceAll("\\d{6,}", "…");
 		}
 
 		/// A text that may hold return codes of the bank: codes keep a fixed description, and the
 		/// rest is masked.
+		static final java.util.regex.Pattern ORDER_REFERENCE = java.util.regex.Pattern.compile("CustomMsg\\.[A-Za-z0-9_.]+");
+
+		/// A text that may hold return codes of the bank. If it holds one, only the text before the
+		/// first code, the codes with their fixed descriptions, and the references to the order
+		/// segments remain. Everything else in the text can come from the bank and is left out.
 		static String bank(String text) {
 			if (hasSegments(text)) return "(message content left out)";
 			if (showValues) return withoutPin(text);
-			java.util.regex.Matcher m = RETURN_CODE.matcher(withoutPin(text));
-			StringBuilder out = new StringBuilder();
-			while (m.find()) {
-				String code = m.group(1);
-				m.appendReplacement(out, java.util.regex.Matcher.quoteReplacement(code + " " + KNOWN.getOrDefault(code, "(text of the bank left out)")));
-			}
-			m.appendTail(out);
-			return masked(out.toString());
+			String clean = withoutPin(text);
+			java.util.regex.Matcher m = RETURN_CODE.matcher(clean);
+			if (!m.find()) return masked(clean);
+			String prefix = clean.substring(0, m.start());
+			List<String> parts = new ArrayList<>();
+			do parts.add(code(m.group(1))); while (m.find());
+			java.util.regex.Matcher r = ORDER_REFERENCE.matcher(clean);
+			while (r.find()) parts.add("(" + r.group() + ")");
+			return masked(prefix) + String.join("; ", new java.util.LinkedHashSet<>(parts));
+		}
+
+		/// A return code with the fixed description of the probe.
+		static String code(String code) {
+			return code + " " + KNOWN.getOrDefault(code, "(text of the bank left out)");
 		}
 
 		/// A text of the bank in a callback: shown only with --show-values.
@@ -161,7 +172,8 @@ public class FinTSProbeJava {
 		/// hbci4java takes the host with the path and the query, and the port on its own.
 		String hostAndPath() {
 			java.net.URI uri = java.net.URI.create(url);
-			return uri.getHost() + (uri.getRawPath() == null ? "" : uri.getRawPath()) + (uri.getRawQuery() == null ? "" : "?" + uri.getRawQuery());
+			String path = uri.getRawPath() == null || uri.getRawPath().isEmpty() ? "/" : uri.getRawPath();
+			return uri.getHost() + path + (uri.getRawQuery() == null ? "" : "?" + uri.getRawQuery());
 		}
 
 		int port() {
@@ -259,7 +271,7 @@ public class FinTSProbeJava {
 				int colon = token.indexOf(':');
 				String id = colon < 0 ? token : token.substring(0, colon);
 				ids.add(id);
-				System.out.println("  " + id + "  " + (colon < 0 ? "" : token.substring(colon + 1)));
+				System.out.println("  " + Out.masked(id) + "  " + (colon < 0 ? "" : Out.masked(token.substring(colon + 1))));
 			}
 			if (options.tanMethod != null) return options.tanMethod;
 			if (ids.size() == 1) return ids.get(0);
@@ -307,8 +319,8 @@ public class FinTSProbeJava {
 			.filter(Objects::nonNull).collect(Collectors.toCollection(TreeSet::new)));
 		if (!showValues) return;
 		for (UmsLine l : lines.subList(0, Math.min(5, lines.size()))) {
-			System.out.println("      " + day(l.bdate) + "  " + l.value + "  " + (l.other == null ? "" : l.other.name)
-				+ "  " + (l.usage == null ? "" : String.join(" ", l.usage)));
+			System.out.println(Out.masked("      " + day(l.bdate) + "  " + l.value + "  " + (l.other == null ? "" : l.other.name)
+				+ "  " + (l.usage == null ? "" : String.join(" ", l.usage))));
 		}
 	}
 
@@ -334,8 +346,8 @@ public class FinTSProbeJava {
 
 	static void printProblem(HBCIJobResult result) {
 		List<String> messages = new ArrayList<>();
-		for (HBCIRetVal r : result.getJobStatus().getRetVals()) messages.add(Out.bank(r.code + ":" + r.text));
-		for (HBCIRetVal r : result.getGlobStatus().getRetVals()) messages.add(Out.bank(r.code + ":" + r.text));
+		for (HBCIRetVal r : result.getJobStatus().getRetVals()) messages.add(Out.showValues ? Out.withoutPin(r.code + " " + r.text) : Out.code(r.code));
+		for (HBCIRetVal r : result.getGlobStatus().getRetVals()) messages.add(Out.showValues ? Out.withoutPin(r.code + " " + r.text) : Out.code(r.code));
 		System.out.println("      bank: " + (messages.isEmpty() ? "no message" : String.join("; ", messages)));
 	}
 
@@ -468,7 +480,7 @@ public class FinTSProbeJava {
 							+ positions.stream().filter(p -> p.depotwert != null).count());
 						if (options.showValues) {
 							for (GVRWPDepotList.Entry.Gattung p : positions) {
-								System.out.println("      " + p.isin + "  " + p.name + "  " + p.saldo + "  " + p.depotwert);
+								System.out.println(Out.masked("      " + p.isin + "  " + p.name + "  " + p.saldo + "  " + p.depotwert));
 							}
 						}
 					} else {
@@ -511,7 +523,7 @@ public class FinTSProbeJava {
 		try {
 			run(new Options(args));
 		} catch (IllegalArgumentException e) {
-			System.out.println("FinTSProbeJava: " + e.getMessage() + "\nSee the comment at the top of Tools/FinTSProbeJava/FinTSProbeJava.java.");
+			System.out.println("FinTSProbeJava: " + Out.bank(e.getMessage()) + "\nSee the comment at the top of Tools/FinTSProbeJava/FinTSProbeJava.java.");
 			System.exit(2);
 		} catch (Exception e) {
 			Throwable root = e;
