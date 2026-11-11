@@ -73,8 +73,9 @@ struct BalanceChart: View {
 			ScrollingBarChart(bars: bars, style: .separators, barWidth: 4, gap: 2, positive: Palette.bandBar, negative: Palette.red) { bar in
 				model.select(bar: PeriodChoice(bar: BalanceBar(start: bar.start, end: bar.end, minorUnits: bar.money.minorUnits), monthly: monthly))
 			}
-			// A new view starts again at its newest bar.
-			.id([AnyHashable(ids), AnyHashable(monthly), AnyHashable(currency)])
+			// A new view or period starts again at its newest bar. A click on a bar changes only the
+			// period of the list, not `chartRange`, so the other bars stay where they are.
+			.id([AnyHashable(ids), AnyHashable(monthly), AnyHashable(currency), AnyHashable(model.chartRange)])
 		}
 	}
 
@@ -131,7 +132,7 @@ struct CategoryBars: View {
 				style: .centered, barWidth: 40, gap: 8, positive: color, negative: color.mix(with: .black, by: 0.3)) { bar in
 				model.select(bar: PeriodChoice(start: bar.start, chartPeriod: model.chartPeriod))
 			}
-			.id([AnyHashable(model.selection), AnyHashable(model.chartPeriod), AnyHashable(currency)])
+			.id([AnyHashable(model.selection), AnyHashable(model.chartPeriod), AnyHashable(currency), AnyHashable(model.chartRange)])
 		}
 	}
 
