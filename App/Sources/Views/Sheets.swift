@@ -229,7 +229,9 @@ struct AccountSettingsSheet: View {
 					dismiss()
 				}
 			} message: {
-				Text("All transactions of this account will be removed as well. You could alternatively mark the account as closed in the account settings.")
+				Text(original.kind == .portfolio
+					? "All transactions and the recorded value history of this portfolio will be removed as well. You could alternatively mark the account as closed in the account settings."
+					: "All transactions of this account will be removed as well. You could alternatively mark the account as closed in the account settings.")
 			}
 		}
 	}
