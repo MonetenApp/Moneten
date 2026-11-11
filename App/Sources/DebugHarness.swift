@@ -77,6 +77,15 @@ final class DebugHarness {
 				model.save(group: g)
 			}
 		case "usd": DemoData.usdAccount(model)
+		case "symbol":
+			// "<category>=<symbol>" sets the icon of a category, "<category>=" removes it.
+			let parts = argument.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false).map(String.init)
+			if parts.count == 2, var c = model.ledger.categories.first(where: { $0.name == parts[0] }) {
+				c.symbol = parts[1].isEmpty ? nil : parts[1]
+				model.save(category: c)
+			}
+		case "symbolsnapshot":
+			offscreenSnapshot(SymbolGrid(selection: "cart.fill", color: .green, isGroup: false) { _ in }, width: 360, name: "\(argument)-symbols")
 		case "piesnapshot":
 			// The withdrawals ring with the pointer in the middle of its first slice.
 			let rows = model.visibleTransactions

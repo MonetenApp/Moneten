@@ -124,6 +124,8 @@ public struct Category: Identifiable, Hashable, Sendable, Codable {
 	public var isDefault: Bool
 	/// A color as "#RRGGBB".
 	public var color: String?
+	/// The name of an SF Symbol, such as "cart.fill". Nil shows a dot, or a folder for a group.
+	public var symbol: String?
 	public var currency: String
 	public var showInDiagrams: Bool
 	public var sidebarAmount: SidebarAmount
@@ -134,7 +136,7 @@ public struct Category: Identifiable, Hashable, Sendable, Codable {
 	public var isExpanded: Bool
 	public var sourceID: String?
 
-	public init(id: UUID = UUID(), parentID: UUID? = nil, position: Int, name: String, isGroup: Bool = false, isDefault: Bool = false, color: String? = nil, currency: String = "EUR",
+	public init(id: UUID = UUID(), parentID: UUID? = nil, position: Int, name: String, isGroup: Bool = false, isDefault: Bool = false, color: String? = nil, symbol: String? = nil, currency: String = "EUR",
 		showInDiagrams: Bool = true, sidebarAmount: SidebarAmount = .totalSum, restrictedToID: UUID? = nil, rule: String = "", isExpanded: Bool = true, sourceID: String? = nil) {
 		self.id = id
 		self.parentID = parentID
@@ -143,6 +145,7 @@ public struct Category: Identifiable, Hashable, Sendable, Codable {
 		self.isGroup = isGroup
 		self.isDefault = isDefault
 		self.color = color
+		self.symbol = symbol
 		self.currency = currency
 		self.showInDiagrams = showInDiagrams
 		self.sidebarAmount = sidebarAmount

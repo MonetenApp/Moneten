@@ -147,4 +147,25 @@ struct SchemaTests {
 		#expect(groups.first?.groupsByAccount == false)
 		#expect(try queue.read { db in try db.tableExists("setting") } == false)
 	}
+
+	@Test("v3 keeps the categories of a v2 database without a symbol and stores a chosen one")
+	func categorySymbols() throws {
+		let queue = try DatabaseQueue()
+		try Schema.migrator.migrate(queue, upTo: "v2")
+		let id = UUID()
+		try queue.write { db in
+			try db.execute(sql: """
+				INSERT INTO category (id, position, name, isGroup, isDefault, color, currency, showInDiagrams, sidebarAmount, rule, isExpanded)
+				VALUES (?, 0, 'Groceries', 0, 0, '#34C759', 'EUR', 1, 'totalSum', '', 1)
+				""", arguments: [id])
+		}
+		try Schema.migrator.migrate(queue)
+		var category = try #require(try queue.read { db in try Domain.Category.fetchOne(db, key: id) })
+		#expect(category.name == "Groceries")
+		#expect(category.color == "#34C759")
+		#expect(category.symbol == nil)
+		category.symbol = "cart.fill"
+		try queue.write { db in try category.save(db) }
+		#expect(try queue.read { db in try Domain.Category.fetchOne(db, key: id) }?.symbol == "cart.fill")
+	}
 }

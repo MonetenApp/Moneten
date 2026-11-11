@@ -119,6 +119,41 @@ enum CategoryColors {
 	}
 }
 
+/// The icon of a category: an SF Symbol the user chose, else a dot, or a folder for a group.
+/// MoneyMoney draws its own pictures; this app offers SF Symbols, which fit macOS and ship with it.
+enum CategorySymbols {
+	/// The symbols of the picker, sorted by topic. Each exists since macOS 13 or earlier.
+	static let choices: [String] = [
+		// Home and living
+		"house.fill", "building.2.fill", "bolt.fill", "drop.fill", "flame.fill", "wifi", "phone.fill", "tv.fill", "sofa.fill", "wrench.and.screwdriver.fill",
+		// Food
+		"cart.fill", "basket.fill", "fork.knife", "cup.and.saucer.fill", "wineglass.fill", "birthday.cake.fill",
+		// Mobility and travel
+		"car.fill", "fuelpump.fill", "parkingsign.circle.fill", "bus.fill", "tram.fill", "bicycle", "airplane", "suitcase.fill", "beach.umbrella.fill",
+		// Shopping
+		"bag.fill", "tshirt.fill", "gift.fill", "shippingbox.fill", "desktopcomputer", "scissors", "hammer.fill",
+		// Health and sport
+		"cross.case.fill", "pills.fill", "stethoscope", "heart.fill", "figure.run", "dumbbell.fill",
+		// Leisure
+		"gamecontroller.fill", "film.fill", "music.note", "book.fill", "theatermasks.fill", "pawprint.fill", "leaf.fill", "star.fill",
+		// Family and work
+		"person.fill", "person.2.fill", "figure.2.and.child.holdinghands", "graduationcap.fill", "briefcase.fill",
+		// Money
+		"banknote.fill", "eurosign.circle.fill", "dollarsign.circle.fill", "creditcard.fill", "wallet.pass.fill", "building.columns.fill",
+		"chart.line.uptrend.xyaxis", "chart.pie.fill", "percent", "arrow.left.arrow.right", "umbrella.fill", "shield.lefthalf.filled",
+		"doc.text.fill", "receipt", "tag.fill",
+	]
+
+	/// `filledGroup` is the folder of a group in the title bar, which MoneyMoney draws filled.
+	static func name(of category: Domain.Category, filledGroup: Bool = false) -> String {
+		if let symbol = category.symbol, !symbol.isEmpty { return symbol }
+		return category.isGroup ? (filledGroup ? "folder.fill" : "folder") : "circle.fill"
+	}
+
+	/// The dot is drawn smaller than a symbol, as before there were symbols.
+	static func isDot(_ category: Domain.Category) -> Bool { name(of: category) == "circle.fill" }
+}
+
 extension AccountKind {
 	var symbol: String {
 		switch self {

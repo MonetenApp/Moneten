@@ -104,6 +104,12 @@ enum Schema {
 			}
 			try db.drop(table: "setting")
 		}
+		// A category can show an SF Symbol in place of its dot.
+		m.registerMigration("v3") { db in
+			try db.alter(table: "category") { t in
+				t.add(column: "symbol", .text)
+			}
+		}
 		return m
 	}
 }

@@ -25,6 +25,7 @@ struct CategorySettingsSheet: View {
 					TextField("Name", text: binding.name)
 					if !c.isDefault {
 						LabeledContent("Color") { ColorSwatches(selection: $color) }
+						LabeledContent("Icon") { SymbolPicker(selection: binding.symbol, color: color, isGroup: c.isGroup) }
 					}
 					Toggle("Show in diagrams", isOn: binding.showInDiagrams)
 						.help("Turn this off for transfers between your own accounts.")
@@ -178,6 +179,95 @@ struct ColorSwatches: View {
 			OtherColorButton(selection: $selection)
 				.help("Other color")
 		}
+	}
+}
+
+/// The icon of a category: a button with the current icon that opens a grid of SF Symbols. The
+/// first choice is the dot, or the folder of a group, which a category shows without a symbol.
+struct SymbolPicker: View {
+	@Binding var selection: String?
+	let color: Color
+	let isGroup: Bool
+	@State private var isOpen = false
+
+	private var plain: String { isGroup ? "folder" : "circle.fill" }
+
+	var body: some View {
+		Button { isOpen = true } label: {
+			HStack(spacing: 6) {
+				Image(systemName: selection ?? plain)
+					.font(selection == nil && !isGroup ? .caption : .body)
+					.foregroundStyle(color)
+					.frame(width: 18, height: 16)
+				// The same mark as the pop-up menus of the other rows.
+				Image(systemName: "chevron.up.chevron.down")
+					.font(.system(size: 9, weight: .bold))
+					.foregroundStyle(.secondary)
+					.frame(width: 20, height: 20)
+					.background(.quaternary, in: Circle())
+			}
+			.contentShape(Rectangle())
+		}
+		.buttonStyle(.plain)
+		.accessibilityLabel("Icon")
+		.accessibilityValue(selection ?? (isGroup ? "Folder" : "Dot"))
+		.popover(isPresented: $isOpen, arrowEdge: .bottom) {
+			SymbolGrid(selection: selection, color: color, isGroup: isGroup) {
+				selection = $0
+				isOpen = false
+			}
+		}
+	}
+}
+
+/// The choices of `SymbolPicker`: the dot or folder first, then the symbols by topic.
+struct SymbolGrid: View {
+	let selection: String?
+	let color: Color
+	let isGroup: Bool
+	let pick: (String?) -> Void
+
+	var body: some View {
+		LazyVGrid(columns: Array(repeating: GridItem(.fixed(30), spacing: 4), count: 10), spacing: 4) {
+			cell(nil)
+			ForEach(CategorySymbols.choices, id: \.self) { cell($0) }
+		}
+		.padding(10)
+	}
+
+	private func cell(_ symbol: String?) -> some View {
+		SymbolCell(symbol: symbol ?? (isGroup ? "folder" : "circle.fill"), isDot: symbol == nil && !isGroup, color: color, selected: symbol == selection,
+			name: symbol.map { $0.replacingOccurrences(of: ".fill", with: "").replacingOccurrences(of: ".", with: " ") } ?? (isGroup ? "Folder" : "Dot")) {
+			pick(symbol)
+		}
+	}
+}
+
+/// One choice of `SymbolPicker`: the symbol in the color of the category, white on that color when
+/// it is the current one, and on a light background under the pointer.
+private struct SymbolCell: View {
+	let symbol: String
+	let isDot: Bool
+	let color: Color
+	let selected: Bool
+	let name: String
+	let action: () -> Void
+	@State private var hovered = false
+
+	var body: some View {
+		Button(action: action) {
+			Image(systemName: symbol)
+				.font(isDot ? .caption : .system(size: 15))
+				.foregroundStyle(selected ? Color.white : color)
+				.frame(width: 30, height: 30)
+				.background(RoundedRectangle(cornerRadius: 6).fill(selected ? AnyShapeStyle(color) : AnyShapeStyle(.primary.opacity(hovered ? 0.08 : 0))))
+				.contentShape(RoundedRectangle(cornerRadius: 6))
+		}
+		.buttonStyle(.plain)
+		.onHover { hovered = $0 }
+		.help(name)
+		.accessibilityLabel(name)
+		.accessibilityAddTraits(selected ? .isSelected : [])
 	}
 }
 

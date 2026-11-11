@@ -77,7 +77,7 @@ The app SHALL keep one default category named "Uncategorized" as the last entry 
 
 ### Requirement: Category settings
 
-The app SHALL open the settings of the selected category with "Category Settings..." or ⌘I. The settings hold "Name", "Currency", a color, "Show in diagrams", "Display in sidebar", and "Restrict to". A change takes effect when the user closes the settings.
+The app SHALL open the settings of the selected category with "Category Settings..." or ⌘I. The settings hold "Name", "Currency", a color, an icon, "Show in diagrams", "Display in sidebar", and "Restrict to". A change takes effect when the user closes the settings.
 
 #### Scenario: Open with the keyboard
 
@@ -98,6 +98,21 @@ The app SHALL let the user choose a color for each category in its settings. The
 
 - **WHEN** the user sets the color of "Groceries" to green
 - **THEN** the slice of "Groceries" in the pie chart is green
+
+### Requirement: Category icon
+
+The app SHALL let the user choose an icon for each category in its settings, from a set of SF Symbols, or no icon. The sidebar, the title of the category view, and the category menu of the ribbon show the icon in the color of the category. A category without an icon shows a dot, and a category group a folder. MoneyMoney offers its own pictures; this app uses SF Symbols, which ship with macOS. The MoneyMoney migration takes only the color of a MoneyMoney icon, not the picture.
+
+#### Scenario: Choose an icon
+
+- **WHEN** the user chooses the shopping cart as the icon of "Groceries" and closes the settings
+- **THEN** the sidebar shows a shopping cart in the color of "Groceries" in place of its dot
+
+#### Scenario: Remove the icon
+
+- **GIVEN** "Groceries" shows a shopping cart
+- **WHEN** the user chooses the dot as its icon and closes the settings
+- **THEN** the sidebar shows a dot for "Groceries"
 
 ### Requirement: Category currency
 

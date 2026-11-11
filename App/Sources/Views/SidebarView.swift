@@ -201,9 +201,9 @@ struct CategoryRow: View {
 			Label {
 				Text(category.name)
 			} icon: {
-				Image(systemName: category.isGroup ? "folder" : "circle.fill")
+				Image(systemName: CategorySymbols.name(of: category))
 					.foregroundStyle(CategoryColors.color(of: category, in: model.ledger))
-					.font(category.isGroup ? .body : .caption)
+					.font(CategorySymbols.isDot(category) ? .caption : .body)
 			}
 			Spacer()
 			if let amount = model.sidebarAmount(of: category) {

@@ -91,7 +91,7 @@ struct HeaderIcon: View {
 				Image(systemName: "folder")
 			case let .category(id):
 				if let c = model.ledger.category(id) {
-					Image(systemName: c.isGroup ? "folder.fill" : "circle.fill")
+					Image(systemName: CategorySymbols.name(of: c, filledGroup: true))
 						.foregroundStyle(CategoryColors.color(of: c, in: model.ledger))
 				}
 			case nil:
@@ -726,11 +726,20 @@ struct CategoryChoices: View {
 			let item = ActionMenuItem(title: ledger.categoryPath(c.id)) { model.assign(category: c.id, to: ids) }
 			item.state = transactions.allSatisfy { ledger.effectiveCategoryID(of: $0) == c.id } ? .on : .off
 			item.isEnabled = !c.isGroup && !isRestricted(c, transactions, in: ledger)
+			item.image = image(of: c, in: ledger)
 			menu.addItem(item)
 		}
 		menu.addItem(.separator())
 		menu.addItem(ActionMenuItem(title: "Add category") { model.sheet = .newCategory(isGroup: false, assigning: ids) })
 		menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
+	}
+
+	/// The icon of a category in its color, as the sidebar shows it.
+	private static func image(of c: Domain.Category, in ledger: Ledger) -> NSImage? {
+		let size: CGFloat = CategorySymbols.isDot(c) ? 8 : 12
+		let configuration = NSImage.SymbolConfiguration(pointSize: size, weight: .regular)
+			.applying(.init(paletteColors: [NSColor(CategoryColors.color(of: c, in: ledger))]))
+		return NSImage(systemSymbolName: CategorySymbols.name(of: c), accessibilityDescription: nil)?.withSymbolConfiguration(configuration)
 	}
 }
 

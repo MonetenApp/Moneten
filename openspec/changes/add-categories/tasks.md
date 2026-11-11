@@ -24,6 +24,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [x] 1.18 Remove a category. Verified by confirmation, transactions become uncategorized.
 - [x] 1.19 Remove a category group. Verified by subcategories are removed with the group.
 - [ ] 1.20 Starter categories. Built in part: English names only. Finish it and verify it with a test or in the app.
+- [x] 1.21 Category icon. Verified by the debug harness: "symbol" sets SF Symbols on four categories, and the sidebar snapshot and the settings sheet show them in the category color; SchemaTests checks that migration v3 keeps existing categories without an icon and stores a chosen one.
 
 ## 2. Integration
 
