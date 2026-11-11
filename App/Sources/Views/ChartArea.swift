@@ -377,12 +377,23 @@ struct PieChart: View {
 				let hovered = pointer.flatMap(slice(at:))
 				Chart(slices) { s in
 					SectorMark(angle: .value(title, s.value), innerRadius: .ratio(0.5), angularInset: 1)
-						.foregroundStyle(by: .value("Category", s.name))
+						.foregroundStyle(by: .value("Category", s.id.uuidString))
 						.opacity(hovered == nil || hovered == s ? 1 : 0.45)
 				}
-				// The same colors as the category dots in the sidebar.
-				.chartForegroundStyleScale(domain: slices.map(\.name), range: slices.map(\.color))
-				.chartLegend(position: .trailing, alignment: .center)
+				// The same colors as the category dots in the sidebar. The scale is keyed by the category,
+				// not its name: two categories may share a name and still have their own colors. So the
+				// legend names them itself.
+				.chartForegroundStyleScale(domain: slices.map(\.id.uuidString), range: slices.map(\.color))
+				.chartLegend(position: .trailing, alignment: .center) {
+					VStack(alignment: .leading, spacing: 4) {
+						ForEach(slices) { s in
+							HStack(spacing: 4) {
+								Circle().fill(s.color).frame(width: 8, height: 8)
+								Text(s.name).font(.caption).foregroundStyle(Color.secondary).lineLimit(1)
+							}
+						}
+					}
+				}
 				.chartAngleSelection(value: $pointer)
 				.chartBackground { proxy in
 					GeometryReader { geometry in
