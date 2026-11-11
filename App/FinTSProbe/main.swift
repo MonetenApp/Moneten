@@ -194,6 +194,8 @@ func statementsProblem(_ user: HBCIUser, _ account: HBCIAccount, camt: Bool, ord
 /// A text with MT940 fields is a raw statement and is left out.
 func maskedText(_ text: String) -> String {
 	if text.contains(/(?:^|[\s']):(20|25|28C|60F|60M|61|62F|62M|86):/) { return "(statement content left out)" }
+	// The MT94x parser of HBCI4Swift quotes parts of the statement in its errors, also without a tag.
+	if text.contains("MT94xParse") { return "MT94x parse error (statement content left out)" }
 	return text.replacing(/[A-Z]{2}\d{2}(?: ?[A-Z0-9]{4}){3,7}(?: ?[A-Z0-9]{1,3})?/, with: "IBAN…")
 		.replacing(/(?:\d{1,3}(?:\.\d{3})+|\d+),\d{2}/, with: "…")
 		.replacing(/\d{6,}/, with: "…")
