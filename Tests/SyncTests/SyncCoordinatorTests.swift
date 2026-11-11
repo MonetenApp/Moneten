@@ -322,4 +322,16 @@ struct SyncCoordinatorTests {
 		await until { finished(bank) != nil }
 		#expect(finished(bank)?.failures == [Self.giro.accountID: .notFetched])
 	}
+
+	@Test("A canceled access delivers nothing, even when its connector returns")
+	func canceledDeliversNothing() async {
+		var delivered = 0
+		let coordinator = SyncCoordinator { _, _ in delivered += 1 }
+		let bank = Self.access("Musterbank")
+		coordinator.refresh(RefreshRequest(access: bank, accounts: [Self.giro]), with: ScriptedConnector([.fetched(Self.giro.accountID)]), attended: true)
+		coordinator.cancelAll()
+		await until { !coordinator.isRefreshing }
+		#expect(coordinator.states[bank.id] == .cancelled)
+		#expect(delivered == 0)
+	}
 }

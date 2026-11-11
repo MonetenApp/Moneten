@@ -69,6 +69,8 @@ public final class SyncCoordinator {
 			let event: SyncEvent
 			do {
 				let report = try await job.connector.refresh(job.request, session)
+				// A canceled access stores nothing, also when its connector returned all the same.
+				try Task.checkCancellation()
 				deliver(access, report)
 				event = .finish(Self.summary(of: report, for: job.request))
 			} catch {
