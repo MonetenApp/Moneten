@@ -19,7 +19,7 @@ The specs in [openspec/changes](../openspec/changes/) define the behavior. Where
 | Type | Fields |
 |---|---|
 | `AccountGroup` | `id`, `name`, `parentID?`, `position`, `showSum`, `isExpanded` |
-| `Account` | `id`, `groupID?`, `position`, `name`, `kind`, `source`, `currency`, `iban?`, `bic?`, `accountNumber?`, `bankCode?`, `bankName?`, `owner?`, `bankBalanceMinor?`, `bankBalanceDate?`, `initialBalanceMinor`, `isClosed`, `comment?`, `sourceID?` |
+| `Account` | `id`, `groupID?`, `position`, `name`, `kind`, `source`, `currency`, `iban?`, `bic?`, `accountNumber?`, `bankCode?`, `bankName?`, `owner?`, `bankBalanceMinor?`, `bankBalanceDate?`, `initialBalanceMinor`, `isClosed`, `comment?`, `sourceID?`, `color?` |
 | `AccountKind` | `giro`, `savings`, `fixedTermDeposit`, `loan`, `creditCard`, `portfolio`, `cash`, `other` |
 | `AccountSource` | `offline` for an account that the user fills by hand or by import, `migrated` for an account taken over from MoneyMoney |
 
@@ -79,7 +79,7 @@ A file import has no stable identifier per row. `ImportMatching` treats two tran
 | `bankTransaction` | `Transaction` |
 | `portfolioValue` | `PortfolioValue`, with the primary key `accountID` and `day` |
 
-Migration `v1` creates the tables. It also creates the table `setting`, which no code uses, because app settings live in `UserDefaults`. Migration `v2` drops it. Migration `v4` adds `portfolioValue`, whose rows go with their account.
+Migration `v1` creates the tables. It also creates the table `setting`, which no code uses, because app settings live in `UserDefaults`. Migration `v2` drops it. Migration `v4` adds `portfolioValue`, whose rows go with their account. Migration `v5` adds `account.color`, the `#RRGGBB` color of the account's icon.
 
 ## Types that the specs add later
 

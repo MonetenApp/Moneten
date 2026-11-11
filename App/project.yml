@@ -47,6 +47,8 @@ targets:
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: Info.plist
         CODE_SIGN_ENTITLEMENTS: MonetenMoneten.entitlements
+        # A muted slate blue for selections and controls, calmer than the system blue.
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         ENABLE_HARDENED_RUNTIME: $(MONETENMONETEN_HARDENED_RUNTIME)
       configs:
         Perf:

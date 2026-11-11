@@ -137,7 +137,7 @@ struct AccountRow: View {
 			Label {
 				Text(account.name).strikethrough(account.isClosed)
 			} icon: {
-				Image(systemName: account.kind.symbol)
+				AccountIcon(account: account)
 			}
 			if newCount > 0 {
 				Text("\(newCount)")

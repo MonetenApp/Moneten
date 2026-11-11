@@ -22,6 +22,16 @@ The app SHALL show one main window with a sidebar on the left and one content vi
 - **WHEN** the user clicks "Private"
 - **THEN** the content view shows the transactions of both accounts
 
+### Requirement: Look of the sidebar and the selection
+
+The app SHALL draw the sidebar with the system sidebar material of macOS, Liquid Glass from macOS 26 on, not in the opaque gray of MoneyMoney. Selected rows and controls use a muted slate blue instead of the system blue, which MoneyMoney uses. Both are decisions for MonetenMoneten.
+
+#### Scenario: Selected row
+
+- **GIVEN** the system accent color is "Multicolor"
+- **WHEN** the user selects a transaction
+- **THEN** the row is slate blue with white text
+
 ### Requirement: Sidebar rows in a fixed order
 
 The app SHALL show the sidebar rows in this order from top to bottom. "Dashboard". The section "Accounts" with account groups and accounts. The section "Payments" with "Outbox", "Scheduled", and "Templates". The section "Documents" with "Statements". The section "Searches" with the saved searches. The section "Categories" with category groups and categories, ending with "Uncategorized".

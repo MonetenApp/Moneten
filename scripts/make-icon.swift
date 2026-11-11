@@ -1,32 +1,63 @@
 // Draws the app icon and writes App/Resources/AppIcon.icns. Run: swift scripts/make-icon.swift
+// Two Ms for MonetenMoneten on deep blue, the second one higher and brighter, like a rising balance.
 import AppKit
+
+func color(_ hex: UInt32, _ alpha: CGFloat = 1) -> NSColor {
+	NSColor(srgbRed: CGFloat((hex >> 16) & 255) / 255, green: CGFloat((hex >> 8) & 255) / 255, blue: CGFloat(hex & 255) / 255, alpha: alpha)
+}
+
+/// An M as one line in `r`: up the left leg, down to the middle, up, and down the right leg.
+func m(in r: NSRect) -> CGPath {
+	let p = CGMutablePath()
+	p.addLines(between: [CGPoint(x: r.minX, y: r.minY), CGPoint(x: r.minX, y: r.maxY), CGPoint(x: r.midX, y: r.maxY - r.height * 0.55),
+		CGPoint(x: r.maxX, y: r.maxY), CGPoint(x: r.maxX, y: r.minY)])
+	return p
+}
+
+/// Fills the stroke of `path` with a vertical gradient, over a soft shadow.
+func stroke(_ path: CGPath, width: CGFloat, bottom: NSColor, top: NSColor, in context: CGContext) {
+	let outline = path.copy(strokingWithWidth: width, lineCap: .round, lineJoin: .round, miterLimit: 10)
+	context.saveGState()
+	context.setShadow(offset: CGSize(width: 0, height: -width * 0.25), blur: width * 0.6, color: color(0x020A24, 0.45).cgColor)
+	context.addPath(outline)
+	context.setFillColor(bottom.cgColor)
+	context.fillPath()
+	context.restoreGState()
+	context.saveGState()
+	context.addPath(outline)
+	context.clip()
+	let box = outline.boundingBox
+	let gradient = CGGradient(colorsSpace: CGColorSpace(name: CGColorSpace.sRGB), colors: [bottom.cgColor, top.cgColor] as CFArray, locations: [0, 1])!
+	context.drawLinearGradient(gradient, start: CGPoint(x: box.midX, y: box.minY), end: CGPoint(x: box.midX, y: box.maxY), options: [])
+	context.restoreGState()
+}
 
 func draw(size: CGFloat) -> NSBitmapImageRep {
 	let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(size), pixelsHigh: Int(size), bitsPerSample: 8, samplesPerPixel: 4,
 		hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)!
 	NSGraphicsContext.saveGraphicsState()
-	NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+	let graphics = NSGraphicsContext(bitmapImageRep: rep)!
+	NSGraphicsContext.current = graphics
+	let context = graphics.cgContext
+	// The body of a macOS icon: 824 of 1024 points with a rounded corner.
 	let inset = size * 0.1
 	let rect = NSRect(x: inset, y: inset, width: size - 2 * inset, height: size - 2 * inset)
 	let shape = NSBezierPath(roundedRect: rect, xRadius: rect.width * 0.225, yRadius: rect.width * 0.225)
-	NSGradient(starting: NSColor(red: 0.13, green: 0.55, blue: 0.42, alpha: 1), ending: NSColor(red: 0.05, green: 0.33, blue: 0.27, alpha: 1))!.draw(in: shape, angle: -90)
-	// Two stacked coins.
-	for (i, offset) in [CGFloat(-0.07), 0.07].enumerated() {
-		let d = rect.width * 0.46
-		let c = NSRect(x: rect.midX - d / 2 + offset * rect.width, y: rect.midY - d / 2 - offset * rect.width * 0.6, width: d, height: d)
-		let coin = NSBezierPath(ovalIn: c)
-		(i == 0 ? NSColor(red: 0.93, green: 0.74, blue: 0.25, alpha: 1) : NSColor(red: 0.99, green: 0.84, blue: 0.35, alpha: 1)).setFill()
-		coin.fill()
-		NSColor(white: 0, alpha: 0.18).setStroke()
-		coin.lineWidth = size * 0.008
-		coin.stroke()
-		if i == 1 {
-			let font = NSFont.systemFont(ofSize: d * 0.62, weight: .bold)
-			let text = NSAttributedString(string: "€", attributes: [.font: font, .foregroundColor: NSColor(red: 0.55, green: 0.38, blue: 0.05, alpha: 1)])
-			let s = text.size()
-			text.draw(at: NSPoint(x: c.midX - s.width / 2, y: c.midY - s.height / 2))
-		}
-	}
+	NSGradient(colors: [color(0x0A1A45), color(0x113886), color(0x2C78EE)], atLocations: [0, 0.55, 1], colorSpace: .sRGB)!.draw(in: shape, angle: 90)
+	NSGraphicsContext.saveGraphicsState()
+	shape.addClip()
+	NSGradient(starting: color(0xFFFFFF, 0.16), ending: color(0xFFFFFF, 0))!
+		.draw(in: NSRect(x: rect.minX, y: rect.midY, width: rect.width, height: rect.height / 2), angle: -90)
+	NSGraphicsContext.restoreGraphicsState()
+
+	let width = rect.width * 0.082
+	let w = rect.width * 0.26, h = rect.height * 0.31
+	let gap = rect.width * 0.09
+	let rise = rect.height * 0.10
+	stroke(m(in: NSRect(x: rect.midX - w - gap / 2, y: rect.midY - h / 2 - rise / 2, width: w, height: h)), width: width,
+		bottom: color(0x9CC8FF), top: color(0xFFFFFF), in: context)
+	stroke(m(in: NSRect(x: rect.midX + gap / 2, y: rect.midY - h / 2 + rise / 2, width: w, height: h)), width: width,
+		bottom: color(0x2EA6FF), top: color(0x8FF0FF), in: context)
 	NSGraphicsContext.restoreGraphicsState()
 	return rep
 }

@@ -89,7 +89,9 @@ extension Color {
 
 	var hex: String? {
 		guard let c = NSColor(self).usingColorSpace(.sRGB) else { return nil }
-		return String(format: "#%02X%02X%02X", Int(c.redComponent * 255), Int(c.greenComponent * 255), Int(c.blueComponent * 255))
+		// Rounded, so that a color read back from its hex gives the same hex again.
+		func byte(_ v: CGFloat) -> Int { min(255, max(0, Int((v * 255).rounded()))) }
+		return String(format: "#%02X%02X%02X", byte(c.redComponent), byte(c.greenComponent), byte(c.blueComponent))
 	}
 }
 
@@ -139,6 +141,9 @@ enum Palette {
 	static let bandHover = Color.white.opacity(0.18)
 	/// The dashed line at zero behind the bars of the balance chart.
 	static let bandZero = dynamic("bandZero", light: .white, dark: NSColor(white: 1, alpha: 0.25))
+	/// The rim around a pie, measured in MoneyMoney in dark mode. The light one is estimated, a bit
+	/// lighter than the light slate.
+	static let pieRim = dynamic("pieRim", light: rgb(0xC5CDD4), dark: rgb(0x5A5A5F))
 	/// The mode switch of a chart: the chosen segment dark with white text, the others light.
 	static let switchChosen = dynamic("switchChosen", light: rgb(0x575C61), dark: rgb(0x5E6066))
 	static let switchChosenText = Color.white
@@ -189,6 +194,54 @@ enum CategoryColors {
 	}
 }
 
+/// The color of an account's icon: the user's color, else one color for all accounts of a bank, as
+/// MoneyMoney shows a bank's accounts in the bank's color, else a color for the kind of account.
+enum AccountColors {
+	static func color(of account: Account) -> Color {
+		if let own = Color(hex: account.color) { return own }
+		if let bank = bankKey(of: account) {
+			// FNV-1a, because `hashValue` changes with every launch.
+			let hash = bank.utf8.reduce(UInt32(2_166_136_261)) { ($0 ^ UInt32($1)) &* 16_777_619 }
+			return CategoryColors.palette[Int(hash % UInt32(CategoryColors.palette.count))]
+		}
+		switch account.kind {
+		case .giro: return .blue
+		case .savings, .fixedTermDeposit: return .teal
+		case .creditCard: return .orange
+		case .portfolio: return .yellow
+		case .loan: return .red
+		case .cash: return .green
+		case .other: return .gray
+		}
+	}
+
+	/// The same bank, whether it is named by the bank code inside its IBAN, by a BIC with or without
+	/// "XXX", or by its name. The IBAN wins, because MoneyMoney gives some accounts a BIC and others a
+	/// Bankleitzahl.
+	private static func bankKey(of account: Account) -> String? {
+		if let iban = account.iban?.replacingOccurrences(of: " ", with: "").uppercased(), iban.count > 12, iban.hasPrefix("DE") {
+			return String(iban.dropFirst(4).prefix(8))
+		}
+		if let code = account.bankCode, !code.isEmpty { return String(code.uppercased().prefix(8)) }
+		return account.bankName
+	}
+}
+
+/// As in MoneyMoney: an account is a small square in its color, with a darker edge.
+struct AccountIcon: View {
+	let account: Account
+	var size: CGFloat = 13
+
+	var body: some View {
+		let color = AccountColors.color(of: account)
+		RoundedRectangle(cornerRadius: size * 0.22, style: .continuous)
+			.fill(color.gradient)
+			.overlay(RoundedRectangle(cornerRadius: size * 0.22, style: .continuous).strokeBorder(color.mix(with: .black, by: 0.3), lineWidth: 1))
+			.frame(width: size, height: size)
+			.accessibilityHidden(true)
+	}
+}
+
 /// The icon of a category: an SF Symbol the user chose, else a bookmark, or a folder for a group.
 /// MoneyMoney draws its own pictures and a colored bookmark for a category without one; this app
 /// offers SF Symbols, which fit macOS and ship with it.
@@ -231,20 +284,5 @@ enum CategorySymbols {
 	static func name(of category: Domain.Category, filledGroup: Bool = false) -> String {
 		if let symbol = category.symbol, !symbol.isEmpty { return symbol }
 		return category.isGroup ? (filledGroup ? "folder.fill" : "folder") : "bookmark.fill"
-	}
-}
-
-extension AccountKind {
-	var symbol: String {
-		switch self {
-		case .giro: "building.columns"
-		case .savings: "banknote"
-		case .fixedTermDeposit: "lock.square"
-		case .loan: "arrow.down.left.circle"
-		case .creditCard: "creditcard"
-		case .portfolio: "chart.line.uptrend.xyaxis"
-		case .cash: "dollarsign.circle"
-		case .other: "tray"
-		}
 	}
 }

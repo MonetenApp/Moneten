@@ -78,6 +78,16 @@ The app SHALL name a new account with the product name that the bank reports, or
 - **WHEN** the user clears the name field and clicks "OK"
 - **THEN** the app keeps the window open and asks for a name
 
+### Requirement: Account color
+
+The app SHALL draw an account in the sidebar and in the header as a small square in its color, as MoneyMoney does. The user can choose the color in the account settings. Without a chosen color, all accounts of one bank share a color, and an account without a bank takes a color for its type. The migration from MoneyMoney takes the color of the account's MoneyMoney icon. MoneyMoney's own icon pictures are not copied.
+
+#### Scenario: Two accounts of one bank
+
+- **GIVEN** the accounts "Giro" and "Savings" with the same bank code and no chosen color
+- **WHEN** the user looks at the sidebar
+- **THEN** both squares have the same color
+
 ### Requirement: Bank details of an account
 
 The app SHALL show in the account settings the IBAN and the BIC of the account, or the account number and the Bankleitzahl when it has no IBAN, and the "Bank name". The IBAN is shown in groups of four characters. The user can change the bank name and cannot change the other values there.

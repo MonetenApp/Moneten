@@ -87,12 +87,13 @@ final class DebugHarness {
 		case "symbolsnapshot":
 			offscreenSnapshot(SymbolGrid(selection: "cart.fill", color: .green, isGroup: false) { _ in }, width: 360, name: "\(argument)-symbols")
 		case "piesnapshot":
-			// The withdrawals ring with the pointer in the middle of its first slice.
+			// The pie of withdrawals with the pointer on its first slice.
 			let rows = model.visibleTransactions
 			let ranked = ChartCurrency.ranked(rows.map(\.currency))
 			let slices = CategoryPie.slices(of: ChartCurrency.rows(rows, in: ChartCurrency.current(ranked, picked: nil), of: ranked), in: model).withdrawals
-			offscreenSnapshot(PieChart(title: "Withdrawals", slices: slices, pointer: slices.first.map { $0.value / 2 }).frame(height: 230).environment(model),
-				width: 520, name: "\(argument)-pie")
+			offscreenSnapshot(PieChart(title: "Withdrawals", empty: "No withdrawals", slices: slices, outside: .leading, hovered: slices.first?.id).frame(height: 230)
+				.frame(maxWidth: .infinity).foregroundStyle(Palette.onBand).environment(\.negativeRed, Palette.bandRed).background(Palette.band)
+				.environment(model), width: 520, name: "\(argument)-pie")
 		case "portfolio":
 			// "<group> <euros>" adds a portfolio with that bank balance to a group.
 			let parts = argument.split(separator: " ")

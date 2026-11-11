@@ -71,10 +71,13 @@ public struct Account: Identifiable, Hashable, Sendable, Codable {
 	public var comment: String?
 	/// The identifier of the account in the program it came from.
 	public var sourceID: String?
+	/// The color of the account's icon as "#RRGGBB", chosen by the user.
+	public var color: String?
 
 	public init(id: UUID = UUID(), groupID: UUID? = nil, position: Int, name: String, kind: AccountKind, source: AccountSource, currency: String = "EUR",
 		iban: String? = nil, bic: String? = nil, accountNumber: String? = nil, bankCode: String? = nil, bankName: String? = nil, owner: String? = nil,
-		bankBalanceMinor: Int64? = nil, bankBalanceDate: Date? = nil, initialBalanceMinor: Int64 = 0, isClosed: Bool = false, comment: String? = nil, sourceID: String? = nil) {
+		bankBalanceMinor: Int64? = nil, bankBalanceDate: Date? = nil, initialBalanceMinor: Int64 = 0, isClosed: Bool = false, comment: String? = nil, sourceID: String? = nil,
+		color: String? = nil) {
 		self.id = id
 		self.groupID = groupID
 		self.position = position
@@ -94,6 +97,7 @@ public struct Account: Identifiable, Hashable, Sendable, Codable {
 		self.isClosed = isClosed
 		self.comment = comment
 		self.sourceID = sourceID
+		self.color = color
 	}
 
 	public var isOffline: Bool { source == .offline }

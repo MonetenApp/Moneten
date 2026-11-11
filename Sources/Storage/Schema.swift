@@ -123,6 +123,12 @@ enum Schema {
 				t.primaryKey(["accountID", "day"])
 			}
 		}
+		// An account can have a color for its icon.
+		m.registerMigration("v5") { db in
+			try db.alter(table: "account") { t in
+				t.add(column: "color", .text)
+			}
+		}
 		return m
 	}
 }
