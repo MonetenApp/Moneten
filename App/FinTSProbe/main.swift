@@ -193,9 +193,9 @@ func statementsProblem(_ user: HBCIUser, _ account: HBCIAccount, camt: Bool, ord
 /// Masks IBANs, runs of six or more digits, and amounts in texts of the bank and of HBCI4Swift.
 /// A text with MT940 fields is a raw statement and is left out.
 func maskedText(_ text: String) -> String {
-	if text.contains(/:(20|25|28C|60F|60M|61|62F|62M|86):/) { return "(statement content left out)" }
-	return text.replacing(/[A-Z]{2}\d{2}[A-Z0-9]{10,30}/, with: "IBAN…")
-		.replacing(/\d+(?:\.\d{3})*,\d{1,2}/, with: "…")
+	if text.contains(/(?:^|[\s']):(20|25|28C|60F|60M|61|62F|62M|86):/) { return "(statement content left out)" }
+	return text.replacing(/[A-Z]{2}\d{2}(?: ?[A-Z0-9]{4}){3,7}(?: ?[A-Z0-9]{1,3})?/, with: "IBAN…")
+		.replacing(/(?:\d{1,3}(?:\.\d{3})+|\d+),\d{2}/, with: "…")
 		.replacing(/\d{6,}/, with: "…")
 }
 
