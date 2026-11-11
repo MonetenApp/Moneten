@@ -30,6 +30,7 @@ struct BalanceChart: View {
 	@State private var picked: String?
 
 	var body: some View {
+		@Bindable var model = model
 		let accounts = accountIDs.compactMap { model.ledger.account($0) }.filter { !$0.isClosed && $0.kind != .portfolio }
 		let currencies = ChartCurrency.ranked(accounts.map(\.currency))
 		let currency = ChartCurrency.current(currencies, picked: picked)
@@ -39,7 +40,6 @@ struct BalanceChart: View {
 		// the title counts them, so the chart says how much it leaves out.
 		let portfolios = accountIDs.compactMap { model.ledger.account($0) }.filter { !$0.isClosed && $0.kind == .portfolio && $0.currency == currency }
 		let leftOut = Money(minorUnits: portfolios.reduce(0) { $0 + model.ledger.balance(of: $1).minorUnits }, currency: currency)
-		@Bindable var model = model
 		VStack(alignment: .trailing, spacing: 4) {
 			HStack {
 				if !portfolios.isEmpty {
