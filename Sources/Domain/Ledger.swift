@@ -61,15 +61,27 @@ public struct Ledger: Sendable {
 	static func amountTexts(_ minor: Int64, decimals: Int) -> [String] {
 		let sign = minor < 0 ? "-" : ""
 		let magnitude = minor.magnitude
-		let scale = UInt64(pow(10, Double(decimals)))
+		// 10^19 does not fit in UInt64. No currency has that many decimals.
+		let decimals = min(max(0, decimals), 18)
+		var scale: UInt64 = 1
+		for _ in 0..<decimals { scale *= 10 }
 		let whole = magnitude / scale
-		var fraction = decimals > 0 ? String(magnitude % scale) : ""
-		fraction = String(repeating: "0", count: max(0, decimals - fraction.count)) + fraction
-		while fraction.hasSuffix("0") { fraction.removeLast() }
-		let plain = fraction.isEmpty ? "\(sign)\(whole)" : "\(sign)\(whole).\(fraction)"
-		// Two decimals, rounded half away from zero for a currency with three.
-		let cents = decimals >= 2 ? (magnitude * 100 + scale / 2) / scale : magnitude * (100 / scale)
-		let two = "\(sign)\(cents / 100)" + "." + (cents % 100 < 10 ? "0" : "") + "\(cents % 100)"
+		let digits = decimals > 0 ? String(magnitude % scale) : ""
+		let fraction = String(repeating: "0", count: decimals - digits.count) + digits
+		var trimmed = fraction
+		while trimmed.hasSuffix("0") { trimmed.removeLast() }
+		let plain = trimmed.isEmpty ? "\(sign)\(whole)" : "\(sign)\(whole).\(trimmed)"
+		// Two decimals, rounded half away from zero for a currency with more. Division before any
+		// multiplication, so that no amount of an Int64 overflows.
+		let two: String
+		if decimals <= 2 {
+			two = "\(sign)\(whole)." + fraction + String(repeating: "0", count: 2 - decimals)
+		} else {
+			let divisor = scale / 100
+			let remainder = magnitude % divisor
+			let cents = magnitude / divisor + (remainder >= divisor - remainder ? 1 : 0)
+			two = "\(sign)\(cents / 100)." + (cents % 100 < 10 ? "0" : "") + "\(cents % 100)"
+		}
 		return [plain, plain.replacingOccurrences(of: ".", with: ","), two.replacingOccurrences(of: ".", with: ","), two]
 	}
 
