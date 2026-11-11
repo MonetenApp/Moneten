@@ -8,10 +8,15 @@
 //   FINTS_PRODUCT_ID=<registered product ID> \
 //   .build/xcode/Build/Products/Debug/FinTSProbe.app/Contents/MacOS/FinTSProbe \
 //     --bank-code 12345678 --url https://bank.example/fints --user <login name> [--customer <ID>]
-//     [--tan-method <code>] [--days 90] [--show-values] [--verbose]
+//     [--tan-method <code>] [--bic <BIC>] [--days 90] [--show-values] [--verbose]
+//
+// --bic fills in the BIC for accounts whose account information from the bank has none. The SEPA
+// versions of the transaction orders need it.
 //
 // The PIN is read from the terminal without echo and is never printed. Without --show-values the
-// output has no amounts, names, or full account numbers, so it can be shared.
+// output has no amounts and no full account numbers: IBANs, runs of six or more digits, and amounts
+// are masked, and raw statements are left out, also in texts of the bank and in log lines of HBCI4Swift. Those texts can still hold names, so read
+// the output once before you share it.
 
 @preconcurrency import Foundation
 @preconcurrency import HBCI4Swift
@@ -22,6 +27,7 @@ struct Options {
 	var user = ""
 	var customer: String?
 	var tanMethod: String?
+	var bic: String?
 	var days = 90
 	var showValues = false
 	var verbose = false
@@ -39,6 +45,7 @@ struct Options {
 			case "--user": user = try value(argument)
 			case "--customer": customer = try value(argument)
 			case "--tan-method": tanMethod = try value(argument)
+			case "--bic": bic = try value(argument)
 			case "--days":
 				guard let d = Int(try value(argument)), d > 0 else { throw ProbeError.usage("--days needs a number") }
 				days = d
@@ -83,7 +90,7 @@ final class ProbeLog: HBCILog {
 			Swift.print("[\(level)] (message content left out)")
 			return
 		}
-		Swift.print("[\(level)] \(message)")
+		Swift.print("[\(level)] \(maskedText(message))")
 	}
 
 	func logError(_ message: String?, file: String, function: String, line: Int) { print("error", message) }
@@ -100,14 +107,14 @@ final class ProbeCallback: HBCICallback {
 		case .photo: print("The bank sent a photoTAN image. This probe cannot show it.")
 		case .none: break
 		}
-		print("Bank: \(challenge ?? "(no text)")")
+		print("Bank: \(maskedText(challenge ?? "(no text)"))")
 		print("TAN: ", terminator: "")
 		guard let tan = readLine(), !tan.isEmpty else { throw ProbeError.failed("no TAN entered") }
 		return tan
 	}
 
 	func decoupledNotification(_ user: HBCIUser, challenge: String?) {
-		print("Bank: \(challenge ?? "Confirm the request in your banking app.")")
+		print("Bank: \(maskedText(challenge ?? "Confirm the request in your banking app."))")
 		print("Waiting for the confirmation in the app …")
 	}
 
@@ -167,6 +174,35 @@ func summarize(_ items: [HBCIStatementItem], showValues: Bool) {
 	}
 }
 
+/// The first check of HBCI4Swift that stops a transaction order. The library logs these reasons
+/// only at info level and with the full account number, so the probe repeats the checks.
+func statementsProblem(_ user: HBCIUser, _ account: HBCIAccount, camt: Bool, order: HBCIOrder?, queued: Bool) -> String {
+	let name = camt ? "CamtStatements" : "Statements"
+	guard let segment = order?.segment else { return "the library has no \(name) segment the bank supports" }
+	guard user.parameters.isOrderSupportedForAccount(name, number: account.number, subNumber: account.subNumber) else {
+		return "the bank does not allow \(name) for this account"
+	}
+	// CAMT and the SEPA versions of MT940 address the account by IBAN and BIC.
+	if camt || segment.version >= 7, account.iban == nil || account.bic == nil {
+		return "version \(segment.version) needs IBAN and BIC, and the \(account.iban == nil ? "IBAN" : "BIC") is missing; try --bic"
+	}
+	if !queued { return "the library did not queue the order (version \(segment.version)); run again with --verbose" }
+	return "the order was sent, but no statements came back (version \(segment.version)); run again with --verbose"
+}
+
+/// Masks IBANs, runs of six or more digits, and amounts in texts of the bank and of HBCI4Swift.
+/// A text with MT940 fields is a raw statement and is left out.
+func maskedText(_ text: String) -> String {
+	if text.contains(/(?:^|[\s']):(20|25|28C|60F|60M|61|62F|62M|86):/) { return "(statement content left out)" }
+	// The MT94x parser of HBCI4Swift quotes parts of the statement in its errors, also without a tag.
+	if text.contains("MT94xParse") { return "MT94x parse error (statement content left out)" }
+	// The CAMT parsers of HBCI4Swift log whole entries as XML when a date is missing.
+	if text.contains(/<(Ntry|NtryDtls|TxDtls|Amt|Ustrd|Stmt|Rpt|Ntfctn|BkToCstmr)[\s>]/) { return "(CAMT content left out)" }
+	return text.replacing(/[A-Z]{2}\d{2}(?: ?[A-Z0-9]{4}){3,7}(?: ?[A-Z0-9]{1,3})?/, with: "IBAN…")
+		.replacing(/(?:\d{1,3}(?:\.\d{3})+|\d+),\d{2}/, with: "…")
+		.replacing(/\d{6,}/, with: "…")
+}
+
 func run(_ options: Options) throws {
 	guard let product = ProcessInfo.processInfo.environment["FINTS_PRODUCT_ID"], !product.isEmpty else {
 		throw ProbeError.usage("set FINTS_PRODUCT_ID to the product ID from the FinTS registration")
@@ -203,6 +239,9 @@ func run(_ options: Options) throws {
 	let from = Calendar.current.date(byAdding: .day, value: -options.days, to: Date())!
 	for account in accounts {
 		print("  \(masked(account.iban ?? account.number))  \(account.currency)  type \(account.type.map(String.init) ?? "-")  orders \(account.allowed.count)")
+		print("    allowed: \(account.allowed.sorted().joined(separator: ", "))")
+		print("    IBAN \(account.iban == nil ? "missing" : "yes"), BIC \(account.bic == nil ? (options.bic == nil ? "missing" : "missing, --bic used") : "yes")")
+		if account.bic == nil, let bic = options.bic { account.bic = bic }
 
 		let balance = try send(dialog) { message in
 			guard let order = HBCIBalanceOrder(message: message, account: account), order.enqueue() else { return nil }
@@ -215,19 +254,25 @@ func run(_ options: Options) throws {
 		}
 
 		let camt = user.parameters.isOrderSupportedForAccount("CamtStatements", number: account.number, subNumber: account.subNumber)
+		var created: HBCIOrder?
+		var queued = false
 		let statements: [HBCIStatement]? = try camt
 			? (send(dialog) { message in
 				guard let order = HBCICamtStatementsOrder(message: message, account: account) else { return nil }
+				created = order
 				order.dateFrom = from
-				return order.enqueue() ? order : nil
+				queued = order.enqueue()
+				return queued ? order : nil
 			} as? HBCICamtStatementsOrder)?.statements
 			: (send(dialog) { message in
 				guard let order = HBCIStatementsOrder(message: message, account: account) else { return nil }
+				created = order
 				order.dateFrom = from
-				return order.enqueue() ? order : nil
+				queued = order.enqueue()
+				return queued ? order : nil
 			} as? HBCIStatementsOrder)?.statements
 		guard let statements else {
-			print("    transactions: not available (\(camt ? "CAMT" : "MT940"))")
+			print("    transactions: not available (\(camt ? "CAMT" : "MT940")): \(statementsProblem(user, account, camt: camt, order: created, queued: queued))")
 			continue
 		}
 		print("    format: \(camt ? "CAMT" : "MT940"), \(statements.count) statements, \(statements.filter { $0.isPreliminary == true }.count) preliminary")

@@ -12,7 +12,7 @@ The alternatives are to write a FinTS client from scratch, using [python-fints](
 
 ## Decision
 
-Use HBCI4Swift behind `FinTSConnector`, unchanged, as a Git submodule in `Vendor/HBCI4Swift`. [ADR 0011](0011-app-target-in-an-xcode-project.md) describes how the Xcode project builds it. Send fixes and tests from recorded bank responses to the author as pull requests instead of keeping a fork.
+Use HBCI4Swift behind `FinTSConnector`, unchanged, as a Git submodule in `Vendor/HBCI4Swift`. [ADR 0011](0011-app-target-in-an-xcode-project.md) describes how the Xcode project builds it. Send fixes and tests from recorded bank responses to the author as pull requests instead of keeping a fork. While a pull request waits, the submodule points to its commit in the fork [alexander-schneider/HBCI4Swift](https://github.com/alexander-schneider/HBCI4Swift), and the fork holds nothing but the open pull requests. After the merge, the submodule points to the upstream commit again. The first one is [macemmi/HBCI4Swift#1](https://github.com/macemmi/HBCI4Swift/pull/1): the security profile version for security function 999, which Consorsbank checks.
 
 ## What settles this decision
 
@@ -21,7 +21,7 @@ Use HBCI4Swift behind `FinTSConnector`, unchanged, as a Git submodule in `Vendor
 
 ## Prototype status
 
-`App/FinTSProbe/main.swift` is the prototype of issue #11. It fetches the TAN methods, the accounts, the balances, and the transactions of one bank access and prints which fields arrived. It builds against HBCI4Swift commit `d7aaede`, loads the syntax files from the app bundle, and composes the first message. The bank tests wait for the product ID of the FinTS registration.
+`App/FinTSProbe/main.swift` is the prototype of issue #11. It fetches the TAN methods, the accounts, the balances, and the transactions of one bank access and prints which fields arrived. It builds against the fork commit of [macemmi/HBCI4Swift#1](https://github.com/macemmi/HBCI4Swift/pull/1), one commit on top of upstream `d7aaede`, loads the syntax files from the app bundle, and composes the first message. The bank tests wait for the product ID of the FinTS registration.
 
 Two findings so far:
 
