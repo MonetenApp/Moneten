@@ -442,11 +442,12 @@ struct TransactionCell: View {
 				// below it. At the end of the first line the row keeps its height.
 				if let account {
 					Spacer(minLength: 12)
+					// The payee is cut first, so a long payee leaves the account name readable.
 					Text(account)
 						.font(.system(size: 11))
-						.foregroundStyle(Palette.detail)
 						.lineLimit(1)
-						.layoutPriority(-1)
+						.frame(maxWidth: 140, alignment: .trailing)
+						.layoutPriority(1)
 				}
 			}
 			// A row without a purpose keeps the empty line, so that every row is the same height.

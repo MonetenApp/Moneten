@@ -241,7 +241,7 @@ The app SHALL draw the category bar chart and the pie chart from the transaction
 
 ### Requirement: Pie charts of deposits and withdrawals
 
-The app SHALL show two pie charts in the mode "Pie Chart", one for the withdrawals and one for the deposits of the view. Each slice is one category with its color, its name, and its share. In the view of a category group the slices are the categories directly below the group.
+The app SHALL show two pie charts in the mode "Pie Chart", one for the withdrawals and one for the deposits of the view. Each slice is one category in its color. Its name stands beside the pie, and the pointer shows its amount and share. In the view of a category group the slices are the categories directly below the group.
 
 #### Scenario: Spending of one account
 

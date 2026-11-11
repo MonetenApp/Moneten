@@ -34,7 +34,7 @@ For a bug fix that restores specified behavior, open a pull request. For new or 
 - To change a planned behavior, edit the spec in its change folder and say why in the pull request.
 - To add a behavior, create a change with `openspec new change <name>` or with `/opsx:propose` in Claude Code. [openspec/config.yaml](openspec/config.yaml) holds the writing rules.
 - A proposal lists what was observed in MoneyMoney and what MonetenMoneten decides on its own. [MoneyMoney analysis](docs/research/moneymoney-analysis.md) is the reference.
-- MoneyMoney parity covers the content and the behavior, not the window chrome. The sidebar, the toolbar, and the window keep the Liquid Glass of macOS ([ADR 0012](docs/decisions/0012-system-glass-for-window-chrome.md)). `scripts/check-ui.py` enforces it. A pull request that changes the look of the app shows snapshots in light and dark mode.
+- MoneyMoney parity covers the content and the behavior, not the window chrome. The sidebar, the toolbar, and the window keep the system materials of macOS, Liquid Glass from macOS 26 on ([ADR 0012](docs/decisions/0012-system-glass-for-window-chrome.md)). `scripts/check-ui.py` enforces it. A pull request that changes the look of the app shows snapshots in light and dark mode.
 - A change to a decision in [docs/decisions](docs/decisions/) needs a new decision record.
 
 ## What a pull request needs

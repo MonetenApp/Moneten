@@ -206,11 +206,21 @@ struct CategoryPie: View {
 		let currencies = ChartCurrency.ranked(rows.map(\.currency))
 		let currency = ChartCurrency.current(currencies, picked: picked)
 		let slices = Self.slices(of: ChartCurrency.rows(rows, in: currency, of: currencies), in: model)
-		HStack(spacing: 0) {
-			PieChart(title: "Withdrawals", slices: slices.withdrawals, outside: .leading)
-			PieChart(title: "Deposits", slices: slices.deposits, outside: .trailing)
+		GeometryReader { geometry in
+			if slices.withdrawals.isEmpty, slices.deposits.isEmpty {
+				Text("No transactions; no pie chart.").foregroundStyle(Palette.bandLabel).frame(maxWidth: .infinity, maxHeight: .infinity)
+			} else {
+				// Each pie takes half the width up to its own, and the outer labels use what is left at the edges.
+				let width = min(PieChart.width, geometry.size.width / 2)
+				let outerRoom = PieChart.innerRoom(width: width) + (geometry.size.width - 2 * width) / 2
+				HStack(spacing: 0) {
+					PieChart(title: "Withdrawals", empty: "No withdrawals", slices: slices.withdrawals, outside: .leading, width: width, outerRoom: outerRoom)
+					PieChart(title: "Deposits", empty: "No deposits", slices: slices.deposits, outside: .trailing, width: width, outerRoom: outerRoom)
+				}
+				.frame(maxWidth: .infinity, maxHeight: .infinity)
+			}
 		}
-		.frame(maxWidth: .infinity, maxHeight: .infinity)
+		.clipped()
 		.overlay(alignment: .topTrailing) {
 			ChartCurrency.Picker(currencies: currencies, current: currency, picked: $picked)
 		}
@@ -231,7 +241,7 @@ struct CategoryPie: View {
 	}
 }
 
-struct PieSlice: Identifiable, Equatable {
+struct PieSlice: Identifiable {
 	let id: UUID
 	let name: String
 	let money: Money
@@ -244,16 +254,25 @@ struct PieSlice: Identifiable, Equatable {
 /// names its category, amount, and share. The pointer lives here, so moving it does not sum the rows again.
 struct PieChart: View {
 	let title: String
+	/// What the pie says when it has no slices, such as "No deposits".
+	let empty: String
 	let slices: [PieSlice]
 	/// The side away from the other pie, where the labels have room up to the edge of the chart.
 	let outside: HorizontalEdge
+	let width: CGFloat
+	/// The width of a label on the outer side.
+	let outerRoom: CGFloat
 	@State private var hovered: PieSlice.ID?
 
 	/// `hovered` presets the slice under the pointer, for a snapshot of the debug harness.
-	init(title: String, slices: [PieSlice], outside: HorizontalEdge, hovered: PieSlice.ID? = nil) {
+	init(title: String, empty: String, slices: [PieSlice], outside: HorizontalEdge, width: CGFloat = PieChart.width, outerRoom: CGFloat = 120,
+		hovered: PieSlice.ID? = nil) {
 		self.title = title
+		self.empty = empty
 		self.slices = slices
 		self.outside = outside
+		self.width = width
+		self.outerRoom = min(outerRoom, 120)
 		_hovered = State(initialValue: hovered)
 	}
 
@@ -261,7 +280,11 @@ struct PieChart: View {
 	// points apart; 300 leave the labels between the two pies room for a name.
 	private static let radius: CGFloat = 55
 	private static let outerRadius: CGFloat = radius + 6
-	private static let width: CGFloat = 300
+	/// The widest a pie with its labels gets. A narrow window gives it less.
+	static let width: CGFloat = 300
+
+	/// The width of a label between the two pies.
+	static func innerRoom(width: CGFloat) -> CGFloat { max(0, width / 2 - lineEnd - 6) }
 	/// Where the line to a label ends, beyond the rim.
 	private static let lineEnd: CGFloat = outerRadius + 8
 	private static let lineHeight: CGFloat = 14
@@ -270,12 +293,14 @@ struct PieChart: View {
 
 	var body: some View {
 		if slices.isEmpty {
-			Text("No transactions; no pie chart.").foregroundStyle(.secondary).frame(width: Self.width).frame(maxHeight: .infinity)
+			Text(empty).foregroundStyle(Palette.bandLabel).frame(width: width).frame(maxHeight: .infinity)
 		} else {
 			let wedges = Self.wedges(slices)
+			// A slice that is gone after the view changed under a resting pointer marks nothing.
+			let hovered = wedges.contains { $0.id == self.hovered } ? self.hovered : nil
 			GeometryReader { geometry in
 				let center = CGPoint(x: geometry.size.width / 2, y: geometry.size.height / 2)
-				let labels = Self.labels(wedges, center: center, height: geometry.size.height)
+				let labels = Self.labels(wedges, center: center, height: geometry.size.height, outside: outside)
 				ZStack {
 					Circle().fill(Palette.pieRim).frame(width: 2 * Self.outerRadius, height: 2 * Self.outerRadius).position(center)
 					ZStack {
@@ -303,7 +328,7 @@ struct PieChart: View {
 					}
 					.stroke(Palette.onBand.opacity(0.5), lineWidth: 1)
 					ForEach(labels) { l in
-						let room = l.left == (outside == .leading) ? 120 : Self.width / 2 - Self.lineEnd - 6
+						let room = l.left == (outside == .leading) ? outerRoom : Self.innerRoom(width: width)
 						Text(l.wedge.slice.name)
 							.font(.system(size: 11, weight: hovered == l.id ? .semibold : .regular))
 							.foregroundStyle(Palette.onBand)
@@ -328,11 +353,11 @@ struct PieChart: View {
 				}
 				.contentShape(Rectangle())
 				.onContinuousHover { phase in
-					guard case let .active(point) = phase else { hovered = nil; return }
-					hovered = Self.wedge(at: point, center: center, in: wedges)?.id
+					guard case let .active(point) = phase else { self.hovered = nil; return }
+					self.hovered = Self.wedge(at: point, center: center, in: wedges)?.id
 				}
 			}
-			.frame(width: Self.width)
+			.frame(width: width)
 			.accessibilityElement(children: .ignore)
 			.accessibilityLabel(title)
 			.accessibilityValue(wedges.map { "\($0.slice.name): \(Format.money($0.slice.money)), \($0.share.formatted(.percent.precision(.fractionLength(0...1))))" }
@@ -360,14 +385,21 @@ struct PieChart: View {
 	}
 
 	/// A label for each slice that is not too thin, on the side of its middle, at the height of its
-	/// middle where the labels of one side leave room for each other.
-	private static func labels(_ wedges: [PieWedge], center: CGPoint, height: CGFloat) -> [PieLabel] {
+	/// middle where the labels of one side leave room for each other. A side keeps only as many
+	/// labels as fit the height, those of the largest slices; the others show under the pointer.
+	private static func labels(_ wedges: [PieWedge], center: CGPoint, height: CGFloat, outside: HorizontalEdge) -> [PieLabel] {
 		let all = wedges.filter { $0.share >= minLabelShare }.map { w in
 			let (dx, dy) = (CGFloat(sin(w.middle)), CGFloat(-cos(w.middle)))
+			// A slice straight up or down, such as a single one, labels on the outer side, which has more room.
+			let left = abs(dx) < 0.001 ? outside == .leading : dx < 0
 			return PieLabel(wedge: w, rim: CGPoint(x: center.x + outerRadius * dx, y: center.y + outerRadius * dy),
-				left: dx < 0, y: center.y + (outerRadius + 6) * dy)
+				left: left, y: center.y + (outerRadius + 6) * dy)
 		}
-		return spaced(all.filter(\.left), height: height) + spaced(all.filter { !$0.left }, height: height)
+		let fitting = max(1, Int(height / lineHeight))
+		func side(_ left: Bool) -> [PieLabel] {
+			spaced(Array(all.filter { $0.left == left }.sorted { $0.wedge.share > $1.wedge.share }.prefix(fitting)), height: height)
+		}
+		return side(true) + side(false)
 	}
 
 	/// Pushes labels down until none overlaps the one above, then up from the bottom edge.

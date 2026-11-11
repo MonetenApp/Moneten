@@ -91,7 +91,7 @@ final class DebugHarness {
 			let rows = model.visibleTransactions
 			let ranked = ChartCurrency.ranked(rows.map(\.currency))
 			let slices = CategoryPie.slices(of: ChartCurrency.rows(rows, in: ChartCurrency.current(ranked, picked: nil), of: ranked), in: model).withdrawals
-			offscreenSnapshot(PieChart(title: "Withdrawals", slices: slices, outside: .leading, hovered: slices.first?.id).frame(height: 230)
+			offscreenSnapshot(PieChart(title: "Withdrawals", empty: "No withdrawals", slices: slices, outside: .leading, hovered: slices.first?.id).frame(height: 230)
 				.frame(maxWidth: .infinity).foregroundStyle(Palette.onBand).environment(\.negativeRed, Palette.bandRed).background(Palette.band)
 				.environment(model), width: 520, name: "\(argument)-pie")
 		case "portfolio":

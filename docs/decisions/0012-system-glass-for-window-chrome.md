@@ -1,4 +1,4 @@
-# 0012. Keep the Liquid Glass of macOS for the window chrome
+# 0012. Keep the system materials of macOS for the window chrome
 
 Status: Accepted
 
@@ -8,9 +8,9 @@ The project copies MoneyMoney where a design choice comes up, so that people who
 
 ## Decision
 
-- The sidebar, the toolbar, the title bar, and the window background use the system materials of macOS: Liquid Glass and the standard sidebar and toolbar styles. The app does not fill them with its own colors.
+- The sidebar, the toolbar, the title bar, and the window background use the system materials of macOS: the standard sidebar and toolbar styles, which are Liquid Glass from macOS 26 on. The app does not fill them with its own colors.
 - MoneyMoney parity applies to the content: the header band, the transaction list, the charts, the sheets, and the behavior.
-- `scripts/check-ui.py` enforces the rule. It fails on code that hides the sidebar material, puts a color or a material behind the sidebar or the split view, or overrides the toolbar, the title bar, or the window background. `scripts/check.sh` and CI run it. A line may break a rule only with the comment `// chrome-ok: <reason>`.
+- `scripts/check-ui.py` enforces the rule. It fails on code that hides the sidebar material, puts a color or a material behind the sidebar or the split view, or overrides the toolbar, the title bar, or the window background. `scripts/check.sh` and CI run it. A line may break a rule only with the comment `// chrome-ok: <reason>`. The check reads the source text, not the view tree, so it catches the usual ways to write such a fill but not every one. Review still looks at snapshots.
 
 ## Consequences
 

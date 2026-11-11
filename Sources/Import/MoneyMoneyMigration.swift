@@ -14,7 +14,7 @@ public struct MoneyMoneyMigration: Sendable {
 		public var accounts: [Account] = []
 		public var categories: [Domain.Category] = []
 		public var transactions: [Transaction] = []
-		/// Accounts of an earlier run with the newer balance from MoneyMoney.
+		/// Accounts of an earlier run with the newer balance from MoneyMoney, or the color of their icon.
 		public var updatedAccounts: [Account] = []
 		/// Transactions of an earlier run that were pending and are booked now.
 		public var updatedTransactions: [Transaction] = []

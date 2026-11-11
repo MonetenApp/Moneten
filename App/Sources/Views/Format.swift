@@ -89,7 +89,9 @@ extension Color {
 
 	var hex: String? {
 		guard let c = NSColor(self).usingColorSpace(.sRGB) else { return nil }
-		return String(format: "#%02X%02X%02X", Int(c.redComponent * 255), Int(c.greenComponent * 255), Int(c.blueComponent * 255))
+		// Rounded, so that a color read back from its hex gives the same hex again.
+		func byte(_ v: CGFloat) -> Int { min(255, max(0, Int((v * 255).rounded()))) }
+		return String(format: "#%02X%02X%02X", byte(c.redComponent), byte(c.greenComponent), byte(c.blueComponent))
 	}
 }
 
@@ -197,7 +199,7 @@ enum CategoryColors {
 enum AccountColors {
 	static func color(of account: Account) -> Color {
 		if let own = Color(hex: account.color) { return own }
-		if let bank = account.bankCode ?? account.bankName {
+		if let bank = bankKey(of: account) {
 			// FNV-1a, because `hashValue` changes with every launch.
 			let hash = bank.utf8.reduce(UInt32(2_166_136_261)) { ($0 ^ UInt32($1)) &* 16_777_619 }
 			return CategoryColors.palette[Int(hash % UInt32(CategoryColors.palette.count))]
@@ -211,6 +213,17 @@ enum AccountColors {
 		case .cash: return .green
 		case .other: return .gray
 		}
+	}
+
+	/// The same bank, whether it is named by the bank code inside its IBAN, by a BIC with or without
+	/// "XXX", or by its name. The IBAN wins, because MoneyMoney gives some accounts a BIC and others a
+	/// Bankleitzahl.
+	private static func bankKey(of account: Account) -> String? {
+		if let iban = account.iban?.replacingOccurrences(of: " ", with: "").uppercased(), iban.count > 12, iban.hasPrefix("DE") {
+			return String(iban.dropFirst(4).prefix(8))
+		}
+		if let code = account.bankCode, !code.isEmpty { return String(code.uppercased().prefix(8)) }
+		return account.bankName
 	}
 }
 
