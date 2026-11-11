@@ -727,6 +727,8 @@ struct CategoryChoices: View {
 			item.state = transactions.allSatisfy { ledger.effectiveCategoryID(of: $0) == c.id } ? .on : .off
 			item.isEnabled = !c.isGroup && !isRestricted(c, transactions, in: ledger)
 			item.image = image(of: c, in: ledger)
+			// From macOS 27, AppKit hides most menu images unless the item asks for them.
+			if #available(macOS 27.0, *) { item.preferredImageVisibility = .visible }
 			menu.addItem(item)
 		}
 		menu.addItem(.separator())
