@@ -110,16 +110,19 @@ struct AmountText: View {
 /// `.secondary` is 50 % black, about 3.9:1 on white, too faint for amounts, purposes, and counts, so
 /// data uses these colors. Labels and empty states keep `.secondary`.
 enum Palette {
+	// Measured in MoneyMoney: light from a screenshot, dark from a window capture corrected by the
+	// offset that the same reading showed against the screenshot. The dark ones are not checked
+	// against a dark screenshot.
 	/// The slate band behind the title of the view and its chart.
-	static let band = dynamic("band", light: rgb(0xAFBAC3), dark: rgb(0x363840))
+	static let band = dynamic("band", light: rgb(0xAFBAC3), dark: rgb(0x292B31))
 	/// Title, IBAN, balance, and icon on the band.
 	static let onBand = Color.white
 	/// The months, years, and periods of the charts, and the amounts at the edge of a category chart.
-	static let bandLabel = dynamic("bandLabel", light: rgb(0x696F76), dark: rgb(0x909194))
+	static let bandLabel = dynamic("bandLabel", light: rgb(0x696F76), dark: rgb(0x7D7E82))
 	/// The line where a month or a year starts in the balance chart.
-	static let bandLine = dynamic("bandLine", light: rgb(0xA1ABB4), dark: rgb(0x4B4C51))
+	static let bandLine = dynamic("bandLine", light: rgb(0xA1ABB4), dark: rgb(0x3B3C40))
 	/// The bars of the balance chart.
-	static let bandBar = dynamic("bandBar", light: .white, dark: rgb(0xD3D4D5))
+	static let bandBar = dynamic("bandBar", light: .white, dark: rgb(0xC9CACB))
 	/// The dashed line at zero behind the bars of the balance chart.
 	static let bandZero = dynamic("bandZero", light: .white, dark: NSColor(white: 1, alpha: 0.25))
 	static let filterBar = dynamic("filterBar", light: rgb(0xF1F1F1), dark: NSColor(white: 1, alpha: 0.04))
