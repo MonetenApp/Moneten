@@ -68,7 +68,8 @@ enum PeriodChoice: Hashable {
 enum Preference {
 	static let lockOnClose = "lockWhenMainWindowIsClosed"
 	/// Version 1 stored "lockAfterMinutes" also while the lock was off, as the suggestion of the
-	/// old number field. The new key starts at the default of 10 minutes.
+	/// old number field. The new key starts at the default of 10 minutes; `registerDefaults` keeps
+	/// the old value only where the lock was on.
 	static let lockAfterMinutes = "lockAfterInactivityMinutes"
 	static let lockAfterEnabled = "lockAfterInactivity"
 	static let unlockAutomatically = "unlockAutomatically"
@@ -81,9 +82,17 @@ enum Preference {
 	/// this off and suggests 5 minutes; the owner chose on with 10 minutes.
 	static let defaultLockAfterMinutes = 10
 
-	/// The values of settings the user has not changed.
+	/// The values of settings the user has not changed. A user who turned the inactivity lock on in
+	/// version 1 keeps the minutes chosen there.
 	static func registerDefaults() {
-		UserDefaults.standard.register(defaults: [lockAfterEnabled: true, lockAfterMinutes: defaultLockAfterMinutes])
+		let d = UserDefaults.standard
+		let oldMinutes = "lockAfterMinutes"
+		if d.object(forKey: lockAfterMinutes) == nil, d.object(forKey: lockAfterEnabled) as? Bool == true,
+			d.integer(forKey: oldMinutes) > 0 {
+			d.set(d.integer(forKey: oldMinutes), forKey: lockAfterMinutes)
+		}
+		d.removeObject(forKey: oldMinutes)
+		d.register(defaults: [lockAfterEnabled: true, lockAfterMinutes: defaultLockAfterMinutes])
 	}
 }
 
