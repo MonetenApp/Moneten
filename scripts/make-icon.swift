@@ -1,5 +1,5 @@
 // Draws the app icon and writes App/Resources/AppIcon.icns. Run: swift scripts/make-icon.swift
-// A silver coin with one embossed M for Moneten on deep blue.
+// One M for Moneten on deep blue. Its right leg ends higher than the left one, like a rising balance.
 import AppKit
 
 let srgb = CGColorSpace(name: CGColorSpace.sRGB)!
@@ -22,10 +22,11 @@ func fill(_ path: CGPath, _ colors: [UInt32], in context: CGContext) {
 	context.restoreGState()
 }
 
-/// An M as one line in `r`: up the left leg, down to the middle, up, and down the right leg.
+/// An M as one line in `r`: up the left leg to 86 % of the height, down to the middle, up to the full
+/// height, and down the right leg.
 func m(in r: CGRect) -> CGPath {
 	let p = CGMutablePath()
-	p.addLines(between: [CGPoint(x: r.minX, y: r.minY), CGPoint(x: r.minX, y: r.maxY), CGPoint(x: r.midX, y: r.minY + r.height * 0.40),
+	p.addLines(between: [CGPoint(x: r.minX, y: r.minY), CGPoint(x: r.minX, y: r.minY + r.height * 0.86), CGPoint(x: r.midX, y: r.minY + r.height * 0.30),
 		CGPoint(x: r.maxX, y: r.maxY), CGPoint(x: r.maxX, y: r.minY)])
 	return p
 }
@@ -45,40 +46,23 @@ func draw(size: CGFloat) -> NSBitmapImageRep {
 	context.saveGState()
 	context.addPath(shape)
 	context.clip()
-	vertical([0x0A1A45, 0x133F92, 0x3482F2], [0, 0.55, 1], over: rect, in: context)
+	vertical([0x0A1A45, 0x123C8C, 0x2F7CF0], [0, 0.55, 1], over: rect, in: context)
 	let sheen = CGGradient(colorsSpace: srgb, colors: [color(0xFFFFFF, 0), color(0xFFFFFF, 0.14)] as CFArray, locations: [0, 1])!
 	context.drawLinearGradient(sheen, start: CGPoint(x: rect.midX, y: rect.midY), end: CGPoint(x: rect.midX, y: rect.maxY), options: [])
 	context.restoreGState()
 
-	// The coin: a rim that is darker at the bottom, a face that is lighter at the top, and a fine line between.
-	let d = rect.width * 0.70
-	let coin = CGRect(x: rect.midX - d / 2, y: rect.midY - d / 2, width: d, height: d)
-	context.saveGState()
-	context.setShadow(offset: CGSize(width: 0, height: -d * 0.035), blur: d * 0.09, color: color(0x020A24, 0.55))
-	context.addEllipse(in: coin)
-	context.setFillColor(color(0xC9D6E4))
-	context.fillPath()
-	context.restoreGState()
-	fill(CGPath(ellipseIn: coin, transform: nil), [0x9DB3CC, 0xF8FBFE], in: context)
-	let face = coin.insetBy(dx: d * 0.055, dy: d * 0.055)
-	fill(CGPath(ellipseIn: face, transform: nil), [0xFAFCFE, 0xC3D2E2], in: context)
-	context.addEllipse(in: face)
-	context.setStrokeColor(color(0x8FA6C0, 0.55))
-	context.setLineWidth(d * 0.008)
-	context.strokePath()
-
-	// The M, pressed into the face: a light edge below it and a blue gradient.
-	let w = d * 0.50, h = d * 0.42
-	let lineWidth = d * 0.12
-	let letter = m(in: CGRect(x: coin.midX - w / 2, y: coin.midY - h / 2 - d * 0.005, width: w, height: h))
+	// The M: a light stroke with round ends over a soft shadow, white at the top.
+	let w = rect.width * 0.50, h = rect.height * 0.40
+	let lineWidth = rect.width * 0.105
+	let letter = m(in: CGRect(x: rect.midX - w / 2, y: rect.midY - h / 2 - rect.height * 0.02, width: w, height: h))
 		.copy(strokingWithWidth: lineWidth, lineCap: .round, lineJoin: .round, miterLimit: 10)
 	context.saveGState()
-	context.setShadow(offset: CGSize(width: 0, height: -lineWidth * 0.10), blur: lineWidth * 0.12, color: color(0xFFFFFF, 0.95))
+	context.setShadow(offset: CGSize(width: 0, height: -lineWidth * 0.21), blur: lineWidth * 0.6, color: color(0x020A24, 0.45))
 	context.addPath(letter)
-	context.setFillColor(color(0x1A4FA8))
+	context.setFillColor(color(0xA9D2FF))
 	context.fillPath()
 	context.restoreGState()
-	fill(letter, [0x0F3480, 0x2B78EE], in: context)
+	fill(letter, [0xA9D2FF, 0xFFFFFF], in: context)
 	NSGraphicsContext.restoreGraphicsState()
 	return rep
 }
