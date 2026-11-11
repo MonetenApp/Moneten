@@ -9,17 +9,25 @@
 //     [--tan-method <code>] [--days 90] [--show-values] [--verbose] [--trace-sca]
 //
 // --trace-sca prints the debug lines of hbci4java about TAN methods, HKTAN, and strong customer
-// authentication, and the codes of the bank. Runs of six or more digits and IBANs are masked.
+// authentication, and the codes of the bank, under the rules below.
 //
 // --tan-for-orders marks balance and transactions (HKSAL, HKKAZ, HKCAZ) as "TAN required" in the
 // bank parameters before the orders go out, so hbci4java adds HKTAN to them. Consorsbank marks them
 // "N" in the synchronization but answers them with 9075 when they come without HKTAN. Holdings
 // (HKWPD) work without HKTAN, and with it Consorsbank answers 9160.
 //
-// The PIN is read from the terminal without echo and is never printed. Without --show-values the
-// output has no amounts, names, or full account numbers, so it can be shared. The passport file of
-// hbci4java lives in a new temporary folder, is encrypted with a random passphrase, and is deleted
-// at the end.
+// The PIN is read from the terminal without echo and is never printed, also not with --show-values.
+// Every text that does not come from the probe itself goes through Out: bank messages, callback
+// texts, log lines of hbci4java, and exception messages. Without --show-values:
+// - return codes of the bank show with a fixed description of the probe, not with the text of the bank,
+// - texts of the bank in callbacks (approval, TAN, institute messages) are left out,
+// - in every other text, IBANs, runs of six or more digits, and amounts are masked.
+// The output then has no amounts and no full account numbers. Names can only come from a text that
+// hbci4java writes itself, so read the output once before you share it.
+//
+// The passport file of hbci4java lives in a new temporary folder with access for the user only, is
+// encrypted with a random passphrase, and is deleted at the end, also when the probe is stopped with
+// Ctrl-C or SIGTERM. SIGKILL leaves it behind in the temporary folder of the system.
 
 import java.io.Console;
 import java.io.File;
@@ -32,6 +40,7 @@ import java.util.Base64;
 import java.util.Collections;
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Properties;
 import java.util.TreeSet;
@@ -56,6 +65,69 @@ import org.kapott.hbci.status.HBCIRetVal;
 import org.kapott.hbci.structures.Konto;
 
 public class FinTSProbeJava {
+	/// The output rules of the probe. See the comment at the top.
+	static final class Out {
+		/// The PIN and every TAN entered in this run.
+		static final List<String> secrets = new ArrayList<>();
+		static boolean showValues;
+
+		static final java.util.regex.Pattern RETURN_CODE = java.util.regex.Pattern.compile("\\b([0139]\\d{3}):[^\\n;]*");
+
+		/// Return codes that the probe meets. The descriptions follow the FinTS specification.
+		static final Map<String, String> KNOWN = Map.ofEntries(
+			Map.entry("0010", "message received"), Map.entry("0020", "order executed"),
+			Map.entry("0030", "order received, TAN required"), Map.entry("3076", "no strong customer authentication required"),
+			Map.entry("3920", "allowed TAN methods for the user"), Map.entry("3955", "approval in the app"),
+			Map.entry("3956", "approval still pending"), Map.entry("9010", "error in the message"),
+			Map.entry("9050", "message partly faulty"), Map.entry("9075", "strong customer authentication required"),
+			Map.entry("9078", "FinTS product not registered"), Map.entry("9120", "dialog already ended"),
+			Map.entry("9160", "required field missing"), Map.entry("9800", "dialog aborted"),
+			Map.entry("9931", "access locked or PIN wrong"), Map.entry("9942", "PIN wrong"));
+
+		static String withoutPin(String text) {
+			if (text == null) return "";
+			for (String secret : secrets) if (!secret.isEmpty()) text = text.replace(secret, "•••");
+			return text;
+		}
+
+		/// Message segments carry the PIN in the signature and the data of the accounts.
+		static boolean hasSegments(String text) {
+			return text != null && (text.contains("HNHBK") || text.contains("HNSHA") || text.contains("HNVSD") || text.contains("HNSHK"));
+		}
+
+		/// Masks IBANs, runs of six or more digits, and amounts, and removes the PIN.
+		static String masked(String text) {
+			if (showValues) return withoutPin(text);
+			return withoutPin(text)
+				.replaceAll("\\b[A-Z]{2}\\d{2}[A-Z0-9]{10,30}\\b", "IBAN…")
+				.replaceAll("\\d+(?:[.,]\\d+)*\\s?(?:EUR|€|USD|CHF)", "…")
+				.replaceAll("\\b\\d{1,3}(?:\\.\\d{3})*,\\d{2}\\b", "…")
+				.replaceAll("\\d{6,}", "…");
+		}
+
+		/// A text that may hold return codes of the bank: codes keep a fixed description, and the
+		/// rest is masked.
+		static String bank(String text) {
+			if (hasSegments(text)) return "(message content left out)";
+			if (showValues) return withoutPin(text);
+			java.util.regex.Matcher m = RETURN_CODE.matcher(withoutPin(text));
+			StringBuilder out = new StringBuilder();
+			while (m.find()) {
+				String code = m.group(1);
+				m.appendReplacement(out, java.util.regex.Matcher.quoteReplacement(code + " " + KNOWN.getOrDefault(code, "(text of the bank left out)")));
+			}
+			m.appendTail(out);
+			return masked(out.toString());
+		}
+
+		/// A text of the bank in a callback: shown only with --show-values.
+		static String callbackText(String text, String fallback) {
+			if (text == null || text.isBlank()) return fallback;
+			if (hasSegments(text)) return fallback;
+			return showValues ? withoutPin(text) : fallback + " (the text of the bank shows with --show-values)";
+		}
+	}
+
 	static final class Options {
 		String bankCode = "", url = "", user = "", customer, tanMethod;
 		int days = 90;
@@ -70,7 +142,10 @@ public class FinTSProbeJava {
 					case "--user" -> user = value(args, ++i, a);
 					case "--customer" -> customer = value(args, ++i, a);
 					case "--tan-method" -> tanMethod = value(args, ++i, a);
-					case "--days" -> days = Integer.parseInt(value(args, ++i, a));
+					case "--days" -> {
+						try { days = Integer.parseInt(value(args, ++i, a)); } catch (NumberFormatException e) { days = 0; }
+						if (days <= 0) throw new IllegalArgumentException("--days needs a number above 0");
+					}
 					case "--show-values" -> showValues = true;
 					case "--verbose" -> verbose = true;
 					case "--trace-sca" -> traceSCA = true;
@@ -81,6 +156,17 @@ public class FinTSProbeJava {
 			if (bankCode.isEmpty() || url.isEmpty() || user.isEmpty()) {
 				throw new IllegalArgumentException("--bank-code, --url, and --user are required");
 			}
+		}
+
+		/// hbci4java takes the host with the path and the query, and the port on its own.
+		String hostAndPath() {
+			java.net.URI uri = java.net.URI.create(url);
+			return uri.getHost() + (uri.getRawPath() == null ? "" : uri.getRawPath()) + (uri.getRawQuery() == null ? "" : "?" + uri.getRawQuery());
+		}
+
+		int port() {
+			int port = java.net.URI.create(url).getPort();
+			return port > 0 ? port : 443;
 		}
 
 		static String value(String[] args, int i, String name) {
@@ -109,21 +195,17 @@ public class FinTSProbeJava {
 		static final java.util.regex.Pattern SCA_LINE = java.util.regex.Pattern.compile(
 			"(?i)sca|hktan|hitan|3076|3920|3955|0030|9075|tan method|tanmethod|secmech|dialog init|template|decoupled|onestep|two-?step|process|Meldung der Bank");
 
-		static String maskNumbers(String text) {
-			return text.replaceAll("[A-Z]{2}\\d{2}[A-Z0-9]{10,30}", "IBAN…").replaceAll("\\d{6,}", "…");
-		}
-
 		@Override
 		public void log(String msg, int level, Date date, StackTraceElement trace) {
 			if (msg == null) return;
-			boolean secret = msg.contains(pin) || msg.contains("HNSHA") || msg.contains("HNHBK") || msg.contains("HNVSD");
+			boolean segments = Out.hasSegments(msg);
 			if (options.traceSCA && level >= 3 && level <= 4) {
-				if (!secret && SCA_LINE.matcher(msg).find()) System.out.println("[trace] " + maskNumbers(msg));
+				if (!segments && SCA_LINE.matcher(msg).find()) System.out.println("[trace] " + Out.bank(msg));
 				return;
 			}
 			if (level > (options.verbose ? 3 : 2)) return;
 			System.out.println("[" + (level <= 1 ? "error" : level == 2 ? "warning" : "info") + "] "
-				+ (secret ? "(message content left out)" : msg));
+				+ (segments ? "(message content left out)" : Out.bank(msg)));
 		}
 
 		@Override
@@ -135,8 +217,8 @@ public class FinTSProbeJava {
 				case NEED_USERID -> set(retData, options.user);
 				case NEED_CUSTOMERID -> set(retData, options.customer != null ? options.customer : options.user);
 				case NEED_COUNTRY -> set(retData, "DE");
-				case NEED_HOST -> set(retData, options.url);
-				case NEED_PORT -> set(retData, "443");
+				case NEED_HOST -> set(retData, options.hostAndPath());
+				case NEED_PORT -> set(retData, String.valueOf(options.port()));
 				case NEED_FILTER -> set(retData, "Base64");
 				case NEED_CONNECTION, CLOSE_CONNECTION -> { }
 				case NEED_PT_SECMECH -> set(retData, chooseTanMethod(retData.toString()));
@@ -146,21 +228,22 @@ public class FinTSProbeJava {
 					set(retData, media.isEmpty() ? "" : media.split("\\|")[0]);
 				}
 				case NEED_PT_DECOUPLED -> {
-					System.out.println("Bank: " + (msg == null || msg.isBlank() ? "Confirm the request in your banking app." : msg));
+					System.out.println("Bank: " + Out.callbackText(msg, "Confirm the request in your banking app."));
 					System.out.println("Waiting for the confirmation in the app …");
 				}
 				case NEED_PT_DECOUPLED_RETRY -> System.out.println("   still waiting (next check in " + retData + " s)");
 				case NEED_PT_TAN -> {
-					System.out.println("Bank: " + (msg == null ? "(no text)" : msg));
+					System.out.println("Bank: " + Out.callbackText(msg, "The bank asks for a TAN."));
 					String tan = console.readLine("TAN: ");
 					if (tan == null || tan.isEmpty()) throw new IllegalStateException("no TAN entered");
+					Out.secrets.add(tan);
 					set(retData, tan);
 				}
 				case NEED_PT_PHOTOTAN, NEED_PT_QRTAN ->
 					throw new IllegalStateException("the bank sent a photoTAN or QR code. This probe cannot show it. Use the app of the bank.");
-				case HAVE_INST_MSG -> System.out.println("Bank message: " + msg);
+				case HAVE_INST_MSG -> System.out.println("Bank message: " + Out.callbackText(msg, "received"));
 				default -> {
-					if (options.verbose) System.out.println("[info] callback " + reason + " not handled: " + msg);
+					if (options.verbose) System.out.println("[info] callback " + reason + " not handled: " + Out.callbackText(msg, "-"));
 				}
 			}
 		}
@@ -251,8 +334,8 @@ public class FinTSProbeJava {
 
 	static void printProblem(HBCIJobResult result) {
 		List<String> messages = new ArrayList<>();
-		for (HBCIRetVal r : result.getJobStatus().getRetVals()) messages.add(r.code + " " + r.text);
-		for (HBCIRetVal r : result.getGlobStatus().getRetVals()) messages.add(r.code + " " + r.text);
+		for (HBCIRetVal r : result.getJobStatus().getRetVals()) messages.add(Out.bank(r.code + ":" + r.text));
+		for (HBCIRetVal r : result.getGlobStatus().getRetVals()) messages.add(Out.bank(r.code + ":" + r.text));
 		System.out.println("      bank: " + (messages.isEmpty() ? "no message" : String.join("; ", messages)));
 	}
 
@@ -266,8 +349,19 @@ public class FinTSProbeJava {
 		char[] pinChars = console.readPassword("PIN: ");
 		if (pinChars == null || pinChars.length == 0) throw new IllegalStateException("no PIN entered");
 		String pin = new String(pinChars);
+		Out.secrets.add(pin);
+		Out.showValues = options.showValues;
+
+		java.net.URI uri = java.net.URI.create(options.url);
+		if (!"https".equalsIgnoreCase(uri.getScheme()) || uri.getHost() == null || uri.getHost().isEmpty()) {
+			throw new IllegalArgumentException("--url must be an https address with a host");
+		}
 
 		Path folder = Files.createTempDirectory("moneten-fints-");
+		// Deletes the folder also when the probe is stopped with Ctrl-C or SIGTERM, for example
+		// while it waits for an approval. The finally block below does the same on a normal end.
+		Thread cleanup = new Thread(() -> deleteFolder(folder));
+		Runtime.getRuntime().addShutdownHook(cleanup);
 		File passportFile = folder.resolve("passport.dat").toFile();
 		Properties props = new Properties();
 		// Our registration. Without it hbci4java would send its own test number.
@@ -284,10 +378,8 @@ public class FinTSProbeJava {
 			System.out.println("1. Opening the dialog (TAN methods, synchronization, account information)");
 			passport = AbstractHBCIPassport.getInstance(passportFile);
 			passport.setCountry("DE");
-			// hbci4java takes the host with the path, and the port on its own.
-			java.net.URI uri = java.net.URI.create(options.url);
-			passport.setHost(uri.getHost() + (uri.getRawPath() == null ? "" : uri.getRawPath()));
-			passport.setPort(uri.getPort() > 0 ? uri.getPort() : 443);
+			passport.setHost(options.hostAndPath());
+			passport.setPort(options.port());
 			passport.setFilterType("Base64");
 			handle = new HBCIHandler(HBCIVersion.HBCI_300.getId(), passport);
 			System.out.println("   bank: " + passport.getInstName() + ", BPD " + passport.getBPDVersion() + ", UPD " + passport.getUPDVersion());
@@ -336,7 +428,7 @@ public class FinTSProbeJava {
 			if (options.tanForOrders) System.out.println("   after --tan-for-orders: " + needTan(passport, true));
 			System.out.println("3. Fetching balances, transactions, and holdings");
 			HBCIExecStatus status = handle.execute();
-			if (!status.isOK()) System.out.println("   the dialog reported problems: " + status.getErrorString());
+			if (!status.isOK()) System.out.println("   the dialog reported problems:\n" + Out.bank(status.getErrorString()));
 
 			for (Jobs jobs : all) {
 				Konto account = jobs.account();
@@ -389,13 +481,30 @@ public class FinTSProbeJava {
 				}
 			}
 		} finally {
-			if (handle != null) handle.close();
-			else if (passport != null) passport.close();
-			HBCIUtils.done();
-			File[] files = folder.toFile().listFiles();
-			if (files != null) for (File f : files) f.delete();
-			folder.toFile().delete();
+			// The folder goes also when closing the dialog or hbci4java fails.
+			try {
+				if (handle != null) handle.close();
+				else if (passport != null) passport.close();
+			} catch (RuntimeException e) {
+				System.out.println("FinTSProbeJava: closing the dialog failed: " + Out.bank(e.getMessage()));
+			} finally {
+				try {
+					HBCIUtils.done();
+				} finally {
+					deleteFolder(folder);
+					Runtime.getRuntime().removeShutdownHook(cleanup);
+				}
+			}
 		}
+	}
+
+	/// Deletes the temporary folder with the passport file. It can run twice.
+	static void deleteFolder(Path folder) {
+		File[] files = folder.toFile().listFiles();
+		if (files != null) for (File f : files) {
+			if (!f.delete() && f.exists()) System.out.println("FinTSProbeJava: could not delete " + f + ". Delete it by hand.");
+		}
+		if (!folder.toFile().delete() && folder.toFile().exists()) System.out.println("FinTSProbeJava: could not delete " + folder + ". Delete it by hand.");
 	}
 
 	public static void main(String[] args) {
@@ -407,7 +516,7 @@ public class FinTSProbeJava {
 		} catch (Exception e) {
 			Throwable root = e;
 			while (root.getCause() != null && root.getCause() != root) root = root.getCause();
-			System.out.println("FinTSProbeJava: " + e.getMessage() + (root != e ? " (" + root.getMessage() + ")" : ""));
+			System.out.println("FinTSProbeJava: " + Out.bank(e.getMessage()) + (root != e ? " (" + Out.bank(root.getMessage()) + ")" : ""));
 			System.exit(1);
 		}
 	}

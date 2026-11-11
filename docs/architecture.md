@@ -23,8 +23,8 @@ The diagram shows the target design.
 ┌────┴─────┐ ┌──┴─────────────┐ ┌──┴───────────┐ ┌────────┴───────┐
 │  FinTS   │ │   Extension    │ │    finAPI    │ │     Import     │
 │connector │ │   connector    │ │  connector   │ │ CSV, CAMT,     │
-│(HBCI4-   │ │       │ XPC    │ │   (v0.3)     │ │ MT940,         │
-│ Swift)   │ │ ┌─────▼──────┐ │ └──────────────┘ │ MoneyMoney     │
+│(hbci4java│ │       │ XPC    │ │   (v0.3)     │ │ MT940,         │
+│ helper)  │ │ ┌─────▼──────┐ │ └──────────────┘ │ MoneyMoney     │
 └──────────┘ │ │ Lua host   │ │                  └────────────────┘
              │ └────────────┘ │
              └────────────────┘
@@ -175,7 +175,7 @@ Moneten/
 ├── App/                     The app target: project.yml, sources, Info.plist, resources
 │   └── FinTSProbe/          The FinTS prototype of issue #11
 ├── Vendor/
-│   └── HBCI4Swift/          Git submodule, unchanged
+│   └── HBCI4Swift/          Git submodule of the Swift probe, until #13 (ADR 0014)
 ├── scripts/                 Test, build, project, and check scripts
 ├── openspec/                Specs of every change
 └── docs/

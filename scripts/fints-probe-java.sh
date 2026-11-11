@@ -21,7 +21,11 @@ while read -r coordinate sha; do
 	group=$(echo "$coordinate" | cut -d: -f1); artifact=$(echo "$coordinate" | cut -d: -f2); version=$(echo "$coordinate" | cut -d: -f3)
 	jar="$LIB/$artifact-$version.jar"
 	if [ ! -f "$jar" ]; then
-		curl -sfL "https://repo1.maven.org/maven2/$(echo "$group" | tr . /)/$artifact/$version/$artifact-$version.jar" -o "$jar.part"
+		if ! curl -sfL "https://repo1.maven.org/maven2/$(echo "$group" | tr . /)/$artifact/$version/$artifact-$version.jar" -o "$jar.part"; then
+			rm -f "$jar.part"
+			echo "Download of $coordinate failed." >&2
+			exit 1
+		fi
 		mv "$jar.part" "$jar"
 	fi
 	if [ "$(shasum -a 256 "$jar" | cut -d' ' -f1)" != "$sha" ]; then

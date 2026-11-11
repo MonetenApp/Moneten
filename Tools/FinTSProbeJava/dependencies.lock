@@ -1,4 +1,4 @@
-# group:artifact:version sha256 of the jar. scripts/fetch-hbci4java.sh checks every download against it.
+# group:artifact:version sha256 of the jar. scripts/fints-probe-java.sh checks every download against it.
 com.github.hbci4j:hbci4j-core:4.1.17 bb3bc54587a3ff525d68d1763fae811ba8b2a6d8fc1684e157f3beb9a8c8feec
 jakarta.xml.bind:jakarta.xml.bind-api:4.0.2 0d6bcfe47763e85047acf7c398336dc84ff85ebcad0a7cb6f3b9d3e981245406
 jakarta.activation:jakarta.activation-api:2.1.3 01b176d718a169263e78290691fc479977186bcc6b333487325084d6586f4627
