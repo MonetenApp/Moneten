@@ -21,7 +21,7 @@ Use HBCI4Swift behind `FinTSConnector`, unchanged, as a Git submodule in `Vendor
 
 ## Prototype status
 
-`App/FinTSProbe/main.swift` is the prototype of issue #11. It fetches the TAN methods, the accounts, the balances, and the transactions of one bank access and prints which fields arrived. It builds against HBCI4Swift commit `d7aaede`, loads the syntax files from the app bundle, and composes the first message. The bank tests wait for the product ID of the FinTS registration.
+`App/FinTSProbe/main.swift` is the prototype of issue #11. It fetches the TAN methods, the accounts, the balances, and the transactions of one bank access and prints which fields arrived. It builds against the fork commit of [macemmi/HBCI4Swift#1](https://github.com/macemmi/HBCI4Swift/pull/1), one commit on top of upstream `d7aaede`, loads the syntax files from the app bundle, and composes the first message. The bank tests wait for the product ID of the FinTS registration.
 
 Two findings so far:
 
