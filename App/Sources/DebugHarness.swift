@@ -93,6 +93,14 @@ final class DebugHarness {
 			let slices = CategoryPie.slices(of: ChartCurrency.rows(rows, in: ChartCurrency.current(ranked, picked: nil), of: ranked), in: model).withdrawals
 			offscreenSnapshot(PieChart(title: "Withdrawals", slices: slices, pointer: slices.first.map { $0.value / 2 }).frame(height: 230).environment(model),
 				width: 520, name: "\(argument)-pie")
+		case "portfolio":
+			// "<group> <euros>" adds a portfolio with that bank balance to a group.
+			let parts = argument.split(separator: " ")
+			if parts.count == 2, let euros = Int64(parts[1]), let group = model.ledger.groups.first(where: { $0.name == String(parts[0]) }) {
+				var a = Account(groupID: group.id, position: model.ledger.nextTreePosition(in: group.id), name: "Depot", kind: .portfolio, source: .offline, currency: "EUR")
+				a.bankBalanceMinor = euros * 100
+				model.save(account: a)
+			}
 		case "barsnapshot":
 			// The daily balance of the selected account on the band, with the pointer on the bar of a week ago.
 			if case let .account(id) = model.selection, let account = model.ledger.account(id) {

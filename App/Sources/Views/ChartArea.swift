@@ -35,9 +35,22 @@ struct BalanceChart: View {
 		let currency = ChartCurrency.current(currencies, picked: picked)
 		let ids = Set(accounts.filter { $0.currency == currency }.map(\.id))
 		let monthly = model.balanceMode == .monthlyAverage
+		// Portfolios have no daily balance yet, so the bars leave them out. The total of the group in
+		// the title counts them, so the chart says how much it leaves out.
+		let portfolios = accountIDs.compactMap { model.ledger.account($0) }.filter { !$0.isClosed && $0.kind == .portfolio && $0.currency == currency }
+		let leftOut = Money(minorUnits: portfolios.reduce(0) { $0 + model.ledger.balance(of: $1).minorUnits }, currency: currency)
 		@Bindable var model = model
 		VStack(alignment: .trailing, spacing: 4) {
-			ChartCurrency.Picker(currencies: currencies, current: currency, picked: $picked)
+			HStack {
+				if !portfolios.isEmpty {
+					Text("Without portfolios: \(Format.money(leftOut))")
+						.font(.callout)
+						.foregroundStyle(Palette.bandLabel)
+						.help("Portfolios have no daily balance yet, so the bars show the other accounts. The total above counts the portfolios too.")
+				}
+				Spacer(minLength: 0)
+				ChartCurrency.Picker(currencies: currencies, current: currency, picked: $picked)
+			}
 			HStack(alignment: .bottom, spacing: 8) {
 				bars(ids: ids, currency: currency, monthly: monthly)
 				ChartModeSwitch(selection: $model.balanceMode, options: [

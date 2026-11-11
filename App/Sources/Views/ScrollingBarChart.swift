@@ -64,34 +64,40 @@ struct ScrollingBarChart: View {
 		HStack(spacing: 0) {
 			if style == .centered { AmountLabels(scale: scale) }
 			GeometryReader { geometry in
-				ScrollView(.horizontal) {
-					ZStack(alignment: .topLeading) {
-						LazyHStack(spacing: 0) {
-							ForEach(chunks) { chunk in
-								ChunkView(chunk: chunk, style: style, barWidth: barWidth, gap: gap, scale: scale,
-									positive: positive, negative: negative, hovered: hovered, height: geometry.size.height)
+				let chunks = Self.chunks(of: bars, style: style)
+				ScrollViewReader { proxy in
+					ScrollView(.horizontal) {
+						ZStack(alignment: .topLeading) {
+							LazyHStack(spacing: 0) {
+								ForEach(chunks) { chunk in
+									ChunkView(chunk: chunk, style: style, barWidth: barWidth, gap: gap, scale: scale,
+										positive: positive, negative: negative, hovered: hovered, height: geometry.size.height)
+								}
+							}
+							if let index = bars.firstIndex(where: { $0.id == hovered }) {
+								valueLabel(bars[index], index: index, chartHeight: geometry.size.height)
 							}
 						}
-						if let index = bars.firstIndex(where: { $0.id == hovered }) {
-							valueLabel(bars[index], index: index, chartHeight: geometry.size.height)
+						.contentShape(Rectangle())
+						.onContinuousHover { phase in
+							if case let .active(location) = phase { hovered = bar(at: location.x)?.id } else { hovered = nil }
+						}
+						.onTapGesture { location in
+							if let bar = bar(at: location.x) { select(bar) }
 						}
 					}
-					.contentShape(Rectangle())
-					.onContinuousHover { phase in
-						if case let .active(location) = phase { hovered = bar(at: location.x)?.id } else { hovered = nil }
-					}
-					.onTapGesture { location in
-						if let bar = bar(at: location.x) { select(bar) }
-					}
-				}
-				.defaultScrollAnchor(.trailing)
-				.background {
-					if style == .separators {
-						// As in MoneyMoney: a dashed line at zero across the whole chart, behind the bars.
-						Canvas { context, size in
-							let y = scale.y(0, chartHeight: size.height) + 0.5
-							let line = Path { $0.addLines([CGPoint(x: 0, y: y), CGPoint(x: size.width, y: y)]) }
-							context.stroke(line, with: .color(Palette.bandZero), style: StrokeStyle(lineWidth: 1, dash: [3, 1.5]))
+					.defaultScrollAnchor(.trailing)
+					// A LazyHStack only guesses the width of the chunks it has not built, so the anchor alone
+					// stopped short of the newest bars of a long history.
+					.onAppear { if let last = chunks.last?.id { proxy.scrollTo(last, anchor: .trailing) } }
+					.background {
+						if style == .separators {
+							// As in MoneyMoney: a dashed line at zero across the whole chart, behind the bars.
+							Canvas { context, size in
+								let y = scale.y(0, chartHeight: size.height) + 0.5
+								let line = Path { $0.addLines([CGPoint(x: 0, y: y), CGPoint(x: size.width, y: y)]) }
+								context.stroke(line, with: .color(Palette.bandZero), style: StrokeStyle(lineWidth: 1, dash: [3, 1.5]))
+							}
 						}
 					}
 				}
@@ -125,7 +131,7 @@ struct ScrollingBarChart: View {
 
 	/// Bars that start a month or year begin a chunk, so a label never crosses the edge of its chunk.
 	/// Without such starts, chunks hold twelve bars.
-	private var chunks: [Chunk] {
+	private static func chunks(of bars: [StripBar], style: Style) -> [Chunk] {
 		var result: [Chunk] = []
 		var current: [StripBar] = []
 		for bar in bars {
