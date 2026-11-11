@@ -135,12 +135,13 @@ struct CategoryBars: View {
 		VStack(alignment: .trailing, spacing: 4) {
 			HStack(spacing: 8) {
 				ChartCurrency.Picker(currencies: currencies, current: currency, picked: $picked)
-				Picker("", selection: $model.chartPeriod) {
+				Picker("Period", selection: $model.chartPeriod) {
 					Text("M").help("Monthly view").tag(ChartPeriod.month)
 					Text("Q").help("Quarterly view").tag(ChartPeriod.quarter)
 					Text("Y").help("Yearly view").tag(ChartPeriod.year)
 				}
 				.pickerStyle(.segmented)
+				.labelsHidden()
 				.fixedSize()
 			}
 			if sums.isEmpty {
@@ -177,10 +178,11 @@ enum ChartCurrency {
 
 		var body: some View {
 			if currencies.count > 1 {
-				SwiftUI.Picker("", selection: Binding(get: { current }, set: { picked = $0 })) {
+				SwiftUI.Picker("Currency", selection: Binding(get: { current }, set: { picked = $0 })) {
 					ForEach(currencies, id: \.self) { Text($0).help("Amounts in \($0)").tag($0) }
 				}
 				.pickerStyle(.segmented)
+				.labelsHidden()
 				.fixedSize()
 			}
 		}
