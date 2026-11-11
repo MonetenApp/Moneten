@@ -152,6 +152,7 @@ public struct MoneyMoneyMigration: Sendable {
 				balanceMinor = Money(Decimal(amount), currency: c).minorUnits
 			}
 			let balanceDate = (item["balanceDate"] as? Date) ?? (item["refreshTimestamp"] as? Date)
+			let color = (item["icon"] as? Data).flatMap(Self.iconColor)
 			// The MoneyMoney identifier decides. IBAN or account number match only accounts without one,
 			// so that two MoneyMoney accounts with the same IBAN stay apart.
 			if var existing = ledger.accounts.first(where: { $0.sourceID == source }) ?? ledger.accounts.first(where: { a in
@@ -161,11 +162,18 @@ public struct MoneyMoneyMigration: Sendable {
 			}) {
 				map[source] = existing.id
 				plan.skippedAccounts += 1
+				var changed = false
 				if existing.source == .migrated, let balanceMinor, existing.bankBalanceMinor != balanceMinor || existing.bankBalanceDate != balanceDate {
 					existing.bankBalanceMinor = balanceMinor
 					existing.bankBalanceDate = balanceDate
-					plan.updatedAccounts.append(existing)
+					changed = true
 				}
+				// An account of an earlier run gets the color of its MoneyMoney icon, unless the user chose one.
+				if let color, existing.color == nil {
+					existing.color = color
+					changed = true
+				}
+				if changed { plan.updatedAccounts.append(existing) }
 				continue
 			}
 			let isPortfolio = (item["portfolio"] as? Bool) == true
@@ -175,7 +183,7 @@ public struct MoneyMoneyMigration: Sendable {
 				source: .migrated, currency: currency, iban: iban, bic: bic,
 				accountNumber: number, bankCode: bankCode, owner: Self.string(item["owner"]),
 				bankBalanceMinor: balanceMinor, bankBalanceDate: balanceDate,
-				comment: Self.string(item["comment"]), sourceID: source)
+				comment: Self.string(item["comment"]), sourceID: source, color: color)
 			plan.accounts.append(account)
 			map[source] = account.id
 		}
@@ -218,9 +226,10 @@ public struct MoneyMoneyMigration: Sendable {
 		}
 	}
 
-	/// The color of a MoneyMoney category, such as "#4A90E2". The export has no color, but MoneyMoney
-	/// draws the icon of a category in its color, so this is the mean of the opaque colored pixels of
-	/// the icon, or of its opaque pixels when the icon is gray. Nil for an empty or unreadable icon.
+	/// The color of a MoneyMoney category or account, such as "#4A90E2". The export has no color, but
+	/// MoneyMoney draws the icon of a category or an account in its color, so this is the mean of the
+	/// opaque colored pixels of the icon, or of its opaque pixels when the icon is gray. Nil for an
+	/// empty or unreadable icon.
 	static func iconColor(_ data: Data) -> String? {
 		guard let source = CGImageSourceCreateWithData(data as CFData, nil), let image = CGImageSourceCreateImageAtIndex(source, 0, nil),
 			let space = CGColorSpace(name: CGColorSpace.sRGB) else { return nil }

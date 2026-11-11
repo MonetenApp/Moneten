@@ -172,12 +172,16 @@ struct AccountSettingsSheet: View {
 	@State private var account: Account?
 	@State private var initialBalance = ""
 	@State private var confirmRemove = false
+	@State private var color = Color.accentColor
+	@State private var originalColor = Color.accentColor
 
 	var body: some View {
 		if let original = model.ledger.account(accountID) {
 			SheetFrame(title: "Settings for \(original.name)", width: 500, onConfirm: {
 				guard var a = account else { return true }
 				if let d = AmountParser.decimal(from: initialBalance) { a.initialBalanceMinor = Money(d, currency: a.currency).minorUnits }
+				// An account keeps the color of its bank or kind until the user picks one.
+				if color.hex != originalColor.hex { a.color = color.hex }
 				model.save(account: a)
 				return true
 			}, leading: {
@@ -189,6 +193,7 @@ struct AccountSettingsSheet: View {
 						Picker("Account type", selection: binding.kind) {
 							ForEach(AccountKind.allCases, id: \.self) { Text($0.title).tag($0) }
 						}
+						LabeledContent("Color") { ColorSwatches(selection: $color) }
 					}
 					Section("Bank details") {
 						LabeledContent("Currency", value: original.currency)
@@ -222,6 +227,8 @@ struct AccountSettingsSheet: View {
 			.onAppear {
 				account = original
 				initialBalance = Format.editableAmount(original.initialBalanceMinor, original.currency)
+				color = AccountColors.color(of: original)
+				originalColor = color
 			}
 			.confirmationDialog("Are you sure you want to remove the account \(original.name)?", isPresented: $confirmRemove) {
 				Button("Remove", role: .destructive) {

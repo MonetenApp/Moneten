@@ -137,6 +137,23 @@ struct MoneyMoneyMigrationTests {
 		#expect(later.updatedCategories.first?.color == "#3478F6")
 	}
 
+	@Test("Accounts take the color of their MoneyMoney icon, and a later run fills in colors the user did not set")
+	func accountColors() throws {
+		var withIcons = accounts
+		withIcons[1]["icon"] = try icon(0x34, 0x78, 0xF6)
+		withIcons[2]["icon"] = try icon(0xE8, 0x8A, 0x2E)
+		let first = try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(withIcons), categories: try plist(categories), transactions: try plist(transactions), into: Ledger())
+		#expect(first.accounts.map(\.color) == ["#3478F6", "#E88A2E", nil])
+		// An earlier run without colors, and the user gave "Savings" a color of their own.
+		var earlier = try plan().accounts
+		earlier[1].color = "#00FF00"
+		let ledger = Ledger(accounts: earlier)
+		let later = try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(withIcons), categories: try plist(categories), transactions: try plist(transactions), into: ledger)
+		#expect(later.accounts.isEmpty)
+		#expect(later.updatedAccounts.map(\.name) == ["Giro"])
+		#expect(later.updatedAccounts.first?.color == "#3478F6")
+	}
+
 	@Test("Categories keep their tree and the default maps to Uncategorized")
 	func categoryTree() throws {
 		let p = try plan()

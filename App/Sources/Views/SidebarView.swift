@@ -28,6 +28,8 @@ struct SidebarView: View {
 			}
 		}
 		.listStyle(.sidebar)
+		// As in MoneyMoney: an opaque gray sidebar instead of the translucent material.
+		.scrollContentBackground(.hidden)
 		.safeAreaInset(edge: .bottom, spacing: 0) {
 			HStack {
 				AddMenuButton()
@@ -39,6 +41,7 @@ struct SidebarView: View {
 			.padding(.bottom, 8)
 			.padding(.top, 4)
 		}
+		.background(Palette.sidebar)
 	}
 }
 
@@ -137,7 +140,7 @@ struct AccountRow: View {
 			Label {
 				Text(account.name).strikethrough(account.isClosed)
 			} icon: {
-				Image(systemName: account.kind.symbol)
+				AccountIcon(account: account)
 			}
 			if newCount > 0 {
 				Text("\(newCount)")

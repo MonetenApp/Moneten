@@ -91,7 +91,7 @@ struct HeaderIcon: View {
 		Group {
 			switch model.selection {
 			case let .account(id):
-				Image(systemName: model.ledger.account(id)?.kind.symbol ?? "tray")
+				if let account = model.ledger.account(id) { AccountIcon(account: account, size: 20) }
 			case .group:
 				Image(systemName: "folder")
 			case let .category(id):
@@ -373,7 +373,7 @@ struct TransactionTable: View {
 			// points, the name then starts 118 points from the edge, as in MoneyMoney.
 			.width(95)
 			.customizationID("date")
-			// A group or category view names the account below the purpose of a selected row.
+			// A group or category view names the account of a selected row.
 			TableColumn("Name / Purpose") { (t: Transaction) in
 				let account = showsAccount && !groupedByAccount && model.selectedTransactions.contains(t.id) ? model.ledger.account(t.accountID)?.name : nil
 				TransactionCell(transaction: t, account: account).padding(.trailing, 12).rowChrome(t).draggable(draggedIDs(for: t))
@@ -428,7 +428,7 @@ struct TransactionTable: View {
 
 struct TransactionCell: View {
 	let transaction: Transaction
-	/// The account of the transaction, shown in a third line.
+	/// The account of the transaction, shown at the end of the first line.
 	var account: String?
 
 	var body: some View {
@@ -438,6 +438,16 @@ struct TransactionCell: View {
 				if let comment = transaction.comment {
 					Image(systemName: "note.text").foregroundStyle(.yellow).help(comment)
 				}
+				// MoneyMoney adds a third line, which made the selected row taller and moved the rows
+				// below it. At the end of the first line the row keeps its height.
+				if let account {
+					Spacer(minLength: 12)
+					Text(account)
+						.font(.system(size: 11))
+						.foregroundStyle(Palette.detail)
+						.lineLimit(1)
+						.layoutPriority(-1)
+				}
 			}
 			// A row without a purpose keeps the empty line, so that every row is the same height.
 			// As in MoneyMoney, the purpose takes one line, its lines joined with spaces. The whole text
@@ -446,12 +456,6 @@ struct TransactionCell: View {
 				.foregroundStyle(Palette.detail)
 				.lineLimit(1)
 				.help(transaction.purpose)
-			if let account {
-				Label(account, systemImage: "building.columns")
-					.font(.system(size: 12))
-					.foregroundStyle(Palette.detail)
-					.lineLimit(1)
-			}
 		}
 		.font(.system(size: 13))
 		.textSelection(.enabled)

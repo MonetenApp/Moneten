@@ -174,7 +174,13 @@ struct SchemaTests {
 		let queue = try DatabaseQueue()
 		try Schema.migrator.migrate(queue, upTo: "v3")
 		let depot = Account(position: 0, name: "Depot", kind: .portfolio, source: .migrated, bankBalanceMinor: 2_000_000, bankBalanceDate: Self.noon(9))
-		try queue.write { db in try depot.insert(db) }
+		// The columns of v3: a later version adds more, which the record type would write.
+		try queue.write { db in
+			try db.execute(sql: """
+				INSERT INTO account (id, position, name, kind, source, currency, initialBalanceMinor, isClosed, bankBalanceMinor, bankBalanceDate)
+				VALUES (?, 0, 'Depot', 'portfolio', 'migrated', 'EUR', 0, 0, ?, ?)
+				""", arguments: [depot.id, depot.bankBalanceMinor, depot.bankBalanceDate])
+		}
 		try Schema.migrator.migrate(queue)
 		let store = Store(queue: queue)
 		let ninth = PortfolioValue(accountID: depot.id, day: Day(year: 2026, month: 10, day: 9), minorUnits: 2_000_000)
@@ -193,6 +199,23 @@ struct SchemaTests {
 		])
 		try store.deleteAccount(depot.id)
 		#expect(try queue.read { db in try PortfolioValue.fetchCount(db) } == 0)
+	}
+
+	@Test("v5 keeps the accounts of a v4 database without a color and stores a chosen one")
+	func accountColor() throws {
+		let queue = try DatabaseQueue()
+		try Schema.migrator.migrate(queue, upTo: "v4")
+		var giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
+		try queue.write { db in
+			try db.execute(sql: "INSERT INTO account (id, position, name, kind, source, currency, initialBalanceMinor, isClosed) VALUES (?, 0, 'Giro', 'giro', 'offline', 'EUR', 0, 0)",
+				arguments: [giro.id])
+		}
+		try Schema.migrator.migrate(queue)
+		let store = Store(queue: queue)
+		#expect(try store.loadLedger().accounts.map(\.color) == [nil])
+		giro.color = "#3478F6"
+		try store.save(giro)
+		#expect(try store.loadLedger().accounts.map(\.color) == ["#3478F6"])
 	}
 
 	@Test("Saving a portfolio records the value of its balance day, alone or with an import, and other accounts record nothing")
