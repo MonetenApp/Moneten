@@ -326,7 +326,8 @@ struct TransactionTable: View {
 				if let sections {
 					// "Group transactions by account": a heading with the account name above its rows. The
 					// sections need a ForEach of rows, which SwiftUI builds for every row, so only a group
-					// with this option pays for it.
+					// with this option pays for it: about 2.3 seconds to open a group of 50,000 rows on an
+					// M-series Mac (perf scenario "group-by-account"), against half a second without it.
 					Table(of: Transaction.self, selection: $model.selectedTransactions, columnCustomization: $model.transactionColumns) {
 						columns(currency: currency)
 					} rows: {

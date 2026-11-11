@@ -52,6 +52,16 @@ struct PerfScenario {
 				}
 				_ = c.model.importTransactions(rows, into: account)
 			}),
+		// Last, because it leaves "Bulk" grouped by account: its table has a section per account.
+		PerfScenario(name: "group-by-account", budget: halfSecond,
+			setUp: { c in
+				if var g = c.model.ledger.groups.first(where: { $0.name == "Bulk" }) {
+					g.groupsByAccount = true
+					c.model.save(group: g)
+				}
+				await c.select("Account 2")
+			},
+			run: { await $0.select("Bulk") }),
 	]
 }
 
@@ -102,8 +112,9 @@ extension DebugHarness {
 			let settled = await context.settle()
 			let stall = context.watchdog.longest
 			let shown = transactionTables().first?.numberOfRows ?? 0
-			let current = shown == model.visibleTransactions.count
-			if !current { log("perf \(scenario.name) the table shows \(shown) rows instead of \(model.visibleTransactions.count)") }
+			let expected = model.visibleTransactions.count + sectionCount(model)
+			let current = shown == expected
+			if !current { log("perf \(scenario.name) the table shows \(shown) rows instead of \(expected)") }
 			let result = !settled || !current || stall > PerfScenario.hangLimit ? "fail" : stall > scenario.budget ? "slow" : "pass"
 			if result == "fail" { failures += 1 }
 			if result == "slow" { slow += 1 }
@@ -113,6 +124,12 @@ extension DebugHarness {
 	}
 
 	private static func milliseconds(_ d: Duration) -> Int { Int((d / .milliseconds(1)).rounded()) }
+
+	/// The heading rows of a group grouped by account: one for each account with visible rows.
+	private func sectionCount(_ model: AppModel) -> Int {
+		guard case let .group(id) = model.selection, model.ledger.group(id)?.groupsByAccount == true else { return 0 }
+		return Set(model.visibleTransactions.map(\.accountID)).count
+	}
 }
 
 /// Measures how long the main thread stays blocked. A background thread sends a ping to the main
