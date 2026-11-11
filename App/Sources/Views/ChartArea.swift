@@ -43,7 +43,7 @@ struct BalanceChart: View {
 		VStack(alignment: .trailing, spacing: 4) {
 			HStack {
 				if !portfolios.isEmpty {
-					Text("Without portfolios: \(Format.money(leftOut))")
+					Text("Portfolios not shown: \(Format.money(leftOut))")
 						.font(.callout)
 						.foregroundStyle(Palette.bandLabel)
 						.help("Portfolios have no daily balance yet, so the bars show the other accounts. The total above counts the portfolios too.")

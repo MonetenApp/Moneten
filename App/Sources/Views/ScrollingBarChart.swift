@@ -78,6 +78,9 @@ struct ScrollingBarChart: View {
 								valueLabel(bars[index], index: index, chartHeight: geometry.size.height)
 							}
 						}
+						// The row keeps the width of its bars, so a label wider than a short row cannot
+						// widen it under the pointer and move the bars away.
+						.frame(width: CGFloat(bars.count) * pitch, alignment: .leading)
 						.contentShape(Rectangle())
 						.onContinuousHover { phase in
 							if case let .active(location) = phase { hovered = bar(at: location.x)?.id } else { hovered = nil }
@@ -90,6 +93,8 @@ struct ScrollingBarChart: View {
 					// A LazyHStack only guesses the width of the chunks it has not built, so the anchor alone
 					// stopped short of the newest bars of a long history.
 					.onAppear { if let last = chunks.last?.id { proxy.scrollTo(last, anchor: .trailing) } }
+					// Another period keeps the view, so the row jumps again when its newest bar changes.
+					.onChange(of: chunks.last?.id) { _, last in if let last { proxy.scrollTo(last, anchor: .trailing) } }
 					.background {
 						if style == .separators {
 							// As in MoneyMoney: a dashed line at zero across the whole chart, behind the bars.

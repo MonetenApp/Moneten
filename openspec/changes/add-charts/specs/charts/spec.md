@@ -126,7 +126,7 @@ The app SHALL draw the balance chart of an account group as the sum of the balan
 
 - **GIVEN** the group "Private" with "Giro" at 1.000,00 € and the portfolio "Depot" at 20.000,00 €
 - **WHEN** the user opens the bar chart of "Private"
-- **THEN** the title shows 21.000,00 €, the last bar shows 1.000,00 €, and the chart says "Without portfolios: 20.000,00 €", because portfolios have no daily balance before the portfolio history of add-portfolio-analysis
+- **THEN** the title shows 21.000,00 €, the last bar shows 1.000,00 €, and the chart says "Portfolios not shown: 20.000,00 €", because portfolios have no daily balance before the portfolio history of add-portfolio-analysis
 
 #### Scenario: Euro and dollar accounts
 
