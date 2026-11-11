@@ -71,7 +71,7 @@ public class FinTSProbeJava {
 		static final List<String> secrets = new ArrayList<>();
 		static boolean showValues;
 
-		static final java.util.regex.Pattern RETURN_CODE = java.util.regex.Pattern.compile("\\b([0139]\\d{3}):[^\\n;]*");
+		static final java.util.regex.Pattern RETURN_CODE = java.util.regex.Pattern.compile("\\b([0139]\\d{3}):(?:(?!\\s+[0139]\\d{3}:)[^\\n;])*");
 
 		/// Return codes that the probe meets. The descriptions follow the FinTS specification.
 		static final Map<String, String> KNOWN = Map.ofEntries(
@@ -99,9 +99,9 @@ public class FinTSProbeJava {
 		static String masked(String text) {
 			if (showValues) return withoutPin(text);
 			return withoutPin(text)
-				.replaceAll("\\b[A-Z]{2}\\d{2}[A-Z0-9]{10,30}\\b", "IBAN…")
+				.replaceAll("\\b[A-Z]{2}\\d{2}(?: ?[A-Z0-9]{4}){3,7}(?: ?[A-Z0-9]{1,3})?\\b", "IBAN…")
 				.replaceAll("\\d+(?:[.,]\\d+)*\\s?(?:EUR|€|USD|CHF)", "…")
-				.replaceAll("\\b\\d+(?:\\.\\d{3})*,\\d{1,2}\\b", "…")
+				.replaceAll("\\b(?:\\d{1,3}(?:\\.\\d{3})+|\\d+),\\d{2}\\b", "…")
 				.replaceAll("\\d{6,}", "…");
 		}
 
@@ -504,7 +504,11 @@ public class FinTSProbeJava {
 					HBCIUtils.done();
 				} finally {
 					deleteFolder(folder);
-					Runtime.getRuntime().removeShutdownHook(cleanup);
+					try {
+						Runtime.getRuntime().removeShutdownHook(cleanup);
+					} catch (IllegalStateException e) {
+						// The JVM is already shutting down, and the hook has run.
+					}
 				}
 			}
 		}
