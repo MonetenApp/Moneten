@@ -93,6 +93,14 @@ final class DebugHarness {
 			let slices = CategoryPie.slices(of: ChartCurrency.rows(rows, in: ChartCurrency.current(ranked, picked: nil), of: ranked), in: model).withdrawals
 			offscreenSnapshot(PieChart(title: "Withdrawals", slices: slices, pointer: slices.first.map { $0.value / 2 }).frame(height: 230).environment(model),
 				width: 520, name: "\(argument)-pie")
+		case "barsnapshot":
+			// The daily balance of the selected account on the band, with the pointer on the bar of a week ago.
+			if case let .account(id) = model.selection, let account = model.ledger.account(id) {
+				let bars = BalanceChart.stripBars(model.ledger, ids: [id], range: .all, currency: account.currency, monthly: false)
+				let hovered = bars.dropLast(7).last?.id
+				offscreenSnapshot(ScrollingBarChart(bars: bars, style: .separators, barWidth: 4, gap: 2, positive: Palette.bandBar, negative: Palette.red,
+					hovered: hovered) { _ in }.frame(height: 230).background(Palette.band).environment(model), width: 520, name: "\(argument)-bars")
+			}
 		case "history": DemoData.history(model)
 		case "bulk":
 			// "<count>" spreads the transactions over the existing accounts, "<count> <accounts>" over new ones.

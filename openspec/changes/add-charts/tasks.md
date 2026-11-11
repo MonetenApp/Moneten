@@ -20,7 +20,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [x] 1.14 The category chart follows the period and the account filter. Verified by the chart uses the filtered rows.
 - [x] 1.15 Pie charts of deposits and withdrawals. Verified by the debug harness snapshot in the first build.
 - [x] 1.16 Categories can be left out of charts. Verified by "Show in diagrams".
-- [ ] 1.17 Values on hover. Built: balance and category bars show the date or period and the exact amount under the pointer; a pie slice stands out and the middle of its ring shows the category, the amount, and the share, see the debug harness command `piesnapshot`. Verify it with the pointer in the app.
+- [ ] 1.17 Values on hover. Built: balance and category bars show a light column and the date or period with the exact amount below the bars, see the debug harness command `barsnapshot`; a pie slice stands out and the middle of its ring shows the category, the amount, and the share, see the debug harness command `piesnapshot`. Verify it with the pointer in the app.
 - [ ] 1.18 A click on a bar selects its period. Built: a click on a balance bar sets its day, days, or month as the period of the list, and a click on a category bar its month, quarter, or year. The chart keeps its period, so the other bars stay; the debug harness command `period bar` shows this. Verify it with a click in the app.
 - [x] 1.19 Charts stay current. Verified by charts read the ledger on every change.
 - [x] 1.20 Charts follow the appearance. Verified by dark mode, see the debug harness snapshot in the first build.

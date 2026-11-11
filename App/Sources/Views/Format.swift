@@ -123,6 +123,8 @@ enum Palette {
 	static let bandLine = dynamic("bandLine", light: rgb(0xA1ABB4), dark: rgb(0x3B3C40))
 	/// The bars of the balance chart.
 	static let bandBar = dynamic("bandBar", light: .white, dark: rgb(0xC9CACB))
+	/// The column behind the bar under the pointer: white at 18% on the band, measured in MoneyMoney.
+	static let bandHover = Color.white.opacity(0.18)
 	/// The dashed line at zero behind the bars of the balance chart.
 	static let bandZero = dynamic("bandZero", light: .white, dark: NSColor(white: 1, alpha: 0.25))
 	/// The mode switch of a chart: the chosen segment dark with white text, the others light.

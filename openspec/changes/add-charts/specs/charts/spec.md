@@ -242,7 +242,7 @@ The app SHALL leave a category whose setting "Show in diagrams" is off out of th
 
 ### Requirement: Values on hover
 
-The app SHALL show the date or period and the exact amount of a bar, or the category, the amount, and the share of a slice, while the pointer rests on it.
+The app SHALL show the date or period and the exact amount of a bar, or the category, the amount, and the share of a slice, while the pointer rests on it. As in MoneyMoney, a bar gets a light column through the chart, and its date and amount stand below the bars next to it.
 
 #### Scenario: Hover over a bar
 

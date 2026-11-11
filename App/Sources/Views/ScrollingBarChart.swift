@@ -38,12 +38,24 @@ struct ScrollingBarChart: View {
 	let negative: Color
 	let select: (StripBar) -> Void
 	@State private var hovered: Int?
-	@State private var pointerX: CGFloat = 0
+
+	/// `hovered` presets the bar under the pointer, for a snapshot of the debug harness.
+	init(bars: [StripBar], style: Style, barWidth: CGFloat, gap: CGFloat, positive: Color, negative: Color, hovered: Int? = nil,
+		select: @escaping (StripBar) -> Void) {
+		self.bars = bars
+		self.style = style
+		self.barWidth = barWidth
+		self.gap = gap
+		self.positive = positive
+		self.negative = negative
+		self.select = select
+		_hovered = State(initialValue: hovered)
+	}
 
 	/// The strip of labels above the bars.
 	nonisolated static let labelHeight: CGFloat = 22
-	/// Room below the bars for the scroller.
-	nonisolated static let bottomInset: CGFloat = 14
+	/// Room below the bars for the date and amount of the bar under the pointer, and the scroller.
+	nonisolated static let bottomInset: CGFloat = 44
 
 	private var pitch: CGFloat { barWidth + gap }
 
@@ -53,10 +65,15 @@ struct ScrollingBarChart: View {
 			if style == .centered { AmountLabels(scale: scale) }
 			GeometryReader { geometry in
 				ScrollView(.horizontal) {
-					LazyHStack(spacing: 0) {
-						ForEach(chunks) { chunk in
-							ChunkView(chunk: chunk, style: style, barWidth: barWidth, gap: gap, scale: scale,
-								positive: positive, negative: negative, hovered: hovered, height: geometry.size.height)
+					ZStack(alignment: .topLeading) {
+						LazyHStack(spacing: 0) {
+							ForEach(chunks) { chunk in
+								ChunkView(chunk: chunk, style: style, barWidth: barWidth, gap: gap, scale: scale,
+									positive: positive, negative: negative, hovered: hovered, height: geometry.size.height)
+							}
+						}
+						if let index = bars.firstIndex(where: { $0.id == hovered }) {
+							valueLabel(bars[index], index: index, chartHeight: geometry.size.height)
 						}
 					}
 					.contentShape(Rectangle())
@@ -78,23 +95,26 @@ struct ScrollingBarChart: View {
 						}
 					}
 				}
-				.onContinuousHover { phase in
-					if case let .active(location) = phase { pointerX = location.x }
-				}
-				.overlay(alignment: .topLeading) {
-					if let bar = bars.first(where: { $0.id == hovered }) {
-						// Centered over the pointer and kept inside the chart.
-						let x = pointerX, width = geometry.size.width
-						ChartValueLabel(title: bar.title, value: bar.money)
-							.fixedSize()
-							.alignmentGuide(.leading) { d in -min(max(0, x - d.width / 2), max(0, width - d.width)) }
-							.offset(y: Self.labelHeight)
-							.allowsHitTesting(false)
-					}
-				}
 			}
 		}
-		.help("Click a bar to show its transactions")
+	}
+
+	/// As in MoneyMoney: the date and the amount of the bar under the pointer, below the bars and
+	/// just after the bar, or before it when the row ends there.
+	private func valueLabel(_ bar: StripBar, index: Int, chartHeight: CGFloat) -> some View {
+		let left = CGFloat(index) * pitch + (style == .centered ? gap / 2 : 0)
+		let right = left + barWidth
+		let total = CGFloat(bars.count) * pitch
+		return VStack(alignment: .leading, spacing: 0) {
+			Text(bar.title)
+			Text(Format.money(bar.money)).fontWeight(.bold).monospacedDigit()
+		}
+		.font(.system(size: 13))
+		.foregroundStyle(Palette.onBand)
+		.fixedSize()
+		.alignmentGuide(.leading) { d in right + 6 + d.width <= total ? -(right + 6) : -max(0, left - 6 - d.width) }
+		.offset(y: chartHeight - Self.bottomInset + 6)
+		.allowsHitTesting(false)
 	}
 
 	/// The bar under a point of the scrolling row.
@@ -167,16 +187,18 @@ private struct ChunkView: View {
 		let width = CGFloat(chunk.bars.count) * pitch
 		Canvas { context, size in
 			let zero = scale.y(0, chartHeight: size.height)
-			// Under the pointer, the other bars fade.
-			let dims = hovered != nil
 			for (i, bar) in chunk.bars.enumerated() {
 				let x = CGFloat(i) * pitch + (style == .centered ? gap / 2 : 0)
+				// As in MoneyMoney: a light column through the whole chart behind the bar under the pointer.
+				if bar.id == hovered {
+					context.fill(Path(CGRect(x: x, y: 0, width: barWidth, height: size.height)), with: .color(Palette.bandHover))
+				}
 				let y = scale.y(bar.value, chartHeight: size.height)
 				// A bar of zero or a few cents is a line, so every period shows where it is.
 				var rect = CGRect(x: x, y: min(y, zero), width: barWidth, height: abs(y - zero))
 				if rect.height < 1 { rect = CGRect(x: x, y: zero - (bar.value < 0 ? 0 : 1), width: barWidth, height: 1) }
 				let color = bar.value < 0 ? negative : positive
-				context.fill(Path(rect), with: .color(color.opacity(dims && bar.id != hovered ? 0.5 : 1)))
+				context.fill(Path(rect), with: .color(color))
 				if style == .centered, let label = bar.label {
 					context.draw(Text(label).font(.system(size: 12)).foregroundStyle(Palette.bandLabel),
 						at: CGPoint(x: x + barWidth / 2, y: 3), anchor: .top)

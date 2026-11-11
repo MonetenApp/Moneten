@@ -175,32 +175,6 @@ enum ChartCurrency {
 	}
 }
 
-/// The date and the exact amount of the bar under the pointer.
-struct ChartValueLabel: View {
-	let title: String
-	let value: Money
-	/// The withdrawals of a category bar, below the deposits.
-	var second: Money?
-
-	var body: some View {
-		VStack(alignment: .leading, spacing: 2) {
-			Text(title).font(.caption).foregroundStyle(Palette.detail)
-			if let second {
-				Text("Deposits: \(Format.money(value))").font(.callout).monospacedDigit()
-				Text("Withdrawals: \(Format.money(second))").font(.callout).monospacedDigit()
-			} else {
-				AmountText(money: value).font(.callout.weight(.semibold))
-			}
-		}
-		.padding(.horizontal, 8)
-		.padding(.vertical, 5)
-		// The label has its own material, so its text takes the colors of the system, not the white of the band.
-		.foregroundStyle(Color.primary)
-		.background(.regularMaterial, in: .rect(cornerRadius: 6))
-		.overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(.separator))
-	}
-}
-
 struct CategoryPie: View {
 	@Environment(AppModel.self) private var model
 	let rows: [Transaction]
