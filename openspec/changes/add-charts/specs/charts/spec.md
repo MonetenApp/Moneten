@@ -49,7 +49,7 @@ The app SHALL draw the balance of an account over time as a bar chart, with one 
 
 ### Requirement: Look of the balance chart
 
-The app SHALL draw the balance chart as MoneyMoney does: every bar 4 points wide with a gap of 2 points, gray, and red below zero. A thin line and the name of the month, such as "Oct 26", mark the first day of each month; in the monthly average the year marks January. The chart has no amount axis.
+The app SHALL draw the balance chart as MoneyMoney does: every bar 4 points wide with a gap of 2 points, white on the slate band behind the title, and red below zero, over a dashed line at zero. A thin line and the name of the month, such as "Oct 26", mark the first day of each month; in the monthly average the year marks January. The chart has no amount axis.
 
 #### Scenario: Month lines
 

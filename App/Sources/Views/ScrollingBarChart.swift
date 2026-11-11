@@ -41,9 +41,9 @@ struct ScrollingBarChart: View {
 	@State private var pointerX: CGFloat = 0
 
 	/// The strip of labels above the bars.
-	static let labelHeight: CGFloat = 22
+	nonisolated static let labelHeight: CGFloat = 22
 	/// Room below the bars for the scroller.
-	static let bottomInset: CGFloat = 14
+	nonisolated static let bottomInset: CGFloat = 14
 
 	private var pitch: CGFloat { barWidth + gap }
 
@@ -68,6 +68,16 @@ struct ScrollingBarChart: View {
 					}
 				}
 				.defaultScrollAnchor(.trailing)
+				.background {
+					if style == .separators {
+						// As in MoneyMoney: a dashed line at zero across the whole chart, behind the bars.
+						Canvas { context, size in
+							let y = scale.y(0, chartHeight: size.height) + 0.5
+							let line = Path { $0.addLines([CGPoint(x: 0, y: y), CGPoint(x: size.width, y: y)]) }
+							context.stroke(line, with: .color(Palette.bandZero), style: StrokeStyle(lineWidth: 1, dash: [3, 1.5]))
+						}
+					}
+				}
 				.onContinuousHover { phase in
 					if case let .active(location) = phase { pointerX = location.x }
 				}
@@ -131,9 +141,11 @@ struct ScrollingBarChart: View {
 			lower = minimum < 0 ? minimum - room : 0
 		}
 
-		/// The y of a value in a plot from `top` with `height`.
-		func y(_ value: Double, top: CGFloat, height: CGFloat) -> CGFloat {
-			top + CGFloat((upper - value) / (upper - lower)) * height
+		/// The y of a value in a chart of `chartHeight`, between the labels and the room for the scroller.
+		func y(_ value: Double, chartHeight: CGFloat) -> CGFloat {
+			let top = ScrollingBarChart.labelHeight + 4
+			let plot = chartHeight - top - ScrollingBarChart.bottomInset
+			return top + CGFloat((upper - value) / (upper - lower)) * plot
 		}
 	}
 }
@@ -154,28 +166,26 @@ private struct ChunkView: View {
 		let pitch = barWidth + gap
 		let width = CGFloat(chunk.bars.count) * pitch
 		Canvas { context, size in
-			let top = ScrollingBarChart.labelHeight + 4
-			let plot = size.height - top - ScrollingBarChart.bottomInset
-			let zero = scale.y(0, top: top, height: plot)
+			let zero = scale.y(0, chartHeight: size.height)
 			// Under the pointer, the other bars fade.
 			let dims = hovered != nil
 			for (i, bar) in chunk.bars.enumerated() {
 				let x = CGFloat(i) * pitch + (style == .centered ? gap / 2 : 0)
-				let y = scale.y(bar.value, top: top, height: plot)
+				let y = scale.y(bar.value, chartHeight: size.height)
 				// A bar of zero or a few cents is a line, so every period shows where it is.
 				var rect = CGRect(x: x, y: min(y, zero), width: barWidth, height: abs(y - zero))
 				if rect.height < 1 { rect = CGRect(x: x, y: zero - (bar.value < 0 ? 0 : 1), width: barWidth, height: 1) }
 				let color = bar.value < 0 ? negative : positive
 				context.fill(Path(rect), with: .color(color.opacity(dims && bar.id != hovered ? 0.5 : 1)))
 				if style == .centered, let label = bar.label {
-					context.draw(Text(label).font(.system(size: 12)).foregroundStyle(Color.secondary),
+					context.draw(Text(label).font(.system(size: 12)).foregroundStyle(Palette.bandLabel),
 						at: CGPoint(x: x + barWidth / 2, y: 3), anchor: .top)
 				}
 			}
 			if style == .separators, let first = chunk.bars.first, first.startsGroup {
-				context.fill(Path(CGRect(x: 0, y: 0, width: 1, height: size.height - ScrollingBarChart.bottomInset)), with: .color(.primary.opacity(0.12)))
+				context.fill(Path(CGRect(x: 0, y: 0, width: 1, height: size.height - ScrollingBarChart.bottomInset)), with: .color(Palette.bandLine))
 				if let label = first.label {
-					let text = context.resolve(Text(label).font(.system(size: 12)).foregroundStyle(Color.secondary))
+					let text = context.resolve(Text(label).font(.system(size: 12)).foregroundStyle(Palette.bandLabel))
 					// A label that does not fit before the next month or year is left out.
 					if text.measure(in: size).width + 6 <= size.width {
 						context.draw(text, at: CGPoint(x: 5, y: 3), anchor: .topLeading)
@@ -200,17 +210,15 @@ private struct AmountLabels: View {
 
 	var body: some View {
 		GeometryReader { geometry in
-			let top = ScrollingBarChart.labelHeight + 4
-			let plot = geometry.size.height - top - ScrollingBarChart.bottomInset
 			let values = [scale.maximum, 0, scale.minimum].filter { $0 != 0 } + [0]
 			ForEach(Array(Set(values)).sorted(by: >), id: \.self) { value in
 				Text(Self.text(value))
 					.font(.system(size: 11))
-					.foregroundStyle(.secondary)
+					.foregroundStyle(Palette.bandLabel)
 					.monospacedDigit()
 					.fixedSize()
 					.frame(width: geometry.size.width - 6, alignment: .trailing)
-					.position(x: (geometry.size.width - 6) / 2, y: scale.y(value, top: top, height: plot))
+					.position(x: (geometry.size.width - 6) / 2, y: scale.y(value, chartHeight: geometry.size.height))
 			}
 		}
 		.frame(width: 72)

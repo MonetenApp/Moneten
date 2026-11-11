@@ -9,14 +9,18 @@ struct TransactionsView: View {
 		@Bindable var model = model
 		let rows = model.visibleTransactions
 		VStack(spacing: 0) {
-			HeaderView(rows: rows)
-			if model.viewMode != .list {
-				ChartArea(rows: rows)
-					.frame(height: 230)
-					.padding(.horizontal)
-					.padding(.bottom, 8)
-				Divider()
+			// As in MoneyMoney: one slate band behind the title and the chart, with white text.
+			VStack(spacing: 0) {
+				HeaderView(rows: rows)
+				if model.viewMode != .list {
+					ChartArea(rows: rows)
+						.frame(height: 230)
+						.padding(.horizontal)
+						.padding(.bottom, 8)
+				}
 			}
+			.foregroundStyle(Palette.onBand)
+			.background(Palette.band)
 			FilterBar()
 			// The bordered table draws the lines above and below itself.
 			TransactionTable(rows: rows)
@@ -99,7 +103,6 @@ struct HeaderIcon: View {
 			}
 		}
 		.font(.title2)
-		.foregroundStyle(.secondary)
 		.frame(width: 28, height: 28)
 	}
 }

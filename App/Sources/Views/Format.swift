@@ -99,33 +99,44 @@ struct AmountText: View {
 	/// Increased on a selected table row, where red would be hard to read on the accent color.
 	@Environment(\.backgroundProminence) private var prominence
 	var body: some View {
+		// A positive amount takes the color of its surroundings, such as white on the band of the header.
 		Text(showsCurrency ? Format.money(money) : Format.amount(money))
 			.monospacedDigit()
-			.foregroundStyle(money.isNegative && prominence != .increased ? Palette.red : Color.primary)
+			.foregroundStyle(money.isNegative && prominence != .increased ? AnyShapeStyle(Palette.red) : AnyShapeStyle(.primary))
 	}
 }
 
-/// Text colors for data. `.secondary` is 50 % black, about 3.9:1 on white, too faint for amounts,
-/// purposes, and counts, so data uses these colors. Labels and empty states keep `.secondary`.
+/// The colors of the app, each for light and dark mode, measured in the windows of MoneyMoney as sRGB.
+/// `.secondary` is 50 % black, about 3.9:1 on white, too faint for amounts, purposes, and counts, so
+/// data uses these colors. Labels and empty states keep `.secondary`.
 enum Palette {
-	/// The bars of the balance chart, as MoneyMoney draws them: light gray on the dark window, and
-	/// a middle gray on the light one.
-	static let chartBar = Color(nsColor: NSColor(name: "chartBar") { appearance in
-		appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-			? NSColor(srgbRed: 0xD3 / 255, green: 0xD4 / 255, blue: 0xD5 / 255, alpha: 1)
-			: NSColor(srgbRed: 0x9A / 255, green: 0x9C / 255, blue: 0xA1 / 255, alpha: 1)
-	})
+	/// The slate band behind the title of the view and its chart.
+	static let band = dynamic("band", light: rgb(0xAFBAC3), dark: rgb(0x363840))
+	/// Title, IBAN, balance, and icon on the band.
+	static let onBand = Color.white
+	/// The months, years, and periods of the charts, and the amounts at the edge of a category chart.
+	static let bandLabel = dynamic("bandLabel", light: rgb(0x696F76), dark: rgb(0x909194))
+	/// The line where a month or a year starts in the balance chart.
+	static let bandLine = dynamic("bandLine", light: rgb(0xA1ABB4), dark: rgb(0x4B4C51))
+	/// The bars of the balance chart.
+	static let bandBar = dynamic("bandBar", light: .white, dark: rgb(0xD3D4D5))
+	/// The dashed line at zero behind the bars of the balance chart.
+	static let bandZero = dynamic("bandZero", light: .white, dark: NSColor(white: 1, alpha: 0.25))
 	/// Text below or beside the main text, such as a purpose or a count: about 8:1 on white. As in
 	/// MoneyMoney, the weight of the main text sets the hierarchy, not a faint color. A hierarchical
 	/// style, so it turns light on a selected table row like the system colors do.
 	static var detail: AnyShapeStyle { AnyShapeStyle(.primary.opacity(0.82)) }
 	/// Negative amounts and error messages. The system red reaches only 3.6:1 on white, so light mode
 	/// uses a darker red with 5.7:1. Dark mode keeps the system red, 4.9:1 on the dark window.
-	static let red = Color(nsColor: NSColor(name: "textRed") { appearance in
-		appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
-			? .systemRed
-			: NSColor(srgbRed: 0xC4 / 255, green: 0x26 / 255, blue: 0x2E / 255, alpha: 1)
-	})
+	static let red = dynamic("textRed", light: rgb(0xC4262E), dark: .systemRed)
+
+	private static func dynamic(_ name: String, light: NSColor, dark: NSColor) -> Color {
+		Color(nsColor: NSColor(name: name) { $0.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? dark : light })
+	}
+
+	private static func rgb(_ hex: Int) -> NSColor {
+		NSColor(srgbRed: CGFloat(hex >> 16 & 0xFF) / 255, green: CGFloat(hex >> 8 & 0xFF) / 255, blue: CGFloat(hex & 0xFF) / 255, alpha: 1)
+	}
 }
 
 /// The color of a category: its own color, else the color of its top-level category from a fixed

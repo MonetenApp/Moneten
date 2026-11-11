@@ -24,7 +24,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [ ] 1.18 A click on a bar selects its period. Built: a click on a balance bar sets its day, days, or month as the period of the list, and a click on a category bar its month, quarter, or year. The chart keeps its period, so the other bars stay; the debug harness command `period bar` shows this. Verify it with a click in the app.
 - [x] 1.19 Charts stay current. Verified by charts read the ledger on every change.
 - [x] 1.20 Charts follow the appearance. Verified by dark mode, see the debug harness snapshot in the first build.
-- [x] 1.21 Bars as MoneyMoney draws them, measured in its window: balance bars of 4 points with a gap of 2 in gray, month and year lines with labels and no amount axis; category bars of 40 points with a gap of 8 in the color of the category, darker below zero, a line at zero for empty periods, and the highest sum, zero, and the lowest sum at the leading edge. Verified by snapshots of the debug harness in light and dark mode and by BalanceChartTests "A category chart has a bar for every period".
+- [x] 1.21 Bars as MoneyMoney draws them, measured in its window: balance bars of 4 points with a gap of 2, white on the slate band behind the title, over a dashed line at zero, month and year lines with labels and no amount axis; category bars of 40 points with a gap of 8 in the color of the category, darker below zero, a line at zero for empty periods, and the highest sum, zero, and the lowest sum at the leading edge. Verified by snapshots of the debug harness in light and dark mode and by BalanceChartTests "A category chart has a bar for every period".
 
 ## 2. Integration
 

@@ -49,8 +49,8 @@ struct BalanceChart: View {
 				.foregroundStyle(.secondary)
 				.frame(maxWidth: .infinity, maxHeight: .infinity)
 		} else {
-			// As in MoneyMoney: a bar of 4 points and a gap of 2 for each day or month, gray, and red below zero.
-			ScrollingBarChart(bars: bars, style: .separators, barWidth: 4, gap: 2, positive: Palette.chartBar, negative: Palette.red) { bar in
+			// As in MoneyMoney: a bar of 4 points and a gap of 2 for each day or month, white on the band, and red below zero.
+			ScrollingBarChart(bars: bars, style: .separators, barWidth: 4, gap: 2, positive: Palette.bandBar, negative: Palette.red) { bar in
 				model.select(bar: PeriodChoice(bar: BalanceBar(start: bar.start, end: bar.end, minorUnits: bar.money.minorUnits), monthly: monthly))
 			}
 			// A new view starts again at its newest bar.
@@ -115,7 +115,7 @@ struct CategoryBars: View {
 
 	/// The color of the selected category, as in the sidebar.
 	private var categoryColor: Color {
-		guard case let .category(id) = model.selection, let c = model.ledger.category(id) else { return Palette.chartBar }
+		guard case let .category(id) = model.selection, let c = model.ledger.category(id) else { return Palette.bandBar }
 		return CategoryColors.color(of: c, in: model.ledger)
 	}
 
@@ -185,6 +185,8 @@ struct ChartValueLabel: View {
 		}
 		.padding(.horizontal, 8)
 		.padding(.vertical, 5)
+		// The label has its own material, so its text takes the colors of the system, not the white of the band.
+		.foregroundStyle(Color.primary)
 		.background(.regularMaterial, in: .rect(cornerRadius: 6))
 		.overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(.separator))
 	}
@@ -267,7 +269,7 @@ struct PieChart: View {
 						ForEach(slices) { s in
 							HStack(spacing: 4) {
 								Circle().fill(s.color).frame(width: 8, height: 8)
-								Text(s.name).font(.caption).foregroundStyle(Color.secondary).lineLimit(1)
+								Text(s.name).font(.caption).lineLimit(1)
 							}
 						}
 					}
