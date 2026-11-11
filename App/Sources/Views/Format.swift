@@ -52,6 +52,24 @@ enum Format {
 		d.date().formatted(.dateTime.month(.wide).year())
 	}
 
+	/// A month on a chart, as MoneyMoney writes it: "Oct 26".
+	static func shortMonth(_ d: Day) -> String { shortMonthFormatter.string(from: d.date()) }
+
+	private static let shortMonthFormatter: DateFormatter = {
+		let f = DateFormatter()
+		f.setLocalizedDateFormatFromTemplate("MMMyy")
+		return f
+	}()
+
+	/// The label of a bar of a category chart: "Oct 26", "Q4 26", or "2026".
+	static func periodLabel(_ start: Day, period: ChartPeriod) -> String {
+		switch period {
+		case .month: shortMonth(start)
+		case .quarter: "Q\((start.month - 1) / 3 + 1) \(String(format: "%02d", start.year % 100))"
+		case .year: String(start.year)
+		}
+	}
+
 	static func iban(_ s: String) -> String {
 		let compact = s.replacingOccurrences(of: " ", with: "")
 		guard compact.count > 8, compact.prefix(2).allSatisfy(\.isLetter) else { return s }
@@ -90,6 +108,13 @@ struct AmountText: View {
 /// Text colors for data. `.secondary` is 50 % black, about 3.9:1 on white, too faint for amounts,
 /// purposes, and counts, so data uses these colors. Labels and empty states keep `.secondary`.
 enum Palette {
+	/// The bars of the balance chart, as MoneyMoney draws them: light gray on the dark window, and
+	/// a middle gray on the light one.
+	static let chartBar = Color(nsColor: NSColor(name: "chartBar") { appearance in
+		appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+			? NSColor(srgbRed: 0xD3 / 255, green: 0xD4 / 255, blue: 0xD5 / 255, alpha: 1)
+			: NSColor(srgbRed: 0x9A / 255, green: 0x9C / 255, blue: 0xA1 / 255, alpha: 1)
+	})
 	/// Text below or beside the main text, such as a purpose or a count: about 8:1 on white. As in
 	/// MoneyMoney, the weight of the main text sets the hierarchy, not a faint color. A hierarchical
 	/// style, so it turns light on a selected table row like the system colors do.

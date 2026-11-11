@@ -11,7 +11,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [ ] 1.5 Initial balance at account setup. Built in part: the migration computes it from the balance of the bank. Finish it and verify it with a test or in the app.
 - [x] 1.6 Daily balance or monthly average balance. Verified by the debug harness snapshot in the first build.
 - [x] 1.7 The balance chart follows the period. Verified by the debug harness snapshot in the first build.
-- [x] 1.8 Long periods are averaged. Verified by BalanceChartTests "Ten years of daily balances share bars with their average"; the chart allows one bar per 4 points of width.
+- [x] 1.8 Long periods scroll. Verified by BalanceChartTests "Ten years of daily balances keep one bar per day" and snapshots of the debug harness: the daily chart of `history` opens at today with July to November visible, and 50,000 transactions of `bulk` stay under the perf budget of scripts/perf-check.sh. Scrolling with the trackpad still needs a check by hand.
 - [x] 1.9 Balance chart of an account group. Verified by the debug harness snapshot in the first build.
 - [x] 1.10 No balance chart without transactions. Verified by "No transactions; no bar chart.".
 - [x] 1.11 Calibrate the computed balance. Verified by "Calibrate" in the account settings.
@@ -24,7 +24,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [ ] 1.18 A click on a bar selects its period. Built: a click on a balance bar sets its day, days, or month as the period of the list, and a click on a category bar its month, quarter, or year. The chart keeps its period, so the other bars stay; the debug harness command `period bar` shows this. Verify it with a click in the app.
 - [x] 1.19 Charts stay current. Verified by charts read the ledger on every change.
 - [x] 1.20 Charts follow the appearance. Verified by dark mode, see the debug harness snapshot in the first build.
-- [x] 1.21 The amount axis reaches from the lowest to the highest bar and always shows zero, with about three round amounts; the date axis shows days, months with the year, or years, and leaves out a label the edge would cut off. Verified by "Chart axes" and snapshots of ten years, twelve months, and one month of the debug harness command `history`.
+- [x] 1.21 Bars as MoneyMoney draws them, measured in its window: balance bars of 4 points with a gap of 2 in gray, month and year lines with labels and no amount axis; category bars of 40 points with a gap of 8 in the color of the category, darker below zero, a line at zero for empty periods, and the highest sum, zero, and the lowest sum at the leading edge. Verified by snapshots of the debug harness in light and dark mode and by BalanceChartTests "A category chart has a bar for every period".
 
 ## 2. Integration
 

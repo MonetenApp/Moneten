@@ -47,6 +47,16 @@ The app SHALL draw the balance of an account over time as a bar chart, with one 
 - **WHEN** the user looks at the chart
 - **THEN** the bars of these three days point down from the zero line
 
+### Requirement: Look of the balance chart
+
+The app SHALL draw the balance chart as MoneyMoney does: every bar 4 points wide with a gap of 2 points, gray, and red below zero. A thin line and the name of the month, such as "Oct 26", mark the first day of each month; in the monthly average the year marks January. The chart has no amount axis.
+
+#### Scenario: Month lines
+
+- **GIVEN** the daily balance chart of "Giro" from September to November 2026
+- **WHEN** the user looks at the chart
+- **THEN** lines with "Oct 26" and "Nov 26" mark the first of October and of November
+
 ### Requirement: Balances are computed from the transactions
 
 The app SHALL compute the balance of each day as the initial balance of the account plus all booked transactions up to the end of that day. Pending transactions and the balance that the bank reports do not enter this computation.
@@ -92,15 +102,15 @@ The app SHALL draw the balance chart for the time that the period filter selects
 - **WHEN** the user chooses "12 Months" in the "Period" menu
 - **THEN** the chart shows the balances of the last 12 months
 
-### Requirement: Long periods are averaged
+### Requirement: Long periods scroll
 
-The app SHALL combine neighboring days into one bar with their average balance when a chart would have more bars than fit at a readable width.
+The app SHALL keep the width of every bar, as MoneyMoney does, and let the user scroll a longer chart sideways with the trackpad. The chart opens at its newest bar on the right. The scale covers all bars of the period, so scrolling does not change it.
 
 #### Scenario: Ten years of daily balances
 
 - **GIVEN** an account with 10 years of history and the period "Show All"
 - **WHEN** the user opens the bar chart
-- **THEN** each bar stands for several days and no bar is thinner than a readable minimum
+- **THEN** the chart shows the last days at the right edge with one bar for each day, and a swipe to the right on the trackpad shows earlier days
 
 ### Requirement: Balance chart of an account group
 
@@ -178,6 +188,16 @@ The app SHALL draw the sum of a category for each month, each quarter, or each y
 
 - **WHEN** the user switches to the "Yearly view"
 - **THEN** the chart shows one bar for each calendar year
+
+### Requirement: Look of the category chart
+
+The app SHALL draw the category chart as MoneyMoney does: each bar 40 points wide with a gap of 8 points and its period above it, in the color of the category and darker below zero. A period without transactions shows a line at zero. The highest sum, zero, and the lowest sum stand at the leading edge, and the chart scrolls like the balance chart.
+
+#### Scenario: A month without spending
+
+- **GIVEN** "Groceries" in orange with spending in July and September 2026 and none in August
+- **WHEN** the user opens the "Monthly view"
+- **THEN** the bars of July and September point down in a darker orange, and August shows a line at zero
 
 ### Requirement: The category chart follows the period and the account filter
 

@@ -26,6 +26,22 @@ public struct PeriodSum: Hashable, Sendable, Identifiable {
 	public var deposits: Int64
 	public var withdrawals: Int64
 	public var id: Int { start.rawValue }
+	public var total: Int64 { deposits + withdrawals }
+
+	/// Every period from the first sum through the period of `last`, with zero for a period without
+	/// transactions, as MoneyMoney draws a line at zero for it. A sum after `last` stays.
+	public static func continuous(_ sums: [PeriodSum], period: ChartPeriod, through last: Day, calendar: Calendar = .current) -> [PeriodSum] {
+		guard let first = sums.first?.start else { return [] }
+		let byStart = Dictionary(uniqueKeysWithValues: sums.map { ($0.start, $0) })
+		let end = max(period.start(of: last), sums.last!.start)
+		var result: [PeriodSum] = []
+		var start = first
+		while start <= end {
+			result.append(byStart[start] ?? PeriodSum(start: start, deposits: 0, withdrawals: 0))
+			start = period.next(start, calendar: calendar)
+		}
+		return result
+	}
 }
 
 public enum ChartPeriod: String, CaseIterable, Sendable {
@@ -36,6 +52,15 @@ public enum ChartPeriod: String, CaseIterable, Sendable {
 		case .month: day.firstOfMonth
 		case .quarter: day.firstOfQuarter
 		case .year: day.firstOfYear
+		}
+	}
+
+	/// The start of the period after the one that starts at `start`.
+	public func next(_ start: Day, calendar: Calendar = .current) -> Day {
+		switch self {
+		case .month: start.adding(months: 1, calendar: calendar)
+		case .quarter: start.adding(months: 3, calendar: calendar)
+		case .year: start.adding(months: 12, calendar: calendar)
 		}
 	}
 }
@@ -59,26 +84,14 @@ extension Ledger {
 	}
 
 	/// One bar for each day of the range, never past today. "Show All" starts at the oldest
-	/// transaction. Days before the first transaction show the initial balance. When more than
-	/// `maxBars` bars would not fit, neighboring days share one bar with their average balance, in
-	/// steps of 2, 3, 7, 14, 30, or more days.
-	public func balanceBars(accountIDs: Set<UUID>, range: DayRange = .all, maxBars: Int, calendar: Calendar = .current) -> [BalanceBar] {
+	/// transaction. Days before the first transaction show the initial balance. Every day keeps its
+	/// own bar, as in MoneyMoney: a long history scrolls instead of sharing bars.
+	public func balanceBars(accountIDs: Set<UUID>, range: DayRange = .all, calendar: Calendar = .current) -> [BalanceBar] {
 		let daily = dailyBalances(accountIDs: accountIDs)
 		guard let first = daily.first?.day else { return [] }
 		let today = Day.today(calendar: calendar)
-		let start = range.start ?? first
-		let balances = endOfDayBalances(daily, accountIDs: accountIDs, from: start, through: min(range.end ?? today, today), calendar: calendar)
-			.map(\.minorUnits)
-		let step = Self.barStep(days: balances.count, maxBars: max(1, maxBars))
-		return stride(from: 0, to: balances.count, by: step).map { i in
-			let slice = balances[i..<min(i + step, balances.count)]
-			return BalanceBar(start: start.adding(days: i, calendar: calendar), end: start.adding(days: i + slice.count, calendar: calendar),
-				minorUnits: slice.reduce(0, +) / Int64(slice.count))
-		}
-	}
-
-	static func barStep(days: Int, maxBars: Int) -> Int {
-		[1, 2, 3, 7, 14, 30, 61, 91, 182, 365].first { (days + $0 - 1) / $0 <= maxBars } ?? (days + maxBars - 1) / maxBars
+		return endOfDayBalances(daily, accountIDs: accountIDs, from: range.start ?? first, through: min(range.end ?? today, today), calendar: calendar)
+			.map { BalanceBar(start: $0.day, end: $0.day.adding(days: 1, calendar: calendar), minorUnits: $0.minorUnits) }
 	}
 
 	/// The mean of the end-of-day balances of each calendar month of the range, never past today.
