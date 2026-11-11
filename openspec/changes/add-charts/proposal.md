@@ -51,6 +51,9 @@ None.
 
 ### Decided for MonetenMoneten
 
+- Bars, pies, the slate band, and the hover column follow the look measured in MoneyMoney's window.
+- Text on the light slate band is dark with at least 4.5:1. MoneyMoney writes white on it, which reaches only 2:1.
+- The pies stand 300 points apart instead of MoneyMoney's 225, so the names between them have room.
 - The pie chart area shows one pie for withdrawals and one for deposits. The version history speaks of pie charts in the plural, but the drawing was not observed.
 - A group with accounts in several currencies gets one bar chart for each currency. Issue #21 asks for one series per currency, and the app converts no currencies.
 - The balance chart follows only the period filter. The category charts follow the period filter and the account filter. Which filters MoneyMoney applies to charts was not observed.

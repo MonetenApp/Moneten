@@ -391,8 +391,18 @@ final class AppModel {
 		setChecked(!t.isChecked, for: [id])
 	}
 
+	/// "Mark All Transactions as Checked": the unchecked transactions of the view, after the user
+	/// confirms how many in how many accounts.
 	func markAllChecked() {
-		setChecked(true, for: Set(visibleTransactions.map(\.id)))
+		let unchecked = visibleTransactions.filter { !$0.isChecked }
+		guard !unchecked.isEmpty else { return }
+		let accounts = Set(unchecked.map(\.accountID)).count
+		let alert = NSAlert()
+		alert.messageText = "Mark all transactions as checked?"
+		alert.informativeText = "A total of \(unchecked.count) \(unchecked.count == 1 ? "transaction" : "transactions") in \(accounts) \(accounts == 1 ? "account" : "accounts") will be marked as checked."
+		alert.addButton(withTitle: "Mark as Checked")
+		alert.addButton(withTitle: "Cancel")
+		if alert.runModal() == .alertFirstButtonReturn { setChecked(true, for: Set(unchecked.map(\.id))) }
 	}
 
 	func setComment(_ comment: String, for ids: Set<UUID>) {

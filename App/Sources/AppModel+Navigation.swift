@@ -4,8 +4,9 @@ import Foundation
 import Import
 import UniformTypeIdentifiers
 
-/// Back and forward through the views, as in a browser.
-@MainActor
+/// Back and forward through the views, as in a browser. Observable, so that the menu and the
+/// toolbar enable "Back" and "Forward" when the history changes.
+@MainActor @Observable
 final class NavigationHistory {
 	var back: [SidebarSelection] = []
 	var forward: [SidebarSelection] = []

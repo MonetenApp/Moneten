@@ -22,6 +22,8 @@ public struct Ledger: Sendable {
 	private var searchText: [UUID: String] = [:]
 	/// The number of new transactions per account.
 	public private(set) var newTransactionCounts: [UUID: Int] = [:]
+	/// The accounts that have at least one transaction.
+	public private(set) var accountsWithTransactions: Set<UUID> = []
 
 	public init(groups: [AccountGroup] = [], accounts: [Account] = [], categories: [Category] = [], transactions: [Transaction] = [],
 		portfolioValues: [PortfolioValue] = []) {
@@ -48,8 +50,13 @@ public struct Ledger: Sendable {
 
 	private mutating func countNew() {
 		var counts: [UUID: Int] = [:]
-		for t in transactions where t.isNew { counts[t.accountID, default: 0] += 1 }
+		var used: Set<UUID> = []
+		for t in transactions {
+			used.insert(t.accountID)
+			if t.isNew { counts[t.accountID, default: 0] += 1 }
+		}
 		newTransactionCounts = counts
+		accountsWithTransactions = used
 	}
 
 	static func searchText(of t: Transaction, account: Account?) -> String {

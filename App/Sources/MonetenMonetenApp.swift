@@ -66,8 +66,8 @@ struct AppCommands: Commands {
 				.disabled(!unlocked)
 		}
 		CommandGroup(before: .sidebar) {
-			Button("Back") { model.goBack() }.keyboardShortcut("[").disabled(!unlocked)
-			Button("Forward") { model.goForward() }.keyboardShortcut("]").disabled(!unlocked)
+			Button("Back") { model.goBack() }.keyboardShortcut("[").disabled(!unlocked || !model.canGoBack)
+			Button("Forward") { model.goForward() }.keyboardShortcut("]").disabled(!unlocked || !model.canGoForward)
 			Divider()
 			Picker("View", selection: Binding(get: { model.viewMode }, set: { model.viewMode = $0 })) {
 				Text("List").keyboardShortcut("1").tag(ViewMode.list)

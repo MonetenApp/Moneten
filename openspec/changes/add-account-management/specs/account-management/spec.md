@@ -80,7 +80,7 @@ The app SHALL name a new account with the product name that the bank reports, or
 
 ### Requirement: Account color
 
-The app SHALL draw an account in the sidebar and in the header as a small square in its color, as MoneyMoney does. The user can choose the color in the account settings. Without a chosen color, all accounts of one bank share a color, and an account without a bank takes a color for its type. The migration from MoneyMoney takes the color of the account's MoneyMoney icon. MoneyMoney's own icon pictures are not copied.
+The app SHALL draw an account in the sidebar and in the header as a small square in its color. The user can choose the color in the account settings. Without a chosen color, all accounts of one bank share a color, and an account without a bank takes a color for its type. A migration takes the color of the account's icon in the other program, not the picture.
 
 #### Scenario: Two accounts of one bank
 

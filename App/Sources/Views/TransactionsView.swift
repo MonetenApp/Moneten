@@ -800,7 +800,10 @@ struct TransactionMenu: View {
 			if ids.count == 1 {
 				Button("Edit Transaction...") { model.sheet = .transaction(first.id) }
 			}
-			Button(ids.count == 1 ? "Delete Transaction..." : "Delete Transactions...") { confirmDelete(ids) }
+			// As in MoneyMoney: a group or category view mixes accounts, so it offers no delete.
+			if case .account = model.selection {
+				Button(ids.count == 1 ? "Delete Transaction..." : "Delete Transactions...") { confirmDelete(ids) }
+			}
 		}
 	}
 

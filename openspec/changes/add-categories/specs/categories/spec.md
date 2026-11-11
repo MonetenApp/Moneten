@@ -101,7 +101,7 @@ The app SHALL let the user choose a color for each category in its settings. The
 
 ### Requirement: Category icon
 
-The app SHALL let the user choose an icon for each category in its settings, from a set of SF Symbols, or no icon. The sidebar, the title of the category view, and the category menu of the ribbon show the icon in the color of the category. A category without an icon shows a bookmark, as in MoneyMoney, and a category group a folder. MoneyMoney offers its own pictures; this app uses SF Symbols. The MoneyMoney migration takes only the color of a MoneyMoney icon, not the picture.
+The app SHALL let the user choose an icon for each category in its settings, from a set of SF Symbols, or no icon. The sidebar, the title of the category view, and the category menu of the ribbon show the icon in the color of the category. A category without an icon shows a bookmark, and a category group a folder. A migration takes only the color of an icon from the other program, not the picture.
 
 #### Scenario: Choose an icon
 
