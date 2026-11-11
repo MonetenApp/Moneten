@@ -52,6 +52,17 @@ The design explains each step. The requirements of section 1 stay open until an 
 
 - [ ] 3.1 Check every scenario of the spec in a release build with the FinTS connector of issue #13, and record the result in the pull request.
 
+## 4. Parts of the dialogs that come later
+
+These requirements of add-tan-handling and add-login-credentials are not in the dialogs of task 2.8 yet.
+
+- [ ] 4.1 Change the TAN method inside the open dialog, and show the progress text while a challenge is requested (#13).
+- [ ] 4.2 Enlarge a photoTAN or QR image (#13).
+- [ ] 4.3 Make the flicker code smaller and larger, remember the size, and warn about seizures before the first enlargement (#13).
+- [ ] 4.4 Say that the bank responded with an invalid challenge when the flicker data is not valid (#13).
+- [ ] 4.5 Check a PIN against the rules of the bank, and offer the option to save it with the storage of saved PINs (#13).
+- [ ] 4.6 Check that the PIN field is not offered to the password manager of macOS on a real Mac (#13).
+
 ## Workflow follow-up
 
 - Archive the change with `openspec archive add-account-refresh` when every task is checked.

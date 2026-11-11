@@ -34,6 +34,15 @@ struct SyncCoordinatorTests {
 
 	func state(_ access: Access) -> SyncState? { coordinator.states[access.id] }
 
+	/// Answers the dialog on screen, as a click on its button does.
+	func answer(_ answer: UserAnswer) {
+		if let id = broker.current?.id { broker.answer(answer, to: id) }
+	}
+
+	func cancelOnScreen() {
+		if let id = broker.current?.id { broker.cancel(id) }
+	}
+
 	/// Waits until the condition holds, for at most two seconds.
 	func until(_ condition: () -> Bool, sourceLocation: SourceLocation = #_sourceLocation) async {
 		for _ in 0..<200 where !condition() {
@@ -54,7 +63,7 @@ struct SyncCoordinatorTests {
 		#expect(broker.current?.access == bank)
 		#expect(broker.current?.accountNames == ["Giro"])
 		#expect(state(bank) == .needsUser(.pin, waiting: false, during: .connecting))
-		broker.answer(.pin(Secret("12345")))
+		answer(.pin(Secret("12345")))
 		await until { finished(bank) != nil }
 		#expect(finished(bank)?.fetched == [Self.giro.accountID])
 		#expect(connector.answers.all == [.pin(Secret("12345"))])
@@ -66,7 +75,7 @@ struct SyncCoordinatorTests {
 		let bank = Self.access("Musterbank")
 		_ = refresh(bank, [.ask(Self.pin)])
 		await until { broker.current != nil }
-		broker.answer(.pin(Secret("12345")))
+		answer(.pin(Secret("12345")))
 		await until { finished(bank) != nil }
 
 		let second = refresh(bank, [.ask(Self.pin)])
@@ -76,7 +85,7 @@ struct SyncCoordinatorTests {
 		broker.forgetPINs()
 		_ = refresh(bank, [.ask(Self.pin)])
 		await until { broker.current != nil }
-		broker.cancel()
+		cancelOnScreen()
 		await until { state(bank) == .cancelled }
 	}
 
@@ -86,13 +95,13 @@ struct SyncCoordinatorTests {
 		let rejected = SyncFailure.pinRejected(BankMessage(code: "9931", text: "PIN falsch"))
 		_ = refresh(bank, [.ask(Self.pin), .fail(rejected)])
 		await until { broker.current != nil }
-		broker.answer(.pin(Secret("11111")))
+		answer(.pin(Secret("11111")))
 		await until { state(bank) == .failed(rejected) }
 
 		_ = refresh(bank, [.ask(Self.pin)])
 		await until { broker.current != nil }
 		#expect(broker.current?.access == bank)
-		broker.cancel()
+		cancelOnScreen()
 		await until { !coordinator.isRefreshing }
 	}
 
@@ -140,10 +149,10 @@ struct SyncCoordinatorTests {
 		await until { broker.current?.access == first }
 		_ = refresh(second, [.ask(Self.pin), .fetched(Self.savings.accountID)], accounts: [Self.savings])
 		await until { state(second) == .needsUser(.pin, waiting: true, during: .connecting) }
-		broker.cancel()
+		cancelOnScreen()
 		await until { broker.current?.access == second }
 		#expect(state(first) == .cancelled)
-		broker.answer(.pin(Secret("54321")))
+		answer(.pin(Secret("54321")))
 		await until { finished(second) != nil }
 		#expect(finished(second)?.fetched == [Self.savings.accountID])
 		#expect(state(first) == .cancelled)
@@ -158,10 +167,10 @@ struct SyncCoordinatorTests {
 		_ = refresh(second, [.ask(Self.tan)], accounts: [Self.savings])
 		await until { state(second) == .needsUser(.secondFactor, waiting: true, during: .connecting) }
 		#expect(broker.current?.access == first)
-		broker.answer(.tan(Secret("482915")))
+		answer(.tan(Secret("482915")))
 		await until { broker.current?.access == second }
 		#expect(state(second) == .needsUser(.secondFactor, waiting: false, during: .connecting))
-		broker.answer(.tan(Secret("123456")))
+		answer(.tan(Secret("123456")))
 		await until { !coordinator.isRefreshing }
 	}
 
@@ -180,7 +189,7 @@ struct SyncCoordinatorTests {
 		let bank = Self.access("Musterbank")
 		_ = refresh(bank, [.approve(Self.approval(), after: .seconds(60)), .fetched(Self.giro.accountID)])
 		await until { broker.current != nil }
-		broker.cancel()
+		cancelOnScreen()
 		await until { !coordinator.isRefreshing }
 		#expect(state(bank) == .cancelled)
 	}
@@ -202,7 +211,7 @@ struct SyncCoordinatorTests {
 		_ = refresh(second, [.ask(Self.approval(validity: .milliseconds(300)))])
 		try? await Task.sleep(for: .milliseconds(500))
 		#expect(state(second) == .needsUser(.secondFactor, waiting: true, during: .connecting))
-		broker.answer(.pin(Secret("12345")))
+		answer(.pin(Secret("12345")))
 		await until { broker.current?.access == second }
 		await until { state(second) == .failed(.challengeExpired) }
 	}
@@ -244,9 +253,73 @@ struct SyncCoordinatorTests {
 		_ = refresh(bank, [.ask(Self.pin)])
 		let second = refresh(bank, [.fail(.offline)])
 		await until { broker.current != nil }
-		broker.answer(.pin(Secret("12345")))
+		answer(.pin(Secret("12345")))
 		await until { !coordinator.isRefreshing }
 		#expect(finished(bank) != nil)
 		#expect(second.answers.all.isEmpty)
+	}
+
+	@Test("A second click answers nothing, not the next dialog")
+	func doubleClick() async {
+		let first = Self.access("Musterbank")
+		let second = Self.access("Beispielbank")
+		let a = refresh(first, [.ask(Self.pin)])
+		await until { broker.current?.access == first }
+		let b = refresh(second, [.ask(Self.pin)], accounts: [Self.savings])
+		await until { state(second) == .needsUser(.pin, waiting: true, during: .connecting) }
+		let id = broker.current!.id
+		broker.answer(.pin(Secret("11111")), to: id)
+		broker.answer(.pin(Secret("11111")), to: id)
+		broker.cancel(id)
+		await until { broker.current?.access == second }
+		#expect(state(second) == .needsUser(.pin, waiting: false, during: .connecting))
+		answer(.pin(Secret("22222")))
+		await until { !coordinator.isRefreshing }
+		#expect(a.answers.all == [.pin(Secret("11111"))])
+		#expect(b.answers.all == [.pin(Secret("22222"))])
+	}
+
+	@Test("A PIN is kept only after a refresh with it succeeded")
+	func pinForgottenAfterFailure() async {
+		let bank = Self.access("Musterbank")
+		_ = refresh(bank, [.ask(Self.pin), .fail(.offline)])
+		await until { broker.current != nil }
+		answer(.pin(Secret("1234-typo")))
+		await until { state(bank) == .failed(.offline) }
+
+		_ = refresh(bank, [.ask(Self.pin)])
+		await until { broker.current?.access == bank }
+		cancelOnScreen()
+		await until { !coordinator.isRefreshing }
+	}
+
+	@Test("An automatic refresh uses the PIN in memory")
+	func automaticUsesPIN() async {
+		let bank = Self.access("Musterbank")
+		_ = refresh(bank, [.ask(Self.pin)])
+		await until { broker.current != nil }
+		answer(.pin(Secret("12345")))
+		await until { finished(bank) != nil }
+
+		let automatic = refresh(bank, [.ask(Self.pin), .fetched(Self.giro.accountID)], attended: false)
+		await until { finished(bank) != nil && !coordinator.isRefreshing }
+		#expect(automatic.answers.all == [.pin(Secret("12345"))])
+	}
+
+	@Test("A connector that goes on after an expired challenge finishes")
+	func expiredThenContinue() async {
+		struct GoesOn: BankConnector {
+			func refresh(_ request: RefreshRequest, _ session: SyncSession) async throws -> ConnectorReport {
+				let tan = UserRequest.secondFactor(SecondFactorRequest(purpose: .download, system: .fintsServer,
+					challenge: .enterTAN(prompt: "TAN", image: nil), validity: .milliseconds(100)))
+				do { _ = try await session.ask(tan) } catch SyncFailure.challengeExpired {}
+				await session.report(.fetching(done: 1, of: 1))
+				return ConnectorReport(outcomes: [:])
+			}
+		}
+		let bank = Self.access("Musterbank")
+		coordinator.refresh(RefreshRequest(access: bank, accounts: [Self.giro]), with: GoesOn(), attended: true)
+		await until { finished(bank) != nil }
+		#expect(finished(bank)?.failures == [Self.giro.accountID: .notFetched])
 	}
 }

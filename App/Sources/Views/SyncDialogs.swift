@@ -56,17 +56,16 @@ struct PINSheet: View {
 			Section {
 				SecureField(request.secretName, text: $pin, prompt: Text("Required"))
 					.textContentType(nil)
-					.onSubmit(confirm)
 			}
 		} buttons: {
-			Button("Cancel", role: .cancel) { broker.cancel() }.keyboardShortcut(.cancelAction)
+			Button("Cancel", role: .cancel) { broker.cancel(prompt.id) }.keyboardShortcut(.cancelAction)
 			Button("OK", action: confirm).keyboardShortcut(.defaultAction).disabled(pin.isEmpty)
 		}
 	}
 
 	private func confirm() {
 		guard !pin.isEmpty else { return }
-		broker.answer(.pin(Secret(pin)))
+		broker.answer(.pin(Secret(pin)), to: prompt.id)
 	}
 }
 
@@ -93,7 +92,7 @@ struct TwoFactorSheet: View {
 			challenge
 		} buttons: {
 			Button("Cancel", role: .cancel) {
-				if isWaiting { confirmCancel = true } else { broker.cancel() }
+				if case .approveInApp = request.challenge { confirmCancel = true } else { broker.cancel(prompt.id) }
 			}
 			.keyboardShortcut(.cancelAction)
 			if !isWaiting {
@@ -107,7 +106,7 @@ struct TwoFactorSheet: View {
 			if case let .chooseTANMedium(media) = request.challenge { medium = media.first ?? "" }
 		}
 		.alert("Did you cancel the authorization in the app of the bank?", isPresented: $confirmCancel) {
-			Button("Yes") { broker.cancel() }
+			Button("Yes") { broker.cancel(prompt.id) }
 			Button("No", role: .cancel) {}
 		} message: {
 			Text("Cancel the authorization in the app of the bank first. Otherwise the bank may still carry it out.")
@@ -180,7 +179,6 @@ struct TwoFactorSheet: View {
 	private var tanField: some View {
 		TextField("TAN", text: $input, prompt: Text("Required"))
 			.textContentType(nil)
-			.onSubmit(confirm)
 	}
 
 	/// The answer that "Continue" sends, or nil while it is incomplete.
@@ -194,7 +192,7 @@ struct TwoFactorSheet: View {
 	}
 
 	private func confirm() {
-		if let answer { broker.answer(answer) }
+		if let answer { broker.answer(answer, to: prompt.id) }
 	}
 }
 
@@ -253,34 +251,38 @@ private struct Waiting: View {
 }
 
 /// The flicker code of the optical chipTAN: five bars between two marks for the TAN generator.
-/// It stops while the user types the TAN.
+/// It moves one frame per tick, so a late tick delays the code but never skips a clock step. It
+/// stops while the user types the TAN.
 struct FlickerView: View {
 	let code: FlickerCode
 	var running: Bool
-	/// Frames per second. Each half byte takes two frames.
-	private let rate = 20.0
+	@State private var frame = 0
 
 	var body: some View {
 		let frames = code.frames
-		TimelineView(.animation(minimumInterval: 1 / rate, paused: !running)) { context in
-			let index = running ? Int(context.date.timeIntervalSinceReferenceDate * rate) % frames.count : 0
-			Canvas { gc, size in
-				let bar = size.width / 5
-				gc.fill(Path(CGRect(origin: .zero, size: size)), with: .color(.black))
-				for (i, on) in frames[index].enumerated() where on {
-					gc.fill(Path(CGRect(x: CGFloat(i) * bar + bar * 0.1, y: 14, width: bar * 0.8, height: size.height - 14)), with: .color(.white))
-				}
-				for x in [bar / 2, size.width - bar / 2] {
-					var mark = Path()
-					mark.move(to: CGPoint(x: x - 6, y: 2))
-					mark.addLine(to: CGPoint(x: x + 6, y: 2))
-					mark.addLine(to: CGPoint(x: x, y: 11))
-					gc.fill(mark, with: .color(.white))
-				}
+		Canvas { gc, size in
+			let bar = size.width / 5
+			gc.fill(Path(CGRect(origin: .zero, size: size)), with: .color(.black))
+			for (i, on) in frames[frame % frames.count].enumerated() where on {
+				gc.fill(Path(CGRect(x: CGFloat(i) * bar + bar * 0.1, y: 14, width: bar * 0.8, height: size.height - 14)), with: .color(.white))
+			}
+			for x in [bar / 2, size.width - bar / 2] {
+				var mark = Path()
+				mark.move(to: CGPoint(x: x - 6, y: 2))
+				mark.addLine(to: CGPoint(x: x + 6, y: 2))
+				mark.addLine(to: CGPoint(x: x, y: 11))
+				gc.fill(mark, with: .color(.white))
 			}
 		}
 		.frame(width: 240, height: 110)
 		.frame(maxWidth: .infinity)
 		.accessibilityLabel("Flicker code")
+		.task(id: running) {
+			// 20 frames per second, two frames for each half byte.
+			while running, !Task.isCancelled {
+				try? await Task.sleep(for: .milliseconds(50))
+				frame += 1
+			}
+		}
 	}
 }

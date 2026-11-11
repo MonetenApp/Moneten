@@ -74,7 +74,8 @@ public final class SyncCoordinator {
 			} catch {
 				event = Task.isCancelled || error is CancellationError ? .cancel : .fail(Self.failure(error))
 			}
-			if case .fail(.pinRejected) = event { broker.forgetPIN(of: access.id) }
+			// A PIN stays in memory only after a refresh with it succeeded. A typo is never sent again on its own.
+			if case .finish = event {} else { broker.forgetPIN(of: access.id) }
 			apply(event, to: access.id)
 			running[access.id] = nil
 			startNext()

@@ -138,9 +138,9 @@ This needs no separate API for "close the dialog", and every connector handles c
 
 ### The app serializes the dialogs
 
-`SessionBroker` hands each running access a `SyncSession`. It keeps one queue for all accesses: one dialog at a time ("One dialog at a time", "One PIN sheet at a time"), in the order of the requests. A request from another access waits, and its access shows "waiting for your input" in the sidebar. For an automatic refresh the broker creates the session as unattended. Every `ask` then throws `SyncFailure.needsUser` at once, and the account shows "Refresh Account to authorize" ("An automatic refresh never asks the user").
+`SessionBroker` hands each running access a `SyncSession`. It keeps one queue for all accesses: one dialog at a time ("One dialog at a time", "One PIN sheet at a time"), in the order of the requests. A request from another access waits, and its access shows "waiting for your input" in the sidebar. For an automatic refresh the broker creates the session as unattended. Every `ask` that the PIN in memory can't answer then throws `SyncFailure.needsUser` at once, and the account shows "Refresh Account to authorize" ("An automatic refresh never asks the user").
 
-The PIN comes from the broker as well. It answers a `.pin` request with the PIN that the user entered earlier in this run, and it shows the sheet only when it has none ("An unsaved PIN stays in memory until the app locks or quits"). It forgets the PIN when the bank rejects it and every PIN when the app locks. A rejected PIN ends the refresh of the access, so no second login with it follows ("No automatic retry after a wrong PIN"). A saved PIN joins this with the storage of add-login-credentials.
+The PIN comes from the broker as well. It answers a `.pin` request with the PIN that the user entered earlier in this run, also in an automatic refresh, and it shows the sheet only when it has none ("An unsaved PIN stays in memory until the app locks or quits", "Automatic refresh skips an access without a PIN"). It keeps the PIN only when the refresh with it finishes, so a typo is never sent again without asking, and it forgets every PIN when the app locks. A rejected PIN ends the refresh of the access, so no second login with it follows ("No automatic retry after a wrong PIN"). A saved PIN joins this with the storage of add-login-credentials.
 
 The validity of a challenge starts when its dialog opens, not while it waits behind another one. When it runs out, the dialog closes and `ask` throws `SyncFailure.challengeExpired`.
 
@@ -229,6 +229,10 @@ The connector keeps the passport data of hbci4java as its `AccessState`.
 - Canceling `ask` to close an approval dialog depends on structured concurrency. A connector that keeps the task alive by mistake leaves the dialog open. The tests of the fake connector check that the dialog closes.
 - The model has no request for the PIN change that a bank can require ("Handle a PIN change that the bank requires"). The access fails with a `bank` message until that change is built.
 
+- The dialogs don't yet build every requirement of add-tan-handling. Changing the TAN method inside an open dialog needs an answer like `.changeTANMethod` and the list of methods in the request. The progress text while a challenge is requested ("Getting list of TAN media...") needs a progress value for the dialog. Both extend `Challenge`, `UserAnswer`, or `SyncProgress` when the FinTS connector of issue #13 can produce them. Tasks 4.1 to 4.6 list these and the other open parts.
+
 ## Open questions
+
+- The spec "No automatic retry after a wrong PIN" shows the PIN sheet again after a typing error. This design ends the refresh with the message of the bank and its warning, and the next manual refresh asks again. That sends nothing twice, but it is one more click than the spec. Decide before issue #13.
 
 - Does a refresh of a single account refresh the other accounts of its access too, when the bank asks for a second factor anyway? This design refreshes only the selected accounts, as the spec says.

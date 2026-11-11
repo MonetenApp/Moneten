@@ -13,9 +13,9 @@ public struct Prompt: Identifiable, Equatable, Sendable {
 
 /// Shows the requests of all connectors to the user, one dialog at a time and in the order they came.
 ///
-/// An automatic refresh never reaches the queue: its requests fail at once with `SyncFailure.needsUser`.
-/// A PIN that the user entered is kept in memory for its access until the app locks or quits, or
-/// until the bank rejects it.
+/// An automatic refresh never reaches the queue: it gets the PIN in memory, and every other request
+/// fails at once with `SyncFailure.needsUser`. A PIN that the user entered is kept in memory for its
+/// access until the app locks or quits, or until a refresh with it ends without success.
 @MainActor
 @Observable
 public final class SessionBroker {
@@ -36,8 +36,8 @@ public final class SessionBroker {
 	public init() {}
 
 	func ask(_ request: UserRequest, for access: Access, accountNames: [String], attended: Bool) async throws -> UserAnswer {
-		guard attended else { throw SyncFailure.needsUser(request.kind) }
 		if case .pin = request, let pin = pins[access.id] { return .pin(pin) }
+		guard attended else { throw SyncFailure.needsUser(request.kind) }
 		try Task.checkCancellation()
 		let prompt = Prompt(id: UUID(), access: access, accountNames: accountNames, request: request)
 		let answer = try await withTaskCancellationHandler {
@@ -57,16 +57,17 @@ public final class SessionBroker {
 		return answer
 	}
 
-	/// The user answered the dialog on screen.
-	public func answer(_ answer: UserAnswer) {
-		guard let current else { return }
-		close(current.id, with: .success(answer), event: .answered)
+	/// The user answered the dialog `id`. A second click after the dialog closed does nothing, so it
+	/// never answers the next dialog in the queue.
+	public func answer(_ answer: UserAnswer, to id: UUID) {
+		guard let current, current.id == id else { return }
+		close(id, with: .success(answer), event: .answered)
 	}
 
-	/// The user canceled the dialog on screen. The refresh of its access stops.
-	public func cancel() {
-		guard let current else { return }
-		close(current.id, with: .failure(CancellationError()), event: nil)
+	/// The user canceled the dialog `id`. The refresh of its access stops.
+	public func cancel(_ id: UUID) {
+		guard let current, current.id == id else { return }
+		close(id, with: .failure(CancellationError()), event: nil)
 		onUserCancel(current.access.id)
 	}
 
@@ -89,7 +90,7 @@ public final class SessionBroker {
 			expiry = Task { [weak self] in
 				try? await Task.sleep(for: request.validity)
 				guard !Task.isCancelled else { return }
-				self?.close(prompt.id, with: .failure(SyncFailure.challengeExpired), event: nil)
+				self?.close(prompt.id, with: .failure(SyncFailure.challengeExpired), event: .answered)
 			}
 		}
 	}
