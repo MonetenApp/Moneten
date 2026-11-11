@@ -36,17 +36,17 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 
 ## 2. Sync model (issue #6)
 
-The design explains each step.
+The design explains each step. The requirements of section 1 stay open until an app command starts a refresh of real accounts, which needs the accesses of issue #13.
 
-- [ ] 2.1 `Domain`: `Access`, `BankConnector`, `RefreshRequest`, `ConnectorReport`, `AccountOutcome`, `RefreshResult`, and `AccessState`.
-- [ ] 2.2 `Domain`: `SyncSession`, `UserRequest`, `SecondFactorRequest`, `Challenge`, `UserAnswer`, and `Secret`, whose description never shows the value.
-- [ ] 2.3 `Domain`: `SyncState`, `SyncEvent`, and the pure transition function, with a test for every allowed and every refused transition.
-- [ ] 2.4 `Domain`: `SyncFailure` and `BankMessage`, with the message the app shows for each case.
-- [ ] 2.5 Test support: `ScriptedConnector`, which plays requests, answers, progress, results, and failures.
-- [ ] 2.6 `App`: `SessionBroker`, with one queue for all dialogs, unattended sessions for the automatic refresh, and the PIN from memory or the saved PIN.
-- [ ] 2.7 `App`: `SyncCoordinator`, with one `SyncState` per access, up to three accesses at a time, and "Cancel Refresh".
-- [ ] 2.8 `App`: the PIN sheet and the dialog "Two-Factor Authentication" for every `Challenge` case, with previews driven by `ScriptedConnector`.
-- [ ] 2.9 Tests: every state, cancellation in every state, an automatic refresh that meets a request, two accesses that ask at the same time, and an approval dialog that closes when the connector cancels its request.
+- [x] 2.1 `Domain`: `Access`, `BankConnector`, `RefreshRequest`, `ConnectorReport`, `AccountOutcome`, `RefreshResult`, and `AccessState`.
+- [x] 2.2 `Domain`: `SyncSession`, `UserRequest`, `SecondFactorRequest`, `Challenge`, `UserAnswer`, and `Secret`, whose description never shows the value.
+- [x] 2.3 `Domain`: `SyncState`, `SyncEvent`, and the pure transition function, with a test for every allowed and every refused transition.
+- [x] 2.4 `Domain`: `SyncFailure` and `BankMessage`, with the message the app shows for each case.
+- [x] 2.5 Test support: `ScriptedConnector`, which plays requests, answers, progress, results, and failures.
+- [x] 2.6 `Sync`: `SessionBroker`, with one queue for all dialogs, unattended sessions for the automatic refresh, and the PIN from memory. The saved PIN joins it with the storage of add-login-credentials.
+- [x] 2.7 `Sync`: `SyncCoordinator`, with one `SyncState` per access, up to three accesses at a time, and "Cancel Refresh".
+- [x] 2.8 `App`: the PIN sheet and the dialog "Two-Factor Authentication" for every `Challenge` case, with previews driven by `ScriptedConnector`.
+- [x] 2.9 Tests: every state, cancellation in every state, an automatic refresh that meets a request, two accesses that ask at the same time, and an approval dialog that closes when the connector cancels its request.
 
 ## 3. Integration
 

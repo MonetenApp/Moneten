@@ -4,6 +4,7 @@ import Foundation
 import Import
 import Observation
 import Storage
+import Sync
 import SwiftUI
 
 enum SidebarSelection: Hashable {
@@ -121,6 +122,8 @@ final class AppModel {
 	}
 
 	let vault = Vault(folder: .standard())
+	/// The refreshes of the bank accesses and their dialogs.
+	let sync = SyncCoordinator()
 	private(set) var phase: Phase = .starting
 	private(set) var hasPassword = false
 	private(set) var store: Store?
@@ -266,6 +269,9 @@ final class AppModel {
 
 	func lock() {
 		guard hasPassword, phase == .unlocked else { return }
+		// A locked app refreshes nothing and forgets the PINs that were not saved.
+		sync.cancelAll()
+		sync.broker.forgetPINs()
 		try? store?.close()
 		store = nil
 		ledger = Ledger()

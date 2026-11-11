@@ -71,6 +71,9 @@ final class DebugHarness {
 		case "storepassword": log("storepassword \((try? model.vault.storePassword(argument)) != nil)")
 		case "removepassword": try? model.vault.removeStoredPassword()
 		case "seed": DemoData.seed(model)
+		// "<name>" starts a made-up refresh that shows one dialog of SyncDemo.requests.
+		case "syncdemo": SyncDemo.start(argument, in: model.sync)
+		case "synccancel": model.sync.cancelAll()
 		case "groupbyaccount":
 			if var g = model.ledger.groups.first(where: { $0.name == argument }) {
 				g.groupsByAccount = true

@@ -6,3 +6,8 @@ schemes:
 retain_codable_properties: true
 relative_results: true
 strict: true
+# The sync model is the contract for the bank connectors. The app reads its results once the FinTS
+# connector (issue #13) and the merge of transactions (issue #7) exist. Remove these lines then.
+retain_files:
+  - Sources/Domain/Sync/*.swift
+  - Sources/SyncTesting/*.swift

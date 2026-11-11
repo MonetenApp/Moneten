@@ -35,32 +35,29 @@ An access is one login at one source: a FinTS user ID at one bank, an extension 
 ```swift
 public struct Access: Identifiable, Sendable {
 	public let id: UUID
-	public let source: Source          // fints(bankCode:url:), extension(id:), finAPI(connection:)
-	public let displayName: String     // "DKB · login name", shown in dialogs and errors
-	public let loginName: String
+	public let source: AccessSource    // fints(bankCode:url:), extension(id:), finAPI(connection:)
+	public let bankName: String        // "Musterbank", shown in dialogs and errors
+	public let loginName: String       // "erika77"
 }
 ```
 
-The connector gets the accounts of one access at once. This replaces the per-account `refresh` in [architecture.md](../../../docs/architecture.md):
+The connector gets the accounts of one access at once. This replaces the per-account `refresh` that [architecture.md](../../../docs/architecture.md) planned before:
 
 ```swift
 public protocol BankConnector: Sendable {
-	/// Lists the accounts of the access. Used when the user adds an access and when the bank reports new accounts.
-	func listAccounts(of access: Access, state: AccessState?, _ session: SyncSession) async throws -> ConnectorReport<[RemoteAccount]>
-
-	/// Fetches balances, transactions, and holdings of the given accounts of one access.
-	func refresh(_ request: RefreshRequest, _ session: SyncSession) async throws -> ConnectorReport<[RemoteAccount.ID: AccountOutcome]>
+	/// Fetches balances and transactions of the given accounts of one access.
+	func refresh(_ request: RefreshRequest, _ session: SyncSession) async throws -> ConnectorReport
 }
 
 public struct RefreshRequest: Sendable {
 	public let access: Access
 	public let state: AccessState?           // what the connector returned last time
-	public let accounts: [AccountRequest]    // each with its account and its period
+	public let accounts: [AccountRequest]    // account in the app, name, number at the bank, first day
 	public let enforced: Bool                // "Enforced refresh": ask for the full history
 }
 
-public struct ConnectorReport<Value: Sendable>: Sendable {
-	public let value: Value
+public struct ConnectorReport: Sendable {
+	public let outcomes: [UUID: AccountOutcome]  // by the ID of the account in the app
 	public let state: AccessState?           // new state to store, also after a failure of single accounts
 	public let notices: [BankMessage]        // notices of the bank for the error popover
 }
@@ -71,9 +68,11 @@ public enum AccountOutcome: Sendable {
 }
 ```
 
+A requested account without an outcome was not fetched because an earlier request of the session failed. The coordinator marks it with `SyncFailure.notFetched` ("A failure affects only its own access"). Listing the accounts of a new access comes with the FinTS connector of issue #13, which is the first code that needs it.
+
 `AccessState` is opaque `Data` that only its connector reads, for example the passport data of hbci4java. `Storage` keeps it in the encrypted database, never in a file. It holds no PIN.
 
-`RefreshResult` holds the balance, the transactions, and the holdings of one account, and the flag "the bank has no older transactions". Booking and value dates are `Day` values, calendar days without a time zone. The Swift probe printed FinTS dates one day early because it converted midnight in Germany to UTC.
+`RefreshResult` holds the balance and the transactions of one account, and the flag "the bank has no older transactions". Holdings of a portfolio follow when a connector fetches them. Booking and value dates are `Day` values, calendar days without a time zone. The Swift probe printed FinTS dates one day early because it converted midnight in Germany to UTC.
 
 ### Requests to the user go through one asynchronous call
 
@@ -81,11 +80,13 @@ A connector asks the user through the session and waits for the answer:
 
 ```swift
 public protocol SyncSession: Sendable {
-	/// Asks the user. Throws `SyncFailure.needsUser` in an automatic refresh, and `CancellationError` when the refresh is canceled.
+	/// Asks the user. Throws `SyncFailure.needsUser` in an automatic refresh, `SyncFailure.challengeExpired`
+	/// when the user does not answer in time, and `CancellationError` when the user cancels the dialog
+	/// or the refresh is canceled.
 	func ask(_ request: UserRequest) async throws -> UserAnswer
 
-	/// Reports progress for the UI.
-	func report(_ progress: SyncProgress)
+	/// Reports progress for the UI. It returns when the UI has it, so progress and requests stay in order.
+	func report(_ progress: SyncProgress) async
 }
 
 public enum UserRequest: Sendable {
@@ -94,17 +95,16 @@ public enum UserRequest: Sendable {
 }
 
 public struct SecondFactorRequest: Sendable {
-	public let access: Access
 	public let purpose: Purpose        // login, download, order(description)
 	public let system: System          // FinTS server, website, API server
 	public let loginOnly: Bool         // "Mark a TAN that covers only the login"
 	public let challenge: Challenge
-	public let validUntil: Date        // the validity of the bank, or 5 minutes ("Expired challenge")
+	public let validity: Duration      // the validity of the bank, or 5 minutes ("Expired challenge")
 }
 
 public enum Challenge: Sendable {
 	case chooseTANMethod([TANMethod], current: TANMethod.ID?)
-	case chooseTANMedium([TANMedium])
+	case chooseTANMedium([String])      // empty: the bank did not deliver the list, the user types the name
 	case enterTAN(prompt: String, image: ChallengeImage?)          // manual TAN, photoTAN, QR with TAN
 	case flickerCode(prompt: String, code: FlickerCode)            // optical chipTAN
 	case approveInApp(prompt: String, app: String?, image: ChallengeImage?, step: Step?)
@@ -112,22 +112,25 @@ public enum Challenge: Sendable {
 }
 
 public enum UserAnswer: Sendable {
-	case pin(Secret, save: Bool)
+	case pin(Secret)
 	case tanMethod(TANMethod.ID)
 	case tanMedium(String)
 	case tan(Secret)
-	case cancelled
 }
 ```
 
-`Secret` wraps a PIN or a TAN. Its `description` is "•••", so the value can't end up in a log by accident. A TAN is never stored ("TANs are never saved").
+The request carries no access: the session belongs to one access, and the broker adds it to the dialog. `Secret` wraps a PIN or a TAN. Its `description`, `debugDescription`, and mirror show "•••", so the value can't end up in a log by accident. A TAN is never stored ("TANs are never saved"). The option to save a PIN comes with the storage of saved PINs in add-login-credentials, so the answer has no save flag yet.
 
-An approval in an app has no answer from the user. The connector starts the question and its own check at the same time. When the bank reports the approval, the connector cancels its `ask`, and the dialog closes by itself. When the user cancels, `ask` returns `.cancelled` first, and the connector stops checking:
+A canceled dialog has no answer: `ask` throws `CancellationError`, and the coordinator cancels the refresh of that access. One path then handles "Cancel" in the dialog and "Cancel Refresh".
+
+An approval in an app has no answer from the user either. The connector starts the question and its own check at the same time. When the bank reports the approval, the connector cancels its `ask`, and the dialog closes by itself. When the user cancels, `ask` throws, and the connector stops checking:
 
 ```swift
-async let answer = session.ask(.secondFactor(approval))
-for try await status in bank.approvalChecks() {          // waits 3 s first, then the interval of the bank
-	if status == .approved { /* cancel `answer` by leaving the scope */ break }
+try await withThrowingTaskGroup(of: Void.self) { group in
+	group.addTask { _ = try await session.ask(.secondFactor(approval)) }   // throws when the user cancels
+	group.addTask { try await bank.waitForApproval() }                    // waits 3 s first, then the interval of the bank
+	try await group.next()
+	group.cancelAll()                                                     // withdraws the request, and the dialog closes
 }
 ```
 
@@ -135,32 +138,34 @@ This needs no separate API for "close the dialog", and every connector handles c
 
 ### The app serializes the dialogs
 
-`SessionBroker` in the app implements `SyncSession` for each running access. It keeps one queue for all accesses: one dialog at a time ("One dialog at a time", "One PIN sheet at a time"), in the order of the requests. A request from another access waits, and its access shows "waiting for your input" in the sidebar. For an automatic refresh the broker creates the session as unattended. Every `ask` then throws `SyncFailure.needsUser` at once, and the account shows "Refresh Account to authorize" ("An automatic refresh never asks the user").
+`SessionBroker` hands each running access a `SyncSession`. It keeps one queue for all accesses: one dialog at a time ("One dialog at a time", "One PIN sheet at a time"), in the order of the requests. A request from another access waits, and its access shows "waiting for your input" in the sidebar. For an automatic refresh the broker creates the session as unattended. Every `ask` then throws `SyncFailure.needsUser` at once, and the account shows "Refresh Account to authorize" ("An automatic refresh never asks the user").
 
-The PIN comes from the broker as well. It answers a `.pin` request with a saved PIN or with the PIN that the user entered earlier in this run, and it shows the sheet only when it has none ("An unsaved PIN stays in memory until the app locks or quits"). After a rejected PIN it shows no sheet again in the same refresh ("No automatic retry after a wrong PIN").
+The PIN comes from the broker as well. It answers a `.pin` request with the PIN that the user entered earlier in this run, and it shows the sheet only when it has none ("An unsaved PIN stays in memory until the app locks or quits"). It forgets the PIN when the bank rejects it and every PIN when the app locks. A rejected PIN ends the refresh of the access, so no second login with it follows ("No automatic retry after a wrong PIN"). A saved PIN joins this with the storage of add-login-credentials.
+
+The validity of a challenge starts when its dialog opens, not while it waits behind another one. When it runs out, the dialog closes and `ask` throws `SyncFailure.challengeExpired`.
 
 ### A refresh is a state machine per access
 
 ```
 idle ─▶ connecting ─▶ fetching ─▶ finished
-          │  ▲          │  ▲          
-          ▼  │          ▼  │          
-        needsUser     needsUser       any state ─▶ failed / cancelled
+          │  ▲          │  ▲
+          ▼  │          ▼  │
+        needsUser     needsUser       connecting, fetching, needsUser ─▶ failed / cancelled
 ```
 
 ```swift
 public enum SyncState: Sendable, Equatable {
 	case idle
 	case connecting
-	case needsUser(UserRequest.Kind, waiting: Bool)   // waiting: the dialog of another access is open
 	case fetching(done: Int, of: Int)
-	case finished(SyncSummary)                          // per account: new transactions, failure, time
-	case failed(SyncFailure)                            // failure of the whole access
+	case needsUser(UserRequest.Kind, waiting: Bool, during: Activity)  // waiting: the dialog of another access is open
+	case finished(SyncSummary)                                          // time, fetched accounts, failure per account
+	case failed(SyncFailure)                                            // failure of the whole access
 	case cancelled
 }
 ```
 
-`Domain` has the transitions as a pure function, `SyncState.next(_ event: SyncEvent) -> SyncState`. Tests cover each allowed transition and refuse the others. `needsUser` can follow `connecting` and `fetching`, because of the Consorsbank case above. `finished` holds the result of each account, so an access can finish while single accounts failed, for example an account without a balance order.
+`Domain` has the transitions as a pure function, `SyncState.next(_ event: SyncEvent) -> SyncState?`, which returns nil for a refused event. Tests cover each allowed transition and refuse the others. `needsUser` can follow `connecting` and `fetching`, because of the Consorsbank case above, and `during` says where the refresh continues after the answer. `finished`, `failed`, and `cancelled` allow a new start. `finished` holds the result of each account, so an access can finish while single accounts failed, for example an account without a balance order.
 
 The app keeps one `SyncState` per access in an `@Observable` `SyncCoordinator`. The sidebar shows each account from the state of its access and the outcome of the account.
 
@@ -171,9 +176,11 @@ public enum SyncFailure: Error, Sendable, Equatable {
 	case needsUser                      // automatic refresh needed a PIN or a second factor
 	case pinRejected(BankMessage)       // no retry in this refresh
 	case accessBlocked(BankMessage)
+	case tanRejected(BankMessage)       // "Wrong TAN"
 	case approvalDeclined(BankMessage?) // declined, or not answered in time
 	case challengeExpired
 	case notRegistered                  // FinTS 9078: the bank does not know the product number yet
+	case notFetched                     // an earlier request of the same session failed
 	case bank(BankMessage)              // any other answer of the bank, in its own words
 	case offline                        // no Internet connection: shown only for a manual refresh
 	case network(String)
@@ -181,11 +188,11 @@ public enum SyncFailure: Error, Sendable, Equatable {
 }
 ```
 
-`BankMessage` keeps the code and the text of the bank. The app shows the text to the user ("Show errors in the words of the bank"). Only the logs and diagnostics mask it, as the probes do. `notRegistered` gets its own message, because the user can't fix it: the bank has not yet taken over the registration of Moneten.
+`SyncFailure.message` is the text that the app shows for each case. `BankMessage` keeps the code and the text of the bank. The app shows the text to the user ("Show errors in the words of the bank"). Only the logs and diagnostics mask it, as the probes do. `notRegistered` gets its own message, because the user can't fix it: the bank has not yet taken over the registration of Moneten.
 
 ### Cancel
 
-"Cancel Refresh" cancels the task of each running access. A connector ends its dialog with the bank when it can, within 5 seconds, and then stops. The FinTS helper ends the dialog with HKEND. When hbci4java waits for an approval, the helper stops at the next check, and when it does not answer in time the app ends the helper process. A canceled access ends in `cancelled`, without an error on its accounts.
+"Cancel Refresh" in the File menu cancels the task of each running access and drops the accesses that wait for their turn. It is enabled only while a refresh runs. When the app locks, it cancels every refresh too. A connector ends its dialog with the bank when it can, within 5 seconds, and then stops. The FinTS helper ends the dialog with HKEND. When hbci4java waits for an approval, the helper stops at the next check, and when it does not answer in time the app ends the helper process. A canceled access ends in `cancelled`, without an error on its accounts.
 
 ### Several accesses at once
 
@@ -207,9 +214,13 @@ The FinTS connector of issue #13 talks to the hbci4java helper process. Each blo
 
 The connector keeps the passport data of hbci4java as its `AccessState`.
 
+### Where the code lives
+
+`SessionBroker` and `SyncCoordinator` are in a library `Sync` and not in the app target, because the app target has no tests and `scripts/test.sh` runs only the libraries. `ScriptedConnector` is in a second library `SyncTesting`, which the tests, the previews, and the debug harness use. The app owns one `SyncCoordinator` in `AppModel` and shows the dialog of `SessionBroker.current` as a sheet.
+
 ### A fake connector drives tests and previews
 
-`ScriptedConnector` in a test support module plays a list of steps: ask with an expected answer, report progress, wait, fail an account, fail the access, and return results. Tests drive it through every state, through cancellation in each state, through an automatic refresh that meets a request, and through two accesses that ask at the same time. SwiftUI previews use it to show each dialog.
+`ScriptedConnector` plays a list of steps: ask and record the answer, ask and withdraw the request like an approval, report progress, wait, fetch an account, fail an account, and fail the access. Tests drive it through every state, through cancellation in each state, through an automatic refresh that meets a request, and through two accesses that ask at the same time. SwiftUI previews and the debug command `syncdemo` use it to show each dialog.
 
 ## Risks / Trade-offs
 

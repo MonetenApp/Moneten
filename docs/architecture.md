@@ -2,7 +2,7 @@
 
 This page explains how Moneten is split into modules, how data flows from a bank into the database, and why each boundary sits where it does. The exact fields of each type are in [data model](data-model.md). The reasons behind the big choices are in [decisions](decisions/).
 
-The first build has four modules: `Domain`, `Storage`, `Import`, and `App`. Bank access, extensions, payments, and the log are planned. Each section below says when it describes the plan.
+The first build has six modules: `Domain`, `Storage`, `Import`, `Sync`, `SyncTesting`, and `App`. Bank connectors, extensions, payments, and the log are planned. Each section below says when it describes the plan.
 
 ## The modules and what each one owns
 
@@ -34,9 +34,11 @@ The libraries are one Swift package at the root of the repository. The app targe
 
 | Module | Owns | Depends on |
 |---|---|---|
-| `Domain` | Types, money arithmetic, the in-memory `Ledger`, the rule engine, categorization, import matching, chart data | Nothing |
+| `Domain` | Types, money arithmetic, the in-memory `Ledger`, the rule engine, categorization, import matching, chart data, and the sync model: the connector protocol, the requests to the user, and the refresh states | Nothing |
 | `Storage` | The encrypted database, migrations, loading and saving the ledger, Keychain access | `Domain`, GRDB |
 | `Import` | The MoneyMoney migration and the CSV, CAMT, and MT940 parsers. `TransactionFileImporter.parse` returns `[Transaction]`, and `MoneyMoneyMigration.plan` returns a `Plan` that the app shows before it stores anything. | `Domain` |
+| `Sync` | `SyncCoordinator`, which refreshes up to three accesses at a time with one `SyncState` each, and `SessionBroker`, which shows one dialog at a time and keeps the PINs in memory | `Domain` |
+| `SyncTesting` | `ScriptedConnector`, which plays requests, progress, results, and failures in place of a bank, for the tests, the previews, and the debug harness | `Domain` |
 | `App` | SwiftUI views, the `AppModel`, window and menu wiring | All of the above |
 
 These modules are planned:
@@ -49,20 +51,19 @@ These modules are planned:
 | `FinAPIConnector` | finAPI login through its web form and data mapping (v0.3) | `Domain` |
 | `ext` | A command line tool that runs and tests an extension without the app | `ExtensionHost` |
 
-The sync and payment state machines described below will live in `Domain`.
+The sync state machine described below is in `Domain`. The payment state machine will be there too.
 
 `Domain` has no dependencies so that every rule about money, categories, and transaction identity can be tested in milliseconds without a database, a network, or a bank.
 
 ## Every bank speaks through one protocol
 
-This section is the plan for the connectors.
+The protocol and the dialogs exist. The connectors are the plan.
 
 FinTS, extensions, and finAPI differ in almost everything. The app hides that behind one protocol in `Domain`:
 
 ```swift
 protocol BankConnector {
-	func listAccounts(of access: Access, state: AccessState?, _ session: SyncSession) async throws -> ConnectorReport<[RemoteAccount]>
-	func refresh(_ request: RefreshRequest, _ session: SyncSession) async throws -> ConnectorReport<[RemoteAccount.ID: AccountOutcome]>
+	func refresh(_ request: RefreshRequest, _ session: SyncSession) async throws -> ConnectorReport
 }
 
 protocol PaymentConnector: BankConnector {
@@ -70,12 +71,12 @@ protocol PaymentConnector: BankConnector {
 }
 ```
 
-A refresh covers all requested accounts of one access, that is one login at one source, so FinTS keeps them in one dialog. `SyncSession` is how a connector asks the user for something. A connector calls `session.ask(_:)` with a PIN request or a second-factor request and waits for the answer. `Challenge` is one enum for all sources:
+A refresh covers all requested accounts of one access, that is one login at one source, so FinTS keeps them in one dialog. Listing the accounts of a new access joins the protocol with the FinTS connector. `SyncSession` is how a connector asks the user for something. A connector calls `session.ask(_:)` with a PIN request or a second-factor request and waits for the answer. `Challenge` is one enum for all sources:
 
 ```swift
 enum Challenge {
 	case chooseTANMethod([TANMethod], current: TANMethod.ID?)
-	case chooseTANMedium([TANMedium])
+	case chooseTANMedium([String])
 	case enterTAN(prompt: String, image: ChallengeImage?)
 	case flickerCode(prompt: String, code: FlickerCode)
 	case approveInApp(prompt: String, app: String?, image: ChallengeImage?, step: Step?)
@@ -91,7 +92,7 @@ Only `FinTSConnector` and `FinAPIConnector` conform to `PaymentConnector`. `Exte
 
 ## A sync is a state machine
 
-This section is the plan for bank access.
+`SyncState` and its transitions are built. The connectors that drive them are the plan.
 
 A sync of one connection moves through fixed states:
 
@@ -174,7 +175,9 @@ Moneten/
 ├── Sources/
 │   ├── Domain/
 │   ├── Storage/
-│   └── Import/
+│   ├── Import/
+│   ├── Sync/
+│   └── SyncTesting/
 ├── Tests/                   One test target per library
 ├── App/                     The app target: project.yml, sources, Info.plist, resources
 │   └── FinTSProbe/          The FinTS prototype of issue #11
