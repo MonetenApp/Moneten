@@ -32,7 +32,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [ ] 1.26 Usable with the keyboard and with VoiceOver. Build it and verify it with a test or in the app.
 - [ ] 1.27 About and help commands. Built in part: help points to the project on GitHub. Finish it and verify it with a test or in the app.
 - [ ] 1.28 Stay responsive with a large database. Built in part: PerformanceTests measure 10 ms for a search and 3 ms for a category view at 50,000 transactions; `scripts/perf-check.sh` measures the views in the app, and most scenarios still block the main thread longer than half a second on a busy Mac. Finish it and verify it with that check.
-- [x] 1.29 Look of the sidebar and the selection: opaque gray sidebar (#E0E0E6, dark #454549, measured in MoneyMoney) and a slate accent color. Verified by sidebar and window snapshots of the debug harness in light and dark mode.
+- [x] 1.29 Look of the sidebar and the selection: the Liquid Glass sidebar of macOS instead of MoneyMoney's opaque gray (user decision), and a slate accent color. Verified by sidebar and window snapshots of the debug harness in light and dark mode.
 
 ## 2. Integration
 

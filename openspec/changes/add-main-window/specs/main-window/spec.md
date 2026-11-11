@@ -24,7 +24,7 @@ The app SHALL show one main window with a sidebar on the left and one content vi
 
 ### Requirement: Look of the sidebar and the selection
 
-The app SHALL draw the sidebar in the opaque gray of MoneyMoney instead of the translucent material of macOS. Selected rows and controls use a muted slate blue instead of the system blue. MoneyMoney uses the system blue here; this is a decision for MonetenMoneten.
+The app SHALL draw the sidebar with the Liquid Glass material of macOS, not in the opaque gray of MoneyMoney. Selected rows and controls use a muted slate blue instead of the system blue, which MoneyMoney uses. Both are decisions for MonetenMoneten.
 
 #### Scenario: Selected row
 

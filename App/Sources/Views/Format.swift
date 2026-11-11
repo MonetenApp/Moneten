@@ -139,8 +139,6 @@ enum Palette {
 	static let bandHover = Color.white.opacity(0.18)
 	/// The dashed line at zero behind the bars of the balance chart.
 	static let bandZero = dynamic("bandZero", light: .white, dark: NSColor(white: 1, alpha: 0.25))
-	/// The opaque gray of the sidebar, measured in MoneyMoney.
-	static let sidebar = dynamic("sidebar", light: rgb(0xE0E0E6), dark: rgb(0x454549))
 	/// The rim around a pie, measured in MoneyMoney in dark mode. The light one is estimated, a bit
 	/// lighter than the light slate.
 	static let pieRim = dynamic("pieRim", light: rgb(0xC5CDD4), dark: rgb(0x5A5A5F))
