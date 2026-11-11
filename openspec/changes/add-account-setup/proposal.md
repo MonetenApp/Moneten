@@ -31,7 +31,7 @@ None.
 - Modules: `App` owns the assistant. `FinTSConnector` owns the bank directory and the first dialog with the bank. `ExtensionConnector` supplies the services under "Other". `Domain` owns the IBAN check.
 - Depends on the change `add-fints-banking` for the bank dialog, on `add-login-credentials` for the PIN prompt and the choice to save a PIN, on `add-tan-handling` for a TAN during setup, on `add-web-banking-extensions` for the services under "Other", and on `add-offline-accounts` for "Offline account / Cash".
 - The changes `add-hbci-keys-and-chipcards` and `add-aggregator-subscription` add their own setup steps later.
-- Decisions: [ADR 0003](../../../docs/decisions/0003-fints-through-hbci4swift.md), [ADR 0009](../../../docs/decisions/0009-database-password-as-in-moneymoney.md).
+- Decisions: [ADR 0014](../../../docs/decisions/0014-fints-through-hbci4java.md), [ADR 0009](../../../docs/decisions/0009-database-password-as-in-moneymoney.md).
 
 ## Reference behavior
 

@@ -14,7 +14,7 @@ The URLs come from the bank list of hbci4java (`blz.properties`, changed 2026-10
 | HypoVereinsbank | Yes, after switching it on in online banking ([fino](https://kws.help.fino.digital/en/support/solutions/articles/80000616994-hypovereinsbank-unicredit)) | `https://hbci-01.hypovereinsbank.de/bank/hbci` | photoTAN, appTAN | Unknown. Transactions start at the first FinTS download |
 | Sparkasse | Yes ([fino](https://depotwechsel.help.fino.digital/en/support/solutions/articles/80000616998-sparkasse)) | One server per region, such as `https://banking-be3.s-fints-pt-be.de/fints30` | pushTAN, chipTAN | Unknown |
 
-Every bank asks for a decoupled approval or a TAN at login, so the first FinTS test needs decoupled TAN handling from the start (`decoupledNotification` in HBCI4Swift).
+Every bank asks for a decoupled approval or a TAN at login, so the first FinTS test needs decoupled TAN handling from the start (`NEED_PT_DECOUPLED` in hbci4java).
 
 ## Trade Republic
 
@@ -44,8 +44,24 @@ The product registration number arrived on 11 November 2026. The FinTSProbe of i
 - The account information carries no BIC. HKKAZ from version 7 needs IBAN and BIC, and HBCI4Swift drops the order without an error when the BIC is missing. The probe fills it in with `--bic`. The connector of issue #13 has to take it from a bank directory by bank code. For BLZ 76030080 it is `CSDBDE71XXX`.
 - Consorsbank offers MT940 only, not CAMT. 90 days arrived without a further approval: 8 and 22 transactions. Every row has a purpose, a booking text, and a value date. No row has the IBAN or BIC of the other party, an end-to-end ID, or a mandate. Rules for Consorsbank accounts can therefore match on name and purpose, not on IBAN. The currency is on the statement, not on the row.
 
+### The same test with hbci4java
+
+`Tools/FinTSProbeJava` ran the same test with hbci4j-core 4.1.17 ([ADR 0014](../decisions/0014-fints-through-hbci4java.md)).
+
+- Login, synchronization, and the decoupled method 901 worked without changes to the library. hbci4java sends `PIN:1` in both security heads for 999.
+- The account information again has no BIC. hbci4java has it in its bank directory.
+- The depot allows HKWPD. 24 positions arrived, each with ISIN, WKN, name, price, quantity, and value.
+- Balance and transactions failed with 9075 "Starke Authentifizierung erforderlich". The dialog initialization with HKTAN for HKIDN gets 3076, no SCA required. The bank parameters mark HKSAL, HKKAZ, and HKWPD with `needtan=N`, so hbci4java sends them without HKTAN, and Consorsbank rejects HKSAL and HKKAZ. Marked `needtan=J`, HKSAL and HKKAZ go with HKTAN, the bank answers 3076 again, and balance and transactions arrive: the same 8 and 22 rows, with the currency on every row. HKWPD with HKTAN fails with 9160 "Erforderliche Auftragsreferenz fehlt", so holdings stay without HKTAN. Reported as [hbci4j/hbci4java#155](https://github.com/hbci4j/hbci4java/issues/155).
+- The booking dates differ by one day from the Swift probe. The Swift probe prints dates in UTC, which shows midnight in Germany as the day before. The connector keeps booking dates as calendar days without a time zone.
+
+### Workarounds for bank quirks
+
+| Bank | Quirk | Workaround in the helper | Upstream |
+|---|---|---|---|
+| Consorsbank | HKSAL and HKKAZ need HKTAN although the bank parameters say `needtan=N`. HKWPD must stay without HKTAN | Send HKSAL, HKKAZ, and HKCAZ with HKTAN | [hbci4j/hbci4java#155](https://github.com/hbci4j/hbci4java/issues/155) |
+
 ## What follows
 
-1. Issue #11 runs the FinTS prototype against DKB, Consorsbank, and a Sparkasse first, with decoupled approval, and reads the BPD of all five banks for securities holdings (HKWPD) and transactions (HKWDU).
+1. Issue #11 goes on with `Tools/FinTSProbeJava`: DKB once the product number reaches it, then a Sparkasse. Every test reads the bank parameters for securities holdings (HKWPD) and transactions (HKWDU).
 2. Trade Republic is a built-in provider, not a MoneyMoney extension. It needs its own decision record before it is built.
 3. PayPal is a candidate for the first real extension of issue #15, because it needs only HTTPS.

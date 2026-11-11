@@ -31,7 +31,7 @@ None.
 - Modules: `FinTSConnector` owns the bank directory, the dialogs, and the mapping to `Domain` types. `Domain` owns the parsed transaction fields.
 - Depends on the change `add-login-credentials` for the PIN, on `add-tan-handling` for every TAN, on `add-account-refresh` for when a refresh runs and for the removal of duplicates, and on `add-connection-security` for the encrypted connection.
 - Payments, securities, statements, key files, chip cards, and the PIN change assistant come with their own changes.
-- Decisions: [ADR 0003](../../../docs/decisions/0003-fints-through-hbci4swift.md). Banks accept only registered products, so issue #9 must be closed before a public release.
+- Decisions: [ADR 0014](../../../docs/decisions/0014-fints-through-hbci4java.md). Banks accept only registered products, so issue #9 must be closed before a public release.
 
 ## Reference behavior
 

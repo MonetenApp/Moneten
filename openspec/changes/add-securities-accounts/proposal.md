@@ -28,7 +28,7 @@ None.
 - Issues: #31
 - Modules: `Domain` owns the types for securities, quotes, and holdings and the valuation rules. `FinTSConnector` fetches and parses holdings. `ExtensionConnector` maps the securities of an extension. `Storage` keeps positions and the daily value. `App` owns the portfolio view.
 - Depends on the change `add-fints-banking` for the bank dialog, `add-account-refresh` for when a refresh runs and how errors show, `add-web-banking-extensions` for the securities that an extension returns, `add-account-management` for the account type, and `add-main-window` for the sidebar and the status line.
-- Decisions: [ADR 0003](../../../docs/decisions/0003-fints-through-hbci4swift.md), [ADR 0004](../../../docs/decisions/0004-moneymoney-compatible-extension-api.md).
+- Decisions: [ADR 0014](../../../docs/decisions/0014-fints-through-hbci4java.md), [ADR 0004](../../../docs/decisions/0004-moneymoney-compatible-extension-api.md).
 
 ## Reference behavior
 

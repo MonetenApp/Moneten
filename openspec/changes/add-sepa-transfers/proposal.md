@@ -34,7 +34,7 @@ None.
 - Depends on the change `add-tan-handling` for the TAN dialog.
 - Depends on the change `add-account-refresh`, which refreshes the account after a payment.
 - Depends on the change `add-software-update` for current bank data such as the BIC directory.
-- Decisions: [ADR 0008](../../../docs/decisions/0008-payments-only-through-licensed-channels.md), [ADR 0003](../../../docs/decisions/0003-fints-through-hbci4swift.md).
+- Decisions: [ADR 0008](../../../docs/decisions/0008-payments-only-through-licensed-channels.md), [ADR 0014](../../../docs/decisions/0014-fints-through-hbci4java.md).
 
 ## Reference behavior
 

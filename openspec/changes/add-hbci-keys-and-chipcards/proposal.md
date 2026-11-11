@@ -31,7 +31,7 @@ None.
 - Modules: `FinTSConnector` owns keys, cards, readers, and the signed dialogs. `App` owns the setup steps, the Tools commands, and the setting.
 - Depends on the changes `add-account-setup`, `add-fints-banking`, and `add-login-credentials`. Payment confirmation on a reader takes effect with the change `add-sepa-transfers`.
 - Card readers with Bluetooth need the Bluetooth permission of macOS.
-- Decisions: [ADR 0003](../../../docs/decisions/0003-fints-through-hbci4swift.md). The library decides which security profiles are possible.
+- Decisions: [ADR 0014](../../../docs/decisions/0014-fints-through-hbci4java.md). The library decides which security profiles are possible.
 
 ## Reference behavior
 
