@@ -35,9 +35,16 @@ struct BalanceChart: View {
 		let currency = ChartCurrency.current(currencies, picked: picked)
 		let ids = Set(accounts.filter { $0.currency == currency }.map(\.id))
 		let monthly = model.balanceMode == .monthlyAverage
+		@Bindable var model = model
 		VStack(alignment: .trailing, spacing: 4) {
 			ChartCurrency.Picker(currencies: currencies, current: currency, picked: $picked)
-			bars(ids: ids, currency: currency, monthly: monthly)
+			HStack(alignment: .bottom, spacing: 8) {
+				bars(ids: ids, currency: currency, monthly: monthly)
+				ChartModeSwitch(selection: $model.balanceMode, options: [
+					.init(value: .daily, label: "D", help: "Daily balance"),
+					.init(value: .monthlyAverage, label: "M", help: "Monthly average balance"),
+				])
+			}
 		}
 	}
 
@@ -87,29 +94,31 @@ struct CategoryBars: View {
 		let currency = ChartCurrency.current(currencies, picked: picked)
 		let sums = model.ledger.periodSums(of: ChartCurrency.rows(rows, in: currency, of: currencies), period: model.chartPeriod)
 		VStack(alignment: .trailing, spacing: 4) {
-			HStack(spacing: 8) {
-				ChartCurrency.Picker(currencies: currencies, current: currency, picked: $picked)
-				Picker("Period", selection: $model.chartPeriod) {
-					Text("M").help("Monthly view").tag(ChartPeriod.month)
-					Text("Q").help("Quarterly view").tag(ChartPeriod.quarter)
-					Text("Y").help("Yearly view").tag(ChartPeriod.year)
-				}
-				.pickerStyle(.segmented)
-				.labelsHidden()
-				.fixedSize()
+			ChartCurrency.Picker(currencies: currencies, current: currency, picked: $picked)
+			HStack(alignment: .bottom, spacing: 8) {
+				bars(sums, currency: currency)
+				ChartModeSwitch(selection: $model.chartPeriod, options: [
+					.init(value: .month, label: "M", help: "Monthly view"),
+					.init(value: .quarter, label: "Q", help: "Quarterly view"),
+					.init(value: .year, label: "Y", help: "Yearly view"),
+				])
 			}
-			if sums.isEmpty {
-				Text("No transactions; no bar chart.").foregroundStyle(.secondary).frame(maxWidth: .infinity, maxHeight: .infinity)
-			} else {
-				// As in MoneyMoney: one bar of 40 points for each period with the sum of its
-				// transactions, in the color of the category, darker below zero.
-				let color = categoryColor
-				ScrollingBarChart(bars: Self.stripBars(sums, period: model.chartPeriod, currency: currency, through: model.chartRange.end),
-					style: .centered, barWidth: 40, gap: 8, positive: color, negative: color.mix(with: .black, by: 0.3)) { bar in
-					model.select(bar: PeriodChoice(start: bar.start, chartPeriod: model.chartPeriod))
-				}
-				.id([AnyHashable(model.selection), AnyHashable(model.chartPeriod), AnyHashable(currency)])
+		}
+	}
+
+	@ViewBuilder
+	private func bars(_ sums: [PeriodSum], currency: String) -> some View {
+		if sums.isEmpty {
+			Text("No transactions; no bar chart.").foregroundStyle(.secondary).frame(maxWidth: .infinity, maxHeight: .infinity)
+		} else {
+			// As in MoneyMoney: one bar of 40 points for each period with the sum of its
+			// transactions, in the color of the category, darker below zero.
+			let color = categoryColor
+			ScrollingBarChart(bars: Self.stripBars(sums, period: model.chartPeriod, currency: currency, through: model.chartRange.end),
+				style: .centered, barWidth: 40, gap: 8, positive: color, negative: color.mix(with: .black, by: 0.3)) { bar in
+				model.select(bar: PeriodChoice(start: bar.start, chartPeriod: model.chartPeriod))
 			}
+			.id([AnyHashable(model.selection), AnyHashable(model.chartPeriod), AnyHashable(currency)])
 		}
 	}
 
@@ -302,5 +311,42 @@ struct PieChart: View {
 			if value <= end { return s }
 		}
 		return slices.last
+	}
+}
+
+/// The switch of a chart between its modes, as MoneyMoney draws it: a column of small segments at
+/// the bottom of the trailing edge of the chart, the chosen one dark.
+struct ChartModeSwitch<Value: Hashable>: View {
+	struct Option {
+		let value: Value
+		let label: String
+		let help: String
+	}
+
+	@Binding var selection: Value
+	let options: [Option]
+
+	var body: some View {
+		VStack(spacing: 0) {
+			ForEach(options, id: \.label) { option in
+				let chosen = option.value == selection
+				Button { selection = option.value } label: {
+					Text(option.label)
+						.font(.system(size: 12, weight: .medium))
+						.foregroundStyle(chosen ? Palette.switchChosenText : Palette.switchText)
+						.frame(width: 22, height: 24)
+						.background(chosen ? Palette.switchChosen : Palette.switchBackground)
+						.contentShape(Rectangle())
+				}
+				.buttonStyle(.plain)
+				.help(option.help)
+				.accessibilityLabel(option.help)
+				.accessibilityAddTraits(chosen ? .isSelected : [])
+			}
+		}
+		.clipShape(RoundedRectangle(cornerRadius: 4))
+		.overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Palette.switchBorder, lineWidth: 0.5))
+		.padding(.bottom, ScrollingBarChart.bottomInset)
+		.accessibilityElement(children: .contain)
 	}
 }

@@ -182,14 +182,6 @@ struct FilterBar: View {
 				}
 			}
 			Spacer()
-			if model.selection.flatMap({ if case .category = $0 { nil } else { true } }) == true, model.viewMode == .barChart {
-				Picker("", selection: $model.balanceMode) {
-					Text("D").help("Daily balance").tag(BalanceMode.daily)
-					Text("M").help("Monthly average balance").tag(BalanceMode.monthlyAverage)
-				}
-				.pickerStyle(.segmented)
-				.fixedSize()
-			}
 		}
 		.font(.callout)
 		// The highlight of each control adds 6 points, so the bar keeps its text 16 points from the edge.

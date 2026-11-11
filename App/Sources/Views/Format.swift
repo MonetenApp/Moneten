@@ -125,6 +125,12 @@ enum Palette {
 	static let bandBar = dynamic("bandBar", light: .white, dark: rgb(0xC9CACB))
 	/// The dashed line at zero behind the bars of the balance chart.
 	static let bandZero = dynamic("bandZero", light: .white, dark: NSColor(white: 1, alpha: 0.25))
+	/// The mode switch of a chart: the chosen segment dark with white text, the others light.
+	static let switchChosen = dynamic("switchChosen", light: rgb(0x575C61), dark: rgb(0x5E6066))
+	static let switchChosenText = Color.white
+	static let switchBackground = dynamic("switchBackground", light: rgb(0xF8F8F8), dark: rgb(0xBDBEC0))
+	static let switchText = dynamic("switchText", light: rgb(0x4A4A4A), dark: rgb(0x2A2A2C))
+	static let switchBorder = dynamic("switchBorder", light: rgb(0x9099A0), dark: rgb(0x1E1F23))
 	static let filterBar = dynamic("filterBar", light: rgb(0xF1F1F1), dark: NSColor(white: 1, alpha: 0.04))
 	/// The line between the filters of the filter bar.
 	static let filterSeparator = dynamic("filterSeparator", light: rgb(0xA3A3A3), dark: NSColor(white: 1, alpha: 0.15))

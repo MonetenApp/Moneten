@@ -85,7 +85,7 @@ The app SHALL set the initial balance of a new account so that the computed bala
 
 ### Requirement: Daily balance or monthly average balance
 
-The app SHALL let the user switch the balance chart between "Daily balance" and "Monthly average balance". The monthly average is the mean of the daily balances of a calendar month and is drawn as one bar for each month.
+The app SHALL let the user switch the balance chart between "Daily balance" and "Monthly average balance" with a column of the segments "D" and "M" at the bottom of the trailing edge of the chart, as in MoneyMoney. The category chart has its "M", "Q", and "Y" in the same place. The monthly average is the mean of the daily balances of a calendar month and is drawn as one bar for each month.
 
 #### Scenario: Monthly average
 
