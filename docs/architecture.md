@@ -43,7 +43,7 @@ These modules are planned:
 
 | Module | Owns | Depends on |
 |---|---|---|
-| `FinTSConnector` | Bank lookup, FinTS dialogs, TAN handling, mapping FinTS data to `Domain` types | `Domain`, HBCI4Swift |
+| `FinTSConnector` | Bank lookup, FinTS dialogs, TAN handling, mapping FinTS data to `Domain` types | `Domain`, the hbci4java helper process ([ADR 0014](decisions/0014-fints-through-hbci4java.md)) |
 | `ExtensionConnector` | Starting the XPC host, mapping extension results to `Domain` types | `Domain` |
 | `ExtensionHost` | The XPC service that runs one Lua extension with the MoneyMoney-compatible API | Lua 5.4 |
 | `FinAPIConnector` | finAPI login through its web form and data mapping (v0.3) | `Domain` |
@@ -126,7 +126,7 @@ The rest of this list is the plan for bank access and the log:
 
 - A PIN is saved only if you turn on saving for that connection, and then only inside the encrypted database. Otherwise the app asks once and keeps it in memory until the app locks or quits.
 - TANs are never stored.
-- Logs never contain PINs, TANs, passwords, cookies, or tokens. The app removes them from its own output, from HBCI4Swift output, and from recorded HTTP traffic, and no setting turns that off.
+- Logs never contain PINs, TANs, passwords, cookies, or tokens. The app removes them from its own output, from the output of the FinTS helper, and from recorded HTTP traffic, and no setting turns that off.
 - Logs also redact IBANs, names, and amounts by default. A debug switch shows those for one sync, and the app warns before you share the log.
 
 ## Extensions run in a sandbox

@@ -1,6 +1,6 @@
 # 0003. Use HBCI4Swift for FinTS
 
-Status: Proposed
+Status: Superseded by [ADR 0014](0014-fints-through-hbci4java.md)
 
 ## Context
 
