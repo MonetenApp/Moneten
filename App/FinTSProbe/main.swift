@@ -14,8 +14,8 @@
 // versions of the transaction orders need it.
 //
 // The PIN is read from the terminal without echo and is never printed. Without --show-values the
-// output has no amounts and no full account numbers: IBANs and runs of six or more digits are masked,
-// also in texts of the bank and in log lines of HBCI4Swift. Those texts can still hold names, so read
+// output has no amounts and no full account numbers: IBANs, runs of six or more digits, and amounts
+// are masked, and raw statements are left out, also in texts of the bank and in log lines of HBCI4Swift. Those texts can still hold names, so read
 // the output once before you share it.
 
 @preconcurrency import Foundation
@@ -190,9 +190,13 @@ func statementsProblem(_ user: HBCIUser, _ account: HBCIAccount, camt: Bool, ord
 	return "the order was sent, but no statements came back (version \(segment.version)); run again with --verbose"
 }
 
-/// Masks IBANs and runs of six or more digits in texts of the bank and of HBCI4Swift.
+/// Masks IBANs, runs of six or more digits, and amounts in texts of the bank and of HBCI4Swift.
+/// A text with MT940 fields is a raw statement and is left out.
 func maskedText(_ text: String) -> String {
-	text.replacing(/[A-Z]{2}\d{2}[A-Z0-9]{10,30}/, with: "IBAN…").replacing(/\d{6,}/, with: "…")
+	if text.contains(/:(20|25|28C|60F|60M|61|62F|62M|86):/) { return "(statement content left out)" }
+	return text.replacing(/[A-Z]{2}\d{2}[A-Z0-9]{10,30}/, with: "IBAN…")
+		.replacing(/\d+(?:\.\d{3})*,\d{1,2}/, with: "…")
+		.replacing(/\d{6,}/, with: "…")
 }
 
 func run(_ options: Options) throws {
