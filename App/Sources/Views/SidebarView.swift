@@ -203,7 +203,6 @@ struct CategoryRow: View {
 			} icon: {
 				Image(systemName: CategorySymbols.name(of: category))
 					.foregroundStyle(CategoryColors.color(of: category, in: model.ledger))
-					.font(CategorySymbols.isDot(category) ? .caption : .body)
 			}
 			Spacer()
 			if let amount = model.sidebarAmount(of: category) {

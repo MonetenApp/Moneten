@@ -750,8 +750,7 @@ struct CategoryChoices: View {
 
 	/// The icon of a category in its color, as the sidebar shows it.
 	private static func image(of c: Domain.Category, in ledger: Ledger) -> NSImage? {
-		let size: CGFloat = CategorySymbols.isDot(c) ? 8 : 12
-		let configuration = NSImage.SymbolConfiguration(pointSize: size, weight: .regular)
+		let configuration = NSImage.SymbolConfiguration(pointSize: 12, weight: .regular)
 			.applying(.init(paletteColors: [NSColor(CategoryColors.color(of: c, in: ledger))]))
 		return NSImage(systemSymbolName: CategorySymbols.name(of: c), accessibilityDescription: nil)?.withSymbolConfiguration(configuration)
 	}

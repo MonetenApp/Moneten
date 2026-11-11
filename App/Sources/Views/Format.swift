@@ -161,8 +161,9 @@ enum CategoryColors {
 	}
 }
 
-/// The icon of a category: an SF Symbol the user chose, else a dot, or a folder for a group.
-/// MoneyMoney draws its own pictures; this app offers SF Symbols, which fit macOS and ship with it.
+/// The icon of a category: an SF Symbol the user chose, else a bookmark, or a folder for a group.
+/// MoneyMoney draws its own pictures and a colored bookmark for a category without one; this app
+/// offers SF Symbols, which fit macOS and ship with it.
 enum CategorySymbols {
 	/// The symbols of the picker, sorted by topic, with the name that the tooltip and VoiceOver read.
 	/// Each exists since macOS 13 or earlier; the app runs on macOS 15.0, so a newer symbol, such as
@@ -192,20 +193,17 @@ enum CategorySymbols {
 		("doc.text.fill", "Document"), ("list.bullet.rectangle.portrait.fill", "Bill"), ("tag.fill", "Tag"),
 	]
 
-	/// The name of a symbol for the tooltip and VoiceOver, or "Dot" and "Folder" for none.
+	/// The name of a symbol for the tooltip and VoiceOver, or "Bookmark" and "Folder" for none.
 	static func label(_ symbol: String?, isGroup: Bool) -> String {
-		guard let symbol else { return isGroup ? "Folder" : "Dot" }
+		guard let symbol else { return isGroup ? "Folder" : "Bookmark" }
 		return choices.first { $0.symbol == symbol }?.name ?? symbol
 	}
 
 	/// `filledGroup` is the folder of a group in the title bar, which MoneyMoney draws filled.
 	static func name(of category: Domain.Category, filledGroup: Bool = false) -> String {
 		if let symbol = category.symbol, !symbol.isEmpty { return symbol }
-		return category.isGroup ? (filledGroup ? "folder.fill" : "folder") : "circle.fill"
+		return category.isGroup ? (filledGroup ? "folder.fill" : "folder") : "bookmark.fill"
 	}
-
-	/// The dot is drawn smaller than a symbol, as before there were symbols.
-	static func isDot(_ category: Domain.Category) -> Bool { name(of: category) == "circle.fill" }
 }
 
 extension AccountKind {

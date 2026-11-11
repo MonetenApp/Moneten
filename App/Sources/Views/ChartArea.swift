@@ -260,7 +260,7 @@ struct PieChart: View {
 						.foregroundStyle(by: .value("Category", s.id.uuidString))
 						.opacity(hovered == nil || hovered == s ? 1 : 0.45)
 				}
-				// The same colors as the category dots in the sidebar. The scale is keyed by the category,
+				// The same colors as the category icons in the sidebar. The scale is keyed by the category,
 				// not its name: two categories may share a name and still have their own colors. So the
 				// legend names them itself.
 				.chartForegroundStyleScale(domain: slices.map(\.id.uuidString), range: slices.map(\.color))

@@ -183,20 +183,19 @@ struct ColorSwatches: View {
 }
 
 /// The icon of a category: a button with the current icon that opens a grid of SF Symbols. The
-/// first choice is the dot, or the folder of a group, which a category shows without a symbol.
+/// first choice is the bookmark, or the folder of a group, which a category shows without a symbol.
 struct SymbolPicker: View {
 	@Binding var selection: String?
 	let color: Color
 	let isGroup: Bool
 	@State private var isOpen = false
 
-	private var plain: String { isGroup ? "folder" : "circle.fill" }
+	private var plain: String { isGroup ? "folder" : "bookmark.fill" }
 
 	var body: some View {
 		Button { isOpen = true } label: {
 			HStack(spacing: 6) {
 				Image(systemName: selection ?? plain)
-					.font(selection == nil && !isGroup ? .caption : .body)
 					.foregroundStyle(color)
 					.frame(width: 18, height: 16)
 				// The same mark as the pop-up menus of the other rows.
@@ -221,7 +220,7 @@ struct SymbolPicker: View {
 	}
 }
 
-/// The choices of `SymbolPicker`: the dot or folder first, then the symbols by topic.
+/// The choices of `SymbolPicker`: the bookmark or folder first, then the symbols by topic.
 struct SymbolGrid: View {
 	let selection: String?
 	let color: Color
@@ -237,7 +236,7 @@ struct SymbolGrid: View {
 	}
 
 	private func cell(_ symbol: String?) -> some View {
-		SymbolCell(symbol: symbol ?? (isGroup ? "folder" : "circle.fill"), isDot: symbol == nil && !isGroup, color: color, selected: symbol == selection,
+		SymbolCell(symbol: symbol ?? (isGroup ? "folder" : "bookmark.fill"), color: color, selected: symbol == selection,
 			name: CategorySymbols.label(symbol, isGroup: isGroup)) {
 			pick(symbol)
 		}
@@ -248,7 +247,6 @@ struct SymbolGrid: View {
 /// it is the current one, and on a light background under the pointer.
 private struct SymbolCell: View {
 	let symbol: String
-	let isDot: Bool
 	let color: Color
 	let selected: Bool
 	let name: String
@@ -258,7 +256,7 @@ private struct SymbolCell: View {
 	var body: some View {
 		Button(action: action) {
 			Image(systemName: symbol)
-				.font(isDot ? .caption : .system(size: 15))
+				.font(.system(size: 15))
 				.foregroundStyle(selected ? Color.white : color)
 				.frame(width: 30, height: 30)
 				.background(RoundedRectangle(cornerRadius: 6).fill(selected ? AnyShapeStyle(color) : AnyShapeStyle(.primary.opacity(hovered ? 0.08 : 0))))

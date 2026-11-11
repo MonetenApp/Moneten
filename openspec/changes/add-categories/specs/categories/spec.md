@@ -101,18 +101,18 @@ The app SHALL let the user choose a color for each category in its settings. The
 
 ### Requirement: Category icon
 
-The app SHALL let the user choose an icon for each category in its settings, from a set of SF Symbols, or no icon. The sidebar, the title of the category view, and the category menu of the ribbon show the icon in the color of the category. A category without an icon shows a dot, and a category group a folder. MoneyMoney offers its own pictures; this app uses SF Symbols, which ship with macOS. The MoneyMoney migration takes only the color of a MoneyMoney icon, not the picture.
+The app SHALL let the user choose an icon for each category in its settings, from a set of SF Symbols, or no icon. The sidebar, the title of the category view, and the category menu of the ribbon show the icon in the color of the category. A category without an icon shows a bookmark, as in MoneyMoney, and a category group a folder. MoneyMoney offers its own pictures; this app uses SF Symbols. The MoneyMoney migration takes only the color of a MoneyMoney icon, not the picture.
 
 #### Scenario: Choose an icon
 
 - **WHEN** the user chooses the shopping cart as the icon of "Groceries" and closes the settings
-- **THEN** the sidebar shows a shopping cart in the color of "Groceries" in place of its dot
+- **THEN** the sidebar shows a shopping cart in the color of "Groceries" in place of its bookmark
 
 #### Scenario: Remove the icon
 
 - **GIVEN** "Groceries" shows a shopping cart
-- **WHEN** the user chooses the dot as its icon and closes the settings
-- **THEN** the sidebar shows a dot for "Groceries"
+- **WHEN** the user chooses the bookmark as its icon and closes the settings
+- **THEN** the sidebar shows a bookmark for "Groceries"
 
 ### Requirement: Category currency
 
