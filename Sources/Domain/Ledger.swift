@@ -15,17 +15,21 @@ public struct Ledger: Sendable {
 	public private(set) var accounts: [Account] = []
 	public private(set) var categories: [Category] = []
 	public private(set) var transactions: [Transaction] = []
+	/// The recorded values of each portfolio, the oldest first.
+	private var portfolioHistory: [UUID: [PortfolioValue]] = [:]
 
 	private var transactionIndex: [UUID: Int] = [:]
 	private var searchText: [UUID: String] = [:]
 	/// The number of new transactions per account.
 	public private(set) var newTransactionCounts: [UUID: Int] = [:]
 
-	public init(groups: [AccountGroup] = [], accounts: [Account] = [], categories: [Category] = [], transactions: [Transaction] = []) {
+	public init(groups: [AccountGroup] = [], accounts: [Account] = [], categories: [Category] = [], transactions: [Transaction] = [],
+		portfolioValues: [PortfolioValue] = []) {
 		self.groups = groups
 		self.accounts = accounts
 		self.categories = categories
 		self.transactions = transactions
+		for v in portfolioValues { record(v) }
 		rebuildIndexes()
 	}
 
@@ -91,6 +95,8 @@ public struct Ledger: Sendable {
 	public func group(_ id: UUID) -> AccountGroup? { groups.first { $0.id == id } }
 	public func category(_ id: UUID) -> Category? { categories.first { $0.id == id } }
 	public func transaction(_ id: UUID) -> Transaction? { transactionIndex[id].map { transactions[$0] } }
+	/// The recorded values of a portfolio, the oldest first.
+	public func portfolioValues(of accountID: UUID) -> [PortfolioValue] { portfolioHistory[accountID] ?? [] }
 
 	public var defaultCategory: Category? { categories.first { $0.isDefault } }
 
@@ -241,7 +247,11 @@ public struct Ledger: Sendable {
 
 	public mutating func replace(groups: [AccountGroup]? = nil, accounts: [Account]? = nil, categories: [Category]? = nil, transactions: [Transaction]? = nil) {
 		if let groups { self.groups = groups }
-		if let accounts { self.accounts = accounts }
+		if let accounts {
+			self.accounts = accounts
+			let ids = Set(accounts.map(\.id))
+			portfolioHistory = portfolioHistory.filter { ids.contains($0.key) }
+		}
 		if let categories { self.categories = categories }
 		if let transactions { self.transactions = transactions }
 		// The search text holds the account name, so only new accounts or transactions build it again.
@@ -285,6 +295,19 @@ public struct Ledger: Sendable {
 		} else {
 			accounts.append(account)
 		}
+	}
+
+	/// Adds the value of a portfolio on a day. A record of the same account and day is replaced.
+	public mutating func record(_ value: PortfolioValue) {
+		var values = portfolioHistory[value.accountID] ?? []
+		// From the end, so that loading records in order of their days appends each one at once.
+		let before = values.lastIndex { $0.day <= value.day }
+		if let before, values[before].day == value.day {
+			values[before] = value
+		} else {
+			values.insert(value, at: before.map { $0 + 1 } ?? 0)
+		}
+		portfolioHistory[value.accountID] = values
 	}
 
 	public mutating func upsert(_ group: AccountGroup) {

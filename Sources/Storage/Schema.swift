@@ -18,6 +18,10 @@ extension Transaction: FetchableRecord, PersistableRecord, TableRecord {
 	public static let databaseTableName = "bankTransaction"
 }
 
+extension PortfolioValue: FetchableRecord, PersistableRecord, TableRecord {
+	public static let databaseTableName = "portfolioValue"
+}
+
 enum Schema {
 	static var migrator: DatabaseMigrator {
 		var m = DatabaseMigrator()
@@ -108,6 +112,15 @@ enum Schema {
 		m.registerMigration("v3") { db in
 			try db.alter(table: "category") { t in
 				t.add(column: "symbol", .text)
+			}
+		}
+		// A portfolio records its value once a day, for its history in the balance chart.
+		m.registerMigration("v4") { db in
+			try db.create(table: "portfolioValue") { t in
+				t.column("accountID", .blob).notNull().references("account", onDelete: .cascade)
+				t.column("day", .integer).notNull()
+				t.column("minorUnits", .integer).notNull()
+				t.primaryKey(["accountID", "day"])
 			}
 		}
 		return m

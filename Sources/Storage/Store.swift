@@ -20,13 +20,16 @@ public final class Store: Sendable {
 			Ledger(groups: try AccountGroup.fetchAll(db),
 				accounts: try Account.fetchAll(db),
 				categories: try Domain.Category.fetchAll(db),
-				transactions: try Transaction.fetchAll(db))
+				transactions: try Transaction.fetchAll(db),
+				portfolioValues: try PortfolioValue.order(Column("day")).fetchAll(db))
 		}
 	}
 
 	public func save(_ group: AccountGroup) throws { try queue.write { db in try group.save(db) } }
 	public func save(_ account: Account) throws { try queue.write { db in try account.save(db) } }
 	public func save(_ category: Domain.Category) throws { try queue.write { db in try category.save(db) } }
+	/// Replaces the record of the same account and day.
+	public func save(_ value: PortfolioValue) throws { try queue.write { db in try value.save(db) } }
 
 	public func save(_ transactions: [Transaction]) throws {
 		try queue.write { db in

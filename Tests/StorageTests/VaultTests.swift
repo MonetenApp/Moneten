@@ -168,4 +168,26 @@ struct SchemaTests {
 		try queue.write { db in try category.save(db) }
 		#expect(try queue.read { db in try Domain.Category.fetchOne(db, key: id) }?.symbol == "cart.fill")
 	}
+
+	@Test("v4 keeps the accounts of a v3 database, and a portfolio keeps one value per day until its account is removed")
+	func portfolioValues() throws {
+		let queue = try DatabaseQueue()
+		try Schema.migrator.migrate(queue, upTo: "v3")
+		let depot = Account(position: 0, name: "Depot", kind: .portfolio, source: .migrated, bankBalanceMinor: 2_000_000)
+		try queue.write { db in try depot.insert(db) }
+		try Schema.migrator.migrate(queue)
+		let store = Store(queue: queue)
+		#expect(try store.loadLedger().accounts.map(\.name) == ["Depot"])
+		let fifth = Day(year: 2026, month: 10, day: 5)
+		let eighth = Day(year: 2026, month: 10, day: 8)
+		try store.save(PortfolioValue(accountID: depot.id, day: eighth, minorUnits: 2_100_000))
+		try store.save(PortfolioValue(accountID: depot.id, day: fifth, minorUnits: 2_000_000))
+		try store.save(PortfolioValue(accountID: depot.id, day: fifth, minorUnits: 2_050_000))
+		#expect(try store.loadLedger().portfolioValues(of: depot.id) == [
+			PortfolioValue(accountID: depot.id, day: fifth, minorUnits: 2_050_000),
+			PortfolioValue(accountID: depot.id, day: eighth, minorUnits: 2_100_000),
+		])
+		try store.deleteAccount(depot.id)
+		#expect(try queue.read { db in try PortfolioValue.fetchCount(db) } == 0)
+	}
 }

@@ -29,6 +29,10 @@ An account with a `bankBalanceMinor` shows that balance. Other accounts show `in
 
 A closed account keeps its transactions, shows no balance in the sidebar, and is left out of the sum of its group.
 
+| Type | Fields | Rules |
+|---|---|---|
+| `PortfolioValue` | `accountID`, `day`, `minorUnits` | The value of a portfolio at the end of a day. A portfolio gets its value from the bank and not from transactions, so the app records its `bankBalanceMinor` once a day, and the balance chart draws the portfolio from these records. An account has at most one record per day, and a later one replaces it. `Ledger.portfolioValues(of:)` lists them, the oldest first. |
+
 ## Categories
 
 | Type | Fields | Rules |
@@ -73,8 +77,9 @@ A file import has no stable identifier per row. `ImportMatching` treats two tran
 | `account` | `Account` |
 | `category` | `Category` |
 | `bankTransaction` | `Transaction` |
+| `portfolioValue` | `PortfolioValue`, with the primary key `accountID` and `day` |
 
-Migration `v1` creates the tables. It also creates the table `setting`, which no code uses, because app settings live in `UserDefaults`. The next migration that changes the schema drops it.
+Migration `v1` creates the tables. It also creates the table `setting`, which no code uses, because app settings live in `UserDefaults`. Migration `v2` drops it. Migration `v4` adds `portfolioValue`, whose rows go with their account.
 
 ## Types that the specs add later
 

@@ -99,6 +99,21 @@ public struct Account: Identifiable, Hashable, Sendable, Codable {
 	public var isOffline: Bool { source == .offline }
 }
 
+/// The value of a portfolio at the end of one day. A portfolio gets its value from the bank and not
+/// from transactions, so the app records it once a day and draws its history from these records.
+/// An account has at most one record per day.
+public struct PortfolioValue: Hashable, Sendable, Codable {
+	public var accountID: UUID
+	public var day: Day
+	public var minorUnits: Int64
+
+	public init(accountID: UUID, day: Day, minorUnits: Int64) {
+		self.accountID = accountID
+		self.day = day
+		self.minorUnits = minorUnits
+	}
+}
+
 /// The amount that a category shows next to its name in the sidebar.
 public enum SidebarAmount: String, Codable, Sendable, CaseIterable {
 	case none, currentMonth, currentQuarter, currentYear, totalSum
