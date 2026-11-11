@@ -578,13 +578,14 @@ final class AppModel {
 		return l
 	}
 
-	/// Root starter categories that the user has not changed: the same name, rule, and kind, and only
-	/// unchanged starter subcategories below. A changed or extended tree stays.
+	/// Root starter categories that the user has not changed: the same name, rule, and kind, no color
+	/// or icon of the user, and only unchanged starter subcategories below. A changed or extended tree stays.
 	private var replaceableStarterCategories: [Domain.Category] {
 		guard ledger.transactions.isEmpty else { return [] }
 		let template = StarterCategories.make()
 		func same(_ a: Domain.Category, _ b: Domain.Category) -> Bool {
 			a.name == b.name && a.isGroup == b.isGroup && a.rule == b.rule && a.sourceID == nil && !a.isDefault
+				&& a.color == b.color && a.symbol == b.symbol
 		}
 		return ledger.categories.filter { root in
 			guard root.parentID == nil, let starter = template.first(where: { $0.parentID == nil && same(root, $0) }) else { return false }

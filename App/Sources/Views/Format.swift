@@ -122,27 +122,39 @@ enum CategoryColors {
 /// The icon of a category: an SF Symbol the user chose, else a dot, or a folder for a group.
 /// MoneyMoney draws its own pictures; this app offers SF Symbols, which fit macOS and ship with it.
 enum CategorySymbols {
-	/// The symbols of the picker, sorted by topic. Each exists since macOS 13 or earlier.
-	static let choices: [String] = [
-		// Home and living
-		"house.fill", "building.2.fill", "bolt.fill", "drop.fill", "flame.fill", "wifi", "phone.fill", "tv.fill", "sofa.fill", "wrench.and.screwdriver.fill",
-		// Food
-		"cart.fill", "basket.fill", "fork.knife", "cup.and.saucer.fill", "wineglass.fill", "birthday.cake.fill",
-		// Mobility and travel
-		"car.fill", "fuelpump.fill", "parkingsign.circle.fill", "bus.fill", "tram.fill", "bicycle", "airplane", "suitcase.fill", "beach.umbrella.fill",
-		// Shopping
-		"bag.fill", "tshirt.fill", "gift.fill", "shippingbox.fill", "desktopcomputer", "scissors", "hammer.fill",
-		// Health and sport
-		"cross.case.fill", "pills.fill", "stethoscope", "heart.fill", "figure.run", "dumbbell.fill",
-		// Leisure
-		"gamecontroller.fill", "film.fill", "music.note", "book.fill", "theatermasks.fill", "pawprint.fill", "leaf.fill", "star.fill",
-		// Family and work
-		"person.fill", "person.2.fill", "figure.2.and.child.holdinghands", "graduationcap.fill", "briefcase.fill",
-		// Money
-		"banknote.fill", "eurosign.circle.fill", "dollarsign.circle.fill", "creditcard.fill", "wallet.pass.fill", "building.columns.fill",
-		"chart.line.uptrend.xyaxis", "chart.pie.fill", "percent", "arrow.left.arrow.right", "umbrella.fill", "shield.lefthalf.filled",
-		"doc.text.fill", "receipt", "tag.fill",
+	/// The symbols of the picker, sorted by topic, with the name that the tooltip and VoiceOver read.
+	/// Each exists since macOS 13 or earlier; the app runs on macOS 15.0, so a newer symbol, such as
+	/// "receipt" of macOS 15.2, would show nothing there. Check a new one in the "name_availability"
+	/// list of SF Symbols.
+	static let choices: [(symbol: String, name: String)] = [
+		("house.fill", "House"), ("building.2.fill", "Building"), ("bolt.fill", "Electricity"), ("drop.fill", "Water"),
+		("flame.fill", "Heating"), ("wifi", "Internet"), ("phone.fill", "Phone"), ("tv.fill", "Television"),
+		("sofa.fill", "Furniture"), ("wrench.and.screwdriver.fill", "Repairs"),
+		("cart.fill", "Shopping cart"), ("basket.fill", "Basket"), ("fork.knife", "Restaurant"), ("cup.and.saucer.fill", "Café"),
+		("wineglass.fill", "Drinks"), ("birthday.cake.fill", "Cake"),
+		("car.fill", "Car"), ("fuelpump.fill", "Fuel"), ("parkingsign.circle.fill", "Parking"), ("bus.fill", "Bus"),
+		("tram.fill", "Train"), ("bicycle", "Bicycle"), ("airplane", "Airplane"), ("suitcase.fill", "Suitcase"),
+		("beach.umbrella.fill", "Holiday"),
+		("bag.fill", "Shopping bag"), ("tshirt.fill", "Clothing"), ("gift.fill", "Gift"), ("shippingbox.fill", "Parcel"),
+		("desktopcomputer", "Computer"), ("scissors", "Hairdresser"), ("hammer.fill", "Tools"),
+		("cross.case.fill", "Medical"), ("pills.fill", "Pharmacy"), ("stethoscope", "Doctor"), ("heart.fill", "Heart"),
+		("figure.run", "Sport"), ("dumbbell.fill", "Fitness"),
+		("gamecontroller.fill", "Games"), ("film.fill", "Film"), ("music.note", "Music"), ("book.fill", "Books"),
+		("theatermasks.fill", "Theater"), ("pawprint.fill", "Pets"), ("leaf.fill", "Garden"), ("star.fill", "Star"),
+		("person.fill", "Person"), ("person.2.fill", "People"), ("figure.2.and.child.holdinghands", "Family"),
+		("graduationcap.fill", "Education"), ("briefcase.fill", "Work"),
+		("banknote.fill", "Cash"), ("eurosign.circle.fill", "Euro"), ("dollarsign.circle.fill", "Dollar"),
+		("creditcard.fill", "Credit card"), ("wallet.pass.fill", "Wallet"), ("building.columns.fill", "Bank"),
+		("chart.line.uptrend.xyaxis", "Investments"), ("chart.pie.fill", "Shares"), ("percent", "Interest"),
+		("arrow.left.arrow.right", "Transfer"), ("umbrella.fill", "Insurance"), ("shield.lefthalf.filled", "Protection"),
+		("doc.text.fill", "Document"), ("list.bullet.rectangle.portrait.fill", "Bill"), ("tag.fill", "Tag"),
 	]
+
+	/// The name of a symbol for the tooltip and VoiceOver, or "Dot" and "Folder" for none.
+	static func label(_ symbol: String?, isGroup: Bool) -> String {
+		guard let symbol else { return isGroup ? "Folder" : "Dot" }
+		return choices.first { $0.symbol == symbol }?.name ?? symbol
+	}
 
 	/// `filledGroup` is the folder of a group in the title bar, which MoneyMoney draws filled.
 	static func name(of category: Domain.Category, filledGroup: Bool = false) -> String {

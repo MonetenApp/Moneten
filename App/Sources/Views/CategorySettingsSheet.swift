@@ -210,7 +210,8 @@ struct SymbolPicker: View {
 		}
 		.buttonStyle(.plain)
 		.accessibilityLabel("Icon")
-		.accessibilityValue(selection ?? (isGroup ? "Folder" : "Dot"))
+		.accessibilityValue(CategorySymbols.label(selection, isGroup: isGroup))
+		.help(CategorySymbols.label(selection, isGroup: isGroup))
 		.popover(isPresented: $isOpen, arrowEdge: .bottom) {
 			SymbolGrid(selection: selection, color: color, isGroup: isGroup) {
 				selection = $0
@@ -230,14 +231,14 @@ struct SymbolGrid: View {
 	var body: some View {
 		LazyVGrid(columns: Array(repeating: GridItem(.fixed(30), spacing: 4), count: 10), spacing: 4) {
 			cell(nil)
-			ForEach(CategorySymbols.choices, id: \.self) { cell($0) }
+			ForEach(CategorySymbols.choices, id: \.symbol) { cell($0.symbol) }
 		}
 		.padding(10)
 	}
 
 	private func cell(_ symbol: String?) -> some View {
 		SymbolCell(symbol: symbol ?? (isGroup ? "folder" : "circle.fill"), isDot: symbol == nil && !isGroup, color: color, selected: symbol == selection,
-			name: symbol.map { $0.replacingOccurrences(of: ".fill", with: "").replacingOccurrences(of: ".", with: " ") } ?? (isGroup ? "Folder" : "Dot")) {
+			name: CategorySymbols.label(symbol, isGroup: isGroup)) {
 			pick(symbol)
 		}
 	}
