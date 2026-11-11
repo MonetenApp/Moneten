@@ -114,11 +114,13 @@ enum Palette {
 	// offset that the same reading showed against the screenshot. The dark ones are not checked
 	// against a dark screenshot.
 	/// The slate band behind the title of the view and its chart.
-	static let band = dynamic("band", light: rgb(0xAFBAC3), dark: rgb(0x292B31))
+	/// White on the slate of MoneyMoney reaches only 2:1. With "Increase contrast" the band turns
+	/// dark enough for 7:1.
+	static let band = dynamic("band", light: rgb(0xAFBAC3), dark: rgb(0x292B31), increasedContrast: rgb(0x4E5964))
 	/// Title, IBAN, balance, and icon on the band.
 	static let onBand = Color.white
 	/// The months, years, and periods of the charts, and the amounts at the edge of a category chart.
-	static let bandLabel = dynamic("bandLabel", light: rgb(0x696F76), dark: rgb(0x7D7E82))
+	static let bandLabel = dynamic("bandLabel", light: rgb(0x696F76), dark: rgb(0x7D7E82), increasedContrast: rgb(0xD5DBE0))
 	/// The line where a month or a year starts in the balance chart.
 	static let bandLine = dynamic("bandLine", light: rgb(0xA1ABB4), dark: rgb(0x3B3C40))
 	/// The bars of the balance chart.
@@ -147,8 +149,13 @@ enum Palette {
 	/// uses a darker red with 5.7:1. Dark mode keeps the system red, 4.9:1 on the dark window.
 	static let red = dynamic("textRed", light: rgb(0xC4262E), dark: .systemRed)
 
-	private static func dynamic(_ name: String, light: NSColor, dark: NSColor) -> Color {
-		Color(nsColor: NSColor(name: name) { $0.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? dark : light })
+	/// `increasedContrast` replaces `light` when the user turns on "Increase contrast".
+	private static func dynamic(_ name: String, light: NSColor, dark: NSColor, increasedContrast: NSColor? = nil) -> Color {
+		Color(nsColor: NSColor(name: name) { appearance in
+			let match = appearance.bestMatch(from: [.aqua, .darkAqua, .accessibilityHighContrastAqua, .accessibilityHighContrastDarkAqua])
+			if match == .darkAqua || match == .accessibilityHighContrastDarkAqua { return dark }
+			return match == .accessibilityHighContrastAqua ? increasedContrast ?? light : light
+		})
 	}
 
 	private static func rgb(_ hex: Int) -> NSColor {

@@ -38,6 +38,8 @@ struct ScrollingBarChart: View {
 	let negative: Color
 	let select: (StripBar) -> Void
 	@State private var hovered: Int?
+	/// The part of the row in view, so the value under the pointer stays inside it.
+	@State private var visible = CGRect.zero
 
 	/// `hovered` presets the bar under the pointer, for a snapshot of the debug harness.
 	init(bars: [StripBar], style: Style, barWidth: CGFloat, gap: CGFloat, positive: Color, negative: Color, hovered: Int? = nil,
@@ -71,7 +73,7 @@ struct ScrollingBarChart: View {
 							LazyHStack(spacing: 0) {
 								ForEach(chunks) { chunk in
 									ChunkView(chunk: chunk, style: style, barWidth: barWidth, gap: gap, scale: scale,
-										positive: positive, negative: negative, hovered: hovered, height: geometry.size.height)
+										positive: positive, negative: negative, hovered: hovered, height: geometry.size.height, select: select)
 								}
 							}
 							if let index = bars.firstIndex(where: { $0.id == hovered }) {
@@ -90,6 +92,7 @@ struct ScrollingBarChart: View {
 						}
 					}
 					.defaultScrollAnchor(.trailing)
+					.onScrollGeometryChange(for: CGRect.self, of: \.visibleRect) { _, rect in visible = rect }
 					// A LazyHStack only guesses the width of the chunks it has not built, so the anchor alone
 					// stopped short of the newest bars of a long history.
 					.onAppear { if let last = chunks.last?.id { proxy.scrollTo(last, anchor: .trailing) } }
@@ -116,6 +119,8 @@ struct ScrollingBarChart: View {
 		let left = CGFloat(index) * pitch + (style == .centered ? gap / 2 : 0)
 		let right = left + barWidth
 		let total = CGFloat(bars.count) * pitch
+		let limit = visible.width > 0 ? min(total, visible.maxX) : total
+		let start = visible.width > 0 ? visible.minX : 0
 		return VStack(alignment: .leading, spacing: 0) {
 			Text(bar.title)
 			Text(Format.money(bar.money)).fontWeight(.bold).monospacedDigit()
@@ -123,7 +128,7 @@ struct ScrollingBarChart: View {
 		.font(.system(size: 13))
 		.foregroundStyle(Palette.onBand)
 		.fixedSize()
-		.alignmentGuide(.leading) { d in right + 6 + d.width <= total ? -(right + 6) : -max(0, left - 6 - d.width) }
+		.alignmentGuide(.leading) { d in right + 6 + d.width <= limit ? -(right + 6) : -max(start, left - 6 - d.width) }
 		.offset(y: chartHeight - Self.bottomInset + 6)
 		.allowsHitTesting(false)
 	}
@@ -192,6 +197,7 @@ private struct ChunkView: View {
 	let negative: Color
 	let hovered: Int?
 	let height: CGFloat
+	let select: (StripBar) -> Void
 
 	var body: some View {
 		let pitch = barWidth + gap
@@ -230,7 +236,11 @@ private struct ChunkView: View {
 		.accessibilityElement(children: .contain)
 		.accessibilityChildren {
 			ForEach(chunk.bars) { bar in
-				Rectangle().accessibilityLabel("\(bar.title): \(Format.money(bar.money))")
+				Rectangle()
+					.accessibilityLabel("\(bar.title): \(Format.money(bar.money))")
+					.accessibilityHint("Shows its transactions in the list")
+					.accessibilityAddTraits(.isButton)
+					.accessibilityAction { select(bar) }
 			}
 		}
 	}
