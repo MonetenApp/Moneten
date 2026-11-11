@@ -51,6 +51,7 @@ enum SyncDemo {
 }
 
 /// Shows the dialog of one made-up request, as the app shows it during a refresh.
+// periphery:ignore - used by the #Preview macros below, which the Xcode of CI does not index.
 private struct SyncDemoPreview: View {
 	let name: String
 	@State private var coordinator = SyncCoordinator()
