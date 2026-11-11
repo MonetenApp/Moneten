@@ -59,7 +59,7 @@ The app SHALL draw the balance chart as MoneyMoney does: every bar 4 points wide
 
 ### Requirement: Balances are computed from the transactions
 
-The app SHALL compute the balance of each day as the initial balance of the account plus all booked transactions up to the end of that day. Pending transactions and the balance that the bank reports do not enter this computation.
+The app SHALL compute the balance of each day as the initial balance of the account plus all booked transactions up to the end of that day. Pending transactions and the balance that the bank reports do not enter this computation. A portfolio is the exception: its balance on a day is its last recorded value on or before that day, as the capability `securities-accounts` defines, and nothing before its first record.
 
 #### Scenario: Computed balance
 
@@ -95,7 +95,7 @@ The app SHALL let the user switch the balance chart between "Daily balance" and 
 
 ### Requirement: The balance chart follows the period
 
-The app SHALL draw the balance chart for the time that the period filter selects. With "Show All" the chart starts at the oldest transaction of the view.
+The app SHALL draw the balance chart for the time that the period filter selects. With "Show All" the chart starts at the oldest transaction or portfolio record of the view.
 
 #### Scenario: Twelve months
 
@@ -124,9 +124,23 @@ The app SHALL draw the balance chart of an account group as the sum of the balan
 
 #### Scenario: A group with a portfolio
 
-- **GIVEN** the group "Private" with "Giro" at 1.000,00 € and the portfolio "Depot" at 20.000,00 €
+- **GIVEN** the group "Private" with "Giro" at 1.000,00 € and the portfolio "Depot" at 20.000,00 €, whose first recorded value is from 01.11.2026
 - **WHEN** the user opens the bar chart of "Private"
-- **THEN** the title shows 21.000,00 €, the last bar shows 1.000,00 €, and the chart says "Portfolios not shown: 20.000,00 €", because portfolios have no daily balance before the portfolio history of add-portfolio-analysis
+- **THEN** the title shows 21.000,00 €, and the bars from 01.11.2026 on include the recorded value of "Depot", so the last bar shows 21.000,00 €
+- **AND** the bars before 01.11.2026 show "Giro" alone
+- **AND** the chart says "Portfolios from 01.11.2026", with the help text that there have been no recordings of portfolio values before that day
+
+#### Scenario: A group with a portfolio without a recorded value
+
+- **GIVEN** the group "Private" with "Giro" at 1.000,00 € and a portfolio without any recorded value whose balance is 20.000,00 €
+- **WHEN** the user opens the bar chart of "Private"
+- **THEN** the title shows 21.000,00 €, the last bar shows 1.000,00 €, and the chart says "Portfolios not shown: 20.000,00 €"
+
+#### Scenario: Portfolios with and without a recorded value
+
+- **GIVEN** the group "Private" with "Giro", the portfolio "Depot" recorded since 01.11.2026, and a portfolio "Offline" of 5.000,00 € without any recorded value
+- **WHEN** the user opens the bar chart of "Private"
+- **THEN** the chart says "Portfolios from 01.11.2026 · Portfolios not shown: 5.000,00 €"
 
 #### Scenario: Euro and dollar accounts
 

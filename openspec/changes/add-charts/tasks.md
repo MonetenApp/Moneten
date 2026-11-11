@@ -12,7 +12,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [x] 1.6 Daily balance or monthly average balance. Verified by the debug harness snapshot in the first build.
 - [x] 1.7 The balance chart follows the period. Verified by the debug harness snapshot in the first build.
 - [x] 1.8 Long periods scroll. Verified by BalanceChartTests "Ten years of daily balances keep one bar per day" and snapshots of the debug harness: the daily chart of `history` opens at today with July to November visible, and 50,000 transactions of `bulk` stay under the perf budget of scripts/perf-check.sh. Scrolling with the trackpad still needs a check by hand.
-- [x] 1.9 Balance chart of an account group. Verified by the debug harness snapshot in the first build.
+- [x] 1.9 Balance chart of an account group. Verified by the debug harness snapshot in the first build. Portfolios count from their first recorded value on: PortfolioHistoryTests "A group shows the giro alone before the first portfolio record, and both with the last record carried forward after it", and the debug harness log `chart ... last=... total=...` of the group "Private" with "Depot", where the last bar equals the total of 53.500,94 €. The caption "Without portfolios" for a portfolio without any record was checked only before the history existed.
 - [x] 1.10 No balance chart without transactions. Verified by "No transactions; no bar chart.".
 - [x] 1.11 Calibrate the computed balance. Verified by "Calibrate" in the account settings.
 - [ ] 1.12 Propose a calibration. Build it and verify it with a test or in the app.
