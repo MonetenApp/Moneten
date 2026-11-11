@@ -112,9 +112,13 @@ public class FinTSProbeJava {
 		/// A text that may hold return codes of the bank. If it holds one, only the text before the
 		/// first code, the codes with their fixed descriptions, and the references to the order
 		/// segments remain. Everything else in the text can come from the bank and is left out.
+		/// hbci4java logs the challenge of the bank, which is left out of the callbacks too.
+		static final java.util.regex.Pattern CHALLENGE = java.util.regex.Pattern.compile("(?i)found challenge|hhduc");
+
 		static String bank(String text) {
 			if (hasSegments(text)) return "(message content left out)";
 			if (showValues) return withoutPin(text);
+			if (text != null && CHALLENGE.matcher(text).find()) return "(challenge of the bank left out; it shows with --show-values)";
 			String clean = withoutPin(text);
 			java.util.regex.Matcher m = RETURN_CODE.matcher(clean);
 			if (!m.find()) return masked(clean);
