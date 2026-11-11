@@ -47,7 +47,7 @@ None.
 - The Help menu has "Encrypt File for Sending...". It encrypts the log or another file so that only the vendor's staff can open it (version history, 2.5.0).
 - Names in the program file point to switches for more detail in the log for single areas, such as the network and Bluetooth, and to a limit for the size of the log.
 
-### Decided for MonetenMoneten
+### Decided for Moneten
 
 - The rules about secrets and about placeholders for personal data come from [architecture](../../../docs/architecture.md). What MoneyMoney writes into its log was not read, because the log of the analyzed installation holds real data.
 - Full detail applies to the next refresh of one access, stays in memory only, and ends by itself. The log file on disk always has placeholders.

@@ -1,14 +1,14 @@
-# MonetenMoneten
+# Moneten
 
-MonetenMoneten is an open source banking app for the Mac. It fetches balances and transactions from German banks, sorts them into categories, and shows where your money goes. With FinTS and extensions, your data stays encrypted on your Mac. You need no account, the project runs no server, and the app sends no telemetry. Only the optional subscription passes data through a provider.
+Moneten is an open source banking app for the Mac. It fetches balances and transactions from German banks, sorts them into categories, and shows where your money goes. With FinTS and extensions, your data stays encrypted on your Mac. You need no account, the project runs no server, and the app sends no telemetry. Only the optional subscription passes data through a provider.
 
 > [!NOTE]
-> MonetenMoneten is at an early stage. The first build opens an encrypted database, takes over accounts, categories, and transactions from MoneyMoney, imports CSV, CAMT, and MT940 files, and categorizes with rules. It cannot talk to a bank yet. The complete behavior of the app is specified in [openspec/changes](openspec/changes/). The [roadmap](docs/roadmap.md) shows what ships in v0.1, v0.2, and v0.3.
+> Moneten is at an early stage. The first build opens an encrypted database, takes over accounts, categories, and transactions from MoneyMoney, imports CSV, CAMT, and MT940 files, and categorizes with rules. It cannot talk to a bank yet. The complete behavior of the app is specified in [openspec/changes](openspec/changes/). The [roadmap](docs/roadmap.md) shows what ships in v0.1, v0.2, and v0.3.
 
 ## What you get in v0.3
 
 - Accounts from any German bank that offers FinTS, with pushTAN, photoTAN, and chipTAN.
-- Accounts from other services through extensions that anyone can write in Lua. MonetenMoneten runs most extensions written for MoneyMoney without changes.
+- Accounts from other services through extensions that anyone can write in Lua. Moneten runs most extensions written for MoneyMoney without changes.
 - Categories, split transactions, rules that categorize new transactions, search, and charts.
 - Automatic refresh with a notification when new transactions arrive.
 - Import from CSV, CAMT, MT940, and MoneyMoney.
@@ -31,15 +31,15 @@ You need macOS 15 or newer, Xcode 16.3 or newer, and [XcodeGen](https://github.c
 
 ```sh
 scripts/test.sh                 # run the tests of the libraries
-scripts/generate-project.sh     # write App/MonetenMoneten.xcodeproj, then open it in Xcode
-scripts/build-app.sh            # build dist/MonetenMoneten.app
+scripts/generate-project.sh     # write App/Moneten.xcodeproj, then open it in Xcode
+scripts/build-app.sh            # build dist/Moneten.app
 scripts/build-app.sh developer-id   # sign it with the Developer ID of the team, for other Macs
-open dist/MonetenMoneten.app
+open dist/Moneten.app
 ```
 
 To sign with your team, create `App/Local.xcconfig` as `App/Signing.xcconfig` describes.
 
-The app keeps its data in `~/Library/Application Support/MonetenMoneten`. To try it with another folder, start it with `open --env MONETENMONETEN_DATA_DIR=/path/to/folder dist/MonetenMoneten.app`.
+The app keeps its data in `~/Library/Application Support/Moneten`. Builds from before the rename used the folder `MonetenMoneten`, and the app moves it on its first start ([ADR 0013](docs/decisions/0013-name-the-app-moneten.md)). To try it with another folder, start it with `open --env MONETEN_DATA_DIR=/path/to/folder dist/Moneten.app`.
 
 A build without a team is signed to run locally. Every new build then has a new signature, and the Keychain does not hand the entries of an older build to a newer one. Set a database password when you rebuild often, or sign with a team. [ADR 0011](docs/decisions/0011-app-target-in-an-xcode-project.md) explains the build.
 
@@ -55,7 +55,7 @@ The project uses [OpenSpec](https://github.com/Fission-AI/OpenSpec). Every behav
 
 ## Why this project exists
 
-MoneyMoney and Banking4 are two of the established banking apps for German users on the Mac. Both are closed source. New shareholders took over 90 percent of MoneyMoney's developer, the price doubled, and the developer announced a subscription. [Vision](docs/vision.md) explains what MonetenMoneten does differently and how it pays for itself.
+MoneyMoney and Banking4 are two of the established banking apps for German users on the Mac. Both are closed source. New shareholders took over 90 percent of MoneyMoney's developer, the price doubled, and the developer announced a subscription. [Vision](docs/vision.md) explains what Moneten does differently and how it pays for itself.
 
 ## Contribute
 
@@ -63,6 +63,6 @@ The project needs Swift developers, people who know FinTS, and extension authors
 
 ## License
 
-MonetenMoneten is licensed under the [GNU General Public License v3.0 or later](LICENSE). Extensions in the catalog use a GPL-compatible license such as MIT. [ADR 0006](docs/decisions/0006-license-gpl-3.md) explains why.
+Moneten is licensed under the [GNU General Public License v3.0 or later](LICENSE). Extensions in the catalog use a GPL-compatible license such as MIT. [ADR 0006](docs/decisions/0006-license-gpl-3.md) explains why.
 
-MonetenMoneten is not affiliated with MoneyMoney, MRH applications GmbH, Banking4, or Subsembly GmbH.
+Moneten is not affiliated with MoneyMoney, MRH applications GmbH, Banking4, or Subsembly GmbH.

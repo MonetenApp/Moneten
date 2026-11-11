@@ -47,9 +47,9 @@ None.
 - A "Bank Merger" sheet asks whether to update the account data, shows "Old IBAN" and "New IBAN", and checks the new IBAN. The assistant covers German and Austrian banks (version history).
 - Portfolios cannot be merged this way (https://moneymoney.app/help/dual-account/).
 
-### Decided for MonetenMoneten
+### Decided for Moneten
 
-- The icon set is drawn for MonetenMoneten. MoneyMoney's icons are not copied.
+- The icon set is drawn for Moneten. MoneyMoney's icons are not copied.
 - A new account gets a default icon for its account type. MoneyMoney's default was not observed.
 - "Display credit card number as" has the values "Last four digits" and "Full number", and starts with "Last four digits". MoneyMoney's values were not observed.
 - "Transfer Transactions..." moves transactions. They leave the source account. Skipped identical transactions stay in the source account. Whether MoneyMoney moves or copies was not observed.

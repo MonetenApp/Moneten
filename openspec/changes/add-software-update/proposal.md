@@ -7,7 +7,7 @@ Banks change their servers often, so a banking app that is a few months old stop
 ## What Changes
 
 - The app is signed and notarized, so macOS opens it without a security warning.
-- "Check for Updates..." looks for a new version. With the setting "Show notification about new versions of MonetenMoneten", the app also looks on its own once a day.
+- "Check for Updates..." looks for a new version. With the setting "Show notification about new versions of Moneten", the app also looks on its own once a day.
 - An update window shows the new version and its release notes, with "Install" and "Remind Me Later".
 - The app downloads the update, checks its signature, installs it, and restarts.
 - Each failure has its own message and leaves the running version intact.
@@ -49,7 +49,7 @@ None.
 - The app regularly asks the developer's service for updates and for current bank server settings and sends no personal information ([analysis](../../../docs/research/moneymoney-analysis.md#network-s-w)).
 - The BIC directory inside the app is updated online (version history, 2.2.11).
 
-### Decided for MonetenMoneten
+### Decided for Moneten
 
 - Updates and data files come from the public releases of the project on GitHub. There is no vendor service.
 - The update request sends the version of the app, the version of macOS, and the processor type. It sends no identifier of the user or of the installation.

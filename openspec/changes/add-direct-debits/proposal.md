@@ -53,7 +53,7 @@ None.
 - The express direct debit was replaced by the core direct debit (strings).
 - Strings exist for SRZ authorization for direct debits.
 
-### Decided for MonetenMoneten
+### Decided for Moneten
 
 - Direct debits are part of the app for everyone. MoneyMoney sells them as an add-on for 49,99 €.
 - The entry "Direct Debit Mandates" is always in the sidebar under "Payments" once this change ships.

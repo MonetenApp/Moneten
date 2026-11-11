@@ -84,9 +84,9 @@ extension AppModel {
 		let panel = NSSavePanel()
 		panel.title = "Backup Database"
 		panel.message = hasPassword
-			? "A copy of the MonetenMoneten database will be saved. It opens with the current database password. This function does not replace a regular backup of your Mac."
-			: "A copy of the MonetenMoneten database will be saved. It opens only on this Mac, with the key in the Keychain. This function does not replace a regular backup of your Mac."
-		panel.nameFieldStringValue = "MonetenMoneten-\(Day.today()).sqlite"
+			? "A copy of the Moneten database will be saved. It opens with the current database password. This function does not replace a regular backup of your Mac."
+			: "A copy of the Moneten database will be saved. It opens only on this Mac, with the key in the Keychain. This function does not replace a regular backup of your Mac."
+		panel.nameFieldStringValue = "Moneten-\(Day.today()).sqlite"
 		guard panel.runModal() == .OK, let url = panel.url else { return }
 		do {
 			try store.backup(to: url)

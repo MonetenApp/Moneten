@@ -14,6 +14,6 @@ The project copies MoneyMoney where a design choice comes up, so that people who
 
 ## Consequences
 
-- A proposal that copies a look of MoneyMoney says whether it touches the window chrome. If it does, it keeps the system material and lists the difference under "Decided for MonetenMoneten".
+- A proposal that copies a look of MoneyMoney says whether it touches the window chrome. If it does, it keeps the system material and lists the difference under "Decided for Moneten".
 - A change to the window chrome shows a snapshot in light and dark mode in its pull request before it is merged.
 - New macOS versions change the look of the chrome without code changes in the app.

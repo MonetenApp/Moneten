@@ -7,7 +7,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [x] 1.1 One data folder with three subfolders. Verified by DataFolder.createFolders.
 - [x] 1.2 Only the user can read the data folder. Verified by folders are created with permissions 700.
 - [x] 1.3 Show the data folder in the Finder. Verified by "Show Database in Finder..." in the Help menu.
-- [x] 1.4 The data folder is separate from the application file. Verified by ~/Library/Application Support/MonetenMoneten.
+- [x] 1.4 The data folder is separate from the application file. Verified by ~/Library/Application Support/Moneten.
 - [x] 1.5 A copy of the data folder is a complete backup. Verified by VaultTests "A backup opens with the same password".
 - [x] 1.6 Back up the database while the app runs. Verified by "Backup Database..." in the Tools menu.
 - [x] 1.7 Explain what the backup command covers. Verified by the save panel explains it.
@@ -17,6 +17,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [ ] 1.11 Move to another Mac. Build it and verify it with a test or in the app.
 - [ ] 1.12 No synchronization between copies. Build it and verify it with a test or in the app.
 - [ ] 1.13 Reset after a lost password. Built in part: explained under "Forgot your password?". Finish it and verify it with a test or in the app.
+- [ ] 1.14 Take over the data of the old app name. Built: DataFolderTests cover the folder and the files. Verify the Keychain entries and the settings in the app.
 
 ## 2. Integration
 

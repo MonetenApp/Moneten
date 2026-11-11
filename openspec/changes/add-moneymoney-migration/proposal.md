@@ -42,9 +42,9 @@ None.
 - The export commands answer only while the database is unlocked.
 - PDF statements are plain files in the "Statements" folder of MoneyMoney's data folder ([security page](https://moneymoney.app/security/)).
 
-### Decided for MonetenMoneten
+### Decided for Moneten
 
-- The whole capability is specific to MonetenMoneten. Its scope comes from issue #24.
+- The whole capability is specific to Moneten. Its scope comes from issue #24.
 - The keys of the property lists are not documented on the website. Before the design starts, record a real export from a test database and fix the field mapping against it.
 - Issue #24 expects that rules cannot be migrated. The plan for this change expects that they can. The spec migrates a rule when the category export contains it and lists it in the report when it does not. A real export, checked on 2026-11-10, contains the rules.
 - Migrated accounts start as accounts without a bank access, because login data cannot be read. The add account assistant attaches a bank access to a migrated account when the IBAN or account number fits.

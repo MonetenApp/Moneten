@@ -45,7 +45,7 @@ None.
 - Foreign currency templates are exported and imported as XML in an international variant of `pain.001.001.09` (version history, 2.4.33).
 - Batch transfers with foreign currency are not supported (strings).
 
-### Decided for MonetenMoneten
+### Decided for Moneten
 
 - The three charges schemes are named "Shared", "Sender pays all charges", and "Recipient pays all charges". MoneyMoney's labels were not observed.
 - The review says that the bank sets the exchange rate and the charges and that the payee check does not apply. MoneyMoney's review for this payment kind was not observed.

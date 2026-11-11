@@ -38,7 +38,7 @@ None.
 - MoneyMoney has no tool of this kind. An author copies the script into the "Extensions" folder, sets up an account in the app, and reads errors in the log window ([Web Banking API page](https://moneymoney.app/api/webbanking/)).
 - The API page gives two tips for authors. `ListAccounts` can return fixed data during development, and HTML pages saved from a browser can be loaded in place of a live connection.
 
-### Decided for MonetenMoneten
+### Decided for Moneten
 
 - The whole capability is new. Its scope comes from the issues #16 and #17.
 - Requirements in this capability name the `ext` tool or the project as the actor, because the behavior is not part of the app.

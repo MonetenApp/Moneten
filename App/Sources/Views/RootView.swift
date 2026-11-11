@@ -107,7 +107,7 @@ struct LockView: View {
 			Button("Show Database in Finder") { NSWorkspace.shared.activateFileViewerSelecting([model.vault.folder.databaseFolder]) }
 			Button("OK", role: .cancel) {}
 		} message: {
-			Text("There is no way to recover the database password. Without it the data cannot be read.\n\nTo start over with an empty database, quit MonetenMoneten and rename the folder \"Database\" in the data folder, for example to \"Database_OLD\". Renaming keeps the old data in case the password comes back to mind.")
+			Text("There is no way to recover the database password. Without it the data cannot be read.\n\nTo start over with an empty database, quit Moneten and rename the folder \"Database\" in the data folder, for example to \"Database_OLD\". Renaming keeps the old data in case the password comes back to mind.")
 		}
 	}
 
@@ -137,8 +137,8 @@ struct FirstLaunchView: View {
 	var body: some View {
 		VStack(spacing: 20) {
 			Image(systemName: "eurosign.circle.fill").font(.system(size: 56)).foregroundStyle(.tint)
-			Text("Welcome to MonetenMoneten").font(.largeTitle)
-			Text("MonetenMoneten keeps your accounts, transactions, and categories in an encrypted database on this Mac. A database password protects it.")
+			Text("Welcome to Moneten").font(.largeTitle)
+			Text("Moneten keeps your accounts, transactions, and categories in an encrypted database on this Mac. A database password protects it.")
 				.multilineTextAlignment(.center)
 				.frame(maxWidth: 520)
 			PasswordForm(confirmTitle: "Set Password", requireWarning: true) { password in

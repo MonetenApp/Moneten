@@ -50,7 +50,7 @@ None.
 - After a payment the app starts a refresh of the account (version history 2.4.8).
 - Notifications count new transactions, for example "3 new transactions" (strings).
 
-### Decided for MonetenMoneten
+### Decided for Moneten
 
 - "Automatically refresh accounts" is on for a new installation, and a new account starts with "every two hours". The defaults of MoneyMoney were inferred from one installation.
 - The app also runs the automatic refresh after launch and after the Mac wakes, for accounts that are due. This was not observed.

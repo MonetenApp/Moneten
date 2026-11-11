@@ -53,7 +53,7 @@ None.
 - The interface strings include "There are no accounts yet" and "No accounts present.".
 - The controls of the main window carry Accessibility descriptions, and each list row can be read as text.
 
-### Decided for MonetenMoneten
+### Decided for Moneten
 
 - The sidebar keeps the system material of macOS instead of the opaque gray of MoneyMoney (ADR 0012).
 - Selections and controls use a muted slate blue. MoneyMoney uses the system blue.
@@ -64,6 +64,6 @@ None.
 - Copy on selected list rows copies them as text, one line for each row. The Edit menu of MoneyMoney was observed only without a selection.
 - A row cannot be dragged into another section. Dragging in MoneyMoney was not tested, because it changes data.
 - The numbers for speed with 50,000 transactions come from issue #5 and are a target of this project.
-- The application menu has no license key, imprint, or license agreement command. "About MonetenMoneten" shows the version, the license, and a link to the source code.
+- The application menu has no license key, imprint, or license agreement command. "About Moneten" shows the version, the license, and a link to the source code.
 - "Help and FAQ..." and "Supported Banks..." open pages of the project. The Help menu has one "Supported Banks..." command and no split by country.
 - The app keeps running when the main window closes. This follows from "Main Window" in the Window menu and from the lock setting for a closed main window. It was not tested.

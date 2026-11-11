@@ -49,7 +49,7 @@ None.
 - Strings show errors for an invalid flicker code, QR code, or color matrix code from the bank, and hints to set up or activate a TAN method on the bank website first.
 - Strings show progress texts for requesting a push notification, an SMS code, and a QR code, the request to scan a QR code in the app of the bank, and logins with a first and a second QR code.
 
-### Decided for MonetenMoneten
+### Decided for Moneten
 
 - The first status check of an approval in an app happens 3 seconds after the dialog appears. Later checks follow the interval that the bank states, or 2 seconds when the bank states none. MoneyMoney says only "a few seconds".
 - The dialog closes with a message when the challenge expires. The time comes from the bank, or is 5 minutes when the bank states none. This was not observed.

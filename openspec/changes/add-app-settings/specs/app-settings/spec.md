@@ -43,7 +43,7 @@ The app SHALL apply a changed setting at once, without a button to save. When a 
 
 #### Scenario: Immediate effect
 
-- **WHEN** the user turns on "Show MonetenMoneten icon in menu bar"
+- **WHEN** the user turns on "Show Moneten icon in menu bar"
 - **THEN** the icon appears in the menu bar while the settings window is still open
 
 #### Scenario: Restart needed

@@ -1,6 +1,6 @@
 # Vision
 
-This page explains what MonetenMoneten is for, who it serves, and how it stays alive without locking users in.
+This page explains what Moneten is for, who it serves, and how it stays alive without locking users in.
 
 ## The problem
 

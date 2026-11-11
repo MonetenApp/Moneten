@@ -50,7 +50,7 @@ None.
 - Lists show amounts with a leading minus sign for withdrawals and with the currency after the number.
 - Most of the message strings of the FinTS part exist in German only, so text from a bank appears in the bank's language.
 
-### Decided for MonetenMoneten
+### Decided for Moneten
 
 - With a macOS language other than German or English, the interface is English.
 - The rule for completing a date is fixed in the spec as the date closest to today. The version history names the three months and no exact rule.

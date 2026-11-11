@@ -23,7 +23,7 @@ The app SHALL show a lock screen at launch when a database password is set and "
 
 ### Requirement: Lock by command
 
-The app SHALL lock when the user chooses "Lock MonetenMoneten" in the application menu, presses ⌃⌘L, or clicks the lock button in the toolbar.
+The app SHALL lock when the user chooses "Lock Moneten" in the application menu, presses ⌃⌘L, or clicks the lock button in the toolbar.
 
 #### Scenario: Shortcut
 

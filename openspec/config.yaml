@@ -3,7 +3,7 @@ schema: spec-driven
 # Project context. OpenSpec gives this text to an agent before it writes an artifact.
 # It holds only what an agent cannot learn from the repository.
 context: |
-  MonetenMoneten is an open source banking app for the Mac. The local part of v0.1 is built
+  Moneten is an open source banking app for the Mac. The local part of v0.1 is built
   (database, migration, import, list, categories, rules, charts); bank access is not.
   The specs in openspec/changes describe the complete target behavior. A change moves
   into openspec/specs only when its code is merged and the change is archived.
@@ -11,7 +11,7 @@ context: |
   Reference product. The behavior target is MoneyMoney 2.5.3 for macOS.
   docs/research/moneymoney-analysis.md records what was observed and how.
   A user who switches must find the same behavior, unless a proposal names a difference
-  under "Decided for MonetenMoneten".
+  under "Decided for Moneten".
 
   Fixed decisions. Read docs/decisions before you write a design. In short:
   native macOS app in Swift and SwiftUI, local-first with no project server,
@@ -41,7 +41,7 @@ context: |
 rules:
   proposal:
     - Keep the four template sections and add a fifth section named "Reference behavior".
-    - In "Reference behavior", list under "Observed in MoneyMoney 2.5.3" what the analysis shows, and under "Decided for MonetenMoneten" every behavior that was not observed or that differs on purpose.
+    - In "Reference behavior", list under "Observed in MoneyMoney 2.5.3" what the analysis shows, and under "Decided for Moneten" every behavior that was not observed or that differs on purpose.
     - In "Impact", state the milestone, the GitHub issues, the modules from docs/architecture.md, and the decision records that apply.
   specs:
     - Start each requirement with one sentence in the form "The app SHALL ...". State one behavior per requirement.

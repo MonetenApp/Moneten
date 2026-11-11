@@ -40,7 +40,7 @@ None.
 - Users download community extensions by hand from the [extensions page](https://moneymoney.app/extensions/) and copy them into the "Extensions" folder. The page states for each extension what it fetches.
 - Built-in bank scripts are updated from the vendor's server without an app update. See [analysis](../../../docs/research/moneymoney-analysis.md#not-carried-over).
 
-### Decided for MonetenMoneten
+### Decided for Moneten
 
 - The catalog can be browsed inside the app. MoneyMoney has a web page for this.
 - The signature covers a catalog index, and the index lists a SHA-256 digest for each file (issue #37). MoneyMoney signs each script.

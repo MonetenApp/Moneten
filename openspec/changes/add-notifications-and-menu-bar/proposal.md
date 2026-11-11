@@ -11,7 +11,7 @@ Users should see that money arrived or left without opening the app and pressing
 - The Dock icon shows the number of new transactions as a badge.
 - An optional menu bar icon opens a popover with the accounts, their balances, and their new transactions, and it can refresh and open the main window.
 - The same notification channel announces new PDF statements once the app downloads statements.
-- Three settings on the "General" tab control this. They are "Show banner notification on new transactions", "Play sound on new transactions", and "Show MonetenMoneten icon in menu bar".
+- Three settings on the "General" tab control this. They are "Show banner notification on new transactions", "Play sound on new transactions", and "Show Moneten icon in menu bar".
 
 ## Capabilities
 
@@ -42,12 +42,12 @@ None.
 - A notification must not appear for a transaction that was not stored (version history, 2.1.4).
 - While the main window is locked, no accounts are fetched in the background (version history, 2.4.49).
 
-### Decided for MonetenMoneten
+### Decided for Moneten
 
 - One notification for each refresh run, not one for each account. Issue #40 asks for exactly one notification for each refresh. The notification lists the accounts in its text.
 - A notification never contains an amount, a counterparty, or a purpose. While the app is locked it also leaves out account names. MoneyMoney's notification text beyond the count was not observed.
 - A click on a notification opens the account, or the dashboard when several accounts have new transactions. Not observed.
-- The sound has three variants for a net deposit, a net withdrawal, and a balanced result. This is inferred from the names of the sound files. MonetenMoneten ships its own sounds.
+- The sound has three variants for a net deposit, a net withdrawal, and a balanced result. This is inferred from the names of the sound files. Moneten ships its own sounds.
 - The Dock badge has no setting in the app. The macOS notification settings turn it off. In MoneyMoney the badge is controlled by a hidden preference.
 - The content and the actions of the menu bar popover are defined here. Only its existence was observed.
 - The banner is on by default. The sound and the menu bar icon are off by default. The default settings file of MoneyMoney turns the current menu bar key off and lists no default for the banner and the sound.

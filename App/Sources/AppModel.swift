@@ -85,6 +85,7 @@ enum Preference {
 	/// The values of settings the user has not changed. A user who turned the inactivity lock on in
 	/// version 1 keeps the minutes chosen there.
 	static func registerDefaults() {
+		adoptLegacyDomain()
 		let d = UserDefaults.standard
 		let oldMinutes = "lockAfterMinutes"
 		if d.object(forKey: lockAfterMinutes) == nil, d.object(forKey: lockAfterEnabled) as? Bool == true,
@@ -93,6 +94,18 @@ enum Preference {
 		}
 		d.removeObject(forKey: oldMinutes)
 		d.register(defaults: [lockAfterEnabled: true, lockAfterMinutes: defaultLockAfterMinutes])
+	}
+
+	/// Copies the settings of the bundle identifier before the rename to Moneten (ADR 0013) once.
+	/// Runs with their own data folder skip it, so tests never write the real settings.
+	private static func adoptLegacyDomain() {
+		guard ProcessInfo.processInfo.environment["MONETEN_DATA_DIR"] == nil else { return }
+		let d = UserDefaults.standard, done = "adoptedSettingsOfMonetenMoneten"
+		guard !d.bool(forKey: done) else { return }
+		for (key, value) in d.persistentDomain(forName: "io.github.alexander-schneider.MonetenMoneten") ?? [:] where d.object(forKey: key) == nil {
+			d.set(value, forKey: key)
+		}
+		d.set(true, forKey: done)
 	}
 }
 
@@ -266,7 +279,7 @@ final class AppModel {
 		do {
 			try vault.setPassword(password, on: store)
 			hasPassword = true
-			alert = AlertMessage(title: "The password has been changed.", message: "From now on, the database password opens MonetenMoneten.")
+			alert = AlertMessage(title: "The password has been changed.", message: "From now on, the database password opens Moneten.")
 		} catch {
 			alert = AlertMessage(title: "Could not change password of database.", message: String(describing: error))
 		}
@@ -355,7 +368,7 @@ final class AppModel {
 		case let .account(id): ledger.account(id)?.name ?? ""
 		case let .group(id): ledger.group(id)?.name ?? ""
 		case let .category(id): ledger.categoryPath(id)
-		case nil: "MonetenMoneten"
+		case nil: "Moneten"
 		}
 	}
 

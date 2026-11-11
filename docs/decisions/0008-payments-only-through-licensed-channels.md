@@ -16,5 +16,5 @@ Every payment shows the bank's Verification of Payee result before the user conf
 
 ## Consequences
 
-- Services that only extensions reach, such as some brokers, are read-only in MonetenMoneten.
+- Services that only extensions reach, such as some brokers, are read-only in Moneten.
 - Existing MoneyMoney extensions with payment functions still work for reading.

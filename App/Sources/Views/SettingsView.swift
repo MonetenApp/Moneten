@@ -190,7 +190,7 @@ struct AboutSettings: View {
 					Link("GitHub", destination: URL(string: "https://github.com/alexander-schneider/MonetenMoneten")!)
 				}
 			} footer: {
-				Text("MonetenMoneten is free software. It sends no data anywhere. Bank access through FinTS follows in a later version.")
+				Text("Moneten is free software. It sends no data anywhere. Bank access through FinTS follows in a later version.")
 					.foregroundStyle(.secondary)
 			}
 		}

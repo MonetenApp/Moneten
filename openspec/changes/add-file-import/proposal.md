@@ -47,7 +47,7 @@ None.
 - Error messages exist for an unsupported format with the list of supported ones, for an empty file, and for a file larger than 100 MB. Messages titled "Error in file" and "Warnings for file" name the file.
 - Older transactions can be imported into an online account ([help page](https://moneymoney.app/help/)).
 
-### Decided for MonetenMoneten
+### Decided for Moneten
 
 - The preview with a column mapping and saved profiles comes from issue #22. MoneyMoney imports a CSV file without a preview.
 - A file is imported completely or not at all. One row that cannot be read stops the import of that file with the line number. MoneyMoney's behavior for a partly readable file was not observed.

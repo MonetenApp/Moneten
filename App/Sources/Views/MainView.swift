@@ -39,7 +39,7 @@ struct MainView: View {
 			}
 			ToolbarItem(placement: .primaryAction) {
 				Button { model.lock() } label: { Image(systemName: "lock") }
-					.help(model.hasPassword ? "Lock MonetenMoneten" : "Set a database password to lock MonetenMoneten")
+					.help(model.hasPassword ? "Lock Moneten" : "Set a database password to lock Moneten")
 					.disabled(!model.hasPassword)
 			}
 		}

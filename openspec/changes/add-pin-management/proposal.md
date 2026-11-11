@@ -42,7 +42,7 @@ None.
 - The start PIN can be changed during setup when the server demands it, and later through the Tools menu (version history 2.2.12). A blocked PIN can be unblocked with a TAN (2.2.14).
 - The strings use the word of the bank for the secret, for example PIN or password.
 
-### Decided for MonetenMoneten
+### Decided for Moneten
 
 - Each assistant starts with a list of the FinTS accesses, with the access of the selected account preselected. How MoneyMoney chooses the access was not observed.
 - After a successful change the app updates the saved PIN, or the PIN in memory, of the access. This was not observed.

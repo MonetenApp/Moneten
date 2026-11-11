@@ -49,7 +49,7 @@ None.
 - The interface strings include "This setting is password-protected." and "Please enter your database password first.".
 - The interface strings include "Locked database".
 
-### Decided for MonetenMoneten
+### Decided for Moneten
 
 - The lock after inactivity is on by default with 10 minutes. MoneyMoney has it off and suggests 5 minutes; the owner wants the app locked by default.
 - The three unlock settings keep the password in the Keychain, and the app deletes it when all three are off. This follows [ADR 0009](../../../docs/decisions/0009-database-password-as-in-moneymoney.md). MoneyMoney documents only that the Keychain copy is optional.

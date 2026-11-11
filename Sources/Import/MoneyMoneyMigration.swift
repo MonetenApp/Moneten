@@ -110,7 +110,7 @@ public struct MoneyMoneyMigration: Sendable {
 			plan.accounts[i].initialBalanceMinor = balance - sums[plan.accounts[i].id, default: 0]
 		}
 		if !rawCategories.contains(where: { Self.string($0["rules"]) != nil }) {
-			plan.notes.append("The export contains no categorization rules. Copy them from the category settings of MoneyMoney into the category settings of MonetenMoneten.")
+			plan.notes.append("The export contains no categorization rules. Copy them from the category settings of MoneyMoney into the category settings of Moneten.")
 		}
 		plan.notes += Self.groupSumNotes(rawAccounts)
 		if !plan.portfolioAccounts.isEmpty {
@@ -342,7 +342,7 @@ public enum MoneyMoneyExporter {
 			case .locked:
 				"MoneyMoney is locked. Unlock MoneyMoney with its database password, then try again."
 			case .notAllowed:
-				"macOS does not allow MonetenMoneten to read data from MoneyMoney. Allow it in System Settings → Privacy & Security → Automation, then try again."
+				"macOS does not allow Moneten to read data from MoneyMoney. Allow it in System Settings → Privacy & Security → Automation, then try again."
 			case let .failed(message):
 				"MoneyMoney did not answer: \(message)"
 			}

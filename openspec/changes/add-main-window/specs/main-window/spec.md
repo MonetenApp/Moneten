@@ -347,7 +347,7 @@ The app SHALL make every control of the main window reachable with the keyboard,
 #### Scenario: Toolbar button without text
 
 - **WHEN** a VoiceOver user moves to the lock button
-- **THEN** VoiceOver reads "Lock MonetenMoneten"
+- **THEN** VoiceOver reads "Lock Moneten"
 
 #### Scenario: Transaction row
 
@@ -356,11 +356,11 @@ The app SHALL make every control of the main window reachable with the keyboard,
 
 ### Requirement: About and help commands
 
-The app SHALL offer "About MonetenMoneten" in the application menu, with the version, the license, and a link to the source code. The Help menu offers "Help and FAQ..." (⌘?) and "Supported Banks...", and each opens the matching page of the project in the browser.
+The app SHALL offer "About Moneten" in the application menu, with the version, the license, and a link to the source code. The Help menu offers "Help and FAQ..." (⌘?) and "Supported Banks...", and each opens the matching page of the project in the browser.
 
 #### Scenario: About
 
-- **WHEN** the user chooses "About MonetenMoneten"
+- **WHEN** the user chooses "About Moneten"
 - **THEN** a window shows the version number and names the GNU General Public License
 
 ### Requirement: Stay responsive with a large database

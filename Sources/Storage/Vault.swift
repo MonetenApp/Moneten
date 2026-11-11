@@ -41,8 +41,11 @@ public struct Vault: Sendable {
 	}
 
 	public let folder: DataFolder
-	let keyKeychain = Keychain(service: "MonetenMoneten database key")
-	let passwordKeychain = Keychain(service: "MonetenMoneten database password")
+	let keyKeychain = Keychain(service: "Moneten database key")
+	let passwordKeychain = Keychain(service: "Moneten database password")
+	/// The entries of the old name (ADR 0013). A read moves them to the new name.
+	let legacyKeyKeychain = Keychain(service: "MonetenMoneten database key")
+	let legacyPasswordKeychain = Keychain(service: "MonetenMoneten database password")
 
 	public init(folder: DataFolder) {
 		self.folder = folder
@@ -88,13 +91,14 @@ public struct Vault: Sendable {
 		if FileManager.default.fileExists(atPath: noPasswordMarker.path) {
 			try? FileManager.default.removeItem(at: noPasswordMarker)
 			try? keyKeychain.delete(account: folder.keychainAccount)
+			try? legacyKeyKeychain.delete(account: folder.legacyKeychainAccount)
 		}
 		return store
 	}
 
 	/// Opens a database that has no password with the random key from the Keychain.
 	public func openWithRandomKey() throws -> Store {
-		guard let key = try? keyKeychain.read(account: folder.keychainAccount) else { throw Failure.keyNotInKeychain }
+		guard let key = try? read(keyKeychain, legacy: legacyKeyKeychain) else { throw Failure.keyNotInKeychain }
 		return try openDatabase(key: key)
 	}
 
@@ -109,7 +113,7 @@ public struct Vault: Sendable {
 	public func changePassword(current: String, new: String, on store: Store) throws {
 		_ = try openDatabase(key: current, migrate: false)
 		try store.queue.write { db in try db.changePassphrase(new) }
-		if try passwordKeychain.read(account: folder.keychainAccount) != nil {
+		if try read(passwordKeychain, legacy: legacyPasswordKeychain) != nil {
 			try passwordKeychain.write(new, account: folder.keychainAccount)
 		}
 	}
@@ -122,7 +126,7 @@ public struct Vault: Sendable {
 	// MARK: Password in the Keychain for automatic unlocking
 
 	public func storedPassword() -> String? {
-		try? passwordKeychain.read(account: folder.keychainAccount)
+		try? read(passwordKeychain, legacy: legacyPasswordKeychain)
 	}
 
 	public func storePassword(_ password: String) throws {
@@ -131,6 +135,16 @@ public struct Vault: Sendable {
 
 	public func removeStoredPassword() throws {
 		try passwordKeychain.delete(account: folder.keychainAccount)
+		try? legacyPasswordKeychain.delete(account: folder.legacyKeychainAccount)
+	}
+
+	/// Reads an entry. An entry that only exists under the old name moves to the new name.
+	private func read(_ keychain: Keychain, legacy: Keychain) throws -> String? {
+		if let value = try keychain.read(account: folder.keychainAccount) { return value }
+		guard let value = try? legacy.read(account: folder.legacyKeychainAccount) else { return nil }
+		try keychain.write(value, account: folder.keychainAccount)
+		try? legacy.delete(account: folder.legacyKeychainAccount)
+		return value
 	}
 
 	// MARK: Opening
@@ -138,7 +152,7 @@ public struct Vault: Sendable {
 	private func openDatabase(key: String, migrate: Bool = true) throws -> Store {
 		var config = Configuration()
 		config.foreignKeysEnabled = true
-		config.label = "MonetenMoneten"
+		config.label = "Moneten"
 		config.prepareDatabase { db in
 			try db.usePassphrase(key)
 		}
@@ -160,7 +174,7 @@ public struct Vault: Sendable {
 		let isNew = try queue.read { db in try !db.tableExists("account") }
 		if needsUpgrade && !isNew {
 			// Keep a copy of the old state before the layout changes.
-			let backup = folder.databaseFolder.appendingPathComponent("MonetenMoneten-Backup.sqlite")
+			let backup = folder.databaseFolder.appendingPathComponent("Moneten-Backup.sqlite")
 			try? FileManager.default.removeItem(at: backup)
 			try queue.backup(to: DatabaseQueue(path: backup.path, configuration: config))
 		}

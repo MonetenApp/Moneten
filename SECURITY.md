@@ -1,6 +1,6 @@
 # Security
 
-MonetenMoneten handles bank credentials and financial data. Security reports have the highest priority.
+Moneten handles bank credentials and financial data. Security reports have the highest priority.
 
 ## Report a vulnerability
 

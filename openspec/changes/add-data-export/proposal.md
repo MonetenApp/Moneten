@@ -42,7 +42,7 @@ None.
 - Messages exist for progress ("Exporting...") and failure ("Could not export to file.").
 - MoneyMoney has no complete export of all data. Its backup is a copy of the encrypted database.
 
-### Decided for MonetenMoneten
+### Decided for Moneten
 
 - The complete JSON export and its import come from issue #8. They are new.
 - The commands "Export All Data..." and "Import All Data..." are in the File menu.
