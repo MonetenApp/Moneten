@@ -122,6 +122,12 @@ enum Palette {
 	static let bandBar = dynamic("bandBar", light: .white, dark: rgb(0xD3D4D5))
 	/// The dashed line at zero behind the bars of the balance chart.
 	static let bandZero = dynamic("bandZero", light: .white, dark: NSColor(white: 1, alpha: 0.25))
+	static let filterBar = dynamic("filterBar", light: rgb(0xF1F1F1), dark: NSColor(white: 1, alpha: 0.04))
+	/// The line between the filters of the filter bar.
+	static let filterSeparator = dynamic("filterSeparator", light: rgb(0xA3A3A3), dark: NSColor(white: 1, alpha: 0.15))
+	/// The box of an unchecked transaction, opaque so that it stays clear on hatched rows.
+	static let checkBox = dynamic("checkBox", light: .white, dark: NSColor(white: 0.36, alpha: 1))
+	static let checkBoxBorder = dynamic("checkBoxBorder", light: rgb(0xBFBFBF), dark: .clear)
 	/// Text below or beside the main text, such as a purpose or a count: about 8:1 on white. As in
 	/// MoneyMoney, the weight of the main text sets the hierarchy, not a faint color. A hierarchical
 	/// style, so it turns light on a selected table row like the system colors do.

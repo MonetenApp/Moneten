@@ -18,7 +18,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [ ] 1.12 Toolbar. Built in part: lock, view switch, back, forward, and search; no print menu and no action button yet. Finish it and verify it with a test or in the app.
 - [ ] 1.13 The action button follows the view. Build it and verify it with a test or in the app.
 - [x] 1.14 Back and forward. Verified by ⌘[ and ⌘] and the toolbar arrows.
-- [x] 1.15 Filter bar. Verified by the debug harness snapshot in the first build.
+- [x] 1.15 Filter bar. Verified by the debug harness snapshot in the first build. As measured in the light window of MoneyMoney, a slate band lies behind the title and the chart, the filter bar is light gray with a line between the filters, and the checkboxes are white with a gray border. Verified by window snapshots of the debug harness in light and dark mode.
 - [x] 1.16 Keep the filter bar with the pin. Verified by the pin keeps the filters; without it every filter except the period resets.
 - [x] 1.17 Status line. Verified by the debug harness snapshot in the first build.
 - [ ] 1.18 Copy the sum from the status line. Built in part: the sum text can be selected. Finish it and verify it with a test or in the app.

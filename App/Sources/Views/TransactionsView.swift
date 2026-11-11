@@ -124,6 +124,7 @@ struct FilterBar: View {
 			.buttonStyle(.borderless)
 			.hoverHighlight()
 			.help("Save filter bar")
+			separator
 			filterMenu("Period:", title: periodTitle) {
 				Button("Show All") { model.choose(period: .all) }
 				Divider()
@@ -149,12 +150,14 @@ struct FilterBar: View {
 				Button("Custom...") { customPeriod = true }
 			}
 			.popover(isPresented: $customPeriod) { CustomPeriodView() }
+			separator
 			filterMenu("Status:", title: statusTitle) {
 				Button("Show All") { model.filter.status = .all }
 				Divider()
 				Button("Checked") { model.filter.status = .checked }
 				Button("Unchecked") { model.filter.status = .unchecked }
 			}
+			separator
 			filterMenu("Amount:", title: amountTitle) {
 				Button("Show All") { model.filter.amount = .all }
 				Divider()
@@ -164,6 +167,7 @@ struct FilterBar: View {
 				Button("Custom...") { customAmount = true }
 			}
 			.popover(isPresented: $customAmount) { CustomAmountView() }
+			separator
 			if case .category = model.selection {
 				filterMenu("Account:", title: model.filter.accountID.flatMap { model.ledger.account($0)?.name } ?? "Show All") {
 					Button("Show All") { model.filter.accountID = nil }
@@ -191,6 +195,11 @@ struct FilterBar: View {
 		// The highlight of each control adds 6 points, so the bar keeps its text 16 points from the edge.
 		.padding(.horizontal, 10)
 		.padding(.vertical, 6)
+		.background(Palette.filterBar)
+	}
+
+	private var separator: some View {
+		Rectangle().fill(Palette.filterSeparator).frame(width: 1, height: 16)
 	}
 
 	private func filterMenu<Content: View>(_ label: String, title: String, @ViewBuilder content: () -> Content) -> some View {
@@ -565,14 +574,11 @@ struct CheckBox: View {
 	let isOn: Bool
 	let toggle: () -> Void
 
-	static let box = Color(nsColor: NSColor(name: "checkBox") { appearance in
-		appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? NSColor(white: 0.36, alpha: 1) : NSColor(white: 0.78, alpha: 1)
-	})
-
 	var body: some View {
 		Button(action: toggle) {
 			RoundedRectangle(cornerRadius: 3)
-				.fill(isOn ? AnyShapeStyle(.tint) : AnyShapeStyle(Self.box))
+				.fill(isOn ? AnyShapeStyle(.tint) : AnyShapeStyle(Palette.checkBox))
+				.strokeBorder(isOn ? .clear : Palette.checkBoxBorder, lineWidth: 1)
 				.frame(width: 14, height: 14)
 				.overlay {
 					if isOn { Image(systemName: "checkmark").font(.system(size: 9, weight: .bold)).foregroundStyle(.white) }
