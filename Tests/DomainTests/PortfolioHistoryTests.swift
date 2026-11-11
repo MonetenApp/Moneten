@@ -68,7 +68,7 @@ struct PortfolioHistoryTests {
 		#expect(l.portfolioValues(of: depot.id).map(\.minorUnits) == [2_050_000, 2_070_000, 2_100_000])
 	}
 
-	@Test("An open portfolio with a bank balance and no record gets one for the day of its balance, once")
+	@Test("An open portfolio gets a record of its bank balance for the day of that balance, once, also when an earlier record failed")
 	func missingRecords() {
 		var calendar = Calendar(identifier: .gregorian)
 		calendar.timeZone = TimeZone(identifier: "Europe/Berlin")!
@@ -85,6 +85,10 @@ struct PortfolioHistoryTests {
 		#expect(l.missingPortfolioValues.map(\.accountID) == [depot.id])
 		for v in l.missingPortfolioValues { l.record(v) }
 		#expect(l.missingPortfolioValues.isEmpty)
+		// A new balance whose record was not saved is found again.
+		migrated.bankBalanceMinor = 2_100_000
+		l.upsert(migrated)
+		#expect(l.missingPortfolioValues == [PortfolioValue(accountID: depot.id, day: day(5), minorUnits: 2_100_000)])
 	}
 
 	@Test("Removing an account drops its records")

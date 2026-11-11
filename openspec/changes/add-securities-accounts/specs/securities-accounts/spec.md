@@ -311,7 +311,7 @@ The app SHALL record the value of each portfolio account once for each day on wh
 
 ### Requirement: Record the balance of a saved portfolio
 
-The app SHALL record the balance of a portfolio whenever it saves the portfolio with a balance, for example after a migration, for the day that the balance is from, or for today when that day is unknown. When the app opens a database in which an open portfolio has a balance and no record, it records that balance once. Past values cannot be recovered, so the history starts with the first record.
+The app SHALL record the balance of a portfolio whenever it saves the portfolio with a balance, for example after a migration, for the day that the balance is from, or for today when that day is unknown. When the app opens a database in which an open portfolio has a balance without a matching record for the day of that balance, it records that balance once. Past values cannot be recovered, so the history starts with the first record.
 
 #### Scenario: Migrated portfolio
 
