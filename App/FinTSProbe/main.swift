@@ -8,7 +8,10 @@
 //   FINTS_PRODUCT_ID=<registered product ID> \
 //   .build/xcode/Build/Products/Debug/FinTSProbe.app/Contents/MacOS/FinTSProbe \
 //     --bank-code 12345678 --url https://bank.example/fints --user <login name> [--customer <ID>]
-//     [--tan-method <code>] [--days 90] [--show-values] [--verbose]
+//     [--tan-method <code>] [--bic <BIC>] [--days 90] [--show-values] [--verbose]
+//
+// --bic fills in the BIC for accounts whose account information from the bank has none. The SEPA
+// versions of the transaction orders need it.
 //
 // The PIN is read from the terminal without echo and is never printed. Without --show-values the
 // output has no amounts, names, or full account numbers, so it can be shared.
@@ -22,6 +25,7 @@ struct Options {
 	var user = ""
 	var customer: String?
 	var tanMethod: String?
+	var bic: String?
 	var days = 90
 	var showValues = false
 	var verbose = false
@@ -39,6 +43,7 @@ struct Options {
 			case "--user": user = try value(argument)
 			case "--customer": customer = try value(argument)
 			case "--tan-method": tanMethod = try value(argument)
+			case "--bic": bic = try value(argument)
 			case "--days":
 				guard let d = Int(try value(argument)), d > 0 else { throw ProbeError.usage("--days needs a number") }
 				days = d
@@ -167,6 +172,20 @@ func summarize(_ items: [HBCIStatementItem], showValues: Bool) {
 	}
 }
 
+/// The first check of HBCI4Swift that stops a transaction order. The library logs these reasons
+/// only at info level and with the full account number, so the probe repeats the checks.
+func statementsProblem(_ user: HBCIUser, _ account: HBCIAccount, camt: Bool, order: HBCIOrder?) -> String {
+	let name = camt ? "CamtStatements" : "Statements"
+	guard let segment = order?.segment else { return "the library has no \(name) segment the bank supports" }
+	guard user.parameters.isOrderSupportedForAccount(name, number: account.number, subNumber: account.subNumber) else {
+		return "the bank does not allow \(name) for this account"
+	}
+	if !camt, segment.version >= 7, account.iban == nil || account.bic == nil {
+		return "version \(segment.version) needs IBAN and BIC, and the \(account.iban == nil ? "IBAN" : "BIC") is missing; try --bic"
+	}
+	return "the order was sent, but no statements came back (version \(segment.version)); run again with --verbose"
+}
+
 func run(_ options: Options) throws {
 	guard let product = ProcessInfo.processInfo.environment["FINTS_PRODUCT_ID"], !product.isEmpty else {
 		throw ProbeError.usage("set FINTS_PRODUCT_ID to the product ID from the FinTS registration")
@@ -203,6 +222,9 @@ func run(_ options: Options) throws {
 	let from = Calendar.current.date(byAdding: .day, value: -options.days, to: Date())!
 	for account in accounts {
 		print("  \(masked(account.iban ?? account.number))  \(account.currency)  type \(account.type.map(String.init) ?? "-")  orders \(account.allowed.count)")
+		print("    allowed: \(account.allowed.sorted().joined(separator: ", "))")
+		print("    IBAN \(account.iban == nil ? "missing" : "yes"), BIC \(account.bic == nil ? (options.bic == nil ? "missing" : "missing, --bic used") : "yes")")
+		if account.bic == nil, let bic = options.bic { account.bic = bic }
 
 		let balance = try send(dialog) { message in
 			guard let order = HBCIBalanceOrder(message: message, account: account), order.enqueue() else { return nil }
@@ -215,19 +237,22 @@ func run(_ options: Options) throws {
 		}
 
 		let camt = user.parameters.isOrderSupportedForAccount("CamtStatements", number: account.number, subNumber: account.subNumber)
+		var created: HBCIOrder?
 		let statements: [HBCIStatement]? = try camt
 			? (send(dialog) { message in
 				guard let order = HBCICamtStatementsOrder(message: message, account: account) else { return nil }
+				created = order
 				order.dateFrom = from
 				return order.enqueue() ? order : nil
 			} as? HBCICamtStatementsOrder)?.statements
 			: (send(dialog) { message in
 				guard let order = HBCIStatementsOrder(message: message, account: account) else { return nil }
+				created = order
 				order.dateFrom = from
 				return order.enqueue() ? order : nil
 			} as? HBCIStatementsOrder)?.statements
 		guard let statements else {
-			print("    transactions: not available (\(camt ? "CAMT" : "MT940"))")
+			print("    transactions: not available (\(camt ? "CAMT" : "MT940")): \(statementsProblem(user, account, camt: camt, order: created))")
 			continue
 		}
 		print("    format: \(camt ? "CAMT" : "MT940"), \(statements.count) statements, \(statements.filter { $0.isPreliminary == true }.count) preliminary")
