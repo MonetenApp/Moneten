@@ -26,6 +26,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [x] 1.20 Charts follow the appearance. Verified by dark mode, see the debug harness snapshot in the first build.
 - [x] 1.21 Bars as MoneyMoney draws them, measured in its window: balance bars of 4 points with a gap of 2, white on the slate band behind the title, over a dashed line at zero, month and year lines with labels and no amount axis; category bars of 40 points with a gap of 8 in the color of the category, darker below zero, a line at zero for empty periods, and the highest sum, zero, and the lowest sum at the leading edge. Verified by snapshots of the debug harness in light and dark mode and by BalanceChartTests "A category chart has a bar for every period".
 - [x] 1.22 Readable text on the band: dark slate text, labels, and a darker red on the light slate, at least 4.5:1 in light, dark, and "Increase contrast". Verified by the computed ratios in Palette and snapshots of the debug harness in light and dark mode.
+- [x] 1.23 Pie charts as MoneyMoney draws them, measured in its window: full pies of 110 points in a rim of 6, 300 points apart on the slate band (MoneyMoney 225), no title, category names outside with a line from the middle of each slice, none for slices below 3 %, names of one side pushed apart, and category, amount, and share below the pie under the pointer. Verified by snapshots of the debug harness in light and dark mode, with a group of eight categories and with a category group.
 
 ## 2. Integration
 

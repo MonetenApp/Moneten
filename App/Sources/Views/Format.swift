@@ -141,6 +141,9 @@ enum Palette {
 	static let bandZero = dynamic("bandZero", light: .white, dark: NSColor(white: 1, alpha: 0.25))
 	/// The opaque gray of the sidebar, measured in MoneyMoney.
 	static let sidebar = dynamic("sidebar", light: rgb(0xE0E0E6), dark: rgb(0x454549))
+	/// The rim around a pie, measured in MoneyMoney in dark mode. The light one is estimated, a bit
+	/// lighter than the light slate.
+	static let pieRim = dynamic("pieRim", light: rgb(0xC5CDD4), dark: rgb(0x5A5A5F))
 	/// The mode switch of a chart: the chosen segment dark with white text, the others light.
 	static let switchChosen = dynamic("switchChosen", light: rgb(0x575C61), dark: rgb(0x5E6066))
 	static let switchChosenText = Color.white

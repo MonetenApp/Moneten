@@ -1,4 +1,3 @@
-import Charts
 import Domain
 import SwiftUI
 
@@ -207,12 +206,13 @@ struct CategoryPie: View {
 		let currencies = ChartCurrency.ranked(rows.map(\.currency))
 		let currency = ChartCurrency.current(currencies, picked: picked)
 		let slices = Self.slices(of: ChartCurrency.rows(rows, in: currency, of: currencies), in: model)
-		VStack(alignment: .trailing, spacing: 4) {
+		HStack(spacing: 0) {
+			PieChart(title: "Withdrawals", slices: slices.withdrawals, outside: .leading)
+			PieChart(title: "Deposits", slices: slices.deposits, outside: .trailing)
+		}
+		.frame(maxWidth: .infinity, maxHeight: .infinity)
+		.overlay(alignment: .topTrailing) {
 			ChartCurrency.Picker(currencies: currencies, current: currency, picked: $picked)
-			HStack(spacing: 30) {
-				PieChart(title: "Withdrawals", slices: slices.withdrawals)
-				PieChart(title: "Deposits", slices: slices.deposits)
-			}
 		}
 	}
 
@@ -239,75 +239,182 @@ struct PieSlice: Identifiable, Equatable {
 	var value: Double { Format.chartValue(money.minorUnits, money.currency) }
 }
 
-/// One ring of `CategoryPie`. Under the pointer, the slice stands out and the middle of the ring
+/// One pie of `CategoryPie`, as MoneyMoney draws it: a full pie in a rim, each slice named outside
+/// with a line from its middle. Under the pointer, the slice stands out and the text below the pie
 /// names its category, amount, and share. The pointer lives here, so moving it does not sum the rows again.
 struct PieChart: View {
 	let title: String
 	let slices: [PieSlice]
-	@State private var pointer: Double?
+	/// The side away from the other pie, where the labels have room up to the edge of the chart.
+	let outside: HorizontalEdge
+	@State private var hovered: PieSlice.ID?
 
-	/// `pointer` presets the pointer, for a snapshot of the debug harness.
-	init(title: String, slices: [PieSlice], pointer: Double? = nil) {
+	/// `hovered` presets the slice under the pointer, for a snapshot of the debug harness.
+	init(title: String, slices: [PieSlice], outside: HorizontalEdge, hovered: PieSlice.ID? = nil) {
 		self.title = title
 		self.slices = slices
-		_pointer = State(initialValue: pointer)
+		self.outside = outside
+		_hovered = State(initialValue: hovered)
 	}
+
+	// As in MoneyMoney: a pie of 110 points in a rim of 6. MoneyMoney puts the middles of its pies 225
+	// points apart; 300 leave the labels between the two pies room for a name.
+	private static let radius: CGFloat = 55
+	private static let outerRadius: CGFloat = radius + 6
+	private static let width: CGFloat = 300
+	/// Where the line to a label ends, beyond the rim.
+	private static let lineEnd: CGFloat = outerRadius + 8
+	private static let lineHeight: CGFloat = 14
+	/// Slices below this share get no label, so that the labels of thin slices do not collide.
+	private static let minLabelShare = 0.03
 
 	var body: some View {
-		VStack {
-			Text(title).font(.headline)
-			if slices.isEmpty {
-				Text("No transactions; no pie chart.").foregroundStyle(.secondary).frame(maxHeight: .infinity)
-			} else {
-				let total = slices.reduce(0) { $0 + $1.value }
-				let hovered = pointer.flatMap(slice(at:))
-				Chart(slices) { s in
-					SectorMark(angle: .value(title, s.value), innerRadius: .ratio(0.5), angularInset: 1)
-						.foregroundStyle(by: .value("Category", s.id.uuidString))
-						.opacity(hovered == nil || hovered == s ? 1 : 0.45)
-				}
-				// The same colors as the category icons in the sidebar. The scale is keyed by the category,
-				// not its name: two categories may share a name and still have their own colors. So the
-				// legend names them itself.
-				.chartForegroundStyleScale(domain: slices.map(\.id.uuidString), range: slices.map(\.color))
-				.chartLegend(position: .trailing, alignment: .center) {
-					VStack(alignment: .leading, spacing: 4) {
-						ForEach(slices) { s in
+		if slices.isEmpty {
+			Text("No transactions; no pie chart.").foregroundStyle(.secondary).frame(width: Self.width).frame(maxHeight: .infinity)
+		} else {
+			let wedges = Self.wedges(slices)
+			GeometryReader { geometry in
+				let center = CGPoint(x: geometry.size.width / 2, y: geometry.size.height / 2)
+				let labels = Self.labels(wedges, center: center, height: geometry.size.height)
+				ZStack {
+					Circle().fill(Palette.pieRim).frame(width: 2 * Self.outerRadius, height: 2 * Self.outerRadius).position(center)
+					ZStack {
+						ForEach(wedges) { w in
+							Wedge(start: w.start, end: w.end).fill(w.slice.color).opacity(hovered == nil || hovered == w.id ? 1 : 0.45)
+						}
+					}
+					.frame(width: 2 * Self.radius, height: 2 * Self.radius)
+					.position(center)
+					// A line in the color of the rim between the slices, which share the color of their group in its view.
+					if wedges.count > 1 {
+						Path { path in
+							for w in wedges {
+								path.move(to: center)
+								path.addLine(to: CGPoint(x: center.x + Self.radius * sin(w.start), y: center.y - Self.radius * cos(w.start)))
+							}
+						}
+						.stroke(Palette.pieRim, lineWidth: 1)
+					}
+					Path { path in
+						for l in labels {
+							path.move(to: l.rim)
+							path.addLine(to: CGPoint(x: center.x + (l.left ? -Self.lineEnd : Self.lineEnd), y: l.y))
+						}
+					}
+					.stroke(Palette.onBand.opacity(0.5), lineWidth: 1)
+					ForEach(labels) { l in
+						let room = l.left == (outside == .leading) ? 120 : Self.width / 2 - Self.lineEnd - 6
+						Text(l.wedge.slice.name)
+							.font(.system(size: 11, weight: hovered == l.id ? .semibold : .regular))
+							.foregroundStyle(Palette.onBand)
+							.lineLimit(1)
+							.help(l.wedge.slice.name)
+							.frame(width: room, alignment: l.left ? .trailing : .leading)
+							.position(x: center.x + (l.left ? -1 : 1) * (Self.lineEnd + 3 + room / 2), y: l.y)
+					}
+					if let w = wedges.first(where: { $0.id == hovered }) {
+						VStack(spacing: 1) {
+							Text(w.slice.name).font(.caption.weight(.semibold)).foregroundStyle(Palette.onBand)
 							HStack(spacing: 4) {
-								Circle().fill(s.color).frame(width: 8, height: 8)
-								Text(s.name).font(.caption).lineLimit(1)
+								AmountText(money: w.slice.money)
+								Text(w.share.formatted(.percent.precision(.fractionLength(0...1)))).foregroundStyle(Palette.bandLabel)
 							}
+							.font(.caption)
 						}
+						.lineLimit(1)
+						.frame(width: 2 * Self.lineEnd)
+						.position(x: center.x, y: center.y + Self.outerRadius + 20)
 					}
 				}
-				.chartAngleSelection(value: $pointer)
-				.chartBackground { proxy in
-					GeometryReader { geometry in
-						if let s = hovered, let plot = proxy.plotFrame {
-							let frame = geometry[plot]
-							VStack(spacing: 2) {
-								Text(s.name).font(.caption).foregroundStyle(Palette.detail).lineLimit(1)
-								AmountText(money: s.money).font(.callout.weight(.semibold)).lineLimit(1).minimumScaleFactor(0.6)
-								Text((s.value / total).formatted(.percent.precision(.fractionLength(0...1)))).font(.caption).foregroundStyle(Palette.detail)
-							}
-							.frame(width: min(frame.width, frame.height) * 0.48)
-							.position(x: frame.midX, y: frame.midY)
-						}
-					}
+				.contentShape(Rectangle())
+				.onContinuousHover { phase in
+					guard case let .active(point) = phase else { hovered = nil; return }
+					hovered = Self.wedge(at: point, center: center, in: wedges)?.id
 				}
 			}
+			.frame(width: Self.width)
+			.accessibilityElement(children: .ignore)
+			.accessibilityLabel(title)
+			.accessibilityValue(wedges.map { "\($0.slice.name): \(Format.money($0.slice.money)), \($0.share.formatted(.percent.precision(.fractionLength(0...1))))" }
+				.joined(separator: "; "))
 		}
-		.frame(maxWidth: .infinity)
 	}
 
-	/// The slice that covers a value of the angle scale, which runs from 0 to the sum of the slices.
-	private func slice(at value: Double) -> PieSlice? {
-		var end = 0.0
-		for s in slices {
-			end += s.value
-			if value <= end { return s }
+	/// The slices with their angles, clockwise from the top in radians.
+	private static func wedges(_ slices: [PieSlice]) -> [PieWedge] {
+		let total = slices.reduce(0) { $0 + $1.value }
+		var start = 0.0
+		return slices.map { s in
+			let share = total > 0 ? s.value / total : 1 / Double(slices.count)
+			defer { start += share * 2 * .pi }
+			return PieWedge(slice: s, start: start, end: start + share * 2 * .pi, share: share)
 		}
-		return slices.last
+	}
+
+	private static func wedge(at point: CGPoint, center: CGPoint, in wedges: [PieWedge]) -> PieWedge? {
+		let (dx, dy) = (point.x - center.x, point.y - center.y)
+		guard dx * dx + dy * dy <= outerRadius * outerRadius else { return nil }
+		var angle = atan2(Double(dx), Double(-dy))
+		if angle < 0 { angle += 2 * .pi }
+		return wedges.first { angle < $0.end } ?? wedges.last
+	}
+
+	/// A label for each slice that is not too thin, on the side of its middle, at the height of its
+	/// middle where the labels of one side leave room for each other.
+	private static func labels(_ wedges: [PieWedge], center: CGPoint, height: CGFloat) -> [PieLabel] {
+		let all = wedges.filter { $0.share >= minLabelShare }.map { w in
+			let (dx, dy) = (CGFloat(sin(w.middle)), CGFloat(-cos(w.middle)))
+			return PieLabel(wedge: w, rim: CGPoint(x: center.x + outerRadius * dx, y: center.y + outerRadius * dy),
+				left: dx < 0, y: center.y + (outerRadius + 6) * dy)
+		}
+		return spaced(all.filter(\.left), height: height) + spaced(all.filter { !$0.left }, height: height)
+	}
+
+	/// Pushes labels down until none overlaps the one above, then up from the bottom edge.
+	private static func spaced(_ labels: [PieLabel], height: CGFloat) -> [PieLabel] {
+		var ls = labels.sorted { $0.y < $1.y }
+		for i in ls.indices {
+			ls[i].y = max(ls[i].y, i == 0 ? lineHeight / 2 : ls[i - 1].y + lineHeight)
+		}
+		for i in ls.indices.reversed() {
+			ls[i].y = min(ls[i].y, i == ls.count - 1 ? height - lineHeight / 2 : ls[i + 1].y - lineHeight)
+		}
+		return ls
+	}
+}
+
+private struct PieWedge: Identifiable {
+	let slice: PieSlice
+	let start: Double
+	let end: Double
+	let share: Double
+	var id: UUID { slice.id }
+	var middle: Double { (start + end) / 2 }
+}
+
+private struct PieLabel: Identifiable {
+	let wedge: PieWedge
+	/// Where the line to the label starts, on the outer edge of the rim.
+	let rim: CGPoint
+	let left: Bool
+	var y: CGFloat
+	var id: UUID { wedge.id }
+}
+
+/// A slice of a pie between two angles, clockwise from the top in radians.
+private struct Wedge: Shape {
+	let start: Double
+	let end: Double
+
+	func path(in rect: CGRect) -> Path {
+		let center = CGPoint(x: rect.midX, y: rect.midY)
+		var path = Path()
+		path.move(to: center)
+		// In the flipped coordinates of SwiftUI, `clockwise: false` runs clockwise on the screen.
+		path.addArc(center: center, radius: min(rect.width, rect.height) / 2, startAngle: .radians(start - .pi / 2),
+			endAngle: .radians(end - .pi / 2), clockwise: false)
+		path.closeSubpath()
+		return path
 	}
 }
 
