@@ -2,7 +2,7 @@
 
 This page lists what ships in each release. The specs in [openspec/changes](../openspec/changes/) define the behavior. The GitHub issues track the work. Run `python3 scripts/roadmap.py` to regenerate this page from both.
 
-The project has 53 changes with 1092 requirements. A change leaves this page when its code is merged and the change is archived into [openspec/specs](../openspec/specs/).
+The project has 53 changes with 1098 requirements. A change leaves this page when its code is merged and the change is archived into [openspec/specs](../openspec/specs/).
 
 ## v0.1 Read
 
@@ -14,24 +14,24 @@ Fetch, categorize, and understand your money. Read-only.
 
 | Change | Capability | Requirements | Issues |
 |---|---|---|---|
-| [add-account-management](../openspec/changes/add-account-management/proposal.md) | `account-management` | 21 | [#3](https://github.com/alexander-schneider/Moneten/issues/3), [#5](https://github.com/alexander-schneider/Moneten/issues/5) |
+| [add-account-management](../openspec/changes/add-account-management/proposal.md) | `account-management` | 22 | [#3](https://github.com/alexander-schneider/Moneten/issues/3), [#5](https://github.com/alexander-schneider/Moneten/issues/5) |
 | [add-account-refresh](../openspec/changes/add-account-refresh/proposal.md) | `account-refresh` | 29 | [#6](https://github.com/alexander-schneider/Moneten/issues/6), [#7](https://github.com/alexander-schneider/Moneten/issues/7), [#40](https://github.com/alexander-schneider/Moneten/issues/40) |
 | [add-account-setup](../openspec/changes/add-account-setup/proposal.md) | `account-setup` | 21 | [#5](https://github.com/alexander-schneider/Moneten/issues/5), [#13](https://github.com/alexander-schneider/Moneten/issues/13) |
 | [add-app-lock](../openspec/changes/add-app-lock/proposal.md) | `app-lock` | 21 | [#4](https://github.com/alexander-schneider/Moneten/issues/4), [#26](https://github.com/alexander-schneider/Moneten/issues/26) |
 | [add-app-settings](../openspec/changes/add-app-settings/proposal.md) | `app-settings` | 8 | [#5](https://github.com/alexander-schneider/Moneten/issues/5) |
 | [add-categories](../openspec/changes/add-categories/proposal.md) | `categories` | 21 | [#18](https://github.com/alexander-schneider/Moneten/issues/18) |
 | [add-categorization-rules](../openspec/changes/add-categorization-rules/proposal.md) | `categorization-rules` | 18 | [#19](https://github.com/alexander-schneider/Moneten/issues/19) |
-| [add-charts](../openspec/changes/add-charts/proposal.md) | `charts` | 22 | [#21](https://github.com/alexander-schneider/Moneten/issues/21) |
+| [add-charts](../openspec/changes/add-charts/proposal.md) | `charts` | 24 | [#21](https://github.com/alexander-schneider/Moneten/issues/21) |
 | [add-connection-security](../openspec/changes/add-connection-security/proposal.md) | `connection-security` | 14 | [#13](https://github.com/alexander-schneider/Moneten/issues/13), [#26](https://github.com/alexander-schneider/Moneten/issues/26) |
 | [add-data-export](../openspec/changes/add-data-export/proposal.md) | `transaction-export` | 17 | [#8](https://github.com/alexander-schneider/Moneten/issues/8) |
-| [add-data-folder-and-backup](../openspec/changes/add-data-folder-and-backup/proposal.md) | `data-folder-and-backup` | 13 | [#4](https://github.com/alexander-schneider/Moneten/issues/4) |
+| [add-data-folder-and-backup](../openspec/changes/add-data-folder-and-backup/proposal.md) | `data-folder-and-backup` | 14 | [#4](https://github.com/alexander-schneider/Moneten/issues/4) |
 | [add-encrypted-database](../openspec/changes/add-encrypted-database/proposal.md) | `database-encryption` | 20 | [#2](https://github.com/alexander-schneider/Moneten/issues/2), [#4](https://github.com/alexander-schneider/Moneten/issues/4), [#26](https://github.com/alexander-schneider/Moneten/issues/26) |
 | [add-extension-developer-tools](../openspec/changes/add-extension-developer-tools/proposal.md) | `extension-developer-tools` | 17 | [#16](https://github.com/alexander-schneider/Moneten/issues/16), [#17](https://github.com/alexander-schneider/Moneten/issues/17) |
 | [add-file-import](../openspec/changes/add-file-import/proposal.md) | `transaction-import` | 24 | [#22](https://github.com/alexander-schneider/Moneten/issues/22), [#23](https://github.com/alexander-schneider/Moneten/issues/23) |
 | [add-fints-banking](../openspec/changes/add-fints-banking/proposal.md) | `fints-banking` | 25 | [#9](https://github.com/alexander-schneider/Moneten/issues/9), [#10](https://github.com/alexander-schneider/Moneten/issues/10), [#11](https://github.com/alexander-schneider/Moneten/issues/11), [#12](https://github.com/alexander-schneider/Moneten/issues/12), [#13](https://github.com/alexander-schneider/Moneten/issues/13) |
 | [add-localization-and-formatting](../openspec/changes/add-localization-and-formatting/proposal.md) | `localization-and-formatting` | 18 | [#5](https://github.com/alexander-schneider/Moneten/issues/5) |
 | [add-login-credentials](../openspec/changes/add-login-credentials/proposal.md) | `login-credentials` | 15 | [#4](https://github.com/alexander-schneider/Moneten/issues/4), [#13](https://github.com/alexander-schneider/Moneten/issues/13), [#26](https://github.com/alexander-schneider/Moneten/issues/26) |
-| [add-main-window](../openspec/changes/add-main-window/proposal.md) | `main-window` | 28 | [#5](https://github.com/alexander-schneider/Moneten/issues/5) |
+| [add-main-window](../openspec/changes/add-main-window/proposal.md) | `main-window` | 29 | [#5](https://github.com/alexander-schneider/Moneten/issues/5) |
 | [add-moneymoney-migration](../openspec/changes/add-moneymoney-migration/proposal.md) | `moneymoney-migration` | 18 | [#24](https://github.com/alexander-schneider/Moneten/issues/24) |
 | [add-notifications-and-menu-bar](../openspec/changes/add-notifications-and-menu-bar/proposal.md) | `notifications-and-menu-bar` | 16 | [#40](https://github.com/alexander-schneider/Moneten/issues/40) |
 | [add-offline-accounts](../openspec/changes/add-offline-accounts/proposal.md) | `offline-accounts` | 13 | [#5](https://github.com/alexander-schneider/Moneten/issues/5) |
@@ -56,7 +56,7 @@ Fetch, categorize, and understand your money. Read-only.
 | [#8 Export and re-import all data as JSON, and export CSV](https://github.com/alexander-schneider/Moneten/issues/8) | area: core | #4 |
 | [#9 Apply for FinTS product registration](https://github.com/alexander-schneider/Moneten/issues/9) | area: fints, kind: organization | None |
 | [#10 Ask the HBCI4Swift author about a joint Swift package](https://github.com/alexander-schneider/Moneten/issues/10) | area: fints, kind: organization | None |
-| [#11 Prototype HBCI4Swift against three banks](https://github.com/alexander-schneider/Moneten/issues/11) | area: fints, kind: prototype | None |
+| [#11 Run the first FinTS bank tests](https://github.com/alexander-schneider/Moneten/issues/11) | area: fints, kind: prototype | #9 |
 | [#12 Turn HBCI4Swift into a tested Swift package](https://github.com/alexander-schneider/Moneten/issues/12) | area: fints | #11, #10 |
 | [#13 Build the FinTS connector for accounts, balances, and transactions](https://github.com/alexander-schneider/Moneten/issues/13) | area: fints | #12, #6, #7, #9 |
 | [#14 Run Lua 5.4 extensions in a sandboxed XPC process](https://github.com/alexander-schneider/Moneten/issues/14) | area: extensions | #6 |
@@ -69,7 +69,7 @@ Fetch, categorize, and understand your money. Read-only.
 | [#21 Show balance history and spending by category](https://github.com/alexander-schneider/Moneten/issues/21) | area: core | #18 |
 | [#22 Import CSV files with saved column profiles](https://github.com/alexander-schneider/Moneten/issues/22) | area: import | #7, #5 |
 | [#23 Import CAMT.053 and MT940 files](https://github.com/alexander-schneider/Moneten/issues/23) | area: import | #7 |
-| [#24 Migrate accounts, transactions, and categories from MoneyMoney](https://github.com/alexander-schneider/Moneten/issues/24) | area: import | #18, #23 |
+| [#24 Migrate accounts, transactions, and categories from MoneyMoney](https://github.com/alexander-schneider/Moneten/issues/24) | area: import | #18 |
 | [#25 Sign, notarize, and update the app with Sparkle](https://github.com/alexander-schneider/Moneten/issues/25) | area: release | #1 |
 | [#26 Review security before the first public release](https://github.com/alexander-schneider/Moneten/issues/26) | area: release | #13, #15, #25 |
 | [#39 Split a transaction across several categories](https://github.com/alexander-schneider/Moneten/issues/39) | area: core | #18 |
@@ -87,7 +87,7 @@ Send the first SEPA transfer and see securities accounts.
 
 | Change | Capability | Requirements | Issues |
 |---|---|---|---|
-| [add-securities-accounts](../openspec/changes/add-securities-accounts/proposal.md) | `securities-accounts` | 25 | [#31](https://github.com/alexander-schneider/Moneten/issues/31) |
+| [add-securities-accounts](../openspec/changes/add-securities-accounts/proposal.md) | `securities-accounts` | 26 | [#31](https://github.com/alexander-schneider/Moneten/issues/31) |
 | [add-sepa-transfers](../openspec/changes/add-sepa-transfers/proposal.md) | `sepa-transfers` | 36 | [#27](https://github.com/alexander-schneider/Moneten/issues/27), [#28](https://github.com/alexander-schneider/Moneten/issues/28), [#29](https://github.com/alexander-schneider/Moneten/issues/29), [#30](https://github.com/alexander-schneider/Moneten/issues/30), [#32](https://github.com/alexander-schneider/Moneten/issues/32) |
 
 ### Issues

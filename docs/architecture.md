@@ -61,8 +61,8 @@ FinTS, extensions, and finAPI differ in almost everything. The app hides that be
 
 ```swift
 protocol BankConnector {
-	func listAccounts(_ session: SyncSession) async throws -> [RemoteAccount]
-	func refresh(_ account: RemoteAccount, since: Date?, _ session: SyncSession) async throws -> RefreshResult
+	func listAccounts(of access: Access, state: AccessState?, _ session: SyncSession) async throws -> ConnectorReport<[RemoteAccount]>
+	func refresh(_ request: RefreshRequest, _ session: SyncSession) async throws -> ConnectorReport<[RemoteAccount.ID: AccountOutcome]>
 }
 
 protocol PaymentConnector: BankConnector {
@@ -70,17 +70,20 @@ protocol PaymentConnector: BankConnector {
 }
 ```
 
-`SyncSession` is how a connector asks the user for something. A connector calls `session.ask(_ challenge: Challenge)` and waits for the answer. `Challenge` is one enum for all sources:
+A refresh covers all requested accounts of one access, that is one login at one source, so FinTS keeps them in one dialog. `SyncSession` is how a connector asks the user for something. A connector calls `session.ask(_:)` with a PIN request or a second-factor request and waits for the answer. `Challenge` is one enum for all sources:
 
 ```swift
 enum Challenge {
-	case chooseTANMethod([TANMethod])
-	case enterTAN(prompt: String, image: Data?)
-	case flickerCode(String)
-	case approveInApp(prompt: String)
+	case chooseTANMethod([TANMethod], current: TANMethod.ID?)
+	case chooseTANMedium([TANMedium])
+	case enterTAN(prompt: String, image: ChallengeImage?)
+	case flickerCode(prompt: String, code: FlickerCode)
+	case approveInApp(prompt: String, app: String?, image: ChallengeImage?, step: Step?)
 	case openBrowser(URL)
 }
 ```
+
+The [design of add-account-refresh](../openspec/changes/add-account-refresh/design.md) has the complete types, the dialog queue, and how the callbacks of hbci4java map to these requests.
 
 One enum means one set of dialogs in the app. A pushTAN from FinTS, an app approval in an extension, and the finAPI web form all reach the user through the same screens.
 
@@ -93,11 +96,12 @@ This section is the plan for bank access.
 A sync of one connection moves through fixed states:
 
 ```
-idle → connecting → (needsChallenge ⇄ connecting) → fetching → finished
-                                                              ↘ failed
+idle → connecting → fetching → finished
+          ⇅            ⇅
+      needsUser    needsUser          any state → failed or cancelled
 ```
 
-The state lives in one `SyncState` value per connection. The UI reads it to show progress, the TAN dialog, or the error. No view keeps its own copy of "is syncing" flags.
+A request for the user can come during the fetch too: Consorsbank waives the second factor at the login and requires it for the balance and the transactions. The state lives in one `SyncState` value per access. The UI reads it to show progress, the TAN dialog, or the error. No view keeps its own copy of "is syncing" flags.
 
 ## Transactions need an identity the bank does not give
 
