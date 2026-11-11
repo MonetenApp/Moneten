@@ -97,6 +97,13 @@ public struct Account: Identifiable, Hashable, Sendable, Codable {
 	}
 
 	public var isOffline: Bool { source == .offline }
+
+	/// The record of a portfolio with a bank balance: that balance on the day the bank reported it,
+	/// or today when the day is unknown. Other accounts get their balance from transactions.
+	public func portfolioValue(calendar: Calendar = .current) -> PortfolioValue? {
+		guard kind == .portfolio, let bankBalanceMinor else { return nil }
+		return PortfolioValue(accountID: id, day: Day(bankBalanceDate ?? Date(), calendar: calendar), minorUnits: bankBalanceMinor)
+	}
 }
 
 /// The value of a portfolio at the end of one day. A portfolio gets its value from the bank and not

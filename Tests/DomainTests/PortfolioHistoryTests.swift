@@ -20,6 +20,25 @@ struct PortfolioHistoryTests {
 		#expect(l.portfolioValues(of: depot.id).map(\.minorUnits) == [2_050_000, 2_070_000, 2_100_000])
 	}
 
+	@Test("An open portfolio with a bank balance and no record gets one for the day of its balance, once")
+	func missingRecords() {
+		var calendar = Calendar(identifier: .gregorian)
+		calendar.timeZone = TimeZone(identifier: "Europe/Berlin")!
+		let reported = calendar.date(from: DateComponents(year: 2026, month: 10, day: 5, hour: 18))!
+		var migrated = depot
+		migrated.bankBalanceMinor = 2_000_000
+		migrated.bankBalanceDate = reported
+		var closed = Account(position: 2, name: "Old depot", kind: .portfolio, source: .migrated, bankBalanceMinor: 500_000, bankBalanceDate: reported)
+		closed.isClosed = true
+		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .migrated, bankBalanceMinor: 70_000, bankBalanceDate: reported)
+		let withoutBalance = Account(position: 3, name: "Empty depot", kind: .portfolio, source: .migrated)
+		var l = Ledger(accounts: [giro, migrated, closed, withoutBalance])
+		#expect(migrated.portfolioValue(calendar: calendar) == PortfolioValue(accountID: depot.id, day: day(5), minorUnits: 2_000_000))
+		#expect(l.missingPortfolioValues.map(\.accountID) == [depot.id])
+		for v in l.missingPortfolioValues { l.record(v) }
+		#expect(l.missingPortfolioValues.isEmpty)
+	}
+
 	@Test("Removing an account drops its records")
 	func removeAccount() {
 		var l = Ledger(accounts: [depot], portfolioValues: [PortfolioValue(accountID: depot.id, day: day(5), minorUnits: 2_000_000)])

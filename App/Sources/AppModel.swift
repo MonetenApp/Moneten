@@ -240,6 +240,7 @@ final class AppModel {
 	private func open(_ store: Store) throws {
 		self.store = store
 		ledger = try store.loadLedger()
+		record(ledger.missingPortfolioValues)
 		if selection == nil {
 			if let first = ledger.childGroups(of: nil).first {
 				selection = .group(first.id)
@@ -431,6 +432,22 @@ final class AppModel {
 			ledger.replace()
 		} catch {
 			alert = AlertMessage(title: "Could not save the account.", message: String(describing: error))
+			return
+		}
+		if let value = account.portfolioValue() { record([value]) }
+	}
+
+	/// Saves the values of portfolios for their history. A value replaces the one of the same account
+	/// and day, so recording the same balance again changes nothing.
+	func record(_ values: [PortfolioValue]) {
+		guard let store else { return }
+		do {
+			for v in values {
+				try store.save(v)
+				ledger.record(v)
+			}
+		} catch {
+			alert = AlertMessage(title: "Could not save the value of the portfolio.", message: String(describing: error))
 		}
 	}
 
@@ -564,6 +581,7 @@ final class AppModel {
 			transactions: plan.transactions + plan.updatedTransactions)
 		for c in starters { try? store.deleteCategory(c.id) }
 		ledger = try store.loadLedger()
+		record((plan.accounts + plan.updatedAccounts).compactMap { $0.portfolioValue() })
 		tableGeneration += 1
 		if case let .category(id) = selection, ledger.category(id) == nil { selection = nil }
 		if selection == nil, let g = ledger.childGroups(of: nil).first { selection = .group(g.id) }

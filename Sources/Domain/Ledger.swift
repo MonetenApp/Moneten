@@ -98,6 +98,12 @@ public struct Ledger: Sendable {
 	/// The recorded values of a portfolio, the oldest first.
 	public func portfolioValues(of accountID: UUID) -> [PortfolioValue] { portfolioHistory[accountID] ?? [] }
 
+	/// The first record of each open portfolio that has a bank balance and no record yet, such as a
+	/// portfolio migrated before the app kept a history. Once recorded, the list is empty.
+	public var missingPortfolioValues: [PortfolioValue] {
+		accounts.filter { !$0.isClosed && portfolioHistory[$0.id] == nil }.compactMap { $0.portfolioValue() }
+	}
+
 	public var defaultCategory: Category? { categories.first { $0.isDefault } }
 
 	public func childGroups(of parent: UUID?) -> [AccountGroup] {
