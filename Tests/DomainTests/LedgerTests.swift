@@ -172,4 +172,15 @@ struct LedgerTests {
 		let again = ImportMatching.split(imported: [pendingRow, bookedRow], existing: [bookedRow, pendingRow])
 		#expect(again.new.isEmpty && again.booked.isEmpty && again.skipped == 2)
 	}
+
+	@Test("The ledger knows which accounts have transactions, also after a delete")
+	func accountsWithTransactions() {
+		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
+		let fixed = Account(position: 1, name: "Festgeld", kind: .fixedTermDeposit, source: .offline)
+		let rent = Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 1), amountMinor: -95_000, name: "Miete")
+		var ledger = Ledger(accounts: [giro, fixed], transactions: [rent])
+		#expect(ledger.accountsWithTransactions == [giro.id])
+		ledger.remove(transactionIDs: [rent.id])
+		#expect(ledger.accountsWithTransactions.isEmpty)
+	}
 }

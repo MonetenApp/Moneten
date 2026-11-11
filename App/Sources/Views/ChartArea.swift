@@ -15,7 +15,18 @@ struct ChartArea: View {
 		case let (.barChart, .account(id)?):
 			BalanceChart(accountIDs: [id])
 		case let (.barChart, .group(id)?):
-			BalanceChart(accountIDs: model.ledger.accountIDs(inGroupTree: id))
+			let ids = model.ledger.accountIDs(inGroupTree: id)
+			// As in MoneyMoney: a group with an account without transactions draws no chart and names
+			// that account. A portfolio has no transactions by nature, and a closed account is not drawn.
+			if let empty = model.ledger.accounts.first(where: {
+				ids.contains($0.id) && !$0.isClosed && $0.kind != .portfolio && !model.ledger.accountsWithTransactions.contains($0.id)
+			}) {
+				Text("The account “\(empty.name)” has no transactions; no bar chart.")
+					.foregroundStyle(Palette.bandLabel)
+					.frame(maxWidth: .infinity, maxHeight: .infinity)
+			} else {
+				BalanceChart(accountIDs: ids)
+			}
 		default:
 			EmptyView()
 		}

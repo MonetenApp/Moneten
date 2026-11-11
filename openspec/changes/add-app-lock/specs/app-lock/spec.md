@@ -78,7 +78,7 @@ The app SHALL lock when the user closes the main window, if the setting "Lock wh
 
 ### Requirement: Lock after inactivity
 
-The app SHALL lock after the number of minutes without activity that the user sets under "Lock after ... minutes of inactivity", if that setting is on. Activity is keyboard or pointer input in the app. Time that the Mac sleeps counts as time without activity. The setting is on by default with 10 minutes. Deviation from MoneyMoney, which has it off and suggests 5 minutes: the owner wants the app locked by default.
+The app SHALL lock after the number of minutes without activity that the user sets under "Lock after ... minutes of inactivity", if that setting is on. Activity is keyboard or pointer input in the app. Time that the Mac sleeps counts as time without activity. The setting is on by default with 10 minutes.
 
 #### Scenario: Default
 

@@ -14,13 +14,13 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [x] 1.8 Several rows can be selected. Verified by the table allows a multiple selection.
 - [x] 1.9 The context menu acts on the selection. Verified by the menu receives the selected rows.
 - [x] 1.10 Checkmarks. Verified by checkbox column; LedgerTests use the status filter.
-- [x] 1.11 Mark all transactions as checked. Verified by File menu command.
+- [x] 1.11 Mark all transactions as checked. Verified by reading `AppModel.markAllChecked`: it counts the unchecked rows of the view and their accounts, asks, and changes nothing on "Cancel". Not covered by a test, because the app has no test target yet.
 - [ ] 1.12 Checkmarks can be hidden. Build it and verify it with a test or in the app.
 - [x] 1.13 Comments. Verified by "Add Comment..." with ⇧⌘K and a note icon in the row.
 - [ ] 1.14 Daily balance in the list. Build it and verify it with a test or in the app.
 - [x] 1.15 Go to the account or the category. Verified by "Go to" in the context menu.
 - [ ] 1.16 Edit a transaction. Built in part: all fields of offline transactions; category and comment of others. Finish it and verify it with a test or in the app.
-- [x] 1.17 Delete transactions. Verified by "Delete Transaction..." with the warning that deleted transactions cannot be restored.
+- [x] 1.17 Delete transactions. Verified by "Delete Transaction..." with the warning that deleted transactions cannot be restored, offered only in an account view (`TransactionMenu`). Not covered by a test, because the app has no test target yet.
 - [ ] 1.18 Services for selected text. Build it and verify it with a test or in the app.
 - [x] 1.19 Empty states. Verified by the debug harness snapshot in the first build.
 - [ ] 1.20 The list stays fluid with a large history. Build it and verify it with a test or in the app.

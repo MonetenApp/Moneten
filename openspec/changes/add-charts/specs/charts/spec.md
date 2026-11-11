@@ -49,7 +49,7 @@ The app SHALL draw the balance of an account over time as a bar chart, with one 
 
 ### Requirement: Look of the balance chart
 
-The app SHALL draw the balance chart as MoneyMoney does: every bar 4 points wide with a gap of 2 points, white on the slate band behind the title, and red below zero, over a dashed line at zero. A thin line and the name of the month, such as "Oct 26", mark the first day of each month; in the monthly average the year marks January. The chart has no amount axis.
+The app SHALL draw the balance chart with every bar 4 points wide with a gap of 2 points, white on the slate band behind the title, and red below zero, over a dashed line at zero. A thin line and the name of the month, such as "Oct 26", mark the first day of each month; in the monthly average the year marks January. The chart has no amount axis.
 
 #### Scenario: Month lines
 
@@ -59,7 +59,7 @@ The app SHALL draw the balance chart as MoneyMoney does: every bar 4 points wide
 
 ### Requirement: Readable text on the band
 
-The app SHALL write the text on the slate band behind the title and the chart with a contrast of at least 4.5:1 in the light and the dark appearance, also with "Increase contrast". The light appearance deviates from MoneyMoney here: MoneyMoney writes white on its light slate, which reaches only 2:1, so the app writes dark slate on it and a darker red for negative amounts.
+The app SHALL write the text on the slate band behind the title and the chart with a contrast of at least 4.5:1 in the light and the dark appearance, also with "Increase contrast". In the light appearance the text is dark slate, and negative amounts use a darker red.
 
 #### Scenario: Header in the light appearance
 
@@ -95,7 +95,7 @@ The app SHALL set the initial balance of a new account so that the computed bala
 
 ### Requirement: Daily balance or monthly average balance
 
-The app SHALL let the user switch the balance chart between "Daily balance" and "Monthly average balance" with a column of the segments "D" and "M" at the bottom of the trailing edge of the chart, as in MoneyMoney. The category chart has its "M", "Q", and "Y" in the same place. The monthly average is the mean of the daily balances of a calendar month and is drawn as one bar for each month.
+The app SHALL let the user switch the balance chart between "Daily balance" and "Monthly average balance" with a column of the segments "D" and "M" at the bottom of the trailing edge of the chart. The category chart has its "M", "Q", and "Y" in the same place. The monthly average is the mean of the daily balances of a calendar month and is drawn as one bar for each month.
 
 #### Scenario: Monthly average
 
@@ -114,7 +114,7 @@ The app SHALL draw the balance chart for the time that the period filter selects
 
 ### Requirement: Long periods scroll
 
-The app SHALL keep the width of every bar, as MoneyMoney does, and let the user scroll a longer chart sideways with the trackpad. The chart opens at its newest bar on the right. The scale covers all bars of the period, so scrolling does not change it.
+The app SHALL keep the width of every bar and let the user scroll a longer chart sideways with the trackpad. The chart opens at its newest bar on the right. The scale covers all bars of the period, so scrolling does not change it.
 
 #### Scenario: Ten years of daily balances
 
@@ -221,7 +221,7 @@ The app SHALL draw the sum of a category for each month, each quarter, or each y
 
 ### Requirement: Look of the category chart
 
-The app SHALL draw the category chart as MoneyMoney does: each bar 40 points wide with a gap of 8 points and its period above it, in the color of the category and darker below zero. A period without transactions shows a line at zero. The highest sum, zero, and the lowest sum stand at the leading edge, and the chart scrolls like the balance chart.
+The app SHALL draw the category chart with each bar 40 points wide with a gap of 8 points and its period above it, in the color of the category and darker below zero. A period without transactions shows a line at zero. The highest sum, zero, and the lowest sum stand at the leading edge, and the chart scrolls like the balance chart.
 
 #### Scenario: A month without spending
 
@@ -256,7 +256,7 @@ The app SHALL show two pie charts in the mode "Pie Chart", one for the withdrawa
 
 ### Requirement: Look of the pie charts
 
-The app SHALL draw the pie charts as MoneyMoney does: two full pies of 110 points, each in a rim of 6 points, side by side on the slate band with 300 points between their middles and no title. A thin line leads from the middle of each slice to its category name outside the pie, on the side of the slice. A slice below 3 % has no name, so that names do not overlap. Under the pointer a slice stands out, and the text below the pie shows its category, amount, and share.
+The app SHALL draw two full pie charts of 110 points, each in a rim of 6 points, side by side on the slate band with 300 points between their middles and no title. A thin line leads from the middle of each slice to its category name outside the pie, on the side of the slice. A slice below 3 % has no name, so that names do not overlap. Under the pointer a slice stands out, and the text below the pie shows its category, amount, and share.
 
 #### Scenario: Names outside the pie
 
@@ -282,7 +282,7 @@ The app SHALL leave a category whose setting "Show in diagrams" is off out of th
 
 ### Requirement: Values on hover
 
-The app SHALL show the date or period and the exact amount of a bar, or the category, the amount, and the share of a slice, while the pointer rests on it. As in MoneyMoney, a bar gets a light column through the chart, and its date and amount stand below the bars next to it.
+The app SHALL show the date or period and the exact amount of a bar, or the category, the amount, and the share of a slice, while the pointer rests on it. A bar gets a light column through the chart, and its date and amount stand below the bars next to it.
 
 #### Scenario: Hover over a bar
 

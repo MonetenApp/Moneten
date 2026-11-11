@@ -54,6 +54,7 @@ None.
 
 ### Decided for MonetenMoneten
 
+- A selected row in a group or category view names its account at the end of the payee line. MoneyMoney adds a third line, which makes the row taller.
 - Transactions of one day keep the order in which the bank delivered them. MoneyMoney's order inside a day was not observed.
 - A transaction counts as new until the user leaves the view in which it was shown. How MoneyMoney clears the mark was not observed.
 - The status line shows the count and the sum of the selected rows. Only the sum of the whole list was observed.

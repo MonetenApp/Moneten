@@ -55,6 +55,8 @@ None.
 
 ### Decided for MonetenMoneten
 
+- The sidebar keeps the system material of macOS instead of the opaque gray of MoneyMoney (ADR 0012).
+- Selections and controls use a muted slate blue. MoneyMoney uses the system blue.
 - A sidebar row and a toolbar control appear only when their feature is part of the installed version. Version 0.1 has no "Dashboard", "Payments", or "Documents" row.
 - The number of new transactions next to an account in the sidebar comes from names in the program file. How MoneyMoney draws it was not observed.
 - Without the pin, a view change sets all filters except "Period" back to "Show All". MoneyMoney's behavior without the pin was not observed.

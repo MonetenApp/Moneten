@@ -50,7 +50,7 @@ Status from GitHub on 9 November 2026.
 
 | Library | Language | License | Last push | Notes |
 |---|---|---|---|---|
-| [HBCI4Swift](https://github.com/macemmi/HBCI4Swift) | Swift | GPL-2.0-or-later | August 2026 | See [ADR 0003](../decisions/0003-fints-through-hbci4swift.md) |
+| [HBCI4Swift](https://github.com/macemmi/HBCI4Swift) | Swift | GPL-2.0, "or later" unconfirmed (#10) | August 2026 | See [ADR 0003](../decisions/0003-fints-through-hbci4swift.md) |
 | [python-fints](https://github.com/raphaelm/python-fints) | Python | LGPL-3.0 | October 2026 | Best documented, good reference |
 | [hbci4java](https://github.com/hbci4j/hbci4java) | Java | LGPL-2.1 | October 2026 | Most complete, used by Hibiscus |
 | [AqBanking](https://github.com/aqbanking/aqbanking) | C | GPL | September 2026 | Used by GnuCash and KMyMoney |

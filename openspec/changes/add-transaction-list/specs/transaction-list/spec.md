@@ -19,7 +19,7 @@ The app SHALL show one row for each transaction of the selected account, account
 #### Scenario: Purpose with several lines
 
 - **WHEN** a transaction has a purpose with three lines
-- **THEN** the row shows them in one line, joined with spaces, as MoneyMoney does
+- **THEN** the row shows them in one line, joined with spaces
 - **AND** the help tag of the purpose and the transaction sheet show all three lines
 
 ### Requirement: Newest transactions first
@@ -55,7 +55,7 @@ The app SHALL show each detail that the bank delivered for a transaction with it
 
 ### Requirement: Account name in group and category views
 
-The app SHALL show the account of a selected transaction in a view that lists transactions of more than one account, in small text at the end of the line with the payee, so that the row keeps its height. MoneyMoney writes it in a third line below the purpose. The list has no account column. For an account group, the option "Group transactions by account" in the group settings puts the transactions of each account under a heading with the account name.
+The app SHALL show the account of a selected transaction in a view that lists transactions of more than one account, in small text at the end of the line with the payee, so that the row keeps its height. The list has no account column. For an account group, the option "Group transactions by account" in the group settings puts the transactions of each account under a heading with the account name.
 
 #### Scenario: Mixed list
 
@@ -326,7 +326,7 @@ The app SHALL scroll, select, and update the list without visible delay for a vi
 
 ### Requirement: Row layout
 
-The app SHALL lay out a row as MoneyMoney does. The category is a ribbon in the color of the category below the booking date, not a column of its own. The amount omits the currency when it is the currency of the view, and it shows a minus sign. The checkmark is at the end of the row. The list has no column headers, a line separates the rows, and every row has the same height.
+The app SHALL lay out a row in this way. The category is a ribbon in the color of the category below the booking date, not a column of its own. The amount omits the currency when it is the currency of the view, and it shows a minus sign. The checkmark is at the end of the row. The list has no column headers, a line separates the rows, and every row has the same height.
 
 #### Scenario: Categorized card payment
 

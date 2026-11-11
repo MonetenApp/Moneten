@@ -3,7 +3,8 @@ schema: spec-driven
 # Project context. OpenSpec gives this text to an agent before it writes an artifact.
 # It holds only what an agent cannot learn from the repository.
 context: |
-  MonetenMoneten is an open source banking app for the Mac. Nothing is built yet.
+  MonetenMoneten is an open source banking app for the Mac. The local part of v0.1 is built
+  (database, migration, import, list, categories, rules, charts); bank access is not.
   The specs in openspec/changes describe the complete target behavior. A change moves
   into openspec/specs only when its code is merged and the change is archived.
 

@@ -1,0 +1,41 @@
+# Bank access for the first test banks
+
+This page records, as of 2026-11-11, how the app can reach five German banks through FinTS, and Trade Republic and PayPal, which have no FinTS. It decides what the first bank tests of issue #11 run against. The sources are listed per row. "Unknown" means no public source says it; the bank parameter data (BPD) of a live connection settles it.
+
+## FinTS banks
+
+The URLs come from the bank list of hbci4java (`blz.properties`, changed 2026-10-19), which Hibiscus uses. All are FinTS 3.0.
+
+| Bank | FinTS for third-party software | Server | TAN methods | Securities holdings over FinTS |
+|---|---|---|---|---|
+| DKB | Yes ([DKB](https://www.dkb.de/geschaeftskunden/electronic-banking)) | `https://fints.dkb.de/fints`. The old server was switched off on 2024-11-25 ([ifun.de](https://www.ifun.de/dkb-neue-freigabemethoden-und-serverwechsel-fuer-finanzsoftware-243660/)) | DKB app (decoupled), chipTAN. Every login and every download needs an approval | Unknown. DKB moves its securities business to Upvest from late 2026 |
+| Consorsbank | Yes ([FAQ](https://www.consorsbank.de/web/Wissen/FAQ/kontokarten/HBCI-Schnittstelle-Konto-und-Zahlungsverkehrsprogramm)) | `https://brokerage-hbci.consorsbank.de/hbci` | Consorsbank app (push) since August 2025. A TAN at every login | Yes, holdings ([FAQ](https://www.consorsbank.de/web/Wissen/FAQ/kontokarten/HBCI-Schnittstelle-unterstuetzte-Funktionen)). Securities transactions not listed |
+| flatex | Only for the clearing account ([Lexware](https://help.lexware.de/de-form/articles/661667-lexware-office-flatex-anbinden)) | `https://konto.biw-bank.de/hbci/` (hbci4java only) | Unknown | Unknown. flatex documents only a CSV export of depot transactions |
+| HypoVereinsbank | Yes, after switching it on in online banking ([fino](https://kws.help.fino.digital/en/support/solutions/articles/80000616994-hypovereinsbank-unicredit)) | `https://hbci-01.hypovereinsbank.de/bank/hbci` | photoTAN, appTAN | Unknown. Transactions start at the first FinTS download |
+| Sparkasse | Yes ([fino](https://depotwechsel.help.fino.digital/en/support/solutions/articles/80000616998-sparkasse)) | One server per region, such as `https://banking-be3.s-fints-pt-be.de/fints30` | pushTAN, chipTAN | Unknown |
+
+Every bank asks for a decoupled approval or a TAN at login, so the first FinTS test needs decoupled TAN handling from the start (`decoupledNotification` in HBCI4Swift).
+
+## Trade Republic
+
+Trade Republic has no FinTS and no official API. MoneyMoney reads it through its own built-in code, not through an extension ([MoneyMoney](https://moneymoney.app/banken/)).
+
+- The open-source reference is [pytr](https://github.com/pytr-org/pytr) (MIT). It logs in like the web app: `POST /api/v2/auth/web/login` with phone number and PIN, approved in the app. Login v1 needs a token from a JavaScript bot challenge.
+- Balances, the timeline, transactions, and positions come only over a WebSocket (`wss://api.traderepublic.com`), as subscriptions with full answers and deltas. There is no REST equivalent.
+- The extension API of MoneyMoney has no WebSocket. So Trade Republic needs either a built-in provider in Swift (`URLSessionWebSocketTask`) or a WebSocket call in the extension API that goes beyond MoneyMoney's.
+- pytr broke about every one to three months in 2026 and was fixed within days each time (issues #319, #335, #393, #413). A provider for Trade Republic needs the same upkeep.
+- Fallback: import the PDF or CSV documents of Trade Republic.
+
+## PayPal
+
+- PayPal's REST Transaction Search needs a business account in production ([PayPal](https://developer.paypal.com/api/rest/reference/policiesandguidelines)).
+- MoneyMoney uses the classic API (NVP, `TransactionSearch` and `GetBalance` at `api-3t.paypal.com/nvp`) with an API signature that the user creates for the own account ([MoneyMoney](https://moneymoney.app/banken/paypal/)). This is a plain HTTPS POST and fits the extension API.
+- PayPal marks the classic credentials as deprecated. MoneyMoney writes that PayPal will offer no official interface for personal accounts.
+- PSD2 access to PayPal is only for licensed providers. finAPI lists PayPal as an API connection.
+- Fallback: the CSV download of the PayPal activity.
+
+## What follows
+
+1. Issue #11 runs the FinTS prototype against DKB, Consorsbank, and a Sparkasse first, with decoupled approval, and reads the BPD of all five banks for securities holdings (HKWPD) and transactions (HKWDU).
+2. Trade Republic is a built-in provider, not a MoneyMoney extension. It needs its own decision record before it is built.
+3. PayPal is a candidate for the first real extension of issue #15, because it needs only HTTPS.

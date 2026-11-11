@@ -8,6 +8,8 @@
 - Every name in code font in docs/data-model.md, above its section on later types, is declared
   in Sources/ or is a table of the database.
 - The status in each ADR file matches the index table in docs/decisions/README.md.
+- A spec names MoneyMoney only in its Purpose, as openspec/config.yaml requires. A difference to
+  MoneyMoney belongs under "Decided for MonetenMoneten" in the proposal.
 
 Proposals and specs describe planned work and may name folders that do not exist yet, and the
 OpenSpec tool files under .claude/ are generated, so the path checks skip them.
@@ -124,12 +126,23 @@ def check_adr_index():
 			problems.append(f"docs/decisions/{adr.name}: status {status and status.group(1)} differs from the index ({row and row.group(1)})")
 
 
+def check_specs_name_no_reference_product():
+	for spec in sorted(ROOT.glob("openspec/changes/*/specs/*/spec.md")):
+		section = ""
+		for n, line in enumerate(spec.read_text().splitlines(), 1):
+			if line.startswith("## "):
+				section = line
+			if "MoneyMoney" in line and "Purpose" not in section:
+				problems.append(f"{spec.relative_to(ROOT)}:{n}: a requirement names MoneyMoney; move the comparison to the proposal")
+
+
 for md in files:
 	rel = md.relative_to(ROOT)
 	check_links_and_paths(md, rel)
 	check_layout_trees(md, rel)
 check_data_model()
 check_adr_index()
+check_specs_name_no_reference_product()
 
 print("\n".join(problems) or "Documentation check passed.")
 sys.exit(1 if problems else 0)
