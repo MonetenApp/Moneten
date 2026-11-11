@@ -45,7 +45,7 @@ None.
 - The labels "(net)", "(19% VAT)", and the gross amount mark the parts of a tax split (interface strings).
 - The list of VAT rates is a setting with no visible control. The context menu showed two rates.
 
-### Decided for MonetenMoneten
+### Decided for Moneten
 
 - The VAT rates are 19 and 7 percent at first, and the user can change the list in the settings. MoneyMoney stores the list in a hidden setting.
 - Each part counts in its own category in search results, charts, budgets, reports, and exports. This comes from issue #39.

@@ -43,7 +43,7 @@ None.
 - Connections preferred IPv6 over IPv4 in one version, and the next version took that back because of problems (version history, 2.4.30 and 2.4.31).
 - FinTS message strings show separate errors for no Internet connection, a server that cannot be reached with its address and port, a timeout, a lost connection, an invalid certificate, and a connection that antivirus or firewall software blocked.
 
-### Decided for MonetenMoneten
+### Decided for Moneten
 
 - The lowest protocol version is TLS 1.2. MoneyMoney's lowest version was not observed.
 - No host gets an exception. MoneyMoney's `Info.plist` allows an insecure connection for one credit card domain.

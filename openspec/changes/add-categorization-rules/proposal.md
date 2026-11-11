@@ -42,7 +42,7 @@ None.
 - Rules can search comments (version history, 2.3.10).
 - Adjacent terms are joined with "and" by default (version history, 2.1.1).
 
-### Decided for MonetenMoneten
+### Decided for Moneten
 
 - When rules of several categories match one transaction, the first category in sidebar order wins. MoneyMoney does not document its order.
 - The app rejects a rule with a syntax error and shows where the error is. MoneyMoney's behavior was not observed.

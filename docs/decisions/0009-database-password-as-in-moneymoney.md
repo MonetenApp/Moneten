@@ -6,7 +6,7 @@ Status: Accepted
 
 MoneyMoney encrypts its database with a key that comes from a database password. Saving that password in the macOS Keychain is optional. PINs are saved only if the user chooses. Otherwise MoneyMoney asks for them once per launch ([security page](https://moneymoney.app/security/)). Its settings offer to unlock automatically at launch, with Touch ID, or with an Apple Watch, and to lock after a time without activity or when the main window closes.
 
-The first plan for MonetenMoneten kept a random key and all PINs in the Keychain. That is convenient, but then anyone who can use the unlocked macOS account can also open the finances. MoneyMoney users expect the stronger model they already know.
+The first plan for Moneten kept a random key and all PINs in the Keychain. That is convenient, but then anyone who can use the unlocked macOS account can also open the finances. MoneyMoney users expect the stronger model they already know.
 
 ## Decision
 

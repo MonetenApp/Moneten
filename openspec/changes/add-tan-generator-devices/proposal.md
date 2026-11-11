@@ -43,7 +43,7 @@ None.
 - Strings show "The server requires a pushTAN activation.", "Activation code", the instruction to scan the QR code from the registration letter with the pushTAN app, "Activating pushTAN app...", and "Missing activation code."
 - A card reader that connects through Bluetooth works only as a TAN generator, not as a card reader (strings).
 
-### Decided for MonetenMoneten
+### Decided for Moneten
 
 - The app asks for the Bluetooth permission only when the user first selects a Bluetooth device. When MoneyMoney asks was not observed.
 - When the device does not answer within 60 seconds, the app offers the optical or manual variant of the method in the same dialog. MoneyMoney's fallback was not observed.

@@ -74,6 +74,6 @@ enum UnlockMethod: CaseIterable {
 		case (false, true): policy = .deviceOwnerAuthenticationWithCompanion
 		case (false, false): return
 		}
-		LAContext().evaluatePolicy(policy, localizedReason: "open the MonetenMoneten database") { ok, _ in reply(ok) }
+		LAContext().evaluatePolicy(policy, localizedReason: "open the Moneten database") { ok, _ in reply(ok) }
 	}
 }

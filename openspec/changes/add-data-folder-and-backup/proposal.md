@@ -47,9 +47,9 @@ None.
 - The database is stored apart from the application file, so reinstalling the app keeps the accounts (interface strings).
 - An automatic backup copy from before the last update can be restored by renaming it ([backup page](https://moneymoney.app/help/backup/)).
 
-### Decided for MonetenMoneten
+### Decided for Moneten
 
-- The data folder is named "MonetenMoneten" and lies in the user's Library. The design fixes the exact path.
+- The data folder is named "Moneten" and lies in the user's Library. The design fixes the exact path.
 - Only the user's account can read the data folder.
 - "Show Database in Finder..." also works while the app is locked, because the reset needs it. "Backup Database..." works only while the app is unlocked.
 - The backup file gets a suggested name with the date. MoneyMoney's suggested name was not observed.

@@ -52,7 +52,7 @@ None.
 - The context menu acts on the transactions that the user selected. A beta of 2.5.4 fixes a case where it did not ([beta notes](https://moneymoney.app/beta/)).
 - A group view can "Group transactions by account" (interface string).
 
-### Decided for MonetenMoneten
+### Decided for Moneten
 
 - A selected row in a group or category view names its account at the end of the payee line. MoneyMoney adds a third line, which makes the row taller.
 - Transactions of one day keep the order in which the bank delivered them. MoneyMoney's order inside a day was not observed.

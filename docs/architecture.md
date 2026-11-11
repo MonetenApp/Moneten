@@ -1,6 +1,6 @@
 # Architecture
 
-This page explains how MonetenMoneten is split into modules, how data flows from a bank into the database, and why each boundary sits where it does. The exact fields of each type are in [data model](data-model.md). The reasons behind the big choices are in [decisions](decisions/).
+This page explains how Moneten is split into modules, how data flows from a bank into the database, and why each boundary sits where it does. The exact fields of each type are in [data model](data-model.md). The reasons behind the big choices are in [decisions](decisions/).
 
 The first build has four modules: `Domain`, `Storage`, `Import`, and `App`. Bank access, extensions, payments, and the log are planned. Each section below says when it describes the plan.
 
@@ -9,7 +9,7 @@ The first build has four modules: `Domain`, `Storage`, `Import`, and `App`. Bank
 The diagram shows the target design.
 
 ```
-┌───────────────────────── MonetenMoneten.app (SwiftUI) ─────────────────────────┐
+┌───────────────────────── Moneten.app (SwiftUI) ─────────────────────────┐
 │  Sidebar · Transactions · Categories · Rules · Charts · Transfers · Settings   │
 └───────────────┬──────────────────────────────┬─────────────────────────────────┘
                 │                              │
@@ -116,7 +116,7 @@ Bank responses, extension results, and import files are untrusted input. Each im
 
 ## The database password protects everything
 
-MonetenMoneten handles secrets the way MoneyMoney does. [ADR 0009](decisions/0009-database-password-as-in-moneymoney.md) has the details.
+Moneten handles secrets the way MoneyMoney does. [ADR 0009](decisions/0009-database-password-as-in-moneymoney.md) has the details.
 
 - The database is encrypted with SQLCipher. The key comes from the database password that you set at first launch or later. Until you set one, a random key in the Keychain protects the database.
 - Saving the password in the Keychain is optional. You need it saved to unlock automatically at launch, with Touch ID, or with an Apple Watch.
@@ -139,7 +139,7 @@ Each extension runs in its own XPC process with only the network client entitlem
 2. The extension gets the credentials of its own connection and nothing else.
 3. The extension's `LocalStorage` is kept by the app, per connection, inside the encrypted database.
 
-The API follows the [MoneyMoney Web Banking API](https://moneymoney.app/api/webbanking/), so most existing extensions run without changes. [ADR 0004](decisions/0004-moneymoney-compatible-extension-api.md) lists what is compatible and what MonetenMoneten adds.
+The API follows the [MoneyMoney Web Banking API](https://moneymoney.app/api/webbanking/), so most existing extensions run without changes. [ADR 0004](decisions/0004-moneymoney-compatible-extension-api.md) lists what is compatible and what Moneten adds.
 
 ## Payments are a separate state machine
 
@@ -165,7 +165,7 @@ The optional finAPI subscription (v0.3) needs a server that holds the finAPI cli
 ## Repository layout
 
 ```
-MonetenMoneten/
+Moneten/
 ├── Package.swift            The Swift package of the libraries
 ├── Sources/
 │   ├── Domain/

@@ -48,7 +48,7 @@ None.
 - The setting "Enable Secoder visualization" lets the user confirm a transfer on the display of the reader when the bank supports it. Otherwise the classic method is used. See [analysis](../../../docs/research/moneymoney-analysis.md#settings-u).
 - A key file can be used by a background refresh and a payment at the same time (version history 2.4.37). After a payment with a card or key file the account is refreshed (2.4.8).
 
-### Decided for MonetenMoneten
+### Decided for Moneten
 
 - The app supports the security profiles RAH-9 and RAH-10 for key files and cards, and DDV cards, as far as the FinTS library does. Older RDH profiles are supported for existing key files only when the library reads them. MoneyMoney supports more formats.
 - The password of a key file follows the rules of the change `add-login-credentials`. It is saved only on request.

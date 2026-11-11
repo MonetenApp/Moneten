@@ -3,12 +3,12 @@ import Domain
 import SwiftUI
 
 @main
-struct MonetenMonetenApp: App {
+struct MonetenApp: App {
 	@NSApplicationDelegateAdaptor(AppDelegate.self) var delegate
 	@State private var model = AppModel()
 
 	var body: some Scene {
-		Window("MonetenMoneten", id: "main") {
+		Window("Moneten", id: "main") {
 			RootView()
 				.environment(model)
 				.onAppear { DebugHarness.installIfRequested(model: model) }
@@ -48,7 +48,7 @@ struct AppCommands: Commands {
 				model.sheet = model.hasPassword ? .changePassword : .setPassword
 			}
 			.disabled(!unlocked)
-			Button("Lock MonetenMoneten") { model.lock() }
+			Button("Lock Moneten") { model.lock() }
 				.keyboardShortcut("l", modifiers: [.command, .control])
 				.disabled(!unlocked || !model.hasPassword)
 		}
@@ -107,8 +107,8 @@ struct AppCommands: Commands {
 		}
 		CommandGroup(replacing: .help) {
 			Button("Show Database in Finder...") { NSWorkspace.shared.activateFileViewerSelecting([model.vault.folder.root]) }
-			Button("MonetenMoneten on GitHub...") { NSWorkspace.shared.open(URL(string: "https://github.com/alexander-schneider/MonetenMoneten")!) }
-			Button("Report an Issue...") { NSWorkspace.shared.open(URL(string: "https://github.com/alexander-schneider/MonetenMoneten/issues/new/choose")!) }
+			Button("Moneten on GitHub...") { NSWorkspace.shared.open(URL(string: "https://github.com/alexander-schneider/Moneten")!) }
+			Button("Report an Issue...") { NSWorkspace.shared.open(URL(string: "https://github.com/alexander-schneider/Moneten/issues/new/choose")!) }
 		}
 	}
 }

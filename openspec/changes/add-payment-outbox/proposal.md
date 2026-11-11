@@ -59,7 +59,7 @@ None.
 - Strings exist for an order that was partially transmitted and for an order that was canceled because of a previous server error.
 - The outbox can be imported and exported (version history, 2.4.18). The strings limit the format to SEPA XML and forbid mixing transfers with direct debits, positions without an IBAN, and foreign currency.
 
-### Decided for MonetenMoneten
+### Decided for Moneten
 
 - "Sent" does not show the TAN that was entered. MoneyMoney shows it. See [ADR 0009](../../../docs/decisions/0009-database-password-as-in-moneymoney.md).
 - The review of a batch groups the positions by payee check result and lists the positions that do not match. MoneyMoney's screens for the batch payee check were not observed.

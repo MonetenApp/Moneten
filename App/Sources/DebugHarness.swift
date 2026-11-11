@@ -6,10 +6,10 @@ import SwiftUI
 /// Lets a developer drive the app and capture its windows as images, for checks without a screen.
 ///
 /// Active only in debug builds (`scripts/build-app.sh debug`) and in the optimized Perf build of
-/// `scripts/perf-check.sh`, and only when the environment variable `MONETENMONETEN_DEBUG_DIR` names
+/// `scripts/perf-check.sh`, and only when the environment variable `MONETEN_DEBUG_DIR` names
 /// a folder. Release builds leave it out, because any local process can post the notifications,
 /// including commands that unlock or re-key the database. Commands arrive as distributed
-/// notifications named `io.github.monetenmoneten.debug` with the keys `command` and `argument`.
+/// notifications named `io.github.moneten.debug` with the keys `command` and `argument`.
 /// A notification whose object is a path reaches only the app with that debug folder. Snapshots are
 /// drawn by the app itself and need no screen recording.
 @MainActor
@@ -26,10 +26,10 @@ final class DebugHarness {
 	}
 
 	private static func install(model: AppModel) {
-		guard shared == nil, let path = ProcessInfo.processInfo.environment["MONETENMONETEN_DEBUG_DIR"], !path.isEmpty else { return }
+		guard shared == nil, let path = ProcessInfo.processInfo.environment["MONETEN_DEBUG_DIR"], !path.isEmpty else { return }
 		let harness = DebugHarness(folder: URL(fileURLWithPath: path), model: model)
 		shared = harness
-		DistributedNotificationCenter.default().addObserver(forName: Notification.Name("io.github.monetenmoneten.debug"), object: nil, queue: .main) { note in
+		DistributedNotificationCenter.default().addObserver(forName: Notification.Name("io.github.moneten.debug"), object: nil, queue: .main) { note in
 			if let target = note.object as? String, target != path { return }
 			let command = note.userInfo?["command"] as? String ?? ""
 			let argument = note.userInfo?["argument"] as? String ?? ""

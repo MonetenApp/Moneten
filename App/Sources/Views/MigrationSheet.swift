@@ -23,8 +23,8 @@ struct MigrationSheet: View {
 			switch step {
 			case .intro:
 				Section {
-					Label("MonetenMoneten reads your account groups, accounts, categories with their rules, and transactions through the AppleScript export of MoneyMoney. MoneyMoney stays unchanged.", systemImage: "arrow.down.doc")
-					Label("MoneyMoney must be running and unlocked. macOS asks once whether MonetenMoneten may control MoneyMoney. Allow it.", systemImage: "lock.open")
+					Label("Moneten reads your account groups, accounts, categories with their rules, and transactions through the AppleScript export of MoneyMoney. MoneyMoney stays unchanged.", systemImage: "arrow.down.doc")
+					Label("MoneyMoney must be running and unlocked. macOS asks once whether Moneten may control MoneyMoney. Allow it.", systemImage: "lock.open")
 						.foregroundStyle(.secondary)
 				}
 			case let .reading(what):

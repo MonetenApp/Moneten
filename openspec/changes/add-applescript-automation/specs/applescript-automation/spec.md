@@ -18,7 +18,7 @@ The app SHALL publish a scripting dictionary with the commands `export accounts`
 #### Scenario: Existing script
 
 - **GIVEN** a script that was written for the reference product and whose only command is `export accounts`
-- **WHEN** the user sets the application name in its `tell` line to "MonetenMoneten" and runs it
+- **WHEN** the user sets the application name in its `tell` line to "Moneten" and runs it
 - **THEN** the script returns the list of accounts without any other change
 
 ### Requirement: Export accounts
@@ -86,7 +86,7 @@ The app SHALL return an XML property list as the result of `export transactions`
 
 #### Scenario: Read with another language
 
-- **WHEN** a Python program runs `osascript` with `tell application "MonetenMoneten" to export transactions from date "2026-10-10" as "plist"` and parses the output as a property list
+- **WHEN** a Python program runs `osascript` with `tell application "Moneten" to export transactions from date "2026-10-10" as "plist"` and parses the output as a property list
 - **THEN** the program can read `transactions` as an array
 
 ### Requirement: Keys of an exported transaction

@@ -44,7 +44,7 @@ None.
 - The app no longer uses the macOS password manager for its fields, because that caused network connections (version history 2.4.49 and 2.4.50).
 - While the app is locked, no account is refreshed in the background (version history 2.4.49).
 
-### Decided for MonetenMoneten
+### Decided for Moneten
 
 - A saved PIN is stored in the encrypted database and not in the Keychain. This follows ADR 0009. Where MoneyMoney stores it was not observed.
 - Saving is off when the sheet first appears for an access.

@@ -1,6 +1,6 @@
 # The Xcode project of the app. Generate it with scripts/generate-project.sh.
 # The libraries Domain, Storage, and Import stay in the Swift package at the repository root.
-name: MonetenMoneten
+name: Moneten
 options:
   bundleIdPrefix: io.github.alexander-schneider
   deploymentTarget:
@@ -21,10 +21,10 @@ settings:
     SWIFT_VERSION: "6.0"
     DEAD_CODE_STRIPPING: YES
 packages:
-  MonetenMonetenKit:
+  MonetenKit:
     path: ..
 targets:
-  MonetenMoneten:
+  Moneten:
     type: application
     platform: macOS
     sources:
@@ -32,24 +32,24 @@ targets:
       - path: Resources
         buildPhase: resources
     dependencies:
-      - package: MonetenMonetenKit
+      - package: MonetenKit
         product: Domain
-      - package: MonetenMonetenKit
+      - package: MonetenKit
         product: Storage
-      - package: MonetenMonetenKit
+      - package: MonetenKit
         product: Import
     settings:
       base:
         MARKETING_VERSION: 0.0.1
         CURRENT_PROJECT_VERSION: 1
-        PRODUCT_BUNDLE_IDENTIFIER: io.github.alexander-schneider.MonetenMoneten
-        PRODUCT_NAME: MonetenMoneten
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.alexander-schneider.Moneten
+        PRODUCT_NAME: Moneten
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: Info.plist
-        CODE_SIGN_ENTITLEMENTS: MonetenMoneten.entitlements
+        CODE_SIGN_ENTITLEMENTS: Moneten.entitlements
         # A muted slate blue for selections and controls, calmer than the system blue.
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
-        ENABLE_HARDENED_RUNTIME: $(MONETENMONETEN_HARDENED_RUNTIME)
+        ENABLE_HARDENED_RUNTIME: $(MONETEN_HARDENED_RUNTIME)
       configs:
         Perf:
           SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) PERF_HARNESS
@@ -69,12 +69,12 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: io.github.alexander-schneider.FinTSProbe
         PRODUCT_NAME: FinTSProbe
         GENERATE_INFOPLIST_FILE: YES
-        ENABLE_HARDENED_RUNTIME: $(MONETENMONETEN_HARDENED_RUNTIME)
+        ENABLE_HARDENED_RUNTIME: $(MONETEN_HARDENED_RUNTIME)
 schemes:
-  MonetenMoneten:
+  Moneten:
     build:
       targets:
-        MonetenMoneten: all
+        Moneten: all
     run:
       config: Debug
     archive:

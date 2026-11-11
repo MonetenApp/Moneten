@@ -41,7 +41,7 @@ None.
 - OFX import exists since version 2.1.14.
 - The app "supports the CSV export formats of current finance apps" and detects other CSV files by itself (interface strings).
 
-### Decided for MonetenMoneten
+### Decided for Moneten
 
 - A QIF file can hold sections of several kinds. The app imports the bank, cash, and credit card sections and reports investment sections as skipped. MoneyMoney's behavior was not observed.
 - An OFX file with several accounts is matched to the accounts of the app by account number. MoneyMoney's behavior was not observed.

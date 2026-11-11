@@ -49,15 +49,15 @@ None.
 - The extension page lists community extensions that return balances, transactions, securities, and quotes ([extensions page](https://moneymoney.app/extensions/)).
 - Lua 5.4 is the script language (version history, 2.4.57).
 
-### Decided for MonetenMoneten
+### Decided for Moneten
 
 - The app warns before it first runs an extension that is not from the catalog, and again when the file changes. MoneyMoney instead refuses unsigned extensions until the user turns the signature check off. The signature check arrives with the catalog in v0.3.
-- A manifest is optional and is an addition of MonetenMoneten ([ADR 0004](../../../docs/decisions/0004-moneymoney-compatible-extension-api.md)). With a manifest, the extension reaches only the listed hosts. Without one, the app asks the user to allow each host at first contact. MoneyMoney does not limit hosts at run time.
+- A manifest is optional and is an addition of Moneten ([ADR 0004](../../../docs/decisions/0004-moneymoney-compatible-extension-api.md)). With a manifest, the extension reaches only the listed hosts. Without one, the app asks the user to allow each host at first contact. MoneyMoney does not limit hosts at run time.
 - The labels of the login fields come from the manifest. MoneyMoney keeps them in a central bank database.
 - A browser approval works for a host that the manifest lists or the user allowed. MoneyMoney needs the host to be enabled by the vendor.
 - The app refuses a URL that does not start with `https://`.
 - Each extension runs in its own process that is stopped after the session. The Lua functions for files, processes, and loading code are removed. MoneyMoney forbids them only in its review checklist.
-- `MM.productName` is "MonetenMoneten". `MM.APPSTORE` is always `nil`. `MM.apiVersion` is new.
+- `MM.productName` is "Moneten". `MM.APPSTORE` is always `nil`. `MM.apiVersion` is new.
 - `session` never has the value `"payment"`, and the API has no way to send a payment ([ADR 0008](../../../docs/decisions/0008-payments-only-through-licensed-channels.md)).
 - When a script defines both login functions, the app calls `InitializeSession2`. The documentation calls it an alternative and does not state the order.
 - A challenge during an automatic refresh shows no dialog. The app marks the access and waits for a refresh that the user starts. MoneyMoney's behavior in this case was not observed.

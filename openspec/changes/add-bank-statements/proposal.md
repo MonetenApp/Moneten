@@ -47,9 +47,9 @@ None.
 - The [web banking API](https://moneymoney.app/api/webbanking/) lets an extension return documents with an identifier, a name, a file name, a creation date, and an account, also inside a ZIP archive.
 - Banks often need an application before they deliver statements through FinTS ([statements page](https://moneymoney.app/statements/)).
 
-### Decided for MonetenMoneten
+### Decided for Moneten
 
-- Statements come only through the access of the account, which is FinTS or an extension. MoneyMoney can also fetch them from a bank website with built-in scripts and offers "Download from" for that. MonetenMoneten has no built-in scripts.
+- Statements come only through the access of the account, which is FinTS or an extension. MoneyMoney can also fetch them from a bank website with built-in scripts and offers "Download from" for that. Moneten has no built-in scripts.
 - A due download that needs a TAN does not prompt during an automatic refresh. It waits for the next refresh that the user starts. This follows issue #40.
 - The grid is sorted by statement date, newest first. The grouping in MoneyMoney was not observed in detail.
 - The file name pattern and the folder levels below "Statements" are defined here. MoneyMoney's pattern was not observed.

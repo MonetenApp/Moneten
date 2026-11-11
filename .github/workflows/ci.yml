@@ -35,7 +35,7 @@ jobs:
       - name: UI performance
         run: scripts/perf-check.sh
       - name: FinTS prototype
-        run: xcodebuild -project App/MonetenMoneten.xcodeproj -scheme FinTSProbe -derivedDataPath .build/xcode -disableAutomaticPackageResolution -quiet build
+        run: xcodebuild -project App/Moneten.xcodeproj -scheme FinTSProbe -derivedDataPath .build/xcode -disableAutomaticPackageResolution -quiet build
       - name: Unused code
         # The Periphery repository is archived, and Homebrew drops its formula in August 2027.
         # CI uses the last release, checked against its hash.

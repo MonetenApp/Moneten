@@ -51,7 +51,7 @@ None.
 - Import and export use CSV and SEPA XML (version history, 2.2.9). The import recognizes CSV columns by common header keywords. Templates without an IBAN cannot be saved as SEPA XML (strings).
 - A template can be reassigned to another source account by opening it ([duplicate account help](https://moneymoney.app/help/dual-account/)).
 
-### Decided for MonetenMoneten
+### Decided for Moneten
 
 - Placeholders use the forms of the German examples in both interface languages, for example "KW33/2024" and "2. Halbjahr 2024". The purpose goes to a German bank statement, and MoneyMoney documents no English forms.
 - An unknown placeholder stays in the purpose as written, and the review step shows it. MoneyMoney's behavior was not observed.

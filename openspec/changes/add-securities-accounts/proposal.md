@@ -46,7 +46,7 @@ None.
 - The app stores the portfolio value once a day (version history, 2.2.14).
 - Removing a portfolio account warns that all portfolio items are removed and that the portfolio history cannot be restored (strings).
 
-### Decided for MonetenMoneten
+### Decided for Moneten
 
 - The daily record of the portfolio value is part of this change, because issue #31 asks that securities count in the balance chart. The charts of the portfolio itself come with the change `add-portfolio-analysis`.
 - The app uses only exchange rates that the bank or the extension delivers. It fetches no exchange rates itself. A value that cannot be converted stays in its own currency, and sums keep one total for each currency. This follows the `Totals` type in [data model](../../../docs/data-model.md).

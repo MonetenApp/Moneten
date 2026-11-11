@@ -8,7 +8,7 @@ The target users manage their finances on a Mac today, mostly with MoneyMoney, B
 
 ## Decision
 
-MonetenMoneten is a macOS app written in Swift with SwiftUI. It supports the two most recent major macOS versions. Windows, Linux, and the web are out of scope.
+Moneten is a macOS app written in Swift with SwiftUI. It supports the two most recent major macOS versions. Windows, Linux, and the web are out of scope.
 
 ## Consequences
 

@@ -45,7 +45,7 @@ None.
 - The context menu offers "Send Transaction to" for installed integration apps. See [analysis](../../../docs/research/moneymoney-analysis.md#context-menus-u).
 - The format `plist` is available to AppleScript. See [analysis](../../../docs/research/moneymoney-analysis.md#applescript-s-w).
 
-### Decided for MonetenMoneten
+### Decided for Moneten
 
 - Spreadsheet files have the same columns as the CSV export, with real date and number cells.
 - A group export in a bank format writes one statement for each account, in sidebar order. The exact layout in MoneyMoney was not observed.

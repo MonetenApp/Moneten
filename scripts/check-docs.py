@@ -4,12 +4,12 @@
 - Every relative Markdown link resolves to a file, and its #anchor to a heading.
 - Every path in code font exists, read from the repository root or from the folder of the doc,
   or git ignores it.
-- Every folder and file in a layout tree that starts with "MonetenMoneten/" exists.
+- Every folder and file in a layout tree that starts with "Moneten/" exists.
 - Every name in code font in docs/data-model.md, above its section on later types, is declared
   in Sources/ or is a table of the database.
 - The status in each ADR file matches the index table in docs/decisions/README.md.
 - A spec names MoneyMoney only in its Purpose, as openspec/config.yaml requires. A difference to
-  MoneyMoney belongs under "Decided for MonetenMoneten" in the proposal.
+  MoneyMoney belongs under "Decided for Moneten" in the proposal.
 
 Proposals and specs describe planned work and may name folders that do not exist yet, and the
 OpenSpec tool files under .claude/ are generated, so the path checks skip them.
@@ -56,7 +56,7 @@ def path_exists(md, path):
 	"""A path exists, or git ignores it, as for a local file such as App/Local.xcconfig that each developer creates."""
 	if (ROOT / path).exists() or (md.parent / path).exists():
 		return True
-	# A pattern such as "App/MonetenMoneten.xcodeproj/" matches only folders, so ask for both forms.
+	# A pattern such as "App/Moneten.xcodeproj/" matches only folders, so ask for both forms.
 	return any(subprocess.run(["git", "check-ignore", "-q", p], cwd=ROOT).returncode == 0 for p in (path, path + "/"))
 
 
@@ -82,10 +82,10 @@ def check_links_and_paths(md, rel):
 
 
 def check_layout_trees(md, rel):
-	"""Checks trees such as "MonetenMoneten/", "├── Sources/", "│   ├── Domain/"."""
+	"""Checks trees such as "Moneten/", "├── Sources/", "│   ├── Domain/"."""
 	lines = md.read_text().splitlines()
 	for start, line in enumerate(lines):
-		if line.strip() != "MonetenMoneten/":
+		if line.strip() != "Moneten/":
 			continue
 		stack = []
 		for n in range(start + 1, len(lines)):

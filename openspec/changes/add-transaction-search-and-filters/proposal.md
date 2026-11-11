@@ -50,7 +50,7 @@ None.
 - The pin with the tooltip "Save filter bar" keeps the filter bar between views (version history, 2.4.9).
 - For each kind of filter there is a line that says the filter is active and that some entries might be hidden (interface strings).
 
-### Decided for MonetenMoneten
+### Decided for Moneten
 
 - Several words in the search field must all occur. The search field also accepts the expression language of the categorization rules. Neither was observed in MoneyMoney.
 - The search folds case and umlauts in the same way as the rules.

@@ -40,7 +40,7 @@ None.
 - The transfer button is available on the overview page (version history, 2.0.20).
 - Strings show the lines "1 more new transaction..." and one for several more new transactions, "Sum:", and "Last updated".
 
-### Decided for MonetenMoneten
+### Decided for Moneten
 
 The content of the dashboard is drawn without Accessibility elements and macOS blocked screenshots. The layout of an item was not observed. Everything below is a decision.
 

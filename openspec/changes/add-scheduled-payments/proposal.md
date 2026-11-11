@@ -50,7 +50,7 @@ None.
 - SRZ orders are listed in "Scheduled", also when their date has passed, and are authorized in the app (version history, 2.4.12 and 2.4.13). Strings exist for an order that is already authorized, for a bank that needs to activate the function, and for the payee check that a bank cannot run for SRZ orders.
 - Placeholders cannot be used in standing orders ([templates page](https://moneymoney.app/templates/)).
 
-### Decided for MonetenMoneten
+### Decided for Moneten
 
 - The intervals that the app offers for a standing order are those in the bank's parameter data. The list that MoneyMoney shows was not observed.
 - The app warns when the purpose of a standing order contains a placeholder. MoneyMoney only documents that placeholders do not work there.

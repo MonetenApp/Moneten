@@ -35,7 +35,7 @@ The app SHALL offer "Check for Updates..." in the application menu. The command 
 
 ### Requirement: Check for updates automatically
 
-The app SHALL look for a new version at launch and then once a day while it runs, if the setting "Show notification about new versions of MonetenMoneten" is on. The setting is on by default. With the setting off, the app looks for a new version only on request.
+The app SHALL look for a new version at launch and then once a day while it runs, if the setting "Show notification about new versions of Moneten" is on. The setting is on by default. With the setting off, the app looks for a new version only on request.
 
 #### Scenario: Setting on
 
@@ -236,9 +236,9 @@ The app SHALL update its list of banks with their server addresses and its BIC d
 
 ### Requirement: Mark pre-release versions
 
-The app SHALL show the build number next to the version number in "About MonetenMoneten", and it SHALL mark a pre-release version as a pre-release there.
+The app SHALL show the build number next to the version number in "About Moneten", and it SHALL mark a pre-release version as a pre-release there.
 
 #### Scenario: Pre-release
 
-- **WHEN** the user opens "About MonetenMoneten" in version 0.2.0-beta.1
+- **WHEN** the user opens "About Moneten" in version 0.2.0-beta.1
 - **THEN** the window shows "0.2.0-beta.1", the build number, and a mark that this is a pre-release

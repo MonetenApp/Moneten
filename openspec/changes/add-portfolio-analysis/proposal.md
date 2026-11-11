@@ -43,7 +43,7 @@ None.
 - Portfolios can be exported as a CSV file (version history, 2.5.0).
 - Strings show "New portfolio item" and "Import Portfolio Positions...".
 
-### Decided for MonetenMoneten
+### Decided for Moneten
 
 - A security has no asset class until the user assigns one. MoneyMoney may guess a class. That was not observed.
 - The assignment belongs to the security, identified by its ISIN, and applies to that security in every portfolio.

@@ -49,7 +49,7 @@ None.
 - The sidebar can show an amount next to a category, for example the sum of the current month or the total (version history, 2.2.10).
 - The status line of a category view shows one sum for each currency.
 
-### Decided for MonetenMoneten
+### Decided for Moneten
 
 - Category icons are SF Symbols. MoneyMoney offers its own pictures, which belong to its maker; the migration takes only their color.
 - The transactions of a removed category go to "Uncategorized". MoneyMoney says only that they are kept.

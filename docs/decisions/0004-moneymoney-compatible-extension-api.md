@@ -12,13 +12,13 @@ An API is a description of an interface. Re-implementing an interface for compat
 
 ## Decision
 
-MonetenMoneten runs Lua 5.4 extensions with an API that is compatible with the MoneyMoney Web Banking API:
+Moneten runs Lua 5.4 extensions with an API that is compatible with the MoneyMoney Web Banking API:
 
 - The entry points `WebBanking{}`, `SupportsBank`, `InitializeSession`, `InitializeSession2`, `ListAccounts`, `RefreshAccount`, `FetchStatements`, and `EndSession`.
 - The helpers `Connection`, `HTML`, `JSON`, `PDF`, `LocalStorage`, and the `MM` functions.
 - The two-factor challenge tables, mapped to the app's `Challenge` enum.
 
-MonetenMoneten adds three things:
+Moneten adds three things:
 
 1. A manifest next to the script that lists the hosts the extension contacts and the labels of its credential fields.
 2. An embedded browser window for logins that need a captcha or a redirect.

@@ -233,11 +233,11 @@ The app connects to the bank servers directly. It also asks the developer's serv
 
 ## Not carried over
 
-MonetenMoneten does not copy these parts of MoneyMoney.
+Moneten does not copy these parts of MoneyMoney.
 
 | Part of MoneyMoney | Why it has no spec |
 |---|---|
-| License keys, the trial period, in-app purchases, and the Mac App Store edition | MonetenMoneten is free software ([ADR 0006](../decisions/0006-license-gpl-3.md)) |
+| License keys, the trial period, in-app purchases, and the Mac App Store edition | Moneten is free software ([ADR 0006](../decisions/0006-license-gpl-3.md)) |
 | The PSD2 online service of MRH applications GmbH | The optional finAPI subscription takes its place ([ADR 0007](../decisions/0007-optional-finapi-subscription.md)) |
 | "Encrypt File for Sending" for the vendor's support | The spec for the log window defines a redacted export for public bug reports instead |
 | Built-in, encrypted bank scripts that the vendor updates from its server | Banks without FinTS come through open extensions and the signed catalog |
@@ -248,5 +248,5 @@ MonetenMoneten does not copy these parts of MoneyMoney.
 - The exact content of a dashboard item was not observed.
 - One panel in the bundle is named after Spotlight, and one string reads "Search Account". No menu command opens it. It has no spec.
 - The strings "Clearing entry for daily balance", "Copy to Pasteboard", and "Copy position to pasteboard" could not be tied to a place in the interface.
-- The key derivation and the behavior without a database password were not observed. [ADR 0009](../decisions/0009-database-password-as-in-moneymoney.md) records what MonetenMoneten does.
+- The key derivation and the behavior without a database password were not observed. [ADR 0009](../decisions/0009-database-password-as-in-moneymoney.md) records what Moneten does.
 - Messages during a bank dialog are known as text only. Their order and timing come from FinTS itself.

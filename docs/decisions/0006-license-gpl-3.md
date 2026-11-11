@@ -14,6 +14,6 @@ The app and all packages in this repository are licensed under GPL-3.0-or-later.
 
 ## Consequences
 
-- Companies cannot ship a closed version of MonetenMoneten.
+- Companies cannot ship a closed version of Moneten.
 - Contributions are accepted under the same license, without a contributor license agreement.
 - The optional subscription service is a separate project under the AGPL. See [0007](0007-optional-finapi-subscription.md).

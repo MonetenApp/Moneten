@@ -9,7 +9,7 @@ struct VaultTests {
 	let folder: DataFolder
 
 	init() throws {
-		let root = FileManager.default.temporaryDirectory.appendingPathComponent("MonetenMonetenTests-\(UUID().uuidString)")
+		let root = FileManager.default.temporaryDirectory.appendingPathComponent("MonetenTests-\(UUID().uuidString)")
 		folder = DataFolder(root: root)
 	}
 
@@ -116,6 +116,23 @@ struct VaultTests {
 		let ledger = try store.loadLedger()
 		#expect(ledger.transactions(ofAccount: giro.id).allSatisfy { !$0.isNew })
 		#expect(ledger.transactions(ofAccount: savings.id).allSatisfy { $0.isNew })
+	}
+
+	// It writes the login Keychain of the Mac that runs it, which CI does not offer.
+	@Test("A key under the old app name moves to the new name and opens the database", .enabled(if: ProcessInfo.processInfo.environment["CI"] == nil))
+	func legacyKeychainEntry() throws {
+		let vault = Vault(folder: folder)
+		_ = try vault.create(password: "legacy-key", starterCategories: [])
+		FileManager.default.createFile(atPath: vault.noPasswordMarker.path, contents: Data())
+		try vault.legacyKeyKeychain.write("legacy-key", account: folder.legacyKeychainAccount)
+		defer {
+			try? vault.legacyKeyKeychain.delete(account: folder.legacyKeychainAccount)
+			try? vault.keyKeychain.delete(account: folder.keychainAccount)
+		}
+		#expect(try vault.state() == .randomKey)
+		_ = try vault.openWithRandomKey()
+		#expect(try vault.keyKeychain.read(account: folder.keychainAccount) == "legacy-key")
+		#expect(try vault.legacyKeyKeychain.read(account: folder.legacyKeychainAccount) == nil)
 	}
 
 	@Test("A missing database means a new start")

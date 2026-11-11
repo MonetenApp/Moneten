@@ -46,7 +46,7 @@ None.
 - The end-to-end reference must not start or end with a slash and must not contain two slashes in a row. An invalid purpose code is rejected.
 - The default settings list the purpose codes SALA, CBFF, and CHAR.
 
-### Decided for MonetenMoneten
+### Decided for Moneten
 
 - The parameters that the app reads from `bank` and `payto` links follow the public BezahlCode description and RFC 8905. MoneyMoney's parsing was not observed.
 - The "Recently used" list holds ten recipients. The length of MoneyMoney's list was not observed.

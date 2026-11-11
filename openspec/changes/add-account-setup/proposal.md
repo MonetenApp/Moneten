@@ -50,7 +50,7 @@ None.
 - The Help menu has "Supported Banks (Germany)..." and "Supported Banks (Europe)...".
 - A credit card is added with the bank code of the issuing bank, or with "Look for New Accounts" on the giro account.
 
-### Decided for MonetenMoneten
+### Decided for Moneten
 
 - "Other" lists only the services of installed extensions and "Offline account / Cash". MoneyMoney also lists built-in credit card services that its vendor maintains.
 - The bank directory is the institute list that comes with the FinTS product registration. MoneyMoney's source was not observed.

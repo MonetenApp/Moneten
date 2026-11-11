@@ -45,7 +45,7 @@ None.
 - Printouts carry a period line and page numbers in the form "Page 1 of 3" (interface strings).
 - A fix in version 2.4.65 concerns a transaction that was lost before a page break. Another fix concerns a purpose that printed in one line only (2.2.1).
 
-### Decided for MonetenMoneten
+### Decided for Moneten
 
 - The print dialog is the standard dialog of macOS with its preview and its PDF functions.
 - Printouts use dark text on a white page in every appearance.

@@ -43,7 +43,7 @@ None.
 - The remaining budget stays visible when the budget is overspent (version history, 2.2.11).
 - The interface has the labels "Available budget", "Overspent", and "(no budget set)".
 
-### Decided for MonetenMoneten
+### Decided for Moneten
 
 - Withdrawals use the budget and deposits in the same category give it back. How MoneyMoney nets the two was not observed.
 - A period is a calendar month, quarter, or year. Unused budget does not carry over to the next period.

@@ -12,8 +12,8 @@ Several SwiftUI features that the specs need arrive with macOS 15. Examples are 
 
 ## Decision
 
-- The repository is one Swift package. `Domain`, `Storage`, and `Import` are library targets. `App` is the executable `MonetenMoneten`.
-- `scripts/build-app.sh` builds `dist/MonetenMoneten.app`. It writes `Info.plist`, embeds `SQLCipher.framework`, and signs the bundle. Without `CODESIGN_IDENTITY` it signs ad hoc and leaves out the hardened runtime, because its library validation refuses a framework with an ad hoc signature.
+- The repository is one Swift package. `Domain`, `Storage`, and `Import` are library targets. `App` is the executable `Moneten`.
+- `scripts/build-app.sh` builds `dist/Moneten.app`. It writes `Info.plist`, embeds `SQLCipher.framework`, and signs the bundle. Without `CODESIGN_IDENTITY` it signs ad hoc and leaves out the hardened runtime, because its library validation refuses a framework with an ad hoc signature.
 - `scripts/test.sh` runs the tests. With only the Command Line Tools it adds the search paths of Swift Testing.
 - Both scripts call the package manager with `--disable-keychain`. Without it, the package manager waits for a Keychain prompt about GitHub before it downloads SQLCipher.
 - The app requires macOS 15 or newer.

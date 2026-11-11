@@ -15,9 +15,9 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>MonetenMoneten</string>
+	<string>Moneten</string>
 	<key>CFBundleDisplayName</key>
-	<string>MonetenMoneten</string>
+	<string>Moneten</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -29,11 +29,11 @@
 	<key>LSMinimumSystemVersion</key>
 	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
 	<key>NSAppleEventsUsageDescription</key>
-	<string>MonetenMoneten reads your accounts, categories, and transactions from MoneyMoney when you import them. It changes nothing in MoneyMoney.</string>
+	<string>Moneten reads your accounts, categories, and transactions from MoneyMoney when you import them. It changes nothing in MoneyMoney.</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSHumanReadableCopyright</key>
-	<string>MonetenMoneten is free software under the GNU GPL v3.0 or later.</string>
+	<string>Moneten is free software under the GNU GPL v3.0 or later.</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 	<key>NSSupportsAutomaticTermination</key>

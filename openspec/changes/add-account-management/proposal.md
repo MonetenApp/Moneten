@@ -48,7 +48,7 @@ None.
 - The sidebar shows the currency of an account (version history 2.2.10).
 - An extension can report several balances in different currencies and a number of bonus points for an account. When an extension reports no account type, the type is derived from the account number and name, where 16 characters or masked digits mean a credit card. The type is set only when the account is created (https://moneymoney.app/api/webbanking/). Strings show "Bonus points", "Portfolio number", and "Credit card number".
 
-### Decided for MonetenMoneten
+### Decided for Moneten
 
 - An account is a colored square, as in MoneyMoney. MoneyMoney's own icon pictures are not copied; the migration takes only their color.
 - The account type "Portfolio" is set by the bank or the extension and cannot be chosen by hand. This was not observed.

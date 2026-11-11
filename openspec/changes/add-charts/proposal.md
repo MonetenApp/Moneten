@@ -49,7 +49,7 @@ None.
 - A category with "Show in diagrams" turned off does not appear in other charts. The help recommends this for transfers between own accounts ([help](https://moneymoney.app/help/), version history 2.2.12).
 - Without a visible category the view says "No visible categories; no pie chart."
 
-### Decided for MonetenMoneten
+### Decided for Moneten
 
 - Bars, pies, the slate band, and the hover column follow the look measured in MoneyMoney's window.
 - Text on the light slate band is dark with at least 4.5:1. MoneyMoney writes white on it, which reaches only 2:1.

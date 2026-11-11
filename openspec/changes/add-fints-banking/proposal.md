@@ -50,7 +50,7 @@ None.
 - Accounts of one bank are handled in one session to keep the number of logins low (https://moneymoney.app/sca/).
 - A credit card that the bank offers through FinTS is added with the Bankleitzahl of the bank (strings).
 
-### Decided for MonetenMoneten
+### Decided for Moneten
 
 - The app supports FinTS 3.0. It does not support the older HBCI 2.2. MoneyMoney supports both.
 - The user cannot enter a FinTS address by hand. The address comes from the bank directory. MoneyMoney's current behavior was not observed.

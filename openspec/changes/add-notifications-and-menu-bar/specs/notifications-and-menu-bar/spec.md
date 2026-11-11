@@ -163,11 +163,11 @@ The app SHALL show one notification when a refresh run has downloaded new PDF st
 
 ### Requirement: Menu bar icon
 
-The app SHALL show an icon in the menu bar while it runs when the setting "Show MonetenMoneten icon in menu bar" is on. The setting is off by default. Turning it on or off takes effect at once.
+The app SHALL show an icon in the menu bar while it runs when the setting "Show Moneten icon in menu bar" is on. The setting is off by default. Turning it on or off takes effect at once.
 
 #### Scenario: Turn on
 
-- **WHEN** the user turns on "Show MonetenMoneten icon in menu bar"
+- **WHEN** the user turns on "Show Moneten icon in menu bar"
 - **THEN** the icon appears in the menu bar without a restart
 
 #### Scenario: Turn off

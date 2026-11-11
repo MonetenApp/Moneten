@@ -2,7 +2,7 @@
 
 ## Why
 
-Some banks offer no FinTS access, and some users do not want to set FinTS up. PSD2 interfaces of banks are open only to licensed services, not to an app on a Mac. A licensed aggregator closes that gap. MoneyMoney sells its own PSD2 online service for this purpose. MonetenMoneten offers finAPI through an optional subscription that also gives the project an income.
+Some banks offer no FinTS access, and some users do not want to set FinTS up. PSD2 interfaces of banks are open only to licensed services, not to an app on a Mac. A licensed aggregator closes that gap. MoneyMoney sells its own PSD2 online service for this purpose. Moneten offers finAPI through an optional subscription that also gives the project an income.
 
 ## What Changes
 
@@ -49,7 +49,7 @@ None.
 - An existing account switches to the PSD2 interface with "Edit Login Data...". For a payment the app suggests to switch to FinTS/HBCI.
 - After the usage period ends, the app says so and asks for a renewal.
 
-### Decided for MonetenMoneten
+### Decided for Moneten
 
 - The aggregator is finAPI, reached through a subscription service of the project ([ADR 0007](../../../docs/decisions/0007-optional-finapi-subscription.md)). MoneyMoney runs its own registered service.
 - The user enters the bank login data in finAPI's web form. The app does not see it. MoneyMoney sends the login data to its own service.

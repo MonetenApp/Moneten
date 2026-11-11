@@ -34,8 +34,8 @@ These capabilities own the settings on each tab.
 
 | Tab | Setting | Capability |
 |---|---|---|
-| General | "Show notification about new versions of MonetenMoneten", "Participate in beta tests and display pre-release versions" | `software-update` |
-| General | "Show MonetenMoneten icon in menu bar", "Show banner notification on new transactions", "Play sound on new transactions" | `notifications-and-menu-bar` |
+| General | "Show notification about new versions of Moneten", "Participate in beta tests and display pre-release versions" | `software-update` |
+| General | "Show Moneten icon in menu bar", "Show banner notification on new transactions", "Play sound on new transactions" | `notifications-and-menu-bar` |
 | General | "Automatically refresh accounts" | `account-refresh` |
 | General | "Language" | `localization-and-formatting` |
 | Security | "Set Database Password..." and "Change Database Password..." | `database-encryption` |
@@ -55,9 +55,9 @@ These capabilities own the settings on each tab.
 - The window has no button to save or to cancel.
 - Settings with consequences carry a short explanation below the switch, for example the two settings for templates and the outbox on the "Payments" tab.
 - The interface strings include a message that the app must be restarted for a change to take effect, and a message that a setting could not be stored.
-- Version 0.1 of MonetenMoneten needs the tabs "General", "Security", and "Extensions". The other tabs belong to later releases.
+- Version 0.1 of Moneten needs the tabs "General", "Security", and "Extensions". The other tabs belong to later releases.
 
-### Decided for MonetenMoneten
+### Decided for Moneten
 
 - The tab "Subscription" takes the place of the tab "PSD2". See [not carried over](../../../docs/research/moneymoney-analysis.md#not-carried-over).
 - The "Extensions" tab has no paid add-ons and no "Restore Purchases".

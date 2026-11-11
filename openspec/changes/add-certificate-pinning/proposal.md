@@ -39,7 +39,7 @@ None.
 - The bundle contains a sheet for the certificate check. Strings show the title "Verify SSL Certificate", "SHA256 fingerprint of" a server, the buttons "Accept" and "Reject", a note that banks change their certificate once a year and that antivirus or firewall software can cause the message, and a note that a proxy server is likely responsible when macOS has one configured. See [analysis](../../../docs/research/moneymoney-analysis.md#windows-sheets-and-popovers-s).
 - FinTS message strings show an error for a certificate that is blacklisted, and an error for a certificate that does not match its entry in the whitelist yet, with the advice to try again the next day.
 
-### Decided for MonetenMoneten
+### Decided for Moneten
 
 - The pin list ships with the app and updates through the signed data files of the update source. MoneyMoney fetches its list from the vendor's service.
 - The sheet appears only after the normal validation passed. A certificate that macOS rejects cannot be accepted.

@@ -53,7 +53,7 @@ None.
 - After an instant payment the app asks the bank for the status for up to 20 seconds (version history, 2.4.29) and shows whether the amount was credited (version history, 2.4.38).
 - The app refreshes the account after a payment (version history, 2.4.8).
 
-### Decided for MonetenMoneten
+### Decided for Moneten
 
 - The review step and the four payee check results with an explicit confirmation follow issues #27 and #29. The exact screens of MoneyMoney for the payee check were not observed.
 - Every state of an order is saved, and the app resumes after a crash without sending again. This follows issue #28.

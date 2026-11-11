@@ -2,8 +2,8 @@
 // runtime, because its library validation refuses the ad hoc signed SQLCipher framework.
 // To sign with your team, create App/Local.xcconfig (ignored by git) with these two lines:
 //   DEVELOPMENT_TEAM = <your team ID>
-//   MONETENMONETEN_HARDENED_RUNTIME = YES
+//   MONETEN_HARDENED_RUNTIME = YES
 CODE_SIGN_STYLE = Automatic
 DEVELOPMENT_TEAM =
-MONETENMONETEN_HARDENED_RUNTIME = NO
+MONETEN_HARDENED_RUNTIME = NO
 #include? "Local.xcconfig"

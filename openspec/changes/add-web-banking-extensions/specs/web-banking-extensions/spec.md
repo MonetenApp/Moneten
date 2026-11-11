@@ -969,7 +969,7 @@ The app SHALL offer `MM.random(length)`, which returns that many random bytes fr
 
 ### Requirement: Environment values
 
-The app SHALL offer `MM.productName` with the value "MonetenMoneten", `MM.productVersion` as text, `MM.productBuild` as a number, `MM.apiVersion` as a number, `MM.language` with the language code of the interface, and `MM.deviceUuid` with a random identifier that the app creates once and keeps.
+The app SHALL offer `MM.productName` with the value "Moneten", `MM.productVersion` as text, `MM.productBuild` as a number, `MM.apiVersion` as a number, `MM.language` with the language code of the interface, and `MM.deviceUuid` with a random identifier that the app creates once and keeps.
 
 #### Scenario: Stable device identifier
 

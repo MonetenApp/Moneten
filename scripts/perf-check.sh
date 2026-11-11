@@ -6,16 +6,16 @@
 set -e
 cd "$(dirname "$0")/.."
 scripts/generate-project.sh
-xcodebuild -project App/MonetenMoneten.xcodeproj -scheme MonetenMoneten -configuration Perf -derivedDataPath .build/xcode \
+xcodebuild -project App/Moneten.xcodeproj -scheme Moneten -configuration Perf -derivedDataPath .build/xcode \
 	-disableAutomaticPackageResolution -quiet build
-APP=.build/xcode/Build/Products/Perf/MonetenMoneten.app
+APP=.build/xcode/Build/Products/Perf/Moneten.app
 
 NOTIFY=.build/perf-notify
 if [ ! -x "$NOTIFY" ] || [ scripts/perf-check.sh -nt "$NOTIFY" ]; then
 	cat > "$NOTIFY.swift" <<-'EOF'
 	import Foundation
 	let a = CommandLine.arguments
-	DistributedNotificationCenter.default().postNotificationName(Notification.Name("io.github.monetenmoneten.debug"), object: a[1],
+	DistributedNotificationCenter.default().postNotificationName(Notification.Name("io.github.moneten.debug"), object: a[1],
 		userInfo: ["command": a[2], "argument": a.count > 3 ? a[3] : ""], deliverImmediately: true)
 	EOF
 	swiftc -o "$NOTIFY" "$NOTIFY.swift"
@@ -23,7 +23,7 @@ fi
 
 WORK="$(mktemp -d)"
 LOG="$WORK/debug/debug.log"
-MONETENMONETEN_DATA_DIR="$WORK/data" MONETENMONETEN_DEBUG_DIR="$WORK/debug" "$APP/Contents/MacOS/MonetenMoneten" \
+MONETEN_DATA_DIR="$WORK/data" MONETEN_DEBUG_DIR="$WORK/debug" "$APP/Contents/MacOS/Moneten" \
 	-viewMode barChart -lockAfterInactivity NO -ApplePersistenceIgnoreState YES >"$WORK/app.log" 2>&1 &
 PID=$!
 

@@ -49,7 +49,7 @@ None.
 - The strings for the upgrade name a temporary file, a schema check, and an integrity check before the old file is replaced.
 - The database encryption moved to SQLCipher 4 (version history, 2.4.44).
 
-### Decided for MonetenMoneten
+### Decided for Moneten
 
 - Without a password the app uses a random key in the Keychain and shows a hint in the sidebar. This follows [ADR 0009](../../../docs/decisions/0009-database-password-as-in-moneymoney.md). How MoneyMoney protects a database without a password was not observed.
 - The key derivation uses the parameters in ADR 0009. MoneyMoney's parameters were not observed.

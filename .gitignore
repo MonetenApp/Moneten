@@ -2,5 +2,5 @@
 .swiftpm/
 dist/
 .DS_Store
-App/MonetenMoneten.xcodeproj/
+App/Moneten.xcodeproj/
 App/Local.xcconfig

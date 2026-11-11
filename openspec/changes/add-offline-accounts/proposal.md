@@ -47,7 +47,7 @@ None.
 - "Add Transaction..." is also in the context menu of an account with bank access. The version history names it as the way to get a bar chart when the bank provides no transactions (2.4.38).
 - The transaction window rejects an amount of zero (interface string "Amount should not be zero.").
 
-### Decided for MonetenMoneten
+### Decided for Moneten
 
 - The transaction window has a choice between "Debit" and "Credit" and takes the amount without a sign. Both labels are interface strings of MoneyMoney, but the window was not opened.
 - An offsetting entry copies the date, the purpose, and the comment, and it uses the name of the source account as the counterparty. Which fields MoneyMoney copies was not observed.

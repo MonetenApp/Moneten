@@ -44,7 +44,7 @@ None.
 - Without a selection the app says "Please select at least one account." or "Please select at least one category."
 - For a securities account the report notes when no balance is available before a date (interface string).
 
-### Decided for MonetenMoneten
+### Decided for Moneten
 
 - "Current balance" is the balance that the bank reported last. "Daily balance from" uses the computed balance at the end of that date. The exact source in MoneyMoney was not observed.
 - The window opens with the accounts or categories of the current sidebar selection checked.

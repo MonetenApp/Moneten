@@ -43,11 +43,11 @@ None.
 - The AppleScript command `export transactions` accepts the name of an export extension as its format. See [analysis](../../../docs/research/moneymoney-analysis.md#applescript-s-w).
 - The community publishes export extensions, for example for HTML, JSON, and Ledger files ([extensions page](https://moneymoney.app/extensions/)).
 
-### Decided for MonetenMoneten
+### Decided for Moneten
 
 - An import or export script has no network access, and `io` is limited to standard input and standard output. The documentation does not state what MoneyMoney allows.
 - An imported transaction needs `amount` and `bookingDate`. The Import API page does not name required fields. The rule is taken from the Web Banking API.
 - For an export of an account group or a category, the `account` table describes the selection and has no account number, and each transaction table also carries the fields `accountName` and `accountIban` of its own account. The documentation covers only the export of one account.
 - When an entry point returns an error message, the app deletes the partly written file.
-- `MM.productName` is "MonetenMoneten".
+- `MM.productName` is "Moneten".
 - The catalog rules and the warning for unknown scripts apply to these scripts as well.

@@ -1,5 +1,5 @@
 #!/bin/sh
-# Builds dist/MonetenMoneten.app with Xcode.
+# Builds dist/Moneten.app with Xcode.
 #   scripts/build-app.sh                 release build, signed with the team in App/Local.xcconfig
 #   scripts/build-app.sh debug           debug build
 #   scripts/build-app.sh developer-id    release build, archived and signed with the Developer ID
@@ -13,16 +13,16 @@ CONFIG=Release
 case "$1" in
 	"") ;;
 	debug) CONFIG=Debug ;;
-	developer-id) ARCHIVE=.build/xcode/MonetenMoneten.xcarchive ;;
+	developer-id) ARCHIVE=.build/xcode/Moneten.xcarchive ;;
 	*) echo "usage: scripts/build-app.sh [debug | developer-id]" >&2; exit 2 ;;
 esac
 BUILD="$(git rev-list --count HEAD 2>/dev/null || echo 1)"
 
 scripts/generate-project.sh
-XCODEBUILD="xcodebuild -project App/MonetenMoneten.xcodeproj -scheme MonetenMoneten -configuration $CONFIG -derivedDataPath .build/xcode -disableAutomaticPackageResolution -quiet"
+XCODEBUILD="xcodebuild -project App/Moneten.xcodeproj -scheme Moneten -configuration $CONFIG -derivedDataPath .build/xcode -disableAutomaticPackageResolution -quiet"
 if [ -z "$ARCHIVE" ]; then
 	$XCODEBUILD CURRENT_PROJECT_VERSION="$BUILD" build
-	PRODUCT=".build/xcode/Build/Products/$CONFIG/MonetenMoneten.app"
+	PRODUCT=".build/xcode/Build/Products/$CONFIG/Moneten.app"
 else
 	rm -rf "$ARCHIVE" .build/xcode/export
 	$XCODEBUILD -archivePath "$ARCHIVE" -allowProvisioningUpdates CURRENT_PROJECT_VERSION="$BUILD" archive
@@ -36,11 +36,11 @@ else
 	EOF
 	xcodebuild -exportArchive -archivePath "$ARCHIVE" -exportOptionsPlist .build/xcode/ExportOptions.plist \
 		-exportPath .build/xcode/export -allowProvisioningUpdates >/dev/null
-	PRODUCT=.build/xcode/export/MonetenMoneten.app
+	PRODUCT=.build/xcode/export/Moneten.app
 fi
 
-rm -rf dist/MonetenMoneten.app
+rm -rf dist/Moneten.app
 mkdir -p dist
 cp -R "$PRODUCT" dist/
-codesign --verify --strict --deep dist/MonetenMoneten.app
-echo "Built dist/MonetenMoneten.app ($CONFIG, build $BUILD), $(codesign -dv --verbose=2 dist/MonetenMoneten.app 2>&1 | grep -m1 -E '^(Authority|Signature)=')"
+codesign --verify --strict --deep dist/Moneten.app
+echo "Built dist/Moneten.app ($CONFIG, build $BUILD), $(codesign -dv --verbose=2 dist/Moneten.app 2>&1 | grep -m1 -E '^(Authority|Signature)=')"
