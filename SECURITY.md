@@ -4,7 +4,7 @@ Moneten handles bank credentials and financial data. Security reports have the h
 
 ## Report a vulnerability
 
-Report it privately through [GitHub's private vulnerability reporting](https://github.com/alexander-schneider/MonetenMoneten/security/advisories/new). Do not open a public issue.
+Report it privately through [GitHub's private vulnerability reporting](https://github.com/alexander-schneider/Moneten/security/advisories/new). Do not open a public issue.
 
 Include the version, the steps to reproduce, and the impact you expect. The maintainers confirm receipt within three working days and publish a fix and an advisory after the fix ships.
 

@@ -12,7 +12,7 @@ The search on 11 November 2026 found no app named Moneten in the App Store of Ge
 
 - The app, its bundle, the Xcode target, the scheme, and the Swift package are named Moneten. The bundle identifier is `io.github.alexander-schneider.Moneten`. The environment variables start with `MONETEN_`.
 - The icon is one light M on deep blue, drawn by `scripts/make-icon.swift`. Its right leg ends higher than the left one, like a rising balance. It has no second M.
-- The repository keeps its name until the owner renames it. GitHub forwards the old links after a rename.
+- The repository is named Moneten as well. GitHub forwards the links of the old name.
 
 ## Consequences
 
