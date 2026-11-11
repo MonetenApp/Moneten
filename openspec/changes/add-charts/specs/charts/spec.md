@@ -256,7 +256,7 @@ The app SHALL show two pie charts in the mode "Pie Chart", one for the withdrawa
 
 ### Requirement: Look of the pie charts
 
-The app SHALL draw the pie charts as MoneyMoney does: two full pies of 110 points, each in a rim of 6 points, side by side on the slate band with 300 points between their middles (MoneyMoney: 225, which leaves the names between the pies no room) and no title. A thin line leads from the middle of each slice to its category name outside the pie, on the side of the slice. A slice below 3 % has no name, so that names do not overlap. Under the pointer a slice stands out, and the text below the pie shows its category, amount, and share.
+The app SHALL draw the pie charts as MoneyMoney does: two full pies of 110 points, each in a rim of 6 points, side by side on the slate band with 300 points between their middles and no title. A thin line leads from the middle of each slice to its category name outside the pie, on the side of the slice. A slice below 3 % has no name, so that names do not overlap. Under the pointer a slice stands out, and the text below the pie shows its category, amount, and share.
 
 #### Scenario: Names outside the pie
 
