@@ -202,7 +202,8 @@ public struct MoneyMoneyMigration: Sendable {
 				map[source] = existing.id
 				if isGroup { parents[indentation] = existing.id }
 				// A category of an earlier run gets the color of MoneyMoney, unless the user chose one.
-				if let color, existing.color == nil, !plan.categories.contains(where: { $0.id == existing.id }) {
+				if let color, existing.color == nil, !plan.categories.contains(where: { $0.id == existing.id }),
+					!plan.updatedCategories.contains(where: { $0.id == existing.id }) {
 					var updated = existing
 					updated.color = color
 					plan.updatedCategories.append(updated)
