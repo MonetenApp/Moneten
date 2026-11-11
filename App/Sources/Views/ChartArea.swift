@@ -297,72 +297,92 @@ struct PieChart: View {
 		} else {
 			let wedges = Self.wedges(slices)
 			// A slice that is gone after the view changed under a resting pointer marks nothing.
-			let hovered = wedges.contains { $0.id == self.hovered } ? self.hovered : nil
+			let active = wedges.contains { $0.id == hovered } ? hovered : nil
 			GeometryReader { geometry in
 				let center = CGPoint(x: geometry.size.width / 2, y: geometry.size.height / 2)
 				let labels = Self.labels(wedges, center: center, height: geometry.size.height, outside: outside)
 				ZStack {
-					Circle().fill(Palette.pieRim).frame(width: 2 * Self.outerRadius, height: 2 * Self.outerRadius).position(center)
-					ZStack {
-						ForEach(wedges) { w in
-							Wedge(start: w.start, end: w.end).fill(w.slice.color).opacity(hovered == nil || hovered == w.id ? 1 : 0.45)
-						}
-					}
-					.frame(width: 2 * Self.radius, height: 2 * Self.radius)
-					.position(center)
-					// A line in the color of the rim between the slices, which share the color of their group in its view.
-					if wedges.count > 1 {
-						Path { path in
-							for w in wedges {
-								path.move(to: center)
-								path.addLine(to: CGPoint(x: center.x + Self.radius * sin(w.start), y: center.y - Self.radius * cos(w.start)))
-							}
-						}
-						.stroke(Palette.pieRim, lineWidth: 1)
-					}
-					Path { path in
-						for l in labels {
-							path.move(to: l.rim)
-							path.addLine(to: CGPoint(x: center.x + (l.left ? -Self.lineEnd : Self.lineEnd), y: l.y))
-						}
-					}
-					.stroke(Palette.onBand.opacity(0.5), lineWidth: 1)
-					ForEach(labels) { l in
-						let room = l.left == (outside == .leading) ? outerRoom : Self.innerRoom(width: width)
-						Text(l.wedge.slice.name)
-							.font(.system(size: 11, weight: hovered == l.id ? .semibold : .regular))
-							.foregroundStyle(Palette.onBand)
-							.lineLimit(1)
-							.help(l.wedge.slice.name)
-							.frame(width: room, alignment: l.left ? .trailing : .leading)
-							.position(x: center.x + (l.left ? -1 : 1) * (Self.lineEnd + 3 + room / 2), y: l.y)
-					}
-					if let w = wedges.first(where: { $0.id == hovered }) {
-						VStack(spacing: 1) {
-							Text(w.slice.name).font(.caption.weight(.semibold)).foregroundStyle(Palette.onBand)
-							HStack(spacing: 4) {
-								AmountText(money: w.slice.money)
-								Text(w.share.formatted(.percent.precision(.fractionLength(0...1)))).foregroundStyle(Palette.bandLabel)
-							}
-							.font(.caption)
-						}
-						.lineLimit(1)
-						.frame(width: 2 * Self.lineEnd)
-						.position(x: center.x, y: center.y + Self.outerRadius + 20)
-					}
+					pie(wedges, center: center, active: active)
+					labelViews(labels, center: center, active: active)
+					if let w = wedges.first(where: { $0.id == active }) { hoverText(w, center: center) }
 				}
 				.contentShape(Rectangle())
 				.onContinuousHover { phase in
-					guard case let .active(point) = phase else { self.hovered = nil; return }
-					self.hovered = Self.wedge(at: point, center: center, in: wedges)?.id
+					guard case let .active(point) = phase else { hovered = nil; return }
+					hovered = Self.wedge(at: point, center: center, in: wedges)?.id
 				}
 			}
 			.frame(width: width)
 			.accessibilityElement(children: .ignore)
 			.accessibilityLabel(title)
-			.accessibilityValue(wedges.map { "\($0.slice.name): \(Format.money($0.slice.money)), \($0.share.formatted(.percent.precision(.fractionLength(0...1))))" }
-				.joined(separator: "; "))
+			.accessibilityValue(Self.spoken(wedges))
 		}
+	}
+
+	// The body is split into these parts, because the compiler of CI could not type-check it as one expression.
+
+	@ViewBuilder
+	private func pie(_ wedges: [PieWedge], center: CGPoint, active: PieSlice.ID?) -> some View {
+		Circle().fill(Palette.pieRim).frame(width: 2 * Self.outerRadius, height: 2 * Self.outerRadius).position(center)
+		ZStack {
+			ForEach(wedges) { w in
+				Wedge(start: w.start, end: w.end).fill(w.slice.color).opacity(active == nil || active == w.id ? 1 : 0.45)
+			}
+		}
+		.frame(width: 2 * Self.radius, height: 2 * Self.radius)
+		.position(center)
+		// A line in the color of the rim between the slices, which share the color of their group in its view.
+		if wedges.count > 1 {
+			Path { path in
+				for w in wedges {
+					path.move(to: center)
+					path.addLine(to: CGPoint(x: center.x + Self.radius * sin(w.start), y: center.y - Self.radius * cos(w.start)))
+				}
+			}
+			.stroke(Palette.pieRim, lineWidth: 1)
+		}
+	}
+
+	@ViewBuilder
+	private func labelViews(_ labels: [PieLabel], center: CGPoint, active: PieSlice.ID?) -> some View {
+		Path { path in
+			for l in labels {
+				path.move(to: l.rim)
+				path.addLine(to: CGPoint(x: center.x + (l.left ? -Self.lineEnd : Self.lineEnd), y: l.y))
+			}
+		}
+		.stroke(Palette.onBand.opacity(0.5), lineWidth: 1)
+		ForEach(labels) { l in
+			let room: CGFloat = l.left == (outside == .leading) ? outerRoom : Self.innerRoom(width: width)
+			let x: CGFloat = center.x + (l.left ? -1 : 1) * (Self.lineEnd + 3 + room / 2)
+			Text(l.wedge.slice.name)
+				.font(.system(size: 11, weight: active == l.id ? .semibold : .regular))
+				.foregroundStyle(Palette.onBand)
+				.lineLimit(1)
+				.help(l.wedge.slice.name)
+				.frame(width: room, alignment: l.left ? .trailing : .leading)
+				.position(x: x, y: l.y)
+		}
+	}
+
+	private func hoverText(_ w: PieWedge, center: CGPoint) -> some View {
+		VStack(spacing: 1) {
+			Text(w.slice.name).font(.caption.weight(.semibold)).foregroundStyle(Palette.onBand)
+			HStack(spacing: 4) {
+				AmountText(money: w.slice.money)
+				Text(Self.percent(w.share)).foregroundStyle(Palette.bandLabel)
+			}
+			.font(.caption)
+		}
+		.lineLimit(1)
+		.frame(width: 2 * Self.lineEnd)
+		.position(x: center.x, y: center.y + Self.outerRadius + 20)
+	}
+
+	private static func percent(_ share: Double) -> String { share.formatted(.percent.precision(.fractionLength(0...1))) }
+
+	private static func spoken(_ wedges: [PieWedge]) -> String {
+		wedges.map { "\($0.slice.name): \(Format.money($0.slice.money)), \(percent($0.share))" }.joined(separator: "; ")
 	}
 
 	/// The slices with their angles, clockwise from the top in radians.
