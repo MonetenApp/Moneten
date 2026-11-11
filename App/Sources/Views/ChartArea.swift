@@ -31,28 +31,19 @@ struct BalanceChart: View {
 
 	var body: some View {
 		@Bindable var model = model
-		let accounts = accountIDs.compactMap { model.ledger.account($0) }.filter { !$0.isClosed && $0.kind != .portfolio }
+		let accounts = accountIDs.compactMap { model.ledger.account($0) }.filter { !$0.isClosed }
 		let currencies = ChartCurrency.ranked(accounts.map(\.currency))
 		let currency = ChartCurrency.current(currencies, picked: picked)
-		let ids = Set(accounts.filter { $0.currency == currency }.map(\.id))
+		let shown = accounts.filter { $0.currency == currency }
 		let monthly = model.balanceMode == .monthlyAverage
-		// Portfolios have no daily balance yet, so the bars leave them out. The total of the group in
-		// the title counts them, so the chart says how much it leaves out.
-		let portfolios = accountIDs.compactMap { model.ledger.account($0) }.filter { !$0.isClosed && $0.kind == .portfolio && $0.currency == currency }
-		let leftOut = Money(minorUnits: portfolios.reduce(0) { $0 + model.ledger.balance(of: $1).minorUnits }, currency: currency)
 		VStack(alignment: .trailing, spacing: 4) {
 			HStack {
-				if !portfolios.isEmpty {
-					Text("Portfolios not shown: \(Format.money(leftOut))")
-						.font(.callout)
-						.foregroundStyle(Palette.bandLabel)
-						.help("Portfolios have no daily balance yet, so the bars show the other accounts. The total above counts the portfolios too.")
-				}
+				portfolioCaption(shown.filter { $0.kind == .portfolio }, currency: currency)
 				Spacer(minLength: 0)
 				ChartCurrency.Picker(currencies: currencies, current: currency, picked: $picked)
 			}
 			HStack(alignment: .bottom, spacing: 8) {
-				bars(ids: ids, currency: currency, monthly: monthly)
+				bars(ids: Set(shown.map(\.id)), currency: currency, monthly: monthly)
 				ChartModeSwitch(selection: $model.balanceMode, options: [
 					.init(value: .daily, label: "D", help: "Daily balance"),
 					.init(value: .monthlyAverage, label: "M", help: "Monthly average balance"),
@@ -61,11 +52,29 @@ struct BalanceChart: View {
 		}
 	}
 
+	/// Portfolios count in the bars from their first recorded value on, so the chart names that day.
+	/// A portfolio without any record is left out of the bars, and the chart says how much that is.
+	@ViewBuilder
+	private func portfolioCaption(_ portfolios: [Account], currency: String) -> some View {
+		let first = portfolios.compactMap { model.ledger.portfolioValues(of: $0.id).first?.day }.min()
+		let unrecorded = portfolios.filter { model.ledger.portfolioValues(of: $0.id).isEmpty }
+		let leftOut = Money(minorUnits: unrecorded.reduce(0) { $0 + model.ledger.balance(of: $1).minorUnits }, currency: currency)
+		let parts = [first.map { "Portfolios from \(Format.day($0))" }, unrecorded.isEmpty ? nil : "Portfolios not shown: \(Format.money(leftOut))"]
+		let text = parts.compactMap { $0 }.joined(separator: " · ")
+		if !text.isEmpty {
+			Text(text)
+				.font(.callout)
+				.foregroundStyle(Palette.bandLabel)
+				.help("The bars count a portfolio from its first recorded value on. A portfolio without a recorded value is not in the bars. The total above counts every portfolio.")
+		}
+	}
+
 	@ViewBuilder
 	private func bars(ids: Set<UUID>, currency: String, monthly: Bool) -> some View {
 		let bars = Self.stripBars(model.ledger, ids: ids, range: model.chartRange, currency: currency, monthly: monthly)
 		if bars.isEmpty {
-			Text("No transactions; no bar chart.")
+			let portfoliosOnly = !ids.isEmpty && ids.allSatisfy { model.ledger.account($0)?.kind == .portfolio }
+			Text(portfoliosOnly ? "No portfolio items; no bar chart." : "No transactions; no bar chart.")
 				.foregroundStyle(.secondary)
 				.frame(maxWidth: .infinity, maxHeight: .infinity)
 		} else {

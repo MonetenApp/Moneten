@@ -165,9 +165,30 @@ final class DebugHarness {
 		case "selectRows": model.selectedTransactions = Set(model.visibleTransactions.prefix(Int(argument) ?? 1).map(\.id))
 		case "state":
 			log("phase=\(model.phase) accounts=\(model.ledger.accounts.count) transactions=\(model.ledger.transactions.count) visible=\(model.visibleTransactions.count) selection=\(String(describing: model.selection))")
+			logChart()
 		case "quit": NSApp.terminate(nil)
 		default: log("unknown command \(command)")
 		}
+	}
+
+	/// The euro balance chart of the selected account or group: its first and last bar and the total
+	/// in the title, which the last bar of a daily chart equals.
+	private func logChart() {
+		guard let model else { return }
+		let ids: Set<UUID>
+		let total: Int64?
+		switch model.selection {
+		case let .account(id):
+			ids = [id]
+			total = model.ledger.account(id).map { model.ledger.balance(of: $0).minorUnits }
+		case let .group(id):
+			ids = model.ledger.accountIDs(inGroupTree: id)
+			total = model.ledger.sum(ofGroup: id).byCurrency["EUR"]
+		default: return
+		}
+		let shown = Set(ids.filter { model.ledger.account($0).map { !$0.isClosed && $0.currency == "EUR" } ?? false })
+		let bars = BalanceChart.stripBars(model.ledger, ids: shown, range: model.chartRange, currency: "EUR", monthly: model.balanceMode == .monthlyAverage)
+		log("chart bars=\(bars.count) first=\(bars.first.map { "\($0.start) \($0.money.minorUnits)" } ?? "-") last=\(bars.last.map { "\($0.start) \($0.money.minorUnits)" } ?? "-") total=\(total.map(String.init) ?? "-")")
 	}
 
 	/// The tables of transactions in all windows, told apart from the sidebar by their amount column.
