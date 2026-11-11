@@ -106,7 +106,13 @@ final class DebugHarness {
 			let parts = argument.split(separator: " ")
 			if parts.count == 3, let daysAgo = Int(parts[1]), let euros = Int64(parts[2]),
 				let account = model.ledger.accounts.first(where: { $0.name == String(parts[0]) }) {
-				model.record([PortfolioValue(accountID: account.id, day: Day.today().adding(days: -daysAgo), minorUnits: euros * 100)])
+				// Saving the portfolio with that balance on that day records the value, and saving it as it
+				// was records its own balance again.
+				var past = account
+				past.bankBalanceMinor = euros * 100
+				past.bankBalanceDate = Calendar.current.date(byAdding: .day, value: -daysAgo, to: Date())
+				model.save(account: past)
+				model.save(account: account)
 			}
 		case "barsnapshot":
 			// The daily balance of the selected account on the band, with the pointer on the bar of a week ago.

@@ -98,12 +98,18 @@ struct AmountText: View {
 	var showsCurrency = true
 	/// Increased on a selected table row, where red would be hard to read on the accent color.
 	@Environment(\.backgroundProminence) private var prominence
+	@Environment(\.negativeRed) private var red
 	var body: some View {
-		// A positive amount takes the color of its surroundings, such as white on the band of the header.
+		// A positive amount takes the color of its surroundings, such as the text color of the band.
 		Text(showsCurrency ? Format.money(money) : Format.amount(money))
 			.monospacedDigit()
-			.foregroundStyle(money.isNegative && prominence != .increased ? AnyShapeStyle(Palette.red) : AnyShapeStyle(.primary))
+			.foregroundStyle(money.isNegative && prominence != .increased ? AnyShapeStyle(red) : AnyShapeStyle(.primary))
 	}
+}
+
+extension EnvironmentValues {
+	/// The red of negative amounts. The band sets a red that is clear on its slate.
+	@Entry var negativeRed = Palette.red
 }
 
 /// The colors of the app, each for light and dark mode, measured in the windows of MoneyMoney as sRGB.
@@ -113,14 +119,18 @@ enum Palette {
 	// Measured in MoneyMoney: light from a screenshot, dark from a window capture corrected by the
 	// offset that the same reading showed against the screenshot. The dark ones are not checked
 	// against a dark screenshot.
-	/// The slate band behind the title of the view and its chart.
-	/// White on the slate of MoneyMoney reaches only 2:1. With "Increase contrast" the band turns
-	/// dark enough for 7:1.
+	/// The slate band behind the title of the view and its chart. With "Increase contrast" the band
+	/// turns dark, so that its white bars reach 7:1.
 	static let band = dynamic("band", light: rgb(0xAFBAC3), dark: rgb(0x292B31), increasedContrast: rgb(0x4E5964))
-	/// Title, IBAN, balance, and icon on the band.
-	static let onBand = Color.white
+	/// Title, IBAN, balance, and icon on the band. MoneyMoney writes white on the light slate, which
+	/// reaches only 2:1, so light mode writes dark slate with 8:1.
+	static let onBand = dynamic("onBand", light: rgb(0x1C2329), dark: .white, increasedContrast: .white)
 	/// The months, years, and periods of the charts, and the amounts at the edge of a category chart.
-	static let bandLabel = dynamic("bandLabel", light: rgb(0x696F76), dark: rgb(0x7D7E82), increasedContrast: rgb(0xD5DBE0))
+	/// At least 4.5:1 on the band in every mode.
+	static let bandLabel = dynamic("bandLabel", light: rgb(0x3D4650), dark: rgb(0x9A9BA0), increasedContrast: rgb(0xD5DBE0))
+	/// Negative amounts on the band, at least 4.5:1 on it. The red of the window reaches only 2.9:1
+	/// on the light slate.
+	static let bandRed = dynamic("bandRed", light: rgb(0x8A1017), dark: rgb(0xFF6961), increasedContrast: rgb(0xFFC4BF))
 	/// The line where a month or a year starts in the balance chart.
 	static let bandLine = dynamic("bandLine", light: rgb(0xA1ABB4), dark: rgb(0x3B3C40))
 	/// The bars of the balance chart.

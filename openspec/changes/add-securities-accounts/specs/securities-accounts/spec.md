@@ -311,7 +311,7 @@ The app SHALL record the value of each portfolio account once for each day on wh
 
 ### Requirement: Record the balance of a saved portfolio
 
-The app SHALL record the balance of a portfolio whenever it saves the portfolio with a balance, for example after a migration, for the day that the balance is from, or for today when that day is unknown. When the app opens a database in which an open portfolio has a balance without a matching record for the day of that balance, it records that balance once. Past values cannot be recovered, so the history starts with the first record.
+The app SHALL record the balance of a portfolio whenever it saves the portfolio with a balance, for example after a migration, for the day that the balance is from, or for today when that day is unknown. The record is written together with the portfolio, so a saved balance cannot miss its record. Past values cannot be recovered, so the history starts with the first record.
 
 #### Scenario: Migrated portfolio
 
@@ -319,12 +319,22 @@ The app SHALL record the balance of a portfolio whenever it saves the portfolio 
 - **WHEN** the migration ends
 - **THEN** the portfolio has one record of 20.000,00 € for 10 November 2026
 
+### Requirement: Record a missing portfolio balance at open
+
+When the app opens a database in which an open portfolio has a balance without a record for the day of that balance, or with a different one, the app SHALL record that balance once.
+
 #### Scenario: Database from before the history
 
 - **GIVEN** a database from a version without the portfolio history, with the portfolio "Depot" at 20.000,00 €
 - **WHEN** the user opens the database on 11 November 2026 for the first time with this version
 - **THEN** the portfolio has one record of 20.000,00 € for the day of its balance
 - **AND** opening the database again adds no record
+
+#### Scenario: Record that differs from the balance
+
+- **GIVEN** the portfolio "Depot" has a balance of 20.000,00 € from 10 November 2026 and a record of 19.000,00 € for that day
+- **WHEN** the user opens the database
+- **THEN** the record for 10 November 2026 holds 20.000,00 €
 
 ### Requirement: Order of positions
 

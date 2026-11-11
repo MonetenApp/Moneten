@@ -9,7 +9,7 @@ struct TransactionsView: View {
 		@Bindable var model = model
 		let rows = model.visibleTransactions
 		VStack(spacing: 0) {
-			// As in MoneyMoney: one slate band behind the title and the chart, with white text.
+			// As in MoneyMoney: one slate band behind the title and the chart.
 			VStack(spacing: 0) {
 				HeaderView(rows: rows)
 				if model.viewMode != .list {
@@ -20,6 +20,7 @@ struct TransactionsView: View {
 				}
 			}
 			.foregroundStyle(Palette.onBand)
+			.environment(\.negativeRed, Palette.bandRed)
 			.background(Palette.band)
 			FilterBar()
 			// The bordered table draws the lines above and below itself.

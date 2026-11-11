@@ -169,25 +169,78 @@ struct SchemaTests {
 		#expect(try queue.read { db in try Domain.Category.fetchOne(db, key: id) }?.symbol == "cart.fill")
 	}
 
-	@Test("v4 keeps the accounts of a v3 database, and a portfolio keeps one value per day until its account is removed")
+	@Test("v4 keeps the accounts of a v3 database, the first open records the balance of a portfolio, and a portfolio keeps one value per day until its account is removed")
 	func portfolioValues() throws {
 		let queue = try DatabaseQueue()
 		try Schema.migrator.migrate(queue, upTo: "v3")
-		let depot = Account(position: 0, name: "Depot", kind: .portfolio, source: .migrated, bankBalanceMinor: 2_000_000)
+		let depot = Account(position: 0, name: "Depot", kind: .portfolio, source: .migrated, bankBalanceMinor: 2_000_000, bankBalanceDate: Self.noon(9))
 		try queue.write { db in try depot.insert(db) }
 		try Schema.migrator.migrate(queue)
 		let store = Store(queue: queue)
-		#expect(try store.loadLedger().accounts.map(\.name) == ["Depot"])
+		let ninth = PortfolioValue(accountID: depot.id, day: Day(year: 2026, month: 10, day: 9), minorUnits: 2_000_000)
+		let opened = try store.loadLedger()
+		#expect(opened.accounts.map(\.name) == ["Depot"])
+		#expect(opened.portfolioValues(of: depot.id) == [ninth])
 		let fifth = Day(year: 2026, month: 10, day: 5)
 		let eighth = Day(year: 2026, month: 10, day: 8)
-		try store.save(PortfolioValue(accountID: depot.id, day: eighth, minorUnits: 2_100_000))
-		try store.save(PortfolioValue(accountID: depot.id, day: fifth, minorUnits: 2_000_000))
-		try store.save(PortfolioValue(accountID: depot.id, day: fifth, minorUnits: 2_050_000))
+		try Self.record(PortfolioValue(accountID: depot.id, day: eighth, minorUnits: 2_100_000), in: store)
+		try Self.record(PortfolioValue(accountID: depot.id, day: fifth, minorUnits: 2_000_000), in: store)
+		try Self.record(PortfolioValue(accountID: depot.id, day: fifth, minorUnits: 2_050_000), in: store)
 		#expect(try store.loadLedger().portfolioValues(of: depot.id) == [
 			PortfolioValue(accountID: depot.id, day: fifth, minorUnits: 2_050_000),
 			PortfolioValue(accountID: depot.id, day: eighth, minorUnits: 2_100_000),
+			ninth,
 		])
 		try store.deleteAccount(depot.id)
 		#expect(try queue.read { db in try PortfolioValue.fetchCount(db) } == 0)
+	}
+
+	@Test("Saving a portfolio records the value of its balance day, alone or with an import, and other accounts record nothing")
+	func savingRecordsValues() throws {
+		let store = try Self.emptyStore()
+		var depot = Account(position: 0, name: "Depot", kind: .portfolio, source: .offline, bankBalanceMinor: 2_000_000, bankBalanceDate: Self.noon(9))
+		let giro = Account(position: 1, name: "Giro", kind: .giro, source: .offline, bankBalanceMinor: 150_000, bankBalanceDate: Self.noon(9))
+		try store.save(depot)
+		try store.save(giro)
+		depot.bankBalanceMinor = 2_050_000
+		try store.save(depot)
+		let imported = Account(position: 2, name: "Depot 2", kind: .portfolio, source: .migrated, bankBalanceMinor: 700_000, bankBalanceDate: Self.noon(10))
+		try store.save(accounts: [imported])
+		#expect(try Self.values(store) == [
+			PortfolioValue(accountID: depot.id, day: Day(year: 2026, month: 10, day: 9), minorUnits: 2_050_000),
+			PortfolioValue(accountID: imported.id, day: Day(year: 2026, month: 10, day: 10), minorUnits: 700_000),
+		])
+	}
+
+	@Test("Opening records the balance of a portfolio again when its value of that day differs")
+	func openingRepairsValue() throws {
+		let store = try Self.emptyStore()
+		let depot = Account(position: 0, name: "Depot", kind: .portfolio, source: .offline, bankBalanceMinor: 2_000_000, bankBalanceDate: Self.noon(9))
+		try store.save(depot)
+		let stale = PortfolioValue(accountID: depot.id, day: Day(year: 2026, month: 10, day: 9), minorUnits: 1_900_000)
+		try Self.record(stale, in: store)
+		let expected = [PortfolioValue(accountID: depot.id, day: Day(year: 2026, month: 10, day: 9), minorUnits: 2_000_000)]
+		#expect(try store.loadLedger().portfolioValues(of: depot.id) == expected)
+		#expect(try Self.values(store) == expected)
+	}
+
+	/// Writes a record as the app did before it saved one with its portfolio.
+	static func record(_ value: PortfolioValue, in store: Store) throws {
+		try store.write { db in try value.save(db) }
+	}
+
+	static func emptyStore() throws -> Store {
+		let queue = try DatabaseQueue()
+		try Schema.migrator.migrate(queue)
+		return Store(queue: queue)
+	}
+
+	static func values(_ store: Store) throws -> [PortfolioValue] {
+		try store.queue.read { db in try PortfolioValue.order(Column("day")).fetchAll(db) }
+	}
+
+	/// Noon of a day in October 2026, which is that day in every time zone of the tests.
+	static func noon(_ day: Int) -> Date {
+		Calendar.current.date(from: DateComponents(year: 2026, month: 10, day: day, hour: 12))!
 	}
 }

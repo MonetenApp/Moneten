@@ -57,6 +57,16 @@ The app SHALL draw the balance chart as MoneyMoney does: every bar 4 points wide
 - **WHEN** the user looks at the chart
 - **THEN** lines with "Oct 26" and "Nov 26" mark the first of October and of November
 
+### Requirement: Readable text on the band
+
+The app SHALL write the text on the slate band behind the title and the chart with a contrast of at least 4.5:1 in the light and the dark appearance, also with "Increase contrast". The light appearance deviates from MoneyMoney here: MoneyMoney writes white on its light slate, which reaches only 2:1, so the app writes dark slate on it and a darker red for negative amounts.
+
+#### Scenario: Header in the light appearance
+
+- **GIVEN** the light appearance and the account "Giro" with a balance of -120,00 €
+- **WHEN** the user looks at the header
+- **THEN** the title is dark on the slate band and the balance is a dark red, each with at least 4.5:1
+
 ### Requirement: Balances are computed from the transactions
 
 The app SHALL compute the balance of each day as the initial balance of the account plus all booked transactions up to the end of that day. Pending transactions and the balance that the bank reports do not enter this computation. A portfolio is the exception: its balance on a day is its last recorded value on or before that day, as the capability `securities-accounts` defines, and nothing before its first record.

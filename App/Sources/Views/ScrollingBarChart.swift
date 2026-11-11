@@ -206,9 +206,11 @@ private struct ChunkView: View {
 			let zero = scale.y(0, chartHeight: size.height)
 			for (i, bar) in chunk.bars.enumerated() {
 				let x = CGFloat(i) * pitch + (style == .centered ? gap / 2 : 0)
-				// As in MoneyMoney: a light column through the whole chart behind the bar under the pointer.
+				// As in MoneyMoney: a light column behind the bar under the pointer. It starts below the
+				// labels, which it would make too faint in dark mode.
 				if bar.id == hovered {
-					context.fill(Path(CGRect(x: x, y: 0, width: barWidth, height: size.height)), with: .color(Palette.bandHover))
+					let top = ScrollingBarChart.labelHeight
+					context.fill(Path(CGRect(x: x, y: top, width: barWidth, height: size.height - top)), with: .color(Palette.bandHover))
 				}
 				let y = scale.y(bar.value, chartHeight: size.height)
 				// A bar of zero or a few cents is a line, so every period shows where it is.

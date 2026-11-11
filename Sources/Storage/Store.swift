@@ -14,22 +14,35 @@ public final class Store: Sendable {
 		try queue.write(updates)
 	}
 
-	/// Reads everything into memory.
+	/// Reads everything into memory. A portfolio whose value of its balance day is missing or
+	/// differs gets that value recorded first, such as one saved before the history existed.
 	public func loadLedger() throws -> Ledger {
-		try queue.read { db in
+		var ledger = try queue.read { db in
 			Ledger(groups: try AccountGroup.fetchAll(db),
 				accounts: try Account.fetchAll(db),
 				categories: try Domain.Category.fetchAll(db),
 				transactions: try Transaction.fetchAll(db),
 				portfolioValues: try PortfolioValue.order(Column("day")).fetchAll(db))
 		}
+		let missing = ledger.missingPortfolioValues
+		if !missing.isEmpty {
+			try queue.write { db in
+				for v in missing { try v.save(db) }
+			}
+			for v in missing { ledger.record(v) }
+		}
+		return ledger
 	}
 
 	public func save(_ group: AccountGroup) throws { try queue.write { db in try group.save(db) } }
-	public func save(_ account: Account) throws { try queue.write { db in try account.save(db) } }
+	/// Saves a portfolio together with the value of its balance day, so its history cannot miss it.
+	public func save(_ account: Account) throws {
+		try queue.write { db in
+			try account.save(db)
+			try account.portfolioValue()?.save(db)
+		}
+	}
 	public func save(_ category: Domain.Category) throws { try queue.write { db in try category.save(db) } }
-	/// Replaces the record of the same account and day.
-	public func save(_ value: PortfolioValue) throws { try queue.write { db in try value.save(db) } }
 
 	public func save(_ transactions: [Transaction]) throws {
 		try queue.write { db in
@@ -40,7 +53,10 @@ public final class Store: Sendable {
 	public func save(groups: [AccountGroup] = [], accounts: [Account] = [], categories: [Domain.Category] = [], transactions: [Transaction] = []) throws {
 		try queue.write { db in
 			for g in groups { try g.save(db) }
-			for a in accounts { try a.save(db) }
+			for a in accounts {
+				try a.save(db)
+				try a.portfolioValue()?.save(db)
+			}
 			for c in categories { try c.save(db) }
 			for t in transactions { try t.save(db) }
 		}
