@@ -153,12 +153,12 @@ final class AccountSetup {
 		guard !isLoggingIn, let (code, bank) = lookup.bank, let url = bank.url else { return }
 		let access = Access(source: .fints(bankCode: code, url: url), bankName: bank.name, loginName: loginName.trimmingCharacters(in: .whitespaces))
 		let known = model.accesses.values.first { $0.isSameLogin(as: access) }?.id ?? access.id
-		let session = SetupSession(broker: model.sync.broker, access: access, pin: Secret(pin))
+		let session = SetupSession(broker: model.sync.broker, access: access, pin: Secret(pin), replacing: known)
 		loginError = nil
 		isLoggingIn = true
 		task = Task {
 			do {
-				let list = try await session.logIn { session in
+				let list = try await session.logIn { [model] session in
 					try await model.sync.exclusively(for: known) {
 						try await model.fints.listAccounts(of: access, state: nil, session: session)
 					}
