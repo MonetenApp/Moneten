@@ -2,43 +2,44 @@
 
 ## Purpose
 
-The catalog is a signed list of reviewed extensions. This capability defines how the user browses, installs, updates, and removes catalog extensions in the app, and how the app makes sure that only reviewed and unchanged extensions run while the signature check is on.
+The catalog is a signed list of reviewed extension packages. This capability defines how the user browses, installs, updates, and removes catalog extensions in the "Extensions" window, and how the app makes sure that a catalog extension runs only while its files are reviewed and unchanged.
 
 ## ADDED Requirements
 
-### Requirement: Browse the catalog
+### Requirement: Browse the catalog in the Extensions window
 
-The app SHALL show the extensions of the catalog in the settings tab "Extensions". Each entry shows the name, the description, the kinds of data it fetches, the author, the version, and whether it is installed. The user can search the list by name.
+The app SHALL show the catalog extensions that are not installed under "Available" in the window that the menu item "Extensions" opens. Each entry shows the name, the description, the kinds of data it fetches, the author, and the version. A search field filters "Installed" and "Available" by name.
 
-#### Scenario: Open the catalog
+#### Scenario: Open the window
 
-- **WHEN** the user opens the settings tab "Extensions" and the catalog
-- **THEN** the list shows an entry such as "Broker", "Fetches balances and securities", version 2.31, "Not installed"
+- **WHEN** the user chooses the menu item "Extensions"
+- **THEN** the window shows the sections "Installed" and "Available"
+- **AND** "Available" lists an entry such as "Broker", "Fetches balances and securities", version 2.31
 
 #### Scenario: Search
 
-- **WHEN** the user types "brok" in the search field of the catalog
-- **THEN** the list shows only entries whose name contains "brok", without regard to case
+- **WHEN** the user types "brok" in the search field of the "Extensions" window
+- **THEN** both sections show only entries whose name contains "brok", without regard to case
 
 ### Requirement: Details before installing
 
-The app SHALL show, before the user installs a catalog extension, the services it adds, the hosts it contacts, the labels of its login fields, and a link to its page in the catalog repository.
+The app SHALL show, before the user installs a catalog extension, the services it adds, the hosts it contacts, the labels of its login fields, its license, and a link to its folder in the catalog repository.
 
 #### Scenario: Hosts are visible
 
-- **WHEN** the user opens the details of "Broker"
-- **THEN** the details list the host `api.broker.example` and the login fields "Email address" and "API key"
+- **WHEN** the user opens the details of "Broker" in the "Extensions" window
+- **THEN** the details list the host `api.broker.example`, the login fields "Email address" and "API key", and the license "MIT"
 
 ### Requirement: Install from the catalog
 
-The app SHALL download the script and the manifest of a catalog extension, check both, and place them in the "Extensions" folder when the user chooses "Install". The services of the extension are then available in the add account assistant without a restart.
+The app SHALL download every file of a catalog package, check each one, and place the package in the "Extensions" folder in one step when the user chooses "Install". The services of the extension are then available in the add account assistant without a restart.
 
 #### Scenario: Install
 
 - **WHEN** the user chooses "Install" for "Broker"
-- **THEN** the entry changes to "Installed" with its version
+- **THEN** the entry moves to "Installed" with its version
 - **AND** "Broker" appears under "Other" in the add account assistant
-- **AND** the app does not show the warning for extensions from outside the catalog
+- **AND** the app does not show the warning for extensions installed from a file
 
 #### Scenario: Download fails
 
@@ -47,25 +48,36 @@ The app SHALL download the script and the manifest of a catalog extension, check
 
 ### Requirement: Signed index
 
-The app SHALL accept a catalog index only when its signature is valid for the public key of the project that ships inside the app. The app uses no content of an index that fails this check.
+The app SHALL accept a catalog index only when its signature is valid for one of the two public keys that ship inside the app, the current key and the next key. Each index carries a version number that only grows. The app uses no content of an index that fails this check.
 
 #### Scenario: Tampered index
 
 - **GIVEN** an index whose content was changed after it was signed
 - **WHEN** the app downloads it
 - **THEN** the app rejects the index and keeps the last accepted one
-- **AND** the catalog shows that the new list could not be verified
+- **AND** the "Extensions" window shows that the new list could not be verified
+
+#### Scenario: Index signed with the next key
+
+- **GIVEN** the project moved the signing to the next key
+- **WHEN** the app downloads an index signed with that key
+- **THEN** the app accepts the index
+
+#### Scenario: Unknown key
+
+- **WHEN** the app downloads an index signed with a key that the app does not ship
+- **THEN** the app rejects the index and keeps the last accepted one
 
 ### Requirement: Digest of every file
 
-The app SHALL compare the SHA-256 digest of every script and manifest with the digest in the accepted index, at download time and each time before the extension runs. A file that does not match is not installed and does not run.
+The app SHALL compare the SHA-256 digest of every file of a catalog package with the digest in the accepted index, at download time and each time before the extension runs. A package with a file that does not match is not installed and does not run.
 
 #### Scenario: Script changed under a valid index
 
-- **GIVEN** the catalog extension "Broker" is installed and the signature check is on
+- **GIVEN** the catalog extension "Broker" is installed
 - **WHEN** a program changes one line in `Broker.lua` and a refresh starts
 - **THEN** the script does not run
-- **AND** the accounts and the list of extensions show that "Broker" was changed and does not match the catalog
+- **AND** the accounts and the "Extensions" window show that "Broker" was changed and does not match the catalog
 
 #### Scenario: Download does not match
 
@@ -74,77 +86,43 @@ The app SHALL compare the SHA-256 digest of every script and manifest with the d
 
 ### Requirement: Older index is rejected
 
-The app SHALL reject an index that is older than the newest index it has accepted, also when its signature is valid.
+The app SHALL reject an index whose version number is lower than the version number of the newest index it has accepted, also when its signature is valid.
 
 #### Scenario: Replayed old index
 
-- **GIVEN** the app accepted the index number 120
-- **WHEN** a server delivers the validly signed index number 95
+- **GIVEN** the app accepted the index with version 120
+- **WHEN** a server delivers the validly signed index with version 95
 - **THEN** the app keeps index 120
 
-### Requirement: Signature check setting
+### Requirement: Catalog extensions and file installs
 
-The app SHALL offer the setting "Verify digital signatures of extensions" in the settings tab "Extensions", which is on by default. The setting carries the note that it is to be turned off only for self-developed, unsigned extensions. Turning it off needs a confirmation that states the risk.
-
-#### Scenario: Default
-
-- **WHEN** a new user opens the settings tab "Extensions"
-- **THEN** "Verify digital signatures of extensions" is on
-
-#### Scenario: Turn off
-
-- **WHEN** the user turns the setting off
-- **THEN** the app explains that any script in the "Extensions" folder can then receive login data, and asks for a confirmation
-- **AND** the setting stays on when the user cancels
-
-### Requirement: Only catalog extensions run while the check is on
-
-The app SHALL, while the signature check is on, run only extensions whose script and manifest match the accepted index. Every other file in the "Extensions" folder is listed as blocked with the reason.
+The app SHALL treat an installed extension as a catalog extension only while its files match the accepted index. Every other installed extension is marked "Unverified" and runs after the warning for extensions installed from a file.
 
 #### Scenario: File from elsewhere
 
-- **GIVEN** the signature check is on
 - **WHEN** the user copies `Demo.lua` from a website into the "Extensions" folder
-- **THEN** the list shows "Demo" as blocked because it is not part of the catalog
-- **AND** its services are not offered in the assistant
+- **THEN** the "Extensions" window lists "Demo" under "Installed" marked "Unverified"
+- **AND** its services are offered in the add account assistant after the warning
 
-#### Scenario: Check turned off
+#### Scenario: Catalog install
 
-- **GIVEN** the signature check is off
-- **WHEN** the user picks a service of `Demo.lua` in the assistant
-- **THEN** the app shows the warning for extensions from outside the catalog and runs the script after the user continues
+- **WHEN** the user installs "Broker" from the catalog
+- **THEN** "Broker" is not marked "Unverified" and runs without the warning
 
-### Requirement: Blocked extension on an account
+### Requirement: Stopped extension on an account
 
-The app SHALL show on each account whose extension is blocked that the refresh did not run because the extension is not verified, and name the extension. The stored data of the account stays visible.
+The app SHALL show on each account whose catalog extension is blocked, withdrawn, or changed that the refresh did not run, with the name of the extension and the reason. The stored data of the account stays visible.
 
 #### Scenario: Refresh of a blocked extension
 
-- **GIVEN** the account "Demo Account" uses the blocked extension "Demo"
+- **GIVEN** the account "Demo Account" uses the catalog extension "Demo", which the index blocks
 - **WHEN** "Refresh All Accounts" runs
-- **THEN** "Demo Account" shows that "Demo" is not verified and was not run
+- **THEN** "Demo Account" shows that "Demo" is blocked and was not run
 - **AND** all other accounts refresh
-
-### Requirement: Decision for extensions installed before the catalog
-
-The app SHALL ask the user once, at the first start of the version that introduces the catalog, when extensions are installed that the catalog does not contain. The user chooses to keep the signature check on, which blocks them, or to turn it off, which keeps them running.
-
-#### Scenario: Self-written extension from v0.1
-
-- **GIVEN** the user installed the self-written `Meine Bank.lua` in an earlier version
-- **WHEN** the user first starts the version with the catalog
-- **THEN** the app lists "Meine Bank" as not in the catalog and offers both choices
-- **AND** with the check on, "Meine Bank" is blocked and all catalog extensions run
-
-#### Scenario: Same extension exists in the catalog
-
-- **GIVEN** an installed file is identical to the catalog version of that extension
-- **WHEN** the user first starts the version with the catalog
-- **THEN** the app treats it as a catalog extension and does not ask about it
 
 ### Requirement: Look for updates
 
-The app SHALL download the current index at start and once a day while it runs, and on request with a button in the catalog. The app shows for each installed catalog extension whether a newer version exists.
+The app SHALL download the current index at start, once a day while it runs, and when the user chooses "Check Now" in the "Extensions" window. The app shows for each installed catalog extension whether a newer version exists.
 
 #### Scenario: New version in the catalog
 
@@ -154,11 +132,11 @@ The app SHALL download the current index at start and once a day while it runs, 
 
 ### Requirement: Install updates
 
-The app SHALL install a newer version of an installed catalog extension automatically while the setting "Update extensions automatically" is on, which is the default. With the setting off, the user installs each update with a button. An update replaces the script and the manifest together and never runs before both pass the digest check.
+The app SHALL install a newer version of an installed catalog extension by itself when the update adds no host and no login field. An update replaces every file of the package together and never runs before all files pass the digest check.
 
 #### Scenario: Automatic update
 
-- **GIVEN** automatic updates are on and version 2.32 of "Broker" is available
+- **GIVEN** version 2.32 of "Broker" is available and adds no host and no login field
 - **WHEN** no session of "Broker" is running
 - **THEN** the app installs 2.32, and the next refresh uses it without an app update
 
@@ -167,58 +145,91 @@ The app SHALL install a newer version of an installed catalog extension automati
 - **WHEN** an update arrives while a session of "Broker" runs
 - **THEN** the running session finishes with the old version and the update is installed afterwards
 
-#### Scenario: Manual updates
+#### Scenario: Removed host
 
-- **GIVEN** automatic updates are off
-- **WHEN** version 2.32 is available
-- **THEN** "Broker" stays at 2.31 until the user chooses "Update"
+- **WHEN** version 2.32 of "Broker" no longer lists the host `old.broker.example`
+- **THEN** the app installs 2.32 by itself
 
-### Requirement: Changes of an update are visible
+### Requirement: An update that asks for new rights waits
 
-The app SHALL show for each update the version, the date, and the change note from the catalog. When an update adds a host or a login field, the app states that in the list of extensions after the update.
+The app SHALL hold an update of a catalog extension that adds a host or a login field until the user confirms it. The "Extensions" window shows the new version, its change note, and what is new. The installed version keeps running until the user confirms.
 
 #### Scenario: New host
 
-- **WHEN** version 2.32 of "Broker" adds the host `login.broker.example`
-- **THEN** the entry "Broker" says that version 2.32 also contacts `login.broker.example`
+- **GIVEN** "Broker" 2.31 is installed
+- **WHEN** the index lists version 2.32, which adds the host `login.broker.example`
+- **THEN** the entry "Broker" says "Version 2.32 also contacts login.broker.example" with the button "Review Update"
+- **AND** the next refresh still uses 2.31
+
+#### Scenario: Update confirmed
+
+- **GIVEN** the update of "Broker" to 2.32 waits for the user
+- **WHEN** the user chooses "Review Update" and confirms
+- **THEN** the app installs 2.32 and the next refresh uses it
+
+#### Scenario: New login field
+
+- **WHEN** version 2.32 of "Broker" adds the login field "One-time code"
+- **THEN** the update waits for the user and the window names the field "One-time code"
 
 ### Requirement: Remove a catalog extension
 
-The app SHALL remove an installed catalog extension when the user chooses "Remove". Before that, the app names the accounts that use it and says that these accounts keep their data and can no longer be refreshed.
+The app SHALL remove an installed catalog extension when the user chooses "Remove" in the "Extensions" window. Before that, the app names the accounts that use it and says that these accounts keep their data and can no longer be refreshed.
 
 #### Scenario: Extension in use
 
 - **GIVEN** the account "Broker Depot" uses "Broker"
 - **WHEN** the user chooses "Remove" for "Broker"
 - **THEN** the app names "Broker Depot" in the confirmation
-- **AND** after the confirmation the script and the manifest are gone and "Broker Depot" keeps its data
+- **AND** after the confirmation every file of the package is gone and "Broker Depot" keeps its data
 
-### Requirement: Extension removed from the catalog
+### Requirement: Blocked, withdrawn, and unmaintained extensions
 
-The app SHALL stop running an installed extension that a newer index no longer contains while the signature check is on, and show the reason that the catalog gives.
+The app SHALL apply the state that the accepted index gives an installed catalog extension. A blocked extension, which has a security problem, stops running at once. A withdrawn extension stops running. An unmaintained extension keeps running. The "Extensions" window and the accounts of the extension show the note of the catalog.
+
+#### Scenario: Blocked extension
+
+- **GIVEN** "Broker" is installed and a new index blocks it with the note "Sends the password to another host."
+- **WHEN** the app accepts the new index
+- **THEN** "Broker" does not run and the window shows it as blocked with that note
 
 #### Scenario: Withdrawn extension
 
 - **GIVEN** "Broker" is installed and a new index withdraws it with the note "The service closed its API."
 - **WHEN** the app accepts the new index
-- **THEN** "Broker" is listed as blocked with that note
+- **THEN** "Broker" does not run and the window shows it as withdrawn with that note
+
+#### Scenario: Unmaintained extension
+
+- **GIVEN** a new index marks "Broker" as unmaintained
+- **WHEN** a refresh of "Broker Depot" starts
+- **THEN** "Broker" runs and the window shows the note that nobody maintains it
 
 ### Requirement: Catalog not reachable
 
-The app SHALL keep running the installed catalog extensions with the last accepted index when the catalog cannot be reached. Installing a new extension is not possible in that state, and the catalog says so with the date of the last accepted index.
+The app SHALL keep running the installed catalog extensions with the last accepted index when the catalog cannot be reached. Installing a new extension is not possible in that state, and the "Extensions" window says so with the date of the last accepted index.
 
 #### Scenario: Offline
 
 - **GIVEN** the Mac has no connection to the catalog
-- **WHEN** the user opens the catalog
+- **WHEN** the user opens the "Extensions" window
 - **THEN** the app shows the entries of the last accepted index and its date, and "Install" is disabled
 
 ### Requirement: Catalog requests carry no personal data
 
-The app SHALL request the index and the files of the catalog without any identifier of the user or the Mac, and without the list of installed extensions.
+The app SHALL request the index and the files of the catalog only from `extensions.monetenapp.com`, without any identifier of the user or the Mac, and without the list of installed extensions.
 
 #### Scenario: Update check
 
 - **WHEN** the app looks for updates
-- **THEN** it downloads the whole index and compares versions on the Mac
+- **THEN** it downloads the whole index from `extensions.monetenapp.com` and compares versions on the Mac
 - **AND** the request does not reveal which extensions are installed
+
+### Requirement: Catalog packages need a manifest
+
+The app SHALL install a catalog package only when its manifest lists the hosts, the login field labels of each service, the kinds of data, the API version, and in `license` the SPDX identifier of its license.
+
+#### Scenario: Manifest without hosts
+
+- **WHEN** an accepted index lists a package whose manifest has no `hosts`
+- **THEN** the "Extensions" window shows the package as not installable because its manifest is incomplete
