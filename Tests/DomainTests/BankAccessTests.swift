@@ -80,7 +80,7 @@ struct BankAccessTests {
 		let migrated = Account(position: 3, name: "Haushalt", kind: .giro, source: .migrated, iban: "DE02120300000000202051", sourceID: "moneymoney:17")
 		let ledger = Ledger(accounts: [migrated])
 		let listed = Self.candidate("Girokonto", iban: "DE02120300000000202051", number: "202051")
-		#expect(ledger.setupMatch(for: listed) == .migrated(migrated))
+		#expect(ledger.setupMatch(for: listed) == .connects(migrated))
 
 		let added = ledger.accountsToAdd([listed])
 		#expect(added.count == 1)
@@ -94,6 +94,52 @@ struct BankAccessTests {
 		var connected = migrated
 		connected.accessID = UUID()
 		#expect(Ledger(accounts: [connected]).setupMatch(for: listed) == .present(connected))
+	}
+
+	static func migrated(_ name: String, currency: String = "EUR", closed: Bool = false) -> Account {
+		Account(position: 0, name: name, kind: .giro, source: .migrated, currency: currency, iban: "DE02120300000000202051", isClosed: closed)
+	}
+
+	@Test("Of the migrated accounts with the IBAN, the setup connects the open one in the same currency")
+	func openAccountInSameCurrency() {
+		let old = Self.migrated("Giro (alt)", closed: true)
+		let giro = Self.migrated("Giro")
+		let dollar = Self.migrated("Giro USD", currency: "USD")
+		let listed = Self.candidate("Girokonto", iban: "DE02120300000000202051", number: "202051")
+		#expect(Ledger(accounts: [old, giro, dollar]).setupMatch(for: listed) == .connects(giro))
+		#expect(Ledger(accounts: [giro, old]).setupMatch(for: listed) == .connects(giro))
+		#expect(Ledger(accounts: [dollar]).setupMatch(for: listed) == .new)
+		#expect(Ledger(accounts: [old]).setupMatch(for: listed) == .new)
+		#expect(Ledger(accounts: [dollar]).accountsToAdd([listed]).map(\.id) == [listed.id])
+	}
+
+	@Test("Several open migrated accounts with the IBAN are a choice, and only the account the user chooses is connected")
+	func severalMatches() {
+		let giro = Self.migrated("Giro")
+		let household = Self.migrated("Haushalt")
+		let ledger = Ledger(accounts: [giro, household])
+		let listed = Self.candidate("Girokonto", iban: "DE02120300000000202051", number: "202051")
+		#expect(ledger.setupMatch(for: listed) == .choice([giro, household]))
+
+		#expect(ledger.accountsToAdd([listed]).map(\.id) == [listed.id])
+		let connected = ledger.accountsToAdd([listed], connecting: [listed.id: household.id])
+		#expect(connected.map(\.id) == [household.id])
+		#expect(connected.first?.accessID == Self.accessID)
+
+		// Two listed accounts never take over the same account.
+		let twin = Self.candidate("Girokonto 2", iban: "DE02120300000000202051", number: "202051", remoteID: "202051/1")
+		let both = ledger.accountsToAdd([listed, twin], connecting: [listed.id: giro.id, twin.id: giro.id])
+		#expect(both.map(\.id) == [giro.id, twin.id])
+	}
+
+	@Test("An account of the bank without an access is connected again, an offline account is present")
+	func withoutAccess() {
+		let orphan = Account(position: 0, name: "Giro", kind: .giro, source: .bank, iban: "DE02120300000000202051", remoteID: "DE02120300000000202051")
+		let offline = Account(position: 0, name: "Giro", kind: .giro, source: .offline, iban: "DE02120300000000202051")
+		let listed = Self.candidate("Girokonto", iban: "DE02120300000000202051", number: "202051")
+		#expect(Ledger(accounts: [orphan]).setupMatch(for: listed) == .connects(orphan))
+		#expect(Ledger(accounts: [offline]).setupMatch(for: listed) == .present(offline))
+		#expect(Ledger(accounts: [orphan]).accountsToAdd([listed]).map(\.accessID) == [Self.accessID])
 	}
 
 	// MARK: Refresh commands

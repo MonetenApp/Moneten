@@ -84,47 +84,64 @@ extension Access {
 }
 
 /// How an account that the bank lists for a new access relates to the accounts in the app
-/// ("Do not add an account twice").
+/// ("Do not add an account twice", "Connect a migrated account to its bank").
 public enum SetupMatch: Equatable, Sendable {
 	case new
 	/// The app has the account already, and the setup does not add it again.
 	case present(Account)
-	/// A migrated account without an access. The setup connects it, and it keeps its history.
-	case migrated(Account)
+	/// An account without an access, for example a migrated one. The setup connects it, and it keeps its history.
+	case connects(Account)
+	/// Several open accounts without an access match. The setup connects the one that the user
+	/// chooses, and adds a new account until the user chooses one.
+	case choice([Account])
 }
 
 extension Ledger {
-	/// The account of the app with the IBAN of `candidate`, or with its account number and Bankleitzahl.
+	/// The accounts of the app with the IBAN of `candidate`, or with its account number and Bankleitzahl,
+	/// in its currency. An account with an access or an offline account is present. Of the others, an open
+	/// account is connected, and a closed one is left as it is.
 	public func setupMatch(for candidate: Account) -> SetupMatch {
 		func iban(_ a: Account) -> String? { a.iban.map { $0.uppercased().filter { !$0.isWhitespace } } }
 		func number(_ a: Account) -> String? { a.accountNumber.map { String($0.drop { $0 == "0" }) } }
-		let found = accounts.first { a in
+		let matches = accounts.filter { a in
+			guard a.currency == candidate.currency else { return false }
 			if let mine = iban(a), mine == iban(candidate) { return true }
 			return number(a) != nil && number(a) == number(candidate) && a.bankCode == candidate.bankCode
 		}
-		guard let found else { return .new }
-		return found.source == .migrated && found.accessID == nil ? .migrated(found) : .present(found)
+		if let present = matches.first(where: { $0.accessID != nil || $0.source == .offline }) { return .present(present) }
+		let open = matches.filter { !$0.isClosed }
+		switch open.count {
+		case 0: return .new
+		case 1: return .connects(open[0])
+		default: return .choice(open)
+		}
 	}
 
 	/// What the setup stores for the selected candidates: each new account after the accounts of its
-	/// group, and each migrated account that a candidate connects. A candidate that the app has is left out.
-	public func accountsToAdd(_ candidates: [Account]) -> [Account] {
+	/// group, and each account that a candidate connects. `connecting` holds the account that the user
+	/// chose for a candidate with a choice, by the ID of the candidate. A candidate that the app has is
+	/// left out, and an account is connected to one candidate at most.
+	public func accountsToAdd(_ candidates: [Account], connecting choices: [UUID: UUID] = [:]) -> [Account] {
 		var next: [UUID?: Int] = [:]
+		var connected: Set<UUID> = []
 		return candidates.compactMap { candidate in
+			let existing: Account?
 			switch setupMatch(for: candidate) {
-			case .present:
-				return nil
-			case var .migrated(account):
+			case .present: return nil
+			case let .connects(account): existing = account
+			case let .choice(accounts): existing = accounts.first { $0.id == choices[candidate.id] }
+			case .new: existing = nil
+			}
+			if var account = existing, connected.insert(account.id).inserted {
 				account.source = .bank
 				account.accessID = candidate.accessID
 				account.remoteID = candidate.remoteID
 				return account
-			case .new:
-				var account = candidate
-				account.position = next[candidate.groupID] ?? nextTreePosition(in: candidate.groupID)
-				next[candidate.groupID] = account.position + 1
-				return account
 			}
+			var account = candidate
+			account.position = next[candidate.groupID] ?? nextTreePosition(in: candidate.groupID)
+			next[candidate.groupID] = account.position + 1
+			return account
 		}
 	}
 }

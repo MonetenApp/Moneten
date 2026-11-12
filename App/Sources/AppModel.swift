@@ -500,11 +500,11 @@ final class AppModel {
 	/// Stores the access with the accounts that the user selected, keeps the PIN of the login in
 	/// memory, selects the first account, and starts the first refresh ("Finish the setup"). A login
 	/// that the app has already keeps its access.
-	func add(_ new: Access, state: AccessState?, accounts candidates: [Account], pin: Secret) {
+	func add(_ new: Access, state: AccessState?, accounts candidates: [Account], connecting: [UUID: UUID], pin: Secret) {
 		guard let store else { return }
 		let access: Access, accounts: [Account]
 		do {
-			(access, accounts) = try store.add(new, state: state, accounts: ledger.accountsToAdd(candidates))
+			(access, accounts) = try store.add(new, state: state, accounts: ledger.accountsToAdd(candidates, connecting: connecting))
 		} catch {
 			alert = AlertMessage(title: "Could not add the accounts.", message: String(describing: error))
 			return

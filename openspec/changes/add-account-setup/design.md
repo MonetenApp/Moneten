@@ -12,7 +12,7 @@ Issue #85 builds the FinTS path of the assistant on the connector of issue #13 p
 
 ### Who owns what
 
-- `Domain`: `BankEntry` reads "IBAN or Bankleitzahl" and runs the IBAN checks. `Ledger.setupMatch(for:)` and `Ledger.accountsToAdd(_:)` decide which listed accounts the setup adds.
+- `Domain`: `BankEntry` reads "IBAN or Bankleitzahl" and runs the IBAN checks. `Ledger.setupMatch(for:)` and `Ledger.accountsToAdd(_:connecting:)` decide which listed accounts the setup adds.
 - `FinTS`: `FinTSConnector.bankInfo` finds the bank, and `listAccounts` logs in and lists the accounts.
 - `Sync`: `SetupSession` is the session of the login. It answers the PIN request with the PIN of the login step. A rejected PIN ends the login, so the message of the bank shows in the login step and the bank gets no second attempt. Every other request opens the dialogs of `SessionBroker`, one at a time with the dialogs of running refreshes.
 - `Storage`: `Store.add(_:state:accounts:)` writes the access and its accounts in one transaction.
@@ -25,7 +25,11 @@ Issue #85 builds the FinTS path of the assistant on the connector of issue #13 p
 
 ### A migrated account takes over the access
 
-The moneymoney-migration spec ("Connect a migrated account to its bank") lets the assistant attach a bank access to a migrated account with the same IBAN, or the same account number and Bankleitzahl. The third step shows such an account as "Connects the migrated account", and it keeps its ID, name, group, and transactions. Any other account that matches is shown as present and cannot be selected.
+The moneymoney-migration spec ("Connect a migrated account to its bank") lets the assistant attach a bank access to a migrated account with the same IBAN, or the same account number and Bankleitzahl, in the same currency. An account of a bank whose access is gone is connected in the same way. The third step shows such an account as "Connects", and it keeps its ID, name, group, and transactions. A closed account is never connected, so the open "Giro" wins over a closed "Giro (alt)" with the same IBAN. When several open accounts match, the row offers "Connect to" with "New account" selected, and the setup connects only the account that the user chooses. An account with an access and an offline account are shown as present and cannot be selected.
+
+### A second setup of a login
+
+`Store.add(_:state:accounts:)` looks for an access with the same Bankleitzahl and login name. When it finds one, the new accounts join it and it takes the new state, so one login keeps one session and one TAN for each refresh.
 
 ## Deviations from the spec
 

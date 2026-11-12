@@ -64,6 +64,8 @@ final class AccountSetup {
 
 	private(set) var candidates: [Candidate] = []
 	var selected: Set<String> = []
+	/// The account that a candidate with a choice connects, by the ID of the candidate's account. None adds a new account.
+	var connecting: [UUID: UUID] = [:]
 	private(set) var notices: [String] = []
 	private var access: Access?
 	private var state: AccessState?
@@ -205,7 +207,7 @@ final class AccountSetup {
 		guard let access else { return }
 		let chosen = candidates.filter { selected.contains($0.id) && !$0.isPresent }.map(\.account)
 		guard !chosen.isEmpty else { return }
-		model.add(access, state: state, accounts: chosen, pin: Secret(pin))
+		model.add(access, state: state, accounts: chosen, connecting: connecting, pin: Secret(pin))
 		model.closeAccountSetup()
 	}
 
@@ -317,6 +319,15 @@ struct AccountSetupSheet: View {
 				}
 				.toggleStyle(.checkbox)
 				.disabled(candidate.isPresent)
+				if case let .choice(accounts) = candidate.match {
+					Picker("Connect to", selection: Binding(get: { setup.connecting[candidate.account.id] },
+						set: { setup.connecting[candidate.account.id] = $0 })) {
+						Text("New account").tag(UUID?.none)
+						ForEach(accounts) { Text($0.name).tag(UUID?.some($0.id)) }
+					}
+					.padding(.leading, 20)
+					.disabled(!setup.selected.contains(candidate.id))
+				}
 			}
 		}
 		if !setup.notices.isEmpty {
@@ -357,8 +368,10 @@ private struct CandidateRow: View {
 				EmptyView()
 			case let .present(existing):
 				Text("Already in Moneten as “\(existing.name)”").font(.callout).foregroundStyle(.secondary)
-			case let .migrated(existing):
-				Text("Connects the migrated account “\(existing.name)”, which keeps its transactions").font(.callout).foregroundStyle(.secondary)
+			case let .connects(existing):
+				Text("Connects “\(existing.name)”, which keeps its transactions").font(.callout).foregroundStyle(.secondary)
+			case .choice:
+				Text("Several accounts in Moneten match. Choose the one to connect, which keeps its transactions.").font(.callout).foregroundStyle(.secondary)
 			}
 		}
 	}
