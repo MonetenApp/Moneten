@@ -8,18 +8,13 @@ The catalog is a signed list of reviewed extension packages. This capability def
 
 ### Requirement: Browse the catalog in the Extensions window
 
-The app SHALL show the catalog extensions that are not installed under "Available" in the window that the menu item "Extensions" opens. Each entry shows the name, the description, the kinds of data it fetches, the author, and the version. A search field filters "Installed" and "Available" by name.
+The app SHALL show the catalog extensions that are not installed under "Available" in the window that the menu item "Extensions" opens. Each entry shows the name, the description, the kinds of data it fetches, the author, and the version.
 
 #### Scenario: Open the window
 
 - **WHEN** the user chooses the menu item "Extensions"
 - **THEN** the window shows the sections "Installed" and "Available"
 - **AND** "Available" lists an entry such as "Broker", "Fetches balances and securities", version 2.31
-
-#### Scenario: Search
-
-- **WHEN** the user types "brok" in the search field of the "Extensions" window
-- **THEN** both sections show only entries whose name contains "brok", without regard to case
 
 ### Requirement: Details before installing
 
@@ -132,13 +127,20 @@ The app SHALL download the current index at start, once a day while it runs, and
 
 ### Requirement: Install updates
 
-The app SHALL install a newer version of an installed catalog extension by itself when the update adds no host and no login field. An update replaces every file of the package together and never runs before all files pass the digest check.
+The app SHALL install a newer version of an installed catalog extension by itself when the update adds no host and no login field and the setting "Update extensions automatically" in the "Extensions" window is on, which is the default. With the setting off, every update waits until the user chooses "Update". An update replaces every file of the package together and never runs before all files pass the digest check.
 
 #### Scenario: Automatic update
 
-- **GIVEN** version 2.32 of "Broker" is available and adds no host and no login field
+- **GIVEN** automatic updates are on and version 2.32 of "Broker" is available
+- **AND** version 2.32 adds no host and no login field
 - **WHEN** no session of "Broker" is running
 - **THEN** the app installs 2.32, and the next refresh uses it without an app update
+
+#### Scenario: Manual updates
+
+- **GIVEN** the user turned "Update extensions automatically" off
+- **WHEN** the index lists version 2.32 of "Broker", which adds no host and no login field
+- **THEN** "Broker" stays at 2.31 until the user chooses "Update"
 
 #### Scenario: Update during a refresh
 
@@ -147,6 +149,7 @@ The app SHALL install a newer version of an installed catalog extension by itsel
 
 #### Scenario: Removed host
 
+- **GIVEN** automatic updates are on
 - **WHEN** version 2.32 of "Broker" no longer lists the host `old.broker.example`
 - **THEN** the app installs 2.32 by itself
 

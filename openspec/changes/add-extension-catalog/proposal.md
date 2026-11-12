@@ -10,7 +10,7 @@ A scraper breaks when a website changes, and a fix must reach users within hours
 - The catalog lives in the public repository `MonetenApp/moneten-extensions`. Checks and one maintainer review every package and every update.
 - The app accepts a catalog index only when it is signed with one of two public keys in the app, and only when its version number is higher than the last accepted one. It checks the digest of every file before an extension runs.
 - A catalog package needs a manifest with its hosts, its login field labels, its kinds of data, its API version, and its license.
-- An update without a new host or login field installs by itself. An update that adds either waits for the user's confirmation.
+- An update without a new host or login field installs by itself while the setting "Update extensions automatically" is on, which is the default. An update that adds either waits for the user's confirmation. With the setting off, every update waits.
 - The index can mark a package as blocked, withdrawn, or unmaintained.
 - An extension installed from a file runs after a warning and stays marked "Unverified". There is no setting that turns a signature check off.
 - The app contacts only `extensions.monetenapp.com` for the catalog.
@@ -31,7 +31,7 @@ None.
 - Issues: #37, #87, #88
 - Modules: `ExtensionCatalog` verifies the index, downloads and checks the packages, and plans updates. `ExtensionConnector` checks the digests before a session. `App` owns the Extensions window. The catalog itself is the separate repository `MonetenApp/moneten-extensions`.
 - Depends on the change `add-web-banking-extensions`. The warning and the mark "Unverified" for extensions installed from a file are defined there.
-- Depends on the change `add-account-setup` for the add account assistant, which is part 2 of #13 and is not built yet. Without it, the user cannot set up an account with an installed extension in the app.
+- Depends on the change `add-account-setup` for the add account assistant, which issue #85 builds and which is not built yet. Without it, the user cannot set up an account with an installed extension in the app.
 - Decisions: [ADR 0015](../../../docs/decisions/0015-extension-program.md), [ADR 0004](../../../docs/decisions/0004-moneymoney-compatible-extension-api.md), [ADR 0006](../../../docs/decisions/0006-license-gpl-3.md), [ADR 0008](../../../docs/decisions/0008-payments-only-through-licensed-channels.md), [ADR 0002](../../../docs/decisions/0002-local-first-no-server.md).
 
 ## Reference behavior
@@ -46,7 +46,7 @@ None.
 
 ### Decided for Moneten
 
-- The catalog is browsed and installed in the app, in the "Extensions" window, and updates arrive by themselves. MoneyMoney has a web page and manual downloads ([ADR 0015](../../../docs/decisions/0015-extension-program.md)).
+- The catalog is browsed and installed in the app, in the "Extensions" window, and updates arrive by themselves unless the user turns "Update extensions automatically" off. MoneyMoney has a web page and manual downloads ([ADR 0015](../../../docs/decisions/0015-extension-program.md)).
 - Files from outside the catalog run after a warning and stay marked "Unverified". MoneyMoney refuses unsigned files until the user turns its signature check off. Moneten has no such setting.
 - A catalog package needs a manifest with its hosts, its login field labels, its kinds of data, its API version, and its license. MoneyMoney keeps the login labels in its own database.
 - One signature covers a catalog index, and the index lists a SHA-256 digest for each file (issue #37). MoneyMoney signs each script.
