@@ -492,8 +492,12 @@ final class AppModel {
 
 	func save(group: AccountGroup) {
 		guard let store else { return }
-		try? store.save(group)
-		ledger.upsert(group)
+		do {
+			try store.save(group)
+			ledger.upsert(group)
+		} catch {
+			alert = AlertMessage(title: "Could not save the account group.", message: String(describing: error))
+		}
 	}
 
 	func move(account id: UUID, toGroup groupID: UUID?) {
