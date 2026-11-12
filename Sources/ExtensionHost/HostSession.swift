@@ -12,8 +12,6 @@ final class HostSession {
 	let log: (String) -> Void
 	let status: (String) -> Void
 	var registration: Registration?
-	/// The last URL of each connection, by the address of its table, for relative URLs.
-	var lastURLs: [UnsafeRawPointer: URL] = [:]
 	/// The stored transactions that `isKnownTransactionId` finds during the current `RefreshAccount`.
 	var knownTransactions: [String: LuaValue] = [:]
 	/// The last name that a script read from `MM`, `io`, or a connection and that the app does not offer.

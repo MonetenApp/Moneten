@@ -38,10 +38,12 @@ protocol Transport {
 }
 
 /// The only way from a script to the network: every request and every redirect target passes the
-/// host policy before the transport sees it.
+/// host policy before the transport sees it. It keeps the cookies of the run, because each redirect
+/// hop sends and receives them.
 struct Network {
 	let policy: HostPolicy
 	let transport: any Transport
+	let cookies = CookieJar()
 
 	static let maxRedirects = 10
 
@@ -53,26 +55,35 @@ struct Network {
 	/// and so turns "Hoſt" into a second Host header.
 	static let tokenCharacters = Set("!#$%&'*+-.^_`|~0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz".unicodeScalars)
 
-	func send(_ request: HTTPRequest) throws -> HTTPResponse {
-		for (name, value) in request.headers {
-			guard !name.isEmpty, name.unicodeScalars.allSatisfy(Self.tokenCharacters.contains) else {
+	/// Sends `request` with the cookies of the run and keeps the cookies of each answer. It follows
+	/// redirects unless `followRedirects` is false, and returns the last answer with the URL it came from.
+	func send(_ request: HTTPRequest, followRedirects: Bool) throws -> (url: URL, response: HTTPResponse) {
+		var request = request
+		for _ in 0...Self.maxRedirects {
+			let sent = cookies.adding(to: request)
+			try Self.check(sent.headers)
+			try policy.check(sent.url)
+			let response = try transport.send(sent)
+			cookies.store(response.header("Set-Cookie"), from: sent.url)
+			guard followRedirects, let next = Self.redirect(after: request, response) else { return (request.url, response) }
+			request = next
+		}
+		throw ScriptError("More than \(Self.maxRedirects) redirects, the last to \(request.url.absoluteString).")
+	}
+
+	/// The cookies of the jar come from servers and from `connection:setCookie`, so they pass this check too.
+	private static func check(_ headers: [String: String]) throws {
+		for (name, value) in headers {
+			guard !name.isEmpty, name.unicodeScalars.allSatisfy(tokenCharacters.contains) else {
 				throw ScriptError("An extension may not set the header \(name.debugDescription), because it is not a plain header name.")
 			}
-			if Self.reservedHeaders.contains(name.lowercased()) || name.lowercased().hasPrefix("proxy-") {
+			if reservedHeaders.contains(name.lowercased()) || name.lowercased().hasPrefix("proxy-") {
 				throw ScriptError("An extension may not set the header \(name).")
 			}
 			if value.unicodeScalars.contains(where: { $0 == "\r" || $0 == "\n" || $0 == "\0" }) {
 				throw ScriptError("The header \(name) has a line break or a null character in its value.")
 			}
 		}
-		var request = request
-		for _ in 0...Self.maxRedirects {
-			try policy.check(request.url)
-			let response = try transport.send(request)
-			guard let next = Self.redirect(after: request, response) else { return response }
-			request = next
-		}
-		throw ScriptError("More than \(Self.maxRedirects) redirects, the last to \(request.url.absoluteString).")
 	}
 
 	/// The headers that a redirect to another host takes along. Any other header that the script set
@@ -92,5 +103,89 @@ struct Network {
 			sameHost ? keepsMethod || name.caseInsensitiveCompare("Content-Type") != .orderedSame : crossHostHeaders.contains(name.lowercased())
 		}
 		return HTTPRequest(method: keepsMethod ? request.method : "GET", url: target, headers: headers, body: body)
+	}
+}
+
+/// The cookies of one run, which all connections of the run share. A cookie whose expiry has passed
+/// removes the stored cookie of the same name, domain, and path, as a browser does.
+final class CookieJar {
+	private var cookies: [HTTPCookie] = []
+
+	/// Keeps the cookies of a `Set-Cookie` value from the answer of `url`. A value can hold several
+	/// cookies separated by commas, as the transport joins repeated headers. A cookie for a domain
+	/// that `url` is not part of is left out, as in a browser.
+	func store(_ setCookie: String?, from url: URL) {
+		guard let setCookie, let host = url.host()?.lowercased() else { return }
+		for cookie in HTTPCookie.cookies(withResponseHeaderFields: ["Set-Cookie": setCookie], for: url) where Self.domain(of: cookie, matches: host) {
+			put(cookie)
+		}
+	}
+
+	/// Keeps a cookie that the script sets. Without a `Domain` it belongs to the host of `url`; without
+	/// `url` and `Domain` there is no host it could go to, so it is dropped.
+	func set(_ setCookie: String, for url: URL?) {
+		let base = url ?? Self.noHost
+		for cookie in HTTPCookie.cookies(withResponseHeaderFields: ["Set-Cookie": setCookie], for: base) where cookie.domain != Self.noHost.host() {
+			put(cookie)
+		}
+	}
+
+	/// The `Cookie` header for `url`, or nil when no cookie of the jar belongs to it.
+	func header(for url: URL) -> String? {
+		guard let host = url.host()?.lowercased() else { return nil }
+		let path = url.path(percentEncoded: true).isEmpty ? "/" : url.path(percentEncoded: true)
+		let now = Date()
+		let matching = cookies.filter { cookie in
+			Self.domain(of: cookie, matches: host) && Self.path(path, matches: cookie.path) && (cookie.expiresDate.map { $0 > now } ?? true)
+		}
+		return HTTPCookie.requestHeaderFields(with: matching)["Cookie"]
+	}
+
+	/// The request with the cookies of the jar, unless the script set its own `Cookie` header.
+	func adding(to request: HTTPRequest) -> HTTPRequest {
+		guard !request.headers.keys.contains(where: { $0.caseInsensitiveCompare("Cookie") == .orderedSame }),
+			let header = header(for: request.url) else { return request }
+		return HTTPRequest(method: request.method, url: request.url, headers: request.headers.merging(["Cookie": header]) { $1 }, body: request.body)
+	}
+
+	/// Each cookie that has not expired, in the format of `Set-Cookie` with its domain and path, for
+	/// `LocalStorage`. A cookie for one host comes back as a cookie for its domain, because `Set-Cookie`
+	/// has no way to say host-only.
+	var setCookieLines: [String] {
+		let now = Date()
+		let format = DateFormatter()
+		format.locale = Locale(identifier: "en_US_POSIX")
+		format.timeZone = TimeZone(identifier: "GMT")
+		format.dateFormat = "EEE, dd MMM yyyy HH:mm:ss 'GMT'"
+		return cookies.compactMap { cookie in
+			if let expiry = cookie.expiresDate, expiry <= now { return nil }
+			var line = "\(cookie.name)=\(cookie.value); Domain=\(cookie.domain); Path=\(cookie.path)"
+			if let expiry = cookie.expiresDate { line += "; Expires=\(format.string(from: expiry))" }
+			if cookie.isSecure { line += "; Secure" }
+			if cookie.isHTTPOnly { line += "; HttpOnly" }
+			return line
+		}
+	}
+
+	private func put(_ cookie: HTTPCookie) {
+		cookies.removeAll { $0.name == cookie.name && $0.domain == cookie.domain && $0.path == cookie.path }
+		if let expiry = cookie.expiresDate, expiry <= Date() { return }
+		cookies.append(cookie)
+	}
+
+	/// The URL of a cookie that names no domain and comes before the first request. The name `invalid`
+	/// is reserved and never reaches a server (RFC 6761).
+	private static let noHost = URL(string: "https://invalid/")!
+
+	/// A cookie with a leading dot in its domain goes to that domain and every host under it, one without only to its host.
+	private static func domain(of cookie: HTTPCookie, matches host: String) -> Bool {
+		let domain = cookie.domain.lowercased()
+		guard domain.hasPrefix(".") else { return host == domain }
+		return host == domain.dropFirst() || host.hasSuffix(domain)
+	}
+
+	/// The path match of RFC 6265: "/a" matches "/a", "/a/", and "/a/b", but not "/ab".
+	private static func path(_ path: String, matches cookiePath: String) -> Bool {
+		path == cookiePath || (path.hasPrefix(cookiePath) && (cookiePath.hasSuffix("/") || path.dropFirst(cookiePath.count).hasPrefix("/")))
 	}
 }

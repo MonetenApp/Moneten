@@ -55,6 +55,16 @@ import Testing
 		#expect(run.sent == ["GET https://api.bank.example/start"])
 	}
 
+	@Test func redirectWithACookieToAnotherHost() {
+		let run = Run(demo("""
+			WebBanking{version = 1}
+			function Check() return Connection():get("https://api.bank.example/login") end
+			""", hosts: ["api.bank.example"]),
+			exchanges: [("GET", "https://api.bank.example/login", 302, ["Location": "https://evil.example/", "Set-Cookie": "SID=abc; Path=/"], "")] + Self.everyHost)
+		#expect(run.call("Check") == .string("error: Demo.lua:2: Demo may not contact evil.example, because its manifest does not list that host."))
+		#expect(run.sent == ["GET https://api.bank.example/login"])
+	}
+
 	@Test func redirectOnTheSameHost() {
 		let run = run("https://api.bank.example/hop")
 		#expect(run.call("Check") == .array([.string("<p>Hello</p>"), .string("UTF-8"), .string("text/html"), .string("text/html; charset=UTF-8")]))
