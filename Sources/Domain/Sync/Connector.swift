@@ -108,12 +108,18 @@ public struct RefreshResult: Sendable {
 	public let transactions: FetchedTransactions?
 	/// The bank has no transactions before the first one returned.
 	public let isComplete: Bool
+	/// The error of a transaction request that failed beside a balance that worked ("Fetch the balance
+	/// separately"). The balance is stored, and the account fails with this error, so that its last
+	/// refresh time stays and the next refresh asks again for the days that were missed.
+	public let transactionFailure: SyncFailure?
 
-	public init(balance: Money?, balanceDate: Date? = nil, transactions: FetchedTransactions?, isComplete: Bool = false) {
+	public init(balance: Money?, balanceDate: Date? = nil, transactions: FetchedTransactions?, isComplete: Bool = false,
+		transactionFailure: SyncFailure? = nil) {
 		self.balance = balance
 		self.balanceDate = balanceDate
 		self.transactions = transactions
 		self.isComplete = isComplete
+		self.transactionFailure = transactionFailure
 	}
 }
 

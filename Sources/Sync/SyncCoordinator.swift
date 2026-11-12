@@ -180,7 +180,9 @@ public final class SyncCoordinator {
 				continue
 			}
 			switch report.outcomes[account.accountID] {
-			case .fetched: fetched.insert(account.accountID)
+			case let .fetched(result):
+				// The balance is stored, but without transactions the account did not refresh.
+				if let failure = result.transactionFailure { failures[account.accountID] = failure } else { fetched.insert(account.accountID) }
 			case let .failed(failure): failures[account.accountID] = failure
 			case nil: failures[account.accountID] = .notFetched
 			}

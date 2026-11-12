@@ -173,7 +173,8 @@ struct AccountResult: Decodable {
 		let pending: Bool
 	}
 
-	/// The outcome of the account and the errors of a request that failed beside one that worked.
+	/// The outcome of the account, and the error of a balance request that failed beside transactions
+	/// that worked. The error of a transaction request that failed beside a balance is the error of the account.
 	func outcome(of accountID: UUID) throws -> (AccountOutcome, [BankMessage]) {
 		guard balance != nil || transactions != nil else {
 			return (.failed(errors.first?.failure ?? .bank(BankMessage(text: "The bank sent nothing for this account."))), [])
@@ -182,9 +183,10 @@ struct AccountResult: Decodable {
 		let fetched = try transactions.map { t in
 			FetchedTransactions(rows: try t.rows.map { try $0.transaction(of: accountID) }, from: try t.from.map(Self.day))
 		}
+		let transactionFailure = transactions == nil ? errors.first?.failure : nil
 		let result = RefreshResult(balance: money, balanceDate: try balance?.date.map { try Self.day($0).date() }, transactions: fetched,
-			isComplete: transactions != nil && transactions?.from == nil)
-		return (.fetched(result), errors.map(\.message))
+			isComplete: transactions != nil && transactions?.from == nil, transactionFailure: transactionFailure)
+		return (.fetched(result), transactionFailure == nil ? errors.map(\.message) : [])
 	}
 
 	static func money(_ amount: String, _ currency: String) throws -> Money {

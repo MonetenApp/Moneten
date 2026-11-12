@@ -448,6 +448,21 @@ struct SyncCoordinatorTests {
 		#expect(finished(bank)?.failures == [Self.giro.accountID: blocked, Self.card.accountID: .notFetched])
 	}
 
+	@Test("A failed transaction request stores the balance and fails the account, so its last refresh time stays")
+	func balanceWithoutTransactions() async throws {
+		var delivered: [UUID: Money?] = [:]
+		coordinator.deliver = { delivered[$0] = $1.balance }
+		let ends = recordEnds()
+		let bank = Self.access("Musterbank")
+		let rejected = SyncFailure.bank(BankMessage(code: "9010", text: "Verarbeitung nicht möglich"))
+		let balance = Money(minorUnits: 234_015, currency: "EUR")
+		_ = refresh(bank, [.fetched(Self.giro.accountID, RefreshResult(balance: balance, transactions: nil, transactionFailure: rejected))])
+		await until { ends.accounts[bank.id] != nil }
+		let at = try #require(finished(bank)?.finishedAt)
+		#expect(delivered == [Self.giro.accountID: balance])
+		#expect(ends.accounts[bank.id] == [Self.giro.accountID: .failed(RefreshError(message: "Verarbeitung nicht möglich", code: "9010", date: at))])
+	}
+
 	@Test("An account that could not be stored fails with notSaved, the others finish, and the PIN stays")
 	func notSaved() async {
 		struct DiskFull: Error {}
