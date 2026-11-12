@@ -3,7 +3,7 @@
 Moneten is an open source banking app for the Mac. It fetches balances and transactions from German banks, sorts them into categories, and shows where your money goes. With FinTS and extensions, your data stays encrypted on your Mac. You need no account, the project runs no server, and the app sends no telemetry. Only the optional subscription passes data through a provider.
 
 > [!NOTE]
-> Moneten is at an early stage, and there is no release yet. The current build opens an encrypted database, takes over accounts, categories, and transactions from MoneyMoney, imports CSV, CAMT, and MT940 files, categorizes with rules, and shows the transactions in a list with search and in charts. It cannot talk to a bank yet. FinTS access comes with [issue #13](https://github.com/alexander-schneider/Moneten/issues/13). The [roadmap](docs/roadmap.md) shows what ships in v0.1, v0.2, and v0.3, and [openspec/changes](openspec/changes/) specifies the complete behavior.
+> Moneten is at an early stage, and there is no release yet. The current build opens an encrypted database, takes over accounts, categories, and transactions from MoneyMoney, imports CSV, CAMT, and MT940 files, categorizes with rules, and shows the transactions in a list with search and in charts. It cannot talk to a bank yet. FinTS access comes with [issue #13](https://github.com/MonetenApp/Moneten/issues/13). The [roadmap](docs/roadmap.md) shows what ships in v0.1, v0.2, and v0.3, and [openspec/changes](openspec/changes/) specifies the complete behavior.
 
 ## What you get in v0.3
 
