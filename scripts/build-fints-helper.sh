@@ -27,6 +27,6 @@ mkdir -p "$2/lib"
 cp $(echo "$CP" | tr : ' ') "$2/lib/"
 "$JDK/bin/jar" --create --file "$2/lib/FinTSHelper.jar" -C "$OUT" .
 # As the app starts it: a module that jlink left out fails here, not at the bank.
-env -i "$2/runtime/bin/java" -Djava.awt.headless=true -XX:ErrorFile=/dev/null -cp "$2/lib/*" FinTSHelper \
+env -i "$2/runtime/bin/java" -Djava.awt.headless=true -XX:ErrorFile=/dev/null -XX:+DisableAttachMechanism -Xrs -cp "$2/lib/*" FinTSHelper \
 	--self-test Tests/FinTSTests/helper-lines.jsonl 2>/dev/null
 echo "Built the FinTS helper in $2 ($(du -sh "$2" | cut -f1))"

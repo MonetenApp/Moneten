@@ -7,7 +7,7 @@
 # Without a team in App/Local.xcconfig, Xcode signs to run locally. App/Signing.xcconfig explains it.
 # The Developer ID certificate is managed by Xcode in the team account. The Developer ID build
 # needs an Xcode account of the team with the Admin or Account Holder role.
-# Every build adds the FinTS helper (ADR 0014) and needs a JDK 17 or later. It takes the FinTS
+# Every build except developer-id adds the FinTS helper (ADR 0014) and needs a JDK 17 or later. It takes the FinTS
 # product ID from the login Keychain, item "Moneten FinTS product ID", into Info.plist. Without it
 # the app builds, and FinTS refuses to connect.
 set -e
@@ -97,6 +97,13 @@ fi
 rm -rf dist/Moneten.app
 mkdir -p dist
 cp -R "$PRODUCT" dist/
-embed_fints_helper dist/Moneten.app
+# The export of a Developer ID build signs with a certificate that Xcode may keep in the cloud, and
+# codesign cannot sign the helper with it. Until task 3.2 of add-fints-banking lets the export sign
+# the helper, a Developer ID build leaves it out. The app does not use FinTS yet.
+if [ -z "$ARCHIVE" ]; then
+	embed_fints_helper dist/Moneten.app
+else
+	echo "The Developer ID build leaves out the FinTS helper until task 3.2 of add-fints-banking." >&2
+fi
 codesign --verify --strict --deep dist/Moneten.app
 echo "Built dist/Moneten.app ($CONFIG, build $BUILD), $(codesign -dv --verbose=2 dist/Moneten.app 2>&1 | grep -m1 -E '^(Authority|Signature)=')"

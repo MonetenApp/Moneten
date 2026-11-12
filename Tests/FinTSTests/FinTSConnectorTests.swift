@@ -77,6 +77,21 @@ struct FinTSConnectorTests {
 		#expect(list.notices == [BankMessage(text: "Wartungsarbeiten am 14.11.2026 von 1 bis 5 Uhr")])
 	}
 
+	@Test("Asks for the PIN again with the answer of the bank after a rejection, and sends the new PIN", arguments: ["9942", "9931"])
+	func pinRejectedAsksAgain(code: String) async throws {
+		let session = Session()
+		_ = try await connector("""
+			read cmd
+			echo '{"type":"ask","id":1,"kind":"pin"}'
+			read answer
+			echo '{"type":"ask","id":2,"kind":"pin","rejected":{"code":"\(code)","text":"PIN falsch"}}'
+			read answer; printf '%s\\n' "$answer" >> "$R"
+			echo '{"type":"accounts","accounts":[]}'
+			""").listAccounts(of: Self.access, state: nil, session: session)
+		#expect(session.events == [.asked(.pin(PINRequest())), .asked(.pin(PINRequest(rejected: BankMessage(code: code, text: "PIN falsch"))))])
+		#expect(recorded == [["type": "answer", "id": "2", "value": "1234"]])
+	}
+
 	@Test("Asks for the TAN method, the TAN medium, and TANs with a flicker code or an image")
 	func secondFactor() async throws {
 		let session = Session()
@@ -222,6 +237,18 @@ struct FinTSConnectorTests {
 		#expect(ContinuousClock.now - canceled < .seconds(1))
 		await #expect(throws: CancellationError.self) { try await task.value }
 		#expect(ContinuousClock.now - canceled < .seconds(8))
+	}
+
+	@Test("A helper that ignores SIGTERM is killed, and the canceled refresh ends")
+	func cancelIgnoresTerm() async throws {
+		let task = Task {
+			try await connector("trap '' TERM; read cmd; exec sleep 60").listAccounts(of: Self.access, state: nil, session: Session())
+		}
+		try await Task.sleep(for: .milliseconds(300))
+		let canceled = ContinuousClock.now
+		task.cancel()
+		await #expect(throws: CancellationError.self) { try await task.value }
+		#expect(ContinuousClock.now - canceled < .seconds(9))
 	}
 
 	@Test("A helper that stays silent fails with a timeout, through cancel and then termination")
@@ -425,14 +452,14 @@ struct FinTSConnectorTests {
 		(#"{"type":"failed","code":"9942","text":"PIN falsch"}"#, .pinRejected(BankMessage(code: "9942", text: "PIN falsch"))),
 		(#"{"type":"failed","code":"9340","text":"PIN ungültig"}"#, .pinRejected(BankMessage(code: "9340", text: "PIN ungültig"))),
 		(#"{"type":"failed","code":"9930","text":"PIN gesperrt"}"#, .accessBlocked(BankMessage(code: "9930", text: "PIN gesperrt"))),
-		(#"{"type":"failed","code":"9931","text":"Zugang gesperrt"}"#, .accessBlocked(BankMessage(code: "9931", text: "Zugang gesperrt"))),
+		(#"{"type":"failed","code":"9931","text":"Anmeldename oder PIN ist falsch"}"#, .pinRejected(BankMessage(code: "9931", text: "Anmeldename oder PIN ist falsch"))),
 		(#"{"type":"failed","code":"9010","text":"Verarbeitung nicht möglich"}"#, .bank(BankMessage(code: "9010", text: "Verarbeitung nicht möglich"))),
 		(#"{"type":"failed","text":"Dialog abgebrochen"}"#, .bank(BankMessage(text: "Dialog abgebrochen"))),
 		(#"{"type":"failed","kind":"network","text":"Connection refused"}"#, .network("Connection refused")),
 		(#"{"type":"failed","kind":"unsupported","text":"The bank offers no encrypted FinTS address."}"#, .unsupported("The bank offers no encrypted FinTS address.")),
 		(#"{"type":"failed","kind":"certificate","text":"The certificate of the server fints.example.com is not valid."}"#,
 			.network("The certificate of the server fints.example.com is not valid.")),
-		(#"{"type":"ask","id":1,"kind":"pin","rejected":{"code":"9942","text":"PIN falsch"}}"#, .pinRejected(BankMessage(code: "9942", text: "PIN falsch"))),
+		(#"{"type":"ask","id":1,"kind":"pin","rejected":{"code":"9930","text":"PIN gesperrt"}}"#, .accessBlocked(BankMessage(code: "9930", text: "PIN gesperrt"))),
 	])
 	func errors(line: String, expected: SyncFailure) async throws {
 		let session = Session()

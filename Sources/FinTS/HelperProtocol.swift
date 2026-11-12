@@ -92,12 +92,14 @@ struct Ask: Decodable {
 		let name: String
 	}
 
-	/// The request for the session. Throws `SyncFailure.pinRejected` when the bank rejected the PIN,
-	/// because the PIN sheet cannot show the answer of the bank yet.
+	/// The request for the session. A PIN request after a rejection carries the answer of the bank, so
+	/// the broker never answers it from memory and shows the sheet again. 9930 means a blocked access,
+	/// and the app never asks for its PIN again (task 1.24).
 	func request() throws -> UserRequest {
 		if kind == "pin" {
-			if let rejected { throw SyncFailure.pinRejected(rejected.message) }
-			return .pin(PINRequest())
+			guard let rejected else { return .pin(PINRequest()) }
+			if rejected.code == "9930" { throw SyncFailure.accessBlocked(rejected.message) }
+			return .pin(PINRequest(rejected: rejected.message))
 		}
 		let challenge: Challenge
 		switch kind {
@@ -129,8 +131,9 @@ struct HelperError: Decodable, Equatable {
 		case ("network", _), ("certificate", _): .network(text)
 		case ("unsupported", _): .unsupported(text)
 		case (_, "9078"): .notRegistered
-		case (_, "9942"), (_, "9340"): .pinRejected(message)
-		case (_, "9930"), (_, "9931"): .accessBlocked(message)
+		// Sparkassen send 9931 for a wrong login name or PIN, so only 9930 counts as blocked.
+		case (_, "9942"), (_, "9340"), (_, "9931"): .pinRejected(message)
+		case (_, "9930"): .accessBlocked(message)
 		default: .bank(message)
 		}
 	}

@@ -32,6 +32,10 @@ The helper gets an empty environment, `-XX:ErrorFile=/dev/null`, `-XX:+DisableAt
 
 Amounts travel as decimal strings and become minor units in the connector. Days travel as `yyyy-mm-dd` without a time zone.
 
+### A wrong PIN
+
+hbci4java clears the PIN only when the bank reports a wrong PIN, and calls `WRONG_PIN` right after that. The helper keeps the answer of the bank for the whole run and sends it with the next PIN request. The connector turns that into `PINRequest(rejected:)`, so the broker never answers it from memory: the PIN sheet opens again in a manual refresh, and an automatic refresh fails with `pinRejected`. 9930 is a blocked access, and the connector stops without asking again. 9931 counts as a wrong PIN, because Sparkassen send it for a wrong login name or PIN.
+
 ### Trust in the server of the bank
 
 The helper installs a trust manager that sends the certificate chain and the host to the app. The app evaluates the chain with `SecTrustEvaluateWithError` and the SSL policy for the host. Only the answer "trusted" lets the connection go on. The root certificates of the Java runtime play no part, and nothing turns the check off.
@@ -48,11 +52,11 @@ The helper sends the passport of hbci4java as the new state after a successful r
 
 ### Signing
 
-`scripts/build-app.sh` builds a runtime with jlink, puts the helper into `Contents/Resources/FinTSHelper`, and signs every Mach-O file of it with the identity of the app. Only the java of the helper gets the JIT entitlement. The build fails when a file cannot be signed or is not signed like the app.
+`scripts/build-app.sh` builds a runtime with jlink, puts the helper into `Contents/Resources/FinTSHelper`, and signs every Mach-O file of it with the identity of the app. Only the java of the helper gets the JIT entitlement. The build fails when a file cannot be signed or is not signed like the app. A Developer ID build leaves the helper out until task 3.2, see the risks.
 
 ## Risks / Trade-offs
 
-- [The helper is signed with `codesign` after the export] → This needs the private key of the Developer ID in the Keychain. With a certificate that only Xcode manages, the release build fails until task 3.2 is done.
+- [The helper is signed with `codesign` after the export] → This needs the private key of the Developer ID in the Keychain, which a certificate that only Xcode manages does not provide. Until task 3.2 lets the export sign the helper, a Developer ID build leaves it out, and the app cannot use FinTS in a release.
 - [hbci4java reads only the date form of CAMT booking dates] → See task 2.4.
 - [The app grows by about 46 MB for the Java runtime] → Accepted in ADR 0014.
 
