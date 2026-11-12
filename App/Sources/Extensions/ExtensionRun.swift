@@ -32,7 +32,8 @@ struct ExtensionRun: BankConnector {
 				}
 			})
 			await log("ext pid=\(client.processIdentifier) session_start_ms=\((ContinuousClock.now - started) / .milliseconds(1)) load_ms=\(loadTime)")
-			let result = await Result { try await client.call(function) }
+			let result: Result<LuaValue, any Error>
+			do { result = .success(try await client.call(function)) } catch { result = .failure(error) }
 			await client.end()
 			await log("ext ended pid=\(client.processIdentifier)")
 			let encoder = JSONEncoder()
