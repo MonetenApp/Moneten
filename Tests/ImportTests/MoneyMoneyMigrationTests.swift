@@ -252,6 +252,59 @@ struct MoneyMoneyMigrationTests {
 		#expect(second.skippedTransactions == 4)
 	}
 
+	@Test("A later run never undoes a booking or an edit made in the app")
+	func laterRunKeepsAppChanges() throws {
+		let first = try plan()
+		var rows = first.transactions
+		// A file import booked the pending row, which keeps its migration ID.
+		let kiosk = try #require(rows.firstIndex { $0.sourceID == "moneymoney:3" })
+		rows[kiosk].isPending = false
+		rows[kiosk].bookingDate = Day(year: 2026, month: 11, day: 5)
+		// The user changed an amount, as in an offline account that the migration matched by IBAN.
+		let rewe = try #require(rows.firstIndex { $0.sourceID == "moneymoney:1" })
+		rows[rewe].amountMinor = -5_000
+		let second = try plan(into: Ledger(groups: first.groups, accounts: first.accounts, categories: first.categories, transactions: rows))
+		#expect(second.transactions.isEmpty && second.updatedTransactions.isEmpty)
+		#expect(second.skippedTransactions == 4)
+	}
+
+	@Test("A deleted pending transaction does not keep out its booked version with the same ID")
+	func deletedPendingThenBooked() throws {
+		let first = try plan()
+		let kiosk = try #require(first.transactions.first { $0.sourceID == "moneymoney:3" })
+		var rows = transactions["transactions"] as! [[String: Any]]
+		rows[2]["booked"] = true
+		let second = try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(accounts), categories: try plist(categories),
+			transactions: try plist(["transactions": rows]),
+			into: Ledger(groups: first.groups, accounts: first.accounts, categories: first.categories, transactions: first.transactions.filter { $0.id != kiosk.id }),
+			deleted: [DeletedTransaction(kiosk, deletedAt: date(2026, 11, 12))])
+		#expect(second.transactions.map(\.sourceID) == ["moneymoney:3"] && second.transactions[0].isPending == false)
+	}
+
+	@Test("A later run books a pending transaction and keeps its user fields and the ID of an extension")
+	func laterRunBooksTakenOverRow() throws {
+		let first = try plan()
+		var rows = first.transactions
+		let kiosk = try #require(rows.firstIndex { $0.sourceID == "moneymoney:3" })
+		let pets = try #require(first.categories.first { $0.name == "Pets" })
+		rows[kiosk].sourceID = "bank-4711"
+		rows[kiosk].categoryID = pets.id
+		rows[kiosk].categorizedBy = .manual
+		rows[kiosk].comment = "Zeitung"
+		rows[kiosk].isChecked = true
+		var export = transactions["transactions"] as! [[String: Any]]
+		export[2]["booked"] = true
+		export[2]["bookingDate"] = date(2026, 11, 6)
+		let second = try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(accounts), categories: try plist(categories),
+			transactions: try plist(["transactions": export]),
+			into: Ledger(groups: first.groups, accounts: first.accounts, categories: first.categories, transactions: rows))
+		#expect(second.transactions.isEmpty)
+		let booked = try #require(second.updatedTransactions.first)
+		#expect(second.updatedTransactions.count == 1 && !booked.isPending && booked.bookingDate == Day(year: 2026, month: 11, day: 6))
+		#expect(booked.sourceID == "bank-4711")
+		#expect(booked.categoryID == pets.id && booked.comment == "Zeitung" && booked.isChecked)
+	}
+
 	@Test("Accounts with the same IBAN stay apart on a later run")
 	func sameIBAN() throws {
 		var twins = accounts

@@ -96,6 +96,9 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored: [Tran
 			var next = live
 			switch partner.evidence {
 			case .sourceID:
+				// A migration only books a pending row. Any other change could undo a booking or an edit
+				// that the app made since the earlier run.
+				if case .migration = delivery, !(live.isPending && !delivered.isPending) { break }
 				next = live.takingBankFields(of: delivered)
 				if next != live { rules.categorize(&next) }
 			case .fingerprint:
@@ -194,8 +197,12 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 		for (k, d) in deleted.enumerated() {
 			if let id = d.sourceID, ids.contains(id) { byID[id, default: []].append(.deleted(k)) }
 		}
+		// A deleted pending row does not block its booked version, also when both carry the same ID.
+		func blocks(_ slot: Slot, _ t: Transaction) -> Bool {
+			if case let .deleted(k) = slot { !(deleted[k].isPending && !t.isPending) } else { true }
+		}
 		for (i, t) in rows.enumerated() {
-			guard let id = t.sourceID, let slot = byID[id]?.first(where: { !taken.contains($0) }) else { continue }
+			guard let id = t.sourceID, let slot = byID[id]?.first(where: { !taken.contains($0) && blocks($0, t) }) else { continue }
 			taken.insert(slot)
 			result[i] = Partner(slot: slot, evidence: .sourceID)
 		}
@@ -396,7 +403,10 @@ extension Transaction {
 		t.mandateReference = delivered.mandateReference ?? mandateReference
 		t.creditorID = delivered.creditorID ?? creditorID
 		t.isPending = delivered.isPending
-		t.sourceID = delivered.sourceID ?? sourceID
+		// A migration ID never replaces the ID of a source that took the row over.
+		if Identity.remote(delivered.sourceID) != nil || Identity.remote(sourceID) == nil {
+			t.sourceID = delivered.sourceID ?? sourceID
+		}
 		return t
 	}
 }

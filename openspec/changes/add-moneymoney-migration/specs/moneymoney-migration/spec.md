@@ -156,6 +156,18 @@ The app SHALL recognize accounts, categories, and transactions from an earlier r
 - **WHEN** the migration runs again
 - **THEN** the transaction stays in "Pets"
 
+#### Scenario: Transaction deleted in the app
+
+- **GIVEN** the user deleted a migrated transaction of 89.00 EUR to "Stadtwerke Musterstadt" in the app
+- **WHEN** the migration runs again
+- **THEN** the import does not add the transaction again
+
+#### Scenario: Transaction booked in the app
+
+- **GIVEN** a migrated pending transaction of 10.00 EUR to "Kiosk" was booked in the app by a file import, and the source still shows it as pending
+- **WHEN** the migration runs again
+- **THEN** the transaction stays booked
+
 ### Requirement: Migration into a database with accounts
 
 The app SHALL match an account of the source with an existing account of the app by IBAN, or by bank code and account number. Transactions go into the matched account, and transactions that the account already holds are skipped. Accounts without a match are created.
