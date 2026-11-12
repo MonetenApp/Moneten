@@ -33,7 +33,7 @@ struct HelperProcessTests {
 		// A starved pool would delay this by about a minute, until the helpers end on their own.
 		try await Task.sleep(for: .milliseconds(500))
 		await Task.detached { }.value
-		#expect(ContinuousClock.now - start < .seconds(3))
+		#expect(ContinuousClock.now - start < .seconds(4))
 		for run in runs {
 			#expect(await run.value as? SyncFailure == .network("The connection to the FinTS server of the bank timed out. Try again later."))
 		}

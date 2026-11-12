@@ -4,8 +4,10 @@ import Synchronization
 import Testing
 @testable import FinTS
 
-/// FinTSConnector over real pipes, against shell scripts that play the part of the helper.
-@Suite("FinTS connector")
+/// FinTSConnector over real pipes, against shell scripts that play the part of the helper. The tests run
+/// one after the other: many measure how fast a helper ends, and on the three cores of a CI runner the
+/// process starts of parallel tests cost them seconds.
+@Suite("FinTS connector", .serialized)
 struct FinTSConnectorTests {
 	static let access = Access(source: .fints(bankCode: "12030000", url: URL(string: "https://fints.example.com/fints")!), bankName: "Musterbank", loginName: "erika77")
 	static let giro = AccountRequest(accountID: UUID(), name: "Giro", remoteID: "DE02120300000000202051")
@@ -169,7 +171,8 @@ struct FinTSConnectorTests {
 		let start = ContinuousClock.now
 		let error = await failure(of: "read cmd; echo '{\"type\":\"ask\",\"id\":1,\"kind\":\"pin\"}'; \(exit)", session: session)
 		#expect(error as? SyncFailure == expected)
-		#expect(ContinuousClock.now - start < .seconds(3))
+		// Under the 5 seconds after which cancel terminates the helper.
+		#expect(ContinuousClock.now - start < .seconds(4))
 		#expect(session.events == [.asked(.pin(PINRequest())), .withdrawn])
 	}
 
@@ -202,7 +205,8 @@ struct FinTSConnectorTests {
 		await until { session.events.contains(.progress(.fetching(done: 0, of: 1))) }
 		task.cancel()
 		await #expect(throws: CancellationError.self) { try await task.value }
-		#expect(ContinuousClock.now - start < .seconds(3))
+		// Under the 5 seconds after which cancel terminates the helper.
+		#expect(ContinuousClock.now - start < .seconds(4))
 		#expect(recorded.map { $0["type"] } == ["cancel"])
 	}
 
