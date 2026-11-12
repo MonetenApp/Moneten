@@ -473,6 +473,7 @@ struct SyncCoordinatorTests {
 		await until { broker.current != nil }
 		#expect(coordinator.refreshingAccounts == [Self.card.accountID])
 		coordinator.cancelAll()
+		#expect(coordinator.refreshingAccounts.isEmpty)
 		await until { ends.accounts[canceled.id] != nil }
 		#expect(ends.states[canceled.id] == .some(nil))
 		#expect(ends.accounts[canceled.id] == [:])

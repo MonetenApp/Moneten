@@ -14,6 +14,7 @@ public final class SyncCoordinator {
 	public private(set) var states: [UUID: SyncState] = [:]
 	/// The accounts of the accesses that run or wait for their turn, for the progress indicator of each account.
 	public private(set) var refreshingAccounts: Set<UUID> = []
+	private var requestedAccounts: [UUID: [UUID]] = [:]
 	private var running: [UUID: Task<Void, Never>] = [:]
 	private var queue: [Job] = []
 	private let limit: Int
@@ -48,20 +49,27 @@ public final class SyncCoordinator {
 		let id = request.access.id
 		guard running[id] == nil, !queue.contains(where: { $0.request.access.id == id }) else { return }
 		queue.append(Job(request: request, connector: connector, attended: attended))
+		requestedAccounts[id] = request.accounts.map(\.accountID)
 		refreshingAccounts.formUnion(request.accounts.map(\.accountID))
 		startNext()
 	}
 
 	/// "Cancel Refresh": stops every running access and drops the waiting ones. Their accounts keep their last state.
 	public func cancelAll() {
-		for job in queue { refreshingAccounts.subtract(job.request.accounts.map(\.accountID)) }
+		for job in queue { endProgress(of: job.request.access.id) }
 		queue.removeAll()
 		for id in running.keys { cancel(id) }
 	}
 
+	/// The accounts of a canceled access show their last state at once, while its connector still ends.
 	private func cancel(_ id: UUID) {
 		running[id]?.cancel()
 		apply(.cancel, to: id)
+		endProgress(of: id)
+	}
+
+	private func endProgress(of access: UUID) {
+		refreshingAccounts.subtract(requestedAccounts.removeValue(forKey: access) ?? [])
 	}
 
 	private func startNext() {
@@ -93,7 +101,7 @@ public final class SyncCoordinator {
 			// The state of this run: the user may have canceled it before its connector returned.
 			let end = states[access.id] ?? .idle
 			let accountIDs = job.request.accounts.map(\.accountID)
-			refreshingAccounts.subtract(accountIDs)
+			endProgress(of: access.id)
 			running[access.id] = nil
 			ended(access.id, report?.state, end.accountRefreshes(of: accountIDs, notices: report?.notices ?? [], at: Date()))
 			startNext()
