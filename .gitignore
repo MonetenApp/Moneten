@@ -4,3 +4,6 @@ dist/
 .DS_Store
 App/Moneten.xcodeproj/
 App/Local.xcconfig
+# OpenSpec writes its commands and skills for Claude Code here: openspec init --tools claude
+.claude/commands/
+.claude/skills/
