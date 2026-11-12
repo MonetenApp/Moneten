@@ -43,7 +43,7 @@ The app SHALL download every file of a catalog package, check each one, and plac
 
 ### Requirement: Signed index
 
-The app SHALL accept a catalog index only when its signature is valid for one of the two public keys that ship inside the app, the current key and the next key. Each index carries a version number that only grows. The app uses no content of an index that fails this check.
+The app SHALL accept a catalog index only when its signature is valid for one of the two public keys that ship inside the app, the current key and the next key. Once the app has accepted an index signed with the next key, it refuses every index signed with the current key. The app uses no content of an index that fails this check.
 
 #### Scenario: Tampered index
 
@@ -58,6 +58,12 @@ The app SHALL accept a catalog index only when its signature is valid for one of
 - **WHEN** the app downloads an index signed with that key
 - **THEN** the app accepts the index
 
+#### Scenario: Current key after the switch
+
+- **GIVEN** the app accepted index 130, signed with the next key
+- **WHEN** a server delivers an index with version 131, validly signed with the current key
+- **THEN** the app rejects the index and keeps index 130
+
 #### Scenario: Unknown key
 
 - **WHEN** the app downloads an index signed with a key that the app does not ship
@@ -65,7 +71,7 @@ The app SHALL accept a catalog index only when its signature is valid for one of
 
 ### Requirement: Digest of every file
 
-The app SHALL compare the SHA-256 digest of every file of a catalog package with the digest in the accepted index, at download time and each time before the extension runs. A package with a file that does not match is not installed and does not run.
+The app SHALL compare the SHA-256 digest of every file of a catalog package with the digest that the accepted index lists for the installed version, at download time and each time before the extension runs. A package with a file that does not match is not installed and does not run.
 
 #### Scenario: Script changed under a valid index
 
@@ -79,9 +85,26 @@ The app SHALL compare the SHA-256 digest of every file of a catalog package with
 - **WHEN** a downloaded script has another digest than the index lists
 - **THEN** the app discards the download and reports that the file is damaged or was altered
 
-### Requirement: Older index is rejected
+### Requirement: Earlier versions in the index
 
-The app SHALL reject an index whose version number is lower than the version number of the newest index it has accepted, also when its signature is valid.
+The app SHALL let an installed catalog extension run only while the accepted index lists its installed version, as the current version or as an earlier version with the digests of its files. An installed version that the index no longer lists stops, and the "Extensions" window offers the update.
+
+#### Scenario: Earlier version while an update waits
+
+- **GIVEN** "Broker" 2.31 is installed and the update to 2.32 waits for the user
+- **AND** the accepted index lists 2.32 as current and 2.31 as an earlier version with its digests
+- **WHEN** a refresh of "Broker Depot" starts
+- **THEN** "Broker" 2.31 runs after its files match the digests listed for 2.31
+
+#### Scenario: Earlier version dropped
+
+- **GIVEN** "Broker" 2.31 is installed and the update to 2.32 waits for the user
+- **WHEN** the app accepts an index that lists only 2.32
+- **THEN** "Broker" does not run and the window says that version 2.31 is no longer in the catalog, with the button "Review Update"
+
+### Requirement: Index version floor
+
+The app SHALL accept an index only when its version is higher than the floor, the version of the newest index accepted with the same key. An index with the floor's version and the same content is the one the app has. The first index of the next key starts its own floor. The app keeps the floors and the refused key in the data folder.
 
 #### Scenario: Replayed old index
 
@@ -89,9 +112,32 @@ The app SHALL reject an index whose version number is lower than the version num
 - **WHEN** a server delivers the validly signed index with version 95
 - **THEN** the app keeps index 120
 
+#### Scenario: Same version, other content
+
+- **GIVEN** the app accepted the index with version 120
+- **WHEN** a server delivers an index with version 120, validly signed, that lists other files
+- **THEN** the app rejects it and keeps the index it accepted
+
+#### Scenario: Leaked current key
+
+- **GIVEN** a leaked current key signed an index with version 9007199254740991, which the app accepted
+- **WHEN** the project signs index 130 with the next key
+- **THEN** the app accepts index 130 and refuses the current key from then on
+
+### Requirement: An app update resets the floor of retired keys
+
+The app SHALL drop, after an app update, the floor of every key that the new build no longer ships. When neither shipped key has a floor, the app starts from the lowest index version that the build ships.
+
+#### Scenario: Both keys replaced
+
+- **GIVEN** the app holds the floor 9007199254740991 for a key that the project retired
+- **AND** the update ships two new keys and the lowest index version 140
+- **WHEN** the updated app downloads index 141, signed with the new current key
+- **THEN** the app accepts index 141
+
 ### Requirement: Catalog extensions and file installs
 
-The app SHALL treat an installed extension as a catalog extension only while its files match the accepted index. Every other installed extension is marked "Unverified" and runs after the warning for extensions installed from a file.
+The app SHALL record for each installed extension whether it came from the catalog or from a file, and keep that origin outside the "Extensions" folder until the extension is removed. A catalog extension whose files do not match the index stays blocked as changed. It never becomes "Unverified". Only an extension installed from a file is marked "Unverified" and runs after the warning.
 
 #### Scenario: File from elsewhere
 
@@ -103,6 +149,13 @@ The app SHALL treat an installed extension as a catalog extension only while its
 
 - **WHEN** the user installs "Broker" from the catalog
 - **THEN** "Broker" is not marked "Unverified" and runs without the warning
+
+#### Scenario: Changed catalog package is not a file install
+
+- **GIVEN** the catalog extension "Broker" is installed and the file install "Demo" is allowed
+- **WHEN** a program changes one line in `Broker.lua` and one line in `Demo.lua`
+- **THEN** "Broker" stays blocked as changed, and the app offers no warning that would let it run
+- **AND** "Demo" runs again after the user confirms the warning
 
 ### Requirement: Stopped extension on an account
 
@@ -144,7 +197,8 @@ The app SHALL install a newer version of an installed catalog extension by itsel
 
 #### Scenario: Update during a refresh
 
-- **WHEN** an update arrives while a session of "Broker" runs
+- **GIVEN** automatic updates are on and version 2.32 of "Broker" adds no host and no login field
+- **WHEN** the app accepts the index with 2.32 while a session of "Broker" runs
 - **THEN** the running session finishes with the old version and the update is installed afterwards
 
 #### Scenario: Removed host

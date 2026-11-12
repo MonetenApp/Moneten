@@ -56,7 +56,7 @@ None.
 ### Decided for Moneten
 
 - Files from outside the catalog run after a warning, at the install and again when the file changes, and stay marked "Unverified". MoneyMoney refuses unsigned files until the user turns its signature check off ([ADR 0015](../../../docs/decisions/0015-extension-program.md)).
-- A manifest is an addition of Moneten. It is optional for an extension installed from a file and required in the catalog ([ADR 0015](../../../docs/decisions/0015-extension-program.md)). With a manifest, the extension reaches only the listed hosts, by exact name and also after a redirect. Without one, the app asks the user to allow each host at first contact. The documentation of MoneyMoney states no host limit for requests of `Connection`.
+- A manifest is an addition of Moneten. It is optional for an extension installed from a file and required in the catalog ([ADR 0015](../../../docs/decisions/0015-extension-program.md)). With a manifest, the extension reaches only the listed hosts, by exact name and also after a redirect. The warning for a file install lists those hosts and comes again when any file changes, the manifest included. Without one, the app asks the user to allow each host at first contact, also before it follows a redirect to a new host. An automatic refresh sends nothing to a new host and waits for the user. The documentation of MoneyMoney states no host limit for requests of `Connection`.
 - The labels of the login fields come from the manifest. MoneyMoney keeps them in a central bank database.
 - A browser approval works for a host that the manifest lists or the user allowed. MoneyMoney needs the host to be enabled by the vendor.
 - The app refuses a URL that does not start with `https://`.
@@ -69,8 +69,8 @@ None.
 - The "Extensions" window lists the installed extensions and removes one to the Trash. MoneyMoney lists them in a settings tab and has no command to remove one.
 - An extension can be a package of several Lua files with a manifest and a README. Every MoneyMoney extension is a single `.lua` file, and that form stays allowed.
 - The browser window treats `https://service.moneymoney-app.com/1/redirect`, `moneymoney-app://oauth`, and `moneten://oauth` as final and never contacts them. The documentation names no address. Published extensions use the first two.
-- The app reads `code`, `access_token`, `auth_code`, `tokenid`, or a similar parameter from the final address, as the documentation allows.
+- The app reads the first of `code`, `access_token`, `auth_code`, `authorization_code`, and `tokenid` from the final address, and ends the session with an error when none is there. The documentation adds "or similar parameters" without naming them.
 - `connection:get` and `connection:post` return the same five values as `connection:request`. The documentation lists three. A signed extension reads the fifth.
-- The app offers `MM.derdecode`, `MM.base64urldecode`, and `connection.redirects`, which signed extensions use and the documentation does not list. A call of any other name that the app does not offer stops the script with an error that names it. MoneyMoney's behavior for an unknown name was not observed.
+- The app offers `MM.derdecode`, `MM.base64urldecode`, and `connection.redirects`, which signed extensions use and the documentation does not list. `MM.derdecode` returns the top-level DER elements as `{tag, content}`, which is how the Coinbase extension uses it. A call of any other name that the app does not offer stops the script with an error that names it, and a read gives `nil`. `io.open` follows the same rule. MoneyMoney's behavior for an unknown name was not observed.
 - An extension can ask for a newer API version in its manifest. The app then refuses to load it and says why.
 - `EndSession` is called also when a step after the login fails. The documentation does not state this.

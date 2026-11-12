@@ -164,14 +164,16 @@ An extension is a single `.lua` file or a package. A single file may have a mani
 
 Each extension session runs in its own XPC process with only the network client entitlement. The host enforces these limits:
 
-1. An extension with a manifest can only contact the hosts that the manifest lists, by exact name. The host checks the target of every HTTP redirect too. An extension without a manifest asks the user before it contacts each new host, and the app remembers the answer.
+1. An extension with a manifest can only contact the hosts that the manifest lists, by exact name. The host checks the target of every HTTP redirect too. An extension without a manifest asks the user before it contacts each new host, also before a redirect to one, and the app remembers the answer. An automatic refresh sends nothing to a new host and waits for the user.
 2. `io` is a table without `open` and without any other function that touches a file. `os` keeps only `time`, `date`, `clock`, and `difftime`. `debug`, `package`, `load`, `loadstring`, `dofile`, `loadfile`, `require`, and `string.dump` are absent. A call of a name that the host does not offer stops the script with an error that names the function.
 3. The extension gets the credentials of its own connection and nothing else.
 4. The extension's `LocalStorage` is kept by the app, per connection, inside the encrypted database.
 
-The manifest is required for a package in the catalog and optional for an extension installed from a file. The catalog is the public repository [MonetenApp/moneten-extensions](https://github.com/MonetenApp/moneten-extensions). Its checks and a maintainer review every package and every update. A signing workflow publishes a signed index with the SHA-256 digest of every file at `extensions.monetenapp.com`, the only host that the app contacts for the catalog. A file that the user installs by hand runs after a warning and stays "Unverified".
+The host checks hosts in the same process that runs the script. A flaw in Lua or in a parser of the host could reach any host with the login data of that one access. [ADR 0015](decisions/0015-extension-program.md) accepts this risk and names when the network calls move into a separate process.
 
-The planned module `ExtensionCatalog` verifies the index against the two public keys in the app, downloads and checks the files, and decides whether an update installs by itself or waits for the user because it adds a host or a login field.
+The manifest is required for a package in the catalog and optional for an extension installed from a file. The catalog is the public repository [MonetenApp/moneten-extensions](https://github.com/MonetenApp/moneten-extensions). Its checks and a maintainer review every package and every update. A signing workflow publishes a signed index with the SHA-256 digest of every file at `extensions.monetenapp.com`, the only host that the app contacts for the catalog. A file that the user installs by hand runs after a warning that lists the hosts of its manifest, and stays "Unverified". The app warns again when any of its files changes. The app records whether each extension came from the catalog, so a changed catalog package stays blocked and never runs as a file install.
+
+The planned module `ExtensionCatalog` verifies the index against the two public keys in the app and the version floor of each key, downloads and checks the files, and decides whether an update installs by itself or waits for the user because it adds a host or a login field.
 
 The API follows the [MoneyMoney Web Banking API](https://moneymoney.app/api/webbanking/), so most existing extensions run without changes. [ADR 0004](decisions/0004-moneymoney-compatible-extension-api.md) lists what is compatible and what Moneten adds.
 

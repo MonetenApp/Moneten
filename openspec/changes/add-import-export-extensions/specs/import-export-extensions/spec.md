@@ -225,7 +225,7 @@ The app SHALL offer import and export scripts the functions `MM.localizeText`, `
 
 ### Requirement: Limits of import and export scripts
 
-The app SHALL run import and export scripts without network access. `io` offers `io.read` and `io.lines` without a file name on standard input to an import script, and `io.write` on standard output to an export script, and no other function. The other limits of the Lua runtime for extensions apply.
+The app SHALL run import and export scripts without network access. `io` offers `io.read` and `io.lines` without a file name on standard input to an import script, and `io.write` on standard output to an export script. A read of any other `io` name gives `nil`, and a call of it stops the script. The other limits of the Lua runtime for extensions apply.
 
 #### Scenario: Network call
 
@@ -234,8 +234,8 @@ The app SHALL run import and export scripts without network access. `io` offers 
 
 #### Scenario: Open another file
 
-- **WHEN** an import script calls `io.open("/Users/erika/notes.txt")`
-- **THEN** the script stops with an error that says that `io.open` is not available
+- **WHEN** line 3 of the import script `Bank.lua` calls `io.open("/Users/erika/notes.txt")`
+- **THEN** the script stops with an error that begins with "Bank.lua:3: io.open is not available"
 - **AND** the import ends with that error
 
 #### Scenario: Lines of a named file

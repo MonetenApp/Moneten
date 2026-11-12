@@ -79,7 +79,7 @@ The app SHALL let the user remove an installed extension in the "Extensions" win
 
 ### Requirement: Warning before the first run
 
-The app SHALL warn the user when an extension is installed from a file, and run it only after the user agrees. The warning says that the script receives the login data of the service and that nobody from the project has reviewed it. For a file that the user copied into the folder, the warning comes before its first run. The app warns again when the content changes. The extension stays marked "Unverified".
+The app SHALL warn the user before the first run of an extension installed from a file, and run it only after the user agrees. The warning says that the script receives the login data of the service and that nobody from the project has reviewed it. It lists the hosts of the manifest, or says that the app asks before each host. The app warns again when any file of the extension changes, the manifest included.
 
 #### Scenario: Install from a file
 
@@ -100,6 +100,18 @@ The app SHALL warn the user when an extension is installed from a file, and run 
 - **WHEN** the file content changes and a refresh starts
 - **THEN** the app does not run the script and asks for the confirmation again
 - **AND** "Demo" stays marked "Unverified" after the confirmation
+
+#### Scenario: Hosts of a manifest in the warning
+
+- **GIVEN** the user copied `Demo.lua` and `Demo.json`, which lists the host `api.demo.example`
+- **WHEN** the user picks the service "Premium Account" in the add account assistant
+- **THEN** the warning names `api.demo.example` as the host that "Demo" may contact without asking
+
+#### Scenario: Changed manifest
+
+- **GIVEN** the user allowed `Demo.lua` with `Demo.json`, which lists only `api.demo.example`
+- **WHEN** a program adds `collect.evil.example` to `Demo.json` and a refresh starts
+- **THEN** the app does not run the script and shows the warning again with `api.demo.example` and `collect.evil.example`
 
 ### Requirement: Services in the assistant
 
@@ -162,9 +174,9 @@ The app SHALL read `manifest.json` in a package folder, and a JSON file next to 
 - **WHEN** the app reads the "Extensions" folder
 - **THEN** the list shows "Broker" as not usable because the manifest is missing
 
-### Requirement: Host limits
+### Requirement: Host limits of a manifest
 
-The app SHALL let an extension with a manifest contact only the hosts in the manifest, matched by the exact name, and check the target of every HTTP redirect the same way. For an extension without a manifest, the app SHALL ask the user to allow each host at the first contact and remember the answer for that extension. A blocked request fails with an error that names the host.
+The app SHALL let an extension with a manifest contact only the hosts in the manifest, matched by the exact name, and check the target of every HTTP redirect the same way. A blocked request is not sent and fails with an error that names the host.
 
 #### Scenario: Host not in the manifest
 
@@ -186,6 +198,10 @@ The app SHALL let an extension with a manifest contact only the hosts in the man
 - **THEN** the app does not request `https://evil.example/`
 - **AND** the refresh ends with an error that names `evil.example`
 
+### Requirement: Host prompts without a manifest
+
+The app SHALL ask the user before an extension without a manifest contacts a host for the first time, and remember the answer for that extension. Each redirect target counts as a contact: the app follows a redirect to a new host only after "Allow". In a session with `interactive` false, the app sends nothing to a new host, shows no dialog, ends the session, and marks the accounts as waiting for an approval.
+
 #### Scenario: No manifest, new host
 
 - **GIVEN** an extension without a manifest, during a refresh that the user started
@@ -193,15 +209,29 @@ The app SHALL let an extension with a manifest contact only the hosts in the man
 - **THEN** the app asks whether "Demo" may contact `www.bank.example`
 - **AND** after "Allow" the request is sent and the app does not ask again for this host
 
+#### Scenario: Redirect to a new host
+
+- **GIVEN** "Demo" has no manifest and the user allowed only `www.bank.example`
+- **WHEN** `https://www.bank.example/start` answers with status 302 and `Location: https://login.bank.example/`
+- **THEN** the app asks whether "Demo" may contact `login.bank.example` before it requests that address
+- **AND** after "Deny" the app sends no request to `login.bank.example` and the refresh ends with an error that names it
+
+#### Scenario: New host in an automatic refresh
+
+- **GIVEN** "Demo" has no manifest and the user allowed only `www.bank.example`
+- **WHEN** an automatic refresh runs and the script contacts `api.bank.example`
+- **THEN** no dialog appears and no request goes to `api.bank.example`
+- **AND** the accounts say that "Demo" waits for an approval and that the user must start the refresh
+
 ### Requirement: Isolation
 
 The app SHALL run each extension session in its own process that can reach the network and nothing else. The script cannot read or write files, start programs, or read the data of another bank access. The process ends when the session ends.
 
 #### Scenario: No file access
 
-- **WHEN** a script calls `io.open("/etc/hosts")`
-- **THEN** the script stops with an error that says that `io.open` is not available
-- **AND** the refresh ends with an error that names the line
+- **WHEN** line 4 of `Demo.lua` calls `io.open("/etc/hosts")`
+- **THEN** the script stops with an error that begins with "Demo.lua:4: io.open is not available"
+- **AND** the refresh ends with that error
 
 #### Scenario: Other access is invisible
 
@@ -211,7 +241,7 @@ The app SHALL run each extension session in its own process that can reach the n
 
 ### Requirement: Lua runtime
 
-The app SHALL run scripts with Lua 5.4 and the standard libraries for strings, tables, math, UTF-8, and coroutines. `os` has only `time`, `date`, `clock`, and `difftime`. `io` is an empty table, so it has no `open` and no other function that touches a file. `debug`, `package`, `load`, `loadstring`, `dofile`, `loadfile`, `require`, and `string.dump` are absent.
+The app SHALL run scripts with Lua 5.4 and the standard libraries for strings, tables, math, UTF-8, and coroutines. `os` has only `time`, `date`, `clock`, and `difftime`. `io` is an empty table. `debug`, `package`, `load`, `loadstring`, `dofile`, `loadfile`, `require`, and `string.dump` are absent. A read of a removed name gives `nil`, and a call of it stops the script with "is not available" and the name.
 
 #### Scenario: Standard library
 
@@ -220,8 +250,8 @@ The app SHALL run scripts with Lua 5.4 and the standard libraries for strings, t
 
 #### Scenario: Removed function
 
-- **WHEN** a script calls `require("socket")`
-- **THEN** the script stops with an error that says that `require` is not available
+- **WHEN** line 7 of `Demo.lua` calls `require("socket")`
+- **THEN** the script stops with an error that begins with "Demo.lua:7: require is not available"
 
 #### Scenario: File function read at load time
 
@@ -491,7 +521,7 @@ The app SHALL show a captcha in an embedded browser when `challenge` is the scri
 
 ### Requirement: Approval in a browser window
 
-The app SHALL open any other `https://` URL in `challenge` in its own browser window when the host is allowed for the extension. When the website redirects to `https://service.moneymoney-app.com/1/redirect`, `moneymoney-app://oauth`, or `moneten://oauth`, the app closes the window without contacting that address. It passes `code`, or else `access_token`, `auth_code`, `tokenid`, or a similar parameter, in `credentials[1]`.
+The app SHALL open any other `https://` URL in `challenge` in its own browser window when the host is allowed for the extension. When the website redirects to `https://service.moneymoney-app.com/1/redirect`, `moneymoney-app://oauth`, or `moneten://oauth`, the app closes the window without contacting that address. It passes the first of `code`, `access_token`, `auth_code`, `authorization_code`, and `tokenid` in `credentials[1]`, or ends the session with an error.
 
 #### Scenario: OAuth authorization
 
@@ -510,6 +540,11 @@ The app SHALL open any other `https://` URL in `challenge` in its own browser wi
 
 - **WHEN** the website redirects to `moneymoney-app://oauth?authorization_code=4711&state=xyz`
 - **THEN** the next call has `credentials[1]` "4711"
+
+#### Scenario: No known parameter
+
+- **WHEN** the website redirects to `moneten://oauth?ticket=4711&state=xyz`
+- **THEN** the app closes the window and the session ends with an error that names the parameters it reads
 
 #### Scenario: State is missing
 
@@ -1146,6 +1181,26 @@ The app SHALL offer `MM.pkcs8decode(data)`, which reads a private or public RSA,
 #### Scenario: Not a key
 
 - **WHEN** a script calls `MM.pkcs8decode("hello")`
+- **THEN** the result is `nil`
+
+### Requirement: DER decoding
+
+The app SHALL offer `MM.derdecode(data)`, which reads the DER elements at the top level of a binary string and returns an array with one table per element. Each table holds the tag byte as a number at index 1 and the content bytes as a string at index 2. It does not descend into an element. The result is `nil` when an element is cut off or its length is not definite.
+
+#### Scenario: Sequence and null
+
+- **WHEN** a script calls `MM.derdecode(MM.hexToBin("30060201010401000500"))`
+- **THEN** the result has 2 elements
+- **AND** the first has the tag 48 and the content `MM.hexToBin("020101040100")`, the second has the tag 5 and the content ""
+
+#### Scenario: Nested element
+
+- **WHEN** a script calls `MM.derdecode(MM.hexToBin("020101040100"))`
+- **THEN** the result is `{{2, MM.hexToBin("01")}, {4, MM.hexToBin("00")}}`
+
+#### Scenario: Cut-off data
+
+- **WHEN** a script calls `MM.derdecode(MM.hexToBin("3006020101"))`
 - **THEN** the result is `nil`
 
 ### Requirement: Undocumented functions in use

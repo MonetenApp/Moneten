@@ -50,7 +50,9 @@ None.
 - Files from outside the catalog run after a warning and stay marked "Unverified". MoneyMoney refuses unsigned files until the user turns its signature check off. Moneten has no such setting.
 - A catalog package needs a manifest with its hosts, its login field labels, its kinds of data, its API version, and its license. MoneyMoney keeps the login labels in its own database.
 - One signature covers a catalog index, and the index lists a SHA-256 digest for each file (issue #37). MoneyMoney signs each script.
-- The app ships two public keys, current and next, and accepts an index signed with either.
+- The app ships two public keys, current and next, and accepts an index signed with either until it has accepted one signed with the next key. Each key has its own version floor, and an app update drops the floor of a key it no longer ships.
+- The index lists the digests of earlier versions that may still run, so an installed version that waits for an update keeps running under the signature.
+- The app records whether each extension came from the catalog. A changed catalog package stays blocked and never runs as a file install.
 - An update that adds a host or a login field waits for the user's confirmation, and the old version keeps running until then. Every other update installs by itself, because a fix must arrive within hours.
 - The app rejects an index whose version number is lower than that of the newest index it has accepted.
 - The index marks a package as blocked, which stops it at once, as withdrawn, which stops it, or as unmaintained, which keeps it running with a note. A package is unmaintained after 90 days without an answer from its author to a failure that others can reproduce.
