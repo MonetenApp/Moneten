@@ -87,6 +87,9 @@ public protocol SyncSession: Sendable {
 
 	/// Reports progress for the UI. It returns when the UI has it, so progress and requests stay in order.
 	func report(_ progress: SyncProgress) async
+	/// The bank rejected the PIN or blocked the access. Reported when the answer arrives, so that the
+	/// PIN is forgotten before a cancel can end the refresh (add-login-credentials).
+	func rejected(_ failure: SyncFailure) async
 }
 
 public enum UserRequest: Sendable {
