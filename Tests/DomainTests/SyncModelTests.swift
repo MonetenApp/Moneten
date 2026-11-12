@@ -84,6 +84,7 @@ struct SyncModelTests {
 		#expect(SyncFailure.bank(BankMessage(code: "9942", text: "Zugang vorübergehend gesperrt")).message == "Zugang vorübergehend gesperrt")
 		#expect(SyncFailure.challengeExpired.message == "The two-factor authentication timed out.")
 		#expect(SyncFailure.notFetched.message == "Canceled because of the previous error.")
+		#expect(SyncFailure.notSaved("disk I/O error").message == "The fetched transactions could not be saved: disk I/O error")
 		#expect(SyncFailure.notRegistered.message.contains("does not know Moneten"))
 	}
 

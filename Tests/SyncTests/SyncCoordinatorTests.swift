@@ -323,10 +323,42 @@ struct SyncCoordinatorTests {
 		#expect(finished(bank)?.failures == [Self.giro.accountID: .notFetched])
 	}
 
+	@Test("Each fetched account is delivered once with its result, a failed or missing one never")
+	func deliversFetchedAccounts() async {
+		var delivered: [UUID: Money?] = [:]
+		coordinator.deliver = { delivered[$0] = $1.balance }
+		let bank = Self.access("Musterbank")
+		let blocked = SyncFailure.bank(BankMessage(text: "Zugang gesperrt"))
+		let result = RefreshResult(balance: Money(minorUnits: 501_240, currency: "EUR"), transactions: nil)
+		_ = refresh(bank, [.fetched(Self.savings.accountID, result), .failAccount(Self.giro.accountID, blocked)], accounts: [Self.giro, Self.savings, Self.card])
+		await until { finished(bank) != nil }
+		#expect(delivered == [Self.savings.accountID: Money(minorUnits: 501_240, currency: "EUR")])
+		#expect(finished(bank)?.fetched == [Self.savings.accountID])
+		#expect(finished(bank)?.failures == [Self.giro.accountID: blocked, Self.card.accountID: .notFetched])
+	}
+
+	@Test("An account that could not be stored fails with notSaved, the others finish, and the PIN stays")
+	func notSaved() async {
+		struct DiskFull: Error {}
+		coordinator.deliver = { id, _ in if id == Self.savings.accountID { throw DiskFull() } }
+		let bank = Self.access("Musterbank")
+		_ = refresh(bank, [.ask(Self.pin), .fetched(Self.giro.accountID), .fetched(Self.savings.accountID)], accounts: [Self.giro, Self.savings])
+		await until { broker.current != nil }
+		answer(.pin(Secret("12345")))
+		await until { finished(bank) != nil }
+		#expect(finished(bank)?.fetched == [Self.giro.accountID])
+		#expect(finished(bank)?.failures == [Self.savings.accountID: .notSaved("DiskFull()")])
+
+		let second = refresh(bank, [.ask(Self.pin)])
+		await until { finished(bank) != nil && !coordinator.isRefreshing }
+		#expect(second.answers.all == [.pin(Secret("12345"))])
+	}
+
 	@Test("A canceled access delivers nothing, even when its connector returns")
 	func canceledDeliversNothing() async {
 		var delivered = 0
-		let coordinator = SyncCoordinator { _, _ in delivered += 1 }
+		let coordinator = SyncCoordinator()
+		coordinator.deliver = { _, _ in delivered += 1 }
 		let bank = Self.access("Musterbank")
 		coordinator.refresh(RefreshRequest(access: bank, accounts: [Self.giro]), with: ScriptedConnector([.fetched(Self.giro.accountID)]), attended: true)
 		coordinator.cancelAll()

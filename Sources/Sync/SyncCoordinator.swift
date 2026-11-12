@@ -15,8 +15,11 @@ public final class SyncCoordinator {
 	private var running: [UUID: Task<Void, Never>] = [:]
 	private var queue: [Job] = []
 	private let limit: Int
-	/// Receives what a connector fetched, to merge it into the history (issue #7).
-	private let deliver: (Access, ConnectorReport) -> Void
+	/// Stores what a connector fetched for one account in the history (issue #7). Runs on the main actor,
+	/// once for each requested account that the connector fetched, never for a failed, missing, or canceled
+	/// one. When it throws, the account fails with `SyncFailure.notSaved` and keeps its last state.
+	/// Settable, because its owner can hand over a closure that captures itself only after its own init.
+	@ObservationIgnored public var deliver: (UUID, RefreshResult) throws -> Void = { _, _ in }
 
 	private struct Job {
 		let request: RefreshRequest
@@ -24,10 +27,9 @@ public final class SyncCoordinator {
 		let attended: Bool
 	}
 
-	public init(limit: Int = 3, broker: SessionBroker = SessionBroker(), deliver: @escaping (Access, ConnectorReport) -> Void = { _, _ in }) {
+	public init(limit: Int = 3, broker: SessionBroker = SessionBroker()) {
 		self.limit = limit
 		self.broker = broker
-		self.deliver = deliver
 		broker.onEvent = { [weak self] in self?.apply($1, to: $0) }
 		broker.onUserCancel = { [weak self] in self?.cancel($0) }
 	}
@@ -71,8 +73,8 @@ public final class SyncCoordinator {
 				let report = try await job.connector.refresh(job.request, session)
 				// A canceled access stores nothing, also when its connector returned all the same.
 				try Task.checkCancellation()
-				deliver(access, report)
-				event = .finish(Self.summary(of: report, for: job.request))
+				let notSaved = deliverFetched(report, of: job.request)
+				event = .finish(Self.summary(of: report, for: job.request, notSaved: notSaved))
 			} catch {
 				event = Task.isCancelled || error is CancellationError ? .cancel : .fail(Self.failure(error))
 			}
@@ -94,12 +96,31 @@ public final class SyncCoordinator {
 		error as? SyncFailure ?? .network(error.localizedDescription)
 	}
 
+	/// Hands each fetched account to `deliver`, and returns the failure of each one it could not store.
+	private func deliverFetched(_ report: ConnectorReport, of request: RefreshRequest) -> [UUID: SyncFailure] {
+		var failures: [UUID: SyncFailure] = [:]
+		for account in request.accounts {
+			guard case let .fetched(result) = report.outcomes[account.accountID] else { continue }
+			do {
+				try deliver(account.accountID, result)
+			} catch {
+				failures[account.accountID] = .notSaved(String(describing: error))
+			}
+		}
+		return failures
+	}
+
 	/// The outcome of each requested account. An account without an outcome was not fetched because
-	/// of an earlier error in the session.
-	private static func summary(of report: ConnectorReport, for request: RefreshRequest) -> SyncSummary {
+	/// of an earlier error in the session. A fetched account that could not be stored failed, so the
+	/// time of its last refresh does not move.
+	private static func summary(of report: ConnectorReport, for request: RefreshRequest, notSaved: [UUID: SyncFailure]) -> SyncSummary {
 		var fetched: Set<UUID> = []
 		var failures: [UUID: SyncFailure] = [:]
 		for account in request.accounts {
+			if let failure = notSaved[account.accountID] {
+				failures[account.accountID] = failure
+				continue
+			}
 			switch report.outcomes[account.accountID] {
 			case .fetched: fetched.insert(account.accountID)
 			case let .failed(failure): failures[account.accountID] = failure
