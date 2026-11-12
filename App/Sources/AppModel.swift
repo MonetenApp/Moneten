@@ -497,13 +497,14 @@ final class AppModel {
 		if sheet == .newAccount { sheet = nil }
 	}
 
-	/// Stores a new access with the accounts that the user selected, keeps the PIN of the login in
-	/// memory, selects the first account, and starts the first refresh ("Finish the setup").
-	func add(_ access: Access, state: AccessState?, accounts candidates: [Account], pin: Secret) {
+	/// Stores the access with the accounts that the user selected, keeps the PIN of the login in
+	/// memory, selects the first account, and starts the first refresh ("Finish the setup"). A login
+	/// that the app has already keeps its access.
+	func add(_ new: Access, state: AccessState?, accounts candidates: [Account], pin: Secret) {
 		guard let store else { return }
-		let accounts = ledger.accountsToAdd(candidates)
+		let access: Access, accounts: [Account]
 		do {
-			try store.add(access, state: state, accounts: accounts)
+			(access, accounts) = try store.add(new, state: state, accounts: ledger.accountsToAdd(candidates))
 		} catch {
 			alert = AlertMessage(title: "Could not add the accounts.", message: String(describing: error))
 			return

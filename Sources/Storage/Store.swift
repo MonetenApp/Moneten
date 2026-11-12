@@ -97,7 +97,7 @@ public final class Store: Sendable {
 	/// The bank accesses. Their states stay in the database until a refresh reads them.
 	public func accesses() throws -> [Access] {
 		try queue.read { db in
-			try AccessRecord.fetchAll(db).map { Access(id: $0.id, source: $0.source, bankName: $0.bankName, loginName: $0.loginName) }
+			try AccessRecord.fetchAll(db).map(\.access)
 		}
 	}
 
@@ -106,12 +106,19 @@ public final class Store: Sendable {
 		try queue.read { db in try AccessRecord.fetchOne(db, key: access)?.state.map(AccessState.init) }
 	}
 
-	/// Stores a new access with its state and its accounts at once ("Finish the setup"), so that a
-	/// failure leaves no access without accounts.
-	public func add(_ access: Access, state: AccessState?, accounts: [Account]) throws {
+	/// Stores the access of a setup with its state and its accounts at once ("Finish the setup"), so that a
+	/// failure leaves no access without accounts. A login that the app has already keeps its access: the
+	/// accounts join it, and it takes the new source and state. Returns the stored access and accounts.
+	@discardableResult
+	public func add(_ access: Access, state: AccessState?, accounts: [Account]) throws -> (access: Access, accounts: [Account]) {
 		try queue.write { db in
-			try AccessRecord(id: access.id, source: access.source, bankName: access.bankName, loginName: access.loginName, state: state?.data).insert(db)
-			for a in accounts { try a.save(db) }
+			let known = try AccessRecord.fetchAll(db).first { $0.access.isSameLogin(as: access) }
+			let record = AccessRecord(id: known?.id ?? access.id, source: access.source, bankName: access.bankName, loginName: access.loginName,
+				state: state?.data ?? known?.state)
+			try record.save(db)
+			let linked = accounts.map { a -> Account in var a = a; a.accessID = record.id; return a }
+			for a in linked { try a.save(db) }
+			return (record.access, linked)
 		}
 	}
 

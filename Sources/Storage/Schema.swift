@@ -37,6 +37,8 @@ struct AccessRecord: Codable, FetchableRecord, PersistableRecord, TableRecord {
 	var loginName: String
 	/// `AccessState`, opaque to everyone but its connector. It never holds a PIN.
 	var state: Data?
+
+	var access: Access { Access(id: id, source: source, bankName: bankName, loginName: loginName) }
 }
 
 enum Schema {

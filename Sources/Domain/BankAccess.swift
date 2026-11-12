@@ -71,6 +71,18 @@ private extension Character {
 
 // MARK: Accounts of a new access
 
+extension Access {
+	/// The same login name at the same bank or service. A second setup of a login joins the access
+	/// that the app has, so that one login keeps one session ("One session for the accounts of one login").
+	public func isSameLogin(as other: Access) -> Bool {
+		guard loginName == other.loginName else { return false }
+		switch (source, other.source) {
+		case let (.fints(mine, _), .fints(theirs, _)): return mine == theirs
+		default: return source == other.source
+		}
+	}
+}
+
 /// How an account that the bank lists for a new access relates to the accounts in the app
 /// ("Do not add an account twice").
 public enum SetupMatch: Equatable, Sendable {

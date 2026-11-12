@@ -56,4 +56,30 @@ struct AccessStoreTests {
 		#expect(try store.accesses().isEmpty)
 		#expect(try store.loadLedger().accounts.isEmpty)
 	}
+
+	@Test("A second setup of the same login adds its accounts to the access that exists and stores the new state on it")
+	func sameLoginTwice() throws {
+		let store = try Vault(folder: folder).create(password: Self.password, starterCategories: [])
+		try store.add(Self.access, state: AccessState(Data([1])), accounts: [giro()])
+
+		let again = Access(source: .fints(bankCode: "12030000", url: URL(string: "https://banking.musterbank.example/fints")!), bankName: "Musterbank",
+			loginName: "erika77")
+		let savings = Account(position: 1, name: "Tagesgeld", kind: .savings, source: .bank, iban: "DE89370400440532013000", accessID: again.id,
+			remoteID: "DE89370400440532013000")
+		let stored = try store.add(again, state: AccessState(Data([2])), accounts: [savings])
+
+		#expect(stored.access.id == Self.access.id)
+		#expect(stored.access.source == again.source)
+		#expect(try store.accesses().map(\.id) == [Self.access.id])
+		#expect(try store.state(of: Self.access.id) == AccessState(Data([2])))
+		#expect(try store.loadLedger().accounts.map(\.accessID) == [Self.access.id, Self.access.id])
+		#expect(stored.accounts.map(\.accessID) == [Self.access.id])
+
+		let otherLogin = Access(source: Self.access.source, bankName: "Musterbank", loginName: "max88")
+		try store.add(otherLogin, state: nil, accounts: [])
+		let otherBank = Access(source: .fints(bankCode: "10010010", url: URL(string: "https://fints.beispielbank.example/")!), bankName: "Beispielbank",
+			loginName: "erika77")
+		try store.add(otherBank, state: nil, accounts: [])
+		#expect(try store.accesses().count == 3)
+	}
 }
