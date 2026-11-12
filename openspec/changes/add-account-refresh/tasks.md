@@ -47,6 +47,7 @@ The design explains each step. The requirements of section 1 stay open until an 
 - [x] 2.7 `Sync`: `SyncCoordinator`, with one `SyncState` per access, up to three accesses at a time, and "Cancel Refresh".
 - [x] 2.8 `App`: the PIN sheet and the dialog "Two-Factor Authentication" for every `Challenge` case, with previews driven by `ScriptedConnector`.
 - [x] 2.9 Tests: every state, cancellation in every state, an automatic refresh that meets a request, two accesses that ask at the same time, and an approval dialog that closes when the connector cancels its request.
+- [x] 2.10 `Sync` and `App`: after the bank rejects a PIN, a manual refresh shows the PIN sheet again with the message of the bank and the warning, and an automatic refresh fails with `pinRejected`. The broker never answers with that PIN again.
 
 ## 3. Integration
 
