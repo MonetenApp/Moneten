@@ -20,7 +20,9 @@ Issue #86 builds this change for FinTS on the sync model of [add-account-refresh
 - The broker writes the PIN through `SavedPINStore` when the refresh with it finishes. A finished refresh means that the bank accepted the login. A rejected or failed login saves nothing.
 - The login step of "Add Account" has the same option. The bank accepted that PIN when the setup listed the accounts, so `remember(_:for:save:)` saves it when the setup finishes. When the access has a saved PIN already, for example because the user adds the same login again, the new PIN replaces it also with the option off.
 - When the database opens, `open(_:)` reads the saved PINs into memory, so the first refresh after a restart or an unlock does not ask. When the app locks, `forgetPINs()` forgets every PIN.
-- When the bank rejects a PIN or blocks the access, the broker forgets the PIN and deletes the saved one, so no automatic refresh sends it again. A blocked access opens no PIN sheet. Any other failure keeps a saved PIN and forgets an unsaved one, as before.
+- When the bank rejects a PIN or blocks the access, the broker forgets the PIN and deletes the saved one, so no automatic refresh sends it again. A blocked access opens no PIN sheet. This holds also when the bank reports the rejection or the block for one account of a refresh that finished, and when it comes in the "Add Account" login of a login that the app has already: `SetupSession` names that access with `replacing`. Any other failure keeps a saved PIN and forgets an unsaved one, as before.
+- When the database cannot delete a rejected PIN, the broker tries once more. If that fails too, the app shows "Could not remove the rejected PIN." and never uses that saved PIN: the settings keep the ID of the access (not the PIN), `open(_:)` deletes the row again at the next unlock, and until the row is gone it does not load that PIN.
+- A PIN in memory, saved or not, answers a PIN request only when it keeps the rules of that request. Otherwise a manual refresh shows the sheet, and an automatic refresh stops with `SyncFailure.needsUser(.pin)` without sending it.
 - "Remove saved PIN" in the account settings calls `removeSavedPIN(of:)`, which deletes the row and forgets the PIN in memory, for every account of the access.
 
 ### The rules of the bank
@@ -45,3 +47,4 @@ When the user changes the TAN method, the FinTS helper starts a new dialog with 
 ## Risks / Trade-offs
 
 - A saved PIN is as safe as the database password. A database without a password keeps its random key in the Keychain, so there the PIN is as safe as the Keychain of the user.
+- Before an upgrade of the layout the app copies the database to `Moneten-Backup.sqlite`, encrypted with the same key. That copy keeps the saved PINs of that moment until the next upgrade replaces it, also a PIN that the user removes or the bank rejects later. Restoring the copy brings such a PIN back, and a PIN that the bank rejected then costs one more wrong attempt before it is deleted again.
