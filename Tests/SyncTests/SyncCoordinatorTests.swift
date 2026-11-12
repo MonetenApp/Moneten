@@ -421,4 +421,61 @@ struct SyncCoordinatorTests {
 		#expect(coordinator.states[bank.id] == .cancelled)
 		#expect(delivered == 0)
 	}
+
+	/// What `ended` reported, by access.
+	@MainActor
+	final class Ends {
+		var states: [UUID: AccessState?] = [:]
+		var accounts: [UUID: [UUID: AccountRefresh]] = [:]
+	}
+
+	func recordEnds() -> Ends {
+		let ends = Ends()
+		coordinator.ended = { access, state, accounts in
+			ends.states[access] = state
+			ends.accounts[access] = accounts
+		}
+		return ends
+	}
+
+	@Test("The end of a refresh brings the new state of the access and the outcome of each account")
+	func endReportsStateAndAccounts() async throws {
+		let ends = recordEnds()
+		let bank = Self.access("Musterbank")
+		let blocked = BankMessage(code: "9010", text: "Konto gesperrt")
+		_ = refresh(bank, [.state(AccessState(Data([7]))), .fetched(Self.giro.accountID), .failAccount(Self.savings.accountID, .bank(blocked))],
+			accounts: [Self.giro, Self.savings, Self.card])
+		#expect(coordinator.refreshingAccounts == [Self.giro.accountID, Self.savings.accountID, Self.card.accountID])
+		await until { ends.accounts[bank.id] != nil }
+		let at = try #require(finished(bank)?.finishedAt)
+		#expect(ends.states[bank.id] == AccessState(Data([7])))
+		#expect(ends.accounts[bank.id] == [
+			Self.giro.accountID: .refreshed(at),
+			Self.savings.accountID: .failed(RefreshError(message: "Konto gesperrt", code: "9010", date: at)),
+			Self.card.accountID: .failed(RefreshError(message: "Canceled because of the previous error.", date: at)),
+		])
+		#expect(coordinator.refreshingAccounts.isEmpty)
+	}
+
+	@Test("A failed access marks all its requested accounts, and a canceled one marks none and keeps the state")
+	func endAfterFailureAndCancel() async {
+		let ends = recordEnds()
+		let failing = Self.access("Musterbank")
+		_ = refresh(failing, [.state(AccessState(Data([1]))), .fail(.network("Zeitüberschreitung"))], accounts: [Self.giro, Self.savings])
+		await until { ends.accounts[failing.id] != nil }
+		#expect(ends.states[failing.id] == .some(nil))
+		#expect(ends.accounts[failing.id]?.mapValues { refresh -> String? in
+			if case let .failed(error) = refresh { error.message } else { nil }
+		} == [Self.giro.accountID: "The bank could not be reached: Zeitüberschreitung", Self.savings.accountID: "The bank could not be reached: Zeitüberschreitung"])
+
+		let canceled = Self.access("Beispielbank")
+		_ = refresh(canceled, [.state(AccessState(Data([2]))), .ask(Self.tan), .fetched(Self.card.accountID)], accounts: [Self.card])
+		await until { broker.current != nil }
+		#expect(coordinator.refreshingAccounts == [Self.card.accountID])
+		coordinator.cancelAll()
+		await until { ends.accounts[canceled.id] != nil }
+		#expect(ends.states[canceled.id] == .some(nil))
+		#expect(ends.accounts[canceled.id] == [:])
+		#expect(coordinator.refreshingAccounts.isEmpty)
+	}
 }

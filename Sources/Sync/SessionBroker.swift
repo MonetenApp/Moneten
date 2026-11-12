@@ -89,6 +89,12 @@ public final class SessionBroker {
 		pins = [:]
 	}
 
+	/// Keeps the PIN that the setup of a new access logged in with, so that its first refresh does not
+	/// ask again. Saving it in the database on request comes with issue #86.
+	public func remember(_ pin: Secret, for access: UUID) {
+		pins[access] = pin
+	}
+
 	func forgetPIN(of access: UUID) {
 		pins[access] = nil
 	}

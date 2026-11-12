@@ -12,6 +12,8 @@ public final class SyncCoordinator {
 	public let broker: SessionBroker
 	/// The state of each access that was refreshed since the app started.
 	public private(set) var states: [UUID: SyncState] = [:]
+	/// The accounts of the accesses that run or wait for their turn, for the progress indicator of each account.
+	public private(set) var refreshingAccounts: Set<UUID> = []
 	private var running: [UUID: Task<Void, Never>] = [:]
 	private var queue: [Job] = []
 	private let limit: Int
@@ -19,6 +21,10 @@ public final class SyncCoordinator {
 	/// once for each requested account that the connector fetched, never for a failed, missing, or canceled
 	/// one. When it throws, the account fails with `SyncFailure.notSaved` and keeps its last state.
 	@ObservationIgnored public var deliver: @MainActor (UUID, RefreshResult) throws -> Void = { _, _ in }
+	/// Runs on the main actor when the refresh of an access ended, after `deliver`: with the ID of the
+	/// access, the new state that its connector returned, and how each requested account ended. A canceled
+	/// refresh brings no state and no account, so its accounts keep their last state.
+	@ObservationIgnored public var ended: @MainActor (UUID, AccessState?, [UUID: AccountRefresh]) -> Void = { _, _, _ in }
 
 	private struct Job {
 		let request: RefreshRequest
@@ -42,11 +48,13 @@ public final class SyncCoordinator {
 		let id = request.access.id
 		guard running[id] == nil, !queue.contains(where: { $0.request.access.id == id }) else { return }
 		queue.append(Job(request: request, connector: connector, attended: attended))
+		refreshingAccounts.formUnion(request.accounts.map(\.accountID))
 		startNext()
 	}
 
 	/// "Cancel Refresh": stops every running access and drops the waiting ones. Their accounts keep their last state.
 	public func cancelAll() {
+		for job in queue { refreshingAccounts.subtract(job.request.accounts.map(\.accountID)) }
 		queue.removeAll()
 		for id in running.keys { cancel(id) }
 	}
@@ -68,19 +76,26 @@ public final class SyncCoordinator {
 		let session = Session(coordinator: self, access: access, accountNames: job.request.accounts.map(\.name), attended: job.attended)
 		running[access.id] = Task {
 			let event: SyncEvent
+			var report: ConnectorReport?
 			do {
-				let report = try await job.connector.refresh(job.request, session)
+				let fetched = try await job.connector.refresh(job.request, session)
 				// A canceled access stores nothing, also when its connector returned all the same.
 				try Task.checkCancellation()
-				let notSaved = deliverFetched(report, of: job.request)
-				event = .finish(Self.summary(of: report, for: job.request, notSaved: notSaved))
+				report = fetched
+				let notSaved = deliverFetched(fetched, of: job.request)
+				event = .finish(Self.summary(of: fetched, for: job.request, notSaved: notSaved))
 			} catch {
 				event = Task.isCancelled || error is CancellationError ? .cancel : .fail(Self.failure(error))
 			}
 			// A PIN stays in memory only after a refresh with it succeeded. A typo is never sent again on its own.
 			if case .finish = event {} else { broker.forgetPIN(of: access.id) }
 			apply(event, to: access.id)
+			// The state of this run: the user may have canceled it before its connector returned.
+			let end = states[access.id] ?? .idle
+			let accountIDs = job.request.accounts.map(\.accountID)
+			refreshingAccounts.subtract(accountIDs)
 			running[access.id] = nil
+			ended(access.id, report?.state, end.accountRefreshes(of: accountIDs, notices: report?.notices ?? [], at: Date()))
 			startNext()
 		}
 	}

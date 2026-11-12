@@ -16,6 +16,8 @@ public struct ScriptedConnector: BankConnector {
 		case failAccount(UUID, SyncFailure)
 		/// Fails the whole access.
 		case fail(SyncFailure)
+		/// Returns this state of the access with the report.
+		case state(AccessState)
 	}
 
 	public let steps: [Step]
@@ -28,6 +30,7 @@ public struct ScriptedConnector: BankConnector {
 
 	public func refresh(_ request: RefreshRequest, _ session: SyncSession) async throws -> ConnectorReport {
 		var outcomes: [UUID: AccountOutcome] = [:]
+		var state: AccessState?
 		for step in steps {
 			switch step {
 			case let .ask(userRequest):
@@ -49,9 +52,11 @@ public struct ScriptedConnector: BankConnector {
 				outcomes[id] = .failed(failure)
 			case let .fail(failure):
 				throw failure
+			case let .state(new):
+				state = new
 			}
 		}
-		return ConnectorReport(outcomes: outcomes)
+		return ConnectorReport(outcomes: outcomes, state: state)
 	}
 
 	public final class Answers: Sendable {
