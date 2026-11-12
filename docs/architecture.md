@@ -2,7 +2,7 @@
 
 This page explains how Moneten is split into modules, how data flows from a bank into the database, and why each boundary sits where it does. The exact fields of each type are in [data model](data-model.md). The reasons behind the big choices are in [decisions](decisions/).
 
-The first build has six modules: `Domain`, `Storage`, `Import`, `Sync`, `SyncTesting`, and `App`. Bank connectors, extensions, payments, and the log are planned. Each section below says when it describes the plan.
+The first build has seven modules: `Domain`, `Storage`, `Import`, `Sync`, `SyncTesting`, `FinTS`, and `App`. The other bank connectors, extensions, payments, and the log are planned. Each section below says when it describes the plan.
 
 ## The modules and what each one owns
 
@@ -23,11 +23,12 @@ The diagram shows the target design.
 ┌────┴─────┐ ┌──┴─────────────┐ ┌──┴───────────┐ ┌────────┴───────┐
 │  FinTS   │ │   Extension    │ │    finAPI    │ │     Import     │
 │connector │ │   connector    │ │  connector   │ │ CSV, CAMT,     │
-│(hbci4java│ │       │ XPC    │ │   (v0.3)     │ │ MT940,         │
-│ helper)  │ │ ┌─────▼──────┐ │ └──────────────┘ │ MoneyMoney     │
-└──────────┘ │ │ Lua host   │ │                  └────────────────┘
-             │ └────────────┘ │
-             └────────────────┘
+│    │pipe │ │       │ XPC    │ │   (v0.3)     │ │ MT940,         │
+│┌───▼────┐│ │ ┌─────▼──────┐ │ └──────────────┘ │ MoneyMoney     │
+││  Java  ││ │ │ Lua host   │ │                  └────────────────┘
+││ helper ││ │ └────────────┘ │
+│└────────┘│ └────────────────┘
+└──────────┘
 ```
 
 The libraries are one Swift package at the root of the repository. The app target is an Xcode project in `App/`, generated from `App/project.yml` ([ADR 0011](decisions/0011-app-target-in-an-xcode-project.md)). These modules exist:
@@ -39,13 +40,13 @@ The libraries are one Swift package at the root of the repository. The app targe
 | `Import` | The MoneyMoney migration and the CSV, CAMT, and MT940 parsers. `TransactionFileImporter.parse` returns `[Transaction]`, and `MoneyMoneyMigration.plan` returns a `Plan` that the app shows before it stores anything. | `Domain` |
 | `Sync` | `SyncCoordinator`, which refreshes up to three accesses at a time with one `SyncState` each, and `SessionBroker`, which shows one dialog at a time and keeps the PINs in memory | `Domain` |
 | `SyncTesting` | `ScriptedConnector`, which plays requests, progress, results, and failures in place of a bank, for the tests, the previews, and the debug harness | `Domain` |
+| `FinTS` | `FinTSConnector`, which starts the hbci4java helper of `Tools/FinTSHelper` for each refresh, lists the accounts of a login, looks up a bank by its code, and maps the requests and results of the helper to `Domain` types. macOS decides whether to trust the server of the bank, and a helper that stays silent for 30 seconds fails the refresh. The app does not use it before the bank accesses of issue #13 exist. | `Domain`, the helper process ([ADR 0014](decisions/0014-fints-through-hbci4java.md)) |
 | `App` | SwiftUI views, the `AppModel`, window and menu wiring | All of the above |
 
 These modules are planned:
 
 | Module | Owns | Depends on |
 |---|---|---|
-| `FinTSConnector` | Bank lookup, FinTS dialogs, TAN handling, mapping FinTS data to `Domain` types | `Domain`, the hbci4java helper process ([ADR 0014](decisions/0014-fints-through-hbci4java.md)) |
 | `ExtensionConnector` | Starting the XPC host, mapping extension results to `Domain` types | `Domain` |
 | `ExtensionHost` | The XPC service that runs one Lua extension with the MoneyMoney-compatible API | Lua 5.4 |
 | `FinAPIConnector` | finAPI login through its web form and data mapping (v0.3) | `Domain` |
@@ -197,10 +198,14 @@ Moneten/
 │   ├── Storage/
 │   ├── Import/
 │   ├── Sync/
-│   └── SyncTesting/
+│   ├── SyncTesting/
+│   └── FinTS/
 ├── Tests/                   One test target per library
 ├── App/                     The app target: project.yml, sources, Info.plist, resources
 │   └── FinTSProbe/          The FinTS prototype of issue #11
+├── Tools/
+│   ├── FinTSHelper/         The hbci4java helper that FinTSConnector runs (ADR 0014)
+│   └── FinTSProbeJava/      The hbci4java probe of issue #11, and dependencies.lock
 ├── Vendor/
 │   └── HBCI4Swift/          Git submodule of the Swift probe, until #13 (ADR 0014)
 ├── scripts/                 Test, build, project, and check scripts
@@ -208,4 +213,4 @@ Moneten/
 └── docs/
 ```
 
-The planned modules get their own folders under `Sources/`. Recorded bank responses for tests arrive with the FinTS connector.
+The planned modules get their own folders under `Sources/`.

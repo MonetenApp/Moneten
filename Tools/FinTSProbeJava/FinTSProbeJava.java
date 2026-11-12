@@ -65,84 +65,6 @@ import org.kapott.hbci.status.HBCIRetVal;
 import org.kapott.hbci.structures.Konto;
 
 public class FinTSProbeJava {
-	/// The output rules of the probe. See the comment at the top.
-	static final class Out {
-		/// The PIN and every TAN entered in this run.
-		static final List<String> secrets = new ArrayList<>();
-		static boolean showValues;
-
-		static final java.util.regex.Pattern RETURN_CODE = java.util.regex.Pattern.compile("\\b([0139]\\d{3}):(?:(?!\\s+[0139]\\d{3}:)[^\\n;])*");
-
-		/// Return codes that the probe meets. The descriptions follow the FinTS specification.
-		static final Map<String, String> KNOWN = Map.ofEntries(
-			Map.entry("0010", "message received"), Map.entry("0020", "order executed"),
-			Map.entry("0030", "order received, TAN required"), Map.entry("3076", "no strong customer authentication required"),
-			Map.entry("3920", "allowed TAN methods for the user"), Map.entry("3955", "approval in the app"),
-			Map.entry("3956", "approval still pending"), Map.entry("9010", "error in the message"),
-			Map.entry("9050", "message partly faulty"), Map.entry("9075", "strong customer authentication required"),
-			Map.entry("9078", "FinTS product not registered"), Map.entry("9120", "dialog already ended"),
-			Map.entry("9160", "required field missing"), Map.entry("9800", "dialog aborted"),
-			Map.entry("9931", "access locked or PIN wrong"), Map.entry("9942", "PIN wrong"));
-
-		static String withoutPin(String text) {
-			if (text == null) return "";
-			for (String secret : secrets) if (!secret.isEmpty()) text = text.replace(secret, "•••");
-			return text;
-		}
-
-		/// Message segments carry the PIN in the signature and the data of the accounts.
-		static boolean hasSegments(String text) {
-			return text != null && (text.contains("HNHBK") || text.contains("HNSHA") || text.contains("HNVSD") || text.contains("HNSHK"));
-		}
-
-		/// Masks IBANs, runs of six or more digits, and amounts, and removes the PIN.
-		static String masked(String text) {
-			if (showValues) return withoutPin(text);
-			return withoutPin(text)
-				.replaceAll("\\b[A-Z]{2}\\d{2}(?: ?[A-Z0-9]{4}){3,7}(?: ?[A-Z0-9]{1,3})?\\b", "IBAN…")
-				.replaceAll("\\d+(?:[.,]\\d+)*\\s?(?:EUR|€|USD|CHF)", "…")
-				.replaceAll("\\b(?:\\d{1,3}(?:\\.\\d{3})+|\\d+),\\d{2}\\b", "…")
-				.replaceAll("\\d{6,}", "…");
-		}
-
-		/// A text that may hold return codes of the bank: codes keep a fixed description, and the
-		/// rest is masked.
-		static final java.util.regex.Pattern ORDER_REFERENCE = java.util.regex.Pattern.compile("CustomMsg\\.[A-Za-z0-9_.]+");
-
-		/// A text that may hold return codes of the bank. If it holds one, only the text before the
-		/// first code, the codes with their fixed descriptions, and the references to the order
-		/// segments remain. Everything else in the text can come from the bank and is left out.
-		/// hbci4java logs the challenge of the bank, which is left out of the callbacks too.
-		static final java.util.regex.Pattern CHALLENGE = java.util.regex.Pattern.compile("(?i)found challenge|hhduc");
-
-		static String bank(String text) {
-			if (hasSegments(text)) return "(message content left out)";
-			if (showValues) return withoutPin(text);
-			if (text != null && CHALLENGE.matcher(text).find()) return "(challenge of the bank left out; it shows with --show-values)";
-			String clean = withoutPin(text);
-			java.util.regex.Matcher m = RETURN_CODE.matcher(clean);
-			if (!m.find()) return masked(clean);
-			String prefix = clean.substring(0, m.start());
-			List<String> parts = new ArrayList<>();
-			do parts.add(code(m.group(1))); while (m.find());
-			java.util.regex.Matcher r = ORDER_REFERENCE.matcher(clean);
-			while (r.find()) parts.add("(" + r.group() + ")");
-			return masked(prefix) + String.join("; ", new java.util.LinkedHashSet<>(parts));
-		}
-
-		/// A return code with the fixed description of the probe.
-		static String code(String code) {
-			return code + " " + KNOWN.getOrDefault(code, "(text of the bank left out)");
-		}
-
-		/// A text of the bank in a callback: shown only with --show-values.
-		static String callbackText(String text, String fallback) {
-			if (text == null || text.isBlank()) return fallback;
-			if (hasSegments(text)) return fallback;
-			return showValues ? withoutPin(text) : fallback + " (the text of the bank shows with --show-values)";
-		}
-	}
-
 	static final class Options {
 		String bankCode = "", url = "", user = "", customer, tanMethod;
 		int days = 90;
@@ -252,7 +174,7 @@ public class FinTSProbeJava {
 					System.out.println("Bank: " + Out.callbackText(msg, "The bank asks for a TAN."));
 					String tan = console.readLine("TAN: ");
 					if (tan == null || tan.isEmpty()) throw new IllegalStateException("no TAN entered");
-					Out.secrets.add(tan);
+					Out.secret(tan);
 					set(retData, tan);
 				}
 				case NEED_PT_PHOTOTAN, NEED_PT_QRTAN ->
@@ -350,8 +272,8 @@ public class FinTSProbeJava {
 
 	static void printProblem(HBCIJobResult result) {
 		List<String> messages = new ArrayList<>();
-		for (HBCIRetVal r : result.getJobStatus().getRetVals()) messages.add(Out.showValues ? Out.withoutPin(r.code + " " + r.text) : Out.code(r.code));
-		for (HBCIRetVal r : result.getGlobStatus().getRetVals()) messages.add(Out.showValues ? Out.withoutPin(r.code + " " + r.text) : Out.code(r.code));
+		for (HBCIRetVal r : result.getJobStatus().getRetVals()) messages.add(Out.showValues ? Out.withoutSecrets(r.code + " " + r.text) : Out.code(r.code));
+		for (HBCIRetVal r : result.getGlobStatus().getRetVals()) messages.add(Out.showValues ? Out.withoutSecrets(r.code + " " + r.text) : Out.code(r.code));
 		System.out.println("      bank: " + (messages.isEmpty() ? "no message" : String.join("; ", messages)));
 	}
 
@@ -365,7 +287,7 @@ public class FinTSProbeJava {
 		char[] pinChars = console.readPassword("PIN: ");
 		if (pinChars == null || pinChars.length == 0) throw new IllegalStateException("no PIN entered");
 		String pin = new String(pinChars);
-		Out.secrets.add(pin);
+		Out.secret(pin);
 		Out.showValues = options.showValues;
 
 		java.net.URI uri = java.net.URI.create(options.url);
