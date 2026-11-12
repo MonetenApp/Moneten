@@ -44,6 +44,17 @@ public struct Day: Hashable, Comparable, Sendable, Codable, CustomStringConverti
 		Day(calendar.date(byAdding: .month, value: months, to: date(in: calendar))!, calendar: calendar)
 	}
 
+	/// The number of days since 1 January 1970, for the distance between two days without a calendar
+	/// and its time zones. The algorithm `days_from_civil` of Howard Hinnant.
+	var daysSince1970: Int {
+		let y = month <= 2 ? year - 1 : year
+		let era = (y >= 0 ? y : y - 399) / 400
+		let yearOfEra = y - era * 400
+		let dayOfYear = (153 * ((month + 9) % 12) + 2) / 5 + day - 1
+		let dayOfEra = yearOfEra * 365 + yearOfEra / 4 - yearOfEra / 100 + dayOfYear
+		return era * 146_097 + dayOfEra - 719_468
+	}
+
 	public var firstOfMonth: Day { Day(year: year, month: month, day: 1) }
 	public var firstOfQuarter: Day { Day(year: year, month: (month - 1) / 3 * 3 + 1, day: 1) }
 	public var firstOfYear: Day { Day(year: year, month: 1, day: 1) }
