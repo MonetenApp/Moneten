@@ -10,6 +10,7 @@ let package = Package(
 		.library(name: "Import", targets: ["Import"]),
 		.library(name: "Sync", targets: ["Sync"]),
 		.library(name: "SyncTesting", targets: ["SyncTesting"]),
+		.library(name: "FinTS", targets: ["FinTS"]),
 	],
 	dependencies: [
 		// The fork of GRDB that Zetetic maintains links SQLCipher instead of the system SQLite.
@@ -22,10 +23,13 @@ let package = Package(
 		.target(name: "Sync", dependencies: ["Domain"]),
 		// ScriptedConnector, for the tests and for the previews and the debug harness of the app.
 		.target(name: "SyncTesting", dependencies: ["Domain"]),
+		// FinTSConnector, which runs the hbci4java helper of Tools/FinTSHelper (ADR 0014).
+		.target(name: "FinTS", dependencies: ["Domain"]),
 		.testTarget(name: "DomainTests", dependencies: ["Domain"]),
 		.testTarget(name: "StorageTests", dependencies: ["Storage"]),
 		.testTarget(name: "ImportTests", dependencies: ["Import"]),
 		.testTarget(name: "SyncTests", dependencies: ["Sync", "SyncTesting"]),
+		.testTarget(name: "FinTSTests", dependencies: ["FinTS"]),
 	],
 	swiftLanguageModes: [.v6]
 )

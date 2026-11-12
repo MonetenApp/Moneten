@@ -1,0 +1,208 @@
+import Domain
+import Foundation
+
+/// A bank of the bank directory of hbci4java.
+public struct FinTSBank: Sendable, Equatable {
+	public let name: String
+	public let bic: String?
+	/// The PIN/TAN address. Nil when the bank has none. The connector refuses any address that is
+	/// not https.
+	public let url: URL?
+}
+
+/// An account of a login, as the bank lists it.
+public struct FinTSAccount: Sendable, Equatable {
+	public let number: String
+	public let subnumber: String?
+	public let iban: String?
+	public let bic: String?
+	/// The name of the product at the bank, for example "Girokonto".
+	public let productName: String?
+	public let kind: AccountKind
+	public let owner: String?
+	public let currency: String
+
+	/// The ID that a refresh asks for the account with.
+	public var remoteID: String { iban ?? number }
+
+	/// The FinTS account types are ranges: 1 to 9 giro accounts, 10 to 19 savings, 20 to 29 fixed
+	/// term deposits, 30 to 39 portfolios, 40 to 49 loans, 50 to 59 credit cards, and 60 to 69 funds.
+	static func kind(of code: String?) -> AccountKind {
+		switch code.flatMap({ Int($0) }) ?? 0 {
+		case 1...9: .giro
+		case 10...19: .savings
+		case 20...29: .fixedTermDeposit
+		case 30...39, 60...69: .portfolio
+		case 40...49: .loan
+		case 50...59: .creditCard
+		default: .other
+		}
+	}
+}
+
+/// Fetches accounts, balances, and transactions through FinTS. It runs hbci4java in a helper
+/// process (ADR 0014) and asks the user through the session. The PIN and the TANs go only through
+/// the pipe of the helper. `AccessState` holds the passport of hbci4java: bank parameters, user
+/// parameters, system ID, and the chosen TAN method.
+public struct FinTSConnector: BankConnector {
+	/// How to start the helper.
+	struct Helper: Sendable {
+		let executable: URL
+		let arguments: [String]
+
+		/// The helper that scripts/build-app.sh puts into the app.
+		static var bundled: Helper {
+			let folder = (Bundle.main.resourceURL ?? Bundle.main.bundleURL).appending(path: "FinTSHelper")
+			return Helper(executable: folder.appending(path: "runtime/bin/java"),
+				arguments: ["-Djava.awt.headless=true", "-cp", folder.appending(path: "lib").path + "/*", "FinTSHelper"])
+		}
+	}
+
+	let helper: Helper
+	let productID: String?
+	let version: String
+
+	/// The connector of the app, with the product ID that scripts/build-app.sh puts into Info.plist.
+	public init() {
+		self.init(helper: .bundled, productID: Bundle.main.object(forInfoDictionaryKey: "MonetenFinTSProductID") as? String,
+			version: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "")
+	}
+
+	init(helper: Helper, productID: String?, version: String) {
+		self.helper = helper
+		self.productID = productID
+		self.version = version
+	}
+
+	/// The name, BIC, and FinTS address of a bank. Nil when the bank directory does not know the code.
+	public func bankInfo(bankCode: String) async throws -> FinTSBank? {
+		var bank: FinTSBank?
+		var answered = false
+		try await run(Command(type: "bankInfo", bankCode: bankCode), session: nil) { message in
+			guard case let .bank(found) = message else { throw HelperFailure.unreadable }
+			bank = found
+			answered = true
+		}
+		guard answered else { throw HelperFailure.noAnswer }
+		return bank
+	}
+
+	/// The accounts of the login of `access`, the new state of the access, and the notices of the bank.
+	public func listAccounts(of access: Access, state: AccessState?, session: SyncSession) async throws
+		-> (accounts: [FinTSAccount], state: AccessState?, notices: [BankMessage]) {
+		var accounts: [FinTSAccount]?
+		var newState: AccessState?
+		var notices: [BankMessage] = []
+		try await run(try command("accounts", access, state), session: session) { message in
+			switch message {
+			case let .accounts(list): accounts = list
+			case let .state(data): newState = AccessState(data)
+			case let .notice(text): notices.append(BankMessage(text: text))
+			case let .failed(error): throw error.failure
+			default: throw HelperFailure.unreadable
+			}
+		}
+		guard let accounts else { throw HelperFailure.noAnswer }
+		return (accounts, newState, notices)
+	}
+
+	/// Fetches all requested accounts in one dialog with the bank.
+	public func refresh(_ request: RefreshRequest, _ session: SyncSession) async throws -> ConnectorReport {
+		let today = Day.today()
+		var command = try command("refresh", request.access, request.state)
+		command.accounts = request.accounts.map { Command.Period(id: $0.remoteID, from: Self.firstDay($0.since, enforced: request.enforced, today: today)?.description) }
+		let accountIDs = Dictionary(request.accounts.map { ($0.remoteID, $0.accountID) }, uniquingKeysWith: { first, _ in first })
+		var outcomes: [UUID: AccountOutcome] = [:]
+		var state: AccessState?
+		var notices: [BankMessage] = []
+		try await run(command, session: session) { message in
+			switch message {
+			case let .progress(done, of): await session.report(.fetching(done: done, of: of))
+			case let .notice(text): notices.append(BankMessage(text: text))
+			case let .result(account, result):
+				guard let id = accountIDs[account] else { throw HelperFailure.unreadable }
+				let (outcome, errors) = try result.outcome(of: id)
+				outcomes[id] = outcome
+				notices += errors
+			case let .accountFailed(account, error):
+				guard let id = accountIDs[account] else { throw HelperFailure.unreadable }
+				outcomes[id] = .failed(error.failure)
+			case let .state(data): state = AccessState(data)
+			case let .failed(error): throw error.failure
+			default: throw HelperFailure.unreadable
+			}
+		}
+		return ConnectorReport(outcomes: outcomes, state: state, notices: notices)
+	}
+
+	/// The first day to ask the bank for. A first and an enforced refresh ask for the full history.
+	/// Any other asks for no more than 90 days, so that the bank needs no TAN for older transactions.
+	static func firstDay(_ since: Day?, enforced: Bool, today: Day) -> Day? {
+		guard let since, !enforced else { return nil }
+		return max(since, today.adding(days: -90))
+	}
+
+	private func command(_ type: String, _ access: Access, _ state: AccessState?) throws -> Command {
+		guard case let .fints(bankCode, url) = access.source else { throw SyncFailure.unsupported("The access does not use FinTS.") }
+		guard url.scheme?.lowercased() == "https", url.host() != nil else { throw HelperFailure.insecure }
+		guard let productID, !productID.isEmpty else { throw HelperFailure.noProductID }
+		return Command(type: type, bankCode: bankCode, url: url.absoluteString, user: access.loginName, product: productID, version: version,
+			state: state?.data.base64EncodedString())
+	}
+
+	/// Runs one command. Requests of the helper go to the session, and every other message to `handle`.
+	/// A decoupled approval stays open while hbci4java checks it, until the helper withdraws it.
+	/// When the refresh is canceled or fails, the helper gets a cancel and at most 5 seconds to end.
+	private func run(_ command: Command, session: SyncSession?, _ handle: (HelperMessage) async throws -> Void) async throws {
+		let process = try HelperProcess(executable: helper.executable, arguments: helper.arguments)
+		var approvals: [Int: Task<Void, Never>] = [:]
+		await withTaskCancellationHandler {
+			do {
+				process.send(command)
+				for await line in process.lines {
+					guard let message = try? JSONDecoder().decode(HelperMessage.self, from: Data(line.utf8)) else { throw HelperFailure.unreadable }
+					switch message {
+					case let .ask(id, ask):
+						guard let session else { throw HelperFailure.unreadable }
+						let request = try ask.request()
+						guard ask.kind != "approve" else {
+							approvals[id] = Task {
+								do {
+									_ = try await session.ask(request)
+								} catch where !Task.isCancelled {
+									process.fail(error)
+								} catch {}
+							}
+							continue
+						}
+						let answer = try await session.ask(request)
+						process.send(Answer(id: id, value: answer.value))
+					case let .withdraw(id):
+						approvals.removeValue(forKey: id)?.cancel()
+					default:
+						try await handle(message)
+					}
+				}
+			} catch {
+				process.fail(error)
+			}
+		} onCancel: {
+			process.cancel()
+		}
+		for approval in approvals.values { approval.cancel() }
+		var stopped: (any Error)?
+		do { try await process.ended() } catch { stopped = error }
+		try Task.checkCancellation()
+		if let error = process.firstFailure ?? stopped { throw error }
+	}
+}
+
+private extension UserAnswer {
+	var value: String {
+		switch self {
+		case let .pin(secret), let .tan(secret): secret.value
+		case let .tanMethod(id): id
+		case let .tanMedium(name): name
+		}
+	}
+}
