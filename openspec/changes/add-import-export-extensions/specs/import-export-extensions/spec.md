@@ -225,7 +225,7 @@ The app SHALL offer import and export scripts the functions `MM.localizeText`, `
 
 ### Requirement: Limits of import and export scripts
 
-The app SHALL run import and export scripts without network access. `io` gives access to standard input for an import script and to standard output for an export script, and to no other file. The other limits of the Lua runtime for extensions apply.
+The app SHALL run import and export scripts without network access. `io` offers `io.read` and `io.lines` without a file name on standard input to an import script, and `io.write` on standard output to an export script, and no other function. The other limits of the Lua runtime for extensions apply.
 
 #### Scenario: Network call
 
@@ -235,14 +235,26 @@ The app SHALL run import and export scripts without network access. `io` gives a
 #### Scenario: Open another file
 
 - **WHEN** an import script calls `io.open("/Users/erika/notes.txt")`
+- **THEN** the script stops with an error that says that `io.open` is not available
+- **AND** the import ends with that error
+
+#### Scenario: Lines of a named file
+
+- **WHEN** an import script calls `io.lines("/Users/erika/notes.txt")`
 - **THEN** the call fails and the import ends with an error
+
+#### Scenario: Read standard input
+
+- **WHEN** an import script calls `for line in io.lines() do` on a file with three lines
+- **THEN** the loop runs three times with the lines of the file that the user chose
 
 ### Requirement: Installation and trust of import and export scripts
 
-The app SHALL install, list, warn about, verify, and remove import and export scripts by the same rules as web banking extensions. The list in the settings shows the kind of each extension.
+The app SHALL install, list, warn about, and remove import and export scripts by the same rules as web banking extensions. A script installed from a file is marked "Unverified" and runs after the warning. A script installed from the catalog runs without it. The "Extensions" window shows the kind of each extension.
 
 #### Scenario: Unknown script
 
 - **GIVEN** the user copied `Ledger.lua`, an export script that is not in the catalog, into the "Extensions" folder
 - **WHEN** the user first selects its format in the export dialog
 - **THEN** the app asks for confirmation before the script runs
+- **AND** the "Extensions" window lists "Ledger" as an export script marked "Unverified"

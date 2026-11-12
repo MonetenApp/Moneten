@@ -11,7 +11,8 @@ An author who must click through the app after every change to a script gives up
 - `ext record` saves the HTTP traffic of a run to a fixture file and removes secrets from it.
 - `ext test` replays a fixture without network access and compares the result with an expected file.
 - The tool returns an exit status that scripts and CI can check.
-- The project publishes an author guide with a tutorial, an API reference, and the rules for extensions.
+- The project publishes an author guide with a tutorial, an API reference, and the rules for extensions, in the catalog repository `MonetenApp/moneten-extensions`.
+- The checks of the catalog repository run `ext test` on the recording of every package.
 
 ## Capabilities
 
@@ -29,7 +30,7 @@ None.
 - Issues: #16, #17
 - Modules: `ext` in `Tools/ext` owns the commands. It uses `ExtensionHost` so that the API behaves exactly as in the app. Example extensions and their fixtures live in `Extensions/` and `Fixtures/`.
 - Depends on the change `add-web-banking-extensions`.
-- Decisions: [ADR 0004](../../../docs/decisions/0004-moneymoney-compatible-extension-api.md).
+- Decisions: [ADR 0004](../../../docs/decisions/0004-moneymoney-compatible-extension-api.md), [ADR 0015](../../../docs/decisions/0015-extension-program.md).
 
 ## Reference behavior
 
@@ -46,3 +47,5 @@ None.
 - A recording replaces secrets with placeholders before it is written. No option turns that off.
 - A replay fixes the clock and the random values, so that a test gives the same result on every run.
 - The tool keeps `LocalStorage` in a file next to the script and never touches the database of the app.
+- The author guide lives in the catalog repository, next to the packages and the checks that authors submit to. The `ext` tool stays in the app repository, because it runs the same host code as the app ([ADR 0015](../../../docs/decisions/0015-extension-program.md)).
+- `ext test` is the replay that the catalog checks run. An author runs the same check before a pull request that the review runs after it. MoneyMoney reviews each extension by hand.

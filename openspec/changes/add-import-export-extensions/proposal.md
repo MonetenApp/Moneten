@@ -27,9 +27,9 @@ None.
 - Milestone: later
 - Issues: none yet
 - Modules: `ExtensionHost` runs the scripts. `Import` takes the transactions of an import extension. `App` owns the format menus.
-- Depends on the change `add-web-banking-extensions` for the "Extensions" folder, the Lua runtime, the list in the settings, and the warning. Depends on `add-file-import` and `add-data-export` for the import and export commands, and on `add-extension-catalog` for the signature check.
+- Depends on the change `add-web-banking-extensions` for the "Extensions" folder, the Lua runtime, the "Extensions" window, the warning, and the mark "Unverified". Depends on `add-file-import` and `add-data-export` for the import and export commands, and on `add-extension-catalog` for installs from the catalog.
 - The menu command "Send Transactions to" is defined in the change `add-more-export-formats`. This change defines only which extensions count as an integration and how the hand-over runs. The AppleScript command that takes a format name is defined in the change `add-applescript-automation`.
-- Decisions: [ADR 0004](../../../docs/decisions/0004-moneymoney-compatible-extension-api.md).
+- Decisions: [ADR 0004](../../../docs/decisions/0004-moneymoney-compatible-extension-api.md), [ADR 0015](../../../docs/decisions/0015-extension-program.md).
 
 ## Reference behavior
 
@@ -45,9 +45,9 @@ None.
 
 ### Decided for Moneten
 
-- An import or export script has no network access, and `io` is limited to standard input and standard output. The documentation does not state what MoneyMoney allows.
+- An import or export script has no network access. `io` offers only `io.read` and `io.lines` without a file name on standard input, and `io.write` on standard output. `io.open` is missing in every mode. MoneyMoney appears to keep `io.open` for unsigned files, and its documentation does not state what it allows ([ADR 0015](../../../docs/decisions/0015-extension-program.md)).
 - An imported transaction needs `amount` and `bookingDate`. The Import API page does not name required fields. The rule is taken from the Web Banking API.
 - For an export of an account group or a category, the `account` table describes the selection and has no account number, and each transaction table also carries the fields `accountName` and `accountIban` of its own account. The documentation covers only the export of one account.
 - When an entry point returns an error message, the app deletes the partly written file.
 - `MM.productName` is "Moneten".
-- The catalog rules and the warning for unknown scripts apply to these scripts as well.
+- A script installed from a file runs after a warning and stays marked "Unverified", and a catalog script runs without it, as for web banking extensions. MoneyMoney refuses unsigned scripts until the user turns its signature check off.
