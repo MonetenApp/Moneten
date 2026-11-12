@@ -1,0 +1,41 @@
+# Tasks
+
+One task per requirement of the spec. A task is checked only when a test or a check in the running app shows the behavior. Issue #13 builds FinTS in three parts: the connector (part 1), the bank accesses in the database (part 2), and the "Add Account" assistant, the refresh commands, the sidebar status, and saved PINs (part 3). "FinTSHelper self-test" is `scripts/build-fints-helper.sh`, which CI runs.
+
+## 1. Requirements
+
+- [ ] 1.1 Find the FinTS address of a bank. Built in part: `FinTSConnector.bankInfo` reads the bank directory of hbci4java, verified by FinTSHelper self-test "bank directory" and FinTSConnectorTests "Looks up a bank in the bank directory". The setup that uses it comes with part 3.
+- [ ] 1.2 Identify the app as a registered product. Built in part: the command carries the product ID from Info.plist and the version, verified by FinTSConnectorTests "Asks for the PIN, sends it through the pipe, and lists the accounts". Check the first message with a real bank.
+- [x] 1.3 FinTS messages travel over HTTPS only. Verified by FinTSConnectorTests "Refuses an access without https..." and FinTSHelper self-test "plain HTTP refused".
+- [ ] 1.4 List the accounts of a login. Built in part: `FinTSConnector.listAccounts`, with the account types verified by FinTSConnectorTests "Asks for the PIN, sends it through the pipe, and lists the accounts". Check with a real bank.
+- [ ] 1.5 Use only what the bank allows. Built in part: the helper sends HKSAL, HKCAZ, and HKKAZ only when the account allows them, and fails an account that allows none. The account view comes with part 3. Check with a real bank.
+- [ ] 1.6 Fetch the balance separately. Built in part: the balance is its own order, and a failed transaction order keeps the balance and adds the error of the bank to the notices, verified by FinTSConnectorTests "Maps every field of the result...". The error on the account needs a field in `RefreshResult`.
+- [ ] 1.7 Prefer CAMT over MT940. Built: the helper takes HKCAZ when the account allows it. Check with a real bank.
+- [ ] 1.8 A normal refresh asks for at most 90 days. Built in part: the connector asks from the requested day, but no more than 90 days back, verified by FinTSConnectorTests "Asks for the full history first...". The 14 days of overlap and the note about older transactions come with parts 2 and 3.
+- [ ] 1.9 The first refresh asks for the full history. Built in part: a request without a first day asks for everything, verified by FinTSConnectorTests "Asks for the full history first...". The fallback to 90 days after a canceled TAN needs a way to cancel one request without the refresh.
+- [ ] 1.10 Enforced refresh. Built in part: an enforced request asks for the full history, verified by FinTSConnectorTests "Asks for the full history first...". The commands come with part 3.
+- [ ] 1.11 Say when the bank has no older transactions. Built in part: a full-history answer sets `RefreshResult.isComplete`, verified by FinTSConnectorTests "Maps every field of the result...". The message comes with part 3.
+- [ ] 1.12 Fetch every part of a long answer. Built by hbci4java, which follows the touchdown point (3040) itself. Check with a real bank.
+- [x] 1.13 Mark pending transactions. Verified by FinTSHelper self-test "CAMT row, pending" and FinTSConnectorTests "Maps every field of the result...".
+- [x] 1.14 Store booking date and value date. Verified by FinTSHelper self-test "MT940 row with tagged purpose" and "day in Pacific/Kiritimati", and FinTSConnectorTests "Maps every field of the result...".
+- [x] 1.15 Split the structured purpose into fields. Verified by FinTSHelper self-test "MT940 row with tagged purpose" and "CAMT row, pending".
+- [ ] 1.16 Join purpose lines. Build it and verify it with a test. Today tagged MT940 lines join without a space, and other lines with one.
+- [x] 1.17 Use the end-to-end reference when the purpose is missing. Verified by FinTSHelper self-test "end-to-end reference as purpose" and "placeholder reference".
+- [ ] 1.18 Keep the original amount and the deviating party. Needs fields in `Transaction`. Build it and verify it with a test.
+- [ ] 1.19 Credit cards through FinTS. Built in part: account types 50 to 59 list as credit cards, verified by FinTSConnectorTests "Asks for the PIN, sends it through the pipe, and lists the accounts". Check with a real bank.
+- [ ] 1.20 One dialog for all accounts of a login. Built: one command and one hbci4java dialog for all requested accounts, verified by FinTSConnectorTests "Asks for the full history first...". Check the number of TANs with a real bank.
+- [ ] 1.21 Show notices of the bank. Built in part: notices reach `ConnectorReport.notices`, verified by FinTSConnectorTests. The window comes with part 3.
+- [ ] 1.22 Show errors in the words of the bank. Built in part: code and text of the bank reach `SyncFailure`, verified by FinTSConnectorTests "Maps the errors of the bank to failures". Show the code with part 3.
+- [ ] 1.23 Handle a PIN change that the bank requires. Build it and verify it with a test or in the app.
+- [ ] 1.24 Handle a blocked access. Built in part: 9930 and 9931 fail the access with `accessBlocked`, verified by FinTSConnectorTests "Maps the errors of the bank to failures". Skipping it in the automatic refresh comes with issue #40.
+- [ ] 1.25 Cancel and interruption. Built in part: a canceled refresh sends cancel to the helper and ends it after 5 seconds at the latest, verified by FinTSConnectorTests "A canceled refresh sends cancel..." and "A helper that ignores cancel ends after 5 seconds". Keeping the accounts that were complete before the cancel needs a change of `SyncCoordinator`.
+
+## 2. Connector (issue #13, part 1)
+
+- [x] 2.1 `Tools/FinTSHelper`: the hbci4java helper with JSON lines on stdin and stdout, masked diagnostics on stderr, and a passport that stays in memory.
+- [x] 2.2 `FinTS`: `FinTSConnector` with `refresh`, `listAccounts`, and `bankInfo`, verified by FinTSConnectorTests over real pipes against scripted helpers.
+- [x] 2.3 `scripts/build-app.sh`: the jlink runtime and the jars in `Contents/Resources/FinTSHelper`, signed with the certificate of the app and `allow-jit` for the helper only, and the product ID from the login Keychain in Info.plist.
+
+## 3. Integration
+
+- [ ] 3.1 Check every scenario of the spec with real banks in a release build, and record the result in the pull request.
