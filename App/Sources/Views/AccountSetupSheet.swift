@@ -158,8 +158,10 @@ final class AccountSetup {
 		isLoggingIn = true
 		task = Task {
 			do {
-				let list = try await model.sync.exclusively(for: known) {
-					try await model.fints.listAccounts(of: access, state: nil, session: session)
+				let list = try await session.logIn { session in
+					try await model.sync.exclusively(for: known) {
+						try await model.fints.listAccounts(of: access, state: nil, session: session)
+					}
 				}
 				guard !Task.isCancelled else { return }
 				isLoggingIn = false

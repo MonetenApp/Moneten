@@ -49,6 +49,61 @@ struct SetupSessionTests {
 		await #expect(throws: CancellationError.self) { try await asked.value }
 	}
 
+	@Test("A PIN that breaks a rule of the bank ends the login with the rule, and the PIN never reaches the bank")
+	func pinBreaksRule() async throws {
+		let session = SetupSession(broker: broker, access: Self.access, pin: Secret("1234"))
+		let request = UserRequest.pin(PINRequest(rules: PINRules(minLength: 5, maxLength: 6)))
+		do {
+			let answer = try await session.ask(request)
+			Issue.record("the PIN was sent: \(answer)")
+		} catch {
+			#expect(error.localizedDescription == "The PIN is too short. The minimum is 5 characters.")
+		}
+		#expect(broker.current == nil)
+		#expect(try await session.ask(.pin(PINRequest(rules: PINRules(minLength: 4)))) == .pin(Secret("1234")))
+	}
+
+	static let chooseMethod = UserRequest.secondFactor(SecondFactorRequest(purpose: .login, system: .fintsServer,
+		challenge: .chooseTANMethod([TANMethod(id: "922", name: "pushTAN 2.0", delivery: .pushNotification)], current: nil)))
+
+	@Test("A login that fails after the choice of a TAN method closes the progress of the dialog")
+	func failedLoginEndsProgress() async throws {
+		let chooseMethod = Self.chooseMethod
+		let session = session
+		let login = Task {
+			try await session.logIn { session in
+				_ = try await session.ask(chooseMethod)
+				try await Task.sleep(for: .milliseconds(200))
+				throw SyncFailure.network("The connection was lost.")
+			}
+		}
+		for _ in 0..<200 where broker.current == nil { try await Task.sleep(for: .milliseconds(10)) }
+		broker.answer(.tanMethod("922"), to: try #require(broker.current).id)
+		#expect(broker.requesting?.access == Self.access)
+		await #expect(throws: SyncFailure.network("The connection was lost.")) { try await login.value }
+		#expect(broker.requesting == nil)
+	}
+
+	@Test("Canceling the login, as the lock does, closes the progress of the dialog before the connector ends")
+	func canceledLoginEndsProgress() async throws {
+		let chooseMethod = Self.chooseMethod
+		let session = session
+		let login = Task {
+			try await session.logIn { session in
+				_ = try await session.ask(chooseMethod)
+				// A connector that needs a second to end, as the helper does.
+				await withCheckedContinuation { done in DispatchQueue.global().asyncAfter(deadline: .now() + 1) { done.resume() } }
+			}
+		}
+		for _ in 0..<200 where broker.current == nil { try await Task.sleep(for: .milliseconds(10)) }
+		broker.answer(.tanMethod("922"), to: try #require(broker.current).id)
+		#expect(broker.requesting != nil)
+		login.cancel()
+		for _ in 0..<20 where broker.requesting != nil { try await Task.sleep(for: .milliseconds(10)) }
+		#expect(broker.requesting == nil)
+		_ = try? await login.value
+	}
+
 	@Test("The PIN of the setup answers the first refresh of the new access from memory")
 	func rememberedPIN() async throws {
 		let coordinator = SyncCoordinator(broker: broker)
