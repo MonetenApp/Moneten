@@ -45,10 +45,11 @@ public enum SyncFailure: Error, Sendable, Equatable {
 	/// and the next refresh delivers the same rows again.
 	case notSaved(String)
 
-	/// The bank rejected the PIN or blocked the access, so the PIN must never be sent again.
+	/// The bank rejected the PIN or blocked the access, or an extension service rejected the login data,
+	/// so the PIN or the login data must never be sent again.
 	public var rejectsPIN: Bool {
 		switch self {
-		case .pinRejected, .accessBlocked: true
+		case .pinRejected, .accessBlocked, .loginRejected: true
 		default: false
 		}
 	}

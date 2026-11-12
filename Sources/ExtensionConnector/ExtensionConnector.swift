@@ -250,7 +250,10 @@ private final class ScriptRun {
 		}
 		switch answer {
 		case .null: loggedIn = true
-		case .string("LoginFailed"): throw SyncFailure.loginRejected
+		case .string("LoginFailed"):
+			// Reported at once, so that the login data is forgotten whatever ends the session afterwards.
+			await session.rejected(.loginRejected)
+			throw SyncFailure.loginRejected
 		case let .string(message): throw SyncFailure.bank(BankMessage(text: message))
 		default: throw SyncFailure.bank(BankMessage(text: "The login of \(connector.package.name) returned a value that is not valid."))
 		}

@@ -50,6 +50,13 @@ final class TestSession: SyncSession, Sendable {
 
 	func report(_ progress: SyncProgress) async {}
 
+	/// What the connector reported as rejected, at the moment it did.
+	let rejections = Mutex<[SyncFailure]>([])
+
+	func rejected(_ failure: SyncFailure) async {
+		rejections.withLock { $0.append(failure) }
+	}
+
 	var printed: [String] {
 		log.withLock { $0.compactMap { if case let .print(line) = $0 { line } else { nil } } }
 	}

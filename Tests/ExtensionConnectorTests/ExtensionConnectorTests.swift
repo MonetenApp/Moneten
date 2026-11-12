@@ -90,6 +90,7 @@ import Testing
 			_ = try await Self.refresh(session.connector(demo(Self.calls.replacingOccurrences(of: "print(\"InitializeSession\")", with: "return LoginFailed"))), session)
 		}
 		#expect(!session.printed.contains("EndSession"))
+		#expect(session.rejections.withLock { $0 } == [.loginRejected])
 	}
 
 	@Test func errorMessageOfTheLogin() async throws {

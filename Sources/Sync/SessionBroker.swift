@@ -249,6 +249,7 @@ public final class SessionBroker {
 	/// so the next unlock deletes the row before it loads the saved PINs.
 	func forgetRejectedPIN(of access: UUID) {
 		pins[access] = nil
+		loginData[access] = nil
 		toSave.remove(access)
 		guard let store else {
 			undeleted.insert(access)
