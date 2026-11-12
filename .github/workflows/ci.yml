@@ -18,7 +18,9 @@ jobs:
       - run: python3 scripts/check-ui.py
       - run: npm install -g @fission-ai/openspec
       - run: openspec validate --all --strict --no-interactive
+      # Offline: lua.org resets connections from CI runners.
       - run: scripts/vendor-lua.sh --check
+      - run: scripts/vendor-lua.sh --self-test
 
   test:
     runs-on: macos-15

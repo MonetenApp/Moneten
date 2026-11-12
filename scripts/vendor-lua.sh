@@ -1,34 +1,61 @@
 #!/bin/sh
 # Copies the Lua release named in Sources/CLua/VERSION from lua.org into Sources/CLua after a check of
-# its SHA-256. The stand-alone interpreter and compiler and the libraries for files, modules, and
-# debugging stay out, so a script cannot reach them even through a bug of the host (ADR 0015).
-#   scripts/vendor-lua.sh           replace the sources
-#   scripts/vendor-lua.sh --check   fail when a vendored file differs from the release or is not part of it
+# its SHA-256, and writes the SHA-256 of each vendored file to Sources/CLua/VENDOR.sha256. The
+# stand-alone interpreter and compiler and the libraries for files, modules, and debugging stay out,
+# so a script cannot reach them even through a bug of the host (ADR 0015).
+#   scripts/vendor-lua.sh                replace the sources (needs lua.org)
+#   scripts/vendor-lua.sh --check [dir]  fail when a file of dir (default Sources/CLua) differs from
+#                                        VENDOR.sha256, is missing, or is neither listed nor one of OWN
+#   scripts/vendor-lua.sh --self-test    show that --check fails on a changed, an extra, and a missing file
+# --check and --self-test work offline, because lua.org resets connections from CI runners.
 set -e
 cd "$(dirname "$0")/.."
-ARCHIVE=$(sed -n 1p Sources/CLua/VERSION)
-SHA256=$(sed -n 2p Sources/CLua/VERSION)
+# The files that Moneten adds to the release.
+OWN="VERSION VENDOR.sha256 clua.c include/clua.h"
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
-curl -sSfL -o "$WORK/$ARCHIVE" "https://www.lua.org/ftp/$ARCHIVE"
-echo "$SHA256  $WORK/$ARCHIVE" | shasum -a 256 -c >/dev/null
-tar -xzf "$WORK/$ARCHIVE" -C "$WORK"
-SRC="$WORK/${ARCHIVE%.tar.gz}/src"
-LEFT_OUT="lua.c luac.c lua.hpp linit.c liolib.c loadlib.c ldblib.c Makefile"
-PUBLIC="lua.h luaconf.h lualib.h lauxlib.h"
-for f in $LEFT_OUT; do rm "$SRC/$f"; done
-for f in $PUBLIC; do mkdir -p "$SRC/include" && mv "$SRC/$f" "$SRC/include/"; done
-if [ "$1" = "--check" ]; then
-	for f in $(cd "$SRC" && find . -type f); do
-		cmp -s "$SRC/$f" "Sources/CLua/$f" || { echo "Sources/CLua/$f differs from $ARCHIVE." >&2; exit 1; }
-	done
-	# Only the shim of Moneten may come on top of the release.
-	for f in $(cd Sources/CLua && find . -type f ! -name VERSION ! -name clua.c ! -name clua.h); do
-		[ -f "$SRC/$f" ] || { echo "Sources/CLua/$f is not part of $ARCHIVE." >&2; exit 1; }
-	done
-	echo "Sources/CLua matches $ARCHIVE."
-	exit 0
-fi
-find Sources/CLua -name 'l*.[ch]' -delete
-cp -R "$SRC/" Sources/CLua/
-echo "Vendored $ARCHIVE into Sources/CLua."
+
+check() {
+	(cd "$1" && shasum -a 256 -c --quiet VENDOR.sha256) || { echo "$1 differs from VENDOR.sha256." >&2; return 1; }
+	{ sed 's/^[0-9a-f]*  //' "$1/VENDOR.sha256"; for f in $OWN; do echo "./$f"; done; } | LC_ALL=C sort > "$WORK/expected"
+	(cd "$1" && find . -type f) | LC_ALL=C sort > "$WORK/present"
+	extra=$(LC_ALL=C comm -13 "$WORK/expected" "$WORK/present")
+	[ -z "$extra" ] || { echo "$1 has files that are not part of the release: $extra" >&2; return 1; }
+	echo "$1 matches $(sed -n 1p "$1/VERSION")."
+}
+
+fails() {
+	if check "$1" 2>/dev/null >&2; then echo "--check passed $2." >&2; exit 1; fi
+}
+
+case "$1" in
+--check)
+	check "${2:-Sources/CLua}"
+	;;
+--self-test)
+	check Sources/CLua >/dev/null
+	cp -R Sources/CLua "$WORK/changed" && printf 'x' >> "$WORK/changed/lvm.c" && fails "$WORK/changed" "a changed file"
+	cp -R Sources/CLua "$WORK/extra" && touch "$WORK/extra/lextra.c" && fails "$WORK/extra" "an extra file"
+	cp -R Sources/CLua "$WORK/missing" && rm "$WORK/missing/lvm.c" && fails "$WORK/missing" "a missing file"
+	echo "--check fails on a changed, an extra, and a missing file."
+	;;
+"")
+	ARCHIVE=$(sed -n 1p Sources/CLua/VERSION)
+	SHA256=$(sed -n 2p Sources/CLua/VERSION)
+	curl -sS --fail --retry 3 --retry-all-errors -L -o "$WORK/$ARCHIVE" "https://www.lua.org/ftp/$ARCHIVE"
+	echo "$SHA256  $WORK/$ARCHIVE" | shasum -a 256 -c >/dev/null
+	tar -xzf "$WORK/$ARCHIVE" -C "$WORK"
+	SRC="$WORK/${ARCHIVE%.tar.gz}/src"
+	for f in lua.c luac.c lua.hpp linit.c liolib.c loadlib.c ldblib.c Makefile; do rm "$SRC/$f"; done
+	mkdir -p "$SRC/include"
+	for f in lua.h luaconf.h lualib.h lauxlib.h; do mv "$SRC/$f" "$SRC/include/"; done
+	find Sources/CLua -name 'l*.[ch]' -delete
+	cp -R "$SRC/" Sources/CLua/
+	(cd "$SRC" && find . -type f | LC_ALL=C sort | xargs shasum -a 256) > Sources/CLua/VENDOR.sha256
+	echo "Vendored $ARCHIVE into Sources/CLua."
+	;;
+*)
+	echo "usage: scripts/vendor-lua.sh [--check [dir] | --self-test]" >&2
+	exit 2
+	;;
+esac
