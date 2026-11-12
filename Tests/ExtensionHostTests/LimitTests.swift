@@ -2,28 +2,32 @@ import Domain
 @testable import ExtensionHost
 import Foundation
 import CLua
+import Synchronization
 import Testing
 
-/// Limits that hold inside the process of the tests, where the memory of the process can be measured.
-/// They run one after the other, so that one test's memory does not count for another.
+/// Limits that hold inside the process of the tests, where the memory of each request can be followed.
+/// They run one after the other.
 @Suite(.serialized) struct LimitTests {
 	/// Answers every request with a new body of 8 MB and a header of `header` bytes, which Swift pushes
-	/// after the body.
-	struct LargeBodies: Transport {
-		var header = 0
+	/// after the body, and counts the bodies that were freed.
+	final class LargeBodies: Transport, Sendable {
+		let header: Int
+		let freed = Mutex(0)
+
+		init(header: Int = 0) {
+			self.header = header
+		}
 
 		func send(_ request: HTTPRequest) throws -> HTTPResponse {
-			HTTPResponse(status: 200, headers: header > 0 ? ["X-Padding": String(repeating: "p", count: header)] : [:], body: Data(repeating: 0x41, count: 8 * 1_048_576))
+			let count = 8 * 1_048_576
+			let bytes = UnsafeMutableRawPointer.allocate(byteCount: count, alignment: 1)
+			bytes.initializeMemory(as: UInt8.self, repeating: 0x41, count: count)
+			let body = Data(bytesNoCopy: bytes, count: count, deallocator: .custom { [self] pointer, _ in
+				pointer.deallocate()
+				freed.withLock { $0 += 1 }
+			})
+			return HTTPResponse(status: 200, headers: header > 0 ? ["X-Padding": String(repeating: "p", count: header)] : [:], body: body)
 		}
-	}
-
-	static func footprint() -> Int {
-		var info = task_vm_info_data_t()
-		var count = mach_msg_type_number_t(MemoryLayout<task_vm_info_data_t>.size / MemoryLayout<natural_t>.size)
-		let status = withUnsafeMutablePointer(to: &info) {
-			$0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) { task_info(mach_task_self_, task_flavor_t(TASK_VM_INFO), $0, &count) }
-		}
-		return status == KERN_SUCCESS ? Int(info.phys_footprint) : 0
 	}
 
 	/// A body that a request pushes into a full Lua state fails the request as a memory error, and the
@@ -44,12 +48,13 @@ import Testing
 				return failures
 			end
 			""", hosts: ["api.bank.example"])
-		let session = HostSession(package: package, transport: LargeBodies(), memory: 64 * 1_048_576, ask: { _ in .denied }, log: { _ in })
-		let before = Self.footprint()
+		let bodies = LargeBodies()
+		let session = HostSession(package: package, transport: bodies, memory: 64 * 1_048_576, ask: { _ in .denied }, log: { _ in })
 		let result = Result { () throws(ScriptError) -> LuaValue in _ = try session.load(); return try session.call(.function("Fill")) }
-		let growth = Self.footprint() - before
 		#expect(result == .success(.object(["not enough memory": .integer(40)])))
-		#expect(growth < 160 * 1_048_576, "the footprint grew by \(growth / 1_048_576) MB")
+		// A memory error that jumps over the Swift frames of a request leaks its body. The footprint of
+		// the process would show it too, but the other tests of the process change the footprint.
+		#expect(bodies.freed.withLock { $0 } == 40)
 	}
 
 	/// A finalizer that fills the memory runs while a request pushes its body. No memory error may
@@ -75,7 +80,7 @@ import Testing
 			end
 			""", hosts: ["api.bank.example"])
 		let session = HostSession(package: package, transport: LargeBodies(header: 1_048_576), memory: 32 * 1_048_576, ask: { _ in .denied }, log: { _ in })
-		let result = Result { () throws(ScriptError) -> LuaValue in _ = try session.load(); return try session.call("Stress") }
+		let result = Result { () throws(ScriptError) -> LuaValue in _ = try session.load(); return try session.call(.function("Stress")) }
 		#expect(result == .success(.string("done")))
 		#expect(clua_nativedepth(session.lua.stack.L) == 1)
 	}
