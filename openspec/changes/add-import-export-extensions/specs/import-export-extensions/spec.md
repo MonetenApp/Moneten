@@ -13,7 +13,7 @@ The app SHALL accept a script in the "Extensions" folder as an import extension 
 #### Scenario: Valid registration
 
 - **WHEN** a script starts with `Importer{version = 1.00, format = "Tab-separated values", fileExtension = "tsv"}`
-- **THEN** the settings list the extension with version 1.00 as an import extension
+- **THEN** the "Extensions" window lists the extension with version 1.00 as an import extension
 
 #### Scenario: Missing version
 
@@ -97,7 +97,7 @@ The app SHALL accept a script as an export extension when it calls `Exporter{}` 
 #### Scenario: Valid registration
 
 - **WHEN** a script starts with `Exporter{version = 1.00, format = "Custom CSV file", fileExtension = "csv", description = "Export transactions as custom CSV file"}`
-- **THEN** the settings list the extension with its description as an export extension
+- **THEN** the "Extensions" window lists the extension with its description as an export extension
 
 ### Requirement: Export formats in the export dialog
 

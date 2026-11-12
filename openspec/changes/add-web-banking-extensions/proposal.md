@@ -33,7 +33,7 @@ None.
 
 - Milestone: v0.1
 - Issues: #14, #15, #42
-- Modules: `ExtensionHost` owns the Lua runtime and the API. `ExtensionConnector` starts the host and maps results to `Domain` types. `Storage` keeps `LocalStorage`. `App` owns the settings list, the warning, and the challenge dialogs.
+- Modules: `ExtensionHost` owns the Lua runtime and the API. `ExtensionConnector` starts the host and maps results to `Domain` types. `Storage` keeps `LocalStorage`. `App` owns the "Extensions" window, the warning, and the challenge dialogs.
 - Depends on the change `add-account-setup` for the assistant, on `add-login-credentials` for storing the login data, on `add-tan-handling` for the dialogs that show a challenge, and on `add-account-refresh` for de-duplication and for when a refresh runs.
 - `FetchStatements` delivers documents to the capability `bank-statements`. The app starts to call it when the change `add-bank-statements` is built.
 - The catalog is in the change `add-extension-catalog`. The command line tool is in the change `add-extension-developer-tools`.
