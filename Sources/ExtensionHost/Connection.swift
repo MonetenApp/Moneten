@@ -2,7 +2,8 @@ import CLua
 import Foundation
 
 /// The `Connection` object of the Web Banking API. This part offers `connection:request`, so that
-/// every request passes the host policy; the rest of the object follows with the API.
+/// every request passes the host policy; the rest of the object follows with the API. A URL after
+/// the first request of a connection may be relative to the last one.
 enum Connection {
 	static let methods: Set<String> = ["GET", "POST", "PUT", "PATCH", "DELETE"]
 
@@ -26,19 +27,22 @@ enum Connection {
 			stack.pushString("connection:request does not know the method \(method).")
 			return -1
 		}
-		guard let url = URL(string: address), url.scheme != nil else {
-			stack.pushString("connection:request needs an absolute URL, not \(address).")
+		let session = HostSession.current(L)
+		let connection = lua_topointer(L, 1)
+		guard let url = URL(string: address, relativeTo: connection.flatMap { session.lastURLs[$0] })?.absoluteURL, url.scheme != nil else {
+			stack.pushString("connection:request needs an absolute URL for its first request, not \(address).")
 			return -1
 		}
-		var headers: [String: String] = [:]
-		if case let .object(fields) = stack.value(at: 6) {
-			for case let (name, .string(value)) in fields { headers[name] = value }
-		}
-		if lua_type(L, 5) == LUA_TSTRING { headers["Content-Type"] = stack.string(at: 5) }
-		let body = lua_type(L, 4) == LUA_TSTRING ? stack.bytes(at: 4) : nil
 		let response: HTTPResponse
 		do {
-			response = try HostSession.current(L).network.send(HTTPRequest(method: method, url: url, headers: headers, body: body))
+			var headers: [String: String] = [:]
+			if case let .object(fields) = try stack.value(at: 6) {
+				for case let (name, .string(value)) in fields { headers[name] = value }
+			}
+			if lua_type(L, 5) == LUA_TSTRING { headers["Content-Type"] = stack.string(at: 5) }
+			let body = lua_type(L, 4) == LUA_TSTRING ? stack.bytes(at: 4) : nil
+			if let connection { session.lastURLs[connection] = url }
+			response = try session.network.send(HTTPRequest(method: method, url: url, headers: headers, body: body))
 		} catch {
 			stack.pushString("\(error)")
 			return -1

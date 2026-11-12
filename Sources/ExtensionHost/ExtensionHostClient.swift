@@ -19,6 +19,9 @@ public actor ExtensionHostClient {
 	private let ask: @Sendable (String) async throws -> HostDecision
 	private let log: @Sendable (HostLog) -> Void
 
+	/// The longest line the app reads from the host process. The package of the start command goes the other way.
+	static let maxLine = 64 * 1_048_576
+
 	/// The host process that `scripts/build-app.sh` puts into the app, with the sandbox that allows
 	/// only outgoing network connections.
 	public static var bundledExecutable: URL {
@@ -61,17 +64,21 @@ public actor ExtensionHostClient {
 				continuation.finish()
 				return
 			}
-			let lines = partial.data.withLock { buffer in
+			let lines = partial.data.withLock { buffer -> [Data]? in
 				buffer.append(data)
-				var lines: [Data] = []
-				while let end = buffer.firstIndex(of: 0x0A) {
-					lines.append(buffer[buffer.startIndex..<end])
-					buffer = Data(buffer[buffer.index(after: end)...])
-				}
+				guard data.contains(0x0A) else { return buffer.count > Self.maxLine ? nil : [] }
+				var lines = buffer.split(separator: 0x0A, omittingEmptySubsequences: false)
+				buffer = Data(lines.removeLast())
 				return lines
 			}
+			guard let lines else {
+				handle.readabilityHandler = nil
+				continuation.yield(.failed("The extension sent an answer larger than \(Self.maxLine / 1_048_576) MB."))
+				continuation.finish()
+				return
+			}
 			for line in lines {
-				if let event = try? JSONDecoder().decode(HostEvent.self, from: line) { continuation.yield(event) }
+				continuation.yield((try? JSONDecoder().decode(HostEvent.self, from: line)) ?? .failed("The extension host sent a line that the app cannot read."))
 			}
 		}
 		try process.run()

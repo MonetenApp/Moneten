@@ -67,6 +67,13 @@ import Testing
 		await client.end()
 	}
 
+	@Test func resultThatJSONCannotHoldFailsTheCall() async throws {
+		let client = try await Self.start(demo("WebBanking{version = 1}\nfunction Check() return 0/0 end"), fixture: Self.fixture([]))
+		await #expect(throws: ScriptError("The value nan is not a finite number.")) { try await client.call("Check") }
+		await #expect(throws: ScriptError("The extension has no function Missing.")) { try await client.call("Missing") }
+		await client.end()
+	}
+
 	@Test func failedLoadEndsTheProcess() async throws {
 		await #expect(throws: ScriptError("Demo.lua:1: version is missing in WebBanking{}.")) {
 			try await Self.start(demo("WebBanking{}"), fixture: Self.fixture([]))

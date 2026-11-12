@@ -64,6 +64,23 @@ import Testing
 			== .string("error: Demo.lua:1: version is missing in WebBanking{}."))
 	}
 
+	@Test func deepTableStopsTheScript() {
+		#expect(run("""
+			local t = {} local c = t for i = 1, 200 do c.x = {} c = c.x end
+			return Connection():request("GET", "https://api.bank.example/", nil, nil, t)
+			""") == .string("error: Demo.lua:4: Tables nest deeper than 100 levels."))
+		#expect(run("local t = {} local c = t for i = 1, 200 do c.x = {} c = c.x end return t") == .string("error: Tables nest deeper than 100 levels."))
+	}
+
+	@Test func numberThatJSONCannotHold() {
+		#expect(run("return {0/0}") == .string("error: The value nan is not a finite number."))
+		#expect(Run(demo("WebBanking{version = math.huge}")).call("Check") == .string("error: Demo.lua:1: The value inf is not a finite number."))
+	}
+
+	@Test func warnWritesNothing() {
+		#expect(run(#"warn("@on") warn("to stderr") return "ok""#) == .string("ok"))
+	}
+
 	@Test func scriptError() {
 		#expect(run(#"error("Unexpected page")"#) == .string("error: Demo.lua:3: Unexpected page"))
 	}

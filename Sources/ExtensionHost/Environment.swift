@@ -90,19 +90,26 @@ enum Environment {
 			stack.pushString("WebBanking needs a table.")
 			return -1
 		}
+		let fields: (version: LuaValue, services: LuaValue, url: LuaValue, description: LuaValue)
+		do {
+			fields = (try stack.field("version", of: 1), try stack.field("services", of: 1), try stack.field("url", of: 1), try stack.field("description", of: 1))
+		} catch {
+			stack.pushString("\(error)")
+			return -1
+		}
 		let version: Double
-		switch stack.field("version", of: 1) {
+		switch fields.version {
 		case let .integer(i): version = Double(i)
 		case let .number(n): version = n
 		default:
 			stack.pushString("version is missing in WebBanking{}.")
 			return -1
 		}
-		let services: [String] = switch stack.field("services", of: 1) {
+		let services: [String] = switch fields.services {
 		case let .array(items): items.compactMap { if case let .string(s) = $0 { s } else { nil } }
 		default: []
 		}
-		let url = stack.field("url", of: 1), description = stack.field("description", of: 1)
+		let url = fields.url, description = fields.description
 		HostSession.current(L).registration = Registration(version: version, url: url.text, services: services, description: description.text)
 		for (name, value) in [("version", LuaValue.number(version)), ("url", url), ("services", .array(services.map(LuaValue.string))), ("description", description)] {
 			stack.push(value)

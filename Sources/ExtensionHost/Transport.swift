@@ -45,7 +45,14 @@ struct Network {
 
 	static let maxRedirects = 10
 
+	/// Headers that the transport sets itself. A script that sets `Host` could reach another site
+	/// behind the same server of a listed host.
+	static let reservedHeaders = ["host", "connection", "content-length", "transfer-encoding", "keep-alive", "upgrade", "te", "trailer"]
+
 	func send(_ request: HTTPRequest) throws -> HTTPResponse {
+		if let name = request.headers.keys.first(where: { Self.reservedHeaders.contains($0.lowercased()) || $0.lowercased().hasPrefix("proxy-") }) {
+			throw ScriptError("An extension may not set the header \(name).")
+		}
 		var request = request
 		for _ in 0...Self.maxRedirects {
 			try policy.check(request.url)

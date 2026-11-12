@@ -81,8 +81,9 @@ public enum HostProcess {
 		return try? JSONDecoder().decode(HostCommand.self, from: Data(line.utf8))
 	}
 
+	/// Every event reaches the app, so that the app never waits for an answer that was lost.
 	private static func emit(_ event: HostEvent) {
-		guard let line = try? JSONEncoder().encode(event) else { return }
+		let line = (try? JSONEncoder().encode(event)) ?? (try! JSONEncoder().encode(HostEvent.failed("The extension host could not encode its answer.")))
 		FileHandle.standardOutput.write(line + [0x0A])
 	}
 }

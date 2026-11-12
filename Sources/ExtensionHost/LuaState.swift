@@ -64,6 +64,8 @@ final class LuaState {
 
 	init() {
 		stack = LuaStack(luaL_newstate())
+		// `warn` would write to the stderr of the app.
+		lua_setwarnf(stack.L, nil, nil)
 	}
 
 	deinit {
@@ -95,7 +97,7 @@ final class LuaState {
 		for argument in arguments { stack.push(argument) }
 		try protectedCall(arguments: Int32(arguments.count), results: 1)
 		defer { lua_settop(L, 0) }
-		return stack.value(at: -1)
+		return try stack.value(at: -1)
 	}
 
 	private func protectedCall(arguments: Int32, results: Int32) throws(ScriptError) {
@@ -137,12 +139,12 @@ struct LuaStack {
 	}
 
 	/// Reads `table[key]` of the table at `index`.
-	func field(_ key: String, of index: Int32) -> LuaValue {
+	func field(_ key: String, of index: Int32) throws(ScriptError) -> LuaValue {
 		let table = lua_absindex(L, index)
 		pushString(key)
 		lua_rawget(L, table)
 		defer { lua_settop(L, -2) }
-		return value(at: -1)
+		return try value(at: -1)
 	}
 
 	func typeName(at index: Int32) -> String {
@@ -191,31 +193,47 @@ struct LuaStack {
 		data.withUnsafeBytes { _ = lua_pushlstring(L, $0.baseAddress?.assumingMemoryBound(to: CChar.self), $0.count) }
 	}
 
-	/// The value at `index`. A table that contains itself ends in `null` where it repeats.
-	func value(at index: Int32) -> LuaValue {
+	/// How deep tables may nest in a value that crosses to the app. Each level takes stack slots of
+	/// Lua and of the host, and the JSON of the app has a limit too.
+	static let maxDepth = 100
+
+	/// The value at `index`. A table that contains itself ends in `null` where it repeats. A number
+	/// that is not finite fails, because JSON cannot hold it.
+	func value(at index: Int32) throws(ScriptError) -> LuaValue {
 		var seen: Set<UnsafeRawPointer> = []
-		return value(at: lua_absindex(L, index), seen: &seen)
+		return try value(at: lua_absindex(L, index), seen: &seen)
 	}
 
-	private func value(at index: Int32, seen: inout Set<UnsafeRawPointer>) -> LuaValue {
+	private func value(at index: Int32, seen: inout Set<UnsafeRawPointer>) throws(ScriptError) -> LuaValue {
 		switch lua_type(L, index) {
 		case LUA_TBOOLEAN: return .boolean(lua_toboolean(L, index) != 0)
-		case LUA_TNUMBER: return lua_isinteger(L, index) != 0 ? .integer(lua_tointegerx(L, index, nil)) : .number(lua_tonumberx(L, index, nil))
+		case LUA_TNUMBER where lua_isinteger(L, index) != 0: return .integer(lua_tointegerx(L, index, nil))
+		case LUA_TNUMBER:
+			let number = lua_tonumberx(L, index, nil)
+			guard number.isFinite else { throw ScriptError("The value \(number) is not a finite number.") }
+			return .number(number)
 		case LUA_TSTRING: return .string(string(at: index))
 		case LUA_TTABLE:
 			guard let pointer = lua_topointer(L, index), seen.insert(pointer).inserted else { return .null }
 			defer { seen.remove(pointer) }
-			return table(at: index, seen: &seen)
+			guard seen.count <= Self.maxDepth, lua_checkstack(L, 4) != 0 else { throw ScriptError("Tables nest deeper than \(Self.maxDepth) levels.") }
+			return try table(at: index, seen: &seen)
 		default: return .null
 		}
 	}
 
-	private func table(at index: Int32, seen: inout Set<UnsafeRawPointer>) -> LuaValue {
+	private func table(at index: Int32, seen: inout Set<UnsafeRawPointer>) throws(ScriptError) -> LuaValue {
 		var numbered: [Int64: LuaValue] = [:]
 		var named: [String: LuaValue] = [:]
 		lua_pushnil(L)
 		while lua_next(L, index) != 0 {
-			let item = value(at: lua_absindex(L, -1), seen: &seen)
+			let item: LuaValue
+			do {
+				item = try value(at: lua_absindex(L, -1), seen: &seen)
+			} catch {
+				lua_settop(L, -3)
+				throw error
+			}
 			switch lua_type(L, -2) {
 			case LUA_TNUMBER where lua_isinteger(L, -2) != 0: numbered[lua_tointegerx(L, -2, nil)] = item
 			case LUA_TNUMBER: named["\(lua_tonumberx(L, -2, nil))"] = item

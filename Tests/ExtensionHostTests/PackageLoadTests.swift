@@ -25,6 +25,11 @@ import Testing
 			== .failure(.invalidManifest("../Other.lua is not a Lua file of the folder.")))
 	}
 
+	@Test func folderWithoutFiles() {
+		let url = folder(["Broker/manifest.json": #"{"hosts": ["api.broker.example"]}"#, "Broker/Broker.lua": ""]).appending(path: "Broker")
+		#expect(Result { () throws(PackageProblem) in try ExtensionPackage.load(from: url) } == .failure(.invalidManifest("The manifest needs files.")))
+	}
+
 	@Test func noRegistration() {
 		#expect(Run(demo("function Check() end")).call("Check") == .string("error: Demo does not call WebBanking{}."))
 	}

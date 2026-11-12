@@ -10,6 +10,8 @@ final class HostSession {
 	let network: Network
 	let log: (String) -> Void
 	var registration: Registration?
+	/// The last URL of each connection, by the address of its table, for relative URLs.
+	var lastURLs: [UnsafeRawPointer: URL] = [:]
 
 	/// A package with a list of hosts reaches only those. Without one, `ask` waits for the user's
 	/// answer about a new host; `decisions` holds the answers the app stored for this extension.

@@ -48,10 +48,7 @@ public struct ExtensionPackage: Sendable, Equatable, Codable {
 		guard FileManager.default.fileExists(atPath: manifestURL.path) else { throw .missingManifest }
 		let manifest = try Manifest.parse(read(manifestURL), mode: mode)
 		guard let names = manifest.files, !names.isEmpty else { throw .invalidManifest("The manifest needs files.") }
-		let files = try names.map { file throws(PackageProblem) in
-			guard !file.contains("/"), file.hasSuffix(".lua") else { throw .invalidManifest("\(file) is not a Lua file of the folder.") }
-			return try source(url.appending(path: file))
-		}
+		let files = try names.map { file throws(PackageProblem) in try source(url.appending(path: file)) }
 		return ExtensionPackage(name: name, manifest: manifest, files: files)
 	}
 

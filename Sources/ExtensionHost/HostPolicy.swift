@@ -5,12 +5,15 @@ import Foundation
 /// the extension wanted to go.
 enum HostRefusal: Error, Equatable, Sendable, CustomStringConvertible {
 	case notHTTPS(String)
+	/// A percent sign or a port other than 443: what the user would see is not what the request reaches.
+	case unusualAddress(String)
 	case notListed(extensionName: String, host: String)
 	case denied(extensionName: String, host: String)
 
 	var description: String {
 		switch self {
 		case let .notHTTPS(url): "Moneten sends requests only over HTTPS, not to \(url)."
+		case let .unusualAddress(url): "Moneten sends requests only to a plain host name on the HTTPS port, not to \(url)."
 		case let .notListed(name, host): "\(name) may not contact \(host), because its manifest does not list that host."
 		case let .denied(name, host): "\(name) may not contact \(host), because the user did not allow it."
 		}
@@ -44,6 +47,9 @@ final class HostPolicy {
 	func check(_ url: URL) throws {
 		guard url.scheme?.lowercased() == "https", let host = url.host(percentEncoded: false)?.lowercased(), !host.isEmpty else {
 			throw HostRefusal.notHTTPS(url.absoluteString)
+		}
+		guard url.host(percentEncoded: true)?.contains("%") == false, url.port == nil || url.port == 443 else {
+			throw HostRefusal.unusualAddress(url.absoluteString)
 		}
 		switch rule {
 		case let .listed(hosts):
