@@ -254,8 +254,7 @@ public struct Transaction: Identifiable, Hashable, Sendable, Codable {
 	/// not which source delivers it, so a source with IDs of its own takes the row over.
 	public static let migrationIDPrefix = "moneymoney:"
 
-	/// The user checked the row: it is no longer new and needs no more review. "Mark All Transactions
-	/// as Checked" and a single checkmark both call it.
+	/// The user checked the row: it is no longer new and needs no more review.
 	public mutating func markChecked() {
 		isChecked = true
 		isNew = false

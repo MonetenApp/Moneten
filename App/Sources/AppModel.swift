@@ -403,36 +403,32 @@ final class AppModel {
 		commit(changed)
 	}
 
-	/// Checking a row also clears its new mark and its review mark.
 	func setChecked(_ checked: Bool, for ids: Set<UUID>) {
 		let rows = ids.compactMap { ledger.transaction($0) }
 		if checked {
-			commit(rows.filter(Self.needsCheck).map { var t = $0; t.markChecked(); return t })
+			commit(rows.filter(Self.changesWhenChecked).map { var t = $0; t.markChecked(); return t })
 		} else {
 			commit(rows.filter(\.isChecked).map { var t = $0; t.isChecked = false; return t })
 		}
 	}
 
-	/// A row that checking changes. A checked row can still carry a review mark that a later merge set.
-	private static func needsCheck(_ t: Transaction) -> Bool { !t.isChecked || t.isNew || t.needsReview }
+	private static func changesWhenChecked(_ t: Transaction) -> Bool { !t.isChecked || t.isNew || t.needsReview }
 
 	func toggleChecked(_ id: UUID) {
 		guard let t = ledger.transaction(id) else { return }
 		setChecked(!t.isChecked, for: [id])
 	}
 
-	/// "Mark All Transactions as Checked": the transactions of the view that are unchecked, new, or
-	/// marked for review, after the user confirms how many in how many accounts.
 	func markAllChecked() {
-		let unchecked = visibleTransactions.filter(Self.needsCheck)
-		guard !unchecked.isEmpty else { return }
-		let accounts = Set(unchecked.map(\.accountID)).count
+		let rows = visibleTransactions.filter(Self.changesWhenChecked)
+		guard !rows.isEmpty else { return }
+		let accounts = Set(rows.map(\.accountID)).count
 		let alert = NSAlert()
 		alert.messageText = "Mark all transactions as checked?"
-		alert.informativeText = "A total of \(unchecked.count) \(unchecked.count == 1 ? "transaction" : "transactions") in \(accounts) \(accounts == 1 ? "account" : "accounts") will be marked as checked."
+		alert.informativeText = "A total of \(rows.count) \(rows.count == 1 ? "transaction" : "transactions") in \(accounts) \(accounts == 1 ? "account" : "accounts") will be marked as checked."
 		alert.addButton(withTitle: "Mark as Checked")
 		alert.addButton(withTitle: "Cancel")
-		if alert.runModal() == .alertFirstButtonReturn { setChecked(true, for: Set(unchecked.map(\.id))) }
+		if alert.runModal() == .alertFirstButtonReturn { setChecked(true, for: Set(rows.map(\.id))) }
 	}
 
 	func setComment(_ comment: String, for ids: Set<UUID>) {
@@ -638,7 +634,6 @@ final class AppModel {
 		}
 	}
 
-	/// The one way that fetched or imported transactions reach the history.
 	@discardableResult
 	func merge(_ delivery: Delivery, into accountID: UUID) throws -> Reconciliation {
 		guard let store else { return Reconciliation() }

@@ -2,7 +2,6 @@ import Foundation
 
 /// What one source delivered for one account.
 public enum Delivery: Sendable {
-	/// A successful refresh of the account.
 	case refresh(RefreshResult)
 	/// The rows of a file that the user imported. A file never removes a pending row and carries no balance.
 	case file([Transaction])
@@ -13,8 +12,7 @@ public enum Delivery: Sendable {
 /// deleted"). A file import adds it again unless a refresh had delivered it.
 ///
 /// One record per deleted row. Deleting one of two identical rows absorbs one delivered copy, and the
-/// stored row absorbs the other. The fields are kept raw, not folded, so that a later version of the
-/// identity rule reads them the same way as live rows. The records go with their account.
+/// stored row absorbs the other. The records go with their account.
 public struct DeletedTransaction: Hashable, Sendable, Codable {
 	public var accountID: UUID
 	public var sourceID: String?
@@ -155,28 +153,21 @@ extension Delivery {
 		if case .refresh = self { true } else { false }
 	}
 
-	/// The bank listed every pending transaction of this day, so a stored one that the answer lacks
-	/// was dropped ("Remove a pending transaction that the bank dropped").
 	func covers(_ day: Day) -> Bool {
 		guard case let .refresh(result) = self, let answer = result.transactions else { return false }
 		return answer.from.map { day >= $0 } ?? true
 	}
 
-	/// A refresh honors every deleted row. A file honors only the rows that a refresh had delivered, so
-	/// it brings back what only a file added (add-file-import, "Delete an imported row"), and a file never
-	/// restores a fetched row that the user deleted.
 	func honors(_ deleted: DeletedTransaction) -> Bool {
 		if case .file = self { deleted.wasFetched } else { true }
 	}
 }
 
-/// A stored row or a deleted one, by its position in the input of `reconcile`.
 enum Slot: Hashable {
 	case live(Int)
 	case deleted(Int)
 }
 
-/// The stored or deleted row that a delivered row is, and how that was found.
 struct Partner {
 	enum Evidence { case sourceID, fingerprint }
 
@@ -184,9 +175,8 @@ struct Partner {
 	let evidence: Evidence
 }
 
-/// The partner of each delivered row, by ordered evidence: the source ID, then the fingerprint steps of
-/// `Identity.steps`. Each step takes rows out of the pool, so a weaker rule never takes a row that a stronger
-/// one claimed. At each step a stored row comes before a deleted one.
+/// Each step takes rows out of the pool, so a weaker rule never takes a row that a stronger one claimed.
+/// At each step a stored row comes before a deleted one.
 func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTransaction]) -> [Partner?] {
 	var result = [Partner?](repeating: nil, count: rows.count)
 	var taken = Set<Slot>()
@@ -205,7 +195,6 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 			result[i] = Partner(slot: slot, evidence: .sourceID)
 		}
 	}
-	// A fingerprint holds the booking day, so only rows of a delivered day can match.
 	let days = Set(rows.map(\.bookingDate))
 	var candidates: [Identity.Key: [(slot: Slot, identity: Identity)]] = [:]
 	for (j, t) in stored.enumerated() where days.contains(t.bookingDate) && !taken.contains(.live(j)) {
@@ -228,23 +217,16 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 	return result
 }
 
-/// What makes two rows of one account the same transaction ("Do not store a transaction twice"). Built
-/// from the bank fields at every merge and never stored, so stored, deleted, and delivered rows always
-/// follow the same version of the rule, and a change of the rule needs no migration.
+/// Built from the bank fields at every merge and never stored, so a change of the rule needs no migration.
 struct Identity {
-	/// The ID that the source gave, nil for an ID of the MoneyMoney migration. Two rows with the same ID are
-	/// the same transaction, whatever else differs.
-	let sourceID: String?
+	let remoteID: String?
 	let key: Key
 	let isPending: Bool
-	/// The counterparty IBAN or account number, without spaces, upper case. Nil when the source gave none.
 	let counterparty: String?
-	/// Nil when the source gave none, and for "NOTPROVIDED".
 	let endToEnd: String?
 
-	/// The fields that must be equal: booking day, amount, and the purpose folded by `TextFolding.fold`
-	/// without white space. "Rechnung 1001  Kundennr 4711" and "RECHNUNG 1001 KUNDENNR 4711" have the same
-	/// key, and so do the 27-character lines of an MT940 purpose and the same text in one line.
+	/// The purpose is folded without white space, so the 27-character lines of an MT940 purpose and the
+	/// same text in one line have the same key.
 	struct Key: Hashable {
 		// The synthesized Hashable conformance reads these properties, which Periphery cannot see.
 		// periphery:ignore
@@ -256,22 +238,18 @@ struct Identity {
 	}
 
 	enum Fit {
-		/// Counterparty and end-to-end reference are equal, missing values included.
 		case exact
-		/// Counterparty and end-to-end reference are each equal or missing on one side. A file often lacks
-		/// them where a refresh has them (add-file-import, "Overlap with fetched transactions").
+		/// A file often lacks the counterparty or the reference where a refresh has them.
 		case compatible
 	}
 
-	/// How the pending states of two rows with the same fingerprint relate.
 	enum Pending {
 		case same
-		/// The bank still lists the pending version of a booked row. A delivered booked row never takes a
-		/// stored pending row by its fingerprint: that is a booking, and `Bookings` checks it for ambiguity.
+		/// A delivered pending row whose booked version is stored. The other way round is a booking, which
+		/// `Bookings` decides, because it must check for ambiguity.
 		case bookedVersion
 	}
 
-	/// One step of the matching after the source ID.
 	struct Step {
 		let fit: Fit
 		let pending: Pending
@@ -281,17 +259,15 @@ struct Identity {
 			case .same: delivered.isPending == candidate.isPending
 			case .bookedVersion: delivered.isPending && !candidate.isPending
 			}
-			// A delivered source ID never takes a stored row that has another one.
-			return states && (delivered.sourceID == nil || candidate.sourceID == nil) && delivered.fit(candidate) == fit
+			return states && (delivered.remoteID == nil || candidate.remoteID == nil) && delivered.fit(candidate) == fit
 		}
 	}
 
-	/// The steps after the source ID, strongest first.
 	static let steps = [Step(fit: .exact, pending: .same), Step(fit: .compatible, pending: .same),
 		Step(fit: .exact, pending: .bookedVersion), Step(fit: .compatible, pending: .bookedVersion)]
 
 	init(sourceID: String?, day: Day, amount: Int64, isPending: Bool, purpose: String, counterparty: String?, endToEnd: String?) {
-		self.sourceID = Self.remote(sourceID)
+		remoteID = Self.remote(sourceID)
 		key = Key(day: day, amount: amount, purpose: TextFolding.fold(purpose).filter { !$0.isWhitespace })
 		self.isPending = isPending
 		self.counterparty = counterparty.map(TextFolding.accountKey).flatMap { $0.isEmpty ? nil : $0 }
@@ -308,13 +284,10 @@ struct Identity {
 			counterparty: d.counterpartyIBAN, endToEnd: d.endToEndReference)
 	}
 
-	/// The ID that a source delivered, or nil for none and for an ID of the MoneyMoney migration.
 	static func remote(_ sourceID: String?) -> String? {
 		sourceID.flatMap { $0.hasPrefix(Transaction.migrationIDPrefix) ? nil : $0 }
 	}
 
-	/// Nil when the keys differ, or when both rows have a counterparty or an end-to-end reference and
-	/// these differ. The pending state is not compared.
 	func fit(_ other: Identity) -> Fit? {
 		guard key == other.key else { return nil }
 		if counterparty == other.counterparty && endToEnd == other.endToEnd { return .exact }
@@ -323,22 +296,13 @@ struct Identity {
 	}
 }
 
-/// Pairs stored pending rows that no delivered row matched with delivered booked rows that matched no
-/// stored row ("Replace a pending transaction by its booked version"). A pending row and a booked row can
-/// pair when `PendingMatch` says so. Rows that can pair form connected groups, and each group decides on
-/// its own. A group of one pending and one booked row books. In any larger group more than one row could
-/// be the partner, so nothing moves and every row of the group is marked for review ("Do not guess
-/// between several pending transactions").
 struct Bookings {
 	enum Outcome: Equatable {
-		/// The partner, by its position in the input of `reconcile`.
 		case pair(Int)
 		case review
 	}
 
-	/// The outcome of each pending row with a candidate, by its position in `stored`. Nil for no candidate.
 	private(set) var ofPending: [Int: Outcome] = [:]
-	/// The outcome of each booked row with a candidate, by its position in the delivery.
 	private(set) var ofBooked: [Int: Outcome] = [:]
 
 	init(pending: [(Int, Transaction)], booked: [(Int, Transaction)]) {
@@ -380,13 +344,8 @@ struct Bookings {
 	}
 }
 
-/// When a booked row can be the booked version of a pending row: the same amount, booking days at most
-/// `days` apart, and the same counterparty. The counterparty is the IBAN when both rows have one.
-/// Otherwise the words of one folded name must lead the other name: "REWE" matches "REWE SAGT DANKE
-/// 1234", "SPAR" does not match "SPARKASSE". A row without a name and without an IBAN matches nothing.
 struct PendingMatch {
-	/// "Within a few days".
-	static let days = 7
+	static let maxDaysApart = 7
 
 	let amount: Money
 	let day: Int
@@ -401,7 +360,7 @@ struct PendingMatch {
 	}
 
 	func fits(_ other: PendingMatch) -> Bool {
-		guard amount == other.amount, abs(day - other.day) <= Self.days else { return false }
+		guard amount == other.amount, abs(day - other.day) <= Self.maxDaysApart else { return false }
 		if let iban, let otherIBAN = other.iban { return iban == otherIBAN }
 		guard !words.isEmpty, !other.words.isEmpty else { return false }
 		return words.starts(with: other.words) || other.words.starts(with: words)
@@ -409,9 +368,6 @@ struct PendingMatch {
 }
 
 extension Transaction {
-	/// A delivered row as a new row of `account`: the bank fields and the comment of `delivered`, no
-	/// checkmark and no category, marked new. The ID and `createdAt` stay, so rows of one day keep the
-	/// order of the source.
 	init(arriving delivered: Transaction, in account: UUID, fetched: Bool) {
 		self.init(id: delivered.id, accountID: account, bookingDate: delivered.bookingDate, valueDate: delivered.valueDate, amountMinor: delivered.amountMinor,
 			currency: delivered.currency, name: delivered.name, purpose: delivered.purpose, counterpartyIBAN: delivered.counterpartyIBAN,
@@ -420,9 +376,6 @@ extension Transaction {
 			isNew: true, isFetched: fetched, sourceID: delivered.sourceID, createdAt: delivered.createdAt)
 	}
 
-	/// This row with the bank fields of `delivered`: dates, amount, name, purpose, counterparty, references,
-	/// the pending state, and the source ID. A field that `delivered` lacks keeps its stored value. ID,
-	/// account, comment, checkmark, category, new mark, review mark, and `createdAt` stay.
 	func takingBankFields(of delivered: Transaction) -> Transaction {
 		var t = self
 		t.bookingDate = delivered.bookingDate

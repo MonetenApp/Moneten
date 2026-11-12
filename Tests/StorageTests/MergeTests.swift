@@ -4,8 +4,6 @@ import GRDB
 import Testing
 @testable import Storage
 
-/// `Store.merge` and the memory of deleted rows in the encrypted database, as the app uses them after a
-/// refresh and a file import.
 @Suite("Merge into the database")
 struct MergeTests {
 	let folder = DataFolder(root: FileManager.default.temporaryDirectory.appendingPathComponent("MonetenTests-\(UUID().uuidString)"))

@@ -18,7 +18,6 @@ public final class SyncCoordinator {
 	/// Stores what a connector fetched for one account in the history (issue #7). Runs on the main actor,
 	/// once for each requested account that the connector fetched, never for a failed, missing, or canceled
 	/// one. When it throws, the account fails with `SyncFailure.notSaved` and keeps its last state.
-	/// Settable, because its owner can hand over a closure that captures itself only after its own init.
 	@ObservationIgnored public var deliver: @MainActor (UUID, RefreshResult) throws -> Void = { _, _ in }
 
 	private struct Job {
@@ -96,7 +95,6 @@ public final class SyncCoordinator {
 		error as? SyncFailure ?? .network(error.localizedDescription)
 	}
 
-	/// Hands each fetched account to `deliver`, and returns the failure of each one it could not store.
 	private func deliverFetched(_ report: ConnectorReport, of request: RefreshRequest) -> [UUID: SyncFailure] {
 		var failures: [UUID: SyncFailure] = [:]
 		for account in request.accounts {
@@ -111,8 +109,7 @@ public final class SyncCoordinator {
 	}
 
 	/// The outcome of each requested account. An account without an outcome was not fetched because
-	/// of an earlier error in the session. A fetched account that could not be stored failed, so the
-	/// time of its last refresh does not move.
+	/// of an earlier error in the session.
 	private static func summary(of report: ConnectorReport, for request: RefreshRequest, notSaved: [UUID: SyncFailure]) -> SyncSummary {
 		var fetched: Set<UUID> = []
 		var failures: [UUID: SyncFailure] = [:]

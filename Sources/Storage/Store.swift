@@ -83,7 +83,6 @@ public final class Store: Sendable {
 			let stored = try Transaction.filter(Column("accountID") == accountID).fetchAll(db)
 			let deleted = try DeletedTransaction.filter(Column("accountID") == accountID).fetchAll(db)
 			let r = reconcile(delivery, into: account, stored: stored, deleted: deleted, rules: rules, now: now)
-			// Insert, not save: a delivered ID that the database knows fails the merge instead of replacing a row.
 			for t in r.added { try t.insert(db) }
 			for t in r.booked + r.updated + r.marked { try t.update(db) }
 			_ = try Transaction.deleteAll(db, keys: r.dropped)

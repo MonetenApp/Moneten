@@ -2,33 +2,26 @@ import Domain
 import Foundation
 import Testing
 
-/// The merge of fetched and imported transactions into the history of one account, requirements
-/// 1.18 to 1.27 of add-account-refresh. Each test calls `reconcile` the way `Store.merge` does and
-/// `Ledger.apply` the way the app does.
 @Suite("Merge into the history")
 struct ReconcileTests {
 	let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
 	let savings = Account(position: 1, name: "Savings", kind: .savings, source: .offline)
-	/// 2026-11-12 09:41 UTC.
 	let now = Date(timeIntervalSince1970: 1_794_476_460)
 
 	func day(_ d: Int, month: Int = 11) -> Day { Day(year: 2026, month: month, day: d) }
 
-	/// A row of Giro in 2026, as a source delivers it.
 	func row(_ d: Int, _ minor: Int64, _ name: String, _ purpose: String = "", month: Int = 11, pending: Bool = false, sourceID: String? = nil,
 		iban: String? = nil, e2e: String? = nil) -> Transaction {
 		Transaction(accountID: giro.id, bookingDate: day(d, month: month), amountMinor: minor, name: name, purpose: purpose, counterpartyIBAN: iban,
 			endToEndReference: e2e, isPending: pending, sourceID: sourceID)
 	}
 
-	/// A row as an earlier refresh stored it.
 	func stored(_ t: Transaction) -> Transaction {
 		var t = t
 		t.isFetched = true
 		return t
 	}
 
-	/// The same bank fields with a new ID and no user fields, as the next fetch delivers them.
 	func fresh(_ t: Transaction) -> Transaction {
 		Transaction(accountID: t.accountID, bookingDate: t.bookingDate, amountMinor: t.amountMinor, name: t.name, purpose: t.purpose,
 			counterpartyIBAN: t.counterpartyIBAN, endToEndReference: t.endToEndReference, isPending: t.isPending, sourceID: t.sourceID)
@@ -44,14 +37,11 @@ struct ReconcileTests {
 		return reconcile(delivery, into: account ?? giro, stored: stored, deleted: deleted, rules: rules, now: now)
 	}
 
-	/// The rows of Giro after the app took over the merge, newest first.
 	func history(_ stored: [Transaction], after r: Reconciliation) -> [Transaction] {
 		var ledger = Ledger(accounts: [giro, savings], transactions: stored)
 		ledger.apply(r)
 		return ledger.transactions(ofAccount: giro.id)
 	}
-
-	// MARK: 1.18 Keep the history for good
 
 	@Test("A refresh keeps the booked rows that the bank no longer delivers")
 	func keepsHistory() {
@@ -66,8 +56,6 @@ struct ReconcileTests {
 		#expect(r.dropped == [hotel.id])
 		#expect(history(all, after: r).map(\.id) == [november.id, october.id, threeYearsAgo.id])
 	}
-
-	// MARK: 1.19 Do not store a transaction twice
 
 	@Test("An overlapping fetch adds only the three new transactions")
 	func overlappingFetch() {
@@ -146,8 +134,6 @@ struct ReconcileTests {
 		#expect(r.updated.map(\.sourceID) == ["tx-1"])
 	}
 
-	// MARK: 1.20 Update a transaction that the source changed
-
 	@Test("A source with IDs corrects the amount, and the user fields stay")
 	func amountCorrected() {
 		let plans = Domain.Category(position: 0, name: "Savings plans")
@@ -170,8 +156,6 @@ struct ReconcileTests {
 		#expect(again.updated == [])
 		#expect(again.skipped == 1)
 	}
-
-	// MARK: 1.21 Keep real identical transactions
 
 	@Test("Two coffees on one day are two transactions, and the next refresh adds none")
 	func twoCoffees() {
@@ -202,8 +186,6 @@ struct ReconcileTests {
 		#expect(second.added == [])
 		#expect(second.skipped == 2)
 	}
-
-	// MARK: 1.22 Replace a pending transaction by its booked version
 
 	@Test("A booked card payment two days later replaces its pending row and keeps the comment")
 	func pendingGetsBooked() {
@@ -313,8 +295,6 @@ struct ReconcileTests {
 		#expect(r.added == [])
 	}
 
-	// MARK: 1.23 Do not guess between several pending transactions
-
 	@Test("Two pending coffees and one booked: three rows, all marked for review, no comment moves")
 	func twoPendingOneBooked() {
 		var withMax = stored(row(9, -320, "Café Beispiel", "Kartenzahlung", pending: true))
@@ -381,8 +361,6 @@ struct ReconcileTests {
 		#expect(r.added == [])
 	}
 
-	// MARK: 1.24 Remove a pending transaction that the bank dropped
-
 	@Test("A hotel deposit that the bank no longer lists is removed")
 	func hotelDeposit() {
 		let hotel = stored(row(3, -20_000, "Hotel Beispiel", "Kaution", pending: true))
@@ -416,8 +394,6 @@ struct ReconcileTests {
 		#expect(r.added.map(\.name) == ["Kiosk"])
 	}
 
-	// MARK: 1.25 Deleted transactions stay deleted
-
 	@Test("Deleting one of two coffees leaves one coffee after the next refresh")
 	func oneOfTwoCoffeesDeleted() {
 		let coffee = stored(row(9, -320, "Café Beispiel", "Kartenzahlung"))
@@ -446,8 +422,6 @@ struct ReconcileTests {
 		#expect(fetch.added == [])
 		#expect(fetch.skipped == 2)
 	}
-
-	// MARK: 1.26 Mark new transactions
 
 	@Test("Three added transactions count as new for their account until the user checks them")
 	func threeNew() {
@@ -494,8 +468,6 @@ struct ReconcileTests {
 		#expect(file.added.map(\.isNew) == [true])
 		#expect(merge(refresh([fresh(rent)])).added.map(\.isFetched) == [true])
 	}
-
-	// MARK: 1.27 Update the balance at every refresh
 
 	@Test("A refresh without new transactions stores the balance and its date")
 	func balanceWithoutTransactions() {

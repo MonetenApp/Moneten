@@ -20,7 +20,6 @@ struct MergePerformanceTests {
 		}
 		try store.save(accounts: accounts, transactions: history.values.flatMap { $0 })
 		var ledger = try store.loadLedger()
-		// The last 90 days of each account: 250 rows the history holds, newest first, and 50 new ones.
 		func delivery(_ a: Account) -> Delivery {
 			let known = history[a.id]!.prefix(250).map {
 				Transaction(accountID: a.id, bookingDate: $0.bookingDate, amountMinor: $0.amountMinor, name: $0.name, purpose: $0.purpose)
@@ -32,7 +31,6 @@ struct MergePerformanceTests {
 		}
 		var added: [Int] = []
 		let clock = ContinuousClock()
-		// The fastest of three runs, each into an account of its own, so that each run does the same work.
 		let merge = accounts.prefix(3).map { a in
 			let d = delivery(a)
 			return clock.measure {

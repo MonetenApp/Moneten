@@ -83,14 +83,11 @@ final class DebugHarness {
 			}
 		case "usd": DemoData.usdAccount(model)
 		case "review": DemoData.review(model)
-		// "<scenario>" refreshes "Girokonto" of `seed` through the coordinator with a made-up answer of the bank.
 		case "fetch": DemoData.fetch(model, argument)
-		// "<name>" deletes the transactions of "Girokonto" with that counterparty, as the user does.
 		case "deleterows":
 			if let giro = model.ledger.accounts.first(where: { $0.name == "Girokonto" }) {
 				model.delete(transactions: Set(model.ledger.transactions(ofAccount: giro.id).filter { $0.name == argument }.map(\.id)))
 			}
-		// "<account>" logs the rows of an account that a merge touched, the new count, and the bank balance.
 		case "rows":
 			if let account = model.ledger.accounts.first(where: { $0.name == argument }) {
 				let rows = model.ledger.transactions(ofAccount: account.id).filter { $0.isFetched || $0.needsReview }
@@ -358,9 +355,6 @@ enum DemoData {
 		try? model.merge(.file(ts), into: card.id)
 	}
 
-	/// One made-up answer of the bank for "Girokonto" from `seed`, delivered through the coordinator as a
-	/// refresh does: "first" brings rent, a coffee, and a pending hotel deposit; "booked" brings the deposit
-	/// booked two days later with another text; "parking" adds a pending parking fee; "gone" lacks it.
 	@MainActor
 	static func fetch(_ model: AppModel, _ scenario: String) {
 		guard let giro = model.ledger.accounts.first(where: { $0.name == "Girokonto" }) else { return }
@@ -381,8 +375,6 @@ enum DemoData {
 		model.sync.refresh(request, with: ScriptedConnector([.fetched(giro.id, result)]), attended: true)
 	}
 
-	/// Two pending card payments of "Girokonto" from `seed` and one booked payment that could belong
-	/// to either, so the list shows three rows marked for review.
 	@MainActor
 	static func review(_ model: AppModel) {
 		guard let giro = model.ledger.accounts.first(where: { $0.name == "Girokonto" }) else { return }
