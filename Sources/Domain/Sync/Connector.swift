@@ -18,7 +18,8 @@ public struct Access: Identifiable, Hashable, Sendable {
 	}
 }
 
-public enum AccessSource: Hashable, Sendable {
+/// Where an access gets its data. The database keeps it as JSON, so a new case needs no migration.
+public enum AccessSource: Hashable, Sendable, Codable {
 	case fints(bankCode: String, url: URL)
 	case `extension`(id: String)
 	case finAPI(connection: String)
@@ -58,7 +59,7 @@ public struct RefreshRequest: Sendable {
 }
 
 /// One account of a refresh: the account in the app, its number at the bank, and the first day to fetch.
-public struct AccountRequest: Sendable {
+public struct AccountRequest: Sendable, Equatable {
 	public let accountID: UUID
 	/// The name of the account in the app, for the PIN sheet.
 	public let name: String

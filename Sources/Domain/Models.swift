@@ -23,6 +23,8 @@ public enum AccountSource: String, Codable, Sendable {
 	case offline
 	/// Taken over from MoneyMoney. The account has no bank access yet.
 	case migrated
+	/// Refreshed through its bank access, `Account.accessID`.
+	case bank
 }
 
 public struct AccountGroup: Identifiable, Hashable, Sendable, Codable {
@@ -73,11 +75,19 @@ public struct Account: Identifiable, Hashable, Sendable, Codable {
 	public var sourceID: String?
 	/// The color of the account's icon as "#RRGGBB", chosen by the user.
 	public var color: String?
+	/// The bank access that refreshes the account. Nil for an offline or a migrated account.
+	public var accessID: UUID?
+	/// The ID that the access knows the account by, such as the IBAN.
+	public var remoteID: String?
+	/// The end of the last successful refresh. The next refresh asks for the transactions from 14 days before it.
+	public var refreshedAt: Date?
+	/// The error of the last refresh, until a refresh of the account succeeds.
+	public var refreshError: RefreshError?
 
 	public init(id: UUID = UUID(), groupID: UUID? = nil, position: Int, name: String, kind: AccountKind, source: AccountSource, currency: String = "EUR",
 		iban: String? = nil, bic: String? = nil, accountNumber: String? = nil, bankCode: String? = nil, bankName: String? = nil, owner: String? = nil,
 		bankBalanceMinor: Int64? = nil, bankBalanceDate: Date? = nil, initialBalanceMinor: Int64 = 0, isClosed: Bool = false, comment: String? = nil, sourceID: String? = nil,
-		color: String? = nil) {
+		color: String? = nil, accessID: UUID? = nil, remoteID: String? = nil, refreshedAt: Date? = nil, refreshError: RefreshError? = nil) {
 		self.id = id
 		self.groupID = groupID
 		self.position = position
@@ -98,6 +108,10 @@ public struct Account: Identifiable, Hashable, Sendable, Codable {
 		self.comment = comment
 		self.sourceID = sourceID
 		self.color = color
+		self.accessID = accessID
+		self.remoteID = remoteID
+		self.refreshedAt = refreshedAt
+		self.refreshError = refreshError
 	}
 
 	public var isOffline: Bool { source == .offline }
