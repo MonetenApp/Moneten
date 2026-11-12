@@ -16,6 +16,10 @@ public struct Prompt: Identifiable, Equatable, Sendable {
 /// An automatic refresh never reaches the queue: it gets the PIN in memory, and every other request
 /// fails at once with `SyncFailure.needsUser`. A PIN that the user entered is kept in memory for its
 /// access until the app locks or quits, or until a refresh with it ends without success.
+///
+/// A PIN request that carries the rejection of the bank is never answered from memory. The broker
+/// forgets the PIN and shows the sheet again, or fails an automatic refresh with
+/// `SyncFailure.pinRejected`, so a wrong PIN is never sent twice.
 @MainActor
 @Observable
 public final class SessionBroker {
@@ -36,7 +40,14 @@ public final class SessionBroker {
 	public init() {}
 
 	func ask(_ request: UserRequest, for access: Access, accountNames: [String], attended: Bool) async throws -> UserAnswer {
-		if case .pin = request, let pin = pins[access.id] { return .pin(pin) }
+		if case let .pin(pinRequest) = request {
+			if let rejected = pinRequest.rejected {
+				pins[access.id] = nil
+				guard attended else { throw SyncFailure.pinRejected(rejected) }
+			} else if let pin = pins[access.id] {
+				return .pin(pin)
+			}
+		}
 		guard attended else { throw SyncFailure.needsUser(request.kind) }
 		try Task.checkCancellation()
 		let prompt = Prompt(id: UUID(), access: access, accountNames: accountNames, request: request)

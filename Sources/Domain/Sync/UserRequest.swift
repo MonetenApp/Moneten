@@ -3,6 +3,7 @@ import Foundation
 /// How a connector talks to the user and to the progress display during a refresh.
 public protocol SyncSession: Sendable {
 	/// Asks the user and waits for the answer. Throws `SyncFailure.needsUser` in an automatic refresh,
+	/// or `SyncFailure.pinRejected` there when the PIN request carries the rejection of the bank,
 	/// `SyncFailure.challengeExpired` when the user does not answer in time, and `CancellationError`
 	/// when the user cancels the dialog or the refresh is canceled.
 	///
