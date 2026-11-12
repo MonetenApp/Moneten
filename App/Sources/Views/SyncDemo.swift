@@ -21,7 +21,7 @@ enum SyncDemo {
 	/// The requests by name, in the order of the previews.
 	static let requests: [(name: String, request: UserRequest)] = [
 		("pin", .pin(PINRequest())),
-		("pinretry", .pin(PINRequest(rejected: BankMessage(code: "9931", text: "Die PIN ist falsch.")))),
+		("pinretry", .pin(PINRequest(rejected: BankMessage(code: "9942", text: "Die PIN ist falsch.")))),
 		("method", secondFactor(.chooseTANMethod([TANMethod(id: "922", name: "pushTAN 2.0"), TANMethod(id: "913", name: "chipTAN QR")], current: nil), purpose: .login)),
 		("medium", secondFactor(.chooseTANMedium(["Handy privat", "Handy Firma"]), purpose: .login)),
 		("nomedia", secondFactor(.chooseTANMedium([]), purpose: .login)),

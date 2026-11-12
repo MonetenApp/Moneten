@@ -78,7 +78,7 @@ struct SyncModelTests {
 	func messages() {
 		#expect(SyncFailure.needsUser(.secondFactor).message.contains("Refresh Account"))
 		#expect(SyncFailure.needsUser(.pin).message.contains("PIN"))
-		#expect(SyncFailure.pinRejected(BankMessage(code: "9931", text: "PIN falsch")).message.contains("PIN falsch"))
+		#expect(SyncFailure.pinRejected(BankMessage(code: "9942", text: "PIN falsch")).message.contains("PIN falsch"))
 		#expect(SyncFailure.pinRejected(BankMessage(text: "PIN falsch")).message.contains("block"))
 		#expect(SyncFailure.tanRejected(BankMessage(text: "TAN ungültig")).message == "The bank did not accept the entered TAN: TAN ungültig")
 		#expect(SyncFailure.bank(BankMessage(code: "9942", text: "Zugang vorübergehend gesperrt")).message == "Zugang vorübergehend gesperrt")

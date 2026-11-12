@@ -92,7 +92,7 @@ struct SyncCoordinatorTests {
 	@Test("A rejected PIN is forgotten")
 	func pinRejected() async {
 		let bank = Self.access("Musterbank")
-		let rejected = SyncFailure.pinRejected(BankMessage(code: "9931", text: "PIN falsch"))
+		let rejected = SyncFailure.pinRejected(BankMessage(code: "9942", text: "PIN falsch"))
 		_ = refresh(bank, [.ask(Self.pin), .fail(rejected)])
 		await until { broker.current != nil }
 		answer(.pin(Secret("11111")))
@@ -108,7 +108,7 @@ struct SyncCoordinatorTests {
 	@Test("After a typing error the PIN sheet opens again, and the new PIN stays in memory")
 	func pinTypo() async {
 		let bank = Self.access("Musterbank")
-		let rejected = UserRequest.pin(PINRequest(rejected: BankMessage(code: "9931", text: "PIN falsch")))
+		let rejected = UserRequest.pin(PINRequest(rejected: BankMessage(code: "9942", text: "PIN falsch")))
 		let connector = refresh(bank, [.ask(Self.pin), .ask(rejected), .fetched(Self.giro.accountID)])
 		await until { broker.current?.request == Self.pin }
 		answer(.pin(Secret("11111")))
@@ -131,7 +131,7 @@ struct SyncCoordinatorTests {
 		answer(.pin(Secret("12345")))
 		await until { finished(bank) != nil }
 
-		let rejected = UserRequest.pin(PINRequest(rejected: BankMessage(code: "9931", text: "PIN falsch")))
+		let rejected = UserRequest.pin(PINRequest(rejected: BankMessage(code: "9942", text: "PIN falsch")))
 		let manual = refresh(bank, [.ask(Self.pin), .ask(rejected)])
 		await until { broker.current?.request == rejected }
 		answer(.pin(Secret("54321")))
@@ -147,7 +147,7 @@ struct SyncCoordinatorTests {
 		answer(.pin(Secret("12345")))
 		await until { finished(bank) != nil }
 
-		let message = BankMessage(code: "9931", text: "PIN falsch")
+		let message = BankMessage(code: "9942", text: "PIN falsch")
 		let automatic = refresh(bank, [.ask(Self.pin), .ask(.pin(PINRequest(rejected: message))), .fetched(Self.giro.accountID)], attended: false)
 		await until { !coordinator.isRefreshing }
 		#expect(state(bank) == .failed(.pinRejected(message)))

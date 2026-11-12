@@ -19,7 +19,9 @@ public struct Prompt: Identifiable, Equatable, Sendable {
 ///
 /// A PIN request that carries the rejection of the bank is never answered from memory. The broker
 /// forgets the PIN and shows the sheet again, or fails an automatic refresh with
-/// `SyncFailure.pinRejected`, so a wrong PIN is never sent twice.
+/// `SyncFailure.pinRejected`. So a connector must set `PINRequest.rejected` on every PIN request that
+/// follows a rejection, or else throw `SyncFailure.pinRejected` itself. A plain PIN request is answered
+/// from memory, which would send the wrong PIN again.
 @MainActor
 @Observable
 public final class SessionBroker {
