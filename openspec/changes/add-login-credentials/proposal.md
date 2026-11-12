@@ -49,7 +49,7 @@ None.
 - A saved PIN is stored in the encrypted database and not in the Keychain. This follows ADR 0009. Where MoneyMoney stores it was not observed.
 - Saving is off when the sheet first appears for an access.
 - A PIN that is not saved is forgotten when the app locks, not only when it quits. This follows ADR 0009.
-- After a wrong PIN the app deletes the saved PIN and warns that more wrong attempts can block the access. MoneyMoney's behavior was not observed.
+- After a wrong PIN the app deletes the saved PIN and warns that more wrong attempts can block the access. After a blocked access it deletes the saved PIN too. MoneyMoney's behavior was not observed.
 - The automatic refresh skips an access without an available PIN and marks it in the sidebar. This follows issue #40.
 - When several accesses need a PIN in one manual refresh, the app asks for one PIN at a time. The order in MoneyMoney was not observed.
 - Extension passwords and subscription tokens follow the same rules as FinTS PINs.

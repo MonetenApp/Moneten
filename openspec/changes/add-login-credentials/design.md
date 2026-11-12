@@ -8,7 +8,7 @@ Issue #86 builds this change for FinTS on the sync model of [add-account-refresh
 
 ### Where a saved PIN lives
 
-`Storage` keeps a saved PIN in the table `savedPIN`: one row per access, with the primary key `accessID` and the PIN as text. The row goes with its access, so removing the last account of an access deletes the PIN too. Migration `v8` adds the table. A separate table keeps the PIN out of `AccessState`, which only its connector reads, and out of every other row. The database file is encrypted with the database password, so a backup of the file holds the PIN under the same password ("Restore on another Mac"). No code writes a PIN to the Keychain, the settings, or a log.
+`Storage` keeps a saved PIN in the table `savedPIN`: one row per access, with the primary key `accessID` and the PIN as text. The row goes with its access, so removing the last account of an access deletes the PIN too. Migration `v9` adds the table. A separate table keeps the PIN out of `AccessState`, which only its connector reads, and out of every other row. The database file is encrypted with the database password, so a backup of the file holds the PIN under the same password ("Restore on another Mac"). No code writes a PIN to the Keychain, the settings, or a log.
 
 `Domain` declares `SavedPINStore`, and `Store` implements it. `Sync` sees only the protocol.
 
@@ -18,14 +18,14 @@ Issue #86 builds this change for FinTS on the sync model of [add-account-refresh
 
 - The PIN sheet has "Save PIN", off each time the sheet appears. The answer `.pin(secret, save:)` carries the choice.
 - The broker writes the PIN through `SavedPINStore` when the refresh with it finishes. A finished refresh means that the bank accepted the login. A rejected or failed login saves nothing.
-- The login step of "Add Account" has the same option. The bank accepted that PIN when the setup listed the accounts, so `remember(_:for:save:)` saves it when the setup finishes.
+- The login step of "Add Account" has the same option. The bank accepted that PIN when the setup listed the accounts, so `remember(_:for:save:)` saves it when the setup finishes. When the access has a saved PIN already, for example because the user adds the same login again, the new PIN replaces it also with the option off.
 - When the database opens, `open(_:)` reads the saved PINs into memory, so the first refresh after a restart or an unlock does not ask. When the app locks, `forgetPINs()` forgets every PIN.
-- When the bank rejects a PIN, the broker forgets it and deletes the saved one, so no automatic refresh sends it again. Any other failure keeps a saved PIN and forgets an unsaved one, as before.
+- When the bank rejects a PIN or blocks the access, the broker forgets the PIN and deletes the saved one, so no automatic refresh sends it again. A blocked access opens no PIN sheet. Any other failure keeps a saved PIN and forgets an unsaved one, as before.
 - "Remove saved PIN" in the account settings calls `removeSavedPIN(of:)`, which deletes the row and forgets the PIN in memory, for every account of the access.
 
 ### The rules of the bank
 
-`PINRules` holds digits only, the minimum length, and the maximum length, and `check(_:secretName:)` names the first broken rule. `PINRequest.rules` brings them to the sheet, which checks the PIN at "OK" and sends nothing while a rule is broken. The FinTS helper reads the minimum and maximum length from the bank parameters (`getPinLengthMin` and `getPinLengthMax` of hbci4java).
+`PINRules` holds digits only, the minimum length, and the maximum length, and `check(_:secretName:)` names the first broken rule. `PINRequest.rules` brings them to the sheet, which checks the PIN at "OK" and sends nothing while a rule is broken. The login step of "Add Account" has no PIN sheet: `SetupSession` checks the PIN of the step against the rules of the request, and a broken rule ends the login with its text before the PIN is sent. The FinTS helper reads the minimum and maximum length from the bank parameters (`getPinLengthMin` and `getPinLengthMax` of hbci4java).
 
 ### The PIN field
 
