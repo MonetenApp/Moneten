@@ -86,7 +86,7 @@ struct TANDialogTests {
 
 	@Test("While the progress of one access shows, the dialog of another waits, and the progress ends when its access goes on")
 	func otherAccessWaits() async {
-		_ = refresh(Self.musterbank, [.ask(Self.chooseMethod), .wait(.milliseconds(400)), .progress(.fetching(done: 0, of: 1)), .wait(.milliseconds(200)),
+		_ = refresh(Self.musterbank, [.ask(Self.chooseMethod), .wait(.milliseconds(400)), .progress(.fetching(done: 1, of: 2)), .wait(.milliseconds(200)),
 			.fetched(Self.giro.accountID)])
 		await until { broker.current != nil }
 		answer(.tanMethod("922"))
@@ -96,8 +96,20 @@ struct TANDialogTests {
 		#expect(broker.requesting?.progress == .challenge(.pushNotification))
 		await until { broker.current?.access == Self.beispielbank }
 		#expect(broker.requesting == nil)
-		#expect(coordinator.states[Self.musterbank.id] == .fetching(done: 0, of: 1))
+		#expect(coordinator.states[Self.musterbank.id] == .fetching(done: 1, of: 2))
 		#expect(coordinator.states[Self.beispielbank.id] == .needsUser(.secondFactor, waiting: false, during: .connecting))
+		broker.cancel(broker.current!.id)
+		await until { !coordinator.isRefreshing }
+	}
+
+	@Test("The progress that the access reports before its first account keeps the dialog open until the new challenge")
+	func progressBeforeChallenge() async {
+		_ = refresh(Self.musterbank, [.ask(Self.chooseMethod), .progress(.fetching(done: 0, of: 2)), .wait(.milliseconds(300)), .ask(Self.qrTAN)])
+		await until { broker.current?.request == Self.chooseMethod }
+		answer(.tanMethod("913"))
+		await until { coordinator.states[Self.musterbank.id] == .fetching(done: 0, of: 2) }
+		#expect(broker.requesting?.progress == .challenge(.qrCode))
+		await until { broker.current?.request == Self.qrTAN }
 		broker.cancel(broker.current!.id)
 		await until { !coordinator.isRefreshing }
 	}

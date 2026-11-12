@@ -201,8 +201,9 @@ public final class SyncCoordinator {
 	/// Applies an event. An event that the state does not allow changes nothing, for example the end
 	/// of a connector after the user canceled.
 	fileprivate func apply(_ event: SyncEvent, to access: UUID) {
-		// The access goes on, so its dialog no longer waits for a challenge.
-		if case .progress = event { broker.endRequest(of: access) }
+		// The first account arrived, so the dialog of the access no longer waits for a challenge. The
+		// progress before the first account comes before the bank requests the challenge.
+		if case let .progress(.fetching(done, _)) = event, done > 0 { broker.endRequest(of: access) }
 		if let next = (states[access] ?? .idle).next(event) { states[access] = next }
 	}
 
