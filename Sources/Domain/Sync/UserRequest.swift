@@ -299,9 +299,6 @@ public struct BrowserApproval: Sendable, Equatable {
 		self.hosts = hosts
 	}
 
-	/// The addresses that end the login. Published extensions use the first two.
-	public static let finalAddresses = ["https://service.moneymoney-app.com/1/redirect", "moneymoney-app://oauth", "moneten://oauth"]
-
 	/// What the window does with a navigation.
 	public enum Step: Sendable, Equatable {
 		/// A page of an allowed host.
@@ -315,10 +312,19 @@ public struct BrowserApproval: Sendable, Equatable {
 	/// The parameters that carry the result, in the order the app looks for them.
 	static let codeParameters = ["code", "access_token", "auth_code", "tokenid", "authorization_code", "id_token", "token"]
 
-	/// Decides a navigation before any request: a final address is never contacted.
-	public func step(for target: URL) -> Step {
-		let address = target.absoluteString
-		if Self.finalAddresses.contains(where: { address == $0 || address.hasPrefix($0 + "?") || address.hasPrefix($0 + "/") || address.hasPrefix($0 + "#") }) {
+	/// Decides a navigation before any request: a final address is never contacted. Only the page of
+	/// the login, not a frame in it, may end the login.
+	public func step(for target: URL, isMainFrame: Bool = true) -> Step {
+		let scheme = target.scheme?.lowercased() ?? ""
+		let host = target.host(percentEncoded: false)?.lowercased() ?? ""
+		let path = target.path(percentEncoded: false)
+		let isFinal = switch (scheme, host) {
+		case ("https", "service.moneymoney-app.com"): target.port == nil && (path == "/1/redirect" || path == "/1/redirect/")
+		case ("moneymoney-app", "oauth"), ("moneten", "oauth"): path.isEmpty || path == "/"
+		default: false
+		}
+		if isFinal {
+			guard isMainFrame else { return .refuse("Only the page of the login may end it.") }
 			var parameters: [String: String] = [:]
 			for part in [target.query, target.fragment].compactMap({ $0 }) {
 				for item in URLComponents(string: "?" + part)?.queryItems ?? [] where parameters[item.name] == nil {
@@ -331,11 +337,12 @@ public struct BrowserApproval: Sendable, Equatable {
 			guard let code, !code.isEmpty else { return .refuse("The login ended without a code.") }
 			return .finish(code: code)
 		}
-		guard target.scheme == "https", let host = target.host()?.lowercased(), hosts.contains(host) else {
-			return .refuse("The login window may not open \(target.host() ?? address).")
+		guard scheme == "https", target.port == nil, hosts.contains(host) else {
+			return .refuse("The login window may not open \(host.isEmpty || scheme != "https" && scheme != "http" ? "\(scheme)://\(host)" : host).")
 		}
 		return .load
 	}
+
 }
 
 /// A captcha that a script returns as the script URL of the captcha service.

@@ -132,7 +132,7 @@ struct ChallengeMapping {
 			}
 			return .answer(request(.enterTAN(prompt: notice, image: image), table), stepIncrement: increment)
 		case let .url(url) where table.label == nil:
-			if let captcha = Self.captcha(url) { return .answer(request(.captcha(captcha), table), stepIncrement: increment) }
+			if let captcha = try captcha(url) { return .answer(request(.captcha(captcha), table), stepIncrement: increment) }
 			guard let host = url.host()?.lowercased(), hosts.contains(host) else {
 				throw MappingError("The login page \(url.host() ?? url.absoluteString) is not a host that the extension may contact.")
 			}
@@ -188,27 +188,38 @@ struct ChallengeMapping {
 		return BrowserApproval(url: components.url ?? url, state: state, hosts: hosts)
 	}
 
-	/// A captcha when `url` is the script of a supported captcha service.
-	static func captcha(_ url: URL) -> CaptchaRequest? {
-		guard let host = url.host()?.lowercased() else { return nil }
-		let path = url.path()
-		let provider: CaptchaRequest.Provider
-		if ["www.recaptcha.net", "www.google.com"].contains(host), path.hasSuffix("/recaptcha/api.js") || path.hasSuffix("/recaptcha/enterprise.js") {
-			provider = .reCAPTCHA
-		} else if host == "js.hcaptcha.com", path.hasSuffix("/api.js") {
-			provider = .hCaptcha
-		} else if host == "cdn.jsdelivr.net", path.contains("friendly-challenge") || path.contains("@friendlycaptcha/sdk") {
-			provider = .friendlyCaptcha
-		} else if host.hasSuffix(".token.awswaf.com"), path.hasSuffix("/challenge.js") {
-			provider = .amazonWAF
-		} else {
-			return nil
-		}
+	/// A captcha when `url` is exactly the script of a supported captcha service. The page that
+	/// embeds it must be a host of the extension, because the captcha service checks the page, and
+	/// the site key may hold only the characters of a key, because it goes into the page.
+	func captcha(_ url: URL) throws(MappingError) -> CaptchaRequest? {
+		guard url.scheme == "https", url.port == nil, let host = url.host(percentEncoded: true)?.lowercased(), let provider = Self.provider(host: host,
+			path: url.path(percentEncoded: true)) else { return nil }
 		let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
 		func value(_ name: String) -> String? { items.first { $0.name == name }?.value }
-		guard let siteKey = value("sitekey"), !siteKey.isEmpty else { return nil }
-		return CaptchaRequest(provider: provider, script: url, siteKey: siteKey, page: value("referer").flatMap(URL.init(string:)),
-			isCheckbox: value("type") == "checkbox")
+		guard let siteKey = value("sitekey"), siteKey.wholeMatch(of: /[A-Za-z0-9_\-]{1,200}/) != nil else { return nil }
+		let page = value("referer").flatMap(URL.init(string:))
+		if let page {
+			guard page.scheme == "https", let pageHost = page.host()?.lowercased(), hosts.contains(pageHost) else {
+				throw MappingError("The captcha page \(page.host() ?? page.absoluteString) is not a host that the extension may contact.")
+			}
+		}
+		return CaptchaRequest(provider: provider, script: url, siteKey: siteKey, page: page, isCheckbox: value("type") == "checkbox")
+	}
+
+	/// The service whose official script is at `path` of `host`, with nothing else allowed in the path.
+	static func provider(host: String, path: String) -> CaptchaRequest.Provider? {
+		switch host {
+		case "www.recaptcha.net", "www.google.com":
+			return ["/recaptcha/api.js", "/recaptcha/enterprise.js"].contains(path) ? .reCAPTCHA : nil
+		case "js.hcaptcha.com":
+			return path == "/1/api.js" ? .hCaptcha : nil
+		case "cdn.jsdelivr.net":
+			return path.wholeMatch(of: /\/npm\/friendly-challenge(@[0-9.]+)?\/widget\.module\.min\.js/) != nil
+				|| path.wholeMatch(of: /\/npm\/@friendlycaptcha\/sdk(@[0-9.]+)?\/site\.min\.js/) != nil ? .friendlyCaptcha : nil
+		default:
+			return host.wholeMatch(of: /[a-z0-9-]+(\.[a-z0-9-]+)*\.token\.awswaf\.com/) != nil
+				&& path.wholeMatch(of: /(\/[A-Za-z0-9_-]+)+\/challenge\.js/) != nil ? .amazonWAF : nil
+		}
 	}
 
 	/// The text of a challenge without HTML tags and entities, as the dialog shows it.

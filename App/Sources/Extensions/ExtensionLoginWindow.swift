@@ -140,17 +140,15 @@ private struct ExtensionWebView: NSViewRepresentable {
 			let isMainFrame = action.targetFrame?.isMainFrame ?? true
 			switch page {
 			case let .approval(approval):
-				switch approval.step(for: url) {
+				switch approval.step(for: url, isMainFrame: isMainFrame) {
 				case let .finish(code):
 					decisionHandler(.cancel)
 					ExtensionWebDebug.log("ext browser final \(url.scheme ?? "")://\(url.host() ?? "") code=\(code.count) characters")
 					deliver(code)
-				case let .refuse(message) where isMainFrame || BrowserApproval.finalAddresses.contains(where: url.absoluteString.hasPrefix):
+				case let .refuse(message):
 					decisionHandler(.cancel)
 					ExtensionWebDebug.log("ext browser refused \(url.host() ?? url.scheme ?? "")")
-					refuse(message)
-				case .refuse:
-					decisionHandler(url.scheme == "https" ? .allow : .cancel)
+					if isMainFrame { refuse(message) }
 				case .load:
 					if isMainFrame, ExtensionWebDebug.pages[ExtensionWebDebug.key(url)] != nil {
 						decisionHandler(.cancel)
@@ -160,8 +158,10 @@ private struct ExtensionWebView: NSViewRepresentable {
 						decisionHandler(.allow)
 					}
 				}
-			case .captcha:
-				decisionHandler(!isMainFrame && url.scheme == "https" && !ExtensionWebDebug.captchaStub ? .allow : .cancel)
+			case let .captcha(captcha):
+				let allowed = !isMainFrame && !ExtensionWebDebug.captchaStub && url.scheme == "https"
+					&& CaptchaPage.frameHosts(captcha.provider).contains { url.host()?.lowercased() == $0 || url.host()?.lowercased().hasSuffix("." + $0) == true }
+				decisionHandler(allowed ? .allow : .cancel)
 			}
 		}
 
@@ -223,6 +223,16 @@ private enum CaptchaPage {
 				"""
 		}
 		return "<!doctype html><html><head><meta charset=\"utf-8\"></head><body style=\"font: 13px -apple-system\">\(body)</body></html>"
+	}
+
+	/// The domains whose frames a captcha of the service shows.
+	static func frameHosts(_ provider: CaptchaRequest.Provider) -> [String] {
+		switch provider {
+		case .reCAPTCHA: ["google.com", "recaptcha.net", "gstatic.com"]
+		case .hCaptcha: ["hcaptcha.com"]
+		case .friendlyCaptcha: ["friendlycaptcha.com", "friendlycaptcha.eu", "frcapi.com"]
+		case .amazonWAF: ["awswaf.com"]
+		}
 	}
 
 	/// A page in place of every captcha service, for the debug harness: it sends nothing and posts the

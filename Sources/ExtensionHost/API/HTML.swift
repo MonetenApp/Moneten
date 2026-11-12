@@ -129,8 +129,8 @@ enum HTMLDocument {
 	private static let get: clua_Function = { L in
 		withList(L) { stack, list in
 			var isInteger: Int32 = 0
-			let n = Int(lua_tointegerx(L, 2, &isInteger))
-			return push(stack, list.tree, isInteger != 0 && list.nodes.indices.contains(n - 1) ? [list.nodes[n - 1]] : [])
+			let n = lua_tointegerx(L, 2, &isInteger)
+			return push(stack, list.tree, isInteger != 0 && n >= 1 && n <= list.nodes.count ? [list.nodes[Int(n) - 1]] : [])
 		}
 	}
 
@@ -177,7 +177,7 @@ enum HTMLDocument {
 	private static let select: clua_Function = { L in
 		withList(L) { stack, list in
 			if let node = list.nodes.first, lua_type(L, 2) == LUA_TSTRING || lua_type(L, 2) == LUA_TNUMBER {
-				Form.choose(stack.string(at: 2), in: node)
+				Form.choose(stack.string(at: 2), in: node, of: list.tree)
 			}
 			return 0
 		}
@@ -250,8 +250,19 @@ private final class HTMLTree {
 		document = parsed ?? htmlNewDocNoDtD(nil, nil)
 	}
 
+	/// Attributes that a script removed. An element list may still hold one, so they live as long as the document.
+	private var removed: [xmlAttrPtr] = []
+
 	deinit {
+		for attribute in removed { xmlFreeProp(attribute) }
 		xmlFreeDoc(document)
+	}
+
+	/// Takes the attribute out of its element and keeps it until the document goes.
+	func remove(_ name: String, from node: Node) {
+		guard node.pointee.type == XML_ELEMENT_NODE, let attribute = xmlHasProp(node, name) else { return }
+		xmlUnlinkNode(UnsafeMutableRawPointer(attribute).assumingMemoryBound(to: xmlNode.self))
+		removed.append(attribute)
 	}
 
 	var root: Node {
@@ -307,20 +318,20 @@ private extension UnsafeMutablePointer where Pointee == xmlNode {
 		pointee.type == XML_ELEMENT_NODE ? String(cString: pointee.name) : ""
 	}
 
+	/// Only an element has attributes. An attribute node in a list has a shorter struct than an element.
 	func attribute(_ name: String) -> String? {
-		xmlHasProp(self, name).map { UnsafeMutableRawPointer($0).assumingMemoryBound(to: xmlNode.self).text }
+		guard pointee.type == XML_ELEMENT_NODE else { return nil }
+		return xmlHasProp(self, name).map { UnsafeMutableRawPointer($0).assumingMemoryBound(to: xmlNode.self).text }
 	}
 
 	func has(_ name: String) -> Bool {
-		xmlHasProp(self, name) != nil
+		pointee.type == XML_ELEMENT_NODE && xmlHasProp(self, name) != nil
 	}
 
+	/// Changes the value in the same attribute node, so a list that holds the attribute keeps a valid node.
 	func setAttribute(_ name: String, _ value: String) {
+		guard pointee.type == XML_ELEMENT_NODE else { return }
 		xmlSetProp(self, name, value)
-	}
-
-	func removeAttribute(_ name: String) {
-		xmlUnsetProp(self, name)
 	}
 
 	/// The text of the node and all its descendants, or the value of an attribute node.
@@ -443,11 +454,11 @@ private enum Form {
 	}
 
 	/// `select(value)`: selects the enabled option with the value and deselects the others.
-	static func choose(_ value: String, in select: Node) {
+	static func choose(_ value: String, in select: Node, of tree: HTMLTree) {
 		guard select.tag == "select", !select.has("disabled") else { return }
 		let options = select.descendants.filter { $0.tag == "option" }
 		guard let chosen = options.first(where: { !$0.has("disabled") && optionValue($0) == value }) else { return }
-		for option in options { option.removeAttribute("selected") }
+		for option in options { tree.remove("selected", from: option) }
 		chosen.setAttribute("selected", "selected")
 	}
 

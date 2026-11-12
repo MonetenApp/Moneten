@@ -97,7 +97,8 @@ struct Network {
 		guard [301, 302, 303, 307, 308].contains(response.status), let location = response.header("Location"),
 			let target = URL(string: location, relativeTo: request.url)?.absoluteURL else { return nil }
 		let keepsMethod = response.status == 307 || response.status == 308 || (response.status != 303 && request.method == "GET")
-		let sameHost = target.host()?.lowercased() == request.url.host()?.lowercased()
+		// As browsers do, the login of one site does not travel to another.
+		let sameHost = target.host()?.lowercased() == request.url.host()?.lowercased() && target.port == request.url.port
 		let body = keepsMethod && sameHost ? request.body : nil
 		let headers = request.headers.filter { name, _ in
 			sameHost ? keepsMethod || name.caseInsensitiveCompare("Content-Type") != .orderedSame : crossHostHeaders.contains(name.lowercased())
@@ -116,9 +117,21 @@ final class CookieJar {
 	/// that `url` is not part of is left out, as in a browser.
 	func store(_ setCookie: String?, from url: URL) {
 		guard let setCookie, let host = url.host()?.lowercased() else { return }
-		for cookie in HTTPCookie.cookies(withResponseHeaderFields: ["Set-Cookie": setCookie], for: url) where Self.domain(of: cookie, matches: host) {
+		for cookie in HTTPCookie.cookies(withResponseHeaderFields: ["Set-Cookie": setCookie], for: url)
+			where Self.domain(of: cookie, matches: host) && !Self.isPublicSuffix(String(cookie.domain.lowercased().drop { $0 == "." })) {
 			put(cookie)
 		}
+	}
+
+	/// Second-level labels under which a country domain registers names, such as "co" in "co.uk".
+	static let registrySecondLevels: Set = ["ac", "co", "com", "edu", "gov", "gv", "ltd", "me", "mil", "ne", "net", "nhs", "or", "org", "plc", "sch"]
+
+	/// A domain under which anyone registers names, so a cookie for it would reach every site below it.
+	/// The rule covers top-level domains and the registry domains of countries, such as "com" and
+	/// "co.uk"; the app has no full public suffix list.
+	static func isPublicSuffix(_ domain: String) -> Bool {
+		let labels = domain.split(separator: ".")
+		return labels.count < 2 || (labels.count == 2 && labels[1].count == 2 && registrySecondLevels.contains(String(labels[0])))
 	}
 
 	/// Keeps a cookie that the script sets. Without a `Domain` it belongs to the host of `url`; without

@@ -59,7 +59,8 @@ enum JSONObject {
 		withDocument(L) { stack, document in
 			var text = ""
 			do throws(ScriptError) {
-				try write(at: 2, of: stack, depth: 0, into: &text)
+				var budget = LuaStack.maxValues
+				try write(at: 2, of: stack, depth: 0, budget: &budget, into: &text)
 			} catch {
 				stack.pushString(error.message)
 				return -1
@@ -132,8 +133,10 @@ enum JSONObject {
 	/// Writes the value at `index` as JSON. A table with the keys 1 to n becomes an array and any other
 	/// table an object with sorted keys, so an empty table is `{}`. Text that is not valid UTF-8 gets
 	/// the replacement character. Functions and other objects become `null`.
-	private static func write(at index: Int32, of stack: LuaStack, depth: Int, into text: inout String) throws(ScriptError) {
+	private static func write(at index: Int32, of stack: LuaStack, depth: Int, budget: inout Int, into text: inout String) throws(ScriptError) {
 		let L = stack.L
+		budget -= 1
+		guard budget >= 0 else { throw ScriptError("The value holds more than \(LuaStack.maxValues) values.") }
 		switch lua_type(L, index) {
 		case LUA_TBOOLEAN: text += lua_toboolean(L, index) != 0 ? "true" : "false"
 		case LUA_TNUMBER where lua_isinteger(L, index) != 0: text += "\(lua_tointegerx(L, index, nil))"
@@ -160,7 +163,7 @@ enum JSONObject {
 				}
 				var json = ""
 				do {
-					try write(at: -1, of: stack, depth: depth + 1, into: &json)
+					try write(at: -1, of: stack, depth: depth + 1, budget: &budget, into: &json)
 				} catch {
 					lua_settop(L, -3)
 					throw error

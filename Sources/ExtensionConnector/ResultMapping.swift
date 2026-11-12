@@ -89,7 +89,10 @@ enum ResultMapping {
 				guard case let .object(item) = security, let amount = item["amount"].flatMap(\.decimal) else {
 					throw MappingError("Security \(index + 1) has no amount.")
 				}
-				total.minorUnits += Money(amount, currency: account.currency).minorUnits
+				let value = try money(amount, account.currency, "The value of security \(index + 1)")
+				let (sum, overflow) = total.minorUnits.addingReportingOverflow(value.minorUnits)
+				guard !overflow, abs(sum) <= maxMinorUnits else { throw MappingError("The securities add up to more than Moneten can hold.") }
+				total.minorUnits = sum
 			}
 			return RefreshResult(balance: total, transactions: nil)
 		}
@@ -102,18 +105,29 @@ enum ResultMapping {
 		return RefreshResult(balance: balance, transactions: FetchedTransactions(rows: mapped, from: since))
 	}
 
+	/// The largest amount in minor units that the app takes from a script: 10 trillion euros. Sums of
+	/// many such amounts still fit an `Int64`.
+	static let maxMinorUnits: Int64 = 1_000_000_000_000_000
+
+	/// An amount in the minor units of `currency`, or an error that names `what` when it is out of range.
+	private static func money(_ decimal: Decimal, _ currency: String, _ what: String) throws(MappingError) -> Money {
+		let limit = Money(minorUnits: maxMinorUnits, currency: currency).decimal
+		guard decimal.isFinite, decimal <= limit, decimal >= -limit else { throw MappingError("\(what) is out of range.") }
+		return Money(decimal, currency: currency)
+	}
+
 	/// `balance`, or the amount of the account's currency in `balances`, a list of pairs of amount and currency.
 	private static func balance(_ fields: [String: LuaValue], currency: String) throws(MappingError) -> Money? {
 		if let amount = fields["balance"] {
 			guard let decimal = amount.decimal else { throw MappingError("The balance is not a number.") }
-			return Money(decimal, currency: currency)
+			return try money(decimal, currency, "The balance")
 		}
 		guard case let .array(pairs)? = fields["balances"] else { return nil }
 		for pair in pairs {
 			guard case let .array(parts) = pair, parts.count == 2, let decimal = parts[0].decimal, case let .string(code) = parts[1] else {
 				throw MappingError("An entry of balances is not a pair of amount and currency.")
 			}
-			if code.uppercased() == currency { return Money(decimal, currency: currency) }
+			if code.uppercased() == currency { return try money(decimal, currency, "The balance") }
 		}
 		return nil
 	}
@@ -121,17 +135,28 @@ enum ResultMapping {
 	/// One transaction table. Dates are POSIX time stamps, read as days in the user's time zone.
 	private static func transaction(_ value: LuaValue, number: Int, currency: String, calendar: Calendar) throws(MappingError) -> Transaction {
 		guard case let .object(fields) = value else { throw MappingError("Transaction \(number) is not a table.") }
-		guard let amount = fields["amount"]?.decimal else { throw MappingError("Transaction \(number) has no amount.") }
-		guard let booking = fields["bookingDate"]?.decimal else { throw MappingError("Transaction \(number) has no booking date.") }
-		let day = { (seconds: Decimal) in Day(Date(timeIntervalSince1970: NSDecimalNumber(decimal: seconds).doubleValue), calendar: calendar) }
+		guard let rawAmount = fields["amount"] else { throw MappingError("Transaction \(number) has no amount.") }
+		guard let amount = rawAmount.decimal else { throw MappingError("The amount of transaction \(number) is not a number.") }
+		guard let rawBooking = fields["bookingDate"] else { throw MappingError("Transaction \(number) has no booking date.") }
+		func day(_ value: LuaValue, _ name: String) throws(MappingError) -> Day {
+			guard let seconds = value.decimal, seconds >= minDate, seconds <= maxDate else {
+				throw MappingError("The \(name) of transaction \(number) is not a date.")
+			}
+			return Day(Date(timeIntervalSince1970: NSDecimalNumber(decimal: seconds).doubleValue), calendar: calendar)
+		}
 		let rowCurrency = fields.text("currency")?.uppercased() ?? currency
 		let booked = fields["booked"] != .boolean(false)
-		return Transaction(accountID: UUID(), bookingDate: day(booking), valueDate: fields["valueDate"]?.decimal.map(day),
-			amountMinor: Money(amount, currency: rowCurrency).minorUnits, currency: rowCurrency, name: fields.text("name") ?? "",
+		return Transaction(accountID: UUID(), bookingDate: try day(rawBooking, "booking date"), valueDate: try fields["valueDate"].map { value throws(MappingError) in
+			try day(value, "value date")
+		}, amountMinor: try money(amount, rowCurrency, "The amount of transaction \(number)").minorUnits, currency: rowCurrency, name: fields.text("name") ?? "",
 			purpose: fields.text("purpose") ?? "", counterpartyIBAN: fields.text("accountNumber"), counterpartyBIC: fields.text("bankCode"),
 			bookingText: fields.text("bookingText"), endToEndReference: fields.text("endToEndReference"), mandateReference: fields.text("mandateReference"),
 			creditorID: fields.text("creditorId"), isPending: !booked, sourceID: booked ? fields.text("transactionId") : nil)
 	}
+
+	/// The days a time stamp may name: from 1900 to 2200.
+	static let minDate = Decimal(-2_208_988_800)
+	static let maxDate = Decimal(7_258_118_400)
 
 	/// The stored transactions that `isKnownTransactionId` can return, by `transactionId`: booked rows
 	/// whose identifier appears once in the account.
@@ -164,13 +189,17 @@ extension [String: LuaValue] {
 }
 
 extension LuaValue {
-	/// The value as a decimal number, as Lua reads a number or a numeric string.
+	/// The value as a decimal number: a Lua number, or text that is a decimal number as a whole, as
+	/// Lua's `tonumber` reads it. "12,50" or "-5 EUR" is no number, so nothing of it is taken.
 	var decimal: Decimal? {
 		switch self {
-		case let .integer(number): Decimal(number)
-		case let .number(number) where number.isFinite: Decimal(string: String(number), locale: Locale(identifier: "en_US_POSIX"))
-		case let .string(text): Decimal(string: text.trimmingCharacters(in: .whitespaces), locale: Locale(identifier: "en_US_POSIX"))
-		default: nil
+		case let .integer(number): return Decimal(number)
+		case let .number(number) where number.isFinite: return Decimal(string: String(number), locale: Locale(identifier: "en_US_POSIX"))
+		case let .string(text):
+			let trimmed = text.trimmingCharacters(in: .whitespaces)
+			guard trimmed.wholeMatch(of: /[+-]?([0-9]+(\.[0-9]*)?|\.[0-9]+)([eE][+-]?[0-9]{1,3})?/) != nil else { return nil }
+			return Decimal(string: trimmed, locale: Locale(identifier: "en_US_POSIX"))
+		default: return nil
 		}
 	}
 }

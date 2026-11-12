@@ -6,7 +6,8 @@ import Testing
 
 /// Each dialog variant of a challenge table, as the API page lists them.
 @Suite struct ChallengeMappingTests {
-	let mapping = ChallengeMapping(purpose: .login, qrCodeName: "QR Code", hosts: ["auth.broker.example"], rememberedMethod: nil, newState: { "random-state" })
+	let mapping = ChallengeMapping(purpose: .login, qrCodeName: "QR Code", hosts: ["auth.broker.example", "bank.example"], rememberedMethod: nil,
+		newState: { "random-state" })
 
 	func interaction(_ fields: [String: LuaValue]) throws -> Interaction {
 		try mapping.interaction(for: #require(try ChallengeTable(fields)))
@@ -124,18 +125,40 @@ import Testing
 	@Test(arguments: [
 		("https://js.hcaptcha.com/1/api.js?sitekey=K", CaptchaRequest.Provider.hCaptcha),
 		("https://cdn.jsdelivr.net/npm/friendly-challenge/widget.module.min.js?sitekey=K", .friendlyCaptcha),
+		("https://cdn.jsdelivr.net/npm/friendly-challenge@0.9.18/widget.module.min.js?sitekey=K", .friendlyCaptcha),
 		("https://cdn.jsdelivr.net/npm/@friendlycaptcha/sdk/site.min.js?sitekey=K", .friendlyCaptcha),
 		("https://abc123.token.awswaf.com/abc123/def/challenge.js?sitekey=K", .amazonWAF),
 		("https://www.recaptcha.net/recaptcha/enterprise.js?sitekey=K", .reCAPTCHA),
 	])
-	func otherCaptchaServices(url: String, provider: CaptchaRequest.Provider) {
-		#expect(ChallengeMapping.captcha(URL(string: url)!)?.provider == provider)
+	func otherCaptchaServices(url: String, provider: CaptchaRequest.Provider) throws {
+		#expect(try mapping.captcha(URL(string: url + "&referer=https%3A%2F%2Fbank.example%2Flogin")!)?.provider == provider)
+	}
+
+	@Test(arguments: [
+		"https://cdn.jsdelivr.net/gh/attacker/friendly-challenge-x@1/steal.js?sitekey=geheim",
+		"https://cdn.jsdelivr.net/npm/friendly-challenge-x/widget.module.min.js?sitekey=geheim",
+		"https://cdn.jsdelivr.net/npm/friendly-challenge/../../gh/attacker/x/steal.js?sitekey=geheim",
+		"https://www.google.com/recaptcha/api.js/../../evil.js?sitekey=geheim",
+		"https://js.hcaptcha.com/1/api.js.evil?sitekey=geheim",
+	])
+	func scriptThatIsNotACaptchaServiceIsAPageOfAnUnlistedHost(url: String) {
+		#expect(throws: MappingError.self) { try interaction(["challenge": .string(url)]) }
+	}
+
+	@Test func captchaForAPageOfAnUnlistedHost() {
+		#expect(throws: MappingError("The captcha page evil.example is not a host that the extension may contact.")) {
+			try interaction(["challenge": .string("https://www.recaptcha.net/recaptcha/api.js?sitekey=KEY&referer=https%3A%2F%2Fevil.example%2F")])
+		}
+	}
+
+	@Test func siteKeyWithCharactersOfNoKey() throws {
+		#expect(try mapping.captcha(URL(string: "https://js.hcaptcha.com/1/api.js?sitekey=a%22%3Bfetch(1)")!) == nil)
 	}
 
 	@Test func oauthAuthorizationKeepsTheStateOfTheTable() throws {
 		#expect(try interaction(["challenge": .string("https://auth.broker.example/authorize?client_id=abc"), "state": .string("xyz")])
 			== .answer(request(.openBrowser(BrowserApproval(url: URL(string: "https://auth.broker.example/authorize?client_id=abc")!, state: "xyz",
-				hosts: ["auth.broker.example"]))), stepIncrement: 1))
+				hosts: ["auth.broker.example", "bank.example"]))), stepIncrement: 1))
 	}
 
 	@Test func missingStateIsAppended() throws {
@@ -187,9 +210,20 @@ import Testing
 		("https://auth.broker.example/login", .load),
 		("https://tracker.example/pixel", .refuse("The login window may not open tracker.example.")),
 		("http://auth.broker.example/login", .refuse("The login window may not open auth.broker.example.")),
+		("https://service.moneymoney-app.com/1/%72edirect?code=4711&state=xyz", .finish(code: "4711")),
+		("https://SERVICE.moneymoney-app.com/1/redirect/?code=4711&state=xyz", .finish(code: "4711")),
+		("https://service.moneymoney-app.com/2/other?code=4711&state=xyz", .refuse("The login window may not open service.moneymoney-app.com.")),
+		("moneten://other?code=4711&state=xyz", .refuse("The login window may not open moneten://other.")),
 	])
 	func step(address: String, step: BrowserApproval.Step) {
 		#expect(approval.step(for: URL(string: address)!) == step)
+	}
+
+	@Test func subframesLoadOnlyAllowedHostsAndNeverFinish() {
+		#expect(approval.step(for: URL(string: "https://auth.broker.example/frame")!, isMainFrame: false) == .load)
+		#expect(approval.step(for: URL(string: "https://tracker.example/frame")!, isMainFrame: false) == .refuse("The login window may not open tracker.example."))
+		#expect(approval.step(for: URL(string: "moneten://oauth?code=4711&state=xyz")!, isMainFrame: false)
+			== .refuse("Only the page of the login may end it."))
 	}
 }
 

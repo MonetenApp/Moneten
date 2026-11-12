@@ -75,7 +75,7 @@ public struct ExtensionConnector: BankConnector {
 			await run.end()
 			throw error
 		}
-		state.storage = await run.end()
+		state.storage = await run.end() ?? state.storage
 		state.tanMethod = run.tanMethod ?? state.tanMethod
 		return ConnectorReport(outcomes: outcomes, state: state.accessState)
 	}
@@ -100,7 +100,7 @@ public struct ExtensionConnector: BankConnector {
 			await run.end()
 			throw error
 		}
-		state.storage = await run.end()
+		state.storage = await run.end() ?? state.storage
 		state.tanMethod = run.tanMethod
 		return AccessSetup(accounts: accounts, state: state.accessState, loginName: run.loginName)
 	}
@@ -367,7 +367,8 @@ private final class ScriptRun {
 	}
 
 	/// Calls `EndSession` after a successful login and returns `LocalStorage`, then ends the process.
-	/// An error of `EndSession` goes to the log and keeps the fetched data.
+	/// An error of `EndSession` goes to the log and keeps the fetched data. When `LocalStorage` cannot
+	/// be saved, the caller keeps the one of the last run.
 	@discardableResult
 	func end() async -> Data? {
 		if loggedIn, await client.entryPoints.contains(.endSession) {
@@ -377,7 +378,13 @@ private final class ScriptRun {
 				connector.services.log(.print("EndSession: \(error)"))
 			}
 		}
-		let storage = try? await client.finish()
+		let storage: Data?
+		do {
+			storage = try await client.finish()
+		} catch {
+			connector.services.log(.print("LocalStorage: \(error)"))
+			storage = nil
+		}
 		await client.end()
 		return storage
 	}

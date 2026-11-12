@@ -249,14 +249,21 @@ struct LuaStack {
 	/// Lua and of the host, and the JSON of the app has a limit too.
 	static let maxDepth = 100
 
+	/// How many values one walk over tables reads. A table that appears twice is read twice, so tables
+	/// that share their children would otherwise grow without bound.
+	static let maxValues = 1_000_000
+
 	/// The value at `index`. A table that contains itself ends in `null` where it repeats. A number
 	/// that is not finite fails, because JSON cannot hold it.
 	func value(at index: Int32) throws(ScriptError) -> LuaValue {
 		var seen: Set<UnsafeRawPointer> = []
-		return try value(at: lua_absindex(L, index), seen: &seen)
+		var budget = Self.maxValues
+		return try value(at: lua_absindex(L, index), seen: &seen, budget: &budget)
 	}
 
-	private func value(at index: Int32, seen: inout Set<UnsafeRawPointer>) throws(ScriptError) -> LuaValue {
+	private func value(at index: Int32, seen: inout Set<UnsafeRawPointer>, budget: inout Int) throws(ScriptError) -> LuaValue {
+		budget -= 1
+		guard budget >= 0 else { throw ScriptError("The value holds more than \(Self.maxValues) values.") }
 		switch lua_type(L, index) {
 		case LUA_TBOOLEAN: return .boolean(lua_toboolean(L, index) != 0)
 		case LUA_TNUMBER where lua_isinteger(L, index) != 0: return .integer(lua_tointegerx(L, index, nil))
@@ -271,19 +278,19 @@ struct LuaStack {
 			guard let pointer = lua_topointer(L, index), seen.insert(pointer).inserted else { return .null }
 			defer { seen.remove(pointer) }
 			guard seen.count <= Self.maxDepth, lua_checkstack(L, 4) != 0 else { throw ScriptError("Tables nest deeper than \(Self.maxDepth) levels.") }
-			return try table(at: index, seen: &seen)
+			return try table(at: index, seen: &seen, budget: &budget)
 		default: return .null
 		}
 	}
 
-	private func table(at index: Int32, seen: inout Set<UnsafeRawPointer>) throws(ScriptError) -> LuaValue {
+	private func table(at index: Int32, seen: inout Set<UnsafeRawPointer>, budget: inout Int) throws(ScriptError) -> LuaValue {
 		var numbered: [Int64: LuaValue] = [:]
 		var named: [String: LuaValue] = [:]
 		lua_pushnil(L)
 		while lua_next(L, index) != 0 {
 			let item: LuaValue
 			do {
-				item = try value(at: lua_absindex(L, -1), seen: &seen)
+				item = try value(at: lua_absindex(L, -1), seen: &seen, budget: &budget)
 			} catch {
 				lua_settop(L, -3)
 				throw error

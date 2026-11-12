@@ -339,4 +339,31 @@ import Testing
 			"sequenceTag": .integer(48), "integers": .array([.string("01"), .string("02")]), "hello": .string("Hello"), "guarded": .boolean(false)]))
 		await client.end()
 	}
+
+	@Test func localStorageThatCannotBeSavedKeepsTheLastOne() async throws {
+		let package = demo(Self.calls + """
+			function RefreshAccount(account)
+				if account.accountNumber == "A" then
+					print("key " .. tostring(LocalStorage.key))
+					LocalStorage.key = LocalStorage.key or "k1"
+					if LocalStorage.key == "k1" and LocalStorage.runs then
+						local t = {}
+						for i = 1, 40 do t = {a = t, b = t} end
+						LocalStorage.huge = t
+					end
+					LocalStorage.runs = (LocalStorage.runs or 0) + 1
+				end
+				return {balance = 0, transactions = {}}
+			end
+			""")
+		var state = ExtensionState(nil)
+		var keys: [String] = []
+		for _ in 0..<3 {
+			let session = TestSession()
+			let (report, _) = try await Self.refresh(session.connector(package), session, state: state.accounts.isEmpty ? nil : state)
+			state = ExtensionState(report.state)
+			keys.append(session.printed[2])
+		}
+		#expect(keys == ["key nil", "key k1", "key k1"])
+	}
 }

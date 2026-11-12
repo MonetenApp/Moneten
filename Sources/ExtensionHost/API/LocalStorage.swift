@@ -43,7 +43,8 @@ enum LocalStorage {
 		stack.pushGlobal(global)
 		defer { lua_settop(stack.L, 0) }
 		var seen: Set<UnsafeRawPointer> = []
-		let value = lua_type(stack.L, -1) == LUA_TTABLE ? try read(at: lua_absindex(stack.L, -1), of: stack, seen: &seen) : nil
+		var budget = LuaStack.maxValues
+		let value = lua_type(stack.L, -1) == LUA_TTABLE ? try read(at: lua_absindex(stack.L, -1), of: stack, seen: &seen, budget: &budget) : nil
 		do {
 			return try JSONEncoder().encode(value ?? .table([]))
 		} catch {
@@ -51,8 +52,10 @@ enum LocalStorage {
 		}
 	}
 
-	private static func read(at index: Int32, of stack: LuaStack, seen: inout Set<UnsafeRawPointer>) throws(ScriptError) -> Value? {
+	private static func read(at index: Int32, of stack: LuaStack, seen: inout Set<UnsafeRawPointer>, budget: inout Int) throws(ScriptError) -> Value? {
 		let L = stack.L
+		budget -= 1
+		guard budget >= 0 else { throw ScriptError("LocalStorage holds more than \(LuaStack.maxValues) values.") }
 		switch lua_type(L, index) {
 		case LUA_TBOOLEAN: return .boolean(lua_toboolean(L, index) != 0)
 		case LUA_TNUMBER where lua_isinteger(L, index) != 0: return .integer(lua_tointegerx(L, index, nil))
@@ -72,11 +75,11 @@ enum LocalStorage {
 				let key: Value?
 				switch lua_type(L, -2) {
 				case LUA_TTABLE: key = nil
-				default: key = try read(at: lua_absindex(L, -2), of: stack, seen: &seen)
+				default: key = try read(at: lua_absindex(L, -2), of: stack, seen: &seen, budget: &budget)
 				}
 				let value: Value?
 				do {
-					value = try read(at: lua_absindex(L, -1), of: stack, seen: &seen)
+					value = try read(at: lua_absindex(L, -1), of: stack, seen: &seen, budget: &budget)
 				} catch {
 					lua_settop(L, -3)
 					throw error

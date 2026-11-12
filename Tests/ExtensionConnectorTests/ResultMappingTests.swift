@@ -114,4 +114,49 @@ import Testing
 			"purpose": .string("Abschlag"), "currency": .string("EUR"), "amount": .number(-89.0), "bookingDate": .integer(1793660400), "booked": .boolean(true),
 			"accountNumber": .string("DE02120300000000202051")])])
 	}
+
+	@Test(arguments: ["12,50", "1.234,56", "12abc", "-5 EUR", "", "0x10", "nan", "inf"])
+	func amountThatIsNotWhollyANumber(text: String) {
+		#expect(throws: MappingError("The amount of transaction 1 is not a number.")) {
+			try result(["balance": .integer(0), "transactions": .array([.object(["bookingDate": .integer(1794182400), "amount": .string(text)])])])
+		}
+	}
+
+	@Test(arguments: [("12.50", Int64(1250)), (" -5 ", -500), ("1e3", 100_000), (".5", 50)])
+	func amountAsNumericText(text: String, minor: Int64) throws {
+		#expect(try result(["balance": .integer(0), "transactions": .array([.object(["bookingDate": .integer(1794182400), "amount": .string(text)])])])
+			.transactions?.rows.first?.amountMinor == minor)
+	}
+
+	@Test func balanceThatIsNotANumber() {
+		#expect(throws: MappingError("The balance is not a number.")) { try result(["balance": .string("1.234,56"), "transactions": .array([])]) }
+	}
+
+	@Test(arguments: [LuaValue.number(1e20), .number(-1e20), .integer(Int64.max)])
+	func balanceOutOfRange(balance: LuaValue) {
+		#expect(throws: MappingError("The balance is out of range.")) { try result(["balance": balance, "transactions": .array([])]) }
+	}
+
+	@Test func amountOutOfRange() {
+		#expect(throws: MappingError("The amount of transaction 1 is out of range.")) {
+			try result(["balance": .integer(0), "transactions": .array([.object(["bookingDate": .integer(1794182400), "amount": .number(9e16)])])])
+		}
+	}
+
+	@Test func bookingDateOutOfRange() {
+		#expect(throws: MappingError("The booking date of transaction 1 is not a date.")) {
+			try result(["balance": .integer(0), "transactions": .array([.object(["bookingDate": .number(1e300), "amount": .integer(1)])])])
+		}
+	}
+
+	@Test func securitiesThatAddUpBeyondTheRange() {
+		let depot = ListedAccount(.object(["accountNumber": .string("D-1"), "portfolio": .boolean(true)]))!
+		let big = LuaValue.object(["name": .string("Muster AG"), "amount": .number(9e12)])
+		#expect(throws: MappingError("The value of security 1 is out of range.")) {
+			try result(["securities": .array([.object(["amount": .number(9e16)])])], of: depot)
+		}
+		#expect(throws: MappingError("The securities add up to more than Moneten can hold.")) {
+			try result(["securities": .array(Array(repeating: big, count: 2_000))], of: depot)
+		}
+	}
 }
