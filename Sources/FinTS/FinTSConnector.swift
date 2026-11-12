@@ -75,6 +75,8 @@ public struct FinTSConnector: BankConnector {
 	let inactivity: TimeInterval
 	/// How long the helper may take to end after a cancel before it is terminated.
 	let grace: TimeInterval
+	/// Judges the certificate chain of the bank's server: `verdict`, unless a test holds the check.
+	let trust: @Sendable (_ host: String, _ chain: [Data]) -> String
 
 	/// The connector of the app, with the product ID that scripts/build-app.sh puts into Info.plist.
 	public init() {
@@ -82,12 +84,14 @@ public struct FinTSConnector: BankConnector {
 			version: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "")
 	}
 
-	init(helper: Helper, productID: String?, version: String, inactivity: TimeInterval = 30, grace: TimeInterval = 5) {
+	init(helper: Helper, productID: String?, version: String, inactivity: TimeInterval = 30, grace: TimeInterval = 5,
+		trust: @escaping @Sendable (_ host: String, _ chain: [Data]) -> String = FinTSConnector.verdict) {
 		self.helper = helper
 		self.productID = productID
 		self.version = version
 		self.inactivity = inactivity
 		self.grace = grace
+		self.trust = trust
 	}
 
 	/// The name, BIC, and FinTS address of a bank. Nil when the bank directory does not know the code.
@@ -219,7 +223,7 @@ public struct FinTSConnector: BankConnector {
 					case .alive:
 						continue
 					case let .trust(id, host, chain):
-						process.send(Answer(id: id, value: Self.verdict(host: host, chain: chain)))
+						process.send(Answer(id: id, value: trust(host, chain)))
 					case let .withdraw(id):
 						guard let approval = approvals.removeValue(forKey: id) else { continue }
 						approval.cancel()
