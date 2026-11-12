@@ -76,7 +76,7 @@ final class DebugHarness {
 		// "<name>" starts a made-up refresh that shows one dialog of SyncDemo.requests.
 		case "syncdemo": SyncDemo.start(argument, in: model.sync)
 		case "synccancel": model.sync.cancelAll()
-		// "<field> <value>" drives the "Add Account" assistant: entry, login, pin, other, next, back, toggle, cancel.
+		// "<field> <value>" drives the "Add Account" assistant: entry, login, pin, other, group, next, back, toggle, cancel.
 		case "setup": setup(argument)
 		// "<text>" answers the dialog on screen with a TAN, or with a PIN when it asks for one.
 		case "answer":
@@ -230,6 +230,8 @@ final class DebugHarness {
 		case "next": setup.next()
 		case "back": setup.back()
 		case "toggle": if setup.selected.remove(value) == nil { setup.selected.insert(value) }
+		// What "Add Account..." in the context menu of a group does.
+		case "group": setup.groupID = model.ledger.groups.first { $0.name == value }?.id
 		case "cancel": model.closeAccountSetup()
 		default: break
 		}
