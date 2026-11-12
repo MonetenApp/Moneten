@@ -21,9 +21,11 @@ case "$1" in
 esac
 BUILD="$(git rev-list --count HEAD 2>/dev/null || echo 1)"
 
-# Adds the FinTS helper to the app $1 and signs both again with the certificate of the app. The
-# helper lives in Contents/Resources, because codesign takes every file in Contents/Helpers for code,
-# and the Java runtime needs its data files next to its libraries. The helper gets the hardened
+# Adds the FinTS helper to the app $1 and signs both again with the certificate of the app. It runs
+# after the export, because the export signs the app with the Developer ID but would leave the
+# helper with the signature of the archive. The helper lives in Contents/Resources, because codesign
+# takes every file in Contents/Helpers for code, and the Java runtime needs its data files next to
+# its libraries. The helper gets the hardened
 # runtime when the app has it: an ad hoc signature has no team, and library validation would refuse
 # the libraries of the Java runtime. Only the helper gets allow-jit.
 embed_fints_helper() {
@@ -34,12 +36,15 @@ embed_fints_helper() {
 	IDENTITY=-
 	[ -f "$CERTS/cert0" ] && IDENTITY=$(shasum -a 1 "$CERTS/cert0" | cut -d' ' -f1)
 	rm -rf "$CERTS"
+	# Notarization needs a secure timestamp on every signature, which an ad hoc signature cannot have.
+	TIMESTAMP=""
+	[ "$IDENTITY" = - ] || TIMESTAMP="--timestamp"
 	RUNTIME=""
 	codesign -dv "$1" 2>&1 | grep -q '^CodeDirectory.*flags=.*runtime' && RUNTIME="--options runtime"
 	find "$HELPER/runtime" -type f ! -path '*/bin/java' | while read -r f; do
-		if file -b "$f" | grep -q Mach-O; then codesign --force $RUNTIME --sign "$IDENTITY" "$f" 2>/dev/null; fi
+		if file -b "$f" | grep -q Mach-O; then codesign --force $RUNTIME $TIMESTAMP --sign "$IDENTITY" "$f" 2>/dev/null; fi
 	done
-	codesign --force $RUNTIME --entitlements App/FinTSHelper.entitlements --sign "$IDENTITY" "$HELPER/runtime/bin/java" 2>/dev/null
+	codesign --force $RUNTIME $TIMESTAMP --entitlements App/FinTSHelper.entitlements --sign "$IDENTITY" "$HELPER/runtime/bin/java" 2>/dev/null
 	# The product ID goes through a pipe, never through an argument, a variable, or a log.
 	security find-generic-password -s 'Moneten FinTS product ID' -w 2>/dev/null | python3 -c '
 import plistlib, sys
@@ -51,7 +56,9 @@ if product:
 else:
 	print("No FinTS product ID in the login Keychain. The app builds, and FinTS refuses to connect.", file=sys.stderr)
 ' "$1/Contents/Info.plist"
-	codesign --force --preserve-metadata=identifier,entitlements,requirements,flags,runtime --sign "$IDENTITY" "$1" 2>/dev/null
+	codesign --force --preserve-metadata=identifier,entitlements,requirements,flags,runtime $TIMESTAMP --sign "$IDENTITY" "$1" 2>/dev/null
+	signer() { codesign -dvv "$1" 2>&1 | grep -E '^(Authority|Signature|TeamIdentifier)='; }
+	[ "$(signer "$HELPER/runtime/bin/java")" = "$(signer "$1")" ] || { echo "The FinTS helper is not signed like the app." >&2; exit 1; }
 }
 
 scripts/generate-project.sh
@@ -62,7 +69,6 @@ if [ -z "$ARCHIVE" ]; then
 else
 	rm -rf "$ARCHIVE" .build/xcode/export
 	$XCODEBUILD -archivePath "$ARCHIVE" -allowProvisioningUpdates CURRENT_PROJECT_VERSION="$BUILD" archive
-	embed_fints_helper "$ARCHIVE/Products/Applications/Moneten.app"
 	cat > .build/xcode/ExportOptions.plist <<-EOF
 	<?xml version="1.0" encoding="UTF-8"?>
 	<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -79,6 +85,6 @@ fi
 rm -rf dist/Moneten.app
 mkdir -p dist
 cp -R "$PRODUCT" dist/
-[ -n "$ARCHIVE" ] || embed_fints_helper dist/Moneten.app
+embed_fints_helper dist/Moneten.app
 codesign --verify --strict --deep dist/Moneten.app
 echo "Built dist/Moneten.app ($CONFIG, build $BUILD), $(codesign -dv --verbose=2 dist/Moneten.app 2>&1 | grep -m1 -E '^(Authority|Signature)=')"
