@@ -330,4 +330,13 @@ import Testing
 		#expect(request.confirmTitle == "Next")
 		#expect(second.printed == ["EndSession"])
 	}
+
+	@Test func undocumentedNamesThatSignedExtensionsUse() async throws {
+		let package = try ExtensionPackage.load(from: fixtures.appending(path: "defacto"))
+		let (client, _, _) = try await ExtensionHostClient.start(HostSetup(package: package, fixture: try fixture("defacto/fixture.json")), executable: hostExecutable,
+			ask: { _ in .denied })
+		#expect(try await client.call("Check") == .object(["location": .string("https://www.bank.example/portal?code=X"), "redirects": .boolean(false),
+			"sequenceTag": .integer(48), "integers": .array([.string("01"), .string("02")]), "hello": .string("Hello"), "guarded": .boolean(false)]))
+		await client.end()
+	}
 }
