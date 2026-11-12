@@ -11,8 +11,8 @@
 - A spec names MoneyMoney only in its Purpose, as openspec/config.yaml requires. A difference to
   MoneyMoney belongs under "Decided for Moneten" in the proposal.
 
-Proposals and specs describe planned work and may name folders that do not exist yet, and the
-OpenSpec tool files under .claude/ are generated, so the path checks skip them.
+Proposals and specs describe planned work and may name folders that do not exist yet, so the path
+checks skip them.
 
 Prints one line per problem and exits with 1 when there is any.
 """
@@ -23,7 +23,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 TOP = {p.name for p in ROOT.iterdir()} - {".git", ".build", "dist"}
-PLANNED = re.compile(r"^(\.claude/|openspec/changes/[^/]+/(proposal\.md|specs/))")
+PLANNED = re.compile(r"^openspec/changes/[^/]+/(proposal\.md|specs/)")
 BUILTIN = {"Bool", "Int", "Int64", "String", "Double", "Decimal", "Date", "UUID", "UserDefaults", "nil"}
 files = [ROOT / f for f in subprocess.run(["git", "ls-files", "*.md"], cwd=ROOT, capture_output=True, text=True, check=True).stdout.split()]
 problems = []

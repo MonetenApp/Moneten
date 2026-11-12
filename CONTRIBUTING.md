@@ -12,7 +12,7 @@ Thank you for helping. This page explains how to find work, how to propose a cha
 
 ## How a change moves from spec to code
 
-The project uses [OpenSpec](https://github.com/Fission-AI/OpenSpec). Install it with `npm install -g @fission-ai/openspec`.
+The project uses [OpenSpec](https://github.com/Fission-AI/OpenSpec). Install it with `npm install -g @fission-ai/openspec`. For Claude Code, `openspec init --tools claude` adds the `/opsx` commands to your checkout. Git ignores them.
 
 1. **Pick a change.** `openspec list` shows all changes. `openspec show <change>` prints its proposal and specs.
 2. **Plan it.** A change starts with a proposal and specs. Before you write code, add `design.md` and `tasks.md`. `openspec status --change <change>` names the next missing file, and `openspec instructions <file> --change <change>` explains how to write it. With Claude Code, `/opsx:apply <change>` does both steps with you.
