@@ -146,8 +146,17 @@ public final class Store: Sendable {
 		}
 	}
 
-	public func deleteAccount(_ id: UUID) throws {
-		_ = try queue.write { db in try Account.deleteOne(db, key: id) }
+	/// Deletes an account. An access goes with its last account, together with its state. Returns the
+	/// ID of that access.
+	@discardableResult
+	public func deleteAccount(_ id: UUID) throws -> UUID? {
+		try queue.write { db in
+			let access = try Account.fetchOne(db, key: id)?.accessID
+			_ = try Account.deleteOne(db, key: id)
+			guard let access, try Account.filter(Column("accessID") == access).fetchCount(db) == 0 else { return nil }
+			_ = try AccessRecord.deleteOne(db, key: access)
+			return access
+		}
 	}
 
 	public func deleteGroup(_ id: UUID) throws {

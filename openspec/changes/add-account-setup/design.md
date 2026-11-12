@@ -8,7 +8,7 @@ Issue #85 builds the FinTS path of the assistant on the connector of issue #13 p
 
 ### The data of an access
 
-`Storage` keeps each access in the table `access`: the source as JSON, the bank name, the login name, and the opaque `AccessState` of its connector. An account links to its access with `accessID` and to the account at the bank with `remoteID`, and keeps `refreshedAt` and `refreshError` for the status of the account-refresh spec. Migration `v7` adds this and changes no existing row. [data-model.md](../../../docs/data-model.md#bank-accesses) lists the fields.
+`Storage` keeps each access in the table `access`: the source as JSON, the bank name, the login name, and the opaque `AccessState` of its connector. An account links to its access with `accessID` and to the account at the bank with `remoteID`, and keeps `refreshedAt` and `refreshError` for the status of the account-refresh spec. An access goes with its last account: `Store.deleteAccount(_:)` deletes its row and state, and the app forgets its PIN. Migration `v7` adds this and changes no existing row. [data-model.md](../../../docs/data-model.md#bank-accesses) lists the fields.
 
 ### Who owns what
 

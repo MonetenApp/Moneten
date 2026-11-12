@@ -95,7 +95,8 @@ public final class SessionBroker {
 		pins[access] = pin
 	}
 
-	func forgetPIN(of access: UUID) {
+	/// Forgets the PIN of one access, for example when the access goes with its last account.
+	public func forgetPIN(of access: UUID) {
 		pins[access] = nil
 	}
 

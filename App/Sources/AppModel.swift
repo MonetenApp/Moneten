@@ -557,7 +557,10 @@ final class AppModel {
 	func remove(account id: UUID) {
 		guard let store else { return }
 		do {
-			try store.deleteAccount(id)
+			if let access = try store.deleteAccount(id) {
+				accesses[access] = nil
+				sync.broker.forgetPIN(of: access)
+			}
 			ledger.replace(accounts: ledger.accounts.filter { $0.id != id }, transactions: ledger.transactions.filter { $0.accountID != id })
 			if selection == .account(id) { selection = nil }
 		} catch {

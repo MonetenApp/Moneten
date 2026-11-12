@@ -82,4 +82,21 @@ struct AccessStoreTests {
 		try store.add(otherBank, state: nil, accounts: [])
 		#expect(try store.accesses().count == 3)
 	}
+
+	@Test("An access and its state go with its last account")
+	func lastAccountRemoved() throws {
+		let store = try Vault(folder: folder).create(password: Self.password, starterCategories: [])
+		let giro = giro()
+		let savings = Account(position: 1, name: "Tagesgeld", kind: .savings, source: .bank, accessID: Self.access.id, remoteID: "1234567890")
+		let cash = Account(position: 2, name: "Bargeld", kind: .cash, source: .offline)
+		try store.add(Self.access, state: AccessState(Data([1])), accounts: [giro, savings])
+		try store.save(cash)
+
+		#expect(try store.deleteAccount(cash.id) == nil)
+		#expect(try store.deleteAccount(giro.id) == nil)
+		#expect(try store.accesses() == [Self.access])
+		#expect(try store.deleteAccount(savings.id) == Self.access.id)
+		#expect(try store.accesses().isEmpty)
+		#expect(try store.state(of: Self.access.id) == nil)
+	}
 }
