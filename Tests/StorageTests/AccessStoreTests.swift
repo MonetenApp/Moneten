@@ -57,7 +57,7 @@ struct AccessStoreTests {
 		#expect(try store.loadLedger().accounts.isEmpty)
 	}
 
-	@Test("A second setup of the same login adds its accounts to the access that exists and stores the new state on it")
+	@Test("A second setup of the same login adds its accounts to the access that exists and keeps the state of that access")
 	func sameLoginTwice() throws {
 		let store = try Vault(folder: folder).create(password: Self.password, starterCategories: [])
 		try store.add(Self.access, state: AccessState(Data([1])), accounts: [giro()])
@@ -71,7 +71,7 @@ struct AccessStoreTests {
 		#expect(stored.access.id == Self.access.id)
 		#expect(stored.access.source == again.source)
 		#expect(try store.accesses().map(\.id) == [Self.access.id])
-		#expect(try store.state(of: Self.access.id) == AccessState(Data([2])))
+		#expect(try store.state(of: Self.access.id) == AccessState(Data([1])))
 		#expect(try store.loadLedger().accounts.map(\.accessID) == [Self.access.id, Self.access.id])
 		#expect(stored.accounts.map(\.accessID) == [Self.access.id])
 
@@ -81,6 +81,24 @@ struct AccessStoreTests {
 			loginName: "erika77")
 		try store.add(otherBank, state: nil, accounts: [])
 		#expect(try store.accesses().count == 3)
+	}
+
+	@Test("A setup of a known login never rolls back the state of a refresh, whether the refresh ends before or after Done")
+	func setupKeepsRefreshState() throws {
+		let store = try Vault(folder: folder).create(password: Self.password, starterCategories: [])
+		try store.add(Self.access, state: AccessState(Data([0])), accounts: [giro()])
+		let again = Access(source: Self.access.source, bankName: "Musterbank", loginName: "erika77")
+
+		// (a) The refresh that waited for the login ends first, then the user clicks "Done" with the state of the login.
+		try store.recordRefresh(of: Self.access.id, state: AccessState(Data([2])), accounts: [])
+		try store.add(again, state: AccessState(Data([1])), accounts: [])
+		#expect(try store.state(of: Self.access.id) == AccessState(Data([2])))
+
+		// (b) "Done" comes first, then the refresh ends with the state that grew from the stored one.
+		try store.add(again, state: AccessState(Data([3])), accounts: [])
+		#expect(try store.state(of: Self.access.id) == AccessState(Data([2])))
+		try store.recordRefresh(of: Self.access.id, state: AccessState(Data([4])), accounts: [])
+		#expect(try store.state(of: Self.access.id) == AccessState(Data([4])))
 	}
 
 	@Test("An access and its state go with its last account")

@@ -108,13 +108,15 @@ public final class Store: Sendable {
 
 	/// Stores the access of a setup with its state and its accounts at once ("Finish the setup"), so that a
 	/// failure leaves no access without accounts. A login that the app has already keeps its access: the
-	/// accounts join it, and it takes the new source and state. Returns the stored access and accounts.
+	/// accounts join it, and it takes the new source. It keeps its stored state, because a refresh that
+	/// waited for the login of the setup starts from that state and may end before or after "Done", so
+	/// the state of the setup would roll it back. Returns the stored access and accounts.
 	@discardableResult
 	public func add(_ access: Access, state: AccessState?, accounts: [Account]) throws -> (access: Access, accounts: [Account]) {
 		try queue.write { db in
 			let known = try AccessRecord.fetchAll(db).first { $0.access.isSameLogin(as: access) }
 			let record = AccessRecord(id: known?.id ?? access.id, source: access.source, bankName: access.bankName, loginName: access.loginName,
-				state: state?.data ?? known?.state)
+				state: known?.state ?? state?.data)
 			try record.save(db)
 			let linked = accounts.map { a -> Account in var a = a; a.accessID = record.id; return a }
 			for a in linked { try a.save(db) }

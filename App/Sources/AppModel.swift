@@ -498,18 +498,20 @@ final class AppModel {
 	}
 
 	/// Stores the access with the accounts that the user selected, keeps the PIN of the login in
-	/// memory, selects the first account, and starts the first refresh ("Finish the setup"). A login
+	/// memory, selects the first new account, or the first connected one when none is new, and starts the
+	/// first refresh ("Finish the setup"). A login
 	/// that the app has already keeps its access. `listed` holds every account that the bank listed.
 	/// Throws the error of the database, which the assistant shows.
 	func add(_ new: Access, state: AccessState?, accounts candidates: [Account], listed: [Account], connecting: [UUID: UUID], pin: Secret) throws {
 		guard let store else { return }
 		let (access, accounts) = try store.add(new, state: state, accounts: ledger.accountsToAdd(candidates, listed: listed, connecting: connecting))
+		let first = accounts.first { ledger.account($0.id) == nil } ?? accounts.first
 		accesses[access.id] = access
 		for a in accounts { ledger.upsert(a) }
 		ledger.replace()
 		// Issue #86 saves the PIN in the database here when the user turns saving on.
 		sync.broker.remember(pin, for: access.id)
-		if let first = accounts.first { navigate(to: .account(first.id)) }
+		if let first { navigate(to: .account(first.id)) }
 		refresh(ledger.refreshAccounts(.all).filter { $0.key == access.id })
 	}
 

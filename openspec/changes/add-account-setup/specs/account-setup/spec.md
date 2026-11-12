@@ -242,7 +242,7 @@ The app SHALL mark an account in the third step as already present when the app 
 
 ### Requirement: Tell the accounts of a bank apart
 
-The app SHALL treat two accounts as the same account only when they have the same currency and the same IBAN. When one of them has no IBAN, they are the same when they have the same currency, account number, and Bankleitzahl, and, when the account in the app has a bank access, the same subaccount number.
+The app SHALL treat two accounts as the same account only when they have the same currency and the same IBAN. When one of them has no IBAN, they are the same when they have the same currency, account number, and Bankleitzahl, and, when the account in the app has a bank access, the same ID at the bank. The ID at the bank is the IBAN when the bank reports one, and else the account number with the subaccount number.
 
 #### Scenario: Same IBAN in another currency
 
