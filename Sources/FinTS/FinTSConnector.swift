@@ -1,5 +1,6 @@
 import Domain
 import Foundation
+import Security
 import Synchronization
 
 /// A bank of the bank directory of hbci4java.
@@ -207,6 +208,8 @@ public struct FinTSConnector: BankConnector {
 						process.send(Answer(id: id, value: answer.value))
 					case .alive:
 						continue
+					case let .trust(id, host, chain):
+						process.send(Answer(id: id, value: Self.verdict(host: host, chain: chain)))
 					case let .withdraw(id):
 						guard let approval = approvals.removeValue(forKey: id) else { continue }
 						approval.cancel()
@@ -231,6 +234,24 @@ public struct FinTSConnector: BankConnector {
 		do { try await process.ended() } catch { stopped = error }
 		try Task.checkCancellation()
 		if let error = process.firstFailure ?? stopped ?? (helperLeft ? HelperFailure.noAnswer : nil) { throw error }
+	}
+}
+
+extension FinTSConnector {
+	/// "trusted" when macOS trusts the chain for the host with the SSL policy, as for any connection
+	/// of the app (add-connection-security "Certificate validation"), or else the reason. The helper
+	/// takes this verdict instead of the root certificates of the Java runtime.
+	static func verdict(host: String, chain: [Data]) -> String {
+		let certificates = chain.compactMap { SecCertificateCreateWithData(nil, $0 as CFData) }
+		var trust: SecTrust?
+		var error: CFError?
+		if !certificates.isEmpty, certificates.count == chain.count,
+			SecTrustCreateWithCertificates(certificates as CFArray, SecPolicyCreateSSL(true, host as CFString), &trust) == errSecSuccess,
+			let trust, SecTrustEvaluateWithError(trust, &error) {
+			return "trusted"
+		}
+		let reason = error.map { CFErrorCopyDescription($0) as String } ?? "The server sent a certificate that does not read."
+		return "The certificate of the bank's server \(host) is not valid: \(reason)"
 	}
 }
 

@@ -1,13 +1,21 @@
 // The checks of FinTSHelper that need no bank: java -cp … FinTSHelper --self-test. CI runs them.
 
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.ObjectOutputStream;
+import java.io.PrintStream;
 import java.math.BigDecimal;
+import java.security.cert.CertificateException;
+import java.security.cert.CertificateFactory;
+import java.security.cert.X509Certificate;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.TimeZone;
+
+import javax.net.ssl.SSLHandshakeException;
 
 import org.kapott.hbci.GV_Result.GVRKUms;
 import org.kapott.hbci.GV_Result.GVRKUms.UmsLine;
@@ -42,6 +50,9 @@ final class SelfTest {
 	}
 
 	static void run() {
+		// hbci4java logs to System.out; the report of the checks goes to stdout alone.
+		PrintStream report = System.out;
+		System.setOut(System.err);
 		expect("JSON round trip",
 			FinTSHelper.Json.write(FinTSHelper.Json.parse("{\"a\":\"x\\\"y\\\\\\n\\u00fc\",\"b\":[1,true,null,-2.5],\"c\":{}}")),
 			"{\"a\":\"x\\\"y\\\\\\nü\",\"b\":[1,true,null,-2.5],\"c\":{}}");
@@ -128,6 +139,22 @@ final class SelfTest {
 		expect("TAN medium of the last refresh", medium("Handy", "Handy|Karte 1"), "Handy, asked 0");
 		expect("TAN medium that the bank no longer offers", medium("Alte Karte", "Handy|Karte 1"), "Karte 1, asked 1");
 
+		try {
+			X509Certificate selfSigned = (X509Certificate) CertificateFactory.getInstance("X.509").generateCertificate(new ByteArrayInputStream(Base64.getDecoder().decode(
+				"MIIBbjCCARSgAwIBAgIUZLBNL2oHyVE4uWYcY2AsrJoRs1wwCgYIKoZIzj0EAwIwHDEaMBgGA1UEAwwRZmludHMuZXhhbXBsZS5jb20wIBcNMjYxMTEyMDkwNzA2WhgPMjEyNjEwMTkwOTA3MDZaMBwxGjAYBgNVBAMMEWZpbnRzLmV4YW1wbGUuY29tMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAECfzMwKS0EZ30jfANBH637mHSfMao4flhFhxcprnVgHJkuHJBfW/6Q5nvVInTBjBMBtn5u2i4nhB+T3q+kd6NbqMyMDAwHQYDVR0OBBYEFLqzKE6BcWLapiQh64hKhdTm+St0MA8GA1UdEwEB/wQFMAMBAf8wCgYIKoZIzj0EAwIDSAAwRQIga6Dk0TBJmqVRQeTtLDsObTgchRXljI06HpI4NcEQBtYCIQDXlOpNDsxpw0I/cMyiVP2D7QH5XZDWiEzLCC/FhVMICQ==")));
+			expect("certificate trusted by macOS", trust(selfSigned, "trusted"), "accepted; trust fints.example.com 1");
+			expect("certificate refused by macOS", trust(selfSigned, "The certificate of the bank's server fints.example.com is not valid: expired"),
+				"The certificate of the bank's server fints.example.com is not valid: expired; trust fints.example.com 1");
+			SSLHandshakeException handshake = new SSLHandshakeException("PKIX path validation failed");
+			handshake.initCause(new CertificateException("The certificate of the bank's server fints.example.com is not valid: expired"));
+			expect("certificate failure", FinTSHelper.Json.write(FinTSHelper.failure(new HBCI_Exception("can not connect", handshake))),
+				"{\"type\":\"failed\",\"kind\":\"certificate\",\"text\":\"The certificate of the bank's server fints.example.com is not valid: expired\"}");
+			expect("handshake failure", FinTSHelper.Json.write(FinTSHelper.failure(new HBCI_Exception("can not connect", new SSLHandshakeException("no cipher suites in common")))),
+				"{\"type\":\"failed\",\"kind\":\"certificate\",\"text\":\"The certificate of the bank's server is not valid: no cipher suites in common\"}");
+		} catch (Exception e) {
+			failures.add("certificate: " + e);
+		}
+
 		HBCIUtils.init(new Properties(), new FinTSHelper.Callback(Map.of(), null));
 		try {
 			GVRKUms undated = new GVRKUms();
@@ -184,8 +211,8 @@ final class SelfTest {
 			HBCIUtils.done();
 		}
 
-		for (String f : failures) System.out.println("FAILED " + f);
-		System.out.println("FinTSHelper self-test: " + (checks - failures.size()) + " of " + checks + " checks passed");
+		for (String f : failures) report.println("FAILED " + f);
+		report.println("FinTSHelper self-test: " + (checks - failures.size()) + " of " + checks + " checks passed");
 		System.exit(failures.isEmpty() ? 0 : 1);
 	}
 
@@ -208,6 +235,27 @@ final class SelfTest {
 			chosen.add(data.toString());
 		}
 		return String.join(" ", chosen) + ", asked " + asked[0];
+	}
+
+	/// What MacTrust makes of the verdict of the app for a server fints.example.com, and the request
+	/// it sent.
+	static String trust(X509Certificate certificate, String verdict) {
+		List<String> sent = new ArrayList<>();
+		FinTSHelper.Callback callback = new FinTSHelper.Callback(Map.of(), null) {
+			@Override
+			String ask(Map<String, Object> request) {
+				sent.add(request.get("type") + " " + request.get("host") + " " + ((List<?>) request.get("chain")).size());
+				return verdict;
+			}
+		};
+		String outcome;
+		try {
+			new FinTSHelper.MacTrust(callback).check(new X509Certificate[] {certificate}, "fints.example.com");
+			outcome = "accepted";
+		} catch (CertificateException e) {
+			outcome = e.getMessage();
+		}
+		return outcome + "; " + String.join(", ", sent);
 	}
 
 	static Throwable thrown(Runnable run) {

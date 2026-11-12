@@ -376,6 +376,8 @@ struct FinTSConnectorTests {
 		(#"{"type":"failed","text":"Dialog abgebrochen"}"#, .bank(BankMessage(text: "Dialog abgebrochen"))),
 		(#"{"type":"failed","kind":"network","text":"Connection refused"}"#, .network("Connection refused")),
 		(#"{"type":"failed","kind":"unsupported","text":"The bank offers no encrypted FinTS address."}"#, .unsupported("The bank offers no encrypted FinTS address.")),
+		(#"{"type":"failed","kind":"certificate","text":"The certificate of the server fints.example.com is not valid."}"#,
+			.network("The certificate of the server fints.example.com is not valid.")),
 		(#"{"type":"ask","id":1,"kind":"pin","rejected":{"code":"9942","text":"PIN falsch"}}"#, .pinRejected(BankMessage(code: "9942", text: "PIN falsch"))),
 	])
 	func errors(line: String, expected: SyncFailure) async throws {
@@ -395,6 +397,24 @@ struct FinTSConnectorTests {
 			try await connector(script, productID: nil).refresh(RefreshRequest(access: Self.access, accounts: [Self.giro]), Session())
 		}
 		#expect(!FileManager.default.fileExists(atPath: record.path))
+	}
+
+	@Test("Lets macOS decide whether to trust the certificate of the bank's server")
+	func certificate() async throws {
+		// A self-signed certificate for fints.example.com, which macOS does not trust.
+		let selfSigned = "MIIBbjCCARSgAwIBAgIUZLBNL2oHyVE4uWYcY2AsrJoRs1wwCgYIKoZIzj0EAwIwHDEaMBgGA1UEAwwRZmludHMuZXhhbXBsZS5jb20wIBcNMjYxMTEyMDkwNzA2WhgPMjEyNjEwMTkwOTA3MDZaMBwxGjAYBgNVBAMMEWZpbnRzLmV4YW1wbGUuY29tMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAECfzMwKS0EZ30jfANBH637mHSfMao4flhFhxcprnVgHJkuHJBfW/6Q5nvVInTBjBMBtn5u2i4nhB+T3q+kd6NbqMyMDAwHQYDVR0OBBYEFLqzKE6BcWLapiQh64hKhdTm+St0MA8GA1UdEwEB/wQFMAMBAf8wCgYIKoZIzj0EAwIDSAAwRQIga6Dk0TBJmqVRQeTtLDsObTgchRXljI06HpI4NcEQBtYCIQDXlOpNDsxpw0I/cMyiVP2D7QH5XZDWiEzLCC/FhVMICQ=="
+		let session = Session()
+		_ = try await refresh("""
+			read cmd
+			echo '{"type":"trust","id":1,"host":"fints.example.com","chain":["\(selfSigned)"]}'
+			read a; printf '%s\\n' "$a" >> "$R"
+			echo '{"type":"trust","id":2,"host":"fints.example.com","chain":["AAAA"]}'
+			read a; printf '%s\\n' "$a" >> "$R"
+			""", session: session)
+		let answers = recorded
+		#expect(answers.map { $0["id"] } == ["1", "2"])
+		#expect(answers.allSatisfy { $0["value"]?.hasPrefix("The certificate of the bank's server fints.example.com is not valid: ") == true })
+		#expect(session.events.isEmpty)
 	}
 
 	@Test("Starts the helper without the environment of the app, without a crash file, and with the proxy of macOS")

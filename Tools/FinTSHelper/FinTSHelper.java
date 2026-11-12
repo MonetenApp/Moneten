@@ -7,6 +7,8 @@
 // The helper sends:
 // - ask: a request for the user, with id and kind pin, tanMethod, tanMedium, tan, or approve. An
 //   approval gets no answer. The helper sends withdraw with its id when hbci4java goes on.
+// - trust: the certificates of a server, leaf first, in Base64, with the host and an id. The app
+//   answers "trusted" or the reason why macOS does not trust them.
 // - alive, when hbci4java sends a message to the bank and when the answer arrives, so that the app
 //   can tell a silent bank from a long answer in many parts.
 // - progress, notice, bank, accounts, result, accountFailed, state, and failed.
@@ -30,8 +32,12 @@ import java.io.ObjectOutputStream;
 import java.io.OptionalDataException;
 import java.io.PrintStream;
 import java.math.BigDecimal;
+import java.net.Socket;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.security.GeneralSecurityException;
+import java.security.cert.CertificateException;
+import java.security.cert.X509Certificate;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -46,6 +52,15 @@ import java.util.Set;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
+import javax.net.ssl.HttpsURLConnection;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLEngine;
+import javax.net.ssl.SSLHandshakeException;
+import javax.net.ssl.SSLSession;
+import javax.net.ssl.SSLSocket;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.X509ExtendedTrustManager;
 
 import org.kapott.hbci.GV.HBCIJob;
 import org.kapott.hbci.GV.HBCIJobImpl;
@@ -605,6 +620,61 @@ public class FinTSHelper {
 		}
 	}
 
+	/// Leaves the trust in the server of the bank to macOS (add-connection-security "Certificate
+	/// validation"): the app evaluates the chain with the SSL policy for the host. The root
+	/// certificates of the Java runtime play no part, and nothing turns the check off.
+	static final class MacTrust extends X509ExtendedTrustManager {
+		final Callback callback;
+
+		MacTrust(Callback callback) {
+			this.callback = callback;
+		}
+
+		void check(X509Certificate[] chain, String host) throws CertificateException {
+			if (!present(host) || chain == null || chain.length == 0) throw new CertificateException("The server sent no certificate for a known host.");
+			List<Object> certificates = new ArrayList<>();
+			for (X509Certificate c : chain) certificates.add(Base64.getEncoder().encodeToString(c.getEncoded()));
+			String verdict = callback.ask(message("trust", "host", host, "chain", certificates));
+			if (!"trusted".equals(verdict)) throw new CertificateException(verdict);
+		}
+
+		@Override
+		public void checkServerTrusted(X509Certificate[] chain, String authType, Socket socket) throws CertificateException {
+			SSLSession session = socket instanceof SSLSocket s ? s.getHandshakeSession() : null;
+			check(chain, session == null ? null : session.getPeerHost());
+		}
+
+		@Override
+		public void checkServerTrusted(X509Certificate[] chain, String authType, SSLEngine engine) throws CertificateException {
+			check(chain, engine == null ? null : engine.getPeerHost());
+		}
+
+		@Override
+		public void checkServerTrusted(X509Certificate[] chain, String authType) throws CertificateException {
+			check(chain, null);
+		}
+
+		@Override
+		public void checkClientTrusted(X509Certificate[] chain, String authType, Socket socket) throws CertificateException {
+			throw new CertificateException("The helper accepts no clients.");
+		}
+
+		@Override
+		public void checkClientTrusted(X509Certificate[] chain, String authType, SSLEngine engine) throws CertificateException {
+			throw new CertificateException("The helper accepts no clients.");
+		}
+
+		@Override
+		public void checkClientTrusted(X509Certificate[] chain, String authType) throws CertificateException {
+			throw new CertificateException("The helper accepts no clients.");
+		}
+
+		@Override
+		public X509Certificate[] getAcceptedIssuers() {
+			return new X509Certificate[0];
+		}
+	}
+
 	/// The FinTS address of a bank must be https with a host.
 	static URI https(String url) {
 		URI uri;
@@ -843,6 +913,13 @@ public class FinTSHelper {
 		props.setProperty("client.passport.PinTan.init", "1");
 		props.setProperty("client.passport.PinTan.checkcert", "1");
 		Callback callback = new Callback(command, url);
+		try {
+			SSLContext tls = SSLContext.getInstance("TLS");
+			tls.init(null, new TrustManager[] {new MacTrust(callback)}, null);
+			HttpsURLConnection.setDefaultSSLSocketFactory(tls.getSocketFactory());
+		} catch (GeneralSecurityException e) {
+			throw new IllegalStateException(e);
+		}
 		HBCIUtils.init(props, callback);
 		HBCIHandler handle = null;
 		try {
@@ -889,6 +966,14 @@ public class FinTSHelper {
 			if (!(t instanceof ProcessException p) || p.getMsgStatus() == null) continue;
 			HBCIRetVal r = relevant(errors(p.getMsgStatus().globStatus, p.getMsgStatus().segStatus));
 			if (r != null) return message("failed", "code", r.code, "text", Out.withoutSecrets(r.text));
+		}
+		for (Throwable t : all) {
+			if (t instanceof CertificateException c) return message("failed", "kind", "certificate", "text", Out.withoutSecrets(String.valueOf(c.getMessage())));
+		}
+		for (Throwable t : all) {
+			if (t instanceof SSLHandshakeException) {
+				return message("failed", "kind", "certificate", "text", "The certificate of the bank's server is not valid: " + Out.withoutSecrets(String.valueOf(t.getMessage())));
+			}
 		}
 		for (Throwable t : all) {
 			if (t instanceof IOException) return message("failed", "kind", "network", "text", Out.withoutSecrets(String.valueOf(t.getMessage())));

@@ -33,6 +33,8 @@ enum HelperMessage: Decodable {
 	case withdraw(id: Int)
 	/// hbci4java sent a message to the bank, or received its answer. It only restarts the timeout.
 	case alive
+	/// The certificates of a server, leaf first, for macOS to decide on.
+	case trust(id: Int, host: String, chain: [Data])
 	case progress(done: Int, of: Int)
 	case notice(String)
 	case bank(FinTSBank?)
@@ -44,7 +46,7 @@ enum HelperMessage: Decodable {
 	case failed(HelperError)
 
 	private enum Key: String, CodingKey {
-		case type, id, done, of, text, name, bic, url, accounts, account, data
+		case type, id, done, of, text, name, bic, url, accounts, account, data, host, chain
 	}
 
 	init(from decoder: Decoder) throws {
@@ -53,6 +55,7 @@ enum HelperMessage: Decodable {
 		case "ask": self = .ask(id: try c.decode(Int.self, forKey: .id), try Ask(from: decoder))
 		case "withdraw": self = .withdraw(id: try c.decode(Int.self, forKey: .id))
 		case "alive": self = .alive
+		case "trust": self = .trust(id: try c.decode(Int.self, forKey: .id), host: try c.decode(String.self, forKey: .host), chain: try c.decode([Data].self, forKey: .chain))
 		case "progress": self = .progress(done: try c.decode(Int.self, forKey: .done), of: try c.decode(Int.self, forKey: .of))
 		case "notice": self = .notice(try c.decode(String.self, forKey: .text))
 		case "bank":
@@ -113,7 +116,7 @@ struct Ask: Decodable {
 	}
 }
 
-/// An error of the bank, or of the helper with `kind` "network" or "unsupported".
+/// An error of the bank, or of the helper with `kind` "network", "certificate", or "unsupported".
 struct HelperError: Decodable, Equatable {
 	let kind: String?
 	let code: String?
@@ -123,7 +126,7 @@ struct HelperError: Decodable, Equatable {
 
 	var failure: SyncFailure {
 		switch (kind, code) {
-		case ("network", _): .network(text)
+		case ("network", _), ("certificate", _): .network(text)
 		case ("unsupported", _): .unsupported(text)
 		case (_, "9078"): .notRegistered
 		case (_, "9942"), (_, "9340"): .pinRejected(message)
