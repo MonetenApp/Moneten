@@ -22,10 +22,15 @@ final class HelperProcess: @unchecked Sendable {
 	private let writer = DispatchQueue(label: "io.github.moneten.fints.write")
 	private let canceled = Mutex(false)
 	private let failure = Mutex<(any Error)?>(nil)
+	private let grace: TimeInterval
+	private let onLine: @Sendable () -> Void
 	private let onEnd: @Sendable () -> Void
 
-	/// `onEnd` runs once when stdout ends or the process ends, whichever comes first.
-	init(executable: URL, arguments: [String], onEnd: @escaping @Sendable () -> Void = {}) throws {
+	/// `onLine` runs when a line arrives, before `lines` delivers it. `onEnd` runs once when stdout ends
+	/// or the process ends, whichever comes first. `grace` is the time that the helper gets to end after
+	/// a cancel.
+	init(executable: URL, arguments: [String], grace: TimeInterval, onLine: @escaping @Sendable () -> Void = {},
+		onEnd: @escaping @Sendable () -> Void = {}) throws {
 		let stdin = Pipe(), stdout = Pipe()
 		process.executableURL = executable
 		process.arguments = arguments
@@ -38,6 +43,8 @@ final class HelperProcess: @unchecked Sendable {
 		_ = fcntl(stdin.fileHandleForWriting.fileDescriptor, F_SETNOSIGPIPE, 1)
 		input = stdin.fileHandleForWriting
 		output = stdout.fileHandleForReading
+		self.grace = grace
+		self.onLine = onLine
 		self.onEnd = onEnd
 		(lines, received) = AsyncStream.makeStream(of: String.self)
 		// A handler per pipe, because FileHandle.bytes reads all pipes one after the other, and one
@@ -66,7 +73,7 @@ final class HelperProcess: @unchecked Sendable {
 			let data = output.availableData
 			guard !data.isEmpty else { return finish(&state) }
 			state.partial.append(data)
-			for line in state.partial.takeLines() { received.yield(line) }
+			for line in state.partial.takeLines() { onLine(); received.yield(line) }
 		}
 	}
 
@@ -82,7 +89,7 @@ final class HelperProcess: @unchecked Sendable {
 				guard count > 0 else { break }
 				state.partial.append(contentsOf: buffer[0..<count])
 			}
-			for line in state.partial.takeLines() { received.yield(line) }
+			for line in state.partial.takeLines() { onLine(); received.yield(line) }
 			finish(&state)
 		}
 	}
@@ -104,15 +111,18 @@ final class HelperProcess: @unchecked Sendable {
 	}
 
 	/// Asks the helper to end the dialog with the bank, and ends the process when it is still running
-	/// after 5 seconds, and kills it 2 seconds later, so a stuck JVM never keeps a refresh open. It
+	/// after `grace`, and kills it 2 seconds later, so a stuck JVM never keeps a refresh open. It
 	/// returns at once: a helper that does not read its input blocks only the queue of its writes.
 	func cancel() {
 		guard canceled.withLock({ was in defer { was = true }; return !was }) else { return }
-		DispatchQueue.global().asyncAfter(deadline: .now() + 5) { [self] in
-			guard process.isRunning else { return }
+		// The timers hold the helper weakly: a run waits in `ended()` while the process runs, so they can
+		// reach it then, and a helper that ended is released at once instead of after the grace.
+		DispatchQueue.global().asyncAfter(deadline: .now() + grace) { [weak self] in
+			guard let self, process.isRunning else { return }
 			process.terminate()
-			DispatchQueue.global().asyncAfter(deadline: .now() + 2) { [self] in
-				if process.isRunning { kill(process.processIdentifier, SIGKILL) }
+			DispatchQueue.global().asyncAfter(deadline: .now() + 2) { [weak self] in
+				guard let self, process.isRunning else { return }
+				kill(process.processIdentifier, SIGKILL)
 			}
 		}
 		send(["type": "cancel"])
@@ -125,6 +135,8 @@ final class HelperProcess: @unchecked Sendable {
 	}
 
 	var firstFailure: (any Error)? { failure.withLock { $0 } }
+
+	var isRunning: Bool { process.isRunning }
 
 	/// Waits for the end of the process. Throws when it ended in another way than with status 0.
 	func ended() async throws {
