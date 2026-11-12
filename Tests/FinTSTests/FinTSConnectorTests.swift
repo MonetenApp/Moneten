@@ -324,6 +324,16 @@ struct FinTSConnectorTests {
 		#expect(report.outcomes.count == 1)
 	}
 
+	@Test("A helper that ended does not time out while the app handles its last line")
+	func endedWhileBusy() async throws {
+		let session = Session(progress: { _ in try? await Task.sleep(for: .seconds(2)) })
+		let report = try await connector("""
+			read cmd
+			echo '{"type":"progress","done":0,"of":1}'
+			""", inactivity: 1).refresh(RefreshRequest(access: Self.access, accounts: [Self.giro]), session)
+		#expect(report.outcomes.isEmpty)
+	}
+
 	@Test("A helper that crashes fails the access")
 	func crash() async throws {
 		#expect(await failure(of: "read cmd; echo '{\"type\":\"progress\",\"done\":0,\"of\":1}'; kill -9 $$") as? SyncFailure
