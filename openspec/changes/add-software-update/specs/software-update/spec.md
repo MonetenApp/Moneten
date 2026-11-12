@@ -127,7 +127,7 @@ The app SHALL, after "Install", download the update with visible progress, insta
 
 ### Requirement: Verify the update before installing it
 
-The app SHALL install an update only when the download carries a signature made with the update key of the project, or when the new app carries the code signature of the Developer ID of the project. Either one is enough, so that one of the two keys can be replaced. A new app with a broken code signature is always discarded, and so is any other download.
+The app SHALL install an update only when the download carries a signature made with the update key of the project and the new app inside has a valid code signature. The app discards any other download.
 
 #### Scenario: Manipulated download
 
