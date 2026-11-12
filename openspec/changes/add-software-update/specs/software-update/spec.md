@@ -84,7 +84,7 @@ The app SHALL show in the update window, for each version it lists, the same rel
 
 ### Requirement: Release notes of skipped versions
 
-The app SHALL show in the update window the release notes of every version that is newer than the installed version, up to the offered version, newest first. When the offered version is a stable version, the notes of pre-release versions are left out.
+The app SHALL show in the update window the release notes of every version that is newer than the installed version, up to the offered version, newest first. When the offered version is a stable version, the notes of pre-release versions are left out. The notes of a pre-release version of a stable version that the window lists are left out too, because the stable version lists them.
 
 #### Scenario: Two versions skipped
 
@@ -104,6 +104,13 @@ The app SHALL show in the update window the release notes of every version that 
 - **GIVEN** version 0.1.3 is installed, the beta setting is on, and versions 0.2.0-beta.1 and 0.2.0-beta.2 are published
 - **WHEN** the update window offers version 0.2.0-beta.2
 - **THEN** the window shows the notes of version 0.2.0-beta.2 and then those of version 0.2.0-beta.1
+
+#### Scenario: Pre-release offered after a stable version
+
+- **GIVEN** version 0.1.3 is installed, the beta setting is on, and versions 0.2.0-beta.1, 0.2.0, and 0.2.1-beta.1 are published
+- **WHEN** the update window offers version 0.2.1-beta.1
+- **THEN** the window shows the notes of version 0.2.1-beta.1 and then those of version 0.2.0
+- **AND** the window shows no separate notes of version 0.2.0-beta.1
 
 ### Requirement: Remind later
 
