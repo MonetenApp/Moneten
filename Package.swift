@@ -41,7 +41,7 @@ let package = Package(
 		.testTarget(name: "SyncTests", dependencies: ["Sync", "SyncTesting", "Storage"]),
 		// The tests read helper-lines.jsonl at its path, as the self-test of the helper writes it.
 		.testTarget(name: "ExtensionHostTests", dependencies: ["ExtensionHost", "MonetenExtensionHost"]),
-		.testTarget(name: "ExtensionConnectorTests", dependencies: ["ExtensionConnector", "MonetenExtensionHost"]),
+		.testTarget(name: "ExtensionConnectorTests", dependencies: ["ExtensionConnector", "MonetenExtensionHost", "Storage"]),
 		.testTarget(name: "FinTSTests", dependencies: ["FinTS"], exclude: ["helper-lines.jsonl"]),
 	],
 	swiftLanguageModes: [.v6]

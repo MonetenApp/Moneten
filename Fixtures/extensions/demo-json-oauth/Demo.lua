@@ -14,7 +14,7 @@ local function api(path)
 end
 
 local function authorize(final)
-	return {challenge = "https://auth.broker.example/authorize?client_id=demo&final=" .. final, state = "xyz"}
+	return {challenge = "https://auth.broker.example/authorize?client_id=demo&final=" .. final .. "&state=xyz", state = "xyz"}
 end
 
 function SupportsBank(protocol, bankCode)

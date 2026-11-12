@@ -486,7 +486,15 @@ final class DebugHarness {
 		}
 	}
 
+	/// A web view draws in another process, so the window image gets its picture from WebKit first.
 	private func snapshot(_ name: String) {
+		guard let web = ExtensionWebDebug.current, web.window != nil else { return snapshotWindows(name) }
+		web.takeSnapshot(with: nil) { [weak self] image, _ in
+			self?.snapshotWindows(name, web: image.map { (web, $0) })
+		}
+	}
+
+	private func snapshotWindows(_ name: String, web: (view: NSView, image: NSImage)? = nil) {
 		let windows = NSApp.windows.filter { $0.isVisible && $0.className != "NSStatusBarWindow" && $0.frame.width > 50 }
 		for (i, window) in windows.enumerated() {
 			// The window, its sheet, and a sheet on top of that sheet.
@@ -495,6 +503,14 @@ final class DebugHarness {
 				guard let view = w.contentView?.superview ?? w.contentView,
 					let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { continue }
 				view.cacheDisplay(in: view.bounds, to: rep)
+				if let web, web.view.window === w {
+					NSGraphicsContext.saveGraphicsState()
+					NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+					var frame = web.view.convert(web.view.bounds, to: view)
+					if view.isFlipped { frame.origin.y = view.bounds.height - frame.maxY }
+					web.image.draw(in: frame)
+					NSGraphicsContext.restoreGraphicsState()
+				}
 				let file = folder.appendingPathComponent("\(name)-\(i)\(String(repeating: "-sheet", count: j)).png")
 				try? rep.representation(using: .png, properties: [:])?.write(to: file)
 				log("snapshot \(file.lastPathComponent) \(w.title) \(Int(view.bounds.width))x\(Int(view.bounds.height))")

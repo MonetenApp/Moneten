@@ -34,8 +34,9 @@ struct SyncDialog: View {
 			case let .pin(request): PINSheet(broker: broker, prompt: prompt, request: request)
 			case let .secondFactor(request):
 				switch request.challenge {
-				case let .openBrowser(approval): ExtensionLoginWindow(broker: broker, prompt: prompt, page: .approval(approval))
-				case let .captcha(captcha): ExtensionLoginWindow(broker: broker, prompt: prompt, page: .captcha(captcha))
+				// Each challenge gets its own web view, so a second login does not reuse the page of the first.
+				case let .openBrowser(approval): ExtensionLoginWindow(broker: broker, prompt: prompt, page: .approval(approval)).id(prompt.id)
+				case let .captcha(captcha): ExtensionLoginWindow(broker: broker, prompt: prompt, page: .captcha(captcha)).id(prompt.id)
 				default: TwoFactorSheet(broker: broker, prompt: prompt, request: request)
 				}
 			case let .allowHost(request): HostPermissionDialog(broker: broker, prompt: prompt, request: request)
@@ -179,7 +180,9 @@ struct TwoFactorSheet: View {
 		DialogFrame(title: "Two-Factor Authentication", width: width) {
 			Section {
 				Text(TwoFactorText.reason(request, bank: prompt.access.bankName))
-				LabeledContent("User ID", value: prompt.access.loginName)
+				if !prompt.access.loginName.isEmpty {
+					LabeledContent("User ID", value: prompt.access.loginName)
+				}
 				if request.loginOnly {
 					Text("This TAN is used only for the login and not for the order.").foregroundStyle(.secondary)
 				}

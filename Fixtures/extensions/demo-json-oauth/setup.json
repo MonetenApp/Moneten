@@ -3,7 +3,7 @@
 		{
 			"request": {
 				"method": "GET",
-				"url": "https://auth.broker.example/authorize?client_id=demo&final=1"
+				"url": "https://auth.broker.example/authorize?client_id=demo&final=1&state=xyz"
 			},
 			"response": {
 				"status": 200,
