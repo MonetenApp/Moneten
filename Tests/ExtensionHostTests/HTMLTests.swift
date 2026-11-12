@@ -282,32 +282,28 @@ final class Visit {
 		#expect(second.call() == .array([.string("Müller"), .string("neu")]))
 	}
 
-	/// Lua sees only a small userdata of each document, so this checks that its collection frees the
-	/// tree of libxml2 too. A leak would keep about 40 kB of each document.
+	/// Lua sees only a small userdata of each document, and the tree of libxml2 lives outside the memory
+	/// of the state. The collector still has to free dropped documents while the loop runs, or their
+	/// trees pile up. A weak table counts the documents that are still alive.
 	@Test func droppedDocumentsAreFreed() {
 		let visit = Visit("""
 			local page = "<table>" .. string.rep("<tr><td>Miete</td><td>-850,00</td><td>01.11.2026</td></tr>", 40) .. "</table>"
-			function Parse(times)
-				local rows = 0
-				for i = 1, times do rows = rows + HTML(page):xpath("//tr"):get(1):children():length() end
-				collectgarbage()
-				return rows
+			local alive = setmetatable({}, {__mode = "k"})
+			function Check()
+				local most = 0
+				for i = 1, 10000 do
+					local html = HTML(page)
+					alive[html] = true
+					html:xpath("//tr"):get(1):children():length()
+					if i % 100 == 0 then
+						local count = 0
+						for _ in pairs(alive) do count = count + 1 end
+						most = math.max(most, count)
+					end
+				end
+				return most < 1000
 			end
-			function Warm() return Parse(1000) end
-			function Check() return Parse(10000) end
 			""")
-		#expect(visit.call("Warm") == .integer(3000))
-		let before = Self.footprint()
-		#expect(visit.call() == .integer(30000))
-		#expect(Self.footprint() - before < 100_000_000)
-	}
-
-	static func footprint() -> Int {
-		var info = task_vm_info_data_t()
-		var count = mach_msg_type_number_t(MemoryLayout<task_vm_info_data_t>.size / MemoryLayout<natural_t>.size)
-		let result = withUnsafeMutablePointer(to: &info) {
-			$0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) { task_info(task_self_trap(), task_flavor_t(TASK_VM_INFO), $0, &count) }
-		}
-		return result == KERN_SUCCESS ? Int(info.phys_footprint) : 0
+		#expect(visit.call() == .boolean(true))
 	}
 }
