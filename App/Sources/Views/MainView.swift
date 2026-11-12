@@ -45,6 +45,11 @@ struct MainView: View {
 		}
 		.sheet(item: $model.sheet) { kind in
 			SheetView(kind: kind).environment(model)
+				// A TAN dialog opens on top of the open sheet, for example during the login of "Add Account".
+				.sheet(item: Binding(get: { model.sync.broker.current }, set: { _ in })) { prompt in
+					SyncDialog(broker: model.sync.broker, prompt: prompt)
+						.interactiveDismissDisabled()
+				}
 		}
 		.alert(item: $model.alert) { a in
 			Alert(title: Text(a.title), message: a.message.isEmpty ? nil : Text(a.message))
@@ -64,7 +69,7 @@ struct EmptyStateView: View {
 			HStack {
 				Button("Import from MoneyMoney...") { model.sheet = .migration }
 					.keyboardShortcut(.defaultAction)
-				Button("Add Account...") { model.sheet = .newAccount }
+				Button("Add Account...") { model.addAccount() }
 			}
 		}
 		.padding(40)
@@ -77,7 +82,7 @@ struct SheetView: View {
 
 	var body: some View {
 		switch kind {
-		case .newAccount: NewAccountSheet()
+		case .newAccount: if let setup = model.setup { AccountSetupSheet(setup: setup) }
 		case .newGroup: NameSheet(title: "Add Account Group", placeholder: "Name") { model.addGroup(name: $0) }
 		case let .newCategory(isGroup, ids): NewCategorySheet(isGroup: isGroup, assigning: ids)
 		case let .accountSettings(id): AccountSettingsSheet(accountID: id)

@@ -103,41 +103,6 @@ struct NameSheet: View {
 	}
 }
 
-struct NewAccountSheet: View {
-	@Environment(AppModel.self) private var model
-	@State private var name = ""
-	@State private var kind = AccountKind.cash
-	@State private var currency = "EUR"
-	@State private var groupID: UUID?
-
-	var body: some View {
-		SheetFrame(title: "Add Account", canConfirm: !name.isEmpty, width: 480, onConfirm: {
-			model.addOfflineAccount(name: name, kind: kind, currency: currency.uppercased(), groupID: groupID)
-			return true
-		}) {
-			Section {
-				LabeledContent {
-					Button("Import from MoneyMoney...") { model.sheet = .migration }
-				} label: {
-					Text("Accounts from MoneyMoney")
-					Text("Bank access through FinTS follows in a later version.")
-				}
-			}
-			Section("Offline account / Cash") {
-				TextField("Name", text: $name, prompt: Text("Required"))
-				Picker("Account type", selection: $kind) {
-					ForEach(AccountKind.allCases.filter { $0 != .portfolio }, id: \.self) { Text($0.title).tag($0) }
-				}
-				TextField("Currency", text: $currency)
-				Picker("Account group", selection: $groupID) {
-					Text("None").tag(UUID?.none)
-					ForEach(model.ledger.groups) { Text($0.name).tag(UUID?.some($0.id)) }
-				}
-			}
-		}
-	}
-}
-
 struct NewCategorySheet: View {
 	@Environment(AppModel.self) private var model
 	let isGroup: Bool

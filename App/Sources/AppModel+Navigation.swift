@@ -57,6 +57,19 @@ extension AppModel {
 		}
 	}
 
+	/// "Refresh Account" for an account and "Refresh Accounts" for a group, which share ⇧⌘R.
+	var refreshScopeOfSelection: RefreshScope? {
+		switch selection {
+		case let .account(id): .account(id)
+		case let .group(id): .group(id)
+		case .category, nil: nil
+		}
+	}
+
+	var refreshTitle: String {
+		if case .group = selection { "Refresh Accounts" } else { "Refresh Account" }
+	}
+
 	func openSettingsOfSelection() {
 		switch selection {
 		case let .account(id): sheet = .accountSettings(id)

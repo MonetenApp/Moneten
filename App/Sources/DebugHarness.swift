@@ -76,6 +76,27 @@ final class DebugHarness {
 		// "<name>" starts a made-up refresh that shows one dialog of SyncDemo.requests.
 		case "syncdemo": SyncDemo.start(argument, in: model.sync)
 		case "synccancel": model.sync.cancelAll()
+		// "<field> <value>" drives the "Add Account" assistant: entry, login, pin, other, next, back, toggle, cancel.
+		case "setup": setup(argument)
+		// "<text>" answers the dialog on screen with a TAN, or with a PIN when it asks for one.
+		case "answer":
+			if let prompt = model.sync.broker.current {
+				if case .pin = prompt.request { model.sync.broker.answer(.pin(Secret(argument)), to: prompt.id) } else { model.sync.broker.answer(.tan(Secret(argument)), to: prompt.id) }
+			}
+		// "all", or the name of an account or a group.
+		case "refresh":
+			if argument == "all" { model.refresh(.all) }
+			else if let a = model.ledger.accounts.first(where: { $0.name == argument }) { model.refresh(.account(a.id)) }
+			else if let g = model.ledger.groups.first(where: { $0.name == argument }) { model.refresh(.group(g.id)) }
+		case "status":
+			for a in model.ledger.accounts where a.accessID != nil {
+				log("status \(a.name) refreshing=\(model.sync.refreshingAccounts.contains(a.id)) refreshedAt=\(a.refreshedAt.map { "\($0)" } ?? "-") error=\(a.refreshError?.message ?? "-") balance=\(a.bankBalanceMinor.map(String.init) ?? "-") rows=\(model.ledger.transactions(ofAccount: a.id).count)")
+			}
+			log("status line=\(model.refreshStatus ?? "-") accesses=\(model.accesses.count)")
+		case "errorsnapshot":
+			if let error = model.ledger.accounts.first(where: { $0.name == argument })?.refreshError {
+				offscreenSnapshot(RefreshErrorPopover(error: error), width: 352, name: "\(argument)-error")
+			}
 		case "groupbyaccount":
 			if var g = model.ledger.groups.first(where: { $0.name == argument }) {
 				g.groupsByAccount = true
@@ -178,7 +199,7 @@ final class DebugHarness {
 		case "sheet":
 			switch argument {
 			case "migration": model.sheet = .migration
-			case "newAccount": model.sheet = .newAccount
+			case "newAccount": model.addAccount()
 			case "setPassword": model.sheet = .setPassword
 			case "changePassword": model.sheet = .changePassword
 			case "categorySettings": if case let .category(id) = model.selection { model.sheet = .categorySettings(id) }
@@ -195,6 +216,24 @@ final class DebugHarness {
 		case "quit": NSApp.terminate(nil)
 		default: log("unknown command \(command)")
 		}
+	}
+
+	private func setup(_ argument: String) {
+		guard let model, let setup = model.setup else { return log("setup: no assistant") }
+		let parts = argument.split(separator: " ", maxSplits: 1).map(String.init)
+		let value = parts.count > 1 ? parts[1] : ""
+		switch parts.first ?? "" {
+		case "entry": setup.entry = value
+		case "login": setup.loginName = value
+		case "pin": setup.pin = value
+		case "other": setup.service = value == "no" ? nil : .offline
+		case "next": setup.next()
+		case "back": setup.back()
+		case "toggle": if setup.selected.remove(value) == nil { setup.selected.insert(value) }
+		case "cancel": model.closeAccountSetup()
+		default: break
+		}
+		log("setup step=\(setup.step) lookup=\(setup.lookup) error=\(setup.loginError ?? "-") candidates=\(setup.candidates.map { "\($0.id):\($0.match == .new ? "new" : $0.isPresent ? "present" : "migrated")" }) selected=\(setup.selected.sorted())")
 	}
 
 	/// The euro balance chart of the selected account or group: its first and last bar and the total
@@ -273,11 +312,13 @@ final class DebugHarness {
 	private func snapshot(_ name: String) {
 		let windows = NSApp.windows.filter { $0.isVisible && $0.className != "NSStatusBarWindow" && $0.frame.width > 50 }
 		for (i, window) in windows.enumerated() {
-			for (j, w) in ([window] + (window.attachedSheet.map { [$0] } ?? [])).enumerated() {
+			// The window, its sheet, and a sheet on top of that sheet.
+			let sheets = sequence(first: window) { $0.attachedSheet }
+			for (j, w) in sheets.enumerated() {
 				guard let view = w.contentView?.superview ?? w.contentView,
 					let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { continue }
 				view.cacheDisplay(in: view.bounds, to: rep)
-				let file = folder.appendingPathComponent("\(name)-\(i)\(j == 0 ? "" : "-sheet").png")
+				let file = folder.appendingPathComponent("\(name)-\(i)\(String(repeating: "-sheet", count: j)).png")
 				try? rep.representation(using: .png, properties: [:])?.write(to: file)
 				log("snapshot \(file.lastPathComponent) \(w.title) \(Int(view.bounds.width))x\(Int(view.bounds.height))")
 			}

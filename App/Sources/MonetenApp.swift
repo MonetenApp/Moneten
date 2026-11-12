@@ -56,6 +56,9 @@ struct AppCommands: Commands {
 			Button("Import from MoneyMoney...") { model.sheet = .migration }
 				.disabled(!unlocked)
 			Divider()
+			Button("Refresh All Accounts") { model.refresh(.all) }
+				.keyboardShortcut("r")
+				.disabled(!model.canRefresh(.all))
 			Button("Cancel Refresh") { model.sync.cancelAll() }
 				.disabled(!model.sync.isRefreshing)
 			Divider()
@@ -82,7 +85,7 @@ struct AppCommands: Commands {
 			Divider()
 		}
 		CommandMenu("Account") {
-			Button("Add Account...") { model.sheet = .newAccount }.disabled(!unlocked)
+			Button("Add Account...") { model.addAccount() }.disabled(!unlocked)
 			Button("Add Account Group") { model.sheet = .newGroup }.disabled(!unlocked)
 			Divider()
 			Button("Add Category") { model.sheet = .newCategory(isGroup: false) }.disabled(!unlocked)
@@ -97,6 +100,10 @@ struct AppCommands: Commands {
 			Divider()
 			Button("Import Transactions...") { model.importFile() }
 				.disabled(!unlocked || model.selectedAccount == nil)
+			Divider()
+			Button(model.refreshTitle) { if let scope = model.refreshScopeOfSelection { model.refresh(scope) } }
+				.keyboardShortcut("r", modifiers: [.command, .shift])
+				.disabled(!(model.refreshScopeOfSelection.map(model.canRefresh) ?? false))
 			Divider()
 			Button(model.settingsTitle) { model.openSettingsOfSelection() }
 				.keyboardShortcut("i")

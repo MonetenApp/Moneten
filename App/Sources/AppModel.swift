@@ -1,5 +1,6 @@
 import AppKit
 import Domain
+import FinTS
 import Foundation
 import Import
 import Observation
@@ -124,6 +125,12 @@ final class AppModel {
 	let vault = Vault(folder: .standard())
 	/// The refreshes of the bank accesses and their dialogs.
 	let sync = SyncCoordinator()
+	/// The FinTS connector of the setup and of every refresh. The extension connector of E6 joins it.
+	let fints = AppModel.makeFinTSConnector()
+	/// The bank accesses, by ID. Their states stay in the database until a refresh reads them.
+	private(set) var accesses: [UUID: Access] = [:]
+	/// The "Add Account" assistant while its sheet is open.
+	private(set) var setup: AccountSetup?
 	private(set) var phase: Phase = .starting
 	private(set) var hasPassword = false
 	private(set) var store: Store?
@@ -183,6 +190,7 @@ final class AppModel {
 		Preference.registerDefaults()
 		// A closure that captures `self` can be handed over only once every stored property is set.
 		sync.deliver = { [weak self] accountID, result in try self?.merge(.refresh(result), into: accountID) }
+		sync.ended = { [weak self] access, state, accounts in self?.recordRefresh(of: access, state: state, accounts: accounts) }
 		start()
 		installActivityMonitor()
 	}
@@ -258,6 +266,7 @@ final class AppModel {
 	private func open(_ store: Store) throws {
 		self.store = store
 		ledger = try store.loadLedger()
+		accesses = Dictionary(uniqueKeysWithValues: try store.accesses().map { ($0.id, $0) })
 		if selection == nil {
 			if let first = ledger.childGroups(of: nil).first {
 				selection = .group(first.id)
@@ -274,9 +283,12 @@ final class AppModel {
 		// A locked app refreshes nothing and forgets the PINs that were not saved.
 		sync.cancelAll()
 		sync.broker.forgetPINs()
+		setup?.cancel()
+		setup = nil
 		try? store?.close()
 		store = nil
 		ledger = Ledger()
+		accesses = [:]
 		sheet = nil
 		selectedTransactions = []
 		phase = .locked
@@ -471,6 +483,40 @@ final class AppModel {
 		}
 	}
 
+	/// Opens the "Add Account" assistant. The new accounts go into `group`.
+	func addAccount(group: UUID? = nil) {
+		setup?.cancel()
+		setup = AccountSetup(model: self, groupID: group)
+		sheet = .newAccount
+	}
+
+	/// Ends the assistant. A canceled setup leaves no access and no account.
+	func closeAccountSetup() {
+		setup?.cancel()
+		setup = nil
+		if sheet == .newAccount { sheet = nil }
+	}
+
+	/// Stores a new access with the accounts that the user selected, keeps the PIN of the login in
+	/// memory, selects the first account, and starts the first refresh ("Finish the setup").
+	func add(_ access: Access, state: AccessState?, accounts candidates: [Account], pin: Secret) {
+		guard let store else { return }
+		let accounts = ledger.accountsToAdd(candidates)
+		do {
+			try store.add(access, state: state, accounts: accounts)
+		} catch {
+			alert = AlertMessage(title: "Could not add the accounts.", message: String(describing: error))
+			return
+		}
+		accesses[access.id] = access
+		for a in accounts { ledger.upsert(a) }
+		ledger.replace()
+		// Issue #86 saves the PIN in the database here when the user turns saving on.
+		sync.broker.remember(pin, for: access.id)
+		if let first = accounts.first { navigate(to: .account(first.id)) }
+		refresh(ledger.refreshAccounts(.all).filter { $0.key == access.id })
+	}
+
 	func addOfflineAccount(name: String, kind: AccountKind, currency: String, groupID: UUID?) {
 		let position = ledger.nextTreePosition(in: groupID)
 		let a = Account(groupID: groupID, position: position, name: name, kind: kind, source: .offline, currency: currency)
@@ -528,6 +574,65 @@ final class AppModel {
 			if selection == .group(id) { selection = nil }
 		} catch {
 			alert = AlertMessage(title: "Could not remove the account group.", message: String(describing: error))
+		}
+	}
+
+	// MARK: Refresh
+
+	/// The connector of the app, or in a debug build the fake helper that `MONETEN_FINTS_HELPER` names,
+	/// so that the setup and the refresh run without a bank.
+	private static func makeFinTSConnector() -> FinTSConnector {
+		#if DEBUG
+		if let path = ProcessInfo.processInfo.environment["MONETEN_FINTS_HELPER"], !path.isEmpty { return FinTSConnector(debugHelper: path) }
+		#endif
+		return FinTSConnector()
+	}
+
+	/// "Refresh All Accounts", "Refresh Account", and "Refresh Accounts".
+	func refresh(_ scope: RefreshScope) {
+		refresh(ledger.refreshAccounts(scope))
+	}
+
+	func canRefresh(_ scope: RefreshScope) -> Bool {
+		phase == .unlocked && !ledger.refreshAccounts(scope).isEmpty
+	}
+
+	/// Starts one refresh per access, with the state its connector returned last. Every access uses
+	/// FinTS until the extension connector of E6 exists.
+	private func refresh(_ plan: [UUID: [AccountRequest]]) {
+		guard let store else { return }
+		let requests = plan.compactMap { id, accounts in accesses[id].map { ($0, accounts) } }.sorted { $0.0.bankName < $1.0.bankName }
+		for (access, accounts) in requests {
+			do {
+				sync.refresh(RefreshRequest(access: access, state: try store.state(of: access.id), accounts: accounts), with: fints, attended: true)
+			} catch {
+				alert = AlertMessage(title: "Could not refresh \(access.bankName).", message: String(describing: error))
+			}
+		}
+	}
+
+	/// Stores how a refresh ended: the new state of the access, and the time or the error of each account.
+	private func recordRefresh(of access: UUID, state: AccessState?, accounts results: [UUID: AccountRefresh]) {
+		guard let store else { return }
+		let accounts = results.compactMap { id, result in ledger.account(id).map { a -> Account in var a = a; a.record(result); return a } }
+		guard state != nil || !accounts.isEmpty else { return }
+		do {
+			try store.recordRefresh(of: access, state: state, accounts: accounts)
+			for a in accounts { ledger.upsert(a) }
+		} catch {
+			alert = AlertMessage(title: "Could not save the result of the refresh.", message: String(describing: error))
+		}
+	}
+
+	/// The step of the first running refresh, for the status line.
+	var refreshStatus: String? {
+		let running = sync.states.compactMap { id, state in state.isRunning ? (accesses[id]?.bankName ?? "the bank", state) : nil }.sorted { $0.0 < $1.0 }
+		guard let (bank, state) = running.first else { return nil }
+		switch state {
+		case let .fetching(done, of): return "Getting transactions from \(bank) (\(min(done + 1, of)) of \(of))..."
+		case .needsUser(_, waiting: true, _): return "\(bank) waits for your input..."
+		case .needsUser: return "\(bank) needs your input..."
+		default: return "Connecting to \(bank)..."
 		}
 	}
 
