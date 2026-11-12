@@ -1,6 +1,8 @@
 import AppKit
 import Domain
 import Foundation
+import Sync
+import SyncTesting
 import SwiftUI
 
 /// Lets a developer drive the app and capture its windows as images, for checks without a screen.
@@ -81,6 +83,22 @@ final class DebugHarness {
 			}
 		case "usd": DemoData.usdAccount(model)
 		case "review": DemoData.review(model)
+		// "<scenario>" refreshes "Girokonto" of `seed` through the coordinator with a made-up answer of the bank.
+		case "fetch": DemoData.fetch(model, argument)
+		// "<name>" deletes the transactions of "Girokonto" with that counterparty, as the user does.
+		case "deleterows":
+			if let giro = model.ledger.accounts.first(where: { $0.name == "Girokonto" }) {
+				model.delete(transactions: Set(model.ledger.transactions(ofAccount: giro.id).filter { $0.name == argument }.map(\.id)))
+			}
+		// "<account>" logs the rows of an account that a merge touched, the new count, and the bank balance.
+		case "rows":
+			if let account = model.ledger.accounts.first(where: { $0.name == argument }) {
+				let rows = model.ledger.transactions(ofAccount: account.id).filter { $0.isFetched || $0.needsReview }
+				for t in rows {
+					log("row \(t.bookingDate) \(t.amountMinor) \(t.name)\(t.isPending ? " pending" : "")\(t.isNew ? " new" : "")\(t.needsReview ? " review" : "")")
+				}
+				log("rows \(rows.count) new=\(model.ledger.newTransactionCounts[account.id] ?? 0) balance=\(account.bankBalanceMinor.map(String.init) ?? "-")")
+			}
 		case "symbol":
 			// "<category>=<symbol>" sets the icon of a category, "<category>=" removes it.
 			let parts = argument.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false).map(String.init)
@@ -338,6 +356,29 @@ enum DemoData {
 			return Transaction(accountID: card.id, bookingDate: day, amountMinor: amount, currency: "USD", name: payment ? "Payment" : "Diner", purpose: "Card")
 		}
 		try? model.merge(.file(ts), into: card.id)
+	}
+
+	/// One made-up answer of the bank for "Girokonto" from `seed`, delivered through the coordinator as a
+	/// refresh does: "first" brings rent, a coffee, and a pending hotel deposit; "booked" brings the deposit
+	/// booked two days later with another text; "parking" adds a pending parking fee; "gone" lacks it.
+	@MainActor
+	static func fetch(_ model: AppModel, _ scenario: String) {
+		guard let giro = model.ledger.accounts.first(where: { $0.name == "Girokonto" }) else { return }
+		let today = Day.today()
+		func row(_ daysAgo: Int, _ minor: Int64, _ name: String, _ purpose: String, pending: Bool = false) -> Transaction {
+			Transaction(accountID: giro.id, bookingDate: today.adding(days: -daysAgo), amountMinor: minor, name: name, purpose: purpose, isPending: pending)
+		}
+		let known = [row(4, -61_000, "Hausverwaltung Beispiel", "Nebenkosten Abruf"), row(3, -320, "Café Beispiel", "Kartenzahlung")]
+		let rows: [Transaction] = switch scenario {
+		case "first": known + [row(2, -20_000, "Hotel Beispiel", "Kaution", pending: true)]
+		case "booked": known + [row(0, -20_000, "Hotel Beispiel GmbH", "Kaution Zimmer 12")]
+		case "parking": known + [row(1, -1_500, "Parkhaus Beispiel", "Reservierung", pending: true)]
+		default: known
+		}
+		let result = RefreshResult(balance: Money(minorUnits: 1_234_56, currency: "EUR"),
+			transactions: FetchedTransactions(rows: rows, from: today.adding(days: -10)))
+		let request = RefreshRequest(access: SyncDemo.access, accounts: [AccountRequest(accountID: giro.id, name: giro.name, remoteID: "1234567890")])
+		model.sync.refresh(request, with: ScriptedConnector([.fetched(giro.id, result)]), attended: true)
 	}
 
 	/// Two pending card payments of "Girokonto" from `seed` and one booked payment that could belong
