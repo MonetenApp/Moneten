@@ -569,11 +569,20 @@ enum Keccak {
 		var state = [UInt64](repeating: 0, count: 25)
 		for block in stride(from: 0, to: message.count, by: rate) {
 			for lane in 0..<rate / 8 {
-				state[lane] ^= (0..<8).reduce(0) { $0 | UInt64(message[block + lane * 8 + $1]) << (8 * UInt64($1)) }
+				var word: UInt64 = 0
+				for byte in 0..<8 {
+					let value = UInt64(message[block + lane * 8 + byte])
+					word |= value << UInt64(8 * byte)
+				}
+				state[lane] ^= word
 			}
 			permute(&state)
 		}
-		return Data(state.prefix(4).flatMap { lane in (0..<8).map { UInt8(truncatingIfNeeded: lane >> (8 * UInt64($0))) } })
+		var digest = Data()
+		for lane in state.prefix(4) {
+			for byte in 0..<8 { digest.append(UInt8(truncatingIfNeeded: lane >> UInt64(8 * byte))) }
+		}
+		return digest
 	}
 
 	/// Keccak-f[1600]: theta, rho and pi, chi, and iota in each of 24 rounds.
