@@ -272,7 +272,7 @@ public struct TANField: Sendable, Equatable {
 	public func accept(_ text: String) -> String {
 		var text = isNumeric ? text.filter(\.isASCII).filter(\.isNumber) : text
 		if isUppercase { text = text.uppercased() }
-		if let length { text = String(text.prefix(length.upperBound)) }
+		if let length { text = String(text.prefix(max(0, length.upperBound))) }
 		return text
 	}
 
