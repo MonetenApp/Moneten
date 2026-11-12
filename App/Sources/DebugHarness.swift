@@ -441,12 +441,11 @@ final class DebugHarness {
 	/// The state of every bank access and the failure of each of its accounts.
 	private func logExtensionState() {
 		guard let model else { return }
-		for stored in model.accesses {
-			log("ext access \(stored.access.bankName) state=\(String(describing: model.sync.states[stored.access.id] ?? .idle).prefix(60))")
-			for id in stored.accounts.keys {
-				guard let account = model.ledger.account(id) else { continue }
-				let rows = model.ledger.transactions.filter { $0.accountID == id }
-				let failure = model.refreshFailure(of: id).map { " failed=\($0.message)" } ?? ""
+		for access in model.accesses.values.sorted(by: { $0.bankName < $1.bankName }) {
+			log("ext access \(access.bankName) state=\(String(describing: model.sync.states[access.id] ?? .idle).prefix(60))")
+			for account in model.ledger.accounts where account.accessID == access.id {
+				let rows = model.ledger.transactions.filter { $0.accountID == account.id }
+				let failure = account.refreshError.map { " failed=\($0.message)" } ?? ""
 				log("ext account \(account.name) rows=\(rows.count) balance=\(model.ledger.balance(of: account).minorUnits)\(failure)")
 			}
 		}

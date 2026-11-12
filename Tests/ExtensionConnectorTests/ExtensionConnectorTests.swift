@@ -255,6 +255,21 @@ import Testing
 			"accountNumber": .string("111222333444"), "bankCode": .string("80007777"), "currency": .string("EUR"), "type": .string("AccountTypeGiro")]))
 	}
 
+	/// A second setup of a login joins its access, which keeps its state, so a new account of that
+	/// setup has no table in the state ("A login that the app has already keeps its access").
+	@Test func accountWithoutATableIsListedAgain() async throws {
+		let session = TestSession()
+		var state = ExtensionState(nil)
+		state.accounts = ["A": .object(["accountNumber": .string("A"), "name": .string("Giro A")])]
+		let (report, ids) = try await Self.refresh(session.connector(demo(Self.calls + """
+			function ListAccounts() print("ListAccounts") return {{accountNumber = "A", name = "Giro A"}, {accountNumber = "B", name = "Giro B"}} end
+			function RefreshAccount(account) print("RefreshAccount " .. account.accountNumber) return {balance = 1, transactions = {}} end
+			""")), session, state: state)
+		#expect(session.printed == ["SupportsBank ProtocolWebBanking Demo", "InitializeSession", "ListAccounts", "RefreshAccount A", "RefreshAccount B", "EndSession"])
+		#expect(report.outcomes[ids[1]]?.balance == 100)
+		#expect(ExtensionState(report.state).accounts["B"] == .object(["accountNumber": .string("B"), "name": .string("Giro B")]))
+	}
+
 	@Test func urlFromSupportsBankBecomesTheGlobalURL() async throws {
 		let session = TestSession()
 		_ = try await Self.refresh(session.connector(demo("""

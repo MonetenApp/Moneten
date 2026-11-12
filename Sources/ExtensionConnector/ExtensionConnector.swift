@@ -60,6 +60,10 @@ public struct ExtensionConnector: BankConnector {
 		let run = try await ScriptRun.start(self, access: request.access, state: state, session: session, reason: .refresh)
 		var outcomes: [UUID: AccountOutcome] = [:]
 		do {
+			// A second setup of a login keeps the state of its access, which lacks the tables of its new accounts.
+			if request.accounts.contains(where: { state.accounts[$0.remoteID] == nil }) {
+				for listed in try await run.listAccounts() { state.accounts[listed.remoteID] = listed.table }
+			}
 			for (index, account) in request.accounts.enumerated() {
 				await session.report(.fetching(done: index, of: request.accounts.count))
 				guard let table = state.accounts[account.remoteID], let listed = ListedAccount(table) else {

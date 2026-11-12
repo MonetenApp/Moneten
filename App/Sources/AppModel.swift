@@ -1,5 +1,6 @@
 import AppKit
 import Domain
+import ExtensionConnector
 import FinTS
 import Foundation
 import Import
@@ -125,8 +126,11 @@ final class AppModel {
 	let vault = Vault(folder: .standard())
 	/// The refreshes of the bank accesses and their dialogs.
 	let sync = SyncCoordinator(broker: SessionBroker(defaults: .standard, scope: DataFolder.standard().databaseFile.path))
-	/// The FinTS connector of the setup and of every refresh. The extension connector of E6 joins it.
+	/// The FinTS connector of the setup and of every refresh.
 	let fints = AppModel.makeFinTSConnector()
+	/// The connector of each extension that the app loaded, by the name of its package. E6 fills it from
+	/// the installed extensions, until then the debug harness does.
+	var extensionConnectors: [String: ExtensionConnector] = [:]
 	/// The bank accesses, by ID. Their states stay in the database until a refresh reads them.
 	private(set) var accesses: [UUID: Access] = [:]
 	/// The "Add Account" assistant while its sheet is open.
@@ -522,6 +526,17 @@ final class AppModel {
 		refresh(ledger.refreshAccounts(.all).filter { $0.key == access.id })
 	}
 
+	/// Stores the access of an extension setup with the listed accounts that the app does not have yet.
+	/// A login that the app has already keeps its access and its state. Returns the stored accounts.
+	func storeExtensionAccess(_ new: Access, state: AccessState, accounts listed: [Account]) throws -> [Account] {
+		guard let store else { return [] }
+		let (access, accounts) = try store.add(new, state: state, accounts: ledger.accountsToAdd(listed, listed: listed))
+		accesses[access.id] = access
+		for a in accounts { ledger.upsert(a) }
+		ledger.replace()
+		return accounts
+	}
+
 	func addOfflineAccount(name: String, kind: AccountKind, currency: String, groupID: UUID?) {
 		let position = ledger.nextTreePosition(in: groupID)
 		let a = Account(groupID: groupID, position: position, name: name, kind: kind, source: .offline, currency: currency)
@@ -614,17 +629,28 @@ final class AppModel {
 		phase == .unlocked && !ledger.refreshAccounts(scope).isEmpty
 	}
 
-	/// Starts one refresh per access, with the state its connector returned last. Every access uses
-	/// FinTS until the extension connector of E6 exists.
-	private func refresh(_ plan: [UUID: [AccountRequest]]) {
+	/// Starts one refresh per access, with the state its connector returned last.
+	func refresh(_ plan: [UUID: [AccountRequest]], attended: Bool = true) {
 		guard let store else { return }
 		let requests = plan.compactMap { id, accounts in accesses[id].map { ($0, accounts) } }.sorted { $0.0.bankName < $1.0.bankName }
 		for (access, accounts) in requests {
+			guard let connector = connector(for: access.source) else {
+				alert = AlertMessage(title: "Could not refresh \(access.bankName).", message: "Moneten has no connector for this access yet.")
+				continue
+			}
 			do {
-				sync.refresh(RefreshRequest(access: access, state: try store.state(of: access.id), accounts: accounts), with: fints, attended: true)
+				sync.refresh(RefreshRequest(access: access, state: try store.state(of: access.id), accounts: accounts), with: connector, attended: attended)
 			} catch {
 				alert = AlertMessage(title: "Could not refresh \(access.bankName).", message: String(describing: error))
 			}
+		}
+	}
+
+	private func connector(for source: AccessSource) -> (any BankConnector)? {
+		switch source {
+		case .fints: fints
+		case let .extension(id): extensionConnectors[id]
+		case .finAPI: nil
 		}
 	}
 

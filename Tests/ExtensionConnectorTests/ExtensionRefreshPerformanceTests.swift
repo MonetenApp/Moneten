@@ -31,7 +31,7 @@ struct ExtensionRefreshPerformanceTests {
 	func refreshIntoLongHistory() async throws {
 		let folder = DataFolder(root: FileManager.default.temporaryDirectory.appendingPathComponent("MonetenTests-\(UUID().uuidString)"))
 		let store = try Vault(folder: folder).create(password: "korrekt-pferd-batterie-heftklammer", starterCategories: [])
-		let accounts = (0..<20).map { Account(position: $0, name: "Konto \($0)", kind: .giro, source: .access) }
+		let accounts = (0..<20).map { Account(position: $0, name: "Konto \($0)", kind: .giro, source: .bank) }
 		let today = Day(year: 2026, month: 11, day: 12)
 		let history = accounts.flatMap { a in
 			(0..<2_500).map { i in
