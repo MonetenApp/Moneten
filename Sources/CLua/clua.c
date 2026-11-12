@@ -6,16 +6,28 @@
 #include <sys/resource.h>
 #include <unistd.h>
 
-/* The memory of one state. Swift code may not raise a Lua error, because the long jump would skip
-   its frames and leak what they hold. So while Swift runs, outside a protected call or in a function
-   of Swift, the allocator allows HEADROOM bytes over the limit, which holds the largest body of a
-   request. Back in Lua, clua_call raises the memory error from C. */
+/* The memory of one state. Swift code may not meet a Lua error, because the long jump would skip
+   its frames and leak what they hold. So while Swift runs (native > 0: outside a protected call, or
+   in a function of Swift), the collector is stopped, so that no finalizer runs Lua code there, and
+   the allocator allows HEADROOM bytes over the limit, which holds the largest body of a request.
+   Back in Lua, clua_call raises the memory error from C. An allocation that fails while Swift runs
+   ends the process, so a Lua error never starts there. */
 typedef struct {
 	size_t used, limit;
 	int native;
+	/* The collector was running when Swift took over, so it runs again when Lua does. */
+	int stopped;
 } clua_Budget;
 
 #define HEADROOM ((size_t)64 << 20)
+
+static char clua_memory_line[1024];
+static size_t clua_memory_length;
+
+static void clua_exitformemory(void) {
+	(void)write(STDOUT_FILENO, clua_memory_line, clua_memory_length);
+	_exit(1);
+}
 
 /* The allocator of luaL_newstate with a ceiling. A block that would pass the ceiling fails, and Lua
    raises its memory error. For a new block Lua passes the kind of object in osize, not a size. */
@@ -28,8 +40,8 @@ static void *clua_alloc(void *ud, void *ptr, size_t osize, size_t nsize) {
 		return NULL;
 	}
 	size_t ceiling = budget->limit + (budget->native > 0 ? HEADROOM : 0);
-	if (nsize > old && budget->used - old + nsize > ceiling) return NULL;
-	void *block = realloc(ptr, nsize);
+	void *block = nsize > old && budget->used - old + nsize > ceiling ? NULL : realloc(ptr, nsize);
+	if (!block && budget->native > 0) clua_exitformemory();
 	if (block) budget->used = budget->used - old + nsize;
 	return block;
 }
@@ -40,12 +52,28 @@ static clua_Budget *clua_budget(lua_State *L) {
 	return budget;
 }
 
+/* Swift takes over the state. */
+static void clua_enter(lua_State *L, clua_Budget *budget) {
+	if (budget->native++ == 0 && lua_gc(L, LUA_GCISRUNNING)) {
+		lua_gc(L, LUA_GCSTOP);
+		budget->stopped = 1;
+	}
+}
+
+/* Lua takes over the state again. A collector that the script stopped stays stopped. */
+static void clua_leave(lua_State *L, clua_Budget *budget) {
+	if (--budget->native == 0 && budget->stopped) {
+		budget->stopped = 0;
+		lua_gc(L, LUA_GCRESTART);
+	}
+}
+
 static int clua_call(lua_State *L) {
 	clua_Function f = (clua_Function)lua_touserdata(L, lua_upvalueindex(1));
 	clua_Budget *budget = clua_budget(L);
-	budget->native++;
+	clua_enter(L, budget);
 	int results = f(L);
-	budget->native--;
+	clua_leave(L, budget);
 	if (budget->used > budget->limit) {
 		/* Any new block fails now. Lua collects first, and raises its memory error if the state still
 		   holds too much. */
@@ -61,10 +89,19 @@ static int clua_call(lua_State *L) {
 
 int clua_pcall(lua_State *L, int arguments, int results) {
 	clua_Budget *budget = clua_budget(L);
-	budget->native--;
+	clua_leave(L, budget);
 	int status = lua_pcall(L, arguments, results, 0);
-	budget->native++;
+	clua_enter(L, budget);
 	return status;
+}
+
+int clua_nativedepth(lua_State *L) {
+	return clua_budget(L)->native;
+}
+
+void clua_setmemoryline(const char *line) {
+	clua_memory_length = strlcpy(clua_memory_line, line, sizeof clua_memory_line);
+	if (clua_memory_length >= sizeof clua_memory_line) clua_memory_length = 0;
 }
 
 void clua_pushfunction(lua_State *L, clua_Function f) {
@@ -89,15 +126,21 @@ lua_State *clua_newstate(size_t limit) {
 	if (!budget) return NULL;
 	budget->used = 0;
 	budget->limit = limit;
-	budget->native = 1;
+	budget->native = 0;
+	budget->stopped = 0;
 	lua_State *L = lua_newstate(clua_alloc, budget);
-	if (!L) free(budget);
+	if (!L) {
+		free(budget);
+		return NULL;
+	}
+	clua_enter(L, budget);
 	return L;
 }
 
 void clua_close(lua_State *L) {
-	void *budget;
-	lua_getallocf(L, &budget);
+	clua_Budget *budget = clua_budget(L);
+	/* lua_close runs the pending finalizers in protected calls of its own, so their errors stay in C. */
+	budget->native = 0;
 	lua_close(L);
 	free(budget);
 }

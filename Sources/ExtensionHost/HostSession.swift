@@ -5,7 +5,7 @@ import Foundation
 /// One session of an extension in the host process: its own Lua state, its package, and its network.
 /// Nothing is shared between sessions, and the process ends with the session.
 final class HostSession {
-	private let lua: LuaState
+	let lua: LuaState
 	private let package: ExtensionPackage
 	let network: Network
 	let log: (String) -> Void

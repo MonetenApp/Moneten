@@ -65,6 +65,7 @@ public enum HostProcess {
 			case let .start(setup):
 				let seconds = setup.limits.processorSeconds
 				let exceeded = encoded(.failed("\(setup.package.name) used more than \(seconds) seconds of processor time, so Moneten stopped it."))
+				clua_setmemoryline(String(decoding: encoded(.failed("\(setup.package.name) needs more memory than Moneten allows, so Moneten stopped it.")), as: UTF8.self))
 				guard clua_limitprocessor(UInt32(seconds), String(decoding: exceeded, as: UTF8.self)) == 0 else {
 					emit(.failed("The extension host cannot limit its processor time."))
 					continue

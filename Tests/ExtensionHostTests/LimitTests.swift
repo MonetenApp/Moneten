@@ -1,14 +1,19 @@
 import Domain
 @testable import ExtensionHost
 import Foundation
+import CLua
 import Testing
 
 /// Limits that hold inside the process of the tests, where the memory of the process can be measured.
-@Suite struct LimitTests {
-	/// Answers every request with a new body of 8 MB.
+/// They run one after the other, so that one test's memory does not count for another.
+@Suite(.serialized) struct LimitTests {
+	/// Answers every request with a new body of 8 MB and a header of `header` bytes, which Swift pushes
+	/// after the body.
 	struct LargeBodies: Transport {
+		var header = 0
+
 		func send(_ request: HTTPRequest) throws -> HTTPResponse {
-			HTTPResponse(status: 200, body: Data(repeating: 0x41, count: 8 * 1_048_576))
+			HTTPResponse(status: 200, headers: header > 0 ? ["X-Padding": String(repeating: "p", count: header)] : [:], body: Data(repeating: 0x41, count: 8 * 1_048_576))
 		}
 	}
 
@@ -45,6 +50,33 @@ import Testing
 		let growth = Self.footprint() - before
 		#expect(result == .success(.object(["not enough memory": .integer(40)])))
 		#expect(growth < 160 * 1_048_576, "the footprint grew by \(growth / 1_048_576) MB")
+	}
+
+	/// A finalizer that fills the memory runs while a request pushes its body. No memory error may
+	/// skip the end of the Swift function, so the state is back at one level of Swift afterwards.
+	@Test func finalizersDoNotLeaveTheHeadroomOn() {
+		let package = demo("""
+			WebBanking{version = 1}
+			function Stress()
+				-- Fills the memory to the last bytes and keeps it: large blocks first, then small tables.
+				local mt = {__gc = function()
+					junk = {}
+					pcall(function() while true do junk[#junk + 1] = string.rep("y", 1048000) .. #junk end end)
+					pcall(function() while true do junk.tail = {junk.tail} end end)
+				end}
+				local c = Connection()
+				for i = 1, 40 do
+					junk = nil
+					setmetatable({}, mt)
+					pcall(c.request, c, "GET", "https://api.bank.example/statement")
+				end
+				junk = nil
+				return "done"
+			end
+			""", hosts: ["api.bank.example"])
+		let session = HostSession(package: package, transport: LargeBodies(header: 1_048_576), memory: 32 * 1_048_576, ask: { _ in .denied }, log: { _ in })
+		#expect(Result { () throws(ScriptError) in _ = try session.load(); return try session.call("Stress") } == .success(.string("done")))
+		#expect(clua_nativedepth(session.lua.stack.L) == 1)
 	}
 
 	@Test func requestReportsItsStartAndEnd() throws {
