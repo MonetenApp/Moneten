@@ -20,4 +20,12 @@ void clua_pushglobals(lua_State *L);
 void *clua_context(lua_State *L);
 void clua_setcontext(lua_State *L, void *context);
 
+/// A new state whose allocations stop at `limit` bytes, and its end. Lua raises its memory error at the limit.
+lua_State *clua_newstate(size_t limit);
+void clua_close(lua_State *L);
+
+/// Limits the processor time of the whole process to `seconds`. When it runs out, the process writes
+/// `line` to stdout and exits, wherever the script is, also inside `pcall`. Returns 0 on success.
+int clua_limitprocessor(unsigned seconds, const char *line);
+
 #endif

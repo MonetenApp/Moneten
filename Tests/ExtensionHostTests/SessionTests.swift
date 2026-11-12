@@ -15,10 +15,19 @@ import Testing
 		let printed = Mutex<[HostLog]>([])
 	}
 
-	static func start(_ package: ExtensionPackage, fixture: Fixture, recorder: Recorder = Recorder()) async throws -> ExtensionHostClient {
-		try await ExtensionHostClient.start(HostSetup(package: package, fixture: fixture), executable: hostExecutable,
-			ask: { host in recorder.asked.withLock { $0.append(host) }; return .allowed },
+	static func start(_ package: ExtensionPackage, fixture: Fixture, recorder: Recorder = Recorder(), limits: HostLimits = HostLimits(),
+		silence: Duration = .seconds(180), answer: @escaping @Sendable () async -> HostDecision = { .allowed }) async throws -> ExtensionHostClient {
+		try await ExtensionHostClient.start(HostSetup(package: package, fixture: fixture, limits: limits), executable: hostExecutable, silence: silence,
+			ask: { host in recorder.asked.withLock { $0.append(host) }; return await answer() },
 			log: { line in recorder.printed.withLock { $0.append(line) } }).client
+	}
+
+	static func ended(_ client: ExtensionHostClient) async throws -> Bool {
+		for _ in 0..<100 {
+			if kill(client.processIdentifier, 0) == -1 && errno == ESRCH { return true }
+			try await Task.sleep(for: .milliseconds(50))
+		}
+		return false
 	}
 
 	@Test func helloEndsWithItsProcess() async throws {
@@ -131,5 +140,81 @@ import Testing
 		let orphan = try Orphan(#"exec 3<&0; (sleep 0.5; exec "$0") <&3 & echo $! >&2"#)
 		orphan.shell.waitUntilExit()
 		#expect(try await orphan.ends(within: .seconds(5)))
+	}
+
+	static let askingPackage = demo("""
+		WebBanking{version = 1, description = "Demo"}
+		function Check() return Connection():request("GET", "https://www.bank.example/") end
+		function Peek() return "peek" end
+		""")
+
+	@Test func overlappingCallIsRefused() async throws {
+		let recorder = Recorder()
+		let (released, release) = AsyncStream.makeStream(of: Never.self)
+		let client = try await Self.start(Self.askingPackage, fixture: Self.fixture([("https://www.bank.example/", "start")]), recorder: recorder,
+			answer: { for await _ in released {}; return .allowed })
+		async let first = client.call("Check")
+		while recorder.asked.withLock({ $0.isEmpty }) { try await Task.sleep(for: .milliseconds(10)) }
+		await #expect(throws: ScriptError("Another call of this extension session is still running.")) { try await client.call("Peek") }
+		release.finish()
+		#expect(try await first == .string("start"))
+		#expect(try await client.call("Peek") == .string("peek"))
+		await client.end()
+	}
+
+	@Test func silentHostIsStopped() async throws {
+		let client = try await Self.start(demo("WebBanking{version = 1}\nfunction Loop() while true do end end"), fixture: Self.fixture([]), silence: .seconds(5))
+		await #expect(throws: ScriptError("The extension did not respond for 5 seconds, so Moneten stopped it.")) { try await client.call("Loop") }
+		#expect(try await Self.ended(client))
+	}
+
+	@Test func questionToTheUserPausesTheWatchdog() async throws {
+		let client = try await Self.start(Self.askingPackage, fixture: Self.fixture([("https://www.bank.example/", "start")]), silence: .seconds(3),
+			answer: { try? await Task.sleep(for: .seconds(4)); return .allowed })
+		#expect(try await client.call("Check") == .string("start"))
+		await client.end()
+	}
+
+	@Test func processorTimeIsLimited() async throws {
+		var limits = HostLimits()
+		limits.processorSeconds = 2
+		let client = try await Self.start(demo("WebBanking{version = 1}\nfunction Loop() while true do pcall(function() while true do end end) end end"),
+			fixture: Self.fixture([]), limits: limits)
+		await #expect(throws: ScriptError("Demo used more than 2 seconds of processor time, so Moneten stopped it.")) { try await client.call("Loop") }
+		#expect(try await Self.ended(client))
+	}
+
+	@Test func memoryIsLimited() async throws {
+		var limits = HostLimits()
+		limits.memory = 16 * 1_048_576
+		let client = try await Self.start(demo("""
+			WebBanking{version = 1}
+			function Grow() local t = {} for i = 1, 1e8 do t[i] = string.rep("x", 100) .. i end end
+			function Small() return #string.rep("x", 1000) end
+			"""), fixture: Self.fixture([]), limits: limits)
+		await #expect(throws: ScriptError("The extension needs more than 16 MB of memory.")) { try await client.call("Grow") }
+		#expect(try await client.call("Small") == .integer(1000))
+		await client.end()
+	}
+
+	/// The answer is one byte longer than the limit, so the read that holds its line break passes the limit.
+	@Test func answerLargerThanTheLimitEndsTheSession() async throws {
+		let line = #"{"result":{"_0":""}}"#.utf8.count
+		let client = try await Self.start(demo("WebBanking{version = 1}\nfunction Big() return string.rep(\"a\", \(ExtensionHostClient.maxLine + 1 - line)) end"),
+			fixture: Self.fixture([]))
+		await #expect(throws: ScriptError("The extension sent an answer larger than 64 MB.")) { try await client.call("Big") }
+		await client.end()
+	}
+
+	@Test func printOutputIsCapped() async throws {
+		let recorder = Recorder()
+		let client = try await Self.start(demo("""
+			WebBanking{version = 1}
+			function Chatty() for i = 1, 6 do print(string.rep("x", 1048575)) end return "done" end
+			"""), fixture: Self.fixture([]), recorder: recorder)
+		#expect(try await client.call("Chatty") == .string("done"))
+		let line = HostLog.print(String(repeating: "x", count: 1_048_575))
+		#expect(recorder.printed.withLock { $0 } == [line, line, line, line, .print("Moneten drops the rest of the output of print, because Demo printed more than 4 MB.")])
+		await client.end()
 	}
 }

@@ -1,3 +1,4 @@
+import CLua
 import Domain
 import Foundation
 
@@ -9,12 +10,24 @@ public struct HostSetup: Sendable, Codable {
 	public let decisions: [String: HostDecision]
 	/// Replaces the network with recorded answers, for the tests and the debug harness.
 	public let fixture: Fixture?
+	public let limits: HostLimits
 
-	public init(package: ExtensionPackage, decisions: [String: HostDecision] = [:], fixture: Fixture? = nil) {
+	public init(package: ExtensionPackage, decisions: [String: HostDecision] = [:], fixture: Fixture? = nil, limits: HostLimits = HostLimits()) {
 		self.package = package
 		self.decisions = decisions
 		self.fixture = fixture
+		self.limits = limits
 	}
+}
+
+/// What one session may use in its host process (ADR 0015).
+public struct HostLimits: Sendable, Codable, Equatable {
+	/// The bytes that the Lua state may allocate.
+	public var memory = 256 * 1_048_576
+	/// The processor time of the whole session.
+	public var processorSeconds = 60
+
+	public init() {}
 }
 
 /// One line from the app to the host process.
@@ -33,6 +46,8 @@ enum HostEvent: Sendable, Codable {
 	case print(String)
 	/// A request that reached the fixture, as "GET https://...".
 	case sent(String)
+	/// A request over the network ended. The app counts the silence of the host from here.
+	case alive
 }
 
 /// The loop of the host process: one session, with commands on stdin and events on stdout. It ends
@@ -48,10 +63,17 @@ public enum HostProcess {
 		while let command = readCommand() {
 			switch command {
 			case let .start(setup):
+				let seconds = setup.limits.processorSeconds
+				let exceeded = encoded(.failed("\(setup.package.name) used more than \(seconds) seconds of processor time, so Moneten stopped it."))
+				guard clua_limitprocessor(UInt32(seconds), String(decoding: exceeded, as: UTF8.self)) == 0 else {
+					emit(.failed("The extension host cannot limit its processor time."))
+					continue
+				}
 				let transport: any Transport = setup.fixture.map { FixtureTransport($0) { emit(.sent("\($0.method) \($0.url.absoluteString)")) } }
-					?? URLSessionTransport()
+					?? URLSessionTransport { emit(.alive) }
 				let started = ContinuousClock.now
-				let new = HostSession(package: setup.package, transport: transport, decisions: setup.decisions, ask: askApp, log: { emit(.print($0)) })
+				let new = HostSession(package: setup.package, transport: transport, decisions: setup.decisions, memory: setup.limits.memory, ask: askApp,
+					log: { emit(.print($0)) })
 				do {
 					let registration = try new.load()
 					session = new
@@ -88,7 +110,12 @@ public enum HostProcess {
 
 	/// Every event reaches the app, so that the app never waits for an answer that was lost.
 	private static func emit(_ event: HostEvent) {
+		FileHandle.standardOutput.write(encoded(event))
+	}
+
+	/// The event as one line of JSON with its line break.
+	private static func encoded(_ event: HostEvent) -> Data {
 		let line = (try? JSONEncoder().encode(event)) ?? (try! JSONEncoder().encode(HostEvent.failed("The extension host could not encode its answer.")))
-		FileHandle.standardOutput.write(line + [0x0A])
+		return line + [0x0A]
 	}
 }

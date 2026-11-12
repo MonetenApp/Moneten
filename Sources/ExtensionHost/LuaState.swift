@@ -61,15 +61,18 @@ public enum LuaValue: Sendable, Equatable, Codable {
 /// session and runs on one thread.
 final class LuaState {
 	let stack: LuaStack
+	/// The bytes that the state may allocate.
+	private let memory: Int
 
-	init() {
-		stack = LuaStack(luaL_newstate())
+	init(memory: Int) {
+		self.memory = memory
+		stack = LuaStack(clua_newstate(memory))
 		// `warn` would write to the stderr of the app.
 		lua_setwarnf(stack.L, nil, nil)
 	}
 
 	deinit {
-		lua_close(stack.L)
+		clua_close(stack.L)
 	}
 
 	/// Compiles and runs one file of the extension. Binary chunks are refused.
@@ -80,7 +83,7 @@ final class LuaState {
 			buffer.withMemoryRebound(to: CChar.self) { luaL_loadbufferx(L, $0.baseAddress, $0.count, "@" + file, "t") }
 		}
 		guard status == LUA_OK else {
-			let error = popError()
+			let error = popError(status)
 			throw error.message.hasPrefix(file + ":") ? error : ScriptError("\(file): \(error.message)")
 		}
 		try protectedCall(arguments: 0, results: 0)
@@ -101,10 +104,15 @@ final class LuaState {
 	}
 
 	private func protectedCall(arguments: Int32, results: Int32) throws(ScriptError) {
-		guard lua_pcallk(stack.L, arguments, results, 0, 0, nil) == LUA_OK else { throw popError() }
+		let status = lua_pcallk(stack.L, arguments, results, 0, 0, nil)
+		guard status == LUA_OK else { throw popError(status) }
 	}
 
-	private func popError() -> ScriptError {
+	private func popError(_ status: Int32) -> ScriptError {
+		guard status != LUA_ERRMEM else {
+			lua_settop(stack.L, 0)
+			return ScriptError("The extension needs more than \(memory / 1_048_576) MB of memory.")
+		}
 		let message = lua_type(stack.L, -1) == LUA_TSTRING ? stack.string(at: -1) : "The script stopped with an error of type \(stack.typeName(at: -1))."
 		lua_settop(stack.L, 0)
 		return ScriptError(Environment.explain(message))
