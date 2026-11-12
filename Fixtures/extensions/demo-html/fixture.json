@@ -1,0 +1,69 @@
+{
+	"exchanges": [
+		{
+			"request": {
+				"method": "GET",
+				"url": "https://www.bank.example/login"
+			},
+			"response": {
+				"status": 200,
+				"headers": {
+					"Content-Type": "text/html; charset=UTF-8"
+				},
+				"body": "<!doctype html><html><head><meta charset=\"utf-8\"><title>Demo Bank</title></head><body>\n<form method=\"post\" action=\"/login\"><input type=\"text\" name=\"user\" value=\"\"><input type=\"password\" name=\"pin\" value=\"\"><input type=\"submit\" name=\"login\" value=\"Log in\"></form>\n</body></html>"
+			}
+		},
+		{
+			"request": {
+				"method": "POST",
+				"url": "https://www.bank.example/login"
+			},
+			"response": {
+				"status": 200,
+				"headers": {
+					"Content-Type": "text/html; charset=UTF-8"
+				},
+				"body": "<!doctype html><html><head><meta charset=\"utf-8\"><title>Demo Bank</title></head><body><h1>Welcome</h1><a href=\"/accounts\">Accounts</a></body></html>"
+			}
+		},
+		{
+			"request": {
+				"method": "GET",
+				"url": "https://www.bank.example/accounts"
+			},
+			"response": {
+				"status": 200,
+				"headers": {
+					"Content-Type": "text/html; charset=UTF-8"
+				},
+				"body": "<!doctype html><html><head><meta charset=\"utf-8\"></head><body><table>\n<tr class=\"account\"><td class=\"name\">Demo Giro</td><td class=\"owner\">Erika Mustermann</td><td class=\"iban\">DE02120300000000202051</td></tr>\n</table></body></html>"
+			}
+		},
+		{
+			"request": {
+				"method": "GET",
+				"url": "https://www.bank.example/transactions?account=DE02120300000000202051"
+			},
+			"response": {
+				"status": 200,
+				"headers": {
+					"Content-Type": "text/html; charset=UTF-8"
+				},
+				"body": "<!doctype html><html><head><meta charset=\"utf-8\"></head><body>\n<p>Balance: <span id=\"balance\">2.398,60</span> EUR</p><table>\n<tr class=\"booking\" data-id=\"T-3\"><td class=\"date\">07.11.2026</td><td class=\"name\">Bäckerei Beispiel</td><td class=\"purpose\">Kartenzahlung</td><td class=\"amount\">-12,40</td></tr>\n<tr class=\"booking\" data-id=\"T-2\"><td class=\"date\">05.11.2026</td><td class=\"name\">Max Mustermann</td><td class=\"purpose\">Gehalt November</td><td class=\"amount\">2.500,00</td></tr>\n<tr class=\"booking\" data-id=\"T-1\"><td class=\"date\">03.11.2026</td><td class=\"name\">Stadtwerke Musterstadt</td><td class=\"purpose\">Abschlag November</td><td class=\"amount\">-89,00</td></tr>\n</table></body></html>"
+			}
+		},
+		{
+			"request": {
+				"method": "GET",
+				"url": "https://www.bank.example/logout"
+			},
+			"response": {
+				"status": 200,
+				"headers": {
+					"Content-Type": "text/html; charset=UTF-8"
+				},
+				"body": "<!doctype html><html><head><meta charset=\"utf-8\"><title>Demo Bank</title></head><body><h1>Welcome</h1><a href=\"/accounts\">Accounts</a></body></html>"
+			}
+		}
+	]
+}

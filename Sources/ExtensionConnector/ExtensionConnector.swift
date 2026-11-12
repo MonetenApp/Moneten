@@ -370,7 +370,7 @@ private final class ScriptRun {
 	/// An error of `EndSession` goes to the log and keeps the fetched data.
 	@discardableResult
 	func end() async -> Data? {
-		if loggedIn {
+		if loggedIn, await client.entryPoints.contains(.endSession) {
 			do {
 				if case let .string(message) = try await client.call(.endSession) { connector.services.log(.print("EndSession: \(message)")) }
 			} catch {

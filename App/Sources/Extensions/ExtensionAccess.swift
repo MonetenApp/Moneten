@@ -47,6 +47,7 @@ extension AppModel {
 	func refreshExtensionAccesses(package: ExtensionPackage, fixture: Fixture? = nil, attended: Bool = true, log: @escaping @Sendable (HostLog) -> Void = { _ in }) {
 		guard let connector = extensionConnector(package, fixture: fixture, log: log) else { return }
 		for stored in accesses where stored.access.source == .extension(id: package.name) {
+			for id in stored.accounts.keys { setupFailures[id] = nil }
 			let accounts = stored.accounts.compactMap { id, remoteID in
 				ledger.account(id).map { AccountRequest(accountID: id, name: $0.name, remoteID: remoteID) }
 			}.sorted { $0.name < $1.name }
@@ -60,8 +61,8 @@ extension AppModel {
 		guard let access = accesses.first(where: { $0.accounts[accountID] != nil }) else { return nil }
 		switch sync.states[access.access.id] {
 		case let .failed(failure)?: return failure
-		case let .finished(summary)?: return summary.failures[accountID]
-		default: return nil
+		case let .finished(summary)?: return summary.failures[accountID] ?? setupFailures[accountID]
+		default: return setupFailures[accountID]
 		}
 	}
 
@@ -85,7 +86,10 @@ extension AppModel {
 		}
 		try add(stored, state: setup.state, accounts: accounts, remoteIDs: remoteIDs)
 		for (account, new) in zip(accounts, setup.accounts) {
-			if case let .fetched(result) = new.outcome { _ = try merge(.refresh(result), into: account.id) }
+			switch new.outcome {
+			case let .fetched(result): _ = try merge(.refresh(result), into: account.id)
+			case let .failed(failure): setupFailures[account.id] = failure
+			}
 		}
 		if let first = accounts.first { selection = .account(first.id) }
 	}

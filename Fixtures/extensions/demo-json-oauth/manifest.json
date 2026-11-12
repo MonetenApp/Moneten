@@ -1,0 +1,16 @@
+{
+	"id": "demo-json-oauth",
+	"name": "Demo Broker",
+	"version": "1.0",
+	"description": "A made-up broker with a JSON API and an OAuth login, for the tests.",
+	"files": ["Demo.lua"],
+	"hosts": ["api.broker.example", "auth.broker.example"],
+	"services": [
+		{"name": "Demo Broker", "login": [{"label": "Email address"}]},
+		{"name": "Demo Broker Three", "login": [{"label": "Email address"}]}
+	],
+	"kinds": ["balances", "transactions"],
+	"apiVersion": 1,
+	"license": "MIT",
+	"maintainer": {"name": "Moneten", "github": "MonetenApp"}
+}

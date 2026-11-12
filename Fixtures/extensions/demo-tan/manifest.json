@@ -1,0 +1,19 @@
+{
+	"id": "demo-tan",
+	"name": "Demo TAN",
+	"version": "1.0",
+	"description": "A made-up JSON service with two-factor challenges, for the tests.",
+	"files": ["Demo.lua"],
+	"hosts": ["api.bank.example", "www.bank.example"],
+	"services": [
+		{"name": "Demo TAN", "login": [{"label": "Username"}, {"label": "Password", "secret": true}]},
+		{"name": "Demo Push", "login": [{"label": "Username"}, {"label": "Password", "secret": true}]},
+		{"name": "Demo Methods", "login": [{"label": "Username"}, {"label": "Password", "secret": true}]},
+		{"name": "Demo Captcha", "login": [{"label": "Username"}, {"label": "Password", "secret": true}]},
+		{"name": "Demo Broken", "login": [{"label": "Email address"}, {"label": "API key", "secret": true}]}
+	],
+	"kinds": ["balances", "transactions"],
+	"apiVersion": 1,
+	"license": "MIT",
+	"maintainer": {"name": "Moneten", "github": "MonetenApp"}
+}

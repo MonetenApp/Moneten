@@ -1,0 +1,30 @@
+{
+	"exchanges": [
+		{
+			"request": {
+				"method": "POST",
+				"url": "https://api.broker.example/token"
+			},
+			"response": {
+				"status": 200,
+				"headers": {
+					"Content-Type": "application/json"
+				},
+				"body": "{\"access_token\": \"access-2\", \"refresh_token\": \"refresh-1\"}"
+			}
+		},
+		{
+			"request": {
+				"method": "GET",
+				"url": "https://api.broker.example/accounts/BRK-1/transactions"
+			},
+			"response": {
+				"status": 200,
+				"headers": {
+					"Content-Type": "application/json"
+				},
+				"body": "{\"balance\": 310.5, \"items\": [{\"id\": \"B-2\", \"booked_at\": 1794571200, \"counterparty\": \"Demo Broker\", \"reference\": \"Zinsen\", \"amount\": 0.5}, {\"id\": \"B-1\", \"booked_at\": 1794225600, \"counterparty\": \"Erika Mustermann\", \"reference\": \"Einzahlung\", \"amount\": 310.0}]}"
+			}
+		}
+	]
+}
