@@ -187,7 +187,7 @@ struct AboutSettings: View {
 					Link("GPL 3.0 or later", destination: URL(string: "https://www.gnu.org/licenses/gpl-3.0.html")!)
 				}
 				LabeledContent("Source code") {
-					Link("GitHub", destination: URL(string: "https://github.com/alexander-schneider/Moneten")!)
+					Link("GitHub", destination: URL(string: "https://github.com/MonetenApp/Moneten")!)
 				}
 			} footer: {
 				Text("Moneten is free software. It sends no data anywhere. Bank access through FinTS follows in a later version.")

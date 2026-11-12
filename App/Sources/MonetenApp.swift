@@ -110,8 +110,8 @@ struct AppCommands: Commands {
 		}
 		CommandGroup(replacing: .help) {
 			Button("Show Database in Finder...") { NSWorkspace.shared.activateFileViewerSelecting([model.vault.folder.root]) }
-			Button("Moneten on GitHub...") { NSWorkspace.shared.open(URL(string: "https://github.com/alexander-schneider/Moneten")!) }
-			Button("Report an Issue...") { NSWorkspace.shared.open(URL(string: "https://github.com/alexander-schneider/Moneten/issues/new/choose")!) }
+			Button("Moneten on GitHub...") { NSWorkspace.shared.open(URL(string: "https://github.com/MonetenApp/Moneten")!) }
+			Button("Report an Issue...") { NSWorkspace.shared.open(URL(string: "https://github.com/MonetenApp/Moneten/issues/new/choose")!) }
 		}
 	}
 }
