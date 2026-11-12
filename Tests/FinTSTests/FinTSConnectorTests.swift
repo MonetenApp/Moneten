@@ -234,6 +234,26 @@ struct FinTSConnectorTests {
 		#expect(waited >= .seconds(5.5) && waited < .seconds(9))
 	}
 
+	@Test("A helper that does not read a large state fails with a timeout")
+	func timeoutBlockedWrite() async throws {
+		let state = AccessState(Data(repeating: 7, count: 1_000_000))
+		let start = ContinuousClock.now
+		await #expect(throws: SyncFailure.network("The connection to the FinTS server of the bank timed out. Try again later.")) {
+			try await connector("exec sleep 60", inactivity: 1).listAccounts(of: Self.access, state: state, session: Session())
+		}
+		#expect(ContinuousClock.now - start < .seconds(9))
+	}
+
+	@Test("A finished run releases the helper and its pipes")
+	func releasesPipes() async throws {
+		// Each leaked run keeps two pipes open. Other tests open files at the same time, so the bound is loose.
+		func openFiles() -> Int { (try? FileManager.default.contentsOfDirectory(atPath: "/dev/fd").count) ?? 0 }
+		let helper = connector(#"read cmd; echo '{"type":"accounts","accounts":[]}'"#)
+		let before = openFiles()
+		for _ in 0..<100 { _ = try await helper.listAccounts(of: Self.access, state: nil, session: Session()) }
+		#expect(openFiles() - before < 60)
+	}
+
 	@Test("Each line restarts the timeout, and a request for the user pauses it")
 	func timeoutRestartsAndPauses() async throws {
 		let session = Session { _ in
@@ -458,6 +478,7 @@ struct FinTSConnectorTests {
 		let arguments = FinTSConnector.Helper.bundled.arguments
 		#expect(arguments.contains("-XX:ErrorFile=/dev/null"))
 		#expect(arguments.contains("-Djava.net.useSystemProxies=true"))
+		#expect(arguments.contains("-XX:+DisableAttachMechanism") && arguments.contains("-Xrs"))
 		#expect(arguments.last == "FinTSHelper")
 	}
 

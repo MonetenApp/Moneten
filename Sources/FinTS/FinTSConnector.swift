@@ -54,11 +54,14 @@ public struct FinTSConnector: BankConnector {
 		let arguments: [String]
 
 		/// The helper that scripts/build-app.sh puts into the app. A crash of the JVM writes no file,
-		/// because the file would hold the memory of the helper with the PIN.
+		/// because the file would hold the memory of the helper with the PIN. No other process may
+		/// attach to the JVM, which could load an agent or dump the memory, and the JVM leaves the
+		/// signals alone, so a SIGQUIT writes no thread dump into the lines of the protocol.
 		static var bundled: Helper {
 			let folder = (Bundle.main.resourceURL ?? Bundle.main.bundleURL).appending(path: "FinTSHelper")
 			return Helper(executable: folder.appending(path: "runtime/bin/java"),
 				arguments: ["-Djava.awt.headless=true", "-Djava.net.useSystemProxies=true", "-XX:ErrorFile=/dev/null",
+					"-XX:+DisableAttachMechanism", "-Xrs",
 					"-cp", folder.appending(path: "lib").path + "/*", "FinTSHelper"])
 		}
 	}
@@ -181,8 +184,9 @@ public struct FinTSConnector: BankConnector {
 		var helperLeft = false
 		await withTaskCancellationHandler {
 			do {
-				process.send(command)
+				// The timer runs before the first write: a helper that does not read a large state blocks it.
 				watchdog.restart()
+				process.send(command)
 				reading: for await line in process.lines {
 					watchdog.restart()
 					guard let message = try? JSONDecoder().decode(HelperMessage.self, from: Data(line.utf8)) else { throw HelperFailure.unreadable }
@@ -313,8 +317,10 @@ private final class Watchdog: Sendable {
 		arm(state.withLock { $0.generation += 1; $0.paused -= 1; return $0.paused == 0 ? $0.generation : nil })
 	}
 
+	/// Ends the timer for good. Dropping `expiry` breaks the cycle through the helper process, so the
+	/// process, its pipes, and the answers of the user are released when the run ends.
 	func stop() {
-		pause()
+		state.withLock { $0.generation += 1; $0.paused += 1; $0.expiry = nil }
 	}
 
 	private func arm(_ generation: Int?) {

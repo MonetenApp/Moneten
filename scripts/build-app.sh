@@ -41,10 +41,17 @@ embed_fints_helper() {
 	[ "$IDENTITY" = - ] || TIMESTAMP="--timestamp"
 	RUNTIME=""
 	codesign -dv "$1" 2>&1 | grep -q '^CodeDirectory.*flags=.*runtime' && RUNTIME="--options runtime"
-	find "$HELPER/runtime" -type f ! -path '*/bin/java' | while read -r f; do
-		if file -b "$f" | grep -q Mach-O; then codesign --force $RUNTIME $TIMESTAMP --sign "$IDENTITY" "$f" 2>/dev/null; fi
-	done
-	codesign --force $RUNTIME $TIMESTAMP --entitlements App/FinTSHelper.entitlements --sign "$IDENTITY" "$HELPER/runtime/bin/java" 2>/dev/null
+	# A file list instead of a pipe, so that a failed signature stops the build. codesign needs the
+	# private key of the identity in the Keychain; a certificate that only Xcode manages fails here.
+	CODE=$(mktemp)
+	find "$HELPER/runtime" -type f ! -path '*/bin/java' > "$CODE.all"
+	while read -r f; do file -b "$f" | grep -q Mach-O && echo "$f"; done < "$CODE.all" > "$CODE"
+	rm "$CODE.all"
+	while read -r f; do
+		codesign --force $RUNTIME $TIMESTAMP --sign "$IDENTITY" "$f" || { echo "Could not sign $f of the FinTS helper." >&2; exit 1; }
+	done < "$CODE"
+	codesign --force $RUNTIME $TIMESTAMP --entitlements App/FinTSHelper.entitlements --sign "$IDENTITY" "$HELPER/runtime/bin/java" \
+		|| { echo "Could not sign the java of the FinTS helper." >&2; exit 1; }
 	# The product ID goes through a pipe, never through an argument, a variable, or a log.
 	security find-generic-password -s 'Moneten FinTS product ID' -w 2>/dev/null | python3 -c '
 import plistlib, sys
@@ -56,9 +63,14 @@ if product:
 else:
 	print("No FinTS product ID in the login Keychain. The app builds, and FinTS refuses to connect.", file=sys.stderr)
 ' "$1/Contents/Info.plist"
-	codesign --force --preserve-metadata=identifier,entitlements,requirements,flags,runtime $TIMESTAMP --sign "$IDENTITY" "$1" 2>/dev/null
+	codesign --force --preserve-metadata=identifier,entitlements,requirements,flags,runtime $TIMESTAMP --sign "$IDENTITY" "$1" || { echo "Could not sign the app again after adding the FinTS helper." >&2; exit 1; }
 	signer() { codesign -dvv "$1" 2>&1 | grep -E '^(Authority|Signature|TeamIdentifier)='; }
-	[ "$(signer "$HELPER/runtime/bin/java")" = "$(signer "$1")" ] || { echo "The FinTS helper is not signed like the app." >&2; exit 1; }
+	APP_SIGNER=$(signer "$1")
+	echo "$HELPER/runtime/bin/java" >> "$CODE"
+	while read -r f; do
+		[ "$(signer "$f")" = "$APP_SIGNER" ] || { echo "$f of the FinTS helper is not signed like the app." >&2; exit 1; }
+	done < "$CODE"
+	rm "$CODE"
 }
 
 scripts/generate-project.sh
