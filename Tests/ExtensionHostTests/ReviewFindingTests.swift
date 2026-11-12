@@ -54,20 +54,36 @@ import Testing
 		#expect((1...3).map { exchange.header("Cookie", of: $0) } == [nil, nil, nil])
 	}
 
-	@Test func cookieForTheParentDomainOfTheHostStays() {
-		let exchange = Exchange("""
+	/// Sites that share a suffix of the Public Suffix List belong to different owners: "foo.ck" is a
+	/// suffix by the rule "*.ck", and "xn--55qx5d.cn" is the rule "公司.cn".
+	@Test(arguments: ["github.io", "appspot.com", "herokuapp.com", "blogspot.com", "go.jp", "gob.mx", "foo.ck", "xn--55qx5d.cn"])
+	func cookieForASuffixOfTheListReachesNoOtherSite(suffix: String) {
+		let exchange = twoSites(under: suffix, setting: "sid=SECRET; Domain=.\(suffix); Path=/")
+		#expect(exchange.call() == .integer(1))
+		#expect(exchange.header("Cookie", of: 1) == nil)
+	}
+
+	/// "www.ck" is an exception to the rule "*.ck", so it is a domain that one owner registered.
+	@Test(arguments: ["bank.co.uk", "bank.github.io", "www.ck"])
+	func cookieForTheParentDomainOfTheHostStays(domain: String) {
+		let exchange = twoSites(under: domain, setting: "sid=1; Domain=.\(domain); Path=/")
+		#expect(exchange.call() == .integer(1))
+		#expect(exchange.header("Cookie", of: 1) == "sid=1")
+	}
+
+	/// A session that gets `setCookie` from one site under `domain` and then requests another site under it.
+	private func twoSites(under domain: String, setting setCookie: String) -> Exchange {
+		Exchange("""
 			function Check()
 				local c = Connection()
-				c:get("https://www.bank.co.uk/")
-				c:get("https://api.bank.co.uk/")
+				c:get("https://one.\(domain)/")
+				c:get("https://two.\(domain)/")
 				return 1
 			end
-			""", hosts: ["www.bank.co.uk", "api.bank.co.uk"], [
-				("GET", "https://www.bank.co.uk/", 200, ["Set-Cookie": "sid=1; Domain=.bank.co.uk; Path=/"]),
-				("GET", "https://api.bank.co.uk/", 200, [:]),
+			""", hosts: ["one.\(domain)", "two.\(domain)"], [
+				("GET", "https://one.\(domain)/", 200, ["Set-Cookie": setCookie]),
+				("GET", "https://two.\(domain)/", 200, [:]),
 			])
-		_ = exchange.call()
-		#expect(exchange.header("Cookie", of: 1) == "sid=1")
 	}
 
 	@Test func secretHeadersStayOnTheirSite() {
