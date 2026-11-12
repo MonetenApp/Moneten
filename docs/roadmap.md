@@ -81,7 +81,7 @@ Fetch, categorize, and understand your money. Read-only.
 | [#85 Add bank accesses in the app: assistant, refresh commands, and status (#13, part 2)](https://github.com/MonetenApp/Moneten/issues/85) | area: fints, area: core | #13, #80 |
 | [#86 Save PINs and finish the TAN dialogs (#13, part 3)](https://github.com/MonetenApp/Moneten/issues/86) | area: fints | #13 |
 | [#87 Check and sign extension packages in the catalog repository](https://github.com/MonetenApp/Moneten/issues/87) | area: extensions | #16 |
-| [#88 Show installed and installable extensions in an Extensions window](https://github.com/MonetenApp/Moneten/issues/88) | area: extensions | #37, #13 |
+| [#88 Show installed and installable extensions in an Extensions window](https://github.com/MonetenApp/Moneten/issues/88) | area: extensions | #37, #85 |
 
 ## v0.2 Pay
 
