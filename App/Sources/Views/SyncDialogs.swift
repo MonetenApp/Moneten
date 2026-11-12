@@ -40,6 +40,7 @@ private struct DialogFrame<Content: View, Buttons: View>: View {
 }
 
 /// Asks for the PIN of an access. The field hides the characters and is not offered to the password manager.
+/// After the bank rejected a PIN, the sheet opens again with an empty field, the message of the bank, and the warning.
 struct PINSheet: View {
 	let broker: SessionBroker
 	let prompt: Prompt
@@ -48,6 +49,13 @@ struct PINSheet: View {
 
 	var body: some View {
 		DialogFrame(title: "Enter \(request.secretName)") {
+			if let rejected = request.rejected {
+				Section {
+					Label(SyncFailure.pinRejected(rejected).message, systemImage: "exclamationmark.triangle")
+						.foregroundStyle(.orange)
+						.fixedSize(horizontal: false, vertical: true)
+				}
+			}
 			Section {
 				LabeledContent(prompt.accountNames.count == 1 ? "Account" : "Accounts", value: prompt.accountNames.joined(separator: ", "))
 				LabeledContent("Bank", value: prompt.access.bankName)
