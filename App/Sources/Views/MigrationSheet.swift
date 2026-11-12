@@ -44,7 +44,7 @@ struct MigrationSheet: View {
 					LabeledContent("Categories", value: plan.categories.count.formatted())
 					LabeledContent("Transactions", value: plan.transactions.count.formatted())
 					if !plan.updatedAccounts.isEmpty || !plan.updatedTransactions.isEmpty || !plan.updatedCategories.isEmpty {
-						LabeledContent("Updated", value: "\(plan.updatedAccounts.count) accounts, \(plan.updatedTransactions.count.formatted()) booked transactions, \(plan.updatedCategories.count) category colors")
+						LabeledContent("Updated", value: "\(plan.updatedAccounts.count) accounts, \(plan.updatedTransactions.count.formatted()) transactions, \(plan.updatedCategories.count) category colors")
 					}
 				}
 				if !plan.notes.isEmpty {
@@ -104,7 +104,7 @@ struct MigrationSheet: View {
 				LabeledContent("Rules", value: plan.categories.filter { !$0.rule.isEmpty }.count.formatted())
 				LabeledContent("Transactions", value: plan.transactions.count.formatted())
 				if !plan.updatedAccounts.isEmpty || !plan.updatedTransactions.isEmpty || !plan.updatedCategories.isEmpty {
-					LabeledContent("Updated", value: "\(plan.updatedAccounts.count) accounts, \(plan.updatedTransactions.count.formatted()) booked transactions, \(plan.updatedCategories.count) category colors")
+					LabeledContent("Updated", value: "\(plan.updatedAccounts.count) accounts, \(plan.updatedTransactions.count.formatted()) transactions, \(plan.updatedCategories.count) category colors")
 				}
 			} header: {
 				Text("This will be imported")
@@ -128,8 +128,9 @@ struct MigrationSheet: View {
 				let transactions = try await MoneyMoneyExporter.exportTransactions()
 				try Task.checkCancellation()
 				let ledger = model.ledgerForMigration
+				let deleted = try model.deletedTransactions()
 				let plan = try await Task.detached {
-					try MoneyMoneyMigration().plan(accounts: accounts, categories: categories, transactions: transactions, into: ledger)
+					try MoneyMoneyMigration().plan(accounts: accounts, categories: categories, transactions: transactions, into: ledger, deleted: deleted)
 				}.value
 				step = .summary(plan)
 			} catch is CancellationError {

@@ -94,6 +94,11 @@ public final class Store: Sendable {
 		}
 	}
 
+	/// What identifies every deleted transaction, so that a migration does not add them again.
+	public func deletedTransactions() throws -> [DeletedTransaction] {
+		try queue.read { db in try DeletedTransaction.fetchAll(db) }
+	}
+
 	/// Deletes transactions and keeps what identifies them, so that no later refresh adds them again.
 	/// The bank balance stays as it is.
 	public func deleteTransactions(_ ids: [UUID]) throws {
