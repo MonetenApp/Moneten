@@ -4,6 +4,8 @@ dist/
 .DS_Store
 App/Moneten.xcodeproj/
 App/Local.xcconfig
+# LocalStorage of `ext run`, which can hold cookies and tokens of a script.
+*.storage.json
 # OpenSpec writes its commands and skills for Claude Code here: openspec init --tools claude
 .claude/commands/
 .claude/skills/

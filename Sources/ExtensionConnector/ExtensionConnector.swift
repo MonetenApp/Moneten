@@ -161,6 +161,8 @@ public struct NewAccount: Sendable {
 	public var owner: String? { listed.owner }
 	/// The number that later refreshes ask for, as `AccountRequest.remoteID`.
 	public var remoteID: String { listed.remoteID }
+	/// The table of `ListAccounts`, which `RefreshAccount` gets back unchanged. `ext` prints it.
+	public var table: LuaValue { listed.table }
 }
 
 /// What the connector keeps of an access: `LocalStorage`, the account tables of `ListAccounts`, which

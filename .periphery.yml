@@ -3,6 +3,7 @@
 project: App/Moneten.xcodeproj
 schemes:
   - Moneten
+  - ext
 retain_codable_properties: true
 relative_results: true
 strict: true

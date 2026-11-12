@@ -1,0 +1,13 @@
+{
+	"id": "example",
+	"name": "Example Bank",
+	"version": "1.0",
+	"description": "A made-up bank that shows how an extension logs in, lists its accounts, and reads transactions.",
+	"files": ["Example.lua"],
+	"hosts": ["www.bank.example"],
+	"services": [{"name": "Example Bank", "login": [{"label": "Username"}, {"label": "Password", "secret": true}]}],
+	"kinds": ["balances", "transactions"],
+	"apiVersion": 1,
+	"license": "MIT",
+	"maintainer": {"name": "Moneten", "github": "MonetenApp"}
+}
