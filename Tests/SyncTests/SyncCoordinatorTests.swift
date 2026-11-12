@@ -314,6 +314,62 @@ struct SyncCoordinatorTests {
 		#expect(second.answers.all.isEmpty)
 	}
 
+	/// Every call of `ended`, in order.
+	@MainActor
+	final class EndLog {
+		var all: [(access: UUID, accounts: [UUID: AccountRefresh])] = []
+	}
+
+	func logEnds(of coordinator: SyncCoordinator) -> EndLog {
+		let log = EndLog()
+		coordinator.ended = { access, _, accounts in log.all.append((access, accounts)) }
+		return log
+	}
+
+	@Test("A command for an access that runs fetches its other accounts when the run ends")
+	func busyAccess() async throws {
+		let log = logEnds(of: coordinator)
+		let bank = Self.access("Musterbank")
+		_ = refresh(bank, [.wait(.milliseconds(200)), .fetched(Self.giro.accountID)], accounts: [Self.giro])
+		_ = refresh(bank, [.fetched(Self.giro.accountID), .fetched(Self.savings.accountID)], accounts: [Self.giro, Self.savings])
+		#expect(coordinator.refreshingAccounts == [Self.giro.accountID, Self.savings.accountID])
+		await until { log.all.count == 2 && !coordinator.isRefreshing }
+		let at = try #require(finished(bank)?.finishedAt)
+		#expect(log.all.map(\.access) == [bank.id, bank.id])
+		#expect(log.all.first?.accounts.keys.sorted() == [Self.giro.accountID])
+		#expect(log.all.last?.accounts == [Self.savings.accountID: .refreshed(at)])
+		#expect(coordinator.refreshingAccounts.isEmpty)
+	}
+
+	@Test("A command right after Cancel Refresh runs when the canceled connector has ended")
+	func afterCancel() async throws {
+		let log = logEnds(of: coordinator)
+		let bank = Self.access("Musterbank")
+		_ = refresh(bank, [.ask(Self.tan), .fetched(Self.giro.accountID)], accounts: [Self.giro])
+		await until { broker.current != nil }
+		coordinator.cancelAll()
+		_ = refresh(bank, [.fetched(Self.giro.accountID)], accounts: [Self.giro])
+		#expect(coordinator.refreshingAccounts == [Self.giro.accountID])
+		await until { log.all.count == 2 && !coordinator.isRefreshing }
+		let at = try #require(finished(bank)?.finishedAt)
+		#expect(log.all.first?.accounts == [:])
+		#expect(log.all.last?.accounts == [Self.giro.accountID: .refreshed(at)])
+	}
+
+	@Test("A command for an access that waits for its turn joins the waiting request")
+	func waitingAccess() async throws {
+		let coordinator = SyncCoordinator(limit: 1)
+		let log = logEnds(of: coordinator)
+		let first = Self.access("Musterbank"), second = Self.access("Beispielbank")
+		coordinator.refresh(RefreshRequest(access: first, accounts: [Self.card]), with: ScriptedConnector([.wait(.milliseconds(100))]), attended: true)
+		coordinator.refresh(RefreshRequest(access: second, accounts: [Self.giro]),
+			with: ScriptedConnector([.fetched(Self.giro.accountID), .fetched(Self.savings.accountID)]), attended: true)
+		coordinator.refresh(RefreshRequest(access: second, accounts: [Self.savings]), with: ScriptedConnector([]), attended: true)
+		await until { log.all.count == 2 && !coordinator.isRefreshing }
+		#expect(log.all.last?.access == second.id)
+		#expect(log.all.last?.accounts.keys.sorted() == [Self.giro.accountID, Self.savings.accountID].sorted())
+	}
+
 	@Test("A second click answers nothing, not the next dialog")
 	func doubleClick() async {
 		let first = Self.access("Musterbank")
