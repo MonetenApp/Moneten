@@ -20,6 +20,7 @@ struct HelperProcessTests {
 		// A write that blocks a thread of Swift concurrency or of the global queue would hold up the
 		// timers that end the helpers, and every other task of the app.
 		let state = AccessState(Data(repeating: 7, count: 1_000_000))
+		let start = ContinuousClock.now
 		let ended = Count()
 		let runs = (0..<ProcessInfo.processInfo.activeProcessorCount + 2).map { _ in
 			Task { () -> (any Error)? in
@@ -37,9 +38,11 @@ struct HelperProcessTests {
 		try await Task.sleep(for: .milliseconds(500))
 		await Task.detached { }.value
 		#expect(ended.value == 0)
+		#expect(ContinuousClock.now - start < .seconds(11))
 		for run in runs {
 			#expect(await run.value as? SyncFailure == .network("The connection to the FinTS server of the bank timed out. Try again later."))
 		}
+		#expect(ContinuousClock.now - start < .seconds(40))
 	}
 
 	@Test("A finished run releases the helper and its pipes")

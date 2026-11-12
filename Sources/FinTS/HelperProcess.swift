@@ -115,11 +115,14 @@ final class HelperProcess: @unchecked Sendable {
 	/// returns at once: a helper that does not read its input blocks only the queue of its writes.
 	func cancel() {
 		guard canceled.withLock({ was in defer { was = true }; return !was }) else { return }
-		DispatchQueue.global().asyncAfter(deadline: .now() + grace) { [self] in
-			guard process.isRunning else { return }
+		// The timers hold the helper weakly: a run waits in `ended()` while the process runs, so they can
+		// reach it then, and a helper that ended is released at once instead of after the grace.
+		DispatchQueue.global().asyncAfter(deadline: .now() + grace) { [weak self] in
+			guard let self, process.isRunning else { return }
 			process.terminate()
-			DispatchQueue.global().asyncAfter(deadline: .now() + 2) { [self] in
-				if process.isRunning { kill(process.processIdentifier, SIGKILL) }
+			DispatchQueue.global().asyncAfter(deadline: .now() + 2) { [weak self] in
+				guard let self, process.isRunning else { return }
+				kill(process.processIdentifier, SIGKILL)
 			}
 		}
 		send(["type": "cancel"])
@@ -132,6 +135,8 @@ final class HelperProcess: @unchecked Sendable {
 	}
 
 	var firstFailure: (any Error)? { failure.withLock { $0 } }
+
+	var isRunning: Bool { process.isRunning }
 
 	/// Waits for the end of the process. Throws when it ended in another way than with status 0.
 	func ended() async throws {
