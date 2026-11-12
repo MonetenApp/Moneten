@@ -7,6 +7,8 @@
 // The helper sends:
 // - ask: a request for the user, with id and kind pin, tanMethod, tanMedium, tan, or approve. An
 //   approval gets no answer. The helper sends withdraw with its id when hbci4java goes on.
+// - alive, when hbci4java sends a message to the bank and when the answer arrives, so that the app
+//   can tell a silent bank from a long answer in many parts.
 // - progress, notice, bank, accounts, result, accountFailed, state, and failed.
 // It ends with status 0 after its last message, also after failed.
 //
@@ -555,6 +557,7 @@ public class FinTSHelper {
 
 		@Override
 		public void status(HBCIPassport passport, int statusTag, Object[] o) {
+			if (statusTag == STATUS_MSG_SEND || statusTag == STATUS_MSG_RAW_RECV_ENCRYPTED) send(message("alive"));
 			if (statusTag != STATUS_SEND_TASK || o == null || o.length == 0) return;
 			Integer index = jobs.get(o[0]);
 			if (index == null || index <= lastProgress) return;

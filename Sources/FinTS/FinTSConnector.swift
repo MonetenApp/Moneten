@@ -62,6 +62,10 @@ public struct FinTSConnector: BankConnector {
 	let helper: Helper
 	let productID: String?
 	let version: String
+	/// How long the helper may stay silent while no request waits for the user. The helper sends a
+	/// line when it sends a message to the bank and when the answer arrives, so this is the time the
+	/// bank may take to answer.
+	let inactivity: TimeInterval
 
 	/// The connector of the app, with the product ID that scripts/build-app.sh puts into Info.plist.
 	public init() {
@@ -69,10 +73,11 @@ public struct FinTSConnector: BankConnector {
 			version: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "")
 	}
 
-	init(helper: Helper, productID: String?, version: String) {
+	init(helper: Helper, productID: String?, version: String, inactivity: TimeInterval = 30) {
 		self.helper = helper
 		self.productID = productID
 		self.version = version
+		self.inactivity = inactivity
 	}
 
 	/// The name, BIC, and FinTS address of a bank. Nil when the bank directory does not know the code.
@@ -154,16 +159,21 @@ public struct FinTSConnector: BankConnector {
 	/// Runs one command. Requests of the helper go to the session, and every other message to `handle`.
 	/// A decoupled approval stays open while hbci4java checks it, until the helper withdraws it.
 	/// When the refresh is canceled or fails, the helper gets a cancel and at most 5 seconds to end.
-	/// When the helper ends, its open requests end too.
+	/// When the helper ends, its open requests end too. A helper that stays silent for `inactivity`
+	/// while no request is open fails the run with a timeout.
 	private func run(_ command: Command, session: SyncSession?, _ handle: (HelperMessage) async throws -> Void) async throws {
-		let asks = OpenAsks()
+		let watchdog = Watchdog(after: inactivity)
+		let asks = OpenAsks(watchdog: watchdog)
 		let process = try HelperProcess(executable: helper.executable, arguments: helper.arguments, onEnd: asks.close)
+		watchdog.onExpiry { process.fail(HelperFailure.timeout) }
 		var approvals: [Int: Task<UserAnswer, any Error>] = [:]
 		var helperLeft = false
 		await withTaskCancellationHandler {
 			do {
 				process.send(command)
+				watchdog.restart()
 				reading: for await line in process.lines {
+					watchdog.restart()
 					guard let message = try? JSONDecoder().decode(HelperMessage.self, from: Data(line.utf8)) else { throw HelperFailure.unreadable }
 					switch message {
 					case let .ask(id, ask):
@@ -185,6 +195,8 @@ public struct FinTSConnector: BankConnector {
 							break reading
 						}
 						process.send(Answer(id: id, value: answer.value))
+					case .alive:
+						continue
 					case let .withdraw(id):
 						guard let approval = approvals.removeValue(forKey: id) else { continue }
 						approval.cancel()
@@ -200,6 +212,7 @@ public struct FinTSConnector: BankConnector {
 			process.cancel()
 			asks.close()
 		}
+		watchdog.stop()
 		for approval in approvals.values {
 			approval.cancel()
 			_ = await approval.result
@@ -212,9 +225,14 @@ public struct FinTSConnector: BankConnector {
 }
 
 /// The requests of one run that wait for the user. No answer reaches a helper that ended, so the end
-/// of the helper closes them, and so does a canceled refresh.
+/// of the helper closes them, and so does a canceled refresh. While one is open, the timeout pauses.
 private final class OpenAsks: Sendable {
 	private let state = Mutex<(tasks: [Task<UserAnswer, any Error>], closed: Bool)>(([], false))
+	private let watchdog: Watchdog
+
+	init(watchdog: Watchdog) {
+		self.watchdog = watchdog
+	}
 
 	var closed: Bool { state.withLock { $0.closed } }
 
@@ -222,7 +240,9 @@ private final class OpenAsks: Sendable {
 	/// withdraw that follows at once then closes a dialog that was requested, instead of skipping it.
 	func start(_ request: UserRequest, _ session: SyncSession) async -> Task<UserAnswer, any Error> {
 		let (started, signal) = AsyncStream.makeStream(of: Never.self)
-		let task = Task {
+		watchdog.pause()
+		let task = Task { [watchdog] in
+			defer { watchdog.resume() }
 			signal.finish()
 			return try await session.ask(request)
 		}
@@ -233,6 +253,44 @@ private final class OpenAsks: Sendable {
 
 	@Sendable func close() {
 		for task in state.withLock({ $0.closed = true; return $0.tasks }) { task.cancel() }
+	}
+}
+
+/// Fails a run whose helper sends nothing for a while (add-connection-security "Timeouts"). It
+/// pauses while a request waits for the user.
+private final class Watchdog: Sendable {
+	private let state = Mutex<(generation: Int, paused: Int, expiry: (@Sendable () -> Void)?)>((0, 0, nil))
+	private let seconds: TimeInterval
+
+	init(after seconds: TimeInterval) {
+		self.seconds = seconds
+	}
+
+	func onExpiry(_ expiry: @escaping @Sendable () -> Void) {
+		state.withLock { $0.expiry = expiry }
+	}
+
+	func restart() {
+		arm(state.withLock { $0.generation += 1; return $0.paused == 0 ? $0.generation : nil })
+	}
+
+	func pause() {
+		state.withLock { $0.generation += 1; $0.paused += 1 }
+	}
+
+	func resume() {
+		arm(state.withLock { $0.generation += 1; $0.paused -= 1; return $0.paused == 0 ? $0.generation : nil })
+	}
+
+	func stop() {
+		pause()
+	}
+
+	private func arm(_ generation: Int?) {
+		guard let generation else { return }
+		DispatchQueue.global().asyncAfter(deadline: .now() + seconds) { [self] in
+			state.withLock { $0.generation == generation ? $0.expiry : nil }?()
+		}
 	}
 }
 

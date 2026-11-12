@@ -29,8 +29,9 @@ struct FinTSConnectorTests {
 	}
 
 	/// A connector whose helper is `/bin/sh -c script`. `$R` in the script is the file `record`.
-	func connector(_ script: String, productID: String? = "TESTPRODUCT") -> FinTSConnector {
-		FinTSConnector(helper: .init(executable: URL(filePath: "/bin/sh"), arguments: ["-c", "R='\(record.path)'\n" + script]), productID: productID, version: "0.0.1")
+	func connector(_ script: String, productID: String? = "TESTPRODUCT", inactivity: TimeInterval = 30) -> FinTSConnector {
+		FinTSConnector(helper: .init(executable: URL(filePath: "/bin/sh"), arguments: ["-c", "R='\(record.path)'\n" + script]), productID: productID, version: "0.0.1",
+			inactivity: inactivity)
 	}
 
 	func refresh(_ script: String, accounts: [AccountRequest] = [giro], enforced: Bool = false, session: Session = Session()) async throws -> ConnectorReport {
@@ -220,6 +221,32 @@ struct FinTSConnectorTests {
 		#expect(ContinuousClock.now - canceled < .seconds(1))
 		await #expect(throws: CancellationError.self) { try await task.value }
 		#expect(ContinuousClock.now - canceled < .seconds(8))
+	}
+
+	@Test("A helper that stays silent fails with a timeout, through cancel and then termination")
+	func timeout() async throws {
+		let start = ContinuousClock.now
+		await #expect(throws: SyncFailure.network("The connection to the FinTS server of the bank timed out. Try again later.")) {
+			try await connector("read cmd; sleep 60", inactivity: 1).refresh(RefreshRequest(access: Self.access, accounts: [Self.giro]), Session())
+		}
+		let waited = ContinuousClock.now - start
+		#expect(waited >= .seconds(5.5) && waited < .seconds(9))
+	}
+
+	@Test("Each line restarts the timeout, and a request for the user pauses it")
+	func timeoutRestartsAndPauses() async throws {
+		let session = Session { _ in
+			try await Task.sleep(for: .seconds(2))
+			return .pin(Secret("1234"))
+		}
+		let list = try await connector("""
+			read cmd
+			for i in 1 2 3 4; do echo '{"type":"alive"}'; sleep 0.6; done
+			echo '{"type":"ask","id":1,"kind":"pin"}'
+			read answer
+			echo '{"type":"accounts","accounts":[]}'
+			""", inactivity: 1).listAccounts(of: Self.access, state: nil, session: session)
+		#expect(list.accounts.isEmpty)
 	}
 
 	@Test("A helper that crashes fails the access")

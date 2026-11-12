@@ -31,6 +31,8 @@ enum HelperMessage: Decodable {
 	case ask(id: Int, Ask)
 	/// hbci4java went on after a decoupled approval, so the bank has it.
 	case withdraw(id: Int)
+	/// hbci4java sent a message to the bank, or received its answer. It only restarts the timeout.
+	case alive
 	case progress(done: Int, of: Int)
 	case notice(String)
 	case bank(FinTSBank?)
@@ -49,6 +51,7 @@ enum HelperMessage: Decodable {
 		switch try c.decode(String.self, forKey: .type) {
 		case "ask": self = .ask(id: try c.decode(Int.self, forKey: .id), try Ask(from: decoder))
 		case "withdraw": self = .withdraw(id: try c.decode(Int.self, forKey: .id))
+		case "alive": self = .alive
 		case "progress": self = .progress(done: try c.decode(Int.self, forKey: .done), of: try c.decode(Int.self, forKey: .of))
 		case "notice": self = .notice(try c.decode(String.self, forKey: .text))
 		case "bank":
@@ -218,6 +221,7 @@ enum HelperFailure {
 	static let noAnswer = SyncFailure.network("The FinTS helper ended without an answer.")
 	static let noProductID = SyncFailure.unsupported("This build of Moneten has no FinTS product ID, and banks accept only registered apps.")
 	static let insecure = SyncFailure.unsupported("The bank offers no encrypted FinTS address.")
+	static let timeout = SyncFailure.network("The connection to the FinTS server of the bank timed out. Try again later.")
 
 	static func stopped(_ status: Int32, signal: Bool) -> SyncFailure {
 		.network("The FinTS helper stopped unexpectedly (\(signal ? "signal" : "status") \(status)).")
