@@ -173,6 +173,21 @@ struct FinTSConnectorTests {
 		#expect(waited >= .seconds(4.5) && waited < .seconds(7))
 	}
 
+	@Test("Cancel returns at once while the helper does not read its input, and the helper ends after 5 seconds")
+	func cancelBlockedWrite() async throws {
+		// A state far larger than the buffer of a pipe, to a helper that never reads it.
+		let state = AccessState(Data(repeating: 7, count: 1_000_000))
+		let task = Task {
+			try await connector("exec sleep 60").listAccounts(of: Self.access, state: state, session: Session())
+		}
+		try await Task.sleep(for: .milliseconds(300))
+		let canceled = ContinuousClock.now
+		task.cancel()
+		#expect(ContinuousClock.now - canceled < .seconds(1))
+		await #expect(throws: CancellationError.self) { try await task.value }
+		#expect(ContinuousClock.now - canceled < .seconds(8))
+	}
+
 	@Test("A helper that crashes fails the access")
 	func crash() async throws {
 		#expect(await failure(of: "read cmd; echo '{\"type\":\"progress\",\"done\":0,\"of\":1}'; kill -9 $$") as? SyncFailure

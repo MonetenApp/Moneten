@@ -62,13 +62,13 @@ final class HelperProcess: @unchecked Sendable {
 	}
 
 	/// Asks the helper to end the dialog with the bank, and ends the process when it is still running
-	/// after 5 seconds.
+	/// after 5 seconds. It returns at once: a helper that does not read its input blocks only the write.
 	func cancel() {
 		guard canceled.withLock({ was in defer { was = true }; return !was }) else { return }
-		send(["type": "cancel"])
 		DispatchQueue.global().asyncAfter(deadline: .now() + 5) { [self] in
 			if process.isRunning { process.terminate() }
 		}
+		DispatchQueue.global().async { [self] in send(["type": "cancel"]) }
 	}
 
 	/// Keeps the first error of the run and cancels the helper.
