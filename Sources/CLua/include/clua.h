@@ -20,6 +20,10 @@ void clua_pushglobals(lua_State *L);
 void *clua_context(lua_State *L);
 void clua_setcontext(lua_State *L, void *context);
 
+/// Runs a function of the script in protected mode. Only here does the memory limit hold exactly;
+/// while Swift code runs, the state may hold up to 64 MB more, so that Swift never meets a Lua error.
+int clua_pcall(lua_State *L, int arguments, int results);
+
 /// A new state whose allocations stop at `limit` bytes, and its end. Lua raises its memory error at the limit.
 lua_State *clua_newstate(size_t limit);
 void clua_close(lua_State *L);

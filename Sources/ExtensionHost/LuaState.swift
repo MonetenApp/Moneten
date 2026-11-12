@@ -104,7 +104,7 @@ final class LuaState {
 	}
 
 	private func protectedCall(arguments: Int32, results: Int32) throws(ScriptError) {
-		let status = lua_pcallk(stack.L, arguments, results, 0, 0, nil)
+		let status = clua_pcall(stack.L, arguments, results)
 		guard status == LUA_OK else { throw popError(status) }
 	}
 

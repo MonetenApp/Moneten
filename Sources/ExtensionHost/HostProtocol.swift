@@ -46,7 +46,7 @@ enum HostEvent: Sendable, Codable {
 	case print(String)
 	/// A request that reached the fixture, as "GET https://...".
 	case sent(String)
-	/// A request over the network ended. The app counts the silence of the host from here.
+	/// A request over the network started or ended. The app counts the silence of the host from here.
 	case alive
 }
 
@@ -70,7 +70,7 @@ public enum HostProcess {
 					continue
 				}
 				let transport: any Transport = setup.fixture.map { FixtureTransport($0) { emit(.sent("\($0.method) \($0.url.absoluteString)")) } }
-					?? URLSessionTransport { emit(.alive) }
+					?? ReportingTransport(URLSessionTransport()) { emit(.alive) }
 				let started = ContinuousClock.now
 				let new = HostSession(package: setup.package, transport: transport, decisions: setup.decisions, memory: setup.limits.memory, ask: askApp,
 					log: { emit(.print($0)) })
@@ -117,5 +117,23 @@ public enum HostProcess {
 	private static func encoded(_ event: HostEvent) -> Data {
 		let line = (try? JSONEncoder().encode(event)) ?? (try! JSONEncoder().encode(HostEvent.failed("The extension host could not encode its answer.")))
 		return line + [0x0A]
+	}
+}
+
+/// Reports the start and the end of each request of `base` to the app, so that the watchdog of the
+/// app counts the silence of the host from the last contact with the network.
+struct ReportingTransport: Transport {
+	let base: any Transport
+	let report: () -> Void
+
+	init(_ base: any Transport, report: @escaping () -> Void) {
+		self.base = base
+		self.report = report
+	}
+
+	func send(_ request: HTTPRequest) throws -> HTTPResponse {
+		report()
+		defer { report() }
+		return try base.send(request)
 	}
 }

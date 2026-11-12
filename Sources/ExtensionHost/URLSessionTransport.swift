@@ -8,13 +8,6 @@ struct URLSessionTransport: Transport {
 	/// memory of the host process.
 	static let maxBody = 32 * 1_048_576
 
-	/// Runs after each request, also a failed one.
-	private let finished: @Sendable () -> Void
-
-	init(finished: @escaping @Sendable () -> Void = {}) {
-		self.finished = finished
-	}
-
 	private let session: URLSession = {
 		let configuration = URLSessionConfiguration.ephemeral
 		configuration.httpCookieStorage = nil
@@ -28,7 +21,6 @@ struct URLSessionTransport: Transport {
 
 	/// Blocks the script until the answer is there. Lua runs on one thread of the host process.
 	func send(_ request: HTTPRequest) throws -> HTTPResponse {
-		defer { finished() }
 		var urlRequest = URLRequest(url: request.url)
 		urlRequest.httpMethod = request.method
 		urlRequest.httpBody = request.body
