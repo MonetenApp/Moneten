@@ -103,61 +103,9 @@ public class FinTSHelper {
 		}
 	}
 
-	/// The masking rules of FinTSProbeJava for stderr: return codes with a fixed description, PINs and
-	/// TANs removed, message segments left out, and IBANs, long numbers, and amounts masked.
-	static final class Out {
-		static final List<String> secrets = new ArrayList<>();
-		static final Pattern RETURN_CODE = Pattern.compile("\\b([0139]\\d{3}):(?:(?!\\s+[0139]\\d{3}:)[^\\n;])*");
-		static final Pattern CHALLENGE = Pattern.compile("(?i)found challenge|hhduc");
-		static final Map<String, String> KNOWN = Map.ofEntries(
-			Map.entry("0010", "message received"), Map.entry("0020", "order executed"),
-			Map.entry("0030", "order received, TAN required"), Map.entry("3040", "more data available"),
-			Map.entry("3076", "no strong customer authentication required"), Map.entry("3920", "allowed TAN methods for the user"),
-			Map.entry("3955", "approval in the app"), Map.entry("3956", "approval still pending"),
-			Map.entry("9010", "error in the message"), Map.entry("9050", "message partly faulty"),
-			Map.entry("9075", "strong customer authentication required"), Map.entry("9078", "FinTS product not registered"),
-			Map.entry("9120", "dialog already ended"), Map.entry("9160", "required field missing"),
-			Map.entry("9800", "dialog aborted"), Map.entry("9930", "PIN blocked"),
-			Map.entry("9931", "access locked or PIN wrong"), Map.entry("9942", "PIN wrong"));
-
-		static synchronized String withoutSecrets(String text) {
-			if (text == null) return "";
-			for (String secret : secrets) if (!secret.isEmpty()) text = text.replace(secret, "•••");
-			return text;
-		}
-
-		static synchronized void secret(String value) {
-			secrets.add(value);
-		}
-
-		static boolean hasSegments(String text) {
-			return text.contains("HNHBK") || text.contains("HNSHA") || text.contains("HNVSD") || text.contains("HNSHK");
-		}
-
-		static String masked(String text) {
-			return withoutSecrets(text)
-				.replaceAll("\\b[A-Z]{2}\\d{2}(?: ?[A-Z0-9]{4}){3,7}(?: ?[A-Z0-9]{1,3})?\\b", "IBAN…")
-				.replaceAll("\\d+(?:[.,]\\d+)*\\s?(?:EUR|€|USD|CHF)", "…")
-				.replaceAll("\\b(?:\\d{1,3}(?:\\.\\d{3})+|\\d+),\\d{2}\\b", "…")
-				.replaceAll("\\d{6,}", "…");
-		}
-
-		static String bank(String text) {
-			if (text == null) return "";
-			if (hasSegments(text)) return "(message content left out)";
-			if (CHALLENGE.matcher(text).find()) return "(challenge of the bank left out)";
-			String clean = withoutSecrets(text);
-			Matcher m = RETURN_CODE.matcher(clean);
-			if (!m.find()) return masked(clean);
-			String prefix = clean.substring(0, m.start());
-			List<String> codes = new ArrayList<>();
-			do codes.add(m.group(1) + " " + KNOWN.getOrDefault(m.group(1), "(text of the bank left out)")); while (m.find());
-			return masked(prefix) + String.join("; ", new java.util.LinkedHashSet<>(codes));
-		}
-
-		static void diagnostic(String text) {
-			err.println(bank(text));
-		}
+	/// A masked diagnostic on stderr.
+	static void diagnostic(String text) {
+		err.println(Out.bank(text));
 	}
 
 	/// The commands of the app and the messages of the helper: objects, arrays, strings, numbers,
@@ -359,7 +307,7 @@ public class FinTSHelper {
 						queue.add(answer);
 					}
 				} catch (IOException | RuntimeException e) {
-					Out.diagnostic("FinTSHelper: unreadable input from the app, canceling");
+					diagnostic("FinTSHelper: unreadable input from the app, canceling");
 				}
 				canceled = true;
 				queue.add(CANCEL);
@@ -444,7 +392,7 @@ public class FinTSHelper {
 			try {
 				d.tanMethod = getCurrentTANMethod(false);
 			} catch (RuntimeException e) {
-				Out.diagnostic("FinTSHelper: the TAN method was not saved: " + e.getMessage());
+				diagnostic("FinTSHelper: the TAN method was not saved: " + e.getMessage());
 			}
 			return serialize(d, tanMedium);
 		}
@@ -473,7 +421,7 @@ public class FinTSHelper {
 				}
 				return new State(data, tanMedium);
 			} catch (IOException | ClassNotFoundException | ClassCastException e) {
-				Out.diagnostic("FinTSHelper: the saved state does not read, starting without it");
+				diagnostic("FinTSHelper: the saved state does not read, starting without it");
 				return null;
 			}
 		}
@@ -532,7 +480,7 @@ public class FinTSHelper {
 			if (msg == null) return;
 			Matcher m = PIN_ERROR.matcher(msg);
 			if (m.find()) pinError = message("rejected", "code", m.group(1), "text", Out.withoutSecrets(m.group(2)));
-			if (level <= 2) Out.diagnostic("[" + (level <= 1 ? "error" : "warning") + "] " + msg);
+			if (level <= 2) diagnostic("[" + (level <= 1 ? "error" : "warning") + "] " + msg);
 		}
 
 		@Override
@@ -543,7 +491,7 @@ public class FinTSHelper {
 				case NEED_COUNTRY -> set(retData, "DE");
 				case NEED_BLZ -> set(retData, string(command, "bankCode"));
 				case NEED_USERID -> set(retData, string(command, "user"));
-				case NEED_CUSTOMERID -> set(retData, present(string(command, "customer")) ? string(command, "customer") : string(command, "user"));
+				case NEED_CUSTOMERID -> set(retData, string(command, "user"));
 				case NEED_HOST -> set(retData, host);
 				case NEED_PORT -> set(retData, String.valueOf(port));
 				case NEED_FILTER -> set(retData, "Base64");
@@ -587,7 +535,7 @@ public class FinTSHelper {
 				}
 				case NEED_PT_DECOUPLED_RETRY -> Inbox.check();
 				case HAVE_INST_MSG -> send(message("notice", "text", Out.withoutSecrets(msg)));
-				default -> Out.diagnostic("FinTSHelper: callback " + reason + " not handled");
+				default -> diagnostic("FinTSHelper: callback " + reason + " not handled");
 			}
 		}
 
@@ -949,7 +897,7 @@ public class FinTSHelper {
 			try {
 				if (handle != null) handle.close();
 			} catch (RuntimeException e) {
-				Out.diagnostic("FinTSHelper: closing the dialog failed: " + e.getMessage());
+				diagnostic("FinTSHelper: closing the dialog failed: " + e.getMessage());
 			}
 			HBCIUtils.done();
 		}
@@ -1012,7 +960,7 @@ public class FinTSHelper {
 			run((Map<?, ?>) Json.parse(line));
 		} catch (Throwable e) {
 			if (!canceled(e)) {
-				Out.diagnostic("FinTSHelper: " + e.getClass().getSimpleName() + ": " + e.getMessage());
+				diagnostic("FinTSHelper: " + e.getClass().getSimpleName() + ": " + e.getMessage());
 				send(failure(e));
 			}
 		}

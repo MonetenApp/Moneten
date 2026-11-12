@@ -10,9 +10,11 @@ OUT=.build/hbci4java/classes
 . scripts/hbci4java-jars.sh
 mkdir -p "$OUT"
 
+# The probe shares the masking rules of the helper in Tools/FinTSHelper/Out.java.
 SRC=Tools/FinTSProbeJava/FinTSProbeJava.java
-if [ ! -f "$OUT/FinTSProbeJava.class" ] || [ "$SRC" -nt "$OUT/FinTSProbeJava.class" ]; then
-	"$JDK/bin/javac" --release 17 -nowarn -cp "$CP" -d "$OUT" "$SRC"
+SHARED=Tools/FinTSHelper/Out.java
+if [ ! -f "$OUT/FinTSProbeJava.class" ] || [ "$SRC" -nt "$OUT/FinTSProbeJava.class" ] || [ "$SHARED" -nt "$OUT/FinTSProbeJava.class" ]; then
+	"$JDK/bin/javac" --release 17 -nowarn -cp "$CP" -d "$OUT" "$SRC" "$SHARED"
 fi
 [ "$1" = "--build-only" ] && { echo "Built $OUT/FinTSProbeJava.class with $("$JDK/bin/javac" -version 2>&1)"; exit 0; }
 exec "$JDK/bin/java" -cp "$OUT:$CP" FinTSProbeJava "$@"
