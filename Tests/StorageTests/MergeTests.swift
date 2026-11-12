@@ -111,6 +111,19 @@ struct MergeTests {
 		#expect(try store.queue.read { db in try DeletedTransaction.fetchCount(db) } == 0)
 	}
 
+	@Test("A migration reads the deleted rows of every account, also those no refresh delivered")
+	func deletedRowsForMigration() throws {
+		let store = try makeStore()
+		var bakery = row(5, -1_200, "Bäckerei", "Brot")
+		bakery.sourceID = "moneymoney:7"
+		let interest = Transaction(accountID: savings.id, bookingDate: Day(year: 2026, month: 11, day: 1), amountMinor: 1, name: "Zinsen", purpose: "")
+		try store.save([bakery, interest])
+		try store.deleteTransactions([bakery.id, interest.id])
+		let deleted = try store.deletedTransactions()
+		#expect(Set(deleted.map(\.accountID)) == [giro.id, savings.id])
+		#expect(deleted.contains { $0.sourceID == "moneymoney:7" && !$0.wasFetched })
+	}
+
 	@Test("The balance of a refresh reaches the database, also without new transactions")
 	func balance() throws {
 		let store = try makeStore()

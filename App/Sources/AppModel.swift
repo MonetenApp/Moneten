@@ -619,6 +619,11 @@ final class AppModel {
 		return l
 	}
 
+	/// The deleted transactions that a migration plan keeps out.
+	func deletedTransactions() throws -> [DeletedTransaction] {
+		try store?.deletedTransactions() ?? []
+	}
+
 	/// Root starter categories that the user has not changed: the same name, rule, and kind, no color
 	/// or icon of the user, and only unchanged starter subcategories below. A changed or extended tree stays.
 	private var replaceableStarterCategories: [Domain.Category] {

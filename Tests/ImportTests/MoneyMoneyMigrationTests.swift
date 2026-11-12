@@ -211,6 +211,114 @@ struct MoneyMoneyMigrationTests {
 		#expect(after.computedBalance(of: giro) == after.balance(of: giro))
 	}
 
+	@Test("A second run after a refresh stored some of the same transactions adds only the new ones")
+	func afterRefresh() throws {
+		let first = try plan()
+		let giro = try #require(first.accounts.first { $0.name == "Giro" })
+		// A refresh stored the transfer before MoneyMoney fetched it too. FinTS delivers no source ID.
+		let fetched = Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 9), amountMinor: 30_000,
+			name: "Erika Mustermann", purpose: "Rückzahlung", isFetched: true)
+		let ledger = Ledger(groups: first.groups, accounts: first.accounts, categories: first.categories, transactions: first.transactions + [fetched])
+		var rows = transactions["transactions"] as! [[String: Any]]
+		rows.append(["id": 5, "accountUuid": "A1", "bookingDate": date(2026, 11, 9), "amount": 300.0, "currency": "EUR", "name": "Erika Mustermann", "purpose": "Rückzahlung", "booked": true])
+		rows.append(["id": 6, "accountUuid": "A1", "bookingDate": date(2026, 11, 10), "amount": -4.2, "currency": "EUR", "name": "Bäckerei", "purpose": "KARTENZAHLUNG", "booked": true])
+		let second = try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(accounts), categories: try plist(categories),
+			transactions: try plist(["transactions": rows]), into: ledger)
+		#expect(second.transactions.map(\.name) == ["Bäckerei"])
+		#expect(second.skippedTransactions == 5)
+	}
+
+	@Test("A second run adds nothing after an extension took over the ID of a migrated transaction")
+	func afterIDTakeover() throws {
+		let first = try plan()
+		var migrated = first.transactions
+		let rewe = try #require(migrated.firstIndex { $0.name == "REWE Markt" })
+		migrated[rewe].sourceID = "bank-4711"
+		let ledger = Ledger(groups: first.groups, accounts: first.accounts, categories: first.categories, transactions: migrated)
+		let second = try plan(into: ledger)
+		#expect(second.transactions.isEmpty && second.updatedTransactions.isEmpty)
+		#expect(second.skippedTransactions == 4)
+	}
+
+	@Test("A transaction the user deleted after the first run stays deleted")
+	func deletedStaysDeleted() throws {
+		let first = try plan()
+		let stadtwerke = try #require(first.transactions.first { $0.name == "Stadtwerke Musterstadt" })
+		let ledger = Ledger(groups: first.groups, accounts: first.accounts, categories: first.categories,
+			transactions: first.transactions.filter { $0.id != stadtwerke.id })
+		let second = try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(accounts), categories: try plist(categories),
+			transactions: try plist(transactions), into: ledger, deleted: [DeletedTransaction(stadtwerke, deletedAt: date(2026, 11, 12))])
+		#expect(second.transactions.isEmpty)
+		#expect(second.skippedTransactions == 4)
+	}
+
+	@Test("A later run never undoes a booking or an edit made in the app")
+	func laterRunKeepsAppChanges() throws {
+		let first = try plan()
+		var rows = first.transactions
+		// A file import booked the pending row, which keeps its migration ID.
+		let kiosk = try #require(rows.firstIndex { $0.sourceID == "moneymoney:3" })
+		rows[kiosk].isPending = false
+		rows[kiosk].bookingDate = Day(year: 2026, month: 11, day: 5)
+		// The user changed an amount, as in an offline account that the migration matched by IBAN.
+		let rewe = try #require(rows.firstIndex { $0.sourceID == "moneymoney:1" })
+		rows[rewe].amountMinor = -5_000
+		let second = try plan(into: Ledger(groups: first.groups, accounts: first.accounts, categories: first.categories, transactions: rows))
+		#expect(second.transactions.isEmpty && second.updatedTransactions.isEmpty)
+		#expect(second.skippedTransactions == 4)
+	}
+
+	@Test("A deleted pending transaction does not keep out its booked version with the same ID")
+	func deletedPendingThenBooked() throws {
+		let first = try plan()
+		let kiosk = try #require(first.transactions.first { $0.sourceID == "moneymoney:3" })
+		var rows = transactions["transactions"] as! [[String: Any]]
+		rows[2]["booked"] = true
+		let second = try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(accounts), categories: try plist(categories),
+			transactions: try plist(["transactions": rows]),
+			into: Ledger(groups: first.groups, accounts: first.accounts, categories: first.categories, transactions: first.transactions.filter { $0.id != kiosk.id }),
+			deleted: [DeletedTransaction(kiosk, deletedAt: date(2026, 11, 12))])
+		#expect(second.transactions.map(\.sourceID) == ["moneymoney:3"] && second.transactions[0].isPending == false)
+	}
+
+	@Test("The booked version of a deleted pending transaction uses up its deleted row, so a new pending look-alike still arrives")
+	func deletedPendingUsedUp() throws {
+		let first = try plan()
+		let kiosk = try #require(first.transactions.first { $0.sourceID == "moneymoney:3" })
+		var rows = transactions["transactions"] as! [[String: Any]]
+		rows[2]["booked"] = true
+		rows.append(["id": 7, "accountUuid": "A1", "bookingDate": date(2026, 11, 4), "amount": -10.0, "currency": "EUR", "name": "Kiosk", "purpose": "", "booked": false])
+		let second = try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(accounts), categories: try plist(categories),
+			transactions: try plist(["transactions": rows]),
+			into: Ledger(groups: first.groups, accounts: first.accounts, categories: first.categories, transactions: first.transactions.filter { $0.id != kiosk.id }),
+			deleted: [DeletedTransaction(kiosk, deletedAt: date(2026, 11, 12))])
+		#expect(second.transactions.map(\.sourceID) == ["moneymoney:3", "moneymoney:7"])
+	}
+
+	@Test("A later run books a pending transaction and keeps its user fields and the ID of an extension")
+	func laterRunBooksTakenOverRow() throws {
+		let first = try plan()
+		var rows = first.transactions
+		let kiosk = try #require(rows.firstIndex { $0.sourceID == "moneymoney:3" })
+		let pets = try #require(first.categories.first { $0.name == "Pets" })
+		rows[kiosk].sourceID = "bank-4711"
+		rows[kiosk].categoryID = pets.id
+		rows[kiosk].categorizedBy = .manual
+		rows[kiosk].comment = "Zeitung"
+		rows[kiosk].isChecked = true
+		var export = transactions["transactions"] as! [[String: Any]]
+		export[2]["booked"] = true
+		export[2]["bookingDate"] = date(2026, 11, 6)
+		let second = try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(accounts), categories: try plist(categories),
+			transactions: try plist(["transactions": export]),
+			into: Ledger(groups: first.groups, accounts: first.accounts, categories: first.categories, transactions: rows))
+		#expect(second.transactions.isEmpty)
+		let booked = try #require(second.updatedTransactions.first)
+		#expect(second.updatedTransactions.count == 1 && !booked.isPending && booked.bookingDate == Day(year: 2026, month: 11, day: 6))
+		#expect(booked.sourceID == "bank-4711")
+		#expect(booked.categoryID == pets.id && booked.comment == "Zeitung" && booked.isChecked)
+	}
+
 	@Test("Accounts with the same IBAN stay apart on a later run")
 	func sameIBAN() throws {
 		var twins = accounts

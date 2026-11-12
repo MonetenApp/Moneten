@@ -5,11 +5,14 @@ public enum Delivery: Sendable {
 	case refresh(RefreshResult)
 	/// The rows of a file that the user imported. A file never removes a pending row and carries no balance.
 	case file([Transaction])
+	/// The rows of a MoneyMoney migration. Like a file, but every row the user deleted stays deleted, except
+	/// the booked version of a deleted pending row.
+	case migration([Transaction])
 }
 
 /// What the app keeps of a transaction that the user deleted: the fields that its identity comes from.
 /// A later refresh that delivers the transaction again does not add it ("Deleted transactions stay
-/// deleted"). A file import adds it again unless a refresh had delivered it.
+/// deleted"). A file import adds it again unless a refresh had delivered it. A MoneyMoney migration never adds it again. A deleted pending row never keeps out its booked version.
 ///
 /// One record per deleted row. Deleting one of two identical rows absorbs one delivered copy, and the
 /// stored row absorbs the other. The records go with their account.
@@ -94,6 +97,9 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored: [Tran
 			var next = live
 			switch partner.evidence {
 			case .sourceID:
+				// A migration only books a pending row. Any other change could undo a booking or an edit
+				// that the app made since the earlier run.
+				if case .migration = delivery, !(live.isPending && !delivered.isPending) { break }
 				next = live.takingBankFields(of: delivered)
 				if next != live { rules.categorize(&next) }
 			case .fingerprint:
@@ -145,7 +151,7 @@ extension Delivery {
 	var rows: [Transaction] {
 		switch self {
 		case let .refresh(result): result.transactions?.rows ?? []
-		case let .file(rows): rows
+		case let .file(rows), let .migration(rows): rows
 		}
 	}
 
@@ -159,7 +165,10 @@ extension Delivery {
 	}
 
 	func honors(_ deleted: DeletedTransaction) -> Bool {
-		if case .file = self { deleted.wasFetched } else { true }
+		switch self {
+		case .file: deleted.wasFetched
+		case .refresh, .migration: true
+		}
 	}
 }
 
@@ -189,10 +198,20 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 		for (k, d) in deleted.enumerated() {
 			if let id = d.sourceID, ids.contains(id) { byID[id, default: []].append(.deleted(k)) }
 		}
+		func isDeletedPending(_ slot: Slot) -> Bool {
+			if case let .deleted(k) = slot { deleted[k].isPending } else { false }
+		}
 		for (i, t) in rows.enumerated() {
-			guard let id = t.sourceID, let slot = byID[id]?.first(where: { !taken.contains($0) }) else { continue }
-			taken.insert(slot)
-			result[i] = Partner(slot: slot, evidence: .sourceID)
+			guard let id = t.sourceID, let slots = byID[id] else { continue }
+			let free = slots.filter { !taken.contains($0) }
+			if let slot = free.first(where: { t.isPending || !isDeletedPending($0) }) {
+				taken.insert(slot)
+				result[i] = Partner(slot: slot, evidence: .sourceID)
+			} else if let used = free.first {
+				// A deleted pending row does not block its booked version, also when both carry the same ID.
+				// The booked version uses it up, so it cannot absorb another pending row later.
+				taken.insert(used)
+			}
 		}
 	}
 	let days = Set(rows.map(\.bookingDate))
@@ -391,7 +410,10 @@ extension Transaction {
 		t.mandateReference = delivered.mandateReference ?? mandateReference
 		t.creditorID = delivered.creditorID ?? creditorID
 		t.isPending = delivered.isPending
-		t.sourceID = delivered.sourceID ?? sourceID
+		// A migration ID never replaces the ID of a source that took the row over.
+		if Identity.remote(delivered.sourceID) != nil || Identity.remote(sourceID) == nil {
+			t.sourceID = delivered.sourceID ?? sourceID
+		}
 		return t
 	}
 }
