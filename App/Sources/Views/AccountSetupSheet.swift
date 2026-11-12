@@ -56,6 +56,8 @@ final class AccountSetup {
 
 	var loginName = ""
 	var pin = ""
+	/// "Save PIN", off until the user turns it on. The PIN is saved when the setup finishes, after the bank accepted it.
+	var savePIN = false
 	private(set) var loginError: String?
 	private(set) var isLoggingIn = false
 
@@ -151,13 +153,15 @@ final class AccountSetup {
 		guard !isLoggingIn, let (code, bank) = lookup.bank, let url = bank.url else { return }
 		let access = Access(source: .fints(bankCode: code, url: url), bankName: bank.name, loginName: loginName.trimmingCharacters(in: .whitespaces))
 		let known = model.accesses.values.first { $0.isSameLogin(as: access) }?.id ?? access.id
-		let session = SetupSession(broker: model.sync.broker, access: access, pin: Secret(pin))
+		let session = SetupSession(broker: model.sync.broker, access: access, pin: Secret(pin), replacing: known)
 		loginError = nil
 		isLoggingIn = true
 		task = Task {
 			do {
-				let list = try await model.sync.exclusively(for: known) {
-					try await model.fints.listAccounts(of: access, state: nil, session: session)
+				let list = try await session.logIn { [model] session in
+					try await model.sync.exclusively(for: known) {
+						try await model.fints.listAccounts(of: access, state: nil, session: session)
+					}
 				}
 				guard !Task.isCancelled else { return }
 				isLoggingIn = false
@@ -188,7 +192,7 @@ final class AccountSetup {
 		let chosen = candidates.filter { selected.contains($0.id) && !$0.isPresent }.map(\.account)
 		guard !chosen.isEmpty else { return }
 		do {
-			try model.add(access, state: state, accounts: chosen, listed: candidates.map(\.account), connecting: connecting, pin: Secret(pin))
+			try model.add(access, state: state, accounts: chosen, listed: candidates.map(\.account), connecting: connecting, pin: Secret(pin), savePIN: savePIN)
 		} catch {
 			saveError = "Could not add the accounts. \(String(describing: error))"
 			return
@@ -276,6 +280,8 @@ struct AccountSetupSheet: View {
 			TextField("User ID", text: $setup.loginName, prompt: Text("Required"))
 			SecureField("PIN", text: $setup.pin, prompt: Text("Required"))
 				.textContentType(nil)
+			Toggle("Save PIN", isOn: $setup.savePIN)
+				.toggleStyle(.checkbox)
 		}
 		.disabled(setup.isLoggingIn)
 		if let error = setup.loginError {

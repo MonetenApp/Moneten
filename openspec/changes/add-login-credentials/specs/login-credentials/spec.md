@@ -162,6 +162,13 @@ The app SHALL, when a bank rejects a PIN, stop the login, delete the saved PIN o
 - **WHEN** the user enters a wrong PIN in the sheet
 - **THEN** the sheet appears again with an empty field and the warning about blocked access
 
+#### Scenario: Blocked access
+
+- **GIVEN** the app has the PIN of "Musterbank" saved
+- **WHEN** the bank answers a login with 9930 "Zugang gesperrt"
+- **THEN** the app deletes the saved PIN and forgets the PIN in memory
+- **AND** no PIN sheet opens
+
 ### Requirement: Cancel the PIN sheet
 
 The app SHALL, when the user cancels the PIN sheet, skip the accounts of that access for the running refresh and continue with the other accesses. A canceled sheet is not an error of the bank.

@@ -41,6 +41,15 @@ struct AccessRecord: Codable, FetchableRecord, PersistableRecord, TableRecord {
 	var access: Access { Access(id: id, source: source, bankName: bankName, loginName: loginName) }
 }
 
+/// A row of the table "savedPIN": the PIN of an access that the user asked to save. It lives only in
+/// this table of the encrypted database, never in `AccessState`, the Keychain, or the settings, and it
+/// goes with its access.
+struct SavedPINRecord: Codable, FetchableRecord, PersistableRecord, TableRecord {
+	static let databaseTableName = "savedPIN"
+	var accessID: UUID
+	var pin: String
+}
+
 enum Schema {
 	static var migrator: DatabaseMigrator {
 		var m = DatabaseMigrator()
@@ -192,6 +201,14 @@ enum Schema {
 				t.column("host", .text).notNull()
 				t.column("decision", .text).notNull()
 				t.primaryKey(["extensionID", "host"])
+			}
+		}
+		// Saved PINs (issue #86): one row for each access whose PIN the user asked to save. "v8" belongs to
+		// the change of issue #91, which comes before this one.
+		m.registerMigration("v9") { db in
+			try db.create(table: "savedPIN") { t in
+				t.column("accessID", .blob).primaryKey().references("access", onDelete: .cascade)
+				t.column("pin", .text).notNull()
 			}
 		}
 		return m

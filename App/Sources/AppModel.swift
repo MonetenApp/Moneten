@@ -124,7 +124,7 @@ final class AppModel {
 
 	let vault = Vault(folder: .standard())
 	/// The refreshes of the bank accesses and their dialogs.
-	let sync = SyncCoordinator()
+	let sync = SyncCoordinator(broker: SessionBroker(defaults: .standard, scope: DataFolder.standard().databaseFile.path))
 	/// The FinTS connector of the setup and of every refresh. The extension connector of E6 joins it.
 	let fints = AppModel.makeFinTSConnector()
 	/// The bank accesses, by ID. Their states stay in the database until a refresh reads them.
@@ -191,6 +191,7 @@ final class AppModel {
 		// A closure that captures `self` can be handed over only once every stored property is set.
 		sync.deliver = { [weak self] accountID, result in try self?.merge(.refresh(result), into: accountID) }
 		sync.ended = { [weak self] access, state, accounts in self?.recordRefresh(of: access, state: state, accounts: accounts) }
+		sync.broker.onStoreFailure = { [weak self] failure in self?.alert = AlertMessage(title: failure.title, message: failure.message) }
 		start()
 		installActivityMonitor()
 	}
@@ -267,6 +268,8 @@ final class AppModel {
 		self.store = store
 		ledger = try store.loadLedger()
 		accesses = Dictionary(uniqueKeysWithValues: try store.accesses().map { ($0.id, $0) })
+		// The saved PINs live only in the database, so a refresh after a restart or an unlock does not ask.
+		try sync.broker.open(store)
 		if selection == nil {
 			if let first = ledger.childGroups(of: nil).first {
 				selection = .group(first.id)
@@ -280,7 +283,7 @@ final class AppModel {
 
 	func lock() {
 		guard hasPassword, phase == .unlocked else { return }
-		// A locked app refreshes nothing and forgets the PINs that were not saved.
+		// A locked app refreshes nothing and forgets every PIN in memory. The saved ones come back from the database at the next unlock.
 		sync.cancelAll()
 		sync.broker.forgetPINs()
 		setup?.cancel()
@@ -498,19 +501,23 @@ final class AppModel {
 	}
 
 	/// Stores the access with the accounts that the user selected, keeps the PIN of the login in
-	/// memory, selects the first new account, or the first connected one when none is new, and starts the
-	/// first refresh ("Finish the setup"). A login
-	/// that the app has already keeps its access. `listed` holds every account that the bank listed.
-	/// Throws the error of the database, which the assistant shows.
-	func add(_ new: Access, state: AccessState?, accounts candidates: [Account], listed: [Account], connecting: [UUID: UUID], pin: Secret) throws {
+	/// memory and saves it when the user asked to, selects the first new account, or the first connected
+	/// one when none is new, and starts the first refresh ("Finish the setup"). A login that the app has
+	/// already keeps its access. `listed` holds every account that the bank listed. Throws the error of
+	/// the database, which the assistant shows.
+	func add(_ new: Access, state: AccessState?, accounts candidates: [Account], listed: [Account], connecting: [UUID: UUID], pin: Secret, savePIN: Bool) throws {
 		guard let store else { return }
 		let (access, accounts) = try store.add(new, state: state, accounts: ledger.accountsToAdd(candidates, listed: listed, connecting: connecting))
 		let first = accounts.first { ledger.account($0.id) == nil } ?? accounts.first
 		accesses[access.id] = access
 		for a in accounts { ledger.upsert(a) }
 		ledger.replace()
-		// Issue #86 saves the PIN in the database here when the user turns saving on.
-		sync.broker.remember(pin, for: access.id)
+		// The bank accepted the PIN at the login of the setup.
+		do {
+			try sync.broker.remember(pin, for: access.id, save: savePIN)
+		} catch {
+			alert = AlertMessage(title: "Could not save the PIN.", message: String(describing: error))
+		}
 		if let first { navigate(to: .account(first.id)) }
 		refresh(ledger.refreshAccounts(.all).filter { $0.key == access.id })
 	}
@@ -549,6 +556,15 @@ final class AppModel {
 		a.groupID = groupID
 		a.position = ledger.nextTreePosition(in: groupID)
 		save(account: a)
+	}
+
+	/// "Remove saved PIN": the next refresh of every account of the access asks for the PIN.
+	func removeSavedPIN(of access: UUID) {
+		do {
+			try sync.broker.removeSavedPIN(of: access)
+		} catch {
+			alert = AlertMessage(title: "Could not remove the saved PIN.", message: String(describing: error))
+		}
 	}
 
 	func remove(account id: UUID) {

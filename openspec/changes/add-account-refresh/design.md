@@ -87,6 +87,9 @@ public protocol SyncSession: Sendable {
 
 	/// Reports progress for the UI. It returns when the UI has it, so progress and requests stay in order.
 	func report(_ progress: SyncProgress) async
+	/// The bank rejected the PIN or blocked the access. Reported when the answer arrives, so that the
+	/// PIN is forgotten before a cancel can end the refresh (add-login-credentials).
+	func rejected(_ failure: SyncFailure) async
 }
 
 public enum UserRequest: Sendable {
@@ -124,7 +127,7 @@ public enum UserAnswer: Sendable {
 }
 ```
 
-The request carries no access: the session belongs to one access, and the broker adds it to the dialog. `Secret` wraps a PIN or a TAN. Its `description`, `debugDescription`, and mirror show "•••", so the value can't end up in a log by accident. A TAN is never stored ("TANs are never saved"). The option to save a PIN comes with the storage of saved PINs in add-login-credentials, so the answer has no save flag yet.
+The request carries no access: the session belongs to one access, and the broker adds it to the dialog. `Secret` wraps a PIN or a TAN. Its `description`, `debugDescription`, and mirror show "•••", so the value can't end up in a log by accident. A TAN is never stored ("TANs are never saved"). The answer `.pin` carries the option to save the PIN, which the [design of add-login-credentials](../add-login-credentials/design.md) describes.
 
 A canceled dialog has no answer: `ask` throws `CancellationError`, and the coordinator cancels the refresh of that access. One path then handles "Cancel" in the dialog and "Cancel Refresh".
 
@@ -145,7 +148,7 @@ This needs no separate API for "close the dialog", and every connector handles c
 
 `SessionBroker` hands each running access a `SyncSession`. It keeps one queue for all accesses: one dialog at a time ("One dialog at a time", "One PIN sheet at a time"), in the order of the requests. A request from another access waits, and its access shows "waiting for your input" in the sidebar. For an automatic refresh the broker creates the session as unattended. Every `ask` that the PIN in memory can't answer then throws `SyncFailure.needsUser` at once, and the account shows "Refresh Account to authorize" ("An automatic refresh never asks the user").
 
-The PIN comes from the broker as well. It answers a `.pin` request with the PIN that the user entered earlier in this run, also in an automatic refresh, and it shows the sheet only when it has none ("An unsaved PIN stays in memory until the app locks or quits", "Automatic refresh skips an access without a PIN"). It keeps the PIN only when the refresh with it finishes, so a typo is never sent again without asking, and it forgets every PIN when the app locks. A saved PIN joins this with the storage of add-login-credentials.
+The PIN comes from the broker as well. It answers a `.pin` request with the PIN that the user entered earlier in this run, also in an automatic refresh, and it shows the sheet only when it has none ("An unsaved PIN stays in memory until the app locks or quits", "Automatic refresh skips an access without a PIN"). It keeps the PIN only when the refresh with it finishes, so a typo is never sent again without asking, and it forgets every PIN when the app locks. The saved PINs of add-login-credentials join the memory when the database opens.
 
 When the bank rejects a PIN, the connector asks for the PIN again, with the message of the bank in `PINRequest.rejected` ("No automatic retry after a wrong PIN"). The broker never answers this request from memory. It forgets the PIN of the access first. Then:
 

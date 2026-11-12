@@ -14,32 +14,51 @@ enum SyncDemo {
 	]
 
 	static func secondFactor(_ challenge: Challenge, purpose: SecondFactorRequest.Purpose = .download, system: SecondFactorRequest.System = .fintsServer,
-		loginOnly: Bool = false) -> UserRequest {
-		.secondFactor(SecondFactorRequest(purpose: purpose, system: system, loginOnly: loginOnly, challenge: challenge))
+		loginOnly: Bool = false, method: TANMethod.ID? = nil) -> UserRequest {
+		.secondFactor(SecondFactorRequest(purpose: purpose, system: system, loginOnly: loginOnly, challenge: challenge, methods: method == nil ? [] : methods,
+			method: method))
 	}
+
+	/// The TAN methods of the made-up bank, which a challenge offers to change to.
+	static let methods = [
+		TANMethod(id: "922", name: "pushTAN 2.0", delivery: .pushNotification), TANMethod(id: "913", name: "chipTAN QR", delivery: .qrCode),
+		TANMethod(id: "912", name: "chipTAN optisch"), TANMethod(id: "901", name: "mobileTAN", needsMedium: true, delivery: .smsCode),
+	]
 
 	/// The requests by name, in the order of the previews.
 	static let requests: [(name: String, request: UserRequest)] = [
 		("pin", .pin(PINRequest())),
+		("pinrules", .pin(PINRequest(rules: PINRules(digitsOnly: true, minLength: 5, maxLength: 5)))),
 		("pinretry", .pin(PINRequest(rejected: BankMessage(code: "9942", text: "Die PIN ist falsch.")))),
-		("method", secondFactor(.chooseTANMethod([TANMethod(id: "922", name: "pushTAN 2.0"), TANMethod(id: "913", name: "chipTAN QR")], current: nil), purpose: .login)),
+		("method", secondFactor(.chooseTANMethod(methods, current: nil), purpose: .login)),
 		("medium", secondFactor(.chooseTANMedium(["Handy privat", "Handy Firma"]), purpose: .login)),
 		("nomedia", secondFactor(.chooseTANMedium([]), purpose: .login)),
 		("tan", secondFactor(.enterTAN(prompt: "Bitte geben Sie die TAN für den Auftrag vom 09.11.2026 ein", image: nil))),
-		("phototan", secondFactor(.enterTAN(prompt: "Bitte scannen Sie die Grafik mit Ihrer photoTAN-App.", image: qrCode("Moneten photoTAN demo")))),
-		("flicker", secondFactor(.flickerCode(prompt: "Halten Sie den TAN-Generator vor die Grafik.", code: FlickerCode(hex: "1784011049304330363034353930")!))),
-		("approve", secondFactor(.approveInApp(prompt: "Bitte bestätigen Sie den Vorgang in Ihrer pushTAN-App.", app: "pushTAN", image: nil, step: nil), purpose: .login)),
+		("smstan", secondFactor(.enterTAN(prompt: "Bitte geben Sie die TAN aus der SMS an Handy Firma ein.", image: nil), purpose: .login, method: "901")),
+		("phototan", secondFactor(.enterTAN(prompt: "Bitte scannen Sie die Grafik mit Ihrer photoTAN-App.", image: qrCode("Moneten photoTAN demo")), method: "913")),
+		("flicker", secondFactor(.flickerCode(prompt: "Halten Sie den TAN-Generator vor die Grafik.", code: FlickerCode(hex: "1784011049304330363034353930")!), method: "912")),
+		("approve", secondFactor(.approveInApp(prompt: "Bitte bestätigen Sie den Vorgang in Ihrer pushTAN-App.", app: "pushTAN", image: nil, step: nil), purpose: .login,
+			method: "922")),
 		("qrapprove", secondFactor(.approveInApp(prompt: "Scannen Sie den Code mit der App der Bank.", app: "Musterbank App", image: qrCode("Moneten QR demo"), step: .init(2, of: 2)),
 			purpose: .login, system: .website)),
 		("browser", secondFactor(.openBrowser(URL(string: "https://www.musterbank.example/login")!), purpose: .login, system: .website)),
 		("order", secondFactor(.enterTAN(prompt: "Bitte geben Sie die TAN ein.", image: nil), purpose: .order("Transfer of 25,00 EUR to Max Mustermann"), loginOnly: true)),
 	]
 
-	/// Starts a refresh of the made-up access that asks with the named request and then fetches both accounts.
+	/// Starts a refresh of the made-up access that asks with the named request and then fetches both
+	/// accounts. "methodflow" asks for the TAN method, the TAN medium, and the SMS code, with time for
+	/// the progress after each choice.
 	@MainActor
 	static func start(_ name: String, in coordinator: SyncCoordinator) {
-		guard let request = requests.first(where: { $0.name == name })?.request else { return }
-		let connector = ScriptedConnector([.ask(request), .progress(.fetching(done: 0, of: 2)), .wait(.seconds(1))] + accounts.map { .fetched($0.accountID) })
+		let asks: [ScriptedConnector.Step]
+		if name == "methodflow" {
+			asks = ["method", "medium", "smstan"].compactMap { step in requests.first { $0.name == step }.map { .ask($0.request) } }
+				.flatMap { [$0, .wait(.seconds(4))] }
+		} else {
+			guard let request = requests.first(where: { $0.name == name })?.request else { return }
+			asks = [.ask(request)]
+		}
+		let connector = ScriptedConnector(asks + [.progress(.fetching(done: 0, of: 2)), .wait(.seconds(1))] + accounts.map { .fetched($0.accountID) })
 		coordinator.refresh(RefreshRequest(access: access, accounts: accounts), with: connector, attended: true)
 	}
 
@@ -59,8 +78,8 @@ private struct SyncDemoPreview: View {
 
 	var body: some View {
 		Group {
-			if let prompt = coordinator.broker.current {
-				SyncDialog(broker: coordinator.broker, prompt: prompt)
+			if let sheet = coordinator.broker.sheet {
+				SyncDialog(broker: coordinator.broker, sheet: sheet)
 			} else {
 				ProgressView()
 			}
@@ -70,7 +89,9 @@ private struct SyncDemoPreview: View {
 }
 
 #Preview("PIN") { SyncDemoPreview(name: "pin") }
+#Preview("PIN with the rules of the bank") { SyncDemoPreview(name: "pinrules") }
 #Preview("PIN after a typing error") { SyncDemoPreview(name: "pinretry") }
+#Preview("TAN method, TAN medium, and SMS code") { SyncDemoPreview(name: "methodflow") }
 #Preview("Choose TAN method") { SyncDemoPreview(name: "method") }
 #Preview("Choose TAN medium") { SyncDemoPreview(name: "medium") }
 #Preview("No list of TAN media") { SyncDemoPreview(name: "nomedia") }

@@ -20,10 +20,13 @@ struct Command: Encodable {
 	}
 }
 
+/// The answer of the user to a request of the helper. `method` in place of `value` changes the TAN
+/// method of a challenge on screen, and the helper then requests a new challenge with that method.
 struct Answer: Encodable {
 	var type = "answer"
 	let id: Int
-	let value: String
+	var value: String?
+	var method: String?
 }
 
 /// A line from the helper.
@@ -47,6 +50,25 @@ enum HelperMessage: Decodable {
 
 	private enum Key: String, CodingKey {
 		case type, id, done, of, text, name, bic, url, accounts, account, data, host, chain
+	}
+
+	/// The rejection of the PIN or the block of the access in this message, for the whole access or
+	/// for one account.
+	var rejection: SyncFailure? {
+		let failure: SyncFailure?
+		switch self {
+		case let .failed(error), let .accountFailed(_, error): failure = error.failure
+		case let .result(_, .success(result)): failure = result.shownError?.failure
+		case let .ask(_, ask):
+			do {
+				_ = try ask.request()
+				failure = nil
+			} catch {
+				failure = error as? SyncFailure
+			}
+		default: failure = nil
+		}
+		return failure?.rejectsPIN == true ? failure : nil
 	}
 
 	init(from decoder: Decoder) throws {
@@ -81,32 +103,60 @@ struct Ask: Decodable {
 	/// The name of the TAN method of an approval, for example "SecureGo plus".
 	let method: String?
 	let rejected: HelperError?
+	/// The PIN rules of the bank parameters, on a PIN request.
+	let rules: Rules?
+	/// The methods to choose from, and on a challenge the methods that the user can change to.
 	let methods: [Method]?
+	/// The ID of the method of a challenge.
+	let current: String?
 	let media: [String]?
 	let image: Data?
 	/// The flicker code as hbci4java renders it from the HHDuc of the bank.
 	let flicker: String?
 
+	struct Rules: Decodable {
+		let minLength: Int?
+		let maxLength: Int?
+	}
+
 	struct Method: Decodable {
 		let id: String
 		let name: String
+		/// The method needs a TAN medium.
+		let medium: Bool?
+		/// "sms", "push", or "qr", which the helper reads from the bank parameters of the method.
+		let delivery: String?
+
+		var method: TANMethod {
+			let delivery: TANMethod.Delivery = switch delivery {
+			case "sms": .smsCode
+			case "push": .pushNotification
+			case "qr": .qrCode
+			default: .tan
+			}
+			return TANMethod(id: id, name: name, needsMedium: medium ?? false, delivery: delivery)
+		}
 	}
 
 	/// The request for the session. A PIN request after a rejection carries the answer of the bank, so
 	/// the broker never answers it from memory and shows the sheet again. 9930 means a blocked access,
-	/// and the app never asks for its PIN again (task 1.24).
+	/// and the app never asks for its PIN again (task 1.24). A flicker code that does not read fails the
+	/// access, because the user cannot produce a TAN without it.
 	func request() throws -> UserRequest {
 		if kind == "pin" {
-			guard let rejected else { return .pin(PINRequest()) }
+			let rules = PINRules(minLength: rules?.minLength, maxLength: rules?.maxLength)
+			guard let rejected else { return .pin(PINRequest(rules: rules)) }
 			if rejected.code == "9930" { throw SyncFailure.accessBlocked(rejected.message) }
-			return .pin(PINRequest(rejected: rejected.message))
+			return .pin(PINRequest(rejected: rejected.message, rules: rules))
 		}
+		let offered = (methods ?? []).map(\.method)
 		let challenge: Challenge
 		switch kind {
-		case "tanMethod": challenge = .chooseTANMethod((methods ?? []).map { TANMethod(id: $0.id, name: $0.name) }, current: nil)
+		case "tanMethod": return secondFactor(.chooseTANMethod(offered, current: nil), methods: [])
 		case "tanMedium": challenge = .chooseTANMedium(media ?? [])
 		case "tan":
-			if let code = flicker.flatMap(FlickerCode.init(hex:)) {
+			if let flicker {
+				guard let code = FlickerCode(hex: flicker) else { throw SyncFailure.invalidChallenge }
 				challenge = .flickerCode(prompt: prompt ?? "", code: code)
 			} else {
 				challenge = .enterTAN(prompt: prompt ?? "", image: image.map(ChallengeImage.init))
@@ -114,7 +164,12 @@ struct Ask: Decodable {
 		case "approve": challenge = .approveInApp(prompt: prompt ?? "", app: method, image: nil, step: nil)
 		default: throw DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "unknown request \(kind)"))
 		}
-		return .secondFactor(SecondFactorRequest(purpose: purpose == "login" ? .login : .download, system: .fintsServer, challenge: challenge))
+		return secondFactor(challenge, methods: offered)
+	}
+
+	private func secondFactor(_ challenge: Challenge, methods: [TANMethod]) -> UserRequest {
+		.secondFactor(SecondFactorRequest(purpose: purpose == "login" ? .login : .download, system: .fintsServer, challenge: challenge, methods: methods,
+			method: current))
 	}
 }
 
@@ -130,6 +185,7 @@ struct HelperError: Decodable, Equatable {
 		switch (kind, code) {
 		case ("network", _), ("certificate", _): .network(text)
 		case ("unsupported", _): .unsupported(text)
+		case ("invalidChallenge", _): .invalidChallenge
 		case (_, "9078"): .notRegistered
 		// Sparkassen send 9931 for a wrong login name or PIN, so only 9930 counts as blocked.
 		case (_, "9942"), (_, "9340"), (_, "9931"): .pinRejected(message)
@@ -175,15 +231,23 @@ struct AccountResult: Decodable {
 
 	/// The outcome of the account, and the error of a balance request that failed beside transactions
 	/// that worked. The error of a transaction request that failed beside a balance is the error of the account.
+	/// The error that the account fails with when its transactions are missing: a rejection of the PIN
+	/// or a block first, because it decides about the PIN, and otherwise the first error. The session
+	/// learns about the PIN from this error too, so the account always shows why the PIN went.
+	var shownError: HelperError? {
+		guard transactions == nil else { return nil }
+		return errors.first { $0.failure.rejectsPIN } ?? errors.first
+	}
+
 	func outcome(of accountID: UUID) throws -> (AccountOutcome, [BankMessage]) {
 		guard balance != nil || transactions != nil else {
-			return (.failed(errors.first?.failure ?? .bank(BankMessage(text: "The bank sent nothing for this account."))), [])
+			return (.failed(shownError?.failure ?? .bank(BankMessage(text: "The bank sent nothing for this account."))), [])
 		}
 		let money = try balance.map { try Self.money($0.amount, $0.currency) }
 		let fetched = try transactions.map { t in
 			FetchedTransactions(rows: try t.rows.map { try $0.transaction(of: accountID) }, from: try t.from.map(Self.day))
 		}
-		let transactionFailure = transactions == nil ? errors.first?.failure : nil
+		let transactionFailure = shownError?.failure
 		let result = RefreshResult(balance: money, balanceDate: try balance?.date.map { try Self.day($0).date() }, transactions: fetched,
 			isComplete: transactions != nil && transactions?.from == nil, transactionFailure: transactionFailure)
 		return (.fetched(result), transactionFailure == nil ? errors.map(\.message) : [])

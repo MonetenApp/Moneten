@@ -137,6 +137,7 @@ struct AccountSettingsSheet: View {
 	@State private var account: Account?
 	@State private var initialBalance = ""
 	@State private var confirmRemove = false
+	@State private var confirmRemovePIN = false
 	@State private var color = Color.accentColor
 	@State private var originalColor = Color.accentColor
 
@@ -187,6 +188,21 @@ struct AccountSettingsSheet: View {
 							}
 						}
 						Toggle("The account has been closed", isOn: binding.isClosed)
+					}
+					if let access = original.accessID.flatMap({ model.accesses[$0] }) {
+						Section("Online banking") {
+							LabeledContent("User ID", value: access.loginName)
+							LabeledContent("PIN") {
+								Button("Remove saved PIN") { confirmRemovePIN = true }
+									.disabled(!model.sync.broker.savedPINs.contains(access.id))
+							}
+						}
+						.alert("Remove the saved PIN of “\(access.bankName)”?", isPresented: $confirmRemovePIN) {
+							Button("OK") { model.removeSavedPIN(of: access.id) }
+							Button("Cancel", role: .cancel) {}
+						} message: {
+							Text("The PIN is removed for every account of this access. The next refresh asks for it.")
+						}
 					}
 				}
 			}

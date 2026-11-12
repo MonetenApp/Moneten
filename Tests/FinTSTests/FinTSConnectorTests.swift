@@ -121,6 +121,52 @@ struct FinTSConnectorTests {
 		#expect(!recorded.map { $0["id"] }.contains(nil))
 	}
 
+	@Test("Sends the PIN rules of the bank with the PIN request")
+	func pinRules() async throws {
+		let session = Session()
+		_ = try await connector("""
+			read cmd
+			echo '{"type":"ask","id":1,"kind":"pin","rules":{"minLength":5,"maxLength":10}}'
+			read answer
+			echo '{"type":"accounts","accounts":[]}'
+			""").listAccounts(of: Self.access, state: nil, session: session)
+		#expect(session.events == [.asked(.pin(PINRequest(rules: PINRules(minLength: 5, maxLength: 10))))])
+	}
+
+	@Test("Offers the other TAN methods in the dialog of a challenge, and sends the method that the user changes to", arguments: ["tan", "approve"])
+	func changeMethod(kind: String) async throws {
+		let session = Session { request in
+			guard case .secondFactor = request else { return .pin(Secret("1234")) }
+			return .tanMethod("913")
+		}
+		_ = try await connector("""
+			read cmd
+			echo '{"type":"ask","id":1,"kind":"\(kind)","purpose":"login","prompt":"Bitte bestätigen","current":"922","methods":[{"id":"922","name":"pushTAN 2.0","delivery":"push"},{"id":"913","name":"chipTAN QR","delivery":"qr"},{"id":"901","name":"mobileTAN","medium":true,"delivery":"sms"}]}'
+			read a; printf '%s\\n' "$a" >> "$R"
+			echo '{"type":"accounts","accounts":[]}'
+			""").listAccounts(of: Self.access, state: nil, session: session)
+
+		let methods = [TANMethod(id: "922", name: "pushTAN 2.0", delivery: .pushNotification), TANMethod(id: "913", name: "chipTAN QR", delivery: .qrCode),
+			TANMethod(id: "901", name: "mobileTAN", needsMedium: true, delivery: .smsCode)]
+		let challenge: Challenge = kind == "tan" ? .enterTAN(prompt: "Bitte bestätigen", image: nil) : .approveInApp(prompt: "Bitte bestätigen", app: nil, image: nil, step: nil)
+		#expect(session.events.first == .asked(.secondFactor(SecondFactorRequest(purpose: .login, system: .fintsServer, challenge: challenge, methods: methods,
+			method: "922"))))
+		#expect(recorded == [["type": "answer", "id": "1", "method": "913"]])
+	}
+
+	@Test("A flicker code that does not read fails the access with an invalid challenge and opens no dialog")
+	func invalidFlicker() async throws {
+		let session = Session()
+		let error = await failure(of: """
+			read cmd
+			echo '{"type":"ask","id":1,"kind":"tan","purpose":"download","prompt":"Bitte TAN erzeugen","flicker":"0F0X"}'
+			read a
+			""", session: session)
+		#expect(error as? SyncFailure == .invalidChallenge)
+		#expect(session.events.isEmpty)
+		#expect(SyncFailure.invalidChallenge.message == "The bank responded with an invalid challenge.")
+	}
+
 	@Test("Keeps an approval in the app open until the helper withdraws it")
 	func approval() async throws {
 		let session = Session()
@@ -184,6 +230,58 @@ struct FinTSConnectorTests {
 			""", session: session)
 		#expect(error is CancellationError)
 		#expect(recorded.map { $0["type"] } == ["cancel"])
+	}
+
+	@Test("Reports a rejection or a block to the session when it arrives, before a cancel during the end of the helper", arguments: [
+		(#"{"type":"failed","code":"9930","text":"Zugang gesperrt"}"#, SyncFailure.accessBlocked(BankMessage(code: "9930", text: "Zugang gesperrt"))),
+		(#"{"type":"accountFailed","account":"DE02120300000000202051","code":"9942","text":"PIN falsch"}"#, .pinRejected(BankMessage(code: "9942", text: "PIN falsch"))),
+		(#"{"type":"result","account":"DE02120300000000202051","balance":{"amount":"100","currency":"EUR"},"errors":[{"code":"9942","text":"PIN falsch"}]}"#,
+			.pinRejected(BankMessage(code: "9942", text: "PIN falsch"))),
+		(#"{"type":"ask","id":1,"kind":"pin","rejected":{"code":"9930","text":"PIN gesperrt"}}"#, .accessBlocked(BankMessage(code: "9930", text: "PIN gesperrt"))),
+	])
+	func rejectionBeforeCancel(line: String, expected: SyncFailure) async throws {
+		let session = Session()
+		let task = Task {
+			try await connector("""
+				read cmd
+				echo '\(line)'
+				sleep 3
+				""", grace: 1).refresh(RefreshRequest(access: Self.access, accounts: [Self.giro]), session)
+		}
+		await until { session.events.contains(.rejected(expected)) }
+		task.cancel()
+		_ = try? await task.value
+		#expect(session.events.filter { if case .rejected = $0 { true } else { false } } == [.rejected(expected)])
+	}
+
+	@Test("Reports a rejection that the helper writes after the cancel, while it ends")
+	func rejectionDuringGrace() async throws {
+		let session = Session()
+		let task = Task {
+			try await connector("""
+				read cmd
+				echo '{"type":"progress","done":0,"of":1}'
+				read line
+				echo '{"type":"failed","code":"9942","text":"PIN falsch"}'
+				""", grace: 5).refresh(RefreshRequest(access: Self.access, accounts: [Self.giro]), session)
+		}
+		await until { session.events.contains(.progress(.fetching(done: 0, of: 1))) }
+		task.cancel()
+		_ = try? await task.value
+		#expect(session.events.contains(.rejected(.pinRejected(BankMessage(code: "9942", text: "PIN falsch")))))
+	}
+
+	@Test("An account shows the rejection of the PIN that the session gets, also beside another error, and transactions keep the PIN", arguments: [
+		(#"{"type":"result","account":"DE02120300000000202051","balance":{"amount":"100","currency":"EUR"},"errors":[{"code":"9010","text":"Verarbeitung nicht möglich"},{"code":"9942","text":"PIN falsch"}]}"#,
+			SyncFailure?.some(.pinRejected(BankMessage(code: "9942", text: "PIN falsch")))),
+		(#"{"type":"result","account":"DE02120300000000202051","transactions":{"rows":[]},"errors":[{"code":"9942","text":"PIN falsch"}]}"#, nil),
+	])
+	func mixedErrors(line: String, shown: SyncFailure?) async throws {
+		let session = Session()
+		let report = try await refresh("read cmd; echo '\(line)'", session: session)
+		guard case let .fetched(result) = report.outcomes[Self.giro.accountID] else { Issue.record("not fetched"); return }
+		#expect(result.transactionFailure == shown)
+		#expect(session.events == shown.map { [.rejected($0)] } ?? [])
 	}
 
 	@Test("A canceled refresh sends cancel, and the helper ends")
@@ -538,6 +636,7 @@ struct FinTSConnectorTests {
 		(#"{"type":"failed","code":"9010","text":"Verarbeitung nicht möglich"}"#, .bank(BankMessage(code: "9010", text: "Verarbeitung nicht möglich"))),
 		(#"{"type":"failed","text":"Dialog abgebrochen"}"#, .bank(BankMessage(text: "Dialog abgebrochen"))),
 		(#"{"type":"failed","kind":"network","text":"Connection refused"}"#, .network("Connection refused")),
+		(#"{"type":"failed","kind":"invalidChallenge","text":"The bank responded with an invalid challenge."}"#, .invalidChallenge),
 		(#"{"type":"failed","kind":"unsupported","text":"The bank offers no encrypted FinTS address."}"#, .unsupported("The bank offers no encrypted FinTS address.")),
 		(#"{"type":"failed","kind":"certificate","text":"The certificate of the server fints.example.com is not valid."}"#,
 			.network("The certificate of the server fints.example.com is not valid.")),
@@ -546,7 +645,8 @@ struct FinTSConnectorTests {
 	func errors(line: String, expected: SyncFailure) async throws {
 		let session = Session()
 		#expect(await failure(of: "read cmd; echo '\(line)'", session: session) as? SyncFailure == expected)
-		#expect(session.events.isEmpty)
+		// No dialog opens. Only a rejection of the PIN or a block reaches the session, at once.
+		#expect(session.events == (expected.rejectsPIN ? [.rejected(expected)] : []))
 	}
 
 	@Test("Refuses an access without https and a build without a product ID before it starts the helper")
@@ -616,6 +716,7 @@ final class Session: SyncSession {
 		case asked(UserRequest)
 		case withdrawn
 		case progress(SyncProgress)
+		case rejected(SyncFailure)
 	}
 
 	private let answer: @Sendable (UserRequest) async throws -> UserAnswer
@@ -643,6 +744,10 @@ final class Session: SyncSession {
 	func report(_ progress: SyncProgress) async {
 		log.withLock { $0.append(.progress(progress)) }
 		await self.progress(progress)
+	}
+
+	func rejected(_ failure: SyncFailure) async {
+		log.withLock { $0.append(.rejected(failure)) }
 	}
 
 	@Sendable static func standard(_ request: UserRequest) async throws -> UserAnswer {

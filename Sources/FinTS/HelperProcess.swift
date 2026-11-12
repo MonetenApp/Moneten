@@ -23,13 +23,14 @@ final class HelperProcess: @unchecked Sendable {
 	private let canceled = Mutex(false)
 	private let failure = Mutex<(any Error)?>(nil)
 	private let grace: TimeInterval
-	private let onLine: @Sendable () -> Void
+	private let onLine: @Sendable (String) -> Void
 	private let onEnd: @Sendable () -> Void
 
-	/// `onLine` runs when a line arrives, before `lines` delivers it. `onEnd` runs once when stdout ends
+	/// `onLine` runs with each line when it arrives, before `lines` delivers it, also after `lines` ended
+	/// because the reading task was canceled. `onEnd` runs once when stdout ends
 	/// or the process ends, whichever comes first. `grace` is the time that the helper gets to end after
 	/// a cancel.
-	init(executable: URL, arguments: [String], grace: TimeInterval, onLine: @escaping @Sendable () -> Void = {},
+	init(executable: URL, arguments: [String], grace: TimeInterval, onLine: @escaping @Sendable (String) -> Void = { _ in },
 		onEnd: @escaping @Sendable () -> Void = {}) throws {
 		let stdin = Pipe(), stdout = Pipe()
 		process.executableURL = executable
@@ -73,7 +74,7 @@ final class HelperProcess: @unchecked Sendable {
 			let data = output.availableData
 			guard !data.isEmpty else { return finish(&state) }
 			state.partial.append(data)
-			for line in state.partial.takeLines() { onLine(); received.yield(line) }
+			for line in state.partial.takeLines() { onLine(line); received.yield(line) }
 		}
 	}
 
@@ -89,7 +90,7 @@ final class HelperProcess: @unchecked Sendable {
 				guard count > 0 else { break }
 				state.partial.append(contentsOf: buffer[0..<count])
 			}
-			for line in state.partial.takeLines() { onLine(); received.yield(line) }
+			for line in state.partial.takeLines() { onLine(line); received.yield(line) }
 			finish(&state)
 		}
 	}

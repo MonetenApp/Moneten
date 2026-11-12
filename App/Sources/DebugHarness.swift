@@ -77,7 +77,7 @@ final class DebugHarness {
 		// "<name>" starts a made-up refresh that shows one dialog of SyncDemo.requests.
 		case "syncdemo": SyncDemo.start(argument, in: model.sync)
 		case "synccancel": model.sync.cancelAll()
-		// "<field> <value>" drives the "Add Account" assistant: entry, login, pin, other, group, next, back, toggle, connect, cancel.
+		// "<field> <value>" drives the "Add Account" assistant: entry, login, pin, save, other, group, next, back, toggle, connect, cancel.
 		case "setup": setup(argument)
 		// "<name>": a migrated giro account without an access, with the test IBAN of the made-up bank.
 		case "migrated":
@@ -95,6 +95,22 @@ final class DebugHarness {
 			if let prompt = model.sync.broker.current {
 				if case .pin = prompt.request { model.sync.broker.answer(.pin(Secret(argument)), to: prompt.id) } else { model.sync.broker.answer(.tan(Secret(argument)), to: prompt.id) }
 			}
+		// "<id>" chooses a TAN method in the dialog on screen, and "medium <name>" a TAN medium.
+		case "method": if let prompt = model.sync.broker.current { model.sync.broker.answer(.tanMethod(argument), to: prompt.id) }
+		case "medium": if let prompt = model.sync.broker.current { model.sync.broker.answer(.tanMedium(argument), to: prompt.id) }
+		// "return", "escape", "cmd+", or "cmd-" sends that key to the sheet on top, as the keyboard does.
+		case "key":
+			let command = argument.hasPrefix("cmd")
+			let characters = switch argument { case "escape": "\u{1b}"; case "return": "\r"; default: String(argument.dropFirst(3)) }
+			if let sheet = topSheet, let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: command ? .command : [], timestamp: 0,
+				windowNumber: sheet.windowNumber, context: nil, characters: characters, charactersIgnoringModifiers: characters, isARepeat: false,
+				keyCode: argument == "escape" ? 53 : argument == "return" ? 36 : 24) {
+				log("key \(argument) handled=\(sheet.performKeyEquivalent(with: event))")
+			}
+		// "<text>" types into the field that has the focus.
+		case "type": (topSheet?.firstResponder as? NSTextView)?.insertText(argument, replacementRange: NSRange(location: NSNotFound, length: 0))
+		// Focuses the first secure field of the sheet on screen and logs what macOS sees of it, for the check that the password manager does not offer it.
+		case "securefield": secureField()
 		// "all", or the name of an account or a group.
 		case "refresh":
 			if argument == "all" { model.refresh(.all) }
@@ -261,6 +277,7 @@ final class DebugHarness {
 		case "entry": setup.entry = value
 		case "login": setup.loginName = value
 		case "pin": setup.pin = value
+		case "save": setup.savePIN = value == "yes"
 		case "other": setup.service = value == "no" ? nil : .offline
 		case "next": setup.next()
 		case "back": setup.back()
@@ -276,6 +293,29 @@ final class DebugHarness {
 		default: break
 		}
 		log("setup step=\(setup.step) lookup=\(setup.lookup.state) error=\(setup.loginError ?? "-") saveError=\(setup.saveError ?? "-") dialog=\(model.sync.broker.current != nil) candidates=\(setup.candidates.map { "\($0.id):\(Self.label($0.match))" }) selected=\(setup.selected.sorted())")
+	}
+
+	/// The sheet on top of all others, where the dialogs of a refresh appear.
+	private var topSheet: NSWindow? {
+		NSApp.windows.compactMap(\.attachedSheet).flatMap { sequence(first: $0) { $0.attachedSheet } }.last
+	}
+
+	/// Logs the class, the content type, and the AutoFill hints of the first secure field in a sheet,
+	/// after it has the focus for two seconds, and the windows of the app then, so that an AutoFill
+	/// panel of macOS would show in the list.
+	private func secureField() {
+		func fields(in view: NSView) -> [NSSecureTextField] {
+			(view as? NSSecureTextField).map { [$0] } ?? view.subviews.flatMap(fields)
+		}
+		guard let sheet = topSheet, let field = sheet.contentView.flatMap(fields)?.first else { return log("securefield none") }
+		NSApp.activate()
+		sheet.makeFirstResponder(field)
+		DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+			let editor = sheet.firstResponder as? NSTextView
+			self.log("securefield class=\(type(of: field)) contentType=\(field.contentType?.rawValue ?? "nil") focused=\(editor != nil)"
+				+ " completion=\(editor?.isAutomaticTextCompletionEnabled ?? false) active=\(NSApp.isActive) keyWindow=\(NSApp.keyWindow.map { "\(type(of: $0))" } ?? "none")")
+			self.log("securefield windows=\(NSApp.windows.filter(\.isVisible).map { "\(type(of: $0))" }.joined(separator: ","))")
+		}
 	}
 
 	/// The euro balance chart of the selected account or group: its first and last bar and the total

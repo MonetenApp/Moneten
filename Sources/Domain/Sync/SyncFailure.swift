@@ -26,6 +26,8 @@ public enum SyncFailure: Error, Sendable, Equatable {
 	case approvalDeclined(BankMessage?)
 	/// The user did not answer the dialog within the validity of the challenge.
 	case challengeExpired
+	/// The bank sent challenge data that the app cannot show, for example a flicker code that does not read.
+	case invalidChallenge
 	/// FinTS 9078: the bank does not know the product number of Moneten yet.
 	case notRegistered
 	/// The account was not fetched, because an earlier request of the same session failed.
@@ -41,12 +43,20 @@ public enum SyncFailure: Error, Sendable, Equatable {
 	/// and the next refresh delivers the same rows again.
 	case notSaved(String)
 
+	/// The bank rejected the PIN or blocked the access, so the PIN must never be sent again.
+	public var rejectsPIN: Bool {
+		switch self {
+		case .pinRejected, .accessBlocked: true
+		default: false
+		}
+	}
+
 	/// The answer of the bank in this failure, for its code in the error popover.
 	public var bankMessage: BankMessage? {
 		switch self {
 		case let .pinRejected(m), let .accessBlocked(m), let .tanRejected(m), let .bank(m): m
 		case let .approvalDeclined(m): m
-		case .needsUser, .challengeExpired, .notRegistered, .notFetched, .offline, .network, .unsupported, .notSaved: nil
+		case .needsUser, .challengeExpired, .invalidChallenge, .notRegistered, .notFetched, .offline, .network, .unsupported, .notSaved: nil
 		}
 	}
 
@@ -69,6 +79,8 @@ public enum SyncFailure: Error, Sendable, Equatable {
 			"The required authorization was not carried out." + (m.map { " \($0.text)" } ?? "")
 		case .challengeExpired:
 			"The two-factor authentication timed out."
+		case .invalidChallenge:
+			"The bank responded with an invalid challenge."
 		case .notRegistered:
 			"The bank does not know Moneten yet. Banks take some weeks to accept a new app. Try again later."
 		case .notFetched:

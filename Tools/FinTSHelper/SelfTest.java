@@ -5,6 +5,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.ObjectOutputStream;
 import java.io.PrintStream;
+import java.lang.reflect.Method;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -26,6 +27,8 @@ import org.kapott.hbci.GV.parsers.SEPAParserFactory;
 import org.kapott.hbci.GV_Result.GVRKUms;
 import org.kapott.hbci.GV_Result.GVRSaldoReq;
 import org.kapott.hbci.GV_Result.GVRKUms.UmsLine;
+import org.kapott.hbci.dialog.DialogContext;
+import org.kapott.hbci.dialog.DialogEvent;
 import org.kapott.hbci.exceptions.HBCI_Exception;
 import org.kapott.hbci.exceptions.ProcessException;
 import org.kapott.hbci.manager.HBCIUtils;
@@ -224,6 +227,7 @@ final class SelfTest {
 			expect("bank directory", FinTSHelper.Json.write(FinTSHelper.bankInfo("76030080")),
 				"{\"type\":\"bank\",\"name\":\"Bnp Paribas S.A. Niederlassung Deutschland - Consorsbank\",\"bic\":\"CSDBDE71XXX\",\"url\":\"https://brokerage-hbci.consorsbank.de/hbci\"}");
 			expect("unknown bank", FinTSHelper.Json.write(FinTSHelper.bankInfo("99999999")), "{\"type\":\"bank\"}");
+			pinTan();
 		} finally {
 			HBCIUtils.done();
 		}
@@ -325,6 +329,116 @@ final class SelfTest {
 			</BkToCstmrAcctRpt>
 			</Document>
 			""".formatted(status, day, amount, direction, name, endToEnd, purpose);
+	}
+
+	/// A passport with made-up bank parameters: a PIN of 5 to 10 characters, and the methods pushTAN 2.0
+	/// (an approval in the app), chipTAN QR, and mobileTAN with a TAN medium, all three allowed for the user.
+	static FinTSHelper.Passport passport() {
+		Properties bpd = new Properties();
+		bpd.setProperty("Params_1.PinTanPar1.ParPinTan.pinlen_min", "5");
+		bpd.setProperty("Params_1.PinTanPar1.ParPinTan.pinlen_max", "10");
+		String[][] methods = {{"922", "pushTAN 2.0", "Decoupled", "Decoupled", ""}, {"913", "chipTAN QR", "", "Q1S", ""}, {"901", "mobileTAN", "mobileTAN", "mTAN", "2"}};
+		for (int i = 0; i < methods.length; i++) {
+			String header = "Params_2.TAN2StepPar6.ParTAN2Step.TAN2StepParams" + (i + 1) + ".";
+			bpd.setProperty(header + "secfunc", methods[i][0]);
+			bpd.setProperty(header + "name", methods[i][1]);
+			bpd.setProperty(header + "zkamethod_name", methods[i][2]);
+			bpd.setProperty(header + "id", methods[i][3]);
+			bpd.setProperty(header + "needtanmedia", methods[i][4]);
+		}
+		PassportData d = new PassportData();
+		d.country = "DE";
+		d.blz = "12030000";
+		d.host = "fints.example.com/fints";
+		d.port = 443;
+		d.userId = "erika77";
+		d.customerId = "erika77";
+		d.filter = "Base64";
+		d.hbciVersion = "300";
+		d.bpd = bpd;
+		d.twostepMechs = new ArrayList<>(List.of("901", "913", "922"));
+		d.tanMethod = "922";
+		FinTSHelper.Passport.loaded = d;
+		FinTSHelper.Passport passport = new FinTSHelper.Passport();
+		FinTSHelper.Passport.loaded = null;
+		return passport;
+	}
+
+	/// The requests of the callbacks for the PIN and the TAN, with made-up answers.
+	static void pinTan() {
+		FinTSHelper.Passport passport = passport();
+		List<String> asked = new ArrayList<>();
+		List<String> answers = new ArrayList<>(List.of("48151", "16234"));
+		FinTSHelper.Callback callback = new FinTSHelper.Callback(Map.of(), null) {
+			@Override
+			String ask(Map<String, Object> request) {
+				asked.add(FinTSHelper.Json.write(request));
+				return answers.isEmpty() ? "" : answers.remove(0);
+			}
+		};
+		StringBuffer data = new StringBuffer();
+		callback.callback(passport, FinTSHelper.Callback.NEED_PT_PIN, "", 0, data);
+		expect("PIN request with the rules of the bank", String.join(" ", asked) + " -> " + data,
+			"{\"type\":\"ask\",\"kind\":\"pin\",\"rules\":{\"type\":\"rules\",\"minLength\":5,\"maxLength\":10}} -> 48151");
+		expect("PIN of the request masked in diagnostics", Out.bank("Anmeldung mit 48151 fehlgeschlagen"), "Anmeldung mit ••• fehlgeschlagen");
+		data = new StringBuffer();
+		callback.callback(passport, FinTSHelper.Callback.NEED_PT_PIN, "", 0, data);
+		expect("the next dialog of the run uses the PIN again", asked.size() + " -> " + data, "1 -> 48151");
+		callback.callback(passport, FinTSHelper.Callback.WRONG_PIN, "", 0, new StringBuffer());
+		data = new StringBuffer();
+		callback.callback(passport, FinTSHelper.Callback.NEED_PT_PIN, "", 0, data);
+		expect("a rejected PIN is asked for again", asked.get(asked.size() - 1) + " -> " + data,
+			"{\"type\":\"ask\",\"kind\":\"pin\",\"rejected\":{\"type\":\"rejected\",\"text\":\"The bank did not accept the PIN.\"},"
+				+ "\"rules\":{\"type\":\"rules\",\"minLength\":5,\"maxLength\":10}} -> 16234");
+
+		asked.clear();
+		answers.add("901");
+		callback.callback(passport, FinTSHelper.Callback.NEED_PT_SECMECH, "", 0, new StringBuffer("901:mobileTAN|913:chipTAN QR|922:pushTAN 2.0"));
+		String methods = "[{\"type\":\"method\",\"id\":\"901\",\"name\":\"mobileTAN\",\"medium\":true,\"delivery\":\"sms\"},"
+			+ "{\"type\":\"method\",\"id\":\"913\",\"name\":\"chipTAN QR\",\"delivery\":\"qr\"},"
+			+ "{\"type\":\"method\",\"id\":\"922\",\"name\":\"pushTAN 2.0\",\"delivery\":\"push\"}]";
+		expect("TAN methods with their medium and what the bank sends", asked.get(0),
+			"{\"type\":\"ask\",\"kind\":\"tanMethod\",\"purpose\":\"login\",\"methods\":" + methods + "}");
+
+		asked.clear();
+		answers.add("482915");
+		callback.callback(passport, FinTSHelper.Callback.NEED_PT_TAN, "pushTAN 2.0\nHinweis\n\nBitte TAN eingeben", 0, new StringBuffer());
+		expect("a TAN request offers the methods to change to", asked.get(0),
+			"{\"type\":\"ask\",\"kind\":\"tan\",\"purpose\":\"login\",\"prompt\":\"Bitte TAN eingeben\",\"current\":\"922\",\"methods\":" + methods + "}");
+
+		passport.setPersistentData(FinTSHelper.Passport.KEY_PD_HHDUC, "0388A01239230520422");
+		passport.setPersistentData(FinTSHelper.Passport.KEY_PD_HHDUC, null);
+		expect("challenge data without a flicker code", FinTSHelper.Json.write(FinTSHelper.failure(thrown(() ->
+			callback.callback(passport, FinTSHelper.Callback.NEED_PT_TAN, "chipTAN optisch\n\n\nBitte TAN erzeugen", 0, new StringBuffer())))),
+			"{\"type\":\"failed\",\"kind\":\"invalidChallenge\",\"text\":\"The bank responded with an invalid challenge.\"}");
+
+		FinTSHelper.Inbox.queue.add(new java.util.HashMap<>(Map.of("type", "answer", "id", "7", "method", "913")));
+		Throwable changed = thrown(() -> FinTSHelper.Inbox.answer(7));
+		expect("an answer with a method changes the method", changed instanceof FinTSHelper.SwitchMethod s ? s.method : changed, "913");
+		FinTSHelper.Inbox.queue.add(new java.util.HashMap<>(Map.of("type", "answer", "id", "8", "method", "901")));
+		expect("a method chosen while the approval waits", FinTSHelper.Inbox.switchFor(8) + " " + FinTSHelper.Inbox.switchFor(8) + " " + FinTSHelper.Inbox.queue.size(),
+			"901 null 0");
+		callback.switchTo = "913";
+		expect("no request after a change of the method",
+			thrown(() -> callback.callback(passport, FinTSHelper.Callback.NEED_PT_TAN, "", 0, new StringBuffer())) instanceof FinTSHelper.SwitchMethod, true);
+		expect("a connection after a change of the method, for the end of the old dialog",
+			thrown(() -> callback.callback(passport, FinTSHelper.Callback.NEED_CONNECTION, "", 0, new StringBuffer())), null);
+
+		HBCIMsgStatus answer = new HBCIMsgStatus();
+		answer.globStatus.addRetVal(new HBCIRetVal(null, null, null, "3955", "Sicherheitsfreigabe erfolgt über anderen Kanal", null));
+		answer.getData().setProperty("MsgHead.dialogid", "D-4711");
+		try {
+			DialogContext login = DialogContext.create(null, passport);
+			Method update = DialogContext.class.getDeclaredMethod("update", HBCIMsgStatus.class);
+			update.setAccessible(true);
+			update.invoke(login, answer);
+			thrown(() -> passport.onDialogEvent(DialogEvent.MSG_SENT, login));
+		} catch (ReflectiveOperationException e) {
+			failures.add("dialog context: " + e);
+		}
+		expect("the dialog that the bank keeps open after a change of the method", passport.open == null ? null : passport.open.getDialogId(), "D-4711");
+		callback.status(passport, FinTSHelper.Callback.STATUS_DIALOG_END_DONE, new Object[] {answer});
+		expect("a dialog that hbci4java ended", passport.open, null);
 	}
 
 	/// The TAN media that hbci4java gets for each list of media it offers, starting from the medium

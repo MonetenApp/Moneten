@@ -14,6 +14,11 @@ public protocol SyncSession: Sendable {
 	/// Reports progress for the display. It returns when the display has the progress, so that
 	/// progress and requests arrive in order.
 	func report(_ progress: SyncProgress) async
+
+	/// The bank rejected the PIN or blocked the access (`SyncFailure.rejectsPIN`), for the access or for
+	/// one account. A connector reports it the moment the answer arrives, so that the session forgets
+	/// the PIN at once, and no cancel or end of the connector afterwards can keep it.
+	func rejected(_ failure: SyncFailure) async
 }
 
 public enum SyncProgress: Sendable, Equatable {
@@ -65,10 +70,37 @@ public struct PINRequest: Sendable, Equatable {
 	/// The answer of the bank to the previous PIN of this session, when the bank rejected it. The
 	/// connector asks again with it after a typing error.
 	public let rejected: BankMessage?
+	/// The rules of the bank for the PIN, which the sheet checks before it sends the PIN.
+	public let rules: PINRules
 
-	public init(secretName: String = "PIN", rejected: BankMessage? = nil) {
+	public init(secretName: String = "PIN", rejected: BankMessage? = nil, rules: PINRules = PINRules()) {
 		self.secretName = secretName
 		self.rejected = rejected
+		self.rules = rules
+	}
+}
+
+/// The rules that a bank publishes for its PIN: digits only, and the shortest and longest PIN it
+/// accepts. The app checks a PIN against them before it sends the PIN, so a typing error does not
+/// count as a wrong attempt at the bank.
+public struct PINRules: Sendable, Equatable {
+	public let digitsOnly: Bool
+	public let minLength: Int?
+	public let maxLength: Int?
+
+	public init(digitsOnly: Bool = false, minLength: Int? = nil, maxLength: Int? = nil) {
+		self.digitsOnly = digitsOnly
+		self.minLength = minLength
+		self.maxLength = maxLength
+	}
+
+	/// The text that names the first rule that `pin` breaks, or nil when it breaks none.
+	public func check(_ pin: String, secretName: String = "PIN") -> String? {
+		let unit = digitsOnly ? "digits" : "characters"
+		if digitsOnly, !pin.allSatisfy({ $0.isASCII && $0.isNumber }) { return "The \(secretName) must be numeric." }
+		if let minLength, pin.count < minLength { return "The \(secretName) is too short. The minimum is \(minLength) \(unit)." }
+		if let maxLength, pin.count > maxLength { return "The \(secretName) is too long. The maximum is \(maxLength) \(unit)." }
+		return nil
 	}
 }
 
@@ -80,13 +112,21 @@ public struct SecondFactorRequest: Sendable, Equatable {
 	public let challenge: Challenge
 	/// How long the challenge stays valid after its dialog opens: the validity of the bank, or 5 minutes.
 	public let validity: Duration
+	/// The TAN methods that the user can change to while the dialog shows the challenge ("Change the
+	/// method inside the dialog"). Empty when the source offers no change.
+	public let methods: [TANMethod]
+	/// The method of the challenge, when the source names it.
+	public let method: TANMethod.ID?
 
-	public init(purpose: Purpose, system: System, loginOnly: Bool = false, challenge: Challenge, validity: Duration = .seconds(300)) {
+	public init(purpose: Purpose, system: System, loginOnly: Bool = false, challenge: Challenge, validity: Duration = .seconds(300),
+		methods: [TANMethod] = [], method: TANMethod.ID? = nil) {
 		self.purpose = purpose
 		self.system = system
 		self.loginOnly = loginOnly
 		self.challenge = challenge
 		self.validity = validity
+		self.methods = methods
+		self.method = method
 	}
 
 	public enum Purpose: Sendable, Equatable {
@@ -131,11 +171,35 @@ public struct TANMethod: Identifiable, Sendable, Equatable {
 	public let id: String
 	/// The name that the bank gives the method, for example "pushTAN 2.0".
 	public let name: String
+	/// The method needs the name of a TAN medium, such as a phone, so the app gets the list of media first.
+	public let needsMedium: Bool
+	/// What the bank sends with this method, for the progress text while the app requests it.
+	public let delivery: Delivery
 
-	public init(id: String, name: String) {
+	public init(id: String, name: String, needsMedium: Bool = false, delivery: Delivery = .tan) {
 		self.id = id
 		self.name = name
+		self.needsMedium = needsMedium
+		self.delivery = delivery
 	}
+
+	public enum Delivery: Sendable, Equatable {
+		/// A challenge for a TAN generator, or any other TAN.
+		case tan
+		case smsCode
+		/// A request to approve in the app of the bank.
+		case pushNotification
+		/// A QR code or a photoTAN image.
+		case qrCode
+	}
+}
+
+/// What the app requests from the bank after the user chose a TAN method or a TAN medium. The dialog
+/// shows it until the next request of its access arrives ("Progress while a challenge is requested").
+public enum ChallengeProgress: Sendable, Equatable {
+	/// "Getting list of TAN media..."
+	case tanMedia
+	case challenge(TANMethod.Delivery)
 }
 
 /// A photoTAN or QR code image as the bank sends it, in PNG or JPEG.
@@ -175,7 +239,9 @@ public struct FlickerCode: Sendable, Equatable {
 }
 
 public enum UserAnswer: Sendable, Equatable {
-	case pin(Secret)
+	/// `save` is the option to save the PIN for the access, which is off unless the user turns it on.
+	case pin(Secret, save: Bool = false)
+	/// The method that the user chose, also in place of the challenge on screen.
 	case tanMethod(TANMethod.ID)
 	case tanMedium(String)
 	case tan(Secret)

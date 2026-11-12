@@ -203,7 +203,11 @@ public struct FinTSConnector: BankConnector {
 	private func run(_ command: Command, session: SyncSession?, _ handle: (HelperMessage) async throws -> Void) async throws {
 		let watchdog = Watchdog(after: inactivity)
 		let asks = OpenAsks(watchdog: watchdog)
-		let process = try HelperProcess(executable: helper.executable, arguments: helper.arguments, grace: grace, onLine: watchdog.received,
+		let rejections = Rejections(session: session)
+		let process = try HelperProcess(executable: helper.executable, arguments: helper.arguments, grace: grace, onLine: { line in
+			watchdog.received()
+			rejections.read(line)
+		},
 			onEnd: { asks.close(); watchdog.stop() })
 		watchdog.onExpiry { process.fail(HelperFailure.timeout) }
 		var approvals: [Int: Task<UserAnswer, any Error>] = [:]
@@ -230,7 +234,10 @@ public struct FinTSConnector: BankConnector {
 						guard ask.kind != "approve" else {
 							approvals[id] = task
 							Task {
-								do { _ = try await task.value } catch where !task.isCancelled { process.fail(error) } catch {}
+								do {
+									// The user changed the TAN method while the dialog waited for the approval.
+									if case let .tanMethod(method) = try await task.value { process.send(Answer(id: id, method: method)) }
+								} catch where !task.isCancelled { process.fail(error) } catch {}
 							}
 							continue
 						}
@@ -241,7 +248,11 @@ public struct FinTSConnector: BankConnector {
 							helperLeft = true
 							break reading
 						}
-						process.send(Answer(id: id, value: answer.value))
+						if ask.kind != "tanMethod", case let .tanMethod(method) = answer {
+							process.send(Answer(id: id, method: method))
+						} else {
+							process.send(Answer(id: id, value: answer.value))
+						}
 					case .alive:
 						continue
 					case let .trust(id, host, chain):
@@ -274,6 +285,7 @@ public struct FinTSConnector: BankConnector {
 		}
 		var stopped: (any Error)?
 		do { try await process.ended() } catch { stopped = error }
+		await rejections.reported()
 		try Task.checkCancellation()
 		if let error = process.firstFailure ?? stopped ?? (helperLeft ? HelperFailure.noAnswer : nil) { throw error }
 	}
@@ -385,10 +397,33 @@ private final class Watchdog: Sendable {
 private extension UserAnswer {
 	var value: String {
 		switch self {
-		case let .pin(secret), let .tan(secret): secret.value
+		case let .pin(secret, _), let .tan(secret): secret.value
 		case let .tanMethod(id): id
 		case let .tanMedium(name): name
 		case let .host(decision): decision.rawValue
 		}
+	}
+}
+
+/// Hands each rejection of the PIN or block of the access to the session the moment its line arrives,
+/// also when a cancel already ended the reading of the lines, so that neither a cancel nor the end of
+/// the helper can hide the answer of the bank.
+private final class Rejections: Sendable {
+	private let session: SyncSession?
+	private let reports = Mutex<[Task<Void, Never>]>([])
+
+	init(session: SyncSession?) {
+		self.session = session
+	}
+
+	func read(_ line: String) {
+		guard let session, let rejection = (try? JSONDecoder().decode(HelperMessage.self, from: Data(line.utf8)))?.rejection else { return }
+		let report = Task { await session.rejected(rejection) }
+		reports.withLock { $0.append(report) }
+	}
+
+	/// Returns when the session has every rejection.
+	func reported() async {
+		for report in reports.withLock({ $0 }) { await report.value }
 	}
 }

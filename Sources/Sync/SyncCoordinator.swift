@@ -135,6 +135,7 @@ public final class SyncCoordinator {
 
 	/// The accounts of a canceled access show their last state at once, while its connector still ends.
 	private func cancel(_ id: UUID) {
+		broker.endRequest(of: id)
 		running[id]?.cancel()
 		afterRun[id] = nil
 		apply(.cancel, to: id)
@@ -166,16 +167,20 @@ public final class SyncCoordinator {
 			var report: ConnectorReport?
 			do {
 				let fetched = try await job.connector.refresh(job.request, session)
+				// The report decides about the PIN, before a cancel or an error of the storage hides an account.
+				if fetched.rejectsPIN { broker.forgetRejectedPIN(of: access.id) }
 				// A canceled access stores nothing, also when its connector returned all the same.
 				try Task.checkCancellation()
 				report = fetched
 				let notSaved = deliverFetched(fetched, of: job.request)
 				event = .finish(Self.summary(of: fetched, for: job.request, notSaved: notSaved))
 			} catch {
+				// A rejection or a block forgets the PIN also when the refresh was canceled meanwhile.
+				if (error as? SyncFailure)?.rejectsPIN == true { broker.forgetRejectedPIN(of: access.id) }
 				event = Task.isCancelled || error is CancellationError ? .cancel : .fail(Self.failure(error))
 			}
-			// A PIN stays in memory only after a refresh with it succeeded. A typo is never sent again on its own.
-			if case .finish = event {} else { broker.forgetPIN(of: access.id) }
+			// A PIN is kept, and saved on request, only after a refresh with it succeeded. A typo is never sent again on its own.
+			broker.refreshEnded(access.id, with: event)
 			apply(event, to: access.id)
 			// The state of this run: the user may have canceled it before its connector returned.
 			let end = states[access.id] ?? .idle
@@ -200,6 +205,9 @@ public final class SyncCoordinator {
 	/// Applies an event. An event that the state does not allow changes nothing, for example the end
 	/// of a connector after the user canceled.
 	fileprivate func apply(_ event: SyncEvent, to access: UUID) {
+		// The first account arrived, so the dialog of the access no longer waits for a challenge. The
+		// progress before the first account comes before the bank requests the challenge.
+		if case let .progress(.fetching(done, _)) = event, done > 0 { broker.endRequest(of: access) }
 		if let next = (states[access] ?? .idle).next(event) { states[access] = next }
 	}
 
@@ -253,7 +261,23 @@ private struct Session: SyncSession {
 		try await coordinator.broker.ask(request, for: access, accountNames: accountNames, attended: attended)
 	}
 
+	func rejected(_ failure: SyncFailure) async {
+		await coordinator.broker.forgetRejectedPIN(of: access.id)
+	}
+
 	func report(_ progress: SyncProgress) async {
 		await coordinator.apply(.progress(progress), to: access.id)
+	}
+}
+
+extension ConnectorReport {
+	/// The bank rejected the PIN or blocked the access for one of the accounts.
+	var rejectsPIN: Bool {
+		outcomes.values.contains { outcome in
+			switch outcome {
+			case let .fetched(result): result.transactionFailure?.rejectsPIN == true
+			case let .failed(failure): failure.rejectsPIN
+			}
+		}
 	}
 }
