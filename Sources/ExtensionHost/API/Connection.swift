@@ -146,7 +146,9 @@ enum Connection {
 			return -1
 		}
 		let address = stack.string(at: index)
-		guard let url = URL(string: address, relativeTo: lastURL(stack, at: 1))?.absoluteURL, url.scheme != nil else {
+		// An empty URL is the last one, as a form without an action posts to its own page.
+		let resolved = address.isEmpty ? lastURL(stack, at: 1) : URL(string: address, relativeTo: lastURL(stack, at: 1))?.absoluteURL
+		guard let url = resolved, url.scheme != nil else {
 			stack.pushString("connection:\(name) needs an absolute URL for its first request, not \(address).")
 			return -1
 		}

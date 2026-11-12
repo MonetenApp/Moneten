@@ -283,4 +283,51 @@ import Testing
 		#expect(connector.loginFields(for: "Broker") == [LoginRequest.Field(label: "Email address", isSecret: false), LoginRequest.Field(label: "API key", isSecret: true)])
 		#expect(connector.loginFields(for: "Other") == [LoginRequest.Field(label: "Username", isSecret: false), LoginRequest.Field(label: "Password", isSecret: true)])
 	}
+
+	@Test func demoHTMLSetsUpDemoGiroWithThreeTransactions() async throws {
+		let session = TestSession([.login([Secret("erika"), Secret("12345")])])
+		let package = try ExtensionPackage.load(from: fixtures.appending(path: "demo-html"), mode: .catalog)
+		let access = Access(source: .extension(id: package.name), bankName: "Demo Bank", loginName: "")
+		let setup = try await session.connector(package, fixture: fixture("demo-html/fixture.json")).setUp(access, session)
+		#expect(setup.accounts.map(\.name) == ["Demo Giro"])
+		#expect(setup.accounts.first?.iban == "DE02120300000000202051")
+		#expect(setup.accounts.first?.outcome.balance == 239_860)
+		#expect(setup.accounts.first?.outcome.rows == [
+			Row(Day(year: 2026, month: 11, day: 7), -1_240, "Bäckerei Beispiel", "Kartenzahlung", "T-3"),
+			Row(Day(year: 2026, month: 11, day: 5), 250_000, "Max Mustermann", "Gehalt November", "T-2"),
+			Row(Day(year: 2026, month: 11, day: 3), -8_900, "Stadtwerke Musterstadt", "Abschlag November", "T-1"),
+		])
+		#expect(session.sent == ["GET https://www.bank.example/login", "POST https://www.bank.example/login", "GET https://www.bank.example/accounts",
+			"GET https://www.bank.example/transactions?account=DE02120300000000202051", "GET https://www.bank.example/logout"])
+		#expect(session.asked.withLock { $0 } == [.login(LoginRequest(service: "Demo Bank", fields: [LoginRequest.Field(label: "Username", isSecret: false),
+			LoginRequest.Field(label: "PIN", isSecret: true)]))])
+	}
+
+	@Test func demoTANAsksForTheCodeAtSetupAndAtRefresh() async throws {
+		let package = try ExtensionPackage.load(from: fixtures.appending(path: "demo-tan"), mode: .catalog)
+		let access = Access(source: .extension(id: package.name), bankName: "Demo TAN", loginName: "")
+		let first = TestSession([.login([Secret("erika"), Secret("geheim")]), .tan(Secret("123456"))])
+		let setup = try await first.connector(package, fixture: fixture("demo-tan/tan.json")).setUp(access, first)
+		let account = try #require(setup.accounts.first)
+		let second = TestSession([.login([Secret("erika"), Secret("geheim")]), .tan(Secret("654321"))])
+		let id = UUID()
+		let report = try await second.connector(package, fixture: fixture("demo-tan/tan.json")).refresh(RefreshRequest(access: access, state: setup.state,
+			accounts: [AccountRequest(accountID: id, name: account.name, remoteID: account.remoteID)]), second)
+		let expected = [
+			Row(Day(year: 2026, month: 11, day: 13), -475, "Bäckerei Beispiel", "Kartenzahlung", "D-3"),
+			Row(Day(year: 2026, month: 11, day: 11), 2_500, "Max Mustermann", "Erstattung", "D-2"),
+			Row(Day(year: 2026, month: 11, day: 9), -8_900, "Stadtwerke Musterstadt", "Abschlag November", "D-1"),
+		]
+		#expect(account.outcome.rows == expected)
+		#expect(report.outcomes[id]?.rows == expected)
+		#expect(report.outcomes[id]?.balance == 152_025)
+		guard case let .secondFactor(request) = second.asked.withLock({ $0[1] }) else {
+			Issue.record("no TAN dialog")
+			return
+		}
+		#expect(request.challenge == .enterTAN(prompt: "Enter the code from the SMS.", image: nil))
+		#expect(request.field == TANField(label: "mobileTAN"))
+		#expect(request.confirmTitle == "Next")
+		#expect(second.printed == ["EndSession"])
+	}
 }
