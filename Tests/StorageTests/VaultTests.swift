@@ -305,6 +305,19 @@ struct SchemaTests {
 		#expect(try store.loadLedger().account(savings.id) == savings)
 	}
 
+	@Test("v8 adds the empty table of the host answers of extensions to a v7 database")
+	func extensionHostDecisions() throws {
+		let queue = try DatabaseQueue()
+		try Schema.migrator.migrate(queue, upTo: "v7")
+		#expect(try queue.read { db in try db.tableExists("extensionHostDecision") } == false)
+		try Schema.migrator.migrate(queue)
+		#expect(try queue.read { db in try Schema.migrator.appliedIdentifiers(db) }.contains("v8"))
+		let store = Store(queue: queue)
+		#expect(try store.hostDecisions(of: "Demo") == [:])
+		try store.save(.allowed, host: "www.bank.example", of: "Demo")
+		#expect(try store.hostDecisions(of: "Demo") == ["www.bank.example": .allowed])
+	}
+
 	@Test("Saving a portfolio records the value of its balance day, alone or with an import, and other accounts record nothing")
 	func savingRecordsValues() throws {
 		let store = try Self.emptyStore()
