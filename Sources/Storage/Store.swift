@@ -94,6 +94,36 @@ public final class Store: Sendable {
 		}
 	}
 
+	/// The bank accesses. Their states stay in the database until a refresh reads them.
+	public func accesses() throws -> [Access] {
+		try queue.read { db in
+			try AccessRecord.fetchAll(db).map { Access(id: $0.id, source: $0.source, bankName: $0.bankName, loginName: $0.loginName) }
+		}
+	}
+
+	/// The state that the connector of an access returned last.
+	public func state(of access: UUID) throws -> AccessState? {
+		try queue.read { db in try AccessRecord.fetchOne(db, key: access)?.state.map(AccessState.init) }
+	}
+
+	/// Stores a new access with its state and its accounts at once ("Finish the setup"), so that a
+	/// failure leaves no access without accounts.
+	public func add(_ access: Access, state: AccessState?, accounts: [Account]) throws {
+		try queue.write { db in
+			try AccessRecord(id: access.id, source: access.source, bankName: access.bankName, loginName: access.loginName, state: state?.data).insert(db)
+			for a in accounts { try a.save(db) }
+		}
+	}
+
+	/// Stores the end of a refresh of an access: the status of its accounts, and the new state when the
+	/// connector returned one. Without one the last state stays, so the next refresh starts from it.
+	public func recordRefresh(of access: UUID, state: AccessState?, accounts: [Account]) throws {
+		try queue.write { db in
+			if let state { try AccessRecord.filter(key: access).updateAll(db, Column("state").set(to: state.data)) }
+			for a in accounts { try a.update(db) }
+		}
+	}
+
 	/// What identifies every deleted transaction, so that a migration does not add them again.
 	public func deletedTransactions() throws -> [DeletedTransaction] {
 		try queue.read { db in try DeletedTransaction.fetchAll(db) }

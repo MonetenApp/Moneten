@@ -26,6 +26,19 @@ extension DeletedTransaction: FetchableRecord, PersistableRecord, TableRecord {
 	public static let databaseTableName = "deletedTransaction"
 }
 
+/// A row of the table "access": the login and the state that its connector returned last. The state
+/// stays in the database until a refresh reads it.
+struct AccessRecord: Codable, FetchableRecord, PersistableRecord, TableRecord {
+	static let databaseTableName = "access"
+	var id: UUID
+	/// `AccessSource` as JSON.
+	var source: AccessSource
+	var bankName: String
+	var loginName: String
+	/// `AccessState`, opaque to everyone but its connector. It never holds a PIN.
+	var state: Data?
+}
+
 enum Schema {
 	static var migrator: DatabaseMigrator {
 		var m = DatabaseMigrator()
@@ -151,6 +164,23 @@ enum Schema {
 				t.column("endToEndReference", .text)
 				t.column("wasFetched", .boolean).notNull()
 				t.column("deletedAt", .datetime).notNull()
+			}
+		}
+		// Bank accesses (issue #85): the login with its connector state, and the link of an account to its
+		// access with the ID the bank knows it by and the outcome of its last refresh.
+		m.registerMigration("v7") { db in
+			try db.create(table: "access") { t in
+				t.column("id", .blob).primaryKey()
+				t.column("source", .text).notNull()
+				t.column("bankName", .text).notNull()
+				t.column("loginName", .text).notNull()
+				t.column("state", .blob)
+			}
+			try db.alter(table: "account") { t in
+				t.add(column: "accessID", .blob).references("access", onDelete: .setNull)
+				t.add(column: "remoteID", .text)
+				t.add(column: "refreshedAt", .datetime)
+				t.add(column: "refreshError", .text)
 			}
 		}
 		return m
