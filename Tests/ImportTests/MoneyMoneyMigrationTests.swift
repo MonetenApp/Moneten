@@ -240,6 +240,18 @@ struct MoneyMoneyMigrationTests {
 		#expect(second.skippedTransactions == 4)
 	}
 
+	@Test("A transaction the user deleted after the first run stays deleted")
+	func deletedStaysDeleted() throws {
+		let first = try plan()
+		let stadtwerke = try #require(first.transactions.first { $0.name == "Stadtwerke Musterstadt" })
+		let ledger = Ledger(groups: first.groups, accounts: first.accounts, categories: first.categories,
+			transactions: first.transactions.filter { $0.id != stadtwerke.id })
+		let second = try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(accounts), categories: try plist(categories),
+			transactions: try plist(transactions), into: ledger, deleted: [DeletedTransaction(stadtwerke, deletedAt: date(2026, 11, 12))])
+		#expect(second.transactions.isEmpty)
+		#expect(second.skippedTransactions == 4)
+	}
+
 	@Test("Accounts with the same IBAN stay apart on a later run")
 	func sameIBAN() throws {
 		var twins = accounts
