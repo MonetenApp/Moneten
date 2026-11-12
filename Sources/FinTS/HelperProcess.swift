@@ -16,9 +16,9 @@ final class HelperProcess: @unchecked Sendable {
 	private let reading = Mutex<(partial: Data, finished: Bool)>((Data(), false))
 	/// How the process ended, or who waits for it. A canceled refresh still waits for the end.
 	private let termination = Mutex<(end: (status: Int32, signal: Bool)?, waiter: CheckedContinuation<(status: Int32, signal: Bool), Never>?)>((nil, nil))
-	/// Writes the lines in order. A queue of its own gets a thread of its own, so a helper that does not
-	/// read its input blocks neither a thread of Swift concurrency nor one of the global queue, where the
-	/// timers of every run wait.
+	/// Writes the lines in order. A serial queue of its own runs on the overcommitting root queue of
+	/// Dispatch, so a helper that does not read its input blocks neither a thread of Swift concurrency nor
+	/// one of the global queue, where the timers of every run wait.
 	private let writer = DispatchQueue(label: "io.github.moneten.fints.write")
 	private let canceled = Mutex(false)
 	private let failure = Mutex<(any Error)?>(nil)

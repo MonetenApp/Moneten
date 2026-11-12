@@ -21,13 +21,22 @@ struct HelperProcessTests {
 		let state = AccessState(Data(repeating: 7, count: 1_000_000))
 		let start = ContinuousClock.now
 		let runs = (0..<ProcessInfo.processInfo.activeProcessorCount + 2).map { _ in
-			Task { try? await connector("exec sleep 60", inactivity: 1).listAccounts(of: Self.access, state: state, session: Session()) }
+			Task { () -> (any Error)? in
+				do {
+					_ = try await connector("exec sleep 60", inactivity: 1).listAccounts(of: Self.access, state: state, session: Session())
+					return nil
+				} catch {
+					return error
+				}
+			}
 		}
+		// A starved pool would delay this by about a minute, until the helpers end on their own.
 		try await Task.sleep(for: .milliseconds(500))
-		let other = ContinuousClock.now
 		await Task.detached { }.value
-		#expect(ContinuousClock.now - other < .seconds(1))
-		for run in runs { _ = await run.value }
+		#expect(ContinuousClock.now - start < .seconds(3))
+		for run in runs {
+			#expect(await run.value as? SyncFailure == .network("The connection to the FinTS server of the bank timed out. Try again later."))
+		}
 		#expect(ContinuousClock.now - start < .seconds(15))
 	}
 

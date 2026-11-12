@@ -184,7 +184,7 @@ public struct FinTSConnector: BankConnector {
 		var helperLeft = false
 		await withTaskCancellationHandler {
 			do {
-				// The timer runs before the first write: a helper that does not read a large state blocks it.
+				// The timer runs from the first write, so a helper that never reads its command times out.
 				watchdog.restart()
 				process.send(command)
 				reading: for await line in process.lines {
