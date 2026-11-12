@@ -18,7 +18,7 @@ Moneten is an open source banking app for the Mac. It fetches balances and trans
 
 ## How it works
 
-The app is a native macOS app in Swift and SwiftUI. It talks to banks in two ways:
+The app is a native macOS app in Swift and SwiftUI. Bank access is not built yet, so this section describes the design. The app talks to banks in two ways:
 
 1. FinTS, the standard interface of German banks. This is free and built in. The app runs [hbci4java](https://github.com/hbci4j/hbci4java), the FinTS library that Hibiscus uses, in a helper process inside the app bundle, so you install nothing ([ADR 0014](docs/decisions/0014-fints-through-hbci4java.md)).
 2. Extensions. An extension is a Lua script that fetches data from one service, for example a broker, a credit card portal, or a crypto exchange. Each extension runs in a sandboxed process. The extension API has no payment functions, and the app sends payments only through FinTS or finAPI.
@@ -28,8 +28,8 @@ Read [architecture](docs/architecture.md) for the modules and the data model, an
 ## How your data is protected
 
 - The database is encrypted with SQLCipher. Its key comes from the database password that you set. Until you set one, a random key in the Keychain protects the database.
-- Saving the password in the Keychain is optional. With the password saved, the app unlocks at launch, with Touch ID, or with an Apple Watch.
-- The app locks after 10 minutes without activity, and when you close the main window if you turn that on.
+- Saving the password in the Keychain is optional. With the password saved, the app can unlock at launch, with Touch ID, or with an Apple Watch.
+- With a database password, the app locks after 10 minutes without activity. You can change the time or turn the lock off. The app also locks when you close the main window, if you turn that on.
 - Once bank access arrives, the app saves a PIN only if you turn that on for a connection, and it never stores a TAN.
 
 [ADR 0009](docs/decisions/0009-database-password-as-in-moneymoney.md) and [architecture](docs/architecture.md#the-database-password-protects-everything) have the details.
@@ -48,7 +48,7 @@ scripts/generate-project.sh         # write App/Moneten.xcodeproj, then open it 
 scripts/build-app.sh                # build dist/Moneten.app; add "debug" for a debug build
 scripts/build-app.sh developer-id   # sign it with the Developer ID of the team, for other Macs
 open dist/Moneten.app
-scripts/check.sh                    # run the checks before you open a pull request
+scripts/check.sh                    # run the checks before a pull request; needs OpenSpec and Periphery
 ```
 
 `scripts/generate-project.sh` also fetches and builds HBCI4Swift from a Git submodule. The Swift FinTS prototype uses it until the FinTS connector runs on hbci4java.
