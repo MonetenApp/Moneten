@@ -129,13 +129,20 @@ The app SHALL ask for the login data of an extension service in a dialog with a 
 
 ### Requirement: Manifest
 
-The app SHALL read the `manifest.json` of a package folder. `files` lists the Lua files in load order. `hosts` lists exact host names without wildcards. `services` lists the login field labels of each service. `kinds` lists the data the package fetches, from balances, transactions, securities, and statements. `apiVersion` is the lowest API version it needs. A single `.lua` file has no manifest.
+The app SHALL read `manifest.json` in a package folder, and a JSON file next to a single `.lua` file with the same base name, such as `Demo.json` next to `Demo.lua`. A single file may omit it. `files` lists the Lua files of a package in load order. `hosts` lists exact host names without wildcards. `services` lists the login field labels of each service. `kinds` lists the data, from balances, transactions, securities, and statements. `apiVersion` is the lowest API version needed.
 
 #### Scenario: Manifest found
 
 - **GIVEN** the package folder `Broker` with a manifest that lists the host `api.broker.example`
 - **WHEN** the user opens the details of "Broker" in the "Extensions" window
 - **THEN** the app shows `api.broker.example` as the only host the extension contacts
+
+#### Scenario: Manifest next to a single file
+
+- **GIVEN** the "Extensions" folder holds `Demo.lua` and `Demo.json`, which lists the host `api.demo.example` and the login field "API key"
+- **WHEN** the user sets up the service of "Demo" and the script calls `connection:get("https://tracker.example/pixel")`
+- **THEN** the login dialog shows the field "API key"
+- **AND** the request is not sent and the refresh ends with an error that names `tracker.example`
 
 #### Scenario: Newer API needed
 

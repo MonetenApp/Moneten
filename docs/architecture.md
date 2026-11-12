@@ -160,7 +160,7 @@ The rest of this list is the plan for bank access and the log:
 
 This section is the plan for extensions. [ADR 0015](decisions/0015-extension-program.md) records the decisions behind it.
 
-An extension is a single `.lua` file or a package. A package is a folder with `manifest.json`, one or more Lua files in the load order that the manifest lists, and a README. The app installs, updates, and removes a package as one unit.
+An extension is a single `.lua` file or a package. A single file may have a manifest with the same base name next to it, such as `Demo.json` next to `Demo.lua`. A package is a folder with `manifest.json`, one or more Lua files in the load order that the manifest lists, and a README. The app installs, updates, and removes a package as one unit.
 
 Each extension session runs in its own XPC process with only the network client entitlement. The host enforces these limits:
 
