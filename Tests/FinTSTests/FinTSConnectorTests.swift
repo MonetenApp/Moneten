@@ -232,6 +232,28 @@ struct FinTSConnectorTests {
 		#expect(recorded.map { $0["type"] } == ["cancel"])
 	}
 
+	@Test("Reports a rejection or a block to the session when it arrives, before a cancel during the end of the helper", arguments: [
+		(#"{"type":"failed","code":"9930","text":"Zugang gesperrt"}"#, SyncFailure.accessBlocked(BankMessage(code: "9930", text: "Zugang gesperrt"))),
+		(#"{"type":"accountFailed","account":"DE02120300000000202051","code":"9942","text":"PIN falsch"}"#, .pinRejected(BankMessage(code: "9942", text: "PIN falsch"))),
+		(#"{"type":"result","account":"DE02120300000000202051","balance":{"amount":"100","currency":"EUR"},"errors":[{"code":"9942","text":"PIN falsch"}]}"#,
+			.pinRejected(BankMessage(code: "9942", text: "PIN falsch"))),
+		(#"{"type":"ask","id":1,"kind":"pin","rejected":{"code":"9930","text":"PIN gesperrt"}}"#, .accessBlocked(BankMessage(code: "9930", text: "PIN gesperrt"))),
+	])
+	func rejectionBeforeCancel(line: String, expected: SyncFailure) async throws {
+		let session = Session()
+		let task = Task {
+			try await connector("""
+				read cmd
+				echo '\(line)'
+				sleep 3
+				""", grace: 1).refresh(RefreshRequest(access: Self.access, accounts: [Self.giro]), session)
+		}
+		await until { session.events.contains(.rejected(expected)) }
+		task.cancel()
+		_ = try? await task.value
+		#expect(session.events.filter { if case .rejected = $0 { true } else { false } } == [.rejected(expected)])
+	}
+
 	@Test("A canceled refresh sends cancel, and the helper ends")
 	func cancel() async throws {
 		let session = Session()
@@ -593,7 +615,8 @@ struct FinTSConnectorTests {
 	func errors(line: String, expected: SyncFailure) async throws {
 		let session = Session()
 		#expect(await failure(of: "read cmd; echo '\(line)'", session: session) as? SyncFailure == expected)
-		#expect(session.events.isEmpty)
+		// No dialog opens. Only a rejection of the PIN or a block reaches the session, at once.
+		#expect(session.events == (expected.rejectsPIN ? [.rejected(expected)] : []))
 	}
 
 	@Test("Refuses an access without https and a build without a product ID before it starts the helper")
@@ -663,6 +686,7 @@ final class Session: SyncSession {
 		case asked(UserRequest)
 		case withdrawn
 		case progress(SyncProgress)
+		case rejected(SyncFailure)
 	}
 
 	private let answer: @Sendable (UserRequest) async throws -> UserAnswer
@@ -690,6 +714,10 @@ final class Session: SyncSession {
 	func report(_ progress: SyncProgress) async {
 		log.withLock { $0.append(.progress(progress)) }
 		await self.progress(progress)
+	}
+
+	func rejected(_ failure: SyncFailure) async {
+		log.withLock { $0.append(.rejected(failure)) }
 	}
 
 	@Sendable static func standard(_ request: UserRequest) async throws -> UserAnswer {

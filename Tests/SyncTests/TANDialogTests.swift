@@ -114,6 +114,20 @@ struct TANDialogTests {
 		await until { !coordinator.isRefreshing }
 	}
 
+	@Test("An answer to a dialog whose request was withdrawn a moment before opens no progress")
+	func staleAnswer() async throws {
+		let broker = broker
+		let asked = Task { try await broker.ask(Self.chooseMethod, for: Self.musterbank, accountNames: [], attended: true) }
+		await until { broker.current != nil }
+		let prompt = try #require(broker.current)
+		// The cancel handler runs at once, and the answer comes before the dialog closes.
+		asked.cancel()
+		broker.answer(.tanMethod("922"), to: prompt.id)
+		#expect(broker.requesting == nil)
+		await #expect(throws: CancellationError.self) { try await asked.value }
+		#expect(broker.requesting == nil)
+	}
+
 	@Test("The progress ends with the refresh of its access, and Cancel in the progress stops the access")
 	func progressEnds() async {
 		_ = refresh(Self.musterbank, [.ask(Self.chooseMethod)])

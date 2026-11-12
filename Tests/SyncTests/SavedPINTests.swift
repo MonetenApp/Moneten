@@ -275,6 +275,69 @@ struct SavedPINTests {
 		#expect(manual.answers.all.isEmpty)
 	}
 
+	@Test("A rejection beside a balance that could not be stored still deletes the saved PIN")
+	func rejectionBesideStorageFailure() async throws {
+		try store.savePIN(Secret("12345"), for: Self.bank.id)
+		try broker.open(store)
+		coordinator.deliver = { _, _ in throw CocoaError(.fileWriteNoPermission) }
+		let result = RefreshResult(balance: Money(minorUnits: 120_000, currency: "EUR"), transactions: nil,
+			transactionFailure: .pinRejected(BankMessage(code: "9942", text: "PIN falsch")))
+		_ = refresh([.ask(Self.pin), .fetched(Self.giro.accountID, result)], attended: false)
+		await until { !coordinator.isRefreshing }
+		#expect(store.pins.isEmpty)
+		let next = refresh([.ask(Self.pin)], attended: false)
+		await until { !coordinator.isRefreshing }
+		#expect(next.answers.all.isEmpty)
+		#expect(coordinator.states[Self.bank.id] == .failed(.needsUser(.pin)))
+	}
+
+	@Test("A rejection that arrived before a cancel deletes the saved PIN, and a cancel alone keeps it", arguments: [true, false])
+	func rejectionThenCancel(rejected: Bool) async throws {
+		try store.savePIN(Secret("12345"), for: Self.bank.id)
+		try broker.open(store)
+		let connector = LateEnd(rejection: rejected ? .accessBlocked(BankMessage(code: "9930", text: "Zugang gesperrt")) : nil)
+		coordinator.refresh(RefreshRequest(access: Self.bank, accounts: [Self.giro]), with: connector, attended: false)
+		await until { connector.reachedEnd }
+		coordinator.cancelAll()
+		await until { !coordinator.isRefreshing }
+		#expect(coordinator.states[Self.bank.id] == .cancelled)
+		#expect(store.pins == (rejected ? [:] : [Self.bank.id: Secret("12345")]))
+	}
+
+	@Test("A rejection that a connector throws after a cancel deletes the saved PIN")
+	func rejectionThrownAfterCancel() async throws {
+		try store.savePIN(Secret("12345"), for: Self.bank.id)
+		try broker.open(store)
+		let connector = LateEnd(rejection: nil, thrown: .pinRejected(BankMessage(code: "9942", text: "PIN falsch")))
+		coordinator.refresh(RefreshRequest(access: Self.bank, accounts: [Self.giro]), with: connector, attended: false)
+		await until { connector.reachedEnd }
+		coordinator.cancelAll()
+		await until { !coordinator.isRefreshing }
+		#expect(store.pins.isEmpty)
+	}
+
+	@Test("The mark of a rejected PIN that could not be deleted belongs to its database, and only a real deletion clears it")
+	func markPerDatabase() async throws {
+		let defaults = try #require(UserDefaults(suiteName: "MonetenTests-\(UUID().uuidString)"))
+		let coordinator = SyncCoordinator(broker: SessionBroker(defaults: defaults, scope: "/A/Moneten.sqlite"))
+		let failing = FailingRemovalStore(failures: .max)
+		try failing.savePIN(Secret("12345"), for: Self.bank.id)
+		try coordinator.broker.open(failing)
+		_ = refresh([.ask(Self.pin), .ask(Self.rejected)], attended: false, in: coordinator)
+		await until { !coordinator.isRefreshing }
+		coordinator.broker.forgetPINs()
+
+		// Another data folder, and the same folder with a database that has no such row, delete nothing.
+		try SessionBroker(defaults: defaults, scope: "/B/Moneten.sqlite").open(MemoryPINStore())
+		try SessionBroker(defaults: defaults, scope: "/A/Moneten.sqlite").open(MemoryPINStore())
+
+		let again = SyncCoordinator(broker: SessionBroker(defaults: defaults, scope: "/A/Moneten.sqlite"))
+		try again.broker.open(failing)
+		let automatic = refresh([.ask(Self.pin)], attended: false, in: again)
+		await until { !again.isRefreshing }
+		#expect(automatic.answers.all.isEmpty)
+	}
+
 	@Test("A rejected PIN never reaches the error of the account")
 	func rejectionRecord() async {
 		var refreshes: [UUID: AccountRefresh] = [:]
@@ -305,7 +368,7 @@ final class MemoryPINStore: SavedPINStore {
 
 	func savedPINs() throws -> [UUID: Secret] { pins }
 	func savePIN(_ pin: Secret, for access: UUID) throws { saved.withLock { $0[access] = pin } }
-	func removeSavedPIN(of access: UUID) throws { _ = saved.withLock { $0.removeValue(forKey: access) } }
+	func removeSavedPIN(of access: UUID) throws -> Bool { saved.withLock { $0.removeValue(forKey: access) } != nil }
 }
 
 /// Saved PINs in memory whose deletion fails the next `failures` times, like a database that cannot be written.
@@ -325,13 +388,37 @@ final class FailingRemovalStore: SavedPINStore {
 
 	func savedPINs() throws -> [UUID: Secret] { try memory.savedPINs() }
 	func savePIN(_ pin: Secret, for access: UUID) throws { try memory.savePIN(pin, for: access) }
-	func removeSavedPIN(of access: UUID) throws {
+	func removeSavedPIN(of access: UUID) throws -> Bool {
 		let fails = remaining.withLock { left in
 			guard left > 0 else { return false }
 			left -= 1
 			return true
 		}
 		if fails { throw CocoaError(.fileWriteNoPermission) }
-		try memory.removeSavedPIN(of: access)
+		return try memory.removeSavedPIN(of: access)
+	}
+}
+
+/// A connector that logs in with the PIN, may report a rejection at once, and then needs a while to
+/// end that no cancel shortens, like a helper that shuts down. It then returns, or throws `thrown`.
+final class LateEnd: BankConnector {
+	let rejection: SyncFailure?
+	let thrown: SyncFailure?
+	private let reached = Mutex(false)
+
+	init(rejection: SyncFailure?, thrown: SyncFailure? = nil) {
+		self.rejection = rejection
+		self.thrown = thrown
+	}
+
+	var reachedEnd: Bool { reached.withLock { $0 } }
+
+	func refresh(_ request: RefreshRequest, _ session: SyncSession) async throws -> ConnectorReport {
+		_ = try await session.ask(.pin(PINRequest()))
+		if let rejection { await session.rejected(rejection) }
+		reached.withLock { $0 = true }
+		await withCheckedContinuation { done in DispatchQueue.global().asyncAfter(deadline: .now() + 0.3) { done.resume() } }
+		if let thrown { throw thrown }
+		return ConnectorReport(outcomes: [:])
 	}
 }

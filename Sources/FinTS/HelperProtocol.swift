@@ -52,6 +52,25 @@ enum HelperMessage: Decodable {
 		case type, id, done, of, text, name, bic, url, accounts, account, data, host, chain
 	}
 
+	/// The rejection of the PIN or the block of the access in this message, for the whole access or
+	/// for one account.
+	var rejection: SyncFailure? {
+		let failure: SyncFailure?
+		switch self {
+		case let .failed(error), let .accountFailed(_, error): failure = error.failure
+		case let .result(_, .success(result)): failure = result.errors.map(\.failure).first(where: \.rejectsPIN)
+		case let .ask(_, ask):
+			do {
+				_ = try ask.request()
+				failure = nil
+			} catch {
+				failure = error as? SyncFailure
+			}
+		default: failure = nil
+		}
+		return failure?.rejectsPIN == true ? failure : nil
+	}
+
 	init(from decoder: Decoder) throws {
 		let c = try decoder.container(keyedBy: Key.self)
 		switch try c.decode(String.self, forKey: .type) {

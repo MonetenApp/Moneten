@@ -40,7 +40,8 @@ public struct AccessState: Hashable, Sendable {
 public protocol SavedPINStore: Sendable {
 	func savedPINs() throws -> [UUID: Secret]
 	func savePIN(_ pin: Secret, for access: UUID) throws
-	func removeSavedPIN(of access: UUID) throws
+	/// Returns whether a saved PIN was there and is deleted now.
+	@discardableResult func removeSavedPIN(of access: UUID) throws -> Bool
 }
 
 /// Every source of bank data implements this protocol: FinTS, extensions, and finAPI.

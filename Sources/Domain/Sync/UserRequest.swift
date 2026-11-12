@@ -14,6 +14,11 @@ public protocol SyncSession: Sendable {
 	/// Reports progress for the display. It returns when the display has the progress, so that
 	/// progress and requests arrive in order.
 	func report(_ progress: SyncProgress) async
+
+	/// The bank rejected the PIN or blocked the access (`SyncFailure.rejectsPIN`), for the access or for
+	/// one account. A connector reports it the moment the answer arrives, so that the session forgets
+	/// the PIN at once, and no cancel or end of the connector afterwards can keep it.
+	func rejected(_ failure: SyncFailure) async
 }
 
 public enum SyncProgress: Sendable, Equatable {

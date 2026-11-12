@@ -62,6 +62,10 @@ public struct SetupSession: SyncSession {
 	}
 
 	public func report(_ progress: SyncProgress) async {}
+
+	public func rejected(_ failure: SyncFailure) async {
+		await broker.forgetRejectedPIN(of: replacing)
+	}
 }
 
 /// The PIN of the login step breaks a rule of the bank. The text names the rule.

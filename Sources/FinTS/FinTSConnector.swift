@@ -222,6 +222,8 @@ public struct FinTSConnector: BankConnector {
 				reading: for await line in process.lines {
 					defer { watchdog.handled() }
 					guard let message = try? JSONDecoder().decode(HelperMessage.self, from: Data(line.utf8)) else { throw HelperFailure.unreadable }
+					// The session forgets the PIN now, before a cancel during the end of the helper can hide the answer.
+					if let rejection = message.rejection { await session?.rejected(rejection) }
 					switch message {
 					case let .ask(id, ask):
 						guard let session else { throw HelperFailure.unreadable }

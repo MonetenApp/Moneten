@@ -124,7 +124,7 @@ final class AppModel {
 
 	let vault = Vault(folder: .standard())
 	/// The refreshes of the bank accesses and their dialogs.
-	let sync = SyncCoordinator(broker: SessionBroker(defaults: .standard))
+	let sync = SyncCoordinator(broker: SessionBroker(defaults: .standard, scope: DataFolder.standard().databaseFile.path))
 	/// The FinTS connector of the setup and of every refresh. The extension connector of E6 joins it.
 	let fints = AppModel.makeFinTSConnector()
 	/// The bank accesses, by ID. Their states stay in the database until a refresh reads them.

@@ -163,6 +163,23 @@ struct SetupSessionTests {
 		}
 	}
 
+	@Test("A block that the connector reports in the setup of a login that the app has deletes its saved PIN at once, also when the login is canceled then")
+	func blockReportedForKnownLogin() async throws {
+		let store = try knownLogin()
+		let session = SetupSession(broker: broker, access: Self.access, pin: Secret("12345"), replacing: Self.known.id)
+		let login = Task {
+			try await session.logIn { session -> Int in
+				await session.rejected(.accessBlocked(BankMessage(code: "9930", text: "Zugang gesperrt")))
+				try await Task.sleep(for: .seconds(5))
+				return 1
+			}
+		}
+		for _ in 0..<200 where !store.pins.isEmpty { try await Task.sleep(for: .milliseconds(10)) }
+		login.cancel()
+		_ = try? await login.value
+		#expect(store.pins.isEmpty)
+	}
+
 	@Test("The PIN of the setup answers the first refresh of the new access from memory")
 	func rememberedPIN() async throws {
 		let coordinator = SyncCoordinator(broker: broker)

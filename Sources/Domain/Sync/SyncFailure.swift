@@ -43,6 +43,14 @@ public enum SyncFailure: Error, Sendable, Equatable {
 	/// and the next refresh delivers the same rows again.
 	case notSaved(String)
 
+	/// The bank rejected the PIN or blocked the access, so the PIN must never be sent again.
+	public var rejectsPIN: Bool {
+		switch self {
+		case .pinRejected, .accessBlocked: true
+		default: false
+		}
+	}
+
 	/// The answer of the bank in this failure, for its code in the error popover.
 	public var bankMessage: BankMessage? {
 		switch self {

@@ -146,8 +146,9 @@ public final class Store: SavedPINStore {
 	}
 
 	/// "Remove saved PIN": deletes the saved PIN of an access, for all its accounts.
-	public func removeSavedPIN(of access: UUID) throws {
-		_ = try queue.write { db in try SavedPINRecord.deleteOne(db, key: access) }
+	@discardableResult
+	public func removeSavedPIN(of access: UUID) throws -> Bool {
+		try queue.write { db in try SavedPINRecord.deleteOne(db, key: access) }
 	}
 
 	/// What identifies every deleted transaction, so that a migration does not add them again.
