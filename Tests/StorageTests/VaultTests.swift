@@ -260,6 +260,36 @@ struct SchemaTests {
 		#expect(try queue.read { db in try DeletedTransaction.fetchAll(db) }.map(\.purpose) == ["Abschlag"])
 	}
 
+	@Test("v7 keeps the accounts of a v6 database without an access, and links a new account to a stored access")
+	func accesses() throws {
+		let queue = try DatabaseQueue()
+		try Schema.migrator.migrate(queue, upTo: "v6")
+		let giroID = UUID()
+		try queue.write { db in
+			try db.execute(sql: """
+				INSERT INTO account (id, position, name, kind, source, currency, iban, initialBalanceMinor, isClosed)
+				VALUES (?, 0, 'Giro', 'giro', 'migrated', 'EUR', 'DE02120300000000202051', 0, 0)
+				""", arguments: [giroID])
+		}
+		try Schema.migrator.migrate(queue)
+		let store = Store(queue: queue)
+		let old = try #require(try store.loadLedger().account(giroID))
+		#expect(old.source == .migrated)
+		#expect(old.accessID == nil)
+		#expect(old.remoteID == nil)
+		#expect(old.refreshedAt == nil)
+		#expect(old.refreshError == nil)
+		#expect(try store.accesses().isEmpty)
+
+		let access = Access(source: .fints(bankCode: "12030000", url: URL(string: "https://fints.musterbank.example/")!), bankName: "Musterbank", loginName: "erika77")
+		var savings = Account(position: 1, name: "Tagesgeld", kind: .savings, source: .bank, accessID: access.id, remoteID: "DE89370400440532013000")
+		try store.add(access, state: AccessState(Data([1, 2, 3])), accounts: [savings])
+		#expect(try store.loadLedger().account(savings.id)?.accessID == access.id)
+		savings.refreshError = RefreshError(message: "Zugang vorübergehend gesperrt", code: "9010", date: Self.noon(9), notices: ["Wartung am 14.11.2026"])
+		try store.save(savings)
+		#expect(try store.loadLedger().account(savings.id) == savings)
+	}
+
 	@Test("Saving a portfolio records the value of its balance day, alone or with an import, and other accounts record nothing")
 	func savingRecordsValues() throws {
 		let store = try Self.emptyStore()

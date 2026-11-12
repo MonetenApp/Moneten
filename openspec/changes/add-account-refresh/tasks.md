@@ -4,9 +4,9 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 
 ## 1. Requirements
 
-- [ ] 1.1 Refresh all accounts. Build it and verify it with a test or in the app (#6).
-- [ ] 1.2 Refresh one account or one group. Build it and verify it with a test or in the app (#6).
-- [ ] 1.3 Cancel a refresh. Build it and verify it with a test or in the app (#6).
+- [x] 1.1 Refresh all accounts. Verified by BankAccessTests "Refresh All Accounts fetches every account with an access that is not closed..." and the debug app check of "Refresh All Accounts". The interval "never" comes with #40 (#85).
+- [x] 1.2 Refresh one account or one group. Verified by BankAccessTests "Refresh Account fetches only the selected account..." and "Refresh Accounts on a group fetches the accounts of the group and of its subgroups", and the debug app check of "Refresh All Accounts" and "Refresh Account" (#85).
+- [ ] 1.3 Cancel a refresh. Built: "Cancel Refresh" stops every access, and a canceled access keeps its last state without an error, verified by SyncCoordinatorTests "A failed access marks all its requested accounts, and a canceled one marks none..." and the debug app check. Open: with FinTS no account of a canceled access is complete yet, see task 1.25 of add-fints-banking (#85).
 - [ ] 1.4 Automatic refresh. Build it and verify it with a test or in the app (#40).
 - [ ] 1.5 Refresh interval for each account. Build it and verify it with a test or in the app (#40).
 - [ ] 1.6 Accounts that are refreshed only by hand. Build it and verify it with a test or in the app (#40).
@@ -15,12 +15,12 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [ ] 1.9 No automatic refresh while the app is locked. Build it and verify it with a test or in the app (#40).
 - [ ] 1.10 No automatic refresh during Power Nap. Build it and verify it with a test or in the app (#40).
 - [ ] 1.11 An automatic refresh never asks the user. Build it and verify it with a test or in the app (#6).
-- [ ] 1.12 One session for the accounts of one login. Build it and verify it with a test or in the app (#6).
-- [ ] 1.13 A failure affects only its own access. Build it and verify it with a test or in the app (#6).
-- [ ] 1.14 Show progress. Build it and verify it with a test or in the app (#6).
-- [ ] 1.15 Show the time of the last refresh. Build it and verify it with a test or in the app (#6).
-- [ ] 1.16 Show an error on the account. Build it and verify it with a test or in the app (#6).
-- [ ] 1.17 An error ends with the next success. Build it and verify it with a test or in the app (#6).
+- [x] 1.12 One session for the accounts of one login. Verified by BankAccessTests "Refresh All Accounts fetches ... one request per access" and FinTSConnectorTests "Asks for the full history first..." (#85).
+- [x] 1.13 A failure affects only its own access. Verified by BankAccessTests "The end of a refresh gives each requested account its outcome..." and SyncCoordinatorTests "The end of a refresh brings the new state of the access and the outcome of each account" (#85).
+- [x] 1.14 Show progress. Verified by SyncCoordinatorTests, which check `refreshingAccounts` during and after a refresh, and the debug app check of the indicator on the rows and the text in the status line (#85).
+- [x] 1.15 Show the time of the last refresh. Verified by BankAccessTests "A refresh records its time and clears the error..." and the debug app check, which shows "Last updated: Today, 17:43" (#85).
+- [x] 1.16 Show an error on the account. Verified by BankAccessTests "The end of a refresh gives each requested account its outcome...", AccessStoreTests "A refresh stores the new state and the status of its accounts...", and the debug app check of the error text in the sidebar and the popover with "Zugang vorübergehend gesperrt" (9010) and its date and time (#85).
+- [x] 1.17 An error ends with the next success. Verified by BankAccessTests "A refresh records its time and clears the error..." and the debug app check, in which the third refresh shows the balance of "Tagesgeld" again. Saving the account settings keeps the status of a refresh that ended while they were open, verified by BankAccessTests "Saving the account settings keeps the balance and the status of a refresh..." (#85).
 - [x] 1.18 Keep the history for good. Build it and verify it with a test or in the app (#7).
 - [x] 1.19 Do not store a transaction twice. Build it and verify it with a test or in the app (#7).
 - [x] 1.20 Update a transaction that the source changed. Build it and verify it with a test or in the app (#7).
@@ -36,7 +36,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 
 ## 2. Sync model (issue #6)
 
-The design explains each step. The requirements 1.1 to 1.17 stay open until an app command starts a refresh of real accounts, which needs the accesses of issue #13. Tests prove 1.18 to 1.27 through `reconcile`, `Store.merge`, and the coordinator with `ScriptedConnector`, and task 3.1 checks them again with real banks.
+The design explains each step. The requirements 1.1 to 1.17 stayed open until an app command started a refresh of real accounts, which issue #85 builds. Tests prove 1.18 to 1.27 through `reconcile`, `Store.merge`, and the coordinator with `ScriptedConnector`, and task 3.1 checks them again with real banks.
 
 - [x] 2.1 `Domain`: `Access`, `BankConnector`, `RefreshRequest`, `ConnectorReport`, `AccountOutcome`, `RefreshResult`, and `AccessState`.
 - [x] 2.2 `Domain`: `SyncSession`, `UserRequest`, `SecondFactorRequest`, `Challenge`, `UserAnswer`, and `Secret`, whose description never shows the value.

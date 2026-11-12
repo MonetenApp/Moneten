@@ -41,6 +41,15 @@ public enum SyncFailure: Error, Sendable, Equatable {
 	/// and the next refresh delivers the same rows again.
 	case notSaved(String)
 
+	/// The answer of the bank in this failure, for its code in the error popover.
+	public var bankMessage: BankMessage? {
+		switch self {
+		case let .pinRejected(m), let .accessBlocked(m), let .tanRejected(m), let .bank(m): m
+		case let .approvalDeclined(m): m
+		case .needsUser, .challengeExpired, .notRegistered, .notFetched, .offline, .network, .unsupported, .notSaved: nil
+		}
+	}
+
 	/// The text that the app shows on the account and in the error popover.
 	public var message: String {
 		switch self {

@@ -469,7 +469,7 @@ struct FinTSConnectorTests {
 			echo '{"type":"result","account":"DE02120300000000202051","balance":{"amount":"2340.15","currency":"EUR","date":"2026-11-07"},"transactions":{"from":"2026-08-11","rows":[{"type":"row","booked":"2026-11-02","value":"2026-10-30","amount":"-23.8","currency":"EUR","name":"Stadtwerke Musterstadt","iban":"DE02120300000000202051","bic":"BYLADEM1001","purpose":"Rechnung 1001","endToEnd":"RE-2026-1001","mandate":"M-4711","creditor":"DE98ZZZ09999999999","bookingText":"FOLGELASTSCHRIFT","pending":false},{"type":"row","booked":"2026-11-09","value":"2026-11-09","amount":"-46.12","currency":"EUR","name":"Coffee Shop","purpose":"Kartenzahlung","endToEnd":"SW-778899","pending":true}]},"errors":[]}'
 			echo '{"type":"progress","done":1,"of":3}'
 			echo '{"type":"result","account":"1234567890","balance":{"amount":"100","currency":"EUR"},"errors":[{"code":"9010","text":"Verarbeitung nicht möglich"}]}'
-			echo '{"type":"result","account":"4711","transactions":{"rows":[]},"errors":[]}'
+			echo '{"type":"result","account":"4711","transactions":{"rows":[]},"errors":[{"code":"9210","text":"Saldo nicht verfügbar"}]}'
 			echo '{"type":"accountFailed","account":"777","kind":"unsupported","text":"The FinTS server of the bank offers neither the balance nor the transactions of this account."}'
 			echo '{"type":"state","data":"AQID"}'
 			"""#, accounts: [Self.giro, Self.savings, card, loan], session: session)
@@ -495,17 +495,19 @@ struct FinTSConnectorTests {
 		#expect(savings.balance == Money(minorUnits: 10_000, currency: "EUR"))
 		#expect(savings.balanceDate == nil)
 		#expect(savings.transactions == nil)
+		#expect(savings.transactionFailure == .bank(BankMessage(code: "9010", text: "Verarbeitung nicht möglich")))
 
 		guard case let .fetched(cardResult) = report.outcomes[card.accountID] else { Issue.record("card not fetched"); return }
 		#expect(cardResult.balance == nil)
 		#expect(cardResult.transactions?.from == nil)
 		#expect(cardResult.isComplete)
+		#expect(cardResult.transactionFailure == nil)
 
 		guard case let .failed(loanFailure) = report.outcomes[loan.accountID] else { Issue.record("loan not failed"); return }
 		#expect(loanFailure == .unsupported("The FinTS server of the bank offers neither the balance nor the transactions of this account."))
 
 		#expect(report.state == AccessState(Data([1, 2, 3])))
-		#expect(report.notices == [BankMessage(text: "Neue Bedingungen ab 1.12."), BankMessage(code: "9010", text: "Verarbeitung nicht möglich")])
+		#expect(report.notices == [BankMessage(text: "Neue Bedingungen ab 1.12."), BankMessage(code: "9210", text: "Saldo nicht verfügbar")])
 		#expect(session.events == [.progress(.fetching(done: 0, of: 3)), .progress(.fetching(done: 1, of: 3))])
 	}
 

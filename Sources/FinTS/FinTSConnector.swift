@@ -28,6 +28,14 @@ public struct FinTSAccount: Sendable, Equatable {
 	/// and differ in the subnumber.
 	public var remoteID: String { iban ?? (subnumber.map { "\(number)/\($0)" } ?? number) }
 
+	/// The account as the setup adds it to the app, in `group` and linked to `access`. Without a
+	/// product name it is named after its type.
+	public func account(access: Access, bank: FinTSBank, group: UUID?) -> Account {
+		let bankCode: String? = if case let .fints(code, _) = access.source { code } else { nil }
+		return Account(groupID: group, position: 0, name: productName ?? kind.title, kind: kind, source: .bank, currency: currency, iban: iban,
+			bic: bic ?? bank.bic, accountNumber: number, bankCode: bankCode, bankName: bank.name, owner: owner, accessID: access.id, remoteID: remoteID)
+	}
+
 	/// The FinTS account types are ranges: 1 to 9 giro accounts, 10 to 19 savings, 20 to 29 fixed
 	/// term deposits, 30 to 39 portfolios, 40 to 49 loans, 50 to 59 credit cards, and 60 to 69 funds.
 	static func kind(of code: String?) -> AccountKind {
@@ -83,6 +91,15 @@ public struct FinTSConnector: BankConnector {
 		self.init(helper: .bundled, productID: Bundle.main.object(forInfoDictionaryKey: "MonetenFinTSProductID") as? String,
 			version: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "")
 	}
+
+	#if DEBUG
+	/// A connector whose helper is the program at `path`, with a made-up product ID. A debug build of
+	/// the app takes it from the environment variable `MONETEN_FINTS_HELPER`, so that the setup and the
+	/// refresh run against `scripts/fake-fints-helper.sh` without a bank.
+	public init(debugHelper path: String) {
+		self.init(helper: Helper(executable: URL(filePath: path), arguments: []), productID: "MONETENDEBUG", version: "0.0.0")
+	}
+	#endif
 
 	init(helper: Helper, productID: String?, version: String, inactivity: TimeInterval = 30, grace: TimeInterval = 5,
 		trust: @escaping @Sendable (_ host: String, _ chain: [Data]) -> String = FinTSConnector.verdict) {

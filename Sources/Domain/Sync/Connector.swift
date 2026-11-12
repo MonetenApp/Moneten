@@ -18,7 +18,8 @@ public struct Access: Identifiable, Hashable, Sendable {
 	}
 }
 
-public enum AccessSource: Hashable, Sendable {
+/// Where an access gets its data. The database keeps it as JSON, so a new case needs no migration.
+public enum AccessSource: Hashable, Sendable, Codable {
 	case fints(bankCode: String, url: URL)
 	case `extension`(id: String)
 	case finAPI(connection: String)
@@ -58,7 +59,7 @@ public struct RefreshRequest: Sendable {
 }
 
 /// One account of a refresh: the account in the app, its number at the bank, and the first day to fetch.
-public struct AccountRequest: Sendable {
+public struct AccountRequest: Sendable, Equatable {
 	public let accountID: UUID
 	/// The name of the account in the app, for the PIN sheet.
 	public let name: String
@@ -107,12 +108,18 @@ public struct RefreshResult: Sendable {
 	public let transactions: FetchedTransactions?
 	/// The bank has no transactions before the first one returned.
 	public let isComplete: Bool
+	/// The error of a transaction request that failed beside a balance that worked ("Fetch the balance
+	/// separately"). The balance is stored, and the account fails with this error, so that its last
+	/// refresh time stays and the next refresh asks again for the days that were missed.
+	public let transactionFailure: SyncFailure?
 
-	public init(balance: Money?, balanceDate: Date? = nil, transactions: FetchedTransactions?, isComplete: Bool = false) {
+	public init(balance: Money?, balanceDate: Date? = nil, transactions: FetchedTransactions?, isComplete: Bool = false,
+		transactionFailure: SyncFailure? = nil) {
 		self.balance = balance
 		self.balanceDate = balanceDate
 		self.transactions = transactions
 		self.isComplete = isComplete
+		self.transactionFailure = transactionFailure
 	}
 }
 

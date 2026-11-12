@@ -94,6 +94,45 @@ public final class Store: Sendable {
 		}
 	}
 
+	/// The bank accesses. Their states stay in the database until a refresh reads them.
+	public func accesses() throws -> [Access] {
+		try queue.read { db in
+			try AccessRecord.fetchAll(db).map(\.access)
+		}
+	}
+
+	/// The state that the connector of an access returned last.
+	public func state(of access: UUID) throws -> AccessState? {
+		try queue.read { db in try AccessRecord.fetchOne(db, key: access)?.state.map(AccessState.init) }
+	}
+
+	/// Stores the access of a setup with its state and its accounts at once ("Finish the setup"), so that a
+	/// failure leaves no access without accounts. A login that the app has already keeps its access: the
+	/// accounts join it, and it takes the new source. It keeps its stored state, because a refresh that
+	/// waited for the login of the setup starts from that state and may end before or after "Done", so
+	/// the state of the setup would roll it back. Returns the stored access and accounts.
+	@discardableResult
+	public func add(_ access: Access, state: AccessState?, accounts: [Account]) throws -> (access: Access, accounts: [Account]) {
+		try queue.write { db in
+			let known = try AccessRecord.fetchAll(db).first { $0.access.isSameLogin(as: access) }
+			let record = AccessRecord(id: known?.id ?? access.id, source: access.source, bankName: access.bankName, loginName: access.loginName,
+				state: known?.state ?? state?.data)
+			try record.save(db)
+			let linked = accounts.map { a -> Account in var a = a; a.accessID = record.id; return a }
+			for a in linked { try a.save(db) }
+			return (record.access, linked)
+		}
+	}
+
+	/// Stores the end of a refresh of an access: the status of its accounts, and the new state when the
+	/// connector returned one. Without one the last state stays, so the next refresh starts from it.
+	public func recordRefresh(of access: UUID, state: AccessState?, accounts: [Account]) throws {
+		try queue.write { db in
+			if let state { try AccessRecord.filter(key: access).updateAll(db, Column("state").set(to: state.data)) }
+			for a in accounts { try a.update(db) }
+		}
+	}
+
 	/// What identifies every deleted transaction, so that a migration does not add them again.
 	public func deletedTransactions() throws -> [DeletedTransaction] {
 		try queue.read { db in try DeletedTransaction.fetchAll(db) }
@@ -109,8 +148,17 @@ public final class Store: Sendable {
 		}
 	}
 
-	public func deleteAccount(_ id: UUID) throws {
-		_ = try queue.write { db in try Account.deleteOne(db, key: id) }
+	/// Deletes an account. An access goes with its last account, together with its state. Returns the
+	/// ID of that access.
+	@discardableResult
+	public func deleteAccount(_ id: UUID) throws -> UUID? {
+		try queue.write { db in
+			let access = try Account.fetchOne(db, key: id)?.accessID
+			_ = try Account.deleteOne(db, key: id)
+			guard let access, try Account.filter(Column("accessID") == access).fetchCount(db) == 0 else { return nil }
+			_ = try AccessRecord.deleteOne(db, key: access)
+			return access
+		}
 	}
 
 	public func deleteGroup(_ id: UUID) throws {

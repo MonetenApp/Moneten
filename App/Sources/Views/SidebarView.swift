@@ -29,8 +29,9 @@ struct SidebarView: View {
 		}
 		.listStyle(.sidebar)
 		.safeAreaInset(edge: .bottom, spacing: 0) {
-			HStack {
+			HStack(spacing: 4) {
 				AddMenuButton()
+				RefreshAllButton()
 				Spacer()
 			}
 			// The sidebar floats with corners of about 20 points. A round button of 24 points, 8 points
@@ -49,7 +50,7 @@ struct AddMenuButton: View {
 
 	var body: some View {
 		Menu {
-			Button("Add account") { model.sheet = .newAccount }
+			Button("Add account") { model.addAccount() }
 			Button("Add account group") { model.sheet = .newGroup }
 			Divider()
 			Button("Add category") { model.sheet = .newCategory(isGroup: false) }
@@ -70,6 +71,27 @@ struct AddMenuButton: View {
 		.onHover { hovered = $0 }
 		.animation(.easeOut(duration: 0.15), value: hovered)
 		.help("Add item")
+	}
+}
+
+/// "Refresh All Accounts" below the sidebar.
+struct RefreshAllButton: View {
+	@Environment(AppModel.self) private var model
+	@State private var hovered = false
+
+	var body: some View {
+		Button { model.refresh(.all) } label: {
+			Image(systemName: "arrow.clockwise")
+				.font(.system(size: 13, weight: .medium))
+				.frame(width: 24, height: 24)
+				.background(.primary.opacity(hovered ? 0.1 : 0), in: .circle)
+				.contentShape(.circle)
+		}
+		.buttonStyle(.plain)
+		.disabled(!model.canRefresh(.all))
+		.onHover { hovered = $0 }
+		.animation(.easeOut(duration: 0.15), value: hovered)
+		.help("Refresh All Accounts")
 	}
 }
 
@@ -116,7 +138,10 @@ struct GroupRow: View {
 			return true
 		}
 		.contextMenu {
-			Button("Add Account...") { model.sheet = .newAccount }
+			Button("Refresh Accounts") { model.refresh(.group(group.id)) }
+				.disabled(!model.canRefresh(.group(group.id)))
+			Divider()
+			Button("Add Account...") { model.addAccount(group: group.id) }
 			Button("Add Account Group") { model.sheet = .newGroup }
 			Divider()
 			Button("Remove...") { model.remove(group: group.id) }
@@ -149,13 +174,28 @@ struct AccountRow: View {
 					.foregroundStyle(.white)
 			}
 			Spacer()
-			// A closed account stays in the sidebar without its balance, as in MoneyMoney.
-			if !account.isClosed {
+			if model.sync.refreshingAccounts.contains(account.id) {
+				ProgressView().controlSize(.small)
+			}
+			// The error of the last refresh takes the place of the balance until a refresh succeeds.
+			if let error = account.refreshError {
+				Text(error.message)
+					.lineLimit(1)
+					.foregroundStyle(.secondary)
+					.frame(maxWidth: 140, alignment: .trailing)
+				RefreshErrorButton(error: error)
+			} else if !account.isClosed {
+				// A closed account stays in the sidebar without its balance, as in MoneyMoney.
 				AmountText(money: balance).fontWeight(.medium)
 			}
 		}
 		.draggable(account.id.uuidString)
 		.contextMenu {
+			if account.accessID != nil {
+				Button("Refresh Account") { model.refresh(.account(account.id)) }
+					.disabled(!model.canRefresh(.account(account.id)))
+				Divider()
+			}
 			if account.isOffline {
 				Button("Add Transaction...") { model.navigate(to: .account(account.id)); model.sheet = .transaction(nil) }
 			}
@@ -167,6 +207,7 @@ struct AccountRow: View {
 			}
 			Button("Remove...") { model.sheet = .accountSettings(account.id) }
 			Divider()
+			Button("Add Account...") { model.addAccount(group: account.groupID) }
 			Button("Settings...") { model.sheet = .accountSettings(account.id) }
 		}
 	}

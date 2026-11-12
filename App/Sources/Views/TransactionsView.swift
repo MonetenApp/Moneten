@@ -47,10 +47,10 @@ struct HeaderView: View {
 				if let account = model.selectedAccount {
 					HStack(spacing: 8) {
 						if let iban = account.iban { Text(Format.iban(iban)) }
-						if account.source == .migrated {
-							Text("Taken over from MoneyMoney. Not connected to a bank yet.")
-						} else if account.isOffline {
-							Text("Offline account")
+						switch account.source {
+						case .migrated: Text("Taken over from MoneyMoney. Not connected to a bank yet.")
+						case .offline: Text("Offline account")
+						case .bank: AccountRefreshLine(account: account)
 						}
 					}
 					.font(.callout)
@@ -837,7 +837,13 @@ struct StatusLine: View {
 		// and truncates before it reaches the count.
 		HStack(spacing: 12) {
 			Group {
-				if model.filter.isActive {
+				if let status = model.refreshStatus {
+					HStack(spacing: 6) {
+						ProgressView().controlSize(.mini)
+						Text(status).lineLimit(1)
+					}
+					.foregroundStyle(.secondary)
+				} else if model.filter.isActive {
 					Label("A filter is active; some entries might be hidden.", systemImage: "line.3.horizontal.decrease.circle")
 						.foregroundStyle(.secondary)
 						.lineLimit(1)

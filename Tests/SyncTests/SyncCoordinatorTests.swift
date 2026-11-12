@@ -314,6 +314,62 @@ struct SyncCoordinatorTests {
 		#expect(second.answers.all.isEmpty)
 	}
 
+	/// Every call of `ended`, in order.
+	@MainActor
+	final class EndLog {
+		var all: [(access: UUID, accounts: [UUID: AccountRefresh])] = []
+	}
+
+	func logEnds(of coordinator: SyncCoordinator) -> EndLog {
+		let log = EndLog()
+		coordinator.ended = { access, _, accounts in log.all.append((access, accounts)) }
+		return log
+	}
+
+	@Test("A command for an access that runs fetches its other accounts when the run ends")
+	func busyAccess() async throws {
+		let log = logEnds(of: coordinator)
+		let bank = Self.access("Musterbank")
+		_ = refresh(bank, [.wait(.milliseconds(200)), .fetched(Self.giro.accountID)], accounts: [Self.giro])
+		_ = refresh(bank, [.fetched(Self.giro.accountID), .fetched(Self.savings.accountID)], accounts: [Self.giro, Self.savings])
+		#expect(coordinator.refreshingAccounts == [Self.giro.accountID, Self.savings.accountID])
+		await until { log.all.count == 2 && !coordinator.isRefreshing }
+		let at = try #require(finished(bank)?.finishedAt)
+		#expect(log.all.map(\.access) == [bank.id, bank.id])
+		#expect(log.all.first?.accounts.keys.sorted() == [Self.giro.accountID])
+		#expect(log.all.last?.accounts == [Self.savings.accountID: .refreshed(at)])
+		#expect(coordinator.refreshingAccounts.isEmpty)
+	}
+
+	@Test("A command right after Cancel Refresh runs when the canceled connector has ended")
+	func afterCancel() async throws {
+		let log = logEnds(of: coordinator)
+		let bank = Self.access("Musterbank")
+		_ = refresh(bank, [.ask(Self.tan), .fetched(Self.giro.accountID)], accounts: [Self.giro])
+		await until { broker.current != nil }
+		coordinator.cancelAll()
+		_ = refresh(bank, [.fetched(Self.giro.accountID)], accounts: [Self.giro])
+		#expect(coordinator.refreshingAccounts == [Self.giro.accountID])
+		await until { log.all.count == 2 && !coordinator.isRefreshing }
+		let at = try #require(finished(bank)?.finishedAt)
+		#expect(log.all.first?.accounts == [:])
+		#expect(log.all.last?.accounts == [Self.giro.accountID: .refreshed(at)])
+	}
+
+	@Test("A command for an access that waits for its turn joins the waiting request")
+	func waitingAccess() async throws {
+		let coordinator = SyncCoordinator(limit: 1)
+		let log = logEnds(of: coordinator)
+		let first = Self.access("Musterbank"), second = Self.access("Beispielbank")
+		coordinator.refresh(RefreshRequest(access: first, accounts: [Self.card]), with: ScriptedConnector([.wait(.milliseconds(100))]), attended: true)
+		coordinator.refresh(RefreshRequest(access: second, accounts: [Self.giro]),
+			with: ScriptedConnector([.fetched(Self.giro.accountID), .fetched(Self.savings.accountID)]), attended: true)
+		coordinator.refresh(RefreshRequest(access: second, accounts: [Self.savings]), with: ScriptedConnector([]), attended: true)
+		await until { log.all.count == 2 && !coordinator.isRefreshing }
+		#expect(log.all.last?.access == second.id)
+		#expect(log.all.last?.accounts.keys.sorted() == [Self.giro.accountID, Self.savings.accountID].sorted())
+	}
+
 	@Test("A second click answers nothing, not the next dialog")
 	func doubleClick() async {
 		let first = Self.access("Musterbank")
@@ -392,6 +448,21 @@ struct SyncCoordinatorTests {
 		#expect(finished(bank)?.failures == [Self.giro.accountID: blocked, Self.card.accountID: .notFetched])
 	}
 
+	@Test("A failed transaction request stores the balance and fails the account, so its last refresh time stays")
+	func balanceWithoutTransactions() async throws {
+		var delivered: [UUID: Money?] = [:]
+		coordinator.deliver = { delivered[$0] = $1.balance }
+		let ends = recordEnds()
+		let bank = Self.access("Musterbank")
+		let rejected = SyncFailure.bank(BankMessage(code: "9010", text: "Verarbeitung nicht möglich"))
+		let balance = Money(minorUnits: 234_015, currency: "EUR")
+		_ = refresh(bank, [.fetched(Self.giro.accountID, RefreshResult(balance: balance, transactions: nil, transactionFailure: rejected))])
+		await until { ends.accounts[bank.id] != nil }
+		let at = try #require(finished(bank)?.finishedAt)
+		#expect(delivered == [Self.giro.accountID: balance])
+		#expect(ends.accounts[bank.id] == [Self.giro.accountID: .failed(RefreshError(message: "Verarbeitung nicht möglich", code: "9010", date: at))])
+	}
+
 	@Test("An account that could not be stored fails with notSaved, the others finish, and the PIN stays")
 	func notSaved() async {
 		struct DiskFull: Error {}
@@ -420,5 +491,109 @@ struct SyncCoordinatorTests {
 		await until { !coordinator.isRefreshing }
 		#expect(coordinator.states[bank.id] == .cancelled)
 		#expect(delivered == 0)
+	}
+
+	/// What `ended` reported, by access.
+	@MainActor
+	final class Ends {
+		var states: [UUID: AccessState?] = [:]
+		var accounts: [UUID: [UUID: AccountRefresh]] = [:]
+	}
+
+	func recordEnds() -> Ends {
+		let ends = Ends()
+		coordinator.ended = { access, state, accounts in
+			ends.states[access] = state
+			ends.accounts[access] = accounts
+		}
+		return ends
+	}
+
+	@Test("The end of a refresh brings the new state of the access and the outcome of each account")
+	func endReportsStateAndAccounts() async throws {
+		let ends = recordEnds()
+		let bank = Self.access("Musterbank")
+		let blocked = BankMessage(code: "9010", text: "Konto gesperrt")
+		_ = refresh(bank, [.state(AccessState(Data([7]))), .fetched(Self.giro.accountID), .failAccount(Self.savings.accountID, .bank(blocked))],
+			accounts: [Self.giro, Self.savings, Self.card])
+		#expect(coordinator.refreshingAccounts == [Self.giro.accountID, Self.savings.accountID, Self.card.accountID])
+		await until { ends.accounts[bank.id] != nil }
+		let at = try #require(finished(bank)?.finishedAt)
+		#expect(ends.states[bank.id] == AccessState(Data([7])))
+		#expect(ends.accounts[bank.id] == [
+			Self.giro.accountID: .refreshed(at),
+			Self.savings.accountID: .failed(RefreshError(message: "Konto gesperrt", code: "9010", date: at)),
+			Self.card.accountID: .failed(RefreshError(message: "Canceled because of the previous error.", date: at)),
+		])
+		#expect(coordinator.refreshingAccounts.isEmpty)
+	}
+
+	@Test("A failed access marks all its requested accounts, and a canceled one marks none and keeps the state")
+	func endAfterFailureAndCancel() async {
+		let ends = recordEnds()
+		let failing = Self.access("Musterbank")
+		_ = refresh(failing, [.state(AccessState(Data([1]))), .fail(.network("Zeitüberschreitung"))], accounts: [Self.giro, Self.savings])
+		await until { ends.accounts[failing.id] != nil }
+		#expect(ends.states[failing.id] == .some(nil))
+		#expect(ends.accounts[failing.id]?.mapValues { refresh -> String? in
+			if case let .failed(error) = refresh { error.message } else { nil }
+		} == [Self.giro.accountID: "The bank could not be reached: Zeitüberschreitung", Self.savings.accountID: "The bank could not be reached: Zeitüberschreitung"])
+
+		let canceled = Self.access("Beispielbank")
+		_ = refresh(canceled, [.state(AccessState(Data([2]))), .ask(Self.tan), .fetched(Self.card.accountID)], accounts: [Self.card])
+		await until { broker.current != nil }
+		#expect(coordinator.refreshingAccounts == [Self.card.accountID])
+		coordinator.cancelAll()
+		#expect(coordinator.refreshingAccounts.isEmpty)
+		await until { ends.accounts[canceled.id] != nil }
+		#expect(ends.states[canceled.id] == .some(nil))
+		#expect(ends.accounts[canceled.id] == [:])
+		#expect(coordinator.refreshingAccounts.isEmpty)
+	}
+
+	/// What happened to an access, in order.
+	@MainActor
+	final class Events {
+		var all: [String] = []
+	}
+
+	@Test("The login of a setup waits for the refresh of its access, and a refresh asked for meanwhile waits for the login")
+	func setupBesideRefresh() async throws {
+		let events = Events()
+		coordinator.ended = { _, _, _ in events.all.append("refresh ended") }
+		let bank = Self.access("Musterbank")
+		_ = refresh(bank, [.ask(Self.pin), .fetched(Self.giro.accountID)])
+		await until { broker.current != nil }
+		let login = Task {
+			try await coordinator.exclusively(for: bank.id) {
+				events.all.append("login started")
+				_ = refresh(bank, [.fetched(Self.savings.accountID)], accounts: [Self.savings])
+				try await Task.sleep(for: .milliseconds(100))
+				events.all.append("login ended")
+			}
+		}
+		try await Task.sleep(for: .milliseconds(50))
+		#expect(events.all.isEmpty)
+		answer(.pin(Secret("12345")))
+		try await login.value
+		await until { events.all.count == 4 && !coordinator.isRefreshing }
+		#expect(events.all == ["refresh ended", "login started", "login ended", "refresh ended"])
+		#expect(coordinator.refreshingAccounts.isEmpty)
+	}
+
+	@Test("Cancel Refresh drops a refresh that waits for the login of a setup")
+	func cancelBehindSetup() async throws {
+		let events = Events()
+		coordinator.ended = { _, _, _ in events.all.append("refresh ended") }
+		let bank = Self.access("Musterbank")
+		try await coordinator.exclusively(for: bank.id) {
+			_ = refresh(bank, [.fetched(Self.giro.accountID)])
+			#expect(coordinator.isRefreshing)
+			coordinator.cancelAll()
+			#expect(!coordinator.isRefreshing)
+			#expect(coordinator.refreshingAccounts.isEmpty)
+		}
+		try await Task.sleep(for: .milliseconds(50))
+		#expect(events.all.isEmpty)
 	}
 }
