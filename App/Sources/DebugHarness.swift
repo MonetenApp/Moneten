@@ -139,6 +139,18 @@ final class DebugHarness {
 			// Clicks "Allow" or "Deny" in the question about a new host.
 			guard let prompt = model.sync.broker.current, case .allowHost = prompt.request else { return log("extanswer no host question") }
 			model.sync.broker.answer(.host(argument == "allow" ? .allowed : .denied), to: prompt.id)
+		// "<package>|<fixture>|<service>" sets up an access; "<package>|<fixture>|auto" refreshes the accesses of the package.
+		case "extaccess", "extrefresh": extensionAccess(command, argument)
+		case "extprompt": logPrompt()
+		// Answers the dialog on screen: "extlogin <user>|<password>", "exttan <code>", "extmethod <id>", "extcancel".
+		case "extlogin": answer { .login(argument.components(separatedBy: "|").map(Secret.init)) }
+		case "exttan": answer { .tan(Secret(argument)) }
+		case "extmethod": answer { .tanMethod(argument) }
+		case "extcancel": if let prompt = model.sync.broker.current { model.sync.broker.cancel(prompt.id) }
+		// Runs JavaScript in the login window of an extension, such as "solve('stub-token')" on the captcha stub.
+		case "extjs": ExtensionWebDebug.current?.evaluateJavaScript(argument) { [weak self] _, error in self?.log("extjs \(error.map { "error=\($0.localizedDescription)" } ?? "ok")") }
+		case "extcaptchastub": ExtensionWebDebug.captchaStub = argument != "off"
+		case "extstate": logExtensionState()
 		case "groupbyaccount":
 			if var g = model.ledger.groups.first(where: { $0.name == argument }) {
 				g.groupsByAccount = true
@@ -370,6 +382,73 @@ final class DebugHarness {
 			model.sync.refresh(RefreshRequest(access: access, accounts: []), with: run, attended: true)
 		} catch {
 			log("ext error=\(error)")
+		}
+	}
+
+	private func extensionAccess(_ command: String, _ argument: String) {
+		let parts = argument.components(separatedBy: "|")
+		guard let model, parts.count >= 2, model.store != nil else { return log("ext error=\(command) needs <package>|<fixture>|<service> and an open database") }
+		do {
+			let package = try ExtensionPackage.load(from: URL(filePath: parts[0]))
+			let fixture = parts[1].isEmpty ? nil : try JSONDecoder().decode(Fixture.self, from: Data(contentsOf: URL(filePath: parts[1])))
+			for exchange in fixture?.exchanges ?? [] where exchange.request.method == "GET" && exchange.request.url.host()?.hasPrefix("auth.") == true {
+				ExtensionWebDebug.pages[ExtensionWebDebug.key(exchange.request.url)] = exchange.response.body ?? ""
+			}
+			ExtensionWebDebug.log = { [weak self] in self?.log($0) }
+			let log: @Sendable (HostLog) -> Void = { [weak self, package] line in
+				Task { @MainActor in
+					switch line {
+					case let .print(text): self?.log("ext print \(package.name): \(text)")
+					case let .status(text): self?.log("ext status \(package.name): \(text)")
+					case let .sent(request): self?.log("ext sent \(request)")
+					}
+				}
+			}
+			if command == "extaccess" {
+				model.addExtensionAccess(package: package, service: parts.count > 2 ? parts[2] : package.name, fixture: fixture, log: log)
+			} else {
+				model.refreshExtensionAccesses(package: package, fixture: fixture, attended: !(parts.count > 2 && parts[2] == "auto"), log: log)
+			}
+		} catch {
+			log("ext error=\(error)")
+		}
+	}
+
+	private func answer(_ make: () -> UserAnswer) {
+		guard let model, let prompt = model.sync.broker.current else { return log("ext no dialog") }
+		model.sync.broker.answer(make(), to: prompt.id)
+	}
+
+	/// The dialog on screen, without any value the user typed.
+	private func logPrompt() {
+		guard let prompt = model?.sync.broker.current else { return log("ext prompt none") }
+		switch prompt.request {
+		case let .login(request): log("ext prompt login \(request.service) fields=\(request.fields.map(\.label).joined(separator: ","))")
+		case let .allowHost(request): log("ext prompt host \(request.host)")
+		case .pin: log("ext prompt pin")
+		case let .secondFactor(request):
+			switch request.challenge {
+			case let .enterTAN(text, image): log("ext prompt tan label=\(request.field.label) text=\(text.replacingOccurrences(of: "\n", with: " / ")) image=\(image != nil)")
+			case let .approveInApp(text, app, image, _): log("ext prompt approve app=\(app ?? "-") text=\(text) image=\(image != nil)")
+			case let .chooseTANMethod(methods, current): log("ext prompt methods \(methods.map { "\($0.id)=\($0.name)\($0.unavailable == nil ? "" : " (unavailable)")" }.joined(separator: ", ")) current=\(current ?? "-")")
+			case let .openBrowser(approval): log("ext prompt browser \(approval.url.host() ?? "")")
+			case let .captcha(captcha): log("ext prompt captcha \(captcha.provider.rawValue) page=\(captcha.page?.host() ?? "-")")
+			case .chooseTANMedium, .flickerCode: log("ext prompt other")
+			}
+		}
+	}
+
+	/// The state of every bank access and the failure of each of its accounts.
+	private func logExtensionState() {
+		guard let model else { return }
+		for stored in model.accesses {
+			log("ext access \(stored.access.bankName) state=\(String(describing: model.sync.states[stored.access.id] ?? .idle).prefix(60))")
+			for id in stored.accounts.keys {
+				guard let account = model.ledger.account(id) else { continue }
+				let rows = model.ledger.transactions.filter { $0.accountID == id }
+				let failure = model.refreshFailure(of: id).map { " failed=\($0.message)" } ?? ""
+				log("ext account \(account.name) rows=\(rows.count) balance=\(model.ledger.balance(of: account).minorUnits)\(failure)")
+			}
 		}
 	}
 

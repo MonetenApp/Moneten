@@ -41,7 +41,9 @@ enum SyncDemo {
 			method: "922")),
 		("qrapprove", secondFactor(.approveInApp(prompt: "Scannen Sie den Code mit der App der Bank.", app: "Musterbank App", image: qrCode("Moneten QR demo"), step: .init(2, of: 2)),
 			purpose: .login, system: .website)),
-		("browser", secondFactor(.openBrowser(URL(string: "https://www.musterbank.example/login")!), purpose: .login, system: .website)),
+		("browser", secondFactor(.openBrowser(BrowserApproval(url: URL(string: "https://www.musterbank.example/login?state=demo")!, state: "demo",
+			hosts: ["www.musterbank.example"])), purpose: .login, system: .website)),
+		("login", .login(LoginRequest(service: "Musterbank Online"))),
 		("order", secondFactor(.enterTAN(prompt: "Bitte geben Sie die TAN ein.", image: nil), purpose: .order("Transfer of 25,00 EUR to Max Mustermann"), loginOnly: true)),
 	]
 

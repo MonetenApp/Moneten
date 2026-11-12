@@ -69,6 +69,8 @@ public final class SessionBroker {
 	private var undeleted: Set<UUID> {
 		didSet { defaults?.set(undeleted.map(\.uuidString).sorted(), forKey: undeletedKey) }
 	}
+	/// The login data of extension accesses. It lives only in memory, like a PIN that is not saved.
+	private var loginData: [UUID: [Secret]] = [:]
 
 	/// Reports each change of the dialogs of an access, for its `SyncState`.
 	var onEvent: (UUID, SyncEvent) -> Void = { _, _ in }
@@ -95,6 +97,14 @@ public final class SessionBroker {
 				return .pin(pin)
 			}
 		}
+		if case let .login(loginRequest) = request {
+			if loginRequest.rejected {
+				loginData[access.id] = nil
+				guard attended else { throw SyncFailure.loginRejected }
+			} else if let fields = loginData[access.id] {
+				return .login(fields)
+			}
+		}
 		guard attended else { throw SyncFailure.needsUser(request.kind) }
 		try Task.checkCancellation()
 		let prompt = Prompt(id: UUID(), access: access, accountNames: accountNames, request: request)
@@ -117,6 +127,7 @@ public final class SessionBroker {
 			pins[access.id] = secret
 			if save { toSave.insert(access.id) } else { toSave.remove(access.id) }
 		}
+		if case let .login(fields) = answer { loginData[access.id] = fields }
 		return answer
 	}
 
@@ -168,6 +179,7 @@ public final class SessionBroker {
 		toSave = []
 		savedPINs = []
 		store = nil
+		loginData = [:]
 	}
 
 	/// Keeps the PIN that the setup of a new access logged in with, so that its first refresh does not
@@ -191,6 +203,7 @@ public final class SessionBroker {
 	/// database deletes a saved PIN together with its access.
 	public func forgetPIN(of access: UUID) {
 		pins[access] = nil
+		loginData[access] = nil
 		toSave.remove(access)
 		savedPINs.remove(access)
 		undeleted.remove(access)
@@ -211,6 +224,7 @@ public final class SessionBroker {
 			do { try writeSavedPIN(pin, of: access) } catch { onStoreFailure(SavedPINFailure(kind: .notSaved, reason: String(describing: error))) }
 		default:
 			if !savedPINs.contains(access) { pins[access] = nil }
+			loginData[access] = nil
 		}
 	}
 
@@ -262,7 +276,7 @@ public final class SessionBroker {
 			return method.needsMedium ? .tanMedia : .challenge(method.delivery)
 		case .tanMedium:
 			return .challenge(chosenMethods[access]?.delivery ?? .tan)
-		case .pin, .tan, .host:
+		case .pin, .tan, .host, .login:
 			return nil
 		}
 	}

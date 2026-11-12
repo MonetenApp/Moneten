@@ -268,6 +268,8 @@ private struct Session: SyncSession {
 	func report(_ progress: SyncProgress) async {
 		await coordinator.apply(.progress(progress), to: access.id)
 	}
+
+	var isAttended: Bool { attended }
 }
 
 extension ConnectorReport {

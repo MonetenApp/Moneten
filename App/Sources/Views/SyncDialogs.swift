@@ -20,7 +20,8 @@ extension SessionBroker {
 	var sheet: SyncSheet? { current.map(SyncSheet.prompt) ?? requesting.map(SyncSheet.requesting) }
 }
 
-/// The dialog for the request on screen: the PIN sheet, "Two-Factor Authentication", or the question about a new host.
+/// The dialog for the request on screen: the PIN sheet, "Two-Factor Authentication", the login of an
+/// extension, its browser window, or the question about a new host.
 /// The broker decides when it opens and closes, so the buttons answer the broker and never dismiss.
 struct SyncDialog: View {
 	let broker: SessionBroker
@@ -31,8 +32,14 @@ struct SyncDialog: View {
 		case let .prompt(prompt):
 			switch prompt.request {
 			case let .pin(request): PINSheet(broker: broker, prompt: prompt, request: request)
-			case let .secondFactor(request): TwoFactorSheet(broker: broker, prompt: prompt, request: request)
+			case let .secondFactor(request):
+				switch request.challenge {
+				case let .openBrowser(approval): ExtensionLoginWindow(broker: broker, prompt: prompt, page: .approval(approval))
+				case let .captcha(captcha): ExtensionLoginWindow(broker: broker, prompt: prompt, page: .captcha(captcha))
+				default: TwoFactorSheet(broker: broker, prompt: prompt, request: request)
+				}
 			case let .allowHost(request): HostPermissionDialog(broker: broker, prompt: prompt, request: request)
+			case let .login(request): ExtensionLoginDialog(broker: broker, prompt: prompt, request: request)
 			}
 		case let .requesting(requesting): ChallengeProgressSheet(broker: broker, requesting: requesting)
 		}
@@ -40,7 +47,7 @@ struct SyncDialog: View {
 }
 
 /// The layout of `SheetFrame`, with buttons that do not dismiss the sheet.
-private struct DialogFrame<Content: View, Buttons: View>: View {
+struct DialogFrame<Content: View, Buttons: View>: View {
 	var title: String
 	var width: CGFloat = 460
 	@ViewBuilder var content: Content
@@ -185,12 +192,13 @@ struct TwoFactorSheet: View {
 			}
 			.keyboardShortcut(.cancelAction)
 			if !isWaiting {
-				Button("Continue", action: confirm).keyboardShortcut(.defaultAction).disabled(answer == nil)
+				Button(request.confirmTitle, action: confirm).keyboardShortcut(.defaultAction).disabled(answer == nil)
 			}
 		}
 		.onAppear {
 			if case let .chooseTANMethod(methods, current) = request.challenge {
-				method = methods.count == 1 ? methods[0].id : methods.first { $0.id == current }?.id
+				let available = methods.filter { $0.unavailable == nil }
+				method = available.count == 1 ? available[0].id : available.first { $0.id == current }?.id
 			}
 			if case let .chooseTANMedium(media) = request.challenge { medium = media.first ?? "" }
 		}
@@ -215,7 +223,7 @@ struct TwoFactorSheet: View {
 	/// The challenge waits for an approval outside the app, so there is nothing to type.
 	private var isWaiting: Bool {
 		switch request.challenge {
-		case .approveInApp, .openBrowser: true
+		case .approveInApp, .openBrowser, .captcha: true
 		default: false
 		}
 	}
@@ -228,9 +236,11 @@ struct TwoFactorSheet: View {
 					LabeledContent("TAN method", value: methods[0].name)
 				} else {
 					Picker("Choose TAN method", selection: $method) {
-						if !methods.contains(where: { $0.id == method }) { Text("None").tag(TANMethod.ID?.none) }
-						ForEach(methods) { Text($0.name).tag(Optional($0.id)) }
+						ForEach(methods) { m in
+							Text(m.unavailable.map { "\(m.name): \($0)" } ?? m.name).tag(Optional(m.id)).disabled(m.unavailable != nil)
+						}
 					}
+					.pickerStyle(.radioGroup)
 				}
 			}
 		case let .chooseTANMedium(media):
@@ -267,17 +277,13 @@ struct TwoFactorSheet: View {
 				if let step { Text("Code \(step.number) of \(step.of)").foregroundStyle(.secondary) }
 				Waiting(text: app.map { "Waiting for the approval in “\($0)”..." } ?? "Waiting for the approval in the app of the bank...")
 			}
-		case let .openBrowser(url):
-			Section {
-				Text("Continue in your browser. The dialog closes when the login is complete.")
-				Button("Open in Browser") { NSWorkspace.shared.open(url) }
-				Waiting(text: "Waiting for the browser...")
-			}
+		case .openBrowser, .captcha:
+			EmptyView()
 		}
 	}
 
 	private var tanField: some View {
-		TextField("TAN", text: $input, prompt: Text("Required"))
+		TextField(request.field.label, text: Binding(get: { input }, set: { input = request.field.accept($0) }), prompt: Text("Required"))
 			.textContentType(nil)
 	}
 
@@ -286,8 +292,8 @@ struct TwoFactorSheet: View {
 		switch request.challenge {
 		case .chooseTANMethod: method.map(UserAnswer.tanMethod)
 		case .chooseTANMedium: medium.isEmpty ? nil : .tanMedium(medium)
-		case .enterTAN, .flickerCode: input.isEmpty ? nil : .tan(Secret(input))
-		case .approveInApp, .openBrowser: nil
+		case .enterTAN, .flickerCode: request.field.isComplete(input) ? .tan(Secret(input)) : nil
+		case .approveInApp, .openBrowser, .captcha: nil
 		}
 	}
 

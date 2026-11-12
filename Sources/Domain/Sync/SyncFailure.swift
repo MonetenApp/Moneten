@@ -19,6 +19,8 @@ public enum SyncFailure: Error, Sendable, Equatable {
 	case needsUser(UserRequest.Kind)
 	/// The bank rejected the PIN. The app does not send it again in this refresh.
 	case pinRejected(BankMessage)
+	/// An extension service rejected the login data. Automatic refreshes skip the access until the user enters it again.
+	case loginRejected
 	case accessBlocked(BankMessage)
 	/// The bank did not accept the TAN that the user typed.
 	case tanRejected(BankMessage)
@@ -69,6 +71,10 @@ public enum SyncFailure: Error, Sendable, Equatable {
 			"An authorization is needed. Choose “Refresh Account” to give it."
 		case .needsUser(.allowHost):
 			"An extension asks to contact a new host. Choose “Refresh Account” to answer."
+		case .needsUser(.login):
+			"The login data is needed. Choose “Refresh Account” to enter it."
+		case .loginRejected:
+			"The login failed. The service did not accept the login data. Choose “Refresh Account” to enter it again."
 		case let .pinRejected(m):
 			"The bank did not accept the PIN: \(m.text)\nMore wrong attempts can block the access."
 		case let .accessBlocked(m):
