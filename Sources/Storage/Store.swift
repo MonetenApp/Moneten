@@ -70,8 +70,39 @@ public final class Store: Sendable {
 		}
 	}
 
+	/// Merges what a source delivered for one account, in one transaction: new rows, changed rows,
+	/// review marks, dropped pending rows, and the balance. On an error nothing is written, and the same
+	/// delivery can be merged again. The live rows, the deleted rows, and the rules are read inside the
+	/// transaction, so the result is exactly what was written, and `Ledger.apply` can take it over. An
+	/// account that no longer exists, such as one removed during its refresh, gets nothing.
+	public func merge(_ delivery: Delivery, into accountID: UUID, now: Date = Date()) throws -> Reconciliation {
+		try queue.write { db in
+			guard let account = try Account.fetchOne(db, key: accountID) else { return Reconciliation() }
+			let rules = Categorizer(ledger: Ledger(groups: try AccountGroup.fetchAll(db), accounts: try Account.fetchAll(db),
+				categories: try Domain.Category.fetchAll(db)))
+			let stored = try Transaction.filter(Column("accountID") == accountID).fetchAll(db)
+			let deleted = try DeletedTransaction.filter(Column("accountID") == accountID).fetchAll(db)
+			let r = reconcile(delivery, into: account, stored: stored, deleted: deleted, rules: rules, now: now)
+			// Insert, not save: a delivered ID that the database knows fails the merge instead of replacing a row.
+			for t in r.added { try t.insert(db) }
+			for t in r.booked + r.updated + r.marked { try t.update(db) }
+			_ = try Transaction.deleteAll(db, keys: r.dropped)
+			if let a = r.account {
+				try a.update(db)
+				try a.portfolioValue()?.save(db)
+			}
+			return r
+		}
+	}
+
+	/// Deletes transactions and keeps what identifies them, so that no later refresh adds them again.
+	/// The bank balance stays as it is.
 	public func deleteTransactions(_ ids: [UUID]) throws {
-		_ = try queue.write { db in try Transaction.deleteAll(db, keys: ids) }
+		try queue.write { db in
+			let now = Date()
+			for t in try Transaction.fetchAll(db, keys: ids) { try DeletedTransaction(t, deletedAt: now).insert(db) }
+			_ = try Transaction.deleteAll(db, keys: ids)
+		}
 	}
 
 	public func deleteAccount(_ id: UUID) throws {

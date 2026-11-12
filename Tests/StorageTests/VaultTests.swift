@@ -235,6 +235,31 @@ struct SchemaTests {
 		#expect(try store.loadLedger().accounts.map(\.color) == ["#3478F6"])
 	}
 
+	@Test("v6 keeps the transactions of a v5 database, without review marks, not fetched, and with no deleted rows")
+	func mergeColumns() throws {
+		let queue = try DatabaseQueue()
+		try Schema.migrator.migrate(queue, upTo: "v5")
+		let accountID = UUID()
+		let transactionID = UUID()
+		try queue.write { db in
+			try db.execute(sql: "INSERT INTO account (id, position, name, kind, source, currency, initialBalanceMinor, isClosed) VALUES (?, 0, 'Giro', 'giro', 'offline', 'EUR', 0, 0)",
+				arguments: [accountID])
+			try db.execute(sql: """
+				INSERT INTO bankTransaction (id, accountID, bookingDate, amountMinor, currency, name, purpose, isChecked, isPending, categorizedBy, isNew, createdAt)
+				VALUES (?, ?, 20261101, -8900, 'EUR', 'Stadtwerke', 'Abschlag', 0, 0, 'none', 1, '2026-11-01 09:00:00.000')
+				""", arguments: [transactionID, accountID])
+		}
+		try Schema.migrator.migrate(queue)
+		let store = Store(queue: queue)
+		let ledger = try store.loadLedger()
+		#expect(ledger.transactions.map(\.id) == [transactionID])
+		#expect(ledger.transactions.map(\.needsReview) == [false])
+		#expect(ledger.transactions.map(\.isFetched) == [false])
+		#expect(try queue.read { db in try DeletedTransaction.fetchCount(db) } == 0)
+		try store.deleteTransactions([transactionID])
+		#expect(try queue.read { db in try DeletedTransaction.fetchAll(db) }.map(\.purpose) == ["Abschlag"])
+	}
+
 	@Test("Saving a portfolio records the value of its balance day, alone or with an import, and other accounts record nothing")
 	func savingRecordsValues() throws {
 		let store = try Self.emptyStore()
