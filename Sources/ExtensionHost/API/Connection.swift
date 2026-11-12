@@ -82,12 +82,12 @@ enum Connection {
 	private static let request: clua_Function = { L in
 		let stack = LuaStack(L!)
 		guard lua_type(L, 2) == LUA_TSTRING else {
-			stack.pushString("connection:request needs a method and a URL.")
+			stack.pushMessage("connection:request needs a method and a URL.")
 			return -1
 		}
 		let method = stack.string(at: 2).uppercased()
 		guard httpMethods.contains(method) else {
-			stack.pushString("connection:request does not know the method \(method).")
+			stack.pushMessage("connection:request does not know the method \(method).")
 			return -1
 		}
 		return send(stack, method, urlAt: 3, name: "request")
@@ -121,7 +121,7 @@ enum Connection {
 		let stack = LuaStack(L!)
 		guard isConnection(stack, at: 1) else { return needsColon(stack, "setCookie") }
 		guard lua_type(L, 2) == LUA_TSTRING else {
-			stack.pushString("connection:setCookie needs a cookie in the format of Set-Cookie.")
+			stack.pushMessage("connection:setCookie needs a cookie in the format of Set-Cookie.")
 			return -1
 		}
 		HostSession.current(L).network.cookies.set(stack.string(at: 2), for: lastURL(stack, at: 1))
@@ -142,14 +142,14 @@ enum Connection {
 		let L = stack.L
 		guard isConnection(stack, at: 1) else { return needsColon(stack, name) }
 		guard lua_type(L, index) == LUA_TSTRING else {
-			stack.pushString("connection:\(name) needs a URL.")
+			stack.pushMessage("connection:\(name) needs a URL.")
 			return -1
 		}
 		let address = stack.string(at: index)
 		// An empty URL is the last one, as a form without an action posts to its own page.
 		let resolved = address.isEmpty ? lastURL(stack, at: 1) : URL(string: address, relativeTo: lastURL(stack, at: 1))?.absoluteURL
 		guard let url = resolved, url.scheme != nil else {
-			stack.pushString("connection:\(name) needs an absolute URL for its first request, not \(address).")
+			stack.pushMessage("connection:\(name) needs an absolute URL for its first request, not \(address).")
 			return -1
 		}
 		let session = HostSession.current(L)
@@ -167,7 +167,7 @@ enum Connection {
 			let redirects = rawField("redirects", of: stack) { lua_type(L, -1) != LUA_TBOOLEAN || lua_toboolean(L, -1) != 0 }
 			answer = try session.network.send(HTTPRequest(method: method, url: url, headers: headers.fields, body: body), followRedirects: redirects)
 		} catch {
-			stack.pushString("\(error)")
+			stack.pushMessage("\(error)")
 			return -1
 		}
 		setLastURL(answer.url, stack, at: 1)
@@ -175,7 +175,7 @@ enum Connection {
 		let page = Page(response)
 		for cookie in page.metaCookies { session.network.cookies.store(cookie, from: answer.url) }
 		if response.status >= 400, !acceptsJSON(headers["Accept"]) {
-			stack.pushString("The server \(answer.url.host() ?? "") answered with the HTTP status \(response.status).")
+			stack.pushMessage("The server \(answer.url.host() ?? "") answered with the HTTP status \(response.status).")
 			return -1
 		}
 		stack.pushBytes(response.body)
@@ -196,7 +196,7 @@ enum Connection {
 	}
 
 	private static func needsColon(_ stack: LuaStack, _ name: String) -> Int32 {
-		stack.pushString("connection:\(name) needs a connection. Call it with a colon: connection:\(name)(...).")
+		stack.pushMessage("connection:\(name) needs a connection. Call it with a colon: connection:\(name)(...).")
 		return -1
 	}
 

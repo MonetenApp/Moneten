@@ -61,12 +61,12 @@ enum HTMLDocument {
 	private static let create: clua_Function = { L in
 		let stack = LuaStack(L!)
 		guard lua_type(L, 1) == LUA_TSTRING else {
-			stack.pushString("HTML needs the HTML text as a string.")
+			stack.pushMessage("HTML needs the HTML text as a string.")
 			return -1
 		}
 		let content = stack.bytes(at: 1)
 		guard content.count < Int32.max else {
-			stack.pushString("The HTML text is too large.")
+			stack.pushMessage("The HTML text is too large.")
 			return -1
 		}
 		let charset = lua_type(L, 2) == LUA_TSTRING ? stack.string(at: 2) : nil
@@ -83,17 +83,17 @@ enum HTMLDocument {
 		} else if let list: ElementList = LuaObject.object(stack, at: 1, listType) {
 			context = (list.tree, list.nodes.first)
 		} else {
-			stack.pushString("xpath needs an HTML object or an element list. Call it with a colon.")
+			stack.pushMessage("xpath needs an HTML object or an element list. Call it with a colon.")
 			return -1
 		}
 		guard lua_type(L, 2) == LUA_TSTRING else {
-			stack.pushString("xpath needs an XPath expression.")
+			stack.pushMessage("xpath needs an XPath expression.")
 			return -1
 		}
 		let query = stack.string(at: 2)
 		guard let node = context.node else { return push(stack, context.tree, []) }
 		guard let nodes = context.tree.select(query, from: node) else {
-			stack.pushString("The XPath expression \(query) is not valid.")
+			stack.pushMessage("The XPath expression \(query) is not valid.")
 			return -1
 		}
 		return push(stack, context.tree, nodes)
@@ -102,7 +102,7 @@ enum HTMLDocument {
 	private static let html: clua_Function = { L in
 		let stack = LuaStack(L!)
 		guard let tree = tree(stack, at: 1) else {
-			stack.pushString("html:html needs an HTML object. Call it with a colon.")
+			stack.pushMessage("html:html needs an HTML object. Call it with a colon.")
 			return -1
 		}
 		stack.pushString(tree.html(formatted: true))
@@ -121,7 +121,7 @@ enum HTMLDocument {
 	private static func withList(_ L: OpaquePointer?, _ body: (LuaStack, ElementList) -> Int32) -> Int32 {
 		let stack = LuaStack(L!)
 		guard let list: ElementList = LuaObject.object(stack, at: 1, listType) else {
-			stack.pushString("This method needs an element list. Call it with a colon.")
+			stack.pushMessage("This method needs an element list. Call it with a colon.")
 			return -1
 		}
 		return body(stack, list)
@@ -161,7 +161,7 @@ enum HTMLDocument {
 	private static let attr: clua_Function = { L in
 		withList(L) { stack, list in
 			guard lua_type(L, 2) == LUA_TSTRING else {
-				stack.pushString("elements:attr needs the name of an attribute.")
+				stack.pushMessage("elements:attr needs the name of an attribute.")
 				return -1
 			}
 			let name = stack.string(at: 2).lowercased()
@@ -195,7 +195,7 @@ enum HTMLDocument {
 	private static let click: clua_Function = { L in
 		withList(L) { stack, list in
 			guard let node = list.nodes.first else {
-				stack.pushString("elements:click needs a link or a button, but the list is empty.")
+				stack.pushMessage("elements:click needs a link or a button, but the list is empty.")
 				return -1
 			}
 			if node.tag == "a", let href = node.attribute("href") {
@@ -204,7 +204,7 @@ enum HTMLDocument {
 				return 2
 			}
 			guard case .button(_, submits: true, _) = Field(node), let form = node.ancestor("form") else {
-				stack.pushString("elements:click needs a link, or a submit or image button in a form.")
+				stack.pushMessage("elements:click needs a link, or a submit or image button in a form.")
 				return -1
 			}
 			return push(stack, Form.request(form, submitter: node, encoding: list.tree.encoding))
@@ -214,7 +214,7 @@ enum HTMLDocument {
 	private static let submit: clua_Function = { L in
 		withList(L) { stack, list in
 			guard let form = list.nodes.first, form.tag == "form" else {
-				stack.pushString("elements:submit needs a form.")
+				stack.pushMessage("elements:submit needs a form.")
 				return -1
 			}
 			return push(stack, Form.request(form, submitter: nil, encoding: list.tree.encoding))
@@ -524,7 +524,7 @@ enum LuaObject {
 		}
 		for (name, source) in luaMethods {
 			luaL_loadbufferx(L, source, source.utf8.count, "=" + misses + name, "t")
-			lua_pcallk(L, 0, 1, 0, 0, nil)
+			_ = clua_pcall(L, 0, 1)
 			lua_setfield(L, -2, name)
 		}
 		Environment.reportMisses(stack, of: misses)

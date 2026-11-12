@@ -15,7 +15,7 @@ enum PDFDocument {
 	private static let create: clua_Function = { L in
 		let stack = LuaStack(L!)
 		guard lua_type(L, 1) == LUA_TSTRING else {
-			stack.pushString("PDF needs the PDF document as a string.")
+			stack.pushMessage("PDF needs the PDF document as a string.")
 			return -1
 		}
 		LuaObject.push(stack, LuaObject.Box(stack.bytes(at: 1)), type)
@@ -26,11 +26,11 @@ enum PDFDocument {
 	private static let text: clua_Function = { L in
 		let stack = LuaStack(L!)
 		guard let pdf: LuaObject.Box<Data> = LuaObject.object(stack, at: 1, type) else {
-			stack.pushString("pdf:text needs a PDF object. Call it with a colon.")
+			stack.pushMessage("pdf:text needs a PDF object. Call it with a colon.")
 			return -1
 		}
 		guard let document = PDFKit.PDFDocument(data: pdf.value) else {
-			stack.pushString("The PDF document could not be read.")
+			stack.pushMessage("The PDF document could not be read.")
 			return -1
 		}
 		stack.pushString(document.string ?? "")

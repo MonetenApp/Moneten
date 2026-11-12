@@ -97,8 +97,27 @@ import Testing
 			end
 			""")
 		let session = HostSession(package: package, transport: LargeBodies(), memory: 32 * 1_048_576, ask: { _ in .denied }, log: { _ in })
-		let result = Result { () throws(ScriptError) -> LuaValue in _ = try session.load(); return try session.call("Churn") }
+		let result = Result { () throws(ScriptError) -> LuaValue in _ = try session.load(); return try session.call(.function("Churn")) }
 		#expect(result == .success(.string("done")))
+	}
+
+	/// An error of a Swift function that quotes data of the script, such as a URL of 1 MB, keeps 1,000
+	/// bytes of it, so that the error needs little memory.
+	@Test(arguments: [
+		#"Connection():request("GET", string.rep("x", 1048576))"#,
+		#"Connection():request("GET", "https://" .. string.rep("x", 1048576) .. ".example/")"#,
+		#"Connection():request("GET", "https://api.bank.example/", nil, nil, {["proxy-" .. string.rep("x", 1048576)] = "1"})"#,
+		#"HTML("<p></p>"):xpath(string.rep("(", 1048576))"#,
+	])
+	func scriptDataIsClippedInErrors(call: String) {
+		let run = Run(demo("""
+			WebBanking{version = 1}
+			function Huge()
+				local ok, message = pcall(function() return \(call) end)
+				return #(message:gsub("^Demo%.lua:%d+: ", ""))
+			end
+			""", hosts: ["api.bank.example"]))
+		#expect(run.call("Huge") == .integer(Int64(LuaStack.maxMessage + "…".utf8.count)))
 	}
 
 	@Test func requestReportsItsStartAndEnd() throws {

@@ -101,7 +101,11 @@ import Testing
 		#expect(exchange.header("Cookie", of: 1) == "s=1")
 		#expect(exchange.header("Authorization", of: 2) == nil)
 		#expect(exchange.header("Cookie", of: 2) == nil)
-		#expect(exchange.header("X-Trace", of: 2) == "t")
+		// Only Accept, Accept-Language, and User-Agent go to another host (#91).
+		#expect(exchange.header("X-Trace", of: 1) == "t")
+		#expect(exchange.header("X-Trace", of: 2) == nil)
+		#expect(exchange.header("Accept-Language", of: 2) == "en-US")
+		#expect(exchange.header("User-Agent", of: 2)?.hasPrefix("Mozilla/5.0") == true)
 	}
 
 	@Test func removedAttributeOfAListStaysReadable() {

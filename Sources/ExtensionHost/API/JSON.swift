@@ -20,7 +20,7 @@ enum JSONObject {
 		case LUA_TSTRING: LuaObject.push(stack, LuaObject.Box<Data?>(stack.bytes(at: 1)), type)
 		case LUA_TNONE, LUA_TNIL: LuaObject.push(stack, LuaObject.Box<Data?>(nil), type)
 		default:
-			stack.pushString("JSON needs a JSON document as a string.")
+			stack.pushMessage("JSON needs a JSON document as a string.")
 			return -1
 		}
 		return 1
@@ -29,7 +29,7 @@ enum JSONObject {
 	private static func withDocument(_ L: OpaquePointer?, _ body: (LuaStack, LuaObject.Box<Data?>) -> Int32) -> Int32 {
 		let stack = LuaStack(L!)
 		guard let document: LuaObject.Box<Data?> = LuaObject.object(stack, at: 1, type) else {
-			stack.pushString("This method needs a JSON object. Call it with a colon.")
+			stack.pushMessage("This method needs a JSON object. Call it with a colon.")
 			return -1
 		}
 		return body(stack, document)
@@ -46,10 +46,10 @@ enum JSONObject {
 			do {
 				try push(try JSONSerialization.jsonObject(with: text, options: .fragmentsAllowed), on: stack)
 			} catch let error as ScriptError {
-				stack.pushString(error.message)
+				stack.pushMessage(error.message)
 				return -1
 			} catch {
-				stack.pushString("The JSON document could not be read.")
+				stack.pushMessage("The JSON document could not be read.")
 				return -1
 			}
 			return 1
@@ -63,7 +63,7 @@ enum JSONObject {
 				var budget = LuaStack.maxValues
 				try write(at: 2, of: stack, depth: 0, budget: &budget, into: &text)
 			} catch {
-				stack.pushString(error.message)
+				stack.pushMessage(error.message)
 				return -1
 			}
 			document.value = Data(text.utf8)
