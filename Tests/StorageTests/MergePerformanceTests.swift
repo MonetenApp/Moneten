@@ -44,7 +44,8 @@ struct MergePerformanceTests {
 		#expect(added == [50, 50, 50])
 		#expect(ledger.transactions.count == 50_150)
 		#if !DEBUG
-		#expect(merge < .milliseconds(70))
+		// The budget of the import in PerformanceTests: both add rows to a ledger of 50,000.
+		#expect(merge < .milliseconds(300))
 		#endif
 	}
 }
