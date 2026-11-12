@@ -182,13 +182,14 @@ import Testing
 			WebBanking{version = 1}
 			function Post()
 				return Connection():request("POST", "https://api.bank.example/login", "user=demo&pin=1234", "application/x-www-form-urlencoded",
-					{Authorization = "Bearer secret", Cookie = "session=1", ["X-Client"] = "Demo"})
+					{Authorization = "Bearer secret", Cookie = "session=1", ["X-API-Key"] = "bank-key-4711", Accept = "text/html"})
 			end
 			""", hosts: hosts), exchanges: [("POST", "https://api.bank.example/login", status, ["Location": url], ""),
 				("POST", url, 200, [:], "next"), ("GET", url, 200, [:], "next")])
 	}
 
-	static let postHeaders = ["Authorization": "Bearer secret", "Cookie": "session=1", "X-Client": "Demo", "Content-Type": "application/x-www-form-urlencoded"]
+	static let postHeaders = ["Authorization": "Bearer secret", "Cookie": "session=1", "X-API-Key": "bank-key-4711", "Accept": "text/html",
+		"Content-Type": "application/x-www-form-urlencoded"]
 
 	@Test(arguments: [307, 308])
 	func redirectOnTheSameHostKeepsCredentialsAndBody(status: Int) throws {
@@ -203,13 +204,13 @@ import Testing
 		let run = Self.post(to: "https://other.bank.example/next", status: status)
 		#expect(run.call("Post") == .string("next"))
 		let follow = try #require(run.requests.last)
-		#expect(follow == HTTPRequest(method: "POST", url: URL(string: "https://other.bank.example/next")!, headers: ["X-Client": "Demo"]))
+		#expect(follow == HTTPRequest(method: "POST", url: URL(string: "https://other.bank.example/next")!, headers: ["Accept": "text/html"]))
 	}
 
 	@Test func redirectAfterAPostToAnotherHostDropsCredentials() throws {
 		let run = Self.post(to: "https://other.bank.example/next", status: 302)
 		#expect(run.call("Post") == .string("next"))
 		let follow = try #require(run.requests.last)
-		#expect(follow == HTTPRequest(method: "GET", url: URL(string: "https://other.bank.example/next")!, headers: ["X-Client": "Demo"]))
+		#expect(follow == HTTPRequest(method: "GET", url: URL(string: "https://other.bank.example/next")!, headers: ["Accept": "text/html"]))
 	}
 }

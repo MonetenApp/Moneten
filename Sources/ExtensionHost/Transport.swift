@@ -75,21 +75,21 @@ struct Network {
 		throw ScriptError("More than \(Self.maxRedirects) redirects, the last to \(request.url.absoluteString).")
 	}
 
-	/// Headers that hold the login of one site. A redirect to another host does not take them along.
-	static let credentialHeaders: Set = ["authorization", "cookie"]
+	/// The headers that a redirect to another host takes along. Any other header that the script set
+	/// may hold the login of the first host, such as `Authorization`, `Cookie`, or `X-API-Key`.
+	static let crossHostHeaders: Set = ["accept", "accept-language", "user-agent"]
 
 	/// The request that a redirect asks for, as browsers send it: a 303, and a 301 or 302 after a
-	/// POST, become a GET without a body. A redirect to another host also drops `Authorization`,
-	/// `Cookie`, and the body, so that a login sent to one host never reaches another.
+	/// POST, become a GET without a body. A redirect to another host keeps only `crossHostHeaders`
+	/// and drops the body, so that a login sent to one host never reaches another.
 	static func redirect(after request: HTTPRequest, _ response: HTTPResponse) -> HTTPRequest? {
 		guard [301, 302, 303, 307, 308].contains(response.status), let location = response.header("Location"),
 			let target = URL(string: location, relativeTo: request.url)?.absoluteURL else { return nil }
 		let keepsMethod = response.status == 307 || response.status == 308 || (response.status != 303 && request.method == "GET")
 		let sameHost = target.host()?.lowercased() == request.url.host()?.lowercased()
 		let body = keepsMethod && sameHost ? request.body : nil
-		let dropsBody = !keepsMethod || body != request.body
 		let headers = request.headers.filter { name, _ in
-			(sameHost || !credentialHeaders.contains(name.lowercased())) && !(dropsBody && name.caseInsensitiveCompare("Content-Type") == .orderedSame)
+			sameHost ? keepsMethod || name.caseInsensitiveCompare("Content-Type") != .orderedSame : crossHostHeaders.contains(name.lowercased())
 		}
 		return HTTPRequest(method: keepsMethod ? request.method : "GET", url: target, headers: headers, body: body)
 	}
