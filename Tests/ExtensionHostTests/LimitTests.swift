@@ -91,8 +91,9 @@ import Testing
 		let package = demo("""
 			WebBanking{version = 1}
 			function Churn()
-				local mt = {__gc = function() end}
-				for i = 1, 1000000 do setmetatable(Connection(), mt) end
+				-- A JSON object of the API is a userdata whose finalizer Swift registers. A Connection
+				-- protects its metatable, so the script cannot give it one.
+				for i = 1, 1000000 do JSON("{}") end
 				return "done"
 			end
 			""")
