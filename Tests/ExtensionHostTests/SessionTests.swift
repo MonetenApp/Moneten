@@ -226,11 +226,40 @@ import Testing
 		let recorder = Recorder()
 		let client = try await Self.start(demo("""
 			WebBanking{version = 1}
-			function Chatty() for i = 1, 6 do print(string.rep("x", 1048575)) end return "done" end
+			function Chatty() for i = 1, 6 do print(string.rep("x", 1048512)) end return "done" end
+			function Empty() for i = 1, 100000 do print("") end return "done" end
 			"""), fixture: Self.fixture([]), recorder: recorder)
 		#expect(try await client.call("Chatty") == .string("done"))
-		let line = HostLog.print(String(repeating: "x", count: 1_048_575))
+		let line = HostLog.print(String(repeating: "x", count: 1_048_512))
 		#expect(recorder.printed.withLock { $0 } == [line, line, line, line, .print("Moneten drops the rest of the output of print, because Demo printed more than 4 MB.")])
+		await client.end()
+	}
+
+	/// Each line counts 64 bytes more than its text, for what the event costs in the queue, so empty
+	/// lines use up the budget too.
+	@Test func emptyPrintLinesUseUpTheBudget() async throws {
+		let recorder = Recorder()
+		let client = try await Self.start(demo("""
+			WebBanking{version = 1}
+			function Empty() for i = 1, 100000 do print("") end return "done" end
+			"""), fixture: Self.fixture([]), recorder: recorder)
+		#expect(try await client.call("Empty") == .string("done"))
+		let printed = recorder.printed.withLock { $0 }
+		#expect(printed.count == 65_537 && printed.last == .print("Moneten drops the rest of the output of print, because Demo printed more than 4 MB."))
+		await client.end()
+	}
+
+	/// A method of 1 MB comes back in a message of 300 characters, so that an error never needs as much
+	/// memory as the script data it quotes.
+	@Test func hugeMethodIsClippedInTheError() async throws {
+		let client = try await Self.start(demo("""
+			WebBanking{version = 1}
+			function Huge()
+				local ok, message = pcall(function() return Connection():request(string.rep("x", 1048576), "https://api.bank.example/") end)
+				return #message
+			end
+			""", hosts: ["api.bank.example"]), fixture: Self.fixture([]))
+		#expect(try await client.call("Huge") == .integer(Int64("Demo.lua:4: ".utf8.count + 300 + "…".utf8.count)))
 		await client.end()
 	}
 

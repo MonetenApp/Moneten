@@ -190,7 +190,8 @@ public actor ExtensionHostClient {
 					}
 					if case let .print(text) = event {
 						let before = state.printed
-						state.printed += text.utf8.count + 1
+						// A queued event costs about 64 bytes besides its text, so empty lines count too.
+						state.printed += text.utf8.count + 64
 						if state.printed <= ExtensionHostClient.maxPrinted {
 							events.append(.success(event))
 						} else if before <= ExtensionHostClient.maxPrinted {

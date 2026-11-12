@@ -87,14 +87,14 @@ enum Environment {
 	private static let webBanking: clua_Function = { L in
 		let stack = LuaStack(L!)
 		guard lua_type(L, 1) == LUA_TTABLE else {
-			stack.pushString("WebBanking needs a table.")
+			stack.pushMessage("WebBanking needs a table.")
 			return -1
 		}
 		let fields: (version: LuaValue, services: LuaValue, url: LuaValue, description: LuaValue)
 		do {
 			fields = (try stack.field("version", of: 1), try stack.field("services", of: 1), try stack.field("url", of: 1), try stack.field("description", of: 1))
 		} catch {
-			stack.pushString("\(error)")
+			stack.pushMessage("\(error)")
 			return -1
 		}
 		let version: Double
@@ -102,7 +102,7 @@ enum Environment {
 		case let .integer(i): version = Double(i)
 		case let .number(n): version = n
 		default:
-			stack.pushString("version is missing in WebBanking{}.")
+			stack.pushMessage("version is missing in WebBanking{}.")
 			return -1
 		}
 		let services: [String] = switch fields.services {

@@ -19,18 +19,18 @@ enum Connection {
 	private static let request: clua_Function = { L in
 		let stack = LuaStack(L!)
 		guard lua_type(L, 2) == LUA_TSTRING, lua_type(L, 3) == LUA_TSTRING else {
-			stack.pushString("connection:request needs a method and a URL.")
+			stack.pushMessage("connection:request needs a method and a URL.")
 			return -1
 		}
 		let method = stack.string(at: 2).uppercased(), address = stack.string(at: 3)
 		guard methods.contains(method) else {
-			stack.pushString("connection:request does not know the method \(method).")
+			stack.pushMessage("connection:request does not know the method \(method).")
 			return -1
 		}
 		let session = HostSession.current(L)
 		let connection = lua_topointer(L, 1)
 		guard let url = URL(string: address, relativeTo: connection.flatMap { session.lastURLs[$0] })?.absoluteURL, url.scheme != nil else {
-			stack.pushString("connection:request needs an absolute URL for its first request, not \(address).")
+			stack.pushMessage("connection:request needs an absolute URL for its first request, not \(address).")
 			return -1
 		}
 		let response: HTTPResponse
@@ -44,7 +44,7 @@ enum Connection {
 			if let connection { session.lastURLs[connection] = url }
 			response = try session.network.send(HTTPRequest(method: method, url: url, headers: headers, body: body))
 		} catch {
-			stack.pushString("\(error)")
+			stack.pushMessage("\(error)")
 			return -1
 		}
 		let contentType = ContentType(response.header("Content-Type"))

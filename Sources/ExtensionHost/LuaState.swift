@@ -197,6 +197,12 @@ struct LuaStack {
 		pushBytes(Data(text.utf8))
 	}
 
+	/// Pushes the message of an error of a Swift function. A message that quotes a script's data, such
+	/// as a method of 80 MB, is cut after 300 characters, so that the error needs little memory.
+	func pushMessage(_ text: String) {
+		pushString(text.count > 300 ? String(text.prefix(300)) + "…" : text)
+	}
+
 	func pushBytes(_ data: Data) {
 		data.withUnsafeBytes { _ = lua_pushlstring(L, $0.baseAddress?.assumingMemoryBound(to: CChar.self), $0.count) }
 	}
