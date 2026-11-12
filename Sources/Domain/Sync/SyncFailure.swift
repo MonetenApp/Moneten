@@ -58,7 +58,7 @@ public enum SyncFailure: Error, Sendable, Equatable {
 		switch self {
 		case let .pinRejected(m), let .accessBlocked(m), let .tanRejected(m), let .bank(m): m
 		case let .approvalDeclined(m): m
-		case .needsUser, .challengeExpired, .invalidChallenge, .notRegistered, .notFetched, .offline, .network, .unsupported, .notSaved: nil
+		case .needsUser, .loginRejected, .challengeExpired, .invalidChallenge, .notRegistered, .notFetched, .offline, .network, .unsupported, .notSaved: nil
 		}
 	}
 

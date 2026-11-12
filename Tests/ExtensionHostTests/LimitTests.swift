@@ -46,7 +46,7 @@ import Testing
 			""", hosts: ["api.bank.example"])
 		let session = HostSession(package: package, transport: LargeBodies(), memory: 64 * 1_048_576, ask: { _ in .denied }, log: { _ in })
 		let before = Self.footprint()
-		let result = Result { () throws(ScriptError) -> LuaValue in _ = try session.load(); return try session.call("Fill") }
+		let result = Result { () throws(ScriptError) -> LuaValue in _ = try session.load(); return try session.call(.function("Fill")) }
 		let growth = Self.footprint() - before
 		#expect(result == .success(.object(["not enough memory": .integer(40)])))
 		#expect(growth < 160 * 1_048_576, "the footprint grew by \(growth / 1_048_576) MB")
