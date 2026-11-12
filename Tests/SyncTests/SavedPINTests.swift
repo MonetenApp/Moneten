@@ -151,6 +151,47 @@ struct SavedPINTests {
 		#expect(broker.savedPINs == [Self.bank.id])
 	}
 
+	@Test("Adding the login again replaces its saved PIN with the PIN the bank accepted, also with saving off")
+	func setupReplacesSavedPIN() throws {
+		try store.savePIN(Secret("12345"), for: Self.bank.id)
+		try broker.open(store)
+		try broker.remember(Secret("67890"), for: Self.bank.id, save: false)
+		#expect(store.pins == [Self.bank.id: Secret("67890")])
+		#expect(broker.savedPINs == [Self.bank.id])
+	}
+
+	@Test("A blocked access loses its saved PIN and the PIN in memory without a new PIN sheet, and the next manual refresh asks")
+	func blockedDeletesPIN() async throws {
+		try store.savePIN(Secret("12345"), for: Self.bank.id)
+		try broker.open(store)
+		let blocked = BankMessage(code: "9930", text: "Zugang gesperrt")
+		let automatic = refresh([.ask(Self.pin), .fail(.accessBlocked(blocked))], attended: false)
+		await until { !coordinator.isRefreshing }
+		#expect(automatic.answers.all == [.pin(Secret("12345"))])
+		#expect(coordinator.states[Self.bank.id] == .failed(.accessBlocked(blocked)))
+		#expect(broker.current == nil)
+		#expect(store.pins.isEmpty)
+		#expect(broker.savedPINs.isEmpty)
+
+		let manual = refresh([.ask(Self.pin)])
+		await until { broker.current?.request == Self.pin }
+		broker.cancel(try #require(broker.current).id)
+		await until { !coordinator.isRefreshing }
+		#expect(manual.answers.all.isEmpty)
+	}
+
+	@Test("A PIN in memory that was not saved is forgotten when the access is blocked")
+	func blockedForgetsPIN() async {
+		_ = refresh([.ask(Self.pin), .fail(.accessBlocked(BankMessage(code: "9930", text: "Zugang gesperrt")))])
+		await until { broker.current != nil }
+		answer(.pin(Secret("12345")))
+		await until { !coordinator.isRefreshing }
+		let next = refresh([.ask(Self.pin)], attended: false)
+		await until { !coordinator.isRefreshing }
+		#expect(next.answers.all.isEmpty)
+		#expect(coordinator.states[Self.bank.id] == .failed(.needsUser(.pin)))
+	}
+
 	@Test("A rejected PIN never reaches the error of the account")
 	func rejectionRecord() async {
 		var refreshes: [UUID: AccountRefresh] = [:]

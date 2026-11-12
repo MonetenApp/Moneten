@@ -141,10 +141,11 @@ public final class SessionBroker {
 	}
 
 	/// Keeps the PIN that the setup of a new access logged in with, so that its first refresh does not
-	/// ask again. The bank accepted it, so it is saved at once when the user asked to save it.
+	/// ask again. The bank accepted it, so it is saved at once when the user asked to save it, and it
+	/// replaces a PIN that is saved for the access already.
 	public func remember(_ pin: Secret, for access: UUID, save: Bool) throws {
 		pins[access] = pin
-		if save { try writeSavedPIN(pin, of: access) }
+		if save || savedPINs.contains(access) { try writeSavedPIN(pin, of: access) }
 	}
 
 	/// "Remove saved PIN": deletes the saved PIN of an access, for all its accounts, and forgets it, so the
@@ -166,7 +167,7 @@ public final class SessionBroker {
 	/// The refresh of an access ended with `event`. After a finished refresh the bank has accepted the
 	/// PIN, so a PIN that the user asked to save goes into the database now. After any other end, a PIN
 	/// that is not saved is forgotten, so a typing error is never sent again on its own. A saved PIN
-	/// stays, unless the bank rejected it.
+	/// stays, unless the bank rejected it or blocked the access.
 	func refreshEnded(_ access: UUID, with event: SyncEvent) {
 		endRequest(of: access)
 		chosenMethods[access] = nil
@@ -175,7 +176,7 @@ public final class SessionBroker {
 		case .finish:
 			guard save, let pin = pins[access] else { return }
 			do { try writeSavedPIN(pin, of: access) } catch { onStoreFailure(error) }
-		case .fail(.pinRejected):
+		case .fail(.pinRejected), .fail(.accessBlocked):
 			forgetRejectedPIN(of: access)
 		default:
 			if !savedPINs.contains(access) { pins[access] = nil }
@@ -194,7 +195,8 @@ public final class SessionBroker {
 		if store != nil { savedPINs.insert(access) }
 	}
 
-	/// The bank rejected the PIN: it leaves the memory and the database ("No automatic retry after a wrong PIN").
+	/// The bank rejected the PIN or blocked the access: the PIN leaves the memory and the database ("No
+	/// automatic retry after a wrong PIN").
 	private func forgetRejectedPIN(of access: UUID) {
 		pins[access] = nil
 		toSave.remove(access)
