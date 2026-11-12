@@ -31,15 +31,16 @@ struct MergePerformanceTests {
 		}
 		var added: [Int] = []
 		let clock = ContinuousClock()
-		let merge = accounts.prefix(3).map { a in
+		let runs = accounts.prefix(3).map { a in
 			let d = delivery(a)
-			return clock.measure {
-				let r = try? store.merge(d, into: a.id)
-				if let r { ledger.apply(r) }
-				added.append(r?.added.count ?? -1)
-			}
-		}.min()!
-		print("merge of 300 rows into 2,500 of 50,000 \(merge)")
+			var r: Reconciliation?
+			let write = clock.measure { r = try? store.merge(d, into: a.id) }
+			let show = clock.measure { if let r { ledger.apply(r) } }
+			added.append(r?.added.count ?? -1)
+			return (write: write, show: show)
+		}
+		let merge = runs.map { $0.write + $0.show }.min()!
+		print("merge of 300 rows into 2,500 of 50,000 \(merge), runs (store, ledger): \(runs.map { "\($0.write) \($0.show)" })")
 		#expect(added == [50, 50, 50])
 		#expect(ledger.transactions.count == 50_150)
 		#if !DEBUG
