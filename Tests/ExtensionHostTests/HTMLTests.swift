@@ -233,6 +233,17 @@ final class Visit {
 			page: "<a href=\"/logout\">Log <b>out</b></a>") == .array([.string("Log out"), .string("/logout"), .string(""), .string("")]))
 	}
 
+	/// `html()` of an element list is undocumented. The signed Amazon extension reads an order number
+	/// from the markup of an element whose attribute it could not read.
+	@Test func htmlOfElementsIsTheirMarkup() {
+		#expect(check("""
+			return {html:xpath("//div"):html(), html:xpath("//li"):html(), html:xpath("//p"):html(), html:xpath("//a/@href"):html(), html:xpath("//b/text()"):html(),
+				html:xpath("//comment()"):html(), html:xpath("/"):html():find("<li>2</li>", 1, true) ~= nil}
+			""", page: #"<div class="order-card" data-id="302-1"><b>Bestellung</b> 302-1</div><ul><li>1</li><li>2</li></ul><a href="/x">x</a><!--c-->"#)
+			== .array([.string(#"<div class="order-card" data-id="302-1"><b>Bestellung</b> 302-1</div>"#), .string("<li>1</li><li>2</li>"), .string(""),
+				.string(#" href="/x""#), .string("Bestellung"), .string("<!--c-->"), .boolean(true)]))
+	}
+
 	@Test func attrSetsAllElements() {
 		#expect(check("html:xpath('//li'):attr('class', 'neu') return html:xpath(\"//li[@class='neu']\"):length()",
 			page: "<ul><li>1</li><li class=alt>2</li></ul>") == .integer(2))

@@ -14,7 +14,7 @@ enum HTMLDocument {
 		LuaObject.register(stack, treeType, misses: "html:", methods: [("xpath", xpath), ("html", html)])
 		LuaObject.register(stack, listType, misses: "elements:", methods: [
 			("length", length), ("get", get), ("reverse", reverse), ("children", children), ("xpath", xpath), ("text", text),
-			("attr", attr), ("val", val), ("select", select), ("click", click), ("submit", submit),
+			("attr", attr), ("val", val), ("select", select), ("click", click), ("submit", submit), ("html", elementsHTML),
 		], luaMethods: [("each", each)])
 		clua_pushfunction(stack.L, create)
 		stack.setGlobal("HTML")
@@ -107,6 +107,14 @@ enum HTMLDocument {
 		}
 		stack.pushString(tree.html(formatted: true))
 		return 1
+	}
+
+	/// `elements:html()`, which the API page does not document, returns the markup of each element in turn.
+	private static let elementsHTML: clua_Function = { L in
+		withList(L) { stack, list in
+			stack.pushString(list.nodes.map(list.tree.html).joined())
+			return 1
+		}
 	}
 
 	/// Runs `body` with the element list that a method was called on.
@@ -292,8 +300,17 @@ private final class HTMLTree {
 
 	/// The document as HTML in UTF-8. `LocalStorage` keeps it unformatted, so that the text nodes stay as they are.
 	func html(formatted: Bool) -> String {
+		written { htmlDocContentDumpFormatOutput($0, document, nil, formatted ? 1 : 0) }
+	}
+
+	/// The markup of `node` and its descendants as the document holds it, unformatted.
+	func html(of node: Node) -> String {
+		written { htmlNodeDumpFormatOutput($0, document, node, nil, 0) }
+	}
+
+	private func written(_ write: (xmlOutputBufferPtr) -> Void) -> String {
 		guard let buffer = xmlAllocOutputBuffer(nil) else { return "" }
-		htmlDocContentDumpFormatOutput(buffer, document, nil, formatted ? 1 : 0)
+		write(buffer)
 		xmlOutputBufferFlush(buffer)
 		let text = xmlOutputBufferGetContent(buffer).map { String(cString: $0) } ?? ""
 		xmlOutputBufferClose(buffer)

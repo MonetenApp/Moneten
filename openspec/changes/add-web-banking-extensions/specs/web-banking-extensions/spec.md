@@ -1205,12 +1205,18 @@ The app SHALL offer `MM.derdecode(data)`, which reads the DER elements at the to
 
 ### Requirement: Undocumented functions in use
 
-The app SHALL offer `MM.derdecode`, `MM.base64urldecode`, `connection.redirects`, and the fifth return value of `connection:get`, because published extensions use them. A call of any other function that the app does not offer stops the script with an error that names the function and the line. A read of such a name gives `nil`.
+The app SHALL offer `MM.derdecode`, `MM.base64urldecode`, `connection.redirects`, the fifth return value of `connection:get`, `elements:html()`, and `JSON(json):array()`, because published extensions use them. `elements:html()` returns the markup of each element in turn. `JSON(json):array()` returns the same as `JSON(json):dictionary()`. A call of any other function that the app does not offer stops the script with an error that names the function and the line. A read of such a name gives `nil`.
 
 #### Scenario: URL-safe Base64
 
 - **WHEN** a script calls `MM.base64urldecode("SGVsbG8")`
 - **THEN** the result is "Hello"
+
+#### Scenario: Markup of an element
+
+- **GIVEN** a document with `<div data-id="302-1"><b>Order</b></div>`
+- **WHEN** a script calls `html:xpath("//div"):html()`
+- **THEN** the result is `<div data-id="302-1"><b>Order</b></div>`
 
 #### Scenario: Unknown function
 

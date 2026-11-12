@@ -3,12 +3,13 @@ import Foundation
 
 /// The `JSON` object of the Web Banking API. It holds one JSON document as text: `JSON(json)` keeps
 /// the text as given, `set(fields)` replaces it with the serialized fields, `json()` returns it, and
-/// `dictionary()` parses it.
+/// `dictionary()` parses it. `array()`, which the API page does not document, does the same, as
+/// signed extensions call it when `dictionary()` failed.
 enum JSONObject {
 	private static let type = "Moneten.JSON"
 
 	static func install(_ stack: LuaStack) {
-		LuaObject.register(stack, type, misses: "json:", methods: [("dictionary", dictionary), ("set", set), ("json", json)])
+		LuaObject.register(stack, type, misses: "json:", methods: [("dictionary", dictionary), ("array", dictionary), ("set", set), ("json", json)])
 		clua_pushfunction(stack.L, create)
 		stack.setGlobal("JSON")
 	}

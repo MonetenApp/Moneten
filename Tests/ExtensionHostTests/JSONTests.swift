@@ -50,6 +50,12 @@ import Testing
 			== .array([.string(#"{ "a" : 1 }"#), .string(#"{"b":2}"#), .integer(2), .string("null")]))
 	}
 
+	/// `array()` is undocumented. Signed extensions call it after `dictionary()` failed, inside `pcall`.
+	@Test func arrayReadsTheDocumentAsDictionaryDoes() {
+		#expect(run(#"return JSON('[1, {"a": "b"}]'):array()"#) == .array([.integer(1), .object(["a": .string("b")])]))
+		#expect(run("return (pcall(function() return JSON('[1,'):array() end))") == .boolean(false))
+	}
+
 	@Test func invalidDocumentStops() {
 		#expect(run("return JSON('<html>'):dictionary()") == .string("error: Demo.lua:3: The JSON document could not be read."))
 		#expect(run("return (pcall(function() return JSON('<html>'):dictionary() end))") == .boolean(false))
@@ -58,7 +64,7 @@ import Testing
 	@Test(arguments: [
 		("local t = {} t.t = t return JSON():set(t):json()", "error: Demo.lua:3: Tables nest deeper than 100 levels."),
 		("return JSON():set({x = 0/0}):json()", "error: Demo.lua:3: JSON cannot hold the number nan."),
-		("return JSON('[]'):array()", "error: Moneten does not provide json:array (Demo.lua:3)"),
+		("return JSON('[]'):list()", "error: Moneten does not provide json:list (Demo.lua:3)"),
 	])
 	func unwritableValueStops(script: String, message: String) {
 		#expect(run(script) == .string(message))
