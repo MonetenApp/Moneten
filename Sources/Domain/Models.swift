@@ -250,6 +250,10 @@ public struct Transaction: Identifiable, Hashable, Sendable, Codable {
 
 	public var amount: Money { Money(minorUnits: amountMinor, currency: currency) }
 
+	/// The prefix of the IDs that the MoneyMoney migration gives. Such an ID says where a row came from,
+	/// not which source delivers it, so a source with IDs of its own takes the row over.
+	public static let migrationIDPrefix = "moneymoney:"
+
 	/// The user checked the row: it is no longer new and needs no more review. "Mark All Transactions
 	/// as Checked" and a single checkmark both call it.
 	public mutating func markChecked() {

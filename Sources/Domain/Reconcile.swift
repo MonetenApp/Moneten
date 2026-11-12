@@ -99,7 +99,7 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored: [Tran
 				next = live.takingBankFields(of: delivered)
 				if next != live { rules.categorize(&next) }
 			case .fingerprint:
-				if next.sourceID == nil { next.sourceID = delivered.sourceID }
+				if let id = delivered.sourceID, Identity.remote(next.sourceID) == nil { next.sourceID = id }
 			}
 			if fetched { next.isFetched = true }
 			if live.isPending && !next.isPending {
@@ -232,7 +232,8 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 /// from the bank fields at every merge and never stored, so stored, deleted, and delivered rows always
 /// follow the same version of the rule, and a change of the rule needs no migration.
 struct Identity {
-	/// The ID that the source gave. Two rows with the same ID are the same transaction, whatever else differs.
+	/// The ID that the source gave, nil for an ID of the MoneyMoney migration. Two rows with the same ID are
+	/// the same transaction, whatever else differs.
 	let sourceID: String?
 	let key: Key
 	let isPending: Bool
@@ -290,7 +291,7 @@ struct Identity {
 		Step(fit: .exact, pending: .bookedVersion), Step(fit: .compatible, pending: .bookedVersion)]
 
 	init(sourceID: String?, day: Day, amount: Int64, isPending: Bool, purpose: String, counterparty: String?, endToEnd: String?) {
-		self.sourceID = sourceID
+		self.sourceID = Self.remote(sourceID)
 		key = Key(day: day, amount: amount, purpose: TextFolding.fold(purpose).filter { !$0.isWhitespace })
 		self.isPending = isPending
 		self.counterparty = counterparty.map(TextFolding.accountKey).flatMap { $0.isEmpty ? nil : $0 }
@@ -305,6 +306,11 @@ struct Identity {
 	init(_ d: DeletedTransaction) {
 		self.init(sourceID: d.sourceID, day: d.bookingDate, amount: d.amountMinor, isPending: d.isPending, purpose: d.purpose,
 			counterparty: d.counterpartyIBAN, endToEnd: d.endToEndReference)
+	}
+
+	/// The ID that a source delivered, or nil for none and for an ID of the MoneyMoney migration.
+	static func remote(_ sourceID: String?) -> String? {
+		sourceID.flatMap { $0.hasPrefix(Transaction.migrationIDPrefix) ? nil : $0 }
 	}
 
 	/// Nil when the keys differ, or when both rows have a counterparty or an end-to-end reference and

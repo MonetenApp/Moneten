@@ -245,7 +245,7 @@ The coordinator calls `deliver` once for each requested account that the connect
 
 - The dialogs don't yet build every requirement of add-tan-handling. Changing the TAN method inside an open dialog needs an answer like `.changeTANMethod` and the list of methods in the request. The progress text while a challenge is requested ("Getting list of TAN media...") needs a progress value for the dialog. Both extend `Challenge`, `UserAnswer`, or `SyncProgress` when the FinTS connector of issue #13 can produce them. Tasks 4.1 to 4.6 list these and the other open parts.
 
-- A delivered ID never takes a stored row with another ID. The first answer of an extension that gives IDs therefore adds a second copy of each row that the MoneyMoney migration stored under its `moneymoney:` ID.
+- A delivered ID never takes a stored row with another ID. A `moneymoney:` ID of the migration only says where a row came from, so the first answer of an extension with IDs links the migrated rows by their fingerprint and gives them its own IDs. A second MoneyMoney migration after that adds those rows again, because the migration knows only its own IDs.
 - A purpose that FinTS and a bank's CSV export render differently breaks the match between a refresh and a file. This can't be checked before the FinTS connector of issue #13 exists.
 
 ## Open questions

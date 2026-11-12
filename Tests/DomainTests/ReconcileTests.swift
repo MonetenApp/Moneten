@@ -137,6 +137,15 @@ struct ReconcileTests {
 		#expect(r.updated.map(\.isFetched) == [true])
 	}
 
+	@Test("A delivered source ID links a row migrated from MoneyMoney and takes over its ID")
+	func idLinksMigratedRow() {
+		let migrated = stored(row(3, -50_000, "Broker", "Kauf ETF", sourceID: "moneymoney:4711"))
+		let r = merge(refresh([row(3, -50_000, "Broker", "Kauf ETF", sourceID: "tx-1")]), stored: [migrated])
+		#expect(r.added == [])
+		#expect(r.updated.map(\.id) == [migrated.id])
+		#expect(r.updated.map(\.sourceID) == ["tx-1"])
+	}
+
 	// MARK: 1.20 Update a transaction that the source changed
 
 	@Test("A source with IDs corrects the amount, and the user fields stay")
