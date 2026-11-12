@@ -19,7 +19,7 @@ func runMM(_ body: String, environment: HostEnvironment = .standard) -> MMOutcom
 	let result: LuaValue
 	do {
 		_ = try session.load()
-		result = try session.call("Test")
+		result = try session.call(.function("Test"))
 	} catch {
 		result = .string("error: \(error.message)")
 	}

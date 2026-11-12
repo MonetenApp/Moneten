@@ -52,7 +52,8 @@ The repository has two builds ([ADR 0011](docs/decisions/0011-app-target-in-an-x
 | `Import` | `TransactionFileImporter.parse` for CSV, CAMT, and MT940, and `MoneyMoneyMigration.plan`, which returns a plan that the app shows before it stores anything |
 | `Sync` | `SyncCoordinator` refreshes up to three accesses at a time, each with one `SyncState`. `SessionBroker` shows one dialog at a time, keeps PINs in memory, and saves a PIN in the database only on request and after the bank accepted it. |
 | `SyncTesting` | `ScriptedConnector`, a fake bank for the tests, the previews, and the debug harness |
-| `ExtensionHost` | Runs a Lua extension session with the host limit of ADR 0015, one sandboxed `MonetenExtensionHost` process per session. `Sources/CLua` is Lua 5.4 from lua.org (`scripts/vendor-lua.sh`). |
+| `ExtensionHost` | Runs a Lua extension session with the host limit of ADR 0015, one sandboxed `MonetenExtensionHost` process per session, and offers the MoneyMoney-compatible API in `Sources/ExtensionHost/API`. `Sources/CLua` is Lua 5.4 from lua.org (`scripts/vendor-lua.sh`). |
+| `ExtensionConnector` | `ExtensionConnector`, which calls the entry points of an extension in order, turns its challenge tables into requests to the user, and maps its result tables to `Domain` types. `scripts/check-published.sh` checks the published MoneyMoney extensions against the host. |
 | App | SwiftUI views and the `@Observable` `AppModel` |
 
 How the parts work together:

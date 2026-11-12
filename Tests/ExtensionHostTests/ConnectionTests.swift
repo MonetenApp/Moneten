@@ -21,7 +21,7 @@ import Testing
 		func call(_ function: String) -> LuaValue {
 			do {
 				_ = try session.load()
-				return try session.call(function)
+				return try session.call(.function(function))
 			} catch {
 				return .string("error: \(error.message)")
 			}

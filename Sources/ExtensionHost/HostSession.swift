@@ -17,7 +17,6 @@ final class HostSession {
 	/// The last name that a script read from `MM`, `io`, or a connection and that the app does not offer.
 	var lastMiss: Miss?
 	private let storedData: Data?
-	private var objects: [ObjectIdentifier: AnyObject] = [:]
 
 	struct Miss: Equatable {
 		/// For example "MM.parseSwiftMt".
@@ -56,10 +55,6 @@ final class HostSession {
 		Set(EntryPoint.allCases.filter { lua.isFunction($0.rawValue) })
 	}
 
-	func call(_ function: String) throws(ScriptError) -> LuaValue {
-		try lua.call(function)
-	}
-
 	func call(_ entry: EntryCall) throws(ScriptError) -> LuaValue {
 		try EntryPoints.call(entry, in: self, lua: lua)
 	}
@@ -67,14 +62,6 @@ final class HostSession {
 	/// The content of `LocalStorage` for the next run of the access.
 	func storage() throws(ScriptError) -> Data {
 		try LocalStorage.save(from: lua.stack)
-	}
-
-	/// The state of one part of the API for this session, made on first use, for example the cookies of the run.
-	func object<T: AnyObject>(_ make: () -> T) -> T {
-		if let object = objects[ObjectIdentifier(T.self)] as? T { return object }
-		let object = make()
-		objects[ObjectIdentifier(T.self)] = object
-		return object
 	}
 
 	/// The session of a Lua thread, for the functions that Swift implements.

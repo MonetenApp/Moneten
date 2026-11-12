@@ -34,7 +34,7 @@ final class Visit {
 	func call(_ function: String = "Check") -> LuaValue {
 		do {
 			_ = try session.load()
-			return try session.call(function)
+			return try session.call(.function(function))
 		} catch {
 			return .string("error: \(error.message)")
 		}
