@@ -16,11 +16,12 @@ public struct MoneyMoneyMigration: Sendable {
 		public var transactions: [Transaction] = []
 		/// Accounts of an earlier run with the newer balance from MoneyMoney, or the color of their icon.
 		public var updatedAccounts: [Account] = []
-		/// Transactions of an earlier run that were pending and are booked now.
+		/// Stored transactions that this run books, marks for review, or gives changed bank fields or a source ID,
+		/// as a refresh would. User fields stay.
 		public var updatedTransactions: [Transaction] = []
 		/// Categories of an earlier run without a color of their own, with the color of MoneyMoney.
 		public var updatedCategories: [Domain.Category] = []
-		/// Accounts and transactions that an earlier run already brought in.
+		/// Accounts and transactions that the ledger already holds, and transactions the user deleted.
 		public var skippedAccounts = 0
 		public var skippedTransactions = 0
 		public var portfolioAccounts: [String] = []
@@ -48,9 +49,12 @@ public struct MoneyMoneyMigration: Sendable {
 		self.calendar = calendar
 	}
 
-	/// Builds the plan. Objects that the ledger already holds from an earlier run are skipped,
-	/// and changes the user made since then stay.
-	public func plan(accounts accountsData: Data, categories categoriesData: Data, transactions transactionsData: Data, into ledger: Ledger) throws -> Plan {
+	/// Builds the plan. Objects that the ledger already holds are skipped, and changes the user made since
+	/// then stay. Transactions are recognized by `reconcile`, the rule of refreshes and files, so a row that
+	/// a refresh stored or whose ID a source took over is not added twice. `deleted` are all deleted rows,
+	/// and none of them comes back.
+	public func plan(accounts accountsData: Data, categories categoriesData: Data, transactions transactionsData: Data, into ledger: Ledger,
+		deleted: [DeletedTransaction] = []) throws -> Plan {
 		guard let rawAccounts = try PropertyListSerialization.propertyList(from: accountsData, format: nil) as? [[String: Any]] else {
 			throw Failure.unreadable("accounts")
 		}
@@ -68,8 +72,7 @@ public struct MoneyMoneyMigration: Sendable {
 		var categoryMap: [String: UUID?] = [:]
 		mapCategories(rawCategories, ledger: ledger, plan: &plan, map: &categoryMap)
 
-		let existing = Dictionary(ledger.transactions.compactMap { t in t.sourceID.map { ($0, t) } }, uniquingKeysWith: { first, _ in first })
-		var sums: [UUID: Int64] = [:]
+		var rows: [Transaction] = []
 		for raw in rawTransactions {
 			guard let accountSource = raw["accountUuid"] as? String, let accountID = accountMap[accountSource] else { continue }
 			let id = (raw["id"] as? Int).map { "\(Transaction.migrationIDPrefix)\($0)" }
@@ -77,18 +80,6 @@ public struct MoneyMoneyMigration: Sendable {
 			let amount = Money(Decimal((raw["amount"] as? Double) ?? 0), currency: currency)
 			let booking = (raw["bookingDate"] as? Date).map { Day($0, calendar: calendar) } ?? Day.today(calendar: calendar)
 			let pending = !((raw["booked"] as? Bool) ?? true)
-			if let id, var known = existing[id] {
-				if known.isPending && !pending {
-					known.isPending = false
-					known.bookingDate = booking
-					known.valueDate = (raw["valueDate"] as? Date).map { Day($0, calendar: calendar) }
-					known.amountMinor = amount.minorUnits
-					plan.updatedTransactions.append(known)
-				} else {
-					plan.skippedTransactions += 1
-				}
-				continue
-			}
 			var categoryID: UUID?
 			if let c = raw["categoryUuid"] as? String, let mapped = categoryMap[c] { categoryID = mapped }
 			let t = Transaction(accountID: accountID, bookingDate: booking,
@@ -100,8 +91,30 @@ public struct MoneyMoneyMigration: Sendable {
 				mandateReference: Self.string(raw["mandateReference"]), creditorID: Self.string(raw["creditorId"]),
 				comment: Self.string(raw["comment"]), isChecked: (raw["checkmark"] as? Bool) ?? false, isPending: pending,
 				categoryID: categoryID, categorizedBy: categoryID == nil ? .none : .manual, isNew: false, sourceID: id)
+			rows.append(t)
+		}
+
+		// `reconcile` decides which rows are new. A new row keeps what MoneyMoney says: its category, comment,
+		// and checkmark, and no new mark. Only the review mark comes from `reconcile`.
+		let delivered = Dictionary(grouping: rows, by: \.accountID)
+		let stored = Dictionary(grouping: ledger.transactions, by: \.accountID)
+		let tombstones = Dictionary(grouping: deleted, by: \.accountID)
+		let rules = Categorizer(ledger: ledger)
+		var added: [UUID: Bool] = [:]
+		for account in ledger.accounts + plan.accounts {
+			guard let rows = delivered[account.id] else { continue }
+			let r = reconcile(.migration(rows), into: account, stored: stored[account.id] ?? [], deleted: tombstones[account.id] ?? [],
+				rules: rules, now: Date())
+			for t in r.added { added[t.id] = t.needsReview }
+			plan.updatedTransactions += r.booked + r.updated + r.marked
+			plan.skippedTransactions += r.skipped
+		}
+		var sums: [UUID: Int64] = [:]
+		for var t in rows {
+			guard let needsReview = added[t.id] else { continue }
+			t.needsReview = needsReview
 			plan.transactions.append(t)
-			if !pending { sums[accountID, default: 0] += t.amountMinor }
+			if !t.isPending { sums[t.accountID, default: 0] += t.amountMinor }
 		}
 
 		// The initial balance makes the computed balance end at the balance of the bank.
