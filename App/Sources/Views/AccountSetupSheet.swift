@@ -15,14 +15,6 @@ final class AccountSetup {
 		case offline
 	}
 
-	/// What the first step found for the entry.
-	enum Lookup: Equatable {
-		case none
-		case searching
-		case found(bankCode: String, FinTSBank)
-		case failed(String)
-	}
-
 	/// The services under "Other". The services of installed web banking extensions join this list
 	/// with E6 of the extension plan, each with its own login step.
 	enum Service: Hashable, CaseIterable {
@@ -47,13 +39,18 @@ final class AccountSetup {
 	var groupID: UUID?
 	private(set) var step = Step.bank
 
-	var entry = "" {
-		didSet { if entry != oldValue, !entry.isEmpty { service = nil } }
+	/// "IBAN or Bankleitzahl" and the bank that it names.
+	let lookup: BankLookup
+	var entry: String {
+		get { lookup.entry }
+		set {
+			if newValue != lookup.entry, !newValue.isEmpty { service = nil }
+			lookup.entry = newValue
+		}
 	}
 	/// The choice under "Other" in place of a bank.
 	var service: Service?
 	var usesOther: Bool { service != nil }
-	private(set) var lookup = Lookup.none
 	/// Entry errors show after the first "Next", so that half an IBAN is not an error while it is typed.
 	private var showsEntryErrors = false
 
@@ -79,15 +76,14 @@ final class AccountSetup {
 	init(model: AppModel, groupID: UUID?) {
 		self.model = model
 		self.groupID = groupID
+		lookup = BankLookup(find: model.fints.bankInfo(bankCode:))
 	}
 
-	var bank: FinTSBank? {
-		if case let .found(_, bank) = lookup { bank } else { nil }
-	}
+	var bank: FinTSBank? { lookup.bank?.bank }
 
 	var canGoOn: Bool {
 		switch step {
-		case .bank: lookup != .searching
+		case .bank: lookup.state != .searching
 		case .login: !isLoggingIn && !loginName.trimmingCharacters(in: .whitespaces).isEmpty && !pin.isEmpty
 		case .accounts: !selected.isEmpty
 		case .offline: !offlineName.trimmingCharacters(in: .whitespaces).isEmpty
@@ -97,28 +93,7 @@ final class AccountSetup {
 	/// Looks up the bank of the entry while the user types. The views run it after a short pause.
 	func lookUp() async {
 		guard !usesOther else { return }
-		let code: String
-		do {
-			code = try BankEntry.bankCode(of: entry)
-		} catch {
-			lookup = showsEntryErrors ? .failed(error.message) : .none
-			return
-		}
-		lookup = .searching
-		do {
-			let bank = try await model.fints.bankInfo(bankCode: code)
-			guard !Task.isCancelled else { return }
-			if let bank, bank.url != nil {
-				lookup = .found(bankCode: code, bank)
-			} else if let bank {
-				lookup = .failed("\(bank.name) does not provide a FinTS/HBCI server. An extension can add support for the bank.")
-			} else {
-				lookup = .failed("The Bankleitzahl is invalid.")
-			}
-		} catch {
-			guard !Task.isCancelled else { return }
-			lookup = .failed(Self.message(error))
-		}
+		await lookup.lookUp(showingErrors: showsEntryErrors)
 	}
 
 	func next() {
@@ -167,7 +142,7 @@ final class AccountSetup {
 	/// Logs in with the PIN of this step and lists the accounts. A rejected PIN ends the login, and the
 	/// message of the bank shows here with an empty PIN field.
 	private func logIn() {
-		guard case let .found(code, bank) = lookup, let url = bank.url else { return }
+		guard let (code, bank) = lookup.bank, let url = bank.url else { return }
 		let access = Access(source: .fints(bankCode: code, url: url), bankName: bank.name, loginName: loginName.trimmingCharacters(in: .whitespaces))
 		let session = SetupSession(broker: model.sync.broker, access: access, pin: Secret(pin))
 		loginError = nil
@@ -258,7 +233,7 @@ struct AccountSetupSheet: View {
 		Section {
 			TextField("IBAN or Bankleitzahl", text: $setup.entry, prompt: Text("DE02 1203 0000 0000 2020 51"))
 			if !setup.usesOther {
-				switch setup.lookup {
+				switch setup.lookup.state {
 				case .none:
 					EmptyView()
 				case .searching:

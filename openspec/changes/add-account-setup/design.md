@@ -13,7 +13,7 @@ Issue #85 builds the FinTS path of the assistant on the connector of issue #13 p
 ### Who owns what
 
 - `Domain`: `BankEntry` reads "IBAN or Bankleitzahl" and runs the IBAN checks. `Ledger.setupMatch(for:)` and `Ledger.accountsToAdd(_:connecting:)` decide which listed accounts the setup adds.
-- `FinTS`: `FinTSConnector.bankInfo` finds the bank, and `listAccounts` logs in and lists the accounts.
+- `FinTS`: `FinTSConnector.bankInfo` finds the bank, and `listAccounts` logs in and lists the accounts. `BankLookup` keeps the bank of the entry on screen: a new entry drops the bank of the last one, and a lookup that ends after the entry changed is ignored, so a quick "Next" never logs in to the bank of an earlier entry.
 - `Sync`: `SetupSession` is the session of the login. It answers the PIN request with the PIN of the login step. A rejected PIN ends the login, so the message of the bank shows in the login step and the bank gets no second attempt. Every other request opens the dialogs of `SessionBroker`, one at a time with the dialogs of running refreshes.
 - `Storage`: `Store.add(_:state:accounts:)` writes the access and its accounts in one transaction.
 - `App`: `AccountSetup` holds the steps and their state, and `AccountSetupSheet` shows them. A TAN dialog opens as a sheet on top of the assistant.
