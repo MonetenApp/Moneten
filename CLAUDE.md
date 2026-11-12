@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-Moneten is an open source banking app for the Mac: Swift 6, SwiftUI, macOS 15 or newer, GPL-3.0-or-later. It is local-first. It has no server, no account, and no telemetry, and all data stays in an encrypted database on the Mac. The local part of v0.1 is built: the encrypted database, the MoneyMoney migration, the CSV, CAMT, and MT940 import, the transaction list, categories, rules, charts, and the sync model. The FinTS connector adds bank accesses and refreshes them; extensions and saved PINs are not built yet.
+Moneten is an open source banking app for the Mac: Swift 6, SwiftUI, macOS 15 or newer, GPL-3.0-or-later. It is local-first. It has no server, no account, and no telemetry, and all data stays in an encrypted database on the Mac. The local part of v0.1 is built: the encrypted database, the MoneyMoney migration, the CSV, CAMT, and MT940 import, the transaction list, categories, rules, charts, and the sync model. The FinTS connector adds bank accesses and refreshes them, and saves a PIN in the database on request; extensions are not built yet.
 
 The behavior target is MoneyMoney 2.5.3. [docs/research/moneymoney-analysis.md](docs/research/moneymoney-analysis.md) records what was observed. A user who switches must find the same behavior, unless a proposal names a difference under "Decided for Moneten".
 
@@ -50,7 +50,7 @@ The repository has two builds ([ADR 0011](docs/decisions/0011-app-target-in-an-x
 | `Domain` | Pure Swift with no dependencies and no I/O: types, money arithmetic, the in-memory `Ledger`, rules and `Categorizer`, import matching, chart data, and the sync model (`BankConnector`, `SyncState`, the requests to the user, `Challenge`) |
 | `Storage` | `Vault` opens, creates, and re-keys the SQLCipher database. `Store` is the only write path. `Schema` holds the GRDB migrations. Also `Keychain` and `DataFolder`. GRDB comes from the fork that links SQLCipher. |
 | `Import` | `TransactionFileImporter.parse` for CSV, CAMT, and MT940, and `MoneyMoneyMigration.plan`, which returns a plan that the app shows before it stores anything |
-| `Sync` | `SyncCoordinator` refreshes up to three accesses at a time, each with one `SyncState`. `SessionBroker` shows one dialog at a time and keeps PINs in memory only. |
+| `Sync` | `SyncCoordinator` refreshes up to three accesses at a time, each with one `SyncState`. `SessionBroker` shows one dialog at a time, keeps PINs in memory, and saves a PIN in the database only on request and after the bank accepted it. |
 | `SyncTesting` | `ScriptedConnector`, a fake bank for the tests, the previews, and the debug harness |
 | `ExtensionHost` | Runs a Lua extension session with the host limit of ADR 0015, one sandboxed `MonetenExtensionHost` process per session. `Sources/CLua` is Lua 5.4 from lua.org (`scripts/vendor-lua.sh`). |
 | App | SwiftUI views and the `@Observable` `AppModel` |

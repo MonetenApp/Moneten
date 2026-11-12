@@ -2,7 +2,7 @@
 
 ## Context
 
-Issue #85 builds the FinTS path of the assistant on the connector of issue #13 part 1 ([add-fints-banking design](../add-fints-banking/design.md)). The services of extensions under "Other" come with E6 of the extension plan, and saved PINs with issue #86. [ADR 0014](../../../docs/decisions/0014-fints-through-hbci4java.md) and [ADR 0009](../../../docs/decisions/0009-database-password-as-in-moneymoney.md) apply.
+Issue #85 builds the FinTS path of the assistant on the connector of issue #13 part 1 ([add-fints-banking design](../add-fints-banking/design.md)). The services of extensions under "Other" come with E6 of the extension plan. Issue #86 added "Save PIN" to the login step. [ADR 0014](../../../docs/decisions/0014-fints-through-hbci4java.md) and [ADR 0009](../../../docs/decisions/0009-database-password-as-in-moneymoney.md) apply.
 
 ## Decisions
 
@@ -21,7 +21,7 @@ Issue #85 builds the FinTS path of the assistant on the connector of issue #13 p
 ### Seams for later work
 
 - "Other" lists `AccountSetup.Service`, which has only "Offline account / Cash". E6 adds the services of installed extensions there, each with its own login step, and the connector of an access by its source in `AppModel`.
-- After the setup, `SessionBroker.remember(_:for:)` keeps the PIN in memory, so the first refresh does not ask again. Issue #86 saves it in the database at that point when the user turns saving on.
+- After the setup, `SessionBroker.remember(_:for:save:)` keeps the PIN in memory, so the first refresh does not ask again, and saves it in the database when the user turned on "Save PIN" in the login step. The bank accepted it at the login of the setup.
 
 ### A migrated account takes over the access
 

@@ -43,7 +43,7 @@ The design explains each step. The requirements 1.1 to 1.17 stayed open until an
 - [x] 2.3 `Domain`: `SyncState`, `SyncEvent`, and the pure transition function, with a test for every allowed and every refused transition.
 - [x] 2.4 `Domain`: `SyncFailure` and `BankMessage`, with the message the app shows for each case.
 - [x] 2.5 Test support: `ScriptedConnector`, which plays requests, answers, progress, results, and failures.
-- [x] 2.6 `Sync`: `SessionBroker`, with one queue for all dialogs, unattended sessions for the automatic refresh, and the PIN from memory. The saved PIN joins it with the storage of add-login-credentials.
+- [x] 2.6 `Sync`: `SessionBroker`, with one queue for all dialogs, unattended sessions for the automatic refresh, and the PIN from memory. The saved PINs of add-login-credentials join it when the database opens (#86).
 - [x] 2.7 `Sync`: `SyncCoordinator`, with one `SyncState` per access, up to three accesses at a time, and "Cancel Refresh".
 - [x] 2.8 `App`: the PIN sheet and the dialog "Two-Factor Authentication" for every `Challenge` case, with previews driven by `ScriptedConnector`.
 - [x] 2.9 Tests: every state, cancellation in every state, an automatic refresh that meets a request, two accesses that ask at the same time, and an approval dialog that closes when the connector cancels its request.
@@ -57,12 +57,12 @@ The design explains each step. The requirements 1.1 to 1.17 stayed open until an
 
 Tasks 4.1 to 4.6 are requirements of add-tan-handling and add-login-credentials that the dialogs of task 2.8 do not have yet. Task 4.7 keeps the merge of 1.19 correct once fetched rows can be edited.
 
-- [ ] 4.1 Change the TAN method inside the open dialog, and show the progress text while a challenge is requested (#13).
-- [ ] 4.2 Enlarge a photoTAN or QR image (#13).
-- [ ] 4.3 Make the flicker code smaller and larger, remember the size, and warn about seizures before the first enlargement (#13).
-- [ ] 4.4 Say that the bank responded with an invalid challenge when the flicker data is not valid (#13).
-- [ ] 4.5 Check a PIN against the rules of the bank, and offer the option to save it with the storage of saved PINs (#13).
-- [ ] 4.6 Check that the PIN field is not offered to the password manager of macOS on a real Mac (#13).
+- [x] 4.1 Change the TAN method inside the open dialog, and show the progress text while a challenge is requested. Verified by TANDialogTests, FinTSConnectorTests "Offers the other TAN methods in the dialog of a challenge...", and the FinTSHelper self-test, see tasks 1.6, 1.8, and 1.17 of add-tan-handling (#86).
+- [x] 4.2 Enlarge a photoTAN or QR image. Verified by the debug app check of pull request #86, see task 1.15 of add-tan-handling (#86).
+- [x] 4.3 Make the flicker code smaller and larger, remember the size, and warn about seizures before the first enlargement. Verified by FlickerCodeSizeTests and the debug app check, see task 1.19 of add-tan-handling (#86).
+- [x] 4.4 Say that the bank responded with an invalid challenge when the flicker data is not valid. Verified by FinTSConnectorTests "A flicker code that does not read fails the access with an invalid challenge and opens no dialog" and FinTSHelper self-test "challenge data without a flicker code" (#86).
+- [x] 4.5 Check a PIN against the rules of the bank, and offer the option to save it with the storage of saved PINs. Verified by PINRulesTests, SavedPINTests of Sync and Storage, and the debug app check, see tasks 1.3 to 1.8 of add-login-credentials (#86).
+- [ ] 4.6 Check that the PIN field is not offered to the password manager of macOS on a real Mac (#13). Checked in part by pull request #86: in a debug build the field is an `NSSecureTextField` with the content type nil, and after two seconds of focus the app has no AutoFill window. macOS did not let the app become active during that check, so a click into the field with the app in front is still open.
 - [ ] 4.7 Before transaction-list "Edit a transaction" allows editing the bank fields of a fetched or migrated row, add a migration that copies the fields of the fingerprint of every row into columns of their own, and let `reconcile` and `DeletedTransaction` read those. Until then no such edit is possible, so the copy is exact (#7).
 
 ## Workflow follow-up
