@@ -63,15 +63,17 @@ public final class SyncCoordinator {
 		let id = request.access.id
 		let requested = requestedAccounts[id] ?? []
 		let accounts = request.accounts.filter { !requested.contains($0.accountID) }
-		guard !accounts.isEmpty else { return }
 		let job = Job(request: RefreshRequest(access: request.access, state: request.state, accounts: accounts, enforced: request.enforced),
 			connector: connector, attended: attended)
-		if let i = queue.firstIndex(where: { $0.request.access.id == id }) {
-			queue[i] = queue[i].adding(job)
-		} else if running[id] != nil {
-			afterRun[id] = afterRun[id]?.adding(job) ?? job
-		} else {
+		let waiting = queue.firstIndex { $0.request.access.id == id }
+		if running[id] == nil, waiting == nil {
 			queue.append(job)
+		} else if accounts.isEmpty {
+			return
+		} else if let waiting {
+			queue[waiting] = queue[waiting].adding(job)
+		} else {
+			afterRun[id] = afterRun[id]?.adding(job) ?? job
 		}
 		startProgress(of: job)
 		startNext()
