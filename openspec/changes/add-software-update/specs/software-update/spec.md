@@ -35,7 +35,7 @@ The app SHALL offer "Check for Updates..." in the application menu. The command 
 
 ### Requirement: Check for updates automatically
 
-The app SHALL look for a new version at launch and then once a day while it runs, if the setting "Show notification about new versions of Moneten" is on. The setting is on by default. With the setting off, the app looks for a new version only on request.
+The app SHALL look for a new version at launch and then once a day while it runs, if the setting "Show notification about new versions of Moneten" is on. The setting is on by default. With the setting off, the app looks for a new version only on request, and once at launch on a macOS that the installed version was not checked with.
 
 #### Scenario: Setting on
 
@@ -65,6 +65,53 @@ The app SHALL announce a new version in a window that names the new version and 
 - **THEN** the window says that the release notes could not be displayed
 - **AND** "Install" still works
 
+### Requirement: Release notes match the release page
+
+The app SHALL show in the update window, for each version it lists, the same release notes that the release page of the project shows for that version, headed by the version number and the release date.
+
+#### Scenario: Same entries as the release page
+
+- **GIVEN** the release page of version 0.1.3 from 2026-11-20 lists "Larger display of photoTAN images" and "Fixed the sum of a split transaction"
+- **WHEN** the update window offers version 0.1.3
+- **THEN** the release notes start with the heading for version 0.1.3 and the date 2026-11-20
+- **AND** they list "Larger display of photoTAN images" and "Fixed the sum of a split transaction"
+
+#### Scenario: Link in an entry
+
+- **GIVEN** an entry of version 0.1.3 links "Creating transfers" to https://github.com/MonetenApp/Moneten/wiki/Transfers
+- **WHEN** the user clicks "Creating transfers" in the update window
+- **THEN** https://github.com/MonetenApp/Moneten/wiki/Transfers opens in the default browser
+
+### Requirement: Release notes of skipped versions
+
+The app SHALL show in the update window the release notes of every version that is newer than the installed version, up to the offered version, newest first. When the offered version is a stable version, the notes of pre-release versions are left out. The notes of a pre-release version of a stable version that the window lists are left out too, because the stable version lists them.
+
+#### Scenario: Two versions skipped
+
+- **GIVEN** version 0.1.1 is installed and versions 0.1.2 and 0.1.3 are published
+- **WHEN** the update window offers version 0.1.3
+- **THEN** the window shows the notes of version 0.1.3 and then those of version 0.1.2
+- **AND** the window shows no notes of version 0.1.1
+
+#### Scenario: Stable version after pre-releases
+
+- **GIVEN** version 0.1.3 is installed and versions 0.2.0-beta.1 and 0.2.0 are published
+- **WHEN** the update window offers version 0.2.0
+- **THEN** the window shows the notes of version 0.2.0 only
+
+#### Scenario: Pre-release offered
+
+- **GIVEN** version 0.1.3 is installed, the beta setting is on, and versions 0.2.0-beta.1 and 0.2.0-beta.2 are published
+- **WHEN** the update window offers version 0.2.0-beta.2
+- **THEN** the window shows the notes of version 0.2.0-beta.2 and then those of version 0.2.0-beta.1
+
+#### Scenario: Pre-release offered after a stable version
+
+- **GIVEN** version 0.1.3 is installed, the beta setting is on, and versions 0.2.0-beta.1, 0.2.0, and 0.2.1-beta.1 are published
+- **WHEN** the update window offers version 0.2.1-beta.1
+- **THEN** the window shows the notes of version 0.2.1-beta.1 and then those of version 0.2.0
+- **AND** the window shows no separate notes of version 0.2.0-beta.1
+
 ### Requirement: Remind later
 
 The app SHALL close the update window without changes when the user chooses "Remind Me Later", and it SHALL offer the same version again at the next automatic check.
@@ -87,7 +134,7 @@ The app SHALL, after "Install", download the update with visible progress, insta
 
 ### Requirement: Verify the update before installing it
 
-The app SHALL install an update only when its signature was made with the update key of the project and its code signature belongs to the Developer ID of the project. The app discards any other download.
+The app SHALL install an update only when the download carries a signature made with the update key of the project and the new app inside has a valid code signature. The app discards any other download.
 
 #### Scenario: Manipulated download
 
@@ -146,13 +193,19 @@ The app SHALL refuse to update itself while macOS runs it from a temporary, read
 
 ### Requirement: Warn about several copies
 
-The app SHALL warn the user at launch when it finds more than one copy of the app on the Mac. The warning names the places of the copies and asks the user to delete the unused ones.
+The app SHALL warn the user at launch when it finds more than one copy of the app on the Mac. The warning names the places of the copies and asks the user to delete the unused ones. Copies on a disk image, on a read-only volume, and in the Trash do not count.
 
 #### Scenario: Old copy in Downloads
 
 - **GIVEN** version 0.1.3 in the Applications folder and version 0.1.1 in the Downloads folder
 - **WHEN** the user starts version 0.1.3
 - **THEN** the app warns that several copies are installed and names both places
+
+#### Scenario: Disk image still mounted
+
+- **GIVEN** version 0.1.3 in the Applications folder and the disk image of version 0.1.3 still mounted
+- **WHEN** the user starts version 0.1.3
+- **THEN** the app shows no warning about several copies
 
 ### Requirement: Report a damaged application file
 

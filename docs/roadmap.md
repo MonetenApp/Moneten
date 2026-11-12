@@ -2,7 +2,7 @@
 
 This page lists what ships in each release. The specs in [openspec/changes](../openspec/changes/) define the behavior. The GitHub issues track the work. Run `python3 scripts/roadmap.py` to regenerate this page from both.
 
-The project has 53 changes with 1098 requirements. A change leaves this page when its code is merged and the change is archived into [openspec/specs](../openspec/specs/).
+The project has 53 changes with 1100 requirements. A change leaves this page when its code is merged and the change is archived into [openspec/specs](../openspec/specs/).
 
 ## v0.1 Read
 
@@ -35,7 +35,7 @@ Fetch, categorize, and understand your money. Read-only.
 | [add-moneymoney-migration](../openspec/changes/add-moneymoney-migration/proposal.md) | `moneymoney-migration` | 18 | [#24](https://github.com/alexander-schneider/Moneten/issues/24) |
 | [add-notifications-and-menu-bar](../openspec/changes/add-notifications-and-menu-bar/proposal.md) | `notifications-and-menu-bar` | 16 | [#40](https://github.com/alexander-schneider/Moneten/issues/40) |
 | [add-offline-accounts](../openspec/changes/add-offline-accounts/proposal.md) | `offline-accounts` | 13 | [#5](https://github.com/alexander-schneider/Moneten/issues/5) |
-| [add-software-update](../openspec/changes/add-software-update/proposal.md) | `software-update` | 19 | [#25](https://github.com/alexander-schneider/Moneten/issues/25) |
+| [add-software-update](../openspec/changes/add-software-update/proposal.md) | `software-update` | 21 | [#25](https://github.com/alexander-schneider/Moneten/issues/25), [#13](https://github.com/alexander-schneider/Moneten/issues/13) |
 | [add-split-transactions](../openspec/changes/add-split-transactions/proposal.md) | `split-transactions` | 15 | [#39](https://github.com/alexander-schneider/Moneten/issues/39) |
 | [add-tan-handling](../openspec/changes/add-tan-handling/proposal.md) | `tan-handling` | 28 | [#13](https://github.com/alexander-schneider/Moneten/issues/13) |
 | [add-transaction-list](../openspec/changes/add-transaction-list/proposal.md) | `transaction-list` | 21 | [#5](https://github.com/alexander-schneider/Moneten/issues/5) |
@@ -58,7 +58,7 @@ Fetch, categorize, and understand your money. Read-only.
 | [#10 Ask the HBCI4Swift author about a joint Swift package](https://github.com/alexander-schneider/Moneten/issues/10) | area: fints, kind: organization | None |
 | [#11 Run the first FinTS bank tests](https://github.com/alexander-schneider/Moneten/issues/11) | area: fints, kind: prototype | #9 |
 | [#12 Turn HBCI4Swift into a tested Swift package](https://github.com/alexander-schneider/Moneten/issues/12) | area: fints | #11, #10 |
-| [#13 Build the FinTS connector for accounts, balances, and transactions](https://github.com/alexander-schneider/Moneten/issues/13) | area: fints | #12, #6, #7, #9 |
+| [#13 Build the FinTS connector for accounts, balances, and transactions](https://github.com/alexander-schneider/Moneten/issues/13) | area: fints | #6, #7, #9 |
 | [#14 Run Lua 5.4 extensions in a sandboxed XPC process](https://github.com/alexander-schneider/Moneten/issues/14) | area: extensions | #6 |
 | [#15 Implement the MoneyMoney-compatible extension API](https://github.com/alexander-schneider/Moneten/issues/15) | area: extensions | #14 |
 | [#16 Build the ext command line tool with record and replay](https://github.com/alexander-schneider/Moneten/issues/16) | area: extensions | #15 |
