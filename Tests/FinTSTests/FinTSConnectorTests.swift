@@ -297,6 +297,33 @@ struct FinTSConnectorTests {
 		#expect(list.accounts.isEmpty)
 	}
 
+	@Test("A helper that sends lines while the app is busy does not time out")
+	func busyApp() async throws {
+		// The app takes 2 seconds for the progress, while the helper sends a line every half second.
+		let session = Session(progress: { _ in try? await Task.sleep(for: .seconds(2)) })
+		let report = try await connector("""
+			read cmd
+			echo '{"type":"progress","done":0,"of":1}'
+			for i in 1 2 3 4 5 6; do echo '{"type":"alive"}'; sleep 0.5; done
+			echo '{"type":"result","account":"DE02120300000000202051","balance":{"amount":"1","currency":"EUR"},"errors":[]}'
+			""", inactivity: 1).refresh(RefreshRequest(access: Self.access, accounts: [Self.giro]), session)
+		#expect(report.outcomes.count == 1)
+	}
+
+	@Test("A request for the user that waits behind a busy app does not time out")
+	func requestBehindBusyApp() async throws {
+		// The helper asks for the PIN at once and then waits, while the app takes 2 seconds for the progress.
+		let session = Session(progress: { _ in try? await Task.sleep(for: .seconds(2)) })
+		let report = try await connector("""
+			read cmd
+			echo '{"type":"progress","done":0,"of":1}'
+			echo '{"type":"ask","id":1,"kind":"pin"}'
+			read answer
+			echo '{"type":"result","account":"DE02120300000000202051","balance":{"amount":"1","currency":"EUR"},"errors":[]}'
+			""", inactivity: 1).refresh(RefreshRequest(access: Self.access, accounts: [Self.giro]), session)
+		#expect(report.outcomes.count == 1)
+	}
+
 	@Test("A helper that crashes fails the access")
 	func crash() async throws {
 		#expect(await failure(of: "read cmd; echo '{\"type\":\"progress\",\"done\":0,\"of\":1}'; kill -9 $$") as? SyncFailure
@@ -537,10 +564,13 @@ final class Session: SyncSession {
 	}
 
 	private let answer: @Sendable (UserRequest) async throws -> UserAnswer
+	private let progress: @Sendable (SyncProgress) async -> Void
 	private let log = Mutex<[Event]>([])
 
-	init(answer: @escaping @Sendable (UserRequest) async throws -> UserAnswer = Session.standard) {
+	init(answer: @escaping @Sendable (UserRequest) async throws -> UserAnswer = Session.standard,
+		progress: @escaping @Sendable (SyncProgress) async -> Void = { _ in }) {
 		self.answer = answer
+		self.progress = progress
 	}
 
 	var events: [Event] { log.withLock { $0 } }
@@ -557,6 +587,7 @@ final class Session: SyncSession {
 
 	func report(_ progress: SyncProgress) async {
 		log.withLock { $0.append(.progress(progress)) }
+		await self.progress(progress)
 	}
 
 	@Sendable static func standard(_ request: UserRequest) async throws -> UserAnswer {
