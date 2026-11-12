@@ -84,6 +84,15 @@ public struct FinTSConnector: BankConnector {
 			version: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "")
 	}
 
+	#if DEBUG
+	/// A connector whose helper is the program at `path`, with a made-up product ID. A debug build of
+	/// the app takes it from the environment variable `MONETEN_FINTS_HELPER`, so that the setup and the
+	/// refresh run against `scripts/fake-fints-helper.sh` without a bank.
+	public init(debugHelper path: String) {
+		self.init(helper: Helper(executable: URL(filePath: path), arguments: []), productID: "MONETENDEBUG", version: "0.0.0")
+	}
+	#endif
+
 	init(helper: Helper, productID: String?, version: String, inactivity: TimeInterval = 30, grace: TimeInterval = 5,
 		trust: @escaping @Sendable (_ host: String, _ chain: [Data]) -> String = FinTSConnector.verdict) {
 		self.helper = helper
