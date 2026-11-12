@@ -12,8 +12,12 @@ import java.util.TimeZone;
 import org.kapott.hbci.GV_Result.GVRKUms;
 import org.kapott.hbci.GV_Result.GVRKUms.UmsLine;
 import org.kapott.hbci.exceptions.HBCI_Exception;
+import org.kapott.hbci.exceptions.ProcessException;
 import org.kapott.hbci.manager.HBCIUtils;
 import org.kapott.hbci.passport.storage.PassportData;
+import org.kapott.hbci.status.HBCIDialogStatus;
+import org.kapott.hbci.status.HBCIExecStatus;
+import org.kapott.hbci.status.HBCIMsgStatus;
 import org.kapott.hbci.status.HBCIRetVal;
 import org.kapott.hbci.structures.Konto;
 import org.kapott.hbci.structures.Value;
@@ -124,8 +128,39 @@ final class SelfTest {
 			day.addLine(pending);
 			undated.getDataPerDay().add(day);
 			expect("account without booking date fails alone", FinTSHelper.Json.write(FinTSHelper.alone("DE02120300000000202051",
-				() -> FinTSHelper.result("DE02120300000000202051", null, null, undated))),
+				() -> FinTSHelper.result("DE02120300000000202051", null, null, undated, false))),
 				"{\"type\":\"accountFailed\",\"text\":\"The bank sent a transaction without a booking date, so nothing of this account was stored.\",\"account\":\"DE02120300000000202051\"}");
+
+			HBCIMsgStatus rejected = new HBCIMsgStatus();
+			rejected.globStatus.addRetVal(new HBCIRetVal(null, null, null, "9050", "Teilweise fehlerhaft", null));
+			rejected.segStatus.addRetVal(new HBCIRetVal(null, null, null, "9800", "Dialog abgebrochen", null));
+			rejected.segStatus.addRetVal(new HBCIRetVal(null, null, null, "9942", "PIN falsch", null));
+			expect("the error that needs action", FinTSHelper.Json.write(FinTSHelper.failure(new ProcessException("init", rejected))),
+				"{\"type\":\"failed\",\"code\":\"9942\",\"text\":\"PIN falsch\"}");
+
+			HBCIExecStatus loginFailed = new HBCIExecStatus();
+			HBCIDialogStatus dialog = new HBCIDialogStatus();
+			dialog.setInitStatus(rejected);
+			loginFailed.addDialogStatus("erika77", dialog);
+			expect("login error before any job", FinTSHelper.Json.write(FinTSHelper.failure(thrown(() -> FinTSHelper.requireLogin(loginFailed)))),
+				"{\"type\":\"failed\",\"code\":\"9942\",\"text\":\"PIN falsch\"}");
+			HBCIExecStatus noDialog = new HBCIExecStatus();
+			noDialog.addException("erika77", new HBCI_Exception("can not create dialog", new java.net.SocketTimeoutException("Read timed out")));
+			expect("dialog that did not start", FinTSHelper.Json.write(FinTSHelper.failure(thrown(() -> FinTSHelper.requireLogin(noDialog)))),
+				"{\"type\":\"failed\",\"kind\":\"network\",\"text\":\"Read timed out\"}");
+			HBCIMsgStatus fine = new HBCIMsgStatus();
+			fine.globStatus.addRetVal(new HBCIRetVal(null, null, null, "0010", "ok", null));
+			HBCIDialogStatus started = new HBCIDialogStatus();
+			started.setInitStatus(fine);
+			HBCIExecStatus loggedIn = new HBCIExecStatus();
+			loggedIn.addDialogStatus("erika77", started);
+			expect("dialog that started", thrown(() -> FinTSHelper.requireLogin(loggedIn)), null);
+
+			GVRKUms partial = new GVRKUms();
+			partial.jobStatus.addRetVal(new HBCIRetVal(null, null, null, "3040", "Weitere Daten folgen", new String[] {"4711"}));
+			expect("transactions in part fail the account", FinTSHelper.Json.write(FinTSHelper.alone("DE02120300000000202051",
+				() -> FinTSHelper.result("DE02120300000000202051", null, null, partial, true))),
+				"{\"type\":\"accountFailed\",\"code\":\"3040\",\"text\":\"The bank sent only part of the transactions, so nothing of this account was stored.\",\"account\":\"DE02120300000000202051\"}");
 
 			expect("network error", FinTSHelper.Json.write(FinTSHelper.failure(new HBCI_Exception("can not create HBCI handle", new java.net.ConnectException("Connection refused")))),
 				"{\"type\":\"failed\",\"kind\":\"network\",\"text\":\"Connection refused\"}");
@@ -141,6 +176,15 @@ final class SelfTest {
 		for (String f : failures) System.out.println("FAILED " + f);
 		System.out.println("FinTSHelper self-test: " + (checks - failures.size()) + " of " + checks + " checks passed");
 		System.exit(failures.isEmpty() ? 0 : 1);
+	}
+
+	static Throwable thrown(Runnable run) {
+		try {
+			run.run();
+			return null;
+		} catch (RuntimeException e) {
+			return e;
+		}
 	}
 
 	static String refusal(String url) {

@@ -45,12 +45,14 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import org.kapott.hbci.GV.HBCIJob;
+import org.kapott.hbci.GV.HBCIJobImpl;
 import org.kapott.hbci.GV_Result.GVRKUms;
 import org.kapott.hbci.GV_Result.GVRKUms.UmsLine;
 import org.kapott.hbci.GV_Result.GVRSaldoReq;
 import org.kapott.hbci.GV_Result.HBCIJobResult;
 import org.kapott.hbci.callback.AbstractHBCICallback;
 import org.kapott.hbci.exceptions.AbortedException;
+import org.kapott.hbci.exceptions.HBCI_Exception;
 import org.kapott.hbci.exceptions.ProcessException;
 import org.kapott.hbci.manager.BankInfo;
 import org.kapott.hbci.manager.HBCIHandler;
@@ -61,6 +63,8 @@ import org.kapott.hbci.manager.QRCode;
 import org.kapott.hbci.passport.HBCIPassport;
 import org.kapott.hbci.passport.HBCIPassportPinTan;
 import org.kapott.hbci.passport.storage.PassportData;
+import org.kapott.hbci.status.HBCIDialogStatus;
+import org.kapott.hbci.status.HBCIExecStatus;
 import org.kapott.hbci.status.HBCIRetVal;
 import org.kapott.hbci.status.HBCIStatus;
 import org.kapott.hbci.structures.Konto;
@@ -644,12 +648,40 @@ public class FinTSHelper {
 			"bookingText", text(l.text), "pending", pending);
 	}
 
-	/// The first error of a job, or of the message when the job has none.
-	static Map<String, Object> problem(HBCIJobResult result) {
-		for (HBCIStatus status : new HBCIStatus[] {result.getJobStatus(), result.getGlobStatus()}) {
-			for (HBCIRetVal r : status.getErrors()) return message("error", "code", r.code, "text", Out.withoutSecrets(r.text));
+	/// The errors that the user must act on: a wrong PIN, a blocked access, and an app that the
+	/// bank does not know. They come first, whatever their place in the answer.
+	static final List<String> URGENT = List.of("9930", "9931", "9942", "9340", "9078");
+
+	/// The error of the bank that the app shows: the first urgent one, or else the first one.
+	static HBCIRetVal relevant(List<HBCIRetVal> errors) {
+		for (String code : URGENT) {
+			for (HBCIRetVal r : errors) if (code.equals(r.code)) return r;
 		}
+		return errors.isEmpty() ? null : errors.get(0);
+	}
+
+	static List<HBCIRetVal> errors(HBCIStatus... statuses) {
+		List<HBCIRetVal> all = new ArrayList<>();
+		for (HBCIStatus status : statuses) all.addAll(List.of(status.getErrors()));
+		return all;
+	}
+
+	/// The error of a job, or of the message when the job has none.
+	static Map<String, Object> problem(HBCIJobResult result) {
+		HBCIRetVal r = relevant(errors(result.getJobStatus(), result.getGlobStatus()));
+		if (r != null) return message("error", "code", r.code, "text", Out.withoutSecrets(r.text));
 		return message("error", "text", "The bank did not answer the request.");
+	}
+
+	/// hbci4java reports a failed dialog start, for example a wrong PIN, in the status of execute and
+	/// runs no job. The refresh then fails as a whole.
+	static void requireLogin(HBCIExecStatus status) {
+		for (String customer : status.getCustomerIds()) {
+			HBCIDialogStatus dialog = status.getDialogStatus(customer);
+			if (dialog != null && dialog.initStatus != null && !dialog.initStatus.isOK()) throw new ProcessException("dialog start failed", dialog.initStatus);
+			List<Exception> exceptions = status.getExceptions(customer);
+			if (dialog == null && exceptions != null && !exceptions.isEmpty()) throw new HBCI_Exception("dialog failed", exceptions.get(0));
+		}
 	}
 
 	/// Consorsbank answers HKSAL and HKKAZ without HKTAN with 9075, although its bank parameters
@@ -723,11 +755,13 @@ public class FinTSHelper {
 		if (all.isEmpty()) return;
 		callback.lastProgress = 0;
 		send(message("progress", "done", 0, "of", all.size()));
-		handle.execute();
+		HBCIExecStatus status = handle.execute();
 		callback.withdrawApproval();
+		requireLogin(status);
 		for (Jobs jobs : all) {
+			HBCIJob statements = jobs.statements();
 			send(alone(jobs.id(), () -> result(jobs.id(), jobs.from(), jobs.balance() == null ? null : (GVRSaldoReq) jobs.balance().getJobResult(),
-				jobs.statements() == null ? null : (GVRKUms) jobs.statements().getJobResult())));
+				statements == null ? null : (GVRKUms) statements.getJobResult(), statements != null && ((HBCIJobImpl) statements).redo() != null)));
 		}
 	}
 
@@ -744,7 +778,10 @@ public class FinTSHelper {
 		}
 	}
 
-	static Map<String, Object> result(String id, String from, GVRSaldoReq balanceResult, GVRKUms statementsResult) {
+	/// `incomplete` says that the dialog ended before the bank sent the last part (3040) of the
+	/// transactions. Such an account fails, so that no merge treats a part as the whole.
+	static Map<String, Object> result(String id, String from, GVRSaldoReq balanceResult, GVRKUms statementsResult, boolean incomplete) {
+		if (incomplete) throw new Failure(null, "3040", "The bank sent only part of the transactions, so nothing of this account was stored.");
 		List<Object> errors = new ArrayList<>();
 		Map<String, Object> balance = null, transactions = null;
 		if (balanceResult != null) {
@@ -831,9 +868,8 @@ public class FinTSHelper {
 		}
 		for (Throwable t : all) {
 			if (!(t instanceof ProcessException p) || p.getMsgStatus() == null) continue;
-			List<HBCIRetVal> errors = new ArrayList<>(List.of(p.getMsgStatus().globStatus.getErrors()));
-			errors.addAll(List.of(p.getMsgStatus().segStatus.getErrors()));
-			if (!errors.isEmpty()) return message("failed", "code", errors.get(0).code, "text", Out.withoutSecrets(errors.get(0).text));
+			HBCIRetVal r = relevant(errors(p.getMsgStatus().globStatus, p.getMsgStatus().segStatus));
+			if (r != null) return message("failed", "code", r.code, "text", Out.withoutSecrets(r.text));
 		}
 		for (Throwable t : all) {
 			if (t instanceof IOException) return message("failed", "kind", "network", "text", Out.withoutSecrets(String.valueOf(t.getMessage())));
