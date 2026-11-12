@@ -6,7 +6,11 @@ import Foundation
 func folder(_ files: [String: String]) -> URL {
 	let url = FileManager.default.temporaryDirectory.appending(path: "ExtensionHostTests-\(UUID().uuidString)")
 	try! FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
-	for (name, text) in files { try! Data(text.utf8).write(to: url.appending(path: name)) }
+	for (name, text) in files {
+		let file = url.appending(path: name)
+		try! FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+		try! Data(text.utf8).write(to: file)
+	}
 	return url
 }
 

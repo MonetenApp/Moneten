@@ -12,6 +12,8 @@ public enum HostLog: Sendable, Equatable {
 /// session and ends with it (ADR 0015). Calls run one after the other.
 public actor ExtensionHostClient {
 	private let process: Process
+	/// The host process of this session, for the debug log.
+	public nonisolated let processIdentifier: Int32
 	private let input: FileHandle
 	private var events: AsyncStream<HostEvent>.Iterator
 	private let ask: @Sendable (String) async throws -> HostDecision
@@ -73,6 +75,7 @@ public actor ExtensionHostClient {
 			}
 		}
 		try process.run()
+		processIdentifier = process.processIdentifier
 	}
 
 	/// Calls a global function of the script and returns its first result.
