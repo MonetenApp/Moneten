@@ -106,8 +106,15 @@ final class SelfTest {
 		data.bpd.setProperty("BPD.Params.KInfo", "x");
 		data.twostepMechs = new ArrayList<>(List.of("921"));
 		try {
-			PassportData back = FinTSHelper.Passport.deserialize(FinTSHelper.Passport.serialize(data));
-			expect("passport round trip", back.blz + " " + back.sysId + " " + back.bpd + " " + back.twostepMechs, "12030000 SYS-1 {BPD.Params.KInfo=x} [921]");
+			FinTSHelper.Passport.State back = FinTSHelper.Passport.deserialize(FinTSHelper.Passport.serialize(data, "Karte 1"));
+			expect("passport round trip", back.data().blz + " " + back.data().sysId + " " + back.data().bpd + " " + back.data().twostepMechs + " " + back.tanMedium(),
+				"12030000 SYS-1 {BPD.Params.KInfo=x} [921] Karte 1");
+			ByteArrayOutputStream earlier = new ByteArrayOutputStream();
+			try (ObjectOutputStream o = new ObjectOutputStream(earlier)) {
+				o.writeObject(data);
+			}
+			FinTSHelper.Passport.State withoutMedium = FinTSHelper.Passport.deserialize(earlier.toByteArray());
+			expect("state without a TAN medium", withoutMedium.data().sysId + " " + withoutMedium.tanMedium(), "SYS-1 null");
 			ByteArrayOutputStream bytes = new ByteArrayOutputStream();
 			try (ObjectOutputStream o = new ObjectOutputStream(bytes)) {
 				o.writeObject(new java.util.Date(0));
@@ -116,6 +123,10 @@ final class SelfTest {
 		} catch (Exception e) {
 			failures.add("passport: " + e);
 		}
+
+		expect("TAN medium asked once in a run", medium(null, "Handy|Karte 1", "Handy|Karte 1"), "Karte 1 Karte 1, asked 1");
+		expect("TAN medium of the last refresh", medium("Handy", "Handy|Karte 1"), "Handy, asked 0");
+		expect("TAN medium that the bank no longer offers", medium("Alte Karte", "Handy|Karte 1"), "Karte 1, asked 1");
 
 		HBCIUtils.init(new Properties(), new FinTSHelper.Callback(Map.of(), null));
 		try {
@@ -176,6 +187,27 @@ final class SelfTest {
 		for (String f : failures) System.out.println("FAILED " + f);
 		System.out.println("FinTSHelper self-test: " + (checks - failures.size()) + " of " + checks + " checks passed");
 		System.exit(failures.isEmpty() ? 0 : 1);
+	}
+
+	/// The TAN media that hbci4java gets for each list of media it offers, starting from the medium
+	/// of the state. The user would choose "Karte 1".
+	static String medium(String saved, String... offers) {
+		int[] asked = {0};
+		FinTSHelper.Callback callback = new FinTSHelper.Callback(Map.of(), null) {
+			@Override
+			String ask(Map<String, Object> request) {
+				asked[0]++;
+				return "Karte 1";
+			}
+		};
+		callback.tanMedium = saved;
+		List<String> chosen = new ArrayList<>();
+		for (String offer : offers) {
+			StringBuffer data = new StringBuffer(offer);
+			callback.callback(null, FinTSHelper.Callback.NEED_PT_TANMEDIA, "", 0, data);
+			chosen.add(data.toString());
+		}
+		return String.join(" ", chosen) + ", asked " + asked[0];
 	}
 
 	static Throwable thrown(Runnable run) {

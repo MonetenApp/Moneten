@@ -13,11 +13,13 @@
 // It ends with status 0 after its last message, also after failed.
 //
 // The passport of hbci4java stays in memory. The command brings it as the bytes of the last state,
-// and the helper returns the new bytes in the state message.
+// and the helper returns the new bytes in the state message. The state also holds the TAN medium
+// that the user chose, so that the next refresh uses it while the bank offers it.
 
 import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.EOFException;
 import java.io.FileDescriptor;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -25,6 +27,7 @@ import java.io.InputStreamReader;
 import java.io.ObjectInputFilter;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
+import java.io.OptionalDataException;
 import java.io.PrintStream;
 import java.math.BigDecimal;
 import java.net.URI;
@@ -376,6 +379,8 @@ public class FinTSHelper {
 	static final class Passport extends HBCIPassportPinTan {
 		static PassportData loaded;
 
+		record State(PassportData data, String tanMedium) { }
+
 		Passport() {
 			super("PinTan");
 		}
@@ -407,7 +412,7 @@ public class FinTSHelper {
 		public void saveChanges() {
 		}
 
-		byte[] state() throws IOException {
+		byte[] state(String tanMedium) throws IOException {
 			PassportData d = new PassportData();
 			d.country = getCountry();
 			d.blz = getBLZ();
@@ -426,24 +431,32 @@ public class FinTSHelper {
 			} catch (RuntimeException e) {
 				Out.diagnostic("FinTSHelper: the TAN method was not saved: " + e.getMessage());
 			}
-			return serialize(d);
+			return serialize(d, tanMedium);
 		}
 
-		static byte[] serialize(PassportData d) throws IOException {
+		static byte[] serialize(PassportData d, String tanMedium) throws IOException {
 			ByteArrayOutputStream bytes = new ByteArrayOutputStream();
 			try (ObjectOutputStream o = new ObjectOutputStream(bytes)) {
 				o.writeObject(d);
+				o.writeObject(tanMedium);
 			}
 			return bytes.toByteArray();
 		}
 
 		/// Reads a state of an earlier run. A state that does not read starts a new passport, and
 		/// the bank then registers a new system ID.
-		static PassportData deserialize(byte[] bytes) {
+		static State deserialize(byte[] bytes) {
 			try (ObjectInputStream in = new ObjectInputStream(new ByteArrayInputStream(bytes))) {
 				in.setObjectInputFilter(ObjectInputFilter.Config.createFilter(
 					"org.kapott.hbci.passport.storage.PassportData;java.util.Properties;java.util.Hashtable;java.util.Map$Entry;java.util.ArrayList;java.lang.*;!*"));
-				return (PassportData) in.readObject();
+				PassportData data = (PassportData) in.readObject();
+				String tanMedium = null;
+				try {
+					tanMedium = (String) in.readObject();
+				} catch (EOFException | OptionalDataException e) {
+					// A state of an earlier build ends after the passport.
+				}
+				return new State(data, tanMedium);
 			} catch (IOException | ClassNotFoundException | ClassCastException e) {
 				Out.diagnostic("FinTSHelper: the saved state does not read, starting without it");
 				return null;
@@ -452,7 +465,7 @@ public class FinTSHelper {
 	}
 
 	/// Answers the callbacks of hbci4java through the app.
-	static final class Callback extends AbstractHBCICallback {
+	static class Callback extends AbstractHBCICallback {
 		static final Pattern PIN_ERROR = Pattern.compile("Meldung der Bank: (\\d{4}): (.*)");
 		final Map<?, ?> command;
 		final String host;
@@ -462,6 +475,9 @@ public class FinTSHelper {
 		Integer approval;
 		Map<String, Object> rejectedPIN;
 		Map<String, Object> pinError;
+		/// The TAN medium of the state, or the one the user chose in this run. hbci4java asks for it
+		/// before every order that needs a TAN.
+		String tanMedium;
 		final Map<HBCIJob, Integer> jobs = new IdentityHashMap<>();
 		int jobCount, lastProgress = -1;
 
@@ -534,7 +550,8 @@ public class FinTSHelper {
 				case NEED_PT_TANMEDIA -> {
 					List<Object> media = new ArrayList<>();
 					for (String name : retData.toString().split("\\|")) if (present(name)) media.add(name);
-					set(retData, ask(message("ask", "kind", "tanMedium", "purpose", purpose(), "media", media)));
+					if (tanMedium == null || !media.contains(tanMedium)) tanMedium = ask(message("ask", "kind", "tanMedium", "purpose", purpose(), "media", media));
+					set(retData, tanMedium);
 				}
 				case NEED_PT_TAN, NEED_PT_PHOTOTAN, NEED_PT_QRTAN -> {
 					String image = null, flicker = null;
@@ -830,7 +847,9 @@ public class FinTSHelper {
 		HBCIHandler handle = null;
 		try {
 			String state = string(command, "state");
-			Passport.loaded = state == null ? null : Passport.deserialize(Base64.getDecoder().decode(state));
+			Passport.State loaded = state == null ? null : Passport.deserialize(Base64.getDecoder().decode(state));
+			Passport.loaded = loaded == null ? null : loaded.data();
+			callback.tanMedium = loaded == null ? null : loaded.tanMedium();
 			Passport passport = new Passport();
 			passport.setHost(callback.host);
 			passport.setPort(callback.port);
@@ -848,7 +867,7 @@ public class FinTSHelper {
 			} else {
 				refresh(handle, passport, accounts, (List<?>) command.get("accounts"), callback);
 			}
-			send(message("state", "data", Base64.getEncoder().encodeToString(passport.state())));
+			send(message("state", "data", Base64.getEncoder().encodeToString(passport.state(callback.tanMedium))));
 		} finally {
 			try {
 				if (handle != null) handle.close();
