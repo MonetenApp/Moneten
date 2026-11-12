@@ -40,7 +40,7 @@ MoneyMoney and Banking4 are two of the established banking apps for German users
 
 ## Build and run
 
-You need macOS 15 or newer, Xcode 16.3 or newer, and [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`). The FinTS probe with hbci4java also needs a JDK 17 or later.
+You need macOS 15 or newer, Xcode 16.3 or newer, and [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`). `scripts/build-app.sh` and the FinTS probe with hbci4java also need a JDK 17 or later (`brew install openjdk@21`) for the FinTS helper ([ADR 0014](docs/decisions/0014-fints-through-hbci4java.md)). The build takes the FinTS product ID from the login Keychain item "Moneten FinTS product ID". Without it the app builds, and FinTS refuses to connect.
 
 ```sh
 scripts/test.sh                     # run the tests of the libraries

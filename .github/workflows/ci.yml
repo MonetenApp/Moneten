@@ -32,15 +32,19 @@ jobs:
         # The budgets of the performance tests hold for a release build only. See CONTRIBUTING.md.
         # The tests run one after another, so that no test measures the load of another one.
         run: scripts/test.sh -c release -Xswiftc -enable-testing --filter PerformanceTests --no-parallel
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: FinTS helper
+        # Compiles Tools/FinTSHelper against the jars of dependencies.lock and runs its self-test.
+        run: scripts/build-fints-helper.sh
+      # Adds the FinTS helper with a jlink runtime to the app.
       - run: scripts/build-app.sh debug
       - name: UI performance
         run: scripts/perf-check.sh
       - name: FinTS prototype
         run: xcodebuild -project App/Moneten.xcodeproj -scheme FinTSProbe -derivedDataPath .build/xcode -disableAutomaticPackageResolution -quiet build
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "17"
       - name: FinTS probe with hbci4java
         # Downloads the jars of Tools/FinTSProbeJava/dependencies.lock, checks their SHA-256, and compiles the probe.
         run: scripts/fints-probe-java.sh --build-only
