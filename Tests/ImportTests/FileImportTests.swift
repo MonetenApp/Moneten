@@ -91,7 +91,7 @@ struct FileImportTests {
 		#expect(ts[1].amountMinor == 125_000 && ts[1].name == "Erika Mustermann")
 	}
 
-	@Test("MT940 reversals book the opposite sign, and a cut-off line is skipped")
+	@Test("MT940 reversals book the opposite sign")
 	func mt940Reversal() throws {
 		let text = """
 		:20:STARTUMS
@@ -101,12 +101,45 @@ struct FileImportTests {
 		:61:2611041104RD50,00NDDTNONREF
 		:61:2611051105C20,00NTRFNONREF
 		:61:2611061106RC20,00NTRFNONREF
-		:61:2611071107R
-		:62F:C261107EUR1000,00
+		:62F:C261106EUR1000,00
 		-
 		"""
 		let ts = try TransactionFileImporter.parse(Data(text.utf8))
 		#expect(ts.map(\.amountMinor) == [-5_000, 5_000, 2_000, -2_000])
+	}
+
+	@Test("An MT940 file with a transaction that cannot be read is rejected with its line", arguments: [
+		(":61:2611071107R", "The transaction has no debit or credit mark."),
+		(":61:2611071107DNDDTNONREF", "The amount cannot be read."),
+		(":61:2613071107D50,00NDDTNONREF", "The date cannot be read."),
+		(":61:26", "The date cannot be read."),
+	])
+	func mt940Unreadable(line: String, reason: String) {
+		let text = """
+		:20:STARTUMS
+		:25:12030000/202051
+		:60F:C261031EUR1000,00
+		:61:2611031103D50,00NDDTNONREF
+		\(line)
+		:62F:C261107EUR950,00
+		-
+		"""
+		#expect(throws: TransactionFileImporter.Failure.line(5, reason)) { try TransactionFileImporter.parse(Data(text.utf8)) }
+	}
+
+	@Test("A CAMT file with an entry that cannot be read is rejected with its line", arguments: [
+		(#"<Ntry><Amt Ccy="EUR">abc</Amt><CdtDbtInd>DBIT</CdtDbtInd><BookgDt><Dt>2026-11-03</Dt></BookgDt></Ntry>"#, "The amount of the entry cannot be read."),
+		(#"<Ntry><Amt Ccy="EUR">5.00</Amt><CdtDbtInd>CRDT</CdtDbtInd></Ntry>"#, "The booking date of the entry cannot be read."),
+	])
+	func camtUnreadable(entry: String, reason: String) {
+		let xml = """
+		<?xml version="1.0" encoding="UTF-8"?>
+		<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.053.001.08"><BkToCstmrStmt><Stmt>
+		<Ntry><Amt Ccy="EUR">89.00</Amt><CdtDbtInd>DBIT</CdtDbtInd><BookgDt><Dt>2026-11-02</Dt></BookgDt></Ntry>
+		\(entry)
+		</Stmt></BkToCstmrStmt></Document>
+		"""
+		#expect(throws: TransactionFileImporter.Failure.line(4, reason)) { try TransactionFileImporter.parse(Data(xml.utf8)) }
 	}
 
 	@Test("camt.053 with a debit and a pending credit")
