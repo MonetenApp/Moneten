@@ -28,6 +28,11 @@ import Testing
 		#expect(catalogPackage(Self.catalog.filter { $0.key != field }) == .failure(.invalidManifest("The manifest needs \(field).")))
 	}
 
+	@Test(arguments: ["hosts", "services", "kinds", "apiVersion"])
+	func catalogModeTreatsNullAsMissing(field: String) {
+		#expect(catalogPackage(Self.catalog.merging([field: NSNull()]) { $1 }) == .failure(.invalidManifest("The manifest needs \(field).")))
+	}
+
 	@Test func catalogLicenseFromTheList() {
 		#expect(catalogPackage(Self.catalog.merging(["license": "Proprietary"]) { $1 })
 			== .failure(.invalidManifest("The license Proprietary is not on the list of allowed licenses.")))

@@ -90,7 +90,7 @@ public struct Manifest: Sendable, Equatable, Codable {
 		if let needed = manifest.apiVersion, needed > extensionAPIVersion {
 			throw .needsNewerApp(apiVersion: needed)
 		}
-		if mode == .catalog, let missing = CodingKeys.allCases.first(where: { object[$0.rawValue] == nil }) {
+		if mode == .catalog, let missing = CodingKeys.allCases.first(where: { object[$0.rawValue] == nil || object[$0.rawValue] is NSNull }) {
 			throw .invalidManifest("The manifest needs \(missing.rawValue).")
 		}
 		return manifest

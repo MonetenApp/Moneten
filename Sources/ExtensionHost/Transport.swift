@@ -49,9 +49,21 @@ struct Network {
 	/// behind the same server of a listed host.
 	static let reservedHeaders = ["host", "connection", "content-length", "transfer-encoding", "keep-alive", "upgrade", "te", "trailer"]
 
+	/// The characters of a header name, the token of RFC 9110. CFNetwork maps other letters to ASCII
+	/// and so turns "Hoſt" into a second Host header.
+	static let tokenCharacters = Set("!#$%&'*+-.^_`|~0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz".unicodeScalars)
+
 	func send(_ request: HTTPRequest) throws -> HTTPResponse {
-		if let name = request.headers.keys.first(where: { Self.reservedHeaders.contains($0.lowercased()) || $0.lowercased().hasPrefix("proxy-") }) {
-			throw ScriptError("An extension may not set the header \(name).")
+		for (name, value) in request.headers {
+			guard !name.isEmpty, name.unicodeScalars.allSatisfy(Self.tokenCharacters.contains) else {
+				throw ScriptError("An extension may not set the header \(name.debugDescription), because it is not a plain header name.")
+			}
+			if Self.reservedHeaders.contains(name.lowercased()) || name.lowercased().hasPrefix("proxy-") {
+				throw ScriptError("An extension may not set the header \(name).")
+			}
+			if value.unicodeScalars.contains(where: { $0 == "\r" || $0 == "\n" || $0 == "\0" }) {
+				throw ScriptError("The header \(name) has a line break or a null character in its value.")
+			}
 		}
 		var request = request
 		for _ in 0...Self.maxRedirects {

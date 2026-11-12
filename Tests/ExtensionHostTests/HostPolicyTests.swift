@@ -95,6 +95,30 @@ import Testing
 		#expect(run.sent.isEmpty)
 	}
 
+	/// CFNetwork drops the real Host for a long s or a ligature and crashes over HTTP/2, and sends "Host " as "Host : ...".
+	@Test(arguments: ["Hoſt", "Hoﬅ", "Host ", "Ｈost", "X-Id\\r\\nHost", "X-Id\\0"])
+	func headerNameThatIsNotAToken(name: String) {
+		let run = Run(demo("""
+			WebBanking{version = 1}
+			function Check() return Connection():request("GET", "https://api.bank.example/", nil, nil, {["\(name)"] = "evil.example"}) end
+			""", hosts: ["api.bank.example"]), exchanges: Self.everyHost)
+		let shown = name.replacingOccurrences(of: "\\r", with: "\r").replacingOccurrences(of: "\\n", with: "\n").replacingOccurrences(of: "\\0", with: "\0")
+		#expect(run.call("Check") == .string("error: Demo.lua:2: An extension may not set the header \(shown.debugDescription), because it is not a plain header name."))
+		#expect(run.sent.isEmpty)
+	}
+
+	@Test(arguments: ["a\\r\\nHost: evil.example", "a\\nHost: evil.example", "a\\rb", "a\\0b"])
+	func headerValueWithALineBreak(value: String) {
+		let run = Run(demo("""
+			WebBanking{version = 1}
+			function Check() return Connection():request("GET", "https://api.bank.example/", nil, nil, {["X-Id"] = "\(value)"}) end
+			function Type() return Connection():request("POST", "https://api.bank.example/", "", "\(value)") end
+			""", hosts: ["api.bank.example"]), exchanges: Self.everyHost)
+		#expect(run.call("Check") == .string("error: Demo.lua:2: The header X-Id has a line break or a null character in its value."))
+		#expect(run.call("Type") == .string("error: Demo.lua:3: The header Content-Type has a line break or a null character in its value."))
+		#expect(run.sent.isEmpty)
+	}
+
 	@Test func relativeURLAfterTheFirstRequest() {
 		let run = Run(demo("""
 			WebBanking{version = 1}

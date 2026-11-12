@@ -79,4 +79,57 @@ import Testing
 			try await Self.start(demo("WebBanking{}"), fixture: Self.fixture([]))
 		}
 	}
+
+	/// The host started by `sh` in place of the app, so that the test can kill its parent while the test keeps stdin open.
+	final class Orphan {
+		let shell = Process()
+		let input = Pipe(), output = Pipe(), started = Pipe()
+		private(set) var host: pid_t = 0
+
+		init(_ command: String) throws {
+			shell.executableURL = URL(filePath: "/bin/sh")
+			shell.arguments = ["-c", command, hostExecutable.path]
+			(shell.standardInput, shell.standardOutput, shell.standardError) = (input, output, started)
+			try shell.run()
+			host = try #require(pid_t(Self.line(started)))
+		}
+
+		deinit { kill(host, SIGKILL) }
+
+		func send(_ command: HostCommand) throws {
+			input.fileHandleForWriting.write(try JSONEncoder().encode(command) + [0x0A])
+		}
+
+		static func line(_ pipe: Pipe) -> String {
+			var bytes: [UInt8] = []
+			while let byte = try? pipe.fileHandleForReading.read(upToCount: 1)?.first, byte != 0x0A { bytes.append(byte) }
+			return String(decoding: bytes, as: UTF8.self)
+		}
+
+		func ends(within limit: Duration) async throws -> Bool {
+			let deadline = ContinuousClock.now + limit
+			while ContinuousClock.now < deadline {
+				if kill(host, 0) == -1 && errno == ESRCH { return true }
+				try await Task.sleep(for: .milliseconds(50))
+			}
+			return false
+		}
+	}
+
+	@Test func hostEndsWhenTheAppDiesDuringAScript() async throws {
+		let orphan = try Orphan(#"exec 3<&0; "$0" <&3 & echo $! >&2; wait"#)
+		try orphan.send(.start(HostSetup(package: demo("WebBanking{version = 1}\nfunction Loop() while true do end end"))))
+		#expect(Orphan.line(orphan.output).hasPrefix(#"{"loaded""#))
+		try orphan.send(.call("Loop"))
+		try await Task.sleep(for: .milliseconds(200))
+		kill(orphan.shell.processIdentifier, SIGKILL)
+		orphan.shell.waitUntilExit()
+		#expect(try await orphan.ends(within: .seconds(5)))
+	}
+
+	@Test func hostEndsWhenTheAppDiedBeforeItStarted() async throws {
+		let orphan = try Orphan(#"exec 3<&0; (sleep 0.5; exec "$0") <&3 & echo $! >&2"#)
+		orphan.shell.waitUntilExit()
+		#expect(try await orphan.ends(within: .seconds(5)))
+	}
 }

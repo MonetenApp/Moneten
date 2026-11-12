@@ -36,9 +36,14 @@ enum HostEvent: Sendable, Codable {
 }
 
 /// The loop of the host process: one session, with commands on stdin and events on stdout. It ends
-/// when the app closes stdin.
+/// when the app closes stdin or exits, also while a script still runs.
 public enum HostProcess {
 	public static func serve() {
+		let parent = DispatchSource.makeProcessSource(identifier: getppid(), eventMask: .exit)
+		parent.setEventHandler { exit(0) }
+		parent.resume()
+		// A parent that died before the watch began has already handed the process to launchd.
+		if getppid() == 1 { exit(0) }
 		var session: HostSession?
 		while let command = readCommand() {
 			switch command {
