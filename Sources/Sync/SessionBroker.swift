@@ -257,7 +257,7 @@ public final class SessionBroker {
 			return method.needsMedium ? .tanMedia : .challenge(method.delivery)
 		case .tanMedium:
 			return .challenge(chosenMethods[access]?.delivery ?? .tan)
-		case .pin, .tan:
+		case .pin, .tan, .host:
 			return nil
 		}
 	}
