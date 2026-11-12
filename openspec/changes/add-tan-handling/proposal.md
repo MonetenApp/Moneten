@@ -57,3 +57,6 @@ None.
 - When the user changes the TAN method in the dialog, the app cancels the running challenge and requests a new one. This was not observed.
 - A flicker code has a size control and remembers the size. A speed control was not observed and is not specified.
 - An automatic refresh never opens the dialog. The change `add-account-refresh` specifies that.
+- After a choice of a method or a medium the dialog says what it requests. The text follows the type and the names of the method in the bank parameters. MoneyMoney's rule was not observed.
+- The flicker code has seven widths from 160 to 400 points, and 240 at first. The sizes of MoneyMoney were not observed.
+- Command-plus and Command-minus enlarge and reduce an image or the flicker code. This was not observed.

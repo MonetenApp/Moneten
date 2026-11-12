@@ -53,3 +53,6 @@ None.
 - The automatic refresh skips an access without an available PIN and marks it in the sidebar. This follows issue #40.
 - When several accesses need a PIN in one manual refresh, the app asks for one PIN at a time. The order in MoneyMoney was not observed.
 - Extension passwords and subscription tokens follow the same rules as FinTS PINs.
+- FinTS bank parameters state the shortest and the longest PIN but no rule for digits only, so the app checks a FinTS PIN only for its length.
+- "Remove saved PIN" also forgets the PIN in memory, so the next refresh asks at once. This was not observed.
+- The login step of "Add Account" offers "Save PIN" as well. This was not observed.
