@@ -101,6 +101,39 @@ import Testing
 		#expect(result == .success(.string("done")))
 	}
 
+	/// A result of the API that a function pushes into a full Lua state fails the call as a memory
+	/// error, which the script can catch, and the state is back at one level of Swift afterwards.
+	@Test(arguments: [#"JSON(json):dictionary()"#, #"HTML(page):xpath("//p"):text()"#, #"MM.base64(big)"#])
+	func resultIntoAFullStateIsAMemoryError(call: String) {
+		let package = demo("""
+			WebBanking{version = 1}
+			big = string.rep("y", 4 * 1048576)
+			json = '{"text": "' .. big .. '"}'
+			page = "<p>" .. big .. "</p>"
+			function Fill()
+				-- Fills the state of 64 MB until less than 2 MB is free: enough for the Lua side of a call,
+				-- too little for a result of 4 MB that Swift pushes.
+				hog = {}
+				collectgarbage()
+				while collectgarbage("count") < 64 * 1024 - 2048 do
+					hog[#hog + 1] = string.rep("x", 65536) .. #hog
+					collectgarbage()
+				end
+				local failures = {}
+				for i = 1, 10 do
+					local ok, message = pcall(function() return \(call) end)
+					if not ok then failures[message] = (failures[message] or 0) + 1 end
+				end
+				hog = nil
+				return failures
+			end
+			""")
+		let session = HostSession(package: package, transport: LargeBodies(), memory: 64 * 1_048_576, ask: { _ in .denied }, log: { _ in })
+		let result = Result { () throws(ScriptError) -> LuaValue in _ = try session.load(); return try session.call(.function("Fill")) }
+		#expect(result == .success(.object(["not enough memory": .integer(10)])))
+		#expect(clua_nativedepth(session.lua.stack.L) == 1)
+	}
+
 	/// An error of a Swift function that quotes data of the script, such as a URL of 1 MB, keeps 1,000
 	/// bytes of it, so that the error needs little memory.
 	@Test(arguments: [
