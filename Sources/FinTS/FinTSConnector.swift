@@ -1,5 +1,6 @@
 import Domain
 import Foundation
+import Synchronization
 
 /// A bank of the bank directory of hbci4java.
 public struct FinTSBank: Sendable, Equatable {
@@ -153,32 +154,41 @@ public struct FinTSConnector: BankConnector {
 	/// Runs one command. Requests of the helper go to the session, and every other message to `handle`.
 	/// A decoupled approval stays open while hbci4java checks it, until the helper withdraws it.
 	/// When the refresh is canceled or fails, the helper gets a cancel and at most 5 seconds to end.
+	/// When the helper ends, its open requests end too.
 	private func run(_ command: Command, session: SyncSession?, _ handle: (HelperMessage) async throws -> Void) async throws {
-		let process = try HelperProcess(executable: helper.executable, arguments: helper.arguments)
-		var approvals: [Int: Task<Void, Never>] = [:]
+		let asks = OpenAsks()
+		let process = try HelperProcess(executable: helper.executable, arguments: helper.arguments, onEnd: asks.close)
+		var approvals: [Int: Task<UserAnswer, any Error>] = [:]
+		var helperLeft = false
 		await withTaskCancellationHandler {
 			do {
 				process.send(command)
-				for await line in process.lines {
+				reading: for await line in process.lines {
 					guard let message = try? JSONDecoder().decode(HelperMessage.self, from: Data(line.utf8)) else { throw HelperFailure.unreadable }
 					switch message {
 					case let .ask(id, ask):
 						guard let session else { throw HelperFailure.unreadable }
 						let request = try ask.request()
+						let task = await asks.start(request, session)
 						guard ask.kind != "approve" else {
-							approvals[id] = Task {
-								do {
-									_ = try await session.ask(request)
-								} catch where !Task.isCancelled {
-									process.fail(error)
-								} catch {}
+							approvals[id] = task
+							Task {
+								do { _ = try await task.value } catch where !task.isCancelled { process.fail(error) } catch {}
 							}
 							continue
 						}
-						let answer = try await session.ask(request)
+						let answer: UserAnswer
+						do {
+							answer = try await withTaskCancellationHandler { try await task.value } onCancel: { task.cancel() }
+						} catch is CancellationError where asks.closed && !Task.isCancelled {
+							helperLeft = true
+							break reading
+						}
 						process.send(Answer(id: id, value: answer.value))
 					case let .withdraw(id):
-						approvals.removeValue(forKey: id)?.cancel()
+						guard let approval = approvals.removeValue(forKey: id) else { continue }
+						approval.cancel()
+						_ = await approval.result
 					default:
 						try await handle(message)
 					}
@@ -188,12 +198,41 @@ public struct FinTSConnector: BankConnector {
 			}
 		} onCancel: {
 			process.cancel()
+			asks.close()
 		}
-		for approval in approvals.values { approval.cancel() }
+		for approval in approvals.values {
+			approval.cancel()
+			_ = await approval.result
+		}
 		var stopped: (any Error)?
 		do { try await process.ended() } catch { stopped = error }
 		try Task.checkCancellation()
-		if let error = process.firstFailure ?? stopped { throw error }
+		if let error = process.firstFailure ?? stopped ?? (helperLeft ? HelperFailure.noAnswer : nil) { throw error }
+	}
+}
+
+/// The requests of one run that wait for the user. No answer reaches a helper that ended, so the end
+/// of the helper closes them, and so does a canceled refresh.
+private final class OpenAsks: Sendable {
+	private let state = Mutex<(tasks: [Task<UserAnswer, any Error>], closed: Bool)>(([], false))
+
+	var closed: Bool { state.withLock { $0.closed } }
+
+	/// Hands the request to the session in a task of its own, and returns once that task runs. A
+	/// withdraw that follows at once then closes a dialog that was requested, instead of skipping it.
+	func start(_ request: UserRequest, _ session: SyncSession) async -> Task<UserAnswer, any Error> {
+		let (started, signal) = AsyncStream.makeStream(of: Never.self)
+		let task = Task {
+			signal.finish()
+			return try await session.ask(request)
+		}
+		if state.withLock({ $0.tasks.append(task); return $0.closed }) { task.cancel() }
+		for await _ in started {}
+		return task
+	}
+
+	@Sendable func close() {
+		for task in state.withLock({ $0.closed = true; return $0.tasks }) { task.cancel() }
 	}
 }
 

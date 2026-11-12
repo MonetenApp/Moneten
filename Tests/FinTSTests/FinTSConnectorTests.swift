@@ -122,6 +122,40 @@ struct FinTSConnectorTests {
 		#expect(result.balance == Money(minorUnits: 234_015, currency: "EUR"))
 	}
 
+	@Test("An approval that the helper withdraws at once still reaches the session, which then closes it")
+	func approvalWithdrawnAtOnce() async throws {
+		let session = Session()
+		let report = try await refresh("""
+			read cmd
+			echo '{"type":"ask","id":1,"kind":"approve","purpose":"login","prompt":"Bitte freigeben"}'
+			echo '{"type":"withdraw","id":1}'
+			echo '{"type":"result","account":"DE02120300000000202051","balance":{"amount":"1","currency":"EUR"},"errors":[]}'
+			""", session: session)
+
+		#expect(session.events == [
+			.asked(.secondFactor(SecondFactorRequest(purpose: .login, system: .fintsServer,
+				challenge: .approveInApp(prompt: "Bitte freigeben", app: nil, image: nil, step: nil)))),
+			.withdrawn,
+		])
+		#expect(report.outcomes.count == 1)
+	}
+
+	@Test("A request for the user ends when the helper ends", arguments: [
+		("exit 3", SyncFailure.network("The FinTS helper stopped unexpectedly (status 3).")),
+		("exit 0", HelperFailure.noAnswer),
+	])
+	func helperEndsWhileAsking(exit: String, expected: SyncFailure) async throws {
+		let session = Session { _ in
+			try await Task.sleep(for: .seconds(60))
+			return .pin(Secret("1234"))
+		}
+		let start = ContinuousClock.now
+		let error = await failure(of: "read cmd; echo '{\"type\":\"ask\",\"id\":1,\"kind\":\"pin\"}'; \(exit)", session: session)
+		#expect(error as? SyncFailure == expected)
+		#expect(ContinuousClock.now - start < .seconds(3))
+		#expect(session.events == [.asked(.pin(PINRequest())), .withdrawn])
+	}
+
 	@Test("Cancels the refresh when the user cancels the approval")
 	func approvalCanceled() async throws {
 		let session = Session { request in
