@@ -33,4 +33,9 @@ import Testing
 	@Test func noRegistration() {
 		#expect(Run(demo("function Check() end")).call("Check") == .string("error: Demo does not call WebBanking{}."))
 	}
+
+	@Test func catalogFileWithoutManifest() {
+		let url = folder(["Demo.lua": "WebBanking{version = 1}"]).appending(path: "Demo.lua")
+		#expect(Result { () throws(PackageProblem) in try ExtensionPackage.load(from: url, mode: .catalog) } == .failure(.missingManifest))
+	}
 }

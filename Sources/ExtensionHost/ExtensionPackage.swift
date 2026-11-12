@@ -34,13 +34,15 @@ public struct ExtensionPackage: Sendable, Equatable, Codable {
 		public let text: String
 	}
 
-	/// Reads a single `.lua` file with an optional manifest of the same base name next to it, or a
-	/// folder whose `manifest.json` lists its Lua files.
+	/// Reads a single `.lua` file with a manifest of the same base name next to it, which only a file
+	/// install may leave out, or a folder whose `manifest.json` lists its Lua files.
 	public static func load(from url: URL, mode: Manifest.Mode = .file) throws(PackageProblem) -> ExtensionPackage {
 		let name = url.deletingPathExtension().lastPathComponent
 		if url.pathExtension == "lua" {
 			let sibling = url.deletingPathExtension().appendingPathExtension("json")
-			let manifest = try FileManager.default.fileExists(atPath: sibling.path) ? Manifest.parse(read(sibling), mode: mode) : nil
+			let hasManifest = FileManager.default.fileExists(atPath: sibling.path)
+			if !hasManifest, mode == .catalog { throw .missingManifest }
+			let manifest = try hasManifest ? Manifest.parse(read(sibling), mode: mode) : nil
 			return ExtensionPackage(name: name, manifest: manifest, files: [try source(url)])
 		}
 		guard (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true else { throw .notLua }
