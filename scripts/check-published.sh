@@ -42,9 +42,9 @@ for path in sorted(glob.glob(os.path.join(out, "*.lua"))):
 	names = {"MM." + n for n in re.findall(r"(?<![\w.])MM\.([A-Za-z_]\w*)", text)}
 	names |= {"connection:" + n for n in re.findall(r"\bconnection[:.]([A-Za-z_]\w*)", text)}
 	uses[name] = names - may_be_nil
-	events = session(name.split("__")[-1], text)
-	if not events or "loaded" not in events[0]:
-		failed[name] = events[0]["failed"]["_0"] if events and "failed" in events[0] else "no answer"
+	answer = next((e for e in session(name.split("__")[-1], text) if "loaded" in e or "failed" in e), {"failed": {"_0": "no answer"}})
+	if "failed" in answer:
+		failed[name] = answer["failed"]["_0"]
 
 wanted = sorted(set().union(*uses.values()))
 probe = "WebBanking{version = 1}\nlocal names = " + json.dumps(wanted).replace("[", "{").replace("]", "}") + """

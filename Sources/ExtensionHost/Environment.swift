@@ -152,6 +152,8 @@ enum Environment {
 		switch fields.version {
 		case let .integer(i): version = Double(i)
 		case let .number(n): version = n
+		// Signed extensions write the version as text, such as "1.17", which Lua reads as a number.
+		case let .string(text) where Double(text.trimmingCharacters(in: .whitespaces)) != nil: version = Double(text.trimmingCharacters(in: .whitespaces))!
 		default:
 			stack.pushMessage("version is missing in WebBanking{}.")
 			return -1

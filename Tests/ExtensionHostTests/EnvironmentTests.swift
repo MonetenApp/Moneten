@@ -64,6 +64,11 @@ import Testing
 			== .string("error: Demo.lua:1: version is missing in WebBanking{}."))
 	}
 
+	@Test func versionAsTextAsSignedExtensionsWriteIt() {
+		#expect(Run(demo("WebBanking{version = \"1.17\"}\nfunction Check() return version end")).call("Check") == .number(1.17))
+		#expect(Run(demo("WebBanking{version = \"new\"}")).call("Check") == .string("error: Demo.lua:1: version is missing in WebBanking{}."))
+	}
+
 	@Test func deepTableStopsTheScript() {
 		#expect(run("""
 			local t = {} local c = t for i = 1, 200 do c.x = {} c = c.x end
