@@ -121,6 +121,52 @@ struct FinTSConnectorTests {
 		#expect(!recorded.map { $0["id"] }.contains(nil))
 	}
 
+	@Test("Sends the PIN rules of the bank with the PIN request")
+	func pinRules() async throws {
+		let session = Session()
+		_ = try await connector("""
+			read cmd
+			echo '{"type":"ask","id":1,"kind":"pin","rules":{"minLength":5,"maxLength":10}}'
+			read answer
+			echo '{"type":"accounts","accounts":[]}'
+			""").listAccounts(of: Self.access, state: nil, session: session)
+		#expect(session.events == [.asked(.pin(PINRequest(rules: PINRules(minLength: 5, maxLength: 10))))])
+	}
+
+	@Test("Offers the other TAN methods in the dialog of a challenge, and sends the method that the user changes to", arguments: ["tan", "approve"])
+	func changeMethod(kind: String) async throws {
+		let session = Session { request in
+			guard case .secondFactor = request else { return .pin(Secret("1234")) }
+			return .tanMethod("913")
+		}
+		_ = try await connector("""
+			read cmd
+			echo '{"type":"ask","id":1,"kind":"\(kind)","purpose":"login","prompt":"Bitte bestätigen","current":"922","methods":[{"id":"922","name":"pushTAN 2.0","delivery":"push"},{"id":"913","name":"chipTAN QR","delivery":"qr"},{"id":"901","name":"mobileTAN","medium":true,"delivery":"sms"}]}'
+			read a; printf '%s\\n' "$a" >> "$R"
+			echo '{"type":"accounts","accounts":[]}'
+			""").listAccounts(of: Self.access, state: nil, session: session)
+
+		let methods = [TANMethod(id: "922", name: "pushTAN 2.0", delivery: .pushNotification), TANMethod(id: "913", name: "chipTAN QR", delivery: .qrCode),
+			TANMethod(id: "901", name: "mobileTAN", needsMedium: true, delivery: .smsCode)]
+		let challenge: Challenge = kind == "tan" ? .enterTAN(prompt: "Bitte bestätigen", image: nil) : .approveInApp(prompt: "Bitte bestätigen", app: nil, image: nil, step: nil)
+		#expect(session.events.first == .asked(.secondFactor(SecondFactorRequest(purpose: .login, system: .fintsServer, challenge: challenge, methods: methods,
+			method: "922"))))
+		#expect(recorded == [["type": "answer", "id": "1", "method": "913"]])
+	}
+
+	@Test("A flicker code that does not read fails the access with an invalid challenge and opens no dialog")
+	func invalidFlicker() async throws {
+		let session = Session()
+		let error = await failure(of: """
+			read cmd
+			echo '{"type":"ask","id":1,"kind":"tan","purpose":"download","prompt":"Bitte TAN erzeugen","flicker":"0F0X"}'
+			read a
+			""", session: session)
+		#expect(error as? SyncFailure == .invalidChallenge)
+		#expect(session.events.isEmpty)
+		#expect(SyncFailure.invalidChallenge.message == "The bank responded with an invalid challenge.")
+	}
+
 	@Test("Keeps an approval in the app open until the helper withdraws it")
 	func approval() async throws {
 		let session = Session()
@@ -538,6 +584,7 @@ struct FinTSConnectorTests {
 		(#"{"type":"failed","code":"9010","text":"Verarbeitung nicht möglich"}"#, .bank(BankMessage(code: "9010", text: "Verarbeitung nicht möglich"))),
 		(#"{"type":"failed","text":"Dialog abgebrochen"}"#, .bank(BankMessage(text: "Dialog abgebrochen"))),
 		(#"{"type":"failed","kind":"network","text":"Connection refused"}"#, .network("Connection refused")),
+		(#"{"type":"failed","kind":"invalidChallenge","text":"The bank responded with an invalid challenge."}"#, .invalidChallenge),
 		(#"{"type":"failed","kind":"unsupported","text":"The bank offers no encrypted FinTS address."}"#, .unsupported("The bank offers no encrypted FinTS address.")),
 		(#"{"type":"failed","kind":"certificate","text":"The certificate of the server fints.example.com is not valid."}"#,
 			.network("The certificate of the server fints.example.com is not valid.")),

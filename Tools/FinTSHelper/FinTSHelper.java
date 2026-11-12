@@ -6,7 +6,11 @@
 //
 // The helper sends:
 // - ask: a request for the user, with id and kind pin, tanMethod, tanMedium, tan, or approve. An
-//   approval gets no answer. The helper sends withdraw with its id when hbci4java goes on.
+//   approval gets no answer. The helper sends withdraw with its id when hbci4java goes on. A pin
+//   request carries the PIN rules of the bank parameters, and a tan or approve request the methods
+//   that the user can change to. An answer with "method" in place of "value" to a tan or approve
+//   request changes the TAN method: the helper ends the dialog and starts a new one with that method,
+//   which requests a new challenge.
 // - trust: the certificates of a server, leaf first, in Base64, with the host and an id. The app
 //   answers "trusted" or the reason why macOS does not trust them.
 // - alive, when hbci4java sends a message to the bank and when the answer arrives, so that the app
@@ -49,6 +53,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -76,9 +81,11 @@ import org.kapott.hbci.manager.BankInfo;
 import org.kapott.hbci.manager.HBCIHandler;
 import org.kapott.hbci.manager.HBCIUtils;
 import org.kapott.hbci.manager.HBCIVersion;
+import org.kapott.hbci.manager.HHDVersion;
 import org.kapott.hbci.manager.MatrixCode;
 import org.kapott.hbci.manager.QRCode;
 import org.kapott.hbci.passport.HBCIPassport;
+import org.kapott.hbci.passport.AbstractPinTanPassport;
 import org.kapott.hbci.passport.HBCIPassportPinTan;
 import org.kapott.hbci.passport.storage.PassportData;
 import org.kapott.hbci.status.HBCIDialogStatus;
@@ -100,6 +107,17 @@ public class FinTSHelper {
 			super(text);
 			this.kind = kind;
 			this.code = code;
+		}
+	}
+
+	/// The user changed the TAN method of the challenge on screen. The run ends the dialog and starts a
+	/// new one with that method.
+	static final class SwitchMethod extends RuntimeException {
+		final String method;
+
+		SwitchMethod(String method) {
+			super("the user changed the TAN method");
+			this.method = method;
 		}
 	}
 
@@ -328,8 +346,21 @@ public class FinTSHelper {
 					queue.add(CANCEL);
 					throw new AbortedException("canceled");
 				}
-				if (Integer.valueOf(id).toString().equals(string(m, "id"))) return string(m, "value");
+				if (!Integer.valueOf(id).toString().equals(string(m, "id"))) continue;
+				if (m.get("method") != null) throw new SwitchMethod(string(m, "method"));
+				return string(m, "value");
 			}
+		}
+
+		/// The method that the user changed to while the dialog of the approval `id` waits, or null.
+		static String switchFor(Integer id) {
+			if (id == null) return null;
+			for (Map<String, Object> m : queue) {
+				if (m == CANCEL || !id.toString().equals(string(m, "id")) || m.get("method") == null) continue;
+				queue.remove(m);
+				return string(m, "method");
+			}
+			return null;
 		}
 
 		static void check() {
@@ -371,11 +402,31 @@ public class FinTSHelper {
 			setCurrentTANMethod(d.tanMethod);
 		}
 
+		/// The challenge data of the last challenge, which hbci4java removes before the callback. A
+		/// flicker code without it cannot tell a manual method from data that does not read.
+		String hhduc;
+
+		@Override
+		public void setPersistentData(String id, Object o) {
+			if (KEY_PD_HHDUC.equals(id) && o != null) hhduc = o.toString();
+			super.setPersistentData(id, o);
+		}
+
+		String takeHHDuc() {
+			String taken = hhduc;
+			hhduc = null;
+			return taken;
+		}
+
 		@Override
 		public void saveChanges() {
 		}
 
 		byte[] state(String tanMedium) throws IOException {
+			return serialize(data(), tanMedium);
+		}
+
+		PassportData data() {
 			PassportData d = new PassportData();
 			d.country = getCountry();
 			d.blz = getBLZ();
@@ -394,7 +445,7 @@ public class FinTSHelper {
 			} catch (RuntimeException e) {
 				diagnostic("FinTSHelper: the TAN method was not saved: " + e.getMessage());
 			}
-			return serialize(d, tanMedium);
+			return d;
 		}
 
 		static byte[] serialize(PassportData d, String tanMedium) throws IOException {
@@ -438,6 +489,11 @@ public class FinTSHelper {
 		Integer approval;
 		Map<String, Object> rejectedPIN;
 		Map<String, Object> pinError;
+		/// The PIN of this run. A new dialog after a change of the TAN method uses it again, unless the
+		/// bank rejected it.
+		String pin;
+		/// The method that the user changed to. Every request after it ends the dialog.
+		String switchTo;
 		/// The TAN medium of the state, or the one the user chose in this run. hbci4java asks for it
 		/// before every order that needs a TAN.
 		String tanMedium;
@@ -461,7 +517,28 @@ public class FinTSHelper {
 			int id = ++lastID;
 			request.put("id", id);
 			send(request);
-			return Inbox.answer(id);
+			try {
+				return Inbox.answer(id);
+			} catch (SwitchMethod e) {
+				switchTo = e.method;
+				throw e;
+			}
+		}
+
+		/// Ends the dialog when the user changed the TAN method, also when hbci4java kept the exception
+		/// of the callback in a status instead of throwing it.
+		void checkSwitch() {
+			if (switchTo != null) throw new SwitchMethod(switchTo);
+		}
+
+		/// Prepares the next dialog after a change of the TAN method.
+		void restart() {
+			switchTo = null;
+			login = true;
+			jobs.clear();
+			jobCount = 0;
+			lastProgress = -1;
+			withdrawApproval();
 		}
 
 		/// hbci4java went on after a decoupled approval, so the bank has it.
@@ -486,6 +563,7 @@ public class FinTSHelper {
 		@Override
 		public void callback(HBCIPassport passport, int reason, String msg, int datatype, StringBuffer retData) {
 			if (reason != NEED_PT_DECOUPLED_RETRY) withdrawApproval();
+			if (AFTER_SWITCH.contains(reason)) checkSwitch();
 			switch (reason) {
 				case NEED_PASSPHRASE_LOAD, NEED_PASSPHRASE_SAVE, NEED_CONNECTION, CLOSE_CONNECTION -> { }
 				case NEED_COUNTRY -> set(retData, "DE");
@@ -495,18 +573,24 @@ public class FinTSHelper {
 				case NEED_HOST -> set(retData, host);
 				case NEED_PORT -> set(retData, String.valueOf(port));
 				case NEED_FILTER -> set(retData, "Base64");
-				case WRONG_PIN -> rejectedPIN = pinError != null ? pinError : message("rejected", "text", "The bank did not accept the PIN.");
+				case WRONG_PIN -> {
+					rejectedPIN = pinError != null ? pinError : message("rejected", "text", "The bank did not accept the PIN.");
+					pin = null;
+				}
 				case NEED_PT_PIN -> {
-					String pin = ask(message("ask", "kind", "pin", "rejected", rejectedPIN));
-					rejectedPIN = null;
-					Out.secret(pin);
+					if (pin == null || rejectedPIN != null) {
+						pin = ask(message("ask", "kind", "pin", "rejected", rejectedPIN, "rules", rules(passport)));
+						rejectedPIN = null;
+						Out.secret(pin);
+					}
 					set(retData, pin);
 				}
 				case NEED_PT_SECMECH -> {
 					List<Object> methods = new ArrayList<>();
 					for (String token : retData.toString().split("\\|")) {
 						int colon = token.indexOf(':');
-						methods.add(message("method", "id", colon < 0 ? token : token.substring(0, colon), "name", colon < 0 ? token : token.substring(colon + 1)));
+						String id = colon < 0 ? token : token.substring(0, colon);
+						methods.add(method(passport, id, colon < 0 ? token : token.substring(colon + 1)));
 					}
 					set(retData, ask(message("ask", "kind", "tanMethod", "purpose", purpose(), "methods", methods)));
 				}
@@ -518,6 +602,7 @@ public class FinTSHelper {
 				}
 				case NEED_PT_TAN, NEED_PT_PHOTOTAN, NEED_PT_QRTAN -> {
 					String image = null, flicker = null;
+					String hhduc = passport instanceof Passport p ? p.takeHHDuc() : null;
 					try {
 						if (reason == NEED_PT_PHOTOTAN) image = Base64.getEncoder().encodeToString(new MatrixCode(retData.toString()).getImage());
 						if (reason == NEED_PT_QRTAN) image = Base64.getEncoder().encodeToString(new QRCode(retData.toString(), msg).getImage());
@@ -525,15 +610,28 @@ public class FinTSHelper {
 						throw new Failure(null, null, "The bank sent an image that Moneten cannot read.");
 					}
 					if (reason == NEED_PT_TAN && retData.length() > 0) flicker = retData.toString();
-					String tan = ask(message("ask", "kind", "tan", "purpose", purpose(), "prompt", challenge(msg), "image", image, "flicker", flicker));
+					// hbci4java leaves out the flicker code, or an image it could not read, when the challenge data does not read.
+					if (reason == NEED_PT_TAN && flicker == null && present(hhduc)) {
+						throw new Failure("invalidChallenge", null, "The bank responded with an invalid challenge.");
+					}
+					Map<String, Object> request = message("ask", "kind", "tan", "purpose", purpose(), "prompt", challenge(msg), "image", image, "flicker", flicker);
+					String tan = ask(choices(passport, request));
 					Out.secret(tan);
 					set(retData, tan);
 				}
 				case NEED_PT_DECOUPLED -> {
+					if (passport instanceof Passport p) p.takeHHDuc();
 					approval = ++lastID;
-					send(message("ask", "id", approval, "kind", "approve", "purpose", purpose(), "prompt", challenge(msg), "method", firstLine(msg)));
+					send(choices(passport, message("ask", "id", approval, "kind", "approve", "purpose", purpose(), "prompt", challenge(msg), "method", firstLine(msg))));
 				}
-				case NEED_PT_DECOUPLED_RETRY -> Inbox.check();
+				case NEED_PT_DECOUPLED_RETRY -> {
+					String method = Inbox.switchFor(approval);
+					if (method != null) {
+						switchTo = method;
+						throw new SwitchMethod(method);
+					}
+					Inbox.check();
+				}
 				case HAVE_INST_MSG -> send(message("notice", "text", Out.withoutSecrets(msg)));
 				default -> diagnostic("FinTSHelper: callback " + reason + " not handled");
 			}
@@ -548,6 +646,44 @@ public class FinTSHelper {
 			withdrawApproval();
 			lastProgress = index;
 			send(message("progress", "done", index, "of", jobCount));
+		}
+
+		/// The requests that end the dialog once the user changed the TAN method, so that the old dialog
+		/// neither asks the user nor sends another message to the bank.
+		static final Set<Integer> AFTER_SWITCH = Set.of(NEED_PT_PIN, NEED_PT_SECMECH, NEED_PT_TANMEDIA, NEED_PT_TAN, NEED_PT_PHOTOTAN, NEED_PT_QRTAN,
+			NEED_PT_DECOUPLED, NEED_PT_DECOUPLED_RETRY, NEED_CONNECTION);
+
+		/// The PIN rules of the bank parameters, or null when the bank states none.
+		static Map<String, Object> rules(HBCIPassport passport) {
+			if (!(passport instanceof AbstractPinTanPassport p) || p.getBPD() == null) return null;
+			Integer min = p.getPinLengthMin(), max = p.getPinLengthMax();
+			return min == null && max == null ? null : message("rules", "minLength", min, "maxLength", max);
+		}
+
+		/// A TAN method with what the app needs for its progress text: whether it needs a TAN medium,
+		/// and what the bank sends, read from the type and the names of the method.
+		static Map<String, Object> method(HBCIPassport passport, String id, String name) {
+			Properties info = passport instanceof AbstractPinTanPassport p && p.getTwostepMechanisms() != null ? p.getTwostepMechanisms().get(id) : null;
+			if (info == null) return message("method", "id", id, "name", name);
+			String names = (info.getProperty("name", "") + " " + info.getProperty("zkamethod_name", "")).toLowerCase();
+			HHDVersion.Type type = HHDVersion.find(info).getType();
+			String delivery = type == HHDVersion.Type.DECOUPLED || names.contains("push") ? "push"
+				: type == HHDVersion.Type.QRCODE || type == HHDVersion.Type.PHOTOTAN ? "qr"
+				: names.contains("sms") || names.contains("mobile") ? "sms" : null;
+			return message("method", "id", id, "name", name, "medium", "2".equals(info.getProperty("needtanmedia")) ? true : null, "delivery", delivery);
+		}
+
+		/// Adds the method of a challenge and the methods that the user can change to, when there are two or more.
+		static Map<String, Object> choices(HBCIPassport passport, Map<String, Object> request) {
+			if (!(passport instanceof AbstractPinTanPassport p) || p.getTwostepMechanisms() == null) return request;
+			List<Object> methods = new ArrayList<>();
+			for (String id : new TreeSet<>(p.getTwostepMechanisms().keySet())) {
+				if (p.getAllowedTwostepMechanisms().contains(id)) methods.add(method(p, id, p.getTwostepMechanisms().get(id).getProperty("name", id)));
+			}
+			if (methods.size() < 2) return request;
+			request.put("current", p.getCurrentTANMethod(false));
+			request.put("methods", methods);
+			return request;
 		}
 
 		/// hbci4java passes the name of the method, its input hint, and then the challenge of the bank.
@@ -792,6 +928,7 @@ public class FinTSHelper {
 		send(message("progress", "done", 0, "of", all.size()));
 		HBCIExecStatus status = handle.execute();
 		callback.withdrawApproval();
+		callback.checkSwitch();
 		requireLogin(status);
 		for (Jobs jobs : all) {
 			HBCIJob statements = jobs.statements();
@@ -869,17 +1006,30 @@ public class FinTSHelper {
 			throw new IllegalStateException(e);
 		}
 		HBCIUtils.init(props, callback);
-		HBCIHandler handle = null;
 		try {
 			String state = string(command, "state");
 			Passport.State loaded = state == null ? null : Passport.deserialize(Base64.getDecoder().decode(state));
 			Passport.loaded = loaded == null ? null : loaded.data();
 			callback.tanMedium = loaded == null ? null : loaded.tanMedium();
-			Passport passport = new Passport();
+			while (!dialog(type, command, callback)) {
+				diagnostic("FinTSHelper: the user changed the TAN method, starting a new dialog");
+			}
+		} finally {
+			HBCIUtils.done();
+		}
+	}
+
+	/// One dialog with the bank. It returns false when the user changed the TAN method during it. The
+	/// passport then keeps its data with the new method for the next dialog, which requests a new challenge.
+	static boolean dialog(String type, Map<?, ?> command, Callback callback) throws IOException {
+		HBCIHandler handle = null;
+		Passport passport = new Passport();
+		try {
 			passport.setHost(callback.host);
 			passport.setPort(callback.port);
 			handle = new HBCIHandler(HBCIVersion.HBCI_300.getId(), passport);
 			callback.withdrawApproval();
+			callback.checkSwitch();
 			Konto[] accounts = passport.getAccounts() == null ? new Konto[0] : passport.getAccounts();
 			BankInfo bank = HBCIUtils.getBankInfo(passport.getBLZ());
 			for (Konto k : accounts) {
@@ -893,13 +1043,19 @@ public class FinTSHelper {
 				refresh(handle, passport, accounts, (List<?>) command.get("accounts"), callback);
 			}
 			send(message("state", "data", Base64.getEncoder().encodeToString(passport.state(callback.tanMedium))));
+			return true;
+		} catch (RuntimeException e) {
+			if (callback.switchTo == null) throw e;
+			Passport.loaded = passport.data();
+			Passport.loaded.tanMethod = callback.switchTo;
+			callback.restart();
+			return false;
 		} finally {
 			try {
 				if (handle != null) handle.close();
 			} catch (RuntimeException e) {
 				diagnostic("FinTSHelper: closing the dialog failed: " + e.getMessage());
 			}
-			HBCIUtils.done();
 		}
 	}
 

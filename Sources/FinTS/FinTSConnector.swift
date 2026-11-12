@@ -230,7 +230,10 @@ public struct FinTSConnector: BankConnector {
 						guard ask.kind != "approve" else {
 							approvals[id] = task
 							Task {
-								do { _ = try await task.value } catch where !task.isCancelled { process.fail(error) } catch {}
+								do {
+									// The user changed the TAN method while the dialog waited for the approval.
+									if case let .tanMethod(method) = try await task.value { process.send(Answer(id: id, method: method)) }
+								} catch where !task.isCancelled { process.fail(error) } catch {}
 							}
 							continue
 						}
@@ -241,7 +244,11 @@ public struct FinTSConnector: BankConnector {
 							helperLeft = true
 							break reading
 						}
-						process.send(Answer(id: id, value: answer.value))
+						if ask.kind != "tanMethod", case let .tanMethod(method) = answer {
+							process.send(Answer(id: id, method: method))
+						} else {
+							process.send(Answer(id: id, value: answer.value))
+						}
 					case .alive:
 						continue
 					case let .trust(id, host, chain):

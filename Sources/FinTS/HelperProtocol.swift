@@ -20,10 +20,13 @@ struct Command: Encodable {
 	}
 }
 
+/// The answer of the user to a request of the helper. `method` in place of `value` changes the TAN
+/// method of a challenge on screen, and the helper then requests a new challenge with that method.
 struct Answer: Encodable {
 	var type = "answer"
 	let id: Int
-	let value: String
+	var value: String?
+	var method: String?
 }
 
 /// A line from the helper.
@@ -81,32 +84,60 @@ struct Ask: Decodable {
 	/// The name of the TAN method of an approval, for example "SecureGo plus".
 	let method: String?
 	let rejected: HelperError?
+	/// The PIN rules of the bank parameters, on a PIN request.
+	let rules: Rules?
+	/// The methods to choose from, and on a challenge the methods that the user can change to.
 	let methods: [Method]?
+	/// The ID of the method of a challenge.
+	let current: String?
 	let media: [String]?
 	let image: Data?
 	/// The flicker code as hbci4java renders it from the HHDuc of the bank.
 	let flicker: String?
 
+	struct Rules: Decodable {
+		let minLength: Int?
+		let maxLength: Int?
+	}
+
 	struct Method: Decodable {
 		let id: String
 		let name: String
+		/// The method needs a TAN medium.
+		let medium: Bool?
+		/// "sms", "push", or "qr", which the helper reads from the bank parameters of the method.
+		let delivery: String?
+
+		var method: TANMethod {
+			let delivery: TANMethod.Delivery = switch delivery {
+			case "sms": .smsCode
+			case "push": .pushNotification
+			case "qr": .qrCode
+			default: .tan
+			}
+			return TANMethod(id: id, name: name, needsMedium: medium ?? false, delivery: delivery)
+		}
 	}
 
 	/// The request for the session. A PIN request after a rejection carries the answer of the bank, so
 	/// the broker never answers it from memory and shows the sheet again. 9930 means a blocked access,
-	/// and the app never asks for its PIN again (task 1.24).
+	/// and the app never asks for its PIN again (task 1.24). A flicker code that does not read fails the
+	/// access, because the user cannot produce a TAN without it.
 	func request() throws -> UserRequest {
 		if kind == "pin" {
-			guard let rejected else { return .pin(PINRequest()) }
+			let rules = PINRules(minLength: rules?.minLength, maxLength: rules?.maxLength)
+			guard let rejected else { return .pin(PINRequest(rules: rules)) }
 			if rejected.code == "9930" { throw SyncFailure.accessBlocked(rejected.message) }
-			return .pin(PINRequest(rejected: rejected.message))
+			return .pin(PINRequest(rejected: rejected.message, rules: rules))
 		}
+		let offered = (methods ?? []).map(\.method)
 		let challenge: Challenge
 		switch kind {
-		case "tanMethod": challenge = .chooseTANMethod((methods ?? []).map { TANMethod(id: $0.id, name: $0.name) }, current: nil)
+		case "tanMethod": return secondFactor(.chooseTANMethod(offered, current: nil), methods: [])
 		case "tanMedium": challenge = .chooseTANMedium(media ?? [])
 		case "tan":
-			if let code = flicker.flatMap(FlickerCode.init(hex:)) {
+			if let flicker {
+				guard let code = FlickerCode(hex: flicker) else { throw SyncFailure.invalidChallenge }
 				challenge = .flickerCode(prompt: prompt ?? "", code: code)
 			} else {
 				challenge = .enterTAN(prompt: prompt ?? "", image: image.map(ChallengeImage.init))
@@ -114,7 +145,12 @@ struct Ask: Decodable {
 		case "approve": challenge = .approveInApp(prompt: prompt ?? "", app: method, image: nil, step: nil)
 		default: throw DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "unknown request \(kind)"))
 		}
-		return .secondFactor(SecondFactorRequest(purpose: purpose == "login" ? .login : .download, system: .fintsServer, challenge: challenge))
+		return secondFactor(challenge, methods: offered)
+	}
+
+	private func secondFactor(_ challenge: Challenge, methods: [TANMethod]) -> UserRequest {
+		.secondFactor(SecondFactorRequest(purpose: purpose == "login" ? .login : .download, system: .fintsServer, challenge: challenge, methods: methods,
+			method: current))
 	}
 }
 
@@ -130,6 +166,7 @@ struct HelperError: Decodable, Equatable {
 		switch (kind, code) {
 		case ("network", _), ("certificate", _): .network(text)
 		case ("unsupported", _): .unsupported(text)
+		case ("invalidChallenge", _): .invalidChallenge
 		case (_, "9078"): .notRegistered
 		// Sparkassen send 9931 for a wrong login name or PIN, so only 9930 counts as blocked.
 		case (_, "9942"), (_, "9340"), (_, "9931"): .pinRejected(message)

@@ -3,7 +3,9 @@
 # for the bank "Musterbank" (12030000) and contacts no bank. Start the app with it:
 #   open --env MONETEN_DATA_DIR=<folder> --env MONETEN_DEBUG_DIR=<folder> \
 #     --env MONETEN_FINTS_HELPER="$PWD/scripts/fake-fints-helper.sh" dist/Moneten.app
-# The login asks for a PIN and a TAN. The PIN 0000 is wrong, and any other works. The login lists
+# The login asks for a PIN and a TAN. The PIN has 4 to 10 characters, 0000 is wrong, and any other works.
+# The TAN dialog of the login offers to change from pushTAN to mobileTAN, which asks for a TAN medium
+# and then for the SMS code. The login lists
 # "Girokonto" with the test IBAN, "Tagesgeld", and "Kreditkarte". The state of the access counts the
 # refreshes: the second refresh fails "Tagesgeld" with an error of the bank, and the others succeed.
 # The login "unterkonten" lists two subaccounts of the account number 9 in place of these accounts.
@@ -13,12 +15,14 @@ PATH=/bin:/usr/bin
 read -r cmd
 field() { printf '%s\n' "$cmd" | sed -n "s/.*\"$1\":\"\([^\"]*\)\".*/\1/p"; }
 day() { date -v-"$1"d +%Y-%m-%d; }
-# Reads the next answer of the app into $value, and ends the run on a cancel.
+# Reads the next answer of the app into $value, or a change of the TAN method into $method, and ends the run on a cancel.
 answer() {
 	read -r line || exit 0
 	case "$line" in *'"type":"cancel"'*) exit 0 ;; esac
 	value=$(printf '%s\n' "$line" | sed -n 's/.*"value":"\([^"]*\)".*/\1/p')
+	method=$(printf '%s\n' "$line" | sed -n 's/.*"method":"\([^"]*\)".*/\1/p')
 }
+pin='{"type":"ask","id":1,"kind":"pin","rules":{"minLength":4,"maxLength":10}}'
 
 case "$cmd" in
 *'"type":"bankInfo"'*)
@@ -29,15 +33,23 @@ case "$cmd" in
 	esac
 	;;
 *'"type":"accounts"'*)
-	echo '{"type":"ask","id":1,"kind":"pin"}'
+	echo "$pin"
 	answer
 	if [ "$value" = 0000 ]; then
-		echo '{"type":"ask","id":2,"kind":"pin","rejected":{"code":"9942","text":"PIN falsch. Bitte prüfen Sie Ihre Eingabe."}}'
+		echo '{"type":"ask","id":2,"kind":"pin","rejected":{"code":"9942","text":"PIN falsch. Bitte prüfen Sie Ihre Eingabe."},"rules":{"minLength":4,"maxLength":10}}'
 		answer
 		exit 0
 	fi
-	echo '{"type":"ask","id":2,"kind":"tan","purpose":"login","prompt":"Bitte geben Sie die TAN aus Ihrer pushTAN-App ein."}'
+	echo '{"type":"ask","id":2,"kind":"tan","purpose":"login","prompt":"Bitte geben Sie die TAN aus Ihrer pushTAN-App ein.","current":"921","methods":[{"id":"921","name":"pushTAN","delivery":"push"},{"id":"901","name":"mobileTAN","medium":true,"delivery":"sms"}]}'
 	answer
+	if [ "$method" = 901 ]; then
+		sleep 2
+		echo '{"type":"ask","id":3,"kind":"tanMedium","purpose":"login","media":["Handy privat","Handy Firma"]}'
+		answer
+		sleep 2
+		echo '{"type":"ask","id":4,"kind":"tan","purpose":"login","prompt":"Bitte geben Sie die TAN aus der SMS an '"$value"' ein."}'
+		answer
+	fi
 	echo '{"type":"notice","text":"Wartungsarbeiten am 14.11.2026 von 1 bis 5 Uhr."}'
 	case "$cmd" in *'"user":"unterkonten"'*)
 		echo '{"type":"accounts","accounts":[{"number":"9","subnumber":"01","product":"Sparkonto","kind":"10","currency":"EUR"},{"number":"9","subnumber":"02","product":"Sparkonto Plus","kind":"10","currency":"EUR"}]}'
@@ -49,7 +61,7 @@ case "$cmd" in
 	;;
 *'"type":"refresh"'*)
 	runs=$(field state | base64 -D 2>/dev/null)
-	echo '{"type":"ask","id":1,"kind":"pin"}'
+	echo "$pin"
 	answer
 	echo '{"type":"progress","done":0,"of":3}'
 	sleep 3
