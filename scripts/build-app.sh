@@ -21,9 +21,9 @@ case "$1" in
 esac
 BUILD="$(git rev-list --count HEAD 2>/dev/null || echo 1)"
 
-# Adds the FinTS helper to the app $1 and signs both again with the certificate of the app. It runs
-# after the export, because the export signs the app with the Developer ID but would leave the
-# helper with the signature of the archive. The helper lives in Contents/Resources, because codesign
+# Adds the FinTS helper to the app $1 after the build and signs both again with the certificate of
+# the app. A Developer ID build leaves the helper out until task 3.2 of add-fints-banking lets the
+# export sign it, see the end of this script. The helper lives in Contents/Resources, because codesign
 # takes every file in Contents/Helpers for code, and the Java runtime needs its data files next to
 # its libraries. The helper gets the hardened
 # runtime when the app has it: an ad hoc signature has no team, and library validation would refuse
