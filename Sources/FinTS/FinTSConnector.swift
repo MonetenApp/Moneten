@@ -175,7 +175,8 @@ public struct FinTSConnector: BankConnector {
 
 	/// Runs one command. Requests of the helper go to the session, and every other message to `handle`.
 	/// A decoupled approval stays open while hbci4java checks it, until the helper withdraws it.
-	/// When the refresh is canceled or fails, the helper gets a cancel and at most `grace` to end.
+	/// When the refresh is canceled or fails, or the helper closes its output but keeps running, the
+	/// helper gets a cancel and at most `grace` to end.
 	/// When the helper ends, its open requests end too. A helper that stays silent for `inactivity`
 	/// while no request is open fails the run with a timeout.
 	private func run(_ command: Command, session: SyncSession?, _ handle: (HelperMessage) async throws -> Void) async throws {
