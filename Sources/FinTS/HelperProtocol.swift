@@ -221,6 +221,7 @@ enum HelperFailure {
 	static let noAnswer = SyncFailure.network("The FinTS helper ended without an answer.")
 	static let noProductID = SyncFailure.unsupported("This build of Moneten has no FinTS product ID, and banks accept only registered apps.")
 	static let insecure = SyncFailure.unsupported("The bank offers no encrypted FinTS address.")
+	static let clash = SyncFailure.unsupported("Two accounts of this access are the same account at the bank.")
 	static let timeout = SyncFailure.network("The connection to the FinTS server of the bank timed out. Try again later.")
 
 	static func stopped(_ status: Int32, signal: Bool) -> SyncFailure {

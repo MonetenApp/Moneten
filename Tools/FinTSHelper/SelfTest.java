@@ -66,6 +66,18 @@ final class SelfTest {
 		placeholder.endToEndId = "NOTPROVIDED";
 		expect("placeholder reference", FinTSHelper.row(placeholder, false).get("purpose") + "|" + FinTSHelper.row(placeholder, false).get("endToEnd"), "|null");
 
+		Konto plain = new Konto(), sub = new Konto(), withIBAN = new Konto();
+		plain.number = "9";
+		sub.number = "9";
+		sub.subnumber = "01";
+		withIBAN.number = "202051";
+		withIBAN.iban = "DE02120300000000202051";
+		Konto[] accounts = {withIBAN, sub, plain};
+		expect("account by number", FinTSHelper.find(accounts, "9") == plain, true);
+		expect("account by number and subnumber", FinTSHelper.find(accounts, "9/01") == sub, true);
+		expect("account by IBAN", FinTSHelper.find(accounts, "DE02 1203 0000 0000 2020 51") == withIBAN, true);
+		expect("unknown subnumber", FinTSHelper.find(accounts, "9/02"), null);
+
 		TimeZone zone = TimeZone.getDefault();
 		for (String id : new String[] {"Pacific/Kiritimati", "Pacific/Pago_Pago", "Europe/Berlin"}) {
 			TimeZone.setDefault(TimeZone.getTimeZone(id));

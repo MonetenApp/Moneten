@@ -55,7 +55,7 @@ struct FinTSConnectorTests {
 			echo '{"type":"ask","id":1,"kind":"pin"}'
 			read answer; printf '%s\\n' "$answer" >> "$R"
 			echo '{"type":"notice","text":"Wartungsarbeiten am 14.11.2026 von 1 bis 5 Uhr"}'
-			echo '{"type":"accounts","accounts":[{"number":"202051","iban":"DE02120300000000202051","bic":"BYLADEM1001","product":"Girokonto","kind":"1","owner":"Erika Mustermann","currency":"EUR"},{"number":"4711","kind":"50","currency":"EUR"},{"number":"9","kind":"12"}]}'
+			echo '{"type":"accounts","accounts":[{"number":"202051","iban":"DE02120300000000202051","bic":"BYLADEM1001","product":"Girokonto","kind":"1","owner":"Erika Mustermann","currency":"EUR"},{"number":"4711","kind":"50","currency":"EUR"},{"number":"9","kind":"12"},{"number":"9","subnumber":"01","kind":"12"}]}'
 			echo '{"type":"state","data":"AQID"}'
 			""").listAccounts(of: Self.access, state: AccessState(Data([9])), session: session)
 
@@ -70,8 +70,9 @@ struct FinTSConnectorTests {
 				owner: "Erika Mustermann", currency: "EUR"),
 			FinTSAccount(number: "4711", subnumber: nil, iban: nil, bic: nil, productName: nil, kind: .creditCard, owner: nil, currency: "EUR"),
 			FinTSAccount(number: "9", subnumber: nil, iban: nil, bic: nil, productName: nil, kind: .savings, owner: nil, currency: "EUR"),
+			FinTSAccount(number: "9", subnumber: "01", iban: nil, bic: nil, productName: nil, kind: .savings, owner: nil, currency: "EUR"),
 		])
-		#expect(list.accounts.map(\.remoteID) == ["DE02120300000000202051", "4711", "9"])
+		#expect(list.accounts.map(\.remoteID) == ["DE02120300000000202051", "4711", "9", "9/01"])
 		#expect(list.state == AccessState(Data([1, 2, 3])))
 		#expect(list.notices == [BankMessage(text: "Wartungsarbeiten am 14.11.2026 von 1 bis 5 Uhr")])
 	}
@@ -277,6 +278,22 @@ struct FinTSConnectorTests {
 			"[{\"from\":\"\(today.adding(days: -10))\",\"id\":\"A\"},{\"from\":\"\(today.adding(days: -90))\",\"id\":\"B\"},{\"id\":\"C\"}]",
 			"[{\"id\":\"A\"},{\"id\":\"B\"},{\"id\":\"C\"}]",
 		])
+	}
+
+	@Test("Fails two requests for the same account of the bank, and fetches the others")
+	func clash() async throws {
+		let twin = AccountRequest(accountID: UUID(), name: "Giro 2", remoteID: Self.giro.remoteID)
+		let report = try await refresh(#"""
+			read cmd; printf '%s\n' "$cmd" >> "$R"
+			echo '{"type":"result","account":"1234567890","balance":{"amount":"1","currency":"EUR"},"errors":[]}'
+			"""#, accounts: [Self.giro, Self.savings, twin])
+		#expect(recorded.map { $0["accounts"] } == [#"[{"id":"1234567890"}]"#])
+		let clash = SyncFailure.unsupported("Two accounts of this access are the same account at the bank.")
+		for id in [Self.giro.accountID, twin.accountID] {
+			guard case let .failed(failure) = report.outcomes[id] else { Issue.record("not failed"); continue }
+			#expect(failure == clash)
+		}
+		guard case .fetched = report.outcomes[Self.savings.accountID] else { Issue.record("savings not fetched"); return }
 	}
 
 	@Test("Maps every field of the result, with calendar days and pending rows")

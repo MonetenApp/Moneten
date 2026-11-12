@@ -668,10 +668,15 @@ public class FinTSHelper {
 		return handle.isSupported(job);
 	}
 
+	/// The account of an ID of FinTSAccount.remoteID: the IBAN, or the number and the subnumber
+	/// as "number/subnumber", or the number alone.
 	static Konto find(Konto[] accounts, String id) {
 		String wanted = id.replace(" ", "");
+		int slash = wanted.indexOf('/');
+		String number = slash < 0 ? wanted : wanted.substring(0, slash), subnumber = slash < 0 ? null : wanted.substring(slash + 1);
 		for (Konto k : accounts) {
-			if (wanted.equalsIgnoreCase(k.iban) || wanted.equals(k.number)) return k;
+			if (wanted.equalsIgnoreCase(k.iban)) return k;
+			if (number.equals(text(k.number)) && java.util.Objects.equals(subnumber, text(k.subnumber))) return k;
 		}
 		return null;
 	}

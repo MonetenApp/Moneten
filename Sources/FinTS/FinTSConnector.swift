@@ -23,8 +23,9 @@ public struct FinTSAccount: Sendable, Equatable {
 	public let owner: String?
 	public let currency: String
 
-	/// The ID that a refresh asks for the account with.
-	public var remoteID: String { iban ?? number }
+	/// The ID that a refresh asks for the account with. Accounts without an IBAN can share a number
+	/// and differ in the subnumber.
+	public var remoteID: String { iban ?? (subnumber.map { "\(number)/\($0)" } ?? number) }
 
 	/// The FinTS account types are ranges: 1 to 9 giro accounts, 10 to 19 savings, 20 to 29 fixed
 	/// term deposits, 30 to 39 portfolios, 40 to 49 loans, 50 to 59 credit cards, and 60 to 69 funds.
@@ -118,9 +119,12 @@ public struct FinTSConnector: BankConnector {
 	public func refresh(_ request: RefreshRequest, _ session: SyncSession) async throws -> ConnectorReport {
 		let today = Day.today()
 		var command = try command("refresh", request.access, request.state)
-		command.accounts = request.accounts.map { Command.Period(id: $0.remoteID, from: Self.firstDay($0.since, enforced: request.enforced, today: today)?.description) }
-		let accountIDs = Dictionary(request.accounts.map { ($0.remoteID, $0.accountID) }, uniquingKeysWith: { first, _ in first })
 		var outcomes: [UUID: AccountOutcome] = [:]
+		let shared = Dictionary(grouping: request.accounts, by: \.remoteID).filter { $0.value.count > 1 }
+		for clash in shared.values.joined() { outcomes[clash.accountID] = .failed(HelperFailure.clash) }
+		let accounts = request.accounts.filter { shared[$0.remoteID] == nil }
+		command.accounts = accounts.map { Command.Period(id: $0.remoteID, from: Self.firstDay($0.since, enforced: request.enforced, today: today)?.description) }
+		let accountIDs = Dictionary(uniqueKeysWithValues: accounts.map { ($0.remoteID, $0.accountID) })
 		var state: AccessState?
 		var notices: [BankMessage] = []
 		try await run(command, session: session) { message in
