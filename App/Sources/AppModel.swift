@@ -527,10 +527,12 @@ final class AppModel {
 	}
 
 	/// Stores the access of an extension setup with the listed accounts that the app does not have yet.
-	/// A login that the app has already keeps its access and its state. Returns the stored accounts.
+	/// A login that the app has already keeps its access and its state. Without a new account nothing is
+	/// stored, so that no access is left without accounts. Returns the stored accounts.
 	func storeExtensionAccess(_ new: Access, state: AccessState, accounts listed: [Account]) throws -> [Account] {
-		guard let store else { return [] }
-		let (access, accounts) = try store.add(new, state: state, accounts: ledger.accountsToAdd(listed, listed: listed))
+		let added = ledger.accountsToAdd(listed, listed: listed)
+		guard let store, !added.isEmpty else { return [] }
+		let (access, accounts) = try store.add(new, state: state, accounts: added)
 		accesses[access.id] = access
 		for a in accounts { ledger.upsert(a) }
 		ledger.replace()

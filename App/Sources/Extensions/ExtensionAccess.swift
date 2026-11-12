@@ -62,6 +62,9 @@ extension AppModel {
 			return account
 		}
 		let accounts = try storeExtensionAccess(new, state: setup.state, accounts: listed)
+		if accounts.isEmpty {
+			alert = AlertMessage(title: "\(access.bankName) added no account.", message: "Moneten has every account of this login already.")
+		}
 		for account in accounts {
 			if case let .fetched(result)? = setup.accounts.first(where: { $0.remoteID == account.remoteID })?.outcome {
 				_ = try merge(.refresh(result), into: account.id)

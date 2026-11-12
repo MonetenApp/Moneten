@@ -135,6 +135,10 @@ final class DebugHarness {
 			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
 				self?.log("escape open=\(self?.model?.sync.broker.current.map { "\($0.request.kind)" } ?? "none")")
 			}
+		case "alert":
+			// Logs the title of the alert on screen and closes it, as its OK button does.
+			log("alert \(model.alert?.title ?? "none")")
+			model.alert = nil
 		case "extanswer":
 			// Clicks "Allow" or "Deny" in the question about a new host.
 			guard let prompt = model.sync.broker.current, case .allowHost = prompt.request else { return log("extanswer no host question") }
