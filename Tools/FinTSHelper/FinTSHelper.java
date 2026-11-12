@@ -633,6 +633,8 @@ public class FinTSHelper {
 		if ("NOTPROVIDED".equals(endToEnd)) endToEnd = null;
 		if (!present(purpose) && endToEnd != null) purpose = endToEnd;
 		Konto other = l.other;
+		// hbci4java reads no date from a CAMT entry that has a date and time only.
+		if (l.bdate == null && l.valuta == null) throw new Failure(null, null, "The bank sent a transaction without a booking date, so nothing of this account was stored.");
 		return message("row",
 			"booked", day(l.bdate != null ? l.bdate : l.valuta), "value", day(l.valuta),
 			"amount", l.value.getBigDecimalValue().toPlainString(), "currency", text(l.value.getCurr()),
@@ -724,31 +726,47 @@ public class FinTSHelper {
 		handle.execute();
 		callback.withdrawApproval();
 		for (Jobs jobs : all) {
-			List<Object> errors = new ArrayList<>();
-			Map<String, Object> balance = null, transactions = null;
-			if (jobs.balance() != null) {
-				GVRSaldoReq result = (GVRSaldoReq) jobs.balance().getJobResult();
-				if (result.isOK() && result.getEntries().length > 0 && result.getEntries()[0].ready != null) {
-					GVRSaldoReq.Info info = result.getEntries()[0];
-					Value v = info.ready.value;
-					balance = message("balance", "amount", v.getBigDecimalValue().toPlainString(), "currency", text(v.getCurr()), "date", day(info.ready.timestamp));
-				} else {
-					errors.add(problem(result));
-				}
-			}
-			if (jobs.statements() != null) {
-				GVRKUms result = (GVRKUms) jobs.statements().getJobResult();
-				if (result.isOK()) {
-					List<Object> rows = new ArrayList<>();
-					for (UmsLine l : result.getFlatData()) rows.add(row(l, false));
-					for (UmsLine l : result.getFlatDataUnbooked()) rows.add(row(l, true));
-					transactions = message("transactions", "from", jobs.from(), "rows", rows);
-				} else {
-					errors.add(problem(result));
-				}
-			}
-			send(message("result", "account", jobs.id(), "balance", balance, "transactions", transactions, "errors", errors));
+			send(alone(jobs.id(), () -> result(jobs.id(), jobs.from(), jobs.balance() == null ? null : (GVRSaldoReq) jobs.balance().getJobResult(),
+				jobs.statements() == null ? null : (GVRKUms) jobs.statements().getJobResult())));
 		}
+	}
+
+	/// The message of one account, or accountFailed when it throws, so that one account that does
+	/// not read leaves the others.
+	static Map<String, Object> alone(String id, java.util.function.Supplier<Map<String, Object>> message) {
+		try {
+			return message.get();
+		} catch (RuntimeException e) {
+			Map<String, Object> failed = failure(e);
+			failed.put("type", "accountFailed");
+			failed.put("account", id);
+			return failed;
+		}
+	}
+
+	static Map<String, Object> result(String id, String from, GVRSaldoReq balanceResult, GVRKUms statementsResult) {
+		List<Object> errors = new ArrayList<>();
+		Map<String, Object> balance = null, transactions = null;
+		if (balanceResult != null) {
+			if (balanceResult.isOK() && balanceResult.getEntries().length > 0 && balanceResult.getEntries()[0].ready != null) {
+				GVRSaldoReq.Info info = balanceResult.getEntries()[0];
+				Value v = info.ready.value;
+				balance = message("balance", "amount", v.getBigDecimalValue().toPlainString(), "currency", text(v.getCurr()), "date", day(info.ready.timestamp));
+			} else {
+				errors.add(problem(balanceResult));
+			}
+		}
+		if (statementsResult != null) {
+			if (statementsResult.isOK()) {
+				List<Object> rows = new ArrayList<>();
+				for (UmsLine l : statementsResult.getFlatData()) rows.add(row(l, false));
+				for (UmsLine l : statementsResult.getFlatDataUnbooked()) rows.add(row(l, true));
+				transactions = message("transactions", "from", from, "rows", rows);
+			} else {
+				errors.add(problem(statementsResult));
+			}
+		}
+		return message("result", "account", id, "balance", balance, "transactions", transactions, "errors", errors);
 	}
 
 	static void run(Map<?, ?> command) throws IOException {

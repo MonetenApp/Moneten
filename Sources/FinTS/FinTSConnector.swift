@@ -133,9 +133,13 @@ public struct FinTSConnector: BankConnector {
 			case let .notice(text): notices.append(BankMessage(text: text))
 			case let .result(account, result):
 				guard let id = accountIDs[account] else { throw HelperFailure.unreadable }
-				let (outcome, errors) = try result.outcome(of: id)
-				outcomes[id] = outcome
-				notices += errors
+				do {
+					let (outcome, errors) = try result.get().outcome(of: id)
+					outcomes[id] = outcome
+					notices += errors
+				} catch {
+					outcomes[id] = .failed(error as? SyncFailure ?? HelperFailure.unreadable)
+				}
 			case let .accountFailed(account, error):
 				guard let id = accountIDs[account] else { throw HelperFailure.unreadable }
 				outcomes[id] = .failed(error.failure)

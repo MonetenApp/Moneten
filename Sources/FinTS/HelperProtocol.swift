@@ -37,7 +37,8 @@ enum HelperMessage: Decodable {
 	case notice(String)
 	case bank(FinTSBank?)
 	case accounts([FinTSAccount])
-	case result(account: String, AccountResult)
+	/// A result that does not read fails only its account.
+	case result(account: String, Result<AccountResult, any Error>)
 	case accountFailed(account: String, HelperError)
 	case state(Data)
 	case failed(HelperError)
@@ -60,7 +61,7 @@ enum HelperMessage: Decodable {
 			let url = try c.decodeIfPresent(String.self, forKey: .url).flatMap { URL(string: $0) }
 			self = .bank(name.map { FinTSBank(name: $0, bic: bic, url: url) })
 		case "accounts": self = .accounts(try c.decode([AccountLine].self, forKey: .accounts).map(\.account))
-		case "result": self = .result(account: try c.decode(String.self, forKey: .account), try AccountResult(from: decoder))
+		case "result": self = .result(account: try c.decode(String.self, forKey: .account), Result { try AccountResult(from: decoder) })
 		case "accountFailed": self = .accountFailed(account: try c.decode(String.self, forKey: .account), try HelperError(from: decoder))
 		case "state": self = .state(try c.decode(Data.self, forKey: .data))
 		case "failed": self = .failed(try HelperError(from: decoder))
@@ -150,7 +151,8 @@ struct AccountResult: Decodable {
 	}
 
 	struct Row: Decodable {
-		let booked: String
+		/// Nil when hbci4java read no date, as for a CAMT entry with a date and time only.
+		let booked: String?
 		let value: String?
 		let amount: String
 		let currency: String?
@@ -192,6 +194,7 @@ struct AccountResult: Decodable {
 
 extension AccountResult.Row {
 	func transaction(of accountID: UUID) throws -> Transaction {
+		guard let booked else { throw HelperFailure.noBookingDate }
 		let money = try AccountResult.money(amount, currency ?? "EUR")
 		return Transaction(accountID: accountID, bookingDate: try AccountResult.day(booked), valueDate: try value.map(AccountResult.day), amountMinor: money.minorUnits,
 			currency: money.currency, name: name ?? "", purpose: purpose ?? "", counterpartyIBAN: iban, counterpartyBIC: bic, bookingText: bookingText,
@@ -221,6 +224,7 @@ enum HelperFailure {
 	static let noAnswer = SyncFailure.network("The FinTS helper ended without an answer.")
 	static let noProductID = SyncFailure.unsupported("This build of Moneten has no FinTS product ID, and banks accept only registered apps.")
 	static let insecure = SyncFailure.unsupported("The bank offers no encrypted FinTS address.")
+	static let noBookingDate = SyncFailure.unsupported("The bank sent a transaction without a booking date, so nothing of this account was stored.")
 	static let clash = SyncFailure.unsupported("Two accounts of this access are the same account at the bank.")
 	static let timeout = SyncFailure.network("The connection to the FinTS server of the bank timed out. Try again later.")
 

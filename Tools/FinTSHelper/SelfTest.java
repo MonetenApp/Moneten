@@ -9,10 +9,12 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.TimeZone;
 
+import org.kapott.hbci.GV_Result.GVRKUms;
 import org.kapott.hbci.GV_Result.GVRKUms.UmsLine;
 import org.kapott.hbci.exceptions.HBCI_Exception;
 import org.kapott.hbci.manager.HBCIUtils;
 import org.kapott.hbci.passport.storage.PassportData;
+import org.kapott.hbci.status.HBCIRetVal;
 import org.kapott.hbci.structures.Konto;
 import org.kapott.hbci.structures.Value;
 
@@ -113,6 +115,18 @@ final class SelfTest {
 
 		HBCIUtils.init(new Properties(), new FinTSHelper.Callback(Map.of(), null));
 		try {
+			GVRKUms undated = new GVRKUms();
+			undated.jobStatus.addRetVal(new HBCIRetVal(null, null, null, "0020", "ok", null));
+			GVRKUms.BTag day = new GVRKUms.BTag();
+			UmsLine pending = line("2026-11-09", "2026-11-09", "-1");
+			pending.bdate = null;
+			pending.valuta = null;
+			day.addLine(pending);
+			undated.getDataPerDay().add(day);
+			expect("account without booking date fails alone", FinTSHelper.Json.write(FinTSHelper.alone("DE02120300000000202051",
+				() -> FinTSHelper.result("DE02120300000000202051", null, null, undated))),
+				"{\"type\":\"accountFailed\",\"text\":\"The bank sent a transaction without a booking date, so nothing of this account was stored.\",\"account\":\"DE02120300000000202051\"}");
+
 			expect("network error", FinTSHelper.Json.write(FinTSHelper.failure(new HBCI_Exception("can not create HBCI handle", new java.net.ConnectException("Connection refused")))),
 				"{\"type\":\"failed\",\"kind\":\"network\",\"text\":\"Connection refused\"}");
 			expect("other error", FinTSHelper.Json.write(FinTSHelper.failure(new HBCI_Exception("can not create HBCI handle"))),

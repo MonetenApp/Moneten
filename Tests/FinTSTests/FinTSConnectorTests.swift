@@ -348,6 +348,24 @@ struct FinTSConnectorTests {
 		#expect(session.events == [.progress(.fetching(done: 0, of: 3)), .progress(.fetching(done: 1, of: 3))])
 	}
 
+	@Test("A result that does not read fails only its account", arguments: [
+		(#"{"type":"result","account":"DE02120300000000202051","transactions":{"rows":[{"booked":"2026-11-02","amount":"zwölf","pending":false}]},"errors":[]}"#,
+			HelperFailure.unreadable),
+		(#"{"type":"result","account":"DE02120300000000202051","balance":{"currency":"EUR"},"errors":[]}"#, HelperFailure.unreadable),
+		(#"{"type":"result","account":"DE02120300000000202051","transactions":{"rows":[{"amount":"-1","pending":true}]},"errors":[]}"#,
+			SyncFailure.unsupported("The bank sent a transaction without a booking date, so nothing of this account was stored.")),
+	])
+	func unreadableResult(line: String, expected: SyncFailure) async throws {
+		let report = try await refresh("""
+			read cmd
+			echo '\(line)'
+			echo '{"type":"result","account":"1234567890","balance":{"amount":"1","currency":"EUR"},"errors":[]}'
+			""", accounts: [Self.giro, Self.savings])
+		guard case let .failed(failure) = report.outcomes[Self.giro.accountID] else { Issue.record("giro not failed"); return }
+		#expect(failure == expected)
+		guard case .fetched = report.outcomes[Self.savings.accountID] else { Issue.record("savings not fetched"); return }
+	}
+
 	@Test("Maps the errors of the bank to failures", arguments: [
 		(#"{"type":"failed","code":"9078","text":"FinTS-Produkt ist nicht registriert"}"#, SyncFailure.notRegistered),
 		(#"{"type":"failed","code":"9942","text":"PIN falsch"}"#, .pinRejected(BankMessage(code: "9942", text: "PIN falsch"))),
