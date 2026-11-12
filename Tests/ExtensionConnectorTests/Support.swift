@@ -30,18 +30,29 @@ final class TestSession: SyncSession, Sendable {
 	let asked = Mutex<[UserRequest]>([])
 	let log = Mutex<[HostLog]>([])
 	let attended: Bool
+	/// Every two-factor dialog stays open until the task is canceled, or fails after 5 seconds.
+	let hold: Bool
+	/// A waiting notice closes at the validity of its challenge, as the broker closes it.
+	let expires: Bool
 
-	init(_ answers: [UserAnswer] = [.login([Secret("erika"), Secret("geheim")])], attended: Bool = true) {
+	init(_ answers: [UserAnswer] = [.login([Secret("erika"), Secret("geheim")])], attended: Bool = true, hold: Bool = false, expires: Bool = false) {
 		self.answers = Mutex(answers)
 		self.attended = attended
+		self.hold = hold
+		self.expires = expires
 	}
 
 	var isAttended: Bool { attended }
 
 	func ask(_ request: UserRequest) async throws -> UserAnswer {
 		asked.withLock { $0.append(request) }
+		if hold, case .secondFactor = request {
+			try await Task.sleep(for: .seconds(5))
+			throw CancellationError()
+		}
 		if case let .secondFactor(factor) = request, case .approveInApp = factor.challenge {
-			try await Task.sleep(for: .seconds(3600))
+			try await Task.sleep(for: expires ? factor.validity : .seconds(3600))
+			throw SyncFailure.challengeExpired
 		}
 		if !attended, request.kind != .login { throw SyncFailure.needsUser(request.kind) }
 		guard let answer = answers.withLock({ $0.isEmpty ? nil : $0.removeFirst() }) else { throw CancellationError() }

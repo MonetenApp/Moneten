@@ -33,6 +33,8 @@ public struct ExtensionConnector: BankConnector {
 	let services: Services
 	/// The pause between two calls while the app waits for an approval in another app.
 	var pollInterval: Duration = .seconds(1)
+	/// How long a challenge stays valid after its dialog opens, as the broker counts it.
+	var challengeValidity: Duration = .seconds(300)
 	var timeZone: TimeZone = .current
 
 	public init(package: ExtensionPackage, environment: HostEnvironment, fixture: Fixture? = nil, executable: URL = ExtensionHostClient.bundledExecutable,
@@ -46,8 +48,6 @@ public struct ExtensionConnector: BankConnector {
 
 	/// The text that `credentials[2]` holds, which a script returns to end the login after the last poll.
 	static let cancelMessage = "The authorization was canceled."
-	/// How many times the app calls the function while it waits for an approval: the 5 minutes of a challenge.
-	static let maxPolls = 300
 
 	/// The labels of the login fields: those of the manifest for the service, else "Username" and "Password".
 	func loginFields(for service: String) -> [LoginRequest.Field] {
@@ -76,8 +76,10 @@ public struct ExtensionConnector: BankConnector {
 				if outcome.endsSession { break }
 			}
 		} catch {
-			await run.end()
-			throw error
+			// The script may have stored a new token after the login, which the next run needs.
+			state.storage = await run.end() ?? state.storage
+			state.tanMethod = run.tanMethod ?? state.tanMethod
+			throw FailureWithState(error, state: state.accessState)
 		}
 		state.storage = await run.end() ?? state.storage
 		state.tanMethod = run.tanMethod ?? state.tanMethod
@@ -171,7 +173,7 @@ private final class ScriptRun {
 	private var loggedIn = false
 	let loginName: String
 
-	private init(connector: ExtensionConnector, client: ExtensionHostClient, session: SyncSession, access: Access, hosts: Set<String>, remembered: String?,
+	private init(connector: ExtensionConnector, client: ExtensionHostClient, session: SyncSession, access: Access, hosts: AllowedHosts, remembered: String?,
 		loginName: String) {
 		self.connector = connector
 		self.loginName = loginName
@@ -180,8 +182,8 @@ private final class ScriptRun {
 		self.access = access
 		tanMethod = remembered
 		mapping = { purpose in
-			ChallengeMapping(purpose: purpose, qrCodeName: connector.environment.language == "de" ? "QR-Code" : "QR Code", hosts: hosts,
-				rememberedMethod: remembered, newState: { UUID().uuidString.lowercased() })
+			ChallengeMapping(purpose: purpose, qrCodeName: connector.environment.language == "de" ? "QR-Code" : "QR Code", hosts: hosts.current,
+				rememberedMethod: remembered, validity: connector.challengeValidity, newState: { UUID().uuidString.lowercased() })
 		}
 	}
 
@@ -191,8 +193,9 @@ private final class ScriptRun {
 		let fields = connector.loginFields(for: access.bankName)
 		guard case let .login(values) = try await session.ask(.login(LoginRequest(service: access.bankName, fields: fields))) else { throw CancellationError() }
 		let decisions = try await connector.services.hostDecisions()
-		let setup = HostSetup(package: connector.package, decisions: decisions, fixture: connector.fixture, environment: connector.environment, storage: state.storage)
 		let package = connector.package
+		let hosts = AllowedHosts(package.manifest?.hosts?.map(\.value) ?? decisions.filter { $0.value == .allowed }.map(\.key))
+		let setup = HostSetup(package: connector.package, decisions: decisions, fixture: connector.fixture, environment: connector.environment, storage: state.storage)
 		let services = connector.services
 		let client: ExtensionHostClient
 		do {
@@ -201,14 +204,17 @@ private final class ScriptRun {
 					throw CancellationError()
 				}
 				try await services.saveDecision(decision, host)
+				// A browser login or a captcha on this host may follow in the same run.
+				if decision == .allowed { hosts.insert(host) }
 				return decision
 			}, log: services.log).client
 		} catch {
 			throw ScriptRun.failure(error)
 		}
-		let hosts = Set(package.manifest?.hosts?.map(\.value) ?? decisions.filter { $0.value == .allowed }.map(\.key))
+		// A secret first field, such as an API key, never becomes the user ID that the app stores and shows.
+		let loginName = fields.first?.isSecret == false ? values.first?.value ?? "" : ""
 		let run = ScriptRun(connector: connector, client: client, session: session, access: access, hosts: hosts, remembered: state.tanMethod,
-			loginName: values.first?.value ?? "")
+			loginName: loginName)
 		do {
 			try await run.login(values.map(\.value), reason: reason)
 		} catch {
@@ -267,7 +273,13 @@ private final class ScriptRun {
 			throw Self.failure(error)
 		}
 		switch answer {
-		case let .array(items): return items.compactMap(ListedAccount.init)
+		case let .array(items):
+			let accounts = items.compactMap(ListedAccount.init)
+			var seen: Set<String> = []
+			if let twice = accounts.first(where: { !seen.insert($0.remoteID).inserted }) {
+				throw SyncFailure.bank(BankMessage(text: "\(connector.package.name) lists the account \(twice.number) in \(twice.currency) twice, so Moneten cannot tell the two apart."))
+			}
+			return accounts
 		case let .string(message): throw SyncFailure.bank(BankMessage(text: message))
 		default: throw SyncFailure.bank(BankMessage(text: "ListAccounts of \(connector.package.name) returned no list of accounts."))
 		}
@@ -321,27 +333,57 @@ private final class ScriptRun {
 			guard case let .object(fields) = value, let table = try challenge(fields, challenged: challenged) else { return (value, challenged) }
 			guard session.isAttended else { throw SyncFailure.needsUser(.secondFactor) }
 			challenged = true
-			switch try mapping(purpose).interaction(for: table) {
+			let interaction: Interaction
+			do {
+				interaction = try mapping(purpose).interaction(for: table)
+			} catch {
+				throw SyncFailure.bank(BankMessage(text: error.message))
+			}
+			switch interaction {
 			case let .answer(request, increment):
 				guard case let .tan(secret) = try await session.ask(.secondFactor(request)) else { throw CancellationError() }
 				credentials = [.string(secret.value), .string(ExtensionConnector.cancelMessage)]
 				step += increment
 			case let .choose(request, methods):
-				guard case let .tanMethod(id) = try await session.ask(.secondFactor(request)),
-					case let .chooseTANMethod(options, _) = request.challenge, let index = options.firstIndex(where: { $0.id == id }) else { throw CancellationError() }
+				let index = try choice(try await session.ask(.secondFactor(request)), in: request)
 				tanMethod = methods[index].hbciMethod ?? tanMethod
 				credentials = [methods[index].chosen]
 				step += 1
 			case let .poll(request):
 				let again = [true, false].map { more in call(step, [.string(""), .string(ExtensionConnector.cancelMessage), .boolean(more)]) }
-				pending = try await poll(request) { more in
-					do {
-						return try await self.client.call(again[more ? 0 : 1])
-					} catch {
-						throw RunFailure(message: "\(error)", afterChallenge: true)
-					}
+				if case let .value(value) = try await poll(request, answerEnds: false, waiting: { $0.tanMethods == nil }, { more in try await self.call(again[more ? 0 : 1]) }) {
+					pending = value
+				}
+			case let .chooseWhilePolling(request, methods, polled):
+				// The script started the approval of the first app method: the choice stays open while the app polls it.
+				let again = [true, false].map { more in call(step, [methods[polled].chosen, .string(ExtensionConnector.cancelMessage), .boolean(more)]) }
+				switch try await poll(request, answerEnds: true, waiting: { $0.tanMethods != nil }, { more in try await self.call(again[more ? 0 : 1]) }) {
+				case let .value(value):
+					tanMethod = methods[polled].hbciMethod ?? tanMethod
+					pending = value
+				case let .answered(answer):
+					let index = try choice(answer, in: request)
+					tanMethod = methods[index].hbciMethod ?? tanMethod
+					credentials = [methods[index].chosen]
+					step += 1
 				}
 			}
+		}
+	}
+
+	/// The position of the method that the user chose in a method dialog.
+	private func choice(_ answer: UserAnswer, in request: SecondFactorRequest) throws -> Int {
+		guard case let .tanMethod(id) = answer, case let .chooseTANMethod(options, _) = request.challenge,
+			let index = options.firstIndex(where: { $0.id == id }) else { throw CancellationError() }
+		return index
+	}
+
+	/// A call during polling, after a challenge.
+	private func call(_ entry: EntryCall) async throws -> LuaValue {
+		do {
+			return try await client.call(entry)
+		} catch {
+			throw RunFailure(message: "\(error)", afterChallenge: true)
 		}
 	}
 
@@ -353,24 +395,41 @@ private final class ScriptRun {
 		}
 	}
 
-	/// Shows the waiting notice and calls the function again until it returns something other than
-	/// the waiting challenge. The notice closes then; when the user cancels it, the session ends.
-	private func poll(_ request: SecondFactorRequest, _ again: @escaping (Bool) async throws -> LuaValue) async throws -> LuaValue {
+	enum PollEnd {
+		/// The function returned something other than the waiting challenge.
+		case value(LuaValue)
+		/// The user answered the dialog, for example with another method.
+		case answered(UserAnswer)
+	}
+
+	/// Shows the dialog of `request` and calls the function again until it returns something other
+	/// than the waiting challenge, which `waiting` recognizes. The dialog closes then; when the user
+	/// cancels it, the session ends. An answer of the user ends the polling when `answerEnds`.
+	/// The last call, with `credentials[3]` false, comes before the broker closes the dialog at the
+	/// end of its validity.
+	private func poll(_ request: SecondFactorRequest, answerEnds: Bool, waiting: @escaping (ChallengeTable) -> Bool,
+		_ again: @escaping (Bool) async throws -> LuaValue) async throws -> PollEnd {
 		let closed = Mutex<Bool>(false)
 		let dialog = Task { [session] in
 			defer { closed.withLock { $0 = true } }
 			return try await session.ask(.secondFactor(request))
 		}
 		defer { dialog.cancel() }
-		for attempt in 1...ExtensionConnector.maxPolls {
-			try await Task.sleep(for: connector.pollInterval)
-			if closed.withLock({ $0 }) { _ = try await dialog.value }
-			let value = try await again(attempt < ExtensionConnector.maxPolls)
-			guard case let .object(fields) = value, let table = try? ChallengeTable(fields), table.poll, table.label == nil, table.tanMethods == nil else {
-				return value
+		let interval = connector.pollInterval
+		let deadline = ContinuousClock.now + request.validity - interval * 2 - min(.seconds(5), request.validity / 10)
+		while true {
+			try await Task.sleep(for: interval)
+			if closed.withLock({ $0 }) {
+				let answer = try await dialog.value
+				if answerEnds { return .answered(answer) }
 			}
+			let more = ContinuousClock.now + interval < deadline
+			let value = try await again(more)
+			guard case let .object(fields) = value, let table = try? ChallengeTable(fields), table.poll, table.label == nil, waiting(table) else {
+				return .value(value)
+			}
+			if !more { throw SyncFailure.challengeExpired }
 		}
-		throw SyncFailure.challengeExpired
 	}
 
 	/// Calls `EndSession` after a successful login and returns `LocalStorage`, then ends the process.
@@ -378,18 +437,32 @@ private final class ScriptRun {
 	/// be saved, the caller keeps the one of the last run.
 	@discardableResult
 	func end() async -> Data? {
+		// A cancel of the refresh ends the task that calls this, and a call in a canceled task stops the
+		// host. So the end runs in a task of its own, and a host that does not answer within 10 seconds is stopped.
+		let client = client
+		let ending = Task { [loggedIn, log = connector.services.log] in await Self.finish(client, loggedIn: loggedIn, log: log) }
+		let limit = Task {
+			try await Task.sleep(for: .seconds(10))
+			await client.end()
+		}
+		let storage = await ending.value
+		limit.cancel()
+		return storage
+	}
+
+	private static func finish(_ client: ExtensionHostClient, loggedIn: Bool, log: @escaping @Sendable (HostLog) -> Void) async -> Data? {
 		if loggedIn, await client.entryPoints.contains(.endSession) {
 			do {
-				if case let .string(message) = try await client.call(.endSession) { connector.services.log(.print("EndSession: \(message)")) }
+				if case let .string(message) = try await client.call(.endSession) { log(.print("EndSession: \(message)")) }
 			} catch {
-				connector.services.log(.print("EndSession: \(error)"))
+				log(.print("EndSession: \(error)"))
 			}
 		}
 		let storage: Data?
 		do {
 			storage = try await client.finish()
 		} catch {
-			connector.services.log(.print("LocalStorage: \(error)"))
+			log(.print("LocalStorage: \(error)"))
 			storage = nil
 		}
 		await client.end()
@@ -400,6 +473,22 @@ private final class ScriptRun {
 	static func failure(_ error: Error) -> Error {
 		if error is SyncFailure || error is CancellationError { return error }
 		return SyncFailure.bank(BankMessage(text: "\(error)"))
+	}
+}
+
+/// The hosts that a browser login or a captcha page of one run may use: those of the manifest, or
+/// those the user allowed, also during the run.
+private final class AllowedHosts: Sendable {
+	private let hosts: Mutex<Set<String>>
+
+	init(_ hosts: some Sequence<String>) {
+		self.hosts = Mutex(Set(hosts))
+	}
+
+	var current: Set<String> { hosts.withLock { $0 } }
+
+	func insert(_ host: String) {
+		hosts.withLock { _ = $0.insert(host) }
 	}
 }
 

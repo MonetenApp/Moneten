@@ -26,9 +26,16 @@ struct ListedAccount: Equatable {
 	let bic: String?
 	let kind: AccountKind
 
-	/// The number that the access knows the account by, with the sub-account when there is one.
-	var remoteID: String {
+	/// The number with the sub-account when there is one, as messages name the account.
+	var number: String {
 		subAccount.map { "\(accountNumber)/\($0)" } ?? accountNumber
+	}
+
+	/// What the access knows the account by: the number, the currency, and whether it is a portfolio,
+	/// so that a giro account in EUR and one in USD, or a giro account and a portfolio, with one
+	/// number stay two accounts.
+	var remoteID: String {
+		"\(number) \(currency)" + (kind == .portfolio ? " portfolio" : "")
 	}
 
 	/// Reads one account table. An account without `accountNumber` is ignored, so it gives nil.
@@ -178,9 +185,12 @@ enum ResultMapping {
 
 extension [String: LuaValue] {
 	/// A text field. A number counts as text, as Lua turns it into one where a string is expected.
+	/// Bytes that are not UTF-8 are read as ISO-8859-1, as `MM.urldecode` falls back to it, which
+	/// gives each byte one character and never a replacement character.
 	func text(_ key: String) -> String? {
 		switch self[key] {
 		case let .string(text): text
+		case let .bytes(data): String(data: data, encoding: .isoLatin1)
 		case let .integer(number): String(number)
 		case let .number(number): String(number)
 		default: nil

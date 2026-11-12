@@ -9,15 +9,21 @@ import Testing
 	static let access = Access(source: .extension(id: "Demo"), bankName: "Demo", loginName: "erika")
 
 	/// A refresh of the accounts `A` and `B`, whose tables `ListAccounts` returned earlier.
-	static func refresh(_ connector: ExtensionConnector, _ session: TestSession, state: ExtensionState? = nil) async throws -> (ConnectorReport, [UUID]) {
+	/// A failure after the login comes with the new state of the access, which the helper drops unless `unwrap` is false.
+	static func refresh(_ connector: ExtensionConnector, _ session: TestSession, state: ExtensionState? = nil, unwrap: Bool = true) async throws
+		-> (ConnectorReport, [UUID]) {
 		let ids = [UUID(), UUID()]
 		var stored = state ?? ExtensionState(nil)
 		if state == nil {
-			stored.accounts = ["A": .object(["accountNumber": .string("A"), "name": .string("Giro A")]), "B": .object(["accountNumber": .string("B"), "name": .string("Giro B")])]
+			stored.accounts = ["A EUR": .object(["accountNumber": .string("A"), "name": .string("Giro A")]), "B EUR": .object(["accountNumber": .string("B"), "name": .string("Giro B")])]
 		}
 		let request = RefreshRequest(access: access, state: stored.accessState,
-			accounts: [AccountRequest(accountID: ids[0], name: "Giro A", remoteID: "A"), AccountRequest(accountID: ids[1], name: "Giro B", remoteID: "B")])
-		return (try await connector.refresh(request, session), ids)
+			accounts: [AccountRequest(accountID: ids[0], name: "Giro A", remoteID: "A EUR"), AccountRequest(accountID: ids[1], name: "Giro B", remoteID: "B EUR")])
+		do {
+			return (try await connector.refresh(request, session), ids)
+		} catch let failure as FailureWithState where unwrap {
+			throw failure.failure
+		}
 	}
 
 	static let calls = """
@@ -122,7 +128,7 @@ import Testing
 	}
 
 	@Test func chosenMethodComesBackAsItsTableAndIsRemembered() async throws {
-		let session = TestSession([.login([Secret("erika"), Secret("geheim")]), .tanMethod("701")])
+		let session = TestSession([.login([Secret("erika"), Secret("geheim")]), .tanMethod("2")])
 		let (report, _) = try await Self.refresh(session.connector(demo(Self.calls + """
 			function InitializeSession2(protocol, bankCode, step, credentials)
 				if step == 1 then return {tanMethods = {{name = "pushTAN", hbciMethod = "700"}, {name = "mobileTAN", hbciMethod = "701"}}} end
@@ -155,16 +161,6 @@ import Testing
 		_ = try await Self.refresh(session.connector(demo(Self.polling.replacingOccurrences(of: "LIMIT", with: "3"))), session)
 		#expect(session.printed == ["poll 1 true", "poll 1 true"])
 		#expect(session.asked.withLock { $0.map(\.kind) } == [.login, .secondFactor])
-	}
-
-	@Test func noApprovalInTime() async throws {
-		let session = TestSession()
-		await #expect(throws: SyncFailure.bank(BankMessage(text: "The authorization was canceled."))) {
-			_ = try await Self.refresh(session.connector(demo(Self.polling.replacingOccurrences(of: "LIMIT", with: "-1"))), session)
-		}
-		#expect(session.printed.count == ExtensionConnector.maxPolls)
-		#expect(session.printed.last == "poll 1 false")
-		#expect(session.printed.dropLast().allSatisfy { $0 == "poll 1 true" })
 	}
 
 	@Test func challengeInTheBackgroundShowsNoDialog() async throws {
@@ -252,7 +248,7 @@ import Testing
 		#expect(setup.accounts.first?.kind == .giro)
 		#expect(setup.accounts.first?.outcome.rows == [Row(Day(year: 2012, month: 1, day: 5), 4200, "", "Hello World!", nil)])
 		#expect(setup.loginName == "erika")
-		#expect(ExtensionState(setup.state).accounts["111222333444"] == .object(["name": .string("Premium Account"), "owner": .string("Erika Mustermann"),
+		#expect(ExtensionState(setup.state).accounts["111222333444 EUR"] == .object(["name": .string("Premium Account"), "owner": .string("Erika Mustermann"),
 			"accountNumber": .string("111222333444"), "bankCode": .string("80007777"), "currency": .string("EUR"), "type": .string("AccountTypeGiro")]))
 	}
 
@@ -261,14 +257,14 @@ import Testing
 	@Test func accountWithoutATableIsListedAgain() async throws {
 		let session = TestSession()
 		var state = ExtensionState(nil)
-		state.accounts = ["A": .object(["accountNumber": .string("A"), "name": .string("Giro A")])]
+		state.accounts = ["A EUR": .object(["accountNumber": .string("A"), "name": .string("Giro A")])]
 		let (report, ids) = try await Self.refresh(session.connector(demo(Self.calls + """
 			function ListAccounts() print("ListAccounts") return {{accountNumber = "A", name = "Giro A"}, {accountNumber = "B", name = "Giro B"}} end
 			function RefreshAccount(account) print("RefreshAccount " .. account.accountNumber) return {balance = 1, transactions = {}} end
 			""")), session, state: state)
 		#expect(session.printed == ["SupportsBank ProtocolWebBanking Demo", "InitializeSession", "ListAccounts", "RefreshAccount A", "RefreshAccount B", "EndSession"])
 		#expect(report.outcomes[ids[1]]?.balance == 100)
-		#expect(ExtensionState(report.state).accounts["B"] == .object(["accountNumber": .string("B"), "name": .string("Giro B")]))
+		#expect(ExtensionState(report.state).accounts["B EUR"] == .object(["accountNumber": .string("B"), "name": .string("Giro B")]))
 	}
 
 	@Test func urlFromSupportsBankBecomesTheGlobalURL() async throws {

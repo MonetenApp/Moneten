@@ -99,8 +99,8 @@ import Testing
 			Issue.record("no choice")
 			return
 		}
-		#expect(request.challenge == .chooseTANMethod([TANMethod(id: "700", name: "pushTAN"), TANMethod(id: "701", name: "mobileTAN (+49 *** 4567)"),
-			TANMethod(id: "702", name: "chipTAN", unavailable: "Activate this method on the website first.")], current: "701"))
+		#expect(request.challenge == .chooseTANMethod([TANMethod(id: "1", name: "pushTAN"), TANMethod(id: "2", name: "mobileTAN (+49 *** 4567)"),
+			TANMethod(id: "3", name: "chipTAN", unavailable: "Activate this method on the website first.")], current: "2"))
 		#expect(tables[1].chosen == .object(["name": .string("mobileTAN"), "hbciMethod": .string("701"), "mediumName": .string("+49 *** 4567"),
 			"isPreferred": .boolean(true), "label": .string("mobileTAN")]))
 	}
@@ -113,7 +113,31 @@ import Testing
 			Issue.record("no choice")
 			return
 		}
-		#expect(current == "700")
+		#expect(current == "1")
+	}
+
+	/// Two media of one method share its `hbciMethod`, so the position tells them apart, and the
+	/// remembered method preselects the first medium of that method.
+	@Test func mediaOfOneMethodHaveTheirOwnIDs() throws {
+		let remembered = ChallengeMapping(purpose: .login, qrCodeName: "QR Code", hosts: [], rememberedMethod: "701", newState: { "" })
+		let table = try #require(try ChallengeTable(["tanMethods": .array([.object(["name": .string("pushTAN"), "hbciMethod": .string("700")]),
+			.object(["name": .string("mobileTAN"), "hbciMethod": .string("701"), "mediumName": .string("iPhone")]),
+			.object(["name": .string("mobileTAN"), "hbciMethod": .string("701"), "mediumName": .string("iPad")])])]))
+		guard case let .choose(request, _) = try remembered.interaction(for: table), case let .chooseTANMethod(options, current) = request.challenge else {
+			Issue.record("no choice")
+			return
+		}
+		#expect(options.map(\.id) == ["1", "2", "3"])
+		#expect(current == "2")
+	}
+
+	@Test(arguments: [["tanLength": -1], ["tanLength": 0], ["minLength": 8, "maxLength": 4], ["minLength": 8], ["tanLength": 1000]])
+	func invalidLengthIsRefused(lengths: [String: Int]) throws {
+		var method: [String: LuaValue] = ["name": .string("SMS")]
+		for (key, value) in lengths { method[key] = .integer(Int64(value)) }
+		#expect(throws: MappingError("The TAN method SMS has a length that is not valid.")) {
+			_ = try interaction(["label": .string("Code"), "tanMethod": .object(method)])
+		}
 	}
 
 	@Test func visibleReCAPTCHA() throws {

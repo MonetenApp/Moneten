@@ -20,7 +20,7 @@ import Testing
 		#expect(account?.name == "Premium Account")
 		#expect(account?.kind == .giro)
 		#expect(account?.currency == "EUR")
-		#expect(account?.remoteID == "111222333444")
+		#expect(account?.remoteID == "111222333444 EUR")
 	}
 
 	@Test func missingAccountNumberIsIgnored() {
@@ -32,7 +32,7 @@ import Testing
 	}
 
 	@Test func subAccountIsPartOfTheRemoteID() {
-		#expect(ListedAccount(.object(["accountNumber": .string("1234"), "subAccount": .string("01")]))?.remoteID == "1234/01")
+		#expect(ListedAccount(.object(["accountNumber": .string("1234"), "subAccount": .string("01")]))?.remoteID == "1234/01 EUR")
 	}
 
 	@Test(arguments: [("5232 xxxx xxxx 1234", AccountKind.creditCard), ("5232123412341234", .creditCard), ("DE02120300000000202051", .giro)])

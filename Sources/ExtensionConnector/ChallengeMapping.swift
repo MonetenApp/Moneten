@@ -57,23 +57,36 @@ struct ChallengeTable: Equatable {
 struct MethodTable: Equatable {
 	let fields: [String: LuaValue]
 	let name: String
+	/// The number of characters of a TAN: exactly `tanLength` (6 by default) unless `minLength` or
+	/// `maxLength` say otherwise.
+	let length: ClosedRange<Int>
+
+	/// The longest TAN that a method may ask for.
+	static let maxLength = 64
 
 	init(_ value: LuaValue) throws(MappingError) {
 		guard case let .object(fields) = value, let name = fields.text("name") else { throw MappingError("A TAN method has no name.") }
 		self.fields = fields
 		self.name = name
+		let invalid = MappingError("The TAN method \(name) has a length that is not valid.")
+		func number(_ key: String) throws(MappingError) -> Int? {
+			guard let value = fields[key] else { return nil }
+			guard let number = value.int, (1...Self.maxLength).contains(number) else { throw invalid }
+			return number
+		}
+		let length = try number("tanLength") ?? 6
+		let minimum = try number("minLength") ?? (fields["maxLength"] == nil ? length : 1)
+		let maximum = try number("maxLength") ?? length
+		guard minimum <= maximum else { throw invalid }
+		self.length = minimum...maximum
 	}
 
 	var hbciMethod: String? { fields.text("hbciMethod") }
 
-	/// The entry field: exactly `tanLength` characters (6 by default) unless `minLength` or `maxLength`
-	/// say otherwise, digits unless `isNumeric` is false, and capitals for letters unless `isUppercase` is false.
+	/// The entry field: digits unless `isNumeric` is false, and capitals for letters unless `isUppercase` is false.
 	var field: TANField {
-		let length = fields["tanLength"]?.int ?? 6
-		let minimum = fields["minLength"]?.int ?? (fields["maxLength"] == nil ? length : 1)
-		let maximum = fields["maxLength"]?.int ?? length
 		let isNumeric = fields["isNumeric"] != .boolean(false)
-		return TANField(label: fields.text("label") ?? name, length: minimum <= maximum ? minimum...maximum : nil, isNumeric: isNumeric,
+		return TANField(label: fields.text("label") ?? name, length: length, isNumeric: isNumeric,
 			isUppercase: fields["isUppercase"].map { $0 == .boolean(true) } ?? !isNumeric)
 	}
 
@@ -93,6 +106,9 @@ enum Interaction: Equatable {
 	case choose(SecondFactorRequest, methods: [MethodTable])
 	/// A waiting notice while the app calls the function again with the same step.
 	case poll(SecondFactorRequest)
+	/// The choice of a TAN method, which stays open while the app polls the method at `polled`, whose
+	/// approval the script started already.
+	case chooseWhilePolling(SecondFactorRequest, methods: [MethodTable], polled: Int)
 }
 
 /// Turns a challenge table into the request to the user.
@@ -104,6 +120,8 @@ struct ChallengeMapping {
 	let hosts: Set<String>
 	/// The `hbciMethod` that the user chose at the last login of the access.
 	let rememberedMethod: String?
+	/// How long a challenge stays valid after its dialog opens.
+	var validity: Duration = .seconds(300)
 	/// A new random `state` for a browser login whose table and URL have none.
 	let newState: () -> String
 
@@ -113,13 +131,19 @@ struct ChallengeMapping {
 	func interaction(for table: ChallengeTable) throws(MappingError) -> Interaction {
 		let increment = table.tanMethod == nil ? 1 : 2
 		if let methods = table.tanMethods {
+			// The position is the ID: two media of one method share its `hbciMethod`.
 			let options = methods.enumerated().map { index, method in
-				TANMethod(id: method.hbciMethod ?? String(index + 1), name: method.fields.text("mediumName").map { "\(method.name) (\($0))" } ?? method.name,
+				TANMethod(id: String(index + 1), name: method.fields.text("mediumName").map { "\(method.name) (\($0))" } ?? method.name,
 					unavailable: method.fields.text("errorMessage"))
 			}
-			let current = options.first { $0.id == rememberedMethod && $0.unavailable == nil }
-				?? zip(options, methods).first { $1.fields["isPreferred"] == .boolean(true) && $0.unavailable == nil }?.0
-			return .choose(request(.chooseTANMethod(options, current: current?.id), table), methods: methods)
+			let choosable = zip(options, methods).filter { $0.0.unavailable == nil }
+			let current = choosable.first { rememberedMethod != nil && $1.hbciMethod == rememberedMethod }?.0
+				?? choosable.first { $1.fields["isPreferred"] == .boolean(true) }?.0
+			let choice = request(.chooseTANMethod(options, current: current?.id), table)
+			if table.poll {
+				return .chooseWhilePolling(choice, methods: methods, polled: methods.firstIndex { Self.appMethods.contains($0.name) } ?? 0)
+			}
+			return .choose(choice, methods: methods)
 		}
 		let text = prompt(for: table)
 		switch table.content {
@@ -155,7 +179,7 @@ struct ChallengeMapping {
 			let field = method.field
 			return TANField(label: table.label ?? field.label, length: field.length, isNumeric: field.isNumeric, isUppercase: field.isUppercase)
 		} ?? TANField(label: table.label ?? "TAN")
-		return SecondFactorRequest(purpose: purpose, system: .website, challenge: challenge, field: field,
+		return SecondFactorRequest(purpose: purpose, system: .website, challenge: challenge, validity: validity, field: field,
 			confirmTitle: table.button?.lowercased() == "next" ? "Next" : "Continue")
 	}
 
