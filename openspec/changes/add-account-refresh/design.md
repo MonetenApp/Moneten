@@ -94,6 +94,11 @@ public enum UserRequest: Sendable {
 	case secondFactor(SecondFactorRequest)  // the dialog "Two-Factor Authentication" of add-tan-handling
 }
 
+public struct PINRequest: Sendable {
+	public let secretName: String       // "PIN" or "password"
+	public let rejected: BankMessage?   // the answer of the bank to the previous PIN of this session
+}
+
 public struct SecondFactorRequest: Sendable {
 	public let purpose: Purpose        // login, download, order(description)
 	public let system: System          // FinTS server, website, API server
@@ -140,7 +145,14 @@ This needs no separate API for "close the dialog", and every connector handles c
 
 `SessionBroker` hands each running access a `SyncSession`. It keeps one queue for all accesses: one dialog at a time ("One dialog at a time", "One PIN sheet at a time"), in the order of the requests. A request from another access waits, and its access shows "waiting for your input" in the sidebar. For an automatic refresh the broker creates the session as unattended. Every `ask` that the PIN in memory can't answer then throws `SyncFailure.needsUser` at once, and the account shows "Refresh Account to authorize" ("An automatic refresh never asks the user").
 
-The PIN comes from the broker as well. It answers a `.pin` request with the PIN that the user entered earlier in this run, also in an automatic refresh, and it shows the sheet only when it has none ("An unsaved PIN stays in memory until the app locks or quits", "Automatic refresh skips an access without a PIN"). It keeps the PIN only when the refresh with it finishes, so a typo is never sent again without asking, and it forgets every PIN when the app locks. A rejected PIN ends the refresh of the access, so no second login with it follows ("No automatic retry after a wrong PIN"). A saved PIN joins this with the storage of add-login-credentials.
+The PIN comes from the broker as well. It answers a `.pin` request with the PIN that the user entered earlier in this run, also in an automatic refresh, and it shows the sheet only when it has none ("An unsaved PIN stays in memory until the app locks or quits", "Automatic refresh skips an access without a PIN"). It keeps the PIN only when the refresh with it finishes, so a typo is never sent again without asking, and it forgets every PIN when the app locks. A saved PIN joins this with the storage of add-login-credentials.
+
+When the bank rejects a PIN, the connector asks for the PIN again, with the message of the bank in `PINRequest.rejected` ("No automatic retry after a wrong PIN"). The broker never answers this request from memory. It forgets the PIN of the access first. Then:
+
+- In a manual refresh, it shows the PIN sheet again, with an empty field, the message of the bank, and the warning that more wrong attempts can block the access ("Typing error"). The connector sends only the PIN that the user types into this sheet. The broker keeps that PIN when the refresh finishes. When the user cancels the sheet, the refresh of the access ends as canceled.
+- In an automatic refresh, `ask` throws `SyncFailure.pinRejected` with the message of the bank. No sheet opens, no second login follows, and the account shows the message ("Saved PIN no longer valid"). The next manual refresh asks for the PIN, because the broker forgot it.
+
+A connector that can't ask again in the same session throws `SyncFailure.pinRejected` itself. The coordinator forgets the PIN, because the refresh did not finish.
 
 The validity of a challenge starts when its dialog opens, not while it waits behind another one. When it runs out, the dialog closes and `ask` throws `SyncFailure.challengeExpired`.
 
@@ -174,7 +186,7 @@ The app keeps one `SyncState` per access in an `@Observable` `SyncCoordinator`. 
 ```swift
 public enum SyncFailure: Error, Sendable, Equatable {
 	case needsUser                      // automatic refresh needed a PIN or a second factor
-	case pinRejected(BankMessage)       // no retry in this refresh
+	case pinRejected(BankMessage)       // never sent again; a manual refresh asks again first
 	case accessBlocked(BankMessage)
 	case tanRejected(BankMessage)       // "Wrong TAN"
 	case approvalDeclined(BankMessage?) // declined, or not answered in time
@@ -204,7 +216,7 @@ The FinTS connector of issue #13 talks to the hbci4java helper process. Each blo
 
 | hbci4java callback | Request |
 |---|---|
-| `NEED_PT_PIN` | `.pin` |
+| `NEED_PT_PIN` | `.pin`, with `rejected` when the bank rejected the previous PIN of the session |
 | `NEED_PT_SECMECH` | `.chooseTANMethod`, unless the access remembers a method the bank still offers |
 | `NEED_PT_TANMEDIA` | `.chooseTANMedium`, unless the access remembers one |
 | `NEED_PT_TAN` | `.enterTAN`, or `.flickerCode` when the bank sends an HHDuc for chipTAN |
@@ -249,7 +261,5 @@ The coordinator calls `deliver` once for each requested account that the connect
 - A purpose that FinTS and a bank's CSV export render differently breaks the match between a refresh and a file. This can't be checked before the FinTS connector of issue #13 exists.
 
 ## Open questions
-
-- The spec "No automatic retry after a wrong PIN" shows the PIN sheet again after a typing error. This design ends the refresh with the message of the bank and its warning, and the next manual refresh asks again. That sends nothing twice, but it is one more click than the spec. Decide before issue #13.
 
 - Does a refresh of a single account refresh the other accounts of its access too, when the bank asks for a second factor anyway? This design refreshes only the selected accounts, as the spec says.

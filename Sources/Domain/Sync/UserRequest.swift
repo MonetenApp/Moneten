@@ -3,6 +3,7 @@ import Foundation
 /// How a connector talks to the user and to the progress display during a refresh.
 public protocol SyncSession: Sendable {
 	/// Asks the user and waits for the answer. Throws `SyncFailure.needsUser` in an automatic refresh,
+	/// or `SyncFailure.pinRejected` there when the PIN request carries the rejection of the bank,
 	/// `SyncFailure.challengeExpired` when the user does not answer in time, and `CancellationError`
 	/// when the user cancels the dialog or the refresh is canceled.
 	///
@@ -41,9 +42,13 @@ public enum UserRequest: Sendable, Equatable {
 public struct PINRequest: Sendable, Equatable {
 	/// The word of the source for the secret, for example "PIN" or "password".
 	public let secretName: String
+	/// The answer of the bank to the previous PIN of this session, when the bank rejected it. The
+	/// connector asks again with it after a typing error.
+	public let rejected: BankMessage?
 
-	public init(secretName: String = "PIN") {
+	public init(secretName: String = "PIN", rejected: BankMessage? = nil) {
 		self.secretName = secretName
+		self.rejected = rejected
 	}
 }
 
