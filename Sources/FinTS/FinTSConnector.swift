@@ -182,7 +182,7 @@ public struct FinTSConnector: BankConnector {
 		let watchdog = Watchdog(after: inactivity)
 		let asks = OpenAsks(watchdog: watchdog)
 		let process = try HelperProcess(executable: helper.executable, arguments: helper.arguments, grace: grace, onLine: watchdog.received,
-			onEnd: asks.close)
+			onEnd: { asks.close(); watchdog.stop() })
 		watchdog.onExpiry { process.fail(HelperFailure.timeout) }
 		var approvals: [Int: Task<UserAnswer, any Error>] = [:]
 		var helperLeft = false
@@ -193,7 +193,7 @@ public struct FinTSConnector: BankConnector {
 		await withTaskCancellationHandler {
 			do {
 				reading: for await line in process.lines {
-					watchdog.read()
+					defer { watchdog.handled() }
 					guard let message = try? JSONDecoder().decode(HelperMessage.self, from: Data(line.utf8)) else { throw HelperFailure.unreadable }
 					switch message {
 					case let .ask(id, ask):
@@ -298,7 +298,8 @@ private final class OpenAsks: Sendable {
 
 /// Fails a run whose helper sends nothing for a while (add-connection-security "Timeouts"). It
 /// pauses while a request waits for the user. A line counts when it arrives, and the timer does not
-/// run out while the run has not read it, so an app that is busy never makes a helper look silent.
+/// run out while the run has not handled it, so an app that is busy never makes a helper look silent.
+/// It stops when the output of the helper ends.
 private final class Watchdog: Sendable {
 	private let state = Mutex<(generation: Int, paused: Int, unread: Int, expiry: (@Sendable () -> Void)?)>((0, 0, 0, nil))
 	private let seconds: TimeInterval
@@ -320,8 +321,8 @@ private final class Watchdog: Sendable {
 		arm(state.withLock { $0.generation += 1; $0.unread += 1; return $0.paused == 0 ? $0.generation : nil })
 	}
 
-	/// The run read a line.
-	func read() {
+	/// The run handled a line.
+	func handled() {
 		arm(state.withLock { $0.generation += 1; $0.unread -= 1; return $0.paused == 0 ? $0.generation : nil })
 	}
 
@@ -333,8 +334,9 @@ private final class Watchdog: Sendable {
 		arm(state.withLock { $0.generation += 1; $0.paused -= 1; return $0.paused == 0 ? $0.generation : nil })
 	}
 
-	/// Ends the timer for good. Dropping `expiry` breaks the cycle through the helper process, so the
-	/// process, its pipes, and the answers of the user are released when the run ends.
+	/// Ends the timer for good, when the helper ends and when the run ends. Dropping `expiry` breaks the
+	/// cycle through the helper process, so the process, its pipes, and the answers of the user are
+	/// released when the run ends.
 	func stop() {
 		state.withLock { $0.generation += 1; $0.paused += 1; $0.expiry = nil }
 	}
