@@ -280,6 +280,40 @@ struct FinTSConnectorTests {
 		])
 	}
 
+	@Test("Reads the lines that the helper writes for an MT940 statement, a camt.052 report, and an account that fails")
+	func helperLines() async throws {
+		// The self-test of the helper writes this file: scripts/build-fints-helper.sh.
+		let lines = URL(filePath: #filePath).deletingLastPathComponent().appending(path: "helper-lines.jsonl")
+		let card = AccountRequest(accountID: UUID(), name: "Card", remoteID: "4711")
+		let report = try await refresh("read cmd; cat '\(lines.path)'", accounts: [Self.giro, Self.savings, card])
+
+		guard case let .fetched(giro) = report.outcomes[Self.giro.accountID] else { Issue.record("giro not fetched"); return }
+		#expect(giro.balance == Money(minorUnits: 109_620, currency: "EUR"))
+		#expect(giro.balanceDate.map { Day($0) } == Day(year: 2026, month: 11, day: 3))
+		#expect(giro.transactions?.from == Day(year: 2026, month: 10, day: 1))
+		let mt940 = giro.transactions?.rows ?? []
+		#expect(mt940.count == 2)
+		if mt940.count == 2 {
+			#expect(mt940[0] == Transaction(id: mt940[0].id, accountID: Self.giro.accountID, bookingDate: Day(year: 2026, month: 11, day: 2),
+				valueDate: Day(year: 2026, month: 11, day: 2), amountMinor: -2380, currency: "EUR", name: "Stadtwerke Musterstadt", purpose: "Rechnung 1001",
+				counterpartyIBAN: "DE02120300000000202051", counterpartyBIC: "BYLADEM1001", bookingText: "FOLGELASTSCHRIFT", endToEndReference: "RE-2026-1001",
+				mandateReference: "M-4711", creditorID: "DE98ZZZ09999999999", createdAt: mt940[0].createdAt))
+			#expect(mt940[1].amountMinor == 12_000 && mt940[1].name == "Erika Mustermann" && mt940[1].purpose == "Miete November")
+		}
+
+		guard case let .fetched(savings) = report.outcomes[Self.savings.accountID] else { Issue.record("savings not fetched"); return }
+		#expect(savings.isComplete)
+		let camt = savings.transactions?.rows ?? []
+		#expect(camt.map(\.amountMinor) == [-4612, -850])
+		#expect(camt.map(\.isPending) == [false, true])
+		#expect(camt.map(\.name) == ["Coffee Shop", "Bäckerei Muster"])
+		#expect(camt.map(\.endToEndReference) == ["SW-778899", nil])
+		#expect(camt.last?.bookingDate == Day(year: 2026, month: 11, day: 10))
+
+		guard case let .failed(failure) = report.outcomes[card.accountID] else { Issue.record("card not failed"); return }
+		#expect(failure == HelperFailure.noBookingDate)
+	}
+
 	@Test("Fails two requests for the same account of the bank, and fetches the others")
 	func clash() async throws {
 		let twin = AccountRequest(accountID: UUID(), name: "Giro 2", remoteID: Self.giro.remoteID)

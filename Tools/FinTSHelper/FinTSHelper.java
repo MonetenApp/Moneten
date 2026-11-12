@@ -725,7 +725,7 @@ public class FinTSHelper {
 		if (!present(purpose) && endToEnd != null) purpose = endToEnd;
 		Konto other = l.other;
 		// hbci4java reads no date from a CAMT entry that has a date and time only.
-		if (l.bdate == null && l.valuta == null) throw new Failure(null, null, "The bank sent a transaction without a booking date, so nothing of this account was stored.");
+		if (l.bdate == null && l.valuta == null) throw new Failure("unsupported", null, "The bank sent a transaction without a booking date, so nothing of this account was stored.");
 		return message("row",
 			"booked", day(l.bdate != null ? l.bdate : l.valuta), "value", day(l.valuta),
 			"amount", l.value.getBigDecimalValue().toPlainString(), "currency", text(l.value.getCurr()),
@@ -998,8 +998,8 @@ public class FinTSHelper {
 	}
 
 	public static void main(String[] args) {
-		if (args.length == 1 && args[0].equals("--self-test")) {
-			SelfTest.run();
+		if (args.length > 0 && args[0].equals("--self-test")) {
+			SelfTest.run(java.util.Arrays.copyOfRange(args, 1, args.length));
 			return;
 		}
 		// stdout carries only the protocol. hbci4java prints to System.out when it logs before its init.

@@ -2,9 +2,13 @@
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.io.ObjectOutputStream;
 import java.io.PrintStream;
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.security.cert.CertificateException;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
@@ -17,17 +21,22 @@ import java.util.TimeZone;
 
 import javax.net.ssl.SSLHandshakeException;
 
+import org.kapott.hbci.GV.parsers.ISEPAParser;
+import org.kapott.hbci.GV.parsers.SEPAParserFactory;
 import org.kapott.hbci.GV_Result.GVRKUms;
+import org.kapott.hbci.GV_Result.GVRSaldoReq;
 import org.kapott.hbci.GV_Result.GVRKUms.UmsLine;
 import org.kapott.hbci.exceptions.HBCI_Exception;
 import org.kapott.hbci.exceptions.ProcessException;
 import org.kapott.hbci.manager.HBCIUtils;
 import org.kapott.hbci.passport.storage.PassportData;
+import org.kapott.hbci.sepa.SepaVersion;
 import org.kapott.hbci.status.HBCIDialogStatus;
 import org.kapott.hbci.status.HBCIExecStatus;
 import org.kapott.hbci.status.HBCIMsgStatus;
 import org.kapott.hbci.status.HBCIRetVal;
 import org.kapott.hbci.structures.Konto;
+import org.kapott.hbci.structures.Saldo;
 import org.kapott.hbci.structures.Value;
 
 final class SelfTest {
@@ -49,7 +58,12 @@ final class SelfTest {
 		return l;
 	}
 
-	static void run() {
+	/// The lines that Tests/FinTSTests/helper-lines.jsonl holds, which FinTSConnectorTests decodes.
+	static final List<String> fixture = new ArrayList<>();
+
+	/// `args` holds the path of the fixture. A difference writes the new lines there and fails, so
+	/// that the change shows in git and the Swift tests read what the helper sends today.
+	static void run(String... args) {
 		// hbci4java logs to System.out; the report of the checks goes to stdout alone.
 		PrintStream report = System.out;
 		System.setOut(System.err);
@@ -157,6 +171,8 @@ final class SelfTest {
 
 		HBCIUtils.init(new Properties(), new FinTSHelper.Callback(Map.of(), null));
 		try {
+			fixture.add(FinTSHelper.Json.write(FinTSHelper.result("DE02120300000000202051", "2026-10-01", balance("1096.20", "2026-11-03"), mt940(), false)));
+			fixture.add(FinTSHelper.Json.write(FinTSHelper.result("1234567890", null, null, camt(), false)));
 			GVRKUms undated = new GVRKUms();
 			undated.jobStatus.addRetVal(new HBCIRetVal(null, null, null, "0020", "ok", null));
 			GVRKUms.BTag day = new GVRKUms.BTag();
@@ -165,9 +181,10 @@ final class SelfTest {
 			pending.valuta = null;
 			day.addLine(pending);
 			undated.getDataPerDay().add(day);
-			expect("account without booking date fails alone", FinTSHelper.Json.write(FinTSHelper.alone("DE02120300000000202051",
-				() -> FinTSHelper.result("DE02120300000000202051", null, null, undated, false))),
-				"{\"type\":\"accountFailed\",\"text\":\"The bank sent a transaction without a booking date, so nothing of this account was stored.\",\"account\":\"DE02120300000000202051\"}");
+			String undatedLine = FinTSHelper.Json.write(FinTSHelper.alone("4711", () -> FinTSHelper.result("4711", null, null, undated, false)));
+			fixture.add(undatedLine);
+			expect("account without booking date fails alone", undatedLine,
+				"{\"type\":\"accountFailed\",\"kind\":\"unsupported\",\"text\":\"The bank sent a transaction without a booking date, so nothing of this account was stored.\",\"account\":\"4711\"}");
 
 			HBCIMsgStatus rejected = new HBCIMsgStatus();
 			rejected.globStatus.addRetVal(new HBCIRetVal(null, null, null, "9050", "Teilweise fehlerhaft", null));
@@ -211,9 +228,103 @@ final class SelfTest {
 			HBCIUtils.done();
 		}
 
+		if (args.length > 0) compare(Path.of(args[0]));
 		for (String f : failures) report.println("FAILED " + f);
 		report.println("FinTSHelper self-test: " + (checks - failures.size()) + " of " + checks + " checks passed");
 		System.exit(failures.isEmpty() ? 0 : 1);
+	}
+
+	static void compare(Path file) {
+		String lines = String.join("\n", fixture) + "\n";
+		try {
+			String before = Files.exists(file) ? Files.readString(file) : "";
+			if (lines.equals(before)) return;
+			Files.writeString(file, lines);
+			failures.add("the lines of the helper changed, see git diff " + file);
+		} catch (IOException e) {
+			failures.add("fixture: " + e);
+		}
+	}
+
+	static GVRSaldoReq balance(String amount, String day) {
+		GVRSaldoReq result = new GVRSaldoReq();
+		GVRSaldoReq.Info info = new GVRSaldoReq.Info();
+		info.ready = new Saldo();
+		info.ready.value = new Value(new BigDecimal(amount), "EUR");
+		info.ready.timestamp = FinTSHelper.date(day);
+		result.store(info);
+		result.jobStatus.addRetVal(new HBCIRetVal(null, null, null, "0020", "ok", null));
+		return result;
+	}
+
+	/// A statement of two days with made-up data, as hbci4java parses it from MT940.
+	static GVRKUms mt940() {
+		GVRKUms result = new GVRKUms();
+		result.jobStatus.addRetVal(new HBCIRetVal(null, null, null, "0020", "ok", null));
+		result.appendMT940Data(String.join("\r\n",
+			":20:STARTUMS",
+			":25:12030000/0000202051",
+			":28C:00000/001",
+			":60F:C261101EUR1000,00",
+			":61:2611021102D23,80NDDTNONREF",
+			":86:105?00FOLGELASTSCHRIFT?20EREF+RE-2026-1001?21MREF+M-4711?22CRED+DE98ZZZ09999999999?23SVWZ+Rechnung 1001?30BYLADEM1001?31DE0212030000000020",
+			"2051?32Stadtwerke Musterstadt",
+			":62F:C261102EUR976,20",
+			"-",
+			":20:STARTUMS",
+			":25:12030000/0000202051",
+			":28C:00000/002",
+			":60F:C261102EUR976,20",
+			":61:2611031103C120,00NTRFNONREF",
+			":86:166?00GUTSCHRIFT?20Miete November?32Erika Mustermann",
+			":62F:C261103EUR1096,20",
+			"-") + "\r\n");
+		return result;
+	}
+
+	/// A camt.052 report with one booked and one pending entry and made-up data, as hbci4java
+	/// parses it.
+	static GVRKUms camt() {
+		GVRKUms result = new GVRKUms();
+		result.jobStatus.addRetVal(new HBCIRetVal(null, null, null, "0020", "ok", null));
+		try {
+			parseCamt(report("BOOK", "2026-11-09", "46.12", "DBIT", "Coffee Shop", "SW-778899", "Kartenzahlung"), result.getDataPerDay());
+			parseCamt(report("PDNG", "2026-11-10", "8.50", "DBIT", "Bäckerei Muster", "NOTPROVIDED", "Kartenzahlung Bäckerei"), result.getDataPerDayUnbooked());
+		} catch (Exception e) {
+			failures.add("camt: " + e);
+		}
+		return result;
+	}
+
+	@SuppressWarnings("unchecked")
+	static void parseCamt(String xml, List<GVRKUms.BTag> days) {
+		ISEPAParser<List<GVRKUms.BTag>> parser = SEPAParserFactory.get(SepaVersion.CAMT_052_001_08);
+		parser.parse(new ByteArrayInputStream(xml.getBytes(StandardCharsets.UTF_8)), days);
+	}
+
+	static String report(String status, String day, String amount, String direction, String name, String endToEnd, String purpose) {
+		return """
+			<?xml version="1.0" encoding="UTF-8"?>
+			<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.052.001.08">
+			<BkToCstmrAcctRpt>
+			<GrpHdr><MsgId>M1</MsgId><CreDtTm>%2$sT10:00:00</CreDtTm></GrpHdr>
+			<Rpt>
+			<Id>R1</Id>
+			<Acct><Id><IBAN>DE02120300000000202051</IBAN></Id><Ccy>EUR</Ccy></Acct>
+			<Bal><Tp><CdOrPrtry><Cd>PRCD</Cd></CdOrPrtry></Tp><Amt Ccy="EUR">500.00</Amt><CdtDbtInd>CRDT</CdtDbtInd><Dt><Dt>2026-11-08</Dt></Dt></Bal>
+			<Ntry>
+			<Amt Ccy="EUR">%3$s</Amt><CdtDbtInd>%4$s</CdtDbtInd><Sts><Cd>%1$s</Cd></Sts>
+			<BookgDt><Dt>%2$s</Dt></BookgDt><ValDt><Dt>%2$s</Dt></ValDt>
+			<NtryDtls><TxDtls>
+			<Refs><EndToEndId>%6$s</EndToEndId><MndtId>M-1</MndtId></Refs>
+			<RltdPties><Cdtr><Pty><Nm>%5$s</Nm></Pty></Cdtr><CdtrAcct><Id><IBAN>DE02120300000000202051</IBAN></Id></CdtrAcct></RltdPties>
+			<RmtInf><Ustrd>%7$s</Ustrd></RmtInf>
+			</TxDtls></NtryDtls>
+			</Ntry>
+			</Rpt>
+			</BkToCstmrAcctRpt>
+			</Document>
+			""".formatted(status, day, amount, direction, name, endToEnd, purpose);
 	}
 
 	/// The TAN media that hbci4java gets for each list of media it offers, starting from the medium
