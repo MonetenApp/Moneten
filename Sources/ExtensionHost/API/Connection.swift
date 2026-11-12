@@ -327,7 +327,7 @@ extension Connection {
 			guard case let .string(value) = (try? stack.field(name, of: index)) ?? .null else { return nil }
 			return value
 		}
-		return StoredConnection(url: lastURL(stack, at: index), cookies: HostSession.current(stack.L).network.cookies.setCookieLines,
+		return StoredConnection(url: lastURL(stack, at: index), cookies: HostSession.current(stack.L).network.cookies.saved,
 			useragent: text("useragent"), language: text("language"))
 	}
 
@@ -343,6 +343,6 @@ extension Connection {
 			lua_rawset(stack.L, table)
 		}
 		let cookies = HostSession.current(stack.L).network.cookies
-		for line in stored.cookies { cookies.set(line, for: stored.url) }
+		for cookie in stored.cookies { cookies.restore(cookie) }
 	}
 }

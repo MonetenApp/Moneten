@@ -107,6 +107,14 @@ struct Network {
 	}
 }
 
+/// A cookie as `LocalStorage` keeps it.
+struct SavedCookie: Codable, Equatable, Sendable {
+	/// The cookie in the format of `Set-Cookie`, with `Domain` for a domain cookie and without for a host-only one.
+	let line: String
+	/// The host of a host-only cookie, the only host it goes to.
+	let host: String?
+}
+
 /// The cookies of one run, which all connections of the run share. A cookie whose expiry has passed
 /// removes the stored cookie of the same name, domain, and path, as a browser does.
 final class CookieJar {
@@ -117,19 +125,36 @@ final class CookieJar {
 	/// that `url` is not part of is left out, as in a browser.
 	func store(_ setCookie: String?, from url: URL) {
 		guard let setCookie, let host = url.host()?.lowercased() else { return }
-		for cookie in HTTPCookie.cookies(withResponseHeaderFields: ["Set-Cookie": setCookie], for: url)
-			where Self.domain(of: cookie, matches: host) && !PublicSuffix.contains(String(cookie.domain.lowercased().drop { $0 == "." })) {
+		for cookie in HTTPCookie.cookies(withResponseHeaderFields: ["Set-Cookie": setCookie], for: url) where Self.accepts(cookie, from: host) {
 			put(cookie)
 		}
 	}
 
-	/// Keeps a cookie that the script sets. Without a `Domain` it belongs to the host of `url`; without
-	/// `url` and `Domain` there is no host it could go to, so it is dropped.
+	/// Keeps a cookie that the script sets, with the checks of `store`. Without a `Domain` it belongs to
+	/// the host of `url`. Before the first request it belongs to its `Domain`, and without one there is no
+	/// host it could go to, so it is dropped.
 	func set(_ setCookie: String, for url: URL?) {
-		let base = url ?? Self.noHost
-		for cookie in HTTPCookie.cookies(withResponseHeaderFields: ["Set-Cookie": setCookie], for: base) where cookie.domain != Self.noHost.host() {
-			put(cookie)
-		}
+		guard let base = url ?? Self.domainAttribute(of: setCookie).flatMap({ URL(string: "https://\($0)/") }) else { return }
+		store(setCookie, from: base)
+	}
+
+	/// Restores a cookie of `LocalStorage`: a host-only cookie for its host, any other for its domain,
+	/// with the checks of `store`.
+	func restore(_ cookie: SavedCookie) {
+		set(cookie.line, for: cookie.host.flatMap { URL(string: "https://\($0)/") })
+	}
+
+	/// A cookie goes only to a domain that `host` is part of, and never to a public suffix such as `com`.
+	private static func accepts(_ cookie: HTTPCookie, from host: String) -> Bool {
+		domain(of: cookie, matches: host) && !PublicSuffix.contains(String(cookie.domain.lowercased().drop { $0 == "." }))
+	}
+
+	/// The value of the `Domain` attribute of a `Set-Cookie` line, without a leading dot.
+	private static func domainAttribute(of line: String) -> String? {
+		line.split(separator: ";").dropFirst().lazy.map { $0.trimmingCharacters(in: .whitespaces) }
+			.first { $0.lowercased().hasPrefix("domain=") }
+			.map { String($0.dropFirst("domain=".count).drop { $0 == "." }) }
+			.flatMap { $0.isEmpty ? nil : $0 }
 	}
 
 	/// The `Cookie` header for `url`, or nil when no cookie of the jar belongs to it.
@@ -150,10 +175,9 @@ final class CookieJar {
 		return HTTPRequest(method: request.method, url: request.url, headers: request.headers.merging(["Cookie": header]) { $1 }, body: request.body)
 	}
 
-	/// Each cookie that has not expired, in the format of `Set-Cookie` with its domain and path, for
-	/// `LocalStorage`. A cookie for one host comes back as a cookie for its domain, because `Set-Cookie`
-	/// has no way to say host-only.
-	var setCookieLines: [String] {
+	/// Each cookie that has not expired, for `LocalStorage`. A host-only cookie keeps its host and has
+	/// no `Domain`, so it comes back for that host alone.
+	var saved: [SavedCookie] {
 		let now = Date()
 		let format = DateFormatter()
 		format.locale = Locale(identifier: "en_US_POSIX")
@@ -161,11 +185,12 @@ final class CookieJar {
 		format.dateFormat = "EEE, dd MMM yyyy HH:mm:ss 'GMT'"
 		return cookies.compactMap { cookie in
 			if let expiry = cookie.expiresDate, expiry <= now { return nil }
-			var line = "\(cookie.name)=\(cookie.value); Domain=\(cookie.domain); Path=\(cookie.path)"
+			let hostOnly = !cookie.domain.hasPrefix(".")
+			var line = "\(cookie.name)=\(cookie.value)" + (hostOnly ? "" : "; Domain=\(cookie.domain)") + "; Path=\(cookie.path)"
 			if let expiry = cookie.expiresDate { line += "; Expires=\(format.string(from: expiry))" }
 			if cookie.isSecure { line += "; Secure" }
 			if cookie.isHTTPOnly { line += "; HttpOnly" }
-			return line
+			return SavedCookie(line: line, host: hostOnly ? cookie.domain : nil)
 		}
 	}
 
@@ -174,10 +199,6 @@ final class CookieJar {
 		if let expiry = cookie.expiresDate, expiry <= Date() { return }
 		cookies.append(cookie)
 	}
-
-	/// The URL of a cookie that names no domain and comes before the first request. The name `invalid`
-	/// is reserved and never reaches a server (RFC 6761).
-	private static let noHost = URL(string: "https://invalid/")!
 
 	/// A cookie with a leading dot in its domain goes to that domain and every host under it, one without only to its host.
 	private static func domain(of cookie: HTTPCookie, matches host: String) -> Bool {

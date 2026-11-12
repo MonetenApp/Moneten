@@ -116,8 +116,7 @@ enum LocalStorage {
 /// What `LocalStorage` keeps of a connection: its last URL, its cookies, its user agent, and its language.
 struct StoredConnection: Codable, Equatable, Sendable {
 	var url: URL?
-	/// Each cookie in the format of a `Set-Cookie` header, with its domain and path.
-	var cookies: [String]
+	var cookies: [SavedCookie]
 	var useragent: String?
 	var language: String?
 }

@@ -215,12 +215,13 @@ import Testing
 		let exchange = Exchange("""
 			function Check()
 				local connection = Connection()
+				connection:get("https://bank.example/")
 				connection:setCookie("a=b\\r\\nHost: evil.example; Domain=bank.example")
-				return connection:get("https://bank.example/")
+				return connection:get("https://bank.example/next")
 			end
-			""", [("GET", "https://bank.example/", 200, Self.html, "")])
+			""", [("GET", "https://bank.example/", 200, Self.html, ""), ("GET", "https://bank.example/next", 200, Self.html, "")])
 		#expect(exchange.call("Check") == .string(""))
-		#expect(exchange.sent == ["GET https://bank.example/"] && exchange.header("Cookie", of: 0) == nil)
+		#expect(exchange.sent == ["GET https://bank.example/", "GET https://bank.example/next"] && exchange.header("Cookie", of: 1) == nil)
 	}
 
 	@Test func newRunStartsWithoutCookies() {
