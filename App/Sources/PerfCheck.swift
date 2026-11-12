@@ -21,9 +21,10 @@ struct PerfScenario {
 	static let accounts = 10
 	/// "The app SHALL show the first rows of a view within half a second", add-main-window.
 	static let halfSecond = Duration.milliseconds(500)
-	/// Fails the check. The table bug of build 36 blocked the main thread for minutes; today's slowest
-	/// scenario takes under a second on a loaded Mac, and CI runners are about twice as slow.
-	static let hangLimit = Duration.seconds(5)
+	/// Fails the check. The table bug of build 36 blocked the main thread for minutes. On the macOS
+	/// runners of CI, today's slowest scenario, group-by-account, takes 4 to 5.5 seconds, so the limit
+	/// leaves room above it and still catches a hang. Issue #51 brings the scenarios under the budget.
+	static let hangLimit = Duration.seconds(10)
 
 	static let all: [PerfScenario] = [
 		PerfScenario(name: "open-account-with-new-rows", budget: halfSecond,
