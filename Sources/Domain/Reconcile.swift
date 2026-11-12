@@ -5,13 +5,14 @@ public enum Delivery: Sendable {
 	case refresh(RefreshResult)
 	/// The rows of a file that the user imported. A file never removes a pending row and carries no balance.
 	case file([Transaction])
-	/// The rows of a MoneyMoney migration. Like a file, but every row the user deleted stays deleted.
+	/// The rows of a MoneyMoney migration. Like a file, but every row the user deleted stays deleted, except
+	/// the booked version of a deleted pending row.
 	case migration([Transaction])
 }
 
 /// What the app keeps of a transaction that the user deleted: the fields that its identity comes from.
 /// A later refresh that delivers the transaction again does not add it ("Deleted transactions stay
-/// deleted"). A file import adds it again unless a refresh had delivered it. A MoneyMoney migration never adds it again.
+/// deleted"). A file import adds it again unless a refresh had delivered it. A MoneyMoney migration never adds it again. A deleted pending row never keeps out its booked version.
 ///
 /// One record per deleted row. Deleting one of two identical rows absorbs one delivered copy, and the
 /// stored row absorbs the other. The records go with their account.
@@ -197,14 +198,20 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 		for (k, d) in deleted.enumerated() {
 			if let id = d.sourceID, ids.contains(id) { byID[id, default: []].append(.deleted(k)) }
 		}
-		// A deleted pending row does not block its booked version, also when both carry the same ID.
-		func blocks(_ slot: Slot, _ t: Transaction) -> Bool {
-			if case let .deleted(k) = slot { !(deleted[k].isPending && !t.isPending) } else { true }
+		func isDeletedPending(_ slot: Slot) -> Bool {
+			if case let .deleted(k) = slot { deleted[k].isPending } else { false }
 		}
 		for (i, t) in rows.enumerated() {
-			guard let id = t.sourceID, let slot = byID[id]?.first(where: { !taken.contains($0) && blocks($0, t) }) else { continue }
-			taken.insert(slot)
-			result[i] = Partner(slot: slot, evidence: .sourceID)
+			guard let id = t.sourceID, let slots = byID[id] else { continue }
+			let free = slots.filter { !taken.contains($0) }
+			if let slot = free.first(where: { t.isPending || !isDeletedPending($0) }) {
+				taken.insert(slot)
+				result[i] = Partner(slot: slot, evidence: .sourceID)
+			} else if let used = free.first {
+				// A deleted pending row does not block its booked version, also when both carry the same ID.
+				// The booked version uses it up, so it cannot absorb another pending row later.
+				taken.insert(used)
+			}
 		}
 	}
 	let days = Set(rows.map(\.bookingDate))

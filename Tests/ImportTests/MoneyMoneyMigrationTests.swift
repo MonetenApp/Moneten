@@ -281,6 +281,20 @@ struct MoneyMoneyMigrationTests {
 		#expect(second.transactions.map(\.sourceID) == ["moneymoney:3"] && second.transactions[0].isPending == false)
 	}
 
+	@Test("The booked version of a deleted pending transaction uses up its deleted row, so a new pending look-alike still arrives")
+	func deletedPendingUsedUp() throws {
+		let first = try plan()
+		let kiosk = try #require(first.transactions.first { $0.sourceID == "moneymoney:3" })
+		var rows = transactions["transactions"] as! [[String: Any]]
+		rows[2]["booked"] = true
+		rows.append(["id": 7, "accountUuid": "A1", "bookingDate": date(2026, 11, 4), "amount": -10.0, "currency": "EUR", "name": "Kiosk", "purpose": "", "booked": false])
+		let second = try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(accounts), categories: try plist(categories),
+			transactions: try plist(["transactions": rows]),
+			into: Ledger(groups: first.groups, accounts: first.accounts, categories: first.categories, transactions: first.transactions.filter { $0.id != kiosk.id }),
+			deleted: [DeletedTransaction(kiosk, deletedAt: date(2026, 11, 12))])
+		#expect(second.transactions.map(\.sourceID) == ["moneymoney:3", "moneymoney:7"])
+	}
+
 	@Test("A later run books a pending transaction and keeps its user fields and the ID of an extension")
 	func laterRunBooksTakenOverRow() throws {
 		let first = try plan()
