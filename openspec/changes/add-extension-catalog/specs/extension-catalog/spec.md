@@ -71,7 +71,7 @@ The app SHALL accept a catalog index only when its signature is valid for one of
 
 ### Requirement: Digest of every file
 
-The app SHALL compare the SHA-256 digest of every file of a catalog package with the digest that the accepted index lists for the installed version, at download time and each time before the extension runs. A package with a file that does not match is not installed and does not run.
+The app SHALL compare the SHA-256 digest of every file of a catalog package with the accepted index: a download with the entry of the downloaded version, and an installed package before each run with the entry of the installed version. A package with a file that does not match is not installed and does not run.
 
 #### Scenario: Script changed under a valid index
 
@@ -82,8 +82,15 @@ The app SHALL compare the SHA-256 digest of every file of a catalog package with
 
 #### Scenario: Download does not match
 
-- **WHEN** a downloaded script has another digest than the index lists
-- **THEN** the app discards the download and reports that the file is damaged or was altered
+- **GIVEN** "Broker" 2.31 is installed and the accepted index lists 2.32
+- **WHEN** the downloaded `Broker.lua` of 2.32 has another digest than the index lists for 2.32
+- **THEN** the app discards the download, keeps 2.31, and reports that the file is damaged or was altered
+
+#### Scenario: Download of a new version matches
+
+- **GIVEN** "Broker" 2.31 is installed and the accepted index lists 2.32
+- **WHEN** every downloaded file of 2.32 matches the digests that the index lists for 2.32
+- **THEN** the app installs 2.32, although the files differ from the digests of 2.31
 
 ### Requirement: Earlier versions in the index
 
@@ -126,14 +133,20 @@ The app SHALL accept an index only when its version is higher than the floor, th
 
 ### Requirement: An app update resets the floor of retired keys
 
-The app SHALL drop, after an app update, the floor of every key that the new build no longer ships. When neither shipped key has a floor, the app starts from the lowest index version that the build ships.
+The app SHALL drop, after an app update, the floor of every key that the new build no longer ships. When neither shipped key has a floor, the app accepts an index whose version is at least the lowest index version that the build ships.
 
 #### Scenario: Both keys replaced
 
 - **GIVEN** the app holds the floor 9007199254740991 for a key that the project retired
 - **AND** the update ships two new keys and the lowest index version 140
-- **WHEN** the updated app downloads index 141, signed with the new current key
-- **THEN** the app accepts index 141
+- **WHEN** the updated app downloads index 140, signed with the new current key
+- **THEN** the app accepts index 140
+
+#### Scenario: Below the lowest shipped version
+
+- **GIVEN** the update ships two new keys and the lowest index version 140, and neither key has a floor
+- **WHEN** the updated app downloads index 139, signed with the new current key
+- **THEN** the app rejects the index
 
 ### Requirement: Catalog extensions and file installs
 
@@ -209,11 +222,12 @@ The app SHALL install a newer version of an installed catalog extension by itsel
 
 ### Requirement: An update that asks for new rights waits
 
-The app SHALL hold an update of a catalog extension that adds a host or a login field until the user confirms it. The "Extensions" window shows the new version, its change note, and what is new. The installed version keeps running until the user confirms.
+The app SHALL hold an update of a catalog extension that adds a host or a login field until the user confirms it. The "Extensions" window shows the new version, its change note, and what is new. The installed version keeps running until the user confirms, while the accepted index lists that version.
 
 #### Scenario: New host
 
 - **GIVEN** "Broker" 2.31 is installed
+- **AND** the accepted index lists 2.31 as an earlier version
 - **WHEN** the index lists version 2.32, which adds the host `login.broker.example`
 - **THEN** the entry "Broker" says "Version 2.32 also contacts login.broker.example" with the button "Review Update"
 - **AND** the next refresh still uses 2.31

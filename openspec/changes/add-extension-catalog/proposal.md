@@ -8,7 +8,7 @@ A scraper breaks when a website changes, and a fix must reach users within hours
 
 - The menu item "Extensions" opens a window that lists the installed extensions and the catalog extensions that can be installed, each with its description. The user installs, updates, and removes extensions there.
 - The catalog lives in the public repository `MonetenApp/moneten-extensions`. Checks and one maintainer review every package and every update.
-- The app accepts a catalog index only when it is signed with one of two public keys in the app, and only when its version number is higher than the last accepted one. It checks the digest of every file before an extension runs.
+- The app accepts a catalog index only when it is signed with one of two public keys in the app, and only when its version number is higher than the floor of the key that signed it. It checks the digest of every file before an extension runs.
 - A catalog package needs a manifest with its hosts, its login field labels, its kinds of data, its API version, and its license.
 - An update without a new host or login field installs by itself while the setting "Update extensions automatically" is on, which is the default. An update that adds either waits for the user's confirmation. With the setting off, every update waits.
 - The index can mark a package as blocked, withdrawn, or unmaintained.
@@ -53,8 +53,8 @@ None.
 - The app ships two public keys, current and next, and accepts an index signed with either until it has accepted one signed with the next key. Each key has its own version floor, and an app update drops the floor of a key it no longer ships.
 - The index lists the digests of earlier versions that may still run, so an installed version that waits for an update keeps running under the signature.
 - The app records whether each extension came from the catalog. A changed catalog package stays blocked and never runs as a file install.
-- An update that adds a host or a login field waits for the user's confirmation, and the old version keeps running until then. Every other update installs by itself, because a fix must arrive within hours.
-- The app rejects an index whose version number is lower than that of the newest index it has accepted.
+- An update that adds a host or a login field waits for the user's confirmation, and the old version keeps running until then while the index still lists it. Every other update installs by itself, because a fix must arrive within hours.
+- Each key has its own version floor. The app rejects an index whose version number is not higher than the floor of its key. The first index of the next key starts a new floor, so a leaked current key that signs a huge version stops updates only until the project rotates.
 - The index marks a package as blocked, which stops it at once, as withdrawn, which stops it, or as unmaintained, which keeps it running with a note. A package is unmaintained after 90 days without an answer from its author to a failure that others can reproduce.
 - When the catalog cannot be reached, installed extensions keep running with the last accepted index.
 - The details show the hosts, the login field labels, and the license before the user installs.
