@@ -16,13 +16,16 @@ public struct ExtensionConnector: BankConnector {
 		/// The stored transactions of an account, for `isKnownTransactionId`.
 		public var transactions: @Sendable (UUID) async -> [Transaction]
 		public var log: @Sendable (HostLog) -> Void
+		/// The recording and the result tables, for `ext`.
+		public var trace: @Sendable (HostTrace) -> Void
 
 		public init(hostDecisions: @escaping @Sendable () async throws -> [String: HostDecision], saveDecision: @escaping @Sendable (HostDecision, String) async throws -> Void,
-			transactions: @escaping @Sendable (UUID) async -> [Transaction], log: @escaping @Sendable (HostLog) -> Void) {
+			transactions: @escaping @Sendable (UUID) async -> [Transaction], log: @escaping @Sendable (HostLog) -> Void, trace: @escaping @Sendable (HostTrace) -> Void = { _ in }) {
 			self.hostDecisions = hostDecisions
 			self.saveDecision = saveDecision
 			self.transactions = transactions
 			self.log = log
+			self.trace = trace
 		}
 	}
 
@@ -30,6 +33,8 @@ public struct ExtensionConnector: BankConnector {
 	let environment: HostEnvironment
 	let fixture: Fixture?
 	let executable: URL
+	let arguments: [String]
+	let developer: DeveloperOptions?
 	let services: Services
 	/// The pause between two calls while the app waits for an approval in another app.
 	var pollInterval: Duration = .seconds(1)
@@ -39,12 +44,15 @@ public struct ExtensionConnector: BankConnector {
 	var endLimit: Duration = .seconds(10)
 	var timeZone: TimeZone = .current
 
+	/// `ext` passes its own binary with `arguments`, and its options for a recording, a replay, or a test server.
 	public init(package: ExtensionPackage, environment: HostEnvironment, fixture: Fixture? = nil, executable: URL = ExtensionHostClient.bundledExecutable,
-		services: Services) {
+		arguments: [String] = [], developer: DeveloperOptions? = nil, services: Services) {
 		self.package = package
 		self.environment = environment
 		self.fixture = fixture
 		self.executable = executable
+		self.arguments = arguments
+		self.developer = developer
 		self.services = services
 	}
 
@@ -92,9 +100,12 @@ public struct ExtensionConnector: BankConnector {
 
 	/// Sets up a new access: logs in, lists the accounts, and fetches each of them in one session.
 	/// `kept` gives, for the login name that the user entered, what a failed setup of the same service and
-	/// login left, such as a device registration in `LocalStorage`.
-	public func setUp(_ access: Access, _ session: SyncSession, kept: (@Sendable (String) async -> AccessState?)? = nil) async throws -> AccessSetup {
-		let run = try await ScriptRun.start(self, access: access, state: ExtensionState(nil), session: session, reason: .newAccount, restore: kept)
+	/// login left, such as a device registration in `LocalStorage`. `ext run` passes the `LocalStorage` of
+	/// its last run as `storage`; a new access of the app starts with none.
+	public func setUp(_ access: Access, storage: Data? = nil, _ session: SyncSession, kept: (@Sendable (String) async -> AccessState?)? = nil) async throws -> AccessSetup {
+		var start = ExtensionState(nil)
+		start.storage = storage
+		let run = try await ScriptRun.start(self, access: access, state: start, session: session, reason: .newAccount, restore: kept)
 		var state = run.startState
 		var accounts: [NewAccount] = []
 		do {
@@ -218,11 +229,12 @@ private final class ScriptRun {
 		let decisions = try await connector.services.hostDecisions()
 		let package = connector.package
 		let hosts = AllowedHosts(package.manifest?.hosts?.map(\.value) ?? decisions.filter { $0.value == .allowed }.map(\.key))
-		let setup = HostSetup(package: connector.package, decisions: decisions, fixture: connector.fixture, environment: connector.environment, storage: state.storage)
+		let setup = HostSetup(package: connector.package, decisions: decisions, fixture: connector.fixture, environment: connector.environment, storage: state.storage,
+			developer: connector.developer)
 		let services = connector.services
 		let client: ExtensionHostClient
 		do {
-			client = try await ExtensionHostClient.start(setup, executable: connector.executable, ask: { host in
+			client = try await ExtensionHostClient.start(setup, executable: connector.executable, arguments: connector.arguments, ask: { host in
 				guard case let .host(decision) = try await session.ask(.allowHost(HostPermissionRequest(extensionName: package.name, host: host))) else {
 					throw CancellationError()
 				}
@@ -230,7 +242,7 @@ private final class ScriptRun {
 				// A browser login or a captcha on this host may follow in the same run.
 				if decision == .allowed { hosts.insert(host) }
 				return decision
-			}, log: services.log).client
+			}, log: services.log, trace: services.trace).client
 		} catch {
 			throw ScriptRun.failure(error)
 		}

@@ -1,7 +1,7 @@
 import Foundation
 
 /// The API version that this app offers to extensions as `MM.apiVersion`.
-let extensionAPIVersion = 1
+public let extensionAPIVersion = 1
 
 /// A host name as a manifest lists it, by the pattern of `schema/manifest.schema.json` in the catalog
 /// repository: exact and in lower case, without a wildcard, a scheme, a port, a path, or an IP address.

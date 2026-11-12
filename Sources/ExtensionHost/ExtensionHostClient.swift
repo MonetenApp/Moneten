@@ -23,6 +23,7 @@ public actor ExtensionHostClient {
 	private let reader: Reader
 	private let ask: @Sendable (String) async throws -> HostDecision
 	private let log: @Sendable (HostLog) -> Void
+	private let trace: @Sendable (HostTrace) -> Void
 	/// How long the host may send nothing while no question waits for the user.
 	private let silence: Duration
 	private var busy = false
@@ -46,13 +47,15 @@ public actor ExtensionHostClient {
 	}
 
 	/// Starts the process and loads the package. `ask` answers the question about a new host,
-	/// `log` gets what the script prints. A host that sends nothing for `silence` while no question
-	/// waits is stopped. A request over the network ends within two minutes, and a session has at
-	/// most a minute of processor time, so a working script is never silent that long.
-	public static func start(_ setup: HostSetup, executable: URL = bundledExecutable, silence: Duration = .seconds(180),
-		ask: @escaping @Sendable (String) async throws -> HostDecision,
-		log: @escaping @Sendable (HostLog) -> Void = { _ in }) async throws -> (client: ExtensionHostClient, registration: Registration, loadMilliseconds: Double) {
-		let client = try ExtensionHostClient(executable: executable, extensionName: setup.package.name, silence: silence, ask: ask, log: log)
+	/// `log` gets what the script prints, and `trace` what `ext` records and prints. A host that sends
+	/// nothing for `silence` while no question waits is stopped. A request over the network ends within
+	/// two minutes, and a session has at most a minute of processor time, so a working script is never
+	/// silent that long. `arguments` start a binary that is not only the host, such as `ext`, as the host.
+	public static func start(_ setup: HostSetup, executable: URL = bundledExecutable, arguments: [String] = [], silence: Duration = .seconds(180),
+		ask: @escaping @Sendable (String) async throws -> HostDecision, log: @escaping @Sendable (HostLog) -> Void = { _ in },
+		trace: @escaping @Sendable (HostTrace) -> Void = { _ in }) async throws -> (client: ExtensionHostClient, registration: Registration, loadMilliseconds: Double) {
+		let client = try ExtensionHostClient(executable: executable, arguments: arguments, extensionName: setup.package.name, silence: silence,
+			ask: ask, log: log, trace: trace)
 		do {
 			guard case let .loaded(registration, entryPoints, milliseconds) = try await client.send(.start(setup)) else {
 				throw ScriptError("The extension host answered out of order.")
@@ -65,11 +68,12 @@ public actor ExtensionHostClient {
 		}
 	}
 
-	private init(executable: URL, extensionName: String, silence: Duration, ask: @escaping @Sendable (String) async throws -> HostDecision,
-		log: @escaping @Sendable (HostLog) -> Void) throws {
+	private init(executable: URL, arguments: [String], extensionName: String, silence: Duration, ask: @escaping @Sendable (String) async throws -> HostDecision,
+		log: @escaping @Sendable (HostLog) -> Void, trace: @escaping @Sendable (HostTrace) -> Void) throws {
 		let stdin = Pipe(), stdout = Pipe()
 		process = Process()
 		process.executableURL = executable
+		process.arguments = arguments
 		// Nothing of the app's environment reaches the script's process, except the time zone for os.date.
 		process.environment = ["TZ": TimeZone.current.identifier]
 		process.standardInput = stdin
@@ -79,6 +83,7 @@ public actor ExtensionHostClient {
 		self.silence = silence
 		self.ask = ask
 		self.log = log
+		self.trace = trace
 		let (stream, continuation) = AsyncStream.makeStream(of: Result<HostEvent, ScriptError>.self)
 		events = stream.makeAsyncIterator()
 		let reader = Reader(extensionName: extensionName)
@@ -109,12 +114,14 @@ public actor ExtensionHostClient {
 	/// Calls an entry point and returns its first result.
 	public func call(_ entry: EntryCall) async throws -> LuaValue {
 		guard case let .result(value) = try await send(.call(entry)) else { throw ScriptError("The extension host answered out of order.") }
+		trace(.result(entry, value))
 		return value
 	}
 
 	/// Ends the run of the script and returns the content of `LocalStorage` for the next run.
 	public func finish() async throws -> Data {
 		guard case let .finished(storage) = try await send(.finish) else { throw ScriptError("The extension host answered out of order.") }
+		trace(.storage(storage))
 		return storage
 	}
 
@@ -166,6 +173,7 @@ public actor ExtensionHostClient {
 				}
 			case let .status(line): log(.status(line))
 			case let .sent(request): log(.sent(request))
+			case let .trace(event): trace(event)
 			case .alive, .print: continue
 			case let .failed(message): throw ScriptError(message)
 			case .loaded, .result, .finished: return event

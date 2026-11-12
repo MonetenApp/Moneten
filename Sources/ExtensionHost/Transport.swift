@@ -43,7 +43,13 @@ protocol Transport {
 struct Network {
 	let policy: HostPolicy
 	let transport: any Transport
-	let cookies = CookieJar()
+	let cookies: CookieJar
+
+	init(policy: HostPolicy, transport: any Transport, now: @escaping () -> Date = Date.init) {
+		self.policy = policy
+		self.transport = transport
+		cookies = CookieJar(now: now)
+	}
 
 	static let maxRedirects = 10
 
@@ -119,13 +125,19 @@ struct SavedCookie: Codable, Equatable, Sendable {
 /// removes the stored cookie of the same name, domain, and path, as a browser does.
 final class CookieJar {
 	private var cookies: [HTTPCookie] = []
+	/// The clock of the session, so that a cookie of a replay expires as it did in the recording.
+	private let now: () -> Date
+
+	init(now: @escaping () -> Date = Date.init) {
+		self.now = now
+	}
 
 	/// Keeps the cookies of a `Set-Cookie` value from the answer of `url`. A value can hold several
 	/// cookies separated by commas, as the transport joins repeated headers. A cookie for a domain
 	/// that `url` is not part of is left out, as in a browser.
 	func store(_ setCookie: String?, from url: URL) {
 		guard let setCookie, let host = url.host()?.lowercased() else { return }
-		for cookie in HTTPCookie.cookies(withResponseHeaderFields: ["Set-Cookie": setCookie], for: url) where Self.accepts(cookie, from: host) {
+		for cookie in HTTPCookie.cookies(withResponseHeaderFields: ["Set-Cookie": expiring(setCookie)], for: url) where Self.accepts(cookie, from: host) {
 			put(cookie)
 		}
 	}
@@ -161,7 +173,7 @@ final class CookieJar {
 	func header(for url: URL) -> String? {
 		guard let host = url.host()?.lowercased() else { return nil }
 		let path = url.path(percentEncoded: true).isEmpty ? "/" : url.path(percentEncoded: true)
-		let now = Date()
+		let now = now()
 		let matching = cookies.filter { cookie in
 			Self.domain(of: cookie, matches: host) && Self.path(path, matches: cookie.path) && (cookie.expiresDate.map { $0 > now } ?? true)
 		}
@@ -178,7 +190,7 @@ final class CookieJar {
 	/// Each cookie that has not expired, for `LocalStorage`. A host-only cookie keeps its host and has
 	/// no `Domain`, so it comes back for that host alone.
 	var saved: [SavedCookie] {
-		let now = Date()
+		let now = now()
 		let format = DateFormatter()
 		format.locale = Locale(identifier: "en_US_POSIX")
 		format.timeZone = TimeZone(identifier: "GMT")
@@ -194,9 +206,22 @@ final class CookieJar {
 		}
 	}
 
+	/// The value with each `Max-Age` turned into an `Expires` on the clock of the session. Foundation
+	/// counts `Max-Age` from the time of the Mac, which a replay does not use.
+	private func expiring(_ setCookie: String) -> String {
+		let format = DateFormatter()
+		format.locale = Locale(identifier: "en_US_POSIX")
+		format.timeZone = TimeZone(identifier: "GMT")
+		format.dateFormat = "EEE, dd-MMM-yyyy HH:mm:ss 'GMT'"
+		let now = now()
+		return setCookie.replacing(/(?i);\s*max-age\s*=\s*(-?\d{1,12})/) { match in
+			"; Expires=\(format.string(from: now.addingTimeInterval(max(Double(match.output.1) ?? 0, -1))))"
+		}
+	}
+
 	private func put(_ cookie: HTTPCookie) {
 		cookies.removeAll { $0.name == cookie.name && $0.domain == cookie.domain && $0.path == cookie.path }
-		if let expiry = cookie.expiresDate, expiry <= Date() { return }
+		if let expiry = cookie.expiresDate, expiry <= now() { return }
 		cookies.append(cookie)
 	}
 

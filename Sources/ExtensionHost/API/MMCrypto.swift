@@ -66,10 +66,11 @@ enum MMCrypto {
 		let stack = LuaStack(L!)
 		guard let key = RSAKey(table: 1, of: stack, private: false)?.secKey, let data = stack.data(at: 2) else { return stack.returning(.null) }
 		let size = SecKeyGetBlockSize(key)
+		let entropy = HostSession.current(L).entropy
 		let block: Data? = switch stack.text(at: 3) {
-		case "pkcs1-oaep sha256": oaep(data, size: size, SHA256.self, mask: SHA256.self)
-		case "pkcs1-oaep sha512": oaep(data, size: size, SHA512.self, mask: SHA512.self)
-		case "pkcs1-oaep sha256 sha1": oaep(data, size: size, SHA256.self, mask: Insecure.SHA1.self)
+		case "pkcs1-oaep sha256": oaep(data, size: size, entropy, SHA256.self, mask: SHA256.self)
+		case "pkcs1-oaep sha512": oaep(data, size: size, entropy, SHA512.self, mask: SHA512.self)
+		case "pkcs1-oaep sha256 sha1": oaep(data, size: size, entropy, SHA256.self, mask: Insecure.SHA1.self)
 		default: nil
 		}
 		return stack.returning(block.flatMap { SecKeyCreateEncryptedData(key, .rsaEncryptionRaw, $0 as CFData, nil) as Data? })
@@ -94,11 +95,11 @@ enum MMCrypto {
 	}
 
 	/// The encoding EME-OAEP of RFC 8017 7.1.1 with an empty label, for a modulus of `size` bytes.
-	private static func oaep<H: HashFunction, M: HashFunction>(_ message: Data, size: Int, _: H.Type, mask _: M.Type) -> Data? {
+	private static func oaep<H: HashFunction, M: HashFunction>(_ message: Data, size: Int, _ entropy: Entropy, _: H.Type, mask _: M.Type) -> Data? {
 		let length = H.Digest.byteCount
 		guard message.count <= size - 2 * length - 2 else { return nil }
 		let block = Data(H.hash(data: Data())) + Data(count: size - message.count - 2 * length - 2) + [0x01] + message
-		let seed = MMLibrary.randomBytes(length)
+		let seed = entropy.padding(length)
 		let maskedBlock = xor(block, mgf1(seed, length: block.count, M.self))
 		return [0x00] + xor(seed, mgf1(maskedBlock, length: length, M.self)) + maskedBlock
 	}

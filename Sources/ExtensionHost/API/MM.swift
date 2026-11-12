@@ -77,9 +77,14 @@ enum MMLibrary {
 		guard let seconds = LuaStack(L!).number(at: 1), seconds > 0 else { return 0 }
 		let session = HostSession.current(L)
 		var left = min(seconds, longestSleep)
+		// A replay does not wait: its clock moves at once, and the app has no silence to measure.
+		guard session.clock.waits else {
+			session.clock.sleep(left)
+			return 0
+		}
 		while left > 0 {
 			session.alive()
-			Thread.sleep(forTimeInterval: min(left, 1))
+			session.clock.sleep(min(left, 1))
 			left -= 1
 		}
 		return 0
@@ -171,7 +176,7 @@ enum MMLibrary {
 	// MARK: Time
 
 	private static let time: clua_Function = { L in
-		LuaStack(L!).returning(.number(Date().timeIntervalSince1970))
+		LuaStack(L!).returning(.number(HostSession.current(L).clock.now().timeIntervalSince1970))
 	}
 
 	private static let timezone: clua_Function = { L in
@@ -182,7 +187,7 @@ enum MMLibrary {
 	private static let gmtOffset: clua_Function = { L in
 		let stack = LuaStack(L!)
 		let zone = stack.text(at: 1).map { TimeZone(identifier: $0) } ?? .current
-		let date = stack.number(at: 2).map(Date.init(timeIntervalSince1970:)) ?? Date()
+		let date = stack.number(at: 2).map(Date.init(timeIntervalSince1970:)) ?? HostSession.current(L).clock.now()
 		return stack.returning(zone.map { .integer(Int64($0.secondsFromGMT(for: date))) })
 	}
 
@@ -190,7 +195,7 @@ enum MMLibrary {
 	private static let date: clua_Function = { L in
 		let stack = LuaStack(L!)
 		if lua_type(L, 1) == LUA_TTABLE { return stack.returning(timestamp(fields: stack)) }
-		let date = stack.number(at: 1).map(Date.init(timeIntervalSince1970:)) ?? Date()
+		let date = stack.number(at: 1).map(Date.init(timeIntervalSince1970:)) ?? HostSession.current(L).clock.now()
 		switch stack.text(at: 2) {
 		case nil: return stack.returning(seconds(date))
 		case "*t": return stack.returning(parts(of: date, country: HostSession.current(L).environment.country))
@@ -237,7 +242,7 @@ enum MMLibrary {
 		func number(_ key: String) -> Int? { stack.field(key, of: 1, stack.integer(at:)) }
 		func zone(_ key: String) -> TimeZone? { stack.field(key, of: 1, stack.text(at:)).map { TimeZone(identifier: $0) } ?? .current }
 		guard let from = zone("from"), let to = zone("to") else { return nil }
-		let today = calendar(from).dateComponents([.year, .month, .day], from: Date())
+		let today = calendar(from).dateComponents([.year, .month, .day], from: HostSession.current(stack.L).clock.now())
 		let components = DateComponents(year: number("year") ?? today.year, month: number("month") ?? today.month, day: number("day") ?? today.day,
 			hour: number("hour") ?? 12, minute: number("min") ?? 0, second: number("sec") ?? 0)
 		guard let moment = calendar(from).date(from: components) else { return nil }
@@ -391,18 +396,11 @@ enum MMLibrary {
 	private static let random: clua_Function = { L in
 		let stack = LuaStack(L!)
 		guard let count = stack.integer(at: 1), (0...mostRandomBytes).contains(count) else { return stack.returning(.null) }
-		return stack.returning(randomBytes(count))
-	}
-
-	static func randomBytes(_ count: Int) -> Data {
-		var data = Data(count: count)
-		let status = data.withUnsafeMutableBytes { SecRandomCopyBytes(kSecRandomDefault, count, $0.baseAddress!) }
-		precondition(status == errSecSuccess, "The system has no random numbers.")
-		return data
+		return stack.returning(HostSession.current(L).entropy.bytes(count))
 	}
 
 	private static let uuid: clua_Function = { L in
-		LuaStack(L!).returning(.string(UUID().uuidString.lowercased()))
+		LuaStack(L!).returning(.string(HostSession.current(L).entropy.uuid()))
 	}
 }
 
