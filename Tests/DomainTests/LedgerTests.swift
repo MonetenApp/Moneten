@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import Domain
 
-@Suite("Search, filters, and import matching")
+@Suite("Search and filters")
 struct LedgerTests {
 	let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline, initialBalanceMinor: 100_000)
 	let food = Domain.Category(position: 0, name: "Food")
@@ -143,34 +143,6 @@ struct LedgerTests {
 		#expect(l.computedBalance(of: giro).minorUnits == 100_000 - 8_900 - 2_345 + 320_000)
 		let expected: Int64 = 100_000 - 8_900 - 2_345 + 320_000
 		#expect(l.dailyBalances(accountIDs: [giro.id]).last?.minorUnits == Optional(expected))
-	}
-
-	@Test("Identical rows inside one file stay separate, and a second import adds nothing")
-	func importMatching() {
-		let day = Day(year: 2026, month: 11, day: 1)
-		let row = Transaction(accountID: giro.id, bookingDate: day, amountMinor: -350, name: "Kaffee", purpose: "Karte")
-		let file = [row, Transaction(accountID: giro.id, bookingDate: day, amountMinor: -350, name: "Kaffee", purpose: "Karte")]
-		let first = ImportMatching.split(imported: file, existing: [])
-		#expect(first.new.count == 2 && first.skipped == 0)
-		let second = ImportMatching.split(imported: file, existing: first.new)
-		#expect(second.new.isEmpty && second.skipped == 2)
-	}
-
-	@Test("A booked row books the matching pending row instead of being skipped")
-	func importBooksPending() {
-		let day = Day(year: 2026, month: 11, day: 3)
-		var pendingRow = Transaction(accountID: giro.id, bookingDate: day, amountMinor: -8_900, name: "Stadtwerke", purpose: "Abschlag")
-		pendingRow.isPending = true
-		var bookedRow = pendingRow
-		bookedRow.id = UUID()
-		bookedRow.isPending = false
-		let result = ImportMatching.split(imported: [bookedRow], existing: [pendingRow])
-		#expect(result.new.isEmpty && result.skipped == 0)
-		#expect(result.booked.map(\.id) == [pendingRow.id] && result.booked[0].isPending == false)
-		#expect(ImportMatching.split(imported: [pendingRow], existing: [pendingRow]).skipped == 1)
-		// The same file again, with the pending row first, changes nothing.
-		let again = ImportMatching.split(imported: [pendingRow, bookedRow], existing: [bookedRow, pendingRow])
-		#expect(again.new.isEmpty && again.booked.isEmpty && again.skipped == 2)
 	}
 
 	@Test("The ledger knows which accounts have transactions, also after a delete")

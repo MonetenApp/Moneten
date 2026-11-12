@@ -80,6 +80,7 @@ final class DebugHarness {
 				model.save(group: g)
 			}
 		case "usd": DemoData.usdAccount(model)
+		case "review": DemoData.review(model)
 		case "symbol":
 			// "<category>=<symbol>" sets the icon of a category, "<category>=" removes it.
 			let parts = argument.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false).map(String.init)
@@ -296,7 +297,7 @@ enum DemoData {
 				return Transaction(accountID: account.id, bookingDate: today.adding(days: -(slot / 8)), amountMinor: amount,
 					name: names[i % names.count], purpose: i % 3 == 0 ? "" : "Purpose \(i)")
 			}
-			_ = model.importTransactions(ts, into: account)
+			try? model.merge(.file(ts), into: account.id)
 		}
 	}
 
@@ -318,7 +319,7 @@ enum DemoData {
 				ts.append(Transaction(accountID: account.id, bookingDate: month.adding(days: 10), amountMinor: -amount, name: "Max Mustermann", purpose: "Umbuchung"))
 			}
 		}
-		_ = model.importTransactions(ts.filter { $0.bookingDate <= today }, into: account)
+		try? model.merge(.file(ts.filter { $0.bookingDate <= today }), into: account.id)
 		model.navigate(to: .account(account.id))
 	}
 
@@ -336,7 +337,20 @@ enum DemoData {
 			let day: Day = today.adding(days: -i * 9)
 			return Transaction(accountID: card.id, bookingDate: day, amountMinor: amount, currency: "USD", name: payment ? "Payment" : "Diner", purpose: "Card")
 		}
-		_ = model.importTransactions(ts, into: card)
+		try? model.merge(.file(ts), into: card.id)
+	}
+
+	/// Two pending card payments of "Girokonto" from `seed` and one booked payment that could belong
+	/// to either, so the list shows three rows marked for review.
+	@MainActor
+	static func review(_ model: AppModel) {
+		guard let giro = model.ledger.accounts.first(where: { $0.name == "Girokonto" }) else { return }
+		let today = Day.today()
+		func coffee(_ day: Day, pending: Bool) -> Transaction {
+			Transaction(accountID: giro.id, bookingDate: day, amountMinor: -320, name: "Café Beispiel", purpose: "KARTENZAHLUNG", isPending: pending)
+		}
+		try? model.merge(.file([coffee(today.adding(days: -1), pending: true), coffee(today.adding(days: -1), pending: true)]), into: giro.id)
+		try? model.merge(.file([coffee(today, pending: false)]), into: giro.id)
 	}
 
 	@MainActor
@@ -385,8 +399,7 @@ enum DemoData {
 			rent.rule = #"name:"Wohnbau*" AND amount<0"#
 			model.save(category: rent)
 		}
-		let imported = model.importTransactions(ts.filter { $0.accountID == giro.id }, into: giro)
-		_ = model.importTransactions(ts.filter { $0.accountID == savings.id }, into: savings)
-		_ = imported
+		try? model.merge(.file(ts.filter { $0.accountID == giro.id }), into: giro.id)
+		try? model.merge(.file(ts.filter { $0.accountID == savings.id }), into: savings.id)
 	}
 }

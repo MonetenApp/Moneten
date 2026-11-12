@@ -19,7 +19,7 @@ public final class SyncCoordinator {
 	/// once for each requested account that the connector fetched, never for a failed, missing, or canceled
 	/// one. When it throws, the account fails with `SyncFailure.notSaved` and keeps its last state.
 	/// Settable, because its owner can hand over a closure that captures itself only after its own init.
-	@ObservationIgnored public var deliver: (UUID, RefreshResult) throws -> Void = { _, _ in }
+	@ObservationIgnored public var deliver: @MainActor (UUID, RefreshResult) throws -> Void = { _, _ in }
 
 	private struct Job {
 		let request: RefreshRequest

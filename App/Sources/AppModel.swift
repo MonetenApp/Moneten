@@ -181,6 +181,8 @@ final class AppModel {
 
 	init() {
 		Preference.registerDefaults()
+		// A closure that captures `self` can be handed over only once every stored property is set.
+		sync.deliver = { [weak self] accountID, result in try self?.merge(.refresh(result), into: accountID) }
 		start()
 		installActivityMonitor()
 	}
@@ -401,19 +403,28 @@ final class AppModel {
 		commit(changed)
 	}
 
+	/// Checking a row also clears its new mark and its review mark.
 	func setChecked(_ checked: Bool, for ids: Set<UUID>) {
-		commit(ids.compactMap { ledger.transaction($0) }.filter { $0.isChecked != checked }.map { var t = $0; t.isChecked = checked; return t })
+		let rows = ids.compactMap { ledger.transaction($0) }
+		if checked {
+			commit(rows.filter(Self.needsCheck).map { var t = $0; t.markChecked(); return t })
+		} else {
+			commit(rows.filter(\.isChecked).map { var t = $0; t.isChecked = false; return t })
+		}
 	}
+
+	/// A row that checking changes. A checked row can still carry a review mark that a later merge set.
+	private static func needsCheck(_ t: Transaction) -> Bool { !t.isChecked || t.isNew || t.needsReview }
 
 	func toggleChecked(_ id: UUID) {
 		guard let t = ledger.transaction(id) else { return }
 		setChecked(!t.isChecked, for: [id])
 	}
 
-	/// "Mark All Transactions as Checked": the unchecked transactions of the view, after the user
-	/// confirms how many in how many accounts.
+	/// "Mark All Transactions as Checked": the transactions of the view that are unchecked, new, or
+	/// marked for review, after the user confirms how many in how many accounts.
 	func markAllChecked() {
-		let unchecked = visibleTransactions.filter { !$0.isChecked }
+		let unchecked = visibleTransactions.filter(Self.needsCheck)
 		guard !unchecked.isEmpty else { return }
 		let accounts = Set(unchecked.map(\.accountID)).count
 		let alert = NSAlert()
@@ -627,16 +638,14 @@ final class AppModel {
 		}
 	}
 
-	func importTransactions(_ imported: [Transaction], into account: Account) -> (added: Int, booked: Int, skipped: Int) {
-		let rows = imported.map { t -> Transaction in var t = t; t.accountID = account.id; t.isNew = true; return t }
-		var (added, booked, skipped) = ImportMatching.split(imported: rows, existing: ledger.transactions(ofAccount: account.id))
-		var ledgerWithNew = ledger
-		ledgerWithNew.update(added)
-		let categorizer = Categorizer(ledger: ledgerWithNew)
-		for i in added.indices { categorizer.categorize(&added[i]) }
-		commit(added + booked)
-		tableGeneration += 1
-		return (added.count, booked.count, skipped)
+	/// The one way that fetched or imported transactions reach the history.
+	@discardableResult
+	func merge(_ delivery: Delivery, into accountID: UUID) throws -> Reconciliation {
+		guard let store else { return Reconciliation() }
+		let result = try store.merge(delivery, into: accountID)
+		ledger.apply(result)
+		if !result.added.isEmpty || !result.dropped.isEmpty { tableGeneration += 1 }
+		return result
 	}
 }
 
