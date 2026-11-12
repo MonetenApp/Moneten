@@ -19,6 +19,11 @@ struct RootView: View {
 			}
 		}
 		.onDisappear { model.mainWindowClosed() }
+		// The PIN sheet and the dialog "Two-Factor Authentication". The broker opens and closes them.
+		.sheet(item: Binding(get: { model.sync.broker.current }, set: { _ in })) { prompt in
+			SyncDialog(broker: model.sync.broker, prompt: prompt)
+				.interactiveDismissDisabled()
+		}
 	}
 }
 

@@ -1,5 +1,5 @@
 # The Xcode project of the app. Generate it with scripts/generate-project.sh.
-# The libraries Domain, Storage, and Import stay in the Swift package at the repository root.
+# The libraries Domain, Storage, Import, Sync, and SyncTesting stay in the Swift package at the repository root.
 name: Moneten
 options:
   bundleIdPrefix: io.github.alexander-schneider
@@ -38,6 +38,11 @@ targets:
         product: Storage
       - package: MonetenKit
         product: Import
+      - package: MonetenKit
+        product: Sync
+      # The scripted connector of the previews and of the debug harness.
+      - package: MonetenKit
+        product: SyncTesting
     settings:
       base:
         MARKETING_VERSION: 0.0.1

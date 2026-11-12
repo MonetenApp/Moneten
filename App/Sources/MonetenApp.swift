@@ -56,6 +56,9 @@ struct AppCommands: Commands {
 			Button("Import from MoneyMoney...") { model.sheet = .migration }
 				.disabled(!unlocked)
 			Divider()
+			Button("Cancel Refresh") { model.sync.cancelAll() }
+				.disabled(!model.sync.isRefreshing)
+			Divider()
 			Button("Mark All Transactions as Checked") { model.markAllChecked() }
 				.disabled(!unlocked || model.selection == nil)
 		}
