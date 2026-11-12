@@ -1,4 +1,4 @@
-import ExtensionHost
+@testable import ExtensionHost
 import Foundation
 import Testing
 

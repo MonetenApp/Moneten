@@ -1,0 +1,4 @@
+{"exchanges": [
+	{"request": {"method": "GET", "url": "https://www.bank.example/login"}, "response": {"status": 200, "headers": {"Content-Type": "text/html; charset=UTF-8"}, "body": "<p>Login of Demo Bank</p>"}},
+	{"request": {"method": "GET", "url": "https://www.bank.example/login"}, "response": {"status": 200, "headers": {"Content-Type": "text/html; charset=UTF-8"}, "body": "<p>Login of Demo Bank</p>"}}
+]}

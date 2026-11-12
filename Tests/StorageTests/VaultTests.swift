@@ -32,6 +32,21 @@ struct VaultTests {
 		#expect(bytes.range(of: Data("SQLite format 3".utf8)) == nil)
 	}
 
+	@Test("The answers about the hosts of an extension stay after a restart, for that extension only")
+	func hostDecisions() throws {
+		let vault = Vault(folder: folder)
+		let store = try vault.create(password: "korrekt-pferd-batterie-heftklammer", starterCategories: [])
+		try store.save(.allowed, host: "www.bank.example", of: "Demo")
+		try store.save(.denied, host: "tracker.example", of: "Demo")
+		try store.save(.denied, host: "www.bank.example", of: "Other")
+		try store.save(.allowed, host: "tracker.example", of: "Demo")
+		try store.close()
+		let reopened = try vault.open(password: "korrekt-pferd-batterie-heftklammer")
+		#expect(try reopened.hostDecisions(of: "Demo") == ["www.bank.example": .allowed, "tracker.example": .allowed])
+		#expect(try reopened.hostDecisions(of: "Other") == ["www.bank.example": .denied])
+		#expect(try reopened.hostDecisions(of: "Unknown") == [:])
+	}
+
 	@Test("The database password is the key")
 	func passwordIsKey() throws {
 		let vault = Vault(folder: folder)

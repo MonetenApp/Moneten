@@ -185,6 +185,15 @@ enum Schema {
 				t.add(column: "refreshError", .text)
 			}
 		}
+		// The answers of the user about the hosts of an extension without a list of hosts (ADR 0015).
+		m.registerMigration("v8") { db in
+			try db.create(table: "extensionHostDecision") { t in
+				t.column("extensionID", .text).notNull()
+				t.column("host", .text).notNull()
+				t.column("decision", .text).notNull()
+				t.primaryKey(["extensionID", "host"])
+			}
+		}
 		return m
 	}
 }

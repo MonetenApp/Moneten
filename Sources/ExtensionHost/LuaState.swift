@@ -2,14 +2,14 @@ import CLua
 import Foundation
 
 /// An error of a script or of the host, with the file and line of the script where Lua knows them.
-public struct ScriptError: Error, Equatable, Sendable, CustomStringConvertible {
-	public let message: String
+struct ScriptError: Error, Equatable, Sendable, CustomStringConvertible {
+	let message: String
 
-	public init(_ message: String) {
+	init(_ message: String) {
 		self.message = message
 	}
 
-	public var description: String { message }
+	var description: String { message }
 }
 
 /// A value that crosses between a script and the app, in the shape of JSON. A table whose keys are

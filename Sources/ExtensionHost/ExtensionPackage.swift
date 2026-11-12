@@ -1,12 +1,14 @@
 import Foundation
 
 /// Why an installed extension is not usable. The message is what the list of extensions shows.
-public enum PackageProblem: Error, Equatable, Sendable {
+public enum PackageProblem: Error, Equatable, Sendable, CustomStringConvertible {
 	case missingManifest
 	case invalidManifest(String)
 	case needsNewerApp(apiVersion: Int)
 	case unreadableFile(String)
 	case notLua
+
+	public var description: String { message }
 
 	public var message: String {
 		switch self {

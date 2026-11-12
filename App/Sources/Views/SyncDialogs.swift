@@ -3,7 +3,7 @@ import Domain
 import Sync
 import SwiftUI
 
-/// The dialog for the request on screen: the PIN sheet or "Two-Factor Authentication".
+/// The dialog for the request on screen: the PIN sheet, "Two-Factor Authentication", or the question about a new host.
 /// The broker decides when it opens and closes, so the buttons answer the broker and never dismiss.
 struct SyncDialog: View {
 	let broker: SessionBroker
@@ -13,6 +13,7 @@ struct SyncDialog: View {
 		switch prompt.request {
 		case let .pin(request): PINSheet(broker: broker, prompt: prompt, request: request)
 		case let .secondFactor(request): TwoFactorSheet(broker: broker, prompt: prompt, request: request)
+		case let .allowHost(request): HostPermissionDialog(broker: broker, prompt: prompt, request: request)
 		}
 	}
 }
@@ -74,6 +75,28 @@ struct PINSheet: View {
 	private func confirm() {
 		guard !pin.isEmpty else { return }
 		broker.answer(.pin(Secret(pin)), to: prompt.id)
+	}
+}
+
+/// Asks whether an extension without a list of hosts may contact a new host (ADR 0015). The app keeps
+/// the answer for the extension, so the question comes once per host. "Deny" is the default button,
+/// because a slip of the Return key must not send login data somewhere new.
+struct HostPermissionDialog: View {
+	let broker: SessionBroker
+	let prompt: Prompt
+	let request: HostPermissionRequest
+
+	var body: some View {
+		DialogFrame(title: "Allow “\(request.extensionName)” to contact \(request.host)?") {
+			Section {
+				Text("The extension is not from the catalog and does not list the hosts it contacts. Allow it only if \(request.host) belongs to \(prompt.access.bankName).")
+					.fixedSize(horizontal: false, vertical: true)
+				LabeledContent("Host", value: request.host)
+			}
+		} buttons: {
+			Button("Allow") { broker.answer(.host(.allowed), to: prompt.id) }
+			Button("Deny") { broker.answer(.host(.denied), to: prompt.id) }.keyboardShortcut(.defaultAction)
+		}
 	}
 }
 

@@ -1,5 +1,5 @@
 import Domain
-import ExtensionHost
+@testable import ExtensionHost
 import Testing
 
 @Suite struct HostPolicyTests {

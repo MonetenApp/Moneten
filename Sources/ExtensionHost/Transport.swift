@@ -1,12 +1,12 @@
 import Foundation
 
-public struct HTTPRequest: Sendable, Equatable, Codable {
-	public let method: String
-	public let url: URL
-	public let headers: [String: String]
-	public let body: Data?
+struct HTTPRequest: Sendable, Equatable {
+	let method: String
+	let url: URL
+	let headers: [String: String]
+	let body: Data?
 
-	public init(method: String, url: URL, headers: [String: String] = [:], body: Data? = nil) {
+	init(method: String, url: URL, headers: [String: String] = [:], body: Data? = nil) {
 		self.method = method
 		self.url = url
 		self.headers = headers
@@ -14,26 +14,26 @@ public struct HTTPRequest: Sendable, Equatable, Codable {
 	}
 }
 
-public struct HTTPResponse: Sendable, Equatable, Codable {
-	public let status: Int
-	public let headers: [String: String]
-	public let body: Data
+struct HTTPResponse: Sendable, Equatable {
+	let status: Int
+	let headers: [String: String]
+	let body: Data
 
-	public init(status: Int, headers: [String: String] = [:], body: Data = Data()) {
+	init(status: Int, headers: [String: String] = [:], body: Data = Data()) {
 		self.status = status
 		self.headers = headers
 		self.body = body
 	}
 
 	/// The value of a header, whatever the case of its name.
-	public func header(_ name: String) -> String? {
+	func header(_ name: String) -> String? {
 		headers.first { $0.key.caseInsensitiveCompare(name) == .orderedSame }?.value
 	}
 }
 
 /// Sends one request and returns the answer as the server gave it. A transport never follows a
 /// redirect, so that `Network` checks every target with the host policy first.
-public protocol Transport {
+protocol Transport {
 	func send(_ request: HTTPRequest) throws -> HTTPResponse
 }
 

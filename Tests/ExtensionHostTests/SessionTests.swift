@@ -1,5 +1,5 @@
 import Domain
-import ExtensionHost
+@testable import ExtensionHost
 import Foundation
 import Synchronization
 import Testing

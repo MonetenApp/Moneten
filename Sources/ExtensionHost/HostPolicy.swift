@@ -3,12 +3,12 @@ import Foundation
 
 /// Why the host process did not send a request. The message names the host, so the user sees where
 /// the extension wanted to go.
-public enum HostRefusal: Error, Equatable, Sendable, CustomStringConvertible {
+enum HostRefusal: Error, Equatable, Sendable, CustomStringConvertible {
 	case notHTTPS(String)
 	case notListed(extensionName: String, host: String)
 	case denied(extensionName: String, host: String)
 
-	public var description: String {
+	var description: String {
 		switch self {
 		case let .notHTTPS(url): "Moneten sends requests only over HTTPS, not to \(url)."
 		case let .notListed(name, host): "\(name) may not contact \(host), because its manifest does not list that host."
@@ -22,8 +22,8 @@ public enum HostRefusal: Error, Equatable, Sendable, CustomStringConvertible {
 /// An extension with a list of hosts reaches exactly those names. An extension without one asks the
 /// user before the first contact with a host and keeps the answer for the session; the app stores it
 /// for the extension. Only `https` passes.
-public final class HostPolicy {
-	public enum Rule: Sendable, Equatable {
+final class HostPolicy {
+	enum Rule: Sendable, Equatable {
 		case listed(Set<HostName>)
 		case askUser
 	}
@@ -34,14 +34,14 @@ public final class HostPolicy {
 	private let ask: (String) throws -> HostDecision
 
 	/// `decisions` holds the stored answers of the user by host. `ask` waits for the answer to a new host.
-	public init(extensionName: String, rule: Rule, decisions: [String: HostDecision] = [:], ask: @escaping (String) throws -> HostDecision) {
+	init(extensionName: String, rule: Rule, decisions: [String: HostDecision] = [:], ask: @escaping (String) throws -> HostDecision) {
 		self.extensionName = extensionName
 		self.rule = rule
 		self.decisions = decisions
 		self.ask = ask
 	}
 
-	public func check(_ url: URL) throws {
+	func check(_ url: URL) throws {
 		guard url.scheme?.lowercased() == "https", let host = url.host(percentEncoded: false)?.lowercased(), !host.isEmpty else {
 			throw HostRefusal.notHTTPS(url.absoluteString)
 		}

@@ -1,7 +1,7 @@
 import Foundation
 
 /// The API version that this app offers to extensions as `MM.apiVersion`.
-public let extensionAPIVersion = 1
+let extensionAPIVersion = 1
 
 /// A host name as a manifest lists it: exact, in lower case, without a wildcard, a scheme, a port, or a path.
 public struct HostName: Hashable, Sendable, Codable, CustomStringConvertible {

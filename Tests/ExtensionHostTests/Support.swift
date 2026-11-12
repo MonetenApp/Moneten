@@ -1,5 +1,5 @@
 import Domain
-import ExtensionHost
+@testable import ExtensionHost
 import Foundation
 
 /// Writes `files` into a new folder and returns its URL.

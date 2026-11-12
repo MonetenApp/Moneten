@@ -25,17 +25,17 @@ public struct Fixture: Sendable, Equatable, Codable {
 
 /// Answers each request with the first unused exchange of the same method and URL, and never
 /// touches the network. A request that the fixture lacks fails with its method and URL.
-public final class FixtureTransport: Transport {
+final class FixtureTransport: Transport {
 	private var unused: [Fixture.Exchange]
 	/// Sees each request that reached the transport, for the request log of the tests and the harness.
 	private let onSend: (HTTPRequest) -> Void
 
-	public init(_ fixture: Fixture, onSend: @escaping (HTTPRequest) -> Void = { _ in }) {
+	init(_ fixture: Fixture, onSend: @escaping (HTTPRequest) -> Void = { _ in }) {
 		unused = fixture.exchanges
 		self.onSend = onSend
 	}
 
-	public func send(_ request: HTTPRequest) throws -> HTTPResponse {
+	func send(_ request: HTTPRequest) throws -> HTTPResponse {
 		onSend(request)
 		guard let index = unused.firstIndex(where: { $0.request.method == request.method && $0.request.url == request.url }) else {
 			throw ScriptError("The fixture has no response for \(request.method) \(request.url.absoluteString).")

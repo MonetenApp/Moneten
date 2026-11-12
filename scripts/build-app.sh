@@ -73,6 +73,21 @@ else:
 	rm "$CODE"
 }
 
+# Xcode builds the extension host of ADR 0015 into Contents/Helpers and signs it like the app. This
+# check stops a build whose host could do more than reach the network, or is signed by someone else.
+check_extension_host() {
+	HOST="$1/Contents/Helpers/MonetenExtensionHost"
+	[ -x "$HOST" ] || { echo "The extension host is missing in $1." >&2; exit 1; }
+	codesign -d --entitlements - --xml "$HOST" 2>/dev/null | python3 -c '
+import plistlib, sys
+entitlements = plistlib.loads(sys.stdin.buffer.read())
+if entitlements != {"com.apple.security.app-sandbox": True, "com.apple.security.network.client": True}:
+	sys.exit("The extension host has the entitlements %s instead of the app sandbox and the network client." % sorted(entitlements))
+' || exit 1
+	signer() { codesign -dvv "$1" 2>&1 | grep -E '^(Authority|Signature|TeamIdentifier)='; }
+	[ "$(signer "$HOST")" = "$(signer "$1")" ] || { echo "The extension host is not signed like the app." >&2; exit 1; }
+}
+
 scripts/generate-project.sh
 XCODEBUILD="xcodebuild -project App/Moneten.xcodeproj -scheme Moneten -configuration $CONFIG -derivedDataPath .build/xcode -disableAutomaticPackageResolution -quiet"
 if [ -z "$ARCHIVE" ]; then
@@ -105,5 +120,6 @@ if [ -z "$ARCHIVE" ]; then
 else
 	echo "The Developer ID build leaves out the FinTS helper until task 3.2 of add-fints-banking." >&2
 fi
+check_extension_host dist/Moneten.app
 codesign --verify --strict --deep dist/Moneten.app
 echo "Built dist/Moneten.app ($CONFIG, build $BUILD), $(codesign -dv --verbose=2 dist/Moneten.app 2>&1 | grep -m1 -E '^(Authority|Signature)=')"
