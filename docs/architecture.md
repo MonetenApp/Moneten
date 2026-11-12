@@ -106,12 +106,13 @@ A request for the user can come during the fetch too: Consorsbank waives the sec
 
 ## Transactions need an identity the bank does not give
 
-A refresh, a file import, and later an extension deliver rows that the history may already hold. FinTS gives no stable ID: a second refresh returns the same rows again, and a pending card payment comes back booked with another date or text. All of them go through one pure function in `Domain`, `reconcile`, and one write, `Store.merge`:
+A refresh, a file import, a MoneyMoney migration, and later an extension deliver rows that the history may already hold. FinTS gives no stable ID: a second refresh returns the same rows again, and a pending card payment comes back booked with another date or text. All of them go through one pure function in `Domain`, `reconcile`, and one write, `Store.merge`:
 
 ```swift
 public enum Delivery: Sendable {
 	case refresh(RefreshResult)   // balance, balance date, rows, and the first day the answer covers
 	case file([Transaction])      // never drops a pending row, carries no balance
+	case migration([Transaction]) // MoneyMoney: like a file, but honors every deleted row
 }
 
 public func reconcile(_ delivery: Delivery, into account: Account, stored: [Transaction],
@@ -128,7 +129,7 @@ The fingerprint is computed from the columns at every merge and never stored, so
 
 A booked row without a partner can replace a stored pending row. Two rows can pair when they have the same amount, booking days at most 7 days apart, and the same counterparty: the IBAN when both rows have one, otherwise the folded name, where the words of one name must lead the other ("REWE" matches "REWE SAGT DANKE 1234", "SPAR" does not match "SPARKASSE"). Rows that can pair form connected groups. A group of one pending and one booked row books: the stored row takes the bank fields and keeps its comment, checkmark, and hand-set category. In any larger group nothing moves, and every row gets `needsReview`. A pending row without a partner is dropped when the answer covers its day and it is not marked for review. Once the user checks a marked row, the mark is gone, and a later refresh may drop it. The user has seen the mark and chosen.
 
-A delete leaves a `DeletedTransaction` with the raw fields of the fingerprint and `wasFetched`. Deleted rows count like stored ones, so deleting one of two coffees leaves one. A refresh honors every deleted row. A file honors only those that a refresh had delivered, so a file brings back a row that only a file added, and never a fetched row that the user deleted. A deleted pending row does not block its booked version.
+A delete leaves a `DeletedTransaction` with the raw fields of the fingerprint and `wasFetched`. Deleted rows count like stored ones, so deleting one of two coffees leaves one. A refresh and a MoneyMoney migration honor every deleted row. A file honors only those that a refresh had delivered, so a file brings back a row that only a file added, and never a fetched row that the user deleted. A deleted pending row does not block its booked version.
 
 `Store.merge` reads the account's live rows, deleted rows, and rules inside its write transaction, calls `reconcile`, and writes the result. `Ledger.apply` then takes over exactly what was written. `SyncCoordinator.deliver` calls the merge once per fetched account. A thrown error fails only that account with `SyncFailure.notSaved`, and the next refresh delivers the same rows again.
 
