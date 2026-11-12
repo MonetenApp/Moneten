@@ -26,6 +26,9 @@ final class HelperProcess: @unchecked Sendable {
 		let stdin = Pipe(), stdout = Pipe()
 		process.executableURL = executable
 		process.arguments = arguments
+		// Nothing of the environment of the app reaches the helper: JAVA_TOOL_OPTIONS, for example,
+		// could load an agent into the JVM that reads the PIN.
+		process.environment = [:]
 		process.standardInput = stdin
 		process.standardOutput = stdout
 		// A write to a helper that ended fails with an error instead of a SIGPIPE that ends the app.

@@ -51,11 +51,13 @@ public struct FinTSConnector: BankConnector {
 		let executable: URL
 		let arguments: [String]
 
-		/// The helper that scripts/build-app.sh puts into the app.
+		/// The helper that scripts/build-app.sh puts into the app. A crash of the JVM writes no file,
+		/// because the file would hold the memory of the helper with the PIN.
 		static var bundled: Helper {
 			let folder = (Bundle.main.resourceURL ?? Bundle.main.bundleURL).appending(path: "FinTSHelper")
 			return Helper(executable: folder.appending(path: "runtime/bin/java"),
-				arguments: ["-Djava.awt.headless=true", "-cp", folder.appending(path: "lib").path + "/*", "FinTSHelper"])
+				arguments: ["-Djava.awt.headless=true", "-Djava.net.useSystemProxies=true", "-XX:ErrorFile=/dev/null",
+					"-cp", folder.appending(path: "lib").path + "/*", "FinTSHelper"])
 		}
 	}
 

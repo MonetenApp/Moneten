@@ -362,6 +362,16 @@ struct FinTSConnectorTests {
 		#expect(!FileManager.default.fileExists(atPath: record.path))
 	}
 
+	@Test("Starts the helper without the environment of the app, without a crash file, and with the proxy of macOS")
+	func environment() async throws {
+		_ = try await connector(#"read cmd; printf '%s\n' "${HOME-none} ${TMPDIR-none}" >> "$R"; echo '{"type":"bank"}'"#).bankInfo(bankCode: "12030000")
+		#expect((try? String(contentsOf: record, encoding: .utf8)) == "none none\n")
+		let arguments = FinTSConnector.Helper.bundled.arguments
+		#expect(arguments.contains("-XX:ErrorFile=/dev/null"))
+		#expect(arguments.contains("-Djava.net.useSystemProxies=true"))
+		#expect(arguments.last == "FinTSHelper")
+	}
+
 	@Test("Looks up a bank in the bank directory")
 	func bankInfo() async throws {
 		let bank = try await connector(#"""
