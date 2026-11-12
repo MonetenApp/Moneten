@@ -16,7 +16,10 @@ final class HelperProcess: @unchecked Sendable {
 	private let reading = Mutex<(partial: Data, finished: Bool)>((Data(), false))
 	/// How the process ended, or who waits for it. A canceled refresh still waits for the end.
 	private let termination = Mutex<(end: (status: Int32, signal: Bool)?, waiter: CheckedContinuation<(status: Int32, signal: Bool), Never>?)>((nil, nil))
-	private let writing = NSLock()
+	/// Writes the lines in order. A serial queue of its own runs on the overcommitting root queue of
+	/// Dispatch, so a helper that does not read its input blocks neither a thread of Swift concurrency nor
+	/// one of the global queue, where the timers of every run wait.
+	private let writer = DispatchQueue(label: "io.github.moneten.fints.write")
 	private let canceled = Mutex(false)
 	private let failure = Mutex<(any Error)?>(nil)
 	private let onEnd: @Sendable () -> Void
@@ -91,17 +94,18 @@ final class HelperProcess: @unchecked Sendable {
 		onEnd()
 	}
 
-	/// Writes one line. When the helper has ended, the line is lost, and `ended()` reports how it ended.
+	/// Writes one line, after the lines before it, and returns at once. When the helper has ended, the
+	/// line is lost, and `ended()` reports how it ended.
 	func send(_ message: some Encodable) {
 		let encoder = JSONEncoder()
 		encoder.outputFormatting = .withoutEscapingSlashes
 		guard let line = try? encoder.encode(message) + [0x0A] else { return }
-		writing.withLock { try? input.write(contentsOf: line) }
+		writer.async { [input] in try? input.write(contentsOf: line) }
 	}
 
 	/// Asks the helper to end the dialog with the bank, and ends the process when it is still running
 	/// after 5 seconds, and kills it 2 seconds later, so a stuck JVM never keeps a refresh open. It
-	/// returns at once: a helper that does not read its input blocks only the write.
+	/// returns at once: a helper that does not read its input blocks only the queue of its writes.
 	func cancel() {
 		guard canceled.withLock({ was in defer { was = true }; return !was }) else { return }
 		DispatchQueue.global().asyncAfter(deadline: .now() + 5) { [self] in
@@ -111,7 +115,7 @@ final class HelperProcess: @unchecked Sendable {
 				if process.isRunning { kill(process.processIdentifier, SIGKILL) }
 			}
 		}
-		DispatchQueue.global().async { [self] in send(["type": "cancel"]) }
+		send(["type": "cancel"])
 	}
 
 	/// Keeps the first error of the run and cancels the helper.

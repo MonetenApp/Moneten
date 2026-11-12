@@ -182,11 +182,12 @@ public struct FinTSConnector: BankConnector {
 		watchdog.onExpiry { process.fail(HelperFailure.timeout) }
 		var approvals: [Int: Task<UserAnswer, any Error>] = [:]
 		var helperLeft = false
+		// The timer runs from the first write, so a helper that never reads its command times out. The
+		// command goes out before the cancellation handler, so a cancel always follows it.
+		watchdog.restart()
+		process.send(command)
 		await withTaskCancellationHandler {
 			do {
-				// The timer runs before the first write: a helper that does not read a large state blocks it.
-				watchdog.restart()
-				process.send(command)
 				reading: for await line in process.lines {
 					watchdog.restart()
 					guard let message = try? JSONDecoder().decode(HelperMessage.self, from: Data(line.utf8)) else { throw HelperFailure.unreadable }

@@ -27,7 +27,10 @@ jobs:
           submodules: true
       - run: swift --version
       - run: brew install xcodegen
-      - run: scripts/test.sh
+      - name: Tests
+        # The performance tests run below, alone and in a release build. Here they would keep the three
+        # cores of the runner busy while the FinTS tests measure how fast a helper ends.
+        run: scripts/test.sh --skip PerformanceTests
       - name: Performance
         # The budgets of the performance tests hold for a release build only. See CONTRIBUTING.md.
         # The tests run one after another, so that no test measures the load of another one.
