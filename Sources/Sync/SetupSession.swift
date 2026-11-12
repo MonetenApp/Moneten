@@ -32,7 +32,7 @@ public struct SetupSession: SyncSession {
 	/// example by the lock, the dialog of the access no longer waits for a challenge, so its progress
 	/// closes at once, also while the connector still ends.
 	@MainActor
-	public func logIn<T>(_ login: (SetupSession) async throws -> T) async throws -> T {
+	public func logIn<T: Sendable>(_ login: @MainActor (SetupSession) async throws -> T) async throws -> T {
 		let broker = broker, access = access.id
 		defer { broker.endRequest(of: access) }
 		return try await withTaskCancellationHandler {
