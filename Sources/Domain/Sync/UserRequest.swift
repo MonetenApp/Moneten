@@ -41,9 +41,13 @@ public enum UserRequest: Sendable, Equatable {
 public struct PINRequest: Sendable, Equatable {
 	/// The word of the source for the secret, for example "PIN" or "password".
 	public let secretName: String
+	/// The answer of the bank to the previous PIN of this session, when the bank rejected it. The
+	/// connector asks again with it after a typing error.
+	public let rejected: BankMessage?
 
-	public init(secretName: String = "PIN") {
+	public init(secretName: String = "PIN", rejected: BankMessage? = nil) {
 		self.secretName = secretName
+		self.rejected = rejected
 	}
 }
 
