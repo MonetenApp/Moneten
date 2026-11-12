@@ -7,7 +7,7 @@ Each file records one architecture decision with its context, the choice, and wh
 | [0001](0001-native-mac-app-in-swift.md) | Build a native Mac app in Swift and SwiftUI | Accepted |
 | [0002](0002-local-first-no-server.md) | Keep all data on the Mac, run no server for core features | Accepted |
 | [0003](0003-fints-through-hbci4swift.md) | Use HBCI4Swift for FinTS | Superseded by 0014 |
-| [0004](0004-moneymoney-compatible-extension-api.md) | Make the extension API compatible with MoneyMoney | Accepted |
+| [0004](0004-moneymoney-compatible-extension-api.md) | Make the extension API compatible with MoneyMoney | Partly superseded by 0015 |
 | [0005](0005-grdb-and-sqlcipher.md) | Store data in SQLite with GRDB and SQLCipher | Accepted |
 | [0006](0006-license-gpl-3.md) | License the app under GPL-3.0-or-later | Accepted |
 | [0007](0007-optional-finapi-subscription.md) | Offer finAPI as an optional subscription | Proposed |
@@ -18,5 +18,6 @@ Each file records one architecture decision with its context, the choice, and wh
 | [0012](0012-system-glass-for-window-chrome.md) | Keep the system materials of macOS for the window chrome | Accepted |
 | [0013](0013-name-the-app-moneten.md) | Name the app Moneten | Accepted |
 | [0014](0014-fints-through-hbci4java.md) | Use hbci4java for FinTS, in a helper process | Accepted |
+| [0015](0015-extension-program.md) | Ship extensions with a reviewed, signed catalog in v0.1 | Accepted |
 
 A decision with status Proposed waits on a prototype or an outside answer. Its file names what settles it.

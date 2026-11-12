@@ -1,0 +1,64 @@
+# 0015. Ship extensions with a reviewed, signed catalog in v0.1
+
+Status: Accepted
+
+This decision adds to [ADR 0004](0004-moneymoney-compatible-extension-api.md). It replaces the manifest rule of ADR 0004 and its last consequence about payment functions.
+
+## Context
+
+ADR 0004 made the extension API compatible with the MoneyMoney Web Banking API. It did not say how users get extensions, how the app decides which extensions to trust, or what the app does with the parts of the API that MoneyMoney does not document. The documents also disagreed. ADR 0004, the architecture, `SECURITY.md`, and #14 limited every extension to the hosts in its manifest. The web banking spec made the manifest optional and asked the user about each new host.
+
+The project cannot maintain a connection to every service. Community extensions can, if installing one is a click and the user can trust the source. Research on 12 November 2026 read the [Web Banking API page](https://moneymoney.app/api/webbanking/), the 105 extension files hosted on the [extensions page](https://moneymoney.app/extensions/), and three open source extensions. The research notes are not in the repository. The section names in brackets below, such as [A1], point into them. The two pages and the linked repositories are the public sources.
+
+- MoneyMoney lists 109 extensions by 74 authors. 101 of the 105 hosted files are signed. 82 of the 105 linked repositories that resolve have an OSI license, 79 of them MIT [§4].
+- Users download a file and copy it into the "Extensions" folder. The vendor reviews every new version by email before it is published. No page mentions automatic updates [§1.12, §4].
+- The API page documents no payment entry point. None of the 105 hosted files defines `SubmitPayment` or `FetchScheduledPayments`. Both exist in the runtime, because the unsigned [YAXI extension](https://github.com/yaxitech/moneymoney) defines and uses them [§1.9].
+- Signed, listed extensions use names that the API page does not document: `connection.redirects` and the fifth return value of `connection:get` (Umweltbank Depot), `MM.derdecode` (Coinbase), and `MM.base64urldecode` behind a type check (MLP Versicherungen) [§1.10].
+- The signed Tchibo extension runs `local open = io.open` when it loads. The Amazon extensions test whether `io.open` exists, with the comment "signed version has no io.open functions". MoneyMoney therefore appears to keep an `io` table without `open` for signed files and the full library for unsigned files. Nobody has checked this in a running MoneyMoney [A1, B1].
+- The API page does not publish the address that ends a browser login. Extensions use `https://service.moneymoney-app.com/1/redirect` and `moneymoney-app://oauth` [A3].
+- YAXI, the compatibility target of #42, is neither signed nor listed. It stops at load in the specified runtime on `require("io")`, and later on `io.open("/dev/urandom")` [B6].
+
+## Decision
+
+The maintainer made these decisions in two rounds of questions on 12 November 2026. The numbers are the ones from those rounds.
+
+1. **Scope.** FinTS stays built in ([ADR 0014](0014-fints-through-hbci4java.md)). Extensions cover every service without FinTS, and banks whose FinTS access is missing, changes often, uses unusual TAN methods, or leaves out special accounts. The core team cannot maintain each of these services, and the community can.
+2. **API.** The API stays compatible with the published Web Banking API, as ADR 0004 decided. Moneten adds a manifest and the API version `MM.apiVersion`, so that authors write a script once for both apps.
+3. **Trust.** A click installs only from the reviewed catalog. A file that the user installs by hand or with "Install from File..." runs after a warning and stays marked "Unverified". There is no setting that turns a signature check on or off. Self-written extensions stay usable, and no global switch turns every check off.
+4. **License.** A catalog package has readable source code under a GPL-compatible license from an allowlist, as [ADR 0006](0006-license-gpl-3.md) requires. Reviewers can only judge code they can read.
+5. **Timing.** The catalog ships in v0.1 instead of v0.3. A click from a safe source is what makes extensions worth having. Copying files by hand is what users of MoneyMoney already do.
+6. **Read only.** Extensions only read. [ADR 0008](0008-payments-only-through-licensed-channels.md) stays in force. The project looks at payments through extensions again after the catalog and its review process have proven themselves. This is a trigger, not planned work. This decision answers #43.
+7. **Manifest.** A catalog package must have a manifest. It lists the hosts as exact names without wildcards, the labels of the login fields for each service, the kinds of data (balances, transactions, securities, statements), the lowest API version, and the license. The app lets a catalog package contact only those hosts, and checks the target of every HTTP redirect. An extension installed from a file may omit the manifest, and then the app asks the user before each new host. The maintainer asked for few hurdles for authors and clear rules. A MoneyMoney file has no manifest, because MoneyMoney keeps the login labels in its own database [A9].
+8. **Updates.** An update that adds no host and no login field installs by itself. An update that adds either waits for the user. The app shows what is new, and the old version keeps running until the user confirms. New hosts and new login fields are the changes that could send data somewhere else.
+9. **Review.** The checks of the catalog repository run on every pull request. They fail on a forbidden function, a host that the manifest does not list, a failed replay of the recording with `ext test`, a license outside the allowlist, obfuscated code, and personal data in the recording. Then one maintainer approves each new package and each update. A new host needs an explicit sign-off. The maintainer wants about 90 percent of the review automated and expects few packages at a time.
+10. **Signing.** One Ed25519 signature covers an index that lists the SHA-256 digest of every file. Each index has a version number that only grows. The private key is a secret in a protected GitHub environment of the catalog repository, and each signing run waits for the maintainer's approval. The app ships two public keys, current and next, and accepts an index signed with either. The next key replaces the current one without a gap. A prototype showed that a signature from `openssl pkeyutl -sign -rawin` verifies in CryptoKit and that a changed byte fails.
+11. **Places.** This decision uses the facts of 12 November 2026. The project lives in the GitHub organization [MonetenApp](https://github.com/MonetenApp). The app repository `MonetenApp/Moneten` is public. The catalog is the public repository `MonetenApp/moneten-extensions`, and its tooling is MIT licensed. The signed index and the package files are served from `extensions.monetenapp.com`, the only host that the app contacts for the catalog. The `ext` tool stays in the app repository, because it runs the same host code as the app. The author guide lives in the catalog repository, next to the packages, the manifest schema, and the checks that authors submit to. The checks of the catalog repository build `ext` from the app repository at a pinned commit, so nobody uploads a binary.
+12. **Install link.** A `moneten://` link that opens a catalog extension in the app from a website waits for version 1.0.
+13. **Unmaintained packages.** A package that fails in a way others can reproduce, with no answer from its author for 90 days, is marked unmaintained. It keeps running with a note, and anyone may adopt it with a pull request. A package with a security problem is blocked at once and stops running. A withdrawn package stops running. The maintainer chose 90 days to give authors time.
+14. **Packages.** A package is a folder with `manifest.json`, one or more Lua files, and a README. The app installs, updates, and removes it as one unit. A single `.lua` file stays allowed, because every MoneyMoney extension is one.
+15. **Extensions window.** The menu item "Extensions" opens a window that lists the installed extensions and the extensions that can be installed, each with its description. The list moves out of the settings. Search, categories, and other catalog features are decided later.
+16. **Files.** `io` is a table without `open` and without any other function that touches a file, for every extension. `os` keeps only `time`, `date`, `clock`, and `difftime`. `debug`, `package`, `load`, `loadstring`, `dofile`, `loadfile`, `require`, and `string.dump` are absent. With `io` set to `nil`, Tchibo fails at load. With a table without `open`, Tchibo loads and the Amazon check takes its safe branch [A1].
+17. **Compatibility targets.** Issue #42 tests three signed, listed, MIT-licensed extensions instead of YAXI. [Permanent TSB Business](https://github.com/janmuennich/MoneyMoney-Permanent-TSB-Business) logs in with an HTML form. Monzo 0.91, the copy signed on the extensions page of the [Monzo extension](https://github.com/diederich/moneymoney-monzo), uses OAuth and JSON. [Amazon Bestellungen](https://github.com/rosch100/Amazon-MoneyMoney) uses a captcha and the `io.open` test. YAXI stays an option for later, because it needs exceptions to the runtime [B6].
+18. **Redirect addresses.** The login window treats `https://service.moneymoney-app.com/1/redirect`, `moneymoney-app://oauth`, and `moneten://oauth` as final. It never contacts them. It reads `code`, `access_token`, `auth_code`, `tokenid`, or a similar parameter, as the API page allows [A3, B4]. Without a defined address, no OAuth extension can finish its login.
+19. **Undocumented names.** The app offers every undocumented name that a signed, listed extension uses: `MM.derdecode`, `MM.base64urldecode`, `connection.redirects`, and the fifth return value of `connection:get`. A call of any other name that the app does not offer stops the script with an error that names the function. A read of such a name gives `nil`, so a type check in a script still works. A script in the app repository checks the hosted files for names that the app is missing. A silent no-op would turn a missing feature into wrong data.
+20. **Correction.** ADR 0004 says "Payment functions of the MoneyMoney API are not supported." The published API has no payment functions [§1.9]. The sentence that applies is "Undocumented payment functions such as `SubmitPayment` and `FetchScheduledPayments` are not supported."
+
+## Consequences
+
+- ADR 0004 is partly superseded. Its compatible API and its three additions stay. Decision 7 replaces its manifest rule. Decision 20 replaces its payment sentence, so undocumented payment functions are not supported.
+- The specs `add-web-banking-extensions`, `add-extension-catalog`, `add-extension-developer-tools`, and `add-import-export-extensions` follow these decisions. `add-extension-catalog` moves to v0.1.
+- A new module `ExtensionCatalog` verifies the index, installs packages, and plans updates.
+- A user sets up an account with an extension through the add account assistant of `add-account-setup`, which is part 2 of #13 and is not built yet. Until it is, an installed extension cannot be set up in the app, so the Extensions window waits for it.
+- The maintainer approves every package and every signing run. A block for a security problem reaches users only after that approval and the next index download, which happens at start and once a day.
+- The catalog can only take extensions whose authors chose a license. About 21 percent of the listed extensions have none [§4].
+- The forbidden functions in the catalog checks and in the runtime must stay the same list.
+
+## Alternatives
+
+- **A signature check setting, as in the first catalog spec.** It blocks every file outside the catalog until the user turns all checks off. A file install marked "Unverified" keeps self-written extensions usable without that switch.
+- **A signature on each script, as MoneyMoney does.** One signature over an index covers packages of several files, protects against an old index with its version number, and needs one key operation per catalog change.
+- **`io` set to `nil`.** Tchibo would fail at load.
+- **A silent no-op for unknown functions.** A script would return wrong data instead of an error that names the gap.
+- **YAXI as the target of #42.** It is unsigned and unlisted, and it needs `require`, `load`, and `io.open`.
+- **A pinned `ext` binary uploaded for the catalog checks.** It was the plan while the app repository was private. The public source makes it unnecessary.
+- **The `moneten://` link in v0.1.** The maintainer moved it to 1.0.
