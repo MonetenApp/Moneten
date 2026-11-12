@@ -56,6 +56,8 @@ final class AccountSetup {
 
 	var loginName = ""
 	var pin = ""
+	/// "Save PIN", off until the user turns it on. The PIN is saved when the setup finishes, after the bank accepted it.
+	var savePIN = false
 	private(set) var loginError: String?
 	private(set) var isLoggingIn = false
 
@@ -188,7 +190,7 @@ final class AccountSetup {
 		let chosen = candidates.filter { selected.contains($0.id) && !$0.isPresent }.map(\.account)
 		guard !chosen.isEmpty else { return }
 		do {
-			try model.add(access, state: state, accounts: chosen, listed: candidates.map(\.account), connecting: connecting, pin: Secret(pin))
+			try model.add(access, state: state, accounts: chosen, listed: candidates.map(\.account), connecting: connecting, pin: Secret(pin), savePIN: savePIN)
 		} catch {
 			saveError = "Could not add the accounts. \(String(describing: error))"
 			return
@@ -276,6 +278,8 @@ struct AccountSetupSheet: View {
 			TextField("User ID", text: $setup.loginName, prompt: Text("Required"))
 			SecureField("PIN", text: $setup.pin, prompt: Text("Required"))
 				.textContentType(nil)
+			Toggle("Save PIN", isOn: $setup.savePIN)
+				.toggleStyle(.checkbox)
 		}
 		.disabled(setup.isLoggingIn)
 		if let error = setup.loginError {

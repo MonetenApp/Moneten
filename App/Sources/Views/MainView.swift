@@ -46,8 +46,8 @@ struct MainView: View {
 		.sheet(item: $model.sheet) { kind in
 			SheetView(kind: kind).environment(model)
 				// A TAN dialog opens on top of the open sheet, for example during the login of "Add Account".
-				.sheet(item: Binding(get: { model.sync.broker.current }, set: { _ in })) { prompt in
-					SyncDialog(broker: model.sync.broker, prompt: prompt)
+				.sheet(item: Binding(get: { model.sync.broker.sheet }, set: { _ in })) { sheet in
+					SyncDialog(broker: model.sync.broker, sheet: sheet)
 						.interactiveDismissDisabled()
 				}
 		}

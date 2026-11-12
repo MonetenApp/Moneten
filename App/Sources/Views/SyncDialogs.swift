@@ -3,17 +3,38 @@ import Domain
 import Sync
 import SwiftUI
 
+/// What the broker shows: a request, or the progress after the user chose a TAN method or medium.
+enum SyncSheet: Identifiable {
+	case prompt(Prompt)
+	case requesting(ChallengeRequest)
+
+	var id: UUID {
+		switch self {
+		case let .prompt(prompt): prompt.id
+		case let .requesting(requesting): requesting.id
+		}
+	}
+}
+
+extension SessionBroker {
+	var sheet: SyncSheet? { current.map(SyncSheet.prompt) ?? requesting.map(SyncSheet.requesting) }
+}
+
 /// The dialog for the request on screen: the PIN sheet, "Two-Factor Authentication", or the question about a new host.
 /// The broker decides when it opens and closes, so the buttons answer the broker and never dismiss.
 struct SyncDialog: View {
 	let broker: SessionBroker
-	let prompt: Prompt
+	let sheet: SyncSheet
 
 	var body: some View {
-		switch prompt.request {
-		case let .pin(request): PINSheet(broker: broker, prompt: prompt, request: request)
-		case let .secondFactor(request): TwoFactorSheet(broker: broker, prompt: prompt, request: request)
-		case let .allowHost(request): HostPermissionDialog(broker: broker, prompt: prompt, request: request)
+		switch sheet {
+		case let .prompt(prompt):
+			switch prompt.request {
+			case let .pin(request): PINSheet(broker: broker, prompt: prompt, request: request)
+			case let .secondFactor(request): TwoFactorSheet(broker: broker, prompt: prompt, request: request)
+			case let .allowHost(request): HostPermissionDialog(broker: broker, prompt: prompt, request: request)
+			}
+		case let .requesting(requesting): ChallengeProgressSheet(broker: broker, requesting: requesting)
 		}
 	}
 }
@@ -21,6 +42,7 @@ struct SyncDialog: View {
 /// The layout of `SheetFrame`, with buttons that do not dismiss the sheet.
 private struct DialogFrame<Content: View, Buttons: View>: View {
 	var title: String
+	var width: CGFloat = 460
 	@ViewBuilder var content: Content
 	@ViewBuilder var buttons: Buttons
 
@@ -36,17 +58,21 @@ private struct DialogFrame<Content: View, Buttons: View>: View {
 				buttons
 			}
 		}
-		.frame(width: 460)
+		.frame(width: width)
 	}
 }
 
 /// Asks for the PIN of an access. The field hides the characters and is not offered to the password manager.
 /// After the bank rejected a PIN, the sheet opens again with an empty field, the message of the bank, and the warning.
+/// "OK" checks the PIN against the rules of the bank first and names the broken rule. Saving is off
+/// each time the sheet appears, and the broker saves the PIN only after the bank accepted it.
 struct PINSheet: View {
 	let broker: SessionBroker
 	let prompt: Prompt
 	let request: PINRequest
 	@State private var pin = ""
+	@State private var save = false
+	@State private var brokenRule: String?
 
 	var body: some View {
 		DialogFrame(title: "Enter \(request.secretName)") {
@@ -65,6 +91,15 @@ struct PINSheet: View {
 			Section {
 				SecureField(request.secretName, text: $pin, prompt: Text("Required"))
 					.textContentType(nil)
+					.onChange(of: pin) { brokenRule = nil }
+				Toggle("Save \(request.secretName)", isOn: $save)
+					.toggleStyle(.checkbox)
+			} footer: {
+				if let brokenRule {
+					Label(brokenRule, systemImage: "exclamationmark.triangle")
+						.foregroundStyle(.orange)
+						.fixedSize(horizontal: false, vertical: true)
+				}
 			}
 		} buttons: {
 			Button("Cancel", role: .cancel) { broker.cancel(prompt.id) }.keyboardShortcut(.cancelAction)
@@ -74,7 +109,11 @@ struct PINSheet: View {
 
 	private func confirm() {
 		guard !pin.isEmpty else { return }
-		broker.answer(.pin(Secret(pin)), to: prompt.id)
+		if let broken = request.rules.check(pin, secretName: request.secretName) {
+			brokenRule = broken
+			return
+		}
+		broker.answer(.pin(Secret(pin), save: save), to: prompt.id)
 	}
 }
 
@@ -117,15 +156,27 @@ struct TwoFactorSheet: View {
 	@State private var method: TANMethod.ID?
 	@State private var medium = ""
 	@State private var confirmCancel = false
+	@State private var imageEnlarged = false
+	@State private var flickerSize = FlickerCodeSize()
+
+	/// The dialog grows with an enlarged image or flicker code.
+	private var width: CGFloat {
+		switch request.challenge {
+		case .enterTAN(_, .some), .approveInApp(_, _, .some, _): imageEnlarged ? 560 : 460
+		case .flickerCode: max(460, flickerSize.width + 160)
+		default: 460
+		}
+	}
 
 	var body: some View {
-		DialogFrame(title: "Two-Factor Authentication") {
+		DialogFrame(title: "Two-Factor Authentication", width: width) {
 			Section {
 				Text(TwoFactorText.reason(request, bank: prompt.access.bankName))
 				LabeledContent("User ID", value: prompt.access.loginName)
 				if request.loginOnly {
 					Text("This TAN is used only for the login and not for the order.").foregroundStyle(.secondary)
 				}
+				if !request.methods.isEmpty { methodMenu }
 			}
 			challenge
 		} buttons: {
@@ -148,6 +199,16 @@ struct TwoFactorSheet: View {
 			Button("No", role: .cancel) {}
 		} message: {
 			Text("Cancel the authorization in the app of the bank first. Otherwise the bank may still carry it out.")
+		}
+	}
+
+	/// The TAN method of the challenge. Choosing another one ends this challenge and requests a new one.
+	private var methodMenu: some View {
+		Picker("TAN method", selection: Binding(get: { request.method }, set: { chosen in
+			if let chosen, chosen != request.method { broker.answer(.tanMethod(chosen), to: prompt.id) }
+		})) {
+			if !request.methods.contains(where: { $0.id == request.method }) { Text("None").tag(TANMethod.ID?.none) }
+			ForEach(request.methods) { Text($0.name).tag(Optional($0.id)) }
 		}
 	}
 
@@ -189,19 +250,20 @@ struct TwoFactorSheet: View {
 		case let .enterTAN(text, image):
 			Section {
 				ChallengeText(text: text)
-				if let image { ChallengeImageView(image: image) }
+				if let image { ChallengeImageView(image: image, enlarged: $imageEnlarged) }
 				tanField
 			}
 		case let .flickerCode(text, code):
 			Section {
 				ChallengeText(text: text)
-				FlickerView(code: code, running: input.isEmpty)
+				FlickerView(code: code, running: input.isEmpty, width: flickerSize.width)
+				FlickerSizeControls(size: flickerSize)
 				tanField
 			}
 		case let .approveInApp(text, app, image, step):
 			Section {
 				ChallengeText(text: text)
-				if let image { ChallengeImageView(image: image) }
+				if let image { ChallengeImageView(image: image, enlarged: $imageEnlarged) }
 				if let step { Text("Code \(step.number) of \(step.of)").foregroundStyle(.secondary) }
 				Waiting(text: app.map { "Waiting for the approval in “\($0)”..." } ?? "Waiting for the approval in the app of the bank...")
 			}
@@ -260,19 +322,82 @@ private struct ChallengeText: View {
 	}
 }
 
+/// A photoTAN image or a QR code. It can be enlarged when the reader does not recognize it, and the
+/// dialog grows with it.
 private struct ChallengeImageView: View {
 	let image: ChallengeImage
+	@Binding var enlarged: Bool
 
 	var body: some View {
 		if let picture = NSImage(data: image.data) {
-			Image(nsImage: picture)
-				.resizable()
-				.interpolation(.none)
-				.scaledToFit()
-				.frame(width: 220, height: 220)
-				.frame(maxWidth: .infinity)
+			let side: CGFloat = enlarged ? 400 : 220
+			VStack(spacing: 8) {
+				Image(nsImage: picture)
+					.resizable()
+					.interpolation(.none)
+					.scaledToFit()
+					.frame(width: side, height: side)
+				Button(enlarged ? "Reduce" : "Enlarge", systemImage: enlarged ? "minus.magnifyingglass" : "plus.magnifyingglass") { enlarged.toggle() }
+					.keyboardShortcut(enlarged ? "-" : "+", modifiers: .command)
+					.help(enlarged ? "Show the code smaller" : "Show the code larger, for a reader that does not recognize it")
+			}
+			.frame(maxWidth: .infinity)
 		} else {
 			Text("The bank sent an image that cannot be shown.").foregroundStyle(.secondary)
+		}
+	}
+}
+
+/// Makes the flicker code smaller or larger, so that it fits the TAN generator. The size is kept for the
+/// next flicker code. The first enlargement shows the warning about epileptic seizures.
+private struct FlickerSizeControls: View {
+	let size: FlickerCodeSize
+
+	var body: some View {
+		HStack(spacing: 8) {
+			Button("Smaller", systemImage: "minus.magnifyingglass") { size.shrink() }
+				.keyboardShortcut("-", modifiers: .command)
+				.disabled(!size.canShrink)
+			Button("Larger", systemImage: "plus.magnifyingglass") { size.enlarge() }
+				.keyboardShortcut("+", modifiers: .command)
+				.disabled(!size.canEnlarge)
+		}
+		.labelStyle(.iconOnly)
+		.help("Fit the flicker code to the TAN generator")
+		.frame(maxWidth: .infinity)
+		.alert("Flicker codes might cause epileptic seizures.", isPresented: Binding(get: { size.showsWarning }, set: { if !$0 { size.decline() } })) {
+			Button("Continue") { size.agree() }
+			Button("Cancel", role: .cancel) { size.decline() }
+		} message: {
+			Text("Do you want to enlarge the flicker code?")
+		}
+	}
+}
+
+/// The dialog after the user chose a TAN method or medium, until the bank sends the next request.
+struct ChallengeProgressSheet: View {
+	let broker: SessionBroker
+	let requesting: ChallengeRequest
+
+	var body: some View {
+		DialogFrame(title: "Two-Factor Authentication") {
+			Section {
+				LabeledContent("Bank", value: requesting.access.bankName)
+				LabeledContent("User ID", value: requesting.access.loginName)
+				Waiting(text: Self.text(requesting.progress))
+			}
+		} buttons: {
+			Button("Cancel", role: .cancel) { broker.cancelRequest() }.keyboardShortcut(.cancelAction)
+		}
+	}
+
+	static func text(_ progress: ChallengeProgress) -> String {
+		switch progress {
+		case .tanMedia: "Getting list of TAN media..."
+		case .challenge(.smsCode): "Requesting the SMS code..."
+		case .challenge(.pushNotification): "Requesting the push notification..."
+		case .challenge(.qrCode): "Requesting the QR code..."
+		case .challenge(.tan): "Requesting the challenge of the bank..."
 		}
 	}
 }
@@ -294,6 +419,7 @@ private struct Waiting: View {
 struct FlickerView: View {
 	let code: FlickerCode
 	var running: Bool
+	var width: CGFloat = 240
 	@State private var frame = 0
 
 	var body: some View {
@@ -312,7 +438,7 @@ struct FlickerView: View {
 				gc.fill(mark, with: .color(.white))
 			}
 		}
-		.frame(width: 240, height: 110)
+		.frame(width: width, height: width * 110 / 240)
 		.frame(maxWidth: .infinity)
 		.accessibilityLabel("Flicker code")
 		.task(id: running) {
