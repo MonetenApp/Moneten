@@ -61,11 +61,17 @@ When the rules of several categories match a transaction, the first category in 
 | `isPending` | `Bool` | Not booked yet. Pending transactions count toward neither the balance nor the category sums in the sidebar. |
 | `categoryID` | `UUID?` | `nil` means "Uncategorized". |
 | `categorizedBy` | `Categorization` | `manual`, `rule`, or `none`. A rule never replaces a manual category. Only "Apply to all transactions." for a changed rule does. |
-| `isNew` | `Bool` | Set on import, cleared when the user has seen the transaction. |
-| `sourceID` | `String?` | The identifier in the program the transaction came from, for example `moneymoney:<id>`. A second migration skips known identifiers. |
+| `isNew` | `Bool` | Set when a merge adds the transaction, cleared when the user opens its account or checks it. |
+| `needsReview` | `Bool` | Set by a merge when more than one row could be the booked version of a pending row. Cleared when the user checks the row. A merge never drops a pending row that has it. |
+| `isFetched` | `Bool` | A refresh delivered or matched the row. A file import does not bring back a deleted row that has it. |
+| `sourceID` | `String?` | The identifier that the source gave, for example `moneymoney:<id>` or the ID of an extension. A second migration skips known identifiers, and a merge matches a row by it first. |
 | `createdAt` | `Date` | |
 
-A file import has no stable identifier per row. `ImportMatching` treats two transactions as the same when the day, the amount, the name, and the purpose match. It counts equal rows, so two identical rows in one file add two transactions.
+Refreshes and file imports go through `reconcile`, which recognizes a stored row by its source ID or by a fingerprint of booking day, amount, counterparty IBAN, end-to-end reference, and purpose. [Architecture](architecture.md#transactions-need-an-identity-the-bank-does-not-give) has the rules.
+
+| Type | Fields | Rules |
+|---|---|---|
+| `DeletedTransaction` | `accountID`, `sourceID?`, `bookingDate`, `amountMinor`, `isPending`, `purpose`, `counterpartyIBAN?`, `endToEndReference?`, `wasFetched`, `deletedAt` | One record for each transaction that the user deleted, with the raw fields of its fingerprint. A refresh does not add the transaction again. A file adds it again only when `wasFetched` is false. The records go with their account. |
 
 ## Tables
 
@@ -78,8 +84,9 @@ A file import has no stable identifier per row. `ImportMatching` treats two tran
 | `category` | `Category` |
 | `bankTransaction` | `Transaction` |
 | `portfolioValue` | `PortfolioValue`, with the primary key `accountID` and `day` |
+| `deletedTransaction` | `DeletedTransaction` |
 
-Migration `v1` creates the tables. It also creates the table `setting`, which no code uses, because app settings live in `UserDefaults`. Migration `v2` drops it. Migration `v4` adds `portfolioValue`, whose rows go with their account. Migration `v5` adds `account.color`, the `#RRGGBB` color of the account's icon.
+Migration `v1` creates the tables. It also creates the table `setting`, which no code uses, because app settings live in `UserDefaults`. Migration `v2` drops it. Migration `v4` adds `portfolioValue`, whose rows go with their account. Migration `v5` adds `account.color`, the `#RRGGBB` color of the account's icon. Migration `v6` adds `bankTransaction.needsReview` and `bankTransaction.isFetched`, both false for existing rows, and the table `deletedTransaction`. It rewrites no row.
 
 ## Types that the specs add later
 
@@ -87,7 +94,6 @@ Migration `v1` creates the tables. It also creates the table `setting`, which no
 |---|---|---|
 | `Connection`, `ConnectionSource` | v0.1, FinTS | A bank access: FinTS user, extension, or finAPI (v0.3). An account without a connection stays an offline account. |
 | Saved PIN | v0.1, FinTS | A PIN saved inside the encrypted database, only when the user turns saving on for a connection. |
-| Transaction fingerprint | v0.1, FinTS | Identity for bank data without a stable ID, and the match of a pending transaction to its booked version. See [architecture](architecture.md#transactions-need-an-identity-the-bank-does-not-give). |
 | `Split` | v0.1 | Parts of a transaction with their own amounts and categories. The parts add up to the transaction amount. |
 | `Security`, `Holding` | v0.2 | Securities accounts with quantity, price, market value, and purchase value. |
 | `PaymentOrder`, `PaymentState` | v0.2 | SEPA transfers with the payee check. See [architecture](architecture.md#payments-are-a-separate-state-machine). |
