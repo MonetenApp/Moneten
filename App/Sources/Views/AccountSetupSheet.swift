@@ -160,9 +160,7 @@ final class AccountSetup {
 				state = list.state
 				notices = list.notices.map(\.text)
 				candidates = list.accounts.map { listed in
-					let account = Account(groupID: groupID, position: 0, name: listed.productName ?? listed.kind.title, kind: listed.kind, source: .bank,
-						currency: listed.currency, iban: listed.iban, bic: listed.bic ?? bank.bic, accountNumber: listed.number, bankCode: code, bankName: bank.name,
-						owner: listed.owner, accessID: access.id, remoteID: listed.remoteID)
+					let account = listed.account(access: access, bank: bank, group: groupID)
 					return Candidate(account: account, match: model.ledger.setupMatch(for: account))
 				}
 				selected = Set(candidates.filter { !$0.isPresent }.map(\.id))
