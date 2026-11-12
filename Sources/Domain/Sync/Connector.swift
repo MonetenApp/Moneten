@@ -100,15 +100,34 @@ public enum AccountOutcome: Sendable {
 /// What a connector fetched for one account.
 public struct RefreshResult: Sendable {
 	public let balance: Money?
-	/// Booking and value dates are calendar days. A connector converts the dates of the bank
-	/// without a time zone, so a booking on 9 November stays on 9 November.
-	public let transactions: [Transaction]
+	/// When the balance applied, as the bank reported it. Nil when the bank said nothing. The merge
+	/// then takes the time of the refresh.
+	public let balanceDate: Date?
+	/// Nil when the connector fetched only the balance. A merge then removes no pending transaction.
+	public let transactions: FetchedTransactions?
 	/// The bank has no transactions before the first one returned.
 	public let isComplete: Bool
 
-	public init(balance: Money?, transactions: [Transaction], isComplete: Bool = false) {
+	public init(balance: Money?, balanceDate: Date? = nil, transactions: FetchedTransactions?, isComplete: Bool = false) {
 		self.balance = balance
+		self.balanceDate = balanceDate
 		self.transactions = transactions
 		self.isComplete = isComplete
+	}
+}
+
+/// The transactions of one account as the bank answered, and the days that the answer covers.
+public struct FetchedTransactions: Sendable {
+	/// Booking and value dates are calendar days. A connector converts the dates of the bank
+	/// without a time zone, so a booking on 9 November stays on 9 November.
+	public let rows: [Transaction]
+	/// The first day that the answer covers, which can be later than the day the app asked for. Nil
+	/// when the answer holds everything that the bank keeps. A stored pending transaction of a covered
+	/// day that the answer lacks was dropped by the bank.
+	public let from: Day?
+
+	public init(rows: [Transaction], from: Day?) {
+		self.rows = rows
+		self.from = from
 	}
 }

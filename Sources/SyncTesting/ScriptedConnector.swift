@@ -12,7 +12,7 @@ public struct ScriptedConnector: BankConnector {
 		case approve(UserRequest, after: Duration)
 		case progress(SyncProgress)
 		case wait(Duration)
-		case fetched(UUID, RefreshResult = RefreshResult(balance: nil, transactions: []))
+		case fetched(UUID, RefreshResult = RefreshResult(balance: nil, transactions: nil))
 		case failAccount(UUID, SyncFailure)
 		/// Fails the whole access.
 		case fail(SyncFailure)

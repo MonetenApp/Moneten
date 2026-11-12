@@ -210,13 +210,18 @@ public struct Transaction: Identifiable, Hashable, Sendable, Codable {
 	public var categorizedBy: Categorization
 	/// True from the moment the transaction arrives until the user has seen it.
 	public var isNew: Bool
+	/// Set by a merge when more than one row could be the booked version of a pending row. The list
+	/// shows a mark until the user checks or deletes the row. A merge never drops a pending row that has it.
+	public var needsReview: Bool
+	/// A refresh delivered this row. Once the user deletes it, a file import does not add it again.
+	public var isFetched: Bool
 	public var sourceID: String?
 	public var createdAt: Date
 
 	public init(id: UUID = UUID(), accountID: UUID, bookingDate: Day, valueDate: Day? = nil, amountMinor: Int64, currency: String = "EUR", name: String, purpose: String = "",
 		counterpartyIBAN: String? = nil, counterpartyBIC: String? = nil, bookingText: String? = nil, endToEndReference: String? = nil, mandateReference: String? = nil,
 		creditorID: String? = nil, comment: String? = nil, isChecked: Bool = false, isPending: Bool = false, categoryID: UUID? = nil, categorizedBy: Categorization = .none,
-		isNew: Bool = false, sourceID: String? = nil, createdAt: Date = Date()) {
+		isNew: Bool = false, needsReview: Bool = false, isFetched: Bool = false, sourceID: String? = nil, createdAt: Date = Date()) {
 		self.id = id
 		self.accountID = accountID
 		self.bookingDate = bookingDate
@@ -237,9 +242,19 @@ public struct Transaction: Identifiable, Hashable, Sendable, Codable {
 		self.categoryID = categoryID
 		self.categorizedBy = categorizedBy
 		self.isNew = isNew
+		self.needsReview = needsReview
+		self.isFetched = isFetched
 		self.sourceID = sourceID
 		self.createdAt = createdAt
 	}
 
 	public var amount: Money { Money(minorUnits: amountMinor, currency: currency) }
+
+	/// The user checked the row: it is no longer new and needs no more review. "Mark All Transactions
+	/// as Checked" and a single checkmark both call it.
+	public mutating func markChecked() {
+		isChecked = true
+		isNew = false
+		needsReview = false
+	}
 }
