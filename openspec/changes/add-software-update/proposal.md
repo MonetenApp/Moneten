@@ -9,6 +9,7 @@ Banks change their servers often, so a banking app that is a few months old stop
 - The app is signed and notarized, so macOS opens it without a security warning.
 - "Check for Updates..." looks for a new version. With the setting "Show notification about new versions of Moneten", the app also looks on its own once a day.
 - An update window shows the new version and its release notes, with "Install" and "Remind Me Later".
+- The release notes in the update window are the same text as on the release page. After skipped versions, the window shows the notes of every version since the installed one.
 - The app downloads the update, checks its signature, installs it, and restarts.
 - Each failure has its own message and leaves the running version intact.
 - "Participate in beta tests and display pre-release versions" also offers pre-release versions.
@@ -29,7 +30,7 @@ None.
 
 - Milestone: v0.1
 - Issues: #25
-- Modules: `App` owns the update commands, the update window, and the settings. The release pipeline in CI signs and notarizes the app and publishes the update feed.
+- Modules: `App` owns the update commands, the update window, and the settings. `Domain` chooses the release notes that the window shows. The release pipeline in CI signs and notarizes the app, writes the release notes from the changelog file of the repository, and publishes the update feed.
 - Depends on the change `add-app-settings` for the two settings on the "General" tab.
 - Depends on the change `add-encrypted-database`, which upgrades the database after an update.
 - Decisions: [ADR 0002](../../../docs/decisions/0002-local-first-no-server.md), [ADR 0006](../../../docs/decisions/0006-license-gpl-3.md).
@@ -52,6 +53,9 @@ None.
 ### Decided for Moneten
 
 - Updates and data files come from the public releases of the project on GitHub. There is no vendor service.
+- The release notes are written once, in the changelog file of the repository. A pull request with a change that users notice adds its line there. The release page and the update window show the same text.
+- After skipped versions, the update window shows the notes of every version since the installed one, newest first. Whether MoneyMoney does this was not observed.
+- The update window has no "Skip This Version" button, as in the observed window.
 - The update request sends the version of the app, the version of macOS, and the processor type. It sends no identifier of the user or of the installation.
 - With the notification setting off, the app makes no automatic request for a new version. The manual command still works. Whether MoneyMoney still contacts its service with the setting off was not observed.
 - The app does not install an update while a bank dialog or a payment is in progress.

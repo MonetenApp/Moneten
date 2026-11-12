@@ -65,6 +65,46 @@ The app SHALL announce a new version in a window that names the new version and 
 - **THEN** the window says that the release notes could not be displayed
 - **AND** "Install" still works
 
+### Requirement: Release notes match the release page
+
+The app SHALL show in the update window the same release notes that the release page of the project shows for that version, headed by the version number and the release date.
+
+#### Scenario: Same entries as the release page
+
+- **GIVEN** the release page of version 0.1.3 from 2026-11-20 lists "Larger display of photoTAN images" and "Fixed the sum of a split transaction"
+- **WHEN** the update window offers version 0.1.3
+- **THEN** the release notes start with the heading for version 0.1.3 and the date 2026-11-20
+- **AND** they list "Larger display of photoTAN images" and "Fixed the sum of a split transaction"
+
+#### Scenario: Link in an entry
+
+- **GIVEN** an entry of version 0.1.3 links "Creating transfers" to a help page
+- **WHEN** the user clicks "Creating transfers" in the update window
+- **THEN** the help page opens in the default browser
+
+### Requirement: Release notes of skipped versions
+
+The app SHALL show in the update window the release notes of every version that is newer than the installed version, up to the offered version, newest first. When the offered version is a stable version, the notes of pre-release versions are left out.
+
+#### Scenario: Two versions skipped
+
+- **GIVEN** version 0.1.1 is installed and versions 0.1.2 and 0.1.3 are published
+- **WHEN** the update window offers version 0.1.3
+- **THEN** the window shows the notes of version 0.1.3 and then those of version 0.1.2
+- **AND** the window shows no notes of version 0.1.1
+
+#### Scenario: Stable version after pre-releases
+
+- **GIVEN** version 0.1.3 is installed and versions 0.2.0-beta.1 and 0.2.0 are published
+- **WHEN** the update window offers version 0.2.0
+- **THEN** the window shows the notes of version 0.2.0 only
+
+#### Scenario: Pre-release offered
+
+- **GIVEN** version 0.1.3 is installed, the beta setting is on, and versions 0.2.0-beta.1 and 0.2.0-beta.2 are published
+- **WHEN** the update window offers version 0.2.0-beta.2
+- **THEN** the window shows the notes of version 0.2.0-beta.2 and then those of version 0.2.0-beta.1
+
 ### Requirement: Remind later
 
 The app SHALL close the update window without changes when the user chooses "Remind Me Later", and it SHALL offer the same version again at the next automatic check.
