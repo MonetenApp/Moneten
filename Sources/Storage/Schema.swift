@@ -22,6 +22,10 @@ extension PortfolioValue: FetchableRecord, PersistableRecord, TableRecord {
 	public static let databaseTableName = "portfolioValue"
 }
 
+extension DeletedTransaction: FetchableRecord, PersistableRecord, TableRecord {
+	public static let databaseTableName = "deletedTransaction"
+}
+
 enum Schema {
 	static var migrator: DatabaseMigrator {
 		var m = DatabaseMigrator()
@@ -127,6 +131,26 @@ enum Schema {
 		m.registerMigration("v5") { db in
 			try db.alter(table: "account") { t in
 				t.add(column: "color", .text)
+			}
+		}
+		// The merge of fetched and imported transactions (issue #7): the review mark, whether a refresh
+		// delivered a row, and what the user deleted, so that no refresh adds it again.
+		m.registerMigration("v6") { db in
+			try db.alter(table: "bankTransaction") { t in
+				t.add(column: "needsReview", .boolean).notNull().defaults(to: false)
+				t.add(column: "isFetched", .boolean).notNull().defaults(to: false)
+			}
+			try db.create(table: "deletedTransaction") { t in
+				t.column("accountID", .blob).notNull().indexed().references("account", onDelete: .cascade)
+				t.column("sourceID", .text)
+				t.column("bookingDate", .integer).notNull()
+				t.column("amountMinor", .integer).notNull()
+				t.column("isPending", .boolean).notNull()
+				t.column("purpose", .text).notNull()
+				t.column("counterpartyIBAN", .text)
+				t.column("endToEndReference", .text)
+				t.column("wasFetched", .boolean).notNull()
+				t.column("deletedAt", .datetime).notNull()
 			}
 		}
 		return m

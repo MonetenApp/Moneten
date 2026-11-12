@@ -1,6 +1,6 @@
 # Design
 
-This design covers issue #6: the protocols that every bank source implements, the requests that a source sends to the user, and the states of a refresh. The connectors themselves come later: FinTS in issue #13 ([ADR 0014](../../../docs/decisions/0014-fints-through-hbci4java.md)), extensions in issue #15, finAPI in issue #36. The merge of fetched transactions into the history is issue #7.
+This design covers issue #6: the protocols that every bank source implements, the requests that a source sends to the user, and the states of a refresh. The connectors themselves come later: FinTS in issue #13 ([ADR 0014](../../../docs/decisions/0014-fints-through-hbci4java.md)), extensions in issue #15, finAPI in issue #36. The last decision covers the merge of fetched transactions into the history, issue #7.
 
 ## Context
 
@@ -24,7 +24,7 @@ Goals:
 Non-goals:
 
 - Payments. `PaymentConnector`, Verification of Payee, and the payment states come with v0.2. The request types below leave room for them.
-- The merge of transactions (issue #7), the schedule of the automatic refresh (issue #40), and the FinTS helper process (issue #13).
+- The schedule of the automatic refresh (issue #40) and the FinTS helper process (issue #13).
 
 ## Decisions
 
@@ -72,7 +72,7 @@ A requested account without an outcome was not fetched because an earlier reques
 
 `AccessState` is opaque `Data` that only its connector reads, for example the passport data of hbci4java. `Storage` keeps it in the encrypted database, never in a file. It holds no PIN.
 
-`RefreshResult` holds the balance and the transactions of one account, and the flag "the bank has no older transactions". Holdings of a portfolio follow when a connector fetches them. Booking and value dates are `Day` values, calendar days without a time zone. The Swift probe printed FinTS dates one day early because it converted midnight in Germany to UTC.
+`RefreshResult` holds the balance of one account with the date the bank gave for it, the transactions, and the flag "the bank has no older transactions". The transactions are `FetchedTransactions?`: the rows and `from`, the first day that the answer covers, which can be later than the day the app asked for. Nil means the connector fetched only the balance. Holdings of a portfolio follow when a connector fetches them. Booking and value dates are `Day` values, calendar days without a time zone. The Swift probe printed FinTS dates one day early because it converted midnight in Germany to UTC.
 
 ### Requests to the user go through one asynchronous call
 
@@ -222,6 +222,20 @@ The connector keeps the passport data of hbci4java as its `AccessState`.
 
 `ScriptedConnector` plays a list of steps: ask and record the answer, ask and withdraw the request like an approval, report progress, wait, fetch an account, fail an account, and fail the access. Tests drive it through every state, through cancellation in each state, through an automatic refresh that meets a request, and through two accesses that ask at the same time. SwiftUI previews and the debug command `syncdemo` use it to show each dialog.
 
+### Fetched transactions reach the history through one merge (issue #7)
+
+The coordinator calls `deliver` once for each requested account that the connector fetched, on the main actor, and never for a failed, missing, or canceled one. The app merges there: `Store.merge(.refresh(result), into:)` and `Ledger.apply`. A file import calls the same merge with `.file(rows)`. When the write throws, the account fails with `SyncFailure.notSaved`, the access still finishes, and the PIN stays in memory, because the bank accepted the login. Nothing of the account changed, so the next refresh delivers the same rows again and clears the error.
+
+[architecture.md](../../../docs/architecture.md#transactions-need-an-identity-the-bank-does-not-give) describes the rules of `reconcile`. The spec leaves these points open, and MoneyMoney's behavior is not observed for any of them:
+
+- "Within a few days" is 7 calendar days between the booking days. The counterparty is the IBAN when both rows have one, otherwise the name, where the words of one name must lead the other.
+- A row marked for review shows an orange mark. Checking the row clears the mark and the new mark, and so does "Mark All Transactions as Checked". A pending row with the mark is never dropped. Once the user checks it, a later refresh may drop it.
+- Only rows that a merge adds are new. A booked row keeps the new mark of its pending row.
+- A pending row is dropped only when the answer covers its day, so a balance-only refresh or a short answer drops nothing.
+- Source IDs belong to one account. A known ID wins over any fingerprint, and a delivered ID never takes a stored row that has another ID.
+- A balance without a date from the bank gets the time of the merge. A balance in another currency than the account's is not stored.
+- A deleted row stays deleted for every refresh, also an enforced one. A file import brings it back only when no refresh had delivered it.
+
 ## Risks / Trade-offs
 
 - An opaque `AccessState` is simple, but the app can't show or repair what is inside. When a connector can't read its state, it starts fresh, and the bank registers a new system ID.
@@ -230,6 +244,9 @@ The connector keeps the passport data of hbci4java as its `AccessState`.
 - The model has no request for the PIN change that a bank can require ("Handle a PIN change that the bank requires"). The access fails with a `bank` message until that change is built.
 
 - The dialogs don't yet build every requirement of add-tan-handling. Changing the TAN method inside an open dialog needs an answer like `.changeTANMethod` and the list of methods in the request. The progress text while a challenge is requested ("Getting list of TAN media...") needs a progress value for the dialog. Both extend `Challenge`, `UserAnswer`, or `SyncProgress` when the FinTS connector of issue #13 can produce them. Tasks 4.1 to 4.6 list these and the other open parts.
+
+- A delivered ID never takes a stored row with another ID. A `moneymoney:` ID of the migration only says where a row came from, so the first answer of an extension with IDs links the migrated rows by their fingerprint and gives them its own IDs. A second MoneyMoney migration after that adds those rows again, because the migration knows only its own IDs.
+- A purpose that FinTS and a bank's CSV export render differently breaks the match between a refresh and a file. This can't be checked before the FinTS connector of issue #13 exists.
 
 ## Open questions
 

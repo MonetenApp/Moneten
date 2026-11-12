@@ -106,14 +106,33 @@ A request for the user can come during the fetch too: Consorsbank waives the sec
 
 ## Transactions need an identity the bank does not give
 
-Today the app gets transactions from the MoneyMoney migration and from files. A migrated transaction keeps its MoneyMoney ID in `sourceID`, so a second migration skips it. A file has no IDs, so `ImportMatching.split(imported:existing:)` treats two transactions as the same when the day, the amount, the name, and the purpose match. It counts equal rows, so two identical rows in one file add two transactions.
+A refresh, a file import, and later an extension deliver rows that the history may already hold. FinTS gives no stable ID: a second refresh returns the same rows again, and a pending card payment comes back booked with another date or text. All of them go through one pure function in `Domain`, `reconcile`, and one write, `Store.merge`:
 
-FinTS needs more. It returns transactions without a stable ID. A second sync returns the same rows again, and a pending card payment comes back later as a booked one with a different date or text. The plan is two pure functions in `Domain`:
+```swift
+public enum Delivery: Sendable {
+	case refresh(RefreshResult)   // balance, balance date, rows, and the first day the answer covers
+	case file([Transaction])      // never drops a pending row, carries no balance
+}
 
-- `fingerprint(_:)` builds an identity from the account, booking date, amount, counterparty IBAN, end-to-end reference, and normalized purpose text. Identical rows on the same day get an occurrence index.
-- `reconcile(existing:incoming:)` matches incoming rows to stored ones, one to one. It replaces a pending row with its booked version only when exactly one pending row matches the amount and counterparty within a few days. If two pending rows could match, for example two identical coffees on one day, it keeps all rows and marks them for review instead of guessing. Categories and notes move to the booked row.
+public func reconcile(_ delivery: Delivery, into account: Account, stored: [Transaction],
+	deleted: [DeletedTransaction], rules: Categorizer, now: Date) -> Reconciliation
+```
 
-If a source gives a stable ID, as some extensions do with `transactionId`, the app uses that ID and skips the fingerprint.
+`reconcile` gives each delivered row its partner by ordered evidence, strongest first. Each step takes rows out of the pool, so a weaker rule never takes a row that a stronger one claimed.
+
+1. The source ID, when the source gives one. A delivered row with an ID never takes a stored row that has another ID.
+2. The fingerprint of the requirement "Do not store a transaction twice": booking day, amount, and the purpose folded and without white space, with the counterparty IBAN and the end-to-end reference equal.
+3. The same fingerprint where the IBAN or the reference is missing on one side, because a file often lacks them where a refresh has them.
+
+The fingerprint is computed from the columns at every merge and never stored, so a change of the rule needs no migration. There is no occurrence index: rows with the same fingerprint count as a multiset, so two coffees on one day stay two rows, and the next refresh adds none.
+
+A booked row without a partner can replace a stored pending row. Two rows can pair when they have the same amount, booking days at most 7 days apart, and the same counterparty: the IBAN when both rows have one, otherwise the folded name, where the words of one name must lead the other ("REWE" matches "REWE SAGT DANKE 1234", "SPAR" does not match "SPARKASSE"). Rows that can pair form connected groups. A group of one pending and one booked row books: the stored row takes the bank fields and keeps its comment, checkmark, and hand-set category. In any larger group nothing moves, and every row gets `needsReview`. A pending row without a partner is dropped when the answer covers its day and it is not marked for review. Once the user checks a marked row, the mark is gone, and a later refresh may drop it. The user has seen the mark and chosen.
+
+A delete leaves a `DeletedTransaction` with the raw fields of the fingerprint and `wasFetched`. Deleted rows count like stored ones, so deleting one of two coffees leaves one. A refresh honors every deleted row. A file honors only those that a refresh had delivered, so a file brings back a row that only a file added, and never a fetched row that the user deleted. A deleted pending row does not block its booked version.
+
+`Store.merge` reads the account's live rows, deleted rows, and rules inside its write transaction, calls `reconcile`, and writes the result. `Ledger.apply` then takes over exactly what was written. `SyncCoordinator.deliver` calls the merge once per fetched account. A thrown error fails only that account with `SyncFailure.notSaved`, and the next refresh delivers the same rows again.
+
+The bank fields of a fetched row can't be edited yet. When the transaction list allows that, the original fields move to columns of their own, so that the fingerprint keeps the bank's version.
 
 ## External data is parsed once, at the edge
 

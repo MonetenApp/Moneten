@@ -1,6 +1,8 @@
 import AppKit
 import Domain
 import Foundation
+import Sync
+import SyncTesting
 import SwiftUI
 
 /// Lets a developer drive the app and capture its windows as images, for checks without a screen.
@@ -80,6 +82,20 @@ final class DebugHarness {
 				model.save(group: g)
 			}
 		case "usd": DemoData.usdAccount(model)
+		case "review": DemoData.review(model)
+		case "fetch": DemoData.fetch(model, argument)
+		case "deleterows":
+			if let giro = model.ledger.accounts.first(where: { $0.name == "Girokonto" }) {
+				model.delete(transactions: Set(model.ledger.transactions(ofAccount: giro.id).filter { $0.name == argument }.map(\.id)))
+			}
+		case "rows":
+			if let account = model.ledger.accounts.first(where: { $0.name == argument }) {
+				let rows = model.ledger.transactions(ofAccount: account.id).filter { $0.isFetched || $0.needsReview }
+				for t in rows {
+					log("row \(t.bookingDate) \(t.amountMinor) \(t.name)\(t.isPending ? " pending" : "")\(t.isNew ? " new" : "")\(t.needsReview ? " review" : "")")
+				}
+				log("rows \(rows.count) new=\(model.ledger.newTransactionCounts[account.id] ?? 0) balance=\(account.bankBalanceMinor.map(String.init) ?? "-")")
+			}
 		case "symbol":
 			// "<category>=<symbol>" sets the icon of a category, "<category>=" removes it.
 			let parts = argument.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false).map(String.init)
@@ -296,7 +312,7 @@ enum DemoData {
 				return Transaction(accountID: account.id, bookingDate: today.adding(days: -(slot / 8)), amountMinor: amount,
 					name: names[i % names.count], purpose: i % 3 == 0 ? "" : "Purpose \(i)")
 			}
-			_ = model.importTransactions(ts, into: account)
+			try? model.merge(.file(ts), into: account.id)
 		}
 	}
 
@@ -318,7 +334,7 @@ enum DemoData {
 				ts.append(Transaction(accountID: account.id, bookingDate: month.adding(days: 10), amountMinor: -amount, name: "Max Mustermann", purpose: "Umbuchung"))
 			}
 		}
-		_ = model.importTransactions(ts.filter { $0.bookingDate <= today }, into: account)
+		try? model.merge(.file(ts.filter { $0.bookingDate <= today }), into: account.id)
 		model.navigate(to: .account(account.id))
 	}
 
@@ -336,7 +352,38 @@ enum DemoData {
 			let day: Day = today.adding(days: -i * 9)
 			return Transaction(accountID: card.id, bookingDate: day, amountMinor: amount, currency: "USD", name: payment ? "Payment" : "Diner", purpose: "Card")
 		}
-		_ = model.importTransactions(ts, into: card)
+		try? model.merge(.file(ts), into: card.id)
+	}
+
+	@MainActor
+	static func fetch(_ model: AppModel, _ scenario: String) {
+		guard let giro = model.ledger.accounts.first(where: { $0.name == "Girokonto" }) else { return }
+		let today = Day.today()
+		func row(_ daysAgo: Int, _ minor: Int64, _ name: String, _ purpose: String, pending: Bool = false) -> Transaction {
+			Transaction(accountID: giro.id, bookingDate: today.adding(days: -daysAgo), amountMinor: minor, name: name, purpose: purpose, isPending: pending)
+		}
+		let known = [row(4, -61_000, "Hausverwaltung Beispiel", "Nebenkosten Abruf"), row(3, -320, "Café Beispiel", "Kartenzahlung")]
+		let rows: [Transaction] = switch scenario {
+		case "first": known + [row(2, -20_000, "Hotel Beispiel", "Kaution", pending: true)]
+		case "booked": known + [row(0, -20_000, "Hotel Beispiel GmbH", "Kaution Zimmer 12")]
+		case "parking": known + [row(1, -1_500, "Parkhaus Beispiel", "Reservierung", pending: true)]
+		default: known
+		}
+		let result = RefreshResult(balance: Money(minorUnits: 1_234_56, currency: "EUR"),
+			transactions: FetchedTransactions(rows: rows, from: today.adding(days: -10)))
+		let request = RefreshRequest(access: SyncDemo.access, accounts: [AccountRequest(accountID: giro.id, name: giro.name, remoteID: "1234567890")])
+		model.sync.refresh(request, with: ScriptedConnector([.fetched(giro.id, result)]), attended: true)
+	}
+
+	@MainActor
+	static func review(_ model: AppModel) {
+		guard let giro = model.ledger.accounts.first(where: { $0.name == "Girokonto" }) else { return }
+		let today = Day.today()
+		func coffee(_ day: Day, pending: Bool) -> Transaction {
+			Transaction(accountID: giro.id, bookingDate: day, amountMinor: -320, name: "Café Beispiel", purpose: "KARTENZAHLUNG", isPending: pending)
+		}
+		try? model.merge(.file([coffee(today.adding(days: -1), pending: true), coffee(today.adding(days: -1), pending: true)]), into: giro.id)
+		try? model.merge(.file([coffee(today, pending: false)]), into: giro.id)
 	}
 
 	@MainActor
@@ -385,8 +432,7 @@ enum DemoData {
 			rent.rule = #"name:"Wohnbau*" AND amount<0"#
 			model.save(category: rent)
 		}
-		let imported = model.importTransactions(ts.filter { $0.accountID == giro.id }, into: giro)
-		_ = model.importTransactions(ts.filter { $0.accountID == savings.id }, into: savings)
-		_ = imported
+		try? model.merge(.file(ts.filter { $0.accountID == giro.id }), into: giro.id)
+		try? model.merge(.file(ts.filter { $0.accountID == savings.id }), into: savings.id)
 	}
 }

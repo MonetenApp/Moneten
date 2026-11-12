@@ -72,7 +72,7 @@ public struct MoneyMoneyMigration: Sendable {
 		var sums: [UUID: Int64] = [:]
 		for raw in rawTransactions {
 			guard let accountSource = raw["accountUuid"] as? String, let accountID = accountMap[accountSource] else { continue }
-			let id = (raw["id"] as? Int).map { "moneymoney:\($0)" }
+			let id = (raw["id"] as? Int).map { "\(Transaction.migrationIDPrefix)\($0)" }
 			let currency = (raw["currency"] as? String) ?? "EUR"
 			let amount = Money(Decimal((raw["amount"] as? Double) ?? 0), currency: currency)
 			let booking = (raw["bookingDate"] as? Date).map { Day($0, calendar: calendar) } ?? Day.today(calendar: calendar)

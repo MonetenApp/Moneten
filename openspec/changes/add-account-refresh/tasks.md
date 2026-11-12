@@ -21,22 +21,22 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [ ] 1.15 Show the time of the last refresh. Build it and verify it with a test or in the app (#6).
 - [ ] 1.16 Show an error on the account. Build it and verify it with a test or in the app (#6).
 - [ ] 1.17 An error ends with the next success. Build it and verify it with a test or in the app (#6).
-- [ ] 1.18 Keep the history for good. Build it and verify it with a test or in the app (#7).
-- [ ] 1.19 Do not store a transaction twice. Build it and verify it with a test or in the app (#7).
-- [ ] 1.20 Update a transaction that the source changed. Build it and verify it with a test or in the app (#7).
-- [ ] 1.21 Keep real identical transactions. Build it and verify it with a test or in the app (#7).
-- [ ] 1.22 Replace a pending transaction by its booked version. Build it and verify it with a test or in the app (#7).
-- [ ] 1.23 Do not guess between several pending transactions. Build it and verify it with a test or in the app (#7).
-- [ ] 1.24 Remove a pending transaction that the bank dropped. Build it and verify it with a test or in the app (#7).
-- [ ] 1.25 Deleted transactions stay deleted. Build it and verify it with a test or in the app (#7).
-- [ ] 1.26 Mark new transactions. Build it and verify it with a test or in the app (#7).
-- [ ] 1.27 Update the balance at every refresh. Build it and verify it with a test or in the app (#7).
+- [x] 1.18 Keep the history for good. Build it and verify it with a test or in the app (#7).
+- [x] 1.19 Do not store a transaction twice. Build it and verify it with a test or in the app (#7).
+- [x] 1.20 Update a transaction that the source changed. Build it and verify it with a test or in the app (#7).
+- [x] 1.21 Keep real identical transactions. Build it and verify it with a test or in the app (#7).
+- [x] 1.22 Replace a pending transaction by its booked version. Build it and verify it with a test or in the app (#7).
+- [x] 1.23 Do not guess between several pending transactions. Build it and verify it with a test or in the app (#7).
+- [x] 1.24 Remove a pending transaction that the bank dropped. Build it and verify it with a test or in the app (#7).
+- [x] 1.25 Deleted transactions stay deleted. Build it and verify it with a test or in the app (#7).
+- [x] 1.26 Mark new transactions. Build it and verify it with a test or in the app (#7).
+- [x] 1.27 Update the balance at every refresh. Build it and verify it with a test or in the app (#7).
 - [ ] 1.28 Refresh after a payment. Build it and verify it with a test or in the app (#28, v0.2).
 - [ ] 1.29 Behavior without an Internet connection. Build it and verify it with a test or in the app (#40).
 
 ## 2. Sync model (issue #6)
 
-The design explains each step. The requirements of section 1 stay open until an app command starts a refresh of real accounts, which needs the accesses of issue #13.
+The design explains each step. The requirements 1.1 to 1.17 stay open until an app command starts a refresh of real accounts, which needs the accesses of issue #13. Tests prove 1.18 to 1.27 through `reconcile`, `Store.merge`, and the coordinator with `ScriptedConnector`, and task 3.1 checks them again with real banks.
 
 - [x] 2.1 `Domain`: `Access`, `BankConnector`, `RefreshRequest`, `ConnectorReport`, `AccountOutcome`, `RefreshResult`, and `AccessState`.
 - [x] 2.2 `Domain`: `SyncSession`, `UserRequest`, `SecondFactorRequest`, `Challenge`, `UserAnswer`, and `Secret`, whose description never shows the value.
@@ -52,9 +52,9 @@ The design explains each step. The requirements of section 1 stay open until an 
 
 - [ ] 3.1 Check every scenario of the spec in a release build with the FinTS connector of issue #13, and record the result in the pull request.
 
-## 4. Parts of the dialogs that come later
+## 4. Parts that come later
 
-These requirements of add-tan-handling and add-login-credentials are not in the dialogs of task 2.8 yet.
+Tasks 4.1 to 4.6 are requirements of add-tan-handling and add-login-credentials that the dialogs of task 2.8 do not have yet. Task 4.7 keeps the merge of 1.19 correct once fetched rows can be edited.
 
 - [ ] 4.1 Change the TAN method inside the open dialog, and show the progress text while a challenge is requested (#13).
 - [ ] 4.2 Enlarge a photoTAN or QR image (#13).
@@ -62,6 +62,7 @@ These requirements of add-tan-handling and add-login-credentials are not in the 
 - [ ] 4.4 Say that the bank responded with an invalid challenge when the flicker data is not valid (#13).
 - [ ] 4.5 Check a PIN against the rules of the bank, and offer the option to save it with the storage of saved PINs (#13).
 - [ ] 4.6 Check that the PIN field is not offered to the password manager of macOS on a real Mac (#13).
+- [ ] 4.7 Before transaction-list "Edit a transaction" allows editing the bank fields of a fetched or migrated row, add a migration that copies the fields of the fingerprint of every row into columns of their own, and let `reconcile` and `DeletedTransaction` read those. Until then no such edit is possible, so the copy is exact (#7).
 
 ## Workflow follow-up
 

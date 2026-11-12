@@ -37,6 +37,9 @@ public enum SyncFailure: Error, Sendable, Equatable {
 	case network(String)
 	/// The bank does not offer what the account needs, for example transactions of a portfolio.
 	case unsupported(String)
+	/// The app could not store what the bank delivered for the account. Nothing of the account changed,
+	/// and the next refresh delivers the same rows again.
+	case notSaved(String)
 
 	/// The text that the app shows on the account and in the error popover.
 	public var message: String {
@@ -67,6 +70,8 @@ public enum SyncFailure: Error, Sendable, Equatable {
 			"The bank could not be reached: \(text)"
 		case let .unsupported(text):
 			text
+		case let .notSaved(text):
+			"The fetched transactions could not be saved: \(text)"
 		}
 	}
 }

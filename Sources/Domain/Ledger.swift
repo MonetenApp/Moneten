@@ -291,6 +291,17 @@ public struct Ledger: Sendable {
 		countNew()
 	}
 
+	/// Takes over a merge that the database stored: removes the dropped rows, upserts the others and
+	/// the account, and records the value of a portfolio.
+	public mutating func apply(_ r: Reconciliation) {
+		if let account = r.account {
+			upsert(account)
+			if let value = account.portfolioValue() { record(value) }
+		}
+		if !r.dropped.isEmpty { remove(transactionIDs: Set(r.dropped)) }
+		update(r.added + r.booked + r.updated + r.marked)
+	}
+
 	public mutating func remove(transactionIDs ids: Set<UUID>) {
 		transactions.removeAll { ids.contains($0.id) }
 		for id in ids { searchText[id] = nil }

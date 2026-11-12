@@ -116,10 +116,10 @@ extension AppModel {
 					continue
 				}
 				let parsed = try TransactionFileImporter.parse(data, currency: account.currency)
-				let result = importTransactions(parsed, into: account)
-				added += result.added
+				let result = try merge(.file(parsed), into: account.id)
+				added += result.added.count
 				skipped += result.skipped
-				booked += result.booked
+				booked += result.booked.count
 			} catch {
 				problems.append("\(url.lastPathComponent): \(error)")
 			}

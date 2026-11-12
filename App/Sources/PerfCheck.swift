@@ -50,7 +50,7 @@ struct PerfScenario {
 				let rows = (0..<2_000).map { i in
 					Transaction(accountID: account.id, bookingDate: today.adding(days: -(i % 400)), amountMinor: -Int64(1_000 + i), name: "Online Shop", purpose: "Order \(i)")
 				}
-				_ = c.model.importTransactions(rows, into: account)
+				try? c.model.merge(.file(rows), into: account.id)
 			}),
 		// Last, because it leaves "Bulk" grouped by account: its table has a section per account.
 		PerfScenario(name: "group-by-account", budget: halfSecond,
