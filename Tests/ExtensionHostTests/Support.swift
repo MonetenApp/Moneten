@@ -23,7 +23,9 @@ func demo(_ source: String, hosts: [String]? = nil) -> ExtensionPackage {
 
 /// A session of `package` whose network is `exchanges`. It records what reached the transport and what the user was asked.
 final class Run {
-	private(set) var sent: [String] = []
+	/// Every request that reached the transport, with its headers and body.
+	private(set) var requests: [HTTPRequest] = []
+	var sent: [String] { requests.map { "\($0.method) \($0.url.absoluteString)" } }
 	private(set) var asked: [String] = []
 	private(set) var printed: [String] = []
 	var answer: HostDecision = .allowed
@@ -33,7 +35,7 @@ final class Run {
 		let fixture = try! decode(Fixture.self, ["exchanges": exchanges.map { method, url, status, headers, body in
 			["request": ["method": method, "url": url], "response": ["status": status, "headers": headers, "body": body]]
 		}])
-		let transport = FixtureTransport(fixture) { [unowned self] in sent.append("\($0.method) \($0.url.absoluteString)") }
+		let transport = FixtureTransport(fixture) { [unowned self] in requests.append($0) }
 		session = HostSession(package: package, transport: transport, decisions: decisions,
 			ask: { [unowned self] host in asked.append(host); return answer },
 			log: { [unowned self] in printed.append($0) })

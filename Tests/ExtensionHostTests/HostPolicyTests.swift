@@ -1,5 +1,6 @@
 import Domain
 @testable import ExtensionHost
+import Foundation
 import Testing
 
 @Suite struct HostPolicyTests {
@@ -17,7 +18,8 @@ import Testing
 	static let everyHost = [("GET", "https://api.bank.example/", 200, page, "<p>Hello</p>"), ("GET", "https://tracker.example/pixel", 200, page, ""),
 		("GET", "https://login.bank.example/", 200, page, ""), ("GET", "http://api.bank.example/", 200, page, ""), ("GET", "https://evil.example/", 200, page, ""),
 		("GET", "https://api.bank.example/start", 302, ["Location": "https://evil.example/"], ""),
-		("GET", "https://api.bank.example/hop", 302, ["Location": "/"], "")]
+		("GET", "https://api.bank.example/hop", 302, ["Location": "/"], ""),
+		("GET", "https://api.bank.example/local", 302, ["Location": "https://127.0.0.1/"], ""), ("GET", "https://127.0.0.1/", 200, page, "")]
 
 	func run(_ url: String, hosts: [String]? = ["api.bank.example"], decisions: [String: HostDecision] = [:]) -> Run {
 		Run(demo(Self.script(url), hosts: hosts), exchanges: Self.everyHost, decisions: decisions)
@@ -141,5 +143,73 @@ import Testing
 		let denied = Run(demo(Self.script("https://api.bank.example/")), exchanges: Self.everyHost, decisions: ["api.bank.example": .denied])
 		#expect(denied.call("Check") == .string("error: Demo.lua:3: Demo may not contact api.bank.example, because the user did not allow it."))
 		#expect(denied.asked.isEmpty && denied.sent.isEmpty)
+	}
+
+	/// Addresses that are not an exact host name: an IP address in any notation, a name without a dot, a
+	/// trailing dot, and a user name in the URL. Foundation passes each of them on unchanged.
+	static let notAHostName = ["https://127.0.0.1/", "https://[::1]/", "https://0.0.0.0/", "https://０.０.０.０/", "https://2130706433/",
+		"https://localhost/", "https://intranet/", "https://api.bank.example./", "https://user:pass@api.bank.example/"]
+
+	@Test(arguments: notAHostName)
+	func addressThatIsNotAHostNameIsNeverAsked(url: String) {
+		let run = Run(demo(Self.script(url)), exchanges: Self.everyHost)
+		#expect(run.call("Check") == .string("error: Demo.lua:3: Moneten sends requests only to a plain host name on the HTTPS port, not to \(URL(string: url)!.absoluteString)."))
+		#expect(run.asked.isEmpty && run.sent.isEmpty)
+	}
+
+	@Test(arguments: notAHostName)
+	func addressThatIsNotAHostNameIsNotListed(url: String) {
+		let run = run(url)
+		#expect(run.call("Check") == .string("error: Demo.lua:3: Moneten sends requests only to a plain host name on the HTTPS port, not to \(URL(string: url)!.absoluteString)."))
+		#expect(run.sent.isEmpty)
+	}
+
+	@Test func redirectToAnIPAddressIsNeverAsked() {
+		let run = Run(demo(Self.script("https://api.bank.example/local")), exchanges: Self.everyHost)
+		#expect(run.call("Check") == .string("error: Demo.lua:3: Moneten sends requests only to a plain host name on the HTTPS port, not to https://127.0.0.1/."))
+		#expect(run.asked == ["api.bank.example"])
+		#expect(run.sent == ["GET https://api.bank.example/local"])
+	}
+
+	@Test func storedAnswerForAnIPAddressIsIgnored() {
+		let run = Run(demo(Self.script("https://localhost/")), exchanges: Self.everyHost, decisions: ["localhost": .allowed])
+		#expect(run.call("Check") == .string("error: Demo.lua:3: Moneten sends requests only to a plain host name on the HTTPS port, not to https://localhost/."))
+		#expect(run.asked.isEmpty && run.sent.isEmpty)
+	}
+
+	static func post(to url: String, status: Int, hosts: [String] = ["api.bank.example", "other.bank.example"]) -> Run {
+		Run(demo("""
+			WebBanking{version = 1}
+			function Post()
+				return Connection():request("POST", "https://api.bank.example/login", "user=demo&pin=1234", "application/x-www-form-urlencoded",
+					{Authorization = "Bearer secret", Cookie = "session=1", ["X-Client"] = "Demo"})
+			end
+			""", hosts: hosts), exchanges: [("POST", "https://api.bank.example/login", status, ["Location": url], ""),
+				("POST", url, 200, [:], "next"), ("GET", url, 200, [:], "next")])
+	}
+
+	static let postHeaders = ["Authorization": "Bearer secret", "Cookie": "session=1", "X-Client": "Demo", "Content-Type": "application/x-www-form-urlencoded"]
+
+	@Test(arguments: [307, 308])
+	func redirectOnTheSameHostKeepsCredentialsAndBody(status: Int) throws {
+		let run = Self.post(to: "https://api.bank.example/next", status: status)
+		#expect(run.call("Post") == .string("next"))
+		let follow = try #require(run.requests.last)
+		#expect(follow == HTTPRequest(method: "POST", url: URL(string: "https://api.bank.example/next")!, headers: Self.postHeaders, body: Data("user=demo&pin=1234".utf8)))
+	}
+
+	@Test(arguments: [307, 308])
+	func redirectToAnotherHostDropsCredentialsAndBody(status: Int) throws {
+		let run = Self.post(to: "https://other.bank.example/next", status: status)
+		#expect(run.call("Post") == .string("next"))
+		let follow = try #require(run.requests.last)
+		#expect(follow == HTTPRequest(method: "POST", url: URL(string: "https://other.bank.example/next")!, headers: ["X-Client": "Demo"]))
+	}
+
+	@Test func redirectAfterAPostToAnotherHostDropsCredentials() throws {
+		let run = Self.post(to: "https://other.bank.example/next", status: 302)
+		#expect(run.call("Post") == .string("next"))
+		let follow = try #require(run.requests.last)
+		#expect(follow == HTTPRequest(method: "GET", url: URL(string: "https://other.bank.example/next")!, headers: ["X-Client": "Demo"]))
 	}
 }

@@ -5,7 +5,8 @@ import Foundation
 /// the extension wanted to go.
 enum HostRefusal: Error, Equatable, Sendable, CustomStringConvertible {
 	case notHTTPS(String)
-	/// A percent sign or a port other than 443: what the user would see is not what the request reaches.
+	/// Not an exact host name, a percent sign, a user name, or a port other than 443: what the user would
+	/// see is not what the request reaches.
 	case unusualAddress(String)
 	case notListed(extensionName: String, host: String)
 	case denied(extensionName: String, host: String)
@@ -48,12 +49,15 @@ final class HostPolicy {
 		guard url.scheme?.lowercased() == "https", let host = url.host(percentEncoded: false)?.lowercased(), !host.isEmpty else {
 			throw HostRefusal.notHTTPS(url.absoluteString)
 		}
-		guard url.host(percentEncoded: true)?.contains("%") == false, url.port == nil || url.port == 443 else {
+		// Foundation passes an IP address in any notation, "localhost", a name without a dot, and a
+		// trailing dot unchanged. None of them may reach the dialog, where nobody reads them as local.
+		guard url.host(percentEncoded: true)?.contains("%") == false, url.port == nil || url.port == 443, url.user == nil, url.password == nil,
+			let name = HostName(exactly: host) else {
 			throw HostRefusal.unusualAddress(url.absoluteString)
 		}
 		switch rule {
 		case let .listed(hosts):
-			guard hosts.contains(where: { $0.value == host }) else { throw HostRefusal.notListed(extensionName: extensionName, host: host) }
+			guard hosts.contains(name) else { throw HostRefusal.notListed(extensionName: extensionName, host: host) }
 		case .askUser:
 			let decision = try decisions[host] ?? ask(host)
 			decisions[host] = decision
