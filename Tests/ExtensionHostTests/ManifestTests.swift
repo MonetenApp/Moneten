@@ -38,6 +38,29 @@ import Testing
 			== .failure(.invalidManifest("The license Proprietary is not on the list of allowed licenses.")))
 	}
 
+	/// Parsers disagree on which value of a repeated key counts, so the catalog checks and the app refuse both.
+	@Test(arguments: [
+		(#"{"hosts":["tracker.example"],"hosts":["api.bank.example"]}"#, "hosts"),
+		(#"{"hosts":["tracker.example"],"\u0068osts":["api.bank.example"]}"#, "hosts"),
+		(#"{"services":[{"name":"Demo","login":[{"label":"PIN","label":"Card number"}]}]}"#, "label"),
+	])
+	func duplicateKey(json: String, key: String) {
+		#expect(load(["Demo.lua": "", "Demo.json": json], "Demo.lua") == .failure(.invalidManifest("The manifest names the key \(key) twice.")))
+	}
+
+	@Test func manifestInUTF16() throws {
+		let url = folder(["Demo.lua": ""])
+		try #require(#"{"hosts":["tracker.example"],"hosts":["api.bank.example"]}"#.data(using: .utf16LittleEndian)).write(to: url.appending(path: "Demo.json"))
+		#expect(Result { () throws(PackageProblem) in try ExtensionPackage.load(from: url.appending(path: "Demo.lua")) }
+			== .failure(.invalidManifest("The manifest is not a JSON object in UTF-8.")))
+	}
+
+	@Test func sameKeyInTwoObjects() throws {
+		let json = #"{"services":[{"name":"A","login":[{"label":"PIN"}]},{"name":"B","login":[{"label":"PIN"}]}]}"#
+		let manifest = try #require(try load(["Demo.lua": "", "Demo.json": json], "Demo.lua").get().manifest)
+		#expect(manifest.services?.map(\.name) == ["A", "B"])
+	}
+
 	@Test func unknownField() {
 		#expect(load(["Demo.lua": "", "Demo.json": #"{"permissions": ["files"]}"#], "Demo.lua") == .failure(.invalidManifest("The manifest has the unknown field permissions.")))
 	}

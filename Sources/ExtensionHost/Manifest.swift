@@ -77,8 +77,11 @@ public struct Manifest: Sendable, Equatable, Codable {
 
 	/// Parses and checks a manifest against the rules of the schema. The messages are those that the list of extensions shows.
 	public static func parse(_ data: Data, mode: Mode) throws(PackageProblem) -> Manifest {
-		guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-			throw .invalidManifest("The manifest is not a JSON object.")
+		guard String(data: data, encoding: .utf8) != nil, !data.contains(0), let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+			throw .invalidManifest("The manifest is not a JSON object in UTF-8.")
+		}
+		if let key = repeatedKey(in: data) {
+			throw .invalidManifest("The manifest names the key \(key) twice.")
 		}
 		if let unknown = Set(object.keys).subtracting(CodingKeys.allNames).sorted().first {
 			throw .invalidManifest("The manifest has the unknown field \(unknown).")
@@ -94,6 +97,41 @@ public struct Manifest: Sendable, Equatable, Codable {
 			throw .invalidManifest("The manifest needs \(missing.rawValue).")
 		}
 		return manifest
+	}
+
+	/// The first key that one object of valid UTF-8 JSON names twice. `JSONSerialization` silently
+	/// keeps one of the values, and the catalog checks refuse such a manifest, so the app refuses it too.
+	static func repeatedKey(in data: Data) -> String? {
+		let bytes = [UInt8](data)
+		var objects: [Set<String>?] = []
+		var expectsKey = false
+		var index = 0
+		while index < bytes.count {
+			switch bytes[index] {
+			case UInt8(ascii: "{"):
+				objects.append([])
+				expectsKey = true
+			case UInt8(ascii: "["):
+				objects.append(nil)
+			case UInt8(ascii: "}"), UInt8(ascii: "]"):
+				objects.removeLast()
+			case UInt8(ascii: ","):
+				expectsKey = objects.last.flatMap { $0 } != nil
+			case UInt8(ascii: "\""):
+				var end = index + 1
+				while bytes[end] != UInt8(ascii: "\"") { end += bytes[end] == UInt8(ascii: "\\") ? 2 : 1 }
+				if expectsKey {
+					let key = (try? JSONSerialization.jsonObject(with: Data(bytes[index...end]), options: .fragmentsAllowed)) as? String ?? ""
+					if objects[objects.count - 1]?.insert(key).inserted == false { return key }
+					expectsKey = false
+				}
+				index = end
+			default:
+				break
+			}
+			index += 1
+		}
+		return nil
 	}
 
 	enum CodingKeys: String, CodingKey, CaseIterable {
