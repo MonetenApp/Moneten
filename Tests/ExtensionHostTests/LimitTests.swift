@@ -80,6 +80,22 @@ import Testing
 		#expect(clua_nativedepth(session.lua.stack.L) == 1)
 	}
 
+	/// Objects that only Swift functions allocate, each with a finalizer, become garbage as fast as
+	/// they come. The collector keeps up, so the loop never reaches the limit of the state.
+	@Test func garbageOfSwiftFunctionsIsCollected() {
+		let package = demo("""
+			WebBanking{version = 1}
+			function Churn()
+				local mt = {__gc = function() end}
+				for i = 1, 1000000 do setmetatable(Connection(), mt) end
+				return "done"
+			end
+			""")
+		let session = HostSession(package: package, transport: LargeBodies(), memory: 32 * 1_048_576, ask: { _ in .denied }, log: { _ in })
+		let result = Result { () throws(ScriptError) -> LuaValue in _ = try session.load(); return try session.call("Churn") }
+		#expect(result == .success(.string("done")))
+	}
+
 	@Test func requestReportsItsStartAndEnd() throws {
 		let reports = Reports()
 		let transport = ReportingTransport(LargeBodies()) { reports.count += 1 }

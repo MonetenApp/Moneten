@@ -197,10 +197,23 @@ struct LuaStack {
 		pushBytes(Data(text.utf8))
 	}
 
+	/// The longest message in bytes that a Swift function pushes for an error, before the "…".
+	static let maxMessage = 1_000
+
 	/// Pushes the message of an error of a Swift function. A message that quotes a script's data, such
-	/// as a method of 80 MB, is cut after 300 characters, so that the error needs little memory.
+	/// as a method of 80 MB, is cut at a character boundary within `maxMessage` bytes, so that the
+	/// error needs little memory. It counts bytes, because "a" with a million combining accents is a
+	/// single `Character`.
 	func pushMessage(_ text: String) {
-		pushString(text.count > 300 ? String(text.prefix(300)) + "…" : text)
+		guard text.utf8.count > Self.maxMessage else { return pushString(text) }
+		var clipped = String.UnicodeScalarView()
+		var bytes = 0
+		for scalar in text.unicodeScalars {
+			bytes += UTF8.width(scalar)
+			guard bytes <= Self.maxMessage else { break }
+			clipped.append(scalar)
+		}
+		pushString(String(clipped) + "…")
 	}
 
 	func pushBytes(_ data: Data) {

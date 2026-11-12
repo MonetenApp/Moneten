@@ -11,7 +11,9 @@
    in a function of Swift), the collector is stopped, so that no finalizer runs Lua code there, and
    the allocator allows HEADROOM bytes over the limit, which holds the largest body of a request.
    Back in Lua, clua_call raises the memory error from C. An allocation that fails while Swift runs
-   ends the process, so a Lua error never starts there. */
+   ends the process, so a Lua error never starts there. Near the ceiling, this also ends the host
+   for a failure that Lua would otherwise handle, such as lua_checkstack or a resize of the string
+   table while Swift holds the state. */
 typedef struct {
 	size_t used, limit;
 	int native;
@@ -74,6 +76,9 @@ static int clua_call(lua_State *L) {
 	clua_enter(L, budget);
 	int results = f(L);
 	clua_leave(L, budget);
+	/* The restart clears the debt of the collector, so what Swift allocated would never advance it.
+	   A step here, with Lua in charge again, keeps up with garbage that only Swift functions make. */
+	if (lua_gc(L, LUA_GCISRUNNING)) lua_gc(L, LUA_GCSTEP, 0);
 	if (budget->used > budget->limit) {
 		/* Any new block fails now. Lua collects first, and raises its memory error if the state still
 		   holds too much. */

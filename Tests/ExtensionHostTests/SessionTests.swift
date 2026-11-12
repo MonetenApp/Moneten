@@ -227,7 +227,6 @@ import Testing
 		let client = try await Self.start(demo("""
 			WebBanking{version = 1}
 			function Chatty() for i = 1, 6 do print(string.rep("x", 1048512)) end return "done" end
-			function Empty() for i = 1, 100000 do print("") end return "done" end
 			"""), fixture: Self.fixture([]), recorder: recorder)
 		#expect(try await client.call("Chatty") == .string("done"))
 		let line = HostLog.print(String(repeating: "x", count: 1_048_512))
@@ -249,17 +248,23 @@ import Testing
 		await client.end()
 	}
 
-	/// A method of 1 MB comes back in a message of 300 characters, so that an error never needs as much
-	/// memory as the script data it quotes.
-	@Test func hugeMethodIsClippedInTheError() async throws {
+	/// A method of about 1 MB comes back in a message of at most 1,000 bytes plus "…", cut at a
+	/// character boundary, so that an error never needs as much memory as the script data it quotes.
+	/// "a" with a million combining accents is one character, so only a count of bytes bounds it.
+	@Test(arguments: [#"string.rep("x", 1048576)"#, #"string.rep("€", 350000)"#, #""a" .. string.rep("\u{301}", 500000)"#])
+	func hugeMethodIsClippedInTheError(method: String) async throws {
 		let client = try await Self.start(demo("""
 			WebBanking{version = 1}
 			function Huge()
-				local ok, message = pcall(function() return Connection():request(string.rep("x", 1048576), "https://api.bank.example/") end)
-				return #message
+				local ok, message = pcall(function() return Connection():request(\(method), "https://api.bank.example/") end)
+				-- The length in bytes, or -1 when the cut split a character.
+				return utf8.len(message) and #message or -1
 			end
 			""", hosts: ["api.bank.example"]), fixture: Self.fixture([]))
-		#expect(try await client.call("Huge") == .integer(Int64("Demo.lua:4: ".utf8.count + 300 + "…".utf8.count)))
+		let result = try await client.call("Huge")
+		guard case let .integer(length) = result else { Issue.record("Huge returned \(result)"); return }
+		let most = "Demo.lua:4: ".utf8.count + 1_000 + "…".utf8.count
+		#expect((most - 2)...most ~= Int(length), "the message has \(length) bytes")
 		await client.end()
 	}
 
