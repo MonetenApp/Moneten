@@ -316,6 +316,30 @@ struct SavedPINTests {
 		#expect(store.pins.isEmpty)
 	}
 
+	@Test("A rejection that arrives after the lock deletes the saved PIN at the next unlock, and the PIN is not used")
+	func rejectionAfterLock() async throws {
+		let defaults = try #require(UserDefaults(suiteName: "MonetenTests-\(UUID().uuidString)"))
+		let coordinator = SyncCoordinator(broker: SessionBroker(defaults: defaults, scope: "/A/Moneten.sqlite"))
+		try store.savePIN(Secret("12345"), for: Self.bank.id)
+		try coordinator.broker.open(store)
+		let connector = LateEnd(rejection: nil, lateRejection: .accessBlocked(BankMessage(code: "9930", text: "Zugang gesperrt")))
+		coordinator.refresh(RefreshRequest(access: Self.bank, accounts: [Self.giro]), with: connector, attended: false)
+		await until { connector.reachedEnd }
+		// The lock: every refresh is canceled, and the PINs and the store are forgotten.
+		coordinator.cancelAll()
+		coordinator.broker.forgetPINs()
+		await until { !coordinator.isRefreshing }
+		try await Task.sleep(for: .milliseconds(100))
+
+		// The unlock opens the same database.
+		try coordinator.broker.open(store)
+		#expect(store.pins.isEmpty)
+		let automatic = refresh([.ask(Self.pin)], attended: false, in: coordinator)
+		await until { !coordinator.isRefreshing }
+		#expect(automatic.answers.all.isEmpty)
+		#expect(coordinator.states[Self.bank.id] == .failed(.needsUser(.pin)))
+	}
+
 	@Test("The mark of a rejected PIN that could not be deleted belongs to its database, and only a real deletion clears it")
 	func markPerDatabase() async throws {
 		let defaults = try #require(UserDefaults(suiteName: "MonetenTests-\(UUID().uuidString)"))
@@ -400,14 +424,17 @@ final class FailingRemovalStore: SavedPINStore {
 }
 
 /// A connector that logs in with the PIN, may report a rejection at once, and then needs a while to
-/// end that no cancel shortens, like a helper that shuts down. It then returns, or throws `thrown`.
+/// end that no cancel shortens, like a helper that shuts down. It may report `lateRejection` then, and
+/// returns, or throws `thrown`.
 final class LateEnd: BankConnector {
 	let rejection: SyncFailure?
+	let lateRejection: SyncFailure?
 	let thrown: SyncFailure?
 	private let reached = Mutex(false)
 
-	init(rejection: SyncFailure?, thrown: SyncFailure? = nil) {
+	init(rejection: SyncFailure?, lateRejection: SyncFailure? = nil, thrown: SyncFailure? = nil) {
 		self.rejection = rejection
+		self.lateRejection = lateRejection
 		self.thrown = thrown
 	}
 
@@ -418,6 +445,7 @@ final class LateEnd: BankConnector {
 		if let rejection { await session.rejected(rejection) }
 		reached.withLock { $0 = true }
 		await withCheckedContinuation { done in DispatchQueue.global().asyncAfter(deadline: .now() + 0.3) { done.resume() } }
+		if let lateRejection { await session.rejected(lateRejection) }
 		if let thrown { throw thrown }
 		return ConnectorReport(outcomes: [:])
 	}

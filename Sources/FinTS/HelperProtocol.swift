@@ -58,7 +58,7 @@ enum HelperMessage: Decodable {
 		let failure: SyncFailure?
 		switch self {
 		case let .failed(error), let .accountFailed(_, error): failure = error.failure
-		case let .result(_, .success(result)): failure = result.errors.map(\.failure).first(where: \.rejectsPIN)
+		case let .result(_, .success(result)): failure = result.shownError?.failure
 		case let .ask(_, ask):
 			do {
 				_ = try ask.request()
@@ -231,15 +231,23 @@ struct AccountResult: Decodable {
 
 	/// The outcome of the account, and the error of a balance request that failed beside transactions
 	/// that worked. The error of a transaction request that failed beside a balance is the error of the account.
+	/// The error that the account fails with when its transactions are missing: a rejection of the PIN
+	/// or a block first, because it decides about the PIN, and otherwise the first error. The session
+	/// learns about the PIN from this error too, so the account always shows why the PIN went.
+	var shownError: HelperError? {
+		guard transactions == nil else { return nil }
+		return errors.first { $0.failure.rejectsPIN } ?? errors.first
+	}
+
 	func outcome(of accountID: UUID) throws -> (AccountOutcome, [BankMessage]) {
 		guard balance != nil || transactions != nil else {
-			return (.failed(errors.first?.failure ?? .bank(BankMessage(text: "The bank sent nothing for this account."))), [])
+			return (.failed(shownError?.failure ?? .bank(BankMessage(text: "The bank sent nothing for this account."))), [])
 		}
 		let money = try balance.map { try Self.money($0.amount, $0.currency) }
 		let fetched = try transactions.map { t in
 			FetchedTransactions(rows: try t.rows.map { try $0.transaction(of: accountID) }, from: try t.from.map(Self.day))
 		}
-		let transactionFailure = transactions == nil ? errors.first?.failure : nil
+		let transactionFailure = shownError?.failure
 		let result = RefreshResult(balance: money, balanceDate: try balance?.date.map { try Self.day($0).date() }, transactions: fetched,
 			isComplete: transactions != nil && transactions?.from == nil, transactionFailure: transactionFailure)
 		return (.fetched(result), transactionFailure == nil ? errors.map(\.message) : [])

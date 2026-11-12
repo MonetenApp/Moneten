@@ -231,11 +231,16 @@ public final class SessionBroker {
 
 	/// The bank rejected the PIN or blocked the access: the PIN leaves the memory and the database ("No
 	/// automatic retry after a wrong PIN"). A deletion that fails twice is reported, and the saved PIN is
-	/// not used until a later deletion succeeds.
+	/// not used until a later deletion succeeds. A rejection that arrives after the lock marks the access,
+	/// so the next unlock deletes the row before it loads the saved PINs.
 	func forgetRejectedPIN(of access: UUID) {
 		pins[access] = nil
 		toSave.remove(access)
-		guard savedPINs.contains(access), let store else { return }
+		guard let store else {
+			undeleted.insert(access)
+			return
+		}
+		guard savedPINs.contains(access) else { return }
 		do {
 			do { try store.removeSavedPIN(of: access) } catch { try store.removeSavedPIN(of: access) }
 			savedPINs.remove(access)

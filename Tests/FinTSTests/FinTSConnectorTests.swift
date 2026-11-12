@@ -254,6 +254,36 @@ struct FinTSConnectorTests {
 		#expect(session.events.filter { if case .rejected = $0 { true } else { false } } == [.rejected(expected)])
 	}
 
+	@Test("Reports a rejection that the helper writes after the cancel, while it ends")
+	func rejectionDuringGrace() async throws {
+		let session = Session()
+		let task = Task {
+			try await connector("""
+				read cmd
+				echo '{"type":"progress","done":0,"of":1}'
+				read line
+				echo '{"type":"failed","code":"9942","text":"PIN falsch"}'
+				""", grace: 5).refresh(RefreshRequest(access: Self.access, accounts: [Self.giro]), session)
+		}
+		await until { session.events.contains(.progress(.fetching(done: 0, of: 1))) }
+		task.cancel()
+		_ = try? await task.value
+		#expect(session.events.contains(.rejected(.pinRejected(BankMessage(code: "9942", text: "PIN falsch")))))
+	}
+
+	@Test("An account shows the rejection of the PIN that the session gets, also beside another error, and transactions keep the PIN", arguments: [
+		(#"{"type":"result","account":"DE02120300000000202051","balance":{"amount":"100","currency":"EUR"},"errors":[{"code":"9010","text":"Verarbeitung nicht möglich"},{"code":"9942","text":"PIN falsch"}]}"#,
+			SyncFailure?.some(.pinRejected(BankMessage(code: "9942", text: "PIN falsch")))),
+		(#"{"type":"result","account":"DE02120300000000202051","transactions":{"rows":[]},"errors":[{"code":"9942","text":"PIN falsch"}]}"#, nil),
+	])
+	func mixedErrors(line: String, shown: SyncFailure?) async throws {
+		let session = Session()
+		let report = try await refresh("read cmd; echo '\(line)'", session: session)
+		guard case let .fetched(result) = report.outcomes[Self.giro.accountID] else { Issue.record("not fetched"); return }
+		#expect(result.transactionFailure == shown)
+		#expect(session.events == shown.map { [.rejected($0)] } ?? [])
+	}
+
 	@Test("A canceled refresh sends cancel, and the helper ends")
 	func cancel() async throws {
 		let session = Session()
