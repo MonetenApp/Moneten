@@ -73,6 +73,8 @@ public struct FinTSConnector: BankConnector {
 	/// line when it sends a message to the bank and when the answer arrives, so this is the time the
 	/// bank may take to answer.
 	let inactivity: TimeInterval
+	/// How long the helper may take to end after a cancel before it is terminated.
+	let grace: TimeInterval
 
 	/// The connector of the app, with the product ID that scripts/build-app.sh puts into Info.plist.
 	public init() {
@@ -80,11 +82,12 @@ public struct FinTSConnector: BankConnector {
 			version: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "")
 	}
 
-	init(helper: Helper, productID: String?, version: String, inactivity: TimeInterval = 30) {
+	init(helper: Helper, productID: String?, version: String, inactivity: TimeInterval = 30, grace: TimeInterval = 5) {
 		self.helper = helper
 		self.productID = productID
 		self.version = version
 		self.inactivity = inactivity
+		self.grace = grace
 	}
 
 	/// The name, BIC, and FinTS address of a bank. Nil when the bank directory does not know the code.
@@ -172,13 +175,13 @@ public struct FinTSConnector: BankConnector {
 
 	/// Runs one command. Requests of the helper go to the session, and every other message to `handle`.
 	/// A decoupled approval stays open while hbci4java checks it, until the helper withdraws it.
-	/// When the refresh is canceled or fails, the helper gets a cancel and at most 5 seconds to end.
+	/// When the refresh is canceled or fails, the helper gets a cancel and at most `grace` to end.
 	/// When the helper ends, its open requests end too. A helper that stays silent for `inactivity`
 	/// while no request is open fails the run with a timeout.
 	private func run(_ command: Command, session: SyncSession?, _ handle: (HelperMessage) async throws -> Void) async throws {
 		let watchdog = Watchdog(after: inactivity)
 		let asks = OpenAsks(watchdog: watchdog)
-		let process = try HelperProcess(executable: helper.executable, arguments: helper.arguments, onEnd: asks.close)
+		let process = try HelperProcess(executable: helper.executable, arguments: helper.arguments, grace: grace, onEnd: asks.close)
 		watchdog.onExpiry { process.fail(HelperFailure.timeout) }
 		var approvals: [Int: Task<UserAnswer, any Error>] = [:]
 		var helperLeft = false

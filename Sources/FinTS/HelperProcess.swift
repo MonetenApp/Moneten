@@ -22,10 +22,12 @@ final class HelperProcess: @unchecked Sendable {
 	private let writer = DispatchQueue(label: "io.github.moneten.fints.write")
 	private let canceled = Mutex(false)
 	private let failure = Mutex<(any Error)?>(nil)
+	private let grace: TimeInterval
 	private let onEnd: @Sendable () -> Void
 
-	/// `onEnd` runs once when stdout ends or the process ends, whichever comes first.
-	init(executable: URL, arguments: [String], onEnd: @escaping @Sendable () -> Void = {}) throws {
+	/// `onEnd` runs once when stdout ends or the process ends, whichever comes first. `grace` is the
+	/// time that the helper gets to end after a cancel.
+	init(executable: URL, arguments: [String], grace: TimeInterval, onEnd: @escaping @Sendable () -> Void = {}) throws {
 		let stdin = Pipe(), stdout = Pipe()
 		process.executableURL = executable
 		process.arguments = arguments
@@ -38,6 +40,7 @@ final class HelperProcess: @unchecked Sendable {
 		_ = fcntl(stdin.fileHandleForWriting.fileDescriptor, F_SETNOSIGPIPE, 1)
 		input = stdin.fileHandleForWriting
 		output = stdout.fileHandleForReading
+		self.grace = grace
 		self.onEnd = onEnd
 		(lines, received) = AsyncStream.makeStream(of: String.self)
 		// A handler per pipe, because FileHandle.bytes reads all pipes one after the other, and one
@@ -104,11 +107,11 @@ final class HelperProcess: @unchecked Sendable {
 	}
 
 	/// Asks the helper to end the dialog with the bank, and ends the process when it is still running
-	/// after 5 seconds, and kills it 2 seconds later, so a stuck JVM never keeps a refresh open. It
+	/// after `grace`, and kills it 2 seconds later, so a stuck JVM never keeps a refresh open. It
 	/// returns at once: a helper that does not read its input blocks only the queue of its writes.
 	func cancel() {
 		guard canceled.withLock({ was in defer { was = true }; return !was }) else { return }
-		DispatchQueue.global().asyncAfter(deadline: .now() + 5) { [self] in
+		DispatchQueue.global().asyncAfter(deadline: .now() + grace) { [self] in
 			guard process.isRunning else { return }
 			process.terminate()
 			DispatchQueue.global().asyncAfter(deadline: .now() + 2) { [self] in
