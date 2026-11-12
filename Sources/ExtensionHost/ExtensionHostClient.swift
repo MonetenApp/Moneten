@@ -15,9 +15,10 @@ public actor ExtensionHostClient {
 	private let process: Process
 	/// The host process of this session, for the debug log.
 	public nonisolated let processIdentifier: Int32
-	private let extensionName: String
 	private let input: FileHandle
-	private var events: AsyncStream<HostEvent>.Iterator
+	/// The events of the host in order, or the reason the app stopped reading.
+	private var events: AsyncStream<Result<HostEvent, ScriptError>>.Iterator
+	private let reader: Reader
 	private let ask: @Sendable (String) async throws -> HostDecision
 	private let log: @Sendable (HostLog) -> Void
 	/// How long the host may send nothing while no question waits for the user.
@@ -25,13 +26,14 @@ public actor ExtensionHostClient {
 	private var busy = false
 	private var watchdog: Task<Void, Never>?
 	private var silenced = false
-	private var printed = 0
 
 	/// The longest line the app reads from the host process. The package of the start command goes the other way.
 	static let maxLine = 64 * 1_048_576
-	/// The output of `print` that the app keeps for one session. The rest is dropped, so a script
-	/// cannot fill the memory of the app.
+	/// The output of `print` that the app keeps for one session. The rest is dropped before it is
+	/// queued, so a script cannot fill the memory of the app.
 	static let maxPrinted = 4 * 1_048_576
+	/// The other events that may wait for the app. A host that sends more ends the session.
+	static let maxPending = 1_000
 
 	/// The host process that `scripts/build-app.sh` puts into the app, with the sandbox that allows
 	/// only outgoing network connections.
@@ -67,35 +69,21 @@ public actor ExtensionHostClient {
 		process.standardOutput = stdout
 		_ = fcntl(stdin.fileHandleForWriting.fileDescriptor, F_SETNOSIGPIPE, 1)
 		input = stdin.fileHandleForWriting
-		self.extensionName = extensionName
 		self.silence = silence
 		self.ask = ask
 		self.log = log
-		let (stream, continuation) = AsyncStream.makeStream(of: HostEvent.self)
+		let (stream, continuation) = AsyncStream.makeStream(of: Result<HostEvent, ScriptError>.self)
 		events = stream.makeAsyncIterator()
-		let partial = LineBuffer()
+		let reader = Reader(extensionName: extensionName)
+		self.reader = reader
 		stdout.fileHandleForReading.readabilityHandler = { handle in
 			let data = handle.availableData
-			guard !data.isEmpty else {
+			let events = data.isEmpty ? [] : reader.take(data)
+			for event in events { continuation.yield(event) }
+			let broken = if case .failure? = events.last { true } else { false }
+			if data.isEmpty || broken {
 				handle.readabilityHandler = nil
 				continuation.finish()
-				return
-			}
-			let lines = partial.data.withLock { buffer -> [Data]? in
-				buffer.append(data)
-				guard data.contains(0x0A) else { return buffer.count > Self.maxLine ? nil : [] }
-				var lines = buffer.split(separator: 0x0A, omittingEmptySubsequences: false)
-				buffer = Data(lines.removeLast())
-				return lines.allSatisfy({ $0.count <= Self.maxLine }) && buffer.count <= Self.maxLine ? lines : nil
-			}
-			guard let lines else {
-				handle.readabilityHandler = nil
-				continuation.yield(.failed("The extension sent an answer larger than \(Self.maxLine / 1_048_576) MB."))
-				continuation.finish()
-				return
-			}
-			for line in lines {
-				continuation.yield((try? JSONDecoder().decode(HostEvent.self, from: line)) ?? .failed("The extension host sent a line that the app cannot read."))
 			}
 		}
 		try process.run()
@@ -130,9 +118,20 @@ public actor ExtensionHostClient {
 		while true {
 			arm()
 			var iterator = events
-			let event = await iterator.next(isolation: self)
+			let item = await iterator.next(isolation: self)
 			events = iterator
 			watchdog?.cancel()
+			// The host broke the protocol or ended, so nothing it sends after this is read.
+			guard case let .success(event)? = item else {
+				process.terminate()
+				if case let .failure(error)? = item { throw error }
+				throw ScriptError(silenced ? "The extension did not respond for \(silence.components.seconds) seconds, so Moneten stopped it." : "The extension host ended unexpectedly.")
+			}
+			if case let .print(line) = event {
+				log(.print(line))
+				continue
+			}
+			reader.took()
 			switch event {
 			case let .askHost(host):
 				do {
@@ -143,13 +142,10 @@ public actor ExtensionHostClient {
 					process.terminate()
 					throw error
 				}
-			case let .print(line): keep(line)
 			case let .sent(request): log(.sent(request))
-			case .alive: continue
+			case .alive, .print: continue
 			case let .failed(message): throw ScriptError(message)
-			case let .some(answer): return answer
-			case nil:
-				throw ScriptError(silenced ? "The extension did not respond for \(silence.components.seconds) seconds, so Moneten stopped it." : "The extension host ended unexpectedly.")
+			case .loaded, .result: return event
 			}
 		}
 	}
@@ -168,19 +164,52 @@ public actor ExtensionHostClient {
 		process.terminate()
 	}
 
-	/// Passes a line of `print` to the log until the session printed `maxPrinted` bytes, then one notice.
-	private func keep(_ line: String) {
-		let before = printed
-		printed += line.utf8.count + 1
-		if printed <= Self.maxPrinted {
-			log(.print(line))
-		} else if before <= Self.maxPrinted {
-			log(.print("Moneten drops the rest of the output of print, because \(extensionName) printed more than \(Self.maxPrinted / 1_048_576) MB."))
-		}
-	}
+	/// Turns the output of the host into events, on the queue of the pipe. It ends with a failure when
+	/// a line passes `maxLine`, a line does not read, or more than `maxPending` events wait for the
+	/// app. Print output past `maxPrinted` never reaches the queue.
+	private final class Reader: Sendable {
+		private let extensionName: String
+		private let state = Mutex<(partial: Data, printed: Int, pending: Int)>((Data(), 0, 0))
 
-	private final class LineBuffer: Sendable {
-		let data = Mutex(Data())
+		init(extensionName: String) {
+			self.extensionName = extensionName
+		}
+
+		func take(_ data: Data) -> [Result<HostEvent, ScriptError>] {
+			state.withLock { state in
+				let tooLarge = ScriptError("The extension sent an answer larger than \(ExtensionHostClient.maxLine / 1_048_576) MB.")
+				state.partial.append(data)
+				guard data.contains(0x0A) else { return state.partial.count > ExtensionHostClient.maxLine ? [.failure(tooLarge)] : [] }
+				var lines = state.partial.split(separator: 0x0A, omittingEmptySubsequences: false)
+				state.partial = Data(lines.removeLast())
+				guard lines.allSatisfy({ $0.count <= ExtensionHostClient.maxLine }), state.partial.count <= ExtensionHostClient.maxLine else { return [.failure(tooLarge)] }
+				var events: [Result<HostEvent, ScriptError>] = []
+				for line in lines {
+					guard let event = try? JSONDecoder().decode(HostEvent.self, from: line) else {
+						return events + [.failure(ScriptError("The extension host sent a line that the app cannot read."))]
+					}
+					if case let .print(text) = event {
+						let before = state.printed
+						state.printed += text.utf8.count + 1
+						if state.printed <= ExtensionHostClient.maxPrinted {
+							events.append(.success(event))
+						} else if before <= ExtensionHostClient.maxPrinted {
+							events.append(.success(.print("Moneten drops the rest of the output of print, because \(extensionName) printed more than \(ExtensionHostClient.maxPrinted / 1_048_576) MB.")))
+						}
+						continue
+					}
+					state.pending += 1
+					guard state.pending <= ExtensionHostClient.maxPending else { return events + [.failure(ScriptError("The extension host sent more than the app can read."))] }
+					events.append(.success(event))
+				}
+				return events
+			}
+		}
+
+		/// The app took an event other than print output from the queue.
+		func took() {
+			state.withLock { $0.pending -= 1 }
+		}
 	}
 
 	private func write(_ command: HostCommand) {

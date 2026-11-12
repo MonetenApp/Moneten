@@ -4,8 +4,10 @@ import Foundation
 import Synchronization
 import Testing
 
-/// Sessions in the real host process, one process each, as the app runs them.
-@Suite struct SessionTests {
+/// Sessions in the real host process, one process each, as the app runs them. They run one after
+/// the other, because several of them keep a core busy, and the time limits of the others would
+/// then measure the load of the runner.
+@Suite(.serialized) struct SessionTests {
 	static func fixture(_ exchanges: [(String, String)]) throws -> Fixture {
 		try decode(Fixture.self, ["exchanges": exchanges.map { url, body in ["request": ["method": "GET", "url": url], "response": ["status": 200, "body": body]] }])
 	}
@@ -115,6 +117,19 @@ import Testing
 			return String(decoding: bytes, as: UTF8.self)
 		}
 
+		/// Waits until the shell has started the host, so that a limit counts from that start and not
+		/// from a launch that a busy runner delays. A host that already ended counts as started.
+		func started(within limit: Duration) async throws -> Bool {
+			let deadline = ContinuousClock.now + limit
+			var path = [CChar](repeating: 0, count: Int(MAXPATHLEN))
+			while ContinuousClock.now < deadline {
+				if kill(host, 0) == -1 && errno == ESRCH { return true }
+				if proc_pidpath(host, &path, UInt32(path.count)) > 0, String(cString: path).hasSuffix("/MonetenExtensionHost") { return true }
+				try await Task.sleep(for: .milliseconds(10))
+			}
+			return false
+		}
+
 		func ends(within limit: Duration) async throws -> Bool {
 			let deadline = ContinuousClock.now + limit
 			while ContinuousClock.now < deadline {
@@ -139,6 +154,7 @@ import Testing
 	@Test func hostEndsWhenTheAppDiedBeforeItStarted() async throws {
 		let orphan = try Orphan(#"exec 3<&0; (sleep 0.5; exec "$0") <&3 & echo $! >&2"#)
 		orphan.shell.waitUntilExit()
+		try #require(try await orphan.started(within: .seconds(60)))
 		#expect(try await orphan.ends(within: .seconds(5)))
 	}
 
@@ -203,7 +219,7 @@ import Testing
 		let client = try await Self.start(demo("WebBanking{version = 1}\nfunction Big() return string.rep(\"a\", \(ExtensionHostClient.maxLine + 1 - line)) end"),
 			fixture: Self.fixture([]))
 		await #expect(throws: ScriptError("The extension sent an answer larger than 64 MB.")) { try await client.call("Big") }
-		await client.end()
+		#expect(try await Self.ended(client))
 	}
 
 	@Test func printOutputIsCapped() async throws {
@@ -216,5 +232,22 @@ import Testing
 		let line = HostLog.print(String(repeating: "x", count: 1_048_575))
 		#expect(recorder.printed.withLock { $0 } == [line, line, line, line, .print("Moneten drops the rest of the output of print, because Demo printed more than 4 MB.")])
 		await client.end()
+	}
+
+	/// A script that makes requests in a loop floods the app with events while the log is slow. The
+	/// app holds a bounded number of them and then ends the session.
+	@Test func floodOfEventsEndsTheSession() async throws {
+		let package = demo("""
+			WebBanking{version = 1}
+			function Flood()
+				local c = Connection()
+				for i = 1, 20000 do pcall(c.request, c, "GET", "https://api.bank.example/missing") end
+				return "done"
+			end
+			""", hosts: ["api.bank.example"])
+		let client = try await ExtensionHostClient.start(HostSetup(package: package, fixture: Self.fixture([])), executable: hostExecutable,
+			ask: { _ in .denied }, log: { _ in usleep(1_000) }).client
+		await #expect(throws: ScriptError("The extension host sent more than the app can read.")) { try await client.call("Flood") }
+		#expect(try await Self.ended(client))
 	}
 }
