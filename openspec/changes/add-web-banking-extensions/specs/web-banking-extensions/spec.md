@@ -8,13 +8,21 @@ Web banking extensions are Lua scripts that fetch accounts, balances, transactio
 
 ### Requirement: Install by file
 
-The app SHALL treat every file with the extension `.lua` in the "Extensions" folder of the data folder as an installed extension. A file that is added, changed, or removed takes effect without a restart of the app.
+The app SHALL treat every `.lua` file and every package folder in the "Extensions" folder of the data folder as one installed extension. A package folder holds `manifest.json`, one or more Lua files, and a README. An extension that the user copies into the folder or adds with "Install from File..." is marked "Unverified". A change takes effect without a restart of the app.
 
 #### Scenario: Add a file while the app runs
 
-- **GIVEN** the app is running and the settings tab "Extensions" is open
+- **GIVEN** the app is running and the "Extensions" window is open
 - **WHEN** the user copies `Demo.lua` into the "Extensions" folder
 - **THEN** the extension "Demo" appears in the list without a restart
+- **AND** the list marks it "Unverified"
+
+#### Scenario: Install a package from a file
+
+- **WHEN** the user chooses "Install from File..." and picks the folder `Broker` with `manifest.json`, `Broker.lua`, `Parser.lua`, and `README.md`
+- **AND** the user confirms the warning
+- **THEN** the folder is in the "Extensions" folder
+- **AND** the list shows one extension "Broker" marked "Unverified"
 
 #### Scenario: Remove a file
 
@@ -50,30 +58,36 @@ The app SHALL load a script once to read its registration. A script with a synta
 
 ### Requirement: List of installed extensions
 
-The app SHALL list all installed extensions in the settings tab "Extensions" with the name, the description, and the version of each one. The name is the file name without `.lua`.
+The app SHALL list all installed extensions under "Installed" in the window that the menu item "Extensions" opens. Each row shows the name, the description, and the version, and "Unverified" for an extension installed from a file. The name is the file name without `.lua`, or the name of the package folder.
 
 #### Scenario: Two extensions
 
 - **GIVEN** the files `Demo.lua` with version 1.00 and `Broker.lua` with version 2.31 are installed
-- **WHEN** the user opens the settings tab "Extensions"
-- **THEN** the list shows "Demo" with "Version 1.00" and "Broker" with "Version 2.31", each with its description
+- **WHEN** the user chooses the menu item "Extensions"
+- **THEN** the "Extensions" window lists "Demo" with "Version 1.00" and "Broker" with "Version 2.31" under "Installed", each with its description
 
-### Requirement: Remove an extension in the settings
+### Requirement: Remove an extension
 
-The app SHALL let the user remove an installed extension from the settings. The app moves the file to the Trash. Accounts that used the extension keep their transactions and show that their extension is missing.
+The app SHALL let the user remove an installed extension in the "Extensions" window. The app moves the file or the package folder to the Trash. Accounts that used the extension keep their transactions and show that their extension is missing.
 
 #### Scenario: Remove an extension that an account uses
 
 - **GIVEN** the account "Broker Depot" uses the extension "Broker"
-- **WHEN** the user removes "Broker" and confirms
+- **WHEN** the user removes "Broker" in the "Extensions" window and confirms
 - **THEN** `Broker.lua` is in the Trash
 - **AND** the account "Broker Depot" still shows its data and reports at the next refresh that the extension "Broker" is not installed
 
 ### Requirement: Warning before the first run
 
-The app SHALL ask the user before it first runs an extension that does not come from the catalog. The warning says that the script receives the login data of the service and that nobody from the project has reviewed it. The app asks again when the content of the file changes.
+The app SHALL warn the user when an extension is installed from a file, and run it only after the user agrees. The warning says that the script receives the login data of the service and that nobody from the project has reviewed it. For a file that the user copied into the folder, the warning comes before its first run. The app warns again when the content changes. The extension stays marked "Unverified".
 
-#### Scenario: First use
+#### Scenario: Install from a file
+
+- **WHEN** the user chooses "Install from File..." and picks `Demo.lua`
+- **THEN** the app shows the warning with the buttons "Cancel" and "Install"
+- **AND** after "Install" the list shows "Demo" marked "Unverified"
+
+#### Scenario: First use of a copied file
 
 - **GIVEN** the user copied `Demo.lua` into the "Extensions" folder
 - **WHEN** the user picks the service "Premium Account" in the add account assistant
@@ -85,6 +99,7 @@ The app SHALL ask the user before it first runs an extension that does not come 
 - **GIVEN** the user allowed `Demo.lua` yesterday
 - **WHEN** the file content changes and a refresh starts
 - **THEN** the app does not run the script and asks for the confirmation again
+- **AND** "Demo" stays marked "Unverified" after the confirmation
 
 ### Requirement: Services in the assistant
 
@@ -114,12 +129,12 @@ The app SHALL ask for the login data of an extension service in a dialog with a 
 
 ### Requirement: Manifest
 
-The app SHALL read an optional manifest file with the same base name as the script. The manifest lists the hosts that the extension contacts, the labels and input rules of the login fields for each service, and the lowest API version that the script needs.
+The app SHALL read the `manifest.json` of a package folder. `files` lists the Lua files in load order. `hosts` lists exact host names without wildcards. `services` lists the login field labels of each service. `kinds` lists the data the package fetches, from balances, transactions, securities, and statements. `apiVersion` is the lowest API version it needs. A single `.lua` file has no manifest.
 
 #### Scenario: Manifest found
 
-- **GIVEN** `Broker.lua` and a manifest for "Broker" that lists the host `api.broker.example`
-- **WHEN** the user opens the details of "Broker" in the settings
+- **GIVEN** the package folder `Broker` with a manifest that lists the host `api.broker.example`
+- **WHEN** the user opens the details of "Broker" in the "Extensions" window
 - **THEN** the app shows `api.broker.example` as the only host the extension contacts
 
 #### Scenario: Newer API needed
@@ -128,9 +143,21 @@ The app SHALL read an optional manifest file with the same base name as the scri
 - **WHEN** the app loads the extension
 - **THEN** the extension is not usable and the list says that it needs a newer version of the app
 
+#### Scenario: Wildcard host
+
+- **GIVEN** a manifest that lists the host `*.broker.example`
+- **WHEN** the app loads the package
+- **THEN** the extension is not usable and the list says that a host name must be exact
+
+#### Scenario: Folder without a manifest
+
+- **GIVEN** the folder `Broker` in the "Extensions" folder has no `manifest.json`
+- **WHEN** the app reads the "Extensions" folder
+- **THEN** the list shows "Broker" as not usable because the manifest is missing
+
 ### Requirement: Host limits
 
-The app SHALL let an extension with a manifest contact only the hosts in the manifest. For an extension without a manifest, the app SHALL ask the user to allow each host at the first contact and remember the answer for that extension. A blocked request fails with an error that names the host.
+The app SHALL let an extension with a manifest contact only the hosts in the manifest, matched by the exact name, and check the target of every HTTP redirect the same way. For an extension without a manifest, the app SHALL ask the user to allow each host at the first contact and remember the answer for that extension. A blocked request fails with an error that names the host.
 
 #### Scenario: Host not in the manifest
 
@@ -138,6 +165,19 @@ The app SHALL let an extension with a manifest contact only the hosts in the man
 - **WHEN** the script calls `connection:get("https://tracker.example/pixel")`
 - **THEN** the request is not sent
 - **AND** the refresh ends with an error that names `tracker.example`
+
+#### Scenario: Other host of the same domain
+
+- **GIVEN** a manifest that lists only `api.broker.example`
+- **WHEN** the script calls `connection:get("https://login.broker.example/")`
+- **THEN** the request is not sent and the error names `login.broker.example`
+
+#### Scenario: Redirect to another host
+
+- **GIVEN** a manifest that lists only `api.broker.example`
+- **WHEN** `https://api.broker.example/start` answers with status 302 and `Location: https://evil.example/`
+- **THEN** the app does not request `https://evil.example/`
+- **AND** the refresh ends with an error that names `evil.example`
 
 #### Scenario: No manifest, new host
 
@@ -153,7 +193,7 @@ The app SHALL run each extension session in its own process that can reach the n
 #### Scenario: No file access
 
 - **WHEN** a script calls `io.open("/etc/hosts")`
-- **THEN** the call fails because `io` is not available
+- **THEN** the script stops with an error that says that `io.open` is not available
 - **AND** the refresh ends with an error that names the line
 
 #### Scenario: Other access is invisible
@@ -164,17 +204,29 @@ The app SHALL run each extension session in its own process that can reach the n
 
 ### Requirement: Lua runtime
 
-The app SHALL run scripts with Lua 5.4 and the standard libraries for strings, tables, math, UTF-8, and time. The functions `os.execute`, `os.remove`, `os.rename`, `os.tmpname`, `os.getenv`, `load`, `loadstring`, `dofile`, `require`, and the library `io` are not available.
+The app SHALL run scripts with Lua 5.4 and the standard libraries for strings, tables, math, UTF-8, and coroutines. `os` has only `time`, `date`, `clock`, and `difftime`. `io` is an empty table, so it has no `open` and no other function that touches a file. `debug`, `package`, `load`, `loadstring`, `dofile`, `loadfile`, `require`, and `string.dump` are absent.
 
 #### Scenario: Standard library
 
-- **WHEN** a script calls `os.time{year=2026, month=11, day=9}` and `string.format("%.2f", 42)`
-- **THEN** both calls work as in Lua 5.4
+- **WHEN** a script calls `os.time{year=2026, month=11, day=9}`, `os.date("%Y-%m-%d", 0)`, and `string.format("%.2f", 42)`
+- **THEN** all three calls work as in Lua 5.4
 
 #### Scenario: Removed function
 
 - **WHEN** a script calls `require("socket")`
 - **THEN** the script stops with an error that says that `require` is not available
+
+#### Scenario: File function read at load time
+
+- **GIVEN** `Shop.lua` starts with the line `local open = io.open`
+- **WHEN** the app loads the script
+- **THEN** `open` is `nil`
+- **AND** the script registers without an error
+
+#### Scenario: Guarded file access
+
+- **WHEN** a script runs `if io ~= nil and io.open ~= nil then return "file" else return "none" end`
+- **THEN** the result is "none"
 
 ### Requirement: Global variables
 
@@ -432,12 +484,24 @@ The app SHALL show a captcha in an embedded browser when `challenge` is the scri
 
 ### Requirement: Approval in a browser window
 
-The app SHALL open any other `https://` URL in `challenge` in its own browser window when the host is allowed for the extension. When the website redirects to the redirect address, the app closes the window and passes the parameter `code`, or else `access_token`, `auth_code`, or `tokenid`, in `credentials[1]`.
+The app SHALL open any other `https://` URL in `challenge` in its own browser window when the host is allowed for the extension. When the website redirects to `https://service.moneymoney-app.com/1/redirect`, `moneymoney-app://oauth`, or `moneten://oauth`, the app closes the window without contacting that address. It passes `code`, or else `access_token`, `auth_code`, `tokenid`, or a similar parameter, in `credentials[1]`.
 
 #### Scenario: OAuth authorization
 
 - **GIVEN** the function returns `{challenge="https://auth.broker.example/authorize?client_id=abc", state="xyz"}`
-- **WHEN** the user signs in and the website redirects with `code=4711&state=xyz`
+- **WHEN** the user signs in and the website redirects to `moneten://oauth?code=4711&state=xyz`
+- **THEN** the next call has `credentials[1]` "4711"
+
+#### Scenario: Final address is never contacted
+
+- **GIVEN** the browser window shows the login of `auth.broker.example`
+- **WHEN** the website redirects to `https://service.moneymoney-app.com/1/redirect?code=4711&state=xyz`
+- **THEN** the app closes the window and sends no request to `service.moneymoney-app.com`
+- **AND** the next call has `credentials[1]` "4711"
+
+#### Scenario: Other parameter name
+
+- **WHEN** the website redirects to `moneymoney-app://oauth?authorization_code=4711&state=xyz`
 - **THEN** the next call has `credentials[1]` "4711"
 
 #### Scenario: State is missing
@@ -722,12 +786,24 @@ The app SHALL stop the script and show an error when the server answers a reques
 
 ### Requirement: Connection shortcuts and state
 
-The app SHALL offer `connection:get(url)`, `connection:post(url, postContent, postContentType)`, `connection:close()`, and `connection:getBaseURL()`, which returns the last requested URL. Open connections close when the script ends. The character set and MIME type come from the response header and from `<meta>` tags.
+The app SHALL offer `connection:get(url)`, `connection:post(url, postContent, postContentType)`, `connection:close()`, and `connection:getBaseURL()`, which returns the last requested URL. `get` and `post` return the same five values as `request`. A connection follows HTTP redirects unless the script sets `connection.redirects` to `false`. Open connections close when the script ends. The character set and MIME type come from the response header and from `<meta>` tags.
 
 #### Scenario: Base URL
 
 - **WHEN** a script calls `connection:get("https://bank.example/a/b")` and then `connection:getBaseURL()`
 - **THEN** the second call returns "https://bank.example/a/b"
+
+#### Scenario: Headers from a shortcut
+
+- **WHEN** a script calls `local content, charset, mimeType, filename, headers = connection:get("https://bank.example/a")`
+- **THEN** `headers` holds the response headers, for example `headers["Content-Type"]` "text/html; charset=UTF-8"
+
+#### Scenario: Redirect not followed
+
+- **GIVEN** the script sets `connection.redirects = false`
+- **WHEN** `connection:get("https://bank.example/login")` gets the status 302 with `Location: https://bank.example/portal?code=X`
+- **THEN** the call returns without requesting `https://bank.example/portal?code=X`
+- **AND** `headers["Location"]` is "https://bank.example/portal?code=X"
 
 ### Requirement: Cookies
 
@@ -1064,6 +1140,48 @@ The app SHALL offer `MM.pkcs8decode(data)`, which reads a private or public RSA,
 
 - **WHEN** a script calls `MM.pkcs8decode("hello")`
 - **THEN** the result is `nil`
+
+### Requirement: Undocumented functions in use
+
+The app SHALL offer `MM.derdecode`, `MM.base64urldecode`, `connection.redirects`, and the fifth return value of `connection:get`, because published extensions use them. A call of any other function that the app does not offer stops the script with an error that names the function and the line. A read of such a name gives `nil`.
+
+#### Scenario: URL-safe Base64
+
+- **WHEN** a script calls `MM.base64urldecode("SGVsbG8")`
+- **THEN** the result is "Hello"
+
+#### Scenario: Unknown function
+
+- **GIVEN** line 12 of `Demo.lua` calls `MM.parseSwiftMt(data)`
+- **WHEN** the script runs during a refresh
+- **THEN** the script stops and the account shows an error that names `MM.parseSwiftMt` and line 12
+
+#### Scenario: Guarded use
+
+- **WHEN** a script tests `type(MM.bcrypt) == "function"`
+- **THEN** the test is false and the script continues
+
+### Requirement: Packages
+
+The app SHALL install, update, and remove a package as one unit. All Lua files of a package run in the same Lua state during a session. A package whose `files` names a file that is missing or cannot be read is not usable.
+
+#### Scenario: Remove a package
+
+- **GIVEN** the package "Broker" with `Broker.lua` and `Parser.lua` is installed
+- **WHEN** the user removes "Broker" in the "Extensions" window and confirms
+- **THEN** the whole folder `Broker` is in the Trash
+
+#### Scenario: Replace a package
+
+- **GIVEN** the package "Broker" is installed from a file
+- **WHEN** the user installs a new folder `Broker` with "Install from File..." in which `Parser.lua` changed and `Old.lua` is gone
+- **THEN** the "Extensions" folder holds only the files of the new folder
+
+#### Scenario: Missing file
+
+- **GIVEN** the manifest of "Broker" lists `Parser.lua` and the folder has no such file
+- **WHEN** the app loads the package
+- **THEN** "Broker" is not usable and the list names `Parser.lua`
 
 ### Requirement: No payments through extensions
 
