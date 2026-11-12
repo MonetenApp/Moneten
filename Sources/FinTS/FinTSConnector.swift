@@ -385,7 +385,7 @@ private final class Watchdog: Sendable {
 private extension UserAnswer {
 	var value: String {
 		switch self {
-		case let .pin(secret), let .tan(secret): secret.value
+		case let .pin(secret, _), let .tan(secret): secret.value
 		case let .tanMethod(id): id
 		case let .tanMedium(name): name
 		case let .host(decision): decision.rawValue

@@ -50,9 +50,9 @@ struct SetupSessionTests {
 	}
 
 	@Test("The PIN of the setup answers the first refresh of the new access from memory")
-	func rememberedPIN() async {
+	func rememberedPIN() async throws {
 		let coordinator = SyncCoordinator(broker: broker)
-		coordinator.broker.remember(Secret("12345"), for: Self.access.id)
+		try coordinator.broker.remember(Secret("12345"), for: Self.access.id, save: false)
 		let connector = ScriptedConnector([.ask(.pin(PINRequest()))])
 		coordinator.refresh(RefreshRequest(access: Self.access, accounts: []), with: connector, attended: true)
 		for _ in 0..<200 where coordinator.isRefreshing { try? await Task.sleep(for: .milliseconds(10)) }

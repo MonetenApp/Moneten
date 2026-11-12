@@ -135,6 +135,7 @@ public final class SyncCoordinator {
 
 	/// The accounts of a canceled access show their last state at once, while its connector still ends.
 	private func cancel(_ id: UUID) {
+		broker.endRequest(of: id)
 		running[id]?.cancel()
 		afterRun[id] = nil
 		apply(.cancel, to: id)
@@ -174,8 +175,8 @@ public final class SyncCoordinator {
 			} catch {
 				event = Task.isCancelled || error is CancellationError ? .cancel : .fail(Self.failure(error))
 			}
-			// A PIN stays in memory only after a refresh with it succeeded. A typo is never sent again on its own.
-			if case .finish = event {} else { broker.forgetPIN(of: access.id) }
+			// A PIN is kept, and saved on request, only after a refresh with it succeeded. A typo is never sent again on its own.
+			broker.refreshEnded(access.id, with: event)
 			apply(event, to: access.id)
 			// The state of this run: the user may have canceled it before its connector returned.
 			let end = states[access.id] ?? .idle
@@ -200,6 +201,8 @@ public final class SyncCoordinator {
 	/// Applies an event. An event that the state does not allow changes nothing, for example the end
 	/// of a connector after the user canceled.
 	fileprivate func apply(_ event: SyncEvent, to access: UUID) {
+		// The access goes on, so its dialog no longer waits for a challenge.
+		if case .progress = event { broker.endRequest(of: access) }
 		if let next = (states[access] ?? .idle).next(event) { states[access] = next }
 	}
 
