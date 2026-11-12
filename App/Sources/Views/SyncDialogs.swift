@@ -80,7 +80,8 @@ struct PINSheet: View {
 
 /// Asks whether an extension without a list of hosts may contact a new host (ADR 0015). The app keeps
 /// the answer for the extension, so the question comes once per host. "Deny" is the default button,
-/// because a slip of the Return key must not send login data somewhere new.
+/// because a slip of the Return key must not send login data somewhere new, and Escape denies too,
+/// so that the dialog never holds the refresh open.
 struct HostPermissionDialog: View {
 	let broker: SessionBroker
 	let prompt: Prompt
@@ -94,9 +95,15 @@ struct HostPermissionDialog: View {
 				LabeledContent("Host", value: request.host)
 			}
 		} buttons: {
+			// A button takes one shortcut, so an invisible second "Deny" takes Escape.
+			Button("Deny", action: deny).keyboardShortcut(.cancelAction).frame(width: 0, height: 0).opacity(0).accessibilityHidden(true)
 			Button("Allow") { broker.answer(.host(.allowed), to: prompt.id) }
-			Button("Deny") { broker.answer(.host(.denied), to: prompt.id) }.keyboardShortcut(.defaultAction)
+			Button("Deny", action: deny).keyboardShortcut(.defaultAction)
 		}
+	}
+
+	private func deny() {
+		broker.answer(.host(.denied), to: prompt.id)
 	}
 }
 

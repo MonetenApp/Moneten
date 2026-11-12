@@ -110,6 +110,15 @@ final class DebugHarness {
 				offscreenSnapshot(RefreshErrorPopover(error: error), width: 352, name: "\(argument)-error")
 			}
 		case "extrun": runExtension(argument)
+		case "escape":
+			// Presses Escape in the window of the open sheet, as the keyboard does, and logs the request that stays open.
+			guard let sheet = NSApp.windows.first(where: { $0.isSheet && $0.isVisible }),
+				let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: sheet.windowNumber, context: nil,
+					characters: "\u{1B}", charactersIgnoringModifiers: "\u{1B}", isARepeat: false, keyCode: 53) else { return log("escape no sheet") }
+			NSApp.sendEvent(event)
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+				self?.log("escape open=\(self?.model?.sync.broker.current.map { "\($0.request.kind)" } ?? "none")")
+			}
 		case "extanswer":
 			// Clicks "Allow" or "Deny" in the question about a new host.
 			guard let prompt = model.sync.broker.current, case .allowHost = prompt.request else { return log("extanswer no host question") }
