@@ -3,7 +3,7 @@ import Foundation
 import GRDB
 
 /// The open database. Every change goes through one of these methods.
-public final class Store: Sendable {
+public final class Store: SavedPINStore {
 	let queue: DatabaseQueue
 
 	init(queue: DatabaseQueue) {
@@ -133,6 +133,23 @@ public final class Store: Sendable {
 		}
 	}
 
+	/// The PINs that the user asked to save, by access. The app reads them when it unlocks.
+	public func savedPINs() throws -> [UUID: Secret] {
+		try queue.read { db in
+			Dictionary(uniqueKeysWithValues: try SavedPINRecord.fetchAll(db).map { ($0.accessID, Secret($0.pin)) })
+		}
+	}
+
+	/// Saves the PIN of an access, after the bank accepted it. It replaces a PIN saved before.
+	public func savePIN(_ pin: Secret, for access: UUID) throws {
+		try queue.write { db in try SavedPINRecord(accessID: access, pin: pin.value).save(db) }
+	}
+
+	/// "Remove saved PIN": deletes the saved PIN of an access, for all its accounts.
+	public func removeSavedPIN(of access: UUID) throws {
+		_ = try queue.write { db in try SavedPINRecord.deleteOne(db, key: access) }
+	}
+
 	/// What identifies every deleted transaction, so that a migration does not add them again.
 	public func deletedTransactions() throws -> [DeletedTransaction] {
 		try queue.read { db in try DeletedTransaction.fetchAll(db) }
@@ -163,7 +180,7 @@ public final class Store: Sendable {
 		}
 	}
 
-	/// Deletes an account. An access goes with its last account, together with its state. Returns the
+	/// Deletes an account. An access goes with its last account, together with its state and its saved PIN. Returns the
 	/// ID of that access.
 	@discardableResult
 	public func deleteAccount(_ id: UUID) throws -> UUID? {

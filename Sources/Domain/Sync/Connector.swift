@@ -35,6 +35,14 @@ public struct AccessState: Hashable, Sendable {
 	}
 }
 
+/// Where the app keeps the PINs that the user asked to save: the encrypted database, and nowhere else
+/// ("Saved PINs live in the encrypted database").
+public protocol SavedPINStore: Sendable {
+	func savedPINs() throws -> [UUID: Secret]
+	func savePIN(_ pin: Secret, for access: UUID) throws
+	func removeSavedPIN(of access: UUID) throws
+}
+
 /// Every source of bank data implements this protocol: FinTS, extensions, and finAPI.
 public protocol BankConnector: Sendable {
 	/// Fetches the balances and transactions of the requested accounts of one access, in one session.
