@@ -74,6 +74,9 @@ import org.kapott.hbci.GV_Result.GVRKUms.UmsLine;
 import org.kapott.hbci.GV_Result.GVRSaldoReq;
 import org.kapott.hbci.GV_Result.HBCIJobResult;
 import org.kapott.hbci.callback.AbstractHBCICallback;
+import org.kapott.hbci.dialog.DialogContext;
+import org.kapott.hbci.dialog.DialogEvent;
+import org.kapott.hbci.dialog.HBCIDialogEnd;
 import org.kapott.hbci.exceptions.AbortedException;
 import org.kapott.hbci.exceptions.HBCI_Exception;
 import org.kapott.hbci.exceptions.ProcessException;
@@ -418,6 +421,30 @@ public class FinTSHelper {
 			return taken;
 		}
 
+		/// The dialog whose last message the bank answered, until it ends. After a change of the TAN
+		/// method hbci4java leaves it open at the bank, where a challenge of the login may still wait.
+		DialogContext open;
+
+		@Override
+		public void onDialogEvent(DialogEvent event, DialogContext ctx) {
+			// Recorded before hbci4java handles the answer, because a change of the method throws there.
+			if (event == DialogEvent.MSG_SENT && present(ctx.getDialogId()) && !"0".equals(ctx.getDialogId())) open = ctx;
+			super.onDialogEvent(event, ctx);
+		}
+
+		/// Ends the open dialog at the bank after a change of the TAN method, so that its challenge does
+		/// not wait there while the next dialog requests the challenge of the new method.
+		void endOpenDialog() {
+			DialogContext dialog = open;
+			open = null;
+			if (dialog == null) return;
+			try {
+				new HBCIDialogEnd(HBCIDialogEnd.Flag.ACCEPT_ERROR).execute(dialog);
+			} catch (RuntimeException e) {
+				diagnostic("FinTSHelper: ending the dialog after the change of the TAN method failed: " + e.getMessage());
+			}
+		}
+
 		@Override
 		public void saveChanges() {
 		}
@@ -640,6 +667,7 @@ public class FinTSHelper {
 		@Override
 		public void status(HBCIPassport passport, int statusTag, Object[] o) {
 			if (statusTag == STATUS_MSG_SEND || statusTag == STATUS_MSG_RAW_RECV_ENCRYPTED) send(message("alive"));
+			if (statusTag == STATUS_DIALOG_END_DONE && passport instanceof Passport p) p.open = null;
 			if (statusTag != STATUS_SEND_TASK || o == null || o.length == 0) return;
 			Integer index = jobs.get(o[0]);
 			if (index == null || index <= lastProgress) return;
@@ -649,9 +677,10 @@ public class FinTSHelper {
 		}
 
 		/// The requests that end the dialog once the user changed the TAN method, so that the old dialog
-		/// neither asks the user nor sends another message to the bank.
+		/// asks the user nothing more. A new connection is allowed, because the end of the old dialog
+		/// (`Passport.endOpenDialog`) may need one.
 		static final Set<Integer> AFTER_SWITCH = Set.of(NEED_PT_PIN, NEED_PT_SECMECH, NEED_PT_TANMEDIA, NEED_PT_TAN, NEED_PT_PHOTOTAN, NEED_PT_QRTAN,
-			NEED_PT_DECOUPLED, NEED_PT_DECOUPLED_RETRY, NEED_CONNECTION);
+			NEED_PT_DECOUPLED, NEED_PT_DECOUPLED_RETRY);
 
 		/// The PIN rules of the bank parameters, or null when the bank states none.
 		static Map<String, Object> rules(HBCIPassport passport) {
@@ -1046,6 +1075,7 @@ public class FinTSHelper {
 			return true;
 		} catch (RuntimeException e) {
 			if (callback.switchTo == null) throw e;
+			passport.endOpenDialog();
 			Passport.loaded = passport.data();
 			Passport.loaded.tanMethod = callback.switchTo;
 			callback.restart();

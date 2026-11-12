@@ -5,6 +5,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.ObjectOutputStream;
 import java.io.PrintStream;
+import java.lang.reflect.Method;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -26,6 +27,8 @@ import org.kapott.hbci.GV.parsers.SEPAParserFactory;
 import org.kapott.hbci.GV_Result.GVRKUms;
 import org.kapott.hbci.GV_Result.GVRSaldoReq;
 import org.kapott.hbci.GV_Result.GVRKUms.UmsLine;
+import org.kapott.hbci.dialog.DialogContext;
+import org.kapott.hbci.dialog.DialogEvent;
 import org.kapott.hbci.exceptions.HBCI_Exception;
 import org.kapott.hbci.exceptions.ProcessException;
 import org.kapott.hbci.manager.HBCIUtils;
@@ -418,6 +421,24 @@ final class SelfTest {
 		callback.switchTo = "913";
 		expect("no request after a change of the method",
 			thrown(() -> callback.callback(passport, FinTSHelper.Callback.NEED_PT_TAN, "", 0, new StringBuffer())) instanceof FinTSHelper.SwitchMethod, true);
+		expect("a connection after a change of the method, for the end of the old dialog",
+			thrown(() -> callback.callback(passport, FinTSHelper.Callback.NEED_CONNECTION, "", 0, new StringBuffer())), null);
+
+		HBCIMsgStatus answer = new HBCIMsgStatus();
+		answer.globStatus.addRetVal(new HBCIRetVal(null, null, null, "3955", "Sicherheitsfreigabe erfolgt über anderen Kanal", null));
+		answer.getData().setProperty("MsgHead.dialogid", "D-4711");
+		try {
+			DialogContext login = DialogContext.create(null, passport);
+			Method update = DialogContext.class.getDeclaredMethod("update", HBCIMsgStatus.class);
+			update.setAccessible(true);
+			update.invoke(login, answer);
+			thrown(() -> passport.onDialogEvent(DialogEvent.MSG_SENT, login));
+		} catch (ReflectiveOperationException e) {
+			failures.add("dialog context: " + e);
+		}
+		expect("the dialog that the bank keeps open after a change of the method", passport.open == null ? null : passport.open.getDialogId(), "D-4711");
+		callback.status(passport, FinTSHelper.Callback.STATUS_DIALOG_END_DONE, new Object[] {answer});
+		expect("a dialog that hbci4java ended", passport.open, null);
 	}
 
 	/// The TAN media that hbci4java gets for each list of media it offers, starting from the medium
