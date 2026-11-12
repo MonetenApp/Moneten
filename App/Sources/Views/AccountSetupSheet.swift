@@ -64,6 +64,9 @@ final class AccountSetup {
 	/// The account that a candidate with a choice connects, by the ID of the candidate's account. None adds a new account.
 	var connecting: [UUID: UUID] = [:]
 	private(set) var notices: [String] = []
+	/// The error of the database when "Done" could not store the accounts. The assistant stays open, so
+	/// that the login and its TAN are not lost.
+	private(set) var saveError: String?
 	private var access: Access?
 	private var state: AccessState?
 
@@ -126,6 +129,7 @@ final class AccountSetup {
 	func back() {
 		cancelTask()
 		loginError = nil
+		saveError = nil
 		step = step == .accounts ? .login : .bank
 	}
 
@@ -140,16 +144,21 @@ final class AccountSetup {
 	}
 
 	/// Logs in with the PIN of this step and lists the accounts. A rejected PIN ends the login, and the
-	/// message of the bank shows here with an empty PIN field.
+	/// message of the bank shows here with an empty PIN field. A login that runs is never started again,
+	/// so a second "Next" sends no second PIN. The login of an access that the app has waits for its
+	/// refresh, and its refresh waits for the login.
 	private func logIn() {
-		guard let (code, bank) = lookup.bank, let url = bank.url else { return }
+		guard !isLoggingIn, let (code, bank) = lookup.bank, let url = bank.url else { return }
 		let access = Access(source: .fints(bankCode: code, url: url), bankName: bank.name, loginName: loginName.trimmingCharacters(in: .whitespaces))
+		let known = model.accesses.values.first { $0.isSameLogin(as: access) }?.id ?? access.id
 		let session = SetupSession(broker: model.sync.broker, access: access, pin: Secret(pin))
 		loginError = nil
 		isLoggingIn = true
 		task = Task {
 			do {
-				let list = try await model.fints.listAccounts(of: access, state: nil, session: session)
+				let list = try await model.sync.exclusively(for: known) {
+					try await model.fints.listAccounts(of: access, state: nil, session: session)
+				}
 				guard !Task.isCancelled else { return }
 				isLoggingIn = false
 				guard !list.accounts.isEmpty else {
@@ -159,10 +168,8 @@ final class AccountSetup {
 				self.access = access
 				state = list.state
 				notices = list.notices.map(\.text)
-				candidates = list.accounts.map { listed in
-					let account = listed.account(access: access, bank: bank, group: groupID)
-					return Candidate(account: account, match: model.ledger.setupMatch(for: account))
-				}
+				let listed = list.accounts.map { $0.account(access: access, bank: bank, group: groupID) }
+				candidates = listed.map { Candidate(account: $0, match: model.ledger.setupMatch(for: $0, listed: listed)) }
 				selected = Set(candidates.filter { !$0.isPresent }.map(\.id))
 				step = .accounts
 			} catch {
@@ -180,7 +187,12 @@ final class AccountSetup {
 		guard let access else { return }
 		let chosen = candidates.filter { selected.contains($0.id) && !$0.isPresent }.map(\.account)
 		guard !chosen.isEmpty else { return }
-		model.add(access, state: state, accounts: chosen, connecting: connecting, pin: Secret(pin))
+		do {
+			try model.add(access, state: state, accounts: chosen, listed: candidates.map(\.account), connecting: connecting, pin: Secret(pin))
+		} catch {
+			saveError = "Could not add the accounts. \(String(describing: error))"
+			return
+		}
 		model.closeAccountSetup()
 	}
 
@@ -303,6 +315,13 @@ struct AccountSetupSheet: View {
 				}
 			}
 		}
+		if let error = setup.saveError {
+			Section {
+				Label(error, systemImage: "exclamationmark.triangle")
+					.foregroundStyle(.orange)
+					.fixedSize(horizontal: false, vertical: true)
+			}
+		}
 		if !setup.notices.isEmpty {
 			Section("Notices of the bank") {
 				ForEach(setup.notices, id: \.self) { Text($0).fixedSize(horizontal: false, vertical: true) }
@@ -343,6 +362,8 @@ private struct CandidateRow: View {
 				Text("Already in Moneten as “\(existing.name)”").font(.callout).foregroundStyle(.secondary)
 			case let .connects(existing):
 				Text("Connects “\(existing.name)”, which keeps its transactions").font(.callout).foregroundStyle(.secondary)
+			case let .choice(accounts) where accounts.count == 1:
+				Text("“\(accounts[0].name)” in Moneten may be this account. Choose it to connect it, which keeps its transactions.").font(.callout).foregroundStyle(.secondary)
 			case .choice:
 				Text("Several accounts in Moneten match. Choose the one to connect, which keeps its transactions.").font(.callout).foregroundStyle(.secondary)
 			}

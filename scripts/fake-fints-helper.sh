@@ -6,6 +6,7 @@
 # The login asks for a PIN and a TAN. The PIN 0000 is wrong, and any other works. The login lists
 # "Girokonto" with the test IBAN, "Tagesgeld", and "Kreditkarte". The state of the access counts the
 # refreshes: the second refresh fails "Tagesgeld" with an error of the bank, and the others succeed.
+# The login "unterkonten" lists two subaccounts of the account number 9 in place of these accounts.
 # 99999999 is a bank without a FinTS server, and every other Bankleitzahl is unknown.
 # The app starts the helper with an empty environment.
 PATH=/bin:/usr/bin
@@ -38,6 +39,11 @@ case "$cmd" in
 	echo '{"type":"ask","id":2,"kind":"tan","purpose":"login","prompt":"Bitte geben Sie die TAN aus Ihrer pushTAN-App ein."}'
 	answer
 	echo '{"type":"notice","text":"Wartungsarbeiten am 14.11.2026 von 1 bis 5 Uhr."}'
+	case "$cmd" in *'"user":"unterkonten"'*)
+		echo '{"type":"accounts","accounts":[{"number":"9","subnumber":"01","product":"Sparkonto","kind":"10","currency":"EUR"},{"number":"9","subnumber":"02","product":"Sparkonto Plus","kind":"10","currency":"EUR"}]}'
+		echo '{"type":"state","data":"MA=="}'
+		exit 0
+	;; esac
 	echo '{"type":"accounts","accounts":[{"number":"202051","iban":"DE02120300000000202051","bic":"BYLADEM1001","product":"Girokonto","kind":"1","owner":"Erika Mustermann","currency":"EUR"},{"number":"1234567890","product":"Tagesgeld","kind":"10","owner":"Erika Mustermann","currency":"EUR"},{"number":"4711","product":"Kreditkarte","kind":"50","currency":"EUR"}]}'
 	echo '{"type":"state","data":"MA=="}'
 	;;

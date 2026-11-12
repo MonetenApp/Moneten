@@ -231,7 +231,7 @@ The app SHALL list in the third step every account that the bank reports for the
 
 ### Requirement: Do not add an account twice
 
-The app SHALL mark an account in the third step that already exists in the app with the same IBAN, or the same account number and Bankleitzahl, and it SHALL not add that account again.
+The app SHALL mark an account in the third step as already present when the app has the same account with a bank access or as an offline account, also a closed one, and it SHALL not add that account again. A closed account without a bank access is left as it is, and the account of the bank is added as a new account.
 
 #### Scenario: Existing giro account
 
@@ -239,6 +239,31 @@ The app SHALL mark an account in the third step that already exists in the app w
 - **WHEN** the bank reports that IBAN again together with a new savings account
 - **THEN** the row of the giro account is marked as already present and cannot be selected
 - **AND** only the savings account is added
+
+### Requirement: Tell the accounts of a bank apart
+
+The app SHALL treat two accounts as the same account only when they have the same currency and the same IBAN. When one of them has no IBAN, they are the same when they have the same currency, account number, and Bankleitzahl, and, when the account in the app has a bank access, the same subaccount number.
+
+#### Scenario: Same IBAN in another currency
+
+- **GIVEN** the app has the offline account "Giro USD" in USD with the IBAN DE02120300000000202051
+- **WHEN** the bank reports that IBAN in EUR
+- **THEN** the row is not marked as present
+- **AND** the setup adds a new account in EUR and leaves "Giro USD" as it is
+
+#### Scenario: Closed account without a bank access
+
+- **GIVEN** the app has the closed migrated account "Giro (alt)" in EUR with the IBAN DE02120300000000202051, and no other account with that IBAN
+- **WHEN** the bank reports that IBAN in EUR
+- **THEN** the row is not marked as present
+- **AND** the setup adds a new account and leaves "Giro (alt)" closed and without a bank access
+
+#### Scenario: Another subaccount of the same account number
+
+- **GIVEN** the app has the account "Sparkonto" with a bank access, the account number 9, and the subaccount number 01 at the Bankleitzahl 12030000
+- **WHEN** the bank reports the subaccounts 01 and 02 of the account number 9
+- **THEN** the row of subaccount 01 is marked as already present
+- **AND** the row of subaccount 02 can be selected and is added as a new account
 
 ### Requirement: Finish the setup
 

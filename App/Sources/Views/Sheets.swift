@@ -143,10 +143,11 @@ struct AccountSettingsSheet: View {
 	var body: some View {
 		if let original = model.ledger.account(accountID) {
 			SheetFrame(title: "Settings for \(original.name)", width: 500, onConfirm: {
-				guard var a = account else { return true }
-				if let d = AmountParser.decimal(from: initialBalance) { a.initialBalanceMinor = Money(d, currency: a.currency).minorUnits }
+				guard var edited = account, var a = model.ledger.account(accountID) else { return true }
+				if let d = AmountParser.decimal(from: initialBalance) { edited.initialBalanceMinor = Money(d, currency: a.currency).minorUnits }
 				// An account keeps the color of its bank or kind until the user picks one.
-				if color.hex != originalColor.hex { a.color = color.hex }
+				if color.hex != originalColor.hex { edited.color = color.hex }
+				a.takeSettings(from: edited)
 				model.save(account: a)
 				return true
 			}, leading: {

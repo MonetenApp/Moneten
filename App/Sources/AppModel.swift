@@ -499,16 +499,11 @@ final class AppModel {
 
 	/// Stores the access with the accounts that the user selected, keeps the PIN of the login in
 	/// memory, selects the first account, and starts the first refresh ("Finish the setup"). A login
-	/// that the app has already keeps its access.
-	func add(_ new: Access, state: AccessState?, accounts candidates: [Account], connecting: [UUID: UUID], pin: Secret) {
+	/// that the app has already keeps its access. `listed` holds every account that the bank listed.
+	/// Throws the error of the database, which the assistant shows.
+	func add(_ new: Access, state: AccessState?, accounts candidates: [Account], listed: [Account], connecting: [UUID: UUID], pin: Secret) throws {
 		guard let store else { return }
-		let access: Access, accounts: [Account]
-		do {
-			(access, accounts) = try store.add(new, state: state, accounts: ledger.accountsToAdd(candidates, connecting: connecting))
-		} catch {
-			alert = AlertMessage(title: "Could not add the accounts.", message: String(describing: error))
-			return
-		}
+		let (access, accounts) = try store.add(new, state: state, accounts: ledger.accountsToAdd(candidates, listed: listed, connecting: connecting))
 		accesses[access.id] = access
 		for a in accounts { ledger.upsert(a) }
 		ledger.replace()

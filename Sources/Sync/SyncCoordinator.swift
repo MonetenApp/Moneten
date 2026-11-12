@@ -18,8 +18,13 @@ public final class SyncCoordinator {
 	private var requestedAccounts: [UUID: Set<UUID>] = [:]
 	private var running: [UUID: Task<Void, Never>] = [:]
 	private var queue: [Job] = []
-	/// The accounts that a command asked for while their access ran, by access. They run when that run ends.
+	/// The accounts that a command asked for while their access ran or was held, by access. They run when
+	/// that run or hold ends.
 	private var afterRun: [UUID: Job] = [:]
+	/// The accesses that run work of `exclusively(for:_:)`, such as the login of a setup.
+	private var held: Set<UUID> = []
+	/// The work of `exclusively(for:_:)` that waits for a run or a hold of its access to end.
+	private var waiting: [UUID: [CheckedContinuation<Void, Never>]] = [:]
 	private let limit: Int
 	/// Stores what a connector fetched for one account in the history (issue #7). Runs on the main actor,
 	/// once for each requested account that the connector fetched, never for a failed, missing, or canceled
@@ -53,7 +58,7 @@ public final class SyncCoordinator {
 	}
 
 	/// True from the first refresh until the last one ends.
-	public var isRefreshing: Bool { !running.isEmpty || !queue.isEmpty }
+	public var isRefreshing: Bool { !running.isEmpty || !queue.isEmpty || !afterRun.isEmpty }
 
 	/// Refreshes the accounts of one access. A manual refresh is `attended` and may ask the user; an
 	/// automatic one is not. An account that is already requested is not added again. The other accounts
@@ -66,7 +71,7 @@ public final class SyncCoordinator {
 		let job = Job(request: RefreshRequest(access: request.access, state: request.state, accounts: accounts, enforced: request.enforced),
 			connector: connector, attended: attended)
 		let waiting = queue.firstIndex { $0.request.access.id == id }
-		if running[id] == nil, waiting == nil {
+		if running[id] == nil, waiting == nil, !held.contains(id) {
 			queue.append(job)
 		} else if accounts.isEmpty {
 			return
@@ -79,10 +84,52 @@ public final class SyncCoordinator {
 		startNext()
 	}
 
+	/// Runs `work` for an access, never beside a refresh of it, so that the bank gets one dialog for one
+	/// login and the state of one dialog never overwrites the state of a later one. The work waits until
+	/// a running refresh of the access ends. A refresh that waits for its turn, or that a command asks for
+	/// while the work runs, starts when the work ends. The login of a setup for a login that the app has
+	/// already runs here.
+	public func exclusively<T>(for access: UUID, _ work: () async throws -> T) async throws -> T {
+		if running[access] != nil || held.contains(access) {
+			// The end of the run or of the hold holds the access for this work before it resumes it.
+			await withCheckedContinuation { waiting[access, default: []].append($0) }
+		} else {
+			held.insert(access)
+		}
+		defer { release(access) }
+		if let index = queue.firstIndex(where: { $0.request.access.id == access }) {
+			let job = queue.remove(at: index)
+			afterRun[access] = afterRun[access].map(job.adding) ?? job
+		}
+		try Task.checkCancellation()
+		return try await work()
+	}
+
+	/// Hands the access to the next waiting work, or else starts the refresh that waited for the hold.
+	private func release(_ access: UUID) {
+		if resumeWaiting(for: access) { return }
+		held.remove(access)
+		if let next = afterRun.removeValue(forKey: access) { queue.append(next) }
+		startNext()
+	}
+
+	private func resumeWaiting(for access: UUID) -> Bool {
+		guard var list = waiting[access], !list.isEmpty else { return false }
+		let next = list.removeFirst()
+		waiting[access] = list.isEmpty ? nil : list
+		held.insert(access)
+		next.resume()
+		return true
+	}
+
 	/// "Cancel Refresh": stops every running access and drops the waiting ones. Their accounts keep their last state.
 	public func cancelAll() {
 		for job in queue { endProgress(of: job.request.access.id) }
 		queue.removeAll()
+		for id in held {
+			afterRun[id] = nil
+			endProgress(of: id)
+		}
 		for id in running.keys { cancel(id) }
 	}
 
@@ -141,9 +188,11 @@ public final class SyncCoordinator {
 				if let state = report?.state {
 					next.request = RefreshRequest(access: access, state: state, accounts: next.request.accounts, enforced: next.request.enforced)
 				}
-				queue.append(next)
 				startProgress(of: next)
+				// Work of `exclusively(for:_:)` goes first, and the next run waits for its end.
+				if waiting[access.id]?.isEmpty == false { afterRun[access.id] = next } else { queue.append(next) }
 			}
+			_ = resumeWaiting(for: access.id)
 			startNext()
 		}
 	}

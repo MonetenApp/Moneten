@@ -97,36 +97,43 @@ public enum SetupMatch: Equatable, Sendable {
 }
 
 extension Ledger {
-	/// The accounts of the app with the IBAN of `candidate`, or with its account number and Bankleitzahl,
-	/// in its currency. An account with an access or an offline account is present. Of the others, an open
-	/// account is connected, and a closed one is left as it is.
-	public func setupMatch(for candidate: Account) -> SetupMatch {
-		func iban(_ a: Account) -> String? { a.iban.map { $0.uppercased().filter { !$0.isWhitespace } } }
-		func number(_ a: Account) -> String? { a.accountNumber.map { String($0.drop { $0 == "0" }) } }
-		let matches = accounts.filter { a in
-			guard a.currency == candidate.currency else { return false }
-			if let mine = iban(a), mine == iban(candidate) { return true }
-			return number(a) != nil && number(a) == number(candidate) && a.bankCode == candidate.bankCode
-		}
+	/// How `candidate` relates to the accounts of the app, of all the accounts that the bank `listed`.
+	/// An account matches in the currency of the candidate: by its IBAN when both have one, by the ID
+	/// that the bank knows it by when the account has one, and else by account number and Bankleitzahl.
+	/// So a subaccount with the same number is another account. An account with an access or an offline
+	/// account is present. Of the others, an open account is connected, and a closed one is left as it
+	/// is. An open account that matches several listed accounts, such as a migrated account without a
+	/// subnumber, is a choice and is never connected on its own.
+	public func setupMatch(for candidate: Account, listed: [Account]) -> SetupMatch {
+		let matches = accounts.filter { Self.isSame($0, as: candidate) }
 		if let present = matches.first(where: { $0.accessID != nil || $0.source == .offline }) { return .present(present) }
 		let open = matches.filter { !$0.isClosed }
 		switch open.count {
 		case 0: return .new
-		case 1: return .connects(open[0])
+		case 1 where listed.filter({ Self.isSame(open[0], as: $0) }).count <= 1: return .connects(open[0])
 		default: return .choice(open)
 		}
 	}
 
-	/// What the setup stores for the selected candidates: each new account after the accounts of its
-	/// group, and each account that a candidate connects. `connecting` holds the account that the user
-	/// chose for a candidate with a choice, by the ID of the candidate. A candidate that the app has is
-	/// left out, and an account is connected to one candidate at most.
-	public func accountsToAdd(_ candidates: [Account], connecting choices: [UUID: UUID] = [:]) -> [Account] {
+	private static func isSame(_ account: Account, as candidate: Account) -> Bool {
+		func iban(_ a: Account) -> String? { a.iban.map { $0.uppercased().filter { !$0.isWhitespace } } }
+		func number(_ a: Account) -> String? { a.accountNumber.map { String($0.drop { $0 == "0" }) } }
+		guard account.currency == candidate.currency else { return false }
+		if let mine = iban(account), let theirs = iban(candidate) { return mine == theirs }
+		guard account.bankCode == candidate.bankCode, let mine = number(account), mine == number(candidate) else { return false }
+		return account.remoteID.map { $0 == candidate.remoteID } ?? true
+	}
+
+	/// What the setup stores for the `chosen` candidates of the `listed` accounts: each new account after
+	/// the accounts of its group, and each account that a candidate connects. `connecting` holds the
+	/// account that the user chose for a candidate with a choice, by the ID of the candidate. A candidate
+	/// that the app has is left out, and an account is connected to one candidate at most.
+	public func accountsToAdd(_ chosen: [Account], listed: [Account], connecting choices: [UUID: UUID] = [:]) -> [Account] {
 		var next: [UUID?: Int] = [:]
 		var connected: Set<UUID> = []
-		return candidates.compactMap { candidate in
+		return chosen.compactMap { candidate in
 			let existing: Account?
-			switch setupMatch(for: candidate) {
+			switch setupMatch(for: candidate, listed: listed) {
 			case .present: return nil
 			case let .connects(account): existing = account
 			case let .choice(accounts): existing = accounts.first { $0.id == choices[candidate.id] }
@@ -215,6 +222,16 @@ extension Account {
 		case let .failed(error):
 			refreshError = error
 		}
+	}
+
+	/// Takes the fields that the account settings edit from `edited`, the account as the settings showed
+	/// it. The balance and the status of a refresh that ended while the settings were open stay.
+	public mutating func takeSettings(from edited: Account) {
+		name = edited.name
+		kind = edited.kind
+		isClosed = edited.isClosed
+		initialBalanceMinor = edited.initialBalanceMinor
+		color = edited.color
 	}
 }
 

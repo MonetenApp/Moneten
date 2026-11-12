@@ -82,6 +82,13 @@ final class DebugHarness {
 		case "migrated":
 			model.save(account: Account(position: model.ledger.nextTreePosition(in: nil), name: argument, kind: .giro, source: .migrated,
 				iban: "DE02120300000000202051"))
+		// "<name>": a migrated savings account without an IBAN and a subnumber, with the account number 9 of the made-up bank.
+		case "migratednumber":
+			model.save(account: Account(position: model.ledger.nextTreePosition(in: nil), name: argument, kind: .savings, source: .migrated,
+				accountNumber: "9", bankCode: "12030000"))
+		// "<name>": what "Remove" in the context menu of a group does.
+		case "removegroup":
+			if let g = model.ledger.groups.first(where: { $0.name == argument }) { model.remove(group: g.id) }
 		// "<text>" answers the dialog on screen with a TAN, or with a PIN when it asks for one.
 		case "answer":
 			if let prompt = model.sync.broker.current {
@@ -253,7 +260,7 @@ final class DebugHarness {
 		case "cancel": model.closeAccountSetup()
 		default: break
 		}
-		log("setup step=\(setup.step) lookup=\(setup.lookup.state) error=\(setup.loginError ?? "-") candidates=\(setup.candidates.map { "\($0.id):\(Self.label($0.match))" }) selected=\(setup.selected.sorted())")
+		log("setup step=\(setup.step) lookup=\(setup.lookup.state) error=\(setup.loginError ?? "-") saveError=\(setup.saveError ?? "-") dialog=\(model.sync.broker.current != nil) candidates=\(setup.candidates.map { "\($0.id):\(Self.label($0.match))" }) selected=\(setup.selected.sorted())")
 	}
 
 	/// The euro balance chart of the selected account or group: its first and last bar and the total

@@ -550,4 +550,50 @@ struct SyncCoordinatorTests {
 		#expect(ends.accounts[canceled.id] == [:])
 		#expect(coordinator.refreshingAccounts.isEmpty)
 	}
+
+	/// What happened to an access, in order.
+	@MainActor
+	final class Events {
+		var all: [String] = []
+	}
+
+	@Test("The login of a setup waits for the refresh of its access, and a refresh asked for meanwhile waits for the login")
+	func setupBesideRefresh() async throws {
+		let events = Events()
+		coordinator.ended = { _, _, _ in events.all.append("refresh ended") }
+		let bank = Self.access("Musterbank")
+		_ = refresh(bank, [.ask(Self.pin), .fetched(Self.giro.accountID)])
+		await until { broker.current != nil }
+		let login = Task {
+			try await coordinator.exclusively(for: bank.id) {
+				events.all.append("login started")
+				_ = refresh(bank, [.fetched(Self.savings.accountID)], accounts: [Self.savings])
+				try await Task.sleep(for: .milliseconds(100))
+				events.all.append("login ended")
+			}
+		}
+		try await Task.sleep(for: .milliseconds(50))
+		#expect(events.all.isEmpty)
+		answer(.pin(Secret("12345")))
+		try await login.value
+		await until { events.all.count == 4 && !coordinator.isRefreshing }
+		#expect(events.all == ["refresh ended", "login started", "login ended", "refresh ended"])
+		#expect(coordinator.refreshingAccounts.isEmpty)
+	}
+
+	@Test("Cancel Refresh drops a refresh that waits for the login of a setup")
+	func cancelBehindSetup() async throws {
+		let events = Events()
+		coordinator.ended = { _, _, _ in events.all.append("refresh ended") }
+		let bank = Self.access("Musterbank")
+		try await coordinator.exclusively(for: bank.id) {
+			_ = refresh(bank, [.fetched(Self.giro.accountID)])
+			#expect(coordinator.isRefreshing)
+			coordinator.cancelAll()
+			#expect(!coordinator.isRefreshing)
+			#expect(coordinator.refreshingAccounts.isEmpty)
+		}
+		try await Task.sleep(for: .milliseconds(50))
+		#expect(events.all.isEmpty)
+	}
 }

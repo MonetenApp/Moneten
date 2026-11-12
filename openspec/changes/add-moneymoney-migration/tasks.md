@@ -17,7 +17,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [ ] 1.11 Progress. Built in part: one line per export step, no counts. Finish it and verify it with a test or in the app.
 - [x] 1.12 Repeated runs add only what is new. Verified by MoneyMoneyMigrationTests "A second run adds only what is new", "A later run updates the bank balance and books what was pending", "Accounts with the same IBAN stay apart on a later run", "A second run after a refresh stored some of the same transactions adds only the new ones", "A second run adds nothing after an extension took over the ID of a migrated transaction", and "A transaction the user deleted after the first run stays deleted".
 - [x] 1.13 Migration into a database with accounts. Verified by MoneyMoneyMigrationTests "An account is matched by IBAN" and "A second run after a refresh stored some of the same transactions adds only the new ones".
-- [ ] 1.14 Connect a migrated account to its bank. Build it and verify it with a test or in the app.
+- [ ] 1.14 Connect a migrated account to its bank, and ask which migrated account to connect. Build it and verify it with a test or in the app.
 - [ ] 1.15 Portfolio accounts. Built in part: taken over with their balance, no positions. The balance becomes the first record of the portfolio history, and a database migrated earlier gets that record when it opens, see the debug harness check of a database made by the build before the history. Finish it and verify it with a test or in the app.
 - [ ] 1.16 Report. Built in part: counts and notes. Finish it and verify it with a test or in the app.
 - [x] 1.17 The report contains no secrets. Verified by the report holds counts and notes only.
