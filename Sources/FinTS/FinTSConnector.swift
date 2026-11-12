@@ -181,7 +181,8 @@ public struct FinTSConnector: BankConnector {
 	private func run(_ command: Command, session: SyncSession?, _ handle: (HelperMessage) async throws -> Void) async throws {
 		let watchdog = Watchdog(after: inactivity)
 		let asks = OpenAsks(watchdog: watchdog)
-		let process = try HelperProcess(executable: helper.executable, arguments: helper.arguments, grace: grace, onEnd: asks.close)
+		let process = try HelperProcess(executable: helper.executable, arguments: helper.arguments, grace: grace, onLine: watchdog.received,
+			onEnd: asks.close)
 		watchdog.onExpiry { process.fail(HelperFailure.timeout) }
 		var approvals: [Int: Task<UserAnswer, any Error>] = [:]
 		var helperLeft = false
@@ -192,7 +193,7 @@ public struct FinTSConnector: BankConnector {
 		await withTaskCancellationHandler {
 			do {
 				reading: for await line in process.lines {
-					watchdog.restart()
+					watchdog.read()
 					guard let message = try? JSONDecoder().decode(HelperMessage.self, from: Data(line.utf8)) else { throw HelperFailure.unreadable }
 					switch message {
 					case let .ask(id, ask):
@@ -296,9 +297,10 @@ private final class OpenAsks: Sendable {
 }
 
 /// Fails a run whose helper sends nothing for a while (add-connection-security "Timeouts"). It
-/// pauses while a request waits for the user.
+/// pauses while a request waits for the user. A line counts when it arrives, and the timer does not
+/// run out while the run has not read it, so an app that is busy never makes a helper look silent.
 private final class Watchdog: Sendable {
-	private let state = Mutex<(generation: Int, paused: Int, expiry: (@Sendable () -> Void)?)>((0, 0, nil))
+	private let state = Mutex<(generation: Int, paused: Int, unread: Int, expiry: (@Sendable () -> Void)?)>((0, 0, 0, nil))
 	private let seconds: TimeInterval
 
 	init(after seconds: TimeInterval) {
@@ -311,6 +313,16 @@ private final class Watchdog: Sendable {
 
 	func restart() {
 		arm(state.withLock { $0.generation += 1; return $0.paused == 0 ? $0.generation : nil })
+	}
+
+	/// The helper sent a line.
+	@Sendable func received() {
+		arm(state.withLock { $0.generation += 1; $0.unread += 1; return $0.paused == 0 ? $0.generation : nil })
+	}
+
+	/// The run read a line.
+	func read() {
+		arm(state.withLock { $0.generation += 1; $0.unread -= 1; return $0.paused == 0 ? $0.generation : nil })
 	}
 
 	func pause() {
@@ -330,7 +342,7 @@ private final class Watchdog: Sendable {
 	private func arm(_ generation: Int?) {
 		guard let generation else { return }
 		DispatchQueue.global().asyncAfter(deadline: .now() + seconds) { [self] in
-			state.withLock { $0.generation == generation ? $0.expiry : nil }?()
+			state.withLock { $0.generation == generation && $0.unread == 0 ? $0.expiry : nil }?()
 		}
 	}
 }

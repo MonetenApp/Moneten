@@ -23,11 +23,14 @@ final class HelperProcess: @unchecked Sendable {
 	private let canceled = Mutex(false)
 	private let failure = Mutex<(any Error)?>(nil)
 	private let grace: TimeInterval
+	private let onLine: @Sendable () -> Void
 	private let onEnd: @Sendable () -> Void
 
-	/// `onEnd` runs once when stdout ends or the process ends, whichever comes first. `grace` is the
-	/// time that the helper gets to end after a cancel.
-	init(executable: URL, arguments: [String], grace: TimeInterval, onEnd: @escaping @Sendable () -> Void = {}) throws {
+	/// `onLine` runs when a line arrives, before `lines` delivers it. `onEnd` runs once when stdout ends
+	/// or the process ends, whichever comes first. `grace` is the time that the helper gets to end after
+	/// a cancel.
+	init(executable: URL, arguments: [String], grace: TimeInterval, onLine: @escaping @Sendable () -> Void = {},
+		onEnd: @escaping @Sendable () -> Void = {}) throws {
 		let stdin = Pipe(), stdout = Pipe()
 		process.executableURL = executable
 		process.arguments = arguments
@@ -41,6 +44,7 @@ final class HelperProcess: @unchecked Sendable {
 		input = stdin.fileHandleForWriting
 		output = stdout.fileHandleForReading
 		self.grace = grace
+		self.onLine = onLine
 		self.onEnd = onEnd
 		(lines, received) = AsyncStream.makeStream(of: String.self)
 		// A handler per pipe, because FileHandle.bytes reads all pipes one after the other, and one
@@ -69,7 +73,7 @@ final class HelperProcess: @unchecked Sendable {
 			let data = output.availableData
 			guard !data.isEmpty else { return finish(&state) }
 			state.partial.append(data)
-			for line in state.partial.takeLines() { received.yield(line) }
+			for line in state.partial.takeLines() { onLine(); received.yield(line) }
 		}
 	}
 
@@ -85,7 +89,7 @@ final class HelperProcess: @unchecked Sendable {
 				guard count > 0 else { break }
 				state.partial.append(contentsOf: buffer[0..<count])
 			}
-			for line in state.partial.takeLines() { received.yield(line) }
+			for line in state.partial.takeLines() { onLine(); received.yield(line) }
 			finish(&state)
 		}
 	}
