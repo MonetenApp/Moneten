@@ -15,7 +15,7 @@ context: |
 
   Fixed decisions. Read docs/decisions before you write a design. In short:
   native macOS app in Swift and SwiftUI, local-first with no project server,
-  GRDB with SQLCipher, the database password is the key, FinTS through HBCI4Swift,
+  GRDB with SQLCipher, the database password is the key, FinTS through hbci4java in a helper process,
   a Lua extension API that is compatible with MoneyMoney, GPL-3.0-or-later,
   payments only through FinTS or the licensed aggregator and never through extensions,
   an optional finAPI subscription that the app never requires.

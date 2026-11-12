@@ -199,12 +199,12 @@ enum CSVParser {
 
 enum MT940Parser {
 	static func parse(_ text: String) throws -> [Transaction] {
-		var fields: [(tag: String, value: String)] = []
-		for rawLine in text.replacingOccurrences(of: "\r\n", with: "\n").split(separator: "\n", omittingEmptySubsequences: false) {
+		var fields: [(tag: String, value: String, line: Int)] = []
+		for (n, rawLine) in text.replacingOccurrences(of: "\r\n", with: "\n").split(separator: "\n", omittingEmptySubsequences: false).enumerated() {
 			let line = String(rawLine)
 			if line.hasPrefix(":"), let end = line.dropFirst().firstIndex(of: ":") {
 				let tag = String(line[line.index(after: line.startIndex)..<end])
-				fields.append((tag, String(line[line.index(after: end)...])))
+				fields.append((tag, String(line[line.index(after: end)...]), n + 1))
 			} else if !fields.isEmpty, line != "-" {
 				fields[fields.count - 1].value += "\n" + line
 			}
@@ -217,7 +217,7 @@ enum MT940Parser {
 				currency = String(f.value.dropFirst(7).prefix(3))
 			}
 			guard f.tag == "61" else { continue }
-			guard let line = parse61(f.value) else { continue }
+			let line = try parse61(f.value, line: f.line)
 			var t = Transaction(accountID: placeholder, bookingDate: line.booking, valueDate: line.value,
 				amountMinor: Money(line.amount, currency: currency).minorUnits, currency: currency, name: "")
 			if i + 1 < fields.count, fields[i + 1].tag == "86" { apply86(fields[i + 1].value, to: &t) }
@@ -233,29 +233,34 @@ enum MT940Parser {
 	}
 
 	/// `:61:` value date YYMMDD, optional booking date MMDD, mark C/D/RC/RD, optional currency letter, amount.
-	static func parse61(_ s: String) -> Line61? {
+	/// A field that cannot be read fails the whole file with its line, so nothing from the file is imported.
+	static func parse61(_ s: String, line: Int) throws -> Line61 {
+		func fail(_ reason: String) -> TransactionFileImporter.Failure { .line(line, reason) }
+		func isDay(_ month: Int, _ day: Int) -> Bool { (1...12).contains(month) && (1...31).contains(day) }
 		let chars = Array(s.replacingOccurrences(of: "\n", with: ""))
-		guard chars.count > 10, let yy = Int(String(chars[0..<2])), let mm = Int(String(chars[2..<4])), let dd = Int(String(chars[4..<6])) else { return nil }
+		guard chars.count >= 6, let yy = Int(String(chars[0..<2])), let mm = Int(String(chars[2..<4])), let dd = Int(String(chars[4..<6])),
+			isDay(mm, dd) else { throw fail("The date cannot be read.") }
 		let year = 2000 + yy
 		let value = Day(year: year, month: mm, day: dd)
 		var i = 6
 		var booking = value
 		if chars.count > i + 4, let bm = Int(String(chars[i..<i + 2])), let bd = Int(String(chars[i + 2..<i + 4])), chars[i].isNumber {
+			guard isDay(bm, bd) else { throw fail("The date cannot be read.") }
 			var by = year
 			if bm == 12 && mm == 1 { by -= 1 } else if bm == 1 && mm == 12 { by += 1 }
 			booking = Day(year: by, month: bm, day: bd)
 			i += 4
 		}
 		// RC is the reversal of a credit and books a debit. RD is the reversal of a debit and books a credit.
-		let isReversal = chars[i] == "R"
+		let isReversal = i < chars.count && chars[i] == "R"
 		if isReversal { i += 1 }
-		guard i < chars.count, chars[i] == "C" || chars[i] == "D" else { return nil }
+		guard i < chars.count, chars[i] == "C" || chars[i] == "D" else { throw fail("The transaction has no debit or credit mark.") }
 		let negative = (chars[i] == "D") != isReversal
 		i += 1
 		if i < chars.count, chars[i].isLetter { i += 1 }
 		var amountText = ""
 		while i < chars.count, chars[i].isNumber || chars[i] == "," { amountText.append(chars[i]); i += 1 }
-		guard let amount = AmountParser.decimal(from: amountText) else { return nil }
+		guard let amount = AmountParser.decimal(from: amountText) else { throw fail("The amount cannot be read.") }
 		return Line61(value: value, booking: booking, amount: negative ? -amount : amount)
 	}
 
@@ -324,12 +329,16 @@ final class CAMTParser: NSObject, XMLParserDelegate {
 	private var purposes: [String] = []
 	private var inEntry = false
 	private var currency = "EUR"
+	/// The first entry that cannot be read. It stops the parser, so nothing from the file is imported.
+	private var failure: TransactionFileImporter.Failure?
 
 	static func parse(_ data: Data) throws -> [Transaction] {
 		let p = CAMTParser()
 		let parser = XMLParser(data: data)
 		parser.delegate = p
-		guard parser.parse() else {
+		let parsed = parser.parse()
+		if let failure = p.failure { throw failure }
+		guard parsed else {
 			throw TransactionFileImporter.Failure.line(parser.lineNumber, parser.parserError?.localizedDescription ?? "The XML file cannot be read.")
 		}
 		return p.entries
@@ -380,14 +389,22 @@ final class CAMTParser: NSObject, XMLParserDelegate {
 		case "BICFI" where ends("RltdAgts/DbtrAgt/FinInstnId/BICFI"), "BIC" where ends("RltdAgts/DbtrAgt/FinInstnId/BIC"): entry["debtorBIC"] = value
 		case "Ntry":
 			inEntry = false
-			finishEntry()
+			finishEntry(parser)
 		default: break
 		}
 	}
 
-	private func finishEntry() {
-		guard let amountText = entry["amount"], let amount = Decimal(string: amountText, locale: Locale(identifier: "en_US_POSIX")),
-			let bookingText = entry["booking"] ?? entry["value"], let booking = Day(string: String(bookingText.prefix(10))) else { return }
+	private func finishEntry(_ parser: XMLParser) {
+		func fail(_ reason: String) {
+			failure = .line(parser.lineNumber, reason)
+			parser.abortParsing()
+		}
+		guard let amountText = entry["amount"], let amount = Decimal(string: amountText, locale: Locale(identifier: "en_US_POSIX")) else {
+			return fail("The amount of the entry cannot be read.")
+		}
+		guard let bookingText = entry["booking"] ?? entry["value"], let booking = Day(string: String(bookingText.prefix(10))) else {
+			return fail("The booking date of the entry cannot be read.")
+		}
 		let debit = entry["sign"] == "DBIT"
 		let currency = entry["currency"] ?? currency
 		let signed = debit ? -amount : amount
