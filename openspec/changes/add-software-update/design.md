@@ -25,9 +25,11 @@ The app ships outside the App Store ([ADR 0006](../../../docs/decisions/0006-lic
 
 ### Sparkle 2 installs the updates
 
-The app uses Sparkle 2 for the feed, the download, the check of the signature, and the installation. Sparkle is MIT licensed, so it fits the GPL. It checks two signatures before it installs: the EdDSA signature of the disk image, made with the update key of the project, and the code signature of the new app, which must come from the same Developer ID as the running app. That is the requirement "Verify the update before installing it".
+The app uses Sparkle 2 for the feed, the download, the check of the signature, and the installation. Sparkle is MIT licensed, so it fits the GPL. It checks two signatures before it installs: the EdDSA signature of the disk image, made with the update key of the project, and the code signature of the new app. Sparkle accepts the update when the EdDSA signature matches the key of the running app and the new app has any valid code signature, or when the code signature of the new app matches the Developer ID of the running app (`SUUpdateValidator`). Either one is enough, so that one key can be replaced at a time. That is the requirement "Verify the update before installing it". So the EdDSA private key alone can sign an update that installs, and it is the most critical secret of the project.
 
-Sparkle is a package of the app target in `App/project.yml`, not of the root package. Only `App` uses it, and the libraries stay free of it.
+Sparkle 2.10.1 or later is a package of the app target in `App/project.yml`, not of the root package. Only `App` uses it, and the libraries stay free of it.
+
+The feed is signed too. `SURequireSignedFeed` in the Info.plist makes Sparkle refuse a feed without a valid EdDSA signature of the update key, so nobody who can only edit a release page can change the notes or their links. The notes go into the feed as XML text, so an entry with `<` or `&` cannot break it.
 
 Alternative: our own updater. Replacing a running, signed app bundle safely is the hard part, and Sparkle has solved it for many years. Rejected.
 
@@ -47,22 +49,25 @@ The repository gets a `CHANGELOG.md`. Its format is strict, so that a script can
 ## Unreleased
 
 - **Moneten now needs macOS 15 or later.**
-- Larger display of photoTAN images.
+
+## 0.2.0-beta.1 (2026-12-01)
+
 - [Creating transfers](https://github.com/alexander-schneider/Moneten/wiki/Transfers) from a QR code.
 
 ## 0.1.3 (2026-11-20)
 
+- Larger display of photoTAN images.
 - Fixed the sum of a split transaction.
 ```
 
-- One heading of level 2 per version, with the version and the release date in parentheses. The topmost section is "Unreleased".
+- One heading of level 2 per version, with the version without the `v` of the tag and the release date in parentheses, for example `0.2.0-beta.1 (2026-12-01)`. The topmost section is "Unreleased".
 - A section holds only a flat list of entries. An entry is one line of inline Markdown: bold, code, and links with `https`. No nested lists, no headings inside a section, and no HTML.
 - A pull request with a change that users notice adds its entry under "Unreleased", in the language of the users, not of the code.
 
 A script in `scripts`, release-notes.py, owns the format. It has four commands:
 
 - `check` fails on any line that breaks the format, on an empty released section, and on a version that appears twice. `scripts/check.sh` and the specs job of CI run it on every pull request.
-- `cut <version>` renames "Unreleased" to the version with the date of today and opens a new empty "Unreleased" section.
+- `cut <version>` renames "Unreleased" to the version with the date of today and opens a new empty "Unreleased" section. For a stable version, it also moves the entries of its pre-releases (for 0.2.0, those of 0.2.0-beta.1 and 0.2.0-beta.2) into the new section, without duplicates, and keeps the pre-release sections. So the notes of a stable version list everything since the last stable version.
 - `section <version>` prints the entries of one version. The release workflow uses it as the text of the GitHub release.
 - `appcast` writes the update feed, as described below.
 
@@ -70,11 +75,11 @@ Alternatives: notes that GitHub generates from the titles of pull requests, whic
 
 ### The feed is an asset of the newest stable release
 
-The feed URL is `https://github.com/alexander-schneider/Moneten/releases/latest/download/appcast.xml`. GitHub resolves "latest" to the newest stable release, so the feed lives there as a file named `appcast.xml`. Each publish, also of a pre-release, uploads the new feed to the newest stable release and replaces the old file. The disk images are assets of their own releases.
+The feed URL is `https://github.com/alexander-schneider/Moneten/releases/latest/download/appcast.xml`. GitHub resolves "latest" to the newest stable release, so the feed lives there as a file named `appcast.xml`. The disk images are assets of their own releases. A stable version is created as a draft, gets its disk image and the new feed, and only then is published, so "latest" never points to a release without a feed. A pre-release replaces the feed on the newest stable release. Every other release, such as `bank-data`, is created with `make_latest` set to false, because GitHub marks a new release as latest by default and the feed URL would then break.
 
-`release-notes.py appcast` reads the current feed, adds or replaces the item of the new version, and then rewrites the notes of every item from `CHANGELOG.md`. So it is idempotent, and a fix to an old entry reaches the feed with the next release. Each item carries:
+`release-notes.py appcast` reads the current feed, adds or replaces the item of the new version, and then rewrites the notes of every item from `CHANGELOG.md`. So it is idempotent, and a fix to an old entry reaches the feed with the next release. It fails when it cannot read the current feed, unless it gets the flag for the first release, so a failed run never starts an empty feed. It signs the feed with the update key. The URL of each disk image names its own release, `releases/download/v0.1.3/...`, never `latest`. A `remove <version>` command takes an item out of the feed to withdraw a version. Each item carries:
 
-- the build number as the version that Sparkle compares, and the version number for display,
+- the build number as the version that Sparkle compares, and the full version for display, with `-beta.N` for a pre-release,
 - the release date,
 - the entries of its section as Markdown in the description,
 - the minimum macOS version from the Info.plist of the build,
@@ -113,11 +118,11 @@ The window renders each entry as `AttributedString` with inline Markdown. A link
 
 ### Settings, schedule, and the request
 
-- "Show notification about new versions of Moneten" is the automatic check of Sparkle, on by default. With the setting on, the app checks at every launch and then every 24 hours. With the setting off, Sparkle sends no request.
+- "Show notification about new versions of Moneten" is the automatic check of Sparkle, on by default. With the setting on, the app starts a background check at every launch, and the scheduler of Sparkle checks every 24 hours. The Info.plist sets `SUEnableAutomaticChecks`, so Sparkle never asks for permission. With the setting off, Sparkle sends no request, except the one check at launch on an untested macOS.
 - "Participate in beta tests and display pre-release versions" makes the delegate allow the channel `beta`. It is off by default.
 - Silent installs and the system profile of Sparkle are off in the Info.plist.
 - The app sets the user agent to the app version, the macOS version, and the processor type, for example "Moneten/0.1.3 (macOS 15.2; arm64)". Sparkle sends no other data. GitHub still sees the IP address of the request, as for any download.
-- A Debug build reads the feed URL from the environment variable `MONETEN_FEED_URL`, so a local feed can test every window and failure.
+- A Debug build reads the feed URL from the environment variable `MONETEN_FEED_URL`, so a local feed can test every window and failure. With that variable set, it checks every hour, the shortest interval that Sparkle allows.
 
 ### No restart during bank work
 
@@ -128,8 +133,8 @@ The delegate of the updater postpones the restart while `SyncCoordinator` refres
 Before the database opens, `App` runs these checks in this order:
 
 1. The application file is damaged: the code signature of the own bundle fails its check. The app shows the message and opens no database.
-2. More than one copy: Launch Services knows more than one app with the bundle identifier of Moneten. The warning names the folders.
-3. Untested macOS: the major version of the running macOS is higher than the Info.plist key `MonetenTestedMacOS`. The release workflow refuses a release whose key is lower than the newest macOS that the project tested. The app then checks for an update, also with the automatic check off.
+2. More than one copy: Launch Services knows more than one app with the bundle identifier of Moneten, not counting copies on a disk image, on a read-only volume, or in the Trash. The warning names the folders.
+3. Untested macOS: the major version of the running macOS is higher than the Info.plist key `MonetenTestedMacOS`. The release workflow refuses a release whose key is lower than the major version of macOS on the Mac that ran the integration check of task 5.1, which the release document records. The app then checks for an update, also with the automatic check off.
 
 The other cases come from Sparkle. A temporary or read-only location makes the install fail before it starts, and the window asks the user to move the app to the Applications folder. A newest version that needs a newer macOS comes back as "no update found" with the reason "system is too old" and the item, so the window can name its minimum macOS.
 
@@ -137,24 +142,24 @@ The other cases come from Sparkle. A temporary or read-only location makes the i
 
 A new workflow, release.yml, runs on a pushed tag and by hand. Run by hand, it builds everything and publishes nothing, for a dry run.
 
-1. Check out the full history and check that the tag matches a section of `CHANGELOG.md`.
-2. Import the Developer ID certificate from the secrets into a temporary keychain. `scripts/build-app.sh developer-id` signs manually with that identity when the environment names it, and through the Xcode account as today otherwise.
-3. Notarize the app with `notarytool` and an App Store Connect API key, and staple the ticket.
-4. Put the app on a disk image, sign it, notarize it, and staple it.
+1. Check out the full history. Check that the tag matches a section of `CHANGELOG.md`, that the tagged commit is on `main`, and that its build number is higher than every item of the current feed.
+2. Archive and export the app with `scripts/build-app.sh developer-id`. It signs through cloud-managed signing of Xcode with the App Store Connect API key (`-allowProvisioningUpdates` with the key), so no private key leaves Apple ([ADR 0011](../../../docs/decisions/0011-app-target-in-an-xcode-project.md)).
+3. Notarize the app with `notarytool` and the same API key, and staple the ticket.
+4. Put the app on a disk image, notarize it, and staple it.
 5. Sign the disk image with the EdDSA key from the secrets.
-6. Create the GitHub release with the disk image and the text of `release-notes.py section`, marked as a pre-release for a beta.
-7. Write the feed and upload it to the newest stable release.
+6. Create the GitHub release as a draft with the disk image and the text of `release-notes.py section`, marked as a pre-release for a beta. Set the text of every earlier release whose section in `CHANGELOG.md` changed, so the release pages and the feed stay the same.
+7. Write the feed. For a stable version, add it to the draft and publish the draft. For a pre-release, publish the draft and replace the feed on the newest stable release.
 
-The secrets are the certificate with its password, the API key of App Store Connect, and the EdDSA private key. Only the owner of the repository can set them. A release document in `docs` lists them and the steps for a release.
+The secrets are the API key of App Store Connect and the EdDSA private key. They live in a GitHub environment `release` that only `v*` tags and `main` can use, and the `v*` tags are protected. A run by hand on `main` builds and notarizes but signs nothing with the EdDSA key and publishes nothing. Third-party actions are pinned by commit. Only the owner of the repository can set the secrets. A release document in `docs` lists them and the steps for a release.
 
 ### Bank data files use the same key
 
-The bank list and the BIC directory are assets of a release with the fixed tag `bank-data`, each with an EdDSA signature beside it. The app checks a file against the public update key in its Info.plist with CryptoKit before it uses it. The check is a pure function in a library, with tests for a good signature, a wrong signature, and a changed file. The FinTS connector of issue #13 owns the fetch and the use of the files.
+The bank list and the BIC directory are assets of a release with the fixed tag `bank-data`, created with `make_latest` set to false, each with an EdDSA signature beside it. The app checks a file against the public update key in its Info.plist with CryptoKit before it uses it. The check is a function in the `FinTS` library that takes the file, the signature, and the public key as `Data`, with tests for a good signature, a wrong signature, and a changed file. `App` reads the key from the Info.plist and passes it. `Domain` stays free of CryptoKit. The FinTS connector of issue #13 owns the fetch and the use of the files.
 
 ## Risks / Trade-offs
 
 - [The EdDSA private key is lost] → No update can be signed, and every user must download the next version by hand. Keep the key in the GitHub secret and in two offline backups that the owner holds.
-- [The EdDSA private key leaks] → An attacker can sign a disk image, but Sparkle also requires the Developer ID code signature, which needs the certificate. Replace the key with a release that is signed with the old key and carries the new public key.
+- [The EdDSA private key leaks] → An attacker can sign a disk image that installs, if the app in it has any valid code signature, for example one of another Developer ID. The attacker can also sign a bank list that points the FinTS address of a bank to another server and so collects PINs. Keep the key only in the environment `release` and in the offline backups. After a leak, publish at once a release that is signed with the old key and carries a new public key, refuses every bank data file signed with the old key, and announce it.
 - [Every shipped build contains the feed URL] → A rename or a move of the repository relies on the redirects of GitHub. Never reuse the old name.
 - [A pull request forgets its changelog entry] → The pull request template asks for it, and the reviewer checks it. `release-notes.py check` cannot know whether users notice a change.
 - [A broken release reaches every user within a day] → Ship to the beta channel first. Sparkle never downgrades, so the fix is a new version with a higher build number. Removing the item from the feed stops further installs.

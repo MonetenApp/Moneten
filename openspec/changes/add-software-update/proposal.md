@@ -29,11 +29,11 @@ None.
 ## Impact
 
 - Milestone: v0.1
-- Issues: #25
+- Issues: #25, and #13 for the bank data files
 - Modules: `App` owns the update commands, the update window, and the settings. `Domain` chooses the release notes that the window shows. The release pipeline in CI signs and notarizes the app, writes the release notes from the changelog file of the repository, and publishes the update feed.
 - Depends on the change `add-app-settings` for the two settings on the "General" tab.
 - Depends on the change `add-encrypted-database`, which upgrades the database after an update.
-- Decisions: [ADR 0002](../../../docs/decisions/0002-local-first-no-server.md), [ADR 0006](../../../docs/decisions/0006-license-gpl-3.md).
+- Decisions: [ADR 0002](../../../docs/decisions/0002-local-first-no-server.md), [ADR 0006](../../../docs/decisions/0006-license-gpl-3.md), [ADR 0011](../../../docs/decisions/0011-app-target-in-an-xcode-project.md) for signing without a private key outside Apple.
 
 ## Reference behavior
 

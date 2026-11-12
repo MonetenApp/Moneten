@@ -35,7 +35,7 @@ Fetch, categorize, and understand your money. Read-only.
 | [add-moneymoney-migration](../openspec/changes/add-moneymoney-migration/proposal.md) | `moneymoney-migration` | 18 | [#24](https://github.com/alexander-schneider/Moneten/issues/24) |
 | [add-notifications-and-menu-bar](../openspec/changes/add-notifications-and-menu-bar/proposal.md) | `notifications-and-menu-bar` | 16 | [#40](https://github.com/alexander-schneider/Moneten/issues/40) |
 | [add-offline-accounts](../openspec/changes/add-offline-accounts/proposal.md) | `offline-accounts` | 13 | [#5](https://github.com/alexander-schneider/Moneten/issues/5) |
-| [add-software-update](../openspec/changes/add-software-update/proposal.md) | `software-update` | 21 | [#25](https://github.com/alexander-schneider/Moneten/issues/25) |
+| [add-software-update](../openspec/changes/add-software-update/proposal.md) | `software-update` | 21 | [#25](https://github.com/alexander-schneider/Moneten/issues/25), [#13](https://github.com/alexander-schneider/Moneten/issues/13) |
 | [add-split-transactions](../openspec/changes/add-split-transactions/proposal.md) | `split-transactions` | 15 | [#39](https://github.com/alexander-schneider/Moneten/issues/39) |
 | [add-tan-handling](../openspec/changes/add-tan-handling/proposal.md) | `tan-handling` | 28 | [#13](https://github.com/alexander-schneider/Moneten/issues/13) |
 | [add-transaction-list](../openspec/changes/add-transaction-list/proposal.md) | `transaction-list` | 21 | [#5](https://github.com/alexander-schneider/Moneten/issues/5) |

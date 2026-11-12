@@ -35,7 +35,7 @@ The app SHALL offer "Check for Updates..." in the application menu. The command 
 
 ### Requirement: Check for updates automatically
 
-The app SHALL look for a new version at launch and then once a day while it runs, if the setting "Show notification about new versions of Moneten" is on. The setting is on by default. With the setting off, the app looks for a new version only on request.
+The app SHALL look for a new version at launch and then once a day while it runs, if the setting "Show notification about new versions of Moneten" is on. The setting is on by default. With the setting off, the app looks for a new version only on request, and once at launch on a macOS that the installed version was not checked with.
 
 #### Scenario: Setting on
 
@@ -67,7 +67,7 @@ The app SHALL announce a new version in a window that names the new version and 
 
 ### Requirement: Release notes match the release page
 
-The app SHALL show in the update window the same release notes that the release page of the project shows for that version, headed by the version number and the release date.
+The app SHALL show in the update window, for each version it lists, the same release notes that the release page of the project shows for that version, headed by the version number and the release date.
 
 #### Scenario: Same entries as the release page
 
@@ -78,9 +78,9 @@ The app SHALL show in the update window the same release notes that the release 
 
 #### Scenario: Link in an entry
 
-- **GIVEN** an entry of version 0.1.3 links "Creating transfers" to a help page
+- **GIVEN** an entry of version 0.1.3 links "Creating transfers" to https://github.com/alexander-schneider/Moneten/wiki/Transfers
 - **WHEN** the user clicks "Creating transfers" in the update window
-- **THEN** the help page opens in the default browser
+- **THEN** https://github.com/alexander-schneider/Moneten/wiki/Transfers opens in the default browser
 
 ### Requirement: Release notes of skipped versions
 
@@ -127,7 +127,7 @@ The app SHALL, after "Install", download the update with visible progress, insta
 
 ### Requirement: Verify the update before installing it
 
-The app SHALL install an update only when its signature was made with the update key of the project and its code signature belongs to the Developer ID of the project. The app discards any other download.
+The app SHALL install an update only when the download carries a signature made with the update key of the project, or when the new app carries the code signature of the Developer ID of the project. Either one is enough, so that one of the two keys can be replaced. A new app with a broken code signature is always discarded, and so is any other download.
 
 #### Scenario: Manipulated download
 
@@ -186,13 +186,19 @@ The app SHALL refuse to update itself while macOS runs it from a temporary, read
 
 ### Requirement: Warn about several copies
 
-The app SHALL warn the user at launch when it finds more than one copy of the app on the Mac. The warning names the places of the copies and asks the user to delete the unused ones.
+The app SHALL warn the user at launch when it finds more than one copy of the app on the Mac. The warning names the places of the copies and asks the user to delete the unused ones. Copies on a disk image, on a read-only volume, and in the Trash do not count.
 
 #### Scenario: Old copy in Downloads
 
 - **GIVEN** version 0.1.3 in the Applications folder and version 0.1.1 in the Downloads folder
 - **WHEN** the user starts version 0.1.3
 - **THEN** the app warns that several copies are installed and names both places
+
+#### Scenario: Disk image still mounted
+
+- **GIVEN** version 0.1.3 in the Applications folder and the disk image of version 0.1.3 still mounted
+- **WHEN** the user starts version 0.1.3
+- **THEN** the app shows no warning about several copies
 
 ### Requirement: Report a damaged application file
 
