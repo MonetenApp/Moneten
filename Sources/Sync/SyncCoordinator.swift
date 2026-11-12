@@ -89,7 +89,7 @@ public final class SyncCoordinator {
 	/// a running refresh of the access ends. A refresh that waits for its turn, or that a command asks for
 	/// while the work runs, starts when the work ends. The login of a setup for a login that the app has
 	/// already runs here.
-	public func exclusively<T>(for access: UUID, _ work: () async throws -> T) async throws -> T {
+	public func exclusively<T>(for access: UUID, _ work: @MainActor () async throws -> T) async throws -> T {
 		if running[access] != nil || held.contains(access) {
 			// The end of the run or of the hold holds the access for this work before it resumes it.
 			await withCheckedContinuation { waiting[access, default: []].append($0) }
