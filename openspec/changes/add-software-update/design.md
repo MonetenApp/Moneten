@@ -54,7 +54,7 @@ The repository gets a `CHANGELOG.md`. Its format is strict, so that a script can
 
 ## 0.2.0-beta.1 (2026-12-01)
 
-- [Creating transfers](https://github.com/alexander-schneider/Moneten/wiki/Transfers) from a QR code.
+- [Creating transfers](https://github.com/MonetenApp/Moneten/wiki/Transfers) from a QR code.
 
 ## 0.1.3 (2026-11-20)
 
@@ -78,7 +78,7 @@ Alternatives: notes that GitHub generates from the titles of pull requests, whic
 
 ### The feed is an asset of the newest stable release
 
-The feed URL is `https://github.com/alexander-schneider/Moneten/releases/latest/download/appcast.xml`. GitHub resolves "latest" to the newest stable release, so the feed lives there as a file named `appcast.xml`. The disk images are assets of their own releases. A stable version is created as a draft, gets its disk image and the new feed, and only then is published, so "latest" never points to a release without a feed. A pre-release replaces the feed on the newest stable release. Every other release, such as `bank-data`, is created with `make_latest` set to false, because GitHub marks a new release as latest by default and the feed URL would then break.
+The feed URL is `https://github.com/MonetenApp/Moneten/releases/latest/download/appcast.xml`. GitHub resolves "latest" to the newest stable release, so the feed lives there as a file named `appcast.xml`. The disk images are assets of their own releases. A stable version is created as a draft, gets its disk image and the new feed, and only then is published, so "latest" never points to a release without a feed. A pre-release replaces the feed on the newest stable release. Every other release, such as `bank-data`, is created with `make_latest` set to false, because GitHub marks a new release as latest by default and the feed URL would then break.
 
 `release-notes.py appcast` reads the current feed, adds or replaces the item of the new version, and then rewrites the notes of every item from `CHANGELOG.md`. So it is idempotent, and a fix to an old entry reaches the feed with the next release. It fails when it cannot read the current feed, unless it gets the flag for the first release, so a failed run never starts an empty feed. It signs the feed with the update key. The URL of each disk image names its own release, `releases/download/v0.1.3/...`, never `latest`. Each item carries:
 
@@ -145,7 +145,7 @@ The other cases come from Sparkle. A temporary or read-only location makes the i
 
 A new workflow, release.yml, runs on a pushed tag and by hand. Run by hand, it builds everything and publishes nothing, for a dry run.
 
-1. Check out the full history. Check that the tag matches a section of `CHANGELOG.md`, that the tagged commit is on `main`, and that its build number is higher than every item of the current feed. For the first release, which has no feed yet, the feed check is skipped with the same flag as in `appcast`.
+1. Check out the full history. Check that the tag matches a section of `CHANGELOG.md`, that the tagged commit is on `main`, that its build number is higher than every item of the current feed, and that its version is higher than every version in the feed, so a stable 0.1.4 never follows 0.2.0-beta.1 and a beta tester is never offered a lower version. For the first release, which has no feed yet, the feed check is skipped with the same flag as in `appcast`.
 2. Archive and export the app with `scripts/build-app.sh developer-id`. It signs through cloud-managed signing of Xcode with the App Store Connect API key (`-allowProvisioningUpdates` with the key), so no private key leaves Apple ([ADR 0011](../../../docs/decisions/0011-app-target-in-an-xcode-project.md)). Then check that the Info.plist of the exported app carries the production update key.
 3. Notarize the app with `notarytool` and the same API key, and staple the ticket.
 4. Put the app on a disk image, notarize it, and staple it.

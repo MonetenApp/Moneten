@@ -78,9 +78,9 @@ The app SHALL show in the update window, for each version it lists, the same rel
 
 #### Scenario: Link in an entry
 
-- **GIVEN** an entry of version 0.1.3 links "Creating transfers" to https://github.com/alexander-schneider/Moneten/wiki/Transfers
+- **GIVEN** an entry of version 0.1.3 links "Creating transfers" to https://github.com/MonetenApp/Moneten/wiki/Transfers
 - **WHEN** the user clicks "Creating transfers" in the update window
-- **THEN** https://github.com/alexander-schneider/Moneten/wiki/Transfers opens in the default browser
+- **THEN** https://github.com/MonetenApp/Moneten/wiki/Transfers opens in the default browser
 
 ### Requirement: Release notes of skipped versions
 
