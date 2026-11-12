@@ -6,7 +6,8 @@
 #   scripts/vendor-lua.sh                replace the sources (needs lua.org)
 #   scripts/vendor-lua.sh --check [dir]  fail when a file of dir (default Sources/CLua) differs from
 #                                        VENDOR.sha256, is missing, or is neither listed nor one of OWN
-#   scripts/vendor-lua.sh --self-test    show that --check fails on a changed, an extra, and a missing file
+#   scripts/vendor-lua.sh --self-test    show that --check fails on a changed, an extra, and a missing file,
+#                                        and on a VERSION that VENDOR.sha256 was not written for
 # --check and --self-test work offline, because lua.org resets connections from CI runners.
 set -e
 cd "$(dirname "$0")/.."
@@ -15,9 +16,15 @@ OWN="VERSION VENDOR.sha256 clua.c include/clua.h"
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
 
+# The first line of VENDOR.sha256 names the archive and its SHA-256, as VERSION pins them.
+pin() {
+	echo "# $(sed -n 1p "$1/VERSION") $(sed -n 2p "$1/VERSION")"
+}
+
 check() {
-	(cd "$1" && shasum -a 256 -c --quiet VENDOR.sha256) || { echo "$1 differs from VENDOR.sha256." >&2; return 1; }
-	{ sed 's/^[0-9a-f]*  //' "$1/VENDOR.sha256"; for f in $OWN; do echo "./$f"; done; } | LC_ALL=C sort > "$WORK/expected"
+	[ "$(sed -n 1p "$1/VENDOR.sha256")" = "$(pin "$1")" ] || { echo "$1/VENDOR.sha256 lists the files of another release than VERSION." >&2; return 1; }
+	(cd "$1" && sed 1d VENDOR.sha256 | shasum -a 256 -c --quiet -) || { echo "$1 differs from VENDOR.sha256." >&2; return 1; }
+	{ sed '1d; s/^[0-9a-f]*  //' "$1/VENDOR.sha256"; for f in $OWN; do echo "./$f"; done; } | LC_ALL=C sort > "$WORK/expected"
 	(cd "$1" && find . -type f) | LC_ALL=C sort > "$WORK/present"
 	extra=$(LC_ALL=C comm -13 "$WORK/expected" "$WORK/present")
 	[ -z "$extra" ] || { echo "$1 has files that are not part of the release: $extra" >&2; return 1; }
@@ -37,7 +44,8 @@ case "$1" in
 	cp -R Sources/CLua "$WORK/changed" && printf 'x' >> "$WORK/changed/lvm.c" && fails "$WORK/changed" "a changed file"
 	cp -R Sources/CLua "$WORK/extra" && touch "$WORK/extra/lextra.c" && fails "$WORK/extra" "an extra file"
 	cp -R Sources/CLua "$WORK/missing" && rm "$WORK/missing/lvm.c" && fails "$WORK/missing" "a missing file"
-	echo "--check fails on a changed, an extra, and a missing file."
+	cp -R Sources/CLua "$WORK/stale" && printf 'lua-5.4.10.tar.gz\n%064d\n' 0 > "$WORK/stale/VERSION" && fails "$WORK/stale" "a VERSION of another release"
+	echo "--check fails on a changed, an extra, and a missing file, and on a VERSION of another release."
 	;;
 "")
 	ARCHIVE=$(sed -n 1p Sources/CLua/VERSION)
@@ -51,7 +59,7 @@ case "$1" in
 	for f in lua.h luaconf.h lualib.h lauxlib.h; do mv "$SRC/$f" "$SRC/include/"; done
 	find Sources/CLua -name 'l*.[ch]' -delete
 	cp -R "$SRC/" Sources/CLua/
-	(cd "$SRC" && find . -type f | LC_ALL=C sort | xargs shasum -a 256) > Sources/CLua/VENDOR.sha256
+	{ pin Sources/CLua; (cd "$SRC" && find . -type f | LC_ALL=C sort | xargs shasum -a 256); } > Sources/CLua/VENDOR.sha256
 	echo "Vendored $ARCHIVE into Sources/CLua."
 	;;
 *)
