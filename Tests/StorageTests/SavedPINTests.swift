@@ -1,5 +1,6 @@
 import Domain
 import Foundation
+import GRDB
 import Testing
 @testable import Storage
 
@@ -42,6 +43,20 @@ struct SavedPINTests {
 		try store.savePIN(Secret("48151"), for: Self.access.id)
 		try store.deleteAccount(Self.giro.id)
 		#expect(try store.savedPINs().isEmpty)
+	}
+
+	@Test("v9 adds the table of saved PINs to a v7 database with an access, and a saved PIN goes with the last account of the access")
+	func upgrade() throws {
+		let queue = try DatabaseQueue()
+		try Schema.migrator.migrate(queue, upTo: "v7")
+		let store = Store(queue: queue)
+		try store.add(Self.access, state: AccessState(Data([1])), accounts: [Self.giro])
+		try Schema.migrator.migrate(queue)
+		#expect(try queue.read { db in try Schema.migrator.appliedMigrations(db) }.last == "v9")
+		try store.savePIN(Secret("48151"), for: Self.access.id)
+		#expect(try store.savedPINs() == [Self.access.id: Secret("48151")])
+		try store.deleteAccount(Self.giro.id)
+		#expect(try queue.read { db in try SavedPINRecord.fetchCount(db) } == 0)
 	}
 
 	@Test("No byte of the database file or of its backup shows the PIN, and the backup opens on another Mac with the database password")
