@@ -19,8 +19,10 @@ Bank access, extensions, and payments are not built yet. When they arrive, these
 - Bank PINs are saved only if you choose, and then only inside the encrypted database.
 - Logs never contain PINs, TANs, passwords, cookies, or tokens, and no setting turns that off.
 - TANs are never stored.
-- Each extension runs in its own sandboxed process and can only reach the hosts in its manifest.
-- The extension API has no payment functions, and the app sends payments only through FinTS or finAPI. A malicious extension could still misuse a login it holds, so catalog extensions are reviewed.
+- Each extension runs in its own sandboxed process without file access. An extension with a manifest reaches only the hosts in its manifest. An extension without one asks you before it contacts each new host. The host check runs in the extension's own process, so a flaw in Lua or in a parser of the app could get around it.
+- Automated checks and a maintainer review every catalog extension. The app installs one only from a signed index whose digests match every file. An update that adds a host or a login field waits for your confirmation.
+- Nobody from the project reviews an extension that you install from a file. The app warns you before it runs one, lists the hosts of its manifest, warns again when any of its files changes, and marks it "Unverified".
+- Extensions only read data. The extension API has no payment functions, and the app sends payments only through FinTS or finAPI. A malicious extension could still misuse a login it holds, which is why the catalog reviews every package.
 
 [Architecture](docs/architecture.md) explains each of these in detail.
 

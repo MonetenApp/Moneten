@@ -51,6 +51,7 @@ These modules are planned:
 | `ExtensionHost` | The XPC service that runs one Lua extension with the MoneyMoney-compatible API | Lua 5.4 |
 | `FinAPIConnector` | finAPI login through its web form and data mapping (v0.3) | `Domain` |
 | `ext` | A command line tool that runs and tests an extension without the app | `ExtensionHost` |
+| `ExtensionCatalog` | Verifying the signed catalog index, installing packages, and planning updates | `Domain` |
 
 The sync state machine described below is in `Domain`. The payment state machine will be there too.
 
@@ -157,13 +158,22 @@ The rest of this list is the plan for bank access and the log:
 
 ## Extensions run in a sandbox
 
-This section is the plan for extensions.
+This section is the plan for extensions. [ADR 0015](decisions/0015-extension-program.md) records the decisions behind it.
 
-Each extension runs in its own XPC process with only the network client entitlement. The host enforces three limits:
+An extension is a single `.lua` file or a package. A single file may have a manifest with the same base name next to it, such as `Demo.json` next to `Demo.lua`. A package is a folder with `manifest.json`, one or more Lua files in the load order that the manifest lists, and a README. The app installs, updates, and removes a package as one unit.
 
-1. The extension can only contact hosts listed in its manifest.
-2. The extension gets the credentials of its own connection and nothing else.
-3. The extension's `LocalStorage` is kept by the app, per connection, inside the encrypted database.
+Each extension session runs in its own XPC process with only the network client entitlement. The host enforces these limits:
+
+1. An extension with a manifest can only contact the hosts that the manifest lists, by exact name. The host checks the target of every HTTP redirect too. An extension without a manifest asks the user before it contacts each new host, also before a redirect to one, and the app remembers the answer. An automatic refresh sends nothing to a new host and waits for the user.
+2. `io` is a table without `open` and without any other function that touches a file. `os` keeps only `time`, `date`, `clock`, and `difftime`. `debug`, `package`, `load`, `loadstring`, `dofile`, `loadfile`, `require`, and `string.dump` are absent. A call of a name that the host does not offer stops the script with an error that names the function.
+3. The extension gets the credentials of its own connection and nothing else.
+4. The extension's `LocalStorage` is kept by the app, per connection, inside the encrypted database.
+
+The host checks hosts in the same process that runs the script. A flaw in Lua or in a parser of the host could reach any host with the login data of that one access. [ADR 0015](decisions/0015-extension-program.md) accepts this risk and names when the network calls move into a separate process.
+
+The manifest is required for a package in the catalog and optional for an extension installed from a file. The catalog is the public repository [MonetenApp/moneten-extensions](https://github.com/MonetenApp/moneten-extensions). Its checks and a maintainer review every package and every update. A signing workflow publishes a signed index with the SHA-256 digest of every file at `extensions.monetenapp.com`, the only host that the app contacts for the catalog. A file that the user installs by hand runs after a warning that lists the hosts of its manifest, and stays "Unverified". The app warns again when any of its files changes. The app records whether each extension came from the catalog, so a changed catalog package stays blocked and never runs as a file install.
+
+The planned module `ExtensionCatalog` verifies the index against the two public keys in the app and the version floor of each key, downloads and checks the files, and decides whether an update installs by itself or waits for the user because it adds a host or a login field.
 
 The API follows the [MoneyMoney Web Banking API](https://moneymoney.app/api/webbanking/), so most existing extensions run without changes. [ADR 0004](decisions/0004-moneymoney-compatible-extension-api.md) lists what is compatible and what Moneten adds.
 

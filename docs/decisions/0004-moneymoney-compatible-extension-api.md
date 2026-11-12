@@ -1,6 +1,6 @@
 # 0004. Make the extension API compatible with MoneyMoney
 
-Status: Accepted
+Status: Partly superseded by [ADR 0015](0015-extension-program.md)
 
 ## Context
 

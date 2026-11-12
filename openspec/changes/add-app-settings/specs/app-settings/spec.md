@@ -8,7 +8,7 @@ The settings window is the one place for switches that the user sets once. This 
 
 ### Requirement: One settings window
 
-The app SHALL open one settings window when the user chooses "Settings..." in the application menu or presses ⌘,. The window has the tabs "General", "Security", "Payments", "Subscription", and "Extensions", and it opens on the tab that was open last.
+The app SHALL open one settings window when the user chooses "Settings..." in the application menu or presses ⌘,. The window has the tabs "General", "Security", "Payments", and "Subscription", and it opens on the tab that was open last.
 
 #### Scenario: Open with the shortcut
 

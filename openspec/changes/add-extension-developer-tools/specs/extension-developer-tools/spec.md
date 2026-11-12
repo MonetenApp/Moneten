@@ -191,7 +191,7 @@ The `ext` tool SHALL print its commands and options with `ext --help`, and its v
 
 ### Requirement: Author guide
 
-The project SHALL publish an author guide in the repository. The guide has a tutorial that builds an extension for a public JSON API step by step, a reference of the API that lists every difference from the published Web Banking API, a description of the manifest, and the rules that every extension follows.
+The project SHALL publish an author guide in the public catalog repository `MonetenApp/moneten-extensions`, where authors submit their packages. The guide has a tutorial that builds an extension for a public JSON API step by step, a reference of the API that lists every difference from the published Web Banking API, a description of the manifest, and the rules that every extension follows.
 
 #### Scenario: Follow the tutorial
 
@@ -201,7 +201,19 @@ The project SHALL publish an author guide in the repository. The guide has a tut
 #### Scenario: Look up a difference
 
 - **WHEN** a developer looks up browser approvals in the reference
-- **THEN** the reference says that the host must be in the manifest, and marks this as a difference from the published Web Banking API
+- **THEN** the reference names the final redirect addresses `https://service.moneymoney-app.com/1/redirect`, `moneymoney-app://oauth`, and `moneten://oauth`
+- **AND** it says that a catalog package lists the login host in its manifest, and marks both as differences from the published Web Banking API
+
+### Requirement: Replay in the catalog checks
+
+The project SHALL run `ext test` with the recording of every catalog package in the checks of the catalog repository. The checks build `ext` from the app repository at a pinned commit. A package whose replay fails does not enter the catalog.
+
+#### Scenario: Changed amount in a pull request
+
+- **GIVEN** a pull request changes the amount of the first transaction in the expected file of the package "Broker" from -89.00 to -98.00
+- **WHEN** the checks of the catalog repository run
+- **THEN** the replay check fails and names the path of the amount with both values
+- **AND** the pull request cannot be merged
 
 ### Requirement: Rules for extensions in the guide
 
