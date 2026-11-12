@@ -11,12 +11,18 @@ public struct HostSetup: Sendable, Codable {
 	/// Replaces the network with recorded answers, for the tests and the debug harness.
 	public let fixture: Fixture?
 	public let limits: HostLimits
+	public let environment: HostEnvironment
+	/// What `LocalStorage` held at the end of the last run of the access, as `ExtensionHostClient.finish` returned it.
+	public let storage: Data?
 
-	public init(package: ExtensionPackage, decisions: [String: HostDecision] = [:], fixture: Fixture? = nil, limits: HostLimits = HostLimits()) {
+	public init(package: ExtensionPackage, decisions: [String: HostDecision] = [:], fixture: Fixture? = nil, limits: HostLimits = HostLimits(),
+		environment: HostEnvironment = .standard, storage: Data? = nil) {
 		self.package = package
 		self.decisions = decisions
 		self.fixture = fixture
 		self.limits = limits
+		self.environment = environment
+		self.storage = storage
 	}
 }
 
@@ -30,24 +36,63 @@ public struct HostLimits: Sendable, Codable, Equatable {
 	public init() {}
 }
 
+/// What the app tells a script about itself and the user, for the values of `MM`. The host process
+/// cannot read them, because its sandbox hides the preferences of the app.
+public struct HostEnvironment: Sendable, Codable, Equatable {
+	public enum Variant: String, Sendable, Codable {
+		case debug, beta, retail
+	}
+
+	public var productVersion: String
+	public var productBuild: Int
+	public var variant: Variant
+	/// The language code of the interface, for example "de".
+	public var language: String
+	/// The locale for the formats of `MM.localizeDate`, `MM.localizeNumber`, and `MM.localizeAmount`, for example "de_DE".
+	public var locale: String
+	/// The identifier that the app creates once and keeps, for `MM.deviceUuid`.
+	public var deviceUuid: String
+	/// The country of the bank access, for the bank holidays of `MM.date(..., "*t")`, for example "DE".
+	public var country: String
+
+	public init(productVersion: String, productBuild: Int, variant: Variant, language: String, locale: String, deviceUuid: String, country: String = "DE") {
+		self.productVersion = productVersion
+		self.productBuild = productBuild
+		self.variant = variant
+		self.language = language
+		self.locale = locale
+		self.deviceUuid = deviceUuid
+		self.country = country
+	}
+
+	/// The values of the tests: English, Germany, and a fixed device.
+	public static let standard = HostEnvironment(productVersion: "0.1", productBuild: 1, variant: .debug, language: "en", locale: "en_US",
+		deviceUuid: "00000000-0000-4000-8000-000000000000")
+}
+
 /// One line from the app to the host process.
 enum HostCommand: Sendable, Codable {
 	case start(HostSetup)
-	case call(String)
+	case call(EntryCall)
 	case answer(HostDecision)
+	/// Ends the run: the host answers with the content of `LocalStorage`.
+	case finish
 }
 
 /// One line from the host process to the app.
 enum HostEvent: Sendable, Codable {
-	case loaded(Registration, milliseconds: Double)
+	case loaded(Registration, entryPoints: Set<EntryPoint>, milliseconds: Double)
 	case result(LuaValue)
 	case failed(String)
 	case askHost(String)
 	case print(String)
+	/// The text of `MM.printStatus`, for the status of the refresh.
+	case status(String)
 	/// A request that reached the fixture, as "GET https://...".
 	case sent(String)
 	/// A request over the network started or ended. The app counts the silence of the host from here.
 	case alive
+	case finished(storage: Data)
 }
 
 /// The loop of the host process: one session, with commands on stdin and events on stdout. It ends
@@ -73,22 +118,32 @@ public enum HostProcess {
 				let transport: any Transport = setup.fixture.map { FixtureTransport($0) { emit(.sent("\($0.method) \($0.url.absoluteString)")) } }
 					?? ReportingTransport(URLSessionTransport()) { emit(.alive) }
 				let started = ContinuousClock.now
-				let new = HostSession(package: setup.package, transport: transport, decisions: setup.decisions, memory: setup.limits.memory, ask: askApp,
-					log: { emit(.print($0)) })
+				let new = HostSession(package: setup.package, transport: transport, decisions: setup.decisions, memory: setup.limits.memory,
+					environment: setup.environment, storage: setup.storage, ask: askApp, log: { emit(.print($0)) }, status: { emit(.status($0)) })
 				do {
 					let registration = try new.load()
 					session = new
-					emit(.loaded(registration, milliseconds: (ContinuousClock.now - started) / .milliseconds(1)))
+					emit(.loaded(registration, entryPoints: new.entryPoints, milliseconds: (ContinuousClock.now - started) / .milliseconds(1)))
 				} catch {
 					emit(.failed(error.message))
 				}
-			case let .call(function):
+			case let .call(entry):
 				guard let session else {
 					emit(.failed("The extension is not loaded."))
 					continue
 				}
 				do {
-					emit(.result(try session.call(function)))
+					emit(.result(try session.call(entry)))
+				} catch {
+					emit(.failed(error.message))
+				}
+			case .finish:
+				guard let session else {
+					emit(.failed("The extension is not loaded."))
+					continue
+				}
+				do {
+					emit(.finished(storage: try session.storage()))
 				} catch {
 					emit(.failed(error.message))
 				}

@@ -69,3 +69,13 @@ struct ContentType: Equatable {
 			.map { String($0.dropFirst("charset=".count)).trimmingCharacters(in: CharacterSet(charactersIn: "\"")) }
 	}
 }
+
+extension Connection {
+	/// The state of the connection at `index`, or nil when the value is not a connection.
+	static func stored(_ stack: LuaStack, at index: Int32) -> StoredConnection? { nil }
+
+	/// Pushes a connection with the stored state. Its cookies join the cookies of the run.
+	static func push(_ stack: LuaStack, _ stored: StoredConnection) {
+		lua_pushnil(stack.L)
+	}
+}

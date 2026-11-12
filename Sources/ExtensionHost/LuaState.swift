@@ -14,19 +14,25 @@ struct ScriptError: Error, Equatable, Sendable, CustomStringConvertible {
 
 /// A value that crosses between a script and the app, in the shape of JSON. A table whose keys are
 /// 1 to n becomes an array, any other table an object with text keys. Functions and other Lua
-/// objects become `null`.
+/// objects become `null`. A Lua string that is not valid UTF-8, such as a PNG image, stays bytes.
 public enum LuaValue: Sendable, Equatable, Codable {
 	case null
 	case boolean(Bool)
 	case integer(Int64)
 	case number(Double)
 	case string(String)
+	case bytes(Data)
 	case array([LuaValue])
 	case object([String: LuaValue])
 
+	/// JSON has no bytes, so they cross as an object with this one key and the bytes in Base64.
+	static let bytesKey = "$bytes"
+
 	public init(from decoder: Decoder) throws {
 		let container = try decoder.singleValueContainer()
-		if container.decodeNil() {
+		if let object = try? container.decode([String: String].self), object.count == 1, let base64 = object[Self.bytesKey], let data = Data(base64Encoded: base64) {
+			self = .bytes(data)
+		} else if container.decodeNil() {
 			self = .null
 		} else if let value = try? container.decode(Bool.self) {
 			self = .boolean(value)
@@ -51,6 +57,7 @@ public enum LuaValue: Sendable, Equatable, Codable {
 		case let .integer(value): try container.encode(value)
 		case let .number(value): try container.encode(value)
 		case let .string(value): try container.encode(value)
+		case let .bytes(value): try container.encode([Self.bytesKey: value.base64EncodedString()])
 		case let .array(value): try container.encode(value)
 		case let .object(value): try container.encode(value)
 		}
@@ -90,17 +97,28 @@ final class LuaState {
 	}
 
 	/// Calls a global function of the script and returns its first result.
-	func call(_ function: String, _ arguments: [LuaValue] = []) throws(ScriptError) -> LuaValue {
+	func call(_ function: String, _ arguments: [LuaArgument] = []) throws(ScriptError) -> LuaValue {
 		let L = stack.L
 		stack.pushGlobal(function)
 		guard lua_type(L, -1) == LUA_TFUNCTION else {
 			lua_settop(L, 0)
 			throw ScriptError("The extension has no function \(function).")
 		}
-		for argument in arguments { stack.push(argument) }
+		for argument in arguments {
+			switch argument {
+			case let .value(value): stack.push(value)
+			case let .function(function): clua_pushfunction(L, function)
+			}
+		}
 		try protectedCall(arguments: Int32(arguments.count), results: 1)
 		defer { lua_settop(L, 0) }
 		return try stack.value(at: -1)
+	}
+
+	func isFunction(_ global: String) -> Bool {
+		stack.pushGlobal(global)
+		defer { lua_settop(stack.L, -2) }
+		return lua_type(stack.L, -1) == LUA_TFUNCTION
 	}
 
 	private func protectedCall(arguments: Int32, results: Int32) throws(ScriptError) {
@@ -115,8 +133,14 @@ final class LuaState {
 		}
 		let message = lua_type(stack.L, -1) == LUA_TSTRING ? stack.string(at: -1) : "The script stopped with an error of type \(stack.typeName(at: -1))."
 		lua_settop(stack.L, 0)
-		return ScriptError(Environment.explain(message))
+		return ScriptError(Environment.explain(message, miss: HostSession.current(stack.L).lastMiss))
 	}
+}
+
+/// An argument of a call into the script: a value, or a function that Swift implements.
+enum LuaArgument {
+	case value(LuaValue)
+	case function(clua_Function)
 }
 
 /// The stack of one Lua thread: the main state, or a coroutine in a function that Swift implements.
@@ -177,6 +201,7 @@ struct LuaStack {
 		case let .integer(i): lua_pushinteger(L, i)
 		case let .number(n): lua_pushnumber(L, n)
 		case let .string(s): pushString(s)
+		case let .bytes(data): pushBytes(data)
 		case let .array(items):
 			lua_createtable(L, Int32(items.count), 0)
 			for (i, item) in items.enumerated() {
@@ -239,7 +264,9 @@ struct LuaStack {
 			let number = lua_tonumberx(L, index, nil)
 			guard number.isFinite else { throw ScriptError("The value \(number) is not a finite number.") }
 			return .number(number)
-		case LUA_TSTRING: return .string(string(at: index))
+		case LUA_TSTRING:
+			let data = bytes(at: index)
+			return String(validating: data, as: UTF8.self).map(LuaValue.string) ?? .bytes(data)
 		case LUA_TTABLE:
 			guard let pointer = lua_topointer(L, index), seen.insert(pointer).inserted else { return .null }
 			defer { seen.remove(pointer) }

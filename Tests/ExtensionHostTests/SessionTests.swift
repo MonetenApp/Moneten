@@ -144,7 +144,7 @@ import Testing
 		let orphan = try Orphan(#"exec 3<&0; "$0" <&3 & echo $! >&2; wait"#)
 		try orphan.send(.start(HostSetup(package: demo("WebBanking{version = 1}\nfunction Loop() while true do end end"))))
 		#expect(Orphan.line(orphan.output).hasPrefix(#"{"loaded""#))
-		try orphan.send(.call("Loop"))
+		try orphan.send(.call(.function("Loop")))
 		try await Task.sleep(for: .milliseconds(200))
 		kill(orphan.shell.processIdentifier, SIGKILL)
 		orphan.shell.waitUntilExit()

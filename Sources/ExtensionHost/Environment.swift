@@ -16,7 +16,7 @@ enum Environment {
 		"tmpname": "os.tmpname", "setlocale": "os.setlocale", "dump": "string.dump",
 	]
 
-	static func install(_ stack: LuaStack, extensionName: String) {
+	static func install(_ stack: LuaStack, extensionName: String, environment: HostEnvironment) {
 		let L = stack.L
 		let libraries: [(String, lua_CFunction)] = [("_G", luaopen_base), ("string", luaopen_string), ("table", luaopen_table),
 			("math", luaopen_math), ("utf8", luaopen_utf8), ("coroutine", luaopen_coroutine), ("os", luaopen_os)]
@@ -46,6 +46,7 @@ enum Environment {
 		lua_settop(L, 0)
 
 		lua_createtable(L, 0, 0)
+		reportMisses(stack, of: "io")
 		stack.setGlobal("io")
 		stack.pushString(extensionName)
 		stack.setGlobal("extensionName")
@@ -53,11 +54,61 @@ enum Environment {
 			clua_pushfunction(L, function)
 			stack.setGlobal(name)
 		}
+		for (name, value) in EntryPoints.constants {
+			stack.pushString(value)
+			stack.setGlobal(name)
+		}
+		MMLibrary.install(stack, environment: environment)
+		JSONObject.install(stack)
+		HTMLDocument.install(stack)
+		PDFDocument.install(stack)
 	}
 
-	/// Turns Lua's message for a call of a removed function into one that names the function.
-	static func explain(_ message: String) -> String {
+	/// Gives the table on top of the stack a metatable whose `__index` remembers each name that the
+	/// table lacks, with the line that read it, and returns `nil`. A read in a type check still gives
+	/// `nil`; a call of the name at that line fails with a message that names it (ADR 0015, decision 19).
+	/// `object` is the name in the message, such as "MM" or "io"; a method call uses "connection:".
+	static func reportMisses(_ stack: LuaStack, of object: String) {
+		let L = stack.L
+		lua_createtable(L, 0, 2)
+		stack.pushString(object)
+		lua_setfield(L, -2, "__name")
+		clua_pushfunction(L, recordMiss)
+		lua_setfield(L, -2, "__index")
+		lua_setmetatable(L, -2)
+	}
+
+	/// Remembers that the script read `name`, which the app does not offer, at the line of the caller.
+	static func recordMiss(_ L: OpaquePointer, name: String) {
+		luaL_where(L, 1)
+		let position = LuaStack(L).string(at: -1).trimmingCharacters(in: .whitespaces)
+		lua_settop(L, -2)
+		HostSession.current(L).lastMiss = HostSession.Miss(name: name, position: position)
+	}
+
+	/// `__index(table, key)` of `reportMisses`.
+	private static let recordMiss: clua_Function = { L in
+		let stack = LuaStack(L!)
+		var object = "?"
+		if lua_getmetatable(L, 1) != 0 {
+			if case let .string(name) = (try? stack.field("__name", of: -1)) ?? .null { object = name }
+			lua_settop(L, -2)
+		}
+		if lua_type(L, 2) == LUA_TSTRING {
+			recordMiss(L!, name: object.hasSuffix(":") ? object + stack.string(at: 2) : object + "." + stack.string(at: 2))
+		}
+		lua_pushnil(L)
+		return 1
+	}
+
+	/// Turns Lua's message for a call of a removed function into one that names the function, and the
+	/// message for a call of a name that the app does not offer into "Moneten does not provide MM.X (Demo.lua:12)".
+	static func explain(_ message: String, miss: HostSession.Miss? = nil) -> String {
 		guard let match = message.firstMatch(of: /attempt to (call|index) a nil value \((global|field|method) '(\w+)'\)/) else { return message }
+		if let miss, match.output.1 == "call", miss.name.hasSuffix("." + match.output.3) || miss.name.hasSuffix(":" + match.output.3),
+			removedFields[String(match.output.3)] == nil, message.hasPrefix(miss.position + " ") {
+			return "Moneten does not provide \(miss.name) (\(miss.position.dropLast()))"
+		}
 		let (_, action, kind, name) = match.output
 		let removed: String? = switch (action, kind) {
 		case ("call", "global") where removedGlobals.contains(String(name)): String(name)
