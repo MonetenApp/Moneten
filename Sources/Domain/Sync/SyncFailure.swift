@@ -57,6 +57,8 @@ public enum SyncFailure: Error, Sendable, Equatable {
 			"The PIN is needed. Choose “Refresh Account” to enter it."
 		case .needsUser(.secondFactor):
 			"An authorization is needed. Choose “Refresh Account” to give it."
+		case .needsUser(.allowHost):
+			"An extension asks to contact a new host. Choose “Refresh Account” to answer."
 		case let .pinRejected(m):
 			"The bank did not accept the PIN: \(m.text)\nMore wrong attempts can block the access."
 		case let .accessBlocked(m):
