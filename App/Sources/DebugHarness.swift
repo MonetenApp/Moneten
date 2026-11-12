@@ -76,8 +76,12 @@ final class DebugHarness {
 		// "<name>" starts a made-up refresh that shows one dialog of SyncDemo.requests.
 		case "syncdemo": SyncDemo.start(argument, in: model.sync)
 		case "synccancel": model.sync.cancelAll()
-		// "<field> <value>" drives the "Add Account" assistant: entry, login, pin, other, group, next, back, toggle, cancel.
+		// "<field> <value>" drives the "Add Account" assistant: entry, login, pin, other, group, next, back, toggle, connect, cancel.
 		case "setup": setup(argument)
+		// "<name>": a migrated giro account without an access, with the test IBAN of the made-up bank.
+		case "migrated":
+			model.save(account: Account(position: model.ledger.nextTreePosition(in: nil), name: argument, kind: .giro, source: .migrated,
+				iban: "DE02120300000000202051"))
 		// "<text>" answers the dialog on screen with a TAN, or with a PIN when it asks for one.
 		case "answer":
 			if let prompt = model.sync.broker.current {
@@ -218,6 +222,15 @@ final class DebugHarness {
 		}
 	}
 
+	private static func label(_ match: SetupMatch) -> String {
+		switch match {
+		case .new: "new"
+		case let .present(a): "present(\(a.name))"
+		case let .connects(a): "connects(\(a.name))"
+		case let .choice(accounts): "choice(\(accounts.map(\.name).joined(separator: ",")))"
+		}
+	}
+
 	private func setup(_ argument: String) {
 		guard let model, let setup = model.setup else { return log("setup: no assistant") }
 		let parts = argument.split(separator: " ", maxSplits: 1).map(String.init)
@@ -230,12 +243,17 @@ final class DebugHarness {
 		case "next": setup.next()
 		case "back": setup.back()
 		case "toggle": if setup.selected.remove(value) == nil { setup.selected.insert(value) }
+		// "<account name>": the account that the row with a choice connects.
+		case "connect":
+			if let row = setup.candidates.first(where: { if case .choice = $0.match { true } else { false } }) {
+				setup.connecting[row.account.id] = model.ledger.accounts.first { $0.name == value }?.id
+			}
 		// What "Add Account..." in the context menu of a group does.
 		case "group": setup.groupID = model.ledger.groups.first { $0.name == value }?.id
 		case "cancel": model.closeAccountSetup()
 		default: break
 		}
-		log("setup step=\(setup.step) lookup=\(setup.lookup) error=\(setup.loginError ?? "-") candidates=\(setup.candidates.map { "\($0.id):\($0.match == .new ? "new" : $0.isPresent ? "present" : "migrated")" }) selected=\(setup.selected.sorted())")
+		log("setup step=\(setup.step) lookup=\(setup.lookup.state) error=\(setup.loginError ?? "-") candidates=\(setup.candidates.map { "\($0.id):\(Self.label($0.match))" }) selected=\(setup.selected.sorted())")
 	}
 
 	/// The euro balance chart of the selected account or group: its first and last bar and the total
