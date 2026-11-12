@@ -44,6 +44,19 @@ public protocol SavedPINStore: Sendable {
 	@discardableResult func removeSavedPIN(of access: UUID) throws -> Bool
 }
 
+/// A refresh that failed after its connector changed the state of the access, for example an extension
+/// whose script stored a new token in `LocalStorage` before a later call failed. The coordinator keeps
+/// `state`, and the refresh ends with `failure`.
+public struct FailureWithState: Error {
+	public let failure: any Error
+	public let state: AccessState
+
+	public init(_ failure: any Error, state: AccessState) {
+		self.failure = failure
+		self.state = state
+	}
+}
+
 /// Every source of bank data implements this protocol: FinTS, extensions, and finAPI.
 public protocol BankConnector: Sendable {
 	/// Fetches the balances and transactions of the requested accounts of one access, in one session.

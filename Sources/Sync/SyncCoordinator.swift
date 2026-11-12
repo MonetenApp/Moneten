@@ -32,7 +32,8 @@ public final class SyncCoordinator {
 	@ObservationIgnored public var deliver: @MainActor (UUID, RefreshResult) throws -> Void = { _, _ in }
 	/// Runs on the main actor when the refresh of an access ended, after `deliver`: with the ID of the
 	/// access, the new state that its connector returned, and how each requested account ended. A canceled
-	/// refresh brings no state and no account, so its accounts keep their last state.
+	/// refresh brings no account, so its accounts keep their last state. It brings a state only when its
+	/// connector changed one before the cancel (`FailureWithState`).
 	@ObservationIgnored public var ended: @MainActor (UUID, AccessState?, [UUID: AccountRefresh]) -> Void = { _, _, _ in }
 
 	private struct Job {
@@ -165,6 +166,8 @@ public final class SyncCoordinator {
 		running[access.id] = Task {
 			let event: SyncEvent
 			var report: ConnectorReport?
+			// The state that a failed run changed, such as a token the source rotated before the failure.
+			var failedState: AccessState?
 			do {
 				let fetched = try await job.connector.refresh(job.request, session)
 				// The report decides about the PIN, before a cancel or an error of the storage hides an account.
@@ -175,10 +178,14 @@ public final class SyncCoordinator {
 				let notSaved = deliverFetched(fetched, of: job.request)
 				event = .finish(Self.summary(of: fetched, for: job.request, notSaved: notSaved))
 			} catch {
+				let withState = error as? FailureWithState
+				let error = withState?.failure ?? error
+				failedState = withState?.state
 				// A rejection or a block forgets the PIN also when the refresh was canceled meanwhile.
 				if (error as? SyncFailure)?.rejectsPIN == true { broker.forgetRejectedPIN(of: access.id) }
 				event = Task.isCancelled || error is CancellationError ? .cancel : .fail(Self.failure(error))
 			}
+			let state = report?.state ?? failedState
 			// A PIN is kept, and saved on request, only after a refresh with it succeeded. A typo is never sent again on its own.
 			broker.refreshEnded(access.id, with: event)
 			apply(event, to: access.id)
@@ -187,10 +194,10 @@ public final class SyncCoordinator {
 			let accountIDs = job.request.accounts.map(\.accountID)
 			endProgress(of: access.id)
 			running[access.id] = nil
-			ended(access.id, report?.state, end.accountRefreshes(of: accountIDs, notices: report?.notices ?? [], at: Date()))
+			ended(access.id, state, end.accountRefreshes(of: accountIDs, notices: report?.notices ?? [], at: Date()))
 			if var next = afterRun.removeValue(forKey: access.id) {
 				// The state that this run returned replaces the one that the command read before.
-				if let state = report?.state {
+				if let state {
 					next.request = RefreshRequest(access: access, state: state, accounts: next.request.accounts, enforced: next.request.enforced)
 				}
 				startProgress(of: next)
