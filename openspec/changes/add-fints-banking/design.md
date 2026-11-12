@@ -38,7 +38,7 @@ hbci4java clears the PIN only when the bank reports a wrong PIN, and calls `WRON
 
 ### Trust in the server of the bank
 
-The helper installs a trust manager that sends the certificate chain and the host to the app. The app evaluates the chain with `SecTrustEvaluateWithError` and the SSL policy for the host. Only the answer "trusted" lets the connection go on. The root certificates of the Java runtime play no part, and nothing turns the check off.
+The helper installs a trust manager that sends the certificate chain and the host to the app. The app evaluates the chain with `SecTrustEvaluateWithError` and the SSL policy for the host, on a queue of its own: the check can wait for the network, and a thread of Swift concurrency that waits holds up the timers and the other refreshes. Only the answer "trusted" lets the connection go on. The root certificates of the Java runtime play no part, and nothing turns the check off.
 
 ### Timeouts and cancel
 

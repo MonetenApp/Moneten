@@ -191,6 +191,11 @@ public struct FinTSConnector: BankConnector {
 		watchdog.onExpiry { process.fail(HelperFailure.timeout) }
 		var approvals: [Int: Task<UserAnswer, any Error>] = [:]
 		var helperLeft = false
+		// A certificate check can wait for the network, for example to fetch an intermediate certificate
+		// that the server left out. A serial queue of its own runs on the overcommitting root queue of
+		// Dispatch, so the wait holds no thread of Swift concurrency, where the timers and the other
+		// refreshes run.
+		let checks = DispatchQueue(label: "io.github.moneten.fints.trust")
 		// The timer runs from the first write, so a helper that never reads its command times out. The
 		// command goes out before the cancellation handler, so a cancel always follows it.
 		watchdog.restart()
@@ -223,7 +228,10 @@ public struct FinTSConnector: BankConnector {
 					case .alive:
 						continue
 					case let .trust(id, host, chain):
-						process.send(Answer(id: id, value: trust(host, chain)))
+						let verdict = await withCheckedContinuation { continuation in
+							checks.async { [trust] in continuation.resume(returning: trust(host, chain)) }
+						}
+						process.send(Answer(id: id, value: verdict))
 					case let .withdraw(id):
 						guard let approval = approvals.removeValue(forKey: id) else { continue }
 						approval.cancel()
