@@ -32,6 +32,21 @@ struct VaultTests {
 		#expect(bytes.range(of: Data("SQLite format 3".utf8)) == nil)
 	}
 
+	@Test("The answers about the hosts of an extension stay after a restart, for that extension only")
+	func hostDecisions() throws {
+		let vault = Vault(folder: folder)
+		let store = try vault.create(password: "korrekt-pferd-batterie-heftklammer", starterCategories: [])
+		try store.save(.allowed, host: "www.bank.example", of: "Demo")
+		try store.save(.denied, host: "tracker.example", of: "Demo")
+		try store.save(.denied, host: "www.bank.example", of: "Other")
+		try store.save(.allowed, host: "tracker.example", of: "Demo")
+		try store.close()
+		let reopened = try vault.open(password: "korrekt-pferd-batterie-heftklammer")
+		#expect(try reopened.hostDecisions(of: "Demo") == ["www.bank.example": .allowed, "tracker.example": .allowed])
+		#expect(try reopened.hostDecisions(of: "Other") == ["www.bank.example": .denied])
+		#expect(try reopened.hostDecisions(of: "Unknown") == [:])
+	}
+
 	@Test("The database password is the key")
 	func passwordIsKey() throws {
 		let vault = Vault(folder: folder)
@@ -288,6 +303,19 @@ struct SchemaTests {
 		savings.refreshError = RefreshError(message: "Zugang vorübergehend gesperrt", code: "9010", date: Self.noon(9), notices: ["Wartung am 14.11.2026"])
 		try store.save(savings)
 		#expect(try store.loadLedger().account(savings.id) == savings)
+	}
+
+	@Test("v8 adds the empty table of the host answers of extensions to a v7 database")
+	func extensionHostDecisions() throws {
+		let queue = try DatabaseQueue()
+		try Schema.migrator.migrate(queue, upTo: "v7")
+		#expect(try queue.read { db in try db.tableExists("extensionHostDecision") } == false)
+		try Schema.migrator.migrate(queue)
+		#expect(try queue.read { db in try Schema.migrator.appliedIdentifiers(db) }.contains("v8"))
+		let store = Store(queue: queue)
+		#expect(try store.hostDecisions(of: "Demo") == [:])
+		try store.save(.allowed, host: "www.bank.example", of: "Demo")
+		#expect(try store.hostDecisions(of: "Demo") == ["www.bank.example": .allowed])
 	}
 
 	@Test("Saving a portfolio records the value of its balance day, alone or with an import, and other accounts record nothing")

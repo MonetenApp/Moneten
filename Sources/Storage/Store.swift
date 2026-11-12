@@ -148,6 +148,21 @@ public final class Store: Sendable {
 		}
 	}
 
+	/// The answers of the user by host for the extension `extensionID`.
+	public func hostDecisions(of extensionID: String) throws -> [String: HostDecision] {
+		try queue.read { db in
+			try Row.fetchAll(db, sql: "SELECT host, decision FROM extensionHostDecision WHERE extensionID = ?", arguments: [extensionID])
+				.reduce(into: [:]) { decisions, row in decisions[row["host"]] = HostDecision(rawValue: row["decision"]) }
+		}
+	}
+
+	public func save(_ decision: HostDecision, host: String, of extensionID: String) throws {
+		try queue.write { db in
+			try db.execute(sql: "INSERT OR REPLACE INTO extensionHostDecision (extensionID, host, decision) VALUES (?, ?, ?)",
+				arguments: [extensionID, host, decision.rawValue])
+		}
+	}
+
 	/// Deletes an account. An access goes with its last account, together with its state. Returns the
 	/// ID of that access.
 	@discardableResult

@@ -2,7 +2,7 @@
 
 This page explains how Moneten is split into modules, how data flows from a bank into the database, and why each boundary sits where it does. The exact fields of each type are in [data model](data-model.md). The reasons behind the big choices are in [decisions](decisions/).
 
-The first build has seven modules: `Domain`, `Storage`, `Import`, `Sync`, `SyncTesting`, `FinTS`, and `App`. The other bank connectors, extensions, payments, and the log are planned. Each section below says when it describes the plan.
+The first build has eight modules: `Domain`, `Storage`, `Import`, `Sync`, `SyncTesting`, `FinTS`, `ExtensionHost`, and `App`. The other bank connectors, the rest of the extension API, payments, and the log are planned. Each section below says when it describes the plan.
 
 ## The modules and what each one owns
 
@@ -23,7 +23,7 @@ The diagram shows the target design.
 ┌────┴─────┐ ┌──┴─────────────┐ ┌──┴───────────┐ ┌────────┴───────┐
 │  FinTS   │ │   Extension    │ │    finAPI    │ │     Import     │
 │connector │ │   connector    │ │  connector   │ │ CSV, CAMT,     │
-│    │pipe │ │       │ XPC    │ │   (v0.3)     │ │ MT940,         │
+│    │pipe │ │       │ pipe   │ │   (v0.3)     │ │ MT940,         │
 │┌───▼────┐│ │ ┌─────▼──────┐ │ └──────────────┘ │ MoneyMoney     │
 ││  Java  ││ │ │ Lua host   │ │                  └────────────────┘
 ││ helper ││ │ └────────────┘ │
@@ -41,14 +41,14 @@ The libraries are one Swift package at the root of the repository. The app targe
 | `Sync` | `SyncCoordinator`, which refreshes up to three accesses at a time with one `SyncState` each, and `SessionBroker`, which shows one dialog at a time and keeps the PINs in memory | `Domain` |
 | `SyncTesting` | `ScriptedConnector`, which plays requests, progress, results, and failures in place of a bank, for the tests, the previews, and the debug harness | `Domain` |
 | `FinTS` | `FinTSConnector`, which starts the hbci4java helper of `Tools/FinTSHelper` for each refresh, lists the accounts of a login, looks up a bank by its code, and maps the requests and results of the helper to `Domain` types. macOS decides whether to trust the server of the bank, and a helper that stays silent for 30 seconds fails the refresh. The app uses it for the "Add Account" assistant and for every refresh. A debug build can replace the helper with `scripts/fake-fints-helper.sh`. | `Domain`, the helper process ([ADR 0014](decisions/0014-fints-through-hbci4java.md)) |
+| `ExtensionHost` | `HostSession`, which runs one extension package in its own Lua 5.4 state with the environment of ADR 0015, `HostPolicy`, which decides every request and redirect target, and `ExtensionHostClient`, which starts one sandboxed `MonetenExtensionHost` process per session and talks to it in JSON lines over a pipe. `Sources/CLua` holds the Lua sources of lua.org. | `Domain`, Lua 5.4 |
 | `App` | SwiftUI views, the `AppModel`, window and menu wiring | All of the above |
 
 These modules are planned:
 
 | Module | Owns | Depends on |
 |---|---|---|
-| `ExtensionConnector` | Starting the XPC host, mapping extension results to `Domain` types | `Domain` |
-| `ExtensionHost` | The XPC service that runs one Lua extension with the MoneyMoney-compatible API | Lua 5.4 |
+| `ExtensionConnector` | Starting a host session, mapping extension results to `Domain` types | `Domain`, `ExtensionHost` |
 | `FinAPIConnector` | finAPI login through its web form and data mapping (v0.3) | `Domain` |
 | `ext` | A command line tool that runs and tests an extension without the app | `ExtensionHost` |
 | `ExtensionCatalog` | Verifying the signed catalog index, installing packages, and planning updates | `Domain` |
@@ -162,12 +162,13 @@ This section is the plan for extensions. [ADR 0015](decisions/0015-extension-pro
 
 An extension is a single `.lua` file or a package. A single file may have a manifest with the same base name next to it, such as `Demo.json` next to `Demo.lua`. A package is a folder with `manifest.json`, one or more Lua files in the load order that the manifest lists, and a README. The app installs, updates, and removes a package as one unit.
 
-Each extension session runs in its own XPC process with only the network client entitlement. The host enforces these limits:
+Each extension session runs in its own process, `MonetenExtensionHost`, with the app sandbox and only the network client entitlement. An XPC service would share one process between sessions without private API, so the app starts the helper itself, as it does the FinTS helper. The host enforces these limits:
 
-1. An extension with a manifest can only contact the hosts that the manifest lists, by exact name. The host checks the target of every HTTP redirect too. An extension without a manifest asks the user before it contacts each new host, also before a redirect to one, and the app remembers the answer. An automatic refresh sends nothing to a new host and waits for the user.
+1. An extension with a manifest can only contact the hosts that the manifest lists, by exact name. The host checks the target of every HTTP redirect too. An extension without a manifest asks the user before it contacts each new host, also before a redirect to one, and the app remembers the answer. An automatic refresh sends nothing to a new host and waits for the user. In both cases only an exact host name on the HTTPS port passes. An IP address, `localhost`, a name without a dot, a trailing dot, and a user name in the URL fail without a question. A redirect to another host keeps only `Accept`, `Accept-Language`, and `User-Agent` of the headers that the extension set, and drops the body.
 2. `io` is a table without `open` and without any other function that touches a file. `os` keeps only `time`, `date`, `clock`, and `difftime`. `debug`, `package`, `load`, `loadstring`, `dofile`, `loadfile`, `require`, and `string.dump` are absent. A call of a name that the host does not offer stops the script with an error that names the function.
 3. The extension gets the credentials of its own connection and nothing else.
 4. The extension's `LocalStorage` is kept by the app, per connection, inside the encrypted database.
+5. A session has 256 MB of memory for Lua and 60 seconds of processor time. A request fails after 60 seconds without data, after 2 minutes in all, or with a body larger than 32 MB. The app stops a host that sends nothing for 3 minutes while no question waits for the user, a host whose answer is larger than 64 MB, and a host that sends more than the app reads. It keeps 4 MB of `print` output per session and drops the rest before it is queued. A session runs one call at a time.
 
 The host checks hosts in the same process that runs the script. A flaw in Lua or in a parser of the host could reach any host with the login data of that one access. [ADR 0015](decisions/0015-extension-program.md) accepts this risk and names when the network calls move into a separate process.
 

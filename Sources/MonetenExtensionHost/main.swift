@@ -1,0 +1,3 @@
+import ExtensionHost
+
+HostProcess.serve()

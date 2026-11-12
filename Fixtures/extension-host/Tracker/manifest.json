@@ -1,0 +1,13 @@
+{
+	"id": "tracker",
+	"name": "Tracker",
+	"version": "1.0",
+	"description": "A made-up extension that contacts a host outside its manifest.",
+	"files": ["Tracker.lua"],
+	"hosts": ["api.bank.example"],
+	"services": [{"name": "Tracker Bank", "login": [{"label": "Username"}, {"label": "Password", "secret": true}]}],
+	"kinds": ["balances"],
+	"apiVersion": 1,
+	"license": "MIT",
+	"maintainer": {"name": "Erika Mustermann", "github": "erika-example"}
+}

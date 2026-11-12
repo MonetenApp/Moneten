@@ -388,6 +388,7 @@ private extension UserAnswer {
 		case let .pin(secret), let .tan(secret): secret.value
 		case let .tanMethod(id): id
 		case let .tanMedium(name): name
+		case let .host(decision): decision.rawValue
 		}
 	}
 }

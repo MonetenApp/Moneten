@@ -1,5 +1,5 @@
 # The Xcode project of the app. Generate it with scripts/generate-project.sh.
-# The libraries Domain, Storage, Import, Sync, SyncTesting, and FinTS stay in the Swift package at the repository root.
+# The libraries Domain, Storage, Import, Sync, SyncTesting, FinTS, and ExtensionHost stay in the Swift package at the repository root.
 name: Moneten
 options:
   bundleIdPrefix: io.github.alexander-schneider
@@ -45,6 +45,15 @@ targets:
       # The scripted connector of the previews and of the debug harness.
       - package: MonetenKit
         product: SyncTesting
+      - package: MonetenKit
+        product: ExtensionHost
+      # The process of one extension session, which ExtensionHostClient starts from Contents/Helpers.
+      - target: MonetenExtensionHost
+        embed: true
+        codeSign: true
+        copy:
+          destination: wrapper
+          subpath: Contents/Helpers
     settings:
       base:
         MARKETING_VERSION: 0.0.1
@@ -60,6 +69,26 @@ targets:
       configs:
         Perf:
           SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) PERF_HARNESS
+  # The host process of ADR 0015: the main of the package target MonetenExtensionHost, with the app sandbox
+  # and only outgoing connections. No base entitlements are added, so a debug build cannot be attached to either.
+  MonetenExtensionHost:
+    type: tool
+    platform: macOS
+    sources:
+      - path: ../Sources/MonetenExtensionHost
+    dependencies:
+      - package: MonetenKit
+        product: ExtensionHost
+    settings:
+      base:
+        PRODUCT_NAME: MonetenExtensionHost
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.alexander-schneider.Moneten.ExtensionHost
+        GENERATE_INFOPLIST_FILE: YES
+        CREATE_INFOPLIST_SECTION_IN_BINARY: YES
+        CODE_SIGN_ENTITLEMENTS: ExtensionHost.entitlements
+        CODE_SIGN_INJECT_BASE_ENTITLEMENTS: NO
+        ENABLE_HARDENED_RUNTIME: $(MONETEN_HARDENED_RUNTIME)
+        SKIP_INSTALL: YES
   # The FinTS prototype of issue #11. It runs in the terminal. App/FinTSProbe/main.swift explains it.
   FinTSProbe:
     type: application

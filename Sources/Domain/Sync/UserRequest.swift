@@ -26,17 +26,37 @@ public enum UserRequest: Sendable, Equatable {
 	case pin(PINRequest)
 	/// The dialog "Two-Factor Authentication" of add-tan-handling.
 	case secondFactor(SecondFactorRequest)
+	/// The question whether an extension without a list of hosts may contact a new host (ADR 0015).
+	case allowHost(HostPermissionRequest)
 
 	public enum Kind: Sendable, Equatable {
-		case pin, secondFactor
+		case pin, secondFactor, allowHost
 	}
 
 	public var kind: Kind {
 		switch self {
 		case .pin: .pin
 		case .secondFactor: .secondFactor
+		case .allowHost: .allowHost
 		}
 	}
+}
+
+public struct HostPermissionRequest: Sendable, Equatable {
+	/// The name of the extension, for example "Demo".
+	public let extensionName: String
+	/// The exact host name, for example "www.bank.example".
+	public let host: String
+
+	public init(extensionName: String, host: String) {
+		self.extensionName = extensionName
+		self.host = host
+	}
+}
+
+/// The answer of the user to a `HostPermissionRequest`. The app keeps it for the extension and the host.
+public enum HostDecision: String, Sendable, Codable {
+	case allowed, denied
 }
 
 public struct PINRequest: Sendable, Equatable {
@@ -159,6 +179,7 @@ public enum UserAnswer: Sendable, Equatable {
 	case tanMethod(TANMethod.ID)
 	case tanMedium(String)
 	case tan(Secret)
+	case host(HostDecision)
 }
 
 /// A PIN, password, or TAN. It prints as "•••", so the value cannot end up in a log by accident.

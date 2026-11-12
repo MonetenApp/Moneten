@@ -52,6 +52,7 @@ The repository has two builds ([ADR 0011](docs/decisions/0011-app-target-in-an-x
 | `Import` | `TransactionFileImporter.parse` for CSV, CAMT, and MT940, and `MoneyMoneyMigration.plan`, which returns a plan that the app shows before it stores anything |
 | `Sync` | `SyncCoordinator` refreshes up to three accesses at a time, each with one `SyncState`. `SessionBroker` shows one dialog at a time and keeps PINs in memory only. |
 | `SyncTesting` | `ScriptedConnector`, a fake bank for the tests, the previews, and the debug harness |
+| `ExtensionHost` | Runs a Lua extension session with the host limit of ADR 0015, one sandboxed `MonetenExtensionHost` process per session. `Sources/CLua` is Lua 5.4 from lua.org (`scripts/vendor-lua.sh`). |
 | App | SwiftUI views and the `@Observable` `AppModel` |
 
 How the parts work together:

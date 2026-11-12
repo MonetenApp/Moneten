@@ -1,5 +1,6 @@
 import AppKit
 import Domain
+import ExtensionHost
 import Foundation
 import Sync
 import SyncTesting
@@ -108,6 +109,20 @@ final class DebugHarness {
 			if let error = model.ledger.accounts.first(where: { $0.name == argument })?.refreshError {
 				offscreenSnapshot(RefreshErrorPopover(error: error), width: 352, name: "\(argument)-error")
 			}
+		case "extrun": runExtension(argument)
+		case "escape":
+			// Presses Escape in the window of the open sheet, as the keyboard does, and logs the request that stays open.
+			guard let sheet = NSApp.windows.first(where: { $0.isSheet && $0.isVisible }),
+				let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: sheet.windowNumber, context: nil,
+					characters: "\u{1B}", charactersIgnoringModifiers: "\u{1B}", isARepeat: false, keyCode: 53) else { return log("escape no sheet") }
+			NSApp.sendEvent(event)
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+				self?.log("escape open=\(self?.model?.sync.broker.current.map { "\($0.request.kind)" } ?? "none")")
+			}
+		case "extanswer":
+			// Clicks "Allow" or "Deny" in the question about a new host.
+			guard let prompt = model.sync.broker.current, case .allowHost = prompt.request else { return log("extanswer no host question") }
+			model.sync.broker.answer(.host(argument == "allow" ? .allowed : .denied), to: prompt.id)
 		case "groupbyaccount":
 			if var g = model.ledger.groups.first(where: { $0.name == argument }) {
 				g.groupsByAccount = true
@@ -299,6 +314,22 @@ final class DebugHarness {
 		for table in transactionTables() where table.numberOfRows > 0 {
 			table.scrollRowToVisible(row(table.numberOfRows))
 			log("scrolltable rows=\(table.numberOfRows)")
+		}
+	}
+
+	/// `extrun <path>|<function>|<fixture>` runs one function of an extension in its own host process.
+	/// Without a fixture the session uses the network.
+	private func runExtension(_ argument: String) {
+		let parts = argument.components(separatedBy: "|")
+		guard parts.count >= 2, let model, let store = model.store else { return log("ext error=extrun needs <path>|<function>|<fixture> and an open database") }
+		do {
+			let package = try ExtensionPackage.load(from: URL(filePath: parts[0]))
+			let fixture = try parts.count > 2 && !parts[2].isEmpty ? JSONDecoder().decode(Fixture.self, from: Data(contentsOf: URL(filePath: parts[2]))) : nil
+			let access = Access(source: .extension(id: package.name), bankName: package.name, loginName: "")
+			let run = ExtensionRun(package: package, function: parts[1], fixture: fixture, store: store) { [weak self] in self?.log($0) }
+			model.sync.refresh(RefreshRequest(access: access, accounts: []), with: run, attended: true)
+		} catch {
+			log("ext error=\(error)")
 		}
 	}
 
