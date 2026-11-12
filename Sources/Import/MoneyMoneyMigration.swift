@@ -52,7 +52,7 @@ public struct MoneyMoneyMigration: Sendable {
 	/// Builds the plan. Objects that the ledger already holds are skipped, and changes the user made since
 	/// then stay. Transactions are recognized by `reconcile`, the rule of refreshes and files, so a row that
 	/// a refresh stored or whose ID a source took over is not added twice. `deleted` are all deleted rows,
-	/// and none of them comes back.
+	/// and none of them comes back, except the booked version of a deleted pending row.
 	public func plan(accounts accountsData: Data, categories categoriesData: Data, transactions transactionsData: Data, into ledger: Ledger,
 		deleted: [DeletedTransaction] = []) throws -> Plan {
 		guard let rawAccounts = try PropertyListSerialization.propertyList(from: accountsData, format: nil) as? [[String: Any]] else {
