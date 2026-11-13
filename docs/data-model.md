@@ -25,7 +25,7 @@ The specs in [openspec/changes](../openspec/changes/) define the behavior. Where
 
 Groups and accounts share one `position` order inside their parent group, so the sidebar can mix them as MoneyMoney does.
 
-An account with a `bankBalanceMinor` shows that balance. Other accounts show `initialBalanceMinor` plus their booked transactions. A migrated account gets the initial balance that makes both numbers end at the same value.
+An account with a `bankBalanceMinor` shows that balance. Other accounts show `initialBalanceMinor` plus their booked transactions. A migrated account gets the initial balance that makes both numbers end at the same value. An account that a bank refreshes gets it again after every refresh, import, and deletion, from the bank balance less the booked transactions up to the day of that balance.
 
 ## Bank accesses
 

@@ -69,7 +69,7 @@ The app SHALL write the text on the slate band behind the title and the chart wi
 
 ### Requirement: Balances are computed from the transactions
 
-The app SHALL compute the balance of each day as the initial balance of the account plus all booked transactions up to the end of that day. Pending transactions and the balance that the bank reports do not enter this computation. A portfolio is the exception: its balance on a day is its last recorded value on or before that day, as the capability `securities-accounts` defines, and nothing before its first record.
+The app SHALL compute the balance of each day as the initial balance of the account plus all booked transactions up to the end of that day. Pending transactions do not enter this computation, and the balance that the bank reports enters it only through the initial balance. A portfolio is the exception: its balance on a day is its last recorded value on or before that day, as the capability `securities-accounts` defines, and nothing before its first record.
 
 #### Scenario: Computed balance
 
@@ -83,15 +83,50 @@ The app SHALL compute the balance of each day as the initial balance of the acco
 - **WHEN** the app computes the balance of today
 - **THEN** the pending transaction does not change it
 
-### Requirement: Initial balance at account setup
+### Requirement: Initial balance of a refreshed account
 
-The app SHALL set the initial balance of a new account so that the computed balance of today equals the balance that the bank reported, less the pending transactions.
+The app SHALL set the initial balance of an account that a bank refreshes to the balance that the bank reported, less the booked transactions up to the end of the day of that balance. Pending transactions do not count. The days before the first transaction show the initial balance.
 
 #### Scenario: First refresh
 
 - **GIVEN** the bank reports a balance of 2.500,00 € and delivers booked transactions that add up to 700,00 €
 - **WHEN** the first refresh of the new account ends
 - **THEN** the initial balance is 1.800,00 €
+
+#### Scenario: More money out than in
+
+- **GIVEN** the bank reports a balance of 1.200,00 € today and delivers booked transactions of the last 90 days that add up to -1.350,00 €
+- **WHEN** the user opens the bar chart of the account with the period "12 Months"
+- **THEN** the last bar shows 1.200,00 €
+- **AND** every bar before the first transaction shows 2.550,00 €
+
+#### Scenario: Transactions after the day of the balance
+
+- **GIVEN** the bank reports a balance of 500,00 € for 10.11.2026 and delivers booked transactions of -200,00 € on 01.11.2026 and of -30,00 € on 12.11.2026
+- **WHEN** the refresh ends
+- **THEN** the initial balance is 700,00 €, the bar of 10.11.2026 shows 500,00 €, and the bar of 12.11.2026 shows 470,00 €
+
+### Requirement: The initial balance follows the transactions
+
+The app SHALL set the initial balance of an account that a bank refreshes again after every refresh, every import into the account, and every deletion of one of its transactions, so the computed balance of the day of the bank balance stays equal to the bank balance. A portfolio, an offline account, and a migrated account keep their initial balance until a bank refreshes them.
+
+#### Scenario: Next refresh
+
+- **GIVEN** an account with a bank balance of 1.200,00 €
+- **WHEN** a refresh brings a bank balance of 800,00 € and booked transactions of -400,00 € today and of -70,00 € from before the first refresh
+- **THEN** the last bar shows 800,00 €
+
+#### Scenario: Deleted transaction
+
+- **GIVEN** an account with a bank balance of 1.200,00 € and an initial balance of 2.550,00 €
+- **WHEN** the user deletes a transaction of -950,00 €
+- **THEN** the initial balance is 1.600,00 € and the last bar still shows 1.200,00 €
+
+#### Scenario: Offline account
+
+- **GIVEN** an offline account with an initial balance of 300,00 €
+- **WHEN** the user deletes a transaction of -50,00 €
+- **THEN** the initial balance stays 300,00 €, and the bars from the day of that transaction on are 50,00 € higher
 
 ### Requirement: Daily balance or monthly average balance
 
@@ -190,18 +225,18 @@ The app SHALL open a calibration window from "Calibrate" in the account settings
 
 ### Requirement: Propose a calibration
 
-The app SHALL propose a calibration when the computed balance of an account differs from the balance that the bank reports. The app makes no proposal when the difference equals the sum of the pending transactions.
+The app SHALL propose a calibration when the computed balance of a migrated account differs from the balance that the migration took over. The app makes no proposal when the difference equals the sum of the pending transactions. An account that a bank refreshes has no difference to propose, because the app sets its initial balance from the balance of the bank.
 
 #### Scenario: Unexplained difference
 
-- **GIVEN** the bank reports 1.200,00 €, the computed balance is 1.250,00 €, and there are no pending transactions
-- **WHEN** a refresh ends
+- **GIVEN** a migrated account with a balance of 1.200,00 €, a computed balance of 1.250,00 €, and no pending transactions
+- **WHEN** a migration ends
 - **THEN** the app proposes to calibrate the account
 
 #### Scenario: Difference from pending transactions
 
-- **GIVEN** the bank reports 1.200,00 €, the computed balance is 1.250,00 €, and one pending transaction of -50,00 € exists
-- **WHEN** a refresh ends
+- **GIVEN** a migrated account with a balance of 1.200,00 €, a computed balance of 1.250,00 €, and one pending transaction of -50,00 €
+- **WHEN** a migration ends
 - **THEN** the app makes no proposal
 
 ### Requirement: Bar chart of a category

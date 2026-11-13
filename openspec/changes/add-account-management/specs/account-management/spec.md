@@ -164,7 +164,7 @@ The app SHALL show every balance when a source reports several balances in diffe
 
 ### Requirement: Initial balance
 
-The app SHALL keep an "Initial balance" for each account. At setup the app sets it to the reported balance minus the sum of the booked transactions of the first refresh. The user can change it in the account settings.
+The app SHALL keep an "Initial balance" for each account. For an account that a bank refreshes, the app sets it to the reported balance minus the sum of the booked transactions, after every refresh and every change of its transactions, as the capability `charts` defines. The user can change it in the account settings. For an account that a bank refreshes, the change lasts until the next refresh, import, or deletion.
 
 #### Scenario: Determined at setup
 
