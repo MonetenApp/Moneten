@@ -24,6 +24,17 @@ import Testing
 		#expect(matches(recorded: recorded, sent: sent))
 	}
 
+	/// Repeated requests get their answers in the order of the recording, whatever order their parameters have.
+	@Test func repeatedRequestsKeepTheirOrder() throws {
+		let fixture = Fixture(exchanges: ["pending", "complete"].enumerated().map { index, body in
+			Fixture.Exchange(request: Fixture.Request(method: "GET", url: URL(string: index == 0 ? "https://bank.example/poll?a=1&b=2" : "https://bank.example/poll?b=2&a=1")!),
+				response: Fixture.Response(status: 200, body: Data(body.utf8)))
+		})
+		let transport = FixtureTransport(fixture)
+		let bodies = try (0..<2).map { _ in String(decoding: try transport.send(HTTPRequest(method: "GET", url: URL(string: "https://bank.example/poll?b=2&a=1")!)).body, as: UTF8.self) }
+		#expect(bodies == ["pending", "complete"])
+	}
+
 	@Test(arguments: [("https://bank.example/a%2Fb", "https://bank.example/a/b"),
 		("https://bank.example/list?filter=a%26admin%3Dtrue", "https://bank.example/list?filter=a&admin=true"),
 		("https://bank.example/list?a=1&b=2", "https://bank.example/list?a=1&b=2&b=2"),
