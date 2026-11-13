@@ -128,8 +128,9 @@ final class DebugHarness {
 			else if let a = model.ledger.accounts.first(where: { $0.name == argument }) { model.refresh(.account(a.id)) }
 			else if let g = model.ledger.groups.first(where: { $0.name == argument }) { model.refresh(.group(g.id)) }
 		case "status":
-			for a in model.ledger.accounts where a.accessID != nil {
-				log("status \(a.name) refreshing=\(model.sync.refreshingAccounts.contains(a.id)) refreshedAt=\(a.refreshedAt.map { "\($0)" } ?? "-") error=\(a.refreshError?.message ?? "-") balance=\(a.bankBalanceMinor.map(String.init) ?? "-") rows=\(model.ledger.transactions(ofAccount: a.id).count)")
+			// Each account by its position and kind, never by its name, IBAN, or account number.
+			for (position, a) in model.ledger.accounts.filter({ $0.accessID != nil }).enumerated() {
+				log("status #\(position) \(a.kind) refreshing=\(model.sync.refreshingAccounts.contains(a.id)) refreshedAt=\(a.refreshedAt.map { "\($0)" } ?? "-") error=\(a.refreshError?.message ?? "-") balance=\(a.bankBalanceMinor.map(String.init) ?? "-") rows=\(model.ledger.transactions(ofAccount: a.id).count)")
 			}
 			log("status line=\(model.refreshStatus ?? "-") accesses=\(model.accesses.count)")
 		case "errorsnapshot":
@@ -333,12 +334,13 @@ final class DebugHarness {
 		}
 	}
 
+	/// The match of a listed account by the kind of the account in the app, without its name.
 	private static func label(_ match: SetupMatch) -> String {
 		switch match {
 		case .new: "new"
-		case let .present(a): "present(\(a.name))"
-		case let .connects(a): "connects(\(a.name))"
-		case let .choice(accounts): "choice(\(accounts.map(\.name).joined(separator: ",")))"
+		case let .present(a): "present(\(a.kind))"
+		case let .connects(a): "connects(\(a.kind))"
+		case let .choice(accounts): "choice(\(accounts.count))"
 		}
 	}
 
@@ -369,7 +371,7 @@ final class DebugHarness {
 		default: break
 		}
 		log("setup service=\(setup.service?.title ?? "-") other=\(setup.otherServices.map(\.title)) error=\(setup.serviceError ?? "-")")
-		log("setup step=\(setup.step) entry=\(!setup.entry.isEmpty) login=\(!setup.loginName.isEmpty) highlighted=\(setup.highlighted) lookup=\(Self.label(setup.lookup.state)) error=\(setup.loginError ?? "-") saveError=\(setup.saveError ?? "-") dialog=\(model.sync.broker.current != nil) candidates=\(setup.candidates.map { "\($0.id):\(Self.label($0.match))" }) selected=\(setup.selected.sorted())")
+		log("setup step=\(setup.step) entry=\(!setup.entry.isEmpty) login=\(!setup.loginName.isEmpty) highlighted=\(setup.highlighted) lookup=\(Self.label(setup.lookup.state)) error=\(setup.loginError ?? "-") saveError=\(setup.saveError ?? "-") dialog=\(model.sync.broker.current != nil) candidates=\(setup.candidates.count) [\(setup.candidates.map { "\($0.account.kind):\(Self.label($0.match))" }.joined(separator: ", "))] selected=\(setup.candidates.indices.filter { setup.selected.contains(setup.candidates[$0].id) })")
 	}
 
 	/// The sheet on top of all others, where the dialogs of a refresh appear.
@@ -522,7 +524,7 @@ final class DebugHarness {
 			for account in model.ledger.accounts where account.accessID == access.id {
 				let rows = model.ledger.transactions.filter { $0.accountID == account.id }
 				let failure = account.refreshError.map { " failed=\($0.message)" } ?? ""
-				log("ext account \(account.name) rows=\(rows.count) balance=\(model.ledger.balance(of: account).minorUnits)\(failure)")
+				log("ext account \(account.kind) rows=\(rows.count) balance=\(model.ledger.balance(of: account).minorUnits)\(failure)")
 			}
 		}
 	}
