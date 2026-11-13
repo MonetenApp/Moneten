@@ -106,6 +106,8 @@ final class ExtensionLibrary {
 	@ObservationIgnored private var fileInstalls: [String: [String: String]] = [:]
 	/// The updates that wait for the end of a session or for the user, by id.
 	@ObservationIgnored private var updates: [String: UpdatePlan] = [:]
+	/// The version of each update that the user confirmed, which installs after a running session without asking again.
+	@ObservationIgnored private var confirmed: [String: String] = [:]
 	/// Catalog packages whose files do not match, found by the last check.
 	@ObservationIgnored private var changed: Set<String> = []
 	@ObservationIgnored private var daily: Task<Void, Never>?
@@ -153,6 +155,7 @@ final class ExtensionLibrary {
 		catalogInstalls = [:]
 		fileInstalls = [:]
 		updates = [:]
+		confirmed = [:]
 		changed = []
 		items = []
 		question = nil
@@ -186,8 +189,8 @@ final class ExtensionLibrary {
 		let source = configuration.source
 		let data: Data, signature: Data
 		do {
-			data = try await source.fetch("index.json")
-			signature = try await source.fetch("index.json.sig")
+			data = try await source.fetcher("index.json")
+			signature = try await source.fetcher("index.json.sig")
 		} catch {
 			reachable = false
 			problem = "The catalog cannot be reached."
@@ -232,7 +235,8 @@ final class ExtensionLibrary {
 				updates[id] = nil
 				continue
 			}
-			let plan = UpdatePlan(installed: current, available: available, automatic: automatic, sessionRuns: sessionRuns(id))
+			var plan = UpdatePlan(installed: current, available: available, automatic: automatic, sessionRuns: sessionRuns(id))
+			if case .needsConfirmation = plan, confirmed[id] == available.version { plan = sessionRuns(id) ? .afterSession : .install }
 			updates[id] = plan == .upToDate || plan == .install ? nil : plan
 			if plan == .install, !working.contains(id) { await download(entry) }
 		}
@@ -242,6 +246,7 @@ final class ExtensionLibrary {
 	/// Installs the waiting update after the user confirmed it or chose "Update".
 	func update(_ id: String) async {
 		guard let entry = index?.entry(id) else { return }
+		confirmed[id] = entry.version
 		if sessionRuns(id) {
 			updates[id] = .afterSession
 			return reload()
@@ -269,10 +274,11 @@ final class ExtensionLibrary {
 			catalogInstalls[installed.id] = installed
 			fileInstalls[installed.id] = nil
 			updates[installed.id] = nil
+			confirmed[installed.id] = nil
 			changed.remove(installed.id)
 			log("ext installed \(installed.id) version=\(installed.version)")
 		} catch {
-			failure = "\(entry.name) could not be installed. \(error)"
+			failure = "\(error)"
 			log("ext install failed \(entry.id) \(error)")
 		}
 	}
@@ -590,7 +596,4 @@ struct CatalogSource: Sendable {
 		}
 	}
 
-	func fetch(_ path: String) async throws -> Data {
-		try await fetcher(path)
-	}
 }
