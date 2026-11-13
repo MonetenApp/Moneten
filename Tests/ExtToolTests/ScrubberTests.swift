@@ -20,9 +20,9 @@ extension ExtTool {
 		}
 
 		/// The message with which the scrubber refuses to write the fixture, or nil when it writes it.
-		func refusal(_ exchanges: [Fixture.Exchange], login: [String] = ["erika", "geheim123"], random: [RandomValue]? = nil) -> String? {
+		func refusal(_ exchanges: [Fixture.Exchange], login: [String] = ["erika", "geheim123"], random: [RandomValue]? = nil, script: String = "") -> String? {
 			do {
-				_ = try scrub(exchanges, login: login, random: random)
+				_ = try scrub(exchanges, login: login, random: random, script: script)
 				return nil
 			} catch let failure as Ext.Failure {
 				guard case let .run(message) = failure else { return "\(failure)" }
@@ -326,6 +326,99 @@ extension ExtTool {
 			#expect(scheme.exchanges[0].request.url.absoluteString == "https://bank.example/x?u=%7B%7Busername%7D%7D")
 			let (host, _, _) = try scrub([exchange("GET", "https://bank.example/accounts/bank")], login: ["bank", "geheim123"])
 			#expect(host.exchanges[0].request.url.absoluteString == "https://bank.example/accounts/%7B%7Busername%7D%7D")
+		}
+	
+		// MARK: Round 2
+
+		@Test func nonceOfTheAddressStaysAndIsKept() throws {
+			let uuid = "0f8fad5b-d9cb-469f-a165-70867728950e"
+			let (fixture, _, _) = try scrub([exchange("GET", "https://bank.example/authorize?nonce=\(uuid)&sid=\(uuid)")], random: [.uuid(uuid)])
+			#expect(fixture.exchanges[0].request.url.absoluteString == "https://bank.example/authorize?nonce=\(uuid)&sid=\(uuid)")
+			#expect(fixture.random == [.uuid(uuid)])
+		}
+
+		/// 16 bytes give Base64 with `==`, which an address often leaves out.
+		@Test func base64WithoutPaddingInTheAddress() throws {
+			let bytes = Data([0xFB, 0xEF, 0xBE, 0xFB, 0xEF, 0xBE, 0xFB, 0xEF, 0xBE, 0xFB, 0xEF, 0xBE, 0xFB, 0xEF, 0xBE, 0x01])
+			let unpadded = bytes.base64EncodedString().trimmingCharacters(in: CharacterSet(charactersIn: "="))
+			let (fixture, _, _) = try scrub([exchange("GET", "https://bank.example/check?k=\(unpadded)")], random: [.bytes(bytes)])
+			#expect(fixture.random == [.bytes(bytes)])
+		}
+
+		/// The replay keeps first what the addresses hold, then each value that it needs, and never a key.
+		@Test func keepingFollowsTheReplay() async throws {
+			let pkce = try await RecordCommand.keeping(count: 3, initial: [2], keys: [1]) { kept in kept.isSuperset(of: [0, 2]) ? nil : "miss" }
+			#expect(pkce == .values([0, 2], added: 1))
+			let key = try await RecordCommand.keeping(count: 2, initial: [], keys: [0]) { kept in kept.contains(0) ? nil : "miss" }
+			#expect(key == .needsKey)
+			#expect(try await RecordCommand.keeping(count: 2, initial: [], keys: []) { _ in nil } == .values([], added: 0))
+			#expect(try await RecordCommand.keeping(count: 1, initial: [], keys: []) { _ in "The fixture has no response for GET x." }
+				== .misses("The fixture has no response for GET x."))
+		}
+
+		@Test(arguments: ["9007199254740993", "1.23456789e8"])
+		func tokenNumberAsTheBodySpellsIt(_ number: String) throws {
+			let (fixture, _, file) = try scrub([
+				exchange("GET", "https://bank.example/session", response: #"{"sessionId":\#(number)}"#),
+				exchange("POST", "https://bank.example/use?sid=\(number)", body: "sid=\(number)"),
+			])
+			#expect(fixture.exchanges[0].response.body == #"{"sessionId":"{{token1}}"}"#)
+			#expect(fixture.exchanges[1].request.body == "sid={{token1}}")
+			#expect(!file.contains(number))
+		}
+
+		@Test func weakPasswordAsAPartOfANumberStays() throws {
+			let (fixture, _, _) = try scrub([exchange("POST", "https://bank.example/login", body: #"{"pin":141592}"#, response: #"{"pi":3.141592}"#)],
+				login: ["erika", "141592"])
+			#expect(fixture.exchanges[0].request.body == #"{"pin":"{{password}}"}"#)
+			#expect(fixture.exchanges[0].response.body == #"{"pi":3.141592}"#)
+			#expect(refusal([exchange("POST", "https://bank.example/login", body: #"{"pin":141592}"#, response: #"{"retry":141592}"#)],
+				login: ["erika", "141592"])?.hasPrefix("The password is short or only digits, and a response holds it") == true)
+		}
+
+		@Test func tokenOfAMultipartForm() throws {
+			let body = "--XyZ\r\nContent-Disposition: form-data; name=\"csrf\"\r\n\r\nmp-T0ken-4711\r\n--XyZ\r\n"
+				+ "Content-Disposition: form-data; name=\"file\"; filename=\"a.txt\"\r\n\r\nhello\r\n--XyZ--\r\n"
+			let (fixture, _, file) = try scrub([exchange("POST", "https://bank.example/upload", headers: ["Content-Type": "multipart/form-data; boundary=XyZ"],
+				body: body, response: "<p>mp-T0ken-4711</p>")])
+			#expect(fixture.exchanges[0].response.body == "<p>{{token1}}</p>")
+			#expect(!file.contains("mp-T0ken-4711"))
+			#expect(refusal([exchange("POST", "https://bank.example/upload", headers: ["Content-Type": "multipart/form-data"], body: body)])
+				== "A POST request has a multipart body that ext cannot read, so it wrote no file.")
+		}
+
+		@Test func loginValueInsideAnIdentifierOfTheScriptIsReplaced() throws {
+			let script = #"c:get("https://bank.example/users/" .. MM.urlencode(username))"#
+			let (fixture, _, _) = try scrub([exchange("GET", "https://bank.example/users/name")], login: ["name", "geheim123"], script: script)
+			#expect(fixture.exchanges[0].request.url.absoluteString == "https://bank.example/users/%7B%7Busername%7D%7D")
+		}
+
+		@Test func ambiguousPathSegmentStopsTheRecording() {
+			let script = #"c:get("https://bank.example/users/login") c:get("https://bank.example/users/" .. username) -- it's a comment"#
+			#expect(refusal([exchange("GET", "https://bank.example/users/login")], login: ["login", "geheim123"], script: script)
+				== "A path segment of a GET request equals the username and also stands in the script, so ext cannot tell whether the script built it "
+				+ "from the login. ext wrote no file.")
+		}
+
+		@Test func weakPasswordInsideALongerValueOfARequest() {
+			#expect(refusal([exchange("GET", "https://bank.example/bookings?from=2025-10-10&pin=2025")], login: ["erika", "2025"])?
+				.hasPrefix("The password is short or only digits, and a request holds it inside a longer value") == true)
+			#expect(refusal([exchange("GET", "https://bank.example/login?pin=2025", body: #"{"pin":"2025"}"#)], login: ["erika", "2025"]) == nil)
+		}
+
+		@Test func passwordOutsideTheBMPAsSurrogates() throws {
+			let (fixture, _, _) = try scrub([exchange("GET", "https://bank.example/echo", response: #"{"echo":"abcdefg\uD83D\uDD10"}"#)],
+				login: ["erika", "abcdefg🔐"])
+			#expect(fixture.exchanges[0].response.body == #"{"echo":"{{password}}"}"#)
+		}
+
+		@Test func tokenAsANumberUnderAnyKey() throws {
+			let (fixture, _, file) = try scrub([
+				exchange("GET", "https://bank.example/start?sid=98765432101"),
+				exchange("GET", "https://bank.example/me", response: #"{"id": 98765432101, "count": 3}"#),
+			])
+			#expect(fixture.exchanges[1].response.body == #"{"id": "{{token1}}", "count": 3}"#)
+			#expect(!file.contains("98765432101"))
 		}
 	}
 }

@@ -59,6 +59,8 @@ struct Session {
 	var developer = DeveloperOptions()
 	var storage: Data?
 	let user: any SyncSession
+	/// Keeps what the script prints off the terminal, as for the check replays of `ext record`.
+	var quiet = false
 
 	/// This binary, which `Ext.hostArgument` turns into the host process.
 	static var executable: URL {
@@ -74,6 +76,8 @@ struct Session {
 		let storage: Data?
 		let exchanges: [Fixture.Exchange]
 		let random: [RandomValue]
+		/// The indices of `random` that the script used as a key, an IV, or the key of an HMAC.
+		let keys: Set<Int>
 
 		/// Prints a line for each account that failed and stops with the last one.
 		func checkAccounts() throws(Ext.Failure) {
@@ -85,8 +89,9 @@ struct Session {
 
 	func perform() async -> Outcome {
 		let trace = Trace()
+		let quiet = quiet
 		let services = ExtensionConnector.Services(hostDecisions: { [:] }, saveDecision: { _, _ in }, transactions: { _ in [] }, log: { line in
-			if case let .print(text) = line { Terminal.error(text) }
+			if case let .print(text) = line, !quiet { Terminal.error(text) }
 		}, trace: { trace.add($0) })
 		let connector = ExtensionConnector(package: script.package, environment: environment, fixture: fixture, executable: Self.executable,
 			arguments: [Ext.hostArgument], developer: developer, services: services)
@@ -127,6 +132,7 @@ final class Trace: Sendable {
 	private struct State {
 		var exchanges: [Fixture.Exchange] = []
 		var random: [RandomValue] = []
+		var keys: Set<Int> = []
 		var storage: Data?
 		var refreshed: [(account: LuaValue, result: LuaValue)] = []
 	}
@@ -138,6 +144,7 @@ final class Trace: Sendable {
 			switch event {
 			case let .exchange(exchange): state.exchanges.append(exchange)
 			case let .random(value): state.random.append(value)
+			case let .key(index): state.keys.insert(index)
 			case let .storage(data): state.storage = data
 			case let .result(.refreshAccount(account, _, _, _, _, _), result):
 				state.refreshed.removeAll { $0.account == account }
@@ -166,7 +173,7 @@ final class Trace: Sendable {
 	func outcome(document: LuaValue?, failure: String?, accountErrors: [String]) -> Session.Outcome {
 		state.withLock { state in
 			Session.Outcome(document: document, failure: failure, accountErrors: accountErrors, storage: state.storage, exchanges: state.exchanges,
-				random: state.random)
+				random: state.random, keys: state.keys)
 		}
 	}
 }
@@ -236,9 +243,21 @@ struct RunCommand {
 		func write(to file: URL) throws {
 			var object: [String: Any] = ["deviceUuid": deviceUuid]
 			if let localStorage, let value = try? JSONSerialization.jsonObject(with: localStorage, options: [.fragmentsAllowed]) { object["localStorage"] = value }
-			try JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys]).write(to: file, options: .atomic)
-			// The file holds cookies, tokens, and device secrets of the script, so only its owner reads it.
-			try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
+			let data = try JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys])
+			// The file holds cookies, tokens, and device secrets of the script, so only its owner reads it,
+			// from the first byte on: a new file of mode 0600 next to it replaces it.
+			let temporary = file.deletingLastPathComponent().appending(path: ".\(file.lastPathComponent).\(UUID().uuidString)")
+			let descriptor = open(temporary.path, O_WRONLY | O_CREAT | O_EXCL, 0o600)
+			guard descriptor >= 0 else { throw CocoaError(.fileWriteNoPermission, userInfo: [NSFilePathErrorKey: temporary.path]) }
+			let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
+			do {
+				try handle.write(contentsOf: data)
+				try handle.close()
+				guard rename(temporary.path, file.path) == 0 else { throw CocoaError(.fileWriteUnknown, userInfo: [NSFilePathErrorKey: file.path]) }
+			} catch {
+				unlink(temporary.path)
+				throw error
+			}
 		}
 	}
 

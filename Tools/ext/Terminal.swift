@@ -16,14 +16,51 @@ enum Terminal {
 		return readLine()
 	}
 
-	/// Reads a secret without showing it. Without a terminal, as in a test with `expect` or a pipe,
-	/// it reads one line.
+	/// Reads a secret without showing it, of any length, such as a pasted captcha token or a login
+	/// address with an `id_token`. The terminal reads it byte for byte, because a line of a terminal
+	/// holds at most 1024 bytes. Without a terminal, as in a test with a pipe, it reads one line.
 	static func askSecret(_ prompt: String) -> String? {
-		guard isatty(STDIN_FILENO) == 1 else { return ask(prompt) }
-		var buffer = [CChar](repeating: 0, count: 1024)
-		guard let line = readpassphrase(prompt, &buffer, buffer.count, RPP_ECHO_OFF) else { return nil }
-		return String(cString: line)
+		guard isatty(STDIN_FILENO) == 1, tcgetattr(STDIN_FILENO, &savedTerminal) == 0 else { return ask(prompt) }
+		var raw = savedTerminal
+		raw.c_lflag &= ~tcflag_t(ECHO | ICANON)
+		withUnsafeMutableBytes(of: &raw.c_cc) { characters in
+			characters[Int(VMIN)] = 1
+			characters[Int(VTIME)] = 0
+		}
+		for signal in [SIGINT, SIGTERM, SIGHUP] { Darwin.signal(signal, restoreAndExit) }
+		tcsetattr(STDIN_FILENO, TCSANOW, &raw)
+		defer {
+			tcsetattr(STDIN_FILENO, TCSANOW, &savedTerminal)
+			for signal in [SIGINT, SIGTERM, SIGHUP] { Darwin.signal(signal, SIG_DFL) }
+			FileHandle.standardError.write(Data("\n".utf8))
+		}
+		FileHandle.standardError.write(Data(prompt.utf8))
+		var bytes: [UInt8] = []
+		var byte: UInt8 = 0
+		while read(STDIN_FILENO, &byte, 1) == 1 {
+			switch byte {
+			case 0x0A, 0x0D:
+				return String(decoding: bytes, as: UTF8.self)
+			case 0x7F, 0x08:
+				// One character back: its UTF-8 continuation bytes and its first byte.
+				while let last = bytes.popLast(), last & 0xC0 == 0x80 {}
+			case 0x04 where bytes.isEmpty:
+				return nil
+			default:
+				bytes.append(byte)
+			}
+		}
+		return bytes.isEmpty ? nil : String(decoding: bytes, as: UTF8.self)
 	}
+}
+
+/// The settings of the terminal before `askSecret`, which a signal restores before the process ends.
+nonisolated(unsafe) private var savedTerminal = termios()
+
+private func restoreAndExit(_ signal: Int32) {
+	tcsetattr(STDIN_FILENO, TCSANOW, &savedTerminal)
+	Darwin.signal(signal, SIG_DFL)
+	raise(signal)
 }
 
 /// The answers of a run in the order the script asked for them, and which login fields hide their input.

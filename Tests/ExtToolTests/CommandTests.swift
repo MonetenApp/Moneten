@@ -216,7 +216,7 @@ extension ExtTool {
 				function ListAccounts() return {} end
 				"""])
 			let typing = """
-				import os, pty, select, sys
+				import os, pty, select, signal, sys, time
 				pid, fd = pty.fork()
 				if pid == 0:
 				    os.execv(sys.argv[1], [sys.argv[1], "run", "Bank.lua"])
@@ -234,7 +234,12 @@ extension ExtTool {
 				os.write(fd, b"481516\\n")
 				read(b"accounts")
 				read(b"\\x00")
-				os.waitpid(pid, 0)
+				for _ in range(100):
+				    if os.waitpid(pid, os.WNOHANG)[0]: break
+				    time.sleep(0.1)
+				else:
+				    os.kill(pid, signal.SIGKILL)
+				    os.waitpid(pid, 0)
 				sys.stdout.buffer.write(out)
 				"""
 			let run = try launch(URL(filePath: "/usr/bin/python3"), ["-c", typing, extBinary.path], environment: ["EXT_USERNAME": "erika", "EXT_PASSWORD": "secret"],
@@ -242,6 +247,54 @@ extension ExtTool {
 			#expect(run.output.contains("Code: "))
 			#expect(run.output.contains("accounts"))
 			#expect(!run.output.contains("481516"))
+		}
+	
+		/// A pasted captcha token or login address can be longer than a line of a terminal, 1024 bytes.
+		@Test func longAnswerArrivesWholeInATerminal() throws {
+			let folder = try files(["Bank.lua": """
+				WebBanking{version = 1, services = {"Bank"}}
+				function SupportsBank() return true end
+				function InitializeSession2(protocol, bankCode, step, credentials)
+					if step == 1 then return {title = "Paste the token.", label = "Token"} end
+					print("length " .. #credentials[1])
+				end
+				function ListAccounts() return {} end
+				"""])
+			let typing = """
+				import os, pty, select, signal, sys, time
+				pid, fd = pty.fork()
+				if pid == 0:
+				    os.execv(sys.argv[1], [sys.argv[1], "run", "Bank.lua"])
+				out = b""
+				def read(until):
+				    global out
+				    while until not in out:
+				        ready, _, _ = select.select([fd], [], [], 30)
+				        if not ready: return
+				        try: chunk = os.read(fd, 1024)
+				        except OSError: return
+				        if not chunk: return
+				        out += chunk
+				read(b"Token: ")
+				data = b"t" * 3000 + b"\\n"
+				while data:
+				    data = data[os.write(fd, data[:512]):]
+				    ready, _, _ = select.select([fd], [], [], 0.05)
+				    if ready:
+				        try: out += os.read(fd, 1024)
+				        except OSError: pass
+				read(b"accounts")
+				for _ in range(100):
+				    if os.waitpid(pid, os.WNOHANG)[0]: break
+				    time.sleep(0.1)
+				else:
+				    os.kill(pid, signal.SIGKILL)
+				    os.waitpid(pid, 0)
+				sys.stdout.buffer.write(out)
+				"""
+			let run = try launch(URL(filePath: "/usr/bin/python3"), ["-c", typing, extBinary.path], environment: ["EXT_USERNAME": "erika", "EXT_PASSWORD": "secret"],
+				folder: folder)
+			#expect(run.output.contains("length 3000"))
 		}
 	}
 }

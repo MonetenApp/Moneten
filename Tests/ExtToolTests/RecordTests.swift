@@ -1,3 +1,4 @@
+import ExtensionHost
 import Foundation
 import Testing
 
@@ -42,11 +43,47 @@ extension ExtTool {
 	@Suite(.enabled(if: LocalBank.canStart || ProcessInfo.processInfo.environment["CI"] != nil)) struct RecordTests {
 		let login = ["EXT_USERNAME": "erika", "EXT_PASSWORD": "geheim123"]
 
-		func script() throws -> URL {
+		func script(_ name: String = "Local.lua") throws -> URL {
 			let folder = try temporaryFolder()
-			let script = folder.appending(path: "Local.lua")
-			try FileManager.default.copyItem(at: repository.appending(path: "Tests/ExtToolTests/LocalBank/Local.lua"), to: script)
+			let script = folder.appending(path: name)
+			try FileManager.default.copyItem(at: repository.appending(path: "Tests/ExtToolTests/LocalBank/\(name)"), to: script)
 			return script
+		}
+
+		/// The verifier of PKCE stands in no address, only its hash does, and the nonce of `MM.uuid()` stands
+		/// in one. The replay needs both, so the fixture keeps both, and `ext test` replays the login offline.
+		@Test func oauthLoginWithPKCEAndANonceReplays() throws {
+			let bank = try LocalBank()
+			let script = try script("OAuth.lua")
+			let fixture = script.deletingLastPathComponent().appending(path: "fixture.json")
+			let expected = script.deletingLastPathComponent().appending(path: "expected.json")
+			let record = try ext(["record", script.path, fixture.path, "--trust", bank.certificate.path], input: "y\n", environment: login)
+			#expect(record.status == 0, "\(record.errors)")
+			#expect(record.errors.contains("ext keeps 1 more random value, such as a PKCE verifier, because the replay needs it.\n"))
+			let recording = try JSONDecoder().decode(Fixture.self, from: Data(contentsOf: fixture))
+			let kept = recording.random?.filter { if case .bytes = $0 { true } else if case .uuid = $0 { true } else { false } }
+			#expect(kept?.count == 2)
+			let text = try String(contentsOf: fixture, encoding: .utf8)
+			for secret in ["geheim123", "auth-7f3a9c21e5", "oauth-5d4c3b2a1908"] { #expect(!text.contains(secret), "\(secret) is in the fixture") }
+			#expect(try extOffline(["test", script.path, fixture.path, expected.path, "--update"]).status == 0)
+			#expect(try extOffline(["test", script.path, fixture.path, expected.path]).output == "PASS 1 account, 0 transactions\n")
+		}
+
+		@Test func refusedRecordingKeepsTheFixture() throws {
+			let bank = try LocalBank()
+			let folder = try files(["Echo.lua": """
+				WebBanking{version = 1, services = {"Echo"}}
+				function SupportsBank() return true end
+				function InitializeSession(protocol, bankCode, username, customer, password)
+					Connection():get("https://bank.localhost/logout?from=" .. password .. "-10-10")
+				end
+				function ListAccounts() return {} end
+				""", "good.json": "{\"exchanges\": []}"])
+			let record = try ext(["record", "Echo.lua", "good.json", "--trust", bank.certificate.path], input: "y\n",
+				environment: ["EXT_USERNAME": "erika", "EXT_PASSWORD": "2025"], folder: folder)
+			#expect(record.status == 2)
+			#expect(record.errors.contains("The password is short or only digits, and a request holds it inside a longer value"))
+			#expect(try String(contentsOf: folder.appending(path: "good.json"), encoding: .utf8) == "{\"exchanges\": []}")
 		}
 
 		@Test func recordLeavesNoSecretAndReplaysOffline() throws {
