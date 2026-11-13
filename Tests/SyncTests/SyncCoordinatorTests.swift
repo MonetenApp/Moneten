@@ -356,6 +356,44 @@ struct SyncCoordinatorTests {
 		#expect(log.all.last?.accounts == [Self.giro.accountID: .refreshed(at)])
 	}
 
+	@Test("Canceling one access stops its run and drops its waiting refresh, and the other accesses go on")
+	func cancelOneAccess() async {
+		let coordinator = SyncCoordinator(limit: 1)
+		let log = logEnds(of: coordinator)
+		let first = Self.access("Musterbank"), second = Self.access("Beispielbank"), third = Self.access("Sparkasse")
+		coordinator.refresh(RefreshRequest(access: first, accounts: [Self.card]), with: ScriptedConnector([.wait(.seconds(60))]), attended: true)
+		coordinator.refresh(RefreshRequest(access: second, accounts: [Self.giro]), with: ScriptedConnector([.fetched(Self.giro.accountID)]), attended: true)
+		coordinator.refresh(RefreshRequest(access: third, accounts: [Self.savings]), with: ScriptedConnector([.fetched(Self.savings.accountID)]), attended: true)
+		coordinator.cancelRefresh(of: second.id)
+		coordinator.cancelRefresh(of: first.id)
+		#expect(coordinator.states[first.id] == .cancelled)
+		#expect(!coordinator.refreshingAccounts.contains(Self.giro.accountID))
+		await until { !coordinator.isRefreshing }
+		#expect(log.all.map(\.access) == [first.id, third.id])
+		#expect(log.all.last?.accounts.keys.sorted() == [Self.savings.accountID])
+	}
+
+	@Test("Canceling the refreshes of a source closes its login dialog, also of a setup whose access the app does not have yet, and the login never reaches the connector")
+	func cancelBySource() async {
+		let setup = Access(source: .extension(id: "example"), bankName: "Example Bank", loginName: "")
+		let other = Self.access("Musterbank")
+		let log = logEnds(of: coordinator)
+		let login = UserRequest.login(LoginRequest(service: "Example Bank", fields: LoginRequest.defaultFields, rejected: false))
+		let scripted = refresh(setup, [.ask(login), .fetched(Self.giro.accountID)])
+		await until { broker.current?.access == setup }
+		let dialog = broker.current?.id
+		_ = refresh(other, [.fetched(Self.savings.accountID)], accounts: [Self.savings])
+		coordinator.cancelRefreshes(of: .extension(id: "example"))
+		// The user submits the dialog that is still on screen.
+		if let dialog { broker.answer(.login([Secret("erika"), Secret("geheim")]), to: dialog) }
+		await until { broker.current?.access != setup && !coordinator.isRefreshing }
+		#expect(broker.current?.access != setup)
+		#expect(coordinator.states[setup.id] == .cancelled)
+		#expect(scripted.answers.all.isEmpty)
+		#expect(log.all.first { $0.access == setup.id }?.accounts == [:])
+		#expect(log.all.first { $0.access == other.id }?.accounts.keys.sorted() == [Self.savings.accountID])
+	}
+
 	@Test("A command for an access that waits for its turn joins the waiting request")
 	func waitingAccess() async throws {
 		let coordinator = SyncCoordinator(limit: 1)

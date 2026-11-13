@@ -35,31 +35,31 @@ public struct ExtensionPackage: Sendable, Equatable, Codable {
 	}
 
 	/// Reads a single `.lua` file with a manifest of the same base name next to it, which only a file
-	/// install may leave out, or a folder whose `manifest.json` lists its Lua files.
-	public static func load(from url: URL, mode: Manifest.Mode = .file) throws(PackageProblem) -> ExtensionPackage {
+	/// install may leave out, or a folder whose `manifest.json` lists its Lua files. `read` gets each file
+	/// that the package is built from, so a caller can check the digests of exactly those bytes.
+	public static func load(from url: URL, mode: Manifest.Mode = .file, read: (URL) throws -> Data = { try Data(contentsOf: $0) })
+		throws(PackageProblem) -> ExtensionPackage {
+		func data(_ url: URL) throws(PackageProblem) -> Data {
+			do { return try read(url) } catch { throw .unreadableFile(url.lastPathComponent) }
+		}
+		func source(_ url: URL) throws(PackageProblem) -> SourceFile {
+			guard let text = String(data: try data(url), encoding: .utf8) else { throw .unreadableFile(url.lastPathComponent) }
+			return SourceFile(name: url.lastPathComponent, text: text)
+		}
 		let name = url.deletingPathExtension().lastPathComponent
 		if url.pathExtension == "lua" {
 			let sibling = url.deletingPathExtension().appendingPathExtension("json")
 			let hasManifest = FileManager.default.fileExists(atPath: sibling.path)
 			if !hasManifest, mode == .catalog { throw .missingManifest }
-			let manifest = try hasManifest ? Manifest.parse(read(sibling), mode: mode) : nil
+			let manifest = try hasManifest ? Manifest.parse(data(sibling), mode: mode) : nil
 			return ExtensionPackage(name: name, manifest: manifest, files: [try source(url)])
 		}
 		guard (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true else { throw .notLua }
 		let manifestURL = url.appending(path: "manifest.json")
 		guard FileManager.default.fileExists(atPath: manifestURL.path) else { throw .missingManifest }
-		let manifest = try Manifest.parse(read(manifestURL), mode: mode)
+		let manifest = try Manifest.parse(data(manifestURL), mode: mode)
 		guard let names = manifest.files, !names.isEmpty else { throw .invalidManifest("The manifest needs files.") }
 		let files = try names.map { file throws(PackageProblem) in try source(url.appending(path: file)) }
 		return ExtensionPackage(name: name, manifest: manifest, files: files)
-	}
-
-	private static func read(_ url: URL) throws(PackageProblem) -> Data {
-		do { return try Data(contentsOf: url) } catch { throw .unreadableFile(url.lastPathComponent) }
-	}
-
-	private static func source(_ url: URL) throws(PackageProblem) -> SourceFile {
-		guard let text = String(data: try read(url), encoding: .utf8) else { throw .unreadableFile(url.lastPathComponent) }
-		return SourceFile(name: url.lastPathComponent, text: text)
 	}
 }

@@ -32,6 +32,7 @@ final class DebugHarness {
 		guard shared == nil, let path = ProcessInfo.processInfo.environment["MONETEN_DEBUG_DIR"], !path.isEmpty else { return }
 		let harness = DebugHarness(folder: URL(fileURLWithPath: path), model: model)
 		shared = harness
+		model.extensions.log = { [weak harness] in harness?.log($0) }
 		DistributedNotificationCenter.default().addObserver(forName: Notification.Name("io.github.moneten.debug"), object: nil, queue: .main) { note in
 			if let target = note.object as? String, target != path { return }
 			let command = note.userInfo?["command"] as? String ?? ""
@@ -155,6 +156,41 @@ final class DebugHarness {
 		case "extjs": ExtensionWebDebug.current?.evaluateJavaScript(argument) { [weak self] _, error in self?.log("extjs \(error.map { "error=\($0.localizedDescription)" } ?? "ok")") }
 		case "extcaptchastub": ExtensionWebDebug.captchaStub = argument != "off"
 		case "extstate": logExtensionState()
+		// The Extensions window and the catalog (ADR 0015). "extcatalog <url>" points the catalog at a test index and checks it.
+		case "extensions": openExtensionsWindow()
+		#if DEBUG
+		case "extcatalog":
+			guard let url = URL(string: argument) else { return log("ext error=extcatalog needs a URL") }
+			model.extensions.useCatalog(url)
+			Task { await model.extensions.checkNow() }
+		#endif
+		case "extcheck": Task { await model.extensions.checkNow() }
+		case "extinstall": Task { await model.extensions.install(argument) }
+		case "extupdate": Task { await model.extensions.update(argument, to: model.extensions.items.first { $0.id == argument }?.available ?? "") }
+		case "extreview": model.extensions.review(argument)
+		case "extremove": model.extensions.askRemove(argument)
+		case "extfile": model.extensions.pickFile(URL(filePath: argument))
+		case "extallow": model.extensions.askAllow(argument)
+		case "extselect": model.extensions.selection = argument
+		// "<id>|<fixture>": the recorded answers that replace the network for an installed extension.
+		case "extfixture":
+			let parts = argument.components(separatedBy: "|")
+			guard parts.count == 2, let fixture = try? JSONDecoder().decode(Fixture.self, from: Data(contentsOf: URL(filePath: parts[1]))) else {
+				return log("ext error=extfixture needs <id>|<fixture>")
+			}
+			model.extensions.fixtures[parts[0]] = fixture
+			log("ext fixture \(parts[0])")
+		// Clicks the default button of the question in the Extensions window, such as "Install Update".
+		case "extconfirm":
+			guard let question = model.extensions.question else { return log("extconfirm no question") }
+			model.extensions.question = nil
+			model.extensions.confirm(question)
+		case "extlist":
+			let library = model.extensions
+			log("ext list index=\(library.index?.version ?? 0) reachable=\(library.reachable) problem=\(library.problem ?? "-") question=\(library.question?.id ?? "-")")
+			for item in library.items {
+				log("ext item \(item.id) section=\(item.section) badge=\(item.badge ?? "-") action=\(item.action.map { "\($0)" } ?? "-") note=\(item.note ?? "-")")
+			}
 		case "groupbyaccount":
 			if var g = model.ledger.groups.first(where: { $0.name == argument }) {
 				g.groupsByAccount = true
@@ -294,7 +330,8 @@ final class DebugHarness {
 		case "login": setup.loginName = value
 		case "pin": setup.pin = value
 		case "save": setup.savePIN = value == "yes"
-		case "other": setup.service = value == "no" ? nil : .offline
+		// "no", "offline", or the name of an extension service.
+		case "other": setup.service = value == "no" ? nil : setup.otherServices.first { $0.title == value } ?? .offline
 		case "next": setup.next()
 		case "back": setup.back()
 		case "toggle": if setup.selected.remove(value) == nil { setup.selected.insert(value) }
@@ -308,6 +345,7 @@ final class DebugHarness {
 		case "cancel": model.closeAccountSetup()
 		default: break
 		}
+		log("setup service=\(setup.service?.title ?? "-") other=\(setup.otherServices.map(\.title)) error=\(setup.serviceError ?? "-")")
 		log("setup step=\(setup.step) lookup=\(setup.lookup.state) error=\(setup.loginError ?? "-") saveError=\(setup.saveError ?? "-") dialog=\(model.sync.broker.current != nil) candidates=\(setup.candidates.map { "\($0.id):\(Self.label($0.match))" }) selected=\(setup.selected.sorted())")
 	}
 
@@ -393,8 +431,19 @@ final class DebugHarness {
 		let parts = argument.components(separatedBy: "|")
 		guard let model, parts.count >= 2, model.store != nil else { return log("ext error=\(command) needs <package>|<fixture>|<service> and an open database") }
 		do {
-			let package = try ExtensionPackage.load(from: URL(filePath: parts[0]))
 			let fixture = parts[1].isEmpty ? nil : try JSONDecoder().decode(Fixture.self, from: Data(contentsOf: URL(filePath: parts[1])))
+			// An id without a slash names an installed extension, which runs only after its check.
+			if !parts[0].contains("/") {
+				model.extensions.fixtures[parts[0]] = fixture
+				if command == "extaccess" {
+					model.addExtensionAccess(package: try model.extensions.verifiedPackage(parts[0]), service: parts.count > 2 ? parts[2] : parts[0], fixture: fixture)
+				} else {
+					model.refresh(model.ledger.refreshAccounts(.all).filter { model.accesses[$0.key]?.source == .extension(id: parts[0]) },
+						attended: !(parts.count > 2 && parts[2] == "auto"))
+				}
+				return
+			}
+			let package = try ExtensionPackage.load(from: URL(filePath: parts[0]))
 			for exchange in fixture?.exchanges ?? [] where exchange.request.method == "GET" && exchange.request.url.host()?.hasPrefix("auth.") == true {
 				ExtensionWebDebug.pages[ExtensionWebDebug.key(exchange.request.url)] = exchange.response.body ?? ""
 			}
@@ -453,6 +502,14 @@ final class DebugHarness {
 				log("ext account \(account.name) rows=\(rows.count) balance=\(model.ledger.balance(of: account).minorUnits)\(failure)")
 			}
 		}
+	}
+
+	/// Chooses "Extensions" in the Window menu, as the user does.
+	func openExtensionsWindow() {
+		let item = NSApp.mainMenu?.items.compactMap(\.submenu).flatMap(\.items).first { $0.title == "Extensions" }
+		guard let item, let menu = item.menu else { return log("extensions no menu item") }
+		menu.performActionForItem(at: menu.index(of: item))
+		log("extensions opened")
 	}
 
 	/// Selects the account, group, or category with this name.

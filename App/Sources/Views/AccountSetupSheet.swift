@@ -15,17 +15,27 @@ final class AccountSetup {
 		case offline
 	}
 
-	/// The services under "Other". The services of installed web banking extensions join this list
-	/// with E6 of the extension plan, each with its own login step.
-	enum Service: Hashable, CaseIterable {
+	/// The services under "Other": an offline account, and each service of an installed extension that
+	/// may run, which goes on to the login dialog of the extension.
+	enum Service: Hashable {
 		case offline
+		case extensionService(id: String, name: String)
 
 		var title: String {
 			switch self {
 			case .offline: "Offline account / Cash"
+			case let .extensionService(_, name): name
 			}
 		}
 	}
+
+	/// The services of the extensions that may run, as the library lists them with the rows of the Extensions window.
+	var otherServices: [Service] {
+		[.offline] + model.extensions.setupServices.map { Service.extensionService(id: $0.id, name: $0.service) }
+	}
+
+	/// Why the extension of the chosen service cannot run now.
+	private(set) var serviceError: String?
 
 	/// An account that the bank listed, as the app would add it.
 	struct Candidate: Identifiable {
@@ -49,7 +59,9 @@ final class AccountSetup {
 		}
 	}
 	/// The choice under "Other" in place of a bank.
-	var service: Service?
+	var service: Service? {
+		didSet { serviceError = nil }
+	}
 	var usesOther: Bool { service != nil }
 	/// Entry errors show after the first "Next", so that half an IBAN is not an error while it is typed.
 	private var showsEntryErrors = false
@@ -104,10 +116,14 @@ final class AccountSetup {
 	func next() {
 		switch step {
 		case .bank:
-			if usesOther {
-				// E6: an extension service goes on to its own login step here.
+			switch service {
+			case .offline?:
 				step = .offline
 				return
+			case let .extensionService(id, name)?:
+				startExtension(id, service: name)
+				return
+			case nil: break
 			}
 			showsEntryErrors = true
 			if bank != nil {
@@ -184,6 +200,19 @@ final class AccountSetup {
 				pin = ""
 				loginError = Self.message(error)
 			}
+		}
+	}
+
+	/// Checks the extension once more and hands over to its setup, which asks for the login data in the
+	/// login dialog of the extension and adds the accounts that its script lists.
+	private func startExtension(_ id: String, service: String) {
+		do {
+			let package = try model.extensions.verifiedPackage(id)
+			serviceError = nil
+			model.closeAccountSetup()
+			model.addExtensionAccess(package: package, service: service, fixture: model.extensions.fixtures[id], groupID: groupID)
+		} catch {
+			serviceError = error.message
 		}
 	}
 
@@ -267,7 +296,16 @@ struct AccountSetupSheet: View {
 		Section {
 			Picker("Other", selection: $setup.service) {
 				Text("None").tag(AccountSetup.Service?.none)
-				ForEach(AccountSetup.Service.allCases, id: \.self) { Text($0.title).tag(AccountSetup.Service?.some($0)) }
+				ForEach(setup.otherServices, id: \.self) { Text($0.title).tag(AccountSetup.Service?.some($0)) }
+			}
+			.onChange(of: setup.otherServices) { _, services in
+				// An extension that was blocked or removed while the assistant is open leaves the choice.
+				if let service = setup.service, !services.contains(service) { setup.service = nil }
+			}
+			if let error = setup.serviceError {
+				Label(error, systemImage: "exclamationmark.triangle")
+					.foregroundStyle(.orange)
+					.fixedSize(horizontal: false, vertical: true)
 			}
 		}
 	}

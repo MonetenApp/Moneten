@@ -9,7 +9,7 @@ public struct HostName: Hashable, Sendable, Codable, CustomStringConvertible {
 	public let value: String
 
 	public init?(exactly text: String) {
-		guard text.utf8.count <= 253, text.wholeMatch(of: /([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]([a-z0-9-]{0,61}[a-z0-9])?/) != nil else { return nil }
+		guard text.utf8.count <= 253, Pattern.isHostName(text) else { return nil }
 		value = text
 	}
 
@@ -152,13 +152,13 @@ public struct Manifest: Sendable, Equatable, Codable {
 			func require(_ ok: Bool, _ message: String) throws(PackageProblem) {
 				if !ok { throw .invalidManifest(message) }
 			}
-			if let id { try require(id.count <= 64 && id.wholeMatch(of: /[a-z0-9]+(-[a-z0-9]+)*/) != nil, "The id \(id) is not lower-case words joined by hyphens.") }
+			if let id { try require(id.count <= 64 && Pattern.isPackageID(id), "The id \(id) is not lower-case words joined by hyphens.") }
 			if let name { try require((1...60).contains(name.count), "The name must have 1 to 60 characters.") }
-			if let version { try require(version.wholeMatch(of: /[0-9]+(\.[0-9]+){0,2}/) != nil, "The version \(version) is not a number such as 2.31.") }
+			if let version { try require(Pattern.isVersion(version), "The version \(version) is not a number such as 2.31.") }
 			if let description { try require((1...200).contains(description.count), "The description must have 1 to 200 characters.") }
 			if let files {
 				try require(!files.isEmpty && Set(files).count == files.count, "The manifest must list each Lua file once.")
-				for file in files { try require(file.wholeMatch(of: /[A-Za-z0-9_-]+\.lua/) != nil, "\(file) is not a Lua file of the folder.") }
+				for file in files { try require(Pattern.isLuaFile(file), "\(file) is not a Lua file of the folder.") }
 			}
 			var hostNames: [HostName]?
 			if let hosts {
@@ -188,10 +188,54 @@ public struct Manifest: Sendable, Equatable, Codable {
 			if let license { try require(Manifest.licenses.contains(license), "The license \(license) is not on the list of allowed licenses.") }
 			if let maintainer {
 				try require((1...100).contains(maintainer.name.count), "The maintainer needs a name.")
-				try require(maintainer.github.wholeMatch(of: /[A-Za-z0-9](-?[A-Za-z0-9]){0,38}/) != nil, "\(maintainer.github) is not a GitHub login.")
+				try require(Pattern.isGitHubLogin(maintainer.github), "\(maintainer.github) is not a GitHub login.")
 			}
 			return Manifest(id: id, name: name, version: version, description: description, files: files, hosts: hostNames, services: services,
 				kinds: kindValues, apiVersion: apiVersion, license: license, maintainer: maintainer)
 		}
+	}
+}
+
+/// The patterns of `schema/manifest.schema.json` as checks on bytes. A Swift `Regex` took about 60 µs for
+/// a host name, so a catalog index of 200 packages missed its parse budget. `PatternTests` compares
+/// each check with the regular expression of the schema.
+public enum Pattern {
+	private static let lowerDigits = Set("abcdefghijklmnopqrstuvwxyz0123456789".utf8)
+	private static let letterDigits = lowerDigits.union("ABCDEFGHIJKLMNOPQRSTUVWXYZ".utf8)
+	private static let digits = Set("0123456789".utf8)
+	private static let hyphen = UInt8(ascii: "-")
+
+	/// `([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]([a-z0-9-]{0,61}[a-z0-9])?`
+	static func isHostName(_ text: String) -> Bool {
+		let labels = text.utf8.split(separator: UInt8(ascii: "."), omittingEmptySubsequences: false)
+		guard labels.count >= 2, let last = labels.last?.first, last >= UInt8(ascii: "a"), last <= UInt8(ascii: "z") else { return false }
+		return labels.allSatisfy { label in
+			(1...63).contains(label.count) && label.first != hyphen && label.last != hyphen && label.allSatisfy { lowerDigits.contains($0) || $0 == hyphen }
+		}
+	}
+
+	/// `[a-z0-9]+(-[a-z0-9]+)*`
+	public static func isPackageID(_ text: String) -> Bool {
+		text.utf8.split(separator: hyphen, omittingEmptySubsequences: false).allSatisfy { !$0.isEmpty && $0.allSatisfy(lowerDigits.contains) }
+	}
+
+	/// `[0-9]+(\.[0-9]+){0,2}`
+	static func isVersion(_ text: String) -> Bool {
+		let parts = text.utf8.split(separator: UInt8(ascii: "."), omittingEmptySubsequences: false)
+		return parts.count <= 3 && parts.allSatisfy { !$0.isEmpty && $0.allSatisfy(digits.contains) }
+	}
+
+	/// `[A-Za-z0-9_-]+\.lua`
+	static func isLuaFile(_ text: String) -> Bool {
+		let bytes = Array(text.utf8)
+		guard bytes.count > 4, bytes.suffix(4).elementsEqual(".lua".utf8) else { return false }
+		return bytes.dropLast(4).allSatisfy { letterDigits.contains($0) || $0 == hyphen || $0 == UInt8(ascii: "_") }
+	}
+
+	/// `[A-Za-z0-9](-?[A-Za-z0-9]){0,38}`
+	static func isGitHubLogin(_ text: String) -> Bool {
+		let parts = text.utf8.split(separator: hyphen, omittingEmptySubsequences: false)
+		let letters = parts.reduce(0) { $0 + $1.count }
+		return (1...39).contains(letters) && parts.allSatisfy { !$0.isEmpty && $0.allSatisfy(letterDigits.contains) }
 	}
 }

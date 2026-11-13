@@ -38,20 +38,27 @@ public final class KeptSetupStates {
 /// script lists them, so the job adds them itself and reports no outcomes. A failed setup keeps its
 /// state for the next setup of its service and login.
 public struct ExtensionSetupJob: BankConnector {
-	let connector: ExtensionConnector
+	/// Builds the connector when the session starts, so a setup that waited for its turn runs the package
+	/// that is installed then.
+	let connector: @MainActor () throws -> ExtensionConnector
 	let states: KeptSetupStates
 	let generation: Int
+	/// Refuses the write of the accounts, for example of an extension that was blocked or removed during the setup.
+	let mayStore: @MainActor () throws -> Void
 	let add: @MainActor (AccessSetup) throws -> Void
 
 	@MainActor
-	public init(connector: ExtensionConnector, states: KeptSetupStates, add: @escaping @MainActor (AccessSetup) throws -> Void) {
+	public init(connector: @escaping @MainActor () throws -> ExtensionConnector, states: KeptSetupStates, mayStore: @escaping @MainActor () throws -> Void = {},
+		add: @escaping @MainActor (AccessSetup) throws -> Void) {
 		self.connector = connector
 		self.states = states
 		generation = states.generation
+		self.mayStore = mayStore
 		self.add = add
 	}
 
 	public func refresh(_ request: RefreshRequest, _ session: SyncSession) async throws -> ConnectorReport {
+		let connector = try await MainActor.run { try self.connector() }
 		let package = connector.package.name, service = request.access.bankName
 		let key = { @Sendable (login: String) -> KeptSetupStates.Key in [package, service, login] }
 		let login = Mutex("")
@@ -75,8 +82,8 @@ public struct ExtensionSetupJob: BankConnector {
 		states.keep(state, for: key, generation: generation)
 	}
 
-	/// Adds the accounts, unless the user canceled while the session ended. The check and the write
-	/// run on the main actor with no suspension between them.
+	/// Adds the accounts, unless the user canceled while the session ended or `mayStore` refuses. The
+	/// checks and the write run on the main actor with no suspension between them.
 	@MainActor
 	private func finish(_ setup: AccessSetup, key: KeptSetupStates.Key) throws {
 		guard !Task.isCancelled else {
@@ -84,6 +91,7 @@ public struct ExtensionSetupJob: BankConnector {
 			throw CancellationError()
 		}
 		do {
+			try mayStore()
 			try add(setup)
 		} catch {
 			// The accounts are not stored, so the next setup needs what this one registered.

@@ -51,7 +51,7 @@ These modules are planned:
 |---|---|---|
 | `FinAPIConnector` | finAPI login through its web form and data mapping (v0.3) | `Domain` |
 | `ext` | A command line tool that runs and tests an extension without the app | `ExtensionHost` |
-| `ExtensionCatalog` | Verifying the signed catalog index, installing packages, and planning updates | `Domain` |
+| `ExtensionCatalog` | Verifying the signed catalog index, installing packages, and planning updates | `Domain`, `ExtensionHost`, `Storage` |
 
 The sync state machine described below is in `Domain`. The payment state machine will be there too.
 
@@ -174,7 +174,7 @@ The host checks hosts in the same process that runs the script. A flaw in Lua or
 
 The manifest is required for a package in the catalog and optional for an extension installed from a file. The catalog is the public repository [MonetenApp/moneten-extensions](https://github.com/MonetenApp/moneten-extensions). Its checks and a maintainer review every package and every update. A signing workflow publishes a signed index with the SHA-256 digest of every file at `extensions.monetenapp.com`, the only host that the app contacts for the catalog. A file that the user installs by hand runs after a warning that lists the hosts of its manifest, and stays "Unverified". The app warns again when any of its files changes. The app records whether each extension came from the catalog, so a changed catalog package stays blocked and never runs as a file install.
 
-The planned module `ExtensionCatalog` verifies the index against the two public keys in the app and the version floor of each key, downloads and checks the files, and decides whether an update installs by itself or waits for the user because it adds a host or a login field.
+The module `ExtensionCatalog` verifies the index against the two public keys in the app and the version floor of each key, downloads and checks the files, and decides whether an update installs by itself or waits for the user because it adds a host or a login field.
 
 The API follows the [MoneyMoney Web Banking API](https://moneymoney.app/api/webbanking/), so most existing extensions run without changes. [ADR 0004](decisions/0004-moneymoney-compatible-extension-api.md) lists what is compatible and what Moneten adds.
 

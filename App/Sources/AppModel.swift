@@ -1,5 +1,6 @@
 import AppKit
 import Domain
+import ExtensionCatalog
 import ExtensionConnector
 import FinTS
 import Foundation
@@ -80,6 +81,8 @@ enum Preference {
 	static let unlockWithAppleWatch = "unlockWithAppleWatch"
 	static let viewMode = "viewMode"
 	static let balanceMode = "balanceMode"
+	/// "Update extensions automatically" in the Extensions window, on unless the user turns it off.
+	static let updateExtensionsAutomatically = "updateExtensionsAutomatically"
 
 	/// The app locks after 10 minutes without activity unless the user turns it off. MoneyMoney has
 	/// this off and suggests 5 minutes; the owner chose on with 10 minutes.
@@ -128,8 +131,10 @@ final class AppModel {
 	let sync = SyncCoordinator(broker: SessionBroker(defaults: .standard, scope: DataFolder.standard().databaseFile.path))
 	/// The FinTS connector of the setup and of every refresh.
 	let fints = AppModel.makeFinTSConnector()
-	/// The connector of each extension that the app loaded, by the name of its package. E6 fills it from
-	/// the installed extensions, until then the debug harness does.
+	/// The installed extensions and the catalog.
+	let extensions = ExtensionLibrary()
+	/// The connector of each extension that the debug harness loaded from a path, by the name of its package.
+	/// An installed extension of the same name goes first.
 	var extensionConnectors: [String: ExtensionConnector] = [:]
 	/// What failed setups of extension services left for the next setup of the same service and login.
 	/// It lives in memory until the lock.
@@ -197,7 +202,11 @@ final class AppModel {
 		Preference.registerDefaults()
 		// A closure that captures `self` can be handed over only once every stored property is set.
 		sync.deliver = { [weak self] accountID, result in try self?.merge(.refresh(result), into: accountID) }
-		sync.ended = { [weak self] access, state, accounts in self?.recordRefresh(of: access, state: state, accounts: accounts) }
+		sync.ended = { [weak self] access, state, accounts in
+			self?.recordRefresh(of: access, state: state, accounts: accounts)
+			self?.extensions.sessionEnded()
+		}
+		extensions.model = self
 		sync.broker.onStoreFailure = { [weak self] failure in self?.alert = AlertMessage(title: failure.title, message: failure.message) }
 		start()
 		installActivityMonitor()
@@ -286,6 +295,7 @@ final class AppModel {
 		}
 		lastActivity = Date()
 		phase = .unlocked
+		extensions.open(store)
 	}
 
 	func lock() {
@@ -296,6 +306,7 @@ final class AppModel {
 		extensionSetupStates.clear()
 		setup?.cancel()
 		setup = nil
+		extensions.close()
 		try? store?.close()
 		store = nil
 		ledger = Ledger()
@@ -655,7 +666,7 @@ final class AppModel {
 	private func connector(for source: AccessSource) -> (any BankConnector)? {
 		switch source {
 		case .fints: fints
-		case let .extension(id): extensionConnectors[id]
+		case let .extension(id): extensions.connector(for: id) ?? extensionConnectors[id] ?? CheckedAtStart { throw SyncFailure.unsupported("The extension \(id) is not installed.") }
 		case .finAPI: nil
 		}
 	}

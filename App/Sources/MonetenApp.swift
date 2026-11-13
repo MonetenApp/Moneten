@@ -18,6 +18,13 @@ struct MonetenApp: App {
 		.defaultLaunchBehavior(.presented)
 		.commands { AppCommands(model: model) }
 
+		Window("Extensions", id: "extensions") {
+			ExtensionsWindow()
+				.environment(model)
+		}
+		.defaultSize(width: 900, height: 600)
+		.commandsRemoved()
+
 		Settings {
 			SettingsView()
 				.environment(model)
@@ -114,6 +121,7 @@ struct AppCommands: Commands {
 		}
 		CommandGroup(after: .windowList) {
 			Button("Main Window") { openWindow(id: "main") }.keyboardShortcut("0")
+			Button("Extensions") { openWindow(id: "extensions") }
 		}
 		CommandGroup(replacing: .help) {
 			Button("Show Database in Finder...") { NSWorkspace.shared.activateFileViewerSelecting([model.vault.folder.root]) }

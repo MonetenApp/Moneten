@@ -17,6 +17,9 @@ public final class SyncCoordinator {
 	public private(set) var refreshingAccounts: Set<UUID> = []
 	private var requestedAccounts: [UUID: Set<UUID>] = [:]
 	private var running: [UUID: Task<Void, Never>] = [:]
+	/// The source of each running access, so that the refreshes of one extension can be canceled, also the setup
+	/// of an access that the app does not have yet.
+	private var runningSources: [UUID: AccessSource] = [:]
 	private var queue: [Job] = []
 	/// The accounts that a command asked for while their access ran or was held, by access. They run when
 	/// that run or hold ends.
@@ -134,6 +137,25 @@ public final class SyncCoordinator {
 		for id in running.keys { cancel(id) }
 	}
 
+	/// Stops every running and waiting refresh and setup of one source, such as an extension that was blocked or removed.
+	public func cancelRefreshes(of source: AccessSource) {
+		var ids = Set<UUID>()
+		for job in queue where job.request.access.source == source { ids.insert(job.request.access.id) }
+		for job in afterRun.values where job.request.access.source == source { ids.insert(job.request.access.id) }
+		for (id, running) in runningSources where running == source { ids.insert(id) }
+		for id in ids { cancelRefresh(of: id) }
+	}
+
+	/// Stops the refresh of one access and drops its waiting one, such as when its extension is blocked or removed.
+	public func cancelRefresh(of id: UUID) {
+		if let index = queue.firstIndex(where: { $0.request.access.id == id }) {
+			queue.remove(at: index)
+			endProgress(of: id)
+		}
+		if afterRun.removeValue(forKey: id) != nil { endProgress(of: id) }
+		if running[id] != nil { cancel(id) }
+	}
+
 	/// The accounts of a canceled access show their last state at once, while its connector still ends.
 	private func cancel(_ id: UUID) {
 		broker.endRequest(of: id)
@@ -163,6 +185,7 @@ public final class SyncCoordinator {
 		let access = job.request.access
 		apply(.start, to: access.id)
 		let session = Session(coordinator: self, access: access, accountNames: job.request.accounts.map(\.name), attended: job.attended)
+		runningSources[access.id] = access.source
 		running[access.id] = Task {
 			let event: SyncEvent
 			var report: ConnectorReport?
@@ -196,6 +219,7 @@ public final class SyncCoordinator {
 			let accountIDs = job.request.accounts.map(\.accountID)
 			endProgress(of: access.id)
 			running[access.id] = nil
+			runningSources[access.id] = nil
 			ended(access.id, state, end.accountRefreshes(of: accountIDs, notices: report?.notices ?? [], at: Date()))
 			if var next = afterRun.removeValue(forKey: access.id) {
 				// The state that this run returned replaces the one that the command read before.
