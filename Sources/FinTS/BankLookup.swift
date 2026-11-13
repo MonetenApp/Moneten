@@ -63,8 +63,10 @@ public final class BankLookup {
 			if let code {
 				result = directory.bank(code: code).map(Self.usable) ?? .failed("The Bankleitzahl is invalid.")
 			} else {
-				// A search of the whole directory takes about 10 ms, too long for the main thread.
-				let matches = await Task.detached(priority: .userInitiated) { directory.search(entry) }.value
+				// A search of the whole directory takes about 10 ms, too long for the main thread. The start of
+				// a Bankleitzahl is one word also when it is typed in groups, such as "760 30".
+				let query = text.allSatisfy(\.isNumber) ? text : entry
+				let matches = await Task.detached(priority: .userInitiated) { directory.search(query) }.value
 				result = matches.isEmpty ? .failed("No bank matches “\(entry.trimmingCharacters(in: .whitespaces))”.") : .matches(matches)
 			}
 		} catch {

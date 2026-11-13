@@ -83,6 +83,10 @@ struct BankLookupTests {
 		await lookup.lookUp(showingErrors: true)
 		#expect(lookup.bank == Self.musterbankNord)
 
+		lookup.entry = "120 30"
+		await lookup.lookUp(showingErrors: false)
+		#expect(lookup.state == .matches([Self.musterbank]))
+
 		lookup.entry = "keine bank"
 		await lookup.lookUp(showingErrors: false)
 		#expect(lookup.state == .failed("No bank matches “keine bank”."))

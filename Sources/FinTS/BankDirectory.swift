@@ -10,6 +10,12 @@ public struct BankDirectory: Sendable {
 		public let bank: FinTSBank
 
 		public var id: String { code }
+
+		/// The directory keeps the Bankleitzahl of a merged bank as "Sparkasse Bonn -alt-".
+		var isObsolete: Bool {
+			let name = bank.name.trimmingCharacters(in: .whitespaces)
+			return name.hasSuffix("-alt-") || name.hasSuffix("-alt")
+		}
 	}
 
 	/// An entry with the words that a search compares, in both spellings of umlauts and accents.
@@ -18,6 +24,9 @@ public struct BankDirectory: Sendable {
 		/// The first word of the name, or the name that customers know, such as "DKB".
 		let start: [String]
 		let words: [String]
+		/// A bank with a login hint comes first among banks of one rank, such as the four Bankleitzahlen
+		/// that comdirect names among its eight.
+		let hinted: Bool
 		let sortKey: String
 	}
 
@@ -26,9 +35,11 @@ public struct BankDirectory: Sendable {
 
 	public init(_ entries: [Entry]) {
 		self.entries = entries.map { entry in
-			let common = entry.loginHint?.bankName ?? ""
+			let hint = entry.loginHint
+			let common = hint?.bankName ?? ""
 			let start = Self.words(String(entry.bank.name.split(whereSeparator: { !$0.isLetter && !$0.isNumber }).first ?? "")) + Self.words(common)
-			return Indexed(entry: entry, start: start, words: Self.words(entry.bank.name) + Self.words(entry.city) + Self.words(common), sortKey: Self.sortKey(entry))
+			return Indexed(entry: entry, start: start, words: Self.words(entry.bank.name) + Self.words(entry.city) + Self.words(common), hinted: hint != nil,
+				sortKey: Self.sortKey(entry))
 		}
 		byCode = Dictionary(entries.map { ($0.code, $0) }, uniquingKeysWith: { first, _ in first })
 	}
@@ -38,7 +49,7 @@ public struct BankDirectory: Sendable {
 	}
 
 	/// The banks whose name or place has every word of the query, or whose Bankleitzahl starts with
-	/// it. Banks with a FinTS address come first. Among them, a bank whose name starts with the query
+	/// it. Banks with a FinTS address that are not old entries come first. Among them, a bank whose name starts with the query
 	/// comes first, then a bank where each word starts a word of the name or place, and last a bank
 	/// where a word only appears inside a word, such as "sparkasse" in "Stadtsparkasse". Banks of the
 	/// same name are in the order of their places.
@@ -48,9 +59,10 @@ public struct BankDirectory: Sendable {
 		var found: [(rank: Int, indexed: Indexed)] = []
 		for indexed in entries {
 			guard let rank = Self.rank(indexed, terms) else { continue }
-			found.append((indexed.entry.bank.url == nil ? rank + 3 : rank, indexed))
+			found.append((indexed.entry.bank.url == nil || indexed.entry.isObsolete ? rank + 3 : rank, indexed))
 		}
-		return found.sorted { ($0.rank, $0.indexed.sortKey) < ($1.rank, $1.indexed.sortKey) }.map(\.indexed.entry)
+		return found.sorted { ($0.rank, $0.indexed.hinted ? 0 : 1, $0.indexed.sortKey) < ($1.rank, $1.indexed.hinted ? 0 : 1, $1.indexed.sortKey) }
+			.map(\.indexed.entry)
 	}
 
 	private static func rank(_ indexed: Indexed, _ terms: [Set<String>]) -> Int? {

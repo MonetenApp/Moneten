@@ -702,6 +702,9 @@ struct FinTSConnectorTests {
 		#expect(directory.bank(code: "10010424") == BankDirectory.Entry(code: "10010424", city: "Wiesbaden", bank: FinTSBank(name: "Aareal Bank", bic: nil, url: nil)))
 		#expect(recorded == [["type": "banks"]])
 		await #expect(throws: HelperFailure.unreadable) { try await connector(#"read cmd; echo '{"type":"notice","text":"x"}'"#).bankDirectory() }
+		await #expect(throws: SyncFailure.bank(BankMessage(text: "hbci4java has no bank directory"))) {
+			try await connector(#"read cmd; echo '{"type":"failed","text":"hbci4java has no bank directory"}'"#).bankDirectory()
+		}
 	}
 
 	/// Waits until the condition holds, for at most five seconds.

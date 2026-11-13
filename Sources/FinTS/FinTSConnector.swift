@@ -115,8 +115,11 @@ public struct FinTSConnector: BankConnector {
 	public func bankDirectory() async throws -> BankDirectory {
 		var banks: [BankDirectory.Entry]?
 		try await run(Command(type: "banks"), session: nil) { message in
-			guard case let .banks(list) = message else { throw HelperFailure.unreadable }
-			banks = list
+			switch message {
+			case let .banks(list): banks = list
+			case let .failed(error): throw error.failure
+			default: throw HelperFailure.unreadable
+			}
 		}
 		guard let banks else { throw HelperFailure.noAnswer }
 		return BankDirectory(banks)

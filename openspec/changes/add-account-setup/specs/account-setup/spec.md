@@ -71,6 +71,23 @@ The app SHALL find the bank from a name, an IBAN, or a Bankleitzahl that the use
 - **WHEN** the user enters "DKB"
 - **THEN** the list shows "Deutsche Kreditbank Berlin"
 
+#### Scenario: Start of a Bankleitzahl in groups
+
+- **WHEN** the user enters "760 30"
+- **THEN** the list shows the banks whose Bankleitzahl starts with 76030, Consorsbank 76030080 first
+
+#### Scenario: Old entry of a merged bank
+
+- **GIVEN** the bank directory lists "Sparkasse Bonn -alt-" and "Sparkasse KölnBonn"
+- **WHEN** the user enters "sparkasse bonn"
+- **THEN** "Sparkasse KölnBonn" comes before "Sparkasse Bonn -alt-"
+
+#### Scenario: Several Bankleitzahlen of one bank
+
+- **GIVEN** the bank directory lists comdirect with eight Bankleitzahlen, of which comdirect names four as its own
+- **WHEN** the user enters "comdirect"
+- **THEN** the four come first, so "Next" chooses 20041111
+
 #### Scenario: No bank matches
 
 - **WHEN** the user enters "keine bank"

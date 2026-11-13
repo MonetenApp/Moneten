@@ -1,6 +1,7 @@
 import AppKit
 import Domain
 import ExtensionHost
+import FinTS
 import Foundation
 import Sync
 import SyncTesting
@@ -321,6 +322,17 @@ final class DebugHarness {
 		}
 	}
 
+	/// The state of the bank lookup without the entry, which can hold an IBAN or a login name typed by mistake.
+	private static func label(_ state: BankLookup.State) -> String {
+		switch state {
+		case .none: "none"
+		case .searching: "searching"
+		case let .matches(banks): "matches(\(banks.map(\.code).joined(separator: ",")))"
+		case let .found(bank): "found(\(bank.code))"
+		case .failed: "failed"
+		}
+	}
+
 	private static func label(_ match: SetupMatch) -> String {
 		switch match {
 		case .new: "new"
@@ -357,7 +369,7 @@ final class DebugHarness {
 		default: break
 		}
 		log("setup service=\(setup.service?.title ?? "-") other=\(setup.otherServices.map(\.title)) error=\(setup.serviceError ?? "-")")
-		log("setup step=\(setup.step) entry=\(setup.entry) login=\(setup.loginName) highlighted=\(setup.highlighted) lookup=\(setup.lookup.state) error=\(setup.loginError ?? "-") saveError=\(setup.saveError ?? "-") dialog=\(model.sync.broker.current != nil) candidates=\(setup.candidates.map { "\($0.id):\(Self.label($0.match))" }) selected=\(setup.selected.sorted())")
+		log("setup step=\(setup.step) entry=\(!setup.entry.isEmpty) login=\(!setup.loginName.isEmpty) highlighted=\(setup.highlighted) lookup=\(Self.label(setup.lookup.state)) error=\(setup.loginError ?? "-") saveError=\(setup.saveError ?? "-") dialog=\(model.sync.broker.current != nil) candidates=\(setup.candidates.map { "\($0.id):\(Self.label($0.match))" }) selected=\(setup.selected.sorted())")
 	}
 
 	/// The sheet on top of all others, where the dialogs of a refresh appear.

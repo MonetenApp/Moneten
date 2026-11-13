@@ -25,21 +25,22 @@ Issue #85 builds the FinTS path of the assistant on the connector of issue #13 p
 
 ### The search for a bank
 
-The helper sends the whole bank directory of hbci4java once per assistant, with the command `banks`: 4,063 Bankleitzahlen in 535 KB, in about 0.2 seconds. `BankDirectory` keeps it in memory, so no keystroke starts a helper. An entry that starts like an IBAN, or has 8 or more digits, goes to `BankEntry`. Any other entry is a search.
+The helper sends the whole bank directory of hbci4java once per assistant, with the command `banks`: 4,063 Bankleitzahlen in 535 KB, in about 0.2 seconds. `BankDirectory` keeps it in memory, so no keystroke starts a helper. An entry that starts like an IBAN, or has 8 or more digits, goes to `BankEntry`. Any other entry is a search, and the digits of the start of a Bankleitzahl count as one word also when they are typed in groups, such as "760 30". A `failed` line of the helper shows its text.
 
 A search compares each word of the entry with the words of the name and the place, in both spellings of umlauts ("muenchen" and "munchen" for "München") and without accents, and with the start of the Bankleitzahl. Every word must match. The order is:
 
-1. Banks with a FinTS address before the others.
+1. Banks with a FinTS address before the others. An old entry of a merged bank, such as "Sparkasse Bonn -alt-", counts as a bank without one.
 2. A bank whose name starts with the entry, such as "ING-DiBa" for "ing" before a bank in Ingolstadt.
 3. A bank where each word starts a word of the name or the place.
 4. A bank where a word only appears inside a word, such as "sparkasse" in "Stadtsparkasse".
-5. The name, then the place and the Bankleitzahl, so two banks of one name stand in the order of their places.
+5. A Bankleitzahl with a login hint, so that "comdirect" offers the four Bankleitzahlen that comdirect names before the four others.
+6. The name, then the place and the Bankleitzahl, so two banks of one name stand in the order of their places.
 
 The directory names some banks differently from their customers, such as "Deutsche Kreditbank Berlin" for DKB, so the short name of each bank with a login hint is a search word too. A search takes 4 to 12 ms in a release build and runs off the main thread. The step shows the first 50 matches. Each row has the place and the Bankleitzahl, and the step says that the Bankleitzahl is digits 5 to 12 of the IBAN, because the login sends the Bankleitzahl that the user chooses, and Consorsbank, for example, has two.
 
 ### Login hints
 
-`LoginHint` is a table in `Sources/FinTS/LoginHints.swift`: a label for the login name field, one sentence of help, and the URL of the public page of the bank that confirms it. A hint covers the Bankleitzahlen that a page of the bank names as its own: 76030080 for Consorsbank, 12030000 for DKB, the four that comdirect names, and 50010517 for ING. The FinTS server is no rule: DAB BNP Paribas (70120400) uses the server of Consorsbank, and no page of the bank confirms that its login is the same, so it gets no hint. The same holds for the four other Bankleitzahlen of comdirect in the directory. The savings banks are too many for a list and have a host each, so a savings bank is a bank with "Sparkasse" in its name on the FinTS servers of the savings banks (`s-fints-pt-` and `s-hbci.de`). That rule leaves out a Bausparkasse and the Südtiroler Sparkasse, which uses the servers of the cooperative banks. A hint without a public page of the bank is left out.
+`LoginHint` is a table in `Sources/FinTS/LoginHints.swift`: a label for the login name field, one sentence of help, and the URL of the public page of the bank that confirms it. A hint covers the Bankleitzahlen that a page of the bank names as its own: 76030080 for Consorsbank, 12030000 for DKB, the four that comdirect names, and 50010517 for ING. The FinTS server is no rule: DAB BNP Paribas (70120400) uses the server of Consorsbank, and no page of the bank confirms that its login is the same, so it gets no hint. The same holds for the four other Bankleitzahlen of comdirect in the directory. The savings banks are too many for a list and have a host each, so a savings bank is a bank with "Sparkasse" in its name on the FinTS servers of the savings banks (`s-fints-pt-` and `s-hbci.de`). That rule leaves out a Bausparkasse, the Südtiroler Sparkasse, which uses the servers of the cooperative banks, and the old entries of merged savings banks. The link of the savings banks is the guide of Ostseesparkasse Rostock and says so, because no page of the savings banks as a group describes FinTS. A hint without a public page of the bank is left out.
 
 Many banks answer an unknown login name with a PIN error. Only at the first login of a setup can the login name be wrong, so only there `SyncFailure.messageAtFirstLogin(userIDHelp:)` names the user ID as well and repeats the hint. A refresh keeps the message and the rules of a rejected PIN.
 

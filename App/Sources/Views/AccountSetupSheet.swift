@@ -426,7 +426,7 @@ struct AccountSetupSheet: View {
 					Text(hint.help)
 						.foregroundStyle(.secondary)
 						.fixedSize(horizontal: false, vertical: true)
-					Link("Help page of the bank", destination: hint.source)
+					Link(hint.sourceTitle, destination: hint.source)
 				}
 				.font(.callout)
 			}
