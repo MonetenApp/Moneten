@@ -217,6 +217,27 @@ import Testing
 		#expect(Result { () throws(ScriptError) -> LuaValue in _ = try session.load(); return try session.call(.function(function)) } == .success(.string("not enough memory")))
 	}
 
+	/// A value that replaces another of the same attribute adds only its growth, and a node that is no
+	/// element takes no attribute and adds nothing.
+	@Test func replacedAttributeAddsOnlyItsGrowth() {
+		let package = demo("""
+			WebBanking{version = 1}
+			big = string.rep("x", 4 * 1048576)
+			page = "<p>a</p>"
+			function Replace()
+				local paragraph = HTML(page):xpath("//p")
+				local attribute = HTML('<p class="a">a</p>'):xpath("//p/@class")
+				for i = 1, 100 do
+					local ok, message = pcall(function() paragraph:attr("data", big) attribute:attr("data", big) end)
+					if not ok then return (message:gsub("^Demo%.lua:%d+: ", "")) end
+				end
+				return "replaced"
+			end
+			""")
+		let session = HostSession(package: package, transport: LargeBodies(), memory: 64 * 1_048_576, ask: { _ in .denied }, log: { _ in })
+		#expect(Result { () throws(ScriptError) -> LuaValue in _ = try session.load(); return try session.call(.function("Replace")) } == .success(.string("replaced")))
+	}
+
 	/// An error of a Swift function that quotes data of the script, such as a URL of 1 MB, keeps 1,000
 	/// bytes of it, so that the error needs little memory.
 	@Test(arguments: [

@@ -170,7 +170,11 @@ enum HTMLDocument {
 				return 1
 			}
 			let value = stack.string(at: 3)
-			let growth = list.nodes.count * (name.utf8.count + value.utf8.count + HTMLTree.nodeCost)
+			// Only elements take attributes. A value that replaces one frees the old value, so only the growth counts.
+			let growth = list.nodes.reduce(0) { sum, node in
+				guard node.pointee.type == XML_ELEMENT_NODE else { return sum }
+				return sum + (node.attribute(name).map { max(0, value.utf8.count - $0.utf8.count) } ?? name.utf8.count + value.utf8.count + HTMLTree.nodeCost)
+			}
 			guard list.tree.fits(growth) else {
 				stack.pushMessage("not enough memory")
 				return -1
