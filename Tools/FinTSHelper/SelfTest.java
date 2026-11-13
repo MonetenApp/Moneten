@@ -377,6 +377,20 @@ final class SelfTest {
 		expect("empty securities account without a currency counts in euro", String.valueOf(FinTSHelper.alone("7654325", () -> FinTSHelper.value("7654325", holdings("2026-11-13", null), false, null))
 			.get("balance")), "{type=balance, amount=0, currency=EUR, date=2026-11-13}");
 
+		GVRWPDepotList.Entry.Gattung bond = holding("10000.00", "EUR");
+		bond.stueckzinsbetrag = new BigDecimalValue(new BigDecimal("200.00"), "EUR");
+		expect("a holding counts with its accrued interest", String.valueOf(FinTSHelper.alone("7654321", () -> FinTSHelper.value("7654321",
+			holdings("2026-11-12", null, bond, holding("500.00", "EUR")), false, "EUR")).get("balance")),
+			"{type=balance, amount=10700.00, currency=EUR, date=2026-11-12}");
+		GVRWPDepotList noEntries = new GVRWPDepotList();
+		noEntries.jobStatus.addRetVal(new HBCIRetVal(null, null, null, "3010", "Keine Einträge vorhanden", null));
+		expect("empty securities account answered with 3010 is worth 0", FinTSHelper.Json.write(FinTSHelper.alone("7654325", () -> FinTSHelper.value("7654325",
+			noEntries, false, "EUR"))), "{\"type\":\"result\",\"account\":\"7654325\",\"balance\":{\"type\":\"balance\",\"amount\":\"0\",\"currency\":\"EUR\"},\"errors\":[]}");
+		GVRWPDepotList unexplained = new GVRWPDepotList();
+		unexplained.jobStatus.addRetVal(new HBCIRetVal(null, null, null, "0020", "Auftrag ausgeführt", null));
+		expect("an answer without entries and without 3010 fails", FinTSHelper.alone("7654325", () -> FinTSHelper.value("7654325", unexplained, false, "EUR"))
+			.get("text"), "The bank sent no value for this securities account.");
+
 		GVRWPDepotList refused = new GVRWPDepotList();
 		refused.jobStatus.addRetVal(new HBCIRetVal(null, null, null, "9160", "Erforderliche Auftragsreferenz fehlt", null));
 		String refusedLine = FinTSHelper.Json.write(FinTSHelper.alone("7654323", () -> FinTSHelper.value("7654323", refused, false, "EUR")));
