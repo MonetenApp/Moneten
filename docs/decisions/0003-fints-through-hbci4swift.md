@@ -21,11 +21,13 @@ Use HBCI4Swift behind `FinTSConnector`, unchanged, as a Git submodule in `Vendor
 
 ## Prototype status
 
-`App/FinTSProbe/main.swift` is the prototype of issue #11. It fetches the TAN methods, the accounts, the balances, and the transactions of one bank access and prints which fields arrived. It builds against the fork commit of [macemmi/HBCI4Swift#1](https://github.com/macemmi/HBCI4Swift/pull/1), one commit on top of upstream `d7aaede`, loads the syntax files from the app bundle, and composes the first message. The bank tests wait for the product ID of the FinTS registration.
+The prototype, the submodule, and the build script were removed on 13 November 2026 (issue #107). The links point to their last version.
+
+[App/FinTSProbe/main.swift](https://github.com/MonetenApp/Moneten/blob/b6ea16c/App/FinTSProbe/main.swift) is the prototype of issue #11. It fetches the TAN methods, the accounts, the balances, and the transactions of one bank access and prints which fields arrived. It builds against the fork commit of [macemmi/HBCI4Swift#1](https://github.com/macemmi/HBCI4Swift/pull/1), one commit on top of upstream `d7aaede`, loads the syntax files from the app bundle, and composes the first message. The bank tests wait for the product ID of the FinTS registration.
 
 Two findings so far:
 
-- The Xcode project of HBCI4Swift sets macOS 10.10 and 10.13, which Xcode 27 does not build. `scripts/build-hbci4swift.sh` overrides the deployment target.
+- The Xcode project of HBCI4Swift sets macOS 10.10 and 10.13, which Xcode 27 does not build. [scripts/build-hbci4swift.sh](https://github.com/MonetenApp/Moneten/blob/b6ea16c/scripts/build-hbci4swift.sh) overrides the deployment target.
 - When a message fails, HBCI4Swift logs the unencrypted message at info level. With PIN/TAN, its signature segment holds the PIN. The probe drops such lines, and `FinTSConnector` must do the same.
 
 ## Consequences

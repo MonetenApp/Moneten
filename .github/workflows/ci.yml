@@ -28,8 +28,6 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: true
       - run: swift --version
       - run: brew install xcodegen
       # The made-up bank of the ext record tests. macOS 15 does not resolve names under localhost.
@@ -63,8 +61,6 @@ jobs:
       - run: scripts/build-app.sh debug
       - name: UI performance
         run: scripts/perf-check.sh
-      - name: FinTS prototype
-        run: xcodebuild -project App/Moneten.xcodeproj -scheme FinTSProbe -derivedDataPath .build/xcode -disableAutomaticPackageResolution -quiet build
       - name: FinTS probe with hbci4java
         # Downloads the jars of Tools/FinTSProbeJava/dependencies.lock, checks their SHA-256, and compiles the probe.
         run: scripts/fints-probe-java.sh --build-only

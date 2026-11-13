@@ -36,7 +36,7 @@ Trade Republic has no FinTS and no official API. MoneyMoney reads it through its
 
 ## First FinTS test, 11 November 2026
 
-The product registration number arrived on 11 November 2026. The FinTSProbe of issue #11 ran against two banks the same day.
+The product registration number arrived on 11 November 2026. The FinTSProbe of issue #11, a Swift probe on HBCI4Swift, ran against two banks the same day. The HBCI4Swift findings below are historical: ADR 0014 replaced HBCI4Swift, and issue #107 removed the Swift probe.
 
 - **DKB** answered 9078 "FinTS-Produkt ist nicht registriert". The DK hands new numbers to the banks about once a week, and each bank takes days to weeks. The PIN is not checked before this answer.
 - **Consorsbank** first answered 9010 "Ungültiger Signaturaufbau: Fehler im Segmentaufbau". HBCI4Swift sent the security profile `PIN:2` in the encryption head (HNVSK) and `PIN:1` in the signature head (HNSHK) for security function 999. Consorsbank checks that both match. Hibiscus had the same error with Consorsbank in 2019 ([forum](https://homebanking-hilfe.de/forum/topic.php?t=23128&page=7)). With `PIN:1` in both heads for 999, the dialog works. The fix is one line in `HBCISecurityMethodPinTan.swift`. It goes to the author as a pull request.

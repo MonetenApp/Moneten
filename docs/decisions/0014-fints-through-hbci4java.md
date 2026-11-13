@@ -44,7 +44,7 @@ The same test ran with hbci4j-core 4.1.17 through `Tools/FinTSProbeJava`. Withou
 - The repository holds Java code for the helper. The rest of the app stays Swift.
 - The helper starts in about two seconds. A sync takes several seconds anyway.
 - The runtime contains `java.desktop` and `java.smartcardio`, because hbci4java uses them. A GraalVM native image could make the helper smaller and faster to start. It needs configuration for the classes and syntax files that hbci4java loads by name, so it is a later option, not part of this decision.
-- The HBCI4Swift submodule, `scripts/build-hbci4swift.sh`, and `App/FinTSProbe` stay until the connector of issue #13 runs on hbci4java. Then they are removed.
+- The HBCI4Swift submodule, [scripts/build-hbci4swift.sh](https://github.com/MonetenApp/Moneten/blob/b6ea16c/scripts/build-hbci4swift.sh), and [App/FinTSProbe](https://github.com/MonetenApp/Moneten/blob/b6ea16c/App/FinTSProbe) stay until the connector of issue #13 runs on hbci4java. Then they are removed. (They were removed on 13 November 2026, issue #107.)
 
 ## Alternatives
 

@@ -213,12 +213,9 @@ Moneten/
 │   └── FinTS/
 ├── Tests/                   One test target per library
 ├── App/                     The app target: project.yml, sources, Info.plist, resources
-│   └── FinTSProbe/          The FinTS prototype of issue #11
 ├── Tools/
 │   ├── FinTSHelper/         The hbci4java helper that FinTSConnector runs (ADR 0014)
 │   └── FinTSProbeJava/      The hbci4java probe of issue #11, and dependencies.lock
-├── Vendor/
-│   └── HBCI4Swift/          Git submodule of the Swift probe, until #13 (ADR 0014)
 ├── scripts/                 Test, build, project, and check scripts
 ├── openspec/                Specs of every change
 └── docs/
