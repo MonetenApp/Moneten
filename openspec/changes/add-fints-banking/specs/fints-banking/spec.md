@@ -252,6 +252,40 @@ The app SHALL list a credit card as an account of the type "Credit card" when th
 - **WHEN** the user adds the card in the account selection
 - **THEN** the card appears as its own account with its transactions
 
+### Requirement: Read the value of a securities account
+
+The app SHALL fetch the value of a securities account through the custody account balance of the bank (HKWPD), and no balance and no transactions, and store it with the date of the statement as the value of the portfolio on that day. The value is the total that the bank sends, or the sum of the values of the holdings when the bank sends no total. When the app cannot read a value, the account says why. The holdings come with add-securities-accounts.
+
+#### Scenario: Value of a securities account
+
+- **GIVEN** the bank offers the custody account balance for "Depot" and reports a total of 24.518,37 € on 12.11.2026
+- **WHEN** the user refreshes "Depot"
+- **THEN** "Depot" shows 24.518,37 €
+- **AND** the value of "Depot" on 12.11.2026 is 24.518,37 €
+
+#### Scenario: Bank without the custody account balance
+
+- **GIVEN** the bank lists the securities account "Fondsdepot" and does not allow the custody account balance for it
+- **WHEN** the user refreshes "Fondsdepot"
+- **THEN** "Fondsdepot" shows "Moneten can't read this securities account at this bank yet."
+
+#### Scenario: Answer without a value
+
+- **GIVEN** the bank answers the custody account balance of "Depot" without a total, and its holdings have no value in one currency
+- **WHEN** the refresh ends
+- **THEN** "Depot" shows "The bank sent no value for this securities account."
+
+#### Scenario: Bank rejects the request
+
+- **WHEN** the bank answers the custody account balance of "Depot" with the code 9160 and the text "Erforderliche Auftragsreferenz fehlt"
+- **THEN** the error of "Depot" quotes "Erforderliche Auftragsreferenz fehlt" and shows the code 9160
+
+#### Scenario: Consorsbank
+
+- **GIVEN** a login at Consorsbank, whose bank parameters say that no order needs a TAN
+- **WHEN** the app refreshes a giro account and a securities account of the login
+- **THEN** the balance and the transactions go with HKTAN, and the custody account balance goes without HKTAN
+
 ### Requirement: One dialog for all accounts of a login
 
 The app SHALL fetch all accounts of one login that are due in a refresh inside one FinTS dialog, so that the bank sees one login and asks for at most one TAN for that login.
