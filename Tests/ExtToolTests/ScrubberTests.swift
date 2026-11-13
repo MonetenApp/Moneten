@@ -455,5 +455,22 @@ extension ExtTool {
 			#expect(refusal([exchange("POST", url, body: body)], login: ["erika", "2025"])?
 				.hasPrefix("The password is short or only digits, and a request holds it inside a longer value") == true)
 		}
+	
+		// MARK: Round 4
+
+		/// `MjAyNQ==` is the PIN `2025` as a whole, in Base64.
+		@Test func weakPasswordEncodedAsAWholeValue() throws {
+			let (fixture, _, file) = try scrub([exchange("POST", "https://bank.example/login?data=MjAyNQ", body: "data=MjAyNQ==")], login: ["erika", "2025"])
+			#expect(fixture.exchanges[0].request.body == "data={{password}}")
+			#expect(fixture.exchanges[0].request.url.absoluteString == "https://bank.example/login?data=%7B%7Bpassword%7D%7D")
+			#expect(!file.contains("MjAyNQ"))
+		}
+
+		@Test func weakPasswordAsAWholeMultipartField() throws {
+			let body = "--XyZ\r\nContent-Disposition: form-data; name=\"pin\"\r\n\r\n2025\r\n--XyZ--\r\n"
+			let (fixture, _, _) = try scrub([exchange("POST", "https://bank.example/login", headers: ["Content-Type": "multipart/form-data; boundary=XyZ"],
+				body: body)], login: ["erika", "2025"])
+			#expect(fixture.exchanges[0].request.body?.contains("\r\n\r\n{{password}}\r\n") == true)
+		}
 	}
 }

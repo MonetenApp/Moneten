@@ -72,17 +72,22 @@ extension ExtTool {
 			#expect(try extOffline(["test", script.path, fixture.path, expected.path]).output == "PASS 1 account, 0 transactions\n")
 		}
 
-		/// A script whose address needs a hash of `seed` and that encrypts the password with `key`.
-		func seeded(key: String, arguments: [String] = []) throws -> (Run, URL) {
+		/// A script whose address needs `kid`, from `seed`, and that encrypts the password with `key`.
+		func seeded(key: String, kid: String = "MM.sha256(MM.binToHex(seed))", arguments: [String] = []) throws -> (Run, URL) {
 			let bank = try LocalBank()
 			let folder = try files(["Seed.lua": """
 				WebBanking{version = 1, services = {"Seed"}}
+				local function xor(data, byte)
+					local parts = {}
+					for i = 1, #data do parts[i] = string.char(data:byte(i) ~ byte) end
+					return table.concat(parts)
+				end
 				function SupportsBank() return true end
 				function InitializeSession(protocol, bankCode, username, customer, password)
 					local seed = MM.random(48)
 					local key = \(key)
 					MM.aes256encrypt(key, MM.random(16), password)
-					Connection():get("https://bank.localhost/logout?kid=" .. MM.sha256(MM.binToHex(seed)))
+					Connection():get("https://bank.localhost/logout?kid=" .. \(kid))
 				end
 				function ListAccounts() return {} end
 				"""])
@@ -108,6 +113,42 @@ extension ExtTool {
 			#expect(!FileManager.default.fileExists(atPath: fixture.path))
 			let (kept, _) = try seeded(key: #""0123456789abcdef0123456789abcdef""#, arguments: ["--keep-random"])
 			#expect(kept.status == 0, "\(kept.errors)")
+			#expect(kept.errors.contains("ext keeps a random value that the replay needs, as --keep-random allows. It may be key material that you chose to keep.\n"))
+		}
+
+		/// The address holds the seed, so the fixture keeps it, and the key comes from it in a way that no
+		/// pattern lists: the replay rebuilds the key, so the recording stops, also with --keep-random.
+		@Test(arguments: ["MM.hexToBin(MM.sha512(seed)):sub(1, 32)", "xor(seed:sub(1, 32), 0x5A)", "MM.hmac256('app-secret', seed)"])
+		func keyRebuiltFromAKeptSeed(key: String) throws {
+			for arguments in [[], ["--keep-random"]] {
+				let (run, fixture) = try seeded(key: key, kid: "MM.binToHex(seed)", arguments: arguments)
+				#expect(run.status == 2, "\(arguments) \(run.errors)")
+				#expect(run.errors.contains("ext wrote no file") && run.errors.contains("key"))
+				#expect(!FileManager.default.fileExists(atPath: fixture.path))
+			}
+		}
+
+		/// A secret of the script signs each request with a nonce: the key is a constant, so the run records and replays.
+		@Test func constantSecretWithANonceRecordsAndReplays() throws {
+			let bank = try LocalBank()
+			let folder = try files(["Sign.lua": """
+				WebBanking{version = 1, services = {"Sign"}}
+				local function signed(path)
+					local nonce = MM.uuid()
+					return "https://bank.localhost" .. path .. "?nonce=" .. nonce .. "&sig=" .. MM.binToHex(MM.hmac256("app-secret", nonce))
+				end
+				function SupportsBank() return true end
+				function InitializeSession(protocol, bankCode, username, customer, password)
+					Connection():get(signed("/logout"))
+					Connection():get(signed("/logout"))
+				end
+				function ListAccounts() return {} end
+				"""])
+			let record = try ext(["record", "Sign.lua", "fixture.json", "--trust", bank.certificate.path], input: "y\n", environment: login, folder: folder)
+			#expect(record.status == 0, "\(record.errors)")
+			let sign = folder.appending(path: "Sign.lua").path, fixture = folder.appending(path: "fixture.json").path, expected = folder.appending(path: "expected.json").path
+			#expect(try extOffline(["test", sign, fixture, expected, "--update"]).status == 0)
+			#expect(try extOffline(["test", sign, fixture, expected]).output == "PASS 0 accounts, 0 transactions\n")
 		}
 
 		@Test func refusedRecordingKeepsTheFixture() throws {

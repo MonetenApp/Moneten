@@ -80,6 +80,8 @@ struct Session {
 		let keys: Set<Int>
 		/// The script used an AES or HMAC key that comes from no value of `random`.
 		let foreignKeys: Bool
+		/// Each AES or HMAC key of the run in order, as its SHA-256, with the number of the exchanges before it.
+		let keyUses: [KeyUse]
 
 		/// Prints a line for each account that failed and stops with the last one.
 		func checkAccounts() throws(Ext.Failure) {
@@ -87,6 +89,12 @@ struct Session {
 			accountErrors.dropLast().forEach(Terminal.error)
 			throw .run(last)
 		}
+	}
+
+	struct KeyUse {
+		let fingerprint: Data
+		/// The index of the next request, which can carry what the key encrypted or signed.
+		let request: Int
 	}
 
 	func perform() async -> Outcome {
@@ -136,6 +144,7 @@ final class Trace: Sendable {
 		var random: [RandomValue] = []
 		var keys: Set<Int> = []
 		var foreignKeys = false
+		var keyUses: [Session.KeyUse] = []
 		var storage: Data?
 		var refreshed: [(account: LuaValue, result: LuaValue)] = []
 	}
@@ -149,6 +158,7 @@ final class Trace: Sendable {
 			case let .random(value): state.random.append(value)
 			case let .key(index): state.keys.insert(index)
 			case .foreignKey: state.foreignKeys = true
+			case let .keyFingerprint(fingerprint): state.keyUses.append(Session.KeyUse(fingerprint: fingerprint, request: state.exchanges.count))
 			case let .storage(data): state.storage = data
 			case let .result(.refreshAccount(account, _, _, _, _, _), result):
 				state.refreshed.removeAll { $0.account == account }
@@ -177,7 +187,7 @@ final class Trace: Sendable {
 	func outcome(document: LuaValue?, failure: String?, accountErrors: [String]) -> Session.Outcome {
 		state.withLock { state in
 			Session.Outcome(document: document, failure: failure, accountErrors: accountErrors, storage: state.storage, exchanges: state.exchanges,
-				random: state.random, keys: state.keys, foreignKeys: state.foreignKeys)
+				random: state.random, keys: state.keys, foreignKeys: state.foreignKeys, keyUses: state.keyUses)
 		}
 	}
 }

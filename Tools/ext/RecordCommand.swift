@@ -39,7 +39,8 @@ struct RecordCommand {
 			answers: answers.answers, random: outcome.random, exchanges: outcome.exchanges)
 		let scrubber = Scrubber(secretFields: answers.secretFields, scriptText: script.package.files.map(\.text).joined(separator: "\n"))
 		let choice = try await Self.keeping(count: recording.random?.count ?? 0, initial: Scrubber.neededByAddresses(recording), keys: outcome.keys) { keep in
-			try await Self.replay(try scrubber.scrub(recording, keeping: keep).0, script: script, service: service)
+			let outcome = await Self.replay(try scrubber.scrub(recording, keeping: keep).0, script: script, service: service)
+			return outcome.failure ?? outcome.accountErrors.first
 		}
 		var keep = Scrubber.neededByAddresses(recording).subtracting(outcome.keys)
 		switch choice {
@@ -56,6 +57,17 @@ struct RecordCommand {
 			Terminal.error("The replay of the fixture fails, so ext test will fail too: \(message)")
 		}
 		let (scrubbed, report) = try scrubber.scrub(recording, keeping: keep)
+		if !keep.isEmpty, !outcome.keyUses.isEmpty {
+			let withKept = await Self.replay(scrubbed, script: script, service: service).keyUses.map(\.fingerprint)
+			let withNone = await Self.replay(try scrubber.scrub(recording, keeping: []).0, script: script, service: service).keyUses.map(\.fingerprint)
+			if let rebuilt = Self.rebuiltKey(outcome.keyUses.map(\.fingerprint), withKept: withKept, withNone: withNone) {
+				let request = outcome.keyUses[rebuilt].request
+				let place = scrubbed.exchanges.indices.contains(request)
+					? "before \(scrubbed.exchanges[request].request.method) \(scrubbed.exchanges[request].request.url.absoluteString)" : "after the last request"
+				throw Ext.Failure.run("The replay rebuilds an AES or HMAC key of the script from the random values that the fixture keeps, so the fixture "
+					+ "would give the key away. The script used the key \(place). ext wrote no file, also with --keep-random.")
+			}
+		}
 		do {
 			try Self.encoded(scrubbed).write(to: file, options: .atomic)
 		} catch {
@@ -64,9 +76,10 @@ struct RecordCommand {
 		for index in keep.sorted() {
 			guard let value = recording.random?[index] else { continue }
 			let fields = Self.fields(of: value, in: recording, scrubbed: scrubbed)
-			Terminal.error(fields.isEmpty
-				? "ext keeps a random value that the replay needs and that an address holds only in a derived form, such as the hash of a PKCE verifier."
-				: "ext keeps a random value as it is: \(fields.joined(separator: ", ")).")
+			let derived = keepRandom && outcome.foreignKeys
+				? "ext keeps a random value that the replay needs, as --keep-random allows. It may be key material that you chose to keep."
+				: "ext keeps a random value that the replay needs and that an address holds only in a derived form, such as the hash of a PKCE verifier."
+			Terminal.error(fields.isEmpty ? derived : "ext keeps a random value as it is: \(fields.joined(separator: ", ")).")
 		}
 		Terminal.error("Recorded \(Document.counted(scrubbed.exchanges.count, "request")).")
 		Terminal.error(report.line)
@@ -105,14 +118,19 @@ struct RecordCommand {
 		return .misses(miss)
 	}
 
-	/// Replays a scrubbed fixture as `ext test` does, without the output of the script, and gives the
-	/// message of the failure, or nil.
-	static func replay(_ fixture: Fixture, script: Script, service: String) async -> String? {
+	/// Replays a scrubbed fixture as `ext test` does, without the output of the script.
+	static func replay(_ fixture: Fixture, script: Script, service: String) async -> Session.Outcome {
 		let session = Session(script: script, service: service, environment: fixture.environment ?? .standard, fixture: fixture,
 			developer: DeveloperOptions(capture: .replay(start: fixture.startTime ?? TestCommand.defaultStart, random: fixture.random ?? [])),
 			user: ReplaySession(fixture), quiet: true)
-		let outcome = await session.perform()
-		return outcome.failure ?? outcome.accountErrors.first
+		return await session.perform()
+	}
+
+	/// The index of the first key of the recording that the replay with the kept random values makes
+	/// again and a replay with every random value withheld does not: the fixture would rebuild it. A key
+	/// that both make, such as a secret of the script, is a constant. Each key is a SHA-256 fingerprint.
+	static func rebuiltKey(_ recorded: [Data], withKept: [Data], withNone: [Data]) -> Int? {
+		recorded.indices.first { withKept.contains(recorded[$0]) && !withNone.contains(recorded[$0]) }
 	}
 
 	/// Where the addresses of the recording hold a random value as it is, such as "the value of `nonce`

@@ -144,6 +144,8 @@ private struct Secrets {
 
 		/// For a weak password: a match that stands as a whole value, between `=`, `/`, quotes, and the like.
 		var delimited: NSRegularExpression?
+		/// For a weak password: a value that is the password as a whole, in any of its forms, such as `MjAyNQ==`.
+		var entire: NSRegularExpression?
 		var replaced = 0
 
 		/// Whether a whole JSON number with this value becomes the placeholder. In a request, any secret
@@ -184,7 +186,8 @@ private struct Secrets {
 		let ignoringCase = [.username, .password, .login, .answer].contains(kind)
 		all.append(Secret(value: value, placeholder: placeholder, kind: kind, isNumber: isNumber, requestsOnly: requestsOnly,
 			matcher: anywhere ? Encodings.matcher(for: value, ignoringCase: ignoringCase) : nil,
-			delimited: requestsOnly ? Encodings.matcher(for: value, ignoringCase: ignoringCase, asWholeValue: true) : nil))
+			delimited: requestsOnly ? Encodings.matcher(for: value, ignoringCase: ignoringCase, asWholeValue: true) : nil,
+			entire: requestsOnly ? Encodings.matcher(for: value, ignoringCase: ignoringCase, entire: true) : nil))
 		return placeholder
 	}
 
@@ -243,14 +246,16 @@ private struct Secrets {
 
 	/// The kind of a weak password that a request holds inside a longer value, such as `2025` in
 	/// `from=2025-10-10`, `from=2025/10/10`, or the number `3.2025`, where the text around its
-	/// placeholder would show it. Each path segment, query and form value, JSON string, and JSON number
-	/// counts as a whole: it holds the password only when it is the password. Headers and other bodies
-	/// count between the delimiters of `Encodings.matcher(asWholeValue:)`.
+	/// placeholder would show it. Each path segment, query, form, and multipart value, JSON string, and
+	/// JSON number counts as a whole: it holds the password inside it unless it is the password as a whole
+	/// in one of its forms, such as `MjAyNQ==`. Headers and other bodies count between the delimiters of
+	/// `Encodings.matcher(asWholeValue:)`.
 	func weakInsideAValue(of exchanges: [Fixture.Exchange], words: ScriptWords) -> Scrubber.Kind? {
 		for secret in all where secret.requestsOnly {
-			guard let matcher = secret.matcher, let delimited = secret.delimited else { continue }
+			guard let matcher = secret.matcher, let delimited = secret.delimited, let entire = secret.entire else { continue }
+			// A value holds the password inside it when it holds the password and is not the password as a whole in one of its forms.
 			let insideAValue = { (value: String) in
-				value.lowercased() != secret.value.lowercased() && Encodings.replace(matcher, with: "", in: value).1 > 0
+				Encodings.replace(matcher, with: "", in: value).1 > 0 && Encodings.replace(entire, with: "", in: value).1 == 0
 			}
 			for exchange in exchanges {
 				let request = exchange.request
@@ -261,8 +266,11 @@ private struct Secrets {
 					.map { address.segments[$0].removingPercentEncoding ?? String(address.segments[$0]) }
 				values += ((components?.queryItems ?? []) + fragment).compactMap(\.value)
 				var texts = Array((request.headers ?? [:]).values)
+				let contentType = request.headers?.first { $0.key.lowercased() == "content-type" }?.value ?? ""
 				if let body = request.body ?? Discovery.latin1(request.base64Body) {
-					if Encodings.isJSON(body) {
+					if contentType.lowercased().hasPrefix("multipart/") {
+						values += Discovery.multipart(body, contentType: contentType)?.map(\.value) ?? []
+					} else if Encodings.isJSON(body) {
 						for (segment, isString) in Encodings.segments(of: body, json: true) {
 							values += isString ? [(try? JSONDecoder().decode(String.self, from: Data(segment.utf8))) ?? segment]
 								: segment.matches(of: Encodings.number).map { String($0.output) }
@@ -749,13 +757,17 @@ enum Encodings {
 	/// or `asWholeValue` between the start or the end of the text, quotes, `=`, `&`, `?`, `#`, `:`, `,`,
 	/// `;`, brackets, braces, or white space. A slash is no delimiter, so `2025/10/10` holds the PIN
 	/// `2025` inside a longer value.
-	static func matcher(for value: String, ignoringCase: Bool, asWholeValue: Bool = false) -> NSRegularExpression {
+	/// With `entire`, the pattern matches only a text that is the value as a whole, in one of its forms.
+	static func matcher(for value: String, ignoringCase: Bool, asWholeValue: Bool = false, entire: Bool = false) -> NSRegularExpression {
 		let characters = value.unicodeScalars.map { "(?:" + forms(of: $0, ignoringCase: ignoringCase).joined(separator: "|") + ")" }.joined()
 		let base64 = Data(value.utf8).base64EncodedString()
 		let url = base64.replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_")
 		let whole = [base64, url].flatMap { [$0, $0.trimmingCharacters(in: CharacterSet(charactersIn: "="))] }
 			.sorted { $0.count > $1.count }.map(NSRegularExpression.escapedPattern(for:))
 		let core = "(?:" + ([characters] + whole).joined(separator: "|") + ")"
+		if entire {
+			return try! NSRegularExpression(pattern: "^" + core + "$")
+		}
 		if asWholeValue {
 			return try! NSRegularExpression(pattern: #"(?:^|(?<=[=&?#:,;"'\s\[\]{}()]))"# + core + #"(?=$|[=&?#:,;"'\s\[\]{}()])"#)
 		}
