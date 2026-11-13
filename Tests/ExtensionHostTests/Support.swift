@@ -31,12 +31,13 @@ final class Run {
 	var answer: HostDecision = .allowed
 	private(set) var session: HostSession!
 
-	init(_ package: ExtensionPackage, exchanges: [(String, String, Int, [String: String], String)] = [], decisions: [String: HostDecision] = [:]) {
+	init(_ package: ExtensionPackage, exchanges: [(String, String, Int, [String: String], String)] = [], decisions: [String: HostDecision] = [:],
+		testHosts: Set<String> = []) {
 		let fixture = try! decode(Fixture.self, ["exchanges": exchanges.map { method, url, status, headers, body in
 			["request": ["method": method, "url": url], "response": ["status": status, "headers": headers, "body": body]]
 		}])
 		let transport = FixtureTransport(fixture) { [unowned self] in requests.append($0) }
-		session = HostSession(package: package, transport: transport, decisions: decisions,
+		session = HostSession(package: package, transport: transport, decisions: decisions, testHosts: testHosts,
 			ask: { [unowned self] host in asked.append(host); return answer },
 			log: { [unowned self] in printed.append($0) })
 	}

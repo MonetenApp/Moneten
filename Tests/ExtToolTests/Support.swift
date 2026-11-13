@@ -37,13 +37,17 @@ func launch(_ program: URL, _ arguments: [String], input: String = "", environme
 	return Run(status: process.terminationStatus, output: String(decoding: output, as: UTF8.self), errors: String(decoding: errors, as: UTF8.self))
 }
 
+/// The test rule of a debug build of `ext`: the host lets the name of the made-up bank of `LocalBank` through.
+let testBank = ["MONETEN_TEST_HOSTS": "bank.localhost"]
+
 func ext(_ arguments: [String], input: String = "", environment: [String: String] = [:], folder: URL? = nil) throws -> Run {
-	try launch(extBinary, arguments, input: input, environment: environment, folder: folder)
+	try launch(extBinary, arguments, input: input, environment: testBank.merging(environment) { $1 }, folder: folder)
 }
 
 /// `ext` under a sandbox profile that refuses every network connection.
 func extOffline(_ arguments: [String], environment: [String: String] = [:]) throws -> Run {
-	try launch(URL(filePath: "/usr/bin/sandbox-exec"), ["-p", "(version 1)(allow default)(deny network*)", extBinary.path] + arguments, environment: environment)
+	try launch(URL(filePath: "/usr/bin/sandbox-exec"), ["-p", "(version 1)(allow default)(deny network*)", extBinary.path] + arguments,
+		environment: testBank.merging(environment) { $1 })
 }
 
 /// A new empty folder for the files of one test.

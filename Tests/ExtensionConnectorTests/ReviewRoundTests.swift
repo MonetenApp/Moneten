@@ -41,6 +41,22 @@ extension ExtensionConnectorTests {
 		#expect(browser.map(\.hosts) == [["auth.bank.example"]])
 	}
 
+	/// An answer that the app stored before it refused special-use names never opens a login page on one.
+	@Test(arguments: [("auth.bank.example", true), ("auth.bank.local", false)])
+	func storedAnswerOpensABrowserLoginOnlyForAPublicHost(host: String, opens: Bool) async throws {
+		let session = TestSession([.login([Secret("erika"), Secret("geheim")]), .tan(Secret("4711"))])
+		_ = try? await Self.refresh(session.connector(demo(Self.calls + """
+			function InitializeSession2(protocol, bankCode, step, credentials)
+				if step == 1 then return {challenge = "https://\(host)/authorize?state=s1", state = "s1"} end
+			end
+			function RefreshAccount() return {balance = 0, transactions = {}} end
+			"""), decisions: [host: .allowed]), session)
+		let browser = session.asked.withLock { $0 }.compactMap { request -> BrowserApproval? in
+			if case let .secondFactor(factor) = request, case let .openBrowser(approval) = factor.challenge { approval } else { nil }
+		}
+		#expect(browser.map(\.hosts) == (opens ? [[host]] : []))
+	}
+
 	@Test func accountsWithOneNumberStayApart() async throws {
 		let session = TestSession()
 		let setup = try await session.connector(demo(Self.calls + """
