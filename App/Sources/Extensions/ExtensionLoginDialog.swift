@@ -21,7 +21,7 @@ struct ExtensionLoginDialog: View {
 		DialogFrame(title: "Log In to “\(request.service)”") {
 			if request.rejected {
 				Section {
-					Label(SyncFailure.loginRejected.message, systemImage: "exclamationmark.triangle")
+					Label("The service did not accept the last login data. Check it and enter it again.", systemImage: "exclamationmark.triangle")
 						.foregroundStyle(.orange)
 						.fixedSize(horizontal: false, vertical: true)
 				}

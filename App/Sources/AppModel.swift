@@ -131,6 +131,9 @@ final class AppModel {
 	/// The connector of each extension that the app loaded, by the name of its package. E6 fills it from
 	/// the installed extensions, until then the debug harness does.
 	var extensionConnectors: [String: ExtensionConnector] = [:]
+	/// What a failed setup of an extension service left, such as a device registration in `LocalStorage`,
+	/// for the next setup of that service, by package and service. It lives in memory until the lock.
+	var extensionSetupStates: [String: AccessState] = [:]
 	/// The bank accesses, by ID. Their states stay in the database until a refresh reads them.
 	private(set) var accesses: [UUID: Access] = [:]
 	/// The "Add Account" assistant while its sheet is open.
@@ -290,6 +293,7 @@ final class AppModel {
 		// A locked app refreshes nothing and forgets every PIN in memory. The saved ones come back from the database at the next unlock.
 		sync.cancelAll()
 		sync.broker.forgetPINs()
+		extensionSetupStates = [:]
 		setup?.cancel()
 		setup = nil
 		try? store?.close()

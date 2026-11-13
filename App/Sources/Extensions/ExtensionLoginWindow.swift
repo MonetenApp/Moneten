@@ -28,7 +28,7 @@ struct ExtensionLoginWindow: View {
 				.padding(.horizontal, 20)
 				.padding(.vertical, 8)
 			ExtensionWebView(page: page, finish: { broker.answer(.tan(Secret($0)), to: prompt.id) }, refuse: { refusal = $0 },
-				fail: { broker.fail(prompt.id, with: .bank(BankMessage(text: $0))) })
+				fail: { broker.fail(prompt.id, with: .bank(BankMessage(text: $0))) }, isOpen: { broker.current?.id == prompt.id })
 				.frame(width: 640, height: 480)
 			if let refusal {
 				Label(refusal, systemImage: "exclamationmark.triangle")
@@ -80,6 +80,8 @@ private struct ExtensionWebView: NSViewRepresentable {
 	let finish: (String) -> Void
 	let refuse: (String) -> Void
 	let fail: (String) -> Void
+	/// Whether the dialog of this window is still the one on screen, which a cancel ends.
+	let isOpen: () -> Bool
 
 	func makeCoordinator() -> Coordinator {
 		Coordinator(page: page, finish: finish, refuse: refuse, fail: fail)
@@ -104,9 +106,11 @@ private struct ExtensionWebView: NSViewRepresentable {
 		view.navigationDelegate = context.coordinator
 		ExtensionWebDebug.current = view
 		// Nothing loads before the rules are in place.
-		let page = page, coordinator = context.coordinator, fail = fail
+		let page = page, coordinator = context.coordinator, fail = fail, isOpen = isOpen
 		WKContentRuleListStore.default().compileContentRuleList(forIdentifier: "moneten-extension-login", encodedContentRuleList: contentRules) { list, error in
 			MainActor.assumeIsolated {
+				// The user may have canceled the dialog while the rules compiled.
+				guard isOpen() else { return }
 				guard let list else {
 					return fail("The login window could not be secured: \(error?.localizedDescription ?? "no rules").")
 				}
