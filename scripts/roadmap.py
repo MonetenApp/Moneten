@@ -15,8 +15,9 @@ IDEAS = [
 
 
 def gh(path):
-	out = subprocess.run(["gh", "api", path], capture_output=True, text=True, check=True)
-	return json.loads(out.stdout)
+	"""Return every item of a list endpoint. One page holds at most 100, and the repository has more issues and pull requests."""
+	out = subprocess.run(["gh", "api", "--paginate", "--slurp", path], capture_output=True, text=True, check=True)
+	return [item for page in json.loads(out.stdout) for item in page]
 
 
 def read_changes():
