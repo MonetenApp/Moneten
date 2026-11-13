@@ -119,23 +119,6 @@ targets:
       base:
         PRODUCT_NAME: ext
         SKIP_INSTALL: YES
-  # The FinTS prototype of issue #11. It runs in the terminal. App/FinTSProbe/main.swift explains it.
-  FinTSProbe:
-    type: application
-    platform: macOS
-    sources:
-      - path: FinTSProbe
-    dependencies:
-      # Built from Vendor/HBCI4Swift by scripts/build-hbci4swift.sh.
-      - framework: ../.build/hbci4swift/HBCI4Swift.framework
-        embed: true
-        codeSign: true
-    settings:
-      base:
-        PRODUCT_BUNDLE_IDENTIFIER: io.github.alexander-schneider.FinTSProbe
-        PRODUCT_NAME: FinTSProbe
-        GENERATE_INFOPLIST_FILE: YES
-        ENABLE_HARDENED_RUNTIME: $(MONETEN_HARDENED_RUNTIME)
 schemes:
   ext:
     build:
@@ -149,9 +132,3 @@ schemes:
       config: Debug
     archive:
       config: Release
-  FinTSProbe:
-    build:
-      targets:
-        FinTSProbe: all
-    run:
-      config: Debug

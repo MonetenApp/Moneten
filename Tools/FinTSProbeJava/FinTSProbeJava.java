@@ -1,6 +1,6 @@
 // FinTSProbeJava fetches the accounts, balances, transactions, and depot holdings of one bank access
-// through hbci4java and prints what arrived. It is the hbci4java counterpart of App/FinTSProbe for
-// the comparison in issue #11. It only reads: it sends no payment.
+// through hbci4java and prints what arrived. It is the probe for the bank tests of issue #11, and
+// it replaced the Swift probe on HBCI4Swift (ADR 0014). It only reads: it sends no payment.
 //
 // Build and run it with scripts/fints-probe-java.sh:
 //

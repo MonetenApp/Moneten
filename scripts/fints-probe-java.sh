@@ -1,5 +1,5 @@
 #!/bin/sh
-# Builds and runs Tools/FinTSProbeJava, the hbci4java counterpart of App/FinTSProbe (issue #11).
+# Builds and runs Tools/FinTSProbeJava, the hbci4java probe for the bank tests of issue #11.
 # It gets the jars of hbci4java through scripts/hbci4java-jars.sh and compiles the probe with a JDK
 # 17 or later.
 # The arguments go to the probe. Its source file explains them. With --build-only the script stops

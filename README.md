@@ -51,8 +51,6 @@ open dist/Moneten.app
 scripts/check.sh                    # run the checks before a pull request; needs OpenSpec and Periphery
 ```
 
-`scripts/generate-project.sh` also fetches and builds HBCI4Swift from a Git submodule. The Swift FinTS prototype uses it until the FinTS connector runs on hbci4java.
-
 To sign with your team, create `App/Local.xcconfig` as `App/Signing.xcconfig` describes. A build without a team is signed to run locally. Every new build then has a new signature, and the Keychain does not hand the entries of an older build to a newer one. Set a database password when you rebuild often, or sign with a team. [ADR 0011](docs/decisions/0011-app-target-in-an-xcode-project.md) explains the build.
 
 The app keeps its data in `~/Library/Application Support/Moneten`. To try it with another folder, start it with `open --env MONETEN_DATA_DIR=/path/to/folder dist/Moneten.app`. Builds from before the rename used the folder `MonetenMoneten`, and the app moves it on its first start ([ADR 0013](docs/decisions/0013-name-the-app-moneten.md)).
