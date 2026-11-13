@@ -49,15 +49,18 @@ final class AccountSetup {
 	var groupID: UUID?
 	private(set) var step = Step.bank
 
-	/// "IBAN or Bankleitzahl" and the bank that it names.
+	/// "Bank, IBAN, or Bankleitzahl" and the bank that it names.
 	let lookup: BankLookup
 	var entry: String {
 		get { lookup.entry }
 		set {
 			if newValue != lookup.entry, !newValue.isEmpty { service = nil }
+			if newValue != lookup.entry { highlighted = 0 }
 			lookup.entry = newValue
 		}
 	}
+	/// The match that "Next" chooses, which the arrow keys move.
+	var highlighted = 0
 	/// The choice under "Other" in place of a bank.
 	var service: Service? {
 		didSet { serviceError = nil }
@@ -93,10 +96,12 @@ final class AccountSetup {
 	init(model: AppModel, groupID: UUID?) {
 		self.model = model
 		self.groupID = groupID
-		lookup = BankLookup(find: model.fints.bankInfo(bankCode:))
+		lookup = BankLookup { [fints = model.fints] in try await fints.bankDirectory() }
 	}
 
 	var bank: FinTSBank? { lookup.bank?.bank }
+	/// What the bank calls the login name, when Moneten knows it.
+	var loginHint: LoginHint? { lookup.bank?.loginHint }
 
 	var canGoOn: Bool {
 		switch step {
@@ -128,6 +133,10 @@ final class AccountSetup {
 			showsEntryErrors = true
 			if bank != nil {
 				step = .login
+				return
+			}
+			if case let .matches(banks) = lookup.state {
+				lookup.choose(banks[min(highlighted, banks.count - 1)])
 				return
 			}
 			task = Task {
@@ -166,7 +175,8 @@ final class AccountSetup {
 	/// so a second "Next" sends no second PIN. The login of an access that the app has waits for its
 	/// refresh, and its refresh waits for the login.
 	private func logIn() {
-		guard !isLoggingIn, let (code, bank) = lookup.bank, let url = bank.url else { return }
+		guard !isLoggingIn, let code = lookup.bank?.code, let bank, let url = bank.url else { return }
+		let userIDHelp = loginHint?.help
 		let access = Access(source: .fints(bankCode: code, url: url), bankName: bank.name, loginName: loginName.trimmingCharacters(in: .whitespaces))
 		let known = model.accesses.values.first { $0.isSameLogin(as: access) }?.id ?? access.id
 		let session = SetupSession(broker: model.sync.broker, access: access, pin: Secret(pin), replacing: known)
@@ -198,7 +208,7 @@ final class AccountSetup {
 				// The user canceled the TAN dialog: the login step stays as it was.
 				if error is CancellationError { return }
 				pin = ""
-				loginError = Self.message(error)
+				loginError = (error as? SyncFailure)?.messageAtFirstLogin(userIDHelp: userIDHelp) ?? error.localizedDescription
 			}
 		}
 	}
@@ -228,22 +238,28 @@ final class AccountSetup {
 		}
 		model.closeAccountSetup()
 	}
-
-	private static func message(_ error: Error) -> String {
-		(error as? SyncFailure)?.message ?? error.localizedDescription
-	}
 }
 
 struct AccountSetupSheet: View {
 	@Environment(AppModel.self) private var model
 	@Bindable var setup: AccountSetup
+	@FocusState private var focus: Field?
+
+	private enum Field { case entry, loginName, pin }
+
+	/// The bank step lists this many matches, so the sheet stays small. A longer list asks for more of the name.
+	private static let shownMatches = 50
 
 	var body: some View {
 		VStack(alignment: .leading, spacing: 0) {
-			Text("Add Account")
-				.font(.title3.weight(.semibold))
-				.padding(.horizontal, 20)
-				.padding(.top, 20)
+			VStack(alignment: .leading, spacing: 2) {
+				Text("Add Account")
+					.font(.title3.weight(.semibold))
+				Text(stepTitle)
+					.foregroundStyle(.secondary)
+			}
+			.padding(.horizontal, 20)
+			.padding(.top, 20)
 			SheetForm {
 				switch setup.step {
 				case .bank: bankStep
@@ -270,11 +286,36 @@ struct AccountSetupSheet: View {
 			guard !Task.isCancelled else { return }
 			await setup.lookUp()
 		}
+		// The field of the step on screen takes the keyboard, so that nothing typed goes into the field of
+		// another step. Back to a bank that is chosen, no field takes it: a login name typed after "Back"
+		// would replace the bank.
+		.task(id: setup.step) {
+			// The fields of the new step are not on screen before the next turn of the run loop.
+			try? await Task.sleep(for: .milliseconds(50))
+			focus = switch setup.step {
+			case .bank: setup.bank == nil ? .entry : nil
+			case .login: setup.loginName.isEmpty ? .loginName : .pin
+			case .accounts, .offline: nil
+			}
+		}
+	}
+
+	/// Which step is on screen, so that "Back" and "Next" say where the user is.
+	private var stepTitle: String {
+		switch setup.step {
+		case .bank: "Step 1 of 3: Bank"
+		case .login: "Step 2 of 3: Login data"
+		case .accounts: "Step 3 of 3: Accounts"
+		case .offline: "Step 2 of 2: Offline account"
+		}
 	}
 
 	@ViewBuilder private var bankStep: some View {
 		Section {
-			TextField("IBAN or Bankleitzahl", text: $setup.entry, prompt: Text("DE02 1203 0000 0000 2020 51"))
+			TextField("Bank, IBAN, or Bankleitzahl", text: $setup.entry, prompt: Text("Name, IBAN, or Bankleitzahl"))
+				.focused($focus, equals: .entry)
+				.onKeyPress(.downArrow) { moveHighlight(1) }
+				.onKeyPress(.upArrow) { moveHighlight(-1) }
 			if !setup.usesOther {
 				switch setup.lookup.state {
 				case .none:
@@ -284,8 +325,17 @@ struct AccountSetupSheet: View {
 						ProgressView().controlSize(.small)
 						Text("Looking up the bank...").foregroundStyle(.secondary)
 					}
-				case let .found(_, bank):
-					Label(bank.name, systemImage: "building.columns")
+				case let .matches(banks):
+					matchList(banks)
+				case let .found(bank):
+					Label {
+						VStack(alignment: .leading, spacing: 2) {
+							Text(bank.bank.name)
+							Text(Self.place(of: bank)).font(.callout).foregroundStyle(.secondary)
+						}
+					} icon: {
+						Image(systemName: "building.columns")
+					}
 				case let .failed(message):
 					Label(message, systemImage: "exclamationmark.triangle")
 						.foregroundStyle(.orange)
@@ -310,14 +360,79 @@ struct AccountSetupSheet: View {
 		}
 	}
 
+	/// The banks that match the entry. Each row names the place and the Bankleitzahl, so that two banks
+	/// of one name differ. Return chooses the highlighted row, and the arrow keys move it.
+	private func matchList(_ banks: [BankDirectory.Entry]) -> some View {
+		VStack(alignment: .leading, spacing: 6) {
+			Text(banks.count > Self.shownMatches
+				? "\(banks.count) banks match. Type more of the name, or choose the bank. Its Bankleitzahl is digits 5 to 12 of your IBAN."
+				: "Choose the bank. Its Bankleitzahl is digits 5 to 12 of your IBAN.")
+				.font(.callout)
+				.foregroundStyle(.secondary)
+				.fixedSize(horizontal: false, vertical: true)
+			ScrollViewReader { proxy in
+				ScrollView {
+					LazyVStack(alignment: .leading, spacing: 0) {
+						ForEach(Array(banks.prefix(Self.shownMatches).enumerated()), id: \.element.id) { index, bank in
+							Button { setup.lookup.choose(bank) } label: {
+								VStack(alignment: .leading, spacing: 1) {
+									Text(bank.bank.name)
+									Text(Self.place(of: bank)).font(.callout).foregroundStyle(.secondary)
+								}
+								.frame(maxWidth: .infinity, alignment: .leading)
+								.padding(.horizontal, 6)
+								.padding(.vertical, 4)
+								.background(index == setup.highlighted ? Color.accentColor.opacity(0.2) : .clear, in: RoundedRectangle(cornerRadius: 5))
+								.contentShape(Rectangle())
+							}
+							.buttonStyle(.plain)
+							.id(index)
+						}
+					}
+				}
+				.frame(height: min(CGFloat(min(banks.count, Self.shownMatches)) * 42, 210))
+				.onChange(of: setup.highlighted) { _, index in proxy.scrollTo(index) }
+			}
+		}
+	}
+
+	private func moveHighlight(_ step: Int) -> KeyPress.Result {
+		guard case let .matches(banks) = setup.lookup.state else { return .ignored }
+		setup.highlighted = max(0, min(setup.highlighted + step, min(banks.count, Self.shownMatches) - 1))
+		return .handled
+	}
+
+	/// "Nürnberg · 76030080", and a note when the bank has no FinTS address.
+	private static func place(of bank: BankDirectory.Entry) -> String {
+		([bank.city, bank.code] + (bank.bank.url == nil ? ["No FinTS"] : [])).filter { !$0.isEmpty }.joined(separator: " · ")
+	}
+
 	@ViewBuilder private var loginStep: some View {
 		Section {
-			LabeledContent("Bank", value: setup.bank?.name ?? "")
+			LabeledContent("Bank") {
+				VStack(alignment: .trailing, spacing: 2) {
+					Text(setup.bank?.name ?? "")
+					if let bank = setup.lookup.bank {
+						Text(Self.place(of: bank)).font(.callout)
+					}
+				}
+			}
 		}
 		Section {
-			TextField("User ID", text: $setup.loginName, prompt: Text("Required"))
+			TextField(setup.loginHint?.label ?? "User ID", text: $setup.loginName, prompt: Text("Required"))
+				.focused($focus, equals: .loginName)
+			if let hint = setup.loginHint {
+				VStack(alignment: .leading, spacing: 4) {
+					Text(hint.help)
+						.foregroundStyle(.secondary)
+						.fixedSize(horizontal: false, vertical: true)
+					Link(hint.sourceTitle, destination: hint.source)
+				}
+				.font(.callout)
+			}
 			SecureField("PIN", text: $setup.pin, prompt: Text("Required"))
 				.textContentType(nil)
+				.focused($focus, equals: .pin)
 			Toggle("Save PIN", isOn: $setup.savePIN)
 				.toggleStyle(.checkbox)
 		}

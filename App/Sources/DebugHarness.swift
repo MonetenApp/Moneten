@@ -1,6 +1,7 @@
 import AppKit
 import Domain
 import ExtensionHost
+import FinTS
 import Foundation
 import Sync
 import SyncTesting
@@ -78,7 +79,7 @@ final class DebugHarness {
 		// "<name>" starts a made-up refresh that shows one dialog of SyncDemo.requests.
 		case "syncdemo": SyncDemo.start(argument, in: model.sync)
 		case "synccancel": model.sync.cancelAll()
-		// "<field> <value>" drives the "Add Account" assistant: entry, login, pin, save, other, group, next, back, toggle, connect, cancel.
+		// "<field> <value>" drives the "Add Account" assistant: entry, choose, login, pin, save, other, group, next, back, toggle, connect, cancel.
 		case "setup": setup(argument)
 		// "<name>": a migrated giro account without an access, with the test IBAN of the made-up bank.
 		case "migrated":
@@ -99,6 +100,15 @@ final class DebugHarness {
 		// "<id>" chooses a TAN method in the dialog on screen, and "medium <name>" a TAN medium.
 		case "method": if let prompt = model.sync.broker.current { model.sync.broker.answer(.tanMethod(argument), to: prompt.id) }
 		case "medium": if let prompt = model.sync.broker.current { model.sync.broker.answer(.tanMedium(argument), to: prompt.id) }
+		// "down" or "up" sends that arrow key to the field with the focus in the sheet on top.
+		case "key" where argument == "down" || argument == "up":
+			let characters = String(UnicodeScalar(argument == "down" ? NSDownArrowFunctionKey : NSUpArrowFunctionKey)!)
+			if let sheet = topSheet, let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [.numericPad, .function], timestamp: 0,
+				windowNumber: sheet.windowNumber, context: nil, characters: characters, charactersIgnoringModifiers: characters, isARepeat: false,
+				keyCode: argument == "down" ? 125 : 126) {
+				sheet.sendEvent(event)
+				log("key \(argument) highlighted=\(model.setup?.highlighted ?? -1)")
+			}
 		// "return", "escape", "cmd+", or "cmd-" sends that key to the sheet on top, as the keyboard does.
 		case "key":
 			let command = argument.hasPrefix("cmd")
@@ -118,8 +128,9 @@ final class DebugHarness {
 			else if let a = model.ledger.accounts.first(where: { $0.name == argument }) { model.refresh(.account(a.id)) }
 			else if let g = model.ledger.groups.first(where: { $0.name == argument }) { model.refresh(.group(g.id)) }
 		case "status":
-			for a in model.ledger.accounts where a.accessID != nil {
-				log("status \(a.name) refreshing=\(model.sync.refreshingAccounts.contains(a.id)) refreshedAt=\(a.refreshedAt.map { "\($0)" } ?? "-") error=\(a.refreshError?.message ?? "-") balance=\(a.bankBalanceMinor.map(String.init) ?? "-") rows=\(model.ledger.transactions(ofAccount: a.id).count)")
+			// Each account by its position and kind, never by its name, IBAN, or account number.
+			for (position, a) in model.ledger.accounts.filter({ $0.accessID != nil }).enumerated() {
+				log("status #\(position) \(a.kind) refreshing=\(model.sync.refreshingAccounts.contains(a.id)) refreshedAt=\(a.refreshedAt.map { "\($0)" } ?? "-") error=\(a.refreshError?.message ?? "-") balance=\(a.bankBalanceMinor.map(String.init) ?? "-") rows=\(model.ledger.transactions(ofAccount: a.id).count)")
 			}
 			log("status line=\(model.refreshStatus ?? "-") accesses=\(model.accesses.count)")
 		case "errorsnapshot":
@@ -312,12 +323,24 @@ final class DebugHarness {
 		}
 	}
 
+	/// The state of the bank lookup without the entry, which can hold an IBAN or a login name typed by mistake.
+	private static func label(_ state: BankLookup.State) -> String {
+		switch state {
+		case .none: "none"
+		case .searching: "searching"
+		case let .matches(banks): "matches(\(banks.map(\.code).joined(separator: ",")))"
+		case let .found(bank): "found(\(bank.code))"
+		case .failed: "failed"
+		}
+	}
+
+	/// The match of a listed account by the kind of the account in the app, without its name.
 	private static func label(_ match: SetupMatch) -> String {
 		switch match {
 		case .new: "new"
-		case let .present(a): "present(\(a.name))"
-		case let .connects(a): "connects(\(a.name))"
-		case let .choice(accounts): "choice(\(accounts.map(\.name).joined(separator: ",")))"
+		case let .present(a): "present(\(a.kind))"
+		case let .connects(a): "connects(\(a.kind))"
+		case let .choice(accounts): "choice(\(accounts.count))"
 		}
 	}
 
@@ -327,6 +350,8 @@ final class DebugHarness {
 		let value = parts.count > 1 ? parts[1] : ""
 		switch parts.first ?? "" {
 		case "entry": setup.entry = value
+		// "<Bankleitzahl>": the match of a name that a click chooses.
+		case "choose": if case let .matches(banks) = setup.lookup.state, let bank = banks.first(where: { $0.code == value }) { setup.lookup.choose(bank) }
 		case "login": setup.loginName = value
 		case "pin": setup.pin = value
 		case "save": setup.savePIN = value == "yes"
@@ -346,7 +371,7 @@ final class DebugHarness {
 		default: break
 		}
 		log("setup service=\(setup.service?.title ?? "-") other=\(setup.otherServices.map(\.title)) error=\(setup.serviceError ?? "-")")
-		log("setup step=\(setup.step) lookup=\(setup.lookup.state) error=\(setup.loginError ?? "-") saveError=\(setup.saveError ?? "-") dialog=\(model.sync.broker.current != nil) candidates=\(setup.candidates.map { "\($0.id):\(Self.label($0.match))" }) selected=\(setup.selected.sorted())")
+		log("setup step=\(setup.step) entry=\(!setup.entry.isEmpty) login=\(!setup.loginName.isEmpty) highlighted=\(setup.highlighted) lookup=\(Self.label(setup.lookup.state)) error=\(setup.loginError ?? "-") saveError=\(setup.saveError ?? "-") dialog=\(model.sync.broker.current != nil) candidates=\(setup.candidates.count) [\(setup.candidates.map { "\($0.account.kind):\(Self.label($0.match))" }.joined(separator: ", "))] selected=\(setup.candidates.indices.filter { setup.selected.contains(setup.candidates[$0].id) })")
 	}
 
 	/// The sheet on top of all others, where the dialogs of a refresh appear.
@@ -499,7 +524,7 @@ final class DebugHarness {
 			for account in model.ledger.accounts where account.accessID == access.id {
 				let rows = model.ledger.transactions.filter { $0.accountID == account.id }
 				let failure = account.refreshError.map { " failed=\($0.message)" } ?? ""
-				log("ext account \(account.name) rows=\(rows.count) balance=\(model.ledger.balance(of: account).minorUnits)\(failure)")
+				log("ext account \(account.kind) rows=\(rows.count) balance=\(model.ledger.balance(of: account).minorUnits)\(failure)")
 			}
 		}
 	}

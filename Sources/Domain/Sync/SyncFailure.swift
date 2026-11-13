@@ -63,6 +63,15 @@ public enum SyncFailure: Error, Sendable, Equatable {
 		}
 	}
 
+	/// The text in the login step of "Add Account". Many banks answer an unknown user ID with a PIN
+	/// error, so at the first login a rejected PIN also points to the user ID and to `userIDHelp`, the
+	/// hint of the bank for it.
+	public func messageAtFirstLogin(userIDHelp: String?) -> String {
+		guard case let .pinRejected(m) = self else { return message }
+		return "The bank did not accept the PIN or the user ID: \(m.text)\nMany banks give this answer also for a wrong user ID, so check the user ID as well."
+			+ (userIDHelp.map { " \($0)" } ?? "") + "\nMore wrong attempts can block the access."
+	}
+
 	/// The text that the app shows on the account and in the error popover.
 	public var message: String {
 		switch self {

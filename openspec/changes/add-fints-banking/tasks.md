@@ -4,7 +4,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 
 ## 1. Requirements
 
-- [ ] 1.1 Find the FinTS address of a bank. Built in part: `FinTSConnector.bankInfo` reads the bank directory of hbci4java, verified by FinTSHelper self-test "bank directory" and FinTSConnectorTests "Looks up a bank in the bank directory". The setup that uses it comes with part 3.
+- [ ] 1.1 Find the FinTS address of a bank. Built in part: `FinTSConnector.bankDirectory` reads the bank directory of hbci4java, verified by FinTSHelper self-test "bank directory with every bank" and FinTSConnectorTests "Reads the bank directory of the helper". The setup that uses it comes with part 3.
 - [ ] 1.2 Identify the app as a registered product. Built in part: the command carries the product ID from Info.plist and the version, verified by FinTSConnectorTests "Asks for the PIN, sends it through the pipe, and lists the accounts". Check the first message with a real bank.
 - [x] 1.3 FinTS messages travel over HTTPS only. Verified by FinTSConnectorTests "Refuses an access without https..." and FinTSHelper self-test "plain HTTP refused".
 - [ ] 1.4 List the accounts of a login. Built in part: `FinTSConnector.listAccounts`, with the account types verified by FinTSConnectorTests "Asks for the PIN, sends it through the pipe, and lists the accounts". Check with a real bank.
@@ -33,7 +33,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 ## 2. Connector (issue #13, part 1)
 
 - [x] 2.1 `Tools/FinTSHelper`: the hbci4java helper with JSON lines on stdin and stdout, masked diagnostics on stderr, and a passport that stays in memory.
-- [x] 2.2 `FinTS`: `FinTSConnector` with `refresh`, `listAccounts`, and `bankInfo`, verified by FinTSConnectorTests over real pipes against scripted helpers.
+- [x] 2.2 `FinTS`: `FinTSConnector` with `refresh`, `listAccounts`, and `bankDirectory`, verified by FinTSConnectorTests over real pipes against scripted helpers.
 - [x] 2.3 `scripts/build-app.sh`: the jlink runtime and the jars in `Contents/Resources/FinTSHelper`, signed after the build with the certificate of the app (a Developer ID build leaves the helper out, see 3.2), a secure timestamp, and `allow-jit` for the helper only, and the product ID from the login Keychain in Info.plist. The build fails when the bundled java is not signed like the app.
 - [ ] 2.4 Map a CAMT entry that has a booking date with a time only. Deferred: hbci4java reads only the date form of `BookgDt` and `ValDt` and leaves both dates empty. The helper fails such an account with a clear message, verified by FinTSHelper self-test "account without booking date fails alone" and FinTSConnectorTests "A result that does not read fails only its account". Mapping the time form needs the helper to read the raw CAMT document that hbci4java keeps, and to match its entries to the parsed rows. Known gap until then: when only `BookgDt` has the time form and `ValDt` has a date, hbci4java copies the value date into the booking date (`ParseCamt05200108.createLine`), so the helper stores the value date as the booking date and does not fail the account.
 

@@ -88,6 +88,24 @@ struct SyncModelTests {
 		#expect(SyncFailure.notRegistered.message.contains("does not know Moneten"))
 	}
 
+	@Test("At the first login of a setup a rejected PIN also names the user ID and its hint, and keeps the block warning")
+	func firstLoginMessage() {
+		let rejected = SyncFailure.pinRejected(BankMessage(code: "9942", text: "PIN ungültig"))
+		#expect(rejected.messageAtFirstLogin(userIDHelp: "Consorsbank expects the account number followed by 001.") == """
+			The bank did not accept the PIN or the user ID: PIN ungültig
+			Many banks give this answer also for a wrong user ID, so check the user ID as well. Consorsbank expects the account number followed by 001.
+			More wrong attempts can block the access.
+			""")
+		#expect(rejected.messageAtFirstLogin(userIDHelp: nil) == """
+			The bank did not accept the PIN or the user ID: PIN ungültig
+			Many banks give this answer also for a wrong user ID, so check the user ID as well.
+			More wrong attempts can block the access.
+			""")
+		#expect(rejected.message == "The bank did not accept the PIN: PIN ungültig\nMore wrong attempts can block the access.")
+		let blocked = SyncFailure.accessBlocked(BankMessage(text: "Zugang gesperrt"))
+		#expect(blocked.messageAtFirstLogin(userIDHelp: "Consorsbank expects the account number followed by 001.") == "The bank blocked the access: Zugang gesperrt")
+	}
+
 	@Test("A flicker code starts with the sync pattern and swaps the half bytes")
 	func flicker() throws {
 		let code = try #require(FlickerCode(hex: "1a"))

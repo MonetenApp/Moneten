@@ -682,7 +682,7 @@ struct FinTSConnectorTests {
 
 	@Test("Starts the helper without the environment of the app, without a crash file, and with the proxy of macOS")
 	func environment() async throws {
-		_ = try await connector(#"read cmd; printf '%s\n' "${HOME-none} ${TMPDIR-none}" >> "$R"; echo '{"type":"bank"}'"#).bankInfo(bankCode: "12030000")
+		_ = try await connector(#"read cmd; printf '%s\n' "${HOME-none} ${TMPDIR-none}" >> "$R"; echo '{"type":"banks","banks":[]}'"#).bankDirectory()
 		#expect((try? String(contentsOf: record, encoding: .utf8)) == "none none\n")
 		let arguments = FinTSConnector.Helper.bundled.arguments
 		#expect(arguments.contains("-XX:ErrorFile=/dev/null"))
@@ -691,15 +691,20 @@ struct FinTSConnectorTests {
 		#expect(arguments.last == "FinTSHelper")
 	}
 
-	@Test("Looks up a bank in the bank directory")
-	func bankInfo() async throws {
-		let bank = try await connector(#"""
+	@Test("Reads the bank directory of the helper")
+	func bankDirectory() async throws {
+		let directory = try await connector(#"""
 			read cmd; printf '%s\n' "$cmd" >> "$R"
-			echo '{"type":"bank","name":"Deutsche Kreditbank Berlin","bic":"BYLADEM1001","url":"https://fints.dkb.de/fints"}'
-			"""#).bankInfo(bankCode: "12030000")
-		#expect(bank == FinTSBank(name: "Deutsche Kreditbank Berlin", bic: "BYLADEM1001", url: URL(string: "https://fints.dkb.de/fints")))
-		#expect(recorded == [["type": "bankInfo", "bankCode": "12030000"]])
-		#expect(try await connector(#"read cmd; echo '{"type":"bank"}'"#).bankInfo(bankCode: "99999999") == nil)
+			echo '{"type":"banks","banks":[{"code":"12030000","name":"Deutsche Kreditbank Berlin","city":"Berlin","bic":"BYLADEM1001","url":"https://fints.dkb.de/fints"},{"code":"10010424","name":"Aareal Bank","city":"Wiesbaden"}]}'
+			"""#).bankDirectory()
+		#expect(directory.bank(code: "12030000") == BankDirectory.Entry(code: "12030000", city: "Berlin",
+			bank: FinTSBank(name: "Deutsche Kreditbank Berlin", bic: "BYLADEM1001", url: URL(string: "https://fints.dkb.de/fints"))))
+		#expect(directory.bank(code: "10010424") == BankDirectory.Entry(code: "10010424", city: "Wiesbaden", bank: FinTSBank(name: "Aareal Bank", bic: nil, url: nil)))
+		#expect(recorded == [["type": "banks"]])
+		await #expect(throws: HelperFailure.unreadable) { try await connector(#"read cmd; echo '{"type":"notice","text":"x"}'"#).bankDirectory() }
+		await #expect(throws: SyncFailure.bank(BankMessage(text: "hbci4java has no bank directory"))) {
+			try await connector(#"read cmd; echo '{"type":"failed","text":"hbci4java has no bank directory"}'"#).bankDirectory()
+		}
 	}
 
 	/// Waits until the condition holds, for at most five seconds.

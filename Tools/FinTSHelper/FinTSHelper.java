@@ -1,7 +1,7 @@
 // FinTSHelper runs hbci4java for FinTSConnector (ADR 0014). The app starts it once per command and
 // talks to it with one JSON object per line. stderr carries only masked diagnostics.
 //
-// The app sends one command first: bankInfo, accounts, or refresh. Then it sends only answers
+// The app sends one command first: banks, accounts, or refresh. Then it sends only answers
 // ({"type":"answer","id":1,"value":"…"}) and cancel. A closed stdin counts as cancel.
 //
 // The helper sends:
@@ -15,7 +15,7 @@
 //   answers "trusted" or the reason why macOS does not trust them.
 // - alive, when hbci4java sends a message to the bank and when the answer arrives, so that the app
 //   can tell a silent bank from a long answer in many parts.
-// - progress, notice, bank, accounts, result, accountFailed, state, and failed.
+// - progress, notice, banks, accounts, result, accountFailed, state, and failed.
 // It ends with status 0 after its last message, also after failed.
 //
 // The passport of hbci4java stays in memory. The command brings it as the bytes of the last state,
@@ -29,12 +29,14 @@ import java.io.EOFException;
 import java.io.FileDescriptor;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.ObjectInputFilter;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.OptionalDataException;
 import java.io.PrintStream;
+import java.io.UncheckedIOException;
 import java.math.BigDecimal;
 import java.net.Socket;
 import java.net.URI;
@@ -802,10 +804,28 @@ public class FinTSHelper {
 		return uri;
 	}
 
-	static Map<String, Object> bankInfo(String bankCode) {
-		BankInfo info = bankCode == null ? null : HBCIUtils.getBankInfo(bankCode);
-		if (info == null) return message("bank");
-		return message("bank", "name", text(info.getName()), "bic", text(info.getBic()), "url", text(info.getPinTanAddress()));
+	/// The bank directory of hbci4java with every Bankleitzahl, which the app searches by name.
+	static Map<String, Object> banks() {
+		Properties directory = new Properties();
+		try (InputStream in = HBCIUtils.class.getClassLoader().getResourceAsStream("blz.properties")) {
+			if (in == null) throw new IllegalStateException("hbci4java has no bank directory");
+			directory.load(new InputStreamReader(in, StandardCharsets.UTF_8));
+		} catch (IOException e) {
+			throw new UncheckedIOException(e);
+		}
+		List<Map<String, Object>> banks = new ArrayList<>();
+		for (String code : new TreeSet<>(directory.stringPropertyNames())) {
+			BankInfo info = HBCIUtils.getBankInfo(code);
+			if (info == null || !present(info.getName())) continue;
+			Map<String, Object> bank = new LinkedHashMap<>();
+			bank.put("code", code);
+			bank.put("name", text(info.getName()));
+			bank.put("city", text(info.getLocation()));
+			bank.put("bic", text(info.getBic()));
+			bank.put("url", text(info.getPinTanAddress()));
+			banks.add(bank);
+		}
+		return message("banks", "banks", banks);
 	}
 
 	static Map<String, Object> account(Konto k) {
@@ -1011,10 +1031,10 @@ public class FinTSHelper {
 		String type = string(command, "type");
 		Properties props = new Properties();
 		props.setProperty("log.loglevel.default", "3");
-		if ("bankInfo".equals(type)) {
+		if ("banks".equals(type)) {
 			HBCIUtils.init(props, new Callback(command, null));
 			try {
-				send(bankInfo(string(command, "bankCode")));
+				send(banks());
 			} finally {
 				HBCIUtils.done();
 			}

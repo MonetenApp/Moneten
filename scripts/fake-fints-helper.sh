@@ -9,7 +9,11 @@
 # "Girokonto" with the test IBAN, "Tagesgeld", and "Kreditkarte". The state of the access counts the
 # refreshes: the second refresh fails "Tagesgeld" with an error of the bank, and the others succeed.
 # The login "unterkonten" lists two subaccounts of the account number 9 in place of these accounts.
-# 99999999 is a bank without a FinTS server, and every other Bankleitzahl is unknown.
+# The bank directory has two branches of Musterbank, the bank without a FinTS server Neobank Muster
+# (99999999), a made-up Sparkasse, and Consorsbank (76030080) and DAB BNP Paribas (70120400) with
+# their real FinTS address, so the setup shows the login hint of Consorsbank and none for DAB.
+# Musterbank 12030000 has the Bankleitzahl of DKB and shows the hint of DKB. The login of every
+# bank goes to this script.
 # The app starts the helper with an empty environment.
 PATH=/bin:/usr/bin
 read -r cmd
@@ -25,12 +29,14 @@ answer() {
 pin='{"type":"ask","id":1,"kind":"pin","rules":{"minLength":4,"maxLength":10}}'
 
 case "$cmd" in
-*'"type":"bankInfo"'*)
-	case "$(field bankCode)" in
-	12030000) echo '{"type":"bank","name":"Musterbank","bic":"BYLADEM1001","url":"https://fints.musterbank.example/fints"}' ;;
-	99999999) echo '{"type":"bank","name":"Neobank Muster","bic":"NEOMDEM1XXX"}' ;;
-	*) echo '{"type":"bank"}' ;;
-	esac
+*'"type":"banks"'*)
+	echo '{"type":"banks","banks":['\
+'{"code":"12030000","name":"Musterbank","city":"Musterstadt","bic":"BYLADEM1001","url":"https://fints.musterbank.example/fints"},'\
+'{"code":"12030001","name":"Musterbank","city":"Beispielstadt","url":"https://fints.musterbank.example/fints"},'\
+'{"code":"99999999","name":"Neobank Muster","city":"Musterstadt","bic":"NEOMDEM1XXX"},'\
+'{"code":"40099999","name":"Sparkasse Münsterland Muster","city":"Münster","url":"https://banking.s-fints-pt-muster.example/fints30"},'\
+'{"code":"70120400","name":"BNP Paribas S.A. Niederlassung Deutschland-Consorsbank","city":"München","bic":"DABBDEMMXXX","url":"https://brokerage-hbci.consorsbank.de/hbci"},'\
+'{"code":"76030080","name":"Bnp Paribas S.A. Niederlassung Deutschland - Consorsbank","city":"Nürnberg, Mittelfr","bic":"CSDBDE71XXX","url":"https://brokerage-hbci.consorsbank.de/hbci"}]}'
 	;;
 *'"type":"accounts"'*)
 	echo "$pin"

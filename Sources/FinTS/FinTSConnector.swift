@@ -111,17 +111,18 @@ public struct FinTSConnector: BankConnector {
 		self.trust = trust
 	}
 
-	/// The name, BIC, and FinTS address of a bank. Nil when the bank directory does not know the code.
-	public func bankInfo(bankCode: String) async throws -> FinTSBank? {
-		var bank: FinTSBank?
-		var answered = false
-		try await run(Command(type: "bankInfo", bankCode: bankCode), session: nil) { message in
-			guard case let .bank(found) = message else { throw HelperFailure.unreadable }
-			bank = found
-			answered = true
+	/// The bank directory of hbci4java, for the search of the first step of "Add Account".
+	public func bankDirectory() async throws -> BankDirectory {
+		var banks: [BankDirectory.Entry]?
+		try await run(Command(type: "banks"), session: nil) { message in
+			switch message {
+			case let .banks(list): banks = list
+			case let .failed(error): throw error.failure
+			default: throw HelperFailure.unreadable
+			}
 		}
-		guard answered else { throw HelperFailure.noAnswer }
-		return bank
+		guard let banks else { throw HelperFailure.noAnswer }
+		return BankDirectory(banks)
 	}
 
 	/// The accounts of the login of `access`, the new state of the access, and the notices of the bank.
