@@ -32,21 +32,21 @@ None.
 - Modules: `ExtensionCatalog` verifies the index, downloads and checks the packages, and plans updates. `ExtensionConnector` checks the digests before a session. `App` owns the Extensions window. The catalog itself is the separate repository `MonetenApp/moneten-extensions`.
 - Depends on the change `add-web-banking-extensions`. The warning and the mark "Unverified" for extensions installed from a file are defined there.
 - Depends on the change `add-account-setup` for the add account assistant, which issue #85 builds and which is not built yet. Without it, the user cannot set up an account with an installed extension in the app.
-- Decisions: [ADR 0015](../../../docs/decisions/0015-extension-program.md), [ADR 0004](../../../docs/decisions/0004-moneymoney-compatible-extension-api.md), [ADR 0006](../../../docs/decisions/0006-license-gpl-3.md), [ADR 0008](../../../docs/decisions/0008-payments-only-through-licensed-channels.md), [ADR 0002](../../../docs/decisions/0002-local-first-no-server.md).
+- Decisions: [ADR 0015](../../../../docs/decisions/0015-extension-program.md), [ADR 0004](../../../../docs/decisions/0004-moneymoney-compatible-extension-api.md), [ADR 0006](../../../../docs/decisions/0006-license-gpl-3.md), [ADR 0008](../../../../docs/decisions/0008-payments-only-through-licensed-channels.md), [ADR 0002](../../../../docs/decisions/0002-local-first-no-server.md).
 
 ## Reference behavior
 
 ### Observed in MoneyMoney 2.5.3
 
-- The settings tab "Extensions" has the setting "Verify digital signatures of extensions" with the note "Deactivate only for self-developed (unsigned) extensions!". See [analysis](../../../docs/research/moneymoney-analysis.md#settings-u).
-- The app runs an unsigned extension only after the user turns the check off. See [analysis](../../../docs/research/moneymoney-analysis.md#lua-extensions-w).
+- The settings tab "Extensions" has the setting "Verify digital signatures of extensions" with the note "Deactivate only for self-developed (unsigned) extensions!". See [analysis](../../../../docs/research/moneymoney-analysis.md#settings-u).
+- The app runs an unsigned extension only after the user turns the check off. See [analysis](../../../../docs/research/moneymoney-analysis.md#lua-extensions-w).
 - Community extensions are reviewed by the vendor before they are published, against a checklist ([Web Banking API page](https://moneymoney.app/api/webbanking/)).
 - Users download community extensions by hand from the [extensions page](https://moneymoney.app/extensions/) and copy them into the "Extensions" folder. The page states for each extension what it fetches.
-- Built-in bank scripts are updated from the vendor's server without an app update. See [analysis](../../../docs/research/moneymoney-analysis.md#not-carried-over).
+- Built-in bank scripts are updated from the vendor's server without an app update. See [analysis](../../../../docs/research/moneymoney-analysis.md#not-carried-over).
 
 ### Decided for Moneten
 
-- The catalog is browsed and installed in the app, in the "Extensions" window, and updates arrive by themselves unless the user turns "Update extensions automatically" off. MoneyMoney has a web page and manual downloads ([ADR 0015](../../../docs/decisions/0015-extension-program.md)).
+- The catalog is browsed and installed in the app, in the "Extensions" window, and updates arrive by themselves unless the user turns "Update extensions automatically" off. MoneyMoney has a web page and manual downloads ([ADR 0015](../../../../docs/decisions/0015-extension-program.md)).
 - Files from outside the catalog run after a warning and stay marked "Unverified". MoneyMoney refuses unsigned files until the user turns its signature check off. Moneten has no such setting.
 - A catalog package needs a manifest with its hosts, its login field labels, its kinds of data, its API version, and its license. MoneyMoney keeps the login labels in its own database.
 - One signature covers a catalog index, and the index lists a SHA-256 digest for each file (issue #37). MoneyMoney signs each script.

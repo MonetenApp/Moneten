@@ -2,7 +2,7 @@
 
 ## Context
 
-The catalog is the repository MonetenApp/moneten-extensions. Its signing workflow publishes `index.json`, the raw Ed25519 signature `index.json.sig`, and every file of a package at `<id>/<version>/<path>` on `extensions.monetenapp.com`. The index lists one manifest and one list of files with their SHA-256 for each package. The app ships `current.pub` and `next.pub` from [keys/](https://github.com/MonetenApp/moneten-extensions/tree/main/keys) of that repository. The extensions run in the host of [add-web-banking-extensions](../add-web-banking-extensions/proposal.md), through the `ExtensionConnector`.
+The catalog is the repository MonetenApp/moneten-extensions. Its signing workflow publishes `index.json`, the raw Ed25519 signature `index.json.sig`, and every file of a package at `<id>/<version>/<path>` on `extensions.monetenapp.com`. The index lists one manifest and one list of files with their SHA-256 for each package. The app ships `current.pub` and `next.pub` from [keys/](https://github.com/MonetenApp/moneten-extensions/tree/main/keys) of that repository. The extensions run in the host of [add-web-banking-extensions](../../add-web-banking-extensions/proposal.md), through the `ExtensionConnector`.
 
 ## Decisions
 
