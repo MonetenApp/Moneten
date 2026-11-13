@@ -25,12 +25,17 @@ extension AppModel {
 			variant: variant, language: Locale.current.language.languageCode?.identifier ?? "en", locale: Locale.current.identifier, deviceUuid: device)
 	}
 
-	func extensionConnector(_ package: ExtensionPackage, fixture: Fixture?, log: @escaping @Sendable (HostLog) -> Void) -> ExtensionConnector? {
+	func makeExtensionConnector(_ package: ExtensionPackage, fixture: Fixture?, log: @escaping @Sendable (HostLog) -> Void) -> ExtensionConnector? {
 		guard let store else { return nil }
 		let services = ExtensionConnector.Services(hostDecisions: { try store.hostDecisions(of: package.name) },
 			saveDecision: { try store.save($0, host: $1, of: package.name) },
 			transactions: { [weak self] id in await MainActor.run { self?.ledger.transactions.filter { $0.accountID == id } ?? [] } }, log: log)
-		let connector = ExtensionConnector(package: package, environment: extensionEnvironment, fixture: fixture, services: services)
+		return ExtensionConnector(package: package, environment: extensionEnvironment, fixture: fixture, services: services)
+	}
+
+	/// A connector for a package that the debug harness loaded from a path, kept for the refreshes of its accesses.
+	private func extensionConnector(_ package: ExtensionPackage, fixture: Fixture?, log: @escaping @Sendable (HostLog) -> Void) -> ExtensionConnector? {
+		let connector = makeExtensionConnector(package, fixture: fixture, log: log)
 		extensionConnectors[package.name] = connector
 		return connector
 	}

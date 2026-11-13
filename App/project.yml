@@ -1,5 +1,5 @@
 # The Xcode project of the app. Generate it with scripts/generate-project.sh.
-# The libraries Domain, Storage, Import, Sync, SyncTesting, FinTS, ExtensionHost, and ExtensionConnector stay in the Swift package at the repository root.
+# The libraries Domain, Storage, Import, Sync, SyncTesting, FinTS, ExtensionHost, ExtensionConnector, and ExtensionCatalog stay in the Swift package at the repository root.
 name: Moneten
 options:
   bundleIdPrefix: io.github.alexander-schneider
@@ -49,6 +49,8 @@ targets:
         product: ExtensionHost
       - package: MonetenKit
         product: ExtensionConnector
+      - package: MonetenKit
+        product: ExtensionCatalog
       # The process of one extension session, which ExtensionHostClient starts from Contents/Helpers.
       - target: MonetenExtensionHost
         embed: true

@@ -211,6 +211,21 @@ enum Schema {
 				t.column("pin", .text).notNull()
 			}
 		}
+		// The extension catalog (issue #37, ADR 0015): the accepted index with the version floor of each key,
+		// and the origin of each installed extension with the digests it may run with. Both live outside the
+		// "Extensions" folder, so a program that writes the folder cannot change them.
+		m.registerMigration("v10") { db in
+			try db.create(table: "extensionCatalog") { t in
+				t.column("id", .integer).primaryKey().check { $0 == 1 }
+				t.column("index", .blob).notNull()
+				t.column("floors", .blob).notNull()
+			}
+			try db.create(table: "installedExtension") { t in
+				t.column("id", .text).primaryKey()
+				t.column("origin", .text).notNull()
+				t.column("record", .blob).notNull()
+			}
+		}
 		return m
 	}
 }

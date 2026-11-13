@@ -52,7 +52,7 @@ struct SavedPINTests {
 		let store = Store(queue: queue)
 		try store.add(Self.access, state: AccessState(Data([1])), accounts: [Self.giro])
 		try Schema.migrator.migrate(queue)
-		#expect(try queue.read { db in try Schema.migrator.appliedMigrations(db) }.last == "v9")
+		#expect(try queue.read { db in try Schema.migrator.appliedMigrations(db) }.contains("v9"))
 		try store.savePIN(Secret("48151"), for: Self.access.id)
 		#expect(try store.savedPINs() == [Self.access.id: Secret("48151")])
 		try store.deleteAccount(Self.giro.id)

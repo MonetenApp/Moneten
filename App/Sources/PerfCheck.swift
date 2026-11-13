@@ -1,6 +1,7 @@
 #if DEBUG || PERF_HARNESS
 import AppKit
 import Domain
+import ExtensionCatalog
 import Foundation
 import Synchronization
 
@@ -63,7 +64,29 @@ struct PerfScenario {
 				await c.select("Account 2")
 			},
 			run: { await $0.select("Bulk") }),
+		// Opens the Extensions window on a catalog of 200 packages, through the menu item.
+		PerfScenario(name: "open-extensions-window", budget: halfSecond,
+			setUp: { c in
+				if let index = try? CatalogIndex.parse(catalog(entries: 200)) { c.model.extensions.show(index) }
+				await c.settle()
+			},
+			run: { $0.harness.openExtensionsWindow() }),
 	]
+
+	/// An index in the format of the catalog with made-up packages. The window shows it without a signature check.
+	static func catalog(entries: Int) -> Data {
+		let digest = String(repeating: "0", count: 64)
+		let packages: [[String: Any]] = (0..<entries).map { i in
+			let manifest: [String: Any] = ["id": "package-\(i)", "name": "Bank \(i)", "version": "1.\(i % 10)",
+				"description": "Fetches balances and transactions from the made-up Bank \(i).", "files": ["Bank.lua"],
+				"hosts": ["api.bank\(i).example"], "services": [["name": "Bank \(i)", "login": [["label": "Username"], ["label": "Password", "secret": true]]]],
+				"kinds": ["balances", "transactions"], "apiVersion": 1, "license": "MIT", "maintainer": ["name": "Moneten maintainers", "github": "example-maintainer"]]
+			return ["id": "package-\(i)", "status": i % 50 == 0 ? "unmaintained" : "active", "manifest": manifest,
+				"files": ["Bank.lua", "LICENSE", "README.md", "manifest.json"].map { ["path": $0, "size": 1, "sha256": digest] }]
+		}
+		let index: [String: Any] = ["formatVersion": 1, "version": 1, "published": "2026-11-13T08:00:00Z", "extensions": packages]
+		return (try? JSONSerialization.data(withJSONObject: index)) ?? Data()
+	}
 }
 
 @MainActor

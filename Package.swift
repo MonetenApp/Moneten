@@ -14,6 +14,7 @@ let package = Package(
 		.library(name: "ExtensionHost", targets: ["ExtensionHost"]),
 		.library(name: "ExtensionConnector", targets: ["ExtensionConnector"]),
 		.executable(name: "ext", targets: ["ext"]),
+		.library(name: "ExtensionCatalog", targets: ["ExtensionCatalog"]),
 	],
 	dependencies: [
 		// The fork of GRDB that Zetetic maintains links SQLCipher instead of the system SQLite.
@@ -39,6 +40,8 @@ let package = Package(
 		.target(name: "ExtensionConnector", dependencies: ["Domain", "ExtensionHost"]),
 		// The command line tool for extension authors: run, record, and test (add-extension-developer-tools).
 		.executableTarget(name: "ext", dependencies: ["Domain", "ExtensionHost", "ExtensionConnector"], path: "Tools/ext"),
+		// Verifies the signed catalog index, installs its packages, and plans updates (ADR 0015).
+		.target(name: "ExtensionCatalog", dependencies: ["ExtensionHost"]),
 		.testTarget(name: "DomainTests", dependencies: ["Domain"]),
 		.testTarget(name: "StorageTests", dependencies: ["Storage"]),
 		.testTarget(name: "ImportTests", dependencies: ["Import"]),
@@ -48,6 +51,7 @@ let package = Package(
 		.testTarget(name: "ExtensionConnectorTests", dependencies: ["ExtensionConnector", "MonetenExtensionHost", "Storage"]),
 		// LocalBank holds the made-up bank on https://localhost that the tests of ext record start.
 		.testTarget(name: "ExtToolTests", dependencies: ["ext", "ExtensionHost"], exclude: ["LocalBank"]),
+		.testTarget(name: "ExtensionCatalogTests", dependencies: ["ExtensionCatalog"]),
 		.testTarget(name: "FinTSTests", dependencies: ["FinTS"], exclude: ["helper-lines.jsonl"]),
 	],
 	swiftLanguageModes: [.v6]

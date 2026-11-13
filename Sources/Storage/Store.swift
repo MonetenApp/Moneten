@@ -181,6 +181,40 @@ public final class Store: SavedPINStore {
 		}
 	}
 
+	/// The index that the app accepted last and the floors of the catalog keys, both as the catalog module encodes them.
+	public func catalog() throws -> StoredCatalog? {
+		try queue.read { db in
+			try Row.fetchOne(db, sql: "SELECT \"index\", floors FROM extensionCatalog WHERE id = 1").map { StoredCatalog(index: $0["index"], floors: $0["floors"]) }
+		}
+	}
+
+	public func saveCatalog(_ catalog: StoredCatalog) throws {
+		try queue.write { db in
+			try db.execute(sql: "INSERT OR REPLACE INTO extensionCatalog (id, \"index\", floors) VALUES (1, ?, ?)", arguments: [catalog.index, catalog.floors])
+		}
+	}
+
+	public func installedExtensions() throws -> [InstalledExtension] {
+		try queue.read { db in
+			try Row.fetchAll(db, sql: "SELECT id, origin, record FROM installedExtension ORDER BY id").compactMap { row in
+				ExtensionOrigin(rawValue: row["origin"]).map { InstalledExtension(id: row["id"], origin: $0, record: row["record"]) }
+			}
+		}
+	}
+
+	public func saveInstalledExtension(_ installed: InstalledExtension) throws {
+		try queue.write { db in
+			try db.execute(sql: "INSERT OR REPLACE INTO installedExtension (id, origin, record) VALUES (?, ?, ?)",
+				arguments: [installed.id, installed.origin.rawValue, installed.record])
+		}
+	}
+
+	public func removeInstalledExtension(_ id: String) throws {
+		try queue.write { db in
+			try db.execute(sql: "DELETE FROM installedExtension WHERE id = ?", arguments: [id])
+		}
+	}
+
 	/// Deletes an account. An access goes with its last account, together with its state and its saved PIN. Returns the
 	/// ID of that access.
 	@discardableResult
@@ -227,5 +261,35 @@ public final class Store: SavedPINStore {
 
 	public func close() throws {
 		try queue.close()
+	}
+}
+
+/// The accepted catalog index and the version floors of its keys.
+public struct StoredCatalog: Sendable, Equatable {
+	public let index: Data
+	public let floors: Data
+
+	public init(index: Data, floors: Data) {
+		self.index = index
+		self.floors = floors
+	}
+}
+
+/// Where an installed extension came from (ADR 0015, decision 21).
+public enum ExtensionOrigin: String, Sendable {
+	case catalog, file
+}
+
+/// An installed extension by the name of its file or folder, with what the app accepted of it: the
+/// digests from the catalog index, or the digests the user saw in the warning for a file install.
+public struct InstalledExtension: Sendable, Equatable {
+	public let id: String
+	public let origin: ExtensionOrigin
+	public let record: Data
+
+	public init(id: String, origin: ExtensionOrigin, record: Data) {
+		self.id = id
+		self.origin = origin
+		self.record = record
 	}
 }

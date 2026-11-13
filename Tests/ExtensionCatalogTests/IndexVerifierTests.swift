@@ -1,0 +1,116 @@
+@testable import ExtensionCatalog
+import ExtensionHost
+import Foundation
+import Testing
+
+@Suite struct IndexVerifierTests {
+	let current = TestKey(), next = TestKey()
+
+	var keys: CatalogKeys { try! CatalogKeys(currentPEM: current.pem, nextPEM: next.pem, lowestVersion: 1) }
+
+	func accept(_ data: Data, by key: TestKey, floors: KeyFloors = KeyFloors(), accepted: Data? = nil, keys: CatalogKeys? = nil)
+		-> Result<IndexVerifier.Accepted?, CatalogError> {
+		Result { () throws(CatalogError) in
+			try IndexVerifier.check(index: data, signature: key.sign(data), keys: keys ?? self.keys, floors: floors, accepted: accepted)
+		}
+	}
+
+	@Test func acceptsAnIndexOfTheCurrentKey() throws {
+		let accepted = try #require(try accept(TestCatalog.index(version: 120), by: current).get())
+		#expect(accepted.index.version == 120)
+		#expect(accepted.index.entries.map(\.id) == ["example"])
+		#expect(accepted.index.entries[0].version == "1.0")
+		#expect(accepted.floors.floor(of: keys.current) == 120)
+	}
+
+	@Test func tamperedIndex() {
+		var data = TestCatalog.index(version: 120)
+		let signature = current.sign(data)
+		data[data.count / 2] ^= 0x01
+		#expect(throws: CatalogError.unverified) {
+			try IndexVerifier.check(index: data, signature: signature, keys: keys, floors: KeyFloors(), accepted: nil)
+		}
+	}
+
+	@Test func unknownKey() {
+		#expect(accept(TestCatalog.index(version: 120), by: TestKey()) == .failure(.unverified))
+	}
+
+	@Test func nextKeyIsAcceptedAndRetiresTheCurrentKey() throws {
+		let first = try #require(try accept(TestCatalog.index(version: 120), by: current).get())
+		let rotated = try #require(try accept(TestCatalog.index(version: 121), by: next, floors: first.floors).get())
+		#expect(rotated.index.version == 121)
+		#expect(accept(TestCatalog.index(version: 131), by: current, floors: rotated.floors) == .failure(.retiredKey))
+	}
+
+	@Test func replayedOldIndex() throws {
+		let accepted = try #require(try accept(TestCatalog.index(version: 120), by: current).get())
+		#expect(accept(TestCatalog.index(version: 95), by: current, floors: accepted.floors, accepted: TestCatalog.index(version: 120))
+			== .failure(.replayed(version: 95, floor: 120)))
+	}
+
+	@Test func sameVersionSameContentIsTheIndexTheAppHas() throws {
+		let data = TestCatalog.index(version: 120)
+		let accepted = try #require(try accept(data, by: current).get())
+		#expect(accept(data, by: current, floors: accepted.floors, accepted: data) == .success(nil))
+	}
+
+	@Test func sameVersionOtherContent() throws {
+		let data = TestCatalog.index(version: 120)
+		let accepted = try #require(try accept(data, by: current).get())
+		var other = TestCatalog.Package()
+		other.version = "1.1"
+		#expect(accept(TestCatalog.index(version: 120, [other]), by: current, floors: accepted.floors, accepted: data) == .failure(.otherContent(version: 120)))
+	}
+
+	@Test func leakedCurrentKeyStopsUpdatesOnlyUntilTheNextKeySigns() throws {
+		let leaked = try #require(try accept(TestCatalog.index(version: 9_007_199_254_740_991), by: current).get())
+		let rotated = try #require(try accept(TestCatalog.index(version: 130), by: next, floors: leaked.floors).get())
+		#expect(rotated.index.version == 130)
+	}
+
+	@Test func anAppUpdateDropsTheFloorsOfRetiredKeys() throws {
+		let retired = try #require(try accept(TestCatalog.index(version: 9_007_199_254_740_991), by: current).get())
+		let newCurrent = TestKey(), newNext = TestKey()
+		let shipped = try CatalogKeys(currentPEM: newCurrent.pem, nextPEM: newNext.pem, lowestVersion: 140)
+		let floors = retired.floors.keeping(shipped)
+		#expect(floors == KeyFloors())
+		#expect(accept(TestCatalog.index(version: 139), by: newCurrent, floors: floors, keys: shipped) == .failure(.belowLowest(version: 139, lowest: 140)))
+		#expect(try accept(TestCatalog.index(version: 140), by: newCurrent, floors: floors, keys: shipped).get()?.index.version == 140)
+	}
+
+	@Test func floorsSurviveAsStoredValues() throws {
+		let accepted = try #require(try accept(TestCatalog.index(version: 120), by: current).get())
+		let stored = try JSONEncoder().encode(accepted.floors)
+		#expect(try JSONDecoder().decode(KeyFloors.self, from: stored) == accepted.floors)
+	}
+
+	@Test func keysFromThePEMThatOpenSSLWrites() throws {
+		// `openssl pkey -pubout` of a made-up key.
+		let pem = "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAGb9ECWmEzf6FQbrBZ9w7lshQhqowtrbLDFw4rXAxZuE=\n-----END PUBLIC KEY-----\n"
+		let keys = try CatalogKeys(currentPEM: pem, nextPEM: pem, lowestVersion: 1)
+		#expect(keys.current.rawRepresentation.count == 32)
+		#expect(throws: CatalogError.self) { try CatalogKeys(currentPEM: "not a key", nextPEM: pem, lowestVersion: 1) }
+	}
+
+	@Test func manifestWithoutHostsIsNotInstallable() throws {
+		var package = TestCatalog.Package()
+		package.manifestFields = ["hosts": NSNull()]
+		let index = try CatalogIndex.parse(TestCatalog.index(version: 3, [package]))
+		#expect(index.entries[0].manifest == .failure(.invalidManifest("The manifest needs hosts.")))
+	}
+
+	@Test func indexOfAnotherFormatIsNotUsed() {
+		let data = Data(#"{"formatVersion": 2, "version": 3, "published": "2026-11-13T08:00:00Z", "extensions": []}"#.utf8)
+		#expect(throws: CatalogError.unreadable("The index has another format than version 1.")) { try CatalogIndex.parse(data) }
+	}
+
+	@Test func statusAndNoteFromTheIndex() throws {
+		var package = TestCatalog.Package()
+		package.status = "blocked"
+		package.note = "Sends the password to another host."
+		let entry = try CatalogIndex.parse(TestCatalog.index(version: 3, [package])).entries[0]
+		#expect(entry.status == .blocked)
+		#expect(entry.note == "Sends the password to another host.")
+	}
+}
