@@ -1,5 +1,6 @@
 import Domain
 import Foundation
+import GRDB
 import Testing
 @testable import Storage
 
@@ -91,46 +92,92 @@ struct OpeningBalanceTests {
 		#expect(bars(stored, of: depot).last == 2_000_000)
 	}
 
-	@Test("A second refresh with new rows, one of them older than the first refresh reached, ends at the new bank balance")
-	func secondRefresh() throws {
+	@Test("A later refresh with an older row keeps the opening balance, so the last bar differs from the bank balance by that row")
+	func laterRefresh() throws {
 		let store = try makeStore([giro])
 		_ = try store.merge(refresh(quarter, balance: 120_000), into: giro.id)
 		_ = try store.merge(refresh([row(0, -40_000, "Card"), row(100, -7_000, "Old fee")], balance: 80_000), into: giro.id)
 		let stored = try store.loadLedger()
-		#expect(bars(stored).last == 80_000)
-		#expect(stored.account(giro.id)?.initialBalanceMinor == 262_000)
+		#expect(stored.account(giro.id)?.initialBalanceMinor == 255_000)
+		#expect(bars(stored).last == 73_000)
 	}
 
-	@Test("After a fetched row is deleted, the chart still ends at the bank balance")
+	@Test("Deleting a fetched row keeps the opening balance")
 	func deletion() throws {
 		let store = try makeStore([giro])
 		let rows = quarter
 		_ = try store.merge(refresh(rows, balance: 120_000), into: giro.id)
-		var ledger = try store.loadLedger()
-		let changed = try store.deleteTransactions([rows[3].id])
-		ledger.remove(transactionIDs: [rows[3].id])
-		for a in changed { ledger.upsert(a) }
+		try store.deleteTransactions([rows[3].id])
 		let stored = try store.loadLedger()
-		#expect(bars(stored).last == 120_000)
-		#expect(stored.account(giro.id)?.initialBalanceMinor == 160_000)
-		#expect(bars(ledger) == bars(stored))
+		#expect(stored.account(giro.id)?.initialBalanceMinor == 255_000)
+		#expect(bars(stored).last == 215_000)
 	}
 
-	@Test("Older rows from a file in a fetched account keep the chart ending at the bank balance")
+	@Test("Older rows from a file keep the opening balance")
 	func fileIntoFetchedAccount() throws {
 		let store = try makeStore([giro])
-		var ledger = try store.loadLedger()
-		ledger.apply(try store.merge(refresh(quarter, balance: 120_000), into: giro.id))
-		ledger.apply(try store.merge(.file([row(100, -5_000, "Old fee")]), into: giro.id))
+		_ = try store.merge(refresh(quarter, balance: 120_000), into: giro.id)
+		_ = try store.merge(.file([row(100, -5_000, "Old fee")]), into: giro.id)
 		let stored = try store.loadLedger()
-		#expect(bars(stored).last == 120_000)
-		#expect(stored.account(giro.id)?.initialBalanceMinor == 260_000)
-		#expect(bars(ledger) == bars(stored))
+		#expect(stored.account(giro.id)?.initialBalanceMinor == 255_000)
+		#expect(bars(stored).last == 115_000)
 	}
 
-	@Test("Migrated and offline accounts keep their initial balance until a refresh of their own")
+	/// What "OK" in the account settings stores after the user typed `minor` under "Initial balance".
+	func type(_ minor: Int64, into id: UUID, of store: Store) throws {
+		var account = try #require(try store.loadLedger().account(id))
+		var edited = account
+		edited.initialBalanceMinor = minor
+		account.takeSettings(from: edited)
+		try store.save(account)
+	}
+
+	@Test("A typed initial balance survives later refreshes, also one typed before the first refresh")
+	func typedValue() throws {
+		let savings = Account(position: 1, name: "Savings", kind: .savings, source: .bank)
+		let store = try makeStore([giro, savings])
+		_ = try store.merge(refresh(quarter, balance: 120_000), into: giro.id)
+		try type(300_000, into: giro.id, of: store)
+		_ = try store.merge(refresh([row(0, -40_000, "Card")], balance: 80_000), into: giro.id)
+		try type(0, into: savings.id, of: store)
+		_ = try store.merge(refresh([row(3, 10_000, "Interest", in: savings)], balance: 510_000), into: savings.id)
+		let stored = try store.loadLedger()
+		#expect(stored.account(giro.id)?.initialBalanceMinor == 300_000)
+		#expect(stored.account(savings.id)?.initialBalanceMinor == 0)
+	}
+
+	@Test("An account fetched before the fix gets its opening balance once, at its next refresh, and one with a typed value keeps it")
+	func repairOnce() throws {
+		let queue = try DatabaseQueue()
+		try Schema.migrator.migrate(queue, upTo: "v10")
+		let old = UUID()
+		let typed = UUID()
+		// The columns of v10: a later version adds more, which the record type would write.
+		try queue.write { db in
+			for (id, name, initial) in [(old, "Old giro", 0), (typed, "Typed giro", 50_000)] {
+				try db.execute(sql: """
+					INSERT INTO account (id, position, name, kind, source, currency, initialBalanceMinor, isClosed, bankBalanceMinor, bankBalanceDate)
+					VALUES (?, 0, ?, 'giro', 'bank', 'EUR', ?, 0, 100000, ?)
+					""", arguments: [id, name, initial, Date()])
+			}
+		}
+		try Schema.migrator.migrate(queue)
+		let store = Store(queue: queue)
+		let oldGiro = try #require(try store.loadLedger().account(old))
+		try store.save([row(10, -30_000, "Shop", in: oldGiro)])
+		_ = try store.merge(refresh([], balance: 100_000), into: old)
+		#expect(try store.loadLedger().account(old)?.initialBalanceMinor == 130_000)
+		_ = try store.merge(refresh([row(100, -7_000, "Old fee", in: oldGiro)], balance: 100_000), into: old)
+		_ = try store.merge(refresh([], balance: 100_000), into: typed)
+		let stored = try store.loadLedger()
+		#expect(stored.account(old)?.initialBalanceMinor == 130_000)
+		#expect(stored.account(typed)?.initialBalanceMinor == 50_000)
+	}
+
+	@Test("Migrated and offline accounts keep their initial balance, also a migrated account that a bank access connects")
 	func migratedAndOffline() throws {
-		var migrated = Account(position: 0, name: "Migrated", kind: .giro, source: .migrated, bankBalanceMinor: 50_000, bankBalanceDate: Date(), initialBalanceMinor: 40_000)
+		let migrated = Account(position: 0, name: "Migrated", kind: .giro, source: .migrated, iban: "DE02120300000000202051", bankBalanceMinor: 50_000,
+			bankBalanceDate: Date(), initialBalanceMinor: 40_000)
 		let offline = Account(position: 1, name: "Cash", kind: .other, source: .offline, initialBalanceMinor: 1_000)
 		let store = try makeStore([migrated, offline])
 		let salary = row(5, 10_000, "Salary", in: migrated)
@@ -143,11 +190,13 @@ struct OpeningBalanceTests {
 		#expect(stored.account(migrated.id)?.initialBalanceMinor == 40_000)
 		#expect(stored.account(offline.id)?.initialBalanceMinor == 1_000)
 
-		migrated.source = .bank
-		try store.save(migrated)
+		let access = Access(source: .extension(id: "Demo"), bankName: "Musterbank", loginName: "erika")
+		let listed = Account(position: 0, name: "Girokonto", kind: .giro, source: .bank, iban: "DE02120300000000202051", accessID: access.id)
+		let connected = try #require(stored.accountsToAdd([listed], listed: [listed]).first)
+		#expect(connected.id == migrated.id)
+		try store.add(access, state: nil, accounts: [connected])
 		_ = try store.merge(refresh([], balance: 60_000), into: migrated.id)
 		stored = try store.loadLedger()
-		#expect(stored.account(migrated.id)?.initialBalanceMinor == 69_000)
-		#expect(bars(stored, of: migrated).last == 60_000)
+		#expect(stored.account(migrated.id)?.initialBalanceMinor == 40_000)
 	}
 }
