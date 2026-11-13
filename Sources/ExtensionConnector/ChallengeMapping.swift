@@ -42,6 +42,7 @@ struct ChallengeTable: Equatable {
 		poll = fields["poll"] == .boolean(true)
 		tanMethod = try fields["tanMethod"].map { value throws(MappingError) in try MethodTable(value) }
 		if case let .array(items)? = fields["tanMethods"] {
+			guard !items.isEmpty else { throw MappingError("The challenge lists no TAN method.") }
 			tanMethods = try items.map { value throws(MappingError) in try MethodTable(value) }
 		} else {
 			tanMethods = nil

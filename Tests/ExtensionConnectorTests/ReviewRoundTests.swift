@@ -60,11 +60,12 @@ extension ExtensionConnectorTests {
 
 	@Test func twoAccountsThatCannotBeToldApartAreRefused() async throws {
 		let session = TestSession()
-		await #expect(throws: SyncFailure.bank(BankMessage(text: "Demo lists the account 123 in EUR twice, so Moneten cannot tell the two apart."))) {
+		let failure = await #expect(throws: FailureWithState.self) {
 			_ = try await session.connector(demo(Self.calls + """
 				function ListAccounts() return {{accountNumber = "123", name = "A"}, {accountNumber = "123", name = "B"}} end
 				""")).setUp(Self.access, session)
 		}
+		#expect(failure?.failure as? SyncFailure == .bank(BankMessage(text: "Demo lists the account 123 in EUR twice, so Moneten cannot tell the two apart.")))
 	}
 
 	@Test func secondMediumOfOneMethodIsSent() async throws {
@@ -172,5 +173,106 @@ extension ExtensionConnectorTests {
 			""")), session)
 		#expect(session.printed.filter { $0.hasPrefix("poll") } == ["poll 1 pushTAN true", "poll 1 pushTAN true"])
 		#expect(session.asked.withLock { $0.map(\.kind) } == [.login, .secondFactor])
+	}
+
+	// MARK: Round 2
+
+	@Test func emptyMethodListIsRefused() async throws {
+		let session = TestSession()
+		await #expect(throws: SyncFailure.bank(BankMessage(text: "The challenge lists no TAN method."))) {
+			_ = try await Self.refresh(session.connector(demo(Self.calls + """
+				function InitializeSession2() return {tanMethods = {}, poll = true} end
+				""")), session)
+		}
+	}
+
+	static let rotating = calls + """
+		function InitializeSession2(protocol, bankCode, step, credentials)
+			print("token " .. tostring(LocalStorage.token))
+			seen = LocalStorage.token
+			LocalStorage.token = "rotated"
+		end
+
+		"""
+
+	/// The logout of a successful run may take longer than the limit for a canceled one.
+	@Test func slowEndSessionKeepsTheRotatedToken() async throws {
+		let package = demo(Self.rotating.replacingOccurrences(of: "function EndSession() print(\"EndSession\") end", with: "function EndSession() MM.sleep(1) print(\"EndSession\") end")
+			+ "function RefreshAccount() return {balance = 0, transactions = {}} end")
+		let first = TestSession()
+		var connector = first.connector(package)
+		connector.endLimit = .milliseconds(300)
+		let (report, _) = try await Self.refresh(connector, first)
+		let second = TestSession()
+		_ = try await Self.refresh(second.connector(package), second, state: ExtensionState(report.state))
+		#expect(second.printed.contains("token rotated"))
+	}
+
+	@Test func failedSetupKeepsLocalStorageForTheNextSetup() async throws {
+		let package = demo(Self.rotating + """
+			function ListAccounts()
+				if seen == nil then error("Try again later", 0) end
+				return {{accountNumber = "1", name = "Konto"}}
+			end
+			function RefreshAccount() return {balance = 0, transactions = {}} end
+			""")
+		let first = TestSession()
+		var kept: AccessState?
+		do {
+			_ = try await first.connector(package).setUp(Self.access, first)
+		} catch let failure as FailureWithState {
+			kept = failure.state
+		}
+		let second = TestSession()
+		_ = try await second.connector(package).setUp(Self.access, second, state: kept)
+		#expect(second.printed.contains("token rotated"))
+	}
+
+	/// A login that fails after the script stored a token keeps the token, and the next login dialog
+	/// says that the last login data was rejected.
+	@Test func failedLoginKeepsLocalStorageAndMarksTheNextLogin() async throws {
+		let package = demo(Self.calls + """
+			function InitializeSession2()
+				print("token " .. tostring(LocalStorage.token))
+				LocalStorage.token = "rotated"
+				return LoginFailed
+			end
+			""")
+		let first = TestSession()
+		var kept: ExtensionState?
+		do {
+			_ = try await Self.refresh(first.connector(package), first, unwrap: false)
+		} catch let failure as FailureWithState {
+			#expect(failure.failure as? SyncFailure == .loginRejected)
+			kept = ExtensionState(failure.state)
+		}
+		let second = TestSession()
+		_ = try? await Self.refresh(second.connector(package), second, state: kept)
+		#expect(second.printed.contains("token rotated"))
+		#expect(second.asked.withLock { $0.first } == .login(LoginRequest(service: "Demo", fields: LoginRequest.defaultFields, rejected: true)))
+	}
+
+	/// A poll that is still running when the notice expires is followed by the last call all the same.
+	@Test func slowPollStillSendsTheLastCall() async throws {
+		let session = TestSession(expires: true)
+		var connector = session.connector(demo(Self.calls + """
+			local calls = 0
+			function InitializeSession2(protocol, bankCode, step, credentials)
+				calls = calls + 1
+				if calls == 1 then return {challenge = "Confirm the login in your banking app.", poll = true} end
+				print("poll " .. step .. " " .. tostring(credentials[3]))
+				if credentials[3] then
+					MM.sleep(1)
+					return {challenge = "Confirm the login in your banking app.", poll = true}
+				end
+				return credentials[2]
+			end
+			"""))
+		connector.pollInterval = .milliseconds(50)
+		connector.challengeValidity = .seconds(2)
+		await #expect(throws: SyncFailure.bank(BankMessage(text: "The authorization was canceled."))) {
+			_ = try await Self.refresh(connector, session)
+		}
+		#expect(session.printed.last == "poll 1 false")
 	}
 }

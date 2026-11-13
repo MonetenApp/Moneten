@@ -35,6 +35,8 @@ public struct ExtensionConnector: BankConnector {
 	var pollInterval: Duration = .seconds(1)
 	/// How long a challenge stays valid after its dialog opens, as the broker counts it.
 	var challengeValidity: Duration = .seconds(300)
+	/// How long the end of a canceled session may take before the host is stopped.
+	var endLimit: Duration = .seconds(10)
 	var timeZone: TimeZone = .current
 
 	public init(package: ExtensionPackage, environment: HostEnvironment, fixture: Fixture? = nil, executable: URL = ExtensionHostClient.bundledExecutable,
@@ -79,16 +81,19 @@ public struct ExtensionConnector: BankConnector {
 			// The script may have stored a new token after the login, which the next run needs.
 			state.storage = await run.end() ?? state.storage
 			state.tanMethod = run.tanMethod ?? state.tanMethod
+			state.loginRejected = nil
 			throw FailureWithState(error, state: state.accessState)
 		}
 		state.storage = await run.end() ?? state.storage
 		state.tanMethod = run.tanMethod ?? state.tanMethod
+		state.loginRejected = nil
 		return ConnectorReport(outcomes: outcomes, state: state.accessState)
 	}
 
 	/// Sets up a new access: logs in, lists the accounts, and fetches each of them in one session.
-	public func setUp(_ access: Access, _ session: SyncSession) async throws -> AccessSetup {
-		var state = ExtensionState(nil)
+	/// `state` is what a failed setup of the same service left, such as a device registration in `LocalStorage`.
+	public func setUp(_ access: Access, _ session: SyncSession, state kept: AccessState? = nil) async throws -> AccessSetup {
+		var state = ExtensionState(kept)
 		let run = try await ScriptRun.start(self, access: access, state: state, session: session, reason: .newAccount)
 		var accounts: [NewAccount] = []
 		do {
@@ -103,11 +108,14 @@ public struct ExtensionConnector: BankConnector {
 				if outcome.endsSession { break }
 			}
 		} catch {
-			await run.end()
-			throw error
+			// A token that the script stored at the login serves the next setup of the service.
+			state.storage = await run.end() ?? state.storage
+			state.loginRejected = nil
+			throw FailureWithState(error, state: state.accessState)
 		}
 		state.storage = await run.end() ?? state.storage
 		state.tanMethod = run.tanMethod
+		state.loginRejected = nil
 		return AccessSetup(accounts: accounts, state: state.accessState, loginName: run.loginName)
 	}
 }
@@ -116,7 +124,8 @@ public struct ExtensionConnector: BankConnector {
 public struct AccessSetup: Sendable {
 	public let accounts: [NewAccount]
 	public let state: AccessState
-	/// The value of the first login field, which dialogs show as the user ID of the access.
+	/// The value of the first login field when that field is not secret, else "". Dialogs show it as the
+	/// user ID of the access.
 	public let loginName: String
 }
 
@@ -148,6 +157,8 @@ struct ExtensionState: Codable, Equatable {
 	var storage: Data?
 	var accounts: [String: LuaValue] = [:]
 	var tanMethod: String?
+	/// The service rejected the login data of the last run, so the next login dialog says so.
+	var loginRejected: Bool?
 
 	init(_ state: AccessState?) {
 		self = state.flatMap { try? JSONDecoder().decode(ExtensionState.self, from: $0.data) } ?? ExtensionState(storage: nil)
@@ -191,7 +202,8 @@ private final class ScriptRun {
 	/// before the user gave the login data, so an automatic refresh without it contacts nobody.
 	static func start(_ connector: ExtensionConnector, access: Access, state: ExtensionState, session: SyncSession, reason: SessionReason) async throws -> ScriptRun {
 		let fields = connector.loginFields(for: access.bankName)
-		guard case let .login(values) = try await session.ask(.login(LoginRequest(service: access.bankName, fields: fields))) else { throw CancellationError() }
+		guard case let .login(values) = try await session.ask(.login(LoginRequest(service: access.bankName, fields: fields, rejected: state.loginRejected == true)))
+		else { throw CancellationError() }
 		let decisions = try await connector.services.hostDecisions()
 		let package = connector.package
 		let hosts = AllowedHosts(package.manifest?.hosts?.map(\.value) ?? decisions.filter { $0.value == .allowed }.map(\.key))
@@ -218,8 +230,11 @@ private final class ScriptRun {
 		do {
 			try await run.login(values.map(\.value), reason: reason)
 		} catch {
-			await run.end()
-			throw error
+			// The script may have stored a token before its login failed.
+			var failed = state
+			failed.storage = await run.end() ?? state.storage
+			if error as? SyncFailure == .loginRejected { failed.loginRejected = true }
+			throw FailureWithState(error, state: failed.accessState)
 		}
 		return run
 	}
@@ -420,8 +435,17 @@ private final class ScriptRun {
 		while true {
 			try await Task.sleep(for: interval)
 			if closed.withLock({ $0 }) {
-				let answer = try await dialog.value
-				if answerEnds { return .answered(answer) }
+				do {
+					let answer = try await dialog.value
+					if answerEnds { return .answered(answer) }
+				} catch let failure as SyncFailure where failure == .challengeExpired {
+					// The notice expired while a call ran: the last call, which tells the script to stop, still goes out.
+					let value = try await again(false)
+					guard case let .object(fields) = value, let table = try? ChallengeTable(fields), table.poll, table.label == nil, waiting(table) else {
+						return .value(value)
+					}
+					throw failure
+				}
 			}
 			let more = ContinuousClock.now + interval < deadline
 			let value = try await again(more)
@@ -438,15 +462,20 @@ private final class ScriptRun {
 	@discardableResult
 	func end() async -> Data? {
 		// A cancel of the refresh ends the task that calls this, and a call in a canceled task stops the
-		// host. So the end runs in a task of its own, and a host that does not answer within 10 seconds is stopped.
-		// Only Sendable values cross into the task: `Self` would capture this run, which is not Sendable.
-		let client = client, loggedIn = loggedIn, log = connector.services.log
+		// host. So the end runs in a task of its own. After a cancel, a host that does not end within
+		// `endLimit` is stopped; otherwise the watchdog of the client allows a slow logout its time.
+		// Only Sendable values cross into the tasks: `Self` would capture this run, which is not Sendable.
+		let client = client, loggedIn = loggedIn, log = connector.services.log, endLimit = connector.endLimit
 		let ending = Task { @Sendable in await ScriptRun.finish(client, loggedIn: loggedIn, log: log) }
-		let limit = Task { @Sendable in
-			try await Task.sleep(for: .seconds(10))
-			await client.end()
+		let limit = EndLimit()
+		let storage = await withTaskCancellationHandler {
+			await ending.value
+		} onCancel: {
+			limit.start {
+				try await Task.sleep(for: endLimit)
+				await client.end()
+			}
 		}
-		let storage = await ending.value
 		limit.cancel()
 		return storage
 	}
@@ -474,6 +503,19 @@ private final class ScriptRun {
 	static func failure(_ error: Error) -> Error {
 		if error is SyncFailure || error is CancellationError { return error }
 		return SyncFailure.bank(BankMessage(text: "\(error)"))
+	}
+}
+
+/// The task that stops a host whose end takes too long after a cancel.
+private final class EndLimit: Sendable {
+	private let task = Mutex<Task<Void, any Error>?>(nil)
+
+	func start(_ stop: @escaping @Sendable () async throws -> Void) {
+		task.withLock { $0 = Task { @Sendable in try await stop() } }
+	}
+
+	func cancel() {
+		task.withLock { $0?.cancel() }
 	}
 }
 
