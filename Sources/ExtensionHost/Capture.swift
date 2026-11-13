@@ -13,19 +13,31 @@ public enum Capture: Sendable, Codable, Equatable {
 }
 
 /// One value of `MM.random`, `MM.uuid`, or the RSA padding, as a fixture holds it:
-/// `{"bytes": "<Base64>"}` or `{"uuid": "<UUID>"}`.
+/// `{"bytes": "<Base64>"}` or `{"uuid": "<UUID>"}`. `ext record` withholds a value that no request
+/// address needs, as `{"withheld": <number of bytes>}` or `{"withheld": "uuid"}`, and a replay gives
+/// counter values in its place.
 public enum RandomValue: Sendable, Equatable, Codable {
 	case bytes(Data)
 	case uuid(String)
+	case withheldBytes(Int)
+	case withheldUUID
 
 	private enum Key: String, CodingKey {
-		case bytes, uuid
+		case bytes, uuid, withheld
 	}
 
 	public init(from decoder: Decoder) throws {
 		let container = try decoder.container(keyedBy: Key.self)
 		if let uuid = try container.decodeIfPresent(String.self, forKey: .uuid) {
 			self = .uuid(uuid)
+		} else if container.contains(.withheld) {
+			if let count = try? container.decode(Int.self, forKey: .withheld) {
+				self = .withheldBytes(count)
+			} else if try container.decode(String.self, forKey: .withheld) == "uuid" {
+				self = .withheldUUID
+			} else {
+				throw DecodingError.dataCorruptedError(forKey: .withheld, in: container, debugDescription: "A withheld value is a number of bytes or \"uuid\".")
+			}
 		} else {
 			self = .bytes(try container.decode(Data.self, forKey: .bytes))
 		}
@@ -36,6 +48,8 @@ public enum RandomValue: Sendable, Equatable, Codable {
 		switch self {
 		case let .bytes(data): try container.encode(data, forKey: .bytes)
 		case let .uuid(text): try container.encode(text, forKey: .uuid)
+		case let .withheldBytes(count): try container.encode(count, forKey: .withheld)
+		case .withheldUUID: try container.encode("uuid", forKey: .withheld)
 		}
 	}
 }
@@ -85,11 +99,16 @@ final class Entropy {
 
 	func bytes(_ count: Int) -> Data {
 		if recorded != nil {
-			if case let .bytes(data)? = recorded?.first, data.count == count {
+			switch recorded?.first {
+			case let .bytes(data)? where data.count == count:
 				recorded?.removeFirst()
 				return data
+			case let .withheldBytes(length)? where length == count:
+				recorded?.removeFirst()
+				return counted(count)
+			default:
+				return counted(count)
 			}
-			return counted(count)
 		}
 		let data = Self.system(count)
 		report?(.bytes(data))
@@ -98,9 +117,14 @@ final class Entropy {
 
 	func uuid() -> String {
 		if recorded != nil {
-			if case let .uuid(text)? = recorded?.first {
+			switch recorded?.first {
+			case let .uuid(text)?:
 				recorded?.removeFirst()
 				return text
+			case .withheldUUID?:
+				recorded?.removeFirst()
+			default:
+				break
 			}
 			var bytes = [UInt8](counted(16))
 			bytes[6] = bytes[6] & 0x0F | 0x40

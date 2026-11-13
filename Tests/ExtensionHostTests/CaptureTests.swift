@@ -57,6 +57,21 @@ import Testing
 		#expect(run.call() == .string(String(repeating: "07", count: 32)))
 	}
 
+	/// A withheld value keeps its place: the replay gives counter values of its length, and the next
+	/// recorded value still comes next.
+	@Test func withheldValuesKeepTheirPlace() throws {
+		let run = Session("""
+			function Check()
+				local key, id, iv = MM.random(4), MM.uuid(), MM.random(3)
+				return {#key, #id, MM.binToHex(iv)}
+			end
+			""", capture: .replay(start: 1_794_218_400, random: [.withheldBytes(4), .withheldUUID, .bytes(Data([1, 2, 3]))]))
+		#expect(run.call() == .array([.integer(4), .integer(36), .string("010203")]))
+		let decoded = try JSONDecoder().decode([RandomValue].self, from: Data(#"[{"withheld": 32}, {"withheld": "uuid"}, {"bytes": "AQID"}]"#.utf8))
+		#expect(decoded == [.withheldBytes(32), .withheldUUID, .bytes(Data([1, 2, 3]))])
+		#expect(try JSONDecoder().decode([RandomValue].self, from: JSONEncoder().encode(decoded)) == decoded)
+	}
+
 	@Test func maxAgeCountsOnTheClockOfTheSession() {
 		let run = Session("""
 			function Check()

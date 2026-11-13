@@ -133,7 +133,7 @@ final class FixtureTransport: Transport {
 	func send(_ request: HTTPRequest) throws -> HTTPResponse {
 		onSend(request)
 		let index = unused.firstIndex { $0.request.method == request.method && $0.request.url == request.url }
-			?? unused.firstIndex { $0.request.method == request.method && Self.sameDecoded($0.request.url, request.url) }
+			?? unused.firstIndex { $0.request.method == request.method && Self.plainPlaceholders($0.request.url) == Self.plainPlaceholders(request.url) }
 		guard let index else {
 			throw ScriptError("The fixture has no response for \(request.method) \(request.url.absoluteString).")
 		}
@@ -141,10 +141,10 @@ final class FixtureTransport: Transport {
 		return HTTPResponse(status: response.status, headers: response.headers ?? [:], body: response.data)
 	}
 
-	/// A recording has its placeholders percent-encoded in the URL, and a script that builds the URL
-	/// from a placeholder without `MM.urlencode` sends the braces as they are.
-	private static func sameDecoded(_ recorded: URL, _ sent: URL) -> Bool {
-		guard let left = recorded.absoluteString.removingPercentEncoding, let right = sent.absoluteString.removingPercentEncoding else { return false }
-		return left == right
+	/// The URL with each percent-encoded placeholder in its plain form. A recording has its placeholders
+	/// percent-encoded in the URL, and a script that builds the URL from a placeholder without
+	/// `MM.urlencode` sends the braces as they are. Any other percent-encoding stays, so `a%2Fb` is not `a/b`.
+	private static func plainPlaceholders(_ url: URL) -> String {
+		url.absoluteString.replacing(/(?i)%7B%7B([a-z]+[0-9]*)%7D%7D/) { "{{\($0.output.1)}}" }
 	}
 }
