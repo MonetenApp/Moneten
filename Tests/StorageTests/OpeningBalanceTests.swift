@@ -49,6 +49,31 @@ struct OpeningBalanceTests {
 		#expect(bars(ledger) == bars(stored))
 	}
 
+	@Test("A balance whose transactions failed does not set the opening balance, so the next full refresh still does")
+	func failedTransactions() throws {
+		let store = try makeStore([giro])
+		let balanceOnly = RefreshResult(balance: Money(minorUnits: 120_000, currency: "EUR"), balanceDate: Date(), transactions: nil, transactionFailure: .notFetched)
+		_ = try store.merge(.refresh(balanceOnly), into: giro.id)
+		let afterFailure = try #require(try store.loadLedger().account(giro.id))
+		#expect(afterFailure.initialBalanceIsSet == false)
+		#expect(afterFailure.initialBalanceMinor == 0)
+		_ = try store.merge(refresh(quarter, balance: 120_000), into: giro.id)
+		let stored = try store.loadLedger()
+		#expect(stored.account(giro.id)?.initialBalanceMinor == 255_000)
+		#expect(bars(stored).last == 120_000)
+	}
+
+	@Test("A bank without transactions sets the opening balance to its balance once")
+	func bankWithoutTransactions() throws {
+		let store = try makeStore([giro])
+		let balanceOnly = RefreshResult(balance: Money(minorUnits: 120_000, currency: "EUR"), balanceDate: Date(), transactions: nil)
+		_ = try store.merge(.refresh(balanceOnly), into: giro.id)
+		_ = try store.merge(refresh([row(0, -10_000, "Card")], balance: 110_000), into: giro.id)
+		let stored = try store.loadLedger()
+		#expect(stored.account(giro.id)?.initialBalanceMinor == 120_000)
+		#expect(bars(stored).last == 110_000)
+	}
+
 	@Test("Pending rows do not count toward the opening balance")
 	func pendingRows() throws {
 		let store = try makeStore([giro])
