@@ -307,7 +307,7 @@ The app SHALL make "Deny" the default button of the dialog that asks whether an 
 
 ### Requirement: Headers of a redirect to another host
 
-The app SHALL forward only the headers `Accept`, `Accept-Language`, and `User-Agent` of the original request, and no body, when it follows a redirect to another host or port. A 307 or 308 on the same host and port keeps the method, the body, and every header. A 303, and a 301 or 302 after any method other than GET, become a GET without a body and without `Content-Type`. Each hop also gets the cookies of the run that match its address, unless the script set its own `Cookie` header.
+The app SHALL forward only the headers `Accept`, `Accept-Language`, and `User-Agent` of the original request, and no body, when it follows a redirect to another host or port. A 307 or 308 on the same host and port keeps the method, the body, and every header. A 303, and a 301 or 302 after any method other than GET, become a GET without a body and without `Content-Type`. Each hop gets the matching cookies of the run, unless it still carries a `Cookie` header of the script.
 
 #### Scenario: 307 to another host
 
