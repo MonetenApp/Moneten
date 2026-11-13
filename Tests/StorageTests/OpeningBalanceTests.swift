@@ -106,10 +106,14 @@ struct OpeningBalanceTests {
 		let store = try makeStore([giro])
 		let rows = quarter
 		_ = try store.merge(refresh(rows, balance: 120_000), into: giro.id)
-		try store.deleteTransactions([rows[3].id])
+		var ledger = try store.loadLedger()
+		let changed = try store.deleteTransactions([rows[3].id])
+		ledger.remove(transactionIDs: [rows[3].id])
+		for a in changed { ledger.upsert(a) }
 		let stored = try store.loadLedger()
 		#expect(bars(stored).last == 120_000)
 		#expect(stored.account(giro.id)?.initialBalanceMinor == 160_000)
+		#expect(bars(ledger) == bars(stored))
 	}
 
 	@Test("Older rows from a file in a fetched account keep the chart ending at the bank balance")

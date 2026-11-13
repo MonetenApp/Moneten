@@ -122,6 +122,21 @@ public struct Account: Identifiable, Hashable, Sendable, Codable {
 		guard kind == .portfolio, let bankBalanceMinor else { return nil }
 		return PortfolioValue(accountID: id, day: Day(bankBalanceDate ?? Date(), calendar: calendar), minorUnits: bankBalanceMinor)
 	}
+
+	/// A bank refreshes the account and reported a balance, so its initial balance follows from that
+	/// balance. A portfolio gets its history from its recorded values instead.
+	public var derivesInitialBalance: Bool { source == .bank && kind != .portfolio && bankBalanceMinor != nil }
+
+	/// Sets the initial balance so that the computed balance at the end of the day of the bank balance
+	/// equals the bank balance. `rows` are all live rows of the account. Pending rows and rows booked
+	/// after that day are not in the bank balance.
+	public mutating func deriveInitialBalance(from rows: [Transaction], calendar: Calendar = .current) {
+		guard derivesInitialBalance, let bankBalanceMinor else { return }
+		let day = Day(bankBalanceDate ?? Date(), calendar: calendar)
+		initialBalanceMinor = rows.reduce(bankBalanceMinor) { sum, t in
+			!t.isPending && t.bookingDate <= day ? sum - t.amountMinor : sum
+		}
+	}
 }
 
 /// The value of a portfolio at the end of one day. A portfolio gets its value from the bank and not

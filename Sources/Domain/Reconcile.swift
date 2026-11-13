@@ -62,8 +62,8 @@ public struct Reconciliation: Sendable, Equatable {
 	/// Delivered rows that were stored already, or that the user deleted. A stored row that such a delivered
 	/// row changed is in `updated` as well.
 	public internal(set) var skipped = 0
-	/// The account with the balance and the date of this refresh. Nil for a file, and when the refresh
-	/// brought no balance in the currency of the account.
+	/// The account with the balance and the date of this refresh, and with the initial balance that
+	/// follows from the balance and the merged rows. Nil when none of them changed.
 	public internal(set) var account: Account?
 
 	public init() {}
@@ -138,12 +138,17 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored: [Tran
 			if delivery.covers(pending.bookingDate), !pending.needsReview { r.dropped.append(pending.id) }
 		}
 	}
+	var a = account
 	if case let .refresh(result) = delivery, let balance = result.balance, balance.currency == account.currency {
-		var a = account
 		a.bankBalanceMinor = balance.minorUnits
 		a.bankBalanceDate = result.balanceDate ?? now
-		r.account = a
 	}
+	if a.derivesInitialBalance {
+		// Dropped rows are pending and do not count.
+		let changed = Dictionary(uniqueKeysWithValues: (r.booked + r.updated + r.marked).map { ($0.id, $0) })
+		a.deriveInitialBalance(from: stored.map { changed[$0.id] ?? $0 } + r.added)
+	}
+	if a != account { r.account = a }
 	return r
 }
 

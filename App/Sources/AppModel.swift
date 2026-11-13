@@ -483,8 +483,9 @@ final class AppModel {
 	func delete(transactions ids: Set<UUID>) {
 		guard let store else { return }
 		do {
-			try store.deleteTransactions(Array(ids))
+			let accounts = try store.deleteTransactions(Array(ids))
 			ledger.remove(transactionIDs: ids)
+			for a in accounts { ledger.upsert(a) }
 			selectedTransactions.subtract(ids)
 		} catch {
 			alert = AlertMessage(title: "Could not delete the transactions.", message: String(describing: error))
