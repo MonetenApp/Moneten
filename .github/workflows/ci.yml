@@ -39,6 +39,13 @@ jobs:
       - name: Example extension
         # The replay that the checks of the catalog repository run for each package.
         run: swift run --disable-keychain ext test Extensions/Example Fixtures/example/fixture.json Fixtures/example/expected.json
+      - name: Published extensions
+        # Three published extensions, unchanged, against their hand-made fixtures. CompatibilityTests checks their digests.
+        run: |
+          for extension in "permanent-tsb-business/Permanent TSB Business.lua" monzo/Monzo.lua amazon-bestellungen/amazon-bestellungen.lua; do
+            folder="Fixtures/extensions/${extension%%/*}"
+            swift run --disable-keychain ext test "Fixtures/extensions/$extension" "$folder/fixture.json" "$folder/expected.json"
+          done
       - name: Performance
         # The budgets of the performance tests hold for a release build only. See CONTRIBUTING.md.
         # The tests run one after another, so that no test measures the load of another one.
