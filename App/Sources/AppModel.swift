@@ -665,7 +665,7 @@ final class AppModel {
 	private func connector(for source: AccessSource) -> (any BankConnector)? {
 		switch source {
 		case .fints: fints
-		case let .extension(id): extensions.connector(for: id) ?? extensionConnectors[id]
+		case let .extension(id): extensions.connector(for: id) ?? extensionConnectors[id] ?? StoppedExtension(message: "The extension \(id) is not installed.")
 		case .finAPI: nil
 		}
 	}

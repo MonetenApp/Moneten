@@ -27,28 +27,36 @@ struct ExtensionsWindow: View {
 	}
 
 	private var content: some View {
-		NavigationSplitView {
-			List(selection: Binding(get: { library.selection }, set: { model.extensions.selection = $0 })) {
-				section("Installed", .installed)
-				section("Available", .available)
+		HSplitView {
+			VStack(spacing: 0) {
+				HStack {
+					TextField("Search Extensions", text: $search)
+						.textFieldStyle(.roundedBorder)
+					Button("Check Now") { Task { await library.checkNow() } }
+				}
+				.padding(10)
+				List(selection: Binding(get: { library.selection }, set: { model.extensions.selection = $0 })) {
+					section("Installed", .installed)
+					section("Available", .available)
+				}
+				status
+				HStack {
+					Toggle("Update extensions automatically", isOn: Binding(get: { library.automatic }, set: { library.automatic = $0 }))
+						.toggleStyle(.checkbox)
+					Spacer()
+					Button("Install from File...", action: pickFile)
+				}
+				.padding(10)
 			}
-			.navigationSplitViewColumnWidth(min: 320, ideal: 380)
-			.safeAreaInset(edge: .bottom) { status }
-		} detail: {
-			if let item = library.items.first(where: { $0.id == library.selection }) {
-				ExtensionDetails(item: item)
-			} else {
-				ContentUnavailableView("No Extension Selected", systemImage: "puzzlepiece.extension")
+			.frame(minWidth: 340, idealWidth: 400)
+			Group {
+				if let item = library.items.first(where: { $0.id == library.selection }) {
+					ExtensionDetails(item: item)
+				} else {
+					ContentUnavailableView("No Extension Selected", systemImage: "puzzlepiece.extension")
+				}
 			}
-		}
-		.searchable(text: $search, placement: .sidebar, prompt: "Search Extensions")
-		.toolbar {
-			ToolbarItemGroup {
-				Toggle("Update extensions automatically", isOn: Binding(get: { library.automatic }, set: { library.automatic = $0 }))
-					.toggleStyle(.checkbox)
-				Button("Install from File...", action: pickFile)
-				Button("Check Now") { Task { await library.checkNow() } }
-			}
+			.frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity)
 		}
 		.sheet(item: Binding(get: { library.question }, set: { model.extensions.question = $0 })) { question in
 			UpdateConfirmation(question: question)
@@ -88,7 +96,8 @@ struct ExtensionsWindow: View {
 		}
 		.font(.caption)
 		.frame(maxWidth: .infinity, alignment: .leading)
-		.padding(10)
+		.padding(.horizontal, 10)
+		.padding(.top, 6)
 	}
 
 	private func pickFile() {

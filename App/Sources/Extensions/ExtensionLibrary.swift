@@ -20,6 +20,10 @@ final class ExtensionLibrary {
 		static let lowestIndexVersion = 1
 
 		static func standard() -> Configuration {
+			#if PERF_HARNESS
+			// The performance check shows a made-up index and never contacts the catalog.
+			return Configuration(source: CatalogSource(base: URL(filePath: "/dev/null")), keys: nil)
+			#else
 			#if DEBUG
 			let environment = ProcessInfo.processInfo.environment
 			// Debug builds only: the live checks sign a local index with throwaway keys and serve it themselves.
@@ -33,6 +37,7 @@ final class ExtensionLibrary {
 			let pems = ["current", "next"].compactMap { Bundle.main.url(forResource: $0, withExtension: "pub").flatMap { try? String(contentsOf: $0, encoding: .utf8) } }
 			let keys = pems.count == 2 ? try? CatalogKeys(currentPEM: pems[0], nextPEM: pems[1], lowestVersion: lowestIndexVersion) : nil
 			return Configuration(source: CatalogSource(base: URL(string: "https://extensions.monetenapp.com/")!), keys: keys)
+			#endif
 		}
 	}
 
@@ -365,6 +370,7 @@ final class ExtensionLibrary {
 				for file in url.pathExtension == "lua" ? Self.files(of: url) : [url] { try FileManager.default.trashItem(at: file, resultingItemURL: nil) }
 			}
 			try store.removeInstalledExtension(id)
+			model?.extensionConnectors[id] = nil
 			catalogInstalls[id] = nil
 			fileInstalls[id] = nil
 			updates[id] = nil
