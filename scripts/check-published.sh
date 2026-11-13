@@ -21,12 +21,15 @@ import glob, json, os, re, subprocess, sys
 out, host = sys.argv[1], sys.argv[2]
 environment = {"productVersion": "0.1", "productBuild": 1, "variant": "retail", "language": "en", "locale": "en_US",
 	"deviceUuid": "00000000-0000-4000-8000-000000000000", "country": "DE"}
+# The limits of a session of the app (HostLimits).
+limits = {"memory": 256 * 1048576, "processorSeconds": 60}
 # Values that the API documents as nil in some builds.
 may_be_nil = {"MM.APPSTORE", "MM.BETA", "MM.DEBUG", "MM.RETAIL"}
 
 def session(name, text, call=None):
 	"""Starts a host session with one Lua file and returns its events."""
-	commands = [{"start": {"_0": {"package": {"name": name, "files": [{"name": name + ".lua", "text": text}]}, "decisions": {}, "environment": environment}}}]
+	commands = [{"start": {"_0": {"package": {"name": name, "files": [{"name": name + ".lua", "text": text}]}, "decisions": {}, "environment": environment,
+		"limits": limits}}}]
 	if call:
 		commands.append({"call": {"_0": {"function": {"_0": call}}}})
 	result = subprocess.run([host], input="".join(json.dumps(c) + "\n" for c in commands), capture_output=True, text=True, timeout=60)
@@ -170,7 +173,7 @@ result = next((e["result"]["_0"] for e in events if "result" in e), None)
 if result is None:
 	sys.exit("The probe did not run: %s" % events)
 missing = set(result or [])
-print("%d Web Banking files, %d signed, %d names in use." % (len(uses), len(signed), len(wanted)))
+print("%d Web Banking files, %d signed, %d names in use, %d loaded in the host." % (len(uses), len(signed), len(wanted), len(uses) - len(failed)))
 for name, message in sorted(failed.items()):
 	print("load %s %s: %s" % ("signed" if name in signed else "unsigned", name, message))
 problems = 0
