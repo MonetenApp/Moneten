@@ -135,6 +135,34 @@ import Testing
 		#expect(clua_nativedepth(session.lua.stack.L) == 1)
 	}
 
+	/// The bytes that an object of the API holds outside the state, the copy of a JSON or PDF document or
+	/// the tree of an HTML document, count against the memory of the session. Objects that the script
+	/// keeps reach the limit, and objects that it drops do not.
+	@Test(arguments: [#"JSON(big)"#, #"PDF(big)"#, #"HTML(page)"#])
+	func memoryOfObjectsCountsAgainstTheLimit(create: String) {
+		let package = demo("""
+			WebBanking{version = 1}
+			big = string.rep("x", 4 * 1048576)
+			page = "<p>" .. big .. "</p>"
+			function Hold()
+				local held = {}
+				for i = 1, 100 do
+					local ok, message = pcall(function() held[#held + 1] = \(create) end)
+					if not ok then return message end
+				end
+				return #held
+			end
+			function Drop()
+				for i = 1, 100 do local object = \(create) end
+				return "done"
+			end
+			""")
+		let hold = HostSession(package: package, transport: LargeBodies(), memory: 64 * 1_048_576, ask: { _ in .denied }, log: { _ in })
+		#expect(Result { () throws(ScriptError) -> LuaValue in _ = try hold.load(); return try hold.call(.function("Hold")) } == .success(.string("not enough memory")))
+		let drop = HostSession(package: package, transport: LargeBodies(), memory: 64 * 1_048_576, ask: { _ in .denied }, log: { _ in })
+		#expect(Result { () throws(ScriptError) -> LuaValue in _ = try drop.load(); return try drop.call(.function("Drop")) } == .success(.string("done")))
+	}
+
 	/// An error of a Swift function that quotes data of the script, such as a URL of 1 MB, keeps 1,000
 	/// bytes of it, so that the error needs little memory.
 	@Test(arguments: [

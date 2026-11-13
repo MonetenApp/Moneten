@@ -19,6 +19,8 @@ typedef struct {
 	int native;
 	/* The collector was running when Swift took over, so it runs again when Lua does. */
 	int stopped;
+	/* clua_call collects over the limit, which needs headroom for the finalizers it runs. */
+	int collecting;
 } clua_Budget;
 
 #define HEADROOM ((size_t)64 << 20)
@@ -41,7 +43,7 @@ static void *clua_alloc(void *ud, void *ptr, size_t osize, size_t nsize) {
 		budget->used -= old;
 		return NULL;
 	}
-	size_t ceiling = budget->limit + (budget->native > 0 ? HEADROOM : 0);
+	size_t ceiling = budget->limit + (budget->native > 0 || budget->collecting ? HEADROOM : 0);
 	void *block = nsize > old && budget->used - old + nsize > ceiling ? NULL : realloc(ptr, nsize);
 	if (!block && budget->native > 0) clua_exitformemory();
 	if (block) budget->used = budget->used - old + nsize;
@@ -70,6 +72,14 @@ static void clua_leave(lua_State *L, clua_Budget *budget) {
 	}
 }
 
+/* A full collection with its finalizers. Each finalizer needs a call frame, which a state over its
+   limit could not allocate, so the collection may use the headroom. */
+static void clua_collect(lua_State *L, clua_Budget *budget) {
+	budget->collecting = 1;
+	lua_gc(L, LUA_GCCOLLECT);
+	budget->collecting = 0;
+}
+
 static int clua_call(lua_State *L) {
 	clua_Function f = (clua_Function)lua_touserdata(L, lua_upvalueindex(1));
 	clua_Budget *budget = clua_budget(L);
@@ -79,6 +89,19 @@ static int clua_call(lua_State *L) {
 	/* The restart clears the debt of the collector, so what Swift allocated would never advance it.
 	   A step here, with Lua in charge again, keeps up with garbage that only Swift functions make. */
 	if (lua_gc(L, LUA_GCISRUNNING)) lua_gc(L, LUA_GCSTEP, 0);
+	/* Over the limit, a full collection runs the finalizers of dropped objects first, which give back
+	   the memory they hold outside the state. An emergency collection would not run them. When the
+	   results of the function still do not fit, they are dropped and collected the same way, so that no
+	   charge of an object outlives the memory error, which reports them. */
+	if (budget->used > budget->limit && lua_gc(L, LUA_GCISRUNNING)) {
+		clua_collect(L, budget);
+		if (budget->used > budget->limit && results > 0) {
+			lua_pop(L, results);
+			clua_collect(L, budget);
+			lua_pushliteral(L, "not enough memory");
+			return lua_error(L);
+		}
+	}
 	if (budget->used > budget->limit) {
 		/* Any new block fails now. Lua collects first, and raises its memory error if the state still
 		   holds too much. */
@@ -98,6 +121,15 @@ int clua_pcall(lua_State *L, int arguments, int results) {
 	int status = lua_pcall(L, arguments, results, 0);
 	clua_enter(L, budget);
 	return status;
+}
+
+void clua_charge(lua_State *L, size_t bytes) {
+	clua_budget(L)->used += bytes;
+}
+
+void clua_uncharge(lua_State *L, size_t bytes) {
+	clua_Budget *budget = clua_budget(L);
+	budget->used -= bytes < budget->used ? bytes : budget->used;
 }
 
 int clua_nativedepth(lua_State *L) {
@@ -133,6 +165,7 @@ lua_State *clua_newstate(size_t limit) {
 	budget->limit = limit;
 	budget->native = 0;
 	budget->stopped = 0;
+	budget->collecting = 0;
 	lua_State *L = lua_newstate(clua_alloc, budget);
 	if (!L) {
 		free(budget);

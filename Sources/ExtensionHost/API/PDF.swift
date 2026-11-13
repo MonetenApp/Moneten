@@ -18,7 +18,8 @@ enum PDFDocument {
 			stack.pushMessage("PDF needs the PDF document as a string.")
 			return -1
 		}
-		LuaObject.push(stack, LuaObject.Box(stack.bytes(at: 1)), type)
+		let document = stack.bytes(at: 1)
+		LuaObject.push(stack, LuaObject.Box(document), type, bytes: document.count)
 		return 1
 	}
 

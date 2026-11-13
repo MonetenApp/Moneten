@@ -34,7 +34,7 @@ enum HTMLDocument {
 		let L = stack.L
 		lua_createtable(L, 0, 0)
 		lua_createtable(L, 1, 2)
-		LuaObject.push(stack, tree, treeType)
+		LuaObject.push(stack, tree, treeType, bytes: tree.cost)
 		lua_getmetatable(L, -1)
 		lua_getfield(L, -1, "__index")
 		lua_setfield(L, -4, "__index")
@@ -250,8 +250,12 @@ private final class HTMLTree {
 
 	private static let parser: Void = xmlInitParser()
 
+	/// What the tree takes in memory, estimated as four times its text, which the session's memory counts.
+	let cost: Int
+
 	/// Without `charset`, libxml2 reads the character set from the `<meta>` tags.
 	init(_ content: Data, charset: String?) {
+		cost = content.count * 4
 		_ = Self.parser
 		let options = Int32(HTML_PARSE_RECOVER.rawValue | HTML_PARSE_NOERROR.rawValue | HTML_PARSE_NOWARNING.rawValue | HTML_PARSE_NONET.rawValue)
 		let parsed = content.withUnsafeBytes { htmlReadMemory($0.baseAddress?.assumingMemoryBound(to: CChar.self), Int32(content.count), nil, charset, options) }
@@ -532,10 +536,22 @@ enum LuaObject {
 		lua_settop(L, -2)
 	}
 
-	static func push(_ stack: LuaStack, _ object: AnyObject, _ type: String) {
-		let slot = lua_newuserdatauv(stack.L, MemoryLayout<UnsafeRawPointer>.size, 0)!
+	/// Pushes a userdata that holds `object`, and charges the `bytes` that the object holds outside the
+	/// state to the memory of the session until `__gc`.
+	static func push(_ stack: LuaStack, _ object: AnyObject, _ type: String, bytes: Int = 0) {
+		let slot = lua_newuserdatauv(stack.L, MemoryLayout<UnsafeRawPointer>.size + MemoryLayout<Int>.size, 0)!
 		slot.storeBytes(of: Unmanaged.passRetained(object).toOpaque(), as: UnsafeRawPointer?.self)
+		slot.storeBytes(of: bytes, toByteOffset: MemoryLayout<UnsafeRawPointer>.size, as: Int.self)
 		luaL_setmetatable(stack.L, type)
+		clua_charge(stack.L, bytes)
+	}
+
+	/// Changes the charge of the object at `index`, for example after `json:set` replaced its document.
+	static func recharge(_ stack: LuaStack, at index: Int32, _ type: String, bytes: Int) {
+		guard let slot = luaL_testudata(stack.L, index, type) else { return }
+		clua_uncharge(stack.L, slot.load(fromByteOffset: MemoryLayout<UnsafeRawPointer>.size, as: Int.self))
+		slot.storeBytes(of: bytes, toByteOffset: MemoryLayout<UnsafeRawPointer>.size, as: Int.self)
+		clua_charge(stack.L, bytes)
 	}
 
 	/// The object of the userdata at `index`, or nil when it is no object of `type` or Lua has already collected it.
@@ -549,6 +565,8 @@ enum LuaObject {
 		guard let slot = lua_touserdata(L, 1), let pointer = slot.load(as: UnsafeRawPointer?.self) else { return 0 }
 		slot.storeBytes(of: nil, as: UnsafeRawPointer?.self)
 		Unmanaged<AnyObject>.fromOpaque(pointer).release()
+		clua_uncharge(L, slot.load(fromByteOffset: MemoryLayout<UnsafeRawPointer>.size, as: Int.self))
+		slot.storeBytes(of: 0, toByteOffset: MemoryLayout<UnsafeRawPointer>.size, as: Int.self)
 		return 0
 	}
 

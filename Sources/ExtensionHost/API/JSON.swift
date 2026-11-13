@@ -17,7 +17,9 @@ enum JSONObject {
 	private static let create: clua_Function = { L in
 		let stack = LuaStack(L!)
 		switch lua_type(L, 1) {
-		case LUA_TSTRING: LuaObject.push(stack, LuaObject.Box<Data?>(stack.bytes(at: 1)), type)
+		case LUA_TSTRING:
+			let document = stack.bytes(at: 1)
+			LuaObject.push(stack, LuaObject.Box<Data?>(document), type, bytes: document.count)
 		case LUA_TNONE, LUA_TNIL: LuaObject.push(stack, LuaObject.Box<Data?>(nil), type)
 		default:
 			stack.pushMessage("JSON needs a JSON document as a string.")
@@ -67,6 +69,7 @@ enum JSONObject {
 				return -1
 			}
 			document.value = Data(text.utf8)
+			LuaObject.recharge(stack, at: 1, type, bytes: text.utf8.count)
 			lua_pushvalue(L, 1)
 			return 1
 		}

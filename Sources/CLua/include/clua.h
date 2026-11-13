@@ -25,6 +25,12 @@ void clua_setcontext(lua_State *L, void *context);
 /// runs, so that Swift never meets a Lua error.
 int clua_pcall(lua_State *L, int arguments, int results);
 
+/// Memory outside the state that an object of the state holds, such as the tree of an HTML document.
+/// It counts against the limit like a block of the state: back in Lua, a state over the limit collects,
+/// and raises its memory error when it still holds too much. The finalizer of the object gives it back.
+void clua_charge(lua_State *L, size_t bytes);
+void clua_uncharge(lua_State *L, size_t bytes);
+
 /// How many levels of Swift code hold the state: 1 between calls, 0 while Lua runs.
 int clua_nativedepth(lua_State *L);
 
