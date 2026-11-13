@@ -227,6 +227,15 @@ enum Schema {
 				t.column("record", .blob).notNull()
 			}
 		}
+		// The initial balance of a fetched account is set once (issue #109). An account that a bank access
+		// added before has 0 and gets it at its next refresh. Any other account keeps its initial balance:
+		// the user typed it, or it came from MoneyMoney.
+		m.registerMigration("v11") { db in
+			try db.alter(table: "account") { t in
+				t.add(column: "initialBalanceIsSet", .boolean).notNull().defaults(to: true)
+			}
+			try db.execute(sql: "UPDATE account SET initialBalanceIsSet = 0 WHERE source = 'bank' AND initialBalanceMinor = 0 AND sourceID IS NULL")
+		}
 		return m
 	}
 }

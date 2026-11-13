@@ -157,26 +157,12 @@ public final class Store: SavedPINStore {
 	}
 
 	/// Deletes transactions and keeps what identifies them, so that no later refresh adds them again.
-	/// The bank balance stays as it is, and an account whose initial balance follows from it gets that
-	/// initial balance again. Returns the accounts that changed.
-	@discardableResult
-	public func deleteTransactions(_ ids: [UUID]) throws -> [Account] {
+	/// The bank balance stays as it is.
+	public func deleteTransactions(_ ids: [UUID]) throws {
 		try queue.write { db in
 			let now = Date()
-			let rows = try Transaction.fetchAll(db, keys: ids)
-			for t in rows { try DeletedTransaction(t, deletedAt: now).insert(db) }
+			for t in try Transaction.fetchAll(db, keys: ids) { try DeletedTransaction(t, deletedAt: now).insert(db) }
 			_ = try Transaction.deleteAll(db, keys: ids)
-			var changed: [Account] = []
-			for id in Set(rows.map(\.accountID)) {
-				guard let account = try Account.fetchOne(db, key: id), account.derivesInitialBalance else { continue }
-				var a = account
-				a.deriveInitialBalance(from: try Transaction.filter(Column("accountID") == id).fetchAll(db))
-				if a != account {
-					try a.update(db)
-					changed.append(a)
-				}
-			}
-			return changed
 		}
 	}
 

@@ -139,26 +139,27 @@ struct OpeningBalanceTests {
 		_ = try store.merge(refresh(quarter, balance: 120_000), into: giro.id)
 		try type(300_000, into: giro.id, of: store)
 		_ = try store.merge(refresh([row(0, -40_000, "Card")], balance: 80_000), into: giro.id)
-		try type(0, into: savings.id, of: store)
+		try type(25_000, into: savings.id, of: store)
 		_ = try store.merge(refresh([row(3, 10_000, "Interest", in: savings)], balance: 510_000), into: savings.id)
 		let stored = try store.loadLedger()
 		#expect(stored.account(giro.id)?.initialBalanceMinor == 300_000)
-		#expect(stored.account(savings.id)?.initialBalanceMinor == 0)
+		#expect(stored.account(savings.id)?.initialBalanceMinor == 25_000)
 	}
 
-	@Test("An account fetched before the fix gets its opening balance once, at its next refresh, and one with a typed value keeps it")
+	@Test("An account fetched before the fix gets its opening balance once, at its next refresh, and one with a typed or migrated value keeps it")
 	func repairOnce() throws {
 		let queue = try DatabaseQueue()
 		try Schema.migrator.migrate(queue, upTo: "v10")
 		let old = UUID()
 		let typed = UUID()
+		let migrated = UUID()
 		// The columns of v10: a later version adds more, which the record type would write.
 		try queue.write { db in
-			for (id, name, initial) in [(old, "Old giro", 0), (typed, "Typed giro", 50_000)] {
+			for (id, name, initial, sourceID) in [(old, "Old giro", 0, nil), (typed, "Typed giro", 50_000, nil), (migrated, "Migrated giro", 0, "moneymoney:1")] {
 				try db.execute(sql: """
-					INSERT INTO account (id, position, name, kind, source, currency, initialBalanceMinor, isClosed, bankBalanceMinor, bankBalanceDate)
-					VALUES (?, 0, ?, 'giro', 'bank', 'EUR', ?, 0, 100000, ?)
-					""", arguments: [id, name, initial, Date()])
+					INSERT INTO account (id, position, name, kind, source, currency, initialBalanceMinor, isClosed, bankBalanceMinor, bankBalanceDate, sourceID)
+					VALUES (?, 0, ?, 'giro', 'bank', 'EUR', ?, 0, 100000, ?, ?)
+					""", arguments: [id, name, initial, Date(), sourceID])
 			}
 		}
 		try Schema.migrator.migrate(queue)
@@ -169,9 +170,11 @@ struct OpeningBalanceTests {
 		#expect(try store.loadLedger().account(old)?.initialBalanceMinor == 130_000)
 		_ = try store.merge(refresh([row(100, -7_000, "Old fee", in: oldGiro)], balance: 100_000), into: old)
 		_ = try store.merge(refresh([], balance: 100_000), into: typed)
+		_ = try store.merge(refresh([], balance: 100_000), into: migrated)
 		let stored = try store.loadLedger()
 		#expect(stored.account(old)?.initialBalanceMinor == 130_000)
 		#expect(stored.account(typed)?.initialBalanceMinor == 50_000)
+		#expect(stored.account(migrated)?.initialBalanceMinor == 0)
 	}
 
 	@Test("Migrated and offline accounts keep their initial balance, also a migrated account that a bank access connects")
