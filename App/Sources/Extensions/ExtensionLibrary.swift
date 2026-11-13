@@ -236,7 +236,11 @@ final class ExtensionLibrary {
 				continue
 			}
 			var plan = UpdatePlan(installed: current, available: available, automatic: automatic, sessionRuns: sessionRuns(id))
-			if case .needsConfirmation = plan, confirmed[id] == available.version { plan = sessionRuns(id) ? .afterSession : .install }
+			switch plan {
+			case .needsConfirmation, .waitsForUser:
+				if confirmed[id] == available.version { plan = sessionRuns(id) ? .afterSession : .install }
+			default: break
+			}
 			updates[id] = plan == .upToDate || plan == .install ? nil : plan
 			if plan == .install, !working.contains(id) { await download(entry) }
 		}
@@ -244,8 +248,12 @@ final class ExtensionLibrary {
 	}
 
 	/// Installs the waiting update after the user confirmed it or chose "Update".
-	func update(_ id: String) async {
+	func update(_ id: String, to version: String? = nil) async {
 		guard let entry = index?.entry(id) else { return }
+		if let version, version != entry.version {
+			failure = "A newer version of \(entry.name) arrived. Review it again."
+			return reload()
+		}
 		confirmed[id] = entry.version
 		if sessionRuns(id) {
 			updates[id] = .afterSession
@@ -269,8 +277,9 @@ final class ExtensionLibrary {
 			reload()
 		}
 		do {
-			let installed = try await installer.install(entry)
-			try store.saveInstalledExtension(InstalledExtension(id: installed.id, origin: .catalog, record: try JSONEncoder().encode(installed)))
+			let installed = try await installer.install(entry) { installed in
+				try store.saveInstalledExtension(InstalledExtension(id: installed.id, origin: .catalog, record: try JSONEncoder().encode(installed)))
+			}
 			catalogInstalls[installed.id] = installed
 			fileInstalls[installed.id] = nil
 			updates[installed.id] = nil
@@ -300,26 +309,33 @@ final class ExtensionLibrary {
 	}
 
 	/// Copies the extension into the folder after the user agreed to the warning, and marks it "Unverified".
-	func installFile(_ url: URL, name: String) {
+	func installFile(_ url: URL, name: String, shown: ExtensionPackage) {
 		let fm = FileManager.default
 		let target = folder.appending(path: url.pathExtension == "lua" ? "\(name).lua" : name)
 		do {
 			try fm.createDirectory(at: folder, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
 			for source in Self.files(of: url) {
 				let destination = url.pathExtension == "lua" ? folder.appending(path: source.lastPathComponent) : target.appending(path: source.lastPathComponent)
+				// A file the user picked inside the "Extensions" folder is already in place.
+				if source.resolvingSymlinksInPath() == destination.resolvingSymlinksInPath() { continue }
 				try fm.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
 				if fm.fileExists(atPath: destination.path) { try fm.removeItem(at: destination) }
 				try fm.copyItem(at: source, to: destination)
 			}
-			allow(name)
+			allow(name, shown: shown)
 		} catch {
 			failure = "\(name) could not be installed. \(error)"
 		}
 	}
 
-	/// Records the files that the user saw in the warning. A later change asks again.
-	func allow(_ name: String) {
+	/// Records the files that the user saw in the warning. A later change asks again. The digests come
+	/// first: a change after them asks again at the next run, and a change before them fails the comparison.
+	func allow(_ name: String, shown: ExtensionPackage) {
 		guard let store = model?.store, let digests = Self.digests(of: fileURL(name)) else { return }
+		guard (try? ExtensionPackage.load(from: fileURL(name))) == shown else {
+			failure = "\(name) changed after the warning. Allow it again."
+			return reload()
+		}
 		do {
 			try store.saveInstalledExtension(InstalledExtension(id: name, origin: .file, record: try JSONEncoder().encode(digests)))
 			fileInstalls[name] = digests
@@ -350,9 +366,9 @@ final class ExtensionLibrary {
 
 	func confirm(_ question: Question) {
 		switch question {
-		case let .fileWarning(url, _, name): installFile(url, name: name)
-		case let .allow(name, _): allow(name)
-		case let .review(id, _, _, _, _): Task { await update(id) }
+		case let .fileWarning(url, package, name): installFile(url, name: name, shown: package)
+		case let .allow(name, package): allow(name, shown: package)
+		case let .review(id, _, version, _, _): Task { await update(id, to: version) }
 		case let .remove(id, _, _): remove(id)
 		}
 	}
@@ -571,6 +587,13 @@ struct StoppedExtension: BankConnector, Error {
 	}
 }
 
+/// Refuses every redirect, so that no catalog request reaches another host than the catalog address.
+private final class NoRedirects: NSObject, URLSessionTaskDelegate, Sendable {
+	func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest) async -> URLRequest? {
+		nil
+	}
+}
+
 /// Gets the files of the catalog. A request carries no query, no cookie, and nothing that names the
 /// user or the Mac, and the app asks for the whole index, so the catalog cannot tell which extensions are installed.
 struct CatalogSource: Sendable {
@@ -590,7 +613,7 @@ struct CatalogSource: Sendable {
 		{ [base] path in
 			let url = base.appending(path: path)
 			if url.isFileURL { return try Data(contentsOf: url) }
-			let (data, response) = try await Self.session.data(from: url)
+			let (data, response) = try await Self.session.data(from: url, delegate: NoRedirects())
 			guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw URLError(.badServerResponse) }
 			return data
 		}

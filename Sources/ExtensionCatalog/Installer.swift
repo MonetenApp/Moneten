@@ -35,7 +35,9 @@ public struct Installer: Sendable {
 
 	/// Downloads every file of the entry, checks its size and SHA-256, and puts the package into the
 	/// folder in one step, in place of an installed version. A failure leaves the folder as it was.
-	public func install(_ entry: CatalogIndex.Entry) async throws(CatalogError) -> InstalledPackage {
+	/// `record` saves the origin before the files arrive, so a catalog package is never in the folder
+	/// without its record, which would make it look like a file install.
+	public func install(_ entry: CatalogIndex.Entry, record: @Sendable (InstalledPackage) throws -> Void = { _ in }) async throws(CatalogError) -> InstalledPackage {
 		let manifest: Manifest
 		do { manifest = try entry.manifest.get() } catch { throw .notInstallable(error.message) }
 		guard let version = manifest.version else { throw .notInstallable("The manifest needs version.") }
@@ -54,8 +56,10 @@ public struct Installer: Sendable {
 			guard data.count == file.size, Self.sha256(data) == file.sha256 else { throw .damaged(file.path) }
 			do { try data.write(to: download.appending(path: file.path)) } catch { throw .download(entry.name) }
 		}
+		let installed = InstalledPackage(id: entry.id, name: manifest.name ?? entry.id, version: version, files: entry.files)
 		let target = folder.appending(path: entry.id)
 		do {
+			try record(installed)
 			if fm.fileExists(atPath: target.path) {
 				_ = try fm.replaceItemAt(target, withItemAt: download)
 			} else {
@@ -64,7 +68,7 @@ public struct Installer: Sendable {
 		} catch {
 			throw .download(entry.name)
 		}
-		return InstalledPackage(id: entry.id, name: manifest.name ?? entry.id, version: version, files: entry.files)
+		return installed
 	}
 
 	/// Loads an installed package for a session, and checks that what the session gets is what the

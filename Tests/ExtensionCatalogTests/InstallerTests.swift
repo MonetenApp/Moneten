@@ -52,6 +52,28 @@ import Testing
 		#expect(contents(root.appending(path: "Staging")) == [])
 	}
 
+	@Test func nothingIsPlacedWhenTheRecordCannotBeSaved() async throws {
+		let package = TestCatalog.Package()
+		server.publish(package)
+		struct Closed: Error {}
+		await #expect(throws: CatalogError.download("Example Bank")) {
+			try await installer.install(entry(package)) { _ in throw Closed() }
+		}
+		#expect(contents(folder) == [])
+		#expect(contents(root.appending(path: "Staging")) == [])
+	}
+
+	@Test func theRecordIsSavedBeforeThePackageIsPlaced() async throws {
+		let package = TestCatalog.Package()
+		server.publish(package)
+		let folder = folder
+		_ = try await installer.install(entry(package)) { record in
+			#expect(record.version == "1.0")
+			#expect(!FileManager.default.fileExists(atPath: folder.appending(path: "example").path))
+		}
+		#expect(contents(folder) == ["example"])
+	}
+
 	@Test func changedScriptBeforeASession() async throws {
 		let package = TestCatalog.Package()
 		server.publish(package)

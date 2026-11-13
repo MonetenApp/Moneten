@@ -74,7 +74,7 @@ public enum IndexVerifier {
 				guard data == accepted else { throw .otherContent(version: index.version) }
 				return nil
 			}
-		} else if index.version < keys.lowestVersion {
+		} else if floors.floor(of: keys.current) == nil, floors.floor(of: keys.next) == nil, index.version < keys.lowestVersion {
 			throw .belowLowest(version: index.version, lowest: keys.lowestVersion)
 		}
 		var floors = floors

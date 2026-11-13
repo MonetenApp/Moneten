@@ -79,6 +79,12 @@ import Testing
 		#expect(try accept(TestCatalog.index(version: 140), by: newCurrent, floors: floors, keys: shipped).get()?.index.version == 140)
 	}
 
+	@Test func theShippedMinimumAppliesOnlyWhileNeitherKeyHasAFloor() throws {
+		let keys = try CatalogKeys(currentPEM: current.pem, nextPEM: next.pem, lowestVersion: 140)
+		let first = try #require(try accept(TestCatalog.index(version: 200), by: current, keys: keys).get())
+		#expect(try accept(TestCatalog.index(version: 130), by: next, floors: first.floors, keys: keys).get()?.index.version == 130)
+	}
+
 	@Test func floorsSurviveAsStoredValues() throws {
 		let accepted = try #require(try accept(TestCatalog.index(version: 120), by: current).get())
 		let stored = try JSONEncoder().encode(accepted.floors)
