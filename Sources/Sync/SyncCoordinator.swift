@@ -166,13 +166,15 @@ public final class SyncCoordinator {
 		running[access.id] = Task {
 			let event: SyncEvent
 			var report: ConnectorReport?
-			// The state that a failed run changed, such as a token the source rotated before the failure.
+			// The state that a failed or canceled run changed, such as a token the source rotated before the end.
 			var failedState: AccessState?
 			do {
 				let fetched = try await job.connector.refresh(job.request, session)
 				// The report decides about the PIN, before a cancel or an error of the storage hides an account.
 				if fetched.rejectsPIN { broker.forgetRejectedPIN(of: access.id) }
-				// A canceled access stores nothing, also when its connector returned all the same.
+				// A canceled access stores no account, also when its connector returned all the same. Its new
+				// state stays, such as a token that the source rotated before its session ended.
+				failedState = fetched.state
 				try Task.checkCancellation()
 				report = fetched
 				let notSaved = deliverFetched(fetched, of: job.request)
@@ -180,7 +182,7 @@ public final class SyncCoordinator {
 			} catch {
 				let withState = error as? FailureWithState
 				let error = withState?.failure ?? error
-				failedState = withState?.state
+				if let withState { failedState = withState.state }
 				// A rejection or a block forgets the PIN also when the refresh was canceled meanwhile.
 				if (error as? SyncFailure)?.rejectsPIN == true { broker.forgetRejectedPIN(of: access.id) }
 				event = Task.isCancelled || error is CancellationError ? .cancel : .fail(Self.failure(error))

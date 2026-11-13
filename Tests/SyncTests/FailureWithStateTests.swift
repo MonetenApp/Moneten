@@ -20,6 +20,33 @@ struct FailureWithStateTests {
 		}
 	}
 
+	/// A connector that returns its report after the user canceled, for example after a slow EndSession.
+	struct Late: BankConnector {
+		func refresh(_ request: RefreshRequest, _ session: SyncSession) async throws -> ConnectorReport {
+			let end = ContinuousClock.now + .milliseconds(300)
+			while ContinuousClock.now < end { await Task.yield() }
+			return ConnectorReport(outcomes: Dictionary(uniqueKeysWithValues: request.accounts.map { ($0.accountID, .fetched(RefreshResult(balance: nil, transactions: nil))) }),
+				state: AccessState(Data([8])))
+		}
+	}
+
+	@Test func stateOfAReportAfterACancelIsKeptAndItsAccountsAreNot() async {
+		let coordinator = SyncCoordinator()
+		let stored = Mutex<AccessState?>(nil)
+		let delivered = Mutex(0)
+		coordinator.ended = { _, state, _ in stored.withLock { $0 = state } }
+		coordinator.deliver = { _, _ in delivered.withLock { $0 += 1 } }
+		coordinator.refresh(RefreshRequest(access: Self.access, accounts: [Self.giro]), with: Late(), attended: false)
+		try? await Task.sleep(for: .milliseconds(50))
+		coordinator.cancelAll()
+		for _ in 0..<200 where coordinator.isRefreshing {
+			try? await Task.sleep(for: .milliseconds(10))
+		}
+		#expect(stored.withLock { $0 } == AccessState(Data([8])))
+		#expect(delivered.withLock { $0 } == 0)
+		#expect(coordinator.states[Self.access.id] == .cancelled)
+	}
+
 	@Test(arguments: [SyncFailure.needsUser(.secondFactor), CancellationError()] as [any Error])
 	func stateOfTheFailureIsKept(failure: any Error) async {
 		let coordinator = SyncCoordinator()
