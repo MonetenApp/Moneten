@@ -1021,24 +1021,31 @@ public class FinTSHelper {
 
 	/// The value of a securities account as its balance, on the day of the statement. hbci4java adds an
 	/// entry for each page of the statement, and the total of a page (HOLP) is optional in MT535, so the
-	/// value is the sum over the pages of their total, or else of the values of their holdings. A page
-	/// without holdings and without a total, as of an empty account, is worth 0 in `currency`, or in euro
-	/// when the bank names no currency of the account.
+	/// value is the sum over the pages of their total, or else of the values of their holdings with their
+	/// accrued interest, which HOLP includes. An empty account is worth 0 in `currency`, or in euro when the
+	/// bank names no currency of the account: a page without holdings and without a total, or no page with
+	/// the note 3010 that the bank has no entries.
 	/// `incomplete` says that the dialog ended before the bank sent the last part (3040) of the holdings.
 	static Map<String, Object> value(String id, GVRWPDepotList list, boolean incomplete, String currency) {
 		if (incomplete) throw new Failure(null, "3040", "The bank sent only part of the securities account, so nothing of this account was stored.");
 		if (!list.isOK()) return message("result", "account", id, "errors", List.of(problem(list)));
+		BigDecimalValue zero = new BigDecimalValue(BigDecimal.ZERO, present(currency) ? currency.trim() : "EUR");
+		GVRWPDepotList.Entry[] statement = list.getEntries();
+		boolean noEntries = java.util.Arrays.stream(list.getJobStatus().getWarnings()).anyMatch(r -> "3010".equals(r.code));
 		List<BigDecimalValue> pages = new ArrayList<>();
-		for (GVRWPDepotList.Entry page : list.getEntries()) {
+		if (statement.length == 0 && noEntries) pages.add(zero);
+		for (GVRWPDepotList.Entry page : statement) {
 			if (page.total != null) pages.add(page.total);
-			else if (page.getEntries().length == 0) pages.add(new BigDecimalValue(BigDecimal.ZERO, present(currency) ? currency.trim() : "EUR"));
-			else pages.add(sum(java.util.Arrays.stream(page.getEntries()).map(g -> g.depotwert).toList()));
+			else if (page.getEntries().length == 0) pages.add(zero);
+			else pages.add(sum(java.util.Arrays.stream(page.getEntries())
+				.flatMap(g -> g.stueckzinsbetrag == null ? java.util.stream.Stream.of(g.depotwert) : java.util.stream.Stream.of(g.depotwert, g.stueckzinsbetrag)).toList()));
 		}
 		BigDecimalValue total = sum(pages);
 		if (total == null) throw new Failure("unsupported", null, "The bank sent no value for this securities account.");
 		return message("result", "account", id, "balance", message("balance", "amount", total.getValue().toPlainString(), "currency", text(total.getCurr()),
-			"date", day(list.getEntries()[0].timestamp)), "errors", List.of());
+			"date", statement.length == 0 ? null : day(statement[0].timestamp)), "errors", List.of());
 	}
+
 
 	/// The sum of the values, or null when there are none, or one is missing or has another currency.
 	static BigDecimalValue sum(List<BigDecimalValue> values) {

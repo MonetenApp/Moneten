@@ -254,7 +254,7 @@ The app SHALL list a credit card as an account of the type "Credit card" when th
 
 ### Requirement: Read the value of a securities account
 
-The app SHALL fetch the value of a securities account through the custody account balance (HKWPD) in place of its balance and transactions when the bank allows it, and store it with the date of the statement as the value of the portfolio on that day. The value sums the totals of all pages of the statement, or the values of the holdings of a page without a total. When the app cannot read a value, the account says why.
+The app SHALL fetch the value of a securities account through the custody account balance (HKWPD) in place of its balance and transactions when the bank allows it, and store it with the date of the statement as the value of the portfolio on that day. The value sums the totals of all pages of the statement, or the values and accrued interest of the holdings of a page without a total. When the app cannot read a value, the account says why.
 
 #### Scenario: Value of a securities account
 
@@ -266,7 +266,7 @@ The app SHALL fetch the value of a securities account through the custody accoun
 #### Scenario: Empty securities account
 
 - **GIVEN** "Depot" showed 24.518,37 € on 12.11.2026, and the user sold every holding
-- **WHEN** the bank answers the custody account balance of "Depot" on 13.11.2026 without holdings and without a total
+- **WHEN** the bank answers the custody account balance of "Depot" on 13.11.2026 without holdings and without a total, or with the note 3010 that it has no entries
 - **THEN** "Depot" shows 0,00 €
 - **AND** the value of "Depot" on 13.11.2026 is 0,00 €
 
