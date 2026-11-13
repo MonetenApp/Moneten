@@ -150,6 +150,13 @@ public final class SessionBroker {
 		onUserCancel(current.access.id)
 	}
 
+	/// The dialog `id` failed, for example a login window that ended at a final address without a code.
+	/// Its request ends with `failure` at once, as with a withdrawn request.
+	public func fail(_ id: UUID, with failure: SyncFailure) {
+		guard current?.id == id, !withdrawn.withLock({ $0.contains(id) }) else { return }
+		close(id, with: .failure(failure), event: .answered)
+	}
+
 	/// The user canceled the dialog while it shows the progress. The refresh or the "Add Account" login
 	/// of its access stops.
 	public func cancelRequest() {

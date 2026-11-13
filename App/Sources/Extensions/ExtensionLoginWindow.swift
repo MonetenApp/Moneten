@@ -27,7 +27,8 @@ struct ExtensionLoginWindow: View {
 				.fixedSize(horizontal: false, vertical: true)
 				.padding(.horizontal, 20)
 				.padding(.vertical, 8)
-			ExtensionWebView(page: page, finish: { broker.answer(.tan(Secret($0)), to: prompt.id) }, refuse: { refusal = $0 })
+			ExtensionWebView(page: page, finish: { broker.answer(.tan(Secret($0)), to: prompt.id) }, refuse: { refusal = $0 },
+				fail: { broker.fail(prompt.id, with: .bank(BankMessage(text: $0))) })
 				.frame(width: 640, height: 480)
 			if let refusal {
 				Label(refusal, systemImage: "exclamationmark.triangle")
@@ -78,9 +79,21 @@ private struct ExtensionWebView: NSViewRepresentable {
 	let page: ExtensionLoginWindow.Page
 	let finish: (String) -> Void
 	let refuse: (String) -> Void
+	let fail: (String) -> Void
 
 	func makeCoordinator() -> Coordinator {
-		Coordinator(page: page, finish: finish, refuse: refuse)
+		Coordinator(page: page, finish: finish, refuse: refuse, fail: fail)
+	}
+
+	/// The rules that keep every resource of the window on the hosts of the login, or of the captcha
+	/// service, and away from the final addresses.
+	private var contentRules: String {
+		switch page {
+		case let .approval(approval): approval.contentRules
+		case let .captcha(captcha):
+			BrowserApproval.contentRules(allowing: Set(CaptchaPage.frameHosts(captcha.provider) + [captcha.script.host()?.lowercased()].compactMap { $0 }),
+				subdomains: true)
+		}
 	}
 
 	func makeNSView(context: Context) -> WKWebView {
@@ -90,13 +103,24 @@ private struct ExtensionWebView: NSViewRepresentable {
 		let view = WKWebView(frame: .zero, configuration: configuration)
 		view.navigationDelegate = context.coordinator
 		ExtensionWebDebug.current = view
-		switch page {
-		case let .approval(approval):
-			context.coordinator.open(approval.url, in: view)
-		case let .captcha(captcha):
-			let html = ExtensionWebDebug.captchaStub ? CaptchaPage.stub : CaptchaPage.html(for: captcha)
-			context.coordinator.servedBase = captcha.page ?? URL(string: "about:blank")
-			view.loadHTMLString(html, baseURL: captcha.page)
+		// Nothing loads before the rules are in place.
+		let page = page, coordinator = context.coordinator, fail = fail
+		WKContentRuleListStore.default().compileContentRuleList(forIdentifier: "moneten-extension-login", encodedContentRuleList: contentRules) { list, error in
+			MainActor.assumeIsolated {
+				guard let list else {
+					return fail("The login window could not be secured: \(error?.localizedDescription ?? "no rules").")
+				}
+				view.configuration.userContentController.add(list)
+				ExtensionWebDebug.log("ext browser rules ok")
+				switch page {
+				case let .approval(approval):
+					coordinator.open(approval.url, in: view)
+				case let .captcha(captcha):
+					let html = ExtensionWebDebug.captchaStub ? CaptchaPage.stub : CaptchaPage.html(for: captcha)
+					coordinator.servedBase = captcha.page ?? URL(string: "about:blank")
+					view.loadHTMLString(html, baseURL: captcha.page)
+				}
+			}
 		}
 		return view
 	}
@@ -112,14 +136,16 @@ private struct ExtensionWebView: NSViewRepresentable {
 		let page: ExtensionLoginWindow.Page
 		let finish: (String) -> Void
 		let refuse: (String) -> Void
+		let fail: (String) -> Void
 		/// The address of a page that the app loaded from text, which the next navigation may load once.
 		var servedBase: URL?
 		private var finished = false
 
-		init(page: ExtensionLoginWindow.Page, finish: @escaping (String) -> Void, refuse: @escaping (String) -> Void) {
+		init(page: ExtensionLoginWindow.Page, finish: @escaping (String) -> Void, refuse: @escaping (String) -> Void, fail: @escaping (String) -> Void) {
 			self.page = page
 			self.finish = finish
 			self.refuse = refuse
+			self.fail = fail
 		}
 
 		func open(_ url: URL, in view: WKWebView) {
@@ -149,6 +175,12 @@ private struct ExtensionWebView: NSViewRepresentable {
 					decisionHandler(.cancel)
 					ExtensionWebDebug.log("ext browser refused \(url.host() ?? url.scheme ?? "")")
 					if isMainFrame { refuse(message) }
+				case let .fail(message):
+					decisionHandler(.cancel)
+					ExtensionWebDebug.log("ext browser failed \(message)")
+					guard !finished else { return }
+					finished = true
+					fail(message)
 				case .load:
 					if isMainFrame, ExtensionWebDebug.pages[ExtensionWebDebug.key(url)] != nil {
 						decisionHandler(.cancel)

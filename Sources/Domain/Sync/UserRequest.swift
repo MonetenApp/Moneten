@@ -305,8 +305,31 @@ public struct BrowserApproval: Sendable, Equatable {
 		case load
 		/// A final address with the right state: the window closes, and the code goes to the script.
 		case finish(code: String)
-		/// A final address without a code or with another state, or a host that is not allowed.
+		/// A final address in a frame, or a host that is not allowed: the window does not load it.
 		case refuse(String)
+		/// A final address without a code or with another state: the login fails with this message.
+		case fail(String)
+	}
+
+	/// The content rule list of the login window: only the hosts of the login load, and never a final address.
+	public var contentRules: String { Self.contentRules(allowing: hosts) }
+
+	/// A WebKit content rule list that blocks every resource, then lets `hosts` load (with their
+	/// subdomains when asked), and last blocks the final addresses. So no image, script, or request of a
+	/// page reaches a final address or another host, which navigations alone do not cover.
+	public static func contentRules(allowing hosts: Set<String>, subdomains: Bool = false) -> String {
+		func rule(_ filter: String, _ action: String) -> [String: [String: String]] {
+			["trigger": ["url-filter": filter], "action": ["type": action]]
+		}
+		var rules = [rule(".*", "block")]
+		for host in hosts.sorted() {
+			let escaped = NSRegularExpression.escapedPattern(for: host.lowercased())
+			rules.append(rule("^https://\(escaped)[:/]", "ignore-previous-rules"))
+			if subdomains { rules.append(rule("^https://[^/:]+\\.\(escaped)[:/]", "ignore-previous-rules")) }
+		}
+		rules += [rule("^https://service\\.moneymoney-app\\.com[:/]", "block"), rule("^moneymoney-app:", "block"), rule("^moneten:", "block")]
+		let data = (try? JSONSerialization.data(withJSONObject: rules, options: [.sortedKeys])) ?? Data("[]".utf8)
+		return String(decoding: data, as: UTF8.self)
 	}
 
 	/// The parameters that carry the result, in the order the app looks for them.
@@ -331,10 +354,10 @@ public struct BrowserApproval: Sendable, Equatable {
 					parameters[item.name] = item.value
 				}
 			}
-			guard parameters["state"] == state else { return .refuse("The login returned another state than the app sent. The login was not accepted.") }
+			guard parameters["state"] == state else { return .fail("The login returned another state than the app sent. The login was not accepted.") }
 			let code = Self.codeParameters.lazy.compactMap { parameters[$0] }.first
 				?? parameters.first { $0.key.lowercased().hasSuffix("code") || $0.key.lowercased().hasSuffix("token") }?.value
-			guard let code, !code.isEmpty else { return .refuse("The login ended without a code.") }
+			guard let code, !code.isEmpty else { return .fail("The login ended without a code.") }
 			return .finish(code: code)
 		}
 		guard scheme == "https", target.port == nil, hosts.contains(host) else {

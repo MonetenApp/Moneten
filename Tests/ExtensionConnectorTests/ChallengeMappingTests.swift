@@ -229,8 +229,8 @@ import Testing
 		("https://service.moneymoney-app.com/1/redirect?code=4711&state=xyz", .finish(code: "4711")),
 		("moneymoney-app://oauth?authorization_code=4711&state=xyz", .finish(code: "4711")),
 		("moneymoney-app://oauth#access_token=4711&state=xyz", .finish(code: "4711")),
-		("https://service.moneymoney-app.com/1/redirect?code=4711&state=abc", .refuse("The login returned another state than the app sent. The login was not accepted.")),
-		("moneten://oauth?state=xyz", .refuse("The login ended without a code.")),
+		("https://service.moneymoney-app.com/1/redirect?code=4711&state=abc", .fail("The login returned another state than the app sent. The login was not accepted.")),
+		("moneten://oauth?state=xyz", .fail("The login ended without a code.")),
 		("https://auth.broker.example/login", .load),
 		("https://tracker.example/pixel", .refuse("The login window may not open tracker.example.")),
 		("http://auth.broker.example/login", .refuse("The login window may not open auth.broker.example.")),
@@ -241,6 +241,33 @@ import Testing
 	])
 	func step(address: String, step: BrowserApproval.Step) {
 		#expect(approval.step(for: URL(string: address)!) == step)
+	}
+
+	/// Whether WebKit loads `url` under `rules`: the last rule that matches decides.
+	static func loads(_ url: String, under rules: String) throws -> Bool {
+		let list = try #require(try JSONSerialization.jsonObject(with: Data(rules.utf8)) as? [[String: [String: String]]])
+		var blocked = false
+		for rule in list {
+			let filter = try NSRegularExpression(pattern: try #require(rule["trigger"]?["url-filter"]), options: .caseInsensitive)
+			guard filter.firstMatch(in: url, range: NSRange(url.startIndex..., in: url)) != nil else { continue }
+			blocked = rule["action"]?["type"] == "block"
+		}
+		return !blocked
+	}
+
+	/// A page of an allowed host cannot fetch a final address or another host with an image or a script.
+	@Test(arguments: [("https://auth.broker.example/style.css", true), ("https://service.moneymoney-app.com/1/redirect?code=1&state=xyz", false),
+		("https://tracker.example/pixel.gif", false), ("moneten://oauth?code=1", false), ("moneymoney-app://oauth?code=1", false),
+		("https://auth.broker.example.evil.example/x", false)])
+	func resourcesOfTheLoginPage(url: String, loads: Bool) throws {
+		#expect(try Self.loads(url, under: approval.contentRules) == loads)
+	}
+
+	@Test func captchaPageLoadsItsServiceWithSubdomains() throws {
+		let rules = BrowserApproval.contentRules(allowing: ["google.com", "gstatic.com"], subdomains: true)
+		#expect(try Self.loads("https://www.gstatic.com/recaptcha/x.js", under: rules))
+		#expect(try !Self.loads("https://tracker.example/x", under: rules))
+		#expect(try !Self.loads("https://service.moneymoney-app.com/1/redirect", under: rules))
 	}
 
 	@Test func subframesLoadOnlyAllowedHostsAndNeverFinish() {

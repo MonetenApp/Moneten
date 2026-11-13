@@ -65,6 +65,16 @@ struct ExtensionLoginTests {
 		await until { !coordinator.isRefreshing }
 	}
 
+	@Test("A login window that fails ends its request with the failure at once")
+	func windowFailureEndsTheRequest() async throws {
+		let task = Task { try await broker.ask(.secondFactor(SecondFactorRequest(purpose: .login, system: .website, challenge: .openBrowser(
+			BrowserApproval(url: URL(string: "https://auth.bank.example/")!, state: "s", hosts: ["auth.bank.example"])))), for: Self.service, accountNames: [], attended: true) }
+		await until { broker.current != nil }
+		broker.fail(try #require(broker.current).id, with: .bank(BankMessage(text: "The login ended without a code.")))
+		await #expect(throws: SyncFailure.bank(BankMessage(text: "The login ended without a code."))) { try await task.value }
+		#expect(broker.current == nil)
+	}
+
 	@Test("A login that the service rejected counts as a rejection, like a wrong PIN")
 	func loginRejectedRejects() {
 		#expect(SyncFailure.loginRejected.rejectsPIN)
