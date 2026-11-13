@@ -90,24 +90,30 @@ final class Entropy {
 	/// Gets the index of a reported value that the script used as a key, for `ext record`, or nil for
 	/// a key that comes from no reported value.
 	private let keyUse: (Int?) -> Void
+	/// Gets the SHA-256 of each AES or HMAC key during `ext record` and `ext test`, never the key.
+	private let fingerprint: ((Data) -> Void)?
 	/// The values of a recording in order, as `report` got them.
 	private var produced: [RandomValue] = []
 	private var counter: UInt64 = 0
 
-	init(_ capture: Capture?, report: @escaping (RandomValue) -> Void, keyUse: @escaping (Int?) -> Void = { _ in }) {
+	init(_ capture: Capture?, report: @escaping (RandomValue) -> Void, keyUse: @escaping (Int?) -> Void = { _ in },
+		fingerprint: @escaping (Data) -> Void = { _ in }) {
 		switch capture {
 		case nil: (recorded, self.report) = (nil, nil)
 		case .record: (recorded, self.report) = (nil, report)
 		case let .replay(_, random): (recorded, self.report) = (random, nil)
 		}
 		self.keyUse = keyUse
+		self.fingerprint = capture == nil ? nil : fingerprint
 	}
 
 	/// Reports the recorded value that the script passes as the key or the IV of an encryption or as
-	/// the key of an HMAC, or that such a key comes from: as bytes or in a text form, its MD5 or SHA
-	/// digest, raw or as hex, or a slice of 16 bytes or more. `ext record` never keeps such a value in a
-	/// fixture. A key, not an IV, that comes from no recorded value is reported as nil.
+	/// the key of an HMAC, or that such a key comes from: as bytes or in a text form, its MD5, SHA, or
+	/// SHA3-256 digest or a prefix of 16 bytes or more of one, raw or as hex, or a slice of 16 bytes or
+	/// more. `ext record` never keeps such a value in a fixture. A key, not an IV, that comes from no
+	/// recorded value is reported as nil. Each key, not an IV, also gives its fingerprint.
 	func usedAsKey(_ key: Data, isIV: Bool = false) {
+		if !isIV { fingerprint?(Data(SHA256.hash(data: key))) }
 		guard report != nil else { return }
 		if let index = produced.firstIndex(where: { Self.value($0, gives: key) }) {
 			keyUse(index)
@@ -135,8 +141,10 @@ final class Entropy {
 			if input == key || String(decoding: input, as: UTF8.self).lowercased() == text { return true }
 			if key.count >= 16, input.range(of: key) != nil || text.count >= 16 && String(decoding: input, as: UTF8.self).lowercased().contains(text) { return true }
 			let digests = [Data(Insecure.MD5.hash(data: input)), Data(Insecure.SHA1.hash(data: input)), Data(SHA256.hash(data: input)),
-				Data(SHA384.hash(data: input)), Data(SHA512.hash(data: input))]
-			if digests.contains(where: { $0 == key || hex($0) == text }) { return true }
+				Data(SHA384.hash(data: input)), Data(SHA512.hash(data: input)), Keccak.sha3_256(input)]
+			if digests.contains(where: { $0 == key || hex($0) == text || key.count >= 16 && ($0.starts(with: key) || text.count >= 16 && hex($0).hasPrefix(text)) }) {
+				return true
+			}
 		}
 		return false
 	}
