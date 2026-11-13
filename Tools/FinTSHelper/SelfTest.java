@@ -377,11 +377,17 @@ final class SelfTest {
 		expect("empty securities account without a currency counts in euro", String.valueOf(FinTSHelper.alone("7654325", () -> FinTSHelper.value("7654325", holdings("2026-11-13", null), false, null))
 			.get("balance")), "{type=balance, amount=0, currency=EUR, date=2026-11-13}");
 
-		GVRWPDepotList.Entry.Gattung bond = holding("10000.00", "EUR");
-		bond.stueckzinsbetrag = new BigDecimalValue(new BigDecimal("200.00"), "EUR");
+		// The MT535 example of FinTS 4.1 Messages - Finanzdatenformate (20.01.2014), pages 172 to 174: the
+		// first HOLD and ACRU of each holding, in the currency of HOLP, add up to its HOLP of EUR 17026,37.
+		GVRWPDepotList.Entry.Gattung bond = holding("6294.65", "EUR");
+		bond.stueckzinsbetrag = new BigDecimalValue(new BigDecimal("1.72"), "EUR");
 		expect("a holding counts with its accrued interest", String.valueOf(FinTSHelper.alone("7654321", () -> FinTSHelper.value("7654321",
-			holdings("2026-11-12", null, bond, holding("500.00", "EUR")), false, "EUR")).get("balance")),
-			"{type=balance, amount=10700.00, currency=EUR, date=2026-11-12}");
+			holdings("2026-11-12", null, holding("5270", "EUR"), holding("5460", "EUR"), bond), false, "EUR")).get("balance")),
+			"{type=balance, amount=17026.37, currency=EUR, date=2026-11-12}");
+		GVRWPDepotList noted = holdings("2026-11-12", new BigDecimalValue(new BigDecimal("24518.37"), "EUR"), holding("24518.37", "EUR"));
+		noted.jobStatus.addRetVal(new HBCIRetVal(null, null, null, "3010", "Keine Einträge vorhanden", null));
+		expect("a statement with a note keeps its value", String.valueOf(FinTSHelper.alone("7654321", () -> FinTSHelper.value("7654321", noted, false, "EUR"))
+			.get("balance")), "{type=balance, amount=24518.37, currency=EUR, date=2026-11-12}");
 		GVRWPDepotList noEntries = new GVRWPDepotList();
 		noEntries.jobStatus.addRetVal(new HBCIRetVal(null, null, null, "3010", "Keine Einträge vorhanden", null));
 		expect("an answer with a note and without a statement shows the note", FinTSHelper.Json.write(FinTSHelper.alone("7654325", () -> FinTSHelper.value("7654325",

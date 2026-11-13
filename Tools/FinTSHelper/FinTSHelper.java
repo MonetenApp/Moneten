@@ -1022,7 +1022,10 @@ public class FinTSHelper {
 	/// The value of a securities account as its balance, on the day of the statement. hbci4java adds an
 	/// entry for each page of the statement, and the total of a page (HOLP) is optional in MT535, so the
 	/// value is the sum over the pages of their total, or else of the values of their holdings with their
-	/// accrued interest, which HOLP includes. A page without holdings and without a total, as of an empty
+	/// accrued interest. FinTS 4.1 Messages - Finanzdatenformate (20.01.2014), MT 535, page 171, defines
+	/// C:19A HOLP "Gesamtwert der Depotbestände der Nachricht" as "Summe der Beträge aus B:19A: (d.h. sowohl
+	/// Kurswerte als auch Stückzinsen)", and hbci4java keeps of each holding the first HOLD and ACRU, which
+	/// that page puts in the currency of HOLP. A page without holdings and without a total, as of an empty
 	/// account, is worth 0 in `currency`, or in euro when the bank names no currency of the account. An answer
 	/// without a statement shows the note of the bank, such as 3010, which can also mean that the bank does
 	/// not offer the data now, so the earlier value stays.
