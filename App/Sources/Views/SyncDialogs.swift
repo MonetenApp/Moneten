@@ -200,8 +200,13 @@ struct TwoFactorSheet: View {
 		}
 		.onAppear {
 			if case let .chooseTANMethod(methods, current) = request.challenge {
-				let available = methods.filter { $0.unavailable == nil }
-				method = available.count == 1 ? available[0].id : available.first { $0.id == current }?.id
+				if methods.contains(where: { $0.unavailable != nil }) {
+					// The radio group always has a choosable method selected.
+					let available = methods.filter { $0.unavailable == nil }
+					method = (available.first { $0.id == current } ?? available.first)?.id
+				} else {
+					method = methods.count == 1 ? methods[0].id : methods.first { $0.id == current }?.id
+				}
 			}
 			if case let .chooseTANMedium(media) = request.challenge { medium = media.first ?? "" }
 		}
@@ -237,13 +242,19 @@ struct TwoFactorSheet: View {
 			Section {
 				if methods.count == 1 {
 					LabeledContent("TAN method", value: methods[0].name)
-				} else {
+				} else if methods.contains(where: { $0.unavailable != nil }) {
+					// An extension shows the methods it cannot use with the reason, which a menu cannot show.
 					Picker("Choose TAN method", selection: $method) {
 						ForEach(methods) { m in
 							Text(m.unavailable.map { "\(m.name): \($0)" } ?? m.name).tag(Optional(m.id)).disabled(m.unavailable != nil)
 						}
 					}
 					.pickerStyle(.radioGroup)
+				} else {
+					Picker("Choose TAN method", selection: $method) {
+						if !methods.contains(where: { $0.id == method }) { Text("None").tag(TANMethod.ID?.none) }
+						ForEach(methods) { Text($0.name).tag(Optional($0.id)) }
+					}
 				}
 			}
 		case let .chooseTANMedium(media):
