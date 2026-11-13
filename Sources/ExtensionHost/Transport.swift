@@ -207,16 +207,23 @@ final class CookieJar {
 	}
 
 	/// The value with each `Max-Age` turned into an `Expires` on the clock of the session. Foundation
-	/// counts `Max-Age` from the time of the Mac, which a replay does not use.
+	/// counts `Max-Age` from the time of the Mac, which a replay does not use. A cookie with `Max-Age`
+	/// loses its own `Expires` first, because `Max-Age` wins wherever it stands (RFC 6265 5.3), and
+	/// Foundation would take the last `Expires`.
 	private func expiring(_ setCookie: String) -> String {
 		let format = DateFormatter()
 		format.locale = Locale(identifier: "en_US_POSIX")
 		format.timeZone = TimeZone(identifier: "GMT")
 		format.dateFormat = "EEE, dd-MMM-yyyy HH:mm:ss 'GMT'"
 		let now = now()
-		return setCookie.replacing(/(?i);\s*max-age\s*=\s*(-?\d{1,12})/) { match in
-			"; Expires=\(format.string(from: now.addingTimeInterval(max(Double(match.output.1) ?? 0, -1))))"
-		}
+		let maxAge = /(?i);\s*max-age\s*=\s*(-?\d{1,12})/
+		// A comma starts the next cookie of a joined header only before a name and "=", which the comma of a date never has.
+		return setCookie.split(separator: /,(?=\s*[!#$%&'*+\-.^_`|~0-9A-Za-z]+=)/, omittingEmptySubsequences: false).map { cookie in
+			guard cookie.contains(maxAge) else { return String(cookie) }
+			return String(cookie).replacing(/(?i);\s*expires\s*=[^;]*/, with: "").replacing(maxAge) { match in
+				"; Expires=\(format.string(from: now.addingTimeInterval(max(Double(match.output.1) ?? 0, -1))))"
+			}
+		}.joined(separator: ",")
 	}
 
 	private func put(_ cookie: HTTPCookie) {

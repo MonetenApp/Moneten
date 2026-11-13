@@ -47,4 +47,21 @@ import Testing
 		jar.set("host=1; Path=/", for: nil)
 		#expect(jar.header(for: Self.url("bank.example")) == "sid=1")
 	}
+
+	/// RFC 6265 5.3: `Max-Age` wins over `Expires`, in either order, also within a header of several cookies.
+	@Test(arguments: ["SID=x; Max-Age=0; Expires=Wed, 01 Jan 2031 00:00:00 GMT", "SID=x; Expires=Wed, 01 Jan 2031 00:00:00 GMT; Max-Age=0",
+		"lang=de; Path=/, SID=x; Max-Age=0; Expires=Wed, 01-Jan-2031 00:00:00 GMT"])
+	func maxAgeZeroDropsTheCookieWhateverItsExpires(line: String) {
+		let jar = CookieJar()
+		jar.store("SID=old; Path=/", from: Self.url("bank.example"))
+		jar.store(line, from: Self.url("bank.example"))
+		#expect(jar.header(for: Self.url("bank.example"))?.contains("SID") != true)
+	}
+
+	@Test(arguments: ["SID=x; Max-Age=3600; Expires=Thu, 01 Jan 2015 00:00:00 GMT", "SID=x; Expires=Thu, 01 Jan 2015 00:00:00 GMT; Max-Age=3600"])
+	func maxAgeKeepsTheCookieWhoseExpiresHasPassed(line: String) {
+		let jar = CookieJar()
+		jar.store(line, from: Self.url("bank.example"))
+		#expect(jar.header(for: Self.url("bank.example")) == "SID=x")
+	}
 }
