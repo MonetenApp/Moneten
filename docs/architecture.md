@@ -2,7 +2,7 @@
 
 This page explains how Moneten is split into modules, how data flows from a bank into the database, and why each boundary sits where it does. The exact fields of each type are in [data model](data-model.md). The reasons behind the big choices are in [decisions](decisions/).
 
-The first build has eight modules: `Domain`, `Storage`, `Import`, `Sync`, `SyncTesting`, `FinTS`, `ExtensionHost`, and `App`. The other bank connectors, the rest of the extension API, payments, and the log are planned. Each section below says when it describes the plan.
+The first build has nine modules: `Domain`, `Storage`, `Import`, `Sync`, `SyncTesting`, `FinTS`, `ExtensionHost`, `ExtensionConnector`, and `App`. The other bank connectors, payments, and the log are planned. Each section below says when it describes the plan.
 
 ## The modules and what each one owns
 
@@ -40,15 +40,15 @@ The libraries are one Swift package at the root of the repository. The app targe
 | `Import` | The MoneyMoney migration and the CSV, CAMT, and MT940 parsers. `TransactionFileImporter.parse` returns `[Transaction]`, and `MoneyMoneyMigration.plan` returns a `Plan` that the app shows before it stores anything. | `Domain` |
 | `Sync` | `SyncCoordinator`, which refreshes up to three accesses at a time with one `SyncState` each, and `SessionBroker`, which shows one dialog at a time, keeps the PINs in memory, and saves a PIN through `SavedPINStore` on request | `Domain` |
 | `SyncTesting` | `ScriptedConnector`, which plays requests, progress, results, and failures in place of a bank, for the tests, the previews, and the debug harness | `Domain` |
-| `FinTS` | `FinTSConnector`, which starts the hbci4java helper of `Tools/FinTSHelper` for each refresh, lists the accounts of a login, looks up a bank by its code, and maps the requests and results of the helper to `Domain` types. macOS decides whether to trust the server of the bank, and a helper that stays silent for 30 seconds fails the refresh. The app uses it for the "Add Account" assistant and for every refresh. A debug build can replace the helper with `scripts/fake-fints-helper.sh`. | `Domain`, the helper process ([ADR 0014](decisions/0014-fints-through-hbci4java.md)) |
-| `ExtensionHost` | `HostSession`, which runs one extension package in its own Lua 5.4 state with the environment of ADR 0015, `HostPolicy`, which decides every request and redirect target, and `ExtensionHostClient`, which starts one sandboxed `MonetenExtensionHost` process per session and talks to it in JSON lines over a pipe. `Sources/CLua` holds the Lua sources of lua.org. | `Domain`, Lua 5.4 |
+| `FinTS` | `FinTSConnector`, which starts the hbci4java helper of `Tools/FinTSHelper` for each refresh, lists the accounts of a login, looks up a bank by its code, and maps the requests and results of the helper to `Domain` types. macOS decides whether to trust the server of the bank, and a helper that stays silent for 30 seconds fails the refresh. The app uses it for the "Add Account" assistant and for every refresh of a FinTS access. A debug build can replace the helper with `scripts/fake-fints-helper.sh`. | `Domain`, the helper process ([ADR 0014](decisions/0014-fints-through-hbci4java.md)) |
+| `ExtensionHost` | `HostSession`, which runs one extension package in its own Lua 5.4 state with the environment of ADR 0015, `HostPolicy`, which decides every request and redirect target, and `ExtensionHostClient`, which starts one sandboxed `MonetenExtensionHost` process per session and talks to it in JSON lines over a pipe. `Sources/ExtensionHost/API` offers the MoneyMoney-compatible API: the entry points, `Connection`, `HTML`, `JSON`, `PDF`, `LocalStorage`, and `MM`. `Sources/CLua` holds the Lua sources of lua.org. `Sources/ExtensionHost/PublicSuffix` holds the Public Suffix List under the Mozilla Public License 2.0 (`scripts/vendor-public-suffix.sh`), so that the cookie jar refuses a cookie for a domain such as `github.io`. | `Domain`, Lua 5.4 |
+| `ExtensionConnector` | `ExtensionConnector`, which logs in, calls the entry points in the order of the API, turns each challenge table into a request to the user, and maps the account and result tables to `Domain` types. It keeps `LocalStorage` and the account tables in the `AccessState` of the access, and lists the accounts again when a refresh asks for one without a table. The app stores extension accesses in the table `access` like FinTS accesses. | `Domain`, `ExtensionHost` |
 | `App` | SwiftUI views, the `AppModel`, window and menu wiring | All of the above |
 
 These modules are planned:
 
 | Module | Owns | Depends on |
 |---|---|---|
-| `ExtensionConnector` | Starting a host session, mapping extension results to `Domain` types | `Domain`, `ExtensionHost` |
 | `FinAPIConnector` | finAPI login through its web form and data mapping (v0.3) | `Domain` |
 | `ext` | A command line tool that runs and tests an extension without the app | `ExtensionHost` |
 | `ExtensionCatalog` | Verifying the signed catalog index, installing packages, and planning updates | `Domain` |

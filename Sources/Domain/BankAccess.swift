@@ -74,10 +74,14 @@ private extension Character {
 extension Access {
 	/// The same login name at the same bank or service. A second setup of a login joins the access
 	/// that the app has, so that one login keeps one session ("One session for the accounts of one login").
+	/// A login without a user name, such as an OAuth login of an extension, names no login to compare,
+	/// so each of its setups is an access of its own.
 	public func isSameLogin(as other: Access) -> Bool {
-		guard loginName == other.loginName else { return false }
+		guard !loginName.isEmpty, loginName == other.loginName else { return false }
 		switch (source, other.source) {
 		case let (.fints(mine, _), .fints(theirs, _)): return mine == theirs
+		// The service of an extension is its bank: the script gets it as the bank code.
+		case (.extension, .extension): return source == other.source && bankName == other.bankName
 		default: return source == other.source
 		}
 	}

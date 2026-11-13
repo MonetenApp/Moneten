@@ -5,6 +5,8 @@ import Synchronization
 /// What a session reports for the log: a line of `print`, or a request that reached the fixture.
 public enum HostLog: Sendable, Equatable {
 	case print(String)
+	/// The text of `MM.printStatus`, which the refresh also shows as its status.
+	case status(String)
 	case sent(String)
 }
 
@@ -26,6 +28,8 @@ public actor ExtensionHostClient {
 	private var busy = false
 	private var watchdog: Task<Void, Never>?
 	private var silenced = false
+	/// The entry points that the script defines.
+	public private(set) var entryPoints: Set<EntryPoint> = []
 
 	/// The longest line the app reads from the host process. The package of the start command goes the other way.
 	static let maxLine = 64 * 1_048_576
@@ -50,7 +54,10 @@ public actor ExtensionHostClient {
 		log: @escaping @Sendable (HostLog) -> Void = { _ in }) async throws -> (client: ExtensionHostClient, registration: Registration, loadMilliseconds: Double) {
 		let client = try ExtensionHostClient(executable: executable, extensionName: setup.package.name, silence: silence, ask: ask, log: log)
 		do {
-			guard case let .loaded(registration, milliseconds) = try await client.send(.start(setup)) else { throw ScriptError("The extension host answered out of order.") }
+			guard case let .loaded(registration, entryPoints, milliseconds) = try await client.send(.start(setup)) else {
+				throw ScriptError("The extension host answered out of order.")
+			}
+			await client.setEntryPoints(entryPoints)
 			return (client, registration, milliseconds)
 		} catch {
 			await client.end()
@@ -90,10 +97,25 @@ public actor ExtensionHostClient {
 		processIdentifier = process.processIdentifier
 	}
 
-	/// Calls a global function of the script and returns its first result.
+	private func setEntryPoints(_ entryPoints: Set<EntryPoint>) {
+		self.entryPoints = entryPoints
+	}
+
+	/// Calls a global function of the script without arguments and returns its first result.
 	public func call(_ function: String) async throws -> LuaValue {
-		guard case let .result(value) = try await send(.call(function)) else { throw ScriptError("The extension host answered out of order.") }
+		try await call(.function(function))
+	}
+
+	/// Calls an entry point and returns its first result.
+	public func call(_ entry: EntryCall) async throws -> LuaValue {
+		guard case let .result(value) = try await send(.call(entry)) else { throw ScriptError("The extension host answered out of order.") }
 		return value
+	}
+
+	/// Ends the run of the script and returns the content of `LocalStorage` for the next run.
+	public func finish() async throws -> Data {
+		guard case let .finished(storage) = try await send(.finish) else { throw ScriptError("The extension host answered out of order.") }
+		return storage
 	}
 
 	/// Ends the session: the process ends when its input closes, and is stopped after 2 seconds.
@@ -142,10 +164,11 @@ public actor ExtensionHostClient {
 					process.terminate()
 					throw error
 				}
+			case let .status(line): log(.status(line))
 			case let .sent(request): log(.sent(request))
 			case .alive, .print: continue
 			case let .failed(message): throw ScriptError(message)
-			case .loaded, .result: return event
+			case .loaded, .result, .finished: return event
 			}
 		}
 	}

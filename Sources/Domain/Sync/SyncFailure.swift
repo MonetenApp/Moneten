@@ -19,6 +19,8 @@ public enum SyncFailure: Error, Sendable, Equatable {
 	case needsUser(UserRequest.Kind)
 	/// The bank rejected the PIN. The app does not send it again in this refresh.
 	case pinRejected(BankMessage)
+	/// An extension service rejected the login data. Automatic refreshes skip the access until the user enters it again.
+	case loginRejected
 	case accessBlocked(BankMessage)
 	/// The bank did not accept the TAN that the user typed.
 	case tanRejected(BankMessage)
@@ -43,10 +45,11 @@ public enum SyncFailure: Error, Sendable, Equatable {
 	/// and the next refresh delivers the same rows again.
 	case notSaved(String)
 
-	/// The bank rejected the PIN or blocked the access, so the PIN must never be sent again.
+	/// The bank rejected the PIN or blocked the access, or an extension service rejected the login data,
+	/// so the PIN or the login data must never be sent again.
 	public var rejectsPIN: Bool {
 		switch self {
-		case .pinRejected, .accessBlocked: true
+		case .pinRejected, .accessBlocked, .loginRejected: true
 		default: false
 		}
 	}
@@ -56,7 +59,7 @@ public enum SyncFailure: Error, Sendable, Equatable {
 		switch self {
 		case let .pinRejected(m), let .accessBlocked(m), let .tanRejected(m), let .bank(m): m
 		case let .approvalDeclined(m): m
-		case .needsUser, .challengeExpired, .invalidChallenge, .notRegistered, .notFetched, .offline, .network, .unsupported, .notSaved: nil
+		case .needsUser, .loginRejected, .challengeExpired, .invalidChallenge, .notRegistered, .notFetched, .offline, .network, .unsupported, .notSaved: nil
 		}
 	}
 
@@ -69,6 +72,10 @@ public enum SyncFailure: Error, Sendable, Equatable {
 			"An authorization is needed. Choose “Refresh Account” to give it."
 		case .needsUser(.allowHost):
 			"An extension asks to contact a new host. Choose “Refresh Account” to answer."
+		case .needsUser(.login):
+			"The login data is needed. Choose “Refresh Account” to enter it."
+		case .loginRejected:
+			"The login failed. The service did not accept the login data. Choose “Refresh Account” to enter it again."
 		case let .pinRejected(m):
 			"The bank did not accept the PIN: \(m.text)\nMore wrong attempts can block the access."
 		case let .accessBlocked(m):

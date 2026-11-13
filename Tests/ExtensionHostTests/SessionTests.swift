@@ -144,7 +144,7 @@ import Testing
 		let orphan = try Orphan(#"exec 3<&0; "$0" <&3 & echo $! >&2; wait"#)
 		try orphan.send(.start(HostSetup(package: demo("WebBanking{version = 1}\nfunction Loop() while true do end end"))))
 		#expect(Orphan.line(orphan.output).hasPrefix(#"{"loaded""#))
-		try orphan.send(.call("Loop"))
+		try orphan.send(.call(.function("Loop")))
 		try await Task.sleep(for: .milliseconds(200))
 		kill(orphan.shell.processIdentifier, SIGKILL)
 		orphan.shell.waitUntilExit()
@@ -182,6 +182,15 @@ import Testing
 		let client = try await Self.start(demo("WebBanking{version = 1}\nfunction Loop() while true do end end"), fixture: Self.fixture([]), silence: .seconds(5))
 		await #expect(throws: ScriptError("The extension did not respond for 5 seconds, so Moneten stopped it.")) { try await client.call("Loop") }
 		#expect(try await Self.ended(client))
+	}
+
+	/// A script may sleep longer than the watchdog waits, as MoneyMoney lets it: the host reports that it
+	/// is alive while it sleeps.
+	@Test func sleepKeepsTheHostAlive() async throws {
+		let client = try await Self.start(demo("WebBanking{version = 1}\nfunction Nap() MM.sleep(4) return \"awake\" end"), fixture: Self.fixture([]),
+			silence: .seconds(2))
+		#expect(try await client.call("Nap") == .string("awake"))
+		await client.end()
 	}
 
 	@Test func questionToTheUserPausesTheWatchdog() async throws {

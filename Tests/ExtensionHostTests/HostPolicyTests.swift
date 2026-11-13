@@ -55,6 +55,16 @@ import Testing
 		#expect(run.sent == ["GET https://api.bank.example/start"])
 	}
 
+	@Test func redirectWithACookieToAnotherHost() {
+		let run = Run(demo("""
+			WebBanking{version = 1}
+			function Check() return Connection():get("https://api.bank.example/login") end
+			""", hosts: ["api.bank.example"]),
+			exchanges: [("GET", "https://api.bank.example/login", 302, ["Location": "https://evil.example/", "Set-Cookie": "SID=abc; Path=/"], "")] + Self.everyHost)
+		#expect(run.call("Check") == .string("error: Demo.lua:2: Demo may not contact evil.example, because its manifest does not list that host."))
+		#expect(run.sent == ["GET https://api.bank.example/login"])
+	}
+
 	@Test func redirectOnTheSameHost() {
 		let run = run("https://api.bank.example/hop")
 		#expect(run.call("Check") == .array([.string("<p>Hello</p>"), .string("UTF-8"), .string("text/html"), .string("text/html; charset=UTF-8")]))
@@ -188,8 +198,12 @@ import Testing
 				("POST", url, 200, [:], "next"), ("GET", url, 200, [:], "next")])
 	}
 
-	static let postHeaders = ["Authorization": "Bearer secret", "Cookie": "session=1", "X-API-Key": "bank-key-4711", "Accept": "text/html",
-		"Content-Type": "application/x-www-form-urlencoded"]
+	/// What every request of a `Connection` carries, besides the headers of the script. Both may cross to another host.
+	static let connectionHeaders = ["User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15",
+		"Accept-Language": "en-US"]
+	static let postHeaders = connectionHeaders.merging(["Authorization": "Bearer secret", "Cookie": "session=1", "X-API-Key": "bank-key-4711", "Accept": "text/html",
+		"Content-Type": "application/x-www-form-urlencoded"]) { $1 }
+	static let crossHostHeaders = connectionHeaders.merging(["Accept": "text/html"]) { $1 }
 
 	@Test(arguments: [307, 308])
 	func redirectOnTheSameHostKeepsCredentialsAndBody(status: Int) throws {
@@ -204,13 +218,13 @@ import Testing
 		let run = Self.post(to: "https://other.bank.example/next", status: status)
 		#expect(run.call("Post") == .string("next"))
 		let follow = try #require(run.requests.last)
-		#expect(follow == HTTPRequest(method: "POST", url: URL(string: "https://other.bank.example/next")!, headers: ["Accept": "text/html"]))
+		#expect(follow == HTTPRequest(method: "POST", url: URL(string: "https://other.bank.example/next")!, headers: Self.crossHostHeaders))
 	}
 
 	@Test func redirectAfterAPostToAnotherHostDropsCredentials() throws {
 		let run = Self.post(to: "https://other.bank.example/next", status: 302)
 		#expect(run.call("Post") == .string("next"))
 		let follow = try #require(run.requests.last)
-		#expect(follow == HTTPRequest(method: "GET", url: URL(string: "https://other.bank.example/next")!, headers: ["Accept": "text/html"]))
+		#expect(follow == HTTPRequest(method: "GET", url: URL(string: "https://other.bank.example/next")!, headers: Self.crossHostHeaders))
 	}
 }

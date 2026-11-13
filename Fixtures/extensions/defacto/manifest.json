@@ -1,0 +1,6 @@
+{
+	"name": "Defacto",
+	"description": "Uses the names that signed extensions use and the API page does not list, for the tests.",
+	"files": ["Defacto.lua"],
+	"hosts": ["www.bank.example"]
+}

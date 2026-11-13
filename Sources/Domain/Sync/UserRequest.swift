@@ -19,6 +19,13 @@ public protocol SyncSession: Sendable {
 	/// one account. A connector reports it the moment the answer arrives, so that the session forgets
 	/// the PIN at once, and no cancel or end of the connector afterwards can keep it.
 	func rejected(_ failure: SyncFailure) async
+
+	/// The user started the refresh and can answer dialogs. An extension passes it to its script as `interactive`.
+	var isAttended: Bool { get }
+}
+
+extension SyncSession {
+	public var isAttended: Bool { true }
 }
 
 public enum SyncProgress: Sendable, Equatable {
@@ -33,9 +40,11 @@ public enum UserRequest: Sendable, Equatable {
 	case secondFactor(SecondFactorRequest)
 	/// The question whether an extension without a list of hosts may contact a new host (ADR 0015).
 	case allowHost(HostPermissionRequest)
+	/// The login data of an extension service, with the fields of its manifest.
+	case login(LoginRequest)
 
 	public enum Kind: Sendable, Equatable {
-		case pin, secondFactor, allowHost
+		case pin, secondFactor, allowHost, login
 	}
 
 	public var kind: Kind {
@@ -43,7 +52,36 @@ public enum UserRequest: Sendable, Equatable {
 		case .pin: .pin
 		case .secondFactor: .secondFactor
 		case .allowHost: .allowHost
+		case .login: .login
 		}
+	}
+}
+
+/// Asks for the login data of an extension service: a user name field, a password field, and up to two more fields.
+public struct LoginRequest: Sendable, Equatable {
+	public let service: String
+	public let fields: [Field]
+	/// The service rejected the login data of the last attempt.
+	public let rejected: Bool
+
+	public struct Field: Sendable, Equatable {
+		public let label: String
+		/// The field hides what the user types.
+		public let isSecret: Bool
+
+		public init(label: String, isSecret: Bool) {
+			self.label = label
+			self.isSecret = isSecret
+		}
+	}
+
+	/// The fields without a manifest.
+	public static let defaultFields = [Field(label: "Username", isSecret: false), Field(label: "Password", isSecret: true)]
+
+	public init(service: String, fields: [Field] = defaultFields, rejected: Bool = false) {
+		self.service = service
+		self.fields = fields
+		self.rejected = rejected
 	}
 }
 
@@ -117,9 +155,13 @@ public struct SecondFactorRequest: Sendable, Equatable {
 	public let methods: [TANMethod]
 	/// The method of the challenge, when the source names it.
 	public let method: TANMethod.ID?
+	/// The entry field of a typed TAN or code.
+	public let field: TANField
+	/// The title of the confirm button, "Continue" or, when an extension asks for it, "Next".
+	public let confirmTitle: String
 
 	public init(purpose: Purpose, system: System, loginOnly: Bool = false, challenge: Challenge, validity: Duration = .seconds(300),
-		methods: [TANMethod] = [], method: TANMethod.ID? = nil) {
+		methods: [TANMethod] = [], method: TANMethod.ID? = nil, field: TANField = TANField(), confirmTitle: String = "Continue") {
 		self.purpose = purpose
 		self.system = system
 		self.loginOnly = loginOnly
@@ -127,6 +169,8 @@ public struct SecondFactorRequest: Sendable, Equatable {
 		self.validity = validity
 		self.methods = methods
 		self.method = method
+		self.field = field
+		self.confirmTitle = confirmTitle
 	}
 
 	public enum Purpose: Sendable, Equatable {
@@ -152,7 +196,9 @@ public enum Challenge: Sendable, Equatable {
 	/// An approval in the app of the bank, with a QR code to scan when `image` is set.
 	case approveInApp(prompt: String, app: String?, image: ChallengeImage?, step: Step?)
 	/// A web form of an extension or of finAPI.
-	case openBrowser(URL)
+	case openBrowser(BrowserApproval)
+	/// A captcha of a website, which the user solves in an embedded browser.
+	case captcha(CaptchaRequest)
 
 	/// The second of two QR codes, for example.
 	public struct Step: Sendable, Equatable {
@@ -175,12 +221,15 @@ public struct TANMethod: Identifiable, Sendable, Equatable {
 	public let needsMedium: Bool
 	/// What the bank sends with this method, for the progress text while the app requests it.
 	public let delivery: Delivery
+	/// Why the user cannot choose the method, for example "Activate this method on the website first."
+	public let unavailable: String?
 
-	public init(id: String, name: String, needsMedium: Bool = false, delivery: Delivery = .tan) {
+	public init(id: String, name: String, needsMedium: Bool = false, delivery: Delivery = .tan, unavailable: String? = nil) {
 		self.id = id
 		self.name = name
 		self.needsMedium = needsMedium
 		self.delivery = delivery
+		self.unavailable = unavailable
 	}
 
 	public enum Delivery: Sendable, Equatable {
@@ -200,6 +249,147 @@ public enum ChallengeProgress: Sendable, Equatable {
 	/// "Getting list of TAN media..."
 	case tanMedia
 	case challenge(TANMethod.Delivery)
+}
+
+/// What the entry field of a TAN or code accepts.
+public struct TANField: Sendable, Equatable {
+	public let label: String
+	/// The allowed number of characters, or nil for any text.
+	public let length: ClosedRange<Int>?
+	public let isNumeric: Bool
+	/// Letters become capitals as the user types.
+	public let isUppercase: Bool
+
+	public init(label: String = "TAN", length: ClosedRange<Int>? = nil, isNumeric: Bool = false, isUppercase: Bool = false) {
+		self.label = label
+		self.length = length
+		self.isNumeric = isNumeric
+		self.isUppercase = isUppercase
+	}
+
+	/// The text as the field shows it: digits only for a numeric field, capitals when asked, and no
+	/// more characters than allowed.
+	public func accept(_ text: String) -> String {
+		var text = isNumeric ? text.filter(\.isASCII).filter(\.isNumber) : text
+		if isUppercase { text = text.uppercased() }
+		if let length { text = String(text.prefix(max(0, length.upperBound))) }
+		return text
+	}
+
+	/// The text is complete enough to send.
+	public func isComplete(_ text: String) -> Bool {
+		guard !text.isEmpty else { return false }
+		return length.map { $0.contains(text.count) } ?? true
+	}
+}
+
+/// A login of an extension in a browser window, for example an OAuth authorization. The window ends
+/// at a final address, which it never contacts, and hands the code of that address to the script.
+public struct BrowserApproval: Sendable, Equatable {
+	/// The first page, with the `state` parameter.
+	public let url: URL
+	/// The value that the final address must carry in its `state` parameter.
+	public let state: String
+	/// The hosts the window may load: those of the manifest, or those the user allowed.
+	public let hosts: Set<String>
+
+	public init(url: URL, state: String, hosts: Set<String>) {
+		self.url = url
+		self.state = state
+		self.hosts = hosts
+	}
+
+	/// What the window does with a navigation.
+	public enum Step: Sendable, Equatable {
+		/// A page of an allowed host.
+		case load
+		/// A final address with the right state: the window closes, and the code goes to the script.
+		case finish(code: String)
+		/// A final address in a frame, or a host that is not allowed: the window does not load it.
+		case refuse(String)
+		/// A final address without a code or with another state: the login fails with this message.
+		case fail(String)
+	}
+
+	/// The content rule list of the login window: only the hosts of the login load, and never a final address.
+	public var contentRules: String { Self.contentRules(allowing: hosts) }
+
+	/// A WebKit content rule list that blocks every resource, then lets `hosts` load (with their
+	/// subdomains when asked), and last blocks the final addresses. So no image, script, or request of a
+	/// page reaches a final address or another host, which navigations alone do not cover.
+	public static func contentRules(allowing hosts: Set<String>, subdomains: Bool = false) -> String {
+		func rule(_ filter: String, _ action: String) -> [String: [String: String]] {
+			["trigger": ["url-filter": filter], "action": ["type": action]]
+		}
+		var rules = [rule(".*", "block")]
+		for host in hosts.sorted() {
+			let escaped = NSRegularExpression.escapedPattern(for: host.lowercased())
+			rules.append(rule("^https://\(escaped)[:/]", "ignore-previous-rules"))
+			if subdomains { rules.append(rule("^https://[^/:]+\\.\(escaped)[:/]", "ignore-previous-rules")) }
+		}
+		rules += [rule("^https://service\\.moneymoney-app\\.com[:/]", "block"), rule("^moneymoney-app:", "block"), rule("^moneten:", "block")]
+		let data = (try? JSONSerialization.data(withJSONObject: rules, options: [.sortedKeys])) ?? Data("[]".utf8)
+		return String(decoding: data, as: UTF8.self)
+	}
+
+	/// The parameters that carry the result, in the order the app looks for them.
+	static let codeParameters = ["code", "access_token", "auth_code", "tokenid", "authorization_code", "id_token", "token"]
+
+	/// Decides a navigation before any request: a final address is never contacted. Only the page of
+	/// the login, not a frame in it, may end the login.
+	public func step(for target: URL, isMainFrame: Bool = true) -> Step {
+		let scheme = target.scheme?.lowercased() ?? ""
+		let host = target.host(percentEncoded: false)?.lowercased() ?? ""
+		let path = target.path(percentEncoded: false)
+		let isFinal = switch (scheme, host) {
+		case ("https", "service.moneymoney-app.com"): target.port == nil && (path == "/1/redirect" || path == "/1/redirect/")
+		case ("moneymoney-app", "oauth"), ("moneten", "oauth"): path.isEmpty || path == "/"
+		default: false
+		}
+		if isFinal {
+			guard isMainFrame else { return .refuse("Only the page of the login may end it.") }
+			var parameters: [String: String] = [:]
+			for part in [target.query, target.fragment].compactMap({ $0 }) {
+				for item in URLComponents(string: "?" + part)?.queryItems ?? [] where parameters[item.name] == nil {
+					parameters[item.name] = item.value
+				}
+			}
+			guard parameters["state"] == state else { return .fail("The login returned another state than the app sent. The login was not accepted.") }
+			let code = Self.codeParameters.lazy.compactMap { parameters[$0] }.first
+				?? parameters.first { $0.key.lowercased().hasSuffix("code") || $0.key.lowercased().hasSuffix("token") }?.value
+			guard let code, !code.isEmpty else { return .fail("The login ended without a code.") }
+			return .finish(code: code)
+		}
+		guard scheme == "https", target.port == nil, hosts.contains(host) else {
+			return .refuse("The login window may not open \(host.isEmpty || scheme != "https" && scheme != "http" ? "\(scheme)://\(host)" : host).")
+		}
+		return .load
+	}
+
+}
+
+/// A captcha that a script returns as the script URL of the captcha service.
+public struct CaptchaRequest: Sendable, Equatable {
+	public enum Provider: String, Sendable, Equatable {
+		case reCAPTCHA, hCaptcha, friendlyCaptcha, amazonWAF
+	}
+
+	public let provider: Provider
+	/// The script of the service, as the extension returned it.
+	public let script: URL
+	public let siteKey: String
+	/// The page that embeds the captcha, which the service checks.
+	public let page: URL?
+	/// The visible checkbox variant. Otherwise the app tries the invisible variant first.
+	public let isCheckbox: Bool
+
+	public init(provider: Provider, script: URL, siteKey: String, page: URL?, isCheckbox: Bool) {
+		self.provider = provider
+		self.script = script
+		self.siteKey = siteKey
+		self.page = page
+		self.isCheckbox = isCheckbox
+	}
 }
 
 /// A photoTAN or QR code image as the bank sends it, in PNG or JPEG.
@@ -246,6 +436,8 @@ public enum UserAnswer: Sendable, Equatable {
 	case tanMedium(String)
 	case tan(Secret)
 	case host(HostDecision)
+	/// The values of the login fields, in the order of `LoginRequest.fields`.
+	case login([Secret])
 }
 
 /// A PIN, password, or TAN. It prints as "•••", so the value cannot end up in a log by accident.

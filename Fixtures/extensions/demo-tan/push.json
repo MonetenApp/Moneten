@@ -1,0 +1,95 @@
+{
+	"exchanges": [
+		{
+			"request": {
+				"method": "POST",
+				"url": "https://api.bank.example/login/push"
+			},
+			"response": {
+				"status": 200,
+				"headers": {
+					"Content-Type": "application/json"
+				},
+				"body": "{\"session\": \"s-1\"}"
+			}
+		},
+		{
+			"request": {
+				"method": "GET",
+				"url": "https://api.bank.example/login/push/status"
+			},
+			"response": {
+				"status": 200,
+				"headers": {
+					"Content-Type": "application/json"
+				},
+				"body": "{\"status\": \"pending\"}"
+			}
+		},
+		{
+			"request": {
+				"method": "GET",
+				"url": "https://api.bank.example/login/push/status"
+			},
+			"response": {
+				"status": 200,
+				"headers": {
+					"Content-Type": "application/json"
+				},
+				"body": "{\"status\": \"pending\"}"
+			}
+		},
+		{
+			"request": {
+				"method": "GET",
+				"url": "https://api.bank.example/login/push/status"
+			},
+			"response": {
+				"status": 200,
+				"headers": {
+					"Content-Type": "application/json"
+				},
+				"body": "{\"status\": \"approved\"}"
+			}
+		},
+		{
+			"request": {
+				"method": "GET",
+				"url": "https://api.bank.example/accounts/push"
+			},
+			"response": {
+				"status": 200,
+				"headers": {
+					"Content-Type": "application/json"
+				},
+				"body": "{\"accounts\": [{\"name\": \"Demo Giro\", \"owner\": \"Erika Mustermann\", \"number\": \"DE02120300000000202051\"}]}"
+			}
+		},
+		{
+			"request": {
+				"method": "GET",
+				"url": "https://api.bank.example/accounts/push/DE02120300000000202051/transactions"
+			},
+			"response": {
+				"status": 200,
+				"headers": {
+					"Content-Type": "application/json"
+				},
+				"body": "{\"balance\": 1520.25, \"transactions\": [{\"id\": \"D-3\", \"date\": 1794571200, \"name\": \"B\\u00e4ckerei Beispiel\", \"purpose\": \"Kartenzahlung\", \"amount\": -4.75}, {\"id\": \"D-2\", \"date\": 1794398400, \"name\": \"Max Mustermann\", \"purpose\": \"Erstattung\", \"amount\": 25.0}, {\"id\": \"D-1\", \"date\": 1794225600, \"name\": \"Stadtwerke Musterstadt\", \"purpose\": \"Abschlag November\", \"amount\": -89.0}]}"
+			}
+		},
+		{
+			"request": {
+				"method": "POST",
+				"url": "https://api.bank.example/logout"
+			},
+			"response": {
+				"status": 200,
+				"headers": {
+					"Content-Type": "application/json"
+				},
+				"body": "{\"ok\": true}"
+			}
+		}
+	]
+}

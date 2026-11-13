@@ -180,6 +180,16 @@ struct BankAccessTests {
 		plan.mapValues { $0.map(\.name) }
 	}
 
+	@Test("An extension login is the same only at the same service with the same user name, and a login without a user name never is")
+	func sameExtensionLogin() {
+		let tan = Access(source: .extension(id: "demo-tan"), bankName: "Demo TAN", loginName: "erika")
+		#expect(tan.isSameLogin(as: Access(source: .extension(id: "demo-tan"), bankName: "Demo TAN", loginName: "erika")))
+		#expect(!tan.isSameLogin(as: Access(source: .extension(id: "demo-tan"), bankName: "Demo Push", loginName: "erika")))
+		#expect(!tan.isSameLogin(as: Access(source: .extension(id: "demo-tan"), bankName: "Demo TAN", loginName: "max")))
+		let broker = Access(source: .extension(id: "demo-json-oauth"), bankName: "Demo Broker", loginName: "")
+		#expect(!broker.isSameLogin(as: Access(source: .extension(id: "demo-json-oauth"), bankName: "Demo Broker", loginName: "")))
+	}
+
 	@Test("Refresh All Accounts fetches every account with an access that is not closed, one request per access")
 	func refreshAll() {
 		let offline = Account(position: 0, name: "Cash", kind: .cash, source: .offline)

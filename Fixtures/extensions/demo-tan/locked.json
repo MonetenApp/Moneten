@@ -1,0 +1,17 @@
+{
+	"exchanges": [
+		{
+			"request": {
+				"method": "POST",
+				"url": "https://api.bank.example/login/broken"
+			},
+			"response": {
+				"status": 200,
+				"headers": {
+					"Content-Type": "application/json"
+				},
+				"body": "{\"error\": \"wrong password\"}"
+			}
+		}
+	]
+}

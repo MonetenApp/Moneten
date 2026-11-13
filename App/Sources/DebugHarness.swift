@@ -135,10 +135,26 @@ final class DebugHarness {
 			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
 				self?.log("escape open=\(self?.model?.sync.broker.current.map { "\($0.request.kind)" } ?? "none")")
 			}
+		case "alert":
+			// Logs the title of the alert on screen and closes it, as its OK button does.
+			log("alert \(model.alert?.title ?? "none")")
+			model.alert = nil
 		case "extanswer":
 			// Clicks "Allow" or "Deny" in the question about a new host.
 			guard let prompt = model.sync.broker.current, case .allowHost = prompt.request else { return log("extanswer no host question") }
 			model.sync.broker.answer(.host(argument == "allow" ? .allowed : .denied), to: prompt.id)
+		// "<package>|<fixture>|<service>" sets up an access; "<package>|<fixture>|auto" refreshes the accesses of the package.
+		case "extaccess", "extrefresh": extensionAccess(command, argument)
+		case "extprompt": logPrompt()
+		// Answers the dialog on screen: "extlogin <user>|<password>", "exttan <code>", "extmethod <id>", "extcancel".
+		case "extlogin": answer { .login(argument.components(separatedBy: "|").map(Secret.init)) }
+		case "exttan": answer { .tan(Secret(argument)) }
+		case "extmethod": answer { .tanMethod(argument) }
+		case "extcancel": if let prompt = model.sync.broker.current { model.sync.broker.cancel(prompt.id) }
+		// Runs JavaScript in the login window of an extension, such as "solve('stub-token')" on the captcha stub.
+		case "extjs": ExtensionWebDebug.current?.evaluateJavaScript(argument) { [weak self] _, error in self?.log("extjs \(error.map { "error=\($0.localizedDescription)" } ?? "ok")") }
+		case "extcaptchastub": ExtensionWebDebug.captchaStub = argument != "off"
+		case "extstate": logExtensionState()
 		case "groupbyaccount":
 			if var g = model.ledger.groups.first(where: { $0.name == argument }) {
 				g.groupsByAccount = true
@@ -373,6 +389,72 @@ final class DebugHarness {
 		}
 	}
 
+	private func extensionAccess(_ command: String, _ argument: String) {
+		let parts = argument.components(separatedBy: "|")
+		guard let model, parts.count >= 2, model.store != nil else { return log("ext error=\(command) needs <package>|<fixture>|<service> and an open database") }
+		do {
+			let package = try ExtensionPackage.load(from: URL(filePath: parts[0]))
+			let fixture = parts[1].isEmpty ? nil : try JSONDecoder().decode(Fixture.self, from: Data(contentsOf: URL(filePath: parts[1])))
+			for exchange in fixture?.exchanges ?? [] where exchange.request.method == "GET" && exchange.request.url.host()?.hasPrefix("auth.") == true {
+				ExtensionWebDebug.pages[ExtensionWebDebug.key(exchange.request.url)] = exchange.response.body ?? ""
+			}
+			ExtensionWebDebug.log = { [weak self] in self?.log($0) }
+			let log: @Sendable (HostLog) -> Void = { [weak self, package] line in
+				Task { @MainActor in
+					switch line {
+					case let .print(text): self?.log("ext print \(package.name): \(text)")
+					case let .status(text): self?.log("ext status \(package.name): \(text)")
+					case let .sent(request): self?.log("ext sent \(request)")
+					}
+				}
+			}
+			if command == "extaccess" {
+				model.addExtensionAccess(package: package, service: parts.count > 2 ? parts[2] : package.name, fixture: fixture, log: log)
+			} else {
+				model.refreshExtensionAccesses(package: package, fixture: fixture, attended: !(parts.count > 2 && parts[2] == "auto"), log: log)
+			}
+		} catch {
+			log("ext error=\(error)")
+		}
+	}
+
+	private func answer(_ make: () -> UserAnswer) {
+		guard let model, let prompt = model.sync.broker.current else { return log("ext no dialog") }
+		model.sync.broker.answer(make(), to: prompt.id)
+	}
+
+	/// The dialog on screen, without any value the user typed.
+	private func logPrompt() {
+		guard let prompt = model?.sync.broker.current else { return log("ext prompt none") }
+		switch prompt.request {
+		case let .login(request): log("ext prompt login \(request.service) fields=\(request.fields.map(\.label).joined(separator: ","))")
+		case let .allowHost(request): log("ext prompt host \(request.host)")
+		case .pin: log("ext prompt pin")
+		case let .secondFactor(request):
+			switch request.challenge {
+			case let .enterTAN(text, image): log("ext prompt tan label=\(request.field.label) text=\(text.replacingOccurrences(of: "\n", with: " / ")) image=\(image != nil)")
+			case let .approveInApp(text, app, image, _): log("ext prompt approve app=\(app ?? "-") text=\(text) image=\(image != nil)")
+			case let .chooseTANMethod(methods, current): log("ext prompt methods \(methods.map { "\($0.id)=\($0.name)\($0.unavailable == nil ? "" : " (unavailable)")" }.joined(separator: ", ")) current=\(current ?? "-")")
+			case let .openBrowser(approval): log("ext prompt browser \(approval.url.host() ?? "")")
+			case let .captcha(captcha): log("ext prompt captcha \(captcha.provider.rawValue) page=\(captcha.page?.host() ?? "-")")
+			case .chooseTANMedium, .flickerCode: log("ext prompt other")
+			}
+		}
+	}
+
+	/// The state of every bank access and the failure of each of its accounts.
+	private func logExtensionState() {
+		guard let model else { return }
+		for access in model.accesses.values.sorted(by: { $0.bankName < $1.bankName }) {
+			log("ext access \(access.bankName) state=\(String(describing: model.sync.states[access.id] ?? .idle).prefix(60))")
+			for account in model.ledger.accounts where account.accessID == access.id {
+				let rows = model.ledger.transactions.filter { $0.accountID == account.id }
+				let failure = account.refreshError.map { " failed=\($0.message)" } ?? ""
+				log("ext account \(account.name) rows=\(rows.count) balance=\(model.ledger.balance(of: account).minorUnits)\(failure)")
+			}
+		}
+	}
+
 	/// Selects the account, group, or category with this name.
 	func select(_ name: String) {
 		guard let model else { return }
@@ -407,7 +489,15 @@ final class DebugHarness {
 		}
 	}
 
+	/// A web view draws in another process, so the window image gets its picture from WebKit first.
 	private func snapshot(_ name: String) {
+		guard let web = ExtensionWebDebug.current, web.window != nil else { return snapshotWindows(name) }
+		web.takeSnapshot(with: nil) { [weak self] image, _ in
+			self?.snapshotWindows(name, web: image.map { (web, $0) })
+		}
+	}
+
+	private func snapshotWindows(_ name: String, web: (view: NSView, image: NSImage)? = nil) {
 		let windows = NSApp.windows.filter { $0.isVisible && $0.className != "NSStatusBarWindow" && $0.frame.width > 50 }
 		for (i, window) in windows.enumerated() {
 			// The window, its sheet, and a sheet on top of that sheet.
@@ -416,6 +506,14 @@ final class DebugHarness {
 				guard let view = w.contentView?.superview ?? w.contentView,
 					let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { continue }
 				view.cacheDisplay(in: view.bounds, to: rep)
+				if let web, web.view.window === w {
+					NSGraphicsContext.saveGraphicsState()
+					NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+					var frame = web.view.convert(web.view.bounds, to: view)
+					if view.isFlipped { frame.origin.y = view.bounds.height - frame.maxY }
+					web.image.draw(in: frame)
+					NSGraphicsContext.restoreGraphicsState()
+				}
 				let file = folder.appendingPathComponent("\(name)-\(i)\(String(repeating: "-sheet", count: j)).png")
 				try? rep.representation(using: .png, properties: [:])?.write(to: file)
 				log("snapshot \(file.lastPathComponent) \(w.title) \(Int(view.bounds.width))x\(Int(view.bounds.height))")

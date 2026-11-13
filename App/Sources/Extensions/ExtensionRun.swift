@@ -27,6 +27,7 @@ struct ExtensionRun: BankConnector {
 				Task { @MainActor in
 					switch line {
 					case let .print(text): log("ext print \(package.name): \(text)")
+					case let .status(text): log("ext status \(package.name): \(text)")
 					case let .sent(request): log("ext sent \(request)")
 					}
 				}

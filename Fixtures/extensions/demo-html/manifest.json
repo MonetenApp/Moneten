@@ -1,0 +1,13 @@
+{
+	"id": "demo-html",
+	"name": "Demo Bank",
+	"version": "1.0",
+	"description": "A made-up bank with an HTML login form, for the tests.",
+	"files": ["Demo.lua"],
+	"hosts": ["www.bank.example"],
+	"services": [{"name": "Demo Bank", "login": [{"label": "Username"}, {"label": "PIN", "secret": true}]}],
+	"kinds": ["balances", "transactions"],
+	"apiVersion": 1,
+	"license": "MIT",
+	"maintainer": {"name": "Moneten", "github": "MonetenApp"}
+}
