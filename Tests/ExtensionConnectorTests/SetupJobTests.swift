@@ -77,6 +77,17 @@ import Testing
 		#expect(await setUp(states, login: "", failing: true).printed.contains("token nil"))
 	}
 
+	struct DiskFull: Error {}
+
+	/// When the app cannot store the accounts of a setup, the state of the setup stays for the next one.
+	@Test func setupWhoseAccountsCannotBeStoredKeepsItsState() async {
+		let states = KeptSetupStates()
+		let session = TestSession([.login([Secret("erika"), Secret("geheim")])])
+		let job = ExtensionSetupJob(connector: session.connector(demo(Self.source(failing: false, sleep: 0))), states: states) { _ in throw DiskFull() }
+		await #expect(throws: DiskFull.self) { try await job.refresh(RefreshRequest(access: Self.access, accounts: []), session) }
+		#expect(await setUp(states, login: "erika", failing: false).printed.contains("token device of erika"))
+	}
+
 	/// A lock clears the states while a failed setup still ends its session. That setup keeps nothing,
 	/// also when the app was unlocked in between.
 	@Test func setupThatEndsAfterTheLockKeepsNothing() async {

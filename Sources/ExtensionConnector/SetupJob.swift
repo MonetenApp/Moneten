@@ -83,7 +83,13 @@ public struct ExtensionSetupJob: BankConnector {
 			keep(setup.state, for: key)
 			throw CancellationError()
 		}
+		do {
+			try add(setup)
+		} catch {
+			// The accounts are not stored, so the next setup needs what this one registered.
+			keep(setup.state, for: key)
+			throw error
+		}
 		keep(nil, for: key)
-		try add(setup)
 	}
 }
