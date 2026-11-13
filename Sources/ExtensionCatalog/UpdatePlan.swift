@@ -44,6 +44,39 @@ public enum UpdatePlan: Sendable, Equatable {
 	}
 }
 
+/// What the app keeps for the updates of the installed catalog packages, by id: the plan of each waiting
+/// update, the version the user confirmed or chose, and the packages whose files do not match.
+public struct UpdateState: Sendable, Equatable {
+	public var plans: [String: UpdatePlan] = [:]
+	public var confirmed: [String: String] = [:]
+	public var changed: Set<String> = []
+
+	public init() {}
+
+	/// What waited for one package before its new version was placed.
+	public struct Saved: Sendable {
+		let plan: UpdatePlan?
+		let confirmed: String?
+		let changed: Bool
+	}
+
+	/// Clears what waited for a package whose new version is placed, and returns it for a placement that fails.
+	public mutating func clear(_ id: String) -> Saved {
+		let saved = Saved(plan: plans[id], confirmed: confirmed[id], changed: changed.contains(id))
+		plans[id] = nil
+		confirmed[id] = nil
+		changed.remove(id)
+		return saved
+	}
+
+	/// Puts back what waited for a package whose new version could not be placed, so its update is still offered.
+	public mutating func restore(_ saved: Saved, of id: String) {
+		plans[id] = saved.plan
+		confirmed[id] = saved.confirmed
+		if saved.changed { changed.insert(id) }
+	}
+}
+
 /// What the accepted index says about an installed catalog package (ADR 0015, decision 13).
 public enum Standing: Sendable, Equatable {
 	case runs(note: String?)

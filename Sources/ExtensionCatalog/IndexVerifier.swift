@@ -45,6 +45,14 @@ public struct KeyFloors: Sendable, Equatable, Codable {
 		floors[key.id]
 	}
 
+	/// The floors that the database stored, or else those rebuilt from the accepted index and its
+	/// signature. Nil when neither can be read: the app then accepts no index, because empty floors would
+	/// accept an older one. Readable floors of keys that this build no longer ships are still dropped.
+	public static func restored(_ stored: Data, index: Data, signature: Data, keys: CatalogKeys) -> KeyFloors? {
+		if let floors = try? JSONDecoder().decode(KeyFloors.self, from: stored) { return floors.keeping(keys) }
+		return IndexVerifier.floors(of: index, signature: signature, keys: keys)
+	}
+
 	/// Drops the floor and the refusal of every key that this build does not ship.
 	public func keeping(_ keys: CatalogKeys) -> KeyFloors {
 		let shipped = [keys.current.id, keys.next.id]

@@ -96,6 +96,16 @@ import Testing
 		#expect(IndexVerifier.floors(of: data, signature: TestKey().sign(data), keys: keys) == nil)
 	}
 
+	@Test func storedFloorsComeBackOrRefuseEveryIndex() throws {
+		let data = TestCatalog.index(version: 121)
+		let accepted = try #require(try accept(data, by: current).get())
+		let stored = try JSONEncoder().encode(accepted.floors)
+		#expect(KeyFloors.restored(stored, index: data, signature: current.sign(data), keys: keys) == accepted.floors)
+		let rebuilt = KeyFloors.restored(Data("damaged".utf8), index: data, signature: current.sign(data), keys: keys)
+		#expect(rebuilt == accepted.floors)
+		#expect(KeyFloors.restored(Data("damaged".utf8), index: Data("damaged".utf8), signature: Data(), keys: keys) == nil)
+	}
+
 	@Test func floorsSurviveAsStoredValues() throws {
 		let accepted = try #require(try accept(TestCatalog.index(version: 120), by: current).get())
 		let stored = try JSONEncoder().encode(accepted.floors)

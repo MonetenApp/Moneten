@@ -103,17 +103,16 @@ final class ExtensionLibrary {
 	/// The fixture that replaces the network for an installed extension, for the debug harness.
 	@ObservationIgnored var fixtures: [String: Fixture] = [:]
 	@ObservationIgnored private var indexData: Data?
-	@ObservationIgnored private var floors = KeyFloors()
+	/// Nil when neither the stored floors nor the accepted index can be read. The app then accepts no index.
+	@ObservationIgnored private var floors: KeyFloors? = KeyFloors()
 	/// The origin of each installed extension, by name.
 	@ObservationIgnored private var records: [String: InstalledOrigin] = [:]
-	/// The updates that wait for the end of a session or for the user, by id.
-	@ObservationIgnored private var updates: [String: UpdatePlan] = [:]
-	/// The version of each update that the user confirmed or chose with "Update".
-	@ObservationIgnored private var confirmed: [String: String] = [:]
+	/// The waiting updates, the confirmed versions, and the changed packages.
+	@ObservationIgnored private var updateState = UpdateState()
+	/// What waited for a package while its new version is placed, for a placement that fails.
+	@ObservationIgnored private var savedUpdates: [String: UpdateState.Saved] = [:]
 	/// The downloads that run, so that a removal can stop them.
 	@ObservationIgnored private var downloads: [String: InstallCancellation] = [:]
-	/// Catalog packages whose files do not match, found by the last check.
-	@ObservationIgnored private var changed: Set<String> = []
 	@ObservationIgnored private var daily: Task<Void, Never>?
 
 	private var folder: URL { DataFolder.standard().extensionsFolder }
@@ -131,11 +130,8 @@ final class ExtensionLibrary {
 			if let stored = try store.catalog() {
 				indexData = stored.index
 				index = try? CatalogIndex.parse(stored.index)
-				if let decoded = try? JSONDecoder().decode(KeyFloors.self, from: stored.floors) {
-					floors = configuration.keys.map(decoded.keeping) ?? decoded
-				} else if let keys = configuration.keys, let rebuilt = IndexVerifier.floors(of: stored.index, signature: stored.signature, keys: keys) {
-					// Floors that cannot be read come back from the accepted index, so a later block still arrives.
-					floors = rebuilt
+				if let keys = configuration.keys {
+					floors = KeyFloors.restored(stored.floors, index: stored.index, signature: stored.signature, keys: keys)
 				}
 			}
 			for installed in try store.installedExtensions() {
@@ -162,9 +158,8 @@ final class ExtensionLibrary {
 		indexData = nil
 		floors = KeyFloors()
 		records = [:]
-		updates = [:]
-		confirmed = [:]
-		changed = []
+		updateState = UpdateState()
+		savedUpdates = [:]
 		items = []
 		question = nil
 		problem = nil
@@ -194,6 +189,10 @@ final class ExtensionLibrary {
 			problem = "This build of Moneten has no catalog keys, so it cannot show the catalog."
 			return reload()
 		}
+		guard let floors else {
+			problem = "Moneten cannot read the versions of the catalog that it accepted before, so it accepts no new list of extensions."
+			return reload()
+		}
 		let source = configuration.source
 		let data: Data, signature: Data
 		do {
@@ -211,7 +210,7 @@ final class ExtensionLibrary {
 				try store.saveCatalog(StoredCatalog(index: data, signature: signature, floors: try JSONEncoder().encode(accepted.floors)))
 				indexData = data
 				index = accepted.index
-				floors = accepted.floors
+				self.floors = accepted.floors
 				log("ext catalog accepted version=\(accepted.index.version)")
 				stopSessionsOfStoppedPackages()
 			} else {
@@ -253,11 +252,11 @@ final class ExtensionLibrary {
 		for case let (id, .catalog(installed)) in records {
 			guard let entry = index.entry(id), entry.status == .active || entry.status == .unmaintained, let available = try? entry.manifest.get(),
 				let current = try? Installer.load(installed, from: folder).manifest else {
-				updates[id] = nil
+				updateState.plans[id] = nil
 				continue
 			}
-			let plan = UpdatePlan(installed: current, available: available, automatic: automatic, sessionRuns: sessionRuns(id), confirmed: confirmed[id])
-			updates[id] = plan == .upToDate || plan == .install ? nil : plan
+			let plan = UpdatePlan(installed: current, available: available, automatic: automatic, sessionRuns: sessionRuns(id), confirmed: updateState.confirmed[id])
+			updateState.plans[id] = plan == .upToDate || plan == .install ? nil : plan
 			if plan == .install, !working.contains(id) { await download(entry) }
 		}
 		reload()
@@ -269,13 +268,13 @@ final class ExtensionLibrary {
 		guard let entry = index?.entry(id), let available = try? entry.manifest.get(), case let .catalog(installed)? = records[id],
 			let current = try? Installer.load(installed, from: folder).manifest else { return reload() }
 		let plan = UpdatePlan(installed: current, available: available, automatic: automatic, sessionRuns: sessionRuns(id), confirmed: version)
-		updates[id] = plan == .upToDate || plan == .install ? nil : plan
+		updateState.plans[id] = plan == .upToDate || plan == .install ? nil : plan
 		switch plan {
 		case .install:
-			confirmed[id] = version
+			updateState.confirmed[id] = version
 			await download(entry)
 		case .afterSession:
-			confirmed[id] = version
+			updateState.confirmed[id] = version
 			reload()
 		case .needsConfirmation, .waitsForUser:
 			failure = "Version \(entry.version ?? "") of \(entry.name) is not the version you chose. Review it again."
@@ -288,7 +287,7 @@ final class ExtensionLibrary {
 
 	/// Called when a refresh ended: an update that waited for the end of its session installs now.
 	func sessionEnded() {
-		guard updates.values.contains(.afterSession) else { return }
+		guard updateState.plans.values.contains(.afterSession) else { return }
 		Task { await applyUpdates() }
 	}
 
@@ -305,19 +304,27 @@ final class ExtensionLibrary {
 			reload()
 		}
 		let records = CatalogRecords(store: store)
-		let previous = try? store.installedExtensions().first { $0.id == id }
+		let previous: InstalledExtension?
+		do {
+			previous = try records.row(of: id)
+		} catch {
+			failure = "\(entry.name) could not be installed, because Moneten cannot read its record. \(error)"
+			return
+		}
 		do {
 			// The commit runs on the main actor with the move, so a Remove comes before or after all of it.
 			let installed = try await installer.install(entry, canceled: canceled, commit: { [weak self] installed in
 				try records.save(installed)
-				self?.records[id] = .catalog(installed)
-				self?.updates[id] = nil
-				self?.confirmed[id] = nil
-				self?.changed.remove(id)
+				guard let self else { return }
+				self.records[id] = .catalog(installed)
+				self.savedUpdates[id] = self.updateState.clear(id)
 			}, restore: { [weak self] in
 				try records.restore(previous, of: id)
-				self?.records[id] = previous.map { InstalledOrigin(catalog: $0.origin == .catalog, record: $0.record) }
+				guard let self else { return }
+				self.records[id] = previous.map { InstalledOrigin(catalog: $0.origin == .catalog, record: $0.record) }
+				if let saved = self.savedUpdates.removeValue(forKey: id) { self.updateState.restore(saved, of: id) }
 			})
+			savedUpdates[id] = nil
 			log("ext installed \(id) version=\(installed.version)")
 		} catch {
 			if case .removed = error { return log("ext install stopped \(id) \(error)") }
@@ -403,7 +410,7 @@ final class ExtensionLibrary {
 
 	/// Opens the confirmation of an update that adds hosts or login fields.
 	func review(_ id: String) {
-		guard case let .needsConfirmation(hosts, fields)? = updates[id], let item = items.first(where: { $0.id == id }), let version = index?.entry(id)?.version else { return }
+		guard case let .needsConfirmation(hosts, fields)? = updateState.plans[id], let item = items.first(where: { $0.id == id }), let version = index?.entry(id)?.version else { return }
 		question = .review(id: id, name: item.name, version: version, hosts: hosts, fields: fields)
 	}
 
@@ -457,9 +464,7 @@ final class ExtensionLibrary {
 			try store.removeInstalledExtension(id)
 			model?.extensionConnectors[id] = nil
 			records[id] = nil
-			updates[id] = nil
-			confirmed[id] = nil
-			changed.remove(id)
+			_ = updateState.clear(id)
 			log("ext removed \(id)")
 		} catch {
 			failure = "\(id) could not be removed. \(error)"
@@ -502,11 +507,11 @@ final class ExtensionLibrary {
 			}
 			do {
 				let package = try Installer.load(installed, from: folder)
-				if changed.remove(id) != nil { reload() }
+				if updateState.changed.remove(id) != nil { reload() }
 				log("ext run \(id) version=\(installed.version)")
 				return package
 			} catch {
-				changed.insert(id)
+				updateState.changed.insert(id)
 				reload()
 				log("ext stopped \(id) \(error)")
 				throw .unsupported(error.description)
@@ -531,7 +536,10 @@ final class ExtensionLibrary {
 
 	/// The services that the add account assistant offers under "Other": those of catalog packages that
 	/// may run, and of file installs that the user allowed.
-	var setupServices: [(id: String, service: String)] {
+	/// Kept with the rows, so the assistant reads it without checking files on each render.
+	private(set) var setupServices: [(id: String, service: String)] = []
+
+	private func listSetupServices() -> [(id: String, service: String)] {
 		FileInstall.names(in: folder).flatMap { id -> [(id: String, service: String)] in
 			guard let package = mayRun(id) else { return [] }
 			return FileInstall.services(of: package).map { (id, $0) }
@@ -570,6 +578,7 @@ final class ExtensionLibrary {
 
 	/// Lists the folder again and builds the rows of the window, one for each name.
 	func reload() {
+		setupServices = listSetupServices()
 		let names = FileInstall.names(in: folder)
 		let installed = names.map { name -> Item in
 			switch records[name] {
@@ -592,7 +601,7 @@ final class ExtensionLibrary {
 		var badge = "Installed \(record.version)"
 		if working.contains(record.id) {
 			badge = "Installing..."
-		} else if changed.contains(record.id) || manifest == nil {
+		} else if updateState.changed.contains(record.id) || manifest == nil {
 			badge = "Changed"
 			note = CatalogError.changed(record.name).description
 		} else if case let .stopped(reason) = standing {
@@ -605,7 +614,7 @@ final class ExtensionLibrary {
 				note = reason
 			}
 			let version = entry?.version ?? ""
-			switch updates[record.id] {
+			switch updateState.plans[record.id] {
 			case let .needsConfirmation(hosts, fields)?:
 				note = [note, Self.newRights(version: version, hosts: hosts, fields: fields)].compactMap { $0 }.joined(separator: " ")
 				action = .reviewUpdate

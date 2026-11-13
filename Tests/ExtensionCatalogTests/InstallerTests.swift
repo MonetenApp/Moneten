@@ -1,7 +1,8 @@
 @testable import ExtensionCatalog
 import ExtensionHost
 import Foundation
-import Storage
+import GRDB
+@testable import Storage
 import Testing
 
 @Suite struct InstallerTests {
@@ -147,24 +148,50 @@ import Testing
 		try Vault(folder: DataFolder(root: root.appending(path: "Data"))).create(password: "korrekt-pferd-batterie", starterCategories: [])
 	}
 
-	@Test func failedMoveRestoresTheRecordOfTheInstalledVersion() async throws {
+	/// What the window keeps for the updates, as the library holds it on the main actor.
+	@MainActor final class Window {
+		var updates = UpdateState()
+		var saved: UpdateState.Saved?
+	}
+
+	@Test func failedMoveRestoresTheRecordAndTheUpdateOfTheInstalledVersion() async throws {
 		let records = CatalogRecords(store: try store())
 		let old = TestCatalog.Package()
 		server.publish(old)
 		_ = try await installer.install(entry(old)) { try records.save($0) }
-		let before = try records.store.installedExtensions()
+		let before = try records.row(of: "example")
 		var new = old
 		new.version = "1.1"
 		new.script += "-- 1.1\n"
 		server.publish(new)
+		let window = await Window()
+		await MainActor.run {
+			window.updates.plans["example"] = .waitsForUser
+			window.updates.confirmed["example"] = "1.1"
+		}
 		try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: folder.path)
 		defer { try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: folder.path) }
 		await #expect(throws: CatalogError.download("Example Bank")) {
-			try await installer.install(entry(new), commit: { try records.save($0) }, restore: { try records.restore(before.first, of: "example") })
+			try await installer.install(entry(new), commit: { installed in
+				try records.save(installed)
+				window.saved = window.updates.clear("example")
+			}, restore: {
+				try records.restore(before, of: "example")
+				if let saved = window.saved { window.updates.restore(saved, of: "example") }
+			})
 		}
-		#expect(try records.store.installedExtensions() == before)
-		#expect(InstalledOrigin(catalog: true, record: try #require(before.first).record)
+		#expect(try records.row(of: "example") == before)
+		#expect(InstalledOrigin(catalog: true, record: try #require(before).record)
 			== .catalog(InstalledPackage(id: "example", name: "Example Bank", version: "1.0", files: try entry(old).files)))
+		let updates = await MainActor.run { window.updates }
+		#expect(updates.confirmed["example"] == "1.1")
+		#expect(updates.plans["example"] == .waitsForUser)
+	}
+
+	@Test func recordThatCannotBeReadStopsTheInstallBeforeItStarts() throws {
+		let store = try store()
+		try store.queue.write { try $0.drop(table: "installedExtension") }
+		#expect(throws: (any Error).self) { try CatalogRecords(store: store).row(of: "example") }
 	}
 
 	@Test func recordThatCannotBeRestoredIsReported() async throws {

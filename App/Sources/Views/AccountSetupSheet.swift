@@ -29,8 +29,10 @@ final class AccountSetup {
 		}
 	}
 
-	/// Read when the assistant opens, because each extension is read and checked to list its services.
-	let otherServices: [Service]
+	/// The services of the extensions that may run, as the library lists them with the rows of the Extensions window.
+	var otherServices: [Service] {
+		[.offline] + model.extensions.setupServices.map { Service.extensionService(id: $0.id, name: $0.service) }
+	}
 
 	/// Why the extension of the chosen service cannot run now.
 	private(set) var serviceError: String?
@@ -92,7 +94,6 @@ final class AccountSetup {
 		self.model = model
 		self.groupID = groupID
 		lookup = BankLookup(find: model.fints.bankInfo(bankCode:))
-		otherServices = [.offline] + model.extensions.setupServices.map { Service.extensionService(id: $0.id, name: $0.service) }
 	}
 
 	var bank: FinTSBank? { lookup.bank?.bank }
@@ -296,6 +297,10 @@ struct AccountSetupSheet: View {
 			Picker("Other", selection: $setup.service) {
 				Text("None").tag(AccountSetup.Service?.none)
 				ForEach(setup.otherServices, id: \.self) { Text($0.title).tag(AccountSetup.Service?.some($0)) }
+			}
+			.onChange(of: setup.otherServices) { _, services in
+				// An extension that was blocked or removed while the assistant is open leaves the choice.
+				if let service = setup.service, !services.contains(service) { setup.service = nil }
 			}
 			if let error = setup.serviceError {
 				Label(error, systemImage: "exclamationmark.triangle")

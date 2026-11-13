@@ -51,7 +51,7 @@ These modules are planned:
 |---|---|---|
 | `FinAPIConnector` | finAPI login through its web form and data mapping (v0.3) | `Domain` |
 | `ext` | A command line tool that runs and tests an extension without the app | `ExtensionHost` |
-| `ExtensionCatalog` | Verifying the signed catalog index, installing packages, and planning updates | `ExtensionHost` |
+| `ExtensionCatalog` | Verifying the signed catalog index, installing packages, and planning updates | `Domain`, `ExtensionHost`, `Storage` |
 
 The sync state machine described below is in `Domain`. The payment state machine will be there too.
 
