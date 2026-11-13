@@ -123,7 +123,7 @@ An exchange:
 }
 ```
 
-A body that is not UTF-8 is `base64Body` in place of `body`. A replay answers each request with the first unused exchange of the same method and URL. Placeholders in the URL count as equal in their plain and their percent-encoded form. Any other percent-encoding counts as it is, so `a%2Fb` is not `a/b`. Headers and bodies of requests do not take part in the match.
+A body that is not UTF-8 is `base64Body` in place of `body`. A replay answers each request with the first unused exchange of the same method and URL. Placeholders in the URL count as equal in their plain and their percent-encoded form, and query parameters of different names count in any order, because a script that builds a query from `pairs` sends them in the order of the random hash seed of its Lua state. The values of one name keep their order, and the fragment takes no part in the sort. Any other percent-encoding counts as it is, so `a%2Fb` is not `a/b`. Headers and bodies of requests do not take part in the match.
 
 ### Placeholders
 

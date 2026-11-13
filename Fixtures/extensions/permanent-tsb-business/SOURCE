@@ -1,0 +1,9 @@
+Name: Permanent TSB Business 1.05
+Repository: https://github.com/janmuennich/MoneyMoney-Permanent-TSB-Business
+Commit: dd2bf5d3f8eb7d754bbba78e7e33d8ffeaf0401d
+URL: https://raw.githubusercontent.com/janmuennich/MoneyMoney-Permanent-TSB-Business/dd2bf5d3f8eb7d754bbba78e7e33d8ffeaf0401d/Permanent%20TSB%20Business.lua
+File: Permanent TSB Business.lua, unchanged
+SHA-256: a6ce11072708a7bfd374d23674aff27b66a81f1696d4344f4941aaddb99af833
+License: MIT, Copyright (c) 2020 Jan Münnich. LICENSE in this folder is the LICENSE file of the repository at the same commit.
+
+fixture.json and failed-login.json are written by hand from the requests that the script makes. No real account was used. All names, numbers, and amounts are made up.

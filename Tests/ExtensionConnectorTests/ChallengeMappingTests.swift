@@ -146,6 +146,24 @@ import Testing
 			siteKey: "KEY", page: URL(string: "https://bank.example/login"), isCheckbox: true))), stepIncrement: 1))
 	}
 
+	/// The signed Amazon extension 2.08 names its field "Bot-Prüfung" next to the AWS WAF script. The
+	/// script URL alone decides that the user solves a captcha.
+	@Test func captchaWithALabel() throws {
+		let url = "https://abc123.token.awswaf.com/abc123/def/challenge.js?sitekey=KEY&referer=https%3A%2F%2Fbank.example%2Flogin"
+		#expect(try interaction(["title": .string("Amazon Bot-Prüfung"), "challenge": .string(url), "label": .string("Bot-Prüfung")])
+			== .answer(request(.captcha(CaptchaRequest(provider: .amazonWAF, script: URL(string: url)!, siteKey: "KEY", page: URL(string: "https://bank.example/login")!,
+				isCheckbox: false)), field: TANField(label: "Bot-Prüfung")), stepIncrement: 1))
+	}
+
+	/// WebKit loads a page at its canonical address: lower-case scheme and host, no default port, and "/" for an
+	/// empty path. The captcha window loads only the address that it named.
+	@Test(arguments: [("https%3A%2F%2Fbank.example", "https://bank.example/"), ("https%3A%2F%2FBank.Example%3A443%2Flogin", "https://bank.example/login"),
+		("HTTPS%3A%2F%2FBANK.example%3A443", "https://bank.example/")])
+	func captchaPageIsTheAddressThatWebKitLoads(referer: String, page: String) throws {
+		let url = URL(string: "https://abc123.token.awswaf.com/abc123/def/challenge.js?sitekey=KEY&referer=\(referer)")!
+		#expect(try mapping.captcha(url)?.page?.absoluteString == page)
+	}
+
 	@Test(arguments: [
 		("https://js.hcaptcha.com/1/api.js?sitekey=K", CaptchaRequest.Provider.hCaptcha),
 		("https://cdn.jsdelivr.net/npm/friendly-challenge/widget.module.min.js?sitekey=K", .friendlyCaptcha),

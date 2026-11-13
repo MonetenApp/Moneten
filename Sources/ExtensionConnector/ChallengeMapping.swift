@@ -147,6 +147,10 @@ struct ChallengeMapping {
 			return .choose(choice, methods: methods)
 		}
 		let text = prompt(for: table)
+		// The script URL of a captcha service alone makes a captcha, also next to a label.
+		if case let .url(url) = table.content, table.appToApp == nil, table.tanMethod?.name != qrCodeName, let captcha = try captcha(url) {
+			return .answer(request(.captcha(captcha), table), stepIncrement: increment)
+		}
 		switch table.content {
 		case let .url(url) where table.appToApp != nil || table.tanMethod?.name == qrCodeName:
 			let image = Self.qrCode(url.absoluteString).map(ChallengeImage.init)
@@ -157,7 +161,6 @@ struct ChallengeMapping {
 			}
 			return .answer(request(.enterTAN(prompt: notice, image: image), table), stepIncrement: increment)
 		case let .url(url) where table.label == nil:
-			if let captcha = try captcha(url) { return .answer(request(.captcha(captcha), table), stepIncrement: increment) }
 			guard let host = url.host()?.lowercased(), hosts.contains(host) else {
 				throw MappingError("The login page \(url.host() ?? url.absoluteString) is not a host that the extension may contact.")
 			}
@@ -222,7 +225,16 @@ struct ChallengeMapping {
 		let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
 		func value(_ name: String) -> String? { items.first { $0.name == name }?.value }
 		guard let siteKey = value("sitekey"), siteKey.wholeMatch(of: /[A-Za-z0-9_\-]{1,200}/) != nil else { return nil }
-		let page = value("referer").flatMap(URL.init(string:))
+		// The captcha window loads only the address it names, so the page takes the canonical form that
+		// WebKit loads: lower-case scheme and host, no port 443, and "/" for an empty path.
+		let page = value("referer").flatMap { URLComponents(string: $0) }.flatMap { page in
+			var page = page
+			page.scheme = page.scheme?.lowercased()
+			page.host = page.host?.lowercased()
+			if page.scheme == "https", page.port == 443 { page.port = nil }
+			if page.path.isEmpty { page.path = "/" }
+			return page.url
+		}
 		if let page {
 			guard page.scheme == "https", let pageHost = page.host()?.lowercased(), hosts.contains(pageHost) else {
 				throw MappingError("The captcha page \(page.host() ?? page.absoluteString) is not a host that the extension may contact.")

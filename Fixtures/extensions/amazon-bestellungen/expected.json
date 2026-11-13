@@ -1,0 +1,30 @@
+{
+  "accounts" : [
+    {
+      "accountNumber" : "{{username}}",
+      "attributes" : {
+        "blacklistOrders" : "",
+        "keepStorno" : "false",
+        "nameMaxLength" : "0",
+        "rescanOrder" : "",
+        "resetCache" : "",
+        "resyncDeletedTransactions" : ""
+      },
+      "balance" : 0,
+      "currency" : "EUR",
+      "name" : "Amazon",
+      "owner" : "{{username}}",
+      "perspective" : {
+        "chart" : 1
+      },
+      "portfolio" : false,
+      "showDailyBalance" : false,
+      "showInDiagrams" : false,
+      "transactions" : [
+
+      ],
+      "type" : "AccountTypeOther",
+      "withTotalSum" : false
+    }
+  ]
+}

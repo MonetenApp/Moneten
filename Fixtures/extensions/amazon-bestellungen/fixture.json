@@ -1,0 +1,140 @@
+{
+  "answers": [
+    {
+      "login": [
+        "{{username}}",
+        "{{password}}"
+      ]
+    },
+    {
+      "tan": "{{answer1}}"
+    }
+  ],
+  "environment": {
+    "country": "DE",
+    "deviceUuid": "00000000-0000-4000-8000-000000000000",
+    "language": "de",
+    "locale": "de_DE",
+    "productBuild": 1,
+    "productVersion": "0.1.0",
+    "variant": "debug"
+  },
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://www.amazon.de"
+      },
+      "response": {
+        "body": "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\"><title></title></head><body>\n<script src=\"https://e7f1c2d3a4b5.edge.token.awswaf.com/e7f1c2d3a4b5/9d8c7b6a5f4e/challenge.js\"></script>\n<div id=\"captcha-container\" data-sitekey=\"AQIDAHjExampleSiteKey0123456789\"></div>\n<script>window.gokuProps = { key: \"AQIDAHjExampleSiteKey0123456789\" };</script>\n</body></html>\n",
+        "headers": {
+          "Content-Type": "text/html; charset=UTF-8"
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://www.amazon.de"
+      },
+      "response": {
+        "body": "<!DOCTYPE html><html lang=\"de-de\"><head><meta charset=\"utf-8\"><title>Amazon Anmelden</title></head><body>\n<div id=\"nav-logo\"><a href=\"/\">Amazon.de</a></div>\n<form name=\"signIn\" method=\"post\" action=\"https://www.amazon.de/ax/claim/validate?arb={{token1}}\">\n<input type=\"hidden\" name=\"appActionToken\" value=\"{{token2}}\">\n<input type=\"hidden\" name=\"subPageType\" value=\"SignInClaimCollect\">\n<label for=\"ap_email\">E-Mail-Adresse oder Mobiltelefonnummer</label>\n<input type=\"email\" name=\"email\" id=\"ap_email\" value=\"\">\n<input type=\"password\" id=\"ap-credential-autofill-hint\" name=\"password\" class=\"a-input-text hide\" value=\"\">\n<input type=\"submit\" id=\"continue\" value=\"Weiter\">\n</form>\n</body></html>\n",
+        "headers": {
+          "Content-Type": "text/html; charset=UTF-8"
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://www.amazon.de/gp/css/order-history?ref_=nav_orders_first"
+      },
+      "response": {
+        "body": "<!DOCTYPE html><html lang=\"de-de\"><head><meta charset=\"utf-8\"><title>Amazon Anmelden</title></head><body>\n<div id=\"nav-logo\"><a href=\"/\">Amazon.de</a></div>\n<form name=\"signIn\" method=\"post\" action=\"https://www.amazon.de/ax/claim/validate?arb={{token1}}\">\n<input type=\"hidden\" name=\"appActionToken\" value=\"{{token2}}\">\n<input type=\"hidden\" name=\"subPageType\" value=\"SignInClaimCollect\">\n<label for=\"ap_email\">E-Mail-Adresse oder Mobiltelefonnummer</label>\n<input type=\"email\" name=\"email\" id=\"ap_email\" value=\"\">\n<input type=\"password\" id=\"ap-credential-autofill-hint\" name=\"password\" class=\"a-input-text hide\" value=\"\">\n<input type=\"submit\" id=\"continue\" value=\"Weiter\">\n</form>\n</body></html>\n",
+        "headers": {
+          "Content-Type": "text/html; charset=UTF-8"
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://www.amazon.de/gp/your-account/order-history?unifiedOrders=1"
+      },
+      "response": {
+        "body": "<!DOCTYPE html><html lang=\"de-de\"><head><meta charset=\"utf-8\"><title>Amazon Anmelden</title></head><body>\n<div id=\"nav-logo\"><a href=\"/\">Amazon.de</a></div>\n<form name=\"signIn\" method=\"post\" action=\"https://www.amazon.de/ax/claim/validate?arb={{token1}}\">\n<input type=\"hidden\" name=\"appActionToken\" value=\"{{token2}}\">\n<input type=\"hidden\" name=\"subPageType\" value=\"SignInClaimCollect\">\n<label for=\"ap_email\">E-Mail-Adresse oder Mobiltelefonnummer</label>\n<input type=\"email\" name=\"email\" id=\"ap_email\" value=\"\">\n<input type=\"password\" id=\"ap-credential-autofill-hint\" name=\"password\" class=\"a-input-text hide\" value=\"\">\n<input type=\"submit\" id=\"continue\" value=\"Weiter\">\n</form>\n</body></html>\n",
+        "headers": {
+          "Content-Type": "text/html; charset=UTF-8"
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "body": "appActionToken={{token2}}&subPageType=SignInClaimCollect&email={{username}}",
+        "headers": {
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        "method": "POST",
+        "url": "https://www.amazon.de/ax/claim/validate?arb={{token1}}"
+      },
+      "response": {
+        "body": "<!DOCTYPE html><html lang=\"de-de\"><head><meta charset=\"utf-8\"><title>Amazon Anmelden</title></head><body>\n<div id=\"nav-logo\"><a href=\"/\">Amazon.de</a></div>\n<form name=\"signIn\" method=\"post\" action=\"https://www.amazon.de/ap/signin\">\n<input type=\"hidden\" name=\"appActionToken\" value=\"{{token3}}\">\n<input type=\"hidden\" name=\"appAction\" value=\"SIGNIN_PASSWORD_ASSERT\">\n<input type=\"hidden\" name=\"email\" id=\"ap_email\" value=\"\">\n<label for=\"ap_password\">Passwort</label>\n<input type=\"password\" id=\"ap_password\" name=\"password\" value=\"\">\n<input type=\"submit\" id=\"signInSubmit\" value=\"Anmelden\">\n</form>\n</body></html>\n",
+        "headers": {
+          "Content-Type": "text/html; charset=UTF-8"
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "body": "appActionToken={{token3}}&appAction=SIGNIN_PASSWORD_ASSERT&email={{username}}&password={{password}}",
+        "headers": {
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        "method": "POST",
+        "url": "https://www.amazon.de/ap/signin"
+      },
+      "response": {
+        "body": "<!DOCTYPE html><html lang=\"de-de\"><head><meta charset=\"utf-8\"><title>Meine Bestellungen</title></head><body>\n<div id=\"nav-logo\"><a href=\"/\">Amazon.de</a></div>\n<a id=\"nav-link-accountList\" href=\"/gp/css/homepage.html\"><span class=\"nav-shortened-name\">Robin</span></a>\n<a id=\"nav-orders\" href=\"/gp/css/order-history?ref_=nav_orders_first\">Bestellungen</a>\n<a id=\"nav-item-signout\" href=\"/gp/flex/sign-out.html?path=%2Fgp%2Fyourstore%2Fhome&amp;signIn=1&amp;useRedirectOnSuccess=1&amp;action=sign-out\">Abmelden</a>\n<form method=\"get\" action=\"/your-orders/orders\" id=\"timePeriodForm\"><select name=\"timeFilter\" id=\"time-filter\"><option value=\"last30\">letzte 30 Tage</option><option value=\"months-3\" selected>letzte 3 Monate</option><option value=\"year-2026\">2026</option><option value=\"year-2025\">2025</option></select></form>\n<div class=\"your-orders-content-container\"></div>\n</body></html>\n",
+        "headers": {
+          "Content-Type": "text/html; charset=UTF-8"
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://www.amazon.de/gp/css/homepage.html?ref_=nav_youraccount_btn"
+      },
+      "response": {
+        "body": "<!DOCTYPE html><html lang=\"de-de\"><head><meta charset=\"utf-8\"><title>Mein Konto</title></head><body>\n<div id=\"nav-logo\"><a href=\"/\">Amazon.de</a></div>\n<a id=\"nav-link-accountList\" href=\"/gp/css/homepage.html\"><span class=\"nav-shortened-name\">Robin</span></a>\n<a id=\"nav-orders\" href=\"/gp/css/order-history?ref_=nav_orders_first\">Bestellungen</a>\n<a id=\"nav-item-signout\" href=\"/gp/flex/sign-out.html?path=%2Fgp%2Fyourstore%2Fhome&amp;signIn=1&amp;useRedirectOnSuccess=1&amp;action=sign-out\">Abmelden</a>\n<div id=\"nav-flyout-accountList\"><a id=\"nav-item-switch-account\" href=\"/ap/signin?switch_account=picker&amp;ignoreAuthState=1&amp;_encoding=UTF8\">Konto wechseln</a></div>\n<h1>Mein Konto</h1>\n</body></html>\n",
+        "headers": {
+          "Content-Type": "text/html; charset=UTF-8"
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://www.amazon.de/ap/signin?switch_account=picker&ignoreAuthState=1&_encoding=UTF8"
+      },
+      "response": {
+        "body": "<!DOCTYPE html><html lang=\"de-de\"><head><meta charset=\"utf-8\"><title>Konto wechseln</title></head><body>\n<div id=\"nav-logo\"><a href=\"/\">Amazon.de</a></div>\n<div class=\"cvf-account-switcher\"><h1>Konto wechseln</h1>\n<div class=\"cvf-account-switcher-profile\"><span>Robin Example</span><span>Angemeldet</span></div>\n<a id=\"cvf-account-switcher-add-accounts-link\" href=\"/ap/signin?openid.pape.max_auth_age=0&amp;switch_account=signin\">Konto hinzufügen</a></div>\n</body></html>\n",
+        "headers": {
+          "Content-Type": "text/html; charset=UTF-8"
+        },
+        "status": 200
+      }
+    }
+  ],
+  "format": 1,
+  "service": "Amazon Bestellungen",
+  "startTime": 1794301200,
+  "timeZone": "Europe/Berlin"
+}

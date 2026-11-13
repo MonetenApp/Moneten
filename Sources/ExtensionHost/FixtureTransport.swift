@@ -121,30 +121,41 @@ public struct Fixture: Sendable, Equatable, Codable {
 /// Answers each request with the first unused exchange of the same method and URL, and never
 /// touches the network. A request that the fixture lacks fails with its method and URL.
 final class FixtureTransport: Transport {
-	private var unused: [Fixture.Exchange]
+	/// The exchanges not answered yet, each with the key of its URL, which a request must match.
+	private var unused: [(key: String, exchange: Fixture.Exchange)]
 	/// Sees each request that reached the transport, for the request log of the tests and the harness.
 	private let onSend: (HTTPRequest) -> Void
 
 	init(_ fixture: Fixture, onSend: @escaping (HTTPRequest) -> Void = { _ in }) {
-		unused = fixture.exchanges
+		unused = fixture.exchanges.map { (Self.key($0.request.url), $0) }
 		self.onSend = onSend
 	}
 
 	func send(_ request: HTTPRequest) throws -> HTTPResponse {
 		onSend(request)
-		let index = unused.firstIndex { $0.request.method == request.method && $0.request.url == request.url }
-			?? unused.firstIndex { $0.request.method == request.method && Self.plainPlaceholders($0.request.url) == Self.plainPlaceholders(request.url) }
-		guard let index else {
+		let key = Self.key(request.url)
+		guard let index = unused.firstIndex(where: { $0.exchange.request.method == request.method && $0.key == key }) else {
 			throw ScriptError("The fixture has no response for \(request.method) \(request.url.absoluteString).")
 		}
-		let response = unused.remove(at: index).response
+		let response = unused.remove(at: index).exchange.response
 		return HTTPResponse(status: response.status, headers: response.headers ?? [:], body: response.data)
 	}
 
-	/// The URL with each percent-encoded placeholder in its plain form. A recording has its placeholders
-	/// percent-encoded in the URL, and a script that builds the URL from a placeholder without
-	/// `MM.urlencode` sends the braces as they are. Any other percent-encoding stays, so `a%2Fb` is not `a/b`.
-	private static func plainPlaceholders(_ url: URL) -> String {
-		url.absoluteString.replacing(/(?i)%7B%7B([a-z]+[0-9]*)%7D%7D/) { "{{\($0.output.1)}}" }
+	/// The URL with each percent-encoded placeholder in its plain form and its query parameters sorted by
+	/// name. A recording has its placeholders percent-encoded in the URL, and a script that builds the URL
+	/// from a placeholder without `MM.urlencode` sends the braces as they are. A script that builds its
+	/// query from `pairs` sends the parameters in the order of the random hash seed of its Lua state. The
+	/// values of one name keep their order, and the fragment stays where it is. Any other percent-encoding
+	/// stays, so `a%2Fb` is not `a/b`.
+	private static func key(_ url: URL) -> String {
+		let plain = url.absoluteString.replacing(/(?i)%7B%7B([a-z]+[0-9]*)%7D%7D/) { "{{\($0.output.1)}}" }
+		let end = plain.firstIndex(of: "#") ?? plain.endIndex
+		guard let mark = plain[..<end].firstIndex(of: "?") else { return plain }
+		let items = plain[plain.index(after: mark)..<end].split(separator: "&", omittingEmptySubsequences: false)
+		let sorted = items.enumerated().sorted { a, b in
+			let (left, right) = (a.element.prefix { $0 != "=" }, b.element.prefix { $0 != "=" })
+			return left == right ? a.offset < b.offset : left < right
+		}
+		return plain[...mark] + sorted.map(\.element).joined(separator: "&") + plain[end...]
 	}
 }
