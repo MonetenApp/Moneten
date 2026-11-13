@@ -7,7 +7,7 @@ A banking app is empty until the first account is in it. The setup must work for
 ## What Changes
 
 - "Add Account..." opens an assistant with three steps. The steps are the bank, the login data, and the accounts.
-- The first step accepts an IBAN or a Bankleitzahl, or a service from "Other". "Other" lists the services of installed extensions and "Offline account / Cash".
+- The first step accepts the name of a bank, an IBAN, or a Bankleitzahl, or a service from "Other". "Other" lists the services of installed extensions and "Offline account / Cash".
 - The app checks the IBAN and the Bankleitzahl before it contacts a bank.
 - When a bank offers several access methods, the user chooses one under "Access with". A method that is not possible shows its reason.
 - The third step lists the accounts that the bank reports. The user selects which ones to add.
@@ -53,7 +53,11 @@ None.
 ### Decided for Moneten
 
 - "Other" lists only the services of installed extensions and "Offline account / Cash". MoneyMoney also lists built-in credit card services that its vendor maintains.
-- The bank directory is the institute list that comes with the FinTS product registration. MoneyMoney's source was not observed.
+- The bank directory is the bank directory of hbci4java, which comes from the institute list of the FinTS product registration. MoneyMoney's source was not observed.
+- The first step also finds a bank by its name, in a list with the place and the Bankleitzahl of each bank, and its field is "Bank, IBAN, or Bankleitzahl". MoneyMoney's field is "IBAN or Bankleitzahl", and a search by name was not observed.
+- A line under the title names the step and its number, and no field has the keyboard focus after "Back" to a chosen bank. MoneyMoney shows no step number, and its focus was not observed.
+- The login step names the login name in the words of the bank for Consorsbank, DKB, comdirect, ING, and the savings banks, from a public page of each bank. MoneyMoney's field names come from its own data, which was not observed.
+- A rejected PIN at the first login also names the user ID and repeats the hint of the bank, because many banks answer an unknown user ID with a PIN error. MoneyMoney's text was not observed.
 - The supported banks list is a window in the app that reads the bank directory and the installed extensions. MoneyMoney opens a web page.
 - All accounts in the third step are selected at first. The initial selection was not observed.
 - "Cancel" at any step leaves no access, no account, and no saved PIN. This was not observed.

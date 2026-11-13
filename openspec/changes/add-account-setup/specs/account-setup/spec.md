@@ -8,12 +8,12 @@ The account setup brings bank accounts into the app. This capability defines the
 
 ### Requirement: Assistant with three steps
 
-The app SHALL add accounts through an assistant that opens as a sheet on the main window. The assistant has three steps in a fixed order. The steps are the bank, the login data, and the accounts. Each step has "Cancel" and "Next", and the second and third step have "Back".
+The app SHALL add accounts through an assistant that opens as a sheet on the main window. The assistant has three steps in a fixed order. The steps are the bank, the login data, and the accounts. Under its title the assistant names the step on screen and its number. Each step has "Cancel" and "Next", and the second and third step have "Back". The field of a new step takes the keyboard focus, except the bank step after "Back" when a bank is chosen.
 
 #### Scenario: Open the assistant from the menu
 
 - **WHEN** the user chooses "Add Account..." in the Account menu
-- **THEN** the assistant opens with the title "Add Account" and the field "IBAN or Bankleitzahl"
+- **THEN** the assistant opens with the title "Add Account", the line "Step 1 of 3: Bank", and the field "Bank, IBAN, or Bankleitzahl"
 
 #### Scenario: Open the assistant from the sidebar
 
@@ -22,13 +22,20 @@ The app SHALL add accounts through an assistant that opens as a sheet on the mai
 
 #### Scenario: Go back one step
 
-- **GIVEN** the assistant shows the login data step for "Musterbank"
+- **GIVEN** the assistant shows the login data step for "Musterbank" with the user ID "erika77"
 - **WHEN** the user clicks "Back"
-- **THEN** the assistant shows the bank step with the IBAN that the user entered before
+- **THEN** the assistant shows "Step 1 of 3: Bank" with the entry and the bank that the user chose before
+- **AND** no field has the keyboard focus, so a user ID typed now changes nothing
 
-### Requirement: Find the bank by IBAN or Bankleitzahl
+#### Scenario: Go back and forth
 
-The app SHALL find the bank from an IBAN or a Bankleitzahl that the user enters in the first step, and it SHALL show the name of the bank before the user continues. The entry can contain spaces and lower case letters.
+- **GIVEN** the user went back from the login data step for "Musterbank" with the user ID "erika77"
+- **WHEN** the user clicks "Next"
+- **THEN** the assistant shows "Step 2 of 3: Login data" with "erika77" in the user ID field and the keyboard focus in the PIN field
+
+### Requirement: Find the bank by name, IBAN, or Bankleitzahl
+
+The app SHALL find the bank from a name, an IBAN, or a Bankleitzahl that the user enters in the first step, and it SHALL show the name of the bank before the user continues. The entry can contain spaces and lower case letters. For a name or the start of a Bankleitzahl, the app lists the banks of the bank directory that match, each with its place and its Bankleitzahl, and the user chooses one. The chosen bank puts its Bankleitzahl into the field.
 
 #### Scenario: IBAN entered
 
@@ -41,10 +48,38 @@ The app SHALL find the bank from an IBAN or a Bankleitzahl that the user enters 
 - **WHEN** the user enters "12030000"
 - **THEN** the app shows the name of the same bank
 
+#### Scenario: Name entered
+
+- **GIVEN** the bank directory lists "Consorsbank" twice, in München with the Bankleitzahl 70120400 and in Nürnberg with 76030080
+- **WHEN** the user enters "consors"
+- **THEN** the list shows both banks with their places and Bankleitzahlen, and the first one is highlighted
+- **AND** the down arrow highlights the bank in Nürnberg, and "Next" chooses it and shows it under the field with "Nürnberg · 76030080"
+
+#### Scenario: Umlauts and accents
+
+- **WHEN** the user enters "munchen", "muenchen", or "München"
+- **THEN** the list shows the same banks of the place München
+
+#### Scenario: Part of a word
+
+- **GIVEN** the bank directory lists "Sparkasse Freiburg-Nördlicher Breisgau" and "Stadtsparkasse München"
+- **WHEN** the user enters "sparkasse"
+- **THEN** the list shows both banks, "Sparkasse Freiburg-Nördlicher Breisgau" first, because its name starts with the entry
+
+#### Scenario: Short name of a bank
+
+- **WHEN** the user enters "DKB"
+- **THEN** the list shows "Deutsche Kreditbank Berlin"
+
+#### Scenario: No bank matches
+
+- **WHEN** the user enters "keine bank"
+- **THEN** the app says that no bank matches “keine bank”
+
 #### Scenario: Empty field
 
 - **WHEN** the user clicks "Next" with an empty field and "Other" not selected
-- **THEN** the app asks for an IBAN or a Bankleitzahl and stays on the first step
+- **THEN** the app asks for the name of the bank, an IBAN, or a Bankleitzahl and stays on the first step
 
 ### Requirement: Check the IBAN before any connection
 
@@ -145,6 +180,19 @@ The app SHALL ask for the login data in the second step with the field names tha
 - **WHEN** the assistant shows the second step
 - **THEN** the first field has the label "VR-NetKey or alias" and the second field has the label "PIN"
 
+#### Scenario: Consorsbank
+
+- **GIVEN** the user chose Consorsbank with the Bankleitzahl 76030080
+- **WHEN** the assistant shows the second step
+- **THEN** the first field has the label "Account number + 001"
+- **AND** the line under it says that Consorsbank expects the account number followed by the three-digit Berechtigtennummer, usually 001
+
+#### Scenario: Savings bank
+
+- **GIVEN** the user chose a Sparkasse whose FinTS address is on the servers of the savings banks
+- **WHEN** the assistant shows the second step
+- **THEN** the first field has the label "Login name or Legitimations-ID"
+
 #### Scenario: Optional customer ID
 
 - **GIVEN** "Musterbank" accepts a customer ID in addition to the user ID
@@ -189,9 +237,16 @@ The app SHALL show the message of the bank when the login fails, keep the user o
 #### Scenario: Wrong PIN
 
 - **WHEN** the user enters a wrong PIN and clicks "Next"
-- **THEN** the app shows that the bank did not accept the PIN, with the text that the bank sent
+- **THEN** the app shows that the bank did not accept the PIN or the user ID, with the text that the bank sent
+- **AND** the app says that many banks give this answer also for a wrong user ID, and that more wrong attempts can block the access
 - **AND** the PIN field is empty and the user ID is still filled in
 - **AND** the app does not try the login again by itself
+
+#### Scenario: Wrong user ID that the bank reports as a wrong PIN
+
+- **GIVEN** the user chose Consorsbank and entered the account number without "001"
+- **WHEN** the bank answers "PIN ungültig"
+- **THEN** the message asks the user to check the user ID as well and repeats that Consorsbank expects the account number followed by the Berechtigtennummer
 
 #### Scenario: Login name is an alias that the bank rejects
 
