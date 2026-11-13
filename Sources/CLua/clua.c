@@ -75,9 +75,10 @@ static void clua_leave(lua_State *L, clua_Budget *budget) {
 /* A full collection with its finalizers. Each finalizer needs a call frame, which a state over its
    limit could not allocate, so the collection may use the headroom. */
 static void clua_collect(lua_State *L, clua_Budget *budget) {
+	int collecting = budget->collecting;
 	budget->collecting = 1;
 	lua_gc(L, LUA_GCCOLLECT);
-	budget->collecting = 0;
+	budget->collecting = collecting;
 }
 
 static int clua_call(lua_State *L) {
@@ -88,12 +89,13 @@ static int clua_call(lua_State *L) {
 	clua_leave(L, budget);
 	/* The restart clears the debt of the collector, so what Swift allocated would never advance it.
 	   A step here, with Lua in charge again, keeps up with garbage that only Swift functions make. */
-	if (lua_gc(L, LUA_GCISRUNNING)) lua_gc(L, LUA_GCSTEP, 0);
+	/* lua_gc gives -1 inside a finalizer, where no collection may start. */
+	if (lua_gc(L, LUA_GCISRUNNING) == 1) lua_gc(L, LUA_GCSTEP, 0);
 	/* Over the limit, a full collection runs the finalizers of dropped objects first, which give back
 	   the memory they hold outside the state. An emergency collection would not run them. When the
 	   results of the function still do not fit, they are dropped and collected the same way, so that no
 	   charge of an object outlives the memory error, which reports them. */
-	if (budget->used > budget->limit && lua_gc(L, LUA_GCISRUNNING)) {
+	if (budget->used > budget->limit && lua_gc(L, LUA_GCISRUNNING) == 1) {
 		clua_collect(L, budget);
 		if (budget->used > budget->limit && results > 0) {
 			lua_pop(L, results);
