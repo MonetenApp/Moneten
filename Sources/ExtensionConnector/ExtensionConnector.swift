@@ -439,9 +439,10 @@ private final class ScriptRun {
 	func end() async -> Data? {
 		// A cancel of the refresh ends the task that calls this, and a call in a canceled task stops the
 		// host. So the end runs in a task of its own, and a host that does not answer within 10 seconds is stopped.
-		let client = client
-		let ending = Task { [loggedIn, log = connector.services.log] in await Self.finish(client, loggedIn: loggedIn, log: log) }
-		let limit = Task {
+		// Only Sendable values cross into the task: `Self` would capture this run, which is not Sendable.
+		let client = client, loggedIn = loggedIn, log = connector.services.log
+		let ending = Task { @Sendable in await ScriptRun.finish(client, loggedIn: loggedIn, log: log) }
+		let limit = Task { @Sendable in
 			try await Task.sleep(for: .seconds(10))
 			await client.end()
 		}
