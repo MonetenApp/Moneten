@@ -230,7 +230,8 @@ private final class ScriptRun {
 		if let restore, let kept = await restore(loginName) { state = ExtensionState(kept) }
 		let decisions = try await connector.services.hostDecisions()
 		let package = connector.package
-		let hosts = AllowedHosts(package.manifest?.hosts?.map(\.value) ?? decisions.filter { $0.value == .allowed }.map(\.key))
+		// A stored answer can name a host that the host process now refuses, such as one under `local`.
+		let hosts = AllowedHosts(package.manifest?.hosts?.map(\.value) ?? decisions.filter { $0.value == .allowed && HostName(exactly: $0.key) != nil }.map(\.key))
 		let setup = HostSetup(package: connector.package, decisions: decisions, fixture: connector.fixture, environment: connector.environment, storage: state.storage,
 			developer: connector.developer)
 		let services = connector.services

@@ -76,8 +76,8 @@ final class TestSession: SyncSession, Sendable {
 		log.withLock { $0.compactMap { if case let .sent(line) = $0 { line } else { nil } } }
 	}
 
-	func connector(_ package: ExtensionPackage, fixture: Fixture = network([]), known: [Transaction] = []) -> ExtensionConnector {
-		let services = ExtensionConnector.Services(hostDecisions: { [:] }, saveDecision: { _, _ in }, transactions: { _ in known },
+	func connector(_ package: ExtensionPackage, fixture: Fixture = network([]), known: [Transaction] = [], decisions: [String: HostDecision] = [:]) -> ExtensionConnector {
+		let services = ExtensionConnector.Services(hostDecisions: { decisions }, saveDecision: { _, _ in }, transactions: { _ in known },
 			log: { line in self.log.withLock { $0.append(line) } })
 		var connector = ExtensionConnector(package: package, environment: .standard, fixture: fixture, executable: hostExecutable, services: services)
 		connector.pollInterval = .milliseconds(1)
