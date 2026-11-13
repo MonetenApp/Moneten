@@ -155,10 +155,13 @@ import Testing
 				isCheckbox: false)), field: TANField(label: "Bot-Prüfung")), stepIncrement: 1))
 	}
 
-	/// WebKit loads a page without a path at the root path, and the captcha window loads only the page it named.
-	@Test func captchaPageWithoutAPathGetsTheRootPath() throws {
-		let url = URL(string: "https://abc123.token.awswaf.com/abc123/def/challenge.js?sitekey=KEY&referer=https%3A%2F%2Fbank.example")!
-		#expect(try mapping.captcha(url)?.page?.absoluteString == "https://bank.example/")
+	/// WebKit loads a page at its canonical address: lower-case scheme and host, no default port, and "/" for an
+	/// empty path. The captcha window loads only the address that it named.
+	@Test(arguments: [("https%3A%2F%2Fbank.example", "https://bank.example/"), ("https%3A%2F%2FBank.Example%3A443%2Flogin", "https://bank.example/login"),
+		("HTTPS%3A%2F%2FBANK.example%3A443", "https://bank.example/")])
+	func captchaPageIsTheAddressThatWebKitLoads(referer: String, page: String) throws {
+		let url = URL(string: "https://abc123.token.awswaf.com/abc123/def/challenge.js?sitekey=KEY&referer=\(referer)")!
+		#expect(try mapping.captcha(url)?.page?.absoluteString == page)
 	}
 
 	@Test(arguments: [

@@ -225,9 +225,13 @@ struct ChallengeMapping {
 		let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
 		func value(_ name: String) -> String? { items.first { $0.name == name }?.value }
 		guard let siteKey = value("sitekey"), siteKey.wholeMatch(of: /[A-Za-z0-9_\-]{1,200}/) != nil else { return nil }
-		// WebKit loads a page without a path at "/", and the captcha window loads only the address it names.
+		// The captcha window loads only the address it names, so the page takes the canonical form that
+		// WebKit loads: lower-case scheme and host, no port 443, and "/" for an empty path.
 		let page = value("referer").flatMap { URLComponents(string: $0) }.flatMap { page in
 			var page = page
+			page.scheme = page.scheme?.lowercased()
+			page.host = page.host?.lowercased()
+			if page.scheme == "https", page.port == 443 { page.port = nil }
 			if page.path.isEmpty { page.path = "/" }
 			return page.url
 		}
