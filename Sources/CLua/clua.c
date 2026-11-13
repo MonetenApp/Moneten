@@ -127,6 +127,11 @@ void clua_charge(lua_State *L, size_t bytes) {
 	clua_budget(L)->used += bytes;
 }
 
+int clua_room(lua_State *L, size_t bytes) {
+	clua_Budget *budget = clua_budget(L);
+	return budget->used <= budget->limit && bytes <= budget->limit - budget->used;
+}
+
 void clua_uncharge(lua_State *L, size_t bytes) {
 	clua_Budget *budget = clua_budget(L);
 	budget->used -= bytes < budget->used ? bytes : budget->used;

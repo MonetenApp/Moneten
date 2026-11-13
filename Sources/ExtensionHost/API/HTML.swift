@@ -27,14 +27,14 @@ enum HTMLDocument {
 
 	/// Pushes a new `HTML` object parsed from `html`.
 	static func push(_ stack: LuaStack, html: String) {
-		push(stack, HTMLTree(Data(html.utf8), charset: "UTF-8"))
+		push(stack, HTMLTree(Data(html.utf8), charset: "UTF-8", state: stack.L))
 	}
 
 	private static func push(_ stack: LuaStack, _ tree: HTMLTree) {
 		let L = stack.L
 		lua_createtable(L, 0, 0)
 		lua_createtable(L, 1, 2)
-		LuaObject.push(stack, tree, treeType, bytes: tree.cost)
+		LuaObject.push(stack, tree, treeType)
 		lua_getmetatable(L, -1)
 		lua_getfield(L, -1, "__index")
 		lua_setfield(L, -4, "__index")
@@ -70,7 +70,7 @@ enum HTMLDocument {
 			return -1
 		}
 		let charset = lua_type(L, 2) == LUA_TSTRING ? stack.string(at: 2) : nil
-		push(stack, HTMLTree(content, charset: charset?.isEmpty == false ? charset : nil))
+		push(stack, HTMLTree(content, charset: charset?.isEmpty == false ? charset : nil, state: L!))
 		return 1
 	}
 
@@ -170,6 +170,12 @@ enum HTMLDocument {
 				return 1
 			}
 			let value = stack.string(at: 3)
+			let growth = list.nodes.count * (name.utf8.count + value.utf8.count + HTMLTree.nodeCost)
+			guard list.tree.fits(growth) else {
+				stack.pushMessage("not enough memory")
+				return -1
+			}
+			list.tree.charge(more: growth)
 			for node in list.nodes { node.setAttribute(name, value) }
 			return 0
 		}
@@ -250,12 +256,20 @@ private final class HTMLTree {
 
 	private static let parser: Void = xmlInitParser()
 
-	/// What the tree takes in memory, estimated as four times its text, which the session's memory counts.
-	let cost: Int
+	/// The state whose memory counts the tree, from the parse until the last object that holds it goes:
+	/// the document or an element list of it.
+	private let state: OpaquePointer
+	/// What the tree takes in memory: four times its text as the estimate, and what changes added.
+	private var charged: Int
+
+	/// What libxml2 adds for a node or an attribute besides its text.
+	static let nodeCost = 64
 
 	/// Without `charset`, libxml2 reads the character set from the `<meta>` tags.
-	init(_ content: Data, charset: String?) {
-		cost = content.count * 4
+	init(_ content: Data, charset: String?, state: OpaquePointer) {
+		self.state = state
+		charged = content.count * 4
+		clua_charge(state, charged)
 		_ = Self.parser
 		let options = Int32(HTML_PARSE_RECOVER.rawValue | HTML_PARSE_NOERROR.rawValue | HTML_PARSE_NOWARNING.rawValue | HTML_PARSE_NONET.rawValue)
 		let parsed = content.withUnsafeBytes { htmlReadMemory($0.baseAddress?.assumingMemoryBound(to: CChar.self), Int32(content.count), nil, charset, options) }
@@ -268,6 +282,18 @@ private final class HTMLTree {
 	deinit {
 		for attribute in removed { xmlFreeProp(attribute) }
 		xmlFreeDoc(document)
+		clua_uncharge(state, charged)
+	}
+
+	/// Whether a change of `bytes` fits in the memory of the session now.
+	func fits(_ bytes: Int) -> Bool {
+		clua_room(state, bytes) != 0
+	}
+
+	/// Counts `bytes` that a change added to the tree.
+	func charge(more bytes: Int) {
+		charged += bytes
+		clua_charge(state, bytes)
 	}
 
 	/// Takes the attribute out of its element and keeps it until the document goes.
@@ -480,6 +506,7 @@ private enum Form {
 		let options = select.descendants.filter { $0.tag == "option" }
 		guard let chosen = options.first(where: { !$0.has("disabled") && optionValue($0) == value }) else { return }
 		for option in options { tree.remove("selected", from: option) }
+		tree.charge(more: HTMLTree.nodeCost)
 		chosen.setAttribute("selected", "selected")
 	}
 

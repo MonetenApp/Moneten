@@ -163,6 +163,36 @@ import Testing
 		#expect(Result { () throws(ScriptError) -> LuaValue in _ = try drop.load(); return try drop.call(.function("Drop")) } == .success(.string("done")))
 	}
 
+	/// An element list keeps the tree of its document, so the tree stays charged after the document is
+	/// collected, and each change of the tree adds to the charge.
+	@Test(arguments: ["Lists", "Grow"])
+	func treeOfAnHTMLDocumentStaysCharged(function: String) {
+		let package = demo("""
+			WebBanking{version = 1}
+			big = string.rep("x", 4 * 1048576)
+			page = "<p>" .. big .. "</p>"
+			function Lists()
+				local held = {}
+				for i = 1, 100 do
+					local ok, message = pcall(function() held[#held + 1] = HTML(page):xpath("//p") end)
+					collectgarbage()
+					if not ok then return message end
+				end
+				return #held
+			end
+			function Grow()
+				local list = HTML("<p>a</p>"):xpath("//p")
+				for i = 1, 100 do
+					local ok, message = pcall(function() list:attr("data" .. i, big) end)
+					if not ok then return (message:gsub("^Demo%.lua:%d+: ", "")) end
+				end
+				return 100
+			end
+			""")
+		let session = HostSession(package: package, transport: LargeBodies(), memory: 64 * 1_048_576, ask: { _ in .denied }, log: { _ in })
+		#expect(Result { () throws(ScriptError) -> LuaValue in _ = try session.load(); return try session.call(.function(function)) } == .success(.string("not enough memory")))
+	}
+
 	/// An error of a Swift function that quotes data of the script, such as a URL of 1 MB, keeps 1,000
 	/// bytes of it, so that the error needs little memory.
 	@Test(arguments: [
