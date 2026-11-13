@@ -1,0 +1,13 @@
+{
+	"id": "amazon-bestellungen",
+	"name": "Amazon Bestellungen",
+	"version": "2.08",
+	"description": "Orders, refunds, and returns of an amazon.de customer account as transactions, read from the order history.",
+	"files": ["amazon-bestellungen.lua"],
+	"hosts": ["www.amazon.de"],
+	"services": [{"name": "Amazon Bestellungen", "login": [{"label": "E-Mail-Adresse oder Handynummer"}, {"label": "Passwort", "secret": true}]}],
+	"kinds": ["balances", "transactions"],
+	"apiVersion": 1,
+	"license": "MIT",
+	"maintainer": {"name": "rosch100", "github": "rosch100"}
+}

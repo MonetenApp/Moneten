@@ -1,0 +1,10 @@
+Name: Amazon Bestellungen 2.08, the signed copy that moneymoney.app hosts
+URL: https://moneymoney.app/extensions/rosch100/amazon-bestellungen.lua
+Downloaded: 2026-11-12, and again on 2026-11-13 with the same digest
+Repository: https://github.com/rosch100/Amazon-MoneyMoney
+Commit: aa7446555aba0dd50ecc89fe706c2fae741ce120 ("release: publish signed Amazon extension 2.08") holds amazon-bestellungen.lua with the same bytes
+File: amazon-bestellungen.lua, unchanged
+SHA-256: 7c6f243c7323fe6499f5034d864b984cbacc9e8b16ae4bcf96bbba4b55d53354
+License: MIT. LICENSE in this folder is the LICENSE file of the repository at that commit, "Copyright (c) 2024-2026 rosch100". The script carries the MIT text in its header, "Copyright 2019-2023 Michael Beutling".
+
+fixture.json and refresh.json are written by hand from the requests that the script makes, with a made-up AWS WAF captcha answer. No real account was used. All names, numbers, and amounts are made up.
