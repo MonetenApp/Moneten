@@ -30,8 +30,14 @@ int clua_pcall(lua_State *L, int arguments, int results);
 /// and raises its memory error when it still holds too much. The finalizer of the object gives it back.
 void clua_charge(lua_State *L, size_t bytes);
 void clua_uncharge(lua_State *L, size_t bytes);
+
+/// The memory budget of the state of `L`, for an object that outlives the thread it was made on, such
+/// as a coroutine's. The budget lasts until clua_close has run every finalizer.
+void *clua_memory(lua_State *L);
+void clua_memory_charge(void *memory, size_t bytes);
+void clua_memory_uncharge(void *memory, size_t bytes);
 /// Whether `bytes` more fit under the limit now, for a change that Swift makes outside the state.
-int clua_room(lua_State *L, size_t bytes);
+int clua_memory_room(void *memory, size_t bytes);
 
 /// How many levels of Swift code hold the state: 1 between calls, 0 while Lua runs.
 int clua_nativedepth(lua_State *L);

@@ -125,18 +125,30 @@ int clua_pcall(lua_State *L, int arguments, int results) {
 	return status;
 }
 
-void clua_charge(lua_State *L, size_t bytes) {
-	clua_budget(L)->used += bytes;
+void *clua_memory(lua_State *L) {
+	return clua_budget(L);
 }
 
-int clua_room(lua_State *L, size_t bytes) {
-	clua_Budget *budget = clua_budget(L);
+void clua_memory_charge(void *memory, size_t bytes) {
+	((clua_Budget *)memory)->used += bytes;
+}
+
+void clua_memory_uncharge(void *memory, size_t bytes) {
+	clua_Budget *budget = memory;
+	budget->used -= bytes < budget->used ? bytes : budget->used;
+}
+
+int clua_memory_room(void *memory, size_t bytes) {
+	clua_Budget *budget = memory;
 	return budget->used <= budget->limit && bytes <= budget->limit - budget->used;
 }
 
+void clua_charge(lua_State *L, size_t bytes) {
+	clua_memory_charge(clua_budget(L), bytes);
+}
+
 void clua_uncharge(lua_State *L, size_t bytes) {
-	clua_Budget *budget = clua_budget(L);
-	budget->used -= bytes < budget->used ? bytes : budget->used;
+	clua_memory_uncharge(clua_budget(L), bytes);
 }
 
 int clua_nativedepth(lua_State *L) {

@@ -163,6 +163,30 @@ import Testing
 		#expect(Result { () throws(ScriptError) -> LuaValue in _ = try drop.load(); return try drop.call(.function("Drop")) } == .success(.string("done")))
 	}
 
+	/// A tree made in a coroutine outlives the coroutine's thread, which Lua frees. Its charge, its
+	/// changes, and its end must not reach that thread.
+	@Test func treeOutlivesTheCoroutineThatMadeIt() {
+		let package = demo("""
+			WebBanking{version = 1}
+			function Check()
+				local co = coroutine.wrap(function() return HTML("<p>a</p>"):xpath("//p") end)
+				local list = co()
+				co = nil
+				collectgarbage()
+				collectgarbage()
+				local filler = {}
+				for i = 1, 1000 do filler[i] = coroutine.create(function() end) end
+				list:attr("data", "value")
+				local value = list:attr("data")
+				list = nil
+				collectgarbage()
+				return value
+			end
+			""")
+		let session = HostSession(package: package, transport: LargeBodies(), ask: { _ in .denied }, log: { _ in })
+		#expect(Result { () throws(ScriptError) -> LuaValue in _ = try session.load(); return try session.call(.function("Check")) } == .success(.string("value")))
+	}
+
 	/// An element list keeps the tree of its document, so the tree stays charged after the document is
 	/// collected, and each change of the tree adds to the charge.
 	@Test(arguments: ["Lists", "Grow"])
