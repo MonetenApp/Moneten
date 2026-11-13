@@ -193,7 +193,13 @@ The app SHALL show in the view of an account the date and time of its last succe
 
 ### Requirement: Show an error on the account
 
-The app SHALL show a short error text on the sidebar row of an account whose last refresh failed, in place of the balance, and an error indicator that opens a popover. The popover says that the last refresh was aborted, quotes the message, and shows the date and time of the event and a notice of the bank when there is one.
+The app SHALL show a short error text on the sidebar row of an account whose last refresh failed, in place of the balance, and an error indicator that opens a popover. The popover says that the last refresh was aborted, quotes the message, and shows the date and time of the event and a notice of the bank when there is one. The view of an account that has never refreshed shows the error text in place of "Not refreshed yet".
+
+#### Scenario: First refresh failed
+
+- **GIVEN** the first refresh of "Fondsdepot" failed with "Moneten can't read this securities account at this bank yet."
+- **WHEN** the user selects "Fondsdepot"
+- **THEN** the view shows "Moneten can't read this securities account at this bank yet." and the error indicator, and not "Not refreshed yet"
 
 #### Scenario: Open the popover
 
