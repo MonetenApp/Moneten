@@ -105,6 +105,18 @@ import Testing
 		#expect(run.keys.contains(0))
 	}
 
+	/// One `MM.sleep` waits at most 300 seconds, so a replay moves its clock by no more than that.
+	@Test func longSleepEndsAfterFiveMinutes() {
+		let run = Session("""
+			function Check()
+				local start = MM.time()
+				MM.sleep(3600)
+				return MM.time() - start
+			end
+			""", capture: .replay(start: 1_794_218_400, random: []))
+		#expect(run.call() == .number(300))
+	}
+
 	@Test func maxAgeCountsOnTheClockOfTheSession() {
 		let run = Session("""
 			function Check()

@@ -69,13 +69,29 @@ The `ext` tool SHALL print the result of a run as one JSON document on standard 
 
 ### Requirement: Same limits as in the app
 
-The `ext` tool SHALL apply the host limits of the manifest, the HTTPS rule, and the removed Lua functions exactly as the app does, and report a violation as an error.
+The `ext` tool SHALL apply the host limits of the manifest, the rules for exact and special-use host names, the HTTPS rule, the removed Lua functions, and the limits of memory, processor time, silence, response size, and `print` output exactly as the app does, with the same outcome. A violation of a host rule or a stop is an error. `print` output past 4 MB is dropped with one line in the log, and the run continues.
 
 #### Scenario: Host outside the manifest
 
 - **GIVEN** a manifest that lists only `api.broker.example`
 - **WHEN** the script requests `https://tracker.example/pixel` during `ext run`
 - **THEN** the tool stops with an error that names `tracker.example`
+
+#### Scenario: Special-use host
+
+- **WHEN** the script requests `https://bank.localhost/` during `ext run`
+- **THEN** the tool asks nothing and stops with an error that ends with "Moneten sends requests only to a plain host name on the HTTPS port, not to https://bank.localhost/."
+
+#### Scenario: Endless loop
+
+- **WHEN** `RefreshAccount` runs `while true do end` during `ext run`
+- **THEN** the tool stops after 60 seconds of processor time with "Demo used more than 60 seconds of processor time, so Moneten stopped it."
+
+#### Scenario: Question about a new host
+
+- **GIVEN** a script without a manifest
+- **WHEN** the script contacts `www.bank.example` during `ext run` and the author presses Return at "Demo wants to contact www.bank.example. Allow it? [y/N]"
+- **THEN** the tool counts the answer as no and sends nothing to `www.bank.example`
 
 ### Requirement: LocalStorage of the tool
 
