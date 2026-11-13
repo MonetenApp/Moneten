@@ -1,0 +1,44 @@
+{
+  "accounts" : [
+    {
+      "accountNumber" : "0202051",
+      "balance" : 1520.4,
+      "bic" : "BYLADEM1001",
+      "currency" : "EUR",
+      "iban" : "DE02120300000000202051",
+      "name" : "Giro",
+      "owner" : "Erika Mustermann",
+      "transactions" : [
+        {
+          "amount" : -89,
+          "bookingDate" : 1793876400,
+          "currency" : "EUR",
+          "name" : "Stadtwerke Musterstadt",
+          "purpose" : "Electricity November"
+        },
+        {
+          "amount" : 25.5,
+          "bookingDate" : 1793703600,
+          "currency" : "EUR",
+          "name" : "Max Mustermann",
+          "purpose" : "Dinner"
+        },
+        {
+          "amount" : 2450,
+          "bookingDate" : 1793358000,
+          "currency" : "EUR",
+          "name" : "Musterfirma GmbH",
+          "purpose" : "Salary October"
+        },
+        {
+          "amount" : -6.4,
+          "bookingDate" : 1793185200,
+          "currency" : "EUR",
+          "name" : "Bäckerei Beispiel",
+          "purpose" : "Bread"
+        }
+      ],
+      "type" : "AccountTypeGiro"
+    }
+  ]
+}

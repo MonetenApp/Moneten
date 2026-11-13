@@ -1,25 +1,120 @@
+import Domain
 import Foundation
 
-/// Recorded pairs of request and response, in the order the script sent them. The tests and the debug
-/// harness replay them, and `ext record` of add-extension-developer-tools writes them.
+/// A recording of one run: the requests and responses in the order the script sent them, and for
+/// `ext test` the start time, the time zone, the environment, the answers, and the random values.
+/// The format is the one of the design of add-extension-developer-tools. The hand-written fixtures
+/// of the tests have only `exchanges`.
 public struct Fixture: Sendable, Equatable, Codable {
-	public let exchanges: [Exchange]
+	public var format: Int?
+	public var service: String?
+	/// Seconds since 1970, where the clock of the script starts.
+	public var startTime: Double?
+	public var timeZone: String?
+	public var environment: HostEnvironment?
+	public var answers: [Answer]?
+	public var random: [RandomValue]?
+	public var exchanges: [Exchange]
+
+	public init(format: Int? = nil, service: String? = nil, startTime: Double? = nil, timeZone: String? = nil, environment: HostEnvironment? = nil,
+		answers: [Answer]? = nil, random: [RandomValue]? = nil, exchanges: [Exchange]) {
+		self.format = format
+		self.service = service
+		self.startTime = startTime
+		self.timeZone = timeZone
+		self.environment = environment
+		self.answers = answers
+		self.random = random
+		self.exchanges = exchanges
+	}
 
 	public struct Exchange: Sendable, Equatable, Codable {
-		public let request: Request
-		public let response: Response
+		public var request: Request
+		public var response: Response
+
+		public init(request: Request, response: Response) {
+			self.request = request
+			self.response = response
+		}
 	}
 
+	/// A replay matches only `method` and `url`. The headers and the body show what the script sent.
 	public struct Request: Sendable, Equatable, Codable {
-		public let method: String
-		public let url: URL
+		public var method: String
+		public var url: URL
+		public var headers: [String: String]?
+		public var body: String?
+		public var base64Body: String?
+
+		public init(method: String, url: URL, headers: [String: String]? = nil, body: Data? = nil) {
+			self.method = method
+			self.url = url
+			self.headers = headers
+			(self.body, base64Body) = Fixture.text(body)
+		}
 	}
 
-	/// A text body, as the made-up pages and JSON answers of the fixtures are.
+	/// A text body as `body`, any other body as `base64Body`.
 	public struct Response: Sendable, Equatable, Codable {
-		public let status: Int
-		public let headers: [String: String]?
-		public let body: String?
+		public var status: Int
+		public var headers: [String: String]?
+		public var body: String?
+		public var base64Body: String?
+
+		public init(status: Int, headers: [String: String]? = nil, body: Data) {
+			self.status = status
+			self.headers = headers
+			(self.body, base64Body) = Fixture.text(body)
+		}
+
+		var data: Data {
+			base64Body.flatMap { Data(base64Encoded: $0) } ?? Data((body ?? "").utf8)
+		}
+	}
+
+	/// An answer of the user, in the order the run asked for it. It is the JSON object with one key
+	/// that the format names, such as `{"tan": "{{answer1}}"}`.
+	public enum Answer: Sendable, Equatable, Codable {
+		case login([String])
+		case tan(String)
+		case tanMethod(String)
+		case tanMedium(String)
+		case host(HostDecision)
+
+		private enum Key: String, CodingKey {
+			case login, tan, tanMethod, tanMedium, host
+		}
+
+		public init(from decoder: Decoder) throws {
+			let container = try decoder.container(keyedBy: Key.self)
+			guard container.allKeys.count == 1, let key = container.allKeys.first else {
+				throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "An answer has exactly one key."))
+			}
+			self = switch key {
+			case .login: .login(try container.decode([String].self, forKey: key))
+			case .tan: .tan(try container.decode(String.self, forKey: key))
+			case .tanMethod: .tanMethod(try container.decode(String.self, forKey: key))
+			case .tanMedium: .tanMedium(try container.decode(String.self, forKey: key))
+			case .host: .host(try container.decode(HostDecision.self, forKey: key))
+			}
+		}
+
+		public func encode(to encoder: Encoder) throws {
+			var container = encoder.container(keyedBy: Key.self)
+			switch self {
+			case let .login(values): try container.encode(values, forKey: .login)
+			case let .tan(value): try container.encode(value, forKey: .tan)
+			case let .tanMethod(value): try container.encode(value, forKey: .tanMethod)
+			case let .tanMedium(value): try container.encode(value, forKey: .tanMedium)
+			case let .host(value): try container.encode(value, forKey: .host)
+			}
+		}
+	}
+
+	static func text(_ data: Data?) -> (String?, String?) {
+		guard let data else { return (nil, nil) }
+		if let text = String(data: data, encoding: .utf8) { return (text, nil) }
+		return (nil, data.base64EncodedString())
 	}
 }
 
@@ -37,10 +132,19 @@ final class FixtureTransport: Transport {
 
 	func send(_ request: HTTPRequest) throws -> HTTPResponse {
 		onSend(request)
-		guard let index = unused.firstIndex(where: { $0.request.method == request.method && $0.request.url == request.url }) else {
+		let index = unused.firstIndex { $0.request.method == request.method && $0.request.url == request.url }
+			?? unused.firstIndex { $0.request.method == request.method && Self.plainPlaceholders($0.request.url) == Self.plainPlaceholders(request.url) }
+		guard let index else {
 			throw ScriptError("The fixture has no response for \(request.method) \(request.url.absoluteString).")
 		}
 		let response = unused.remove(at: index).response
-		return HTTPResponse(status: response.status, headers: response.headers ?? [:], body: Data((response.body ?? "").utf8))
+		return HTTPResponse(status: response.status, headers: response.headers ?? [:], body: response.data)
+	}
+
+	/// The URL with each percent-encoded placeholder in its plain form. A recording has its placeholders
+	/// percent-encoded in the URL, and a script that builds the URL from a placeholder without
+	/// `MM.urlencode` sends the braces as they are. Any other percent-encoding stays, so `a%2Fb` is not `a/b`.
+	private static func plainPlaceholders(_ url: URL) -> String {
+		url.absoluteString.replacing(/(?i)%7B%7B([a-z]+[0-9]*)%7D%7D/) { "{{\($0.output.1)}}" }
 	}
 }

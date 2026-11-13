@@ -1,0 +1,101 @@
+{
+  "answers": [
+    {
+      "login": [
+        "{{username}}",
+        "{{password}}"
+      ]
+    }
+  ],
+  "environment": {
+    "country": "DE",
+    "deviceUuid": "00000000-0000-4000-8000-000000000000",
+    "language": "en",
+    "locale": "en_US",
+    "productBuild": 1,
+    "productVersion": "0.1.0",
+    "variant": "debug"
+  },
+  "exchanges": [
+    {
+      "request": {
+        "body": "username={{username}}&password={{password}}",
+        "headers": {
+          "Content-Type": "application/x-www-form-urlencoded",
+          "X-Device": "3f6c2a9e-8d41-4b7a-9c35-1e2f4a6b8c0d"
+        },
+        "method": "POST",
+        "url": "https://www.bank.example/login"
+      },
+      "response": {
+        "body": "{\"ok\": true}",
+        "headers": {
+          "Content-Type": "application/json",
+          "Set-Cookie": "SESSION={{cookie1}}; Path=/; Secure; HttpOnly"
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "headers": {
+          "Cookie": "SESSION={{cookie1}}",
+          "X-Request-Id": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d"
+        },
+        "method": "GET",
+        "url": "https://www.bank.example/api/accounts"
+      },
+      "response": {
+        "body": "{\"accounts\": [{\"name\": \"Giro\", \"owner\": \"Erika Mustermann\", \"number\": \"0202051\", \"iban\": \"DE02120300000000202051\", \"bic\": \"BYLADEM1001\", \"currency\": \"EUR\"}]}",
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "headers": {
+          "Cookie": "SESSION={{cookie1}}"
+        },
+        "method": "GET",
+        "url": "https://www.bank.example/accounts/0202051/transactions?from=2026-10-10"
+      },
+      "response": {
+        "body": "<!doctype html><html><head><meta charset=\"utf-8\"><title>Transactions</title></head><body>\n<p>Balance: <span id=\"balance\">1.520,40</span> EUR</p>\n<table>\n<tr class=\"booking\"><td class=\"date\">05.11.2026</td><td class=\"name\">Stadtwerke Musterstadt</td><td class=\"purpose\">Electricity November</td><td class=\"amount\">-89,00</td></tr>\n<tr class=\"booking\"><td class=\"date\">03.11.2026</td><td class=\"name\">Max Mustermann</td><td class=\"purpose\">Dinner</td><td class=\"amount\">25,50</td></tr>\n<tr class=\"booking\"><td class=\"date\">30.10.2026</td><td class=\"name\">Musterfirma GmbH</td><td class=\"purpose\">Salary October</td><td class=\"amount\">2.450,00</td></tr>\n<tr class=\"booking\"><td class=\"date\">28.10.2026</td><td class=\"name\">Bäckerei Beispiel</td><td class=\"purpose\">Bread</td><td class=\"amount\">-6,40</td></tr>\n</table>\n</body></html>\n",
+        "headers": {
+          "Content-Type": "text/html; charset=utf-8"
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "headers": {
+          "Cookie": "SESSION={{cookie1}}"
+        },
+        "method": "GET",
+        "url": "https://www.bank.example/logout"
+      },
+      "response": {
+        "body": "<!doctype html><p>Logged out.</p>",
+        "headers": {
+          "Content-Type": "text/html; charset=utf-8"
+        },
+        "status": 200
+      }
+    }
+  ],
+  "format": 1,
+  "random": [
+    {
+      "uuid": "3f6c2a9e-8d41-4b7a-9c35-1e2f4a6b8c0d"
+    },
+    {
+      "uuid": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d"
+    }
+  ],
+  "service": "Example Bank",
+  "startTime": 1794218400,
+  "timeZone": "Europe/Berlin"
+}

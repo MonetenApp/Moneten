@@ -91,6 +91,24 @@ targets:
         CODE_SIGN_INJECT_BASE_ENTITLEMENTS: NO
         ENABLE_HARDENED_RUNTIME: $(MONETEN_HARDENED_RUNTIME)
         SKIP_INSTALL: YES
+  # The command line tool of add-extension-developer-tools, which the package builds as the product ext.
+  # It is here so that Periphery sees its uses of the libraries.
+  ext:
+    type: tool
+    platform: macOS
+    sources:
+      - path: ../Tools/ext
+    dependencies:
+      - package: MonetenKit
+        product: Domain
+      - package: MonetenKit
+        product: ExtensionHost
+      - package: MonetenKit
+        product: ExtensionConnector
+    settings:
+      base:
+        PRODUCT_NAME: ext
+        SKIP_INSTALL: YES
   # The FinTS prototype of issue #11. It runs in the terminal. App/FinTSProbe/main.swift explains it.
   FinTSProbe:
     type: application
@@ -109,6 +127,10 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         ENABLE_HARDENED_RUNTIME: $(MONETEN_HARDENED_RUNTIME)
 schemes:
+  ext:
+    build:
+      targets:
+        ext: all
   Moneten:
     build:
       targets:

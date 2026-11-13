@@ -8,7 +8,11 @@ struct URLSessionTransport: Transport {
 	/// memory of the host process.
 	static let maxBody = 32 * 1_048_576
 
-	private let session: URLSession = {
+	private let session: URLSession
+
+	/// `certificates` are trusted in addition to those of the system. Only `ext` passes any, for a
+	/// test server of the author; the app trusts the system alone.
+	init(trusting certificates: [Data] = []) {
 		let configuration = URLSessionConfiguration.ephemeral
 		configuration.httpCookieStorage = nil
 		configuration.httpShouldSetCookies = false
@@ -16,8 +20,8 @@ struct URLSessionTransport: Transport {
 		// A server that stops sending for a minute, or takes two minutes for one answer, fails the request.
 		configuration.timeoutIntervalForRequest = 60
 		configuration.timeoutIntervalForResource = 120
-		return URLSession(configuration: configuration)
-	}()
+		session = URLSession(configuration: configuration, delegate: Trust(certificates: certificates), delegateQueue: nil)
+	}
 
 	/// Blocks the script until the answer is there. Lua runs on one thread of the host process.
 	func send(_ request: HTTPRequest) throws -> HTTPResponse {
@@ -67,6 +71,26 @@ struct URLSessionTransport: Transport {
 			}
 			result.withLock { $0 = outcome }
 			done.signal()
+		}
+	}
+
+	/// Adds the certificates of `ext` to the server trust of the session.
+	private final class Trust: NSObject, URLSessionDelegate {
+		/// In DER, because a certificate object of Security is not `Sendable`.
+		let certificates: [Data]
+
+		init(certificates: [Data]) {
+			self.certificates = certificates
+		}
+
+		func urlSession(_ session: URLSession, didReceive challenge: URLAuthenticationChallenge,
+			completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+			guard !certificates.isEmpty, challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
+				let trust = challenge.protectionSpace.serverTrust else { return completionHandler(.performDefaultHandling, nil) }
+			SecTrustSetAnchorCertificates(trust, certificates.compactMap { SecCertificateCreateWithData(nil, $0 as CFData) } as CFArray)
+			SecTrustSetAnchorCertificatesOnly(trust, false)
+			guard SecTrustEvaluateWithError(trust, nil) else { return completionHandler(.cancelAuthenticationChallenge, nil) }
+			completionHandler(.useCredential, URLCredential(trust: trust))
 		}
 	}
 }

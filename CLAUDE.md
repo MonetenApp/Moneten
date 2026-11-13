@@ -21,6 +21,7 @@ scripts/check.sh                                   # docs, chrome rule, specs, P
 
 scripts/generate-project.sh                        # builds HBCI4Swift if needed, writes App/Moneten.xcodeproj
 scripts/build-app.sh                               # dist/Moneten.app, Release; "debug" for a Debug build
+swift run --disable-keychain ext test Extensions/Example Fixtures/example/fixture.json Fixtures/example/expected.json
 scripts/perf-check.sh                              # UI performance scenarios in the Perf build; shows a window
 scripts/fints-probe-java.sh --build-only           # compiles the hbci4java probe, as CI does
 
@@ -54,6 +55,7 @@ The repository has two builds ([ADR 0011](docs/decisions/0011-app-target-in-an-x
 | `SyncTesting` | `ScriptedConnector`, a fake bank for the tests, the previews, and the debug harness |
 | `ExtensionHost` | Runs a Lua extension session with the host limit of ADR 0015, one sandboxed `MonetenExtensionHost` process per session, and offers the MoneyMoney-compatible API in `Sources/ExtensionHost/API`. `Sources/CLua` is Lua 5.4 from lua.org (`scripts/vendor-lua.sh`). |
 | `ExtensionConnector` | `ExtensionConnector`, which calls the entry points of an extension in order, turns its challenge tables into requests to the user, and maps its result tables to `Domain` types. `scripts/check-published.sh` checks the published MoneyMoney extensions against the host. |
+| `ext` | The command line tool for extension authors in `Tools/ext`: `ext run`, `ext record`, and `ext test`. It starts its own binary as the host process and calls `ExtensionConnector` as the app does. The design of `add-extension-developer-tools` has the fixture format. |
 | App | SwiftUI views and the `@Observable` `AppModel` |
 
 How the parts work together:
