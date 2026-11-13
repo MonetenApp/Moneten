@@ -170,16 +170,16 @@ enum HTMLDocument {
 				return 1
 			}
 			let value = stack.string(at: 3)
-			// Only elements take attributes. A value that replaces one frees the old value, so only the growth counts.
-			let growth = list.nodes.reduce(0) { sum, node in
+			// Only elements take attributes. A value that replaces one frees the old value, so the difference counts.
+			let change = list.nodes.reduce(0) { sum, node in
 				guard node.pointee.type == XML_ELEMENT_NODE else { return sum }
-				return sum + (node.attribute(name).map { max(0, value.utf8.count - $0.utf8.count) } ?? name.utf8.count + value.utf8.count + HTMLTree.nodeCost)
+				return sum + (node.attribute(name).map { value.utf8.count - $0.utf8.count } ?? name.utf8.count + value.utf8.count + HTMLTree.nodeCost)
 			}
-			guard list.tree.fits(growth) else {
+			guard change <= 0 || list.tree.fits(change) else {
 				stack.pushMessage("not enough memory")
 				return -1
 			}
-			list.tree.charge(more: growth)
+			list.tree.charge(change)
 			for node in list.nodes { node.setAttribute(name, value) }
 			return 0
 		}
@@ -266,6 +266,8 @@ private final class HTMLTree {
 	private let memory: UnsafeMutableRawPointer
 	/// What the tree takes in memory: four times its text as the estimate, and what changes added.
 	private var charged: Int
+	/// The estimate of the parsed tree, below which a change never takes the charge.
+	private let parsed: Int
 
 	/// What libxml2 adds for a node or an attribute besides its text.
 	static let nodeCost = 64
@@ -274,6 +276,7 @@ private final class HTMLTree {
 	init(_ content: Data, charset: String?, state: OpaquePointer) {
 		memory = clua_memory(state)
 		charged = content.count * 4
+		parsed = charged
 		clua_memory_charge(memory, charged)
 		_ = Self.parser
 		let options = Int32(HTML_PARSE_RECOVER.rawValue | HTML_PARSE_NOERROR.rawValue | HTML_PARSE_NOWARNING.rawValue | HTML_PARSE_NONET.rawValue)
@@ -295,10 +298,12 @@ private final class HTMLTree {
 		clua_memory_room(memory, bytes) != 0
 	}
 
-	/// Counts `bytes` that a change added to the tree.
-	func charge(more bytes: Int) {
-		charged += bytes
-		clua_memory_charge(memory, bytes)
+	/// Counts `bytes` that a change added to the tree, or gives back what it freed when `bytes` is
+	/// negative, never below the estimate of the parsed tree.
+	func charge(_ bytes: Int) {
+		let new = max(parsed, charged + bytes)
+		if new > charged { clua_memory_charge(memory, new - charged) } else { clua_memory_uncharge(memory, charged - new) }
+		charged = new
 	}
 
 	/// Takes the attribute out of its element and keeps it until the document goes.
@@ -511,7 +516,7 @@ private enum Form {
 		let options = select.descendants.filter { $0.tag == "option" }
 		guard let chosen = options.first(where: { !$0.has("disabled") && optionValue($0) == value }) else { return }
 		for option in options { tree.remove("selected", from: option) }
-		tree.charge(more: HTMLTree.nodeCost)
+		tree.charge(HTMLTree.nodeCost)
 		chosen.setAttribute("selected", "selected")
 	}
 

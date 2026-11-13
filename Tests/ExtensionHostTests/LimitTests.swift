@@ -217,8 +217,8 @@ import Testing
 		#expect(Result { () throws(ScriptError) -> LuaValue in _ = try session.load(); return try session.call(.function(function)) } == .success(.string("not enough memory")))
 	}
 
-	/// A value that replaces another of the same attribute adds only its growth, and a node that is no
-	/// element takes no attribute and adds nothing.
+	/// A value that replaces another of the same attribute adds only its growth, or gives back what it
+	/// shrank, and a node that is no element takes no attribute and adds nothing.
 	@Test func replacedAttributeAddsOnlyItsGrowth() {
 		let package = demo("""
 			WebBanking{version = 1}
@@ -229,6 +229,11 @@ import Testing
 				local attribute = HTML('<p class="a">a</p>'):xpath("//p/@class")
 				for i = 1, 100 do
 					local ok, message = pcall(function() paragraph:attr("data", big) attribute:attr("data", big) end)
+					if not ok then return (message:gsub("^Demo%.lua:%d+: ", "")) end
+				end
+				-- A value that shrinks gives its memory back, so a large one fits again.
+				for i = 1, 100 do
+					local ok, message = pcall(function() paragraph:attr("data", i % 2 == 0 and big or "") end)
 					if not ok then return (message:gsub("^Demo%.lua:%d+: ", "")) end
 				end
 				return "replaced"
