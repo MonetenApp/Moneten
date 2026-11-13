@@ -18,7 +18,7 @@ import Testing
 			let transport = FixtureTransport(fixture) { [unowned self] in requests.append($0) }
 			session = HostSession(package: demo("WebBanking{version = 1}\n" + source, hosts: ["bank.example"]), transport: transport, capture: capture,
 				ask: { _ in .denied }, log: { _ in }, random: { [unowned self] in random.append($0) },
-				keyUse: { [unowned self] in keys.append($0) })
+				keyUse: { [unowned self] in if let index = $0 { keys.append(index) } })
 		}
 
 		func call() -> LuaValue {
@@ -88,6 +88,21 @@ import Testing
 		_ = run.call()
 		#expect(run.random.count == 4)
 		#expect(run.keys == [0, 1, 3])
+	}
+
+	/// A key that comes from a random value through a hash or as a slice of it counts as that value.
+	@Test(arguments: ["MM.aes256encrypt(MM.hexToBin(MM.sha256(seed)), iv, 'geheim123')", "MM.aes256encrypt(seed:sub(1, 32), iv, 'geheim123')",
+		"MM.aes256encrypt(MM.hexToBin(MM.binToHex(seed):sub(5, 68)), iv, 'geheim123')", "MM.hmac256(MM.sha512(MM.base64(seed)), 'data')",
+		"MM.hmac256(MM.hexToBin(MM.md5(seed)), 'data')"])
+	func keyThatARandomValueGives(_ use: String) {
+		let run = Session("""
+			function Check()
+				local seed, iv = MM.random(48), MM.random(16)
+				\(use)
+			end
+			""", capture: .record(start: 1_794_218_400))
+		_ = run.call()
+		#expect(run.keys.contains(0))
 	}
 
 	@Test func maxAgeCountsOnTheClockOfTheSession() {

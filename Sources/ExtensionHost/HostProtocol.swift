@@ -121,6 +121,8 @@ public enum HostTrace: Sendable, Codable, Equatable {
 	/// The index of a value of `random` that the script used as the key or the IV of an encryption or as
 	/// the key of an HMAC.
 	case key(Int)
+	/// The script used an AES or HMAC key that comes from no value of `random`, such as a key in its text.
+	case foreignKey
 	/// What an entry point returned, as the client received it.
 	case result(EntryCall, LuaValue)
 	/// What `LocalStorage` holds at the end of the run.
@@ -155,7 +157,7 @@ public enum HostProcess {
 				let new = HostSession(package: setup.package, transport: transport, decisions: setup.decisions, memory: setup.limits.memory,
 					environment: setup.environment, storage: setup.storage, capture: setup.developer?.capture, ask: askApp, log: { emit(.print($0)) },
 					status: { emit(.status($0)) }, alive: { emit(.alive) }, random: { emit(.trace(.random($0))) },
-					keyUse: { emit(.trace(.key($0))) })
+					keyUse: { emit(.trace($0.map(HostTrace.key) ?? .foreignKey)) })
 				do {
 					let registration = try new.load()
 					session = new

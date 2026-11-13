@@ -87,13 +87,14 @@ final class SessionClock {
 final class Entropy {
 	private var recorded: [RandomValue]?
 	private let report: ((RandomValue) -> Void)?
-	/// Gets the index of a reported value that the script used as a key, for `ext record`.
-	private let keyUse: (Int) -> Void
+	/// Gets the index of a reported value that the script used as a key, for `ext record`, or nil for
+	/// a key that comes from no reported value.
+	private let keyUse: (Int?) -> Void
 	/// The values of a recording in order, as `report` got them.
 	private var produced: [RandomValue] = []
 	private var counter: UInt64 = 0
 
-	init(_ capture: Capture?, report: @escaping (RandomValue) -> Void, keyUse: @escaping (Int) -> Void = { _ in }) {
+	init(_ capture: Capture?, report: @escaping (RandomValue) -> Void, keyUse: @escaping (Int?) -> Void = { _ in }) {
 		switch capture {
 		case nil: (recorded, self.report) = (nil, nil)
 		case .record: (recorded, self.report) = (nil, report)
@@ -103,25 +104,41 @@ final class Entropy {
 	}
 
 	/// Reports the recorded value that the script passes as the key or the IV of an encryption or as
-	/// the key of an HMAC, as bytes or in a text form. `ext record` never keeps such a value in a fixture.
-	func usedAsKey(_ key: Data) {
-		guard report != nil, let index = produced.firstIndex(where: { Self.value($0, isKey: key) }) else { return }
-		keyUse(index)
+	/// the key of an HMAC, or that such a key comes from: as bytes or in a text form, its MD5 or SHA
+	/// digest, raw or as hex, or a slice of 16 bytes or more. `ext record` never keeps such a value in a
+	/// fixture. A key, not an IV, that comes from no recorded value is reported as nil.
+	func usedAsKey(_ key: Data, isIV: Bool = false) {
+		guard report != nil else { return }
+		if let index = produced.firstIndex(where: { Self.value($0, gives: key) }) {
+			keyUse(index)
+		} else if !isIV {
+			keyUse(nil)
+		}
 	}
 
-	private static func value(_ value: RandomValue, isKey key: Data) -> Bool {
+	private static func value(_ value: RandomValue, gives key: Data) -> Bool {
 		let text = String(decoding: key, as: UTF8.self).lowercased()
+		let inputs: [Data]
 		switch value {
 		case let .bytes(data):
 			let base64 = data.base64EncodedString()
 			let url = base64.replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_")
 			let forms = [data.map { String(format: "%02x", $0) }.joined(), base64, url].flatMap { [$0, $0.trimmingCharacters(in: CharacterSet(charactersIn: "="))] }
-			return data == key || forms.contains { $0.lowercased() == text }
+			inputs = [data] + forms.map { Data($0.utf8) }
 		case let .uuid(uuid):
-			return text == uuid.lowercased() || text == uuid.lowercased().replacingOccurrences(of: "-", with: "")
+			inputs = [uuid.lowercased(), uuid.lowercased().replacingOccurrences(of: "-", with: "")].map { Data($0.utf8) }
 		case .withheldBytes, .withheldUUID:
 			return false
 		}
+		let hex = { (data: Data) in data.map { String(format: "%02x", $0) }.joined() }
+		for input in inputs {
+			if input == key || String(decoding: input, as: UTF8.self).lowercased() == text { return true }
+			if key.count >= 16, input.range(of: key) != nil || text.count >= 16 && String(decoding: input, as: UTF8.self).lowercased().contains(text) { return true }
+			let digests = [Data(Insecure.MD5.hash(data: input)), Data(Insecure.SHA1.hash(data: input)), Data(SHA256.hash(data: input)),
+				Data(SHA384.hash(data: input)), Data(SHA512.hash(data: input))]
+			if digests.contains(where: { $0 == key || hex($0) == text }) { return true }
+		}
+		return false
 	}
 
 	func bytes(_ count: Int) -> Data {

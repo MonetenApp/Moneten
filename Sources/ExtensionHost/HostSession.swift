@@ -32,11 +32,11 @@ final class HostSession {
 	/// A package with a list of hosts reaches only those. Without one, `ask` waits for the user's
 	/// answer about a new host; `decisions` holds the answers the app stored for this extension.
 	/// `capture` fixes the clock and the random values for `ext record` and `ext test`; `random` gets each value of a recording,
-	/// and `keyUse` the index of each one that the script used as a key.
+	/// and `keyUse` the index of each one that the script used as a key, or nil for a key from no recorded value.
 	init(package: ExtensionPackage, transport: any Transport, decisions: [String: HostDecision] = [:], memory: Int = HostLimits().memory,
 		environment: HostEnvironment = .standard, storage: Data? = nil, capture: Capture? = nil, ask: @escaping (String) throws -> HostDecision,
 		log: @escaping (String) -> Void, status: @escaping (String) -> Void = { _ in }, alive: @escaping () -> Void = {},
-		random: @escaping (RandomValue) -> Void = { _ in }, keyUse: @escaping (Int) -> Void = { _ in }) {
+		random: @escaping (RandomValue) -> Void = { _ in }, keyUse: @escaping (Int?) -> Void = { _ in }) {
 		self.package = package
 		lua = LuaState(memory: memory)
 		let clock = SessionClock(capture)

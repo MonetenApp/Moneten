@@ -149,7 +149,7 @@ enum MMCrypto {
 		let stack = LuaStack(L!)
 		guard let key = stack.data(at: 1), key.count == 32, let iv = stack.data(at: 2), let data = stack.data(at: 3) else { return stack.returning(.null) }
 		HostSession.current(L).entropy.usedAsKey(key)
-		HostSession.current(L).entropy.usedAsKey(iv)
+		HostSession.current(L).entropy.usedAsKey(iv, isIV: true)
 		switch stack.text(at: 4) ?? "aes256 cbc" {
 		case "aes256 cbc":
 			return stack.returning(cbc(kCCEncrypt, key: key, iv: iv, data: data))
@@ -168,7 +168,7 @@ enum MMCrypto {
 		let stack = LuaStack(L!)
 		guard let key = stack.data(at: 1), key.count == 32, let iv = stack.data(at: 2), let data = stack.data(at: 3) else { return stack.returning(.null) }
 		HostSession.current(L).entropy.usedAsKey(key)
-		HostSession.current(L).entropy.usedAsKey(iv)
+		HostSession.current(L).entropy.usedAsKey(iv, isIV: true)
 		switch stack.text(at: 4) ?? "aes256 cbc" {
 		case "aes256 cbc":
 			return stack.returning(cbc(kCCDecrypt, key: key, iv: iv, data: data))
