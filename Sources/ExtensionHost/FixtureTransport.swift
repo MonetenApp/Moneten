@@ -140,15 +140,21 @@ final class FixtureTransport: Transport {
 		return HTTPResponse(status: response.status, headers: response.headers ?? [:], body: response.data)
 	}
 
-	/// The URL with each percent-encoded placeholder in its plain form and its query parameters sorted.
-	/// A recording has its placeholders percent-encoded in the URL, and a script that builds the URL from
-	/// a placeholder without `MM.urlencode` sends the braces as they are. A script that builds its query
-	/// from `pairs` sends the parameters in the order of the random hash seed of its Lua state. Any other
-	/// percent-encoding stays, so `a%2Fb` is not `a/b`.
+	/// The URL with each percent-encoded placeholder in its plain form and its query parameters sorted by
+	/// name. A recording has its placeholders percent-encoded in the URL, and a script that builds the URL
+	/// from a placeholder without `MM.urlencode` sends the braces as they are. A script that builds its
+	/// query from `pairs` sends the parameters in the order of the random hash seed of its Lua state. The
+	/// values of one name keep their order, and the fragment stays where it is. Any other percent-encoding
+	/// stays, so `a%2Fb` is not `a/b`.
 	private static func key(_ url: URL) -> String {
 		let plain = url.absoluteString.replacing(/(?i)%7B%7B([a-z]+[0-9]*)%7D%7D/) { "{{\($0.output.1)}}" }
-		guard let mark = plain.firstIndex(of: "?") else { return plain }
-		let query = plain[plain.index(after: mark)...].split(separator: "&", omittingEmptySubsequences: false).sorted().joined(separator: "&")
-		return plain[...mark] + query
+		let end = plain.firstIndex(of: "#") ?? plain.endIndex
+		guard let mark = plain[..<end].firstIndex(of: "?") else { return plain }
+		let items = plain[plain.index(after: mark)..<end].split(separator: "&", omittingEmptySubsequences: false)
+		let sorted = items.enumerated().sorted { a, b in
+			let (left, right) = (a.element.prefix { $0 != "=" }, b.element.prefix { $0 != "=" })
+			return left == right ? a.offset < b.offset : left < right
+		}
+		return plain[...mark] + sorted.map(\.element).joined(separator: "&") + plain[end...]
 	}
 }

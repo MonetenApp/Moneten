@@ -19,7 +19,9 @@ import Testing
 
 	/// A script that builds its query from `pairs` sends the parameters in the order of the hash seed of its Lua state.
 	@Test(arguments: [("https://api.example/transactions?account_id=acc_1&expand%5B%5D=merchant", "https://api.example/transactions?expand%5B%5D=merchant&account_id=acc_1"),
-		("https://bank.example/u/%7B%7Busername%7D%7D?b=2&a=1", "https://bank.example/u/{{username}}?a=1&b=2")])
+		("https://bank.example/u/%7B%7Busername%7D%7D?b=2&a=1", "https://bank.example/u/{{username}}?a=1&b=2"),
+		("https://bank.example/poll?a=1&b=2#section", "https://bank.example/poll?b=2&a=1#section"),
+		("https://bank.example/list?id=1&x=3&id=2", "https://bank.example/list?x=3&id=1&id=2")])
 	func queryInAnyOrder(recorded: String, sent: String) {
 		#expect(matches(recorded: recorded, sent: sent))
 	}
@@ -38,7 +40,9 @@ import Testing
 	@Test(arguments: [("https://bank.example/a%2Fb", "https://bank.example/a/b"),
 		("https://bank.example/list?filter=a%26admin%3Dtrue", "https://bank.example/list?filter=a&admin=true"),
 		("https://bank.example/list?a=1&b=2", "https://bank.example/list?a=1&b=2&b=2"),
-		("https://bank.example/list?a=1&b=2", "https://bank.example/other?b=2&a=1")])
+		("https://bank.example/list?a=1&b=2", "https://bank.example/other?b=2&a=1"),
+		("https://bank.example/poll?a=1&b=2#section", "https://bank.example/poll?b=2#section&a=1"),
+		("https://bank.example/list?sort=date&sort=amount", "https://bank.example/list?sort=amount&sort=date")])
 	func otherEncodingsDiffer(recorded: String, sent: String) {
 		#expect(!matches(recorded: recorded, sent: sent))
 	}
