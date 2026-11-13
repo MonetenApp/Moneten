@@ -252,6 +252,61 @@ The app SHALL list a credit card as an account of the type "Credit card" when th
 - **WHEN** the user adds the card in the account selection
 - **THEN** the card appears as its own account with its transactions
 
+### Requirement: Read the value of a securities account
+
+The app SHALL fetch the value of a securities account through the custody account balance (HKWPD) in place of its balance and transactions when the bank allows it, and store it with the date of the statement as the value of the portfolio on that day. The value sums the totals of all pages of the statement, or the values and accrued interest of the holdings of a page without a total. When the app cannot read a value, the account says why.
+
+#### Scenario: Value of a securities account
+
+- **GIVEN** the bank offers the custody account balance for "Depot" and reports a total of 24.518,37 € on 12.11.2026
+- **WHEN** the user refreshes "Depot"
+- **THEN** "Depot" shows 24.518,37 €
+- **AND** the value of "Depot" on 12.11.2026 is 24.518,37 €
+
+#### Scenario: Empty securities account
+
+- **GIVEN** "Depot" showed 24.518,37 € on 12.11.2026, and the user sold every holding
+- **WHEN** the bank answers the custody account balance of "Depot" on 13.11.2026 without holdings and without a total
+- **THEN** "Depot" shows 0,00 €
+- **AND** the value of "Depot" on 13.11.2026 is 0,00 €
+
+#### Scenario: Securities account with the balance only
+
+- **GIVEN** the bank allows the balance for the securities account "Depot" and not the custody account balance
+- **WHEN** the user refreshes "Depot"
+- **THEN** the app fetches the balance of "Depot" as for any other account
+- **AND** a securities account that allows both gets only the custody account balance
+
+#### Scenario: Bank without the custody account balance
+
+- **GIVEN** the bank lists the securities account "Fondsdepot" and allows neither the custody account balance, nor the balance, nor the transactions for it
+- **WHEN** the user refreshes "Fondsdepot"
+- **THEN** "Fondsdepot" shows "Moneten can't read this securities account at this bank yet."
+
+#### Scenario: Answer without a value
+
+- **GIVEN** the bank answers the custody account balance of "Depot" without a total, and its holdings have no value in one currency
+- **WHEN** the refresh ends
+- **THEN** "Depot" shows "The bank sent no value for this securities account."
+
+#### Scenario: Note without a statement
+
+- **GIVEN** "Depot" showed 24.518,37 € on 12.11.2026
+- **WHEN** the bank answers the custody account balance of "Depot" with the note 3010 "Keine Einträge vorhanden" and without a statement
+- **THEN** the error of "Depot" quotes "Keine Einträge vorhanden" and shows the code 3010
+- **AND** "Depot" keeps 24.518,37 €
+
+#### Scenario: Bank rejects the request
+
+- **WHEN** the bank answers the custody account balance of "Depot" with the code 9160 and the text "Erforderliche Auftragsreferenz fehlt"
+- **THEN** the error of "Depot" quotes "Erforderliche Auftragsreferenz fehlt" and shows the code 9160
+
+#### Scenario: Consorsbank
+
+- **GIVEN** a login at Consorsbank, whose bank parameters say that no order needs a TAN
+- **WHEN** the app refreshes a giro account and a securities account of the login
+- **THEN** the balance and the transactions go with HKTAN, and the custody account balance goes without HKTAN
+
 ### Requirement: One dialog for all accounts of a login
 
 The app SHALL fetch all accounts of one login that are due in a refresh inside one FinTS dialog, so that the bank sees one login and asks for at most one TAN for that login.

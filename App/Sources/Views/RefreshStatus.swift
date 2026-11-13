@@ -53,7 +53,9 @@ struct AccountRefreshLine: View {
 	var body: some View {
 		let refreshing = model.sync.refreshingAccounts.contains(account.id)
 		HStack(spacing: 6) {
-			Text(account.refreshedAt.map { "Last updated: \(Format.dayAndTime($0))" } ?? "Not refreshed yet")
+			// An account that never refreshed says why, in place of "Not refreshed yet".
+			Text(account.refreshedAt.map { "Last updated: \(Format.dayAndTime($0))" } ?? account.refreshError?.message ?? "Not refreshed yet")
+				.lineLimit(1)
 			if refreshing {
 				ProgressView().controlSize(.mini)
 			} else {

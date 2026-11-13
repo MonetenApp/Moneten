@@ -74,6 +74,7 @@ import org.kapott.hbci.GV.HBCIJobImpl;
 import org.kapott.hbci.GV_Result.GVRKUms;
 import org.kapott.hbci.GV_Result.GVRKUms.UmsLine;
 import org.kapott.hbci.GV_Result.GVRSaldoReq;
+import org.kapott.hbci.GV_Result.GVRWPDepotList;
 import org.kapott.hbci.GV_Result.HBCIJobResult;
 import org.kapott.hbci.callback.AbstractHBCICallback;
 import org.kapott.hbci.dialog.DialogContext;
@@ -97,6 +98,7 @@ import org.kapott.hbci.status.HBCIDialogStatus;
 import org.kapott.hbci.status.HBCIExecStatus;
 import org.kapott.hbci.status.HBCIRetVal;
 import org.kapott.hbci.status.HBCIStatus;
+import org.kapott.hbci.structures.BigDecimalValue;
 import org.kapott.hbci.structures.Konto;
 import org.kapott.hbci.structures.Value;
 
@@ -904,16 +906,18 @@ public class FinTSHelper {
 		}
 	}
 
-	/// Consorsbank answers HKSAL and HKKAZ without HKTAN with 9075, although its bank parameters
-	/// say that they need no TAN (hbci4j/hbci4java#155).
-	static final Set<String> TAN_FOR_ORDERS = Set.of("76030080");
+	/// Whether an order goes with HKTAN ("J") or without ("N"), by bank code, for banks whose bank
+	/// parameters say otherwise. Consorsbank answers HKSAL and HKKAZ without HKTAN with 9075, although
+	/// its parameters say that they need no TAN, and HKWPD with HKTAN with 9160 (hbci4j/hbci4java#155).
+	static final Map<String, Map<String, String>> TAN_RULES = Map.of("76030080", Map.of("HKSAL", "J", "HKKAZ", "J", "HKCAZ", "J", "HKWPD", "N"));
 
-	static void requireTanForOrders(HBCIPassport passport) {
-		Properties bpd = passport.getBPD();
+	static void applyTanRules(String bankCode, Properties bpd) {
+		Map<String, String> rules = TAN_RULES.get(bankCode);
+		if (rules == null) return;
 		for (String key : bpd.stringPropertyNames()) {
 			if (!key.contains(".ParPinTan.PinTanGV") || !key.endsWith(".segcode")) continue;
-			if (!List.of("HKSAL", "HKKAZ", "HKCAZ").contains(bpd.getProperty(key))) continue;
-			bpd.setProperty(key.substring(0, key.length() - "segcode".length()) + "needtan", "J");
+			String needtan = rules.get(bpd.getProperty(key));
+			if (needtan != null) bpd.setProperty(key.substring(0, key.length() - "segcode".length()) + "needtan", needtan);
 		}
 	}
 
@@ -935,10 +939,35 @@ public class FinTSHelper {
 		return null;
 	}
 
-	record Jobs(String id, String from, HBCIJob balance, HBCIJob statements) { }
+	/// FinTS account types 30 to 39 are securities accounts and 60 to 69 funds accounts, as in
+	/// FinTSAccount.kind(of:) of the app.
+	static boolean securities(Konto k) {
+		return k.acctype != null && k.acctype.trim().matches("[36][0-9]");
+	}
+
+	/// The jobs that a refresh sends for an account: the custody account balance of a securities account
+	/// that allows it, or else the balance and the transactions, in CAMT when the account allows it.
+	static List<String> jobs(HBCIHandler handle, Konto k) {
+		if (securities(k) && allows(handle, k, "HKWPD", "WPDepotList")) return List.of("WPDepotList");
+		List<String> jobs = new ArrayList<>();
+		if (allows(handle, k, "HKSAL", "SaldoReq")) jobs.add("SaldoReq");
+		if (allows(handle, k, "HKCAZ", "KUmsAllCamt")) jobs.add("KUmsAllCamt");
+		else if (allows(handle, k, "HKKAZ", "KUmsAll")) jobs.add("KUmsAll");
+		return jobs;
+	}
+
+	/// The failure of an account that allows none of the jobs.
+	static Map<String, Object> nothingAllowed(String id, Konto k) {
+		return message("accountFailed", "account", id, "kind", "unsupported", "text", securities(k) ? "Moneten can't read this securities account at this bank yet."
+			: "The FinTS server of the bank offers neither the balance nor the transactions of this account.");
+	}
+
+	/// The jobs of one account: the balance and the transactions, or the holdings of a securities account
+	/// in the currency of the account.
+	record Jobs(String id, String from, String currency, HBCIJob balance, HBCIJob statements, HBCIJob holdings) { }
 
 	static void refresh(HBCIHandler handle, HBCIPassport passport, Konto[] accounts, List<?> requested, Callback callback) {
-		if (TAN_FOR_ORDERS.contains(passport.getBLZ())) requireTanForOrders(passport);
+		applyTanRules(passport.getBLZ(), passport.getBPD());
 		List<Jobs> all = new ArrayList<>();
 		for (Object o : requested) {
 			Map<?, ?> request = (Map<?, ?>) o;
@@ -948,27 +977,27 @@ public class FinTSHelper {
 				send(message("accountFailed", "account", id, "kind", "unsupported", "text", "The bank does not list this account for the login."));
 				continue;
 			}
-			HBCIJob balance = null, statements = null;
-			if (allows(handle, k, "HKSAL", "SaldoReq")) {
-				balance = handle.newJob("SaldoReq");
-				balance.setParam("my", k);
-				balance.addToQueue();
-				callback.jobs.put(balance, all.size());
-			}
-			boolean camt = allows(handle, k, "HKCAZ", "KUmsAllCamt");
-			if (camt || allows(handle, k, "HKKAZ", "KUmsAll")) {
-				statements = handle.newJob(camt ? "KUmsAllCamt" : "KUmsAll");
-				statements.setParam("my", k);
-				if (from != null) statements.setParam("startdate", date(from));
-				statements.addToQueue();
-				callback.jobs.put(statements, all.size());
-			}
-			if (balance == null && statements == null) {
-				send(message("accountFailed", "account", id, "kind", "unsupported",
-					"text", "The FinTS server of the bank offers neither the balance nor the transactions of this account."));
+			List<String> names = jobs(handle, k);
+			if (names.isEmpty()) {
+				send(nothingAllowed(id, k));
 				continue;
 			}
-			all.add(new Jobs(id, from, balance, statements));
+			HBCIJob balance = null, statements = null, holdings = null;
+			for (String name : names) {
+				HBCIJob job = handle.newJob(name);
+				job.setParam("my", k);
+				switch (name) {
+					case "SaldoReq" -> balance = job;
+					case "WPDepotList" -> holdings = job;
+					default -> {
+						if (from != null) job.setParam("startdate", date(from));
+						statements = job;
+					}
+				}
+				job.addToQueue();
+				callback.jobs.put(job, all.size());
+			}
+			all.add(new Jobs(id, from, text(k.curr), balance, statements, holdings));
 		}
 		callback.jobCount = all.size();
 		callback.login = false;
@@ -980,10 +1009,60 @@ public class FinTSHelper {
 		callback.checkSwitch();
 		requireLogin(status);
 		for (Jobs jobs : all) {
-			HBCIJob statements = jobs.statements();
+			HBCIJob statements = jobs.statements(), holdings = jobs.holdings();
+			if (holdings != null) {
+				send(alone(jobs.id(), () -> value(jobs.id(), (GVRWPDepotList) holdings.getJobResult(), ((HBCIJobImpl) holdings).redo() != null, jobs.currency())));
+				continue;
+			}
 			send(alone(jobs.id(), () -> result(jobs.id(), jobs.from(), jobs.balance() == null ? null : (GVRSaldoReq) jobs.balance().getJobResult(),
 				statements == null ? null : (GVRKUms) statements.getJobResult(), statements != null && ((HBCIJobImpl) statements).redo() != null)));
 		}
+	}
+
+	/// The value of a securities account as its balance, on the day of the statement. hbci4java adds an
+	/// entry for each page of the statement, and the total of a page (HOLP) is optional in MT535, so the
+	/// value is the sum over the pages of their total, or else of the values of their holdings with their
+	/// accrued interest. FinTS 4.1 Messages - Finanzdatenformate (20.01.2014), MT 535, page 171, defines
+	/// C:19A HOLP "Gesamtwert der Depotbestände der Nachricht" as "Summe der Beträge aus B:19A: (d.h. sowohl
+	/// Kurswerte als auch Stückzinsen)", and hbci4java keeps of each holding the first HOLD and ACRU, which
+	/// that page puts in the currency of HOLP. A page without holdings and without a total, as of an empty
+	/// account, is worth 0 in `currency`, or in euro when the bank names no currency of the account. An answer
+	/// without a statement shows the note of the bank, such as 3010, which can also mean that the bank does
+	/// not offer the data now, so the earlier value stays.
+	/// `incomplete` says that the dialog ended before the bank sent the last part (3040) of the holdings.
+	static Map<String, Object> value(String id, GVRWPDepotList list, boolean incomplete, String currency) {
+		if (incomplete) throw new Failure(null, "3040", "The bank sent only part of the securities account, so nothing of this account was stored.");
+		if (!list.isOK()) return message("result", "account", id, "errors", List.of(problem(list)));
+		BigDecimalValue zero = new BigDecimalValue(BigDecimal.ZERO, present(currency) ? currency.trim() : "EUR");
+		GVRWPDepotList.Entry[] statement = list.getEntries();
+		HBCIRetVal[] notes = list.getJobStatus().getWarnings();
+		if (statement.length == 0 && notes.length > 0) {
+			return message("result", "account", id, "errors", List.of(message("error", "code", notes[0].code, "text", Out.withoutSecrets(notes[0].text))));
+		}
+		List<BigDecimalValue> pages = new ArrayList<>();
+		for (GVRWPDepotList.Entry page : statement) {
+			if (page.total != null) pages.add(page.total);
+			else if (page.getEntries().length == 0) pages.add(zero);
+			else pages.add(sum(java.util.Arrays.stream(page.getEntries())
+				.flatMap(g -> g.stueckzinsbetrag == null ? java.util.stream.Stream.of(g.depotwert) : java.util.stream.Stream.of(g.depotwert, g.stueckzinsbetrag)).toList()));
+		}
+		BigDecimalValue total = sum(pages);
+		if (total == null) throw new Failure("unsupported", null, "The bank sent no value for this securities account.");
+		return message("result", "account", id, "balance", message("balance", "amount", total.getValue().toPlainString(), "currency", text(total.getCurr()),
+			"date", statement.length == 0 ? null : day(statement[0].timestamp)), "errors", List.of());
+	}
+
+
+	/// The sum of the values, or null when there are none, or one is missing or has another currency.
+	static BigDecimalValue sum(List<BigDecimalValue> values) {
+		if (values.isEmpty() || values.get(0) == null) return null;
+		String currency = values.get(0).getCurr();
+		BigDecimal sum = BigDecimal.ZERO;
+		for (BigDecimalValue v : values) {
+			if (v == null || !java.util.Objects.equals(currency, v.getCurr())) return null;
+			sum = sum.add(v.getValue());
+		}
+		return new BigDecimalValue(sum, currency);
 	}
 
 	/// The message of one account, or accountFailed when it throws, so that one account that does

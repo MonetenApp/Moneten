@@ -58,7 +58,7 @@ The product registration number arrived on 11 November 2026. The FinTSProbe of i
 
 | Bank | Quirk | Workaround in the helper | Upstream |
 |---|---|---|---|
-| Consorsbank | HKSAL and HKKAZ need HKTAN although the bank parameters say `needtan=N`. HKWPD must stay without HKTAN | Send HKSAL, HKKAZ, and HKCAZ with HKTAN | [hbci4j/hbci4java#155](https://github.com/hbci4j/hbci4java/issues/155) |
+| Consorsbank | HKSAL and HKKAZ need HKTAN although the bank parameters say `needtan=N`. HKWPD must stay without HKTAN | Send HKSAL, HKKAZ, and HKCAZ with HKTAN, and HKWPD without HKTAN (`TAN_RULES` in `Tools/FinTSHelper/FinTSHelper.java`) | [hbci4j/hbci4java#155](https://github.com/hbci4j/hbci4java/issues/155) |
 
 ## What follows
 

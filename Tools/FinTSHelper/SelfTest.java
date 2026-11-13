@@ -26,6 +26,7 @@ import org.kapott.hbci.GV.parsers.ISEPAParser;
 import org.kapott.hbci.GV.parsers.SEPAParserFactory;
 import org.kapott.hbci.GV_Result.GVRKUms;
 import org.kapott.hbci.GV_Result.GVRSaldoReq;
+import org.kapott.hbci.GV_Result.GVRWPDepotList;
 import org.kapott.hbci.GV_Result.GVRKUms.UmsLine;
 import org.kapott.hbci.dialog.DialogContext;
 import org.kapott.hbci.dialog.DialogEvent;
@@ -38,6 +39,7 @@ import org.kapott.hbci.status.HBCIDialogStatus;
 import org.kapott.hbci.status.HBCIExecStatus;
 import org.kapott.hbci.status.HBCIMsgStatus;
 import org.kapott.hbci.status.HBCIRetVal;
+import org.kapott.hbci.structures.BigDecimalValue;
 import org.kapott.hbci.structures.Konto;
 import org.kapott.hbci.structures.Saldo;
 import org.kapott.hbci.structures.Value;
@@ -220,6 +222,8 @@ final class SelfTest {
 				() -> FinTSHelper.result("DE02120300000000202051", null, null, partial, true))),
 				"{\"type\":\"accountFailed\",\"code\":\"3040\",\"text\":\"The bank sent only part of the transactions, so nothing of this account was stored.\",\"account\":\"DE02120300000000202051\"}");
 
+			securities();
+
 			expect("network error", FinTSHelper.Json.write(FinTSHelper.failure(new HBCI_Exception("can not create HBCI handle", new java.net.ConnectException("Connection refused")))),
 				"{\"type\":\"failed\",\"kind\":\"network\",\"text\":\"Connection refused\"}");
 			expect("other error", FinTSHelper.Json.write(FinTSHelper.failure(new HBCI_Exception("can not create HBCI handle"))),
@@ -332,6 +336,135 @@ final class SelfTest {
 			</BkToCstmrAcctRpt>
 			</Document>
 			""".formatted(status, day, amount, direction, name, endToEnd, purpose);
+	}
+
+	/// The value of a securities account from the custody account balance (HKWPD), and what fails it.
+	static void securities() {
+		Konto depot = new Konto(), fund = new Konto(), giro = new Konto(), untyped = new Konto();
+		depot.acctype = "30";
+		fund.acctype = "69";
+		giro.acctype = "1";
+		expect("securities accounts by their type", FinTSHelper.securities(depot) + " " + FinTSHelper.securities(fund) + " "
+			+ FinTSHelper.securities(giro) + " " + FinTSHelper.securities(untyped), "true true false false");
+
+		String valued = FinTSHelper.Json.write(FinTSHelper.alone("7654321", () -> FinTSHelper.value("7654321",
+			holdings("2026-11-12", new BigDecimalValue(new BigDecimal("24518.37"), "EUR"), holding("10000.00", "EUR")), false, "EUR")));
+		fixture.add(valued);
+		expect("securities account with the total of the bank", valued,
+			"{\"type\":\"result\",\"account\":\"7654321\",\"balance\":{\"type\":\"balance\",\"amount\":\"24518.37\",\"currency\":\"EUR\",\"date\":\"2026-11-12\"},\"errors\":[]}");
+		expect("securities account without a total is the sum of its holdings", FinTSHelper.Json.write(FinTSHelper.value("7654321",
+			holdings("2026-11-12", null, holding("10000.00", "EUR"), holding("4518.37", "EUR")), false, "EUR")),
+			"{\"type\":\"result\",\"account\":\"7654321\",\"balance\":{\"type\":\"balance\",\"amount\":\"14518.37\",\"currency\":\"EUR\",\"date\":\"2026-11-12\"},\"errors\":[]}");
+
+		GVRWPDepotList pages = holdings("2026-11-12", new BigDecimalValue(new BigDecimal("10000.00"), "EUR"), holding("10000.00", "EUR"));
+		pages.addEntry(holdings("2026-11-12", null, holding("15000.50", "EUR")).getEntries()[0]);
+		expect("securities account in two pages is the sum of both", FinTSHelper.value("7654321", pages, false, "EUR").get("balance").toString(),
+			"{type=balance, amount=25000.50, currency=EUR, date=2026-11-12}");
+
+		String noValue = FinTSHelper.Json.write(FinTSHelper.alone("7654322", () -> FinTSHelper.value("7654322",
+			holdings("2026-11-12", null, holding("10000.00", "EUR"), holding("4518.37", "USD")), false, "EUR")));
+		fixture.add(noValue);
+		expect("securities account without a value fails", noValue,
+			"{\"type\":\"accountFailed\",\"kind\":\"unsupported\",\"text\":\"The bank sent no value for this securities account.\",\"account\":\"7654322\"}");
+		GVRWPDepotList.Entry.Gattung unvalued = holding("1.00", "EUR");
+		unvalued.depotwert = null;
+		expect("securities account with a holding without a value fails", FinTSHelper.alone("7654322", () -> FinTSHelper.value("7654322",
+			holdings("2026-11-12", null, holding("10000.00", "EUR"), unvalued), false, "EUR")).get("text"), "The bank sent no value for this securities account.");
+		String empty = FinTSHelper.Json.write(FinTSHelper.alone("7654325", () -> FinTSHelper.value("7654325", holdings("2026-11-13", null), false, "EUR")));
+		fixture.add(empty);
+		expect("empty securities account is worth 0", empty,
+			"{\"type\":\"result\",\"account\":\"7654325\",\"balance\":{\"type\":\"balance\",\"amount\":\"0\",\"currency\":\"EUR\",\"date\":\"2026-11-13\"},\"errors\":[]}");
+		expect("empty securities account without a currency counts in euro", String.valueOf(FinTSHelper.alone("7654325", () -> FinTSHelper.value("7654325", holdings("2026-11-13", null), false, null))
+			.get("balance")), "{type=balance, amount=0, currency=EUR, date=2026-11-13}");
+
+		// The MT535 example of FinTS 4.1 Messages - Finanzdatenformate (20.01.2014), pages 172 to 174: the
+		// first HOLD and ACRU of each holding, in the currency of HOLP, add up to its HOLP of EUR 17026,37.
+		GVRWPDepotList.Entry.Gattung bond = holding("6294.65", "EUR");
+		bond.stueckzinsbetrag = new BigDecimalValue(new BigDecimal("1.72"), "EUR");
+		expect("a holding counts with its accrued interest", String.valueOf(FinTSHelper.alone("7654321", () -> FinTSHelper.value("7654321",
+			holdings("2026-11-12", null, holding("5270", "EUR"), holding("5460", "EUR"), bond), false, "EUR")).get("balance")),
+			"{type=balance, amount=17026.37, currency=EUR, date=2026-11-12}");
+		GVRWPDepotList noted = holdings("2026-11-12", new BigDecimalValue(new BigDecimal("24518.37"), "EUR"), holding("24518.37", "EUR"));
+		noted.jobStatus.addRetVal(new HBCIRetVal(null, null, null, "3010", "Keine Einträge vorhanden", null));
+		expect("a statement with a note keeps its value", String.valueOf(FinTSHelper.alone("7654321", () -> FinTSHelper.value("7654321", noted, false, "EUR"))
+			.get("balance")), "{type=balance, amount=24518.37, currency=EUR, date=2026-11-12}");
+		GVRWPDepotList noEntries = new GVRWPDepotList();
+		noEntries.jobStatus.addRetVal(new HBCIRetVal(null, null, null, "3010", "Keine Einträge vorhanden", null));
+		expect("an answer with a note and without a statement shows the note", FinTSHelper.Json.write(FinTSHelper.alone("7654325", () -> FinTSHelper.value("7654325",
+			noEntries, false, "EUR"))), "{\"type\":\"result\",\"account\":\"7654325\",\"errors\":[{\"type\":\"error\",\"code\":\"3010\",\"text\":\"Keine Einträge vorhanden\"}]}");
+		GVRWPDepotList unexplained = new GVRWPDepotList();
+		unexplained.jobStatus.addRetVal(new HBCIRetVal(null, null, null, "0020", "Auftrag ausgeführt", null));
+		expect("an answer without entries and without 3010 fails", FinTSHelper.alone("7654325", () -> FinTSHelper.value("7654325", unexplained, false, "EUR"))
+			.get("text"), "The bank sent no value for this securities account.");
+
+		GVRWPDepotList refused = new GVRWPDepotList();
+		refused.jobStatus.addRetVal(new HBCIRetVal(null, null, null, "9160", "Erforderliche Auftragsreferenz fehlt", null));
+		String refusedLine = FinTSHelper.Json.write(FinTSHelper.alone("7654323", () -> FinTSHelper.value("7654323", refused, false, "EUR")));
+		fixture.add(refusedLine);
+		expect("securities account that the bank refuses", refusedLine,
+			"{\"type\":\"result\",\"account\":\"7654323\",\"errors\":[{\"type\":\"error\",\"code\":\"9160\",\"text\":\"Erforderliche Auftragsreferenz fehlt\"}]}");
+
+		expect("securities account in part fails", FinTSHelper.alone("7654321", () -> FinTSHelper.value("7654321",
+			holdings("2026-11-12", null, holding("10000.00", "EUR")), true, "EUR")).get("code"), "3040");
+
+		// With allowedGVs set, the choice never asks the handler.
+		expect("jobs of a securities account with HKWPD", FinTSHelper.jobs(null, allowing("30", "HKWPD", "HKSAL")), "[WPDepotList]");
+		expect("jobs of a securities account with the balance only", FinTSHelper.jobs(null, allowing("30", "HKSAL")), "[SaldoReq]");
+		expect("jobs of a securities account with neither", FinTSHelper.jobs(null, allowing("30", "HKUEB")), "[]");
+		expect("jobs of a giro account that lists HKWPD", FinTSHelper.jobs(null, allowing("1", "HKWPD", "HKSAL", "HKKAZ")), "[SaldoReq, KUmsAll]");
+		expect("jobs of a giro account with CAMT", FinTSHelper.jobs(null, allowing("1", "HKSAL", "HKCAZ", "HKKAZ")), "[SaldoReq, KUmsAllCamt]");
+		String unreadable = FinTSHelper.Json.write(FinTSHelper.nothingAllowed("7654324", allowing("30", "HKUEB")));
+		fixture.add(unreadable);
+		expect("securities account without HKWPD, HKSAL, and HKKAZ", unreadable,
+			"{\"type\":\"accountFailed\",\"account\":\"7654324\",\"kind\":\"unsupported\",\"text\":\"Moneten can't read this securities account at this bank yet.\"}");
+		expect("giro account without HKSAL and HKKAZ", FinTSHelper.nothingAllowed("1234567890", allowing("1", "HKUEB")).get("text"),
+			"The FinTS server of the bank offers neither the balance nor the transactions of this account.");
+
+		Properties bpd = new Properties();
+		String[] orders = {"HKSAL", "HKKAZ", "HKCAZ", "HKWPD", "HKTAN"};
+		for (int i = 0; i < orders.length; i++) {
+			bpd.setProperty("Params_" + (i + 1) + ".PinTanPar1.ParPinTan.PinTanGV_" + (i + 1) + ".segcode", orders[i]);
+			bpd.setProperty("Params_" + (i + 1) + ".PinTanPar1.ParPinTan.PinTanGV_" + (i + 1) + ".needtan", orders[i].equals("HKWPD") ? "J" : "N");
+		}
+		Properties other = (Properties) bpd.clone();
+		FinTSHelper.applyTanRules("76030080", bpd);
+		FinTSHelper.applyTanRules("12030000", other);
+		expect("Consorsbank: HKSAL and HKKAZ with HKTAN, HKWPD without", needtan(bpd, orders), "HKSAL=J HKKAZ=J HKCAZ=J HKWPD=N HKTAN=N");
+		expect("other banks: HKTAN as their parameters say", needtan(other, orders), "HKSAL=N HKKAZ=N HKCAZ=N HKWPD=J HKTAN=N");
+	}
+
+	static String needtan(Properties bpd, String[] orders) {
+		List<String> all = new ArrayList<>();
+		for (int i = 0; i < orders.length; i++) all.add(orders[i] + "=" + bpd.getProperty("Params_" + (i + 1) + ".PinTanPar1.ParPinTan.PinTanGV_" + (i + 1) + ".needtan"));
+		return String.join(" ", all);
+	}
+
+	/// A custody account balance as hbci4java parses it from MT535: the statement of one day, the total
+	/// of the bank when it sends one, and the holdings with their values.
+	static GVRWPDepotList holdings(String day, BigDecimalValue total, GVRWPDepotList.Entry.Gattung... positions) {
+		GVRWPDepotList result = new GVRWPDepotList();
+		result.jobStatus.addRetVal(new HBCIRetVal(null, null, null, "0020", "ok", null));
+		GVRWPDepotList.Entry entry = new GVRWPDepotList.Entry();
+		entry.timestamp = FinTSHelper.date(day);
+		entry.total = total;
+		for (GVRWPDepotList.Entry.Gattung g : positions) entry.addEntry(g);
+		result.addEntry(entry);
+		return result;
+	}
+
+	/// An account of the FinTS type `type` that the bank parameters allow `orders` for.
+	static Konto allowing(String type, String... orders) {
+		Konto k = new Konto();
+		k.acctype = type;
+		k.allowedGVs = new ArrayList<>(List.of(orders));
+		return k;
+	}
+
+	static GVRWPDepotList.Entry.Gattung holding(String value, String currency) {
+		GVRWPDepotList.Entry.Gattung g = new GVRWPDepotList.Entry.Gattung();
+		g.isin = "DE0001234567";
+		g.depotwert = new BigDecimalValue(new BigDecimal(value), currency);
+		return g;
 	}
 
 	/// A passport with made-up bank parameters: a PIN of 5 to 10 characters, and the methods pushTAN 2.0

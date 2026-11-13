@@ -9,6 +9,8 @@
 # "Girokonto" with the test IBAN, "Tagesgeld", and "Kreditkarte". The state of the access counts the
 # refreshes: the second refresh fails "Tagesgeld" with an error of the bank, and the others succeed.
 # The login "unterkonten" lists two subaccounts of the account number 9 in place of these accounts.
+# The login "depot" lists "Girokonto" and two securities accounts: "Depot", whose refresh brings its value,
+# and "Fondsdepot", which the bank does not offer through FinTS.
 # The bank directory has two branches of Musterbank, the bank without a FinTS server Neobank Muster
 # (99999999), a made-up Sparkasse, and Consorsbank (76030080) and DAB BNP Paribas (70120400) with
 # their real FinTS address, so the setup shows the login hint of Consorsbank and none for DAB.
@@ -61,6 +63,11 @@ case "$cmd" in
 		echo '{"type":"accounts","accounts":[{"number":"9","subnumber":"01","product":"Sparkonto","kind":"10","currency":"EUR"},{"number":"9","subnumber":"02","product":"Sparkonto Plus","kind":"10","currency":"EUR"}]}'
 		echo '{"type":"state","data":"MA=="}'
 		exit 0
+	;;
+	*'"user":"depot"'*)
+		echo '{"type":"accounts","accounts":[{"number":"202051","iban":"DE02120300000000202051","bic":"BYLADEM1001","product":"Girokonto","kind":"1","owner":"Erika Mustermann","currency":"EUR"},{"number":"7654321","product":"Depot","kind":"30","owner":"Erika Mustermann","currency":"EUR"},{"number":"7654324","product":"Fondsdepot","kind":"30","owner":"Erika Mustermann","currency":"EUR"}]}'
+		echo '{"type":"state","data":"MA=="}'
+		exit 0
 	;; esac
 	echo '{"type":"accounts","accounts":[{"number":"202051","iban":"DE02120300000000202051","bic":"BYLADEM1001","product":"Girokonto","kind":"1","owner":"Erika Mustermann","currency":"EUR"},{"number":"1234567890","product":"Tagesgeld","kind":"10","owner":"Erika Mustermann","currency":"EUR"},{"number":"4711","product":"Kreditkarte","kind":"50","currency":"EUR"}]}'
 	echo '{"type":"state","data":"MA=="}'
@@ -85,6 +92,12 @@ case "$cmd" in
 	echo '{"type":"progress","done":2,"of":3}'
 	case "$cmd" in *'"id":"4711"'*)
 		echo "{\"type\":\"result\",\"account\":\"4711\",\"balance\":{\"amount\":\"-120.00\",\"currency\":\"EUR\",\"date\":\"$(day 0)\"},\"errors\":[]}"
+	;; esac
+	case "$cmd" in *'"id":"7654321"'*)
+		echo "{\"type\":\"result\",\"account\":\"7654321\",\"balance\":{\"amount\":\"24518.37\",\"currency\":\"EUR\",\"date\":\"$(day 1)\"},\"errors\":[]}"
+	;; esac
+	case "$cmd" in *'"id":"7654324"'*)
+		echo '{"type":"accountFailed","account":"7654324","kind":"unsupported","text":"Moneten can'"'"'t read this securities account at this bank yet."}'
 	;; esac
 	echo "{\"type\":\"state\",\"data\":\"$(printf '%s' $(( ${runs:-0} + 1 )) | base64)\"}"
 	;;
