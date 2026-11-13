@@ -8,6 +8,7 @@ import Testing
 	final class Session {
 		private(set) var requests: [HTTPRequest] = []
 		private(set) var random: [RandomValue] = []
+		private(set) var keys: [Int] = []
 		private(set) var session: HostSession!
 
 		init(_ source: String, capture: Capture, _ exchanges: [(String, [String: String])] = []) {
@@ -16,7 +17,8 @@ import Testing
 			}])
 			let transport = FixtureTransport(fixture) { [unowned self] in requests.append($0) }
 			session = HostSession(package: demo("WebBanking{version = 1}\n" + source, hosts: ["bank.example"]), transport: transport, capture: capture,
-				ask: { _ in .denied }, log: { _ in }, random: { [unowned self] in random.append($0) })
+				ask: { _ in .denied }, log: { _ in }, random: { [unowned self] in random.append($0) },
+				keyUse: { [unowned self] in keys.append($0) })
 		}
 
 		func call() -> LuaValue {
@@ -70,6 +72,22 @@ import Testing
 		let decoded = try JSONDecoder().decode([RandomValue].self, from: Data(#"[{"withheld": 32}, {"withheld": "uuid"}, {"bytes": "AQID"}]"#.utf8))
 		#expect(decoded == [.withheldBytes(32), .withheldUUID, .bytes(Data([1, 2, 3]))])
 		#expect(try JSONDecoder().decode([RandomValue].self, from: JSONEncoder().encode(decoded)) == decoded)
+	}
+
+	/// A recording reports each value that the script used as a key, an IV, or the key of an HMAC, also
+	/// as hex or Base64, and not one that it only sent.
+	@Test func keysOfARecordingAreReported() {
+		let run = Session("""
+			function Check()
+				local key, iv, sent, mac = MM.random(32), MM.random(16), MM.uuid(), MM.random(16)
+				MM.aes256encrypt(key, iv, "geheim123")
+				MM.hmac256(MM.binToHex(mac), "data")
+				return sent
+			end
+			""", capture: .record(start: 1_794_218_400))
+		_ = run.call()
+		#expect(run.random.count == 4)
+		#expect(run.keys == [0, 1, 3])
 	}
 
 	@Test func maxAgeCountsOnTheClockOfTheSession() {

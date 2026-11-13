@@ -87,13 +87,40 @@ final class SessionClock {
 final class Entropy {
 	private var recorded: [RandomValue]?
 	private let report: ((RandomValue) -> Void)?
+	/// Gets the index of a reported value that the script used as a key, for `ext record`.
+	private let keyUse: (Int) -> Void
+	/// The values of a recording in order, as `report` got them.
+	private var produced: [RandomValue] = []
 	private var counter: UInt64 = 0
 
-	init(_ capture: Capture?, report: @escaping (RandomValue) -> Void) {
+	init(_ capture: Capture?, report: @escaping (RandomValue) -> Void, keyUse: @escaping (Int) -> Void = { _ in }) {
 		switch capture {
 		case nil: (recorded, self.report) = (nil, nil)
 		case .record: (recorded, self.report) = (nil, report)
 		case let .replay(_, random): (recorded, self.report) = (random, nil)
+		}
+		self.keyUse = keyUse
+	}
+
+	/// Reports the recorded value that the script passes as the key or the IV of an encryption or as
+	/// the key of an HMAC, as bytes or in a text form. `ext record` never keeps such a value in a fixture.
+	func usedAsKey(_ key: Data) {
+		guard report != nil, let index = produced.firstIndex(where: { Self.value($0, isKey: key) }) else { return }
+		keyUse(index)
+	}
+
+	private static func value(_ value: RandomValue, isKey key: Data) -> Bool {
+		let text = String(decoding: key, as: UTF8.self).lowercased()
+		switch value {
+		case let .bytes(data):
+			let base64 = data.base64EncodedString()
+			let url = base64.replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_")
+			let forms = [data.map { String(format: "%02x", $0) }.joined(), base64, url].flatMap { [$0, $0.trimmingCharacters(in: CharacterSet(charactersIn: "="))] }
+			return data == key || forms.contains { $0.lowercased() == text }
+		case let .uuid(uuid):
+			return text == uuid.lowercased() || text == uuid.lowercased().replacingOccurrences(of: "-", with: "")
+		case .withheldBytes, .withheldUUID:
+			return false
 		}
 	}
 
@@ -111,7 +138,10 @@ final class Entropy {
 			}
 		}
 		let data = Self.system(count)
-		report?(.bytes(data))
+		if let report {
+			produced.append(.bytes(data))
+			report(.bytes(data))
+		}
 		return data
 	}
 
@@ -133,7 +163,10 @@ final class Entropy {
 				bytes[12], bytes[13], bytes[14], bytes[15])).uuidString.lowercased()
 		}
 		let text = UUID().uuidString.lowercased()
-		report?(.uuid(text))
+		if let report {
+			produced.append(.uuid(text))
+			report(.uuid(text))
+		}
 		return text
 	}
 

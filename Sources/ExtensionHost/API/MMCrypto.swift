@@ -33,6 +33,7 @@ enum MMCrypto {
 	private static func hmac<H: HashFunction>(_ L: OpaquePointer?, _: H.Type) -> Int32 {
 		let stack = LuaStack(L!)
 		guard let key = stack.data(at: 1), let data = stack.data(at: 2) else { return stack.returning(.null) }
+		HostSession.current(L).entropy.usedAsKey(key)
 		return stack.returning(Data(HMAC<H>.authenticationCode(for: data, using: SymmetricKey(data: key))))
 	}
 
@@ -147,6 +148,8 @@ enum MMCrypto {
 	private static let aes256encrypt: clua_Function = { L in
 		let stack = LuaStack(L!)
 		guard let key = stack.data(at: 1), key.count == 32, let iv = stack.data(at: 2), let data = stack.data(at: 3) else { return stack.returning(.null) }
+		HostSession.current(L).entropy.usedAsKey(key)
+		HostSession.current(L).entropy.usedAsKey(iv)
 		switch stack.text(at: 4) ?? "aes256 cbc" {
 		case "aes256 cbc":
 			return stack.returning(cbc(kCCEncrypt, key: key, iv: iv, data: data))
@@ -164,6 +167,8 @@ enum MMCrypto {
 	private static let aes256decrypt: clua_Function = { L in
 		let stack = LuaStack(L!)
 		guard let key = stack.data(at: 1), key.count == 32, let iv = stack.data(at: 2), let data = stack.data(at: 3) else { return stack.returning(.null) }
+		HostSession.current(L).entropy.usedAsKey(key)
+		HostSession.current(L).entropy.usedAsKey(iv)
 		switch stack.text(at: 4) ?? "aes256 cbc" {
 		case "aes256 cbc":
 			return stack.returning(cbc(kCCDecrypt, key: key, iv: iv, data: data))
