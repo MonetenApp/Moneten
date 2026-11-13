@@ -132,9 +132,8 @@ final class FixtureTransport: Transport {
 
 	func send(_ request: HTTPRequest) throws -> HTTPResponse {
 		onSend(request)
-		let index = unused.firstIndex { $0.request.method == request.method && $0.request.url == request.url }
-			?? unused.firstIndex { $0.request.method == request.method && Self.key($0.request.url) == Self.key(request.url) }
-		guard let index else {
+		let key = Self.key(request.url)
+		guard let index = unused.firstIndex(where: { $0.request.method == request.method && Self.key($0.request.url) == key }) else {
 			throw ScriptError("The fixture has no response for \(request.method) \(request.url.absoluteString).")
 		}
 		let response = unused.remove(at: index).response
