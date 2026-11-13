@@ -511,12 +511,18 @@ The app SHALL read these fields of a TAN method table. `name` is required. `medi
 
 ### Requirement: Captcha challenge
 
-The app SHALL show a captcha in an embedded browser when `challenge` is the script URL of Google reCAPTCHA, hCaptcha, FriendlyCaptcha, or Amazon WAF. The URL carries the `sitekey`, and optionally `type=checkbox` and `referer`. The app tries an invisible variant without the user first. The next call receives the solution token in `credentials[1]`.
+The app SHALL show a captcha in an embedded browser when `challenge` is the script URL of Google reCAPTCHA, hCaptcha, FriendlyCaptcha, or Amazon WAF, also when the table has a `label`. The URL carries the `sitekey`, and optionally `type=checkbox` and `referer`. The app tries an invisible variant without the user first. The next call receives the solution token in `credentials[1]`.
 
 #### Scenario: Visible reCAPTCHA
 
 - **WHEN** the function returns `{challenge="https://www.recaptcha.net/recaptcha/api.js?sitekey=KEY&type=checkbox&referer=https%3A%2F%2Fbank.example%2Flogin"}`
 - **THEN** the app shows the checkbox captcha for the page `https://bank.example/login`
+- **AND** after the user solves it, the next call has the token in `credentials[1]`
+
+#### Scenario: Captcha next to a label
+
+- **WHEN** the function returns `{challenge="https://abc123.token.awswaf.com/abc123/def/challenge.js?sitekey=KEY&referer=https%3A%2F%2Fbank.example", label="Bot-Prüfung"}`
+- **THEN** the app shows the Amazon WAF captcha for the page `https://bank.example/`, not an entry field
 - **AND** after the user solves it, the next call has the token in `credentials[1]`
 
 ### Requirement: Approval in a browser window
