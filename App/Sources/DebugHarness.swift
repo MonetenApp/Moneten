@@ -345,6 +345,7 @@ final class DebugHarness {
 		case "cancel": model.closeAccountSetup()
 		default: break
 		}
+		log("setup service=\(setup.service?.title ?? "-") other=\(setup.otherServices.map(\.title)) error=\(setup.serviceError ?? "-")")
 		log("setup step=\(setup.step) lookup=\(setup.lookup.state) error=\(setup.loginError ?? "-") saveError=\(setup.saveError ?? "-") dialog=\(model.sync.broker.current != nil) candidates=\(setup.candidates.map { "\($0.id):\(Self.label($0.match))" }) selected=\(setup.selected.sorted())")
 	}
 
