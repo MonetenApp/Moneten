@@ -147,6 +147,10 @@ struct ChallengeMapping {
 			return .choose(choice, methods: methods)
 		}
 		let text = prompt(for: table)
+		// The script URL of a captcha service alone makes a captcha, also next to a label.
+		if case let .url(url) = table.content, table.appToApp == nil, table.tanMethod?.name != qrCodeName, let captcha = try captcha(url) {
+			return .answer(request(.captcha(captcha), table), stepIncrement: increment)
+		}
 		switch table.content {
 		case let .url(url) where table.appToApp != nil || table.tanMethod?.name == qrCodeName:
 			let image = Self.qrCode(url.absoluteString).map(ChallengeImage.init)
@@ -157,7 +161,6 @@ struct ChallengeMapping {
 			}
 			return .answer(request(.enterTAN(prompt: notice, image: image), table), stepIncrement: increment)
 		case let .url(url) where table.label == nil:
-			if let captcha = try captcha(url) { return .answer(request(.captcha(captcha), table), stepIncrement: increment) }
 			guard let host = url.host()?.lowercased(), hosts.contains(host) else {
 				throw MappingError("The login page \(url.host() ?? url.absoluteString) is not a host that the extension may contact.")
 			}
