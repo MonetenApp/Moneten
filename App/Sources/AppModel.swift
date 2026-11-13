@@ -5,6 +5,7 @@ import ExtensionConnector
 import FinTS
 import Foundation
 import Import
+import Network
 import Observation
 import Storage
 import Sync
@@ -83,6 +84,8 @@ enum Preference {
 	static let balanceMode = "balanceMode"
 	/// "Update extensions automatically" in the Extensions window, on unless the user turns it off.
 	static let updateExtensionsAutomatically = "updateExtensionsAutomatically"
+	/// "Show Moneten icon in menu bar", off unless the user turns it on.
+	static let showMenuBarIcon = "showMenuBarIcon"
 
 	/// The app locks after 10 minutes without activity unless the user turns it off. MoneyMoney has
 	/// this off and suggests 5 minutes; the owner chose on with 10 minutes.
@@ -146,7 +149,23 @@ final class AppModel {
 	private(set) var phase: Phase = .starting
 	private(set) var hasPassword = false
 	private(set) var store: Store?
-	private(set) var ledger = Ledger()
+	private(set) var ledger = Ledger() {
+		// While locked the ledger is empty, which says nothing about the notifications of the database.
+		didSet { if store != nil { notices.update(newCounts: ledger.newTransactionCounts) } }
+	}
+	/// "Automatically refresh accounts" and the notification settings of the "General" tab.
+	let refreshSettings = RefreshSettings(defaults: .standard)
+	let autoRefresh: AutoRefresh
+	let notices = Notices()
+	private let announcer: NewTransactionsAnnouncer
+	/// False while macOS reports no network path, so a manual refresh says so and the automatic one waits.
+	private(set) var isOnline = true
+	private let pathMonitor = NWPathMonitor()
+	private var refreshTimer: Timer?
+	/// The accounts of a notification that the user clicked while the app was locked, selected after the unlock.
+	private var notifiedAccounts: [UUID]?
+	/// Opens the main window, also when it is closed. The window sets it, because only a view can open a scene.
+	@ObservationIgnored var openMainWindow: () -> Void = {}
 
 	var selection: SidebarSelection?
 	var filter = TransactionFilter()
@@ -200,16 +219,29 @@ final class AppModel {
 
 	init() {
 		Preference.registerDefaults()
+		autoRefresh = AutoRefresh(settings: refreshSettings, now: Self.refreshClock)
+		announcer = NewTransactionsAnnouncer(settings: refreshSettings, center: notices)
 		// A closure that captures `self` can be handed over only once every stored property is set.
-		sync.deliver = { [weak self] accountID, result in try self?.merge(.refresh(result), into: accountID) }
+		sync.deliver = { [weak self] accountID, result in
+			guard let self else { return }
+			announcer.stored(try merge(.refresh(result), into: accountID).added)
+		}
 		sync.ended = { [weak self] access, state, accounts in
 			self?.recordRefresh(of: access, state: state, accounts: accounts)
 			self?.extensions.sessionEnded()
 		}
+		// Locked, the notification names no account.
+		sync.runEnded = { [weak self] in
+			guard let self else { return }
+			announcer.runEnded(ledger: phase == .unlocked ? ledger : nil)
+		}
+		autoRefresh.run = { [weak self] now in self?.refreshDue(at: now) }
+		notices.onOpen = { [weak self] accounts in self?.show(notified: accounts) }
 		extensions.model = self
 		sync.broker.onStoreFailure = { [weak self] failure in self?.alert = AlertMessage(title: failure.title, message: failure.message) }
 		start()
 		installActivityMonitor()
+		installRefreshTriggers()
 	}
 
 	// MARK: Opening and locking
@@ -296,11 +328,19 @@ final class AppModel {
 		lastActivity = Date()
 		phase = .unlocked
 		extensions.open(store)
+		notices.update(newCounts: ledger.newTransactionCounts)
+		if let notified = notifiedAccounts {
+			notifiedAccounts = nil
+			select(notified: notified)
+		}
+		autoRefresh.isUnlocked = true
 	}
 
 	func lock() {
 		guard hasPassword, phase == .unlocked else { return }
 		// A locked app refreshes nothing and forgets every PIN in memory. The saved ones come back from the database at the next unlock.
+		autoRefresh.isUnlocked = false
+		notices.clearBadge()
 		sync.cancelAll()
 		sync.broker.forgetPINs()
 		extensionSetupStates.clear()
@@ -637,28 +677,86 @@ final class AppModel {
 		return FinTSConnector()
 	}
 
-	/// "Refresh All Accounts", "Refresh Account", and "Refresh Accounts".
+	/// "Refresh All Accounts", "Refresh Account", and "Refresh Accounts". Offline the accounts keep their
+	/// last state, and the app says why nothing happens.
 	func refresh(_ scope: RefreshScope) {
+		guard isOnline else {
+			alert = AlertMessage(title: SyncFailure.offline.message, message: "Connect this Mac to the Internet and try again.")
+			return
+		}
 		refresh(ledger.refreshAccounts(scope))
+	}
+
+	/// The automatic refresh: the due accounts, without any dialog.
+	private func refreshDue(at now: Date) {
+		let plan = ledger.dueAccounts(at: now)
+		guard !plan.isEmpty else { return }
+		DebugHarness.shared?.log("autorefresh accesses=\(plan.count) accounts=\(plan.values.map(\.count).reduce(0, +))")
+		refresh(plan, attended: false)
+	}
+
+	/// The clock of the automatic refresh. A debug build moves it ahead by `MONETEN_DEBUG_CLOCK_OFFSET`
+	/// seconds, so that a check of the app sees an account become due within a minute.
+	private static func refreshClock() -> Date {
+		#if DEBUG
+		if let offset = ProcessInfo.processInfo.environment["MONETEN_DEBUG_CLOCK_OFFSET"].flatMap(TimeInterval.init) { return Date() + offset }
+		#endif
+		return Date()
+	}
+
+	/// The timer of the automatic refresh, the sleep and the wake of the display, and the network.
+	private func installRefreshTriggers() {
+		refreshTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+			MainActor.assumeIsolated { self?.autoRefresh.tick() }
+		}
+		refreshTimer?.tolerance = 10
+		autoRefresh.isUserPresent = CGDisplayIsAsleep(CGMainDisplayID()) == 0
+		let workspace = NSWorkspace.shared.notificationCenter
+		for (name, present) in [(NSWorkspace.screensDidSleepNotification, false), (NSWorkspace.willSleepNotification, false),
+			(NSWorkspace.screensDidWakeNotification, true)] {
+			workspace.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+				MainActor.assumeIsolated { self?.autoRefresh.isUserPresent = present }
+			}
+		}
+		pathMonitor.pathUpdateHandler = { [weak self] path in
+			MainActor.assumeIsolated {
+				self?.isOnline = path.status == .satisfied
+				self?.autoRefresh.isOnline = path.status == .satisfied
+			}
+		}
+		pathMonitor.start(queue: .main)
+	}
+
+	/// A click on a notification: the main window with the first of its accounts, after the unlock when the app is locked.
+	func show(notified accounts: [UUID]) {
+		NSApp.activate()
+		openMainWindow()
+		if phase == .unlocked { select(notified: accounts) } else { notifiedAccounts = accounts }
+	}
+
+	private func select(notified accounts: [UUID]) {
+		guard let first = ledger.accountsInSidebarOrder.first(where: { accounts.contains($0.id) }) else { return }
+		navigate(to: .account(first.id))
 	}
 
 	func canRefresh(_ scope: RefreshScope) -> Bool {
 		phase == .unlocked && !ledger.refreshAccounts(scope).isEmpty
 	}
 
-	/// Starts one refresh per access, with the state its connector returned last.
+	/// Starts one refresh per access, with the state its connector returned last. Only a refresh that the
+	/// user started shows an alert.
 	func refresh(_ plan: [UUID: [AccountRequest]], attended: Bool = true) {
 		guard let store else { return }
 		let requests = plan.compactMap { id, accounts in accesses[id].map { ($0, accounts) } }.sorted { $0.0.bankName < $1.0.bankName }
 		for (access, accounts) in requests {
 			guard let connector = connector(for: access.source) else {
-				alert = AlertMessage(title: "Could not refresh \(access.bankName).", message: "Moneten has no connector for this access yet.")
+				if attended { alert = AlertMessage(title: "Could not refresh \(access.bankName).", message: "Moneten has no connector for this access yet.") }
 				continue
 			}
 			do {
 				sync.refresh(RefreshRequest(access: access, state: try store.state(of: access.id), accounts: accounts), with: connector, attended: attended)
 			} catch {
-				alert = AlertMessage(title: "Could not refresh \(access.bankName).", message: String(describing: error))
+				if attended { alert = AlertMessage(title: "Could not refresh \(access.bankName).", message: String(describing: error)) }
 			}
 		}
 	}

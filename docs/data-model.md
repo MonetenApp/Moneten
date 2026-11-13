@@ -19,7 +19,7 @@ The specs in [openspec/changes](../openspec/changes/) define the behavior. Where
 | Type | Fields |
 |---|---|
 | `AccountGroup` | `id`, `name`, `parentID?`, `position`, `showSum`, `isExpanded` |
-| `Account` | `id`, `groupID?`, `position`, `name`, `kind`, `source`, `currency`, `iban?`, `bic?`, `accountNumber?`, `bankCode?`, `bankName?`, `owner?`, `bankBalanceMinor?`, `bankBalanceDate?`, `initialBalanceMinor`, `initialBalanceIsSet`, `isClosed`, `comment?`, `sourceID?`, `color?`, `accessID?`, `remoteID?`, `refreshedAt?`, `refreshError?` |
+| `Account` | `id`, `groupID?`, `position`, `name`, `kind`, `source`, `currency`, `iban?`, `bic?`, `accountNumber?`, `bankCode?`, `bankName?`, `owner?`, `bankBalanceMinor?`, `bankBalanceDate?`, `initialBalanceMinor`, `initialBalanceIsSet`, `isClosed`, `comment?`, `sourceID?`, `color?`, `accessID?`, `remoteID?`, `refreshedAt?`, `refreshError?`, `refreshInterval` |
 | `AccountKind` | `giro`, `savings`, `fixedTermDeposit`, `loan`, `creditCard`, `portfolio`, `cash`, `other` |
 | `AccountSource` | `offline` for an account that the user fills by hand or by import, `migrated` for an account taken over from MoneyMoney, `bank` for an account that its bank access refreshes |
 
@@ -33,11 +33,11 @@ An account with a `bankBalanceMinor` shows that balance. Other accounts show `in
 |---|---|---|
 | `Access` | `id`, `source`, `bankName`, `loginName` | One login at one source. All its accounts are refreshed in one session. The table `access` stores it with the opaque `AccessState` of its connector, which never holds a PIN. A refresh that returns no state keeps the last one. |
 | `AccessSource` | `fints(bankCode, url)`, `extension(id)`, `finAPI(connection)` | Stored as JSON, so a new source needs no migration. |
-| `RefreshError` | `message`, `code?`, `date`, `notices` | The error of the last refresh of an account, until a refresh of the account succeeds. |
+| `RefreshError` | `message`, `code?`, `date`, `notices`, `waitsForUser` | The error of the last refresh of an account, until a refresh of the account succeeds. `waitsForUser` marks an error that only the user can resolve, such as a TAN that an automatic refresh could not ask for. |
 
 The table `savedPIN` holds the PIN of an access whose user turned on "Save PIN", as a `Secret` by `accessID`. `SessionBroker` writes it through `SavedPINStore` only after a refresh or a setup with it succeeded, and deletes it when the bank rejects it or the user chooses "Remove saved PIN". It goes with its access. No other table, no `AccessState`, no setting, and no Keychain entry holds a PIN.
 
-An account with an `accessID` is refreshed through that access, which knows it by `remoteID`, for example the IBAN. `refreshedAt` is the end of its last successful refresh, and the next refresh asks for the transactions from 14 days before it. A migrated account that the setup finds again by IBAN, or by account number and Bankleitzahl, takes over the access and keeps its history. Any other account that the app has already is never added twice.
+An account with an `accessID` is refreshed through that access, which knows it by `remoteID`, for example the IBAN. `refreshedAt` is the end of its last successful refresh, and the next refresh asks for the transactions from 14 days before it. A migrated account that the setup finds again by IBAN, or by account number and Bankleitzahl, takes over the access and keeps its history. Any other account that the app has already is never added twice. `refreshInterval` is "Refresh" in the account settings, a `RefreshInterval` from `everyTwoHours` to `never`. `Ledger.dueAccounts(at:)` names the accounts that the automatic refresh fetches: those whose interval passed since their last refresh, or since the failure of the last one, without an error that waits for the user.
 
 A closed account keeps its transactions, shows no balance in the sidebar, and is left out of the sum of its group.
 
@@ -103,7 +103,7 @@ Refreshes and file imports go through `reconcile`, which recognizes a stored row
 | `extensionCatalog` | One row: the bytes of the catalog index that the app accepted last, its signature, and the version floor of each catalog key as `KeyFloors`. The signature lets the app rebuild the floors when they cannot be read |
 | `installedExtension` | The origin of an installed extension by its name, `catalog` with its `InstalledPackage` or `file` with the digests the user allowed |
 
-Migration `v1` creates the tables. It also creates the table `setting`, which no code uses, because app settings live in `UserDefaults`. Migration `v2` drops it. Migration `v4` adds `portfolioValue`, whose rows go with their account. Migration `v5` adds `account.color`, the `#RRGGBB` color of the account's icon. Migration `v6` adds `bankTransaction.needsReview` and `bankTransaction.isFetched`, both false for existing rows, and the table `deletedTransaction`. It rewrites no row. Migration `v7` adds the table `access` and the columns `account.accessID`, `account.remoteID`, `account.refreshedAt`, and `account.refreshError`, all empty for existing accounts. Migration `v8` adds `extensionHostDecision`. Migration `v9` adds the table `savedPIN`, whose rows go with their access. Migration `v10` adds `extensionCatalog` and `installedExtension`.
+Migration `v1` creates the tables. It also creates the table `setting`, which no code uses, because app settings live in `UserDefaults`. Migration `v2` drops it. Migration `v4` adds `portfolioValue`, whose rows go with their account. Migration `v5` adds `account.color`, the `#RRGGBB` color of the account's icon. Migration `v6` adds `bankTransaction.needsReview` and `bankTransaction.isFetched`, both false for existing rows, and the table `deletedTransaction`. It rewrites no row. Migration `v7` adds the table `access` and the columns `account.accessID`, `account.remoteID`, `account.refreshedAt`, and `account.refreshError`, all empty for existing accounts. Migration `v8` adds `extensionHostDecision`. Migration `v9` adds the table `savedPIN`, whose rows go with their access. Migration `v10` adds `extensionCatalog` and `installedExtension`. Migration `v12` adds `account.refreshInterval`, `everyTwoHours` for existing accounts.
 
 ## Types that the specs add later
 

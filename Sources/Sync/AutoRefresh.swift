@@ -24,7 +24,7 @@ public struct RefreshSettings {
 /// Decides when the automatic refresh runs: at each tick of the timer of the app, and at once when the
 /// last condition that held it back clears. That covers the launch, the unlock, the wake, and the return
 /// of the connection. Nothing runs while the setting is off, the app is locked, the display sleeps (also
-/// in Power Nap), or the Mac is offline. `run` gets the time and starts the accounts that are due then.
+/// in Power Nap), or the Mac is offline.
 @MainActor
 public final class AutoRefresh {
 	public var isUnlocked = false {
@@ -37,14 +37,14 @@ public final class AutoRefresh {
 	public var isOnline = false {
 		didSet { if isOnline, !oldValue { tick() } }
 	}
+	/// Gets the time and starts the accounts that are due then.
+	public var run: (Date) -> Void = { _ in }
 	private let settings: RefreshSettings
 	private let now: () -> Date
-	private let run: (Date) -> Void
 
-	public init(settings: RefreshSettings, now: @escaping () -> Date = Date.init, run: @escaping (Date) -> Void) {
+	public init(settings: RefreshSettings, now: @escaping () -> Date = Date.init) {
 		self.settings = settings
 		self.now = now
-		self.run = run
 	}
 
 	public func tick() {

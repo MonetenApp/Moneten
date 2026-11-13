@@ -37,7 +37,13 @@ public struct NewTransactionsNotice: Sendable, Equatable {
 		var sums: [String: Int64] = [:]
 		for t in rows { sums[t.currency, default: 0] += t.amountMinor }
 		let signs = Set(sums.values.map { $0.signum() })
-		tone = signs == [1] || signs == [0, 1] ? .positive : signs == [-1] || signs == [-1, 0] ? .negative : .neutral
+		if signs.contains(1), !signs.contains(-1) {
+			tone = .positive
+		} else if signs.contains(-1), !signs.contains(1) {
+			tone = .negative
+		} else {
+			tone = .neutral
+		}
 	}
 }
 

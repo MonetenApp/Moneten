@@ -6,6 +6,7 @@ import Foundation
 import Sync
 import SyncTesting
 import SwiftUI
+import UserNotifications
 
 /// Lets a developer drive the app and capture its windows as images, for checks without a screen.
 ///
@@ -72,7 +73,7 @@ final class DebugHarness {
 		case "appearance": NSApp.appearance = NSAppearance(named: argument == "dark" ? .darkAqua : .aqua)
 		case "settingssnapshot":
 			offscreenSnapshot(SecuritySettings().environment(model), width: 500, name: "\(argument)-security")
-			offscreenSnapshot(AboutSettings().environment(model), width: 500, name: "\(argument)-general")
+			offscreenSnapshot(GeneralSettings().environment(model), width: 500, name: "\(argument)-general")
 		case "storepassword": log("storepassword \((try? model.vault.storePassword(argument)) != nil)")
 		case "removepassword": try? model.vault.removeStoredPassword()
 		case "seed": DemoData.seed(model)
@@ -130,9 +131,13 @@ final class DebugHarness {
 		case "status":
 			// Each account by its position and kind, never by its name, IBAN, or account number.
 			for (position, a) in model.ledger.accounts.filter({ $0.accessID != nil }).enumerated() {
-				log("status #\(position) \(a.kind) refreshing=\(model.sync.refreshingAccounts.contains(a.id)) refreshedAt=\(a.refreshedAt.map { "\($0)" } ?? "-") error=\(a.refreshError?.message ?? "-") balance=\(a.bankBalanceMinor.map(String.init) ?? "-") rows=\(model.ledger.transactions(ofAccount: a.id).count)")
+				log("status #\(position) \(a.kind) refreshing=\(model.sync.refreshingAccounts.contains(a.id)) refreshedAt=\(a.refreshedAt.map { "\($0)" } ?? "-") error=\(a.refreshError?.message ?? "-") waitsForUser=\(a.refreshError?.waitsForUser ?? false) interval=\(a.refreshInterval.rawValue) balance=\(a.bankBalanceMinor.map(String.init) ?? "-") rows=\(model.ledger.transactions(ofAccount: a.id).count) new=\(model.ledger.newTransactionCounts[a.id] ?? 0)")
 			}
 			log("status line=\(model.refreshStatus ?? "-") accesses=\(model.accesses.count)")
+		// The popover of the menu bar icon, drawn offscreen.
+		case "menubarsnapshot": offscreenSnapshot(MenuBarPopover().environment(model), width: 340, name: argument)
+		// The delivered notifications of this app in the Notification Center, with their titles and the number of their accounts.
+		case "notices": logNotices()
 		case "errorsnapshot":
 			if let error = model.ledger.accounts.first(where: { $0.name == argument })?.refreshError {
 				offscreenSnapshot(RefreshErrorPopover(error: error), width: 352, name: "\(argument)-error")
@@ -495,6 +500,20 @@ final class DebugHarness {
 	private func answer(_ make: () -> UserAnswer) {
 		guard let model, let prompt = model.sync.broker.current else { return log("ext no dialog") }
 		model.sync.broker.answer(make(), to: prompt.id)
+	}
+
+	/// The permission of the app and its notifications in the Notification Center, without the account names of their text.
+	private func logNotices() {
+		Task {
+			let center = UNUserNotificationCenter.current()
+			let settings = await center.notificationSettings()
+			let delivered = await center.deliveredNotifications()
+			log("notices authorization=\(settings.authorizationStatus.rawValue) delivered=\(delivered.count)")
+			for note in delivered {
+				let accounts = note.request.content.userInfo["accounts"] as? [String] ?? []
+				log("notice \(note.request.content.title) accounts=\(accounts.count) sound=\(note.request.content.sound != nil)")
+			}
+		}
 	}
 
 	/// The dialog on screen, without any value the user typed.

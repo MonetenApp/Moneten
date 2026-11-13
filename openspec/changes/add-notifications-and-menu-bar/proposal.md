@@ -52,4 +52,12 @@ None.
 - The content and the actions of the menu bar popover are defined here. Only its existence was observed.
 - The banner is on by default. The sound and the menu bar icon are off by default. The default settings file of MoneyMoney turns the current menu bar key off and lists no default for the banner and the sound.
 - When macOS denies notifications, the settings say where to allow them. Not observed.
-- A notification about new transactions is removed when the user has seen the transactions.
+- A notification about new transactions is removed when the user has seen the transactions. It goes once none of the accounts it names has a new transaction left.
+- The notification separates the account names with commas. While the app is locked its text has only the count.
+- The banner also appears while Moneten is the active app. Not observed.
+- The app asks macOS for the permission when the user turns on the banner or the sound, or when the first notification is due. It never asks at the launch.
+- With the banner off and the sound on, the app plays the sound without a notification, and a Focus does not silence it, because macOS tells an app about a Focus only with an entitlement for communication apps. With the banner on, the sound is part of the notification, and a Focus silences both.
+- The Dock badge uses the notification permission of macOS. Without the permission no badge appears. The lock removes the badge until the next unlock.
+- The menu bar icon shows one state at a time: a running refresh first, then an account that needs attention, then new transactions. Locked, it shows the plain icon.
+- In the popover an account that waits for the user carries an orange mark, and one whose refresh failed for another reason a red one. The text of the error shows as help.
+- The three sounds are short bell tones that `scripts/make-sounds.py` writes: two rising notes, two falling notes, and one note.

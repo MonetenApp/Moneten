@@ -29,6 +29,7 @@ python3 scripts/check-docs.py                      # links, paths, data-model na
 python3 scripts/check-ui.py                        # window chrome rule (ADR 0012)
 openspec validate --all --strict --no-interactive
 python3 scripts/roadmap.py                         # regenerates docs/roadmap.md, needs gh
+python3 scripts/make-sounds.py                     # writes the three notification sounds into App/Resources/Sounds
 ```
 
 Use `scripts/test.sh` instead of plain `swift test`. It adds `--disable-keychain`, without which the package manager waits for a Keychain prompt, and the Swift Testing paths for a Mac with only the Command Line Tools.
@@ -69,7 +70,7 @@ How the parts work together:
 
 ### Debug harness
 
-Debug and Perf builds (`#if DEBUG || PERF_HARNESS`) can be driven without a screen when the environment variable `MONETEN_DEBUG_DIR` names a folder. Build one with `scripts/build-app.sh debug`. Always set `MONETEN_DATA_DIR` as well, because commands such as `create`, `seed`, and `setpassword` change the database that is open. Commands arrive as distributed notifications named `io.github.moneten.debug`, with the debug folder as the object and the `userInfo` keys `command` and `argument`. Examples are `create`, `unlock`, `seed`, `syncdemo`, `appearance dark`, `snapshot`, and `perf`. The app writes `debug.log` and PNG snapshots into the folder. `scripts/perf-check.sh` shows how to post the notifications, and `App/Sources/DebugHarness.swift` lists every command. Use the harness to check a UI change and to make the light and dark screenshots that a UI pull request needs. With `MONETEN_FINTS_HELPER` set to `scripts/fake-fints-helper.sh`, a debug build runs the commands `setup`, `answer`, `refresh`, and `status` against a made-up bank and never contacts a real one.
+Debug and Perf builds (`#if DEBUG || PERF_HARNESS`) can be driven without a screen when the environment variable `MONETEN_DEBUG_DIR` names a folder. Build one with `scripts/build-app.sh debug`. Always set `MONETEN_DATA_DIR` as well, because commands such as `create`, `seed`, and `setpassword` change the database that is open. Commands arrive as distributed notifications named `io.github.moneten.debug`, with the debug folder as the object and the `userInfo` keys `command` and `argument`. Examples are `create`, `unlock`, `seed`, `syncdemo`, `appearance dark`, `snapshot`, and `perf`. The app writes `debug.log` and PNG snapshots into the folder. `scripts/perf-check.sh` shows how to post the notifications, and `App/Sources/DebugHarness.swift` lists every command. Use the harness to check a UI change and to make the light and dark screenshots that a UI pull request needs. With `MONETEN_FINTS_HELPER` set to `scripts/fake-fints-helper.sh`, a debug build runs the commands `setup`, `answer`, `refresh`, and `status` against a made-up bank and never contacts a real one. `MONETEN_DEBUG_CLOCK_OFFSET` moves the clock of the automatic refresh ahead by that many seconds, so with 7155 an account with the interval "every two hours" is due 45 seconds after its last refresh. `notices` and `menubarsnapshot` show the notifications and the menu bar popover.
 
 ## Rules
 

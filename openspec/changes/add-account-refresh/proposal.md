@@ -60,3 +60,8 @@ None.
 - A transaction that the user deleted does not come back at a later refresh. This was not observed.
 - A transaction counts as seen when the user opens the view of its account, or marks all transactions as checked. MoneyMoney's rule was not observed.
 - Without an Internet connection the automatic refresh does nothing and shows no error. This was not observed.
+- The automatic refresh checks once a minute which accounts are due. MoneyMoney's timing was not observed.
+- After a failed refresh the automatic refresh tries the account again when its interval passed since the failure, not at every check, so a bank that does not answer is not asked every minute. The spec counts the interval from the last successful refresh, and MoneyMoney's rule after a failure was not observed.
+- An account whose last refresh needs the user stays out of the automatic refresh until a refresh command ends without that error. This covers a needed PIN, TAN, or login, a rejected PIN or login, and a blocked access. The account shows the text that asks for "Refresh Account", as in MoneyMoney. Whether MoneyMoney tries such an account again by itself was not observed.
+- The app treats Power Nap as a sleeping display: no automatic refresh starts while the display sleeps. A locked screen with the display on does not stop the automatic refresh. This was not observed.
+- An automatic refresh shows no alert, also for an access that has no connector.

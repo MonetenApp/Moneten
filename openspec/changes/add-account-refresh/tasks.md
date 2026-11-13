@@ -7,14 +7,14 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [x] 1.1 Refresh all accounts. Verified by BankAccessTests "Refresh All Accounts fetches every account with an access that is not closed..." and the debug app check of "Refresh All Accounts". The interval "never" comes with #40 (#85).
 - [x] 1.2 Refresh one account or one group. Verified by BankAccessTests "Refresh Account fetches only the selected account..." and "Refresh Accounts on a group fetches the accounts of the group and of its subgroups", and the debug app check of "Refresh All Accounts" and "Refresh Account" (#85).
 - [ ] 1.3 Cancel a refresh. Built: "Cancel Refresh" stops every access, and a canceled access keeps its last state without an error, verified by SyncCoordinatorTests "A failed access marks all its requested accounts, and a canceled one marks none..." and the debug app check. Open: with FinTS no account of a canceled access is complete yet, see task 1.25 of add-fints-banking (#85).
-- [ ] 1.4 Automatic refresh. Build it and verify it with a test or in the app (#40).
-- [ ] 1.5 Refresh interval for each account. Build it and verify it with a test or in the app (#40).
-- [ ] 1.6 Accounts that are refreshed only by hand. Build it and verify it with a test or in the app (#40).
-- [ ] 1.7 Accounts that are never refreshed with the others. Build it and verify it with a test or in the app (#40).
-- [ ] 1.8 Refresh after launch and after wake. Build it and verify it with a test or in the app (#40).
-- [ ] 1.9 No automatic refresh while the app is locked. Build it and verify it with a test or in the app (#40).
-- [ ] 1.10 No automatic refresh during Power Nap. Build it and verify it with a test or in the app (#40).
-- [ ] 1.11 An automatic refresh never asks the user. Build it and verify it with a test or in the app (#6).
+- [x] 1.4 Automatic refresh. Verified by AutoRefreshTests "Each tick of the timer runs the automatic refresh with the time of the clock" and "With the setting off the timer runs nothing...", and the debug app check of issue #40, in which the app refreshed due accounts every minute without a command (#40).
+- [x] 1.5 Refresh interval for each account. Verified by AutomaticRefreshTests "An account is due when its interval passed since its last refresh", "Once a day: ...", and "The account settings change the interval...", and AccessStoreTests "v12 gives the accounts of a v11 database the interval every two hours...". The picker in the account settings was not checked in the app (#40).
+- [x] 1.6 Accounts that are refreshed only by hand. Verified by AutomaticRefreshTests "An account is due when its interval passed..." and "Refresh All Accounts and Refresh Accounts leave out an account with the interval never..." (#40).
+- [x] 1.7 Accounts that are never refreshed with the others. Verified by AutomaticRefreshTests "Refresh All Accounts and Refresh Accounts leave out an account with the interval never, and Refresh Account fetches it" (#40).
+- [x] 1.8 Refresh after launch and after wake. Verified by AutoRefreshTests "The launch runs once the app is unlocked and online, in either order" and "While the display sleeps nothing runs, also in Power Nap, and the wake runs at once", and the debug app check, in which the unlock started the due accounts at once (#40).
+- [x] 1.9 No automatic refresh while the app is locked. Verified by AutoRefreshTests "A locked app runs nothing, and the unlock runs the accounts that became due meanwhile", and the debug app check, in which no refresh ran during 70 seconds of lock and the unlock ran the due accounts (#40).
+- [x] 1.10 No automatic refresh during Power Nap. Verified by AutoRefreshTests "While the display sleeps nothing runs, also in Power Nap...". The app reads the sleep of the display from macOS. A real Power Nap was not checked (#40).
+- [x] 1.11 An automatic refresh never asks the user. Verified by AutoRefreshTests "An automatic refresh of three accesses makes one notification, skips and marks the access that needs a TAN, and the next manual refresh asks for it", AutomaticRefreshTests "An account that waits for the user stays out of the automatic refresh...", and the debug app check, in which an access that asks for a TAN at every refresh was marked without a dialog, left out of the next automatic run, and showed the TAN dialog at "Refresh Account" (#6, #40).
 - [x] 1.12 One session for the accounts of one login. Verified by BankAccessTests "Refresh All Accounts fetches ... one request per access" and FinTSConnectorTests "Asks for the full history first..." (#85).
 - [x] 1.13 A failure affects only its own access. Verified by BankAccessTests "The end of a refresh gives each requested account its outcome..." and SyncCoordinatorTests "The end of a refresh brings the new state of the access and the outcome of each account" (#85).
 - [x] 1.14 Show progress. Verified by SyncCoordinatorTests, which check `refreshingAccounts` during and after a refresh, and the debug app check of the indicator on the rows and the text in the status line (#85).
@@ -32,7 +32,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [x] 1.26 Mark new transactions. Build it and verify it with a test or in the app (#7).
 - [x] 1.27 Update the balance at every refresh. Build it and verify it with a test or in the app (#7).
 - [ ] 1.28 Refresh after a payment. Build it and verify it with a test or in the app (#28, v0.2).
-- [ ] 1.29 Behavior without an Internet connection. Build it and verify it with a test or in the app (#40).
+- [ ] 1.29 Behavior without an Internet connection. Built: the automatic refresh waits for the connection and runs when it returns, verified by AutoRefreshTests "Offline nothing runs and nothing fails, and the connection back runs at once". A manual refresh offline shows "There is no Internet connection." and starts nothing. Open: the manual case was not checked in the app (#40).
 
 ## 2. Sync model (issue #6)
 

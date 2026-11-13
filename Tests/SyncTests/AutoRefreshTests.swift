@@ -28,7 +28,9 @@ final class AutoRefreshTests {
 	}
 
 	func autoRefresh() -> AutoRefresh {
-		AutoRefresh(settings: settings, now: { [unowned self] in clock }, run: { [unowned self] in runs.append($0) })
+		let auto = AutoRefresh(settings: settings, now: { [unowned self] in clock })
+		auto.run = { [unowned self] in runs.append($0) }
+		return auto
 	}
 
 	/// An unlocked app on a Mac that is online and in use.
@@ -233,7 +235,8 @@ final class AutoRefreshTests {
 		]
 		// The PIN of the Musterbank is in memory, as after a manual refresh earlier in this run of the app.
 		try bank.coordinator.broker.remember(Secret("1234"), for: musterbank.id, save: false)
-		let auto = AutoRefresh(settings: settings, now: { [unowned self] in clock }, run: { bank.refresh(bank.ledger.dueAccounts(at: $0), attended: false) })
+		let auto = AutoRefresh(settings: settings, now: { [unowned self] in clock })
+		auto.run = { bank.refresh(bank.ledger.dueAccounts(at: $0), attended: false) }
 		auto.isOnline = true
 		auto.isUnlocked = true
 		await until { !bank.coordinator.isRefreshing }

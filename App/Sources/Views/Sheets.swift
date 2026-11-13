@@ -194,6 +194,9 @@ struct AccountSettingsSheet: View {
 					if let access = original.accessID.flatMap({ model.accesses[$0] }) {
 						Section("Online banking") {
 							LabeledContent("User ID", value: access.loginName)
+							Picker("Refresh", selection: binding.refreshInterval) {
+								ForEach(RefreshInterval.allCases, id: \.self) { Text($0.title).tag($0) }
+							}
 							LabeledContent("PIN") {
 								Button("Remove saved PIN") { confirmRemovePIN = true }
 									.disabled(!model.sync.broker.savedPINs.contains(access.id))
