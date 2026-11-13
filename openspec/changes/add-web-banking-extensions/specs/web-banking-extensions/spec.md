@@ -291,7 +291,7 @@ The app SHALL treat a name under the special-use domains `localhost`, `local`, `
 
 ### Requirement: Default answer of the host dialog
 
-The app SHALL make "Deny" the default button of the dialog that asks whether an extension may contact a new host, and treat Escape as "Deny". A slip of the Return key never sends login data to a new host, and the dialog never holds the refresh open.
+The app SHALL make "Deny" the default button of the dialog that asks whether an extension may contact a new host. A slip of the Return key never sends login data to a new host. Escape answers "Deny", so the dialog always ends with an answer.
 
 #### Scenario: Return in the host dialog
 
@@ -307,7 +307,7 @@ The app SHALL make "Deny" the default button of the dialog that asks whether an 
 
 ### Requirement: Headers of a redirect to another host
 
-The app SHALL follow a redirect to another host or port with only the request headers `Accept`, `Accept-Language`, and `User-Agent`, and without the body. A 307 or 308 on the same host and port keeps the method, the body, and every header. A 303, and a 301 or 302 after a POST, become a GET without a body and without `Content-Type`.
+The app SHALL forward only the headers `Accept`, `Accept-Language`, and `User-Agent` of the original request, and no body, when it follows a redirect to another host or port. A 307 or 308 on the same host and port keeps the method, the body, and every header. A 303, and a 301 or 302 after any method other than GET, become a GET without a body and without `Content-Type`. Each hop also gets the cookies of the run that match its address.
 
 #### Scenario: 307 to another host
 
@@ -347,7 +347,7 @@ The app SHALL run each extension session in its own process that can reach the n
 
 ### Requirement: Memory of a session
 
-The app SHALL limit the memory of an extension session to 256 MB. The bytes of each `JSON`, `HTML`, and `PDF` object count toward the limit for as long as the script keeps the object. An allocation past the limit raises a memory error, which `pcall` can catch. A call of an entry point that ends with it fails, and the session stays usable.
+The app SHALL limit the memory of an extension session to 256 MB. The bytes of each `JSON`, `HTML`, and `PDF` object count toward the limit for as long as the script keeps the object. An allocation past the limit raises a memory error, which `pcall` can catch, and the session stays usable. While a function of the app runs, the session may use 64 MB more. Past that, the app stops the process.
 
 #### Scenario: Large text
 
@@ -358,12 +358,19 @@ The app SHALL limit the memory of an extension session to 256 MB. The bytes of e
 #### Scenario: Kept JSON documents
 
 - **WHEN** a script keeps 200 `JSON` objects that each hold a document of 2 MB
-- **THEN** the call fails with "The extension needs more than 256 MB of memory."
+- **THEN** the call fails with the error "not enough memory"
 
 #### Scenario: Caught memory error
 
 - **WHEN** a script runs `local ok = pcall(string.rep, "x", 300 * 1048576)` and then returns `ok`
 - **THEN** the call returns `false`
+
+#### Scenario: Function of the app past the headroom
+
+- **GIVEN** the script of "Demo" holds 250 MB
+- **WHEN** it calls `JSON(text):dictionary()` and the table of the result needs 100 MB
+- **THEN** the app stops the process with "Demo needs more memory than Moneten allows, so Moneten stopped it."
+- **AND** the refresh ends with that error
 
 ### Requirement: Processor time of a session
 
@@ -376,7 +383,7 @@ The app SHALL stop an extension session after 60 seconds of processor time in to
 
 ### Requirement: Silent extension
 
-The app SHALL stop an extension session whose process sends nothing for 180 seconds while no dialog waits for the user. Output of `print`, a status, the start and the end of each request, and each second of `MM.sleep` count as signs of life. The time that a dialog waits for the user does not count.
+The app SHALL stop an extension session whose process sends nothing for 180 seconds while no dialog waits for the user. Output of `print` up to its limit, a status, the start and the end of each request, and each second of `MM.sleep` count as signs of life. The time that a dialog waits for the user does not count.
 
 #### Scenario: Process that hangs
 
@@ -401,7 +408,7 @@ The app SHALL refuse a response body larger than 32 MB. The request fails, and t
 #### Scenario: Large download
 
 - **WHEN** `https://www.bank.example/export` answers with a body of 40 MB
-- **THEN** the call fails with "The answer of www.bank.example is larger than 32 MB."
+- **THEN** the call fails with an error that ends with "The answer of www.bank.example is larger than 32 MB."
 
 ### Requirement: Output of print
 
@@ -465,13 +472,13 @@ The app SHALL write the output of `print` to the log. A call of `error` stops th
 
 ### Requirement: Length of error messages
 
-The app SHALL cut an error message of an API function that quotes data of the script after at most 1,000 bytes, at a character boundary, and end it with "…". The position of the error in the script comes before the message.
+The app SHALL cut an error message of an API function that quotes data of the script after at most 1,000 bytes, at a character boundary, and add "…". The position of the error in the script comes before the message.
 
 #### Scenario: Huge method
 
 - **WHEN** line 4 of `Demo.lua` calls `connection:request(string.rep("x", 1048576), "https://api.bank.example/")`
-- **THEN** the error begins with "Demo.lua:4: connection:request does not know the method xxx"
-- **AND** after the position the message has at most 1,000 bytes and ends with "…"
+- **THEN** the error begins with "Demo.lua:4: connection:request does not know the method XXX"
+- **AND** after the position the message has at most 1,000 bytes followed by "…"
 
 ### Requirement: Order of calls
 
