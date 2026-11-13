@@ -69,6 +69,9 @@ public struct Account: Identifiable, Hashable, Sendable, Codable {
 	public var bankBalanceDate: Date?
 	/// The balance before the oldest transaction. Charts start from it.
 	public var initialBalanceMinor: Int64
+	/// The first refresh with a bank balance or the user set the initial balance, so the app never
+	/// derives it again. The user changes it from then on, with "Calibrate" or by hand.
+	public var initialBalanceIsSet: Bool
 	public var isClosed: Bool
 	public var comment: String?
 	/// The identifier of the account in the program it came from.
@@ -86,7 +89,7 @@ public struct Account: Identifiable, Hashable, Sendable, Codable {
 
 	public init(id: UUID = UUID(), groupID: UUID? = nil, position: Int, name: String, kind: AccountKind, source: AccountSource, currency: String = "EUR",
 		iban: String? = nil, bic: String? = nil, accountNumber: String? = nil, bankCode: String? = nil, bankName: String? = nil, owner: String? = nil,
-		bankBalanceMinor: Int64? = nil, bankBalanceDate: Date? = nil, initialBalanceMinor: Int64 = 0, isClosed: Bool = false, comment: String? = nil, sourceID: String? = nil,
+		bankBalanceMinor: Int64? = nil, bankBalanceDate: Date? = nil, initialBalanceMinor: Int64 = 0, initialBalanceIsSet: Bool = false, isClosed: Bool = false, comment: String? = nil, sourceID: String? = nil,
 		color: String? = nil, accessID: UUID? = nil, remoteID: String? = nil, refreshedAt: Date? = nil, refreshError: RefreshError? = nil) {
 		self.id = id
 		self.groupID = groupID
@@ -104,6 +107,7 @@ public struct Account: Identifiable, Hashable, Sendable, Codable {
 		self.bankBalanceMinor = bankBalanceMinor
 		self.bankBalanceDate = bankBalanceDate
 		self.initialBalanceMinor = initialBalanceMinor
+		self.initialBalanceIsSet = initialBalanceIsSet
 		self.isClosed = isClosed
 		self.comment = comment
 		self.sourceID = sourceID
@@ -121,6 +125,22 @@ public struct Account: Identifiable, Hashable, Sendable, Codable {
 	public func portfolioValue(calendar: Calendar = .current) -> PortfolioValue? {
 		guard kind == .portfolio, let bankBalanceMinor else { return nil }
 		return PortfolioValue(accountID: id, day: Day(bankBalanceDate ?? Date(), calendar: calendar), minorUnits: bankBalanceMinor)
+	}
+
+	/// A bank refreshes the account and nothing set its initial balance yet. A portfolio gets its
+	/// history from its recorded values instead.
+	var derivesInitialBalance: Bool { source == .bank && kind != .portfolio && !initialBalanceIsSet }
+
+	/// Sets the initial balance once, so that the computed balance at the end of the day of the bank
+	/// balance equals the bank balance. `rows` are all live rows of the account. Pending rows and rows
+	/// booked after that day are not in the bank balance.
+	mutating func deriveInitialBalance(from rows: [Transaction], calendar: Calendar = .current) {
+		guard derivesInitialBalance, let bankBalanceMinor else { return }
+		let day = Day(bankBalanceDate ?? Date(), calendar: calendar)
+		initialBalanceMinor = rows.reduce(bankBalanceMinor) { sum, t in
+			!t.isPending && t.bookingDate <= day ? sum - t.amountMinor : sum
+		}
+		initialBalanceIsSet = true
 	}
 }
 

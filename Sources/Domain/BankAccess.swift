@@ -145,6 +145,8 @@ extension Ledger {
 			}
 			if var account = existing, connected.insert(account.id).inserted {
 				account.source = .bank
+				// The account keeps its history and its initial balance.
+				account.initialBalanceIsSet = true
 				account.accessID = candidate.accessID
 				account.remoteID = candidate.remoteID
 				return account
@@ -234,7 +236,10 @@ extension Account {
 		name = edited.name
 		kind = edited.kind
 		isClosed = edited.isClosed
-		initialBalanceMinor = edited.initialBalanceMinor
+		if edited.initialBalanceMinor != initialBalanceMinor {
+			initialBalanceMinor = edited.initialBalanceMinor
+			initialBalanceIsSet = true
+		}
 		color = edited.color
 	}
 }

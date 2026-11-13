@@ -58,6 +58,7 @@ None.
 - A group with accounts in several currencies gets one bar chart for each currency. Issue #21 asks for one series per currency, and the app converts no currencies.
 - The balance chart follows only the period filter. The category charts follow the period filter and the account filter. Which filters MoneyMoney applies to charts was not observed.
 - Pending transactions do not count in the computed balances. This follows from the calibration note in version 2.4.37.
+- The initial balance of a refreshed account is set once, at the first refresh with a bank balance, as in MoneyMoney. Later differences go to the calibration proposal. The value is the bank balance less the booked transactions up to the day of that balance. Which transactions MoneyMoney counts was not observed. Accounts that a bank refreshed before issue #109 have 0,00 € and get the value once, at their next refresh.
 - Hovering shows the value of a bar or a slice, and a click on a bar sets the period filter to that bar. The click comes from issue #21. Neither was observed in MoneyMoney.
 - The calibration asks for the balance at the end of today and changes the initial balance by the difference. MoneyMoney's window names a date, but which date was not observed. Its entry "Clearing entry for daily balance" is not specified here.
 - The app remembers the view mode for account views and for category views separately.

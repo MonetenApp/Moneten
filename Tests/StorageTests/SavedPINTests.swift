@@ -50,7 +50,14 @@ struct SavedPINTests {
 		let queue = try DatabaseQueue()
 		try Schema.migrator.migrate(queue, upTo: "v7")
 		let store = Store(queue: queue)
-		try store.add(Self.access, state: AccessState(Data([1])), accounts: [Self.giro])
+		try store.add(Self.access, state: AccessState(Data([1])), accounts: [])
+		// The columns of v7: a later version adds more, which the record type would write.
+		try queue.write { db in
+			try db.execute(sql: """
+				INSERT INTO account (id, position, name, kind, source, currency, initialBalanceMinor, isClosed, accessID)
+				VALUES (?, 0, 'Girokonto', 'giro', 'bank', 'EUR', 0, 0, ?)
+				""", arguments: [Self.giro.id, Self.access.id])
+		}
 		try Schema.migrator.migrate(queue)
 		#expect(try queue.read { db in try Schema.migrator.appliedMigrations(db) }.contains("v9"))
 		try store.savePIN(Secret("48151"), for: Self.access.id)

@@ -69,7 +69,7 @@ The app SHALL write the text on the slate band behind the title and the chart wi
 
 ### Requirement: Balances are computed from the transactions
 
-The app SHALL compute the balance of each day as the initial balance of the account plus all booked transactions up to the end of that day. Pending transactions and the balance that the bank reports do not enter this computation. A portfolio is the exception: its balance on a day is its last recorded value on or before that day, as the capability `securities-accounts` defines, and nothing before its first record.
+The app SHALL compute the balance of each day as the initial balance of the account plus all booked transactions up to the end of that day. Pending transactions do not enter this computation, and the balance that the bank reports enters it only through the initial balance. A portfolio is the exception: its balance on a day is its last recorded value on or before that day, as the capability `securities-accounts` defines, and nothing before its first record.
 
 #### Scenario: Computed balance
 
@@ -83,15 +83,60 @@ The app SHALL compute the balance of each day as the initial balance of the acco
 - **WHEN** the app computes the balance of today
 - **THEN** the pending transaction does not change it
 
-### Requirement: Initial balance at account setup
+### Requirement: Initial balance of a refreshed account
 
-The app SHALL set the initial balance of a new account so that the computed balance of today equals the balance that the bank reported, less the pending transactions.
+The app SHALL set the initial balance of an account that a bank refreshes to the balance that the bank reported, less the booked transactions up to the end of the day of that balance. Pending transactions do not count. The days before the first transaction show the initial balance. A portfolio, an offline account, and a migrated account keep their initial balance, also when a bank access connects them later.
 
 #### Scenario: First refresh
 
 - **GIVEN** the bank reports a balance of 2.500,00 € and delivers booked transactions that add up to 700,00 €
 - **WHEN** the first refresh of the new account ends
 - **THEN** the initial balance is 1.800,00 €
+
+#### Scenario: More money out than in
+
+- **GIVEN** the bank reports a balance of 1.200,00 € today and delivers booked transactions of the last 90 days that add up to -1.350,00 €
+- **WHEN** the user opens the bar chart of the account with the period "12 Months"
+- **THEN** the last bar shows 1.200,00 €
+- **AND** every bar before the first transaction shows 2.550,00 €
+
+#### Scenario: Transactions after the day of the balance
+
+- **GIVEN** the bank reports a balance of 500,00 € for 10.11.2026 and delivers booked transactions of -200,00 € on 01.11.2026 and of -30,00 € on 12.11.2026
+- **WHEN** the refresh ends
+- **THEN** the initial balance is 700,00 €, the bar of 10.11.2026 shows 500,00 €, and the bar of 12.11.2026 shows 470,00 €
+
+### Requirement: The initial balance stays
+
+The app SHALL set the initial balance of a refreshed account only once, at the first refresh that brings a bank balance. A refresh whose transactions failed does not set it. Later refreshes, imports, and deletions do not change it, and neither does a later bank balance. A value that the user enters stays. A difference between the computed balance and the bank balance that appears later is for the calibration to resolve.
+
+#### Scenario: Later refresh with an older transaction
+
+- **GIVEN** an account whose first refresh set an initial balance of 2.550,00 € with a bank balance of 1.200,00 €
+- **WHEN** a refresh brings a bank balance of 800,00 € and booked transactions of -400,00 € today and of -70,00 € from before the first refresh
+- **THEN** the initial balance stays 2.550,00 € and the last bar shows 730,00 €
+
+#### Scenario: Deleted transaction
+
+- **GIVEN** an account with a bank balance of 1.200,00 € and an initial balance of 2.550,00 €
+- **WHEN** the user deletes a transaction of -950,00 €
+- **THEN** the initial balance stays 2.550,00 € and the last bar shows 2.150,00 €
+
+#### Scenario: Entered initial balance
+
+- **GIVEN** an account whose first refresh set an initial balance of 2.550,00 €
+- **WHEN** the user enters 3.000,00 under "Initial balance" and the next refresh ends
+- **THEN** the initial balance is 3.000,00 €
+
+### Requirement: Initial balance of an account from before
+
+The app SHALL set the initial balance once, at the next refresh, for an account that a bank refreshed before the app set initial balances and whose initial balance is 0,00 €. An account with another initial balance keeps it. A user who wants 0,00 € enters it again after that refresh.
+
+#### Scenario: Account from before
+
+- **GIVEN** an account that a bank refreshed before the app set initial balances, with an initial balance of 0,00 €, a bank balance of 1.000,00 €, and booked transactions of -300,00 €
+- **WHEN** its next refresh ends with a bank balance of 1.000,00 €
+- **THEN** the initial balance is 1.300,00 €, and the refreshes after it do not change it
 
 ### Requirement: Daily balance or monthly average balance
 
