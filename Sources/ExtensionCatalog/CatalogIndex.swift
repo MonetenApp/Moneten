@@ -107,7 +107,7 @@ public enum CatalogError: Error, Equatable, Sendable, CustomStringConvertible {
 extension CatalogIndex.Entry {
 	init(_ item: [String: Any]) throws(CatalogError) {
 		let allowed: Set = ["id", "status", "note", "manifest", "files"]
-		guard let id = item["id"] as? String, id.wholeMatch(of: /[a-z0-9]+(-[a-z0-9]+)*/) != nil, Set(item.keys).isSubset(of: allowed) else {
+		guard let id = item["id"] as? String, Self.isID(id), Set(item.keys).isSubset(of: allowed) else {
 			throw .unreadable("An entry has no valid id.")
 		}
 		guard let raw = item["status"] as? String, let status = CatalogIndex.Status(rawValue: raw) else { throw .unreadable("\(id) has no valid status.") }
@@ -115,9 +115,11 @@ extension CatalogIndex.Entry {
 		guard let fileItems = item["files"] as? [[String: Any]] else { throw .unreadable("\(id) lists no files.") }
 		var files: [PackageFile] = []
 		for file in fileItems {
-			guard let path = file["path"] as? String, path.wholeMatch(of: /[A-Za-z0-9_.-]+/) != nil, path != ".", path != "..",
+			guard let path = file["path"] as? String, !path.isEmpty, path.utf8.allSatisfy(Self.pathBytes.contains), path != ".", path != "..",
 				let size = CatalogIndex.integer(file["size"]), size >= 0,
-				let sha = file["sha256"] as? String, sha.wholeMatch(of: /[0-9a-f]{64}/) != nil else { throw .unreadable("\(id) lists a file that is not valid.") }
+				let sha = file["sha256"] as? String, sha.utf8.count == 64, sha.utf8.allSatisfy(Self.hexBytes.contains) else {
+				throw .unreadable("\(id) lists a file that is not valid.")
+			}
 			files.append(PackageFile(path: path, size: size, sha256: sha))
 		}
 		guard Set(files.map(\.path)).count == files.count else { throw .unreadable("\(id) lists a file twice.") }
@@ -126,6 +128,17 @@ extension CatalogIndex.Entry {
 		self.note = note
 		self.files = files
 		manifest = Self.manifest(item["manifest"], id: id, files: Set(files.map(\.path)))
+	}
+
+	// The patterns of the index schema as byte sets: a Swift `Regex` per file made a 200-entry index miss its 50 ms budget.
+	private static let lower = Set("abcdefghijklmnopqrstuvwxyz0123456789".utf8)
+	private static let pathBytes = lower.union("ABCDEFGHIJKLMNOPQRSTUVWXYZ_.-".utf8)
+	private static let hexBytes = Set("0123456789abcdef".utf8)
+
+	/// `^[a-z0-9]+(-[a-z0-9]+)*$`: lower-case words joined by single hyphens.
+	static func isID(_ id: String) -> Bool {
+		let words = id.utf8.split(separator: UInt8(ascii: "-"), omittingEmptySubsequences: false)
+		return words.allSatisfy { !$0.isEmpty && $0.allSatisfy(lower.contains) }
 	}
 
 	private static func manifest(_ value: Any?, id: String, files: Set<String>) -> Result<Manifest, PackageProblem> {

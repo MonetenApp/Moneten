@@ -113,4 +113,22 @@ import Testing
 		#expect(entry.status == .blocked)
 		#expect(entry.note == "Sends the password to another host.")
 	}
+
+	@Test(arguments: [("example", true), ("broker-2", true), ("a-b-c", true), ("", false), ("-example", false), ("example-", false), ("ex--ample", false), ("Example", false), ("ex_ample", false)])
+	func idsFollowTheSchema(id: String, valid: Bool) {
+		#expect(CatalogIndex.Entry.isID(id) == valid)
+	}
+
+	@Test(arguments: ["../manifest.json", "a/b", "", ".."])
+	func fileWithAPathOutsideThePackageIsRefused(path: String) throws {
+		var object = try JSONSerialization.jsonObject(with: TestCatalog.index(version: 3)) as! [String: Any]
+		var entries = object["extensions"] as! [[String: Any]]
+		var files = entries[0]["files"] as! [[String: Any]]
+		files[0]["path"] = path
+		entries[0]["files"] = files
+		object["extensions"] = entries
+		#expect(throws: CatalogError.unreadable("example lists a file that is not valid.")) {
+			try CatalogIndex.parse(try JSONSerialization.data(withJSONObject: object))
+		}
+	}
 }
