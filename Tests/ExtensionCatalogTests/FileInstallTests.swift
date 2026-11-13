@@ -69,6 +69,13 @@ import Testing
 		#expect(try FileManager.default.contentsOfDirectory(atPath: target.path).sorted() == ["Broker.lua", "manifest.json"])
 	}
 
+	@Test func fileWithoutAManifestReplacesTheManifestOfTheInstalledOne() throws {
+		try write(["Demo.lua": "-- old\n", "Demo.json": #"{"hosts": ["api.demo.example"]}"#], in: folder)
+		try write(["Demo.lua": Self.script], in: root.appending(path: "Source"))
+		_ = try FileInstall.install(root.appending(path: "Source/Demo.lua"), into: folder, staging: staging)
+		#expect(try FileManager.default.contentsOfDirectory(atPath: folder.path).sorted() == ["Demo.lua"])
+	}
+
 	@Test func fileThatIsAlreadyInTheFolderStays() throws {
 		try write(["Demo.lua": Self.script], in: folder)
 		let target = try FileInstall.install(folder.appending(path: "Demo.lua"), into: folder, staging: staging)

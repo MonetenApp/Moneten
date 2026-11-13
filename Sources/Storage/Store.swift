@@ -184,13 +184,16 @@ public final class Store: SavedPINStore {
 	/// The index that the app accepted last and the floors of the catalog keys, both as the catalog module encodes them.
 	public func catalog() throws -> StoredCatalog? {
 		try queue.read { db in
-			try Row.fetchOne(db, sql: "SELECT \"index\", floors FROM extensionCatalog WHERE id = 1").map { StoredCatalog(index: $0["index"], floors: $0["floors"]) }
+			try Row.fetchOne(db, sql: "SELECT \"index\", signature, floors FROM extensionCatalog WHERE id = 1").map {
+				StoredCatalog(index: $0["index"], signature: $0["signature"], floors: $0["floors"])
+			}
 		}
 	}
 
 	public func saveCatalog(_ catalog: StoredCatalog) throws {
 		try queue.write { db in
-			try db.execute(sql: "INSERT OR REPLACE INTO extensionCatalog (id, \"index\", floors) VALUES (1, ?, ?)", arguments: [catalog.index, catalog.floors])
+			try db.execute(sql: "INSERT OR REPLACE INTO extensionCatalog (id, \"index\", signature, floors) VALUES (1, ?, ?, ?)",
+				arguments: [catalog.index, catalog.signature, catalog.floors])
 		}
 	}
 
@@ -265,13 +268,16 @@ public final class Store: SavedPINStore {
 	}
 }
 
-/// The accepted catalog index and the version floors of its keys.
+/// The accepted catalog index with its signature, and the version floors of the keys. The signature lets
+/// the app rebuild the floors from the index when the stored floors cannot be read.
 public struct StoredCatalog: Sendable, Equatable {
 	public let index: Data
+	public let signature: Data
 	public let floors: Data
 
-	public init(index: Data, floors: Data) {
+	public init(index: Data, signature: Data, floors: Data) {
 		self.index = index
+		self.signature = signature
 		self.floors = floors
 	}
 }

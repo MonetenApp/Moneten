@@ -62,6 +62,17 @@ public enum IndexVerifier {
 		public let floors: KeyFloors
 	}
 
+	/// The floors after accepting `index` alone, for when the stored floors cannot be read: the version of
+	/// the index for the key that signed it, and the current key refused after an index of the next key.
+	public static func floors(of index: Data, signature: Data, keys: CatalogKeys) -> KeyFloors? {
+		guard let key = [keys.current, keys.next].first(where: { $0.isValidSignature(signature, for: index) }),
+			let version = try? CatalogIndex.parse(index).version else { return nil }
+		var floors = KeyFloors()
+		floors.floors[key.id] = version
+		if key.id == keys.next.id, keys.current.id != keys.next.id { floors.refused.insert(keys.current.id) }
+		return floors
+	}
+
 	/// The new index and floors, or nil when `index` is the index that the app has. `accepted` holds the
 	/// bytes of the index the app accepted last. Nothing of an index that fails a check is used.
 	public static func check(index data: Data, signature: Data, keys: CatalogKeys, floors: KeyFloors, accepted: Data?) throws(CatalogError) -> Accepted? {

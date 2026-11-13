@@ -50,11 +50,15 @@ public struct Installer: Sendable {
 
 	/// Downloads every file of the entry up to its size, checks its SHA-256, checks that the downloaded
 	/// manifest is the manifest of the index, and puts the package into the folder in one step, in place
-	/// of an installed version. A failure leaves the folder as it was. `record` saves the origin before
-	/// the files arrive, so a catalog package is never in the folder without its record, which would make
-	/// it look like a file install, and `restore` puts the previous record back when the files cannot be placed.
+	/// of an installed version. A failure leaves the folder as it was.
+	///
+	/// The last step runs on the main actor with no suspension: the check for a removal, `commit`, which
+	/// saves the record before the files arrive and updates the app, and the move. A removal on the main
+	/// actor therefore comes either before it, and nothing is placed, or after it, when everything is in
+	/// place to be removed. `restore` puts the previous record back when the files cannot be placed.
 	public func install(_ entry: CatalogIndex.Entry, canceled: InstallCancellation = InstallCancellation(),
-		record: @Sendable (InstalledPackage) throws -> Void = { _ in }, restore: @Sendable () -> Void = {}) async throws(CatalogError) -> InstalledPackage {
+		commit: @escaping @MainActor @Sendable (InstalledPackage) throws -> Void = { _ in },
+		restore: @escaping @MainActor @Sendable () throws -> Void = {}) async throws(CatalogError) -> InstalledPackage {
 		let manifest: Manifest
 		do { manifest = try entry.manifest.get() } catch { throw .notInstallable(error.message) }
 		guard let version = manifest.version else { throw .notInstallable("The manifest needs version.") }
@@ -75,18 +79,24 @@ public struct Installer: Sendable {
 			if file.path == "manifest.json", (try? Manifest.parse(data, mode: .catalog)) != manifest { throw .damaged(file.path) }
 			do { try data.write(to: download.appending(path: file.path)) } catch { throw .download(entry.name) }
 		}
-		if canceled.isCanceled { throw .removed(entry.name) }
 		let installed = InstalledPackage(id: entry.id, name: manifest.name ?? entry.id, version: version, files: entry.files)
-		do { try record(installed) } catch { throw .download(entry.name) }
-		let target = folder.appending(path: entry.id)
+		let target = folder.appending(path: entry.id), name = entry.name
 		do {
-			if fm.fileExists(atPath: target.path) {
-				_ = try fm.replaceItemAt(target, withItemAt: download)
-			} else {
-				try fm.moveItem(at: download, to: target)
+			try await MainActor.run {
+				if canceled.isCanceled { throw CatalogError.removed(name) }
+
+				do { try commit(installed) } catch { throw CatalogError.download(name) }
+				do {
+					let fm = FileManager.default
+					if fm.fileExists(atPath: target.path) { _ = try fm.replaceItemAt(target, withItemAt: download) } else { try fm.moveItem(at: download, to: target) }
+				} catch {
+					do { try restore() } catch { throw CatalogError.notRestored(name) }
+					throw CatalogError.download(name)
+				}
 			}
+		} catch let error as CatalogError {
+			throw error
 		} catch {
-			restore()
 			throw .download(entry.name)
 		}
 		return installed

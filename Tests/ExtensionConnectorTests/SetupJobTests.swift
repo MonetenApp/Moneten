@@ -34,7 +34,7 @@ import Testing
 	}
 
 	func job(_ states: KeptSetupStates, _ session: TestSession, failing: Bool, sleep: Int = 0, added: Added = Added()) -> ExtensionSetupJob {
-		ExtensionSetupJob(connector: session.connector(demo(Self.source(failing: failing, sleep: sleep))), states: states) { _ in
+		ExtensionSetupJob(connector: { session.connector(demo(Self.source(failing: failing, sleep: sleep))) }, states: states) { _ in
 			added.count.withLock { $0 += 1 }
 		}
 	}
@@ -77,13 +77,40 @@ import Testing
 		#expect(await setUp(states, login: "", failing: true).printed.contains("token nil"))
 	}
 
+	/// The package of a setup that waited for its turn is the one installed when the session starts.
+	@Test func connectorIsBuiltWhenTheSessionStarts() async throws {
+		let states = KeptSetupStates()
+		let session = TestSession([.login([Secret("erika"), Secret("geheim")])])
+		var installed = Self.source(failing: false, sleep: 0)
+		let names = Mutex<[String]>([])
+		let job = ExtensionSetupJob(connector: { session.connector(demo(installed)) }, states: states) { setup in
+			names.withLock { $0 = setup.accounts.map(\.name) }
+		}
+		installed = installed.replacingOccurrences(of: "name = \"Konto\"", with: "name = \"Konto 1.1\"")
+		_ = try await job.refresh(RefreshRequest(access: Self.access, accounts: []), session)
+		#expect(names.withLock { $0 } == ["Konto 1.1"])
+	}
+
+	struct Blocked: Error {}
+
+	/// A block or a removal after the fetch stores nothing: the gate runs right before the write, on the main actor.
+	@Test func gateBeforeTheWriteStoresNothing() async {
+		let states = KeptSetupStates()
+		let session = TestSession([.login([Secret("erika"), Secret("geheim")])])
+		let added = Added()
+		let job = ExtensionSetupJob(connector: { session.connector(demo(Self.source(failing: false, sleep: 0))) }, states: states,
+			mayStore: { throw Blocked() }) { _ in added.count.withLock { $0 += 1 } }
+		await #expect(throws: Blocked.self) { try await job.refresh(RefreshRequest(access: Self.access, accounts: []), session) }
+		#expect(added.count.withLock { $0 } == 0)
+	}
+
 	struct DiskFull: Error {}
 
 	/// When the app cannot store the accounts of a setup, the state of the setup stays for the next one.
 	@Test func setupWhoseAccountsCannotBeStoredKeepsItsState() async {
 		let states = KeptSetupStates()
 		let session = TestSession([.login([Secret("erika"), Secret("geheim")])])
-		let job = ExtensionSetupJob(connector: session.connector(demo(Self.source(failing: false, sleep: 0))), states: states) { _ in throw DiskFull() }
+		let job = ExtensionSetupJob(connector: { session.connector(demo(Self.source(failing: false, sleep: 0))) }, states: states) { _ in throw DiskFull() }
 		await #expect(throws: DiskFull.self) { try await job.refresh(RefreshRequest(access: Self.access, accounts: []), session) }
 		#expect(await setUp(states, login: "erika", failing: false).printed.contains("token device of erika"))
 	}

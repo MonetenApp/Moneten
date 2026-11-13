@@ -104,8 +104,6 @@ final class ExtensionLibrary {
 	@ObservationIgnored var fixtures: [String: Fixture] = [:]
 	@ObservationIgnored private var indexData: Data?
 	@ObservationIgnored private var floors = KeyFloors()
-	/// The stored floors could not be read. The app then accepts no index, because empty floors would accept an old one.
-	@ObservationIgnored private var floorsUnreadable = false
 	/// The origin of each installed extension, by name.
 	@ObservationIgnored private var records: [String: InstalledOrigin] = [:]
 	/// The updates that wait for the end of a session or for the user, by id.
@@ -135,8 +133,9 @@ final class ExtensionLibrary {
 				index = try? CatalogIndex.parse(stored.index)
 				if let decoded = try? JSONDecoder().decode(KeyFloors.self, from: stored.floors) {
 					floors = configuration.keys.map(decoded.keeping) ?? decoded
-				} else {
-					floorsUnreadable = true
+				} else if let keys = configuration.keys, let rebuilt = IndexVerifier.floors(of: stored.index, signature: stored.signature, keys: keys) {
+					// Floors that cannot be read come back from the accepted index, so a later block still arrives.
+					floors = rebuilt
 				}
 			}
 			for installed in try store.installedExtensions() {
@@ -162,7 +161,6 @@ final class ExtensionLibrary {
 		index = nil
 		indexData = nil
 		floors = KeyFloors()
-		floorsUnreadable = false
 		records = [:]
 		updates = [:]
 		confirmed = [:]
@@ -196,10 +194,6 @@ final class ExtensionLibrary {
 			problem = "This build of Moneten has no catalog keys, so it cannot show the catalog."
 			return reload()
 		}
-		guard !floorsUnreadable else {
-			problem = "Moneten cannot read the versions of the catalog it accepted before, so it accepts no new list of extensions."
-			return reload()
-		}
 		let source = configuration.source
 		let data: Data, signature: Data
 		do {
@@ -214,7 +208,7 @@ final class ExtensionLibrary {
 		reachable = true
 		do {
 			if let accepted = try IndexVerifier.check(index: data, signature: signature, keys: keys, floors: floors, accepted: indexData) {
-				try store.saveCatalog(StoredCatalog(index: data, floors: try JSONEncoder().encode(accepted.floors)))
+				try store.saveCatalog(StoredCatalog(index: data, signature: signature, floors: try JSONEncoder().encode(accepted.floors)))
 				indexData = data
 				index = accepted.index
 				floors = accepted.floors
@@ -310,22 +304,20 @@ final class ExtensionLibrary {
 			working.remove(id)
 			reload()
 		}
-		let previous = records[id]
+		let records = CatalogRecords(store: store)
+		let previous = try? store.installedExtensions().first { $0.id == id }
 		do {
-			let installed = try await installer.install(entry, canceled: canceled, record: { installed in
-				try store.saveInstalledExtension(InstalledExtension(id: installed.id, origin: .catalog, record: try JSONEncoder().encode(installed)))
-			}, restore: {
-				// The files of the previous version stay, so its record does too.
-				if case let .catalog(old)? = previous, let record = try? JSONEncoder().encode(old) {
-					try? store.saveInstalledExtension(InstalledExtension(id: id, origin: .catalog, record: record))
-				} else {
-					try? store.removeInstalledExtension(id)
-				}
+			// The commit runs on the main actor with the move, so a Remove comes before or after all of it.
+			let installed = try await installer.install(entry, canceled: canceled, commit: { [weak self] installed in
+				try records.save(installed)
+				self?.records[id] = .catalog(installed)
+				self?.updates[id] = nil
+				self?.confirmed[id] = nil
+				self?.changed.remove(id)
+			}, restore: { [weak self] in
+				try records.restore(previous, of: id)
+				self?.records[id] = previous.map { InstalledOrigin(catalog: $0.origin == .catalog, record: $0.record) }
 			})
-			records[id] = .catalog(installed)
-			updates[id] = nil
-			confirmed[id] = nil
-			changed.remove(id)
 			log("ext installed \(id) version=\(installed.version)")
 		} catch {
 			if case .removed = error { return log("ext install stopped \(id) \(error)") }
@@ -442,8 +434,14 @@ final class ExtensionLibrary {
 		question = .remove(id: id, name: item.name, accounts: accounts(using: id).map(\.name).sorted())
 	}
 
+	/// Removes an extension. It waits for no install: an extension that is being installed or updated
+	/// cannot be removed until the install ends, also when the dialog opened before the install started.
 	func remove(_ id: String) {
 		guard let store = model?.store else { return }
+		guard !working.contains(id) else {
+			failure = "\(id) is being installed. Remove it after the install."
+			return reload()
+		}
 		downloads[id]?.cancel()
 		cancelSessions(of: id)
 		do {
@@ -553,9 +551,9 @@ final class ExtensionLibrary {
 		}
 	}
 
+	/// Cancels every running and waiting refresh and setup of the extension, also a setup whose access the app does not have yet.
 	private func cancelSessions(of id: String) {
-		guard let model else { return }
-		for access in model.accesses.values where access.source == .extension(id: id) { model.sync.cancelRefresh(of: access.id) }
+		model?.sync.cancelRefreshes(of: .extension(id: id))
 	}
 
 	private func sessionRuns(_ id: String) -> Bool {

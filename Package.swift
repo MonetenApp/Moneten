@@ -41,7 +41,7 @@ let package = Package(
 		// The command line tool for extension authors: run, record, and test (add-extension-developer-tools).
 		.executableTarget(name: "ext", dependencies: ["Domain", "ExtensionHost", "ExtensionConnector"], path: "Tools/ext"),
 		// Verifies the signed catalog index, installs its packages, and plans updates (ADR 0015).
-		.target(name: "ExtensionCatalog", dependencies: ["Domain", "ExtensionHost"]),
+		.target(name: "ExtensionCatalog", dependencies: ["Domain", "ExtensionHost", "Storage"]),
 		.testTarget(name: "DomainTests", dependencies: ["Domain"]),
 		.testTarget(name: "StorageTests", dependencies: ["Storage"]),
 		.testTarget(name: "ImportTests", dependencies: ["Import"]),
@@ -51,7 +51,7 @@ let package = Package(
 		.testTarget(name: "ExtensionConnectorTests", dependencies: ["ExtensionConnector", "MonetenExtensionHost", "Storage"]),
 		// LocalBank holds the made-up bank on https://localhost that the tests of ext record start.
 		.testTarget(name: "ExtToolTests", dependencies: ["ext", "ExtensionHost"], exclude: ["LocalBank"]),
-		.testTarget(name: "ExtensionCatalogTests", dependencies: ["ExtensionCatalog", "Domain"]),
+		.testTarget(name: "ExtensionCatalogTests", dependencies: ["ExtensionCatalog", "Domain", "Storage"]),
 		.testTarget(name: "FinTSTests", dependencies: ["FinTS"], exclude: ["helper-lines.jsonl"]),
 	],
 	swiftLanguageModes: [.v6]

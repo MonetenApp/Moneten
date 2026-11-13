@@ -102,7 +102,7 @@ import Testing
 		package.version = "1.1"
 		let index = try CatalogIndex.parse(TestCatalog.index(version: 2, [package]))
 		#expect(Standing(of: InstalledPackage(id: "example", name: "Example Bank", version: "1.0", files: []), in: index)
-			== .outdated("Version 1.0 of Example Bank is no longer in the catalog."))
+			== .outdated("Version 1.0 of Example Bank is no longer in the catalog. Open Extensions and install the update."))
 	}
 
 	@Test func activePackageRuns() throws {

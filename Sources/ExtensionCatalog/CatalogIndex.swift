@@ -90,6 +90,7 @@ public enum CatalogError: Error, Equatable, Sendable, CustomStringConvertible {
 	case tooLarge(String)
 	case removed(String)
 	case notAllowed(String)
+	case notRestored(String)
 
 	public var description: String {
 		switch self {
@@ -106,6 +107,7 @@ public enum CatalogError: Error, Equatable, Sendable, CustomStringConvertible {
 		case let .tooLarge(file): "\(file) is larger than Moneten accepts from the catalog."
 		case let .removed(name): "\(name) was removed during its download."
 		case let .notAllowed(name): "\(name) changed since you allowed it. Allow it again in the Extensions window."
+		case let .notRestored(name): "\(name) could not be installed, and Moneten could not restore its record. Remove it and install it again."
 		}
 	}
 }

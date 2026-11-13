@@ -1,5 +1,4 @@
 import Domain
-import ExtensionCatalog
 import ExtensionConnector
 import ExtensionHost
 import Foundation
@@ -45,16 +44,25 @@ extension AppModel {
 	/// the first refresh fetched. A login that the app has already keeps its access and its state.
 	func addExtensionAccess(package: ExtensionPackage, service: String, fixture: Fixture? = nil, groupID: UUID? = nil,
 		log: @escaping @Sendable (HostLog) -> Void = { _ in }) {
-		guard let connector = extensionConnector(package, fixture: fixture, log: log) else { return }
-		let access = Access(source: .extension(id: package.name), bankName: service, loginName: "")
-		let job = ExtensionSetupJob(connector: connector, states: extensionSetupStates) { [weak self] setup in try self?.add(setup, of: access, groupID: groupID) }
 		let id = package.name
-		// An installed extension may be blocked or removed while the setup waits for its turn.
-		let checked: any BankConnector = !extensions.isInstalled(id) ? job : CheckedAtStart { [weak self] in
-			try await MainActor.run { _ = try self?.extensions.verifiedPackage(id) }
-			return job
-		}
-		sync.refresh(RefreshRequest(access: access, accounts: []), with: checked, attended: true)
+		let installed = extensions.isInstalled(id)
+		// A package of the debug harness from a path has no installation to check.
+		let loaded = installed ? nil : extensionConnector(package, fixture: fixture, log: log)
+		guard installed || loaded != nil else { return }
+		let access = Access(source: .extension(id: id), bankName: service, loginName: "")
+		// An installed extension may be updated, blocked, or removed while the setup waits for its turn or runs:
+		// the connector comes from the package checked when the session starts, and the gate checks again right
+		// before the accounts are stored.
+		let job = ExtensionSetupJob(connector: { [weak self] in
+			if let loaded { return loaded }
+			guard let self, let connector = self.makeExtensionConnector(try self.extensions.verifiedPackage(id), fixture: fixture, log: log) else {
+				throw CancellationError()
+			}
+			return connector
+		}, states: extensionSetupStates, mayStore: { [weak self] in
+			if installed { _ = try self?.extensions.verifiedPackage(id) }
+		}) { [weak self] setup in try self?.add(setup, of: access, groupID: groupID) }
+		sync.refresh(RefreshRequest(access: access, accounts: []), with: job, attended: true)
 	}
 
 	/// Refreshes every account of each access that uses `package`.

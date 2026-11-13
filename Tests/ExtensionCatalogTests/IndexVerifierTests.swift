@@ -85,6 +85,17 @@ import Testing
 		#expect(try accept(TestCatalog.index(version: 130), by: next, floors: first.floors, keys: keys).get()?.index.version == 130)
 	}
 
+	@Test func floorsComeBackFromTheAcceptedIndex() throws {
+		let data = TestCatalog.index(version: 120)
+		let accepted = try #require(try accept(data, by: current).get())
+		#expect(IndexVerifier.floors(of: data, signature: current.sign(data), keys: keys) == accepted.floors)
+		let nextData = TestCatalog.index(version: 121)
+		let rebuilt = try #require(IndexVerifier.floors(of: nextData, signature: next.sign(nextData), keys: keys))
+		#expect(accept(TestCatalog.index(version: 131), by: current, floors: rebuilt) == .failure(.retiredKey))
+		#expect(accept(TestCatalog.index(version: 120), by: next, floors: rebuilt, accepted: nextData) == .failure(.replayed(version: 120, floor: 121)))
+		#expect(IndexVerifier.floors(of: data, signature: TestKey().sign(data), keys: keys) == nil)
+	}
+
 	@Test func floorsSurviveAsStoredValues() throws {
 		let accepted = try #require(try accept(TestCatalog.index(version: 120), by: current).get())
 		let stored = try JSONEncoder().encode(accepted.floors)

@@ -1,6 +1,7 @@
 @testable import ExtensionCatalog
 import ExtensionHost
 import Foundation
+import Storage
 import Testing
 
 @Suite struct InstallerTests {
@@ -68,6 +69,7 @@ import Testing
 		server.publish(package)
 		let folder = folder
 		_ = try await installer.install(entry(package)) { record in
+			#expect(Thread.isMainThread)
 			#expect(record.version == "1.0")
 			#expect(!FileManager.default.fileExists(atPath: folder.appending(path: "example").path))
 		}
@@ -136,26 +138,68 @@ import Testing
 		let canceled = InstallCancellation()
 		server.willAnswer = { path in if path.hasSuffix("manifest.json") { canceled.cancel() } }
 		await #expect(throws: CatalogError.removed("Example Bank")) {
-			try await installer.install(entry(package), canceled: canceled) { _ in Issue.record("no record after the removal") }
+			try await installer.install(entry(package), canceled: canceled) { _ in Issue.record("no commit after the removal") }
 		}
 		#expect(contents(folder) == [])
 	}
 
+	func store() throws -> Store {
+		try Vault(folder: DataFolder(root: root.appending(path: "Data"))).create(password: "korrekt-pferd-batterie", starterCategories: [])
+	}
+
 	@Test func failedMoveRestoresTheRecordOfTheInstalledVersion() async throws {
+		let records = CatalogRecords(store: try store())
 		let old = TestCatalog.Package()
 		server.publish(old)
-		_ = try await installer.install(entry(old))
+		_ = try await installer.install(entry(old)) { try records.save($0) }
+		let before = try records.store.installedExtensions()
 		var new = old
 		new.version = "1.1"
 		new.script += "-- 1.1\n"
 		server.publish(new)
 		try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: folder.path)
 		defer { try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: folder.path) }
-		let log = Log()
 		await #expect(throws: CatalogError.download("Example Bank")) {
-			try await installer.install(entry(new), record: { log.add("record \($0.version)") }, restore: { log.add("restore") })
+			try await installer.install(entry(new), commit: { try records.save($0) }, restore: { try records.restore(before.first, of: "example") })
 		}
-		#expect(log.lines == ["record 1.1", "restore"])
+		#expect(try records.store.installedExtensions() == before)
+		#expect(InstalledOrigin(catalog: true, record: try #require(before.first).record)
+			== .catalog(InstalledPackage(id: "example", name: "Example Bank", version: "1.0", files: try entry(old).files)))
+	}
+
+	@Test func recordThatCannotBeRestoredIsReported() async throws {
+		let old = TestCatalog.Package()
+		server.publish(old)
+		_ = try await installer.install(entry(old))
+		var new = old
+		new.version = "1.1"
+		server.publish(new)
+		try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: folder.path)
+		defer { try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: folder.path) }
+		struct Closed: Error {}
+		await #expect(throws: CatalogError.notRestored("Example Bank")) { try await installer.install(entry(new), restore: { throw Closed() }) }
+	}
+
+	/// The Remove of the window runs on the main actor. It cancels the install either before its commit,
+	/// which then places nothing, or after it, when the files and the record are in place to be removed.
+	@Test func removalBeforeTheCommitPlacesNothing() async throws {
+		let package = TestCatalog.Package()
+		server.publish(package)
+		let canceled = InstallCancellation()
+		let reached = Gate(), release = Gate()
+		server.willAnswer = { path in
+			if path.hasSuffix("manifest.json") {
+				await reached.open()
+				await release.pass()
+			}
+		}
+		let installer = installer, entry = try entry(package)
+		let task = Task { try await installer.install(entry, canceled: canceled) { _ in Issue.record("no commit after the removal") } }
+		await reached.pass()
+		await MainActor.run { canceled.cancel() }
+		await release.open()
+		await #expect(throws: CatalogError.removed("Example Bank")) { try await task.value }
+		#expect(contents(folder) == [])
 	}
 
 	@Test func scriptWithAByteOrderMarkRunsAfterItsInstall() async throws {

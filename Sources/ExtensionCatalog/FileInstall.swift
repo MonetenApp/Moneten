@@ -52,6 +52,10 @@ public enum FileInstall {
 			let destination = folder.appending(path: item.lastPathComponent)
 			if fm.fileExists(atPath: destination.path) { _ = try fm.replaceItemAt(destination, withItemAt: item) } else { try fm.moveItem(at: item, to: destination) }
 		}
+		// A file without a manifest leaves none of the installed one, which the user did not pick.
+		let manifest = target.deletingPathExtension().appendingPathExtension("json")
+		if single, files.count == 1, fm.fileExists(atPath: manifest.path) { try fm.removeItem(at: manifest) }
+		
 		return target
 	}
 

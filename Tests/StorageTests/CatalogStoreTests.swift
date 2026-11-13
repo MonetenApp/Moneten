@@ -16,10 +16,10 @@ struct CatalogStoreTests {
 		let vault = Vault(folder: folder)
 		let store = try vault.create(password: Self.password, starterCategories: [])
 		#expect(try store.catalog() == nil)
-		try store.saveCatalog(StoredCatalog(index: Data("index 120".utf8), floors: Data("floors".utf8)))
-		try store.saveCatalog(StoredCatalog(index: Data("index 121".utf8), floors: Data("floors 2".utf8)))
+		try store.saveCatalog(StoredCatalog(index: Data("index 120".utf8), signature: Data([1]), floors: Data("floors".utf8)))
+		try store.saveCatalog(StoredCatalog(index: Data("index 121".utf8), signature: Data([2]), floors: Data("floors 2".utf8)))
 		try store.close()
-		#expect(try vault.open(password: Self.password).catalog() == StoredCatalog(index: Data("index 121".utf8), floors: Data("floors 2".utf8)))
+		#expect(try vault.open(password: Self.password).catalog() == StoredCatalog(index: Data("index 121".utf8), signature: Data([2]), floors: Data("floors 2".utf8)))
 	}
 
 	@Test("The origin of each installed extension stays until the extension is removed")

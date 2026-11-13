@@ -10,7 +10,8 @@ public enum UpdatePlan: Sendable, Equatable {
 	case afterSession
 	/// "Update extensions automatically" is off.
 	case waitsForUser
-	/// The update adds these hosts or login field labels, and the installed version keeps running until the user confirms.
+	/// The update adds these hosts or login field labels and waits for the user. The installed version runs only
+	/// while the index lists it, which an index of one version per package does not (`Standing.outdated`).
 	case needsConfirmation(hosts: [String], fields: [String])
 
 	/// `confirmed` is the version that the user confirmed or chose with "Update". It installs that version,
@@ -58,7 +59,7 @@ public enum Standing: Sendable, Equatable {
 		}
 		let note = entry.note.map { " \($0)" } ?? ""
 		if entry.status == .active || entry.status == .unmaintained, entry.version != installed.version {
-			self = .outdated("Version \(installed.version) of \(installed.name) is no longer in the catalog.")
+			self = .outdated("Version \(installed.version) of \(installed.name) is no longer in the catalog. Open Extensions and install the update.")
 			return
 		}
 		self = switch entry.status {

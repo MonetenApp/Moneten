@@ -75,7 +75,7 @@ final class TestServer: @unchecked Sendable {
 	/// The most bytes that each request accepted.
 	private(set) var limits: [String: Int] = [:]
 	/// Runs before each answer, for example to remove a package during its download.
-	var willAnswer: @Sendable (String) -> Void = { _ in }
+	var willAnswer: @Sendable (String) async -> Void = { _ in }
 
 	func publish(_ package: TestCatalog.Package) {
 		lock.withLock {
@@ -95,7 +95,7 @@ final class TestServer: @unchecked Sendable {
 	/// Answers as `CatalogSource` does: a body over the limit fails.
 	var fetch: @Sendable (String, Int) async throws -> Data {
 		{ [self] path, limit in
-			willAnswer(path)
+			await willAnswer(path)
 			return try lock.withLock {
 				requested.append(path)
 				limits[path] = limit
@@ -104,5 +104,22 @@ final class TestServer: @unchecked Sendable {
 				return data
 			}
 		}
+	}
+}
+
+/// Opens once and lets every waiter through, so a test orders two tasks without timing.
+actor Gate {
+	private var isOpen = false
+	private var waiters: [CheckedContinuation<Void, Never>] = []
+
+	func open() {
+		isOpen = true
+		for waiter in waiters { waiter.resume() }
+		waiters = []
+	}
+
+	func pass() async {
+		if isOpen { return }
+		await withCheckedContinuation { waiters.append($0) }
 	}
 }

@@ -218,6 +218,7 @@ enum Schema {
 			try db.create(table: "extensionCatalog") { t in
 				t.column("id", .integer).primaryKey().check { $0 == 1 }
 				t.column("index", .blob).notNull()
+				t.column("signature", .blob).notNull()
 				t.column("floors", .blob).notNull()
 			}
 			try db.create(table: "installedExtension") { t in

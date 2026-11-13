@@ -29,9 +29,8 @@ final class AccountSetup {
 		}
 	}
 
-	var otherServices: [Service] {
-		[.offline] + model.extensions.setupServices.map { Service.extensionService(id: $0.id, name: $0.service) }
-	}
+	/// Read when the assistant opens, because each extension is read and checked to list its services.
+	let otherServices: [Service]
 
 	/// Why the extension of the chosen service cannot run now.
 	private(set) var serviceError: String?
@@ -58,7 +57,9 @@ final class AccountSetup {
 		}
 	}
 	/// The choice under "Other" in place of a bank.
-	var service: Service?
+	var service: Service? {
+		didSet { serviceError = nil }
+	}
 	var usesOther: Bool { service != nil }
 	/// Entry errors show after the first "Next", so that half an IBAN is not an error while it is typed.
 	private var showsEntryErrors = false
@@ -91,6 +92,7 @@ final class AccountSetup {
 		self.model = model
 		self.groupID = groupID
 		lookup = BankLookup(find: model.fints.bankInfo(bankCode:))
+		otherServices = [.offline] + model.extensions.setupServices.map { Service.extensionService(id: $0.id, name: $0.service) }
 	}
 
 	var bank: FinTSBank? { lookup.bank?.bank }

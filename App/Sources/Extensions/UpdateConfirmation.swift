@@ -18,7 +18,7 @@ struct UpdateConfirmation: View {
 				Text("The extension stays marked \"Unverified\".").foregroundStyle(.secondary)
 			case let .review(_, name, version, hosts, fields):
 				Text("Update \(name) to version \(version)?").font(.headline)
-				Text("This version asks for more than the installed one. The installed version keeps running until you confirm.")
+				Text("This version asks for more than the installed one. The installed version is no longer in the catalog, so its accounts can be refreshed only after this update.")
 				if !hosts.isEmpty {
 					Text("New hosts it contacts:")
 					ForEach(hosts, id: \.self) { Text($0).monospaced() }
