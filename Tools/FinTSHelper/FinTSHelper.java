@@ -1014,27 +1014,31 @@ public class FinTSHelper {
 		}
 	}
 
-	/// The value of a securities account as its balance, on the day of the statement: the total that the
-	/// bank sends, or else the sum of the values of its holdings, because MT535 makes the total optional.
+	/// The value of a securities account as its balance, on the day of the statement. hbci4java adds an
+	/// entry for each page of the statement, and the total of a page (HOLP) is optional in MT535, so the
+	/// value is the sum over the pages of their total, or else of the values of their holdings.
 	/// `incomplete` says that the dialog ended before the bank sent the last part (3040) of the holdings.
 	static Map<String, Object> value(String id, GVRWPDepotList list, boolean incomplete) {
 		if (incomplete) throw new Failure(null, "3040", "The bank sent only part of the securities account, so nothing of this account was stored.");
 		if (!list.isOK()) return message("result", "account", id, "errors", List.of(problem(list)));
-		GVRWPDepotList.Entry statement = list.getEntries().length == 0 ? null : list.getEntries()[0];
-		BigDecimalValue total = statement == null ? null : statement.total != null ? statement.total : sum(statement.getEntries());
+		List<BigDecimalValue> pages = new ArrayList<>();
+		for (GVRWPDepotList.Entry page : list.getEntries()) {
+			pages.add(page.total != null ? page.total : sum(java.util.Arrays.stream(page.getEntries()).map(g -> g.depotwert).toList()));
+		}
+		BigDecimalValue total = sum(pages);
 		if (total == null) throw new Failure("unsupported", null, "The bank sent no value for this securities account.");
 		return message("result", "account", id, "balance", message("balance", "amount", total.getValue().toPlainString(), "currency", text(total.getCurr()),
-			"date", day(statement.timestamp)), "errors", List.of());
+			"date", day(list.getEntries()[0].timestamp)), "errors", List.of());
 	}
 
-	/// The sum of the values of the holdings, or null when there are none, or one has no value or another currency.
-	static BigDecimalValue sum(GVRWPDepotList.Entry.Gattung[] holdings) {
-		if (holdings.length == 0 || holdings[0].depotwert == null) return null;
-		String currency = holdings[0].depotwert.getCurr();
+	/// The sum of the values, or null when there are none, or one is missing or has another currency.
+	static BigDecimalValue sum(List<BigDecimalValue> values) {
+		if (values.isEmpty() || values.get(0) == null) return null;
+		String currency = values.get(0).getCurr();
 		BigDecimal sum = BigDecimal.ZERO;
-		for (GVRWPDepotList.Entry.Gattung g : holdings) {
-			if (g.depotwert == null || !java.util.Objects.equals(currency, g.depotwert.getCurr())) return null;
-			sum = sum.add(g.depotwert.getValue());
+		for (BigDecimalValue v : values) {
+			if (v == null || !java.util.Objects.equals(currency, v.getCurr())) return null;
+			sum = sum.add(v.getValue());
 		}
 		return new BigDecimalValue(sum, currency);
 	}
