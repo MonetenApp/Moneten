@@ -146,6 +146,8 @@ struct AccountSettingsSheet: View {
 			SheetFrame(title: "Settings for \(original.name)", width: 500, onConfirm: {
 				guard var edited = account, var a = model.ledger.account(accountID) else { return true }
 				if let d = AmountParser.decimal(from: initialBalance) { edited.initialBalanceMinor = Money(d, currency: a.currency).minorUnits }
+				// A refresh that ended while the settings were open may have set a new initial balance.
+				if edited.initialBalanceMinor == account?.initialBalanceMinor { edited.initialBalanceMinor = a.initialBalanceMinor }
 				// An account keeps the color of its bank or kind until the user picks one.
 				if color.hex != originalColor.hex { edited.color = color.hex }
 				a.takeSettings(from: edited)
