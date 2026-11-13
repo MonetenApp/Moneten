@@ -263,6 +263,20 @@ The app SHALL fetch the value of a securities account through the custody accoun
 - **THEN** "Depot" shows 24.518,37 €
 - **AND** the value of "Depot" on 12.11.2026 is 24.518,37 €
 
+#### Scenario: Empty securities account
+
+- **GIVEN** "Depot" showed 24.518,37 € on 12.11.2026, and the user sold every holding
+- **WHEN** the bank answers the custody account balance of "Depot" on 13.11.2026 without holdings and without a total
+- **THEN** "Depot" shows 0,00 €
+- **AND** the value of "Depot" on 13.11.2026 is 0,00 €
+
+#### Scenario: Securities account with the balance only
+
+- **GIVEN** the bank allows the balance for the securities account "Depot" and not the custody account balance
+- **WHEN** the user refreshes "Depot"
+- **THEN** the app fetches the balance of "Depot" as for any other account
+- **AND** a securities account that allows both gets only the custody account balance
+
 #### Scenario: Bank without the custody account balance
 
 - **GIVEN** the bank lists the securities account "Fondsdepot" and allows neither the custody account balance, nor the balance, nor the transactions for it

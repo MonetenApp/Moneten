@@ -348,41 +348,57 @@ final class SelfTest {
 			+ FinTSHelper.securities(giro) + " " + FinTSHelper.securities(untyped), "true true false false");
 
 		String valued = FinTSHelper.Json.write(FinTSHelper.alone("7654321", () -> FinTSHelper.value("7654321",
-			holdings("2026-11-12", new BigDecimalValue(new BigDecimal("24518.37"), "EUR"), holding("10000.00", "EUR")), false)));
+			holdings("2026-11-12", new BigDecimalValue(new BigDecimal("24518.37"), "EUR"), holding("10000.00", "EUR")), false, "EUR")));
 		fixture.add(valued);
 		expect("securities account with the total of the bank", valued,
 			"{\"type\":\"result\",\"account\":\"7654321\",\"balance\":{\"type\":\"balance\",\"amount\":\"24518.37\",\"currency\":\"EUR\",\"date\":\"2026-11-12\"},\"errors\":[]}");
 		expect("securities account without a total is the sum of its holdings", FinTSHelper.Json.write(FinTSHelper.value("7654321",
-			holdings("2026-11-12", null, holding("10000.00", "EUR"), holding("4518.37", "EUR")), false)),
+			holdings("2026-11-12", null, holding("10000.00", "EUR"), holding("4518.37", "EUR")), false, "EUR")),
 			"{\"type\":\"result\",\"account\":\"7654321\",\"balance\":{\"type\":\"balance\",\"amount\":\"14518.37\",\"currency\":\"EUR\",\"date\":\"2026-11-12\"},\"errors\":[]}");
 
 		GVRWPDepotList pages = holdings("2026-11-12", new BigDecimalValue(new BigDecimal("10000.00"), "EUR"), holding("10000.00", "EUR"));
 		pages.addEntry(holdings("2026-11-12", null, holding("15000.50", "EUR")).getEntries()[0]);
-		expect("securities account in two pages is the sum of both", FinTSHelper.value("7654321", pages, false).get("balance").toString(),
+		expect("securities account in two pages is the sum of both", FinTSHelper.value("7654321", pages, false, "EUR").get("balance").toString(),
 			"{type=balance, amount=25000.50, currency=EUR, date=2026-11-12}");
 
 		String noValue = FinTSHelper.Json.write(FinTSHelper.alone("7654322", () -> FinTSHelper.value("7654322",
-			holdings("2026-11-12", null, holding("10000.00", "EUR"), holding("4518.37", "USD")), false)));
+			holdings("2026-11-12", null, holding("10000.00", "EUR"), holding("4518.37", "USD")), false, "EUR")));
 		fixture.add(noValue);
 		expect("securities account without a value fails", noValue,
 			"{\"type\":\"accountFailed\",\"kind\":\"unsupported\",\"text\":\"The bank sent no value for this securities account.\",\"account\":\"7654322\"}");
-		expect("securities account without holdings and total fails", FinTSHelper.alone("7654322", () -> FinTSHelper.value("7654322",
-			holdings("2026-11-12", null), false)).get("text"), "The bank sent no value for this securities account.");
+		GVRWPDepotList.Entry.Gattung unvalued = holding("1.00", "EUR");
+		unvalued.depotwert = null;
+		expect("securities account with a holding without a value fails", FinTSHelper.alone("7654322", () -> FinTSHelper.value("7654322",
+			holdings("2026-11-12", null, holding("10000.00", "EUR"), unvalued), false, "EUR")).get("text"), "The bank sent no value for this securities account.");
+		String empty = FinTSHelper.Json.write(FinTSHelper.alone("7654325", () -> FinTSHelper.value("7654325", holdings("2026-11-13", null), false, "EUR")));
+		fixture.add(empty);
+		expect("empty securities account is worth 0", empty,
+			"{\"type\":\"result\",\"account\":\"7654325\",\"balance\":{\"type\":\"balance\",\"amount\":\"0\",\"currency\":\"EUR\",\"date\":\"2026-11-13\"},\"errors\":[]}");
+		expect("empty securities account without a currency counts in euro", String.valueOf(FinTSHelper.alone("7654325", () -> FinTSHelper.value("7654325", holdings("2026-11-13", null), false, null))
+			.get("balance")), "{type=balance, amount=0, currency=EUR, date=2026-11-13}");
 
 		GVRWPDepotList refused = new GVRWPDepotList();
 		refused.jobStatus.addRetVal(new HBCIRetVal(null, null, null, "9160", "Erforderliche Auftragsreferenz fehlt", null));
-		String refusedLine = FinTSHelper.Json.write(FinTSHelper.alone("7654323", () -> FinTSHelper.value("7654323", refused, false)));
+		String refusedLine = FinTSHelper.Json.write(FinTSHelper.alone("7654323", () -> FinTSHelper.value("7654323", refused, false, "EUR")));
 		fixture.add(refusedLine);
 		expect("securities account that the bank refuses", refusedLine,
 			"{\"type\":\"result\",\"account\":\"7654323\",\"errors\":[{\"type\":\"error\",\"code\":\"9160\",\"text\":\"Erforderliche Auftragsreferenz fehlt\"}]}");
 
 		expect("securities account in part fails", FinTSHelper.alone("7654321", () -> FinTSHelper.value("7654321",
-			holdings("2026-11-12", null, holding("10000.00", "EUR")), true)).get("code"), "3040");
+			holdings("2026-11-12", null, holding("10000.00", "EUR")), true, "EUR")).get("code"), "3040");
 
-		String unreadable = FinTSHelper.Json.write(FinTSHelper.unreadable("7654324"));
+		// With allowedGVs set, the choice never asks the handler.
+		expect("jobs of a securities account with HKWPD", FinTSHelper.jobs(null, allowing("30", "HKWPD", "HKSAL")), "[WPDepotList]");
+		expect("jobs of a securities account with the balance only", FinTSHelper.jobs(null, allowing("30", "HKSAL")), "[SaldoReq]");
+		expect("jobs of a securities account with neither", FinTSHelper.jobs(null, allowing("30", "HKUEB")), "[]");
+		expect("jobs of a giro account that lists HKWPD", FinTSHelper.jobs(null, allowing("1", "HKWPD", "HKSAL", "HKKAZ")), "[SaldoReq, KUmsAll]");
+		expect("jobs of a giro account with CAMT", FinTSHelper.jobs(null, allowing("1", "HKSAL", "HKCAZ", "HKKAZ")), "[SaldoReq, KUmsAllCamt]");
+		String unreadable = FinTSHelper.Json.write(FinTSHelper.nothingAllowed("7654324", allowing("30", "HKUEB")));
 		fixture.add(unreadable);
-		expect("securities account without HKWPD", unreadable,
+		expect("securities account without HKWPD, HKSAL, and HKKAZ", unreadable,
 			"{\"type\":\"accountFailed\",\"account\":\"7654324\",\"kind\":\"unsupported\",\"text\":\"Moneten can't read this securities account at this bank yet.\"}");
+		expect("giro account without HKSAL and HKKAZ", FinTSHelper.nothingAllowed("1234567890", allowing("1", "HKUEB")).get("text"),
+			"The FinTS server of the bank offers neither the balance nor the transactions of this account.");
 
 		Properties bpd = new Properties();
 		String[] orders = {"HKSAL", "HKKAZ", "HKCAZ", "HKWPD", "HKTAN"};
@@ -414,6 +430,14 @@ final class SelfTest {
 		for (GVRWPDepotList.Entry.Gattung g : positions) entry.addEntry(g);
 		result.addEntry(entry);
 		return result;
+	}
+
+	/// An account of the FinTS type `type` that the bank parameters allow `orders` for.
+	static Konto allowing(String type, String... orders) {
+		Konto k = new Konto();
+		k.acctype = type;
+		k.allowedGVs = new ArrayList<>(List.of(orders));
+		return k;
 	}
 
 	static GVRWPDepotList.Entry.Gattung holding(String value, String currency) {

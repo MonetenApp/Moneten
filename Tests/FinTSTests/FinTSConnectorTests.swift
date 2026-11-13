@@ -510,7 +510,7 @@ struct FinTSConnectorTests {
 		// The self-test of the helper writes this file: scripts/build-fints-helper.sh.
 		let lines = URL(filePath: #filePath).deletingLastPathComponent().appending(path: "helper-lines.jsonl")
 		let card = AccountRequest(accountID: UUID(), name: "Card", remoteID: "4711")
-		let depots = ["7654321", "7654322", "7654323", "7654324"].map { AccountRequest(accountID: UUID(), name: "Depot", remoteID: $0) }
+		let depots = ["7654321", "7654322", "7654323", "7654324", "7654325"].map { AccountRequest(accountID: UUID(), name: "Depot", remoteID: $0) }
 		let report = try await refresh("read cmd; cat '\(lines.path)'", accounts: [Self.giro, Self.savings, card] + depots)
 
 		guard case let .fetched(depot) = report.outcomes[depots[0].accountID] else { Issue.record("depot not fetched"); return }
@@ -518,7 +518,10 @@ struct FinTSConnectorTests {
 		#expect(depot.balanceDate.map { Day($0) } == Day(year: 2026, month: 11, day: 12))
 		#expect(depot.transactions == nil)
 		#expect(depot.transactionFailure == nil)
-		let failures = depots.dropFirst().map { request -> SyncFailure? in
+		guard case let .fetched(empty) = report.outcomes[depots[4].accountID] else { Issue.record("empty depot not fetched"); return }
+		#expect(empty.balance == Money(minorUnits: 0, currency: "EUR"))
+		#expect(empty.balanceDate.map { Day($0) } == Day(year: 2026, month: 11, day: 13))
+		let failures = depots.dropFirst().dropLast().map { request -> SyncFailure? in
 			if case let .failed(failure) = report.outcomes[request.accountID] { failure } else { nil }
 		}
 		#expect(failures == [

@@ -134,17 +134,19 @@ struct MergeTests {
 		#expect(account?.bankBalanceDate == balanceDate)
 	}
 
-	@Test("The value of a securities account that a refresh fetched is the value of its portfolio on the day the bank reported")
+	@Test("The value of a securities account that a refresh fetched is the value of its portfolio on the day the bank reported, also when it is 0")
 	func portfolioValue() throws {
 		let store = try makeStore()
 		let depot = Account(position: 2, name: "Depot", kind: .portfolio, source: .bank, currency: "EUR")
 		try store.save(depot)
-		let twelfth = Date(timeIntervalSince1970: 1_794_441_600)
-		_ = try store.merge(.refresh(RefreshResult(balance: Money(minorUnits: 2_451_837, currency: "EUR"), balanceDate: twelfth, transactions: nil)),
-			into: depot.id)
+		let twelfth = Date(timeIntervalSince1970: 1_794_441_600), thirteenth = Date(timeIntervalSince1970: 1_794_528_000)
+		for (minor, date) in [(Int64(2_451_837), twelfth), (0, thirteenth)] {
+			_ = try store.merge(.refresh(RefreshResult(balance: Money(minorUnits: minor, currency: "EUR"), balanceDate: date, transactions: nil)), into: depot.id)
+		}
 		let ledger = try store.loadLedger()
-		#expect(ledger.account(depot.id)?.bankBalanceMinor == 2_451_837)
-		#expect(ledger.portfolioValues(of: depot.id) == [PortfolioValue(accountID: depot.id, day: Day(twelfth), minorUnits: 2_451_837)])
+		#expect(ledger.account(depot.id)?.bankBalanceMinor == 0)
+		#expect(ledger.portfolioValues(of: depot.id) == [PortfolioValue(accountID: depot.id, day: Day(twelfth), minorUnits: 2_451_837),
+			PortfolioValue(accountID: depot.id, day: Day(thirteenth), minorUnits: 0)])
 	}
 
 	@Test("A merge that fails writes nothing")
