@@ -244,6 +244,7 @@ final class AppModel {
 		start()
 		installActivityMonitor()
 		installRefreshTriggers()
+		showDialogsInMainWindow()
 	}
 
 	// MARK: Opening and locking
@@ -733,6 +734,21 @@ final class AppModel {
 			}
 		}
 		pathMonitor.start(queue: .main)
+	}
+
+	/// The PIN sheet and the dialog "Two-Factor Authentication" live in the main window. A refresh from the
+	/// menu bar can ask while that window is closed, so a dialog brings the window back.
+	private func showDialogsInMainWindow() {
+		withObservationTracking { _ = sync.broker.current } onChange: { [weak self] in
+			Task { @MainActor [weak self] in
+				guard let self else { return }
+				if sync.broker.current != nil {
+					NSApp.activate()
+					openMainWindow()
+				}
+				showDialogsInMainWindow()
+			}
+		}
 	}
 
 	/// A click on a notification: the main window with the first of its accounts, after the unlock when the app is locked.

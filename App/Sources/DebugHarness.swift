@@ -134,6 +134,12 @@ final class DebugHarness {
 				log("status #\(position) \(a.kind) refreshing=\(model.sync.refreshingAccounts.contains(a.id)) refreshedAt=\(a.refreshedAt.map { "\($0)" } ?? "-") error=\(a.refreshError?.message ?? "-") waitsForUser=\(a.refreshError?.waitsForUser ?? false) interval=\(a.refreshInterval.rawValue) balance=\(a.bankBalanceMinor.map(String.init) ?? "-") rows=\(model.ledger.transactions(ofAccount: a.id).count) new=\(model.ledger.newTransactionCounts[a.id] ?? 0)")
 			}
 			log("status line=\(model.refreshStatus ?? "-") accesses=\(model.accesses.count)")
+		// "closemain" closes the main window as its close button does; both log the scenes of the visible windows.
+		case "closemain", "windows":
+			if command == "closemain" { NSApp.windows.first { $0.isVisible && $0.identifier?.rawValue.hasPrefix("main") == true }?.performClose(nil) }
+			DispatchQueue.main.async { [weak self] in
+				self?.log("windows \(NSApp.windows.filter { $0.isVisible && $0.frame.width > 50 }.map { $0.identifier?.rawValue ?? "-" })")
+			}
 		// The popover of the menu bar icon, drawn offscreen.
 		case "menubarsnapshot": offscreenSnapshot(MenuBarPopover().environment(model), width: 340, name: argument)
 		// The delivered notifications of this app in the Notification Center, with their titles and the number of their accounts.

@@ -60,4 +60,5 @@ None.
 - The Dock badge uses the notification permission of macOS. Without the permission no badge appears. The lock removes the badge until the next unlock.
 - The menu bar icon shows one state at a time: a running refresh first, then an account that needs attention, then new transactions. Locked, it shows the plain icon.
 - In the popover an account that waits for the user carries an orange mark, and one whose refresh failed for another reason a red one. The text of the error shows as help.
+- When a refresh from the popover needs the PIN or a TAN while the main window is closed, the main window opens with the dialog, because the dialogs belong to it. Not observed.
 - The three sounds are short bell tones that `scripts/make-sounds.py` writes: two rising notes, two falling notes, and one note.
