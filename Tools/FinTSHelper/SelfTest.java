@@ -356,6 +356,11 @@ final class SelfTest {
 			holdings("2026-11-12", null, holding("10000.00", "EUR"), holding("4518.37", "EUR")), false)),
 			"{\"type\":\"result\",\"account\":\"7654321\",\"balance\":{\"type\":\"balance\",\"amount\":\"14518.37\",\"currency\":\"EUR\",\"date\":\"2026-11-12\"},\"errors\":[]}");
 
+		GVRWPDepotList pages = holdings("2026-11-12", new BigDecimalValue(new BigDecimal("10000.00"), "EUR"), holding("10000.00", "EUR"));
+		pages.addEntry(holdings("2026-11-12", null, holding("15000.50", "EUR")).getEntries()[0]);
+		expect("securities account in two pages is the sum of both", FinTSHelper.value("7654321", pages, false).get("balance").toString(),
+			"{type=balance, amount=25000.50, currency=EUR, date=2026-11-12}");
+
 		String noValue = FinTSHelper.Json.write(FinTSHelper.alone("7654322", () -> FinTSHelper.value("7654322",
 			holdings("2026-11-12", null, holding("10000.00", "EUR"), holding("4518.37", "USD")), false)));
 		fixture.add(noValue);
