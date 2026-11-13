@@ -38,7 +38,8 @@ final class LocalBank {
 }
 
 extension ExtTool {
-	@Suite(.enabled(if: LocalBank.canStart)) struct RecordTests {
+	/// On CI the suite always runs, so that the only test of a whole recording cannot skip unseen.
+	@Suite(.enabled(if: LocalBank.canStart || ProcessInfo.processInfo.environment["CI"] != nil)) struct RecordTests {
 		let login = ["EXT_USERNAME": "erika", "EXT_PASSWORD": "geheim123"]
 
 		func script() throws -> URL {

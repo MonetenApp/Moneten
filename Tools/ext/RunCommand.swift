@@ -210,9 +210,11 @@ struct RunCommand {
 	let fresh: Bool
 	let trust: String?
 
-	/// The file next to the script or package: `Demo.storage.json` for `Demo.lua` or the folder `Demo`.
+	/// The file next to the script or package: `Demo.storage.json` for `Demo.lua` or the folder `Demo`,
+	/// and `My.Bank.storage.json` for the folder `My.Bank`.
 	static func defaultStorage(of script: URL) -> URL {
-		script.deletingPathExtension().appendingPathExtension("storage.json")
+		let name = script.pathExtension.lowercased() == "lua" ? script.deletingPathExtension().lastPathComponent : script.lastPathComponent
+		return script.deletingLastPathComponent().appending(path: name + ".storage.json", directoryHint: .notDirectory)
 	}
 
 	/// What the storage file holds: the device identifier of `MM.deviceUuid` and `LocalStorage` in the
@@ -235,6 +237,8 @@ struct RunCommand {
 			var object: [String: Any] = ["deviceUuid": deviceUuid]
 			if let localStorage, let value = try? JSONSerialization.jsonObject(with: localStorage, options: [.fragmentsAllowed]) { object["localStorage"] = value }
 			try JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys]).write(to: file, options: .atomic)
+			// The file holds cookies, tokens, and device secrets of the script, so only its owner reads it.
+			try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
 		}
 	}
 

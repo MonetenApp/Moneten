@@ -27,7 +27,8 @@ enum Ext {
 		  --version          Show the version of ext and of the API.
 
 		<script> is a .lua file, with an optional manifest of the same base name, or a package folder with manifest.json.
-		EXT_USERNAME and EXT_PASSWORD fill the first two login fields without a question.
+		EXT_USERNAME and EXT_PASSWORD fill the first two login fields without a question. Set EXT_PASSWORD with
+		read -s EXT_PASSWORD && export EXT_PASSWORD, never on the command line, which the shell history keeps.
 
 		Exit status: 0 success, 1 test difference, 2 script or login error, 64 wrong arguments.
 
@@ -122,9 +123,15 @@ enum Ext {
 		guard let path else { return [] }
 		guard let data = try? Data(contentsOf: URL(filePath: path)) else { throw .usage("\(path) cannot be read.") }
 		guard let text = String(data: data, encoding: .utf8), text.contains("-----BEGIN CERTIFICATE-----") else { return [data] }
-		return text.matches(of: /-----BEGIN CERTIFICATE-----([^-]+)-----END CERTIFICATE-----/).compactMap { match in
-			Data(base64Encoded: match.output.1.filter { !$0.isWhitespace })
+		var certificates: [Data] = []
+		for match in text.matches(of: /-----BEGIN CERTIFICATE-----([^-]+)-----END CERTIFICATE-----/) {
+			guard let der = Data(base64Encoded: match.output.1.filter { !$0.isWhitespace }) else {
+				throw .usage("\(path) holds a certificate whose Base64 is broken.")
+			}
+			certificates.append(der)
 		}
+		guard !certificates.isEmpty else { throw .usage("\(path) holds no complete certificate.") }
+		return certificates
 	}
 
 	static func main(_ arguments: [String]) async -> Int32 {

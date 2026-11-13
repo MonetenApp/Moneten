@@ -113,7 +113,7 @@ struct TerminalSession: SyncSession {
 			Terminal.error("Open this address in a browser and log in:")
 			Terminal.error(approval.url.absoluteString)
 			while true {
-				let pasted = try line("Paste the address that the browser shows at the end of the login: ")
+				let pasted = try secretLine("Paste the address that the browser shows at the end of the login: ")
 				switch URL(string: pasted.trimmingCharacters(in: .whitespaces)).map({ approval.step(for: $0) }) {
 				case let .finish(code)?:
 					answers?.append(.tan(code))
@@ -126,20 +126,26 @@ struct TerminalSession: SyncSession {
 			}
 		case let .captcha(captcha):
 			Terminal.error("The service asks for a \(captcha.provider.rawValue) captcha with the site key \(captcha.siteKey) on \(captcha.page?.absoluteString ?? "its page").")
-			let token = try line("Captcha answer: ")
+			let token = try secretLine("Captcha answer: ")
 			answers?.append(.tan(token))
 			return .tan(Secret(token))
 		}
 	}
 
 	private func tan(_ label: String) throws -> UserAnswer {
-		let value = try line("\(label): ")
+		let value = try secretLine("\(label): ")
 		answers?.append(.tan(value))
 		return .tan(Secret(value))
 	}
 
 	private func line(_ prompt: String) throws -> String {
 		guard let value = Terminal.ask(prompt) else { throw Ext.Failure.run("The input ended before the answer to the challenge.") }
+		return value
+	}
+
+	/// An answer that the terminal does not show, as a TAN, a captcha answer, or the code in a pasted address.
+	private func secretLine(_ prompt: String) throws -> String {
+		guard let value = Terminal.askSecret(prompt) else { throw Ext.Failure.run("The input ended before the answer to the challenge.") }
 		return value
 	}
 

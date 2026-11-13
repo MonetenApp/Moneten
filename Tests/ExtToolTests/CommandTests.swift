@@ -1,5 +1,7 @@
+import ExtensionHost
 import Foundation
 import Testing
+@testable import ext
 
 extension ExtTool {
 	@Suite struct CommandTests {
@@ -160,6 +162,86 @@ extension ExtTool {
 			#expect(try ext(["run", "Demo.lua"], environment: login, folder: folder).errors == "found\n")
 			#expect(try ext(["run", "--fresh", "Demo.lua"], environment: login, folder: folder).errors == "empty\n")
 			#expect(try ext(["run", "Demo.lua", "--storage", "other.json"], environment: login, folder: folder).errors == "empty\n")
+		}
+	
+		/// A recording without requests: the key and the UUID of the script are withheld, and the replay
+		/// gives values of the same length.
+		@Test func recordingWithholdsRandomValuesAndReplays() throws {
+			let folder = try files(["Demo.lua": """
+				WebBanking{version = 1, services = {"Demo"}}
+				function SupportsBank() return true end
+				function InitializeSession() print(#MM.random(32) .. " " .. #MM.uuid()) end
+				function ListAccounts() return {} end
+				"""])
+			let login = ["EXT_USERNAME": "erika", "EXT_PASSWORD": "geheim123"]
+			let record = try ext(["record", "Demo.lua", "fixture.json"], environment: login, folder: folder)
+			#expect(record.status == 0, "\(record.errors)")
+			#expect(record.errors.contains(RecordCommand.hiddenLogin + "\n"))
+			let fixture = try JSONDecoder().decode(Fixture.self, from: Data(contentsOf: folder.appending(path: "fixture.json")))
+			#expect(fixture.random == [.withheldBytes(32), .withheldUUID])
+			#expect(try ext(["test", "Demo.lua", "fixture.json", "expected.json", "--update"], folder: folder).status == 0)
+			let test = try ext(["test", "Demo.lua", "fixture.json", "expected.json"], folder: folder)
+			#expect(test.output == "PASS 0 accounts, 0 transactions\n")
+			#expect(test.errors == "32 36\n")
+		}
+
+		@Test func storageFileOnlyForItsOwner() throws {
+			let folder = try files(["Demo.lua": Self.demo])
+			#expect(try ext(["run", "Demo.lua"], environment: ["EXT_USERNAME": "erika", "EXT_PASSWORD": "secret"], folder: folder).status == 0)
+			let attributes = try FileManager.default.attributesOfItem(atPath: folder.appending(path: "Demo.storage.json").path)
+			#expect((attributes[.posixPermissions] as? NSNumber)?.intValue == 0o600)
+		}
+
+		@Test(arguments: [("/b/Demo.lua", "/b/Demo.storage.json"), ("/b/My.Bank", "/b/My.Bank.storage.json"), ("/b/Demo", "/b/Demo.storage.json")])
+		func storageFileNextToTheScript(script: String, storage: String) {
+			#expect(RunCommand.defaultStorage(of: URL(filePath: script)).path == storage)
+		}
+
+		@Test func trustWithABrokenCertificate() throws {
+			let folder = try files(["Demo.lua": Self.demo, "broken.pem": "-----BEGIN CERTIFICATE-----\nnot*base64\n-----END CERTIFICATE-----\n"])
+			let run = try ext(["run", "Demo.lua", "--trust", "broken.pem"], environment: ["EXT_USERNAME": "erika", "EXT_PASSWORD": "secret"], folder: folder)
+			#expect(run.status == 64)
+			#expect(run.errors == "broken.pem holds a certificate whose Base64 is broken.\n")
+		}
+
+		/// In a terminal, a TAN does not show while the author types it. Python gives `ext` a pseudo-terminal
+		/// and types the TAN only after the prompt, so that the terminal would echo it if it could.
+		@Test func answerDoesNotEchoInATerminal() throws {
+			let folder = try files(["Bank.lua": """
+				WebBanking{version = 1, services = {"Bank"}}
+				function SupportsBank() return true end
+				function InitializeSession2(protocol, bankCode, step, credentials)
+					if step == 1 then return {title = "Enter the code from the SMS.", label = "Code"} end
+				end
+				function ListAccounts() return {} end
+				"""])
+			let typing = """
+				import os, pty, select, sys
+				pid, fd = pty.fork()
+				if pid == 0:
+				    os.execv(sys.argv[1], [sys.argv[1], "run", "Bank.lua"])
+				out = b""
+				def read(until):
+				    global out
+				    while until not in out:
+				        ready, _, _ = select.select([fd], [], [], 30)
+				        if not ready: return
+				        try: chunk = os.read(fd, 1024)
+				        except OSError: return
+				        if not chunk: return
+				        out += chunk
+				read(b"Code: ")
+				os.write(fd, b"481516\\n")
+				read(b"accounts")
+				read(b"\\x00")
+				os.waitpid(pid, 0)
+				sys.stdout.buffer.write(out)
+				"""
+			let run = try launch(URL(filePath: "/usr/bin/python3"), ["-c", typing, extBinary.path], environment: ["EXT_USERNAME": "erika", "EXT_PASSWORD": "secret"],
+				folder: folder)
+			#expect(run.output.contains("Code: "))
+			#expect(run.output.contains("accounts"))
+			#expect(!run.output.contains("481516"))
 		}
 	}
 }
