@@ -91,10 +91,11 @@ public struct ExtensionConnector: BankConnector {
 	}
 
 	/// Sets up a new access: logs in, lists the accounts, and fetches each of them in one session.
-	/// `state` is what a failed setup of the same service left, such as a device registration in `LocalStorage`.
-	public func setUp(_ access: Access, _ session: SyncSession, state kept: AccessState? = nil) async throws -> AccessSetup {
-		var state = ExtensionState(kept)
-		let run = try await ScriptRun.start(self, access: access, state: state, session: session, reason: .newAccount)
+	/// `kept` gives, for the login name that the user entered, what a failed setup of the same service and
+	/// login left, such as a device registration in `LocalStorage`.
+	public func setUp(_ access: Access, _ session: SyncSession, kept: (@Sendable (String) async -> AccessState?)? = nil) async throws -> AccessSetup {
+		let run = try await ScriptRun.start(self, access: access, state: ExtensionState(nil), session: session, reason: .newAccount, restore: kept)
+		var state = run.startState
 		var accounts: [NewAccount] = []
 		do {
 			for listed in try await run.listAccounts() {
@@ -183,11 +184,15 @@ private final class ScriptRun {
 	private(set) var tanMethod: String?
 	private var loggedIn = false
 	let loginName: String
+	/// The state that the run started from.
+	let startState: ExtensionState
 
-	private init(connector: ExtensionConnector, client: ExtensionHostClient, session: SyncSession, access: Access, hosts: AllowedHosts, remembered: String?,
+	private init(connector: ExtensionConnector, client: ExtensionHostClient, session: SyncSession, access: Access, hosts: AllowedHosts, startState: ExtensionState,
 		loginName: String) {
 		self.connector = connector
 		self.loginName = loginName
+		self.startState = startState
+		let remembered = startState.tanMethod
 		self.client = client
 		self.session = session
 		self.access = access
@@ -199,11 +204,17 @@ private final class ScriptRun {
 	}
 
 	/// Asks for the login data, starts the host process, and logs in. Nothing reaches the script
-	/// before the user gave the login data, so an automatic refresh without it contacts nobody.
-	static func start(_ connector: ExtensionConnector, access: Access, state: ExtensionState, session: SyncSession, reason: SessionReason) async throws -> ScriptRun {
+	/// before the user gave the login data, so an automatic refresh without it contacts nobody. `restore`
+	/// gives the state to start from for the login name, which is known only now.
+	static func start(_ connector: ExtensionConnector, access: Access, state: ExtensionState, session: SyncSession, reason: SessionReason,
+		restore: (@Sendable (String) async -> AccessState?)? = nil) async throws -> ScriptRun {
 		let fields = connector.loginFields(for: access.bankName)
 		guard case let .login(values) = try await session.ask(.login(LoginRequest(service: access.bankName, fields: fields, rejected: state.loginRejected == true)))
 		else { throw CancellationError() }
+		// A secret first field, such as an API key, never becomes the user ID that the app stores and shows.
+		let loginName = fields.first?.isSecret == false ? values.first?.value ?? "" : ""
+		var state = state
+		if let restore, let kept = await restore(loginName) { state = ExtensionState(kept) }
 		let decisions = try await connector.services.hostDecisions()
 		let package = connector.package
 		let hosts = AllowedHosts(package.manifest?.hosts?.map(\.value) ?? decisions.filter { $0.value == .allowed }.map(\.key))
@@ -223,10 +234,7 @@ private final class ScriptRun {
 		} catch {
 			throw ScriptRun.failure(error)
 		}
-		// A secret first field, such as an API key, never becomes the user ID that the app stores and shows.
-		let loginName = fields.first?.isSecret == false ? values.first?.value ?? "" : ""
-		let run = ScriptRun(connector: connector, client: client, session: session, access: access, hosts: hosts, remembered: state.tanMethod,
-			loginName: loginName)
+		let run = ScriptRun(connector: connector, client: client, session: session, access: access, hosts: hosts, startState: state, loginName: loginName)
 		do {
 			try await run.login(values.map(\.value), reason: reason)
 		} catch {

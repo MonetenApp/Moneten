@@ -224,7 +224,7 @@ extension ExtensionConnectorTests {
 			kept = failure.state
 		}
 		let second = TestSession()
-		_ = try await second.connector(package).setUp(Self.access, second, state: kept)
+		_ = try await second.connector(package).setUp(Self.access, second, kept: { [kept] _ in kept })
 		#expect(second.printed.contains("token rotated"))
 	}
 

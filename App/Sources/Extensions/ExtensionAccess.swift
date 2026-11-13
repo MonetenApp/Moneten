@@ -40,10 +40,8 @@ extension AppModel {
 	func addExtensionAccess(package: ExtensionPackage, service: String, fixture: Fixture? = nil, log: @escaping @Sendable (HostLog) -> Void = { _ in }) {
 		guard let connector = extensionConnector(package, fixture: fixture, log: log) else { return }
 		let access = Access(source: .extension(id: package.name), bankName: service, loginName: "")
-		let key = "\(package.name)|\(service)"
-		let job = ExtensionSetup(connector: connector, add: { [weak self] setup in try self?.add(setup, of: access) },
-			keep: { [weak self] state in self?.extensionSetupStates[key] = state })
-		sync.refresh(RefreshRequest(access: access, state: extensionSetupStates[key], accounts: []), with: job, attended: true)
+		let job = ExtensionSetupJob(connector: connector, states: extensionSetupStates) { [weak self] setup in try self?.add(setup, of: access) }
+		sync.refresh(RefreshRequest(access: access, accounts: []), with: job, attended: true)
 	}
 
 	/// Refreshes every account of each access that uses `package`.
@@ -82,29 +80,5 @@ extension AppModel {
 		case let .failed(failure): failure
 		}
 		return failure.map { .failed(RefreshError(message: $0.message, code: $0.bankMessage?.code, date: date)) } ?? .refreshed(date)
-	}
-}
-
-/// The setup of a new access as a job of the sync coordinator. The accounts do not exist before the
-/// script lists them, so the job adds them itself and reports no outcomes.
-private struct ExtensionSetup: BankConnector {
-	let connector: ExtensionConnector
-	let add: @MainActor (AccessSetup) throws -> Void
-
-	/// Keeps what a failed setup left for the next one, and forgets it after a setup that worked.
-	let keep: @MainActor (AccessState?) -> Void
-
-	func refresh(_ request: RefreshRequest, _ session: SyncSession) async throws -> ConnectorReport {
-		let setup: AccessSetup
-		do {
-			setup = try await connector.setUp(request.access, session, state: request.state)
-		} catch let failure as FailureWithState {
-			await keep(failure.state)
-			throw failure
-		}
-		await keep(nil)
-		try await add(setup)
-		// The add stored the state, unless the login joined an access that keeps its own.
-		return ConnectorReport(outcomes: [:])
 	}
 }
