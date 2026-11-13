@@ -80,7 +80,7 @@ The `ext` tool SHALL apply the host limits of the manifest, the rules for exact 
 #### Scenario: Special-use host
 
 - **WHEN** the script requests `https://bank.localhost/` during `ext run`
-- **THEN** the tool asks nothing and stops with "Moneten sends requests only to a plain host name on the HTTPS port, not to https://bank.localhost/."
+- **THEN** the tool asks nothing and stops with an error that ends with "Moneten sends requests only to a plain host name on the HTTPS port, not to https://bank.localhost/."
 
 #### Scenario: Endless loop
 

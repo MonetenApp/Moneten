@@ -307,7 +307,7 @@ The app SHALL make "Deny" the default button of the dialog that asks whether an 
 
 ### Requirement: Headers of a redirect to another host
 
-The app SHALL forward only the headers `Accept`, `Accept-Language`, and `User-Agent` of the original request, and no body, when it follows a redirect to another host or port. A 307 or 308 on the same host and port keeps the method, the body, and every header. A 303, and a 301 or 302 after any method other than GET, become a GET without a body and without `Content-Type`. Each hop also gets the cookies of the run that match its address.
+The app SHALL forward only the headers `Accept`, `Accept-Language`, and `User-Agent` of the original request, and no body, when it follows a redirect to another host or port. A 307 or 308 on the same host and port keeps the method, the body, and every header. A 303, and a 301 or 302 after any method other than GET, become a GET without a body and without `Content-Type`. Each hop also gets the cookies of the run that match its address, unless the script set its own `Cookie` header.
 
 #### Scenario: 307 to another host
 
@@ -367,8 +367,8 @@ The app SHALL limit the memory of an extension session to 256 MB. The bytes of e
 
 #### Scenario: Function of the app past the headroom
 
-- **GIVEN** the script of "Demo" holds 250 MB
-- **WHEN** it calls `JSON(text):dictionary()` and the table of the result needs 100 MB
+- **GIVEN** the script of "Demo" holds 250 MB, including a `JSON` object `doc` of a 4 MB document
+- **WHEN** it calls `doc:dictionary()` and the table of the result needs 100 MB
 - **THEN** the app stops the process with "Demo needs more memory than Moneten allows, so Moneten stopped it."
 - **AND** the refresh ends with that error
 
