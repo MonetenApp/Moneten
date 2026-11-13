@@ -52,8 +52,8 @@ The app SHALL find the bank from a name, an IBAN, or a Bankleitzahl that the use
 
 - **GIVEN** the bank directory lists "Consorsbank" twice, in München with the Bankleitzahl 70120400 and in Nürnberg with 76030080
 - **WHEN** the user enters "consors"
-- **THEN** the list shows both banks with their places and Bankleitzahlen, and the first one is highlighted
-- **AND** the down arrow highlights the bank in Nürnberg, and "Next" chooses it and shows it under the field with "Nürnberg · 76030080"
+- **THEN** the list shows both banks with their places and Bankleitzahlen, the bank in Nürnberg first and highlighted, because 76030080 is the Bankleitzahl that Consorsbank names as its own
+- **AND** "Next" chooses it and shows it under the field with "Nürnberg · 76030080", and the down arrow highlights the bank in München
 
 #### Scenario: Umlauts and accents
 
@@ -186,6 +186,12 @@ The app SHALL ask for the login data in the second step with the field names tha
 - **WHEN** the assistant shows the second step
 - **THEN** the first field has the label "Account number + 001"
 - **AND** the line under it says that Consorsbank expects the account number followed by the three-digit Berechtigtennummer, usually 001
+
+#### Scenario: Other bank on the same FinTS server
+
+- **GIVEN** the user chose DAB BNP Paribas with the Bankleitzahl 70120400, which uses the FinTS server of Consorsbank
+- **WHEN** the assistant shows the second step
+- **THEN** the first field has the label "User ID" and no hint, because no page of the bank confirms its login
 
 #### Scenario: Savings bank
 

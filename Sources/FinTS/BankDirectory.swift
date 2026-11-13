@@ -26,7 +26,7 @@ public struct BankDirectory: Sendable {
 
 	public init(_ entries: [Entry]) {
 		self.entries = entries.map { entry in
-			let common = entry.bank.loginHint?.bankName ?? ""
+			let common = entry.loginHint?.bankName ?? ""
 			let start = Self.words(String(entry.bank.name.split(whereSeparator: { !$0.isLetter && !$0.isNumber }).first ?? "")) + Self.words(common)
 			return Indexed(entry: entry, start: start, words: Self.words(entry.bank.name) + Self.words(entry.city) + Self.words(common), sortKey: Self.sortKey(entry))
 		}

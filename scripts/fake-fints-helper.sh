@@ -10,8 +10,10 @@
 # refreshes: the second refresh fails "Tagesgeld" with an error of the bank, and the others succeed.
 # The login "unterkonten" lists two subaccounts of the account number 9 in place of these accounts.
 # The bank directory has two branches of Musterbank, the bank without a FinTS server Neobank Muster
-# (99999999), a made-up Sparkasse, and the two Bankleitzahlen of Consorsbank with its real FinTS
-# address, so the setup shows their login hints. The login of every bank goes to this script.
+# (99999999), a made-up Sparkasse, and Consorsbank (76030080) and DAB BNP Paribas (70120400) with
+# their real FinTS address, so the setup shows the login hint of Consorsbank and none for DAB.
+# Musterbank 12030000 has the Bankleitzahl of DKB and shows the hint of DKB. The login of every
+# bank goes to this script.
 # The app starts the helper with an empty environment.
 PATH=/bin:/usr/bin
 read -r cmd

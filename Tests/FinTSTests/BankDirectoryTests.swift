@@ -27,10 +27,10 @@ struct BankDirectoryTests {
 		Self.directory.search(query).map(\.code)
 	}
 
-	@Test("Finds a bank by a part of its name, and lists both banks of one name with their places")
+	@Test("Finds a bank by a part of its name, and lists both banks of one name with their places, the one with the short name first")
 	func partOfName() {
-		#expect(codes("consors") == ["70120400", "76030080"])
-		#expect(Self.directory.search("Consorsbank").map(\.city) == ["München", "Nürnberg, Mittelfr"])
+		#expect(codes("consors") == ["76030080", "70120400"])
+		#expect(Self.directory.search("Consorsbank").map(\.city) == ["Nürnberg, Mittelfr", "München"])
 		#expect(codes("kredit") == ["12030000"])
 	}
 
@@ -88,44 +88,51 @@ struct BankDirectoryTests {
 /// The label and the help line of the login name for the banks whose rules Moneten knows.
 @Suite("Login hints")
 struct LoginHintTests {
-	static func bank(_ name: String, _ url: String?) -> FinTSBank {
-		FinTSBank(name: name, bic: nil, url: url.flatMap(URL.init(string:)))
+	static func bank(_ code: String, _ name: String, _ url: String?) -> BankDirectory.Entry {
+		BankDirectory.Entry(code: code, city: "", bank: FinTSBank(name: name, bic: nil, url: url.flatMap(URL.init(string:))))
 	}
 
 	@Test("Consorsbank asks for the account number followed by 001")
 	func consorsbank() throws {
-		for name in ["Bnp Paribas S.A. Niederlassung Deutschland - Consorsbank", "BNP Paribas S.A. Niederlassung Deutschland-Consorsbank"] {
-			let hint = try #require(Self.bank(name, "https://brokerage-hbci.consorsbank.de/hbci").loginHint)
-			#expect(hint.label == "Account number + 001")
-			#expect(hint.help == "Consorsbank expects the account number followed by the three-digit Berechtigtennummer, usually 001, for example 900123456001.")
-		}
+		let hint = try #require(Self.bank("76030080", "Bnp Paribas S.A. Niederlassung Deutschland - Consorsbank", "https://brokerage-hbci.consorsbank.de/hbci").loginHint)
+		#expect(hint.label == "Account number + 001")
+		#expect(hint.help == "Consorsbank expects the account number followed by the three-digit Berechtigtennummer, usually 001, for example 900123456001.")
 	}
 
-	@Test("DKB, comdirect, and ING name their own login names")
+	@Test("DAB BNP Paribas shares the FinTS server of Consorsbank and gets no hint, because no page of the bank confirms its login")
+	func dab() {
+		#expect(Self.bank("70120400", "BNP Paribas S.A. Niederlassung Deutschland-Consorsbank", "https://brokerage-hbci.consorsbank.de/hbci").loginHint == nil)
+	}
+
+	@Test("DKB, comdirect, and ING name their own login names for the Bankleitzahlen that the bank names")
 	func directBanks() {
-		#expect(Self.bank("Deutsche Kreditbank Berlin", "https://fints.dkb.de/fints").loginHint?.label == "Login name")
-		#expect(Self.bank("comdirect bank AG", "https://fints.comdirect.de/fints").loginHint?.label == "Access number")
-		#expect(Self.bank("ING-DiBa", "https://fints.ing.de/fints/").loginHint?.label == "User name")
+		#expect(Self.bank("12030000", "Deutsche Kreditbank Berlin", "https://fints.dkb.de/fints").loginHint?.label == "Login name")
+		for code in ["20041111", "20041133", "20041144", "20041155"] {
+			#expect(Self.bank(code, "comdirect bank AG", "https://fints.comdirect.de/fints").loginHint?.label == "Access number", "\(code)")
+		}
+		#expect(Self.bank("20041166", "comdirect bank AG", "https://fints.comdirect.de/fints").loginHint == nil)
+		#expect(Self.bank("50010517", "ING-DiBa", "https://fints.ing.de/fints/").loginHint?.label == "User name")
 	}
 
 	@Test("A savings bank on the FinTS servers of the savings banks asks for the login name or the Legitimations-ID, a building society does not")
 	func savingsBanks() {
-		#expect(Self.bank("Stadtsparkasse München", "https://banking-by1.s-fints-pt-by.de/fints30").loginHint?.label == "Login name or Legitimations-ID")
-		#expect(Self.bank("Kreissparkasse Köln", "https://banking-rl5.s-fints-pt-rl.de/fints30").loginHint?.label == "Login name or Legitimations-ID")
-		#expect(Self.bank("Bausparkasse Schwäbisch Hall", "https://banking-bw1.s-fints-pt-bw.de/fints30").loginHint == nil)
-		#expect(Self.bank("Sparkasse Musterstadt", "https://hbci.musterstadt.s-hbci.de/").loginHint?.label == "Login name or Legitimations-ID")
-		#expect(Self.bank("Südtiroler Sparkasse AG", "https://fints2.atruvia.de/cgi-bin/hbciservlet").loginHint == nil)
+		#expect(Self.bank("70150000", "Stadtsparkasse München", "https://banking-by1.s-fints-pt-by.de/fints30").loginHint?.label == "Login name or Legitimations-ID")
+		#expect(Self.bank("37050299", "Kreissparkasse Köln", "https://banking-rl5.s-fints-pt-rl.de/fints30").loginHint?.label == "Login name or Legitimations-ID")
+		#expect(Self.bank("60010111", "Bausparkasse Schwäbisch Hall", "https://banking-bw1.s-fints-pt-bw.de/fints30").loginHint == nil)
+		#expect(Self.bank("40099999", "Sparkasse Musterstadt", "https://hbci.musterstadt.s-hbci.de/").loginHint?.label == "Login name or Legitimations-ID")
+		#expect(Self.bank("70012600", "Südtiroler Sparkasse AG", "https://fints2.atruvia.de/cgi-bin/hbciservlet").loginHint == nil)
 	}
 
-	@Test("A bank without a known rule has no hint")
+	@Test("The hint follows the Bankleitzahl, not the name, and a bank without a known rule has none")
 	func unknownBank() {
-		#expect(Self.bank("Musterbank", "https://fints.musterbank.example/fints").loginHint == nil)
-		#expect(Self.bank("Deutsche Kreditbank Berlin", nil).loginHint == nil)
+		#expect(Self.bank("12030000", "Musterbank", "https://fints.musterbank.example/fints").loginHint?.label == "Login name")
+		#expect(Self.bank("12030001", "Musterbank", "https://fints.musterbank.example/fints").loginHint == nil)
+		#expect(Self.bank("10010424", "Aareal Bank", nil).loginHint == nil)
 	}
 
 	@Test("Every hint names a public page of the bank as its source")
 	func sources() {
-		let hints = Array(LoginHint.byHost.values) + [LoginHint.savingsBank]
+		let hints = Array(LoginHint.byCode.values) + [LoginHint.savingsBank]
 		for hint in hints {
 			#expect(hint.source.scheme == "https", "\(hint.label)")
 			#expect(!hint.help.isEmpty)

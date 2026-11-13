@@ -101,7 +101,7 @@ final class AccountSetup {
 
 	var bank: FinTSBank? { lookup.bank?.bank }
 	/// What the bank calls the login name, when Moneten knows it.
-	var loginHint: LoginHint? { bank?.loginHint }
+	var loginHint: LoginHint? { lookup.bank?.loginHint }
 
 	var canGoOn: Bool {
 		switch step {
@@ -176,6 +176,7 @@ final class AccountSetup {
 	/// refresh, and its refresh waits for the login.
 	private func logIn() {
 		guard !isLoggingIn, let code = lookup.bank?.code, let bank, let url = bank.url else { return }
+		let userIDHelp = loginHint?.help
 		let access = Access(source: .fints(bankCode: code, url: url), bankName: bank.name, loginName: loginName.trimmingCharacters(in: .whitespaces))
 		let known = model.accesses.values.first { $0.isSameLogin(as: access) }?.id ?? access.id
 		let session = SetupSession(broker: model.sync.broker, access: access, pin: Secret(pin), replacing: known)
@@ -207,7 +208,7 @@ final class AccountSetup {
 				// The user canceled the TAN dialog: the login step stays as it was.
 				if error is CancellationError { return }
 				pin = ""
-				loginError = (error as? SyncFailure)?.messageAtFirstLogin(userIDHelp: bank.loginHint?.help) ?? error.localizedDescription
+				loginError = (error as? SyncFailure)?.messageAtFirstLogin(userIDHelp: userIDHelp) ?? error.localizedDescription
 			}
 		}
 	}
