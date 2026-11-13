@@ -75,7 +75,7 @@ struct AppCommands: Commands {
 			Button("Refresh All Accounts") { model.refresh(.all) }
 				.keyboardShortcut("r")
 				.disabled(!model.canRefresh(.all))
-			Button("Cancel Refresh") { model.sync.cancelAll() }
+			Button("Cancel Refresh") { model.cancelRefresh() }
 				.disabled(!model.sync.isRefreshing)
 			Divider()
 			Button("Mark All Transactions as Checked") { model.markAllChecked() }

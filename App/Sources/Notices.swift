@@ -19,8 +19,10 @@ final class Notices: NSObject, NoticeCenter, UNUserNotificationCenterDelegate {
 	}
 
 	/// Asks macOS once, when the user turns on the banner or the sound, or when the first notification is due.
+	/// The badge that macOS refused before the permission shows from then on.
 	func requestPermission() async {
-		_ = try? await center.requestAuthorization(options: [.alert, .sound, .badge])
+		guard (try? await center.requestAuthorization(options: [.alert, .sound, .badge])) == true else { return }
+		try? await center.setBadgeCount(badge)
 	}
 
 	/// macOS blocks the notifications of the app, so the settings say where to allow them.

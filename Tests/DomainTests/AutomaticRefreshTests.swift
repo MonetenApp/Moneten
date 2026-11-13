@@ -70,6 +70,14 @@ struct AutomaticRefreshTests {
 		#expect(Self.due([giro], at: Self.hours(5)) == [Self.access: ["Giro"]])
 	}
 
+	@Test("An account whose refresh the user canceled waits one interval from the cancel")
+	func canceled() {
+		let ledger = Ledger(accounts: [Self.account("Giro")])
+		let at = [ledger.accounts[0].id: Self.hours(3)]
+		#expect(ledger.dueAccounts(at: Self.hours(4), canceled: at).isEmpty)
+		#expect(ledger.dueAccounts(at: Self.hours(5), canceled: at).mapValues { $0.map(\.name) } == [Self.access: ["Giro"]])
+	}
+
 	@Test("An account that waits for the user stays out of the automatic refresh, and every command still fetches it")
 	func waitsForUser() {
 		let tan = RefreshError(message: SyncFailure.needsUser(.secondFactor).message, date: Self.hours(2), waitsForUser: true)

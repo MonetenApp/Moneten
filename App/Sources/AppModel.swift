@@ -164,6 +164,8 @@ final class AppModel {
 	private var refreshTimer: Timer?
 	/// The accounts of a notification that the user clicked while the app was locked, selected after the unlock.
 	private var notifiedAccounts: [UUID]?
+	/// When the user canceled the refresh of each account, so that the automatic refresh does not start it again at once.
+	private var canceledRefreshes: [UUID: Date] = [:]
 	/// Opens the main window, also when it is closed. The window sets it, because only a view can open a scene.
 	@ObservationIgnored var openMainWindow: () -> Void = {}
 
@@ -328,7 +330,6 @@ final class AppModel {
 		lastActivity = Date()
 		phase = .unlocked
 		extensions.open(store)
-		notices.update(newCounts: ledger.newTransactionCounts)
 		if let notified = notifiedAccounts {
 			notifiedAccounts = nil
 			select(notified: notified)
@@ -687,9 +688,16 @@ final class AppModel {
 		refresh(ledger.refreshAccounts(scope))
 	}
 
+	/// "Cancel Refresh". The lock cancels too, and then the accounts stay due for the unlock.
+	func cancelRefresh() {
+		let now = Self.refreshClock()
+		for id in sync.refreshingAccounts { canceledRefreshes[id] = now }
+		sync.cancelAll()
+	}
+
 	/// The automatic refresh: the due accounts, without any dialog.
 	private func refreshDue(at now: Date) {
-		let plan = ledger.dueAccounts(at: now)
+		let plan = ledger.dueAccounts(at: now, canceled: canceledRefreshes)
 		guard !plan.isEmpty else { return }
 		DebugHarness.shared?.log("autorefresh accesses=\(plan.count) accounts=\(plan.values.map(\.count).reduce(0, +))")
 		refresh(plan, attended: false)

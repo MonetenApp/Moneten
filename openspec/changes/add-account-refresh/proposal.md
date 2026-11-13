@@ -65,3 +65,4 @@ None.
 - An account whose last refresh needs the user stays out of the automatic refresh until a refresh command ends without that error. This covers a needed PIN, TAN, or login, a rejected PIN or login, and a blocked access. The account shows the text that asks for "Refresh Account", as in MoneyMoney. Whether MoneyMoney tries such an account again by itself was not observed.
 - The app treats Power Nap as a sleeping display: no automatic refresh starts while the display sleeps. A locked screen with the display on does not stop the automatic refresh. This was not observed.
 - An automatic refresh shows no alert, also for an access that has no connector.
+- After "Cancel Refresh" the automatic refresh starts the canceled accounts again only when their interval passed since the cancel. The lock does not count as a cancel, so the unlock refreshes the due accounts. This was not observed.

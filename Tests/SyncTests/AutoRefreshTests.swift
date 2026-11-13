@@ -150,6 +150,19 @@ final class AutoRefreshTests {
 		#expect(ends == 2)
 	}
 
+	@Test("Cancel Refresh, as the lock does, ends the run once, after the canceled connector returned")
+	func cancelEndsRun() async {
+		let coordinator = SyncCoordinator()
+		var ends = 0
+		coordinator.runEnded = { ends += 1 }
+		let giro = AccountRequest(accountID: UUID(), name: "Giro", remoteID: "1")
+		coordinator.refresh(RefreshRequest(access: Self.access("Musterbank"), accounts: [giro]),
+			with: ScriptedConnector([.wait(.seconds(10)), .fetched(giro.accountID)]), attended: false)
+		coordinator.cancelAll()
+		await until { !coordinator.isRefreshing }
+		#expect(ends == 1)
+	}
+
 	@Test("New transactions of a run make one notification, with the sound only when the setting is on")
 	func announce() throws {
 		let account = Account(position: 0, name: "Girokonto", kind: .giro, source: .bank)

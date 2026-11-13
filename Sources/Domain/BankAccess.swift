@@ -223,21 +223,23 @@ extension Ledger {
 		return plan
 	}
 
-	/// The accounts that the automatic refresh fetches at `now`, by the ID of their access.
-	public func dueAccounts(at now: Date, calendar: Calendar = .current) -> [UUID: [AccountRequest]] {
+	/// The accounts that the automatic refresh fetches at `now`, by the ID of their access. `canceled`
+	/// holds the time at which the user canceled the refresh of an account.
+	public func dueAccounts(at now: Date, canceled: [UUID: Date] = [:], calendar: Calendar = .current) -> [UUID: [AccountRequest]] {
 		refreshAccounts(.all, calendar: calendar)
-			.mapValues { $0.filter { account($0.accountID)?.isDue(at: now) == true } }
+			.mapValues { $0.filter { account($0.accountID)?.isDue(at: now, canceledAt: canceled[$0.accountID]) == true } }
 			.filter { !$0.value.isEmpty }
 	}
 }
 
 extension Account {
-	/// The period of the interval passed since the last refresh. After a failure that counts from the
-	/// failure, so a bank that is down is not asked at every run. An account that waits for the user is
-	/// never due: only a refresh command asks the user.
-	func isDue(at now: Date) -> Bool {
+	/// The period of the interval passed since the last refresh. After a failure or a cancel that counts
+	/// from then, so a bank that is down is not asked at every run, and a refresh that the user canceled
+	/// does not start again a minute later. An account that waits for the user is never due: only a
+	/// refresh command asks the user.
+	func isDue(at now: Date, canceledAt: Date?) -> Bool {
 		guard let period = refreshInterval.period, refreshError?.waitsForUser != true else { return false }
-		guard let last = [refreshedAt, refreshError?.date].compactMap({ $0 }).max() else { return true }
+		guard let last = [refreshedAt, refreshError?.date, canceledAt].compactMap({ $0 }).max() else { return true }
 		return now.timeIntervalSince(last) >= period
 	}
 }
