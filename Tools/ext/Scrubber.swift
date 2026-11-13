@@ -80,8 +80,8 @@ struct Scrubber {
 		}
 		try secrets.checkAddresses(of: fixture.exchanges, words: words)
 		if let weak = secrets.weakInsideAValue(of: fixture.exchanges, words: words) {
-			throw .run("The \(weak.noun) is short or only digits, and a request holds it inside a longer value, where the text around a placeholder "
-				+ "would show it. ext wrote no file. Record with a login whose \(weak.noun) has 8 characters or more and not only digits.")
+			throw .run("The \(weak.noun) is short or only digits, and a request holds it inside a longer value, such as a date or a decimal number, "
+				+ "where the text around a placeholder would show it. ext wrote no file. Record with a login whose \(weak.noun) has 8 characters or more and not only digits.")
 		}
 		var scrubbed = fixture
 		scrubbed.answers = fixture.answers == nil ? nil : answers
@@ -231,7 +231,7 @@ private struct Secrets {
 			let segments = Address(exchange.request.url.absoluteString).segments
 			for (index, segment) in segments.enumerated() {
 				let previous = index > 0 ? segments[index - 1] : ""
-				guard words.contains(segment, after: previous), words.isOpen(after: previous) else { continue }
+				guard words.contains(segment, after: previous, isLogin: true), words.isOpen(after: previous) else { continue }
 				let plain = (segment.removingPercentEncoding ?? String(segment)).lowercased()
 				if let login = logins.first(where: { $0.value.lowercased() == plain }) {
 					throw .run("A path segment of a \(exchange.request.method) request equals the \(login.kind!.noun) and also stands in the script, "
@@ -242,20 +242,52 @@ private struct Secrets {
 	}
 
 	/// The kind of a weak password that a request holds inside a longer value, such as `2025` in
-	/// `from=2025-10-10`, where the text around its placeholder would show it.
+	/// `from=2025-10-10`, `from=2025/10/10`, or the number `3.2025`, where the text around its
+	/// placeholder would show it. Each path segment, query and form value, JSON string, and JSON number
+	/// counts as a whole: it holds the password only when it is the password. Headers and other bodies
+	/// count between the delimiters of `Encodings.matcher(asWholeValue:)`.
 	func weakInsideAValue(of exchanges: [Fixture.Exchange], words: ScriptWords) -> Scrubber.Kind? {
 		for secret in all where secret.requestsOnly {
 			guard let matcher = secret.matcher, let delimited = secret.delimited else { continue }
+			let insideAValue = { (value: String) in
+				value.lowercased() != secret.value.lowercased() && Encodings.replace(matcher, with: "", in: value).1 > 0
+			}
 			for exchange in exchanges {
 				let request = exchange.request
-				var texts = Address(request.url.absoluteString).scrubbed(words) + Array((request.headers ?? [:]).values)
-				if let body = request.body ?? Discovery.latin1(request.base64Body) { texts.append(body) }
-				for text in texts where Encodings.replace(matcher, with: "", in: text).1 > Encodings.replace(delimited, with: "", in: text).1 {
+				let address = Address(request.url.absoluteString)
+				let components = URLComponents(url: request.url, resolvingAgainstBaseURL: false)
+				let fragment = components?.fragment.flatMap { URLComponents(string: "?" + $0)?.queryItems } ?? []
+				var values = address.segments.indices.filter { !keeps(address.segments, at: $0, words) }
+					.map { address.segments[$0].removingPercentEncoding ?? String(address.segments[$0]) }
+				values += ((components?.queryItems ?? []) + fragment).compactMap(\.value)
+				var texts = Array((request.headers ?? [:]).values)
+				if let body = request.body ?? Discovery.latin1(request.base64Body) {
+					if Encodings.isJSON(body) {
+						for (segment, isString) in Encodings.segments(of: body, json: true) {
+							values += isString ? [(try? JSONDecoder().decode(String.self, from: Data(segment.utf8))) ?? segment]
+								: segment.matches(of: Encodings.number).map { String($0.output) }
+						}
+					} else if let items = Discovery.form(body) {
+						values += items.compactMap(\.value)
+					} else {
+						texts.append(body)
+					}
+				}
+				if values.contains(where: insideAValue)
+					|| texts.contains(where: { Encodings.replace(matcher, with: "", in: $0).1 > Encodings.replace(delimited, with: "", in: $0).1 }) {
 					return secret.kind
 				}
 			}
 		}
 		return nil
+	}
+
+	/// Whether the path segment at `index` stays as it is: a word of the script, and for a segment that
+	/// equals a login value only by a literal with the same pair.
+	func keeps(_ segments: [Substring], at index: Int, _ words: ScriptWords) -> Bool {
+		let plain = (segments[index].removingPercentEncoding ?? String(segments[index])).lowercased()
+		let isLogin = all.contains { [.username, .password, .login, .answer].contains($0.kind) && $0.value.lowercased() == plain }
+		return words.contains(segments[index], after: index > 0 ? segments[index - 1] : "", isLogin: isLogin)
 	}
 
 	/// Replaces the secrets of one exchange: first the values that stand next to their names in the
@@ -294,8 +326,8 @@ private struct Secrets {
 	/// The other path segments, the query, and the fragment are scrubbed.
 	private mutating func scrubURL(_ text: String, inRequest: Bool, words: ScriptWords) -> String {
 		let parts = Address(text)
-		let segments = parts.segments.enumerated().map { index, segment in
-			words.contains(segment, after: index > 0 ? parts.segments[index - 1] : "") ? String(segment) : scrub(String(segment), as: .url, inRequest: inRequest)
+		let segments = parts.segments.indices.map { index in
+			keeps(parts.segments, at: index, words) ? String(parts.segments[index]) : scrub(String(parts.segments[index]), as: .url, inRequest: inRequest)
 		}
 		return parts.origin + segments.joined(separator: "/") + scrub(String(parts.rest), as: .url, inRequest: inRequest)
 	}
@@ -383,7 +415,10 @@ private struct Secrets {
 	/// response also for a weak password. An address counts without the parts that `scrubURL` leaves as
 	/// they are.
 	func leak(in fixture: Fixture, words: ScriptWords) -> Leak? {
-		let scrubbed = { (address: String) in Address(address).scrubbed(words) }
+		let scrubbed = { (address: String) in
+			let parts = Address(address)
+			return parts.segments.indices.filter { !keeps(parts.segments, at: $0, words) }.map { String(parts.segments[$0]) } + [String(parts.rest)]
+		}
 		var everywhere: [String] = []
 		var requestNumbers: [String] = []
 		var responseNumbers: [String] = []
@@ -428,11 +463,13 @@ private struct Secrets {
 /// The words of the paths in the Lua string literals of a script, each with the segment before it.
 /// A request path segment that a literal holds after the same segment, such as `login` after the host
 /// in `"https://bank.example/login"`, is a word of the script, which no login value built. A literal
-/// without a slash, such as `"login"` in `base .. "login"`, is a word after any segment.
+/// without a slash, such as `"login"` in `base .. "login"`, is a word after any segment, but not for a
+/// segment that equals a login value: there only the pair counts.
 struct ScriptWords {
 	private var pairs: Set<String> = []
 	private var whole: Set<String> = []
-	/// The segments after which a literal ends with a slash, where the script appends a value, as in `"/users/" .. username`.
+	/// The segments after which the script appends a value: a literal ends with a slash, as in
+	/// `"/users/" .. username`, or has a format of `string.format` next, as in `"/users/%s"`.
 	private var open: Set<String> = []
 
 	init(_ script: String) {
@@ -443,14 +480,22 @@ struct ScriptWords {
 				if address.origin.isEmpty, !segments[0].isEmpty { whole.insert(segments[0]) }
 				continue
 			}
-			for index in segments.indices.dropFirst() where !segments[index].isEmpty { pairs.insert(segments[index - 1] + "/" + segments[index]) }
+			for index in segments.indices.dropFirst() where !segments[index].isEmpty {
+				if segments[index].contains(/%[-+ #0-9.]*[a-zA-Z]/) {
+					open.insert(segments[index - 1])
+				} else {
+					pairs.insert(segments[index - 1] + "/" + segments[index])
+				}
+			}
 			if segments.last == "" { open.insert(segments[segments.count - 2]) }
 		}
 	}
 
-	func contains(_ segment: Substring, after previous: Substring) -> Bool {
+	/// Whether `segment` after `previous` is a word of the script. `isLogin` is set for a segment that
+	/// equals a login value, which only a literal with the same pair makes a word.
+	func contains(_ segment: Substring, after previous: Substring, isLogin: Bool = false) -> Bool {
 		let plain = Self.plain(segment)
-		return !plain.isEmpty && (pairs.contains(Self.plain(previous) + "/" + plain) || whole.contains(plain))
+		return !plain.isEmpty && (pairs.contains(Self.plain(previous) + "/" + plain) || !isLogin && whole.contains(plain))
 	}
 
 	func isOpen(after previous: Substring) -> Bool {
@@ -528,11 +573,6 @@ private struct Address {
 		rest = path[end...]
 	}
 
-	/// The parts that the scrubber searches: the path segments that are no words of the script, the
-	/// query, and the fragment.
-	func scrubbed(_ words: ScriptWords) -> [String] {
-		segments.indices.filter { !words.contains(segments[$0], after: $0 > 0 ? segments[$0 - 1] : "") }.map { String(segments[$0]) } + [String(rest)]
-	}
 }
 
 /// Finds the cookies and tokens of a recording where their names say what they are.
@@ -549,8 +589,9 @@ private enum Discovery {
 		for (name, value) in fields where isTokenName(name, inURL: true) { secrets.token(value, name: name) }
 	}
 
-	/// The fields of a multipart body by name, without the files. Nil when the boundary of the content
-	/// type is missing or a part has no blank line after its headers.
+	/// The fields of a multipart body by name, without the files. A name can be quoted or not. Nil when
+	/// the boundary of the content type is missing, or a part has no blank line after its headers or no
+	/// `Content-Disposition: form-data` with a name.
 	static func multipart(_ body: String, contentType: String) -> [(name: String, value: String)]? {
 		guard let boundary = contentType.firstMatch(of: /(?i)boundary="?([^";]+)"?/)?.output.1, body.contains("--" + boundary) else { return nil }
 		var fields: [(String, String)] = []
@@ -562,8 +603,10 @@ private enum Discovery {
 			var value = String(trimmed[gap.upperBound...])
 			// "\r\n" is one `Character`.
 			if value.last?.isNewline == true { value.removeLast() }
-			guard !headers.lowercased().contains("filename="), let name = headers.firstMatch(of: /(?i)\bname="([^"]*)"/)?.output.1 else { continue }
-			fields.append((String(name), value))
+			guard let disposition = headers.firstMatch(of: /(?im)^content-disposition:\s*form-data\s*(;.*)?$/)?.output.1 else { return nil }
+			guard disposition.firstMatch(of: /(?i);\s*filename\*?=/) == nil else { continue }
+			guard let name = disposition.firstMatch(of: /(?i);\s*name\s*=\s*(?:"([^"]*)"|([^;\s"]+))/) else { return nil }
+			fields.append((String(name.output.1 ?? name.output.2 ?? ""), value))
 		}
 		return fields
 	}
@@ -574,6 +617,13 @@ private enum Discovery {
 			if name.lowercased() == "location", let url = URL(string: value) { query(of: url, into: &secrets) }
 		}
 		if let body = response.body ?? latin1(response.base64Body) { self.body(body, into: &secrets) }
+	}
+
+	/// The fields of a form body, nil for a body that is no form.
+	static func form(_ body: String) -> [URLQueryItem]? {
+		let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
+		guard trimmed.contains("="), !trimmed.contains("<") else { return nil }
+		return URLComponents(string: "?" + trimmed.replacingOccurrences(of: "+", with: "%20"))?.queryItems
 	}
 
 	/// A body that is not UTF-8, read as ISO-8859-1, which gives each byte one character.
@@ -652,8 +702,8 @@ private enum Discovery {
 					secrets.token(Encodings.decodingEntities(value), name: name)
 				}
 			}
-		} else if trimmed.contains("=") {
-			for item in URLComponents(string: "?" + trimmed.replacingOccurrences(of: "+", with: "%20"))?.queryItems ?? [] where isTokenName(item.name, inURL: true) {
+		} else if let items = form(trimmed) {
+			for item in items where isTokenName(item.name, inURL: true) {
 				if let value = item.value { secrets.token(value, name: item.name) }
 			}
 		}
@@ -696,8 +746,9 @@ enum Encodings {
 	/// Each character of the value as itself, percent-encoded in UTF-8 or ISO-8859-1, form-encoded,
 	/// JSON-escaped, HTML-escaped, or as the bytes of UTF-8 read as ISO-8859-1, in any mix; or the whole
 	/// value in Base64 or Base64url. The match stands between characters that are not letters or digits,
-	/// or `asWholeValue` between the start or the end of the text, quotes, `=`, `&`, `/`, `?`, `#`, `:`,
-	/// `,`, `;`, brackets, braces, or white space, as a whole parameter, field, or path segment does.
+	/// or `asWholeValue` between the start or the end of the text, quotes, `=`, `&`, `?`, `#`, `:`, `,`,
+	/// `;`, brackets, braces, or white space. A slash is no delimiter, so `2025/10/10` holds the PIN
+	/// `2025` inside a longer value.
 	static func matcher(for value: String, ignoringCase: Bool, asWholeValue: Bool = false) -> NSRegularExpression {
 		let characters = value.unicodeScalars.map { "(?:" + forms(of: $0, ignoringCase: ignoringCase).joined(separator: "|") + ")" }.joined()
 		let base64 = Data(value.utf8).base64EncodedString()
@@ -706,7 +757,7 @@ enum Encodings {
 			.sorted { $0.count > $1.count }.map(NSRegularExpression.escapedPattern(for:))
 		let core = "(?:" + ([characters] + whole).joined(separator: "|") + ")"
 		if asWholeValue {
-			return try! NSRegularExpression(pattern: #"(?:^|(?<=[=&/?#:,;"'\s\[\]{}()]))"# + core + #"(?=$|[=&/?#:,;"'\s\[\]{}()])"#)
+			return try! NSRegularExpression(pattern: #"(?:^|(?<=[=&?#:,;"'\s\[\]{}()]))"# + core + #"(?=$|[=&?#:,;"'\s\[\]{}()])"#)
 		}
 		let first = value.unicodeScalars.first.map(isWordCharacter) ?? false
 		let last = value.unicodeScalars.last.map(isWordCharacter) ?? false

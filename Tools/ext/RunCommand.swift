@@ -78,6 +78,8 @@ struct Session {
 		let random: [RandomValue]
 		/// The indices of `random` that the script used as a key, an IV, or the key of an HMAC.
 		let keys: Set<Int>
+		/// The script used an AES or HMAC key that comes from no value of `random`.
+		let foreignKeys: Bool
 
 		/// Prints a line for each account that failed and stops with the last one.
 		func checkAccounts() throws(Ext.Failure) {
@@ -133,6 +135,7 @@ final class Trace: Sendable {
 		var exchanges: [Fixture.Exchange] = []
 		var random: [RandomValue] = []
 		var keys: Set<Int> = []
+		var foreignKeys = false
 		var storage: Data?
 		var refreshed: [(account: LuaValue, result: LuaValue)] = []
 	}
@@ -145,6 +148,7 @@ final class Trace: Sendable {
 			case let .exchange(exchange): state.exchanges.append(exchange)
 			case let .random(value): state.random.append(value)
 			case let .key(index): state.keys.insert(index)
+			case .foreignKey: state.foreignKeys = true
 			case let .storage(data): state.storage = data
 			case let .result(.refreshAccount(account, _, _, _, _, _), result):
 				state.refreshed.removeAll { $0.account == account }
@@ -173,7 +177,7 @@ final class Trace: Sendable {
 	func outcome(document: LuaValue?, failure: String?, accountErrors: [String]) -> Session.Outcome {
 		state.withLock { state in
 			Session.Outcome(document: document, failure: failure, accountErrors: accountErrors, storage: state.storage, exchanges: state.exchanges,
-				random: state.random, keys: state.keys)
+				random: state.random, keys: state.keys, foreignKeys: state.foreignKeys)
 		}
 	}
 }

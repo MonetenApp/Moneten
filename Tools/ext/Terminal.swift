@@ -44,8 +44,9 @@ enum Terminal {
 			case 0x7F, 0x08:
 				// One character back: its UTF-8 continuation bytes and its first byte.
 				while let last = bytes.popLast(), last & 0xC0 == 0x80 {}
-			case 0x04 where bytes.isEmpty:
-				return nil
+			case 0x04:
+				// Ctrl-D ends the input, also after some of it, as in a line of the terminal.
+				return bytes.isEmpty ? nil : String(decoding: bytes, as: UTF8.self)
 			default:
 				bytes.append(byte)
 			}

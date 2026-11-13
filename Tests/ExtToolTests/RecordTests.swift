@@ -59,7 +59,10 @@ extension ExtTool {
 			let expected = script.deletingLastPathComponent().appending(path: "expected.json")
 			let record = try ext(["record", script.path, fixture.path, "--trust", bank.certificate.path], input: "y\n", environment: login)
 			#expect(record.status == 0, "\(record.errors)")
-			#expect(record.errors.contains("ext keeps 1 more random value, such as a PKCE verifier, because the replay needs it.\n"))
+			#expect(record.errors.contains("ext keeps a random value that the replay needs and that an address holds only in a derived form, "
+				+ "such as the hash of a PKCE verifier.\n"))
+			#expect(record.errors.contains("ext keeps a random value as it is: the value of `nonce` in GET /authorize.\n"))
+			#expect(record.errors.contains("such as a session ID of MM.uuid() in ?sid="))
 			let recording = try JSONDecoder().decode(Fixture.self, from: Data(contentsOf: fixture))
 			let kept = recording.random?.filter { if case .bytes = $0 { true } else if case .uuid = $0 { true } else { false } }
 			#expect(kept?.count == 2)
@@ -67,6 +70,44 @@ extension ExtTool {
 			for secret in ["geheim123", "auth-7f3a9c21e5", "oauth-5d4c3b2a1908"] { #expect(!text.contains(secret), "\(secret) is in the fixture") }
 			#expect(try extOffline(["test", script.path, fixture.path, expected.path, "--update"]).status == 0)
 			#expect(try extOffline(["test", script.path, fixture.path, expected.path]).output == "PASS 1 account, 0 transactions\n")
+		}
+
+		/// A script whose address needs a hash of `seed` and that encrypts the password with `key`.
+		func seeded(key: String, arguments: [String] = []) throws -> (Run, URL) {
+			let bank = try LocalBank()
+			let folder = try files(["Seed.lua": """
+				WebBanking{version = 1, services = {"Seed"}}
+				function SupportsBank() return true end
+				function InitializeSession(protocol, bankCode, username, customer, password)
+					local seed = MM.random(48)
+					local key = \(key)
+					MM.aes256encrypt(key, MM.random(16), password)
+					Connection():get("https://bank.localhost/logout?kid=" .. MM.sha256(MM.binToHex(seed)))
+				end
+				function ListAccounts() return {} end
+				"""])
+			let run = try ext(["record", "Seed.lua", "fixture.json", "--trust", bank.certificate.path] + arguments, input: "y\n", environment: login, folder: folder)
+			return (run, folder.appending(path: "fixture.json"))
+		}
+
+		/// The key comes from the seed through a hash or as a slice, and the address needs the seed too.
+		@Test(arguments: ["MM.hexToBin(MM.sha256(seed))", "seed:sub(1, 32)"])
+		func seedOfAKeyIsNeverKept(key: String) throws {
+			let (run, fixture) = try seeded(key: key)
+			#expect(run.status == 2)
+			#expect(run.errors.contains("The replay needs a random value that the script used as a key or an IV"))
+			#expect(!FileManager.default.fileExists(atPath: fixture.path))
+		}
+
+		/// A key of the script's own text gives no seed to blame, so a value that only the replay asks for
+		/// could be key material: it stays only with --keep-random.
+		@Test func foreignKeyNeedsKeepRandom() throws {
+			let (refused, fixture) = try seeded(key: #""0123456789abcdef0123456789abcdef""#)
+			#expect(refused.status == 2)
+			#expect(refused.errors.contains("record again with --keep-random."))
+			#expect(!FileManager.default.fileExists(atPath: fixture.path))
+			let (kept, _) = try seeded(key: #""0123456789abcdef0123456789abcdef""#, arguments: ["--keep-random"])
+			#expect(kept.status == 0, "\(kept.errors)")
 		}
 
 		@Test func refusedRecordingKeepsTheFixture() throws {

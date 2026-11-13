@@ -94,7 +94,7 @@ The `ext` tool SHALL keep `LocalStorage` between runs in a file next to the scri
 
 ### Requirement: Record a run
 
-The `ext` tool SHALL save every HTTP request and response of a run to a fixture file with the command `ext record <script> <fixture>`. The fixture also holds the answers that the author gave to challenges, the start time, and the random values that the script received. It keeps a random value when a request address holds it or when a replay of the scrubbed fixture needs it, never one that the script used as a key, and holds only the kind and the length of any other random value.
+The `ext` tool SHALL save every HTTP request and response of a run to a fixture file with the command `ext record <script> <fixture>`. The fixture also holds the answers that the author gave to challenges, the start time, and the random values that the script received. It keeps a random value only when an address or the replay needs it, never key material, and holds the kind and the length of any other.
 
 #### Scenario: Record a refresh
 
@@ -122,6 +122,11 @@ The `ext` tool SHALL replace the login data, the answers to challenges, cookies,
 - **WHEN** the script encrypts the password with a key and an IV of `MM.random` and posts the result
 - **THEN** the fixture holds only the lengths of the key and the IV
 - **AND** `ext test` replays the run with other values of the same lengths
+
+#### Scenario: Session ID in an address
+
+- **WHEN** the script sends `?sid=` with a value of `MM.uuid()`
+- **THEN** the fixture keeps the value, and the tool names the field `sid` and its request
 
 #### Scenario: Login with PKCE
 

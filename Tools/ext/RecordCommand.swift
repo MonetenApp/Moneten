@@ -9,11 +9,14 @@ struct RecordCommand {
 	let fixture: String
 	let service: String?
 	let trust: String?
+	/// Keeps random values that only the replay needs, also after a key that comes from no random value.
+	var keepRandom = false
 
 	static let reminder = "The fixture still holds account data such as names, IBANs, and amounts. Replace them with invented data before you share or commit"
 	/// What the scrubber cannot find: a secret that the script hid in a form of its own.
 	static let hiddenLogin = "ext does not find login data that the script hashed, encrypted, or encoded together with other data, "
-		+ "such as MM.sha256(pin) or Base64 of a JSON object with the PIN. Look for such values in the fixture too."
+		+ "such as MM.sha256(pin) or Base64 of a JSON object with the PIN. Look for such values in the fixture too. A random value that an address "
+		+ "holds stays as it is, such as a session ID of MM.uuid() in ?sid=, so make sure that each one ext names is no secret."
 
 	func execute() async throws {
 		let script = try Script(path: self.script)
@@ -42,8 +45,10 @@ struct RecordCommand {
 		switch choice {
 		case let .values(values, added):
 			keep = values
-			if added > 0 {
-				Terminal.error("ext keeps \(Document.counted(added, "more random value")), such as a PKCE verifier, because the replay needs \(added == 1 ? "it" : "them").")
+			if added > 0, outcome.foreignKeys, !keepRandom {
+				throw Ext.Failure.run("The replay needs \(Document.counted(added, "random value")) that no address holds as it is, and the script used an AES "
+					+ "or HMAC key that ext cannot trace to a random value, so \(added == 1 ? "it" : "they") could be key material. ext wrote no file. "
+					+ "When \(added == 1 ? "it only forms" : "they only form") an address, as a PKCE verifier does, record again with --keep-random.")
 			}
 		case .needsKey:
 			throw Ext.Failure.run("The replay needs a random value that the script used as a key or an IV, and a fixture never holds a key, so ext wrote no file.")
@@ -55,6 +60,13 @@ struct RecordCommand {
 			try Self.encoded(scrubbed).write(to: file, options: .atomic)
 		} catch {
 			throw Ext.Failure.usage("\(fixture) cannot be written: \(error.localizedDescription)")
+		}
+		for index in keep.sorted() {
+			guard let value = recording.random?[index] else { continue }
+			let fields = Self.fields(of: value, in: recording, scrubbed: scrubbed)
+			Terminal.error(fields.isEmpty
+				? "ext keeps a random value that the replay needs and that an address holds only in a derived form, such as the hash of a PKCE verifier."
+				: "ext keeps a random value as it is: \(fields.joined(separator: ", ")).")
 		}
 		Terminal.error("Recorded \(Document.counted(scrubbed.exchanges.count, "request")).")
 		Terminal.error(report.line)
@@ -101,6 +113,22 @@ struct RecordCommand {
 			user: ReplaySession(fixture), quiet: true)
 		let outcome = await session.perform()
 		return outcome.failure ?? outcome.accountErrors.first
+	}
+
+	/// Where the addresses of the recording hold a random value as it is, such as "the value of `nonce`
+	/// in GET /authorize", with the path of the scrubbed address.
+	static func fields(of value: RandomValue, in recording: Fixture, scrubbed: Fixture) -> [String] {
+		let forms = Encodings.forms(of: value).map { $0.lowercased() }.filter { $0.count >= 4 }
+		let holds = { (text: String) in forms.contains(where: text.lowercased().contains) }
+		var fields: [String] = []
+		for (original, written) in zip(recording.exchanges, scrubbed.exchanges) {
+			let place = "\(original.request.method) \(written.request.url.path(percentEncoded: true))"
+			let items = URLComponents(url: original.request.url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+			var found = items.filter { holds($0.value ?? "") }.map { "the value of `\($0.name)` in \(place)" }
+			if original.request.url.pathComponents.contains(where: holds) { found.append("a path segment of \(place)") }
+			fields += found.filter { !fields.contains($0) }
+		}
+		return fields
 	}
 
 	static func encoded(_ fixture: Fixture) throws -> Data {

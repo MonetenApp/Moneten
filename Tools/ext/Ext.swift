@@ -22,6 +22,8 @@ enum Ext {
 		  --storage <file>   The LocalStorage file of run. Default: <script>.storage.json next to the script.
 		  --fresh            Start run with an empty LocalStorage.
 		  --trust <file>     Trust this certificate (PEM or DER) for HTTPS in run and record, for a test server.
+		  --keep-random      Let record keep random values that only the replay needs, also after the script used
+		                     a key that ext cannot trace to a random value. Use it only for values such as a PKCE verifier.
 		  --update           Write the result of test to the expected file.
 		  -h, --help         Show this help.
 		  --version          Show the version of ext and of the API.
@@ -36,7 +38,7 @@ enum Ext {
 
 	enum Command: Equatable {
 		case run(script: String, storage: String?, fresh: Bool, trust: String?)
-		case record(script: String, fixture: String, trust: String?)
+		case record(script: String, fixture: String, trust: String?, keepRandom: Bool)
 		case test(script: String, fixture: String, expected: String, update: Bool)
 		case help
 		case version
@@ -71,7 +73,7 @@ enum Ext {
 			let argument = arguments[index]
 			index += 1
 			switch argument {
-			case "-h", "--help", "--version", "--fresh", "--update":
+			case "-h", "--help", "--version", "--fresh", "--update", "--keep-random":
 				flags.insert(argument == "-h" ? "--help" : argument)
 			case "--service", "--storage", "--trust":
 				guard index < arguments.count else { throw .usage("\(argument) needs a value.") }
@@ -105,9 +107,9 @@ enum Ext {
 			try count(1, "<script>")
 			command = .run(script: files[0], storage: options["--storage"], fresh: flags.contains("--fresh"), trust: options["--trust"])
 		case "record":
-			try allow(["--trust"])
+			try allow(["--trust", "--keep-random"])
 			try count(2, "<script> <fixture>")
-			command = .record(script: files[0], fixture: files[1], trust: options["--trust"])
+			command = .record(script: files[0], fixture: files[1], trust: options["--trust"], keepRandom: flags.contains("--keep-random"))
 		case "test":
 			try allow(["--update"])
 			try count(3, "<script> <fixture> <expected>")
@@ -144,8 +146,8 @@ enum Ext {
 				print("ext \(version), API version \(extensionAPIVersion)")
 			case let .run(script, storage, fresh, trust):
 				try await RunCommand(script: script, service: invocation.service, storage: storage, fresh: fresh, trust: trust).execute()
-			case let .record(script, fixture, trust):
-				try await RecordCommand(script: script, fixture: fixture, service: invocation.service, trust: trust).execute()
+			case let .record(script, fixture, trust, keepRandom):
+				try await RecordCommand(script: script, fixture: fixture, service: invocation.service, trust: trust, keepRandom: keepRandom).execute()
 			case let .test(script, fixture, expected, update):
 				try await TestCommand(script: script, fixture: fixture, expected: expected, service: invocation.service, update: update).execute()
 			}

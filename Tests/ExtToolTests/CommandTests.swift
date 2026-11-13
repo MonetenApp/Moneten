@@ -296,5 +296,47 @@ extension ExtTool {
 				folder: folder)
 			#expect(run.output.contains("length 3000"))
 		}
+	
+		/// Ctrl-D after some input ends the answer, as it ends a line of the terminal.
+		@Test func controlDEndsAnAnswer() throws {
+			let folder = try files(["Bank.lua": """
+				WebBanking{version = 1, services = {"Bank"}}
+				function SupportsBank() return true end
+				function InitializeSession2(protocol, bankCode, step, credentials)
+					if step == 1 then return {title = "Enter the code.", label = "Code"} end
+					print("answer " .. credentials[1] .. " length " .. #credentials[1])
+				end
+				function ListAccounts() return {} end
+				"""])
+			let typing = """
+				import os, pty, select, signal, sys, time
+				pid, fd = pty.fork()
+				if pid == 0:
+				    os.execv(sys.argv[1], [sys.argv[1], "run", "Bank.lua"])
+				out = b""
+				def read(until):
+				    global out
+				    while until not in out:
+				        ready, _, _ = select.select([fd], [], [], 15)
+				        if not ready: return
+				        try: chunk = os.read(fd, 1024)
+				        except OSError: return
+				        if not chunk: return
+				        out += chunk
+				read(b"Code: ")
+				os.write(fd, b"4815\\x04")
+				read(b"accounts")
+				for _ in range(100):
+				    if os.waitpid(pid, os.WNOHANG)[0]: break
+				    time.sleep(0.1)
+				else:
+				    os.kill(pid, signal.SIGKILL)
+				    os.waitpid(pid, 0)
+				sys.stdout.buffer.write(out)
+				"""
+			let run = try launch(URL(filePath: "/usr/bin/python3"), ["-c", typing, extBinary.path], environment: ["EXT_USERNAME": "erika", "EXT_PASSWORD": "secret"],
+				folder: folder)
+			#expect(run.output.contains("answer 4815 length 4"))
+		}
 	}
 }

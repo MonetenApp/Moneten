@@ -420,5 +420,40 @@ extension ExtTool {
 			#expect(fixture.exchanges[1].response.body == #"{"id": "{{token1}}", "count": 3}"#)
 			#expect(!file.contains("98765432101"))
 		}
+	
+		// MARK: Round 3
+
+		@Test func multipartNameWithoutQuotes() throws {
+			let body = "--XyZ\r\nContent-Disposition: form-data; name=csrf\r\n\r\nmp-T0ken-4712\r\n--XyZ--\r\n"
+			let (fixture, _, file) = try scrub([exchange("POST", "https://bank.example/upload", headers: ["Content-Type": "multipart/form-data; boundary=XyZ"],
+				body: body, response: "<p>mp-T0ken-4712</p>")])
+			#expect(fixture.exchanges[0].response.body == "<p>{{token1}}</p>")
+			#expect(!file.contains("mp-T0ken-4712"))
+			let unreadable = "--XyZ\r\nContent-Type: text/plain\r\n\r\nmp-T0ken-4712\r\n--XyZ--\r\n"
+			#expect(refusal([exchange("POST", "https://bank.example/upload", headers: ["Content-Type": "multipart/form-data; boundary=XyZ"], body: unreadable)])
+				== "A POST request has a multipart body that ext cannot read, so it wrote no file.")
+		}
+
+		/// A literal "name" elsewhere in the script is no evidence for the segment `name` after `users`.
+		@Test(arguments: [#"local t = {} t["name"] = 1 c:get(string.format("https://bank.example/users/%s", username))"#,
+			#"local field = "name" c:get("https://bank.example/users/" .. username)"#])
+		func loginSegmentWithAnUnrelatedLiteral(script: String) throws {
+			let (fixture, _, file) = try scrub([exchange("GET", "https://bank.example/users/name")], login: ["name", "geheim123"], script: script)
+			#expect(fixture.exchanges[0].request.url.absoluteString == "https://bank.example/users/%7B%7Busername%7D%7D")
+			#expect(!file.contains("/users/name"))
+		}
+
+		@Test func formatTemplateMakesAPairAmbiguous() {
+			let script = #"c:get("https://bank.example/users/name") c:get(string.format("https://bank.example/users/%s", username))"#
+			#expect(refusal([exchange("GET", "https://bank.example/users/name")], login: ["name", "geheim123"], script: script)?
+				.hasPrefix("A path segment of a GET request equals the username") == true)
+		}
+
+		@Test(arguments: [("https://bank.example/bookings?from=2025/10/10", nil as String?), ("https://bank.example/bookings/2025-10-10", nil),
+			("https://bank.example/bookings", "from=2025/10/10"), ("https://bank.example/bookings", #"{"amount":3.2025}"#)])
+		func weakPasswordInsideAWholeValue(url: String, body: String?) {
+			#expect(refusal([exchange("POST", url, body: body)], login: ["erika", "2025"])?
+				.hasPrefix("The password is short or only digits, and a request holds it inside a longer value") == true)
+		}
 	}
 }
