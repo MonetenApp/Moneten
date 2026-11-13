@@ -266,7 +266,7 @@ The app SHALL fetch the value of a securities account through the custody accoun
 #### Scenario: Empty securities account
 
 - **GIVEN** "Depot" showed 24.518,37 € on 12.11.2026, and the user sold every holding
-- **WHEN** the bank answers the custody account balance of "Depot" on 13.11.2026 without holdings and without a total, or with the note 3010 that it has no entries
+- **WHEN** the bank answers the custody account balance of "Depot" on 13.11.2026 without holdings and without a total
 - **THEN** "Depot" shows 0,00 €
 - **AND** the value of "Depot" on 13.11.2026 is 0,00 €
 
@@ -288,6 +288,13 @@ The app SHALL fetch the value of a securities account through the custody accoun
 - **GIVEN** the bank answers the custody account balance of "Depot" without a total, and its holdings have no value in one currency
 - **WHEN** the refresh ends
 - **THEN** "Depot" shows "The bank sent no value for this securities account."
+
+#### Scenario: Note without a statement
+
+- **GIVEN** "Depot" showed 24.518,37 € on 12.11.2026
+- **WHEN** the bank answers the custody account balance of "Depot" with the note 3010 "Keine Einträge vorhanden" and without a statement
+- **THEN** the error of "Depot" quotes "Keine Einträge vorhanden" and shows the code 3010
+- **AND** "Depot" keeps 24.518,37 €
 
 #### Scenario: Bank rejects the request
 
