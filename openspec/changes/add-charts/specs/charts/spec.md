@@ -108,14 +108,13 @@ The app SHALL set the initial balance of an account that a bank refreshes to the
 
 ### Requirement: The initial balance stays
 
-The app SHALL set the initial balance of a refreshed account only once, at the first refresh that brings a bank balance. Later refreshes, imports, and deletions do not change it, and neither does a later bank balance. A value that the user enters stays. A difference between the computed balance and the bank balance that appears later is for the calibration to resolve.
+The app SHALL set the initial balance of a refreshed account only once, at the first refresh that brings a bank balance. A refresh whose transactions failed does not set it. Later refreshes, imports, and deletions do not change it, and neither does a later bank balance. A value that the user enters stays. A difference between the computed balance and the bank balance that appears later is for the calibration to resolve.
 
 #### Scenario: Later refresh with an older transaction
 
 - **GIVEN** an account whose first refresh set an initial balance of 2.550,00 € with a bank balance of 1.200,00 €
 - **WHEN** a refresh brings a bank balance of 800,00 € and booked transactions of -400,00 € today and of -70,00 € from before the first refresh
 - **THEN** the initial balance stays 2.550,00 € and the last bar shows 730,00 €
-- **AND** the app proposes to calibrate the account
 
 #### Scenario: Deleted transaction
 
