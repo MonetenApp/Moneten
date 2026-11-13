@@ -19,13 +19,13 @@ The specs in [openspec/changes](../openspec/changes/) define the behavior. Where
 | Type | Fields |
 |---|---|
 | `AccountGroup` | `id`, `name`, `parentID?`, `position`, `showSum`, `isExpanded` |
-| `Account` | `id`, `groupID?`, `position`, `name`, `kind`, `source`, `currency`, `iban?`, `bic?`, `accountNumber?`, `bankCode?`, `bankName?`, `owner?`, `bankBalanceMinor?`, `bankBalanceDate?`, `initialBalanceMinor`, `isClosed`, `comment?`, `sourceID?`, `color?`, `accessID?`, `remoteID?`, `refreshedAt?`, `refreshError?` |
+| `Account` | `id`, `groupID?`, `position`, `name`, `kind`, `source`, `currency`, `iban?`, `bic?`, `accountNumber?`, `bankCode?`, `bankName?`, `owner?`, `bankBalanceMinor?`, `bankBalanceDate?`, `initialBalanceMinor`, `initialBalanceIsSet`, `isClosed`, `comment?`, `sourceID?`, `color?`, `accessID?`, `remoteID?`, `refreshedAt?`, `refreshError?` |
 | `AccountKind` | `giro`, `savings`, `fixedTermDeposit`, `loan`, `creditCard`, `portfolio`, `cash`, `other` |
 | `AccountSource` | `offline` for an account that the user fills by hand or by import, `migrated` for an account taken over from MoneyMoney, `bank` for an account that its bank access refreshes |
 
 Groups and accounts share one `position` order inside their parent group, so the sidebar can mix them as MoneyMoney does.
 
-An account with a `bankBalanceMinor` shows that balance. Other accounts show `initialBalanceMinor` plus their booked transactions. A migrated account gets the initial balance that makes both numbers end at the same value. An account that a bank refreshes gets it again after every refresh, import, and deletion, from the bank balance less the booked transactions up to the day of that balance.
+An account with a `bankBalanceMinor` shows that balance. Other accounts show `initialBalanceMinor` plus their booked transactions. A migrated account gets the initial balance that makes both numbers end at the same value. An account that the setup adds gets it once, at its first refresh with a bank balance: the bank balance less the booked transactions up to the day of that balance. `initialBalanceIsSet` records that, and a value that the user enters sets it as well. The migration `v11` adds the column and leaves it false only for an account of a bank access with an initial balance of 0 and no `sourceID`, which gets its value at its next refresh.
 
 ## Bank accesses
 
