@@ -36,6 +36,7 @@ final class ExtensionLibrary {
 			#endif
 			let pems = ["current", "next"].compactMap { Bundle.main.url(forResource: $0, withExtension: "pub").flatMap { try? String(contentsOf: $0, encoding: .utf8) } }
 			let keys = pems.count == 2 ? try? CatalogKeys(currentPEM: pems[0], nextPEM: pems[1], lowestVersion: lowestIndexVersion) : nil
+			NSLog("Catalog keys %@", keys == nil ? "missing" : "loaded")
 			return Configuration(source: CatalogSource(base: URL(string: "https://extensions.monetenapp.com/")!), keys: keys)
 			#endif
 		}

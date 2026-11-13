@@ -31,6 +31,14 @@ targets:
       - path: Sources
       - path: Resources
         buildPhase: resources
+        excludes:
+          - "CatalogKeys/**"
+      # The two public keys of the catalog, copies of keys/ in MonetenApp/moneten-extensions.
+      # ExtensionLibrary loads current.pub and next.pub from Contents/Resources.
+      - path: Resources/CatalogKeys/current.pub
+        buildPhase: resources
+      - path: Resources/CatalogKeys/next.pub
+        buildPhase: resources
     dependencies:
       - package: MonetenKit
         product: Domain

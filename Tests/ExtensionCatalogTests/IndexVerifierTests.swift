@@ -98,7 +98,9 @@ import Testing
 			nextPEM: String(contentsOf: folder.appending(path: "next.pub"), encoding: .utf8), lowestVersion: 1)
 		#expect(keys.current.rawRepresentation.count == 32)
 		#expect(keys.next.rawRepresentation.count == 32)
-		#expect(keys.current.rawRepresentation != keys.next.rawRepresentation)
+		// The raw keys of keys/current.pub and keys/next.pub in MonetenApp/moneten-extensions at a83d936.
+		#expect(keys.current.rawRepresentation.base64EncodedString() == "94i1qzSKsFalHsSlPCseA0k6wmXVzk7I0J/tra9BVyA=")
+		#expect(keys.next.rawRepresentation.base64EncodedString() == "CEOnyQPVG9qH85EcgLirtrtCM+C5Od0RhfGPwCCjw7s=")
 	}
 
 	@Test func keysFromThePEMThatOpenSSLWrites() throws {

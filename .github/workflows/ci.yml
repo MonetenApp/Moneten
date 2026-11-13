@@ -16,6 +16,8 @@ jobs:
           node-version: 22
       - run: python3 scripts/check-docs.py
       - run: python3 scripts/check-ui.py
+      # The catalog keys of the app are the keys/*.pub of MonetenApp/moneten-extensions.
+      - run: scripts/check-catalog-keys.sh
       - run: npm install -g @fission-ai/openspec
       - run: openspec validate --all --strict --no-interactive
       # Offline: lua.org resets connections from CI runners.
