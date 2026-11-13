@@ -86,11 +86,14 @@ public struct Account: Identifiable, Hashable, Sendable, Codable {
 	public var refreshedAt: Date?
 	/// The error of the last refresh, until a refresh of the account succeeds.
 	public var refreshError: RefreshError?
+	/// "Refresh" in the account settings: how often the automatic refresh fetches the account.
+	public var refreshInterval: RefreshInterval
 
 	public init(id: UUID = UUID(), groupID: UUID? = nil, position: Int, name: String, kind: AccountKind, source: AccountSource, currency: String = "EUR",
 		iban: String? = nil, bic: String? = nil, accountNumber: String? = nil, bankCode: String? = nil, bankName: String? = nil, owner: String? = nil,
 		bankBalanceMinor: Int64? = nil, bankBalanceDate: Date? = nil, initialBalanceMinor: Int64 = 0, initialBalanceIsSet: Bool = false, isClosed: Bool = false, comment: String? = nil, sourceID: String? = nil,
-		color: String? = nil, accessID: UUID? = nil, remoteID: String? = nil, refreshedAt: Date? = nil, refreshError: RefreshError? = nil) {
+		color: String? = nil, accessID: UUID? = nil, remoteID: String? = nil, refreshedAt: Date? = nil, refreshError: RefreshError? = nil,
+		refreshInterval: RefreshInterval = .everyTwoHours) {
 		self.id = id
 		self.groupID = groupID
 		self.position = position
@@ -116,6 +119,7 @@ public struct Account: Identifiable, Hashable, Sendable, Codable {
 		self.remoteID = remoteID
 		self.refreshedAt = refreshedAt
 		self.refreshError = refreshError
+		self.refreshInterval = refreshInterval
 	}
 
 	public var isOffline: Bool { source == .offline }

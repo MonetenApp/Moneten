@@ -38,6 +38,10 @@ public final class SyncCoordinator {
 	/// refresh brings no account, so its accounts keep their last state. It brings a state only when its
 	/// connector changed one before the cancel (`FailureWithState`).
 	@ObservationIgnored public var ended: @MainActor (UUID, AccessState?, [UUID: AccountRefresh]) -> Void = { _, _, _ in }
+	/// Runs on the main actor when a run ended: the first refresh started it, the refreshes that started
+	/// while it went joined it, and the last one ended. The notification about new transactions comes once per run.
+	@ObservationIgnored public var runEnded: @MainActor () -> Void = {}
+	private var inRun = false
 
 	private struct Job {
 		var request: RefreshRequest
@@ -84,6 +88,7 @@ public final class SyncCoordinator {
 		} else {
 			afterRun[id] = afterRun[id]?.adding(job) ?? job
 		}
+		inRun = true
 		startProgress(of: job)
 		startNext()
 	}
@@ -115,6 +120,7 @@ public final class SyncCoordinator {
 		held.remove(access)
 		if let next = afterRun.removeValue(forKey: access) { queue.append(next) }
 		startNext()
+		endRunIfIdle()
 	}
 
 	private func resumeWaiting(for access: UUID) -> Bool {
@@ -135,6 +141,7 @@ public final class SyncCoordinator {
 			endProgress(of: id)
 		}
 		for id in running.keys { cancel(id) }
+		endRunIfIdle()
 	}
 
 	/// Stops every running and waiting refresh and setup of one source, such as an extension that was blocked or removed.
@@ -154,6 +161,13 @@ public final class SyncCoordinator {
 		}
 		if afterRun.removeValue(forKey: id) != nil { endProgress(of: id) }
 		if running[id] != nil { cancel(id) }
+		endRunIfIdle()
+	}
+
+	private func endRunIfIdle() {
+		guard inRun, !isRefreshing else { return }
+		inRun = false
+		runEnded()
 	}
 
 	/// The accounts of a canceled access show their last state at once, while its connector still ends.
@@ -232,6 +246,7 @@ public final class SyncCoordinator {
 			}
 			_ = resumeWaiting(for: access.id)
 			startNext()
+			endRunIfIdle()
 		}
 	}
 

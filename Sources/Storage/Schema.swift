@@ -236,6 +236,12 @@ enum Schema {
 			}
 			try db.execute(sql: "UPDATE account SET initialBalanceIsSet = 0 WHERE source = 'bank' AND initialBalanceMinor = 0 AND sourceID IS NULL")
 		}
+		// "Refresh" in the account settings. Every account starts with the interval of a new account.
+		m.registerMigration("v12") { db in
+			try db.alter(table: "account") { t in
+				t.add(column: "refreshInterval", .text).notNull().defaults(to: RefreshInterval.everyTwoHours.rawValue)
+			}
+		}
 		return m
 	}
 }
