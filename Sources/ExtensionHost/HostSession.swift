@@ -11,6 +11,8 @@ final class HostSession {
 	let environment: HostEnvironment
 	let log: (String) -> Void
 	let status: (String) -> Void
+	/// Tells the app that the host still works, for its watchdog, for example while `MM.sleep` waits.
+	let alive: () -> Void
 	var registration: Registration?
 	/// The stored transactions that `isKnownTransactionId` finds during the current `RefreshAccount`.
 	var knownTransactions: [String: LuaValue] = [:]
@@ -29,7 +31,7 @@ final class HostSession {
 	/// answer about a new host; `decisions` holds the answers the app stored for this extension.
 	init(package: ExtensionPackage, transport: any Transport, decisions: [String: HostDecision] = [:], memory: Int = HostLimits().memory,
 		environment: HostEnvironment = .standard, storage: Data? = nil, ask: @escaping (String) throws -> HostDecision, log: @escaping (String) -> Void,
-		status: @escaping (String) -> Void = { _ in }) {
+		status: @escaping (String) -> Void = { _ in }, alive: @escaping () -> Void = {}) {
 		self.package = package
 		lua = LuaState(memory: memory)
 		let rule: HostPolicy.Rule = package.manifest?.hosts.map { .listed(Set($0)) } ?? .askUser
@@ -37,6 +39,7 @@ final class HostSession {
 		self.environment = environment
 		self.log = log
 		self.status = status
+		self.alive = alive
 		storedData = storage
 		clua_setcontext(lua.stack.L, Unmanaged.passUnretained(self).toOpaque())
 		Environment.install(lua.stack, extensionName: package.name, environment: environment)

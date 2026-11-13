@@ -119,7 +119,8 @@ public enum HostProcess {
 					?? ReportingTransport(URLSessionTransport()) { emit(.alive) }
 				let started = ContinuousClock.now
 				let new = HostSession(package: setup.package, transport: transport, decisions: setup.decisions, memory: setup.limits.memory,
-					environment: setup.environment, storage: setup.storage, ask: askApp, log: { emit(.print($0)) }, status: { emit(.status($0)) })
+					environment: setup.environment, storage: setup.storage, ask: askApp, log: { emit(.print($0)) }, status: { emit(.status($0)) },
+					alive: { emit(.alive) })
 				do {
 					let registration = try new.load()
 					session = new

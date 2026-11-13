@@ -184,6 +184,15 @@ import Testing
 		#expect(try await Self.ended(client))
 	}
 
+	/// A script may sleep longer than the watchdog waits, as MoneyMoney lets it: the host reports that it
+	/// is alive while it sleeps.
+	@Test func sleepKeepsTheHostAlive() async throws {
+		let client = try await Self.start(demo("WebBanking{version = 1}\nfunction Nap() MM.sleep(4) return \"awake\" end"), fixture: Self.fixture([]),
+			silence: .seconds(2))
+		#expect(try await client.call("Nap") == .string("awake"))
+		await client.end()
+	}
+
 	@Test func questionToTheUserPausesTheWatchdog() async throws {
 		let client = try await Self.start(Self.askingPackage, fixture: Self.fixture([("https://www.bank.example/", "start")]), silence: .seconds(3),
 			answer: { try? await Task.sleep(for: .seconds(4)); return .allowed })

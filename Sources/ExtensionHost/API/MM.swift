@@ -71,9 +71,16 @@ enum MMLibrary {
 	/// a wrong number in a script cannot stall the refresh for hours.
 	static let longestSleep = 300.0
 
+	/// Sleeps in steps of one second and reports each step to the app, whose watchdog stops a host that
+	/// stays silent for 180 seconds.
 	private static let sleep: clua_Function = { L in
-		if let seconds = LuaStack(L!).number(at: 1), seconds > 0 {
-			Thread.sleep(forTimeInterval: min(seconds, longestSleep))
+		guard let seconds = LuaStack(L!).number(at: 1), seconds > 0 else { return 0 }
+		let session = HostSession.current(L)
+		var left = min(seconds, longestSleep)
+		while left > 0 {
+			session.alive()
+			Thread.sleep(forTimeInterval: min(left, 1))
+			left -= 1
 		}
 		return 0
 	}
