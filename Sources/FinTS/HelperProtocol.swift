@@ -4,7 +4,7 @@ import Foundation
 /// The first line to the helper. Tools/FinTSHelper/FinTSHelper.java describes the protocol.
 struct Command: Encodable {
 	let type: String
-	let bankCode: String
+	var bankCode: String?
 	var url: String?
 	var user: String?
 	var product: String?
@@ -40,7 +40,7 @@ enum HelperMessage: Decodable {
 	case trust(id: Int, host: String, chain: [Data])
 	case progress(done: Int, of: Int)
 	case notice(String)
-	case bank(FinTSBank?)
+	case banks([BankDirectory.Entry])
 	case accounts([FinTSAccount])
 	/// A result that does not read fails only its account.
 	case result(account: String, Result<AccountResult, any Error>)
@@ -49,7 +49,7 @@ enum HelperMessage: Decodable {
 	case failed(HelperError)
 
 	private enum Key: String, CodingKey {
-		case type, id, done, of, text, name, bic, url, accounts, account, data, host, chain
+		case type, id, done, of, text, banks, accounts, account, data, host, chain
 	}
 
 	/// The rejection of the PIN or the block of the access in this message, for the whole access or
@@ -80,11 +80,7 @@ enum HelperMessage: Decodable {
 		case "trust": self = .trust(id: try c.decode(Int.self, forKey: .id), host: try c.decode(String.self, forKey: .host), chain: try c.decode([Data].self, forKey: .chain))
 		case "progress": self = .progress(done: try c.decode(Int.self, forKey: .done), of: try c.decode(Int.self, forKey: .of))
 		case "notice": self = .notice(try c.decode(String.self, forKey: .text))
-		case "bank":
-			let name = try c.decodeIfPresent(String.self, forKey: .name)
-			let bic = try c.decodeIfPresent(String.self, forKey: .bic)
-			let url = try c.decodeIfPresent(String.self, forKey: .url).flatMap { URL(string: $0) }
-			self = .bank(name.map { FinTSBank(name: $0, bic: bic, url: url) })
+		case "banks": self = .banks(try c.decode([BankLine].self, forKey: .banks).map(\.entry))
 		case "accounts": self = .accounts(try c.decode([AccountLine].self, forKey: .accounts).map(\.account))
 		case "result": self = .result(account: try c.decode(String.self, forKey: .account), Result { try AccountResult(from: decoder) })
 		case "accountFailed": self = .accountFailed(account: try c.decode(String.self, forKey: .account), try HelperError(from: decoder))
@@ -92,6 +88,19 @@ enum HelperMessage: Decodable {
 		case "failed": self = .failed(try HelperError(from: decoder))
 		case let type: throw DecodingError.dataCorruptedError(forKey: .type, in: c, debugDescription: "unknown message \(type)")
 		}
+	}
+}
+
+/// A bank of the bank directory in the banks message.
+private struct BankLine: Decodable {
+	let code: String
+	let name: String
+	let city: String?
+	let bic: String?
+	let url: String?
+
+	var entry: BankDirectory.Entry {
+		BankDirectory.Entry(code: code, city: city ?? "", bank: FinTSBank(name: name, bic: bic, url: url.flatMap { URL(string: $0) }))
 	}
 }
 

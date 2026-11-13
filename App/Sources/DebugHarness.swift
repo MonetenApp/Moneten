@@ -78,7 +78,7 @@ final class DebugHarness {
 		// "<name>" starts a made-up refresh that shows one dialog of SyncDemo.requests.
 		case "syncdemo": SyncDemo.start(argument, in: model.sync)
 		case "synccancel": model.sync.cancelAll()
-		// "<field> <value>" drives the "Add Account" assistant: entry, login, pin, save, other, group, next, back, toggle, connect, cancel.
+		// "<field> <value>" drives the "Add Account" assistant: entry, choose, login, pin, save, other, group, next, back, toggle, connect, cancel.
 		case "setup": setup(argument)
 		// "<name>": a migrated giro account without an access, with the test IBAN of the made-up bank.
 		case "migrated":
@@ -99,6 +99,15 @@ final class DebugHarness {
 		// "<id>" chooses a TAN method in the dialog on screen, and "medium <name>" a TAN medium.
 		case "method": if let prompt = model.sync.broker.current { model.sync.broker.answer(.tanMethod(argument), to: prompt.id) }
 		case "medium": if let prompt = model.sync.broker.current { model.sync.broker.answer(.tanMedium(argument), to: prompt.id) }
+		// "down" or "up" sends that arrow key to the field with the focus in the sheet on top.
+		case "key" where argument == "down" || argument == "up":
+			let characters = String(UnicodeScalar(argument == "down" ? NSDownArrowFunctionKey : NSUpArrowFunctionKey)!)
+			if let sheet = topSheet, let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [.numericPad, .function], timestamp: 0,
+				windowNumber: sheet.windowNumber, context: nil, characters: characters, charactersIgnoringModifiers: characters, isARepeat: false,
+				keyCode: argument == "down" ? 125 : 126) {
+				sheet.sendEvent(event)
+				log("key \(argument) highlighted=\(model.setup?.highlighted ?? -1)")
+			}
 		// "return", "escape", "cmd+", or "cmd-" sends that key to the sheet on top, as the keyboard does.
 		case "key":
 			let command = argument.hasPrefix("cmd")
@@ -327,6 +336,8 @@ final class DebugHarness {
 		let value = parts.count > 1 ? parts[1] : ""
 		switch parts.first ?? "" {
 		case "entry": setup.entry = value
+		// "<Bankleitzahl>": the match of a name that a click chooses.
+		case "choose": if case let .matches(banks) = setup.lookup.state, let bank = banks.first(where: { $0.code == value }) { setup.lookup.choose(bank) }
 		case "login": setup.loginName = value
 		case "pin": setup.pin = value
 		case "save": setup.savePIN = value == "yes"
@@ -346,7 +357,7 @@ final class DebugHarness {
 		default: break
 		}
 		log("setup service=\(setup.service?.title ?? "-") other=\(setup.otherServices.map(\.title)) error=\(setup.serviceError ?? "-")")
-		log("setup step=\(setup.step) lookup=\(setup.lookup.state) error=\(setup.loginError ?? "-") saveError=\(setup.saveError ?? "-") dialog=\(model.sync.broker.current != nil) candidates=\(setup.candidates.map { "\($0.id):\(Self.label($0.match))" }) selected=\(setup.selected.sorted())")
+		log("setup step=\(setup.step) entry=\(setup.entry) login=\(setup.loginName) highlighted=\(setup.highlighted) lookup=\(setup.lookup.state) error=\(setup.loginError ?? "-") saveError=\(setup.saveError ?? "-") dialog=\(model.sync.broker.current != nil) candidates=\(setup.candidates.map { "\($0.id):\(Self.label($0.match))" }) selected=\(setup.selected.sorted())")
 	}
 
 	/// The sheet on top of all others, where the dialogs of a refresh appear.

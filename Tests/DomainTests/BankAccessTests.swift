@@ -26,7 +26,7 @@ struct BankAccessTests {
 	}
 
 	@Test("A wrong entry names the failed check before any bank is contacted", arguments: [
-		("", BankEntryError.empty, "Enter an IBAN or a Bankleitzahl."),
+		("", BankEntryError.empty, "Enter the name of the bank, an IBAN, or a Bankleitzahl."),
 		("DE03120300000000202051", .checksum, "The checksum of the IBAN is invalid. Look for typing errors."),
 		("DE0212030000000020205", .length(country: "DE", characters: 22), "An IBAN with the country code DE has 22 characters."),
 		("XX02120300000000202051", .country, "The IBAN starts with an unexpected country code."),

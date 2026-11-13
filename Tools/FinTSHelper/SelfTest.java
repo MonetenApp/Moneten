@@ -224,9 +224,12 @@ final class SelfTest {
 				"{\"type\":\"failed\",\"kind\":\"network\",\"text\":\"Connection refused\"}");
 			expect("other error", FinTSHelper.Json.write(FinTSHelper.failure(new HBCI_Exception("can not create HBCI handle"))),
 				"{\"type\":\"failed\",\"text\":\"can not create HBCI handle\"}");
-			expect("bank directory", FinTSHelper.Json.write(FinTSHelper.bankInfo("76030080")),
-				"{\"type\":\"bank\",\"name\":\"Bnp Paribas S.A. Niederlassung Deutschland - Consorsbank\",\"bic\":\"CSDBDE71XXX\",\"url\":\"https://brokerage-hbci.consorsbank.de/hbci\"}");
-			expect("unknown bank", FinTSHelper.Json.write(FinTSHelper.bankInfo("99999999")), "{\"type\":\"bank\"}");
+			List<?> directory = (List<?>) FinTSHelper.banks().get("banks");
+			expect("bank directory with every bank", directory.size() > 4000, true);
+			expect("bank in the directory", directory.stream().map(FinTSHelper.Json::write).filter(b -> b.contains("\"76030080\"")).toList(),
+				List.of("{\"code\":\"76030080\",\"name\":\"Bnp Paribas S.A. Niederlassung Deutschland - Consorsbank\",\"city\":\"Nürnberg, Mittelfr\",\"bic\":\"CSDBDE71XXX\",\"url\":\"https://brokerage-hbci.consorsbank.de/hbci\"}"));
+			expect("bank without a FinTS address", directory.stream().map(FinTSHelper.Json::write).filter(b -> b.contains("\"10010424\"")).toList(),
+				List.of("{\"code\":\"10010424\",\"name\":\"Aareal Bank\",\"city\":\"Berlin\",\"bic\":\"AARBDE5W100\"}"));
 			pinTan();
 		} finally {
 			HBCIUtils.done();

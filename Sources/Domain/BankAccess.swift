@@ -2,7 +2,7 @@ import Foundation
 
 // MARK: The entry of the first setup step
 
-/// What the user types into "IBAN or Bankleitzahl" in the first step of "Add Account".
+/// An IBAN or a Bankleitzahl that the user types into "Bank, IBAN, or Bankleitzahl" in the first step of "Add Account".
 public enum BankEntry {
 	/// The Bankleitzahl that an IBAN or a Bankleitzahl names. Spaces and lower case letters do not
 	/// matter. The checks run before any bank is contacted ("Check the IBAN before any connection").
@@ -54,7 +54,7 @@ public enum BankEntryError: Error, Equatable, Sendable {
 
 	public var message: String {
 		switch self {
-		case .empty: "Enter an IBAN or a Bankleitzahl."
+		case .empty: "Enter the name of the bank, an IBAN, or a Bankleitzahl."
 		case .bankCodeDigits: "A Bankleitzahl has 8 digits."
 		case .country: "The IBAN starts with an unexpected country code."
 		case let .length(country, characters): "An IBAN with the country code \(country) has \(characters) characters."
