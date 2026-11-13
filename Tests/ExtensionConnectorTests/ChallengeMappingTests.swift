@@ -146,6 +146,15 @@ import Testing
 			siteKey: "KEY", page: URL(string: "https://bank.example/login"), isCheckbox: true))), stepIncrement: 1))
 	}
 
+	/// The signed Amazon extension 2.08 names its field "Bot-Prüfung" next to the AWS WAF script. The
+	/// script URL alone decides that the user solves a captcha.
+	@Test func captchaWithALabel() throws {
+		let url = "https://abc123.token.awswaf.com/abc123/def/challenge.js?sitekey=KEY&referer=https%3A%2F%2Fbank.example"
+		#expect(try interaction(["title": .string("Amazon Bot-Prüfung"), "challenge": .string(url), "label": .string("Bot-Prüfung")])
+			== .answer(request(.captcha(CaptchaRequest(provider: .amazonWAF, script: URL(string: url)!, siteKey: "KEY", page: URL(string: "https://bank.example")!,
+				isCheckbox: false)), field: TANField(label: "Bot-Prüfung")), stepIncrement: 1))
+	}
+
 	@Test(arguments: [
 		("https://js.hcaptcha.com/1/api.js?sitekey=K", CaptchaRequest.Provider.hCaptcha),
 		("https://cdn.jsdelivr.net/npm/friendly-challenge/widget.module.min.js?sitekey=K", .friendlyCaptcha),
