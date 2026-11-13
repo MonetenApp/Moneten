@@ -204,7 +204,8 @@ struct HelperError: Decodable, Equatable {
 	}
 }
 
-/// The balance and the transactions of one account. A failed request of the two is in `errors`.
+/// The balance and the transactions of one account. A failed request of the two is in `errors`. A
+/// securities account has no transactions, and its balance is the value of its holdings.
 struct AccountResult: Decodable {
 	let balance: Balance?
 	let transactions: Transactions?
