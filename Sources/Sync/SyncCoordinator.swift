@@ -139,11 +139,11 @@ public final class SyncCoordinator {
 
 	/// Stops every running and waiting refresh and setup of one source, such as an extension that was blocked or removed.
 	public func cancelRefreshes(of source: AccessSource) {
-		let ids = queue.map(\.request.access).filter { $0.source == source }.map(\.id)
-			+ afterRun.values.map(\.request.access).filter { $0.source == source }.map(\.id)
-			+ runningSources.filter { $0.value == source }.map(\.key)
-
-		for id in Set(ids) { cancelRefresh(of: id) }
+		var ids = Set<UUID>()
+		for job in queue where job.request.access.source == source { ids.insert(job.request.access.id) }
+		for job in afterRun.values where job.request.access.source == source { ids.insert(job.request.access.id) }
+		for (id, running) in runningSources where running == source { ids.insert(id) }
+		for id in ids { cancelRefresh(of: id) }
 	}
 
 	/// Stops the refresh of one access and drops its waiting one, such as when its extension is blocked or removed.
