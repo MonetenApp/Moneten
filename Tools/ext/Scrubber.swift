@@ -3,8 +3,9 @@ import Foundation
 
 /// Replaces the secrets of a recording with named placeholders before `ext record` writes it: the
 /// login data, the answers to challenges, cookies, `Authorization` headers, and tokens. It looks for
-/// each secret in every encoding that a script or a server may give it, and refuses the result when
-/// a secret that it searches everywhere is still there.
+/// each secret in every encoding that a script or a server may give it, withholds the random values
+/// that no request address needs, and refuses the result when a secret that it searches everywhere
+/// is still there.
 struct Scrubber {
 	enum Kind: String, CaseIterable {
 		case username, password, login, answer, cookie, authorization, token
@@ -14,6 +15,9 @@ struct Scrubber {
 
 	/// The input of each login field hides when its flag is set, as the login request said.
 	let secretFields: [Bool]
+	/// The Lua text of the script. A path segment of a request that stands in it is a word of the
+	/// script, which no login value built, such as `/login` for the user name "login".
+	var scriptText = ""
 
 	struct Report: Equatable {
 		let counts: [Kind: Int]
@@ -48,7 +52,8 @@ struct Scrubber {
 			case let .login(values):
 				let names = Self.loginNames(values.indices.map { $0 < secretFields.count ? secretFields[$0] : $0 == 1 })
 				for (value, name) in zip(values, names) {
-					secrets.add(value, kind: Kind(rawValue: name.filter(\.isLetter)) ?? .login, name: name)
+					let kind = Kind(rawValue: name.filter(\.isLetter)) ?? .login
+					secrets.add(value, kind: kind, name: name, requestsOnly: kind == .password && Self.isWeak(value))
 				}
 				if values.count >= 2, names[0] == "username", names[1] == "password", !values[0].isEmpty, !values[1].isEmpty {
 					secrets.add(values[0] + ":" + values[1], placeholder: "{{username}}:{{password}}")
@@ -69,11 +74,44 @@ struct Scrubber {
 		}
 		var scrubbed = fixture
 		scrubbed.answers = fixture.answers == nil ? nil : answers
-		scrubbed.exchanges = try fixture.exchanges.map { exchange throws(Ext.Failure) in try secrets.rewrite(exchange) }
-		if let leak = secrets.leak(in: scrubbed) {
-			throw .run("The \(leak.noun) is still in the recording after the replacement, so ext wrote no file.")
+		scrubbed.exchanges = try fixture.exchanges.map { exchange throws(Ext.Failure) in try secrets.rewrite(exchange, scriptText: scriptText) }
+		let addresses = scrubbed.exchanges.flatMap { exchange in
+			[exchange.request.url.absoluteString, exchange.request.url.absoluteString.removingPercentEncoding ?? ""].map { $0.lowercased() }
+		}
+		scrubbed.random = fixture.random?.map { Self.isNeeded($0, in: addresses) ? $0 : Self.withheld($0) }
+		if let leak = secrets.leak(in: scrubbed, scriptText: scriptText) {
+			if leak.isWeak {
+				throw .run("The \(leak.kind.noun) is short or only digits, and a response holds it, where the text around a placeholder would show it. "
+					+ "ext wrote no file. Record with a login whose \(leak.kind.noun) has 8 characters or more and not only digits.")
+			}
+			throw .run("The \(leak.kind.noun) is still in the recording after the replacement, so ext wrote no file.")
 		}
 		return (scrubbed, Report(counts: secrets.counts))
+	}
+
+	/// A password with fewer than 8 characters or only digits, such as a PIN. The text around its
+	/// placeholder in a response, such as `01.03.{{password}}`, could show it, so it is replaced only in
+	/// requests, and a response that holds it stops the recording.
+	static func isWeak(_ value: String) -> Bool {
+		value.count < 8 || value.allSatisfy(\.isNumber)
+	}
+
+	/// A random value that a request address holds in one of its forms, where a replay needs the same
+	/// value to find the exchange. A replay does not compare bodies, so any other value, such as a key
+	/// or an IV of `MM.aes256encrypt` whose result stands in a body, is withheld: with it, anyone who
+	/// has the fixture could read what it hid.
+	static func isNeeded(_ value: RandomValue, in addresses: [String]) -> Bool {
+		let forms = Encodings.forms(of: value).map { $0.lowercased() }.filter { !$0.isEmpty }
+		return addresses.contains { address in forms.contains(where: address.contains) }
+	}
+
+	/// What the fixture keeps of a value that it withholds: its kind and its length.
+	static func withheld(_ value: RandomValue) -> RandomValue {
+		switch value {
+		case let .bytes(data): .withheldBytes(data.count)
+		case .uuid: .withheldUUID
+		case .withheldBytes, .withheldUUID: value
+		}
 	}
 }
 
@@ -85,11 +123,17 @@ private struct Secrets {
 		let value: String
 		let placeholder: String
 		let kind: Scrubber.Kind?
-		/// A JSON number under a token name, which a JSON body has outside its strings.
-		let isNumber: Bool
+		/// A JSON number under a token name, which a JSON body has outside its strings. It is set when
+		/// the value is found as a number anywhere, also after it was found as text.
+		var isNumber: Bool
+		/// A weak password (`Scrubber.isWeak`), which is replaced in requests alone.
+		var requestsOnly = false
 		/// Nil for a value that is replaced only where its name stands next to it.
 		let matcher: NSRegularExpression?
 		var replaced = 0
+
+		/// A login value or an answer, which a request body can send as a JSON number.
+		var isLogin: Bool { [.username, .password, .login, .answer].contains(kind) }
 	}
 
 	private(set) var all: [Secret] = []
@@ -101,14 +145,18 @@ private struct Secrets {
 	/// Adds a value with a numbered placeholder of its kind, such as `{{cookie2}}`, and returns the
 	/// placeholder, or the one it already has. Login data and answers match in any case of their letters.
 	@discardableResult
-	mutating func add(_ value: String, kind: Scrubber.Kind, name: String? = nil, anywhere: Bool = true, isNumber: Bool = false) -> String? {
+	mutating func add(_ value: String, kind: Scrubber.Kind, name: String? = nil, anywhere: Bool = true, isNumber: Bool = false,
+		requestsOnly: Bool = false) -> String? {
 		guard !value.isEmpty, !Encodings.isPlaceholder(value) else { return nil }
-		if let known = placeholder(of: value) { return known }
+		if let index = all.firstIndex(where: { $0.value == value }) {
+			all[index].isNumber = all[index].isNumber || isNumber
+			return all[index].placeholder
+		}
 		let number = (numbers[kind] ?? 0) + 1
 		numbers[kind] = number
 		let placeholder = Scrubber.placeholder(name ?? "\(kind.rawValue)\(number)")
 		let ignoringCase = [.username, .password, .login, .answer].contains(kind)
-		all.append(Secret(value: value, placeholder: placeholder, kind: kind, isNumber: isNumber,
+		all.append(Secret(value: value, placeholder: placeholder, kind: kind, isNumber: isNumber, requestsOnly: requestsOnly,
 			matcher: anywhere ? Encodings.matcher(for: value, ignoringCase: ignoringCase) : nil))
 		return placeholder
 	}
@@ -147,21 +195,26 @@ private struct Secrets {
 	}
 
 	/// Replaces the secrets of one exchange: first the values that stand next to their names in the
-	/// headers, then every value in every encoding in the URL, the headers, and the bodies.
-	mutating func rewrite(_ exchange: Fixture.Exchange) throws(Ext.Failure) -> Fixture.Exchange {
+	/// headers, then every value in every encoding in the URL, the headers, and the bodies. A weak
+	/// password is replaced in the request alone.
+	mutating func rewrite(_ exchange: Fixture.Exchange, scriptText: String) throws(Ext.Failure) -> Fixture.Exchange {
 		var exchange = exchange
 		var request = exchange.request
-		guard let url = URL(string: scrub(request.url.absoluteString, as: .url)) else {
+		guard let url = URL(string: scrubURL(request.url.absoluteString, inRequest: true, scriptText: scriptText)) else {
 			throw .run("The address of a \(request.method) request has no valid form after the replacement, so ext wrote no file.")
 		}
 		request.url = url
-		request.headers = request.headers.map { headers in headers.reduce(into: [:]) { $0[$1.key] = header($1.key, $1.value) } }
-		request.body = request.body.map { scrub($0, as: Encodings.isJSON($0) ? .json : .text) }
-		if let body = request.base64Body { request.base64Body = scrubBinary(body) }
+		request.headers = request.headers.map { headers in
+			headers.reduce(into: [:]) { $0[$1.key] = header($1.key, $1.value, inRequest: true, scriptText: scriptText) }
+		}
+		request.body = request.body.map { scrub($0, as: Encodings.isJSON($0) ? .json : .text, inRequest: true) }
+		if let body = request.base64Body { request.base64Body = scrubBinary(body, inRequest: true) }
 		var response = exchange.response
-		response.headers = response.headers.map { headers in headers.reduce(into: [:]) { $0[$1.key] = header($1.key, $1.value) } }
-		response.body = response.body.map { scrub($0, as: Encodings.isJSON($0) ? .json : .text) }
-		if let body = response.base64Body { response.base64Body = scrubBinary(body) }
+		response.headers = response.headers.map { headers in
+			headers.reduce(into: [:]) { $0[$1.key] = header($1.key, $1.value, inRequest: false, scriptText: scriptText) }
+		}
+		response.body = response.body.map { scrub($0, as: Encodings.isJSON($0) ? .json : .text, inRequest: false) }
+		if let body = response.base64Body { response.base64Body = scrubBinary(body, inRequest: false) }
 		exchange.request = request
 		exchange.response = response
 		return exchange
@@ -171,7 +224,19 @@ private struct Secrets {
 		case text, url, json
 	}
 
-	private mutating func header(_ name: String, _ value: String) -> String {
+	/// An address with its scheme and host as they are, and each path segment that stands in the
+	/// script as it is: a login value there is a word of the address, such as `/login` for the user name
+	/// "login", and replacing it would make the replay miss the exchange. The other path segments, the
+	/// query, and the fragment are scrubbed.
+	private mutating func scrubURL(_ text: String, inRequest: Bool, scriptText: String) -> String {
+		let parts = Address(text)
+		let segments = parts.segments.map { segment in
+			Address.isWord(segment, of: scriptText) ? String(segment) : scrub(String(segment), as: .url, inRequest: inRequest)
+		}
+		return parts.origin + segments.joined(separator: "/") + scrub(String(parts.rest), as: .url, inRequest: inRequest)
+	}
+
+	private mutating func header(_ name: String, _ value: String, inRequest: Bool, scriptText: String) -> String {
 		let lower = name.lowercased()
 		var text = value
 		if lower == "authorization" || lower == "proxy-authorization", let (scheme, credential) = Discovery.authorization(value),
@@ -188,23 +253,24 @@ private struct Secrets {
 			all[index].replaced += 1
 			text = Self.marker(index)
 		}
-		return scrub(text, as: lower == "location" ? .url : .text)
+		return lower == "location" ? scrubURL(text, inRequest: inRequest, scriptText: scriptText) : scrub(text, as: .text, inRequest: inRequest)
 	}
 
-	/// The text with each secret that is searched everywhere replaced, the longest first. A JSON body
-	/// keeps its numbers: a login value or an answer is replaced only inside its strings, and a number
-	/// under a token name becomes a string.
-	mutating func scrub(_ text: String, as context: Context) -> String {
+	/// The text with each secret that is searched everywhere replaced, the longest first. A JSON body of
+	/// a response keeps its numbers: a login value or an answer is replaced only inside its strings, so
+	/// that an amount that equals a TAN stays. A number under a token name, and in a request any login
+	/// value or answer, becomes the placeholder as a string.
+	mutating func scrub(_ text: String, as context: Context, inRequest: Bool) -> String {
 		var result = ""
 		for (segment, isString) in Encodings.segments(of: text, json: context == .json) {
-			result += isString ? replaceAll(in: segment) : replaceNumbers(in: segment)
+			result += isString ? replaceAll(in: segment, inRequest: inRequest) : replaceNumbers(in: segment, inRequest: inRequest)
 		}
 		return finish(result, forURL: context == .url)
 	}
 
-	private mutating func replaceAll(in text: String) -> String {
+	private mutating func replaceAll(in text: String, inRequest: Bool) -> String {
 		var text = text
-		for index in order where all[index].matcher != nil {
+		for index in order where all[index].matcher != nil && (inRequest || !all[index].requestsOnly) {
 			let (result, count) = Encodings.replace(all[index].matcher!, with: Self.marker(index), in: text)
 			text = result
 			all[index].replaced += count
@@ -212,9 +278,9 @@ private struct Secrets {
 		return text
 	}
 
-	private mutating func replaceNumbers(in text: String) -> String {
+	private mutating func replaceNumbers(in text: String, inRequest: Bool) -> String {
 		var text = text
-		for index in order where all[index].isNumber {
+		for index in order where all[index].matcher != nil && (all[index].isNumber || inRequest && all[index].isLogin) {
 			let (result, count) = Encodings.replace(all[index].matcher!, with: "\"\(Self.marker(index))\"", in: text)
 			text = result
 			all[index].replaced += count
@@ -227,9 +293,9 @@ private struct Secrets {
 	}
 
 	/// A body that is not UTF-8, searched byte for byte: ISO-8859-1 maps each byte to one character.
-	private mutating func scrubBinary(_ base64: String) -> String {
+	private mutating func scrubBinary(_ base64: String, inRequest: Bool) -> String {
 		guard let data = Data(base64Encoded: base64), let text = String(data: data, encoding: .isoLatin1) else { return base64 }
-		return Data(scrub(text, as: .text).unicodeScalars.map { UInt8(truncatingIfNeeded: $0.value) }).base64EncodedString()
+		return Data(scrub(text, as: .text, inRequest: inRequest).unicodeScalars.map { UInt8(truncatingIfNeeded: $0.value) }).base64EncodedString()
 	}
 
 	private static func marker(_ index: Int) -> String {
@@ -243,33 +309,78 @@ private struct Secrets {
 		}
 	}
 
-	/// The kind of the first secret that is searched everywhere and still stands in a text of the
-	/// recording outside a placeholder.
-	func leak(in fixture: Fixture) -> Scrubber.Kind? {
-		var texts: [String] = []
+	struct Leak {
+		let kind: Scrubber.Kind
+		/// A weak password that a response holds.
+		let isWeak: Bool
+	}
+
+	/// The first secret that is searched everywhere and still stands in the recording outside a
+	/// placeholder: in an answer, a URL, a header, a body with its strings and its numbers, or a random
+	/// value that the fixture keeps. A number of a response counts only for a token number and a weak
+	/// password, because a login value or an answer there stays a number, such as an amount. An address
+	/// counts without the parts that `scrubURL` leaves as they are.
+	func leak(in fixture: Fixture, scriptText: String) -> Leak? {
+		func scrubbed(_ address: String) -> [String] {
+			let parts = Address(address)
+			return parts.segments.filter { !Address.isWord($0, of: scriptText) }.map(String.init) + [String(parts.rest)]
+		}
+		var everywhere: [String] = []
+		var responseNumbers: [String] = []
 		for answer in fixture.answers ?? [] {
 			switch answer {
-			case let .login(values): texts += values
-			case let .tan(value): texts.append(value)
+			case let .login(values): everywhere += values
+			case let .tan(value): everywhere.append(value)
 			case .tanMethod, .tanMedium, .host: break
 			}
 		}
 		for exchange in fixture.exchanges {
-			texts.append(exchange.request.url.absoluteString)
-			texts += Array((exchange.request.headers ?? [:]).values) + Array((exchange.response.headers ?? [:]).values)
-			for body in [exchange.request.body, exchange.response.body].compactMap({ $0 }) {
-				texts += Encodings.segments(of: body, json: Encodings.isJSON(body)).filter(\.isString).map(\.text)
+			everywhere += scrubbed(exchange.request.url.absoluteString)
+			for (name, value) in (exchange.request.headers ?? [:]).merging(exchange.response.headers ?? [:], uniquingKeysWith: { "\($0) \($1)" }) {
+				everywhere += name.lowercased() == "location" ? scrubbed(value) : [value]
+			}
+			if let body = exchange.request.body { everywhere.append(body) }
+			if let body = exchange.response.body {
+				let segments = Encodings.segments(of: body, json: Encodings.isJSON(body))
+				everywhere += segments.filter(\.isString).map(\.text)
+				responseNumbers += segments.filter { !$0.isString }.map(\.text)
 			}
 			for base64 in [exchange.request.base64Body, exchange.response.base64Body].compactMap({ $0 }) {
-				if let data = Data(base64Encoded: base64), let text = String(data: data, encoding: .isoLatin1) { texts.append(text) }
+				if let data = Data(base64Encoded: base64), let text = String(data: data, encoding: .isoLatin1) { everywhere.append(text) }
 			}
 		}
-		let masked = texts.map { $0.replacing(Encodings.placeholder, with: "\u{E000}") }
-		for secret in all where !secret.isNumber {
+		for value in fixture.random ?? [] { everywhere += Encodings.forms(of: value) }
+		let mask = { (texts: [String]) in texts.map { $0.replacing(Encodings.placeholder, with: "\u{E000}") } }
+		let (texts, numbers) = (mask(everywhere), mask(responseNumbers))
+		for secret in all {
 			guard let matcher = secret.matcher else { continue }
-			if masked.contains(where: { Encodings.replace(matcher, with: "", in: $0).1 > 0 }) { return secret.kind ?? .password }
+			let found = { (texts: [String]) in texts.contains { Encodings.replace(matcher, with: "", in: $0).1 > 0 } }
+			if found(texts) || (secret.isNumber || secret.requestsOnly) && found(numbers) {
+				return Leak(kind: secret.kind ?? .password, isWeak: secret.requestsOnly)
+			}
 		}
 		return nil
+	}
+}
+
+/// An address split into its scheme with its host, its path segments, and its query with its fragment.
+private struct Address {
+	let origin: String
+	let segments: [Substring]
+	let rest: Substring
+
+	init(_ text: String) {
+		origin = text.prefixMatch(of: /(?:[A-Za-z][A-Za-z0-9+.\-]*:)?\/\/[^\/?#]*/).map { String($0.output) } ?? ""
+		let path = text.dropFirst(origin.count)
+		let end = path.firstIndex { $0 == "?" || $0 == "#" } ?? path.endIndex
+		segments = path[..<end].split(separator: "/", omittingEmptySubsequences: false)
+		rest = path[end...]
+	}
+
+	/// A path segment that stands in the script as it is, so that no login value built it.
+	static func isWord(_ segment: Substring, of scriptText: String) -> Bool {
+		let plain = segment.removingPercentEncoding ?? String(segment)
+		return !plain.isEmpty && scriptText.contains(plain)
 	}
 }
 
@@ -278,7 +389,7 @@ private enum Discovery {
 	static func request(_ request: Fixture.Request, into secrets: inout Secrets) {
 		query(of: request.url, into: &secrets)
 		for (name, value) in sorted(request.headers) { header(name, value, setCookie: false, into: &secrets) }
-		if let body = request.body { self.body(body, into: &secrets) }
+		if let body = request.body ?? latin1(request.base64Body) { self.body(body, into: &secrets) }
 	}
 
 	static func response(_ response: Fixture.Response, into secrets: inout Secrets) {
@@ -286,7 +397,12 @@ private enum Discovery {
 			header(name, value, setCookie: true, into: &secrets)
 			if name.lowercased() == "location", let url = URL(string: value) { query(of: url, into: &secrets) }
 		}
-		if let body = response.body { self.body(body, into: &secrets) }
+		if let body = response.body ?? latin1(response.base64Body) { self.body(body, into: &secrets) }
+	}
+
+	/// A body that is not UTF-8, read as ISO-8859-1, which gives each byte one character.
+	private static func latin1(_ base64: String?) -> String? {
+		base64.flatMap { Data(base64Encoded: $0) }.flatMap { String(data: $0, encoding: .isoLatin1) }
 	}
 
 	/// The headers by name, so that the placeholders get the same numbers on every run.
@@ -316,11 +432,13 @@ private enum Discovery {
 
 	/// The ranges of the cookie values in a `Cookie` header, or in a `Set-Cookie` header that can hold
 	/// several cookies joined by commas. The attributes after a semicolon of `Set-Cookie` are no cookies.
+	/// A quoted value is the text inside its quotes, which is what a script or a page repeats.
 	static func cookieValues(in header: String, setCookie: Bool) -> [Range<String.Index>] {
 		let pattern = setCookie ? #/(?:^|,)\s*[!#$%&'*+\-.^_`|~0-9A-Za-z]+=(?<value>[^;,]*)/# : #/(?:^|;)\s*[^=;\s]+=(?<value>[^;]*)/#
 		return header.matches(of: pattern).compactMap { match in
 			let range = match.output.value.startIndex..<match.output.value.endIndex
-			let value = header[range].trimmingCharacters(in: .whitespaces)
+			var value = header[range].trimmingCharacters(in: .whitespaces)
+			if value.count >= 2, value.hasPrefix("\""), value.hasSuffix("\"") { value = String(value.dropFirst().dropLast()) }
 			return value.isEmpty || Encodings.isPlaceholder(value) ? nil : header.range(of: value, range: range)
 		}
 	}
@@ -352,8 +470,9 @@ private enum Discovery {
 				let attributes = Dictionary(tag.output.0.matches(of: #/(?i)([a-z-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/#).map { match in
 					(match.output.1.lowercased(), String(match.output.2 ?? match.output.3 ?? match.output.4 ?? ""))
 				}) { first, _ in first }
+				// The value as the page means it, so that `abc&#45;12345` also finds the `abc-12345` that a request sends.
 				if let name = attributes["name"], isTokenName(name, inURL: false), let value = attributes["value"] ?? attributes["content"] {
-					secrets.token(value, name: name)
+					secrets.token(Encodings.decodingEntities(value), name: name)
 				}
 			}
 		} else if trimmed.contains("=") {
@@ -407,16 +526,31 @@ enum Encodings {
 		scalar.isASCII && (scalar.properties.isAlphabetic || ("0"..."9").contains(scalar))
 	}
 
+	/// The forms of one character, and with `ignoringCase` those of each of its cases, so that `%47` and
+	/// `\u0047` find the `g` of a password as `G` does.
 	private static func forms(of scalar: Unicode.Scalar, ignoringCase: Bool) -> [String] {
-		var forms = [String(scalar)]
-		if ignoringCase { forms += [String(scalar).lowercased(), String(scalar).uppercased()] }
-		forms = Array(Set(forms)).sorted().map(NSRegularExpression.escapedPattern(for:))
+		var variants = [scalar]
+		if ignoringCase {
+			for other in [String(scalar).lowercased(), String(scalar).uppercased()] where other.unicodeScalars.count == 1 {
+				variants.append(other.unicodeScalars.first!)
+			}
+		}
+		var seen = Set<Unicode.Scalar>()
+		return variants.filter { seen.insert($0).inserted }.flatMap(encodedForms(of:))
+	}
+
+	/// The escapes of JSON other than `\uXXXX`, as patterns.
+	private static let jsonEscapes: [Unicode.Scalar: String] = ["/": #"\\/"#, "\"": #"\\""#, "\\": #"\\\\"#, "\u{08}": #"\\b"#, "\u{0C}": #"\\f"#,
+		"\n": #"\\n"#, "\r": #"\\r"#, "\t": #"\\t"#]
+
+	private static func encodedForms(of scalar: Unicode.Scalar) -> [String] {
+		var forms = [NSRegularExpression.escapedPattern(for: String(scalar))]
 		let utf8 = Array(String(scalar).utf8)
 		forms.append("(?i:" + utf8.map { String(format: "%%%02X", $0) }.joined() + ")")
 		if scalar.value < 256 { forms.append(String(format: "(?i:%%%02X)", scalar.value)) }
 		if scalar == " " { forms.append("\\+") }
 		if scalar.value < 0x10000 { forms.append(String(format: "(?i:\\\\u%04X)", scalar.value)) }
-		if let escape = ["/": "\\\\/", "\"": "\\\\\"", "\\": "\\\\\\\\"][String(scalar)] { forms.append(escape) }
+		if let escape = jsonEscapes[scalar] { forms.append(escape) }
 		forms.append("&#0*\(scalar.value);")
 		forms.append(String(format: "(?i:&#x0*%X;)", scalar.value))
 		if let name = entityNames[scalar.value] { forms.append("&\(name);") }
@@ -437,6 +571,33 @@ enum Encodings {
 		for (offset, name) in latin1.split(separator: " ").enumerated() { names[0xA0 + UInt32(offset)] = String(name) }
 		return names
 	}()
+
+	/// The text with each numeric HTML entity, and each named one of `entityNames`, as its character.
+	static func decodingEntities(_ text: String) -> String {
+		guard text.contains("&") else { return text }
+		let names = Dictionary(entityNames.map { ($1, $0) }) { first, _ in first }
+		return text.replacing(/&(?:#(?<decimal>[0-9]{1,7})|#[xX](?<hex>[0-9A-Fa-f]{1,6})|(?<name>[A-Za-z][A-Za-z0-9]{1,7}));/) { match in
+			let value = match.output.decimal.flatMap { UInt32($0) } ?? match.output.hex.flatMap { UInt32($0, radix: 16) }
+				?? match.output.name.flatMap { names[String($0)] }
+			return value.flatMap(Unicode.Scalar.init).map { String($0) } ?? String(match.output.0)
+		}
+	}
+
+	/// The forms in which a text can hold a random value: its bytes, hex, Base64, and Base64url with and
+	/// without padding, or the UUID with and without its dashes. A withheld value has none.
+	static func forms(of value: RandomValue) -> [String] {
+		switch value {
+		case let .bytes(data):
+			let base64 = data.base64EncodedString()
+			let url = base64.replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_")
+			return [String(data: data, encoding: .isoLatin1) ?? "", data.map { String(format: "%02x", $0) }.joined(), base64, url,
+				url.trimmingCharacters(in: CharacterSet(charactersIn: "="))]
+		case let .uuid(text):
+			return [text, text.replacingOccurrences(of: "-", with: "")]
+		case .withheldBytes, .withheldUUID:
+			return []
+		}
+	}
 
 	/// Replaces each match and returns how many there were.
 	static func replace(_ matcher: NSRegularExpression, with replacement: String, in text: String) -> (String, Int) {

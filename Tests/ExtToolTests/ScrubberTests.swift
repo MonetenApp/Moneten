@@ -12,10 +12,24 @@ extension ExtTool {
 		}
 
 		/// The scrubbed fixture, its report, and its file as `ext record` writes it.
-		func scrub(_ exchanges: [Fixture.Exchange], login: [String] = ["erika", "geheim123"], tans: [String] = []) throws -> (Fixture, Scrubber.Report, String) {
-			let fixture = Fixture(format: 1, answers: [.login(login)] + tans.map(Fixture.Answer.tan), exchanges: exchanges)
-			let (scrubbed, report) = try Scrubber(secretFields: [false, true]).scrub(fixture)
+		func scrub(_ exchanges: [Fixture.Exchange], login: [String] = ["erika", "geheim123"], tans: [String] = [], random: [RandomValue]? = nil,
+			script: String = "") throws -> (Fixture, Scrubber.Report, String) {
+			let fixture = Fixture(format: 1, answers: [.login(login)] + tans.map(Fixture.Answer.tan), random: random, exchanges: exchanges)
+			let (scrubbed, report) = try Scrubber(secretFields: [false, true], scriptText: script).scrub(fixture)
 			return (scrubbed, report, String(decoding: try RecordCommand.encoded(scrubbed), as: UTF8.self))
+		}
+
+		/// The message with which the scrubber refuses to write the fixture, or nil when it writes it.
+		func refusal(_ exchanges: [Fixture.Exchange], login: [String] = ["erika", "geheim123"], random: [RandomValue]? = nil) -> String? {
+			do {
+				_ = try scrub(exchanges, login: login, random: random)
+				return nil
+			} catch let failure as Ext.Failure {
+				guard case let .run(message) = failure else { return "\(failure)" }
+				return message
+			} catch {
+				return "\(error)"
+			}
 		}
 
 		@Test func passwordInAFormBody() throws {
@@ -184,6 +198,134 @@ extension ExtTool {
 			let (fixture, _, file) = try scrub([exchange("POST", "https://bank.example/login", body: "pw=x{{ab}}y")], login: ["erika", "x{{ab}}y"])
 			#expect(fixture.exchanges[0].request.body == "pw={{password}}")
 			#expect(!file.contains("x{{ab}}y"))
+		}
+	
+		// MARK: Random values
+
+		/// `key = MM.random(32); iv = MM.random(16)` encrypt the password into a body, and `MM.uuid()` is a
+		/// session ID in a body. No address needs them, so the fixture keeps only their kind and length.
+		@Test func randomValuesThatNoAddressNeedsAreWithheld() throws {
+			let key = Data((1...32).map { UInt8($0) }), iv = Data((101...116).map { UInt8($0) })
+			let uuid = "0f8fad5b-d9cb-469f-a165-70867728950e"
+			let (fixture, _, file) = try scrub([exchange("POST", "https://bank.example/login", body: "data=c2VjcmV0YmxvY2s=&sid=\(uuid)")],
+				random: [.bytes(key), .bytes(iv), .uuid(uuid)])
+			#expect(fixture.random == [.withheldBytes(32), .withheldBytes(16), .withheldUUID])
+			for secret in [key.base64EncodedString(), iv.base64EncodedString(), uuid] { #expect(!file.contains(secret)) }
+		}
+
+		@Test func randomValuesThatAnAddressHoldsStay() throws {
+			let hex = Data([0xAB, 0xCD, 0xEF, 0x01, 0x23, 0x45]), base64url = Data([0xFB, 0xFF, 0xBF, 0x00, 0x10, 0x20, 0x30])
+			let uuid = "0f8fad5b-d9cb-469f-a165-70867728950e"
+			let encoded = base64url.base64EncodedString().replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_")
+			let (fixture, _, _) = try scrub([exchange("GET", "https://bank.example/device/\(uuid.uppercased())?r=abcdef012345&c=\(encoded)")],
+				random: [.bytes(hex), .uuid(uuid), .bytes(base64url)])
+			#expect(fixture.random == [.bytes(hex), .uuid(uuid), .bytes(base64url)])
+		}
+
+		@Test func randomValueThatHoldsASecretStopsTheRecording() {
+			let bytes = Data("geheim123".utf8)
+			let hex = bytes.map { String(format: "%02x", $0) }.joined()
+			#expect(refusal([exchange("GET", "https://bank.example/check?r=\(hex)")], random: [.bytes(bytes)])
+				== "The password is still in the recording after the replacement, so ext wrote no file.")
+		}
+
+		// MARK: Numbers
+
+		@Test func loginValuesAsNumbersOfARequest() throws {
+			let (fixture, _, file) = try scrub([exchange("POST", "https://bank.example/login", body: #"{"customer":98765432,"pin":24681357}"#,
+				response: #"{"ok":true}"#)], login: ["98765432", "24681357"])
+			#expect(fixture.exchanges[0].request.body == #"{"customer":"{{username}}","pin":"{{password}}"}"#)
+			#expect(!file.contains("98765432") && !file.contains("24681357"))
+		}
+
+		@Test func tokenInAnAddressAndThenAsANumber() throws {
+			let (fixture, _, file) = try scrub([
+				exchange("GET", "https://bank.example/start?sid=98765432101"),
+				exchange("GET", "https://bank.example/session", response: #"{"sessionId": 98765432101}"#),
+			])
+			#expect(fixture.exchanges[1].response.body == #"{"sessionId": "{{token1}}"}"#)
+			#expect(!file.contains("98765432101"))
+		}
+
+		// MARK: Encodings
+
+		@Test(arguments: ["%47%45%48%45%49%4D%31%32%33", "%47%65%48%65%49%6d123"])
+		func passwordPercentEncodedInAnotherCase(_ encoded: String) throws {
+			let (fixture, _, file) = try scrub([exchange("GET", "https://bank.example/echo", response: "echo \(encoded) end")])
+			#expect(fixture.exchanges[0].response.body == "echo {{password}} end")
+			#expect(!file.contains(encoded))
+		}
+
+		@Test(arguments: [(#"{"echo":"\u0047EHEIM123"}"#, "geheim123"), (#"{"echo":"\u0067\u0065HEIM123"}"#, "geheim123"),
+			(#"{"echo":"geh\teim\n42"}"#, "geh\teim\n42"), (#"{"echo":"a\b\f\rz-pass"}"#, "a\u{08}\u{0C}\rz-pass")])
+		func passwordWithJSONEscapes(body: String, password: String) throws {
+			let (fixture, _, _) = try scrub([exchange("GET", "https://bank.example/echo", response: body)], login: ["erika", password])
+			#expect(fixture.exchanges[0].response.body == #"{"echo":"{{password}}"}"#)
+		}
+
+		// MARK: Tokens
+
+		@Test func tokenOfALatin1Page() throws {
+			let page = Data("<p>Gr".utf8) + Data([0xFC]) + Data(#"&szlig;e</p><input type="hidden" name="csrf" value="Tok-csrf-998">"#.utf8)
+			let first = Fixture.Exchange(request: Fixture.Request(method: "GET", url: URL(string: "https://bank.example/login")!),
+				response: Fixture.Response(status: 200, body: page))
+			let (fixture, _, file) = try scrub([first, exchange("POST", "https://bank.example/login", body: "csrf=Tok-csrf-998")])
+			#expect(fixture.exchanges[1].request.body == "csrf={{token1}}")
+			#expect(!file.contains("Tok-csrf-998"))
+			#expect(!file.contains(Data("Tok-csrf-998".utf8).base64EncodedString().dropLast(4)))
+		}
+
+		@Test func tokenOfAnAttributeWithAnEntity() throws {
+			let (fixture, _, file) = try scrub([
+				exchange("GET", "https://bank.example/login", response: #"<input type="hidden" name="csrf" value="abc&#45;12345">"#),
+				exchange("POST", "https://bank.example/login", body: "csrf=abc-12345"),
+			])
+			#expect(fixture.exchanges[0].response.body == #"<input type="hidden" name="csrf" value="{{token1}}">"#)
+			#expect(fixture.exchanges[1].request.body == "csrf={{token1}}")
+			#expect(!file.contains("abc-12345") && !file.contains("abc&#45;12345"))
+		}
+
+		@Test func quotedCookie() throws {
+			let (fixture, _, file) = try scrub([
+				exchange("POST", "https://bank.example/login", responseHeaders: ["Set-Cookie": #"SESSION="tok-quoted-77"; Path=/"#], response: "<p>tok-quoted-77</p>"),
+			])
+			#expect(fixture.exchanges[0].response.headers?["Set-Cookie"] == #"SESSION="{{cookie1}}"; Path=/"#)
+			#expect(fixture.exchanges[0].response.body == "<p>{{cookie1}}</p>")
+			#expect(!file.contains("tok-quoted-77"))
+		}
+
+		// MARK: Weak passwords
+
+		/// A PIN is replaced in a request. In a response, `01.03.{{password}}` would show it, so the recording stops.
+		@Test func weakPasswordInAResponseStopsTheRecording() {
+			let message = refusal([exchange("POST", "https://bank.example/login", body: "pin=2025", response: "<p>Letzte Anmeldung 01.03.2025</p>")],
+				login: ["erika", "2025"])
+			#expect(message?.hasPrefix("The password is short or only digits, and a response holds it") == true)
+			#expect(refusal([exchange("GET", "https://bank.example/x", response: #"{"year": 2025}"#)], login: ["erika", "2025"]) != nil)
+		}
+
+		@Test func weakPasswordOnlyInRequests() throws {
+			let (fixture, _, file) = try scrub([exchange("POST", "https://bank.example/login?pin=2025", body: #"{"pin":2025}"#, response: "<p>Kunde 12025</p>")],
+				login: ["erika", "2025"])
+			#expect(fixture.exchanges[0].request.url.absoluteString == "https://bank.example/login?pin=%7B%7Bpassword%7D%7D")
+			#expect(fixture.exchanges[0].request.body == #"{"pin":"{{password}}"}"#)
+			#expect(fixture.exchanges[0].response.body == "<p>Kunde 12025</p>")
+			#expect(!file.contains("=2025") && !file.contains(":2025"))
+		}
+
+		// MARK: Addresses
+
+		@Test func loginValueThatIsAWordOfTheScript() throws {
+			let script = #"c:get("https://bank.example/login?u=" .. MM.urlencode(username))"#
+			let (fixture, _, _) = try scrub([exchange("GET", "https://bank.example/login?u=login")], login: ["login", "geheim123"], script: script)
+			#expect(fixture.exchanges[0].request.url.absoluteString == "https://bank.example/login?u=%7B%7Busername%7D%7D")
+		}
+
+		@Test func loginValueThatIsTheSchemeOrTheHost() throws {
+			let (scheme, _, _) = try scrub([exchange("GET", "https://bank.example/x?u=https")], login: ["https", "geheim123"])
+			#expect(scheme.exchanges[0].request.url.absoluteString == "https://bank.example/x?u=%7B%7Busername%7D%7D")
+			let (host, _, _) = try scrub([exchange("GET", "https://bank.example/accounts/bank")], login: ["bank", "geheim123"])
+			#expect(host.exchanges[0].request.url.absoluteString == "https://bank.example/accounts/%7B%7Busername%7D%7D")
 		}
 	}
 }

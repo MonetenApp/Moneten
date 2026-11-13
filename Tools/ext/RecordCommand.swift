@@ -11,6 +11,9 @@ struct RecordCommand {
 	let trust: String?
 
 	static let reminder = "The fixture still holds account data such as names, IBANs, and amounts. Replace them with invented data before you share or commit"
+	/// What the scrubber cannot find: a secret that the script hid in a form of its own.
+	static let hiddenLogin = "ext does not find login data that the script hashed, encrypted, or encoded together with other data, "
+		+ "such as MM.sha256(pin) or Base64 of a JSON object with the PIN. Look for such values in the fixture too."
 
 	func execute() async throws {
 		let script = try Script(path: self.script)
@@ -31,7 +34,7 @@ struct RecordCommand {
 		try outcome.checkAccounts()
 		let recording = Fixture(format: 1, service: service, startTime: start, timeZone: TimeZone.current.identifier, environment: environment,
 			answers: answers.answers, random: outcome.random, exchanges: outcome.exchanges)
-		let (scrubbed, report) = try Scrubber(secretFields: answers.secretFields).scrub(recording)
+		let (scrubbed, report) = try Scrubber(secretFields: answers.secretFields, scriptText: script.package.files.map(\.text).joined(separator: "\n")).scrub(recording)
 		do {
 			try Self.encoded(scrubbed).write(to: file, options: .atomic)
 		} catch {
@@ -39,6 +42,7 @@ struct RecordCommand {
 		}
 		Terminal.error("Recorded \(Document.counted(scrubbed.exchanges.count, "request")).")
 		Terminal.error(report.line)
+		Terminal.error(Self.hiddenLogin)
 		Terminal.error("\(Self.reminder) \(file.path).")
 		if let document = outcome.document { FileHandle.standardOutput.write(Document.json(document)) }
 	}
