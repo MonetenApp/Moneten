@@ -384,8 +384,8 @@ final class SelfTest {
 			"{type=balance, amount=10700.00, currency=EUR, date=2026-11-12}");
 		GVRWPDepotList noEntries = new GVRWPDepotList();
 		noEntries.jobStatus.addRetVal(new HBCIRetVal(null, null, null, "3010", "Keine Einträge vorhanden", null));
-		expect("empty securities account answered with 3010 is worth 0", FinTSHelper.Json.write(FinTSHelper.alone("7654325", () -> FinTSHelper.value("7654325",
-			noEntries, false, "EUR"))), "{\"type\":\"result\",\"account\":\"7654325\",\"balance\":{\"type\":\"balance\",\"amount\":\"0\",\"currency\":\"EUR\"},\"errors\":[]}");
+		expect("an answer with a note and without a statement shows the note", FinTSHelper.Json.write(FinTSHelper.alone("7654325", () -> FinTSHelper.value("7654325",
+			noEntries, false, "EUR"))), "{\"type\":\"result\",\"account\":\"7654325\",\"errors\":[{\"type\":\"error\",\"code\":\"3010\",\"text\":\"Keine Einträge vorhanden\"}]}");
 		GVRWPDepotList unexplained = new GVRWPDepotList();
 		unexplained.jobStatus.addRetVal(new HBCIRetVal(null, null, null, "0020", "Auftrag ausgeführt", null));
 		expect("an answer without entries and without 3010 fails", FinTSHelper.alone("7654325", () -> FinTSHelper.value("7654325", unexplained, false, "EUR"))
