@@ -3,5 +3,6 @@
 {"type":"accountFailed","kind":"unsupported","text":"The bank sent a transaction without a booking date, so nothing of this account was stored.","account":"4711"}
 {"type":"result","account":"7654321","balance":{"type":"balance","amount":"24518.37","currency":"EUR","date":"2026-11-12"},"errors":[]}
 {"type":"accountFailed","kind":"unsupported","text":"The bank sent no value for this securities account.","account":"7654322"}
+{"type":"result","account":"7654325","balance":{"type":"balance","amount":"0","currency":"EUR","date":"2026-11-13"},"errors":[]}
 {"type":"result","account":"7654323","errors":[{"type":"error","code":"9160","text":"Erforderliche Auftragsreferenz fehlt"}]}
 {"type":"accountFailed","account":"7654324","kind":"unsupported","text":"Moneten can't read this securities account at this bank yet."}

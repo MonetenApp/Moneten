@@ -945,13 +945,26 @@ public class FinTSHelper {
 		return k.acctype != null && k.acctype.trim().matches("[36][0-9]");
 	}
 
-	/// A securities account whose value the bank does not offer through FinTS.
-	static Map<String, Object> unreadable(String id) {
-		return message("accountFailed", "account", id, "kind", "unsupported", "text", "Moneten can't read this securities account at this bank yet.");
+	/// The jobs that a refresh sends for an account: the custody account balance of a securities account
+	/// that allows it, or else the balance and the transactions, in CAMT when the account allows it.
+	static List<String> jobs(HBCIHandler handle, Konto k) {
+		if (securities(k) && allows(handle, k, "HKWPD", "WPDepotList")) return List.of("WPDepotList");
+		List<String> jobs = new ArrayList<>();
+		if (allows(handle, k, "HKSAL", "SaldoReq")) jobs.add("SaldoReq");
+		if (allows(handle, k, "HKCAZ", "KUmsAllCamt")) jobs.add("KUmsAllCamt");
+		else if (allows(handle, k, "HKKAZ", "KUmsAll")) jobs.add("KUmsAll");
+		return jobs;
 	}
 
-	/// The jobs of one account: the balance and the transactions, or the holdings of a securities account.
-	record Jobs(String id, String from, HBCIJob balance, HBCIJob statements, HBCIJob holdings) { }
+	/// The failure of an account that allows none of the jobs.
+	static Map<String, Object> nothingAllowed(String id, Konto k) {
+		return message("accountFailed", "account", id, "kind", "unsupported", "text", securities(k) ? "Moneten can't read this securities account at this bank yet."
+			: "The FinTS server of the bank offers neither the balance nor the transactions of this account.");
+	}
+
+	/// The jobs of one account: the balance and the transactions, or the holdings of a securities account
+	/// in the currency of the account.
+	record Jobs(String id, String from, String currency, HBCIJob balance, HBCIJob statements, HBCIJob holdings) { }
 
 	static void refresh(HBCIHandler handle, HBCIPassport passport, Konto[] accounts, List<?> requested, Callback callback) {
 		applyTanRules(passport.getBLZ(), passport.getBPD());
@@ -964,35 +977,27 @@ public class FinTSHelper {
 				send(message("accountFailed", "account", id, "kind", "unsupported", "text", "The bank does not list this account for the login."));
 				continue;
 			}
-			if (securities(k) && allows(handle, k, "HKWPD", "WPDepotList")) {
-				HBCIJob holdings = handle.newJob("WPDepotList");
-				holdings.setParam("my", k);
-				holdings.addToQueue();
-				callback.jobs.put(holdings, all.size());
-				all.add(new Jobs(id, from, null, null, holdings));
+			List<String> names = jobs(handle, k);
+			if (names.isEmpty()) {
+				send(nothingAllowed(id, k));
 				continue;
 			}
-			HBCIJob balance = null, statements = null;
-			if (allows(handle, k, "HKSAL", "SaldoReq")) {
-				balance = handle.newJob("SaldoReq");
-				balance.setParam("my", k);
-				balance.addToQueue();
-				callback.jobs.put(balance, all.size());
+			HBCIJob balance = null, statements = null, holdings = null;
+			for (String name : names) {
+				HBCIJob job = handle.newJob(name);
+				job.setParam("my", k);
+				switch (name) {
+					case "SaldoReq" -> balance = job;
+					case "WPDepotList" -> holdings = job;
+					default -> {
+						if (from != null) job.setParam("startdate", date(from));
+						statements = job;
+					}
+				}
+				job.addToQueue();
+				callback.jobs.put(job, all.size());
 			}
-			boolean camt = allows(handle, k, "HKCAZ", "KUmsAllCamt");
-			if (camt || allows(handle, k, "HKKAZ", "KUmsAll")) {
-				statements = handle.newJob(camt ? "KUmsAllCamt" : "KUmsAll");
-				statements.setParam("my", k);
-				if (from != null) statements.setParam("startdate", date(from));
-				statements.addToQueue();
-				callback.jobs.put(statements, all.size());
-			}
-			if (balance == null && statements == null) {
-				send(securities(k) ? unreadable(id) : message("accountFailed", "account", id, "kind", "unsupported",
-					"text", "The FinTS server of the bank offers neither the balance nor the transactions of this account."));
-				continue;
-			}
-			all.add(new Jobs(id, from, balance, statements, null));
+			all.add(new Jobs(id, from, text(k.curr), balance, statements, holdings));
 		}
 		callback.jobCount = all.size();
 		callback.login = false;
@@ -1006,7 +1011,7 @@ public class FinTSHelper {
 		for (Jobs jobs : all) {
 			HBCIJob statements = jobs.statements(), holdings = jobs.holdings();
 			if (holdings != null) {
-				send(alone(jobs.id(), () -> value(jobs.id(), (GVRWPDepotList) holdings.getJobResult(), ((HBCIJobImpl) holdings).redo() != null)));
+				send(alone(jobs.id(), () -> value(jobs.id(), (GVRWPDepotList) holdings.getJobResult(), ((HBCIJobImpl) holdings).redo() != null, jobs.currency())));
 				continue;
 			}
 			send(alone(jobs.id(), () -> result(jobs.id(), jobs.from(), jobs.balance() == null ? null : (GVRSaldoReq) jobs.balance().getJobResult(),
@@ -1016,14 +1021,18 @@ public class FinTSHelper {
 
 	/// The value of a securities account as its balance, on the day of the statement. hbci4java adds an
 	/// entry for each page of the statement, and the total of a page (HOLP) is optional in MT535, so the
-	/// value is the sum over the pages of their total, or else of the values of their holdings.
+	/// value is the sum over the pages of their total, or else of the values of their holdings. A page
+	/// without holdings and without a total, as of an empty account, is worth 0 in `currency`, or in euro
+	/// when the bank names no currency of the account.
 	/// `incomplete` says that the dialog ended before the bank sent the last part (3040) of the holdings.
-	static Map<String, Object> value(String id, GVRWPDepotList list, boolean incomplete) {
+	static Map<String, Object> value(String id, GVRWPDepotList list, boolean incomplete, String currency) {
 		if (incomplete) throw new Failure(null, "3040", "The bank sent only part of the securities account, so nothing of this account was stored.");
 		if (!list.isOK()) return message("result", "account", id, "errors", List.of(problem(list)));
 		List<BigDecimalValue> pages = new ArrayList<>();
 		for (GVRWPDepotList.Entry page : list.getEntries()) {
-			pages.add(page.total != null ? page.total : sum(java.util.Arrays.stream(page.getEntries()).map(g -> g.depotwert).toList()));
+			if (page.total != null) pages.add(page.total);
+			else if (page.getEntries().length == 0) pages.add(new BigDecimalValue(BigDecimal.ZERO, present(currency) ? currency.trim() : "EUR"));
+			else pages.add(sum(java.util.Arrays.stream(page.getEntries()).map(g -> g.depotwert).toList()));
 		}
 		BigDecimalValue total = sum(pages);
 		if (total == null) throw new Failure("unsupported", null, "The bank sent no value for this securities account.");
