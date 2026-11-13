@@ -134,6 +134,19 @@ struct MergeTests {
 		#expect(account?.bankBalanceDate == balanceDate)
 	}
 
+	@Test("The value of a securities account that a refresh fetched is the value of its portfolio on the day the bank reported")
+	func portfolioValue() throws {
+		let store = try makeStore()
+		let depot = Account(position: 2, name: "Depot", kind: .portfolio, source: .bank, currency: "EUR")
+		try store.save(depot)
+		let twelfth = Date(timeIntervalSince1970: 1_794_441_600)
+		_ = try store.merge(.refresh(RefreshResult(balance: Money(minorUnits: 2_451_837, currency: "EUR"), balanceDate: twelfth, transactions: nil)),
+			into: depot.id)
+		let ledger = try store.loadLedger()
+		#expect(ledger.account(depot.id)?.bankBalanceMinor == 2_451_837)
+		#expect(ledger.portfolioValues(of: depot.id) == [PortfolioValue(accountID: depot.id, day: Day(twelfth), minorUnits: 2_451_837)])
+	}
+
 	@Test("A merge that fails writes nothing")
 	func failedMergeWritesNothing() throws {
 		let store = try makeStore()
