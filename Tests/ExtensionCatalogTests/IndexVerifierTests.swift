@@ -91,6 +91,16 @@ import Testing
 		#expect(try JSONDecoder().decode(KeyFloors.self, from: stored) == accepted.floors)
 	}
 
+	/// The keys that the app ships, copied from `keys/` of the catalog repository.
+	@Test func shippedKeysAreTwoEd25519Keys() throws {
+		let folder = URL(filePath: #filePath).deletingLastPathComponent().appending(path: "../../App/Resources/CatalogKeys")
+		let keys = try CatalogKeys(currentPEM: String(contentsOf: folder.appending(path: "current.pub"), encoding: .utf8),
+			nextPEM: String(contentsOf: folder.appending(path: "next.pub"), encoding: .utf8), lowestVersion: 1)
+		#expect(keys.current.rawRepresentation.count == 32)
+		#expect(keys.next.rawRepresentation.count == 32)
+		#expect(keys.current.rawRepresentation != keys.next.rawRepresentation)
+	}
+
 	@Test func keysFromThePEMThatOpenSSLWrites() throws {
 		// `openssl pkey -pubout` of a made-up key.
 		let pem = "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAGb9ECWmEzf6FQbrBZ9w7lshQhqowtrbLDFw4rXAxZuE=\n-----END PUBLIC KEY-----\n"
