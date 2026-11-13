@@ -35,13 +35,17 @@ final class HostPolicy {
 	private let extensionName: String
 	private let rule: Rule
 	private var decisions: [String: HostDecision]
+	private let testHosts: Set<String>
 	private let ask: (String) throws -> HostDecision
 
 	/// `decisions` holds the stored answers of the user by host. `ask` waits for the answer to a new host.
-	init(extensionName: String, rule: Rule, decisions: [String: HostDecision] = [:], ask: @escaping (String) throws -> HostDecision) {
+	/// `testHosts` are special-use names that pass as if they were public, for the made-up bank of the
+	/// tests of `ext`; only a debug build of `ext` sets them (`DeveloperOptions.testHosts`).
+	init(extensionName: String, rule: Rule, decisions: [String: HostDecision] = [:], testHosts: Set<String> = [], ask: @escaping (String) throws -> HostDecision) {
 		self.extensionName = extensionName
 		self.rule = rule
 		self.decisions = decisions
+		self.testHosts = testHosts
 		self.ask = ask
 	}
 
@@ -51,13 +55,14 @@ final class HostPolicy {
 		}
 		// Foundation passes an IP address in any notation, "localhost", a name without a dot, and a
 		// trailing dot unchanged. None of them may reach the dialog, where nobody reads them as local.
+		let name = HostName(exactly: host)
 		guard url.host(percentEncoded: true)?.contains("%") == false, url.port == nil || url.port == 443, url.user == nil, url.password == nil,
-			let name = HostName(exactly: host) else {
+			name != nil || testHosts.contains(host) else {
 			throw HostRefusal.unusualAddress(url.absoluteString)
 		}
 		switch rule {
 		case let .listed(hosts):
-			guard hosts.contains(name) else { throw HostRefusal.notListed(extensionName: extensionName, host: host) }
+			guard let name, hosts.contains(name) else { throw HostRefusal.notListed(extensionName: extensionName, host: host) }
 		case .askUser:
 			let decision = try decisions[host] ?? ask(host)
 			decisions[host] = decision

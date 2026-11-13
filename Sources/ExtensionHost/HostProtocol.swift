@@ -35,10 +35,14 @@ public struct DeveloperOptions: Sendable, Codable, Equatable {
 	public var capture: Capture?
 	/// Certificates in DER that HTTPS trusts in addition to those of the system, for a test server of the author.
 	public var trustedCertificates: [Data]
+	/// Special-use names that the host lets through as if they were public, such as `bank.localhost` for
+	/// the made-up bank of the tests of `ext`. Only a debug build of `ext` sets them.
+	public var testHosts: Set<String>
 
-	public init(capture: Capture? = nil, trustedCertificates: [Data] = []) {
+	public init(capture: Capture? = nil, trustedCertificates: [Data] = [], testHosts: Set<String> = []) {
 		self.capture = capture
 		self.trustedCertificates = trustedCertificates
+		self.testHosts = testHosts
 	}
 }
 
@@ -156,7 +160,7 @@ public enum HostProcess {
 				// Below `Network`, so the recording holds each request as the host policy let it go out.
 				if case .record = setup.developer?.capture { transport = RecordingTransport(base: transport) { emit(.trace(.exchange($0))) } }
 				let started = ContinuousClock.now
-				let new = HostSession(package: setup.package, transport: transport, decisions: setup.decisions, memory: setup.limits.memory,
+				let new = HostSession(package: setup.package, transport: transport, decisions: setup.decisions, testHosts: setup.developer?.testHosts ?? [], memory: setup.limits.memory,
 					environment: setup.environment, storage: setup.storage, capture: setup.developer?.capture, ask: askApp, log: { emit(.print($0)) },
 					status: { emit(.status($0)) }, alive: { emit(.alive) }, random: { emit(.trace(.random($0))) },
 					keyUse: { emit(.trace($0.map(HostTrace.key) ?? .foreignKey)) }, keyFingerprint: { emit(.trace(.keyFingerprint($0))) })

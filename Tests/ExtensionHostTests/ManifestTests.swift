@@ -96,6 +96,11 @@ import Testing
 		#expect(load(["Demo.lua": "", "Demo.json": #"{"hosts": ["\#(host)"]}"#], "Demo.lua") == .failure(.invalidManifest("A host name must be exact: \(host).")))
 	}
 
+	@Test(arguments: HostPolicyTests.specialUse)
+	func specialUseHostIsRefused(host: String) {
+		#expect(load(["Demo.lua": "", "Demo.json": #"{"hosts": ["\#(host)"]}"#], "Demo.lua") == .failure(.invalidManifest("A host name must be exact: \(host).")))
+	}
+
 	@Test func unknownKind() {
 		#expect(load(["Demo.lua": "", "Demo.json": #"{"kinds": ["payments"]}"#], "Demo.lua") == .failure(.invalidManifest("Unknown kind of data: payments.")))
 	}

@@ -26,6 +26,8 @@ public actor ExtensionHostClient {
 	private let trace: @Sendable (HostTrace) -> Void
 	/// How long the host may send nothing while no question waits for the user.
 	private let silence: Duration
+	/// The special-use names of `DeveloperOptions.testHosts`, which the host may ask about.
+	private let testHosts: Set<String>
 	private var busy = false
 	private var watchdog: Task<Void, Never>?
 	private var silenced = false
@@ -55,6 +57,7 @@ public actor ExtensionHostClient {
 		ask: @escaping @Sendable (String) async throws -> HostDecision, log: @escaping @Sendable (HostLog) -> Void = { _ in },
 		trace: @escaping @Sendable (HostTrace) -> Void = { _ in }) async throws -> (client: ExtensionHostClient, registration: Registration, loadMilliseconds: Double) {
 		let client = try ExtensionHostClient(executable: executable, arguments: arguments, extensionName: setup.package.name, silence: silence,
+			testHosts: setup.developer?.testHosts ?? [],
 			ask: ask, log: log, trace: trace)
 		do {
 			guard case let .loaded(registration, entryPoints, milliseconds) = try await client.send(.start(setup)) else {
@@ -68,7 +71,7 @@ public actor ExtensionHostClient {
 		}
 	}
 
-	private init(executable: URL, arguments: [String], extensionName: String, silence: Duration, ask: @escaping @Sendable (String) async throws -> HostDecision,
+	private init(executable: URL, arguments: [String], extensionName: String, silence: Duration, testHosts: Set<String>, ask: @escaping @Sendable (String) async throws -> HostDecision,
 		log: @escaping @Sendable (HostLog) -> Void, trace: @escaping @Sendable (HostTrace) -> Void) throws {
 		let stdin = Pipe(), stdout = Pipe()
 		process = Process()
@@ -81,6 +84,7 @@ public actor ExtensionHostClient {
 		_ = fcntl(stdin.fileHandleForWriting.fileDescriptor, F_SETNOSIGPIPE, 1)
 		input = stdin.fileHandleForWriting
 		self.silence = silence
+		self.testHosts = testHosts
 		self.ask = ask
 		self.log = log
 		self.trace = trace
@@ -165,7 +169,7 @@ public actor ExtensionHostClient {
 			case let .askHost(host):
 				do {
 					// The host process runs the script, so the app checks the name before the user sees it.
-					guard HostName(exactly: host) != nil else { throw ScriptError("The extension host asked about \(host), which is not an exact host name.") }
+					guard HostName(exactly: host) != nil || testHosts.contains(host) else { throw ScriptError("The extension host asked about \(host), which is not an exact host name.") }
 					write(.answer(try await ask(host)))
 				} catch {
 					process.terminate()

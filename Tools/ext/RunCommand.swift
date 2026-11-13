@@ -103,6 +103,11 @@ struct Session {
 		let services = ExtensionConnector.Services(hostDecisions: { [:] }, saveDecision: { _, _ in }, transactions: { _ in [] }, log: { line in
 			if case let .print(text) = line, !quiet { Terminal.error(text) }
 		}, trace: { trace.add($0) })
+		var developer = developer
+		#if DEBUG
+		// The tests of `ext` reach their made-up bank on `bank.localhost`, which the host refuses unless they name it here.
+		developer.testHosts = Set(ProcessInfo.processInfo.environment["MONETEN_TEST_HOSTS", default: ""].split(separator: ",").map(String.init))
+		#endif
 		let connector = ExtensionConnector(package: script.package, environment: environment, fixture: fixture, executable: Self.executable,
 			arguments: [Ext.hostArgument], developer: developer, services: services)
 		let access = Access(source: .extension(id: script.package.name), bankName: service, loginName: "")

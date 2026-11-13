@@ -98,6 +98,21 @@ extension ExtTool {
 			#expect(run.errors.contains("Broker may not contact tracker.example, because its manifest does not list that host."))
 		}
 
+		/// Without the test rule of the tests, `ext` refuses the name of the made-up bank, as the app does.
+		@Test func specialUseHostWithoutTheTestRule() throws {
+			let folder = try files(["Local.lua": """
+				WebBanking{version = 1, services = {"Local"}}
+				function SupportsBank() return true end
+				function InitializeSession() Connection():get("https://bank.localhost/") end
+				"""])
+			let script = folder.appending(path: "Local.lua").path, storage = folder.appending(path: "s.json").path
+			let strict = try ext(["run", script, "--storage", storage], environment: ["EXT_USERNAME": "erika", "EXT_PASSWORD": "secret", "MONETEN_TEST_HOSTS": ""])
+			#expect(strict.status == 2)
+			#expect(strict.errors.contains("Moneten sends requests only to a plain host name on the HTTPS port, not to https://bank.localhost/."))
+			let asked = try ext(["run", script, "--storage", storage], input: "n\n", environment: ["EXT_USERNAME": "erika", "EXT_PASSWORD": "secret"])
+			#expect(asked.errors.contains("Local wants to contact bank.localhost. Allow it? [y/N] "))
+		}
+
 		@Test func choiceOfTheService() throws {
 			let folder = try files(["Broker.lua": """
 				WebBanking{version = 1, services = {"Broker", "Broker Business"}}

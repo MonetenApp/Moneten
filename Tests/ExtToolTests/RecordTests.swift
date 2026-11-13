@@ -11,8 +11,9 @@ final class LocalBank {
 	private let process = Process()
 
 	/// macOS lets a user open port 443 on every interface, but not on the loopback address alone.
-	/// The host refuses `localhost`, so the bank has a name with a dot. macOS 26 resolves each name
-	/// under `localhost` to the loopback address; on macOS 15, CI adds `bank.localhost` to /etc/hosts.
+	/// The host refuses every name under `localhost`, so the tests pass `testBank` to let this one name
+	/// through. macOS 26 resolves each name under `localhost` to the loopback address; on macOS 15, CI
+	/// adds `bank.localhost` to /etc/hosts.
 	static var canStart: Bool {
 		(try? launch(URL(filePath: "/usr/bin/python3"), ["-c", "import socket; socket.getaddrinfo('bank.localhost', 443, socket.AF_INET); s = socket.socket(); s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1); s.bind(('0.0.0.0', 443))"]).status) == 0
 	}
