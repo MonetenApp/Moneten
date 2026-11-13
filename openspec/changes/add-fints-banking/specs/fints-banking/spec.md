@@ -254,7 +254,7 @@ The app SHALL list a credit card as an account of the type "Credit card" when th
 
 ### Requirement: Read the value of a securities account
 
-The app SHALL fetch the value of a securities account through the custody account balance of the bank (HKWPD), and no balance and no transactions, and store it with the date of the statement as the value of the portfolio on that day. The value is the total that the bank sends, or the sum of the values of the holdings when the bank sends no total. When the app cannot read a value, the account says why. The holdings come with add-securities-accounts.
+The app SHALL fetch the value of a securities account through the custody account balance of the bank (HKWPD) in place of its balance and transactions when the bank allows it, and store it with the date of the statement as the value of the portfolio on that day. The value is the total that the bank sends, or the sum of the values of the holdings when the bank sends no total. When the app cannot read a value, the account says why. The holdings come with add-securities-accounts.
 
 #### Scenario: Value of a securities account
 
@@ -265,7 +265,7 @@ The app SHALL fetch the value of a securities account through the custody accoun
 
 #### Scenario: Bank without the custody account balance
 
-- **GIVEN** the bank lists the securities account "Fondsdepot" and does not allow the custody account balance for it
+- **GIVEN** the bank lists the securities account "Fondsdepot" and allows neither the custody account balance, nor the balance, nor the transactions for it
 - **WHEN** the user refreshes "Fondsdepot"
 - **THEN** "Fondsdepot" shows "Moneten can't read this securities account at this bank yet."
 

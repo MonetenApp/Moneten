@@ -964,11 +964,7 @@ public class FinTSHelper {
 				send(message("accountFailed", "account", id, "kind", "unsupported", "text", "The bank does not list this account for the login."));
 				continue;
 			}
-			if (securities(k)) {
-				if (!allows(handle, k, "HKWPD", "WPDepotList")) {
-					send(unreadable(id));
-					continue;
-				}
+			if (securities(k) && allows(handle, k, "HKWPD", "WPDepotList")) {
 				HBCIJob holdings = handle.newJob("WPDepotList");
 				holdings.setParam("my", k);
 				holdings.addToQueue();
@@ -992,7 +988,7 @@ public class FinTSHelper {
 				callback.jobs.put(statements, all.size());
 			}
 			if (balance == null && statements == null) {
-				send(message("accountFailed", "account", id, "kind", "unsupported",
+				send(securities(k) ? unreadable(id) : message("accountFailed", "account", id, "kind", "unsupported",
 					"text", "The FinTS server of the bank offers neither the balance nor the transactions of this account."));
 				continue;
 			}
