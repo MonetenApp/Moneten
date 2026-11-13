@@ -1,0 +1,194 @@
+{
+  "answers": [
+    {
+      "login": [
+        "{{username}}",
+        "{{password}}"
+      ]
+    }
+  ],
+  "environment": {
+    "country": "DE",
+    "deviceUuid": "00000000-0000-4000-8000-000000000000",
+    "language": "de",
+    "locale": "de_DE",
+    "productBuild": 1,
+    "productVersion": "0.1.0",
+    "variant": "debug"
+  },
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://www.amazon.de"
+      },
+      "response": {
+        "body": "<!DOCTYPE html><html lang=\"de-de\"><head><meta charset=\"utf-8\"><title>Meine Bestellungen</title></head><body>\n<div id=\"nav-logo\"><a href=\"/\">Amazon.de</a></div>\n<a id=\"nav-link-accountList\" href=\"/gp/css/homepage.html\"><span class=\"nav-shortened-name\">Robin</span></a>\n<a id=\"nav-orders\" href=\"/gp/css/order-history?ref_=nav_orders_first\">Bestellungen</a>\n<a id=\"nav-item-signout\" href=\"/gp/flex/sign-out.html?path=%2Fgp%2Fyourstore%2Fhome&amp;signIn=1&amp;useRedirectOnSuccess=1&amp;action=sign-out\">Abmelden</a>\n<form method=\"get\" action=\"/your-orders/orders\" id=\"timePeriodForm\"><select name=\"timeFilter\" id=\"time-filter\"><option value=\"last30\">letzte 30 Tage</option><option value=\"months-3\" selected>letzte 3 Monate</option><option value=\"year-2026\">2026</option><option value=\"year-2025\">2025</option></select></form>\n<div class=\"your-orders-content-container\"></div>\n</body></html>\n",
+        "headers": {
+          "Content-Type": "text/html; charset=UTF-8"
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://www.amazon.de/gp/css/order-history?ref_=nav_orders_first"
+      },
+      "response": {
+        "body": "<!DOCTYPE html><html lang=\"de-de\"><head><meta charset=\"utf-8\"><title>Meine Bestellungen</title></head><body>\n<div id=\"nav-logo\"><a href=\"/\">Amazon.de</a></div>\n<a id=\"nav-link-accountList\" href=\"/gp/css/homepage.html\"><span class=\"nav-shortened-name\">Robin</span></a>\n<a id=\"nav-orders\" href=\"/gp/css/order-history?ref_=nav_orders_first\">Bestellungen</a>\n<a id=\"nav-item-signout\" href=\"/gp/flex/sign-out.html?path=%2Fgp%2Fyourstore%2Fhome&amp;signIn=1&amp;useRedirectOnSuccess=1&amp;action=sign-out\">Abmelden</a>\n<form method=\"get\" action=\"/your-orders/orders\" id=\"timePeriodForm\"><select name=\"timeFilter\" id=\"time-filter\"><option value=\"last30\">letzte 30 Tage</option><option value=\"months-3\" selected>letzte 3 Monate</option><option value=\"year-2026\">2026</option><option value=\"year-2025\">2025</option></select></form>\n<div class=\"your-orders-content-container\"><div class=\"order-card js-order-card\" data-csa-c-slot-id=\"orderCard-302-4815162-3423108\"><div class=\"a-box-group\"><div class=\"a-box\">{{token7}}</div></div></div><div class=\"order-card js-order-card\" data-csa-c-slot-id=\"orderCard-302-9081726-5544332\"><div class=\"a-box-group\"><div class=\"a-box\">{{token7}}</div></div></div></div>\n</body></html>\n",
+        "headers": {
+          "Content-Type": "text/html; charset=UTF-8"
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://www.amazon.de/gp/css/homepage.html?ref_=nav_youraccount_btn"
+      },
+      "response": {
+        "body": "<!DOCTYPE html><html lang=\"de-de\"><head><meta charset=\"utf-8\"><title>Mein Konto</title></head><body>\n<div id=\"nav-logo\"><a href=\"/\">Amazon.de</a></div>\n<a id=\"nav-link-accountList\" href=\"/gp/css/homepage.html\"><span class=\"nav-shortened-name\">Robin</span></a>\n<a id=\"nav-orders\" href=\"/gp/css/order-history?ref_=nav_orders_first\">Bestellungen</a>\n<a id=\"nav-item-signout\" href=\"/gp/flex/sign-out.html?path=%2Fgp%2Fyourstore%2Fhome&amp;signIn=1&amp;useRedirectOnSuccess=1&amp;action=sign-out\">Abmelden</a>\n<div id=\"nav-flyout-accountList\"><a id=\"nav-item-switch-account\" href=\"/ap/signin?switch_account=picker&amp;ignoreAuthState=1&amp;_encoding=UTF8\">Konto wechseln</a></div>\n<h1>Mein Konto</h1>\n</body></html>\n",
+        "headers": {
+          "Content-Type": "text/html; charset=UTF-8"
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://www.amazon.de/ap/signin?switch_account=picker&ignoreAuthState=1&_encoding=UTF8"
+      },
+      "response": {
+        "body": "<!DOCTYPE html><html lang=\"de-de\"><head><meta charset=\"utf-8\"><title>Konto wechseln</title></head><body>\n<div id=\"nav-logo\"><a href=\"/\">Amazon.de</a></div>\n<div class=\"cvf-account-switcher\"><h1>Konto wechseln</h1>\n<div class=\"cvf-account-switcher-profile\"><span>Robin Example</span><span>Angemeldet</span></div>\n<a id=\"cvf-account-switcher-add-accounts-link\" href=\"/ap/signin?openid.pape.max_auth_age=0&amp;switch_account=signin\">Konto hinzufügen</a></div>\n</body></html>\n",
+        "headers": {
+          "Content-Type": "text/html; charset=UTF-8"
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://www.amazon.de"
+      },
+      "response": {
+        "body": "<!DOCTYPE html><html lang=\"de-de\"><head><meta charset=\"utf-8\"><title>Meine Bestellungen</title></head><body>\n<div id=\"nav-logo\"><a href=\"/\">Amazon.de</a></div>\n<a id=\"nav-link-accountList\" href=\"/gp/css/homepage.html\"><span class=\"nav-shortened-name\">Robin</span></a>\n<a id=\"nav-orders\" href=\"/gp/css/order-history?ref_=nav_orders_first\">Bestellungen</a>\n<a id=\"nav-item-signout\" href=\"/gp/flex/sign-out.html?path=%2Fgp%2Fyourstore%2Fhome&amp;signIn=1&amp;useRedirectOnSuccess=1&amp;action=sign-out\">Abmelden</a>\n<form method=\"get\" action=\"/your-orders/orders\" id=\"timePeriodForm\"><select name=\"timeFilter\" id=\"time-filter\"><option value=\"last30\">letzte 30 Tage</option><option value=\"months-3\" selected>letzte 3 Monate</option><option value=\"year-2026\">2026</option><option value=\"year-2025\">2025</option></select></form>\n<div class=\"your-orders-content-container\"></div>\n</body></html>\n",
+        "headers": {
+          "Content-Type": "text/html; charset=UTF-8"
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://www.amazon.de/gp/css/homepage.html?ref_=nav_youraccount_btn"
+      },
+      "response": {
+        "body": "<!DOCTYPE html><html lang=\"de-de\"><head><meta charset=\"utf-8\"><title>Mein Konto</title></head><body>\n<div id=\"nav-logo\"><a href=\"/\">Amazon.de</a></div>\n<a id=\"nav-link-accountList\" href=\"/gp/css/homepage.html\"><span class=\"nav-shortened-name\">Robin</span></a>\n<a id=\"nav-orders\" href=\"/gp/css/order-history?ref_=nav_orders_first\">Bestellungen</a>\n<a id=\"nav-item-signout\" href=\"/gp/flex/sign-out.html?path=%2Fgp%2Fyourstore%2Fhome&amp;signIn=1&amp;useRedirectOnSuccess=1&amp;action=sign-out\">Abmelden</a>\n<div id=\"nav-flyout-accountList\"><a id=\"nav-item-switch-account\" href=\"/ap/signin?switch_account=picker&amp;ignoreAuthState=1&amp;_encoding=UTF8\">Konto wechseln</a></div>\n<h1>Mein Konto</h1>\n</body></html>\n",
+        "headers": {
+          "Content-Type": "text/html; charset=UTF-8"
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://www.amazon.de/ap/signin?switch_account=picker&ignoreAuthState=1&_encoding=UTF8"
+      },
+      "response": {
+        "body": "<!DOCTYPE html><html lang=\"de-de\"><head><meta charset=\"utf-8\"><title>Konto wechseln</title></head><body>\n<div id=\"nav-logo\"><a href=\"/\">Amazon.de</a></div>\n<div class=\"cvf-account-switcher\"><h1>Konto wechseln</h1>\n<div class=\"cvf-account-switcher-profile\"><span>Robin Example</span><span>Angemeldet</span></div>\n<a id=\"cvf-account-switcher-add-accounts-link\" href=\"/ap/signin?openid.pape.max_auth_age=0&amp;switch_account=signin\">Konto hinzufügen</a></div>\n</body></html>\n",
+        "headers": {
+          "Content-Type": "text/html; charset=UTF-8"
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://www.amazon.de/gp/css/order-history?ref_=nav_orders_first"
+      },
+      "response": {
+        "body": "<!DOCTYPE html><html lang=\"de-de\"><head><meta charset=\"utf-8\"><title>Meine Bestellungen</title></head><body>\n<div id=\"nav-logo\"><a href=\"/\">Amazon.de</a></div>\n<a id=\"nav-link-accountList\" href=\"/gp/css/homepage.html\"><span class=\"nav-shortened-name\">Robin</span></a>\n<a id=\"nav-orders\" href=\"/gp/css/order-history?ref_=nav_orders_first\">Bestellungen</a>\n<a id=\"nav-item-signout\" href=\"/gp/flex/sign-out.html?path=%2Fgp%2Fyourstore%2Fhome&amp;signIn=1&amp;useRedirectOnSuccess=1&amp;action=sign-out\">Abmelden</a>\n<form method=\"get\" action=\"/your-orders/orders\" id=\"timePeriodForm\"><select name=\"timeFilter\" id=\"time-filter\"><option value=\"last30\">letzte 30 Tage</option><option value=\"months-3\" selected>letzte 3 Monate</option><option value=\"year-2026\">2026</option><option value=\"year-2025\">2025</option></select></form>\n<div class=\"your-orders-content-container\"><div class=\"order-card js-order-card\" data-csa-c-slot-id=\"orderCard-302-4815162-3423108\"><div class=\"a-box-group\"><div class=\"a-box\">{{token7}}</div></div></div><div class=\"order-card js-order-card\" data-csa-c-slot-id=\"orderCard-302-9081726-5544332\"><div class=\"a-box-group\"><div class=\"a-box\">{{token7}}</div></div></div></div>\n</body></html>\n",
+        "headers": {
+          "Content-Type": "text/html; charset=UTF-8"
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://www.amazon.de/your-orders/orders?timeFilter=last30"
+      },
+      "response": {
+        "body": "<!DOCTYPE html><html lang=\"de-de\"><head><meta charset=\"utf-8\"><title>Meine Bestellungen</title></head><body>\n<div id=\"nav-logo\"><a href=\"/\">Amazon.de</a></div>\n<a id=\"nav-link-accountList\" href=\"/gp/css/homepage.html\"><span class=\"nav-shortened-name\">Robin</span></a>\n<a id=\"nav-orders\" href=\"/gp/css/order-history?ref_=nav_orders_first\">Bestellungen</a>\n<a id=\"nav-item-signout\" href=\"/gp/flex/sign-out.html?path=%2Fgp%2Fyourstore%2Fhome&amp;signIn=1&amp;useRedirectOnSuccess=1&amp;action=sign-out\">Abmelden</a>\n<form method=\"get\" action=\"/your-orders/orders\" id=\"timePeriodForm\"><select name=\"timeFilter\" id=\"time-filter\"><option value=\"last30\" selected>letzte 30 Tage</option><option value=\"months-3\">letzte 3 Monate</option><option value=\"year-2026\">2026</option><option value=\"year-2025\">2025</option></select></form>\n<div class=\"your-orders-content-container\"><div class=\"order-card js-order-card\" data-csa-c-slot-id=\"orderCard-302-4815162-3423108\"><div class=\"a-box-group\"><div class=\"a-box\">{{token7}}</div></div></div></div>\n</body></html>\n",
+        "headers": {
+          "Content-Type": "text/html; charset=UTF-8"
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://www.amazon.de/your-orders/orders?timeFilter=year-2026"
+      },
+      "response": {
+        "body": "<!DOCTYPE html><html lang=\"de-de\"><head><meta charset=\"utf-8\"><title>Meine Bestellungen</title></head><body>\n<div id=\"nav-logo\"><a href=\"/\">Amazon.de</a></div>\n<a id=\"nav-link-accountList\" href=\"/gp/css/homepage.html\"><span class=\"nav-shortened-name\">Robin</span></a>\n<a id=\"nav-orders\" href=\"/gp/css/order-history?ref_=nav_orders_first\">Bestellungen</a>\n<a id=\"nav-item-signout\" href=\"/gp/flex/sign-out.html?path=%2Fgp%2Fyourstore%2Fhome&amp;signIn=1&amp;useRedirectOnSuccess=1&amp;action=sign-out\">Abmelden</a>\n<form method=\"get\" action=\"/your-orders/orders\" id=\"timePeriodForm\"><select name=\"timeFilter\" id=\"time-filter\"><option value=\"last30\">letzte 30 Tage</option><option value=\"months-3\">letzte 3 Monate</option><option value=\"year-2026\" selected>2026</option><option value=\"year-2025\">2025</option></select></form>\n<div class=\"your-orders-content-container\"><div class=\"order-card js-order-card\" data-csa-c-slot-id=\"orderCard-302-4815162-3423108\"><div class=\"a-box-group\"><div class=\"a-box\">{{token7}}</div></div></div><div class=\"order-card js-order-card\" data-csa-c-slot-id=\"orderCard-302-9081726-5544332\"><div class=\"a-box-group\"><div class=\"a-box\">{{token7}}</div></div></div></div>\n</body></html>\n",
+        "headers": {
+          "Content-Type": "text/html; charset=UTF-8"
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://www.amazon.de/your-orders/orders?timeFilter=year-2025"
+      },
+      "response": {
+        "body": "<!DOCTYPE html><html lang=\"de-de\"><head><meta charset=\"utf-8\"><title>Meine Bestellungen</title></head><body>\n<div id=\"nav-logo\"><a href=\"/\">Amazon.de</a></div>\n<a id=\"nav-link-accountList\" href=\"/gp/css/homepage.html\"><span class=\"nav-shortened-name\">Robin</span></a>\n<a id=\"nav-orders\" href=\"/gp/css/order-history?ref_=nav_orders_first\">Bestellungen</a>\n<a id=\"nav-item-signout\" href=\"/gp/flex/sign-out.html?path=%2Fgp%2Fyourstore%2Fhome&amp;signIn=1&amp;useRedirectOnSuccess=1&amp;action=sign-out\">Abmelden</a>\n<form method=\"get\" action=\"/your-orders/orders\" id=\"timePeriodForm\"><select name=\"timeFilter\" id=\"time-filter\"><option value=\"last30\">letzte 30 Tage</option><option value=\"months-3\">letzte 3 Monate</option><option value=\"year-2026\">2026</option><option value=\"year-2025\" selected>2025</option></select></form>\n<div class=\"your-orders-content-container\"></div>\n</body></html>\n",
+        "headers": {
+          "Content-Type": "text/html; charset=UTF-8"
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://www.amazon.de/your-orders/order-details?orderID=302-4815162-3423108"
+      },
+      "response": {
+        "body": "<!DOCTYPE html><html lang=\"de-de\"><head><meta charset=\"utf-8\"><title>Bestelldetails</title></head><body>\n<div id=\"nav-logo\"><a href=\"/\">Amazon.de</a></div>\n<a id=\"nav-link-accountList\" href=\"/gp/css/homepage.html\"><span class=\"nav-shortened-name\">Robin</span></a>\n<a id=\"nav-orders\" href=\"/gp/css/order-history?ref_=nav_orders_first\">Bestellungen</a>\n<a id=\"nav-item-signout\" href=\"/gp/flex/sign-out.html?path=%2Fgp%2Fyourstore%2Fhome&amp;signIn=1&amp;useRedirectOnSuccess=1&amp;action=sign-out\">Abmelden</a>\n<div id=\"orderDetails\" class=\"a-container\">\n<h1>Bestelldetails</h1>\n<div data-component=\"orderDate\"><span>Bestellt am 3. November 2026</span></div>\n<div data-component=\"orderId\"><span>Bestellnr. 302-4815162-3423108</span></div>\n<div data-component=\"shippingAddress\"><ul><li>Robin Example</li><li>Musterweg 12</li><li>12345 Beispielstadt</li><li>Deutschland</li></ul></div>\n<div data-component=\"paymentMethods\"><span data-testid=\"payment-instrument-name\">Visa</span> <span data-testid=\"payment-instrument-prefix\">endet mit</span> <span data-testid=\"payment-instrument-number\">4242</span></div>\n<div data-component=\"orderSummary\"><div class=\"od-line-item-row\"><div class=\"od-line-item-row-label\"><span class=\"a-color-base\">Zwischensumme:</span></div><div class=\"od-line-item-row-content\"><span class=\"a-color-base\">34,99 €</span></div></div><div class=\"od-line-item-row\"><div class=\"od-line-item-row-label\"><span class=\"a-color-base\">Verpackung &amp; Versand:</span></div><div class=\"od-line-item-row-content\"><span class=\"a-color-base\">0,00 €</span></div></div><div class=\"od-line-item-row\"><div class=\"od-line-item-row-label\"><span class=\"a-color-base a-text-bold\">Gesamtsumme:</span></div><div class=\"od-line-item-row-content\"><span class=\"a-color-base a-text-bold\">34,99 €</span></div></div></div>\n<div data-component=\"shipments\"><div data-component=\"shipmentStatus\">Zugestellt</div><div class=\"a-fixed-left-grid\"><div class=\"a-fixed-left-grid-inner\">\n<div class=\"a-fixed-left-grid-col a-col-left\"><div class=\"od-item-view-qty\"><span></span></div></div>\n<div class=\"a-fixed-left-grid-col a-col-right\" data-component=\"purchasedItemsRightGrid\">\n<div data-component=\"itemTitle\"><a class=\"a-link-normal\" href=\"/dp/B0EXAMPLE0\">Wasserkocher 1,7 l, Edelstahl</a></div>\n<div data-component=\"unitPrice\"><span class=\"a-price\"><span class=\"a-offscreen\">34,99 €</span></span></div>\n</div></div></div></div>\n</div>\n</body></html>\n",
+        "headers": {
+          "Content-Type": "text/html; charset=UTF-8"
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://www.amazon.de/your-orders/order-details?orderID=302-9081726-5544332"
+      },
+      "response": {
+        "body": "<!DOCTYPE html><html lang=\"de-de\"><head><meta charset=\"utf-8\"><title>Bestelldetails</title></head><body>\n<div id=\"nav-logo\"><a href=\"/\">Amazon.de</a></div>\n<a id=\"nav-link-accountList\" href=\"/gp/css/homepage.html\"><span class=\"nav-shortened-name\">Robin</span></a>\n<a id=\"nav-orders\" href=\"/gp/css/order-history?ref_=nav_orders_first\">Bestellungen</a>\n<a id=\"nav-item-signout\" href=\"/gp/flex/sign-out.html?path=%2Fgp%2Fyourstore%2Fhome&amp;signIn=1&amp;useRedirectOnSuccess=1&amp;action=sign-out\">Abmelden</a>\n<div id=\"orderDetails\" class=\"a-container\">\n<h1>Bestelldetails</h1>\n<div data-component=\"orderDate\"><span>Bestellt am 21. Oktober 2026</span></div>\n<div data-component=\"orderId\"><span>Bestellnr. 302-9081726-5544332</span></div>\n<div data-component=\"shippingAddress\"><ul><li>Robin Example</li><li>Musterweg 12</li><li>12345 Beispielstadt</li><li>Deutschland</li></ul></div>\n<div data-component=\"paymentMethods\"><span data-testid=\"payment-instrument-name\">Visa</span> <span data-testid=\"payment-instrument-prefix\">endet mit</span> <span data-testid=\"payment-instrument-number\">4242</span></div>\n<div data-component=\"orderSummary\"><div class=\"od-line-item-row\"><div class=\"od-line-item-row-label\"><span class=\"a-color-base\">Zwischensumme:</span></div><div class=\"od-line-item-row-content\"><span class=\"a-color-base\">15,99 €</span></div></div><div class=\"od-line-item-row\"><div class=\"od-line-item-row-label\"><span class=\"a-color-base\">Verpackung &amp; Versand:</span></div><div class=\"od-line-item-row-content\"><span class=\"a-color-base\">3,99 €</span></div></div><div class=\"od-line-item-row\"><div class=\"od-line-item-row-label\"><span class=\"a-color-base a-text-bold\">Gesamtsumme:</span></div><div class=\"od-line-item-row-content\"><span class=\"a-color-base a-text-bold\">19,98 €</span></div></div></div>\n<div data-component=\"shipments\"><div data-component=\"shipmentStatus\">Zugestellt</div><div class=\"a-fixed-left-grid\"><div class=\"a-fixed-left-grid-inner\">\n<div class=\"a-fixed-left-grid-col a-col-left\"><div class=\"od-item-view-qty\"><span>2</span></div></div>\n<div class=\"a-fixed-left-grid-col a-col-right\" data-component=\"purchasedItemsRightGrid\">\n<div data-component=\"itemTitle\"><a class=\"a-link-normal\" href=\"/dp/B0EXAMPLE0\">Notizbuch A5 kariert</a></div>\n<div data-component=\"unitPrice\"><span class=\"a-price\"><span class=\"a-offscreen\">4,50 €</span></span></div>\n</div></div></div><div class=\"a-fixed-left-grid\"><div class=\"a-fixed-left-grid-inner\">\n<div class=\"a-fixed-left-grid-col a-col-left\"><div class=\"od-item-view-qty\"><span></span></div></div>\n<div class=\"a-fixed-left-grid-col a-col-right\" data-component=\"purchasedItemsRightGrid\">\n<div data-component=\"itemTitle\"><a class=\"a-link-normal\" href=\"/dp/B0EXAMPLE0\">Kugelschreiber blau, 10 Stück</a></div>\n<div data-component=\"unitPrice\"><span class=\"a-price\"><span class=\"a-offscreen\">6,99 €</span></span></div>\n</div></div></div></div>\n</div>\n</body></html>\n",
+        "headers": {
+          "Content-Type": "text/html; charset=UTF-8"
+        },
+        "status": 200
+      }
+    }
+  ],
+  "format": 1,
+  "service": "Amazon Bestellungen",
+  "startTime": 1794304800,
+  "timeZone": "Europe/Berlin"
+}

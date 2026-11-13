@@ -1,0 +1,56 @@
+{
+  "answers": [
+    {
+      "login": [
+        "{{username}}",
+        "{{password}}-482916"
+      ]
+    }
+  ],
+  "environment": {
+    "country": "IE",
+    "deviceUuid": "00000000-0000-4000-8000-000000000000",
+    "language": "en",
+    "locale": "en_IE",
+    "productBuild": 1,
+    "productVersion": "0.1.0",
+    "variant": "debug"
+  },
+  "exchanges": [
+    {
+      "request": {
+        "method": "GET",
+        "url": "https://www.business24.ie/online/"
+      },
+      "response": {
+        "body": "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>Login</title></head><body>\n<div class=\"module-login\"><form method=\"post\" action=\"/online/Login/Step1\">\n<input type=\"hidden\" name=\"__RequestVerificationToken\" value=\"{{token1}}\">\n<label for=\"login-number\">Login number</label><input id=\"login-number\" name=\"LoginNumber\" type=\"text\" value=\"\">\n<label for=\"login-password\">Password</label><input id=\"login-password\" name=\"Password\" type=\"password\" value=\"\">\n<button id=\"btnsubmit\" type=\"submit\">Continue</button>\n</form></div>\n</body></html>\n",
+        "headers": {
+          "Content-Type": "text/html; charset=utf-8",
+          "Set-Cookie": "ASP.NET_SessionId={{cookie1}}; path=/; secure; HttpOnly"
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "body": "__RequestVerificationToken={{token1}}&LoginNumber={{username}}&Password={{password}}",
+        "headers": {
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        "method": "POST",
+        "url": "https://www.business24.ie/online/Login/Step1"
+      },
+      "response": {
+        "body": "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>Login</title></head><body>\n<div class=\"module-logout\"><div><p>The login number or password you entered is incorrect.</p></div></div>\n</body></html>\n",
+        "headers": {
+          "Content-Type": "text/html; charset=utf-8"
+        },
+        "status": 200
+      }
+    }
+  ],
+  "format": 1,
+  "service": "Permanent TSB Business",
+  "startTime": 1794301200,
+  "timeZone": "Europe/Dublin"
+}

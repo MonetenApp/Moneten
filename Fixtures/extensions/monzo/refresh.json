@@ -1,0 +1,110 @@
+{
+  "answers": [
+    {
+      "login": [
+        "{{username}}",
+        "{{password}}"
+      ]
+    }
+  ],
+  "environment": {
+    "country": "GB",
+    "deviceUuid": "00000000-0000-4000-8000-000000000000",
+    "language": "en",
+    "locale": "en_GB",
+    "productBuild": 1,
+    "productVersion": "0.1.0",
+    "variant": "debug"
+  },
+  "exchanges": [
+    {
+      "request": {
+        "headers": {
+          "Accept": "application/json",
+          "Authorization": "Bearer {{token1}}"
+        },
+        "method": "GET",
+        "url": "https://api.monzo.com/ping/whoami"
+      },
+      "response": {
+        "body": "{\"authenticated\": true, \"client_id\": \"{{username}}\", \"user_id\": \"user_0000Ex4mpleUser00001\"}",
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "headers": {
+          "Accept": "application/json",
+          "Authorization": "Bearer {{token1}}"
+        },
+        "method": "GET",
+        "url": "https://api.monzo.com/transactions?account_id=acc_0000Ex4mpleMain00001&expand[]=merchant&since=1970-01-01T00:00:00Z"
+      },
+      "response": {
+        "body": "{\"transactions\": [{\"id\": \"tx_0000Ex4mpleTx0001\", \"created\": \"2026-11-02T08:15:02.120Z\", \"settled\": \"2026-11-02T08:15:02.120Z\", \"amount\": 250000, \"currency\": \"GBP\", \"description\": \"Monzo top up\", \"merchant\": null, \"notes\": \"\", \"category\": \"general\", \"is_load\": true, \"dedupe_id\": \"dd_0000Ex4mpleTx0001\", \"local_amount\": 250000, \"local_currency\": \"GBP\", \"account_id\": \"acc_0000Ex4mpleMain00001\"}, {\"id\": \"tx_0000Ex4mpleTx0002\", \"created\": \"2026-11-04T12:41:33.004Z\", \"settled\": \"2026-11-05T03:10:11.000Z\", \"amount\": -1245, \"currency\": \"GBP\", \"description\": \"CORNER BAKERY LONDON\", \"merchant\": {\"id\": \"merch_0000Ex4mple01\", \"name\": \"Corner Bakery\", \"category\": \"eating_out\"}, \"notes\": \"\", \"category\": \"eating_out\", \"is_load\": false, \"dedupe_id\": \"dd_0000Ex4mpleTx0002\", \"local_amount\": -1245, \"local_currency\": \"GBP\", \"account_id\": \"acc_0000Ex4mpleMain00001\"}, {\"id\": \"tx_0000Ex4mpleTx0003\", \"created\": \"2026-11-06T19:02:47.551Z\", \"settled\": \"2026-11-08T02:00:00.000Z\", \"amount\": -2189, \"currency\": \"GBP\", \"description\": \"CAFE EXEMPLE PARIS\", \"merchant\": {\"id\": \"merch_0000Ex4mple02\", \"name\": \"Café Exemple\", \"category\": \"eating_out\"}, \"notes\": \"\", \"category\": \"eating_out\", \"is_load\": false, \"dedupe_id\": \"dd_0000Ex4mpleTx0003\", \"local_amount\": -2500, \"local_currency\": \"EUR\", \"account_id\": \"acc_0000Ex4mpleMain00001\"}, {\"id\": \"tx_0000Ex4mpleTx0004\", \"created\": \"2026-11-08T21:30:00.000Z\", \"settled\": \"\", \"amount\": -999, \"currency\": \"GBP\", \"description\": \"STREAMING SERVICE\", \"merchant\": {\"id\": \"merch_0000Ex4mple03\", \"name\": \"Streaming Service\", \"category\": \"entertainment\"}, \"notes\": \"Monthly plan\", \"category\": \"entertainment\", \"is_load\": false, \"dedupe_id\": \"dd_0000Ex4mpleTx0004\", \"local_amount\": -999, \"local_currency\": \"GBP\", \"account_id\": \"acc_0000Ex4mpleMain00001\"}, {\"id\": \"tx_0000Ex4mpleTx0006\", \"created\": \"2026-11-10T08:05:40.000Z\", \"settled\": \"\", \"amount\": -360, \"currency\": \"GBP\", \"description\": \"COFFEE CART\", \"merchant\": {\"id\": \"merch_0000Ex4mple04\", \"name\": \"Coffee Cart\", \"category\": \"eating_out\"}, \"notes\": \"\", \"category\": \"eating_out\", \"is_load\": false, \"dedupe_id\": \"dd_0000Ex4mpleTx0006\", \"local_amount\": -360, \"local_currency\": \"GBP\", \"account_id\": \"acc_0000Ex4mpleMain00001\"}]}",
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "headers": {
+          "Accept": "application/json",
+          "Authorization": "Bearer {{token1}}"
+        },
+        "method": "GET",
+        "url": "https://api.monzo.com/balance?account_id=acc_0000Ex4mpleMain00001"
+      },
+      "response": {
+        "body": "{\"balance\": 187206, \"total_balance\": 187206, \"currency\": \"GBP\", \"spend_today\": -360}",
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "headers": {
+          "Accept": "application/json",
+          "Authorization": "Bearer {{token1}}"
+        },
+        "method": "GET",
+        "url": "https://api.monzo.com/transactions?account_id=acc_0000Ex4mpleJoint0002&expand[]=merchant&since=1970-01-01T00:00:00Z"
+      },
+      "response": {
+        "body": "{\"transactions\": [{\"id\": \"tx_0000Ex4mpleTx0101\", \"created\": \"2026-11-03T10:00:00.000Z\", \"settled\": \"2026-11-03T10:00:00.000Z\", \"amount\": -120000, \"currency\": \"GBP\", \"description\": \"Rent November\", \"merchant\": null, \"notes\": \"Flat 2\", \"category\": \"bills\", \"is_load\": false, \"dedupe_id\": \"dd_0000Ex4mpleTx0101\", \"local_amount\": -120000, \"local_currency\": \"GBP\", \"account_id\": \"acc_0000Ex4mpleMain00001\"}]}",
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "status": 200
+      }
+    },
+    {
+      "request": {
+        "headers": {
+          "Accept": "application/json",
+          "Authorization": "Bearer {{token1}}"
+        },
+        "method": "GET",
+        "url": "https://api.monzo.com/balance?account_id=acc_0000Ex4mpleJoint0002"
+      },
+      "response": {
+        "body": "{\"balance\": 342010, \"total_balance\": 342010, \"currency\": \"GBP\", \"spend_today\": 0}",
+        "headers": {
+          "Content-Type": "application/json; charset=utf-8"
+        },
+        "status": 200
+      }
+    }
+  ],
+  "format": 1,
+  "service": "Monzo",
+  "startTime": 1794304800,
+  "timeZone": "Europe/London"
+}
