@@ -223,6 +223,112 @@ The app SHALL ask the user before an extension without a manifest contacts a hos
 - **THEN** no dialog appears and no request goes to `api.bank.example`
 - **AND** the accounts say that "Demo" waits for an approval and that the user must start the refresh
 
+### Requirement: Exact host names
+
+The app SHALL send a request of an extension only to an exact host name over HTTPS on port 443, with a manifest and without one, and also after a redirect. An IP address in any notation, `localhost`, a name without a dot, a trailing dot, a percent sign in the host, a user name or a password in the URL, and any other port fail at once. The app asks no question and sends nothing.
+
+#### Scenario: IP address without a manifest
+
+- **GIVEN** "Demo" has no manifest
+- **WHEN** line 3 of `Demo.lua` calls `connection:get("https://127.0.0.1/")`
+- **THEN** no dialog appears and no request is sent
+- **AND** the script stops with "Demo.lua:3: Moneten sends requests only to a plain host name on the HTTPS port, not to https://127.0.0.1/."
+
+#### Scenario: Other port
+
+- **GIVEN** a manifest that lists only `api.broker.example`
+- **WHEN** the script calls `connection:get("https://api.broker.example:8443/")`
+- **THEN** no request is sent and the error names `https://api.broker.example:8443/`
+
+#### Scenario: User name in the address
+
+- **GIVEN** "Demo" has no manifest
+- **WHEN** the script calls `connection:get("https://user:pass@www.bank.example/")`
+- **THEN** no dialog appears and no request is sent
+
+#### Scenario: Redirect to an IP address
+
+- **GIVEN** "Demo" has no manifest and the user allowed `www.bank.example`
+- **WHEN** `https://www.bank.example/local` answers with status 302 and `Location: https://127.0.0.1/`
+- **THEN** the app asks no question and sends nothing to `127.0.0.1`
+- **AND** the error names `https://127.0.0.1/`
+
+#### Scenario: IP address in a manifest
+
+- **GIVEN** a manifest that lists the host `192.168.0.1`
+- **WHEN** the app loads the extension
+- **THEN** the extension is not usable and the list says "A host name must be exact: 192.168.0.1."
+
+### Requirement: Special-use host names
+
+The app SHALL treat a name under the special-use domains `localhost`, `local`, `home.arpa`, `internal`, `test`, and `invalid` as not an exact host name, in a manifest, in the host dialog, after a redirect, and in a browser login. Such a name reaches the Mac, the local network, or nowhere. Names under `example` stay allowed. The app checks the name, not the address that the name resolves to.
+
+#### Scenario: Name under localhost
+
+- **GIVEN** "Demo" has no manifest and the user allowed `bank.localhost` in an earlier version of the app
+- **WHEN** line 3 of `Demo.lua` calls `connection:get("https://bank.localhost/")`
+- **THEN** no dialog appears and no request is sent
+- **AND** the script stops with "Demo.lua:3: Moneten sends requests only to a plain host name on the HTTPS port, not to https://bank.localhost/."
+
+#### Scenario: Name under local in a manifest
+
+- **GIVEN** a manifest that lists the host `printer.local`
+- **WHEN** the app loads the extension
+- **THEN** the extension is not usable and the list says "A host name must be exact: printer.local."
+
+#### Scenario: Browser login on a stored special-use name
+
+- **GIVEN** "Demo" has no manifest and the app stored "Allow" for `auth.bank.local`
+- **WHEN** the login function returns `{challenge="https://auth.bank.local/authorize?state=s1", state="s1"}`
+- **THEN** no browser window opens
+
+#### Scenario: Public name with a private address
+
+- **GIVEN** the user allowed `www.bank.example` and the name resolves to 192.168.0.10
+- **WHEN** the script calls `connection:get("https://www.bank.example/")`
+- **THEN** the app connects to 192.168.0.10
+- **AND** the request succeeds only when the server shows a certificate that the system trusts for `www.bank.example`
+
+### Requirement: Default answer of the host dialog
+
+The app SHALL make "Deny" the default button of the dialog that asks whether an extension may contact a new host, and treat Escape as "Deny". A slip of the Return key never sends login data to a new host, and the dialog never holds the refresh open.
+
+#### Scenario: Return in the host dialog
+
+- **GIVEN** the dialog "Allow “Demo” to contact www.bank.example?" is open
+- **WHEN** the user presses Return
+- **THEN** the app sends nothing to `www.bank.example` and the refresh ends with an error that names it
+
+#### Scenario: Escape in the host dialog
+
+- **GIVEN** the dialog "Allow “Demo” to contact www.bank.example?" is open
+- **WHEN** the user presses Escape
+- **THEN** the app counts the answer as "Deny" and sends nothing to `www.bank.example`
+
+### Requirement: Headers of a redirect to another host
+
+The app SHALL follow a redirect to another host or port with only the request headers `Accept`, `Accept-Language`, and `User-Agent`, and without the body. A 307 or 308 on the same host and port keeps the method, the body, and every header. A 303, and a 301 or 302 after a POST, become a GET without a body and without `Content-Type`.
+
+#### Scenario: 307 to another host
+
+- **GIVEN** a manifest that lists `api.broker.example` and `auth.broker.example`
+- **WHEN** the script posts `user=demo&pin=1234` to `https://api.broker.example/login` with the headers `Authorization: Bearer secret`, `Cookie: session=1`, `X-API-Key: bank-key-4711`, and `Accept: text/html`
+- **AND** the server answers with status 307 and `Location: https://auth.broker.example/next`
+- **THEN** the app sends a POST without a body to `https://auth.broker.example/next`
+- **AND** of the headers of the script only `Accept: text/html` goes along, with the `User-Agent` and `Accept-Language` of the connection
+
+#### Scenario: 308 on the same host
+
+- **GIVEN** the same request as in the scenario before
+- **WHEN** the server answers with status 308 and `Location: https://api.broker.example/next`
+- **THEN** the app sends a POST to `https://api.broker.example/next` with the body `user=demo&pin=1234` and every header of the first request
+
+#### Scenario: 302 after a POST to another host
+
+- **GIVEN** the same request as in the first scenario
+- **WHEN** the server answers with status 302 and `Location: https://auth.broker.example/next`
+- **THEN** the app sends a GET without a body to `https://auth.broker.example/next` with only `Accept`, `Accept-Language`, and `User-Agent`
+
 ### Requirement: Isolation
 
 The app SHALL run each extension session in its own process that can reach the network and nothing else. The script cannot read or write files, start programs, or read the data of another bank access. The process ends when the session ends.
@@ -238,6 +344,74 @@ The app SHALL run each extension session in its own process that can reach the n
 - **GIVEN** two bank accesses that use the same extension
 - **WHEN** the script runs for the first access
 - **THEN** `LocalStorage` and the login data contain only the values of the first access
+
+### Requirement: Memory of a session
+
+The app SHALL limit the memory of an extension session to 256 MB. The bytes of each `JSON`, `HTML`, and `PDF` object count toward the limit for as long as the script keeps the object. An allocation past the limit raises a memory error, which `pcall` can catch. A call of an entry point that ends with it fails, and the session stays usable.
+
+#### Scenario: Large text
+
+- **WHEN** `RefreshAccount` builds a text of 300 MB with `string.rep`
+- **THEN** the call fails with "The extension needs more than 256 MB of memory."
+- **AND** the refresh ends with that error
+
+#### Scenario: Kept JSON documents
+
+- **WHEN** a script keeps 200 `JSON` objects that each hold a document of 2 MB
+- **THEN** the call fails with "The extension needs more than 256 MB of memory."
+
+#### Scenario: Caught memory error
+
+- **WHEN** a script runs `local ok = pcall(string.rep, "x", 300 * 1048576)` and then returns `ok`
+- **THEN** the call returns `false`
+
+### Requirement: Processor time of a session
+
+The app SHALL stop an extension session after 60 seconds of processor time in total.
+
+#### Scenario: Endless loop
+
+- **WHEN** `RefreshAccount` runs `while true do end`
+- **THEN** the session stops after 60 seconds of processor time with "Demo used more than 60 seconds of processor time, so Moneten stopped it."
+
+### Requirement: Silent extension
+
+The app SHALL stop an extension session whose process sends nothing for 180 seconds while no dialog waits for the user. Output of `print`, a status, the start and the end of each request, and each second of `MM.sleep` count as signs of life. The time that a dialog waits for the user does not count.
+
+#### Scenario: Process that hangs
+
+- **WHEN** the process of "Demo" sends nothing for 180 seconds during `RefreshAccount`
+- **THEN** the app stops the process with "The extension did not respond for 180 seconds, so Moneten stopped it."
+
+#### Scenario: Long sleep
+
+- **WHEN** a script calls `MM.sleep(250)`
+- **THEN** the session is not stopped and the script continues after 250 seconds
+
+#### Scenario: Dialog open for ten minutes
+
+- **GIVEN** the host dialog for `www.bank.example` is open for ten minutes
+- **WHEN** the user then clicks "Allow"
+- **THEN** the session continues and the request is sent
+
+### Requirement: Size of a response
+
+The app SHALL refuse a response body larger than 32 MB. The request fails, and the error names the host.
+
+#### Scenario: Large download
+
+- **WHEN** `https://www.bank.example/export` answers with a body of 40 MB
+- **THEN** the call fails with "The answer of www.bank.example is larger than 32 MB."
+
+### Requirement: Output of print
+
+The app SHALL keep at most 4 MB of `print` output for one extension session, where each line counts 64 bytes more than its text. The app drops the rest, writes one line to the log that says so, and lets the script continue.
+
+#### Scenario: Too much output
+
+- **WHEN** a script prints 5,000 lines of 1,000 characters and then returns "done"
+- **THEN** the log has the lines up to 4 MB, followed by "Moneten drops the rest of the output of print, because Demo printed more than 4 MB."
+- **AND** the call returns "done"
 
 ### Requirement: Lua runtime
 
@@ -289,6 +463,16 @@ The app SHALL write the output of `print` to the log. A call of `error` stops th
 - **WHEN** a script calls `error("Unexpected page")` in `RefreshAccount`
 - **THEN** the account shows a failed refresh with the message "Unexpected page"
 
+### Requirement: Length of error messages
+
+The app SHALL cut an error message of an API function that quotes data of the script after at most 1,000 bytes, at a character boundary, and end it with "…". The position of the error in the script comes before the message.
+
+#### Scenario: Huge method
+
+- **WHEN** line 4 of `Demo.lua` calls `connection:request(string.rep("x", 1048576), "https://api.bank.example/")`
+- **THEN** the error begins with "Demo.lua:4: connection:request does not know the method xxx"
+- **AND** after the position the message has at most 1,000 bytes and ends with "…"
+
 ### Requirement: Order of calls
 
 The app SHALL call the entry points in a fixed order. For a new bank access the order is `SupportsBank`, the login function, `ListAccounts`, `RefreshAccount` for each account, and `EndSession`. For a refresh the order is `SupportsBank`, the login function, `RefreshAccount` for each account, and `EndSession`.
@@ -303,6 +487,17 @@ The app SHALL call the entry points in a fixed order. For a new bank access the 
 
 - **WHEN** the login succeeds and `RefreshAccount` stops with an error
 - **THEN** the app still calls `EndSession`
+
+### Requirement: One call at a time
+
+The app SHALL run one call of an extension session at a time. A second call while the first runs fails, does not reach the script, and leaves the first call running.
+
+#### Scenario: Second call during a refresh
+
+- **GIVEN** `RefreshAccount` of "Demo" runs for the account "Giro A"
+- **WHEN** the app calls `RefreshAccount` of the same session for "Giro B" before the first call returns
+- **THEN** the second call fails with "Another call of this extension session is still running."
+- **AND** the first call returns its result
 
 ### Requirement: SupportsBank
 
@@ -511,7 +706,7 @@ The app SHALL read these fields of a TAN method table. `name` is required. `medi
 
 ### Requirement: Captcha challenge
 
-The app SHALL show a captcha in an embedded browser when `challenge` is the script URL of Google reCAPTCHA, hCaptcha, FriendlyCaptcha, or Amazon WAF, also when the table has a `label`. The URL carries the `sitekey`, and optionally `type=checkbox` and `referer`. The app tries an invisible variant without the user first. The next call receives the solution token in `credentials[1]`.
+The app SHALL show a captcha in an embedded browser when `challenge` is the script URL of Google reCAPTCHA, hCaptcha, FriendlyCaptcha, or Amazon WAF, also when the table has a `label`. The URL carries the `sitekey`, and optionally `type=checkbox` and `referer`. The page of `referer` loads with a lower-case scheme and host, without port 443, and with `/` for an empty path. The app tries an invisible variant first. The next call receives the token in `credentials[1]`.
 
 #### Scenario: Visible reCAPTCHA
 
@@ -524,6 +719,11 @@ The app SHALL show a captcha in an embedded browser when `challenge` is the scri
 - **WHEN** the function returns `{challenge="https://abc123.token.awswaf.com/abc123/def/challenge.js?sitekey=KEY&referer=https%3A%2F%2Fbank.example", label="Bot-Prüfung"}`
 - **THEN** the app shows the Amazon WAF captcha for the page `https://bank.example/`, not an entry field
 - **AND** after the user solves it, the next call has the token in `credentials[1]`
+
+#### Scenario: Captcha page in its canonical form
+
+- **WHEN** the function returns `{challenge="https://www.recaptcha.net/recaptcha/api.js?sitekey=KEY&referer=HTTPS%3A%2F%2FBank.Example%3A443"}`
+- **THEN** the captcha window loads the page `https://bank.example/`
 
 ### Requirement: Approval in a browser window
 
@@ -989,6 +1189,15 @@ The app SHALL offer `MM.printStatus(...)`, which writes to the log and shows the
 
 - **WHEN** a script calls `MM.printStatus("Loading page", 2)` during a refresh
 - **THEN** the refresh status of the account shows "Loading page 2" and the log has the same line
+
+### Requirement: Longest sleep
+
+The app SHALL end each call of `MM.sleep` after at most 300 seconds. A script that needs a longer wait calls it again. A value of 0 or less returns at once.
+
+#### Scenario: Sleep of an hour
+
+- **WHEN** a script calls `MM.sleep(3600)`
+- **THEN** the call returns after 300 seconds
 
 ### Requirement: Localization helpers
 

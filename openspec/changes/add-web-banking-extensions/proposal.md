@@ -60,6 +60,10 @@ None.
 - The labels of the login fields come from the manifest. MoneyMoney keeps them in a central bank database.
 - A browser approval works for a host that the manifest lists or the user allowed. MoneyMoney needs the host to be enabled by the vendor.
 - The app refuses a URL that does not start with `https://`.
+- The app sends requests only to an exact host name on port 443. It refuses IP addresses, `localhost`, and names under the special-use domains `localhost`, `local`, `home.arpa`, `internal`, `test`, and `invalid`, in a manifest and in the host dialog. Names under `example` stay allowed, because examples and fixtures use them and no common tool points them at a local service.
+- The app checks the host name, not the address it resolves to. A public name that resolves to a private address (DNS rebinding) is not refused in v0.1: the request is HTTPS with the system trust, so a local service would need a certificate for the public name. A real check needs a network layer that resolves and connects by itself.
+- A redirect to another host keeps only `Accept`, `Accept-Language`, and `User-Agent` and drops the body, as browsers drop the login of one site at another.
+- A session has 256 MB of Lua memory, 60 seconds of processor time, responses of at most 32 MB, and 4 MB of `print` output. A process that sends nothing for 180 seconds is stopped, and `MM.sleep` waits at most 300 seconds. MoneyMoney's limits were not observed.
 - Each extension runs in its own process that is stopped after the session. `io` has no file functions in every mode, and the functions for processes and for loading code are absent. MoneyMoney forbids them in its review checklist and appears to keep `io.open` for unsigned files. Signed MoneyMoney extensions test for `io.open` or read it at load time, and they load in Moneten.
 - `MM.productName` is "Moneten". `MM.APPSTORE` is always `nil`. `MM.apiVersion` is new.
 - `session` never has the value `"payment"`, and the API has no way to send a payment ([ADR 0008](../../../docs/decisions/0008-payments-only-through-licensed-channels.md)).
