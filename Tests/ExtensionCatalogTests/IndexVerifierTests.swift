@@ -134,7 +134,7 @@ import Testing
 
 	@Test(arguments: [("example", true), ("broker-2", true), ("a-b-c", true), ("", false), ("-example", false), ("example-", false), ("ex--ample", false), ("Example", false), ("ex_ample", false)])
 	func idsFollowTheSchema(id: String, valid: Bool) {
-		#expect(CatalogIndex.Entry.isID(id) == valid)
+		#expect(Pattern.isPackageID(id) == valid)
 	}
 
 	@Test(arguments: ["../manifest.json", "a/b", "", ".."])

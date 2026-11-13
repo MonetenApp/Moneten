@@ -87,6 +87,9 @@ public enum CatalogError: Error, Equatable, Sendable, CustomStringConvertible {
 	case damaged(String)
 	case changed(String)
 	case notInstallable(String)
+	case tooLarge(String)
+	case removed(String)
+	case notAllowed(String)
 
 	public var description: String {
 		switch self {
@@ -100,6 +103,9 @@ public enum CatalogError: Error, Equatable, Sendable, CustomStringConvertible {
 		case let .damaged(file): "\(file) is damaged or was altered."
 		case let .changed(name): "\(name) was changed and does not match the catalog."
 		case let .notInstallable(reason): reason
+		case let .tooLarge(file): "\(file) is larger than Moneten accepts from the catalog."
+		case let .removed(name): "\(name) was removed during its download."
+		case let .notAllowed(name): "\(name) changed since you allowed it. Allow it again in the Extensions window."
 		}
 	}
 }
@@ -107,7 +113,7 @@ public enum CatalogError: Error, Equatable, Sendable, CustomStringConvertible {
 extension CatalogIndex.Entry {
 	init(_ item: [String: Any]) throws(CatalogError) {
 		let allowed: Set = ["id", "status", "note", "manifest", "files"]
-		guard let id = item["id"] as? String, Self.isID(id), Set(item.keys).isSubset(of: allowed) else {
+		guard let id = item["id"] as? String, Pattern.isPackageID(id), Set(item.keys).isSubset(of: allowed) else {
 			throw .unreadable("An entry has no valid id.")
 		}
 		guard let raw = item["status"] as? String, let status = CatalogIndex.Status(rawValue: raw) else { throw .unreadable("\(id) has no valid status.") }
@@ -131,15 +137,8 @@ extension CatalogIndex.Entry {
 	}
 
 	// The patterns of the index schema as byte sets: a Swift `Regex` per file made a 200-entry index miss its 50 ms budget.
-	private static let lower = Set("abcdefghijklmnopqrstuvwxyz0123456789".utf8)
-	private static let pathBytes = lower.union("ABCDEFGHIJKLMNOPQRSTUVWXYZ_.-".utf8)
+	private static let pathBytes = Set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-".utf8)
 	private static let hexBytes = Set("0123456789abcdef".utf8)
-
-	/// `^[a-z0-9]+(-[a-z0-9]+)*$`: lower-case words joined by single hyphens.
-	static func isID(_ id: String) -> Bool {
-		let words = id.utf8.split(separator: UInt8(ascii: "-"), omittingEmptySubsequences: false)
-		return words.allSatisfy { !$0.isEmpty && $0.allSatisfy(lower.contains) }
-	}
 
 	private static func manifest(_ value: Any?, id: String, files: Set<String>) -> Result<Manifest, PackageProblem> {
 		guard let value, let data = try? JSONSerialization.data(withJSONObject: value) else { return .failure(.missingManifest) }

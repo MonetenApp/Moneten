@@ -134,6 +134,16 @@ public final class SyncCoordinator {
 		for id in running.keys { cancel(id) }
 	}
 
+	/// Stops the refresh of one access and drops its waiting one, such as when its extension is blocked or removed.
+	public func cancelRefresh(of id: UUID) {
+		if let index = queue.firstIndex(where: { $0.request.access.id == id }) {
+			queue.remove(at: index)
+			endProgress(of: id)
+		}
+		if afterRun.removeValue(forKey: id) != nil { endProgress(of: id) }
+		if running[id] != nil { cancel(id) }
+	}
+
 	/// The accounts of a canceled access show their last state at once, while its connector still ends.
 	private func cancel(_ id: UUID) {
 		broker.endRequest(of: id)

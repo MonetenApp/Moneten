@@ -356,6 +356,23 @@ struct SyncCoordinatorTests {
 		#expect(log.all.last?.accounts == [Self.giro.accountID: .refreshed(at)])
 	}
 
+	@Test("Canceling one access stops its run and drops its waiting refresh, and the other accesses go on")
+	func cancelOneAccess() async {
+		let coordinator = SyncCoordinator(limit: 1)
+		let log = logEnds(of: coordinator)
+		let first = Self.access("Musterbank"), second = Self.access("Beispielbank"), third = Self.access("Sparkasse")
+		coordinator.refresh(RefreshRequest(access: first, accounts: [Self.card]), with: ScriptedConnector([.wait(.seconds(60))]), attended: true)
+		coordinator.refresh(RefreshRequest(access: second, accounts: [Self.giro]), with: ScriptedConnector([.fetched(Self.giro.accountID)]), attended: true)
+		coordinator.refresh(RefreshRequest(access: third, accounts: [Self.savings]), with: ScriptedConnector([.fetched(Self.savings.accountID)]), attended: true)
+		coordinator.cancelRefresh(of: second.id)
+		coordinator.cancelRefresh(of: first.id)
+		#expect(coordinator.states[first.id] == .cancelled)
+		#expect(!coordinator.refreshingAccounts.contains(Self.giro.accountID))
+		await until { !coordinator.isRefreshing }
+		#expect(log.all.map(\.access) == [first.id, third.id])
+		#expect(log.all.last?.accounts.keys.sorted() == [Self.savings.accountID])
+	}
+
 	@Test("A command for an access that waits for its turn joins the waiting request")
 	func waitingAccess() async throws {
 		let coordinator = SyncCoordinator(limit: 1)

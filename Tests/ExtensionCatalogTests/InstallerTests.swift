@@ -120,4 +120,79 @@ import Testing
 		try installer.remove("example")
 		#expect(contents(folder) == [])
 	}
+
+	@Test func downloadedManifestMustBeTheManifestOfTheIndex() async throws {
+		var package = TestCatalog.Package()
+		package.hosts = ["api.bank.example", "evil.example"]
+		package.indexManifestFields = ["hosts": ["api.bank.example"]]
+		server.publish(package)
+		await #expect(throws: CatalogError.damaged("manifest.json")) { try await installer.install(entry(package)) }
+		#expect(contents(folder) == [])
+	}
+
+	@Test func removalDuringTheDownloadPlacesNothing() async throws {
+		let package = TestCatalog.Package()
+		server.publish(package)
+		let canceled = InstallCancellation()
+		server.willAnswer = { path in if path.hasSuffix("manifest.json") { canceled.cancel() } }
+		await #expect(throws: CatalogError.removed("Example Bank")) {
+			try await installer.install(entry(package), canceled: canceled) { _ in Issue.record("no record after the removal") }
+		}
+		#expect(contents(folder) == [])
+	}
+
+	@Test func failedMoveRestoresTheRecordOfTheInstalledVersion() async throws {
+		let old = TestCatalog.Package()
+		server.publish(old)
+		_ = try await installer.install(entry(old))
+		var new = old
+		new.version = "1.1"
+		new.script += "-- 1.1\n"
+		server.publish(new)
+		try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: folder.path)
+		defer { try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: folder.path) }
+		let log = Log()
+		await #expect(throws: CatalogError.download("Example Bank")) {
+			try await installer.install(entry(new), record: { log.add("record \($0.version)") }, restore: { log.add("restore") })
+		}
+		#expect(log.lines == ["record 1.1", "restore"])
+	}
+
+	@Test func scriptWithAByteOrderMarkRunsAfterItsInstall() async throws {
+		var package = TestCatalog.Package()
+		package.script = "\u{FEFF}" + package.script
+		server.publish(package)
+		let installed = try await installer.install(entry(package))
+		#expect(try Installer.load(installed, from: folder).files.count == 1)
+	}
+
+	@Test func eachFileIsDownloadedUpToItsSizeInTheIndex() async throws {
+		let package = TestCatalog.Package()
+		server.publish(package)
+		let installed = try await installer.install(entry(package))
+		for file in installed.files { #expect(server.limits["example/1.0/\(file.path)"] == file.size) }
+		var bigger = package
+		bigger.version = "1.1"
+		server.publish(bigger)
+		server.replace("example/1.1/Example.lua", with: Data(repeating: 0x2D, count: 10_000))
+		await #expect(throws: CatalogError.download("Example Bank")) { try await installer.install(entry(bigger)) }
+	}
+
+	@Test func symlinkedScriptDoesNotRun() async throws {
+		let package = TestCatalog.Package()
+		server.publish(package)
+		let installed = try await installer.install(entry(package))
+		let script = folder.appending(path: "example/Example.lua")
+		let elsewhere = root.appending(path: "Example.lua")
+		try FileManager.default.moveItem(at: script, to: elsewhere)
+		try FileManager.default.createSymbolicLink(at: script, withDestinationURL: elsewhere)
+		#expect(throws: CatalogError.changed("Example Bank")) { try Installer.load(installed, from: folder) }
+	}
+}
+
+final class Log: @unchecked Sendable {
+	private let lock = NSLock()
+	private var all: [String] = []
+	var lines: [String] { lock.withLock { all } }
+	func add(_ line: String) { lock.withLock { all.append(line) } }
 }

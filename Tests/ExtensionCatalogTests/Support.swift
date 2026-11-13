@@ -14,6 +14,8 @@ struct TestCatalog {
 		var status = "active"
 		var note: String?
 		var manifestFields: [String: Any] = [:]
+		/// Fields in which the manifest of the index differs from the downloaded manifest.json.
+		var indexManifestFields: [String: Any] = [:]
 
 		var manifest: [String: Any] {
 			[
@@ -31,7 +33,7 @@ struct TestCatalog {
 		}
 
 		var entry: [String: Any] {
-			var entry: [String: Any] = ["id": id, "status": status, "manifest": manifest, "files": files.keys.sorted().map { name in
+			var entry: [String: Any] = ["id": id, "status": status, "manifest": manifest.merging(indexManifestFields) { $1 }, "files": files.keys.sorted().map { name in
 				["path": name, "size": files[name]!.count, "sha256": sha256(files[name]!)] as [String: Any]
 			}]
 			if let note { entry["note"] = note }
@@ -45,7 +47,7 @@ struct TestCatalog {
 	}
 
 	static func sha256(_ data: Data) -> String {
-		SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+		sha256Hex(data)
 	}
 }
 
@@ -70,6 +72,10 @@ final class TestServer: @unchecked Sendable {
 	private var files: [String: Data] = [:]
 	private var failing: Set<String> = []
 	private(set) var requested: [String] = []
+	/// The most bytes that each request accepted.
+	private(set) var limits: [String: Int] = [:]
+	/// Runs before each answer, for example to remove a package during its download.
+	var willAnswer: @Sendable (String) -> Void = { _ in }
 
 	func publish(_ package: TestCatalog.Package) {
 		lock.withLock {
@@ -86,11 +92,15 @@ final class TestServer: @unchecked Sendable {
 		lock.withLock { _ = failing.insert(path) }
 	}
 
-	var fetch: @Sendable (String) async throws -> Data {
-		{ [self] path in
-			try lock.withLock {
+	/// Answers as `CatalogSource` does: a body over the limit fails.
+	var fetch: @Sendable (String, Int) async throws -> Data {
+		{ [self] path, limit in
+			willAnswer(path)
+			return try lock.withLock {
 				requested.append(path)
+				limits[path] = limit
 				guard !failing.contains(path), let data = files[path] else { throw URLError(.notConnectedToInternet) }
+				guard data.count <= limit else { throw CatalogError.tooLarge(path) }
 				return data
 			}
 		}

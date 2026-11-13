@@ -196,8 +196,9 @@ public final class Store: SavedPINStore {
 
 	public func installedExtensions() throws -> [InstalledExtension] {
 		try queue.read { db in
-			try Row.fetchAll(db, sql: "SELECT id, origin, record FROM installedExtension ORDER BY id").compactMap { row in
-				ExtensionOrigin(rawValue: row["origin"]).map { InstalledExtension(id: row["id"], origin: $0, record: row["record"]) }
+			// An origin that this version does not know counts as the catalog, the origin with the stricter rules.
+			try Row.fetchAll(db, sql: "SELECT id, origin, record FROM installedExtension ORDER BY id").map { row in
+				InstalledExtension(id: row["id"], origin: ExtensionOrigin(rawValue: row["origin"]) ?? .catalog, record: row["record"])
 			}
 		}
 	}

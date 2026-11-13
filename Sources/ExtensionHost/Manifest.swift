@@ -199,7 +199,7 @@ public struct Manifest: Sendable, Equatable, Codable {
 /// The patterns of `schema/manifest.schema.json` as checks on bytes. A Swift `Regex` took about 60 µs for
 /// a host name, so a catalog index of 200 packages missed its parse budget. `PatternTests` compares
 /// each check with the regular expression of the schema.
-enum Pattern {
+public enum Pattern {
 	private static let lowerDigits = Set("abcdefghijklmnopqrstuvwxyz0123456789".utf8)
 	private static let letterDigits = lowerDigits.union("ABCDEFGHIJKLMNOPQRSTUVWXYZ".utf8)
 	private static let digits = Set("0123456789".utf8)
@@ -215,7 +215,7 @@ enum Pattern {
 	}
 
 	/// `[a-z0-9]+(-[a-z0-9]+)*`
-	static func isPackageID(_ text: String) -> Bool {
+	public static func isPackageID(_ text: String) -> Bool {
 		text.utf8.split(separator: hyphen, omittingEmptySubsequences: false).allSatisfy { !$0.isEmpty && $0.allSatisfy(lowerDigits.contains) }
 	}
 

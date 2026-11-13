@@ -1,4 +1,3 @@
-import CryptoKit
 import Domain
 import ExtensionCatalog
 import ExtensionConnector
@@ -52,6 +51,8 @@ final class ExtensionLibrary {
 		let name: String
 		let description: String
 		let version: String?
+		/// The version that "Update" or "Install" installs.
+		let available: String?
 		let kinds: [String]
 		/// "Installed 1.0", "Unverified", or "Blocked".
 		let badge: String?
@@ -103,19 +104,25 @@ final class ExtensionLibrary {
 	@ObservationIgnored var fixtures: [String: Fixture] = [:]
 	@ObservationIgnored private var indexData: Data?
 	@ObservationIgnored private var floors = KeyFloors()
-	@ObservationIgnored private var catalogInstalls: [String: InstalledPackage] = [:]
-	@ObservationIgnored private var fileInstalls: [String: [String: String]] = [:]
+	/// The stored floors could not be read. The app then accepts no index, because empty floors would accept an old one.
+	@ObservationIgnored private var floorsUnreadable = false
+	/// The origin of each installed extension, by name.
+	@ObservationIgnored private var records: [String: InstalledOrigin] = [:]
 	/// The updates that wait for the end of a session or for the user, by id.
 	@ObservationIgnored private var updates: [String: UpdatePlan] = [:]
-	/// The version of each update that the user confirmed, which installs after a running session without asking again.
+	/// The version of each update that the user confirmed or chose with "Update".
 	@ObservationIgnored private var confirmed: [String: String] = [:]
+	/// The downloads that run, so that a removal can stop them.
+	@ObservationIgnored private var downloads: [String: InstallCancellation] = [:]
 	/// Catalog packages whose files do not match, found by the last check.
 	@ObservationIgnored private var changed: Set<String> = []
 	@ObservationIgnored private var daily: Task<Void, Never>?
 
 	private var folder: URL { DataFolder.standard().extensionsFolder }
+	private var staging: URL { DataFolder.standard().root.appending(path: "Downloads") }
 	private var installer: Installer {
-		Installer(folder: folder, staging: DataFolder.standard().root.appending(path: "Downloads"), fetch: configuration.source.fetcher)
+		let source = configuration.source
+		return Installer(folder: folder, staging: staging) { path, limit in try await source.fetch(path, limit: limit) }
 	}
 
 	// MARK: Opening
@@ -126,14 +133,14 @@ final class ExtensionLibrary {
 			if let stored = try store.catalog() {
 				indexData = stored.index
 				index = try? CatalogIndex.parse(stored.index)
-				floors = (try? JSONDecoder().decode(KeyFloors.self, from: stored.floors)) ?? KeyFloors()
-				if let keys = configuration.keys { floors = floors.keeping(keys) }
+				if let decoded = try? JSONDecoder().decode(KeyFloors.self, from: stored.floors) {
+					floors = configuration.keys.map(decoded.keeping) ?? decoded
+				} else {
+					floorsUnreadable = true
+				}
 			}
 			for installed in try store.installedExtensions() {
-				switch installed.origin {
-				case .catalog: catalogInstalls[installed.id] = try? JSONDecoder().decode(InstalledPackage.self, from: installed.record)
-				case .file: fileInstalls[installed.id] = try? JSONDecoder().decode([String: String].self, from: installed.record)
-				}
+				records[installed.id] = InstalledOrigin(catalog: installed.origin == .catalog, record: installed.record)
 			}
 		} catch {
 			failure = "The extensions could not be loaded. \(error)"
@@ -150,11 +157,13 @@ final class ExtensionLibrary {
 	func close() {
 		daily?.cancel()
 		daily = nil
+		for download in downloads.values { download.cancel() }
+		downloads = [:]
 		index = nil
 		indexData = nil
 		floors = KeyFloors()
-		catalogInstalls = [:]
-		fileInstalls = [:]
+		floorsUnreadable = false
+		records = [:]
 		updates = [:]
 		confirmed = [:]
 		changed = []
@@ -187,15 +196,19 @@ final class ExtensionLibrary {
 			problem = "This build of Moneten has no catalog keys, so it cannot show the catalog."
 			return reload()
 		}
+		guard !floorsUnreadable else {
+			problem = "Moneten cannot read the versions of the catalog it accepted before, so it accepts no new list of extensions."
+			return reload()
+		}
 		let source = configuration.source
 		let data: Data, signature: Data
 		do {
-			data = try await source.fetcher("index.json")
-			signature = try await source.fetcher("index.json.sig")
+			data = try await source.fetch("index.json", limit: CatalogSource.indexLimit)
+			signature = try await source.fetch("index.json.sig", limit: CatalogSource.signatureSize)
 		} catch {
 			reachable = false
-			problem = "The catalog cannot be reached."
-			log("ext catalog unreachable")
+			problem = (error as? CatalogError)?.description ?? "The catalog cannot be reached."
+			log("ext catalog unreachable \(error)")
 			return reload()
 		}
 		reachable = true
@@ -206,6 +219,7 @@ final class ExtensionLibrary {
 				index = accepted.index
 				floors = accepted.floors
 				log("ext catalog accepted version=\(accepted.index.version)")
+				stopSessionsOfStoppedPackages()
 			} else {
 				log("ext catalog unchanged version=\(index?.version ?? 0)")
 			}
@@ -220,47 +234,62 @@ final class ExtensionLibrary {
 		await applyUpdates()
 	}
 
+	/// A blocked or withdrawn package stops at once: its running and waiting refreshes end.
+	private func stopSessionsOfStoppedPackages() {
+		guard let index else { return }
+		for case let (id, .catalog(installed)) in records {
+			if case .stopped = Standing(of: installed, in: index) { cancelSessions(of: id) }
+		}
+	}
+
 	// MARK: Installing and updating
 
 	func install(_ id: String) async {
 		guard reachable, let entry = index?.entry(id), entry.status == .active || entry.status == .unmaintained else { return }
+		if records[id] == nil, FileInstall.url(of: id, in: folder) != nil {
+			failure = "The Extensions folder holds a file install named \(id). Remove it before you install \(entry.name) from the catalog."
+			return
+		}
 		await download(entry)
 	}
 
 	/// Installs every update that may install by itself now, and records the others for the window.
 	func applyUpdates() async {
 		guard let index else { return }
-		for (id, installed) in catalogInstalls {
+		for case let (id, .catalog(installed)) in records {
 			guard let entry = index.entry(id), entry.status == .active || entry.status == .unmaintained, let available = try? entry.manifest.get(),
 				let current = try? Installer.load(installed, from: folder).manifest else {
 				updates[id] = nil
 				continue
 			}
-			var plan = UpdatePlan(installed: current, available: available, automatic: automatic, sessionRuns: sessionRuns(id))
-			switch plan {
-			case .needsConfirmation, .waitsForUser:
-				if confirmed[id] == available.version { plan = sessionRuns(id) ? .afterSession : .install }
-			default: break
-			}
+			let plan = UpdatePlan(installed: current, available: available, automatic: automatic, sessionRuns: sessionRuns(id), confirmed: confirmed[id])
 			updates[id] = plan == .upToDate || plan == .install ? nil : plan
 			if plan == .install, !working.contains(id) { await download(entry) }
 		}
 		reload()
 	}
 
-	/// Installs the waiting update after the user confirmed it or chose "Update".
-	func update(_ id: String, to version: String? = nil) async {
-		guard let entry = index?.entry(id) else { return }
-		if let version, version != entry.version {
-			failure = "A newer version of \(entry.name) arrived. Review it again."
-			return reload()
+	/// Installs `version` after the user confirmed it or chose "Update". A version that is not the one of
+	/// the index, or that asks for rights the user did not confirm, goes to the confirmation instead.
+	func update(_ id: String, to version: String) async {
+		guard let entry = index?.entry(id), let available = try? entry.manifest.get(), case let .catalog(installed)? = records[id],
+			let current = try? Installer.load(installed, from: folder).manifest else { return reload() }
+		let plan = UpdatePlan(installed: current, available: available, automatic: automatic, sessionRuns: sessionRuns(id), confirmed: version)
+		updates[id] = plan == .upToDate || plan == .install ? nil : plan
+		switch plan {
+		case .install:
+			confirmed[id] = version
+			await download(entry)
+		case .afterSession:
+			confirmed[id] = version
+			reload()
+		case .needsConfirmation, .waitsForUser:
+			failure = "Version \(entry.version ?? "") of \(entry.name) is not the version you chose. Review it again."
+			reload()
+			review(id)
+		case .upToDate:
+			reload()
 		}
-		confirmed[id] = entry.version
-		if sessionRuns(id) {
-			updates[id] = .afterSession
-			return reload()
-		}
-		await download(entry)
 	}
 
 	/// Called when a refresh ended: an update that waited for the end of its session installs now.
@@ -271,25 +300,37 @@ final class ExtensionLibrary {
 
 	private func download(_ entry: CatalogIndex.Entry) async {
 		guard let store = model?.store else { return }
-		working.insert(entry.id)
+		let id = entry.id
+		let canceled = InstallCancellation()
+		downloads[id] = canceled
+		working.insert(id)
 		reload()
 		defer {
-			working.remove(entry.id)
+			if downloads[id] === canceled { downloads[id] = nil }
+			working.remove(id)
 			reload()
 		}
+		let previous = records[id]
 		do {
-			let installed = try await installer.install(entry) { installed in
+			let installed = try await installer.install(entry, canceled: canceled, record: { installed in
 				try store.saveInstalledExtension(InstalledExtension(id: installed.id, origin: .catalog, record: try JSONEncoder().encode(installed)))
-			}
-			catalogInstalls[installed.id] = installed
-			fileInstalls[installed.id] = nil
-			updates[installed.id] = nil
-			confirmed[installed.id] = nil
-			changed.remove(installed.id)
-			log("ext installed \(installed.id) version=\(installed.version)")
+			}, restore: {
+				// The files of the previous version stay, so its record does too.
+				if case let .catalog(old)? = previous, let record = try? JSONEncoder().encode(old) {
+					try? store.saveInstalledExtension(InstalledExtension(id: id, origin: .catalog, record: record))
+				} else {
+					try? store.removeInstalledExtension(id)
+				}
+			})
+			records[id] = .catalog(installed)
+			updates[id] = nil
+			confirmed[id] = nil
+			changed.remove(id)
+			log("ext installed \(id) version=\(installed.version)")
 		} catch {
+			if case .removed = error { return log("ext install stopped \(id) \(error)") }
 			failure = "\(error)"
-			log("ext install failed \(entry.id) \(error)")
+			log("ext install failed \(id) \(error)")
 		}
 	}
 
@@ -298,8 +339,8 @@ final class ExtensionLibrary {
 	/// Reads a `.lua` file or a package folder that the user picked, and asks with the warning for files.
 	func pickFile(_ url: URL) {
 		do {
-			let package = try ExtensionPackage.load(from: url)
-			guard catalogInstalls[package.name] == nil else {
+			let package = try FileInstall.load(url).package
+			guard !isCatalog(package.name) else {
 				failure = "A catalog extension with the name \(package.name) is installed. Remove it first."
 				return
 			}
@@ -310,41 +351,60 @@ final class ExtensionLibrary {
 	}
 
 	/// Copies the extension into the folder after the user agreed to the warning, and marks it "Unverified".
+	/// An installed file of the same name stays until every file of the new one is in place.
 	func installFile(_ url: URL, name: String, shown: ExtensionPackage) {
-		let fm = FileManager.default
-		let target = folder.appending(path: url.pathExtension == "lua" ? "\(name).lua" : name)
+		guard !isCatalog(name) else {
+			failure = "A catalog extension with the name \(name) is installed. Remove it first."
+			return
+		}
 		do {
-			try fm.createDirectory(at: folder, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-			for source in Self.files(of: url) {
-				let destination = url.pathExtension == "lua" ? folder.appending(path: source.lastPathComponent) : target.appending(path: source.lastPathComponent)
-				// A file the user picked inside the "Extensions" folder is already in place.
-				if source.resolvingSymlinksInPath() == destination.resolvingSymlinksInPath() { continue }
-				try fm.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
-				if fm.fileExists(atPath: destination.path) { try fm.removeItem(at: destination) }
-				try fm.copyItem(at: source, to: destination)
-			}
-			allow(name, shown: shown)
+			_ = try FileInstall.install(url, into: folder, staging: staging)
 		} catch {
 			failure = "\(name) could not be installed. \(error)"
+			return reload()
 		}
+		allow(name, shown: shown)
 	}
 
-	/// Records the files that the user saw in the warning. A later change asks again. The digests come
-	/// first: a change after them asks again at the next run, and a change before them fails the comparison.
+	/// Records the bytes of the files that the user saw in the warning. A session runs only those bytes,
+	/// and a later change asks again.
 	func allow(_ name: String, shown: ExtensionPackage) {
-		guard let store = model?.store, let digests = Self.digests(of: fileURL(name)) else { return }
-		guard (try? ExtensionPackage.load(from: fileURL(name))) == shown else {
+		guard let store = model?.store else { return }
+		guard !isCatalog(name) else {
+			failure = "\(name) is a catalog extension. It runs only with the files of the catalog."
+			return reload()
+		}
+		guard let url = FileInstall.url(of: name, in: folder) else { return reload() }
+		let loaded: FileInstall.Loaded
+		do {
+			loaded = try FileInstall.load(url)
+		} catch {
+			failure = "\(name) cannot be allowed. \(error)"
+			return reload()
+		}
+		guard loaded.package == shown else {
 			failure = "\(name) changed after the warning. Allow it again."
 			return reload()
 		}
 		do {
-			try store.saveInstalledExtension(InstalledExtension(id: name, origin: .file, record: try JSONEncoder().encode(digests)))
-			fileInstalls[name] = digests
+			try store.saveInstalledExtension(InstalledExtension(id: name, origin: .file, record: try JSONEncoder().encode(loaded.digests)))
+			records[name] = .file(allowed: loaded.digests)
 			log("ext allowed \(name) unverified")
 		} catch {
 			failure = "\(name) could not be allowed. \(error)"
 		}
 		reload()
+	}
+
+	func isInstalled(_ id: String) -> Bool {
+		records[id] != nil
+	}
+
+	private func isCatalog(_ name: String) -> Bool {
+		switch records[name] {
+		case .catalog?, .unreadableCatalog?: true
+		case .file?, nil: false
+		}
 	}
 
 	// MARK: Questions
@@ -357,9 +417,9 @@ final class ExtensionLibrary {
 
 	/// Shows the warning for files again before a copied or changed file install runs.
 	func askAllow(_ name: String) {
-		guard let url = existingFileURL(name) else { return }
+		guard let url = FileInstall.url(of: name, in: folder) else { return }
 		do {
-			question = .allow(name: name, package: try ExtensionPackage.load(from: url))
+			question = .allow(name: name, package: try FileInstall.load(url).package)
 		} catch {
 			failure = "\(name) is not usable. \(error)"
 		}
@@ -378,25 +438,29 @@ final class ExtensionLibrary {
 
 	/// Asks before the removal and names the accounts that use the extension.
 	func askRemove(_ id: String) {
-		guard let item = items.first(where: { $0.id == id && $0.section == .installed }) else { return }
+		guard !working.contains(id), let item = items.first(where: { $0.id == id && $0.section == .installed }) else { return }
 		question = .remove(id: id, name: item.name, accounts: accounts(using: id).map(\.name).sorted())
 	}
 
 	func remove(_ id: String) {
 		guard let store = model?.store else { return }
+		downloads[id]?.cancel()
+		cancelSessions(of: id)
 		do {
-			let url = fileURL(id)
-			if catalogInstalls[id] != nil {
+			if isCatalog(id) {
 				try installer.remove(id)
-			} else {
+			} else if let url = FileInstall.url(of: id, in: folder) {
 				// A file install goes to the Trash, so the user can get a self-written script back.
-				for file in url.pathExtension == "lua" ? Self.files(of: url) : [url] { try FileManager.default.trashItem(at: file, resultingItemURL: nil) }
+				let manifest = url.deletingPathExtension().appendingPathExtension("json")
+				for file in url.pathExtension == "lua" && FileManager.default.fileExists(atPath: manifest.path) ? [url, manifest] : [url] {
+					try FileManager.default.trashItem(at: file, resultingItemURL: nil)
+				}
 			}
 			try store.removeInstalledExtension(id)
 			model?.extensionConnectors[id] = nil
-			catalogInstalls[id] = nil
-			fileInstalls[id] = nil
+			records[id] = nil
 			updates[id] = nil
+			confirmed[id] = nil
 			changed.remove(id)
 			log("ext removed \(id)")
 		} catch {
@@ -407,29 +471,36 @@ final class ExtensionLibrary {
 
 	// MARK: Sessions
 
-	/// A connector for the next session of an installed extension, from files checked just now, or one
-	/// that fails each account with the reason the extension does not run. Nil when nothing with this id is installed.
+	/// A connector for the sessions of an installed extension. It checks the files and the state in the
+	/// index when each session starts, so a refresh that waited behind others does not run an extension
+	/// that was blocked or removed meanwhile. Nil when nothing with this id is installed.
 	func connector(for id: String) -> (any BankConnector)? {
-		guard let model else { return nil }
-		do {
-			let package = try verifiedPackage(id)
-			let log = log
-			return model.makeExtensionConnector(package, fixture: fixtures[id]) { line in
-				if case let .print(text) = line { Task { @MainActor in log("ext print \(id): \(text)") } }
+		guard records[id] != nil || FileInstall.url(of: id, in: folder) != nil else { return nil }
+		return CheckedAtStart { [weak self] in
+			try await MainActor.run {
+				guard let self, let model = self.model else { throw CancellationError() }
+				let package = try self.verifiedPackage(id)
+				let log = self.log
+				guard let connector = model.makeExtensionConnector(package, fixture: self.fixtures[id], log: { line in
+					if case let .print(text) = line { Task { @MainActor in log("ext print \(id): \(text)") } }
+				}) else { throw CancellationError() }
+				return connector
 			}
-		} catch let stop as StoppedExtension {
-			return stop
-		} catch {
-			return nil
 		}
 	}
 
-	/// The package of an installed extension, checked against the index or against what the user allowed.
-	func verifiedPackage(_ id: String) throws -> ExtensionPackage {
-		if let installed = catalogInstalls[id] {
-			if let index, case let .stopped(reason) = Standing(of: installed, in: index) {
-				log("ext stopped \(id) \(reason)")
-				throw StoppedExtension(message: reason)
+	/// The package of an installed extension, checked against the index or against what the user
+	/// allowed. Throws the reason that the accounts of the extension show.
+	func verifiedPackage(_ id: String) throws(SyncFailure) -> ExtensionPackage {
+		switch records[id] {
+		case let .catalog(installed)?:
+			if let index {
+				switch Standing(of: installed, in: index) {
+				case let .stopped(reason), let .outdated(reason):
+					log("ext stopped \(id) \(reason)")
+					throw .unsupported(reason)
+				case .runs: break
+				}
 			}
 			do {
 				let package = try Installer.load(installed, from: folder)
@@ -440,17 +511,51 @@ final class ExtensionLibrary {
 				changed.insert(id)
 				reload()
 				log("ext stopped \(id) \(error)")
-				throw StoppedExtension(message: "\(error)")
+				throw .unsupported(error.description)
 			}
+		case .unreadableCatalog?:
+			throw .unsupported("Moneten cannot read the record of \(id). Remove it and install it again from the catalog.")
+		case let .file(allowed)?:
+			guard let url = FileInstall.url(of: id, in: folder) else { throw .unsupported("The extension \(id) is not installed.") }
+			do {
+				let package = try FileInstall.load(url, allowed: allowed)
+				log("ext run \(id) unverified")
+				return package
+			} catch {
+				reload()
+				throw .unsupported(error.description)
+			}
+		case nil:
+			guard FileInstall.url(of: id, in: folder) != nil else { throw .unsupported("The extension \(id) is not installed.") }
+			throw .unsupported(CatalogError.notAllowed(id).description)
 		}
-		guard let url = existingFileURL(id) else { throw CocoaError(.fileNoSuchFile) }
-		guard let allowed = fileInstalls[id], Self.digests(of: url) == allowed else {
-			reload()
-			throw StoppedExtension(message: "\(id) is not allowed to run. Allow it in the Extensions window.")
+	}
+
+	/// The services that the add account assistant offers under "Other": those of catalog packages that
+	/// may run, and of file installs that the user allowed.
+	var setupServices: [(id: String, service: String)] {
+		FileInstall.names(in: folder).flatMap { id -> [(id: String, service: String)] in
+			guard let package = mayRun(id) else { return [] }
+			return FileInstall.services(of: package).map { (id, $0) }
 		}
-		let package = try ExtensionPackage.load(from: url)
-		log("ext run \(id) unverified")
-		return package
+	}
+
+	/// The package when the extension may run now, without logging a run.
+	private func mayRun(_ id: String) -> ExtensionPackage? {
+		switch records[id] {
+		case let .catalog(installed)?:
+			if let index { guard case .runs = Standing(of: installed, in: index) else { return nil } }
+			return try? Installer.load(installed, from: folder)
+		case let .file(allowed)?:
+			return FileInstall.url(of: id, in: folder).flatMap { try? FileInstall.load($0, allowed: allowed) }
+		case .unreadableCatalog?, nil:
+			return nil
+		}
+	}
+
+	private func cancelSessions(of id: String) {
+		guard let model else { return }
+		for access in model.accesses.values where access.source == .extension(id: id) { model.sync.cancelRefresh(of: access.id) }
 	}
 
 	private func sessionRuns(_ id: String) -> Bool {
@@ -465,15 +570,14 @@ final class ExtensionLibrary {
 
 	// MARK: The rows
 
-	/// Lists the folder again and builds the rows of the window.
+	/// Lists the folder again and builds the rows of the window, one for each name.
 	func reload() {
-		let names = installedNames()
-		var installed: [Item] = []
-		for name in names {
-			if let record = catalogInstalls[name] {
-				installed.append(catalogItem(record))
-			} else {
-				installed.append(fileItem(name))
+		let names = FileInstall.names(in: folder)
+		let installed = names.map { name -> Item in
+			switch records[name] {
+			case let .catalog(record)?: catalogItem(record)
+			case .unreadableCatalog?: unreadableItem(name)
+			case .file?, nil: fileItem(name)
 			}
 		}
 		let available = (index?.entries ?? []).filter { !names.contains($0.id) }.map(availableItem)
@@ -484,6 +588,7 @@ final class ExtensionLibrary {
 	private func catalogItem(_ record: InstalledPackage) -> Item {
 		let entry = index?.entry(record.id)
 		let manifest = try? Installer.load(record, from: folder).manifest
+		let standing = index.map { Standing(of: record, in: $0) } ?? .runs(note: nil)
 		var note: String?
 		var action: Item.Action?
 		var badge = "Installed \(record.version)"
@@ -492,34 +597,46 @@ final class ExtensionLibrary {
 		} else if changed.contains(record.id) || manifest == nil {
 			badge = "Changed"
 			note = CatalogError.changed(record.name).description
-		} else if let index, case let .stopped(reason) = Standing(of: record, in: index) {
+		} else if case let .stopped(reason) = standing {
 			badge = entry?.status == .blocked ? "Blocked" : entry?.status == .withdrawn ? "Withdrawn" : "Stopped"
 			note = reason
 		} else {
-			if let index, case let .runs(unmaintained?) = Standing(of: record, in: index) { note = unmaintained }
+			if case let .runs(unmaintained?) = standing { note = unmaintained }
+			if case let .outdated(reason) = standing {
+				badge = "Update Needed"
+				note = reason
+			}
 			let version = entry?.version ?? ""
 			switch updates[record.id] {
 			case let .needsConfirmation(hosts, fields)?:
-				note = Self.newRights(version: version, hosts: hosts, fields: fields)
+				note = [note, Self.newRights(version: version, hosts: hosts, fields: fields)].compactMap { $0 }.joined(separator: " ")
 				action = .reviewUpdate
 			case .waitsForUser?:
-				note = "Version \(version) is available."
+				note = [note, "Version \(version) is available."].compactMap { $0 }.joined(separator: " ")
 				action = .update
 			case .afterSession?:
-				note = "Version \(version) installs when the running refresh ends."
+				note = [note, "Version \(version) installs when the running refresh ends."].compactMap { $0 }.joined(separator: " ")
 			default: break
 			}
 		}
 		return Item(id: record.id, section: .installed, name: record.name, description: manifest?.description ?? "", version: record.version,
-			kinds: manifest?.kinds?.map(\.rawValue) ?? [], badge: badge, note: note, action: action, manifest: manifest, isCatalog: true)
+			available: entry?.version, kinds: manifest?.kinds?.map(\.rawValue) ?? [], badge: badge, note: note, action: action, manifest: manifest, isCatalog: true)
+	}
+
+	private func unreadableItem(_ name: String) -> Item {
+		Item(id: name, section: .installed, name: name, description: "", version: nil, available: nil, kinds: [], badge: "Changed",
+			note: "Moneten cannot read the record of \(name). Remove it and install it again from the catalog.", action: nil, manifest: nil, isCatalog: true)
 	}
 
 	private func fileItem(_ name: String) -> Item {
-		let package = existingFileURL(name).flatMap { try? ExtensionPackage.load(from: $0) }
-		let allowed = existingFileURL(name).flatMap(Self.digests) == fileInstalls[name] && fileInstalls[name] != nil
-		return Item(id: name, section: .installed, name: package?.manifest?.name ?? name, description: package?.manifest?.description ?? "",
-			version: package?.manifest?.version, kinds: package?.manifest?.kinds?.map(\.rawValue) ?? [], badge: "Unverified",
-			note: allowed ? nil : "Moneten runs \(name) only after you allow it.", action: allowed ? nil : .allow, manifest: package?.manifest, isCatalog: false)
+		let url = FileInstall.url(of: name, in: folder)
+		let loaded = url.flatMap { try? FileInstall.load($0) }
+		var allowed = false
+		if case let .file(digests)? = records[name], let loaded, !digests.isEmpty, loaded.digests == digests { allowed = true }
+		let manifest = loaded?.package.manifest
+		let note = loaded == nil ? "\(name) cannot be read as an extension." : allowed ? nil : "Moneten runs \(name) only after you allow it."
+		return Item(id: name, section: .installed, name: manifest?.name ?? name, description: manifest?.description ?? "", version: manifest?.version, available: nil,
+			kinds: manifest?.kinds?.map(\.rawValue) ?? [], badge: "Unverified", note: note, action: allowed || loaded == nil ? nil : .allow, manifest: manifest, isCatalog: false)
 	}
 
 	private func availableItem(_ entry: CatalogIndex.Entry) -> Item {
@@ -530,7 +647,7 @@ final class ExtensionLibrary {
 		case .success: if let text = entry.note { note = text }
 		}
 		let installable = manifest != nil && (entry.status == .active || entry.status == .unmaintained)
-		return Item(id: entry.id, section: .available, name: entry.name, description: manifest?.description ?? "", version: entry.version,
+		return Item(id: entry.id, section: .available, name: entry.name, description: manifest?.description ?? "", version: entry.version, available: entry.version,
 			kinds: manifest?.kinds?.map(\.rawValue) ?? [], badge: working.contains(entry.id) ? "Installing..." : entry.status == .active ? nil : entry.status.rawValue.capitalized,
 			note: note, action: installable ? .install : nil, manifest: manifest, isCatalog: true)
 	}
@@ -541,83 +658,4 @@ final class ExtensionLibrary {
 		if !fields.isEmpty { parts.append("asks also for \(fields.formatted(.list(type: .and)))") }
 		return "Version \(version) \(parts.joined(separator: " and "))"
 	}
-
-	/// The names of the extensions in the folder: each `.lua` file by its base name and each folder.
-	private func installedNames() -> [String] {
-		let urls = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: [.isDirectoryKey], options: .skipsHiddenFiles)) ?? []
-		return urls.compactMap { url in
-			if url.pathExtension == "lua" { return url.deletingPathExtension().lastPathComponent }
-			return (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true ? url.lastPathComponent : nil
-		}
-	}
-
-	private func fileURL(_ name: String) -> URL {
-		existingFileURL(name) ?? folder.appending(path: "\(name).lua")
-	}
-
-	private func existingFileURL(_ name: String) -> URL? {
-		[folder.appending(path: "\(name).lua"), folder.appending(path: name)].first { FileManager.default.fileExists(atPath: $0.path) }
-	}
-
-	/// The files of a file install: the `.lua` file and its manifest next to it, or every file of the folder.
-	static func files(of url: URL) -> [URL] {
-		if url.pathExtension == "lua" {
-			let manifest = url.deletingPathExtension().appendingPathExtension("json")
-			return [url] + (FileManager.default.fileExists(atPath: manifest.path) ? [manifest] : [])
-		}
-		return ((try? FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: nil, options: .skipsHiddenFiles)) ?? []).sorted { $0.path < $1.path }
-	}
-
-	/// The SHA-256 of each file of a file install by its name. A change of any of them asks the user again.
-	static func digests(of url: URL) -> [String: String]? {
-		var digests: [String: String] = [:]
-		for file in files(of: url) {
-			guard let data = try? Data(contentsOf: file) else { return nil }
-			digests[file.lastPathComponent] = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
-		}
-		return digests.isEmpty ? nil : digests
-	}
-}
-
-/// A connector for an installed extension that may not run. Each account of the refresh shows the reason.
-struct StoppedExtension: BankConnector, Error {
-	let message: String
-
-	func refresh(_ request: RefreshRequest, _ session: SyncSession) async throws -> ConnectorReport {
-		throw SyncFailure.unsupported(message)
-	}
-}
-
-/// Refuses every redirect, so that no catalog request reaches another host than the catalog address.
-private final class NoRedirects: NSObject, URLSessionTaskDelegate, Sendable {
-	func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest) async -> URLRequest? {
-		nil
-	}
-}
-
-/// Gets the files of the catalog. A request carries no query, no cookie, and nothing that names the
-/// user or the Mac, and the app asks for the whole index, so the catalog cannot tell which extensions are installed.
-struct CatalogSource: Sendable {
-	let base: URL
-
-	private static let session: URLSession = {
-		let configuration = URLSessionConfiguration.ephemeral
-		configuration.httpCookieStorage = nil
-		configuration.httpShouldSetCookies = false
-		configuration.urlCache = nil
-		configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
-		configuration.httpAdditionalHeaders = ["User-Agent": "Moneten"]
-		return URLSession(configuration: configuration)
-	}()
-
-	var fetcher: @Sendable (String) async throws -> Data {
-		{ [base] path in
-			let url = base.appending(path: path)
-			if url.isFileURL { return try Data(contentsOf: url) }
-			let (data, response) = try await Self.session.data(from: url, delegate: NoRedirects())
-			guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw URLError(.badServerResponse) }
-			return data
-		}
-	}
-
 }

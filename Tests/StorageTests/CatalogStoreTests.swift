@@ -1,4 +1,5 @@
 import Foundation
+import GRDB
 import Testing
 @testable import Storage
 
@@ -36,5 +37,14 @@ struct CatalogStoreTests {
 		])
 		try reopened.removeInstalledExtension("example")
 		#expect(try reopened.installedExtensions().map(\.id) == ["Demo"])
+	}
+
+	@Test("A row with an origin that this version does not know counts as a catalog extension, so it never runs as a file install")
+	func unknownOriginIsCatalog() throws {
+		let store = try Vault(folder: folder).create(password: Self.password, starterCategories: [])
+		try store.queue.write { db in
+			try db.execute(sql: "INSERT INTO installedExtension (id, origin, record) VALUES ('example', 'future', x'00')")
+		}
+		#expect(try store.installedExtensions() == [InstalledExtension(id: "example", origin: .catalog, record: Data([0]))])
 	}
 }

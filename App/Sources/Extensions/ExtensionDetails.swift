@@ -47,6 +47,7 @@ struct ExtensionDetails: View {
 					Spacer()
 					if item.section == .installed {
 						Button("Remove...", role: .destructive) { model.extensions.askRemove(item.id) }
+							.disabled(model.extensions.working.contains(item.id))
 					}
 				}
 			}

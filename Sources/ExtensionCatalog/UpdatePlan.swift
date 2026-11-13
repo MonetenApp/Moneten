@@ -13,8 +13,10 @@ public enum UpdatePlan: Sendable, Equatable {
 	/// The update adds these hosts or login field labels, and the installed version keeps running until the user confirms.
 	case needsConfirmation(hosts: [String], fields: [String])
 
-	public init(installed: Manifest, available: Manifest, automatic: Bool, sessionRuns: Bool) {
-		guard Self.version(installed.version).lexicographicallyPrecedes(Self.version(available.version)) else {
+	/// `confirmed` is the version that the user confirmed or chose with "Update". It installs that version,
+	/// also with new rights or with automatic updates off, but never a later one.
+	public init(installed: Manifest, available: Manifest, automatic: Bool, sessionRuns: Bool, confirmed: String?) {
+		guard let version = available.version, Self.isNewer(version, than: installed.version ?? "0") else {
 			self = .upToDate
 			return
 		}
@@ -22,8 +24,9 @@ public enum UpdatePlan: Sendable, Equatable {
 		let hosts = (available.hosts ?? []).filter { !oldHosts.contains($0) }.map(\.value)
 		let oldFields = Set(Self.fields(installed).map { "\($0.service)\u{0}\($0.label)" })
 		let fields = Self.fields(available).filter { !oldFields.contains("\($0.service)\u{0}\($0.label)") }.map(\.label)
-		self = if !hosts.isEmpty || !fields.isEmpty { .needsConfirmation(hosts: hosts, fields: fields) }
-			else if !automatic { .waitsForUser }
+		let chosen = confirmed == version
+		self = if !chosen, !hosts.isEmpty || !fields.isEmpty { .needsConfirmation(hosts: hosts, fields: fields) }
+			else if !chosen, !automatic { .waitsForUser }
 			else if sessionRuns { .afterSession }
 			else { .install }
 	}
@@ -32,10 +35,11 @@ public enum UpdatePlan: Sendable, Equatable {
 		(manifest.services ?? []).flatMap { service in service.login.map { (service.name, $0.label) } }
 	}
 
-	/// "2.31" as [2, 31, 0], so that 1.10 is newer than 1.9 and 1.0 equals 1.0.0.
-	static func version(_ text: String?) -> [Int] {
-		let parts = (text ?? "0").split(separator: ".").map { Int($0) ?? 0 }
-		return parts + Array(repeating: 0, count: max(0, 3 - parts.count))
+	/// The order of the catalog tools: "2.31" is (2, 31), compared as tuples without padding, so 1.10 is
+	/// newer than 1.9 and 1.0.0 is newer than 1.0.
+	public static func isNewer(_ version: String, than other: String) -> Bool {
+		func parts(_ text: String) -> [Int] { text.split(separator: ".", omittingEmptySubsequences: false).map { Int($0) ?? 0 } }
+		return parts(other).lexicographicallyPrecedes(parts(version))
 	}
 }
 
@@ -43,6 +47,9 @@ public enum UpdatePlan: Sendable, Equatable {
 public enum Standing: Sendable, Equatable {
 	case runs(note: String?)
 	case stopped(String)
+	/// The index lists another version than the installed one. The installed version does not run until
+	/// the update is installed (ADR 0015, decision 24, with the index of one version per package).
+	case outdated(String)
 
 	public init(of installed: InstalledPackage, in index: CatalogIndex) {
 		guard let entry = index.entry(installed.id) else {
@@ -50,6 +57,10 @@ public enum Standing: Sendable, Equatable {
 			return
 		}
 		let note = entry.note.map { " \($0)" } ?? ""
+		if entry.status == .active || entry.status == .unmaintained, entry.version != installed.version {
+			self = .outdated("Version \(installed.version) of \(installed.name) is no longer in the catalog.")
+			return
+		}
 		self = switch entry.status {
 		case .active: .runs(note: nil)
 		case .unmaintained: .runs(note: "Nobody maintains \(installed.name).\(note)")

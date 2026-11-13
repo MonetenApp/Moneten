@@ -8,12 +8,12 @@ import Testing
 		try Manifest.parse(package.files["manifest.json"]!, mode: .catalog)
 	}
 
-	func plan(to change: (inout TestCatalog.Package) -> Void, automatic: Bool = true, sessionRuns: Bool = false) throws -> UpdatePlan {
+	func plan(to change: (inout TestCatalog.Package) -> Void, automatic: Bool = true, sessionRuns: Bool = false, confirmed: String? = nil) throws -> UpdatePlan {
 		let old = TestCatalog.Package()
 		var new = old
 		new.version = "1.1"
 		change(&new)
-		return UpdatePlan(installed: try manifest(old), available: try manifest(new), automatic: automatic, sessionRuns: sessionRuns)
+		return UpdatePlan(installed: try manifest(old), available: try manifest(new), automatic: automatic, sessionRuns: sessionRuns, confirmed: confirmed)
 	}
 
 	@Test func newHostWaitsForTheUser() throws {
@@ -29,7 +29,7 @@ import Testing
 		var new = old
 		new.version = "1.1"
 		new.hosts = ["api.bank.example"]
-		#expect(UpdatePlan(installed: try manifest(old), available: try manifest(new), automatic: true, sessionRuns: false) == .install)
+		#expect(UpdatePlan(installed: try manifest(old), available: try manifest(new), automatic: true, sessionRuns: false, confirmed: nil) == .install)
 	}
 
 	@Test func updateDuringARunningSessionWaitsForItsEnd() throws {
@@ -47,7 +47,28 @@ import Testing
 	@Test func sameOrOlderVersionIsUpToDate() throws {
 		#expect(try plan { $0.version = "1.0" } == .upToDate)
 		#expect(try plan { $0.version = "0.9" } == .upToDate)
-		#expect(try plan { $0.version = "1.0.0" } == .upToDate)
+	}
+
+	/// The order of tools/check_package.py and tools/build_index.py of the catalog: tuples of numbers, not padded.
+	@Test(arguments: [("1.0", "1.0.0"), ("1.0.0", "1.0.1"), ("1.0.1", "1.1"), ("1.9", "1.10"), ("1", "1.0")])
+	func versionsOrderLikeThePublisher(older: String, newer: String) {
+		#expect(UpdatePlan.isNewer(newer, than: older))
+		#expect(!UpdatePlan.isNewer(older, than: newer))
+	}
+
+	@Test func confirmedVersionInstallsWithItsNewHost() throws {
+		#expect(try plan(to: { $0.hosts.append("login.example.org") }, confirmed: "1.1") == .install)
+		#expect(try plan(to: { $0.hosts.append("login.example.org") }, sessionRuns: true, confirmed: "1.1") == .afterSession)
+	}
+
+	@Test func aNewerVersionNeedsItsOwnConfirmation() throws {
+		#expect(try plan(to: { $0.version = "1.3"; $0.hosts.append("login.example.org") }, confirmed: "1.2")
+			== .needsConfirmation(hosts: ["login.example.org"], fields: []))
+	}
+
+	@Test func confirmedVersionInstallsWithAutomaticUpdatesOff() throws {
+		#expect(try plan(to: { _ in }, automatic: false, confirmed: "1.1") == .install)
+		#expect(try plan(to: { _ in }, automatic: false, confirmed: "1.0") == .waitsForUser)
 	}
 
 	@Test func versionsCompareByNumber() throws {
@@ -74,6 +95,14 @@ import Testing
 
 	@Test func unmaintainedPackageRunsWithTheNote() throws {
 		#expect(try standing(status: "unmaintained", note: "No answer since August.") == .runs(note: "Nobody maintains Example Bank. No answer since August."))
+	}
+
+	@Test func versionThatTheIndexNoLongerListsStops() throws {
+		var package = TestCatalog.Package()
+		package.version = "1.1"
+		let index = try CatalogIndex.parse(TestCatalog.index(version: 2, [package]))
+		#expect(Standing(of: InstalledPackage(id: "example", name: "Example Bank", version: "1.0", files: []), in: index)
+			== .outdated("Version 1.0 of Example Bank is no longer in the catalog."))
 	}
 
 	@Test func activePackageRuns() throws {

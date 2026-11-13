@@ -166,12 +166,20 @@ final class DebugHarness {
 		#endif
 		case "extcheck": Task { await model.extensions.checkNow() }
 		case "extinstall": Task { await model.extensions.install(argument) }
-		case "extupdate": Task { await model.extensions.update(argument) }
+		case "extupdate": Task { await model.extensions.update(argument, to: model.extensions.items.first { $0.id == argument }?.available ?? "") }
 		case "extreview": model.extensions.review(argument)
 		case "extremove": model.extensions.askRemove(argument)
 		case "extfile": model.extensions.pickFile(URL(filePath: argument))
 		case "extallow": model.extensions.askAllow(argument)
 		case "extselect": model.extensions.selection = argument
+		// "<id>|<fixture>": the recorded answers that replace the network for an installed extension.
+		case "extfixture":
+			let parts = argument.components(separatedBy: "|")
+			guard parts.count == 2, let fixture = try? JSONDecoder().decode(Fixture.self, from: Data(contentsOf: URL(filePath: parts[1]))) else {
+				return log("ext error=extfixture needs <id>|<fixture>")
+			}
+			model.extensions.fixtures[parts[0]] = fixture
+			log("ext fixture \(parts[0])")
 		// Clicks the default button of the question in the Extensions window, such as "Install Update".
 		case "extconfirm":
 			guard let question = model.extensions.question else { return log("extconfirm no question") }
@@ -322,7 +330,8 @@ final class DebugHarness {
 		case "login": setup.loginName = value
 		case "pin": setup.pin = value
 		case "save": setup.savePIN = value == "yes"
-		case "other": setup.service = value == "no" ? nil : .offline
+		// "no", "offline", or the name of an extension service.
+		case "other": setup.service = value == "no" ? nil : setup.otherServices.first { $0.title == value } ?? .offline
 		case "next": setup.next()
 		case "back": setup.back()
 		case "toggle": if setup.selected.remove(value) == nil { setup.selected.insert(value) }

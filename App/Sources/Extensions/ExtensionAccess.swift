@@ -1,4 +1,5 @@
 import Domain
+import ExtensionCatalog
 import ExtensionConnector
 import ExtensionHost
 import Foundation
@@ -42,11 +43,18 @@ extension AppModel {
 
 	/// Sets up an access for `service`: the script lists its accounts, and the app adds them with what
 	/// the first refresh fetched. A login that the app has already keeps its access and its state.
-	func addExtensionAccess(package: ExtensionPackage, service: String, fixture: Fixture? = nil, log: @escaping @Sendable (HostLog) -> Void = { _ in }) {
+	func addExtensionAccess(package: ExtensionPackage, service: String, fixture: Fixture? = nil, groupID: UUID? = nil,
+		log: @escaping @Sendable (HostLog) -> Void = { _ in }) {
 		guard let connector = extensionConnector(package, fixture: fixture, log: log) else { return }
 		let access = Access(source: .extension(id: package.name), bankName: service, loginName: "")
-		let job = ExtensionSetupJob(connector: connector, states: extensionSetupStates) { [weak self] setup in try self?.add(setup, of: access) }
-		sync.refresh(RefreshRequest(access: access, accounts: []), with: job, attended: true)
+		let job = ExtensionSetupJob(connector: connector, states: extensionSetupStates) { [weak self] setup in try self?.add(setup, of: access, groupID: groupID) }
+		let id = package.name
+		// An installed extension may be blocked or removed while the setup waits for its turn.
+		let checked: any BankConnector = !extensions.isInstalled(id) ? job : CheckedAtStart { [weak self] in
+			try await MainActor.run { _ = try self?.extensions.verifiedPackage(id) }
+			return job
+		}
+		sync.refresh(RefreshRequest(access: access, accounts: []), with: checked, attended: true)
 	}
 
 	/// Refreshes every account of each access that uses `package`.
@@ -55,13 +63,14 @@ extension AppModel {
 		refresh(ledger.refreshAccounts(.all).filter { accesses[$0.key]?.source == .extension(id: package.name) }, attended: attended)
 	}
 
-	private func add(_ setup: AccessSetup, of access: Access) throws {
+	private func add(_ setup: AccessSetup, of access: Access, groupID: UUID?) throws {
 		let now = Date()
 		let new = Access(id: access.id, source: access.source, bankName: access.bankName, loginName: setup.loginName)
 		let listed = setup.accounts.map { listed in
 			var account = Account(position: 0, name: listed.name, kind: listed.kind, source: .bank, currency: listed.currency, iban: listed.iban,
 				bic: listed.bic, accountNumber: listed.accountNumber, bankCode: listed.bankCode, bankName: access.bankName, owner: listed.owner)
 			account.accessID = new.id
+			account.groupID = groupID
 			account.remoteID = listed.remoteID
 			account.record(Self.refresh(listed.outcome, at: now))
 			return account

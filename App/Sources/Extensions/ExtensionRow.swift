@@ -42,7 +42,7 @@ struct ExtensionActionButton: View {
 			Button("Install") { Task { await library.install(item.id) } }
 				.disabled(!library.reachable || library.working.contains(item.id))
 		case .update:
-			Button("Update") { Task { await library.update(item.id) } }
+			Button("Update") { Task { await library.update(item.id, to: item.available ?? "") } }
 				.disabled(!library.reachable || library.working.contains(item.id))
 		case .reviewUpdate:
 			Button("Review Update") { library.review(item.id) }
