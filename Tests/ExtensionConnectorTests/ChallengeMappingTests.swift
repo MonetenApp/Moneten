@@ -149,10 +149,16 @@ import Testing
 	/// The signed Amazon extension 2.08 names its field "Bot-Prüfung" next to the AWS WAF script. The
 	/// script URL alone decides that the user solves a captcha.
 	@Test func captchaWithALabel() throws {
-		let url = "https://abc123.token.awswaf.com/abc123/def/challenge.js?sitekey=KEY&referer=https%3A%2F%2Fbank.example"
+		let url = "https://abc123.token.awswaf.com/abc123/def/challenge.js?sitekey=KEY&referer=https%3A%2F%2Fbank.example%2Flogin"
 		#expect(try interaction(["title": .string("Amazon Bot-Prüfung"), "challenge": .string(url), "label": .string("Bot-Prüfung")])
-			== .answer(request(.captcha(CaptchaRequest(provider: .amazonWAF, script: URL(string: url)!, siteKey: "KEY", page: URL(string: "https://bank.example")!,
+			== .answer(request(.captcha(CaptchaRequest(provider: .amazonWAF, script: URL(string: url)!, siteKey: "KEY", page: URL(string: "https://bank.example/login")!,
 				isCheckbox: false)), field: TANField(label: "Bot-Prüfung")), stepIncrement: 1))
+	}
+
+	/// WebKit loads a page without a path at the root path, and the captcha window loads only the page it named.
+	@Test func captchaPageWithoutAPathGetsTheRootPath() throws {
+		let url = URL(string: "https://abc123.token.awswaf.com/abc123/def/challenge.js?sitekey=KEY&referer=https%3A%2F%2Fbank.example")!
+		#expect(try mapping.captcha(url)?.page?.absoluteString == "https://bank.example/")
 	}
 
 	@Test(arguments: [

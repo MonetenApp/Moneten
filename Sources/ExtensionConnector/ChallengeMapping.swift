@@ -225,7 +225,12 @@ struct ChallengeMapping {
 		let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
 		func value(_ name: String) -> String? { items.first { $0.name == name }?.value }
 		guard let siteKey = value("sitekey"), siteKey.wholeMatch(of: /[A-Za-z0-9_\-]{1,200}/) != nil else { return nil }
-		let page = value("referer").flatMap(URL.init(string:))
+		// WebKit loads a page without a path at "/", and the captcha window loads only the address it names.
+		let page = value("referer").flatMap { URLComponents(string: $0) }.flatMap { page in
+			var page = page
+			if page.path.isEmpty { page.path = "/" }
+			return page.url
+		}
 		if let page {
 			guard page.scheme == "https", let pageHost = page.host()?.lowercased(), hosts.contains(pageHost) else {
 				throw MappingError("The captcha page \(page.host() ?? page.absoluteString) is not a host that the extension may contact.")

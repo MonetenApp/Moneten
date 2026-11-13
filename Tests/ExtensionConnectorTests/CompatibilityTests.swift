@@ -144,7 +144,7 @@ extension CompatibilityTests {
 		}
 		#expect(captcha.provider == .amazonWAF)
 		#expect(captcha.siteKey == "AQIDAHjExampleSiteKey0123456789")
-		#expect(captcha.page == URL(string: "https://www.amazon.de"))
+		#expect(captcha.page == URL(string: "https://www.amazon.de/"))
 		#expect(setup.accounts.map(\.name) == ["Amazon"])
 		#expect(setup.accounts.first?.outcome.rows == [])
 		let refresh = TestSession([Self.login])
