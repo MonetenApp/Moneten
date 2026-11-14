@@ -9,45 +9,27 @@ public enum StarterCategories {
 		}
 	}
 
-	private struct Entry {
-		let english: String
-		let german: String
-		/// The rule reads German bank texts, so it is the same in every language.
-		let rule: String
-
-		init(_ english: String, _ german: String, rule: String = "") {
-			self.english = english
-			self.german = german
-			self.rule = rule
-		}
-
-		func name(in language: Language) -> String {
-			switch language {
-			case .english: english
-			case .german: german
-			}
-		}
-	}
-
-	private static let groups: [(Entry, [Entry])] = [
-		(Entry("Income", "Einnahmen"), [Entry("Salary", "Gehalt", rule: #""Gehalt" OR "Lohn""#), Entry("Other income", "Sonstige Einnahmen")]),
-		(Entry("Living", "Wohnen"), [Entry("Rent", "Miete"), Entry("Groceries", "Lebensmittel"), Entry("Electricity", "Strom"), Entry("Internet & Phone", "Internet & Telefon")]),
-		(Entry("Mobility", "Mobilität"), [Entry("Fuel", "Tanken"), Entry("Public transport", "Öffentliche Verkehrsmittel"), Entry("Car", "Auto")]),
-		(Entry("Leisure", "Freizeit"), [Entry("Restaurants", "Restaurants"), Entry("Travel", "Reisen"), Entry("Hobbies", "Hobbys")]),
-		(Entry("Insurance", "Versicherungen"), [Entry("Health", "Krankenversicherung"), Entry("Liability", "Haftpflicht"), Entry("Car insurance", "Kfz-Versicherung")]),
-	]
-
 	public static func make(language: Language) -> [Category] {
+		func name(_ english: String, _ german: String) -> String { language == .german ? german : english }
+		let salary = name("Salary", "Gehalt")
+		let groups = [
+			(name("Income", "Einnahmen"), [salary, name("Other income", "Sonstige Einnahmen")]),
+			(name("Living", "Wohnen"), [name("Rent", "Miete"), name("Groceries", "Lebensmittel"), name("Electricity", "Strom"), name("Internet & Phone", "Internet & Telefon")]),
+			(name("Mobility", "Mobilität"), [name("Fuel", "Tanken"), name("Public transport", "Öffentliche Verkehrsmittel"), name("Car", "Auto")]),
+			(name("Leisure", "Freizeit"), [name("Restaurants", "Restaurants"), name("Travel", "Reisen"), name("Hobbies", "Hobbys")]),
+			(name("Insurance", "Versicherungen"), [name("Health", "Krankenversicherung"), name("Liability", "Haftpflicht"), name("Car insurance", "Kfz-Versicherung")]),
+		]
 		var result: [Category] = []
 		for (position, (group, children)) in groups.enumerated() {
-			let g = Category(position: position, name: group.name(in: language), isGroup: true)
+			let g = Category(position: position, name: group, isGroup: true)
 			result.append(g)
-			for (i, c) in children.enumerated() {
-				result.append(Category(parentID: g.id, position: i, name: c.name(in: language), rule: c.rule))
+			for (i, child) in children.enumerated() {
+				// The rule reads German bank texts, so it is the same in every language.
+				result.append(Category(parentID: g.id, position: i, name: child, rule: child == salary ? #""Gehalt" OR "Lohn""# : ""))
 			}
 		}
-		result.append(Category(position: groups.count, name: Entry("Transfers", "Umbuchungen").name(in: language), showInDiagrams: false))
-		result.append(Category(position: 1_000, name: Entry("Uncategorized", "Unkategorisiert").name(in: language), isDefault: true))
+		result.append(Category(position: groups.count, name: name("Transfers", "Umbuchungen"), showInDiagrams: false))
+		result.append(Category(position: 1_000, name: name("Uncategorized", "Unkategorisiert"), isDefault: true))
 		return result
 	}
 
