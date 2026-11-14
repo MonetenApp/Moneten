@@ -145,7 +145,8 @@ enum CSVParser {
 				if let d, let c { amount = d + c }
 			}
 			guard let amount else { throw TransactionFileImporter.Failure.line(offset + 1, "The amount cannot be read.") }
-			let cur = value(currencyCol) ?? currency
+			// A cell that is not a three-letter code, such as "€" or "Euro", leaves the row in the account currency.
+			let cur = value(currencyCol).map { $0.uppercased() }.flatMap { $0.wholeMatch(of: /[A-Z]{3}/) == nil ? nil : $0 } ?? currency
 			var t = Transaction(accountID: placeholder, bookingDate: day, valueDate: value(valueCol).flatMap(Day.init(string:)),
 				amountMinor: Money(amount, currency: cur).minorUnits, currency: cur,
 				name: value(nameCol) ?? "", purpose: value(purposeCol) ?? "", counterpartyIBAN: value(ibanCol), counterpartyBIC: value(bicCol),

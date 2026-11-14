@@ -153,25 +153,25 @@ public struct FinTSConnector: BankConnector {
 		for clash in shared.values.joined() { outcomes[clash.accountID] = .failed(HelperFailure.clash) }
 		let accounts = request.accounts.filter { shared[$0.remoteID] == nil }
 		command.accounts = accounts.map { Command.Period(id: $0.remoteID, from: Self.firstDay($0.since, enforced: request.enforced, today: today)?.description) }
-		let accountIDs = Dictionary(uniqueKeysWithValues: accounts.map { ($0.remoteID, $0.accountID) })
+		let byRemoteID = Dictionary(uniqueKeysWithValues: accounts.map { ($0.remoteID, $0) })
 		var state: AccessState?
 		var notices: [BankMessage] = []
 		try await run(command, session: session) { message in
 			switch message {
 			case let .progress(done, of): await session.report(.fetching(done: done, of: of))
 			case let .notice(text): notices.append(BankMessage(text: text))
-			case let .result(account, result):
-				guard let id = accountIDs[account] else { throw HelperFailure.unreadable }
+			case let .result(remoteID, result):
+				guard let account = byRemoteID[remoteID] else { throw HelperFailure.unreadable }
 				do {
-					let (outcome, errors) = try result.get().outcome(of: id)
-					outcomes[id] = outcome
+					let (outcome, errors) = try result.get().outcome(of: account)
+					outcomes[account.accountID] = outcome
 					notices += errors
 				} catch {
-					outcomes[id] = .failed(error as? SyncFailure ?? HelperFailure.unreadable)
+					outcomes[account.accountID] = .failed(error as? SyncFailure ?? HelperFailure.unreadable)
 				}
-			case let .accountFailed(account, error):
-				guard let id = accountIDs[account] else { throw HelperFailure.unreadable }
-				outcomes[id] = .failed(error.failure)
+			case let .accountFailed(remoteID, error):
+				guard let account = byRemoteID[remoteID] else { throw HelperFailure.unreadable }
+				outcomes[account.accountID] = .failed(error.failure)
 			case let .state(data): state = AccessState(data)
 			case let .failed(error): throw error.failure
 			default: throw HelperFailure.unreadable

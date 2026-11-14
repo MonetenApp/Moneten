@@ -131,10 +131,9 @@ public struct Account: Identifiable, Hashable, Sendable, Codable {
 		return PortfolioValue(accountID: id, day: Day(bankBalanceDate ?? Date(), calendar: calendar), minorUnits: bankBalanceMinor)
 	}
 
-	/// A row that the balance counts: booked and in the currency of the account. A row in another
-	/// currency stays in the account and its list, but its minor units are not those of the balance.
+	/// A row that the balance counts. A row in another currency stays in the account and its list.
 	public func isInBalance(_ t: Transaction) -> Bool {
-		!t.isPending && t.currency == currency
+		t.isInSum(of: currency)
 	}
 
 	/// A bank refreshes the account and nothing set its initial balance yet. A portfolio gets its
@@ -293,6 +292,12 @@ public struct Transaction: Identifiable, Hashable, Sendable, Codable {
 	}
 
 	public var amount: Money { Money(minorUnits: amountMinor, currency: currency) }
+
+	/// The rule for every sum in one currency, such as the balance of an account or the amount of a
+	/// category. The minor units of another currency are not those of the sum, and a sum never converts.
+	public func isInSum(of currency: String) -> Bool {
+		!isPending && self.currency == currency
+	}
 
 	/// The prefix of the IDs that the MoneyMoney migration gives. Such an ID says where a row came from,
 	/// not which source delivers it, so a source with IDs of its own takes the row over.
