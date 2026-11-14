@@ -87,12 +87,13 @@ extension AppModel {
 		if accounts.isEmpty {
 			alert = AlertMessage(title: "\(access.bankName) added no account.", message: "Moneten has every account of this login already.")
 		}
+		// The new account first, as the setup of a FinTS access does, so the fetched rows fill its view.
+		if let first = accounts.first { selection = .account(first.id) }
 		for account in accounts {
 			if case let .fetched(result)? = setup.accounts.first(where: { $0.remoteID == account.remoteID })?.outcome {
 				_ = try merge(.refresh(result), into: account.id)
 			}
 		}
-		if let first = accounts.first { selection = .account(first.id) }
 	}
 
 	/// How the first refresh of the setup ended for an account, as a later refresh records it.

@@ -54,6 +54,25 @@ struct PerfScenario {
 				}
 				try? c.model.merge(.file(rows), into: account.id)
 			}),
+		// A first refresh fetches the whole history into the open view. A refresh changes the rows of the
+		// table in place (issue #135), so the table must stay the same object.
+		PerfScenario(name: "refresh-into-open-view", budget: halfSecond,
+			setUp: { await $0.select("Bulk"); await $0.scroll { $0 / 2 } },
+			run: { c in
+				guard let account = c.model.ledger.accounts.first(where: { $0.name == "Account 4" }) else { return }
+				// A strong reference, so that a new table cannot get the address of this one.
+				let table = c.harness.transactionTables().first
+				let today = Day.today()
+				let rows = (0..<2_000).map { i in
+					Transaction(accountID: account.id, bookingDate: today.adding(days: -(i % 400)), amountMinor: -Int64(1_000 + i), name: "Card Payment", purpose: "Refresh \(i)")
+				}
+				let result = RefreshResult(balance: nil, transactions: FetchedTransactions(rows: rows, from: today.adding(days: -400)))
+				try? c.model.merge(.refresh(result), into: account.id)
+				await c.settle()
+				if c.harness.transactionTables().first.map(ObjectIdentifier.init) != table.map(ObjectIdentifier.init) {
+					c.fail("the refresh replaced the transaction table")
+				}
+			}),
 		// Last, because it leaves "Bulk" grouped by account: its table has a section per account.
 		PerfScenario(name: "group-by-account", budget: halfSecond,
 			setUp: { c in
@@ -90,10 +109,19 @@ struct PerfScenario {
 }
 
 @MainActor
+final class PerfProblems {
+	var list: [String] = []
+}
+
+@MainActor
 struct PerfContext {
 	let model: AppModel
 	let harness: DebugHarness
 	let watchdog: MainThreadWatchdog
+	/// What a scenario found wrong itself. The run counts the scenario as failed.
+	let problems = PerfProblems()
+
+	func fail(_ problem: String) { problems.list.append(problem) }
 
 	func select(_ name: String) async {
 		harness.select(name)
@@ -139,7 +167,10 @@ extension DebugHarness {
 			let expected = model.visibleTransactions.count + sectionCount(model)
 			let current = shown == expected
 			if !current { log("perf \(scenario.name) the table shows \(shown) rows instead of \(expected)") }
-			let result = !settled || !current || stall > PerfScenario.hangLimit ? "fail" : stall > scenario.budget ? "slow" : "pass"
+			let problems = context.problems.list
+			context.problems.list = []
+			for problem in problems { log("perf \(scenario.name) \(problem)") }
+			let result = !settled || !current || !problems.isEmpty || stall > PerfScenario.hangLimit ? "fail" : stall > scenario.budget ? "slow" : "pass"
 			if result == "fail" { failures += 1 }
 			if result == "slow" { slow += 1 }
 			log("perf \(scenario.name) stall_ms=\(Self.milliseconds(stall)) budget_ms=\(Self.milliseconds(scenario.budget)) footprint_mb=\(MainThreadWatchdog.footprint() / 1_048_576) result=\(result)")

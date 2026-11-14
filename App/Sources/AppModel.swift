@@ -210,8 +210,9 @@ final class AppModel {
 	var alert: AlertMessage?
 	var sheet: SheetKind?
 	var settingsTab = SettingsTab.security
-	/// Changes when many transactions change at once, so that the transaction table starts over
-	/// instead of inserting thousands of rows one by one. See `TransactionTable`.
+	/// Changes after a file import, a migration, or a rule applied to all, so that the transaction table
+	/// starts over instead of inserting thousands of rows one by one. A refresh updates the rows in place
+	/// (issue #135). See `TransactionTable`.
 	private(set) var tableGeneration = 0
 	/// Column widths and order of the transaction table. They live here, so a new table keeps them.
 	var transactionColumns = TableColumnCustomization<Transaction>()
@@ -950,7 +951,11 @@ final class AppModel {
 		guard let store else { return Reconciliation() }
 		let result = try store.merge(delivery, into: accountID)
 		ledger.apply(result)
-		if !result.added.isEmpty || !result.dropped.isEmpty { tableGeneration += 1 }
+		// A file can bring thousands of rows, so the transaction table starts over after an import. A refresh
+		// changes the rows of the table in place. Replacing the table in the same update as the rows that its
+		// cells read let SwiftUI run a queued update of the removed table, and AttributeGraph stopped the app
+		// (issue #135). A refresh usually brings few rows.
+		if case .file = delivery, !result.added.isEmpty || !result.dropped.isEmpty { tableGeneration += 1 }
 		return result
 	}
 }
