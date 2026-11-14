@@ -200,6 +200,18 @@ import Testing
 		#expect(other.sent.isEmpty && listed.sent.isEmpty)
 	}
 
+	/// Each made-up bank of the `ext` tests listens on a free port, so a test host passes on any port.
+	/// Every other name still needs the HTTPS port.
+	@Test func testHostPassesOnAnyPort() {
+		let exchanges = [("GET", "https://bank.localhost:52144/", 200, Self.page, ""), ("GET", "https://api.bank.example:52144/", 200, Self.page, "")]
+		let local = Run(demo(Self.script("https://bank.localhost:52144/")), exchanges: exchanges, testHosts: ["bank.localhost"])
+		#expect(local.call("Check") != .null)
+		#expect(local.asked == ["bank.localhost"] && local.sent == ["GET https://bank.localhost:52144/"])
+		let other = Run(demo(Self.script("https://api.bank.example:52144/")), exchanges: exchanges, testHosts: ["bank.localhost"])
+		#expect(other.call("Check") == .string("error: Demo.lua:3: Moneten sends requests only to a plain host name on the HTTPS port, not to https://api.bank.example:52144/."))
+		#expect(other.asked.isEmpty && other.sent.isEmpty)
+	}
+
 	@Test func redirectToAnIPAddressIsNeverAsked() {
 		let run = Run(demo(Self.script("https://api.bank.example/local")), exchanges: Self.everyHost)
 		#expect(run.call("Check") == .string("error: Demo.lua:3: Moneten sends requests only to a plain host name on the HTTPS port, not to https://127.0.0.1/."))
