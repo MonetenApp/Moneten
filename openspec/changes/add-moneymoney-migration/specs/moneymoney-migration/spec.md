@@ -99,7 +99,7 @@ The app SHALL take over the categorization rule of each category when the export
 #### Scenario: Lower case operators keep their meaning
 
 - **GIVEN** the category "Salary" has the rule `"Lohn" or "Gehalt"` in the source
-- **WHEN** the migration finishes and a refresh brings a transaction of 2.500,00 € with the purpose "Gehalt Oktober"
+- **WHEN** the migration finishes and the user imports a file into "Giro" with a transaction of 2.500,00 € and the purpose "Gehalt Oktober"
 - **THEN** the category "Salary" has the rule `"Lohn" or "Gehalt"`
 - **AND** the transaction is in "Salary"
 
@@ -123,9 +123,26 @@ The app SHALL store a migrated rule that it cannot parse with its text unchanged
 #### Scenario: One part of a rule cannot be read
 
 - **GIVEN** the category "Fees" has the rule `"Gebühr" OR purpose:/GA NR[0-9/` in the source, whose regular expression is not valid, and no other category has a rule
-- **WHEN** the migration finishes and a refresh brings a transaction of -2,50 € with the purpose "Gebühr Oktober"
+- **WHEN** the migration finishes and the user imports a file into "Giro" with a transaction of -2,50 € and the purpose "Gebühr Oktober"
 - **THEN** the report lists the rule of "Fees" with the position of the regular expression and the reason that it is not valid
 - **AND** the transaction is in "Uncategorized" and not in "Fees"
+
+### Requirement: Migrated rules that search only account numbers
+
+The app SHALL list in the report every migrated rule whose terms are all IBANs or account numbers without a field operator. The app does not search the account fields with such a term, so the rule no longer finds transactions by their account. The report entry names the category and says that `remote_account:` before a number searches the account of the counterparty. The rule stays unchanged.
+
+#### Scenario: Rule with an IBAN only
+
+- **GIVEN** the category "Rent" has the rule `DE02120300000000202051` in the source
+- **WHEN** the migration finishes
+- **THEN** the report says that the rule of "Rent" does not search the account fields and that `remote_account:DE02120300000000202051` finds the account of the counterparty
+- **AND** the category "Rent" has the rule `DE02120300000000202051`
+
+#### Scenario: Rule with a word and an IBAN
+
+- **GIVEN** the category "Rent" has the rule `"Miete" OR DE02120300000000202051` in the source
+- **WHEN** the migration finishes
+- **THEN** the report does not list the rule of "Rent"
 
 ### Requirement: Transactions
 
@@ -279,7 +296,7 @@ The app SHALL show a report after the import. The report lists for each account 
 
 - **GIVEN** a version of the app without budgets, and a source in which "Food" has a budget of 200,00 € per month and "Leisure" has a budget of 50,00 € per month
 - **WHEN** the migration finishes
-- **THEN** the report says that 2 categories have a budget in the source, and that a later migration run takes the budgets over when the app supports budgets
+- **THEN** the report says that 2 categories have a budget in the source and that the app did not take the budgets over
 
 #### Scenario: Icons
 

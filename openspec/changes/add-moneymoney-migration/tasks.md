@@ -22,14 +22,18 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [ ] 1.16 Report. Built in part: counts and notes. The notes on what is not migrated, on budgets, and on icons come in 2.3 and 2.4. Finish it and verify it with a test or in the app.
 - [x] 1.17 The report contains no secrets. Verified by the report holds counts and notes only.
 - [ ] 1.18 Category colors. Built: the color of the icon of each category, verified by MoneyMoneyMigrationTests "The color of a category comes from its icon" and "Categories take the color of MoneyMoney". Verify it with the real export, which was locked in MoneyMoney when this was built.
-- [ ] 1.19 Migrated rules that the app cannot read. Not built: the plan takes every rule over without parsing it, and the report names no unreadable rule. Build it in 2.1 and 2.2.
+- [ ] 1.19 Migrated rules that the app cannot read. Not built: the plan takes every rule over without parsing it, and the report names no unreadable rule. Build it in 2.1 and 2.2. The category settings part is 2.5.
+- [ ] 1.20 Migrated rules that search only account numbers. Not built. Build it in 2.6 and 2.7.
 
 ## 2. Changes to the first build
 
 - [ ] 2.1 Write MoneyMoneyMigrationTests tests for the scenarios "Missing parenthesis" and "One part of a rule cannot be read": the rule is stored unchanged, and the plan has a note with the category, the position, and the reason.
 - [ ] 2.2 Parse each rule in `MoneyMoneyMigration.plan` in `Sources/Import/MoneyMoneyMigration.swift` and add the note until the tests of 2.1 pass.
-- [ ] 2.3 Write MoneyMoneyMigrationTests tests for the scenarios "Not migrated", "Budgets in a version without budgets", and "Icons", with a synthetic category export that carries two budgets.
+- [ ] 2.3 Write MoneyMoneyMigrationTests tests for the scenarios "Not migrated", "Budgets in a version without budgets", and "Icons", with a synthetic category export that carries two budgets. The budget note says that the budgets were not taken over and nothing more.
 - [ ] 2.4 Add the notes on login data, templates, standing orders, statements, budgets, and icons to the plan until the tests of 2.3 pass.
+- [ ] 2.5 The category settings check the stored rule when they open, show the message of a rule that cannot be read, and keep OK disabled until the rule can be read. Covered by pull request #141 in `App/Sources/Views/CategorySettingsSheet.swift`. Check this task when #141 is merged and the settings of "Salary" in the scenario "Missing parenthesis" show the message.
+- [ ] 2.6 Write MoneyMoneyMigrationTests tests for the scenarios "Rule with an IBAN only" and "Rule with a word and an IBAN": the first rule has a note with the category and `remote_account:DE02120300000000202051`, the second has none, and both rules are stored unchanged.
+- [ ] 2.7 Add the note for rules whose terms are all IBANs or account numbers to `MoneyMoneyMigration.plan` in `Sources/Import/MoneyMoneyMigration.swift` until the tests of 2.6 pass.
 
 ## 3. Integration
 

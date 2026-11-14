@@ -22,16 +22,17 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [x] 1.16 Applying a rule to all transactions replaces earlier assignments. Verified by CategorizerTests "A transaction that no longer matches leaves the category".
 - [ ] 1.17 Progress while a rule is applied. Built in part: the rule runs in the background and reports the count at the end, but shows no progress line. Finish it and verify it with a test or in the app.
 - [ ] 1.18 Help for the rule language. Built in part: the help button opens a popover with one example per operator of the first build. The new forms come in 2.3.
-- [x] 1.19 A term matches a whole word. Verified by RuleTests "Wildcards", where `"Kundennummer 67890"` does not match "Kundennummer 67890/Rechnung 12345".
+- [ ] 1.19 A term matches a whole word. Built: RuleTests "Wildcards" shows it for a slash, where `"Kundennummer 67890"` does not match "Kundennummer 67890/Rechnung 12345". Check it when 2.6 shows it for a hyphen.
 - [ ] 1.20 The rules true and false. Not built. Build it in 2.1 and 2.2.
 
 ## 2. Changes to the first build
 
-- [ ] 2.1 Write RuleTests for the scenarios of "Logical operators", "The rules true and false", "Field operators", and "Amount comparisons": operators in lower and mixed case, `+`, `!`, `-` before a term, `true`, `false`, `name<>`, `currency=`, `currency==`, `currency:=`, and `amount<>`. Replace the test "Lower case operator is a term" with the scenario "Lower case operator".
-- [ ] 2.2 Change the tokenizer and the parser in `Sources/Domain/Rule.swift` until the tests of 2.1 pass. Keep `amount=-89,00` an amount comparison and "EC-Karte" one word.
-- [ ] 2.3 Add an example for `+`, `!`, `-`, `true`, `false`, `<>`, and `:=` to the help popover of the category settings.
+- [ ] 2.1 Write RuleTests for the scenarios of "Logical operators", "The rules true and false", "Field operators", and "Amount comparisons": operators in lower and mixed case, `+`, `!`, `-` before a term, `-12,50` as a term, a quoted "or" and "true" as terms, `true`, `false`, `name<>`, `currency=`, `currency==`, `currency:=`, and `amount<>` with a row of 0,00 €. Each test checks the row that matches and the row that does not. Replace the test "Lower case operator is a term" with the scenario "Lower case operator".
+- [ ] 2.2 Change the tokenizer and the parser in `Sources/Domain/Rule.swift` until the tests of 2.1 pass. Keep `amount=-89,00` an amount comparison, `-12,50` one term, and "EC-Karte" one word.
+- [ ] 2.3 Add an example for `+`, `!`, `-`, `true`, `false`, `<>`, and `:=` to the help popover in `App/Sources/Views/CategorySettingsSheet.swift`. Replace the line "AND, OR, and NOT must be written in capitals." with one that says the operators work in any letter case and a quoted word stays a search word. Add that a word without a field does not search account numbers or IBANs, and that `local_account:` and `remote_account:` do.
 - [ ] 2.4 Write the RuleTests test "IBAN without a field operator" from the scenario of "Unqualified terms search all text fields".
 - [ ] 2.5 Remove `localAccount` and `remoteAccount` from `RuleField.unqualified` in `Sources/Domain/Rule.swift` until the test of 2.4 passes.
+- [ ] 2.6 Write RuleTests for the scenarios of "A term matches a whole word": `"REWE"` does not match "REWE-Markt", matches "REWE Markt Musterstadt", and `"REWE*"` matches "REWE-Markt".
 
 ## 3. Integration
 

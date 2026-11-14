@@ -110,7 +110,7 @@ The app SHALL support the wildcard `*` for any number of characters and the wild
 
 ### Requirement: Logical operators
 
-The app SHALL combine expressions with the operators `AND`, `OR`, and `NOT` in any letter case, and it SHALL group expressions with parentheses. `AND` binds more strongly than `OR`. A plus sign between two expressions means `AND`. An exclamation mark, or a minus sign that is not the sign of an amount, before an expression means `NOT`. Two expressions with no operator between them are combined with `AND`.
+The app SHALL combine expressions with the operators `AND`, `OR`, and `NOT` in any letter case, and it SHALL group expressions with parentheses. `AND` binds more strongly than `OR`. A plus sign between two expressions means `AND`. An exclamation mark, or a minus sign before an expression that does not start with a digit, means `NOT`. A word in quotation marks is always a term. Two expressions with no operator between them are combined with `AND`.
 
 #### Scenario: Either word
 
@@ -139,8 +139,8 @@ The app SHALL combine expressions with the operators `AND`, `OR`, and `NOT` in a
 #### Scenario: Mixed case operator
 
 - **GIVEN** the rule `"EC-Karte" And Not "Barauszahlung"`
-- **WHEN** a transaction has the purpose "EC-Karte Barauszahlung"
-- **THEN** the rule does not match
+- **WHEN** one transaction has the purpose "EC-Karte Supermarkt" and another has the purpose "EC-Karte Barauszahlung"
+- **THEN** the rule matches the first and not the second
 
 #### Scenario: Short forms
 
@@ -151,12 +151,24 @@ The app SHALL combine expressions with the operators `AND`, `OR`, and `NOT` in a
 #### Scenario: Minus before a term
 
 - **GIVEN** the rule `"Amazon" -"Erstattung"`
-- **WHEN** a transaction has the purpose "Amazon Erstattung" and the amount 19,99 €
-- **THEN** the rule does not match
+- **WHEN** one transaction has the purpose "Amazon Bestellung" and the amount -19,99 €, and another has the purpose "Amazon Erstattung" and the amount 19,99 €
+- **THEN** the rule matches the first and not the second
+
+#### Scenario: Minus before a number
+
+- **GIVEN** the rule `-12,50`
+- **WHEN** one transaction has the purpose "Rückbuchung -12,50" and another has the purpose "Miete November"
+- **THEN** the rule matches the first and not the second, because `-12,50` is a term and not `NOT` before 12,50
+
+#### Scenario: Operator word in quotation marks
+
+- **GIVEN** the rule `"Lohn" "or" "Gehalt"`
+- **WHEN** one transaction has the purpose "Lohn or Gehalt" and another has the purpose "Gehalt Oktober"
+- **THEN** the rule matches the first and not the second, because a quoted "or" is a term
 
 ### Requirement: The rules true and false
 
-The app SHALL read the words `true` and `false` in any letter case as rules of their own. `true` matches every transaction, and `false` matches none.
+The app SHALL read the words `true` and `false` in any letter case and without quotation marks as rules of their own. `true` matches every transaction, and `false` matches none. A quoted `"true"` or `"false"` is a term.
 
 #### Scenario: Catch-all category
 
@@ -167,8 +179,14 @@ The app SHALL read the words `true` and `false` in any letter case as rules of t
 #### Scenario: Rule that matches nothing
 
 - **GIVEN** the rule `FALSE`
-- **WHEN** a transaction has the purpose "Gehalt Oktober"
+- **WHEN** a transaction has the purpose "False Angabe korrigiert"
 - **THEN** the rule does not match
+
+#### Scenario: Quoted true is a word
+
+- **GIVEN** the rule `"true"`
+- **WHEN** one transaction has the purpose "true fruits Smoothie" and another has the purpose "Miete November"
+- **THEN** the rule matches the first and not the second
 
 ### Requirement: Field operators
 
@@ -222,8 +240,8 @@ The app SHALL compare the amount of a transaction with a value through `amount=`
 
 #### Scenario: Not equal
 
-- **GIVEN** the rule `amount<>0 AND currency:EUR`
-- **WHEN** one transaction has the amount -1,50 € and another has the amount -1,50 USD
+- **GIVEN** the rule `amount<>0`
+- **WHEN** one transaction has the amount -1,50 € and another has the amount 0,00 €
 - **THEN** the rule matches the first and not the second
 
 ### Requirement: Regular expressions
