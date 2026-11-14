@@ -315,14 +315,15 @@ extension AccountResult {
 			let rate: String
 		}
 
-		/// The position in the app. Its name is the name of the bank, or else its ISIN or WKN. A nominal amount
-		/// is in the currency of the security, or else of its value, or else of the account.
+		/// The position in the app. Its name is the name of the bank, or else its ISIN or WKN. A nominal amount is in
+		/// the currency of the security. Without one its currency stays unknown: the value of the bank may already be
+		/// converted into another currency, so it does not tell the currency of the nominal amount.
 		func holding(of account: AccountRequest) throws -> Holding {
 			guard let quantity else { throw HelperFailure.unreadable }
 			let value = try value.map { try AccountResult.money($0.amount, $0.currency ?? account.currency) }
 			let exchangeRate = try rate.map { ExchangeRate(base: $0.base, quoted: $0.quoted, rate: try AccountResult.decimal($0.rate)) }
 			return Holding(accountID: account.accountID, security: Security(name: name ?? isin ?? wkn ?? "", isin: isin, securityNumber: wkn),
-				quantity: try AccountResult.decimal(quantity), nominalCurrency: nominal == true ? currency ?? value?.currency ?? account.currency : nil,
+				quantity: try AccountResult.decimal(quantity), isNominal: nominal == true, nominalCurrency: nominal == true ? currency : nil,
 				quote: try price.map(Self.quote), marketValue: value, accruedInterest: try accrued.map { try AccountResult.money($0.amount, $0.currency ?? account.currency) },
 				purchasePrice: try purchase.map(Self.quote), exchangeRate: exchangeRate)
 		}

@@ -542,9 +542,9 @@ struct FinTSConnectorTests {
 				marketValue: Money(minorUnits: 100_000, currency: "EUR"), accruedInterest: Money(minorUnits: 10, currency: "EUR"),
 				purchasePrice: Quote(amount: Decimal(string: "20.5", locale: posix)!, currency: "USD", day: Day(year: 2024, month: 3, day: 1)),
 				exchangeRate: ExchangeRate(base: "EUR", quoted: "USD", rate: Decimal(string: "1.0845", locale: posix)!)))
-			// A nominal amount without a currency of the security is in the currency of its value. "%" is a percentage.
+			// A nominal amount without a currency of the security keeps its currency unknown. "%" is a percentage.
 			#expect(held[1] == Holding(id: held[1].id, accountID: depots[5].accountID, security: Security(name: "Anleihe Musterland"), quantity: 5000,
-				nominalCurrency: "EUR", quote: Quote(amount: Decimal(string: "98.5", locale: posix)!, currency: nil),
+				isNominal: true, quote: Quote(amount: Decimal(string: "98.5", locale: posix)!, currency: nil),
 				marketValue: Money(minorUnits: 492_500, currency: "EUR"), purchasePrice: Quote(amount: 97, currency: nil)))
 		}
 		let failures = depots.dropFirst().prefix(3).map { request -> SyncFailure? in

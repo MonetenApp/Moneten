@@ -272,6 +272,7 @@ enum Schema {
 				t.column("isin", .text)
 				t.column("securityNumber", .text)
 				t.column("quantity", .text).notNull()
+				t.column("isNominal", .boolean).notNull()
 				t.column("nominalCurrency", .text)
 				t.column("price", .text)
 				t.column("priceCurrency", .text)

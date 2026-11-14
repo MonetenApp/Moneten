@@ -58,9 +58,10 @@ public struct Holding: Identifiable, Hashable, Sendable {
 	public var id: UUID
 	public var accountID: UUID
 	public var security: Security
-	/// A number of units, or a nominal amount in `nominalCurrency`.
+	/// A number of units, or a nominal amount when `isNominal` is set.
 	public var quantity: Decimal
-	/// The currency of a nominal amount. Nil for a number of units.
+	public var isNominal: Bool
+	/// The currency of a nominal amount, nil when the source names none. Without it, a percentage gives no value and no gain.
 	public var nominalCurrency: String?
 	public var quote: Quote?
 	/// The market value that the source reports, without accrued interest.
@@ -71,12 +72,13 @@ public struct Holding: Identifiable, Hashable, Sendable {
 	/// The rate that converts the quote or the purchase price into the currency of the value.
 	public var exchangeRate: ExchangeRate?
 
-	public init(id: UUID = UUID(), accountID: UUID, security: Security, quantity: Decimal, nominalCurrency: String? = nil, quote: Quote? = nil,
+	public init(id: UUID = UUID(), accountID: UUID, security: Security, quantity: Decimal, isNominal: Bool = false, nominalCurrency: String? = nil, quote: Quote? = nil,
 		marketValue: Money? = nil, accruedInterest: Money? = nil, purchasePrice: Quote? = nil, exchangeRate: ExchangeRate? = nil) {
 		self.id = id
 		self.accountID = accountID
 		self.security = security
 		self.quantity = quantity
+		self.isNominal = isNominal
 		self.nominalCurrency = nominalCurrency
 		self.quote = quote
 		self.marketValue = marketValue
@@ -126,7 +128,8 @@ public struct Holding: Identifiable, Hashable, Sendable {
 		return worth
 	}
 
-	/// The quantity at a price, in the currency of the price, or of the nominal amount for a percentage.
+	/// The quantity at a price, in the currency of the price, or of the nominal amount for a percentage. Nil for a
+	/// percentage of a nominal amount whose currency is unknown, because guessing it would convert a foreign bond wrongly.
 	private func worth(at price: Quote) -> (amount: Decimal, currency: String)? {
 		if let currency = price.currency { return (quantity * price.amount, currency) }
 		guard let nominalCurrency else { return nil }

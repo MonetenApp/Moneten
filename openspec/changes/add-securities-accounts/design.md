@@ -27,7 +27,7 @@ The following requirements stay open in `tasks.md` and keep the spec as the targ
 - `Security`: `name`, `isin?`, `securityNumber?`. The security number is the WKN that MT535 sends after `/DE/`.
 - `Quote`: `amount: Decimal`, `currency: String?`, `day: Day?`. A quote without a currency is a percentage of the nominal amount, as the price of a bond. The purchase price is a `Quote` too, with the purchase day as its day.
 - `ExchangeRate`: `base`, `quoted`, `rate: Decimal`. One unit of `base` costs `rate` units of `quoted`, as in field 92B of MT535 and in the unit currency and quoted currency of ISO 20022. `convert(_:from:to:)` works in both directions and returns nil for any other pair of currencies.
-- `Holding`: `id`, `accountID`, `security`, `quantity: Decimal`, `nominalCurrency?`, `quote?`, `marketValue: Money?`, `accruedInterest: Money?`, `purchasePrice: Quote?`, `exchangeRate?`. A quantity with a `nominalCurrency` is a nominal amount, and one without is a number of units.
+- `Holding`: `id`, `accountID`, `security`, `quantity: Decimal`, `isNominal`, `nominalCurrency?`, `quote?`, `marketValue: Money?`, `accruedInterest: Money?`, `purchasePrice: Quote?`, `exchangeRate?`. A quantity with `isNominal` is a nominal amount, and one without is a number of units. The currency of a nominal amount can be unknown.
 
 Prices and quantities are `Decimal` and keep every decimal place that the bank sends. The database stores them as text, because SQLite has no decimal type and a double loses places. The amounts that the bank sends as a value (HOLD) and as accrued interest (ACRU) have the decimals of their currency, so they are `Money` with minor units, as every other amount of the app.
 
@@ -49,7 +49,7 @@ hbci4java drops some fields of MT535 that the spec names: the time of a quote th
 
 ### The connector maps the positions
 
-`AccountResult` in `Sources/FinTS/HelperProtocol.swift` decodes `holdings` and maps each one to a `Holding` of the requested account. The name is the name of the bank, or else the ISIN, or else the WKN. The currency of a nominal amount is the currency of the security, or else the currency of the value, or else the currency of the account. A number that does not read fails the account, as a row of a transaction does. `RefreshResult.holdings` carries them, and nil means that the source sent no positions, as an extension today, so nothing replaces the stored ones.
+`AccountResult` in `Sources/FinTS/HelperProtocol.swift` decodes `holdings` and maps each one to a `Holding` of the requested account. The name is the name of the bank, or else the ISIN, or else the WKN. The currency of a nominal amount is the currency of the security (70E). Without it the currency stays unknown, and the quantity shows without a currency: the value of the bank may already be converted into the currency of the depot, so it does not tell the currency of a foreign bond, and a guess would show a wrong gain. Such a position shows the value of the bank and no gain. A number that does not read fails the account, as a row of a transaction does. `RefreshResult.holdings` carries them, and nil means that the source sent no positions, as an extension today, so nothing replaces the stored ones.
 
 ### The merge replaces the positions
 

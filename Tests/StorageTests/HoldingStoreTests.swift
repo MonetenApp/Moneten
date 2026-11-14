@@ -29,7 +29,7 @@ struct HoldingStoreTests {
 	}
 
 	var bond: Holding {
-		Holding(id: bondID, accountID: depot.id, security: Security(name: "Anleihe Musterland"), quantity: 5000, nominalCurrency: "EUR",
+		Holding(id: bondID, accountID: depot.id, security: Security(name: "Anleihe Musterland"), quantity: 5000, isNominal: true, nominalCurrency: "EUR",
 			quote: Quote(amount: decimal("98.5"), currency: nil), purchasePrice: Quote(amount: 97, currency: nil))
 	}
 

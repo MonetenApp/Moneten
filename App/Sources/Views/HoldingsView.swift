@@ -146,11 +146,14 @@ struct TotalGainText: View {
 }
 
 extension Format {
-	/// "40 shares", "12,3456 shares", "1 share", or a nominal amount such as "5.000,00 €", with every decimal place of the source.
+	/// "40 shares", "12,3456 shares", "1 share", or a nominal amount such as "5.000,00 €", or "5.000,00" without a
+	/// known currency, with every decimal place of the source.
 	static func quantity(_ h: Holding) -> String {
 		let places = decimalPlaces(of: h.quantity)
-		if let currency = h.nominalCurrency {
-			return signed(h.quantity.formatted(.currency(code: currency).precision(.fractionLength(2...max(2, places)))))
+		if h.isNominal {
+			let precision = NumberFormatStyleConfiguration.Precision.fractionLength(2...max(2, places))
+			guard let currency = h.nominalCurrency else { return signed(h.quantity.formatted(.number.precision(precision))) }
+			return signed(h.quantity.formatted(.currency(code: currency).precision(precision)))
 		}
 		let number = signed(h.quantity.formatted(.number.precision(.fractionLength(0...places))))
 		return h.quantity == 1 ? "\(number) share" : "\(number) shares"

@@ -72,7 +72,7 @@ struct HoldingTests {
 
 	@Test("A bond values its nominal amount at a percentage, with its accrued interest, and the gain leaves the interest out")
 	func bond() {
-		var bond = Holding(accountID: depot, security: Security(name: "Anleihe Musterland"), quantity: 5000, nominalCurrency: "EUR",
+		var bond = Holding(accountID: depot, security: Security(name: "Anleihe Musterland"), quantity: 5000, isNominal: true, nominalCurrency: "EUR",
 			quote: Quote(amount: decimal("98.50"), currency: nil))
 		#expect(bond.value(in: "EUR") == euro("4925.00"))
 		bond.marketValue = euro("4925.00")
@@ -107,12 +107,25 @@ struct HoldingTests {
 
 	@Test("Accrued interest in the currency of the quote converts with the value, and stays out of the value when it cannot")
 	func foreignAccruedInterest() {
-		var bond = Holding(accountID: depot, security: Security(name: "Treasury Muster"), quantity: 1000, nominalCurrency: "USD",
+		var bond = Holding(accountID: depot, security: Security(name: "Treasury Muster"), quantity: 1000, isNominal: true, nominalCurrency: "USD",
 			quote: Quote(amount: 100, currency: nil), accruedInterest: Money(minorUnits: 2_000, currency: "USD"),
 			exchangeRate: ExchangeRate(base: "EUR", quoted: "USD", rate: 2))
 		#expect(bond.value(in: "EUR") == euro("510"))
 		bond.accruedInterest = Money(minorUnits: 2_000, currency: "CHF")
 		#expect(bond.value(in: "EUR") == euro("500"))
+	}
+
+	@Test("A nominal amount without a currency has no computed value and no gain, and keeps the value of the bank")
+	func nominalWithoutCurrency() {
+		var bond = Holding(accountID: depot, security: Security(name: "Treasury Muster"), quantity: 1000, isNominal: true,
+			quote: Quote(amount: 100, currency: nil), purchasePrice: Quote(amount: 100, currency: nil),
+			exchangeRate: ExchangeRate(base: "EUR", quoted: "USD", rate: decimal("1.25")))
+		#expect(bond.value(in: "EUR") == nil)
+		bond.marketValue = euro("800")
+		#expect(bond.value(in: "EUR") == euro("800"))
+		#expect(bond.gain(in: "EUR") == nil)
+		bond.nominalCurrency = "USD"
+		#expect(bond.gain(in: "EUR") == Holding.Gain(amount: euro("0"), percent: 0))
 	}
 
 	@Test("A position without a value and without a quote has no value")

@@ -13,6 +13,7 @@ struct HoldingRecord: Codable, FetchableRecord, PersistableRecord, TableRecord {
 	var isin: String?
 	var securityNumber: String?
 	var quantity: String
+	var isNominal: Bool
 	var nominalCurrency: String?
 	var price: String?
 	var priceCurrency: String?
@@ -35,6 +36,7 @@ struct HoldingRecord: Codable, FetchableRecord, PersistableRecord, TableRecord {
 		isin = h.security.isin
 		securityNumber = h.security.securityNumber
 		quantity = h.quantity.description
+		isNominal = h.isNominal
 		nominalCurrency = h.nominalCurrency
 		price = h.quote?.amount.description
 		priceCurrency = h.quote?.currency
@@ -60,7 +62,7 @@ struct HoldingRecord: Codable, FetchableRecord, PersistableRecord, TableRecord {
 			exchangeRate = ExchangeRate(base: rateBase, quoted: rateQuoted, rate: rate)
 		}
 		return Holding(id: id, accountID: accountID, security: Security(name: name, isin: isin, securityNumber: securityNumber), quantity: quantity,
-			nominalCurrency: nominalCurrency, quote: price.flatMap(Self.decimal).map { Quote(amount: $0, currency: priceCurrency, day: priceDay) },
+			isNominal: isNominal, nominalCurrency: nominalCurrency, quote: price.flatMap(Self.decimal).map { Quote(amount: $0, currency: priceCurrency, day: priceDay) },
 			marketValue: money(marketValueMinor, marketValueCurrency), accruedInterest: money(accruedInterestMinor, accruedInterestCurrency),
 			purchasePrice: purchasePrice.flatMap(Self.decimal).map { Quote(amount: $0, currency: purchasePriceCurrency, day: purchaseDay) },
 			exchangeRate: exchangeRate)
