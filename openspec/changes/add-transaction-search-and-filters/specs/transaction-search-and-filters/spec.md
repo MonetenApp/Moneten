@@ -79,7 +79,7 @@ The app SHALL show a transaction only when every word of the search text occurs 
 
 ### Requirement: The search accepts the rule language
 
-The app SHALL accept every expression of the categorization rule language in the search field, with the same meaning as in a rule. A plain search word without a field name searches the fields that the requirement on searched fields names, so it also finds account numbers, IBANs, and the category name.
+The app SHALL accept every expression of the categorization rule language in the search field, with the same meaning as in a rule. A plain search word without a field name searches the fields that the requirement on searched fields names, so it finds account numbers, IBANs, and the category name.
 
 #### Scenario: Field operator and amount
 
@@ -103,7 +103,7 @@ The app SHALL find a transaction by its amount when the user enters the amount w
 
 ### Requirement: Count and sum of the results
 
-The app SHALL show the number of found transactions and their sum in the status line while a search or a filter is active. Amounts in different currencies are summed for each currency.
+The app SHALL show the number of found transactions and their sum in the status line while a search or a filter is active. A pending transaction marked for review counts in the number but not in the sum, as the capability `account-refresh` states. Amounts in different currencies are summed for each currency.
 
 #### Scenario: Sum of a search
 
