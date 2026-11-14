@@ -15,23 +15,10 @@ final class AccountSetup {
 		case offline
 	}
 
-	/// The services under "Other": an offline account, and each service of an installed extension that
-	/// may run, which goes on to the login dialog of the extension.
-	enum Service: Hashable {
-		case offline
-		case extensionService(id: String, name: String)
-
-		var title: String {
-			switch self {
-			case .offline: "Offline account / Cash"
-			case let .extensionService(_, name): name
-			}
-		}
-	}
-
-	/// The services of the extensions that may run, as the library lists them with the rows of the Extensions window.
-	var otherServices: [Service] {
-		[.offline] + model.extensions.setupServices.map { Service.extensionService(id: $0.id, name: $0.service) }
+	/// The entries of "Other": the services of the extensions that may run, which the library lists with the
+	/// rows of the Extensions window, and the offline account.
+	var otherServices: [SetupService] {
+		SetupService.menu(extensionServices: model.extensions.setupServices)
 	}
 
 	/// Why the extension of the chosen service cannot run now.
@@ -62,7 +49,7 @@ final class AccountSetup {
 	/// The match that "Next" chooses, which the arrow keys move.
 	var highlighted = 0
 	/// The choice under "Other" in place of a bank.
-	var service: Service? {
+	var service: SetupService? {
 		didSet { serviceError = nil }
 	}
 	var usesOther: Bool { service != nil }
@@ -346,8 +333,8 @@ struct AccountSetupSheet: View {
 		}
 		Section {
 			Picker("Other", selection: $setup.service) {
-				Text("None").tag(AccountSetup.Service?.none)
-				ForEach(setup.otherServices, id: \.self) { Text($0.title).tag(AccountSetup.Service?.some($0)) }
+				Text("None").tag(SetupService?.none)
+				ForEach(setup.otherServices, id: \.self) { Text($0.title).tag(SetupService?.some($0)) }
 			}
 			.onChange(of: setup.otherServices) { _, services in
 				// An extension that was blocked or removed while the assistant is open leaves the choice.
