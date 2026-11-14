@@ -47,7 +47,7 @@ struct DrawProbe: View {
 	var body: some View {
 		Color.clear
 			.frame(width: 0, height: 0)
-			.onChange(of: model.drawRequest) { model.didDraw() }
+			.onChange(of: model.drawRequest) { _, seen in model.didDraw(upTo: seen) }
 			.onAppear { model.probeAppeared() }
 			.onDisappear { model.probeDisappeared() }
 	}

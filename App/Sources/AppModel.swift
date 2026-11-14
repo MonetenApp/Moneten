@@ -201,9 +201,11 @@ final class AppModel {
 	@ObservationIgnored private var tableUndrawn = false
 	@ObservationIgnored private var watchesDrawing = false
 	/// Counts the drawings that changes wait for. `DrawProbe` in the transaction view reads it and reports
-	/// each one back once SwiftUI has updated that view.
+	/// the number it saw once SwiftUI has updated that view.
 	private(set) var drawRequest = 0
-	@ObservationIgnored private var drawWaiters: [@MainActor () -> Void] = []
+	/// Each work waits for the number that its call of `afterDraw` set, so a drawing that came before the call
+	/// never releases it, also when the call came from an action inside that update.
+	@ObservationIgnored private var drawWaiters: [(request: Int, work: @MainActor () -> Void)] = []
 	@ObservationIgnored private var drawProbes = 0
 	var period: PeriodChoice = .all {
 		didSet {
@@ -613,26 +615,28 @@ final class AppModel {
 	// MARK: Accounts and groups
 
 	func save(account: Account) {
-		guard let store else { return }
-		do {
-			try store.save(account)
-			// An account with rows that changes its group inserts or removes all of them in the open group view,
-			// which removes shown rows in place (issue #135), so it comes with a new table.
-			let moves = ledger.account(account.id).map { $0.groupID != account.groupID } == true && ledger.accountsWithTransactions.contains(account.id)
-			if moves, case .group = tableKey.selection {
-				Task { await replacingTable { take(account) } }
-			} else {
-				take(account)
-			}
-		} catch {
-			alert = AlertMessage(title: "Could not save the account.", message: String(describing: error))
+		// An account with rows that changes its group inserts or removes all of them in the open group view,
+		// which removes shown rows in place (issue #135), so it comes with a new table. The database and the
+		// ledger change together after the placeholder, so that a refresh that ends meanwhile reads and writes
+		// the account as the database has it.
+		let moves = ledger.account(account.id).map { $0.groupID != account.groupID } == true && ledger.accountsWithTransactions.contains(account.id)
+		if moves, case .group = tableKey.selection {
+			Task { await replacingTable { write(account) } }
+		} else {
+			write(account)
 		}
 	}
 
-	private func take(_ account: Account) {
-		ledger.upsert(account)
-		if let value = account.portfolioValue() { ledger.record(value) }
-		ledger.replace()
+	private func write(_ account: Account) {
+		guard let store else { return }
+		do {
+			try store.save(account)
+			ledger.upsert(account)
+			if let value = account.portfolioValue() { ledger.record(value) }
+			ledger.replace()
+		} catch {
+			alert = AlertMessage(title: "Could not save the account.", message: String(describing: error))
+		}
 	}
 
 	/// Opens the "Add Account" assistant. The new accounts go into `group`.
@@ -1160,31 +1164,30 @@ final class AppModel {
 			Task { @MainActor in work() }
 			return
 		}
-		drawWaiters.append(work)
-		guard drawWaiters.count == 1 else { return }
-		drawRequest &+= 1
+		drawRequest += 1
 		let request = drawRequest
+		drawWaiters.append((request, work))
 		DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
 			MainActor.assumeIsolated {
-				guard let self, self.drawRequest == request, !self.drawWaiters.isEmpty else { return }
+				guard let self, self.drawWaiters.contains(where: { $0.request <= request }) else { return }
 				Trail.log("drawing late, released")
-				self.didDraw()
+				self.didDraw(upTo: request)
 			}
 		}
 	}
 
-	/// `DrawProbe` saw `drawRequest` in an update of SwiftUI, or left the screen.
-	func didDraw() {
-		let waiting = drawWaiters
-		drawWaiters = []
-		for work in waiting { work() }
+	/// `DrawProbe` saw `request` in an update of SwiftUI, or left the screen (`Int.max`).
+	func didDraw(upTo request: Int) {
+		let done = drawWaiters.filter { $0.request <= request }
+		drawWaiters.removeAll { $0.request <= request }
+		for waiter in done { waiter.work() }
 	}
 
 	func probeAppeared() { drawProbes += 1 }
 
 	func probeDisappeared() {
 		drawProbes -= 1
-		didDraw()
+		didDraw(upTo: .max)
 	}
 
 	/// A number for an access in the trail, without its name: its place among the accesses.
