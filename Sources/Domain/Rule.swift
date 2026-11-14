@@ -361,6 +361,8 @@ private struct RuleParser {
 			}
 			var word = ""
 			while i < chars.count, !chars[i].isWhitespace, chars[i] != "(", chars[i] != ")", !openQuotes.contains(chars[i]) {
+				// A minus before a quotation mark or a parenthesis is NOT, also right after a word, as in Amazon-"Erstattung".
+				if chars[i] == "-", !word.isEmpty, i + 1 < chars.count, chars[i + 1] == "(" || openQuotes.contains(chars[i + 1]) { break }
 				word.append(chars[i])
 				i += 1
 			}
