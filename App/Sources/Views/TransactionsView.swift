@@ -72,7 +72,8 @@ struct HeaderView: View {
 				if !pending.isEmpty {
 					Text("Pending: \(Format.sums(pending))").font(.subheadline).monospacedDigit().foregroundStyle(Palette.detail)
 				}
-				if case let .account(id) = model.selection, let date = model.ledger.account(id)?.bankBalanceDate {
+				if case let .account(id) = model.selection, let account = model.ledger.account(id), account.reportedBalance != nil,
+					let date = account.bankBalanceDate {
 					Text("Balance as of \(Format.dayAndTime(date))").font(.subheadline).foregroundStyle(Palette.detail)
 				}
 			}
