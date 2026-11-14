@@ -58,6 +58,8 @@ struct FileImportTests {
 		"Date,Payee,Amount\n2026-11-01,Landlord,\"1,234\"\n",
 		"Date,Payee,Amount\n2026-11-01,Kiosk,4.50\n2026-11-02,Landlord,\"12,3,4\"\n",
 		"Datum;Name;Betrag\n01.11.2026;Kiosk;-89,00\n02.11.2026;Vermieter;1.23,45\n",
+		// The other amounts show both marks, so they do not decide how "1,234" reads.
+		"Date,Payee,Amount\n2026-11-01,Kiosk,4.50\n2026-11-02,Bakery,\"-89,00\"\n2026-11-03,Landlord,\"1,234\"\n",
 	])
 	func ambiguousAmount(text: String) {
 		let line = text.split(separator: "\n").count

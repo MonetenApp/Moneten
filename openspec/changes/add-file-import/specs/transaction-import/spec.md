@@ -124,6 +124,12 @@ The app SHALL read amounts with a decimal comma or a decimal point, with or with
 - **WHEN** a total row without a date has the amount "0,00"
 - **THEN** the app reads a deposit of 1.234,00 € and a deposit of 4,50 €
 
+#### Scenario: Amounts with both decimal marks do not decide
+
+- **GIVEN** a CSV file with the amounts "4.50" in line 2 and "-89,00" in line 3
+- **WHEN** line 4 has the amount "1,234"
+- **THEN** the app imports nothing and says that the amount in line 4 cannot be read
+
 #### Scenario: Ambiguous amount fails the file
 
 - **GIVEN** a CSV file whose only amount is "1,234" in line 2
