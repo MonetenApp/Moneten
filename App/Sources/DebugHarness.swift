@@ -365,9 +365,7 @@ final class DebugHarness {
 			case "accountSettings": if case let .account(id) = model.selection { model.sheet = .accountSettings(id) }
 			case "transaction": model.sheet = .transaction(model.visibleTransactions.first?.id)
 			// What ⌘K does, for a run without a key window, where SwiftUI disables the menu commands.
-			case "assignCategory":
-				let ids = model.visibleSelection
-				if !ids.isEmpty { model.sheet = .assignCategory(ids) }
+			case "assignCategory": model.openCategoryPicker()
 			// The real sheet, as a click on "Add category" in "Assign Category" opens it. "newcategory" skips the sheet.
 			case "newCategory": model.sheet = .newCategory(isGroup: false, assigning: model.visibleSelection)
 			default: model.sheet = nil

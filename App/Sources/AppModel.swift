@@ -606,6 +606,12 @@ final class AppModel {
 		}
 	}
 
+	/// What ⌘K does: the category picker for the selected rows on screen.
+	func openCategoryPicker() {
+		let ids = visibleSelection
+		if !ids.isEmpty { sheet = .assignCategory(ids) }
+	}
+
 	func assign(category: UUID?, to ids: Set<UUID>) {
 		let target = category == ledger.defaultCategory?.id ? nil : category
 		let changed = ids.compactMap { ledger.transaction($0) }.map { t -> Transaction in
