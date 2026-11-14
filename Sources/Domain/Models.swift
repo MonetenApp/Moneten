@@ -64,7 +64,8 @@ public struct Account: Identifiable, Hashable, Sendable, Codable {
 	public var bankCode: String?
 	public var bankName: String?
 	public var owner: String?
-	/// The balance that the bank reported. Offline accounts compute their balance instead.
+	/// The balance that the bank or the migration source reported. Only a portfolio and an account of a bank
+	/// access show it. Other accounts compute their balance.
 	public var bankBalanceMinor: Int64?
 	public var bankBalanceDate: Date?
 	/// The balance before the oldest transaction. Charts start from it.
