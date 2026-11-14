@@ -485,6 +485,18 @@ struct ReconcileTests {
 		#expect(r.account?.bankBalanceDate == now)
 	}
 
+	@Test("The value of a securities account makes an account of another kind a portfolio, which records the value and derives no initial balance")
+	func securitiesValueMakesPortfolio() {
+		let depot = Account(position: 2, name: "Depot", kind: .other, source: .bank)
+		let value = Money(minorUnits: 2_451_837, currency: "EUR")
+		let r = merge(.refresh(RefreshResult(balance: value, transactions: nil, isPortfolio: true)), into: depot)
+		#expect(r.account?.kind == .portfolio)
+		#expect(r.account?.initialBalanceIsSet == false)
+		#expect(r.account?.portfolioValue()?.minorUnits == 2_451_837)
+		let giro = Account(position: 3, name: "Giro", kind: .giro, source: .bank)
+		#expect(merge(.refresh(RefreshResult(balance: value, transactions: nil)), into: giro).account?.kind == .giro)
+	}
+
 	@Test("A balance in another currency is not stored, the transactions are")
 	func balanceInOtherCurrency() {
 		let r = merge(refresh([row(11, -1_250, "Kiosk", "Zeitung")], balance: Money(minorUnits: 501_240, currency: "USD")))

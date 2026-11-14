@@ -143,6 +143,7 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored: [Tran
 		var a = account
 		a.bankBalanceMinor = balance.minorUnits
 		a.bankBalanceDate = result.balanceDate ?? now
+		if result.isPortfolio { a.kind = .portfolio }
 		// A balance whose transactions failed would set the value without the rows that the next refresh brings.
 		if a.derivesInitialBalance, result.transactionFailure == nil {
 			// Dropped and marked rows are pending and do not count.

@@ -346,15 +346,31 @@ final class SelfTest {
 		giro.acctype = "1";
 		expect("securities accounts by their type", FinTSHelper.securities(depot) + " " + FinTSHelper.securities(fund) + " "
 			+ FinTSHelper.securities(giro) + " " + FinTSHelper.securities(untyped), "true true false false");
+		expect("securities accounts by their jobs", FinTSHelper.securities(allowing(null, "HKWPD", "HKWDU")) + " " + FinTSHelper.securities(allowing("", "HKWDU"))
+			+ " " + FinTSHelper.securities(allowing(null, "HKWPD", "HKSAL")) + " " + FinTSHelper.securities(allowing("1", "HKWPD", "HKKAZ"))
+			+ " " + FinTSHelper.securities(allowing(null, "HKWPD", "HKCAZ")), "true true false false false");
+		// The jobs decide also for an account with another type: an account that allows only depot jobs is a depot.
+		expect("accounts of another type with depot jobs only are securities accounts", FinTSHelper.securities(allowing("1", "HKWPD")) + " "
+			+ FinTSHelper.securities(allowing("50", "HKWDU")), "true true");
+		Konto untypedDepot = allowing(null, "HKWPD", "HKWDU");
+		untypedDepot.number = "7654326";
+		untypedDepot.curr = "EUR";
+		expect("depot without a type is listed as a securities account", FinTSHelper.Json.write(FinTSHelper.account(untypedDepot)),
+			"{\"type\":\"account\",\"number\":\"7654326\",\"currency\":\"EUR\",\"securities\":true}");
+		Konto listedGiro = allowing("1", "HKWPD", "HKSAL", "HKKAZ");
+		listedGiro.number = "202051";
+		listedGiro.curr = "EUR";
+		expect("giro account is listed with its type only", FinTSHelper.Json.write(FinTSHelper.account(listedGiro)),
+			"{\"type\":\"account\",\"number\":\"202051\",\"kind\":\"1\",\"currency\":\"EUR\"}");
 
 		String valued = FinTSHelper.Json.write(FinTSHelper.alone("7654321", () -> FinTSHelper.value("7654321",
 			holdings("2026-11-12", new BigDecimalValue(new BigDecimal("24518.37"), "EUR"), holding("10000.00", "EUR")), false, "EUR")));
 		fixture.add(valued);
 		expect("securities account with the total of the bank", valued,
-			"{\"type\":\"result\",\"account\":\"7654321\",\"balance\":{\"type\":\"balance\",\"amount\":\"24518.37\",\"currency\":\"EUR\",\"date\":\"2026-11-12\"},\"errors\":[]}");
+			"{\"type\":\"result\",\"account\":\"7654321\",\"balance\":{\"type\":\"balance\",\"amount\":\"24518.37\",\"currency\":\"EUR\",\"date\":\"2026-11-12\"},\"errors\":[],\"securities\":true}");
 		expect("securities account without a total is the sum of its holdings", FinTSHelper.Json.write(FinTSHelper.value("7654321",
 			holdings("2026-11-12", null, holding("10000.00", "EUR"), holding("4518.37", "EUR")), false, "EUR")),
-			"{\"type\":\"result\",\"account\":\"7654321\",\"balance\":{\"type\":\"balance\",\"amount\":\"14518.37\",\"currency\":\"EUR\",\"date\":\"2026-11-12\"},\"errors\":[]}");
+			"{\"type\":\"result\",\"account\":\"7654321\",\"balance\":{\"type\":\"balance\",\"amount\":\"14518.37\",\"currency\":\"EUR\",\"date\":\"2026-11-12\"},\"errors\":[],\"securities\":true}");
 
 		GVRWPDepotList pages = holdings("2026-11-12", new BigDecimalValue(new BigDecimal("10000.00"), "EUR"), holding("10000.00", "EUR"));
 		pages.addEntry(holdings("2026-11-12", null, holding("15000.50", "EUR")).getEntries()[0]);
@@ -373,7 +389,7 @@ final class SelfTest {
 		String empty = FinTSHelper.Json.write(FinTSHelper.alone("7654325", () -> FinTSHelper.value("7654325", holdings("2026-11-13", null), false, "EUR")));
 		fixture.add(empty);
 		expect("empty securities account is worth 0", empty,
-			"{\"type\":\"result\",\"account\":\"7654325\",\"balance\":{\"type\":\"balance\",\"amount\":\"0\",\"currency\":\"EUR\",\"date\":\"2026-11-13\"},\"errors\":[]}");
+			"{\"type\":\"result\",\"account\":\"7654325\",\"balance\":{\"type\":\"balance\",\"amount\":\"0\",\"currency\":\"EUR\",\"date\":\"2026-11-13\"},\"errors\":[],\"securities\":true}");
 		expect("empty securities account without a currency counts in euro", String.valueOf(FinTSHelper.alone("7654325", () -> FinTSHelper.value("7654325", holdings("2026-11-13", null), false, null))
 			.get("balance")), "{type=balance, amount=0, currency=EUR, date=2026-11-13}");
 
@@ -413,12 +429,26 @@ final class SelfTest {
 		expect("jobs of a securities account with neither", FinTSHelper.jobs(null, allowing("30", "HKUEB")), "[]");
 		expect("jobs of a giro account that lists HKWPD", FinTSHelper.jobs(null, allowing("1", "HKWPD", "HKSAL", "HKKAZ")), "[SaldoReq, KUmsAll]");
 		expect("jobs of a giro account with CAMT", FinTSHelper.jobs(null, allowing("1", "HKSAL", "HKCAZ", "HKKAZ")), "[SaldoReq, KUmsAllCamt]");
+		expect("jobs of a depot without a type", FinTSHelper.jobs(null, allowing(null, "HKWPD", "HKWDU")), "[WPDepotList]");
+		expect("jobs of an account without a type that has the balance", FinTSHelper.jobs(null, allowing(null, "HKWPD", "HKSAL")), "[SaldoReq]");
 		String unreadable = FinTSHelper.Json.write(FinTSHelper.nothingAllowed("7654324", allowing("30", "HKUEB")));
 		fixture.add(unreadable);
 		expect("securities account without HKWPD, HKSAL, and HKKAZ", unreadable,
 			"{\"type\":\"accountFailed\",\"account\":\"7654324\",\"kind\":\"unsupported\",\"text\":\"Moneten can't read this securities account at this bank yet.\"}");
 		expect("giro account without HKSAL and HKKAZ", FinTSHelper.nothingAllowed("1234567890", allowing("1", "HKUEB")).get("text"),
 			"The FinTS server of the bank offers neither the balance nor the transactions of this account.");
+		expect("depot without a type and without HKWPD", FinTSHelper.nothingAllowed("7654327", allowing(null, "HKWDU")).get("text"),
+			"Moneten can't read this securities account at this bank yet.");
+		Konto unreadableDepot = allowing(null, "HKWDU", "HKUEB");
+		unreadableDepot.number = "7654327";
+		unreadableDepot.iban = "DE02120300000000202051";
+		unreadableDepot.name = "Erika Mustermann";
+		expect("diagnostic of a depot without jobs holds only its type and its allowed jobs", Out.bank(FinTSHelper.withoutJobs(unreadableDepot)),
+			"FinTSHelper: account without jobs: type=none allowed=HKWDU,HKUEB");
+		expect("diagnostic of a giro account without jobs", Out.bank(FinTSHelper.withoutJobs(allowing(" 1 ", "HKUEB"))),
+			"FinTSHelper: account without jobs: type=1 allowed=HKUEB");
+		expect("diagnostic of an account whose bank lists no jobs", Out.bank(FinTSHelper.withoutJobs(new Konto())),
+			"FinTSHelper: account without jobs: type=none allowed=none");
 
 		Properties bpd = new Properties();
 		String[] orders = {"HKSAL", "HKKAZ", "HKCAZ", "HKWPD", "HKTAN"};

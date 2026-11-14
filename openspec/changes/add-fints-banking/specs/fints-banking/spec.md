@@ -307,6 +307,33 @@ The app SHALL fetch the value of a securities account through the custody accoun
 - **WHEN** the app refreshes a giro account and a securities account of the login
 - **THEN** the balance and the transactions go with HKTAN, and the custody account balance goes without HKTAN
 
+### Requirement: Recognize a securities account by its jobs
+
+The app SHALL treat an account as a securities account when the bank gives it the FinTS account type 30 to 39 or 60 to 69, or when the bank allows the custody account balance (HKWPD) or the turnover of the holdings (HKWDU) for it and neither the balance (HKSAL) nor the transactions (HKKAZ, HKCAZ). The jobs decide also when the bank gives the account no type or another type. The setup lists a securities account as a portfolio.
+
+#### Scenario: Securities account without an account type
+
+- **GIVEN** the bank lists "Depot" without an account type, allows the custody account balance (HKWPD) for it, and allows neither the balance (HKSAL) nor the transactions (HKKAZ, HKCAZ)
+- **WHEN** the user adds the login
+- **THEN** the setup lists "Depot" as a portfolio
+
+#### Scenario: Securities account with another account type
+
+- **GIVEN** the bank lists "Depot" with the account type 1 of a giro account and allows only the custody account balance (HKWPD) for it
+- **WHEN** the user adds the login
+- **THEN** the setup lists "Depot" as a portfolio
+
+### Requirement: The value of a securities account makes a portfolio
+
+The app SHALL make an account a portfolio when a refresh fetches the value of a securities account for it, whatever type the account had, also a type that the user chose.
+
+#### Scenario: Securities account added with the wrong type
+
+- **GIVEN** an earlier setup added "Depot" as an account of the type "Other", and the bank allows the custody account balance (HKWPD) for it and neither the balance (HKSAL) nor the transactions (HKKAZ, HKCAZ)
+- **WHEN** the user refreshes "Depot"
+- **THEN** the app fetches the custody account balance (HKWPD)
+- **AND** "Depot" becomes a portfolio and shows its value
+
 ### Requirement: One dialog for all accounts of a login
 
 The app SHALL fetch all accounts of one login that are due in a refresh inside one FinTS dialog, so that the bank sees one login and asks for at most one TAN for that login.

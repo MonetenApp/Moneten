@@ -55,7 +55,7 @@ struct FinTSConnectorTests {
 			echo '{"type":"ask","id":1,"kind":"pin"}'
 			read answer; printf '%s\\n' "$answer" >> "$R"
 			echo '{"type":"notice","text":"Wartungsarbeiten am 14.11.2026 von 1 bis 5 Uhr"}'
-			echo '{"type":"accounts","accounts":[{"number":"202051","iban":"DE02120300000000202051","bic":"BYLADEM1001","product":"Girokonto","kind":"1","owner":"Erika Mustermann","currency":"EUR"},{"number":"4711","kind":"50","currency":"EUR"},{"number":"9","kind":"12"},{"number":"9","subnumber":"01","kind":"12"}]}'
+			echo '{"type":"accounts","accounts":[{"number":"202051","iban":"DE02120300000000202051","bic":"BYLADEM1001","product":"Girokonto","kind":"1","owner":"Erika Mustermann","currency":"EUR"},{"number":"4711","kind":"50","currency":"EUR"},{"number":"9","kind":"12"},{"number":"9","subnumber":"01","kind":"12"},{"number":"7654326","product":"Depot","currency":"EUR","securities":true}]}'
 			echo '{"type":"state","data":"AQID"}'
 			""").listAccounts(of: Self.access, state: AccessState(Data([9])), session: session)
 
@@ -71,8 +71,10 @@ struct FinTSConnectorTests {
 			FinTSAccount(number: "4711", subnumber: nil, iban: nil, bic: nil, productName: nil, kind: .creditCard, owner: nil, currency: "EUR"),
 			FinTSAccount(number: "9", subnumber: nil, iban: nil, bic: nil, productName: nil, kind: .savings, owner: nil, currency: "EUR"),
 			FinTSAccount(number: "9", subnumber: "01", iban: nil, bic: nil, productName: nil, kind: .savings, owner: nil, currency: "EUR"),
+			// A depot whose bank gives no account type, which the helper knows by its jobs.
+			FinTSAccount(number: "7654326", subnumber: nil, iban: nil, bic: nil, productName: "Depot", kind: .portfolio, owner: nil, currency: "EUR"),
 		])
-		#expect(list.accounts.map(\.remoteID) == ["DE02120300000000202051", "4711", "9", "9/01"])
+		#expect(list.accounts.map(\.remoteID) == ["DE02120300000000202051", "4711", "9", "9/01", "7654326"])
 		#expect(list.state == AccessState(Data([1, 2, 3])))
 		#expect(list.notices == [BankMessage(text: "Wartungsarbeiten am 14.11.2026 von 1 bis 5 Uhr")])
 	}
@@ -518,8 +520,10 @@ struct FinTSConnectorTests {
 		#expect(depot.balanceDate.map { Day($0) } == Day(year: 2026, month: 11, day: 12))
 		#expect(depot.transactions == nil)
 		#expect(depot.transactionFailure == nil)
+		#expect(depot.isPortfolio)
 		guard case let .fetched(empty) = report.outcomes[depots[4].accountID] else { Issue.record("empty depot not fetched"); return }
 		#expect(empty.balance == Money(minorUnits: 0, currency: "EUR"))
+		#expect(empty.isPortfolio)
 		#expect(empty.balanceDate.map { Day($0) } == Day(year: 2026, month: 11, day: 13))
 		let failures = depots.dropFirst().dropLast().map { request -> SyncFailure? in
 			if case let .failed(failure) = report.outcomes[request.accountID] { failure } else { nil }
@@ -534,6 +538,7 @@ struct FinTSConnectorTests {
 		#expect(giro.balance == Money(minorUnits: 109_620, currency: "EUR"))
 		#expect(giro.balanceDate.map { Day($0) } == Day(year: 2026, month: 11, day: 3))
 		#expect(giro.transactions?.from == Day(year: 2026, month: 10, day: 1))
+		#expect(!giro.isPortfolio)
 		let mt940 = giro.transactions?.rows ?? []
 		#expect(mt940.count == 2)
 		if mt940.count == 2 {
