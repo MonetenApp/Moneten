@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="de">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>Moneten: Open-Source-Banking für den Mac</title>
+	<meta name="description" content="Moneten ist eine Open-Source-Banking-App für macOS. Deine Daten bleiben verschlüsselt auf deinem Mac. Ohne Konto, ohne Server, ohne Telemetrie.">
+	<link rel="canonical" href="https://monetenapp.com/">
+	<meta property="og:type" content="website">
+	<meta property="og:title" content="Moneten: Open-Source-Banking für den Mac">
+	<meta property="og:description" content="Umsätze, Kategorien und Diagramme. Lokal, verschlüsselt und quelloffen.">
+	<meta property="og:url" content="https://monetenapp.com/">
+	<meta property="og:image" content="https://monetenapp.com/img/og-image.jpg">
+	<meta property="og:image:width" content="1200">
+	<meta property="og:image:height" content="630">
+	<meta name="twitter:card" content="summary_large_image">
+	<meta property="og:locale" content="de_DE">
+	<meta name="theme-color" content="#0f468c">
+	<link rel="icon" type="image/png" sizes="32x32" href="img/favicon-32.png">
+	<link rel="apple-touch-icon" href="img/icon-256.png">
+	<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<a class="skip" href="#inhalt">Zum Inhalt springen</a>
+
+<header class="hero">
+	<div class="wrap">
+		<nav class="nav" aria-label="Hauptnavigation">
+			<a class="brand" href="./"><img src="img/icon-256.png" alt="" width="36" height="36">Moneten</a>
+			<ul>
+				<li><a href="#funktionen">Funktionen</a></li>
+				<li><a href="#extensions">Extensions</a></li>
+				<li><a href="#stand">Stand</a></li>
+				<li><a href="https://github.com/MonetenApp/Moneten">GitHub</a></li>
+			</ul>
+		</nav>
+
+		<div class="hero-body">
+			<img class="hero-icon" src="img/icon-512.png" alt="App-Symbol von Moneten" width="128" height="128">
+			<p class="badge">Frühe Entwicklungsphase · noch kein Release</p>
+			<h1>Deine Finanzen. Auf deinem Mac.</h1>
+			<p class="lead">Moneten ist eine Open-Source-Banking-App für macOS. Sie holt deine Umsätze, ordnet sie in Kategorien und zeigt, wohin dein Geld geht. Ohne Konto, ohne Server, ohne Telemetrie.</p>
+			<div class="actions">
+				<a class="button primary" href="https://github.com/MonetenApp/Moneten">
+					<svg viewBox="0 0 16 16" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+					Quellcode auf GitHub
+				</a>
+				<a class="button secondary" href="#extensions">Extensions entdecken</a>
+			</div>
+		</div>
+	</div>
+</header>
+
+<main id="inhalt">
+	<div class="wrap shot">
+		<figure>
+			<picture>
+				<source srcset="img/transactions-dark.webp" media="(prefers-color-scheme: dark)">
+				<img src="img/transactions-light.webp" alt="Das Hauptfenster von Moneten mit Konten in der Seitenleiste und einer Liste von Umsätzen mit Kategorien" width="1040" height="650">
+			</picture>
+			<figcaption>Konten, Umsätze und Kategorien in einem Fenster. Alle Namen und Beträge sind erfunden.</figcaption>
+		</figure>
+	</div>
+
+	<section id="funktionen">
+		<div class="wrap">
+			<h2>Was Moneten ausmacht</h2>
+			<p class="section-intro">Moneten ist eine native Mac-App in Swift und SwiftUI. Sie ist für Menschen gebaut, die Konten bei mehreren deutschen Banken und Brokern haben und ihre Finanzdaten nicht auf fremden Servern sehen wollen.</p>
+
+			<div class="grid">
+				<article class="card">
+					<div class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/></svg></div>
+					<h3>Lokal und verschlüsselt</h3>
+					<p>Alle Daten liegen in einer mit SQLCipher verschlüsselten Datenbank auf deinem Mac. Es gibt kein Benutzerkonto, keinen Server des Projekts und keine Telemetrie.</p>
+				</article>
+				<article class="card">
+					<div class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10l9-6 9 6"/><path d="M5 10v8M9.5 10v8M14.5 10v8M19 10v8"/><path d="M3 21h18"/></svg></div>
+					<h3>Banking mit FinTS <span class="tag">in Arbeit</span></h3>
+					<p>Moneten spricht FinTS, die Standardschnittstelle deutscher Banken, mit pushTAN, photoTAN und chipTAN. Kostenlos und direkt eingebaut, ohne Umweg über einen Dienstleister. Die ersten Tests mit echten Banken laufen.</p>
+				</article>
+				<article class="card">
+					<div class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3h4v3a2 2 0 104 0V5h1a2 2 0 012 2v3h-1a2 2 0 100 4h1v3a2 2 0 01-2 2h-3v-1a2 2 0 10-4 0v1H7a2 2 0 01-2-2v-3h1a2 2 0 100-4H5V7a2 2 0 012-2h3z"/></svg></div>
+					<h3>Extensions in Lua</h3>
+					<p>Kreditkarten, PayPal, Broker oder Krypto-Börsen kommen über Extensions dazu. Die meisten Extensions, die für MoneyMoney geschrieben wurden, laufen ohne Änderungen.</p>
+				</article>
+				<article class="card">
+					<div class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h6l2 2h10v10a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><path d="M8 15h8"/></svg></div>
+					<h3>Kategorien und Regeln</h3>
+					<p>Sortiere Umsätze in einen Baum aus Kategorien und Gruppen. Jede Kategorie kann eine Regel haben, einen Suchausdruck, der neue Umsätze automatisch einordnet.</p>
+				</article>
+				<article class="card">
+					<div class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></div>
+					<h3>Diagramme und Suche</h3>
+					<p>Sieh den Verlauf deiner Salden und deine Ausgaben nach Kategorie. Die Suche findet jeden Umsatz über alle Konten hinweg.</p>
+				</article>
+				<article class="card">
+					<div class="icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg></div>
+					<h3>Umzug und Import</h3>
+					<p>Übernimm Konten, Kategorien und Umsätze aus MoneyMoney. Kontoauszüge im Format CSV, CAMT oder MT940 importierst du ohne doppelte Buchungen.</p>
+				</article>
+			</div>
+		</div>
+	</section>
+
+	<section id="diagramme">
+		<div class="wrap">
+			<div class="pair">
+				<div>
+					<h2>Wohin geht dein Geld?</h2>
+					<p class="section-intro">Moneten rechnet direkt auf deinem Mac. Beträge werden auf den Cent genau als ganze Zahlen gespeichert, und Summen über verschiedene Währungen werden nie heimlich umgerechnet.</p>
+					<ul class="checklist">
+						<li>Ausgaben und Einnahmen nach Kategorie</li>
+						<li>Saldoverlauf für ein Konto oder eine Gruppe</li>
+						<li>Zeiträume wie ein Monat, ein Jahr oder die letzten zwölf Monate</li>
+					</ul>
+				</div>
+				<figure>
+					<picture>
+						<source srcset="img/charts-dark.webp" media="(prefers-color-scheme: dark)">
+						<img src="img/charts-light.webp" alt="Der Saldoverlauf eines Girokontos über zwölf Monate als Balkendiagramm" width="1040" height="650" loading="lazy">
+					</picture>
+				</figure>
+			</div>
+		</div>
+	</section>
+
+	<section id="extensions">
+		<div class="wrap">
+			<h2>Extensions für alles ohne FinTS</h2>
+			<p class="section-intro">Eine Extension ist ein kleines Lua-Skript, das Konten, Salden und Umsätze von einem Dienst abruft: einer Kreditkarte, PayPal, einem Broker oder einer Bank im Ausland. Die Schnittstelle ist mit der Web-Banking-API von MoneyMoney kompatibel.</p>
+
+			<div class="grid">
+				<article class="card">
+					<h3>Nur lesen, nie bezahlen</h3>
+					<p>Extensions rufen Daten ab. Die Schnittstelle hat keine Funktionen für Zahlungen. Überweisungen laufen nur über FinTS oder das optionale Abo mit finAPI.</p>
+				</article>
+				<article class="card">
+					<h3>Jede Extension wird geprüft</h3>
+					<p>Automatische Prüfungen und ein Maintainer sehen sich jede neue Extension und jedes Update an. Eine Extension spricht nur mit den Servern aus ihrem Manifest, immer über HTTPS.</p>
+				</article>
+				<article class="card">
+					<h3>Signierter Katalog</h3>
+					<p>Moneten prüft die Signatur des Katalogs und die Prüfsumme jeder Datei, bevor es eine Extension installiert oder ausführt. Jede Extension läuft in einem eigenen, abgeschotteten Prozess.</p>
+				</article>
+			</div>
+
+			<div class="actions" style="justify-content: flex-start; margin-top: 32px;">
+				<a class="button solid" href="https://github.com/MonetenApp/moneten-extensions">Zum Extension-Katalog</a>
+				<a class="button outline" href="https://github.com/MonetenApp/moneten-extensions/tree/main/docs/guide">Eine Extension schreiben</a>
+			</div>
+		</div>
+	</section>
+
+	<section id="stand">
+		<div class="wrap">
+			<h2>Stand der Entwicklung</h2>
+			<p class="section-intro">Moneten ist noch nicht fertig, und es gibt noch kein Release. Jedes Verhalten der App ist vorab als Anforderung mit prüfbaren Szenarien beschrieben. Der Code folgt Schritt für Schritt.</p>
+
+			<div class="pair" style="align-items: start;">
+				<div>
+					<h3>Das funktioniert schon</h3>
+					<ul class="checklist">
+						<li>Verschlüsselte Datenbank mit optionalem Passwort</li>
+						<li>Umzug von Konten, Kategorien und Umsätzen aus MoneyMoney</li>
+						<li>Import von CSV, CAMT und MT940 ohne doppelte Buchungen</li>
+						<li>Umsatzliste mit Suche, Kategorien, Regeln und Diagrammen</li>
+						<li>Extensions aus dem signierten Katalog installieren und aktualisieren</li>
+						<li>Automatische Aktualisierung mit Mitteilung bei neuen Umsätzen</li>
+					</ul>
+				</div>
+				<div>
+					<h3>Daran wird gearbeitet</h3>
+					<ul class="checklist open">
+						<li>FinTS mit vielen echten Banken testen und fertigstellen</li>
+						<li>Ein signiertes und notarisiertes Release mit Updates</li>
+						<li>Eine Sicherheitsprüfung vor dem ersten öffentlichen Release</li>
+						<li>Export aller Daten in offenen Formaten</li>
+					</ul>
+				</div>
+			</div>
+
+			<div class="roadmap">
+				<article class="card">
+					<h3><span>v0.1</span> Lesen</h3>
+					<p>Eine Bank über FinTS mit pushTAN anbinden, Umsätze abrufen, mit Regeln kategorisieren, Diagramme sehen, aus MoneyMoney umziehen und Extensions aus dem Katalog nutzen.</p>
+				</article>
+				<article class="card">
+					<h3><span>v0.2</span> Bezahlen</h3>
+					<p>SEPA-Überweisungen über FinTS mit Empfängerüberprüfung und TAN, dazu die Bestände von Depots.</p>
+				</article>
+				<article class="card">
+					<h3><span>v0.3</span> Verbinden</h3>
+					<p>Ein optionales Abo bindet Banken ohne FinTS über finAPI an. Alle Funktionen von v0.1 und v0.2 bleiben ohne Abo kostenlos.</p>
+				</article>
+			</div>
+			<p style="margin-top: 24px;"><a href="https://github.com/MonetenApp/Moneten/blob/main/docs/roadmap.md">Die vollständige Roadmap auf GitHub</a></p>
+		</div>
+	</section>
+
+	<section id="mitmachen">
+		<div class="wrap">
+			<div class="cta">
+				<h2>Mach mit</h2>
+				<p>Moneten ist freie Software unter der GNU General Public License. Jede und jeder kann den Code lesen, bauen, prüfen und verändern. Das Projekt sucht Swift-Entwicklerinnen und -Entwickler, Leute mit Erfahrung in FinTS und Autorinnen und Autoren von Extensions.</p>
+				<div class="actions">
+					<a class="button primary" href="https://github.com/MonetenApp/Moneten">Moneten auf GitHub</a>
+					<a class="button secondary" href="https://github.com/MonetenApp/Moneten/blob/main/CONTRIBUTING.md">So kannst du beitragen</a>
+				</div>
+			</div>
+		</div>
+	</section>
+</main>
+
+<footer>
+	<div class="wrap">
+		<div class="row">
+			<p>© 2026 Adanos Software GmbH · Moneten steht unter GPL-3.0-or-later.</p>
+			<ul>
+				<li><a href="impressum.html">Impressum</a></li>
+				<li><a href="datenschutz.html">Datenschutz</a></li>
+				<li><a href="https://github.com/MonetenApp/Moneten">GitHub</a></li>
+			</ul>
+		</div>
+		<p class="note">Moneten steht in keiner Verbindung zu MoneyMoney oder der MRH applications GmbH. MoneyMoney ist eine Marke ihres Inhabers.</p>
+	</div>
+</footer>
+</body>
+</html>
