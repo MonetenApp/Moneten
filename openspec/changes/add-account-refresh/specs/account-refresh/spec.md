@@ -301,26 +301,66 @@ The app SHALL keep all rows and mark them for review when more than one pending 
 
 ### Requirement: Pending transactions marked for review do not count
 
-The app SHALL leave a pending transaction that is marked for review out of every balance, chart, and sum, while the list still shows it with its mark. The booked transaction of the same review counts. When the user resolves the review, by checking a row or by deleting it, the rows that remain count as they do without a review.
+The app SHALL leave each pending transaction that is marked for review out of every balance, chart, and sum, while the list still shows it with its mark. Every booked transaction counts, also one that is marked for review. The review of a pending transaction ends only when the user deletes that row or a refresh books it.
 
 #### Scenario: Two pending coffees, one booked
 
 - **GIVEN** the account "Giro" with an initial balance of 500,00 € and two pending transactions of -3,20 € to "Café Beispiel" on 12.11.2026, and no other transaction
 - **WHEN** the bank delivers one booked transaction of -3,20 € to "Café Beispiel" on 13.11.2026 and the app marks the three rows for review
-- **THEN** the balance of "Giro" on 13.11.2026 is 496,80 €, not 490,40 €
+- **THEN** the bar of 13.11.2026 in the balance chart of "Giro" shows 496,80 €, not 490,40 €
 - **AND** the status line reads "3 Transactions" and the sum -3,20 €
 - **AND** the list shows both pending transactions with the mark for review
+
+#### Scenario: One pending coffee, two booked
+
+- **GIVEN** the account "Giro" with an initial balance of 500,00 € and one pending transaction of -3,20 € to "Café Beispiel" on 12.11.2026, and no other transaction
+- **WHEN** the bank delivers two booked transactions of -3,20 € to "Café Beispiel" on 13.11.2026 and the app marks the three rows for review
+- **THEN** the bar of 13.11.2026 in the balance chart of "Giro" shows 493,60 €
+- **AND** the status line reads "3 Transactions" and the sum -6,40 €
+
+#### Scenario: The user checks the booked transaction
+
+- **GIVEN** the three rows of the scenario "Two pending coffees, one booked"
+- **WHEN** the user checks the booked transaction
+- **THEN** the booked transaction has no mark for review
+- **AND** the bar of 13.11.2026 in the balance chart of "Giro" still shows 496,80 €
+
+#### Scenario: The user deletes one pending transaction
+
+- **GIVEN** the three rows of the scenario "Two pending coffees, one booked"
+- **WHEN** the user deletes one of the pending transactions
+- **THEN** the other pending transaction keeps its mark for review
+- **AND** the bar of 13.11.2026 in the balance chart of "Giro" still shows 496,80 €
 
 #### Scenario: The user deletes both pending transactions
 
 - **GIVEN** the three rows of the scenario "Two pending coffees, one booked"
 - **WHEN** the user deletes both pending transactions
-- **THEN** the balance of "Giro" on 13.11.2026 is still 496,80 €
+- **THEN** the bar of 13.11.2026 in the balance chart of "Giro" still shows 496,80 €
 - **AND** the list of "Giro" shows only the booked transaction
+
+### Requirement: Checking keeps the review of a pending transaction
+
+The app SHALL clear only the new mark and keep the mark for review when the user checks a pending transaction that is marked for review, with its checkbox or with "Mark All Transactions as Checked". Checking a booked transaction clears both marks.
+
+#### Scenario: Mark all as checked during a review
+
+- **GIVEN** the three rows of the scenario "Two pending coffees, one booked", each with the new mark
+- **WHEN** the user chooses "Mark All Transactions as Checked" in "Giro"
+- **THEN** no row has the new mark, and the booked transaction has no mark for review
+- **AND** both pending transactions keep the mark for review
+- **AND** the bar of 13.11.2026 in the balance chart of "Giro" still shows 496,80 €
+
+#### Scenario: Check one pending transaction
+
+- **GIVEN** the three rows of the scenario "Two pending coffees, one booked"
+- **WHEN** the user checks one of the pending transactions
+- **THEN** that row has a checkmark and keeps the mark for review
+- **AND** the bar of 13.11.2026 in the balance chart of "Giro" still shows 496,80 €
 
 ### Requirement: Remove a pending transaction that the bank dropped
 
-The app SHALL remove a pending transaction when a successful refresh of its account no longer delivers it and no booked transaction replaced it.
+The app SHALL remove a pending transaction when a successful refresh of its account no longer delivers it and no booked transaction replaced it. A pending transaction that is marked for review stays until the user deletes it or a refresh books it.
 
 #### Scenario: Hotel deposit released
 
@@ -333,6 +373,13 @@ The app SHALL remove a pending transaction when a successful refresh of its acco
 - **GIVEN** the same pending transaction
 - **WHEN** the refresh of the account fails
 - **THEN** the pending transaction stays in the list
+
+#### Scenario: Pending transactions under review
+
+- **GIVEN** the three rows of the scenario "Two pending coffees, one booked"
+- **WHEN** the next successful refresh delivers the booked transaction and neither pending transaction
+- **THEN** both pending transactions stay in the list with the mark for review
+- **AND** the bar of 13.11.2026 in the balance chart of "Giro" still shows 496,80 €
 
 ### Requirement: Deleted transactions stay deleted
 

@@ -51,7 +51,6 @@ None.
 ### Decided for Moneten
 
 - An account is a colored square, as in MoneyMoney. MoneyMoney's own icon pictures are not copied; the migration takes only their color.
-- The initial balance at setup is the bank balance less every transaction of the account in its currency, pending ones included and with no date limit. A pending transaction is money that is already spent, so the computed balance counts it, and the computed balance after the first refresh then equals the bank balance. A pending transaction that is marked for review counts in no balance, so it does not count here either.
 - The account type "Portfolio" is set by the bank or the extension and cannot be chosen by hand. This was not observed.
 - An account without a type and without a hint in its number or name gets the type "Other". MoneyMoney's fallback is not documented.
 - A group can contain other groups. Nesting of groups was not observed.

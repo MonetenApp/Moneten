@@ -81,6 +81,12 @@ The app SHALL draw a transaction that the bank has not yet booked with a hatched
 - **THEN** both rows are hatched
 - **AND** the view shows "Pending" with -42,00 €
 
+#### Scenario: A pending transaction under review
+
+- **GIVEN** the account "Giro" has a pending transaction of -30,00 € and a pending transaction of -3,20 € that is marked for review
+- **WHEN** the user opens "Giro"
+- **THEN** the view shows "Pending" with -30,00 €
+
 #### Scenario: No pending transactions
 
 - **WHEN** an account has only booked transactions

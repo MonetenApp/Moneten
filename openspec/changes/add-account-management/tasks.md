@@ -14,7 +14,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [x] 1.8 Account owner. Verified by shown in the settings.
 - [x] 1.9 Balance comes from the bank. Verified by migrated accounts show the balance of MoneyMoney.
 - [ ] 1.10 Several balances and bonus points. Build it and verify it with a test or in the app.
-- [ ] 1.11 Initial balance. Editable in the settings. The value at setup is built for the earlier rule, which left out pending transactions and transactions after the day of the bank balance. Write the test first: a bank balance of 1.000,00 € with booked transactions of 250,00 € and a pending one of -30,00 € gives 780,00 €. Then change `Account.deriveInitialBalance` in `Sources/Domain/Models.swift` to subtract every row in the account currency, pending rows included and with no date limit, and to leave out a pending row with `needsReview`.
+- [ ] 1.11 Initial balance. Editable in the settings. At setup, `Account.deriveInitialBalance` in `Sources/Domain/Models.swift` leaves out pending rows and rows after the day of the bank balance, but it does not yet leave out rows in another currency. Task 3.3 of the change `add-charts` owns that function and builds the rule.
 - [x] 1.12 Mark an account as closed. Verified by "The account has been closed".
 - [ ] 1.13 Clearing entry for a closed account. Build it and verify it with a test or in the app.
 - [ ] 1.14 Reopen a closed account. Built in part: the switch can be turned off; no clearing entry exists yet. Finish it and verify it with a test or in the app.
