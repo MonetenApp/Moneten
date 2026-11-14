@@ -302,19 +302,16 @@ enum MT940Parser {
 	/// A field that cannot be read fails the whole file with its line, so nothing from the file is imported.
 	static func parse61(_ s: String, line: Int) throws -> Line61 {
 		func fail(_ reason: String) -> TransactionFileImporter.Failure { .line(line, reason) }
-		func isDay(_ month: Int, _ day: Int) -> Bool { (1...12).contains(month) && (1...31).contains(day) }
 		let chars = Array(s.replacingOccurrences(of: "\n", with: ""))
 		guard chars.count >= 6, let yy = Int(String(chars[0..<2])), let mm = Int(String(chars[2..<4])), let dd = Int(String(chars[4..<6])),
-			isDay(mm, dd) else { throw fail("The date cannot be read.") }
-		let year = 2000 + yy
-		let value = Day(year: year, month: mm, day: dd)
+			let value = Day.valid(year: 2000 + yy, month: mm, day: dd) else { throw fail("The date cannot be read.") }
 		var i = 6
 		var booking = value
 		if chars.count > i + 4, let bm = Int(String(chars[i..<i + 2])), let bd = Int(String(chars[i + 2..<i + 4])), chars[i].isNumber {
-			guard isDay(bm, bd) else { throw fail("The date cannot be read.") }
-			var by = year
+			var by = value.year
 			if bm == 12 && mm == 1 { by -= 1 } else if bm == 1 && mm == 12 { by += 1 }
-			booking = Day(year: by, month: bm, day: bd)
+			guard let day = Day.valid(year: by, month: bm, day: bd) else { throw fail("The date cannot be read.") }
+			booking = day
 			i += 4
 		}
 		// RC is the reversal of a credit and books a debit. RD is the reversal of a debit and books a credit.
