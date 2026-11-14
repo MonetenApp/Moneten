@@ -5,37 +5,45 @@ import SwiftUI
 /// line. The search field of the window filters them by name, ISIN, and security number.
 struct HoldingsView: View {
 	@Environment(AppModel.self) private var model
+	/// `AppModel.tableKey`, from the parent, as for `TransactionTable` (issue #135).
+	let key: TableKey
+	/// The placeholder of `AppModel.replacingTable` stands in for the table.
+	let holds: Bool
 	let accountIDs: [UUID]
 	@State private var selection: Set<UUID> = []
 
 	var body: some View {
 		let all = model.ledger.holdings(of: accountIDs)
-		// The search of `tableKey`, as for the transaction table: a new search starts the table over instead of
-		// removing shown rows in place.
-		let search = model.tableKey.filter.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+		// The search of the key, as for the transaction table. The parent starts this view over for a new
+		// search, instead of removing shown rows in place.
+		let search = key.filter.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
 		let rows = search.isEmpty ? all : all.filter { $0.matches(search) }
 		VStack(spacing: 0) {
 			// The table stays also without rows, with the empty state on top. The rows keep their IDs across a
-			// refresh, so a refresh updates them in place. A refresh that drops a shown position, another view,
-			// or another search starts the table over (#135, #151), with the placeholder of
-			// `AppModel.replacingTable` in between.
+			// refresh, so a refresh updates them in place. A refresh that drops a shown position starts the table
+			// over (#135, #151), with the placeholder of `AppModel.replacingTable` in between.
 			Group {
-				if model.tableHolds > 0 {
+				if holds {
 					Color.clear
 				} else {
-					HoldingsTable(rows: rows, selection: $selection)
-						.id(model.tableKey)
+					HoldingsTable(rows: rows, selection: guardedSelection)
 				}
 			}
 			.overlay {
-				if rows.isEmpty, model.tableHolds == 0 {
+				if rows.isEmpty, !holds {
 					Text(all.isEmpty ? "No portfolio items found." : "No matching portfolio items found.")
 						.foregroundStyle(.secondary)
 				}
 			}
 			HoldingsStatusLine(rows: rows, selection: selection)
 		}
-		.onChange(of: model.tableKey) { selection = [] }
+		.onChange(of: selection.count, initial: true) { _, count in model.selectedPositions = count }
+	}
+
+	/// The selection, as long as the model shows this view: see `AppModel.shows(_:)`.
+	private var guardedSelection: Binding<Set<UUID>> {
+		let state = $selection
+		return Binding(get: { state.wrappedValue }, set: { [model, key] in if model.shows(key) { state.wrappedValue = $0 } })
 	}
 }
 
