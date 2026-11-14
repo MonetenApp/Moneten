@@ -20,7 +20,7 @@ Issue #85 builds the FinTS path of the assistant on the connector of issue #13 p
 
 ### Seams for later work
 
-- "Other" lists `AccountSetup.Service`, which has only "Offline account / Cash". E6 adds the services of installed extensions there, each with its own login step, and the connector of an access by its source in `AppModel`.
+- "Other" lists `SetupService.menu`: the services of the installed extensions by name, each with its own login step, and "Offline account / Cash" last. `AppModel` picks the connector of an access by its source.
 - After the setup, `SessionBroker.remember(_:for:save:)` keeps the PIN in memory, so the first refresh does not ask again, and saves it in the database when the user turned on "Save PIN" in the login step. The bank accepted it at the login of the setup.
 
 ### The search for a bank
