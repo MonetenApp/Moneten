@@ -10,7 +10,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [x] 1.4 Phrases match words in order. Verified by RuleTests "Phrase in order and in another order".
 - [x] 1.5 Wildcards. Verified by RuleTests "Wildcards".
 - [x] 1.6 Logical operators. Verified by RuleTests "Logical operators", "Lower case operator", "Mixed case operator", and "Operator word in quotation marks".
-- [x] 1.7 Field operators. Verified by RuleTests "Field operators", "Field does not match", "Equality forms", "Not equal after a field name", and "A field operator needs its term without a space".
+- [x] 1.7 Field operators. Verified by RuleTests "Field operators", "Field does not match", "Equality forms", "Field name in capitals", "Not equal after a field name", "A word after a field operator is a term, also an operator word or a word that starts with a sign", and "A field operator needs its term without a space".
 - [x] 1.8 Amount comparisons. Verified by RuleTests "Amount comparisons", "Amount not equal", and "Amount equal with :=".
 - [x] 1.9 Regular expressions. Verified by RuleTests "Regular expressions".
 - [x] 1.10 Invalid rules are rejected. Verified by RuleTests "Missing parenthesis is reported at the end"; the settings sheet shows the message and disables OK.
@@ -21,17 +21,17 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [x] 1.15 Ask how to apply a changed rule. Verified by CategorizerTests "Apply only to uncategorized transactions, or to all"; the dialog in the category settings offers both choices.
 - [x] 1.16 Applying a rule to all transactions replaces earlier assignments. Verified by CategorizerTests "A transaction that no longer matches leaves the category".
 - [ ] 1.17 Progress while a rule is applied. Built in part: the rule runs in the background and reports the count at the end, but shows no progress line. Finish it and verify it with a test or in the app.
-- [ ] 1.18 Help for the rule language. Built in part: the help button opens a popover with one example per operator of the first build. The new forms come in 2.3.
+- [x] 1.18 Help for the rule language. Verified by the help button opens a popover with one example for each operator, see the light and dark snapshots of the debug harness command `rulehelpsnapshot` in the pull request.
 - [x] 1.19 A term matches a whole word. Verified by RuleTests "Word with a hyphen, whole word, and wildcard for part of a word" and "Wildcards".
 - [x] 1.20 The rules true and false. Verified by CategorizerTests "Catch-all category" and RuleTests "Rule that matches nothing" and "Quoted true is a word".
-- [x] 1.21 Short forms of the operators. Verified by RuleTests "Short forms", "Minus before a term", "Minus before a number", "Plus sign inside a word", "Exclamation mark at the end of a word", and "Not equal after a field name".
+- [x] 1.21 Short forms of the operators. Verified by RuleTests "Short forms", "Minus before a term", "Minus before a number", "Plus before a number", "Minus after a word, before a quotation mark or a parenthesis", "Minus after an amount comparison, before a parenthesis", "Plus sign inside a word", "Exclamation mark at the end of a word", and "Not equal after a field name".
 - [x] 1.22 A saved rule that cannot be read is marked. Verified by CategorizerTests "A category whose saved rule cannot be read reports the error until the rule is fixed", and in the app: the sidebar row of "Rent" with `amount<-1,000` shows the warning symbol, and with `amount<-1000` it shows none.
 
 ## 2. Changes to the first build
 
 - [x] 2.1 Write RuleTests for the scenarios of "Logical operators", "Short forms of the operators", "The rules true and false", "Field operators", and "Amount comparisons": operators in lower and mixed case, `+`, `!`, `-` before a term, `-12,50` as a term, `Disney+` and `Yahoo!` as words, `name!=` as a field operator, a quoted "or" and "true" as terms, `true`, `false`, `name<>`, `currency=`, `currency==`, `currency:=`, and `amount<>` with a row of 0,00 €. Each test checks the row that matches and the row that does not. Replace the test "Lower case operator is a term" with the scenario "Lower case operator".
 - [x] 2.2 Change the tokenizer and the parser in `Sources/Domain/Rule.swift` until the tests of 2.1 pass. Keep `amount=-89,00` an amount comparison, `name!="Stadtwerke"` a field operator, `-12,50` one term, and "EC-Karte", "Disney+", and "Yahoo!" one word each.
-- [ ] 2.3 Add an example for `+`, `!`, `-`, `true`, `false`, `<>`, and `:=` to the help popover in `App/Sources/Views/CategorySettingsSheet.swift`. Replace the line "AND, OR, and NOT must be written in capitals." with one that says the operators work in any letter case and a quoted word stays a search word. Add that a word without a field does not search account numbers or IBANs, and that `local_account:` and `remote_account:` do.
+- [x] 2.3 Add an example for `+`, `!`, `-`, `true`, `false`, `<>`, and `:=` to the help popover in `App/Sources/Views/CategorySettingsSheet.swift`. Replace the line "AND, OR, and NOT must be written in capitals." with one that says the operators work in any letter case and a quoted word stays a search word. Add that a word without a field does not search account numbers or IBANs, and that `local_account:` and `remote_account:` do.
 - [x] 2.4 Write the RuleTests test "IBAN without a field operator" from the scenario of "Unqualified terms search all text fields".
 - [x] 2.5 Remove `localAccount` and `remoteAccount` from `RuleField.unqualified` in `Sources/Domain/Rule.swift` until the test of 2.4 passes.
 - [x] 2.6 Write RuleTests for the scenarios of "A term matches a whole word": `"REWE"` does not match "REWE-Markt", matches "REWE Markt Musterstadt", and `"REWE*"` matches "REWE-Markt".
