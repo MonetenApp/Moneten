@@ -21,7 +21,9 @@ import Testing
 	}
 
 	@Test func newLoginFieldWaitsForTheUser() throws {
-		#expect(try plan { $0.login.append(["label": "One-time code"]) } == .needsConfirmation(hosts: [], fields: ["One-time code"]))
+		let plan = try plan { $0.login.append(["label": "One-time code"]) }
+		#expect(plan == .needsConfirmation(hosts: [], fields: [.init(service: "Example Bank", label: "One-time code")]))
+		if case let .needsConfirmation(_, fields) = plan { #expect(fields.map(\.description) == ["One-time code (Example Bank)"]) }
 	}
 
 	@Test func removedHostInstallsByItself() throws {
@@ -81,7 +83,7 @@ import Testing
 		}
 		let approval = UpdatePlan.Approval(version: "1.1", reviewed: try adding("Example Card"))
 		#expect(UpdatePlan(installed: try manifest(old), available: try adding("Example Depot"), automatic: true, sessionRuns: false, confirmed: approval)
-			== .needsConfirmation(hosts: [], fields: ["Password"]))
+			== .needsConfirmation(hosts: [], fields: [.init(service: "Example Depot", label: "Password")]))
 	}
 
 	/// A null character in a service or a label must not let one login field pass for another.
@@ -95,7 +97,30 @@ import Testing
 		}
 		let approval = UpdatePlan.Approval(version: "1.1", reviewed: try adding(service: "Example Card\u{0}Card", label: "Password"))
 		#expect(UpdatePlan(installed: try manifest(old), available: try adding(service: "Example Card", label: "Card\u{0}Password"), automatic: true,
-			sessionRuns: false, confirmed: approval) == .needsConfirmation(hosts: [], fields: ["Card\u{0}Password"]))
+			sessionRuns: false, confirmed: approval) == .needsConfirmation(hosts: [], fields: [.init(service: "Example Card", label: "Card\u{0}Password")]))
+	}
+
+	/// The same split on the path without an approval: a field of the installed version does not hide a new one.
+	@Test func installedFieldDoesNotHideAFieldWithTheSameTextSplitElsewhere() throws {
+		func manifest(version: String, service: String, label: String) throws -> Manifest {
+			var package = TestCatalog.Package(version: version)
+			package.manifestFields = ["services": [["name": service, "login": [["label": label, "secret": true]]]]]
+			return try self.manifest(package)
+		}
+		#expect(UpdatePlan(installed: try manifest(version: "1.0", service: "Example Card\u{0}Card", label: "Password"),
+			available: try manifest(version: "1.1", service: "Example Card", label: "Card\u{0}Password"), automatic: true, sessionRuns: false, confirmed: nil)
+			== .needsConfirmation(hosts: [], fields: [.init(service: "Example Card", label: "Card\u{0}Password")]))
+	}
+
+	/// The user confirmed 1.1, which dropped `api.bank.example` and added `login.example.org`. The catalog lists 1.1
+	/// again with both hosts: the user saw one in the review and runs the other today, so nothing asks again.
+	@Test func approvalAndInstalledRightsCoverARelistedVersion() throws {
+		var reviewed = TestCatalog.Package(version: "1.1")
+		reviewed.hosts = ["login.example.org"]
+		let approval = UpdatePlan.Approval(version: "1.1", reviewed: try manifest(reviewed))
+		#expect(try plan(to: { $0.hosts.append("login.example.org") }, confirmed: approval) == .install)
+		#expect(try plan(to: { $0.hosts += ["login.example.org", "data.example.net"] }, confirmed: approval)
+			== .needsConfirmation(hosts: ["login.example.org", "data.example.net"], fields: []))
 	}
 
 	@Test func confirmedVersionInstallsWithAutomaticUpdatesOff() throws {

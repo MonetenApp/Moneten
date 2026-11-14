@@ -417,7 +417,7 @@ final class ExtensionLibrary {
 		guard case let .catalog(installed)? = records[id], let item = items.first(where: { $0.id == id }), let manifest = item.manifest,
 			case let .needsConfirmation(hosts, fields)? = updateState.plan(of: installed, manifest: manifest, in: index),
 			let listed = try? index?.entry(id)?.manifest.get(), let version = listed.version else { return }
-		question = .review(id: id, name: item.name, approval: .init(version: version, reviewed: listed), hosts: hosts, fields: fields)
+		question = .review(id: id, name: item.name, approval: .init(version: version, reviewed: listed), hosts: hosts, fields: fields.map(\.description))
 	}
 
 	/// Shows the warning for files again before a copied or changed file install runs.
@@ -622,7 +622,7 @@ final class ExtensionLibrary {
 			let version = entry?.version ?? ""
 			switch manifest.flatMap({ updateState.plan(of: record, manifest: $0, in: index) }) {
 			case let .needsConfirmation(hosts, fields)?:
-				note = [note, Self.newRights(version: version, hosts: hosts, fields: fields)].compactMap { $0 }.joined(separator: " ")
+				note = [note, Self.newRights(version: version, hosts: hosts, fields: fields.map(\.label))].compactMap { $0 }.joined(separator: " ")
 				action = .reviewUpdate
 			case .waitsForUser?:
 				note = [note, "Version \(version) is available."].compactMap { $0 }.joined(separator: " ")
