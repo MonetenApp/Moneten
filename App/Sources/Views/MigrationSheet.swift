@@ -144,7 +144,7 @@ struct MigrationSheet: View {
 		step = .importing
 		Task {
 			do {
-				try model.runMigration(plan: plan)
+				try await model.runMigration(plan: plan)
 				step = .done(plan)
 			} catch {
 				step = .failed("Nothing was imported. \(error)")

@@ -146,13 +146,23 @@ final class AppModel {
 	private(set) var accesses: [UUID: Access] = [:]
 	/// The "Add Account" assistant while its sheet is open.
 	private(set) var setup: AccountSetup?
-	private(set) var phase: Phase = .starting
+	private(set) var phase: Phase = .starting {
+		didSet { if phase != oldValue { Trail.log("phase \(phase.trailName)") } }
+	}
 	private(set) var hasPassword = false
 	private(set) var store: Store?
 	private(set) var ledger = Ledger() {
-		// While locked the ledger is empty, which says nothing about the notifications of the database.
-		didSet { if store != nil { notices.update(newCounts: ledger.newTransactionCounts) } }
+		didSet {
+			// While locked the ledger is empty, which says nothing about the notifications of the database.
+			if store != nil { notices.update(newCounts: ledger.newTransactionCounts) }
+			let rows = ledger.transactions.count
+			Trail.log("ledger \(ledgerChange) rows=\(rows) delta=\(rows - oldValue.transactions.count) accounts=\(ledger.accounts.count)")
+			ledgerChange = "edit"
+			noteUndrawn(ledger: true)
+		}
 	}
+	/// The kind of the next change of `ledger`, for the trail.
+	@ObservationIgnored var ledgerChange = "edit"
 	/// "Automatically refresh accounts" and the notification settings of the "General" tab.
 	let refreshSettings = RefreshSettings(defaults: .standard)
 	let autoRefresh: AutoRefresh
@@ -170,8 +180,19 @@ final class AppModel {
 	/// Opens the main window, also when it is closed. The window sets it, because only a view can open a scene.
 	@ObservationIgnored var openMainWindow: () -> Void = {}
 
-	var selection: SidebarSelection?
-	var filter = TransactionFilter()
+	var selection: SidebarSelection? {
+		didSet { if selection != oldValue { tableChanged() } }
+	}
+	var filter = TransactionFilter() {
+		didSet { if filter != oldValue { tableChanged() } }
+	}
+	/// A change of the ledger, or of the identity of the transaction table, that SwiftUI has not drawn yet.
+	/// The two must not meet in one drawing (issue #151), so each one waits until the other is drawn.
+	@ObservationIgnored private var ledgerUndrawn = false
+	@ObservationIgnored private var tableUndrawn = false
+	@ObservationIgnored private var watchesDrawing = false
+	/// The view of a click that waits for a change of the ledger to be drawn. `.some(nil)` is no view.
+	@ObservationIgnored private var waitingSelection: SidebarSelection??
 	var period: PeriodChoice = .all {
 		didSet {
 			filter.period = period.range()
@@ -207,13 +228,18 @@ final class AppModel {
 	var selectedTransactions = Set<UUID>()
 
 	/// A message for an alert.
-	var alert: AlertMessage?
-	var sheet: SheetKind?
+	var alert: AlertMessage? {
+		didSet { if (alert == nil) != (oldValue == nil) { Trail.log(alert == nil ? "alert closed" : "alert shown") } }
+	}
+	var sheet: SheetKind? {
+		didSet { if sheet != oldValue { Trail.log("sheet \(sheet?.trailName ?? "none")") } }
+	}
 	var settingsTab = SettingsTab.security
-	/// Changes after a file import, a migration, or a rule applied to all, so that the transaction table
-	/// starts over instead of inserting thousands of rows one by one. A refresh updates the rows in place
-	/// (issue #135). See `TransactionTable`.
-	private(set) var tableGeneration = 0
+	/// The number of transaction tables that `replacingTable` started, for the trail.
+	@ObservationIgnored private(set) var tableGeneration = 0
+	/// The changes of `replacingTable` that wait for their new table. While there is one, a placeholder
+	/// stands in for the transaction table.
+	private(set) var tableHolds = 0
 	/// Column widths and order of the transaction table. They live here, so a new table keeps them.
 	var transactionColumns = TableColumnCustomization<Transaction>()
 
@@ -228,11 +254,22 @@ final class AppModel {
 		// A closure that captures `self` can be handed over only once every stored property is set.
 		sync.deliver = { [weak self] accountID, result in
 			guard let self else { return }
-			self.announcer.stored(try self.merge(.refresh(result), into: accountID).added)
+			self.announcer.stored(try await self.mergeRefresh(result, into: accountID).added)
 		}
 		sync.ended = { [weak self] access, state, accounts, attended in
-			self?.recordRefresh(of: access, state: state, accounts: accounts, attended: attended)
-			self?.extensions.sessionEnded()
+			let failed = accounts.values.filter { if case .failed = $0 { true } else { false } }.count
+			guard let self else { return }
+			Trail.log("refresh end access=\(self.trailNumber(of: access)) accounts=\(accounts.count) failed=\(failed)")
+			// The times and errors change the accounts in the ledger, which must not meet a new view in one drawing.
+			if self.tableUndrawn {
+				Task {
+					while self.tableUndrawn { await self.drawn() }
+					self.recordRefresh(of: access, state: state, accounts: accounts, attended: attended)
+				}
+			} else {
+				self.recordRefresh(of: access, state: state, accounts: accounts, attended: attended)
+			}
+			self.extensions.sessionEnded()
 		}
 		sync.runEnded = { [weak self] in
 			guard let self else { return }
@@ -323,7 +360,9 @@ final class AppModel {
 
 	private func open(_ store: Store) throws {
 		self.store = store
-		ledger = try store.loadLedger()
+		let loaded = try store.loadLedger()
+		ledgerChange = "load"
+		ledger = loaded
 		accesses = Dictionary(uniqueKeysWithValues: try store.accesses().map { ($0.id, $0) })
 		// The saved PINs live only in the database, so a refresh after a restart or an unlock does not ask.
 		try sync.broker.open(store)
@@ -360,11 +399,19 @@ final class AppModel {
 		extensions.close()
 		try? store?.close()
 		store = nil
-		ledger = Ledger()
 		accesses = [:]
 		sheet = nil
-		selectedTransactions = []
 		phase = .locked
+		// The lock removes the transaction table in this drawing and empties its rows after it, so that the
+		// table never goes in the drawing that changes its rows (issue #151).
+		Self.afterDraw { [weak self] in
+			Task { @MainActor in
+				guard let self, self.phase == .locked else { return }
+				self.ledgerChange = "clear"
+				self.ledger = Ledger()
+				self.selectedTransactions = []
+			}
+		}
 	}
 
 	func setPassword(_ password: String) {
@@ -420,18 +467,34 @@ final class AppModel {
 	// MARK: Selection and filters
 
 	func select(_ s: SidebarSelection?) {
+		// A new view replaces the table, which must not go in the drawing that changes its rows (issue #151),
+		// for example when the click comes right after a refresh. It waits until SwiftUI drew that change.
+		if ledgerUndrawn || waitingSelection != nil {
+			if waitingSelection == nil {
+				Trail.log("table selection waits for drawing")
+				Self.afterDraw { [weak self] in Task { @MainActor in self?.selectWaiting() } }
+			}
+			waitingSelection = .some(s)
+			return
+		}
 		guard s != selection else { return }
 		selection = s
 		selectedTransactions = []
 		if !keepFilters {
-			let p = filter.period
-			let search = filter.searchText
-			filter = TransactionFilter()
-			filter.period = p
-			filter.searchText = search
+			var kept = TransactionFilter()
+			kept.period = filter.period
+			kept.searchText = filter.searchText
+			filter = kept
 		}
-		// Changing rows while the list handles the selection change upsets the table view.
-		DispatchQueue.main.async { [weak self] in self?.markSeen() }
+		// The rows change after SwiftUI drew the new view: changing them while the list handles the
+		// selection change upsets the table view.
+		Self.afterDraw { [weak self] in Task { @MainActor in self?.markSeen() } }
+	}
+
+	private func selectWaiting() {
+		guard case let .some(s) = waitingSelection else { return }
+		waitingSelection = nil
+		select(s)
 	}
 
 	var visibleTransactions: [Transaction] {
@@ -453,6 +516,7 @@ final class AppModel {
 		var seen = ledger.transactions(ofAccount: id).filter(\.isNew)
 		guard !seen.isEmpty, (try? store.markSeen(account: id)) != nil else { return }
 		for i in seen.indices { seen[i].isNew = false }
+		ledgerChange = "seen"
 		ledger.update(seen)
 	}
 
@@ -471,6 +535,7 @@ final class AppModel {
 		guard let store, !changed.isEmpty else { return }
 		do {
 			try store.save(changed)
+			ledgerChange = "commit rows=\(changed.count)"
 			ledger.update(changed)
 		} catch {
 			alert = AlertMessage(title: "Could not save the change.", message: String(describing: error))
@@ -535,6 +600,7 @@ final class AppModel {
 		guard let store else { return }
 		do {
 			try store.deleteTransactions(Array(ids))
+			ledgerChange = "delete rows=\(ids.count)"
 			ledger.remove(transactionIDs: ids)
 			selectedTransactions.subtract(ids)
 		} catch {
@@ -579,46 +645,64 @@ final class AppModel {
 		guard let store else { return }
 		let (access, accounts) = try store.add(new, state: state, accounts: ledger.accountsToAdd(candidates, listed: listed, connecting: connecting))
 		let first = accounts.first { ledger.account($0.id) == nil } ?? accounts.first
-		accesses[access.id] = access
-		for a in accounts { ledger.upsert(a) }
-		ledger.replace()
 		// The bank accepted the PIN at the login of the setup.
 		do {
 			try sync.broker.remember(pin, for: access.id, save: savePIN)
 		} catch {
 			alert = AlertMessage(title: "Could not save the PIN.", message: String(describing: error))
 		}
-		if let first { navigate(to: .account(first.id)) }
-		refresh(ledger.refreshAccounts(.all).filter { $0.key == access.id })
+		accesses[access.id] = access
+		// The new accounts and the view of the first one come with a new transaction table.
+		Task {
+			await replacingTable {
+				guard self.store != nil else { return }
+				take(new: accounts)
+				if let first { navigate(to: .account(first.id)) }
+			}
+			refresh(ledger.refreshAccounts(.all).filter { $0.key == access.id })
+		}
 	}
 
 	/// Stores the access of an extension setup with the listed accounts that the app does not have yet.
 	/// A login that the app has already keeps its access and its state. Without a new account nothing is
-	/// stored, so that no access is left without accounts. Returns the stored accounts.
+	/// stored, so that no access is left without accounts. Returns the stored accounts, which the caller
+	/// takes into the ledger.
 	func storeExtensionAccess(_ new: Access, state: AccessState, accounts listed: [Account]) throws -> [Account] {
 		let added = ledger.accountsToAdd(listed, listed: listed)
 		guard let store, !added.isEmpty else { return [] }
 		let (access, accounts) = try store.add(new, state: state, accounts: added)
 		accesses[access.id] = access
-		for a in accounts { ledger.upsert(a) }
-		ledger.replace()
 		return accounts
 	}
 
-	func addOfflineAccount(name: String, kind: AccountKind, currency: String, groupID: UUID?) {
-		let position = ledger.nextTreePosition(in: groupID)
-		let a = Account(groupID: groupID, position: position, name: name, kind: kind, source: .offline, currency: currency)
-		save(account: a)
-		selection = .account(a.id)
+	/// Takes the accounts of a new access, and the rows that its setup stored, into the ledger.
+	func take(new accounts: [Account], merged: [Reconciliation] = []) {
+		for a in accounts { ledger.upsert(a) }
+		ledger.replace()
+		for result in merged {
+			ledgerChange = result.trailName("refresh")
+			ledger.apply(result)
+		}
 	}
 
-	func addGroup(name: String) {
+	func addOfflineAccount(name: String, kind: AccountKind, currency: String, groupID: UUID?) async {
+		let position = ledger.nextTreePosition(in: groupID)
+		let a = Account(groupID: groupID, position: position, name: name, kind: kind, source: .offline, currency: currency)
+		await replacingTable {
+			save(account: a)
+			selection = .account(a.id)
+		}
+	}
+
+	func addGroup(name: String) async {
 		guard let store else { return }
 		let g = AccountGroup(name: name, position: ledger.nextTreePosition(in: nil))
 		do {
 			try store.save(g)
-			ledger.upsert(g)
-			selection = .group(g.id)
+			await replacingTable {
+				ledger.upsert(g)
+				selection = .group(g.id)
+			}
 		} catch {
 			alert = AlertMessage(title: "Could not save the account group.", message: String(describing: error))
 		}
@@ -650,28 +734,32 @@ final class AppModel {
 		}
 	}
 
-	func remove(account id: UUID) {
+	func remove(account id: UUID) async {
 		guard let store else { return }
 		do {
 			if let access = try store.deleteAccount(id) {
 				accesses[access] = nil
 				sync.broker.forgetPIN(of: access)
 			}
-			ledger.replace(accounts: ledger.accounts.filter { $0.id != id }, transactions: ledger.transactions.filter { $0.accountID != id })
-			if selection == .account(id) { selection = nil }
+			await replacingTable {
+				ledger.replace(accounts: ledger.accounts.filter { $0.id != id }, transactions: ledger.transactions.filter { $0.accountID != id })
+				if selection == .account(id) { selection = nil }
+			}
 		} catch {
 			alert = AlertMessage(title: "Could not remove the account.", message: String(describing: error))
 		}
 	}
 
-	func remove(group id: UUID) {
+	func remove(group id: UUID) async {
 		guard let store else { return }
 		do {
 			try store.deleteGroup(id)
-			let groups = ledger.groups.filter { $0.id != id }.map { g -> AccountGroup in var g = g; if g.parentID == id { g.parentID = nil }; return g }
-			let accounts = ledger.accounts.map { a -> Account in var a = a; if a.groupID == id { a.groupID = nil }; return a }
-			ledger.replace(groups: groups, accounts: accounts)
-			if selection == .group(id) { selection = nil }
+			await replacingTable {
+				let groups = ledger.groups.filter { $0.id != id }.map { g -> AccountGroup in var g = g; if g.parentID == id { g.parentID = nil }; return g }
+				let accounts = ledger.accounts.map { a -> Account in var a = a; if a.groupID == id { a.groupID = nil }; return a }
+				ledger.replace(groups: groups, accounts: accounts)
+				if selection == .group(id) { selection = nil }
+			}
 		} catch {
 			alert = AlertMessage(title: "Could not remove the account group.", message: String(describing: error))
 		}
@@ -754,15 +842,18 @@ final class AppModel {
 
 	/// The PIN sheet, the dialog "Two-Factor Authentication", and the alerts live in the main window. A
 	/// refresh from the menu bar can ask or fail while that window is closed, so they bring the window back.
-	private func showDialogsInMainWindow() {
+	/// `asking` tells whether the dialog of a refresh was open before, so that the trail logs each change once.
+	private func showDialogsInMainWindow(asking: Bool = false) {
 		withObservationTracking { _ = (sync.broker.current, alert) } onChange: { [weak self] in
 			Task { @MainActor [weak self] in
 				guard let self else { return }
-				if self.sync.broker.current != nil || self.alert != nil {
+				let asks = self.sync.broker.current != nil
+				if asks != asking { Trail.log("dialog refresh \(asks ? "shown" : "closed")") }
+				if asks || self.alert != nil {
 					NSApp.activate()
 					self.openMainWindow()
 				}
-				self.showDialogsInMainWindow()
+				self.showDialogsInMainWindow(asking: asks)
 			}
 		}
 	}
@@ -795,6 +886,7 @@ final class AppModel {
 			}
 			do {
 				sync.refresh(RefreshRequest(access: access, state: try store.state(of: access.id), accounts: accounts), with: connector, attended: attended)
+				Trail.log("refresh start access=\(trailNumber(of: access.id)) accounts=\(accounts.count) attended=\(attended)")
 			} catch {
 				if attended { alert = AlertMessage(title: "Could not refresh \(access.bankName).", message: String(describing: error)) }
 			}
@@ -816,7 +908,10 @@ final class AppModel {
 		guard state != nil || !accounts.isEmpty else { return }
 		do {
 			try store.recordRefresh(of: access, state: state, accounts: accounts)
-			for a in accounts { ledger.upsert(a) }
+			for a in accounts {
+				ledgerChange = "account refreshed"
+				ledger.upsert(a)
+			}
 		} catch {
 			report(AlertMessage(title: "Could not save the result of the refresh.", message: String(describing: error)), attended: attended)
 		}
@@ -836,12 +931,14 @@ final class AppModel {
 
 	// MARK: Categories
 
-	func addCategory(name: String, isGroup: Bool, parentID: UUID?, assigning ids: Set<UUID> = []) {
+	func addCategory(name: String, isGroup: Bool, parentID: UUID?, assigning ids: Set<UUID> = []) async {
 		let position = (ledger.childCategories(of: parentID).map(\.position).max() ?? -1) + 1
 		let c = Domain.Category(parentID: parentID, position: position, name: name, isGroup: isGroup)
-		save(category: c)
-		if !ids.isEmpty, ledger.category(c.id) != nil { assign(category: c.id, to: ids) }
-		selection = .category(c.id)
+		await replacingTable {
+			save(category: c)
+			if !ids.isEmpty, ledger.category(c.id) != nil { assign(category: c.id, to: ids) }
+			selection = .category(c.id)
+		}
 	}
 
 	func save(category: Domain.Category) {
@@ -855,18 +952,20 @@ final class AppModel {
 		}
 	}
 
-	func remove(category id: UUID) {
+	func remove(category id: UUID) async {
 		guard let store, let c = ledger.category(id), !c.isDefault else { return }
 		do {
-			try store.deleteCategory(id)
 			let removed = ledger.categoryIDs(inTree: id)
-			let transactions = ledger.transactions.map { t -> Transaction in
-				var t = t
-				if let c = t.categoryID, removed.contains(c) { t.categoryID = nil; t.categorizedBy = .none }
-				return t
+			try store.deleteCategory(id)
+			await replacingTable {
+				let transactions = ledger.transactions.map { t -> Transaction in
+					var t = t
+					if let c = t.categoryID, removed.contains(c) { t.categoryID = nil; t.categorizedBy = .none }
+					return t
+				}
+				ledger.replace(categories: ledger.categories.filter { !removed.contains($0.id) }, transactions: transactions)
+				if case let .category(sel) = selection, removed.contains(sel) { selection = nil }
 			}
-			ledger.replace(categories: ledger.categories.filter { !removed.contains($0.id) }, transactions: transactions)
-			if case let .category(sel) = selection, removed.contains(sel) { selection = nil }
 		} catch {
 			alert = AlertMessage(title: "Could not remove the category.", message: String(describing: error))
 		}
@@ -877,8 +976,7 @@ final class AppModel {
 		let changed = await Task.detached(priority: .userInitiated) {
 			RuleApplier.apply(category: category, rule: rule, to: ledger.transactions, ledger: ledger, mode: mode)
 		}.value
-		commit(changed)
-		tableGeneration += 1
+		await replacingTable { commit(changed) }
 		alert = AlertMessage(title: "Categorized transactions: \(changed.count)", message: "")
 	}
 
@@ -899,16 +997,19 @@ final class AppModel {
 
 	// MARK: Migration
 
-	func runMigration(plan: MoneyMoneyMigration.Plan) throws {
+	func runMigration(plan: MoneyMoneyMigration.Plan) async throws {
 		guard let store else { return }
 		let starters = replaceableStarterCategories
 		try store.save(groups: plan.groups, accounts: plan.accounts + plan.updatedAccounts, categories: plan.categories + plan.updatedCategories,
 			transactions: plan.transactions + plan.updatedTransactions, relinking: plan.relinkedDeletedRows)
 		for c in starters { try? store.deleteCategory(c.id) }
-		ledger = try store.loadLedger()
-		tableGeneration += 1
-		if case let .category(id) = selection, ledger.category(id) == nil { selection = nil }
-		if selection == nil, let g = ledger.childGroups(of: nil).first { selection = .group(g.id) }
+		try await replacingTable {
+			let loaded = try store.loadLedger()
+			ledgerChange = "load"
+			ledger = loaded
+			if case let .category(id) = selection, ledger.category(id) == nil { selection = nil }
+			if selection == nil, let g = ledger.childGroups(of: nil).first { selection = .group(g.id) }
+		}
 	}
 
 	/// The ledger that a migration plan is built against. While the database has no transactions, it
@@ -944,17 +1045,89 @@ final class AppModel {
 		}
 	}
 
+	/// Stores a delivery and takes it into the ledger. An import goes through `replacingTable`, because a
+	/// file can bring thousands of rows; a refresh goes through `mergeRefresh`.
 	@discardableResult
 	func merge(_ delivery: Delivery, into accountID: UUID) throws -> Reconciliation {
 		guard let store else { return Reconciliation() }
 		let result = try store.merge(delivery, into: accountID)
+		let kind = if case .file = delivery { "file" } else { "refresh" }
+		ledgerChange = result.trailName(kind)
 		ledger.apply(result)
-		// A file can bring thousands of rows, so the transaction table starts over after an import. A refresh
-		// changes the rows of the table in place. Replacing the table in the same update as the rows that its
-		// cells read let SwiftUI run a queued update of the removed table, and AttributeGraph stopped the app
-		// (issue #135). A refresh usually brings few rows.
-		if case .file = delivery, !result.added.isEmpty || !result.dropped.isEmpty { tableGeneration += 1 }
 		return result
+	}
+
+	/// A refresh changes the rows of the open table in place, also a first refresh that brings the whole
+	/// history (perf scenario "refresh-into-open-view"). When the open table shows pending rows of the
+	/// account, the bank can drop or book them, and the table starts over instead: removing shown rows in
+	/// place stopped the app in AttributeGraph, while SwiftUI updated the row views that the table had
+	/// just removed (issue #135).
+	private func mergeRefresh(_ result: RefreshResult, into accountID: UUID) async throws -> Reconciliation {
+		// A new view, for example of a click on the depot while the refresh runs, must not meet the new rows in
+		// one drawing (issue #151): the rows wait until SwiftUI drew the view.
+		if tableUndrawn { Trail.log("refresh waits for drawing") }
+		while tableUndrawn { await drawn() }
+		guard visibleTransactions.contains(where: { $0.accountID == accountID && $0.isPending }) else {
+			return try merge(.refresh(result), into: accountID)
+		}
+		return try await replacingTable { try merge(.refresh(result), into: accountID) }
+	}
+
+	/// Applies a change of the rows that comes with a new transaction table: an import, a migration, a
+	/// rule applied to all, a new or removed account, group, or category with its view, or a refresh that
+	/// removes shown rows. SwiftUI stopped the app in AttributeGraph when it removed a table, or rows of a
+	/// table, in the drawing in which the rows that its cells read changed (issues #135, #151). So this
+	/// drawing shows a placeholder in place of the table, and the change and the new table come in the
+	/// next one. Bumping the table id a drawing after the change instead let the old table insert every new
+	/// row first, and the app hung (863ac4b).
+	@discardableResult
+	func replacingTable<T>(_ change: () throws -> T) async rethrows -> T {
+		tableHolds += 1
+		Trail.log("table placeholder generation=\(tableGeneration)")
+		await drawn()
+		defer {
+			tableHolds -= 1
+			tableGeneration += 1
+			Trail.log("table new generation=\(tableGeneration)")
+		}
+		return try change()
+	}
+
+	/// The identity of the transaction table changed: the trail gets its kinds of view and filters.
+	private func tableChanged() {
+		Trail.log("table selection=\(selection?.trailName ?? "none") filter=\(filter.trailName) generation=\(tableGeneration)")
+		noteUndrawn(ledger: false)
+	}
+
+	private func noteUndrawn(ledger: Bool) {
+		if ledger { ledgerUndrawn = true } else { tableUndrawn = true }
+		guard !watchesDrawing else { return }
+		watchesDrawing = true
+		Self.afterDraw { [weak self] in
+			self?.ledgerUndrawn = false
+			self?.tableUndrawn = false
+			self?.watchesDrawing = false
+		}
+	}
+
+	/// Waits until SwiftUI drew the changes made so far.
+	private func drawn() async {
+		await withCheckedContinuation { done in Self.afterDraw { done.resume() } }
+	}
+
+	/// Runs `work` once when the main run loop is about to wait, after AppKit laid out the windows, which
+	/// updates SwiftUI, and after Core Animation committed them. `work` runs in that callout, so a change
+	/// that SwiftUI shows goes through a task, which gets a drawing of its own.
+	private static func afterDraw(_ work: @escaping @MainActor () -> Void) {
+		let observer = CFRunLoopObserverCreateWithHandler(nil, CFRunLoopActivity.beforeWaiting.rawValue, false, CFIndex.max) { _, _ in
+			MainActor.assumeIsolated { work() }
+		}
+		CFRunLoopAddObserver(CFRunLoopGetMain(), observer, .commonModes)
+	}
+
+	/// A number for an access in the trail, without its name: its place among the accesses.
+	private func trailNumber(of access: UUID) -> Int {
+		(accesses.keys.map(\.uuidString).sorted().firstIndex(of: access.uuidString) ?? -1) + 1
 	}
 }
 

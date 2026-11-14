@@ -311,7 +311,11 @@ struct TransactionTable: View {
 
 	var body: some View {
 		@Bindable var model = model
-		if rows.isEmpty {
+		if model.tableHolds > 0 {
+			// The placeholder of `AppModel.replacingTable`: the old table goes in this update, and the next
+			// turn of the run loop changes the rows and builds the new table.
+			Color.clear
+		} else if rows.isEmpty {
 			VStack {
 				Spacer()
 				Text(model.filter.isActive || !model.filter.searchText.isEmpty ? "No matching transactions found." : "No transactions found.")
@@ -363,13 +367,13 @@ struct TransactionTable: View {
 			} primaryAction: { ids in
 				if ids.count == 1, let id = ids.first { model.sheet = .transaction(id) }
 			}
-			// The table starts over for another view, after a file import, a migration, or a rule applied
-			// to all. A refresh updates the rows in place (issue #135). SwiftUI otherwise turns a
+			// The table starts over for another view, and after a change of `AppModel.replacingTable`, such as a
+			// file import. A refresh usually updates the rows in place (issue #135). SwiftUI otherwise turns a
 			// new view into row insertions, and AppKit then measures every inserted row with its own
 			// SwiftUI view to keep the top row in place. With thousands of rows, for example from an
 			// account scrolled to the middle to its group, the app hung, and SwiftUI aborted when its
 			// view graph ran out of space. Edits inside one view still update single rows.
-			.id([AnyHashable(model.selection), AnyHashable(model.filter), AnyHashable(model.tableGeneration)])
+			.id([AnyHashable(model.selection), AnyHashable(model.filter)])
 		}
 	}
 

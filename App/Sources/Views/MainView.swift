@@ -83,7 +83,7 @@ struct SheetView: View {
 	var body: some View {
 		switch kind {
 		case .newAccount: if let setup = model.setup { AccountSetupSheet(setup: setup) }
-		case .newGroup: NameSheet(title: "Add Account Group", placeholder: "Name") { model.addGroup(name: $0) }
+		case .newGroup: NameSheet(title: "Add Account Group", placeholder: "Name") { name in Task { await model.addGroup(name: name) } }
 		case let .newCategory(isGroup, ids): NewCategorySheet(isGroup: isGroup, assigning: ids)
 		case let .accountSettings(id): AccountSettingsSheet(accountID: id)
 		case let .groupSettings(id): GroupSettingsSheet(groupID: id)

@@ -32,8 +32,9 @@ public final class SyncCoordinator {
 	private let limit: Int
 	/// Stores what a connector fetched for one account in the history (issue #7). Runs on the main actor,
 	/// once for each requested account that the connector fetched, never for a failed, missing, or canceled
-	/// one. When it throws, the account fails with `SyncFailure.notSaved` and keeps its last state.
-	@ObservationIgnored public var deliver: @MainActor (UUID, RefreshResult) throws -> Void = { _, _ in }
+	/// one. When it throws, the account fails with `SyncFailure.notSaved` and keeps its last state. It may
+	/// wait, for example for a new transaction table (issue #151); the next account and `ended` wait for it.
+	@ObservationIgnored public var deliver: @MainActor (UUID, RefreshResult) async throws -> Void = { _, _ in }
 	/// Runs on the main actor when the refresh of an access ended, after `deliver`: with the ID of the
 	/// access, the new state that its connector returned, and how each requested account ended. A canceled
 	/// refresh brings no account, so its accounts keep their last state. It brings a state only when its
@@ -266,7 +267,7 @@ public final class SyncCoordinator {
 				failedState = fetched.state
 				try Task.checkCancellation()
 				report = fetched
-				let notSaved = deliverFetched(fetched, of: job.request)
+				let notSaved = await deliverFetched(fetched, of: job.request)
 				event = .finish(Self.summary(of: fetched, for: job.request, notSaved: notSaved))
 			} catch {
 				let withState = error as? FailureWithState
@@ -329,12 +330,12 @@ public final class SyncCoordinator {
 		error as? SyncFailure ?? .network(error.localizedDescription)
 	}
 
-	private func deliverFetched(_ report: ConnectorReport, of request: RefreshRequest) -> [UUID: SyncFailure] {
+	private func deliverFetched(_ report: ConnectorReport, of request: RefreshRequest) async -> [UUID: SyncFailure] {
 		var failures: [UUID: SyncFailure] = [:]
 		for account in request.accounts {
 			guard case let .fetched(result) = report.outcomes[account.accountID] else { continue }
 			do {
-				try deliver(account.accountID, result)
+				try await deliver(account.accountID, result)
 			} catch {
 				failures[account.accountID] = .notSaved(String(describing: error))
 			}

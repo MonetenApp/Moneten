@@ -148,7 +148,8 @@ final class AccountSetup {
 		case .accounts:
 			finish()
 		case .offline:
-			model.addOfflineAccount(name: offlineName.trimmingCharacters(in: .whitespaces), kind: offlineKind, currency: offlineCurrency.uppercased(), groupID: groupID)
+			let name = offlineName.trimmingCharacters(in: .whitespaces), kind = offlineKind, currency = offlineCurrency.uppercased(), group = groupID
+			Task { await model.addOfflineAccount(name: name, kind: kind, currency: currency, groupID: group) }
 			model.closeAccountSetup()
 		}
 	}

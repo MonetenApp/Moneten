@@ -70,6 +70,22 @@ struct SyncCoordinatorTests {
 		#expect(!coordinator.isRefreshing)
 	}
 
+	/// The app waits a turn of the run loop in `deliver` when it replaces the transaction table (issue #151).
+	@Test("A delivery that waits ends before the refresh ends, in the order of the accounts")
+	func deliveryThatWaits() async {
+		let bank = Self.access("Musterbank")
+		var events: [String] = []
+		coordinator.deliver = { id, _ in
+			await Task.yield()
+			events.append(id == Self.giro.accountID ? "giro" : "savings")
+		}
+		coordinator.ended = { _, _, _, _ in events.append("ended") }
+		_ = refresh(bank, [.fetched(Self.giro.accountID), .fetched(Self.savings.accountID)], accounts: [Self.giro, Self.savings], attended: false)
+		await until { !coordinator.isRefreshing && events.count == 3 }
+		#expect(events == ["giro", "savings", "ended"])
+		#expect(finished(bank)?.fetched == [Self.giro.accountID, Self.savings.accountID])
+	}
+
 	@Test("A PIN in memory is used again, until the app locks")
 	func pinInMemory() async {
 		let bank = Self.access("Musterbank")

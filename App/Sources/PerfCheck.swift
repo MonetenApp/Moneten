@@ -52,7 +52,11 @@ struct PerfScenario {
 				let rows = (0..<2_000).map { i in
 					Transaction(accountID: account.id, bookingDate: today.adding(days: -(i % 400)), amountMinor: -Int64(1_000 + i), name: "Online Shop", purpose: "Order \(i)")
 				}
-				try? c.model.merge(.file(rows), into: account.id)
+				await c.model.replacingTable {
+					// The placeholder must have taken the place of the table before the rows change (issue #151).
+					if !c.harness.transactionTables().isEmpty { c.fail("the import changed the rows while the old table was on screen") }
+					_ = try? c.model.merge(.file(rows), into: account.id)
+				}
 			}),
 		// A first refresh fetches the whole history into the open view. A refresh changes the rows of the
 		// table in place (issue #135), so the table must stay the same object.
@@ -71,6 +75,29 @@ struct PerfScenario {
 				await c.settle()
 				if c.harness.transactionTables().first.map(ObjectIdentifier.init) != table.map(ObjectIdentifier.init) {
 					c.fail("the refresh replaced the transaction table")
+				}
+			}),
+		// A refresh that drops pending rows of the open table starts the table over. Removing shown rows in
+		// place stopped the app in AttributeGraph (issue #135).
+		PerfScenario(name: "refresh-drops-shown-pending", budget: halfSecond,
+			setUp: { c in
+				await c.select("Account 1")
+				guard let account = c.model.ledger.accounts.first(where: { $0.name == "Account 1" }) else { return }
+				let pending = (0..<20).map { i in
+					Transaction(accountID: account.id, bookingDate: Day.today(), amountMinor: -Int64(500 + i), name: "Card Payment", purpose: "Pending \(i)", isPending: true)
+				}
+				await c.model.replacingTable { _ = try? c.model.merge(.file(pending), into: account.id) }
+				await c.settle()
+			},
+			run: { c in
+				guard let account = c.model.ledger.accounts.first(where: { $0.name == "Account 1" }) else { return }
+				let table = c.harness.transactionTables().first
+				let result = RefreshResult(balance: nil, transactions: FetchedTransactions(rows: [], from: Day.today().adding(days: -1)))
+				try? await c.model.sync.deliver(account.id, result)
+				await c.settle()
+				if c.model.ledger.transactions(ofAccount: account.id).contains(where: \.isPending) { c.fail("the refresh dropped no pending row") }
+				if c.harness.transactionTables().first.map(ObjectIdentifier.init) == table.map(ObjectIdentifier.init) {
+					c.fail("the refresh removed shown rows in place")
 				}
 			}),
 		// Last, because it leaves "Bulk" grouped by account: its table has a section per account.
@@ -152,7 +179,7 @@ extension DebugHarness {
 		guard let model else { return }
 		let context = PerfContext(model: model, harness: self, watchdog: MainThreadWatchdog())
 		if !model.ledger.groups.contains(where: { $0.name == "Bulk" }) {
-			DemoData.bulk(model, count: PerfScenario.transactions, newAccounts: PerfScenario.accounts)
+			await DemoData.bulk(model, count: PerfScenario.transactions, newAccounts: PerfScenario.accounts)
 		}
 		await context.settle()
 		var failures = 0

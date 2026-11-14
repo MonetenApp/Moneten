@@ -114,7 +114,7 @@ struct AppCommands: Commands {
 				.keyboardShortcut("k", modifiers: [.command, .shift])
 				.disabled(!unlocked || model.selectedTransactions.isEmpty)
 			Divider()
-			Button("Import Transactions...") { model.importFile() }
+			Button("Import Transactions...") { Task { await model.importFile() } }
 				.disabled(!unlocked || model.selectedAccount == nil)
 			Divider()
 			Button(model.refreshTitle) { if let scope = model.refreshScopeOfSelection { model.refresh(scope) } }

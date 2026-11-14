@@ -63,6 +63,7 @@ extension AppModel {
 			if installed { _ = try self?.extensions.verifiedPackage(id) }
 		}) { [weak self] setup in try self?.add(setup, of: access, groupID: groupID) }
 		sync.refresh(RefreshRequest(access: access, accounts: []), with: job, attended: true)
+		Trail.log("refresh start setup=extension")
 	}
 
 	/// Refreshes every account of each access that uses `package`.
@@ -84,14 +85,21 @@ extension AppModel {
 			return account
 		}
 		let accounts = try storeExtensionAccess(new, state: setup.state, accounts: listed)
-		if accounts.isEmpty {
+		guard let store, !accounts.isEmpty else {
 			alert = AlertMessage(title: "\(access.bankName) added no account.", message: "Moneten has every account of this login already.")
+			return
 		}
-		// The new account first, as the setup of a FinTS access does, so the fetched rows fill its view.
-		if let first = accounts.first { selection = .account(first.id) }
-		for account in accounts {
-			if case let .fetched(result)? = setup.accounts.first(where: { $0.remoteID == account.remoteID })?.outcome {
-				_ = try merge(.refresh(result), into: account.id)
+		// The rows that the setup fetched are stored here, without a suspension after the checks of the job.
+		let merged = try accounts.compactMap { account -> Reconciliation? in
+			guard case let .fetched(result)? = setup.accounts.first(where: { $0.remoteID == account.remoteID })?.outcome else { return nil }
+			return try store.merge(.refresh(result), into: account.id)
+		}
+		// The ledger takes the accounts, the view of the first one, and their rows with a new transaction table.
+		Task {
+			await replacingTable {
+				guard self.store != nil else { return }
+				take(new: accounts, merged: merged)
+				if let first = accounts.first { selection = .account(first.id) }
 			}
 		}
 	}

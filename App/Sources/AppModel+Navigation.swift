@@ -115,7 +115,7 @@ extension AppModel {
 		}
 	}
 
-	func importFile() {
+	func importFile() async {
 		guard let account = selectedAccount else { return }
 		let panel = NSOpenPanel()
 		panel.title = "Import Transactions"
@@ -127,20 +127,23 @@ extension AppModel {
 		var skipped = 0
 		var booked = 0
 		var problems: [String] = []
-		for url in panel.urls {
-			do {
-				let data = try Data(contentsOf: url)
-				guard data.count <= 100 * 1024 * 1024 else {
-					problems.append("\(url.lastPathComponent): The file is too large. Please choose a file with a maximum size of 100 MB.")
-					continue
+		// A file can bring thousands of rows, so all files go in with one new table.
+		await replacingTable {
+			for url in panel.urls {
+				do {
+					let data = try Data(contentsOf: url)
+					guard data.count <= 100 * 1024 * 1024 else {
+						problems.append("\(url.lastPathComponent): The file is too large. Please choose a file with a maximum size of 100 MB.")
+						continue
+					}
+					let parsed = try TransactionFileImporter.parse(data, currency: account.currency)
+					let result = try merge(.file(parsed), into: account.id)
+					added += result.added.count
+					skipped += result.skipped
+					booked += result.booked.count
+				} catch {
+					problems.append("\(url.lastPathComponent): \(error)")
 				}
-				let parsed = try TransactionFileImporter.parse(data, currency: account.currency)
-				let result = try merge(.file(parsed), into: account.id)
-				added += result.added.count
-				skipped += result.skipped
-				booked += result.booked.count
-			} catch {
-				problems.append("\(url.lastPathComponent): \(error)")
 			}
 		}
 		var message = added == 0 ? "Imported no new transactions." : added == 1 ? "Imported one new transaction." : "Imported \(added) new transactions."

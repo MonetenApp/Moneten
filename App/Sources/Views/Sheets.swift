@@ -113,7 +113,7 @@ struct NewCategorySheet: View {
 
 	var body: some View {
 		SheetFrame(title: isGroup ? "Add Category Group" : "Add Category", canConfirm: !name.isEmpty, onConfirm: {
-			model.addCategory(name: name, isGroup: isGroup, parentID: parentID, assigning: assigning)
+			Task { await model.addCategory(name: name, isGroup: isGroup, parentID: parentID, assigning: assigning) }
 			return true
 		}) {
 			Section {
@@ -223,7 +223,7 @@ struct AccountSettingsSheet: View {
 			}
 			.confirmationDialog("Are you sure you want to remove the account \(original.name)?", isPresented: $confirmRemove) {
 				Button("Remove", role: .destructive) {
-					model.remove(account: original.id)
+					Task { await model.remove(account: original.id) }
 					dismiss()
 				}
 			} message: {
