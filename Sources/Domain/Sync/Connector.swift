@@ -158,6 +158,12 @@ public struct RefreshResult: Sendable {
 	/// extension today, so the stored positions stay.
 	public let holdings: [Holding]?
 
+	/// After a fetch of the full history, the day of the oldest transaction: the bank keeps none before it.
+	public var historyStart: Day? {
+		guard isComplete else { return nil }
+		return transactions?.rows.map(\.bookingDate).min()
+	}
+
 	public init(balance: Money?, balanceDate: Date? = nil, transactions: FetchedTransactions?, isComplete: Bool = false,
 		transactionFailure: SyncFailure? = nil, isPortfolio: Bool = false, holdings: [Holding]? = nil) {
 		self.balance = balance
