@@ -53,7 +53,7 @@ struct FailureWithStateTests {
 		let coordinator = SyncCoordinator()
 		let stored = Mutex<AccessState?>(nil)
 		let delivered = Mutex(0)
-		coordinator.ended = { _, state, _ in stored.withLock { $0 = state } }
+		coordinator.ended = { _, state, _, _ in stored.withLock { $0 = state } }
 		coordinator.deliver = { _, _ in delivered.withLock { $0 += 1 } }
 		let gate = Gate()
 		coordinator.refresh(RefreshRequest(access: Self.access, accounts: [Self.giro]), with: Late(gate: gate), attended: false)
@@ -76,7 +76,7 @@ struct FailureWithStateTests {
 	func stateOfTheFailureIsKept(failure: any Error) async {
 		let coordinator = SyncCoordinator()
 		let stored = Mutex<AccessState?>(nil)
-		coordinator.ended = { _, state, _ in stored.withLock { $0 = state } }
+		coordinator.ended = { _, state, _, _ in stored.withLock { $0 = state } }
 		coordinator.refresh(RefreshRequest(access: Self.access, accounts: [Self.giro]), with: Failing(failure: failure), attended: false)
 		for _ in 0..<200 where coordinator.isRefreshing {
 			try? await Task.sleep(for: .milliseconds(10))

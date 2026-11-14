@@ -1,3 +1,4 @@
+import Sync
 import SwiftUI
 
 enum SettingsTab: Hashable {
@@ -12,7 +13,7 @@ struct SettingsView: View {
 		@Bindable var model = model
 		TabView(selection: $model.settingsTab) {
 			Tab("Security", systemImage: "lock", value: SettingsTab.security) { SecuritySettings() }
-			Tab("General", systemImage: "gearshape", value: SettingsTab.general) { AboutSettings() }
+			Tab("General", systemImage: "gearshape", value: SettingsTab.general) { GeneralSettings() }
 		}
 		.frame(width: 500)
 	}
@@ -159,8 +160,14 @@ struct Identified: Identifiable {
 	var id: String { value }
 }
 
-struct AboutSettings: View {
+/// The settings of the refresh and the notifications, in the order of MoneyMoney, and the facts about the app.
+struct GeneralSettings: View {
 	@Environment(AppModel.self) private var model
+	@AppStorage(Preference.showMenuBarIcon) private var showMenuBarIcon = false
+	@AppStorage(RefreshSettings.automaticRefreshKey) private var automaticRefresh = true
+	@AppStorage(RefreshSettings.showsBannerKey) private var showsBanner = true
+	@AppStorage(RefreshSettings.playsSoundKey) private var playsSound = false
+	@State private var notificationsDenied = false
 
 	private var version: String {
 		let info = Bundle.main.infoDictionary
@@ -170,6 +177,20 @@ struct AboutSettings: View {
 
 	var body: some View {
 		SheetForm {
+			Section {
+				Toggle("Show Moneten icon in menu bar", isOn: $showMenuBarIcon)
+				Toggle("Automatically refresh accounts", isOn: $automaticRefresh)
+				Toggle(isOn: askingPermission($showsBanner)) {
+					Text("Show banner notification on new transactions")
+					if notificationsDenied {
+						Text("macOS blocks the notifications of Moneten. Allow them in System Settings, Notifications, Moneten.")
+					}
+				}
+				Toggle("Play sound on new transactions", isOn: askingPermission($playsSound))
+				if notificationsDenied {
+					Button("Open Notification Settings...") { NSWorkspace.shared.open(Self.notificationSettings) }
+				}
+			}
 			Section {
 				LabeledContent("Version", value: version)
 				LabeledContent {
@@ -194,5 +215,28 @@ struct AboutSettings: View {
 					.foregroundStyle(.secondary)
 			}
 		}
+		.task { await checkPermission() }
+		// The user may have allowed the notifications in the System Settings meanwhile.
+		.onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+			Task { await checkPermission() }
+		}
+	}
+
+	private static let notificationSettings = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension?id=\(Bundle.main.bundleIdentifier ?? "")")!
+
+	/// macOS asks for the permission when the user turns on the banner or the sound, not at the launch.
+	private func askingPermission(_ value: Binding<Bool>) -> Binding<Bool> {
+		Binding(get: { value.wrappedValue }, set: { on in
+			value.wrappedValue = on
+			guard on else { return }
+			Task {
+				await model.notices.requestPermission()
+				await checkPermission()
+			}
+		})
+	}
+
+	private func checkPermission() async {
+		notificationsDenied = await model.notices.isDenied()
 	}
 }

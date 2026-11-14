@@ -1,6 +1,7 @@
 import Domain
 import Foundation
 import Observation
+import Synchronization
 
 /// Runs the refreshes of the accesses: up to three at a time, each with one `SyncState`.
 ///
@@ -37,7 +38,20 @@ public final class SyncCoordinator {
 	/// access, the new state that its connector returned, and how each requested account ended. A canceled
 	/// refresh brings no account, so its accounts keep their last state. It brings a state only when its
 	/// connector changed one before the cancel (`FailureWithState`).
-	@ObservationIgnored public var ended: @MainActor (UUID, AccessState?, [UUID: AccountRefresh]) -> Void = { _, _, _ in }
+	/// The last value says whether the refresh could ask the user, so that the app shows no alert for an automatic one.
+	@ObservationIgnored public var ended: @MainActor (UUID, AccessState?, [UUID: AccountRefresh], Bool) -> Void = { _, _, _, _ in }
+	/// Runs on the main actor when a run ended: the first refresh started it, the refreshes that started
+	/// while it went joined it, and the last one ended. The notification about new transactions comes once per run.
+	@ObservationIgnored public var runEnded: @MainActor () -> Void = {}
+	/// The user canceled the dialog of an access: its accounts, so that the automatic refresh does not
+	/// start them again at once. "Cancel Refresh" and the lock do not report here.
+	@ObservationIgnored public var userCanceled: @MainActor (Set<UUID>) -> Void = { _ in }
+	/// Whether a refresh that may not ask the user can start now. A refresh that waits for its turn is
+	/// checked again when its turn comes, so the automatic refresh stops when the Mac goes offline or asleep.
+	@ObservationIgnored public var mayStartUnattended: @MainActor () -> Bool = { true }
+	private var inRun = false
+	/// Whether the running refresh of each access may ask the user. A command turns it on while it runs.
+	private var attendance: [UUID: Attendance] = [:]
 
 	private struct Job {
 		var request: RefreshRequest
@@ -58,7 +72,7 @@ public final class SyncCoordinator {
 		self.limit = limit
 		self.broker = broker
 		broker.onEvent = { [weak self] in self?.apply($1, to: $0) }
-		broker.onUserCancel = { [weak self] in self?.cancel($0) }
+		broker.onUserCancel = { [weak self] in self?.userCancel($0) }
 	}
 
 	/// True from the first refresh until the last one ends.
@@ -68,13 +82,25 @@ public final class SyncCoordinator {
 	/// automatic one is not. An account that is already requested is not added again. The other accounts
 	/// of an access that waits join its request, and those of an access that runs, also one that was
 	/// canceled and has not ended yet, run when it ends.
+	///
+	/// A command that the user gives makes attended each refresh of the access that fetches an account
+	/// it names: the one that waits in the queue, which the command joins, one that waits for a run, and a
+	/// running one, whose next request shows its dialog. One session of the bank cannot ask for some of its
+	/// accounts and not for others, so the other accounts of such a refresh may ask too. A refresh that
+	/// fetches none of the named accounts stays unattended. A running refresh that already failed because
+	/// it could not ask runs again, attended. An automatic request that comes while a command waits or
+	/// runs again never joins it: its accounts stay due for a later run.
 	public func refresh(_ request: RefreshRequest, with connector: any BankConnector, attended: Bool) {
 		let id = request.access.id
+		if attended { attend(id, naming: Set(request.accounts.map(\.accountID))) }
 		let requested = requestedAccounts[id] ?? []
 		let accounts = request.accounts.filter { !requested.contains($0.accountID) }
 		let job = Job(request: RefreshRequest(access: request.access, state: request.state, accounts: accounts, enforced: request.enforced),
 			connector: connector, attended: attended)
 		let waiting = queue.firstIndex { $0.request.access.id == id }
+		// An automatic request never joins a command that waits, which would ask for accounts the user did
+		// not name. Its accounts stay due for a later run.
+		if !attended, waiting.map({ queue[$0].attended }) ?? afterRun[id]?.attended ?? false { return }
 		if running[id] == nil, waiting == nil, !held.contains(id) {
 			queue.append(job)
 		} else if accounts.isEmpty {
@@ -84,8 +110,25 @@ public final class SyncCoordinator {
 		} else {
 			afterRun[id] = afterRun[id]?.adding(job) ?? job
 		}
+		inRun = true
 		startProgress(of: job)
 		startNext()
+		endRunIfIdle()
+	}
+
+	/// True while the access runs a refresh that may not ask the user.
+	public func runsUnattended(_ access: UUID) -> Bool {
+		attendance[access].map { !$0.isOn } ?? false
+	}
+
+	/// Makes attended the refreshes of the access that fetch a named account. A job in the queue exists only
+	/// while the access does not run, so the command always joins it. A job that waits after a run and the
+	/// running session are sessions of their own: each becomes attended only when it holds a named account.
+	/// Accounts of the command that join the job after the run make it attended through `Job.adding`.
+	private func attend(_ id: UUID, naming accounts: Set<UUID>) {
+		if let index = queue.firstIndex(where: { $0.request.access.id == id }) { queue[index].attended = true }
+		if afterRun[id]?.request.accounts.contains(where: { accounts.contains($0.accountID) }) == true { afterRun[id]?.attended = true }
+		if let running = attendance[id], !running.accounts.isDisjoint(with: accounts) { running.turnOn() }
 	}
 
 	/// Runs `work` for an access, never beside a refresh of it, so that the bank gets one dialog for one
@@ -115,6 +158,7 @@ public final class SyncCoordinator {
 		held.remove(access)
 		if let next = afterRun.removeValue(forKey: access) { queue.append(next) }
 		startNext()
+		endRunIfIdle()
 	}
 
 	private func resumeWaiting(for access: UUID) -> Bool {
@@ -135,6 +179,7 @@ public final class SyncCoordinator {
 			endProgress(of: id)
 		}
 		for id in running.keys { cancel(id) }
+		endRunIfIdle()
 	}
 
 	/// Stops every running and waiting refresh and setup of one source, such as an extension that was blocked or removed.
@@ -154,6 +199,19 @@ public final class SyncCoordinator {
 		}
 		if afterRun.removeValue(forKey: id) != nil { endProgress(of: id) }
 		if running[id] != nil { cancel(id) }
+		endRunIfIdle()
+	}
+
+	private func endRunIfIdle() {
+		guard inRun, !isRefreshing else { return }
+		inRun = false
+		runEnded()
+	}
+
+	private func userCancel(_ id: UUID) {
+		let accounts = requestedAccounts[id] ?? []
+		cancel(id)
+		userCanceled(accounts)
 	}
 
 	/// The accounts of a canceled access show their last state at once, while its connector still ends.
@@ -175,16 +233,24 @@ public final class SyncCoordinator {
 		refreshingAccounts.subtract(requestedAccounts.removeValue(forKey: access) ?? [])
 	}
 
+	/// An automatic refresh whose turn comes while it may not start is dropped. Its accounts stay due.
 	private func startNext() {
 		while running.count < limit, !queue.isEmpty {
-			start(queue.removeFirst())
+			let job = queue.removeFirst()
+			if job.attended || mayStartUnattended() {
+				start(job)
+			} else {
+				endProgress(of: job.request.access.id)
+			}
 		}
 	}
 
 	private func start(_ job: Job) {
 		let access = job.request.access
 		apply(.start, to: access.id)
-		let session = Session(coordinator: self, access: access, accountNames: job.request.accounts.map(\.name), attended: job.attended)
+		let attendance = Attendance(job.attended, accounts: Set(job.request.accounts.map(\.accountID)))
+		self.attendance[access.id] = attendance
+		let session = Session(coordinator: self, access: access, accountNames: job.request.accounts.map(\.name), attendance: attendance)
 		runningSources[access.id] = access.source
 		running[access.id] = Task {
 			let event: SyncEvent
@@ -220,7 +286,14 @@ public final class SyncCoordinator {
 			endProgress(of: access.id)
 			running[access.id] = nil
 			runningSources[access.id] = nil
-			ended(access.id, state, end.accountRefreshes(of: accountIDs, notices: report?.notices ?? [], at: Date()))
+			self.attendance[access.id] = nil
+			// A command came after the refresh had failed for want of the user: run it again with dialogs.
+			if !job.attended, attendance.isOn, !attendance.asked, case let .fail(failure) = event, Self.asksAgain(after: failure) {
+				let again = Job(request: job.request, connector: job.connector, attended: true)
+				// An automatic request that waits after this run stays out of the attended run. Its accounts stay due.
+				afterRun[access.id] = afterRun[access.id].map { $0.attended ? again.adding($0) : again } ?? again
+			}
+			ended(access.id, state, end.accountRefreshes(of: accountIDs, notices: report?.notices ?? [], at: Date()), attendance.isOn)
 			if var next = afterRun.removeValue(forKey: access.id) {
 				// The state that this run returned replaces the one that the command read before.
 				if let state {
@@ -232,6 +305,7 @@ public final class SyncCoordinator {
 			}
 			_ = resumeWaiting(for: access.id)
 			startNext()
+			endRunIfIdle()
 		}
 	}
 
@@ -242,6 +316,13 @@ public final class SyncCoordinator {
 		// progress before the first account comes before the bank requests the challenge.
 		if case let .progress(.fetching(done, _)) = event, done > 0 { broker.endRequest(of: access) }
 		if let next = (states[access] ?? .idle).next(event) { states[access] = next }
+	}
+
+	/// A failure that the user resolves in a dialog: a PIN, a TAN, or login data that was needed or rejected.
+	/// A blocked access stays blocked, whatever the user enters.
+	private static func asksAgain(after failure: SyncFailure) -> Bool {
+		if case .accessBlocked = failure { return false }
+		return failure.waitsForUser
 	}
 
 	private static func failure(_ error: Error) -> SyncFailure {
@@ -288,10 +369,10 @@ private struct Session: SyncSession {
 	let coordinator: SyncCoordinator
 	let access: Access
 	let accountNames: [String]
-	let attended: Bool
+	let attendance: Attendance
 
 	func ask(_ request: UserRequest) async throws -> UserAnswer {
-		try await coordinator.broker.ask(request, for: access, accountNames: accountNames, attended: attended)
+		try await coordinator.broker.ask(request, for: access, accountNames: accountNames, attended: attendance.ask())
 	}
 
 	func rejected(_ failure: SyncFailure) async {
@@ -302,7 +383,37 @@ private struct Session: SyncSession {
 		await coordinator.apply(.progress(progress), to: access.id)
 	}
 
-	var isAttended: Bool { attended }
+	var isAttended: Bool { attendance.isOn }
+}
+
+/// Whether the refresh of an access may ask the user. The session reads it at each request, so a command
+/// that comes while the refresh runs takes effect at its next request.
+final class Attendance: Sendable {
+	/// The accounts that the session fetches. A command makes it attended only when it names one of them.
+	let accounts: Set<UUID>
+	private let state: Mutex<(on: Bool, asked: Bool)>
+
+	init(_ on: Bool, accounts: Set<UUID>) {
+		self.accounts = accounts
+		state = Mutex((on, false))
+	}
+
+	var isOn: Bool { state.withLock { $0.on } }
+	/// A request reached the user. A failure after it is the answer of the bank to the user, so the
+	/// refresh does not run again.
+	var asked: Bool { state.withLock { $0.asked } }
+
+	func turnOn() {
+		state.withLock { $0.on = true }
+	}
+
+	/// Whether the next request may ask the user, and records that it did.
+	func ask() -> Bool {
+		state.withLock { state in
+			if state.on { state.asked = true }
+			return state.on
+		}
+	}
 }
 
 extension ConnectorReport {

@@ -289,8 +289,8 @@ struct BankAccessTests {
 			card: .failed(RefreshError(message: "Canceled because of the previous error.", code: nil, date: at, notices: ["Wartung am 14.11.2026"])),
 		])
 		#expect(SyncState.failed(.needsUser(.secondFactor)).accountRefreshes(of: [giro, savings], notices: [], at: at) == [
-			giro: .failed(RefreshError(message: "An authorization is needed. Choose “Refresh Account” to give it.", code: nil, date: at, notices: [])),
-			savings: .failed(RefreshError(message: "An authorization is needed. Choose “Refresh Account” to give it.", code: nil, date: at, notices: [])),
+			giro: .failed(RefreshError(message: "An authorization is needed. Choose “Refresh Account” to give it.", code: nil, date: at, notices: [], waitsForUser: true)),
+			savings: .failed(RefreshError(message: "An authorization is needed. Choose “Refresh Account” to give it.", code: nil, date: at, notices: [], waitsForUser: true)),
 		])
 		#expect(SyncState.cancelled.accountRefreshes(of: [giro], notices: notices, at: at).isEmpty)
 		#expect(SyncState.fetching(done: 0, of: 1).accountRefreshes(of: [giro], notices: [], at: at).isEmpty)

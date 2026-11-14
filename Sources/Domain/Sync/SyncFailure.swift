@@ -54,6 +54,15 @@ public enum SyncFailure: Error, Sendable, Equatable {
 		}
 	}
 
+	/// Only the user can resolve the failure, so the automatic refresh leaves the account out until a
+	/// manual refresh ends without it ("An automatic refresh never asks the user").
+	public var waitsForUser: Bool {
+		switch self {
+		case .needsUser, .pinRejected, .loginRejected, .accessBlocked: true
+		default: false
+		}
+	}
+
 	/// The answer of the bank in this failure, for its code in the error popover.
 	public var bankMessage: BankMessage? {
 		switch self {

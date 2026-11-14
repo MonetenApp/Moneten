@@ -322,7 +322,7 @@ struct SyncCoordinatorTests {
 
 	func logEnds(of coordinator: SyncCoordinator) -> EndLog {
 		let log = EndLog()
-		coordinator.ended = { access, _, accounts in log.all.append((access, accounts)) }
+		coordinator.ended = { access, _, accounts, _ in log.all.append((access, accounts)) }
 		return log
 	}
 
@@ -540,7 +540,7 @@ struct SyncCoordinatorTests {
 
 	func recordEnds() -> Ends {
 		let ends = Ends()
-		coordinator.ended = { access, state, accounts in
+		coordinator.ended = { access, state, accounts, _ in
 			ends.states[access] = state
 			ends.accounts[access] = accounts
 		}
@@ -598,7 +598,7 @@ struct SyncCoordinatorTests {
 	@Test("The login of a setup waits for the refresh of its access, and a refresh asked for meanwhile waits for the login")
 	func setupBesideRefresh() async throws {
 		let events = Events()
-		coordinator.ended = { _, _, _ in events.all.append("refresh ended") }
+		coordinator.ended = { _, _, _, _ in events.all.append("refresh ended") }
 		let bank = Self.access("Musterbank")
 		_ = refresh(bank, [.ask(Self.pin), .fetched(Self.giro.accountID)])
 		await until { broker.current != nil }
@@ -622,7 +622,7 @@ struct SyncCoordinatorTests {
 	@Test("Cancel Refresh drops a refresh that waits for the login of a setup")
 	func cancelBehindSetup() async throws {
 		let events = Events()
-		coordinator.ended = { _, _, _ in events.all.append("refresh ended") }
+		coordinator.ended = { _, _, _, _ in events.all.append("refresh ended") }
 		let bank = Self.access("Musterbank")
 		try await coordinator.exclusively(for: bank.id) {
 			_ = refresh(bank, [.fetched(Self.giro.accountID)])

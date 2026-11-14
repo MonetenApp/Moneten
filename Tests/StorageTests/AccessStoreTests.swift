@@ -1,5 +1,6 @@
 import Domain
 import Foundation
+import GRDB
 import Testing
 @testable import Storage
 
@@ -116,5 +117,29 @@ struct AccessStoreTests {
 		#expect(try store.deleteAccount(savings.id) == Self.access.id)
 		#expect(try store.accesses().isEmpty)
 		#expect(try store.state(of: Self.access.id) == nil)
+	}
+
+	@Test("v12 gives the accounts of a v11 database the interval every two hours and keeps the error of their last refresh")
+	func refreshInterval() throws {
+		let queue = try DatabaseQueue()
+		try Schema.migrator.migrate(queue, upTo: "v11")
+		let giroID = UUID()
+		try queue.write { db in
+			try db.execute(sql: """
+				INSERT INTO account (id, position, name, kind, source, currency, initialBalanceMinor, isClosed, refreshError)
+				VALUES (?, 0, 'Giro', 'giro', 'bank', 'EUR', 0, 0, ?)
+				""", arguments: [giroID, #"{"message":"Zugang vorübergehend gesperrt","code":"9010","date":0,"notices":[]}"#])
+		}
+		try Schema.migrator.migrate(queue)
+		let store = Store(queue: queue)
+		var giro = try #require(try store.loadLedger().account(giroID))
+		#expect(giro.refreshInterval == .everyTwoHours)
+		#expect(giro.refreshError?.code == "9010")
+		#expect(giro.refreshError?.waitsForUser == false)
+
+		giro.refreshInterval = .onlyManually
+		giro.refreshError = RefreshError(message: SyncFailure.needsUser(.pin).message, date: Date(timeIntervalSince1970: 1_793_534_400), waitsForUser: true)
+		try store.save(giro)
+		#expect(try store.loadLedger().account(giroID) == giro)
 	}
 }

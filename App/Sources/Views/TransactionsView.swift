@@ -843,6 +843,8 @@ struct StatusLine: View {
 						Text(status).lineLimit(1)
 					}
 					.foregroundStyle(.secondary)
+				} else if let problem = model.backgroundProblem {
+					BackgroundProblemButton(problem: problem)
 				} else if model.filter.isActive {
 					Label("A filter is active; some entries might be hidden.", systemImage: "line.3.horizontal.decrease.circle")
 						.foregroundStyle(.secondary)

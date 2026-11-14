@@ -6,6 +6,7 @@ import SwiftUI
 struct MonetenApp: App {
 	@NSApplicationDelegateAdaptor(AppDelegate.self) var delegate
 	@State private var model = AppModel()
+	@AppStorage(Preference.showMenuBarIcon) private var showMenuBarIcon = false
 
 	var body: some Scene {
 		Window("Moneten", id: "main") {
@@ -29,6 +30,14 @@ struct MonetenApp: App {
 			SettingsView()
 				.environment(model)
 		}
+
+		MenuBarExtra(isInserted: $showMenuBarIcon) {
+			MenuBarPopover()
+				.environment(model)
+		} label: {
+			MenuBarIcon(model: model)
+		}
+		.menuBarExtraStyle(.window)
 	}
 }
 
@@ -66,7 +75,7 @@ struct AppCommands: Commands {
 			Button("Refresh All Accounts") { model.refresh(.all) }
 				.keyboardShortcut("r")
 				.disabled(!model.canRefresh(.all))
-			Button("Cancel Refresh") { model.sync.cancelAll() }
+			Button("Cancel Refresh") { model.cancelRefresh() }
 				.disabled(!model.sync.isRefreshing)
 			Divider()
 			Button("Mark All Transactions as Checked") { model.markAllChecked() }

@@ -24,7 +24,7 @@ Goals:
 Non-goals:
 
 - Payments. `PaymentConnector`, Verification of Payee, and the payment states come with v0.2. The request types below leave room for them.
-- The schedule of the automatic refresh (issue #40) and the FinTS helper process (issue #13).
+- The FinTS helper process (issue #13). The schedule of the automatic refresh came later with issue #40, see its decision below.
 
 ## Decisions
 
@@ -250,6 +250,16 @@ The coordinator calls `deliver` once for each requested account that the connect
 - Source IDs belong to one account. A known ID wins over any fingerprint, and a delivered ID never takes a stored row that has another ID.
 - A balance without a date from the bank gets the time of the merge. A balance in another currency than the account's is not stored.
 - A deleted row stays deleted for every refresh, also an enforced one. A file import brings it back only when no refresh had delivered it.
+
+### The schedule of the automatic refresh (issue #40)
+
+Three parts decide an automatic refresh, each in the module that owns its data:
+
+- `Domain`: each `Account` has a `RefreshInterval`. `Ledger.dueAccounts(at:)` returns the accounts whose interval passed since their last refresh, or since the failure of the last one, grouped by access like a refresh command. An account whose `RefreshError.waitsForUser` is true is never due. `SyncFailure.waitsForUser` sets it for a needed PIN, TAN, or login, a rejected PIN or login, and a blocked access, so the automatic refresh does not ask the bank again for something only the user can give.
+- `Sync`: `AutoRefresh` holds the conditions: the setting, the unlock, the presence of the user (the display is awake), and the network. The timer of the app calls `tick()` once a minute. A condition that turns true calls it at once, which covers the launch, the unlock, the wake, and the return of the connection. The clock is injected, so the tests set the time.
+- `App`: `AppModel` feeds the conditions from the lock, `NSWorkspace`, and `NWPathMonitor`, and starts the due accounts with `attended: false`. The coordinator never starts a second session for an access that runs, so a tick during a long refresh adds nothing.
+
+The coordinator also reports the end of a run: `runEnded` runs when the last refresh ended that started while others ran. The notification of add-notifications-and-menu-bar comes once per run.
 
 ## Risks / Trade-offs
 

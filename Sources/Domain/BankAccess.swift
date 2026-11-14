@@ -171,9 +171,41 @@ public enum RefreshScope: Hashable, Sendable {
 	case group(UUID)
 }
 
+/// "Refresh" in the account settings.
+public enum RefreshInterval: String, Codable, CaseIterable, Sendable {
+	case everyTwoHours, fourTimesADay, onceADay, onceAWeek
+	/// Left out of the automatic refresh, fetched by every command.
+	case onlyManually
+	/// Fetched only by "Refresh Account" on the account itself.
+	case never
+
+	public var title: String {
+		switch self {
+		case .everyTwoHours: "every two hours"
+		case .fourTimesADay: "four times a day"
+		case .onceADay: "once a day"
+		case .onceAWeek: "once a week"
+		case .onlyManually: "only manually"
+		case .never: "never"
+		}
+	}
+
+	/// The time after the last refresh of the account at which the automatic refresh fetches it again.
+	var period: TimeInterval? {
+		switch self {
+		case .everyTwoHours: 2 * 3600
+		case .fourTimesADay: 6 * 3600
+		case .onceADay: 24 * 3600
+		case .onceAWeek: 7 * 24 * 3600
+		case .onlyManually, .never: nil
+		}
+	}
+}
+
 extension Ledger {
 	/// The accounts that a refresh command fetches, by the ID of their access. Accounts without an access
-	/// and closed accounts are left out. The refresh intervals of issue #40 will narrow this further.
+	/// and closed accounts are left out, and so is an account with the interval "never", unless the command
+	/// names that account.
 	public func refreshAccounts(_ scope: RefreshScope, calendar: Calendar = .current) -> [UUID: [AccountRequest]] {
 		let chosen: Set<UUID>? = switch scope {
 		case .all: nil
@@ -183,11 +215,32 @@ extension Ledger {
 		var plan: [UUID: [AccountRequest]] = [:]
 		for a in accounts where !a.isClosed && chosen?.contains(a.id) != false {
 			guard let accessID = a.accessID, let remoteID = a.remoteID else { continue }
+			if a.refreshInterval == .never, scope != .account(a.id) { continue }
 			// 14 days of overlap with the last success. The connector asks for no more than 90 days.
 			let since = a.refreshedAt.map { Day($0, calendar: calendar).adding(days: -14, calendar: calendar) }
 			plan[accessID, default: []].append(AccountRequest(accountID: a.id, name: a.name, remoteID: remoteID, since: since))
 		}
 		return plan
+	}
+
+	/// The accounts that the automatic refresh fetches at `now`, by the ID of their access. `canceled`
+	/// holds the time at which the user canceled the refresh of an account.
+	public func dueAccounts(at now: Date, canceled: [UUID: Date] = [:], calendar: Calendar = .current) -> [UUID: [AccountRequest]] {
+		refreshAccounts(.all, calendar: calendar)
+			.mapValues { $0.filter { account($0.accountID)?.isDue(at: now, canceledAt: canceled[$0.accountID]) == true } }
+			.filter { !$0.value.isEmpty }
+	}
+}
+
+extension Account {
+	/// The period of the interval passed since the last refresh. After a failure or a cancel that counts
+	/// from then, so a bank that is down is not asked at every run, and a refresh that the user canceled
+	/// does not start again a minute later. An account that waits for the user is never due: only a
+	/// refresh command asks the user.
+	func isDue(at now: Date, canceledAt: Date?) -> Bool {
+		guard let period = refreshInterval.period, refreshError?.waitsForUser != true else { return false }
+		guard let last = [refreshedAt, refreshError?.date, canceledAt].compactMap({ $0 }).max() else { return true }
+		return now.timeIntervalSince(last) >= period
 	}
 }
 
@@ -202,12 +255,25 @@ public struct RefreshError: Codable, Hashable, Sendable {
 	public var date: Date
 	/// The notices of the bank from the same session.
 	public var notices: [String]
+	/// Only the user can resolve the error, with a refresh command (`SyncFailure.waitsForUser`).
+	public var waitsForUser: Bool
 
-	public init(message: String, code: String? = nil, date: Date, notices: [String] = []) {
+	public init(message: String, code: String? = nil, date: Date, notices: [String] = [], waitsForUser: Bool = false) {
 		self.message = message
 		self.code = code
 		self.date = date
 		self.notices = notices
+		self.waitsForUser = waitsForUser
+	}
+
+	/// An error stored before `waitsForUser` existed has no such key.
+	public init(from decoder: Decoder) throws {
+		let c = try decoder.container(keyedBy: CodingKeys.self)
+		message = try c.decode(String.self, forKey: .message)
+		code = try c.decodeIfPresent(String.self, forKey: .code)
+		date = try c.decode(Date.self, forKey: .date)
+		notices = try c.decode([String].self, forKey: .notices)
+		waitsForUser = try c.decodeIfPresent(Bool.self, forKey: .waitsForUser) ?? false
 	}
 }
 
@@ -241,6 +307,7 @@ extension Account {
 			initialBalanceIsSet = true
 		}
 		color = edited.color
+		refreshInterval = edited.refreshInterval
 	}
 }
 
@@ -250,7 +317,8 @@ extension SyncState {
 	/// of the whole access.
 	public func accountRefreshes(of accounts: [UUID], notices: [BankMessage], at date: Date) -> [UUID: AccountRefresh] {
 		func error(_ failure: SyncFailure, at date: Date) -> AccountRefresh {
-			.failed(RefreshError(message: failure.message, code: failure.bankMessage?.code, date: date, notices: notices.map(\.text)))
+			.failed(RefreshError(message: failure.message, code: failure.bankMessage?.code, date: date, notices: notices.map(\.text),
+				waitsForUser: failure.waitsForUser))
 		}
 		switch self {
 		case let .finished(summary):
