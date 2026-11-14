@@ -253,7 +253,7 @@ struct MoneyMoneyMigrationTests {
 		return after
 	}
 
-	@Test("A second run moves the balance by a correction of the source and keeps an imported transaction")
+	@Test("A second run moves the balance by a correction of the source and keeps an imported transaction and a typed initial balance")
 	func correctedSource() throws {
 		let first = try plan()
 		var ledger = Ledger(groups: first.groups, accounts: first.accounts, categories: first.categories, transactions: first.transactions)
@@ -263,8 +263,13 @@ struct MoneyMoneyMigrationTests {
 		// The source corrected its balance from 1.234,56 € to 1.254,56 € without a new transaction.
 		let after = try secondRun(into: ledger, balance: 1254.56, rows: transactions["transactions"] as! [[String: Any]])
 		#expect(after.balance(of: try #require(after.account(giro.id))).minorUnits == 124_976)
-		let again = try secondRun(into: after, balance: 1254.56, rows: transactions["transactions"] as! [[String: Any]])
-		#expect(again.balance(of: try #require(again.account(giro.id))).minorUnits == 124_976)
+		// The user raises the initial balance by 10,00 €, and the same export runs again.
+		var typed = after
+		var account = try #require(after.account(giro.id))
+		account.initialBalanceMinor += 1_000
+		typed.replace(accounts: typed.accounts.map { $0.id == account.id ? account : $0 })
+		let again = try secondRun(into: typed, balance: 1254.56, rows: transactions["transactions"] as! [[String: Any]])
+		#expect(again.balance(of: try #require(again.account(giro.id))).minorUnits == 125_976)
 	}
 
 	@Test("A second run that delivers an imported transaction counts it once")
