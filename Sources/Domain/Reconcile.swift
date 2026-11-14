@@ -29,6 +29,17 @@ public struct DeletedTransaction: Hashable, Sendable, Codable {
 	public var wasFetched: Bool
 	public var deletedAt: Date
 
+	/// A deleted row with the source ID that it takes. The store finds the row by its other fields.
+	public struct Relink: Hashable, Sendable {
+		public var row: DeletedTransaction
+		public var sourceID: String?
+
+		public init(row: DeletedTransaction, sourceID: String?) {
+			self.row = row
+			self.sourceID = sourceID
+		}
+	}
+
 	public init(_ t: Transaction, deletedAt: Date) {
 		accountID = t.accountID
 		sourceID = t.sourceID
@@ -62,6 +73,9 @@ public struct Reconciliation: Sendable, Equatable {
 	/// Delivered rows that were stored already, or that the user deleted. A stored row that such a delivered
 	/// row changed is in `updated` as well.
 	public internal(set) var skipped = 0
+	/// Deleted rows that keep out a row of a migration and take its source ID, so the balance of a migrated account
+	/// counts them as rows of the source while the source has them. Only a migration fills it.
+	public internal(set) var relinked: [DeletedTransaction.Relink] = []
 	/// The account with the balance and the date of this refresh, and, on its first refresh with a
 	/// balance, the initial balance that follows from them. Nil for a file, and when the refresh brought
 	/// no balance in the currency of the account.
@@ -79,7 +93,8 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored: [Tran
 	rules: Categorizer, now: Date) -> Reconciliation {
 	let rows = delivery.rows
 	let fetched = delivery.isFetched
-	let partners = partners(of: rows, stored: stored, deleted: deleted.filter(delivery.honors))
+	let honored = deleted.filter(delivery.honors)
+	let partners = partners(of: rows, stored: stored, deleted: honored)
 	let taken = Set(partners.compactMap { partner -> Int? in
 		if case let .live(j) = partner?.slot { j } else { nil }
 	})
@@ -91,6 +106,12 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored: [Tran
 	for (i, delivered) in rows.enumerated() {
 		if let partner = partners[i] {
 			guard case let .live(j) = partner.slot else {
+				if case let .deleted(k) = partner.slot, delivery.isMigration, let id = delivered.sourceID,
+					partner.evidence == .sourceID || Identity.remote(honored[k].sourceID) == nil {
+					let row = honored[k]
+					let linked = Transaction.linkedID(id, pending: row.isPending, sourcePending: delivered.isPending)
+					if linked != row.sourceID { r.relinked.append(DeletedTransaction.Relink(row: row, sourceID: linked)) }
+				}
 				r.skipped += 1
 				continue
 			}
@@ -99,12 +120,17 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored: [Tran
 			switch partner.evidence {
 			case .sourceID:
 				// A migration only books a pending row. Any other change could undo a booking or an edit
-				// that the app made since the earlier run.
-				if delivery.isMigration, !(live.isPending && !delivered.isPending) { break }
+				// that the app made since the earlier run. Only the link follows the source.
+				if delivery.isMigration, !(live.isPending && !delivered.isPending) {
+					next.sourceID = delivered.sourceID.map { Transaction.linkedID($0, pending: live.isPending, sourcePending: delivered.isPending) }
+					break
+				}
 				next = live.takingBankFields(of: delivered)
 				if next != live { rules.categorize(&next) }
 			case .fingerprint:
-				if let id = delivered.sourceID, Identity.remote(next.sourceID) == nil { next.sourceID = id }
+				if let id = delivered.sourceID, Identity.remote(next.sourceID) == nil {
+					next.sourceID = Transaction.linkedID(id, pending: live.isPending, sourcePending: delivered.isPending)
+				}
 			}
 			if fetched { next.isFetched = true }
 			if live.isPending && !next.isPending {
@@ -115,9 +141,8 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored: [Tran
 			}
 		} else if case let .pair(j) = bookings.ofBooked[i] {
 			var next = stored[j].takingBankFields(of: delivered)
-			// A row of the source that a file or a bank books counts as imported from now on. A later migration
-			// finds it by its fingerprint and gives the ID back.
-			if !delivery.isMigration, Identity.remote(next.sourceID) == nil { next.sourceID = nil }
+			// A row of the source that a file or a bank books counts as imported until the source books it too.
+			if !delivery.isMigration, let id = next.sourceID { next.sourceID = Transaction.linkedID(id, pending: false, sourcePending: true) }
 			rules.categorize(&next)
 			if fetched { next.isFetched = true }
 			r.booked.append(next)
@@ -208,10 +233,10 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 	if !ids.isEmpty {
 		var byID: [String: [Slot]] = [:]
 		for (j, t) in stored.enumerated() {
-			if let id = t.sourceID, ids.contains(id) { byID[id, default: []].append(.live(j)) }
+			if let id = t.sourceID.map(Transaction.matchingID), ids.contains(id) { byID[id, default: []].append(.live(j)) }
 		}
 		for (k, d) in deleted.enumerated() {
-			if let id = d.sourceID, ids.contains(id) { byID[id, default: []].append(.deleted(k)) }
+			if let id = d.sourceID.map(Transaction.matchingID), ids.contains(id) { byID[id, default: []].append(.deleted(k)) }
 		}
 		func isDeletedPending(_ slot: Slot) -> Bool {
 			if case let .deleted(k) = slot { deleted[k].isPending } else { false }
@@ -319,7 +344,7 @@ struct Identity {
 	}
 
 	static func remote(_ sourceID: String?) -> String? {
-		sourceID.flatMap { $0.hasPrefix(Transaction.migrationIDPrefix) ? nil : $0 }
+		sourceID.flatMap { Transaction.matchingID($0).hasPrefix(Transaction.migrationIDPrefix) ? nil : $0 }
 	}
 
 	func fit(_ other: Identity) -> Fit? {
@@ -402,6 +427,24 @@ struct PendingMatch {
 }
 
 extension Transaction {
+	/// The migration ID of a booked row whose row in the source is still pending, because a file or a bank booked it
+	/// first. The row counts as imported, not as a row of the source, and a later migration still finds it by the ID.
+	/// The prefix does not start with `migrationIDPrefix`, so a sum over the rows of the source leaves the row out.
+	static let bookedMigrationIDPrefix = "moneymoney-booked:"
+
+	/// The ID by which a delivered row finds this one: the plain migration ID for its booked form, any other ID as it is.
+	static func matchingID(_ id: String) -> String {
+		id.hasPrefix(bookedMigrationIDPrefix) ? migrationIDPrefix + id.dropFirst(bookedMigrationIDPrefix.count) : id
+	}
+
+	/// The source ID that a stored row takes from a delivered row with `id`: the booked form of a migration ID when the
+	/// stored row is booked and the row in the source is pending, otherwise the plain ID.
+	static func linkedID(_ id: String, pending: Bool, sourcePending: Bool) -> String {
+		let plain = matchingID(id)
+		guard plain.hasPrefix(migrationIDPrefix), !pending, sourcePending else { return plain }
+		return bookedMigrationIDPrefix + plain.dropFirst(migrationIDPrefix.count)
+	}
+
 	init(arriving delivered: Transaction, in account: UUID, fetched: Bool) {
 		self.init(id: delivered.id, accountID: account, bookingDate: delivered.bookingDate, valueDate: delivered.valueDate, amountMinor: delivered.amountMinor,
 			currency: delivered.currency, name: delivered.name, purpose: delivered.purpose, counterpartyIBAN: delivered.counterpartyIBAN,
