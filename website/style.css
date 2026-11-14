@@ -16,7 +16,16 @@
 	--link: #1658b0;
 	--accent: var(--brand);
 	--shadow: 0 1px 2px rgb(10 40 91 / 0.06), 0 12px 32px rgb(10 40 91 / 0.10);
+	--shadow-border:
+		0 0 0 1px oklch(0 0 0 / 0.06),
+		0 1px 2px -1px oklch(0 0 0 / 0.06),
+		0 2px 4px 0 oklch(0 0 0 / 0.04);
+	--image-outline: oklch(0 0 0 / 0.1);
+	--on-accent: #ffffff;
 	--radius: 14px;
+	/* The screenshots show a window with corners of 32 points at a width of 1440 and a height of
+	   900 points. In percent, the rounding scales with the image. */
+	--window-radius: 2.22% / 3.56%;
 	color-scheme: light;
 }
 
@@ -30,6 +39,9 @@
 		--link: #8cc0ff;
 		--accent: var(--sky);
 		--shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 12px 32px rgb(0 0 0 / 0.35);
+		--shadow-border: 0 0 0 1px oklch(1 0 0 / 0.08);
+		--image-outline: oklch(1 0 0 / 0.1);
+		--on-accent: var(--navy);
 		color-scheme: dark;
 	}
 }
@@ -47,7 +59,6 @@ body {
 }
 
 a { color: var(--link); text-underline-offset: 0.15em; }
-a:hover { text-decoration-thickness: 2px; }
 :focus-visible { outline: 3px solid var(--sky); outline-offset: 2px; border-radius: 4px; }
 
 img { max-width: 100%; height: auto; display: block; }
@@ -90,7 +101,6 @@ p { margin: 0 0 1em; }
 .brand img { width: 36px; height: 36px; }
 .nav ul { display: flex; gap: 20px; list-style: none; margin: 0; padding: 0; }
 .nav ul a { text-decoration: none; opacity: 0.9; }
-.nav ul a:hover { opacity: 1; text-decoration: underline; }
 
 .hero-body { padding-top: 48px; text-align: center; }
 .hero-icon { width: 128px; height: 128px; margin: 0 auto 24px; filter: drop-shadow(0 12px 24px rgb(0 0 0 / 0.3)); }
@@ -118,15 +128,16 @@ p { margin: 0 0 1em; }
 	font-weight: 600;
 	text-decoration: none;
 	border: 1px solid transparent;
-	transition: transform 0.15s ease, background-color 0.15s ease;
+	-webkit-tap-highlight-color: transparent;
+	transition: background-color 150ms ease-out;
 }
-.button:hover { transform: translateY(-1px); text-decoration: none; }
+/* The icon side gets 2px less padding, so the icon and the label look centered. */
+.button:has(svg) { padding-inline-start: 20px; }
 .button svg { width: 20px; height: 20px; flex: none; }
 .button.primary { background: #ffffff; color: var(--navy); }
 .button.secondary { border-color: rgb(239 247 255 / 0.5); color: #ffffff; }
-.button.secondary:hover { background: rgb(255 255 255 / 0.1); }
 .button.solid { background: var(--brand); color: #ffffff; }
-.button.outline { border-color: var(--border); color: var(--text); background: var(--surface); }
+.button.outline { color: var(--text); background: var(--surface); box-shadow: var(--shadow-border); }
 @media (prefers-color-scheme: dark) {
 	.button.solid { background: var(--sky); color: var(--navy); }
 }
@@ -134,11 +145,12 @@ p { margin: 0 0 1em; }
 /* The screenshot overlaps the end of the hero. */
 .shot { margin-top: -48px; }
 .shot figure { margin: 0; }
-.shot img {
-	border-radius: 12px;
+.shot img { margin: 0 auto; }
+.shot img, .pair img {
+	border-radius: var(--window-radius);
 	box-shadow: var(--shadow);
-	border: 1px solid var(--border);
-	margin: 0 auto;
+	outline: 1px solid var(--image-outline);
+	outline-offset: -1px;
 }
 figcaption { color: var(--muted); font-size: 0.9rem; text-align: center; margin-top: 12px; }
 
@@ -154,7 +166,8 @@ section + section { border-top: 1px solid var(--border); }
 }
 .card {
 	background: var(--surface);
-	border: 1px solid var(--border);
+	border: 1px solid transparent; /* forced colors drop the shadow and draw this border */
+	box-shadow: var(--shadow-border);
 	border-radius: var(--radius);
 	padding: 24px;
 }
@@ -169,7 +182,8 @@ section + section { border-top: 1px solid var(--border); }
 	background: linear-gradient(170deg, var(--sky), var(--brand));
 	color: #ffffff;
 }
-.card .icon svg { width: 22px; height: 22px; }
+.card .icon svg { width: 22px; height: 22px; stroke-width: 2.5px; }
+.card .icon svg * { vector-effect: non-scaling-stroke; }
 .tag {
 	display: inline-block;
 	font-size: 0.75rem;
@@ -193,7 +207,6 @@ section + section { border-top: 1px solid var(--border); }
 	margin-top: 32px;
 }
 .pair figure { margin: 0; }
-.pair img { border-radius: 10px; box-shadow: var(--shadow); border: 1px solid var(--border); }
 
 .checklist { list-style: none; padding: 0; margin: 0 0 1em; }
 .checklist li { padding-left: 30px; position: relative; margin-bottom: 8px; }
@@ -205,9 +218,22 @@ section + section { border-top: 1px solid var(--border); }
 	width: 18px;
 	height: 18px;
 	border-radius: 50%;
-	background: var(--accent) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 12l4 4 8-8'/%3E%3C/svg%3E") center / 12px no-repeat;
+	background: var(--accent);
+}
+/* The check mark is drawn with two borders, so it takes its color from the theme. */
+.checklist li::after {
+	content: "";
+	position: absolute;
+	left: 6.5px;
+	top: calc(0.35em + 4px);
+	width: 5px;
+	height: 9px;
+	border: solid var(--on-accent);
+	border-width: 0 2px 2px 0;
+	rotate: 45deg;
 }
 .checklist.open li::before { background: transparent; border: 2px solid var(--accent); }
+.checklist.open li::after { content: none; }
 
 .roadmap {
 	display: grid;
@@ -253,7 +279,19 @@ footer .note { margin-top: 16px; font-size: 0.82rem; }
 	.cta { padding: 36px 20px; }
 }
 
-@media (prefers-reduced-motion: reduce) {
-	.button { transition: none; }
-	.button:hover { transform: none; }
+/* Hover styles only for pointers that can hover, so a tap on a phone leaves no stuck state. */
+@media (hover: hover) {
+	a:hover { text-decoration-thickness: 2px; }
+	.nav ul a:hover { opacity: 1; text-decoration: underline; }
+	.button.secondary:hover { background: rgb(255 255 255 / 0.1); }
+}
+
+/* Movement only without the reduced motion setting. The color change stays for everyone. */
+@media (prefers-reduced-motion: no-preference) {
+	.button { transition-property: background-color, translate, scale; }
+	.button:active { scale: 0.96; }
+}
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+	.button:hover { translate: 0 -1px; }
+	.button:hover:active { translate: 0; }
 }
