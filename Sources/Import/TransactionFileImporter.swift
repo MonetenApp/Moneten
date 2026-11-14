@@ -25,6 +25,19 @@ public enum TransactionFileImporter {
 		}
 	}
 
+	/// A value of a file that the import could not use and replaced. The file is imported anyway.
+	public enum Warning: Sendable, Equatable, CustomStringConvertible {
+		case unknownCurrency(line: Int, cell: String, replacement: String)
+		case unreadableValueDate(line: Int, cell: String)
+
+		public var description: String {
+			switch self {
+			case let .unknownCurrency(n, cell, replacement): "Line \(n): The currency \(cell) is unknown. The transaction is in \(replacement), the currency of the account."
+			case let .unreadableValueDate(n, cell): "Line \(n): The value date \(cell) cannot be read. The transaction has no value date."
+			}
+		}
+	}
+
 	public static func detect(_ text: String) -> Format? {
 		let head = text.prefix(4096)
 		if head.contains("<Document") || head.contains("camt.05") { return .camt }
@@ -38,17 +51,23 @@ public enum TransactionFileImporter {
 		return String(data: data, encoding: .windowsCP1252) ?? String(decoding: data, as: UTF8.self)
 	}
 
-	public static func parse(_ data: Data, currency: String) throws -> [Transaction] {
+	/// The transactions of a file and the values that the import replaced in them.
+	public struct Parsed: Sendable {
+		public var transactions: [Transaction]
+		public var warnings: [Warning] = []
+	}
+
+	public static func parse(_ data: Data, currency: String) throws -> Parsed {
 		guard !data.isEmpty else { throw Failure.empty }
 		let text = decode(data)
 		guard let format = detect(text) else { throw Failure.unsupported }
-		let result: [Transaction]
+		let result: Parsed
 		switch format {
-		case .camt: result = try CAMTParser.parse(data)
-		case .mt940: result = try MT940Parser.parse(text)
-		case .csv: result = try CSVParser.parse(text, currency: currency)
+		case .camt: result = Parsed(transactions: try CAMTParser.parse(data))
+		case .mt940: result = Parsed(transactions: try MT940Parser.parse(text))
+		case .csv: result = Parsed(transactions: try CSVParser.parse(text, currency: currency))
 		}
-		guard !result.isEmpty else { throw Failure.empty }
+		guard !result.transactions.isEmpty else { throw Failure.empty }
 		return result
 	}
 }

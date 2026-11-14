@@ -139,7 +139,7 @@ extension AppModel {
 						continue
 					}
 					let parsed = try TransactionFileImporter.parse(data, currency: account.currency)
-					let result = try merge(.file(parsed), into: account.id)
+					let result = try merge(.file(parsed.transactions), into: account.id)
 					added += result.added.count
 					skipped += result.skipped
 					booked += result.booked.count
