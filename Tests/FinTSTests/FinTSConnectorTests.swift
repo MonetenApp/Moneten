@@ -562,6 +562,18 @@ struct FinTSConnectorTests {
 		#expect(failure == HelperFailure.noBookingDate)
 	}
 
+	@Test("A row without a currency gets the currency of the account")
+	func rowCurrency() async throws {
+		let dollars = AccountRequest(accountID: UUID(), name: "Dollar", remoteID: "1234567890", currency: "USD")
+		let report = try await refresh(#"""
+			read cmd
+			echo '{"type":"result","account":"1234567890","transactions":{"rows":[{"type":"row","booked":"2026-11-02","amount":"-12.5","name":"Diner","pending":false}]},"errors":[]}'
+			"""#, accounts: [dollars])
+		guard case let .fetched(result) = report.outcomes[dollars.accountID] else { Issue.record("not fetched"); return }
+		#expect(result.transactions?.rows.map(\.currency) == ["USD"])
+		#expect(result.transactions?.rows.map(\.amountMinor) == [-1_250])
+	}
+
 	@Test("Fails two requests for the same account of the bank, and fetches the others")
 	func clash() async throws {
 		let twin = AccountRequest(accountID: UUID(), name: "Giro 2", remoteID: Self.giro.remoteID)
