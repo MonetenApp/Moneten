@@ -196,6 +196,21 @@ public struct Ledger: Sendable {
 		return result
 	}
 
+	/// A category group holds no transactions, and a category restricted to an account or account group
+	/// takes only transactions of that account or of an account in that group.
+	public func canAssign(_ category: Category, to transactions: [Transaction]) -> Bool {
+		guard !category.isGroup else { return false }
+		guard let r = category.restrictedToID else { return true }
+		let allowed: Set<UUID> = account(r) != nil ? [r] : accountIDs(inGroupTree: r)
+		return transactions.allSatisfy { allowed.contains($0.accountID) }
+	}
+
+	/// The categories that the category picker offers for a search, in sidebar order and without groups.
+	public func categories(matching query: String) -> [Category] {
+		let folded = TextFolding.fold(query)
+		return categoriesInSidebarOrder.filter { !$0.isGroup && (folded.isEmpty || TextFolding.fold($0.name).contains(folded)) }
+	}
+
 	public func categoryIDs(inTree root: UUID) -> Set<UUID> {
 		var ids: Set<UUID> = [root]
 		for c in categories where c.parentID == root { ids.formUnion(categoryIDs(inTree: c.id)) }
