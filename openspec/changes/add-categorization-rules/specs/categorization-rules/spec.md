@@ -164,6 +164,12 @@ The app SHALL read a plus sign between two expressions as `AND`, and an exclamat
 - **WHEN** one transaction has the purpose "Amazon Bestellung" and the amount -19,99 €, and another has the purpose "Amazon Erstattung" and the amount 19,99 €
 - **THEN** the rule matches the first and not the second
 
+#### Scenario: Minus at the end of a word
+
+- **GIVEN** the rule `Amazon-"Erstattung"`
+- **WHEN** one transaction has the purpose "Amazon Bestellung" and the amount -19,99 €, and another has the purpose "Amazon Erstattung" and the amount 19,99 €
+- **THEN** the rule matches the first and not the second, because a minus before a quotation mark is `NOT` and not part of the word Amazon
+
 #### Scenario: Minus before a number
 
 - **GIVEN** the rule `-12,50`
@@ -218,7 +224,7 @@ The app SHALL read the words `true` and `false` in any letter case and without q
 
 ### Requirement: Field operators
 
-The app SHALL restrict a term or a regular expression to one field when it follows a field operator with no space between them. The fields are `name`, `purpose`, `local_account`, `remote_account`, `currency`, `reference`, `mandate`, `creditor_id`, `comment`, and `booking_text`. After the field, `:`, `=`, `==`, and `:=` test that the field matches, and `!=` and `<>` test that it does not. A field name counts in any letter case.
+The app SHALL restrict a term or a regular expression to one field when it follows a field operator with no space between them. The fields are `name`, `purpose`, `local_account`, `remote_account`, `currency`, `reference`, `mandate`, `creditor_id`, `comment`, and `booking_text`. After the field, `:`, `=`, `==`, and `:=` test that the field matches, and `!=` and `<>` test that it does not. A field name counts in any letter case. A word right after a field operator is always a term.
 
 #### Scenario: Name only
 
@@ -255,6 +261,12 @@ The app SHALL restrict a term or a regular expression to one field when it follo
 - **GIVEN** the rule `Name:"Bahn AG"`
 - **WHEN** one transaction has the counterparty "Deutsche Bahn AG", and another has the counterparty "Stadtwerke" and the purpose "Bahn AG Ticket"
 - **THEN** the rule matches the first and not the second, because `Name:` is the field operator `name:`
+
+#### Scenario: Operator word after a field operator
+
+- **GIVEN** the rule `name:and`
+- **WHEN** one transaction has the counterparty "Muster and Partner" and another has the counterparty "Muster Partner"
+- **THEN** the rule matches the first and not the second, because `and` after `name:` is a term and not the operator `AND`
 
 ### Requirement: Amount comparisons
 
