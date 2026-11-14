@@ -49,7 +49,7 @@ jobs:
       - name: Performance
         # The budgets of the performance tests hold for a release build only. See CONTRIBUTING.md.
         # The tests run one after another, so that no test measures the load of another one.
-        run: scripts/test.sh -c release -Xswiftc -enable-testing --filter PerformanceTests --no-parallel
+        run: scripts/test.sh -c release -Xswiftc -enable-testing --filter 'PerformanceTests|SessionTests/testHosts' --no-parallel
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
