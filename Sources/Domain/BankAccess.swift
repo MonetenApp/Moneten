@@ -297,10 +297,12 @@ extension Account {
 	}
 
 	/// Takes the fields that the account settings edit from `edited`, the account as the settings showed
-	/// it. The balance and the status of a refresh that ended while the settings were open stay.
-	public mutating func takeSettings(from edited: Account) {
+	/// it. The balance and the status of a refresh that ended while the settings were open stay. The type
+	/// changes only when the user changed it from the type of `opened`, the account as the settings
+	/// opened, so a portfolio that a refresh made meanwhile stays a portfolio.
+	public mutating func takeSettings(from edited: Account, opened: Account) {
 		name = edited.name
-		kind = edited.kind
+		if edited.kind != opened.kind { kind = edited.kind }
 		isClosed = edited.isClosed
 		if edited.initialBalanceMinor != initialBalanceMinor {
 			initialBalanceMinor = edited.initialBalanceMinor

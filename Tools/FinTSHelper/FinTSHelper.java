@@ -940,9 +940,9 @@ public class FinTSHelper {
 	}
 
 	/// FinTS account types 30 to 39 are securities accounts and 60 to 69 funds accounts, as in
-	/// FinTSAccount.kind(of:) of the app. An account without such a type is a securities account too
-	/// when the bank allows the holdings (HKWPD) or the turnover of the holdings (HKWDU) for it, and
-	/// neither the balance nor the transactions.
+	/// FinTSAccount.kind(of:) of the app. An account without a type or with another type is a securities
+	/// account too when the bank allows the holdings (HKWPD) or the turnover of the holdings (HKWDU) for
+	/// it, and neither the balance nor the transactions.
 	static boolean securities(Konto k) {
 		if (k.acctype != null && k.acctype.trim().matches("[36][0-9]")) return true;
 		List<?> allowed = k.allowedGVs == null ? List.of() : k.allowedGVs;

@@ -8,7 +8,7 @@ Accounts and account groups are the frame for everything else in the app. This c
 
 ### Requirement: Account types
 
-The app SHALL give every account one of the types "Giro account", "Savings account", "Fixed term deposit", "Loan account", "Credit card", "Portfolio", or "Other". The bank or the extension sets the type when the account is added. A later refresh does not change the type.
+The app SHALL give every account one of the types "Giro account", "Savings account", "Fixed term deposit", "Loan account", "Credit card", "Portfolio", or "Other". The bank or the extension sets the type when the account is added. A later refresh does not change the type, except that a refresh that fetches the value of a securities account makes the account a "Portfolio".
 
 #### Scenario: Type from the bank
 
@@ -20,6 +20,12 @@ The app SHALL give every account one of the types "Giro account", "Savings accou
 - **GIVEN** the user changed the type of an account to "Fixed term deposit"
 - **WHEN** a refresh reports the account as a savings account
 - **THEN** the account keeps the type "Fixed term deposit"
+
+#### Scenario: Refresh fetches the value of a securities account
+
+- **GIVEN** the user changed the type of "Depot" to "Savings account"
+- **WHEN** a refresh fetches the value of "Depot" as a securities account
+- **THEN** "Depot" has the type "Portfolio"
 
 ### Requirement: Derive a missing account type
 

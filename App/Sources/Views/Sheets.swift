@@ -135,6 +135,8 @@ struct AccountSettingsSheet: View {
 	@Environment(\.dismiss) private var dismiss
 	let accountID: UUID
 	@State private var account: Account?
+	/// The account as the settings opened.
+	@State private var opened: Account?
 	@State private var initialBalance = ""
 	@State private var confirmRemove = false
 	@State private var confirmRemovePIN = false
@@ -144,13 +146,13 @@ struct AccountSettingsSheet: View {
 	var body: some View {
 		if let original = model.ledger.account(accountID) {
 			SheetFrame(title: "Settings for \(original.name)", width: 500, onConfirm: {
-				guard var edited = account, var a = model.ledger.account(accountID) else { return true }
+				guard var edited = account, let opened, var a = model.ledger.account(accountID) else { return true }
 				if let d = AmountParser.decimal(from: initialBalance) { edited.initialBalanceMinor = Money(d, currency: a.currency).minorUnits }
 				// A refresh that ended while the settings were open may have set a new initial balance.
 				if edited.initialBalanceMinor == account?.initialBalanceMinor { edited.initialBalanceMinor = a.initialBalanceMinor }
 				// An account keeps the color of its bank or kind until the user picks one.
 				if color.hex != originalColor.hex { edited.color = color.hex }
-				a.takeSettings(from: edited)
+				a.takeSettings(from: edited, opened: opened)
 				model.save(account: a)
 				return true
 			}, leading: {
@@ -213,6 +215,7 @@ struct AccountSettingsSheet: View {
 			}
 			.onAppear {
 				account = original
+				opened = original
 				initialBalance = Format.editableAmount(original.initialBalanceMinor, original.currency)
 				color = AccountColors.color(of: original)
 				originalColor = color

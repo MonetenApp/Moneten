@@ -295,7 +295,7 @@ private struct AccountLine: Decodable {
 	let kind: String?
 	let owner: String?
 	let currency: String?
-	/// The helper knows a securities account also by its jobs, when the bank gives no account type for it.
+	/// The helper knows a securities account also by its jobs, when the bank gives it no securities account type.
 	let securities: Bool?
 
 	var account: FinTSAccount {
