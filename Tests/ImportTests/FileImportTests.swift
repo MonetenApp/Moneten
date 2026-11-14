@@ -123,6 +123,31 @@ struct FileImportTests {
 		#expect(parsed.warnings == [.unreadableValueDate(line: 4, cell: "morgen")])
 	}
 
+	@Test("A CSV warning or error names the line of the file where its row starts, after a cell with a line break")
+	func csvPhysicalLines() throws {
+		let text = "Datum;Valuta;Name;Betrag;Währung\n01.11.2026;01.11.2026;\"Bäckerei\nGutbrot\";-2,00;EUR\n02.11.2026;n/a;Kiosk;-1,50;XYZ\n"
+		let parsed = try TransactionFileImporter.parse(Data(text.utf8), currency: "EUR")
+		#expect(parsed.transactions.map(\.name) == ["Bäckerei\nGutbrot", "Kiosk"])
+		#expect(parsed.warnings == [.unknownCurrency(line: 4, cell: "XYZ", replacement: "EUR"), .unreadableValueDate(line: 4, cell: "n/a")])
+		#expect(throws: TransactionFileImporter.Failure.line(5, "The amount cannot be read.")) {
+			try TransactionFileImporter.parse(Data((text + "03.11.2026;;Kiosk;zwölf;EUR\n").utf8), currency: "EUR")
+		}
+	}
+
+	@Test("A CAMT value date with a time is read, and one that cannot be read is imported with a warning")
+	func camtValueDateTime() throws {
+		let xml = """
+		<?xml version="1.0" encoding="UTF-8"?>
+		<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.053.001.08"><BkToCstmrStmt><Stmt>
+		<Ntry><Amt Ccy="EUR">89.00</Amt><CdtDbtInd>DBIT</CdtDbtInd><BookgDt><Dt>2026-11-02</Dt></BookgDt><ValDt><DtTm>2026-11-03T10:00:00</DtTm></ValDt></Ntry>
+		<Ntry><Amt Ccy="EUR">5.00</Amt><CdtDbtInd>CRDT</CdtDbtInd><BookgDt><Dt>2026-11-03</Dt></BookgDt><ValDt><DtTm>später</DtTm></ValDt></Ntry>
+		</Stmt></BkToCstmrStmt></Document>
+		"""
+		let parsed = try TransactionFileImporter.parse(Data(xml.utf8), currency: "EUR")
+		#expect(parsed.transactions.map(\.valueDate) == [Day(year: 2026, month: 11, day: 3), nil])
+		#expect(parsed.warnings == [.unreadableValueDate(line: 4, cell: "später")])
+	}
+
 	@Test("A CSV file without a date column is rejected")
 	func noHeader() {
 		#expect(throws: TransactionFileImporter.Failure.noHeader) { try TransactionFileImporter.parse(Data("a;b;c\n1;2;3\n".utf8), currency: "EUR") }
