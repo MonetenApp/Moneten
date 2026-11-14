@@ -242,14 +242,21 @@ struct MoneyMoneyMigrationTests {
 	}
 
 	/// The ledger after a second run with the newer `balance` of the giro account and `rows`.
-	func secondRun(into ledger: Ledger, balance: Double, rows: [[String: Any]]) throws -> Ledger {
+	func secondRun(into ledger: Ledger, balance: Double, rows: [[String: Any]], deleted: [DeletedTransaction] = []) throws -> Ledger {
+		applying(try secondPlan(into: ledger, balance: balance, rows: rows, deleted: deleted), to: ledger)
+	}
+
+	func secondPlan(into ledger: Ledger, balance: Double, rows: [[String: Any]], deleted: [DeletedTransaction] = []) throws -> MoneyMoneyMigration.Plan {
 		var newerAccounts = accounts
 		newerAccounts[1]["balance"] = [[balance, "EUR"]]
-		let second = try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(newerAccounts), categories: try plist(categories),
-			transactions: try plist(["transactions": rows]), into: ledger)
+		return try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(newerAccounts), categories: try plist(categories),
+			transactions: try plist(["transactions": rows]), into: ledger, deleted: deleted)
+	}
+
+	func applying(_ plan: MoneyMoneyMigration.Plan, to ledger: Ledger) -> Ledger {
 		var after = ledger
-		after.replace(accounts: ledger.accounts.map { a in second.updatedAccounts.first { $0.id == a.id } ?? a })
-		after.update(second.transactions + second.updatedTransactions)
+		after.replace(accounts: ledger.accounts.map { a in plan.updatedAccounts.first { $0.id == a.id } ?? a })
+		after.update(plan.transactions + plan.updatedTransactions)
 		return after
 	}
 
@@ -288,6 +295,65 @@ struct MoneyMoneyMigrationTests {
 		let after = try secondRun(into: ledger, balance: 1229.76, rows: rows)
 		#expect(after.transactions(ofAccount: giro.id).count == 4)
 		#expect(after.balance(of: try #require(after.account(giro.id))).minorUnits == 122_976)
+	}
+
+	@Test("A pending transaction that a file books counts as imported, so a second run that books it too counts it once")
+	func fileBooksPending() throws {
+		let first = try plan()
+		var ledger = Ledger(groups: first.groups, accounts: first.accounts, categories: first.categories, transactions: first.transactions)
+		let giro = try #require(first.accounts.first { $0.name == "Giro" })
+		let file = reconcile(.file([Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 4), amountMinor: -1_000, name: "Kiosk")]),
+			into: giro, stored: ledger.transactions(ofAccount: giro.id), deleted: [], rules: Categorizer(ledger: ledger), now: Date())
+		#expect(file.booked.map(\.sourceID) == [nil])
+		ledger.apply(file)
+		#expect(ledger.balance(of: giro).minorUnits == 122_456)
+
+		// The source booked the same payment, so its balance is 1.224,56 €.
+		var rows = transactions["transactions"] as! [[String: Any]]
+		rows[2]["booked"] = true
+		let after = try secondRun(into: ledger, balance: 1224.56, rows: rows)
+		#expect(after.transactions(ofAccount: giro.id).count == 3)
+		#expect(after.transactions(ofAccount: giro.id).first { $0.name == "Kiosk" }?.sourceID == "moneymoney:3")
+		#expect(after.balance(of: try #require(after.account(giro.id))).minorUnits == 122_456)
+	}
+
+	@Test("A transaction deleted in both apps moves the balance once, and the next run keeps it")
+	func deletedInBoth() throws {
+		let first = try plan()
+		var ledger = Ledger(groups: first.groups, accounts: first.accounts, categories: first.categories, transactions: first.transactions)
+		let giro = try #require(first.accounts.first { $0.name == "Giro" })
+		let fee = try #require(ledger.transactions(ofAccount: giro.id).first { $0.sourceID == "moneymoney:2" })
+		ledger.remove(transactionIDs: [fee.id])
+		#expect(ledger.balance(of: giro).minorUnits == 132_356)
+
+		// The source deleted the same transaction, so its balance is 1.323,56 €.
+		let rows = (transactions["transactions"] as! [[String: Any]]).filter { $0["id"] as? Int != 2 }
+		let deleted = DeletedTransaction(fee, deletedAt: Date())
+		let second = try secondPlan(into: ledger, balance: 1323.56, rows: rows, deleted: [deleted])
+		#expect(second.deletedRowsGoneFromSource == [deleted])
+		let after = applying(second, to: ledger)
+		#expect(after.balance(of: try #require(after.account(giro.id))).minorUnits == 132_356)
+
+		// The store keeps the deleted row without its source ID, and the same export runs again.
+		var forgotten = deleted
+		forgotten.sourceID = nil
+		let again = try secondPlan(into: after, balance: 1323.56, rows: rows, deleted: [forgotten])
+		#expect(again.deletedRowsGoneFromSource.isEmpty)
+		#expect(applying(again, to: after).balance(of: try #require(after.account(giro.id))).minorUnits == 132_356)
+	}
+
+	@Test("A transaction deleted only in Moneten keeps moving the balance through a second run")
+	func deletedInMoneten() throws {
+		let first = try plan()
+		var ledger = Ledger(groups: first.groups, accounts: first.accounts, categories: first.categories, transactions: first.transactions)
+		let giro = try #require(first.accounts.first { $0.name == "Giro" })
+		let fee = try #require(ledger.transactions(ofAccount: giro.id).first { $0.sourceID == "moneymoney:2" })
+		ledger.remove(transactionIDs: [fee.id])
+
+		let second = try secondPlan(into: ledger, balance: 1234.56, rows: transactions["transactions"] as! [[String: Any]],
+			deleted: [DeletedTransaction(fee, deletedAt: Date())])
+		#expect(second.deletedRowsGoneFromSource.isEmpty)
+		#expect(applying(second, to: ledger).balance(of: try #require(ledger.account(giro.id))).minorUnits == 132_356)
 	}
 
 	@Test("A second run after a refresh stored some of the same transactions adds only the new ones")

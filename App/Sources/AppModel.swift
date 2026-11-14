@@ -902,7 +902,7 @@ final class AppModel {
 		guard let store else { return }
 		let starters = replaceableStarterCategories
 		try store.save(groups: plan.groups, accounts: plan.accounts + plan.updatedAccounts, categories: plan.categories + plan.updatedCategories,
-			transactions: plan.transactions + plan.updatedTransactions)
+			transactions: plan.transactions + plan.updatedTransactions, forgettingSourceIDsOf: plan.deletedRowsGoneFromSource)
 		for c in starters { try? store.deleteCategory(c.id) }
 		ledger = try store.loadLedger()
 		tableGeneration += 1
