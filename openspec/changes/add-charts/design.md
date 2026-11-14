@@ -20,7 +20,7 @@ The value is stored and not derived on read. The account settings show and edit 
 
 The migration `v11` adds the column with true for every account. Then it sets false for an account with `source` `bank`, an initial balance of 0, and no `sourceID`: an account that the setup added before issue #109 and that nobody gave a value. Such an account gets its initial balance at its next refresh. A value that the user typed is not 0, and a migrated account has a `sourceID`, so both keep theirs. A user who typed 0 on purpose cannot be told apart, so that account gets the derived value once, and the user enters 0 again. Entering the value that the field already shows is no change, so it does not set the flag either.
 
-Nothing else changes meaning. The sidebar, the account header, and the group sums show `bankBalanceMinor` where there is one, as before.
+Nothing else changes meaning. The sidebar, the account header, and the group sums show `bankBalanceMinor` for a portfolio and for an account of a bank access, through `Account.reportedBalance`. Every other account, also a migrated one, shows its computed balance.
 
 ## Risks / Trade-offs
 

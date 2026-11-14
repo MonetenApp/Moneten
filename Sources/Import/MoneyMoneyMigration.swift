@@ -14,7 +14,8 @@ public struct MoneyMoneyMigration: Sendable {
 		public var accounts: [Account] = []
 		public var categories: [Domain.Category] = []
 		public var transactions: [Transaction] = []
-		/// Accounts of an earlier run with the newer balance from MoneyMoney, or the color of their icon.
+		/// Accounts of an earlier run with the newer balance from MoneyMoney and the initial balance that follows,
+		/// or the color of their icon.
 		public var updatedAccounts: [Account] = []
 		/// Stored transactions that this run books, marks for review, or gives changed bank fields or a source ID,
 		/// as a refresh would. User fields stay.
@@ -109,20 +110,12 @@ public struct MoneyMoneyMigration: Sendable {
 			plan.updatedTransactions += r.booked + r.updated + r.marked
 			plan.skippedTransactions += r.skipped
 		}
-		let newAccounts = Dictionary(uniqueKeysWithValues: plan.accounts.map { ($0.id, $0) })
-		var sums: [UUID: Int64] = [:]
 		for var t in rows {
 			guard let needsReview = added[t.id] else { continue }
 			t.needsReview = needsReview
 			plan.transactions.append(t)
-			if newAccounts[t.accountID]?.isInBalance(t) == true { sums[t.accountID, default: 0] += t.amountMinor }
 		}
-
-		// The initial balance makes the computed balance end at the balance of the bank.
-		for i in plan.accounts.indices {
-			guard let balance = plan.accounts[i].bankBalanceMinor else { continue }
-			plan.accounts[i].initialBalanceMinor = balance - sums[plan.accounts[i].id, default: 0]
-		}
+		Self.setInitialBalances(of: &plan, ledger: ledger, stored: stored)
 		if !rawCategories.contains(where: { Self.string($0["rules"]) != nil }) {
 			plan.notes.append("The export contains no categorization rules. Copy them from the category settings of MoneyMoney into the category settings of Moneten.")
 		}
@@ -131,6 +124,39 @@ public struct MoneyMoneyMigration: Sendable {
 			plan.notes.append("Portfolio accounts were taken over with their balance. Their positions follow when securities accounts are supported.")
 		}
 		return plan
+	}
+
+	/// The initial balance makes the booked rows of the source end at the balance of the source. A later run
+	/// moves it by what changed in the source since the run before, so a row that the user imported or deleted
+	/// keeps moving the balance, and so does an initial balance that the user typed.
+	private static func setInitialBalances(of plan: inout Plan, ledger: Ledger, stored: [UUID: [Transaction]]) {
+		let added = Dictionary(grouping: plan.transactions, by: \.accountID)
+		for i in plan.accounts.indices {
+			guard let balance = plan.accounts[i].bankBalanceMinor else { continue }
+			plan.accounts[i].initialBalanceMinor = initialBalance(balance, of: plan.accounts[i], rows: added[plan.accounts[i].id] ?? [])
+		}
+		let changed = Dictionary(uniqueKeysWithValues: plan.updatedTransactions.map { ($0.id, $0) })
+		for old in ledger.accounts where old.source == .migrated {
+			let k = plan.updatedAccounts.firstIndex { $0.id == old.id }
+			var a = k.map { plan.updatedAccounts[$0] } ?? old
+			guard let balance = a.bankBalanceMinor else { continue }
+			let before = stored[old.id] ?? []
+			let target = initialBalance(balance, of: a, rows: before.map { changed[$0.id] ?? $0 } + (added[old.id] ?? []))
+			a.initialBalanceMinor = old.bankBalanceMinor.map { old.initialBalanceMinor + target - initialBalance($0, of: old, rows: before) } ?? target
+			if let k {
+				plan.updatedAccounts[k] = a
+			} else if a != old {
+				plan.updatedAccounts.append(a)
+			}
+		}
+	}
+
+	/// The balance before the booked rows of the source. A row of the source carries a migration ID. A row
+	/// that the user imported carries none and counts on top. `v13` in `Schema` repairs stored values by the same rule.
+	private static func initialBalance(_ balance: Int64, of account: Account, rows: [Transaction]) -> Int64 {
+		rows.reduce(balance) { sum, t in
+			account.isInBalance(t) && t.sourceID?.hasPrefix(Transaction.migrationIDPrefix) == true ? sum - t.amountMinor : sum
+		}
 	}
 
 	private func mapAccounts(_ raw: [[String: Any]], ledger: Ledger, plan: inout Plan, map: inout [String: UUID]) {
