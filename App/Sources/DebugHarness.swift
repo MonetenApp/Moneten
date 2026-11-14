@@ -368,6 +368,8 @@ final class DebugHarness {
 			case "assignCategory":
 				let ids = model.visibleSelection
 				if !ids.isEmpty { model.sheet = .assignCategory(ids) }
+			// The real sheet, as a click on "Add category" in "Assign Category" opens it. "newcategory" skips the sheet.
+			case "newCategory": model.sheet = .newCategory(isGroup: false, assigning: model.visibleSelection)
 			default: model.sheet = nil
 			}
 		// "Name|rule" saves the rule of a category without the check of the settings, as an older version could have stored it.
