@@ -52,8 +52,6 @@ public final class SyncCoordinator {
 	private var inRun = false
 	/// Whether the running refresh of each access may ask the user. A command turns it on while it runs.
 	private var attendance: [UUID: Attendance] = [:]
-	/// The running accesses that a command turned attended after they started unattended.
-	private var upgraded: Set<UUID> = []
 
 	private struct Job {
 		var request: RefreshRequest
@@ -87,11 +85,10 @@ public final class SyncCoordinator {
 	///
 	/// A command that the user gives makes every refresh of the access attended: a waiting one, one
 	/// that waits for a run, and a running one, whose next request shows its dialog. A running refresh
-	/// that already failed because it could not ask runs again, attended. An automatic request for an
-	/// access that the user refreshes is attended too.
+	/// that already failed because it could not ask runs again, attended. An automatic request never
+	/// becomes attended through another refresh of the access.
 	public func refresh(_ request: RefreshRequest, with connector: any BankConnector, attended: Bool) {
 		let id = request.access.id
-		let attended = attended || attendance[id]?.isOn == true
 		if attended { attend(id) }
 		let requested = requestedAccounts[id] ?? []
 		let accounts = request.accounts.filter { !requested.contains($0.accountID) }
@@ -121,10 +118,7 @@ public final class SyncCoordinator {
 	private func attend(_ id: UUID) {
 		if let index = queue.firstIndex(where: { $0.request.access.id == id }) { queue[index].attended = true }
 		afterRun[id]?.attended = true
-		if let running = attendance[id], !running.isOn {
-			running.turnOn()
-			upgraded.insert(id)
-		}
+		attendance[id]?.turnOn()
 	}
 
 	/// Runs `work` for an access, never beside a refresh of it, so that the bank gets one dialog for one
@@ -284,7 +278,7 @@ public final class SyncCoordinator {
 			runningSources[access.id] = nil
 			self.attendance[access.id] = nil
 			// A command came after the refresh had failed for want of the user: run it again with dialogs.
-			if upgraded.remove(access.id) != nil, case .fail(.needsUser) = event {
+			if !job.attended, attendance.isOn, case let .fail(failure) = event, Self.asksAgain(after: failure) {
 				let again = Job(request: job.request, connector: job.connector, attended: true)
 				afterRun[access.id] = afterRun[access.id].map(again.adding) ?? again
 			}
@@ -311,6 +305,13 @@ public final class SyncCoordinator {
 		// progress before the first account comes before the bank requests the challenge.
 		if case let .progress(.fetching(done, _)) = event, done > 0 { broker.endRequest(of: access) }
 		if let next = (states[access] ?? .idle).next(event) { states[access] = next }
+	}
+
+	/// A failure that the user resolves in a dialog: a PIN, a TAN, or login data that was needed or rejected.
+	/// A blocked access stays blocked, whatever the user enters.
+	private static func asksAgain(after failure: SyncFailure) -> Bool {
+		if case .accessBlocked = failure { return false }
+		return failure.waitsForUser
 	}
 
 	private static func failure(_ error: Error) -> SyncFailure {

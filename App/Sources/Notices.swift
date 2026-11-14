@@ -35,8 +35,10 @@ final class Notices: NSObject, NoticeCenter, UNUserNotificationCenterDelegate {
 	func post(sound: Bool, _ notice: @escaping @MainActor @Sendable () -> NewTransactionsNotice) {
 		Task {
 			await self.requestPermission()
+			// The names are decided and the notification handed to macOS in one step on the main actor,
+			// so a lock cannot come between them.
 			let notice = notice()
-			await Self.add(notice, sound: sound ? Self.soundFile(notice.tone) : nil)
+			Self.submit(notice, sound: sound ? Self.soundFile(notice.tone) : nil)
 			DebugHarness.shared?.log("notice \(notice.title) accounts=\(notice.accounts.count) sound=\(sound ? notice.tone.rawValue : "-")")
 		}
 	}
@@ -111,15 +113,16 @@ extension Notices {
 		try? await UNUserNotificationCenter.current().setBadgeCount(count)
 	}
 
-	/// Shows `notice`, with the sound file `sound` when there is one.
-	nonisolated static func add(_ notice: NewTransactionsNotice, sound: String?) async {
+	/// Shows `notice`, with the sound file `sound` when there is one. The call returns at once, so it
+	/// stays on the main actor.
+	static func submit(_ notice: NewTransactionsNotice, sound: String?) {
 		let content = UNMutableNotificationContent()
 		content.title = notice.title
 		content.body = notice.body
 		content.userInfo = ["accounts": notice.accounts.map(\.uuidString)]
 		if let sound { content.sound = UNNotificationSound(named: UNNotificationSoundName(sound)) }
 		let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
-		try? await UNUserNotificationCenter.current().add(request)
+		UNUserNotificationCenter.current().add(request, withCompletionHandler: nil)
 	}
 
 	nonisolated static func delivered() async -> [DeliveredNotice] {

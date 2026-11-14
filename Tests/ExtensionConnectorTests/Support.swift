@@ -29,20 +29,24 @@ final class TestSession: SyncSession, Sendable {
 	private let answers: Mutex<[UserAnswer]>
 	let asked = Mutex<[UserRequest]>([])
 	let log = Mutex<[HostLog]>([])
-	let attended: Bool
+	private let attended: Mutex<Bool>
+	/// The script prints this line when the user gives a refresh command, which makes the session attended.
+	let attendsAt: String?
 	/// Every two-factor dialog stays open until the task is canceled, or fails after 5 seconds.
 	let hold: Bool
 	/// A waiting notice closes at the validity of its challenge, as the broker closes it.
 	let expires: Bool
 
-	init(_ answers: [UserAnswer] = [.login([Secret("erika"), Secret("geheim")])], attended: Bool = true, hold: Bool = false, expires: Bool = false) {
+	init(_ answers: [UserAnswer] = [.login([Secret("erika"), Secret("geheim")])], attended: Bool = true, attendsAt: String? = nil, hold: Bool = false,
+		expires: Bool = false) {
 		self.answers = Mutex(answers)
-		self.attended = attended
+		self.attended = Mutex(attended)
+		self.attendsAt = attendsAt
 		self.hold = hold
 		self.expires = expires
 	}
 
-	var isAttended: Bool { attended }
+	var isAttended: Bool { attended.withLock { $0 } }
 
 	func ask(_ request: UserRequest) async throws -> UserAnswer {
 		asked.withLock { $0.append(request) }
@@ -54,7 +58,7 @@ final class TestSession: SyncSession, Sendable {
 			try await Task.sleep(for: expires ? factor.validity : .seconds(3600))
 			throw SyncFailure.challengeExpired
 		}
-		if !attended, request.kind != .login { throw SyncFailure.needsUser(request.kind) }
+		if !isAttended, request.kind != .login { throw SyncFailure.needsUser(request.kind) }
 		guard let answer = answers.withLock({ $0.isEmpty ? nil : $0.removeFirst() }) else { throw CancellationError() }
 		return answer
 	}
@@ -78,7 +82,10 @@ final class TestSession: SyncSession, Sendable {
 
 	func connector(_ package: ExtensionPackage, fixture: Fixture = network([]), known: [Transaction] = [], decisions: [String: HostDecision] = [:]) -> ExtensionConnector {
 		let services = ExtensionConnector.Services(hostDecisions: { decisions }, saveDecision: { _, _ in }, transactions: { _ in known },
-			log: { line in self.log.withLock { $0.append(line) } })
+			log: { line in
+				self.log.withLock { $0.append(line) }
+				if case let .print(text) = line, text == self.attendsAt { self.attended.withLock { $0 = true } }
+			})
 		var connector = ExtensionConnector(package: package, environment: .standard, fixture: fixture, executable: hostExecutable, services: services)
 		connector.pollInterval = .milliseconds(1)
 		connector.timeZone = TimeZone(identifier: "Europe/Berlin")!

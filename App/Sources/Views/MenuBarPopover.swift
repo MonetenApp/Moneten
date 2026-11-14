@@ -47,7 +47,7 @@ struct MenuBarPopover: View {
 				}
 				HStack {
 					Button("Refresh All Accounts") { model.refresh(.all) }
-						.disabled(!model.canRefresh(.all) || model.sync.isRefreshing || !model.autoRefresh.isOnline)
+						.disabled(!model.canRefresh(.all) || !model.autoRefresh.isOnline)
 					Spacer()
 					Button("Open Moneten") { open(nil) }
 				}

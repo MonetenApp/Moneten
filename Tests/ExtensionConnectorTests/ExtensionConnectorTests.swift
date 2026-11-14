@@ -177,6 +177,20 @@ import Testing
 		#expect(session.asked.withLock { $0.map(\.kind) } == [.login])
 	}
 
+	@Test func refreshCommandDuringAChallengeMakesTheNextStepInteractive() async throws {
+		let session = TestSession([.login([Secret("erika"), Secret("geheim")]), .tan(Secret("123456")), .tan(Secret("654321"))], attended: false, attendsAt: "RefreshAccount A 1 false")
+		let (report, ids) = try await Self.refresh(session.connector(demo(Self.calls + """
+			function RefreshAccount(account, since, isKnownTransactionId, step, credentials, interactive)
+				print("RefreshAccount " .. account.accountNumber .. " " .. step .. " " .. tostring(interactive))
+				if step == 1 then return {label = "TAN"} end
+				if not interactive then return "Only with the user." end
+				return {balance = 1, transactions = {}}
+			end
+			""")), session)
+		#expect(session.printed.contains("RefreshAccount A 2 true"))
+		#expect(report.outcomes[ids[0]]?.failure == nil)
+	}
+
 	@Test func knownTransactionIdentifier() async throws {
 		let session = TestSession()
 		let known = [Transaction(accountID: UUID(), bookingDate: Day(year: 2026, month: 11, day: 3), amountMinor: -8900, name: "Stadtwerke Musterstadt", sourceID: "T-100")]

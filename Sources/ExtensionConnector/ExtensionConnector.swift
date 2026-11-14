@@ -275,10 +275,11 @@ private final class ScriptRun {
 		}
 		let answer: LuaValue
 		if await client.entryPoints.contains(.initializeSession2) {
-			let interactive = session.isAttended
+			// Read at each step: a refresh command during the session makes the next step interactive.
 			do {
-				answer = try await resolve(credentials: values.map(LuaValue.string), purpose: .login) { [access] step, credentials in
-					.initializeSession2(.webBanking, bankCode: access.bankName, step: step, credentials: credentials, interactive: interactive, reason: reason)
+				answer = try await resolve(credentials: values.map(LuaValue.string), purpose: .login) { [access, session] step, credentials in
+					.initializeSession2(.webBanking, bankCode: access.bankName, step: step, credentials: credentials, interactive: session.isAttended,
+						reason: reason)
 				}.value
 			} catch let failure as RunFailure {
 				throw SyncFailure.bank(BankMessage(text: failure.message))
@@ -329,11 +330,10 @@ private final class ScriptRun {
 		var calendar = Calendar(identifier: .gregorian)
 		calendar.timeZone = connector.timeZone
 		let seconds = account.kind == .portfolio ? 0 : since.map { Int64($0.date(in: calendar).timeIntervalSince1970) } ?? 0
-		let interactive = session.isAttended
 		let answer: (value: LuaValue, challenged: Bool)
 		do {
-			answer = try await resolve(credentials: [], purpose: .download) { step, credentials in
-				.refreshAccount(account: account.table, since: seconds, known: known, step: step, credentials: credentials, interactive: interactive)
+			answer = try await resolve(credentials: [], purpose: .download) { [session] step, credentials in
+				.refreshAccount(account: account.table, since: seconds, known: known, step: step, credentials: credentials, interactive: session.isAttended)
 			}
 		} catch let failure as RunFailure {
 			return (.failed(.bank(BankMessage(text: failure.message))), failure.afterChallenge)

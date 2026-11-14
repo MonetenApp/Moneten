@@ -327,32 +327,71 @@ final class AutoRefreshTests {
 		await until { !coordinator.isRefreshing }
 	}
 
-	@Test("A manual refresh that comes after the automatic one already failed for want of a TAN runs the access again and asks")
-	func manualAfterFailedAsk() async {
+	@Test("A manual refresh that comes after the automatic one already failed for want of the user runs the access again and asks",
+		arguments: [
+			UserRequest.secondFactor(SecondFactorRequest(purpose: .download, system: .fintsServer, challenge: .enterTAN(prompt: "TAN eingeben", image: nil))),
+			.pin(PINRequest(rejected: BankMessage(code: "9942", text: "PIN falsch"))),
+		])
+	func manualAfterFailedAsk(request: UserRequest) async {
 		let coordinator = SyncCoordinator()
 		let bank = Self.access("Musterbank")
-		let connector = SlowToFail(request: Self.tan, account: Self.giro.accountID)
+		let gate = FailureWithStateTests.Gate()
+		let connector = HeldFailure(request: request, account: Self.giro.accountID, gate: gate, holdsCancel: false)
 		coordinator.refresh(RefreshRequest(access: bank, accounts: [Self.giro]), with: connector, attended: false)
-		try? await Task.sleep(for: .milliseconds(100))
+		await until { gate.isWaiting }
 		coordinator.refresh(RefreshRequest(access: bank, accounts: [Self.giro]), with: connector, attended: true)
+		gate.open()
 		await until { coordinator.broker.current != nil }
-		#expect(coordinator.broker.current?.request == Self.tan)
+		#expect(coordinator.broker.current?.request.kind == request.kind)
 		coordinator.cancelAll()
 		await until { !coordinator.isRefreshing }
 	}
 
-	@Test("An automatic refresh of another account of an access that the user refreshes may ask the user too")
-	func automaticJoinsManual() async {
+	@Test("A blocked access does not run again after a manual refresh joined the automatic one")
+	func blockedAccessRunsOnce() async {
+		let coordinator = SyncCoordinator()
+		let bank = Self.access("Musterbank")
+		let gate = FailureWithStateTests.Gate()
+		let connector = HeldFailure(request: Self.tan, account: Self.giro.accountID, gate: gate, holdsCancel: false,
+			failure: .accessBlocked(BankMessage(code: "9931", text: "Zugang gesperrt")))
+		coordinator.refresh(RefreshRequest(access: bank, accounts: [Self.giro]), with: connector, attended: false)
+		await until { gate.isWaiting }
+		coordinator.refresh(RefreshRequest(access: bank, accounts: [Self.giro]), with: connector, attended: true)
+		gate.open()
+		await until { !coordinator.isRefreshing }
+		#expect(coordinator.states[bank.id] == .failed(.accessBlocked(BankMessage(code: "9931", text: "Zugang gesperrt"))))
+		#expect(coordinator.broker.current == nil)
+	}
+
+	@Test("An automatic refresh of another account of an access that the user refreshes never asks the user")
+	func automaticBesideManual() async {
 		let coordinator = SyncCoordinator()
 		let bank = Self.access("Musterbank")
 		coordinator.refresh(RefreshRequest(access: bank, accounts: [Self.giro]),
 			with: ScriptedConnector([.wait(.milliseconds(100)), .fetched(Self.giro.accountID)]), attended: true)
 		coordinator.refresh(RefreshRequest(access: bank, accounts: [Self.savings]),
 			with: ScriptedConnector([.ask(Self.tan), .fetched(Self.savings.accountID)]), attended: false)
-		await until { coordinator.broker.current != nil }
-		#expect(coordinator.broker.current?.request == Self.tan)
-		coordinator.cancelAll()
 		await until { !coordinator.isRefreshing }
+		#expect(coordinator.broker.current == nil)
+		#expect(coordinator.states[bank.id] == .failed(.needsUser(.secondFactor)))
+	}
+
+	@Test("An automatic refresh that comes while a canceled manual refresh still ends never asks the user")
+	func automaticAfterCanceledManual() async {
+		let coordinator = SyncCoordinator()
+		let bank = Self.access("Musterbank")
+		let gate = FailureWithStateTests.Gate()
+		coordinator.refresh(RefreshRequest(access: bank, accounts: [Self.giro]),
+			with: HeldFailure(request: Self.tan, account: Self.giro.accountID, gate: gate, holdsCancel: true), attended: true)
+		await until { coordinator.broker.current != nil }
+		coordinator.cancelAll()
+		await until { gate.isWaiting }
+		coordinator.refresh(RefreshRequest(access: bank, accounts: [Self.giro]),
+			with: ScriptedConnector([.ask(Self.tan), .fetched(Self.giro.accountID)]), attended: false)
+		gate.open()
+		await until { !coordinator.isRefreshing }
+		#expect(coordinator.broker.current == nil)
+		#expect(coordinator.states[bank.id] == .failed(.needsUser(.secondFactor)))
 	}
 
 	@Test("The end of a refresh says whether it could ask the user, and so does a running one", arguments: [false, true])
@@ -518,17 +557,22 @@ final class RecordingCenter: NoticeCenter {
 	}
 }
 
-/// Asks once and, after a failure, ends its session slowly, as the FinTS helper ends its dialog with the bank.
-struct SlowToFail: BankConnector {
+/// Asks once and, after a failure, holds its end until the test opens the gate, as the FinTS helper ends
+/// its dialog with the bank. Without `holdsCancel` a cancel ends it at once. `failure` replaces the error
+/// of the request, as a bank that blocks the access answers.
+struct HeldFailure: BankConnector {
 	let request: UserRequest
 	let account: UUID
+	let gate: FailureWithStateTests.Gate
+	let holdsCancel: Bool
+	var failure: SyncFailure?
 
 	func refresh(_ refresh: RefreshRequest, _ session: SyncSession) async throws -> ConnectorReport {
 		do {
 			_ = try await session.ask(request)
 		} catch {
-			try? await Task.sleep(for: .milliseconds(300))
-			throw error
+			if holdsCancel || !(error is CancellationError) { await gate.wait() }
+			throw failure ?? error
 		}
 		return ConnectorReport(outcomes: [account: .fetched(RefreshResult(balance: nil, transactions: nil))])
 	}
