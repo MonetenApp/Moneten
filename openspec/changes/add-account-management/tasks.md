@@ -6,7 +6,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 
 - [x] 1.1 Account types. Verified by account settings.
 - [ ] 1.2 Derive a missing account type. Build it and verify it with a test or in the app.
-- [x] 1.3 Change the account type. Verified by account settings.
+- [x] 1.3 Change the account type. Verified by BankAccessTests "accountTypeChoices": the menu "Account type" offers every type but "Portfolio", and a portfolio has none. "settingsAfterPortfolioRefresh" and "settingsNeverChoosePortfolio": saving the settings neither leaves nor chooses "Portfolio". In the app, the settings of a portfolio show "Portfolio" as text.
 - [x] 1.4 Account settings window. Verified by sheet with ⌘I.
 - [x] 1.5 Account name. Verified by account settings.
 - [x] 1.6 Bank details of an account. Verified by IBAN, BIC, account number, and owner in the settings.
