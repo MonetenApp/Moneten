@@ -188,7 +188,7 @@ struct AccountSettingsSheet: View {
 									}
 								}
 								.disabled(original.reportedBalance == nil)
-								.help("Make the computed balance end at the balance of the bank")
+								.help("Make the booked transactions meet the balance of the bank")
 							}
 						}
 						Toggle("The account has been closed", isOn: binding.isClosed)

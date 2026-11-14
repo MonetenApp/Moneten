@@ -68,7 +68,8 @@ public struct Reconciliation: Sendable, Equatable {
 	/// Stored rows that a source with IDs delivered with changed bank fields, that took over the source
 	/// ID of the delivered row, or that a refresh delivered for the first time. User fields kept.
 	public internal(set) var updated: [Transaction] = []
-	/// Stored pending rows that now carry `needsReview`, because more than one row could be their booked version.
+	/// Stored pending rows that now carry `needsReview` and no checkmark, because more than one row could be their
+	/// booked version. A row that had the mark already and the checkmark of the user loses the checkmark.
 	public internal(set) var marked: [Transaction] = []
 	/// Stored pending rows that the bank dropped. Never a booked row.
 	public internal(set) var dropped: [UUID] = []
@@ -170,13 +171,14 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored: [Tran
 		switch bookings.ofPending[j] {
 		case .pair: break
 		case .review:
-			if !pending.needsReview {
+			if !pending.needsReview || pending.isChecked {
 				var t = pending
 				t.needsReview = true
+				t.isChecked = false
 				r.marked.append(t)
 			}
 		case nil:
-			if delivery.covers(pending.bookingDate), !pending.needsReview { r.dropped.append(pending.id) }
+			if delivery.covers(pending.bookingDate), !pending.needsReview || pending.isChecked { r.dropped.append(pending.id) }
 		}
 	}
 	if case let .refresh(result) = delivery, let balance = result.balance, balance.currency == account.currency {

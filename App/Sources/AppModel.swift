@@ -594,13 +594,11 @@ final class AppModel {
 	func setChecked(_ checked: Bool, for ids: Set<UUID>) {
 		let rows = ids.compactMap { ledger.transaction($0) }
 		if checked {
-			commit(rows.filter(Self.changesWhenChecked).map { var t = $0; t.markChecked(); return t })
+			commit(rows.filter(\.changesWhenChecked).map { var t = $0; t.markChecked(); return t })
 		} else {
 			commit(rows.filter(\.isChecked).map { var t = $0; t.isChecked = false; return t })
 		}
 	}
-
-	private static func changesWhenChecked(_ t: Transaction) -> Bool { !t.isChecked || t.isNew || t.needsReview }
 
 	func toggleChecked(_ id: UUID) {
 		guard let t = ledger.transaction(id) else { return }
@@ -608,7 +606,7 @@ final class AppModel {
 	}
 
 	func markAllChecked() {
-		let rows = visibleTransactions.filter(Self.changesWhenChecked)
+		let rows = visibleTransactions.filter(\.changesWhenChecked)
 		guard !rows.isEmpty else { return }
 		let accounts = Set(rows.map(\.accountID)).count
 		let alert = NSAlert()

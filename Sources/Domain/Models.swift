@@ -270,8 +270,9 @@ public struct Transaction: Identifiable, Hashable, Sendable, Codable {
 	public var categorizedBy: Categorization
 	/// True from the moment the transaction arrives until the user has seen it.
 	public var isNew: Bool
-	/// Set by a merge when more than one row could be the booked version of a pending row. The list
-	/// shows a mark until the user checks or deletes the row. A merge never drops a pending row that has it.
+	/// Set by a merge when more than one row could be the booked version of a pending row. The list shows a
+	/// mark until the user checks a booked row or deletes the row. A merge drops a pending row that has it only
+	/// after the user checked it, and a new review clears that checkmark.
 	public var needsReview: Bool
 	/// A refresh delivered this row. Once the user deletes it, a file import does not add it again.
 	public var isFetched: Bool
@@ -324,10 +325,14 @@ public struct Transaction: Identifiable, Hashable, Sendable, Codable {
 	/// not which source delivers it, so a source with IDs of its own takes the row over.
 	public static let migrationIDPrefix = "moneymoney:"
 
-	/// The user checked the row: it is no longer new and needs no more review.
+	/// The user checked the row: it is no longer new, and a booked row needs no more review. A pending row keeps
+	/// its mark, so it still counts in no sum while the booked row stands for its money.
 	public mutating func markChecked() {
 		isChecked = true
 		isNew = false
-		needsReview = false
+		if !isPending { needsReview = false }
 	}
+
+	/// Checking the row changes it, so "Mark All Transactions as Checked" counts it.
+	public var changesWhenChecked: Bool { !isChecked || isNew || (needsReview && !isPending) }
 }

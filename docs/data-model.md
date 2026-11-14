@@ -85,7 +85,7 @@ When the rules of several categories match a transaction, the first category in 
 | `categoryID` | `UUID?` | `nil` means "Uncategorized". |
 | `categorizedBy` | `Categorization` | `manual`, `rule`, or `none`. A rule never replaces a manual category. Only "Apply to all transactions." for a changed rule does. |
 | `isNew` | `Bool` | Set when a merge adds the transaction, cleared when the user opens its account or checks it. |
-| `needsReview` | `Bool` | Set by a merge when more than one row could be the booked version of a pending row. Cleared when the user checks the row. A merge never drops a pending row that has it. |
+| `needsReview` | `Bool` | Set by a merge when more than one row could be the booked version of a pending row. Cleared when the user checks a booked row. A checked pending row keeps it. A merge drops a pending row that has it only after the user checked it, and a new review clears that checkmark. |
 | `isFetched` | `Bool` | A refresh delivered or matched the row. A file import does not bring back a deleted row that has it. |
 | `sourceID` | `String?` | The identifier that the source gave, for example `moneymoney:<id>` or the ID of an extension. A second migration skips known identifiers, and a merge matches a row by it first. A source with IDs of its own replaces a `moneymoney:` identifier when it links the row by its fingerprint. |
 | `createdAt` | `Date` | |
