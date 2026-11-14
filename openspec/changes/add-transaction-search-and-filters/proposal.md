@@ -10,7 +10,7 @@ Users look up single payments often, for a tax return, a dispute, or a warranty.
 - The search covers all text of a transaction and its comment, finds text inside words, and finds exact amounts.
 - "Search for" in the context menu lists all transactions with the same counterparty.
 - The filter bar filters by period, status, amount, and category or account.
-- The whole filter bar stays when the user changes the view. Turning the pin off sets every filter back to "Show All".
+- The filter bar stays when the user changes the view. The pin saves it across a restart, and turning the pin off sets every filter back to "Show All".
 - A search with its filters can be saved under a name.
 
 ## Capabilities
@@ -54,7 +54,8 @@ None.
 - Several words in the search field must all occur. The search field also accepts the expression language of the categorization rules. Neither was observed in MoneyMoney.
 - The search folds case and umlauts in the same way as the rules.
 - "Search for" keeps the current view and searches inside it. The scope in MoneyMoney was not observed.
-- The whole filter bar, with the period, the status, the amount, and the category or account filter, stays when the user changes the view, with or without the pin. Turning the pin off sets every filter back to "Show All", the period included. A user who looks for open items keeps that view while going through the accounts, and the pin gives one control that clears every filter at once.
+- The period, the status, the amount, and the search text stay when the user changes the view, with or without the pin. The category filter stays between accounts, and the account filter stays between categories. A user who looks for open items keeps that view while going through the accounts. A view resets the filter that its filter bar does not show, so a kept filter never empties a list without a menu to clear it.
+- Turning the pin on saves the filter bar as the default, and the app opens with it after a restart while the pin is on. Turning the pin off sets every filter back to "Show All", the period included, and clears the search field. The tooltip "Save filter bar" then says what the pin does, and one control clears every filter at once.
 - A custom amount range compares the amount with its sign, and both ends belong to the range. A range of 100 to 500 then lists deposits only, so the sum in the status line adds up amounts of one direction. A range of -500 to -100 lists withdrawals of that size.
 - A category filter on a category group includes the categories below it.
 - The line about an active filter stands below the last row of the list. Its place in MoneyMoney was not observed.

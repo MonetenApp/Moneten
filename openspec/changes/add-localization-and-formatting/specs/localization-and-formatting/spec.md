@@ -92,7 +92,7 @@ The app SHALL name a day close to today in words where it shows a point in time,
 
 ### Requirement: Complete a typed day
 
-The app SHALL complete a date field in which the user typed only a day to that day in today's month and year. When that date lies after today and the typed day is more than two greater than today's day, the app moves it one month back, into the previous year when needed. This holds for every date field except a field that expects a future date.
+The app SHALL complete a date field in which the user typed only a day to that day in today's month and year. When the typed day is more than two greater than today's day, the app moves the date one month back, into the previous year when needed. This holds for every date field except a field that expects a future date.
 
 #### Scenario: Day more than two days ahead
 
@@ -118,6 +118,12 @@ The app SHALL complete a date field in which the user typed only a day to that d
 - **WHEN** the user types "20" into a date field and leaves the field
 - **THEN** the field shows "20.12.2026"
 
+#### Scenario: Day at the end of a month
+
+- **GIVEN** today is 30 November 2026 and macOS uses the region Germany
+- **WHEN** the user types "1" into a date field and leaves the field
+- **THEN** the field shows "01.11.2026"
+
 ### Requirement: Complete a typed day and month
 
 The app SHALL complete a date field in which the user typed a day and a month to that date in today's year. When that date lies after today, today is in January, February, or March, and the typed month is October, November, or December, the app uses the previous year. This holds for every date field except a field that expects a future date.
@@ -142,7 +148,7 @@ The app SHALL complete a date field in which the user typed a day and a month to
 
 ### Requirement: Complete a typed day in a field that expects a future date
 
-The app SHALL complete a date field that expects a future date, such as the scheduled date of a payment, in which the user typed only a day to that day in today's month and year. When that date lies before today, the app moves it one month forward, into the next year when needed.
+The app SHALL complete a date field that expects a future date, such as the scheduled date of a payment, in which the user typed only a day to that day in today's month and year. When the typed day is less than today's day, the app moves the date one month forward, into the next year when needed.
 
 #### Scenario: Day later this month
 
@@ -164,7 +170,7 @@ The app SHALL complete a date field that expects a future date, such as the sche
 
 ### Requirement: Complete a typed day and month in a field that expects a future date
 
-The app SHALL complete a date field that expects a future date, in which the user typed a day and a month, to that date in today's year. When that date lies before today, today is in October, November, or December, and the typed month is January, February, or March, the app uses the next year.
+The app SHALL complete a date field that expects a future date, in which the user typed a day and a month, to that date in today's year. When that date lies before today, the app uses the next year.
 
 #### Scenario: Day and month at the start of the next year
 
@@ -172,15 +178,40 @@ The app SHALL complete a date field that expects a future date, in which the use
 - **WHEN** the user types "15.01" into the scheduled date of a transfer and leaves the field
 - **THEN** the field shows "15.01.2027"
 
+#### Scenario: Day and month earlier in the year
+
+- **GIVEN** today is 9 November 2026 and macOS uses the region Germany
+- **WHEN** the user types "15.06" into the scheduled date of a transfer and leaves the field
+- **THEN** the field shows "15.06.2027"
+
 ### Requirement: Reject an impossible date
 
-The app SHALL refuse a date that does not exist or that it cannot read, keep the field in editing, and mark the field.
+The app SHALL refuse a date that does not exist or that it cannot read, keep the field in editing, and mark the field. For a partly typed date, the app first completes it and moves it by the rules above, and then checks that the date exists.
 
 #### Scenario: 31 November
 
 - **WHEN** the user types "31.11.2026" into a date field and leaves the field
 - **THEN** the field is marked as invalid
 - **AND** the app does not change the stored date
+
+#### Scenario: A typed day that moves to a shorter month
+
+- **GIVEN** today is 9 March 2027 and macOS uses the region Germany
+- **WHEN** the user types "30" into a date field and leaves the field
+- **THEN** the field is marked as invalid, because 30.02.2027 does not exist
+- **AND** the field stays in editing
+
+#### Scenario: A typed day that the current month does not have
+
+- **GIVEN** today is 29 November 2026 and macOS uses the region Germany
+- **WHEN** the user types "31" into a date field and leaves the field
+- **THEN** the field is marked as invalid, because 31.11.2026 does not exist
+
+#### Scenario: A typed day that moves forward to a shorter month
+
+- **GIVEN** today is 30 January 2027 and macOS uses the region Germany
+- **WHEN** the user types "29" into the scheduled date of a transfer and leaves the field
+- **THEN** the field is marked as invalid, because 29.02.2027 does not exist
 
 ### Requirement: Pick a date from a calendar
 

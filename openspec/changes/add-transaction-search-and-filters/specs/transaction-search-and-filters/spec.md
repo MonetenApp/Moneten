@@ -169,7 +169,7 @@ The app SHALL open a date range with a start date and an end date when the user 
 
 ### Requirement: The filter bar applies to every view
 
-The app SHALL keep the whole filter bar when the user opens another account, account group, or category, whether the pin is on or off. The filter bar holds the period, the status, the amount, the category filter, and the account filter.
+The app SHALL keep the period, the status, the amount, and the search text when the user opens another account, account group, or category, whether the pin is on or off. The category filter stays while the user moves between accounts and account groups, and the account filter stays while the user moves between categories.
 
 #### Scenario: Change the view without the pin
 
@@ -178,16 +178,50 @@ The app SHALL keep the whole filter bar when the user opens another account, acc
 - **THEN** the "Period" menu shows "12 Months", the "Status" menu shows "Unchecked", and the "Amount" menu shows "Withdrawals"
 - **AND** the list of "Groceries" is filtered by all three
 
+### Requirement: A view resets the filter it does not show
+
+The app SHALL set the filter that the filter bar of a view does not show to "Show All" when the user opens that view and when the app opens with that view after a restart. Opening a category or a category group sets the category filter to "Show All", and opening an account or an account group sets the account filter to "Show All".
+
+#### Scenario: From a category to an account
+
+- **GIVEN** the category view "Groceries" with the status "Unchecked" and "Credit card" in the "Account" menu
+- **WHEN** the user selects the account "Giro"
+- **THEN** the list shows the unchecked transactions of "Giro"
+- **AND** the account filter is "Show All"
+
+#### Scenario: From an account to a category
+
+- **GIVEN** the account "Giro" with the status "Unchecked" and "Groceries" in the "Category" menu
+- **WHEN** the user selects the category "Rent"
+- **THEN** the list shows the unchecked transactions of "Rent"
+- **AND** the category filter is "Show All"
+
+### Requirement: Turning the pin on saves the filter bar
+
+The app SHALL show a pin with the tooltip "Save filter bar" in the filter bar. When the user turns the pin on, the app saves the period, the status, the amount, the category filter, and the account filter as the default, and it saves each later change while the pin stays on. After a restart, the pin is still on and the filter bar shows the saved default.
+
+#### Scenario: Restart with the pin on
+
+- **GIVEN** the user chose "90 Days" and the status "Unchecked" in the account "Giro"
+- **WHEN** the user turns the pin on, quits the app, and opens it again
+- **THEN** the pin is on, the "Period" menu shows "90 Days", and the "Status" menu shows "Unchecked"
+
+#### Scenario: Restart with the pin off
+
+- **GIVEN** the pin is off and the user chose "90 Days" in the account "Giro"
+- **WHEN** the user quits the app and opens it again
+- **THEN** every menu of the filter bar shows "Show All"
+
 ### Requirement: Turning the pin off resets the filters
 
-The app SHALL set the period, the status, the amount, the category filter, and the account filter to "Show All" when the user turns the pin off.
+The app SHALL set the period, the status, the amount, the category filter, and the account filter to "Show All" and clear the search field when the user turns the pin off.
 
 #### Scenario: Unpin
 
-- **GIVEN** the pin is on and the user chose "12 Months" and the status "Unchecked" in the account "Giro"
+- **GIVEN** the pin is on, the user chose "12 Months" and the status "Unchecked" in the account "Giro", and the search field holds "amazon"
 - **WHEN** the user turns the pin off
 - **THEN** every menu of the filter bar shows "Show All", the period included
-- **AND** the list shows every transaction of "Giro"
+- **AND** the search field is empty and the list shows every transaction of "Giro"
 
 ### Requirement: Status filter
 
@@ -201,7 +235,7 @@ The app SHALL filter the list by checkmark with the "Status" menu. Its values ar
 
 ### Requirement: Amount filter
 
-The app SHALL filter the list by amount with the "Amount" menu. Its values are "Show All", "Deposits", "Withdrawals", and "Custom...". "Custom..." takes a "min. amount", a "max. amount", or both, and shows the transactions whose amount with its sign lies in that range. Both ends belong to the range, and an empty end leaves the range open on that side.
+The app SHALL filter the list by amount with the "Amount" menu. Its values are "Show All", "Deposits", "Withdrawals", and "Custom...". "Custom..." takes a "min. amount", a "max. amount", or both, and shows the transactions whose amount with its sign lies in that range. Both ends belong to the range, and an empty end leaves the range open on that side. When the min. amount is greater than the max. amount, the app does not apply the range and marks the max. amount.
 
 #### Scenario: Deposits only
 
@@ -228,6 +262,13 @@ The app SHALL filter the list by amount with the "Amount" menu. Its values are "
 - **WHEN** the user enters the min. amount 1000 and leaves the max. amount empty
 - **THEN** the list shows 1.000,00 €
 - **AND** the list does not show -1.500,00 €
+
+#### Scenario: Minimum above maximum
+
+- **GIVEN** transactions of -150,00 € and -300,00 €
+- **WHEN** the user enters the min. amount -100 and the max. amount -500
+- **THEN** the app does not apply the range and marks the max. amount
+- **AND** the list still shows -150,00 € and -300,00 €
 
 ### Requirement: Category filter in account views
 
