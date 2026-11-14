@@ -56,12 +56,13 @@ struct FileImportTests {
 		}
 	}
 
-	@Test("A currency cell becomes an upper-case code, or the account currency when it is not a code")
+	@Test("A currency cell becomes its ISO code, or the account currency when it names no currency")
 	func csvCurrency() throws {
-		let text = "Datum;Name;Betrag;Währung\n01.11.2026;Kiosk;-1,50;eur\n02.11.2026;Bäckerei;-2,00;€\n03.11.2026;Markt;-3,00;Euro\n04.11.2026;Diner;-4,00; usd \n"
-		let ts = try TransactionFileImporter.parse(Data(text.utf8), currency: "CHF")
-		#expect(ts.map(\.currency) == ["EUR", "CHF", "CHF", "USD"])
-		#expect(ts.map(\.amountMinor) == [-150, -200, -300, -400])
+		let cells = ["eur", "€", "Euro", " usd ", "$", "US$", "£", "Fr.", "chf", "ABC", "XYZ"]
+		let text = "Datum;Name;Betrag;Währung\n" + cells.map { "01.11.2026;Kiosk;-1,50;\($0)\n" }.joined()
+		let ts = try TransactionFileImporter.parse(Data(text.utf8), currency: "SEK")
+		#expect(ts.map(\.currency) == ["EUR", "EUR", "EUR", "USD", "USD", "USD", "GBP", "CHF", "CHF", "SEK", "SEK"])
+		#expect(ts.map(\.amountMinor) == Array(repeating: -150, count: 11))
 	}
 
 	@Test("A CSV file without a date column is rejected")

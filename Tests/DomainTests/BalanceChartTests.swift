@@ -71,6 +71,17 @@ struct BalanceChartTests {
 		#expect(bars.last?.start == today)
 	}
 
+	@Test("Rows in another currency keep their days in the chart and leave the balance alone")
+	func foreignCurrencyRows() {
+		let wallet = Account(position: 0, name: "Wallet", kind: .giro, source: .offline, initialBalanceMinor: 10_000)
+		let l = Ledger(accounts: [wallet], transactions: [
+			Transaction(accountID: wallet.id, bookingDate: Day(year: 2026, month: 10, day: 10), amountMinor: -3_000, currency: "USD", name: "Diner New York"),
+		])
+		let october = DayRange(start: Day(year: 2026, month: 10, day: 1), end: Day(year: 2026, month: 10, day: 31))
+		#expect(l.balanceBars(accountIDs: [wallet.id], range: october).map(\.minorUnits) == Array(repeating: 10_000, count: 31))
+		#expect(l.monthlyAverageBalances(accountIDs: [wallet.id], range: october).map(\.minorUnits) == [10_000])
+	}
+
 	@Test("The monthly average is the mean of the daily balances of the month")
 	func monthlyAverage() {
 		let account = Account(position: 0, name: "April", kind: .giro, source: .offline)
