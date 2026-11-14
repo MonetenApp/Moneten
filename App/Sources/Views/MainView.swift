@@ -10,7 +10,9 @@ struct MainView: View {
 			SidebarView()
 				.navigationSplitViewColumnWidth(min: 240, ideal: 320, max: 480)
 		} detail: {
-			if model.selection != nil {
+			// The view of `tableKey`, not of `selection`: a new view that comes with a change of the rows that
+			// SwiftUI has not drawn yet waits a drawing before it removes the table (issue #151).
+			if model.tableKey.selection != nil {
 				TransactionsView()
 			} else if model.ledger.accounts.isEmpty {
 				EmptyStateView()

@@ -618,19 +618,6 @@ final class AppModel {
 	// MARK: Accounts and groups
 
 	func save(account: Account) {
-		// An account with rows that changes its group inserts or removes all of them in the open group view,
-		// which removes shown rows in place (issue #135), so it comes with a new table. The database and the
-		// ledger change together after the placeholder, so that a refresh that ends meanwhile reads and writes
-		// the account as the database has it.
-		let moves = ledger.account(account.id).map { $0.groupID != account.groupID } == true && ledger.accountsWithTransactions.contains(account.id)
-		if moves, case .group = tableKey.selection {
-			Task { await replacingTable { write(account) } }
-		} else {
-			write(account)
-		}
-	}
-
-	private func write(_ account: Account) {
 		guard let store else { return }
 		do {
 			try store.save(account)
@@ -739,10 +726,34 @@ final class AppModel {
 	}
 
 	func move(account id: UUID, toGroup groupID: UUID?) {
+		guard ledger.account(id).map({ $0.groupID != groupID }) == true else { return }
+		// An account with rows that comes into or leaves the open group view inserts or removes all of them in
+		// place, which removes shown rows (issue #135), so it comes with a new table.
+		if case let .group(shown) = tableKey.selection, ledger.accountsWithTransactions.contains(id),
+			ledger.accountIDs(inGroupTree: shown).contains(id) || isGroup(groupID, in: shown) {
+			Task { await replacingTable { moveNow(account: id, toGroup: groupID) } }
+		} else {
+			moveNow(account: id, toGroup: groupID)
+		}
+	}
+
+	/// Reads the account when the move happens, so that a refresh that stored it meanwhile keeps its balance,
+	/// its time, and its kind, and changes only the group and the place in it.
+	private func moveNow(account id: UUID, toGroup groupID: UUID?) {
 		guard var a = ledger.account(id), a.groupID != groupID else { return }
 		a.groupID = groupID
 		a.position = ledger.nextTreePosition(in: groupID)
 		save(account: a)
+	}
+
+	/// True when `group` is `tree` or a group below it.
+	private func isGroup(_ group: UUID?, in tree: UUID) -> Bool {
+		var next = group
+		while let id = next {
+			if id == tree { return true }
+			next = ledger.group(id)?.parentID
+		}
+		return false
 	}
 
 	/// "Remove saved PIN": the next refresh of every account of the access asks for the PIN.

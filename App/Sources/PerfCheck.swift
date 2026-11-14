@@ -189,6 +189,34 @@ struct PerfScenario {
 				await c.settle()
 				if c.model.tableKey.portfolios != [depot.id] || c.harness.holdingsTables().isEmpty { c.fail("the view did not change to the positions") }
 			}),
+		// A refresh lands while a move out of the open group waits for its drawing. The move reads the account
+		// when it happens, so it keeps what the refresh stored, in the ledger and in the database (issue #151).
+		PerfScenario(name: "refresh-while-move-waits", budget: halfSecond,
+			setUp: { await $0.select("Bulk") },
+			run: { c in
+				guard let moved = c.model.ledger.accounts.first(where: { $0.name == "Account 7" }),
+					let other = c.model.ledger.accounts.first(where: { $0.name == "Account 8" }),
+					let bulk = moved.groupID else { return }
+				let today = Day.today()
+				// A refresh of another account in place leaves rows that SwiftUI has not drawn, so the move waits.
+				let rows = (0..<20).map { i in
+					Transaction(accountID: other.id, bookingDate: today, amountMinor: -Int64(300 + i), name: "Card Payment", purpose: "Move \(i)")
+				}
+				_ = try? c.model.merge(.refresh(RefreshResult(balance: nil, transactions: FetchedTransactions(rows: rows, from: today))), into: other.id)
+				c.model.move(account: moved.id, toGroup: nil)
+				let balance = Money(minorUnits: 2_000_000, currency: "EUR")
+				_ = try? c.model.merge(.refresh(RefreshResult(balance: balance, transactions: nil)), into: moved.id)
+				await c.settle()
+				let now = c.model.ledger.account(moved.id)
+				if now?.groupID != nil { c.fail("the account did not move") }
+				if now?.bankBalanceMinor != balance.minorUnits { c.fail("the move wrote back the balance from before the refresh") }
+				if let stored = try? c.model.store?.loadLedger().account(moved.id), stored.groupID != nil || stored.bankBalanceMinor != balance.minorUnits {
+					c.fail("the database lost the refresh or the move")
+				}
+				// Back into "Bulk", so that the scenarios below see the same group.
+				c.model.move(account: moved.id, toGroup: bulk)
+				await c.settle()
+			}),
 		// Last, because it leaves "Bulk" grouped by account: its table has a section per account.
 		PerfScenario(name: "group-by-account", budget: halfSecond,
 			setUp: { c in
