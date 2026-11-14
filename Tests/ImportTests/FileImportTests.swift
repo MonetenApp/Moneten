@@ -36,19 +36,22 @@ struct FileImportTests {
 
 	@Test("Amounts with thousands separators in German and English notation")
 	func groupedAmounts() throws {
-		let text = "Date,Payee,Memo,Amount\n2026-11-01,Landlord,Rent,\"-1,250.00\"\n2026-11-02,Employer,Salary,\"3,000.00\"\n"
-		let ts = try TransactionFileImporter.parse(Data(text.utf8))
-		#expect(ts.map(\.amountMinor) == [-125_000, 300_000])
+		let english = "Date,Payee,Memo,Amount\n2026-11-01,Landlord,Rent,\"-1,250.00\"\n2026-11-02,Employer,Salary,\"3,000.00\"\n"
+		#expect(try TransactionFileImporter.parse(Data(english.utf8)).map(\.amountMinor) == [-125_000, 300_000])
+		let german = "Buchungstag;Empfänger;Betrag\n01.11.2026;Vermieter;-1.250,00\n02.11.2026;Arbeitgeber;3.000,00\n"
+		#expect(try TransactionFileImporter.parse(Data(german.utf8)).map(\.amountMinor) == [-125_000, 300_000])
 	}
 
-	@Test("A CSV column reads an amount without decimals by the decimal mark of the other amounts")
-	func columnDecimalMark() throws {
-		let english = "Date,Payee,Memo,Amount\n2026-11-01,Landlord,Rent,\"-1,234\"\n2026-11-02,Kiosk,Snack,-4.50\n"
-		#expect(try TransactionFileImporter.parse(Data(english.utf8)).map(\.amountMinor) == [-123_400, -450])
-		let german = "Buchungstag;Empfänger;Betrag\n01.11.2026;Erika Mustermann;1.234\n02.11.2026;Kiosk;-89,00\n"
-		#expect(try TransactionFileImporter.parse(Data(german.utf8)).map(\.amountMinor) == [123_400, -8_900])
-		let debitCredit = "Datum;Name;Soll;Haben\n01.11.2026;Vermieter;1.234;\n02.11.2026;Erika Mustermann;;50,00\n"
-		#expect(try TransactionFileImporter.parse(Data(debitCredit.utf8)).map(\.amountMinor) == [-123_400, 5_000])
+	@Test("A CSV amount without decimals takes the decimal mark of the file", arguments: [
+		("Date,Payee,Memo,Amount\n2026-11-01,Landlord,Rent,\"-1,234\"\n2026-11-02,Kiosk,Snack,-4.50\n", [Int64(-123_400), -450]),
+		("Buchungstag;Empfänger;Betrag\n01.11.2026;Erika Mustermann;1.234\n02.11.2026;Kiosk;-89,00\n", [123_400, -8_900]),
+		("Datum;Name;Soll;Haben\n01.11.2026;Vermieter;1.234;\n02.11.2026;Erika Mustermann;;50,00\n", [-123_400, 5_000]),
+		("Date,Payee,Amount\n2026-11-01,Landlord,\"1,234\"\n2026-11-02,Kiosk,4.50\n,Total,\"0,00\"\n", [123_400, 450]),
+		("Date,Payee,Amount,Credit\n2026-11-01,Landlord,\"-1,234\",\"0,00\"\n2026-11-02,Kiosk,-4.50,\n", [-123_400, -450]),
+		("Date,Payee,Amount\n2026-11-01,Kiosk,4.50\n2026-11-02,Bakery,\"-89,00\"\n", [450, -8_900]),
+	])
+	func fileDecimalMark(text: String, amounts: [Int64]) throws {
+		#expect(try TransactionFileImporter.parse(Data(text.utf8)).map(\.amountMinor) == amounts)
 	}
 
 	@Test("A CSV file with an amount that cannot be read without doubt is rejected with its line", arguments: [
