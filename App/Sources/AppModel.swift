@@ -953,7 +953,7 @@ final class AppModel {
 		// A file can bring thousands of rows, so the transaction table starts over after an import. A refresh
 		// changes the rows of the table in place. Replacing the table in the same update as the rows that its
 		// cells read let SwiftUI run a queued update of the removed table, and AttributeGraph stopped the app
-		// (issue #135). A refresh brings a few rows, which the table inserts without delay.
+		// (issue #135). A refresh usually brings few rows.
 		if case .file = delivery, !result.added.isEmpty || !result.dropped.isEmpty { tableGeneration += 1 }
 		return result
 	}

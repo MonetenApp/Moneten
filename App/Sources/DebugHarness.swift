@@ -292,12 +292,11 @@ final class DebugHarness {
 		// The number and the row count of each transaction table on screen. A new number means a new table.
 		case "tables":
 			for table in transactionTables() {
-				let number = tableNumbers.object(forKey: table)?.intValue ?? nextTableNumber
-				if number == nextTableNumber {
-					tableNumbers.setObject(NSNumber(value: number), forKey: table)
+				if tableNumbers.object(forKey: table) == nil {
+					tableNumbers.setObject(NSNumber(value: nextTableNumber), forKey: table)
 					nextTableNumber += 1
 				}
-				log("table number=\(number) rows=\(table.numberOfRows)")
+				log("table number=\(tableNumbers.object(forKey: table)?.intValue ?? 0) rows=\(table.numberOfRows)")
 			}
 		case "columnwidth":
 			// "<title> <width>" sets a column of the transaction table, "" logs every width.
