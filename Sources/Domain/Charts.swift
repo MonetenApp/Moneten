@@ -66,8 +66,9 @@ public enum ChartPeriod: String, CaseIterable, Sendable {
 }
 
 extension Ledger {
-	/// The balance at the end of each day with a booked row or a portfolio record, for accounts in
-	/// one currency. An account counts with its initial balance and the rows its balance counts. A
+	/// The balance at the end of each day with a row or a portfolio record, for accounts in one
+	/// currency. An account counts with its initial balance and the rows its balance counts, pending
+	/// ones included, so the last bar matches the computed balance. A
 	/// row in another currency adds nothing but keeps its day, so the chart still starts there. A
 	/// portfolio gets its value from the bank and not from transactions, so it counts with its last
 	/// recorded value and with nothing before its first record.
@@ -77,7 +78,7 @@ extension Ledger {
 		var balance = initialBalance(of: accountIDs)
 		var byDay: [Day: Int64] = [:]
 		for t in transactions {
-			guard let a = others[t.accountID], !t.isPending else { continue }
+			guard let a = others[t.accountID] else { continue }
 			byDay[t.bookingDate, default: 0] += a.isInBalance(t) ? t.amountMinor : 0
 		}
 		for id in portfolios {
@@ -164,7 +165,7 @@ extension Ledger {
 	public func periodSums(of transactions: [Transaction], period: ChartPeriod) -> [PeriodSum] {
 		let hidden = Set(categories.filter { !$0.showInDiagrams }.flatMap { categoryIDs(inTree: $0.id) })
 		var sums: [Day: PeriodSum] = [:]
-		for t in transactions where !t.isPending {
+		for t in transactions where t.countsInSums {
 			if let c = effectiveCategoryID(of: t), hidden.contains(c) { continue }
 			let start = period.start(of: t.bookingDate)
 			var s = sums[start] ?? PeriodSum(start: start, deposits: 0, withdrawals: 0)
@@ -180,7 +181,7 @@ extension Ledger {
 		var rootOf: [UUID: UUID] = [:]
 		for r in roots { for id in categoryIDs(inTree: r.id) { rootOf[id] = r.id } }
 		var totals: [UUID: Int64] = [:]
-		for t in transactions where !t.isPending {
+		for t in transactions where t.countsInSums {
 			guard let c = effectiveCategoryID(of: t), let r = rootOf[c] else { continue }
 			totals[r, default: 0] += t.amountMinor
 		}

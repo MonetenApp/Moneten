@@ -81,12 +81,28 @@ struct MoneyMoneyMigrationTests {
 		#expect(p.portfolioAccounts == ["Depot"])
 	}
 
-	@Test("The computed balance ends at the balance of the bank")
+	@Test("The computed balance ends at the balance of the source plus its pending rows")
 	func initialBalance() throws {
 		let p = try plan()
 		let ledger = Ledger(groups: p.groups, accounts: p.accounts, categories: p.categories, transactions: p.transactions)
 		let giro = try #require(p.accounts.first { $0.name == "Giro" })
-		#expect(ledger.computedBalance(of: giro).minorUnits == 123_456)
+		#expect(ledger.computedBalance(of: giro).minorUnits == 122_456)
+	}
+
+	@Test("Pending rows of the source stay out of the initial balance and count on top of it")
+	func pendingOnTopOfSourceBalance() throws {
+		let source: [[String: Any]] = [["uuid": "A1", "name": "Giro", "group": false, "indentation": 0, "type": "Giro account", "currency": "EUR",
+			"portfolio": false, "balance": [[1000.0, "EUR"]]]]
+		let rows: [Any] = [
+			["id": 1, "accountUuid": "A1", "bookingDate": date(2026, 11, 2), "amount": 400.0, "currency": "EUR", "name": "Beispiel GmbH", "purpose": "", "booked": true],
+			["id": 2, "accountUuid": "A1", "bookingDate": date(2026, 11, 3), "amount": -150.0, "currency": "EUR", "name": "Stadtwerke Musterstadt", "purpose": "", "booked": true],
+			["id": 3, "accountUuid": "A1", "bookingDate": date(2026, 11, 4), "amount": -30.0, "currency": "EUR", "name": "Kiosk", "purpose": "", "booked": false],
+		]
+		let p = try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(source), categories: try plist(categories),
+			transactions: try plist(["transactions": rows]), into: Ledger())
+		let giro = try #require(p.accounts.first)
+		#expect(giro.initialBalanceMinor == 75_000)
+		#expect(Ledger(accounts: p.accounts, transactions: p.transactions).computedBalance(of: giro).minorUnits == 97_000)
 	}
 
 	@Test("Rows in another currency do not count toward the initial balance")
@@ -222,23 +238,23 @@ struct MoneyMoneyMigrationTests {
 		#expect(after.balance(of: giro).minorUnits == 152_456)
 	}
 
-	@Test("A migrated account shows the balance of the source, follows an imported transaction, and keeps it through a second run")
+	@Test("A migrated account shows the balance of the source plus its pending rows, follows an imported transaction, and keeps it through a second run")
 	func balanceFollowsTransactions() throws {
 		let first = try plan()
 		var ledger = Ledger(groups: first.groups, accounts: first.accounts, categories: first.categories, transactions: first.transactions)
 		let giro = try #require(first.accounts.first { $0.name == "Giro" })
 		let depot = try #require(first.accounts.first { $0.name == "Depot" })
-		#expect(ledger.balance(of: giro).minorUnits == 123_456)
+		#expect(ledger.balance(of: giro).minorUnits == 122_456)
 		#expect(ledger.balance(of: depot).minorUnits == 1_000_000)
 
 		ledger.update([Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 12), amountMinor: -480, name: "Bäckerei Gutbrot")])
-		#expect(ledger.balance(of: giro).minorUnits == 122_976)
+		#expect(ledger.balance(of: giro).minorUnits == 121_976)
 
 		// The source fetched a transfer of 300,00 € since the first run, so its balance is 1.534,56 €.
 		var rows = transactions["transactions"] as! [[String: Any]]
 		rows.append(["id": 5, "accountUuid": "A1", "bookingDate": date(2026, 11, 9), "amount": 300.0, "currency": "EUR", "name": "Erika Mustermann", "purpose": "Rückzahlung", "booked": true])
 		let after = try secondRun(into: ledger, balance: 1534.56, rows: rows)
-		#expect(after.balance(of: try #require(after.account(giro.id))).minorUnits == 152_976)
+		#expect(after.balance(of: try #require(after.account(giro.id))).minorUnits == 151_976)
 	}
 
 	/// The ledger after a second run with the newer `balance` of the giro account and `rows`.
@@ -290,14 +306,14 @@ struct MoneyMoneyMigrationTests {
 
 		// The source corrected its balance from 1.234,56 € to 1.254,56 € without a new transaction.
 		let after = try secondRun(into: ledger, balance: 1254.56, rows: transactions["transactions"] as! [[String: Any]])
-		#expect(after.balance(of: try #require(after.account(giro.id))).minorUnits == 124_976)
+		#expect(after.balance(of: try #require(after.account(giro.id))).minorUnits == 123_976)
 		// The user raises the initial balance by 10,00 €, and the same export runs again.
 		var typed = after
 		var account = try #require(after.account(giro.id))
 		account.initialBalanceMinor += 1_000
 		typed.replace(accounts: typed.accounts.map { $0.id == account.id ? account : $0 })
 		let again = try secondRun(into: typed, balance: 1254.56, rows: transactions["transactions"] as! [[String: Any]])
-		#expect(again.balance(of: try #require(again.account(giro.id))).minorUnits == 125_976)
+		#expect(again.balance(of: try #require(again.account(giro.id))).minorUnits == 124_976)
 	}
 
 	@Test("A second run that delivers an imported transaction counts it once")
@@ -307,7 +323,7 @@ struct MoneyMoneyMigrationTests {
 		let giro = try #require(first.accounts.first { $0.name == "Giro" })
 		ledger.update([Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 12), amountMinor: -480, name: "Bäckerei Gutbrot",
 			purpose: "KARTENZAHLUNG")])
-		#expect(ledger.balance(of: giro).minorUnits == 122_976)
+		#expect(ledger.balance(of: giro).minorUnits == 121_976)
 
 		// The source fetched the same payment, so its balance is 1.229,76 €.
 		var rows = transactions["transactions"] as! [[String: Any]]
@@ -315,7 +331,7 @@ struct MoneyMoneyMigrationTests {
 			"purpose": "KARTENZAHLUNG", "booked": true])
 		let after = try secondRun(into: ledger, balance: 1229.76, rows: rows)
 		#expect(after.transactions(ofAccount: giro.id).count == 4)
-		#expect(after.balance(of: try #require(after.account(giro.id))).minorUnits == 122_976)
+		#expect(after.balance(of: try #require(after.account(giro.id))).minorUnits == 121_976)
 	}
 
 	@Test("A pending transaction that a file books counts as imported, so a second run that books it too counts it once")
@@ -436,7 +452,7 @@ struct MoneyMoneyMigrationTests {
 		let third = try secondPlan(into: second, balance: 1234.56, rows: rows, deleted: [forgotten])
 		#expect(third.transactions.isEmpty)
 		let after = applying(third, to: second)
-		#expect(after.balance(of: try #require(after.account(giro.id))).minorUnits == 132_356)
+		#expect(after.balance(of: try #require(after.account(giro.id))).minorUnits == 131_356)
 
 		// The deleted row took the ID back by its fingerprint, and the same export runs again.
 		let deletedAfter = relinked([forgotten], by: third)
@@ -444,7 +460,7 @@ struct MoneyMoneyMigrationTests {
 		let again = try secondPlan(into: after, balance: 1234.56, rows: rows, deleted: deletedAfter)
 		#expect(again.relinkedDeletedRows.isEmpty)
 		let ran = applying(again, to: after)
-		#expect(ran.balance(of: try #require(ran.account(giro.id))).minorUnits == 132_356)
+		#expect(ran.balance(of: try #require(ran.account(giro.id))).minorUnits == 131_356)
 	}
 
 	@Test("A transaction deleted in both apps moves the balance once, and the next run keeps it")
@@ -454,7 +470,7 @@ struct MoneyMoneyMigrationTests {
 		let giro = try #require(first.accounts.first { $0.name == "Giro" })
 		let fee = try #require(ledger.transactions(ofAccount: giro.id).first { $0.sourceID == "moneymoney:2" })
 		ledger.remove(transactionIDs: [fee.id])
-		#expect(ledger.balance(of: giro).minorUnits == 132_356)
+		#expect(ledger.balance(of: giro).minorUnits == 131_356)
 
 		// The source deleted the same transaction, so its balance is 1.323,56 €.
 		let rows = (transactions["transactions"] as! [[String: Any]]).filter { $0["id"] as? Int != 2 }
@@ -462,7 +478,7 @@ struct MoneyMoneyMigrationTests {
 		let second = try secondPlan(into: ledger, balance: 1323.56, rows: rows, deleted: [deleted])
 		#expect(second.relinkedDeletedRows == [DeletedTransaction.Relink(row: deleted, sourceID: nil)])
 		let after = applying(second, to: ledger)
-		#expect(after.balance(of: try #require(after.account(giro.id))).minorUnits == 132_356)
+		#expect(after.balance(of: try #require(after.account(giro.id))).minorUnits == 131_356)
 
 		// The store keeps the deleted row without its source ID, and the same export runs again.
 		var forgotten = deleted
@@ -470,7 +486,7 @@ struct MoneyMoneyMigrationTests {
 		let again = try secondPlan(into: after, balance: 1323.56, rows: rows, deleted: [forgotten])
 		#expect(again.relinkedDeletedRows.isEmpty)
 		let ran = applying(again, to: after)
-		#expect(ran.balance(of: try #require(ran.account(giro.id))).minorUnits == 132_356)
+		#expect(ran.balance(of: try #require(ran.account(giro.id))).minorUnits == 131_356)
 	}
 
 	@Test("A transaction deleted only in Moneten keeps moving the balance through a second run")
@@ -485,7 +501,7 @@ struct MoneyMoneyMigrationTests {
 			deleted: [DeletedTransaction(fee, deletedAt: Date())])
 		#expect(second.relinkedDeletedRows.isEmpty)
 		let ran = applying(second, to: ledger)
-		#expect(ran.balance(of: try #require(ran.account(giro.id))).minorUnits == 132_356)
+		#expect(ran.balance(of: try #require(ran.account(giro.id))).minorUnits == 131_356)
 	}
 
 	@Test("A deleted row in another currency that leaves the source does not move the balance")
@@ -498,13 +514,13 @@ struct MoneyMoneyMigrationTests {
 		let giro = try #require(first.accounts.first { $0.name == "Giro" })
 		let diner = try #require(ledger.transactions(ofAccount: giro.id).first { $0.sourceID == "moneymoney:6" })
 		ledger.remove(transactionIDs: [diner.id])
-		#expect(ledger.balance(of: giro).minorUnits == 123_456)
+		#expect(ledger.balance(of: giro).minorUnits == 122_456)
 
 		let second = try secondPlan(into: ledger, balance: 1234.56, rows: rows.filter { $0["id"] as? Int != 6 },
 			deleted: [DeletedTransaction(diner, deletedAt: Date())])
 		let after = applying(second, to: ledger)
 		let travel = try #require(after.account(giro.id))
-		#expect(after.balance(of: travel).minorUnits == 123_456)
+		#expect(after.balance(of: travel).minorUnits == 122_456)
 	}
 
 	@Test("A second run after a refresh stored some of the same transactions adds only the new ones")

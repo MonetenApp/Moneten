@@ -74,13 +74,13 @@ struct OpeningBalanceTests {
 		#expect(bars(stored).last == 110_000)
 	}
 
-	@Test("Pending rows do not count toward the opening balance")
+	@Test("Pending rows do not count toward the opening balance, and the last bar counts them on top of the bank balance")
 	func pendingRows() throws {
 		let store = try makeStore([giro])
-		_ = try store.merge(refresh([row(3, -10_000, "Shop"), row(0, -5_000, "Café", pending: true)], balance: 100_000), into: giro.id)
+		_ = try store.merge(refresh([row(5, 100_000, "Salary"), row(3, -30_000, "Rent"), row(0, -3_000, "Café", pending: true)], balance: 250_000), into: giro.id)
 		let stored = try store.loadLedger()
-		#expect(stored.account(giro.id)?.initialBalanceMinor == 110_000)
-		#expect(bars(stored).last == 100_000)
+		#expect(stored.account(giro.id)?.initialBalanceMinor == 180_000)
+		#expect(bars(stored).last == 247_000)
 	}
 
 	@Test("Rows after the day of the bank balance are not in it, so the chart meets the bank balance on that day and goes on from there")

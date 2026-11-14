@@ -148,15 +148,19 @@ public struct Account: Identifiable, Hashable, Sendable, Codable {
 	/// history from its recorded values instead.
 	var derivesInitialBalance: Bool { source == .bank && kind != .portfolio && !initialBalanceIsSet }
 
-	/// Sets the initial balance once, so that the computed balance at the end of the day of the bank
-	/// balance equals the bank balance. `rows` are all live rows of the account. Pending rows, rows in
-	/// another currency, and rows booked after that day are not in the bank balance.
+	/// The rows that a bank balance for the end of `day` holds: booked rows in the account currency up to that
+	/// day. Pending rows are not in it, with or without review, because a bank reports its booked balance.
+	func bookedSum(of rows: [Transaction], through day: Day) -> Int64 {
+		rows.reduce(0) { sum, t in
+			!t.isPending && t.currency == currency && t.bookingDate <= day ? sum + t.amountMinor : sum
+		}
+	}
+
+	/// Sets the initial balance once, so that the booked rows up to the end of the day of the bank balance
+	/// add up to the bank balance. `rows` are all live rows of the account. The pending rows then count on top.
 	mutating func deriveInitialBalance(from rows: [Transaction], calendar: Calendar = .current) {
 		guard derivesInitialBalance, let bankBalanceMinor else { return }
-		let day = Day(bankBalanceDate ?? Date(), calendar: calendar)
-		initialBalanceMinor = rows.reduce(bankBalanceMinor) { sum, t in
-			isInBalance(t) && t.bookingDate <= day ? sum - t.amountMinor : sum
-		}
+		initialBalanceMinor = bankBalanceMinor - bookedSum(of: rows, through: Day(bankBalanceDate ?? Date(), calendar: calendar))
 		initialBalanceIsSet = true
 	}
 }
@@ -301,10 +305,14 @@ public struct Transaction: Identifiable, Hashable, Sendable, Codable {
 
 	public var amount: Money { Money(minorUnits: amountMinor, currency: currency) }
 
-	/// The rule for every sum in one currency, such as the balance of an account or the amount of a
-	/// category. The minor units of another currency are not those of the sum, and a sum never converts.
+	/// The rule for every sum, such as a balance, a bar of a chart, or the amount of a category. A pending row
+	/// counts like a booked one, except while it waits for review: then the booked row stands for the money.
+	var countsInSums: Bool { !isPending || !needsReview }
+
+	/// The rule for every sum in one currency. The minor units of another currency are not those of the sum,
+	/// and a sum never converts.
 	public func isInSum(of currency: String) -> Bool {
-		!isPending && self.currency == currency
+		countsInSums && self.currency == currency
 	}
 
 	/// The prefix of the IDs that the MoneyMoney migration gives. Such an ID says where a row came from,
