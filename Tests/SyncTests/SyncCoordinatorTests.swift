@@ -681,6 +681,28 @@ struct SyncCoordinatorTests {
 		#expect(state(bank) == .cancelled)
 		#expect(noticed == [])
 	}
+
+	@Test("The notices of a refresh that failed after them reach the app and the error of the account")
+	func noticesOfAFailure() async {
+		var noticed: [String] = []
+		var ended: [UUID: AccountRefresh] = [:]
+		coordinator.noticed = { _, messages in noticed += messages.map(\.text) }
+		coordinator.ended = { _, _, accounts, _ in ended = accounts }
+		coordinator.refresh(RefreshRequest(access: Self.access("Musterbank"), accounts: [Self.giro]), with: FailingAfterNotice(), attended: true)
+		await until { !coordinator.isRefreshing }
+		#expect(noticed == ["Wartungsarbeiten bis 5 Uhr"])
+		guard case let .failed(error) = ended[Self.giro.accountID] else { Issue.record("giro not failed"); return }
+		#expect(error.message == "Dialog abgebrochen")
+		#expect(error.code == "9800")
+		#expect(error.notices == ["Wartungsarbeiten bis 5 Uhr"])
+	}
+}
+
+/// Fails the login after the bank sent a notice, as during maintenance.
+struct FailingAfterNotice: BankConnector {
+	func refresh(_ refresh: RefreshRequest, _ session: SyncSession) async throws -> ConnectorReport {
+		throw FailureWithNotices(SyncFailure.bank(BankMessage(code: "9800", text: "Dialog abgebrochen")), notices: [BankMessage(text: "Wartungsarbeiten bis 5 Uhr")])
+	}
 }
 
 /// Fetches every requested account after `delay`, also when the refresh was canceled, and sends a notice of the bank.
