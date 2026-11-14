@@ -10,15 +10,17 @@ import Testing
 		let data = TestCatalog.index(version: 2, packages)
 		let signature = key.sign(data)
 		let keys = try CatalogKeys(currentPEM: key.pem, nextPEM: TestKey().pem, lowestVersion: 1)
-		let clock = ContinuousClock()
-		var accepted: IndexVerifier.Accepted?
-		let elapsed = try clock.measure {
-			accepted = try IndexVerifier.check(index: data, signature: signature, keys: keys, floors: KeyFloors(), accepted: nil)
+		func check() throws -> IndexVerifier.Accepted? {
+			try IndexVerifier.check(index: data, signature: signature, keys: keys, floors: KeyFloors(), accepted: nil)
 		}
-		#expect(accepted?.index.entries.count == 200)
-		print("index_verify_parse_ms=\(elapsed / .milliseconds(1)) entries=200 bytes=\(data.count)")
+		// The first run also sets up CryptoKit and the JSON decoder, and one run alone measures the
+		// load of the runner too, so the budget holds for the median of 7 runs after it.
+		#expect(try check()?.index.entries.count == 200)
+		let clock = ContinuousClock()
+		let times = try (0..<7).map { _ in try clock.measure { _ = try check() } }.sorted()
+		print("index_verify_parse_ms=\(times[3] / .milliseconds(1)) samples_ms=\(times.map { $0 / .milliseconds(1) }) entries=200 bytes=\(data.count)")
 		#if !DEBUG
-		#expect(elapsed < .milliseconds(50))
+		#expect(times[3] < .milliseconds(50))
 		#endif
 	}
 }
