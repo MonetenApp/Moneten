@@ -155,19 +155,30 @@ extension Holding {
 	}
 
 	/// Gives each delivered position the ID of a stored one of the same security, so a position keeps its
-	/// identity across refreshes. A stored position matches by its ISIN, or else by its security number,
-	/// or else by its name, and at most once.
+	/// identity across refreshes. Every position first takes the stored one with its ISIN. Then a position
+	/// matches by its security number, or else by its name, but only when one of the two has no ISIN: two
+	/// different ISINs are two securities, whatever their names. Each stored position matches at most once.
 	public static func identify(_ delivered: [Holding], stored: [Holding]) -> [Holding] {
 		var free = stored
-		let keys: [(Holding) -> String?] = [\.security.isin, \.security.securityNumber, { $0.security.name }]
-		return delivered.map { holding in
-			var holding = holding
+		var result = delivered
+		var open: [Int] = []
+		for (i, holding) in delivered.enumerated() {
+			if let isin = holding.security.isin, let j = free.firstIndex(where: { $0.security.isin == isin }) {
+				result[i].id = free.remove(at: j).id
+			} else {
+				open.append(i)
+			}
+		}
+		let keys: [(Holding) -> String?] = [\.security.securityNumber, { $0.security.name }]
+		for i in open {
+			let holding = delivered[i]
 			for key in keys {
-				guard let wanted = key(holding), !wanted.isEmpty, let i = free.firstIndex(where: { key($0) == wanted }) else { continue }
-				holding.id = free.remove(at: i).id
+				guard let wanted = key(holding), !wanted.isEmpty,
+					let j = free.firstIndex(where: { key($0) == wanted && (holding.security.isin == nil || $0.security.isin == nil) }) else { continue }
+				result[i].id = free.remove(at: j).id
 				break
 			}
-			return holding
 		}
+		return result
 	}
 }

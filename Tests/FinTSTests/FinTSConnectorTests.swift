@@ -676,7 +676,14 @@ struct FinTSConnectorTests {
 			HelperFailure.unreadable),
 		(#"{"type":"result","account":"DE02120300000000202051","balance":{"amount":"1","currency":"EUR"},"errors":[],"securities":true,"holdings":[{"name":"Gold"}]}"#,
 			HelperFailure.unreadable),
-	])
+	] + ["12.3.4", "1-2", "-", ".", "--5", "1.", ".5", "-0.5.1"].flatMap { number in [
+		// A number that reads only in part fails its account, in a quantity, a price, and a balance alike.
+		(#"{"type":"result","account":"DE02120300000000202051","balance":{"amount":"1","currency":"EUR"},"errors":[],"securities":true,"holdings":[{"name":"Gold","quantity":"\#(number)"}]}"#,
+			HelperFailure.unreadable),
+		(#"{"type":"result","account":"DE02120300000000202051","balance":{"amount":"1","currency":"EUR"},"errors":[],"securities":true,"holdings":[{"name":"Gold","quantity":"1","price":{"amount":"\#(number)","currency":"EUR"}}]}"#,
+			HelperFailure.unreadable),
+		(#"{"type":"result","account":"DE02120300000000202051","balance":{"amount":"\#(number)","currency":"EUR"},"errors":[]}"#, HelperFailure.unreadable),
+	] })
 	func unreadableResult(line: String, expected: SyncFailure) async throws {
 		let report = try await refresh("""
 			read cmd

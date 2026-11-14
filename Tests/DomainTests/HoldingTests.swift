@@ -142,6 +142,20 @@ struct HoldingTests {
 		#expect(!h.matches("xyz"))
 	}
 
+	@Test("A new security with the name of a stored one never takes its ID when both have different ISINs, also when it comes first")
+	func differentISINs() {
+		let stored = Holding(accountID: depot, security: Security(name: "Muster Fonds", isin: "DE0001234567", securityNumber: "123456"), quantity: 1)
+		let newcomer = Holding(accountID: depot, security: Security(name: "Muster Fonds", isin: "DE0009876543", securityNumber: "123456"), quantity: 2)
+		let original = Holding(accountID: depot, security: Security(name: "Muster Fonds", isin: "DE0001234567"), quantity: 1)
+		let identified = Holding.identify([newcomer, original], stored: [stored])
+		#expect(identified[0].id == newcomer.id)
+		#expect(identified[1].id == stored.id)
+		// Without an ISIN on one side, the security number and then the name still match.
+		let unlisted = Holding(accountID: depot, security: Security(name: "Muster Fonds", securityNumber: "123456"), quantity: 1)
+		#expect(Holding.identify([unlisted], stored: [stored]).first?.id == stored.id)
+		#expect(Holding.identify([newcomer], stored: [stored]).first?.id == newcomer.id)
+	}
+
 	@Test("A delivered position keeps the ID of the stored one with the same ISIN, else security number, else name, each at most once")
 	func identity() {
 		func position(_ name: String, isin: String? = nil, number: String? = nil) -> Holding {

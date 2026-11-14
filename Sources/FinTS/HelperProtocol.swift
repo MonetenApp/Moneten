@@ -272,10 +272,10 @@ struct AccountResult: Decodable {
 		Money(try decimal(amount), currency: currency)
 	}
 
-	/// A plain decimal text of the helper, with every decimal place. `Decimal(string:)` alone would read
-	/// the start of "12abc" as 12.
+	/// A plain decimal text of the helper, as `BigDecimal.toPlainString` writes it, with every decimal place. The
+	/// whole text must match, because `Decimal(string:)` alone reads the start of "12.3.4" as 12.3 and "-" as 0.
 	static func decimal(_ text: String) throws -> Decimal {
-		guard text.allSatisfy({ "0123456789.-".contains($0) }), let decimal = Decimal(string: text, locale: Locale(identifier: "en_US_POSIX"))
+		guard text.wholeMatch(of: /-?[0-9]+(\.[0-9]+)?/) != nil, let decimal = Decimal(string: text, locale: Locale(identifier: "en_US_POSIX"))
 		else { throw HelperFailure.unreadable }
 		return decimal
 	}
