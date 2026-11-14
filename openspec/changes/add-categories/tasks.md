@@ -15,9 +15,9 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [ ] 1.9 Amount in the sidebar. Built for the earlier rule, which left pending transactions out. Tasks 3.1 and 3.2 change it.
 - [x] 1.10 Restrict a category to an account. Verified by CategorizerTests "Rules respect the account restriction".
 - [x] 1.11 Assign a category from the context menu. Verified by "Assign Category" with a checkmark at the current category.
-- [ ] 1.12 Add a category while assigning. Built in part: the menu opens the sheet but does not assign the new category. Finish it and verify it with a test or in the app.
+- [x] 1.12 Add a category while assigning. Verified in the debug build of main at 705fa89, which already assigned the new category: with 2 rows of "Girokonto" selected, "Assign Category", "Add category", and "Pets" made the category "Pets" at the top level with the 2 rows, and the trail logged "sheet newCategory" and "ledger commit rows=2".
 - [ ] 1.13 Assign a category by drag and drop. Built in part: rows can be dragged onto a category. Finish it and verify it with a test or in the app.
-- [ ] 1.14 Assign a category with the keyboard. Build it and verify it with a test or in the app.
+- [x] 1.14 Assign a category with the keyboard. Verified by CategoryAssignmentTests (the search and the restriction) and by the debug harness on 40 uncategorized rows: the picker with "groc" and Return assigned "Groceries", Escape changed nothing, the arrow keys moved the highlight, and after each of the 40 assignments the transaction table had the focus and the down arrow selected the next row, so "Uncategorized" went from 40 rows to 0. The screen was locked during the run, so the harness opened the picker as the menu command "Assign Category..." does; that command holds ⌘K.
 - [x] 1.15 Remove a transaction from its category. Verified by "Remove Transaction from Category".
 - [ ] 1.16 Category view. The list and the status line are built, verified by the debug harness snapshot in the first build. The scenarios "Pending transaction" and "Split transaction" are open. Tasks 3.1 to 3.3 build them.
 - [x] 1.17 Category group view. Verified by LedgerTests filter by a category tree.
