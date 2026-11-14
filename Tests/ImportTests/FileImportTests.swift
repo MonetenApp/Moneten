@@ -78,6 +78,14 @@ struct FileImportTests {
 		}
 	}
 
+	@Test("A currency cell becomes an upper-case code, or the account currency when it is not a code")
+	func csvCurrency() throws {
+		let text = "Datum;Name;Betrag;Währung\n01.11.2026;Kiosk;-1,50;eur\n02.11.2026;Bäckerei;-2,00;€\n03.11.2026;Markt;-3,00;Euro\n04.11.2026;Diner;-4,00; usd \n"
+		let ts = try TransactionFileImporter.parse(Data(text.utf8), currency: "CHF")
+		#expect(ts.map(\.currency) == ["EUR", "CHF", "CHF", "USD"])
+		#expect(ts.map(\.amountMinor) == [-150, -200, -300, -400])
+	}
+
 	@Test("A CSV file without a date column is rejected")
 	func noHeader() {
 		#expect(throws: TransactionFileImporter.Failure.noHeader) { try TransactionFileImporter.parse(Data("a;b;c\n1;2;3\n".utf8)) }

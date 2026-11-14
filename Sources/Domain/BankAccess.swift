@@ -218,7 +218,7 @@ extension Ledger {
 			if a.refreshInterval == .never, scope != .account(a.id) { continue }
 			// 14 days of overlap with the last success. The connector asks for no more than 90 days.
 			let since = a.refreshedAt.map { Day($0, calendar: calendar).adding(days: -14, calendar: calendar) }
-			plan[accessID, default: []].append(AccountRequest(accountID: a.id, name: a.name, remoteID: remoteID, since: since))
+			plan[accessID, default: []].append(AccountRequest(accountID: a.id, name: a.name, remoteID: remoteID, since: since, currency: a.currency))
 		}
 		return plan
 	}
