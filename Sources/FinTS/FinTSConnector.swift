@@ -156,7 +156,7 @@ public struct FinTSConnector: BankConnector {
 		let byRemoteID = Dictionary(uniqueKeysWithValues: accounts.map { ($0.remoteID, $0) })
 		var state: AccessState?
 		var notices: [BankMessage] = []
-		try await run(command, session: session) { message in
+		func handle(_ message: HelperMessage) async throws {
 			switch message {
 			case let .progress(done, of): await session.report(.fetching(done: done, of: of))
 			case let .notice(text): notices.append(BankMessage(text: text))
@@ -176,6 +176,12 @@ public struct FinTSConnector: BankConnector {
 			case let .failed(error): throw error.failure
 			default: throw HelperFailure.unreadable
 			}
+		}
+		do {
+			try await run(command, session: session, handle)
+		} catch where !notices.isEmpty {
+			// A maintenance that a notice announced is often why the login fails, so the notice must not be lost.
+			throw FailureWithNotices(error, notices: notices)
 		}
 		return ConnectorReport(outcomes: outcomes, state: state, notices: notices)
 	}

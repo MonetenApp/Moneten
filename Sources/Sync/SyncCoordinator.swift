@@ -42,7 +42,8 @@ public final class SyncCoordinator {
 	/// The last value says whether the refresh could ask the user, so that the app shows no alert for an automatic one.
 	@ObservationIgnored public var ended: @MainActor (UUID, AccessState?, [UUID: AccountRefresh], Bool) -> Void = { _, _, _, _ in }
 	/// Runs on the main actor when the refresh of an access ended, before `ended`, with the notices that its
-	/// bank sent, such as planned maintenance. A canceled refresh brings none.
+	/// bank sent, such as planned maintenance, also when the access failed after them (`FailureWithNotices`).
+	/// A canceled refresh brings none.
 	@ObservationIgnored public var noticed: @MainActor (UUID, [BankMessage]) -> Void = { _, _ in }
 	/// Runs on the main actor when a run ended: the first refresh started it, the refreshes that started
 	/// while it went joined it, and the last one ended. The notification about new transactions comes once per run.
@@ -259,6 +260,7 @@ public final class SyncCoordinator {
 		running[access.id] = Task {
 			let event: SyncEvent
 			var report: ConnectorReport?
+			var notices: [BankMessage] = []
 			// The state that a failed or canceled run changed, such as a token the source rotated before the end.
 			var failedState: AccessState?
 			do {
@@ -270,12 +272,15 @@ public final class SyncCoordinator {
 				failedState = fetched.state
 				try Task.checkCancellation()
 				report = fetched
+				notices = fetched.notices
 				let notSaved = await deliverFetched(fetched, of: job.request)
 				event = .finish(Self.summary(of: fetched, for: job.request, notSaved: notSaved))
 			} catch {
 				let withState = error as? FailureWithState
-				let error = withState?.failure ?? error
+				let withNotices = error as? FailureWithNotices
+				let error = withState?.failure ?? withNotices?.failure ?? error
 				if let withState { failedState = withState.state }
+				notices = withNotices?.notices ?? []
 				// A rejection or a block forgets the PIN also when the refresh was canceled meanwhile.
 				if (error as? SyncFailure)?.rejectsPIN == true { broker.forgetRejectedPIN(of: access.id) }
 				event = Task.isCancelled || error is CancellationError ? .cancel : .fail(Self.failure(error))
@@ -298,8 +303,8 @@ public final class SyncCoordinator {
 				afterRun[access.id] = afterRun[access.id].map { $0.attended ? again.adding($0) : again } ?? again
 			}
 			// The cancel can also come while `deliver` waits, after the connector returned its report.
-			if !Task.isCancelled, let notices = report?.notices, !notices.isEmpty { noticed(access.id, notices) }
-			ended(access.id, state, end.accountRefreshes(of: accountIDs, notices: report?.notices ?? [], at: Date()), attendance.isOn)
+			if !Task.isCancelled, !notices.isEmpty { noticed(access.id, notices) }
+			ended(access.id, state, end.accountRefreshes(of: accountIDs, notices: notices, at: Date()), attendance.isOn)
 			if var next = afterRun.removeValue(forKey: access.id) {
 				// The state that this run returned replaces the one that the command read before.
 				if let state {
