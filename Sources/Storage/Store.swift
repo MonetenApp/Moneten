@@ -67,9 +67,9 @@ public final class Store: SavedPINStore {
 				let d = r.row
 				try db.execute(sql: """
 					UPDATE deletedTransaction SET sourceID = ? WHERE rowid = (SELECT rowid FROM deletedTransaction WHERE accountID = ?
-						AND sourceID IS ? AND bookingDate = ? AND amountMinor = ? AND isPending = ? AND purpose = ? AND counterpartyIBAN IS ?
-						AND endToEndReference IS ? AND wasFetched = ? LIMIT 1)
-					""", arguments: [r.sourceID, d.accountID, d.sourceID, d.bookingDate.rawValue, d.amountMinor, d.isPending, d.purpose,
+						AND sourceID IS ? AND bookingDate = ? AND amountMinor = ? AND currency = ? AND isPending = ? AND purpose = ?
+						AND counterpartyIBAN IS ? AND endToEndReference IS ? AND wasFetched = ? LIMIT 1)
+					""", arguments: [r.sourceID, d.accountID, d.sourceID, d.bookingDate.rawValue, d.amountMinor, d.currency, d.isPending, d.purpose,
 						d.counterpartyIBAN, d.endToEndReference, d.wasFetched])
 			}
 		}
