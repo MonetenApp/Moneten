@@ -340,6 +340,13 @@ final class DebugHarness {
 			case "transaction": model.sheet = .transaction(model.visibleTransactions.first?.id)
 			default: model.sheet = nil
 			}
+		// "Name|rule" saves the rule of a category without the check of the settings, as an older version could have stored it.
+		case "rule":
+			let parts = argument.split(separator: "|", maxSplits: 1).map(String.init)
+			guard parts.count == 2, var c = model.ledger.categories.first(where: { $0.name == parts[0] }) else { return log("rule not found") }
+			c.rule = parts[1]
+			model.save(category: c)
+			log("rule \(c.name) error=\(c.ruleError.map { "\($0)" } ?? "none")")
 		// What "Add category" in "Assign Category" does with the selected rows.
 		case "newcategory": Task { await model.addCategory(name: argument, isGroup: false, parentID: nil, assigning: model.selectedTransactions) }
 		case "selectRows": model.selectedTransactions = Set(model.visibleTransactions.prefix(Int(argument) ?? 1).map(\.id))

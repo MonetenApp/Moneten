@@ -92,3 +92,17 @@ public enum RuleApplier {
 		return changed
 	}
 }
+
+extension Category {
+	/// The error of a saved rule that the app cannot parse, such as one that an older version accepted.
+	/// `Categorizer` leaves such a category out, so it gets no new transactions until the user fixes the rule.
+	public var ruleError: RuleSyntaxError? {
+		guard !isDefault, !isGroup, !rule.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+		do {
+			_ = try Rule(parsing: rule)
+			return nil
+		} catch {
+			return error
+		}
+	}
+}
