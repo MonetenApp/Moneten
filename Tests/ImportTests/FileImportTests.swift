@@ -39,9 +39,26 @@ struct FileImportTests {
 		let text = "Date,Payee,Memo,Amount\n2026-11-01,Landlord,Rent,\"-1,250.00\"\n2026-11-02,Employer,Salary,\"3,000.00\"\n"
 		let ts = try TransactionFileImporter.parse(Data(text.utf8))
 		#expect(ts.map(\.amountMinor) == [-125_000, 300_000])
-		let cases = [("1.250,00", "1250"), ("1,250.00", "1250"), ("€1,234.56", "1234.56"), ("1\u{202F}234,56", "1234.56"), ("-89,00", "-89"), ("1250.00", "1250"), ("1.250.000", "1250000")]
-		for (text, value) in cases { #expect(AmountParser.decimal(from: text) == Decimal(string: value), "\(text)") }
-		for text in ["1.250,00,5", "-", "1,2,3.4.5"] { #expect(AmountParser.decimal(from: text) == nil, "\(text)") }
+	}
+
+	@Test("A CSV column reads an amount without decimals by the decimal mark of the other amounts")
+	func columnDecimalMark() throws {
+		let english = "Date,Payee,Memo,Amount\n2026-11-01,Landlord,Rent,\"-1,234\"\n2026-11-02,Kiosk,Snack,-4.50\n"
+		#expect(try TransactionFileImporter.parse(Data(english.utf8)).map(\.amountMinor) == [-123_400, -450])
+		let german = "Buchungstag;Empfänger;Betrag\n01.11.2026;Erika Mustermann;1.234\n02.11.2026;Kiosk;-89,00\n"
+		#expect(try TransactionFileImporter.parse(Data(german.utf8)).map(\.amountMinor) == [123_400, -8_900])
+		let debitCredit = "Datum;Name;Soll;Haben\n01.11.2026;Vermieter;1.234;\n02.11.2026;Erika Mustermann;;50,00\n"
+		#expect(try TransactionFileImporter.parse(Data(debitCredit.utf8)).map(\.amountMinor) == [-123_400, 5_000])
+	}
+
+	@Test("A CSV file with an amount that cannot be read without doubt is rejected with its line", arguments: [
+		"Date,Payee,Amount\n2026-11-01,Landlord,\"1,234\"\n",
+		"Date,Payee,Amount\n2026-11-01,Kiosk,4.50\n2026-11-02,Landlord,\"12,3,4\"\n",
+		"Datum;Name;Betrag\n01.11.2026;Kiosk;-89,00\n02.11.2026;Vermieter;1.23,45\n",
+	])
+	func ambiguousAmount(text: String) {
+		let line = text.split(separator: "\n").count
+		#expect(throws: TransactionFileImporter.Failure.line(line, "The amount cannot be read.")) { try TransactionFileImporter.parse(Data(text.utf8)) }
 	}
 
 	@Test("CSV with separate debit and credit columns")
@@ -89,6 +106,19 @@ struct FileImportTests {
 		#expect(ts[0].endToEndReference == "E2E-1" && ts[0].mandateReference == "M-1" && ts[0].creditorID == "DE98ZZZ09999999999")
 		#expect(ts[0].counterpartyIBAN == "DE02120300000000202051" && ts[0].bookingText == "SEPA-BASISLASTSCHRIFT")
 		#expect(ts[1].amountMinor == 125_000 && ts[1].name == "Erika Mustermann")
+	}
+
+	@Test("MT940 always reads the comma as the decimal mark")
+	func mt940DecimalComma() throws {
+		let text = """
+		:20:STARTUMS
+		:25:12030000/202051
+		:60F:C261031EUR1000,00
+		:61:2611031103D1,500NDDTNONREF
+		:62F:C261103EUR998,50
+		-
+		"""
+		#expect(try TransactionFileImporter.parse(Data(text.utf8)).map(\.amountMinor) == [-150])
 	}
 
 	@Test("MT940 reversals book the opposite sign")
