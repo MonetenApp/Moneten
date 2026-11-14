@@ -251,6 +251,9 @@ final class DebugHarness {
 			}
 		case "symbolsnapshot":
 			offscreenSnapshot(SymbolGrid(selection: "cart.fill", color: .green, isGroup: false) { _ in }, width: 360, name: "\(argument)-symbols")
+		case "rulehelpsnapshot":
+			offscreenSnapshot(RuleHelp(), width: 420, name: "\(argument)-rulehelp")
+			offscreenSnapshot(RuleHelp().defaultScrollAnchor(.bottom), width: 420, name: "\(argument)-rulehelp-end")
 		case "piesnapshot":
 			// The pie of withdrawals with the pointer on its first slice.
 			let rows = model.visibleTransactions
