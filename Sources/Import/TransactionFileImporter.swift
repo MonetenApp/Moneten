@@ -145,8 +145,8 @@ enum CSVParser {
 
 	/// Symbols and names that banks write instead of a code. "$" stands for the US dollar, because
 	/// other dollars carry a prefix such as "CA$".
-	static let currencyNames = ["€": "EUR", "EURO": "EUR", "$": "USD", "US$": "USD", "£": "GBP", "FR.": "CHF"]
-	static let isoCurrencies = Set(Locale.Currency.isoCurrencies.map(\.identifier))
+	private static let currencyNames = ["€": "EUR", "EURO": "EUR", "$": "USD", "US$": "USD", "£": "GBP", "FR.": "CHF"]
+	private static let isoCurrencies = Set(Locale.Currency.isoCurrencies.map(\.identifier))
 
 	/// The ISO 4217 code that a currency cell names, or nil, so that the row takes the account currency.
 	static func currencyCode(_ cell: String) -> String? {
