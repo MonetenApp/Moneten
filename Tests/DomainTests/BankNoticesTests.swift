@@ -31,7 +31,7 @@ struct BankNoticesTests {
 		#expect(notices.waiting.isEmpty)
 	}
 
-	@Test("A notice waits until the user is there, and brings the window forward once, and a repeat brings nothing forward")
+	@Test("A notice waits until the user is there and brings the window forward once, and a repeat or a dismissed notice brings nothing forward")
 	func forward() {
 		var notices = BankNotices()
 		var forward: [Bool] = []
@@ -43,7 +43,10 @@ struct BankNoticesTests {
 		forward.append(notices.bringForward())
 		notices.add([BankMessage(text: "Neue Preise ab 01.01.2027")], from: "Musterbank")
 		forward.append(notices.bringForward())
-		#expect(forward == [true, false, false, true])
+		notices.add([BankMessage(text: "Neue Öffnungszeiten ab 01.12.2026")], from: "Musterbank")
+		notices.dismiss()
+		forward.append(notices.bringForward())
+		#expect(forward == [true, false, false, true, false])
 	}
 
 	@Test("A notice that the setup showed never waits")

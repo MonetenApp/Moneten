@@ -180,7 +180,6 @@ public struct FinTSConnector: BankConnector {
 		do {
 			try await run(command, session: session, handle)
 		} catch where !notices.isEmpty {
-			// A maintenance that a notice announced is often why the login fails, so the notice must not be lost.
 			throw FailureWithNotices(error, notices: notices)
 		}
 		return ConnectorReport(outcomes: outcomes, state: state, notices: notices)
