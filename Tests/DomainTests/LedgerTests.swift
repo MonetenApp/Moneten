@@ -169,6 +169,7 @@ struct LedgerTests {
 		#expect(try shown(nil, -1_500_00) == [-1_500_00])
 		#expect(TransactionFilter.AmountFilter.custom(min: -100_00, max: -500_00) == nil)
 		#expect(TransactionFilter.AmountFilter.custom(min: -100_00, max: -100_00) != nil)
+		#expect(TransactionFilter.AmountFilter.custom(min: nil, max: nil) == .all)
 	}
 
 	@Test("Uncategorized holds every transaction without a category")

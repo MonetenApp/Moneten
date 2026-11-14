@@ -336,8 +336,9 @@ final class DebugHarness {
 		case "amount", "amountsnapshot":
 			let ends = argument.split(separator: " ").map { $0 == "-" ? "" : String($0) } + ["", ""]
 			if command == "amount" {
-				if let range = CustomAmountView.range(min: ends[0], max: ends[1]) { model.filter.amount = range }
-				log("amount applied=\(model.filter.amount != .all) visible=\(model.visibleTransactions.count)")
+				let range = Format.isReadableAmount(ends[0]) && Format.isReadableAmount(ends[1]) ? CustomAmountView.range(min: ends[0], max: ends[1]) : nil
+				if let range { model.filter.amount = range }
+				log("amount applied=\(range != nil) visible=\(model.visibleTransactions.count)")
 			} else {
 				offscreenSnapshot(CustomAmountView(min: ends[0], max: ends[1]).environment(model), width: 300, name: "amount")
 			}

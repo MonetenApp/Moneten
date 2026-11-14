@@ -400,8 +400,9 @@ public struct TransactionFilter: Hashable, Sendable {
 		/// Amounts with their sign in minor units, both ends included. A missing end leaves the range open.
 		case range(min: Int64?, max: Int64?)
 
-		/// The range of "Custom...", or nil when the minimum lies above the maximum.
+		/// The range of "Custom...", or nil when the minimum lies above the maximum. Two empty ends hide nothing.
 		public static func custom(min: Int64?, max: Int64?) -> AmountFilter? {
+			if min == nil, max == nil { return .all }
 			if let min, let max, min > max { return nil }
 			return .range(min: min, max: max)
 		}
