@@ -36,11 +36,33 @@ struct LedgerTests {
 		#expect(l.nextTreePosition(in: sub.id) == 0)
 	}
 
+	@Test("A migrated or offline account follows its transactions, and an account with a bank access shows the bank balance")
+	func balanceSource() {
+		let wallet = Account(position: 0, name: "Wallet", kind: .other, source: .migrated, bankBalanceMinor: 13_320, initialBalanceMinor: 13_320)
+		let cash = Account(position: 1, name: "Cash", kind: .other, source: .offline, initialBalanceMinor: 5_000)
+		let fetched = Account(position: 2, name: "Giro", kind: .giro, source: .bank, iban: "DE02120300000000202051", bankBalanceMinor: 50_000,
+			initialBalanceMinor: 40_000, accessID: UUID())
+		let depot = Account(position: 3, name: "Depot", kind: .portfolio, source: .migrated, bankBalanceMinor: 2_000_000)
+		var l = Ledger(accounts: [wallet, cash, fetched, depot])
+		#expect(l.balance(of: wallet).minorUnits == 13_320)
+		l.update([
+			Transaction(accountID: wallet.id, bookingDate: Day(year: 2026, month: 11, day: 12), amountMinor: -480, name: "Bäckerei Gutbrot"),
+			Transaction(accountID: cash.id, bookingDate: Day(year: 2026, month: 11, day: 12), amountMinor: -1_200, name: "Kiosk"),
+			Transaction(accountID: fetched.id, bookingDate: Day(year: 2026, month: 11, day: 12), amountMinor: -1_000, name: "Kiosk"),
+			Transaction(accountID: depot.id, bookingDate: Day(year: 2026, month: 11, day: 12), amountMinor: -3_000, name: "Depotgebühr"),
+		])
+		#expect(l.balance(of: wallet).minorUnits == 12_840)
+		#expect(l.balance(of: cash).minorUnits == 3_800)
+		#expect(l.balance(of: fetched).minorUnits == 50_000)
+		#expect(l.balance(of: depot).minorUnits == 2_000_000)
+	}
+
 	@Test("The sum of a group leaves out closed accounts")
 	func groupSumWithoutClosed() {
 		let group = AccountGroup(name: "Old banks", position: 0)
-		let open = Account(groupID: group.id, position: 0, name: "Giro", kind: .giro, source: .migrated, bankBalanceMinor: 10_000)
-		let closed = Account(groupID: group.id, position: 1, name: "Loan", kind: .other, source: .migrated, bankBalanceMinor: -500_000, isClosed: true)
+		let open = Account(groupID: group.id, position: 0, name: "Giro", kind: .giro, source: .migrated, bankBalanceMinor: 10_000, initialBalanceMinor: 10_000)
+		let closed = Account(groupID: group.id, position: 1, name: "Loan", kind: .other, source: .migrated, bankBalanceMinor: -500_000,
+			initialBalanceMinor: -500_000, isClosed: true)
 		let l = Ledger(groups: [group], accounts: [open, closed])
 		#expect(l.sum(ofGroup: group.id).byCurrency == ["EUR": 10_000])
 	}

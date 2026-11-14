@@ -221,6 +221,32 @@ struct MoneyMoneyMigrationTests {
 		#expect(after.computedBalance(of: giro) == after.balance(of: giro))
 	}
 
+	@Test("A migrated account shows the balance of the source, follows a transaction added by hand, and keeps it through a second run")
+	func balanceFollowsTransactions() throws {
+		let first = try plan()
+		var ledger = Ledger(groups: first.groups, accounts: first.accounts, categories: first.categories, transactions: first.transactions)
+		let giro = try #require(first.accounts.first { $0.name == "Giro" })
+		let depot = try #require(first.accounts.first { $0.name == "Depot" })
+		#expect(ledger.balance(of: giro).minorUnits == 123_456)
+		#expect(ledger.balance(of: depot).minorUnits == 1_000_000)
+
+		ledger.update([Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 12), amountMinor: -480, name: "Bäckerei Gutbrot")])
+		#expect(ledger.balance(of: giro).minorUnits == 122_976)
+
+		// The source fetched a transfer of 300,00 € since the first run, so its balance is 1.534,56 €.
+		var newerAccounts = accounts
+		newerAccounts[1]["balance"] = [[1534.56, "EUR"]]
+		var rows = transactions["transactions"] as! [[String: Any]]
+		rows.append(["id": 5, "accountUuid": "A1", "bookingDate": date(2026, 11, 9), "amount": 300.0, "currency": "EUR", "name": "Erika Mustermann", "purpose": "Rückzahlung", "booked": true])
+		let second = try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(newerAccounts), categories: try plist(categories),
+			transactions: try plist(["transactions": rows]), into: ledger)
+		var after = ledger
+		after.replace(accounts: ledger.accounts.map { a in second.updatedAccounts.first { $0.id == a.id } ?? a })
+		after.update(second.transactions + second.updatedTransactions)
+		let updated = try #require(after.account(giro.id))
+		#expect(after.balance(of: updated).minorUnits == 152_976)
+	}
+
 	@Test("A second run after a refresh stored some of the same transactions adds only the new ones")
 	func afterRefresh() throws {
 		let first = try plan()
