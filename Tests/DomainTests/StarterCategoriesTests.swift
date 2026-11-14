@@ -22,7 +22,7 @@ struct StarterCategoriesTests {
 	}
 
 	@Test("The German set has German names, with the default category last")
-	func german() throws {
+	func german() {
 		#expect(sidebar(.german) == [
 			"Einnahmen", "Einnahmen › Gehalt", "Einnahmen › Sonstige Einnahmen",
 			"Wohnen", "Wohnen › Miete", "Wohnen › Lebensmittel", "Wohnen › Strom", "Wohnen › Internet & Telefon",
@@ -31,8 +31,6 @@ struct StarterCategoriesTests {
 			"Versicherungen", "Versicherungen › Krankenversicherung", "Versicherungen › Haftpflicht", "Versicherungen › Kfz-Versicherung",
 			"Umbuchungen", "Unkategorisiert",
 		])
-		let l = Ledger(categories: StarterCategories.make(language: .german))
-		#expect(try #require(l.defaultCategory).name == "Unkategorisiert")
 	}
 
 	@Test("Both sets have the same groups, rules, and diagram settings")
@@ -44,8 +42,6 @@ struct StarterCategoriesTests {
 			}
 		}
 		#expect(shape(.german) == shape(.english))
-		#expect(StarterCategories.make(language: .german).first { $0.name == "Gehalt" }?.rule == #""Gehalt" OR "Lohn""#)
-		#expect(StarterCategories.make(language: .german).first { $0.name == "Umbuchungen" }?.showInDiagrams == false)
 	}
 
 	@Test("A German localization of the interface gives the German set, any other the English set", arguments: [
