@@ -27,7 +27,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [x] 1.21 Keep real identical transactions. Build it and verify it with a test or in the app (#7).
 - [x] 1.22 Replace a pending transaction by its booked version. Build it and verify it with a test or in the app (#7).
 - [x] 1.23 Do not guess between several pending transactions. Build it and verify it with a test or in the app (#7).
-- [x] 1.24 Remove a pending transaction that the bank dropped. Build it and verify it with a test or in the app (#7).
+- [x] 1.24 Remove a pending transaction that the bank dropped. Build it and verify it with a test or in the app (#7). A pending transaction older than the 14 days of overlap: BankAccessTests "A refresh asks from the oldest pending row, so it removes a deposit older than the overlap that the bank dropped", where a deposit of -500,00 € on 01.11.2026 leaves at the refresh after 22.11.2026 and the balance ends at 520,00 € (#160).
 - [x] 1.25 Deleted transactions stay deleted. Build it and verify it with a test or in the app (#7).
 - [x] 1.26 Mark new transactions. Build it and verify it with a test or in the app (#7).
 - [x] 1.27 Update the balance at every refresh. Build it and verify it with a test or in the app (#7).

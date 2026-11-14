@@ -215,12 +215,21 @@ extension Ledger {
 		case let .account(id): [id]
 		case let .group(id): accountIDs(inGroupTree: id)
 		}
+		var oldestPending: [UUID: Day] = [:]
+		for t in transactions where t.isPending {
+			oldestPending[t.accountID] = min(oldestPending[t.accountID] ?? t.bookingDate, t.bookingDate)
+		}
 		var plan: [UUID: [AccountRequest]] = [:]
 		for a in accounts where !a.isClosed && chosen?.contains(a.id) != false {
 			guard let accessID = a.accessID, let remoteID = a.remoteID else { continue }
 			if a.refreshInterval == .never, scope != .account(a.id) { continue }
-			// 14 days of overlap with the last success. The connector asks for no more than 90 days.
-			let since = a.refreshedAt.map { Day($0, calendar: calendar).adding(days: -14, calendar: calendar) }
+			// 14 days of overlap with the last success, and back to the oldest pending row, because a refresh
+			// removes a pending row that the bank dropped only within the days it asked for. The connector asks
+			// for no more than 90 days.
+			let since = a.refreshedAt.map { refreshed in
+				let overlap = Day(refreshed, calendar: calendar).adding(days: -14, calendar: calendar)
+				return oldestPending[a.id].map { min($0, overlap) } ?? overlap
+			}
 			plan[accessID, default: []].append(AccountRequest(accountID: a.id, name: a.name, remoteID: remoteID, since: since, currency: a.currency))
 		}
 		return plan

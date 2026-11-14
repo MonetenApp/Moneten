@@ -100,13 +100,19 @@ The app SHALL fetch transactions in the CAMT format when the bank offers it for 
 
 ### Requirement: A normal refresh asks for at most 90 days
 
-The app SHALL ask in a normal refresh for the transactions since the last successful fetch of the account with an overlap of 14 days, and for no more than the last 90 days, so that the bank needs no TAN for older transactions.
+The app SHALL ask in a normal refresh for the transactions since the last successful fetch of the account with an overlap of 14 days, or from its oldest pending transaction when that is earlier, and for no more than the last 90 days. The bank then needs no TAN for older transactions, and the refresh can remove a pending transaction that the bank dropped.
 
 #### Scenario: Daily use
 
 - **GIVEN** the last successful fetch of "Giro" was on 01.11.2026
 - **WHEN** a refresh runs on 09.11.2026
 - **THEN** the app asks for the transactions from 18.10.2026 on
+
+#### Scenario: Old pending transaction
+
+- **GIVEN** the last successful fetch of "Giro" was on 22.11.2026 and "Giro" has a pending transaction of -500,00 € on 01.11.2026
+- **WHEN** a refresh runs
+- **THEN** the app asks for the transactions from 01.11.2026 on
 
 #### Scenario: Long pause
 
