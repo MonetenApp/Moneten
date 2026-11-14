@@ -228,7 +228,7 @@ public final class SessionBroker {
 		switch event {
 		case .finish:
 			guard save, let pin = pins[access] else { return }
-			do { try writeSavedPIN(pin, of: access) } catch { onStoreFailure(SavedPINFailure(kind: .notSaved, reason: String(describing: error))) }
+			do { try writeSavedPIN(pin, of: access) } catch { onStoreFailure(SavedPINFailure(kind: .notSaved, access: access, reason: String(describing: error))) }
 		default:
 			if !savedPINs.contains(access) { pins[access] = nil }
 			loginData[access] = nil
@@ -269,7 +269,7 @@ public final class SessionBroker {
 			undeleted.remove(access)
 		} catch {
 			// Reported once, also when the end of the refresh tries again.
-			if undeleted.insert(access).inserted { onStoreFailure(SavedPINFailure(kind: .rejectedNotRemoved, reason: String(describing: error))) }
+			if undeleted.insert(access).inserted { onStoreFailure(SavedPINFailure(kind: .rejectedNotRemoved, access: access, reason: String(describing: error))) }
 		}
 	}
 
@@ -332,6 +332,8 @@ public struct SavedPINFailure: Error {
 	}
 
 	public let kind: Kind
+	/// The access of the PIN, so that the app can tell an automatic refresh from a command.
+	public let access: UUID
 	let reason: String
 
 	public var title: String {

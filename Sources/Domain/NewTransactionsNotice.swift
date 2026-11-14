@@ -12,11 +12,18 @@ public struct NewTransactionsNotice: Sendable, Equatable {
 	/// The accounts that received the transactions, in the order of the sidebar while the app is unlocked.
 	public let accounts: [UUID]
 	/// The names of `accounts`. Empty while the app is locked.
-	public let accountNames: [String]
+	public private(set) var accountNames: [String]
 	public let tone: Tone
 
 	public var title: String { count == 1 ? "1 new transaction" : "\(count) new transactions" }
 	public var body: String { accountNames.joined(separator: ", ") }
+
+	/// The notice of an app that locked after the notice was made.
+	public var withoutAccountNames: NewTransactionsNotice {
+		var notice = self
+		notice.accountNames = []
+		return notice
+	}
 
 	/// `stored` are the rows that the run added. With the `ledger` of an unlocked app only the rows that
 	/// are still stored and still new count. Nil when nothing counts.

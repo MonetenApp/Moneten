@@ -139,6 +139,8 @@ final class DebugHarness {
 			DispatchQueue.main.async { [weak self] in
 				self?.log("windows \(NSApp.windows.filter { $0.isVisible && $0.frame.width > 50 }.map { $0.identifier?.rawValue ?? "-" })")
 			}
+		// "off" or "on": what the network monitor reports, so that a check can refresh as if the Mac were offline.
+		case "network": model.autoRefresh.isOnline = argument != "off"
 		// The popover of the menu bar icon, drawn offscreen.
 		case "menubarsnapshot": offscreenSnapshot(MenuBarPopover().environment(model), width: 340, name: argument)
 		// The delivered notifications of this app in the Notification Center, with their titles and the number of their accounts.

@@ -11,6 +11,9 @@ final class Notices: NSObject, NoticeCenter, UNUserNotificationCenterDelegate {
 	/// The user clicked a notification about these accounts.
 	var onOpen: ([UUID]) -> Void = { _ in }
 	private var badge = 0
+	/// The last change of the badge. Each change waits for the one before and sets the latest count, so
+	/// a slow call never leaves an old count on the Dock icon.
+	private var badgeChange: Task<Void, Never>?
 
 	override init() {
 		super.init()
@@ -21,7 +24,7 @@ final class Notices: NSObject, NoticeCenter, UNUserNotificationCenterDelegate {
 	/// The badge that macOS refused before the permission shows from then on.
 	func requestPermission() async {
 		guard await Self.requestAuthorization() else { return }
-		await Self.setBadgeCount(badge)
+		showBadge()
 	}
 
 	/// macOS blocks the notifications of the app, so the settings say where to allow them.
@@ -29,9 +32,10 @@ final class Notices: NSObject, NoticeCenter, UNUserNotificationCenterDelegate {
 		await Self.authorizationStatus() == .denied
 	}
 
-	func post(_ notice: NewTransactionsNotice, sound: Bool) {
+	func post(sound: Bool, _ notice: @escaping @MainActor @Sendable () -> NewTransactionsNotice) {
 		Task {
 			await self.requestPermission()
+			let notice = notice()
 			await Self.add(notice, sound: sound ? Self.soundFile(notice.tone) : nil)
 			DebugHarness.shared?.log("notice \(notice.title) accounts=\(notice.accounts.count) sound=\(sound ? notice.tone.rawValue : "-")")
 		}
@@ -51,9 +55,9 @@ final class Notices: NSObject, NoticeCenter, UNUserNotificationCenterDelegate {
 		guard total != badge else { return }
 		let fewer = total < badge
 		badge = total
+		showBadge()
+		guard fewer else { return }
 		Task {
-			await Self.setBadgeCount(total)
-			guard fewer else { return }
 			let seen = await Self.delivered().filter { !$0.accounts.contains { newCounts[$0, default: 0] > 0 } }
 			UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: seen.map(\.id))
 		}
@@ -62,7 +66,15 @@ final class Notices: NSObject, NoticeCenter, UNUserNotificationCenterDelegate {
 	/// The lock hides the count. The delivered notifications stay in the Notification Center.
 	func clearBadge() {
 		badge = 0
-		Task { await Self.setBadgeCount(0) }
+		showBadge()
+	}
+
+	private func showBadge() {
+		let previous = badgeChange
+		badgeChange = Task {
+			await previous?.value
+			await Self.setBadgeCount(self.badge)
+		}
 	}
 
 	nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async

@@ -158,8 +158,9 @@ final class AppModel {
 	let autoRefresh: AutoRefresh
 	let notices = Notices()
 	private let announcer: NewTransactionsAnnouncer
-	/// False while macOS reports no network path, so a manual refresh says so and the automatic one waits.
-	private(set) var isOnline = true
+	/// A failure of an automatic refresh, which the status line shows until the user opens it. An
+	/// automatic refresh opens no alert.
+	var backgroundProblem: AlertMessage?
 	private let pathMonitor = NWPathMonitor()
 	private var refreshTimer: Timer?
 	/// The accounts of a notification that the user clicked while the app was locked, selected after the unlock.
@@ -228,19 +229,23 @@ final class AppModel {
 			guard let self else { return }
 			self.announcer.stored(try self.merge(.refresh(result), into: accountID).added)
 		}
-		sync.ended = { [weak self] access, state, accounts in
-			self?.recordRefresh(of: access, state: state, accounts: accounts)
+		sync.ended = { [weak self] access, state, accounts, attended in
+			self?.recordRefresh(of: access, state: state, accounts: accounts, attended: attended)
 			self?.extensions.sessionEnded()
 		}
-		// Locked, the notification names no account.
 		sync.runEnded = { [weak self] in
 			guard let self else { return }
-			self.announcer.runEnded(ledger: self.phase == .unlocked ? self.ledger : nil)
+			self.announcer.runEnded(ledger: self.ledger)
 		}
+		sync.userCanceled = { [weak self] accounts in self?.recordCancel(of: accounts) }
+		sync.mayStartUnattended = { [weak self] in self?.autoRefresh.allowsUnattended ?? false }
 		autoRefresh.run = { [weak self] now in self?.refreshDue(at: now) }
 		notices.onOpen = { [weak self] accounts in self?.show(notified: accounts) }
 		extensions.model = self
-		sync.broker.onStoreFailure = { [weak self] failure in self?.alert = AlertMessage(title: failure.title, message: failure.message) }
+		sync.broker.onStoreFailure = { [weak self] failure in
+			guard let self else { return }
+			self.report(AlertMessage(title: failure.title, message: failure.message), attended: !self.sync.runsUnattended(failure.access))
+		}
 		start()
 		installActivityMonitor()
 		installRefreshTriggers()
@@ -331,6 +336,7 @@ final class AppModel {
 		lastActivity = Date()
 		phase = .unlocked
 		extensions.open(store)
+		announcer.unlock()
 		if let notified = notifiedAccounts {
 			notifiedAccounts = nil
 			select(notified: notified)
@@ -341,6 +347,8 @@ final class AppModel {
 	func lock() {
 		guard hasPassword, phase == .unlocked else { return }
 		// A locked app refreshes nothing and forgets every PIN in memory. The saved ones come back from the database at the next unlock.
+		// The announcer locks first, because the cancel below can end the run at once.
+		announcer.lock(keeping: ledger)
 		autoRefresh.isUnlocked = false
 		notices.clearBadge()
 		sync.cancelAll()
@@ -682,7 +690,7 @@ final class AppModel {
 	/// "Refresh All Accounts", "Refresh Account", and "Refresh Accounts". Offline the accounts keep their
 	/// last state, and the app says why nothing happens.
 	func refresh(_ scope: RefreshScope) {
-		guard isOnline else {
+		guard autoRefresh.isOnline else {
 			alert = AlertMessage(title: SyncFailure.offline.message, message: "Connect this Mac to the Internet and try again.")
 			return
 		}
@@ -691,9 +699,19 @@ final class AppModel {
 
 	/// "Cancel Refresh". The lock cancels too, and then the accounts stay due for the unlock.
 	func cancelRefresh() {
-		let now = Self.refreshClock()
-		for id in sync.refreshingAccounts { canceledRefreshes[id] = now }
+		recordCancel(of: sync.refreshingAccounts)
 		sync.cancelAll()
+	}
+
+	/// The user canceled the refresh of these accounts, with "Cancel Refresh" or in a dialog.
+	private func recordCancel(of accounts: Set<UUID>) {
+		let now = Self.refreshClock()
+		for id in accounts { canceledRefreshes[id] = now }
+	}
+
+	/// An alert for a command, and the note in the status line for an automatic refresh.
+	private func report(_ message: AlertMessage, attended: Bool) {
+		if attended { alert = message } else { backgroundProblem = message }
 	}
 
 	/// The automatic refresh: the due accounts, without any dialog.
@@ -728,21 +746,18 @@ final class AppModel {
 			}
 		}
 		pathMonitor.pathUpdateHandler = { [weak self] path in
-			MainActor.assumeIsolated {
-				self?.isOnline = path.status == .satisfied
-				self?.autoRefresh.isOnline = path.status == .satisfied
-			}
+			MainActor.assumeIsolated { self?.autoRefresh.isOnline = path.status == .satisfied }
 		}
 		pathMonitor.start(queue: .main)
 	}
 
-	/// The PIN sheet and the dialog "Two-Factor Authentication" live in the main window. A refresh from the
-	/// menu bar can ask while that window is closed, so a dialog brings the window back.
+	/// The PIN sheet, the dialog "Two-Factor Authentication", and the alerts live in the main window. A
+	/// refresh from the menu bar can ask or fail while that window is closed, so they bring the window back.
 	private func showDialogsInMainWindow() {
-		withObservationTracking { _ = sync.broker.current } onChange: { [weak self] in
+		withObservationTracking { _ = (sync.broker.current, alert) } onChange: { [weak self] in
 			Task { @MainActor [weak self] in
 				guard let self else { return }
-				if self.sync.broker.current != nil {
+				if self.sync.broker.current != nil || self.alert != nil {
 					NSApp.activate()
 					self.openMainWindow()
 				}
@@ -794,7 +809,7 @@ final class AppModel {
 	}
 
 	/// Stores how a refresh ended: the new state of the access, and the time or the error of each account.
-	private func recordRefresh(of access: UUID, state: AccessState?, accounts results: [UUID: AccountRefresh]) {
+	private func recordRefresh(of access: UUID, state: AccessState?, accounts results: [UUID: AccountRefresh], attended: Bool) {
 		guard let store else { return }
 		let accounts = results.compactMap { id, result in ledger.account(id).map { a -> Account in var a = a; a.record(result); return a } }
 		guard state != nil || !accounts.isEmpty else { return }
@@ -802,7 +817,7 @@ final class AppModel {
 			try store.recordRefresh(of: access, state: state, accounts: accounts)
 			for a in accounts { ledger.upsert(a) }
 		} catch {
-			alert = AlertMessage(title: "Could not save the result of the refresh.", message: String(describing: error))
+			report(AlertMessage(title: "Could not save the result of the refresh.", message: String(describing: error)), attended: attended)
 		}
 	}
 

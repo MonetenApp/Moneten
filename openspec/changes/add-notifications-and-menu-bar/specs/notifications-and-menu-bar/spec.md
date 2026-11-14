@@ -54,6 +54,18 @@ The app SHALL NOT put amounts, counterparty names, purposes, or balances into a 
 - **WHEN** the refresh stores 2 new transactions
 - **THEN** the notification contains "2 new transactions" and no account name
 
+#### Scenario: Locked while the notification waits
+
+- **GIVEN** a refresh stored 2 new transactions in "Girokonto" and the app waits for macOS to allow notifications
+- **WHEN** the app locks before macOS answers
+- **THEN** the notification contains "2 new transactions" and no account name
+
+#### Scenario: Lock ends the refresh at once
+
+- **GIVEN** a refresh stored 2 new transactions in "Girokonto", the user then saw 1 of them, and another refresh of the same run waits for the end of "Add Account"
+- **WHEN** the app locks, which cancels the waiting refresh and ends the run
+- **THEN** the notification contains "1 new transaction" and no account name
+
 ### Requirement: Open the account from a notification
 
 The app SHALL bring the main window to the front when the user clicks a notification about new transactions. It selects the account when one account received them, and the dashboard or, without a dashboard, the first of the accounts when several did. A locked app asks for the unlock first.

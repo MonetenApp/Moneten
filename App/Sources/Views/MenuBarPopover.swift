@@ -40,10 +40,14 @@ struct MenuBarPopover: View {
 				Divider()
 				if let status = model.refreshStatus {
 					Text(status).font(.callout).foregroundStyle(.secondary).lineLimit(1)
+				} else if !model.autoRefresh.isOnline {
+					Text(SyncFailure.offline.message).font(.callout).foregroundStyle(.secondary)
+				} else if let problem = model.backgroundProblem {
+					BackgroundProblemButton(problem: problem)
 				}
 				HStack {
 					Button("Refresh All Accounts") { model.refresh(.all) }
-						.disabled(!model.canRefresh(.all) || model.sync.isRefreshing)
+						.disabled(!model.canRefresh(.all) || model.sync.isRefreshing || !model.autoRefresh.isOnline)
 					Spacer()
 					Button("Open Moneten") { open(nil) }
 				}
@@ -95,5 +99,24 @@ struct MenuBarAccountRow: View {
 		.padding(.vertical, 3)
 		.padding(.horizontal, 4)
 		.contentShape(Rectangle())
+	}
+}
+
+/// The failure of an automatic refresh in the status line. A click shows it in full and removes the note.
+struct BackgroundProblemButton: View {
+	@Environment(AppModel.self) private var model
+	let problem: AlertMessage
+
+	var body: some View {
+		Button {
+			model.backgroundProblem = nil
+			model.alert = problem
+		} label: {
+			Label(problem.title, systemImage: "exclamationmark.triangle")
+				.lineLimit(1)
+		}
+		.buttonStyle(.plain)
+		.foregroundStyle(.orange)
+		.help(problem.message)
 	}
 }

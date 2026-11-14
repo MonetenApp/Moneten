@@ -365,7 +365,7 @@ struct SavedPINTests {
 	@Test("A rejected PIN never reaches the error of the account")
 	func rejectionRecord() async {
 		var refreshes: [UUID: AccountRefresh] = [:]
-		coordinator.ended = { _, _, accounts in refreshes = accounts }
+		coordinator.ended = { _, _, accounts, _ in refreshes = accounts }
 		_ = refresh([.ask(Self.pin), .fail(.pinRejected(BankMessage(code: "9942", text: "Die PIN ist falsch.")))])
 		await until { broker.current != nil }
 		answer(.pin(Secret("48151"), save: true))

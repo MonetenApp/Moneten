@@ -90,6 +90,12 @@ final class AutoRefreshTests {
 		#expect(runs.isEmpty)
 		auto.isOnline = true
 		#expect(runs == [clock])
+
+		let other = autoRefresh()
+		other.isOnline = true
+		#expect(runs == [clock])
+		other.isUnlocked = true
+		#expect(runs == [clock, clock])
 	}
 
 	@Test("While the display sleeps nothing runs, also in Power Nap, and the wake runs at once")
@@ -214,7 +220,7 @@ final class AutoRefreshTests {
 				ledger.apply(merged)
 				announcer.stored(merged.added)
 			}
-			coordinator.ended = { [unowned self] _, _, results in
+			coordinator.ended = { [unowned self] _, _, results, _ in
 				for (id, result) in results {
 					guard var a = ledger.account(id) else { continue }
 					a.record(result)
@@ -263,14 +269,195 @@ final class AutoRefreshTests {
 		// Two hours later the same rows come again: nothing new, so no second notification, and the access with the TAN stays out.
 		clock += 2 * 3600 + 120
 		#expect(bank.ledger.dueAccounts(at: clock).keys.sorted() == [musterbank.id, beispielbank.id].sorted())
+		let firstRefresh = bank.ledger.account(giro.id)?.refreshedAt
 		auto.tick()
-		await until { !bank.coordinator.isRefreshing }
+		await until { bank.ledger.account(giro.id)?.refreshedAt != firstRefresh && !bank.coordinator.isRefreshing }
+		#expect(bank.connectors[musterbank.id]?.answers.all.count == 2)
 		#expect(center.log.count == 1)
 
 		bank.refresh(bank.ledger.refreshAccounts(.all), attended: true)
 		await until { bank.coordinator.broker.current?.access.id == kartenbank.id }
 		bank.coordinator.cancelAll()
 		await until { !bank.coordinator.isRefreshing }
+	}
+
+	// MARK: Manual and automatic refreshes of one access
+
+	static let giro = AccountRequest(accountID: UUID(), name: "Giro", remoteID: "1")
+	static let savings = AccountRequest(accountID: UUID(), name: "Savings", remoteID: "2")
+
+	@Test("A manual refresh during an automatic one of the same account shows the TAN dialog that the bank asks for")
+	func manualJoinsAutomatic() async {
+		let coordinator = SyncCoordinator()
+		let bank = Self.access("Musterbank")
+		coordinator.refresh(RefreshRequest(access: bank, accounts: [Self.giro]),
+			with: ScriptedConnector([.wait(.milliseconds(200)), .ask(Self.tan), .fetched(Self.giro.accountID)]), attended: false)
+		coordinator.refresh(RefreshRequest(access: bank, accounts: [Self.giro]), with: ScriptedConnector([]), attended: true)
+		await until { coordinator.broker.current != nil }
+		#expect(coordinator.broker.current?.request == Self.tan)
+		coordinator.cancelAll()
+		await until { !coordinator.isRefreshing }
+	}
+
+	@Test("A manual refresh of an automatic one that waits for its turn makes it ask the user when it starts")
+	func manualUpgradesWaiting() async {
+		let coordinator = SyncCoordinator(limit: 1)
+		let first = Self.access("Beispielbank"), bank = Self.access("Musterbank")
+		coordinator.refresh(RefreshRequest(access: first, accounts: [Self.savings]),
+			with: ScriptedConnector([.wait(.milliseconds(100)), .fetched(Self.savings.accountID)]), attended: false)
+		coordinator.refresh(RefreshRequest(access: bank, accounts: [Self.giro]),
+			with: ScriptedConnector([.ask(Self.tan), .fetched(Self.giro.accountID)]), attended: false)
+		coordinator.refresh(RefreshRequest(access: bank, accounts: [Self.giro]), with: ScriptedConnector([]), attended: true)
+		await until { coordinator.broker.current != nil }
+		#expect(coordinator.broker.current?.access.id == bank.id)
+		coordinator.cancelAll()
+		await until { !coordinator.isRefreshing }
+	}
+
+	@Test("A manual refresh that comes after the automatic one already failed for want of a TAN runs the access again and asks")
+	func manualAfterFailedAsk() async {
+		let coordinator = SyncCoordinator()
+		let bank = Self.access("Musterbank")
+		let connector = SlowToFail(request: Self.tan, account: Self.giro.accountID)
+		coordinator.refresh(RefreshRequest(access: bank, accounts: [Self.giro]), with: connector, attended: false)
+		try? await Task.sleep(for: .milliseconds(100))
+		coordinator.refresh(RefreshRequest(access: bank, accounts: [Self.giro]), with: connector, attended: true)
+		await until { coordinator.broker.current != nil }
+		#expect(coordinator.broker.current?.request == Self.tan)
+		coordinator.cancelAll()
+		await until { !coordinator.isRefreshing }
+	}
+
+	@Test("An automatic refresh of another account of an access that the user refreshes may ask the user too")
+	func automaticJoinsManual() async {
+		let coordinator = SyncCoordinator()
+		let bank = Self.access("Musterbank")
+		coordinator.refresh(RefreshRequest(access: bank, accounts: [Self.giro]),
+			with: ScriptedConnector([.wait(.milliseconds(100)), .fetched(Self.giro.accountID)]), attended: true)
+		coordinator.refresh(RefreshRequest(access: bank, accounts: [Self.savings]),
+			with: ScriptedConnector([.ask(Self.tan), .fetched(Self.savings.accountID)]), attended: false)
+		await until { coordinator.broker.current != nil }
+		#expect(coordinator.broker.current?.request == Self.tan)
+		coordinator.cancelAll()
+		await until { !coordinator.isRefreshing }
+	}
+
+	@Test("The end of a refresh says whether it could ask the user, and so does a running one", arguments: [false, true])
+	func endSaysAttended(attended: Bool) async {
+		let coordinator = SyncCoordinator()
+		let bank = Self.access("Musterbank")
+		var ends: [Bool] = []
+		coordinator.ended = { _, _, _, attended in ends.append(attended) }
+		coordinator.refresh(RefreshRequest(access: bank, accounts: [Self.giro]),
+			with: ScriptedConnector([.wait(.milliseconds(50)), .fetched(Self.giro.accountID)]), attended: attended)
+		#expect(coordinator.runsUnattended(bank.id) == !attended)
+		await until { !coordinator.isRefreshing }
+		#expect(ends == [attended])
+		#expect(!coordinator.runsUnattended(bank.id))
+	}
+
+	@Test("Cancel in the TAN dialog reports the accounts that the user canceled, and the lock reports none")
+	func dialogCancel() async {
+		let coordinator = SyncCoordinator()
+		var canceled: [Set<UUID>] = []
+		coordinator.userCanceled = { canceled.append($0) }
+		coordinator.refresh(RefreshRequest(access: Self.access("Musterbank"), accounts: [Self.giro]),
+			with: ScriptedConnector([.ask(Self.tan), .fetched(Self.giro.accountID)]), attended: true)
+		await until { coordinator.broker.current != nil }
+		if let id = coordinator.broker.current?.id { coordinator.broker.cancel(id) }
+		await until { !coordinator.isRefreshing }
+		#expect(canceled == [[Self.giro.accountID]])
+
+		coordinator.refresh(RefreshRequest(access: Self.access("Beispielbank"), accounts: [Self.savings]),
+			with: ScriptedConnector([.wait(.seconds(5)), .fetched(Self.savings.accountID)]), attended: false)
+		coordinator.cancelAll()
+		await until { !coordinator.isRefreshing }
+		#expect(canceled.count == 1)
+	}
+
+	// MARK: Blockers for a waiting automatic refresh
+
+	@Test("An automatic refresh that waits for its turn does not start once the Mac is offline, asleep, or the setting is off",
+		arguments: ["offline", "asleep", "setting off"])
+	func blockedWhileWaiting(blocker: String) async {
+		let coordinator = SyncCoordinator(limit: 1)
+		let auto = running()
+		coordinator.mayStartUnattended = { auto.allowsUnattended }
+		var ends = 0
+		coordinator.runEnded = { ends += 1 }
+		let second = ScriptedConnector([.ask(.pin(PINRequest())), .fetched(Self.savings.accountID)])
+		coordinator.refresh(RefreshRequest(access: Self.access("Musterbank"), accounts: [Self.giro]),
+			with: ScriptedConnector([.wait(.milliseconds(100)), .fetched(Self.giro.accountID)]), attended: false)
+		coordinator.refresh(RefreshRequest(access: Self.access("Beispielbank"), accounts: [Self.savings]), with: second, attended: false)
+		switch blocker {
+		case "offline": auto.isOnline = false
+		case "asleep": auto.isUserPresent = false
+		default: settings.defaults.set(false, forKey: RefreshSettings.automaticRefreshKey)
+		}
+		await until { !coordinator.isRefreshing }
+		#expect(coordinator.states.count == 1)
+		#expect(!coordinator.refreshingAccounts.contains(Self.savings.accountID))
+		#expect(ends == 1)
+	}
+
+	@Test("A manual refresh that waits for its turn starts also while the automatic refresh is blocked")
+	func manualNotBlocked() async {
+		let coordinator = SyncCoordinator(limit: 1)
+		let auto = running()
+		coordinator.mayStartUnattended = { auto.allowsUnattended }
+		let bank = Self.access("Beispielbank")
+		coordinator.refresh(RefreshRequest(access: Self.access("Musterbank"), accounts: [Self.giro]),
+			with: ScriptedConnector([.wait(.milliseconds(100)), .fetched(Self.giro.accountID)]), attended: false)
+		coordinator.refresh(RefreshRequest(access: bank, accounts: [Self.savings]), with: ScriptedConnector([.fetched(Self.savings.accountID)]), attended: true)
+		auto.isUserPresent = false
+		await until { !coordinator.isRefreshing }
+		#expect(coordinator.states[bank.id].map { if case .finished = $0 { true } else { false } } == true)
+	}
+
+	// MARK: The lock and the notification
+
+	@Test("A lock that ends a run at once names no account and counts only the rows that are still new")
+	func lockEndsRunAtOnce() async throws {
+		let coordinator = SyncCoordinator()
+		let announcer = NewTransactionsAnnouncer(settings: settings, center: center)
+		let account = Account(position: 0, name: "Girokonto", kind: .giro, source: .bank)
+		var seen = row(account, -100), fresh = row(account, -200)
+		fresh.isNew = true
+		seen.isNew = false
+		let ledger = Ledger(accounts: [account], transactions: [seen, fresh])
+		coordinator.deliver = { _, _ in announcer.stored([seen, fresh]) }
+		coordinator.runEnded = { announcer.runEnded(ledger: ledger) }
+		let held = Self.access("Musterbank")
+		let release = Flag()
+		let hold = Task { try await coordinator.exclusively(for: held.id) { while !release.isOn { try await Task.sleep(for: .milliseconds(10)) } } }
+		// The hold starts with the first step of its task.
+		try await Task.sleep(for: .milliseconds(20))
+		coordinator.refresh(RefreshRequest(access: held, accounts: [Self.giro]), with: ScriptedConnector([.fetched(Self.giro.accountID)]), attended: false)
+		coordinator.refresh(RefreshRequest(access: Self.access("Beispielbank"), accounts: [Self.savings]),
+			with: ScriptedConnector([.fetched(Self.savings.accountID)]), attended: false)
+		await until { coordinator.states.count == 1 && !coordinator.refreshingAccounts.contains(Self.savings.accountID) }
+		#expect(center.log.isEmpty)
+
+		announcer.lock(keeping: ledger)
+		coordinator.cancelAll()
+		#expect(center.log == ["post 1 new transaction |  | silent"])
+		release.isOn = true
+		_ = try? await hold.value
+	}
+
+	@Test("A notification that waits for the permission of macOS loses its account names when the app locks meanwhile")
+	func lockBeforeShown() throws {
+		let account = Account(position: 0, name: "Girokonto", kind: .giro, source: .bank)
+		var rows = [row(account, 320_000)]
+		rows[0].isNew = true
+		let ledger = Ledger(accounts: [account], transactions: rows)
+		let announcer = NewTransactionsAnnouncer(settings: settings, center: center)
+		center.holds = true
+		announcer.stored(rows)
+		announcer.runEnded(ledger: ledger)
+		announcer.lock(keeping: ledger)
+		center.showWaiting()
+		#expect(center.log == ["post 1 new transaction |  | silent"])
 	}
 
 	func row(_ account: Account, _ amount: Int64) -> Transaction {
@@ -296,11 +483,46 @@ final class AutoRefreshTests {
 final class RecordingCenter: NoticeCenter {
 	var log: [String] = []
 
-	func post(_ notice: NewTransactionsNotice, sound: Bool) {
+	/// The notices that wait to be shown, as the app waits for the permission of macOS.
+	var waiting: [(sound: Bool, notice: @MainActor @Sendable () -> NewTransactionsNotice)] = []
+	var holds = false
+
+	func post(sound: Bool, _ notice: @escaping @MainActor @Sendable () -> NewTransactionsNotice) {
+		if holds { waiting.append((sound, notice)) } else { show(sound: sound, notice()) }
+	}
+
+	func showWaiting() {
+		for (sound, notice) in waiting { show(sound: sound, notice()) }
+		waiting = []
+	}
+
+	private func show(sound: Bool, _ notice: NewTransactionsNotice) {
 		log.append("post \(notice.title) | \(notice.body) | \(sound ? notice.tone.rawValue : "silent")")
 	}
 
 	func play(_ tone: NewTransactionsNotice.Tone) {
 		log.append("play \(tone.rawValue)")
 	}
+}
+
+/// Asks once and, after a failure, ends its session slowly, as the FinTS helper ends its dialog with the bank.
+struct SlowToFail: BankConnector {
+	let request: UserRequest
+	let account: UUID
+
+	func refresh(_ refresh: RefreshRequest, _ session: SyncSession) async throws -> ConnectorReport {
+		do {
+			_ = try await session.ask(request)
+		} catch {
+			try? await Task.sleep(for: .milliseconds(300))
+			throw error
+		}
+		return ConnectorReport(outcomes: [account: .fetched(RefreshResult(balance: nil, transactions: nil))])
+	}
+}
+
+/// Ends the work that holds an access.
+@MainActor
+final class Flag {
+	var isOn = false
 }

@@ -66,7 +66,7 @@ The app SHALL refresh accounts by itself while it runs and is unlocked when the 
 
 ### Requirement: Refresh interval for each account
 
-The app SHALL offer the setting "Refresh" in the account settings with the values "every two hours", "four times a day", "once a day", "once a week", "only manually", and "never". The automatic refresh fetches an account when the time of its interval passed since its last successful refresh. A new account starts with "every two hours".
+The app SHALL offer the setting "Refresh" in the account settings with the values "every two hours", "four times a day", "once a day", "once a week", "only manually", and "never". The automatic refresh fetches an account when the time of its interval passed since the latest of its last successful refresh, its last failed refresh, and the moment the user canceled its refresh. A new account starts with "every two hours".
 
 #### Scenario: Once a day
 
@@ -74,6 +74,19 @@ The app SHALL offer the setting "Refresh" in the account settings with the value
 - **WHEN** the automatic refresh runs at 10:00 and at 12:00 on the same day
 - **THEN** "Card" is not refreshed at these times
 - **AND** it is refreshed by the first automatic run after 08:00 on the next day
+
+#### Scenario: Failed refresh
+
+- **GIVEN** "Giro" has the interval "every two hours", was refreshed at 08:00, and its refresh at 10:00 failed because the bank did not answer
+- **WHEN** the automatic refresh runs at 11:00 and at 12:00
+- **THEN** "Giro" is not fetched at these times
+- **AND** it is fetched by the first automatic run after 12:00
+
+#### Scenario: Canceled refresh
+
+- **GIVEN** "Giro" has the interval "every two hours" and the user chooses "Cancel Refresh" during its refresh at 10:00
+- **WHEN** the automatic refresh runs at 10:01
+- **THEN** "Giro" is not fetched until the first automatic run after 12:00
 
 ### Requirement: Accounts that are refreshed only by hand
 

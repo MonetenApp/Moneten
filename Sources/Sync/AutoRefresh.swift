@@ -1,5 +1,6 @@
 import Domain
 import Foundation
+import Observation
 
 /// The settings of the automatic refresh and of the notification about new transactions. They live in
 /// the `defaults` that the app passes, so the tests use a suite of their own.
@@ -26,6 +27,7 @@ public struct RefreshSettings {
 /// of the connection. Nothing runs while the setting is off, the app is locked, the display sleeps (also
 /// in Power Nap), or the Mac is offline.
 @MainActor
+@Observable
 public final class AutoRefresh {
 	public var isUnlocked = false {
 		didSet { if isUnlocked, !oldValue { tick() } }
@@ -38,17 +40,20 @@ public final class AutoRefresh {
 		didSet { if isOnline, !oldValue { tick() } }
 	}
 	/// Gets the time and starts the accounts that are due then.
-	public var run: (Date) -> Void = { _ in }
-	private let settings: RefreshSettings
-	private let now: () -> Date
+	@ObservationIgnored public var run: (Date) -> Void = { _ in }
+	@ObservationIgnored private let settings: RefreshSettings
+	@ObservationIgnored private let now: () -> Date
 
 	public init(settings: RefreshSettings, now: @escaping () -> Date = Date.init) {
 		self.settings = settings
 		self.now = now
 	}
 
+	/// No condition holds the automatic refresh back, also for one that waits for its turn.
+	public var allowsUnattended: Bool { settings.automaticRefresh && isUnlocked && isUserPresent && isOnline }
+
 	public func tick() {
-		guard settings.automaticRefresh, isUnlocked, isUserPresent, isOnline else { return }
+		guard allowsUnattended else { return }
 		run(now())
 	}
 }
@@ -57,8 +62,10 @@ public final class AutoRefresh {
 /// macOS, and the tests record the calls.
 @MainActor
 public protocol NoticeCenter: AnyObject {
-	/// Shows the notification, with the sound of its tone when `sound` is true.
-	func post(_ notice: NewTransactionsNotice, sound: Bool)
+	/// Shows the notification that `notice` returns, with the sound of its tone when `sound` is true. The
+	/// center calls `notice` when it shows it, after it waited for the permission of macOS, so that a lock
+	/// meanwhile removes the account names.
+	func post(sound: Bool, _ notice: @escaping @MainActor @Sendable () -> NewTransactionsNotice)
 	/// Plays the sound of `tone` without a notification, while the banner is off.
 	func play(_ tone: NewTransactionsNotice.Tone)
 }
@@ -70,6 +77,8 @@ public final class NewTransactionsAnnouncer {
 	private let settings: RefreshSettings
 	private let center: any NoticeCenter
 	private var stored: [Transaction] = []
+	/// While the app is locked the notification names no account.
+	public private(set) var isLocked = false
 
 	public init(settings: RefreshSettings, center: any NoticeCenter) {
 		self.settings = settings
@@ -81,12 +90,23 @@ public final class NewTransactionsAnnouncer {
 		stored += rows
 	}
 
-	/// `ledger` is nil while the app is locked, so the notification names no account.
-	public func runEnded(ledger: Ledger?) {
+	/// The lock comes first, before it cancels the refreshes, because a cancel can end the run at once.
+	/// The rows that the user has seen in `ledger` meanwhile leave the run, since the ledger of a locked
+	/// app is empty.
+	public func lock(keeping ledger: Ledger) {
+		isLocked = true
+		stored = stored.filter { ledger.transaction($0.id)?.isNew == true }
+	}
+
+	public func unlock() {
+		isLocked = false
+	}
+
+	public func runEnded(ledger: Ledger) {
 		defer { stored = [] }
-		guard let notice = NewTransactionsNotice(stored: stored, ledger: ledger) else { return }
+		guard let notice = NewTransactionsNotice(stored: stored, ledger: isLocked ? nil : ledger) else { return }
 		if settings.showsBanner {
-			center.post(notice, sound: settings.playsSound)
+			center.post(sound: settings.playsSound) { [weak self] in self?.isLocked == false ? notice : notice.withoutAccountNames }
 		} else if settings.playsSound {
 			center.play(notice.tone)
 		}
