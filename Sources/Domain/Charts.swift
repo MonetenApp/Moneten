@@ -67,14 +67,16 @@ public enum ChartPeriod: String, CaseIterable, Sendable {
 
 extension Ledger {
 	/// The balance at the end of each day on which it changes, for accounts in one currency. An
-	/// account counts with its initial balance and its booked transactions. A portfolio gets its
+	/// account counts with its initial balance and the rows its balance counts. A portfolio gets its
 	/// value from the bank and not from transactions, so it counts with its last recorded value
 	/// and with nothing before its first record.
 	public func dailyBalances(accountIDs: Set<UUID>, range: DayRange = .all) -> [BalancePoint] {
 		let portfolios = Set(accountIDs.filter { account($0)?.kind == .portfolio })
+		let others = Dictionary(uniqueKeysWithValues: accountIDs.subtracting(portfolios).compactMap { account($0) }.map { ($0.id, $0) })
 		var balance = initialBalance(of: accountIDs)
 		var byDay: [Day: Int64] = [:]
-		for t in transactions where accountIDs.contains(t.accountID) && !portfolios.contains(t.accountID) && !t.isPending {
+		for t in transactions {
+			guard let a = others[t.accountID], a.isInBalance(t) else { continue }
 			byDay[t.bookingDate, default: 0] += t.amountMinor
 		}
 		for id in portfolios {

@@ -131,18 +131,24 @@ public struct Account: Identifiable, Hashable, Sendable, Codable {
 		return PortfolioValue(accountID: id, day: Day(bankBalanceDate ?? Date(), calendar: calendar), minorUnits: bankBalanceMinor)
 	}
 
+	/// A row that the balance counts: booked and in the currency of the account. A row in another
+	/// currency stays in the account and its list, but its minor units are not those of the balance.
+	public func isInBalance(_ t: Transaction) -> Bool {
+		!t.isPending && t.currency == currency
+	}
+
 	/// A bank refreshes the account and nothing set its initial balance yet. A portfolio gets its
 	/// history from its recorded values instead.
 	var derivesInitialBalance: Bool { source == .bank && kind != .portfolio && !initialBalanceIsSet }
 
 	/// Sets the initial balance once, so that the computed balance at the end of the day of the bank
-	/// balance equals the bank balance. `rows` are all live rows of the account. Pending rows and rows
-	/// booked after that day are not in the bank balance.
+	/// balance equals the bank balance. `rows` are all live rows of the account. Pending rows, rows in
+	/// another currency, and rows booked after that day are not in the bank balance.
 	mutating func deriveInitialBalance(from rows: [Transaction], calendar: Calendar = .current) {
 		guard derivesInitialBalance, let bankBalanceMinor else { return }
 		let day = Day(bankBalanceDate ?? Date(), calendar: calendar)
 		initialBalanceMinor = rows.reduce(bankBalanceMinor) { sum, t in
-			!t.isPending && t.bookingDate <= day ? sum - t.amountMinor : sum
+			isInBalance(t) && t.bookingDate <= day ? sum - t.amountMinor : sum
 		}
 		initialBalanceIsSet = true
 	}
