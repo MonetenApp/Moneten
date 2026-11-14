@@ -197,17 +197,39 @@ The app SHALL assign the category from a category column to each imported transa
 
 ### Requirement: CAMT import
 
-The app SHALL import camt.052 and camt.053 files with the booking date, the value date, the amount, the currency, the counterparty with IBAN and BIC, the purpose, the booking text, the end-to-end reference, the mandate reference, the creditor ID, the return reason, and the state booked or pending of each entry. An entry with several transaction details becomes one transaction for each detail.
+The app SHALL import camt.052 and camt.053 files with the booking date, the value date, the amount, the currency, the counterparty with IBAN and BIC, the purpose, the booking text, the end-to-end reference, the mandate reference, the creditor ID, and the return reason of each entry.
 
 #### Scenario: Statement with three entries
 
 - **WHEN** the user imports a camt.053 file with 3 booked entries
 - **THEN** the account has 3 new booked transactions with their references in the details
 
+### Requirement: Pending CAMT entries are imported as booked
+
+The app SHALL import a CAMT entry with the status PDNG, INFO, or FUTR as a booked transaction whose booking date is the value date of the entry. When the entry has no value date, the booking date of the entry stays.
+
 #### Scenario: Pending entry
 
-- **WHEN** a camt.052 file holds an entry with the status pending
-- **THEN** the app imports it as a pending transaction
+- **GIVEN** a camt.052 file for the IBAN DE02120300000000202051 with an entry of -89,00 € in the status PDNG, the booking date 1 November 2026, and the value date 2 November 2026
+- **WHEN** the user imports the file
+- **THEN** the account has a booked transaction of -89,00 € with the booking date 2 November 2026
+- **AND** the balance of the account includes the -89,00 €
+
+#### Scenario: Future entry
+
+- **WHEN** a camt.052 file holds an entry of 1.250,00 € in the status FUTR with the value date 30 November 2026
+- **THEN** the app imports a booked transaction of 1.250,00 € with the booking date 30 November 2026
+
+### Requirement: One transaction for each CAMT transaction detail
+
+The app SHALL import a CAMT entry with several transaction details as one transaction for each detail. Each transaction takes its amount, counterparty, purpose, and references from its detail, and the dates from the entry. An entry with one detail or with none becomes one transaction.
+
+#### Scenario: Batch entry
+
+- **GIVEN** a camt.053 entry of -150,00 € on 3 November 2026 with two transaction details, -100,00 € to "Hausverwaltung Muster" and -50,00 € to "Stadtwerke Musterstadt"
+- **WHEN** the user imports the file
+- **THEN** the account has two transactions on 3 November 2026, -100,00 € to "Hausverwaltung Muster" and -50,00 € to "Stadtwerke Musterstadt"
+- **AND** no transaction of -150,00 €
 
 ### Requirement: MT940 import
 
@@ -217,6 +239,30 @@ The app SHALL import MT940 files, with the usual extension `.sta`, including the
 
 - **WHEN** an MT940 entry carries the end-to-end reference "E2E-1" and the mandate reference "M-0001" in its purpose fields
 - **THEN** the imported transaction shows both references in its details and not inside the purpose text
+
+### Requirement: MT940 dates
+
+The app SHALL read a two-digit year in an MT940 file as a year from 2000 to 2099. The booking date of an MT940 line has a month and a day only, so the app takes its year from the value date. The year is one less when the booking month is more than six months after the value month, and one more when the value month is more than six months after the booking month.
+
+#### Scenario: Booking in the year before
+
+- **WHEN** an MT940 line has the value date 260102 and the booking date 1231
+- **THEN** the app imports the transaction with the value date 2 January 2026 and the booking date 31 December 2025
+
+#### Scenario: Booking in the year after
+
+- **WHEN** an MT940 line has the value date 251120 and the booking date 0310
+- **THEN** the app imports the transaction with the value date 20 November 2025 and the booking date 10 March 2026
+
+#### Scenario: Same year
+
+- **WHEN** an MT940 line has the value date 260630 and the booking date 0102
+- **THEN** the app imports the transaction with the booking date 2 January 2026
+
+#### Scenario: Two-digit year above 79
+
+- **WHEN** an MT940 line has the value date 800101
+- **THEN** the app imports the transaction with the value date 1 January 2080
 
 ### Requirement: Several files at once
 

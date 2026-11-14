@@ -10,6 +10,10 @@ The app keeps all accounts, categories, and transactions of the open database in
 
 The first build follows the spec where the task list marks a task as checked. Open tasks keep the behavior of the spec as the target.
 
+- `TransactionFileImporter.parse` (module `Import`) returns every CAMT and MT940 row as booked. For a CAMT entry with the status PDNG, INFO, or FUTR it uses the value date as the booking date.
+- The CAMT reader collects the transaction details of an entry and builds one transaction per detail. The entry gives the dates.
+- `parse61` takes the booking year from the value year and corrects it by the six-month rule of the spec. It replaces the check for December and January only.
+
 ## Risks / Trade-offs
 
 Tasks marked as built in part may differ from the spec in the way their note says.

@@ -88,7 +88,7 @@ The app SHALL create the categories and category groups of the source with their
 
 ### Requirement: Rules
 
-The app SHALL take over the categorization rule of each category when the export of the source contains it, without changing its text. A rule that the app cannot parse is stored as text, marked as invalid in the category settings, and listed in the report.
+The app SHALL take over the categorization rule of each category when the export of the source contains it, without changing its text.
 
 #### Scenario: Rule taken over
 
@@ -96,10 +96,36 @@ The app SHALL take over the categorization rule of each category when the export
 - **WHEN** the migration finishes
 - **THEN** the category "Salary" has the same rule
 
+#### Scenario: Lower case operators keep their meaning
+
+- **GIVEN** the category "Salary" has the rule `"Lohn" or "Gehalt"` in the source
+- **WHEN** the migration finishes and a refresh brings a transaction of 2.500,00 € with the purpose "Gehalt Oktober"
+- **THEN** the category "Salary" has the rule `"Lohn" or "Gehalt"`
+- **AND** the transaction is in "Salary"
+
 #### Scenario: Export without rules
 
 - **WHEN** the export of the source contains no rules
 - **THEN** the report says that rules were not migrated and that the user can copy them by hand from the category settings of the source app
+
+### Requirement: Migrated rules that the app cannot read
+
+The app SHALL store a migrated rule that it cannot parse with its text unchanged, mark it as invalid in the category settings, and list it in the report. The report entry names the category, the position and the reason of the error, and says that the category receives no transaction through its rule until the user corrects the rule. Migrated transactions keep their category.
+
+#### Scenario: Missing parenthesis
+
+- **GIVEN** the category "Salary" has the rule `("Lohn" OR "Gehalt"` in the source
+- **WHEN** the migration finishes
+- **THEN** the report says that the rule of "Salary" cannot be read, because a closing parenthesis is missing at the end of the rule
+- **AND** the report says that "Salary" receives no transaction through its rule until the rule is corrected in its settings
+- **AND** the settings of "Salary" show the rule `("Lohn" OR "Gehalt"` with the same message
+
+#### Scenario: One part of a rule cannot be read
+
+- **GIVEN** the category "Fees" has the rule `"Gebühr" OR purpose:/GA NR[0-9/` in the source, whose regular expression is not valid, and no other category has a rule
+- **WHEN** the migration finishes and a refresh brings a transaction of -2,50 € with the purpose "Gebühr Oktober"
+- **THEN** the report lists the rule of "Fees" with the position of the regular expression and the reason that it is not valid
+- **AND** the transaction is in "Uncategorized" and not in "Fees"
 
 ### Requirement: Transactions
 
@@ -247,7 +273,18 @@ The app SHALL show a report after the import. The report lists for each account 
 #### Scenario: Not migrated
 
 - **WHEN** the migration finishes
-- **THEN** the report names login data, templates, standing orders, statements, budgets, and account icons as not migrated, each with one sentence that says why or what to do
+- **THEN** the report names login data, templates, standing orders, and statements as not migrated, each with one sentence that says why or what to do
+
+#### Scenario: Budgets in a version without budgets
+
+- **GIVEN** a version of the app without budgets, and a source in which "Food" has a budget of 200,00 € per month and "Leisure" has a budget of 50,00 € per month
+- **WHEN** the migration finishes
+- **THEN** the report says that 2 categories have a budget in the source, and that a later migration run takes the budgets over when the app supports budgets
+
+#### Scenario: Icons
+
+- **WHEN** the migration finishes for a source in which every account and category has an icon
+- **THEN** the report says that the app takes the color of each icon and shows its own icons instead of the pictures
 
 ### Requirement: The report contains no secrets
 
