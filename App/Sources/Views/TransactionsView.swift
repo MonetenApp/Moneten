@@ -858,7 +858,7 @@ struct TransactionMenu: View {
 		let transactions = ids.compactMap { model.ledger.transaction($0) }
 		if let first = transactions.first {
 			if !first.name.isEmpty {
-				Button("Search for “\(first.name)”") { model.filter.searchText = first.name }
+				Button("Search for “\(first.name)”") { model.filter.searchText = "\"" + first.name.filter { !"\"„“”".contains($0) } + "\"" }
 			}
 			Menu("Go to") {
 				if let a = model.ledger.account(first.accountID) { Button(a.name) { model.navigate(to: .account(a.id)) } }
