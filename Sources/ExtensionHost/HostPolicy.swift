@@ -39,8 +39,8 @@ final class HostPolicy {
 	private let ask: (String) throws -> HostDecision
 
 	/// `decisions` holds the stored answers of the user by host. `ask` waits for the answer to a new host.
-	/// `testHosts` are special-use names that pass as if they were public, for the made-up bank of the
-	/// tests of `ext`; only a debug build of `ext` sets them (`DeveloperOptions.testHosts`).
+	/// `testHosts` are special-use names that pass as if they were public, on any port, for the made-up
+	/// bank of the tests of `ext`; only a debug build of `ext` sets them (`DeveloperOptions.testHosts`).
 	init(extensionName: String, rule: Rule, decisions: [String: HostDecision] = [:], testHosts: Set<String> = [], ask: @escaping (String) throws -> HostDecision) {
 		self.extensionName = extensionName
 		self.rule = rule
@@ -55,9 +55,9 @@ final class HostPolicy {
 		}
 		// Foundation passes an IP address in any notation, "localhost", a name without a dot, and a
 		// trailing dot unchanged. None of them may reach the dialog, where nobody reads them as local.
-		let name = HostName(exactly: host)
-		guard url.host(percentEncoded: true)?.contains("%") == false, url.port == nil || url.port == 443, url.user == nil, url.password == nil,
-			name != nil || testHosts.contains(host) else {
+		let name = HostName(exactly: host), isTestHost = testHosts.contains(host)
+		guard url.host(percentEncoded: true)?.contains("%") == false, url.port == nil || url.port == 443 || isTestHost, url.user == nil, url.password == nil,
+			name != nil || isTestHost else {
 			throw HostRefusal.unusualAddress(url.absoluteString)
 		}
 		switch rule {
