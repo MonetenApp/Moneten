@@ -614,7 +614,7 @@ final class ExtensionLibrary {
 				note = reason
 			}
 			let version = entry?.version ?? ""
-			switch updateState.plans[record.id] {
+			switch updateState.plan(of: record, in: index) {
 			case let .needsConfirmation(hosts, fields)?:
 				note = [note, Self.newRights(version: version, hosts: hosts, fields: fields)].compactMap { $0 }.joined(separator: " ")
 				action = .reviewUpdate

@@ -188,6 +188,62 @@ import Testing
 		#expect(updates.plans["example"] == .waitsForUser)
 	}
 
+	enum DownloadFailure: CaseIterable { case offline, damaged }
+
+	/// An automatic update stores no plan. When its download fails, the window still offers "Update", which
+	/// installs the listed version as a chosen update does.
+	@Test(arguments: DownloadFailure.allCases)
+	func failedAutomaticUpdateIsOfferedInTheWindow(failure: DownloadFailure) async throws {
+		let old = TestCatalog.Package()
+		server.publish(old)
+		let installed = try await installer.install(entry(old))
+		var new = old
+		new.version = "1.1"
+		new.script += "-- 1.1\n"
+		server.publish(new)
+		let index = try CatalogIndex.parse(TestCatalog.index(version: 2, [new]))
+		let current = try #require(try Installer.load(installed, from: folder).manifest)
+		let available = try entry(new).manifest.get()
+		#expect(UpdatePlan(installed: current, available: available, automatic: true, sessionRuns: false, confirmed: nil) == .install)
+		switch failure {
+		case .offline: server.fail("example/1.1/Example.lua")
+		case .damaged: server.replace("example/1.1/Example.lua", with: Data("print('altered')\n".utf8))
+		}
+		await #expect(throws: CatalogError.self) { try await installer.install(entry(new)) }
+		let updates = UpdateState()
+		#expect(updates.plan(of: installed, in: index) == .waitsForUser)
+
+		// "Update" confirms the listed version, which installs once the download works.
+		#expect(UpdatePlan(installed: current, available: available, automatic: true, sessionRuns: false, confirmed: "1.1") == .install)
+		let fixed = TestServer()
+		fixed.publish(new)
+		let updated = try await Installer(folder: folder, staging: root.appending(path: "Staging"), fetch: fixed.fetch).install(entry(new))
+		#expect(updated.version == "1.1")
+	}
+
+	@Test func windowKeepsTheStoredPlanAndOffersNothingWithoutANewerUsableVersion() throws {
+		let installed = InstalledPackage(id: "example", name: "Example Bank", version: "1.1", files: [])
+		var newer = TestCatalog.Package()
+		newer.version = "1.2"
+		var updates = UpdateState()
+		updates.plans["example"] = .needsConfirmation(hosts: ["login.example.org"], fields: [])
+		let index = try CatalogIndex.parse(TestCatalog.index(version: 2, [newer]))
+		#expect(updates.plan(of: installed, in: index) == .needsConfirmation(hosts: ["login.example.org"], fields: []))
+		#expect(UpdateState().plan(of: installed, in: nil) == nil)
+		var listed = TestCatalog.Package()
+		listed.version = "1.1"
+		#expect(UpdateState().plan(of: installed, in: try CatalogIndex.parse(TestCatalog.index(version: 2, [listed]))) == nil)
+		var older = TestCatalog.Package()
+		older.version = "1.0"
+		#expect(UpdateState().plan(of: installed, in: try CatalogIndex.parse(TestCatalog.index(version: 2, [older]))) == nil)
+		var blocked = newer
+		blocked.status = "blocked"
+		#expect(UpdateState().plan(of: installed, in: try CatalogIndex.parse(TestCatalog.index(version: 2, [blocked]))) == nil)
+		var incomplete = newer
+		incomplete.manifestFields = ["hosts": NSNull()]
+		#expect(UpdateState().plan(of: installed, in: try CatalogIndex.parse(TestCatalog.index(version: 2, [incomplete]))) == nil)
+	}
+
 	@Test func recordThatCannotBeReadStopsTheInstallBeforeItStarts() throws {
 		let store = try store()
 		try store.queue.write { try $0.drop(table: "installedExtension") }

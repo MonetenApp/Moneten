@@ -75,6 +75,15 @@ public struct UpdateState: Sendable, Equatable {
 		confirmed[id] = saved.confirmed
 		if saved.changed { changed.insert(id) }
 	}
+
+	/// The plan that the Extensions window shows for an installed package. An update that installs by itself
+	/// stores no plan, so when its download failed, the outdated package waits for the user's "Update".
+	public func plan(of installed: InstalledPackage, in index: CatalogIndex?) -> UpdatePlan? {
+		if let plan = plans[installed.id] { return plan }
+		guard let index, case .outdated = Standing(of: installed, in: index), let listed = index.entry(installed.id)?.version,
+			UpdatePlan.isNewer(listed, than: installed.version) else { return nil }
+		return .waitsForUser
+	}
 }
 
 /// What the accepted index says about an installed catalog package (ADR 0015, decision 13).
