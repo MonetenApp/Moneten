@@ -161,6 +161,20 @@ struct RuleTests {
 		#expect(try matches(#""REWE*""#, RuleSubject(purpose: "REWE-Markt")))
 	}
 
+	@Test("A word after a field operator is a term, also an operator word or a word that starts with a sign", arguments: [
+		("name:and", RuleSubject(name: "Muster and Partner"), RuleSubject(name: "Muster Partner")),
+		("name:true", RuleSubject(name: "true fruits"), RuleSubject(name: "Stadtwerke")),
+		("purpose:Not", RuleSubject(purpose: "Not Aus Service"), RuleSubject(purpose: "Abschlag")),
+		("comment:false", RuleSubject(comment: "false Buchung"), RuleSubject(comment: "für die Steuer")),
+		("name:-Stadtwerke", RuleSubject(name: "-Stadtwerke"), RuleSubject(name: "Gasversorger Muster")),
+		("name:!x", RuleSubject(name: "!x"), RuleSubject(name: "Gasversorger Muster")),
+		("name:+49", RuleSubject(name: "+49 Telefon"), RuleSubject(name: "49 Telefon")),
+	])
+	func wordAfterFieldOperator(rule: String, match: RuleSubject, other: RuleSubject) throws {
+		#expect(try matches(rule, match))
+		#expect(try !matches(rule, other))
+	}
+
 	@Test("A field operator needs its term without a space")
 	func fieldSpace() {
 		#expect(throws: RuleSyntaxError.self) { try Rule(parsing: #"name: "Bahn""#) }
