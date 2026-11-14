@@ -123,7 +123,7 @@ struct AppCommands: Commands {
 				if !ids.isEmpty { model.sheet = .assignCategory(ids) }
 			}
 			.keyboardShortcut("k")
-			.disabled(!unlocked || model.selectedTransactions.isEmpty)
+			.disabled(!unlocked || model.selectedTransactions.isEmpty || model.sheet != nil)
 			Button("Add Comment...") { model.sheet = .comment(model.selectedTransactions) }
 				.keyboardShortcut("k", modifiers: [.command, .shift])
 				.disabled(!unlocked || model.selectedTransactions.isEmpty)
