@@ -892,10 +892,8 @@ final class AppModel {
 		case .currentQuarter: range = DayRange(start: today.firstOfQuarter, end: nil)
 		case .currentYear: range = DayRange(start: today.firstOfYear, end: nil)
 		}
-		var f = TransactionFilter()
-		f.period = range
-		let sum = ledger.transactions(in: .category(category.id), filter: f).filter { !$0.isPending }.reduce(Int64(0)) { $0 + $1.amountMinor }
-		return sum == 0 ? nil : Money(minorUnits: sum, currency: category.currency)
+		let sum = ledger.sum(ofCategory: category, in: range)
+		return sum.minorUnits == 0 ? nil : sum
 	}
 
 	// MARK: Migration

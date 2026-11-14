@@ -213,6 +213,14 @@ public struct Ledger: Sendable {
 		return sums
 	}
 
+	/// The amount next to a category in the sidebar: the booked transactions of its tree in a period.
+	public func sum(ofCategory category: Category, in period: DayRange) -> Money {
+		var f = TransactionFilter()
+		f.period = period
+		let sum = transactions(in: .category(category.id), filter: f).filter { !$0.isPending }.reduce(Int64(0)) { $0 + $1.amountMinor }
+		return Money(minorUnits: sum, currency: category.currency)
+	}
+
 	// MARK: Filtering
 
 	public func transactions(in scope: LedgerScope, filter: TransactionFilter = TransactionFilter()) -> [Transaction] {
