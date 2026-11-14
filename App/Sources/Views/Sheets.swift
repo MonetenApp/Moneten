@@ -182,8 +182,7 @@ struct AccountSettingsSheet: View {
 									.multilineTextAlignment(.trailing)
 									.monospacedDigit()
 								Button("Calibrate") {
-									if original.reportedBalance != nil,
-										let value = original.initialBalanceMeetingBankBalance(of: model.ledger.transactions(ofAccount: original.id)) {
+									if let value = original.initialBalanceMeetingBankBalance(of: model.ledger.transactions(ofAccount: original.id)) {
 										initialBalance = Format.editableAmount(value, original.currency)
 									}
 								}
