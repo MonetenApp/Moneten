@@ -189,14 +189,11 @@ public struct Ledger: Sendable {
 		transactions.filter { $0.accountID == id }
 	}
 
-	/// The balance in the sidebar. A portfolio and an account of a bank access show the balance that was
-	/// reported last. Every other account follows its transactions, also a migrated one that keeps the balance
-	/// of the source: its initial balance makes the computed balance start at that value.
+	/// The balance in the sidebar: the reported balance where the account shows one, otherwise the computed one.
+	/// A migrated account follows its transactions. Its initial balance makes the computed balance end at the
+	/// balance of the source at the migration.
 	public func balance(of account: Account) -> Money {
-		if let b = account.bankBalanceMinor, account.kind == .portfolio || account.source == .bank {
-			return Money(minorUnits: b, currency: account.currency)
-		}
-		return computedBalance(of: account)
+		account.reportedBalance ?? computedBalance(of: account)
 	}
 
 	/// The initial balance plus all booked transactions in the currency of the account.

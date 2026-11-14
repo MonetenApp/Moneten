@@ -242,6 +242,21 @@ enum Schema {
 				t.add(column: "refreshInterval", .text).notNull().defaults(to: RefreshInterval.everyTwoHours.rawValue)
 			}
 		}
+		// A migrated account shows its computed balance (PR #142). Its initial balance is the balance of the source
+		// less the booked rows of the source in the account currency. Older versions also subtracted rows in other
+		// currencies, and a second run kept the initial balance when the source corrected its balance. A row with a
+		// migration ID came from the source. A row that the user imported has none and counts on top. A row that the
+		// user deleted stays in the sum, so its deletion still moves the balance. A deleted row stores no currency.
+		m.registerMigration("v13") { db in
+			try db.execute(sql: """
+				UPDATE account SET initialBalanceMinor = bankBalanceMinor
+					- COALESCE((SELECT SUM(amountMinor) FROM bankTransaction t WHERE t.accountID = account.id AND t.isPending = 0
+						AND t.currency = account.currency AND t.sourceID LIKE 'moneymoney:%'), 0)
+					- COALESCE((SELECT SUM(amountMinor) FROM deletedTransaction d WHERE d.accountID = account.id AND d.isPending = 0
+						AND d.sourceID LIKE 'moneymoney:%'), 0)
+				WHERE source = 'migrated' AND bankBalanceMinor IS NOT NULL
+				""")
+		}
 		return m
 	}
 }
