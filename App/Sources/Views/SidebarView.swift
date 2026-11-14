@@ -201,7 +201,7 @@ struct AccountRow: View {
 			}
 			Button("Import Transactions...") {
 				model.navigate(to: .account(account.id))
-				Task { await model.importFile() }
+				Task { await model.importFile(into: account.id) }
 			}
 			Divider()
 			Menu("Move to Group") {

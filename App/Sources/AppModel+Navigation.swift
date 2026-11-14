@@ -115,8 +115,10 @@ extension AppModel {
 		}
 	}
 
-	func importFile() async {
-		guard let account = selectedAccount else { return }
+	/// Imports files into `accountID`, or into the selected account. The context menu of an account names
+	/// it, because a click can wait for a drawing before it selects the account (issue #151).
+	func importFile(into accountID: UUID? = nil) async {
+		guard let account = accountID.flatMap({ ledger.account($0) }) ?? selectedAccount else { return }
 		let panel = NSOpenPanel()
 		panel.title = "Import Transactions"
 		panel.message = "CSV, CAMT (camt.052, camt.053), and MT940 files are supported."
