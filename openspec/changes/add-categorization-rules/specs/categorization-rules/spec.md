@@ -150,7 +150,7 @@ The app SHALL combine expressions with the operators `AND`, `OR`, and `NOT` in a
 
 ### Requirement: Short forms of the operators
 
-The app SHALL read a plus sign between two expressions as `AND`, and an exclamation mark or a minus sign before an expression as `NOT`. A minus sign before a digit belongs to the number. A plus sign or an exclamation mark directly after a letter or a digit is part of the word, as in Disney+. The field operator `!=` after a field name is the exception, as in `name!="Stadtwerke"` and `amount!=0`.
+The app SHALL read a plus sign between two expressions as `AND`, and an exclamation mark or a minus sign before an expression as `NOT`. A plus sign or a minus sign before a digit belongs to the number. A plus sign or an exclamation mark directly after a letter or a digit is part of the word, as in Disney+. The field operator `!=` after a field name is the exception, as in `name!="Stadtwerke"` and `amount!=0`.
 
 #### Scenario: Short forms
 
@@ -169,6 +169,12 @@ The app SHALL read a plus sign between two expressions as `AND`, and an exclamat
 - **GIVEN** the rule `-12,50`
 - **WHEN** one transaction has the purpose "Rückbuchung -12,50" and another has the purpose "Miete November"
 - **THEN** the rule matches the first and not the second, because `-12,50` is a term and not `NOT` before 12,50
+
+#### Scenario: Plus before a number
+
+- **GIVEN** the rule `"Tel" +4917012345`
+- **WHEN** one transaction has the purpose "Tel +4917012345" and another has the purpose "Tel 4917012345"
+- **THEN** the rule matches the first and not the second, because `+4917012345` is a term and not `AND` before 4917012345
 
 #### Scenario: Plus sign inside a word
 

@@ -95,6 +95,12 @@ struct RuleTests {
 		#expect(try !matches(#"amount>0-("Erstattung")"#, RuleSubject(purpose: "Amazon Erstattung", amount: Decimal(string: "19.99")!)))
 	}
 
+	@Test("Plus before a number", arguments: [#""Tel" +4917012345"#, "+4917012345"])
+	func plusBeforeNumber(rule: String) throws {
+		#expect(try matches(rule, RuleSubject(purpose: "Tel +4917012345")))
+		#expect(try !matches(rule, RuleSubject(purpose: "Tel 4917012345")))
+	}
+
 	@Test("A hyphen inside a word is not an operator")
 	func hyphenInWord() throws {
 		#expect(try matches("EC-Karte", RuleSubject(purpose: "EC-Karte Supermarkt")))
