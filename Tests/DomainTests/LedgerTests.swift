@@ -986,4 +986,44 @@ struct LedgerTests {
 		#expect(reset.period == twelveMonths)
 	}
 
+	@Test("The pin saves the period and the filters, and not the search text")
+	func savedFilterBar() throws {
+		let start = Day(year: 2025, month: 4, day: 1), end = Day(year: 2026, month: 3, day: 31)
+		var f = TransactionFilter()
+		f.searchText = "amazon"
+		f.period = DayRange(start: start, end: end)
+		f.status = .unchecked
+		f.amount = .range(min: -50_000, max: -10_000)
+		f.categoryID = food.id
+		f.accountID = giro.id
+		let data = SavedFilterBar(period: .custom(start, end), filter: f).data
+		let saved = try #require(SavedFilterBar(data: data))
+		#expect(saved.period == .custom(start, end))
+		var expected = f
+		expected.searchText = ""
+		#expect(saved.filter(in: ledger()) == expected)
+	}
+
+	@Test("A saved category or account that no longer exists comes back as Show All")
+	func savedFilterBarOfRemovedEntries() throws {
+		var f = TransactionFilter()
+		f.status = .checked
+		f.categoryID = UUID()
+		f.accountID = UUID()
+		let saved = try #require(SavedFilterBar(data: SavedFilterBar(period: .all, filter: f).data))
+		var expected = TransactionFilter()
+		expected.status = .checked
+		#expect(saved.filter(in: ledger()) == expected)
+	}
+
+	@Test("A saved \"30 Days\" counts from the day of the launch, and a saved month stays that month")
+	func savedRelativePeriod() throws {
+		let launch = Day(year: 2026, month: 11, day: 9)
+		let days = try #require(SavedFilterBar(data: SavedFilterBar(period: .days30, filter: TransactionFilter()).data))
+		#expect(days.filter(in: ledger(), today: launch).period == DayRange(start: Day(year: 2026, month: 10, day: 11), end: launch))
+		let october = Day(year: 2025, month: 10, day: 1)
+		let month = try #require(SavedFilterBar(data: SavedFilterBar(period: .month(october), filter: TransactionFilter()).data))
+		#expect(month.filter(in: ledger(), today: launch).period == DayRange(start: october, end: Day(year: 2025, month: 10, day: 31)))
+		#expect(SavedFilterBar(data: Data("pin".utf8)) == nil)
+	}
 }

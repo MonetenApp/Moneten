@@ -36,3 +36,42 @@ public enum PeriodChoice: Hashable, Sendable, Codable {
 		}
 	}
 }
+
+/// The filter bar that the pin saves for the next launch: the period choice and every filter but the search text.
+public struct SavedFilterBar: Hashable, Sendable, Codable {
+	public let period: PeriodChoice
+	let status: TransactionFilter.Status
+	let amount: TransactionFilter.AmountFilter
+	let categoryID: UUID?
+	let accountID: UUID?
+
+	public init(period: PeriodChoice, filter: TransactionFilter) {
+		self.period = period
+		status = filter.status
+		amount = filter.amount
+		categoryID = filter.categoryID
+		accountID = filter.accountID
+	}
+
+	/// Nil for data that an older or a newer version wrote in another form, which then restores nothing.
+	public init?(data: Data) {
+		guard let saved = try? JSONDecoder().decode(Self.self, from: data) else { return nil }
+		self = saved
+	}
+
+	public var data: Data {
+		// Encoding plain enums, days, and identifiers cannot fail.
+		(try? JSONEncoder().encode(self)) ?? Data()
+	}
+
+	/// The filter bar on `today`. A category or an account that `ledger` no longer has comes back as "Show All".
+	public func filter(in ledger: Ledger, today: Day = .today()) -> TransactionFilter {
+		var f = TransactionFilter()
+		f.period = period.range(today: today)
+		f.status = status
+		f.amount = amount
+		f.categoryID = categoryID.flatMap { ledger.category($0)?.id }
+		f.accountID = accountID.flatMap { ledger.account($0)?.id }
+		return f
+	}
+}

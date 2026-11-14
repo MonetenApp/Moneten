@@ -178,8 +178,8 @@ struct FilterBar: View {
 	var body: some View {
 		@Bindable var model = model
 		HStack(spacing: 6) {
-			Toggle(isOn: $model.keepFilters) {
-				Image(systemName: model.keepFilters ? "pin.fill" : "pin")
+			Toggle(isOn: $model.isFilterBarPinned) {
+				Image(systemName: model.isFilterBarPinned ? "pin.fill" : "pin")
 					.frame(width: 22, height: 22)
 					.contentShape(.rect)
 			}

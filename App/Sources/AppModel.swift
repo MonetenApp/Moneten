@@ -50,6 +50,9 @@ enum Preference {
 	static let updateExtensionsAutomatically = "updateExtensionsAutomatically"
 	/// "Show Moneten icon in menu bar", off unless the user turns it on.
 	static let showMenuBarIcon = "showMenuBarIcon"
+	/// The pin of the filter bar, and the `SavedFilterBar` it keeps for the next launch.
+	static let pinFilterBar = "pinFilterBar"
+	static let savedFilterBar = "savedFilterBar"
 
 	/// The app locks after 10 minutes without activity unless the user turns it off. MoneyMoney has
 	/// this off and suggests 5 minutes; the owner chose on with 10 minutes.
@@ -173,7 +176,11 @@ final class AppModel {
 		}
 	}
 	var filter = TransactionFilter() {
-		didSet { if filter != oldValue { tableChanged() } }
+		didSet {
+			guard filter != oldValue else { return }
+			tableChanged()
+			saveFilterBar()
+		}
 	}
 	/// The view and the filters that the transaction table shows, its identity. They follow `selection` and
 	/// `filter`, one drawing late when a change of the ledger is not drawn yet: a new table must not come in
@@ -199,6 +206,7 @@ final class AppModel {
 		didSet {
 			filter.period = period.range()
 			if !choosingBar { chartRange = filter.period }
+			saveFilterBar()
 		}
 	}
 	/// The period of the charts. A click on a bar narrows the list to that bar and keeps this, so
@@ -219,7 +227,34 @@ final class AppModel {
 		self.period = period
 		choosingBar = false
 	}
-	var keepFilters = false
+	/// The pin of the filter bar. Turning it on saves the filter bar, and each later change saves it again.
+	/// Turning it off sets every filter to "Show All" and clears the search.
+	var isFilterBarPinned = UserDefaults.standard.bool(forKey: Preference.pinFilterBar) {
+		didSet {
+			guard isFilterBarPinned != oldValue else { return }
+			UserDefaults.standard.set(isFilterBarPinned, forKey: Preference.pinFilterBar)
+			if isFilterBarPinned {
+				saveFilterBar()
+			} else {
+				UserDefaults.standard.removeObject(forKey: Preference.savedFilterBar)
+				choose(period: .all)
+				filter = TransactionFilter()
+			}
+		}
+	}
+
+	private func saveFilterBar() {
+		guard isFilterBarPinned else { return }
+		UserDefaults.standard.set(SavedFilterBar(period: period, filter: filter).data, forKey: Preference.savedFilterBar)
+	}
+
+	/// Shows the saved filter bar of a pin that is on. The first view then resets the filter it does not show.
+	private func restoreFilterBar() {
+		guard isFilterBarPinned, let data = UserDefaults.standard.data(forKey: Preference.savedFilterBar),
+			let saved = SavedFilterBar(data: data) else { return }
+		choose(period: saved.period)
+		filter = saved.filter(in: ledger)
+	}
 	var viewMode: ViewMode = ViewMode(rawValue: UserDefaults.standard.string(forKey: Preference.viewMode) ?? "") ?? .barChart {
 		didSet { UserDefaults.standard.set(viewMode.rawValue, forKey: Preference.viewMode) }
 	}
@@ -392,6 +427,7 @@ final class AppModel {
 		// The saved PINs live only in the database, so a refresh after a restart or an unlock does not ask.
 		try sync.broker.open(store)
 		if selection == nil {
+			restoreFilterBar()
 			if let first = ledger.childGroups(of: nil).first {
 				selection = .group(first.id)
 			} else if let a = ledger.accounts(inGroup: nil).first {
