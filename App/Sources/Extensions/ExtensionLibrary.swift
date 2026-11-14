@@ -410,7 +410,8 @@ final class ExtensionLibrary {
 
 	/// Opens the confirmation of an update that adds hosts or login fields.
 	func review(_ id: String) {
-		guard case let .needsConfirmation(hosts, fields)? = updateState.plans[id], let item = items.first(where: { $0.id == id }), let version = index?.entry(id)?.version else { return }
+		guard case let .catalog(installed)? = records[id], let item = items.first(where: { $0.id == id }), let manifest = item.manifest,
+			case let .needsConfirmation(hosts, fields)? = updateState.plan(of: installed, manifest: manifest, in: index), let version = index?.entry(id)?.version else { return }
 		question = .review(id: id, name: item.name, version: version, hosts: hosts, fields: fields)
 	}
 
@@ -614,7 +615,7 @@ final class ExtensionLibrary {
 				note = reason
 			}
 			let version = entry?.version ?? ""
-			switch updateState.plan(of: record, in: index) {
+			switch manifest.flatMap({ updateState.plan(of: record, manifest: $0, in: index) }) {
 			case let .needsConfirmation(hosts, fields)?:
 				note = [note, Self.newRights(version: version, hosts: hosts, fields: fields)].compactMap { $0 }.joined(separator: " ")
 				action = .reviewUpdate
