@@ -83,6 +83,12 @@ struct RuleTests {
 		#expect(try !matches("-12,50", RuleSubject(purpose: "Miete November")))
 	}
 
+	@Test("A hyphen inside a word is not an operator")
+	func hyphenInWord() throws {
+		#expect(try matches("EC-Karte", RuleSubject(purpose: "EC-Karte Supermarkt")))
+		#expect(try !matches("EC-Karte", RuleSubject(purpose: "EC Karte Supermarkt")))
+	}
+
 	@Test("Plus sign inside a word")
 	func plusInWord() throws {
 		#expect(try matches("Disney+", RuleSubject(purpose: "Disney+ Abo", amount: Decimal(string: "-9.99")!)))

@@ -80,8 +80,8 @@ public enum RuleField: String, CaseIterable, Sendable {
 	case comment = "comment"
 	case bookingText = "booking_text"
 
-	/// The fields that a term without a field operator searches.
-	static let unqualified: [RuleField] = [.name, .purpose, .bookingText, .reference, .mandate, .creditorID, .localAccount, .remoteAccount, .comment]
+	/// The fields that a term without a field operator searches. The account fields need `local_account:` or `remote_account:`.
+	static let unqualified: [RuleField] = [.name, .purpose, .bookingText, .reference, .mandate, .creditorID, .comment]
 }
 
 public enum AmountComparison: String, Sendable {
@@ -110,6 +110,8 @@ public indirect enum RuleExpression: Sendable {
 	case phrase([WildcardPatternBox], field: RuleField?)
 	case regex(RegexBox, field: RuleField?)
 	case amount(AmountComparison, Decimal)
+	/// The rule `true` or `false`.
+	case constant(Bool)
 	case not(RuleExpression)
 	case and(RuleExpression, RuleExpression)
 	case or(RuleExpression, RuleExpression)
@@ -150,6 +152,7 @@ public struct Rule: Sendable {
 		case let .or(a, b): return evaluate(a, s) || evaluate(b, s)
 		case let .not(a): return !evaluate(a, s)
 		case let .amount(op, value): return op.holds(s.amount, value)
+		case let .constant(value): return value
 		case let .regex(box, field):
 			let fields = field.map { [$0] } ?? RuleField.unqualified
 			return fields.contains { f in
@@ -177,10 +180,12 @@ public struct Rule: Sendable {
 
 private enum Token: Equatable {
 	case open, close, and, or, not
+	case constant(Bool)
 	case word(String)
 	case quoted(String)
 	case regex(String)
-	case field(RuleField)
+	/// A field name and the operator after it, such as `name` and `!=`.
+	case field(RuleField, op: String, negates: Bool)
 	case amount(AmountComparison, String)
 }
 
@@ -259,24 +264,28 @@ private struct RuleParser {
 			throw RuleSyntaxError(position: position, message: "A search term is missing before this operator.")
 		case .not:
 			throw RuleSyntaxError(position: position, message: "Unexpected operator.")
+		case let .constant(value):
+			return .constant(value)
 		case let .word(w), let .quoted(w):
 			return try phrase(w, field: nil, position: position)
 		case let .regex(r):
 			return .regex(try regex(r, position: position), field: nil)
-		case let .field(f):
+		case let .field(f, op, negates):
 			guard index < tokens.count else {
-				throw RuleSyntaxError(position: endPosition, message: "A search term is missing after \(f.rawValue):.")
+				throw RuleSyntaxError(position: endPosition, message: "A search term is missing after \(f.rawValue)\(op).")
 			}
 			let (next, p) = tokens[index]
 			index += 1
-			guard p == position + f.rawValue.count + 1 else {
-				throw RuleSyntaxError(position: p, message: "A search term must follow \(f.rawValue): without a space.")
+			guard p == position + f.rawValue.count + op.count else {
+				throw RuleSyntaxError(position: p, message: "A search term must follow \(f.rawValue)\(op) without a space.")
 			}
+			let test: RuleExpression
 			switch next {
-			case let .word(w), let .quoted(w): return try phrase(w, field: f, position: p)
-			case let .regex(r): return .regex(try regex(r, position: p), field: f)
-			default: throw RuleSyntaxError(position: p, message: "A search term must follow \(f.rawValue): without a space.")
+			case let .word(w), let .quoted(w): test = try phrase(w, field: f, position: p)
+			case let .regex(r): test = .regex(try regex(r, position: p), field: f)
+			default: throw RuleSyntaxError(position: p, message: "A search term must follow \(f.rawValue)\(op) without a space.")
 			}
+			return negates ? .not(test) : test
 		case let .amount(op, text):
 			guard let value = AmountParser.decimal(from: text) else {
 				throw RuleSyntaxError(position: position, message: "The amount \(text) is not a number.")
@@ -314,6 +323,14 @@ private struct RuleParser {
 			let start = i
 			if c == "(" { tokens.append((.open, i)); i += 1; continue }
 			if c == ")" { tokens.append((.close, i)); i += 1; continue }
+			// Only at the start of a token. Inside a word, as in "Disney+", "Yahoo!", or "EC-Karte", they stay part of the word.
+			if c == "+" { tokens.append((.and, i)); i += 1; continue }
+			if c == "!" || (c == "-" && !(i + 1 < chars.count && chars[i + 1].isWholeNumber)) { tokens.append((.not, i)); i += 1; continue }
+			if let (field, op) = fieldOperator(at: i) {
+				tokens.append((.field(field, op: op.text, negates: op.negates), i))
+				i += field.rawValue.count + op.text.count
+				continue
+			}
 			if openQuotes.contains(c) {
 				i += 1
 				var s = ""
@@ -340,29 +357,36 @@ private struct RuleParser {
 			while i < chars.count, !chars[i].isWhitespace, chars[i] != "(", chars[i] != ")", !openQuotes.contains(chars[i]) {
 				word.append(chars[i])
 				i += 1
-				if word.hasSuffix(":"), let field = RuleField(rawValue: String(word.dropLast())) {
-					tokens.append((.field(field), start))
-					word = ""
-					break
-				}
 			}
-			if word.isEmpty { continue }
 			if word.lowercased().hasPrefix("amount"), let cmp = Self.amountComparison(word) {
 				tokens.append((.amount(cmp.0, cmp.1), start))
 				continue
 			}
-			switch word {
-			case "AND": tokens.append((.and, start))
-			case "OR": tokens.append((.or, start))
-			case "NOT": tokens.append((.not, start))
+			switch word.lowercased() {
+			case "and": tokens.append((.and, start))
+			case "or": tokens.append((.or, start))
+			case "not": tokens.append((.not, start))
+			case "true": tokens.append((.constant(true), start))
+			case "false": tokens.append((.constant(false), start))
 			default: tokens.append((.word(word), start))
 			}
 		}
 	}
 
+	/// The operators after a field name, longest first so that `:=` is not read as `:`.
+	private static let fieldOperators: [(text: String, negates: Bool)] = [(":=", false), ("==", false), ("!=", true), ("<>", true), (":", false), ("=", false)]
+
+	private func fieldOperator(at i: Int) -> (RuleField, (text: String, negates: Bool))? {
+		for field in RuleField.allCases where chars[i...].starts(with: field.rawValue) {
+			let rest = chars[(i + field.rawValue.count)...]
+			if let op = Self.fieldOperators.first(where: { rest.starts(with: $0.text) }) { return (field, op) }
+		}
+		return nil
+	}
+
 	private static func amountComparison(_ word: String) -> (AmountComparison, String)? {
 		let rest = word.dropFirst("amount".count)
-		for (prefix, op) in [("==", AmountComparison.equal), ("!=", .notEqual), ("<=", .lessOrEqual), (">=", .greaterOrEqual), ("=", .equal), ("<", .less), (">", .greater)] {
+		for (prefix, op) in [(":=", AmountComparison.equal), ("==", .equal), ("!=", .notEqual), ("<>", .notEqual), ("<=", .lessOrEqual), (">=", .greaterOrEqual), ("=", .equal), ("<", .less), (">", .greater)] {
 			if rest.hasPrefix(prefix) { return (op, String(rest.dropFirst(prefix.count))) }
 		}
 		return nil
