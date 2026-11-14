@@ -295,27 +295,39 @@ struct CustomPeriodView: View {
 struct CustomAmountView: View {
 	@Environment(AppModel.self) private var model
 	@Environment(\.dismiss) private var dismiss
-	@State private var min = ""
-	@State private var max = ""
+	@State private var min: String
+	@State private var max: String
+
+	init(min: String = "", max: String = "") {
+		_min = State(initialValue: min)
+		_max = State(initialValue: max)
+	}
+
+	/// The range of two typed ends, or nil when "min. amount" lies above "max. amount".
+	static func range(min: String, max: String) -> TransactionFilter.AmountFilter? {
+		.custom(min: AmountParser.decimal(from: min).map { Money($0, currency: "EUR").minorUnits },
+			max: AmountParser.decimal(from: max).map { Money($0, currency: "EUR").minorUnits })
+	}
+
+	private var range: TransactionFilter.AmountFilter? { Self.range(min: min, max: max) }
 
 	var body: some View {
 		VStack(spacing: 0) {
 			SheetForm {
 				Section {
-					TextField("Minimum", text: $min, prompt: Text("0,00")).multilineTextAlignment(.trailing).monospacedDigit().marksUnreadableAmount(min)
-					TextField("Maximum", text: $max, prompt: Text("0,00")).multilineTextAlignment(.trailing).monospacedDigit().marksUnreadableAmount(max)
+					TextField("min. amount", text: $min, prompt: Text("0,00")).multilineTextAlignment(.trailing).monospacedDigit().marksUnreadableAmount(min)
+					TextField("max. amount", text: $max, prompt: Text("0,00")).multilineTextAlignment(.trailing).monospacedDigit()
+						.foregroundStyle(Format.isReadableAmount(max) && range != nil ? Color.primary : Palette.red)
 				}
 			}
 			SheetButtons {
 				Spacer()
 				Button("Apply") {
-					let lo = AmountParser.decimal(from: min).map { Money($0, currency: "EUR").minorUnits }
-					let hi = AmountParser.decimal(from: max).map { Money($0, currency: "EUR").minorUnits }
-					model.filter.amount = .range(min: lo, max: hi)
+					if let range { model.filter.amount = range }
 					dismiss()
 				}
 				.keyboardShortcut(.defaultAction)
-				.disabled(!Format.isReadableAmount(min) || !Format.isReadableAmount(max))
+				.disabled(range == nil || !Format.isReadableAmount(min) || !Format.isReadableAmount(max))
 			}
 		}
 		.frame(width: 300)

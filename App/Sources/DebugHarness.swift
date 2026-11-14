@@ -319,6 +319,15 @@ final class DebugHarness {
 		case "view": model.viewMode = ViewMode(rawValue: argument) ?? .list
 		case "balance": model.balanceMode = BalanceMode(rawValue: argument) ?? .daily
 		case "search": model.filter.searchText = argument
+		// "<min> <max>" as typed into "Custom..." of the amount filter, with "-" for an empty field.
+		case "amount", "amountsnapshot":
+			let ends = argument.split(separator: " ").map { $0 == "-" ? "" : String($0) } + ["", ""]
+			if command == "amount" {
+				if let range = CustomAmountView.range(min: ends[0], max: ends[1]) { model.filter.amount = range }
+				log("amount applied=\(model.filter.amount != .all) visible=\(model.visibleTransactions.count)")
+			} else {
+				offscreenSnapshot(CustomAmountView(min: ends[0], max: ends[1]).environment(model), width: 300, name: "amount")
+			}
 		case "period":
 			switch argument {
 			case "90": model.period = .days90
