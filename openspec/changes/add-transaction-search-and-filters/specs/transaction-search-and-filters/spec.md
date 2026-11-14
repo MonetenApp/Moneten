@@ -79,7 +79,7 @@ The app SHALL show a transaction only when every word of the search text occurs 
 
 ### Requirement: The search accepts the rule language
 
-The app SHALL accept every expression of the categorization rule language in the search field, with the same meaning as in a rule.
+The app SHALL accept every expression of the categorization rule language in the search field, with the same meaning as in a rule. A plain search word without a field name searches the fields that the requirement on searched fields names, so it also finds account numbers, IBANs, and the category name, which a plain term in a rule does not.
 
 #### Scenario: Field operator and amount
 
