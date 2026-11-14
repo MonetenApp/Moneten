@@ -8,7 +8,7 @@ Not all money sits in an account that the app can reach. Cash, a loan between fr
 
 - The user can create an account without bank access, for example for cash.
 - "Add Transaction..." adds a transaction by hand, with suggestions from earlier entries.
-- The balance of an offline account is the sum of its transactions.
+- The balance of an offline account is its initial balance plus the sum of its transactions.
 - "Create Offsetting Entry" copies a transaction of another account into an offline account with the opposite sign, for example a cash withdrawal.
 - "Add Transaction..." also works in an account with bank access when the bank delivers no transactions for it.
 
@@ -30,6 +30,7 @@ None.
 - Depends on the change `add-account-setup` for the entry "Offline account / Cash" in the assistant.
 - Depends on the change `add-account-management` for the account settings and the closed state.
 - Depends on the change `add-transaction-list` for the list, and for editing and deleting.
+- Depends on the change `add-charts` for the rule that pending transactions count, and on the change `add-split-transactions` for how the parts of a split count.
 - Decisions: none apply.
 
 ## Reference behavior
@@ -49,7 +50,8 @@ None.
 
 ### Decided for Moneten
 
-- The transaction window has a choice between "Debit" and "Credit" and takes the amount without a sign. Both labels are interface strings of MoneyMoney, but the window was not opened.
-- An offsetting entry copies the date, the purpose, and the comment, and it uses the name of the source account as the counterparty. Which fields MoneyMoney copies was not observed.
+- The transaction window has one amount field with a sign. A leading minus means money out, and a number without a sign means money in. The user types the amount as the bank statement shows it, and no separate switch can turn a typed -4,80 into +4,80.
+- An offsetting entry keeps the name, the purpose, the comment, and the category of the source transaction. The copied category counts as chosen by hand, so a rule does not move it. Its booking date and value date are the booking date of the source, and the IBAN and BIC of the source account become its counterparty account. A cash withdrawal then reads "Geldautomat" in both accounts, so rules and search find both rows, and the counterparty account still shows where the money came from. A category whose restriction does not include the target account falls back to the default category, so that the restriction holds. A source without a category gives an entry that the rules sort. The entry keeps the currency of the source, so the menu disables an offline account in another currency.
+- The balance of an offline account is its initial balance plus its transactions in the account currency. A new offline account starts at an initial balance of 0, and the user can set another one, for example the cash already in the wallet. Pending transactions count, by the one rule of the change `add-charts`, except one marked for review, as the change `add-account-refresh` decides. A transaction in another currency does not change the balance, because the app converts no currencies.
 - A manual transaction in an account with bank access survives every refresh and does not change the balance that the bank reports. MoneyMoney's handling was not observed.
 - A new offline account uses the euro unless the user picks another currency.

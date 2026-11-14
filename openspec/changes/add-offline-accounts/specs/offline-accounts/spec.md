@@ -38,13 +38,19 @@ The app SHALL leave an offline account out of every refresh and SHALL disable th
 
 ### Requirement: Add a transaction by hand
 
-The app SHALL open a window for a new transaction with "Add Transaction..." or the shortcut ⌘+ in the view of an offline account. The window has a date, a name, an amount with the choice between "Debit" and "Credit", a purpose, and a category. The date is today unless the user changes it.
+The app SHALL open a window for a new transaction with "Add Transaction..." or the shortcut ⌘+ in the view of an offline account. The window has a date, a name, one amount with its sign, a purpose, and a category. An amount with a leading minus goes out of the account, and an amount without a sign comes in. The date is today unless the user changes it.
 
 #### Scenario: Cash payment
 
 - **GIVEN** the offline account "Wallet"
-- **WHEN** the user presses ⌘+, enters "Bäckerei Gutbrot", 4,80 as a debit, and the category "Groceries", and confirms
+- **WHEN** the user presses ⌘+, enters "Bäckerei Gutbrot", the amount -4,80, and the category "Groceries", and confirms
 - **THEN** the list of "Wallet" shows a transaction of -4,80 € with today's date in "Groceries"
+
+#### Scenario: Money in
+
+- **GIVEN** the offline account "Wallet"
+- **WHEN** the user enters "Erika Mustermann" and the amount 50,00, and confirms
+- **THEN** the list of "Wallet" shows a transaction of 50,00 €
 
 #### Scenario: Earlier date
 
@@ -83,7 +89,7 @@ The app SHALL fill the window for a new transaction with the name, the amount, t
 
 - **GIVEN** a selected transaction of -12,00 € to "Kiosk am Markt" with the category "Leisure"
 - **WHEN** the user presses ⌘+
-- **THEN** the window shows "Kiosk am Markt", 12,00 as a debit, "Leisure", and today's date
+- **THEN** the window shows "Kiosk am Markt", -12,00, "Leisure", and today's date
 
 ### Requirement: Edit and delete manual transactions
 
@@ -92,21 +98,40 @@ The app SHALL let the user change every field of a manual transaction with "Edit
 #### Scenario: Correct an amount
 
 - **GIVEN** a manual transaction of -4,80 €
-- **WHEN** the user changes the amount to 5,80 as a debit
+- **WHEN** the user changes the amount to -5,80
 - **THEN** the row shows -5,80 € and the balance of the account drops by 1,00 €
 
 ### Requirement: The balance follows the transactions
 
-The app SHALL compute the balance of an offline account as the sum of all its transactions, and it SHALL update the balance in the sidebar and in the view as soon as a transaction is added, changed, deleted, or imported.
+The app SHALL compute the balance of an offline account as its initial balance plus the sum of its transactions in the currency of the account. Pending transactions count, except one marked for review, as the capabilities `charts` and `account-refresh` state. A split counts once, with its parts. A transaction in another currency does not change the balance. The app updates the balance as soon as a transaction is added, changed, deleted, or imported.
 
 #### Scenario: Three transactions
 
-- **GIVEN** an offline account with the transactions 100,00 €, -4,80 €, and -12,00 €
+- **GIVEN** an offline account in euros with an initial balance of 0,00 € and the transactions 100,00 €, -4,80 €, and -12,00 €
+- **WHEN** the user looks at the sidebar
+- **THEN** the balance is 83,20 €
+
+#### Scenario: Initial balance
+
+- **GIVEN** an offline account in euros with the transactions 100,00 €, -4,80 €, and -12,00 €
+- **WHEN** the user sets "Initial balance" in the account settings to 50,00 and closes the settings
+- **THEN** the balance is 133,20 €
+
+#### Scenario: Pending transaction
+
+- **GIVEN** an offline account in euros with an initial balance of 0,00 €, the transactions 100,00 €, -4,80 €, and -12,00 €, a pending transaction of -10,00 €, and a pending transaction of -5,00 € marked for review
+- **WHEN** the user looks at the sidebar
+- **THEN** the balance is 73,20 €
+
+#### Scenario: Other currency
+
+- **GIVEN** an offline account in euros with an initial balance of 0,00 €, the transactions 100,00 €, -4,80 €, and -12,00 €, and a transaction of -10,00 USD
 - **WHEN** the user looks at the sidebar
 - **THEN** the balance is 83,20 €
 
 #### Scenario: Delete a transaction
 
+- **GIVEN** an offline account with the transactions 100,00 €, -4,80 €, and -12,00 € and a balance of 83,20 €
 - **WHEN** the user deletes the transaction of -12,00 €
 - **THEN** the balance is 95,20 €
 
@@ -126,13 +151,13 @@ The app SHALL show a hint in an offline account without transactions. The hint a
 
 ### Requirement: Create an offsetting entry
 
-The app SHALL offer "Create Offsetting Entry" in the context menu of a transaction, with one entry for each offline account other than the account of the transaction. A choice adds a transaction to that offline account with the same date, purpose, and comment, the opposite sign, and the name of the source account as the counterparty.
+The app SHALL offer "Create Offsetting Entry" in the context menu of a transaction, with one entry for each offline account other than the account of the transaction. A choice adds one transaction to that offline account for each selected transaction, with the same amount in the opposite sign and in the same currency. The source transaction stays unchanged, and no link joins the two.
 
 #### Scenario: Cash withdrawal
 
 - **GIVEN** a transaction of -200,00 € "Geldautomat" in the account "Giro" and the offline account "Wallet"
 - **WHEN** the user chooses "Create Offsetting Entry" and then "Wallet"
-- **THEN** "Wallet" gets a transaction of 200,00 € with the same date and the counterparty "Giro"
+- **THEN** "Wallet" gets a transaction of 200,00 €
 - **AND** the transaction in "Giro" is unchanged
 
 #### Scenario: Several transactions
@@ -146,6 +171,61 @@ The app SHALL offer "Create Offsetting Entry" in the context menu of a transacti
 - **GIVEN** no offline account exists
 - **WHEN** the user opens "Create Offsetting Entry"
 - **THEN** the submenu shows only the disabled line "No offline accounts available"
+
+### Requirement: An offsetting entry stays in its currency
+
+The app SHALL disable an offline account in the submenu of "Create Offsetting Entry" when its currency differs from the currency of a selected transaction. The entry keeps the currency of its source, and the balance of that offline account would not count it.
+
+#### Scenario: Offline account in another currency
+
+- **GIVEN** a transaction of -200,00 USD "Geldautomat" in the account "Travel Card", the offline account "Wallet" in euros, and the offline account "Dollar Cash" in US dollars
+- **WHEN** the user opens "Create Offsetting Entry"
+- **THEN** the submenu shows "Dollar Cash" enabled and "Wallet" disabled
+
+#### Scenario: Selection in two currencies
+
+- **GIVEN** a selected transaction of -50,00 € in the account "Giro", a selected transaction of -200,00 USD in the account "Travel Card", the offline account "Wallet" in euros, and the offline account "Dollar Cash" in US dollars
+- **WHEN** the user opens "Create Offsetting Entry"
+- **THEN** the submenu shows "Wallet" and "Dollar Cash" disabled
+
+### Requirement: Fields of an offsetting entry
+
+The app SHALL give an offsetting entry the name, the purpose, and the comment of the source transaction. Its booking date and value date are the booking date of the source. Its counterparty account is the IBAN and BIC of the source account, and none when that account has no IBAN.
+
+#### Scenario: Cash withdrawal
+
+- **GIVEN** a transaction of -200,00 € "Geldautomat" with the purpose "Abhebung" and the comment "Marktplatz" on 05.11.2026, in the account "Giro" with the IBAN DE02120300000000202051
+- **WHEN** the user chooses "Create Offsetting Entry" and then "Wallet"
+- **THEN** "Wallet" gets 200,00 € named "Geldautomat" with the purpose "Abhebung" and the comment "Marktplatz"
+- **AND** its booking date and value date are 05.11.2026, and its counterparty account is DE02120300000000202051
+
+### Requirement: Category of an offsetting entry
+
+The app SHALL give an offsetting entry the category of the source transaction as a category chosen by hand, so no rule changes it. A source without a category gives an entry without one, and the rules sort it. A category whose restriction does not include the target account becomes the default category, and then the rules sort the entry.
+
+#### Scenario: Copied category
+
+- **GIVEN** a transaction "Geldautomat" of the account "Giro" in the category "Cash", and a rule that sorts "Geldautomat" into "Fees"
+- **WHEN** the user creates its offsetting entry in "Wallet"
+- **THEN** the entry in "Wallet" is in "Cash"
+
+#### Scenario: Source without a category
+
+- **GIVEN** a transaction "Geldautomat" of the account "Giro" in "Uncategorized", and a rule that sorts "Geldautomat" into "Cash"
+- **WHEN** the user creates its offsetting entry in "Wallet"
+- **THEN** the entry in "Wallet" is in "Cash"
+
+#### Scenario: Restricted category
+
+- **GIVEN** a transaction "Papierhaus Beispiel" of the account "Business" in the category "Office", which is restricted to "Business", and no rule matches "Papierhaus Beispiel"
+- **WHEN** the user creates its offsetting entry in "Wallet"
+- **THEN** the entry in "Wallet" is in "Uncategorized"
+
+#### Scenario: Restricted category with a rule
+
+- **GIVEN** a transaction "Papierhaus Beispiel" of the account "Business" in the category "Office", which is restricted to "Business", and a rule that sorts "Papierhaus" into "Household"
+- **WHEN** the user creates its offsetting entry in "Wallet"
+- **THEN** the entry in "Wallet" is in "Household"
 
 ### Requirement: Manual transactions behave like fetched ones
 

@@ -8,7 +8,7 @@ Charts turn a list of transactions into an answer. How did my balance develop th
 
 - Every account and category view can show the list alone, a bar chart above the list, or a pie chart above the list.
 - The bar chart of an account shows the daily balance or the monthly average balance over time.
-- The app computes these balances from the initial balance and the transactions, and the user can calibrate them.
+- The app computes these balances from the initial balance and the transactions, pending ones included, and the user can calibrate them.
 - The bar chart of a category shows its sum for each month, quarter, or year.
 - The pie chart shows how deposits and withdrawals divide among the categories.
 - A category can be left out of all charts, for example transfers between own accounts.
@@ -57,8 +57,9 @@ None.
 - The pie chart area shows one pie for withdrawals and one for deposits. The version history speaks of pie charts in the plural, but the drawing was not observed.
 - A group with accounts in several currencies gets one bar chart for each currency. Issue #21 asks for one series per currency, and the app converts no currencies.
 - The balance chart follows only the period filter. The category charts follow the period filter and the account filter. Which filters MoneyMoney applies to charts was not observed.
-- Pending transactions do not count in the computed balances. This follows from the calibration note in version 2.4.37.
-- The initial balance of a refreshed account is set once, at the first refresh with a bank balance, as in MoneyMoney. Later differences go to the calibration proposal. The value is the bank balance less the booked transactions up to the day of that balance. Which transactions MoneyMoney counts was not observed. Accounts that a bank refreshed before issue #109 have 0,00 € and get the value once, at their next refresh.
+- Pending transactions count in the computed balances, the charts, and the sums from the moment they are stored, like booked ones. The money is already spent, so the chart shows it at once. When the bank books a transaction on the day of its pending row, no bar moves. When it books it on a later day, the bars between the two days rise by its amount, and the last bar stays. A pending transaction marked for review counts nowhere, because its booked transaction already stands for the money, as the change `add-account-refresh` decides.
+- The initial balance of a refreshed account is set once, at the first refresh with a bank balance, as in MoneyMoney. Later differences go to the calibration proposal. The value is the bank balance less the booked transactions in the account currency up to the day of that balance. The bank reports its balance without pending transactions, so the computed balance adds them on top, and the last bar shows the money that is still there. Which transactions MoneyMoney counts was not observed. Accounts that a bank refreshed before issue #109 have 0,00 € and get the value once, at their next refresh.
 - Hovering shows the value of a bar or a slice, and a click on a bar sets the period filter to that bar. The click comes from issue #21. Neither was observed in MoneyMoney.
 - The calibration asks for the balance at the end of today and changes the initial balance by the difference. MoneyMoney's window names a date, but which date was not observed. Its entry "Clearing entry for daily balance" is not specified here.
+- The calibration proposal compares the bank balance with the initial balance plus the booked transactions up to the end of the day of that bank balance. A transaction booked after that day then leads to no proposal. The calibration window asks for the balance of today, so accepting the proposal fills in the computed balance of today plus the difference. Which day MoneyMoney compares on, and what its window shows after a proposal, was not observed.
 - The app remembers the view mode for account views and for category views separately.

@@ -8,7 +8,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [ ] 1.2 Preconditions are checked first. Built in part: messages for a missing app, a locked database, and a refused permission, with "Check again". Finish it and verify it with a test or in the app.
 - [x] 1.3 The source is only read. Verified by only the three export commands run.
 - [x] 1.4 Summary before the import. Verified by the sheet shows the counts before "Import".
-- [x] 1.5 Account groups and accounts. Verified by MoneyMoneyMigrationTests "Group tree with order and balances", and by the sidebar after a real migration: every visible account balance equals MoneyMoney.
+- [x] 1.5 Account groups and accounts. Verified by MoneyMoneyMigrationTests "Group tree with order and balances", and by the sidebar after a real migration: every visible account balance equals MoneyMoney. That holds for an account without pending transactions; one with pending transactions shows them on top, as task 3.4 of the change `add-charts` tests.
 - [x] 1.6 Categories. Verified by MoneyMoneyMigrationTests "Categories keep their tree and the default maps to Uncategorized".
 - [x] 1.7 Rules. Verified by MoneyMoneyMigrationTests "Rules come over with the categories, and the report mentions rules only when the export has none", and by all 12 rules of a real export parsing.
 - [x] 1.8 Transactions. Verified by MoneyMoneyMigrationTests "Transaction fields and dates".

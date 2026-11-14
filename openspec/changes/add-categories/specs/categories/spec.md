@@ -127,13 +127,25 @@ The app SHALL give each category one currency, which is the euro unless the user
 
 ### Requirement: Amount in the sidebar
 
-The app SHALL show an amount next to a category according to "Display in sidebar". The values are "No amount", "Current month", "Current quarter", "Current year", and "Total sum". The amount is the sum of the transactions of the category in that time. A category group shows the sum of everything below it.
+The app SHALL show an amount next to a category according to "Display in sidebar". The values are "No amount", "Current month", "Current quarter", "Current year", and "Total sum". The amount is the sum of the transactions of the category in that time. Pending transactions count, except one marked for review, as the capabilities `charts` and `account-refresh` state. A split counts with its parts and never with its original. A category group shows the sum of everything below it.
 
 #### Scenario: Current month
 
 - **GIVEN** today is 09.11.2026, and "Groceries" has transactions of -120,00 € in November 2026 and -480,00 € in October 2026
 - **WHEN** "Display in sidebar" of "Groceries" is "Current month"
 - **THEN** the sidebar shows -120,00 € next to "Groceries"
+
+#### Scenario: Pending transaction
+
+- **GIVEN** today is 09.11.2026, and "Groceries" has a booked transaction of -80,00 €, a pending transaction of -40,00 €, and a pending transaction of -5,00 € marked for review in November 2026
+- **WHEN** "Display in sidebar" of "Groceries" is "Current month"
+- **THEN** the sidebar shows -120,00 € next to "Groceries"
+
+#### Scenario: Split transaction
+
+- **GIVEN** a card payment of -100,00 € on 02.11.2026 is split into a part of -60,00 € in "Groceries" and a part of -40,00 € in "Household"
+- **WHEN** "Display in sidebar" of both categories is "Total sum"
+- **THEN** the sidebar shows -60,00 € next to "Groceries" and -40,00 € next to "Household", and neither counts -100,00 €
 
 #### Scenario: No amount
 
@@ -243,13 +255,25 @@ The app SHALL move the selected transactions back to "Uncategorized" with "Remov
 
 ### Requirement: Category view
 
-The app SHALL list the transactions of the selected category from all accounts in one list. The status line shows their number and their sum, with one sum for each currency.
+The app SHALL list the transactions of the selected category from all accounts in one list. The status line shows their number and their sum, with one sum for each currency. The number also counts a pending transaction marked for review. The sum includes pending transactions, except a pending transaction marked for review, as the capability `account-refresh` states. Both count the parts of a split and not its original.
 
 #### Scenario: Two accounts
 
 - **GIVEN** "Groceries" contains 30 transactions of the account "Giro" and 12 of the account "Credit card"
 - **WHEN** the user selects "Groceries"
 - **THEN** the list shows 42 transactions and the status line shows their sum
+
+#### Scenario: Pending transaction
+
+- **GIVEN** "Groceries" contains a booked transaction of -80,00 €, a pending transaction of -40,00 €, and a pending transaction of -5,00 € marked for review
+- **WHEN** the user selects "Groceries"
+- **THEN** the status line shows 3 transactions and -120,00 €
+
+#### Scenario: Split transaction
+
+- **GIVEN** a transaction of -100,00 € is split into two parts of -30,00 € and -70,00 €, both in "Groceries"
+- **WHEN** the user selects "Groceries"
+- **THEN** the status line shows 2 transactions and -100,00 €, not -200,00 €
 
 ### Requirement: Category group view
 
