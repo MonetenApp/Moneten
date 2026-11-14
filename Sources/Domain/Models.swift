@@ -131,18 +131,23 @@ public struct Account: Identifiable, Hashable, Sendable, Codable {
 		return PortfolioValue(accountID: id, day: Day(bankBalanceDate ?? Date(), calendar: calendar), minorUnits: bankBalanceMinor)
 	}
 
+	/// A row that the balance counts. A row in another currency stays in the account and its list.
+	public func isInBalance(_ t: Transaction) -> Bool {
+		t.isInSum(of: currency)
+	}
+
 	/// A bank refreshes the account and nothing set its initial balance yet. A portfolio gets its
 	/// history from its recorded values instead.
 	var derivesInitialBalance: Bool { source == .bank && kind != .portfolio && !initialBalanceIsSet }
 
 	/// Sets the initial balance once, so that the computed balance at the end of the day of the bank
-	/// balance equals the bank balance. `rows` are all live rows of the account. Pending rows and rows
-	/// booked after that day are not in the bank balance.
+	/// balance equals the bank balance. `rows` are all live rows of the account. Pending rows, rows in
+	/// another currency, and rows booked after that day are not in the bank balance.
 	mutating func deriveInitialBalance(from rows: [Transaction], calendar: Calendar = .current) {
 		guard derivesInitialBalance, let bankBalanceMinor else { return }
 		let day = Day(bankBalanceDate ?? Date(), calendar: calendar)
 		initialBalanceMinor = rows.reduce(bankBalanceMinor) { sum, t in
-			!t.isPending && t.bookingDate <= day ? sum - t.amountMinor : sum
+			isInBalance(t) && t.bookingDate <= day ? sum - t.amountMinor : sum
 		}
 		initialBalanceIsSet = true
 	}
@@ -287,6 +292,12 @@ public struct Transaction: Identifiable, Hashable, Sendable, Codable {
 	}
 
 	public var amount: Money { Money(minorUnits: amountMinor, currency: currency) }
+
+	/// The rule for every sum in one currency, such as the balance of an account or the amount of a
+	/// category. The minor units of another currency are not those of the sum, and a sum never converts.
+	public func isInSum(of currency: String) -> Bool {
+		!isPending && self.currency == currency
+	}
 
 	/// The prefix of the IDs that the MoneyMoney migration gives. Such an ID says where a row came from,
 	/// not which source delivers it, so a source with IDs of its own takes the row over.

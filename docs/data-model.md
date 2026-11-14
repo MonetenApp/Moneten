@@ -25,7 +25,7 @@ The specs in [openspec/changes](../openspec/changes/) define the behavior. Where
 
 Groups and accounts share one `position` order inside their parent group, so the sidebar can mix them as MoneyMoney does.
 
-An account with a `bankBalanceMinor` shows that balance. Other accounts show `initialBalanceMinor` plus their booked transactions. A migrated account gets the initial balance that makes both numbers end at the same value. An account that the setup adds gets it once, at its first refresh with a bank balance: the bank balance less the booked transactions up to the day of that balance. `initialBalanceIsSet` records that, and a value that the user enters sets it as well. The migration `v11` adds the column and leaves it false only for an account of a bank access with an initial balance of 0 and no `sourceID`, which gets its value at its next refresh.
+An account with a `bankBalanceMinor` shows that balance. Other accounts show `initialBalanceMinor` plus their booked transactions in the account currency. A transaction in another currency stays in the account and its list, but no balance counts it. A migrated account gets the initial balance that makes both numbers end at the same value. An account that the setup adds gets it once, at its first refresh with a bank balance: the bank balance less the booked transactions in the account currency up to the day of that balance. `initialBalanceIsSet` records that, and a value that the user enters sets it as well. The migration `v11` adds the column and leaves it false only for an account of a bank access with an initial balance of 0 and no `sourceID`, which gets its value at its next refresh.
 
 ## Bank accesses
 

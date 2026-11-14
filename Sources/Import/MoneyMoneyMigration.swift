@@ -109,12 +109,13 @@ public struct MoneyMoneyMigration: Sendable {
 			plan.updatedTransactions += r.booked + r.updated + r.marked
 			plan.skippedTransactions += r.skipped
 		}
+		let newAccounts = Dictionary(uniqueKeysWithValues: plan.accounts.map { ($0.id, $0) })
 		var sums: [UUID: Int64] = [:]
 		for var t in rows {
 			guard let needsReview = added[t.id] else { continue }
 			t.needsReview = needsReview
 			plan.transactions.append(t)
-			if !t.isPending { sums[t.accountID, default: 0] += t.amountMinor }
+			if newAccounts[t.accountID]?.isInBalance(t) == true { sums[t.accountID, default: 0] += t.amountMinor }
 		}
 
 		// The initial balance makes the computed balance end at the balance of the bank.

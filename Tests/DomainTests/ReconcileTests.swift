@@ -503,4 +503,14 @@ struct ReconcileTests {
 		#expect(r.account == nil)
 		#expect(r.added.map(\.name) == ["Kiosk"])
 	}
+
+	@Test("The initial balance that a refresh derives leaves out rows in another currency")
+	func derivedInitialBalanceInAccountCurrency() {
+		let bankGiro = Account(position: 2, name: "Giro", kind: .giro, source: .bank)
+		var dollars = row(10, -1_000, "Diner New York")
+		dollars.currency = "USD"
+		let delivered = [row(10, -2_000, "Kiosk"), dollars].map { var t = $0; t.accountID = bankGiro.id; return t }
+		let r = merge(refresh(delivered, balance: Money(minorUnits: 10_000, currency: "EUR")), into: bankGiro)
+		#expect(r.account?.initialBalanceMinor == 12_000)
+	}
 }

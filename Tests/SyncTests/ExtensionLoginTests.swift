@@ -13,7 +13,7 @@ struct ExtensionLoginTests {
 	var broker: SessionBroker { coordinator.broker }
 	let store = MemoryPINStore()
 	static let service = Access(source: .extension(id: "demo-tan"), bankName: "Demo TAN", loginName: "erika")
-	static let giro = AccountRequest(accountID: UUID(), name: "Demo Giro", remoteID: "DE02120300000000202051")
+	static let giro = AccountRequest(accountID: UUID(), name: "Demo Giro", remoteID: "DE02120300000000202051", currency: "EUR")
 	static let login = UserRequest.login(LoginRequest(service: "Demo TAN"))
 	static let data = UserAnswer.login([Secret("erika"), Secret("geheim")])
 

@@ -52,7 +52,7 @@ public protocol BankConnector: Sendable {
 public struct RefreshRequest: Sendable {
 	public let access: Access
 	public let state: AccessState?           // what the connector returned last time
-	public let accounts: [AccountRequest]    // account in the app, name, number at the bank, first day
+	public let accounts: [AccountRequest]    // account in the app, name, number at the bank, first day, currency
 	public let enforced: Bool                // "Enforced refresh": ask for the full history
 }
 

@@ -15,7 +15,7 @@ struct TANDialogTests {
 		loginName: "erika77")
 	static let beispielbank = Access(source: .fints(bankCode: "10010010", url: URL(string: "https://fints.example.org/")!), bankName: "Beispielbank",
 		loginName: "erika77")
-	static let giro = AccountRequest(accountID: UUID(), name: "Giro", remoteID: "1234")
+	static let giro = AccountRequest(accountID: UUID(), name: "Giro", remoteID: "1234", currency: "EUR")
 
 	static let push = TANMethod(id: "922", name: "pushTAN 2.0", delivery: .pushNotification)
 	static let qr = TANMethod(id: "913", name: "chipTAN QR", delivery: .qrCode)

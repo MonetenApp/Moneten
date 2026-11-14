@@ -251,13 +251,13 @@ struct AccountResult: Decodable {
 		return errors.first { $0.failure.rejectsPIN } ?? errors.first
 	}
 
-	func outcome(of accountID: UUID) throws -> (AccountOutcome, [BankMessage]) {
+	func outcome(of account: AccountRequest) throws -> (AccountOutcome, [BankMessage]) {
 		guard balance != nil || transactions != nil else {
 			return (.failed(shownError?.failure ?? .bank(BankMessage(text: "The bank sent nothing for this account."))), [])
 		}
 		let money = try balance.map { try Self.money($0.amount, $0.currency) }
 		let fetched = try transactions.map { t in
-			FetchedTransactions(rows: try t.rows.map { try $0.transaction(of: accountID) }, from: try t.from.map(Self.day))
+			FetchedTransactions(rows: try t.rows.map { try $0.transaction(of: account) }, from: try t.from.map(Self.day))
 		}
 		let transactionFailure = shownError?.failure
 		let result = RefreshResult(balance: money, balanceDate: try balance?.date.map { try Self.day($0).date() }, transactions: fetched,
@@ -277,10 +277,10 @@ struct AccountResult: Decodable {
 }
 
 extension AccountResult.Row {
-	func transaction(of accountID: UUID) throws -> Transaction {
+	func transaction(of account: AccountRequest) throws -> Transaction {
 		guard let booked else { throw HelperFailure.noBookingDate }
-		let money = try AccountResult.money(amount, currency ?? "EUR")
-		return Transaction(accountID: accountID, bookingDate: try AccountResult.day(booked), valueDate: try value.map(AccountResult.day), amountMinor: money.minorUnits,
+		let money = try AccountResult.money(amount, currency ?? account.currency)
+		return Transaction(accountID: account.accountID, bookingDate: try AccountResult.day(booked), valueDate: try value.map(AccountResult.day), amountMinor: money.minorUnits,
 			currency: money.currency, name: name ?? "", purpose: purpose ?? "", counterpartyIBAN: iban, counterpartyBIC: bic, bookingText: bookingText,
 			endToEndReference: endToEnd, mandateReference: mandate, creditorID: creditor, isPending: pending)
 	}

@@ -42,7 +42,7 @@ import Testing
 		/// A refresh of every account of `setup` with the state that the setup stored.
 		func refresh(after setup: AccessSetup, fixture name: String, _ session: TestSession) async throws -> (ConnectorReport, [UUID]) {
 			let ids = setup.accounts.map { _ in UUID() }
-			let accounts = zip(ids, setup.accounts).map { AccountRequest(accountID: $0, name: $1.name, remoteID: $1.remoteID, since: nil) }
+			let accounts = zip(ids, setup.accounts).map { AccountRequest(accountID: $0, name: $1.name, remoteID: $1.remoteID, currency: $1.currency) }
 			let request = RefreshRequest(access: Access(source: .extension(id: folder), bankName: service, loginName: ""), state: setup.state, accounts: accounts)
 			return (try await connector(name, session).refresh(request, session), ids)
 		}

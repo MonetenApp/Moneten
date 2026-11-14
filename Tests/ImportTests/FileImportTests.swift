@@ -78,6 +78,24 @@ struct FileImportTests {
 		}
 	}
 
+	@Test("A currency cell becomes its ISO code, or the account currency when it names no currency")
+	func csvCurrency() throws {
+		let cells = ["eur", "€", "Euro", " usd ", "$", "US$", "£", "Fr.", "chf", "ABC", "XYZ"]
+		let text = "Datum;Name;Betrag;Währung\n" + cells.map { "01.11.2026;Kiosk;-1,50;\($0)\n" }.joined()
+		let ts = try TransactionFileImporter.parse(Data(text.utf8), currency: "SEK")
+		#expect(ts.map(\.currency) == ["EUR", "EUR", "EUR", "USD", "USD", "USD", "GBP", "CHF", "CHF", "SEK", "SEK"])
+		#expect(ts.map(\.amountMinor) == Array(repeating: -150, count: 11))
+	}
+
+	@Test("A dollar sign takes the currency of a dollar account, and SFr. names the Swiss franc")
+	func csvDollarAndFranc() throws {
+		let text = "Datum;Name;Betrag;Währung\n" + ["$", "US$", "SFr.", "SFR"].map { "01.11.2026;Kiosk;-1,50;\($0)\n" }.joined()
+		let ts = try TransactionFileImporter.parse(Data(text.utf8), currency: "CAD")
+		#expect(ts.map(\.currency) == ["CAD", "USD", "CHF", "CHF"])
+		let euro = try TransactionFileImporter.parse(Data("Datum;Name;Betrag;Währung\n01.11.2026;Kiosk;-1,50;$\n".utf8), currency: "EUR")
+		#expect(euro.map(\.currency) == ["USD"])
+	}
+
 	@Test("A CSV file without a date column is rejected")
 	func noHeader() {
 		#expect(throws: TransactionFileImporter.Failure.noHeader) { try TransactionFileImporter.parse(Data("a;b;c\n1;2;3\n".utf8)) }

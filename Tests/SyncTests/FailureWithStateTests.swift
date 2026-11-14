@@ -10,7 +10,7 @@ import Testing
 @Suite("A failure with a new state")
 struct FailureWithStateTests {
 	static let access = Access(source: .extension(id: "demo"), bankName: "Demo", loginName: "erika")
-	static let giro = AccountRequest(accountID: UUID(), name: "Giro", remoteID: "1 EUR")
+	static let giro = AccountRequest(accountID: UUID(), name: "Giro", remoteID: "1 EUR", currency: "EUR")
 
 	struct Failing: BankConnector {
 		let failure: any Error

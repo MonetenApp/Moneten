@@ -142,8 +142,8 @@ final class AutoRefreshTests {
 		let coordinator = SyncCoordinator()
 		var ends = 0
 		coordinator.runEnded = { ends += 1 }
-		let giro = AccountRequest(accountID: UUID(), name: "Giro", remoteID: "1")
-		let savings = AccountRequest(accountID: UUID(), name: "Savings", remoteID: "2")
+		let giro = AccountRequest(accountID: UUID(), name: "Giro", remoteID: "1", currency: "EUR")
+		let savings = AccountRequest(accountID: UUID(), name: "Savings", remoteID: "2", currency: "EUR")
 		coordinator.refresh(RefreshRequest(access: Self.access("Musterbank"), accounts: [giro]),
 			with: ScriptedConnector([.wait(.milliseconds(50)), .fetched(giro.accountID)]), attended: false)
 		coordinator.refresh(RefreshRequest(access: Self.access("Beispielbank"), accounts: [savings]),
@@ -161,7 +161,7 @@ final class AutoRefreshTests {
 		let coordinator = SyncCoordinator()
 		var ends = 0
 		coordinator.runEnded = { ends += 1 }
-		let giro = AccountRequest(accountID: UUID(), name: "Giro", remoteID: "1")
+		let giro = AccountRequest(accountID: UUID(), name: "Giro", remoteID: "1", currency: "EUR")
 		coordinator.refresh(RefreshRequest(access: Self.access("Musterbank"), accounts: [giro]),
 			with: ScriptedConnector([.wait(.seconds(10)), .fetched(giro.accountID)]), attended: false)
 		coordinator.cancelAll()
@@ -283,9 +283,9 @@ final class AutoRefreshTests {
 
 	// MARK: Manual and automatic refreshes of one access
 
-	static let giro = AccountRequest(accountID: UUID(), name: "Giro", remoteID: "1")
-	static let savings = AccountRequest(accountID: UUID(), name: "Savings", remoteID: "2")
-	static let card = AccountRequest(accountID: UUID(), name: "Card", remoteID: "3")
+	static let giro = AccountRequest(accountID: UUID(), name: "Giro", remoteID: "1", currency: "EUR")
+	static let savings = AccountRequest(accountID: UUID(), name: "Savings", remoteID: "2", currency: "EUR")
+	static let card = AccountRequest(accountID: UUID(), name: "Card", remoteID: "3", currency: "EUR")
 
 	@Test("A manual refresh during an automatic one of the same account shows the TAN dialog that the bank asks for")
 	func manualJoinsAutomatic() async {

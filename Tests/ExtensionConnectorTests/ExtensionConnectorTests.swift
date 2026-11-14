@@ -18,7 +18,7 @@ import Testing
 			stored.accounts = ["A EUR": .object(["accountNumber": .string("A"), "name": .string("Giro A")]), "B EUR": .object(["accountNumber": .string("B"), "name": .string("Giro B")])]
 		}
 		let request = RefreshRequest(access: access, state: stored.accessState,
-			accounts: [AccountRequest(accountID: ids[0], name: "Giro A", remoteID: "A EUR"), AccountRequest(accountID: ids[1], name: "Giro B", remoteID: "B EUR")])
+			accounts: [AccountRequest(accountID: ids[0], name: "Giro A", remoteID: "A EUR", currency: "EUR"), AccountRequest(accountID: ids[1], name: "Giro B", remoteID: "B EUR", currency: "EUR")])
 		do {
 			return (try await connector.refresh(request, session), ids)
 		} catch let failure as FailureWithState where unwrap {
@@ -338,7 +338,7 @@ import Testing
 		let second = TestSession([.login([Secret("erika"), Secret("geheim")]), .tan(Secret("654321"))])
 		let id = UUID()
 		let report = try await second.connector(package, fixture: fixture("demo-tan/tan.json")).refresh(RefreshRequest(access: access, state: setup.state,
-			accounts: [AccountRequest(accountID: id, name: account.name, remoteID: account.remoteID)]), second)
+			accounts: [AccountRequest(accountID: id, name: account.name, remoteID: account.remoteID, currency: account.currency)]), second)
 		let expected = [
 			Row(Day(year: 2026, month: 11, day: 13), -475, "Bäckerei Beispiel", "Kartenzahlung", "D-3"),
 			Row(Day(year: 2026, month: 11, day: 11), 2_500, "Max Mustermann", "Erstattung", "D-2"),

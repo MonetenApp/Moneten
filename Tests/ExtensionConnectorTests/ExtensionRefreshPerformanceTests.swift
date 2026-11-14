@@ -58,7 +58,7 @@ struct ExtensionRefreshPerformanceTests {
 		var added = -1
 		let elapsed = try await clock.measure {
 			let report = try await connector.refresh(RefreshRequest(access: Access(source: .extension(id: "Demo"), bankName: "Demo", loginName: "erika"),
-				state: state.accessState, accounts: [AccountRequest(accountID: target.id, name: target.name, remoteID: "1", since: today.adding(days: -89))]), session)
+				state: state.accessState, accounts: [AccountRequest(accountID: target.id, name: target.name, remoteID: "1", since: today.adding(days: -89), currency: "EUR")]), session)
 			guard case let .fetched(result) = report.outcomes[target.id] else { throw MappingError("not fetched") }
 			added = try store.merge(.refresh(result), into: target.id).added.count
 		}

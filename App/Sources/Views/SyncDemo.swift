@@ -9,8 +9,8 @@ import SwiftUI
 enum SyncDemo {
 	static let access = Access(source: .fints(bankCode: "12030000", url: URL(string: "https://fints.musterbank.example/")!), bankName: "Musterbank", loginName: "erika77")
 	static let accounts = [
-		AccountRequest(accountID: UUID(), name: "Giro", remoteID: "1234567890"),
-		AccountRequest(accountID: UUID(), name: "Savings", remoteID: "1234567891"),
+		AccountRequest(accountID: UUID(), name: "Giro", remoteID: "1234567890", currency: "EUR"),
+		AccountRequest(accountID: UUID(), name: "Savings", remoteID: "1234567891", currency: "EUR"),
 	]
 
 	static func secondFactor(_ challenge: Challenge, purpose: SecondFactorRequest.Purpose = .download, system: SecondFactorRequest.System = .fintsServer,
