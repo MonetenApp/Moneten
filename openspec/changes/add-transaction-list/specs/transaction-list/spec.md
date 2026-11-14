@@ -72,7 +72,7 @@ The app SHALL show the account of a selected transaction in a view that lists tr
 
 ### Requirement: Pending transactions look different
 
-The app SHALL draw a transaction that the bank has not yet booked with a hatched background, and it SHALL show the sum of all pending amounts of the view with the label "Pending".
+The app SHALL draw a transaction that the bank has not yet booked with a hatched background, and it SHALL show the sum of the pending amounts of the view with the label "Pending". A pending transaction marked for review does not count in that sum.
 
 #### Scenario: Pre-authorized card payment
 
