@@ -250,7 +250,7 @@ The app SHALL import a CAMT entry with the status PDNG or FUTR as a pending tran
 
 ### Requirement: Future pending transactions from a file
 
-The app SHALL keep a pending transaction from a file that no refresh has delivered when a successful refresh does not deliver it and its booking date is today or later. When the refresh delivers a pending transaction with the same amount and the same counterparty at most seven days apart, that transaction takes the place of the one from the file, and the payment counts once. Once its booking date has passed, such a refresh removes it like any pending transaction that the bank dropped.
+The app SHALL keep a pending transaction from a file that no refresh has delivered when a successful refresh does not deliver it and its booking date is today or later. Once its booking date has passed, such a refresh removes it like any pending transaction that the bank dropped.
 
 #### Scenario: Scheduled rent before its date
 
@@ -258,17 +258,28 @@ The app SHALL keep a pending transaction from a file that no refresh has deliver
 - **WHEN** a successful refresh on 20 November 2026 does not deliver the entry
 - **THEN** the account still has the pending transaction of -800,00 € to "Vermieter A" on 1 December 2026
 
+#### Scenario: Scheduled rent after its date
+
+- **GIVEN** the pending transaction of -800,00 € to "Vermieter A" on 1 December 2026 from the scenario "Scheduled rent before its date"
+- **WHEN** a successful refresh on 5 December 2026 delivers neither the pending entry nor a booked one for it
+- **THEN** the pending transaction is gone from the list
+
+### Requirement: The bank's version of a future pending transaction from a file
+
+The app SHALL count a payment once when a successful refresh delivers a pending transaction with the same amount and the same counterparty, at most seven days apart from a future pending transaction from a file. A delivered transaction that the account does not hold yet and that the user did not delete takes the place of the one from the file. A delivered transaction that an earlier refresh stored is in the account already, so the app removes the one from the file.
+
 #### Scenario: The bank reports the scheduled rent as pending
 
 - **GIVEN** on 15 November 2026 the user imported a camt.052 file with an entry of -800,00 € to "Vermieter A" with the IBAN DE02120300000000202051 and the purpose "Miete Dezember", in the status FUTR with the booking date 1 December 2026
 - **WHEN** a successful refresh on 20 November 2026 delivers a pending transaction of -800,00 € to "Vermieter A" with the IBAN DE02120300000000202051, the purpose "MIETE DEZEMBER WHG 3 DAUERAUFTRAG", and the booking date 1 December 2026
 - **THEN** the account has one pending transaction of -800,00 €, with the purpose "MIETE DEZEMBER WHG 3 DAUERAUFTRAG"
 
-#### Scenario: Scheduled rent after its date
+#### Scenario: The bank reported the scheduled rent before the import
 
-- **GIVEN** the pending transaction of -800,00 € to "Vermieter A" on 1 December 2026 from the scenario "Scheduled rent before its date"
-- **WHEN** a successful refresh on 5 December 2026 delivers neither the pending entry nor a booked one for it
-- **THEN** the pending transaction is gone from the list
+- **GIVEN** a successful refresh on 18 November 2026 stored a pending transaction of -800,00 € to "Vermieter A" with the IBAN DE02120300000000202051, the purpose "MIETE DEZEMBER WHG 3 DAUERAUFTRAG", and the booking date 1 December 2026
+- **AND** on 19 November 2026 the user imported a camt.052 file with an entry of -800,00 € to "Vermieter A" with the IBAN DE02120300000000202051 and the purpose "Miete Dezember", in the status FUTR with the booking date 1 December 2026, so the account shows -1.600,00 € of pending transactions
+- **WHEN** a successful refresh on 20 November 2026 delivers the pending transaction of 18 November 2026 again
+- **THEN** the account has one pending transaction of -800,00 €, with the purpose "MIETE DEZEMBER WHG 3 DAUERAUFTRAG"
 
 ### Requirement: MT940 import
 

@@ -368,7 +368,7 @@ The app SHALL clear only the new mark and keep the mark for review when the user
 
 ### Requirement: Remove a pending transaction that the bank dropped
 
-The app SHALL remove a pending transaction when a successful refresh of its account no longer delivers it and no booked transaction replaced it. A pending transaction that is marked for review stays until the first such refresh after the user checked it. When a refresh marks a pending transaction for review, the app clears its checkmark, so only a check after the mark lets a later refresh remove the row.
+The app SHALL remove a pending transaction when a successful refresh of its account no longer delivers it and no booked transaction replaced it. A pending transaction that is marked for review stays until the first such refresh after the user checked it. When a refresh marks a pending transaction for review, the app clears its checkmark, so only a check after the mark lets a later refresh remove the row. A future pending transaction from a file follows `add-file-import`.
 
 #### Scenario: Hotel deposit released
 
