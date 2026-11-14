@@ -11,7 +11,7 @@ scripts/generate-project.sh
 # share one index store and report each other's unused code. The schemes are those of .periphery.yml.
 for scheme in Moneten ext; do
 	log=$(xcodebuild -project App/Moneten.xcodeproj -scheme "$scheme" -derivedDataPath .build/periphery -parallelizeTargets -quiet build-for-testing \
-		CODE_SIGNING_ALLOWED=NO DEBUG_INFORMATION_FORMAT=dwarf COMPILER_INDEX_STORE_ENABLE=YES INDEX_ENABLE_DATA_STORE=YES 2>&1) || { echo "$log"; exit 1; }
+		CODE_SIGNING_ALLOWED=NO DEBUG_INFORMATION_FORMAT=dwarf COMPILER_INDEX_STORE_ENABLE=YES INDEX_ENABLE_DATA_STORE=YES 2>&1) || { printf '%s\n' "$log"; exit 1; }
 done
 periphery scan --skip-build --index-store-path .build/periphery/Index.noindex/DataStore
 scripts/test.sh
