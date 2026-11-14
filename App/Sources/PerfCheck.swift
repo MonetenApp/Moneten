@@ -42,8 +42,11 @@ struct PerfScenario {
 			},
 			run: { $0.model.filter.searchText = "" }),
 		PerfScenario(name: "large-category", budget: halfSecond,
-			run: { await $0.select("Uncategorized") }),
-		// Last, because it adds rows: "Uncategorized" above holds exactly the 50,000.
+			run: { c in
+				c.model.navigate(to: c.model.ledger.defaultCategory.map { .category($0.id) })
+				await c.settle()
+			}),
+		// Last, because it adds rows: the default category above holds exactly the 50,000.
 		PerfScenario(name: "import-into-open-view", budget: halfSecond,
 			setUp: { await $0.select("Bulk"); await $0.scroll { $0 / 2 } },
 			run: { c in
