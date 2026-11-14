@@ -357,7 +357,7 @@ The app SHALL clear only the new mark and keep the mark for review when the user
 - **THEN** no row has the new mark, and the booked transaction has no mark for review
 - **AND** both pending transactions keep the mark for review
 - **AND** the bar of 13.11.2026 in the balance chart of "Giro" still shows 496,80 €
-- **AND** the next successful refresh that delivers neither pending transaction removes both, and the balance of "Giro" stays 496,80 €
+- **AND** the next successful refresh that delivers neither pending transaction removes both, and the computed balance of "Giro" stays 496,80 €
 
 #### Scenario: Check one pending transaction
 
@@ -368,7 +368,7 @@ The app SHALL clear only the new mark and keep the mark for review when the user
 
 ### Requirement: Remove a pending transaction that the bank dropped
 
-The app SHALL remove a pending transaction when a successful refresh of its account no longer delivers it and no booked transaction replaced it. A pending transaction that is marked for review stays until the user checks it. When a refresh marks a pending transaction for review, the app clears its checkmark, so only a check after the mark lets a later refresh remove the row.
+The app SHALL remove a pending transaction when a successful refresh of its account no longer delivers it and no booked transaction replaced it. A pending transaction that is marked for review stays until the first such refresh after the user checked it. When a refresh marks a pending transaction for review, the app clears its checkmark, so only a check after the mark lets a later refresh remove the row.
 
 #### Scenario: Hotel deposit released
 
@@ -391,18 +391,18 @@ The app SHALL remove a pending transaction when a successful refresh of its acco
 
 #### Scenario: A checked pending coffee that the bank no longer delivers
 
-- **GIVEN** the account "Giro" with an initial balance of 500,00 € and two pending transactions of -3,20 € to "Café Beispiel" on 12.11.2026, and the balance of "Giro" is 493,60 €
+- **GIVEN** the account "Giro" with an initial balance of 500,00 € and two pending transactions of -3,20 € to "Café Beispiel" on 12.11.2026, and the computed balance of "Giro" is 493,60 €
 - **WHEN** the refresh of 13.11.2026 delivers one booked transaction of -3,20 € to "Café Beispiel" and neither pending transaction
-- **THEN** the three rows are marked for review, and the balance of "Giro" is 496,80 €
-- **AND** after the user deletes one pending transaction, the balance of "Giro" is 496,80 €
-- **AND** after the user checks the other pending transaction, it keeps the mark for review, and the balance of "Giro" is 496,80 €
-- **AND** after the refresh of 14.11.2026 delivers the booked transaction and no pending transaction, the list of "Giro" shows only the booked transaction, and the balance of "Giro" is 496,80 €
+- **THEN** the three rows are marked for review, and the computed balance of "Giro" is 496,80 €
+- **AND** after the user deletes one pending transaction, the computed balance of "Giro" is 496,80 €
+- **AND** after the user checks the other pending transaction, it keeps the mark for review, and the computed balance of "Giro" is 496,80 €
+- **AND** after the refresh of 14.11.2026 delivers the booked transaction and no pending transaction, the list of "Giro" shows only the booked transaction, and the computed balance of "Giro" is 496,80 €
 
 #### Scenario: A refresh marks a checked pending transaction for review
 
 - **GIVEN** the account "Giro" with an initial balance of 500,00 € and one pending transaction of -3,20 € to "Café Beispiel" on 12.11.2026 that the user checked
 - **WHEN** the refresh of 13.11.2026 delivers two booked transactions of -3,20 € to "Café Beispiel" and no pending transaction
-- **THEN** the pending transaction is marked for review and has no checkmark, and the balance of "Giro" is 493,60 €
+- **THEN** the pending transaction is marked for review and has no checkmark, and the computed balance of "Giro" is 493,60 €
 - **AND** the refresh of 14.11.2026, which delivers the two booked transactions and no pending transaction, keeps the pending transaction in the list
 
 ### Requirement: Deleted transactions stay deleted
