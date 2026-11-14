@@ -25,6 +25,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [ ] 1.19 Migrated rules that the app cannot read. Not built: the plan takes every rule over without parsing it, and the report names no unreadable rule. Build it in 2.1 and 2.2. The category settings part is 2.5.
 - [ ] 1.20 Migrated rules that search account numbers. Not built. Build it in 2.6 and 2.7.
 - [ ] 1.21 Migrated rules with operators in lower case. Not built. Build it in 2.8 and 2.9.
+- [ ] 1.22 Migrated rules with the words true and false. Not built. Build it in 2.10 and 2.11.
 
 ## 2. Changes to the first build
 
@@ -33,10 +34,12 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [ ] 2.3 Write MoneyMoneyMigrationTests tests for the scenarios "Not migrated", "Budgets in a version without budgets", and "Icons", with a synthetic category export that carries two budgets. The budget note says that the app did not take the budgets over and promises no later step.
 - [ ] 2.4 Add the notes on login data, templates, standing orders, statements, budgets, and icons to the plan until the tests of 2.3 pass.
 - [ ] 2.5 The category settings check the stored rule when they open, show the message of a rule that cannot be read, and keep OK disabled until the rule can be read. Built by pull request #141 in `App/Sources/Views/CategorySettingsSheet.swift`. Check this task when the settings of "Salary" in the scenario "Missing parenthesis" show the message.
-- [ ] 2.6 Write MoneyMoneyMigrationTests tests for the scenarios "Rule with an IBAN only", "Rule with a word and an IBAN", and "Customer number": the first two rules have a note with the category and `remote_account:DE02120300000000202051`, the third has none, and all rules are stored unchanged.
+- [ ] 2.6 Write MoneyMoneyMigrationTests tests for the scenarios "Rule with an IBAN only", "Rule with a word and an IBAN", "Customer number", "Account number of a counterparty", and "Calendar week": the first two rules have a note with the category and `remote_account:DE02120300000000202051`, the fourth has a note with `remote_account:202051`, the third and the fifth have none, and all rules are stored unchanged.
 - [ ] 2.7 Add the note for rules with an IBAN or an account number as a term without a field to `MoneyMoneyMigration.plan` in `Sources/Import/MoneyMoneyMigration.swift` until the tests of 2.6 pass.
 - [ ] 2.8 Write MoneyMoneyMigrationTests tests for the scenarios "Rule with a lower case or" and "Operators in capitals or in quotation marks": the first rule has a note with the category and the word `or`, the other two have none, and all rules are stored unchanged.
 - [ ] 2.9 Add the note for rules with and, or, or not in lower case to `MoneyMoneyMigration.plan` until the tests of 2.8 pass.
+- [ ] 2.10 Write MoneyMoneyMigrationTests tests for the scenarios "Rule with the word true" and "Quoted true": the first rule has a note with the category and the word `true`, the second has none, and both rules are stored unchanged. Add a rule `FALSE` and expect a note with the word `FALSE`.
+- [ ] 2.11 Add the note for rules with true or false to `MoneyMoneyMigration.plan` until the tests of 2.10 pass.
 
 ## 3. Integration
 

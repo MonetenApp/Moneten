@@ -30,16 +30,20 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [ ] 1.24 Progress and cancel. Build it and verify it with a test or in the app.
 - [ ] 1.25 Status of a CAMT entry. Built in part: a PDNG entry stays pending, verified by FileImportTests "camt.053 with a debit and a pending credit". The reader imports an INFO entry and a FUTR entry as booked. Change it in 2.1 and 2.2.
 - [ ] 1.26 MT940 dates. Built in part: two-digit years are 2000 to 2099, but the booking year moves only between December and January. Change it in 2.6 and 2.7.
+- [ ] 1.27 CAMT entry with several payments. Built in part: one transaction per entry with the amount of the entry and the purposes of all details. The reader takes the name, IBAN, BIC, and references of the last detail. Change it in 2.3.
+- [ ] 1.28 Future pending transactions from a file. Built the other way: a refresh drops every pending row that it does not deliver. Change it in 2.8 and 2.9.
 
 ## 2. Changes to the first build
 
 - [ ] 2.1 Write FileImportTests tests for the scenarios "Future entry" and "Entry for information": a FUTR entry is pending on its booking date, and an INFO entry is left out. Write the ReconcileTests test "Pending entry booked by a later file": a file with a PDNG row of -89,00 € to "Stadtwerke Musterstadt" on 1 November 2026, then a file with the booked row of -89,00 € to "Stadtwerke Musterstadt", gives one booked transaction.
 - [ ] 2.2 Change the CAMT reader in `Sources/Import/TransactionFileImporter.swift` until the tests of 2.1 pass.
-- [ ] 2.3 Write the FileImportTests test for the scenario "Batch entry": an entry of -150,00 € with two details gives one transaction of -150,00 €.
+- [ ] 2.3 Write the FileImportTests tests for the scenarios "Batch entry" and "Batch entry to one counterparty". The first expects one transaction of -150,00 € with the purpose "Miete November Abschlag Strom", the name "", and no IBAN, BIC, end-to-end reference, mandate reference, or creditor ID. The second expects one transaction of -120,00 € to "Stadtwerke Musterstadt" with the IBAN DE02120300000000202051. Then change the CAMT reader in `Sources/Import/TransactionFileImporter.swift` until both pass.
 - [ ] 2.4 Write a FileImportTests test with a camt.053 entry that carries the return reason AC04 and expect `returnReason` "AC04" on the transaction. Write a MergeTests test that stores that transaction through `Store`, reads it back with `Store.loadLedger()`, and expects `returnReason` "AC04". Write a ReconcileTests test in which a booked row with the return reason AC04 books a stored pending row, and expect `returnReason` "AC04" on the booked row.
-- [ ] 2.5 Add `returnReason` to `Transaction` with a new migration in `Sources/Storage/Schema.swift`, copy it in `Transaction(arriving:in:fetched:)` and `takingBankFields(of:)` in `Sources/Domain/Reconcile.swift`, and read it from `RtrInf/Rsn/Cd` in the CAMT reader until the tests of 2.4 pass.
+- [ ] 2.5 Add `returnReason` to `Transaction` with a new migration in `Sources/Storage/Schema.swift`, copy it in `Transaction(arriving:in:fetched:)` and `takingBankFields(of:)` in `Sources/Domain/Reconcile.swift`, and read it from `RtrInf/Rsn/Cd` in the CAMT reader until the tests of 2.4 pass. Add `returnReason` to the field table of `Transaction` in `docs/data-model.md`.
 - [ ] 2.6 Write FileImportTests tests for the scenarios of "MT940 dates": the value dates 260102, 251120, 260630, and 800101 with their booking dates.
 - [ ] 2.7 Change `parse61` in `Sources/Import/TransactionFileImporter.swift` to the six-month rule until the tests of 2.6 pass.
+- [ ] 2.8 Write the ReconcileTests test "A future pending row from a file survives a refresh". The account stores a pending row of -800,00 € to "Vermieter A" on 1 December 2026 with `isFetched` false. A `.refresh` delivery without it covers the days from 1 November 2026 on. Each `now` is at noon in the current time zone, so `Day(now)` gives the named day. With `now` on 20 November 2026 and on 1 December 2026, `dropped` is empty. With `now` on 5 December 2026, `dropped` holds the row. A stored pending row with `isFetched` true on 1 December 2026 is dropped with `now` on 20 November 2026.
+- [ ] 2.9 Change the condition for dropped rows in `reconcile` in `Sources/Domain/Reconcile.swift`: keep a released pending row when `isFetched` is false and its booking date is on or after `Day(now)`. Run until the test of 2.8 passes.
 
 ## 3. Integration
 

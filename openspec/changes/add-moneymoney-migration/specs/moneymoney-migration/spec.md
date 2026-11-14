@@ -151,6 +151,18 @@ The app SHALL list in the report every migrated rule with a term without a field
 - **WHEN** the migration finishes
 - **THEN** the report does not list the rule of "Internet"
 
+#### Scenario: Account number of a counterparty
+
+- **GIVEN** the category "Rent" has the rule `"Miete" OR 202051` in the source, and a migrated transaction has a counterparty with the account number 202051 and the bank code 12030000
+- **WHEN** the migration finishes
+- **THEN** the report says that the rule of "Rent" does not search the account fields and that `remote_account:202051` finds the account of the counterparty
+
+#### Scenario: Calendar week
+
+- **GIVEN** the category "Payroll" has the rule `"Lohn" AND KW45` in the source
+- **WHEN** the migration finishes
+- **THEN** the report does not list the rule of "Payroll", because `KW45` is too short for an IBAN
+
 ### Requirement: Migrated rules with operators in lower case
 
 The app SHALL list in the report every migrated rule that contains the word and, or, or not without quotation marks and not in capitals. The app reads such a word as an operator, so the rule changes its meaning. The report entry names the category, quotes the word, and says that the word in quotation marks searches the word itself. The rule stays unchanged.
@@ -167,6 +179,23 @@ The app SHALL list in the report every migrated rule that contains the word and,
 - **GIVEN** the category "Salary" has the rule `"Lohn" OR "Gehalt"` and the category "Books" has the rule `"Krieg" "and" "Frieden"` in the source
 - **WHEN** the migration finishes
 - **THEN** the report lists neither rule
+
+### Requirement: Migrated rules with the words true and false
+
+The app SHALL list in the report every migrated rule that contains the word true or false without quotation marks, in any letter case. The app reads `true` as a rule that matches every transaction and `false` as one that matches none, so the rule changes its meaning. The report entry names the category, quotes the word, and says that the word in quotation marks searches the word itself. The rule stays unchanged.
+
+#### Scenario: Rule with the word true
+
+- **GIVEN** the category "Drinks" has the rule `true OR "Smoothie"` in the source, meant for the brand "true fruits"
+- **WHEN** the migration finishes
+- **THEN** the report says that the rule of "Drinks" reads `true` as a rule that matches every transaction and that `"true"` in quotation marks searches the word
+- **AND** the category "Drinks" has the rule `true OR "Smoothie"`
+
+#### Scenario: Quoted true
+
+- **GIVEN** the category "Drinks" has the rule `"true" "fruits"` in the source
+- **WHEN** the migration finishes
+- **THEN** the report does not list the rule of "Drinks"
 
 ### Requirement: Transactions
 

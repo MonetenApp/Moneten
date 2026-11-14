@@ -197,18 +197,29 @@ The app SHALL assign the category from a category column to each imported transa
 
 ### Requirement: CAMT import
 
-The app SHALL import camt.052 and camt.053 files with the booking date, the value date, the amount, the currency, the counterparty with IBAN and BIC, the purpose, the booking text, the end-to-end reference, the mandate reference, the creditor ID, and the return reason of each entry. Each entry becomes one transaction with the amount of the entry, also when it bundles several payments.
+The app SHALL import camt.052 and camt.053 files with the booking date, the value date, the amount, the currency, the counterparty with IBAN and BIC, the purpose, the booking text, the end-to-end reference, the mandate reference, the creditor ID, and the return reason of each entry.
 
 #### Scenario: Statement with three entries
 
 - **WHEN** the user imports a camt.053 file with 3 booked entries
 - **THEN** the account has 3 new booked transactions with their references in the details
 
+### Requirement: CAMT entry with several payments
+
+The app SHALL import a CAMT entry that bundles several payments as one transaction with the amount of the entry. When its transaction details name different counterparties, the transaction has no counterparty name, IBAN, or BIC, and no end-to-end reference, mandate reference, or creditor ID. Its purpose joins the purposes of all details.
+
 #### Scenario: Batch entry
 
-- **GIVEN** a camt.053 entry of -150,00 € on 3 November 2026 with two transaction details, -100,00 € to "Hausverwaltung Muster" and -50,00 € to "Stadtwerke Musterstadt"
+- **GIVEN** a camt.053 entry of -150,00 € on 3 November 2026 with two transaction details, -100,00 € to "Hausverwaltung Muster" with the purpose "Miete November" and -50,00 € to "Stadtwerke Musterstadt" with the purpose "Abschlag Strom"
 - **WHEN** the user imports the file
-- **THEN** the account has one transaction of -150,00 € on 3 November 2026
+- **THEN** the account has one transaction of -150,00 € on 3 November 2026 with the purpose "Miete November Abschlag Strom"
+- **AND** the transaction has no counterparty name and no IBAN, so the rule `name:"Stadtwerke"` does not match it
+
+#### Scenario: Batch entry to one counterparty
+
+- **GIVEN** a camt.053 entry of -120,00 € with two transaction details of -60,00 € each to "Stadtwerke Musterstadt" with the IBAN DE02120300000000202051
+- **WHEN** the user imports the file
+- **THEN** the account has one transaction of -120,00 € to "Stadtwerke Musterstadt" with the IBAN DE02120300000000202051
 
 ### Requirement: Status of a CAMT entry
 
@@ -236,6 +247,22 @@ The app SHALL import a CAMT entry with the status PDNG or FUTR as a pending tran
 - **GIVEN** a camt.052 file with a booked entry of -89,00 € and an entry of -20,00 € in the status INFO
 - **WHEN** the user imports the file
 - **THEN** the account has one new transaction, the one of -89,00 €
+
+### Requirement: Future pending transactions from a file
+
+The app SHALL keep a pending transaction from a file that no refresh has delivered when a successful refresh does not deliver it and its booking date is today or later. Once its booking date has passed, such a refresh removes it like any pending transaction that the bank dropped.
+
+#### Scenario: Scheduled rent before its date
+
+- **GIVEN** on 15 November 2026 the user imported a camt.052 file with an entry of -800,00 € to "Vermieter A" in the status FUTR with the booking date 1 December 2026
+- **WHEN** a successful refresh on 20 November 2026 does not deliver the entry
+- **THEN** the account still has the pending transaction of -800,00 € to "Vermieter A" on 1 December 2026
+
+#### Scenario: Scheduled rent after its date
+
+- **GIVEN** the pending transaction of -800,00 € to "Vermieter A" on 1 December 2026 from the scenario "Scheduled rent before its date"
+- **WHEN** a successful refresh on 5 December 2026 delivers neither the pending entry nor a booked one for it
+- **THEN** the pending transaction is gone from the list
 
 ### Requirement: MT940 import
 
