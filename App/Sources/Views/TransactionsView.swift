@@ -355,7 +355,8 @@ struct TransactionTable: View {
 			} primaryAction: { ids in
 				if ids.count == 1, let id = ids.first { model.sheet = .transaction(id) }
 			}
-			// The table starts over for another view or after a bulk change. SwiftUI otherwise turns a
+			// The table starts over for another view, after a file import, a migration, or a rule applied
+			// to all. A refresh updates the rows in place (issue #135). SwiftUI otherwise turns a
 			// new view into row insertions, and AppKit then measures every inserted row with its own
 			// SwiftUI view to keep the top row in place. With thousands of rows, for example from an
 			// account scrolled to the middle to its group, the app hung, and SwiftUI aborted when its

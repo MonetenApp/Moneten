@@ -210,8 +210,9 @@ final class AppModel {
 	var alert: AlertMessage?
 	var sheet: SheetKind?
 	var settingsTab = SettingsTab.security
-	/// Changes when many transactions change at once, so that the transaction table starts over
-	/// instead of inserting thousands of rows one by one. See `TransactionTable`.
+	/// Changes after a file import, a migration, or a rule applied to all, so that the transaction table
+	/// starts over instead of inserting thousands of rows one by one. A refresh updates the rows in place
+	/// (issue #135). See `TransactionTable`.
 	private(set) var tableGeneration = 0
 	/// Column widths and order of the transaction table. They live here, so a new table keeps them.
 	var transactionColumns = TableColumnCustomization<Transaction>()
