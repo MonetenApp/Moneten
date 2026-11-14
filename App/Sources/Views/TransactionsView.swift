@@ -352,7 +352,6 @@ struct TransactionTable: View {
 			}
 			.frame(maxWidth: .infinity)
 		} else {
-			let selection = Binding(get: { model.selectedTransactions }, set: { model.select(transactions: $0, in: key) })
 			// As in MoneyMoney, measured in its window: no column headers and no stripes, rows of 55 points
 			// across the full width with a line below each, the category as a ribbon below the date,
 			// the amount larger and without the currency of the view, and the checkmark at the end.
@@ -371,7 +370,7 @@ struct TransactionTable: View {
 					// sections need a ForEach of rows, which SwiftUI builds for every row, so only a group
 					// with this option pays for it: about 2.3 seconds to open a group of 50,000 rows on an
 					// M-series Mac (perf scenario "group-by-account"), against half a second without it.
-					Table(of: Transaction.self, selection: selection, columnCustomization: $model.transactionColumns) {
+					Table(of: Transaction.self, selection: guardedSelection, columnCustomization: $model.transactionColumns) {
 						columns(currency: currency)
 					} rows: {
 						ForEach(sections, id: \.account.id) { section in
@@ -381,7 +380,7 @@ struct TransactionTable: View {
 						}
 					}
 				} else {
-					Table(rows, selection: selection, columnCustomization: $model.transactionColumns) {
+					Table(rows, selection: guardedSelection, columnCustomization: $model.transactionColumns) {
 						columns(currency: currency)
 					}
 				}
@@ -435,6 +434,11 @@ struct TransactionTable: View {
 			.width(min: 120, ideal: 150)
 			.alignment(.trailing)
 			.customizationID("amount")
+	}
+
+	/// The selection, as long as the model shows this table: see `AppModel.shows(_:)`.
+	private var guardedSelection: Binding<Set<UUID>> {
+		Binding(get: { [model] in model.selectedTransactions }, set: { [model, key] in model.select(transactions: $0, in: key) })
 	}
 
 	/// True for a group with "Group transactions by account". Its headings name the accounts.

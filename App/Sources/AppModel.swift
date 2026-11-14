@@ -510,11 +510,11 @@ final class AppModel {
 		afterDraw { [weak self] in Task { @MainActor in self?.markSeen() } }
 	}
 
-	/// True while the tables show `key`. A table that SwiftUI removes in its next update can still report a
-	/// click, and a change of its selection would reach it in the update that removes it (issue #135), so
-	/// the tables keep a selection only while this holds. It reads the key without observing it, because a
-	/// table asks inside an update of SwiftUI.
-	func shows(_ key: TableKey) -> Bool { _tableKey == key }
+	/// True while the tables show `key` and its view is still the chosen one. A table that SwiftUI removes in
+	/// its next update can still report a click, and a change of its selection would reach it in the update
+	/// that removes it (issue #135), or stay selected, hidden, in the next view. So the tables keep a selection
+	/// only while this holds. It reads without observing, because a table asks inside an update of SwiftUI.
+	func shows(_ key: TableKey) -> Bool { _tableKey == key && _selection == key.selection }
 
 	/// A selection that the transaction table of `key` reports.
 	func select(transactions ids: Set<UUID>, in key: TableKey) {
