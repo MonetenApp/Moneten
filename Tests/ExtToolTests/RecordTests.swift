@@ -3,19 +3,20 @@ import Foundation
 import Testing
 
 /// The made-up bank of `LocalBank/server.py` on https://bank.localhost, with a certificate of its own.
-/// It listens on port 443 of every interface, because the host only sends to the HTTPS port, and
-/// it answers only the loopback address.
+/// Each bank listens on a free port of the loopback address, so tests and checkouts that run at the
+/// same time never share one.
 final class LocalBank {
 	let folder: URL
 	let certificate: URL
+	/// The address of the bank with its port, for example "https://bank.localhost:52144".
+	let url: String
 	private let process = Process()
 
-	/// macOS lets a user open port 443 on every interface, but not on the loopback address alone.
 	/// The host refuses every name under `localhost`, so the tests pass `testBank` to let this one name
-	/// through. macOS 26 resolves each name under `localhost` to the loopback address; on macOS 15, CI
-	/// adds `bank.localhost` to /etc/hosts.
+	/// through on any port. macOS 26 resolves each name under `localhost` to the loopback address; on
+	/// macOS 15, CI adds `bank.localhost` to /etc/hosts.
 	static var canStart: Bool {
-		(try? launch(URL(filePath: "/usr/bin/python3"), ["-c", "import socket; socket.getaddrinfo('bank.localhost', 443, socket.AF_INET); s = socket.socket(); s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1); s.bind(('0.0.0.0', 443))"]).status) == 0
+		(try? launch(URL(filePath: "/usr/bin/python3"), ["-c", "import socket; socket.getaddrinfo('bank.localhost', 443, socket.AF_INET)"]).status) == 0
 	}
 
 	init() throws {
@@ -30,7 +31,11 @@ final class LocalBank {
 		process.arguments = [repository.appending(path: "Tests/ExtToolTests/LocalBank/server.py").path, certificate.path, key.path]
 		process.standardOutput = output
 		try process.run()
-		_ = output.fileHandleForReading.availableData
+		let line = String(decoding: output.fileHandleForReading.availableData, as: UTF8.self)
+		guard let port = Int(line.trimmingCharacters(in: .whitespacesAndNewlines).replacing("ready ", with: "")) else {
+			throw CocoaError(.fileReadUnknown, userInfo: [NSLocalizedDescriptionKey: "The made-up bank did not start: \(line)"])
+		}
+		url = "https://bank.localhost:\(port)"
 	}
 
 	deinit {
@@ -44,10 +49,11 @@ extension ExtTool {
 	@Suite(.enabled(if: LocalBank.canStart || ProcessInfo.processInfo.environment["CI"] != nil)) struct RecordTests {
 		let login = ["EXT_USERNAME": "erika", "EXT_PASSWORD": "geheim123"]
 
-		func script(_ name: String = "Local.lua") throws -> URL {
-			let folder = try temporaryFolder()
-			let script = folder.appending(path: name)
-			try FileManager.default.copyItem(at: repository.appending(path: "Tests/ExtToolTests/LocalBank/\(name)"), to: script)
+		/// A copy of a script of `LocalBank` that reaches `bank`.
+		func script(_ name: String = "Local.lua", for bank: LocalBank) throws -> URL {
+			let script = try temporaryFolder().appending(path: name)
+			let text = try String(contentsOf: repository.appending(path: "Tests/ExtToolTests/LocalBank/\(name)"), encoding: .utf8)
+			try text.replacing("https://bank.localhost", with: bank.url).write(to: script, atomically: true, encoding: .utf8)
 			return script
 		}
 
@@ -55,7 +61,7 @@ extension ExtTool {
 		/// in one. The replay needs both, so the fixture keeps both, and `ext test` replays the login offline.
 		@Test func oauthLoginWithPKCEAndANonceReplays() throws {
 			let bank = try LocalBank()
-			let script = try script("OAuth.lua")
+			let script = try script("OAuth.lua", for: bank)
 			let fixture = script.deletingLastPathComponent().appending(path: "fixture.json")
 			let expected = script.deletingLastPathComponent().appending(path: "expected.json")
 			let record = try ext(["record", script.path, fixture.path, "--trust", bank.certificate.path], input: "y\n", environment: login)
@@ -88,7 +94,7 @@ extension ExtTool {
 					local seed = MM.random(48)
 					local key = \(key)
 					MM.aes256encrypt(key, MM.random(16), password)
-					Connection():get("https://bank.localhost/logout?kid=" .. \(kid))
+					Connection():get("\(bank.url)/logout?kid=" .. \(kid))
 				end
 				function ListAccounts() return {} end
 				"""])
@@ -136,7 +142,7 @@ extension ExtTool {
 				WebBanking{version = 1, services = {"Sign"}}
 				local function signed(path)
 					local nonce = MM.uuid()
-					return "https://bank.localhost" .. path .. "?nonce=" .. nonce .. "&sig=" .. MM.binToHex(MM.hmac256("app-secret", nonce))
+					return "\(bank.url)" .. path .. "?nonce=" .. nonce .. "&sig=" .. MM.binToHex(MM.hmac256("app-secret", nonce))
 				end
 				function SupportsBank() return true end
 				function InitializeSession(protocol, bankCode, username, customer, password)
@@ -158,7 +164,7 @@ extension ExtTool {
 				WebBanking{version = 1, services = {"Echo"}}
 				function SupportsBank() return true end
 				function InitializeSession(protocol, bankCode, username, customer, password)
-					Connection():get("https://bank.localhost/logout?from=" .. password .. "-10-10")
+					Connection():get("\(bank.url)/logout?from=" .. password .. "-10-10")
 				end
 				function ListAccounts() return {} end
 				""", "good.json": "{\"exchanges\": []}"])
@@ -171,7 +177,7 @@ extension ExtTool {
 
 		@Test func recordLeavesNoSecretAndReplaysOffline() throws {
 			let bank = try LocalBank()
-			let script = try script()
+			let script = try script(for: bank)
 			let fixture = script.deletingLastPathComponent().appending(path: "fixture.json")
 			let expected = script.deletingLastPathComponent().appending(path: "expected.json")
 			let record = try ext(["record", script.path, fixture.path, "--trust", bank.certificate.path], input: "y\n", environment: login)
@@ -194,7 +200,7 @@ extension ExtTool {
 
 		@Test func runKeepsLocalStorageNextToTheScript() throws {
 			let bank = try LocalBank()
-			let script = try script()
+			let script = try script(for: bank)
 			func name(_ arguments: [String]) throws -> String? {
 				let run = try ext(["run", script.path, "--trust", bank.certificate.path] + arguments, input: "y\n", environment: login)
 				let document = try JSONSerialization.jsonObject(with: Data(run.output.utf8)) as? [String: [[String: Any]]]
@@ -208,7 +214,7 @@ extension ExtTool {
 
 		@Test func withoutTheCertificateTheConnectionFails() throws {
 			let bank = try LocalBank()
-			let script = try script()
+			let script = try script(for: bank)
 			let run = try ext(["run", script.path], input: "y\n", environment: login)
 			#expect(run.status == 2)
 			#expect(run.output.isEmpty)

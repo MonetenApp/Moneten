@@ -1,4 +1,4 @@
-"""A made-up bank on https://bank.localhost for the tests of ext record. It answers only the loopback address."""
+"""A made-up bank on https://bank.localhost for the tests of ext record, on a free port of the loopback address that it prints."""
 import base64, hashlib, http.server, json, ssl, sys, urllib.parse
 
 USER, PASSWORD = "erika", "geheim123"
@@ -65,14 +65,9 @@ class Bank(http.server.BaseHTTPRequestHandler):
 		pass
 
 
-class LoopbackServer(http.server.HTTPServer):
-	def verify_request(self, request, address):
-		return address[0] in ("127.0.0.1", "::1")
-
-
-server = LoopbackServer(("0.0.0.0", 443), Bank)
+server = http.server.HTTPServer(("127.0.0.1", 0), Bank)
 context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
 context.load_cert_chain(sys.argv[1], sys.argv[2])
 server.socket = context.wrap_socket(server.socket, server_side=True)
-print("ready", flush=True)
+print(f"ready {server.server_port}", flush=True)
 server.serve_forever()
