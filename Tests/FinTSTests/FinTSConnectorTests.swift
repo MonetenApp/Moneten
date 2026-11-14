@@ -512,7 +512,7 @@ struct FinTSConnectorTests {
 		// The self-test of the helper writes this file: scripts/build-fints-helper.sh.
 		let lines = URL(filePath: #filePath).deletingLastPathComponent().appending(path: "helper-lines.jsonl")
 		let card = AccountRequest(accountID: UUID(), name: "Card", remoteID: "4711", currency: "EUR")
-		let depots = ["7654321", "7654322", "7654323", "7654324", "7654325"].map { AccountRequest(accountID: UUID(), name: "Depot", remoteID: $0, currency: "EUR") }
+		let depots = ["7654321", "7654322", "7654323", "7654324", "7654325", "7654326"].map { AccountRequest(accountID: UUID(), name: "Depot", remoteID: $0, currency: "EUR") }
 		let report = try await refresh("read cmd; cat '\(lines.path)'", accounts: [Self.giro, Self.savings, card] + depots)
 
 		guard case let .fetched(depot) = report.outcomes[depots[0].accountID] else { Issue.record("depot not fetched"); return }
@@ -521,11 +521,33 @@ struct FinTSConnectorTests {
 		#expect(depot.transactions == nil)
 		#expect(depot.transactionFailure == nil)
 		#expect(depot.isPortfolio)
+		// A position without a name takes its ISIN as the name.
+		#expect(depot.holdings?.map { Holding(id: UUID(uuidString: "00000000-0000-0000-0000-000000000000")!, accountID: $0.accountID, security: $0.security,
+			quantity: $0.quantity, marketValue: $0.marketValue) } == [Holding(id: UUID(uuidString: "00000000-0000-0000-0000-000000000000")!,
+			accountID: depots[0].accountID, security: Security(name: "DE0001234567", isin: "DE0001234567"), quantity: 1,
+			marketValue: Money(minorUnits: 1_000_000, currency: "EUR"))])
 		guard case let .fetched(empty) = report.outcomes[depots[4].accountID] else { Issue.record("empty depot not fetched"); return }
 		#expect(empty.balance == Money(minorUnits: 0, currency: "EUR"))
 		#expect(empty.isPortfolio)
 		#expect(empty.balanceDate.map { Day($0) } == Day(year: 2026, month: 11, day: 13))
-		let failures = depots.dropFirst().dropLast().map { request -> SyncFailure? in
+		#expect(empty.holdings?.isEmpty == true)
+		guard case let .fetched(positions) = report.outcomes[depots[5].accountID] else { Issue.record("depot with positions not fetched"); return }
+		let held = positions.holdings ?? []
+		#expect(held.count == 2)
+		if held.count == 2 {
+			let posix = Locale(identifier: "en_US_POSIX")
+			#expect(held[0] == Holding(id: held[0].id, accountID: depots[5].accountID,
+				security: Security(name: "Musterwerke AG", isin: "DE0001234567", securityNumber: "123456"), quantity: Decimal(string: "40.12345", locale: posix)!,
+				quote: Quote(amount: Decimal(string: "27.123456", locale: posix)!, currency: "USD", day: Day(year: 2026, month: 11, day: 11)),
+				marketValue: Money(minorUnits: 100_000, currency: "EUR"), accruedInterest: Money(minorUnits: 10, currency: "EUR"),
+				purchasePrice: Quote(amount: Decimal(string: "20.5", locale: posix)!, currency: "USD", day: Day(year: 2024, month: 3, day: 1)),
+				exchangeRate: ExchangeRate(base: "EUR", quoted: "USD", rate: Decimal(string: "1.0845", locale: posix)!)))
+			// A nominal amount without a currency of the security is in the currency of its value. "%" is a percentage.
+			#expect(held[1] == Holding(id: held[1].id, accountID: depots[5].accountID, security: Security(name: "Anleihe Musterland"), quantity: 5000,
+				nominalCurrency: "EUR", quote: Quote(amount: Decimal(string: "98.5", locale: posix)!, currency: nil),
+				marketValue: Money(minorUnits: 492_500, currency: "EUR"), purchasePrice: Quote(amount: 97, currency: nil)))
+		}
+		let failures = depots.dropFirst().prefix(3).map { request -> SyncFailure? in
 			if case let .failed(failure) = report.outcomes[request.accountID] { failure } else { nil }
 		}
 		#expect(failures == [
@@ -650,6 +672,10 @@ struct FinTSConnectorTests {
 		(#"{"type":"result","account":"DE02120300000000202051","balance":{"currency":"EUR"},"errors":[]}"#, HelperFailure.unreadable),
 		(#"{"type":"result","account":"DE02120300000000202051","transactions":{"rows":[{"amount":"-1","pending":true}]},"errors":[]}"#,
 			SyncFailure.unsupported("The bank sent a transaction without a booking date, so nothing of this account was stored.")),
+		(#"{"type":"result","account":"DE02120300000000202051","balance":{"amount":"1","currency":"EUR"},"errors":[],"securities":true,"holdings":[{"name":"Gold","quantity":"12abc"}]}"#,
+			HelperFailure.unreadable),
+		(#"{"type":"result","account":"DE02120300000000202051","balance":{"amount":"1","currency":"EUR"},"errors":[],"securities":true,"holdings":[{"name":"Gold"}]}"#,
+			HelperFailure.unreadable),
 	])
 	func unreadableResult(line: String, expected: SyncFailure) async throws {
 		let report = try await refresh("""

@@ -140,15 +140,19 @@ public struct RefreshResult: Sendable {
 	/// The balance is the value of a securities account, so the account is a portfolio. A merge makes an
 	/// account of another kind a portfolio, such as a depot whose bank gave no account type at the setup.
 	public let isPortfolio: Bool
+	/// The positions of a portfolio, which replace the stored ones. Nil when the source sent none, as an
+	/// extension today, so the stored positions stay.
+	public let holdings: [Holding]?
 
 	public init(balance: Money?, balanceDate: Date? = nil, transactions: FetchedTransactions?, isComplete: Bool = false,
-		transactionFailure: SyncFailure? = nil, isPortfolio: Bool = false) {
+		transactionFailure: SyncFailure? = nil, isPortfolio: Bool = false, holdings: [Holding]? = nil) {
 		self.balance = balance
 		self.balanceDate = balanceDate
 		self.transactions = transactions
 		self.isComplete = isComplete
 		self.transactionFailure = transactionFailure
 		self.isPortfolio = isPortfolio
+		self.holdings = holdings
 	}
 }
 

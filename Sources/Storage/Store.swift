@@ -22,7 +22,8 @@ public final class Store: SavedPINStore {
 				accounts: try Account.fetchAll(db),
 				categories: try Domain.Category.fetchAll(db),
 				transactions: try Transaction.fetchAll(db),
-				portfolioValues: try PortfolioValue.order(Column("day")).fetchAll(db))
+				portfolioValues: try PortfolioValue.order(Column("day")).fetchAll(db),
+				holdings: try HoldingRecord.fetchAll(db).compactMap(\.holding))
 		}
 		let missing = ledger.missingPortfolioValues
 		if !missing.isEmpty {
@@ -83,7 +84,7 @@ public final class Store: SavedPINStore {
 	}
 
 	/// Merges what a source delivered for one account, in one transaction: new rows, changed rows,
-	/// review marks, dropped pending rows, and the balance. On an error nothing is written, and the same
+	/// review marks, dropped pending rows, the balance, and the positions of a portfolio. On an error nothing is written, and the same
 	/// delivery can be merged again. The live rows, the deleted rows, and the rules are read inside the
 	/// transaction, so the result is exactly what was written, and `Ledger.apply` can take it over. An
 	/// account that no longer exists, such as one removed during its refresh, gets nothing.
@@ -94,13 +95,18 @@ public final class Store: SavedPINStore {
 				categories: try Domain.Category.fetchAll(db)))
 			let stored = try Transaction.filter(Column("accountID") == accountID).fetchAll(db)
 			let deleted = try DeletedTransaction.filter(Column("accountID") == accountID).fetchAll(db)
-			let r = reconcile(delivery, into: account, stored: stored, deleted: deleted, rules: rules, now: now)
+			let holdings = try HoldingRecord.filter(Column("accountID") == accountID).fetchAll(db).compactMap(\.holding)
+			let r = reconcile(delivery, into: account, stored: stored, deleted: deleted, holdings: holdings, rules: rules, now: now)
 			for t in r.added { try t.insert(db) }
 			for t in r.booked + r.updated + r.marked { try t.update(db) }
 			_ = try Transaction.deleteAll(db, keys: r.dropped)
 			if let a = r.account {
 				try a.update(db)
 				try a.portfolioValue()?.save(db)
+			}
+			if let h = r.holdings {
+				_ = try HoldingRecord.filter(Column("accountID") == h.accountID).deleteAll(db)
+				for holding in h.holdings { try HoldingRecord(holding).insert(db) }
 			}
 			return r
 		}

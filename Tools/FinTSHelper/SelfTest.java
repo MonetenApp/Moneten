@@ -367,10 +367,53 @@ final class SelfTest {
 			holdings("2026-11-12", new BigDecimalValue(new BigDecimal("24518.37"), "EUR"), holding("10000.00", "EUR")), false, "EUR")));
 		fixture.add(valued);
 		expect("securities account with the total of the bank", valued,
-			"{\"type\":\"result\",\"account\":\"7654321\",\"balance\":{\"type\":\"balance\",\"amount\":\"24518.37\",\"currency\":\"EUR\",\"date\":\"2026-11-12\"},\"errors\":[],\"securities\":true}");
+			"{\"type\":\"result\",\"account\":\"7654321\",\"balance\":{\"type\":\"balance\",\"amount\":\"24518.37\",\"currency\":\"EUR\",\"date\":\"2026-11-12\"},\"errors\":[],\"securities\":true,"
+				+ "\"holdings\":[{\"type\":\"holding\",\"isin\":\"DE0001234567\",\"quantity\":\"1\",\"value\":{\"type\":\"amount\",\"amount\":\"10000.00\",\"currency\":\"EUR\"}}]}");
 		expect("securities account without a total is the sum of its holdings", FinTSHelper.Json.write(FinTSHelper.value("7654321",
 			holdings("2026-11-12", null, holding("10000.00", "EUR"), holding("4518.37", "EUR")), false, "EUR")),
-			"{\"type\":\"result\",\"account\":\"7654321\",\"balance\":{\"type\":\"balance\",\"amount\":\"14518.37\",\"currency\":\"EUR\",\"date\":\"2026-11-12\"},\"errors\":[],\"securities\":true}");
+			"{\"type\":\"result\",\"account\":\"7654321\",\"balance\":{\"type\":\"balance\",\"amount\":\"14518.37\",\"currency\":\"EUR\",\"date\":\"2026-11-12\"},\"errors\":[],\"securities\":true,"
+				+ "\"holdings\":[{\"type\":\"holding\",\"isin\":\"DE0001234567\",\"quantity\":\"1\",\"value\":{\"type\":\"amount\",\"amount\":\"10000.00\",\"currency\":\"EUR\"}},"
+				+ "{\"type\":\"holding\",\"isin\":\"DE0001234567\",\"quantity\":\"1\",\"value\":{\"type\":\"amount\",\"amount\":\"4518.37\",\"currency\":\"EUR\"}}]}");
+
+		// Every field of a position that hbci4java parses from MT535 and the app shows, with made-up values.
+		GVRWPDepotList.Entry.Gattung share = holding("1000.00", "EUR");
+		share.name = "Musterwerke AG";
+		share.wkn = "123456";
+		share.saldo = new BigDecimalValue(new BigDecimal("40.12345"), "");
+		share.price = new BigDecimalValue(new BigDecimal("27.123456"), "USD");
+		share.timestamp_price = FinTSHelper.date("2026-11-11");
+		share.stueckzinsbetrag = new BigDecimalValue(new BigDecimal("0.10"), "EUR");
+		share.einstandspreis = new BigDecimalValue(new BigDecimal("20.5"), "USD");
+		share.kauf = FinTSHelper.date("2024-03-01");
+		share.curr = "USD";
+		share.xchg_cur1 = "EUR";
+		share.xchg_cur2 = "USD";
+		share.xchg_kurs = 1.0845;
+		GVRWPDepotList.Entry.Gattung nominal = holding("4925.00", "EUR");
+		nominal.isin = null;
+		nominal.name = "Anleihe Musterland";
+		nominal.saldo_type = GVRWPDepotList.Entry.SALDO_TYPE_WERT;
+		nominal.saldo = new BigDecimalValue(new BigDecimal("5000"), "");
+		nominal.price = new BigDecimalValue(new BigDecimal("98.5"), "%");
+		nominal.einstandspreis = new BigDecimalValue(new BigDecimal("97"), "%");
+		String positions = FinTSHelper.Json.write(FinTSHelper.alone("7654326", () -> FinTSHelper.value("7654326",
+			holdings("2026-11-12", new BigDecimalValue(new BigDecimal("5925.10"), "EUR"), share, nominal), false, "EUR")));
+		fixture.add(positions);
+		expect("securities account with its positions", positions,
+			"{\"type\":\"result\",\"account\":\"7654326\",\"balance\":{\"type\":\"balance\",\"amount\":\"5925.10\",\"currency\":\"EUR\",\"date\":\"2026-11-12\"},"
+				+ "\"errors\":[],\"securities\":true,\"holdings\":[{\"type\":\"holding\",\"name\":\"Musterwerke AG\",\"isin\":\"DE0001234567\",\"wkn\":\"123456\","
+				+ "\"quantity\":\"40.12345\",\"currency\":\"USD\",\"price\":{\"type\":\"amount\",\"amount\":\"27.123456\",\"currency\":\"USD\",\"day\":\"2026-11-11\"},"
+				+ "\"value\":{\"type\":\"amount\",\"amount\":\"1000.00\",\"currency\":\"EUR\"},\"accrued\":{\"type\":\"amount\",\"amount\":\"0.10\",\"currency\":\"EUR\"},"
+				+ "\"purchase\":{\"type\":\"amount\",\"amount\":\"20.5\",\"currency\":\"USD\",\"day\":\"2024-03-01\"},"
+				+ "\"rate\":{\"type\":\"rate\",\"base\":\"EUR\",\"quoted\":\"USD\",\"rate\":\"1.0845\"}},"
+				+ "{\"type\":\"holding\",\"name\":\"Anleihe Musterland\",\"quantity\":\"5000\",\"nominal\":true,\"price\":{\"type\":\"amount\",\"amount\":\"98.5\",\"currency\":\"%\"},"
+				+ "\"value\":{\"type\":\"amount\",\"amount\":\"4925.00\",\"currency\":\"EUR\"},\"purchase\":{\"type\":\"amount\",\"amount\":\"97\",\"currency\":\"%\"}}]}");
+		GVRWPDepotList.Entry.Gattung unnamed = holding("10.00", "EUR");
+		unnamed.price = new BigDecimalValue(new BigDecimal("10"), "EUR");
+		unnamed.xchg_kurs = 1.1;
+		expect("a position without a name, a price day, and a pair of currencies sends no rate", FinTSHelper.Json.write(FinTSHelper.position(unnamed)),
+			"{\"type\":\"holding\",\"isin\":\"DE0001234567\",\"quantity\":\"1\",\"price\":{\"type\":\"amount\",\"amount\":\"10\",\"currency\":\"EUR\"},"
+				+ "\"value\":{\"type\":\"amount\",\"amount\":\"10.00\",\"currency\":\"EUR\"}}");
 
 		GVRWPDepotList pages = holdings("2026-11-12", new BigDecimalValue(new BigDecimal("10000.00"), "EUR"), holding("10000.00", "EUR"));
 		pages.addEntry(holdings("2026-11-12", null, holding("15000.50", "EUR")).getEntries()[0]);
@@ -389,7 +432,7 @@ final class SelfTest {
 		String empty = FinTSHelper.Json.write(FinTSHelper.alone("7654325", () -> FinTSHelper.value("7654325", holdings("2026-11-13", null), false, "EUR")));
 		fixture.add(empty);
 		expect("empty securities account is worth 0", empty,
-			"{\"type\":\"result\",\"account\":\"7654325\",\"balance\":{\"type\":\"balance\",\"amount\":\"0\",\"currency\":\"EUR\",\"date\":\"2026-11-13\"},\"errors\":[],\"securities\":true}");
+			"{\"type\":\"result\",\"account\":\"7654325\",\"balance\":{\"type\":\"balance\",\"amount\":\"0\",\"currency\":\"EUR\",\"date\":\"2026-11-13\"},\"errors\":[],\"securities\":true,\"holdings\":[]}");
 		expect("empty securities account without a currency counts in euro", String.valueOf(FinTSHelper.alone("7654325", () -> FinTSHelper.value("7654325", holdings("2026-11-13", null), false, null))
 			.get("balance")), "{type=balance, amount=0, currency=EUR, date=2026-11-13}");
 
@@ -493,6 +536,8 @@ final class SelfTest {
 	static GVRWPDepotList.Entry.Gattung holding(String value, String currency) {
 		GVRWPDepotList.Entry.Gattung g = new GVRWPDepotList.Entry.Gattung();
 		g.isin = "DE0001234567";
+		g.saldo_type = GVRWPDepotList.Entry.SALDO_TYPE_STCK;
+		g.saldo = new BigDecimalValue(BigDecimal.ONE, "");
 		g.depotwert = new BigDecimalValue(new BigDecimal(value), currency);
 		return g;
 	}

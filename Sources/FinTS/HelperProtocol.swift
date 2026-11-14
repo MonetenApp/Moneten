@@ -212,6 +212,8 @@ struct AccountResult: Decodable {
 	let errors: [HelperError]
 	/// The balance is the value of a securities account.
 	let securities: Bool?
+	/// The positions of a securities account. Nil when the answer of the bank had no statement.
+	let holdings: [Position]?
 
 	struct Balance: Decodable {
 		let amount: String
@@ -261,18 +263,73 @@ struct AccountResult: Decodable {
 		}
 		let transactionFailure = shownError?.failure
 		let result = RefreshResult(balance: money, balanceDate: try balance?.date.map { try Self.day($0).date() }, transactions: fetched,
-			isComplete: transactions != nil && transactions?.from == nil, transactionFailure: transactionFailure, isPortfolio: securities == true)
+			isComplete: transactions != nil && transactions?.from == nil, transactionFailure: transactionFailure, isPortfolio: securities == true,
+			holdings: try holdings?.map { try $0.holding(of: account) })
 		return (.fetched(result), transactionFailure == nil ? errors.map(\.message) : [])
 	}
 
 	static func money(_ amount: String, _ currency: String) throws -> Money {
-		guard let decimal = Decimal(string: amount, locale: Locale(identifier: "en_US_POSIX")) else { throw HelperFailure.unreadable }
-		return Money(decimal, currency: currency)
+		Money(try decimal(amount), currency: currency)
+	}
+
+	/// A plain decimal text of the helper, with every decimal place. `Decimal(string:)` alone would read
+	/// the start of "12abc" as 12.
+	static func decimal(_ text: String) throws -> Decimal {
+		guard text.allSatisfy({ "0123456789.-".contains($0) }), let decimal = Decimal(string: text, locale: Locale(identifier: "en_US_POSIX"))
+		else { throw HelperFailure.unreadable }
+		return decimal
 	}
 
 	static func day(_ text: String) throws -> Day {
 		guard let day = Day(string: text) else { throw HelperFailure.unreadable }
 		return day
+	}
+}
+
+extension AccountResult {
+	/// A position of MT535 as the helper sends it. Amounts are plain decimal text, and a price or purchase
+	/// price in "%" is a percentage of the nominal amount.
+	struct Position: Decodable {
+		let name: String?
+		let isin: String?
+		let wkn: String?
+		let quantity: String?
+		let nominal: Bool?
+		/// The currency of the security.
+		let currency: String?
+		let price: Amount?
+		let value: Amount?
+		let accrued: Amount?
+		let purchase: Amount?
+		let rate: Rate?
+
+		struct Amount: Decodable {
+			let amount: String
+			let currency: String?
+			let day: String?
+		}
+
+		struct Rate: Decodable {
+			let base: String
+			let quoted: String
+			let rate: String
+		}
+
+		/// The position in the app. Its name is the name of the bank, or else its ISIN or WKN. A nominal amount
+		/// is in the currency of the security, or else of its value, or else of the account.
+		func holding(of account: AccountRequest) throws -> Holding {
+			guard let quantity else { throw HelperFailure.unreadable }
+			let value = try value.map { try AccountResult.money($0.amount, $0.currency ?? account.currency) }
+			let exchangeRate = try rate.map { ExchangeRate(base: $0.base, quoted: $0.quoted, rate: try AccountResult.decimal($0.rate)) }
+			return Holding(accountID: account.accountID, security: Security(name: name ?? isin ?? wkn ?? "", isin: isin, securityNumber: wkn),
+				quantity: try AccountResult.decimal(quantity), nominalCurrency: nominal == true ? currency ?? value?.currency ?? account.currency : nil,
+				quote: try price.map(Self.quote), marketValue: value, accruedInterest: try accrued.map { try AccountResult.money($0.amount, $0.currency ?? account.currency) },
+				purchasePrice: try purchase.map(Self.quote), exchangeRate: exchangeRate)
+		}
+
+		private static func quote(_ a: Amount) throws -> Quote {
+			Quote(amount: try AccountResult.decimal(a.amount), currency: a.currency == "%" ? nil : a.currency, day: try a.day.map(AccountResult.day))
+		}
 	}
 }
 
