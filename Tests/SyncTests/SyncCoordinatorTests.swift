@@ -15,9 +15,9 @@ struct SyncCoordinatorTests {
 		Access(source: .fints(bankCode: "12030000", url: URL(string: "https://fints.example.com/")!), bankName: bank, loginName: "erika77")
 	}
 
-	static let giro = AccountRequest(accountID: UUID(), name: "Giro", remoteID: "1234")
-	static let savings = AccountRequest(accountID: UUID(), name: "Savings", remoteID: "5678")
-	static let card = AccountRequest(accountID: UUID(), name: "Card", remoteID: "9012")
+	static let giro = AccountRequest(accountID: UUID(), name: "Giro", remoteID: "1234", currency: "EUR")
+	static let savings = AccountRequest(accountID: UUID(), name: "Savings", remoteID: "5678", currency: "EUR")
+	static let card = AccountRequest(accountID: UUID(), name: "Card", remoteID: "9012", currency: "EUR")
 
 	static let pin = UserRequest.pin(PINRequest())
 	static let tan = UserRequest.secondFactor(SecondFactorRequest(purpose: .download, system: .fintsServer, challenge: .enterTAN(prompt: "TAN eingeben", image: nil)))
