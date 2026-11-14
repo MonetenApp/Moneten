@@ -56,6 +56,7 @@ None.
 - The app also runs the automatic refresh after launch and after the Mac wakes, for accounts that are due. This was not observed.
 - A transaction is identified by the ID of the source when there is one. Otherwise it is identified by account, booking date, amount, counterparty account, end-to-end reference, and the purpose without regard to case and spacing. MoneyMoney's rule is not public.
 - A pending transaction is replaced by a booked one only when exactly one pending transaction fits. When several fit, the app keeps all rows and marks them for review. This follows issue #7.
+- While rows are marked for review, the booked transaction counts and the pending transactions with the mark count in no balance, chart, or sum. The list still shows them with the mark. Two pending coffees of -3,20 € and one booked coffee of -3,20 € then move the balance by -3,20 € and not by -9,60 €, so a review never shows money as spent twice. When the user resolves the review, the rows that remain count as usual.
 - A pending transaction that the bank no longer reports and that has no booked version is removed. This was not observed.
 - A transaction that the user deleted does not come back at a later refresh. This was not observed.
 - A transaction counts as seen when the user opens the view of its account, or marks all transactions as checked. MoneyMoney's rule was not observed.

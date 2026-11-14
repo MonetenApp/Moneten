@@ -299,6 +299,25 @@ The app SHALL keep all rows and mark them for review when more than one pending 
 - **THEN** the list shows the booked transaction and both pending transactions
 - **AND** the three rows are marked for review
 
+### Requirement: Pending transactions marked for review do not count
+
+The app SHALL leave a pending transaction that is marked for review out of every balance, chart, and sum, while the list still shows it with its mark. The booked transaction of the same review counts. When the user resolves the review, by checking a row or by deleting it, the rows that remain count as they do without a review.
+
+#### Scenario: Two pending coffees, one booked
+
+- **GIVEN** the account "Giro" with an initial balance of 500,00 € and two pending transactions of -3,20 € to "Café Beispiel" on 12.11.2026, and no other transaction
+- **WHEN** the bank delivers one booked transaction of -3,20 € to "Café Beispiel" on 13.11.2026 and the app marks the three rows for review
+- **THEN** the balance of "Giro" on 13.11.2026 is 496,80 €, not 490,40 €
+- **AND** the status line reads "3 Transactions" and the sum -3,20 €
+- **AND** the list shows both pending transactions with the mark for review
+
+#### Scenario: The user deletes both pending transactions
+
+- **GIVEN** the three rows of the scenario "Two pending coffees, one booked"
+- **WHEN** the user deletes both pending transactions
+- **THEN** the balance of "Giro" on 13.11.2026 is still 496,80 €
+- **AND** the list of "Giro" shows only the booked transaction
+
 ### Requirement: Remove a pending transaction that the bank dropped
 
 The app SHALL remove a pending transaction when a successful refresh of its account no longer delivers it and no booked transaction replaced it.

@@ -33,6 +33,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [x] 1.27 Update the balance at every refresh. Build it and verify it with a test or in the app (#7).
 - [ ] 1.28 Refresh after a payment. Build it and verify it with a test or in the app (#28, v0.2).
 - [x] 1.29 Behavior without an Internet connection. Verified by AutoRefreshTests "Offline nothing runs and nothing fails, and the connection back runs at once" and "An automatic refresh that waits for its turn does not start once the Mac is offline...", and the debug app check with the harness command `network off`: "Refresh All Accounts" showed "There is no Internet connection.", and the accounts kept their last state without an error (#40).
+- [ ] 1.30 Pending transactions marked for review do not count. Write the test first: with an initial balance of 500,00 €, two pending rows of -3,20 € marked for review and one booked row of -3,20 €, the computed balance is 496,80 € and the sum of the three rows is -3,20 €. Then leave out a pending row with `needsReview` in `Ledger.computedBalance` (`Sources/Domain/Ledger.swift`), in the data of `Sources/Domain/Charts.swift`, in `AppModel.sidebarAmount(of:)` (`App/Sources/AppModel.swift`), in the "Pending" sum and the status line sum of `App/Sources/Views/TransactionsView.swift`, and in `Account.deriveInitialBalance` (`Sources/Domain/Models.swift`). The status line sum counts such a row today. The other sums leave out every pending row today, so they need the check once pending rows count.
 
 ## 2. Sync model (issue #6)
 

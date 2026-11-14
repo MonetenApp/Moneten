@@ -205,7 +205,7 @@ The app SHALL show a filter bar above the list with the filters that the current
 
 ### Requirement: Keep the filter bar with the pin
 
-The app SHALL show a pin in the filter bar with the tooltip "Save filter bar". While the pin is on, the filters keep their values when the user changes the view. While the pin is off, a view change sets every filter except "Period" back to "Show All".
+The app SHALL show a pin in the filter bar with the tooltip "Save filter bar". The filter bar keeps the period, the status, the amount, the category filter, and the account filter when the user changes the view, whether the pin is on or off. When the user turns the pin off, every filter of the filter bar returns to "Show All", the period included.
 
 #### Scenario: Pin on
 
@@ -215,10 +215,17 @@ The app SHALL show a pin in the filter bar with the tooltip "Save filter bar". W
 
 #### Scenario: Pin off
 
-- **GIVEN** the pin is off, "Status" is "Unchecked", and "Period" is "90 Days"
+- **GIVEN** the pin is off, "Status" is "Unchecked", "Amount" is "Withdrawals", and "Period" is "90 Days" in the view of "Girokonto"
 - **WHEN** the user selects "Tagesgeld"
-- **THEN** "Status" is "Show All"
-- **AND** "Period" is still "90 Days"
+- **THEN** "Status" is still "Unchecked", "Amount" is still "Withdrawals", and "Period" is still "90 Days"
+- **AND** the list of "Tagesgeld" is filtered by all three
+
+#### Scenario: Turn the pin off
+
+- **GIVEN** the pin is on, "Status" is "Unchecked", and "Period" is "90 Days" in the view of "Girokonto"
+- **WHEN** the user turns the pin off
+- **THEN** "Status", "Amount", "Category", and "Period" show "Show All"
+- **AND** the list shows every transaction of "Girokonto"
 
 ### Requirement: Status line
 

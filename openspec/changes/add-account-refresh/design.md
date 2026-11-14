@@ -245,6 +245,7 @@ The coordinator calls `deliver` once for each requested account that the connect
 
 - "Within a few days" is 7 calendar days between the booking days. The counterparty is the IBAN when both rows have one, otherwise the name, where the words of one name must lead the other.
 - A row marked for review shows an orange mark. Checking the row clears the mark and the new mark, and so does "Mark All Transactions as Checked". A pending row with the mark is never dropped. Once the user checks it, a later refresh may drop it.
+- A pending row with `needsReview` counts in no sum. `Ledger.computedBalance`, the data of `Sources/Domain/Charts.swift`, the sidebar amount of a category, the "Pending" sum of the header, the sum of the status line, and `Account.deriveInitialBalance` leave it out. The booked row of the review counts. So a review never counts one payment twice, whatever the rule for pending rows is. Once the user checks the pending row or deletes it, the review of that row ends, and a checked pending row counts like any other pending row.
 - Only rows that a merge adds are new. A booked row keeps the new mark of its pending row.
 - A pending row is dropped only when the answer covers its day, so a balance-only refresh or a short answer drops nothing.
 - Source IDs belong to one account. A known ID wins over any fingerprint, and a delivered ID never takes a stored row that has another ID.

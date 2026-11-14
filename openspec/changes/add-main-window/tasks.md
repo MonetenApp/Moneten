@@ -19,7 +19,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [ ] 1.13 The action button follows the view. Build it and verify it with a test or in the app.
 - [x] 1.14 Back and forward. Verified by ⌘[ and ⌘] and the toolbar arrows; the View menu items are disabled like the arrows when there is no view in their direction (`NavigationHistory` is observable).
 - [x] 1.15 Filter bar. Verified by the debug harness snapshot in the first build. As measured in the light window of MoneyMoney, a slate band lies behind the title and the chart, the filter bar is light gray with a line between the filters, and the checkboxes are white with a gray border. Verified by window snapshots of the debug harness in light and dark mode.
-- [x] 1.16 Keep the filter bar with the pin. Verified by the pin keeps the filters; without it every filter except the period resets.
+- [ ] 1.16 Keep the filter bar with the pin. Built for the earlier rule, in which a view change without the pin reset every filter except the period. Change `AppModel.select` in `App/Sources/AppModel.swift` so that a view change keeps the whole filter bar with or without the pin, and change the pin in `App/Sources/Views/TransactionsView.swift` so that turning it off sets every filter to "Show All", the period included. Verify both in the app.
 - [x] 1.17 Status line. Verified by the debug harness snapshot in the first build.
 - [ ] 1.18 Copy the sum from the status line. Built in part: the sum text can be selected. Finish it and verify it with a test or in the app.
 - [ ] 1.19 The Account menu follows the selection. Built in part: the settings command follows the selection. Finish it and verify it with a test or in the app.

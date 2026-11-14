@@ -10,7 +10,7 @@ Users need one window that shows every account, every category, and everything t
 - The sidebar has the rows "Dashboard", "Accounts", "Payments", "Documents", and "Categories" in a fixed order. A row appears when its feature is part of the installed version.
 - Two buttons below the sidebar add things and refresh all accounts.
 - The toolbar has the lock button, the view switch, the print menu, one action button that depends on the view, back and forward, and the search field.
-- A filter bar above the list shows the filters of the current view. A pin keeps the filters when the view changes.
+- A filter bar above the list shows the filters of the current view. The filters stay when the view changes, and turning the pin off sets them back to "Show All".
 - A status line below the list shows the count and the sum of what the list shows.
 - The Account menu and the context menu of a sidebar row follow the selection.
 - The window remembers its size, its position, the width of the sidebar, and which rows are collapsed.
@@ -59,7 +59,7 @@ None.
 - Selections and controls use a muted slate blue. MoneyMoney uses the system blue.
 - A sidebar row and a toolbar control appear only when their feature is part of the installed version. Version 0.1 has no "Dashboard", "Payments", or "Documents" row.
 - The number of new transactions next to an account in the sidebar comes from names in the program file. How MoneyMoney draws it was not observed.
-- Without the pin, a view change sets all filters except "Period" back to "Show All". MoneyMoney's behavior without the pin was not observed.
+- The whole filter bar, with the period, the status, the amount, and the category or account filter, stays when the user changes the view, with or without the pin. Turning the pin off sets every filter back to "Show All", the period included. A user who looks for unchecked transactions keeps that filter while going through the accounts, and the pin gives one control that clears every filter at once.
 - The window opens with the row that was selected when the app quit. MoneyMoney's start view was not observed.
 - Copy on selected list rows copies them as text, one line for each row. The Edit menu of MoneyMoney was observed only without a selection.
 - A row cannot be dragged into another section. Dragging in MoneyMoney was not tested, because it changes data.
