@@ -90,27 +90,87 @@ The app SHALL name a day close to today in words where it shows a point in time,
 - **WHEN** the user looks at the time of the last refresh
 - **THEN** it reads "Yesterday, 08:05"
 
-### Requirement: Complete a partly typed date
+### Requirement: Complete a typed day
 
-The app SHALL complete a date field in which the user typed only a day, or only a day and a month, to the full date that is closest to today.
+The app SHALL complete a date field in which the user typed only a day to that day in today's month and year. When that date lies after today and the typed day is more than two greater than today's day, the app moves it one month back, into the previous year when needed. This holds for every date field except a field that expects a future date.
 
-#### Scenario: Day in the current month
+#### Scenario: Day more than two days ahead
 
 - **GIVEN** today is 9 November 2026 and macOS uses the region Germany
 - **WHEN** the user types "20" into a date field and leaves the field
-- **THEN** the field shows "20.11.2026"
+- **THEN** the field shows "20.10.2026"
 
-#### Scenario: Day in the next month
+#### Scenario: Day two days ahead
 
-- **GIVEN** today is 28 November 2026
+- **GIVEN** today is 9 November 2026 and macOS uses the region Germany
+- **WHEN** the user types "11" into a date field and leaves the field
+- **THEN** the field shows "11.11.2026"
+
+#### Scenario: Day before today
+
+- **GIVEN** today is 28 November 2026 and macOS uses the region Germany
 - **WHEN** the user types "2" into a date field and leaves the field
-- **THEN** the field shows "02.12.2026"
+- **THEN** the field shows "02.11.2026"
 
-#### Scenario: Day and month
+#### Scenario: Day in January
 
-- **GIVEN** today is 9 November 2026
+- **GIVEN** today is 9 January 2027 and macOS uses the region Germany
+- **WHEN** the user types "20" into a date field and leaves the field
+- **THEN** the field shows "20.12.2026"
+
+### Requirement: Complete a typed day and month
+
+The app SHALL complete a date field in which the user typed a day and a month to that date in today's year. When that date lies after today, today is in January, February, or March, and the typed month is October, November, or December, the app uses the previous year. This holds for every date field except a field that expects a future date.
+
+#### Scenario: Day and month later this year
+
+- **GIVEN** today is 9 November 2026 and macOS uses the region Germany
 - **WHEN** the user types "20.12" into a date field and leaves the field
 - **THEN** the field shows "20.12.2026"
+
+#### Scenario: Day and month at the end of the last year
+
+- **GIVEN** today is 15 February 2027 and macOS uses the region Germany
+- **WHEN** the user types "20.12" into a date field and leaves the field
+- **THEN** the field shows "20.12.2026"
+
+#### Scenario: Day and month outside the turn of the year
+
+- **GIVEN** today is 15 February 2027 and macOS uses the region Germany
+- **WHEN** the user types "20.06" into a date field and leaves the field
+- **THEN** the field shows "20.06.2027"
+
+### Requirement: Complete a typed day in a field that expects a future date
+
+The app SHALL complete a date field that expects a future date, such as the scheduled date of a payment, in which the user typed only a day to that day in today's month and year. When that date lies before today, the app moves it one month forward, into the next year when needed.
+
+#### Scenario: Day later this month
+
+- **GIVEN** today is 9 November 2026 and macOS uses the region Germany
+- **WHEN** the user types "20" into the scheduled date of a transfer and leaves the field
+- **THEN** the field shows "20.11.2026"
+
+#### Scenario: Day before today
+
+- **GIVEN** today is 9 November 2026 and macOS uses the region Germany
+- **WHEN** the user types "1" into the scheduled date of a transfer and leaves the field
+- **THEN** the field shows "01.12.2026"
+
+#### Scenario: Day before today in December
+
+- **GIVEN** today is 28 December 2026 and macOS uses the region Germany
+- **WHEN** the user types "2" into the scheduled date of a transfer and leaves the field
+- **THEN** the field shows "02.01.2027"
+
+### Requirement: Complete a typed day and month in a field that expects a future date
+
+The app SHALL complete a date field that expects a future date, in which the user typed a day and a month, to that date in today's year. When that date lies before today, today is in October, November, or December, and the typed month is January, February, or March, the app uses the next year.
+
+#### Scenario: Day and month at the start of the next year
+
+- **GIVEN** today is 9 November 2026 and macOS uses the region Germany
+- **WHEN** the user types "15.01" into the scheduled date of a transfer and leaves the field
+- **THEN** the field shows "15.01.2027"
 
 ### Requirement: Reject an impossible date
 

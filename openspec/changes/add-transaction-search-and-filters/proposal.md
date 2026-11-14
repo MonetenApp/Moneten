@@ -10,8 +10,7 @@ Users look up single payments often, for a tax return, a dispute, or a warranty.
 - The search covers all text of a transaction and its comment, finds text inside words, and finds exact amounts.
 - "Search for" in the context menu lists all transactions with the same counterparty.
 - The filter bar filters by period, status, amount, and category or account.
-- The period filter applies to all accounts and categories at once.
-- The pin keeps the other filters when the user changes the view.
+- The whole filter bar stays when the user changes the view. Turning the pin off sets every filter back to "Show All".
 - A search with its filters can be saved under a name.
 
 ## Capabilities
@@ -55,7 +54,8 @@ None.
 - Several words in the search field must all occur. The search field also accepts the expression language of the categorization rules. Neither was observed in MoneyMoney.
 - The search folds case and umlauts in the same way as the rules.
 - "Search for" keeps the current view and searches inside it. The scope in MoneyMoney was not observed.
-- Without the pin, the status, amount, category, and account filters return to "Show All" when the user changes the view. Only the effect of the pin itself is documented.
+- The whole filter bar, with the period, the status, the amount, and the category or account filter, stays when the user changes the view, with or without the pin. Turning the pin off sets every filter back to "Show All", the period included. A user who looks for open items keeps that view while going through the accounts, and the pin gives one control that clears every filter at once.
+- A custom amount range compares the amount with its sign, and both ends belong to the range. A range of 100 to 500 then lists deposits only, so the sum in the status line adds up amounts of one direction. A range of -500 to -100 lists withdrawals of that size.
 - A category filter on a category group includes the categories below it.
 - The line about an active filter stands below the last row of the list. Its place in MoneyMoney was not observed.
 - Saved searches come from issue #20. MoneyMoney has none.

@@ -53,7 +53,7 @@ None.
 ### Decided for Moneten
 
 - With a macOS language other than German or English, the interface is English.
-- The rule for completing a date is fixed in the spec as the date closest to today. The version history names the three months and no exact rule.
+- A partly typed date completes in today's month and year. An ordinary date field moves a day that lies more than two days ahead back by one month, because the dates a user types there, such as a receipt or a cash payment, have mostly already happened. A day of today, tomorrow, or the day after stays in the current month. A field that expects a future date, such as the scheduled date of a payment, moves a day before today forward by one month, because a payment cannot be scheduled in the past. A day and a month change the year only at the turn of the year. Which fields expect a future date is confirmed before the payment windows are built, as the [design](design.md) notes.
 - Negative amounts carry a minus sign and a color. The colors of MoneyMoney were not observed, because screenshots were blocked.
 - Amounts are aligned on the decimal separator in lists. The alignment in MoneyMoney was not observed.
 - Amount fields accept the number format of macOS and reject a value that they cannot read without doubt. MoneyMoney's rule for entry was not observed.

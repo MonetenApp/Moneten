@@ -78,7 +78,7 @@ The app SHALL mark each part of a split in the list and show the amount of the o
 
 ### Requirement: Split off value added tax
 
-The app SHALL offer one entry "Split" with the rate and "VAT" for each rate in the list of VAT rates. The entry divides the transaction into a net part and a tax part. The transaction amount is the gross amount, and the tax part is the gross amount multiplied by the rate and divided by 100 plus the rate, rounded to the cent.
+The app SHALL offer one entry "Split" with the rate and "VAT" for each rate in the list of VAT rates. The entry divides the transaction into a net part and a tax part. The transaction amount is the gross amount. The net part is the gross amount multiplied by 100 and divided by 100 plus the rate, cut toward zero at the cent. The tax part is the gross amount minus the net part, so it takes the fraction of a cent that the net part leaves.
 
 #### Scenario: Nineteen percent
 
@@ -87,11 +87,17 @@ The app SHALL offer one entry "Split" with the rate and "VAT" for each rate in t
 - **THEN** the list shows a net part of -100,00 € and a tax part of -19,00 €
 - **AND** the parts carry the labels for net and for 19% VAT
 
-#### Scenario: Rounding
+#### Scenario: The net part is cut toward zero
 
 - **GIVEN** a transaction of -10,00 €
 - **WHEN** the user chooses "Split 7% VAT"
-- **THEN** the tax part is -0,65 € and the net part is -9,35 €
+- **THEN** the net part is -9,34 € and the tax part is -0,66 €
+
+#### Scenario: A refund is cut toward zero as well
+
+- **GIVEN** a transaction of 10,00 €
+- **WHEN** the user chooses "Split 7% VAT"
+- **THEN** the net part is 9,34 € and the tax part is 0,66 €
 
 ### Requirement: The list of VAT rates can be changed
 

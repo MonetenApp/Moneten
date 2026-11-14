@@ -16,15 +16,16 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [x] 1.10 Search for the counterparty of a transaction. Verified by "Search for" in the context menu.
 - [x] 1.11 Period filter. Verified by LedgerTests "Status, amount, period, and category filters combine".
 - [x] 1.12 Custom period. Verified by "Custom..." opens two date fields.
-- [x] 1.13 The period applies to every view. Verified by the period stays when the view changes.
+- [ ] 1.13 The filter bar applies to every view. Change `AppModel.select` in `App/Sources/AppModel.swift` so that a view change keeps the status, the amount, and the category and account filters as well as the period, with or without the pin. Verify it in the app.
 - [x] 1.14 Status filter. Verified by LedgerTests "Status, amount, period, and category filters combine".
-- [x] 1.15 Amount filter. Verified by LedgerTests "Status, amount, period, and category filters combine".
+- [ ] 1.15 Amount filter. Change the custom range in `Ledger.transactions(in:filter:)` in `Sources/Domain/Ledger.swift` to compare the signed amount with both ends included, and add a test with 150,00 €, -150,00 €, and the range 100 to 500.
 - [x] 1.16 Category filter in account views. Verified by LedgerTests "Status, amount, period, and category filters combine".
 - [x] 1.17 Account filter in category views. Verified by the filter bar shows "Account" in category views.
 - [x] 1.18 Search and filters combine. Verified by LedgerTests "Status, amount, period, and category filters combine".
 - [x] 1.19 Hint about active filters. Verified by the debug harness snapshot in the first build.
 - [ ] 1.20 Saved searches. Build it and verify it with a test or in the app.
 - [x] 1.21 The search is fast with a large history. Verified by PerformanceTests: 10 ms for a search over 50,000 transactions in a release build.
+- [ ] 1.22 Turning the pin off resets the filters. Change the pin in `App/Sources/Views/TransactionsView.swift` and `AppModel` so that turning it off sets every filter to "Show All", the period included. Verify it in the app.
 
 ## 2. Integration
 
