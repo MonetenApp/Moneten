@@ -3,11 +3,16 @@ import SwiftUI
 
 struct TransactionsView: View {
 	@Environment(AppModel.self) private var model
+	/// The view and the filters of the tables, `AppModel.tableKey`. The parent passes it, and no view below
+	/// reads the key of the model in its body: a view that read it would update its table in the drawing in
+	/// which its parent removes it, and SwiftUI stopped the app in AttributeGraph when a table went in the
+	/// drawing that changed it (issue #135).
+	let key: TableKey
 	@FocusState private var searchFocused: Bool
 
 	var body: some View {
 		@Bindable var model = model
-		let rows = model.visibleTransactions
+		let rows = model.transactions(for: key)
 		VStack(spacing: 0) {
 			// As in MoneyMoney: one slate band behind the title and the chart.
 			VStack(spacing: 0) {
@@ -23,12 +28,14 @@ struct TransactionsView: View {
 			.environment(\.negativeRed, Palette.bandRed)
 			.background(Palette.band)
 			// A portfolio, or a group of portfolios only, shows its positions in place of transactions.
-			if let portfolios = model.tableKey.portfolios {
-				HoldingsView(accountIDs: portfolios)
+			if let portfolios = key.portfolios {
+				// The selection of the positions goes with the view, for another view or another search.
+				HoldingsView(key: key, holds: model.tableHolds > 0, accountIDs: portfolios)
+					.id(key)
 			} else {
 				FilterBar()
 				// The bordered table draws the lines above and below itself.
-				TransactionTable(rows: rows)
+				TransactionTable(key: key, holds: model.tableHolds > 0, rows: rows)
 				StatusLine(rows: rows)
 			}
 		}
@@ -317,23 +324,26 @@ struct CustomAmountView: View {
 
 struct TransactionTable: View {
 	@Environment(AppModel.self) private var model
+	let key: TableKey
+	/// The placeholder of `AppModel.replacingTable` stands in for the table.
+	let holds: Bool
 	let rows: [Transaction]
 
 	var showsAccount: Bool {
-		if case .account = model.tableKey.selection { return false }
+		if case .account = key.selection { return false }
 		return true
 	}
 
 	var body: some View {
 		@Bindable var model = model
-		if model.tableHolds > 0 {
+		if holds {
 			// The placeholder of `AppModel.replacingTable`: the old table goes in this update, and the next
 			// turn of the run loop changes the rows and builds the new table.
 			Color.clear
 		} else if rows.isEmpty {
 			VStack {
 				Spacer()
-				Text(model.tableKey.filter.isActive || !model.tableKey.filter.searchText.isEmpty ? "No matching transactions found." : "No transactions found.")
+				Text(key.filter.isActive || !key.filter.searchText.isEmpty ? "No matching transactions found." : "No transactions found.")
 					.foregroundStyle(.secondary)
 				if let a = model.selectedOfflineAccount, model.ledger.transactions(ofAccount: a.id).isEmpty {
 					Button("Add Transaction...") { model.sheet = .transaction(nil) }.padding(.top, 6)
@@ -342,6 +352,7 @@ struct TransactionTable: View {
 			}
 			.frame(maxWidth: .infinity)
 		} else {
+			let selection = Binding(get: { model.selectedTransactions }, set: { model.select(transactions: $0, in: key) })
 			// As in MoneyMoney, measured in its window: no column headers and no stripes, rows of 55 points
 			// across the full width with a line below each, the category as a ribbon below the date,
 			// the amount larger and without the currency of the view, and the checkmark at the end.
@@ -360,7 +371,7 @@ struct TransactionTable: View {
 					// sections need a ForEach of rows, which SwiftUI builds for every row, so only a group
 					// with this option pays for it: about 2.3 seconds to open a group of 50,000 rows on an
 					// M-series Mac (perf scenario "group-by-account"), against half a second without it.
-					Table(of: Transaction.self, selection: $model.selectedTransactions, columnCustomization: $model.transactionColumns) {
+					Table(of: Transaction.self, selection: selection, columnCustomization: $model.transactionColumns) {
 						columns(currency: currency)
 					} rows: {
 						ForEach(sections, id: \.account.id) { section in
@@ -370,7 +381,7 @@ struct TransactionTable: View {
 						}
 					}
 				} else {
-					Table(rows, selection: $model.selectedTransactions, columnCustomization: $model.transactionColumns) {
+					Table(rows, selection: selection, columnCustomization: $model.transactionColumns) {
 						columns(currency: currency)
 					}
 				}
@@ -388,7 +399,7 @@ struct TransactionTable: View {
 			// SwiftUI view to keep the top row in place. With thousands of rows, for example from an
 			// account scrolled to the middle to its group, the app hung, and SwiftUI aborted when its
 			// view graph ran out of space. Edits inside one view still update single rows.
-			.id(model.tableKey)
+			.id(key)
 		}
 	}
 
@@ -428,13 +439,13 @@ struct TransactionTable: View {
 
 	/// True for a group with "Group transactions by account". Its headings name the accounts.
 	private var groupedByAccount: Bool {
-		guard case let .group(id) = model.tableKey.selection else { return false }
+		guard case let .group(id) = key.selection else { return false }
 		return model.ledger.group(id)?.groupsByAccount == true
 	}
 
 	/// The rows of each account in the order of the sidebar, or nil when the view is not grouped.
 	private var accountSections: [(account: Account, rows: [Transaction])]? {
-		guard groupedByAccount, case let .group(id) = model.tableKey.selection else { return nil }
+		guard groupedByAccount, case let .group(id) = key.selection else { return nil }
 		let byAccount = Dictionary(grouping: rows, by: \.accountID)
 		return orderedAccounts(in: id).compactMap { a in byAccount[a.id].map { (a, $0) } }
 	}

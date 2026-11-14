@@ -13,7 +13,7 @@ struct MainView: View {
 			// The view of `tableKey`, not of `selection`: a new view that comes with a change of the rows that
 			// SwiftUI has not drawn yet waits a drawing before it removes the table (issue #151).
 			if model.tableKey.selection != nil {
-				TransactionsView()
+				TransactionsView(key: model.tableKey)
 			} else if model.ledger.accounts.isEmpty {
 				EmptyStateView()
 			} else {

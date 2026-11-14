@@ -44,6 +44,11 @@ extension SheetKind {
 	var trailName: String { String(String(describing: self).prefix { $0 != "(" }) }
 }
 
+extension TableKey {
+	/// What the view shows: transactions, positions, or nothing ("empty", no view chosen).
+	var trailKind: String { selection == nil ? "empty" : portfolios == nil ? "transactions" : "positions" }
+}
+
 extension TransactionFilter {
 	/// The kinds of the active filters, without their values.
 	var trailName: String {
