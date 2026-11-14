@@ -67,12 +67,13 @@ Fetch, categorize, and understand your money. Read-only.
 | [#40 Refresh accounts automatically and notify about new transactions](https://github.com/MonetenApp/Moneten/issues/40) | area: core | #13, #5 |
 | [#86 Save PINs and finish the TAN dialogs (#13, part 3)](https://github.com/MonetenApp/Moneten/issues/86) | area: fints | #13 |
 | [#105 Publish a signed release of the ext tool](https://github.com/MonetenApp/Moneten/issues/105) | area: extensions, area: release | #25 |
-| [#106 Archive the merged OpenSpec changes and regenerate the roadmap](https://github.com/MonetenApp/Moneten/issues/106) | documentation | None |
 | [#117 Follow-ups to the special-use host names of #115](https://github.com/MonetenApp/Moneten/issues/117) | area: extensions | None |
 | [#118 Keep personal data out of every debug harness log line](https://github.com/MonetenApp/Moneten/issues/118) | area: core | None |
 | [#120 Finish the app side of the FinTS tasks that part 3 left open](https://github.com/MonetenApp/Moneten/issues/120) | area: fints | None |
 | [#121 List extension services by name and the offline account last in Add Account](https://github.com/MonetenApp/Moneten/issues/121) | bug, area: extensions | None |
 | [#123 Make the catalog index performance test measure a median, not one cold run](https://github.com/MonetenApp/Moneten/issues/123) | area: extensions | None |
+| [#124 Read the depot when the bank gives no securities account type](https://github.com/MonetenApp/Moneten/issues/124) |  | None |
+| [#127 Offer the update in the Extensions window when an automatic update failed](https://github.com/MonetenApp/Moneten/issues/127) |  | None |
 
 ## v0.2 Pay
 

@@ -75,6 +75,16 @@ public struct UpdateState: Sendable, Equatable {
 		confirmed[id] = saved.confirmed
 		if saved.changed { changed.insert(id) }
 	}
+
+	/// The plan that the Extensions window shows for an installed package, with its `manifest`. An update that
+	/// installs by itself stores no plan, and no plan is stored before the first check of the index. The window then
+	/// offers the plan of the listed version as one that waits for the user, so new rights still ask for the review.
+	public func plan(of installed: InstalledPackage, manifest: Manifest, in index: CatalogIndex?) -> UpdatePlan? {
+		if let plan = plans[installed.id] { return plan }
+		guard let index, case .outdated = Standing(of: installed, in: index), let available = try? index.entry(installed.id)?.manifest.get() else { return nil }
+		let plan = UpdatePlan(installed: manifest, available: available, automatic: false, sessionRuns: false, confirmed: nil)
+		return plan == .upToDate ? nil : plan
+	}
 }
 
 /// What the accepted index says about an installed catalog package (ADR 0015, decision 13).
