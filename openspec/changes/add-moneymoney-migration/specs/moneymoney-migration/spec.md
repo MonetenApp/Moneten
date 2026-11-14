@@ -66,7 +66,7 @@ The app SHALL create the account groups and accounts of the source with their na
 
 #### Scenario: Group tree
 
-- **GIVEN** the source has the group "Private" with the accounts "Giro" and "Savings", in this order
+- **GIVEN** the source has the group "Private" with the accounts "Giro" and "Savings", in this order, and neither has a pending transaction
 - **WHEN** the migration finishes
 - **THEN** the sidebar shows "Private" with "Giro" above "Savings", each with the balance from the source
 
