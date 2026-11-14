@@ -88,7 +88,7 @@ The app SHALL create the categories and category groups of the source with their
 
 ### Requirement: Rules
 
-The app SHALL take over the categorization rule of each category when the export of the source contains it, without changing its text. A rule that the app cannot parse is stored as text, marked as invalid in the category settings, and listed in the report.
+The app SHALL take over the categorization rule of each category when the export of the source contains it, without changing its text.
 
 #### Scenario: Rule taken over
 
@@ -96,10 +96,106 @@ The app SHALL take over the categorization rule of each category when the export
 - **WHEN** the migration finishes
 - **THEN** the category "Salary" has the same rule
 
+#### Scenario: Lower case operators keep their meaning
+
+- **GIVEN** the category "Salary" has the rule `"Lohn" or "Gehalt"` in the source
+- **WHEN** the migration finishes and the user imports a file into "Giro" with a transaction of 2.500,00 € and the purpose "Gehalt Oktober"
+- **THEN** the category "Salary" has the rule `"Lohn" or "Gehalt"`
+- **AND** the transaction is in "Salary"
+
 #### Scenario: Export without rules
 
 - **WHEN** the export of the source contains no rules
 - **THEN** the report says that rules were not migrated and that the user can copy them by hand from the category settings of the source app
+
+### Requirement: Migrated rules that the app cannot read
+
+The app SHALL store a migrated rule that it cannot parse with its text unchanged, mark it as invalid in the category settings, and list it in the report. The report entry names the category, the position and the reason of the error, and says that the category receives no transaction through its rule until the user corrects the rule. Migrated transactions keep their category.
+
+#### Scenario: Missing parenthesis
+
+- **GIVEN** the category "Salary" has the rule `("Lohn" OR "Gehalt"` in the source
+- **WHEN** the migration finishes
+- **THEN** the report says that the rule of "Salary" cannot be read, because a closing parenthesis is missing at the end of the rule
+- **AND** the report says that "Salary" receives no transaction through its rule until the rule is corrected in its settings
+- **AND** the settings of "Salary" show the rule `("Lohn" OR "Gehalt"` with the same message
+
+#### Scenario: One part of a rule cannot be read
+
+- **GIVEN** the category "Fees" has the rule `"Gebühr" OR purpose:/GA NR[0-9/` in the source, whose regular expression is not valid, and no other category has a rule
+- **WHEN** the migration finishes and the user imports a file into "Giro" with a transaction of -2,50 € and the purpose "Gebühr Oktober"
+- **THEN** the report lists the rule of "Fees" with the position of the regular expression and the reason that it is not valid
+- **AND** the transaction is in "Uncategorized" and not in "Fees"
+
+### Requirement: Migrated rules that search account numbers
+
+The app SHALL list in the report every migrated rule with a term without a field operator that is an IBAN or an account number, and keep the rule unchanged. A term of digits counts as an account number only when a migrated account or counterparty has that account number. The report entry names the category and says that `remote_account:` before the number searches the account of the counterparty.
+
+#### Scenario: Rule with an IBAN only
+
+- **GIVEN** the category "Rent" has the rule `DE02120300000000202051` in the source
+- **WHEN** the migration finishes
+- **THEN** the report says that the rule of "Rent" does not search the account fields and that `remote_account:DE02120300000000202051` finds the account of the counterparty
+- **AND** the category "Rent" has the rule `DE02120300000000202051`
+
+#### Scenario: Rule with a word and an IBAN
+
+- **GIVEN** the category "Rent" has the rule `"Miete" AND DE02120300000000202051` in the source
+- **WHEN** the migration finishes
+- **THEN** the report says that the rule of "Rent" does not search the account fields and that `remote_account:DE02120300000000202051` finds the account of the counterparty
+- **AND** the category "Rent" has the rule `"Miete" AND DE02120300000000202051`
+
+#### Scenario: Customer number
+
+- **GIVEN** the category "Internet" has the rule `"67890"` in the source, and no migrated account and no counterparty of a migrated transaction has the account number 67890
+- **WHEN** the migration finishes
+- **THEN** the report does not list the rule of "Internet"
+
+#### Scenario: Account number of a counterparty
+
+- **GIVEN** the category "Rent" has the rule `"Miete" OR 202051` in the source, and a migrated transaction has a counterparty with the account number 202051 and the bank code 12030000
+- **WHEN** the migration finishes
+- **THEN** the report says that the rule of "Rent" does not search the account fields and that `remote_account:202051` finds the account of the counterparty
+
+#### Scenario: Calendar week
+
+- **GIVEN** the category "Payroll" has the rule `"Lohn" AND KW45` in the source
+- **WHEN** the migration finishes
+- **THEN** the report does not list the rule of "Payroll", because `KW45` is too short for an IBAN
+
+### Requirement: Migrated rules with operators in lower case
+
+The app SHALL list in the report every migrated rule that contains the word and, or, or not without quotation marks and not in capitals. The app reads such a word as an operator, so the rule changes its meaning. The report entry names the category, quotes the word, and says that the word in quotation marks searches the word itself. The rule stays unchanged.
+
+#### Scenario: Rule with a lower case or
+
+- **GIVEN** the category "Salary" has the rule `"Lohn" or "Gehalt"` in the source
+- **WHEN** the migration finishes
+- **THEN** the report says that the rule of "Salary" reads `or` as an operator and that `"or"` in quotation marks searches the word
+- **AND** the category "Salary" has the rule `"Lohn" or "Gehalt"`
+
+#### Scenario: Operators in capitals or in quotation marks
+
+- **GIVEN** the category "Salary" has the rule `"Lohn" OR "Gehalt"` and the category "Books" has the rule `"Krieg" "and" "Frieden"` in the source
+- **WHEN** the migration finishes
+- **THEN** the report lists neither rule
+
+### Requirement: Migrated rules with the words true and false
+
+The app SHALL list in the report every migrated rule that contains the word true or false without quotation marks, in any letter case. The app reads `true` as a rule that matches every transaction and `false` as one that matches none, so the rule changes its meaning. The report entry names the category, quotes the word, and says that the word in quotation marks searches the word itself. The rule stays unchanged.
+
+#### Scenario: Rule with the word true
+
+- **GIVEN** the category "Drinks" has the rule `true OR "Smoothie"` in the source, meant for the brand "true fruits"
+- **WHEN** the migration finishes
+- **THEN** the report says that the rule of "Drinks" reads `true` as a rule that matches every transaction and that `"true"` in quotation marks searches the word
+- **AND** the category "Drinks" has the rule `true OR "Smoothie"`
+
+#### Scenario: Quoted true
+
+- **GIVEN** the category "Drinks" has the rule `"true" "fruits"` in the source
+- **WHEN** the migration finishes
+- **THEN** the report does not list the rule of "Drinks"
 
 ### Requirement: Transactions
 
@@ -237,7 +333,13 @@ The app SHALL create portfolio accounts of the source as accounts and, when secu
 
 ### Requirement: Report
 
-The app SHALL show a report after the import. The report lists for each account the number of migrated transactions and the balance next to the numbers of the source, and it lists what was not migrated with the reason. The user can save the report as a text file.
+The app SHALL show a report after the import. The report lists for each account the number of migrated transactions and the balance without pending transactions next to the numbers of the source, and it lists what was not migrated with the reason. The user can save the report as a text file.
+
+#### Scenario: Pending transactions are no mismatch
+
+- **GIVEN** the account "Giro" has a balance of 1.000,00 € and one pending transaction of -30,00 € in the source
+- **WHEN** the migration finishes
+- **THEN** the report shows 1.000,00 € for "Giro" next to the balance of the source, 1.000,00 €, as a match
 
 #### Scenario: Everything matches
 
@@ -247,7 +349,19 @@ The app SHALL show a report after the import. The report lists for each account 
 #### Scenario: Not migrated
 
 - **WHEN** the migration finishes
-- **THEN** the report names login data, templates, standing orders, statements, budgets, and account icons as not migrated, each with one sentence that says why or what to do
+- **THEN** the report names login data, templates, standing orders, and statements as not migrated, each with one sentence that says why or what to do
+
+#### Scenario: Budgets in a version without budgets
+
+- **GIVEN** a version of the app without budgets, and a source in which "Food" has a budget of 200,00 € per month and "Leisure" has a budget of 50,00 € per month
+- **WHEN** the migration finishes
+- **THEN** the report says that 2 categories have a budget in the source and that the app did not take the budgets over
+- **AND** the report promises no later step
+
+#### Scenario: Icons
+
+- **WHEN** the migration finishes for a source in which every account and category has an icon
+- **THEN** the report says that the app takes the color of each icon and shows its own icons instead of the pictures
 
 ### Requirement: The report contains no secrets
 

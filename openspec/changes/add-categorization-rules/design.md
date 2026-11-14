@@ -15,11 +15,16 @@ The app keeps all accounts, categories, and transactions of the open database in
 ## Decisions
 
 - `Sources/Domain/Rule.swift` holds a tokenizer and a recursive descent parser. Precedence is `NOT`, then `AND`, then `OR`. Two expressions without an operator are joined with `AND`.
+- The tokenizer reads `and`, `or`, `not`, `true`, and `false` without quotation marks and in any letter case as operators. A quoted word is always a term. `+` between two expressions is `AND`. `!` before an expression is `NOT`, and so is `-` when the next character is not a digit. `-12,50` stays one term, and `amount=-89,00` stays an amount comparison. A hyphen inside a word, as in "EC-Karte", stays part of the word, and so does a `+` or `!` directly after a letter or a digit, as in "Disney+" and "Yahoo!". A field name followed by `!=` is a field operator, so `name!=` and `amount!=` keep their meaning.
+- A field test takes `:`, `=`, `==`, or `:=` for a match and `!=` or `<>` for no match. An amount comparison takes `:=` as equal and `<>` as not equal.
 - A term matches whole words. The text of a field is folded (lower case, composed Unicode, ä to ae, ß to ss) and split at white space. A phrase matches a run of words. `*` and `?` match inside one word. This is why `"Kundennummer 67890*"` is needed when a slash follows the number, as the MoneyMoney help says.
+- A term without a field operator searches the name, the purpose, the booking text, the references, the creditor ID, and the comment. The account fields are searched only through `local_account:` and `remote_account:`.
 - Account fields compare without spaces, so `local_account:"DE02 1203 ..."` matches.
 - Regular expressions are case-insensitive and run on the unfolded text of each field.
 - `Categorizer` walks the categories in sidebar order and returns the first match. `RuleApplier` applies one changed rule to existing transactions in the two modes of the spec.
 
 ## Risks / Trade-offs
 
-- MoneyMoney does not document whether it splits words at punctuation. Whole-word matching follows its help text. Rules taken over by hand may need a `*` more often than expected.
+- A hyphen or a slash does not split a word, so `"REWE"` does not match "REWE-Markt". A user who writes a new rule may need a `*` more often than expected. The help shows this case.
+- The words and, or, not, true, and false are operators in every letter case. A rule stored by the first build, or migrated, that used one of them in lower case as a search word changes its meaning. Quotation marks around the word keep it a search word. The migration report names each migrated rule with and, or, or not in lower case, and each migrated rule with true or false without quotation marks.
+- Operators, fields, and amount comparisons in the search field have the meaning of this spec. A plain word in the search follows the search requirements of `add-transaction-search-and-filters`, so it also finds account numbers, IBANs, and the category name.
