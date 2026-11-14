@@ -289,6 +289,15 @@ enum Schema {
 				t.column("rate", .text)
 			}
 		}
+		// A deleted row keeps its currency (issue #150), so a later migration run leaves out a deleted row in another
+		// currency. A row deleted before this step stored none and takes the currency of its account, the value that
+		// v13 and every run before assumed.
+		m.registerMigration("v15") { db in
+			try db.alter(table: "deletedTransaction") { t in
+				t.add(column: "currency", .text).notNull().defaults(to: "")
+			}
+			try db.execute(sql: "UPDATE deletedTransaction SET currency = (SELECT currency FROM account WHERE account.id = deletedTransaction.accountID)")
+		}
 		return m
 	}
 }

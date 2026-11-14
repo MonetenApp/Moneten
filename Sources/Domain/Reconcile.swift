@@ -21,6 +21,7 @@ public struct DeletedTransaction: Hashable, Sendable, Codable {
 	public var sourceID: String?
 	public var bookingDate: Day
 	public var amountMinor: Int64
+	public var currency: String
 	public var isPending: Bool
 	public var purpose: String
 	public var counterpartyIBAN: String?
@@ -45,6 +46,7 @@ public struct DeletedTransaction: Hashable, Sendable, Codable {
 		sourceID = t.sourceID
 		bookingDate = t.bookingDate
 		amountMinor = t.amountMinor
+		currency = t.currency
 		isPending = t.isPending
 		purpose = t.purpose
 		counterpartyIBAN = t.counterpartyIBAN
