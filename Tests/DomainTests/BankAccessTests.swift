@@ -264,7 +264,7 @@ struct BankAccessTests {
 		edited.initialBalanceMinor = 10_000
 		edited.color = "#FF9500"
 
-		current.takeSettings(from: edited)
+		current.takeSettings(from: edited, opened: opened)
 		#expect(current.name == "Haushalt")
 		#expect(current.kind == .savings)
 		#expect(current.isClosed)
@@ -274,6 +274,24 @@ struct BankAccessTests {
 		#expect(current.bankBalanceDate == Self.noon)
 		#expect(current.refreshedAt == Self.noon)
 		#expect(current.refreshError == nil)
+	}
+
+	@Test("Saving the account settings keeps the portfolio type that a refresh set while they were open, unless the user chose another type")
+	func settingsAfterPortfolioRefresh() {
+		var opened = Self.bankAccount("Depot")
+		opened.kind = .other
+		var current = opened
+		current.kind = .portfolio
+		var renamed = opened
+		renamed.name = "Wertpapiere"
+		var kept = current
+		kept.takeSettings(from: renamed, opened: opened)
+		#expect(kept.name == "Wertpapiere")
+		#expect(kept.kind == .portfolio)
+		var retyped = opened
+		retyped.kind = .savings
+		current.takeSettings(from: retyped, opened: opened)
+		#expect(current.kind == .savings)
 	}
 
 	@Test("The end of a refresh gives each requested account its outcome, and a cancel gives none")

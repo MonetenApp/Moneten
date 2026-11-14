@@ -153,7 +153,7 @@ struct OpeningBalanceTests {
 		var account = try #require(try store.loadLedger().account(id))
 		var edited = account
 		edited.initialBalanceMinor = minor
-		account.takeSettings(from: edited)
+		account.takeSettings(from: edited, opened: account)
 		try store.save(account)
 	}
 

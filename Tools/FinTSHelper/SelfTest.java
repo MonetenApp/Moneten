@@ -349,6 +349,9 @@ final class SelfTest {
 		expect("securities accounts by their jobs", FinTSHelper.securities(allowing(null, "HKWPD", "HKWDU")) + " " + FinTSHelper.securities(allowing("", "HKWDU"))
 			+ " " + FinTSHelper.securities(allowing(null, "HKWPD", "HKSAL")) + " " + FinTSHelper.securities(allowing("1", "HKWPD", "HKKAZ"))
 			+ " " + FinTSHelper.securities(allowing(null, "HKWPD", "HKCAZ")), "true true false false false");
+		// The jobs decide also for an account with another type: an account that allows only depot jobs is a depot.
+		expect("accounts of another type with depot jobs only are securities accounts", FinTSHelper.securities(allowing("1", "HKWPD")) + " "
+			+ FinTSHelper.securities(allowing("50", "HKWDU")), "true true");
 		Konto untypedDepot = allowing(null, "HKWPD", "HKWDU");
 		untypedDepot.number = "7654326";
 		untypedDepot.curr = "EUR";

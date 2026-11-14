@@ -127,7 +127,7 @@ struct AutomaticRefreshTests {
 		var stored = Self.account("Giro", refreshedAt: Self.hours(1))
 		var edited = Self.account("Giro", refreshedAt: nil)
 		edited.refreshInterval = .onceAWeek
-		stored.takeSettings(from: edited)
+		stored.takeSettings(from: edited, opened: stored)
 		#expect(stored.refreshInterval == .onceAWeek)
 		#expect(stored.refreshedAt == Self.hours(1))
 	}
