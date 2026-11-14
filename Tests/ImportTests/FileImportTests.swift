@@ -96,6 +96,33 @@ struct FileImportTests {
 		#expect(euro.map(\.currency) == ["USD"])
 	}
 
+	@Test("A CSV row with an unknown currency or an unreadable value date is imported with a warning for its line")
+	func csvWarnings() throws {
+		let text = "Datum;Valuta;Name;Betrag;Währung\n01.11.2026;n/a;Kiosk;-1,50;XYZ\n02.11.2026;02.11.2026;Bäckerei Gutbrot;-2,00;EUR\n03.11.2026;;Kiosk;-3,00;$\n"
+		let parsed = try TransactionFileImporter.parse(Data(text.utf8), currency: "EUR")
+		#expect(parsed.transactions.map(\.currency) == ["EUR", "EUR", "USD"])
+		#expect(parsed.transactions.map(\.valueDate) == [nil, Day(year: 2026, month: 11, day: 2), nil])
+		#expect(parsed.warnings == [.unknownCurrency(line: 2, cell: "XYZ", replacement: "EUR"), .unreadableValueDate(line: 2, cell: "n/a")])
+		#expect(parsed.warnings.map(\.description) == [
+			"Line 2: The currency XYZ is unknown. The transaction is in EUR, the currency of the account.",
+			"Line 2: The value date n/a cannot be read. The transaction has no value date.",
+		])
+	}
+
+	@Test("A CAMT entry with an unreadable value date is imported with a warning for its line")
+	func camtValueDateWarning() throws {
+		let xml = """
+		<?xml version="1.0" encoding="UTF-8"?>
+		<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.053.001.08"><BkToCstmrStmt><Stmt>
+		<Ntry><Amt Ccy="EUR">89.00</Amt><CdtDbtInd>DBIT</CdtDbtInd><BookgDt><Dt>2026-11-02</Dt></BookgDt><ValDt><Dt>2026-11-02</Dt></ValDt></Ntry>
+		<Ntry><Amt Ccy="EUR">5.00</Amt><CdtDbtInd>CRDT</CdtDbtInd><BookgDt><Dt>2026-11-03</Dt></BookgDt><ValDt><Dt>morgen</Dt></ValDt></Ntry>
+		</Stmt></BkToCstmrStmt></Document>
+		"""
+		let parsed = try TransactionFileImporter.parse(Data(xml.utf8), currency: "EUR")
+		#expect(parsed.transactions.map(\.valueDate) == [Day(year: 2026, month: 11, day: 2), nil])
+		#expect(parsed.warnings == [.unreadableValueDate(line: 4, cell: "morgen")])
+	}
+
 	@Test("A CSV file without a date column is rejected")
 	func noHeader() {
 		#expect(throws: TransactionFileImporter.Failure.noHeader) { try TransactionFileImporter.parse(Data("a;b;c\n1;2;3\n".utf8), currency: "EUR") }
