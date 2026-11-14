@@ -134,6 +134,15 @@ struct ReconcileTests {
 		#expect(r.updated.map(\.sourceID) == ["tx-1"])
 	}
 
+	@Test("A bank ID links a migrated row that a file booked while the source kept it pending")
+	func idLinksBookedMigratedRow() {
+		let migrated = stored(row(5, -1_000, "Kiosk", sourceID: "moneymoney-booked:3"))
+		let r = merge(refresh([row(5, -1_000, "Kiosk", sourceID: "bank-77")]), stored: [migrated])
+		#expect(r.added == [])
+		#expect(r.updated.map(\.id) == [migrated.id])
+		#expect(r.updated.map(\.sourceID) == ["bank-77"])
+	}
+
 	@Test("A source with IDs corrects the amount, and the user fields stay")
 	func amountCorrected() {
 		let plans = Domain.Category(position: 0, name: "Savings plans")
