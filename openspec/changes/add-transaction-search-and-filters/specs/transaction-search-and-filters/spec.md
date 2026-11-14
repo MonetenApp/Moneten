@@ -79,12 +79,37 @@ The app SHALL show a transaction only when every word of the search text occurs 
 
 ### Requirement: The search accepts the rule language
 
-The app SHALL accept every expression of the categorization rule language in the search field, with the same meaning as in a rule. A plain search word without a field name searches the fields that the requirement on searched fields names, so it finds account numbers, IBANs, and the category name.
+The app SHALL accept every expression of the categorization rule language in the search field, with the same meaning as in a rule. A search word or phrase without a field name, also with a wildcard, searches the fields that the requirement on searched fields names and finds text inside words, so it finds account numbers, IBANs, and the category name.
 
 #### Scenario: Field operator and amount
 
 - **WHEN** the user searches for `name:"Stadtwerke" AND amount<-100`
 - **THEN** the list shows the transactions to counterparties with "Stadtwerke" in the name that withdrew more than 100,00 €
+
+#### Scenario: Word without a field name
+
+- **GIVEN** a transaction with the purpose "REWE-Markt 4711" in the category "Groceries" of the account "Girokonto"
+- **WHEN** the user searches for `"REWE" AND amount<0`, `Groc*`, `/groceries/`, or `Girok*`
+- **THEN** the list shows the transaction
+
+#### Scenario: A quoted word finds text inside words
+
+- **GIVEN** a transaction with the purpose "Lohnsteuer 10/2026"
+- **WHEN** the user searches for `"Lohn"`
+- **THEN** the list shows the transaction
+- **AND** a categorization rule `"Lohn"` does not match it
+
+#### Scenario: Phrase across white space
+
+- **GIVEN** a transaction with the purpose "Abschlag" and "November" on two lines
+- **WHEN** the user searches for `"Abschlag November"`
+- **THEN** the list shows the transaction
+
+#### Scenario: Text the rule language rejects
+
+- **GIVEN** a transaction to "Stadtwerke Musterstadt"
+- **WHEN** the user types `"Stadtw` or `Stadtwerke OR`
+- **THEN** the list shows the transaction, because the app searches the plain words of the text
 
 #### Scenario: Either word
 
