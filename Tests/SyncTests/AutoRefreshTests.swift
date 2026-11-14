@@ -395,6 +395,25 @@ final class AutoRefreshTests {
 		#expect(coordinator.states[bank.id].map { if case .finished = $0 { true } else { false } } == true)
 	}
 
+	@Test("An automatic request that waits after a failed automatic run stays out of the run that the command starts again")
+	func automaticStaysOutOfTheRunAgain() async {
+		let coordinator = SyncCoordinator()
+		let bank = Self.access("Musterbank")
+		let gate = FailureWithStateTests.Gate()
+		let connector = HeldFailure(request: Self.tan, account: Self.giro.accountID, gate: gate, holdsCancel: false)
+		coordinator.refresh(RefreshRequest(access: bank, accounts: [Self.giro]), with: connector, attended: false)
+		await until { gate.isWaiting }
+		// The automatic run failed for want of the user and ends its dialog with the bank. The user refreshes
+		// Giro, and then a tick finds Card due.
+		coordinator.refresh(RefreshRequest(access: bank, accounts: [Self.giro]), with: connector, attended: true)
+		coordinator.refresh(RefreshRequest(access: bank, accounts: [Self.card]), with: connector, attended: false)
+		gate.open()
+		await until { coordinator.broker.current != nil }
+		#expect(coordinator.broker.current?.accountNames == ["Giro"])
+		coordinator.cancelAll()
+		await until { !coordinator.isRefreshing }
+	}
+
 	@Test("A PIN typed into a refresh that a command made attended is not asked again when the bank rejects it")
 	func rejectedTypedPIN() async {
 		let coordinator = SyncCoordinator()

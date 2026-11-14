@@ -85,8 +85,10 @@ public final class SyncCoordinator {
 	///
 	/// A command that the user gives makes every refresh of the access attended: a waiting one, one
 	/// that waits for a run, and a running one, whose next request shows its dialog. A running refresh
-	/// that already failed because it could not ask runs again, attended. An automatic request never
-	/// becomes attended through another refresh of the access.
+	/// that already failed because it could not ask runs again, attended. An automatic request that comes
+	/// while a command waits or runs again never joins it: its accounts stay due for a later run. An
+	/// automatic refresh that waits or runs when the command comes becomes attended, because one session
+	/// of the bank cannot ask for some of its accounts and not for others.
 	public func refresh(_ request: RefreshRequest, with connector: any BankConnector, attended: Bool) {
 		let id = request.access.id
 		if attended { attend(id) }
@@ -283,7 +285,8 @@ public final class SyncCoordinator {
 			// A command came after the refresh had failed for want of the user: run it again with dialogs.
 			if !job.attended, attendance.isOn, !attendance.asked, case let .fail(failure) = event, Self.asksAgain(after: failure) {
 				let again = Job(request: job.request, connector: job.connector, attended: true)
-				afterRun[access.id] = afterRun[access.id].map(again.adding) ?? again
+				// An automatic request that waits after this run stays out of the attended run. Its accounts stay due.
+				afterRun[access.id] = afterRun[access.id].map { $0.attended ? again.adding($0) : again } ?? again
 			}
 			ended(access.id, state, end.accountRefreshes(of: accountIDs, notices: report?.notices ?? [], at: Date()), attendance.isOn)
 			if var next = afterRun.removeValue(forKey: access.id) {
