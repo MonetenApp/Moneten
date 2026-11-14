@@ -12,7 +12,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [x] 1.6 Category settings. Verified by the debug harness snapshot in the first build.
 - [x] 1.7 Category color. Verified by color picker in the settings.
 - [ ] 1.8 Category currency. Build it and verify it with a test or in the app.
-- [x] 1.9 Amount in the sidebar. Verified by sidebar snapshot of the debug harness.
+- [ ] 1.9 Amount in the sidebar. Built for the earlier rule, which left pending transactions out. Tasks 3.1 and 3.2 change it.
 - [x] 1.10 Restrict a category to an account. Verified by CategorizerTests "Rules respect the account restriction".
 - [x] 1.11 Assign a category from the context menu. Verified by "Assign Category" with a checkmark at the current category.
 - [ ] 1.12 Add a category while assigning. Built in part: the menu opens the sheet but does not assign the new category. Finish it and verify it with a test or in the app.
@@ -29,6 +29,11 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 ## 2. Integration
 
 - [ ] 2.1 Check every scenario of the spec in a release build and record the result in the pull request.
+
+## 3. Pending transactions count
+
+- [ ] 3.1 Write the test first in LedgerTests: with today 09.11.2026, a category with a booked -80,00 € and a pending -40,00 € in November 2026 has the sum -120,00 € for "Current month".
+- [ ] 3.2 Move the sum of `AppModel.sidebarAmount(of:)` in `App/Sources/AppModel.swift` into `Ledger`, without the filter that drops pending rows, and let the sidebar use it.
 
 ## Workflow follow-up
 

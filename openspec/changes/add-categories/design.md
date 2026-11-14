@@ -10,6 +10,10 @@ The app keeps all accounts, categories, and transactions of the open database in
 
 The first build follows the spec where the task list marks a task as checked. Open tasks keep the behavior of the spec as the target.
 
+### Sums of a category
+
+The sidebar amount and the status line of a category view add the same rows: every transaction of the category tree in the period, pending ones included, as the change `add-charts` decides. `Domain` owns this sum, so that a test can check it. `App` shows it. Once splits exist, the parts are the rows and the original is not, as the change `add-split-transactions` defines. The currency rule of the requirement "Category currency" stays: the sidebar shows the sum in the currency of the category.
+
 ## Risks / Trade-offs
 
 Tasks marked as built in part may differ from the spec in the way their note says.

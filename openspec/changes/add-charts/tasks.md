@@ -7,8 +7,8 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [x] 1.1 Three view modes. Verified by ⌘1, ⌘2, ⌘3 and the toolbar switch.
 - [x] 1.2 The view mode is remembered. Verified by stored in the user defaults.
 - [x] 1.3 Balance bar chart of an account. Verified by BalanceChartTests "One month shows one bar for the balance at the end of each day" and "Overdrawn days point down from the zero line", and by the debug harness snapshot of the bar chart.
-- [x] 1.4 Balances are computed from the transactions. Verified by LedgerTests "Balances leave out pending transactions".
-- [x] 1.5 Initial balance of a refreshed account. Verified by OpeningBalanceTests: after the first refresh a fetched account with more money out than in ends at its bank balance and is flat before its first row, pending rows and rows after the day of the balance do not count, a refresh whose transactions failed does not set it, and a bank without transactions gets its balance. The debug harness snapshot of issue #109 shows the last bar at the bank balance.
+- [ ] 1.4 Balances are computed from the transactions. Built for the earlier rule, which left pending transactions out. Tasks 3.1 and 3.2 change it.
+- [ ] 1.5 Initial balance of a refreshed account. Built for the earlier rule, which left pending rows and rows after the day of the balance out. Tasks 3.3 and 3.4 change it. Still verified by OpeningBalanceTests: after the first refresh a fetched account with more money out than in ends at its bank balance and is flat before its first row, a refresh whose transactions failed does not set it, and a bank without transactions gets its balance.
 - [x] 1.6 Daily balance or monthly average balance. Verified by the debug harness snapshot in the first build.
 - [x] 1.7 The balance chart follows the period. Verified by the debug harness snapshot in the first build.
 - [x] 1.8 Long periods scroll. Verified by BalanceChartTests "Ten years of daily balances keep one bar per day" and snapshots of the debug harness: the daily chart of `history` opens at today with July to November visible, and 50,000 transactions of `bulk` stay under the perf budget of scripts/perf-check.sh. Scrolling with the trackpad still needs a check by hand.
@@ -33,6 +33,14 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 ## 2. Integration
 
 - [ ] 2.1 Check every scenario of the spec in a release build and record the result in the pull request.
+
+## 3. Pending transactions count
+
+- [ ] 3.1 Write the tests first. LedgerTests and BalanceChartTests: with an initial balance of 1.000,00 € and a pending transaction of -30,00 € in "Groceries" today, the computed balance and the bar of today are 970,00 €, and the withdrawals of the pie hold 30,00 € in "Groceries". Replacing that row by its booked version on the same day leaves every bar unchanged. Replace the test "Balances leave out pending transactions".
+- [ ] 3.2 Count pending rows in `Ledger.computedBalance` and in the balance, category, and pie data of `Sources/Domain/Charts.swift`.
+- [ ] 3.3 Write the tests first in OpeningBalanceTests: a bank balance of 2.500,00 € with booked rows of 700,00 € and a pending row of -30,00 € gives 1.830,00 €, and a row after the day of the balance counts, so the last bar equals the bank balance. Replace the test that leaves pending rows and later rows out.
+- [ ] 3.4 Subtract every row, pending rows included and with no date limit, in `Account.deriveInitialBalance` in `Sources/Domain/Models.swift`. Leave out the rows that the merge drops, which `Sources/Domain/Reconcile.swift` still passes in.
+- [ ] 3.5 Subtract pending rows as well when the migration sets the initial balance in `Sources/Import/MoneyMoneyMigration.swift`, with a test first.
 
 ## Workflow follow-up
 

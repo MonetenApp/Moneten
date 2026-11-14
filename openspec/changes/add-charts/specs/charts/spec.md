@@ -69,7 +69,7 @@ The app SHALL write the text on the slate band behind the title and the chart wi
 
 ### Requirement: Balances are computed from the transactions
 
-The app SHALL compute the balance of each day as the initial balance of the account plus all booked transactions up to the end of that day. Pending transactions do not enter this computation, and the balance that the bank reports enters it only through the initial balance. A portfolio is the exception: its balance on a day is its last recorded value on or before that day, as the capability `securities-accounts` defines, and nothing before its first record.
+The app SHALL compute the balance of each day as the initial balance of the account plus all its transactions up to the end of that day, pending ones included as the requirement "Pending transactions count" states. The balance that the bank reports enters only through the initial balance. A portfolio is the exception: its balance on a day is its last recorded value on or before that day, as the capability `securities-accounts` defines, and nothing before its first record.
 
 #### Scenario: Computed balance
 
@@ -79,19 +79,43 @@ The app SHALL compute the balance of each day as the initial balance of the acco
 
 #### Scenario: Pending transaction
 
-- **GIVEN** a pending transaction of -30,00 € today
+- **GIVEN** an initial balance of 1.000,00 € and a pending transaction of -30,00 € today
 - **WHEN** the app computes the balance of today
-- **THEN** the pending transaction does not change it
+- **THEN** the balance of today is 970,00 €
+
+### Requirement: Pending transactions count
+
+The app SHALL count a pending transaction like a booked one in every computed balance, in every chart, and in every sum of the transactions of an account or a category, from the moment the app stores it. When its booked version replaces it, the booked version counts in its place. When the bank drops it, it no longer counts. The balance that the bank reports stays as the bank reports it.
+
+#### Scenario: Pending transaction in the charts
+
+- **GIVEN** the account "Giro" with an initial balance of 1.000,00 € and a pending transaction of -30,00 € in "Groceries" on 12.11.2026, and no other transaction
+- **WHEN** the user opens the bar chart and then the pie chart of "Giro" on 12.11.2026
+- **THEN** the bar of 12.11.2026 shows 970,00 €
+- **AND** the pie of withdrawals shows "Groceries" with 30,00 €
+
+#### Scenario: The booked version replaces it
+
+- **GIVEN** a pending transaction of -30,00 € on 12.11.2026 in the account "Giro"
+- **WHEN** a refresh replaces it by its booked version of -30,00 € on 12.11.2026
+- **THEN** every bar of the balance chart of "Giro" stays the same
+
+#### Scenario: The bank drops it
+
+- **GIVEN** a pending transaction of -200,00 € on 05.11.2026 for a hotel deposit in the account "Giro"
+- **WHEN** a refresh removes it because the bank no longer delivers it
+- **THEN** every bar of "Giro" from 05.11.2026 on rises by 200,00 €
 
 ### Requirement: Initial balance of a refreshed account
 
-The app SHALL set the initial balance of an account that a bank refreshes to the balance that the bank reported, less the booked transactions up to the end of the day of that balance. Pending transactions do not count. The days before the first transaction show the initial balance. A portfolio, an offline account, and a migrated account keep their initial balance, also when a bank access connects them later.
+The app SHALL set the initial balance of an account that a bank refreshes to the balance that the bank reported, less the sum of all transactions of the account after that refresh, pending ones included. No date limits the sum, so the last bar of the chart shows the balance that the bank reported. The days before the first transaction show the initial balance. A portfolio, an offline account, and a migrated account keep their initial balance, also when a bank access connects them later.
 
 #### Scenario: First refresh
 
-- **GIVEN** the bank reports a balance of 2.500,00 € and delivers booked transactions that add up to 700,00 €
+- **GIVEN** the bank reports a balance of 2.500,00 € and delivers booked transactions that add up to 700,00 € and one pending transaction of -30,00 €
 - **WHEN** the first refresh of the new account ends
-- **THEN** the initial balance is 1.800,00 €
+- **THEN** the initial balance is 1.830,00 €
+- **AND** the last bar shows 2.500,00 €
 
 #### Scenario: More money out than in
 
@@ -102,9 +126,9 @@ The app SHALL set the initial balance of an account that a bank refreshes to the
 
 #### Scenario: Transactions after the day of the balance
 
-- **GIVEN** the bank reports a balance of 500,00 € for 10.11.2026 and delivers booked transactions of -200,00 € on 01.11.2026 and of -30,00 € on 12.11.2026
+- **GIVEN** today is 12.11.2026, and the bank reports a balance of 500,00 € for 10.11.2026 and delivers booked transactions of -200,00 € on 01.11.2026 and of -30,00 € on 12.11.2026
 - **WHEN** the refresh ends
-- **THEN** the initial balance is 700,00 €, the bar of 10.11.2026 shows 500,00 €, and the bar of 12.11.2026 shows 470,00 €
+- **THEN** the initial balance is 730,00 €, and the bar of 12.11.2026 shows 500,00 €
 
 ### Requirement: The initial balance stays
 
@@ -242,7 +266,7 @@ The app SHALL open a calibration window from "Calibrate" in the account settings
 
 ### Requirement: Propose a calibration
 
-The app SHALL propose a calibration when the computed balance of an account differs from the balance that the bank reports. The app makes no proposal when the difference equals the sum of the pending transactions.
+The app SHALL propose a calibration when the computed balance of an account differs from the balance that the bank reports. The computed balance includes the pending transactions, and some banks report a balance without them. So the app makes no proposal when the computed balance differs from the bank balance by exactly the sum of the pending transactions.
 
 #### Scenario: Unexplained difference
 
@@ -252,7 +276,7 @@ The app SHALL propose a calibration when the computed balance of an account diff
 
 #### Scenario: Difference from pending transactions
 
-- **GIVEN** the bank reports 1.200,00 €, the computed balance is 1.250,00 €, and one pending transaction of -50,00 € exists
+- **GIVEN** the bank reports 1.200,00 €, one pending transaction of -50,00 € exists, and the computed balance with it is 1.150,00 €
 - **WHEN** a refresh ends
 - **THEN** the app makes no proposal
 

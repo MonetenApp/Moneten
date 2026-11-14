@@ -29,6 +29,7 @@ None.
 - Issues: #18
 - Modules: `Domain` owns the category tree and the assignment rules. `Storage` owns the sums. `App` owns the sidebar section, the settings popover, and the assignment commands.
 - Depends on the change `add-main-window` for the sidebar and on the change `add-transaction-list` for the list.
+- Depends on the change `add-charts` for the rule that pending transactions count, and on the change `add-split-transactions` for how the parts of a split count.
 - The changes `add-categorization-rules`, `add-budgets`, and `add-charts` add the rule field, the budget fields, and the effect of "Show in diagrams" to the same settings popover.
 - [Data model](../../../docs/data-model.md) says that the transactions of a deleted category move to the parent. This change moves them to "Uncategorized". The data model page needs that correction.
 - Decisions: none apply.
@@ -56,5 +57,6 @@ None.
 - Assignment with the keyboard through a picker with the shortcut ⌘K comes from issue #18. MoneyMoney has no such picker.
 - The starter set of categories comes from issue #18. Whether MoneyMoney ships one was not observed.
 - The currency of a category is the currency of its sidebar amount and of its budget. Transactions in other currencies stay in the category and are summed separately. The exact meaning of the "Currency" field in MoneyMoney was not observed.
+- Pending transactions count in the sidebar amount and in the category view, by the one rule of the change `add-charts`. The money is already spent, so the category shows it at once. A split counts with its parts and never with its original, as the change `add-split-transactions` defines, so no amount counts twice.
 - The app refuses two categories with the same name under the same parent, so that a category path stays unique.
 - Issue #18 also asks for hiding a category. MoneyMoney has no hidden categories, and this change does not specify them.
