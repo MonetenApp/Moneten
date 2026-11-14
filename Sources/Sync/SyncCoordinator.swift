@@ -51,7 +51,8 @@ public final class SyncCoordinator {
 	/// checked again when its turn comes, so the automatic refresh stops when the Mac goes offline or asleep.
 	@ObservationIgnored public var mayStartUnattended: @MainActor () -> Bool = { true }
 	private var inRun = false
-	/// Whether the running refresh of each access may ask the user. A command turns it on while it runs.
+	/// Whether the running refresh of each access may ask the user. A command that names one of its
+	/// accounts turns it on while it runs.
 	private var attendance: [UUID: Attendance] = [:]
 
 	private struct Job {
@@ -88,9 +89,9 @@ public final class SyncCoordinator {
 	/// it names: the one that waits in the queue, which the command joins, one that waits for a run, and a
 	/// running one, whose next request shows its dialog. One session of the bank cannot ask for some of its
 	/// accounts and not for others, so the other accounts of such a refresh may ask too. A refresh that
-	/// fetches none of the named accounts stays unattended. A running refresh that already failed because
-	/// it could not ask runs again, attended. An automatic request that comes while a command waits or
-	/// runs again never joins it: its accounts stay due for a later run.
+	/// fetches none of the named accounts stays unattended. Such a running refresh that already failed
+	/// because it could not ask runs again, attended. An automatic request that comes while a command
+	/// waits or runs again never joins it: its accounts stay due for a later run.
 	public func refresh(_ request: RefreshRequest, with connector: any BankConnector, attended: Bool) {
 		let id = request.access.id
 		if attended { attend(id, naming: Set(request.accounts.map(\.accountID))) }

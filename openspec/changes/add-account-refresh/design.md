@@ -260,6 +260,8 @@ Three parts decide an automatic refresh, each in the module that owns its data:
 - `Sync`: `AutoRefresh` holds the conditions: the setting, the unlock, the presence of the user (the display is awake), and the network. The timer of the app calls `tick()` once a minute. A condition that turns true calls it at once, which covers the launch, the unlock, the wake, and the return of the connection. The clock is injected, so the tests set the time.
 - `App`: `AppModel` feeds the conditions from the lock, `NSWorkspace`, and `NWPathMonitor`, and starts the due accounts with `attended: false`. The coordinator never starts a second session for an access that runs, so a tick during a long refresh adds nothing.
 
+A command and an automatic refresh can meet at one access. The command makes attended exactly the refreshes of the access that fetch an account it names: the one in the queue, the one that waits for a run, and the running one. A refresh that fetches none of the named accounts stays unattended. An automatic request for the same access never joins a command that waits or runs again. Its accounts stay due, and a later tick refreshes them in a session of their own.
+
 The coordinator also reports the end of a run: `runEnded` runs when the last refresh ended that started while others ran. The notification of add-notifications-and-menu-bar comes once per run.
 
 ## Risks / Trade-offs
