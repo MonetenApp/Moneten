@@ -3,9 +3,9 @@ public enum StarterCategories {
 	public enum Language: Sendable, CaseIterable {
 		case english, german
 
-		/// German for a first preferred language such as "de" or "de-DE", English for any other.
-		public init(preferredLanguage: String?) {
-			self = preferredLanguage?.split(separator: "-").first == "de" ? .german : .english
+		/// German for a localization such as "de" or "de-CH", English for any other.
+		public init(localization: String?) {
+			self = localization?.split(separator: "-").first == "de" ? .german : .english
 		}
 	}
 

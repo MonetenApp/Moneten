@@ -354,7 +354,7 @@ final class AppModel {
 
 	func createDatabase(password: String?) {
 		do {
-			let store = try vault.create(password: password, starterCategories: StarterCategories.make(language: .init(preferredLanguage: Locale.preferredLanguages.first)))
+			let store = try vault.create(password: password, starterCategories: StarterCategories.make(language: .init(localization: Bundle.main.preferredLocalizations.first)))
 			hasPassword = password != nil
 			try open(store)
 		} catch {
