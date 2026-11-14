@@ -368,7 +368,13 @@ private struct RuleParser {
 				word.append(chars[i])
 				i += 1
 			}
-			if isFieldValue { tokens.append((.word(word), start)); continue }
+			if isFieldValue {
+				if ["-", "!", "+"].contains(word), i < chars.count, chars[i] == "(" || openQuotes.contains(chars[i]), case let .field(field, op, _)? = tokens.last?.token {
+					throw RuleSyntaxError(position: start, message: #"A sign cannot follow \#(field.rawValue)\#(op). Write \#(field.rawValue)!="…" to exclude a value, or \#(field.rawValue):"…" to match it."#)
+				}
+				tokens.append((.word(word), start))
+				continue
+			}
 			if word.lowercased().hasPrefix("amount"), let cmp = Self.amountComparison(word) {
 				tokens.append((.amount(cmp.0, cmp.1), start))
 				continue
