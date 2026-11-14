@@ -16,8 +16,8 @@ struct UpdateConfirmation: View {
 				Text("The script receives the login data of the service. Nobody from the Moneten project has reviewed it. Install it only when you trust its author.")
 				hosts(of: package)
 				Text("The extension stays marked \"Unverified\".").foregroundStyle(.secondary)
-			case let .review(_, name, version, hosts, fields):
-				Text("Update \(name) to version \(version)?").font(.headline)
+			case let .review(_, name, approval, hosts, fields):
+				Text("Update \(name) to version \(approval.version)?").font(.headline)
 				Text("This version asks for more than the installed one. The installed version is no longer in the catalog, so its accounts can be refreshed only after this update.")
 				if !hosts.isEmpty {
 					Text("New hosts it contacts:")

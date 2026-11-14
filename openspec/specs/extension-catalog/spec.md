@@ -251,6 +251,18 @@ The app SHALL hold an update of a catalog extension that adds a host or a login 
 - **WHEN** the user chooses "Review Update" and confirms
 - **THEN** the app installs 2.32 and the next refresh uses it
 
+#### Scenario: Newer index before the confirmation
+
+- **GIVEN** the update of "Broker" to 2.32, which adds the host `login.broker.example`, waits for the user
+- **WHEN** the app accepts an index that lists version 2.33, which adds the host `data.broker.example` instead
+- **THEN** the entry and the confirmation name version 2.33 with `data.broker.example` only, and confirming installs 2.33
+
+#### Scenario: Same version listed again with other rights
+
+- **GIVEN** the user confirmed the update of "Broker" to 2.32, which adds the host `login.broker.example`, and the update waits for the end of a refresh
+- **WHEN** the app accepts an index that lists 2.32 again, which also adds the host `data.broker.example`
+- **THEN** the app does not install 2.32, and the entry asks for the review of both hosts
+
 #### Scenario: New login field
 
 - **WHEN** version 2.32 of "Broker" adds the login field "One-time code"

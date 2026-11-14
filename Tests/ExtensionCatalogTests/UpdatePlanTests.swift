@@ -8,7 +8,7 @@ import Testing
 		try Manifest.parse(package.files["manifest.json"]!, mode: .catalog)
 	}
 
-	func plan(to change: (inout TestCatalog.Package) -> Void, automatic: Bool = true, sessionRuns: Bool = false, confirmed: String? = nil) throws -> UpdatePlan {
+	func plan(to change: (inout TestCatalog.Package) -> Void, automatic: Bool = true, sessionRuns: Bool = false, confirmed: UpdatePlan.Approval? = nil) throws -> UpdatePlan {
 		let old = TestCatalog.Package()
 		var new = old
 		new.version = "1.1"
@@ -57,18 +57,50 @@ import Testing
 	}
 
 	@Test func confirmedVersionInstallsWithItsNewHost() throws {
-		#expect(try plan(to: { $0.hosts.append("login.example.org") }, confirmed: "1.1") == .install)
-		#expect(try plan(to: { $0.hosts.append("login.example.org") }, sessionRuns: true, confirmed: "1.1") == .afterSession)
+		var new = TestCatalog.Package(version: "1.1")
+		new.hosts.append("login.example.org")
+		let reviewed = UpdatePlan.Approval(version: "1.1", reviewed: try manifest(new))
+		#expect(try plan(to: { $0.hosts.append("login.example.org") }, confirmed: reviewed) == .install)
+		#expect(try plan(to: { $0.hosts.append("login.example.org") }, sessionRuns: true, confirmed: reviewed) == .afterSession)
 	}
 
 	@Test func aNewerVersionNeedsItsOwnConfirmation() throws {
-		#expect(try plan(to: { $0.version = "1.3"; $0.hosts.append("login.example.org") }, confirmed: "1.2")
+		#expect(try plan(to: { $0.version = "1.3"; $0.hosts.append("login.example.org") }, confirmed: .init(version: "1.2"))
 			== .needsConfirmation(hosts: ["login.example.org"], fields: []))
 	}
 
+	/// A login field counts with its service. The user approved "Password" for Example Card. Version 1.1 listed
+	/// again asks for "Password" of Example Depot instead.
+	@Test func approvedFieldOfOneServiceDoesNotCoverAnother() throws {
+		let old = TestCatalog.Package()
+		func adding(_ service: String) throws -> Manifest {
+			var new = old
+			new.version = "1.1"
+			new.manifestFields = ["services": [["name": "Example Bank", "login": old.login], ["name": service, "login": [["label": "Password", "secret": true]]]]]
+			return try manifest(new)
+		}
+		let approval = UpdatePlan.Approval(version: "1.1", reviewed: try adding("Example Card"))
+		#expect(UpdatePlan(installed: try manifest(old), available: try adding("Example Depot"), automatic: true, sessionRuns: false, confirmed: approval)
+			== .needsConfirmation(hosts: [], fields: ["Password"]))
+	}
+
+	/// A null character in a service or a label must not let one login field pass for another.
+	@Test func approvedFieldDoesNotCoverAFieldWithTheSameTextSplitElsewhere() throws {
+		let old = TestCatalog.Package()
+		func adding(service: String, label: String) throws -> Manifest {
+			var new = old
+			new.version = "1.1"
+			new.manifestFields = ["services": [["name": "Example Bank", "login": old.login], ["name": service, "login": [["label": label, "secret": true]]]]]
+			return try manifest(new)
+		}
+		let approval = UpdatePlan.Approval(version: "1.1", reviewed: try adding(service: "Example Card\u{0}Card", label: "Password"))
+		#expect(UpdatePlan(installed: try manifest(old), available: try adding(service: "Example Card", label: "Card\u{0}Password"), automatic: true,
+			sessionRuns: false, confirmed: approval) == .needsConfirmation(hosts: [], fields: ["Card\u{0}Password"]))
+	}
+
 	@Test func confirmedVersionInstallsWithAutomaticUpdatesOff() throws {
-		#expect(try plan(to: { _ in }, automatic: false, confirmed: "1.1") == .install)
-		#expect(try plan(to: { _ in }, automatic: false, confirmed: "1.0") == .waitsForUser)
+		#expect(try plan(to: { _ in }, automatic: false, confirmed: .init(version: "1.1")) == .install)
+		#expect(try plan(to: { _ in }, automatic: false, confirmed: .init(version: "1.0")) == .waitsForUser)
 	}
 
 	@Test func versionsCompareByNumber() throws {
