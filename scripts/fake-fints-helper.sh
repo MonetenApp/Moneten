@@ -14,6 +14,9 @@
 # and four positions (a share with a purchase price, a fund without one, a share in US dollars with an
 # exchange rate, and a bond with a nominal amount and accrued interest), "Leeres Depot", which is empty, and
 # "Fondsdepot", which the bank does not offer through FinTS.
+# The login "langtext" lists only "Tagesgeld". Its refresh sends the transactions of "Tagesgeld" with the
+# error 9210 of the balance request, and then a notice of 100 lines. The refresh of the login "wartung" sends a
+# notice about maintenance and then fails the login with 9800.
 # The bank directory has two branches of Musterbank, the bank without a FinTS server Neobank Muster
 # (99999999), a made-up Sparkasse, and Consorsbank (76030080) and DAB BNP Paribas (70120400) with
 # their real FinTS address, so the setup shows the login hint of Consorsbank and none for DAB.
@@ -62,7 +65,12 @@ case "$cmd" in
 		answer
 	fi
 	echo '{"type":"notice","text":"Wartungsarbeiten am 14.11.2026 von 1 bis 5 Uhr."}'
-	case "$cmd" in *'"user":"unterkonten"'*)
+	case "$cmd" in *'"user":"langtext"'*)
+		echo '{"type":"accounts","accounts":[{"number":"1234567890","product":"Tagesgeld","kind":"10","owner":"Erika Mustermann","currency":"EUR"}]}'
+		echo '{"type":"state","data":"MA=="}'
+		exit 0
+	;;
+	*'"user":"unterkonten"'*)
 		echo '{"type":"accounts","accounts":[{"number":"9","subnumber":"01","product":"Sparkonto","kind":"10","currency":"EUR"},{"number":"9","subnumber":"02","product":"Sparkonto Plus","kind":"10","currency":"EUR"}]}'
 		echo '{"type":"state","data":"MA=="}'
 		exit 0
@@ -79,6 +87,18 @@ case "$cmd" in
 	runs=$(field state | base64 -D 2>/dev/null)
 	echo "$pin"
 	answer
+	case "$cmd" in *'"user":"wartung"'*)
+		echo '{"type":"notice","text":"Wegen Wartungsarbeiten ist das Online-Banking bis 5 Uhr nicht erreichbar."}'
+		echo '{"type":"failed","code":"9800","text":"Dialog abgebrochen"}'
+		exit 0
+	;;
+	*'"user":"langtext"'*)
+		notice=$(i=1; while [ $i -le 100 ]; do printf 'Zeile %s: Neue Bedingungen für das Online-Banking ab 01.01.2027.\\n' $i; i=$((i + 1)); done)
+		echo "{\"type\":\"result\",\"account\":\"1234567890\",\"transactions\":{\"from\":\"$(day 90)\",\"rows\":[{\"booked\":\"$(day 6)\",\"value\":\"$(day 6)\",\"amount\":\"500.00\",\"currency\":\"EUR\",\"name\":\"Erika Mustermann\",\"purpose\":\"Sparen\",\"pending\":false}]},\"errors\":[{\"code\":\"9210\",\"text\":\"Saldo nicht verfügbar\"}]}"
+		printf '%s\n' "{\"type\":\"notice\",\"text\":\"$notice\"}"
+		echo '{"type":"state","data":"MA=="}'
+		exit 0
+	;; esac
 	echo '{"type":"notice","text":"Wartungsarbeiten am 14.11.2026 von 1 bis 5 Uhr."}'
 	echo '{"type":"progress","done":0,"of":3}'
 	sleep 3
