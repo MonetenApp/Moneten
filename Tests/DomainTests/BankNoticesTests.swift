@@ -24,7 +24,7 @@ struct BankNoticesTests {
 		notices.add([Self.maintenance], from: "Beispielbank")
 		#expect(notices.waiting == [
 			BankNotice(bankName: "Musterbank", text: "Wartungsarbeiten am 14.11.2026 von 1 bis 5 Uhr"),
-			BankNotice(bankName: "Musterbank", text: "Neue Preise ab 01.01.2027"),
+			BankNotice(bankName: "Musterbank", code: "3900", text: "Neue Preise ab 01.01.2027"),
 			BankNotice(bankName: "Beispielbank", text: "Wartungsarbeiten am 14.11.2026 von 1 bis 5 Uhr"),
 		])
 		notices.dismiss()
