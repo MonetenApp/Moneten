@@ -239,17 +239,23 @@ struct LedgerTests {
 		#expect(l.dailyBalances(accountIDs: [wallet.id]).map(\.minorUnits) == [10_000, 10_000])
 	}
 
-	@Test("The sum of a category counts only the rows in the currency of the category")
-	func categorySumInCategoryCurrency() {
+	@Test("Mixed currencies: the sidebar sums the category currency, the status line each currency")
+	func categorySumInCategoryCurrency() throws {
 		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
 		let travel = Domain.Category(position: 0, name: "Travel")
 		func row(_ minor: Int64, _ currency: String, _ name: String) -> Transaction {
 			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 10, day: 5), amountMinor: minor, currency: currency, name: name,
 				categoryID: travel.id, categorizedBy: .manual)
 		}
-		let l = Ledger(accounts: [giro], categories: [travel], transactions: [row(-20_000, "EUR", "Hotel"), row(-10_000, "EUR", "Bahn"), row(-5_000, "USD", "Taxi")])
+		var l = Ledger(accounts: [giro], categories: [travel], transactions: [row(-20_000, "EUR", "Hotel"), row(-10_000, "EUR", "Bahn"), row(-5_000, "USD", "Taxi")])
 		#expect(l.sum(ofCategory: travel, in: .all) == Money(minorUnits: -30_000, currency: "EUR"))
-		#expect(l.transactions(in: .category(travel.id)).count == 3)
+		let statusLine = l.transactions(in: .category(travel.id)).reduce(into: MoneySums()) { $0.add($1.amount) }
+		#expect(statusLine.amounts == [Money(minorUnits: -30_000, currency: "EUR"), Money(minorUnits: -5_000, currency: "USD")])
+
+		var inDollars = travel
+		inDollars.currency = "USD"
+		l.upsert(inDollars)
+		#expect(l.sum(ofCategory: try #require(l.category(travel.id)), in: .all) == Money(minorUnits: -5_000, currency: "USD"))
 	}
 
 	@Test("The ledger knows which accounts have transactions, also after a delete")
