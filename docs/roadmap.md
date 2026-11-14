@@ -47,22 +47,13 @@ Fetch, categorize, and understand your money. Read-only.
 | Issue | Labels | Depends on |
 |---|---|---|
 | [#1 Set up the Swift package and CI](https://github.com/MonetenApp/Moneten/issues/1) | area: foundation | None |
-| [#2 Prototype GRDB with SQLCipher through Swift Package Manager](https://github.com/MonetenApp/Moneten/issues/2) | area: foundation, kind: prototype | None |
 | [#3 Define the core domain types](https://github.com/MonetenApp/Moneten/issues/3) | area: foundation | #1 |
 | [#4 Build the encrypted store, migrations, and Keychain access](https://github.com/MonetenApp/Moneten/issues/4) | area: foundation | #2, #3 |
 | [#5 Build the app shell with sidebar, transaction list, and settings](https://github.com/MonetenApp/Moneten/issues/5) | area: core | #4 |
-| [#6 Define BankConnector, SyncSession, Challenge, and the sync state machine](https://github.com/MonetenApp/Moneten/issues/6) | area: foundation | #3 |
 | [#7 De-duplicate transactions and reconcile pending rows with booked rows](https://github.com/MonetenApp/Moneten/issues/7) | area: core | #3 |
 | [#8 Export and re-import all data as JSON, and export CSV](https://github.com/MonetenApp/Moneten/issues/8) | area: core | #4 |
-| [#9 Apply for FinTS product registration](https://github.com/MonetenApp/Moneten/issues/9) | area: fints, kind: organization | None |
-| [#10 Ask the HBCI4Swift author about a joint Swift package](https://github.com/MonetenApp/Moneten/issues/10) | area: fints, kind: organization | None |
 | [#11 Run the first FinTS bank tests](https://github.com/MonetenApp/Moneten/issues/11) | area: fints, kind: prototype | #9 |
-| [#12 Turn HBCI4Swift into a tested Swift package](https://github.com/MonetenApp/Moneten/issues/12) | area: fints | #11, #10 |
 | [#13 Build the FinTS connector for accounts, balances, and transactions](https://github.com/MonetenApp/Moneten/issues/13) | area: fints | #6, #7, #9 |
-| [#14 Run Lua 5.4 extensions in a sandboxed XPC process](https://github.com/MonetenApp/Moneten/issues/14) | area: extensions | #6 |
-| [#15 Implement the MoneyMoney-compatible extension API](https://github.com/MonetenApp/Moneten/issues/15) | area: extensions | #14 |
-| [#16 Build the ext command line tool with record and replay](https://github.com/MonetenApp/Moneten/issues/16) | area: extensions | #15 |
-| [#17 Write the extension author guide](https://github.com/MonetenApp/Moneten/issues/17) | area: extensions | #16 |
 | [#18 Add categories with a tree and manual assignment](https://github.com/MonetenApp/Moneten/issues/18) | area: core | #5 |
 | [#19 Categorize new transactions with rules](https://github.com/MonetenApp/Moneten/issues/19) | area: core | #18 |
 | [#20 Search and filter transactions](https://github.com/MonetenApp/Moneten/issues/20) | area: core | #5 |
@@ -72,26 +63,16 @@ Fetch, categorize, and understand your money. Read-only.
 | [#24 Migrate accounts, transactions, and categories from MoneyMoney](https://github.com/MonetenApp/Moneten/issues/24) | area: import | #18 |
 | [#25 Sign, notarize, and update the app with Sparkle](https://github.com/MonetenApp/Moneten/issues/25) | area: release | #1 |
 | [#26 Review security before the first public release](https://github.com/MonetenApp/Moneten/issues/26) | area: release | #13, #15, #25 |
-| [#37 Install and update extensions from a signed catalog](https://github.com/MonetenApp/Moneten/issues/37) | area: extensions | #15, #87 |
 | [#39 Split a transaction across several categories](https://github.com/MonetenApp/Moneten/issues/39) | area: core | #18 |
 | [#40 Refresh accounts automatically and notify about new transactions](https://github.com/MonetenApp/Moneten/issues/40) | area: core | #13, #5 |
-| [#42 Run three published MoneyMoney extensions unchanged as a compatibility test](https://github.com/MonetenApp/Moneten/issues/42) | area: extensions | #14, #15, #16 |
-| [#43 Check whether MoneyMoney sends payments through extensions](https://github.com/MonetenApp/Moneten/issues/43) | area: extensions, area: payments, kind: prototype | None |
-| [#85 Add bank accesses in the app: assistant, refresh commands, and status (#13, part 2)](https://github.com/MonetenApp/Moneten/issues/85) | area: fints, area: core | #13, #80, #88 |
 | [#86 Save PINs and finish the TAN dialogs (#13, part 3)](https://github.com/MonetenApp/Moneten/issues/86) | area: fints | #13 |
-| [#87 Check and sign extension packages in the catalog repository](https://github.com/MonetenApp/Moneten/issues/87) | area: extensions | #16 |
-| [#88 Show installed and installable extensions in an Extensions window](https://github.com/MonetenApp/Moneten/issues/88) | area: extensions | #37, #85 |
-| [#96 Keep the FinTS certificate check from blocking a thread of the cooperative pool](https://github.com/MonetenApp/Moneten/issues/96) | area: fints | #92 |
-| [#103 Refuse special-use host names such as .localhost in the extension host](https://github.com/MonetenApp/Moneten/issues/103) | area: extensions | None |
-| [#104 Record the host rules from the E2 and E3 reviews in the extension specs](https://github.com/MonetenApp/Moneten/issues/104) | documentation, area: extensions | None |
 | [#105 Publish a signed release of the ext tool](https://github.com/MonetenApp/Moneten/issues/105) | area: extensions, area: release | #25 |
 | [#106 Archive the merged OpenSpec changes and regenerate the roadmap](https://github.com/MonetenApp/Moneten/issues/106) | documentation | None |
-| [#107 Remove HBCI4Swift and the FinTS probe app](https://github.com/MonetenApp/Moneten/issues/107) | area: fints | None |
-| [#108 Make Add Account find banks by name and explain bank-specific login names](https://github.com/MonetenApp/Moneten/issues/108) | enhancement, area: fints | None |
-| [#109 Show a fetched account's balance history from its bank balance, not from zero](https://github.com/MonetenApp/Moneten/issues/109) | bug, area: core | None |
-| [#110 Fetch the value of FinTS securities accounts instead of leaving them unrefreshed](https://github.com/MonetenApp/Moneten/issues/110) | bug, area: fints | None |
 | [#117 Follow-ups to the special-use host names of #115](https://github.com/MonetenApp/Moneten/issues/117) | area: extensions | None |
 | [#118 Keep personal data out of every debug harness log line](https://github.com/MonetenApp/Moneten/issues/118) | area: core | None |
+| [#120 Finish the app side of the FinTS tasks that part 3 left open](https://github.com/MonetenApp/Moneten/issues/120) | area: fints | None |
+| [#121 List extension services by name and the offline account last in Add Account](https://github.com/MonetenApp/Moneten/issues/121) | bug, area: extensions | None |
+| [#123 Make the catalog index performance test measure a median, not one cold run](https://github.com/MonetenApp/Moneten/issues/123) | area: extensions | None |
 
 ## v0.2 Pay
 

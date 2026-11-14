@@ -55,7 +55,7 @@ def change_rows(changes, repo, with_issues):
 repo = subprocess.run(["gh", "repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"],
 	capture_output=True, text=True, check=True).stdout.strip()
 milestones = sorted(gh(f"repos/{repo}/milestones?state=all&per_page=100"), key=lambda m: m["title"])
-issues = [i for i in gh(f"repos/{repo}/issues?state=all&per_page=100") if "pull_request" not in i]
+issues = [i for i in gh(f"repos/{repo}/issues?state=open&per_page=100") if "pull_request" not in i]
 changes = read_changes()
 
 lines = [
