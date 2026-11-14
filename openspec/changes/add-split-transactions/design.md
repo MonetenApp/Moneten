@@ -11,7 +11,7 @@ What main has today, and what a split must not break:
 - `Ledger.transactions(in:filter:)` gives the rows of the list, the category view, the status line, the charts of categories, the search, and the filters. `Ledger.sum(ofCategory:in:)` reads it for the amount in the sidebar.
 - `RuleApplier.apply` walks `Ledger.transactions`. `reconcile` runs `Categorizer.categorize` on a row whose bank fields changed.
 - `AppModel.commit` writes changed rows with `Store.save` and then calls `Ledger.update`. `AppModel.assign`, `setChecked`, `toggleChecked`, `markAllChecked`, and `setComment` find their rows with `Ledger.transaction(_:)`, and so do the views. `AppModel.save(transaction:)` runs the `Categorizer` on a row without a category whose category was not set by hand.
-- `Ledger.upsert(_:)` of a renamed account builds the search text of its transactions again, because the search text holds the account name.
+- `Ledger.rebuildIndexes()` builds the search text of every row of `transactions`. `init` calls it, and so does `replace` with accounts or transactions, which the removal of an account and of an account group call. `Ledger.upsert(_:)` of a renamed account builds the search text of its transactions again, because the search text holds the account name.
 - App settings live in `UserDefaults` through the keys of `Preference`.
 - Periphery runs in strict mode on the app schemes, not on the tests. A declaration that only a test calls fails `scripts/check.sh`.
 
@@ -51,9 +51,9 @@ Alternatives considered:
 - `SplitPart`: `id`, `transactionID`, `position`, `amountMinor`, `categoryID?`, `comment?`, `vat?`. The `id` is the ID of the row of the part in the list. A part has the currency of its transaction. `categoryID` nil means "Uncategorized", as for a transaction.
 - `VATShare`: `role` (`net` or `tax`) and `rate`. Only the parts of a VAT split have one. The list shows "(net)" or "(19% VAT)" from it. The rate stays on the part when the user later changes the list of rates.
 - `VATRate`: `hundredths`, the rate in hundredths of a percent, so 19 % is 1900 and 8,1 % is 810. `VATRate.standard` is 19 % and 7 %. Hundredths keep the rates of Switzerland and Austria exact, and the arithmetic stays in integers.
-- `SplitError`: `pending` for a row that the bank has not booked, `zeroPart` for a split that would make a part of 0, `onePart` for a list with a single part, and `unbalanced` for parts that do not add up to the amount of their transaction.
+- `SplitError`: `pending` for a row that the bank has not booked, `zeroPart` for a split that would make a part of 0, `onePart` for a list with a single part, `unbalanced` for parts that do not add up to the amount of their transaction, and `otherTransaction` for a part whose `transactionID` is not the transaction that the parts replace.
 
-The parts of one transaction are at least two, none is 0, and they add up to its amount. Only the functions of `Split.swift` build parts, so the rule lives in one file. `Store.replaceParts(of:with:)` checks the rule again against the stored transaction, because the store is the last place before the database.
+The parts of one transaction are at least two, none is 0, and they add up to its amount. Only the arithmetic of `Split.swift` computes the amounts of parts, so the rule lives in one file. `Store.replaceParts(of:with:)` checks the rule again against the stored transaction, because the store is the last place before the database.
 
 ### The arithmetic
 
@@ -70,13 +70,15 @@ The parts of one transaction are at least two, none is 0, and they add up to its
 
 `Ledger.transactions(in:filter:)` becomes `Ledger.rows(in:filter:)`, so each call site says what it counts. A row is a transaction without a split, or a part row in place of a split transaction. A part row is a `Transaction` value with the ID, the amount, the category, and the comment of the part. Its `categorizedBy` is always `manual`, also without a category, because the user sets the category of a part and no rule does. So `Categorizer.categorize` leaves a part row as it is. Every other field comes from the original: the date, the counterparty, the purpose, the account, the checkmark, and the marks for new and for review. The parts of one transaction follow each other in the order of `position`.
 
-`Ledger.replaceParts(of:with:)` sets the parts of one transaction, and an empty list removes them. The ledger keeps the part rows of each split transaction and builds them again when its parts or its original change. `rows(in:filter:)` puts them in place of the original while it filters. The ledger keeps no second copy of all 50,000 rows, and a ledger without splits filters as before. `Ledger.row(_:)` finds a row by its ID. `Ledger.transaction(_:)` still finds only stored transactions.
+`Ledger.replaceParts(of:with:)` sets the parts of one transaction, and an empty list removes them. The ledger keeps the part rows of each split transaction. `rows(in:filter:)` puts them in place of the original while it filters. The ledger keeps no second copy of all 50,000 rows, and a ledger without splits filters as before. `Ledger.row(_:)` finds a row by its ID. `Ledger.transaction(_:)` still finds only stored transactions. `Ledger.row(_:)` gives nil for the ID of a split original, because no row shows it.
 
-`Ledger.init` takes the parts with the parameter `parts:`, and `Store.loadLedger` passes them. The dictionary of parts by transaction lives in `Ledger.swift`. `Ledger.parts(of:)` goes into `Split.swift`, because until the rows of group 3 read the parts, only the tests of group 2 call it, and `retain_files` lists that file.
+One private function in `Ledger.swift` builds the search text of a transaction and, for a split transaction, its part rows with their search texts. `rebuildIndexes()` calls it for every transaction. So `init` and every `replace` keep the part rows and their search texts, also the removal of an account group, which calls `replace(groups:accounts:)` and builds every search text again. `update(_:)`, `replaceParts(of:with:)`, and `upsert(_:)` of a renamed account call it for the transactions that they change. `remove(transactionIDs:)` drops the parts and the part rows of the removed transactions. `apply(_:)` of a merge goes through `update(_:)`, so a split original that takes a source ID gets its part rows built again.
+
+`Ledger.init` takes the parts with the parameter `parts:`, and `Store.loadLedger` passes them. The dictionary of parts by transaction, `Ledger.parts(of:)`, and every other function of the ledger that this design adds live in `Ledger.swift`, because they read the private state of the ledger, such as `searchText` and `transactionIndex`.
 
 The search text of a part row holds the fields of the original, the comment of the part, the amount of the part, and the amount of the original. A search for -80,00 then finds both parts of the receipt, whose sum the status line shows as -80,00 €.
 
-Removing an account, a transaction, or a category changes the parts in the ledger as the database does. The parts of a removed transaction go, and a part of a removed category becomes uncategorized. `AppModel.remove(category:)` changes the transactions of the ledger itself today. A ledger function takes that over for the transactions and the parts. `Ledger.upsert(_:)` of a renamed account builds the part rows of its transactions again, so that their search text holds the new name.
+Removing an account, a transaction, or a category changes the parts in the ledger as the database does. The parts of a removed transaction go, and a part of a removed category becomes uncategorized. `AppModel.remove(category:)` changes the transactions of the ledger itself today. A ledger function takes that over for the transactions and the parts.
 
 ### Where each count reads
 
@@ -94,14 +96,16 @@ No place counts a split twice, because `rows(in:filter:)` never holds a split or
 
 ### Writing a change of a row
 
-`Ledger.changes(from:)` turns changed rows into what the store writes: transactions and parts. A part row gives its category and its comment to its part. Its checkmark and its marks for new and for review go to the original, and several rows of one original give one original. A row whose ID the ledger does not hold is a new transaction. `AppModel.commit` calls it and writes both with `Store.save` in one transaction, then gives both to `Ledger.update`.
+`Ledger.changes(from:)` turns changed rows into what the store writes: transactions and parts. A part row gives its category and its comment to its part. Its checkmark and its marks for new and for review go to the original, and several rows of one original give one original. The row of a transaction without a split gives that transaction. A row whose ID the ledger does not hold is a new transaction, as "Add Transaction..." in `Sheets.swift` saves it. A row with the ID of a split original gives nothing, because `Ledger.row(_:)` never gives such a row.
+
+Each path below calls `Ledger.changes(from:)` and passes the transactions and the parts of the result to `AppModel.commit`. `AppModel.commit` writes both with `Store.save` in one transaction, then gives both to `Ledger.update`. `Store.save` for transactions takes the parts as well. It writes each part with `update` of the columns `categoryID` and `comment` only, so a save never changes the amount of a part, and it refuses a part that the database does not hold. Only `Store.replaceParts(of:with:)` adds parts.
 
 Every path that changes a row finds it with `Ledger.row(_:)`, because `Ledger.transaction(_:)` never finds the ID of a part:
 
 - `AppModel.assign`, which the drop of rows on a category in `SidebarView`, the menu "Assign Category", the category ribbon, "Remove Transaction from Category", and `AppModel.addCategory(assigning:)` call.
 - `AppModel.setChecked`, `toggleChecked`, and `markAllChecked`. `markAllChecked` counts the transactions that `Ledger.changes(from:)` gives for its rows, so a split counts once in its question.
 - `AppModel.setComment`.
-- `AppModel.save(transaction:)`. It first calls `Ledger.changes(from:)` and runs the `Categorizer` only on the transactions of the result. A part is a `SplitPart` there, which the `Categorizer` cannot take. So "Edit Transaction..." on a part without a category saves it without a category, also when the sheet sets `categorizedBy` to `none` because the user cleared the category. Today the function adds the row to a copy of the ledger with `Ledger.update` before it runs the rules, which would add a part row as a transaction.
+- `AppModel.save(transaction:)`. It calls `Ledger.changes(from:)`, then `Categorizer(ledger: ledger).categorize(&t)` on each transaction of the result that has no category and whose category was not set by hand, and commits. `Categorizer(ledger:)` reads only the accounts and the categories of the ledger, so the function needs no copy of the ledger with the new row. A part is a `SplitPart` in the result, which the `Categorizer` never sees. So "Edit Transaction..." on a part without a category saves it without a category, also when the sheet sets `categorizedBy` to `none` because the user cleared the category.
 - The views that read a selected row: `TransactionMenu`, the category ribbon, and the category choices in `TransactionsView.swift`, and the comment sheet and `TransactionSheet` in `Sheets.swift`.
 
 "Edit Transaction..." on a part shows the bank fields read-only, as for a fetched row, and saves the category and the comment of the part.
@@ -110,7 +114,7 @@ The checkmark belongs to the whole transaction, because the user checks a transa
 
 ### A refresh recognizes the original and changes nothing
 
-`reconcile` takes the IDs of the split transactions of the account. `Store.merge` reads them inside its write transaction, as it reads the stored rows, and `MoneyMoneyMigration.plan` takes them from the ledger. A delivered row whose partner is a split original never adds a row. The original may take the link of the delivered row, its source ID and `isFetched`, because the link changes no amount and no category. It never takes the bank fields, and the rules never run on it. The parts keep their sum, and an undo still gives back the category from before the split.
+`reconcile` takes the IDs of the split transactions of the account. `Store.merge` reads them from `splitPart` inside its write transaction, as it reads the stored rows, and `MoneyMoneyMigration.plan` takes them from the ledger. A delivered row whose partner is a split original never adds a row. The original may take the link of the delivered row, its source ID and `isFetched`, because the link changes no amount and no category. It never takes the bank fields, and the rules never run on it. The parts keep their sum, and an undo still gives back the category from before the split.
 
 A delivered row finds a split original in three ways, and each one only links:
 
@@ -132,7 +136,7 @@ Migration `v16` in `Sources/Storage/Schema.swift` adds the table `splitPart`. It
 - `vat` is JSON, as `account.refreshError` is.
 - The parts go with their transaction, and so with their account.
 
-`SplitPart` is a GRDB record like `Transaction`. `Store.loadLedger` reads the parts. `Store.save` for transactions also takes parts, for `AppModel.commit`.
+`SplitPart` is a GRDB record like `Transaction`. `Store.loadLedger` reads the parts. The section "Writing a change of a row" says how `Store.save` writes a changed part.
 
 `Store.replaceParts(of:with:)` deletes the parts of a transaction and writes the new ones in one write transaction. An empty list is the undo. Inside the same write transaction, before it changes a row, it reads the stored transaction and throws when the new parts break the rule of a split:
 
@@ -140,6 +144,7 @@ Migration `v16` in `Sources/Storage/Schema.swift` adds the table `splitPart`. It
 - `SplitError.onePart` for a list with one part.
 - `SplitError.zeroPart` when a part is 0.
 - `SplitError.unbalanced` when the parts do not add up to the stored amount.
+- `SplitError.otherTransaction` when the `transactionID` of a part is not the transaction of `of:`.
 
 The foreign key refuses parts of a transaction that the database no longer holds. A refused call leaves the parts as they were.
 
@@ -147,7 +152,7 @@ The foreign key refuses parts of a transaction that the database no longer holds
 
 The context menu of a row gets the submenu "Split Transaction" with "Split Amount...", one entry "Split 19% VAT" for each rate, "Split from Batch Payment", and "Undo Split Transaction...". The entries are enabled for one selected row. On a pending row, "Split Amount..." and the VAT entries say that only booked transactions can be split and change nothing. "Split from Batch Payment" is always disabled. "Undo Split Transaction..." is enabled only on a part.
 
-The split window `SplitSheet` shows the row, the field for the amount, and the remainder. "Next Split" keeps the entered amount and empties the field. The window marks the field for an amount of 0, for an amount that leaves a remainder of 0, and for text that is not a number. A split and an undo remove a shown row and add others. So both go through `AppModel.replaceParts(of:with:)`, which writes with `Store.replaceParts(of:with:)` and `Ledger.replaceParts(of:with:)` inside `AppModel.replacingTable`, as a refresh that removes shown rows does (issues #135 and #151). After a split the new parts are selected, and after an undo the original. Task 4.3 adds `AppModel.replaceParts(of:with:)` with the debug harness command `split`, so that the app can check the change path of group 4 before the commands exist.
+The split window `SplitSheet` shows the row, the field for the amount, and the remainder. "Next Split" keeps the entered amount and empties the field. Confirming with an empty field adds no part once "Next Split" kept at least one amount, so 25,00, "Next Split", and confirm on -80,00 € give -25,00 € and -55,00 €. Without a kept amount, the confirm button stays disabled while the field is empty. The window marks text in the field when `Split.amount(from:sign:decimalMark:)` gives nil for it, and it marks an amount of 0 and an amount that leaves a remainder of 0. It does not use `marksUnreadableAmount` of `App/Sources/Views/Format.swift`, which reads the text without the decimal mark and so marks "1.250". An empty field is not marked. A split and an undo remove a shown row and add others. So both go through `AppModel.replaceParts(of:with:)`, which writes with `Store.replaceParts(of:with:)` and `Ledger.replaceParts(of:with:)` inside `AppModel.replacingTable`, as a refresh that removes shown rows does (issues #135 and #151). After a split the new parts are selected, and after an undo the original. Task 4.3 adds `AppModel.replaceParts(of:with:)` with the debug harness command `split`, so that the app can check the change path of group 4 before the commands exist.
 
 A part row shows a mark and "Part of -80,00 €" with the amount of the original, and the label of a VAT part. The pull request settles the look with snapshots.
 
@@ -159,19 +164,24 @@ A part row shows a mark and "Part of -80,00 €" with the amount of the original
 
 ### Order of the work
 
-Each group of `tasks.md` is one pull request. Groups 1 to 3 add code that at first only tests call: the arithmetic, `Ledger.parts(of:)`, `Ledger.replaceParts(of:with:)`, and `Store.replaceParts(of:with:)`. Group 4 calls the last two from the debug harness, and group 6 from the commands. They put that code into `Split.swift` in `Sources/Domain` and `Store+Split.swift` in `Sources/Storage` and list both files in `retain_files` of `.periphery.yml`, as the sync model is listed until the connectors use it. Task 6.8 removes both lines.
+Each group of `tasks.md` is one pull request. Groups 1 to 3 add code that at first only tests call: the arithmetic, `Ledger.parts(of:)`, `Ledger.replaceParts(of:with:)`, and `Store.replaceParts(of:with:)`. Group 4 calls the last two from the debug harness, and group 6 from the commands.
+
+- The types and the pure arithmetic go into `Split.swift` in `Sources/Domain`, and `Store.replaceParts(of:with:)` into `Store+Split.swift` in `Sources/Storage`. Both files go into `retain_files` of `.periphery.yml`, as the sync model is listed until the connectors use it.
+- `Ledger.parts(of:)` and `Ledger.replaceParts(of:with:)` stay in `Ledger.swift`, because they read its private state. Each gets a `// periphery:ignore` comment that names task 6.8, as `Sources/Domain/Reconcile.swift` marks the fields of `Key`.
+
+Task 6.8 removes both lines of `retain_files` and every `// periphery:ignore` that names it. `periphery scan` then shows that each declaration has a caller in the app.
 
 Group 3 makes the list read the rows, and group 4 makes the changes write parts. Between the two, a part row cannot be changed in the app. No path of the app makes a split before the harness command of group 4, so no user meets that state.
 
 ## Risks / Trade-offs
 
 - A bank can deliver a split transaction again with the same source ID and another amount. The original keeps its old amount, and the balance of the account differs from the bank by the difference. Banks change booked amounts rarely. The user undoes the split, and the next refresh takes the new amount.
-- A part row is a `Transaction` value whose ID is not in `bankTransaction`. Writing it with `Store.save` as a transaction would add a row that changes the balance. Only `AppModel.commit` writes rows, and it always goes through `Ledger.changes(from:)`. The tests of 4.1 check that a changed part row gives a part and no transaction.
+- A part row is a `Transaction` value whose ID is not in `bankTransaction`. Writing it with `Store.save` as a transaction would add a row that changes the balance. Only `AppModel.commit` writes rows, and it takes only the result of `Ledger.changes(from:)`. The tests of 4.1 check that a changed part row gives a part and no transaction.
 - How the `export transactions` of MoneyMoney carries a split booking is not recorded. `docs/research/moneymoney-analysis.md` names only the window and the menu entries. `MoneyMoneyMigration.plan` makes one transaction of each row of the export, so parts that the export lists as rows arrive today as separate transactions. If the export lists the original as a row as well, the balance counts the amount twice. The proposal of `add-moneymoney-migration` says that the app keeps such parts as separate transactions and names them in the report. The code writes no such note yet. This design leaves the migration as it is. The section "Later" of `tasks.md` names the work.
 - Checking one part checks all parts of the transaction. A user who wants to check parts one by one cannot. The bank statement has one line for the transaction, so one checkmark fits it.
 - A search for the amount of the original lists all its parts. This finds the transaction by the amount on the bank statement.
 - The list of VAT rates belongs to the user account of the Mac, not to the database. A second database shows the same rates. Each part keeps its rate, so changing the list changes no part.
-- `rows(in:filter:)` looks up each row in the part rows when the ledger has splits. Task 3.3 holds it to the budget of `PerformanceTests` with 50,000 transactions and 1,000 splits.
+- `rows(in:filter:)` looks up each row in the part rows when the ledger has splits, and the build and `update(_:)` build part rows. Task 3.3 builds the ledger of `PerformanceTests` with 1,000 splits among its 50,000 transactions and keeps its four budgets: the build, the search, the category view, and the update.
 
 ## Migration Plan
 
