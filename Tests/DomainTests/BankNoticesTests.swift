@@ -57,4 +57,15 @@ struct BankNoticesTests {
 		notices.add([Self.maintenance], from: "Beispielbank")
 		#expect(notices.waiting == [BankNotice(bankName: "Beispielbank", text: "Wartungsarbeiten am 14.11.2026 von 1 bis 5 Uhr")])
 	}
+
+	@Test("A notice about one account keeps the account and the code, and each account has a notice of its own")
+	func aboutOneAccount() {
+		var notices = BankNotices()
+		notices.add([BankMessage(code: "9210", text: "Saldo nicht verfügbar", accountName: "Tagesgeld"),
+			BankMessage(code: "9210", text: "Saldo nicht verfügbar", accountName: "Girokonto")], from: "Musterbank")
+		#expect(notices.waiting == [
+			BankNotice(bankName: "Musterbank", accountName: "Tagesgeld", code: "9210", text: "Saldo nicht verfügbar"),
+			BankNotice(bankName: "Musterbank", accountName: "Girokonto", code: "9210", text: "Saldo nicht verfügbar"),
+		])
+	}
 }

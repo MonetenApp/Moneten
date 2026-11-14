@@ -662,7 +662,7 @@ struct FinTSConnectorTests {
 		#expect(loanFailure == .unsupported("The FinTS server of the bank offers neither the balance nor the transactions of this account."))
 
 		#expect(report.state == AccessState(Data([1, 2, 3])))
-		#expect(report.notices == [BankMessage(text: "Neue Bedingungen ab 1.12."), BankMessage(code: "9210", text: "Saldo nicht verfügbar")])
+		#expect(report.notices == [BankMessage(text: "Neue Bedingungen ab 1.12."), BankMessage(code: "9210", text: "Saldo nicht verfügbar", accountName: "Card")])
 		#expect(session.events == [.progress(.fetching(done: 0, of: 3)), .progress(.fetching(done: 1, of: 3))])
 	}
 
