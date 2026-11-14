@@ -52,4 +52,9 @@ None.
 - Categorization rules do not move the parts of a split. MoneyMoney's behavior was not observed.
 - After an undo, the original has the category and the comment that it had before the split.
 - A part of a split cannot be deleted alone.
+- The checkmark belongs to the whole transaction. Checking one part checks all parts, because the bank statement has one line for the transaction. MoneyMoney's behavior was not observed.
+- Entering the whole amount of a transaction in the split window is refused like an amount of zero, because it leaves a part of zero.
+- Splitting a part again replaces it in place by its new parts. They belong to the same transaction, so one undo brings back the original. MoneyMoney's behavior was not observed.
+- A search for the amount of the original transaction finds all its parts, so the user finds a split by the amount on the bank statement.
+- Splitting a part of a VAT split again gives new parts without the label for net or VAT, because the label of a whole net amount does not fit a share of it. MoneyMoney's behavior was not observed.
 - The VAT split cuts the net part toward zero at the cent, and the tax part takes the rest. The parts then always add up to the gross amount, a refund splits into the same parts with the opposite sign, and the rule has no special case for half a cent. The tax part can be one cent larger than on an invoice that rounds the tax: -10,00 € at 7 % gives a net part of -9,34 € and a tax part of -0,66 €, and a refund of 10,00 € gives 9,34 € and 0,66 €.
