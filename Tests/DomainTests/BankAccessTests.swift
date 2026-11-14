@@ -232,6 +232,29 @@ struct BankAccessTests {
 		#expect(plan?.map(\.since) == [nil, Day(year: 2026, month: 10, day: 18)])
 	}
 
+	@Test("A refresh asks from the oldest pending row, so it removes a deposit older than the overlap that the bank dropped")
+	func sincePending() {
+		var giro = Self.bankAccount("Giro", refreshedAt: Self.noon.addingTimeInterval(21 * 86_400))
+		giro.initialBalanceMinor = 100_000
+		var deposit = Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 1), amountMinor: -50_000, name: "Autovermietung Beispiel",
+			purpose: "Kaution", isPending: true)
+		deposit.isFetched = true
+		var ledger = Ledger(accounts: [giro], transactions: [deposit])
+		let firstDays = DayRange(start: Day(year: 2026, month: 11, day: 1), end: Day(year: 2026, month: 11, day: 10))
+		#expect(ledger.balanceBars(accountIDs: [giro.id], range: firstDays, calendar: Self.utc).map(\.minorUnits) == Array(repeating: 50_000, count: 10))
+		let since = ledger.refreshAccounts(.all, calendar: Self.utc)[Self.accessID]?.first?.since
+		#expect(since == Day(year: 2026, month: 11, day: 1))
+
+		let charge = Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 22), amountMinor: -48_000, name: "Autovermietung Beispiel",
+			purpose: "Miete")
+		let delivery = Delivery.refresh(RefreshResult(balance: nil, transactions: FetchedTransactions(rows: [charge], from: since)))
+		let r = reconcile(delivery, into: giro, stored: [deposit], deleted: [], rules: Categorizer(ledger: ledger), now: Self.noon.addingTimeInterval(21 * 86_400))
+		#expect(r.dropped == [deposit.id])
+		ledger.apply(r)
+		#expect(ledger.computedBalance(of: giro) == Money(minorUnits: 52_000, currency: "EUR"))
+		#expect(ledger.balanceBars(accountIDs: [giro.id], range: firstDays, calendar: Self.utc).map(\.minorUnits) == Array(repeating: 100_000, count: 10))
+	}
+
 	// MARK: Status of an account
 
 	@Test("A refresh records its time and clears the error, a failure keeps the last time and shows the error")
