@@ -25,6 +25,19 @@ public enum TransactionFileImporter {
 		}
 	}
 
+	/// A value of a file that the import could not use and replaced. The file is imported anyway.
+	public enum Warning: Sendable, Equatable, CustomStringConvertible {
+		case unknownCurrency(line: Int, cell: String, replacement: String)
+		case unreadableValueDate(line: Int, cell: String)
+
+		public var description: String {
+			switch self {
+			case let .unknownCurrency(n, cell, replacement): "Line \(n): The currency \(cell) is unknown. The transaction is in \(replacement), the currency of the account."
+			case let .unreadableValueDate(n, cell): "Line \(n): The value date \(cell) cannot be read. The transaction has no value date."
+			}
+		}
+	}
+
 	public static func detect(_ text: String) -> Format? {
 		let head = text.prefix(4096)
 		if head.contains("<Document") || head.contains("camt.05") { return .camt }
@@ -38,17 +51,23 @@ public enum TransactionFileImporter {
 		return String(data: data, encoding: .windowsCP1252) ?? String(decoding: data, as: UTF8.self)
 	}
 
-	public static func parse(_ data: Data, currency: String) throws -> [Transaction] {
+	/// The transactions of a file and the values that the import replaced in them.
+	public struct Parsed: Sendable {
+		public var transactions: [Transaction]
+		public var warnings: [Warning] = []
+	}
+
+	public static func parse(_ data: Data, currency: String) throws -> Parsed {
 		guard !data.isEmpty else { throw Failure.empty }
 		let text = decode(data)
 		guard let format = detect(text) else { throw Failure.unsupported }
-		let result: [Transaction]
+		let result: Parsed
 		switch format {
 		case .camt: result = try CAMTParser.parse(data)
-		case .mt940: result = try MT940Parser.parse(text)
+		case .mt940: result = Parsed(transactions: try MT940Parser.parse(text))
 		case .csv: result = try CSVParser.parse(text, currency: currency)
 		}
-		guard !result.isEmpty else { throw Failure.empty }
+		guard !result.transactions.isEmpty else { throw Failure.empty }
 		return result
 	}
 }
@@ -74,14 +93,14 @@ enum CSVParser {
 	static let mandateKeys = ["mandatsreferenz", "mandate reference"]
 	static let creditorKeys = ["gläubiger-id", "gläubiger id", "glaeubiger-id", "creditor id"]
 
-	static func parse(_ text: String, currency: String) throws -> [Transaction] {
+	static func parse(_ text: String, currency: String) throws -> TransactionFileImporter.Parsed {
 		let delimiter = detectDelimiter(text)
 		let rows = split(text, delimiter: delimiter)
 		guard let headerIndex = rows.firstIndex(where: { row in
-			let lower = row.map { normalize($0) }
+			let lower = row.cells.map { normalize($0) }
 			return lower.contains(where: { dateKeys.contains($0) }) && lower.contains(where: { (amountKeys + debitKeys + creditKeys).contains($0) })
 		}) else { throw TransactionFileImporter.Failure.noHeader }
-		let header = rows[headerIndex].map { normalize($0) }
+		let header = rows[headerIndex].cells.map { normalize($0) }
 		func column(_ keys: [String]) -> Int? {
 			for k in keys { if let i = header.firstIndex(of: k) { return i } }
 			return nil
@@ -108,7 +127,7 @@ enum CSVParser {
 			return v.isEmpty ? nil : v
 		}
 		// A row without a date is a total or a note, which the import skips.
-		let dataRows = rows.enumerated().dropFirst(headerIndex + 1).compactMap { offset, row in cell(row, dateCol).map { (offset, row, $0) } }
+		let dataRows = rows.dropFirst(headerIndex + 1).compactMap { row in cell(row.cells, dateCol).map { (row.line, row.cells, $0) } }
 		// The amount column, or the debit and credit columns when the amount cell is empty.
 		func amountCells(_ row: [String]) -> [String] {
 			cell(row, amountCol).map { [$0] } ?? [debitCol, creditCol].compactMap { cell(row, $0) }
@@ -123,11 +142,11 @@ enum CSVParser {
 			AmountParser.decimal(from: text) ?? fileMark.flatMap { AmountParser.decimal(from: text, decimalMark: $0) }
 		}
 		let placeholder = UUID()
-		var result: [Transaction] = []
-		for (offset, row, dateText) in dataRows {
+		var result = TransactionFileImporter.Parsed(transactions: [])
+		for (line, row, dateText) in dataRows {
 			func value(_ c: Int?) -> String? { cell(row, c) }
 			guard let day = Day(string: dateText) else {
-				throw TransactionFileImporter.Failure.line(offset + 1, "The date \(dateText) cannot be read.")
+				throw TransactionFileImporter.Failure.line(line, "The date \(dateText) cannot be read.")
 			}
 			var amount: Decimal?
 			if let a = value(amountCol) {
@@ -144,15 +163,27 @@ enum CSVParser {
 				let c = value(creditCol).map { readAmount($0).map { abs($0) } } ?? 0
 				if let d, let c { amount = d + c }
 			}
-			guard let amount else { throw TransactionFileImporter.Failure.line(offset + 1, "The amount cannot be read.") }
-			let cur = value(currencyCol).map { currencyCode($0, account: currency) } ?? currency
-			var t = Transaction(accountID: placeholder, bookingDate: day, valueDate: value(valueCol).flatMap(Day.init(string:)),
+			guard let amount else { throw TransactionFileImporter.Failure.line(line, "The amount cannot be read.") }
+			var cur = currency
+			if let cell = value(currencyCol) {
+				if let code = currencyCode(cell, account: currency) {
+					cur = code
+				} else {
+					result.warnings.append(.unknownCurrency(line: line, cell: cell, replacement: currency))
+				}
+			}
+			let valueDate = value(valueCol).flatMap { cell in
+				let day = Day(string: cell)
+				if day == nil { result.warnings.append(.unreadableValueDate(line: line, cell: cell)) }
+				return day
+			}
+			var t = Transaction(accountID: placeholder, bookingDate: day, valueDate: valueDate,
 				amountMinor: Money(amount, currency: cur).minorUnits, currency: cur,
 				name: value(nameCol) ?? "", purpose: value(purposeCol) ?? "", counterpartyIBAN: value(ibanCol), counterpartyBIC: value(bicCol),
 				bookingText: textCol == purposeCol ? nil : value(textCol), endToEndReference: value(e2eCol), mandateReference: value(mandateCol),
 				creditorID: value(creditorCol), comment: value(commentCol))
 			if t.name.isEmpty, t.purpose.isEmpty, let text = t.bookingText { t.name = text }
-			result.append(t)
+			result.transactions.append(t)
 		}
 		return result
 	}
@@ -164,12 +195,12 @@ enum CSVParser {
 	private static let dollars: Set = ["USD", "CAD", "AUD", "NZD", "SGD", "HKD", "MXN"]
 	private static let isoCurrencies = Set(Locale.Currency.isoCurrencies.map(\.identifier))
 
-	/// The ISO 4217 code that a currency cell names, or the account currency when the cell names none.
-	static func currencyCode(_ cell: String, account: String) -> String {
+	/// The ISO 4217 code that a currency cell names, or nil when the cell names none.
+	static func currencyCode(_ cell: String, account: String) -> String? {
 		let s = cell.uppercased()
 		if s == "$" { return dollars.contains(account) ? account : "USD" }
 		if let code = currencyNames[s] { return code }
-		return isoCurrencies.contains(s) ? s : account
+		return isoCurrencies.contains(s) ? s : nil
 	}
 
 	static func normalize(_ s: String) -> String {
@@ -182,9 +213,12 @@ enum CSVParser {
 		return candidates.max { a, b in sample.filter { $0 == a }.count < sample.filter { $0 == b }.count } ?? ";"
 	}
 
-	/// Splits CSV text into rows and fields. Quoted fields can contain the delimiter and line breaks.
-	static func split(_ text: String, delimiter: Character) -> [[String]] {
-		var rows: [[String]] = []
+	/// Splits CSV text into rows and fields, each row with the line of the file where it starts.
+	/// Quoted fields can contain the delimiter and line breaks.
+	static func split(_ text: String, delimiter: Character) -> [(line: Int, cells: [String])] {
+		var rows: [(line: Int, cells: [String])] = []
+		var line = 1
+		var start = 1
 		var row: [String] = []
 		var field = ""
 		var quoted = false
@@ -192,6 +226,8 @@ enum CSVParser {
 		var pending: Character?
 		while let c = pending ?? iterator.next() {
 			pending = nil
+			let isBreak = c == "\n" || c == "\r\n" || c == "\r"
+			if isBreak { line += 1 }
 			if quoted {
 				if c == "\"" {
 					if let next = iterator.next() {
@@ -207,9 +243,10 @@ enum CSVParser {
 			} else if c == delimiter {
 				row.append(field)
 				field = ""
-			} else if c == "\n" || c == "\r\n" || c == "\r" {
+			} else if isBreak {
 				row.append(field)
-				rows.append(row)
+				rows.append((start, row))
+				start = line
 				row = []
 				field = ""
 			} else {
@@ -218,7 +255,7 @@ enum CSVParser {
 		}
 		if !field.isEmpty || !row.isEmpty {
 			row.append(field)
-			rows.append(row)
+			rows.append((start, row))
 		}
 		return rows
 	}
@@ -353,7 +390,7 @@ enum SEPAPurpose {
 final class CAMTParser: NSObject, XMLParserDelegate {
 	private var path: [String] = []
 	private var text = ""
-	private var entries: [Transaction] = []
+	private var result = TransactionFileImporter.Parsed(transactions: [])
 	private var entry: [String: String] = [:]
 	private var purposes: [String] = []
 	private var inEntry = false
@@ -361,7 +398,7 @@ final class CAMTParser: NSObject, XMLParserDelegate {
 	/// The first entry that cannot be read. It stops the parser, so nothing from the file is imported.
 	private var failure: TransactionFileImporter.Failure?
 
-	static func parse(_ data: Data) throws -> [Transaction] {
+	static func parse(_ data: Data) throws -> TransactionFileImporter.Parsed {
 		let p = CAMTParser()
 		let parser = XMLParser(data: data)
 		parser.delegate = p
@@ -370,7 +407,7 @@ final class CAMTParser: NSObject, XMLParserDelegate {
 		guard parsed else {
 			throw TransactionFileImporter.Failure.line(parser.lineNumber, parser.parserError?.localizedDescription ?? "The XML file cannot be read.")
 		}
-		return p.entries
+		return p.result
 	}
 
 	func parser(_ parser: XMLParser, didStartElement name: String, namespaceURI: String?, qualifiedName: String?, attributes: [String: String] = [:]) {
@@ -405,6 +442,7 @@ final class CAMTParser: NSObject, XMLParserDelegate {
 		case "Dt" where ends("BookgDt/Dt"): entry["booking"] = value
 		case "DtTm" where ends("BookgDt/DtTm"): entry["booking"] = String(value.prefix(10))
 		case "Dt" where ends("ValDt/Dt"): entry["value"] = value
+		case "DtTm" where ends("ValDt/DtTm"): entry["value"] = value
 		case "AddtlNtryInf": entry["bookingText"] = value
 		case "Ustrd": purposes.append(value)
 		case "EndToEndId": entry["e2e"] = value
@@ -437,7 +475,12 @@ final class CAMTParser: NSObject, XMLParserDelegate {
 		let debit = entry["sign"] == "DBIT"
 		let currency = entry["currency"] ?? currency
 		let signed = debit ? -amount : amount
-		let t = Transaction(accountID: UUID(), bookingDate: booking, valueDate: entry["value"].flatMap { Day(string: String($0.prefix(10))) },
+		let valueDate = entry["value"].flatMap { text in
+			let day = Day(string: String(text.prefix(10)))
+			if day == nil { result.warnings.append(.unreadableValueDate(line: parser.lineNumber, cell: text)) }
+			return day
+		}
+		let t = Transaction(accountID: UUID(), bookingDate: booking, valueDate: valueDate,
 			amountMinor: Money(signed, currency: currency).minorUnits, currency: currency,
 			name: (debit ? entry["creditorName"] : entry["debtorName"]) ?? "",
 			purpose: purposes.joined(separator: " "),
@@ -447,6 +490,6 @@ final class CAMTParser: NSObject, XMLParserDelegate {
 			endToEndReference: entry["e2e"].flatMap { $0 == "NOTPROVIDED" ? nil : $0 },
 			mandateReference: entry["mandate"], creditorID: entry["creditor"],
 			isPending: entry["status"] == "PDNG")
-		entries.append(t)
+		result.transactions.append(t)
 	}
 }
