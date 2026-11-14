@@ -147,6 +147,14 @@ struct RuleTests {
 		}
 	}
 
+	@Test("Field name in capitals")
+	func fieldNameInCapitals() throws {
+		#expect(try matches(#"Name:"Bahn AG""#, RuleSubject(name: "Deutsche Bahn AG")))
+		#expect(try !matches(#"Name:"Bahn AG""#, RuleSubject(name: "Stadtwerke", purpose: "Bahn AG Ticket")))
+		#expect(try matches(#""Abschlag" NAME!="Stadtwerke""#, RuleSubject(name: "Gasversorger Muster", purpose: "Abschlag")))
+		#expect(try !matches(#""Abschlag" NAME!="Stadtwerke""#, RuleSubject(name: "Stadtwerke", purpose: "Abschlag")))
+	}
+
 	@Test("IBAN without a field operator")
 	func ibanWithoutField() throws {
 		let s = RuleSubject(name: "Stadtwerke", purpose: "Abschlag", remoteAccounts: ["DE02120300000000202051"], amount: -89)

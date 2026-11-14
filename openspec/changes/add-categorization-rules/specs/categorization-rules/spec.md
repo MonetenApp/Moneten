@@ -212,7 +212,7 @@ The app SHALL read the words `true` and `false` in any letter case and without q
 
 ### Requirement: Field operators
 
-The app SHALL restrict a term or a regular expression to one field when it follows a field operator with no space between them. The fields are `name`, `purpose`, `local_account`, `remote_account`, `currency`, `reference`, `mandate`, `creditor_id`, `comment`, and `booking_text`. After the field, `:`, `=`, `==`, and `:=` test that the field matches, and `!=` and `<>` test that it does not.
+The app SHALL restrict a term or a regular expression to one field when it follows a field operator with no space between them. The fields are `name`, `purpose`, `local_account`, `remote_account`, `currency`, `reference`, `mandate`, `creditor_id`, `comment`, and `booking_text`. After the field, `:`, `=`, `==`, and `:=` test that the field matches, and `!=` and `<>` test that it does not. A field name counts in any letter case.
 
 #### Scenario: Name only
 
@@ -243,6 +243,12 @@ The app SHALL restrict a term or a regular expression to one field when it follo
 - **GIVEN** the rules `currency:EUR`, `currency=EUR`, `currency==EUR`, and `currency:=EUR`
 - **WHEN** a transaction has the amount -1,50 €
 - **THEN** each of the four rules matches
+
+#### Scenario: Field name in capitals
+
+- **GIVEN** the rule `Name:"Bahn AG"`
+- **WHEN** one transaction has the counterparty "Deutsche Bahn AG", and another has the counterparty "Stadtwerke" and the purpose "Bahn AG Ticket"
+- **THEN** the rule matches the first and not the second, because `Name:` is the field operator `name:`
 
 ### Requirement: Amount comparisons
 
