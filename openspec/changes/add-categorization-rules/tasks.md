@@ -13,7 +13,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [x] 1.7 Field operators. Verified by RuleTests "Field operators", "Field does not match", "Equality forms", "Field name in capitals", "Not equal after a field name", "A word after a field operator is a term, also an operator word or a word that starts with a sign", and "A field operator needs its term without a space".
 - [x] 1.8 Amount comparisons. Verified by RuleTests "Amount comparisons", "Amount not equal", and "Amount equal with :=".
 - [x] 1.9 Regular expressions. Verified by RuleTests "Regular expressions".
-- [x] 1.10 Invalid rules are rejected. Verified by RuleTests "Missing parenthesis is reported at the end"; the settings sheet shows the message and disables OK.
+- [x] 1.10 Invalid rules are rejected. Verified by RuleTests "Missing parenthesis is reported at the end" and "Sign after a field operator"; the settings sheet shows the message and disables OK.
 - [x] 1.11 Rules run on new transactions. Verified by CategorizerTests "Refresh brings a transaction into its category"; file import and manual entry call the categorizer.
 - [x] 1.12 The first matching category wins. Verified by CategorizerTests "The first category in sidebar order wins".
 - [x] 1.13 Rules respect the account restriction of a category. Verified by CategorizerTests "Rules respect the account restriction".
