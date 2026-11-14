@@ -133,6 +133,16 @@ public struct MoneyMoneyMigration: Sendable {
 		if !plan.portfolioAccounts.isEmpty {
 			plan.notes.append("Portfolio accounts were taken over with their balance. Their positions follow when securities accounts are supported.")
 		}
+		plan.notes += Self.notMigratedNotes
+		let budgets = rawCategories.filter(Self.hasBudget).count
+		if budgets == 1 {
+			plan.notes.append("1 category has a budget in MoneyMoney. Moneten did not take the budget over.")
+		} else if budgets > 1 {
+			plan.notes.append("\(budgets) categories have a budget in MoneyMoney. Moneten did not take the budgets over.")
+		}
+		if (rawAccounts + rawCategories).contains(where: { $0["icon"] is Data }) {
+			plan.notes.append("Moneten takes the color of each icon of MoneyMoney and shows its own icons instead of the pictures.")
+		}
 		return plan
 	}
 
@@ -337,6 +347,21 @@ public struct MoneyMoneyMigration: Sendable {
 		guard sum.3 > 0 else { return nil }
 		func byte(_ v: Double) -> Int { min(255, max(0, Int((v / sum.3).rounded()))) }
 		return String(format: "#%02X%02X%02X", byte(sum.0), byte(sum.1), byte(sum.2))
+	}
+
+	/// The scripting dictionary of MoneyMoney has no command that exports these.
+	static let notMigratedNotes = [
+		"Login data was not migrated, because MoneyMoney does not export it. Connect each account to its bank with \"Add Account...\" and enter the login data there.",
+		"Transfer templates were not migrated, because MoneyMoney does not export them. Copy the ones you need from MoneyMoney.",
+		"Standing orders were not migrated, because MoneyMoney does not export them. Your bank keeps them, so they continue as before.",
+		"Statements were not migrated, because MoneyMoney does not export them. Copy the PDF files from the folder \"Statements\" in the data folder of MoneyMoney to keep them.",
+	]
+
+	/// The key layout of a budget in `export categories` was not recorded with the real export. This
+	/// reads `budget` as a dictionary whose `amount` is the budget, and an amount of zero as no budget.
+	static func hasBudget(_ item: [String: Any]) -> Bool {
+		guard let budget = item["budget"] as? [String: Any], let amount = budget["amount"] as? Double else { return false }
+		return amount != 0
 	}
 
 	/// Lists the groups whose balance in MoneyMoney differs from the sum of their accounts.

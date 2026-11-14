@@ -707,6 +707,40 @@ struct MoneyMoneyMigrationTests {
 		#expect(Categorizer(ledger: ledger).category(for: imported) == p.categories.first { $0.name == "Salary" }?.id)
 	}
 
+	@Test("The report names login data, templates, standing orders, and statements as not migrated")
+	func notMigrated() throws {
+		let notes = try plan().notes
+		#expect(notes.contains("Login data was not migrated, because MoneyMoney does not export it. Connect each account to its bank with \"Add Account...\" and enter the login data there."))
+		#expect(notes.contains("Transfer templates were not migrated, because MoneyMoney does not export them. Copy the ones you need from MoneyMoney."))
+		#expect(notes.contains("Standing orders were not migrated, because MoneyMoney does not export them. Your bank keeps them, so they continue as before."))
+		#expect(notes.contains("Statements were not migrated, because MoneyMoney does not export them. Copy the PDF files from the folder \"Statements\" in the data folder of MoneyMoney to keep them."))
+	}
+
+	@Test("The report counts the categories with a budget and says that the budgets were not taken over")
+	func budgets() throws {
+		var withBudgets = categories
+		withBudgets[1]["budget"] = ["amount": 200.0, "available": 120.0, "period": "monthly"]
+		withBudgets[2]["budget"] = ["amount": 0.0, "available": 0.0, "period": "monthly"]
+		withBudgets.insert(["uuid": "C4", "name": "Leisure", "group": false, "default": false, "indentation": 0, "currency": "EUR", "rules": "",
+			"budget": ["amount": 50.0, "available": 50.0, "period": "monthly"]], at: 3)
+		let p = try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(accounts), categories: try plist(withBudgets), transactions: try plist(transactions), into: Ledger())
+		#expect(p.notes.contains("2 categories have a budget in MoneyMoney. Moneten did not take the budgets over."))
+
+		withBudgets[3]["budget"] = nil
+		let one = try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(accounts), categories: try plist(withBudgets), transactions: try plist(transactions), into: Ledger())
+		#expect(one.notes.contains("1 category has a budget in MoneyMoney. Moneten did not take the budget over."))
+		#expect(try plan().notes.allSatisfy { !$0.contains("budget") })
+	}
+
+	@Test("The report says that the app takes the color of each icon and draws its own icons")
+	func icons() throws {
+		var withIcons = categories
+		withIcons[1]["icon"] = try icon(0x34, 0x78, 0xF6)
+		let p = try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(accounts), categories: try plist(withIcons), transactions: try plist(transactions), into: Ledger())
+		#expect(p.notes.contains("Moneten takes the color of each icon of MoneyMoney and shows its own icons instead of the pictures."))
+		#expect(try plan().notes.allSatisfy { !$0.contains("icon") })
+	}
+
 	@Test("The report names a group whose balance in MoneyMoney leaves out an account")
 	func groupSum() throws {
 		#expect(try plan().notes.allSatisfy { !$0.contains("group") })
