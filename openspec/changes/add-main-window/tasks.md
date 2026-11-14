@@ -19,8 +19,8 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [ ] 1.13 The action button follows the view. Build it and verify it with a test or in the app.
 - [x] 1.14 Back and forward. Verified by ⌘[ and ⌘] and the toolbar arrows; the View menu items are disabled like the arrows when there is no view in their direction (`NavigationHistory` is observable).
 - [x] 1.15 Filter bar. Verified by the debug harness snapshot in the first build. As measured in the light window of MoneyMoney, a slate band lies behind the title and the chart, the filter bar is light gray with a line between the filters, and the checkboxes are white with a gray border. Verified by window snapshots of the debug harness in light and dark mode.
-- [x] 1.16 Keep the filter bar with the pin. Verified by the pin keeps the filters; without it every filter except the period resets.
-- [x] 1.17 Status line. Verified by the debug harness snapshot in the first build.
+- [ ] 1.16 The filter bar across views and the pin. Built for the earlier rule, in which a view change without the pin reset every filter except the period. The spec of the change `add-transaction-search-and-filters` now holds these requirements, and its task 1.13 builds them. Check this task when that task is checked.
+- [ ] 1.17 Status line. The number and the sum are verified by the debug harness snapshot in the first build. The sum still counts a pending transaction marked for review. Task 1.30 of the change `add-account-refresh` changes it.
 - [ ] 1.18 Copy the sum from the status line. Built in part: the sum text can be selected. Finish it and verify it with a test or in the app.
 - [ ] 1.19 The Account menu follows the selection. Built in part: the settings command follows the selection. Finish it and verify it with a test or in the app.
 - [ ] 1.20 Context menu on sidebar rows. Built in part: accounts, groups, and categories have menus with a subset of the commands. Finish it and verify it with a test or in the app.

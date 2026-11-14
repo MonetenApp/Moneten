@@ -191,7 +191,7 @@ The app SHALL keep a history of the views that the user visited in this session.
 
 ### Requirement: Filter bar
 
-The app SHALL show a filter bar above the list with the filters that the current view defines. Each filter is a menu that shows its current value, and "Show All" is the value of a filter that is not set.
+The app SHALL show a filter bar above the list with the filters that the current view defines. Each filter is a menu that shows its current value, and "Show All" is the value of a filter that is not set. The capability "transaction-search-and-filters" specifies which filters stay when the view changes and what the pin in the filter bar does.
 
 #### Scenario: Account view
 
@@ -203,26 +203,9 @@ The app SHALL show a filter bar above the list with the filters that the current
 - **WHEN** the user selects a category
 - **THEN** the filter bar shows "Account" in the place of "Category"
 
-### Requirement: Keep the filter bar with the pin
-
-The app SHALL show a pin in the filter bar with the tooltip "Save filter bar". While the pin is on, the filters keep their values when the user changes the view. While the pin is off, a view change sets every filter except "Period" back to "Show All".
-
-#### Scenario: Pin on
-
-- **GIVEN** the pin is on and "Status" is "Unchecked" in the view of "Girokonto"
-- **WHEN** the user selects "Tagesgeld"
-- **THEN** "Status" is still "Unchecked"
-
-#### Scenario: Pin off
-
-- **GIVEN** the pin is off, "Status" is "Unchecked", and "Period" is "90 Days"
-- **WHEN** the user selects "Tagesgeld"
-- **THEN** "Status" is "Show All"
-- **AND** "Period" is still "90 Days"
-
 ### Requirement: Status line
 
-The app SHALL show a status line below the list with the number of rows that the list shows and their sum. The wording follows the kind of row, for example transactions, portfolio items, or scheduled payments.
+The app SHALL show a status line below the list with the number of rows that the list shows and their sum. The wording follows the kind of row, for example transactions, portfolio items, or scheduled payments. A pending transaction marked for review counts in the number but not in the sum.
 
 #### Scenario: Transactions
 
@@ -235,6 +218,12 @@ The app SHALL show a status line below the list with the number of rows that the
 - **GIVEN** a list with one transaction
 - **WHEN** the user looks at the status line
 - **THEN** it reads "1 Transaction"
+
+#### Scenario: Pending transactions under review
+
+- **GIVEN** a list with two pending transactions of -3,20 € and one booked transaction of -3,20 €, all three marked for review
+- **WHEN** the user looks at the status line
+- **THEN** it reads "3 Transactions" and the sum -3,20 €
 
 ### Requirement: Copy the sum from the status line
 

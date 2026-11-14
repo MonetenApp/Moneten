@@ -72,7 +72,7 @@ The app SHALL show the account of a selected transaction in a view that lists tr
 
 ### Requirement: Pending transactions look different
 
-The app SHALL draw a transaction that the bank has not yet booked with a hatched background, and it SHALL show the sum of all pending amounts of the view with the label "Pending".
+The app SHALL draw a transaction that the bank has not yet booked with a hatched background, and it SHALL show the sum of the pending amounts of the view with the label "Pending". A pending transaction marked for review does not count in that sum.
 
 #### Scenario: Pre-authorized card payment
 
@@ -80,6 +80,12 @@ The app SHALL draw a transaction that the bank has not yet booked with a hatched
 - **WHEN** the user opens "Credit card"
 - **THEN** both rows are hatched
 - **AND** the view shows "Pending" with -42,00 €
+
+#### Scenario: A pending transaction under review
+
+- **GIVEN** the account "Giro" has a pending transaction of -30,00 € and a pending transaction of -3,20 € that is marked for review
+- **WHEN** the user opens "Giro"
+- **THEN** the view shows "Pending" with -30,00 €
 
 #### Scenario: No pending transactions
 
