@@ -307,6 +307,23 @@ The app SHALL fetch the value of a securities account through the custody accoun
 - **WHEN** the app refreshes a giro account and a securities account of the login
 - **THEN** the balance and the transactions go with HKTAN, and the custody account balance goes without HKTAN
 
+### Requirement: Know a securities account without an account type
+
+The app SHALL treat an account as a securities account when the bank gives it the FinTS account type 30 to 39 or 60 to 69, or when the bank allows the custody account balance or the turnover of the holdings (HKWDU) for it and neither the balance nor the transactions. A refresh that fetches the value of a securities account makes it a portfolio.
+
+#### Scenario: Securities account without an account type
+
+- **GIVEN** the bank lists "Depot" without an account type, allows the custody account balance for it, and allows neither the balance nor the transactions
+- **WHEN** the user adds the login
+- **THEN** the setup lists "Depot" as a portfolio
+
+#### Scenario: Securities account added with the wrong type
+
+- **GIVEN** an earlier setup added "Depot" as an account of the type "Other", and the bank allows the custody account balance for it and neither the balance nor the transactions
+- **WHEN** the user refreshes "Depot"
+- **THEN** the app fetches the custody account balance
+- **AND** "Depot" becomes a portfolio and shows its value
+
 ### Requirement: One dialog for all accounts of a login
 
 The app SHALL fetch all accounts of one login that are due in a refresh inside one FinTS dialog, so that the bank sees one login and asks for at most one TAN for that login.

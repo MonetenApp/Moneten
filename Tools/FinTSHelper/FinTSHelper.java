@@ -833,7 +833,7 @@ public class FinTSHelper {
 	static Map<String, Object> account(Konto k) {
 		String owner = String.join(" ", present(k.name) ? k.name.trim() : "", present(k.name2) ? k.name2.trim() : "").trim();
 		return message("account", "number", text(k.number), "subnumber", text(k.subnumber), "iban", text(k.iban), "bic", text(k.bic),
-			"product", text(k.type), "kind", text(k.acctype), "owner", text(owner), "currency", text(k.curr));
+			"product", text(k.type), "kind", text(k.acctype), "owner", text(owner), "currency", text(k.curr), "securities", securities(k) ? true : null);
 	}
 
 	static final Pattern SEPA_TAG = Pattern.compile("(EREF|KREF|MREF|CRED|DEBT|COAM|OAMT|SVWZ|ABWA|ABWE|IBAN|BIC)\\+");
@@ -940,9 +940,14 @@ public class FinTSHelper {
 	}
 
 	/// FinTS account types 30 to 39 are securities accounts and 60 to 69 funds accounts, as in
-	/// FinTSAccount.kind(of:) of the app.
+	/// FinTSAccount.kind(of:) of the app. An account without such a type is a securities account too
+	/// when the bank allows the holdings (HKWPD) or the turnover of the holdings (HKWDU) for it, and
+	/// neither the balance nor the transactions.
 	static boolean securities(Konto k) {
-		return k.acctype != null && k.acctype.trim().matches("[36][0-9]");
+		if (k.acctype != null && k.acctype.trim().matches("[36][0-9]")) return true;
+		List<?> allowed = k.allowedGVs == null ? List.of() : k.allowedGVs;
+		return (allowed.contains("HKWPD") || allowed.contains("HKWDU"))
+			&& !allowed.contains("HKSAL") && !allowed.contains("HKKAZ") && !allowed.contains("HKCAZ");
 	}
 
 	/// The jobs that a refresh sends for an account: the custody account balance of a securities account
@@ -954,6 +959,14 @@ public class FinTSHelper {
 		if (allows(handle, k, "HKCAZ", "KUmsAllCamt")) jobs.add("KUmsAllCamt");
 		else if (allows(handle, k, "HKKAZ", "KUmsAll")) jobs.add("KUmsAll");
 		return jobs;
+	}
+
+	/// The diagnostic of an account that allows none of the jobs: its account type and the jobs that the
+	/// bank allows for it, and nothing else of the account.
+	static String withoutJobs(Konto k) {
+		List<?> codes = k.allowedGVs == null ? List.of() : k.allowedGVs;
+		String allowed = codes.isEmpty() ? "none" : String.join(",", codes.stream().map(String::valueOf).toList());
+		return "FinTSHelper: account without jobs: type=" + (present(k.acctype) ? k.acctype.trim() : "none") + " allowed=" + allowed;
 	}
 
 	/// The failure of an account that allows none of the jobs.
@@ -979,6 +992,7 @@ public class FinTSHelper {
 			}
 			List<String> names = jobs(handle, k);
 			if (names.isEmpty()) {
+				diagnostic(withoutJobs(k));
 				send(nothingAllowed(id, k));
 				continue;
 			}
@@ -1049,7 +1063,7 @@ public class FinTSHelper {
 		BigDecimalValue total = sum(pages);
 		if (total == null) throw new Failure("unsupported", null, "The bank sent no value for this securities account.");
 		return message("result", "account", id, "balance", message("balance", "amount", total.getValue().toPlainString(), "currency", text(total.getCurr()),
-			"date", statement.length == 0 ? null : day(statement[0].timestamp)), "errors", List.of());
+			"date", statement.length == 0 ? null : day(statement[0].timestamp)), "errors", List.of(), "securities", true);
 	}
 
 

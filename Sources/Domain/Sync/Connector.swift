@@ -134,14 +134,18 @@ public struct RefreshResult: Sendable {
 	/// separately"). The balance is stored, and the account fails with this error, so that its last
 	/// refresh time stays and the next refresh asks again for the days that were missed.
 	public let transactionFailure: SyncFailure?
+	/// The balance is the value of a securities account, so the account is a portfolio. A merge makes an
+	/// account of another kind a portfolio, such as a depot whose bank gave no account type at the setup.
+	public let isPortfolio: Bool
 
 	public init(balance: Money?, balanceDate: Date? = nil, transactions: FetchedTransactions?, isComplete: Bool = false,
-		transactionFailure: SyncFailure? = nil) {
+		transactionFailure: SyncFailure? = nil, isPortfolio: Bool = false) {
 		self.balance = balance
 		self.balanceDate = balanceDate
 		self.transactions = transactions
 		self.isComplete = isComplete
 		self.transactionFailure = transactionFailure
+		self.isPortfolio = isPortfolio
 	}
 }
 

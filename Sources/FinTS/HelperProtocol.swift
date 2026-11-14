@@ -210,6 +210,8 @@ struct AccountResult: Decodable {
 	let balance: Balance?
 	let transactions: Transactions?
 	let errors: [HelperError]
+	/// The balance is the value of a securities account.
+	let securities: Bool?
 
 	struct Balance: Decodable {
 		let amount: String
@@ -259,7 +261,7 @@ struct AccountResult: Decodable {
 		}
 		let transactionFailure = shownError?.failure
 		let result = RefreshResult(balance: money, balanceDate: try balance?.date.map { try Self.day($0).date() }, transactions: fetched,
-			isComplete: transactions != nil && transactions?.from == nil, transactionFailure: transactionFailure)
+			isComplete: transactions != nil && transactions?.from == nil, transactionFailure: transactionFailure, isPortfolio: securities == true)
 		return (.fetched(result), transactionFailure == nil ? errors.map(\.message) : [])
 	}
 
@@ -293,10 +295,12 @@ private struct AccountLine: Decodable {
 	let kind: String?
 	let owner: String?
 	let currency: String?
+	/// The helper knows a securities account also by its jobs, when the bank gives no account type for it.
+	let securities: Bool?
 
 	var account: FinTSAccount {
-		FinTSAccount(number: number, subnumber: subnumber, iban: iban, bic: bic, productName: product, kind: FinTSAccount.kind(of: kind), owner: owner,
-			currency: currency ?? "EUR")
+		FinTSAccount(number: number, subnumber: subnumber, iban: iban, bic: bic, productName: product,
+			kind: securities == true ? .portfolio : FinTSAccount.kind(of: kind), owner: owner, currency: currency ?? "EUR")
 	}
 }
 
