@@ -12,20 +12,26 @@ struct CategoryPickerSheet: View {
 	@State private var highlighted = 0
 	@FocusState private var fieldFocused: Bool
 
+	/// Computed where it is used, so that a key handler reads the current search and not the one of its drawing.
+	private var matches: [Domain.Category] {
+		let transactions = ids.compactMap { model.ledger.transaction($0) }
+		return model.ledger.categories(matching: query).filter { model.ledger.canAssign($0, to: transactions) }
+	}
+
 	var body: some View {
 		let ledger = model.ledger
-		let transactions = ids.compactMap { ledger.transaction($0) }
-		let matches = ledger.categories(matching: query).filter { ledger.canAssign($0, to: transactions) }
+		let matches = self.matches
 		SheetFrame(title: "Assign Category", confirmTitle: "Assign", canConfirm: matches.indices.contains(highlighted), width: 400, onConfirm: {
-			model.assign(category: matches[highlighted].id, to: ids)
+			guard let c = self.matches.dropFirst(highlighted).first else { return false }
+			model.assign(category: c.id, to: ids)
 			return true
 		}) {
 			Section {
 				TextField("Category", text: $query, prompt: Text("Type to find a category"))
 					.labelsHidden()
 					.focused($fieldFocused)
-					.onKeyPress(.downArrow) { moveHighlight(1, of: matches.count) }
-					.onKeyPress(.upArrow) { moveHighlight(-1, of: matches.count) }
+					.onKeyPress(.downArrow) { moveHighlight(1) }
+					.onKeyPress(.upArrow) { moveHighlight(-1) }
 			}
 			Section {
 				list(matches, in: ledger)
@@ -38,7 +44,7 @@ struct CategoryPickerSheet: View {
 	private func list(_ matches: [Domain.Category], in ledger: Ledger) -> some View {
 		ScrollViewReader { proxy in
 			ScrollView {
-				LazyVStack(alignment: .leading, spacing: 0) {
+				VStack(alignment: .leading, spacing: 0) {
 					ForEach(Array(matches.enumerated()), id: \.element.id) { index, c in
 						Button {
 							model.assign(category: c.id, to: ids)
@@ -70,8 +76,8 @@ struct CategoryPickerSheet: View {
 		}
 	}
 
-	private func moveHighlight(_ step: Int, of count: Int) -> KeyPress.Result {
-		highlighted = max(0, min(highlighted + step, count - 1))
+	private func moveHighlight(_ step: Int) -> KeyPress.Result {
+		highlighted = max(0, min(highlighted + step, matches.count - 1))
 		return .handled
 	}
 }
