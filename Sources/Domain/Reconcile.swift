@@ -100,7 +100,7 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored: [Tran
 			case .sourceID:
 				// A migration only books a pending row. Any other change could undo a booking or an edit
 				// that the app made since the earlier run.
-				if case .migration = delivery, !(live.isPending && !delivered.isPending) { break }
+				if delivery.isMigration, !(live.isPending && !delivered.isPending) { break }
 				next = live.takingBankFields(of: delivered)
 				if next != live { rules.categorize(&next) }
 			case .fingerprint:
@@ -115,6 +115,9 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored: [Tran
 			}
 		} else if case let .pair(j) = bookings.ofBooked[i] {
 			var next = stored[j].takingBankFields(of: delivered)
+			// A row of the source that a file or a bank books counts as imported from now on. A later migration
+			// finds it by its fingerprint and gives the ID back.
+			if !delivery.isMigration, Identity.remote(next.sourceID) == nil { next.sourceID = nil }
 			rules.categorize(&next)
 			if fetched { next.isFetched = true }
 			r.booked.append(next)
@@ -165,6 +168,10 @@ extension Delivery {
 
 	var isFetched: Bool {
 		if case .refresh = self { true } else { false }
+	}
+
+	var isMigration: Bool {
+		if case .migration = self { true } else { false }
 	}
 
 	func covers(_ day: Day) -> Bool {

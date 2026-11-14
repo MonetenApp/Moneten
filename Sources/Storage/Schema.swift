@@ -243,10 +243,16 @@ enum Schema {
 			}
 		}
 		// A migrated account shows its computed balance (PR #142). Its initial balance is the balance of the source
-		// less the booked rows of the source in the account currency. Older versions also subtracted rows in other
-		// currencies, and a second run kept the initial balance when the source corrected its balance. A row with a
-		// migration ID came from the source. A row that the user imported has none and counts on top. A row that the
-		// user deleted stays in the sum, so its deletion still moves the balance. A deleted row stores no currency.
+		// less the booked rows of the source in the account currency, the same rule as `MoneyMoneyMigration`, plus
+		// the deleted rows of the source. Older versions also subtracted rows in other currencies, and a second run
+		// kept the initial balance when the source corrected its balance. A row with a migration ID came from the
+		// source. A row that the user imported has none and counts on top. A row that the user deleted stays in the
+		// sum, so its deletion still moves the balance. A deleted row stores no currency, so a deleted row in another
+		// currency is subtracted as if it were in the account currency.
+		// This overwrites an initial balance that the user typed or calibrated. Until now that value moved only the
+		// start of the chart, because the sidebar showed the balance of the source, and v11 set initialBalanceIsSet
+		// for every migrated account, so a typed value and a derived one cannot be told apart. No release exists yet.
+		// A portfolio shows its reported value and keeps its stored initial balance.
 		m.registerMigration("v13") { db in
 			try db.execute(sql: """
 				UPDATE account SET initialBalanceMinor = bankBalanceMinor
@@ -254,7 +260,7 @@ enum Schema {
 						AND t.currency = account.currency AND t.sourceID LIKE 'moneymoney:%'), 0)
 					- COALESCE((SELECT SUM(amountMinor) FROM deletedTransaction d WHERE d.accountID = account.id AND d.isPending = 0
 						AND d.sourceID LIKE 'moneymoney:%'), 0)
-				WHERE source = 'migrated' AND bankBalanceMinor IS NOT NULL
+				WHERE source = 'migrated' AND kind != 'portfolio' AND bankBalanceMinor IS NOT NULL
 				""")
 		}
 		return m

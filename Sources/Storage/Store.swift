@@ -50,7 +50,10 @@ public final class Store: SavedPINStore {
 		}
 	}
 
-	public func save(groups: [AccountGroup] = [], accounts: [Account] = [], categories: [Domain.Category] = [], transactions: [Transaction] = []) throws {
+	/// `forgettingSourceIDsOf` are deleted rows whose source no longer has them. They keep out the row by its
+	/// fingerprint only.
+	public func save(groups: [AccountGroup] = [], accounts: [Account] = [], categories: [Domain.Category] = [], transactions: [Transaction] = [],
+		forgettingSourceIDsOf deleted: [DeletedTransaction] = []) throws {
 		try queue.write { db in
 			for g in groups { try g.save(db) }
 			for a in accounts {
@@ -59,6 +62,10 @@ public final class Store: SavedPINStore {
 			}
 			for c in categories { try c.save(db) }
 			for t in transactions { try t.save(db) }
+			for d in deleted {
+				try DeletedTransaction.filter(Column("accountID") == d.accountID && Column("sourceID") == d.sourceID)
+					.updateAll(db, Column("sourceID").set(to: nil))
+			}
 		}
 	}
 

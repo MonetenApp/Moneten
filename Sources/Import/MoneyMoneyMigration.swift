@@ -22,6 +22,9 @@ public struct MoneyMoneyMigration: Sendable {
 		public var updatedTransactions: [Transaction] = []
 		/// Categories of an earlier run without a color of their own, with the color of MoneyMoney.
 		public var updatedCategories: [Domain.Category] = []
+		/// Deleted rows of the source that the source no longer has. The store forgets their source ID, so a
+		/// later run no longer counts them toward the initial balance.
+		public var deletedRowsGoneFromSource: [DeletedTransaction] = []
 		/// Accounts and transactions that the ledger already holds, and transactions the user deleted.
 		public var skippedAccounts = 0
 		public var skippedTransactions = 0
@@ -30,7 +33,7 @@ public struct MoneyMoneyMigration: Sendable {
 
 		public var isEmpty: Bool {
 			groups.isEmpty && accounts.isEmpty && categories.isEmpty && transactions.isEmpty && updatedAccounts.isEmpty && updatedTransactions.isEmpty
-				&& updatedCategories.isEmpty
+				&& updatedCategories.isEmpty && deletedRowsGoneFromSource.isEmpty
 		}
 	}
 
@@ -115,7 +118,8 @@ public struct MoneyMoneyMigration: Sendable {
 			t.needsReview = needsReview
 			plan.transactions.append(t)
 		}
-		Self.setInitialBalances(of: &plan, ledger: ledger, stored: stored)
+		Self.setInitialBalances(of: &plan, ledger: ledger, stored: stored, deleted: tombstones, exported: Set(accountMap.values),
+			delivered: delivered.mapValues { Set($0.compactMap(\.sourceID)) })
 		if !rawCategories.contains(where: { Self.string($0["rules"]) != nil }) {
 			plan.notes.append("The export contains no categorization rules. Copy them from the category settings of MoneyMoney into the category settings of Moneten.")
 		}
@@ -129,7 +133,13 @@ public struct MoneyMoneyMigration: Sendable {
 	/// The initial balance makes the booked rows of the source end at the balance of the source. A later run
 	/// moves it by what changed in the source since the run before, so a row that the user imported or deleted
 	/// keeps moving the balance, and so does an initial balance that the user typed.
-	private static func setInitialBalances(of plan: inout Plan, ledger: Ledger, stored: [UUID: [Transaction]]) {
+	///
+	/// A row that the user deleted counts as a row of the source while the source has it. The export holds every
+	/// transaction of an exported account, so a deleted row that it leaves out is gone from the source: it counts
+	/// before this run and not after, and the store forgets its source ID, so no later run counts it again.
+	/// A deleted row stores no currency, so a deleted row in another currency counts as one in the account currency.
+	private static func setInitialBalances(of plan: inout Plan, ledger: Ledger, stored: [UUID: [Transaction]],
+		deleted: [UUID: [DeletedTransaction]], exported: Set<UUID>, delivered: [UUID: Set<String>]) {
 		let added = Dictionary(grouping: plan.transactions, by: \.accountID)
 		for i in plan.accounts.indices {
 			guard let balance = plan.accounts[i].bankBalanceMinor else { continue }
@@ -141,8 +151,15 @@ public struct MoneyMoneyMigration: Sendable {
 			var a = k.map { plan.updatedAccounts[$0] } ?? old
 			guard let balance = a.bankBalanceMinor else { continue }
 			let before = stored[old.id] ?? []
-			let target = initialBalance(balance, of: a, rows: before.map { changed[$0.id] ?? $0 } + (added[old.id] ?? []))
-			a.initialBalanceMinor = old.bankBalanceMinor.map { old.initialBalanceMinor + target - initialBalance($0, of: old, rows: before) } ?? target
+			let tombstones = exported.contains(old.id) ? (deleted[old.id] ?? []).filter { !$0.isPending && isOfSource($0.sourceID) } : []
+			let gone = tombstones.filter { $0.sourceID.map((delivered[old.id] ?? []).contains) == false }
+			plan.deletedRowsGoneFromSource += gone
+			let deletedBefore = tombstones.reduce(0) { $0 + $1.amountMinor }
+			let deletedAfter = deletedBefore - gone.reduce(0) { $0 + $1.amountMinor }
+			let target = initialBalance(balance, of: a, rows: before.map { changed[$0.id] ?? $0 } + (added[old.id] ?? [])) - deletedAfter
+			a.initialBalanceMinor = old.bankBalanceMinor.map {
+				old.initialBalanceMinor + target - (initialBalance($0, of: old, rows: before) - deletedBefore)
+			} ?? target
 			if let k {
 				plan.updatedAccounts[k] = a
 			} else if a != old {
@@ -151,12 +168,17 @@ public struct MoneyMoneyMigration: Sendable {
 		}
 	}
 
-	/// The balance before the booked rows of the source. A row of the source carries a migration ID. A row
-	/// that the user imported carries none and counts on top. `v13` in `Schema` repairs stored values by the same rule.
+	/// The balance before the booked rows of the source in the account currency. A row of the source carries a
+	/// migration ID. A row that the user imported carries none and counts on top. `v13` in `Schema` repairs stored
+	/// values by the same rule, so this filter is spelled out here and in its SQL.
 	private static func initialBalance(_ balance: Int64, of account: Account, rows: [Transaction]) -> Int64 {
 		rows.reduce(balance) { sum, t in
-			account.isInBalance(t) && t.sourceID?.hasPrefix(Transaction.migrationIDPrefix) == true ? sum - t.amountMinor : sum
+			!t.isPending && t.currency == account.currency && isOfSource(t.sourceID) ? sum - t.amountMinor : sum
 		}
+	}
+
+	private static func isOfSource(_ sourceID: String?) -> Bool {
+		sourceID?.hasPrefix(Transaction.migrationIDPrefix) == true
 	}
 
 	private func mapAccounts(_ raw: [[String: Any]], ledger: Ledger, plan: inout Plan, map: inout [String: UUID]) {
