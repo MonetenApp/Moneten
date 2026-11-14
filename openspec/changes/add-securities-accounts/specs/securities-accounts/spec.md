@@ -112,7 +112,7 @@ The app SHALL show a quote with all decimal places that the source delivers, and
 
 ### Requirement: Value of a position
 
-The app SHALL use the value in the account currency that the source delivers for a position. When the source delivers no value, the app computes it from the quantity and the last quote.
+The app SHALL use the value in the account currency that the source delivers for a position, plus the accrued interest that the source delivers. When the source delivers no value, the app computes it from the quantity and the last quote. The profit or loss leaves the accrued interest out.
 
 #### Scenario: Bank delivers the value
 
@@ -125,6 +125,13 @@ The app SHALL use the value in the account currency that the source delivers for
 - **GIVEN** an extension returns a position with 10 units and the price 99,99 and no amount
 - **WHEN** the user opens the portfolio
 - **THEN** the value reads 999,90 €
+
+#### Scenario: Bond with accrued interest
+
+- **GIVEN** the bank reports a bond with the market value 4.925,00 €, the accrued interest 37,50 €, and the purchase rate 97,00 % for the nominal amount 5.000,00 €
+- **WHEN** the user opens the portfolio
+- **THEN** the value reads 4.962,50 €
+- **AND** the row shows "Profit" with 75,00 € and 1,55 %
 
 ### Requirement: Foreign currency positions
 
@@ -264,13 +271,19 @@ The app SHALL use the sum of the values of all positions as the balance of a por
 
 ### Requirement: Sum of the selected positions
 
-The app SHALL show the number and the sum of the selected positions in the status line when the user selects one or more positions.
+The app SHALL show the number and the sum of the selected positions in the status line when the user selects two or more positions. With one selected position or none, the status line shows all positions of the view, as the status line of the transaction list does.
 
 #### Scenario: Select two positions
 
 - **GIVEN** a portfolio with positions worth 1.000,00 €, 2.500,00 €, and 500,00 €
 - **WHEN** the user selects the first two rows
 - **THEN** the status line shows 2 selected portfolio items with the sum 3.500,00 €
+
+#### Scenario: Select one position
+
+- **GIVEN** a portfolio with positions worth 1.000,00 €, 2.500,00 €, and 500,00 €
+- **WHEN** the user selects the first row
+- **THEN** the status line shows 3 portfolio items with the sum 4.000,00 €
 
 ### Requirement: Total gain of a portfolio group
 
@@ -321,7 +334,7 @@ The app SHALL record the balance of a portfolio whenever it saves the portfolio 
 
 ### Requirement: Record a missing portfolio balance at open
 
-When the app opens a database in which an open portfolio has a balance without a record for the day of that balance, or with a different one, the app SHALL record that balance once.
+The app SHALL record the balance of an open portfolio once when it opens a database in which that balance has no record for the day of the balance, or a record with a different value.
 
 #### Scenario: Database from before the history
 

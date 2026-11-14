@@ -1054,7 +1054,9 @@ public class FinTSHelper {
 			return message("result", "account", id, "errors", List.of(message("error", "code", notes[0].code, "text", Out.withoutSecrets(notes[0].text))));
 		}
 		List<BigDecimalValue> pages = new ArrayList<>();
+		List<Object> positions = new ArrayList<>();
 		for (GVRWPDepotList.Entry page : statement) {
+			for (GVRWPDepotList.Entry.Gattung g : page.getEntries()) positions.add(position(g));
 			if (page.total != null) pages.add(page.total);
 			else if (page.getEntries().length == 0) pages.add(zero);
 			else pages.add(sum(java.util.Arrays.stream(page.getEntries())
@@ -1063,7 +1065,28 @@ public class FinTSHelper {
 		BigDecimalValue total = sum(pages);
 		if (total == null) throw new Failure("unsupported", null, "The bank sent no value for this securities account.");
 		return message("result", "account", id, "balance", message("balance", "amount", total.getValue().toPlainString(), "currency", text(total.getCurr()),
-			"date", statement.length == 0 ? null : day(statement[0].timestamp)), "errors", List.of(), "securities", true);
+			"date", statement.length == 0 ? null : day(statement[0].timestamp)), "errors", List.of(), "securities", true, "holdings", positions);
+	}
+
+	/// One position of a custody account balance, with the fields of MT535 that hbci4java keeps and the app
+	/// shows: the security, the quantity as units or as a nominal amount (FAMT), the currency of the security
+	/// (70E), the quote with its day, a currency or "%" (PRCT), the market value (HOLD), the accrued interest
+	/// (ACRU), the purchase price with its currency or "%" and the purchase day (70E), and the exchange rate
+	/// (92B), in which one unit of the base costs the rate in the quoted currency. hbci4java keeps the rate as a
+	/// double, and `BigDecimal.valueOf` writes its shortest decimal text. Nothing of a position goes to stderr.
+	static Map<String, Object> position(GVRWPDepotList.Entry.Gattung g) {
+		Map<String, Object> rate = present(g.xchg_cur1) && present(g.xchg_cur2) && g.xchg_kurs > 0
+			? message("rate", "base", g.xchg_cur1.trim(), "quoted", g.xchg_cur2.trim(), "rate", BigDecimal.valueOf(g.xchg_kurs).toPlainString()) : null;
+		return message("holding", "name", text(g.name), "isin", text(g.isin), "wkn", text(g.wkn),
+			"quantity", g.saldo == null ? null : g.saldo.getValue().toPlainString(),
+			"nominal", g.saldo_type == GVRWPDepotList.Entry.SALDO_TYPE_WERT ? true : null, "currency", text(g.curr),
+			"price", amount(g.price, g.timestamp_price), "value", amount(g.depotwert, null), "accrued", amount(g.stueckzinsbetrag, null),
+			"purchase", amount(g.einstandspreis, g.kauf), "rate", rate);
+	}
+
+	static Map<String, Object> amount(BigDecimalValue value, Date day) {
+		if (value == null || value.getValue() == null) return null;
+		return message("amount", "amount", value.getValue().toPlainString(), "currency", text(value.getCurr()), "day", day(day));
 	}
 
 

@@ -17,6 +17,8 @@ public struct Ledger: Sendable {
 	public private(set) var transactions: [Transaction] = []
 	/// The recorded values of each portfolio, the oldest first.
 	private var portfolioHistory: [UUID: [PortfolioValue]] = [:]
+	/// The positions of each portfolio, in the order of `Holding.isOrdered`.
+	private var holdingsByAccount: [UUID: [Holding]] = [:]
 
 	private var transactionIndex: [UUID: Int] = [:]
 	private var searchText: [UUID: String] = [:]
@@ -26,12 +28,13 @@ public struct Ledger: Sendable {
 	public private(set) var accountsWithTransactions: Set<UUID> = []
 
 	public init(groups: [AccountGroup] = [], accounts: [Account] = [], categories: [Category] = [], transactions: [Transaction] = [],
-		portfolioValues: [PortfolioValue] = []) {
+		portfolioValues: [PortfolioValue] = [], holdings: [Holding] = []) {
 		self.groups = groups
 		self.accounts = accounts
 		self.categories = categories
 		self.transactions = transactions
 		for v in portfolioValues { record(v) }
+		for (id, positions) in Dictionary(grouping: holdings, by: \.accountID) { holdingsByAccount[id] = positions.sorted(by: Holding.isOrdered) }
 		rebuildIndexes()
 	}
 
@@ -104,6 +107,38 @@ public struct Ledger: Sendable {
 	public func transaction(_ id: UUID) -> Transaction? { transactionIndex[id].map { transactions[$0] } }
 	/// The recorded values of a portfolio, the oldest first.
 	public func portfolioValues(of accountID: UUID) -> [PortfolioValue] { portfolioHistory[accountID] ?? [] }
+
+	/// The positions of the accounts, by the name of the security without regard to case, across the accounts.
+	public func holdings(of accountIDs: [UUID]) -> [Holding] {
+		let all = accountIDs.flatMap { holdingsByAccount[$0] ?? [] }
+		return accountIDs.count > 1 ? all.sorted(by: Holding.isOrdered) : all
+	}
+
+	/// The accounts whose positions the view shows in place of transactions: the account when it is a portfolio,
+	/// or every account of the group tree when all of them are portfolios, ordered by position. Nil otherwise.
+	/// A portfolio with transactions, such as one taken over from MoneyMoney with its rows, keeps its transaction
+	/// list, so no row disappears, and the view never swaps a filled transaction table for the positions.
+	public func portfolioAccounts(in scope: LedgerScope) -> [UUID]? {
+		let ids: Set<UUID>
+		switch scope {
+		case let .account(id): ids = [id]
+		case let .accountGroup(id): ids = accountIDs(inGroupTree: id)
+		case .category: return nil
+		}
+		let found = ids.compactMap(account).sorted { $0.position < $1.position }
+		guard !found.isEmpty, found.allSatisfy({ $0.kind == .portfolio && !accountsWithTransactions.contains($0.id) }) else { return nil }
+		return found.map(\.id)
+	}
+
+	/// The profit or loss of all positions of the accounts with a purchase price, in the currency of each value.
+	public func totalGain(of accountIDs: [UUID]) -> MoneySums {
+		var sums = MoneySums()
+		for id in accountIDs {
+			guard let currency = account(id)?.currency else { continue }
+			for h in holdingsByAccount[id] ?? [] { if let gain = h.gain(in: currency) { sums.add(gain.amount) } }
+		}
+		return sums
+	}
 
 	/// The bank balance of each open portfolio that its history does not hold for the day of that
 	/// balance: a portfolio migrated before the app kept a history, or one whose record failed to
@@ -278,6 +313,7 @@ public struct Ledger: Sendable {
 			self.accounts = accounts
 			let ids = Set(accounts.map(\.id))
 			portfolioHistory = portfolioHistory.filter { ids.contains($0.key) }
+			holdingsByAccount = holdingsByAccount.filter { ids.contains($0.key) }
 		}
 		if let categories { self.categories = categories }
 		if let transactions { self.transactions = transactions }
@@ -311,6 +347,7 @@ public struct Ledger: Sendable {
 			upsert(account)
 			if let value = account.portfolioValue() { record(value) }
 		}
+		if let h = r.holdings { holdingsByAccount[h.accountID] = h.holdings.sorted(by: Holding.isOrdered) }
 		if !r.dropped.isEmpty { remove(transactionIDs: Set(r.dropped)) }
 		update(r.added + r.booked + r.updated + r.marked)
 	}

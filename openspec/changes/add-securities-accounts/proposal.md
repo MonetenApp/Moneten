@@ -24,7 +24,7 @@ None.
 
 ## Impact
 
-- Milestone: v0.2
+- Milestone: v0.1. Issue #31 moved into v0.1 after the bank test of issue #11. The design names the part that v0.1 builds. The other requirements stay open in the tasks.
 - Issues: #31
 - Modules: `Domain` owns the types for securities, quotes, and holdings and the valuation rules. `FinTSConnector` fetches and parses holdings. `ExtensionConnector` maps the securities of an extension. `Storage` keeps positions and the daily value. `App` owns the portfolio view.
 - Depends on the change `add-fints-banking` for the bank dialog, `add-account-refresh` for when a refresh runs and how errors show, `add-web-banking-extensions` for the securities that an extension returns, `add-account-management` for the account type, and `add-main-window` for the sidebar and the status line.
@@ -55,3 +55,8 @@ None.
 - The search field filters positions by name, ISIN, and security number. Which fields MoneyMoney searches was not observed.
 - When a refresh fails, the app keeps the positions of the last successful refresh and shows their date. MoneyMoney's behavior was not observed.
 - A position without a purchase price shows no profit or loss and is left out of the total gain.
+- The value of a position includes its accrued interest, so the positions add up to the total that the bank reports. The profit or loss leaves the accrued interest out. MoneyMoney's rule was not observed.
+- The exchange rate of a FinTS position follows the order of the bank: one unit of the first currency costs the rate in the second. A purchase price in another currency than the value, without a rate that links the two, shows no profit or loss. MoneyMoney's behavior in that case was not observed.
+- The list has column headers: "Name", "Quantity", "Purchase price", "Last quote", "Value", and "Profit/Loss". The layout of MoneyMoney's rows was not measured, so the list does not copy it.
+- A group shows the list of positions only when all its accounts are portfolios. A mixed group shows its transactions. MoneyMoney's mixed group was not observed.
+- A portfolio that holds transactions, such as one taken over from MoneyMoney with its rows, keeps its transaction list until positions from extensions and transactions of securities are built. Its rows would otherwise disappear.

@@ -80,17 +80,27 @@ public struct Reconciliation: Sendable, Equatable {
 	/// balance, the initial balance that follows from them. Nil for a file, and when the refresh brought
 	/// no balance in the currency of the account.
 	public internal(set) var account: Account?
+	/// The positions that replace those of the account, with the IDs of the stored positions of the same
+	/// securities. Nil when the delivery brought none.
+	public internal(set) var holdings: Holdings?
 
 	public init() {}
+
+	/// All positions of one portfolio after a refresh.
+	public struct Holdings: Sendable, Equatable {
+		public let accountID: UUID
+		public let holdings: [Holding]
+	}
 }
 
 /// Merges what a source delivered for one account into the stored history of that account.
 ///
 /// Pure: the same input gives the same result, and merging the same delivery into the result gives
 /// nothing to write except the balance. `stored` must be all live rows of `account`, and `deleted` all
-/// its deleted rows. Delivered rows are read for their bank fields and, from a file, the comment.
+/// its deleted rows, and `holdings` all its stored positions. Delivered rows are read for their bank fields
+/// and, from a file, the comment.
 public func reconcile(_ delivery: Delivery, into account: Account, stored: [Transaction], deleted: [DeletedTransaction],
-	rules: Categorizer, now: Date) -> Reconciliation {
+	holdings: [Holding] = [], rules: Categorizer, now: Date) -> Reconciliation {
 	let rows = delivery.rows
 	let fetched = delivery.isFetched
 	let honored = deleted.filter(delivery.honors)
@@ -179,6 +189,9 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored: [Tran
 			a.deriveInitialBalance(from: stored.map { changed[$0.id] ?? $0 } + r.added)
 		}
 		r.account = a
+	}
+	if case let .refresh(result) = delivery, let delivered = result.holdings {
+		r.holdings = Reconciliation.Holdings(accountID: account.id, holdings: Holding.identify(delivered, stored: holdings))
 	}
 	return r
 }

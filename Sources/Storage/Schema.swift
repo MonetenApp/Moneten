@@ -263,6 +263,32 @@ enum Schema {
 				WHERE source = 'migrated' AND kind != 'portfolio' AND bankBalanceMinor IS NOT NULL
 				""")
 		}
+		// The positions of a portfolio (issue #31), as `HoldingRecord` stores them. They go with their account.
+		m.registerMigration("v14") { db in
+			try db.create(table: "holding") { t in
+				t.column("id", .blob).primaryKey()
+				t.column("accountID", .blob).notNull().indexed().references("account", onDelete: .cascade)
+				t.column("name", .text).notNull()
+				t.column("isin", .text)
+				t.column("securityNumber", .text)
+				t.column("quantity", .text).notNull()
+				t.column("isNominal", .boolean).notNull()
+				t.column("nominalCurrency", .text)
+				t.column("price", .text)
+				t.column("priceCurrency", .text)
+				t.column("priceDay", .integer)
+				t.column("marketValueMinor", .integer)
+				t.column("marketValueCurrency", .text)
+				t.column("accruedInterestMinor", .integer)
+				t.column("accruedInterestCurrency", .text)
+				t.column("purchasePrice", .text)
+				t.column("purchasePriceCurrency", .text)
+				t.column("purchaseDay", .integer)
+				t.column("rateBase", .text)
+				t.column("rateQuoted", .text)
+				t.column("rate", .text)
+			}
+		}
 		return m
 	}
 }

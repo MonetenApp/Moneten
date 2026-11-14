@@ -22,10 +22,15 @@ struct TransactionsView: View {
 			.foregroundStyle(Palette.onBand)
 			.environment(\.negativeRed, Palette.bandRed)
 			.background(Palette.band)
-			FilterBar()
-			// The bordered table draws the lines above and below itself.
-			TransactionTable(rows: rows)
-			StatusLine(rows: rows)
+			// A portfolio, or a group of portfolios only, shows its positions in place of transactions.
+			if let portfolios = model.selectedPortfolios {
+				HoldingsView(accountIDs: portfolios)
+			} else {
+				FilterBar()
+				// The bordered table draws the lines above and below itself.
+				TransactionTable(rows: rows)
+				StatusLine(rows: rows)
+			}
 		}
 		.searchable(text: $model.filter.searchText, placement: .toolbar, prompt: "Search")
 		.searchFocused($searchFocused)
@@ -69,6 +74,7 @@ struct HeaderView: View {
 				default:
 					EmptyView()
 				}
+				if let portfolios = model.selectedPortfolios { TotalGainText(accountIDs: portfolios) }
 				if !pending.isEmpty {
 					Text("Pending: \(Format.sums(pending))").font(.subheadline).monospacedDigit().foregroundStyle(Palette.detail)
 				}

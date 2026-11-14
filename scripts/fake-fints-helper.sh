@@ -9,8 +9,10 @@
 # "Girokonto" with the test IBAN, "Tagesgeld", and "Kreditkarte". The state of the access counts the
 # refreshes: the second refresh fails "Tagesgeld" with an error of the bank, and the others succeed.
 # The login "unterkonten" lists two subaccounts of the account number 9 in place of these accounts.
-# The login "depot" lists "Girokonto" and two securities accounts: "Depot", whose refresh brings its value,
-# and "Fondsdepot", which the bank does not offer through FinTS.
+# The login "depot" lists "Girokonto" and three securities accounts: "Depot", whose refresh brings its value
+# and four positions (a share with a purchase price, a fund without one, a share in US dollars with an
+# exchange rate, and a bond with a nominal amount and accrued interest), "Leeres Depot", which is empty, and
+# "Fondsdepot", which the bank does not offer through FinTS.
 # The bank directory has two branches of Musterbank, the bank without a FinTS server Neobank Muster
 # (99999999), a made-up Sparkasse, and Consorsbank (76030080) and DAB BNP Paribas (70120400) with
 # their real FinTS address, so the setup shows the login hint of Consorsbank and none for DAB.
@@ -65,7 +67,7 @@ case "$cmd" in
 		exit 0
 	;;
 	*'"user":"depot"'*)
-		echo '{"type":"accounts","accounts":[{"number":"202051","iban":"DE02120300000000202051","bic":"BYLADEM1001","product":"Girokonto","kind":"1","owner":"Erika Mustermann","currency":"EUR"},{"number":"7654321","product":"Depot","kind":"30","owner":"Erika Mustermann","currency":"EUR"},{"number":"7654324","product":"Fondsdepot","kind":"30","owner":"Erika Mustermann","currency":"EUR"}]}'
+		echo '{"type":"accounts","accounts":[{"number":"202051","iban":"DE02120300000000202051","bic":"BYLADEM1001","product":"Girokonto","kind":"1","owner":"Erika Mustermann","currency":"EUR"},{"number":"7654321","product":"Depot","kind":"30","owner":"Erika Mustermann","currency":"EUR"},{"number":"7654325","product":"Leeres Depot","kind":"30","owner":"Erika Mustermann","currency":"EUR"},{"number":"7654324","product":"Fondsdepot","kind":"30","owner":"Erika Mustermann","currency":"EUR"}]}'
 		echo '{"type":"state","data":"MA=="}'
 		exit 0
 	;; esac
@@ -94,7 +96,14 @@ case "$cmd" in
 		echo "{\"type\":\"result\",\"account\":\"4711\",\"balance\":{\"amount\":\"-120.00\",\"currency\":\"EUR\",\"date\":\"$(day 0)\"},\"errors\":[]}"
 	;; esac
 	case "$cmd" in *'"id":"7654321"'*)
-		echo "{\"type\":\"result\",\"account\":\"7654321\",\"balance\":{\"amount\":\"24518.37\",\"currency\":\"EUR\",\"date\":\"$(day 1)\"},\"errors\":[]}"
+		echo '{"type":"result","account":"7654321","balance":{"amount":"8879.16","currency":"EUR","date":"'"$(day 1)"'"},"errors":[],"securities":true,"holdings":['\
+'{"name":"Musterwerke AG","isin":"DE0001234567","wkn":"123456","quantity":"40","price":{"amount":"25.00","currency":"EUR","day":"'"$(day 1)"'"},"value":{"amount":"1000.00","currency":"EUR"},"purchase":{"amount":"20.00","currency":"EUR","day":"2024-03-01"}},'\
+'{"name":"Beispiel Welt ETF","isin":"LU0000000002","quantity":"12.3456","price":{"amount":"101.25","currency":"EUR","day":"'"$(day 1)"'"},"value":{"amount":"1249.99","currency":"EUR"}},'\
+'{"name":"Muster Inc.","isin":"US0000000003","quantity":"15","currency":"USD","price":{"amount":"120.50","currency":"USD","day":"'"$(day 2)"'"},"value":{"amount":"1666.67","currency":"EUR"},"purchase":{"amount":"95.00","currency":"USD","day":"2023-06-15"},"rate":{"base":"EUR","quoted":"USD","rate":"1.0845"}},'\
+'{"name":"Anleihe Musterland 2030","isin":"DE0000000004","quantity":"5000","nominal":true,"currency":"EUR","price":{"amount":"98.5","currency":"%","day":"'"$(day 1)"'"},"value":{"amount":"4925.00","currency":"EUR"},"accrued":{"amount":"37.50","currency":"EUR"},"purchase":{"amount":"97","currency":"%"}}]}'
+	;; esac
+	case "$cmd" in *'"id":"7654325"'*)
+		echo '{"type":"result","account":"7654325","balance":{"amount":"0","currency":"EUR","date":"'"$(day 0)"'"},"errors":[],"securities":true,"holdings":[]}'
 	;; esac
 	case "$cmd" in *'"id":"7654324"'*)
 		echo '{"type":"accountFailed","account":"7654324","kind":"unsupported","text":"Moneten can'"'"'t read this securities account at this bank yet."}'
