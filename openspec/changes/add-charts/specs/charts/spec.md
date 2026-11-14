@@ -285,7 +285,7 @@ The app SHALL open a calibration window from "Calibrate" in the account settings
 
 ### Requirement: Propose a calibration
 
-The app SHALL propose a calibration when the balance that the bank reports differs from the computed balance at the end of the day of that bank balance, less the pending transactions that count up to that day. The bank reports its balance for that day and without pending transactions, so neither a pending transaction nor a transaction booked after that day leads to a proposal. A pending transaction marked for review does not count, as the capability `account-refresh` states.
+The app SHALL propose a calibration when the balance that the bank reports differs from the initial balance plus the booked transactions in the account currency up to the end of the day of that bank balance. The bank reports its balance for that day and without pending transactions, so neither a pending transaction nor a transaction booked after that day leads to a proposal. Accepting the proposal opens the calibration window with the computed balance of today plus the difference filled in.
 
 #### Scenario: Unexplained difference
 
@@ -304,6 +304,13 @@ The app SHALL propose a calibration when the balance that the bank reports diffe
 - **GIVEN** today is 12.11.2026, the initial balance is 700,00 €, and the account has booked transactions of -200,00 € on 01.11.2026 and of -30,00 € on 12.11.2026
 - **WHEN** a refresh ends that reports a balance of 500,00 € for 10.11.2026
 - **THEN** the app makes no proposal, although the computed balance of today is 470,00 €
+
+#### Scenario: The proposal fills in the balance of today
+
+- **GIVEN** today is 12.11.2026, the initial balance is 700,00 €, and the account has booked transactions of -200,00 € on 01.11.2026 and of -30,00 € on 12.11.2026
+- **WHEN** a refresh ends that reports a balance of 450,00 € for 10.11.2026, and the user accepts the proposal
+- **THEN** the calibration window shows 420,00 €
+- **AND** confirming it sets the initial balance to 650,00 €
 
 ### Requirement: Bar chart of a category
 

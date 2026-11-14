@@ -182,6 +182,12 @@ The app SHALL disable an offline account in the submenu of "Create Offsetting En
 - **WHEN** the user opens "Create Offsetting Entry"
 - **THEN** the submenu shows "Dollar Cash" enabled and "Wallet" disabled
 
+#### Scenario: Selection in two currencies
+
+- **GIVEN** a selected transaction of -50,00 € in the account "Giro", a selected transaction of -200,00 USD in the account "Travel Card", the offline account "Wallet" in euros, and the offline account "Dollar Cash" in US dollars
+- **WHEN** the user opens "Create Offsetting Entry"
+- **THEN** the submenu shows "Wallet" and "Dollar Cash" disabled
+
 ### Requirement: Fields of an offsetting entry
 
 The app SHALL give an offsetting entry the name, the purpose, and the comment of the source transaction. Its booking date and value date are the booking date of the source. Its counterparty account is the IBAN and BIC of the source account, and none when that account has no IBAN.

@@ -12,7 +12,7 @@ The first build follows the spec where the task list marks a task as checked. Op
 
 ### Balance of an offline account
 
-`Domain` owns the balance. `Ledger.computedBalance` adds the initial balance and every row of the account in the account currency, pending rows included except those with `needsReview`, as the changes `add-charts` and `add-account-refresh` decide. `Account.isInBalance` calls `Transaction.isInSum(of:)`, which PR #139 adds and which holds this test. It is the same function that the balance chart starts from, so the sidebar and the last bar agree. Once splits exist, the parts count and the original does not, as the change `add-split-transactions` defines. A new offline account has an initial balance of 0, and the account settings of the change `add-account-management` change it.
+`Domain` owns the balance. `Ledger.computedBalance` adds the initial balance and every row of the account in the account currency, pending rows included except those with `needsReview`, as the changes `add-charts` and `add-account-refresh` decide. `Account.isInBalance` calls `Transaction.isInSum(of:)`. #139 adds both, and `Transaction.isInSum(of:)` holds this test. It is the same function that the balance chart starts from, so the sidebar and the last bar agree. Once splits exist, the parts count and the original does not, as the change `add-split-transactions` defines. A new offline account has an initial balance of 0, and the account settings of the change `add-account-management` change it.
 
 ### One signed amount
 
