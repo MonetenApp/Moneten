@@ -384,7 +384,7 @@ private struct RuleParser {
 	private static let fieldOperators: [(text: String, negates: Bool)] = [(":=", false), ("==", false), ("!=", true), ("<>", true), (":", false), ("=", false)]
 
 	private func fieldOperator(at i: Int) -> (RuleField, (text: String, negates: Bool))? {
-		for field in RuleField.allCases where chars[i...].starts(with: field.rawValue) {
+		for field in RuleField.allCases where String(chars[i...].prefix(field.rawValue.count)).lowercased() == field.rawValue {
 			let rest = chars[(i + field.rawValue.count)...]
 			if let op = Self.fieldOperators.first(where: { rest.starts(with: $0.text) }) { return (field, op) }
 		}
