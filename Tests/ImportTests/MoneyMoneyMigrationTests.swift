@@ -383,7 +383,8 @@ struct MoneyMoneyMigrationTests {
 			deleted: [tombstone])
 		#expect(second.transactions.isEmpty)
 		let after = applying(second, to: ledger)
-		#expect(after.balance(of: try #require(after.account(giro.id))).minorUnits == 123_456)
+		let travel = try #require(after.account(giro.id))
+		#expect(after.balance(of: travel).minorUnits == 123_456)
 
 		// The deleted row takes the plain ID, and the same export runs again.
 		let deleted = relinked([tombstone], by: second)
@@ -481,6 +482,25 @@ struct MoneyMoneyMigrationTests {
 			deleted: [DeletedTransaction(fee, deletedAt: Date())])
 		#expect(second.relinkedDeletedRows.isEmpty)
 		#expect(applying(second, to: ledger).balance(of: try #require(ledger.account(giro.id))).minorUnits == 132_356)
+	}
+
+	@Test("A deleted row in another currency that leaves the source does not move the balance")
+	func deletedInOtherCurrency() throws {
+		var rows = transactions["transactions"] as! [[String: Any]]
+		rows.append(["id": 6, "accountUuid": "A1", "bookingDate": date(2026, 11, 5), "amount": -20.0, "currency": "USD", "name": "Diner New York", "purpose": "", "booked": true])
+		let first = try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(accounts), categories: try plist(categories),
+			transactions: try plist(["transactions": rows]), into: Ledger())
+		var ledger = Ledger(groups: first.groups, accounts: first.accounts, categories: first.categories, transactions: first.transactions)
+		let giro = try #require(first.accounts.first { $0.name == "Giro" })
+		let diner = try #require(ledger.transactions(ofAccount: giro.id).first { $0.sourceID == "moneymoney:6" })
+		ledger.remove(transactionIDs: [diner.id])
+		#expect(ledger.balance(of: giro).minorUnits == 123_456)
+
+		let second = try secondPlan(into: ledger, balance: 1234.56, rows: rows.filter { $0["id"] as? Int != 6 },
+			deleted: [DeletedTransaction(diner, deletedAt: Date())])
+		let after = applying(second, to: ledger)
+		let travel = try #require(after.account(giro.id))
+		#expect(after.balance(of: travel).minorUnits == 123_456)
 	}
 
 	@Test("A second run after a refresh stored some of the same transactions adds only the new ones")
