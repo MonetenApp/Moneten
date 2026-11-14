@@ -13,16 +13,17 @@ struct HoldingsView: View {
 		let search = model.filter.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
 		let rows = search.isEmpty ? all : all.filter { $0.matches(search) }
 		VStack(spacing: 0) {
-			if rows.isEmpty {
-				Text(all.isEmpty ? "No portfolio items found." : "No matching portfolio items found.")
-					.foregroundStyle(.secondary)
-					.frame(maxWidth: .infinity, maxHeight: .infinity)
-			} else {
-				HoldingsTable(rows: rows, selection: $selection)
-					// The rows keep their IDs across a refresh, so a refresh updates them in place. Only another
-					// view starts the table over, never a change of the ledger (#135, #151).
-					.id(model.selection)
-			}
+			// The table stays also without rows, with the empty state on top. The rows keep their IDs across a
+			// refresh, so a refresh updates them in place, and only another view starts the table over, never a
+			// change of the ledger (#135, #151).
+			HoldingsTable(rows: rows, selection: $selection)
+				.id(model.selection)
+				.overlay {
+					if rows.isEmpty {
+						Text(all.isEmpty ? "No portfolio items found." : "No matching portfolio items found.")
+							.foregroundStyle(.secondary)
+					}
+				}
 			HoldingsStatusLine(rows: rows, selection: selection)
 		}
 		.onChange(of: model.selection) { selection = [] }

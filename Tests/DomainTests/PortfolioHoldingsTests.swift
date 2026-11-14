@@ -86,4 +86,12 @@ struct PortfolioHoldingsTests {
 		#expect(ledger.portfolioAccounts(in: .account(g.id)) == nil)
 		#expect(ledger.portfolioAccounts(in: .accountGroup(mixed.id)) == nil)
 	}
+
+	@Test("A portfolio with transactions, such as one taken over with its rows, keeps its transaction list")
+	func portfolioWithTransactions() {
+		let ledger = Ledger(accounts: [depot, fonds], transactions: [Transaction(accountID: depot.id, bookingDate: Day(year: 2026, month: 11, day: 2),
+			amountMinor: -50_000, name: "Kauf")])
+		#expect(ledger.portfolioAccounts(in: .account(depot.id)) == nil)
+		#expect(ledger.portfolioAccounts(in: .account(fonds.id)) == [fonds.id])
+	}
 }

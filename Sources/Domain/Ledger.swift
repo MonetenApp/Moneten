@@ -116,6 +116,8 @@ public struct Ledger: Sendable {
 
 	/// The accounts whose positions the view shows in place of transactions: the account when it is a portfolio,
 	/// or every account of the group tree when all of them are portfolios, ordered by position. Nil otherwise.
+	/// A portfolio with transactions, such as one taken over from MoneyMoney with its rows, keeps its transaction
+	/// list, so no row disappears, and the view never swaps a filled transaction table for the positions.
 	public func portfolioAccounts(in scope: LedgerScope) -> [UUID]? {
 		let ids: Set<UUID>
 		switch scope {
@@ -124,7 +126,7 @@ public struct Ledger: Sendable {
 		case .category: return nil
 		}
 		let found = ids.compactMap(account).sorted { $0.position < $1.position }
-		guard !found.isEmpty, found.allSatisfy({ $0.kind == .portfolio }) else { return nil }
+		guard !found.isEmpty, found.allSatisfy({ $0.kind == .portfolio && !accountsWithTransactions.contains($0.id) }) else { return nil }
 		return found.map(\.id)
 	}
 

@@ -59,3 +59,4 @@ None.
 - The exchange rate of a FinTS position follows the order of the bank: one unit of the first currency costs the rate in the second. A purchase price in another currency than the value, without a rate that links the two, shows no profit or loss. MoneyMoney's behavior in that case was not observed.
 - The list has column headers: "Name", "Quantity", "Purchase price", "Last quote", "Value", and "Profit/Loss". The layout of MoneyMoney's rows was not measured, so the list does not copy it.
 - A group shows the list of positions only when all its accounts are portfolios. A mixed group shows its transactions. MoneyMoney's mixed group was not observed.
+- A portfolio that holds transactions, such as one taken over from MoneyMoney with its rows, keeps its transaction list until positions from extensions and transactions of securities are built. Its rows would otherwise disappear.
