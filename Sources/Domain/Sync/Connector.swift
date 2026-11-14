@@ -92,7 +92,7 @@ public struct AccountRequest: Sendable, Equatable {
 	/// The currency of the account in the app, for a row that the source sends without one.
 	public let currency: String
 
-	public init(accountID: UUID, name: String, remoteID: String, since: Day? = nil, currency: String = "EUR") {
+	public init(accountID: UUID, name: String, remoteID: String, since: Day? = nil, currency: String) {
 		self.accountID = accountID
 		self.name = name
 		self.remoteID = remoteID

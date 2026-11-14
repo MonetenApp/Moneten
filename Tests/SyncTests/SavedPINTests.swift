@@ -15,7 +15,7 @@ struct SavedPINTests {
 	var broker: SessionBroker { coordinator.broker }
 	let store = MemoryPINStore()
 	static let bank = Access(source: .fints(bankCode: "12030000", url: URL(string: "https://fints.example.com/")!), bankName: "Musterbank", loginName: "erika77")
-	static let giro = AccountRequest(accountID: UUID(), name: "Giro", remoteID: "1234")
+	static let giro = AccountRequest(accountID: UUID(), name: "Giro", remoteID: "1234", currency: "EUR")
 	static let pin = UserRequest.pin(PINRequest())
 	static let rejected = UserRequest.pin(PINRequest(rejected: BankMessage(code: "9942", text: "PIN falsch")))
 

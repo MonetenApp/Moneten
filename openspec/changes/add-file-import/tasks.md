@@ -24,7 +24,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [x] 1.18 Identical rows inside one file. Verified by LedgerTests "Identical rows inside one file stay separate...".
 - [x] 1.19 Result message. Verified by imported and skipped counts.
 - [ ] 1.20 Errors name the file and the place. Built in part: file name and line for CSV and MT940. Finish it and verify it with a test or in the app.
-- [ ] 1.21 Warnings for a file. Build it and verify it with a test or in the app.
+- [ ] 1.21 Warnings for a file. Build it and verify it with a test or in the app. The CSV parser already puts a row with an unknown currency cell in the account currency, and it owes a warning with the file, the line, and the substituted currency.
 - [x] 1.22 Imported transactions are complete transactions. Verified by rules run on imported rows.
 - [x] 1.23 Balances and charts after an import. Verified by the ledger and the charts update at once.
 - [ ] 1.24 Progress and cancel. Build it and verify it with a test or in the app.

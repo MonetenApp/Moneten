@@ -8,8 +8,8 @@ import Testing
 @Suite("FinTS connector")
 struct FinTSConnectorTests {
 	static let access = Access(source: .fints(bankCode: "12030000", url: URL(string: "https://fints.example.com/fints")!), bankName: "Musterbank", loginName: "erika77")
-	static let giro = AccountRequest(accountID: UUID(), name: "Giro", remoteID: "DE02120300000000202051")
-	static let savings = AccountRequest(accountID: UUID(), name: "Savings", remoteID: "1234567890")
+	static let giro = AccountRequest(accountID: UUID(), name: "Giro", remoteID: "DE02120300000000202051", currency: "EUR")
+	static let savings = AccountRequest(accountID: UUID(), name: "Savings", remoteID: "1234567890", currency: "EUR")
 
 	/// A file that a script writes the lines of the app into.
 	let record = FileManager.default.temporaryDirectory.appending(path: "fints-\(UUID().uuidString).txt")
@@ -495,9 +495,9 @@ struct FinTSConnectorTests {
 	@Test("Asks for the full history first and when enforced, and otherwise for at most 90 days, in one command")
 	func periods() async throws {
 		let today = Day.today()
-		let recent = AccountRequest(accountID: UUID(), name: "Giro", remoteID: "A", since: today.adding(days: -10))
-		let old = AccountRequest(accountID: UUID(), name: "Savings", remoteID: "B", since: today.adding(days: -200))
-		let new = AccountRequest(accountID: UUID(), name: "Card", remoteID: "C")
+		let recent = AccountRequest(accountID: UUID(), name: "Giro", remoteID: "A", since: today.adding(days: -10), currency: "EUR")
+		let old = AccountRequest(accountID: UUID(), name: "Savings", remoteID: "B", since: today.adding(days: -200), currency: "EUR")
+		let new = AccountRequest(accountID: UUID(), name: "Card", remoteID: "C", currency: "EUR")
 		let script = "read cmd; printf '%s\\n' \"$cmd\" >> \"$R\""
 		_ = try await refresh(script, accounts: [recent, old, new])
 		_ = try await refresh(script, accounts: [recent, old, new], enforced: true)
@@ -511,8 +511,8 @@ struct FinTSConnectorTests {
 	func helperLines() async throws {
 		// The self-test of the helper writes this file: scripts/build-fints-helper.sh.
 		let lines = URL(filePath: #filePath).deletingLastPathComponent().appending(path: "helper-lines.jsonl")
-		let card = AccountRequest(accountID: UUID(), name: "Card", remoteID: "4711")
-		let depots = ["7654321", "7654322", "7654323", "7654324", "7654325"].map { AccountRequest(accountID: UUID(), name: "Depot", remoteID: $0) }
+		let card = AccountRequest(accountID: UUID(), name: "Card", remoteID: "4711", currency: "EUR")
+		let depots = ["7654321", "7654322", "7654323", "7654324", "7654325"].map { AccountRequest(accountID: UUID(), name: "Depot", remoteID: $0, currency: "EUR") }
 		let report = try await refresh("read cmd; cat '\(lines.path)'", accounts: [Self.giro, Self.savings, card] + depots)
 
 		guard case let .fetched(depot) = report.outcomes[depots[0].accountID] else { Issue.record("depot not fetched"); return }
@@ -576,7 +576,7 @@ struct FinTSConnectorTests {
 
 	@Test("Fails two requests for the same account of the bank, and fetches the others")
 	func clash() async throws {
-		let twin = AccountRequest(accountID: UUID(), name: "Giro 2", remoteID: Self.giro.remoteID)
+		let twin = AccountRequest(accountID: UUID(), name: "Giro 2", remoteID: Self.giro.remoteID, currency: "EUR")
 		let report = try await refresh(#"""
 			read cmd; printf '%s\n' "$cmd" >> "$R"
 			echo '{"type":"result","account":"1234567890","balance":{"amount":"1","currency":"EUR"},"errors":[]}'
@@ -593,8 +593,8 @@ struct FinTSConnectorTests {
 	@Test("Maps every field of the result, with calendar days and pending rows")
 	func fields() async throws {
 		let session = Session()
-		let card = AccountRequest(accountID: UUID(), name: "Card", remoteID: "4711")
-		let loan = AccountRequest(accountID: UUID(), name: "Loan", remoteID: "777")
+		let card = AccountRequest(accountID: UUID(), name: "Card", remoteID: "4711", currency: "EUR")
+		let loan = AccountRequest(accountID: UUID(), name: "Loan", remoteID: "777", currency: "EUR")
 		let report = try await refresh(#"""
 			read cmd
 			echo '{"type":"progress","done":0,"of":3}'
