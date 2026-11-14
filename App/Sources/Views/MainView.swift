@@ -10,7 +10,9 @@ struct MainView: View {
 			SidebarView()
 				.navigationSplitViewColumnWidth(min: 240, ideal: 320, max: 480)
 		} detail: {
-			if model.selection != nil {
+			// The view of `tableKey`, not of `selection`: a new view that comes with a change of the rows that
+			// SwiftUI has not drawn yet waits a drawing before it removes the table (issue #151).
+			if model.tableKey.selection != nil {
 				TransactionsView()
 			} else if model.ledger.accounts.isEmpty {
 				EmptyStateView()
@@ -83,7 +85,7 @@ struct SheetView: View {
 	var body: some View {
 		switch kind {
 		case .newAccount: if let setup = model.setup { AccountSetupSheet(setup: setup) }
-		case .newGroup: NameSheet(title: "Add Account Group", placeholder: "Name") { model.addGroup(name: $0) }
+		case .newGroup: NameSheet(title: "Add Account Group", placeholder: "Name") { name in Task { await model.addGroup(name: name) } }
 		case let .newCategory(isGroup, ids): NewCategorySheet(isGroup: isGroup, assigning: ids)
 		case let .accountSettings(id): AccountSettingsSheet(accountID: id)
 		case let .groupSettings(id): GroupSettingsSheet(groupID: id)

@@ -79,7 +79,7 @@ final class DebugHarness {
 			offscreenSnapshot(GeneralSettings().environment(model), width: 500, name: "\(argument)-general")
 		case "storepassword": log("storepassword \((try? model.vault.storePassword(argument)) != nil)")
 		case "removepassword": try? model.vault.removeStoredPassword()
-		case "seed": DemoData.seed(model)
+		case "seed": Task { await DemoData.seed(model); log("seed done") }
 		// "<name>" starts a made-up refresh that shows one dialog of SyncDemo.requests.
 		case "syncdemo": SyncDemo.start(argument, in: model.sync)
 		case "synccancel": model.sync.cancelAll()
@@ -95,7 +95,7 @@ final class DebugHarness {
 				accountNumber: "9", bankCode: "12030000"))
 		// "<name>": what "Remove" in the context menu of a group does.
 		case "removegroup":
-			if let g = model.ledger.groups.first(where: { $0.name == argument }) { model.remove(group: g.id) }
+			if let g = model.ledger.groups.first(where: { $0.name == argument }) { Task { await model.remove(group: g.id) } }
 		// "<text>" answers the dialog on screen with a TAN, or with a PIN when it asks for one.
 		case "answer":
 			if let prompt = model.sync.broker.current {
@@ -223,8 +223,8 @@ final class DebugHarness {
 				g.groupsByAccount = true
 				model.save(group: g)
 			}
-		case "usd": DemoData.usdAccount(model)
-		case "review": DemoData.review(model)
+		case "usd": Task { await DemoData.usdAccount(model); log("usd done") }
+		case "review": Task { await DemoData.review(model); log("review done") }
 		case "fetch": DemoData.fetch(model, argument)
 		case "deleterows":
 			if let giro = model.ledger.accounts.first(where: { $0.name == "Girokonto" }) {
@@ -284,11 +284,14 @@ final class DebugHarness {
 				offscreenSnapshot(ScrollingBarChart(bars: bars, style: .separators, barWidth: 4, gap: 2, positive: Palette.bandBar, negative: Palette.red,
 					hovered: hovered) { _ in }.frame(height: 230).background(Palette.band).environment(model), width: 520, name: "\(argument)-bars")
 			}
-		case "history": DemoData.history(model)
+		case "history": Task { await DemoData.history(model); log("history done") }
 		case "bulk":
 			// "<count>" spreads the transactions over the existing accounts, "<count> <accounts>" over new ones.
 			let numbers = argument.split(separator: " ").compactMap { Int($0) }
-			DemoData.bulk(model, count: numbers.first ?? 30_000, newAccounts: numbers.dropFirst().first ?? 0)
+			Task {
+				await DemoData.bulk(model, count: numbers.first ?? 30_000, newAccounts: numbers.dropFirst().first ?? 0)
+				log("bulk done")
+			}
 		// The number and the row count of each transaction table on screen. A new number means a new table.
 		case "tables":
 			for table in transactionTables() {
@@ -338,7 +341,7 @@ final class DebugHarness {
 			default: model.sheet = nil
 			}
 		// What "Add category" in "Assign Category" does with the selected rows.
-		case "newcategory": model.addCategory(name: argument, isGroup: false, parentID: nil, assigning: model.selectedTransactions)
+		case "newcategory": Task { await model.addCategory(name: argument, isGroup: false, parentID: nil, assigning: model.selectedTransactions) }
 		case "selectRows": model.selectedTransactions = Set(model.visibleTransactions.prefix(Int(argument) ?? 1).map(\.id))
 		case "state":
 			log("phase=\(model.phase) accounts=\(model.ledger.accounts.count) transactions=\(model.ledger.transactions.count) visible=\(model.visibleTransactions.count) selection=\(String(describing: model.selection)) selected=\(model.selectedAccount?.name ?? "-")")
@@ -443,10 +446,15 @@ final class DebugHarness {
 	}
 
 	/// The tables of transactions in all windows, told apart from the sidebar by their amount column.
-	func transactionTables() -> [NSTableView] {
+	func transactionTables() -> [NSTableView] { tables(withColumn: "Amount") }
+
+	/// The tables of positions in all windows.
+	func holdingsTables() -> [NSTableView] { tables(withColumn: "Quantity") }
+
+	private func tables(withColumn title: String) -> [NSTableView] {
 		func tables(in view: NSView) -> [NSTableView] {
 			if let table = view as? NSTableView {
-				return table.tableColumns.contains { $0.title == "Amount" } ? [table] : []
+				return table.tableColumns.contains { $0.title == title } ? [table] : []
 			}
 			return view.subviews.flatMap(tables)
 		}
@@ -649,34 +657,37 @@ enum DemoData {
 	/// newest first, the way an old account and the one that replaced it do. A group view then shows
 	/// thousands of rows of other accounts above the rows of one account.
 	@MainActor
-	static func bulk(_ model: AppModel, count: Int, newAccounts: Int = 0) {
+	static func bulk(_ model: AppModel, count: Int, newAccounts: Int = 0) async {
 		var accounts = model.ledger.accounts
 		if newAccounts > 0 {
-			model.addGroup(name: "Bulk")
+			await model.addGroup(name: "Bulk")
 			guard let group = model.ledger.groups.first(where: { $0.name == "Bulk" })?.id else { return }
-			for n in 1...newAccounts { model.addOfflineAccount(name: "Account \(n)", kind: .giro, currency: "EUR", groupID: group) }
+			for n in 1...newAccounts { await model.addOfflineAccount(name: "Account \(n)", kind: .giro, currency: "EUR", groupID: group) }
 			accounts = model.ledger.accounts(inGroup: group)
 			model.navigate(to: .group(group))
 		}
 		guard !accounts.isEmpty else { return }
 		let today = Day.today()
 		let names = ["REWE Markt", "Bäckerei Gutbrot", "Stadtwerke Musterstadt", "Beispiel GmbH", "Max Mustermann", "Tankstelle"]
-		for (n, account) in accounts.enumerated() {
-			let ts = stride(from: n, to: count, by: accounts.count).map { (i: Int) -> Transaction in
-				let slot = newAccounts > 0 ? n * count / accounts.count + i / accounts.count : i
-				let amount = Int64(-(i % 9_000) - 100)
-				return Transaction(accountID: account.id, bookingDate: today.adding(days: -(slot / 8)), amountMinor: amount,
-					name: names[i % names.count], purpose: i % 3 == 0 ? "" : "Purpose \(i)")
+		// One new table for all accounts, as an import of several files.
+		await model.replacingTable {
+			for (n, account) in accounts.enumerated() {
+				let ts = stride(from: n, to: count, by: accounts.count).map { (i: Int) -> Transaction in
+					let slot = newAccounts > 0 ? n * count / accounts.count + i / accounts.count : i
+					let amount = Int64(-(i % 9_000) - 100)
+					return Transaction(accountID: account.id, bookingDate: today.adding(days: -(slot / 8)), amountMinor: amount,
+						name: names[i % names.count], purpose: i % 3 == 0 ? "" : "Purpose \(i)")
+				}
+				_ = try? model.merge(.file(ts), into: account.id)
 			}
-			try? model.merge(.file(ts), into: account.id)
 		}
 	}
 
 	/// Ten years of a current account: salary and rent, an overdraft in the first year, and a few
 	/// large sums that stay a week, so a few bars are far longer than the others.
 	@MainActor
-	static func history(_ model: AppModel) {
-		model.addOfflineAccount(name: "History", kind: .giro, currency: "EUR", groupID: nil)
+	static func history(_ model: AppModel) async {
+		await model.addOfflineAccount(name: "History", kind: .giro, currency: "EUR", groupID: nil)
 		guard let account = model.ledger.accounts.first(where: { $0.name == "History" }) else { return }
 		let today = Day.today()
 		var ts: [Transaction] = []
@@ -690,15 +701,17 @@ enum DemoData {
 				ts.append(Transaction(accountID: account.id, bookingDate: month.adding(days: 10), amountMinor: -amount, name: "Max Mustermann", purpose: "Umbuchung"))
 			}
 		}
-		try? model.merge(.file(ts.filter { $0.bookingDate <= today }), into: account.id)
-		model.navigate(to: .account(account.id))
+		await model.replacingTable {
+			_ = try? model.merge(.file(ts.filter { $0.bookingDate <= today }), into: account.id)
+			model.navigate(to: .account(account.id))
+		}
 	}
 
 	/// A credit card in US dollars in the group "Private" of `seed`, for a group with two currencies.
 	@MainActor
-	static func usdAccount(_ model: AppModel) {
+	static func usdAccount(_ model: AppModel) async {
 		let group = model.ledger.groups.first { $0.name == "Private" }?.id
-		model.addOfflineAccount(name: "Travel Card", kind: .creditCard, currency: "USD", groupID: group)
+		await model.addOfflineAccount(name: "Travel Card", kind: .creditCard, currency: "USD", groupID: group)
 		guard let card = model.ledger.accounts.first(where: { $0.name == "Travel Card" }) else { return }
 		let today = Day.today()
 		// Explicit types: the compiler of CI gives up on this closure otherwise.
@@ -708,7 +721,7 @@ enum DemoData {
 			let day: Day = today.adding(days: -i * 9)
 			return Transaction(accountID: card.id, bookingDate: day, amountMinor: amount, currency: "USD", name: payment ? "Payment" : "Diner", purpose: "Card")
 		}
-		try? model.merge(.file(ts), into: card.id)
+		await model.replacingTable { try? model.merge(.file(ts), into: card.id) }
 	}
 
 	@MainActor
@@ -732,22 +745,24 @@ enum DemoData {
 	}
 
 	@MainActor
-	static func review(_ model: AppModel) {
+	static func review(_ model: AppModel) async {
 		guard let giro = model.ledger.accounts.first(where: { $0.name == "Girokonto" }) else { return }
 		let today = Day.today()
 		func coffee(_ day: Day, pending: Bool) -> Transaction {
 			Transaction(accountID: giro.id, bookingDate: day, amountMinor: -320, name: "Café Beispiel", purpose: "KARTENZAHLUNG", isPending: pending)
 		}
-		try? model.merge(.file([coffee(today.adding(days: -1), pending: true), coffee(today.adding(days: -1), pending: true)]), into: giro.id)
-		try? model.merge(.file([coffee(today, pending: false)]), into: giro.id)
+		await model.replacingTable {
+			_ = try? model.merge(.file([coffee(today.adding(days: -1), pending: true), coffee(today.adding(days: -1), pending: true)]), into: giro.id)
+			_ = try? model.merge(.file([coffee(today, pending: false)]), into: giro.id)
+		}
 	}
 
 	@MainActor
-	static func seed(_ model: AppModel) {
-		model.addGroup(name: "Private")
+	static func seed(_ model: AppModel) async {
+		await model.addGroup(name: "Private")
 		guard let group = model.ledger.groups.first(where: { $0.name == "Private" }) else { return }
-		model.addOfflineAccount(name: "Girokonto", kind: .giro, currency: "EUR", groupID: group.id)
-		model.addOfflineAccount(name: "Tagesgeld", kind: .savings, currency: "EUR", groupID: group.id)
+		await model.addOfflineAccount(name: "Girokonto", kind: .giro, currency: "EUR", groupID: group.id)
+		await model.addOfflineAccount(name: "Tagesgeld", kind: .savings, currency: "EUR", groupID: group.id)
 		guard let giro = model.ledger.accounts.first(where: { $0.name == "Girokonto" }),
 			let savings = model.ledger.accounts.first(where: { $0.name == "Tagesgeld" }) else { return }
 		var g = giro
@@ -788,7 +803,9 @@ enum DemoData {
 			rent.rule = #"name:"Wohnbau*" AND amount<0"#
 			model.save(category: rent)
 		}
-		try? model.merge(.file(ts.filter { $0.accountID == giro.id }), into: giro.id)
-		try? model.merge(.file(ts.filter { $0.accountID == savings.id }), into: savings.id)
+		await model.replacingTable {
+			_ = try? model.merge(.file(ts.filter { $0.accountID == giro.id }), into: giro.id)
+			_ = try? model.merge(.file(ts.filter { $0.accountID == savings.id }), into: savings.id)
+		}
 	}
 }

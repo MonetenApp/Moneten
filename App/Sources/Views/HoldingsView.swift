@@ -10,23 +10,32 @@ struct HoldingsView: View {
 
 	var body: some View {
 		let all = model.ledger.holdings(of: accountIDs)
-		let search = model.filter.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+		// The search of `tableKey`, as for the transaction table: a new search starts the table over instead of
+		// removing shown rows in place.
+		let search = model.tableKey.filter.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
 		let rows = search.isEmpty ? all : all.filter { $0.matches(search) }
 		VStack(spacing: 0) {
 			// The table stays also without rows, with the empty state on top. The rows keep their IDs across a
-			// refresh, so a refresh updates them in place, and only another view starts the table over, never a
-			// change of the ledger (#135, #151).
-			HoldingsTable(rows: rows, selection: $selection)
-				.id(model.selection)
-				.overlay {
-					if rows.isEmpty {
-						Text(all.isEmpty ? "No portfolio items found." : "No matching portfolio items found.")
-							.foregroundStyle(.secondary)
-					}
+			// refresh, so a refresh updates them in place. A refresh that drops a shown position, another view,
+			// or another search starts the table over (#135, #151), with the placeholder of
+			// `AppModel.replacingTable` in between.
+			Group {
+				if model.tableHolds > 0 {
+					Color.clear
+				} else {
+					HoldingsTable(rows: rows, selection: $selection)
+						.id(model.tableKey)
 				}
+			}
+			.overlay {
+				if rows.isEmpty, model.tableHolds == 0 {
+					Text(all.isEmpty ? "No portfolio items found." : "No matching portfolio items found.")
+						.foregroundStyle(.secondary)
+				}
+			}
 			HoldingsStatusLine(rows: rows, selection: selection)
 		}
-		.onChange(of: model.selection) { selection = [] }
+		.onChange(of: model.tableKey) { selection = [] }
 	}
 }
 

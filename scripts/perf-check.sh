@@ -2,13 +2,16 @@
 # Runs the UI performance scenarios of App/Sources/PerfCheck.swift in the optimized Perf build.
 # A scenario over the half second of the spec is reported as slow. The script fails when a scenario
 # hangs past the limit, a table misses rows, or the app dies.
-# The app runs with a temporary data folder, so it never opens the real database.
+# The app runs with a temporary data folder, so it never opens the real database, and as a copy under
+# its own bundle ID, so it leaves the settings and window frames of an installed Moneten alone.
 set -e
 cd "$(dirname "$0")/.."
 scripts/generate-project.sh
 xcodebuild -project App/Moneten.xcodeproj -scheme Moneten -configuration Perf -derivedDataPath .build/xcode \
 	-disableAutomaticPackageResolution -quiet build
-APP=.build/xcode/Build/Products/Perf/Moneten.app
+BUILT=.build/xcode/Build/Products/Perf/Moneten.app
+# Its settings stay in a domain of their own, which each run uses again.
+BUNDLE_ID=io.github.alexander-schneider.Moneten.perf-check
 
 NOTIFY=.build/perf-notify
 if [ ! -x "$NOTIFY" ] || [ scripts/perf-check.sh -nt "$NOTIFY" ]; then
@@ -23,6 +26,10 @@ fi
 
 WORK="$(mktemp -d)"
 LOG="$WORK/debug/debug.log"
+APP="$WORK/Moneten.app"
+ditto "$BUILT" "$APP"
+/usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $BUNDLE_ID" "$APP/Contents/Info.plist"
+codesign --force --sign - --entitlements App/Moneten.entitlements "$APP"
 MONETEN_DATA_DIR="$WORK/data" MONETEN_DEBUG_DIR="$WORK/debug" "$APP/Contents/MacOS/Moneten" \
 	-viewMode barChart -lockAfterInactivity NO -ApplePersistenceIgnoreState YES >"$WORK/app.log" 2>&1 &
 PID=$!

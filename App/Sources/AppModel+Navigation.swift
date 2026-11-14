@@ -115,8 +115,10 @@ extension AppModel {
 		}
 	}
 
-	func importFile() {
-		guard let account = selectedAccount else { return }
+	/// Imports files into `accountID`, or into the selected account. The context menu of an account names
+	/// it, because a click can wait for a drawing before it selects the account (issue #151).
+	func importFile(into accountID: UUID? = nil) async {
+		guard let account = accountID.flatMap({ ledger.account($0) }) ?? selectedAccount else { return }
 		let panel = NSOpenPanel()
 		panel.title = "Import Transactions"
 		panel.message = "CSV, CAMT (camt.052, camt.053), and MT940 files are supported."
@@ -127,20 +129,23 @@ extension AppModel {
 		var skipped = 0
 		var booked = 0
 		var problems: [String] = []
-		for url in panel.urls {
-			do {
-				let data = try Data(contentsOf: url)
-				guard data.count <= 100 * 1024 * 1024 else {
-					problems.append("\(url.lastPathComponent): The file is too large. Please choose a file with a maximum size of 100 MB.")
-					continue
+		// A file can bring thousands of rows, so all files go in with one new table.
+		await replacingTable {
+			for url in panel.urls {
+				do {
+					let data = try Data(contentsOf: url)
+					guard data.count <= 100 * 1024 * 1024 else {
+						problems.append("\(url.lastPathComponent): The file is too large. Please choose a file with a maximum size of 100 MB.")
+						continue
+					}
+					let parsed = try TransactionFileImporter.parse(data, currency: account.currency)
+					let result = try merge(.file(parsed), into: account.id)
+					added += result.added.count
+					skipped += result.skipped
+					booked += result.booked.count
+				} catch {
+					problems.append("\(url.lastPathComponent): \(error)")
 				}
-				let parsed = try TransactionFileImporter.parse(data, currency: account.currency)
-				let result = try merge(.file(parsed), into: account.id)
-				added += result.added.count
-				skipped += result.skipped
-				booked += result.booked.count
-			} catch {
-				problems.append("\(url.lastPathComponent): \(error)")
 			}
 		}
 		var message = added == 0 ? "Imported no new transactions." : added == 1 ? "Imported one new transaction." : "Imported \(added) new transactions."

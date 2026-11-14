@@ -52,7 +52,12 @@ struct PerfScenario {
 				let rows = (0..<2_000).map { i in
 					Transaction(accountID: account.id, bookingDate: today.adding(days: -(i % 400)), amountMinor: -Int64(1_000 + i), name: "Online Shop", purpose: "Order \(i)")
 				}
-				try? c.model.merge(.file(rows), into: account.id)
+				await c.model.replacingTable {
+					// SwiftUI has replaced the table with the placeholder before the rows change (issue #151). AppKit
+					// can remove the old table view a moment later (2 of 48 swaps measured), so this is a note only.
+					if !c.harness.transactionTables().isEmpty { c.harness.log("perf import-into-open-view note: the old table view was still in the window") }
+					_ = try? c.model.merge(.file(rows), into: account.id)
+				}
 			}),
 		// A first refresh fetches the whole history into the open view. A refresh changes the rows of the
 		// table in place (issue #135), so the table must stay the same object.
@@ -73,6 +78,145 @@ struct PerfScenario {
 					c.fail("the refresh replaced the transaction table")
 				}
 			}),
+		// A refresh that drops pending rows of the open table starts the table over. Removing shown rows in
+		// place stopped the app in AttributeGraph (issue #135).
+		PerfScenario(name: "refresh-drops-shown-pending", budget: halfSecond,
+			setUp: { c in
+				await c.select("Account 1")
+				guard let account = c.model.ledger.accounts.first(where: { $0.name == "Account 1" }) else { return }
+				let pending = (0..<20).map { i in
+					Transaction(accountID: account.id, bookingDate: Day.today(), amountMinor: -Int64(500 + i), name: "Card Payment", purpose: "Pending \(i)", isPending: true)
+				}
+				await c.model.replacingTable { _ = try? c.model.merge(.file(pending), into: account.id) }
+				await c.settle()
+			},
+			run: { c in
+				guard let account = c.model.ledger.accounts.first(where: { $0.name == "Account 1" }) else { return }
+				let table = c.harness.transactionTables().first
+				let result = RefreshResult(balance: nil, transactions: FetchedTransactions(rows: [], from: Day.today().adding(days: -1)))
+				try? await c.model.sync.deliver(account.id, result)
+				await c.settle()
+				if c.model.ledger.transactions(ofAccount: account.id).contains(where: \.isPending) { c.fail("the refresh dropped no pending row") }
+				if c.harness.transactionTables().first.map(ObjectIdentifier.init) == table.map(ObjectIdentifier.init) {
+					c.fail("the refresh removed shown rows in place")
+				}
+			}),
+		// An import replaces the table while a refresh of another account of the open group lands in the same
+		// pass. The refresh changes the rows in place only after the placeholder is drawn (issue #151).
+		PerfScenario(name: "import-meets-refresh", budget: halfSecond,
+			setUp: { await $0.select("Bulk") },
+			run: { c in
+				guard let imported = c.model.ledger.accounts.first(where: { $0.name == "Account 5" }),
+					let refreshed = c.model.ledger.accounts.first(where: { $0.name == "Account 6" }) else { return }
+				let today = Day.today()
+				let imports = (0..<500).map { i in
+					Transaction(accountID: imported.id, bookingDate: today.adding(days: -(i % 100)), amountMinor: -Int64(1_100 + i), name: "Online Shop", purpose: "Meets \(i)")
+				}
+				// Both tasks run in the same pass of the main queue: the swap raises its hold, then the refresh lands.
+				let swap = Task { await c.model.replacingTable { _ = try? c.model.merge(.file(imports), into: imported.id) } }
+				let refresh = Task {
+					let rows = (0..<200).map { i in
+						Transaction(accountID: refreshed.id, bookingDate: today, amountMinor: -Int64(900 + i), name: "Card Payment", purpose: "Meets \(i)")
+					}
+					try? await c.model.sync.deliver(refreshed.id, RefreshResult(balance: nil, transactions: FetchedTransactions(rows: rows, from: today)))
+					// Without a wait the merge ran in this pass, while the old table was still on screen.
+					if c.model.tableHolds > 0, !c.harness.transactionTables().isEmpty { c.fail("the refresh changed the rows of a table that its placeholder replaces") }
+				}
+				await swap.value
+				await refresh.value
+			}),
+		// A click on another view, or a new filter, right after a refresh reaches the table only after SwiftUI
+		// drew the new rows, so that the table never goes in the drawing that changes its rows (issue #151).
+		PerfScenario(name: "view-change-after-refresh", budget: halfSecond,
+			setUp: { await $0.select("Account 2") },
+			run: { c in
+				guard let account = c.model.ledger.accounts.first(where: { $0.name == "Account 2" }),
+					let group = c.model.ledger.groups.first(where: { $0.name == "Bulk" }) else { return }
+				let today = Day.today()
+				@MainActor func refresh(_ tag: String) {
+					let rows = (0..<50).map { i in
+						Transaction(accountID: account.id, bookingDate: today, amountMinor: -Int64(700 + i), name: "Card Payment", purpose: "\(tag) \(i)")
+					}
+					_ = try? c.model.merge(.refresh(RefreshResult(balance: nil, transactions: FetchedTransactions(rows: rows, from: today))), into: account.id)
+				}
+				refresh("Search")
+				c.model.filter.searchText = "Card"
+				if c.model.tableKey.filter.searchText == "Card" { c.fail("the search changed the table in the drawing of the new rows") }
+				await c.settle()
+				if c.model.tableKey.filter.searchText != "Card" { c.fail("the table did not follow the search") }
+				c.model.filter.searchText = ""
+				await c.settle()
+				refresh("Click")
+				c.harness.select("Bulk")
+				if c.model.tableKey.selection == .group(group.id) { c.fail("the view changed in the drawing of the new rows") }
+				await c.settle()
+				if c.model.tableKey.selection != .group(group.id) { c.fail("the table did not follow the click") }
+			}),
+		// A refresh that drops a shown position of a portfolio starts the table of positions over, as a
+		// refresh that drops shown pending rows does (issue #151).
+		PerfScenario(name: "refresh-drops-shown-position", budget: halfSecond,
+			setUp: { c in
+				await c.model.addOfflineAccount(name: "Perf Depot", kind: .portfolio, currency: "EUR", groupID: nil)
+				guard let depot = c.model.ledger.accounts.first(where: { $0.name == "Perf Depot" }) else { return }
+				try? await c.model.sync.deliver(depot.id, RefreshResult(balance: nil, transactions: nil, isPortfolio: true, holdings: PerfScenario.positions(depot.id, 3)))
+				await c.settle()
+			},
+			run: { c in
+				guard let depot = c.model.ledger.accounts.first(where: { $0.name == "Perf Depot" }) else { return }
+				let table = c.harness.holdingsTables().first
+				if table == nil { c.fail("the portfolio shows no table of positions") }
+				try? await c.model.sync.deliver(depot.id, RefreshResult(balance: nil, transactions: nil, isPortfolio: true, holdings: PerfScenario.positions(depot.id, 2)))
+				await c.settle()
+				if c.model.ledger.holdings(of: [depot.id]).count != 2 { c.fail("the refresh did not drop the sold position") }
+				if c.harness.holdingsTables().first.map(ObjectIdentifier.init) == table.map(ObjectIdentifier.init) {
+					c.fail("the refresh removed a shown position in place")
+				}
+			}),
+		// The last transaction of a portfolio goes: the view changes to its positions one drawing after the
+		// rows, never in the drawing that changes them (issue #151).
+		PerfScenario(name: "delete-last-transaction-of-portfolio", budget: halfSecond,
+			setUp: { c in
+				guard let depot = c.model.ledger.accounts.first(where: { $0.name == "Perf Depot" }) else { return }
+				let row = Transaction(accountID: depot.id, bookingDate: Day.today(), amountMinor: -1_000, name: "Depot fee", purpose: "Perf")
+				await c.model.replacingTable { _ = try? c.model.merge(.file([row]), into: depot.id) }
+				await c.settle()
+			},
+			run: { c in
+				guard let depot = c.model.ledger.accounts.first(where: { $0.name == "Perf Depot" }) else { return }
+				if c.model.tableKey.portfolios != nil { c.fail("the portfolio with a transaction shows its positions") }
+				c.model.delete(transactions: Set(c.model.ledger.transactions(ofAccount: depot.id).map(\.id)))
+				if c.model.tableKey.portfolios != nil { c.fail("the positions came in the drawing that removed the transaction") }
+				await c.settle()
+				if c.model.tableKey.portfolios != [depot.id] || c.harness.holdingsTables().isEmpty { c.fail("the view did not change to the positions") }
+			}),
+		// A refresh lands while a move out of the open group waits for its drawing. The move reads the account
+		// when it happens, so it keeps what the refresh stored, in the ledger and in the database (issue #151).
+		PerfScenario(name: "refresh-while-move-waits", budget: halfSecond,
+			setUp: { await $0.select("Bulk") },
+			run: { c in
+				guard let moved = c.model.ledger.accounts.first(where: { $0.name == "Account 7" }),
+					let other = c.model.ledger.accounts.first(where: { $0.name == "Account 8" }),
+					let bulk = moved.groupID else { return }
+				let today = Day.today()
+				// A refresh of another account in place leaves rows that SwiftUI has not drawn, so the move waits.
+				let rows = (0..<20).map { i in
+					Transaction(accountID: other.id, bookingDate: today, amountMinor: -Int64(300 + i), name: "Card Payment", purpose: "Move \(i)")
+				}
+				_ = try? c.model.merge(.refresh(RefreshResult(balance: nil, transactions: FetchedTransactions(rows: rows, from: today))), into: other.id)
+				c.model.move(account: moved.id, toGroup: nil)
+				let balance = Money(minorUnits: 2_000_000, currency: "EUR")
+				_ = try? c.model.merge(.refresh(RefreshResult(balance: balance, transactions: nil)), into: moved.id)
+				await c.settle()
+				let now = c.model.ledger.account(moved.id)
+				if now?.groupID != nil { c.fail("the account did not move") }
+				if now?.bankBalanceMinor != balance.minorUnits { c.fail("the move wrote back the balance from before the refresh") }
+				if let stored = try? c.model.store?.loadLedger().account(moved.id), stored.groupID != nil || stored.bankBalanceMinor != balance.minorUnits {
+					c.fail("the database lost the refresh or the move")
+				}
+				// Back into "Bulk", so that the scenarios below see the same group.
+				c.model.move(account: moved.id, toGroup: bulk)
+				await c.settle()
+			}),
 		// Last, because it leaves "Bulk" grouped by account: its table has a section per account.
 		PerfScenario(name: "group-by-account", budget: halfSecond,
 			setUp: { c in
@@ -91,6 +235,14 @@ struct PerfScenario {
 			},
 			run: { $0.harness.openExtensionsWindow() }),
 	]
+
+	/// `count` made-up positions of a portfolio, the same securities in every call.
+	static func positions(_ account: UUID, _ count: Int) -> [Holding] {
+		(0..<count).map { i in
+			Holding(accountID: account, security: Security(name: "Fonds \(i)", isin: "DE000000000\(i)"), quantity: Decimal(10 + i),
+				quote: Quote(amount: Decimal(100 + i), currency: "EUR", day: Day.today()))
+		}
+	}
 
 	/// An index in the format of the catalog with made-up packages. The window shows it without a signature check.
 	static func catalog(entries: Int) -> Data {
@@ -152,7 +304,7 @@ extension DebugHarness {
 		guard let model else { return }
 		let context = PerfContext(model: model, harness: self, watchdog: MainThreadWatchdog())
 		if !model.ledger.groups.contains(where: { $0.name == "Bulk" }) {
-			DemoData.bulk(model, count: PerfScenario.transactions, newAccounts: PerfScenario.accounts)
+			await DemoData.bulk(model, count: PerfScenario.transactions, newAccounts: PerfScenario.accounts)
 		}
 		await context.settle()
 		var failures = 0
@@ -182,7 +334,7 @@ extension DebugHarness {
 
 	/// The heading rows of a group grouped by account: one for each account with visible rows.
 	private func sectionCount(_ model: AppModel) -> Int {
-		guard case let .group(id) = model.selection, model.ledger.group(id)?.groupsByAccount == true else { return 0 }
+		guard case let .group(id) = model.tableKey.selection, model.ledger.group(id)?.groupsByAccount == true else { return 0 }
 		return Set(model.visibleTransactions.map(\.accountID)).count
 	}
 }

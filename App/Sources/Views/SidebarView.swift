@@ -144,7 +144,7 @@ struct GroupRow: View {
 			Button("Add Account...") { model.addAccount(group: group.id) }
 			Button("Add Account Group") { model.sheet = .newGroup }
 			Divider()
-			Button("Remove...") { model.remove(group: group.id) }
+			Button("Remove...") { Task { await model.remove(group: group.id) } }
 			Divider()
 			Button("Settings...") { model.sheet = .groupSettings(group.id) }
 		}
@@ -199,7 +199,10 @@ struct AccountRow: View {
 			if account.isOffline {
 				Button("Add Transaction...") { model.navigate(to: .account(account.id)); model.sheet = .transaction(nil) }
 			}
-			Button("Import Transactions...") { model.navigate(to: .account(account.id)); model.importFile() }
+			Button("Import Transactions...") {
+				model.navigate(to: .account(account.id))
+				Task { await model.importFile(into: account.id) }
+			}
 			Divider()
 			Menu("Move to Group") {
 				Button("No group") { model.move(account: account.id, toGroup: nil) }

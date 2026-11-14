@@ -84,7 +84,7 @@ struct CategorySettingsSheet: View {
 		}
 		.confirmationDialog("Are you sure you want to remove the category \(category?.name ?? "")?", isPresented: $confirmRemove) {
 			Button("Remove", role: .destructive) {
-				model.remove(category: categoryID)
+				Task { await model.remove(category: categoryID) }
 				dismiss()
 			}
 		} message: {
