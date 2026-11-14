@@ -665,6 +665,22 @@ struct SyncCoordinatorTests {
 		try await Task.sleep(for: .milliseconds(300))
 		#expect(noticed.count == 1)
 	}
+
+	@Test("A cancel while the app stores an account brings no notices of the bank")
+	func noticesOfACancelDuringDelivery() async {
+		var noticed: [String] = []
+		coordinator.noticed = { _, messages in noticed += messages.map(\.text) }
+		let gate = FailureWithStateTests.Gate()
+		coordinator.deliver = { _, _ in await gate.wait() }
+		let bank = Self.access("Musterbank")
+		coordinator.refresh(RefreshRequest(access: bank, accounts: [Self.giro]), with: Notifying(delay: .zero), attended: true)
+		await until { gate.isWaiting }
+		coordinator.cancelAll()
+		gate.open()
+		await until { !coordinator.isRefreshing }
+		#expect(state(bank) == .cancelled)
+		#expect(noticed == [])
+	}
 }
 
 /// Fetches every requested account after `delay`, also when the refresh was canceled, and sends a notice of the bank.
