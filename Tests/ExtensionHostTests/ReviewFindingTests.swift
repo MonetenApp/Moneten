@@ -143,9 +143,9 @@ import Testing
 		#expect(exchange.call() == .array([.integer(0), .integer(0), .integer(1)]))
 	}
 
-	// Only the count of values that a walk reads raises these errors, and the error ends the walk, so it
-	// reads at most 1,000,001 values instead of 2^40 paths. The time limit turns a walk without that count into a
-	// failure instead of a hang.
+	// Only the count of values that a walk reads raises these errors, and the error ends the walk, so
+	// it reads at most 1,000,001 values instead of 2^40 paths. Without that count the walk would not
+	// end; the time limit records the failure after a minute.
 	@Test(.timeLimit(.minutes(1))) func sharedTablesCannotGrowWithoutBound() {
 		let exchange = Exchange("""
 			function Check()

@@ -31,9 +31,9 @@ struct HelperProcessTests {
 				}
 			}
 		}
-		// A starved pool would run this task only after the helpers end on their own, a minute later. The
-		// bound lies halfway, because a loaded runner of CI ran this task only after 12 seconds, later
-		// than the timeout of the helpers.
+		// A starved pool would run this task only after the helpers end on their own, 60 seconds after
+		// their start. The bound lies between that and the timeout of the helpers (11 seconds), because
+		// a loaded runner of CI ran this task only after 12 seconds.
 		try await Task.sleep(for: .milliseconds(500))
 		await Task.detached { }.value
 		#expect(ContinuousClock.now - start < .seconds(30))
