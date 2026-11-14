@@ -155,9 +155,10 @@ struct MoneyMoneyMigrationTests {
 		let first = try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(withIcons), categories: try plist(categories), transactions: try plist(transactions), into: Ledger())
 		#expect(first.accounts.map(\.color) == ["#3478F6", "#E88A2E", nil])
 		// An earlier run without colors, and the user gave "Savings" a color of their own.
-		var earlier = try plan().accounts
+		let earlierRun = try plan()
+		var earlier = earlierRun.accounts
 		earlier[1].color = "#00FF00"
-		let ledger = Ledger(accounts: earlier)
+		let ledger = Ledger(accounts: earlier, transactions: earlierRun.transactions)
 		let later = try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(withIcons), categories: try plist(categories), transactions: try plist(transactions), into: ledger)
 		#expect(later.accounts.isEmpty)
 		#expect(later.updatedAccounts.map(\.name) == ["Giro"])
@@ -218,10 +219,10 @@ struct MoneyMoneyMigrationTests {
 		var after = ledger
 		after.replace(accounts: [giro] + ledger.accounts.filter { $0.id != giro.id })
 		after.update(second.transactions + second.updatedTransactions)
-		#expect(after.computedBalance(of: giro) == after.balance(of: giro))
+		#expect(after.balance(of: giro).minorUnits == 152_456)
 	}
 
-	@Test("A migrated account shows the balance of the source, follows a transaction added by hand, and keeps it through a second run")
+	@Test("A migrated account shows the balance of the source, follows an imported transaction, and keeps it through a second run")
 	func balanceFollowsTransactions() throws {
 		let first = try plan()
 		var ledger = Ledger(groups: first.groups, accounts: first.accounts, categories: first.categories, transactions: first.transactions)
@@ -234,17 +235,54 @@ struct MoneyMoneyMigrationTests {
 		#expect(ledger.balance(of: giro).minorUnits == 122_976)
 
 		// The source fetched a transfer of 300,00 € since the first run, so its balance is 1.534,56 €.
-		var newerAccounts = accounts
-		newerAccounts[1]["balance"] = [[1534.56, "EUR"]]
 		var rows = transactions["transactions"] as! [[String: Any]]
 		rows.append(["id": 5, "accountUuid": "A1", "bookingDate": date(2026, 11, 9), "amount": 300.0, "currency": "EUR", "name": "Erika Mustermann", "purpose": "Rückzahlung", "booked": true])
+		let after = try secondRun(into: ledger, balance: 1534.56, rows: rows)
+		#expect(after.balance(of: try #require(after.account(giro.id))).minorUnits == 152_976)
+	}
+
+	/// The ledger after a second run with the newer `balance` of the giro account and `rows`.
+	func secondRun(into ledger: Ledger, balance: Double, rows: [[String: Any]]) throws -> Ledger {
+		var newerAccounts = accounts
+		newerAccounts[1]["balance"] = [[balance, "EUR"]]
 		let second = try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(newerAccounts), categories: try plist(categories),
 			transactions: try plist(["transactions": rows]), into: ledger)
 		var after = ledger
 		after.replace(accounts: ledger.accounts.map { a in second.updatedAccounts.first { $0.id == a.id } ?? a })
 		after.update(second.transactions + second.updatedTransactions)
-		let updated = try #require(after.account(giro.id))
-		#expect(after.balance(of: updated).minorUnits == 152_976)
+		return after
+	}
+
+	@Test("A second run moves the balance by a correction of the source and keeps an imported transaction")
+	func correctedSource() throws {
+		let first = try plan()
+		var ledger = Ledger(groups: first.groups, accounts: first.accounts, categories: first.categories, transactions: first.transactions)
+		let giro = try #require(first.accounts.first { $0.name == "Giro" })
+		ledger.update([Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 12), amountMinor: -480, name: "Bäckerei Gutbrot")])
+
+		// The source corrected its balance from 1.234,56 € to 1.254,56 € without a new transaction.
+		let after = try secondRun(into: ledger, balance: 1254.56, rows: transactions["transactions"] as! [[String: Any]])
+		#expect(after.balance(of: try #require(after.account(giro.id))).minorUnits == 124_976)
+		let again = try secondRun(into: after, balance: 1254.56, rows: transactions["transactions"] as! [[String: Any]])
+		#expect(again.balance(of: try #require(again.account(giro.id))).minorUnits == 124_976)
+	}
+
+	@Test("A second run that delivers an imported transaction counts it once")
+	func sourceDeliversImport() throws {
+		let first = try plan()
+		var ledger = Ledger(groups: first.groups, accounts: first.accounts, categories: first.categories, transactions: first.transactions)
+		let giro = try #require(first.accounts.first { $0.name == "Giro" })
+		ledger.update([Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 12), amountMinor: -480, name: "Bäckerei Gutbrot",
+			purpose: "KARTENZAHLUNG")])
+		#expect(ledger.balance(of: giro).minorUnits == 122_976)
+
+		// The source fetched the same payment, so its balance is 1.229,76 €.
+		var rows = transactions["transactions"] as! [[String: Any]]
+		rows.append(["id": 7, "accountUuid": "A1", "bookingDate": date(2026, 11, 12), "amount": -4.8, "currency": "EUR", "name": "Bäckerei Gutbrot",
+			"purpose": "KARTENZAHLUNG", "booked": true])
+		let after = try secondRun(into: ledger, balance: 1229.76, rows: rows)
+		#expect(after.transactions(ofAccount: giro.id).count == 4)
+		#expect(after.balance(of: try #require(after.account(giro.id))).minorUnits == 122_976)
 	}
 
 	@Test("A second run after a refresh stored some of the same transactions adds only the new ones")

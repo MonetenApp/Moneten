@@ -227,4 +227,37 @@ struct OpeningBalanceTests {
 		stored = try store.loadLedger()
 		#expect(stored.account(migrated.id)?.initialBalanceMinor == 40_000)
 	}
+
+	@Test("v13 sets the initial balance of a migrated account to the balance of the source less its booked rows of the source")
+	func migratedRepair() throws {
+		let queue = try DatabaseQueue()
+		try Schema.migrator.migrate(queue, upTo: "v12")
+		let store = Store(queue: queue)
+		let day = Day(year: 2026, month: 11, day: 2)
+		// An older version subtracted the row in another currency: 100,00 € less -20,00 USD.
+		let travel = Account(position: 0, name: "Travel", kind: .creditCard, source: .migrated, bankBalanceMinor: 10_000, initialBalanceMinor: 12_000)
+		// A second run stored the corrected balance of the source and kept the initial balance.
+		let wallet = Account(position: 1, name: "Wallet", kind: .cash, source: .migrated, bankBalanceMinor: 12_000, initialBalanceMinor: 10_000)
+		// 500,00 € at the migration, with a fee of -10,00 € that the user deleted since, a row the user imported, and a pending row.
+		let household = Account(position: 2, name: "Household", kind: .giro, source: .migrated, bankBalanceMinor: 50_000, initialBalanceMinor: 51_000)
+		let cash = Account(position: 3, name: "Cash", kind: .cash, source: .offline, initialBalanceMinor: 7_000)
+		let fetched = Account(position: 4, name: "Giro", kind: .giro, source: .bank, bankBalanceMinor: 30_000, initialBalanceMinor: 25_000)
+		try store.save(accounts: [travel, wallet, household, cash, fetched])
+		let fee = Transaction(accountID: household.id, bookingDate: day, amountMinor: -1_000, name: "Kontoführung", sourceID: "moneymoney:3")
+		try store.save([
+			Transaction(accountID: travel.id, bookingDate: day, amountMinor: -2_000, currency: "USD", name: "Diner New York", sourceID: "moneymoney:1"),
+			Transaction(accountID: household.id, bookingDate: day, amountMinor: -480, name: "Bäckerei Gutbrot"),
+			Transaction(accountID: household.id, bookingDate: day, amountMinor: -300, name: "Kiosk", isPending: true, sourceID: "moneymoney:4"),
+			Transaction(accountID: cash.id, bookingDate: day, amountMinor: -1_200, name: "Kiosk", sourceID: "moneymoney:5"),
+			Transaction(accountID: fetched.id, bookingDate: day, amountMinor: -1_000, name: "Kiosk", sourceID: "moneymoney:6"),
+			fee,
+		])
+		try store.deleteTransactions([fee.id])
+		try Schema.migrator.migrate(queue)
+
+		let ledger = try store.loadLedger()
+		#expect(ledger.accounts.map(\.initialBalanceMinor) == [10_000, 12_000, 51_000, 7_000, 25_000])
+		#expect(ledger.balance(of: try #require(ledger.account(travel.id))).minorUnits == 10_000)
+		#expect(ledger.balance(of: try #require(ledger.account(wallet.id))).minorUnits == 12_000)
+	}
 }
