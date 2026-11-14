@@ -47,15 +47,26 @@ public enum UpdatePlan: Sendable, Equatable {
 /// What the app keeps for the updates of the installed catalog packages, by id: the plan of each waiting
 /// update, the version the user confirmed or chose, and the packages whose files do not match.
 public struct UpdateState: Sendable, Equatable {
-	public var plans: [String: UpdatePlan] = [:]
+	public var plans: [String: Planned] = [:]
 	public var confirmed: [String: String] = [:]
 	public var changed: Set<String> = []
 
 	public init() {}
 
+	/// The plan of a waiting update and the version that it plans. The user confirms the rights of that version only.
+	public struct Planned: Sendable, Equatable {
+		public let version: String
+		public let plan: UpdatePlan
+	}
+
+	/// Keeps the plan of `version` for the window. An update that installs now keeps nothing.
+	public mutating func record(_ plan: UpdatePlan, of id: String, version: String?) {
+		plans[id] = plan == .upToDate || plan == .install ? nil : version.map { Planned(version: $0, plan: plan) }
+	}
+
 	/// What waited for one package before its new version was placed.
 	public struct Saved: Sendable {
-		let plan: UpdatePlan?
+		let plan: Planned?
 		let confirmed: String?
 		let changed: Bool
 	}
@@ -77,10 +88,11 @@ public struct UpdateState: Sendable, Equatable {
 	}
 
 	/// The plan that the Extensions window shows for an installed package, with its `manifest`. An update that
-	/// installs by itself stores no plan, and no plan is stored before the first check of the index. The window then
-	/// offers the plan of the listed version as one that waits for the user, so new rights still ask for the review.
+	/// installs by itself stores no plan, and no plan is stored before the first check of the index. A stored plan
+	/// of another version than the listed one is from an earlier index. The window then offers the plan of the
+	/// listed version as one that waits for the user, so new rights still ask for the review.
 	public func plan(of installed: InstalledPackage, manifest: Manifest, in index: CatalogIndex?) -> UpdatePlan? {
-		if let plan = plans[installed.id] { return plan }
+		if let stored = plans[installed.id], stored.version == index?.entry(installed.id)?.version { return stored.plan }
 		guard let index, case .outdated = Standing(of: installed, in: index), let available = try? index.entry(installed.id)?.manifest.get() else { return nil }
 		let plan = UpdatePlan(installed: manifest, available: available, automatic: false, sessionRuns: false, confirmed: nil)
 		return plan == .upToDate ? nil : plan

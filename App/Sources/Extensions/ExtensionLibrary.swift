@@ -256,7 +256,7 @@ final class ExtensionLibrary {
 				continue
 			}
 			let plan = UpdatePlan(installed: current, available: available, automatic: automatic, sessionRuns: sessionRuns(id), confirmed: updateState.confirmed[id])
-			updateState.plans[id] = plan == .upToDate || plan == .install ? nil : plan
+			updateState.record(plan, of: id, version: available.version)
 			if plan == .install, !working.contains(id) { await download(entry) }
 		}
 		reload()
@@ -265,10 +265,10 @@ final class ExtensionLibrary {
 	/// Installs `version` after the user confirmed it or chose "Update". A version that is not the one of
 	/// the index, or that asks for rights the user did not confirm, goes to the confirmation instead.
 	func update(_ id: String, to version: String) async {
-		guard let entry = index?.entry(id), let available = try? entry.manifest.get(), case let .catalog(installed)? = records[id],
+		guard !working.contains(id), let entry = index?.entry(id), let available = try? entry.manifest.get(), case let .catalog(installed)? = records[id],
 			let current = try? Installer.load(installed, from: folder).manifest else { return reload() }
 		let plan = UpdatePlan(installed: current, available: available, automatic: automatic, sessionRuns: sessionRuns(id), confirmed: version)
-		updateState.plans[id] = plan == .upToDate || plan == .install ? nil : plan
+		updateState.record(plan, of: id, version: available.version)
 		switch plan {
 		case .install:
 			updateState.confirmed[id] = version
@@ -287,7 +287,7 @@ final class ExtensionLibrary {
 
 	/// Called when a refresh ended: an update that waited for the end of its session installs now.
 	func sessionEnded() {
-		guard updateState.plans.values.contains(.afterSession) else { return }
+		guard updateState.plans.values.contains(where: { $0.plan == .afterSession }) else { return }
 		Task { await applyUpdates() }
 	}
 
