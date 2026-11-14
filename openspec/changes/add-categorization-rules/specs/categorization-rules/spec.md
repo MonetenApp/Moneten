@@ -298,6 +298,12 @@ The app SHALL refuse to store a rule that it cannot parse. It shows a message th
 - **THEN** the app shows that a closing parenthesis is missing at the end of the rule
 - **AND** the app does not change the stored rule
 
+#### Scenario: Sign after a field operator
+
+- **WHEN** the user enters `name:-"Stadtwerke"` and closes the settings
+- **THEN** the app shows at position 6 that a sign cannot follow `name:`, and that `name!="…"` excludes a value
+- **AND** the app does not change the stored rule
+
 ### Requirement: A saved rule that cannot be read is marked
 
 The app SHALL mark a category in the sidebar when it cannot parse the saved rule of the category, because such a category gets no new transactions. The mark is a warning symbol with a tooltip that names the error. The mark goes away when the user saves a rule that the app can parse.
