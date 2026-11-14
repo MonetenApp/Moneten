@@ -91,22 +91,23 @@ The app SHALL compare the SHA-256 digest of every file of a catalog package with
 - **WHEN** every downloaded file of 2.32 matches the digests that the index lists for 2.32
 - **THEN** the app installs 2.32, although the files differ from the digests of 2.31
 
-### Requirement: Earlier versions in the index
+### Requirement: Only the listed version runs
 
-The app SHALL let an installed catalog extension run only while the accepted index lists its installed version, as the current version or as an earlier version with the digests of its files. An installed version that the index no longer lists stops, and the "Extensions" window offers the update.
+The app SHALL let an installed catalog extension run only while the accepted index lists its installed version. The index lists one version of each package. An installed version that is not the listed version does not run, its refreshes stop with a message that says to install the update, and the "Extensions" window offers the update.
 
-#### Scenario: Earlier version while an update waits
+#### Scenario: Update waits for the user
 
 - **GIVEN** "Broker" 2.31 is installed and the update to 2.32 waits for the user
-- **AND** the accepted index lists 2.32 as current and 2.31 as an earlier version with its digests
+- **AND** the accepted index lists only 2.32
 - **WHEN** a refresh of "Broker Depot" starts
-- **THEN** "Broker" 2.31 runs after its files match the digests listed for 2.31
+- **THEN** "Broker" does not run, and "Broker Depot" says "Version 2.31 of Broker is no longer in the catalog. Open Extensions and install the update."
+- **AND** the window shows "Broker" with the badge "Update Needed" and the button "Update" or "Review Update"
 
-#### Scenario: Earlier version dropped
+#### Scenario: Listed version
 
-- **GIVEN** "Broker" 2.31 is installed and the update to 2.32 waits for the user
-- **WHEN** the app accepts an index that lists only 2.32
-- **THEN** "Broker" does not run and the window says that version 2.31 is no longer in the catalog, with the button "Review Update"
+- **GIVEN** "Broker" 2.32 is installed and the accepted index lists 2.32
+- **WHEN** a refresh of "Broker Depot" starts
+- **THEN** "Broker" 2.32 runs after its files match the digests that the index lists
 
 ### Requirement: Index version floor
 
@@ -221,15 +222,20 @@ The app SHALL install a newer version of an installed catalog extension by itsel
 
 ### Requirement: An update that asks for new rights waits
 
-The app SHALL hold an update of a catalog extension that adds a host or a login field until the user confirms it. The "Extensions" window shows the new version, its change note, and what is new. The installed version keeps running until the user confirms, while the accepted index lists that version.
+The app SHALL hold an update of a catalog extension that adds a host or a login field until the user confirms it. The confirmation shows the new version, the new hosts, and the new login fields, and says that the accounts of the extension can be refreshed only after the update. Until the user confirms, the installed version does not run, because the index no longer lists it.
 
 #### Scenario: New host
 
 - **GIVEN** "Broker" 2.31 is installed
-- **AND** the accepted index lists 2.31 as an earlier version
-- **WHEN** the index lists version 2.32, which adds the host `login.broker.example`
+- **WHEN** the app accepts an index that lists version 2.32, which adds the host `login.broker.example`
 - **THEN** the entry "Broker" says "Version 2.32 also contacts login.broker.example" with the button "Review Update"
-- **AND** the next refresh still uses 2.31
+- **AND** the next refresh of "Broker Depot" stops with "Open Extensions and install the update."
+
+#### Scenario: Review the update
+
+- **GIVEN** the update of "Broker" to 2.32, which adds the host `login.broker.example`, waits for the user
+- **WHEN** the user chooses "Review Update"
+- **THEN** the confirmation asks "Update Broker to version 2.32?", lists `login.broker.example` under "New hosts it contacts:", and says that the accounts can be refreshed only after this update
 
 #### Scenario: Update confirmed
 
@@ -255,7 +261,7 @@ The app SHALL remove an installed catalog extension when the user chooses "Remov
 
 ### Requirement: Blocked, withdrawn, and unmaintained extensions
 
-The app SHALL apply the state that the accepted index gives an installed catalog extension. A blocked extension, which has a security problem, stops running at once. A withdrawn extension stops running. An unmaintained extension keeps running. The "Extensions" window and the accounts of the extension show the note of the catalog.
+The app SHALL apply the state that the accepted index gives an installed catalog extension. A blocked extension, which has a security problem, stops running at once. A withdrawn extension stops running. An unmaintained extension keeps running. The "Extensions" window shows the note of the catalog. The accounts of a blocked or withdrawn extension show it as the error of their refresh. The accounts of an unmaintained extension show no note.
 
 #### Scenario: Blocked extension
 
@@ -271,9 +277,9 @@ The app SHALL apply the state that the accepted index gives an installed catalog
 
 #### Scenario: Unmaintained extension
 
-- **GIVEN** a new index marks "Broker" as unmaintained
+- **GIVEN** a new index marks "Broker" as unmaintained with the note "No answer since August."
 - **WHEN** a refresh of "Broker Depot" starts
-- **THEN** "Broker" runs and the window shows the note that nobody maintains it
+- **THEN** "Broker" runs, and the window shows "Nobody maintains Broker. No answer since August."
 
 ### Requirement: Catalog not reachable
 

@@ -19,9 +19,11 @@ The catalog is the repository MonetenApp/moneten-extensions. Its signing workflo
 
 ## Deviations
 
-- **Change note.** The spec says that the confirmation of an update shows its change note. The index has no field for it, so the confirmation shows the new version, its new hosts, and its new login fields. A follow-up adds an optional `changes` field to the manifest schema of the catalog.
-- **Unmaintained note on accounts.** The note of an unmaintained package shows in the Extensions window. An account shows a note of the refresh only when the refresh fails.
-- **Earlier versions.** See "Only the listed version runs".
+The spec was rewritten to the built behavior before the change was archived (gate of pull request #119). Issue #125 tracks the parts of the first plan that are not built:
+
+- **Earlier versions.** The index lists one version of each package, so a waiting update stops the refreshes of its accounts with "Open Extensions and install the update". See "Only the listed version runs". Issue #125 lets a listed earlier version run while its update waits.
+- **Change note.** The index has no field for it, so the confirmation shows the new version, its new hosts, and its new login fields. Issue #125 adds an optional `changes` field to the manifest schema of the catalog.
+- **Unmaintained note on accounts.** The note of an unmaintained package shows only in the Extensions window. An account shows only the error of a failed refresh. Issue #125 may add the note to the accounts.
 
 ## Risks / Trade-offs
 

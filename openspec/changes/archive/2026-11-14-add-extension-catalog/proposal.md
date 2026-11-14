@@ -51,9 +51,9 @@ None.
 - A catalog package needs a manifest with its hosts, its login field labels, its kinds of data, its API version, and its license. MoneyMoney keeps the login labels in its own database.
 - One signature covers a catalog index, and the index lists a SHA-256 digest for each file (issue #37). MoneyMoney signs each script.
 - The app ships two public keys, current and next, and accepts an index signed with either until it has accepted one signed with the next key. Each key has its own version floor, and an app update drops the floor of a key it no longer ships.
-- The index lists the digests of earlier versions that may still run, so an installed version that waits for an update keeps running under the signature.
+- The index lists one version of each package, and only that version runs. An installed version that waits for an update does not run until the user installs it. Earlier versions in the index are planned in issue #125.
 - The app records whether each extension came from the catalog. A changed catalog package stays blocked and never runs as a file install.
-- An update that adds a host or a login field waits for the user's confirmation, and the old version keeps running until then while the index still lists it. Every other update installs by itself, because a fix must arrive within hours.
+- An update that adds a host or a login field waits for the user's confirmation, and the accounts of the extension cannot be refreshed until then. Every other update installs by itself, because a fix must arrive within hours.
 - Each key has its own version floor. The app rejects an index whose version number is not higher than the floor of its key. The first index of the next key starts a new floor, so a leaked current key that signs a huge version stops updates only until the project rotates.
 - The index marks a package as blocked, which stops it at once, as withdrawn, which stops it, or as unmaintained, which keeps it running with a note. A package is unmaintained after 90 days without an answer from its author to a failure that others can reproduce.
 - When the catalog cannot be reached, installed extensions keep running with the last accepted index.
