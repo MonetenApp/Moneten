@@ -83,13 +83,13 @@ public final class SyncCoordinator {
 	/// of an access that waits join its request, and those of an access that runs, also one that was
 	/// canceled and has not ended yet, run when it ends.
 	///
-	/// A command that the user gives makes every refresh of the access attended: a waiting one, one
-	/// that waits for a run, and a running one, whose next request shows its dialog. A running refresh
-	/// that already failed because it could not ask runs again, attended. An automatic request that comes
-	/// while a command waits or runs again never joins it: its accounts stay due for a later run. An
-	/// automatic refresh that the command joins becomes attended, because one session of the bank cannot
-	/// ask for some of its accounts and not for others. An automatic refresh that waits after a run and
-	/// holds none of the accounts of the command stays unattended.
+	/// A command that the user gives makes attended each refresh of the access that fetches an account
+	/// it names: the one that waits in the queue, which the command joins, one that waits for a run, and a
+	/// running one, whose next request shows its dialog. One session of the bank cannot ask for some of its
+	/// accounts and not for others, so the other accounts of such a refresh may ask too. A refresh that
+	/// fetches none of the named accounts stays unattended. A running refresh that already failed because
+	/// it could not ask runs again, attended. An automatic request that comes while a command waits or
+	/// runs again never joins it: its accounts stay due for a later run.
 	public func refresh(_ request: RefreshRequest, with connector: any BankConnector, attended: Bool) {
 		let id = request.access.id
 		if attended { attend(id, naming: Set(request.accounts.map(\.accountID))) }
@@ -121,12 +121,14 @@ public final class SyncCoordinator {
 		attendance[access].map { !$0.isOn } ?? false
 	}
 
-	/// A job that waits after a run is a session of its own. It becomes attended only when it holds an
-	/// account that the command names. Accounts of the command that join it below make it attended too.
+	/// Makes attended the refreshes of the access that fetch a named account. A job in the queue exists only
+	/// while the access does not run, so the command always joins it. A job that waits after a run and the
+	/// running session are sessions of their own: each becomes attended only when it holds a named account.
+	/// Accounts of the command that join the job after the run make it attended through `Job.adding`.
 	private func attend(_ id: UUID, naming accounts: Set<UUID>) {
 		if let index = queue.firstIndex(where: { $0.request.access.id == id }) { queue[index].attended = true }
 		if afterRun[id]?.request.accounts.contains(where: { accounts.contains($0.accountID) }) == true { afterRun[id]?.attended = true }
-		attendance[id]?.turnOn()
+		if let running = attendance[id], !running.accounts.isDisjoint(with: accounts) { running.turnOn() }
 	}
 
 	/// Runs `work` for an access, never beside a refresh of it, so that the bank gets one dialog for one
@@ -246,7 +248,7 @@ public final class SyncCoordinator {
 	private func start(_ job: Job) {
 		let access = job.request.access
 		apply(.start, to: access.id)
-		let attendance = Attendance(job.attended)
+		let attendance = Attendance(job.attended, accounts: Set(job.request.accounts.map(\.accountID)))
 		self.attendance[access.id] = attendance
 		let session = Session(coordinator: self, access: access, accountNames: job.request.accounts.map(\.name), attendance: attendance)
 		runningSources[access.id] = access.source
@@ -387,9 +389,12 @@ private struct Session: SyncSession {
 /// Whether the refresh of an access may ask the user. The session reads it at each request, so a command
 /// that comes while the refresh runs takes effect at its next request.
 final class Attendance: Sendable {
+	/// The accounts that the session fetches. A command makes it attended only when it names one of them.
+	let accounts: Set<UUID>
 	private let state: Mutex<(on: Bool, asked: Bool)>
 
-	init(_ on: Bool) {
+	init(_ on: Bool, accounts: Set<UUID>) {
+		self.accounts = accounts
 		state = Mutex((on, false))
 	}
 

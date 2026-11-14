@@ -431,6 +431,40 @@ final class AutoRefreshTests {
 		#expect(coordinator.states[bank.id] == .failed(.needsUser(.secondFactor)))
 	}
 
+	@Test("A command for an account that waits after a run makes that waiting refresh ask")
+	func manualUpgradesWaitingAfterRun() async {
+		let coordinator = SyncCoordinator()
+		let bank = Self.access("Musterbank")
+		let gate = FailureWithStateTests.Gate()
+		coordinator.refresh(RefreshRequest(access: bank, accounts: [Self.giro]), with: GatedFetch(gate: gate), attended: false)
+		await until { gate.isWaiting }
+		let card = AsksForAccount(account: Self.card.accountID, request: Self.tan)
+		coordinator.refresh(RefreshRequest(access: bank, accounts: [Self.card]), with: card, attended: false)
+		coordinator.refresh(RefreshRequest(access: bank, accounts: [Self.card]), with: card, attended: true)
+		gate.open()
+		await until { coordinator.broker.current != nil }
+		#expect(coordinator.broker.current?.accountNames == ["Card"])
+		coordinator.cancelAll()
+		await until { !coordinator.isRefreshing }
+	}
+
+	@Test("A command for another account leaves a running automatic refresh unattended")
+	func runningStaysUnattended() async {
+		let coordinator = SyncCoordinator()
+		let bank = Self.access("Musterbank")
+		let gate = FailureWithStateTests.Gate()
+		coordinator.refresh(RefreshRequest(access: bank, accounts: [Self.giro]), with: GatedAsk(gate: gate, request: Self.tan, account: Self.giro.accountID),
+			attended: false)
+		await until { gate.isWaiting }
+		coordinator.refresh(RefreshRequest(access: bank, accounts: [Self.card]), with: AsksForAccount(account: Self.card.accountID, request: Self.tan),
+			attended: true)
+		gate.open()
+		await until { coordinator.broker.current != nil }
+		#expect(coordinator.broker.current?.accountNames == ["Card"])
+		coordinator.cancelAll()
+		await until { !coordinator.isRefreshing }
+	}
+
 	@Test("A PIN typed into a refresh that a command made attended is not asked again when the bank rejects it")
 	func rejectedTypedPIN() async {
 		let coordinator = SyncCoordinator()
@@ -655,6 +689,19 @@ struct GatedFetch: BankConnector {
 	func refresh(_ refresh: RefreshRequest, _ session: SyncSession) async throws -> ConnectorReport {
 		await gate.wait()
 		return ConnectorReport(outcomes: Dictionary(uniqueKeysWithValues: refresh.accounts.map { ($0.accountID, .fetched(RefreshResult(balance: nil, transactions: nil))) }))
+	}
+}
+
+/// Asks `request` after the test opens the gate, as a bank that wants a TAN in the middle of a refresh.
+struct GatedAsk: BankConnector {
+	let gate: FailureWithStateTests.Gate
+	let request: UserRequest
+	let account: UUID
+
+	func refresh(_ refresh: RefreshRequest, _ session: SyncSession) async throws -> ConnectorReport {
+		await gate.wait()
+		_ = try await session.ask(request)
+		return ConnectorReport(outcomes: [account: .fetched(RefreshResult(balance: nil, transactions: nil))])
 	}
 }
 
