@@ -8,6 +8,7 @@
 # and then for the SMS code. The login lists
 # "Girokonto" with the test IBAN, "Tagesgeld", and "Kreditkarte". The state of the access counts the
 # refreshes: the second refresh fails "Tagesgeld" with an error of the bank, and the others succeed.
+# The login and every refresh send the notice of the bank about maintenance.
 # The login "unterkonten" lists two subaccounts of the account number 9 in place of these accounts.
 # The login "depot" lists "Girokonto" and three securities accounts: "Depot", whose refresh brings its value
 # and four positions (a share with a purchase price, a fund without one, a share in US dollars with an
@@ -78,6 +79,7 @@ case "$cmd" in
 	runs=$(field state | base64 -D 2>/dev/null)
 	echo "$pin"
 	answer
+	echo '{"type":"notice","text":"Wartungsarbeiten am 14.11.2026 von 1 bis 5 Uhr."}'
 	echo '{"type":"progress","done":0,"of":3}'
 	sleep 3
 	case "$cmd" in *'"id":"DE02120300000000202051"'*)

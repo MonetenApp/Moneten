@@ -19,7 +19,10 @@ struct RootView: View {
 				FailureView(message: message)
 			}
 		}
-		.onAppear { model.openMainWindow = { [openWindow] in openWindow(id: "main") } }
+		.onAppear {
+			model.openMainWindow = { [openWindow] in openWindow(id: "main") }
+			model.openNoticeWindow = { [openWindow] in openWindow(id: "notice") }
+		}
 		.onDisappear { model.mainWindowClosed() }
 		// The PIN sheet and the dialog "Two-Factor Authentication". The broker opens and closes them.
 		// While another sheet is open, that sheet shows them on top of itself (MainView).

@@ -50,6 +50,10 @@ A cancel or a failure sends the cancel line, terminates the helper after 5 secon
 
 The helper sends the passport of hbci4java as the new state after a successful run: bank parameters, user parameters, system ID, the TAN method, and the TAN medium. It holds no PIN. A failed run sends no state, so the next run starts from the last good one and may register again.
 
+### Notices of the bank
+
+`FinTSConnector` puts the institute messages of the bank, and the error of a balance request that failed beside transactions that worked, into `ConnectorReport.notices`. `SyncCoordinator.noticed` hands them to the app when a refresh ends, also when every account was fetched. A canceled refresh brings none. `BankNotices` in `Domain` holds the notices for the window "Notice" and keeps every notice that waited, by bank name and text, so a bank that repeats the notice in each dialog shows it once ("Show notices of the bank"). It lives in memory only: the lock and the quit forget it, and the next refresh after them shows a notice that the bank still sends once more. The window lists all waiting notices, and OK or the close button dismisses them.
+
 ### Signing
 
 `scripts/build-app.sh` builds a runtime with jlink, puts the helper into `Contents/Resources/FinTSHelper`, and signs every Mach-O file of it with the identity of the app. Only the java of the helper gets the JIT entitlement. The build fails when a file cannot be signed or is not signed like the app. A Developer ID build leaves the helper out until task 3.2, see the risks.

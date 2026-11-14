@@ -3,6 +3,7 @@ import SwiftUI
 
 /// The error indicator of an account whose last refresh failed. It opens the error popover.
 struct RefreshErrorButton: View {
+	let account: Account
 	let error: RefreshError
 	@State private var shown = false
 
@@ -14,18 +15,21 @@ struct RefreshErrorButton: View {
 		.buttonStyle(.plain)
 		.help("The last refresh failed")
 		.popover(isPresented: $shown, arrowEdge: .trailing) {
-			RefreshErrorPopover(error: error)
+			RefreshErrorPopover(account: account, error: error)
 		}
 	}
 }
 
-/// "The last refresh was aborted with the following error": the message, its code, the date and time,
-/// and the notices of the bank from the same session.
+/// "The last refresh was aborted with the following error": the bank and the account, the message, its
+/// code, the date and time, and the notices of the bank from the same session.
 struct RefreshErrorPopover: View {
+	let account: Account
 	let error: RefreshError
 
 	var body: some View {
 		VStack(alignment: .leading, spacing: 8) {
+			Text(account.bankName.map { "\($0) · \(account.name)" } ?? account.name)
+				.foregroundStyle(.secondary)
 			Text("The last refresh was aborted with the following error:")
 				.font(.headline)
 			Text("“\(error.message)”" + (error.code.map { " (\($0))" } ?? ""))
@@ -65,7 +69,7 @@ struct AccountRefreshLine: View {
 					.disabled(!model.canRefresh(.account(account.id)))
 			}
 			if let error = account.refreshError {
-				RefreshErrorButton(error: error)
+				RefreshErrorButton(account: account, error: error)
 			}
 		}
 	}

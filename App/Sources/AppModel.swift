@@ -185,6 +185,10 @@ final class AppModel {
 	private var canceledRefreshes: [UUID: Date] = [:]
 	/// Opens the main window, also when it is closed. The window sets it, because only a view can open a scene.
 	@ObservationIgnored var openMainWindow: () -> Void = {}
+	/// The notices of the banks for the window "Notice". The lock drops them.
+	var bankNotices = BankNotices()
+	/// Opens the window "Notice". The main window sets it, as `openMainWindow`.
+	@ObservationIgnored var openNoticeWindow: () -> Void = {}
 
 	var selection: SidebarSelection? {
 		didSet {
@@ -303,6 +307,11 @@ final class AppModel {
 				self.recordRefresh(of: access, state: state, accounts: accounts, attended: attended)
 			}
 			self.extensions.sessionEnded()
+		}
+		sync.noticed = { [weak self] access, messages in
+			guard let self, let bank = self.accesses[access]?.bankName else { return }
+			self.bankNotices.add(messages, from: bank)
+			if !self.bankNotices.waiting.isEmpty { self.openNoticeWindow() }
 		}
 		sync.runEnded = { [weak self] in
 			guard let self else { return }
@@ -433,6 +442,7 @@ final class AppModel {
 		try? store?.close()
 		store = nil
 		accesses = [:]
+		bankNotices = BankNotices()
 		sheet = nil
 		phase = .locked
 		// The lock removes the transaction table in this drawing and empties its rows after it, so that the

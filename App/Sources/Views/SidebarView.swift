@@ -183,7 +183,7 @@ struct AccountRow: View {
 					.lineLimit(1)
 					.foregroundStyle(.secondary)
 					.frame(maxWidth: 140, alignment: .trailing)
-				RefreshErrorButton(error: error)
+				RefreshErrorButton(account: account, error: error)
 			} else if !account.isClosed {
 				// A closed account stays in the sidebar without its balance, as in MoneyMoney.
 				AmountText(money: balance).fontWeight(.medium)
