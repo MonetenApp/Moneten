@@ -192,6 +192,22 @@ struct LedgerTests {
 		#expect(l.categoryTotals(of: l.transactions).map(\.minorUnits) == [-3_000])
 		#expect(l.categoryTotals(of: l.transactions).map(\.category.name) == ["Groceries"])
 		#expect(l.periodSums(of: l.transactions, period: .month).map(\.withdrawals) == [-3_000])
+		#expect(l.sum(ofCategory: groceries, in: DayRange(start: today, end: today)).minorUnits == -3_000)
+	}
+
+	@Test("The initial balance that meets the bank balance subtracts the booked rows up to the day of that balance")
+	func initialBalanceMeetingBankBalance() {
+		let balanceDay = Day(year: 2026, month: 11, day: 10)
+		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .bank, bankBalanceMinor: 250_000, bankBalanceDate: balanceDay.date(),
+			initialBalanceMinor: 99_999)
+		func row(_ day: Int, _ minor: Int64, pending: Bool = false, currency: String = "EUR") -> Transaction {
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: day), amountMinor: minor, currency: currency, name: "Row", isPending: pending)
+		}
+		let rows = [row(2, 100_000), row(5, -30_000), row(9, -3_000, pending: true), row(12, -5_000), row(6, -1_000, currency: "USD")]
+		#expect(giro.initialBalanceMeetingBankBalance(of: rows) == 180_000)
+		var offline = giro
+		offline.bankBalanceMinor = nil
+		#expect(offline.initialBalanceMeetingBankBalance(of: rows) == nil)
 	}
 
 	@Test("A pending transaction marked for review counts nowhere, a booked one marked for review counts")

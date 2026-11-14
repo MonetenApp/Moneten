@@ -156,11 +156,16 @@ public struct Account: Identifiable, Hashable, Sendable, Codable {
 		}
 	}
 
-	/// Sets the initial balance once, so that the booked rows up to the end of the day of the bank balance
-	/// add up to the bank balance. `rows` are all live rows of the account. The pending rows then count on top.
+	/// The initial balance at which the booked rows up to the end of the day of the bank balance add up to
+	/// the bank balance. `rows` are all live rows of the account. The pending rows then count on top.
+	public func initialBalanceMeetingBankBalance(of rows: [Transaction], calendar: Calendar = .current) -> Int64? {
+		bankBalanceMinor.map { $0 - bookedSum(of: rows, through: Day(bankBalanceDate ?? Date(), calendar: calendar)) }
+	}
+
+	/// Sets the initial balance once, so that the computed balance meets the bank balance.
 	mutating func deriveInitialBalance(from rows: [Transaction], calendar: Calendar = .current) {
-		guard derivesInitialBalance, let bankBalanceMinor else { return }
-		initialBalanceMinor = bankBalanceMinor - bookedSum(of: rows, through: Day(bankBalanceDate ?? Date(), calendar: calendar))
+		guard derivesInitialBalance, let value = initialBalanceMeetingBankBalance(of: rows, calendar: calendar) else { return }
+		initialBalanceMinor = value
 		initialBalanceIsSet = true
 	}
 }

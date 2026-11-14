@@ -68,7 +68,7 @@ public enum ChartPeriod: String, CaseIterable, Sendable {
 extension Ledger {
 	/// The balance at the end of each day with a row or a portfolio record, for accounts in one
 	/// currency. An account counts with its initial balance and the rows its balance counts, pending
-	/// ones included, so the last bar matches the computed balance. A
+	/// ones included, so the bar of a day matches the computed balance through that day. A
 	/// row in another currency adds nothing but keeps its day, so the chart still starts there. A
 	/// portfolio gets its value from the bank and not from transactions, so it counts with its last
 	/// recorded value and with nothing before its first record.
