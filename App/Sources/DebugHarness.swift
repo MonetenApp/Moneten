@@ -22,6 +22,10 @@ final class DebugHarness {
 
 	let folder: URL
 	weak var model: AppModel?
+	/// A number for each transaction table that "tables" has seen, so that a check sees when SwiftUI
+	/// replaces the table. The address of a table is no help, because a new table can get the address of the old one.
+	private let tableNumbers = NSMapTable<NSTableView, NSNumber>.weakToStrongObjects()
+	private var nextTableNumber = 1
 
 	static func installIfRequested(model: AppModel) {
 		#if DEBUG || PERF_HARNESS
@@ -285,6 +289,16 @@ final class DebugHarness {
 			// "<count>" spreads the transactions over the existing accounts, "<count> <accounts>" over new ones.
 			let numbers = argument.split(separator: " ").compactMap { Int($0) }
 			DemoData.bulk(model, count: numbers.first ?? 30_000, newAccounts: numbers.dropFirst().first ?? 0)
+		// The number and the row count of each transaction table on screen. A new number means a new table.
+		case "tables":
+			for table in transactionTables() {
+				let number = tableNumbers.object(forKey: table)?.intValue ?? nextTableNumber
+				if number == nextTableNumber {
+					tableNumbers.setObject(NSNumber(value: number), forKey: table)
+					nextTableNumber += 1
+				}
+				log("table number=\(number) rows=\(table.numberOfRows)")
+			}
 		case "columnwidth":
 			// "<title> <width>" sets a column of the transaction table, "" logs every width.
 			let parts = argument.split(separator: " ")
