@@ -25,6 +25,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [ ] 1.19 A term matches a whole word. Built: RuleTests "Wildcards" shows it for a slash, where `"Kundennummer 67890"` does not match "Kundennummer 67890/Rechnung 12345". Check it when 2.6 shows it for a hyphen.
 - [ ] 1.20 The rules true and false. Not built. Build it in 2.1 and 2.2.
 - [ ] 1.21 Short forms of the operators. Not built: `+`, `!`, and `-` are not operators. Build it in 2.1 and 2.2.
+- [ ] 1.22 A saved rule that cannot be read is marked. Build it and verify it with a test and in the app.
 
 ## 2. Changes to the first build
 
