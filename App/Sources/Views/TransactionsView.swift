@@ -576,7 +576,7 @@ struct CategoryRibbon: View {
 			// the rows that are still visible: a search keeps the selection of rows it hides.
 			var ids: Set<UUID> = [transaction.id]
 			if model.selectedTransactions.contains(transaction.id), model.selectedTransactions.count > 1 {
-				ids = model.selectedTransactions.intersection(model.visibleTransactions.map(\.id))
+				ids = model.visibleSelection
 			}
 			CategoryChoices.popUp(model: model, ids: ids)
 		} label: {

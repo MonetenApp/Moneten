@@ -365,7 +365,9 @@ final class DebugHarness {
 			case "accountSettings": if case let .account(id) = model.selection { model.sheet = .accountSettings(id) }
 			case "transaction": model.sheet = .transaction(model.visibleTransactions.first?.id)
 			// What ⌘K does, for a run without a key window, where SwiftUI disables the menu commands.
-			case "assignCategory": model.sheet = .assignCategory(model.selectedTransactions.intersection(model.visibleTransactions.map(\.id)))
+			case "assignCategory":
+				let ids = model.visibleSelection
+				if !ids.isEmpty { model.sheet = .assignCategory(ids) }
 			default: model.sheet = nil
 			}
 		// "Name|rule" saves the rule of a category without the check of the settings, as an older version could have stored it.

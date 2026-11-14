@@ -118,9 +118,12 @@ struct AppCommands: Commands {
 			Button("Add Transaction...") { model.sheet = .transaction(nil) }
 				.keyboardShortcut("+")
 				.disabled(!unlocked || model.selectedOfflineAccount == nil)
-			Button("Assign Category...") { model.sheet = .assignCategory(model.selectedTransactions.intersection(model.visibleTransactions.map(\.id))) }
-				.keyboardShortcut("k")
-				.disabled(!unlocked || model.selectedTransactions.isEmpty)
+			Button("Assign Category...") {
+				let ids = model.visibleSelection
+				if !ids.isEmpty { model.sheet = .assignCategory(ids) }
+			}
+			.keyboardShortcut("k")
+			.disabled(!unlocked || model.selectedTransactions.isEmpty)
 			Button("Add Comment...") { model.sheet = .comment(model.selectedTransactions) }
 				.keyboardShortcut("k", modifiers: [.command, .shift])
 				.disabled(!unlocked || model.selectedTransactions.isEmpty)
