@@ -285,6 +285,7 @@ final class AutoRefreshTests {
 
 	static let giro = AccountRequest(accountID: UUID(), name: "Giro", remoteID: "1")
 	static let savings = AccountRequest(accountID: UUID(), name: "Savings", remoteID: "2")
+	static let card = AccountRequest(accountID: UUID(), name: "Card", remoteID: "3")
 
 	@Test("A manual refresh during an automatic one of the same account shows the TAN dialog that the bank asks for")
 	func manualJoinsAutomatic() async {
@@ -374,6 +375,39 @@ final class AutoRefreshTests {
 		await until { !coordinator.isRefreshing }
 		#expect(coordinator.broker.current == nil)
 		#expect(coordinator.states[bank.id] == .failed(.needsUser(.secondFactor)))
+	}
+
+	@Test("An automatic refresh of another account never joins a manual refresh that waits, in the queue or after a run",
+		arguments: ["queue", "after a run"])
+	func automaticBesideWaitingManual(place: String) async {
+		let coordinator = SyncCoordinator(limit: 1)
+		let bank = Self.access("Musterbank")
+		let gate = FailureWithStateTests.Gate()
+		let holder = place == "queue" ? Self.access("Beispielbank") : bank
+		coordinator.refresh(RefreshRequest(access: holder, accounts: [Self.card]), with: GatedFetch(gate: gate), attended: false)
+		await until { gate.isWaiting }
+		let musterbank = AsksForAccount(account: Self.savings.accountID, request: Self.tan)
+		coordinator.refresh(RefreshRequest(access: bank, accounts: [Self.giro]), with: musterbank, attended: true)
+		coordinator.refresh(RefreshRequest(access: bank, accounts: [Self.savings]), with: musterbank, attended: false)
+		gate.open()
+		await until { !coordinator.isRefreshing }
+		#expect(coordinator.broker.current == nil)
+		#expect(coordinator.states[bank.id].map { if case .finished = $0 { true } else { false } } == true)
+	}
+
+	@Test("A PIN typed into a refresh that a command made attended is not asked again when the bank rejects it")
+	func rejectedTypedPIN() async {
+		let coordinator = SyncCoordinator()
+		let bank = Self.access("Musterbank")
+		let rejected = SyncFailure.pinRejected(BankMessage(code: "9942", text: "PIN falsch"))
+		coordinator.refresh(RefreshRequest(access: bank, accounts: [Self.giro]),
+			with: ScriptedConnector([.wait(.milliseconds(100)), .ask(.pin(PINRequest())), .fail(rejected)]), attended: false)
+		coordinator.refresh(RefreshRequest(access: bank, accounts: [Self.giro]), with: ScriptedConnector([]), attended: true)
+		await until { coordinator.broker.current != nil }
+		if let id = coordinator.broker.current?.id { coordinator.broker.answer(.pin(Secret("0000")), to: id) }
+		await until { !coordinator.isRefreshing }
+		#expect(coordinator.broker.current == nil)
+		#expect(coordinator.states[bank.id] == .failed(rejected))
 	}
 
 	@Test("An automatic refresh that comes while a canceled manual refresh still ends never asks the user")
@@ -575,6 +609,27 @@ struct HeldFailure: BankConnector {
 			throw failure ?? error
 		}
 		return ConnectorReport(outcomes: [account: .fetched(RefreshResult(balance: nil, transactions: nil))])
+	}
+}
+
+/// Fetches every requested account after the test opens the gate.
+struct GatedFetch: BankConnector {
+	let gate: FailureWithStateTests.Gate
+
+	func refresh(_ refresh: RefreshRequest, _ session: SyncSession) async throws -> ConnectorReport {
+		await gate.wait()
+		return ConnectorReport(outcomes: Dictionary(uniqueKeysWithValues: refresh.accounts.map { ($0.accountID, .fetched(RefreshResult(balance: nil, transactions: nil))) }))
+	}
+}
+
+/// One bank for all accounts of an access, which asks `request` when the refresh includes `account`.
+struct AsksForAccount: BankConnector {
+	let account: UUID
+	let request: UserRequest
+
+	func refresh(_ refresh: RefreshRequest, _ session: SyncSession) async throws -> ConnectorReport {
+		if refresh.accounts.contains(where: { $0.accountID == account }) { _ = try await session.ask(request) }
+		return ConnectorReport(outcomes: Dictionary(uniqueKeysWithValues: refresh.accounts.map { ($0.accountID, .fetched(RefreshResult(balance: nil, transactions: nil))) }))
 	}
 }
 

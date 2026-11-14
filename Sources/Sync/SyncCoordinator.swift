@@ -95,6 +95,9 @@ public final class SyncCoordinator {
 		let job = Job(request: RefreshRequest(access: request.access, state: request.state, accounts: accounts, enforced: request.enforced),
 			connector: connector, attended: attended)
 		let waiting = queue.firstIndex { $0.request.access.id == id }
+		// An automatic request never joins a command that waits, which would ask for accounts the user did
+		// not name. Its accounts stay due for a later run.
+		if !attended, waiting.map({ queue[$0].attended }) ?? afterRun[id]?.attended ?? false { return }
 		if running[id] == nil, waiting == nil, !held.contains(id) {
 			queue.append(job)
 		} else if accounts.isEmpty {
@@ -278,7 +281,7 @@ public final class SyncCoordinator {
 			runningSources[access.id] = nil
 			self.attendance[access.id] = nil
 			// A command came after the refresh had failed for want of the user: run it again with dialogs.
-			if !job.attended, attendance.isOn, case let .fail(failure) = event, Self.asksAgain(after: failure) {
+			if !job.attended, attendance.isOn, !attendance.asked, case let .fail(failure) = event, Self.asksAgain(after: failure) {
 				let again = Job(request: job.request, connector: job.connector, attended: true)
 				afterRun[access.id] = afterRun[access.id].map(again.adding) ?? again
 			}
@@ -361,7 +364,7 @@ private struct Session: SyncSession {
 	let attendance: Attendance
 
 	func ask(_ request: UserRequest) async throws -> UserAnswer {
-		try await coordinator.broker.ask(request, for: access, accountNames: accountNames, attended: attendance.isOn)
+		try await coordinator.broker.ask(request, for: access, accountNames: accountNames, attended: attendance.ask())
 	}
 
 	func rejected(_ failure: SyncFailure) async {
@@ -378,16 +381,27 @@ private struct Session: SyncSession {
 /// Whether the refresh of an access may ask the user. The session reads it at each request, so a command
 /// that comes while the refresh runs takes effect at its next request.
 final class Attendance: Sendable {
-	private let on: Mutex<Bool>
+	private let state: Mutex<(on: Bool, asked: Bool)>
 
 	init(_ on: Bool) {
-		self.on = Mutex(on)
+		state = Mutex((on, false))
 	}
 
-	var isOn: Bool { on.withLock { $0 } }
+	var isOn: Bool { state.withLock { $0.on } }
+	/// A request reached the user. A failure after it is the answer of the bank to the user, so the
+	/// refresh does not run again.
+	var asked: Bool { state.withLock { $0.asked } }
 
 	func turnOn() {
-		on.withLock { $0 = true }
+		state.withLock { $0.on = true }
+	}
+
+	/// Whether the next request may ask the user, and records that it did.
+	func ask() -> Bool {
+		state.withLock { state in
+			if state.on { state.asked = true }
+			return state.on
+		}
 	}
 }
 
