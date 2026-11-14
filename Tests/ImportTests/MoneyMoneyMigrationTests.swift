@@ -391,7 +391,8 @@ struct MoneyMoneyMigrationTests {
 		#expect(deleted.map(\.sourceID) == ["moneymoney:3"])
 		let again = try secondPlan(into: after, balance: 1224.56, rows: kioskBookedBySource(on: 5, purpose: "KARTENZAHLUNG Kiosk"), deleted: deleted)
 		#expect(again.transactions.isEmpty && again.relinkedDeletedRows.isEmpty)
-		#expect(applying(again, to: after).balance(of: try #require(after.account(giro.id))).minorUnits == 123_456)
+		let ran = applying(again, to: after)
+		#expect(ran.balance(of: try #require(ran.account(giro.id))).minorUnits == 123_456)
 	}
 
 	@Test("A pending transaction that a file booked counts as imported while the source keeps it pending")
@@ -442,7 +443,8 @@ struct MoneyMoneyMigrationTests {
 		#expect(deletedAfter.map(\.sourceID) == ["moneymoney:2"])
 		let again = try secondPlan(into: after, balance: 1234.56, rows: rows, deleted: deletedAfter)
 		#expect(again.relinkedDeletedRows.isEmpty)
-		#expect(applying(again, to: after).balance(of: try #require(after.account(giro.id))).minorUnits == 132_356)
+		let ran = applying(again, to: after)
+		#expect(ran.balance(of: try #require(ran.account(giro.id))).minorUnits == 132_356)
 	}
 
 	@Test("A transaction deleted in both apps moves the balance once, and the next run keeps it")
@@ -467,7 +469,8 @@ struct MoneyMoneyMigrationTests {
 		forgotten.sourceID = nil
 		let again = try secondPlan(into: after, balance: 1323.56, rows: rows, deleted: [forgotten])
 		#expect(again.relinkedDeletedRows.isEmpty)
-		#expect(applying(again, to: after).balance(of: try #require(after.account(giro.id))).minorUnits == 132_356)
+		let ran = applying(again, to: after)
+		#expect(ran.balance(of: try #require(ran.account(giro.id))).minorUnits == 132_356)
 	}
 
 	@Test("A transaction deleted only in Moneten keeps moving the balance through a second run")
@@ -481,7 +484,8 @@ struct MoneyMoneyMigrationTests {
 		let second = try secondPlan(into: ledger, balance: 1234.56, rows: transactions["transactions"] as! [[String: Any]],
 			deleted: [DeletedTransaction(fee, deletedAt: Date())])
 		#expect(second.relinkedDeletedRows.isEmpty)
-		#expect(applying(second, to: ledger).balance(of: try #require(ledger.account(giro.id))).minorUnits == 132_356)
+		let ran = applying(second, to: ledger)
+		#expect(ran.balance(of: try #require(ran.account(giro.id))).minorUnits == 132_356)
 	}
 
 	@Test("A deleted row in another currency that leaves the source does not move the balance")
