@@ -1,5 +1,6 @@
+import Domain
+import Foundation
 import Testing
-@testable import Domain
 
 @Suite("Starter categories")
 struct StarterCategoriesTests {
@@ -53,5 +54,74 @@ struct StarterCategoriesTests {
 	] as [(String?, StarterCategories.Language)])
 	func language(preferred: String?, expected: StarterCategories.Language) {
 		#expect(StarterCategories.Language(preferredLanguage: preferred) == expected)
+	}
+
+	func unchangedRoots(_ ledger: Ledger) -> [String] {
+		StarterCategories.unchangedRoots(in: ledger).map(\.name)
+	}
+
+	func change(_ name: String, in ledger: inout Ledger, _ edit: (inout Domain.Category) -> Void) throws {
+		var c = try #require(ledger.categories.first { $0.name == name })
+		edit(&c)
+		ledger.upsert(c)
+	}
+
+	@Test("An unchanged German set is replaced")
+	func unchangedGerman() {
+		#expect(unchangedRoots(Ledger(categories: StarterCategories.make(language: .german)))
+			== ["Einnahmen", "Wohnen", "Mobilität", "Freizeit", "Versicherungen", "Umbuchungen"])
+	}
+
+	@Test("An unchanged English set is replaced")
+	func unchangedEnglish() {
+		#expect(unchangedRoots(Ledger(categories: StarterCategories.make(language: .english)))
+			== ["Income", "Living", "Mobility", "Leisure", "Insurance", "Transfers"])
+	}
+
+	@Test("\"Reisen\" set to USD keeps \"Freizeit\"")
+	func childCurrency() throws {
+		var l = Ledger(categories: StarterCategories.make(language: .german))
+		try change("Reisen", in: &l) { $0.currency = "USD" }
+		#expect(unchangedRoots(l) == ["Einnahmen", "Wohnen", "Mobilität", "Versicherungen", "Umbuchungen"])
+	}
+
+	@Test("A root with a changed \"Display in sidebar\" is kept")
+	func rootSidebarAmount() throws {
+		var l = Ledger(categories: StarterCategories.make(language: .english))
+		try change("Living", in: &l) { $0.sidebarAmount = .currentMonth }
+		#expect(unchangedRoots(l) == ["Income", "Mobility", "Leisure", "Insurance", "Transfers"])
+	}
+
+	@Test("A root is kept when a subcategory has a changed setting", arguments: [
+		"Name", "Currency", "Color", "Icon", "Show in diagrams", "Display in sidebar", "Restrict to", "Rules",
+	])
+	func childSetting(_ setting: String) throws {
+		var l = Ledger(categories: StarterCategories.make(language: .english))
+		try change("Rent", in: &l) { c in
+			switch setting {
+			case "Name": c.name = "Flat"
+			case "Currency": c.currency = "USD"
+			case "Color": c.color = "#FF0000"
+			case "Icon": c.symbol = "house.fill"
+			case "Show in diagrams": c.showInDiagrams = false
+			case "Display in sidebar": c.sidebarAmount = .currentMonth
+			case "Restrict to": c.restrictedToID = UUID()
+			default: c.rule = #""Miete""#
+			}
+		}
+		#expect(unchangedRoots(l) == ["Income", "Mobility", "Leisure", "Insurance", "Transfers"])
+	}
+
+	@Test("An English root with a German child is kept")
+	func mixedLanguages() throws {
+		var l = Ledger(categories: StarterCategories.make(language: .english))
+		try change("Travel", in: &l) { $0.name = "Reisen" }
+		#expect(unchangedRoots(l) == ["Income", "Living", "Mobility", "Insurance", "Transfers"])
+	}
+
+	@Test("The default category is never in the result")
+	func defaultCategory() {
+		let defaults = [Domain.Category(position: 1_000, name: "Uncategorized", isDefault: true), Domain.Category(position: 1_000, name: "Unkategorisiert", isDefault: true)]
+		#expect(unchangedRoots(Ledger(categories: defaults)) == [])
 	}
 }
