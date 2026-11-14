@@ -1,6 +1,5 @@
 import Domain
 import Foundation
-import Synchronization
 import Testing
 @testable import FinTS
 
@@ -22,10 +21,8 @@ struct HelperProcessTests {
 		// timers that end the helpers, and every other task of the app.
 		let state = AccessState(Data(repeating: 7, count: 1_000_000))
 		let start = ContinuousClock.now
-		let ended = Count()
 		let runs = (0..<ProcessInfo.processInfo.activeProcessorCount + 2).map { _ in
 			Task { () -> (any Error)? in
-				defer { ended.add() }
 				do {
 					_ = try await connector("exec sleep 60", inactivity: 1, grace: 10).listAccounts(of: Self.access, state: state, session: Session())
 					return nil
@@ -34,16 +31,18 @@ struct HelperProcessTests {
 				}
 			}
 		}
-		// The helpers end 11 seconds after their start at the earliest. A starved pool would run this
-		// task only after the helpers end on their own, a minute later.
+		// A starved pool would run this task only after the helpers end on their own, 60 seconds after
+		// their start. The bound lies between that and the timeout of the helpers (11 seconds), because
+		// a loaded runner of CI ran this task only after 12 seconds.
 		try await Task.sleep(for: .milliseconds(500))
 		await Task.detached { }.value
-		#expect(ended.value == 0)
-		#expect(ContinuousClock.now - start < .seconds(11))
+		#expect(ContinuousClock.now - start < .seconds(30))
 		for run in runs {
 			#expect(await run.value as? SyncFailure == .network("The connection to the FinTS server of the bank timed out. Try again later."))
 		}
-		#expect(ContinuousClock.now - start < .seconds(40))
+		// The end stays below the 60 seconds after which the helpers would end on their own. CI takes
+		// up to 25 seconds here, so a tighter bound would fail on a loaded runner again.
+		#expect(ContinuousClock.now - start < .seconds(55))
 	}
 
 	@Test("More certificate checks that wait than the Mac has cores hold up neither a timeout nor another refresh")
@@ -109,16 +108,5 @@ private final class Gate: @unchecked Sendable {
 			isOpen = true
 			condition.broadcast()
 		}
-	}
-}
-
-/// A count that tasks can raise at the same time.
-private final class Count: Sendable {
-	private let count = Mutex(0)
-
-	var value: Int { count.withLock { $0 } }
-
-	func add() {
-		count.withLock { $0 += 1 }
 	}
 }

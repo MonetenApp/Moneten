@@ -143,7 +143,10 @@ import Testing
 		#expect(exchange.call() == .array([.integer(0), .integer(0), .integer(1)]))
 	}
 
-	@Test func sharedTablesCannotGrowWithoutBound() {
+	// Only the count of values that a walk reads raises these errors, and the error ends the walk, so
+	// it reads at most 1,000,001 values instead of 2^40 paths. Without that count the walk would not
+	// end; the time limit records the failure after a minute.
+	@Test(.timeLimit(.minutes(1))) func sharedTablesCannotGrowWithoutBound() {
 		let exchange = Exchange("""
 			function Check()
 				local t = {}
@@ -153,12 +156,10 @@ import Testing
 			end
 			""", hosts: ["bank.example"], [])
 		#expect(exchange.call() == .integer(1))
-		let started = ContinuousClock.now
 		#expect(throws: ScriptError("LocalStorage holds more than 1000000 values.")) { try exchange.session.storage() }
-		#expect(ContinuousClock.now - started < .seconds(5))
 	}
 
-	@Test func sharedTablesInAResultCannotGrowWithoutBound() {
+	@Test(.timeLimit(.minutes(1))) func sharedTablesInAResultCannotGrowWithoutBound() {
 		let exchange = Exchange("""
 			function Check()
 				local t = {}
@@ -166,8 +167,6 @@ import Testing
 				return t
 			end
 			""", hosts: ["bank.example"], [])
-		let started = ContinuousClock.now
 		#expect(exchange.call() == .string("error: The value holds more than 1000000 values."))
-		#expect(ContinuousClock.now - started < .seconds(5))
 	}
 }
