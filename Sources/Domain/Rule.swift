@@ -317,19 +317,25 @@ private struct RuleParser {
 	private mutating func tokenize() throws(RuleSyntaxError) {
 		var i = 0
 		let openQuotes: Set<Character> = ["\"", "„", "“", "”"]
+		// Right after a field operator, a word is the search term, so `name:and` and `name:-x` search for "and" and "-x".
+		var fieldValueStart: Int?
 		while i < chars.count {
 			let c = chars[i]
 			if c.isWhitespace { i += 1; continue }
 			let start = i
+			let isFieldValue = i == fieldValueStart
 			if c == "(" { tokens.append((.open, i)); i += 1; continue }
 			if c == ")" { tokens.append((.close, i)); i += 1; continue }
-			// Only at the start of a token. Inside a word, as in "Disney+", "Yahoo!", or "EC-Karte", they stay part of the word.
-			if c == "+" { tokens.append((.and, i)); i += 1; continue }
-			if c == "!" || (c == "-" && !(i + 1 < chars.count && chars[i + 1].isWholeNumber)) { tokens.append((.not, i)); i += 1; continue }
-			if let (field, op) = fieldOperator(at: i) {
-				tokens.append((.field(field, op: op.text, negates: op.negates), i))
-				i += field.rawValue.count + op.text.count
-				continue
+			if !isFieldValue {
+				// Only at the start of a token. Inside a word, as in "Disney+", "Yahoo!", or "EC-Karte", they stay part of the word.
+				if c == "+" { tokens.append((.and, i)); i += 1; continue }
+				if c == "!" || (c == "-" && !(i + 1 < chars.count && chars[i + 1].isWholeNumber)) { tokens.append((.not, i)); i += 1; continue }
+				if let (field, op) = fieldOperator(at: i) {
+					tokens.append((.field(field, op: op.text, negates: op.negates), i))
+					i += field.rawValue.count + op.text.count
+					fieldValueStart = i
+					continue
+				}
 			}
 			if openQuotes.contains(c) {
 				i += 1
@@ -358,6 +364,7 @@ private struct RuleParser {
 				word.append(chars[i])
 				i += 1
 			}
+			if isFieldValue { tokens.append((.word(word), start)); continue }
 			if word.lowercased().hasPrefix("amount"), let cmp = Self.amountComparison(word) {
 				tokens.append((.amount(cmp.0, cmp.1), start))
 				continue
