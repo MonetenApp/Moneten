@@ -134,7 +134,7 @@ final class DebugHarness {
 		case "status":
 			// Each account by its position and kind, never by its name, IBAN, or account number.
 			for (position, a) in model.ledger.accounts.filter({ $0.accessID != nil }).enumerated() {
-				log("status #\(position) \(a.kind) refreshing=\(model.sync.refreshingAccounts.contains(a.id)) refreshedAt=\(a.refreshedAt.map { "\($0)" } ?? "-") error=\(a.refreshError?.message ?? "-") waitsForUser=\(a.refreshError?.waitsForUser ?? false) interval=\(a.refreshInterval.rawValue) balance=\(a.bankBalanceMinor.map(String.init) ?? "-") rows=\(model.ledger.transactions(ofAccount: a.id).count) new=\(model.ledger.newTransactionCounts[a.id] ?? 0)")
+				log("status #\(position) \(a.kind) refreshing=\(model.sync.refreshingAccounts.contains(a.id)) refreshedAt=\(a.refreshedAt.map { "\($0)" } ?? "-") error=\(Self.label(a.refreshError)) waitsForUser=\(a.refreshError?.waitsForUser ?? false) interval=\(a.refreshInterval.rawValue) balance=\(a.bankBalanceMinor.map(String.init) ?? "-") rows=\(model.ledger.transactions(ofAccount: a.id).count) new=\(model.ledger.newTransactionCounts[a.id] ?? 0)")
 			}
 			log("status line=\(model.refreshStatus ?? "-") accesses=\(model.accesses.count)")
 		// "closemain" closes the main window as its close button does; both log the scenes of the visible windows.
@@ -234,7 +234,7 @@ final class DebugHarness {
 			if let account = model.ledger.accounts.first(where: { $0.name == argument }) {
 				let rows = model.ledger.transactions(ofAccount: account.id).filter { $0.isFetched || $0.needsReview }
 				for t in rows {
-					log("row \(t.bookingDate) \(t.amountMinor) \(t.name)\(t.isPending ? " pending" : "")\(t.isNew ? " new" : "")\(t.needsReview ? " review" : "")")
+					log("row \(t.bookingDate) \(t.amountMinor)\(t.isPending ? " pending" : "")\(t.isNew ? " new" : "")\(t.needsReview ? " review" : "")")
 				}
 				log("rows \(rows.count) new=\(model.ledger.newTransactionCounts[account.id] ?? 0) balance=\(account.bankBalanceMinor.map(String.init) ?? "-")")
 			}
@@ -344,7 +344,7 @@ final class DebugHarness {
 		case "newcategory": Task { await model.addCategory(name: argument, isGroup: false, parentID: nil, assigning: model.selectedTransactions) }
 		case "selectRows": model.selectedTransactions = Set(model.visibleTransactions.prefix(Int(argument) ?? 1).map(\.id))
 		case "state":
-			log("phase=\(model.phase) accounts=\(model.ledger.accounts.count) transactions=\(model.ledger.transactions.count) visible=\(model.visibleTransactions.count) selection=\(String(describing: model.selection)) selected=\(model.selectedAccount?.name ?? "-")")
+			log("phase=\(model.phase) accounts=\(model.ledger.accounts.count) transactions=\(model.ledger.transactions.count) visible=\(model.visibleTransactions.count) selection=\(String(describing: model.selection)) selected=\(model.selectedAccount.map { "\($0.kind)" } ?? "-")")
 			logChart()
 		case "quit": NSApp.terminate(nil)
 		default: log("unknown command \(command)")
@@ -360,6 +360,17 @@ final class DebugHarness {
 		case let .found(bank): "found(\(bank.code))"
 		case .failed: "failed"
 		}
+	}
+
+	/// The return code of the bank, which a text of the bank can hide a name or an IBAN in.
+	private static func label(_ error: RefreshError?) -> String {
+		guard let error else { return "-" }
+		return error.code ?? "set"
+	}
+
+	/// Whether a message is shown, without its text, which can repeat the login name or an IBAN.
+	private static func isSet(_ message: String?) -> String {
+		message == nil ? "-" : "set"
 	}
 
 	/// The match of a listed account by the kind of the account in the app, without its name.
@@ -398,8 +409,8 @@ final class DebugHarness {
 		case "cancel": model.closeAccountSetup()
 		default: break
 		}
-		log("setup service=\(setup.service?.title ?? "-") other=\(setup.otherServices.map(\.title)) error=\(setup.serviceError ?? "-")")
-		log("setup step=\(setup.step) entry=\(!setup.entry.isEmpty) login=\(!setup.loginName.isEmpty) highlighted=\(setup.highlighted) lookup=\(Self.label(setup.lookup.state)) error=\(setup.loginError ?? "-") saveError=\(setup.saveError ?? "-") dialog=\(model.sync.broker.current != nil) candidates=\(setup.candidates.count) [\(setup.candidates.map { "\($0.account.kind):\(Self.label($0.match))" }.joined(separator: ", "))] selected=\(setup.candidates.indices.filter { setup.selected.contains(setup.candidates[$0].id) })")
+		log("setup service=\(setup.service?.title ?? "-") other=\(setup.otherServices.map(\.title)) error=\(Self.isSet(setup.serviceError))")
+		log("setup step=\(setup.step) entry=\(!setup.entry.isEmpty) login=\(!setup.loginName.isEmpty) highlighted=\(setup.highlighted) lookup=\(Self.label(setup.lookup.state)) error=\(Self.isSet(setup.loginError)) saveError=\(Self.isSet(setup.saveError)) dialog=\(model.sync.broker.current != nil) candidates=\(setup.candidates.count) [\(setup.candidates.map { "\($0.account.kind):\(Self.label($0.match))" }.joined(separator: ", "))] selected=\(setup.candidates.indices.filter { setup.selected.contains(setup.candidates[$0].id) })")
 	}
 
 	/// The sheet on top of all others, where the dialogs of a refresh appear.
@@ -568,7 +579,7 @@ final class DebugHarness {
 			log("ext access \(access.bankName) state=\(String(describing: model.sync.states[access.id] ?? .idle).prefix(60))")
 			for account in model.ledger.accounts where account.accessID == access.id {
 				let rows = model.ledger.transactions.filter { $0.accountID == account.id }
-				let failure = account.refreshError.map { " failed=\($0.message)" } ?? ""
+				let failure = account.refreshError.map { " failed=\(Self.label($0))" } ?? ""
 				log("ext account \(account.kind) rows=\(rows.count) balance=\(model.ledger.balance(of: account).minorUnits)\(failure)")
 			}
 		}
@@ -588,7 +599,7 @@ final class DebugHarness {
 		if let a = model.ledger.accounts.first(where: { $0.name == name }) { model.navigate(to: .account(a.id)) }
 		else if let g = model.ledger.groups.first(where: { $0.name == name }) { model.navigate(to: .group(g.id)) }
 		else if let c = model.ledger.categories.first(where: { $0.name == name }) { model.navigate(to: .category(c.id)) }
-		else { log("select: not found \(name)") }
+		else { log("select: not found") }
 	}
 
 	/// Draws the sidebar in a plain window that is off screen, because the sidebar of the main
@@ -643,7 +654,7 @@ final class DebugHarness {
 				}
 				let file = folder.appendingPathComponent("\(name)-\(i)\(String(repeating: "-sheet", count: j)).png")
 				try? rep.representation(using: .png, properties: [:])?.write(to: file)
-				log("snapshot \(file.lastPathComponent) \(w.title) \(Int(view.bounds.width))x\(Int(view.bounds.height))")
+				log("snapshot \(file.lastPathComponent) \(w.identifier?.rawValue ?? "-") \(Int(view.bounds.width))x\(Int(view.bounds.height))")
 			}
 		}
 	}
