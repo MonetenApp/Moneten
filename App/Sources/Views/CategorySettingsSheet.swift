@@ -14,7 +14,7 @@ struct CategorySettingsSheet: View {
 	@State private var confirmRemove = false
 
 	var body: some View {
-		SheetFrame(title: "Settings for \(category?.name ?? "")", width: 520, onConfirm: save, leading: {
+		SheetFrame(title: "Settings for \(category?.name ?? "")", canConfirm: ruleError == nil, width: 520, onConfirm: save, leading: {
 			if category?.isDefault == false {
 				Button("Remove Category...", role: .destructive) { confirmRemove = true }
 			}
@@ -72,6 +72,8 @@ struct CategorySettingsSheet: View {
 			category = model.ledger.category(categoryID)
 			color = category.map { CategoryColors.color(of: $0, in: model.ledger) } ?? .accentColor
 			originalColor = color
+			// A saved rule such as "amount>1,000" may no longer read, so its error shows before the first edit.
+			if let c = category, !c.isDefault, !c.isGroup { validate(c.rule) }
 		}
 		.confirmationDialog("Should this categorization rule be applied to the existing transactions now?", isPresented: $askApply) {
 			Button("Apply only to not yet categorized transactions.") { apply(.uncategorizedOnly) }
@@ -107,7 +109,7 @@ struct CategorySettingsSheet: View {
 
 	/// Saves and closes, or keeps the sheet open to ask whether a changed rule applies to existing transactions.
 	private func save() -> Bool {
-		guard ruleError == nil, var c = category else { return ruleError == nil }
+		guard var c = category else { return true }
 		// A category keeps the inherited palette color until the user picks one.
 		if !c.isDefault, color.hex != originalColor.hex { c.color = color.hex }
 		let ruleChanged = c.rule != model.ledger.category(categoryID)?.rule

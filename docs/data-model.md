@@ -12,7 +12,7 @@ The specs in [openspec/changes](../openspec/changes/) define the behavior. Where
 | `MoneySums` | `byCurrency: [String: Int64]` | A sum across accounts or transactions keeps one total per currency and never converts. |
 | `Day` | `rawValue: Int` | A calendar day as the number yyyymmdd, without a time and without a time zone. Booking and value dates are days. |
 
-`AmountParser.decimal(from:)` reads amounts that the user types, such as `1.250,00`, `-89,00`, or `1250.00`.
+`AmountParser.decimal(from:)` reads amounts that the user types or a file holds, such as `1.250,00`, `-89,00`, or `1250.00`. It refuses a text with two readings, such as `1,234`, unless the caller passes the `DecimalMark` that it knows. The CSV import takes the decimal mark from the other amounts of the file, and MT940 always uses the comma.
 
 ## Accounts
 

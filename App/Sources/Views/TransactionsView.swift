@@ -273,8 +273,8 @@ struct CustomAmountView: View {
 		VStack(spacing: 0) {
 			SheetForm {
 				Section {
-					TextField("Minimum", text: $min, prompt: Text("0,00")).multilineTextAlignment(.trailing).monospacedDigit()
-					TextField("Maximum", text: $max, prompt: Text("0,00")).multilineTextAlignment(.trailing).monospacedDigit()
+					TextField("Minimum", text: $min, prompt: Text("0,00")).multilineTextAlignment(.trailing).monospacedDigit().marksUnreadableAmount(min)
+					TextField("Maximum", text: $max, prompt: Text("0,00")).multilineTextAlignment(.trailing).monospacedDigit().marksUnreadableAmount(max)
 				}
 			}
 			SheetButtons {
@@ -286,6 +286,7 @@ struct CustomAmountView: View {
 					dismiss()
 				}
 				.keyboardShortcut(.defaultAction)
+				.disabled(!Format.isReadableAmount(min) || !Format.isReadableAmount(max))
 			}
 		}
 		.frame(width: 300)

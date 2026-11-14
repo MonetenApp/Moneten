@@ -96,7 +96,7 @@ struct RuleTests {
 
 	@Test("Other syntax errors")
 	func syntaxErrors() {
-		for bad in [#""Lohn"#, "OR \"x\"", "\"x\" AND", "/abc", "amount>abc", ")", ""] {
+		for bad in [#""Lohn"#, "OR \"x\"", "\"x\" AND", "/abc", "amount>abc", "amount>1,000", ")", ""] {
 			#expect(throws: RuleSyntaxError.self, "\(bad)") { try Rule(parsing: bad) }
 		}
 	}

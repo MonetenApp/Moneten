@@ -26,10 +26,14 @@ enum Format {
 		NSDecimalNumber(decimal: Money(minorUnits: minor, currency: currency).decimal).doubleValue
 	}
 
-	/// An amount for a text field, such as "1234.56": no currency sign, no thousands separators, and
-	/// ASCII digits in every locale, so that `AmountParser` reads it back unchanged.
+	/// An amount for a text field, such as "1234.56", that `AmountParser` reads back unchanged.
 	static func editableAmount(_ minor: Int64, _ currency: String) -> String {
-		"\(Money(minorUnits: minor, currency: currency).decimal)"
+		AmountParser.editableText(Money(minorUnits: minor, currency: currency))
+	}
+
+	/// Whether an amount field is empty or holds a text that `AmountParser` reads without doubt.
+	static func isReadableAmount(_ text: String) -> Bool {
+		text.isEmpty || AmountParser.decimal(from: text) != nil
 	}
 
 	static func sums(_ s: MoneySums) -> String {
@@ -284,5 +288,12 @@ enum CategorySymbols {
 	static func name(of category: Domain.Category, filledGroup: Bool = false) -> String {
 		if let symbol = category.symbol, !symbol.isEmpty { return symbol }
 		return category.isGroup ? (filledGroup ? "folder.fill" : "folder") : "bookmark.fill"
+	}
+}
+
+extension View {
+	/// Marks an amount field whose text the app refuses, so the user sees why it stores no amount.
+	func marksUnreadableAmount(_ text: String) -> some View {
+		foregroundStyle(Format.isReadableAmount(text) ? Color.primary : Palette.red)
 	}
 }
