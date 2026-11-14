@@ -62,6 +62,7 @@ struct CategoryPickerSheet: View {
 							.contentShape(Rectangle())
 						}
 						.buttonStyle(.plain)
+						.accessibilityAddTraits(index == highlighted ? .isSelected : [])
 						.id(index)
 					}
 				}
