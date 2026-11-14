@@ -30,4 +30,31 @@ struct BankNoticesTests {
 		notices.dismiss()
 		#expect(notices.waiting.isEmpty)
 	}
+
+	@Test("A notice waits until the user is there, and brings the window forward once, and a repeat brings nothing forward")
+	func forward() {
+		var notices = BankNotices()
+		var forward: [Bool] = []
+		notices.add([Self.maintenance], from: "Musterbank")
+		#expect(notices.waiting == [BankNotice(bankName: "Musterbank", text: "Wartungsarbeiten am 14.11.2026 von 1 bis 5 Uhr")])
+		forward.append(notices.bringForward())
+		forward.append(notices.bringForward())
+		notices.add([Self.maintenance], from: "Musterbank")
+		forward.append(notices.bringForward())
+		notices.add([BankMessage(text: "Neue Preise ab 01.01.2027")], from: "Musterbank")
+		forward.append(notices.bringForward())
+		#expect(forward == [true, false, false, true])
+	}
+
+	@Test("A notice that the setup showed never waits")
+	func shownInTheSetup() {
+		var notices = BankNotices()
+		notices.markShown([Self.maintenance], from: "Musterbank")
+		notices.add([Self.maintenance], from: "Musterbank")
+		#expect(notices.waiting.isEmpty)
+		let forward = notices.bringForward()
+		#expect(!forward)
+		notices.add([Self.maintenance], from: "Beispielbank")
+		#expect(notices.waiting == [BankNotice(bankName: "Beispielbank", text: "Wartungsarbeiten am 14.11.2026 von 1 bis 5 Uhr")])
+	}
 }
