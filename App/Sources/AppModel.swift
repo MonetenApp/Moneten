@@ -187,7 +187,7 @@ final class AppModel {
 	@ObservationIgnored var openMainWindow: () -> Void = {}
 	/// The notices of the banks for the window "Notice". The lock drops them.
 	var bankNotices = BankNotices()
-	/// Opens the window "Notice". The main window sets it, as `openMainWindow`.
+	/// Opens the window "Notice", or brings it forward. The main window sets it, as `openMainWindow`.
 	@ObservationIgnored var openNoticeWindow: () -> Void = {}
 
 	var selection: SidebarSelection? {
@@ -307,11 +307,11 @@ final class AppModel {
 				self.recordRefresh(of: access, state: state, accounts: accounts, attended: attended)
 			}
 			self.extensions.sessionEnded()
+			if attended { self.showNotices() }
 		}
 		sync.noticed = { [weak self] access, messages in
 			guard let self, let bank = self.accesses[access]?.bankName else { return }
 			self.bankNotices.add(messages, from: bank)
-			if !self.bankNotices.waiting.isEmpty { self.openNoticeWindow() }
 		}
 		sync.runEnded = { [weak self] in
 			guard let self else { return }
@@ -507,6 +507,13 @@ final class AppModel {
 		if UserDefaults.standard.bool(forKey: Preference.lockOnClose) { lock() }
 	}
 
+	/// Brings the window "Notice" forward when a notice came since it last did. The app calls it only when
+	/// the user is there, at the end of a refresh that the user started and when the main window comes
+	/// forward, because an automatic refresh opens no dialog ("An automatic refresh never asks the user").
+	func showNotices() {
+		if bankNotices.bringForward() { openNoticeWindow() }
+	}
+
 	// MARK: Selection and filters
 
 	func select(_ s: SidebarSelection?) {
@@ -687,11 +694,14 @@ final class AppModel {
 	/// Stores the access with the accounts that the user selected, keeps the PIN of the login in
 	/// memory and saves it when the user asked to, selects the first new account, or the first connected
 	/// one when none is new, and starts the first refresh ("Finish the setup"). A login that the app has
-	/// already keeps its access. `listed` holds every account that the bank listed. Throws the error of
+	/// already keeps its access. `listed` holds every account that the bank listed, and `notices` the notices
+	/// of the bank that the assistant showed, which the window "Notice" then leaves out. Throws the error of
 	/// the database, which the assistant shows.
-	func add(_ new: Access, state: AccessState?, accounts candidates: [Account], listed: [Account], connecting: [UUID: UUID], pin: Secret, savePIN: Bool) throws {
+	func add(_ new: Access, state: AccessState?, accounts candidates: [Account], listed: [Account], connecting: [UUID: UUID], notices: [BankMessage],
+		pin: Secret, savePIN: Bool) throws {
 		guard let store else { return }
 		let (access, accounts) = try store.add(new, state: state, accounts: ledger.accountsToAdd(candidates, listed: listed, connecting: connecting))
+		bankNotices.markShown(notices, from: access.bankName)
 		let first = accounts.first { ledger.account($0.id) == nil } ?? accounts.first
 		// The bank accepted the PIN at the login of the setup.
 		do {
