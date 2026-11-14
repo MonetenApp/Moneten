@@ -48,12 +48,12 @@ struct StarterCategoriesTests {
 		#expect(StarterCategories.make(language: .german).first { $0.name == "Umbuchungen" }?.showInDiagrams == false)
 	}
 
-	@Test("A first preferred language of German gives the German set, any other the English set", arguments: [
-		("de-DE", StarterCategories.Language.german), ("de", .german), ("de-CH", .german),
-		("en-US", .english), ("fr-FR", .english), (nil, .english),
+	@Test("A German localization of the interface gives the German set, any other the English set", arguments: [
+		("de", StarterCategories.Language.german), ("de-CH", .german),
+		("en", .english), ("en-GB", .english), ("fr", .english), (nil, .english),
 	] as [(String?, StarterCategories.Language)])
-	func language(preferred: String?, expected: StarterCategories.Language) {
-		#expect(StarterCategories.Language(preferredLanguage: preferred) == expected)
+	func language(localization: String?, expected: StarterCategories.Language) {
+		#expect(StarterCategories.Language(localization: localization) == expected)
 	}
 
 	func unchangedRoots(_ ledger: Ledger) -> [String] {
