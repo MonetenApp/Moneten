@@ -239,7 +239,7 @@ struct LedgerTests {
 		#expect(l.dailyBalances(accountIDs: [wallet.id]).map(\.minorUnits) == [10_000, 10_000])
 	}
 
-	@Test("Mixed currencies: the sidebar sums the category currency, the status line each currency")
+	@Test("Mixed currencies: the sidebar sums the category currency, and the rows of the category add up per currency")
 	func categorySumInCategoryCurrency() throws {
 		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
 		let travel = Domain.Category(position: 0, name: "Travel")
@@ -249,8 +249,8 @@ struct LedgerTests {
 		}
 		var l = Ledger(accounts: [giro], categories: [travel], transactions: [row(-20_000, "EUR", "Hotel"), row(-10_000, "EUR", "Bahn"), row(-5_000, "USD", "Taxi")])
 		#expect(l.sum(ofCategory: travel, in: .all) == Money(minorUnits: -30_000, currency: "EUR"))
-		let statusLine = l.transactions(in: .category(travel.id)).reduce(into: MoneySums()) { $0.add($1.amount) }
-		#expect(statusLine.amounts == [Money(minorUnits: -30_000, currency: "EUR"), Money(minorUnits: -5_000, currency: "USD")])
+		let perCurrency = l.transactions(in: .category(travel.id)).reduce(into: MoneySums()) { $0.add($1.amount) }
+		#expect(perCurrency.amounts == [Money(minorUnits: -30_000, currency: "EUR"), Money(minorUnits: -5_000, currency: "USD")])
 
 		var inDollars = travel
 		inDollars.currency = "USD"
