@@ -26,7 +26,7 @@ struct HoldingsView: View {
 				if holds {
 					Color.clear
 				} else {
-					HoldingsTable(rows: rows, selection: Binding(get: { selection }, set: { if model.shows(key) { selection = $0 } }))
+					HoldingsTable(rows: rows, selection: guardedSelection)
 				}
 			}
 			.overlay {
@@ -38,6 +38,12 @@ struct HoldingsView: View {
 			HoldingsStatusLine(rows: rows, selection: selection)
 		}
 		.onChange(of: selection.count, initial: true) { _, count in model.selectedPositions = count }
+	}
+
+	/// The selection, as long as the model shows this view: see `AppModel.shows(_:)`.
+	private var guardedSelection: Binding<Set<UUID>> {
+		let state = $selection
+		return Binding(get: { state.wrappedValue }, set: { [model, key] in if model.shows(key) { state.wrappedValue = $0 } })
 	}
 }
 
