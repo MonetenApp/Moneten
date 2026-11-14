@@ -112,7 +112,7 @@ The app SHALL show a quote with all decimal places that the source delivers, and
 
 ### Requirement: Value of a position
 
-The app SHALL use the value in the account currency that the source delivers for a position. When the source delivers no value, the app computes it from the quantity and the last quote.
+The app SHALL use the value in the account currency that the source delivers for a position, plus the accrued interest that the source delivers. When the source delivers no value, the app computes it from the quantity and the last quote. The profit or loss leaves the accrued interest out.
 
 #### Scenario: Bank delivers the value
 
@@ -125,6 +125,13 @@ The app SHALL use the value in the account currency that the source delivers for
 - **GIVEN** an extension returns a position with 10 units and the price 99,99 and no amount
 - **WHEN** the user opens the portfolio
 - **THEN** the value reads 999,90 €
+
+#### Scenario: Bond with accrued interest
+
+- **GIVEN** the bank reports a bond with the market value 4.925,00 €, the accrued interest 37,50 €, and the purchase rate 97,00 % for the nominal amount 5.000,00 €
+- **WHEN** the user opens the portfolio
+- **THEN** the value reads 4.962,50 €
+- **AND** the row shows "Profit" with 75,00 € and 1,55 %
 
 ### Requirement: Foreign currency positions
 
