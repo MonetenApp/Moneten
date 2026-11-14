@@ -57,14 +57,31 @@ import Testing
 	}
 
 	@Test func confirmedVersionInstallsWithItsNewHost() throws {
-		let reviewed = UpdatePlan.Approval(version: "1.1", hosts: ["login.example.org"])
+		var new = TestCatalog.Package(version: "1.1")
+		new.hosts.append("login.example.org")
+		let reviewed = UpdatePlan.Approval(version: "1.1", reviewed: try manifest(new))
 		#expect(try plan(to: { $0.hosts.append("login.example.org") }, confirmed: reviewed) == .install)
 		#expect(try plan(to: { $0.hosts.append("login.example.org") }, sessionRuns: true, confirmed: reviewed) == .afterSession)
 	}
 
 	@Test func aNewerVersionNeedsItsOwnConfirmation() throws {
-		#expect(try plan(to: { $0.version = "1.3"; $0.hosts.append("login.example.org") }, confirmed: .init(version: "1.2", hosts: ["login.example.org"]))
+		#expect(try plan(to: { $0.version = "1.3"; $0.hosts.append("login.example.org") }, confirmed: .init(version: "1.2"))
 			== .needsConfirmation(hosts: ["login.example.org"], fields: []))
+	}
+
+	/// A login field counts with its service. The user approved "Password" for Example Card. Version 1.1 listed
+	/// again asks for "Password" of Example Depot instead.
+	@Test func approvedFieldOfOneServiceDoesNotCoverAnother() throws {
+		let old = TestCatalog.Package()
+		func adding(_ service: String) throws -> Manifest {
+			var new = old
+			new.version = "1.1"
+			new.manifestFields = ["services": [["name": "Example Bank", "login": old.login], ["name": service, "login": [["label": "Password", "secret": true]]]]]
+			return try manifest(new)
+		}
+		let approval = UpdatePlan.Approval(version: "1.1", reviewed: try adding("Example Card"))
+		#expect(UpdatePlan(installed: try manifest(old), available: try adding("Example Depot"), automatic: true, sessionRuns: false, confirmed: approval)
+			== .needsConfirmation(hosts: [], fields: ["Password"]))
 	}
 
 	@Test func confirmedVersionInstallsWithAutomaticUpdatesOff() throws {

@@ -238,7 +238,7 @@ import Testing
 		let shown = updates.plan(of: installed, manifest: manifest, in: index)
 		#expect(shown == .needsConfirmation(hosts: ["data.example.net"], fields: []))
 		let listed = try #require(try index.entry("example")?.manifest.get())
-		#expect(UpdatePlan(installed: manifest, available: listed, automatic: true, sessionRuns: false, confirmed: .init(version: "1.3", hosts: ["data.example.net"])) == .install)
+		#expect(UpdatePlan(installed: manifest, available: listed, automatic: true, sessionRuns: false, confirmed: .init(version: "1.3", reviewed: listed)) == .install)
 	}
 
 	/// Version 1.1 is installed. Index 2 lists 1.2 with the new host login.example.org. Index 3 lists 1.2 again,
@@ -276,10 +276,10 @@ import Testing
 	/// as does a review sheet that stayed open. After the review of the new rights, it installs.
 	@Test func confirmedReviewDoesNotCoverARelistedVersionWithOtherRights() throws {
 		let r = try Relisted()
-		let reviewed = UpdatePlan.Approval(version: "1.2", hosts: ["login.example.org"])
+		let reviewed = UpdatePlan.Approval(version: "1.2", reviewed: r.reviewed)
 		#expect(UpdatePlan(installed: r.current, available: r.reviewed, automatic: true, sessionRuns: true, confirmed: reviewed) == .afterSession)
 		#expect(UpdatePlan(installed: r.current, available: r.relisted, automatic: true, sessionRuns: false, confirmed: reviewed) == r.rights)
-		let again = UpdatePlan.Approval(version: "1.2", hosts: ["login.example.org", "data.example.net"], fields: ["One-time code"])
+		let again = UpdatePlan.Approval(version: "1.2", reviewed: r.relisted)
 		#expect(UpdatePlan(installed: r.current, available: r.relisted, automatic: true, sessionRuns: false, confirmed: again) == .install)
 	}
 

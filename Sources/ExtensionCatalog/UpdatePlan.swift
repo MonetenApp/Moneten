@@ -14,17 +14,15 @@ public enum UpdatePlan: Sendable, Equatable {
 	/// while the index lists it, which an index of one version per package does not (`Standing.outdated`).
 	case needsConfirmation(hosts: [String], fields: [String])
 
-	/// What the user confirmed in the review or chose with "Update": a version and the new hosts and login
-	/// fields shown for it. "Update" shows none.
+	/// What the user confirmed in the review or chose with "Update": a version with the hosts and login fields of
+	/// the manifest that the review showed. "Update" shows no new ones, so it approves those of the installed version.
 	public struct Approval: Sendable, Equatable {
 		public let version: String
-		public let hosts: [String]
-		public let fields: [String]
+		let rights: Set<String>?
 
-		public init(version: String, hosts: [String] = [], fields: [String] = []) {
+		public init(version: String, reviewed: Manifest? = nil) {
 			self.version = version
-			self.hosts = hosts
-			self.fields = fields
+			rights = reviewed.map(UpdatePlan.rights)
 		}
 	}
 
@@ -40,7 +38,7 @@ public enum UpdatePlan: Sendable, Equatable {
 		let hosts = (available.hosts ?? []).filter { !oldHosts.contains($0) }.map(\.value)
 		let oldFields = Set(Self.fields(installed).map { "\($0.service)\u{0}\($0.label)" })
 		let fields = Self.fields(available).filter { !oldFields.contains("\($0.service)\u{0}\($0.label)") }.map(\.label)
-		let chosen = confirmed.map { $0.version == version && Set(hosts).isSubset(of: $0.hosts) && Set(fields).isSubset(of: $0.fields) } ?? false
+		let chosen = confirmed.map { $0.version == version && Self.rights(available).isSubset(of: $0.rights ?? Self.rights(installed)) } ?? false
 		self = if !chosen, !hosts.isEmpty || !fields.isEmpty { .needsConfirmation(hosts: hosts, fields: fields) }
 			else if !chosen, !automatic { .waitsForUser }
 			else if sessionRuns { .afterSession }
@@ -49,6 +47,11 @@ public enum UpdatePlan: Sendable, Equatable {
 
 	private static func fields(_ manifest: Manifest) -> [(service: String, label: String)] {
 		(manifest.services ?? []).flatMap { service in service.login.map { (service.name, $0.label) } }
+	}
+
+	/// The hosts and the login fields with their services, which an approval compares.
+	private static func rights(_ manifest: Manifest) -> Set<String> {
+		Set((manifest.hosts ?? []).map { "host\u{0}\($0.value)" } + fields(manifest).map { "field\u{0}\($0.service)\u{0}\($0.label)" })
 	}
 
 	/// The order of the catalog tools: "2.31" is (2, 31), compared as tuples without padding, so 1.10 is

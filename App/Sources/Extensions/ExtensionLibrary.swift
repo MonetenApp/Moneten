@@ -67,7 +67,7 @@ final class ExtensionLibrary {
 	enum Question: Identifiable, Equatable {
 		case fileWarning(url: URL, package: ExtensionPackage, name: String)
 		case allow(name: String, package: ExtensionPackage)
-		case review(id: String, name: String, version: String, hosts: [String], fields: [String])
+		case review(id: String, name: String, approval: UpdatePlan.Approval, hosts: [String], fields: [String])
 		case remove(id: String, name: String, accounts: [String])
 
 		var id: String {
@@ -415,8 +415,9 @@ final class ExtensionLibrary {
 	/// Opens the confirmation of an update that adds hosts or login fields.
 	func review(_ id: String) {
 		guard case let .catalog(installed)? = records[id], let item = items.first(where: { $0.id == id }), let manifest = item.manifest,
-			case let .needsConfirmation(hosts, fields)? = updateState.plan(of: installed, manifest: manifest, in: index), let version = index?.entry(id)?.version else { return }
-		question = .review(id: id, name: item.name, version: version, hosts: hosts, fields: fields)
+			case let .needsConfirmation(hosts, fields)? = updateState.plan(of: installed, manifest: manifest, in: index),
+			let listed = try? index?.entry(id)?.manifest.get(), let version = listed.version else { return }
+		question = .review(id: id, name: item.name, approval: .init(version: version, reviewed: listed), hosts: hosts, fields: fields)
 	}
 
 	/// Shows the warning for files again before a copied or changed file install runs.
@@ -433,7 +434,7 @@ final class ExtensionLibrary {
 		switch question {
 		case let .fileWarning(url, package, name): installFile(url, name: name, shown: package)
 		case let .allow(name, package): allow(name, shown: package)
-		case let .review(id, _, version, hosts, fields): Task { await update(id, approving: .init(version: version, hosts: hosts, fields: fields)) }
+		case let .review(id, _, approval, _, _): Task { await update(id, approving: approval) }
 		case let .remove(id, _, _): remove(id)
 		}
 	}
