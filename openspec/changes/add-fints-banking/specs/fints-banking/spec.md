@@ -347,14 +347,46 @@ The app SHALL fetch all accounts of one login that are due in a refresh inside o
 
 ### Requirement: Show notices of the bank
 
-The app SHALL show a notice that the bank sends through FinTS, for example about planned maintenance, in a window titled "Notice" with the name of the bank and the text of the bank. Each notice is shown once.
+The app SHALL show a notice that the bank sends through FinTS, for example about planned maintenance, in a window titled "Notice" with the name of the bank and the text of the bank. A notice about one account also names the account and the code of the bank. Each notice is shown once until the app locks. A notice of an automatic refresh waits until the user starts a refresh or brings the main window forward.
 
 #### Scenario: Maintenance announcement
 
 - **GIVEN** the bank sends the notice "Wartungsarbeiten am 14.11.2026 von 1 bis 5 Uhr"
-- **WHEN** the refresh ends
+- **WHEN** a refresh that the user started ends
 - **THEN** the app shows the notice with the name of the bank
 - **AND** the next refresh does not show the same notice again
+
+#### Scenario: Notice of an automatic refresh
+
+- **GIVEN** the main window is closed
+- **WHEN** the automatic refresh at 03:00 ends with the notice "Wartungsarbeiten am 14.11.2026 von 1 bis 5 Uhr"
+- **THEN** no window opens
+- **AND** the window "Notice" shows the notice when the user opens the main window at 08:00
+
+#### Scenario: Notice before a failed login
+
+- **GIVEN** the bank sends the notice "Wartungsarbeiten bis 5 Uhr" and then rejects the login with the code 9800 and the text "Dialog abgebrochen"
+- **WHEN** a refresh that the user started ends
+- **THEN** the window "Notice" shows "Wartungsarbeiten bis 5 Uhr"
+- **AND** the error of the account quotes "Dialog abgebrochen"
+
+#### Scenario: Error about one account
+
+- **GIVEN** the bank delivers the transactions of "Tagesgeld" and answers its balance request with the code 9210 and the text "Saldo nicht verfügbar"
+- **WHEN** a refresh that the user started ends
+- **THEN** the window "Notice" shows "Tagesgeld" with "Saldo nicht verfügbar" and the code 9210
+
+#### Scenario: Notice in the setup
+
+- **GIVEN** the assistant "Add Account" showed the notice "Wartungsarbeiten am 14.11.2026 von 1 bis 5 Uhr" after the login
+- **WHEN** the first refresh after the setup ends with the same notice
+- **THEN** no window "Notice" opens
+
+#### Scenario: Lock
+
+- **GIVEN** the window "Notice" showed the notice "Wartungsarbeiten am 14.11.2026 von 1 bis 5 Uhr"
+- **WHEN** the user locks and unlocks the app, and a refresh that the user started ends with the same notice
+- **THEN** the window "Notice" shows the notice once more
 
 ### Requirement: Show errors in the words of the bank
 
