@@ -79,7 +79,7 @@ The app SHALL show a transaction only when every word of the search text occurs 
 
 ### Requirement: The search accepts the rule language
 
-The app SHALL accept every expression of the categorization rule language in the search field, with the same meaning as in a rule.
+The app SHALL accept every expression of the categorization rule language in the search field, with the same meaning as in a rule. A plain search word without a field name searches the fields that the requirement on searched fields names, so it finds account numbers, IBANs, and the category name.
 
 #### Scenario: Field operator and amount
 
@@ -103,7 +103,7 @@ The app SHALL find a transaction by its amount when the user enters the amount w
 
 ### Requirement: Count and sum of the results
 
-The app SHALL show the number of found transactions and their sum in the status line while a search or a filter is active. Amounts in different currencies are summed for each currency.
+The app SHALL show the number of found transactions and their sum in the status line while a search or a filter is active. A pending transaction marked for review counts in the number but not in the sum, as the capability `account-refresh` states. Amounts in different currencies are summed for each currency.
 
 #### Scenario: Sum of a search
 
@@ -167,15 +167,61 @@ The app SHALL open a date range with a start date and an end date when the user 
 - **WHEN** the user enters an end date that lies before the start date
 - **THEN** the app does not apply the range and marks the end date
 
-### Requirement: The period applies to every view
+### Requirement: The filter bar applies to every view
 
-The app SHALL apply the chosen period to all accounts, account groups, and categories at once.
+The app SHALL keep the period, the status, the amount, and the search text when the user opens another account, account group, or category, whether the pin is on or off. The category filter stays while the user moves between accounts and account groups, and the account filter stays while the user moves between categories.
 
-#### Scenario: Change the view
+#### Scenario: Change the view without the pin
 
-- **GIVEN** the user chose "12 Months" in the account "Giro"
+- **GIVEN** the pin is off and the user chose "12 Months", the status "Unchecked", and the amount "Withdrawals" in the account "Giro"
 - **WHEN** the user selects the category "Groceries"
-- **THEN** the "Period" menu shows "12 Months" and the list is filtered by it
+- **THEN** the "Period" menu shows "12 Months", the "Status" menu shows "Unchecked", and the "Amount" menu shows "Withdrawals"
+- **AND** the list of "Groceries" is filtered by all three
+
+### Requirement: A view resets the filter it does not show
+
+The app SHALL set the filter that the filter bar of a view does not show to "Show All" when the user opens that view and when the app opens with that view after a restart. Opening a category or a category group sets the category filter to "Show All", and opening an account or an account group sets the account filter to "Show All".
+
+#### Scenario: From a category to an account
+
+- **GIVEN** the category view "Groceries" with the status "Unchecked" and "Credit card" in the "Account" menu
+- **WHEN** the user selects the account "Giro"
+- **THEN** the list shows the unchecked transactions of "Giro"
+- **AND** the account filter is "Show All"
+
+#### Scenario: From an account to a category
+
+- **GIVEN** the account "Giro" with the status "Unchecked" and "Groceries" in the "Category" menu
+- **WHEN** the user selects the category "Rent"
+- **THEN** the list shows the unchecked transactions of "Rent"
+- **AND** the category filter is "Show All"
+
+### Requirement: Turning the pin on saves the filter bar
+
+The app SHALL show a pin with the tooltip "Save filter bar" in the filter bar. When the user turns the pin on, the app saves the period, the status, the amount, the category filter, and the account filter as the default, and it saves each later change while the pin stays on. After a restart, the pin is still on and the filter bar shows the saved default.
+
+#### Scenario: Restart with the pin on
+
+- **GIVEN** the user chose "90 Days" and the status "Unchecked" in the account "Giro"
+- **WHEN** the user turns the pin on, quits the app, and opens it again
+- **THEN** the pin is on, the "Period" menu shows "90 Days", and the "Status" menu shows "Unchecked"
+
+#### Scenario: Restart with the pin off
+
+- **GIVEN** the pin is off and the user chose "90 Days" in the account "Giro"
+- **WHEN** the user quits the app and opens it again
+- **THEN** every menu of the filter bar shows "Show All"
+
+### Requirement: Turning the pin off resets the filters
+
+The app SHALL set the period, the status, the amount, the category filter, and the account filter to "Show All" and clear the search field when the user turns the pin off.
+
+#### Scenario: Unpin
+
+- **GIVEN** the pin is on, the user chose "12 Months" and the status "Unchecked" in the account "Giro", and the search field holds "amazon"
+- **WHEN** the user turns the pin off
+- **THEN** every menu of the filter bar shows "Show All", the period included
+- **AND** the search field is empty and the list shows every transaction of "Giro"
 
 ### Requirement: Status filter
 
@@ -189,7 +235,7 @@ The app SHALL filter the list by checkmark with the "Status" menu. Its values ar
 
 ### Requirement: Amount filter
 
-The app SHALL filter the list by amount with the "Amount" menu. Its values are "Show All", "Deposits", "Withdrawals", and "Custom...". "Custom..." takes a "min. amount", a "max. amount", or both.
+The app SHALL filter the list by amount with the "Amount" menu. Its values are "Show All", "Deposits", "Withdrawals", and "Custom...". "Custom..." has the fields "min. amount" and "max. amount" and shows the transactions whose amount with its sign lies in that range. Both ends belong to the range, and an empty field leaves the range open on that side. When "min. amount" is greater than "max. amount", the app does not apply the range and marks "max. amount".
 
 #### Scenario: Deposits only
 
@@ -198,13 +244,31 @@ The app SHALL filter the list by amount with the "Amount" menu. Its values are "
 
 #### Scenario: Range
 
-- **WHEN** the user chooses "Custom..." and enters the min. amount 100 and the max. amount 500
-- **THEN** the list shows the transactions whose amount, without its sign, lies between 100,00 and 500,00
+- **GIVEN** transactions of 150,00 €, -150,00 €, and 500,00 €
+- **WHEN** the user chooses "Custom..." and enters 100 in "min. amount" and 500 in "max. amount"
+- **THEN** the list shows 150,00 € and 500,00 €
+- **AND** the list does not show -150,00 €
+
+#### Scenario: Range of withdrawals
+
+- **GIVEN** transactions of 150,00 € and -150,00 €
+- **WHEN** the user chooses "Custom..." and enters -500 in "min. amount" and -100 in "max. amount"
+- **THEN** the list shows -150,00 €
+- **AND** the list does not show 150,00 €
 
 #### Scenario: Only a minimum
 
-- **WHEN** the user enters the min. amount 1000 and leaves the max. amount empty
-- **THEN** the list shows the transactions of 1.000,00 or more in either direction
+- **GIVEN** transactions of 1.000,00 € and -1.500,00 €
+- **WHEN** the user enters 1000 in "min. amount" and leaves "max. amount" empty
+- **THEN** the list shows 1.000,00 €
+- **AND** the list does not show -1.500,00 €
+
+#### Scenario: Minimum above maximum
+
+- **GIVEN** transactions of -150,00 € and -300,00 €
+- **WHEN** the user enters -100 in "min. amount" and -500 in "max. amount"
+- **THEN** the app does not apply the range and marks "max. amount"
+- **AND** the list still shows -150,00 € and -300,00 €
 
 ### Requirement: Category filter in account views
 
@@ -258,13 +322,20 @@ The app SHALL show a line below the last row of the list for each active filter.
 
 ### Requirement: Saved searches
 
-The app SHALL let the user save the current search text and filters under a name. A saved search appears in the sidebar section "Searches". Selecting it shows the matching transactions of all accounts with the count and the sum. The user can rename and remove a saved search.
+The app SHALL let the user save the current search text and filters under a name. A saved search appears in the sidebar section "Searches". Selecting it shows the matching transactions of all accounts with the count and the sum. The user can rename and remove a saved search. The filter bar of a saved search shows "Period", "Status", "Amount", "Category", and "Account", and each menu has the same entries as in an account view and a category view.
 
 #### Scenario: Save and reuse
 
 - **GIVEN** the search text "Finanzamt" and the amount filter "Withdrawals"
 - **WHEN** the user saves the search as "Tax payments" and later selects "Tax payments" in the sidebar
 - **THEN** the list shows all withdrawals that contain "Finanzamt" from every account
+
+#### Scenario: Filter bar of a saved search
+
+- **GIVEN** the saved search "Tax payments"
+- **WHEN** the user selects it and opens the "Category" menu and the "Account" menu
+- **THEN** the "Category" menu lists "Show All" and every category including "Uncategorized"
+- **AND** the "Account" menu lists "Show All" and every account and account group
 
 #### Scenario: New transactions
 
