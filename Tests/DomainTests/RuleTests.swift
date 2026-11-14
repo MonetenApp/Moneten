@@ -83,6 +83,18 @@ struct RuleTests {
 		#expect(try !matches("-12,50", RuleSubject(purpose: "Miete November")))
 	}
 
+	@Test("Minus after a word, before a quotation mark or a parenthesis", arguments: [#"Amazon-"Erstattung""#, "Amazon-„Erstattung“", #"Amazon-("Erstattung")"#])
+	func minusAfterWord(rule: String) throws {
+		#expect(try matches(rule, RuleSubject(purpose: "Amazon Bestellung", amount: Decimal(string: "-19.99")!)))
+		#expect(try !matches(rule, RuleSubject(purpose: "Amazon Erstattung", amount: Decimal(string: "19.99")!)))
+	}
+
+	@Test("Minus after an amount comparison, before a parenthesis")
+	func minusAfterAmount() throws {
+		#expect(try matches(#"amount>0-("Erstattung")"#, RuleSubject(purpose: "Gutschrift", amount: Decimal(string: "19.99")!)))
+		#expect(try !matches(#"amount>0-("Erstattung")"#, RuleSubject(purpose: "Amazon Erstattung", amount: Decimal(string: "19.99")!)))
+	}
+
 	@Test("A hyphen inside a word is not an operator")
 	func hyphenInWord() throws {
 		#expect(try matches("EC-Karte", RuleSubject(purpose: "EC-Karte Supermarkt")))
