@@ -102,27 +102,36 @@ enum CSVParser {
 		let e2eCol = column(e2eKeys)
 		let mandateCol = column(mandateKeys)
 		let creditorCol = column(creditorKeys)
+		func cell(_ row: [String], _ c: Int?) -> String? {
+			guard let c, c < row.count else { return nil }
+			let v = row[c].trimmingCharacters(in: .whitespacesAndNewlines)
+			return v.isEmpty ? nil : v
+		}
+		// A row without a date is a total or a note, which the import skips.
+		let dataRows = rows.enumerated().dropFirst(headerIndex + 1).compactMap { offset, row in cell(row, dateCol).map { (offset, row, $0) } }
+		// The amount column, or the debit and credit columns when the amount cell is empty.
+		func amountCells(_ row: [String]) -> [String] {
+			cell(row, amountCol).map { [$0] } ?? [debitCol, creditCol].compactMap { cell(row, $0) }
+		}
 		// An amount such as "1,234" reads by the decimal mark that the other amounts of the file show.
-		let marks = Set(rows.dropFirst(headerIndex + 1).flatMap { row in
-			[amountCol, debitCol, creditCol].compactMap { $0.flatMap { $0 < row.count ? AmountParser.decimalMark(of: row[$0]) : nil } }
-		})
-		let decimalMark = marks.count == 1 ? marks.first : nil
+		// Most files have no such amount, so the marks are collected once, at the first such amount.
+		lazy var fileMark: DecimalMark? = {
+			let marks = Set(dataRows.flatMap { amountCells($0.1) }.compactMap(AmountParser.decimalMark(of:)))
+			return marks.count == 1 ? marks.first : nil
+		}()
+		func readAmount(_ text: String) -> Decimal? {
+			AmountParser.decimal(from: text) ?? fileMark.flatMap { AmountParser.decimal(from: text, decimalMark: $0) }
+		}
 		let placeholder = UUID()
 		var result: [Transaction] = []
-		for (offset, row) in rows.enumerated().dropFirst(headerIndex + 1) {
-			if row.allSatisfy({ $0.trimmingCharacters(in: .whitespaces).isEmpty }) { continue }
-			func value(_ c: Int?) -> String? {
-				guard let c, c < row.count else { return nil }
-				let v = row[c].trimmingCharacters(in: .whitespacesAndNewlines)
-				return v.isEmpty ? nil : v
-			}
-			guard let dateText = value(dateCol) else { continue }
+		for (offset, row, dateText) in dataRows {
+			func value(_ c: Int?) -> String? { cell(row, c) }
 			guard let day = Day(string: dateText) else {
 				throw TransactionFileImporter.Failure.line(offset + 1, "The date \(dateText) cannot be read.")
 			}
 			var amount: Decimal?
 			if let a = value(amountCol) {
-				amount = AmountParser.decimal(from: a, decimalMark: decimalMark)
+				amount = readAmount(a)
 				// A marker column says whether an unsigned amount is a debit (S, D, DR) or a credit (H, C, CR).
 				if let marker = value(markerCol)?.uppercased(), let a = amount {
 					if ["S", "D", "DR", "SOLL", "DEBIT"].contains(marker) { amount = -abs(a) }
@@ -131,8 +140,8 @@ enum CSVParser {
 				}
 			} else {
 				// An empty debit or credit cell counts as zero. A cell that cannot be read is an error.
-				let d = value(debitCol).map { AmountParser.decimal(from: $0, decimalMark: decimalMark).map { -abs($0) } } ?? 0
-				let c = value(creditCol).map { AmountParser.decimal(from: $0, decimalMark: decimalMark).map { abs($0) } } ?? 0
+				let d = value(debitCol).map { readAmount($0).map { -abs($0) } } ?? 0
+				let c = value(creditCol).map { readAmount($0).map { abs($0) } } ?? 0
 				if let d, let c { amount = d + c }
 			}
 			guard let amount else { throw TransactionFileImporter.Failure.line(offset + 1, "The amount cannot be read.") }

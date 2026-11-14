@@ -94,7 +94,7 @@ The app SHALL detect the date format of each date column from all its values, in
 
 ### Requirement: CSV amount detection
 
-The app SHALL read amounts with a decimal comma or a decimal point, with or without thousands separators, with a leading or trailing sign, and with a currency symbol or code. The app also reads files with separate columns for debit and credit and files with a column that marks debit or credit.
+The app SHALL read amounts with a decimal comma or a decimal point, with or without thousands separators, with a leading or trailing sign, and with a currency symbol or code. The app also reads files with separate columns for debit and credit and files with a column that marks debit or credit. An amount that fits both decimal marks with different values, such as "1,234", takes the decimal mark that the other amounts of the dated rows show.
 
 #### Scenario: German format
 
@@ -111,6 +111,24 @@ The app SHALL read amounts with a decimal comma or a decimal point, with or with
 
 - **WHEN** a row has the amount "89,00" and "S" in a debit and credit marker column
 - **THEN** the app reads a withdrawal of 89,00 €
+
+#### Scenario: Amount without decimals takes the decimal mark of the file
+
+- **GIVEN** a CSV file with the amount "-4.50" in one dated row
+- **WHEN** another dated row has the amount "1,234"
+- **THEN** the app reads a deposit of 1.234,00 €
+
+#### Scenario: Row without a date does not decide the decimal mark
+
+- **GIVEN** a CSV file with the amounts "1,234" and "4.50" in dated rows
+- **WHEN** a total row without a date has the amount "0,00"
+- **THEN** the app reads a deposit of 1.234,00 € and a deposit of 4,50 €
+
+#### Scenario: Ambiguous amount fails the file
+
+- **GIVEN** a CSV file whose only amount is "1,234" in line 2
+- **WHEN** the user imports the file
+- **THEN** the app imports nothing and says that the amount in line 2 cannot be read
 
 ### Requirement: CSV columns by header keywords
 

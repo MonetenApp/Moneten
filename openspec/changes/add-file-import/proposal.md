@@ -52,6 +52,7 @@ None.
 - The preview with a column mapping and saved profiles comes from issue #22. MoneyMoney imports a CSV file without a preview.
 - A file is imported completely or not at all. One row that cannot be read stops the import of that file with the line number. MoneyMoney's behavior for a partly readable file was not observed.
 - The app detects the format from the content of the file, not from its name.
+- A CSV amount such as "1,234" fits a decimal comma and a decimal point with different values. The app reads it with the decimal mark that the other amounts of the dated rows show. When they show no mark, or both, the import fails with the line. A guess could book a thousand euros as one euro without a word, and a wrong amount in the history costs the user more than a file that the import refuses.
 - For a CAMT or MT940 file whose IBAN belongs to another account, the app asks before it imports. For an IBAN that no account has, the app offers to create an offline account (issue #23).
 - A category from a file counts as assigned by hand.
 - The list of header keywords in the spec is a starting set. MoneyMoney's full list was not extracted.
