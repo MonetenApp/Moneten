@@ -82,6 +82,11 @@ struct HeaderView: View {
 					}
 					.font(.callout)
 					.foregroundStyle(Palette.detail)
+					if model.withoutTransactions.contains(account.id) {
+						Text("The bank provides no transactions for this account.")
+							.font(.callout)
+							.foregroundStyle(Palette.detail)
+					}
 					if let start = model.historyStarts[account.id] {
 						Text("The bank provides no transactions before \(Format.day(start)).")
 							.font(.callout)

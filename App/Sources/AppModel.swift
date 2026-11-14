@@ -192,6 +192,9 @@ final class AppModel {
 	/// The first day of the history that the bank keeps, for each account whose full history a refresh
 	/// fetched while the app runs ("Say when the bank has no older transactions").
 	var historyStarts: [UUID: Day] = [:]
+	/// The accounts for which the last refresh while the app runs brought the balance and no transactions,
+	/// because the bank provides none ("Use only what the bank allows").
+	var withoutTransactions: Set<UUID> = []
 
 	var selection: SidebarSelection? {
 		didSet {
@@ -296,6 +299,9 @@ final class AppModel {
 			guard let self else { return }
 			self.announcer.stored(try await self.mergeRefresh(result, into: accountID).added)
 			if let start = result.historyStart { self.historyStarts[accountID] = start }
+			if let kind = self.ledger.account(accountID)?.kind {
+				if result.providesNoTransactions(for: kind) { self.withoutTransactions.insert(accountID) } else { self.withoutTransactions.remove(accountID) }
+			}
 		}
 		sync.ended = { [weak self] access, state, accounts, attended in
 			let failed = accounts.values.filter { if case .failed = $0 { true } else { false } }.count
@@ -448,6 +454,7 @@ final class AppModel {
 		accesses = [:]
 		bankNotices = BankNotices()
 		historyStarts = [:]
+		withoutTransactions = []
 		sheet = nil
 		phase = .locked
 		// The lock removes the transaction table in this drawing and empties its rows after it, so that the
