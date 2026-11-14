@@ -297,7 +297,8 @@ public final class SyncCoordinator {
 				// An automatic request that waits after this run stays out of the attended run. Its accounts stay due.
 				afterRun[access.id] = afterRun[access.id].map { $0.attended ? again.adding($0) : again } ?? again
 			}
-			if let notices = report?.notices, !notices.isEmpty { noticed(access.id, notices) }
+			// The cancel can also come while `deliver` waits, after the connector returned its report.
+			if !Task.isCancelled, let notices = report?.notices, !notices.isEmpty { noticed(access.id, notices) }
 			ended(access.id, state, end.accountRefreshes(of: accountIDs, notices: report?.notices ?? [], at: Date()), attendance.isOn)
 			if var next = afterRun.removeValue(forKey: access.id) {
 				// The state that this run returned replaces the one that the command read before.
