@@ -125,13 +125,18 @@ extension AppModel {
 		panel.allowsMultipleSelection = true
 		panel.allowedContentTypes = [.commaSeparatedText, .xml, .plainText, UTType(filenameExtension: "sta") ?? .data, .data]
 		guard panel.runModal() == .OK else { return }
+		await importFiles(panel.urls, into: account)
+	}
+
+	func importFiles(_ urls: [URL], into account: Account) async {
 		var added = 0
 		var skipped = 0
 		var booked = 0
 		var problems: [String] = []
+		var warnings: [String] = []
 		// A file can bring thousands of rows, so all files go in with one new table.
 		await replacingTable {
-			for url in panel.urls {
+			for url in urls {
 				do {
 					let data = try Data(contentsOf: url)
 					guard data.count <= 100 * 1024 * 1024 else {
@@ -143,6 +148,7 @@ extension AppModel {
 					added += result.added.count
 					skipped += result.skipped
 					booked += result.booked.count
+					warnings += parsed.warnings.map { "\(url.lastPathComponent): \($0)" }
 				} catch {
 					problems.append("\(url.lastPathComponent): \(error)")
 				}
@@ -152,6 +158,13 @@ extension AppModel {
 		if booked > 0 { message += booked == 1 ? " Booked one pending transaction." : " Booked \(booked) pending transactions." }
 		if skipped > 0 { message += skipped == 1 ? " Skipped one already existing transaction." : " Skipped \(skipped) already existing transactions." }
 		if !problems.isEmpty { message += "\n\n" + problems.joined(separator: "\n") }
+		if !warnings.isEmpty {
+			// A file can repeat one problem in every row, and the alert must stay short enough to read.
+			let shown = 10
+			message += "\n\n" + (warnings.count == 1 ? "One value was replaced:" : "\(warnings.count) values were replaced:")
+			message += "\n" + warnings.prefix(shown).joined(separator: "\n")
+			if warnings.count > shown { message += "\nand \(warnings.count - shown) more." }
+		}
 		alert = AlertMessage(title: "Transaction Import", message: message)
 	}
 }

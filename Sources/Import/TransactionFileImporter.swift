@@ -63,9 +63,9 @@ public enum TransactionFileImporter {
 		guard let format = detect(text) else { throw Failure.unsupported }
 		let result: Parsed
 		switch format {
-		case .camt: result = Parsed(transactions: try CAMTParser.parse(data))
+		case .camt: result = try CAMTParser.parse(data)
 		case .mt940: result = Parsed(transactions: try MT940Parser.parse(text))
-		case .csv: result = Parsed(transactions: try CSVParser.parse(text, currency: currency))
+		case .csv: result = try CSVParser.parse(text, currency: currency)
 		}
 		guard !result.transactions.isEmpty else { throw Failure.empty }
 		return result
@@ -93,7 +93,7 @@ enum CSVParser {
 	static let mandateKeys = ["mandatsreferenz", "mandate reference"]
 	static let creditorKeys = ["gläubiger-id", "gläubiger id", "glaeubiger-id", "creditor id"]
 
-	static func parse(_ text: String, currency: String) throws -> [Transaction] {
+	static func parse(_ text: String, currency: String) throws -> TransactionFileImporter.Parsed {
 		let delimiter = detectDelimiter(text)
 		let rows = split(text, delimiter: delimiter)
 		guard let headerIndex = rows.firstIndex(where: { row in
@@ -142,7 +142,7 @@ enum CSVParser {
 			AmountParser.decimal(from: text) ?? fileMark.flatMap { AmountParser.decimal(from: text, decimalMark: $0) }
 		}
 		let placeholder = UUID()
-		var result: [Transaction] = []
+		var result = TransactionFileImporter.Parsed(transactions: [])
 		for (offset, row, dateText) in dataRows {
 			func value(_ c: Int?) -> String? { cell(row, c) }
 			guard let day = Day(string: dateText) else {
@@ -164,14 +164,26 @@ enum CSVParser {
 				if let d, let c { amount = d + c }
 			}
 			guard let amount else { throw TransactionFileImporter.Failure.line(offset + 1, "The amount cannot be read.") }
-			let cur = value(currencyCol).map { currencyCode($0, account: currency) } ?? currency
-			var t = Transaction(accountID: placeholder, bookingDate: day, valueDate: value(valueCol).flatMap(Day.init(string:)),
+			var cur = currency
+			if let cell = value(currencyCol) {
+				if let code = currencyCode(cell, account: currency) {
+					cur = code
+				} else {
+					result.warnings.append(.unknownCurrency(line: offset + 1, cell: cell, replacement: currency))
+				}
+			}
+			let valueDate = value(valueCol).flatMap { cell in
+				let day = Day(string: cell)
+				if day == nil { result.warnings.append(.unreadableValueDate(line: offset + 1, cell: cell)) }
+				return day
+			}
+			var t = Transaction(accountID: placeholder, bookingDate: day, valueDate: valueDate,
 				amountMinor: Money(amount, currency: cur).minorUnits, currency: cur,
 				name: value(nameCol) ?? "", purpose: value(purposeCol) ?? "", counterpartyIBAN: value(ibanCol), counterpartyBIC: value(bicCol),
 				bookingText: textCol == purposeCol ? nil : value(textCol), endToEndReference: value(e2eCol), mandateReference: value(mandateCol),
 				creditorID: value(creditorCol), comment: value(commentCol))
 			if t.name.isEmpty, t.purpose.isEmpty, let text = t.bookingText { t.name = text }
-			result.append(t)
+			result.transactions.append(t)
 		}
 		return result
 	}
@@ -183,12 +195,12 @@ enum CSVParser {
 	private static let dollars: Set = ["USD", "CAD", "AUD", "NZD", "SGD", "HKD", "MXN"]
 	private static let isoCurrencies = Set(Locale.Currency.isoCurrencies.map(\.identifier))
 
-	/// The ISO 4217 code that a currency cell names, or the account currency when the cell names none.
-	static func currencyCode(_ cell: String, account: String) -> String {
+	/// The ISO 4217 code that a currency cell names, or nil when the cell names none.
+	static func currencyCode(_ cell: String, account: String) -> String? {
 		let s = cell.uppercased()
 		if s == "$" { return dollars.contains(account) ? account : "USD" }
 		if let code = currencyNames[s] { return code }
-		return isoCurrencies.contains(s) ? s : account
+		return isoCurrencies.contains(s) ? s : nil
 	}
 
 	static func normalize(_ s: String) -> String {
@@ -372,7 +384,7 @@ enum SEPAPurpose {
 final class CAMTParser: NSObject, XMLParserDelegate {
 	private var path: [String] = []
 	private var text = ""
-	private var entries: [Transaction] = []
+	private var result = TransactionFileImporter.Parsed(transactions: [])
 	private var entry: [String: String] = [:]
 	private var purposes: [String] = []
 	private var inEntry = false
@@ -380,7 +392,7 @@ final class CAMTParser: NSObject, XMLParserDelegate {
 	/// The first entry that cannot be read. It stops the parser, so nothing from the file is imported.
 	private var failure: TransactionFileImporter.Failure?
 
-	static func parse(_ data: Data) throws -> [Transaction] {
+	static func parse(_ data: Data) throws -> TransactionFileImporter.Parsed {
 		let p = CAMTParser()
 		let parser = XMLParser(data: data)
 		parser.delegate = p
@@ -389,7 +401,7 @@ final class CAMTParser: NSObject, XMLParserDelegate {
 		guard parsed else {
 			throw TransactionFileImporter.Failure.line(parser.lineNumber, parser.parserError?.localizedDescription ?? "The XML file cannot be read.")
 		}
-		return p.entries
+		return p.result
 	}
 
 	func parser(_ parser: XMLParser, didStartElement name: String, namespaceURI: String?, qualifiedName: String?, attributes: [String: String] = [:]) {
@@ -456,7 +468,12 @@ final class CAMTParser: NSObject, XMLParserDelegate {
 		let debit = entry["sign"] == "DBIT"
 		let currency = entry["currency"] ?? currency
 		let signed = debit ? -amount : amount
-		let t = Transaction(accountID: UUID(), bookingDate: booking, valueDate: entry["value"].flatMap { Day(string: String($0.prefix(10))) },
+		let valueDate = entry["value"].flatMap { text in
+			let day = Day(string: String(text.prefix(10)))
+			if day == nil { result.warnings.append(.unreadableValueDate(line: parser.lineNumber, cell: text)) }
+			return day
+		}
+		let t = Transaction(accountID: UUID(), bookingDate: booking, valueDate: valueDate,
 			amountMinor: Money(signed, currency: currency).minorUnits, currency: currency,
 			name: (debit ? entry["creditorName"] : entry["debtorName"]) ?? "",
 			purpose: purposes.joined(separator: " "),
@@ -466,6 +483,6 @@ final class CAMTParser: NSObject, XMLParserDelegate {
 			endToEndReference: entry["e2e"].flatMap { $0 == "NOTPROVIDED" ? nil : $0 },
 			mandateReference: entry["mandate"], creditorID: entry["creditor"],
 			isPending: entry["status"] == "PDNG")
-		entries.append(t)
+		result.transactions.append(t)
 	}
 }

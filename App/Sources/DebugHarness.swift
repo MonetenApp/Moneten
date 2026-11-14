@@ -223,6 +223,10 @@ final class DebugHarness {
 				g.groupsByAccount = true
 				model.save(group: g)
 			}
+		// Imports the file at the path into the selected account, as "Import Transactions..." does after the open panel.
+		case "importfile":
+			guard let account = model.selectedAccount else { return log("importfile no account") }
+			Task { await model.importFiles([URL(filePath: argument)], into: account); log("importfile done") }
 		case "usd": Task { await DemoData.usdAccount(model); log("usd done") }
 		case "review": Task { await DemoData.review(model); log("review done") }
 		case "fetch": DemoData.fetch(model, argument)

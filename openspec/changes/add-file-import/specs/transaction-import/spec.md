@@ -396,6 +396,13 @@ The app SHALL import a file that has values it can read around, and list them as
 - **WHEN** one row has "n/a" as the value date and a valid booking date
 - **THEN** the app imports the row without a value date and lists a warning for that line
 
+#### Scenario: Unknown currency code
+
+- **GIVEN** the account "Giro" in euros
+- **WHEN** line 2 of `umsaetze.csv` has "XYZ" in the currency column
+- **THEN** the app imports the row in EUR
+- **AND** the result lists a warning for `umsaetze.csv`, line 2, that names "XYZ" and EUR
+
 ### Requirement: Imported transactions are complete transactions
 
 The app SHALL treat an imported transaction like a fetched one. It can be searched, categorized, split, commented, checked, exported, and deleted.
