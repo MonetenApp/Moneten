@@ -87,11 +87,12 @@ public final class SyncCoordinator {
 	/// that waits for a run, and a running one, whose next request shows its dialog. A running refresh
 	/// that already failed because it could not ask runs again, attended. An automatic request that comes
 	/// while a command waits or runs again never joins it: its accounts stay due for a later run. An
-	/// automatic refresh that waits or runs when the command comes becomes attended, because one session
-	/// of the bank cannot ask for some of its accounts and not for others.
+	/// automatic refresh that the command joins becomes attended, because one session of the bank cannot
+	/// ask for some of its accounts and not for others. An automatic refresh that waits after a run and
+	/// holds none of the accounts of the command stays unattended.
 	public func refresh(_ request: RefreshRequest, with connector: any BankConnector, attended: Bool) {
 		let id = request.access.id
-		if attended { attend(id) }
+		if attended { attend(id, naming: Set(request.accounts.map(\.accountID))) }
 		let requested = requestedAccounts[id] ?? []
 		let accounts = request.accounts.filter { !requested.contains($0.accountID) }
 		let job = Job(request: RefreshRequest(access: request.access, state: request.state, accounts: accounts, enforced: request.enforced),
@@ -120,9 +121,11 @@ public final class SyncCoordinator {
 		attendance[access].map { !$0.isOn } ?? false
 	}
 
-	private func attend(_ id: UUID) {
+	/// A job that waits after a run is a session of its own. It becomes attended only when it holds an
+	/// account that the command names. Accounts of the command that join it below make it attended too.
+	private func attend(_ id: UUID, naming accounts: Set<UUID>) {
 		if let index = queue.firstIndex(where: { $0.request.access.id == id }) { queue[index].attended = true }
-		afterRun[id]?.attended = true
+		if afterRun[id]?.request.accounts.contains(where: { accounts.contains($0.accountID) }) == true { afterRun[id]?.attended = true }
 		attendance[id]?.turnOn()
 	}
 

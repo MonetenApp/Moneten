@@ -414,6 +414,23 @@ final class AutoRefreshTests {
 		await until { !coordinator.isRefreshing }
 	}
 
+	@Test("An automatic request that waits after a run stays unattended when a command names only accounts of that run")
+	func automaticWaitingStaysUnattended() async {
+		let coordinator = SyncCoordinator()
+		let bank = Self.access("Musterbank")
+		let gate = FailureWithStateTests.Gate()
+		coordinator.refresh(RefreshRequest(access: bank, accounts: [Self.giro]), with: GatedFetch(gate: gate), attended: false)
+		await until { gate.isWaiting }
+		// A tick finds Card due while Giro runs, and then the user refreshes Giro.
+		coordinator.refresh(RefreshRequest(access: bank, accounts: [Self.card]), with: AsksForAccount(account: Self.card.accountID, request: Self.tan),
+			attended: false)
+		coordinator.refresh(RefreshRequest(access: bank, accounts: [Self.giro]), with: GatedFetch(gate: gate), attended: true)
+		gate.open()
+		await until { !coordinator.isRefreshing }
+		#expect(coordinator.broker.current == nil)
+		#expect(coordinator.states[bank.id] == .failed(.needsUser(.secondFactor)))
+	}
+
 	@Test("A PIN typed into a refresh that a command made attended is not asked again when the bank rejects it")
 	func rejectedTypedPIN() async {
 		let coordinator = SyncCoordinator()
