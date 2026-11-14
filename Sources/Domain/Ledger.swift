@@ -207,7 +207,7 @@ public struct Ledger: Sendable {
 
 	/// The categories that the category picker offers for a search, in sidebar order and without groups.
 	public func categories(matching query: String) -> [Category] {
-		let folded = TextFolding.fold(query)
+		let folded = TextFolding.fold(query.trimmingCharacters(in: .whitespaces))
 		return categoriesInSidebarOrder.filter { !$0.isGroup && (folded.isEmpty || TextFolding.fold($0.name).contains(folded)) }
 	}
 
