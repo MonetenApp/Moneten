@@ -61,6 +61,7 @@ struct CategoryAssignmentTests {
 		let l = ledger
 		#expect(l.categories(matching: "groc").map(\.name) == ["Groceries"])
 		#expect(l.categories(matching: "GROC").map(\.name) == ["Groceries"])
+		#expect(l.categories(matching: " groc ").map(\.name) == ["Groceries"])
 		#expect(l.categories(matching: "o").map(\.name) == ["Groceries", "Drugstore", "Office", "Uncategorized"])
 		#expect(l.categories(matching: "liv").map(\.name) == [])
 		#expect(l.categories(matching: "uncat").map(\.name) == ["Uncategorized"])
