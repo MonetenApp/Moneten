@@ -23,7 +23,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [x] 1.17 Category group view. Verified by LedgerTests filter by a category tree.
 - [x] 1.18 Remove a category. Verified by confirmation, transactions become uncategorized.
 - [x] 1.19 Remove a category group. Verified by subcategories are removed with the group.
-- [x] 1.20 Starter categories. Verified by StarterCategoriesTests for the English and the German set and the language choice, and by a sidebar snapshot of a new database that the debug build created with the first language German. The language is the first preferred language of macOS. The interface stays English until the change add-localization-and-formatting is built, so until then a Mac whose first language is German shows German category names in an English interface.
+- [x] 1.20 Starter categories. Verified by StarterCategoriesTests "The English set keeps its names, with Uncategorized last", "The German set has German names, with the default category last", "Both sets have the same groups, rules, and diagram settings", and "A German localization of the interface gives the German set, any other the English set". The app picks the set by the localization that it shows. The interface is English only today, so the German set appears once the interface is localized (change add-localization-and-formatting).
 - [x] 1.21 Category icon. Verified by the debug harness: "symbol" sets SF Symbols on four categories, and the sidebar snapshot and the settings sheet show them in the category color, and a bookmark for a category without an icon; SchemaTests checks that migration v3 keeps existing categories without an icon and stores a chosen one.
 
 ## 2. Integration
