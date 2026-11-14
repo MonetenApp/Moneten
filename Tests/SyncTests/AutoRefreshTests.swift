@@ -299,6 +299,19 @@ final class AutoRefreshTests {
 		await until { !coordinator.isRefreshing }
 	}
 
+	@Test("A manual refresh during an automatic one that needs no dialog logs in once")
+	func manualJoinsWithoutSecondLogin() async throws {
+		let coordinator = SyncCoordinator()
+		let bank = Self.access("Musterbank")
+		try coordinator.broker.remember(Secret("1234"), for: bank.id, save: false)
+		let connector = ScriptedConnector([.wait(.milliseconds(100)), .ask(.pin(PINRequest())), .fetched(Self.giro.accountID)])
+		coordinator.refresh(RefreshRequest(access: bank, accounts: [Self.giro]), with: connector, attended: false)
+		coordinator.refresh(RefreshRequest(access: bank, accounts: [Self.giro]), with: connector, attended: true)
+		await until { !coordinator.isRefreshing }
+		#expect(connector.answers.all.count == 1)
+		#expect(coordinator.states[bank.id].map { if case .finished = $0 { true } else { false } } == true)
+	}
+
 	@Test("A manual refresh of an automatic one that waits for its turn makes it ask the user when it starts")
 	func manualUpgradesWaiting() async {
 		let coordinator = SyncCoordinator(limit: 1)
