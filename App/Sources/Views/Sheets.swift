@@ -145,7 +145,7 @@ struct AccountSettingsSheet: View {
 
 	var body: some View {
 		if let original = model.ledger.account(accountID) {
-			SheetFrame(title: "Settings for \(original.name)", width: 500, onConfirm: {
+			SheetFrame(title: "Settings for \(original.name)", canConfirm: Format.isReadableAmount(initialBalance), width: 500, onConfirm: {
 				guard var edited = account, let opened, var a = model.ledger.account(accountID) else { return true }
 				if let d = AmountParser.decimal(from: initialBalance) { edited.initialBalanceMinor = Money(d, currency: a.currency).minorUnits }
 				// A refresh that ended while the settings were open may have set a new initial balance.
@@ -178,6 +178,7 @@ struct AccountSettingsSheet: View {
 							HStack(spacing: 8) {
 								TextField("Initial balance", text: $initialBalance)
 									.labelsHidden()
+									.marksUnreadableAmount(initialBalance)
 									.multilineTextAlignment(.trailing)
 									.monospacedDigit()
 								Button("Calibrate") {
@@ -304,6 +305,7 @@ struct TransactionSheet: View {
 					.pickerStyle(.segmented)
 					TextField("Amount", text: $amount, prompt: Text("0,00"))
 						.multilineTextAlignment(.trailing)
+						.marksUnreadableAmount(amount)
 						.monospacedDigit()
 					TextField("Purpose", text: $purpose, prompt: Text("Optional"), axis: .vertical).lineLimit(1...4)
 				}

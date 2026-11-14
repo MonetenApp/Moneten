@@ -102,6 +102,11 @@ enum CSVParser {
 		let e2eCol = column(e2eKeys)
 		let mandateCol = column(mandateKeys)
 		let creditorCol = column(creditorKeys)
+		// An amount such as "1,234" reads by the decimal mark that the other amounts of the file show.
+		let marks = Set(rows.dropFirst(headerIndex + 1).flatMap { row in
+			[amountCol, debitCol, creditCol].compactMap { $0.flatMap { $0 < row.count ? AmountParser.decimalMark(of: row[$0]) : nil } }
+		})
+		let decimalMark = marks.count == 1 ? marks.first : nil
 		let placeholder = UUID()
 		var result: [Transaction] = []
 		for (offset, row) in rows.enumerated().dropFirst(headerIndex + 1) {
@@ -117,7 +122,7 @@ enum CSVParser {
 			}
 			var amount: Decimal?
 			if let a = value(amountCol) {
-				amount = AmountParser.decimal(from: a)
+				amount = AmountParser.decimal(from: a, decimalMark: decimalMark)
 				// A marker column says whether an unsigned amount is a debit (S, D, DR) or a credit (H, C, CR).
 				if let marker = value(markerCol)?.uppercased(), let a = amount {
 					if ["S", "D", "DR", "SOLL", "DEBIT"].contains(marker) { amount = -abs(a) }
@@ -126,8 +131,8 @@ enum CSVParser {
 				}
 			} else {
 				// An empty debit or credit cell counts as zero. A cell that cannot be read is an error.
-				let d = value(debitCol).map { AmountParser.decimal(from: $0).map { -abs($0) } } ?? 0
-				let c = value(creditCol).map { AmountParser.decimal(from: $0).map { abs($0) } } ?? 0
+				let d = value(debitCol).map { AmountParser.decimal(from: $0, decimalMark: decimalMark).map { -abs($0) } } ?? 0
+				let c = value(creditCol).map { AmountParser.decimal(from: $0, decimalMark: decimalMark).map { abs($0) } } ?? 0
 				if let d, let c { amount = d + c }
 			}
 			guard let amount else { throw TransactionFileImporter.Failure.line(offset + 1, "The amount cannot be read.") }
@@ -260,7 +265,7 @@ enum MT940Parser {
 		if i < chars.count, chars[i].isLetter { i += 1 }
 		var amountText = ""
 		while i < chars.count, chars[i].isNumber || chars[i] == "," { amountText.append(chars[i]); i += 1 }
-		guard let amount = AmountParser.decimal(from: amountText) else { throw fail("The amount cannot be read.") }
+		guard let amount = AmountParser.decimal(from: amountText, decimalMark: .comma) else { throw fail("The amount cannot be read.") }
 		return Line61(value: value, booking: booking, amount: negative ? -amount : amount)
 	}
 
