@@ -32,9 +32,24 @@ struct TransactionsView: View {
 				StatusLine(rows: rows)
 			}
 		}
+		.background(DrawProbe())
 		.searchable(text: $model.filter.searchText, placement: .toolbar, prompt: "Search")
 		.searchFocused($searchFocused)
 		.onReceive(NotificationCenter.default.publisher(for: .focusSearch)) { _ in searchFocused = true }
+	}
+}
+
+/// Tells the model when SwiftUI has updated the transaction view, for the changes that wait for a drawing
+/// of the table (issue #151). An action of `onChange` runs after the update in which SwiftUI saw the new value.
+struct DrawProbe: View {
+	@Environment(AppModel.self) private var model
+
+	var body: some View {
+		Color.clear
+			.frame(width: 0, height: 0)
+			.onChange(of: model.drawRequest) { model.didDraw() }
+			.onAppear { model.probeAppeared() }
+			.onDisappear { model.probeDisappeared() }
 	}
 }
 
@@ -305,7 +320,7 @@ struct TransactionTable: View {
 	let rows: [Transaction]
 
 	var showsAccount: Bool {
-		if case .account = model.selection { return false }
+		if case .account = model.tableKey.selection { return false }
 		return true
 	}
 
@@ -318,7 +333,7 @@ struct TransactionTable: View {
 		} else if rows.isEmpty {
 			VStack {
 				Spacer()
-				Text(model.filter.isActive || !model.filter.searchText.isEmpty ? "No matching transactions found." : "No transactions found.")
+				Text(model.tableKey.filter.isActive || !model.tableKey.filter.searchText.isEmpty ? "No matching transactions found." : "No transactions found.")
 					.foregroundStyle(.secondary)
 				if let a = model.selectedOfflineAccount, model.ledger.transactions(ofAccount: a.id).isEmpty {
 					Button("Add Transaction...") { model.sheet = .transaction(nil) }.padding(.top, 6)
@@ -373,7 +388,7 @@ struct TransactionTable: View {
 			// SwiftUI view to keep the top row in place. With thousands of rows, for example from an
 			// account scrolled to the middle to its group, the app hung, and SwiftUI aborted when its
 			// view graph ran out of space. Edits inside one view still update single rows.
-			.id([AnyHashable(model.selection), AnyHashable(model.filter)])
+			.id(model.tableKey)
 		}
 	}
 
@@ -413,13 +428,13 @@ struct TransactionTable: View {
 
 	/// True for a group with "Group transactions by account". Its headings name the accounts.
 	private var groupedByAccount: Bool {
-		guard case let .group(id) = model.selection else { return false }
+		guard case let .group(id) = model.tableKey.selection else { return false }
 		return model.ledger.group(id)?.groupsByAccount == true
 	}
 
 	/// The rows of each account in the order of the sidebar, or nil when the view is not grouped.
 	private var accountSections: [(account: Account, rows: [Transaction])]? {
-		guard groupedByAccount, case let .group(id) = model.selection else { return nil }
+		guard groupedByAccount, case let .group(id) = model.tableKey.selection else { return nil }
 		let byAccount = Dictionary(grouping: rows, by: \.accountID)
 		return orderedAccounts(in: id).compactMap { a in byAccount[a.id].map { (a, $0) } }
 	}
