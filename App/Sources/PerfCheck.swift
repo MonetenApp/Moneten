@@ -100,6 +100,23 @@ struct PerfScenario {
 					c.fail("the refresh removed shown rows in place")
 				}
 			}),
+		// A click on another view right after a refresh waits until SwiftUI drew the new rows, so that the
+		// table never goes in the drawing that changes its rows (issue #151).
+		PerfScenario(name: "view-change-after-refresh", budget: halfSecond,
+			setUp: { await $0.select("Account 2") },
+			run: { c in
+				guard let account = c.model.ledger.accounts.first(where: { $0.name == "Account 2" }),
+					let group = c.model.ledger.groups.first(where: { $0.name == "Bulk" }) else { return }
+				let today = Day.today()
+				let rows = (0..<50).map { i in
+					Transaction(accountID: account.id, bookingDate: today, amountMinor: -Int64(700 + i), name: "Card Payment", purpose: "Click \(i)")
+				}
+				_ = try? c.model.merge(.refresh(RefreshResult(balance: nil, transactions: FetchedTransactions(rows: rows, from: today))), into: account.id)
+				c.harness.select("Bulk")
+				if c.model.selection == .group(group.id) { c.fail("the view changed in the drawing of the new rows") }
+				await c.settle()
+				if c.model.selection != .group(group.id) { c.fail("the view did not follow the click") }
+			}),
 		// Last, because it leaves "Bulk" grouped by account: its table has a section per account.
 		PerfScenario(name: "group-by-account", budget: halfSecond,
 			setUp: { c in

@@ -155,14 +155,17 @@ final class AppModel {
 		didSet {
 			// While locked the ledger is empty, which says nothing about the notifications of the database.
 			if store != nil { notices.update(newCounts: ledger.newTransactionCounts) }
+			// The count of the last line, not `oldValue`: reading `oldValue` would copy the ledger on every change.
 			let rows = ledger.transactions.count
-			Trail.log("ledger \(ledgerChange) rows=\(rows) delta=\(rows - oldValue.transactions.count) accounts=\(ledger.accounts.count)")
+			Trail.log("ledger \(ledgerChange) rows=\(rows) delta=\(rows - trailRows) accounts=\(ledger.accounts.count)")
+			trailRows = rows
 			ledgerChange = "edit"
 			noteUndrawn(ledger: true)
 		}
 	}
 	/// The kind of the next change of `ledger`, for the trail.
 	@ObservationIgnored var ledgerChange = "edit"
+	@ObservationIgnored private var trailRows = 0
 	/// "Automatically refresh accounts" and the notification settings of the "General" tab.
 	let refreshSettings = RefreshSettings(defaults: .standard)
 	let autoRefresh: AutoRefresh
@@ -469,7 +472,8 @@ final class AppModel {
 	func select(_ s: SidebarSelection?) {
 		// A new view replaces the table, which must not go in the drawing that changes its rows (issue #151),
 		// for example when the click comes right after a refresh. It waits until SwiftUI drew that change.
-		if ledgerUndrawn || waitingSelection != nil {
+		// While the placeholder stands in for the table, there is no table to protect.
+		if (ledgerUndrawn && tableHolds == 0) || waitingSelection != nil {
 			if waitingSelection == nil {
 				Trail.log("table selection waits for drawing")
 				Self.afterDraw { [weak self] in Task { @MainActor in self?.selectWaiting() } }
