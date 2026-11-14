@@ -325,4 +325,18 @@ struct OpeningBalanceTests {
 			DeletedTransaction.Relink(row: restored, sourceID: "moneymoney:5")])
 		#expect(try store.deletedTransactions().map(\.sourceID).sorted { ($0 ?? "") < ($1 ?? "") } == [nil, nil, "moneymoney:4", "moneymoney:5"])
 	}
+
+	@Test("A migration gives the source ID to the deleted row of the same currency, not to one that differs only in its currency")
+	func relinksByCurrency() throws {
+		let travel = Account(position: 0, name: "Travel", kind: .cash, source: .migrated)
+		let store = try makeStore([travel])
+		let diners = ["EUR", "USD"].map { Transaction(accountID: travel.id, bookingDate: today, amountMinor: -2_000, currency: $0, name: "Diner") }
+		try store.save(diners)
+		// The euro row is deleted first, so a match without the currency would take it.
+		for diner in diners { try store.deleteTransactions([diner.id]) }
+		let dollar = try #require(try store.deletedTransactions().first { $0.accountID == travel.id && $0.currency == "USD" })
+		try store.save(relinking: [DeletedTransaction.Relink(row: dollar, sourceID: "moneymoney:9")])
+		let linked = try store.deletedTransactions().filter { $0.accountID == travel.id && $0.sourceID != nil }.map(\.currency)
+		#expect(linked == ["USD"])
+	}
 }
