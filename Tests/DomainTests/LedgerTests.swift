@@ -959,4 +959,31 @@ struct LedgerTests {
 		ledger.remove(transactionIDs: [rent.id])
 		#expect(ledger.accountsWithTransactions.isEmpty)
 	}
+
+	@Test("A view resets the filter that its filter bar does not show")
+	func resetHidden() {
+		let groceries = Domain.Category(position: 0, name: "Groceries")
+		let card = Account(position: 1, name: "Credit card", kind: .creditCard, source: .offline)
+		let twelveMonths = DayRange(start: Day(year: 2025, month: 11, day: 10), end: Day(year: 2026, month: 11, day: 9))
+		var f = TransactionFilter()
+		f.categoryID = groceries.id
+		f.accountID = card.id
+		f.status = .unchecked
+		f.period = twelveMonths
+		for scope in [LedgerScope.account(giro.id), .accountGroup(UUID())] {
+			var reset = f
+			reset.resetHidden(in: scope)
+			#expect(reset.accountID == nil)
+			#expect(reset.categoryID == groceries.id)
+			#expect(reset.status == .unchecked)
+			#expect(reset.period == twelveMonths)
+		}
+		var reset = f
+		reset.resetHidden(in: .category(food.id))
+		#expect(reset.categoryID == nil)
+		#expect(reset.accountID == card.id)
+		#expect(reset.status == .unchecked)
+		#expect(reset.period == twelveMonths)
+	}
+
 }

@@ -167,6 +167,8 @@ final class AppModel {
 			// drawing that removed it (issue #135). Every view change clears them, so that no hidden row stays
 			// selected for "Add Comment...". Setting an empty selection again would notify its readers too.
 			if !selectedTransactions.isEmpty { selectedTransactions = [] }
+			// After the selected rows, so that the new filter waits for their drawing like the new view.
+			if let selection { filter.resetHidden(in: selection.scope) }
 			tableChanged()
 		}
 	}
@@ -505,12 +507,6 @@ final class AppModel {
 		guard s != selection else { return }
 		Trail.log("view change from=\(tableKey.trailKind) selected=\(tableKey.portfolios == nil ? selectedTransactions.count : selectedPositions)")
 		selection = s
-		if !keepFilters {
-			var kept = TransactionFilter()
-			kept.period = filter.period
-			kept.searchText = filter.searchText
-			filter = kept
-		}
 		// The rows change after SwiftUI drew the new view: changing them while the list handles the
 		// selection change upsets the table view.
 		afterDraw { [weak self] in Task { @MainActor in self?.markSeen() } }

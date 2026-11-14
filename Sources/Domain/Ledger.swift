@@ -616,6 +616,16 @@ public struct TransactionFilter: Hashable, Sendable {
 	public var isActive: Bool {
 		period != .all || status != .all || amount != .all || categoryID != nil || accountID != nil
 	}
+
+	/// Sets the filter that the filter bar of `scope` has no menu for to "Show All": the account filter in an
+	/// account or a group, the category filter in a category. The list applies both filters in every view, so a
+	/// kept filter without its menu would hide rows with no control to clear it.
+	public mutating func resetHidden(in scope: LedgerScope) {
+		switch scope {
+		case .account, .accountGroup: accountID = nil
+		case .category: categoryID = nil
+		}
+	}
 }
 
 /// A row of the account tree: a group or an account.
