@@ -6,7 +6,6 @@ import Foundation
 import Sync
 import SyncTesting
 import SwiftUI
-import UserNotifications
 
 /// Lets a developer drive the app and capture its windows as images, for checks without a screen.
 ///
@@ -511,13 +510,11 @@ final class DebugHarness {
 	/// The permission of the app and its notifications in the Notification Center, without the account names of their text.
 	private func logNotices() {
 		Task {
-			let center = UNUserNotificationCenter.current()
-			let settings = await center.notificationSettings()
-			let delivered = await center.deliveredNotifications()
-			log("notices authorization=\(settings.authorizationStatus.rawValue) delivered=\(delivered.count)")
+			let status = await Notices.authorizationStatus()
+			let delivered = await Notices.delivered()
+			log("notices authorization=\(status.rawValue) delivered=\(delivered.count)")
 			for note in delivered {
-				let accounts = note.request.content.userInfo["accounts"] as? [String] ?? []
-				log("notice \(note.request.content.title) accounts=\(accounts.count) sound=\(note.request.content.sound != nil)")
+				log("notice \(note.title) accounts=\(note.accounts.count) sound=\(note.hasSound)")
 			}
 		}
 	}
