@@ -4,7 +4,6 @@
 # hangs past the limit, a table misses rows, or the app dies.
 # The app runs with a temporary data folder, so it never opens the real database, and as a copy under
 # its own bundle ID, so it leaves the settings and window frames of an installed Moneten alone.
-# It runs in English, because the scenarios and the seed look up the English starter categories.
 set -e
 cd "$(dirname "$0")/.."
 scripts/generate-project.sh
@@ -32,7 +31,7 @@ ditto "$BUILT" "$APP"
 /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $BUNDLE_ID" "$APP/Contents/Info.plist"
 codesign --force --sign - --entitlements App/Moneten.entitlements "$APP"
 MONETEN_DATA_DIR="$WORK/data" MONETEN_DEBUG_DIR="$WORK/debug" "$APP/Contents/MacOS/Moneten" \
-	-AppleLanguages "(en)" -viewMode barChart -lockAfterInactivity NO -ApplePersistenceIgnoreState YES >"$WORK/app.log" 2>&1 &
+	-viewMode barChart -lockAfterInactivity NO -ApplePersistenceIgnoreState YES >"$WORK/app.log" 2>&1 &
 PID=$!
 
 report() {
