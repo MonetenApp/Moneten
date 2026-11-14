@@ -79,7 +79,7 @@ The app SHALL show a transaction only when every word of the search text occurs 
 
 ### Requirement: The search accepts the rule language
 
-The app SHALL accept every expression of the categorization rule language in the search field, with the same meaning as in a rule. A plain search word without a field name searches the fields that the requirement on searched fields names, so it also finds account numbers, IBANs, and the category name, which a plain term in a rule does not.
+The app SHALL accept every expression of the categorization rule language in the search field, with the same meaning as in a rule. A plain search word without a field name searches the fields that the requirement on searched fields names, so it also finds account numbers, IBANs, and the category name.
 
 #### Scenario: Field operator and amount
 
@@ -235,7 +235,7 @@ The app SHALL filter the list by checkmark with the "Status" menu. Its values ar
 
 ### Requirement: Amount filter
 
-The app SHALL filter the list by amount with the "Amount" menu. Its values are "Show All", "Deposits", "Withdrawals", and "Custom...". "Custom..." takes a "min. amount", a "max. amount", or both, and shows the transactions whose amount with its sign lies in that range. Both ends belong to the range, and an empty end leaves the range open on that side. When the min. amount is greater than the max. amount, the app does not apply the range and marks the max. amount.
+The app SHALL filter the list by amount with the "Amount" menu. Its values are "Show All", "Deposits", "Withdrawals", and "Custom...". "Custom..." has the fields "min. amount" and "max. amount" and shows the transactions whose amount with its sign lies in that range. Both ends belong to the range, and an empty field leaves the range open on that side. When "min. amount" is greater than "max. amount", the app does not apply the range and marks "max. amount".
 
 #### Scenario: Deposits only
 
@@ -245,29 +245,29 @@ The app SHALL filter the list by amount with the "Amount" menu. Its values are "
 #### Scenario: Range
 
 - **GIVEN** transactions of 150,00 €, -150,00 €, and 500,00 €
-- **WHEN** the user chooses "Custom..." and enters the min. amount 100 and the max. amount 500
+- **WHEN** the user chooses "Custom..." and enters 100 in "min. amount" and 500 in "max. amount"
 - **THEN** the list shows 150,00 € and 500,00 €
 - **AND** the list does not show -150,00 €
 
 #### Scenario: Range of withdrawals
 
 - **GIVEN** transactions of 150,00 € and -150,00 €
-- **WHEN** the user chooses "Custom..." and enters the min. amount -500 and the max. amount -100
+- **WHEN** the user chooses "Custom..." and enters -500 in "min. amount" and -100 in "max. amount"
 - **THEN** the list shows -150,00 €
 - **AND** the list does not show 150,00 €
 
 #### Scenario: Only a minimum
 
 - **GIVEN** transactions of 1.000,00 € and -1.500,00 €
-- **WHEN** the user enters the min. amount 1000 and leaves the max. amount empty
+- **WHEN** the user enters 1000 in "min. amount" and leaves "max. amount" empty
 - **THEN** the list shows 1.000,00 €
 - **AND** the list does not show -1.500,00 €
 
 #### Scenario: Minimum above maximum
 
 - **GIVEN** transactions of -150,00 € and -300,00 €
-- **WHEN** the user enters the min. amount -100 and the max. amount -500
-- **THEN** the app does not apply the range and marks the max. amount
+- **WHEN** the user enters -100 in "min. amount" and -500 in "max. amount"
+- **THEN** the app does not apply the range and marks "max. amount"
 - **AND** the list still shows -150,00 € and -300,00 €
 
 ### Requirement: Category filter in account views
@@ -322,13 +322,20 @@ The app SHALL show a line below the last row of the list for each active filter.
 
 ### Requirement: Saved searches
 
-The app SHALL let the user save the current search text and filters under a name. A saved search appears in the sidebar section "Searches". Selecting it shows the matching transactions of all accounts with the count and the sum. The user can rename and remove a saved search.
+The app SHALL let the user save the current search text and filters under a name. A saved search appears in the sidebar section "Searches". Selecting it shows the matching transactions of all accounts with the count and the sum. The user can rename and remove a saved search. The filter bar of a saved search shows "Period", "Status", "Amount", "Category", and "Account", and each menu has the same entries as in an account view and a category view.
 
 #### Scenario: Save and reuse
 
 - **GIVEN** the search text "Finanzamt" and the amount filter "Withdrawals"
 - **WHEN** the user saves the search as "Tax payments" and later selects "Tax payments" in the sidebar
 - **THEN** the list shows all withdrawals that contain "Finanzamt" from every account
+
+#### Scenario: Filter bar of a saved search
+
+- **GIVEN** the saved search "Tax payments"
+- **WHEN** the user selects it and opens the "Category" menu and the "Account" menu
+- **THEN** the "Category" menu lists "Show All" and every category including "Uncategorized"
+- **AND** the "Account" menu lists "Show All" and every account and account group
 
 #### Scenario: New transactions
 
