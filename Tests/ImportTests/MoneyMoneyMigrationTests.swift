@@ -89,6 +89,16 @@ struct MoneyMoneyMigrationTests {
 		#expect(ledger.computedBalance(of: giro).minorUnits == 123_456)
 	}
 
+	@Test("Rows in another currency do not count toward the initial balance")
+	func initialBalanceInAccountCurrency() throws {
+		var rows = transactions["transactions"] as! [[String: Any]]
+		rows.append(["id": 6, "accountUuid": "A1", "bookingDate": date(2026, 11, 5), "amount": -20.0, "currency": "USD", "name": "Diner New York", "purpose": "", "booked": true])
+		let p = try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(accounts), categories: try plist(categories),
+			transactions: try plist(["transactions": rows]), into: Ledger())
+		let giro = try #require(p.accounts.first { $0.name == "Giro" })
+		#expect(giro.initialBalanceMinor == 136_946)
+	}
+
 	/// A 32-point icon like those of MoneyMoney: a band in one color with a dark outline and a white
 	/// highlight on a transparent background.
 	func icon(_ r: UInt8, _ g: UInt8, _ b: UInt8) throws -> Data {
