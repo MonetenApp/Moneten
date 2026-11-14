@@ -1288,6 +1288,8 @@ enum SheetKind: Identifiable, Equatable {
 	case newGroup
 	/// `assigning` are the transactions that "Add category" in "Assign Category" moves into it.
 	case newCategory(isGroup: Bool, assigning: Set<UUID> = [])
+	/// The category picker of ⌘K for these transactions.
+	case assignCategory(Set<UUID>)
 	case accountSettings(UUID)
 	case groupSettings(UUID)
 	case categorySettings(UUID)
