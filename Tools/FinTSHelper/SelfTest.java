@@ -121,8 +121,8 @@ final class SelfTest {
 		}
 		TimeZone.setDefault(zone);
 
-		expect("plain HTTP refused", refusal("http://bank.example/fints"), "unsupported: The bank offers no encrypted FinTS address.");
-		expect("address without host refused", refusal("https:///fints"), "unsupported: The bank offers no encrypted FinTS address.");
+		expect("plain HTTP refused", refusal(() -> FinTSHelper.https("http://bank.example/fints")), "unsupported: The bank offers no encrypted FinTS address.");
+		expect("address without host refused", refusal(() -> FinTSHelper.https("https:///fints")), "unsupported: The bank offers no encrypted FinTS address.");
 		expect("HTTPS accepted", FinTSHelper.https("https://bank.example/fints").getHost(), "bank.example");
 
 		Out.secret("geheim42");
@@ -234,12 +234,11 @@ final class SelfTest {
 				List.of("{\"code\":\"76030080\",\"name\":\"Bnp Paribas S.A. Niederlassung Deutschland - Consorsbank\",\"city\":\"Nürnberg, Mittelfr\",\"bic\":\"CSDBDE71XXX\",\"url\":\"https://brokerage-hbci.consorsbank.de/hbci\"}"));
 			expect("bank without a FinTS address", directory.stream().map(FinTSHelper.Json::write).filter(b -> b.contains("\"10010424\"")).toList(),
 				List.of("{\"code\":\"10010424\",\"name\":\"Aareal Bank\",\"city\":\"Berlin\",\"bic\":\"AARBDE5W100\"}"));
-			expect("address of the directory replaces the stored one", FinTSHelper.address("76030080", "https://hbci.old.example/hbci"),
-				"https://brokerage-hbci.consorsbank.de/hbci");
-			expect("stored address of a bank that the directory does not have", FinTSHelper.address("00000001", "https://fints.musterbank.example/fints"),
-				"https://fints.musterbank.example/fints");
-			expect("stored address of a bank without a FinTS address in the directory",
-				FinTSHelper.address("10010424", "https://fints.musterbank.example/fints"), "https://fints.musterbank.example/fints");
+			FinTSHelper.Callback moved = new FinTSHelper.Callback(Map.of("bankCode", "76030080", "url", "https://hbci.old.example/hbci"));
+			moved.connect();
+			expect("address of the directory replaces the stored one", moved.host + " " + moved.port, "brokerage-hbci.consorsbank.de/hbci 443");
+			expect("bank without a FinTS address in the directory refused", refusal(() -> new FinTSHelper.Callback(
+				Map.of("bankCode", "10010424", "url", "https://fints.musterbank.example/fints")).connect()), "unsupported: The bank offers no FinTS address.");
 			pinTan();
 		} finally {
 			HBCIUtils.done();
@@ -709,9 +708,9 @@ final class SelfTest {
 		}
 	}
 
-	static String refusal(String url) {
+	static String refusal(Runnable run) {
 		try {
-			FinTSHelper.https(url);
+			run.run();
 			return "accepted";
 		} catch (FinTSHelper.Failure f) {
 			return f.kind + ": " + f.getMessage();

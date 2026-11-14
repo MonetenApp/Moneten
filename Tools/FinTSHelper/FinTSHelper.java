@@ -535,8 +535,14 @@ public class FinTSHelper {
 			this.command = command;
 		}
 
-		/// hbci4java takes the host with the path and the query, and the port on its own.
-		void connect(URI url) {
+		/// The FinTS address of a dialog is the one that the bank directory of hbci4java holds now, so that an
+		/// update of the directory reaches every access without a new setup. hbci4java takes the host with
+		/// the path and the query, and the port on its own.
+		void connect() {
+			String bankCode = string(command, "bankCode");
+			BankInfo bank = present(bankCode) ? HBCIUtils.getBankInfo(bankCode) : null;
+			if (bank == null || !present(bank.getPinTanAddress())) throw new Failure("unsupported", null, "The bank offers no FinTS address.");
+			URI url = https(bank.getPinTanAddress());
 			String path = url.getRawPath() == null || url.getRawPath().isEmpty() ? "/" : url.getRawPath();
 			host = url.getHost() + path + (url.getRawQuery() == null ? "" : "?" + url.getRawQuery());
 			port = url.getPort() > 0 ? url.getPort() : 443;
@@ -802,14 +808,6 @@ public class FinTSHelper {
 			throw new Failure("unsupported", null, "The bank offers no encrypted FinTS address.");
 		}
 		return uri;
-	}
-
-	/// The FinTS address of a dialog: the one that the bank directory of hbci4java holds now, so that an
-	/// update of the directory reaches every access without a new setup, or else the address of the setup.
-	static String address(String bankCode, String stored) {
-		BankInfo info = present(bankCode) ? HBCIUtils.getBankInfo(bankCode) : null;
-		String current = info == null ? null : info.getPinTanAddress();
-		return present(current) ? current : stored;
 	}
 
 	/// The bank directory of hbci4java with every Bankleitzahl, which the app searches by name.
@@ -1177,7 +1175,7 @@ public class FinTSHelper {
 		}
 		HBCIUtils.init(props, callback);
 		try {
-			callback.connect(https(address(string(command, "bankCode"), string(command, "url"))));
+			callback.connect();
 			String state = string(command, "state");
 			Passport.State loaded = state == null ? null : Passport.deserialize(Base64.getDecoder().decode(state));
 			Passport.loaded = loaded == null ? null : loaded.data();
