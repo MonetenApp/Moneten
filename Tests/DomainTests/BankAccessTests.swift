@@ -279,7 +279,7 @@ struct BankAccessTests {
 		#expect(current.refreshError == nil)
 	}
 
-	@Test("Saving the account settings keeps the portfolio type that a refresh set while they were open, unless the user chose another type")
+	@Test("Saving the account settings keeps the portfolio type that a refresh set while they were open, also when the user chose another type")
 	func settingsAfterPortfolioRefresh() {
 		var opened = Self.bankAccount("Depot")
 		opened.kind = .other
@@ -294,7 +294,24 @@ struct BankAccessTests {
 		var retyped = opened
 		retyped.kind = .savings
 		current.takeSettings(from: retyped, opened: opened)
-		#expect(current.kind == .savings)
+		#expect(current.kind == .portfolio)
+	}
+
+	@Test("The menu \"Account type\" offers every type but \"Portfolio\", and a portfolio has no menu")
+	func accountTypeChoices() {
+		#expect(AccountKind.giro.choices == [.giro, .savings, .fixedTermDeposit, .loan, .creditCard, .cash, .other])
+		#expect(AccountKind.creditCard.choices == [.giro, .savings, .fixedTermDeposit, .loan, .creditCard, .cash, .other])
+		#expect(AccountKind.portfolio.choices == nil)
+	}
+
+	@Test("Saving the account settings never makes an account a portfolio")
+	func settingsNeverChoosePortfolio() {
+		let opened = Self.bankAccount("Giro")
+		var edited = opened
+		edited.kind = .portfolio
+		var current = opened
+		current.takeSettings(from: edited, opened: opened)
+		#expect(current.kind == .giro)
 	}
 
 	@Test("The end of a refresh gives each requested account its outcome, and a cancel gives none")

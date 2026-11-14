@@ -15,6 +15,8 @@ public enum AccountKind: String, Codable, Sendable, CaseIterable {
 		case .other: "Other"
 		}
 	}
+
+	public var choices: [AccountKind]? { Self.allCases }
 }
 
 /// Where an account gets its data from.
