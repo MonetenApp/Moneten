@@ -170,12 +170,18 @@ The app SHALL show every balance when a source reports several balances in diffe
 
 ### Requirement: Initial balance
 
-The app SHALL keep an "Initial balance" for each account. At setup the app sets it to the balance that the bank reports, less the booked transactions of the first refresh in the account currency up to the day of that balance. Pending transactions do not count, because the bank balance does not hold them yet. The user can change the initial balance in the account settings.
+The app SHALL keep an "Initial balance" for each account. The first refresh that brings a balance and does not fail to bring the transactions sets it to that balance, less the booked transactions that the account holds in the account currency up to the day of that balance. Pending transactions never count, because a bank balance does not hold them yet. The user can change the initial balance in the account settings.
 
 #### Scenario: Determined at setup
 
 - **GIVEN** the bank reports a balance of 1.000,00 € and the first refresh brings booked transactions with a sum of 250,00 € and one pending transaction of -30,00 €
 - **WHEN** the first refresh ends
+- **THEN** "Initial balance" shows 750,00 €
+
+#### Scenario: The transactions of the first refresh failed
+
+- **GIVEN** the first refresh brings a balance of 1.000,00 € and fails to bring the transactions
+- **WHEN** the second refresh brings a balance of 1.000,00 € and booked transactions with a sum of 250,00 €
 - **THEN** "Initial balance" shows 750,00 €
 
 #### Scenario: Changed by hand

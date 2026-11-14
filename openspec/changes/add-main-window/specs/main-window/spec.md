@@ -191,7 +191,7 @@ The app SHALL keep a history of the views that the user visited in this session.
 
 ### Requirement: Filter bar
 
-The app SHALL show a filter bar above the list with the filters that the current view defines. Each filter is a menu that shows its current value, and "Show All" is the value of a filter that is not set.
+The app SHALL show a filter bar above the list with the filters that the current view defines. Each filter is a menu that shows its current value, and "Show All" is the value of a filter that is not set. The capability "transaction-search-and-filters" specifies which filters stay when the view changes and what the pin in the filter bar does.
 
 #### Scenario: Account view
 
@@ -202,55 +202,6 @@ The app SHALL show a filter bar above the list with the filters that the current
 
 - **WHEN** the user selects a category
 - **THEN** the filter bar shows "Account" in the place of "Category"
-
-### Requirement: The filter bar applies to every view
-
-The app SHALL keep the period, the status, the amount, and the search text when the user opens another account, account group, or category, whether the pin is on or off. The category filter stays while the user moves between accounts and account groups, and the account filter stays while the user moves between categories.
-
-#### Scenario: Pin on
-
-- **GIVEN** the pin is on and "Status" is "Unchecked" in the view of "Girokonto"
-- **WHEN** the user selects "Tagesgeld"
-- **THEN** "Status" is still "Unchecked"
-
-#### Scenario: Pin off
-
-- **GIVEN** the pin is off, "Status" is "Unchecked", "Amount" is "Withdrawals", and "Period" is "90 Days" in the view of "Girokonto"
-- **WHEN** the user selects "Tagesgeld"
-- **THEN** "Status" is still "Unchecked", "Amount" is still "Withdrawals", and "Period" is still "90 Days"
-- **AND** the list of "Tagesgeld" is filtered by all three
-
-### Requirement: A view resets the filter it does not show
-
-The app SHALL set the filter that the filter bar of a view does not show to "Show All" when the user opens that view and when the app opens with that view after a restart. Opening a category or a category group sets the category filter to "Show All", and opening an account or an account group sets the account filter to "Show All".
-
-#### Scenario: From a category to an account
-
-- **GIVEN** the category view "Groceries" with "Status" "Unchecked" and "Credit card" in the "Account" menu
-- **WHEN** the user selects "Girokonto"
-- **THEN** the list shows the unchecked transactions of "Girokonto"
-- **AND** the account filter is "Show All"
-
-### Requirement: Turning the pin on saves the filter bar
-
-The app SHALL show a pin with the tooltip "Save filter bar" in the filter bar. When the user turns the pin on, the app saves the period, the status, the amount, the category filter, and the account filter as the default, and it saves each later change while the pin stays on. After a restart, the pin is still on and the filter bar shows the saved default.
-
-#### Scenario: Restart with the pin on
-
-- **GIVEN** "Status" is "Unchecked" and "Period" is "90 Days" in the view of "Girokonto"
-- **WHEN** the user turns the pin on, quits the app, and opens it again
-- **THEN** the pin is on, "Status" is "Unchecked", and "Period" is "90 Days"
-
-### Requirement: Turning the pin off resets the filters
-
-The app SHALL set the period, the status, the amount, the category filter, and the account filter to "Show All" and clear the search field when the user turns the pin off.
-
-#### Scenario: Turn the pin off
-
-- **GIVEN** the pin is on, "Status" is "Unchecked", "Period" is "90 Days", and the search field holds "amazon" in the view of "Girokonto"
-- **WHEN** the user turns the pin off
-- **THEN** "Status", "Amount", "Category", and "Period" show "Show All", and the search field is empty
-- **AND** the list shows every transaction of "Girokonto"
 
 ### Requirement: Status line
 
