@@ -49,4 +49,5 @@ None.
 - A term matches a whole word, and only `*` and `?` match part of a word. A short term such as "REWE" then does not pull in a longer word such as "REWE-Markt" by accident. A user who wants that writes `"REWE*"`.
 - A term without a field operator does not search account numbers or IBANs. A number in a rule then does not pull in transactions because of the account they belong to. `local_account:` and `remote_account:` search the accounts on purpose. The migration report names every migrated rule with an IBAN or an account number as such a term.
 - The app rejects a rule with a syntax error and shows where the error is. MoneyMoney's behavior was not observed.
+- The sidebar marks a category whose saved rule the app cannot parse, with a warning symbol and the error in its tooltip. Such a rule can come from an older version or from a migration. MoneyMoney's behavior was not observed.
 - A category that the user assigned by hand survives the next refresh and the booking of a pending transaction. Only "Apply to all transactions." replaces it.

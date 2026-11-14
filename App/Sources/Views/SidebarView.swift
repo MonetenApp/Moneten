@@ -249,6 +249,12 @@ struct CategoryRow: View {
 					.foregroundStyle(CategoryColors.color(of: category, in: model.ledger))
 			}
 			Spacer()
+			if let error = category.ruleError {
+				Image(systemName: "exclamationmark.triangle.fill")
+					.foregroundStyle(.yellow)
+					.help("The rule cannot be read. New transactions do not get this category. \(error)")
+					.accessibilityLabel("The rule cannot be read.")
+			}
 			if let amount = model.sidebarAmount(of: category) {
 				AmountText(money: amount).fontWeight(.medium)
 			}
