@@ -244,7 +244,7 @@ struct ReconcileTests {
 
 	@Test("The rules run again on a booked row")
 	func rulesRunAtBooking() {
-		let groceries = Domain.Category(position: 0, name: "Groceries", rule: #""DANKE""#)
+		let groceries = Domain.Category(position: 0, name: "Groceries", rule: #""REWE""#)
 		let pending = stored(row(7, -4_210, "Markt 17", "KARTENZAHLUNG", pending: true))
 		let r = merge(refresh([row(8, -4_210, "Markt 17", "KARTENZAHLUNG REWE SAGT DANKE")]), stored: [pending], categories: [groceries])
 		#expect(r.booked.map(\.categoryID) == [groceries.id])
