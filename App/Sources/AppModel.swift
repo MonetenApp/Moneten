@@ -1086,6 +1086,9 @@ final class AppModel {
 	/// row first, and the app hung (863ac4b).
 	@discardableResult
 	func replacingTable<T>(_ change: () throws -> T) async rethrows -> T {
+		// A change of the rows that SwiftUI has not drawn yet, such as the refresh of another account of the
+		// same run, must not meet the removal of the table.
+		while tableHolds == 0 && ledgerUndrawn { await drawn() }
 		tableHolds += 1
 		Trail.log("table placeholder generation=\(tableGeneration)")
 		await drawn()

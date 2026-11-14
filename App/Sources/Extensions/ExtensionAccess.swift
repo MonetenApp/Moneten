@@ -90,18 +90,28 @@ extension AppModel {
 			return
 		}
 		// The rows that the setup fetched are stored here, without a suspension after the checks of the job.
-		let merged = try accounts.compactMap { account -> Reconciliation? in
-			guard case let .fetched(result)? = setup.accounts.first(where: { $0.remoteID == account.remoteID })?.outcome else { return nil }
-			return try store.merge(.refresh(result), into: account.id)
+		// A failed merge ends the setup with its error; the stored accounts and rows still reach the ledger.
+		var merged: [Reconciliation] = []
+		var failure: (any Error)?
+		for account in accounts {
+			guard case let .fetched(result)? = setup.accounts.first(where: { $0.remoteID == account.remoteID })?.outcome else { continue }
+			do {
+				merged.append(try store.merge(.refresh(result), into: account.id))
+			} catch {
+				failure = error
+				break
+			}
 		}
 		// The ledger takes the accounts, the view of the first one, and their rows with a new transaction table.
+		let stored = merged
 		Task {
 			await replacingTable {
 				guard self.store != nil else { return }
-				take(new: accounts, merged: merged)
+				take(new: accounts, merged: stored)
 				if let first = accounts.first { selection = .account(first.id) }
 			}
 		}
+		if let failure { throw failure }
 	}
 
 	/// How the first refresh of the setup ended for an account, as a later refresh records it.
