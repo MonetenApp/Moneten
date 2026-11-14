@@ -220,7 +220,7 @@ public struct Ledger: Sendable {
 		var f = TransactionFilter()
 		f.period = period
 		let sum = transactions(in: .category(category.id), filter: f)
-			.filter { !$0.isPending && $0.currency == category.currency }
+			.filter { $0.isInSum(of: category.currency) }
 			.reduce(Int64(0)) { $0 + $1.amountMinor }
 		return Money(minorUnits: sum, currency: category.currency)
 	}
