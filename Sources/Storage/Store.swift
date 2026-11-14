@@ -50,10 +50,10 @@ public final class Store: SavedPINStore {
 		}
 	}
 
-	/// `forgettingSourceIDsOf` are deleted rows whose source no longer has them. They keep out the row by its
-	/// fingerprint only.
+	/// `relinking` gives deleted rows another source ID. The table has no key, so each one changes the first stored
+	/// row with the same fields. Two such rows keep out the same rows, so it does not matter which one changes.
 	public func save(groups: [AccountGroup] = [], accounts: [Account] = [], categories: [Domain.Category] = [], transactions: [Transaction] = [],
-		forgettingSourceIDsOf deleted: [DeletedTransaction] = []) throws {
+		relinking relinks: [DeletedTransaction.Relink] = []) throws {
 		try queue.write { db in
 			for g in groups { try g.save(db) }
 			for a in accounts {
@@ -62,9 +62,14 @@ public final class Store: SavedPINStore {
 			}
 			for c in categories { try c.save(db) }
 			for t in transactions { try t.save(db) }
-			for d in deleted {
-				try DeletedTransaction.filter(Column("accountID") == d.accountID && Column("sourceID") == d.sourceID)
-					.updateAll(db, Column("sourceID").set(to: nil))
+			for r in relinks {
+				let d = r.row
+				try db.execute(sql: """
+					UPDATE deletedTransaction SET sourceID = ? WHERE rowid = (SELECT rowid FROM deletedTransaction WHERE accountID = ?
+						AND sourceID IS ? AND bookingDate = ? AND amountMinor = ? AND isPending = ? AND purpose = ? AND counterpartyIBAN IS ?
+						AND endToEndReference IS ? AND wasFetched = ? LIMIT 1)
+					""", arguments: [r.sourceID, d.accountID, d.sourceID, d.bookingDate.rawValue, d.amountMinor, d.isPending, d.purpose,
+						d.counterpartyIBAN, d.endToEndReference, d.wasFetched])
 			}
 		}
 	}

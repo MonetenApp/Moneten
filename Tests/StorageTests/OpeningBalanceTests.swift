@@ -276,20 +276,23 @@ struct OpeningBalanceTests {
 		try Schema.migrator.migrate(queue)
 
 		let ledger = try store.loadLedger()
-		#expect(ledger.transactions.map(\.sourceID) == [nil])
+		#expect(ledger.transactions.map(\.sourceID) == ["moneymoney-booked:9"])
 		#expect(ledger.balance(of: try #require(ledger.account(wallet.id))).minorUnits == 49_700)
 	}
 
-	@Test("A migration forgets the source ID of a deleted row that the source no longer has")
-	func forgetsSourceIDOfDeletedRow() throws {
+	@Test("A migration gives one deleted row another source ID, also a deleted row without one")
+	func relinksDeletedRows() throws {
 		let wallet = Account(position: 0, name: "Wallet", kind: .cash, source: .migrated)
 		let store = try makeStore([wallet])
 		let fee = Transaction(accountID: wallet.id, bookingDate: today, amountMinor: -1_000, name: "Kontoführung", sourceID: "moneymoney:3")
-		let kiosk = Transaction(accountID: wallet.id, bookingDate: today, amountMinor: -300, name: "Kiosk", sourceID: "moneymoney:4")
-		try store.save([fee, kiosk])
-		try store.deleteTransactions([fee.id, kiosk.id])
-		let gone = try #require(try store.deletedTransactions().first { $0.sourceID == fee.sourceID })
-		try store.save(forgettingSourceIDsOf: [gone])
-		#expect(Set(try store.deletedTransactions().map(\.sourceID)) == [nil, "moneymoney:4"])
+		let kiosks = (0..<3).map { _ in Transaction(accountID: wallet.id, bookingDate: today, amountMinor: -300, name: "Kiosk") }
+		try store.save([fee] + kiosks)
+		try store.deleteTransactions(try store.loadLedger().transactions.map(\.id))
+		let deleted = try store.deletedTransactions()
+		let gone = try #require(deleted.first { $0.sourceID == fee.sourceID })
+		let restored = try #require(deleted.first { $0.sourceID == nil })
+		try store.save(relinking: [DeletedTransaction.Relink(row: gone, sourceID: nil), DeletedTransaction.Relink(row: restored, sourceID: "moneymoney:4"),
+			DeletedTransaction.Relink(row: restored, sourceID: "moneymoney:5")])
+		#expect(try store.deletedTransactions().map(\.sourceID).sorted { ($0 ?? "") < ($1 ?? "") } == [nil, nil, "moneymoney:4", "moneymoney:5"])
 	}
 }

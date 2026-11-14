@@ -22,9 +22,9 @@ public struct MoneyMoneyMigration: Sendable {
 		public var updatedTransactions: [Transaction] = []
 		/// Categories of an earlier run without a color of their own, with the color of MoneyMoney.
 		public var updatedCategories: [Domain.Category] = []
-		/// Deleted rows of the source that the source no longer has. The store forgets their source ID, so a
-		/// later run no longer counts them toward the initial balance.
-		public var deletedRowsGoneFromSource: [DeletedTransaction] = []
+		/// Deleted rows that take another source ID: the ID of the row of the source that they keep out, or none when
+		/// the source no longer has their row. So a later run counts a deleted row of the source exactly while the source has it.
+		public var relinkedDeletedRows: [DeletedTransaction.Relink] = []
 		/// Accounts and transactions that the ledger already holds, and transactions the user deleted.
 		public var skippedAccounts = 0
 		public var skippedTransactions = 0
@@ -33,7 +33,7 @@ public struct MoneyMoneyMigration: Sendable {
 
 		public var isEmpty: Bool {
 			groups.isEmpty && accounts.isEmpty && categories.isEmpty && transactions.isEmpty && updatedAccounts.isEmpty && updatedTransactions.isEmpty
-				&& updatedCategories.isEmpty && deletedRowsGoneFromSource.isEmpty
+				&& updatedCategories.isEmpty && relinkedDeletedRows.isEmpty
 		}
 	}
 
@@ -105,6 +105,7 @@ public struct MoneyMoneyMigration: Sendable {
 		let tombstones = Dictionary(grouping: deleted, by: \.accountID)
 		let rules = Categorizer(ledger: ledger)
 		var added: [UUID: Bool] = [:]
+		var relinked: [UUID: [DeletedTransaction.Relink]] = [:]
 		for account in ledger.accounts + plan.accounts {
 			guard let rows = delivered[account.id] else { continue }
 			let r = reconcile(.migration(rows), into: account, stored: stored[account.id] ?? [], deleted: tombstones[account.id] ?? [],
@@ -112,13 +113,14 @@ public struct MoneyMoneyMigration: Sendable {
 			for t in r.added { added[t.id] = t.needsReview }
 			plan.updatedTransactions += r.booked + r.updated + r.marked
 			plan.skippedTransactions += r.skipped
+			relinked[account.id] = r.relinked
 		}
 		for var t in rows {
 			guard let needsReview = added[t.id] else { continue }
 			t.needsReview = needsReview
 			plan.transactions.append(t)
 		}
-		Self.setInitialBalances(of: &plan, ledger: ledger, stored: stored, deleted: tombstones, exported: Set(accountMap.values),
+		Self.setInitialBalances(of: &plan, ledger: ledger, stored: stored, deleted: tombstones, relinked: relinked, exported: Set(accountMap.values),
 			delivered: delivered.mapValues { Set($0.compactMap(\.sourceID)) })
 		if !rawCategories.contains(where: { Self.string($0["rules"]) != nil }) {
 			plan.notes.append("The export contains no categorization rules. Copy them from the category settings of MoneyMoney into the category settings of Moneten.")
@@ -134,28 +136,36 @@ public struct MoneyMoneyMigration: Sendable {
 	/// moves it by what changed in the source since the run before, so a row that the user imported or deleted
 	/// keeps moving the balance, and so does an initial balance that the user typed.
 	///
-	/// A row that the user deleted counts as a row of the source while the source has it. The export holds every
-	/// transaction of an exported account, so a deleted row that it leaves out is gone from the source: it counts
+	/// A row that the user deleted counts as a row of the source while it carries a migration ID. It takes the ID
+	/// of the row of the source that it keeps out, also one that it matched by its fingerprint. The export holds every
+	/// transaction of an exported account, so a deleted row whose ID it leaves out is gone from the source: it counts
 	/// before this run and not after, and the store forgets its source ID, so no later run counts it again.
 	/// A deleted row stores no currency, so a deleted row in another currency counts as one in the account currency.
 	private static func setInitialBalances(of plan: inout Plan, ledger: Ledger, stored: [UUID: [Transaction]],
-		deleted: [UUID: [DeletedTransaction]], exported: Set<UUID>, delivered: [UUID: Set<String>]) {
+		deleted: [UUID: [DeletedTransaction]], relinked: [UUID: [DeletedTransaction.Relink]], exported: Set<UUID>,
+		delivered: [UUID: Set<String>]) {
 		let added = Dictionary(grouping: plan.transactions, by: \.accountID)
 		for i in plan.accounts.indices {
 			guard let balance = plan.accounts[i].bankBalanceMinor else { continue }
 			plan.accounts[i].initialBalanceMinor = initialBalance(balance, of: plan.accounts[i], rows: added[plan.accounts[i].id] ?? [])
 		}
 		let changed = Dictionary(uniqueKeysWithValues: plan.updatedTransactions.map { ($0.id, $0) })
-		for old in ledger.accounts where old.source == .migrated {
+		for old in ledger.accounts where old.source == .migrated && old.kind != .portfolio {
+			let tombstones = exported.contains(old.id) ? deleted[old.id] ?? [] : []
+			var after = tombstones
+			for r in relinked[old.id] ?? [] {
+				if let i = after.firstIndex(of: r.row) { after[i].sourceID = r.sourceID }
+			}
+			for i in after.indices where isCounted(after[i]) && after[i].sourceID.map((delivered[old.id] ?? []).contains) == false {
+				after[i].sourceID = nil
+			}
+			plan.relinkedDeletedRows += zip(tombstones, after).compactMap { $0.sourceID == $1.sourceID ? nil : DeletedTransaction.Relink(row: $0, sourceID: $1.sourceID) }
 			let k = plan.updatedAccounts.firstIndex { $0.id == old.id }
 			var a = k.map { plan.updatedAccounts[$0] } ?? old
 			guard let balance = a.bankBalanceMinor else { continue }
 			let before = stored[old.id] ?? []
-			let tombstones = exported.contains(old.id) ? (deleted[old.id] ?? []).filter { !$0.isPending && isOfSource($0.sourceID) } : []
-			let gone = tombstones.filter { $0.sourceID.map((delivered[old.id] ?? []).contains) == false }
-			plan.deletedRowsGoneFromSource += gone
-			let deletedBefore = tombstones.reduce(0) { $0 + $1.amountMinor }
-			let deletedAfter = deletedBefore - gone.reduce(0) { $0 + $1.amountMinor }
+			let deletedBefore = tombstones.filter(isCounted).reduce(0) { $0 + $1.amountMinor }
+			let deletedAfter = after.filter(isCounted).reduce(0) { $0 + $1.amountMinor }
 			let target = initialBalance(balance, of: a, rows: before.map { changed[$0.id] ?? $0 } + (added[old.id] ?? [])) - deletedAfter
 			a.initialBalanceMinor = old.bankBalanceMinor.map {
 				old.initialBalanceMinor + target - (initialBalance($0, of: old, rows: before) - deletedBefore)
@@ -169,7 +179,8 @@ public struct MoneyMoneyMigration: Sendable {
 	}
 
 	/// The balance before the booked rows of the source in the account currency. A row of the source carries a
-	/// migration ID. A row that the user imported carries none and counts on top. `v13` in `Schema` repairs stored
+	/// migration ID. A row that the user imported carries none, and a row that a file or a bank booked while the
+	/// source has it pending carries the booked form of the ID, so both count on top. `v13` in `Schema` repairs stored
 	/// values by the same rule, so this filter is spelled out here and in its SQL.
 	private static func initialBalance(_ balance: Int64, of account: Account, rows: [Transaction]) -> Int64 {
 		rows.reduce(balance) { sum, t in
@@ -179,6 +190,10 @@ public struct MoneyMoneyMigration: Sendable {
 
 	private static func isOfSource(_ sourceID: String?) -> Bool {
 		sourceID?.hasPrefix(Transaction.migrationIDPrefix) == true
+	}
+
+	private static func isCounted(_ deleted: DeletedTransaction) -> Bool {
+		!deleted.isPending && isOfSource(deleted.sourceID)
 	}
 
 	private func mapAccounts(_ raw: [[String: Any]], ledger: Ledger, plan: inout Plan, map: inout [String: UUID]) {
