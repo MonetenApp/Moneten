@@ -155,9 +155,10 @@ struct MoneyMoneyMigrationTests {
 		let first = try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(withIcons), categories: try plist(categories), transactions: try plist(transactions), into: Ledger())
 		#expect(first.accounts.map(\.color) == ["#3478F6", "#E88A2E", nil])
 		// An earlier run without colors, and the user gave "Savings" a color of their own.
-		var earlier = try plan().accounts
+		let earlierRun = try plan()
+		var earlier = earlierRun.accounts
 		earlier[1].color = "#00FF00"
-		let ledger = Ledger(accounts: earlier)
+		let ledger = Ledger(accounts: earlier, transactions: earlierRun.transactions)
 		let later = try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(withIcons), categories: try plist(categories), transactions: try plist(transactions), into: ledger)
 		#expect(later.accounts.isEmpty)
 		#expect(later.updatedAccounts.map(\.name) == ["Giro"])
@@ -218,7 +219,268 @@ struct MoneyMoneyMigrationTests {
 		var after = ledger
 		after.replace(accounts: [giro] + ledger.accounts.filter { $0.id != giro.id })
 		after.update(second.transactions + second.updatedTransactions)
-		#expect(after.computedBalance(of: giro) == after.balance(of: giro))
+		#expect(after.balance(of: giro).minorUnits == 152_456)
+	}
+
+	@Test("A migrated account shows the balance of the source, follows an imported transaction, and keeps it through a second run")
+	func balanceFollowsTransactions() throws {
+		let first = try plan()
+		var ledger = Ledger(groups: first.groups, accounts: first.accounts, categories: first.categories, transactions: first.transactions)
+		let giro = try #require(first.accounts.first { $0.name == "Giro" })
+		let depot = try #require(first.accounts.first { $0.name == "Depot" })
+		#expect(ledger.balance(of: giro).minorUnits == 123_456)
+		#expect(ledger.balance(of: depot).minorUnits == 1_000_000)
+
+		ledger.update([Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 12), amountMinor: -480, name: "Bäckerei Gutbrot")])
+		#expect(ledger.balance(of: giro).minorUnits == 122_976)
+
+		// The source fetched a transfer of 300,00 € since the first run, so its balance is 1.534,56 €.
+		var rows = transactions["transactions"] as! [[String: Any]]
+		rows.append(["id": 5, "accountUuid": "A1", "bookingDate": date(2026, 11, 9), "amount": 300.0, "currency": "EUR", "name": "Erika Mustermann", "purpose": "Rückzahlung", "booked": true])
+		let after = try secondRun(into: ledger, balance: 1534.56, rows: rows)
+		#expect(after.balance(of: try #require(after.account(giro.id))).minorUnits == 152_976)
+	}
+
+	/// The ledger after a second run with the newer `balance` of the giro account and `rows`.
+	func secondRun(into ledger: Ledger, balance: Double, rows: [[String: Any]], deleted: [DeletedTransaction] = []) throws -> Ledger {
+		applying(try secondPlan(into: ledger, balance: balance, rows: rows, deleted: deleted), to: ledger)
+	}
+
+	func secondPlan(into ledger: Ledger, balance: Double, rows: [[String: Any]], deleted: [DeletedTransaction] = []) throws -> MoneyMoneyMigration.Plan {
+		var newerAccounts = accounts
+		newerAccounts[1]["balance"] = [[balance, "EUR"]]
+		return try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(newerAccounts), categories: try plist(categories),
+			transactions: try plist(["transactions": rows]), into: ledger, deleted: deleted)
+	}
+
+	/// The deleted rows that the store keeps after `plan`.
+	func relinked(_ deleted: [DeletedTransaction], by plan: MoneyMoneyMigration.Plan) -> [DeletedTransaction] {
+		deleted.map { d in
+			var d = d
+			if let r = plan.relinkedDeletedRows.first(where: { $0.row == d }) { d.sourceID = r.sourceID }
+			return d
+		}
+	}
+
+	func applying(_ plan: MoneyMoneyMigration.Plan, to ledger: Ledger) -> Ledger {
+		var after = ledger
+		after.replace(accounts: ledger.accounts.map { a in plan.updatedAccounts.first { $0.id == a.id } ?? a })
+		after.update(plan.transactions + plan.updatedTransactions)
+		return after
+	}
+
+	@Test("A second run keeps the initial balance of a portfolio")
+	func portfolioKeepsInitialBalance() throws {
+		let first = try plan()
+		let depot = try #require(first.accounts.first { $0.name == "Depot" })
+		var newerAccounts = accounts
+		newerAccounts[3]["balance"] = [[12000.0, "EUR"]]
+		let second = try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(newerAccounts), categories: try plist(categories),
+			transactions: try plist(transactions), into: Ledger(groups: first.groups, accounts: first.accounts, categories: first.categories, transactions: first.transactions))
+		let updated = try #require(second.updatedAccounts.first { $0.id == depot.id })
+		#expect(updated.bankBalanceMinor == 1_200_000 && updated.initialBalanceMinor == depot.initialBalanceMinor)
+	}
+
+	@Test("A second run moves the balance by a correction of the source and keeps an imported transaction and a typed initial balance")
+	func correctedSource() throws {
+		let first = try plan()
+		var ledger = Ledger(groups: first.groups, accounts: first.accounts, categories: first.categories, transactions: first.transactions)
+		let giro = try #require(first.accounts.first { $0.name == "Giro" })
+		ledger.update([Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 12), amountMinor: -480, name: "Bäckerei Gutbrot")])
+
+		// The source corrected its balance from 1.234,56 € to 1.254,56 € without a new transaction.
+		let after = try secondRun(into: ledger, balance: 1254.56, rows: transactions["transactions"] as! [[String: Any]])
+		#expect(after.balance(of: try #require(after.account(giro.id))).minorUnits == 124_976)
+		// The user raises the initial balance by 10,00 €, and the same export runs again.
+		var typed = after
+		var account = try #require(after.account(giro.id))
+		account.initialBalanceMinor += 1_000
+		typed.replace(accounts: typed.accounts.map { $0.id == account.id ? account : $0 })
+		let again = try secondRun(into: typed, balance: 1254.56, rows: transactions["transactions"] as! [[String: Any]])
+		#expect(again.balance(of: try #require(again.account(giro.id))).minorUnits == 125_976)
+	}
+
+	@Test("A second run that delivers an imported transaction counts it once")
+	func sourceDeliversImport() throws {
+		let first = try plan()
+		var ledger = Ledger(groups: first.groups, accounts: first.accounts, categories: first.categories, transactions: first.transactions)
+		let giro = try #require(first.accounts.first { $0.name == "Giro" })
+		ledger.update([Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 12), amountMinor: -480, name: "Bäckerei Gutbrot",
+			purpose: "KARTENZAHLUNG")])
+		#expect(ledger.balance(of: giro).minorUnits == 122_976)
+
+		// The source fetched the same payment, so its balance is 1.229,76 €.
+		var rows = transactions["transactions"] as! [[String: Any]]
+		rows.append(["id": 7, "accountUuid": "A1", "bookingDate": date(2026, 11, 12), "amount": -4.8, "currency": "EUR", "name": "Bäckerei Gutbrot",
+			"purpose": "KARTENZAHLUNG", "booked": true])
+		let after = try secondRun(into: ledger, balance: 1229.76, rows: rows)
+		#expect(after.transactions(ofAccount: giro.id).count == 4)
+		#expect(after.balance(of: try #require(after.account(giro.id))).minorUnits == 122_976)
+	}
+
+	@Test("A pending transaction that a file books counts as imported, so a second run that books it too counts it once")
+	func fileBooksPending() throws {
+		let first = try plan()
+		var ledger = Ledger(groups: first.groups, accounts: first.accounts, categories: first.categories, transactions: first.transactions)
+		let giro = try #require(first.accounts.first { $0.name == "Giro" })
+		let file = reconcile(.file([Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 4), amountMinor: -1_000, name: "Kiosk")]),
+			into: giro, stored: ledger.transactions(ofAccount: giro.id), deleted: [], rules: Categorizer(ledger: ledger), now: Date())
+		#expect(file.booked.map(\.sourceID) == ["moneymoney-booked:3"])
+		ledger.apply(file)
+		#expect(ledger.balance(of: giro).minorUnits == 122_456)
+
+		// The source booked the same payment, so its balance is 1.224,56 €.
+		var rows = transactions["transactions"] as! [[String: Any]]
+		rows[2]["booked"] = true
+		let after = try secondRun(into: ledger, balance: 1224.56, rows: rows)
+		#expect(after.transactions(ofAccount: giro.id).count == 3)
+		#expect(after.transactions(ofAccount: giro.id).first { $0.name == "Kiosk" }?.sourceID == "moneymoney:3")
+		#expect(after.balance(of: try #require(after.account(giro.id))).minorUnits == 122_456)
+	}
+
+	/// The ledger after the first run, in which a file booked the pending Kiosk row of -10,00 € on `day` with `purpose`.
+	func kioskBookedByFile(on day: Int, purpose: String) throws -> (ledger: Ledger, giro: Account) {
+		let first = try plan()
+		var ledger = Ledger(groups: first.groups, accounts: first.accounts, categories: first.categories, transactions: first.transactions)
+		let giro = try #require(first.accounts.first { $0.name == "Giro" })
+		ledger.apply(reconcile(.file([Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: day), amountMinor: -1_000, name: "Kiosk",
+			purpose: purpose)]), into: giro, stored: ledger.transactions(ofAccount: giro.id), deleted: [], rules: Categorizer(ledger: ledger), now: Date()))
+		#expect(ledger.balance(of: giro).minorUnits == 122_456)
+		return (ledger, giro)
+	}
+
+	/// The export with the Kiosk row booked by the source on `day` with `purpose`.
+	func kioskBookedBySource(on day: Int, purpose: String) -> [[String: Any]] {
+		var rows = transactions["transactions"] as! [[String: Any]]
+		rows[2]["booked"] = true
+		rows[2]["bookingDate"] = date(2026, 11, day)
+		rows[2]["purpose"] = purpose
+		return rows
+	}
+
+	@Test("A second run that books a pending transaction that a file booked adds no copy, also with another date or purpose", arguments: [
+		(5, "Kiosk Karte 1234", 5, "KARTENZAHLUNG Kiosk"),
+		(5, "", 6, ""),
+	])
+	func sourceBooksAfterFile(fileDay: Int, filePurpose: String, sourceDay: Int, sourcePurpose: String) throws {
+		let (ledger, giro) = try kioskBookedByFile(on: fileDay, purpose: filePurpose)
+		let after = try secondRun(into: ledger, balance: 1224.56, rows: kioskBookedBySource(on: sourceDay, purpose: sourcePurpose))
+		#expect(after.transactions(ofAccount: giro.id).count == 3)
+		#expect(after.transactions(ofAccount: giro.id).first { $0.name == "Kiosk" }?.sourceID == "moneymoney:3")
+		#expect(after.balance(of: try #require(after.account(giro.id))).minorUnits == 122_456)
+	}
+
+	@Test("A pending transaction that a file booked and the user deleted stays deleted when the source books it")
+	func fileBookedThenDeleted() throws {
+		var (ledger, giro) = try kioskBookedByFile(on: 5, purpose: "Kiosk Karte 1234")
+		let kiosk = try #require(ledger.transactions(ofAccount: giro.id).first { $0.name == "Kiosk" })
+		ledger.remove(transactionIDs: [kiosk.id])
+		#expect(ledger.balance(of: giro).minorUnits == 123_456)
+		let tombstone = DeletedTransaction(kiosk, deletedAt: Date())
+
+		// The source booked the payment, so its balance is 1.224,56 €. The deletion still counts.
+		let second = try secondPlan(into: ledger, balance: 1224.56, rows: kioskBookedBySource(on: 5, purpose: "KARTENZAHLUNG Kiosk"),
+			deleted: [tombstone])
+		#expect(second.transactions.isEmpty)
+		let after = applying(second, to: ledger)
+		#expect(after.balance(of: try #require(after.account(giro.id))).minorUnits == 123_456)
+
+		// The deleted row takes the plain ID, and the same export runs again.
+		let deleted = relinked([tombstone], by: second)
+		#expect(deleted.map(\.sourceID) == ["moneymoney:3"])
+		let again = try secondPlan(into: after, balance: 1224.56, rows: kioskBookedBySource(on: 5, purpose: "KARTENZAHLUNG Kiosk"), deleted: deleted)
+		#expect(again.transactions.isEmpty && again.relinkedDeletedRows.isEmpty)
+		#expect(applying(again, to: after).balance(of: try #require(after.account(giro.id))).minorUnits == 123_456)
+	}
+
+	@Test("A pending transaction that a file booked counts as imported while the source keeps it pending")
+	func sourceKeepsPendingAfterFile() throws {
+		let (ledger, giro) = try kioskBookedByFile(on: 4, purpose: "")
+		let after = try secondRun(into: ledger, balance: 1234.56, rows: transactions["transactions"] as! [[String: Any]])
+		#expect(after.transactions(ofAccount: giro.id).first { $0.name == "Kiosk" }?.sourceID == "moneymoney-booked:3")
+		#expect(after.balance(of: try #require(after.account(giro.id))).minorUnits == 122_456)
+	}
+
+	@Test("A transaction that the user imported counts as imported when the source delivers it as pending")
+	func sourceDeliversImportAsPending() throws {
+		let rows = transactions["transactions"] as! [[String: Any]]
+		let first = try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(accounts), categories: try plist(categories),
+			transactions: try plist(["transactions": rows.filter { $0["id"] as? Int != 3 }]), into: Ledger())
+		var ledger = Ledger(groups: first.groups, accounts: first.accounts, categories: first.categories, transactions: first.transactions)
+		let giro = try #require(first.accounts.first { $0.name == "Giro" })
+		ledger.update([Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 4), amountMinor: -1_000, name: "Kiosk")])
+		#expect(ledger.balance(of: giro).minorUnits == 122_456)
+
+		let after = try secondRun(into: ledger, balance: 1234.56, rows: rows)
+		#expect(after.transactions(ofAccount: giro.id).count == 3)
+		#expect(after.transactions(ofAccount: giro.id).first { $0.name == "Kiosk" }?.sourceID == "moneymoney-booked:3")
+		#expect(after.balance(of: try #require(after.account(giro.id))).minorUnits == 122_456)
+	}
+
+	@Test("A transaction that the source restores after a delete in both apps keeps its deletion in the balance")
+	func restoredAfterDeleteInBoth() throws {
+		let first = try plan()
+		var ledger = Ledger(groups: first.groups, accounts: first.accounts, categories: first.categories, transactions: first.transactions)
+		let giro = try #require(first.accounts.first { $0.name == "Giro" })
+		let fee = try #require(ledger.transactions(ofAccount: giro.id).first { $0.sourceID == "moneymoney:2" })
+		ledger.remove(transactionIDs: [fee.id])
+		let rows = transactions["transactions"] as! [[String: Any]]
+		let deleted = DeletedTransaction(fee, deletedAt: Date())
+		let second = applying(try secondPlan(into: ledger, balance: 1323.56, rows: rows.filter { $0["id"] as? Int != 2 }, deleted: [deleted]), to: ledger)
+
+		// The store forgot the source ID, and the source has the transaction again, so its balance is 1.234,56 €.
+		var forgotten = deleted
+		forgotten.sourceID = nil
+		let third = try secondPlan(into: second, balance: 1234.56, rows: rows, deleted: [forgotten])
+		#expect(third.transactions.isEmpty)
+		let after = applying(third, to: second)
+		#expect(after.balance(of: try #require(after.account(giro.id))).minorUnits == 132_356)
+
+		// The deleted row took the ID back by its fingerprint, and the same export runs again.
+		let deletedAfter = relinked([forgotten], by: third)
+		#expect(deletedAfter.map(\.sourceID) == ["moneymoney:2"])
+		let again = try secondPlan(into: after, balance: 1234.56, rows: rows, deleted: deletedAfter)
+		#expect(again.relinkedDeletedRows.isEmpty)
+		#expect(applying(again, to: after).balance(of: try #require(after.account(giro.id))).minorUnits == 132_356)
+	}
+
+	@Test("A transaction deleted in both apps moves the balance once, and the next run keeps it")
+	func deletedInBoth() throws {
+		let first = try plan()
+		var ledger = Ledger(groups: first.groups, accounts: first.accounts, categories: first.categories, transactions: first.transactions)
+		let giro = try #require(first.accounts.first { $0.name == "Giro" })
+		let fee = try #require(ledger.transactions(ofAccount: giro.id).first { $0.sourceID == "moneymoney:2" })
+		ledger.remove(transactionIDs: [fee.id])
+		#expect(ledger.balance(of: giro).minorUnits == 132_356)
+
+		// The source deleted the same transaction, so its balance is 1.323,56 €.
+		let rows = (transactions["transactions"] as! [[String: Any]]).filter { $0["id"] as? Int != 2 }
+		let deleted = DeletedTransaction(fee, deletedAt: Date())
+		let second = try secondPlan(into: ledger, balance: 1323.56, rows: rows, deleted: [deleted])
+		#expect(second.relinkedDeletedRows == [DeletedTransaction.Relink(row: deleted, sourceID: nil)])
+		let after = applying(second, to: ledger)
+		#expect(after.balance(of: try #require(after.account(giro.id))).minorUnits == 132_356)
+
+		// The store keeps the deleted row without its source ID, and the same export runs again.
+		var forgotten = deleted
+		forgotten.sourceID = nil
+		let again = try secondPlan(into: after, balance: 1323.56, rows: rows, deleted: [forgotten])
+		#expect(again.relinkedDeletedRows.isEmpty)
+		#expect(applying(again, to: after).balance(of: try #require(after.account(giro.id))).minorUnits == 132_356)
+	}
+
+	@Test("A transaction deleted only in Moneten keeps moving the balance through a second run")
+	func deletedInMoneten() throws {
+		let first = try plan()
+		var ledger = Ledger(groups: first.groups, accounts: first.accounts, categories: first.categories, transactions: first.transactions)
+		let giro = try #require(first.accounts.first { $0.name == "Giro" })
+		let fee = try #require(ledger.transactions(ofAccount: giro.id).first { $0.sourceID == "moneymoney:2" })
+		ledger.remove(transactionIDs: [fee.id])
+
+		let second = try secondPlan(into: ledger, balance: 1234.56, rows: transactions["transactions"] as! [[String: Any]],
+			deleted: [DeletedTransaction(fee, deletedAt: Date())])
+		#expect(second.relinkedDeletedRows.isEmpty)
+		#expect(applying(second, to: ledger).balance(of: try #require(ledger.account(giro.id))).minorUnits == 132_356)
 	}
 
 	@Test("A second run after a refresh stored some of the same transactions adds only the new ones")
@@ -266,8 +528,9 @@ struct MoneyMoneyMigrationTests {
 	func laterRunKeepsAppChanges() throws {
 		let first = try plan()
 		var rows = first.transactions
-		// A file import booked the pending row, which keeps its migration ID.
+		// A file import booked the pending row, which now carries the booked form of its migration ID.
 		let kiosk = try #require(rows.firstIndex { $0.sourceID == "moneymoney:3" })
+		rows[kiosk].sourceID = "moneymoney-booked:3"
 		rows[kiosk].isPending = false
 		rows[kiosk].bookingDate = Day(year: 2026, month: 11, day: 5)
 		// The user changed an amount, as in an offline account that the migration matched by IBAN.

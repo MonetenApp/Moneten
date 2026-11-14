@@ -140,19 +140,25 @@ The app SHALL show the name of the account owner on the tab "Account owner" unde
 
 ### Requirement: Balance comes from the bank
 
-The app SHALL show for each account the balance that the source reported last, together with the date of that balance. The app does not compute this balance from the transaction list, so it can differ from the list while transactions are pending.
+The app SHALL show for a portfolio and for each account of a bank access the balance that the source reported last, together with the date of that balance. The app does not compute this balance from the transaction list, so it can differ from the list while transactions are pending. Every other account shows the balance that its transactions give.
 
 #### Scenario: Balance with its date
 
-- **GIVEN** the bank reported a balance of 2.340,15 € on 7 November 2026
+- **GIVEN** the bank of the account "Giro" reported a balance of 2.340,15 € on 7 November 2026
 - **WHEN** the user selects the account
 - **THEN** the account view shows 2.340,15 € with the date 07.11.2026
 
 #### Scenario: Deleting a transaction does not change the balance
 
-- **GIVEN** an account with a reported balance of 2.340,15 €
+- **GIVEN** an account of a bank access with a reported balance of 2.340,15 €
 - **WHEN** the user deletes a transaction of 40,00 € from the list
 - **THEN** the account still shows 2.340,15 €
+
+#### Scenario: Account without a bank access
+
+- **GIVEN** a migrated account "Wallet" without a bank access with a balance of 133,20 €
+- **WHEN** the user imports a transaction of -4,80 €
+- **THEN** the account shows 128,40 € without the date of a reported balance
 
 ### Requirement: Several balances and bonus points
 

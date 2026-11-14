@@ -182,12 +182,12 @@ struct AccountSettingsSheet: View {
 									.monospacedDigit()
 								Button("Calibrate") {
 									// Sets the initial balance so that the computed balance meets the balance of the bank.
-									if let bank = original.bankBalanceMinor {
+									if let bank = original.reportedBalance {
 										let booked = model.ledger.computedBalance(of: original).minorUnits - original.initialBalanceMinor
-										initialBalance = Format.editableAmount(bank - booked, original.currency)
+										initialBalance = Format.editableAmount(bank.minorUnits - booked, original.currency)
 									}
 								}
-								.disabled(original.bankBalanceMinor == nil)
+								.disabled(original.reportedBalance == nil)
 								.help("Make the computed balance end at the balance of the bank")
 							}
 						}

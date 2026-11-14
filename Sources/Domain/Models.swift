@@ -64,7 +64,7 @@ public struct Account: Identifiable, Hashable, Sendable, Codable {
 	public var bankCode: String?
 	public var bankName: String?
 	public var owner: String?
-	/// The balance that the bank reported. Offline accounts compute their balance instead.
+	/// The balance that the bank or the migration source reported. `reportedBalance` says which accounts show it.
 	public var bankBalanceMinor: Int64?
 	public var bankBalanceDate: Date?
 	/// The balance before the oldest transaction. Charts start from it.
@@ -123,6 +123,14 @@ public struct Account: Identifiable, Hashable, Sendable, Codable {
 	}
 
 	public var isOffline: Bool { source == .offline }
+
+	/// The balance that a portfolio or an account of a bank access shows. A portfolio gets its value from the
+	/// bank, not from transactions. Every other account computes its balance, also a migrated one that keeps
+	/// the balance of the source.
+	public var reportedBalance: Money? {
+		guard kind == .portfolio || source == .bank, let bankBalanceMinor else { return nil }
+		return Money(minorUnits: bankBalanceMinor, currency: currency)
+	}
 
 	/// The record of a portfolio with a bank balance: that balance on the day the bank reported it,
 	/// or today when the day is unknown. Other accounts get their balance from transactions.
