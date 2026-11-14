@@ -38,7 +38,7 @@ public enum TransactionFileImporter {
 		return String(data: data, encoding: .windowsCP1252) ?? String(decoding: data, as: UTF8.self)
 	}
 
-	public static func parse(_ data: Data, currency: String = "EUR") throws -> [Transaction] {
+	public static func parse(_ data: Data, currency: String) throws -> [Transaction] {
 		guard !data.isEmpty else { throw Failure.empty }
 		let text = decode(data)
 		guard let format = detect(text) else { throw Failure.unsupported }
