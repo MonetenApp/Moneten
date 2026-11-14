@@ -327,9 +327,11 @@ private struct RuleParser {
 			if c == "(" { tokens.append((.open, i)); i += 1; continue }
 			if c == ")" { tokens.append((.close, i)); i += 1; continue }
 			if !isFieldValue {
-				// Only at the start of a token. Inside a word, as in "Disney+", "Yahoo!", or "EC-Karte", they stay part of the word.
-				if c == "+" { tokens.append((.and, i)); i += 1; continue }
-				if c == "!" || (c == "-" && !(i + 1 < chars.count && chars[i + 1].isWholeNumber)) { tokens.append((.not, i)); i += 1; continue }
+				// Only at the start of a token. Inside a word, as in "Disney+", "Yahoo!", or "EC-Karte", they stay part of the word,
+				// and before a digit, as in -12,50 and +4917012345, they belong to the number.
+				let beforeDigit = i + 1 < chars.count && chars[i + 1].isWholeNumber
+				if c == "+" && !beforeDigit { tokens.append((.and, i)); i += 1; continue }
+				if c == "!" || (c == "-" && !beforeDigit) { tokens.append((.not, i)); i += 1; continue }
 				if let (field, op) = fieldOperator(at: i) {
 					tokens.append((.field(field, op: op.text, negates: op.negates), i))
 					i += field.rawValue.count + op.text.count
