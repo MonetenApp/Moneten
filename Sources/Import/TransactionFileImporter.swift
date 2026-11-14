@@ -131,7 +131,7 @@ enum CSVParser {
 				if let d, let c { amount = d + c }
 			}
 			guard let amount else { throw TransactionFileImporter.Failure.line(offset + 1, "The amount cannot be read.") }
-			let cur = value(currencyCol).flatMap(currencyCode) ?? currency
+			let cur = value(currencyCol).map { currencyCode($0, account: currency) } ?? currency
 			var t = Transaction(accountID: placeholder, bookingDate: day, valueDate: value(valueCol).flatMap(Day.init(string:)),
 				amountMinor: Money(amount, currency: cur).minorUnits, currency: cur,
 				name: value(nameCol) ?? "", purpose: value(purposeCol) ?? "", counterpartyIBAN: value(ibanCol), counterpartyBIC: value(bicCol),
@@ -143,16 +143,19 @@ enum CSVParser {
 		return result
 	}
 
-	/// Symbols and names that banks write instead of a code. "$" stands for the US dollar, because
-	/// other dollars carry a prefix such as "CA$".
-	private static let currencyNames = ["€": "EUR", "EURO": "EUR", "$": "USD", "US$": "USD", "£": "GBP", "FR.": "CHF"]
+	/// Symbols and names that banks write instead of a code.
+	private static let currencyNames = ["€": "EUR", "EURO": "EUR", "US$": "USD", "£": "GBP", "FR.": "CHF", "SFR.": "CHF", "SFR": "CHF"]
+	/// A bank writes a bare "$" for the dollar of its own country, so "$" means the account currency
+	/// when that is one of these, and the US dollar otherwise.
+	private static let dollars: Set = ["USD", "CAD", "AUD", "NZD", "SGD", "HKD", "MXN"]
 	private static let isoCurrencies = Set(Locale.Currency.isoCurrencies.map(\.identifier))
 
-	/// The ISO 4217 code that a currency cell names, or nil, so that the row takes the account currency.
-	static func currencyCode(_ cell: String) -> String? {
+	/// The ISO 4217 code that a currency cell names, or the account currency when the cell names none.
+	static func currencyCode(_ cell: String, account: String) -> String {
 		let s = cell.uppercased()
+		if s == "$" { return dollars.contains(account) ? account : "USD" }
 		if let code = currencyNames[s] { return code }
-		return isoCurrencies.contains(s) ? s : nil
+		return isoCurrencies.contains(s) ? s : account
 	}
 
 	static func normalize(_ s: String) -> String {
