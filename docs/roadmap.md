@@ -2,7 +2,7 @@
 
 This page lists what ships in each release. The specs in [openspec/changes](../openspec/changes/) define the behavior. The GitHub issues track the work. Run `python3 scripts/roadmap.py` to regenerate this page from both.
 
-The project has 53 changes with 1106 requirements. A change leaves this page when its code is merged and the change is archived into [openspec/specs](../openspec/specs/).
+The project has 52 changes with 1105 requirements. A change leaves this page when its code is merged and the change is archived into [openspec/specs](../openspec/specs/).
 
 ## v0.1 Read
 
@@ -15,25 +15,24 @@ Fetch, categorize, and understand your money. Read-only.
 | Change | Capability | Requirements | Issues |
 |---|---|---|---|
 | [add-account-management](../openspec/changes/add-account-management/proposal.md) | `account-management` | 22 | [#3](https://github.com/MonetenApp/Moneten/issues/3), [#5](https://github.com/MonetenApp/Moneten/issues/5) |
-| [add-account-refresh](../openspec/changes/add-account-refresh/proposal.md) | `account-refresh` | 29 | [#6](https://github.com/MonetenApp/Moneten/issues/6), [#7](https://github.com/MonetenApp/Moneten/issues/7), [#40](https://github.com/MonetenApp/Moneten/issues/40) |
-| [add-account-setup](../openspec/changes/add-account-setup/proposal.md) | `account-setup` | 21 | [#5](https://github.com/MonetenApp/Moneten/issues/5), [#13](https://github.com/MonetenApp/Moneten/issues/13) |
+| [add-account-refresh](../openspec/changes/add-account-refresh/proposal.md) | `account-refresh` | 29 | [#6](https://github.com/MonetenApp/Moneten/issues/6), [#7](https://github.com/MonetenApp/Moneten/issues/7), [#40](https://github.com/MonetenApp/Moneten/issues/40), [#85](https://github.com/MonetenApp/Moneten/issues/85) |
+| [add-account-setup](../openspec/changes/add-account-setup/proposal.md) | `account-setup` | 22 | [#5](https://github.com/MonetenApp/Moneten/issues/5), [#13](https://github.com/MonetenApp/Moneten/issues/13), [#85](https://github.com/MonetenApp/Moneten/issues/85) |
 | [add-app-lock](../openspec/changes/add-app-lock/proposal.md) | `app-lock` | 21 | [#4](https://github.com/MonetenApp/Moneten/issues/4), [#26](https://github.com/MonetenApp/Moneten/issues/26) |
 | [add-app-settings](../openspec/changes/add-app-settings/proposal.md) | `app-settings` | 8 | [#5](https://github.com/MonetenApp/Moneten/issues/5) |
 | [add-categories](../openspec/changes/add-categories/proposal.md) | `categories` | 21 | [#18](https://github.com/MonetenApp/Moneten/issues/18) |
 | [add-categorization-rules](../openspec/changes/add-categorization-rules/proposal.md) | `categorization-rules` | 18 | [#19](https://github.com/MonetenApp/Moneten/issues/19) |
-| [add-charts](../openspec/changes/add-charts/proposal.md) | `charts` | 24 | [#21](https://github.com/MonetenApp/Moneten/issues/21) |
+| [add-charts](../openspec/changes/add-charts/proposal.md) | `charts` | 26 | [#21](https://github.com/MonetenApp/Moneten/issues/21) |
 | [add-connection-security](../openspec/changes/add-connection-security/proposal.md) | `connection-security` | 14 | [#13](https://github.com/MonetenApp/Moneten/issues/13), [#26](https://github.com/MonetenApp/Moneten/issues/26) |
 | [add-data-export](../openspec/changes/add-data-export/proposal.md) | `transaction-export` | 17 | [#8](https://github.com/MonetenApp/Moneten/issues/8) |
 | [add-data-folder-and-backup](../openspec/changes/add-data-folder-and-backup/proposal.md) | `data-folder-and-backup` | 14 | [#4](https://github.com/MonetenApp/Moneten/issues/4) |
 | [add-encrypted-database](../openspec/changes/add-encrypted-database/proposal.md) | `database-encryption` | 20 | [#2](https://github.com/MonetenApp/Moneten/issues/2), [#4](https://github.com/MonetenApp/Moneten/issues/4), [#26](https://github.com/MonetenApp/Moneten/issues/26) |
-| [add-extension-catalog](../openspec/changes/add-extension-catalog/proposal.md) | `extension-catalog` | 18 | [#37](https://github.com/MonetenApp/Moneten/issues/37), [#87](https://github.com/MonetenApp/Moneten/issues/87), [#88](https://github.com/MonetenApp/Moneten/issues/88) |
 | [add-extension-developer-tools](../openspec/changes/add-extension-developer-tools/proposal.md) | `extension-developer-tools` | 18 | [#16](https://github.com/MonetenApp/Moneten/issues/16), [#17](https://github.com/MonetenApp/Moneten/issues/17) |
 | [add-file-import](../openspec/changes/add-file-import/proposal.md) | `transaction-import` | 24 | [#22](https://github.com/MonetenApp/Moneten/issues/22), [#23](https://github.com/MonetenApp/Moneten/issues/23) |
-| [add-fints-banking](../openspec/changes/add-fints-banking/proposal.md) | `fints-banking` | 25 | [#9](https://github.com/MonetenApp/Moneten/issues/9), [#10](https://github.com/MonetenApp/Moneten/issues/10), [#11](https://github.com/MonetenApp/Moneten/issues/11), [#12](https://github.com/MonetenApp/Moneten/issues/12), [#13](https://github.com/MonetenApp/Moneten/issues/13) |
+| [add-fints-banking](../openspec/changes/add-fints-banking/proposal.md) | `fints-banking` | 26 | [#9](https://github.com/MonetenApp/Moneten/issues/9), [#10](https://github.com/MonetenApp/Moneten/issues/10), [#11](https://github.com/MonetenApp/Moneten/issues/11), [#12](https://github.com/MonetenApp/Moneten/issues/12), [#13](https://github.com/MonetenApp/Moneten/issues/13) |
 | [add-localization-and-formatting](../openspec/changes/add-localization-and-formatting/proposal.md) | `localization-and-formatting` | 18 | [#5](https://github.com/MonetenApp/Moneten/issues/5) |
 | [add-login-credentials](../openspec/changes/add-login-credentials/proposal.md) | `login-credentials` | 15 | [#4](https://github.com/MonetenApp/Moneten/issues/4), [#13](https://github.com/MonetenApp/Moneten/issues/13), [#26](https://github.com/MonetenApp/Moneten/issues/26) |
 | [add-main-window](../openspec/changes/add-main-window/proposal.md) | `main-window` | 29 | [#5](https://github.com/MonetenApp/Moneten/issues/5) |
-| [add-moneymoney-migration](../openspec/changes/add-moneymoney-migration/proposal.md) | `moneymoney-migration` | 18 | [#24](https://github.com/MonetenApp/Moneten/issues/24) |
+| [add-moneymoney-migration](../openspec/changes/add-moneymoney-migration/proposal.md) | `moneymoney-migration` | 19 | [#24](https://github.com/MonetenApp/Moneten/issues/24) |
 | [add-notifications-and-menu-bar](../openspec/changes/add-notifications-and-menu-bar/proposal.md) | `notifications-and-menu-bar` | 16 | [#40](https://github.com/MonetenApp/Moneten/issues/40) |
 | [add-offline-accounts](../openspec/changes/add-offline-accounts/proposal.md) | `offline-accounts` | 13 | [#5](https://github.com/MonetenApp/Moneten/issues/5) |
 | [add-software-update](../openspec/changes/add-software-update/proposal.md) | `software-update` | 21 | [#25](https://github.com/MonetenApp/Moneten/issues/25), [#13](https://github.com/MonetenApp/Moneten/issues/13) |
@@ -41,29 +40,20 @@ Fetch, categorize, and understand your money. Read-only.
 | [add-tan-handling](../openspec/changes/add-tan-handling/proposal.md) | `tan-handling` | 28 | [#13](https://github.com/MonetenApp/Moneten/issues/13) |
 | [add-transaction-list](../openspec/changes/add-transaction-list/proposal.md) | `transaction-list` | 21 | [#5](https://github.com/MonetenApp/Moneten/issues/5) |
 | [add-transaction-search-and-filters](../openspec/changes/add-transaction-search-and-filters/proposal.md) | `transaction-search-and-filters` | 21 | [#20](https://github.com/MonetenApp/Moneten/issues/20) |
-| [add-web-banking-extensions](../openspec/changes/add-web-banking-extensions/proposal.md) | `web-banking-extensions` | 83 | [#14](https://github.com/MonetenApp/Moneten/issues/14), [#15](https://github.com/MonetenApp/Moneten/issues/15), [#26](https://github.com/MonetenApp/Moneten/issues/26), [#42](https://github.com/MonetenApp/Moneten/issues/42) |
+| [add-web-banking-extensions](../openspec/changes/add-web-banking-extensions/proposal.md) | `web-banking-extensions` | 95 | [#14](https://github.com/MonetenApp/Moneten/issues/14), [#15](https://github.com/MonetenApp/Moneten/issues/15), [#26](https://github.com/MonetenApp/Moneten/issues/26), [#42](https://github.com/MonetenApp/Moneten/issues/42) |
 
 ### Issues
 
 | Issue | Labels | Depends on |
 |---|---|---|
 | [#1 Set up the Swift package and CI](https://github.com/MonetenApp/Moneten/issues/1) | area: foundation | None |
-| [#2 Prototype GRDB with SQLCipher through Swift Package Manager](https://github.com/MonetenApp/Moneten/issues/2) | area: foundation, kind: prototype | None |
 | [#3 Define the core domain types](https://github.com/MonetenApp/Moneten/issues/3) | area: foundation | #1 |
 | [#4 Build the encrypted store, migrations, and Keychain access](https://github.com/MonetenApp/Moneten/issues/4) | area: foundation | #2, #3 |
 | [#5 Build the app shell with sidebar, transaction list, and settings](https://github.com/MonetenApp/Moneten/issues/5) | area: core | #4 |
-| [#6 Define BankConnector, SyncSession, Challenge, and the sync state machine](https://github.com/MonetenApp/Moneten/issues/6) | area: foundation | #3 |
 | [#7 De-duplicate transactions and reconcile pending rows with booked rows](https://github.com/MonetenApp/Moneten/issues/7) | area: core | #3 |
 | [#8 Export and re-import all data as JSON, and export CSV](https://github.com/MonetenApp/Moneten/issues/8) | area: core | #4 |
-| [#9 Apply for FinTS product registration](https://github.com/MonetenApp/Moneten/issues/9) | area: fints, kind: organization | None |
-| [#10 Ask the HBCI4Swift author about a joint Swift package](https://github.com/MonetenApp/Moneten/issues/10) | area: fints, kind: organization | None |
 | [#11 Run the first FinTS bank tests](https://github.com/MonetenApp/Moneten/issues/11) | area: fints, kind: prototype | #9 |
-| [#12 Turn HBCI4Swift into a tested Swift package](https://github.com/MonetenApp/Moneten/issues/12) | area: fints | #11, #10 |
 | [#13 Build the FinTS connector for accounts, balances, and transactions](https://github.com/MonetenApp/Moneten/issues/13) | area: fints | #6, #7, #9 |
-| [#14 Run Lua 5.4 extensions in a sandboxed XPC process](https://github.com/MonetenApp/Moneten/issues/14) | area: extensions | #6 |
-| [#15 Implement the MoneyMoney-compatible extension API](https://github.com/MonetenApp/Moneten/issues/15) | area: extensions | #14 |
-| [#16 Build the ext command line tool with record and replay](https://github.com/MonetenApp/Moneten/issues/16) | area: extensions | #15 |
-| [#17 Write the extension author guide](https://github.com/MonetenApp/Moneten/issues/17) | area: extensions | #16 |
 | [#18 Add categories with a tree and manual assignment](https://github.com/MonetenApp/Moneten/issues/18) | area: core | #5 |
 | [#19 Categorize new transactions with rules](https://github.com/MonetenApp/Moneten/issues/19) | area: core | #18 |
 | [#20 Search and filter transactions](https://github.com/MonetenApp/Moneten/issues/20) | area: core | #5 |
@@ -73,16 +63,16 @@ Fetch, categorize, and understand your money. Read-only.
 | [#24 Migrate accounts, transactions, and categories from MoneyMoney](https://github.com/MonetenApp/Moneten/issues/24) | area: import | #18 |
 | [#25 Sign, notarize, and update the app with Sparkle](https://github.com/MonetenApp/Moneten/issues/25) | area: release | #1 |
 | [#26 Review security before the first public release](https://github.com/MonetenApp/Moneten/issues/26) | area: release | #13, #15, #25 |
-| [#37 Install and update extensions from a signed catalog](https://github.com/MonetenApp/Moneten/issues/37) | area: extensions | #15, #87 |
 | [#39 Split a transaction across several categories](https://github.com/MonetenApp/Moneten/issues/39) | area: core | #18 |
 | [#40 Refresh accounts automatically and notify about new transactions](https://github.com/MonetenApp/Moneten/issues/40) | area: core | #13, #5 |
-| [#42 Run three published MoneyMoney extensions unchanged as a compatibility test](https://github.com/MonetenApp/Moneten/issues/42) | area: extensions | #14, #15, #16 |
-| [#43 Check whether MoneyMoney sends payments through extensions](https://github.com/MonetenApp/Moneten/issues/43) | area: extensions, area: payments, kind: prototype | None |
-| [#85 Add bank accesses in the app: assistant, refresh commands, and status (#13, part 2)](https://github.com/MonetenApp/Moneten/issues/85) | area: fints, area: core | #13, #80, #88 |
 | [#86 Save PINs and finish the TAN dialogs (#13, part 3)](https://github.com/MonetenApp/Moneten/issues/86) | area: fints | #13 |
-| [#87 Check and sign extension packages in the catalog repository](https://github.com/MonetenApp/Moneten/issues/87) | area: extensions | #16 |
-| [#88 Show installed and installable extensions in an Extensions window](https://github.com/MonetenApp/Moneten/issues/88) | area: extensions | #37, #85 |
-| [#96 Keep the FinTS certificate check from blocking a thread of the cooperative pool](https://github.com/MonetenApp/Moneten/issues/96) | area: fints | #92 |
+| [#105 Publish a signed release of the ext tool](https://github.com/MonetenApp/Moneten/issues/105) | area: extensions, area: release | #25 |
+| [#106 Archive the merged OpenSpec changes and regenerate the roadmap](https://github.com/MonetenApp/Moneten/issues/106) | documentation | None |
+| [#117 Follow-ups to the special-use host names of #115](https://github.com/MonetenApp/Moneten/issues/117) | area: extensions | None |
+| [#118 Keep personal data out of every debug harness log line](https://github.com/MonetenApp/Moneten/issues/118) | area: core | None |
+| [#120 Finish the app side of the FinTS tasks that part 3 left open](https://github.com/MonetenApp/Moneten/issues/120) | area: fints | None |
+| [#121 List extension services by name and the offline account last in Add Account](https://github.com/MonetenApp/Moneten/issues/121) | bug, area: extensions | None |
+| [#123 Make the catalog index performance test measure a median, not one cold run](https://github.com/MonetenApp/Moneten/issues/123) | area: extensions | None |
 
 ## v0.2 Pay
 

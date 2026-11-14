@@ -22,5 +22,5 @@ One task per requirement of the spec. A task is checked only when a test or a ru
 
 ## 2. Catalog repository
 
-- [ ] 2.1 Author guide. The catalog repository builds it.
+- [x] 2.1 Author guide. The catalog repository builds it. Built by MonetenApp/moneten-extensions#2 (8f143f0) in [docs/guide](https://github.com/MonetenApp/moneten-extensions/tree/main/docs/guide): tutorial, reference, manifest, rules, submit, and from-moneymoney. The reference names the three final redirect addresses and the login host in `hosts`. Verified in the catalog repository by [tools/tests/test_guide.py](https://github.com/MonetenApp/moneten-extensions/blob/main/tools/tests/test_guide.py), which checks the links, the manifest examples, and that the tutorial steps make the tutorial package, and by the job "ext test", which replays the tutorial package with `ext`. Both jobs passed on 8f143f0.
 - [ ] 2.2 Replay in the catalog checks. The catalog repository builds `ext` at a pinned commit and runs `ext test` for each package.

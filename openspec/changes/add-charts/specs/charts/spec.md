@@ -116,6 +116,13 @@ The app SHALL set the initial balance of a refreshed account only once, at the f
 - **WHEN** a refresh brings a bank balance of 800,00 € and booked transactions of -400,00 € today and of -70,00 € from before the first refresh
 - **THEN** the initial balance stays 2.550,00 € and the last bar shows 730,00 €
 
+#### Scenario: Refresh whose transactions failed
+
+- **GIVEN** a new account whose first refresh brings a bank balance of 1.200,00 €, and the bank refuses its transactions
+- **WHEN** that refresh ends
+- **THEN** the initial balance is not set and stays 0,00 €
+- **AND** the next refresh, which brings the balance of 1.200,00 € and booked transactions that add up to -1.350,00 €, sets it to 2.550,00 €
+
 #### Scenario: Deleted transaction
 
 - **GIVEN** an account with a bank balance of 1.200,00 € and an initial balance of 2.550,00 €

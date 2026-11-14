@@ -24,7 +24,7 @@ Each entry links to the proposal of a change in [openspec/changes](../../openspe
 | Change the PIN of an online banking access, unblock a PIN with a TAN | [add-pin-management](../../openspec/changes/add-pin-management/proposal.md) (later) |
 | PSD2 online service for banks without FinTS. A paid add-on for 39.99 euros per year, read-only, run by MoneyMoney's developer as a BaFin-registered account information service. | [add-aggregator-subscription](../../openspec/changes/add-aggregator-subscription/proposal.md) (v0.3). Moneten uses finAPI instead. |
 | Web banking extensions in Lua | [add-web-banking-extensions](../../openspec/changes/add-web-banking-extensions/proposal.md) (v0.1), [add-extension-developer-tools](../../openspec/changes/add-extension-developer-tools/proposal.md) (v0.1) |
-| Signature check for extensions. Unsigned extensions run only after you turn the check off. | [add-extension-catalog](../../openspec/changes/add-extension-catalog/proposal.md) (v0.1). Moneten has no signature check setting. The "Extensions" window installs from a reviewed, signed catalog, and an extension from outside the catalog runs after a warning and stays marked "Unverified". |
+| Signature check for extensions. Unsigned extensions run only after you turn the check off. | [add-extension-catalog](../../openspec/changes/archive/2026-11-14-add-extension-catalog/proposal.md) (v0.1). Moneten has no signature check setting. The "Extensions" window installs from a reviewed, signed catalog, and an extension from outside the catalog runs after a warning and stays marked "Unverified". |
 | More than 6,500 European banks by bank code | German FinTS banks in v0.1. Other banks through extensions and, in v0.3, finAPI. |
 | Account types for current, savings, fixed-term, credit card, securities, building society, loan, foreign currency, PayPal, cash, and offline accounts | [add-account-management](../../openspec/changes/add-account-management/proposal.md) (v0.1), [add-offline-accounts](../../openspec/changes/add-offline-accounts/proposal.md) (v0.1). PayPal comes through an extension. |
 | Account groups, account settings, closed accounts | [add-account-management](../../openspec/changes/add-account-management/proposal.md) (v0.1) |
@@ -133,7 +133,7 @@ Each entry links to the proposal of a change in [openspec/changes](../../openspe
 |---|---|
 | [add-moneymoney-migration](../../openspec/changes/add-moneymoney-migration/proposal.md) (v0.1) | Brings accounts, categories, and transactions over from MoneyMoney |
 | [add-extension-developer-tools](../../openspec/changes/add-extension-developer-tools/proposal.md) (v0.1) | A command line tool and a guide for extension authors |
-| [add-extension-catalog](../../openspec/changes/add-extension-catalog/proposal.md) (v0.1) | A signed catalog that installs and updates open extensions in the "Extensions" window |
+| [add-extension-catalog](../../openspec/changes/archive/2026-11-14-add-extension-catalog/proposal.md) (v0.1) | A signed catalog that installs and updates open extensions in the "Extensions" window |
 
 ## Prices
 
