@@ -84,6 +84,20 @@ import Testing
 			== .needsConfirmation(hosts: [], fields: ["Password"]))
 	}
 
+	/// A null character in a service or a label must not let one login field pass for another.
+	@Test func approvedFieldDoesNotCoverAFieldWithTheSameTextSplitElsewhere() throws {
+		let old = TestCatalog.Package()
+		func adding(service: String, label: String) throws -> Manifest {
+			var new = old
+			new.version = "1.1"
+			new.manifestFields = ["services": [["name": "Example Bank", "login": old.login], ["name": service, "login": [["label": label, "secret": true]]]]]
+			return try manifest(new)
+		}
+		let approval = UpdatePlan.Approval(version: "1.1", reviewed: try adding(service: "Example Card\u{0}Card", label: "Password"))
+		#expect(UpdatePlan(installed: try manifest(old), available: try adding(service: "Example Card", label: "Card\u{0}Password"), automatic: true,
+			sessionRuns: false, confirmed: approval) == .needsConfirmation(hosts: [], fields: ["Card\u{0}Password"]))
+	}
+
 	@Test func confirmedVersionInstallsWithAutomaticUpdatesOff() throws {
 		#expect(try plan(to: { _ in }, automatic: false, confirmed: .init(version: "1.1")) == .install)
 		#expect(try plan(to: { _ in }, automatic: false, confirmed: .init(version: "1.0")) == .waitsForUser)
