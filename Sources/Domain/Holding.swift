@@ -28,8 +28,6 @@ public struct Quote: Hashable, Sendable {
 		self.currency = currency
 		self.day = day
 	}
-
-	public var isPercentage: Bool { currency == nil }
 }
 
 /// An exchange rate as the bank sends it: one unit of `base` costs `rate` units of `quoted`.

@@ -45,6 +45,17 @@ A closed account keeps its transactions, shows no balance in the sidebar, and is
 |---|---|---|
 | `PortfolioValue` | `accountID`, `day`, `minorUnits` | The value of a portfolio at the end of a day. A portfolio gets its value from the bank and not from transactions, so the app records its `bankBalanceMinor` once a day, and the balance chart draws the portfolio from these records. An account has at most one record per day, and a later one replaces it. `Ledger.portfolioValues(of:)` lists them, the oldest first. |
 
+## Securities
+
+A portfolio holds positions. The latest successful refresh of its account replaces them all, and a failed refresh keeps the last ones.
+
+| Type | Fields | Rules |
+|---|---|---|
+| `Security` | `name`, `isin?`, `securityNumber?` | The security as its source names it. The security number is the national one, such as the WKN. |
+| `Quote` | `amount`, `currency?`, `day?` | A price per unit as a `Decimal` with every decimal place of the source, or a percentage of the nominal amount when it has no currency. The purchase price is a `Quote` with the day of the purchase. |
+| `ExchangeRate` | `base`, `quoted`, `rate` | One unit of `base` costs `rate` units of `quoted`, as the bank sends it. `convert(_:from:to:)` works in both directions. |
+| `Holding` | `id`, `accountID`, `security`, `quantity`, `nominalCurrency?`, `quote?`, `marketValue?`, `accruedInterest?`, `purchasePrice?`, `exchangeRate?` | One position. `quantity` is a `Decimal`: a number of units, or a nominal amount in `nominalCurrency`. `value(in:)` is the market value plus the accrued interest, or else the quantity times the quote. `gain(in:)` is the market value less the purchase value, without the accrued interest. Both round to the currency once, at the end. `Holding.identify` keeps the `id` of a stored position of the same ISIN, security number, or name across refreshes. `Ledger.holdings(of:)` lists the positions by name. |
+
 ## Categories
 
 | Type | Fields | Rules |
@@ -96,6 +107,7 @@ Refreshes and file imports go through `reconcile`, which recognizes a stored row
 | `category` | `Category` |
 | `bankTransaction` | `Transaction` |
 | `portfolioValue` | `PortfolioValue`, with the primary key `accountID` and `day` |
+| `holding` | `Holding`, flattened by `HoldingRecord`, with quantities, prices, and rates as decimal text |
 | `access` | `Access`, with its `AccessState` in the column `state` |
 | `savedPIN` | The saved PIN of an access, with the primary key `accessID` |
 | `deletedTransaction` | `DeletedTransaction` |
@@ -103,12 +115,11 @@ Refreshes and file imports go through `reconcile`, which recognizes a stored row
 | `extensionCatalog` | One row: the bytes of the catalog index that the app accepted last, its signature, and the version floor of each catalog key as `KeyFloors`. The signature lets the app rebuild the floors when they cannot be read |
 | `installedExtension` | The origin of an installed extension by its name, `catalog` with its `InstalledPackage` or `file` with the digests the user allowed |
 
-Migration `v1` creates the tables. It also creates the table `setting`, which no code uses, because app settings live in `UserDefaults`. Migration `v2` drops it. Migration `v4` adds `portfolioValue`, whose rows go with their account. Migration `v5` adds `account.color`, the `#RRGGBB` color of the account's icon. Migration `v6` adds `bankTransaction.needsReview` and `bankTransaction.isFetched`, both false for existing rows, and the table `deletedTransaction`. It rewrites no row. Migration `v7` adds the table `access` and the columns `account.accessID`, `account.remoteID`, `account.refreshedAt`, and `account.refreshError`, all empty for existing accounts. Migration `v8` adds `extensionHostDecision`. Migration `v9` adds the table `savedPIN`, whose rows go with their access. Migration `v10` adds `extensionCatalog` and `installedExtension`. Migration `v12` adds `account.refreshInterval`, `everyTwoHours` for existing accounts.
+Migration `v1` creates the tables. It also creates the table `setting`, which no code uses, because app settings live in `UserDefaults`. Migration `v2` drops it. Migration `v4` adds `portfolioValue`, whose rows go with their account. Migration `v5` adds `account.color`, the `#RRGGBB` color of the account's icon. Migration `v6` adds `bankTransaction.needsReview` and `bankTransaction.isFetched`, both false for existing rows, and the table `deletedTransaction`. It rewrites no row. Migration `v7` adds the table `access` and the columns `account.accessID`, `account.remoteID`, `account.refreshedAt`, and `account.refreshError`, all empty for existing accounts. Migration `v8` adds `extensionHostDecision`. Migration `v9` adds the table `savedPIN`, whose rows go with their access. Migration `v10` adds `extensionCatalog` and `installedExtension`. Migration `v12` adds `account.refreshInterval`, `everyTwoHours` for existing accounts. Migration `v14` adds `holding`, whose rows go with their account.
 
 ## Types that the specs add later
 
 | Type | Arrives with | Purpose |
 |---|---|---|
 | `Split` | v0.1 | Parts of a transaction with their own amounts and categories. The parts add up to the transaction amount. |
-| `Security`, `Holding` | v0.2 | Securities accounts with quantity, price, market value, and purchase value. |
 | `PaymentOrder`, `PaymentState` | v0.2 | SEPA transfers with the payee check. See [architecture](architecture.md#payments-are-a-separate-state-machine). |

@@ -14,9 +14,9 @@ So v0.1 adds the positions themselves: the types, their table, the positions in 
 
 ## Scope of v0.1
 
-v0.1 builds what the issue asks for: the types and their storage, the positions from HKWPD, a view with quantity, price, value, and the gain since purchase, and the value of securities in the totals and the balance chart. The requirements that the view needs to be usable come with it: the order, the search, the status line, the empty state, the total gain of a portfolio group, and a group of portfolios.
+v0.1 builds what the issue asks for: the types and their storage, the positions from HKWPD, a view with quantity, price, value, and the gain since purchase, and the value of securities in the totals and the balance chart. The requirements that the view needs to be usable come with it: the order, the search, the status line with the sum of the selected positions, the empty state, the total gain of a portfolio group, and a group of portfolios.
 
-The following requirements stay open in `tasks.md` and keep the spec as the target: positions from extensions, the details of a position, entering and editing the purchase price and keeping it across a refresh, comments, the selection sum in the status line, and the warning before removing a portfolio.
+The following requirements stay open in `tasks.md` and keep the spec as the target: positions from extensions, the details of a position, entering and editing the purchase price and keeping it across a refresh, comments, and the warning before removing a portfolio.
 
 ## Decisions
 
@@ -53,7 +53,7 @@ hbci4java drops some fields of MT535 that the spec names: the time of a quote th
 
 ### The merge replaces the positions
 
-`reconcile` gets the stored positions of the account and returns the delivered ones in `Reconciliation.holdings`. A delivered position takes the `id` of a stored position with the same ISIN, or else the same WKN, or else the same name, each stored position at most once. The view keeps its rows and their selection across a refresh that way, and a later comment or manual purchase price can stay with the position (spec "A refresh replaces the positions"). Every position that the delivery lacks goes. `Store.merge` deletes the stored positions of the account and inserts the delivered ones in the same transaction as the value, and `Ledger.apply` takes them over. A failed refresh has no delivery, so the last positions stay, and the header keeps "Balance as of" with the day of the last successful refresh.
+`reconcile` gets the stored positions of the account and returns the delivered ones in `Reconciliation.holdings`. A delivered position takes the `id` of a stored position with the same ISIN, or else the same WKN, or else the same name, each stored position at most once. The view keeps its rows and their selection across a refresh that way, and a later comment or manual purchase price can stay with the position (spec "A refresh replaces the positions"). Every position that the delivery lacks goes. `Store.merge` reads the stored positions only for a refresh that brings positions, deletes them, and inserts the delivered ones in the same transaction as the value, and `Ledger.apply` takes them over. `Ledger.replace(accounts:)` drops the positions of a removed account, as the database does. A failed refresh has no delivery, so the last positions stay, and the header keeps "Balance as of" with the day of the last successful refresh.
 
 ### Storage
 

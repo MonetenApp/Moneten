@@ -311,6 +311,7 @@ public struct Ledger: Sendable {
 			self.accounts = accounts
 			let ids = Set(accounts.map(\.id))
 			portfolioHistory = portfolioHistory.filter { ids.contains($0.key) }
+			holdingsByAccount = holdingsByAccount.filter { ids.contains($0.key) }
 		}
 		if let categories { self.categories = categories }
 		if let transactions { self.transactions = transactions }

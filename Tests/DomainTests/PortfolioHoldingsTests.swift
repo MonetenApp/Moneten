@@ -54,6 +54,14 @@ struct PortfolioHoldingsTests {
 		#expect(ledger.holdings(of: [giro.id]).isEmpty)
 	}
 
+	@Test("Removing an account drops its positions from the ledger, as the database does")
+	func removeAccount() {
+		var ledger = Ledger(accounts: [depot, fonds], holdings: [position("Gold"), position("Silber", in: fonds)])
+		ledger.replace(accounts: [fonds])
+		#expect(ledger.holdings(of: [depot.id]).isEmpty)
+		#expect(ledger.holdings(of: [fonds.id]).map(\.security.name) == ["Silber"])
+	}
+
 	@Test("The total gain of a group counts the positions with a purchase price only")
 	func totalGain() {
 		let ledger = Ledger(accounts: [depot, fonds], holdings: [

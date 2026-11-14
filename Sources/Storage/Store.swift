@@ -95,7 +95,11 @@ public final class Store: SavedPINStore {
 				categories: try Domain.Category.fetchAll(db)))
 			let stored = try Transaction.filter(Column("accountID") == accountID).fetchAll(db)
 			let deleted = try DeletedTransaction.filter(Column("accountID") == accountID).fetchAll(db)
-			let holdings = try HoldingRecord.filter(Column("accountID") == accountID).fetchAll(db).compactMap(\.holding)
+			// Only a refresh with positions reads the stored ones. A file or a migration never touches them.
+			var holdings: [Holding] = []
+			if case let .refresh(result) = delivery, result.holdings != nil {
+				holdings = try HoldingRecord.filter(Column("accountID") == accountID).fetchAll(db).compactMap(\.holding)
+			}
 			let r = reconcile(delivery, into: account, stored: stored, deleted: deleted, holdings: holdings, rules: rules, now: now)
 			for t in r.added { try t.insert(db) }
 			for t in r.booked + r.updated + r.marked { try t.update(db) }

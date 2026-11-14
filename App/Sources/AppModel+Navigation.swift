@@ -44,6 +44,12 @@ extension AppModel {
 		return nil
 	}
 
+	/// The portfolios whose positions the view shows: the selected portfolio, or every account of the selected
+	/// group when all of them are portfolios.
+	var selectedPortfolios: [UUID]? {
+		selection.flatMap { ledger.portfolioAccounts(in: $0.scope) }
+	}
+
 	var selectedOfflineAccount: Account? {
 		selectedAccount.flatMap { $0.isOffline ? $0 : nil }
 	}
