@@ -152,6 +152,25 @@ struct LedgerTests {
 		#expect(l.transactions(in: .account(giro.id), filter: f).map(\.name) == ["Bäckerei Gutbrot"])
 	}
 
+	@Test("The custom amount range compares the amount with its sign, with both ends included")
+	func customAmountRange() throws {
+		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
+		let l = Ledger(accounts: [giro], transactions: [150_00, -150_00, 500_00, 1_000_00, -1_500_00, -300_00].enumerated().map {
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 1 + $0.offset), amountMinor: $0.element, name: "Row \($0.offset)")
+		})
+		func shown(_ min: Int64?, _ max: Int64?) throws -> [Int64] {
+			var f = TransactionFilter()
+			f.amount = try #require(TransactionFilter.AmountFilter.custom(min: min, max: max))
+			return l.transactions(in: .account(giro.id), filter: f).map(\.amountMinor).sorted()
+		}
+		#expect(try shown(100_00, 500_00) == [150_00, 500_00])
+		#expect(try shown(-500_00, -100_00) == [-300_00, -150_00])
+		#expect(try shown(1_000_00, nil) == [1_000_00])
+		#expect(try shown(nil, -1_500_00) == [-1_500_00])
+		#expect(TransactionFilter.AmountFilter.custom(min: -100_00, max: -500_00) == nil)
+		#expect(TransactionFilter.AmountFilter.custom(min: -100_00, max: -100_00) != nil)
+	}
+
 	@Test("Uncategorized holds every transaction without a category")
 	func uncategorized() throws {
 		let l = ledger()
