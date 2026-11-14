@@ -359,6 +359,8 @@ final class DebugHarness {
 			case "changePassword": model.sheet = .changePassword
 			case "categorySettings": if case let .category(id) = model.selection { model.sheet = .categorySettings(id) }
 			case "accountSettings": if case let .account(id) = model.selection { model.sheet = .accountSettings(id) }
+			// What "Calibrate..." in the account header does.
+			case "calibration": if case let .account(id) = model.selection { model.sheet = .calibration(id) }
 			case "transaction": model.sheet = .transaction(model.visibleTransactions.first?.id)
 			default: model.sheet = nil
 			}
@@ -375,6 +377,9 @@ final class DebugHarness {
 		case "state":
 			log("phase=\(model.phase) accounts=\(model.ledger.accounts.count) transactions=\(model.ledger.transactions.count) visible=\(model.visibleTransactions.count) selection=\(String(describing: model.selection)) selected=\(model.selectedAccount?.name ?? "-")")
 			logChart()
+		// Whether the selected account proposes a calibration, without amounts.
+		case "calibration":
+			log("calibration proposed=\(model.selectedAccount.flatMap { model.ledger.proposedCalibration(of: $0, today: .today()) } != nil)")
 		case "quit": NSApp.terminate(nil)
 		default: log("unknown command \(command)")
 		}

@@ -237,6 +237,43 @@ struct AccountSettingsSheet: View {
 	}
 }
 
+/// Asks for the correct balance at the end of today and moves the initial balance by the difference, so that
+/// every computed balance shifts by the same amount. It opens with the balance that the proposal fills in.
+struct CalibrationSheet: View {
+	@Environment(AppModel.self) private var model
+	let accountID: UUID
+	@State private var balance = ""
+
+	var body: some View {
+		if let account = model.ledger.account(accountID) {
+			SheetFrame(title: "Calibrate \(account.name)", canConfirm: AmountParser.decimal(from: balance) != nil, onConfirm: {
+				guard let d = AmountParser.decimal(from: balance), var a = model.ledger.account(accountID) else { return true }
+				a.initialBalanceMinor = model.ledger.calibratedInitialBalance(of: a, balanceToday: Money(d, currency: a.currency).minorUnits, today: .today())
+				a.initialBalanceIsSet = true
+				model.save(account: a)
+				return true
+			}) {
+				Section {
+					Text("Balances are computed from the initial balance and the transactions. Add missing transactions and remove duplicates first. Then enter the correct balance at the end of today, and the initial balance changes by the difference.")
+						.fixedSize(horizontal: false, vertical: true)
+					LabeledContent("Balance at the end of today") {
+						TextField("Balance at the end of today", text: $balance)
+							.labelsHidden()
+							.marksUnreadableAmount(balance)
+							.multilineTextAlignment(.trailing)
+							.monospacedDigit()
+					}
+				}
+			}
+			.onAppear {
+				let today = Day.today()
+				let value = model.ledger.proposedCalibration(of: account, today: today)?.balanceToday ?? model.ledger.computedBalance(of: account, through: today)
+				balance = Format.editableAmount(value.minorUnits, value.currency)
+			}
+		}
+	}
+}
+
 struct GroupSettingsSheet: View {
 	@Environment(AppModel.self) private var model
 	let groupID: UUID

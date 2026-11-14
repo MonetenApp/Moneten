@@ -1282,6 +1282,8 @@ enum SheetKind: Identifiable, Equatable {
 	/// `assigning` are the transactions that "Add category" in "Assign Category" moves into it.
 	case newCategory(isGroup: Bool, assigning: Set<UUID> = [])
 	case accountSettings(UUID)
+	/// The calibration window that the proposal in the account header opens.
+	case calibration(UUID)
 	case groupSettings(UUID)
 	case categorySettings(UUID)
 	case transaction(UUID?)
