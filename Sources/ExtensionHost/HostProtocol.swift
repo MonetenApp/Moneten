@@ -27,6 +27,15 @@ public struct HostSetup: Sendable, Codable {
 		self.storage = storage
 		self.developer = developer
 	}
+
+	/// The test hosts that this build lets through. A release build has none, even when a caller sets them.
+	var testHosts: Set<String> {
+		#if DEBUG
+		developer?.testHosts ?? []
+		#else
+		[]
+		#endif
+	}
 }
 
 /// What `ext` adds to a session of the app.
@@ -36,7 +45,7 @@ public struct DeveloperOptions: Sendable, Codable, Equatable {
 	/// Certificates in DER that HTTPS trusts in addition to those of the system, for a test server of the author.
 	public var trustedCertificates: [Data]
 	/// Special-use names that the host lets through as if they were public, such as `bank.localhost` for
-	/// the made-up bank of the tests of `ext`. Only a debug build of `ext` sets them.
+	/// the made-up bank of the tests of `ext`. Only a debug build of `ext` sets them, and only a debug build of the host reads them.
 	public var testHosts: Set<String>
 
 	public init(capture: Capture? = nil, trustedCertificates: [Data] = [], testHosts: Set<String> = []) {
@@ -160,7 +169,7 @@ public enum HostProcess {
 				// Below `Network`, so the recording holds each request as the host policy let it go out.
 				if case .record = setup.developer?.capture { transport = RecordingTransport(base: transport) { emit(.trace(.exchange($0))) } }
 				let started = ContinuousClock.now
-				let new = HostSession(package: setup.package, transport: transport, decisions: setup.decisions, testHosts: setup.developer?.testHosts ?? [], memory: setup.limits.memory,
+				let new = HostSession(package: setup.package, transport: transport, decisions: setup.decisions, testHosts: setup.testHosts, memory: setup.limits.memory,
 					environment: setup.environment, storage: setup.storage, capture: setup.developer?.capture, ask: askApp, log: { emit(.print($0)) },
 					status: { emit(.status($0)) }, alive: { emit(.alive) }, random: { emit(.trace(.random($0))) },
 					keyUse: { emit(.trace($0.map(HostTrace.key) ?? .foreignKey)) }, keyFingerprint: { emit(.trace(.keyFingerprint($0))) })
