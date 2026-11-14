@@ -75,9 +75,10 @@ struct BankAccessTests {
 		#expect(added.map(\.remoteID) == ["DE89370400440532013000", "4711"])
 	}
 
-	@Test("A migrated account takes over the access and keeps its ID, name, and group")
+	@Test("A migrated account takes over the access, keeps its ID, name, group, and initial balance, and drops the balance of the source")
 	func migratedConnects() {
-		let migrated = Account(position: 3, name: "Haushalt", kind: .giro, source: .migrated, iban: "DE02120300000000202051", sourceID: "moneymoney:17")
+		let migrated = Account(position: 3, name: "Haushalt", kind: .giro, source: .migrated, iban: "DE02120300000000202051", bankBalanceMinor: 133_320,
+			bankBalanceDate: Date(timeIntervalSince1970: 1_793_534_400), initialBalanceMinor: 150_000, sourceID: "moneymoney:17")
 		let ledger = Ledger(accounts: [migrated])
 		let listed = Self.candidate("Girokonto", iban: "DE02120300000000202051", number: "202051")
 		#expect(ledger.setupMatch(for: listed, listed: [listed]) == .connects(migrated))
@@ -90,6 +91,8 @@ struct BankAccessTests {
 		#expect(added.first?.source == .bank)
 		#expect(added.first?.accessID == Self.accessID)
 		#expect(added.first?.remoteID == "DE02120300000000202051")
+		#expect(added.first?.initialBalanceMinor == 150_000)
+		#expect(added.first?.bankBalanceMinor == nil && added.first?.bankBalanceDate == nil)
 
 		var connected = migrated
 		connected.accessID = UUID()
