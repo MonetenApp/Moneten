@@ -48,6 +48,7 @@ None.
 - The keys of the property lists are not documented on the website. Before the design starts, record a real export from a test database and fix the field mapping against it.
 - Issue #24 expects that rules cannot be migrated. The plan for this change expects that they can. The spec migrates a rule when the category export contains it and lists it in the report when it does not. A real export, checked on 2026-11-10, contains the rules.
 - Migrated accounts start as accounts without a bank access, because login data cannot be read. The add account assistant attaches a bank access to a migrated account when the IBAN or account number fits.
+- The source shows the balance of an account without its pending transactions. The app counts pending transactions on top, as for a refreshed account and as the change `add-charts` decides. An account with pending transactions therefore shows a different balance than in the source.
 - Portfolio accounts are migrated as accounts. Their positions follow when securities accounts are available in v0.2.
 - A split transaction arrives as MoneyMoney exports it. If the export lists the parts as separate transactions, the app keeps them as separate transactions and says so in the report.
 - The command is in the File menu and in the empty state of a new database.

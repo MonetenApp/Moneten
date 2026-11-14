@@ -107,9 +107,15 @@ The app SHALL create every transaction of the source with its booking date, valu
 
 #### Scenario: Counts and balances match
 
-- **GIVEN** the account "Giro" has 6,200 transactions and a balance of 1.234,56 € in the source
+- **GIVEN** the account "Giro" has 6,200 transactions and a balance of 1.234,56 € in the source, and none of them is pending
 - **WHEN** the migration finishes
 - **THEN** the account "Giro" has 6,200 transactions and shows 1.234,56 €
+
+#### Scenario: Pending transactions count on top
+
+- **GIVEN** the account "Giro" has a balance of 1.000,00 € in the source, booked transactions of -250,00 €, and a pending transaction of -30,00 €
+- **WHEN** the migration finishes
+- **THEN** the account "Giro" shows 970,00 €
 
 ### Requirement: Category, comment, and checkmark of each transaction
 
