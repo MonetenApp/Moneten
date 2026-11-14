@@ -267,9 +267,13 @@ final class ExtensionLibrary {
 
 	/// Installs the approved version after the user confirmed it or chose "Update". A version that is not the
 	/// one of the index, or that asks for rights the user did not see, goes to the confirmation instead.
-	/// It does nothing while the package installs, which the row shows with "Installing...".
+	/// While the package installs, it installs nothing and says so.
 	func update(_ id: String, approving approval: UpdatePlan.Approval) async {
-		guard !working.contains(id), let entry = index?.entry(id), let available = try? entry.manifest.get(), case let .catalog(installed)? = records[id],
+		guard !working.contains(id) else {
+			failure = "\(index?.entry(id)?.name ?? id) is being installed. Try again when the install ends."
+			return
+		}
+		guard let entry = index?.entry(id), let available = try? entry.manifest.get(), case let .catalog(installed)? = records[id],
 			let current = try? Installer.load(installed, from: folder).manifest else { return reload() }
 		let plan = UpdatePlan(installed: current, available: available, automatic: automatic, sessionRuns: sessionRuns(id), confirmed: approval)
 		updateState.record(plan, of: id, for: available)
@@ -280,10 +284,13 @@ final class ExtensionLibrary {
 		case .afterSession:
 			updateState.confirmed[id] = approval
 			reload()
-		case .needsConfirmation, .waitsForUser:
+		case .needsConfirmation:
 			failure = "Version \(entry.version ?? "") of \(entry.name) is not what you chose. Review it again."
 			reload()
 			review(id)
+		case .waitsForUser:
+			failure = "Version \(entry.version ?? "") of \(entry.name) is not what you chose. Choose \"Update\" to install it."
+			reload()
 		case .upToDate:
 			reload()
 		}
@@ -330,6 +337,9 @@ final class ExtensionLibrary {
 			})
 			savedUpdates[id] = nil
 			log("ext installed \(id) version=\(installed.version)")
+			// An index that arrived during the download can list a newer version. The task starts after this
+			// install leaves `working`, so `applyUpdates` can install that version.
+			if index?.entry(id)?.version != installed.version { Task { await applyUpdates() } }
 		} catch {
 			if case .removed = error { return log("ext install stopped \(id) \(error)") }
 			failure = "\(error)"
