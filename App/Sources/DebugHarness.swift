@@ -150,8 +150,10 @@ final class DebugHarness {
 		// The delivered notifications of this app in the Notification Center, with their titles and the number of their accounts.
 		case "notices": logNotices()
 		case "errorsnapshot":
-			if let error = model.ledger.accounts.first(where: { $0.name == argument })?.refreshError {
-				offscreenSnapshot(RefreshErrorPopover(error: error), width: 352, name: "\(argument)-error")
+			// By the position and the kind of the account, as in "status", never by its name.
+			let accounts = model.ledger.accounts.filter { $0.accessID != nil }
+			if let position = accounts.firstIndex(where: { $0.name == argument }), let error = accounts[position].refreshError {
+				offscreenSnapshot(RefreshErrorPopover(error: error), width: 352, name: "error-\(position)-\(accounts[position].kind)")
 			}
 		case "extrun": runExtension(argument)
 		case "escape":
@@ -344,7 +346,7 @@ final class DebugHarness {
 		case "newcategory": Task { await model.addCategory(name: argument, isGroup: false, parentID: nil, assigning: model.selectedTransactions) }
 		case "selectRows": model.selectedTransactions = Set(model.visibleTransactions.prefix(Int(argument) ?? 1).map(\.id))
 		case "state":
-			log("phase=\(model.phase) accounts=\(model.ledger.accounts.count) transactions=\(model.ledger.transactions.count) visible=\(model.visibleTransactions.count) selection=\(String(describing: model.selection)) selected=\(model.selectedAccount.map { "\($0.kind)" } ?? "-")")
+			log("phase=\(model.phase.trailName) accounts=\(model.ledger.accounts.count) transactions=\(model.ledger.transactions.count) visible=\(model.visibleTransactions.count) selection=\(String(describing: model.selection)) selected=\(model.selectedAccount.map { "\($0.kind)" } ?? "-")")
 			logChart()
 		case "quit": NSApp.terminate(nil)
 		default: log("unknown command \(command)")
@@ -366,6 +368,16 @@ final class DebugHarness {
 	private static func label(_ error: RefreshError?) -> String {
 		guard let error else { return "-" }
 		return error.code ?? "set"
+	}
+
+	/// The case of a refresh state, and of a failure its case and the return code of the bank, without a text.
+	private static func label(_ state: SyncState) -> String {
+		guard case let .failed(failure) = state else { return caseName(state) }
+		return (["failed", caseName(failure)] + [failure.bankMessage?.code].compactMap { $0 }).joined(separator: ":")
+	}
+
+	private static func caseName(_ value: Any) -> String {
+		String(String(describing: value).prefix { $0 != "(" })
 	}
 
 	/// Whether a message is shown, without its text, which can repeat the login name or an IBAN.
@@ -517,14 +529,8 @@ final class DebugHarness {
 				ExtensionWebDebug.pages[ExtensionWebDebug.key(exchange.request.url)] = exchange.response.body ?? ""
 			}
 			ExtensionWebDebug.log = { [weak self] in self?.log($0) }
-			let log: @Sendable (HostLog) -> Void = { [weak self, package] line in
-				Task { @MainActor in
-					switch line {
-					case let .print(text): self?.log("ext print \(package.name): \(text)")
-					case let .status(text): self?.log("ext status \(package.name): \(text)")
-					case let .sent(request): self?.log("ext sent \(request)")
-					}
-				}
+			let log: @Sendable (HostLog) -> Void = { [weak self, package, madeUp = fixture != nil] line in
+				Task { @MainActor in self?.log(line.debugLine(package.name, madeUp: madeUp)) }
 			}
 			if command == "extaccess" {
 				model.addExtensionAccess(package: package, service: parts.count > 2 ? parts[2] : package.name, fixture: fixture, log: log)
@@ -562,8 +568,8 @@ final class DebugHarness {
 		case .pin: log("ext prompt pin")
 		case let .secondFactor(request):
 			switch request.challenge {
-			case let .enterTAN(text, image): log("ext prompt tan label=\(request.field.label) text=\(text.replacingOccurrences(of: "\n", with: " / ")) image=\(image != nil)")
-			case let .approveInApp(text, app, image, _): log("ext prompt approve app=\(app ?? "-") text=\(text) image=\(image != nil)")
+			case let .enterTAN(text, image): log("ext prompt tan label=\(request.field.label) text=\(Self.isSet(text)) image=\(image != nil)")
+			case let .approveInApp(text, app, image, _): log("ext prompt approve app=\(app ?? "-") text=\(Self.isSet(text)) image=\(image != nil)")
 			case let .chooseTANMethod(methods, current): log("ext prompt methods \(methods.map { "\($0.id)=\($0.name)\($0.unavailable == nil ? "" : " (unavailable)")" }.joined(separator: ", ")) current=\(current ?? "-")")
 			case let .openBrowser(approval): log("ext prompt browser \(approval.url.host() ?? "")")
 			case let .captcha(captcha): log("ext prompt captcha \(captcha.provider.rawValue) page=\(captcha.page?.host() ?? "-")")
@@ -576,7 +582,7 @@ final class DebugHarness {
 	private func logExtensionState() {
 		guard let model else { return }
 		for access in model.accesses.values.sorted(by: { $0.bankName < $1.bankName }) {
-			log("ext access \(access.bankName) state=\(String(describing: model.sync.states[access.id] ?? .idle).prefix(60))")
+			log("ext access \(access.bankName) state=\(Self.label(model.sync.states[access.id] ?? .idle))")
 			for account in model.ledger.accounts where account.accessID == access.id {
 				let rows = model.ledger.transactions.filter { $0.accountID == account.id }
 				let failure = account.refreshError.map { " failed=\(Self.label($0))" } ?? ""
@@ -817,6 +823,18 @@ enum DemoData {
 		await model.replacingTable {
 			_ = try? model.merge(.file(ts.filter { $0.accountID == giro.id }), into: giro.id)
 			_ = try? model.merge(.file(ts.filter { $0.accountID == savings.id }), into: savings.id)
+		}
+	}
+}
+
+extension HostLog {
+	/// The line of `debug.log`. A text of the extension is written only with a fixture, whose data is made up.
+	/// Without one the extension talks to the real service, and its texts can hold names, IBANs, or tokens.
+	func debugLine(_ name: String, madeUp: Bool) -> String {
+		switch self {
+		case let .print(text): madeUp ? "ext print \(name): \(text)" : "ext print \(name) (\(text.count) characters)"
+		case let .status(text): madeUp ? "ext status \(name): \(text)" : "ext status \(name) (\(text.count) characters)"
+		case let .sent(request): "ext sent \(request)"
 		}
 	}
 }

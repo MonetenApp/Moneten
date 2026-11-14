@@ -31,7 +31,7 @@ fi
 
 WORK="$(mktemp -d)"
 finish() {
-	[ -n "$PID" ] && kill "$PID" 2>/dev/null
+	if [ -n "$PID" ]; then kill "$PID" 2>/dev/null || true; fi
 	[ -n "$KEEP" ] && echo "The log stays in $WORK/debug." || rm -rf "$WORK"
 }
 trap finish EXIT

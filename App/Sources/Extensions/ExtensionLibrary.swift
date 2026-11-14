@@ -489,9 +489,9 @@ final class ExtensionLibrary {
 			try await MainActor.run {
 				guard let self, let model = self.model else { throw CancellationError() }
 				let package = try self.verifiedPackage(id)
-				let log = self.log
+				let log = self.log, madeUp = self.fixtures[id] != nil
 				guard let connector = model.makeExtensionConnector(package, fixture: self.fixtures[id], log: { line in
-					if case let .print(text) = line { Task { @MainActor in log("ext print \(id): \(text)") } }
+					if case .print = line { Task { @MainActor in log(line.debugLine(id, madeUp: madeUp)) } }
 				}) else { throw CancellationError() }
 				return connector
 			}
