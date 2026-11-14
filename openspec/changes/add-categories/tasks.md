@@ -33,7 +33,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 ## 3. Pending transactions count
 
 - [ ] 3.1 Write the test first in LedgerTests: with today 09.11.2026, a category with a booked -80,00 €, a pending -40,00 €, and a pending -5,00 € with `needsReview` in November 2026 has the sum -120,00 € for "Current month" in `Ledger.sum(ofCategory:in:)`.
-- [ ] 3.2 Count pending rows without `needsReview` in `Ledger.sum(ofCategory:in:)` in `Sources/Domain/Ledger.swift`, which PR #139 adds and `AppModel.sidebarAmount(of:)` uses. The status line of the category view counts pending rows already. The task for `needsReview` in the change `add-account-refresh` leaves the marked ones out of its sum.
+- [ ] 3.2 Count pending rows without `needsReview` in `Transaction.isInSum(of:)` in `Sources/Domain/Models.swift`, which PR #139 adds. `Ledger.sum(ofCategory:in:)` calls it, and `AppModel.sidebarAmount(of:)` uses that sum. This is the same edit as task 3.2 of the change `add-charts`, done once. The status line of the category view counts pending rows already. The task for `needsReview` in the change `add-account-refresh` leaves the marked ones out of its sum, and its number still counts them.
 - [ ] 3.3 Once the change `add-split-transactions` builds splits, count the parts and not the original in `Ledger.sum(ofCategory:in:)` and in the number and the sum of the status line. Write the tests first with the scenarios "Split transaction" of "Amount in the sidebar" and "Category view".
 
 ## Workflow follow-up

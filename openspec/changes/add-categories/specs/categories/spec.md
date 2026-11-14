@@ -137,7 +137,7 @@ The app SHALL show an amount next to a category according to "Display in sidebar
 
 #### Scenario: Pending transaction
 
-- **GIVEN** today is 09.11.2026, and "Groceries" has a booked transaction of -80,00 € and a pending transaction of -40,00 € in November 2026
+- **GIVEN** today is 09.11.2026, and "Groceries" has a booked transaction of -80,00 €, a pending transaction of -40,00 €, and a pending transaction of -5,00 € marked for review in November 2026
 - **WHEN** "Display in sidebar" of "Groceries" is "Current month"
 - **THEN** the sidebar shows -120,00 € next to "Groceries"
 
@@ -265,9 +265,9 @@ The app SHALL list the transactions of the selected category from all accounts i
 
 #### Scenario: Pending transaction
 
-- **GIVEN** "Groceries" contains a booked transaction of -80,00 € and a pending transaction of -40,00 €
+- **GIVEN** "Groceries" contains a booked transaction of -80,00 €, a pending transaction of -40,00 €, and a pending transaction of -5,00 € marked for review
 - **WHEN** the user selects "Groceries"
-- **THEN** the status line shows 2 transactions and -120,00 €
+- **THEN** the status line shows 3 transactions and -120,00 €
 
 #### Scenario: Split transaction
 

@@ -285,19 +285,25 @@ The app SHALL open a calibration window from "Calibrate" in the account settings
 
 ### Requirement: Propose a calibration
 
-The app SHALL propose a calibration when the computed balance of an account differs from the balance that the bank reports. The computed balance includes the pending transactions that count, and the bank reports its balance without them. So the app makes no proposal when the difference equals the sum of the pending transactions that count. A pending transaction marked for review does not count, as the capability `account-refresh` states.
+The app SHALL propose a calibration when the balance that the bank reports differs from the computed balance at the end of the day of that bank balance, less the pending transactions that count up to that day. The bank reports its balance for that day and without pending transactions, so neither a pending transaction nor a transaction booked after that day leads to a proposal. A pending transaction marked for review does not count, as the capability `account-refresh` states.
 
 #### Scenario: Unexplained difference
 
-- **GIVEN** the bank reports 1.200,00 €, the computed balance is 1.250,00 €, and there are no pending transactions
+- **GIVEN** the bank reports 1.200,00 € for today, the computed balance of today is 1.250,00 €, and there are no pending transactions
 - **WHEN** a refresh ends
 - **THEN** the app proposes to calibrate the account
 
 #### Scenario: Difference from pending transactions
 
-- **GIVEN** the bank reports 1.200,00 €, one pending transaction of -50,00 € exists, and the computed balance with it is 1.150,00 €
+- **GIVEN** the bank reports 1.200,00 € for today, one pending transaction of -50,00 € exists, and the computed balance of today with it is 1.150,00 €
 - **WHEN** a refresh ends
 - **THEN** the app makes no proposal
+
+#### Scenario: Transactions after the day of the bank balance
+
+- **GIVEN** today is 12.11.2026, the initial balance is 700,00 €, and the account has booked transactions of -200,00 € on 01.11.2026 and of -30,00 € on 12.11.2026
+- **WHEN** a refresh ends that reports a balance of 500,00 € for 10.11.2026
+- **THEN** the app makes no proposal, although the computed balance of today is 470,00 €
 
 ### Requirement: Bar chart of a category
 

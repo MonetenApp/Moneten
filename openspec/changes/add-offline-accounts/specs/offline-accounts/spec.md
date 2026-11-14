@@ -119,7 +119,7 @@ The app SHALL compute the balance of an offline account as its initial balance p
 
 #### Scenario: Pending transaction
 
-- **GIVEN** an offline account in euros with an initial balance of 0,00 €, the transactions 100,00 €, -4,80 €, and -12,00 €, and a pending transaction of -10,00 €
+- **GIVEN** an offline account in euros with an initial balance of 0,00 €, the transactions 100,00 €, -4,80 €, and -12,00 €, a pending transaction of -10,00 €, and a pending transaction of -5,00 € marked for review
 - **WHEN** the user looks at the sidebar
 - **THEN** the balance is 73,20 €
 
@@ -172,17 +172,42 @@ The app SHALL offer "Create Offsetting Entry" in the context menu of a transacti
 - **WHEN** the user opens "Create Offsetting Entry"
 - **THEN** the submenu shows only the disabled line "No offline accounts available"
 
+### Requirement: An offsetting entry stays in its currency
+
+The app SHALL disable an offline account in the submenu of "Create Offsetting Entry" when its currency differs from the currency of a selected transaction. The entry keeps the currency of its source, and the balance of that offline account would not count it.
+
+#### Scenario: Offline account in another currency
+
+- **GIVEN** a transaction of -200,00 USD "Geldautomat" in the account "Travel Card", the offline account "Wallet" in euros, and the offline account "Dollar Cash" in US dollars
+- **WHEN** the user opens "Create Offsetting Entry"
+- **THEN** the submenu shows "Dollar Cash" enabled and "Wallet" disabled
+
 ### Requirement: Fields of an offsetting entry
 
-The app SHALL give an offsetting entry the name, the purpose, the comment, and the category of the source transaction. The copied category counts as chosen by hand, so no rule changes it. Its booking date and value date are the booking date of the source. Its counterparty account is the IBAN and BIC of the source account, and none when that account has no IBAN. A category restricted to an account other than the target becomes the default category, and then the rules sort the entry.
+The app SHALL give an offsetting entry the name, the purpose, and the comment of the source transaction. Its booking date and value date are the booking date of the source. Its counterparty account is the IBAN and BIC of the source account, and none when that account has no IBAN.
 
 #### Scenario: Cash withdrawal
 
-- **GIVEN** a transaction of -200,00 € "Geldautomat" with the purpose "Abhebung", the comment "Marktplatz", and the category "Cash" on 05.11.2026, in the account "Giro" with the IBAN DE02120300000000202051
-- **AND** a rule that sorts "Geldautomat" into "Fees"
+- **GIVEN** a transaction of -200,00 € "Geldautomat" with the purpose "Abhebung" and the comment "Marktplatz" on 05.11.2026, in the account "Giro" with the IBAN DE02120300000000202051
 - **WHEN** the user chooses "Create Offsetting Entry" and then "Wallet"
-- **THEN** "Wallet" gets 200,00 € named "Geldautomat" with the purpose "Abhebung", the comment "Marktplatz", and the category "Cash"
+- **THEN** "Wallet" gets 200,00 € named "Geldautomat" with the purpose "Abhebung" and the comment "Marktplatz"
 - **AND** its booking date and value date are 05.11.2026, and its counterparty account is DE02120300000000202051
+
+### Requirement: Category of an offsetting entry
+
+The app SHALL give an offsetting entry the category of the source transaction as a category chosen by hand, so no rule changes it. A source without a category gives an entry without one, and the rules sort it. A category whose restriction does not include the target account becomes the default category, and then the rules sort the entry.
+
+#### Scenario: Copied category
+
+- **GIVEN** a transaction "Geldautomat" of the account "Giro" in the category "Cash", and a rule that sorts "Geldautomat" into "Fees"
+- **WHEN** the user creates its offsetting entry in "Wallet"
+- **THEN** the entry in "Wallet" is in "Cash"
+
+#### Scenario: Source without a category
+
+- **GIVEN** a transaction "Geldautomat" of the account "Giro" in "Uncategorized", and a rule that sorts "Geldautomat" into "Cash"
+- **WHEN** the user creates its offsetting entry in "Wallet"
+- **THEN** the entry in "Wallet" is in "Cash"
 
 #### Scenario: Restricted category
 
