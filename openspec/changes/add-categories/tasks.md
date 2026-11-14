@@ -11,7 +11,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [x] 1.5 Default category. Verified by LedgerTests "Uncategorized holds every transaction without a category".
 - [x] 1.6 Category settings. Verified by the debug harness snapshot in the first build.
 - [x] 1.7 Category color. Verified by color picker in the settings.
-- [ ] 1.8 Category currency. Build it and verify it with a test or in the app.
+- [x] 1.8 Category currency. Verified by LedgerTests "Mixed currencies: the sidebar sums the category currency, the status line each currency", which also sets the category to USD, and by the "Currency" field in the settings sheet in the debug harness snapshot.
 - [ ] 1.9 Amount in the sidebar. Built for the earlier rule, which left pending transactions out. Tasks 3.1 and 3.2 change it.
 - [x] 1.10 Restrict a category to an account. Verified by CategorizerTests "Rules respect the account restriction".
 - [x] 1.11 Assign a category from the context menu. Verified by "Assign Category" with a checkmark at the current category.
@@ -23,7 +23,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [x] 1.17 Category group view. Verified by LedgerTests filter by a category tree.
 - [x] 1.18 Remove a category. Verified by confirmation, transactions become uncategorized.
 - [x] 1.19 Remove a category group. Verified by subcategories are removed with the group.
-- [ ] 1.20 Starter categories. Built in part: English names only. Finish it and verify it with a test or in the app.
+- [x] 1.20 Starter categories. Verified by StarterCategoriesTests for the English and the German set and the language choice, and by a sidebar snapshot of a new database that the debug build created with the first language German.
 - [x] 1.21 Category icon. Verified by the debug harness: "symbol" sets SF Symbols on four categories, and the sidebar snapshot and the settings sheet show them in the category color, and a bookmark for a category without an icon; SchemaTests checks that migration v3 keeps existing categories without an icon and stores a chosen one.
 
 ## 2. Integration
