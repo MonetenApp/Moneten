@@ -35,7 +35,7 @@ Prices and quantities are `Decimal` and keep every decimal place that the bank s
 
 `Holding` computes, in `Domain`:
 
-- `value`: the market value plus the accrued interest. This is what the position adds to the account, so the values of all positions add up to the total of the bank. MT535 defines HOLP as the sum of the market values and the accrued interest of the positions. When the bank sends no market value, the value is the quantity times the quote, divided by 100 for a percentage, converted with the exchange rate into the currency of the account when the rate links the two currencies, and rounded to the currency once, at the end.
+- `value`: the market value plus the accrued interest, converted with the exchange rate when the interest is in another currency. This is what the position adds to the account, so the values of all positions add up to the total of the bank. MT535 defines HOLP as the sum of the market values and the accrued interest of the positions. When the bank sends no market value, the value is the quantity times the quote, divided by 100 for a percentage, converted with the exchange rate into the currency of the account when the rate links the two currencies, and rounded to the currency once, at the end.
 - `purchaseValue`: the quantity times the purchase price, divided by 100 for a percentage, converted the same way into the currency of the value.
 - `gain`: the market value without the accrued interest, less the purchase value, and the percentage of the purchase value. The accrued interest is not part of the gain, because the purchase price of a bond is a price without interest. A position without a purchase price, or whose purchase value cannot be converted into the currency of its value, has no gain.
 

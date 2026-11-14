@@ -105,6 +105,16 @@ struct HoldingTests {
 		#expect(h.gain(in: "EUR") == nil)
 	}
 
+	@Test("Accrued interest in the currency of the quote converts with the value, and stays out of the value when it cannot")
+	func foreignAccruedInterest() {
+		var bond = Holding(accountID: depot, security: Security(name: "Treasury Muster"), quantity: 1000, nominalCurrency: "USD",
+			quote: Quote(amount: 100, currency: nil), accruedInterest: Money(minorUnits: 2_000, currency: "USD"),
+			exchangeRate: ExchangeRate(base: "EUR", quoted: "USD", rate: 2))
+		#expect(bond.value(in: "EUR") == euro("510"))
+		bond.accruedInterest = Money(minorUnits: 2_000, currency: "CHF")
+		#expect(bond.value(in: "EUR") == euro("500"))
+	}
+
 	@Test("A position without a value and without a quote has no value")
 	func nothingToValue() {
 		#expect(holding(quantity: "10").value(in: "EUR") == nil)

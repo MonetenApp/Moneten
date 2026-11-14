@@ -92,13 +92,14 @@ public struct Holding: Identifiable, Hashable, Sendable {
 		public let percent: Decimal?
 	}
 
-	/// What the position adds to its account: the market value plus the accrued interest. Without a
+	/// What the position adds to its account: the market value plus the accrued interest, converted with the
+	/// exchange rate into the currency of the market value when it differs. Without a
 	/// market value from the source, the quantity times the quote, in `currency` when the exchange rate
 	/// links the currencies. Nil without a market value and without a quote.
 	public func value(in currency: String) -> Money? {
 		guard let market = marketDecimal(in: currency) else { return nil }
 		var total = market.amount
-		if let accruedInterest, accruedInterest.currency == market.currency { total += accruedInterest.decimal }
+		if let accruedInterest, let interest = convert(accruedInterest.decimal, from: accruedInterest.currency, to: market.currency) { total += interest }
 		return Money(total, currency: market.currency)
 	}
 
