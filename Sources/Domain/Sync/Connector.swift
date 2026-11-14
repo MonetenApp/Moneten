@@ -159,6 +159,12 @@ public struct RefreshResult: Sendable {
 	/// extension today, so the stored positions stay.
 	public let holdings: [Holding]?
 
+	/// The bank sent the balance without a transaction list, because it provides none for the account. A
+	/// portfolio has positions in place of transactions, and a failed request is an error of its own.
+	public func providesNoTransactions(for kind: AccountKind) -> Bool {
+		transactions == nil && transactionFailure == nil && !isPortfolio && kind != .portfolio
+	}
+
 	/// After a fetch of the full history, the day of the oldest transaction: the bank keeps none before it.
 	public var historyStart: Day? {
 		guard isComplete else { return nil }
