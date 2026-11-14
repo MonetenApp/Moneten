@@ -378,7 +378,7 @@ final class DebugHarness {
 			model.save(category: c)
 			log("rule error=\(c.ruleError.map { "\($0)" } ?? "none")")
 		// What "Add category" in "Assign Category" does with the selected rows.
-		case "newcategory": Task { await model.addCategory(name: argument, isGroup: false, parentID: nil, assigning: model.selectedTransactions) }
+		case "newcategory": Task { await model.addCategory(name: argument, isGroup: false, parentID: nil, assigning: model.visibleSelection) }
 		case "selectRows": model.selectedTransactions = Set(model.visibleTransactions.prefix(Int(argument) ?? 1).map(\.id))
 		// "table" puts the focus in the transaction table, as a click on it does. "down", "up", "return", "escape",
 		// and "cmd+k" go to the main window or its sheet as the keyboard sends them. Then it logs where the focus is.
