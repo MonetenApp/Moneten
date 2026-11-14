@@ -165,9 +165,10 @@ import Testing
 		new.script += "-- 1.1\n"
 		server.publish(new)
 		let window = await Window()
+		let available = try entry(new).manifest.get()
 		await MainActor.run {
-			window.updates.record(.waitsForUser, of: "example", version: "1.1")
-			window.updates.confirmed["example"] = "1.1"
+			window.updates.record(.waitsForUser, of: "example", for: available)
+			window.updates.confirmed["example"] = UpdatePlan.Approval(version: "1.1")
 		}
 		try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: folder.path)
 		defer { try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: folder.path) }
@@ -184,8 +185,8 @@ import Testing
 		#expect(InstalledOrigin(catalog: true, record: try #require(before).record)
 			== .catalog(InstalledPackage(id: "example", name: "Example Bank", version: "1.0", files: try entry(old).files)))
 		let updates = await MainActor.run { window.updates }
-		#expect(updates.confirmed["example"] == "1.1")
-		#expect(updates.plans["example"] == UpdateState.Planned(version: "1.1", plan: .waitsForUser))
+		#expect(updates.confirmed["example"] == UpdatePlan.Approval(version: "1.1"))
+		#expect(updates.plans["example"] == UpdateState.Planned(manifest: available, plan: .waitsForUser))
 	}
 
 	/// Without a stored plan, such as before the first check of the index after unlocking, the window
@@ -194,17 +195,20 @@ import Testing
 		let old = TestCatalog.Package(version: "1.1")
 		let installed = InstalledPackage(id: "example", name: "Example Bank", version: "1.1", files: [])
 		let manifest = try Manifest.parse(old.files["manifest.json"]!, mode: .catalog)
-		func plan(_ updates: UpdateState = UpdateState(), listing change: ((inout TestCatalog.Package) -> Void)?) throws -> UpdatePlan? {
+		func index(_ change: (inout TestCatalog.Package) -> Void) throws -> CatalogIndex {
 			var listed = old
 			listed.version = "1.2"
-			guard let change else { return updates.plan(of: installed, manifest: manifest, in: nil) }
 			change(&listed)
-			return updates.plan(of: installed, manifest: manifest, in: try CatalogIndex.parse(TestCatalog.index(version: 2, [listed])))
+			return try CatalogIndex.parse(TestCatalog.index(version: 2, [listed]))
+		}
+		func plan(_ updates: UpdateState = UpdateState(), listing change: ((inout TestCatalog.Package) -> Void)?) throws -> UpdatePlan? {
+			guard let change else { return updates.plan(of: installed, manifest: manifest, in: nil) }
+			return updates.plan(of: installed, manifest: manifest, in: try index(change))
 		}
 		#expect(try plan(listing: { _ in }) == .waitsForUser)
 		#expect(try plan(listing: { $0.hosts.append("login.example.org") }) == .needsConfirmation(hosts: ["login.example.org"], fields: []))
 		var stored = UpdateState()
-		stored.record(.afterSession, of: "example", version: "1.2")
+		stored.record(.afterSession, of: "example", for: try #require(try index { _ in }.entry("example")?.manifest.get()))
 		#expect(try plan(stored, listing: { _ in }) == .afterSession)
 		#expect(try plan(listing: nil) == nil)
 		#expect(try plan(listing: { $0.version = "1.1" }) == nil)
@@ -229,12 +233,63 @@ import Testing
 		}
 		let earlier = try #require(try listing("1.2", host: "login.example.org", index: 2).entry("example")?.manifest.get())
 		var updates = UpdateState()
-		updates.record(UpdatePlan(installed: manifest, available: earlier, automatic: true, sessionRuns: false, confirmed: nil), of: "example", version: "1.2")
+		updates.record(UpdatePlan(installed: manifest, available: earlier, automatic: true, sessionRuns: false, confirmed: nil), of: "example", for: earlier)
 		let index = try listing("1.3", host: "data.example.net", index: 3)
 		let shown = updates.plan(of: installed, manifest: manifest, in: index)
 		#expect(shown == .needsConfirmation(hosts: ["data.example.net"], fields: []))
 		let listed = try #require(try index.entry("example")?.manifest.get())
-		#expect(UpdatePlan(installed: manifest, available: listed, automatic: true, sessionRuns: false, confirmed: "1.3") == .install)
+		#expect(UpdatePlan(installed: manifest, available: listed, automatic: true, sessionRuns: false, confirmed: .init(version: "1.3", hosts: ["data.example.net"])) == .install)
+	}
+
+	/// Version 1.1 is installed. Index 2 lists 1.2 with the new host login.example.org. Index 3 lists 1.2 again,
+	/// now also with data.example.net and the login field "One-time code".
+	struct Relisted {
+		let installed = InstalledPackage(id: "example", name: "Example Bank", version: "1.1", files: [])
+		let current: Manifest
+		let reviewed: Manifest
+		let relisted: Manifest
+		let index: CatalogIndex
+		let rights = UpdatePlan.needsConfirmation(hosts: ["login.example.org", "data.example.net"], fields: ["One-time code"])
+
+		init(reviewedHosts: [String] = ["login.example.org"]) throws {
+			let old = TestCatalog.Package(version: "1.1")
+			current = try Manifest.parse(old.files["manifest.json"]!, mode: .catalog)
+			var listed = old
+			listed.version = "1.2"
+			listed.hosts += reviewedHosts
+			reviewed = try Manifest.parse(listed.files["manifest.json"]!, mode: .catalog)
+			listed.hosts = old.hosts + ["login.example.org", "data.example.net"]
+			listed.login.append(["label": "One-time code"])
+			index = try CatalogIndex.parse(TestCatalog.index(version: 3, [listed]))
+			relisted = try #require(try index.entry("example")?.manifest.get())
+		}
+	}
+
+	@Test func relistedVersionWithOtherRightsShowsTheNewRights() throws {
+		let r = try Relisted()
+		var updates = UpdateState()
+		updates.record(UpdatePlan(installed: r.current, available: r.reviewed, automatic: true, sessionRuns: false, confirmed: nil), of: "example", for: r.reviewed)
+		#expect(updates.plan(of: r.installed, manifest: r.current, in: r.index) == r.rights)
+	}
+
+	/// The user confirmed the review of 1.2 while a session ran. When the session ends, the re-listed 1.2 asks again,
+	/// as does a review sheet that stayed open. After the review of the new rights, it installs.
+	@Test func confirmedReviewDoesNotCoverARelistedVersionWithOtherRights() throws {
+		let r = try Relisted()
+		let reviewed = UpdatePlan.Approval(version: "1.2", hosts: ["login.example.org"])
+		#expect(UpdatePlan(installed: r.current, available: r.reviewed, automatic: true, sessionRuns: true, confirmed: reviewed) == .afterSession)
+		#expect(UpdatePlan(installed: r.current, available: r.relisted, automatic: true, sessionRuns: false, confirmed: reviewed) == r.rights)
+		let again = UpdatePlan.Approval(version: "1.2", hosts: ["login.example.org", "data.example.net"], fields: ["One-time code"])
+		#expect(UpdatePlan(installed: r.current, available: r.relisted, automatic: true, sessionRuns: false, confirmed: again) == .install)
+	}
+
+	/// Automatic updates are off. "Update" chose 1.2 without new rights while a session ran. The re-listed 1.2 asks for the review.
+	@Test func chosenUpdateDoesNotCoverARelistedVersionWithNewRights() throws {
+		let r = try Relisted(reviewedHosts: [])
+		#expect(UpdatePlan(installed: r.current, available: r.reviewed, automatic: false, sessionRuns: false, confirmed: nil) == .waitsForUser)
+		let chosen = UpdatePlan.Approval(version: "1.2")
+		#expect(UpdatePlan(installed: r.current, available: r.reviewed, automatic: false, sessionRuns: true, confirmed: chosen) == .afterSession)
+		#expect(UpdatePlan(installed: r.current, available: r.relisted, automatic: false, sessionRuns: false, confirmed: chosen) == r.rights)
 	}
 
 	@Test func recordThatCannotBeReadStopsTheInstallBeforeItStarts() throws {

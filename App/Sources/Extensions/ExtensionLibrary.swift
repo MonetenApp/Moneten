@@ -247,37 +247,41 @@ final class ExtensionLibrary {
 	}
 
 	/// Installs every update that may install by itself now, and records the others for the window.
+	/// It reads the index and the record of each package after the download before it, so that a newer
+	/// index or an install meanwhile is not undone with what the loop read at its start.
 	func applyUpdates() async {
-		guard let index else { return }
-		for case let (id, .catalog(installed)) in records {
-			guard let entry = index.entry(id), entry.status == .active || entry.status == .unmaintained, let available = try? entry.manifest.get(),
+		guard index != nil else { return }
+		for id in records.keys {
+			guard case let .catalog(installed)? = records[id] else { continue }
+			guard let entry = index?.entry(id), entry.status == .active || entry.status == .unmaintained, let available = try? entry.manifest.get(),
 				let current = try? Installer.load(installed, from: folder).manifest else {
 				updateState.plans[id] = nil
 				continue
 			}
 			let plan = UpdatePlan(installed: current, available: available, automatic: automatic, sessionRuns: sessionRuns(id), confirmed: updateState.confirmed[id])
-			updateState.record(plan, of: id, version: available.version)
+			updateState.record(plan, of: id, for: available)
 			if plan == .install, !working.contains(id) { await download(entry) }
 		}
 		reload()
 	}
 
-	/// Installs `version` after the user confirmed it or chose "Update". A version that is not the one of
-	/// the index, or that asks for rights the user did not confirm, goes to the confirmation instead.
-	func update(_ id: String, to version: String) async {
+	/// Installs the approved version after the user confirmed it or chose "Update". A version that is not the
+	/// one of the index, or that asks for rights the user did not see, goes to the confirmation instead.
+	/// It does nothing while the package installs, which the row shows with "Installing...".
+	func update(_ id: String, approving approval: UpdatePlan.Approval) async {
 		guard !working.contains(id), let entry = index?.entry(id), let available = try? entry.manifest.get(), case let .catalog(installed)? = records[id],
 			let current = try? Installer.load(installed, from: folder).manifest else { return reload() }
-		let plan = UpdatePlan(installed: current, available: available, automatic: automatic, sessionRuns: sessionRuns(id), confirmed: version)
-		updateState.record(plan, of: id, version: available.version)
+		let plan = UpdatePlan(installed: current, available: available, automatic: automatic, sessionRuns: sessionRuns(id), confirmed: approval)
+		updateState.record(plan, of: id, for: available)
 		switch plan {
 		case .install:
-			updateState.confirmed[id] = version
+			updateState.confirmed[id] = approval
 			await download(entry)
 		case .afterSession:
-			updateState.confirmed[id] = version
+			updateState.confirmed[id] = approval
 			reload()
 		case .needsConfirmation, .waitsForUser:
-			failure = "Version \(entry.version ?? "") of \(entry.name) is not the version you chose. Review it again."
+			failure = "Version \(entry.version ?? "") of \(entry.name) is not what you chose. Review it again."
 			reload()
 			review(id)
 		case .upToDate:
@@ -429,7 +433,7 @@ final class ExtensionLibrary {
 		switch question {
 		case let .fileWarning(url, package, name): installFile(url, name: name, shown: package)
 		case let .allow(name, package): allow(name, shown: package)
-		case let .review(id, _, version, _, _): Task { await update(id, to: version) }
+		case let .review(id, _, version, hosts, fields): Task { await update(id, approving: .init(version: version, hosts: hosts, fields: fields)) }
 		case let .remove(id, _, _): remove(id)
 		}
 	}

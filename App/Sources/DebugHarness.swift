@@ -189,7 +189,7 @@ final class DebugHarness {
 		#endif
 		case "extcheck": Task { await model.extensions.checkNow() }
 		case "extinstall": Task { await model.extensions.install(argument) }
-		case "extupdate": Task { await model.extensions.update(argument, to: model.extensions.items.first { $0.id == argument }?.available ?? "") }
+		case "extupdate": Task { await model.extensions.update(argument, approving: .init(version: model.extensions.items.first { $0.id == argument }?.available ?? "")) }
 		case "extreview": model.extensions.review(argument)
 		case "extremove": model.extensions.askRemove(argument)
 		case "extfile": model.extensions.pickFile(URL(filePath: argument))

@@ -14,9 +14,24 @@ public enum UpdatePlan: Sendable, Equatable {
 	/// while the index lists it, which an index of one version per package does not (`Standing.outdated`).
 	case needsConfirmation(hosts: [String], fields: [String])
 
-	/// `confirmed` is the version that the user confirmed or chose with "Update". It installs that version,
-	/// also with new rights or with automatic updates off, but never a later one.
-	public init(installed: Manifest, available: Manifest, automatic: Bool, sessionRuns: Bool, confirmed: String?) {
+	/// What the user confirmed in the review or chose with "Update": a version and the new hosts and login
+	/// fields shown for it. "Update" shows none.
+	public struct Approval: Sendable, Equatable {
+		public let version: String
+		public let hosts: [String]
+		public let fields: [String]
+
+		public init(version: String, hosts: [String] = [], fields: [String] = []) {
+			self.version = version
+			self.hosts = hosts
+			self.fields = fields
+		}
+	}
+
+	/// `confirmed` installs its version, also with new rights or with automatic updates off, but never a later
+	/// one, and only while that version adds no host or login field beyond those the user saw. The catalog
+	/// could list the same version again with other rights.
+	public init(installed: Manifest, available: Manifest, automatic: Bool, sessionRuns: Bool, confirmed: Approval?) {
 		guard let version = available.version, Self.isNewer(version, than: installed.version ?? "0") else {
 			self = .upToDate
 			return
@@ -25,7 +40,7 @@ public enum UpdatePlan: Sendable, Equatable {
 		let hosts = (available.hosts ?? []).filter { !oldHosts.contains($0) }.map(\.value)
 		let oldFields = Set(Self.fields(installed).map { "\($0.service)\u{0}\($0.label)" })
 		let fields = Self.fields(available).filter { !oldFields.contains("\($0.service)\u{0}\($0.label)") }.map(\.label)
-		let chosen = confirmed == version
+		let chosen = confirmed.map { $0.version == version && Set(hosts).isSubset(of: $0.hosts) && Set(fields).isSubset(of: $0.fields) } ?? false
 		self = if !chosen, !hosts.isEmpty || !fields.isEmpty { .needsConfirmation(hosts: hosts, fields: fields) }
 			else if !chosen, !automatic { .waitsForUser }
 			else if sessionRuns { .afterSession }
@@ -45,29 +60,29 @@ public enum UpdatePlan: Sendable, Equatable {
 }
 
 /// What the app keeps for the updates of the installed catalog packages, by id: the plan of each waiting
-/// update, the version the user confirmed or chose, and the packages whose files do not match.
+/// update, what the user confirmed or chose, and the packages whose files do not match.
 public struct UpdateState: Sendable, Equatable {
 	public var plans: [String: Planned] = [:]
-	public var confirmed: [String: String] = [:]
+	public var confirmed: [String: UpdatePlan.Approval] = [:]
 	public var changed: Set<String> = []
 
 	public init() {}
 
-	/// The plan of a waiting update and the version that it plans. The user confirms the rights of that version only.
+	/// The plan of a waiting update and the manifest that it plans. The user confirms the rights of that manifest only.
 	public struct Planned: Sendable, Equatable {
-		public let version: String
+		public let manifest: Manifest
 		public let plan: UpdatePlan
 	}
 
-	/// Keeps the plan of `version` for the window. An update that installs now keeps nothing.
-	public mutating func record(_ plan: UpdatePlan, of id: String, version: String?) {
-		plans[id] = plan == .upToDate || plan == .install ? nil : version.map { Planned(version: $0, plan: plan) }
+	/// Keeps the plan of `available` for the window. An update that installs now keeps nothing.
+	public mutating func record(_ plan: UpdatePlan, of id: String, for available: Manifest) {
+		plans[id] = plan == .upToDate || plan == .install ? nil : Planned(manifest: available, plan: plan)
 	}
 
 	/// What waited for one package before its new version was placed.
 	public struct Saved: Sendable {
 		let plan: Planned?
-		let confirmed: String?
+		let confirmed: UpdatePlan.Approval?
 		let changed: Bool
 	}
 
@@ -89,11 +104,11 @@ public struct UpdateState: Sendable, Equatable {
 
 	/// The plan that the Extensions window shows for an installed package, with its `manifest`. An update that
 	/// installs by itself stores no plan, and no plan is stored before the first check of the index. A stored plan
-	/// of another version than the listed one is from an earlier index. The window then offers the plan of the
-	/// listed version as one that waits for the user, so new rights still ask for the review.
+	/// of another manifest than the listed one is from an earlier index. The window then offers the plan of the
+	/// listed manifest as one that waits for the user, so new rights still ask for the review.
 	public func plan(of installed: InstalledPackage, manifest: Manifest, in index: CatalogIndex?) -> UpdatePlan? {
-		if let stored = plans[installed.id], stored.version == index?.entry(installed.id)?.version { return stored.plan }
 		guard let index, case .outdated = Standing(of: installed, in: index), let available = try? index.entry(installed.id)?.manifest.get() else { return nil }
+		if let stored = plans[installed.id], stored.manifest == available { return stored.plan }
 		let plan = UpdatePlan(installed: manifest, available: available, automatic: false, sessionRuns: false, confirmed: nil)
 		return plan == .upToDate ? nil : plan
 	}

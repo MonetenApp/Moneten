@@ -8,7 +8,7 @@ import Testing
 		try Manifest.parse(package.files["manifest.json"]!, mode: .catalog)
 	}
 
-	func plan(to change: (inout TestCatalog.Package) -> Void, automatic: Bool = true, sessionRuns: Bool = false, confirmed: String? = nil) throws -> UpdatePlan {
+	func plan(to change: (inout TestCatalog.Package) -> Void, automatic: Bool = true, sessionRuns: Bool = false, confirmed: UpdatePlan.Approval? = nil) throws -> UpdatePlan {
 		let old = TestCatalog.Package()
 		var new = old
 		new.version = "1.1"
@@ -57,18 +57,19 @@ import Testing
 	}
 
 	@Test func confirmedVersionInstallsWithItsNewHost() throws {
-		#expect(try plan(to: { $0.hosts.append("login.example.org") }, confirmed: "1.1") == .install)
-		#expect(try plan(to: { $0.hosts.append("login.example.org") }, sessionRuns: true, confirmed: "1.1") == .afterSession)
+		let reviewed = UpdatePlan.Approval(version: "1.1", hosts: ["login.example.org"])
+		#expect(try plan(to: { $0.hosts.append("login.example.org") }, confirmed: reviewed) == .install)
+		#expect(try plan(to: { $0.hosts.append("login.example.org") }, sessionRuns: true, confirmed: reviewed) == .afterSession)
 	}
 
 	@Test func aNewerVersionNeedsItsOwnConfirmation() throws {
-		#expect(try plan(to: { $0.version = "1.3"; $0.hosts.append("login.example.org") }, confirmed: "1.2")
+		#expect(try plan(to: { $0.version = "1.3"; $0.hosts.append("login.example.org") }, confirmed: .init(version: "1.2", hosts: ["login.example.org"]))
 			== .needsConfirmation(hosts: ["login.example.org"], fields: []))
 	}
 
 	@Test func confirmedVersionInstallsWithAutomaticUpdatesOff() throws {
-		#expect(try plan(to: { _ in }, automatic: false, confirmed: "1.1") == .install)
-		#expect(try plan(to: { _ in }, automatic: false, confirmed: "1.0") == .waitsForUser)
+		#expect(try plan(to: { _ in }, automatic: false, confirmed: .init(version: "1.1")) == .install)
+		#expect(try plan(to: { _ in }, automatic: false, confirmed: .init(version: "1.0")) == .waitsForUser)
 	}
 
 	@Test func versionsCompareByNumber() throws {
