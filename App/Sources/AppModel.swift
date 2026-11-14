@@ -187,7 +187,15 @@ final class AppModel {
 	@ObservationIgnored var openMainWindow: () -> Void = {}
 
 	var selection: SidebarSelection? {
-		didSet { if selection != oldValue { tableChanged() } }
+		didSet {
+			guard selection != oldValue else { return }
+			// The selected rows go in a drawing of their own, and the table of the new view follows one drawing
+			// later: SwiftUI stopped the app in AttributeGraph when a table saw a change of its selection in the
+			// drawing that removed it (issue #135). Every view change clears them, so that no hidden row stays
+			// selected for "Add Comment...". Setting an empty selection again would notify its readers too.
+			if !selectedTransactions.isEmpty { selectedTransactions = [] }
+			tableChanged()
+		}
 	}
 	var filter = TransactionFilter() {
 		didSet { if filter != oldValue { tableChanged() } }
@@ -494,10 +502,6 @@ final class AppModel {
 	func select(_ s: SidebarSelection?) {
 		guard s != selection else { return }
 		Trail.log("view change from=\(tableKey.trailKind) selected=\(tableKey.portfolios == nil ? selectedTransactions.count : selectedPositions)")
-		// The selected rows go in a drawing of their own, and the table of the new view follows one drawing
-		// later: SwiftUI stopped the app in AttributeGraph when a table saw a change of its selection in the
-		// drawing that removed it (issue #135). Setting an empty selection again would notify its readers too.
-		if !selectedTransactions.isEmpty { selectedTransactions = [] }
 		selection = s
 		if !keepFilters {
 			var kept = TransactionFilter()
@@ -510,11 +514,12 @@ final class AppModel {
 		afterDraw { [weak self] in Task { @MainActor in self?.markSeen() } }
 	}
 
-	/// True while the tables show `key` and its view is still the chosen one. A table that SwiftUI removes in
-	/// its next update can still report a click, and a change of its selection would reach it in the update
-	/// that removes it (issue #135), or stay selected, hidden, in the next view. So the tables keep a selection
-	/// only while this holds. It reads without observing, because a table asks inside an update of SwiftUI.
-	func shows(_ key: TableKey) -> Bool { _tableKey == key && _selection == key.selection }
+	/// True while the tables show `key`, its view is still the chosen one, and no placeholder is about to take
+	/// their place. A table that SwiftUI removes in its next update can still report a click, and a change of
+	/// its selection would reach it in the update that removes it (issue #135), or stay selected, hidden, in the
+	/// next view. So the tables keep a selection only while this holds. It reads without observing, because a
+	/// table asks inside an update of SwiftUI.
+	func shows(_ key: TableKey) -> Bool { _tableKey == key && _selection == key.selection && _tableHolds == 0 }
 
 	/// A selection that the transaction table of `key` reports.
 	func select(transactions ids: Set<UUID>, in key: TableKey) {
