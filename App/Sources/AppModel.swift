@@ -226,7 +226,7 @@ final class AppModel {
 		// A closure that captures `self` can be handed over only once every stored property is set.
 		sync.deliver = { [weak self] accountID, result in
 			guard let self else { return }
-			announcer.stored(try merge(.refresh(result), into: accountID).added)
+			self.announcer.stored(try self.merge(.refresh(result), into: accountID).added)
 		}
 		sync.ended = { [weak self] access, state, accounts in
 			self?.recordRefresh(of: access, state: state, accounts: accounts)
@@ -235,7 +235,7 @@ final class AppModel {
 		// Locked, the notification names no account.
 		sync.runEnded = { [weak self] in
 			guard let self else { return }
-			announcer.runEnded(ledger: phase == .unlocked ? ledger : nil)
+			self.announcer.runEnded(ledger: self.phase == .unlocked ? self.ledger : nil)
 		}
 		autoRefresh.run = { [weak self] now in self?.refreshDue(at: now) }
 		notices.onOpen = { [weak self] accounts in self?.show(notified: accounts) }
@@ -742,11 +742,11 @@ final class AppModel {
 		withObservationTracking { _ = sync.broker.current } onChange: { [weak self] in
 			Task { @MainActor [weak self] in
 				guard let self else { return }
-				if sync.broker.current != nil {
+				if self.sync.broker.current != nil {
 					NSApp.activate()
-					openMainWindow()
+					self.openMainWindow()
 				}
-				showDialogsInMainWindow()
+				self.showDialogsInMainWindow()
 			}
 		}
 	}

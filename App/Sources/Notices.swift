@@ -31,7 +31,7 @@ final class Notices: NSObject, NoticeCenter, UNUserNotificationCenterDelegate {
 
 	func post(_ notice: NewTransactionsNotice, sound: Bool) {
 		Task {
-			await requestPermission()
+			await self.requestPermission()
 			await Self.add(notice, sound: sound ? Self.soundFile(notice.tone) : nil)
 			DebugHarness.shared?.log("notice \(notice.title) accounts=\(notice.accounts.count) sound=\(sound ? notice.tone.rawValue : "-")")
 		}
@@ -72,7 +72,7 @@ final class Notices: NSObject, NoticeCenter, UNUserNotificationCenterDelegate {
 
 	nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
 		let accounts = Self.accounts(of: response.notification.request.content)
-		await MainActor.run { onOpen(accounts) }
+		await MainActor.run { self.onOpen(accounts) }
 	}
 }
 

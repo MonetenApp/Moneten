@@ -512,9 +512,9 @@ final class DebugHarness {
 		Task {
 			let status = await Notices.authorizationStatus()
 			let delivered = await Notices.delivered()
-			log("notices authorization=\(status.rawValue) delivered=\(delivered.count)")
+			self.log("notices authorization=\(status.rawValue) delivered=\(delivered.count)")
 			for note in delivered {
-				log("notice \(note.title) accounts=\(note.accounts.count) sound=\(note.hasSound)")
+				self.log("notice \(note.title) accounts=\(note.accounts.count) sound=\(note.hasSound)")
 			}
 		}
 	}
