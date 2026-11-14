@@ -23,7 +23,7 @@ struct TransactionsView: View {
 			.environment(\.negativeRed, Palette.bandRed)
 			.background(Palette.band)
 			// A portfolio, or a group of portfolios only, shows its positions in place of transactions.
-			if let portfolios = model.selectedPortfolios {
+			if let portfolios = model.tableKey.portfolios {
 				HoldingsView(accountIDs: portfolios)
 			} else {
 				FilterBar()

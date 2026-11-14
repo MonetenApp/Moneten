@@ -446,10 +446,15 @@ final class DebugHarness {
 	}
 
 	/// The tables of transactions in all windows, told apart from the sidebar by their amount column.
-	func transactionTables() -> [NSTableView] {
+	func transactionTables() -> [NSTableView] { tables(withColumn: "Amount") }
+
+	/// The tables of positions in all windows.
+	func holdingsTables() -> [NSTableView] { tables(withColumn: "Quantity") }
+
+	private func tables(withColumn title: String) -> [NSTableView] {
 		func tables(in view: NSView) -> [NSTableView] {
 			if let table = view as? NSTableView {
-				return table.tableColumns.contains { $0.title == "Amount" } ? [table] : []
+				return table.tableColumns.contains { $0.title == title } ? [table] : []
 			}
 			return view.subviews.flatMap(tables)
 		}

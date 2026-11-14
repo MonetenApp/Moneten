@@ -152,6 +152,43 @@ struct PerfScenario {
 				await c.settle()
 				if c.model.tableKey.selection != .group(group.id) { c.fail("the table did not follow the click") }
 			}),
+		// A refresh that drops a shown position of a portfolio starts the table of positions over, as a
+		// refresh that drops shown pending rows does (issue #151).
+		PerfScenario(name: "refresh-drops-shown-position", budget: halfSecond,
+			setUp: { c in
+				await c.model.addOfflineAccount(name: "Perf Depot", kind: .portfolio, currency: "EUR", groupID: nil)
+				guard let depot = c.model.ledger.accounts.first(where: { $0.name == "Perf Depot" }) else { return }
+				try? await c.model.sync.deliver(depot.id, RefreshResult(balance: nil, transactions: nil, isPortfolio: true, holdings: PerfScenario.positions(depot.id, 3)))
+				await c.settle()
+			},
+			run: { c in
+				guard let depot = c.model.ledger.accounts.first(where: { $0.name == "Perf Depot" }) else { return }
+				let table = c.harness.holdingsTables().first
+				if table == nil { c.fail("the portfolio shows no table of positions") }
+				try? await c.model.sync.deliver(depot.id, RefreshResult(balance: nil, transactions: nil, isPortfolio: true, holdings: PerfScenario.positions(depot.id, 2)))
+				await c.settle()
+				if c.model.ledger.holdings(of: [depot.id]).count != 2 { c.fail("the refresh did not drop the sold position") }
+				if c.harness.holdingsTables().first.map(ObjectIdentifier.init) == table.map(ObjectIdentifier.init) {
+					c.fail("the refresh removed a shown position in place")
+				}
+			}),
+		// The last transaction of a portfolio goes: the view changes to its positions one drawing after the
+		// rows, never in the drawing that changes them (issue #151).
+		PerfScenario(name: "delete-last-transaction-of-portfolio", budget: halfSecond,
+			setUp: { c in
+				guard let depot = c.model.ledger.accounts.first(where: { $0.name == "Perf Depot" }) else { return }
+				let row = Transaction(accountID: depot.id, bookingDate: Day.today(), amountMinor: -1_000, name: "Depot fee", purpose: "Perf")
+				await c.model.replacingTable { _ = try? c.model.merge(.file([row]), into: depot.id) }
+				await c.settle()
+			},
+			run: { c in
+				guard let depot = c.model.ledger.accounts.first(where: { $0.name == "Perf Depot" }) else { return }
+				if c.model.tableKey.portfolios != nil { c.fail("the portfolio with a transaction shows its positions") }
+				c.model.delete(transactions: Set(c.model.ledger.transactions(ofAccount: depot.id).map(\.id)))
+				if c.model.tableKey.portfolios != nil { c.fail("the positions came in the drawing that removed the transaction") }
+				await c.settle()
+				if c.model.tableKey.portfolios != [depot.id] || c.harness.holdingsTables().isEmpty { c.fail("the view did not change to the positions") }
+			}),
 		// Last, because it leaves "Bulk" grouped by account: its table has a section per account.
 		PerfScenario(name: "group-by-account", budget: halfSecond,
 			setUp: { c in
@@ -170,6 +207,14 @@ struct PerfScenario {
 			},
 			run: { $0.harness.openExtensionsWindow() }),
 	]
+
+	/// `count` made-up positions of a portfolio, the same securities in every call.
+	static func positions(_ account: UUID, _ count: Int) -> [Holding] {
+		(0..<count).map { i in
+			Holding(accountID: account, security: Security(name: "Fonds \(i)", isin: "DE000000000\(i)"), quantity: Decimal(10 + i),
+				quote: Quote(amount: Decimal(100 + i), currency: "EUR", day: Day.today()))
+		}
+	}
 
 	/// An index in the format of the catalog with made-up packages. The window shows it without a signature check.
 	static func catalog(entries: Int) -> Data {

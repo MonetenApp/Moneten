@@ -161,6 +161,9 @@ final class AppModel {
 			trailRows = rows
 			ledgerChange = "edit"
 			noteUndrawn(ledger: true)
+			// The ledger decides between positions and transactions, for example when the last transaction of a
+			// portfolio goes. That changes the table like a click, one drawing after the rows.
+			if selectedPortfolios != tableKey.portfolios { tableChanged() }
 		}
 	}
 	/// The kind of the next change of `ledger`, for the trail.
@@ -1075,19 +1078,28 @@ final class AppModel {
 	}
 
 	/// A refresh changes the rows of the open table in place, also a first refresh that brings the whole
-	/// history (perf scenario "refresh-into-open-view"). When the open table shows pending rows of the
-	/// account, the bank can drop or book them, and the table starts over instead: removing shown rows in
-	/// place stopped the app in AttributeGraph, while SwiftUI updated the row views that the table had
-	/// just removed (issue #135).
+	/// history (perf scenario "refresh-into-open-view"). When it can remove shown rows, pending rows or a sold
+	/// position, the table starts over instead: removing shown rows in place stopped the app in
+	/// AttributeGraph, while SwiftUI updated the row views that the table had just removed (issue #135).
 	private func mergeRefresh(_ result: RefreshResult, into accountID: UUID) async throws -> Reconciliation {
 		// A new view, for example of a click on the depot while the refresh runs, must not meet the new rows in
 		// one drawing (issue #151): the rows wait until SwiftUI drew the view.
 		if tableUndrawn { Trail.log("refresh waits for drawing") }
 		while tableUndrawn { await drawn() }
-		guard visibleTransactions.contains(where: { $0.accountID == accountID && $0.isPending }) else {
-			return try merge(.refresh(result), into: accountID)
-		}
+		guard removesShownRows(result, of: accountID) else { return try merge(.refresh(result), into: accountID) }
 		return try await replacingTable { try merge(.refresh(result), into: accountID) }
+	}
+
+	/// The open table shows pending rows of the account, which the bank can drop or book, or a position of
+	/// the account that the delivered positions no longer hold.
+	private func removesShownRows(_ result: RefreshResult, of accountID: UUID) -> Bool {
+		if let portfolios = tableKey.portfolios {
+			guard portfolios.contains(accountID), let delivered = result.holdings else { return false }
+			let shown = ledger.holdings(of: [accountID])
+			let kept = Set(Holding.identify(delivered, stored: shown).map(\.id))
+			return shown.contains { !kept.contains($0.id) }
+		}
+		return visibleTransactions.contains { $0.accountID == accountID && $0.isPending }
 	}
 
 	/// Applies a change of the rows that comes with a new transaction table: an import, a migration, a
@@ -1131,7 +1143,7 @@ final class AppModel {
 			}
 			return
 		}
-		let key = TableKey(selection: selection, filter: filter)
+		let key = TableKey(selection: selection, filter: filter, portfolios: selectedPortfolios)
 		guard key != tableKey else { return }
 		tableKey = key
 		Trail.log("table selection=\(selection?.trailName ?? "none") filter=\(filter.trailName) generation=\(tableGeneration)")
@@ -1196,10 +1208,12 @@ final class AppModel {
 	}
 }
 
-/// The identity of the transaction table: its view and its filters.
+/// The identity of the transaction table or of the table of positions: the view, the filters, and the
+/// portfolios whose positions it shows in place of transactions.
 struct TableKey: Hashable {
 	var selection: SidebarSelection?
 	var filter = TransactionFilter()
+	var portfolios: [UUID]?
 }
 
 struct AlertMessage: Identifiable {
