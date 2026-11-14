@@ -12,7 +12,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [x] 1.6 Bank details of an account. Verified by IBAN, BIC, account number, and owner in the settings.
 - [x] 1.7 Account currency. Verified by shown in the settings.
 - [x] 1.8 Account owner. Verified by shown in the settings.
-- [x] 1.9 Balance comes from the bank. Verified by migrated accounts show the balance of MoneyMoney.
+- [x] 1.9 Balance comes from the bank. Verified by LedgerTests "balanceSource": an account of a bank access and a portfolio show the reported balance, a migrated and an offline account follow their transactions.
 - [ ] 1.10 Several balances and bonus points. Build it and verify it with a test or in the app.
 - [x] 1.11 Initial balance. Verified by editable in the settings.
 - [x] 1.12 Mark an account as closed. Verified by "The account has been closed".

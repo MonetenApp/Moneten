@@ -111,6 +111,12 @@ The app SHALL create every transaction of the source with its booking date, valu
 - **WHEN** the migration finishes
 - **THEN** the account "Giro" has 6,200 transactions and shows 1.234,56 €
 
+#### Scenario: Balance follows an imported transaction
+
+- **GIVEN** the migrated account "Giro" shows 1.234,56 €, the balance of the source
+- **WHEN** the user imports a file with a transaction of -4,80 € to "Bäckerei Gutbrot"
+- **THEN** the account shows 1.229,76 €
+
 ### Requirement: Category, comment, and checkmark of each transaction
 
 The app SHALL keep the category, the comment, and the checkmark of each transaction. A migrated category counts as assigned by hand, so that the rules of the app do not move it.
@@ -149,6 +155,13 @@ The app SHALL recognize accounts, categories, and transactions from an earlier r
 - **GIVEN** a first run migrated 18,400 transactions, and the source fetched 35 more since then
 - **WHEN** the user runs the migration again
 - **THEN** the summary shows 35 new transactions and the import adds exactly these
+
+#### Scenario: Corrected balance of the source
+
+- **GIVEN** the migrated account "Giro" shows 1.229,76 € after a first run with 1.234,56 € and an imported transaction of -4,80 €
+- **AND** the source corrected its balance to 1.254,56 € without a new transaction
+- **WHEN** the migration runs again
+- **THEN** the account shows 1.249,76 €
 
 #### Scenario: Category changed in the app
 
