@@ -1086,23 +1086,9 @@ final class AppModel {
 		try store?.deletedTransactions() ?? []
 	}
 
-	/// Root starter categories, in English or German, that the user has not changed: the same name, rule, and kind, no color
-	/// or icon of the user, and only unchanged starter subcategories below. A changed or extended tree stays.
+	/// The starter categories that a migration replaces, once the database holds no transactions.
 	private var replaceableStarterCategories: [Domain.Category] {
-		guard ledger.transactions.isEmpty else { return [] }
-		let template = StarterCategories.make(language: .english) + StarterCategories.make(language: .german)
-		func same(_ a: Domain.Category, _ b: Domain.Category) -> Bool {
-			a.name == b.name && a.isGroup == b.isGroup && a.rule == b.rule && a.sourceID == nil && !a.isDefault
-				&& a.color == b.color && a.symbol == b.symbol
-		}
-		return ledger.categories.filter { root in
-			guard root.parentID == nil, let starter = template.first(where: { $0.parentID == nil && same(root, $0) }) else { return false }
-			let starterChildren = template.filter { $0.parentID == starter.id }
-			return ledger.categoryIDs(inTree: root.id).subtracting([root.id]).allSatisfy { id in
-				guard let c = ledger.category(id), c.parentID == root.id else { return false }
-				return starterChildren.contains { same(c, $0) }
-			}
-		}
+		ledger.transactions.isEmpty ? StarterCategories.unchangedRoots(in: ledger) : []
 	}
 
 	/// Stores a delivery and takes it into the ledger. An import goes through `replacingTable`, because a
