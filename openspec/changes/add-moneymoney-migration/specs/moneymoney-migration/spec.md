@@ -306,6 +306,12 @@ The app SHALL create portfolio accounts of the source as accounts and, when secu
 
 The app SHALL show a report after the import. The report lists for each account the number of migrated transactions and the balance without pending transactions next to the numbers of the source, and it lists what was not migrated with the reason. The user can save the report as a text file.
 
+#### Scenario: Pending transactions are no mismatch
+
+- **GIVEN** the account "Giro" has a balance of 1.000,00 € and one pending transaction of -30,00 € in the source
+- **WHEN** the migration finishes
+- **THEN** the report shows 1.000,00 € for "Giro" next to the balance of the source, 1.000,00 €, as a match
+
 #### Scenario: Everything matches
 
 - **WHEN** all counts and balances equal those of the source
