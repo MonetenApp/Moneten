@@ -714,7 +714,7 @@ enum DemoData {
 		}
 		let result = RefreshResult(balance: Money(minorUnits: 1_234_56, currency: "EUR"),
 			transactions: FetchedTransactions(rows: rows, from: today.adding(days: -10)))
-		let request = RefreshRequest(access: SyncDemo.access, accounts: [AccountRequest(accountID: giro.id, name: giro.name, remoteID: "1234567890")])
+		let request = RefreshRequest(access: SyncDemo.access, accounts: [AccountRequest(accountID: giro.id, name: giro.name, remoteID: "1234567890", currency: "EUR")])
 		model.sync.refresh(request, with: ScriptedConnector([.fetched(giro.id, result)]), attended: true)
 	}
 

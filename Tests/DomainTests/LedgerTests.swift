@@ -145,6 +145,31 @@ struct LedgerTests {
 		#expect(l.dailyBalances(accountIDs: [giro.id]).last?.minorUnits == Optional(expected))
 	}
 
+	@Test("A balance counts only the rows in the currency of the account")
+	func balanceInAccountCurrency() {
+		let wallet = Account(position: 0, name: "Wallet", kind: .giro, source: .offline)
+		let l = Ledger(accounts: [wallet], transactions: [
+			Transaction(accountID: wallet.id, bookingDate: Day(year: 2026, month: 11, day: 2), amountMinor: 10_000, name: "Einzahlung"),
+			Transaction(accountID: wallet.id, bookingDate: Day(year: 2026, month: 11, day: 3), amountMinor: 1_000, currency: "USD", name: "Diner New York"),
+		])
+		#expect(l.balance(of: wallet) == Money(minorUnits: 10_000, currency: "EUR"))
+		#expect(l.computedBalance(of: wallet, through: Day(year: 2026, month: 11, day: 3)) == Money(minorUnits: 10_000, currency: "EUR"))
+		#expect(l.dailyBalances(accountIDs: [wallet.id]).map(\.minorUnits) == [10_000, 10_000])
+	}
+
+	@Test("The sum of a category counts only the rows in the currency of the category")
+	func categorySumInCategoryCurrency() {
+		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
+		let travel = Domain.Category(position: 0, name: "Travel")
+		func row(_ minor: Int64, _ currency: String, _ name: String) -> Transaction {
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 10, day: 5), amountMinor: minor, currency: currency, name: name,
+				categoryID: travel.id, categorizedBy: .manual)
+		}
+		let l = Ledger(accounts: [giro], categories: [travel], transactions: [row(-20_000, "EUR", "Hotel"), row(-10_000, "EUR", "Bahn"), row(-5_000, "USD", "Taxi")])
+		#expect(l.sum(ofCategory: travel, in: .all) == Money(minorUnits: -30_000, currency: "EUR"))
+		#expect(l.transactions(in: .category(travel.id)).count == 3)
+	}
+
 	@Test("The ledger knows which accounts have transactions, also after a delete")
 	func accountsWithTransactions() {
 		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
