@@ -280,7 +280,7 @@ The app SHALL create portfolio accounts of the source as accounts and, when secu
 
 ### Requirement: Report
 
-The app SHALL show a report after the import. The report lists for each account the number of migrated transactions and the balance next to the numbers of the source, and it lists what was not migrated with the reason. The user can save the report as a text file.
+The app SHALL show a report after the import. The report lists for each account the number of migrated transactions and the balance without pending transactions next to the numbers of the source, and it lists what was not migrated with the reason. The user can save the report as a text file.
 
 #### Scenario: Everything matches
 
