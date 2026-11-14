@@ -19,7 +19,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [ ] 1.13 Assign a category by drag and drop. Built in part: rows can be dragged onto a category. Finish it and verify it with a test or in the app.
 - [ ] 1.14 Assign a category with the keyboard. Build it and verify it with a test or in the app.
 - [x] 1.15 Remove a transaction from its category. Verified by "Remove Transaction from Category".
-- [x] 1.16 Category view. Verified by the debug harness snapshot in the first build.
+- [ ] 1.16 Category view. The list and the status line are built, verified by the debug harness snapshot in the first build. The scenarios "Pending transaction" and "Split transaction" are open. Tasks 3.1 to 3.3 build them.
 - [x] 1.17 Category group view. Verified by LedgerTests filter by a category tree.
 - [x] 1.18 Remove a category. Verified by confirmation, transactions become uncategorized.
 - [x] 1.19 Remove a category group. Verified by subcategories are removed with the group.
@@ -32,8 +32,9 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 
 ## 3. Pending transactions count
 
-- [ ] 3.1 Write the test first in LedgerTests: with today 09.11.2026, a category with a booked -80,00 € and a pending -40,00 € in November 2026 has the sum -120,00 € for "Current month".
-- [ ] 3.2 Move the sum of `AppModel.sidebarAmount(of:)` in `App/Sources/AppModel.swift` into `Ledger`, without the filter that drops pending rows, and let the sidebar use it.
+- [ ] 3.1 Write the test first in LedgerTests: with today 09.11.2026, a category with a booked -80,00 €, a pending -40,00 €, and a pending -5,00 € with `needsReview` in November 2026 has the sum -120,00 € for "Current month" in `Ledger.sum(ofCategory:in:)`.
+- [ ] 3.2 Count pending rows without `needsReview` in `Ledger.sum(ofCategory:in:)` in `Sources/Domain/Ledger.swift`, which PR #139 adds and `AppModel.sidebarAmount(of:)` uses. The status line of the category view counts pending rows already. The task for `needsReview` in the change `add-account-refresh` leaves the marked ones out of its sum.
+- [ ] 3.3 Once the change `add-split-transactions` builds splits, count the parts and not the original in `Ledger.sum(ofCategory:in:)` and in the number and the sum of the status line. Write the tests first with the scenarios "Split transaction" of "Amount in the sidebar" and "Category view".
 
 ## Workflow follow-up
 

@@ -57,6 +57,6 @@ None.
 - Assignment with the keyboard through a picker with the shortcut ⌘K comes from issue #18. MoneyMoney has no such picker.
 - The starter set of categories comes from issue #18. Whether MoneyMoney ships one was not observed.
 - The currency of a category is the currency of its sidebar amount and of its budget. Transactions in other currencies stay in the category and are summed separately. The exact meaning of the "Currency" field in MoneyMoney was not observed.
-- Pending transactions count in the sidebar amount and in the category view, by the one rule of the change `add-charts`. The money is already spent, so the category shows it at once. A split counts with its parts and never with its original, as the change `add-split-transactions` defines, so no amount counts twice.
+- Pending transactions count in the sidebar amount and in the category view, by the one rule of the change `add-charts`. The money is already spent, so the category shows it at once. A pending transaction marked for review counts in neither sum, because its booked transaction already stands for the money, as the change `add-account-refresh` decides. A split counts with its parts and never with its original, as the change `add-split-transactions` defines, so no amount counts twice.
 - The app refuses two categories with the same name under the same parent, so that a category path stays unique.
 - Issue #18 also asks for hiding a category. MoneyMoney has no hidden categories, and this change does not specify them.

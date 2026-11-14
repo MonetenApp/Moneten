@@ -12,7 +12,7 @@ The first build follows the spec where the task list marks a task as checked. Op
 
 ### Balance of an offline account
 
-`Domain` owns the balance. `Ledger.computedBalance` adds the initial balance and every row of the account in the account currency, pending rows included, as the change `add-charts` decides. It is the same function that the balance chart starts from, so the sidebar and the last bar agree. Once splits exist, the parts count and the original does not, as the change `add-split-transactions` defines. A new offline account has an initial balance of 0, and the account settings of the change `add-account-management` change it.
+`Domain` owns the balance. `Ledger.computedBalance` adds the initial balance and every row of the account in the account currency, pending rows included except those with `needsReview`, as the changes `add-charts` and `add-account-refresh` decide. `Account.isInBalance`, which PR #139 adds, holds this test. It is the same function that the balance chart starts from, so the sidebar and the last bar agree. Once splits exist, the parts count and the original does not, as the change `add-split-transactions` defines. A new offline account has an initial balance of 0, and the account settings of the change `add-account-management` change it.
 
 ### One signed amount
 
@@ -20,7 +20,7 @@ The transaction window in `App` has one amount field. `AmountParser` in `Domain`
 
 ### Offsetting entry
 
-`Domain` builds the offsetting entry from the source transaction, the source account, and the target account, so that a test can check every field. The entry is a manual transaction. It takes the name, the purpose, the comment, and the category of the source, and the booking date of the source as its booking date and value date. The IBAN and BIC of the source account, or its account number and bank code, become the counterparty account. A category restricted to an account other than the target becomes the default category, and the categorization rules run on the entry. No link joins the two rows, so an edit of one changes only that row.
+`Domain` builds the offsetting entry from the source transaction, the source account, and the target account, so that a test can check every field. The entry is a manual transaction. It takes the name, the purpose, the comment, and the category of the source, and the booking date of the source as its booking date and value date. The copied category gets `categorizedBy` `.manual`, because `Categorizer.categorize` keeps only a manual category and would otherwise move a copied rule category, or clear it when no rule matches. The IBAN and BIC of the source account become `counterpartyIBAN` and `counterpartyBIC`. `Transaction` has no fields for an account number and a bank code, so a source account without an IBAN gives no counterparty account. A category restricted to an account other than the target is dropped, and then the categorization rules run on the entry, which has `categorizedBy` `.none`. No link joins the two rows, so an edit of one changes only that row.
 
 ## Risks / Trade-offs
 

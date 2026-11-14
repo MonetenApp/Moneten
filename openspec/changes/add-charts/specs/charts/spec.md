@@ -69,7 +69,7 @@ The app SHALL write the text on the slate band behind the title and the chart wi
 
 ### Requirement: Balances are computed from the transactions
 
-The app SHALL compute the balance of each day as the initial balance of the account plus all its transactions up to the end of that day, pending ones included as the requirement "Pending transactions count" states. The balance that the bank reports enters only through the initial balance. A portfolio is the exception: its balance on a day is its last recorded value on or before that day, as the capability `securities-accounts` defines, and nothing before its first record.
+The app SHALL compute the balance of an account on a day as its initial balance plus its transactions in its currency up to the end of that day, pending ones included except one marked for review, as the requirement "Pending transactions count" states. The bank balance enters only through the initial balance. A portfolio is the exception: its balance on a day is its last recorded value on or before that day, as the capability `securities-accounts` defines, and nothing before its first record.
 
 #### Scenario: Computed balance
 
@@ -83,9 +83,15 @@ The app SHALL compute the balance of each day as the initial balance of the acco
 - **WHEN** the app computes the balance of today
 - **THEN** the balance of today is 970,00 €
 
+#### Scenario: Transaction in another currency
+
+- **GIVEN** an account in euros with an initial balance of 1.000,00 € and a transaction of -10,00 USD today
+- **WHEN** the app computes the balance of today
+- **THEN** the balance of today is 1.000,00 €
+
 ### Requirement: Pending transactions count
 
-The app SHALL count a pending transaction like a booked one in every computed balance, in every chart, and in every sum of the transactions of an account or a category, from the moment the app stores it. When its booked version replaces it, the booked version counts in its place. When the bank drops it, it no longer counts. The balance that the bank reports stays as the bank reports it.
+The app SHALL count a pending transaction like a booked one in every computed balance, chart, and sum of an account or a category, from the moment the app stores it. A pending transaction marked for review counts in none of them, as the capability `account-refresh` states. A booked transaction counts also when it is marked for review. A booked version counts in place of its pending one, on its own booking date. A pending transaction that the bank drops no longer counts.
 
 #### Scenario: Pending transaction in the charts
 
@@ -94,11 +100,24 @@ The app SHALL count a pending transaction like a booked one in every computed ba
 - **THEN** the bar of 12.11.2026 shows 970,00 €
 - **AND** the pie of withdrawals shows "Groceries" with 30,00 €
 
-#### Scenario: The booked version replaces it
+#### Scenario: The bank books it on the same day
 
 - **GIVEN** a pending transaction of -30,00 € on 12.11.2026 in the account "Giro"
 - **WHEN** a refresh replaces it by its booked version of -30,00 € on 12.11.2026
 - **THEN** every bar of the balance chart of "Giro" stays the same
+
+#### Scenario: The bank books it two days later
+
+- **GIVEN** the account "Giro" with an initial balance of 1.000,00 € and a pending transaction of -30,00 € on 12.11.2026, and no other transaction
+- **WHEN** a refresh replaces it by its booked version of -30,00 € on 14.11.2026
+- **THEN** the bars of 12.11.2026 and 13.11.2026 rise from 970,00 € to 1.000,00 €
+- **AND** every bar from 14.11.2026 on stays 970,00 €
+
+#### Scenario: Pending transactions marked for review
+
+- **GIVEN** the account "Giro" with an initial balance of 500,00 € and two pending transactions of -3,20 € on 12.11.2026
+- **WHEN** the bank delivers one booked transaction of -3,20 € on 13.11.2026 and the app marks the three rows for review
+- **THEN** the bar of 12.11.2026 shows 500,00 € and the bar of 13.11.2026 shows 496,80 €
 
 #### Scenario: The bank drops it
 
@@ -108,14 +127,14 @@ The app SHALL count a pending transaction like a booked one in every computed ba
 
 ### Requirement: Initial balance of a refreshed account
 
-The app SHALL set the initial balance of an account that a bank refreshes to the balance that the bank reported, less the sum of all transactions of the account after that refresh, pending ones included. No date limits the sum, so the last bar of the chart shows the balance that the bank reported. The days before the first transaction show the initial balance. A portfolio, an offline account, and a migrated account keep their initial balance, also when a bank access connects them later.
+The app SHALL set the initial balance of an account that a bank refreshes to the bank balance, less the booked transactions in the account currency up to the end of the day of that balance, marked for review or not. Pending transactions do not count, because the bank reports its balance without them. The days before the first transaction show the initial balance. A portfolio, an offline account, and a migrated account keep their initial balance, also when a bank access connects them later.
 
 #### Scenario: First refresh
 
 - **GIVEN** the bank reports a balance of 2.500,00 € and delivers booked transactions that add up to 700,00 € and one pending transaction of -30,00 €
 - **WHEN** the first refresh of the new account ends
-- **THEN** the initial balance is 1.830,00 €
-- **AND** the last bar shows 2.500,00 €
+- **THEN** the initial balance is 1.800,00 €
+- **AND** the last bar shows 2.470,00 €
 
 #### Scenario: More money out than in
 
@@ -128,7 +147,7 @@ The app SHALL set the initial balance of an account that a bank refreshes to the
 
 - **GIVEN** today is 12.11.2026, and the bank reports a balance of 500,00 € for 10.11.2026 and delivers booked transactions of -200,00 € on 01.11.2026 and of -30,00 € on 12.11.2026
 - **WHEN** the refresh ends
-- **THEN** the initial balance is 730,00 €, and the bar of 12.11.2026 shows 500,00 €
+- **THEN** the initial balance is 700,00 €, the bar of 10.11.2026 shows 500,00 €, and the bar of 12.11.2026 shows 470,00 €
 
 ### Requirement: The initial balance stays
 
@@ -266,7 +285,7 @@ The app SHALL open a calibration window from "Calibrate" in the account settings
 
 ### Requirement: Propose a calibration
 
-The app SHALL propose a calibration when the computed balance of an account differs from the balance that the bank reports. The computed balance includes the pending transactions, and some banks report a balance without them. So the app makes no proposal when the computed balance differs from the bank balance by exactly the sum of the pending transactions.
+The app SHALL propose a calibration when the computed balance of an account differs from the balance that the bank reports. The computed balance includes the pending transactions that count, and the bank reports its balance without them. So the app makes no proposal when the difference equals the sum of the pending transactions that count. A pending transaction marked for review does not count, as the capability `account-refresh` states.
 
 #### Scenario: Unexplained difference
 

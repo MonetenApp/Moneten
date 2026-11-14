@@ -103,7 +103,7 @@ The app SHALL let the user change every field of a manual transaction with "Edit
 
 ### Requirement: The balance follows the transactions
 
-The app SHALL compute the balance of an offline account as its initial balance plus the sum of its transactions in the currency of the account. Pending transactions count, as the requirement "Pending transactions count" of the capability `charts` states. A split counts once, with its parts. A transaction in another currency does not change the balance. The app updates the balance as soon as a transaction is added, changed, deleted, or imported.
+The app SHALL compute the balance of an offline account as its initial balance plus the sum of its transactions in the currency of the account. Pending transactions count, except one marked for review, as the capabilities `charts` and `account-refresh` state. A split counts once, with its parts. A transaction in another currency does not change the balance. The app updates the balance as soon as a transaction is added, changed, deleted, or imported.
 
 #### Scenario: Three transactions
 
@@ -174,20 +174,27 @@ The app SHALL offer "Create Offsetting Entry" in the context menu of a transacti
 
 ### Requirement: Fields of an offsetting entry
 
-The app SHALL give an offsetting entry the name, the purpose, the comment, and the category of the source transaction. Its booking date and its value date are the booking date of the source. Its counterparty account is the IBAN and BIC of the source account, or the account number and bank code when the source account has no IBAN. A category that is restricted to an account other than the target becomes the default category, and the categorization rules then sort the entry.
+The app SHALL give an offsetting entry the name, the purpose, the comment, and the category of the source transaction. The copied category counts as chosen by hand, so no rule changes it. Its booking date and value date are the booking date of the source. Its counterparty account is the IBAN and BIC of the source account, and none when that account has no IBAN. A category restricted to an account other than the target becomes the default category, and then the rules sort the entry.
 
 #### Scenario: Cash withdrawal
 
 - **GIVEN** a transaction of -200,00 € "Geldautomat" with the purpose "Abhebung", the comment "Marktplatz", and the category "Cash" on 05.11.2026, in the account "Giro" with the IBAN DE02120300000000202051
+- **AND** a rule that sorts "Geldautomat" into "Fees"
 - **WHEN** the user chooses "Create Offsetting Entry" and then "Wallet"
 - **THEN** "Wallet" gets 200,00 € named "Geldautomat" with the purpose "Abhebung", the comment "Marktplatz", and the category "Cash"
 - **AND** its booking date and value date are 05.11.2026, and its counterparty account is DE02120300000000202051
 
 #### Scenario: Restricted category
 
-- **GIVEN** a transaction of the account "Business" in the category "Office", which is restricted to "Business"
+- **GIVEN** a transaction "Papierhaus Beispiel" of the account "Business" in the category "Office", which is restricted to "Business", and no rule matches "Papierhaus Beispiel"
 - **WHEN** the user creates its offsetting entry in "Wallet"
-- **THEN** the entry in "Wallet" is not in "Office", and the categorization rules sort it
+- **THEN** the entry in "Wallet" is in "Uncategorized"
+
+#### Scenario: Restricted category with a rule
+
+- **GIVEN** a transaction "Papierhaus Beispiel" of the account "Business" in the category "Office", which is restricted to "Business", and a rule that sorts "Papierhaus" into "Household"
+- **WHEN** the user creates its offsetting entry in "Wallet"
+- **THEN** the entry in "Wallet" is in "Household"
 
 ### Requirement: Manual transactions behave like fetched ones
 

@@ -12,7 +12,7 @@ The first build follows the spec where the task list marks a task as checked. Op
 
 ### Sums of a category
 
-The sidebar amount and the status line of a category view add the same rows: every transaction of the category tree in the period, pending ones included, as the change `add-charts` decides. `Domain` owns this sum, so that a test can check it. `App` shows it. Once splits exist, the parts are the rows and the original is not, as the change `add-split-transactions` defines. The currency rule of the requirement "Category currency" stays: the sidebar shows the sum in the currency of the category.
+The sidebar amount and the status line of a category view add the same rows: every transaction of the category tree in the period, pending ones included, as the change `add-charts` decides. A pending row with `needsReview` counts in neither, as the change `add-account-refresh` decides, while the status line still counts it in the number of rows. `Domain` owns this sum in `Ledger.sum(ofCategory:in:)`, which PR #139 adds, so that a test can check it. `App` shows it. Once splits exist, the parts are the rows and the original is not, as the change `add-split-transactions` defines. The currency rule of the requirement "Category currency" stays: the sidebar shows the sum in the currency of the category.
 
 ## Risks / Trade-offs
 

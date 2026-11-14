@@ -127,7 +127,7 @@ The app SHALL give each category one currency, which is the euro unless the user
 
 ### Requirement: Amount in the sidebar
 
-The app SHALL show an amount next to a category according to "Display in sidebar". The values are "No amount", "Current month", "Current quarter", "Current year", and "Total sum". The amount is the sum of the transactions of the category in that time. Pending transactions count, as the requirement "Pending transactions count" of the capability `charts` states. A split counts with its parts and never with its original. A category group shows the sum of everything below it.
+The app SHALL show an amount next to a category according to "Display in sidebar". The values are "No amount", "Current month", "Current quarter", "Current year", and "Total sum". The amount is the sum of the transactions of the category in that time. Pending transactions count, except one marked for review, as the capabilities `charts` and `account-refresh` state. A split counts with its parts and never with its original. A category group shows the sum of everything below it.
 
 #### Scenario: Current month
 
@@ -255,7 +255,7 @@ The app SHALL move the selected transactions back to "Uncategorized" with "Remov
 
 ### Requirement: Category view
 
-The app SHALL list the transactions of the selected category from all accounts in one list. The status line shows their number and their sum, with one sum for each currency. Both include pending transactions and the parts of a split, and leave out the original of a split.
+The app SHALL list the transactions of the selected category from all accounts in one list. The status line shows their number and their sum, with one sum for each currency. The number also counts a pending transaction marked for review. The sum includes pending transactions, except a pending transaction marked for review, as the capability `account-refresh` states. Both count the parts of a split and not its original.
 
 #### Scenario: Two accounts
 
