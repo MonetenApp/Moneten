@@ -92,6 +92,8 @@ struct FileImportTests {
 		let text = "Datum;Name;Betrag;Währung\n" + ["$", "US$", "SFr.", "SFR"].map { "01.11.2026;Kiosk;-1,50;\($0)\n" }.joined()
 		let ts = try TransactionFileImporter.parse(Data(text.utf8), currency: "CAD")
 		#expect(ts.map(\.currency) == ["CAD", "USD", "CHF", "CHF"])
+		let euro = try TransactionFileImporter.parse(Data("Datum;Name;Betrag;Währung\n01.11.2026;Kiosk;-1,50;$\n".utf8), currency: "EUR")
+		#expect(euro.map(\.currency) == ["USD"])
 	}
 
 	@Test("A CSV file without a date column is rejected")
