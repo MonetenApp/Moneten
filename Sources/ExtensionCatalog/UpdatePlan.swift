@@ -37,8 +37,8 @@ public enum UpdatePlan: Sendable, Equatable {
 	}
 
 	/// `confirmed` installs its version, also with new rights or with automatic updates off, but never a later
-	/// one, and only while that version adds no host or login field beyond those the user saw. The catalog
-	/// could list the same version again with other rights.
+	/// one, and only while that version adds no host or login field beyond those the user saw in the review or
+	/// runs in the installed version. The catalog could list the same version again with other rights.
 	public init(installed: Manifest, available: Manifest, automatic: Bool, sessionRuns: Bool, confirmed: Approval?) {
 		guard let version = available.version, Self.isNewer(version, than: installed.version ?? "0") else {
 			self = .upToDate
@@ -48,7 +48,7 @@ public enum UpdatePlan: Sendable, Equatable {
 		let hosts = (available.hosts ?? []).filter { !oldHosts.contains($0) }.map(\.value)
 		let oldFields = Set(Self.fields(installed))
 		let fields = Self.fields(available).filter { !oldFields.contains($0) }
-		let chosen = confirmed.map { $0.version == version && Self.rights(available).isSubset(of: $0.rights ?? Self.rights(installed)) } ?? false
+		let chosen = confirmed.map { $0.version == version && Self.rights(available).isSubset(of: Self.rights(installed).union($0.rights ?? [])) } ?? false
 		self = if !chosen, !hosts.isEmpty || !fields.isEmpty { .needsConfirmation(hosts: hosts, fields: fields) }
 			else if !chosen, !automatic { .waitsForUser }
 			else if sessionRuns { .afterSession }
