@@ -197,17 +197,89 @@ The app SHALL assign the category from a category column to each imported transa
 
 ### Requirement: CAMT import
 
-The app SHALL import camt.052 and camt.053 files with the booking date, the value date, the amount, the currency, the counterparty with IBAN and BIC, the purpose, the booking text, the end-to-end reference, the mandate reference, the creditor ID, the return reason, and the state booked or pending of each entry. An entry with several transaction details becomes one transaction for each detail.
+The app SHALL import camt.052 and camt.053 files with the booking date, the value date, the amount, the currency, the counterparty with IBAN and BIC, the purpose, the booking text, the end-to-end reference, the mandate reference, the creditor ID, and the return reason of each entry.
 
 #### Scenario: Statement with three entries
 
 - **WHEN** the user imports a camt.053 file with 3 booked entries
 - **THEN** the account has 3 new booked transactions with their references in the details
 
+### Requirement: CAMT entry with several payments
+
+The app SHALL import a CAMT entry that bundles several payments as one transaction with the amount of the entry. When its transaction details name different counterparties, the transaction has no counterparty name, IBAN, or BIC, and no end-to-end reference, mandate reference, or creditor ID. Its purpose joins the purposes of all details.
+
+#### Scenario: Batch entry
+
+- **GIVEN** a camt.053 entry of -150,00 € on 3 November 2026 with two transaction details, -100,00 € to "Hausverwaltung Muster" with the purpose "Miete November" and -50,00 € to "Stadtwerke Musterstadt" with the purpose "Abschlag Strom"
+- **WHEN** the user imports the file
+- **THEN** the account has one transaction of -150,00 € on 3 November 2026 with the purpose "Miete November Abschlag Strom"
+- **AND** the transaction has no counterparty name and no IBAN, so the rule `name:"Stadtwerke"` does not match it
+
+#### Scenario: Batch entry to one counterparty
+
+- **GIVEN** a camt.053 entry of -120,00 € with two transaction details of -60,00 € each to "Stadtwerke Musterstadt" with the IBAN DE02120300000000202051
+- **WHEN** the user imports the file
+- **THEN** the account has one transaction of -120,00 € to "Stadtwerke Musterstadt" with the IBAN DE02120300000000202051
+
+### Requirement: Status of a CAMT entry
+
+The app SHALL import a CAMT entry with the status PDNG or FUTR as a pending transaction on the booking date of the entry. It SHALL skip an entry with the status INFO, because the bank booked nothing for it. Every other entry is a booked transaction. A later file or refresh books a pending transaction when it brings a booked transaction with the same amount and the same counterparty at most seven days apart.
+
 #### Scenario: Pending entry
 
-- **WHEN** a camt.052 file holds an entry with the status pending
-- **THEN** the app imports it as a pending transaction
+- **GIVEN** a camt.052 file for the IBAN DE02120300000000202051 with an entry of -89,00 € to "Stadtwerke Musterstadt" in the status PDNG, the booking date 1 November 2026, and the value date 2 November 2026
+- **WHEN** the user imports the file
+- **THEN** the account has a pending transaction of -89,00 € to "Stadtwerke Musterstadt" with the booking date 1 November 2026
+
+#### Scenario: Pending entry booked by a later file
+
+- **GIVEN** the account holds the pending transaction of -89,00 € from the camt.052 file of the scenario "Pending entry"
+- **WHEN** the user imports a camt.053 file with the same entry of -89,00 € to "Stadtwerke Musterstadt" in the status BOOK on 1 November 2026
+- **THEN** the account has one transaction of -89,00 € to "Stadtwerke Musterstadt", and it is booked
+
+#### Scenario: Future entry
+
+- **WHEN** a camt.052 file holds an entry of 1.250,00 € in the status FUTR with the booking date 30 November 2026
+- **THEN** the app imports a pending transaction of 1.250,00 € with the booking date 30 November 2026
+
+#### Scenario: Entry for information
+
+- **GIVEN** a camt.052 file with a booked entry of -89,00 € and an entry of -20,00 € in the status INFO
+- **WHEN** the user imports the file
+- **THEN** the account has one new transaction, the one of -89,00 €
+
+### Requirement: Future pending transactions from a file
+
+The app SHALL keep a pending transaction from a file that no refresh has delivered when a successful refresh does not deliver it and its booking date is today or later. Once its booking date has passed, such a refresh removes it like any pending transaction that the bank dropped.
+
+#### Scenario: Scheduled rent before its date
+
+- **GIVEN** on 15 November 2026 the user imported a camt.052 file with an entry of -800,00 € to "Vermieter A" in the status FUTR with the booking date 1 December 2026
+- **WHEN** a successful refresh on 20 November 2026 does not deliver the entry
+- **THEN** the account still has the pending transaction of -800,00 € to "Vermieter A" on 1 December 2026
+
+#### Scenario: Scheduled rent after its date
+
+- **GIVEN** the pending transaction of -800,00 € to "Vermieter A" on 1 December 2026 from the scenario "Scheduled rent before its date"
+- **WHEN** a successful refresh on 5 December 2026 delivers neither the pending entry nor a booked one for it
+- **THEN** the pending transaction is gone from the list
+
+### Requirement: The bank's version of a future pending transaction from a file
+
+The app SHALL count a payment once when a successful refresh delivers a pending transaction with the same amount and the same counterparty, at most seven days apart from a future pending transaction from a file. A delivered transaction that the account does not hold yet and that the user did not delete takes the place of the one from the file. A delivered transaction that an earlier refresh stored is in the account already, so the app removes the one from the file.
+
+#### Scenario: The bank reports the scheduled rent as pending
+
+- **GIVEN** on 15 November 2026 the user imported a camt.052 file with an entry of -800,00 € to "Vermieter A" with the IBAN DE02120300000000202051 and the purpose "Miete Dezember", in the status FUTR with the booking date 1 December 2026
+- **WHEN** a successful refresh on 20 November 2026 delivers a pending transaction of -800,00 € to "Vermieter A" with the IBAN DE02120300000000202051, the purpose "MIETE DEZEMBER WHG 3 DAUERAUFTRAG", and the booking date 1 December 2026
+- **THEN** the account has one pending transaction of -800,00 €, with the purpose "MIETE DEZEMBER WHG 3 DAUERAUFTRAG"
+
+#### Scenario: The bank reported the scheduled rent before the import
+
+- **GIVEN** a successful refresh on 18 November 2026 stored a pending transaction of -800,00 € to "Vermieter A" with the IBAN DE02120300000000202051, the purpose "MIETE DEZEMBER WHG 3 DAUERAUFTRAG", and the booking date 1 December 2026
+- **AND** on 19 November 2026 the user imported a camt.052 file with an entry of -800,00 € to "Vermieter A" with the IBAN DE02120300000000202051 and the purpose "Miete Dezember", in the status FUTR with the booking date 1 December 2026, so the account shows -1.600,00 € of pending transactions
+- **WHEN** a successful refresh on 20 November 2026 delivers the pending transaction of 18 November 2026 again
+- **THEN** the account has one pending transaction of -800,00 €, with the purpose "MIETE DEZEMBER WHG 3 DAUERAUFTRAG"
 
 ### Requirement: MT940 import
 
@@ -217,6 +289,30 @@ The app SHALL import MT940 files, with the usual extension `.sta`, including the
 
 - **WHEN** an MT940 entry carries the end-to-end reference "E2E-1" and the mandate reference "M-0001" in its purpose fields
 - **THEN** the imported transaction shows both references in its details and not inside the purpose text
+
+### Requirement: MT940 dates
+
+The app SHALL read a two-digit year in an MT940 file as a year from 2000 to 2099. The booking date of an MT940 line has a month and a day only, so the app takes its year from the value date. The year is one less when the booking month is more than six months after the value month, and one more when the value month is more than six months after the booking month.
+
+#### Scenario: Booking in the year before
+
+- **WHEN** an MT940 line has the value date 260102 and the booking date 1231
+- **THEN** the app imports the transaction with the value date 2 January 2026 and the booking date 31 December 2025
+
+#### Scenario: Booking in the year after
+
+- **WHEN** an MT940 line has the value date 251120 and the booking date 0310
+- **THEN** the app imports the transaction with the value date 20 November 2025 and the booking date 10 March 2026
+
+#### Scenario: Same year
+
+- **WHEN** an MT940 line has the value date 260630 and the booking date 0102
+- **THEN** the app imports the transaction with the booking date 2 January 2026
+
+#### Scenario: Two-digit year above 79
+
+- **WHEN** an MT940 line has the value date 800101
+- **THEN** the app imports the transaction with the value date 1 January 2080
 
 ### Requirement: Several files at once
 
