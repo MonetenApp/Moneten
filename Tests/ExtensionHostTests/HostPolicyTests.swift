@@ -174,9 +174,11 @@ import Testing
 		#expect(run.sent.isEmpty)
 	}
 
-	/// Names under the special-use domains of RFC 6761 and RFC 8375, and under `internal`, which ICANN
-	/// keeps for private networks. Each reaches the Mac, the local network, or nowhere.
-	static let specialUse = ["bank.localhost", "api.bank.localhost", "printer.local", "home.arpa", "router.home.arpa", "bank.internal", "bank.test", "bank.invalid"]
+	/// Names under the special-use domains of RFC 6761 and RFC 8375, under `internal`, which ICANN keeps
+	/// for private networks, and under the private names of RFC 6762, Appendix G. Each reaches the Mac,
+	/// the local network, or nowhere.
+	static let specialUse = ["bank.localhost", "api.bank.localhost", "printer.local", "home.arpa", "router.home.arpa", "bank.internal", "bank.test", "bank.invalid",
+		"nas.lan", "router.home", "mail.corp", "wiki.intranet", "bank.private"]
 
 	@Test(arguments: specialUse)
 	func specialUseNameIsNeverAsked(host: String) {

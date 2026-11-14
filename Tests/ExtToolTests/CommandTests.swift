@@ -113,6 +113,18 @@ extension ExtTool {
 			#expect(asked.errors.contains("Local wants to contact bank.localhost. Allow it? [y/N] "))
 		}
 
+		/// An author may write the names of `MONETEN_TEST_HOSTS` with spaces or in capitals.
+		@Test func testHostsAreTrimmedAndLowercased() throws {
+			let folder = try files(["Local.lua": """
+				WebBanking{version = 1, services = {"Local"}}
+				function SupportsBank() return true end
+				function InitializeSession() Connection():get("https://bank.localhost/") end
+				"""])
+			let run = try ext(["run", folder.appending(path: "Local.lua").path, "--storage", folder.appending(path: "s.json").path], input: "n\n",
+				environment: ["EXT_USERNAME": "erika", "EXT_PASSWORD": "secret", "MONETEN_TEST_HOSTS": " Bank.Localhost , ,other.localhost"])
+			#expect(run.errors.contains("Local wants to contact bank.localhost. Allow it? [y/N] "), "\(run.errors)")
+		}
+
 		@Test func choiceOfTheService() throws {
 			let folder = try files(["Broker.lua": """
 				WebBanking{version = 1, services = {"Broker", "Broker Business"}}
