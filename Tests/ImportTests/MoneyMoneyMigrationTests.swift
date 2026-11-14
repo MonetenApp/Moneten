@@ -655,6 +655,42 @@ struct MoneyMoneyMigrationTests {
 		#expect(q.notes.contains { $0.contains("no categorization rules") })
 	}
 
+	func plan(rules: [String: String]) throws -> MoneyMoneyMigration.Plan {
+		var items: [[String: Any]] = rules.keys.sorted().enumerated().map { i, name in
+			["uuid": "R\(i)", "name": name, "group": false, "default": false, "indentation": 0, "currency": "EUR", "rules": rules[name]!]
+		}
+		items.append(["uuid": "C9", "name": "Sonstiges", "group": false, "default": true, "indentation": 0, "currency": "EUR", "rules": ""])
+		return try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(accounts), categories: try plist(items), transactions: try plist(transactions), into: Ledger())
+	}
+
+	@Test("A rule with a missing parenthesis is stored unchanged and named in the report")
+	func unreadableRule() throws {
+		let p = try plan(rules: ["Salary": "(\"Lohn\" OR \"Gehalt\""])
+		#expect(p.categories.first { $0.name == "Salary" }?.rule == "(\"Lohn\" OR \"Gehalt\"")
+		#expect(p.notes.contains("The rule of \"Salary\" cannot be read at position 20: A closing parenthesis is missing at the end of the rule. \"Salary\" receives no transaction through its rule until you correct the rule in its settings."))
+	}
+
+	@Test("A rule with one part that cannot be read is named with the position of that part, and its category receives nothing")
+	func partlyUnreadableRule() throws {
+		let p = try plan(rules: ["Fees": "\"Gebühr\" OR purpose:/GA NR[0-9/"])
+		#expect(p.categories.first { $0.name == "Fees" }?.rule == "\"Gebühr\" OR purpose:/GA NR[0-9/")
+		#expect(p.notes.contains("The rule of \"Fees\" cannot be read at position 21: The regular expression is not valid. \"Fees\" receives no transaction through its rule until you correct the rule in its settings."))
+		let ledger = Ledger(groups: p.groups, accounts: p.accounts, categories: p.categories, transactions: p.transactions)
+		let giro = try #require(p.accounts.first { $0.name == "Giro" })
+		let imported = Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 12), amountMinor: -250, name: "Musterbank", purpose: "Gebühr Oktober")
+		#expect(Categorizer(ledger: ledger).category(for: imported) == nil)
+	}
+
+	@Test("A rule that the app reads gives no note and fills its category")
+	func readableRule() throws {
+		let p = try plan(rules: ["Salary": "\"Lohn\" OR \"Gehalt\""])
+		#expect(p.notes.allSatisfy { !$0.contains("cannot be read") })
+		let ledger = Ledger(groups: p.groups, accounts: p.accounts, categories: p.categories, transactions: p.transactions)
+		let giro = try #require(p.accounts.first { $0.name == "Giro" })
+		let imported = Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 12), amountMinor: 250_000, name: "Beispiel GmbH", purpose: "Gehalt Oktober")
+		#expect(Categorizer(ledger: ledger).category(for: imported) == p.categories.first { $0.name == "Salary" }?.id)
+	}
+
 	@Test("The report names a group whose balance in MoneyMoney leaves out an account")
 	func groupSum() throws {
 		#expect(try plan().notes.allSatisfy { !$0.contains("group") })
