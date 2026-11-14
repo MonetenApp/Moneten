@@ -16,7 +16,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [ ] 1.10 CSV preview. Build it and verify it with a test or in the app.
 - [ ] 1.11 CSV profiles. Build it and verify it with a test or in the app.
 - [ ] 1.12 Categories from a CSV file. Build it and verify it with a test or in the app.
-- [ ] 1.13 CAMT import. Built in part: the fields of each entry except the return reason, verified by FileImportTests "camt.053 with a debit and a pending credit". The reader does not read the return reason, and a transaction has no field for it. Finish it in 2.7 and 2.8.
+- [ ] 1.13 CAMT import. Built in part: the fields of each entry except the return reason, verified by FileImportTests "camt.053 with a debit and a pending credit". The reader makes one transaction per entry, which 2.3 shows for a batch. The reader does not read the return reason, and a transaction has no field for it. Finish it in 2.4 and 2.5.
 - [x] 1.14 MT940 import. Verified by FileImportTests "MT940 with a structured field 86".
 - [x] 1.15 Several files at once. Verified by the open panel allows several files.
 - [ ] 1.16 File belongs to another account. Build it and verify it with a test or in the app.
@@ -29,19 +29,17 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [x] 1.23 Balances and charts after an import. Verified by the ledger and the charts update at once.
 - [ ] 1.24 Progress and cancel. Build it and verify it with a test or in the app.
 - [ ] 1.25 Status of a CAMT entry. Built in part: a PDNG entry stays pending, verified by FileImportTests "camt.053 with a debit and a pending credit". The reader imports an INFO entry and a FUTR entry as booked. Change it in 2.1 and 2.2.
-- [ ] 1.26 One transaction for each CAMT transaction detail. Not built: the parser makes one transaction per entry. Build it in 2.3 and 2.4.
-- [ ] 1.27 MT940 dates. Built in part: two-digit years are 2000 to 2099, but the booking year moves only between December and January. Change it in 2.5 and 2.6.
+- [ ] 1.26 MT940 dates. Built in part: two-digit years are 2000 to 2099, but the booking year moves only between December and January. Change it in 2.6 and 2.7.
 
 ## 2. Changes to the first build
 
-- [ ] 2.1 Write FileImportTests tests for the scenarios "Future entry" and "Entry for information": a FUTR entry is pending on its booking date, and an INFO entry is left out. Write the ReconcileTests test "Pending entry booked by a later file": a file with a PDNG row of -89,00 € on 1 November 2026, then a file with the booked row, gives one booked transaction.
+- [ ] 2.1 Write FileImportTests tests for the scenarios "Future entry" and "Entry for information": a FUTR entry is pending on its booking date, and an INFO entry is left out. Write the ReconcileTests test "Pending entry booked by a later file": a file with a PDNG row of -89,00 € to "Stadtwerke Musterstadt" on 1 November 2026, then a file with the booked row of -89,00 € to "Stadtwerke Musterstadt", gives one booked transaction.
 - [ ] 2.2 Change the CAMT reader in `Sources/Import/TransactionFileImporter.swift` until the tests of 2.1 pass.
-- [ ] 2.3 Write FileImportTests tests for the scenarios "Batch entry", "Detail without an amount", and "Details that do not add up".
-- [ ] 2.4 Build one transaction per transaction detail in the CAMT reader until the tests of 2.3 pass.
-- [ ] 2.5 Write FileImportTests tests for the scenarios of "MT940 dates": the value dates 260102, 251120, 260630, and 800101 with their booking dates.
-- [ ] 2.6 Change `parse61` in `Sources/Import/TransactionFileImporter.swift` to the six-month rule until the tests of 2.5 pass.
-- [ ] 2.7 Write a FileImportTests test with a camt.053 entry that carries the return reason AC04 and expect the reason on the transaction.
-- [ ] 2.8 Add the return reason to `Transaction` with a new migration in `Sources/Storage/Schema.swift`, and read it in the CAMT reader until the test of 2.7 passes.
+- [ ] 2.3 Write the FileImportTests test for the scenario "Batch entry": an entry of -150,00 € with two details gives one transaction of -150,00 €.
+- [ ] 2.4 Write a FileImportTests test with a camt.053 entry that carries the return reason AC04 and expect `returnReason` "AC04" on the transaction. Write a MergeTests test that stores that transaction through `Store`, reads it back with `Store.loadLedger()`, and expects `returnReason` "AC04". Write a ReconcileTests test in which a booked row with the return reason AC04 books a stored pending row, and expect `returnReason` "AC04" on the booked row.
+- [ ] 2.5 Add `returnReason` to `Transaction` with a new migration in `Sources/Storage/Schema.swift`, copy it in `Transaction(arriving:in:fetched:)` and `takingBankFields(of:)` in `Sources/Domain/Reconcile.swift`, and read it from `RtrInf/Rsn/Cd` in the CAMT reader until the tests of 2.4 pass.
+- [ ] 2.6 Write FileImportTests tests for the scenarios of "MT940 dates": the value dates 260102, 251120, 260630, and 800101 with their booking dates.
+- [ ] 2.7 Change `parse61` in `Sources/Import/TransactionFileImporter.swift` to the six-month rule until the tests of 2.6 pass.
 
 ## 3. Integration
 

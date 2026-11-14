@@ -110,7 +110,7 @@ The app SHALL support the wildcard `*` for any number of characters and the wild
 
 ### Requirement: Logical operators
 
-The app SHALL combine expressions with the operators `AND`, `OR`, and `NOT` in any letter case, and it SHALL group expressions with parentheses. `AND` binds more strongly than `OR`. A plus sign between two expressions means `AND`. An exclamation mark, or a minus sign before an expression that does not start with a digit, means `NOT`. A word in quotation marks is always a term. Two expressions with no operator between them are combined with `AND`.
+The app SHALL combine expressions with the operators `AND`, `OR`, and `NOT` in any letter case, and it SHALL group expressions with parentheses. `AND` binds more strongly than `OR`. A word in quotation marks is always a term. Two expressions with no operator between them are combined with `AND`.
 
 #### Scenario: Either word
 
@@ -142,6 +142,16 @@ The app SHALL combine expressions with the operators `AND`, `OR`, and `NOT` in a
 - **WHEN** one transaction has the purpose "EC-Karte Supermarkt" and another has the purpose "EC-Karte Barauszahlung"
 - **THEN** the rule matches the first and not the second
 
+#### Scenario: Operator word in quotation marks
+
+- **GIVEN** the rule `"Lohn" "or" "Gehalt"`
+- **WHEN** one transaction has the purpose "Lohn or Gehalt" and another has the purpose "Gehalt Oktober"
+- **THEN** the rule matches the first and not the second, because a quoted "or" is a term
+
+### Requirement: Short forms of the operators
+
+The app SHALL read a plus sign between two expressions as `AND`, and an exclamation mark or a minus sign before an expression as `NOT`. A minus sign before a digit belongs to the number. A plus sign or an exclamation mark directly after a letter or a digit is part of the word, as in Disney+.
+
 #### Scenario: Short forms
 
 - **GIVEN** the rule `"Netflix" + !"Gutschrift"`
@@ -160,11 +170,17 @@ The app SHALL combine expressions with the operators `AND`, `OR`, and `NOT` in a
 - **WHEN** one transaction has the purpose "Rückbuchung -12,50" and another has the purpose "Miete November"
 - **THEN** the rule matches the first and not the second, because `-12,50` is a term and not `NOT` before 12,50
 
-#### Scenario: Operator word in quotation marks
+#### Scenario: Plus sign inside a word
 
-- **GIVEN** the rule `"Lohn" "or" "Gehalt"`
-- **WHEN** one transaction has the purpose "Lohn or Gehalt" and another has the purpose "Gehalt Oktober"
-- **THEN** the rule matches the first and not the second, because a quoted "or" is a term
+- **GIVEN** the rule `Disney+`
+- **WHEN** one transaction has the purpose "Disney+ Abo" and the amount -9,99 €, and another has the purpose "Disney Store" and the amount -24,00 €
+- **THEN** the rule matches the first and not the second, because `Disney+` is one word and not `Disney` followed by `AND`
+
+#### Scenario: Exclamation mark at the end of a word
+
+- **GIVEN** the rule `Yahoo! OR "Spotify"`
+- **WHEN** one transaction has the purpose "Yahoo! Mail Pro" and another has the purpose "Yahoo Finanzen"
+- **THEN** the rule matches the first and not the second, because `Yahoo!` is one word
 
 ### Requirement: The rules true and false
 

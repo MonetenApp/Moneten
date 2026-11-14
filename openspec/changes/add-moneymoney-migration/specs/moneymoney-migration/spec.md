@@ -127,9 +127,9 @@ The app SHALL store a migrated rule that it cannot parse with its text unchanged
 - **THEN** the report lists the rule of "Fees" with the position of the regular expression and the reason that it is not valid
 - **AND** the transaction is in "Uncategorized" and not in "Fees"
 
-### Requirement: Migrated rules that search only account numbers
+### Requirement: Migrated rules that search account numbers
 
-The app SHALL list in the report every migrated rule whose terms are all IBANs or account numbers without a field operator. The app does not search the account fields with such a term, so the rule no longer finds transactions by their account. The report entry names the category and says that `remote_account:` before a number searches the account of the counterparty. The rule stays unchanged.
+The app SHALL list in the report every migrated rule with a term without a field operator that is an IBAN or an account number, and keep the rule unchanged. A term of digits counts as an account number only when a migrated account or counterparty has that account number. The report entry names the category and says that `remote_account:` before the number searches the account of the counterparty.
 
 #### Scenario: Rule with an IBAN only
 
@@ -140,9 +140,33 @@ The app SHALL list in the report every migrated rule whose terms are all IBANs o
 
 #### Scenario: Rule with a word and an IBAN
 
-- **GIVEN** the category "Rent" has the rule `"Miete" OR DE02120300000000202051` in the source
+- **GIVEN** the category "Rent" has the rule `"Miete" AND DE02120300000000202051` in the source
 - **WHEN** the migration finishes
-- **THEN** the report does not list the rule of "Rent"
+- **THEN** the report says that the rule of "Rent" does not search the account fields and that `remote_account:DE02120300000000202051` finds the account of the counterparty
+- **AND** the category "Rent" has the rule `"Miete" AND DE02120300000000202051`
+
+#### Scenario: Customer number
+
+- **GIVEN** the category "Internet" has the rule `"67890"` in the source, and no migrated account and no counterparty of a migrated transaction has the account number 67890
+- **WHEN** the migration finishes
+- **THEN** the report does not list the rule of "Internet"
+
+### Requirement: Migrated rules with operators in lower case
+
+The app SHALL list in the report every migrated rule that contains the word and, or, or not without quotation marks and not in capitals. The app reads such a word as an operator, so the rule changes its meaning. The report entry names the category, quotes the word, and says that the word in quotation marks searches the word itself. The rule stays unchanged.
+
+#### Scenario: Rule with a lower case or
+
+- **GIVEN** the category "Salary" has the rule `"Lohn" or "Gehalt"` in the source
+- **WHEN** the migration finishes
+- **THEN** the report says that the rule of "Salary" reads `or` as an operator and that `"or"` in quotation marks searches the word
+- **AND** the category "Salary" has the rule `"Lohn" or "Gehalt"`
+
+#### Scenario: Operators in capitals or in quotation marks
+
+- **GIVEN** the category "Salary" has the rule `"Lohn" OR "Gehalt"` and the category "Books" has the rule `"Krieg" "and" "Frieden"` in the source
+- **WHEN** the migration finishes
+- **THEN** the report lists neither rule
 
 ### Requirement: Transactions
 
@@ -297,6 +321,7 @@ The app SHALL show a report after the import. The report lists for each account 
 - **GIVEN** a version of the app without budgets, and a source in which "Food" has a budget of 200,00 € per month and "Leisure" has a budget of 50,00 € per month
 - **WHEN** the migration finishes
 - **THEN** the report says that 2 categories have a budget in the source and that the app did not take the budgets over
+- **AND** the report promises no later step
 
 #### Scenario: Icons
 

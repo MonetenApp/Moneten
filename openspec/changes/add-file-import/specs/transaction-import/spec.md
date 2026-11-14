@@ -197,28 +197,34 @@ The app SHALL assign the category from a category column to each imported transa
 
 ### Requirement: CAMT import
 
-The app SHALL import camt.052 and camt.053 files with the booking date, the value date, the amount, the currency, the counterparty with IBAN and BIC, the purpose, the booking text, the end-to-end reference, the mandate reference, the creditor ID, and the return reason of each entry.
+The app SHALL import camt.052 and camt.053 files with the booking date, the value date, the amount, the currency, the counterparty with IBAN and BIC, the purpose, the booking text, the end-to-end reference, the mandate reference, the creditor ID, and the return reason of each entry. Each entry becomes one transaction with the amount of the entry, also when it bundles several payments.
 
 #### Scenario: Statement with three entries
 
 - **WHEN** the user imports a camt.053 file with 3 booked entries
 - **THEN** the account has 3 new booked transactions with their references in the details
 
+#### Scenario: Batch entry
+
+- **GIVEN** a camt.053 entry of -150,00 € on 3 November 2026 with two transaction details, -100,00 € to "Hausverwaltung Muster" and -50,00 € to "Stadtwerke Musterstadt"
+- **WHEN** the user imports the file
+- **THEN** the account has one transaction of -150,00 € on 3 November 2026
+
 ### Requirement: Status of a CAMT entry
 
-The app SHALL import a CAMT entry with the status PDNG or FUTR as a pending transaction on the booking date of the entry. It SHALL skip an entry with the status INFO, because the bank booked nothing for it. Every other entry is a booked transaction. A later file or refresh that brings the booked version of a pending transaction books it.
+The app SHALL import a CAMT entry with the status PDNG or FUTR as a pending transaction on the booking date of the entry. It SHALL skip an entry with the status INFO, because the bank booked nothing for it. Every other entry is a booked transaction. A later file or refresh books a pending transaction when it brings a booked transaction with the same amount and the same counterparty at most seven days apart.
 
 #### Scenario: Pending entry
 
-- **GIVEN** a camt.052 file for the IBAN DE02120300000000202051 with an entry of -89,00 € in the status PDNG, the booking date 1 November 2026, and the value date 2 November 2026
+- **GIVEN** a camt.052 file for the IBAN DE02120300000000202051 with an entry of -89,00 € to "Stadtwerke Musterstadt" in the status PDNG, the booking date 1 November 2026, and the value date 2 November 2026
 - **WHEN** the user imports the file
-- **THEN** the account has a pending transaction of -89,00 € with the booking date 1 November 2026
+- **THEN** the account has a pending transaction of -89,00 € to "Stadtwerke Musterstadt" with the booking date 1 November 2026
 
 #### Scenario: Pending entry booked by a later file
 
 - **GIVEN** the account holds the pending transaction of -89,00 € from the camt.052 file of the scenario "Pending entry"
-- **WHEN** the user imports a camt.053 file with the same entry of -89,00 € in the status BOOK on 1 November 2026
-- **THEN** the account has one transaction of -89,00 €, and it is booked
+- **WHEN** the user imports a camt.053 file with the same entry of -89,00 € to "Stadtwerke Musterstadt" in the status BOOK on 1 November 2026
+- **THEN** the account has one transaction of -89,00 € to "Stadtwerke Musterstadt", and it is booked
 
 #### Scenario: Future entry
 
@@ -230,29 +236,6 @@ The app SHALL import a CAMT entry with the status PDNG or FUTR as a pending tran
 - **GIVEN** a camt.052 file with a booked entry of -89,00 € and an entry of -20,00 € in the status INFO
 - **WHEN** the user imports the file
 - **THEN** the account has one new transaction, the one of -89,00 €
-
-### Requirement: One transaction for each CAMT transaction detail
-
-The app SHALL import a CAMT entry as one transaction for each transaction detail when the entry has two or more details, every detail has its own amount, and the amounts add up to the amount of the entry. Each transaction takes its amount, counterparty, purpose, and references from its detail, and the dates from the entry. Any other entry becomes one transaction with the amount of the entry.
-
-#### Scenario: Batch entry
-
-- **GIVEN** a camt.053 entry of -150,00 € on 3 November 2026 with two transaction details, -100,00 € to "Hausverwaltung Muster" and -50,00 € to "Stadtwerke Musterstadt"
-- **WHEN** the user imports the file
-- **THEN** the account has two transactions on 3 November 2026, -100,00 € to "Hausverwaltung Muster" and -50,00 € to "Stadtwerke Musterstadt"
-- **AND** no transaction of -150,00 €
-
-#### Scenario: Detail without an amount
-
-- **GIVEN** a camt.053 entry of -89,00 € with one transaction detail that names "Stadtwerke Musterstadt" and has no amount of its own
-- **WHEN** the user imports the file
-- **THEN** the account has one transaction of -89,00 € to "Stadtwerke Musterstadt"
-
-#### Scenario: Details that do not add up
-
-- **GIVEN** a camt.053 entry of -150,00 € with two transaction details of -100,00 € and -40,00 €
-- **WHEN** the user imports the file
-- **THEN** the account has one transaction of -150,00 €
 
 ### Requirement: MT940 import
 
