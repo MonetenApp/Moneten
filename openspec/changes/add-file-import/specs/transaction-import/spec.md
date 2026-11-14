@@ -403,6 +403,12 @@ The app SHALL import a file that has values it can read around, and list them as
 - **THEN** the app imports the row in EUR
 - **AND** the result lists a warning for `umsaetze.csv`, line 2, that names "XYZ" and EUR
 
+#### Scenario: A file that adds no transaction
+
+- **GIVEN** `umsaetze.csv` was imported once, with a warning for line 2
+- **WHEN** the user imports `umsaetze.csv` again and every row is skipped
+- **THEN** the result lists no warning for `umsaetze.csv`
+
 ### Requirement: Imported transactions are complete transactions
 
 The app SHALL treat an imported transaction like a fetched one. It can be searched, categorized, split, commented, checked, exported, and deleted.

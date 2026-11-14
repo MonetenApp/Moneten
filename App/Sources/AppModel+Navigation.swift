@@ -148,7 +148,7 @@ extension AppModel {
 					added += result.added.count
 					skipped += result.skipped
 					booked += result.booked.count
-					warnings += parsed.warnings.map { "\(url.lastPathComponent): \($0)" }
+					if !result.added.isEmpty { warnings += parsed.warnings.map { "\(url.lastPathComponent): \($0)" } }
 				} catch {
 					problems.append("\(url.lastPathComponent): \(error)")
 				}
