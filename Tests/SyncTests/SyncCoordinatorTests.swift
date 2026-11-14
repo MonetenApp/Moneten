@@ -650,4 +650,30 @@ struct SyncCoordinatorTests {
 		try await Task.sleep(for: .milliseconds(50))
 		#expect(events.all.isEmpty)
 	}
+
+	@Test("The notices of the bank reach the app when a refresh ends, and a canceled refresh brings none")
+	func notices() async throws {
+		var noticed: [String] = []
+		coordinator.noticed = { access, messages in noticed += messages.map { "\(access.uuidString) \($0.text)" } }
+		let bank = Self.access("Musterbank")
+		coordinator.refresh(RefreshRequest(access: bank, accounts: [Self.giro]), with: Notifying(delay: .zero), attended: true)
+		await until { !coordinator.isRefreshing }
+		#expect(noticed == ["\(bank.id.uuidString) Wartungsarbeiten am 14.11.2026 von 1 bis 5 Uhr"])
+		let other = Self.access("Beispielbank")
+		coordinator.refresh(RefreshRequest(access: other, accounts: [Self.savings]), with: Notifying(delay: .milliseconds(100)), attended: true)
+		coordinator.cancelAll()
+		try await Task.sleep(for: .milliseconds(300))
+		#expect(noticed.count == 1)
+	}
+}
+
+/// Fetches every requested account after `delay`, also when the refresh was canceled, and sends a notice of the bank.
+struct Notifying: BankConnector {
+	let delay: Duration
+
+	func refresh(_ refresh: RefreshRequest, _ session: SyncSession) async throws -> ConnectorReport {
+		try? await Task.sleep(for: delay)
+		return ConnectorReport(outcomes: Dictionary(uniqueKeysWithValues: refresh.accounts.map { ($0.accountID, .fetched(RefreshResult(balance: nil, transactions: nil))) }),
+			notices: [BankMessage(text: "Wartungsarbeiten am 14.11.2026 von 1 bis 5 Uhr")])
+	}
 }
