@@ -154,7 +154,7 @@ struct LedgerTests {
 		])
 		#expect(l.balance(of: wallet) == Money(minorUnits: 10_000, currency: "EUR"))
 		#expect(l.computedBalance(of: wallet, through: Day(year: 2026, month: 11, day: 3)) == Money(minorUnits: 10_000, currency: "EUR"))
-		#expect(l.dailyBalances(accountIDs: [wallet.id]).map(\.minorUnits) == [10_000])
+		#expect(l.dailyBalances(accountIDs: [wallet.id]).map(\.minorUnits) == [10_000, 10_000])
 	}
 
 	@Test("The sum of a category counts only the rows in the currency of the category")
