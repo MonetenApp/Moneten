@@ -97,10 +97,10 @@ enum CSVParser {
 		let delimiter = detectDelimiter(text)
 		let rows = split(text, delimiter: delimiter)
 		guard let headerIndex = rows.firstIndex(where: { row in
-			let lower = row.map { normalize($0) }
+			let lower = row.cells.map { normalize($0) }
 			return lower.contains(where: { dateKeys.contains($0) }) && lower.contains(where: { (amountKeys + debitKeys + creditKeys).contains($0) })
 		}) else { throw TransactionFileImporter.Failure.noHeader }
-		let header = rows[headerIndex].map { normalize($0) }
+		let header = rows[headerIndex].cells.map { normalize($0) }
 		func column(_ keys: [String]) -> Int? {
 			for k in keys { if let i = header.firstIndex(of: k) { return i } }
 			return nil
@@ -127,7 +127,7 @@ enum CSVParser {
 			return v.isEmpty ? nil : v
 		}
 		// A row without a date is a total or a note, which the import skips.
-		let dataRows = rows.enumerated().dropFirst(headerIndex + 1).compactMap { offset, row in cell(row, dateCol).map { (offset, row, $0) } }
+		let dataRows = rows.dropFirst(headerIndex + 1).compactMap { row in cell(row.cells, dateCol).map { (row.line, row.cells, $0) } }
 		// The amount column, or the debit and credit columns when the amount cell is empty.
 		func amountCells(_ row: [String]) -> [String] {
 			cell(row, amountCol).map { [$0] } ?? [debitCol, creditCol].compactMap { cell(row, $0) }
@@ -143,10 +143,10 @@ enum CSVParser {
 		}
 		let placeholder = UUID()
 		var result = TransactionFileImporter.Parsed(transactions: [])
-		for (offset, row, dateText) in dataRows {
+		for (line, row, dateText) in dataRows {
 			func value(_ c: Int?) -> String? { cell(row, c) }
 			guard let day = Day(string: dateText) else {
-				throw TransactionFileImporter.Failure.line(offset + 1, "The date \(dateText) cannot be read.")
+				throw TransactionFileImporter.Failure.line(line, "The date \(dateText) cannot be read.")
 			}
 			var amount: Decimal?
 			if let a = value(amountCol) {
@@ -163,18 +163,18 @@ enum CSVParser {
 				let c = value(creditCol).map { readAmount($0).map { abs($0) } } ?? 0
 				if let d, let c { amount = d + c }
 			}
-			guard let amount else { throw TransactionFileImporter.Failure.line(offset + 1, "The amount cannot be read.") }
+			guard let amount else { throw TransactionFileImporter.Failure.line(line, "The amount cannot be read.") }
 			var cur = currency
 			if let cell = value(currencyCol) {
 				if let code = currencyCode(cell, account: currency) {
 					cur = code
 				} else {
-					result.warnings.append(.unknownCurrency(line: offset + 1, cell: cell, replacement: currency))
+					result.warnings.append(.unknownCurrency(line: line, cell: cell, replacement: currency))
 				}
 			}
 			let valueDate = value(valueCol).flatMap { cell in
 				let day = Day(string: cell)
-				if day == nil { result.warnings.append(.unreadableValueDate(line: offset + 1, cell: cell)) }
+				if day == nil { result.warnings.append(.unreadableValueDate(line: line, cell: cell)) }
 				return day
 			}
 			var t = Transaction(accountID: placeholder, bookingDate: day, valueDate: valueDate,
@@ -213,9 +213,12 @@ enum CSVParser {
 		return candidates.max { a, b in sample.filter { $0 == a }.count < sample.filter { $0 == b }.count } ?? ";"
 	}
 
-	/// Splits CSV text into rows and fields. Quoted fields can contain the delimiter and line breaks.
-	static func split(_ text: String, delimiter: Character) -> [[String]] {
-		var rows: [[String]] = []
+	/// Splits CSV text into rows and fields, each row with the line of the file where it starts.
+	/// Quoted fields can contain the delimiter and line breaks.
+	static func split(_ text: String, delimiter: Character) -> [(line: Int, cells: [String])] {
+		var rows: [(line: Int, cells: [String])] = []
+		var line = 1
+		var start = 1
 		var row: [String] = []
 		var field = ""
 		var quoted = false
@@ -223,6 +226,8 @@ enum CSVParser {
 		var pending: Character?
 		while let c = pending ?? iterator.next() {
 			pending = nil
+			let isBreak = c == "\n" || c == "\r\n" || c == "\r"
+			if isBreak { line += 1 }
 			if quoted {
 				if c == "\"" {
 					if let next = iterator.next() {
@@ -238,9 +243,10 @@ enum CSVParser {
 			} else if c == delimiter {
 				row.append(field)
 				field = ""
-			} else if c == "\n" || c == "\r\n" || c == "\r" {
+			} else if isBreak {
 				row.append(field)
-				rows.append(row)
+				rows.append((start, row))
+				start = line
 				row = []
 				field = ""
 			} else {
@@ -249,7 +255,7 @@ enum CSVParser {
 		}
 		if !field.isEmpty || !row.isEmpty {
 			row.append(field)
-			rows.append(row)
+			rows.append((start, row))
 		}
 		return rows
 	}
@@ -436,6 +442,7 @@ final class CAMTParser: NSObject, XMLParserDelegate {
 		case "Dt" where ends("BookgDt/Dt"): entry["booking"] = value
 		case "DtTm" where ends("BookgDt/DtTm"): entry["booking"] = String(value.prefix(10))
 		case "Dt" where ends("ValDt/Dt"): entry["value"] = value
+		case "DtTm" where ends("ValDt/DtTm"): entry["value"] = value
 		case "AddtlNtryInf": entry["bookingText"] = value
 		case "Ustrd": purposes.append(value)
 		case "EndToEndId": entry["e2e"] = value
