@@ -241,6 +241,20 @@ struct RuleTests {
 		}
 	}
 
+	@Test("Sign after a field operator", arguments: [
+		(#"name:-"Stadtwerke""#, 5, #"A sign cannot follow name:. Write name!="…" to exclude a value, or name:"…" to match it."#),
+		(#"purpose:-"Miete""#, 8, #"A sign cannot follow purpose:. Write purpose!="…" to exclude a value, or purpose:"…" to match it."#),
+		(#"name:!"x""#, 5, #"A sign cannot follow name:. Write name!="…" to exclude a value, or name:"…" to match it."#),
+		(#"name:+"x""#, 5, #"A sign cannot follow name:. Write name!="…" to exclude a value, or name:"…" to match it."#),
+		("name:-(a OR b)", 5, #"A sign cannot follow name:. Write name!="…" to exclude a value, or name:"…" to match it."#),
+		(#""Abschlag" name=-„Stadtwerke“"#, 16, #"A sign cannot follow name=. Write name!="…" to exclude a value, or name:"…" to match it."#),
+	])
+	func signAfterFieldOperator(rule: String, position: Int, message: String) throws {
+		#expect(throws: RuleSyntaxError(position: position, message: message)) { try Rule(parsing: rule) }
+		#expect(try matches(#"name!="Stadtwerke""#, RuleSubject(name: "Gasversorger Muster")))
+		#expect(try !matches(#"name!="Stadtwerke""#, RuleSubject(name: "Stadtwerke")))
+	}
+
 	@Test("Other syntax errors")
 	func syntaxErrors() {
 		for bad in [#""Lohn"#, "OR \"x\"", "\"x\" AND", "/abc", "amount>abc", "amount>1,000", ")", ""] {
