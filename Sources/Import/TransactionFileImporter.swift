@@ -63,8 +63,8 @@ public enum TransactionFileImporter {
 		guard let format = detect(text) else { throw Failure.unsupported }
 		let result: Parsed
 		switch format {
-		case .camt: result = try CAMTParser.parse(data)
-		case .mt940: result = Parsed(transactions: try MT940Parser.parse(text))
+		case .camt: result = try CAMTParser.parse(data, currency: currency)
+		case .mt940: result = Parsed(transactions: try MT940Parser.parse(text, currency: currency))
 		case .csv: result = try CSVParser.parse(text, currency: currency)
 		}
 		guard !result.transactions.isEmpty else { throw Failure.empty }
@@ -264,7 +264,7 @@ enum CSVParser {
 // MARK: - MT940
 
 enum MT940Parser {
-	static func parse(_ text: String) throws -> [Transaction] {
+	static func parse(_ text: String, currency: String) throws -> [Transaction] {
 		var fields: [(tag: String, value: String, line: Int)] = []
 		for (n, rawLine) in text.replacingOccurrences(of: "\r\n", with: "\n").split(separator: "\n", omittingEmptySubsequences: false).enumerated() {
 			let line = String(rawLine)
@@ -275,7 +275,7 @@ enum MT940Parser {
 				fields[fields.count - 1].value += "\n" + line
 			}
 		}
-		var currency = "EUR"
+		var currency = currency
 		var result: [Transaction] = []
 		let placeholder = UUID()
 		for (i, f) in fields.enumerated() {
@@ -394,12 +394,16 @@ final class CAMTParser: NSObject, XMLParserDelegate {
 	private var entry: [String: String] = [:]
 	private var purposes: [String] = []
 	private var inEntry = false
-	private var currency = "EUR"
+	private let currency: String
 	/// The first entry that cannot be read. It stops the parser, so nothing from the file is imported.
 	private var failure: TransactionFileImporter.Failure?
 
-	static func parse(_ data: Data) throws -> TransactionFileImporter.Parsed {
-		let p = CAMTParser()
+	private init(currency: String) {
+		self.currency = currency
+	}
+
+	static func parse(_ data: Data, currency: String) throws -> TransactionFileImporter.Parsed {
+		let p = CAMTParser(currency: currency)
 		let parser = XMLParser(data: data)
 		parser.delegate = p
 		let parsed = parser.parse()
