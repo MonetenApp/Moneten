@@ -1092,12 +1092,24 @@ final class AppModel {
 		try store.save(groups: plan.groups, accounts: plan.accounts + plan.updatedAccounts, categories: plan.categories + plan.updatedCategories,
 			transactions: plan.transactions + plan.updatedTransactions, relinking: plan.relinkedDeletedRows)
 		for c in starters { try? store.deleteCategory(c.id) }
+		try await reloadAfterImport()
+	}
+
+	/// Loads the ledger and the bank accesses again after a migration or a complete import replaced the table, and
+	/// selects the first group when the selection is gone.
+	func reloadAfterImport() async throws {
+		guard let store else { return }
 		try await replacingTable {
 			let loaded = try store.loadLedger()
 			ledgerChange = "load"
 			ledger = loaded
+			accesses = Dictionary(uniqueKeysWithValues: try store.accesses().map { ($0.id, $0) })
 			if case let .category(id) = selection, ledger.category(id) == nil { selection = nil }
-			if selection == nil, let g = ledger.childGroups(of: nil).first { selection = .group(g.id) }
+			// A complete import replaces the account groups.
+			if case let .group(id) = selection, ledger.group(id) == nil { selection = nil }
+			if selection == nil {
+				selection = ledger.childGroups(of: nil).first.map { .group($0.id) } ?? ledger.accounts(inGroup: nil).first.map { .account($0.id) }
+			}
 		}
 	}
 
@@ -1116,7 +1128,7 @@ final class AppModel {
 	}
 
 	/// The starter categories that a migration replaces, once the database holds no transactions.
-	private var replaceableStarterCategories: [Domain.Category] {
+	var replaceableStarterCategories: [Domain.Category] {
 		ledger.transactions.isEmpty ? StarterCategories.unchangedRoots(in: ledger, language: starterLanguage) : []
 	}
 
@@ -1301,6 +1313,7 @@ enum SheetKind: Identifiable, Equatable {
 	case transaction(UUID?)
 	case comment(Set<UUID>)
 	case migration
+	case exportAllData
 	case setPassword
 	case changePassword
 
