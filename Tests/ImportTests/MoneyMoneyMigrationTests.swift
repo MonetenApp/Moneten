@@ -926,6 +926,34 @@ struct MoneyMoneyMigrationTests {
 		#expect(text.hasSuffix("Statements were not migrated, because the AppleScript export of MoneyMoney does not contain them. Use \"Show in Finder...\" on \"Statements\" in MoneyMoney to find the statement files and copy them to keep them.\n"))
 	}
 
+	@Test("A migrated account that the setup connects keeps its history, and its first refresh adds only new transactions")
+	func connectedAccountFirstRefresh() throws {
+		let p = try plan()
+		let ledger = Ledger(groups: p.groups, accounts: p.accounts, categories: p.categories, transactions: p.transactions)
+		let migrated = try #require(p.accounts.first { $0.name == "Giro" })
+		let listed = Account(position: 0, name: "Girokonto", kind: .giro, source: .bank, iban: "DE02120300000000202051", accountNumber: "202051",
+			bankCode: "12030000", accessID: UUID(), remoteID: "DE02120300000000202051")
+		let connected = try #require(ledger.accountsToAdd([listed], listed: [listed]).first)
+		#expect(connected.id == migrated.id && connected.name == "Giro" && connected.source == .bank)
+
+		let stored = ledger.transactions(ofAccount: migrated.id)
+		let rewe = try #require(stored.first { $0.name == "REWE Markt" })
+		// The bank delivers the two booked rows of the source without their source IDs, the pending row, and one new row.
+		let delivered = [
+			Transaction(accountID: migrated.id, bookingDate: Day(year: 2026, month: 11, day: 2), amountMinor: -4_590, name: "REWE Markt", purpose: "KARTENZAHLUNG"),
+			Transaction(accountID: migrated.id, bookingDate: Day(year: 2026, month: 11, day: 3), amountMinor: -8_900, name: "Stadtwerke Musterstadt", purpose: "Abschlag",
+				counterpartyIBAN: "DE02120300000000202051", endToEndReference: "E2E-1"),
+			Transaction(accountID: migrated.id, bookingDate: Day(year: 2026, month: 11, day: 4), amountMinor: -1_000, name: "Kiosk", isPending: true),
+			Transaction(accountID: migrated.id, bookingDate: Day(year: 2026, month: 11, day: 12), amountMinor: -2_500, name: "Tankstelle", purpose: "KARTENZAHLUNG"),
+		]
+		let r = reconcile(.refresh(RefreshResult(balance: nil, balanceDate: nil, transactions: FetchedTransactions(rows: delivered, from: Day(year: 2026, month: 11, day: 1)))),
+			into: connected, stored: stored, deleted: [], rules: Categorizer(ledger: ledger), now: Date())
+		#expect(r.added.map(\.name) == ["Tankstelle"])
+		#expect(r.dropped.isEmpty)
+		let kept = (r.updated + r.booked).first { $0.id == rewe.id } ?? rewe
+		#expect(kept.comment == "Wocheneinkauf" && kept.isChecked && kept.categorizedBy == .manual)
+	}
+
 	@Test("The report names a group whose balance in MoneyMoney leaves out an account")
 	func groupSum() throws {
 		#expect(try plan().notes.allSatisfy { !$0.contains("group") })
