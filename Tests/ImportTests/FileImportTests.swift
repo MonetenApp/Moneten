@@ -329,13 +329,14 @@ struct FileImportTests {
 		<?xml version="1.0" encoding="UTF-8"?>
 		<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.052.001.08"><BkToCstmrAcctRpt><Rpt>
 		<Ntry><Amt Ccy="EUR">800.00</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts><Cd>FUTR</Cd></Sts><BookgDt><Dt>2026-12-01</Dt></BookgDt>
-		<NtryDtls><TxDtls><RltdPties><Cdtr><Pty><Nm>Vermieter A</Nm></Pty></Cdtr></RltdPties><RmtInf><Ustrd>Miete Dezember</Ustrd></RmtInf></TxDtls></NtryDtls></Ntry>
+		<NtryDtls><TxDtls><RltdPties><Cdtr><Pty><Nm>Vermieter A</Nm></Pty></Cdtr><CdtrAcct><Id><IBAN>DE02120300000000202051</IBAN></Id></CdtrAcct></RltdPties><RmtInf><Ustrd>Miete Dezember</Ustrd></RmtInf></TxDtls></NtryDtls></Ntry>
 		</Rpt></BkToCstmrAcctRpt></Document>
 		"""
 		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
 		let rules = Categorizer(ledger: Ledger(accounts: [giro]))
+		let importedAt = Calendar.current.date(from: DateComponents(year: 2026, month: 11, day: 15, hour: 12))!
 		let imported = reconcile(.file(try TransactionFileImporter.parse(Data(xml.utf8), currency: "EUR").transactions), into: giro, stored: [], deleted: [],
-			rules: rules, now: Date()).added
+			rules: rules, now: importedAt).added
 		#expect(imported.map(\.amountMinor) == [-80_000])
 		#expect(imported.map(\.isPending) == [true])
 		#expect(imported.map(\.isFetched) == [false])
@@ -351,6 +352,19 @@ struct FileImportTests {
 			#expect(ledger.transactions(ofAccount: giro.id).map(\.isPending) == [true])
 			#expect(ledger.transactions(ofAccount: giro.id).map(\.isFetched) == [false])
 		}
+		let bank = Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 12, day: 1), amountMinor: -80_000,
+			name: "Vermieter A", purpose: "MIETE DEZEMBER WHG 3 DAUERAUFTRAG", counterpartyIBAN: "DE02120300000000202051", isPending: true)
+		let now = Calendar.current.date(from: DateComponents(year: 2026, month: 11, day: 20, hour: 12))!
+		let refresh = reconcile(.refresh(RefreshResult(balance: nil, transactions: FetchedTransactions(rows: [bank], from: Day(year: 2026, month: 11, day: 1)))),
+			into: giro, stored: imported, deleted: [], rules: rules, now: now)
+		var ledger = Ledger(accounts: [giro], transactions: imported)
+		ledger.apply(refresh)
+		let rows = ledger.transactions(ofAccount: giro.id)
+		#expect(rows.map(\.amountMinor) == [-80_000])
+		#expect(rows.map(\.currency) == ["EUR"])
+		#expect(rows.map(\.isPending) == [true])
+		#expect(rows.map(\.isFetched) == [true])
+		#expect(rows.map(\.purpose) == ["MIETE DEZEMBER WHG 3 DAUERAUFTRAG"])
 	}
 
 	@Test("Batch entry")

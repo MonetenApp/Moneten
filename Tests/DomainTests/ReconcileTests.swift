@@ -709,18 +709,69 @@ struct ReconcileTests {
 		#expect(deleted.skipped == 1)
 	}
 
-	@Test("A bank row that is the version of one future file row does not remove a second one")
-	func weeklyFileRows() {
+	@Test("A bank row that is the version of one future file row does not remove a second one", arguments: [3, 8])
+	func weeklyFileRows(laterDay: Int) {
 		let first = rent(1)
-		let second = rent(8)
-		let r = merge(refresh([fresh(first)]), stored: [first, second], at: noon(20, month: 11))
+		let second = rent(laterDay)
+		let bank = rent(1, purpose: "MIETE DEZEMBER WHG 3 DAUERAUFTRAG")
+		let r = merge(refresh([bank]), stored: [first, second], at: noon(20, month: 11))
 		#expect(r.dropped == [])
 		#expect(r.updated.map(\.id) == [first.id])
 		#expect(r.updated.map(\.isFetched) == [true])
 		#expect(r.added == [])
-		let again = merge(refresh([fresh(first)]), stored: history([first, second], after: r), at: noon(21, month: 11))
+		let after = history([first, second], after: r)
+		#expect(after.count == 2)
+		#expect(after.first { $0.id == second.id } == second)
+		let again = merge(refresh([bank]), stored: after, at: noon(21, month: 11))
 		#expect(again.dropped == [])
 		#expect(again.updated == [])
+	}
+
+	@Test("A later file with another purpose does not mark a future payment fetched")
+	func laterFileIsNotFetched() {
+		let first = merge(.file([rent(1)]), at: noon(15, month: 11)).added
+		let later = merge(.file([rent(1, purpose: "Miete Dezember Wohnung 3")]), stored: first, at: noon(19, month: 11))
+		let after = history(first, after: later)
+		#expect(after.count == 2)
+		#expect(after.map(\.isFetched) == [false, false])
+		let refreshed = history(after, after: merge(refresh([]), stored: after, at: noon(20, month: 11)))
+		#expect(refreshed.count == 2)
+		#expect(refreshed.map(\.amountMinor) == [-80_000, -80_000])
+		#expect(refreshed.map(\.isPending) == [true, true])
+		#expect(refreshed.map(\.isFetched) == [false, false])
+	}
+
+	@Test("A dropped file row fills only empty user fields of the bank row", arguments: [false, true])
+	func droppedFileUserFields(bankHasFields: Bool) throws {
+		let housing = Domain.Category(position: 0, name: "Housing")
+		let bills = Domain.Category(position: 1, name: "Bills")
+		var file = rent(1)
+		file.comment = "Shared rent"
+		file.categoryID = housing.id
+		file.categorizedBy = .manual
+		file.isChecked = !bankHasFields
+		var bank = stored(rent(1, purpose: "BANK MIETE"))
+		bank.sourceID = "bank-7"
+		bank.comment = bankHasFields ? "Bank note" : ""
+		bank.categoryID = bankHasFields ? bills.id : nil
+		bank.categorizedBy = .manual
+		bank.isChecked = bankHasFields
+		var delivered = fresh(bank)
+		delivered.purpose = "MIETE DEZEMBER WHG 3 DAUERAUFTRAG"
+		let r = merge(refresh([delivered]), stored: [file, bank], categories: [housing, bills], at: noon(20, month: 11))
+		#expect(r.dropped == [file.id])
+		#expect(r.updated.count == 1)
+		let kept = try #require(history([file, bank], after: r).first)
+		#expect(kept.id == bank.id)
+		#expect(kept.amountMinor == -80_000)
+		#expect(kept.purpose == "MIETE DEZEMBER WHG 3 DAUERAUFTRAG")
+		#expect(kept.comment == (bankHasFields ? "Bank note" : "Shared rent"))
+		#expect(kept.categoryID == (bankHasFields ? bills.id : housing.id))
+		#expect(kept.categorizedBy == .manual)
+		#expect(kept.isChecked)
+		let again = merge(refresh([delivered]), stored: [kept], categories: [housing, bills], at: noon(21, month: 11))
+		#expect(again.updated == [])
+		#expect(again.dropped == [])
 	}
 
 	@Test("A stored bank row that moves to the day of a future file row removes the file row in the same refresh")

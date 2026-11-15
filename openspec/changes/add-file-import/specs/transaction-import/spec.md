@@ -566,6 +566,20 @@ The app SHALL keep a pending transaction from a file that no refresh has deliver
 - **AND** the other stays pending and unfetched with the purpose "Miete Dezember"
 - **AND** the fetched bank transaction stays
 
+#### Scenario: A later file does not make a payment fetched
+
+- **GIVEN** a pending file transaction of -800,00 € to "Vermieter A" on 1 December 2026 with the purpose "Miete Dezember"
+- **WHEN** a later file delivers the payment with the purpose "Miete Dezember Wohnung 3"
+- **AND** a refresh on 20 November 2026 delivers neither version
+- **THEN** both file transactions stay pending and unfetched
+
+#### Scenario: Separate dates remain separate payments
+
+- **GIVEN** a file imported pending transactions of -800,00 € to "Vermieter A" on 1 and 8 December 2026
+- **WHEN** a refresh on 20 November 2026 delivers only the pending payment of 1 December with another purpose
+- **THEN** both transactions stay, and only the transaction of 1 December counts as fetched
+- **AND** the same holds for file transactions on 1 and 3 December 2026
+
 ### Requirement: The bank's version of a future pending transaction from a file
 
 The app SHALL count a payment once when a successful refresh delivers a pending transaction with the same amount and the same counterparty, at most seven days apart from a future pending transaction from a file. A delivered transaction that the account does not hold yet and that the user did not delete takes the place of the one from the file. A delivered transaction that the account holds already counts there when it arrives on the day of the one from the file, which the app then removes.
@@ -582,6 +596,13 @@ The app SHALL count a payment once when a successful refresh delivers a pending 
 - **AND** on 19 November 2026 the user imported a camt.052 file with an entry of -800,00 € to "Vermieter A" with the IBAN DE02120300000000202051 and the purpose "Miete Dezember", in the status FUTR with the booking date 1 December 2026, so the account shows -1.600,00 € of pending transactions
 - **WHEN** a successful refresh on 20 November 2026 delivers the pending transaction of 18 November 2026 again
 - **THEN** the account has one pending transaction of -800,00 €, with the purpose "MIETE DEZEMBER WHG 3 DAUERAUFTRAG"
+
+#### Scenario: Keep the file transaction's user fields
+
+- **GIVEN** the file transaction from "The bank reported the scheduled rent before the import" has the comment "Shared rent", the category "Housing" assigned by hand, and a checkmark
+- **WHEN** the refresh removes the file transaction in favor of the stored bank transaction
+- **THEN** the bank transaction takes the comment when its own comment is empty, the category when it is uncategorized, and the checkmark when it is unchecked
+- **AND** an existing comment "Bank note", category "Bills", or checkmark on the bank transaction stays
 
 ### Requirement: MT940 import
 
