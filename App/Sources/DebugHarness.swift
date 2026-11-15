@@ -864,6 +864,7 @@ final class DebugHarness {
 			case .empty: "empty"
 			case .unsupported: "unsupported"
 			case .noHeader: "noHeader"
+			case .severalAccounts: "severalAccounts"
 			case .encoding: "encoding"
 			case nil: preview.problem == nil ? "-" : "encoding"
 			}
