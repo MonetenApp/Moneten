@@ -88,7 +88,7 @@ struct MigrationSheet: View {
 					LabeledContent("Categories", value: plan.categories.count.formatted())
 					LabeledContent("Transactions", value: plan.transactions.count.formatted())
 					if !plan.updatedAccounts.isEmpty || !plan.updatedTransactions.isEmpty || !plan.updatedCategories.isEmpty {
-						LabeledContent("Updated", value: String(localized: "\(plan.updatedAccounts.count) accounts, \(plan.updatedTransactions.count.formatted()) transactions, \(plan.updatedCategories.count) category colors"))
+						LabeledContent("Updated", value: String(localized: "\(plan.updatedAccounts.count) accounts, \(plan.updatedTransactions.count) transactions, \(plan.updatedCategories.count) category colors"))
 					}
 				}
 				Section {
@@ -215,7 +215,7 @@ struct MigrationSheet: View {
 			LabeledContent("Rules", value: plan.categories.filter { !$0.rule.isEmpty }.count.formatted())
 			LabeledContent("Transactions", value: plan.transactions.count.formatted())
 			if !plan.updatedAccounts.isEmpty || !plan.updatedTransactions.isEmpty || !plan.updatedCategories.isEmpty {
-				LabeledContent("Updated", value: String(localized: "\(plan.updatedAccounts.count) accounts, \(plan.updatedTransactions.count.formatted()) transactions, \(plan.updatedCategories.count) category colors"))
+				LabeledContent("Updated", value: String(localized: "\(plan.updatedAccounts.count) accounts, \(plan.updatedTransactions.count) transactions, \(plan.updatedCategories.count) category colors"))
 			}
 		} header: {
 			Text("This will be imported")

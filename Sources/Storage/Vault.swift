@@ -181,7 +181,8 @@ public struct Vault: Sendable {
 		try migrator.migrate(queue)
 		try queue.read { db in
 			let check = try String.fetchOne(db, sql: "PRAGMA quick_check")
-			if check != "ok" { throw Failure.unreadable("Database integrity check failed: \(check ?? "unknown result")") }
+			// The result of SQLite names the damaged pages in its own words, so only the sentence around it is localized.
+			if check != "ok" { throw Failure.unreadable(check.map { String(localized: "Database integrity check failed: \($0)") } ?? String(localized: "Database integrity check failed.")) }
 		}
 		return Store(queue: queue)
 	}

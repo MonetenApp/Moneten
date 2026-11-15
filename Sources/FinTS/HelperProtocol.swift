@@ -374,7 +374,8 @@ enum HelperFailure {
 	static let timeout = SyncFailure.network(String(localized: "The connection to the FinTS server of the bank timed out. Try again later."))
 
 	static func stopped(_ status: Int32, signal: Bool) -> SyncFailure {
-		.network(String(localized: "The FinTS helper stopped unexpectedly (\(signal ? "signal" : "status") \(status))."))
+		.network(signal ? String(localized: "The FinTS helper stopped unexpectedly (signal \(status)).")
+			: String(localized: "The FinTS helper stopped unexpectedly (status \(status))."))
 	}
 
 	static func notStarted(_ error: Error) -> SyncFailure {

@@ -41,11 +41,18 @@ public struct MoneyMoneyMigration: Sendable {
 	}
 
 	public enum Failure: Error, CustomStringConvertible {
-		case unreadable(String)
+		/// The export of one kind of object is not the property list that the plan reads.
+		public enum Export: Sendable {
+			case accounts, categories, transactions
+		}
+
+		case unreadable(Export)
 
 		public var description: String {
 			switch self {
-			case let .unreadable(what): String(localized: "The export of \(what) could not be read.")
+			case .unreadable(.accounts): String(localized: "The export of the accounts could not be read.")
+			case .unreadable(.categories): String(localized: "The export of the categories could not be read.")
+			case .unreadable(.transactions): String(localized: "The export of the transactions could not be read.")
 			}
 		}
 	}
@@ -63,14 +70,14 @@ public struct MoneyMoneyMigration: Sendable {
 	public func plan(accounts accountsData: Data, categories categoriesData: Data, transactions transactionsData: Data, into ledger: Ledger,
 		deleted: [DeletedTransaction] = []) throws -> Plan {
 		guard let rawAccounts = try PropertyListSerialization.propertyList(from: accountsData, format: nil) as? [[String: Any]] else {
-			throw Failure.unreadable("accounts")
+			throw Failure.unreadable(.accounts)
 		}
 		guard let rawCategories = try PropertyListSerialization.propertyList(from: categoriesData, format: nil) as? [[String: Any]] else {
-			throw Failure.unreadable("categories")
+			throw Failure.unreadable(.categories)
 		}
 		guard let rawTransactionsRoot = try PropertyListSerialization.propertyList(from: transactionsData, format: nil) as? [String: Any],
 			let rawTransactions = rawTransactionsRoot["transactions"] as? [[String: Any]] else {
-			throw Failure.unreadable("transactions")
+			throw Failure.unreadable(.transactions)
 		}
 
 		var plan = Plan()
@@ -130,11 +137,11 @@ public struct MoneyMoneyMigration: Sendable {
 		Self.setInitialBalances(of: &plan, ledger: ledger, stored: stored, deleted: tombstones, relinked: relinked, exported: Set(accountMap.values),
 			delivered: delivered.mapValues { Set($0.compactMap(\.sourceID)) })
 		if !rawCategories.contains(where: { ($0["default"] as? Bool) != true && Self.string($0["rules"]) != nil }) {
-			plan.notes.append("The export contains no categorization rules. Copy them from the category settings of MoneyMoney into the category settings of Moneten.")
+			plan.notes.append(String(localized: "The export contains no categorization rules. Copy them from the category settings of MoneyMoney into the category settings of Moneten."))
 		}
 		for c in plan.categories {
 			guard let error = c.ruleError else { continue }
-			plan.notes.append("The rule of \"\(c.name)\" cannot be read at position \(error.position + 1): \(error.message) \"\(c.name)\" receives no transaction through its rule until you correct the rule in its settings.")
+			plan.notes.append(String(localized: "The rule of \"\(c.name)\" cannot be read at position \(error.position + 1): \(error.message) \"\(c.name)\" receives no transaction through its rule until you correct the rule in its settings."))
 		}
 		plan.notes += Self.groupSumNotes(rawAccounts)
 		if !plan.portfolioAccounts.isEmpty {

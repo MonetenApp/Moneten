@@ -211,7 +211,7 @@ enum CSVParser {
 			try Task.checkCancellation()
 			func value(_ c: Int?) -> String? { cell(row, c) }
 			guard let day = dateOrder.day(dateText) else {
-				throw TransactionFileImporter.Failure.line(line, "The date \(dateText) cannot be read.")
+				throw TransactionFileImporter.Failure.line(line, String(localized: "The date \(dateText) cannot be read."))
 			}
 			var amount: Decimal?
 			amountCurrency = nil
@@ -230,7 +230,7 @@ enum CSVParser {
 				let c = try value(creditCol).map { try readAmount($0).map { abs($0) } } ?? 0
 				if let d, let c { amount = d + c }
 			}
-			guard let amount else { throw TransactionFileImporter.Failure.line(line, "The amount cannot be read.") }
+			guard let amount else { throw TransactionFileImporter.Failure.line(line, String(localized: "The amount cannot be read.")) }
 			var cur = amountCurrency ?? zeroCurrency ?? currency
 			if let cell = value(currencyCol) {
 				if let code = currencyCode(cell, account: currency) {
