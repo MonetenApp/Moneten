@@ -38,6 +38,10 @@ struct CategoryPickerSheet: View {
 			}
 		}
 		.onChange(of: query) { highlighted = 0 }
+		// The focus stays in the search field, so VoiceOver hears the highlight only through an announcement.
+		.onChange(of: matches.indices.contains(highlighted) ? matches[highlighted].id : nil) { _, id in
+			if let id { AccessibilityNotification.Announcement(ledger.categoryPath(id)).post() }
+		}
 		.onAppear { fieldFocused = true }
 	}
 
@@ -62,7 +66,6 @@ struct CategoryPickerSheet: View {
 							.contentShape(Rectangle())
 						}
 						.buttonStyle(.plain)
-						.accessibilityAddTraits(index == highlighted ? .isSelected : [])
 						.id(index)
 					}
 				}
