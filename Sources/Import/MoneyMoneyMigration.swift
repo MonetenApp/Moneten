@@ -453,7 +453,7 @@ public struct MoneyMoneyMigration: Sendable {
 	}
 }
 
-/// Runs the export commands of MoneyMoney through `osascript`.
+/// Sends the export commands only to the running MoneyMoney process.
 public enum MoneyMoneyExporter {
 	public enum Failure: Error, CustomStringConvertible, Equatable {
 		case notInstalled
@@ -477,60 +477,53 @@ public enum MoneyMoneyExporter {
 			}
 		}
 
-		/// The failure that the error output of `osascript` names: -1743 is a refused Automation permission, and
-		/// -2720 or "locked" is the lock screen of MoneyMoney.
-		static func of(errorOutput message: String) -> Failure {
-			if message.contains("-1743") { return .notAllowed }
-			if message.contains("-2720") || message.localizedCaseInsensitiveContains("locked") { return .locked }
-			return .failed(message.trimmingCharacters(in: .whitespacesAndNewlines))
+		static func of(code: Int, message: String) -> Failure {
+			switch code {
+			case -1743: .notAllowed
+			case -2720: .locked
+			case -600, -609: .notRunning
+			default: message.localizedCaseInsensitiveContains("locked") ? .locked : .failed(message.trimmingCharacters(in: .whitespacesAndNewlines))
+			}
 		}
 	}
 
-	/// Also finds MoneyMoney in another folder, such as one of Setapp, by its bundle identifier. The identifier is the
-	/// name of the container folder of MoneyMoney.
-	public static var isInstalled: Bool {
-		FileManager.default.fileExists(atPath: "/Applications/MoneyMoney.app")
-			|| FileManager.default.fileExists(atPath: NSHomeDirectory() + "/Applications/MoneyMoney.app")
-			|| NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.moneymoney-app.retail") != nil
+	// MoneyMoney.sdef defines these export events and their parameters.
+	enum Command: UInt32, Sendable {
+		case accounts = 0x65787061
+		case categories = 0x65787063
+		case transactions = 0x65787074
 	}
 
-	public static func exportAccounts() async throws -> Data { try await run(#"tell application "MoneyMoney" to export accounts"#) }
-	public static func exportCategories() async throws -> Data { try await run(#"tell application "MoneyMoney" to export categories"#) }
-	public static func exportTransactions() async throws -> Data {
-		try await run(#"tell application "MoneyMoney" to export transactions from date "1990-01-01" as "plist""#)
-	}
+	public static func exportAccounts() async throws -> Data { try await run(.accounts) }
+	public static func exportCategories() async throws -> Data { try await run(.categories) }
+	public static func exportTransactions() async throws -> Data { try await run(.transactions) }
 
-	/// Checks the preconditions in order before the export command runs. A `tell` would start MoneyMoney when
-	/// it is not running, so the check asks with `is running`, which starts nothing and needs no permission.
-	static func run(_ script: String) async throws -> Data {
-		guard isInstalled else { throw Failure.notInstalled }
-		guard String(decoding: try await osascript(#"application "MoneyMoney" is running"#), as: UTF8.self)
-			.trimmingCharacters(in: .whitespacesAndNewlines) == "true" else { throw Failure.notRunning }
-		return try await osascript(script)
-	}
-
-	private static func osascript(_ script: String) async throws -> Data {
-		try await withCheckedThrowingContinuation { continuation in
-			// One thread reads the whole output, so the export arrives in order however large it is.
+	static func run(_ command: Command, bundleIdentifier: String = "com.moneymoney-app.retail",
+		send: @escaping @Sendable (NSAppleEventDescriptor) throws -> NSAppleEventDescriptor = { try $0.sendEvent(options: .waitForReply, timeout: 120) }) async throws -> Data {
+		guard NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleIdentifier) != nil else { throw Failure.notInstalled }
+		return try await withCheckedThrowingContinuation { continuation in
 			DispatchQueue.global(qos: .userInitiated).async {
-				let process = Process()
-				process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-				process.arguments = ["-e", script]
-				let out = Pipe()
-				let err = Pipe()
-				process.standardOutput = out
-				process.standardError = err
-				do { try process.run() } catch {
-					continuation.resume(throwing: Failure.failed(error.localizedDescription))
-					return
-				}
-				let output = out.fileHandleForReading.readDataToEndOfFile()
-				let message = String(data: err.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-				process.waitUntilExit()
-				if process.terminationStatus == 0 {
-					continuation.resume(returning: output)
-				} else {
-					continuation.resume(throwing: Failure.of(errorOutput: message))
+				do {
+					guard let application = NSRunningApplication.runningApplications(withBundleIdentifier: bundleIdentifier).first(where: { !$0.isTerminated }) else {
+						throw Failure.notRunning
+					}
+					let event = NSAppleEventDescriptor(eventClass: 0x4d4f4e59, eventID: command.rawValue,
+						targetDescriptor: NSAppleEventDescriptor(processIdentifier: application.processIdentifier), returnID: -1, transactionID: 0)
+					if command == .transactions {
+						event.setParam(NSAppleEventDescriptor(string: "1990-01-01"), forKeyword: 0x66726474)
+						event.setParam(NSAppleEventDescriptor(string: "plist"), forKeyword: 0x66726d74)
+					}
+					let reply = try send(event)
+					if let code = reply.paramDescriptor(forKeyword: 0x6572726e)?.int32Value, code != 0 {
+						throw Failure.of(code: Int(code), message: reply.paramDescriptor(forKeyword: 0x65727273)?.stringValue ?? "Error \(code)")
+					}
+					guard let text = reply.paramDescriptor(forKeyword: 0x2d2d2d2d)?.stringValue else { throw Failure.failed("The export returned no property list.") }
+					continuation.resume(returning: Data(text.utf8))
+				} catch let failure as Failure {
+					continuation.resume(throwing: failure)
+				} catch {
+					let error = error as NSError
+					continuation.resume(throwing: Failure.of(code: error.code, message: error.localizedDescription))
 				}
 			}
 		}

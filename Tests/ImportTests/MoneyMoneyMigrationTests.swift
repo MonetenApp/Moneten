@@ -1019,13 +1019,15 @@ struct MoneyMoneyMigrationTests {
 		#expect(ledger.accountsToAdd([first, second], listed: [first, second], connecting: [first.id: sparen.id]).map(\.id) == [sparen.id, second.id])
 	}
 
-	@Test("The error output of osascript names a refused permission, the lock screen, or another failure")
+	@Test("Export errors name a refused permission, a lock, a stopped process, or another failure")
 	func exporterFailures() {
-		#expect(MoneyMoneyExporter.Failure.of(errorOutput: "execution error: Not authorized to send Apple events to MoneyMoney. (-1743)\n") == .notAllowed)
-		#expect(MoneyMoneyExporter.Failure.of(errorOutput: "execution error: MoneyMoney got an error: Database is locked. (-2720)\n") == .locked)
-		#expect(MoneyMoneyExporter.Failure.of(errorOutput: "execution error: MoneyMoney got an error: Connection is invalid. (-609)\n")
-			== .failed("execution error: MoneyMoney got an error: Connection is invalid. (-609)"))
+		#expect(MoneyMoneyExporter.Failure.of(code: -1743, message: "Not authorized") == .notAllowed)
+		#expect(MoneyMoneyExporter.Failure.of(code: -2720, message: "Database is locked") == .locked)
+		#expect(MoneyMoneyExporter.Failure.of(code: -600, message: "Process not found") == .notRunning)
+		#expect(MoneyMoneyExporter.Failure.of(code: -609, message: "Connection is invalid") == .notRunning)
+		#expect(MoneyMoneyExporter.Failure.of(code: -1, message: " Unknown failure \n") == .failed("Unknown failure"))
 	}
+
 
 	@Test("The report names a group whose balance in MoneyMoney leaves out an account")
 	func groupSum() throws {

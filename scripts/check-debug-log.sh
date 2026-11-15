@@ -20,6 +20,7 @@ BUILT=dist/Moneten.app
 BUNDLE_ID=io.github.alexander-schneider.Moneten.check-debug-log
 LOGIN=emuster42
 PIN=97314
+MIGRATION_UNKNOWN=MigrationSyntheticArgument9271
 
 NOTIFY=.build/check-debug-log-notify
 if [ ! -x "$NOTIFY" ] || [ scripts/check-debug-log.sh -nt "$NOTIFY" ]; then
@@ -33,7 +34,7 @@ if [ ! -x "$NOTIFY" ] || [ scripts/check-debug-log.sh -nt "$NOTIFY" ]; then
 	swiftc -o "$NOTIFY" "$NOTIFY.swift"
 fi
 
-WORK="$(mktemp -d)"
+WORK="$(mktemp -d "$PWD/.build/check-debug-log.XXXXXX")"
 finish() {
 	if [ -n "$PID" ]; then kill "$PID" 2>/dev/null || true; fi
 	[ -n "$KEEP" ] && echo "The log stays in $WORK/debug." || rm -rf "$WORK"
@@ -166,10 +167,11 @@ send extrefresh "Check||"
 poll "^ext access Check Bank state=failed" extstate
 send extrun "$WORK/Check.lua|Result|"
 poll "^ext result" state
+poll "^migrationfailure: unknown failure$" migrationfailure "$MIGRATION_UNKNOWN"
 send quit
 
 found=0
-for value in DE02120300000000202051 "DE02 1203" 202051 1234567890 4711 5550001 "$LOGIN" "$PIN" 123456 check-debug-log \
+for value in DE02120300000000202051 "DE02 1203" 202051 1234567890 4711 5550001 "$LOGIN" "$PIN" "$MIGRATION_UNKNOWN" 123456 check-debug-log \
 	Girokonto Tagesgeld Kreditkarte Extrakonto "Erika Mustermann" "Beispiel GmbH" "Wohnbau Musterstadt" "Tankstelle Beispiel" \
 	"Gehalt November" Miete Kartenzahlung Sparen Haushaltskasse MIETE-2026-11 GUTSCHRIFT DAUERAUFTRAG \
 	"Zugang vorübergehend gesperrt" "PIN falsch" Wartungsarbeiten pushTAN-App; do

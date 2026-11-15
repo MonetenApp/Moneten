@@ -10,6 +10,7 @@ struct MigrationSheet: View {
 		case reading(String)
 		case summary(MoneyMoneyMigration.Plan)
 		case importing
+		case fileAccount
 		case done(MoneyMoneyMigration.Plan, MoneyMoneyMigration.Report)
 		case failed(String, offersFileImport: Bool = false)
 	}
@@ -27,25 +28,21 @@ struct MigrationSheet: View {
 	@State private var confirmSave = false
 	@State private var savingReport = false
 	@State private var reportText = ""
+	@State private var fileAccountID: UUID?
 	/// Shown on this sheet: an alert of the main window would wait until the sheet closes.
 	@State private var saveError: String?
 
 	var body: some View {
-		SheetFrame(title: "Import from MoneyMoney", confirmTitle: confirmTitle, cancelTitle: cancelTitle, width: 500,
+		SheetFrame(title: "Import from MoneyMoney", confirmTitle: confirmTitle, cancelTitle: cancelTitle, canConfirm: canConfirm, width: 500,
 			onCancel: { task?.cancel() }, onConfirm: confirm) {
 			if case .done = step {
 				Button("Save Report...") { confirmSave = true }.keyboardShortcut("s")
 			}
-			// A file goes into an account, so a database without one first gets an account.
 			if case .failed(_, offersFileImport: true) = step {
-				if model.selectedAccount != nil {
-					Button("Import File...") {
-						model.sheet = nil
-						Task { await model.importFile() }
-					}
-				} else if model.ledger.accounts.isEmpty {
-					Button("Add Account...") { model.addAccount() }
-				}
+				Button("Import File...") {
+					fileAccountID = model.selectedAccount?.id ?? model.ledger.accounts.first?.id
+					step = .fileAccount
+				}.keyboardShortcut("i")
 			}
 		} content: {
 			switch step {
@@ -54,6 +51,21 @@ struct MigrationSheet: View {
 					Label("Moneten reads your account groups, accounts, categories with their rules, and transactions through the AppleScript export of MoneyMoney. MoneyMoney stays unchanged.", systemImage: "arrow.down.doc")
 					Label("MoneyMoney must be running and unlocked. macOS asks once whether Moneten may control MoneyMoney. Allow it.", systemImage: "lock.open")
 						.foregroundStyle(.secondary)
+				}
+			case .fileAccount:
+				Section {
+					if model.ledger.accounts.isEmpty {
+						Text("Add an account before importing transactions.")
+						Button("Add Account...") { model.addAccount() }
+					} else {
+						Picker("Account", selection: $fileAccountID) {
+							ForEach(model.ledger.accounts) { account in
+								Text(account.name).tag(Optional(account.id))
+							}
+						}
+					}
+				} header: {
+					Text("Choose an account for the file import")
 				}
 			case let .reading(what):
 				Section {
@@ -154,11 +166,17 @@ struct MigrationSheet: View {
 	private var confirmTitle: String? {
 		switch step {
 		case .intro: "Start"
+		case .fileAccount: model.ledger.accounts.isEmpty ? nil : "Import File..."
 		case let .summary(plan): plan.isEmpty ? nil : "Import"
 		case .done: "Done"
 		case .failed: "Check again"
 		case .reading, .importing: nil
 		}
+	}
+
+	private var canConfirm: Bool {
+		if case .fileAccount = step { return fileAccountID != nil }
+		return true
 	}
 
 	private var cancelTitle: String? {
@@ -172,6 +190,11 @@ struct MigrationSheet: View {
 	private func confirm() -> Bool {
 		switch step {
 		case .intro, .failed: start(); return false
+		case .fileAccount:
+			guard let id = fileAccountID else { return false }
+			model.sheet = nil
+			Task { await model.importFile(into: id) }
+			return true
 		case let .summary(plan): commit(plan); return false
 		case .done: return true
 		case .reading, .importing: return false

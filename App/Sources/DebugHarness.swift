@@ -348,7 +348,7 @@ final class DebugHarness {
 				log("columnwidth " + table.tableColumns.map { "\($0.title)=\(Int($0.width))" }.joined(separator: " "))
 			}
 		case "scrolltable": scrollTables { argument == "end" ? $0 - 1 : min(Int(argument) ?? 0, $0 - 1) }
-		case "select": select(argument)
+		case "select": if argument.isEmpty { model.selection = nil } else { select(argument) }
 		case "contextmenus": logContextMenus(argument)
 		#if DEBUG || PERF_HARNESS
 		case "perf": Task { await runPerf() }
@@ -386,7 +386,7 @@ final class DebugHarness {
 		// "notInstalled", "notRunning", "locked", or "notAllowed": opens the MoneyMoney migration, whose export then fails so.
 		case "migrationfailure":
 			let failures: [String: MoneyMoneyExporter.Failure] = ["notInstalled": .notInstalled, "notRunning": .notRunning, "locked": .locked, "notAllowed": .notAllowed]
-			guard let failure = failures[argument] else { return log("migrationfailure: unknown \(argument)") }
+			guard let failure = failures[argument] else { return log("migrationfailure: unknown failure") }
 			MigrationSheet.simulatedFailure = failure
 			model.sheet = .migration
 		#endif
