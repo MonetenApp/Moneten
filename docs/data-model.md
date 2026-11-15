@@ -97,6 +97,16 @@ Refreshes and file imports go through `reconcile`, which recognizes a stored row
 |---|---|---|
 | `DeletedTransaction` | `accountID`, `sourceID?`, `bookingDate`, `amountMinor`, `currency`, `isPending`, `purpose`, `counterpartyIBAN?`, `endToEndReference?`, `wasFetched`, `deletedAt` | One record for each transaction that the user deleted, with the raw fields of its fingerprint. A refresh does not add the transaction again. A file adds it again only when `wasFetched` is false. The records go with their account. |
 
+## Splits
+
+| Type | Fields | Rules |
+|---|---|---|
+| `SplitPart` | `id`, `transactionID`, `position`, `amountMinor`, `categoryID?`, `comment?`, `vat?` | At least two nonzero parts add up to their original transaction. Each part uses its original's currency. The original keeps its category and comment for undo. |
+| `VATShare` | `role`, `rate` | The net or tax label of a VAT part keeps the rate used for the split. |
+| `VATRate` | `hundredths` | A percent in hundredths. The standard rates are 1900 and 700. The net amount is cut toward zero at the smallest unit of the currency, and tax takes the remainder. |
+| `SplitError` | `pending`, `zeroPart`, `onePart`, `unbalanced` | A refused split leaves the stored parts unchanged. |
+| `Split` | Amount parsing and split arithmetic | An unsigned amount takes the sign of the row. An explicit sign stays. Amounts must fit the decimals of the row's currency. |
+
 ## Tables
 
 `Sources/Storage/Schema.swift` holds the migrations of the encrypted database. Each table stores one type with the same field names:
@@ -107,6 +117,7 @@ Refreshes and file imports go through `reconcile`, which recognizes a stored row
 | `account` | `Account` |
 | `category` | `Category` |
 | `bankTransaction` | `Transaction` |
+| `splitPart` | `SplitPart`, with `vat` as JSON. Parts go with their transaction and become uncategorized when their category is removed. |
 | `portfolioValue` | `PortfolioValue`, with the primary key `accountID` and `day` |
 | `holding` | `Holding`, flattened by `HoldingRecord`, with quantities, prices, and rates as decimal text |
 | `access` | `Access`, with its `AccessState` in the column `state` |
@@ -116,7 +127,7 @@ Refreshes and file imports go through `reconcile`, which recognizes a stored row
 | `extensionCatalog` | One row: the bytes of the catalog index that the app accepted last, its signature, and the version floor of each catalog key as `KeyFloors`. The signature lets the app rebuild the floors when they cannot be read |
 | `installedExtension` | The origin of an installed extension by its name, `catalog` with its `InstalledPackage` or `file` with the digests the user allowed |
 
-Migration `v1` creates the tables. It also creates the table `setting`, which no code uses, because app settings live in `UserDefaults`. Migration `v2` drops it. Migration `v4` adds `portfolioValue`, whose rows go with their account. Migration `v5` adds `account.color`, the `#RRGGBB` color of the account's icon. Migration `v6` adds `bankTransaction.needsReview` and `bankTransaction.isFetched`, both false for existing rows, and the table `deletedTransaction`. It rewrites no row. Migration `v7` adds the table `access` and the columns `account.accessID`, `account.remoteID`, `account.refreshedAt`, and `account.refreshError`, all empty for existing accounts. Migration `v8` adds `extensionHostDecision`. Migration `v9` adds the table `savedPIN`, whose rows go with their access. Migration `v10` adds `extensionCatalog` and `installedExtension`. Migration `v12` adds `account.refreshInterval`, `everyTwoHours` for existing accounts. Migration `v14` adds `holding`, whose rows go with their account. Migration `v15` adds `deletedTransaction.currency`, the currency of its account for existing rows.
+Migration `v1` creates the tables. It also creates the table `setting`, which no code uses, because app settings live in `UserDefaults`. Migration `v2` drops it. Migration `v4` adds `portfolioValue`, whose rows go with their account. Migration `v5` adds `account.color`, the `#RRGGBB` color of the account's icon. Migration `v6` adds `bankTransaction.needsReview` and `bankTransaction.isFetched`, both false for existing rows, and the table `deletedTransaction`. It rewrites no row. Migration `v7` adds the table `access` and the columns `account.accessID`, `account.remoteID`, `account.refreshedAt`, and `account.refreshError`, all empty for existing accounts. Migration `v8` adds `extensionHostDecision`. Migration `v9` adds the table `savedPIN`, whose rows go with their access. Migration `v10` adds `extensionCatalog` and `installedExtension`. Migration `v12` adds `account.refreshInterval`, `everyTwoHours` for existing accounts. Migration `v14` adds `holding`, whose rows go with their account. Migration `v15` adds `deletedTransaction.currency`, the currency of its account for existing rows. Migration `v17` adds the empty table `splitPart` after `v16`. It rewrites no transaction.
 
 ## Complete export
 
@@ -126,5 +137,4 @@ Migration `v1` creates the tables. It also creates the table `setting`, which no
 
 | Type | Arrives with | Purpose |
 |---|---|---|
-| `Split` | v0.1 | Parts of a transaction with their own amounts and categories. The parts add up to the transaction amount. |
 | `PaymentOrder`, `PaymentState` | v0.2 | SEPA transfers with the payee check. See [architecture](architecture.md#payments-are-a-separate-state-machine). |

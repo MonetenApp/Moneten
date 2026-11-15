@@ -18,6 +18,10 @@ extension Transaction: FetchableRecord, PersistableRecord, TableRecord {
 	public static let databaseTableName = "bankTransaction"
 }
 
+extension SplitPart: FetchableRecord, PersistableRecord, TableRecord {
+	public static let databaseTableName = "splitPart"
+}
+
 extension PortfolioValue: FetchableRecord, PersistableRecord, TableRecord {
 	public static let databaseTableName = "portfolioValue"
 }
@@ -302,6 +306,18 @@ enum Schema {
 		m.registerMigration("v16") { db in
 			try db.alter(table: "bankTransaction") { t in
 				t.add(column: "returnReason", .text)
+			}
+		}
+		m.registerMigration("v17") { db in
+			try db.create(table: "splitPart") { t in
+				t.column("id", .blob).primaryKey()
+				t.column("transactionID", .blob).notNull().indexed().references("bankTransaction", onDelete: .cascade)
+				t.column("position", .integer).notNull()
+				t.column("amountMinor", .integer).notNull()
+				t.column("categoryID", .blob).references("category", onDelete: .setNull)
+				t.column("comment", .text)
+				t.column("vat", .text)
+				t.uniqueKey(["transactionID", "position"])
 			}
 		}
 		return m

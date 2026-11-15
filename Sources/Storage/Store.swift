@@ -23,7 +23,8 @@ public final class Store: SavedPINStore {
 				categories: try Domain.Category.fetchAll(db),
 				transactions: try Transaction.fetchAll(db),
 				portfolioValues: try PortfolioValue.order(Column("day")).fetchAll(db),
-				holdings: try HoldingRecord.fetchAll(db).compactMap(\.holding))
+				holdings: try HoldingRecord.fetchAll(db).compactMap(\.holding),
+				parts: try SplitPart.fetchAll(db))
 		}
 		let missing = ledger.missingPortfolioValues
 		if !missing.isEmpty {

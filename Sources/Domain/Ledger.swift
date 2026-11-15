@@ -20,6 +20,8 @@ public struct Ledger: Sendable {
 	/// The positions of each portfolio, in the order of `Holding.isOrdered`.
 	private var holdingsByAccount: [UUID: [Holding]] = [:]
 
+	private var partsByTransaction: [UUID: [SplitPart]] = [:]
+
 	private var transactionIndex: [UUID: Int] = [:]
 	private var searchText: [UUID: String] = [:]
 	/// The number of new transactions per account.
@@ -28,11 +30,12 @@ public struct Ledger: Sendable {
 	public private(set) var accountsWithTransactions: Set<UUID> = []
 
 	public init(groups: [AccountGroup] = [], accounts: [Account] = [], categories: [Category] = [], transactions: [Transaction] = [],
-		portfolioValues: [PortfolioValue] = [], holdings: [Holding] = []) {
+		portfolioValues: [PortfolioValue] = [], holdings: [Holding] = [], parts: [SplitPart] = []) {
 		self.groups = groups
 		self.accounts = accounts
 		self.categories = categories
 		self.transactions = transactions
+		partsByTransaction = Dictionary(grouping: parts, by: \.transactionID).mapValues { $0.sorted { $0.position < $1.position } }
 		for v in portfolioValues { record(v) }
 		for (id, positions) in Dictionary(grouping: holdings, by: \.accountID) { holdingsByAccount[id] = positions.sorted(by: Holding.isOrdered) }
 		rebuildIndexes()
@@ -118,6 +121,9 @@ public struct Ledger: Sendable {
 	public func group(_ id: UUID) -> AccountGroup? { groups.first { $0.id == id } }
 	public func category(_ id: UUID) -> Category? { categories.first { $0.id == id } }
 	public func transaction(_ id: UUID) -> Transaction? { transactionIndex[id].map { transactions[$0] } }
+	// periphery:ignore - task 6.8
+	public func parts(of transactionID: UUID) -> [SplitPart] { partsByTransaction[transactionID] ?? [] }
+
 	/// The recorded values of a portfolio, the oldest first.
 	public func portfolioValues(of accountID: UUID) -> [PortfolioValue] { portfolioHistory[accountID] ?? [] }
 
