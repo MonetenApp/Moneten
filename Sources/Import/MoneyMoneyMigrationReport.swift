@@ -14,7 +14,8 @@ extension MoneyMoneyMigration {
 	public struct Report: Sendable, Equatable {
 		public struct Row: Sendable, Equatable {
 			public var name: String
-			/// The transactions of the source that the account holds, recognized as a second run recognizes them.
+			/// The transactions of the source that the account holds, recognized as a second run recognizes them, and
+			/// the migrated transactions that the source no longer has.
 			public var transactions: Int
 			public var sourceTransactions: Int
 			/// Without pending transactions, because the source reports its balance without them, and without
@@ -59,10 +60,13 @@ extension MoneyMoneyMigration.Plan {
 			guard let account = ledger.account(source.accountID) else { return nil }
 			let stored = ledger.transactions(ofAccount: account.id)
 			let missing = reconcile(.migration(source.rows), into: account, stored: stored, deleted: [], rules: rules, now: Date()).added.count
+			// A row that the source deleted after an earlier run stays in the app, so the account holds one more.
+			let exported = Set(source.rows.compactMap(\.sourceID))
+			let gone = stored.filter { $0.sourceID?.hasPrefix(Transaction.migrationIDPrefix) == true && !exported.contains($0.sourceID!) }.count
 			let booked = stored.reduce(account.initialBalanceMinor) { sum, t in
 				!t.isPending && t.currency == account.currency && t.sourceID?.hasPrefix(Transaction.migrationIDPrefix) == true ? sum + t.amountMinor : sum
 			}
-			return .init(name: account.name, transactions: source.rows.count - missing, sourceTransactions: source.rows.count,
+			return .init(name: account.name, transactions: source.rows.count - missing + gone, sourceTransactions: source.rows.count,
 				balance: account.reportedBalance ?? Money(minorUnits: booked, currency: account.currency), sourceBalance: source.balance)
 		}
 		return .init(rows: rows, notes: notes)

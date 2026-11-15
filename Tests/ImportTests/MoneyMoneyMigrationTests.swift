@@ -799,6 +799,17 @@ struct MoneyMoneyMigrationTests {
 		#expect(row.balance == Money(minorUnits: 121_456, currency: "EUR") && row.matches)
 	}
 
+	@Test("The report of a second run shows a difference when the source deleted a migrated transaction")
+	func reportAfterDeleteInSource() throws {
+		let first = try plan()
+		let ledger = Ledger(groups: first.groups, accounts: first.accounts, categories: first.categories, transactions: first.transactions)
+		let rows = (transactions["transactions"] as! [[String: Any]]).filter { $0["id"] as? Int != 1 }
+		let second = try secondPlan(into: ledger, balance: 1280.46, rows: rows)
+		let row = try #require(second.report(after: applying(second, to: ledger)).rows.first)
+		#expect(row.transactions == 3 && row.sourceTransactions == 2)
+		#expect(!row.matches)
+	}
+
 	@Test("The text of the report lists the accounts and the notes")
 	func reportText() throws {
 		let p = try plan()
