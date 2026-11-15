@@ -46,8 +46,12 @@ final class UpdateDriver: NSObject {
 	/// Shows `stage` in the update window, which opens if it is closed. `acknowledgement` runs when
 	/// the user closes a final message.
 	func show(_ stage: UpdateStage, acknowledgement: (() -> Void)? = nil) {
+		// A message that a new stage replaces counts as read, so Sparkle ends its session and the
+		// menu command works again.
+		let replaced = acknowledge
 		self.stage = stage
 		acknowledge = acknowledgement
+		replaced?()
 		let window = window ?? makeWindow()
 		self.window = window
 		if !window.isVisible { window.center() }

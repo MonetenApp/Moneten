@@ -116,7 +116,8 @@ check_dmg() {
 	hdiutil detach -quiet "$WORK/volume"
 }
 
-# Steps 2 to 4. $2 is "unsigned" for a dry run without the Developer ID.
+# Steps 2 to 4. $2 is "unsigned" for a dry run without the Developer ID. $3 is "dry-run" for a
+# signed dry run, which may still have the placeholder of the update key.
 package() {
 	MODE=${2:-signed}
 	rm -rf "$OUT"
@@ -127,8 +128,10 @@ package() {
 		codesign -dvv "$APP" 2>&1 | grep -q '^Authority=Developer ID Application' || fail "The app is not signed with the Developer ID."
 		codesign -dv "$APP" 2>&1 | grep -q 'flags=.*runtime' || fail "The app has no hardened runtime."
 		plist "$APP" MonetenFinTSProductID >/dev/null 2>&1 || fail "The app has no FinTS product ID. See docs/releasing.md."
-		check_production_key "$(plist "$APP" SUPublicEDKey)"
-		[ "$(plist "$APP" SUPublicEDKey)" = "$(committed_key)" ] || fail "The app carries another update key than App/project.yml."
+		if [ "$3" != dry-run ]; then
+			check_production_key "$(plist "$APP" SUPublicEDKey)"
+			[ "$(plist "$APP" SUPublicEDKey)" = "$(committed_key)" ] || fail "The app carries another update key than App/project.yml."
+		fi
 		ditto -c -k --keepParent "$APP" "$WORK/Moneten.zip"
 		notarize "$WORK/Moneten.zip"
 		xcrun stapler staple -q "$APP"
@@ -248,7 +251,7 @@ dry_run() {
 		notes cut "$VERSION"
 	fi
 	notes check-release "$VERSION" --build "$(git rev-list --count HEAD)" --first-release
-	if [ "$MONETEN_SIGN" = 1 ]; then package "$VERSION" signed; else package "$VERSION" unsigned; fi
+	if [ "$MONETEN_SIGN" = 1 ]; then package "$VERSION" signed dry-run; else package "$VERSION" unsigned; fi
 	# The test key, so a Debug build can read this feed (Fixtures/update/README.md).
 	MONETEN_UPDATE_KEY_FILE="$TEST_KEY_FILE" feed "$VERSION" first
 	# One changed byte must break the signature of the feed.
