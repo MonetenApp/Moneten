@@ -329,6 +329,8 @@ struct TransactionSheet: View {
 	@Environment(AppModel.self) private var model
 	let transactionID: UUID?
 	@State private var date = Date()
+	/// The value date of an existing row, nil for none.
+	@State private var valueDate: Date?
 	@State private var name = ""
 	@State private var purpose = ""
 	@State private var amount = ""
@@ -338,13 +340,26 @@ struct TransactionSheet: View {
 
 	private var existing: Transaction? { transactionID.flatMap { model.ledger.transaction($0) } }
 	private var account: Account? { existing.flatMap { model.ledger.account($0.accountID) } ?? model.selectedAccount }
-	private var editable: Bool { account?.isOffline ?? false }
+	/// A new row only goes into an offline account. "Edit Transaction..." changes every row (add-transaction-list, task 1.16).
+	private var editable: Bool { existing != nil || account?.isOffline == true }
 
 	var body: some View {
 		SheetFrame(title: existing == nil ? "New Transaction" : "Edit Transaction", canConfirm: !editable || AmountParser.decimal(from: amount) != nil, width: 500, onConfirm: save) {
 			if editable {
 				Section {
 					DatePicker("Date", selection: $date, displayedComponents: .date)
+					if existing != nil {
+						LabeledContent("Value date") {
+							HStack {
+								Toggle("Value date", isOn: Binding(get: { valueDate != nil }, set: { valueDate = $0 ? (valueDate ?? date) : nil }))
+									.labelsHidden()
+								if let shown = valueDate {
+									DatePicker("Value date", selection: Binding(get: { shown }, set: { valueDate = $0 }), displayedComponents: .date)
+										.labelsHidden()
+								}
+							}
+						}
+					}
 					TextField("Name", text: $name)
 					Picker("Type", selection: $isDeposit) {
 						Text("Withdrawal").tag(false)
@@ -357,14 +372,9 @@ struct TransactionSheet: View {
 						.monospacedDigit()
 					TextField("Purpose", text: $purpose, prompt: Text("Optional"), axis: .vertical).lineLimit(1...4)
 				}
-			} else if let t = existing {
-				Section {
-					LabeledContent("Date", value: Format.day(t.bookingDate))
-					LabeledContent("Name", value: t.name)
-					LabeledContent("Amount") { AmountText(money: t.amount) }
-					LabeledContent("Purpose") { Text(t.purpose).textSelection(.enabled).multilineTextAlignment(.trailing) }
-				}
-				if t.counterpartyIBAN != nil || t.bookingText != nil || t.endToEndReference != nil || t.mandateReference != nil || t.creditorID != nil || t.valueDate != nil {
+			}
+			if let t = existing {
+				if t.counterpartyIBAN != nil || t.bookingText != nil || t.endToEndReference != nil || t.mandateReference != nil || t.creditorID != nil {
 					Section("Details") {
 						if let iban = t.counterpartyIBAN { LabeledContent("IBAN") { Text(Format.iban(iban)).textSelection(.enabled) } }
 						if let bic = t.counterpartyBIC { LabeledContent("BIC", value: bic) }
@@ -372,7 +382,6 @@ struct TransactionSheet: View {
 						if let e = t.endToEndReference { LabeledContent("End-to-end reference") { Text(e).textSelection(.enabled) } }
 						if let m = t.mandateReference { LabeledContent("Mandate reference") { Text(m).textSelection(.enabled) } }
 						if let c = t.creditorID { LabeledContent("Creditor ID") { Text(c).textSelection(.enabled) } }
-						if let v = t.valueDate { LabeledContent("Value date", value: Format.day(v)) }
 					}
 				}
 			}
@@ -390,6 +399,7 @@ struct TransactionSheet: View {
 	private func load() {
 		guard let t = existing else { return }
 		date = t.bookingDate.date()
+		valueDate = t.valueDate?.date()
 		name = t.name
 		purpose = t.purpose
 		isDeposit = t.amountMinor > 0
@@ -403,10 +413,16 @@ struct TransactionSheet: View {
 		var t = existing ?? Transaction(accountID: account.id, bookingDate: Day(date), amountMinor: 0, currency: account.currency, name: "")
 		if editable {
 			guard let value = AmountParser.decimal(from: amount) else { return false }
-			t.bookingDate = Day(date)
-			t.name = name
-			t.purpose = purpose
-			t.amountMinor = Money(abs(value), currency: account.currency).minorUnits * (isDeposit ? 1 : -1)
+			let minor = Money(abs(value), currency: t.currency).minorUnits * (isDeposit ? 1 : -1)
+			if existing != nil {
+				// The first change keeps the values of the source, so that a refresh does not add the row again.
+				t.edit(OriginalValues(bookingDate: Day(date), valueDate: valueDate.map { Day($0) }, amountMinor: minor, name: name, purpose: purpose))
+			} else {
+				t.bookingDate = Day(date)
+				t.name = name
+				t.purpose = purpose
+				t.amountMinor = minor
+			}
 		}
 		if categoryID != t.categoryID {
 			t.categoryID = categoryID

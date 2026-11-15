@@ -263,6 +263,13 @@ The app SHALL let the user change the booking date, the value date, the counterp
 - **THEN** the row shows the new purpose
 - **AND** the next refresh leaves the row unchanged and adds no second row for it
 
+#### Scenario: Change the day and the amount
+
+- **GIVEN** a fetched transaction of -49,90 € on 03.11.2026
+- **WHEN** the user changes the amount to -24,95 € and the booking date to 05.11.2026
+- **THEN** the row shows -24,95 € on 05.11.2026, and the balance counts -24,95 €
+- **AND** the next refresh adds no second row
+
 #### Scenario: Cancel
 
 - **WHEN** the user cancels the edit window

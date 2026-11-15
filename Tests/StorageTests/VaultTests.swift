@@ -165,6 +165,17 @@ struct VaultTests {
 
 @Suite("Schema migrations")
 struct SchemaTests {
+	/// Inserts the columns of `record` that the table has at the migrated version. A later migration adds columns that
+	/// the record of today writes.
+	func insertColumnsOfTheSchema(_ record: some EncodableRecord & TableRecord, _ db: Database) throws {
+		let table = type(of: record).databaseTableName
+		let columns = Set(try db.columns(in: table).map(\.name))
+		let values = try record.databaseDictionary.filter { columns.contains($0.key) }
+		let names = values.keys.sorted()
+		try db.execute(sql: "INSERT INTO \(table) (\(names.joined(separator: ", "))) VALUES (\(names.map { _ in "?" }.joined(separator: ", ")))",
+			arguments: StatementArguments(names.map { values[$0]! }))
+	}
+
 	@Test("v17 keeps the transactions of a v16 database and adds an empty table of parts")
 	func splitParts() throws {
 		let queue = try DatabaseQueue()
@@ -175,7 +186,7 @@ struct SchemaTests {
 			name: "Beispiel Markt", comment: "Weekly shop", needsReview: true, createdAt: Date(timeIntervalSince1970: 1793664000), returnReason: "AC04")
 		try queue.write { db in
 			try account.insert(db)
-			try t.insert(db)
+			try insertColumnsOfTheSchema(t, db)
 		}
 		#expect(try queue.read { db in try db.tableExists("splitPart") } == false)
 		try Schema.migrator.migrate(queue)

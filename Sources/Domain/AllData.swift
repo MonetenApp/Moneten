@@ -364,6 +364,7 @@ private struct TransactionEntry: Codable {
 	var isFetched: Bool
 	var sourceID: String?
 	var createdAt: Date
+	var original: OriginalEntry?
 
 	init(_ t: Transaction) {
 		id = t.id
@@ -391,16 +392,41 @@ private struct TransactionEntry: Codable {
 		isFetched = t.isFetched
 		sourceID = t.sourceID
 		createdAt = t.createdAt
+		original = t.original.map { OriginalEntry($0, currency: t.currency) }
 	}
 
 	func transaction() throws -> Transaction {
 		try currencyCode(currency)
-		return Transaction(id: id, accountID: accountID, bookingDate: try day(bookingDate), valueDate: try valueDate.map(day),
+		var t = Transaction(id: id, accountID: accountID, bookingDate: try day(bookingDate), valueDate: try valueDate.map(day),
 			amountMinor: try AmountText.minorUnits(amount, currency), currency: currency, name: name, purpose: purpose,
 			counterpartyIBAN: counterpartyIBAN, counterpartyBIC: counterpartyBIC, bookingText: bookingText, endToEndReference: endToEndReference,
 			mandateReference: mandateReference, creditorID: creditorID, comment: comment, isChecked: isChecked, isPending: isPending,
 			categoryID: categoryID, categorizedBy: categorizedBy, isNew: isNew, needsReview: needsReview, isFetched: isFetched, sourceID: sourceID,
 			createdAt: createdAt, returnReason: returnReason)
+		t.original = try original?.values(currency: currency)
+		return t
+	}
+}
+
+/// The values of an edited transaction as its source delivered them, in the currency of the transaction.
+private struct OriginalEntry: Codable {
+	var bookingDate: String
+	var valueDate: String?
+	var amount: String
+	var name: String
+	var purpose: String
+
+	init(_ v: OriginalValues, currency: String) {
+		bookingDate = v.bookingDate.description
+		valueDate = v.valueDate?.description
+		amount = AmountText.text(v.amountMinor, currency)
+		name = v.name
+		purpose = v.purpose
+	}
+
+	func values(currency: String) throws -> OriginalValues {
+		OriginalValues(bookingDate: try day(bookingDate), valueDate: try valueDate.map(day), amountMinor: try AmountText.minorUnits(amount, currency),
+			name: name, purpose: purpose)
 	}
 }
 

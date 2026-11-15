@@ -41,14 +41,16 @@ public struct DeletedTransaction: Hashable, Sendable, Codable {
 		}
 	}
 
+	/// An edited row keeps the values of its source, so that the source cannot bring it back.
 	public init(_ t: Transaction, deletedAt: Date) {
+		let delivered = t.sourceValues
 		accountID = t.accountID
 		sourceID = t.sourceID
-		bookingDate = t.bookingDate
-		amountMinor = t.amountMinor
+		bookingDate = delivered.bookingDate
+		amountMinor = delivered.amountMinor
 		currency = t.currency
 		isPending = t.isPending
-		purpose = t.purpose
+		purpose = delivered.purpose
 		counterpartyIBAN = t.counterpartyIBAN
 		endToEndReference = t.endToEndReference
 		wasFetched = t.isFetched
@@ -178,7 +180,7 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored: [Tran
 				r.marked.append(t)
 			}
 		case nil:
-			if delivery.covers(pending.bookingDate), !pending.needsReview || pending.isChecked { r.dropped.append(pending.id) }
+			if delivery.covers(pending.sourceValues.bookingDate), !pending.needsReview || pending.isChecked { r.dropped.append(pending.id) }
 		}
 	}
 	if case let .refresh(result) = delivery, let balance = result.balance, balance.currency == account.currency {
@@ -273,7 +275,7 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 	}
 	let days = Set(rows.map(\.bookingDate))
 	var candidates: [Identity.Key: [(slot: Slot, identity: Identity)]] = [:]
-	for (j, t) in stored.enumerated() where days.contains(t.bookingDate) && !taken.contains(.live(j)) {
+	for (j, t) in stored.enumerated() where days.contains(t.sourceValues.bookingDate) && !taken.contains(.live(j)) {
 		let identity = Identity(t)
 		candidates[identity.key, default: []].append((.live(j), identity))
 	}
@@ -350,8 +352,10 @@ struct Identity {
 		self.endToEnd = endToEnd.flatMap { $0.isEmpty || $0 == "NOTPROVIDED" ? nil : $0 }
 	}
 
+	/// An edited row is found by the values of its source.
 	init(_ t: Transaction) {
-		self.init(sourceID: t.sourceID, day: t.bookingDate, amount: t.amountMinor, isPending: t.isPending, purpose: t.purpose,
+		let delivered = t.sourceValues
+		self.init(sourceID: t.sourceID, day: delivered.bookingDate, amount: delivered.amountMinor, isPending: t.isPending, purpose: delivered.purpose,
 			counterparty: t.counterpartyIBAN, endToEnd: t.endToEndReference)
 	}
 
@@ -429,10 +433,11 @@ struct PendingMatch {
 	let words: [Substring]
 
 	init(_ t: Transaction) {
-		amount = t.amount
-		day = t.bookingDate.daysSince1970
+		let delivered = t.sourceValues
+		amount = Money(minorUnits: delivered.amountMinor, currency: t.currency)
+		day = delivered.bookingDate.daysSince1970
 		iban = t.counterpartyIBAN.map(TextFolding.accountKey).flatMap { $0.isEmpty ? nil : $0 }
-		words = TextFolding.fold(t.name).split { !$0.isLetter && !$0.isNumber }
+		words = TextFolding.fold(delivered.name).split { !$0.isLetter && !$0.isNumber }
 	}
 
 	func fits(_ other: PendingMatch) -> Bool {
@@ -489,6 +494,19 @@ extension Transaction {
 		// A migration ID never replaces the ID of a source that took the row over.
 		if Identity.remote(delivered.sourceID) != nil || Identity.remote(sourceID) == nil {
 			t.sourceID = delivered.sourceID ?? sourceID
+		}
+		// An edited field keeps what the user wrote, and `original` follows the source.
+		if let original {
+			let source = OriginalValues(bookingDate: delivered.bookingDate, valueDate: delivered.valueDate ?? original.valueDate,
+				amountMinor: delivered.amountMinor, name: delivered.name, purpose: delivered.purpose)
+			var kept = source
+			if bookingDate != original.bookingDate { kept.bookingDate = bookingDate }
+			if valueDate != original.valueDate { kept.valueDate = valueDate }
+			if amountMinor != original.amountMinor { kept.amountMinor = amountMinor }
+			if name != original.name { kept.name = name }
+			if purpose != original.purpose { kept.purpose = purpose }
+			t.original = source
+			t.edit(kept)
 		}
 		return t
 	}

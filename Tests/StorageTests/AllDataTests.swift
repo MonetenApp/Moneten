@@ -43,8 +43,13 @@ struct AllDataTests {
 				isChecked: true, categoryID: pets.id, categorizedBy: .manual, sourceID: "moneymoney:1", createdAt: Date(timeIntervalSince1970: 1_794_600_001.123), returnReason: "AC04"),
 			Transaction(accountID: migrated.id, bookingDate: Day(year: 2026, month: 11, day: 4), amountMinor: -1_000, name: "Kiosk", isPending: true,
 				categoryID: food.id, categorizedBy: .rule, isNew: true, needsReview: true, sourceID: "moneymoney:2"),
-			Transaction(accountID: bank.id, bookingDate: Day(year: 2026, month: 11, day: 5), amountMinor: -2_000, currency: "USD", name: "Diner New York",
-				isFetched: true, sourceID: "bank-4711"),
+			{
+				var t = Transaction(accountID: bank.id, bookingDate: Day(year: 2026, month: 11, day: 5), amountMinor: -2_000, currency: "USD", name: "Diner New York",
+					isFetched: true, sourceID: "bank-4711")
+				t.edit(OriginalValues(bookingDate: Day(year: 2026, month: 11, day: 4), valueDate: Day(year: 2026, month: 11, day: 6), amountMinor: -2_050,
+					name: "Diner", purpose: "Dinner with a client"))
+				return t
+			}(),
 			Transaction(accountID: offline.id, bookingDate: Day(year: 2026, month: 11, day: 6), amountMinor: -480, name: "Bäckerei Gutbrot"),
 		]
 		try store.save(rows)
@@ -77,6 +82,7 @@ struct AllDataTests {
 		let before = try source.loadLedger()
 		let after = try target.loadLedger()
 		#expect(after.transactions.first { $0.sourceID == "moneymoney:1" }?.returnReason == "AC04")
+		#expect(after.transactions.first { $0.sourceID == "bank-4711" }?.original?.purpose == "")
 		#expect(Set(after.accounts) == Set(before.accounts))
 		#expect(Set(after.groups) == Set(before.groups))
 		#expect(Set(after.categories) == Set(before.categories))
