@@ -57,10 +57,15 @@ public enum RuleApplication: Sendable {
 
 public enum RuleApplier {
 	/// Applies the rule of one category to existing transactions and returns the changed ones.
-	public static func apply(category: Category, rule: Rule, to transactions: [Transaction], ledger: Ledger, mode: RuleApplication) -> [Transaction] {
+	/// `progress` gets the count of checked transactions after every 1,000 and after the last one.
+	/// A cancelled task stops the run, and it returns no changes.
+	public static func apply(category: Category, rule: Rule, to transactions: [Transaction], ledger: Ledger, mode: RuleApplication,
+		progress: (Int) -> Void = { _ in }) -> [Transaction] {
 		let restriction = ledger.allowedAccounts(of: category)
 		var changed: [Transaction] = []
-		for var t in transactions {
+		for (i, var t) in transactions.enumerated() {
+			guard !Task.isCancelled else { return [] }
+			defer { if (i + 1) % 1_000 == 0 || i + 1 == transactions.count { progress(i + 1) } }
 			let inScope = restriction.map { $0.contains(t.accountID) } ?? true
 			let matches = inScope && rule.matches(RuleSubject(t, account: ledger.account(t.accountID)))
 			switch mode {
@@ -83,6 +88,18 @@ public enum RuleApplier {
 			changed.append(t)
 		}
 		return changed
+	}
+
+	/// The rows to save for a run of `apply` on `snapshot` when the ledger is now `current`. A row that is the
+	/// same as in the snapshot takes the result of the run, a row that changed or arrived since is checked again
+	/// against `current`, and a row that `current` no longer holds drops out.
+	public static func rebase(_ results: [Transaction], from snapshot: Ledger, onto current: Ledger,
+		category: Category, rule: Rule, mode: RuleApplication) -> [Transaction] {
+		if current.transactions == snapshot.transactions { return results }
+		let changedSince = current.transactions.filter { snapshot.transaction($0.id) != $0 }
+		let rechecked = Set(changedSince.map(\.id))
+		let kept = results.filter { !rechecked.contains($0.id) && current.transaction($0.id) != nil }
+		return kept + apply(category: category, rule: rule, to: changedSince, ledger: current, mode: mode)
 	}
 }
 

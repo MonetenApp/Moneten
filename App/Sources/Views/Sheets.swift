@@ -9,19 +9,21 @@ struct SheetFrame<Content: View, Leading: View>: View {
 	var confirmTitle: String?
 	var cancelTitle: String?
 	var canConfirm: Bool
+	var canCancel: Bool
 	var width: CGFloat
 	var onCancel: () -> Void
 	var onConfirm: () -> Bool
 	var leading: Leading
 	var content: Content
 
-	init(title: String, confirmTitle: String? = "OK", cancelTitle: String? = "Cancel", canConfirm: Bool = true, width: CGFloat = 460,
-		onCancel: @escaping () -> Void = {}, onConfirm: @escaping () -> Bool,
+	init(title: String, confirmTitle: String? = "OK", cancelTitle: String? = "Cancel", canConfirm: Bool = true, canCancel: Bool = true,
+		width: CGFloat = 460, onCancel: @escaping () -> Void = {}, onConfirm: @escaping () -> Bool,
 		@ViewBuilder leading: () -> Leading, @ViewBuilder content: () -> Content) {
 		self.title = title
 		self.confirmTitle = confirmTitle
 		self.cancelTitle = cancelTitle
 		self.canConfirm = canConfirm
+		self.canCancel = canCancel
 		self.width = width
 		self.onCancel = onCancel
 		self.onConfirm = onConfirm
@@ -40,7 +42,7 @@ struct SheetFrame<Content: View, Leading: View>: View {
 				leading
 				Spacer(minLength: 16)
 				if let cancelTitle {
-					Button(cancelTitle, role: .cancel) { onCancel(); dismiss() }.keyboardShortcut(.cancelAction)
+					Button(cancelTitle, role: .cancel) { onCancel(); dismiss() }.keyboardShortcut(.cancelAction).disabled(!canCancel)
 				}
 				if let confirmTitle {
 					Button(confirmTitle) { if onConfirm() { dismiss() } }

@@ -267,6 +267,13 @@ final class AppModel {
 	/// The number of selected rows of the table of positions, for the trail. The selection lives in that view.
 	@ObservationIgnored var selectedPositions = 0
 
+	/// How far `apply(rule:of:mode:)` has come, or nil when no rule is applied.
+	private(set) var ruleProgress: (done: Int, total: Int)?
+	/// Set for the whole run, so views that only ask whether a run is active do not redraw on each report.
+	private(set) var isApplyingRule = false
+	/// The run of `apply(rule:of:mode:)`, which a lock cancels.
+	@ObservationIgnored private var ruleRun: Task<[Transaction], Never>?
+
 	/// A message for an alert.
 	var alert: AlertMessage? {
 		didSet { if (alert == nil) != (oldValue == nil) { Trail.log(alert == nil ? "alert closed" : "alert shown") } }
@@ -444,6 +451,7 @@ final class AppModel {
 		extensionSetupStates.clear()
 		setup?.cancel()
 		setup = nil
+		ruleRun?.cancel()
 		extensions.close()
 		try? store?.close()
 		store = nil
@@ -597,14 +605,19 @@ final class AppModel {
 
 	// MARK: Changing transactions
 
-	private func commit(_ changed: [Transaction]) {
-		guard let store, !changed.isEmpty else { return }
+	/// Saves the rows and returns whether they are saved. A locked app has no database and saves nothing.
+	@discardableResult
+	private func commit(_ changed: [Transaction]) -> Bool {
+		guard let store else { return false }
+		guard !changed.isEmpty else { return true }
 		do {
 			try store.save(changed)
 			ledgerChange = "commit rows=\(changed.count)"
 			ledger.update(changed)
+			return true
 		} catch {
 			alert = AlertMessage(title: "Could not save the change.", message: String(describing: error))
+			return false
 		}
 	}
 
@@ -1076,12 +1089,28 @@ final class AppModel {
 	}
 
 	func apply(rule: Rule, of category: Domain.Category, mode: RuleApplication) async {
+		guard ruleProgress == nil, let store else { return }
 		let ledger = self.ledger
-		let changed = await Task.detached(priority: .userInitiated) {
-			RuleApplier.apply(category: category, rule: rule, to: ledger.transactions, ledger: ledger, mode: mode)
-		}.value
-		await replacingTable { commit(changed) }
-		alert = AlertMessage(title: "Categorized transactions: \(changed.count)", message: "")
+		let total = ledger.transactions.count
+		ruleProgress = (0, total)
+		isApplyingRule = true
+		defer { ruleProgress = nil; ruleRun = nil; isApplyingRule = false }
+		let (reports, reporter) = AsyncStream.makeStream(of: Int.self, bufferingPolicy: .bufferingNewest(1))
+		let run = Task.detached(priority: .userInitiated) {
+			defer { reporter.finish() }
+			return RuleApplier.apply(category: category, rule: rule, to: ledger.transactions, ledger: ledger, mode: mode) { reporter.yield($0) }
+		}
+		ruleRun = run
+		for await done in reports { ruleProgress = (done, total) }
+		let changed = await run.value
+		guard !run.isCancelled else { return }
+		let saved = await replacingTable { () -> Int? in
+			// A run saves only into the database it started with. A lock closes it, and an unlock opens a new one.
+			guard self.store === store else { return nil }
+			let rows = RuleApplier.rebase(changed, from: ledger, onto: self.ledger, category: category, rule: rule, mode: mode)
+			return commit(rows) ? rows.count : nil
+		}
+		if let saved { alert = AlertMessage(title: "Categorized transactions: \(saved)", message: "") }
 	}
 
 	// MARK: Migration

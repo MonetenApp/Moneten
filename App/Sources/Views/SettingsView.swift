@@ -38,7 +38,8 @@ struct SecuritySettings: View {
 						model.sheet = model.hasPassword ? .changePassword : .setPassword
 						NSApp.keyWindow?.close()
 					}
-					.disabled(model.phase != .unlocked)
+					// A rule run keeps the category settings open, and this button would replace them.
+					.disabled(model.phase != .unlocked || model.isApplyingRule)
 				} label: {
 					Text("Database password")
 					Text(model.hasPassword
