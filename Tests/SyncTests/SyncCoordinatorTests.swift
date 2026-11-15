@@ -1,5 +1,6 @@
 import Domain
 import Foundation
+import Synchronization
 import SyncTesting
 import Testing
 @testable import Sync
@@ -408,6 +409,61 @@ struct SyncCoordinatorTests {
 		#expect(scripted.answers.all.isEmpty)
 		#expect(log.all.first { $0.access == setup.id }?.accounts == [:])
 		#expect(log.all.first { $0.access == other.id }?.accounts.keys.sorted() == [Self.savings.accountID])
+	}
+
+	/// Records what each refresh asks the bank for: each account with its first day, or "full" for its full history.
+	final class RecordingConnector: BankConnector, Sendable {
+		private let log = Mutex<[[String]]>([])
+		private let delay: Duration
+
+		init(delay: Duration = .zero) {
+			self.delay = delay
+		}
+
+		var requests: [[String]] { log.withLock { $0 } }
+
+		func refresh(_ request: RefreshRequest, _ session: SyncSession) async throws -> ConnectorReport {
+			log.withLock { $0.append(request.accounts.map { "\($0.name) \(request.enforced ? "full" : $0.since?.description ?? "full")" }.sorted()) }
+			try await Task.sleep(for: delay)
+			return ConnectorReport(outcomes: Dictionary(request.accounts.map { ($0.accountID, .fetched(RefreshResult(balance: nil, transactions: nil))) }) { first, _ in first })
+		}
+	}
+
+	static func dated(_ account: AccountRequest) -> AccountRequest {
+		AccountRequest(accountID: account.accountID, name: account.name, remoteID: account.remoteID, since: Day(year: 2026, month: 11, day: 1), currency: account.currency)
+	}
+
+	@Test("An enforced command for an account whose automatic refresh runs fetches its full history when the run ends")
+	func enforcedWhileRunning() async {
+		let bank = Self.access("Musterbank")
+		let connector = RecordingConnector(delay: .milliseconds(200))
+		coordinator.refresh(RefreshRequest(access: bank, accounts: [Self.dated(Self.giro)]), with: connector, attended: false)
+		coordinator.refresh(RefreshRequest(access: bank, accounts: [Self.dated(Self.giro)], enforced: true), with: connector, attended: true)
+		await until { !coordinator.isRefreshing }
+		#expect(connector.requests == [["Giro 2026-11-01"], ["Giro full"]])
+	}
+
+	@Test("An enforced command for an account whose automatic refresh waits for its turn makes that refresh fetch its full history")
+	func enforcedWhileWaiting() async {
+		let coordinator = SyncCoordinator(limit: 1)
+		let other = Self.access("Beispielbank"), bank = Self.access("Musterbank")
+		coordinator.refresh(RefreshRequest(access: other, accounts: [Self.card]), with: RecordingConnector(delay: .milliseconds(100)), attended: true)
+		let connector = RecordingConnector()
+		coordinator.refresh(RefreshRequest(access: bank, accounts: [Self.dated(Self.giro), Self.dated(Self.savings)]), with: connector, attended: false)
+		coordinator.refresh(RefreshRequest(access: bank, accounts: [Self.dated(Self.giro)], enforced: true), with: connector, attended: true)
+		await until { !coordinator.isRefreshing }
+		#expect(connector.requests == [["Giro full", "Savings 2026-11-01"]])
+	}
+
+	@Test("An enforced command asks for the full history only of the account it names, also when a normal command joins it")
+	func enforcedPerAccount() async {
+		let bank = Self.access("Musterbank")
+		let connector = RecordingConnector(delay: .milliseconds(200))
+		coordinator.refresh(RefreshRequest(access: bank, accounts: [Self.dated(Self.card)]), with: connector, attended: true)
+		coordinator.refresh(RefreshRequest(access: bank, accounts: [Self.dated(Self.giro)], enforced: true), with: connector, attended: true)
+		coordinator.refresh(RefreshRequest(access: bank, accounts: [Self.dated(Self.savings)]), with: connector, attended: true)
+		await until { !coordinator.isRefreshing }
+		#expect(connector.requests == [["Card 2026-11-01"], ["Giro full", "Savings 2026-11-01"]])
 	}
 
 	@Test("A command for an access that waits for its turn joins the waiting request")
