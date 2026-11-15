@@ -199,14 +199,19 @@ public struct CSVFile: Sendable {
 		}
 		self.headerIndex = headerIndex
 		let width = rows.map(\.cells.count).max() ?? 0
+		func isAmountShaped(_ cell: String) -> Bool {
+			guard !Self.isDateShaped(cell), let parts = Self.amountParts(cell, account: "EUR") else { return false }
+			return AmountParser.decimal(from: parts.number, decimalMark: .point) != nil
+				|| AmountParser.decimal(from: parts.number, decimalMark: .comma) != nil
+		}
 		let firstTransaction = rows.prefix(100).firstIndex { row in
-			row.cells.contains(where: Self.isDateShaped)
-				&& row.cells.contains { !Self.isDateShaped($0) && Self.amountParts($0, account: "EUR").map { AmountParser.decimal(from: $0.number, decimalMark: .point) != nil || AmountParser.decimal(from: $0.number, decimalMark: .comma) != nil } == true }
+			row.cells.contains(where: Self.isDateShaped) && row.cells.contains(where: isAmountShaped)
 		}
 		// A row with a date above the first transaction is a transaction without an amount or an account line, never the titles.
 		let above = firstTransaction.flatMap { first in
 			rows[..<first].lastIndex { row in
-				row.cells.contains { !$0.trimmingCharacters(in: .whitespaces).isEmpty } && !row.cells.contains(where: Self.isDateShaped)
+				row.cells.contains { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+					&& !row.cells.contains(where: Self.isDateShaped) && !row.cells.contains(where: isAmountShaped)
 			}
 		}
 		titleIndex = headerIndex == nil ? above : nil
