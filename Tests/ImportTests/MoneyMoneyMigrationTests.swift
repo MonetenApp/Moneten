@@ -934,7 +934,7 @@ struct MoneyMoneyMigrationTests {
 		let listed = Account(position: 0, name: "Girokonto", kind: .giro, source: .bank, iban: "DE02120300000000202051", accountNumber: "202051",
 			bankCode: "12030000", accessID: UUID(), remoteID: "DE02120300000000202051")
 		let connected = try #require(ledger.accountsToAdd([listed], listed: [listed]).first)
-		#expect(connected.id == migrated.id && connected.name == "Giro" && connected.source == .bank)
+		#expect(connected.id == migrated.id && connected.name == "Giro" && connected.source == .bank && connected.groupID == migrated.groupID)
 
 		let stored = ledger.transactions(ofAccount: migrated.id)
 		let rewe = try #require(stored.first { $0.name == "REWE Markt" })
