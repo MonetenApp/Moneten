@@ -194,6 +194,8 @@ final class DebugHarness {
 		case "extstate": logExtensionState()
 		// The Extensions window and the catalog (ADR 0015). "extcatalog <url>" points the catalog at a test index and checks it.
 		case "extensions": openExtensionsWindow()
+		// An app in the background shows every item of the menu bar disabled, so this reads the condition of the commands.
+		case "menucommands": log("menucommands enabled=\(AppCommands(model: model).unlocked)")
 		#if DEBUG
 		case "extcatalog":
 			guard let url = URL(string: argument) else { return log("ext error=extcatalog needs a URL") }
