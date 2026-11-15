@@ -339,6 +339,27 @@ extension ReconcileTests {
 		}
 	}
 
+	@Test("Tombstone keys retain flags and distinguish missing fields from empty text", arguments: ["fetched", "source", "reference", "iban"])
+	func gate3TombstoneStableKeys(difference: String) {
+		var delivered = rent(1)
+		var lower = DeletedTransaction(delivered, deletedAt: now)
+		if difference == "iban" { lower.counterpartyIBAN = nil; delivered.counterpartyIBAN = nil }
+		var higher = lower
+		switch difference {
+		case "fetched": higher.wasFetched = true
+		case "source": higher.sourceID = ""
+		case "reference": higher.endToEndReference = ""
+		default: higher.counterpartyIBAN = ""
+		}
+		delivered.sourceID = "moneymoney:3"
+		for deleted in permutations([higher, lower]) {
+			let r = merge(.migration([delivered]), deleted: deleted, at: noon(20, month: 11))
+			#expect(r.added == [] && r.skipped == 1)
+			#expect(r.relinked.map(\.row) == [lower])
+			#expect(r.relinked.map(\.sourceID) == ["moneymoney:3"])
+		}
+	}
+
 	@Test("Gate 3 items 1 4 5: every delivered and stored permutation has literal rows")
 	func gate3AllPermutations() {
 		for (fileDays, bankDays, expected) in [
