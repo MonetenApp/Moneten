@@ -334,10 +334,13 @@ final class AppModel {
 			guard let self else { return }
 			Trail.log("refresh end access=\(self.trailNumber(of: access)) accounts=\(accounts.count) failed=\(failed)")
 			// The times and errors change the accounts in the ledger, which must not meet a new view in one drawing.
+			// The state goes into the database at once, before the coordinator lets the next work of the access
+			// go, so the state that "Edit Login Data..." or "Look for New Accounts..." stores comes after it.
 			if self.tableUndrawn {
+				if state != nil { self.recordRefresh(of: access, state: state, accounts: [:], attended: attended) }
 				Task {
 					while self.tableUndrawn { await self.drawn() }
-					self.recordRefresh(of: access, state: state, accounts: accounts, attended: attended)
+					self.recordRefresh(of: access, state: nil, accounts: accounts, attended: attended)
 				}
 			} else {
 				self.recordRefresh(of: access, state: state, accounts: accounts, attended: attended)
