@@ -91,7 +91,7 @@ struct CategorySettingsSheet: View {
 			color = category.map { CategoryColors.color(of: $0, in: model.ledger) } ?? .accentColor
 			originalColor = color
 			// A saved rule such as "amount>1,000" may no longer read, so its error shows before the first edit.
-			if let c = category, !c.isDefault, !c.isGroup { validate(c.rule) }
+			ruleError = category?.ruleError?.description
 		}
 		.confirmationDialog("Should this categorization rule be applied to the existing transactions now?", isPresented: $askApply) {
 			Button("Apply only to not yet categorized transactions.") { apply(.uncategorizedOnly) }
