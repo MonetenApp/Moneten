@@ -138,15 +138,32 @@ The app SHALL count each part with its own amount and category in search results
 - **WHEN** a transaction of an account is split
 - **THEN** the balance and the daily balance of the account are the same as before
 
-### Requirement: A refresh does not undo or duplicate a split
+### Requirement: A refresh keeps a split while its amount stays
 
-The app SHALL recognize the original transaction of a split when the bank delivers it again. The app adds no new row for it and leaves the parts as they are.
+The app SHALL recognize the original transaction of a split when the bank delivers it again, and add no new row for it. When the bank delivers the original with its amount, the app keeps the parts.
 
 #### Scenario: Refresh after a split
 
 - **GIVEN** a split transaction of -80,00 € from last week
 - **WHEN** a refresh delivers the transactions of the last 90 days again
 - **THEN** the list still shows the two parts and no third row of -80,00 €
+
+#### Scenario: The bank changes the purpose of a split transaction
+
+- **GIVEN** a transaction of -80,00 € with the ID "TX-1", split into -25,00 € and -55,00 €
+- **WHEN** a refresh delivers "TX-1" with the amount -80,00 € and the purpose "REWE SAGT DANKE"
+- **THEN** the list shows the parts -25,00 € and -55,00 €, each with the purpose "REWE SAGT DANKE"
+
+### Requirement: A corrected amount undoes a split
+
+The app SHALL undo the split when a source that gives IDs delivers the original under its ID with another amount. It updates the whole transaction as the requirement "Update a transaction that the source changed" of `account-refresh` says, and marks it for review with the note "The bank changed the amount; the split was undone."
+
+#### Scenario: The bank corrects the amount of a split transaction
+
+- **GIVEN** a transaction of -80,00 € with the ID "TX-1" in "Groceries", split into -25,00 € in "Household" and -55,00 € in "Groceries"
+- **WHEN** a refresh delivers "TX-1" with the amount -85,00 €
+- **THEN** the list shows one transaction of -85,00 € in "Groceries" and no parts
+- **AND** the transaction is marked for review with the note "The bank changed the amount; the split was undone."
 
 ### Requirement: Rules leave parts alone
 

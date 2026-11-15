@@ -28,7 +28,7 @@ None.
 - Issues: #39
 - Modules: `Domain` owns the split arithmetic and the rule that parts add up. `App` owns the split window and the menu.
 - Depends on the change `add-transaction-list` for the list and on the change `add-categories` for the categories.
-- Depends on the change `add-account-refresh` for the rule that a refresh does not store a known transaction twice.
+- Depends on the change `add-account-refresh` for the rule that a refresh does not store a known transaction twice, and for the rule that a source with IDs updates a transaction that it changed.
 - "Split from Batch Payment" needs the positions of a batch payment. The app knows them only for batches that it sent itself, which arrives with the change `add-payment-outbox`. Until then the command is always disabled.
 - Decisions: none apply.
 
@@ -58,3 +58,4 @@ None.
 - A search for the amount of the original transaction finds all its parts, so the user finds a split by the amount on the bank statement.
 - Splitting a part of a VAT split again gives new parts without the label for net or VAT, because the label of a whole net amount does not fit a share of it. MoneyMoney's behavior was not observed.
 - The VAT split cuts the net part toward zero at the cent, and the tax part takes the rest. The parts then always add up to the gross amount, a refund splits into the same parts with the opposite sign, and the rule has no special case for half a cent. The tax part can be one cent larger than on an invoice that rounds the tax: -10,00 € at 7 % gives a net part of -9,34 € and a tax part of -0,66 €, and a refund of 10,00 € gives 9,34 € and 0,66 €.
+- When a source with IDs delivers a split transaction under its ID with another amount, the app undoes the split, takes the new amount for the whole transaction, and marks it for review with the note "The bank changed the amount; the split was undone." Scaling the parts would guess the shares of a VAT split. A note alone would leave parts that no longer add up to the amount. The undo keeps the balance, the derived initial balance, and every daily balance equal to the bank. A change that keeps the amount, such as a new purpose, keeps the split. MoneyMoney's behavior was not observed.
