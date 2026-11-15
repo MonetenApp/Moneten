@@ -28,7 +28,17 @@ extension Store {
 	}
 
 	public func exportAllData(to url: URL) throws {
-		try exportAllData().json().write(to: url, options: .atomic)
+		let data = try exportAllData().json()
+		let temporary = url.deletingLastPathComponent().appending(path: ".\(url.lastPathComponent).\(UUID().uuidString)")
+		let descriptor = open(temporary.path, O_WRONLY | O_CREAT | O_EXCL, 0o600)
+		guard descriptor >= 0 else { throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno), userInfo: [NSFilePathErrorKey: temporary.path]) }
+		defer { unlink(temporary.path) }
+		let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
+		try handle.write(contentsOf: data)
+		try handle.close()
+		guard rename(temporary.path, url.path) == 0 else {
+			throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno), userInfo: [NSFilePathErrorKey: url.path])
+		}
 	}
 
 	/// Writes a complete export into this database in one transaction. The database must hold no account and no
