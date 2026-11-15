@@ -744,7 +744,7 @@ struct ReconcileTests {
 	@Test("A dropped file row fills only empty user fields of the bank row", arguments: [false, true])
 	func droppedFileUserFields(bankHasFields: Bool) throws {
 		let housing = Domain.Category(position: 0, name: "Housing")
-		let bills = Domain.Category(position: 1, name: "Bills")
+		let bills = Domain.Category(position: 1, name: "Bills", rule: #"purpose:"DAUERAUFTRAG""#)
 		var file = rent(1)
 		file.comment = "Shared rent"
 		file.categoryID = housing.id
@@ -754,7 +754,7 @@ struct ReconcileTests {
 		bank.sourceID = "bank-7"
 		bank.comment = bankHasFields ? "Bank note" : ""
 		bank.categoryID = bankHasFields ? bills.id : nil
-		bank.categorizedBy = .manual
+		bank.categorizedBy = bankHasFields ? .manual : .none
 		bank.isChecked = bankHasFields
 		var delivered = fresh(bank)
 		delivered.purpose = "MIETE DEZEMBER WHG 3 DAUERAUFTRAG"
