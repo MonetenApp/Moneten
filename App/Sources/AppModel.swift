@@ -98,7 +98,7 @@ final class AppModel {
 	}
 
 	let vault = Vault(folder: .standard())
-	let crashes = CrashReports(folder: .standard())
+	let crashes = CrashReportController(folder: .standard())
 	/// The refreshes of the bank accesses and their dialogs.
 	let sync = SyncCoordinator(broker: SessionBroker(defaults: .standard, scope: DataFolder.standard().databaseFile.path))
 	/// The FinTS connector of the setup and of every refresh.
@@ -1082,12 +1082,12 @@ final class AppModel {
 	/// refresh from the menu bar can ask or fail while that window is closed, so they bring the window back.
 	/// `asking` tells whether the dialog of a refresh was open before, so that the trail logs each change once.
 	private func showDialogsInMainWindow(asking: Bool = false) {
-		withObservationTracking { _ = (sync.broker.current, alert) } onChange: { [weak self] in
+		withObservationTracking { _ = (sync.broker.current, alert, crashes.pending) } onChange: { [weak self] in
 			Task { @MainActor [weak self] in
 				guard let self else { return }
 				let asks = self.sync.broker.current != nil
 				if asks != asking { Trail.log("dialog refresh \(asks ? "shown" : "closed")") }
-				if asks || self.alert != nil {
+				if asks || self.alert != nil || self.crashes.pending != nil {
 					NSApp.activate()
 					self.openMainWindow()
 				}

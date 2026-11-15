@@ -6,59 +6,68 @@ import Storage
 
 @MainActor
 @Observable
-final class CrashReports: NSObject, MXMetricManagerSubscriber {
+final class CrashReportController: NSObject, MXMetricManagerSubscriber {
 	private(set) var pending: PendingCrashReport?
+	#if DEBUG || PERF_HARNESS
 	private(set) var receivedCount = 0
 	private(set) var failureCount = 0
+	#endif
 	var error: String?
 	private let store: CrashReportStore
 
 	static var appVersion: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Unknown" }
-	static var macOSVersion: String {
-		let version = ProcessInfo.processInfo.operatingSystemVersion
-		return "\(version.majorVersion).\(version.minorVersion).\(version.patchVersion)"
-	}
 
 	init(folder: DataFolder) {
 		store = CrashReportStore(folder: folder)
 		super.init()
-		do { pending = try store.load() }
+		do {
+			let start = Date()
+			let directory = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/DiagnosticReports")
+			let files = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.contentModificationDateKey], options: [.skipsHiddenFiles])) ?? []
+			let dates = files.compactMap { file -> (name: String, date: Date)? in
+				let name = file.lastPathComponent
+				guard (name.hasPrefix("Moneten-") && name.hasSuffix(".ips")) || (name.hasPrefix("Moneten") && name.hasSuffix(".crash")),
+					let date = try? file.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate else { return nil }
+				return (name, date)
+			}
+			pending = try store.startLaunch(at: start, appVersion: Self.appVersion, macOSVersion: CrashReports.macOSVersion(), files: dates)
+		}
 		catch { failed("Could not read the saved crash report.") }
 		MXMetricManager.shared.add(self)
 		didReceive(MXMetricManager.shared.pastDiagnosticPayloads)
 	}
 
 	nonisolated func didReceive(_ payloads: [MXDiagnosticPayload]) {
-		let diagnostics = payloads.compactMap { payload -> PendingCrashReport? in
+		let diagnostics = payloads.compactMap { payload -> (crash: PendingCrashReport, start: Date)? in
 			guard let crash = payload.crashDiagnostics?.last else { return nil }
 			let frames = (try? CrashDiagnostic.crashedFrames(in: crash.callStackTree.jsonRepresentation())) ?? []
 			let diagnostic = CrashDiagnostic(appVersion: crash.applicationVersion, macOSVersion: crash.metaData.osVersion,
 				exceptionType: crash.exceptionType?.intValue, signal: crash.signal?.intValue, frames: frames)
-			return PendingCrashReport(date: payload.timeStampEnd, diagnostic: diagnostic)
+			return (PendingCrashReport(date: payload.timeStampEnd, diagnostic: diagnostic), payload.timeStampBegin)
 		}
 		Task { @MainActor [weak self] in
 			guard let self else { return }
+			#if DEBUG || PERF_HARNESS
 			self.receivedCount += diagnostics.count
-			for crash in diagnostics.sorted(by: { $0.date < $1.date }) { self.receive(crash) }
+			#endif
+			for item in diagnostics.sorted(by: { $0.crash.date < $1.crash.date }) { self.receive(item.crash, since: item.start) }
 			Trail.log("crash diagnostics=\(diagnostics.count)")
 		}
 	}
 
-	func receive(_ crash: PendingCrashReport) {
+	func receive(_ crash: PendingCrashReport, since start: Date? = nil) {
 		do {
-			pending = try store.receive(crash.diagnostic, at: crash.date)
+			pending = try store.receive(crash.diagnostic, at: crash.date, since: start)
 			error = nil
 		} catch { failed("Could not save the crash report on this Mac.") }
 	}
 
-	enum Decision { case github, copy, decline }
-
-	func decide(_ decision: Decision) {
+	func decide(_ decision: PendingCrashReport.Decision) {
 		guard let pending else { return }
-		let report = crashReport(pending.diagnostic)
+		let report = pending.report
 		switch decision {
 		case .github:
-			let url = bugReportURL(version: pending.diagnostic.appVersion, macOS: pending.diagnostic.macOSVersion, report: report)
+			let url = pending.githubURL
 			guard NSWorkspace.shared.open(url) else { return failed("Could not open GitHub. You can copy the report instead.") }
 		case .copy:
 			NSPasteboard.general.clearContents()
@@ -66,15 +75,16 @@ final class CrashReports: NSObject, MXMetricManagerSubscriber {
 		case .decline: break
 		}
 		do {
-			try store.discard()
-			self.pending = nil
+			self.pending = try store.decide(decision)
 			error = nil
 		} catch { failed("Could not remove the saved crash report. Try again.") }
 	}
 
 	private func failed(_ message: String) {
 		error = message
+		#if DEBUG || PERF_HARNESS
 		failureCount += 1
-		Trail.log("crash storage-failure count=\(failureCount)")
+		#endif
+		Trail.log("crash storage-failure")
 	}
 }

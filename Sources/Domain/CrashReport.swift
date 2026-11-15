@@ -84,7 +84,7 @@ public func bugReportURL(version: String, macOS: String, report: String? = nil) 
 		var fields = [URLQueryItem(name: "template", value: "bug-report.yml"),
 			URLQueryItem(name: "version", value: reportVersion(version)), URLQueryItem(name: "macos", value: reportMacOS(macOS))]
 		if let body {
-			fields += [URLQueryItem(name: "body", value: body), URLQueryItem(name: "expected", value: body)]
+			fields.append(URLQueryItem(name: "expected", value: body))
 		}
 		components.queryItems = fields
 		return components.url!
@@ -113,11 +113,13 @@ private func reportMacOS(_ value: String) -> String {
 	let expression = try! NSRegularExpression(pattern: pattern)
 	guard let match = expression.firstMatch(in: value, range: NSRange(value.startIndex..., in: value)),
 		let range = Range(match.range(at: 1), in: value) else { return "Unknown" }
-	return String(value[range])
+	let numbers = value[range].split(separator: ".")
+	return numbers.count == 3 && numbers[2] == "0" ? numbers.prefix(2).joined(separator: ".") : String(value[range])
 }
 
 public enum CrashReports {
 	public static func macOSVersion(_ version: OperatingSystemVersion = ProcessInfo.processInfo.operatingSystemVersion) -> String {
-		"\(version.majorVersion).\(version.minorVersion).\(version.patchVersion)"
+		let base = "\(version.majorVersion).\(version.minorVersion)"
+		return version.patchVersion == 0 ? base : "\(base).\(version.patchVersion)"
 	}
 }

@@ -2,14 +2,14 @@ import Domain
 import SwiftUI
 
 struct CrashReportSheet: View {
-	let reports: CrashReports
+	let reports: CrashReportController
 
 	var body: some View {
 		VStack(alignment: .leading, spacing: 16) {
 			Text("Moneten quit unexpectedly").font(.title2).bold()
-			Text("Moneten quit unexpectedly the last time it ran. You can report the crash as an issue on GitHub. The report holds no account data. Read it before you send it.")
+			Text("Moneten quit unexpectedly recently. You can report the crash as an issue on GitHub. The report holds no account data. Read it before you send it.")
 			ScrollView([.vertical, .horizontal]) {
-				Text(reports.pending.map { crashReport($0.diagnostic) } ?? "")
+				Text(reports.pending?.report ?? "")
 					.font(.system(.body, design: .monospaced))
 					.textSelection(.enabled)
 					.padding(12)
