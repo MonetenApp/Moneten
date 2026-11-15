@@ -310,7 +310,7 @@ final class AccountSetup {
 		isListing = true
 		task = Task {
 			do {
-				let listed = try await session.logIn { [model, groupID] session in
+				let (listed, notices) = try await session.logIn { [model, groupID] session in
 					try await model.sync.exclusively(for: access.id) {
 						let list = try await model.fints.listAccounts(of: access, state: try model.store?.state(of: access.id), session: session)
 						try Task.checkCancellation()
@@ -318,12 +318,13 @@ final class AccountSetup {
 							try model.store?.recordRefresh(of: access.id, state: state, accounts: [])
 							model.sync.update(access, state: state)
 						}
-						model.bankNotices.add(list.notices, from: access.bankName)
-						return list.accounts.map { $0.account(access: access, bank: bank, group: groupID) }
+						return (list.accounts.map { $0.account(access: access, bank: bank, group: groupID) }, list.notices)
 					}
 				}
 				isListing = false
 				self.access = access
+				// The account step shows the notices of the bank, as at the setup.
+				self.notices = notices
 				candidates = listed.map { Candidate(account: $0, match: model.ledger.setupMatch(for: $0, listed: listed)) }.filter { !$0.isPresent }
 				selected = Set(candidates.map(\.id))
 				if candidates.isEmpty { listingMessage = "There are no new accounts." }
