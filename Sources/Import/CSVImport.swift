@@ -184,7 +184,7 @@ public struct CSVFile: Sendable {
 		let width = rows.map(\.cells.count).max() ?? 0
 		let firstTransaction = rows.prefix(100).firstIndex { row in
 			row.cells.contains(where: Self.isDateShaped)
-				&& row.cells.contains { !Self.isDateShaped($0) && Self.amountParts($0, account: "EUR").map { AmountParser.decimal(from: $0.number) != nil } == true }
+				&& row.cells.contains { !Self.isDateShaped($0) && Self.amountParts($0, account: "EUR").map { AmountParser.decimal(from: $0.number, decimalMark: .point) != nil || AmountParser.decimal(from: $0.number, decimalMark: .comma) != nil } == true }
 		}
 		// A row with a date above the first transaction is a transaction without an amount or an account line, never the titles.
 		let above = firstTransaction.flatMap { first in
