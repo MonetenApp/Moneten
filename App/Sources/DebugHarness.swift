@@ -79,13 +79,13 @@ final class DebugHarness {
 		case "importsheetsnapshot":
 			let reading = FileImport(names: ["umsaetze-januar.csv", "umsaetze-februar.csv"])
 			reading.index = 1
-			offscreenSnapshot(FileImportSheet(run: reading).environment(model), width: 480, name: "\(argument)-reading")
+			offscreenSnapshot(FileImportSheet(run: reading).environment(model), width: 480, name: argument, kind: "reading")
 			let storing = FileImport(names: ["umsaetze-januar.csv", "umsaetze-februar.csv"])
 			storing.storing = 300_000
-			offscreenSnapshot(FileImportSheet(run: storing).environment(model), width: 480, name: "\(argument)-storing")
+			offscreenSnapshot(FileImportSheet(run: storing).environment(model), width: 480, name: argument, kind: "storing")
 		case "settingssnapshot":
-			offscreenSnapshot(SecuritySettings().environment(model), width: 500, name: "\(argument)-security")
-			offscreenSnapshot(GeneralSettings().environment(model), width: 500, name: "\(argument)-general")
+			offscreenSnapshot(SecuritySettings().environment(model), width: 500, name: argument, kind: "security")
+			offscreenSnapshot(GeneralSettings().environment(model), width: 500, name: argument, kind: "general")
 		case "storepassword": log("storepassword \((try? model.vault.storePassword(argument)) != nil)")
 		case "removepassword": try? model.vault.removeStoredPassword()
 		case "seed": Task { await DemoData.seed(model); log("seed done") }
@@ -163,7 +163,7 @@ final class DebugHarness {
 		// "off" or "on": whether the display is awake, so that a check can run the automatic refresh while the display of the Mac sleeps.
 		case "present": model.autoRefresh.isUserPresent = argument != "off"
 		// The popover of the menu bar icon, drawn offscreen.
-		case "menubarsnapshot": offscreenSnapshot(MenuBarPopover().environment(model), width: 340, name: argument)
+		case "menubarsnapshot": offscreenSnapshot(MenuBarPopover().environment(model), width: 340, name: argument, kind: "menubar")
 		// The delivered notifications of this app in the Notification Center, with their titles and the number of their accounts.
 		case "notices": logNotices()
 		// What the button "OK" of the window "Notice" does.
@@ -172,7 +172,7 @@ final class DebugHarness {
 			// By the position and the kind of the account, as in "status", never by its name.
 			let accounts = model.ledger.accounts.filter { $0.accessID != nil }
 			if let position = accounts.firstIndex(where: { $0.name == argument }), let error = accounts[position].refreshError {
-				offscreenSnapshot(RefreshErrorPopover(account: accounts[position], error: error), width: 352, name: "error-\(position)-\(accounts[position].kind.rawValue.lowercased())")
+				offscreenSnapshot(RefreshErrorPopover(account: accounts[position], error: error), width: 352, name: "", kind: "error-\(position)-\(accounts[position].kind)")
 			}
 		case "extrun": runExtension(argument)
 		case "escape":
@@ -299,10 +299,10 @@ final class DebugHarness {
 				model.save(category: c)
 			}
 		case "symbolsnapshot":
-			offscreenSnapshot(SymbolGrid(selection: "cart.fill", color: .green, isGroup: false) { _ in }, width: 360, name: "\(argument)-symbols")
+			offscreenSnapshot(SymbolGrid(selection: "cart.fill", color: .green, isGroup: false) { _ in }, width: 360, name: argument, kind: "symbols")
 		case "rulehelpsnapshot":
-			offscreenSnapshot(RuleHelp(), width: 420, name: "\(argument)-rulehelp")
-			offscreenSnapshot(RuleHelp().defaultScrollAnchor(.bottom), width: 420, name: "\(argument)-rulehelp-end")
+			offscreenSnapshot(RuleHelp(), width: 420, name: argument, kind: "rulehelp")
+			offscreenSnapshot(RuleHelp().defaultScrollAnchor(.bottom), width: 420, name: argument, kind: "rulehelp-end")
 		case "piesnapshot":
 			// The pie of withdrawals with the pointer on its first slice.
 			let rows = model.visibleTransactions
@@ -310,7 +310,7 @@ final class DebugHarness {
 			let slices = CategoryPie.slices(of: ChartCurrency.rows(rows, in: ChartCurrency.current(ranked, picked: nil), of: ranked), in: model).withdrawals
 			offscreenSnapshot(PieChart(title: "Withdrawals", empty: "No withdrawals", slices: slices, outside: .leading, hovered: slices.first?.id).frame(height: 230)
 				.frame(maxWidth: .infinity).foregroundStyle(Palette.onBand).environment(\.negativeRed, Palette.bandRed).background(Palette.band)
-				.environment(model), width: 520, name: "\(argument)-pie")
+				.environment(model), width: 520, name: argument, kind: "pie")
 		case "portfolio":
 			// "<group> <euros>" adds a portfolio with that bank balance to a group.
 			let parts = argument.split(separator: " ")
@@ -338,7 +338,7 @@ final class DebugHarness {
 				let bars = BalanceChart.stripBars(model.ledger, ids: [id], range: .all, currency: account.currency, monthly: false)
 				let hovered = bars.dropLast(7).last?.id
 				offscreenSnapshot(ScrollingBarChart(bars: bars, style: .separators, barWidth: 4, gap: 2, positive: Palette.bandBar, negative: Palette.red,
-					hovered: hovered) { _ in }.frame(height: 230).background(Palette.band).environment(model), width: 520, name: "\(argument)-bars")
+					hovered: hovered) { _ in }.frame(height: 230).background(Palette.band).environment(model), width: 520, name: argument, kind: "bars")
 			}
 		case "history": Task { await DemoData.history(model); log("history done") }
 		case "bulk":
@@ -386,7 +386,7 @@ final class DebugHarness {
 				if let range { model.filter.amount = range }
 				log("amount applied=\(range != nil) visible=\(model.visibleTransactions.count)")
 			} else {
-				offscreenSnapshot(CustomAmountView(min: ends[0], max: ends[1]).environment(model), width: 300, name: "amount")
+				offscreenSnapshot(CustomAmountView(min: ends[0], max: ends[1]).environment(model), width: 300, name: "", kind: "amount")
 			}
 		case "period":
 			switch argument {
@@ -550,12 +550,6 @@ final class DebugHarness {
 	/// a code that is not such a number is "invalid".
 	private static func label(code: String) -> String {
 		(1...4).contains(code.count) && code.allSatisfy { $0.isASCII && $0.isNumber } ? code : "invalid"
-	}
-
-	/// The name of a snapshot when it is short and made of lowercase letters, digits, and hyphens, as the
-	/// checks name their snapshots. Any other name can come from outside the app and hold a name or a path.
-	private static func loggable(_ name: String) -> String {
-		name.wholeMatch(of: #/[a-z0-9-]{1,32}/#) == nil ? "invalid" : name
 	}
 
 	/// The case of a refresh state, and of a failure its case and the return code of the bank, without a text.
@@ -941,11 +935,12 @@ final class DebugHarness {
 	/// window uses a material that only the window server draws.
 	private func sidebarSnapshot(_ name: String) {
 		guard let model else { return }
-		offscreenSnapshot(SidebarView().environment(model).frame(height: 900), width: 340, name: "\(name)-sidebar")
+		offscreenSnapshot(SidebarView().environment(model).frame(height: 900), width: 340, name: name, kind: "sidebar")
 	}
 
-	/// Draws a view in a window outside the screen, as tall as the view wants to be.
-	private func offscreenSnapshot(_ view: some View, width: CGFloat, name: String) {
+	/// Draws a view in a window outside the screen, as tall as the view wants to be, into the file
+	/// "<name>-<kind>.png". The log names only the kind, because the name comes from outside the app.
+	private func offscreenSnapshot(_ view: some View, width: CGFloat, name: String, kind: String) {
 		let host = NSHostingView(rootView: view.frame(width: width).background(.windowBackground))
 		let size = host.fittingSize
 		let window = NSWindow(contentRect: NSRect(x: -5000, y: -5000, width: width, height: size.height), styleMask: [.borderless], backing: .buffered, defer: false)
@@ -955,10 +950,10 @@ final class DebugHarness {
 			host.layoutSubtreeIfNeeded()
 			if let rep = host.bitmapImageRepForCachingDisplay(in: host.bounds) {
 				host.cacheDisplay(in: host.bounds, to: rep)
-				try? rep.representation(using: .png, properties: [:])?.write(to: self.folder.appendingPathComponent("\(name).png"))
+				try? rep.representation(using: .png, properties: [:])?.write(to: self.folder.appendingPathComponent("\(name.isEmpty ? kind : "\(name)-\(kind)").png"))
 			}
 			window.orderOut(nil)
-			self.log("snapshot \(Self.loggable(name)) \(Int(host.bounds.width))x\(Int(host.bounds.height))")
+			self.log("snapshot \(kind) \(Int(host.bounds.width))x\(Int(host.bounds.height))")
 		}
 	}
 
@@ -987,9 +982,10 @@ final class DebugHarness {
 					web.image.draw(in: frame)
 					NSGraphicsContext.restoreGraphicsState()
 				}
-				let suffix = "-\(i)\(String(repeating: "-sheet", count: j)).png"
-				try? rep.representation(using: .png, properties: [:])?.write(to: folder.appendingPathComponent(name + suffix))
-				log("snapshot \(Self.loggable(name))\(suffix) \(w.identifier?.rawValue ?? "-") \(Int(view.bounds.width))x\(Int(view.bounds.height))")
+				let suffix = "\(i)\(String(repeating: "-sheet", count: j))"
+				try? rep.representation(using: .png, properties: [:])?.write(to: folder.appendingPathComponent("\(name)-\(suffix).png"))
+				// The window by its position, without the name of the file, which comes from outside the app.
+				log("snapshot window-\(suffix) \(w.identifier?.rawValue ?? "-") \(Int(view.bounds.width))x\(Int(view.bounds.height))")
 			}
 		}
 	}

@@ -7,8 +7,8 @@
 # error popover, and the state of each account, an account filter, a snapshot, and a key in the main window
 # while the selected row has a new category. An import of all data fails on a file with a name as a day, and
 # an export fails on a path that holds a name. A rule with a name or an IBAN as its amount fails to parse, a
-# command and a snapshot have a name as their name, and an extension and a fixture fail to load from a path
-# that holds a name. A made-up extension without a fixture then prints, sets a status, returns a value,
+# command and two snapshots have a name as their name, and an extension and a fixture fail to load from a
+# path that holds a name. A made-up extension without a fixture then prints, sets a status, returns a value,
 # fails a refresh, and fails a run with an error that names a person. The check fails when debug.log holds
 # an IBAN, an account number, an amount, a balance, a name, a purpose, a booking text, a category name, the
 # login name, the PIN, the TAN, the password, a text of the bank, or a text of the extension. It also
@@ -220,7 +220,8 @@ poll "^dropcategory hover=false" dropcategory "Haushaltskasse|Haushaltskasse"
 poll "^rule error=RuleSyntaxError position=1$" rule "Haushaltskasse|amount>Mustermann"
 poll "^rule error=RuleSyntaxError position=1$" rule "Haushaltskasse|amount>DE02120300000000202051"
 poll "^unknown command$" "Erika Mustermann"
-poll "^snapshot invalid-0.png " snapshot "Erika Mustermann"
+poll "^snapshot window-0 " snapshot erika-mustermann
+poll "^snapshot sidebar " sidebarsnapshot "Erika Mustermann"
 poll "^ext error=PackageProblem$" extrun "$DATA/Erika Mustermann.lua|Result|"
 poll "^ext error=NSError$" extrun "$WORK/Check.lua|Result|$DATA/fixture.json"
 poll "^ext error=PackageProblem$" extaccess "$DATA/Erika Mustermann.lua||Check Bank"
@@ -248,7 +249,7 @@ send quit
 found=0
 for value in DE02120300000000202051 "DE02 1203" 202051 1234567890 0099887766 "99 88 77 66" 4711 5550001 "$LOGIN" "$PIN" "$MIGRATION_UNKNOWN" 123456 check-debug-log \
 	234015 501240 12000 320000 95000 4250 229765 471123 "4711,23" 81547 815.47 \
-	Girokonto Tagesgeld Kreditkarte Extrakonto "Erika Mustermann" Mustermann "Beispiel GmbH" "Wohnbau Musterstadt" "Tankstelle Beispiel" \
+	Girokonto Tagesgeld Kreditkarte Extrakonto "Erika Mustermann" Mustermann erika-mustermann "Beispiel GmbH" "Wohnbau Musterstadt" "Tankstelle Beispiel" \
 	"Gehalt November" Miete Kartenzahlung Sparen Haushaltskasse MIETE-2026-11 GUTSCHRIFT DAUERAUFTRAG \
 	"Zugang vorübergehend gesperrt" "PIN falsch" Wartungsarbeiten pushTAN-App "currency:/^+?49/"; do
 	if grep -n -w -F -- "$value" "$LOG" >&2; then
