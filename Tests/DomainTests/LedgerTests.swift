@@ -314,6 +314,28 @@ struct LedgerTests {
 		#expect(found(#""true""#).isEmpty)
 	}
 
+	@Test("The fallback keeps constants and their negation")
+	func unfinishedSearchConstants() {
+		let account = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
+		let ledger = Ledger(accounts: [account], transactions: [
+			Transaction(accountID: account.id, bookingDate: Day(year: 2026, month: 11, day: 1), amountMinor: -100, name: "Stadtwerke Musterstadt"),
+		])
+		let cases: [(String, [String])] = [
+			(#"false "Stadtw"#, []),
+			(#"NOT true "Stadtw"#, []),
+			(#"true "Stadtw"#, ["Stadtwerke Musterstadt"]),
+			(#"NOT false "Stadtw"#, ["Stadtwerke Musterstadt"]),
+			(#"true "Kiosk"#, []),
+		]
+		for (text, expected) in cases {
+			var filter = TransactionFilter()
+			filter.searchText = text
+			let result = ledger.transactions(in: .account(account.id), filter: filter)
+			#expect(result.rows.map(\.name) == expected)
+			#expect(result.gaveUp == false)
+		}
+	}
+
 	@Test("A phrase finds its words across any white space, and a quoted word finds text inside words, which a rule does not")
 	func searchPhraseAcrossWhiteSpace() throws {
 		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
