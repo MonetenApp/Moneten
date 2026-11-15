@@ -58,13 +58,27 @@ The app SHALL accept a part whose sign is opposite to the original transaction. 
 
 ### Requirement: Each part has its own category and comment
 
-The app SHALL let the user assign a category and write a comment for each part, in the same way as for a whole transaction. A new part starts in the category of the original transaction. Every part keeps the date, the counterparty, and the purpose of the original.
+The app SHALL let the user assign a category and write a comment for each part, in the same way as for a whole transaction. A new part starts in the category of the original transaction. Every part keeps the date, the counterparty, and the purpose of the original. If a refresh removes a part while its edit window is open, confirming closes the window without saving.
 
 #### Scenario: Different categories
 
 - **GIVEN** the parts -25,00 € and -55,00 € of a transaction that was in "Groceries"
 - **WHEN** the user assigns the part of -25,00 € to "Household"
 - **THEN** "Household" contains -25,00 € and "Groceries" contains -55,00 € of that receipt
+
+#### Scenario: The category picker keeps account restrictions for parts
+
+- **GIVEN** a -80,00 € transaction of account "Private" split into -25,00 € and -55,00 €
+- **AND** "Groceries" has no account restriction, "Household" is restricted to "Private", and "Office" is restricted to account "Business"
+- **WHEN** the user selects either part or both and opens "Assign Category"
+- **THEN** the picker offers "Groceries" and "Household" and does not offer "Office"
+
+#### Scenario: A correction removes the part being edited
+
+- **GIVEN** a booked "TX-1" of -80,00 € split into -25,00 € and -55,00 €, and the edit window is open for the part of -25,00 €
+- **WHEN** a refresh delivers a booked "TX-1" of -85,00 € and the user confirms the old edit window
+- **THEN** the window closes without saving the edit or adding a transaction
+- **AND** the list still shows only the corrected original of -85,00 €
 
 ### Requirement: Parts are recognizable
 
@@ -78,7 +92,7 @@ The app SHALL mark each part of a split in the list and show the amount of the o
 
 ### Requirement: Split off value added tax
 
-The app SHALL offer one entry "Split" with the rate and "VAT" for each rate in the list of VAT rates. The entry divides the transaction into a net part and a tax part. The transaction amount is the gross amount. The net part is the gross amount multiplied by 100 and divided by 100 plus the rate, cut toward zero at the cent. The tax part is the gross amount minus the net part, so it takes the fraction of a cent that the net part leaves.
+The app SHALL offer one entry "Split" with the rate and "VAT" for each rate in the list of VAT rates. The entry divides the transaction into a net part and a tax part. The transaction amount is the gross amount. The net part is the gross amount multiplied by 100 and divided by 100 plus the rate, cut toward zero at the smallest unit of the transaction currency. The tax part is the gross amount minus the net part, so it takes the remainder.
 
 #### Scenario: Nineteen percent
 
@@ -98,6 +112,18 @@ The app SHALL offer one entry "Split" with the rate and "VAT" for each rate in t
 - **GIVEN** a transaction of 10,00 €
 - **WHEN** the user chooses "Split 7% VAT"
 - **THEN** the net part is 9,34 € and the tax part is 0,66 €
+
+#### Scenario: VAT in a currency without decimals
+
+- **GIVEN** a transaction of -1.000 JPY
+- **WHEN** the user chooses "Split 7% VAT"
+- **THEN** the net part is -934 JPY and the tax part is -66 JPY
+
+#### Scenario: VAT in a currency with three decimals
+
+- **GIVEN** a transaction of -10,000 KWD
+- **WHEN** the user chooses "Split 7% VAT"
+- **THEN** the net part is -9,345 KWD and the tax part is -0,655 KWD
 
 ### Requirement: The list of VAT rates can be changed
 
@@ -133,20 +159,102 @@ The app SHALL count each part with its own amount and category in search results
 - **WHEN** the user opens the pie chart for the month
 - **THEN** "Household" grows by 25,00 € and "Groceries" by 55,00 €, and no category counts 80,00 €
 
+#### Scenario: Sidebar amounts count the parts
+
+- **GIVEN** a transaction of -100,00 € on 02.11.2026 in "Drinks", split into -60,00 € in "Groceries" and -40,00 € in "Household"
+- **AND** these categories show "Total sum" and contain no other transactions
+- **WHEN** the user reads the sidebar on 15.11.2026
+- **THEN** "Groceries" shows -60,00 € and "Household" shows -40,00 €
+- **AND** "Drinks" shows no amount from the original
+
 #### Scenario: Account balance
 
 - **WHEN** a transaction of an account is split
 - **THEN** the balance and the daily balance of the account are the same as before
 
-### Requirement: A refresh does not undo or duplicate a split
+### Requirement: A complete export preserves splits and review reasons
 
-The app SHALL recognize the original transaction of a split when the bank delivers it again. The app adds no new row for it and leaves the parts as they are.
+The app SHALL preserve the original transactions, their split parts, and their review reasons through "Export All Data..." and "Import All Data..." in format version 2. Each part keeps its identifier, order, amount, category, comment, and VAT data. Import still accepts version 1, with `needsReview` true read as the review reason for an unclear booking and false read as no review.
+
+#### Scenario: A split survives a complete export and import
+
+- **GIVEN** a booked -119,00 € transaction in "Groceries" with comment "Invoice" and review for an unclear booking
+- **AND** its parts are -100,00 € in "Household" with comment "Net goods" and the net label at 19 %, and -19,00 € in "Drinks" with comment "Tax" and the tax label at 19 %
+- **AND** a second transaction of -85,00 € has the review reason for an undone split
+- **WHEN** the user exports all data and imports the version-2 file into an empty database
+- **THEN** the original and both parts keep their identifiers, links, order, literal amounts, categories, comments, and VAT labels
+- **AND** both transactions keep their review reasons
+- **AND** the account balance stays unchanged and no part becomes a separate stored transaction
+
+#### Scenario: A version-1 review mark still imports
+
+- **GIVEN** a version-1 export with a pending -20,00 € transaction whose `needsReview` is true and a booked -30,00 € transaction whose `needsReview` is false
+- **WHEN** the user imports all data into an empty database
+- **THEN** the pending -20,00 € transaction has the review reason for an unclear booking
+- **AND** the booked -30,00 € transaction has no review mark
+- **AND** neither transaction has split parts
+
+#### Scenario: An invalid split import changes nothing
+
+- **GIVEN** a version-2 export whose -119,00 € transaction has parts of -100,00 € and -18,00 €
+- **WHEN** the user imports all data into an empty database
+- **THEN** the app refuses the file and leaves the database unchanged
+
+### Requirement: A refresh keeps a split while its amount stays
+
+The app SHALL recognize the original transaction of a split when the bank delivers it again, and add no new row for it. When the bank delivers the booked original with the same amount and currency, the app keeps the parts. A pending delivery under its ID keeps the stored original booked and leaves its bank fields and parts unchanged, even with another amount or currency.
 
 #### Scenario: Refresh after a split
 
 - **GIVEN** a split transaction of -80,00 € from last week
 - **WHEN** a refresh delivers the transactions of the last 90 days again
 - **THEN** the list still shows the two parts and no third row of -80,00 €
+
+#### Scenario: The bank changes the purpose of a split transaction
+
+- **GIVEN** a transaction of -80,00 € with the ID "TX-1", split into -25,00 € and -55,00 €
+- **WHEN** a refresh delivers "TX-1" with the amount -80,00 € and the purpose "REWE SAGT DANKE"
+- **THEN** the list shows the parts -25,00 € and -55,00 €, each with the purpose "REWE SAGT DANKE"
+
+#### Scenario: A pending delivery leaves a split booked
+
+- **GIVEN** a booked transaction of -80,00 € with the ID "TX-1", split into -25,00 € and -55,00 €
+- **WHEN** a refresh delivers a pending "TX-1" with -85,00 € or -80,00 USD
+- **THEN** the original stays booked at -80,00 € and the list keeps the parts -25,00 € and -55,00 €
+- **AND** the transaction gets no review mark
+
+### Requirement: A corrected amount undoes a split
+
+The app SHALL undo the split when a source that gives IDs delivers the booked original under its ID with another amount or currency. A pending delivery leaves the split unchanged. It updates the whole transaction as the requirement "Update a transaction that the source changed" of `account-refresh` says, and marks it for review with the note "The bank changed the amount; the split was undone."
+
+#### Scenario: The bank corrects the amount of a split transaction
+
+- **GIVEN** a transaction of -80,00 € with the ID "TX-1" in "Groceries" assigned by hand, with the comment "Weekly shop" and a checkmark, split into -25,00 € in "Household" and -55,00 € in "Groceries"
+- **WHEN** a refresh delivers "TX-1" with the amount -85,00 €
+- **THEN** the list shows one transaction of -85,00 € in "Groceries" and no parts
+- **AND** the transaction keeps the comment "Weekly shop" and its checkmark
+- **AND** the transaction is marked for review with the note "The bank changed the amount; the split was undone."
+
+#### Scenario: The bank corrects only the currency
+
+- **GIVEN** a booked transaction of -80,00 € with the ID "TX-1" in "Groceries" assigned by hand, split into -25,00 € and -55,00 €
+- **WHEN** a refresh delivers a booked "TX-1" with -80,00 USD
+- **THEN** the list shows one transaction of -80,00 USD in "Groceries" and no parts
+- **AND** the transaction is marked for review with the note "The bank changed the amount; the split was undone."
+
+#### Scenario: Rules assign the corrected original again
+
+- **GIVEN** a booked transaction of -80,00 € with the ID "TX-1" in "Groceries" assigned by a rule, split into -25,00 € and -55,00 €
+- **AND** the purpose "REWE SAGT DANKE" matches the first rule of "Drinks"
+- **WHEN** a refresh delivers a booked "TX-1" with -85,00 € and the purpose "REWE SAGT DANKE"
+- **THEN** the list shows one transaction of -85,00 € in "Drinks" and no parts
+- **AND** the transaction is marked for review
+
+#### Scenario: Checking the corrected original clears its review
+
+- **GIVEN** the booked "TX-1" of -85,00 € has a checkmark and the review note for an undone split
+- **WHEN** the user marks "TX-1" as checked
+- **THEN** the checkmark stays and the review mark and its note disappear
 
 ### Requirement: Rules leave parts alone
 
