@@ -214,6 +214,26 @@ struct LedgerTests {
 		#expect(l.transactions(in: .account(giro.id), filter: f).map(\.purpose) == ["Miete Mai"])
 	}
 
+	@Test("A regular expression that runs long only over the joined values still finds the rows of the rule", .timeLimit(.minutes(1)))
+	func searchRegexSlowOnlyWhenJoined() throws {
+		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
+		let rows = [
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 4), amountMinor: -1_000, name: "Vermieter", purpose: "Miete Mai"),
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 3), amountMinor: -1_000, name: "Kiosk", purpose: "Mai Zeitung"),
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 2), amountMinor: -1_000, name: "Stadtwerke Muster", purpose: "Abschlag Strom 11"),
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 1), amountMinor: -1_000, name: "Vermieter", purpose: "Kundennummer: 4711"),
+		]
+		let l = Ledger(accounts: [giro], transactions: rows)
+		for query in [#"/mai|\s^+?a/"#, #"/(\w+\s?)*:/"#] {
+			var f = TransactionFilter()
+			f.searchText = query
+			let rule = try Rule(parsing: query)
+			let ruled = rows.filter { rule.matches(RuleSubject($0, account: giro)) }.map(\.purpose)
+			#expect(!ruled.isEmpty, "\(query)")
+			#expect(l.transactions(in: .account(giro.id), filter: f).map(\.purpose) == ruled, "\(query)")
+		}
+	}
+
 	@Test("The search true finds every row, and false finds none")
 	func searchConstants() {
 		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
@@ -323,7 +343,8 @@ struct LedgerTests {
 			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 7), amountMinor: -190, name: "Grill \u{FE20}Ost", purpose: "Wurst"),
 			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 8), amountMinor: -60, name: "Bude\u{1}\u{301}", purpose: "Karte ****1234"),
 			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 9), amountMinor: -70, name: "Automat", purpose: "Code\u{1F}abc"),
-			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 10), amountMinor: -80, name: "Linie\u{2028}Neun", purpose: "Fahrkarte")]
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 10), amountMinor: -80, name: "Linie\u{2028}Neun", purpose: "Fahrkarte"),
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 11), amountMinor: -90, name: "Miete.", purpose: "Mai")]
 		let l = Ledger(accounts: [giro], transactions: all)
 		let queries = [#"name:"Stadtwerke Musterstadt""#, "name:Stadt*", "purpose:November", #"purpose:"Abschlag November""#, "comment:strom",
 			"booking_text:lastschrift", "reference:E2E-1", "mandate:M-1", "creditor_id:DE98ZZZ*", "remote_account:DE89370400440532013000",
@@ -334,7 +355,7 @@ struct LedgerTests {
 			#"/\p{Lu}utbrot/"#, #"/abschlag\nnov/"#, "/stadtwerke  muster/", "/b.ckerei/", "/^kiosk/", "/zahlungs?/", "/zahlungx*/", "/zahlungx{0,2}/",
 			"/zahl[uvwxyzabcdef]ng/", "/zahl[^xyzabcdefgh]ng/", #"/\x7aahlung/"#, #"/zahl\u0075ng/"#, "/zahlung$/", #"/zahl\Bung/"#,
 			#"/\QM-1x\E?/"#, #"mandate:/\QM-1x\E{0}/"#, #"/kartenzahlungx\Q\E?/"#, "name:nord", "name:imbiss", "name:ost", #"name:"Grill Ost""#, "purpose:karte", "purpose:*1234", "purpose:**1234", "purpose:*12?4",
-			"name:bude??", "/kartenzahlungxyz.|\u{308}?kartenzahlung/", "/(\u{308}.kartenzahlungxyz)?kartenzahlung/", #"/\c_abc/"#, "/^linie/", "/fahrkarte$/", #"/linie\sneun/"#]
+			"name:bude??", "/kartenzahlungxyz.|\u{308}?kartenzahlung/", "/(\u{308}.kartenzahlungxyz)?kartenzahlung/", #"/\c_abc/"#, "/^linie/", "/fahrkarte$/", #"/linie\sneun/"#, #"/miete\X\b/"#]
 		for query in queries {
 			var f = TransactionFilter()
 			f.searchText = query
@@ -344,7 +365,7 @@ struct LedgerTests {
 			#expect(!ruled.isEmpty, "\(query)")
 			#expect(searched == ruled, "\(query)")
 		}
-		for query in ["/^neun/", #"/strom\sgiro/"#] {
+		for query in ["/^neun/", #"/strom\sgiro/"#, #"/miete\X\B/"#] {
 			var f = TransactionFilter()
 			f.searchText = query
 			let rule = try Rule(parsing: query)
