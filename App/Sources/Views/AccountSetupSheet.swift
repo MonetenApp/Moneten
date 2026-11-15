@@ -169,6 +169,7 @@ final class AccountSetup {
 		let known = model.accesses.values.first { $0.isSameLogin(as: access) }?.id ?? access.id
 		let session = SetupSession(broker: model.sync.broker, access: access, pin: Secret(pin), replacing: known)
 		loginError = nil
+		notices = []
 		isLoggingIn = true
 		task = Task {
 			do {
@@ -193,9 +194,13 @@ final class AccountSetup {
 			} catch {
 				guard !Task.isCancelled else { return }
 				isLoggingIn = false
+				// The notices of the bank before the error, such as a maintenance that makes the login fail.
+				let withNotices = error as? FailureWithNotices
+				let error = withNotices?.failure ?? error
 				// The user canceled the TAN dialog: the login step stays as it was.
 				if error is CancellationError { return }
 				pin = ""
+				notices = withNotices?.notices ?? []
 				loginError = (error as? SyncFailure)?.messageAtFirstLogin(userIDHelp: userIDHelp) ?? error.localizedDescription
 			}
 		}
@@ -432,6 +437,7 @@ struct AccountSetupSheet: View {
 					.foregroundStyle(.orange)
 					.fixedSize(horizontal: false, vertical: true)
 			}
+			noticesSection
 		}
 		if setup.isLoggingIn {
 			Section {
@@ -470,6 +476,10 @@ struct AccountSetupSheet: View {
 					.fixedSize(horizontal: false, vertical: true)
 			}
 		}
+		noticesSection
+	}
+
+	@ViewBuilder private var noticesSection: some View {
 		if !setup.notices.isEmpty {
 			Section("Notices of the bank") {
 				ForEach(setup.notices, id: \.text) { Text($0.text).fixedSize(horizontal: false, vertical: true) }

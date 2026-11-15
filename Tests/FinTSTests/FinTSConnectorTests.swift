@@ -729,6 +729,19 @@ struct FinTSConnectorTests {
 		#expect(failure.notices == [BankMessage(text: "Wartungsarbeiten bis 5 Uhr")])
 	}
 
+	@Test("A login of the setup that fails after a notice of the bank keeps the notice with the failure")
+	func noticeBeforeFailedSetupLogin() async throws {
+		let error = await #expect(throws: FailureWithNotices.self) {
+			try await connector(#"""
+				read cmd
+				echo '{"type":"notice","text":"Wartungsarbeiten bis 5 Uhr"}'
+				echo '{"type":"failed","code":"9800","text":"Dialog abgebrochen"}'
+				"""#).listAccounts(of: Self.access, state: nil, session: Session())
+		}
+		#expect(error?.failure as? SyncFailure == .bank(BankMessage(code: "9800", text: "Dialog abgebrochen")))
+		#expect(error?.notices == [BankMessage(text: "Wartungsarbeiten bis 5 Uhr")])
+	}
+
 	@Test("Refuses an access without https and a build without a product ID before it starts the helper")
 	func refusals() async throws {
 		let http = Access(source: .fints(bankCode: "12030000", url: URL(string: "http://fints.example.com/fints")!), bankName: "Musterbank", loginName: "erika77")
