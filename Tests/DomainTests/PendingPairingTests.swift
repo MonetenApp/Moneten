@@ -221,6 +221,103 @@ extension ReconcileTests {
 		}
 	}
 
+	@Test("A live source-ID row wins over historical tombstones", arguments: [false, true])
+	func gate3LiveSourceBeforeTombstone(pendingTombstone: Bool) {
+		var old = stored(rent(1, purpose: "OLD", pending: pendingTombstone))
+		old.sourceID = "BANK-X"
+		var live = stored(rent(2, purpose: "OLD", pending: false))
+		live.sourceID = "BANK-X"
+		var corrected = rent(1, purpose: "CORRECTED", pending: false)
+		corrected.sourceID = "BANK-X"
+		let other = stored(row(3, -1_200, "Other", "OTHER", month: 12, sourceID: "BANK-Y"))
+		var oldOther = rent(4)
+		oldOther.sourceID = "BANK-Z"
+		for stored in permutations([live, other]) {
+			for deleted in permutations([DeletedTransaction(old, deletedAt: now), DeletedTransaction(oldOther, deletedAt: now)]) {
+				for delivered in permutations([corrected, fresh(other)]) {
+					let r = merge(refresh(delivered), stored: stored, deleted: deleted, at: noon(20, month: 11))
+					#expect(r.added == [] && r.skipped == 2)
+					#expect(r.updated.map(\.id) == [live.id])
+					#expect(pendingSummary(history(stored, after: r)) == ["20261201 -80000 false true false CORRECTED", "20261203 -1200 false true false OTHER"])
+				}
+			}
+		}
+	}
+
+	@Test("A source ID reserves its row before a shared end-to-end reference")
+	func gate3SourceBeforeReference() {
+		var a = stored(rent(1))
+		a.sourceID = "BANK-A"
+		a.endToEndReference = "RECURRING-RENT"
+		var b = stored(rent(1))
+		b.sourceID = "BANK-B"
+		b.endToEndReference = "RECURRING-RENT"
+		var deliveredB = fresh(b)
+		deliveredB.sourceID = nil
+		deliveredB.createdAt = Date(timeIntervalSince1970: 0)
+		var deliveredA = fresh(a)
+		deliveredA.createdAt = Date(timeIntervalSince1970: 1)
+		for stored in permutations([a, b]) {
+			for delivered in permutations([deliveredB, deliveredA]) {
+				let r = merge(refresh(delivered), stored: stored, at: noon(20, month: 11))
+				let after = history(stored, after: r)
+				#expect(r.added == [] && r.dropped == [] && r.skipped == 2)
+				#expect(Set(after.map(\.id)) == Set([a.id, b.id]))
+				#expect(after.map { $0.sourceID ?? "" }.sorted() == ["BANK-A", "BANK-B"])
+			}
+		}
+	}
+
+	@Test("Shared references preserve known counterparties and exact fingerprints", arguments: [(true, false), (false, false), (false, true)])
+	func gate3SharedReferenceCounterparties(hasIBAN: Bool, changedPurpose: Bool) {
+		var a = stored(rent(1, purpose: hasIBAN ? "RENT" : "RENT A"))
+		a.endToEndReference = "RECURRING-RENT"
+		a.counterpartyIBAN = hasIBAN ? "DE02120300000000202051" : nil
+		a.comment = "USER-A"
+		var b = stored(rent(1, purpose: hasIBAN ? "RENT" : "RENT B"))
+		b.endToEndReference = "RECURRING-RENT"
+		b.counterpartyIBAN = hasIBAN ? "DE89370400440532013000" : nil
+		b.comment = "USER-B"
+		if changedPurpose { b.name = "Vermieter B" }
+		var deliveredB = fresh(b)
+		deliveredB.createdAt = Date(timeIntervalSince1970: 0)
+		var deliveredA = fresh(a)
+		deliveredA.createdAt = Date(timeIntervalSince1970: 1)
+		if changedPurpose { deliveredA.purpose = "CHANGED A"; deliveredB.purpose = "CHANGED B" }
+		var expectedA = a
+		var expectedB = b
+		if changedPurpose { expectedA.purpose = "CHANGED A"; expectedB.purpose = "CHANGED B" }
+		for stored in permutations([a, b]) {
+			for delivered in permutations([deliveredB, deliveredA]) {
+				let r = merge(refresh(delivered), stored: stored, at: noon(20, month: 11))
+				let after = history(stored, after: r)
+				#expect(r.added == [] && r.dropped == [] && r.skipped == 2)
+				#expect(after.first { $0.id == a.id } == expectedA)
+				#expect(after.first { $0.id == b.id } == expectedB)
+			}
+		}
+	}
+
+	@Test("A known booked fingerprint wins before a pending reference-only repeat")
+	func gate3BookedReferenceFingerprint() {
+		let pending = rent(1)
+		var booked = rent(1, pending: false)
+		booked.endToEndReference = "RECURRING-RENT"
+		var incomingPending = fresh(pending)
+		incomingPending.endToEndReference = "RECURRING-RENT"
+		incomingPending.createdAt = Date(timeIntervalSince1970: 0)
+		let incomingBooked = fresh(booked)
+		for stored in permutations([pending, booked]) {
+			for delivered in permutations([incomingPending, incomingBooked]) {
+				let r = merge(.file(delivered), stored: stored, at: noon(20, month: 11))
+				let after = history(stored, after: r)
+				#expect(r.added == [] && r.booked == [] && r.skipped == 2)
+				#expect(after.first { $0.id == pending.id }?.isPending == true)
+				#expect(after.first { $0.id == booked.id }?.isPending == false)
+			}
+		}
+	}
+
 	@Test("Gate 3 items 1 4 5: every delivered and stored permutation has literal rows")
 	func gate3AllPermutations() {
 		for (fileDays, bankDays, expected) in [

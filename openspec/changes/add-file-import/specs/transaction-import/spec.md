@@ -623,7 +623,7 @@ The app SHALL skip a pending file transaction when a free stored pending transac
 
 ### Requirement: Order-independent pending pairing
 
-The app SHALL pair delivered pending transactions one to one with stored transactions by agreeing explicit identity, then a fitting fetched or deleted transaction on the same day, then the closest unfetched file transaction within seven days. Conflicting explicit identities never pair. Pending-to-pending file pairs use the same day only. Pairs are taken greedily by priority, distance, and stable delivered and stored positions, independent of input order.
+The app SHALL pair delivered pending transactions one to one by source ID, then end-to-end reference, then fitting fetched or deleted rows on the same day, then the closest unfetched file row within seven days. Conflicting explicit identities never pair. Reference agreement does not override known counterparty conflicts. Pending-to-pending file pairs use the same day only. Pairs are taken greedily by evidence priority, distance, and stable delivered and stored positions.
 
 #### Scenario: Global nearest choice
 
@@ -705,6 +705,35 @@ The app SHALL pair delivered pending transactions one to one with stored transac
 - **THEN** the exact fingerprint pairs first and the IBAN-less rent pairs with the other stored row
 - **AND** both stored IDs and IBANs remain, with no added or dropped payment in any delivery or storage order
 - **AND** this holds for fetched rows, file rows, file imports and refreshes
+
+#### Scenario: A pending tombstone does not consume a booked correction
+
+- **GIVEN** a deleted pending rent of -800,00 € on 1 December 2026 and a live booked rent on 2 December with source ID "BANK-X"
+- **WHEN** the bank corrects the booked rent to 1 December
+- **THEN** the live row is updated and one booked payment of -800,00 € remains
+- **AND** a live source-ID partner also wins over a booked tombstone with that source ID
+
+#### Scenario: A source ID wins before a shared reference
+
+- **GIVEN** two fetched pending rents of -800,00 € on 1 December 2026 with source IDs "BANK-A" and "BANK-B" and reference "RECURRING-RENT"
+- **WHEN** one delivered rent omits its source ID and the other retains "BANK-A"
+- **THEN** the source-ID match pairs first and the other rent pairs with "BANK-B"
+- **AND** both original rows remain in every input order
+
+#### Scenario: A shared reference keeps counterparties and user fields separate
+
+- **GIVEN** two pending rents of -800,00 € on 1 December 2026 with reference "RECURRING-RENT" but different known IBANs and comments "USER-A" and "USER-B"
+- **WHEN** both rents arrive in either order
+- **THEN** each stored row retains its own IBAN and comment
+- **AND** exact fingerprints still win when both IBANs are absent but the purposes differ
+- **AND** different known names keep their own comments when both purposes change
+
+#### Scenario: A booked fingerprint stays available for its booked repeat
+
+- **GIVEN** one pending and one booked rent of -800,00 € on 1 December 2026, with reference "RECURRING-RENT" only on the booked row
+- **WHEN** a file delivers both forms with that reference
+- **THEN** the exact booked fingerprint pairs first and the pending form uses the pending row
+- **AND** one pending and one booked row remain
 
 ### Requirement: MT940 import
 
