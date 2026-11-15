@@ -304,11 +304,8 @@ public struct CSVFile: Sendable {
 		return fitting.isEmpty ? [DateOrder.allCases.max { counts[$0]! < counts[$1]! }!] : fitting
 	}
 
-	/// The rows after the header row with a booking date. A row without a date is a total or a note, which
-	/// the import skips, and so is one with a text without a digit in the date cell, such as "Alter
-	/// Kontostand". A file without a header row of known keywords has rows of any kind above its
-	/// transactions, so there the rows start below the title row at the first row with the shape of a date
-	/// in the date cell, such as "31.02.2026", which then fails.
+	/// The dated rows in the mapped columns. An amount cell that is present must reach validation,
+	/// while a short dated preamble can precede a complete heading.
 	func dataRows(_ layout: CSVLayout) throws -> ArraySlice<Row> {
 		guard let column = layout.columns[.bookingDate] else { return [] }
 		func isDated(_ row: Row) throws -> Bool {
