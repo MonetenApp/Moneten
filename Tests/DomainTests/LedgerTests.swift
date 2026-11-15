@@ -659,6 +659,22 @@ struct LedgerTests {
 		#expect(TransactionFilter.AmountFilter.custom(min: min, max: max) == nil)
 	}
 
+	@Test("A filter on a category or an account that the ledger no longer has goes back to Show All")
+	func dropMissingFilters() {
+		let card = Account(position: 1, name: "Credit card", kind: .creditCard, source: .offline)
+		var f = TransactionFilter()
+		f.categoryID = food.id
+		f.accountID = card.id
+		f.status = .unchecked
+		var kept = f
+		kept.dropMissing(in: Ledger(accounts: [giro, card], categories: [food]))
+		#expect(kept == f)
+		f.dropMissing(in: Ledger(accounts: [giro], categories: []))
+		#expect(f.categoryID == nil)
+		#expect(f.accountID == nil)
+		#expect(f.status == .unchecked)
+	}
+
 	@Test("Uncategorized holds every transaction without a category")
 	func uncategorized() throws {
 		let l = ledger()
@@ -958,5 +974,85 @@ struct LedgerTests {
 		#expect(ledger.accountsWithTransactions == [giro.id])
 		ledger.remove(transactionIDs: [rent.id])
 		#expect(ledger.accountsWithTransactions.isEmpty)
+	}
+
+	@Test("A view resets the filter that its filter bar does not show")
+	func resetHidden() {
+		let groceries = Domain.Category(position: 0, name: "Groceries")
+		let card = Account(position: 1, name: "Credit card", kind: .creditCard, source: .offline)
+		let twelveMonths = DayRange(start: Day(year: 2025, month: 11, day: 10), end: Day(year: 2026, month: 11, day: 9))
+		var f = TransactionFilter()
+		f.categoryID = groceries.id
+		f.accountID = card.id
+		f.status = .unchecked
+		f.period = twelveMonths
+		for scope in [LedgerScope.account(giro.id), .accountGroup(UUID())] {
+			var reset = f
+			reset.resetHidden(in: scope)
+			#expect(reset.accountID == nil)
+			#expect(reset.categoryID == groceries.id)
+			#expect(reset.status == .unchecked)
+			#expect(reset.period == twelveMonths)
+		}
+		var reset = f
+		reset.resetHidden(in: .category(food.id))
+		#expect(reset.categoryID == nil)
+		#expect(reset.accountID == card.id)
+		#expect(reset.status == .unchecked)
+		#expect(reset.period == twelveMonths)
+	}
+
+	@Test("The pin saves the period and the filters, and not the search text")
+	func savedFilterBar() throws {
+		let start = Day(year: 2025, month: 4, day: 1), end = Day(year: 2026, month: 3, day: 31)
+		var f = TransactionFilter()
+		f.searchText = "amazon"
+		f.period = DayRange(start: start, end: end)
+		f.status = .unchecked
+		f.amount = .range(min: -500, max: -100)
+		f.categoryID = food.id
+		f.accountID = giro.id
+		let data = SavedFilterBar(period: .custom(start, end), filter: f).data
+		let saved = try #require(SavedFilterBar(data: data))
+		#expect(saved.period == .custom(start, end))
+		var expected = f
+		expected.searchText = ""
+		#expect(saved.filter(in: ledger()) == expected)
+	}
+
+	@Test("The pin saves an amount range as its decimal ends, and the next launch reads them back")
+	func savedAmountRange() throws {
+		var f = TransactionFilter()
+		f.status = .unchecked
+		f.amount = .range(min: -500, max: try #require(Decimal(string: "-99.99")))
+		let stored = try JSONSerialization.jsonObject(with: SavedFilterBar(period: .all, filter: f).data) as? NSDictionary
+		#expect(stored == ["period": ["all": [:]], "status": ["unchecked": [:]], "amount": ["range": ["min": -500, "max": -99.99]]])
+		let written = #"{"period":{"all":{}},"status":{"unchecked":{}},"amount":{"range":{"min":-500,"max":-99.99}}}"#
+		let restored = try #require(SavedFilterBar(data: Data(written.utf8))).filter(in: ledger())
+		#expect(restored.amount == .range(min: -500, max: Decimal(string: "-99.99")))
+		#expect(restored.status == .unchecked)
+	}
+
+	@Test("A saved category or account that no longer exists comes back as Show All")
+	func savedFilterBarOfRemovedEntries() throws {
+		var f = TransactionFilter()
+		f.status = .checked
+		f.categoryID = UUID()
+		f.accountID = UUID()
+		let saved = try #require(SavedFilterBar(data: SavedFilterBar(period: .all, filter: f).data))
+		var expected = TransactionFilter()
+		expected.status = .checked
+		#expect(saved.filter(in: ledger()) == expected)
+	}
+
+	@Test("A saved \"30 Days\" counts from the day of the launch, and a saved month stays that month")
+	func savedRelativePeriod() throws {
+		let launch = Day(year: 2026, month: 11, day: 9)
+		let days = try #require(SavedFilterBar(data: SavedFilterBar(period: .days30, filter: TransactionFilter()).data))
+		#expect(days.filter(in: ledger(), today: launch).period == DayRange(start: Day(year: 2026, month: 10, day: 11), end: launch))
+		let october = Day(year: 2025, month: 10, day: 1)
+		let month = try #require(SavedFilterBar(data: SavedFilterBar(period: .month(october), filter: TransactionFilter()).data))
+		#expect(month.filter(in: ledger(), today: launch).period == DayRange(start: october, end: Day(year: 2025, month: 10, day: 31)))
+		#expect(SavedFilterBar(data: Data("pin".utf8)) == nil)
 	}
 }

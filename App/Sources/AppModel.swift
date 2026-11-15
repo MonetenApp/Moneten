@@ -33,43 +33,8 @@ enum BalanceMode: String {
 	case daily, monthlyAverage
 }
 
-enum PeriodChoice: Hashable {
-	case all, days30, days90, months12
-	case month(Day)
-	case quarter(Day)
-	case year(Day)
-	case custom(Day, Day)
-
-	/// The period of a bar in the balance chart: its day or days, or its month.
-	init(bar: BalanceBar, monthly: Bool) {
-		let last = bar.end.adding(days: -1)
-		self = monthly ? .month(bar.start) : .custom(bar.start, last)
-	}
-
-	/// The period of a bar in a category chart.
-	init(start: Day, chartPeriod: ChartPeriod) {
-		switch chartPeriod {
-		case .month: self = .month(start)
-		case .quarter: self = .quarter(start)
-		case .year: self = .year(start)
-		}
-	}
-
-	func range(today: Day = .today()) -> DayRange {
-		switch self {
-		case .all: .all
-		case .days30: DayRange(start: today.adding(days: -29), end: today)
-		case .days90: DayRange(start: today.adding(days: -89), end: today)
-		case .months12: DayRange(start: today.adding(months: -12).adding(days: 1), end: today)
-		case let .month(d): DayRange(start: d, end: d.adding(months: 1).adding(days: -1))
-		case let .quarter(d): DayRange(start: d, end: d.adding(months: 3).adding(days: -1))
-		case let .year(d): DayRange(start: d, end: d.adding(months: 12).adding(days: -1))
-		case let .custom(a, b): DayRange(start: a, end: b)
-		}
-	}
-}
-
-/// Settings that the app needs before the database is open. They hold no personal data.
+/// Settings that the app needs before the database is open. Only `savedFilterBar` holds data of the user: the
+/// dates of a custom period, the ends of an amount range, and the IDs of a category and an account.
 enum Preference {
 	static let lockOnClose = "lockWhenMainWindowIsClosed"
 	/// Version 1 stored "lockAfterMinutes" also while the lock was off, as the suggestion of the
@@ -86,6 +51,9 @@ enum Preference {
 	static let updateExtensionsAutomatically = "updateExtensionsAutomatically"
 	/// "Show Moneten icon in menu bar", off unless the user turns it on.
 	static let showMenuBarIcon = "showMenuBarIcon"
+	/// The pin of the filter bar, and the `SavedFilterBar` it keeps for the next launch.
+	static let pinFilterBar = "pinFilterBar"
+	static let savedFilterBar = "savedFilterBar"
 
 	/// The app locks after 10 minutes without activity unless the user turns it off. MoneyMoney has
 	/// this off and suggests 5 minutes; the owner chose on with 10 minutes.
@@ -203,11 +171,17 @@ final class AppModel {
 			// drawing that removed it (issue #135). Every view change clears them, so that no hidden row stays
 			// selected for "Add Comment...". Setting an empty selection again would notify its readers too.
 			if !selectedTransactions.isEmpty { selectedTransactions = [] }
+			// After the selected rows, so that the new filter waits for their drawing like the new view.
+			if let selection { filter.resetHidden(in: selection.scope) }
 			tableChanged()
 		}
 	}
 	var filter = TransactionFilter() {
-		didSet { if filter != oldValue { tableChanged() } }
+		didSet {
+			guard filter != oldValue else { return }
+			tableChanged()
+			saveFilterBar()
+		}
 	}
 	/// The view and the filters that the transaction table shows, its identity. They follow `selection` and
 	/// `filter`, one drawing late when a change of the ledger is not drawn yet: a new table must not come in
@@ -233,6 +207,7 @@ final class AppModel {
 		didSet {
 			filter.period = period.range()
 			if !choosingBar { chartRange = filter.period }
+			saveFilterBar()
 		}
 	}
 	/// The period of the charts. A click on a bar narrows the list to that bar and keeps this, so
@@ -253,7 +228,42 @@ final class AppModel {
 		self.period = period
 		choosingBar = false
 	}
-	var keepFilters = false
+	/// The pin of the filter bar. Turning it on saves the filter bar, and each later change saves it again.
+	/// Turning it off sets every filter to "Show All" and clears the search.
+	var isFilterBarPinned = UserDefaults.standard.bool(forKey: Preference.pinFilterBar) {
+		didSet {
+			guard isFilterBarPinned != oldValue else { return }
+			UserDefaults.standard.set(isFilterBarPinned, forKey: Preference.pinFilterBar)
+			if isFilterBarPinned {
+				saveFilterBar()
+			} else {
+				UserDefaults.standard.removeObject(forKey: Preference.savedFilterBar)
+				savedBar = nil
+				choose(period: .all)
+				filter = TransactionFilter()
+			}
+		}
+	}
+
+	/// What `saveFilterBar` last wrote, so that typing a search or a change of the period, which also changes
+	/// `filter.period`, writes nothing new.
+	@ObservationIgnored private var savedBar: SavedFilterBar?
+
+	private func saveFilterBar() {
+		guard isFilterBarPinned else { return }
+		let bar = SavedFilterBar(period: period, filter: filter)
+		guard bar != savedBar else { return }
+		savedBar = bar
+		UserDefaults.standard.set(bar.data, forKey: Preference.savedFilterBar)
+	}
+
+	/// Shows the saved filter bar of a pin that is on. The first view then resets the filter it does not show.
+	private func restoreFilterBar() {
+		guard isFilterBarPinned, let data = UserDefaults.standard.data(forKey: Preference.savedFilterBar),
+			let saved = SavedFilterBar(data: data) else { return }
+		choose(period: saved.period)
+		filter = saved.filter(in: ledger)
+	}
 	var viewMode: ViewMode = ViewMode(rawValue: UserDefaults.standard.string(forKey: Preference.viewMode) ?? "") ?? .barChart {
 		didSet { UserDefaults.standard.set(viewMode.rawValue, forKey: Preference.viewMode) }
 	}
@@ -433,6 +443,7 @@ final class AppModel {
 		// The saved PINs live only in the database, so a refresh after a restart or an unlock does not ask.
 		try sync.broker.open(store)
 		if selection == nil {
+			restoreFilterBar()
 			if let first = ledger.childGroups(of: nil).first {
 				selection = .group(first.id)
 			} else if let a = ledger.accounts(inGroup: nil).first {
@@ -549,12 +560,6 @@ final class AppModel {
 		guard s != selection else { return }
 		Trail.log("view change from=\(tableKey.trailKind) selected=\(tableKey.portfolios == nil ? selectedTransactions.count : selectedPositions)")
 		selection = s
-		if !keepFilters {
-			var kept = TransactionFilter()
-			kept.period = filter.period
-			kept.searchText = filter.searchText
-			filter = kept
-		}
 		// The rows change after SwiftUI drew the new view: changing them while the list handles the
 		// selection change upsets the table view.
 		afterDraw { [weak self] in Task { @MainActor in self?.markSeen() } }
@@ -952,6 +957,7 @@ final class AppModel {
 			}
 			await replacingTable {
 				ledger.replace(accounts: ledger.accounts.filter { $0.id != id }, transactions: ledger.transactions.filter { $0.accountID != id })
+				filter.dropMissing(in: ledger)
 				if selection == .account(id) { selection = nil }
 			}
 		} catch {
@@ -1180,6 +1186,7 @@ final class AppModel {
 					return t
 				}
 				ledger.replace(categories: ledger.categories.filter { !removed.contains($0.id) }, transactions: transactions)
+				filter.dropMissing(in: ledger)
 				if case let .category(sel) = selection, removed.contains(sel) { selection = nil }
 			}
 		} catch {
@@ -1232,6 +1239,7 @@ final class AppModel {
 			ledgerChange = "load"
 			ledger = loaded
 			accesses = Dictionary(uniqueKeysWithValues: try store.accesses().map { ($0.id, $0) })
+			filter.dropMissing(in: ledger)
 			if case let .category(id) = selection, ledger.category(id) == nil { selection = nil }
 			// A complete import replaces the account groups.
 			if case let .group(id) = selection, ledger.group(id) == nil { selection = nil }

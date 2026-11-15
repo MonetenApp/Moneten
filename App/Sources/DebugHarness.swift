@@ -105,6 +105,9 @@ final class DebugHarness {
 		// "<name>": what "Remove" in the context menu of a group does.
 		case "removegroup":
 			if let g = model.ledger.groups.first(where: { $0.name == argument }) { Task { await model.remove(group: g.id) } }
+		// "<name>": what "Remove" in the context menu of a category does.
+		case "removecategory":
+			if let c = model.ledger.categories.first(where: { $0.name == argument }) { Task { await model.remove(category: c.id) } }
 		// "<text>" answers the dialog on screen with a TAN, or with a PIN when it asks for one.
 		case "answer":
 			if let prompt = model.sync.broker.current {
@@ -507,8 +510,12 @@ final class DebugHarness {
 		// and "cmd+k" go to the main window or its sheet as the keyboard sends them. Then it logs where the focus is,
 		// and for each selected row the position of its category in sidebar order from 0, or "default".
 		case "mainkey": mainKey(argument)
+		// What the menus and the pin of the filter bar do: "status unchecked", "amount withdrawals", "category <name>",
+		// "account <name>", "custom <yyyymmdd> <yyyymmdd>", or "pin on" and "pin off".
+		case "filterbar": filterBar(argument)
 		case "state":
 			log("phase=\(model.phase.trailName) accounts=\(model.ledger.accounts.count) transactions=\(model.ledger.transactions.count) visible=\(model.visibleTransactions.count) selection=\(String(describing: model.selection)) selected=\(model.selectedAccount.map { "\($0.kind)" } ?? "-")")
+			log("pin=\(model.isFilterBarPinned) period=\(model.period.trailName) status=\(model.filter.status) filter=\(model.filter.trailName) category=\(model.filter.categoryID?.uuidString ?? "all") account=\(model.filter.accountID?.uuidString ?? "all")")
 			logChart()
 		// Whether the selected account proposes a calibration, without amounts.
 		case "calibration":
@@ -797,6 +804,24 @@ final class DebugHarness {
 		guard let item, let menu = item.menu else { return log("extensions no menu item") }
 		menu.performActionForItem(at: menu.index(of: item))
 		log("extensions opened")
+	}
+
+	private func filterBar(_ argument: String) {
+		guard let model else { return }
+		let parts = argument.split(separator: " ", maxSplits: 1).map(String.init)
+		let value = parts.count == 2 ? parts[1] : ""
+		switch parts.first {
+		case "status": model.filter.status = value == "checked" ? .checked : value == "unchecked" ? .unchecked : .all
+		case "amount": model.filter.amount = value == "deposits" ? .deposits : value == "withdrawals" ? .withdrawals : .all
+		case "category": model.filter.categoryID = model.ledger.categories.first { $0.name == value }?.id
+		case "account": model.filter.accountID = model.ledger.accounts.first { $0.name == value }?.id
+		case "custom":
+			let days = value.split(separator: " ").compactMap { Int($0) }.map { Day(year: $0 / 10_000, month: $0 / 100 % 100, day: $0 % 100) }
+			if days.count == 2 { model.choose(period: .custom(days[0], days[1])) }
+		case "pin": model.isFilterBarPinned = value == "on"
+		default: break
+		}
+		log("filterbar \(parts.first ?? "") category=\(model.filter.categoryID?.uuidString ?? "all") account=\(model.filter.accountID?.uuidString ?? "all")")
 	}
 
 	/// Selects the account, group, or category with this name.

@@ -590,8 +590,8 @@ private struct MinorBounds {
 }
 
 public struct TransactionFilter: Hashable, Sendable {
-	public enum Status: Hashable, Sendable { case all, checked, unchecked }
-	public enum AmountFilter: Hashable, Sendable {
+	public enum Status: Hashable, Sendable, Codable { case all, checked, unchecked }
+	public enum AmountFilter: Hashable, Sendable, Codable {
 		case all, deposits, withdrawals
 		/// Amounts with their sign, both ends included. A missing end leaves the range open.
 		case range(min: Decimal?, max: Decimal?)
@@ -615,6 +615,23 @@ public struct TransactionFilter: Hashable, Sendable {
 
 	public var isActive: Bool {
 		period != .all || status != .all || amount != .all || categoryID != nil || accountID != nil
+	}
+
+	/// Sets the filter that the filter bar of `scope` has no menu for to "Show All": the account filter in an
+	/// account or a group, the category filter in a category. The list applies both filters in every view, so a
+	/// kept filter without its menu would hide rows with no control to clear it.
+	public mutating func resetHidden(in scope: LedgerScope) {
+		switch scope {
+		case .account, .accountGroup: accountID = nil
+		case .category: categoryID = nil
+		}
+	}
+
+	/// A filter on a category or an account that `ledger` no longer has goes back to "Show All", so the list does
+	/// not stay empty after a removal.
+	public mutating func dropMissing(in ledger: Ledger) {
+		categoryID = categoryID.flatMap { ledger.category($0)?.id }
+		accountID = accountID.flatMap { ledger.account($0)?.id }
 	}
 }
 
