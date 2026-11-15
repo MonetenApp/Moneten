@@ -366,6 +366,36 @@ struct AllDataTests {
 		#expect(try FileManager.default.contentsOfDirectory(atPath: root.path).sorted() == ["export.json", "source"])
 	}
 
+	@Test("The export error describes an unreadable database, with its position")
+	func exportErrorDescription() throws {
+		let store = try filledStore()
+		try store.write { db in try db.execute(sql: "UPDATE holding SET quantity = 'broken'") }
+		let error = try #require(throws: AllData.ReadError.self) { try store.exportAllData() }
+		#expect(error.description == "The database contains unreadable data: at holdings[0], the stored holding cannot be read.")
+	}
+
+	@Test("Decimal values longer than 38 digits are refused without changing the database")
+	func decimalPrecision() throws {
+		let original = try JSONSerialization.jsonObject(with: try filledStore().exportAllData().json()) as! [String: Any]
+		let target = try emptyStore("precision")
+		for path in [["quantity"], ["price", "amount"], ["purchasePrice", "amount"], ["exchangeRate", "rate"]] {
+			var json = original
+			var rows = json["holdings"] as! [[String: Any]]
+			if path.count == 1 {
+				rows[0][path[0]] = "1.123456789012345678901234567890123456789"
+			} else {
+				var value = rows[0][path[0]] as! [String: Any]
+				value[path[1]] = "1.123456789012345678901234567890123456789"
+				rows[0][path[0]] = value
+			}
+			json["holdings"] = rows
+			#expect(throws: AllData.ReadError.damaged("at holdings[0], the decimal number exceeds 38 digits")) {
+				try target.importAllData(try AllData(json: JSONSerialization.data(withJSONObject: json)))
+			}
+		}
+		#expect(try target.exportAllData(at: exportedAt) == AllData(exportedAt: exportedAt))
+	}
+
 	@Test("A complete export accepts a valid 235-byte destination name")
 	func longExportFilename() throws {
 		let store = try filledStore()

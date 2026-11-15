@@ -120,6 +120,19 @@ The app SHALL report a failed export with the reason, for example no write permi
 - **WHEN** the user saves a CSV export or replaces an existing CSV file
 - **THEN** only the current user can read or write the file
 
+#### Scenario: Unreadable stored holding
+
+- **GIVEN** the first stored holding has an unreadable quantity
+- **WHEN** the user exports all data
+- **THEN** the app shows "Could not export to file."
+- **AND** the message says "The database contains unreadable data: at holdings[0], the stored holding cannot be read."
+- **AND** an existing export stays unchanged
+
+#### Scenario: Export survives a restart
+
+- **WHEN** the app finishes a CSV or complete export
+- **THEN** it has asked the file system to sync the file before replacing the destination and the folder after replacing it
+
 ### Requirement: Progress of an export
 
 The app SHALL show progress for an export that takes longer than a moment, and let the user cancel it. A canceled export leaves no file.
@@ -269,3 +282,10 @@ The app SHALL fail a complete export when a stored holding cannot be read, and n
 - **GIVEN** holding 0 has the unreadable quantity "broken"
 - **WHEN** the user exports all data
 - **THEN** the app reports the unreadable holding at position 0 and writes no export
+
+#### Scenario: Decimal precision limit
+
+- **GIVEN** a holding has the quantity "1.123456789012345678901234567890123456789"
+- **WHEN** the user imports the complete export
+- **THEN** the app refuses the file and names holdings[0] and the limit of 38 digits
+- **AND** the database stays empty
