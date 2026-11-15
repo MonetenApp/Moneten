@@ -1099,7 +1099,7 @@ final class AppModel {
 		let saved = await replacingTable { () -> Int? in
 			// A run saves only into the database it started with. A lock closes it, and an unlock opens a new one.
 			guard self.store === store else { return nil }
-			let rows = self.ledger.withCategories(of: changed)
+			let rows = RuleApplier.rebase(changed, from: ledger, onto: self.ledger, category: category, rule: rule, mode: mode)
 			return commit(rows) ? rows.count : nil
 		}
 		if let saved { alert = AlertMessage(title: "Categorized transactions: \(saved)", message: "") }

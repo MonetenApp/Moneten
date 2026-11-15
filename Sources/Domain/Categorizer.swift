@@ -87,6 +87,17 @@ public enum RuleApplier {
 		}
 		return changed
 	}
+
+	/// The rows to save for a run of `apply` on `snapshot` when the ledger is now `current`. A row that is the
+	/// same as in the snapshot takes the result of the run, a row that changed or arrived since is checked again
+	/// against `current`, and a row that `current` no longer holds drops out.
+	public static func rebase(_ results: [Transaction], from snapshot: Ledger, onto current: Ledger,
+		category: Category, rule: Rule, mode: RuleApplication) -> [Transaction] {
+		let changedSince = current.transactions.filter { snapshot.transaction($0.id) != $0 }
+		let rechecked = Set(changedSince.map(\.id))
+		let kept = results.filter { !rechecked.contains($0.id) && current.transaction($0.id) != nil }
+		return kept + apply(category: category, rule: rule, to: changedSince, ledger: current, mode: mode)
+	}
 }
 
 extension Category {

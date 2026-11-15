@@ -105,15 +105,6 @@ public struct Ledger: Sendable {
 	public func group(_ id: UUID) -> AccountGroup? { groups.first { $0.id == id } }
 	public func category(_ id: UUID) -> Category? { categories.first { $0.id == id } }
 	public func transaction(_ id: UUID) -> Transaction? { transactionIndex[id].map { transactions[$0] } }
-
-	/// The current rows of `results` with the category of each result, for a run on an older copy of the
-	/// ledger. A row that the ledger no longer holds drops out.
-	public func withCategories(of results: [Transaction]) -> [Transaction] {
-		results.compactMap { r in
-			transaction(r.id).map { var t = $0; t.categoryID = r.categoryID; t.categorizedBy = r.categorizedBy; return t }
-		}
-	}
-
 	/// The recorded values of a portfolio, the oldest first.
 	public func portfolioValues(of accountID: UUID) -> [PortfolioValue] { portfolioHistory[accountID] ?? [] }
 
