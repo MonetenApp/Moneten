@@ -54,3 +54,35 @@ extension FileImportTests {
 		}
 	}
 }
+
+
+extension MoneyMoneyMigrationTests {
+	@Test("A file booking retains the 40 euro balance on a pending migration replay", arguments: [false, true])
+	func gate4FileBookingMigrationReplay(fileHasSourceID: Bool) throws {
+		func migrate(into ledger: Ledger) throws -> MoneyMoneyMigration.Plan {
+			let accounts: [[String: Any]] = [["uuid": "A1", "name": "Giro", "group": false, "indentation": 0, "type": "Giro account", "currency": "EUR",
+				"portfolio": false, "balance": [[50.0, "EUR"]], "attributes": [String: String]()]]
+			let rows: [[String: Any]] = [["id": 1, "accountUuid": "A1", "bookingDate": date(2026, 11, 1), "amount": -10.0, "currency": "EUR",
+				"name": "Kiosk", "purpose": "CARD", "booked": false]]
+			return try MoneyMoneyMigration(calendar: calendar).plan(accounts: plist(accounts), categories: plist([[String: Any]]()),
+				transactions: plist(["transactions": rows]), into: ledger)
+		}
+		let first = try migrate(into: Ledger())
+		var ledger = Ledger(accounts: first.accounts, transactions: first.transactions)
+		let account = try #require(ledger.accounts.first)
+		var file = try #require(first.transactions.first)
+		file.id = UUID()
+		if !fileHasSourceID { file.sourceID = nil }
+		for pending in [true, false] {
+			file.isPending = pending
+			ledger.apply(reconcile(.file([file]), into: account, stored: ledger.transactions, deleted: [], rules: Categorizer(ledger: ledger), now: date(2026, 11, 2)))
+		}
+		#expect(ledger.transactions.map(\.sourceID) == ["moneymoney-booked:1"])
+		#expect(ledger.computedBalance(of: account).minorUnits == 4_000)
+		let after = applying(try migrate(into: ledger), to: ledger)
+		let kept = try #require(after.accounts.first)
+		#expect(after.transactions.map(\.sourceID) == ["moneymoney-booked:1"])
+		#expect(kept.initialBalanceMinor == 5_000)
+		#expect(after.computedBalance(of: kept).minorUnits == 4_000)
+	}
+}

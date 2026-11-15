@@ -271,6 +271,77 @@ extension ReconcileTests {
 		#expect(r.updated == [])
 	}
 
+	@Test("Mixed pending identities leave every legacy booked alternative in the free pool")
+	func gate4MixedLegacyPool() {
+		let source = stored(row(2, -80_000, "Vermieter A", "BOOKED RENT", month: 12, sourceID: "BANK-X"))
+		var other = fresh(source)
+		other.sourceID = nil
+		other.isFetched = true
+		var booked = fresh(other)
+		booked.sourceID = nil
+		var pending = fresh(source)
+		pending.isPending = true
+		pending.bookingDate = day(1, month: 12)
+		pending.purpose = "PENDING RENT"
+		for stored in permutations([source, other]) {
+			for rows in permutations([booked, pending]) {
+				let r = merge(refresh(rows), stored: stored, at: noon(3, month: 12))
+				let after = history(stored, after: r)
+				#expect(r.added == [] && r.skipped == 2)
+				#expect(after.count == 2)
+				#expect(after.reduce(0) { $0 + $1.amountMinor } == -160_000)
+				#expect(Set(after.map(\.id)) == Set([source.id, other.id]))
+			}
+		}
+	}
+
+	@Test("A live pending source-ID partner precedes a booked tombstone")
+	func gate4LiveBeforeBookedTombstone() {
+		let pending = stored(row(1, -80_000, "Vermieter A", "PENDING RENT", month: 12, pending: true, sourceID: "BANK-X"))
+		let booked = row(2, -80_000, "Vermieter A", "BOOKED RENT", month: 12, sourceID: "BANK-X")
+		let other = stored(row(3, -1_200, "Other", "OTHER", month: 12, sourceID: "BANK-Y"))
+		let tombstones = [DeletedTransaction(stored(booked), deletedAt: now), DeletedTransaction(other, deletedAt: now)]
+		for stored in permutations([pending, other]) {
+			for deleted in permutations(tombstones) {
+				for rows in permutations([booked, fresh(other)]) {
+					let r = merge(refresh(rows), stored: stored, deleted: deleted, at: noon(3, month: 12))
+					let after = history(stored, after: r)
+					#expect(r.booked.map(\.id) == [pending.id])
+					#expect(r.added == [] && r.dropped == [] && r.skipped == 1)
+					#expect(after.count == 2)
+					#expect(after.reduce(0) { $0 + $1.amountMinor } == -81_200)
+					#expect(after.allSatisfy { !$0.isPending })
+				}
+			}
+		}
+	}
+
+	@Test("A shared file fingerprint cannot choose one identical pending occurrence to book", arguments: [1, 2])
+	func gate4FingerprintBookingAmbiguity(copies: Int) {
+		var first = rent(7, purpose: "FILE")
+		first.comment = "FIRST"
+		var second = fresh(first)
+		second.comment = "SECOND"
+		let other = row(3, -1_200, "Other", "OTHER", month: 12)
+		let files = merge(.file(Array([first, second].prefix(copies)) + [other]), at: noon(20, month: 11)).added
+		var booked = fresh(first)
+		booked.isPending = false
+		for stored in permutations(files) {
+			for rows in permutations([booked, fresh(other)]) {
+				let r = merge(.file(rows), stored: stored, at: noon(7, month: 12))
+				let after = history(stored, after: r)
+				#expect(r.booked.count == (copies == 1 ? 1 : 0))
+				#expect(r.marked.count == (copies == 1 ? 0 : 2))
+				#expect(r.added.count == (copies == 1 ? 0 : 1))
+				#expect(after.count == (copies == 1 ? 2 : 4))
+				#expect(after.reduce(0) { $0 + $1.amountMinor } == (copies == 1 ? -81_200 : -241_200))
+				#expect(after.filter(\.needsReview).count == (copies == 1 ? 0 : 3))
+				if copies == 1 { #expect(r.booked.map(\.comment) == ["FIRST"]) }
+				else { #expect(after.filter(\.isPending).compactMap(\.comment).sorted() == ["FIRST", "SECOND"]) }
+			}
+		}
+	}
+
 	func permutations<T>(_ rows: [T]) -> [[T]] {
 		guard !rows.isEmpty else { return [[]] }
 		return rows.indices.flatMap { i in

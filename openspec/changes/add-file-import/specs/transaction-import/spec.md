@@ -659,7 +659,7 @@ Booked rows without file identity keep the existing booked-only rule.
 - **GIVEN** free delivered and stored candidates at the same level
 - **WHEN** the app chooses a pair
 - **THEN** current versions precede pending repeats of booked versions.
-- **AND** identity matches prefer live rows to tombstones. Fingerprints rank exact, compatible, then absent. Remaining ties use day distance, stable delivered position, then stable stored position. Live positions use booking day, creation time, and UUID. Tombstone positions use persisted identity fields, optional-value presence, fetched flag, and deletion time as a tuple. Candidates are consumed greedily only when both sides are free.
+- **AND** identity matches prefer live rows to tombstones. Fingerprints rank exact, compatible, then absent. Remaining ties use day distance, stable delivered position, then stable stored position. Live positions use booking day, creation time, and UUID. Tombstone positions use persisted identity fields, optional-value presence, fetched flag, and deletion time as a tuple. Candidates are consumed greedily only when both sides are free. Legacy booked edges keep main's input positions and remain available until the shared rule chooses a pair.
 
 - **AND** different real source IDs or nonempty end-to-end references never pair. Agreeing source IDs retain bank corrections and their existing date behavior. Different pending file fingerprints still stay separate.
 - **AND** a pending-to-booked transition within seven days ignores different file fingerprints when amount and currency agree and either the reference agrees or the counterparty fits. A booked repeat can use its current fingerprint even when it differs from the retained original file fingerprint.
@@ -668,6 +668,7 @@ Booked rows without file identity keep the existing booked-only rule.
 - **AND** reference-only fallback excludes migration deliveries. Only a pending file delivery can find a historical booked version by reference alone. Booked fingerprint matches compare IBANs, not name order.
 - **AND** a pending tombstone cannot block a booking. A source arriving booked reserves its pending tombstone against unrelated look-alikes.
 
+- **AND** an original file fingerprint does not select a unique occurrence. A fingerprint-only pending-to-booked transition uses the booking ambiguity rule.
 - **AND** booking first prefers agreeing identities, then a unique fetched pending row. With no fetched partner, only nearest fitting file rows on or before the booked day participate, and an unresolved tie marks those rows and the delivery for review.
 
 #### Scenario: Global nearest choice
@@ -1108,3 +1109,31 @@ The app SHALL create an original file identity only on file import and preserve 
 - **GIVEN** a booked file payment of -49,99 € on 10 November 2026 named "MUSTERMANN, MAX", purpose "Kartenzahlung 1234", without an IBAN
 - **WHEN** a file or refresh delivers that booked payment named "Max Mustermann"
 - **THEN** the current booked fingerprint skips the repeat and one payment remains
+
+#### Scenario: A pending source echo leaves the legacy booked alternative free
+
+- **GIVEN** two fetched booked rents of -800,00 € on 2 December 2026 with purpose "BOOKED RENT", one with source ID "BANK-X" and one without
+- **WHEN** a refresh delivers a booked repeat without a source ID and a pending "BANK-X" on 1 December with purpose "PENDING RENT"
+- **THEN** each delivery has a free partner and two booked rows total -1.600,00 € in either delivery or storage order
+
+#### Scenario: A live pending row precedes a booked tombstone
+
+- **GIVEN** a fetched pending rent of -800,00 € on 1 December 2026 and an honored booked tombstone on 2 December, both with source ID "BANK-X"
+- **WHEN** the booked "BANK-X" arrives on 2 December
+- **THEN** the live pending row becomes booked and stays in the history
+- **AND** the tombstone cannot suppress that booking or cause the live row to be dropped
+
+#### Scenario: Identical pending occurrences need booking review
+
+- **GIVEN** two identical pending file rents of -800,00 € on 7 December 2026 with purpose "FILE" and comments "FIRST" and "SECOND"
+- **WHEN** one otherwise identical BOOK entry arrives
+- **THEN** the shared fingerprint cannot identify which pending occurrence was booked
+- **AND** both pending rows keep their comments and need review, and the new booked row also needs review
+- **AND** with only one pending occurrence, that row books and keeps "FIRST"
+
+#### Scenario: A file booking keeps a pending migration replay at 40 euros
+
+- **GIVEN** a migrated account with source balance 50,00 € and one pending source payment of -10,00 € named "Kiosk" with purpose "CARD"
+- **WHEN** a file repeats the pending payment and then books the same fields
+- **THEN** the account has one booked payment and a computed balance of 40,00 €
+- **AND** replaying the still-pending source keeps the initial balance at 50,00 € and the computed balance at 40,00 €
