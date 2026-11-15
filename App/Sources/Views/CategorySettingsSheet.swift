@@ -152,7 +152,7 @@ struct CategorySettingsSheet: View {
 		guard let c = category, let rule = try? Rule(parsing: c.rule) else { return }
 		Task {
 			await model.apply(rule: rule, of: c, mode: mode)
-			dismiss()
+			if model.sheet == .categorySettings(categoryID) { dismiss() }
 		}
 	}
 }
