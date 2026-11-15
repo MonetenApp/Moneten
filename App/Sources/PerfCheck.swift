@@ -58,6 +58,14 @@ struct PerfScenario {
 				await c.select("Account 3")
 				if c.model.selectedAccount.flatMap(c.model.proposedCalibration) == nil { c.fail("the header proposes no calibration") }
 			}),
+		// A change of a category draws every row of the sidebar again, and each row used to filter all transactions
+		// for its own amount.
+		PerfScenario(name: "change-sidebar-amount", budget: halfSecond,
+			run: { c in
+				guard var category = c.model.ledger.categories.first(where: { $0.name == "Uncategorized" }) else { return c.fail("no category Uncategorized") }
+				category.sidebarAmount = .currentMonth
+				c.model.save(category: category)
+			}),
 		// Last, because it adds rows: "Uncategorized" above holds exactly the 50,000.
 		PerfScenario(name: "import-into-open-view", budget: halfSecond,
 			setUp: { await $0.select("Bulk"); await $0.scroll { $0 / 2 } },

@@ -79,6 +79,7 @@ When the rules of several categories match a transaction, the first category in 
 | `counterpartyIBAN`, `counterpartyBIC` | `String?` | |
 | `bookingText` | `String?` | The kind of booking as the bank names it, for example "SEPA-BASISLASTSCHRIFT". |
 | `endToEndReference`, `mandateReference`, `creditorID` | `String?` | SEPA references. |
+| `returnReason` | `String?` | The ISO 20022 code with which the bank returned the payment, for example "AC04". Read from a CAMT file. |
 | `comment` | `String?` | A comment that the user writes. |
 | `isChecked` | `Bool` | The user checked this transaction off. |
 | `isPending` | `Bool` | Not booked yet. A pending transaction counts toward the balance and the category sums, except one with `needsReview`. |

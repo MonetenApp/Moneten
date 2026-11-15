@@ -423,6 +423,55 @@ struct FileImportTests {
 		#expect(ts.map(\.mandateReference) == ["M-1"])
 	}
 
+	@Test("A camt.053 entry with a return reason")
+	func camtReturnReason() throws {
+		let xml = """
+		<?xml version="1.0" encoding="UTF-8"?>
+		<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.053.001.08"><BkToCstmrStmt><Stmt>
+		<Ntry><Amt Ccy="EUR">89.00</Amt><CdtDbtInd>CRDT</CdtDbtInd><Sts><Cd>BOOK</Cd></Sts><BookgDt><Dt>2026-11-05</Dt></BookgDt>
+		<NtryDtls><TxDtls><RltdPties><Dbtr><Pty><Nm>Stadtwerke Musterstadt</Nm></Pty></Dbtr></RltdPties>
+		<RtrInf><Rsn><Cd>AC04</Cd></Rsn></RtrInf></TxDtls></NtryDtls></Ntry>
+		<Ntry><Amt Ccy="EUR">5.00</Amt><CdtDbtInd>CRDT</CdtDbtInd><Sts><Cd>BOOK</Cd></Sts><BookgDt><Dt>2026-11-05</Dt></BookgDt></Ntry>
+		</Stmt></BkToCstmrStmt></Document>
+		"""
+		let ts = try TransactionFileImporter.parse(Data(xml.utf8), currency: "EUR").transactions
+		#expect(ts.map(\.returnReason) == ["AC04", nil])
+		#expect(ts.map(\.isPending) == [false, false])
+	}
+
+	@Test("A batch entry whose details give different return reasons has none", arguments: [("AC04", "MD06"), ("AC04", "")])
+	func camtBatchReturnReasons(first: String, second: String) throws {
+		func detail(_ code: String) -> String {
+			let reason = code.isEmpty ? "" : "<RtrInf><Rsn><Cd>\(code)</Cd></Rsn></RtrInf>"
+			return "<TxDtls><Amt Ccy=\"EUR\">10.00</Amt>\(reason)</TxDtls>"
+		}
+		let xml = """
+		<?xml version="1.0" encoding="UTF-8"?>
+		<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.053.001.08"><BkToCstmrStmt><Stmt>
+		<Ntry><Amt Ccy="EUR">20.00</Amt><CdtDbtInd>CRDT</CdtDbtInd><Sts><Cd>BOOK</Cd></Sts><BookgDt><Dt>2026-11-05</Dt></BookgDt>
+		<NtryDtls>\(detail(first))\(detail(second))</NtryDtls></Ntry>
+		</Stmt></BkToCstmrStmt></Document>
+		"""
+		#expect(try TransactionFileImporter.parse(Data(xml.utf8), currency: "EUR").transactions.map(\.returnReason) == [nil])
+	}
+
+	@Test("A batch entry from two payers keeps the return reason that both details give")
+	func camtBatchSharedReturnReason() throws {
+		func detail(_ name: String) -> String {
+			"<TxDtls><Amt Ccy=\"EUR\">10.00</Amt><RltdPties><Dbtr><Pty><Nm>\(name)</Nm></Pty></Dbtr></RltdPties><RtrInf><Rsn><Cd>AC04</Cd></Rsn></RtrInf></TxDtls>"
+		}
+		let xml = """
+		<?xml version="1.0" encoding="UTF-8"?>
+		<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.053.001.08"><BkToCstmrStmt><Stmt>
+		<Ntry><Amt Ccy="EUR">20.00</Amt><CdtDbtInd>CRDT</CdtDbtInd><Sts><Cd>BOOK</Cd></Sts><BookgDt><Dt>2026-11-05</Dt></BookgDt>
+		<NtryDtls>\(detail("Erika Mustermann"))\(detail("Max Mustermann"))</NtryDtls></Ntry>
+		</Stmt></BkToCstmrStmt></Document>
+		"""
+		let ts = try TransactionFileImporter.parse(Data(xml.utf8), currency: "EUR").transactions
+		#expect(ts.map(\.name) == [""])
+		#expect(ts.map(\.returnReason) == ["AC04"])
+	}
+
 	@Test("camt.053 with a debit and a pending credit")
 	func camt() throws {
 		let xml = """
