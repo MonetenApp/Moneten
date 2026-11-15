@@ -312,7 +312,7 @@ The app SHALL refuse to store a rule that it cannot parse. It shows a message th
 
 #### Scenario: Sign after a field operator
 
-- **WHEN** the user enters `name:-"Stadtwerke"` and closes the settings
+- **WHEN** the user enters `name:-"Stadtwerke"` or the regular expression `name:-/Stadtwerke/` and closes the settings
 - **THEN** the app shows at position 6 that a sign cannot follow `name:`, and that `name!="…"` excludes a value
 - **AND** the app does not change the stored rule
 
