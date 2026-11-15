@@ -36,6 +36,12 @@ The app SHALL compute the remainder so that all parts of a split add up to the a
 - **WHEN** the user enters 0,00 and confirms
 - **THEN** the app does not split and marks the amount field
 
+#### Scenario: Whole amount
+
+- **GIVEN** a transaction of -80,00 €
+- **WHEN** the user enters 80,00 and confirms
+- **THEN** the app does not split and marks the amount field
+
 ### Requirement: Several parts in one pass
 
 The app SHALL split the remainder again when the user clicks "Next Split" in the split window, so that one pass can create any number of parts.
@@ -45,6 +51,13 @@ The app SHALL split the remainder again when the user clicks "Next Split" in the
 - **GIVEN** a transaction of -80,00 €
 - **WHEN** the user enters 25,00, clicks "Next Split", enters 15,00, and confirms
 - **THEN** the list shows parts of -25,00 €, -15,00 €, and -40,00 €
+
+#### Scenario: Split a part again
+
+- **GIVEN** the parts -25,00 € and -55,00 € of a transaction of -80,00 €
+- **WHEN** the user splits 15,00 off the part of -55,00 €
+- **THEN** the list shows parts of -25,00 €, -15,00 €, and -40,00 €
+- **AND** "Undo Split Transaction..." brings back one transaction of -80,00 €
 
 ### Requirement: Parts with the opposite sign
 
@@ -79,6 +92,16 @@ The app SHALL let the user assign a category and write a comment for each part, 
 - **WHEN** a refresh delivers a booked "TX-1" of -85,00 € and the user confirms the old edit window
 - **THEN** the window closes without saving the edit or adding a transaction
 - **AND** the list still shows only the corrected original of -85,00 €
+
+### Requirement: The checkmark belongs to the whole transaction
+
+The app SHALL show one checkmark for all parts of a split transaction and set it on all of them when the user checks one part.
+
+#### Scenario: Check a part
+
+- **GIVEN** the parts -25,00 € and -55,00 € of a transaction of -80,00 €
+- **WHEN** the user checks the part of -25,00 €
+- **THEN** the part of -55,00 € shows the checkmark as well
 
 ### Requirement: Parts are recognizable
 
@@ -124,6 +147,13 @@ The app SHALL offer one entry "Split" with the rate and "VAT" for each rate in t
 - **GIVEN** a transaction of -10,000 KWD
 - **WHEN** the user chooses "Split 7% VAT"
 - **THEN** the net part is -9,345 KWD and the tax part is -0,655 KWD
+
+#### Scenario: Split a VAT part
+
+- **GIVEN** the net part of -100,00 € and the tax part of -19,00 € of a transaction of -119,00 €
+- **WHEN** the user splits 50,00 off the net part
+- **THEN** the list shows two parts of -50,00 € without the label for net
+- **AND** the tax part keeps the label for 19% VAT
 
 ### Requirement: The list of VAT rates can be changed
 
@@ -171,6 +201,12 @@ The app SHALL count each part with its own amount and category in search results
 
 - **WHEN** a transaction of an account is split
 - **THEN** the balance and the daily balance of the account are the same as before
+
+#### Scenario: Search for the original amount
+
+- **GIVEN** a transaction of -80,00 € split into -25,00 € and -55,00 €
+- **WHEN** the user searches for "-80,00"
+- **THEN** the list shows both parts
 
 ### Requirement: A complete export preserves splits and review reasons
 
