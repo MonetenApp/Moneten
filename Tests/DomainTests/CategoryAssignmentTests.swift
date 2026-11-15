@@ -77,4 +77,13 @@ struct CategoryAssignmentTests {
 	func matchingEmpty() {
 		#expect(ledger.categories(matching: "").map(\.name) == ["Groceries", "Drugstore", "Office", "Business travel", "Getränke", "Uncategorized"])
 	}
+
+	@Test("The picker leaves out the categories that the accounts of the selection cannot take")
+	func matchingForAccounts() {
+		let l = ledger
+		#expect(l.categories(matching: "", assignableTo: [privat.id]).map(\.name) == ["Groceries", "Drugstore", "Getränke", "Uncategorized"])
+		#expect(l.categories(matching: "", assignableTo: [business.id]).map(\.name) == ["Groceries", "Drugstore", "Office", "Business travel", "Getränke", "Uncategorized"])
+		#expect(l.categories(matching: "", assignableTo: [business.id, savings.id]).map(\.name) == ["Groceries", "Drugstore", "Business travel", "Getränke", "Uncategorized"])
+		#expect(l.categories(matching: "o", assignableTo: [savings.id, privat.id]).map(\.name) == ["Groceries", "Drugstore", "Uncategorized"])
+	}
 }
