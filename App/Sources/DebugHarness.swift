@@ -267,6 +267,16 @@ final class DebugHarness {
 				let kind = switch question.named { case .iban: "iban"; case .number: "number" }
 				log("importanswer kind=\(kind) fileIndex=\(model.fileImport?.index ?? -1) selectedPosition=\(question.selected.position) otherPosition=\(question.other?.position ?? -1)")
 			}
+		case "importmissdismissal":
+			guard let run = model.fileImport, run.isPresented, run.preview?.chosen != nil else { return log("importmissdismissal unavailable") }
+			let ignored = FileImport(names: [])
+			model.fileImport = ignored
+			run.confirm()
+			Task {
+				try? await Task.sleep(for: .seconds(1))
+				log("importmissdismissal waiting=\(run.isPresented && model.fileImport === ignored)")
+			}
+
 		// Changes the CSV preview on screen: "column <n>=<field or none>", "date <order>", "encoding <name>",
 		// "decimal comma|point|detect", "skip" as "Skip File" does, "state", which logs the settings and counts of
 		// the preview, or "rows", which logs its first rows.

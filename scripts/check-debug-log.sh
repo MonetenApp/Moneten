@@ -154,6 +154,12 @@ printf '%s\n' "Buchungstag;Valuta;Empfänger;Verwendungszweck;Betrag" "09.11.202
 send importfile "$WORK/Erika Mustermann.csv"
 poll "^csv state .*canImport=true" csv state
 poll "^csv rows" csv rows
+send importmissdismissal
+poll "^importmissdismissal waiting=true" state
+poll "^importfile done" state
+poll "^alert " alert
+send importfile "$WORK/Erika Mustermann.csv"
+poll "^csv state .*canImport=true" csv state
 send key return
 poll "^importfile done" state
 poll "^alert " alert
