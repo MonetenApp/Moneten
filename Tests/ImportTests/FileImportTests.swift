@@ -635,4 +635,15 @@ struct FileImportTests {
 		#expect(parsed.warnings == [.mixedDateForms(line: 3)])
 	}
 
+
+	@Test("Reading a CSV file stops with a cancellation error when its task is canceled")
+	func csvCanceled() async throws {
+		let text = "Datum;Name;Betrag\n01.11.2026;Kiosk;-1,50\n"
+		let canceled = await Task {
+			withUnsafeCurrentTask { $0?.cancel() }
+			return Result { try TransactionFileImporter.parse(Data(text.utf8), currency: "EUR") }
+		}.value
+		#expect(throws: CancellationError.self) { try canceled.get() }
+		#expect(try TransactionFileImporter.parse(Data(text.utf8), currency: "EUR").transactions.map(\.amountMinor) == [-150])
+	}
 }

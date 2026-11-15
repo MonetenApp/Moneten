@@ -95,9 +95,11 @@ enum CSVParser {
 	static let mandateKeys = ["mandatsreferenz", "mandate reference"]
 	static let creditorKeys = ["gläubiger-id", "gläubiger id", "glaeubiger-id", "creditor id"]
 
+	/// A file of 100 MB takes seconds to read, so each pass over its rows stops with `CancellationError`
+	/// at the next row once the task is canceled.
 	static func parse(_ text: String, currency: String) throws -> TransactionFileImporter.Parsed {
 		let delimiter = detectDelimiter(text)
-		let rows = split(text, delimiter: delimiter)
+		let rows = try split(text, delimiter: delimiter)
 		guard let headerIndex = rows.firstIndex(where: { row in
 			let lower = row.cells.map { normalize($0) }
 			return lower.contains(where: { dateKeys.contains($0) }) && lower.contains(where: { (amountKeys + debitKeys + creditKeys).contains($0) })
@@ -160,7 +162,7 @@ enum CSVParser {
 		}
 		let bookingDates = dataRows.map(\.2)
 		let valueDates = dataRows.compactMap { cell($0.1, valueCol) }
-		let (dateOrder, valueDateOrder) = DateOrder.of(bookingDates, valueDates)
+		let (dateOrder, valueDateOrder) = try DateOrder.of(bookingDates, valueDates)
 		let placeholder = UUID()
 		var result = TransactionFileImporter.Parsed(transactions: [])
 		for (line, row, dateText) in dataRows {
@@ -168,6 +170,7 @@ enum CSVParser {
 				&& (dateText.contains(".") || cell(row, valueCol)?.contains(".") == true) {
 				result.warnings.append(.mixedDateForms(line: line))
 			}
+			try Task.checkCancellation()
 			func value(_ c: Int?) -> String? { cell(row, c) }
 			guard let day = dateOrder.day(dateText) else {
 				throw TransactionFileImporter.Failure.line(line, "The date \(dateText) cannot be read.")
@@ -275,7 +278,7 @@ enum CSVParser {
 
 	/// Splits CSV text into rows and fields, each row with the line of the file where it starts.
 	/// Quoted fields can contain the delimiter and line breaks.
-	static func split(_ text: String, delimiter: Character) -> [(line: Int, cells: [String])] {
+	static func split(_ text: String, delimiter: Character) throws -> [(line: Int, cells: [String])] {
 		var rows: [(line: Int, cells: [String])] = []
 		var line = 1
 		var start = 1
@@ -304,6 +307,7 @@ enum CSVParser {
 				row.append(field)
 				field = ""
 			} else if isBreak {
+				try Task.checkCancellation()
 				row.append(field)
 				rows.append((start, row))
 				start = line
@@ -332,8 +336,8 @@ enum DateOrder: CaseIterable {
 	/// one that most of its values fit. So a value date column of "11/01/2026" takes month first from a
 	/// booking date column of "10/30/2026". Day first comes before month first, so "03/04/2026" is
 	/// 3 April when no value decides.
-	static func of(_ booking: [String], _ value: [String]) -> (booking: DateOrder, value: DateOrder) {
-		let b = fits(booking), v = fits(value)
+	static func of(_ booking: [String], _ value: [String]) throws -> (booking: DateOrder, value: DateOrder) {
+		let b = try fits(booking), v = try fits(value)
 		func pick(_ mine: (counts: [DateOrder: Int], readable: Int), _ theirs: (counts: [DateOrder: Int], readable: Int)) -> DateOrder {
 			let fitting = allCases.filter { mine.counts[$0] == mine.readable }
 			return fitting.first { theirs.counts[$0] == theirs.readable } ?? fitting.first ?? allCases.max { mine.counts[$0]! < mine.counts[$1]! }!
@@ -343,10 +347,11 @@ enum DateOrder: CaseIterable {
 
 	/// How many of the values each order fits, and how many fit any order. A value that fits none, such as
 	/// "pending" as a value date, decides nothing.
-	private static func fits(_ values: [String]) -> (counts: [DateOrder: Int], readable: Int) {
+	private static func fits(_ values: [String]) throws -> (counts: [DateOrder: Int], readable: Int) {
 		var counts = Dictionary(uniqueKeysWithValues: allCases.map { ($0, 0) })
 		var readable = 0
 		for value in values {
+			try Task.checkCancellation()
 			let orders = allCases.filter { $0.day(value) != nil }
 			for order in orders { counts[order]! += 1 }
 			if !orders.isEmpty { readable += 1 }
