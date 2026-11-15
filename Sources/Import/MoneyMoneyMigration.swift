@@ -30,6 +30,8 @@ public struct MoneyMoneyMigration: Sendable {
 		public var skippedTransactions = 0
 		public var portfolioAccounts: [String] = []
 		public var notes: [String] = []
+		/// Each account of the export, in its order, for the report.
+		public var sources: [SourceAccount] = []
 
 		public var isEmpty: Bool {
 			groups.isEmpty && accounts.isEmpty && categories.isEmpty && transactions.isEmpty && updatedAccounts.isEmpty && updatedTransactions.isEmpty
@@ -77,8 +79,10 @@ public struct MoneyMoneyMigration: Sendable {
 		mapCategories(rawCategories, ledger: ledger, plan: &plan, map: &categoryMap)
 
 		var rows: [Transaction] = []
+		var counts: [UUID: Int] = [:]
 		for raw in rawTransactions {
 			guard let accountSource = raw["accountUuid"] as? String, let accountID = accountMap[accountSource] else { continue }
+			counts[accountID, default: 0] += 1
 			let id = (raw["id"] as? Int).map { "\(Transaction.migrationIDPrefix)\($0)" }
 			let currency = (raw["currency"] as? String) ?? "EUR"
 			let amount = Money(Decimal((raw["amount"] as? Double) ?? 0), currency: currency)
@@ -97,6 +101,8 @@ public struct MoneyMoneyMigration: Sendable {
 				categoryID: categoryID, categorizedBy: categoryID == nil ? .none : .manual, isNew: false, sourceID: id)
 			rows.append(t)
 		}
+
+		for i in plan.sources.indices { plan.sources[i].transactions = counts[plan.sources[i].accountID] ?? 0 }
 
 		// `reconcile` decides which rows are new. A new row keeps what MoneyMoney says: its category, comment,
 		// and checkmark, and no new mark. Only the review mark comes from `reconcile`.
@@ -244,6 +250,7 @@ public struct MoneyMoneyMigration: Sendable {
 			}
 			let balanceDate = (item["balanceDate"] as? Date) ?? (item["refreshTimestamp"] as? Date)
 			let color = (item["icon"] as? Data).flatMap(Self.iconColor)
+			defer { if let id = map[source] { plan.sources.append(SourceAccount(accountID: id, balance: balanceMinor.map { Money(minorUnits: $0, currency: currency) })) } }
 			// The MoneyMoney identifier decides. IBAN or account number match only accounts without one,
 			// so that two MoneyMoney accounts with the same IBAN stay apart.
 			if var existing = ledger.accounts.first(where: { $0.sourceID == source }) ?? ledger.accounts.first(where: { a in

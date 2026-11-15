@@ -357,6 +357,10 @@ final class DebugHarness {
 			case "bar": model.select(bar: .month(Day.today().firstOfMonth))
 			default: model.period = .all
 			}
+		// "<folder>": opens the MoneyMoney migration, which then reads the exports of that folder, such as Fixtures/moneymoney.
+		case "migrationfixture":
+			MigrationSheet.fixtureFolder = URL(filePath: argument)
+			model.sheet = .migration
 		case "sheet":
 			switch argument {
 			case "migration": model.sheet = .migration

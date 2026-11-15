@@ -747,6 +747,51 @@ struct MoneyMoneyMigrationTests {
 		#expect(try plan().notes.allSatisfy { !$0.contains("icon") })
 	}
 
+	@Test("The report shows each account next to the source, and a pending transaction is no mismatch")
+	func reportMatches() throws {
+		let p = try plan()
+		let ledger = Ledger(groups: p.groups, accounts: p.accounts, categories: p.categories, transactions: p.transactions)
+		let report = p.report(after: ledger)
+		#expect(report.rows.map(\.name) == ["Giro", "Savings", "Depot"])
+		#expect(report.rows.map(\.transactions) == [3, 1, 0])
+		#expect(report.rows.map(\.sourceTransactions) == [3, 1, 0])
+		#expect(report.rows.map(\.balance) == [Money(minorUnits: 123_456, currency: "EUR"), Money(minorUnits: 50_000, currency: "EUR"),
+			Money(minorUnits: 1_000_000, currency: "EUR")])
+		#expect(report.rows.map(\.sourceBalance) == [Money(minorUnits: 123_456, currency: "EUR"), Money(minorUnits: 50_000, currency: "EUR"),
+			Money(minorUnits: 1_000_000, currency: "EUR")])
+		#expect(report.rows.map(\.matches) == [true, true, true])
+	}
+
+	@Test("The report shows a difference when an account misses a transaction of the source")
+	func reportDiffers() throws {
+		let p = try plan()
+		let ledger = Ledger(groups: p.groups, accounts: p.accounts, categories: p.categories, transactions: p.transactions.filter { $0.name != "REWE Markt" })
+		let report = p.report(after: ledger)
+		let giro = try #require(report.rows.first)
+		#expect(giro.transactions == 2 && giro.sourceTransactions == 3)
+		#expect(giro.balance == Money(minorUnits: 128_046, currency: "EUR"))
+		#expect(report.rows.map(\.matches) == [false, true, true])
+	}
+
+	@Test("The text of the report lists the accounts and the notes")
+	func reportText() throws {
+		let p = try plan()
+		let ledger = Ledger(groups: p.groups, accounts: p.accounts, categories: p.categories, transactions: p.transactions.filter { $0.name != "REWE Markt" })
+		let text = p.report(after: ledger).text(locale: Locale(identifier: "en_US"))
+		#expect(text.hasPrefix("""
+			Report of the migration from MoneyMoney
+
+			Accounts
+			Giro: 2 transactions, balance 1,280.46 EUR. MoneyMoney: 3 transactions, balance 1,234.56 EUR. Differs.
+			Savings: 1 transaction, balance 500.00 EUR. MoneyMoney: 1 transaction, balance 500.00 EUR. Matches.
+			Depot: 0 transactions, balance 10,000.00 EUR. MoneyMoney: 0 transactions, balance 10,000.00 EUR. Matches.
+
+			Notes
+			Portfolio accounts were taken over with their balance.
+			"""))
+		#expect(text.hasSuffix("Statements were not migrated, because the AppleScript export of MoneyMoney does not contain them. Copy the PDF files from the folder \"Statements\" in the data folder of MoneyMoney to keep them.\n"))
+	}
+
 	@Test("The report names a group whose balance in MoneyMoney leaves out an account")
 	func groupSum() throws {
 		#expect(try plan().notes.allSatisfy { !$0.contains("group") })

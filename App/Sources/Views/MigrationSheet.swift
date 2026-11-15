@@ -1,6 +1,7 @@
 import Domain
 import Import
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct MigrationSheet: View {
 	@Environment(AppModel.self) private var model
@@ -10,16 +11,28 @@ struct MigrationSheet: View {
 		case reading(String)
 		case summary(MoneyMoneyMigration.Plan)
 		case importing
-		case done(MoneyMoneyMigration.Plan)
+		case done(MoneyMoneyMigration.Plan, MoneyMoneyMigration.Report)
 		case failed(String)
 	}
 
+	#if DEBUG || PERF_HARNESS
+	/// A folder with `accounts.plist`, `categories.plist`, and `transactions.plist`, which the debug harness reads
+	/// instead of asking MoneyMoney.
+	static var fixtureFolder: URL?
+	#endif
+
 	@State private var step = Step.intro
 	@State private var task: Task<Void, Never>?
+	@State private var confirmSave = false
+	@State private var savingReport = false
 
 	var body: some View {
 		SheetFrame(title: "Import from MoneyMoney", confirmTitle: confirmTitle, cancelTitle: cancelTitle, width: 500,
 			onCancel: { task?.cancel() }, onConfirm: confirm) {
+			if case .done = step {
+				Button("Save Report...") { confirmSave = true }.keyboardShortcut("s")
+			}
+		} content: {
 			switch step {
 			case .intro:
 				Section {
@@ -37,7 +50,7 @@ struct MigrationSheet: View {
 				Section {
 					HStack(spacing: 8) { ProgressView().controlSize(.small); Text("Importing...") }
 				}
-			case let .done(plan):
+			case let .done(plan, report):
 				Section {
 					Label("Finished!", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
 					LabeledContent("Accounts", value: plan.accounts.count.formatted())
@@ -47,9 +60,16 @@ struct MigrationSheet: View {
 						LabeledContent("Updated", value: "\(plan.updatedAccounts.count) accounts, \(plan.updatedTransactions.count.formatted()) transactions, \(plan.updatedCategories.count) category colors")
 					}
 				}
-				if !plan.notes.isEmpty {
+				Section {
+					ForEach(Array(report.rows.enumerated()), id: \.offset) { _, row in reportRow(row) }
+				} header: {
+					Text("Accounts compared with MoneyMoney")
+				} footer: {
+					Text("Balances without pending transactions, as MoneyMoney shows them.").foregroundStyle(.secondary)
+				}
+				if !report.notes.isEmpty {
 					Section("Notes") {
-						ForEach(plan.notes, id: \.self) { Text($0).foregroundStyle(.secondary) }
+						ForEach(report.notes, id: \.self) { Text($0).foregroundStyle(.secondary) }
 					}
 				}
 			case let .failed(message):
@@ -61,6 +81,40 @@ struct MigrationSheet: View {
 			}
 		}
 		.onDisappear { task?.cancel() }
+		.alert("The report contains account names and balances.", isPresented: $confirmSave) {
+			Button("Save Report...") { savingReport = true }
+			Button("Cancel", role: .cancel) {}
+		} message: {
+			Text("Anyone who can open the file can read them.")
+		}
+		.fileExporter(isPresented: $savingReport, document: ReportFile(text: reportText), contentType: .plainText,
+			defaultFilename: "MoneyMoney migration \(Day.today()).txt") { result in
+			if case let .failure(error) = result { model.alert = AlertMessage(title: "Could not save the report.", message: error.localizedDescription) }
+		}
+	}
+
+	private var reportText: String {
+		if case let .done(_, report) = step { report.text() } else { "" }
+	}
+
+	private static func count(_ n: Int) -> String {
+		n == 1 ? "1 transaction" : "\(n.formatted()) transactions"
+	}
+
+	private func reportRow(_ row: MoneyMoneyMigration.Report.Row) -> some View {
+		LabeledContent {
+			VStack(alignment: .trailing, spacing: 2) {
+				Text("\(Self.count(row.transactions)), \(Format.money(row.balance))")
+				if row.matches {
+					Label("Matches MoneyMoney", systemImage: "checkmark").foregroundStyle(.secondary)
+				} else {
+					Text("MoneyMoney: \(Self.count(row.sourceTransactions))\(row.sourceBalance.map { ", \(Format.money($0))" } ?? "")")
+						.foregroundStyle(.orange)
+				}
+			}
+		} label: {
+			Text(row.name)
+		}
 	}
 
 	private var confirmTitle: String? {
@@ -121,11 +175,11 @@ struct MigrationSheet: View {
 		task = Task {
 			do {
 				step = .reading("Reading accounts...")
-				let accounts = try await MoneyMoneyExporter.exportAccounts()
+				let accounts = try await export("accounts", MoneyMoneyExporter.exportAccounts)
 				step = .reading("Reading categories...")
-				let categories = try await MoneyMoneyExporter.exportCategories()
+				let categories = try await export("categories", MoneyMoneyExporter.exportCategories)
 				step = .reading("Reading transactions... This can take a minute for a long history.")
-				let transactions = try await MoneyMoneyExporter.exportTransactions()
+				let transactions = try await export("transactions", MoneyMoneyExporter.exportTransactions)
 				try Task.checkCancellation()
 				let ledger = model.ledgerForMigration
 				let deleted = try model.deletedTransactions()
@@ -140,15 +194,37 @@ struct MigrationSheet: View {
 		}
 	}
 
+	private func export(_ name: String, _ read: () async throws -> Data) async throws -> Data {
+		#if DEBUG || PERF_HARNESS
+		if let folder = Self.fixtureFolder { return try Data(contentsOf: folder.appendingPathComponent("\(name).plist")) }
+		#endif
+		return try await read()
+	}
+
 	private func commit(_ plan: MoneyMoneyMigration.Plan) {
 		step = .importing
 		Task {
 			do {
 				try await model.runMigration(plan: plan)
-				step = .done(plan)
+				step = .done(plan, plan.report(after: model.ledger))
 			} catch {
 				step = .failed("Nothing was imported. \(error)")
 			}
 		}
+	}
+}
+
+private struct ReportFile: FileDocument {
+	static let readableContentTypes: [UTType] = [.plainText]
+	var text: String
+
+	init(text: String) { self.text = text }
+
+	init(configuration: ReadConfiguration) throws {
+		text = String(decoding: configuration.file.regularFileContents ?? Data(), as: UTF8.self)
+	}
+
+	func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+		FileWrapper(regularFileWithContents: Data(text.utf8))
 	}
 }
