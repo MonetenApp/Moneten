@@ -349,7 +349,7 @@ The app SHALL show a preview before it imports a CSV file. The preview shows the
 
 ### Requirement: CSV profiles
 
-The app SHALL let the user save the settings of the preview as a named profile. When a later file has the same header row, the app applies the profile and imports without showing the preview first. The user can still open the preview, and can rename and delete profiles.
+The app SHALL let the user save the settings of the preview as a named profile. When a later file has the same header row, delimiter and detected date order, the app applies the profile and imports without showing the preview first. The user can still open the preview, and can rename and delete profiles.
 
 #### Scenario: Second file of the same bank
 
@@ -377,6 +377,42 @@ The app SHALL let the user save the settings of the preview as a named profile. 
 - **AND** the preview reads those texts unchanged and the amount as -420 minor units
 - **AND** a moved header and a profile picked in the preview preserve the detected encoding in the same way
 - **AND** ASCII rows such as "Datum;Name;Betrag" and "02.11.2026;Kiosk;-2,00" still import quietly with that profile, while a requested preview shows UTF-8
+
+#### Scenario: Profile signature differs
+
+- **GIVEN** a month-first profile for "Date;Name;Amount"
+- **WHEN** the file is "Date,Name,Amount" with the row "03/11/2026,Kiosk,-4.20"
+- **THEN** the preview opens with the detected day-first order and reads 3 November 2026
+- **AND** a different detected date order also opens the preview when the delimiter stays the same
+- **AND** a legacy profile without a saved delimiter opens the preview before reuse
+
+#### Scenario: Empty titles do not count as repeated titles
+
+- **GIVEN** a profile for "Datum;Name;Betrag;"
+- **WHEN** the header changes to "Datum;;Name;Betrag;"
+- **THEN** the preview starts from the profile with name at column 2 and amount at column 3
+
+#### Scenario: Profiles belong to the encrypted database
+
+- **GIVEN** a profile whose header includes the made-up IBAN DE02120300000000202051
+- **WHEN** it is saved, renamed or deleted
+- **THEN** only the open encrypted database changes
+- **AND** another database has none of its profiles
+- **AND** the first profile load moves pre-release profiles from the old preferences and removes their key only after a successful database write
+- **AND** a test session with a custom data folder never reads or writes the regular app's old preferences
+
+#### Scenario: A newer profile is kept by an older reader
+
+- **GIVEN** one saved profile lacks "createsCategories", another has an unknown column field, and a third cannot be decoded
+- **WHEN** the profiles are loaded and a readable profile is saved or deleted
+- **THEN** the missing category option defaults to off and the unknown column field is ignored
+- **AND** the unreadable profile stays stored unchanged
+
+#### Scenario: Result describes the confirmed settings
+
+- **WHEN** a preview saves a new profile "Broker CSV" during an import
+- **THEN** the result says the file "used the settings saved as profile" "Broker CSV"
+- **AND** the same wording applies when an existing profile was changed before import
 
 ### Requirement: Categories from a CSV file
 
@@ -411,6 +447,29 @@ The app SHALL assign the category from a category column to each imported transa
 - **THEN** the row stays without a category and passes the rules
 - **AND** importing into "Business" assigns "Office" as set by hand
 - **AND** a category that could not be saved leaves the row without that category
+
+#### Scenario: Bounded category creation
+
+- **WHEN** a file names 2,000 or 50,000 distinct missing categories with "Auto-create categories" on
+- **THEN** it creates at most 1,000 categories, counting groups
+- **AND** existing categories still match after the limit is reached
+- **AND** rows beyond the limit pass the rules without a file category
+- **AND** the result says "Auto-create categories is limited to 1,000 new categories per file. Remaining unknown categories were left to the rules."
+- **AND** a path is created only when all its missing levels fit within the remaining limit
+
+#### Scenario: Skipped rows and failed storage leave no new categories
+
+- **GIVEN** rows whose category cells name new categories
+- **WHEN** every row is skipped as already imported
+- **THEN** the result reports 0 new categories and no new category remains
+- **AND** a failed transaction merge leaves no new category or transaction from that file
+
+#### Scenario: Dash paths and duplicate leaf names
+
+- **WHEN** "Miete - Nebenkosten" is imported with auto-create on and neither category exists
+- **THEN** it creates the group "Miete" and its category "Nebenkosten"
+- **AND** when "Other" exists under "Work" and "Living", a bare "Other" chooses the case-folded full path that sorts first, "Living › Other", regardless of load order
+- **AND** equal case-folded paths choose the lowest UUID string, with assignable categories before groups
 
 ### Requirement: CAMT import
 

@@ -49,6 +49,9 @@ None.
 
 ### Decided for Moneten
 
+- CSV profiles live in the encrypted database because even column titles can contain personal data. Each profile is versioned JSON so a build can keep unreadable entries while editing another profile.
+- One file may create at most 1,000 categories including groups. This bounds a mistaken mapping of the purpose column to Category.
+
 - The preview with a column mapping and saved profiles comes from issue #22. MoneyMoney imports a CSV file without a preview.
 - A file is imported completely or not at all. One row that cannot be read stops the import of that file with the line number. MoneyMoney's behavior for a partly readable file was not observed.
 - The app detects the format from the content of the file, not from its name.
