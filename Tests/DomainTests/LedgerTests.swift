@@ -344,6 +344,21 @@ struct LedgerTests {
 		#expect(l.sum(ofCategory: try #require(l.category(travel.id)), in: .all) == Money(minorUnits: -5_000, currency: "USD"))
 	}
 
+	@Test("The sum of a category for the current month counts a pending row and leaves out a pending row marked for review")
+	func categorySumWithPendingRows() {
+		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
+		let groceries = Domain.Category(position: 0, name: "Groceries")
+		func row(_ day: Int, _ minor: Int64, pending: Bool, review: Bool = false) -> Transaction {
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: day), amountMinor: minor, name: "Supermarkt",
+				isPending: pending, categoryID: groceries.id, categorizedBy: .manual, needsReview: review)
+		}
+		let l = Ledger(accounts: [giro], categories: [groceries], transactions: [
+			row(3, -8_000, pending: false), row(7, -4_000, pending: true), row(8, -500, pending: true, review: true),
+		])
+		let currentMonth = DayRange(start: Day(year: 2026, month: 11, day: 1), end: nil)
+		#expect(l.sum(ofCategory: groceries, in: currentMonth) == Money(minorUnits: -12_000, currency: "EUR"))
+	}
+
 	@Test("The ledger knows which accounts have transactions, also after a delete")
 	func accountsWithTransactions() {
 		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
