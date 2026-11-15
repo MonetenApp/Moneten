@@ -316,11 +316,11 @@ struct SearchQuery {
 				// A single word with `*` at its ends only: a search word finds text inside words anyway.
 				return .text(Needle(core))
 			}
-			if !patterns.contains(where: \.pattern.hasWildcards) { return .text(Needle(words.joined(separator: " "))) }
+			if !patterns.contains(where: { (box: WildcardPatternBox) in box.pattern.hasWildcards }) { return .text(Needle(words.joined(separator: " "))) }
 			return .words(words.map { WildcardPattern("*" + $0 + "*") }, literals: literals(patterns))
 		case let .phrase(patterns, field?):
 			// The search text holds every field but the currency, folded as a rule folds it.
-			return .field(patterns.map(\.pattern), field, literals: field == .currency ? [] : literals(patterns),
+			return .field(patterns.map { (box: WildcardPatternBox) in box.pattern }, field, literals: field == .currency ? [] : literals(patterns),
 				shape: patterns.count == 1 ? SearchText.WordShape(patterns[0].pattern) : nil)
 		case let .regex(box, field):
 			return .regex(RegexTerm(box.regex, field: field))
@@ -354,11 +354,13 @@ enum SearchText {
 		.creditorID: [5], .comment: [6], .remoteAccount: [7], .localAccount: [8, 9]]
 
 	static func of(_ t: Transaction, account: Account?, categoryName: String?) -> String {
-		let accountNumbers = [t.counterpartyIBAN, account?.iban, account?.accountNumber].map { $0.map(TextFolding.accountKey) ?? "" }
-		let parts = [t.name, t.purpose, t.bookingText ?? "", t.endToEndReference ?? "", t.mandateReference ?? "", t.creditorID ?? "", t.comment ?? ""]
-			+ accountNumbers + [t.counterpartyBIC ?? "", account?.name ?? "", categoryName ?? ""]
-			+ Ledger.amountTexts(t.amountMinor, decimals: t.amount.decimalPlaces)
-		return joined(parts)
+		// Separate lets with their types, because the compiler of CI gave up on one expression for all parts.
+		let fields: [String] = [t.name, t.purpose, t.bookingText ?? "", t.endToEndReference ?? "", t.mandateReference ?? "", t.creditorID ?? "", t.comment ?? ""]
+		let numbers: [String?] = [t.counterpartyIBAN, account?.iban, account?.accountNumber]
+		let accountNumbers: [String] = numbers.map { (number: String?) -> String in number.map(TextFolding.accountKey) ?? "" }
+		let names: [String] = [t.counterpartyBIC ?? "", account?.name ?? "", categoryName ?? ""]
+		let amounts: [String] = Ledger.amountTexts(t.amountMinor, decimals: t.amount.decimalPlaces)
+		return joined(fields + accountNumbers + names + amounts)
 	}
 
 	private static func joined(_ parts: [String]) -> String {
@@ -372,7 +374,7 @@ enum SearchText {
 			hasRuns = scan(folded).hasRuns
 		}
 		// Most rows have single spaces only, and splitting every row doubled the time to build the ledger.
-		return hasRuns ? folded.split(whereSeparator: \.isWhitespace).joined(separator: " ") : folded
+		return hasRuns ? folded.split(whereSeparator: { (c: Character) in c.isWhitespace }).joined(separator: " ") : folded
 	}
 
 	/// The number of U+0001 in the text, and whether it has white space other than single spaces. The lead bytes

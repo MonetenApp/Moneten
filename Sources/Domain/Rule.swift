@@ -195,7 +195,7 @@ extension RuleToken {
 		var parser = RuleParser(text)
 		parser.lenient = true
 		try? parser.tokenize()
-		return parser.tokens.map(\.token)
+		return parser.tokens.map { $0.token }
 	}
 }
 
