@@ -268,7 +268,7 @@ final class AppModel {
 	@ObservationIgnored var selectedPositions = 0
 
 	/// How far `apply(rule:of:mode:)` has come, or nil when no rule is applied.
-	private(set) var ruleProgress: RuleProgress?
+	private(set) var ruleProgress: (done: Int, total: Int)?
 
 	/// A message for an alert.
 	var alert: AlertMessage? {
@@ -1080,13 +1080,14 @@ final class AppModel {
 
 	func apply(rule: Rule, of category: Domain.Category, mode: RuleApplication) async {
 		let ledger = self.ledger
-		ruleProgress = RuleProgress(done: 0, total: ledger.transactions.count)
-		let (reports, reporter) = AsyncStream.makeStream(of: RuleProgress.self, bufferingPolicy: .bufferingNewest(1))
+		let total = ledger.transactions.count
+		ruleProgress = (0, total)
+		let (reports, reporter) = AsyncStream.makeStream(of: Int.self, bufferingPolicy: .bufferingNewest(1))
 		let run = Task.detached(priority: .userInitiated) {
 			defer { reporter.finish() }
 			return RuleApplier.apply(category: category, rule: rule, to: ledger.transactions, ledger: ledger, mode: mode) { reporter.yield($0) }
 		}
-		for await report in reports { ruleProgress = report }
+		for await done in reports { ruleProgress = (done, total) }
 		let changed = await run.value
 		await replacingTable { commit(changed) }
 		ruleProgress = nil
