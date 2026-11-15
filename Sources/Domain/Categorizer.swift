@@ -17,8 +17,7 @@ public struct Categorizer: Sendable {
 	public init(ledger: Ledger) {
 		accountsByID = Dictionary(uniqueKeysWithValues: ledger.accounts.map { ($0.id, $0) })
 		entries = ledger.categoriesInSidebarOrder.compactMap { c in
-			guard !c.isDefault, !c.rule.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-				let rule = try? Rule(parsing: c.rule) else { return nil }
+			guard let rule = try? c.savedRule() else { return nil }
 			return Entry(categoryID: c.id, rule: rule, accounts: ledger.allowedAccounts(of: c))
 		}
 	}
@@ -104,12 +103,18 @@ public enum RuleApplier {
 }
 
 extension Category {
+	/// The rule that `Categorizer` applies, or nil when the category has none.
+	/// `ruleError` reads the same result, so a category that the categorizer leaves out always shows the mark.
+	func savedRule() throws(RuleSyntaxError) -> Rule? {
+		guard !isDefault, !rule.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+		return try Rule(parsing: rule)
+	}
+
 	/// The error of a saved rule that the app cannot parse, such as one that an older version accepted.
 	/// `Categorizer` leaves such a category out, so it gets no new transactions until the user fixes the rule.
 	public var ruleError: RuleSyntaxError? {
-		guard !isDefault, !isGroup, !rule.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
 		do {
-			_ = try Rule(parsing: rule)
+			_ = try savedRule()
 			return nil
 		} catch {
 			return error
