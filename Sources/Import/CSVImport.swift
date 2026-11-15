@@ -225,11 +225,12 @@ public struct CSVFile: Sendable {
 		for i in rows.indices {
 			try Task.checkCancellation()
 			let cells = rows[i].cells
-			let dated = dateColumn.map { cell(cells, $0).map(isDateCandidate) == true }
+			let dated = dateColumn.map { cell(cells, $0)?.contains(where: \.isNumber) == true }
 				?? cells.contains { isDateShaped($0) || (isDateCandidate($0) && !isAmountShaped($0)) }
 			if dated {
 				if firstDate == nil { firstDate = i }
-				if cells.contains(where: isAmountShaped) || amountColumns.contains(where: cells.indices.contains) {
+				if dateColumn == nil || cell(cells, dateColumn).map(isDateCandidate) == true,
+					cells.contains(where: isAmountShaped) || amountColumns.contains(where: cells.indices.contains) {
 					return (nil, title, firstDate!)
 				}
 				continue
