@@ -216,11 +216,8 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored: [Tran
 			}
 		case nil where isFuture.contains(j):
 			// The bank's version stands for the file row: it took the file row over, or a stored row holds it already.
-			// A file row that only a taken bank row fits is the same payment, because the bank reported one.
 			if let i = takenBy[j] {
 				if partners[i] != nil { r.dropped.append(pending.id) }
-			} else if case let match = PendingMatch(pending), bankVersions.contains(where: { fits($0, j, match) }) {
-				r.dropped.append(pending.id)
 			}
 		case nil:
 			if delivery.covers(pending.bookingDate), !pending.needsReview || pending.isChecked { r.dropped.append(pending.id) }
