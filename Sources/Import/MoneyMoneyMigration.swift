@@ -79,10 +79,8 @@ public struct MoneyMoneyMigration: Sendable {
 		mapCategories(rawCategories, ledger: ledger, plan: &plan, map: &categoryMap)
 
 		var rows: [Transaction] = []
-		var counts: [UUID: Int] = [:]
 		for raw in rawTransactions {
 			guard let accountSource = raw["accountUuid"] as? String, let accountID = accountMap[accountSource] else { continue }
-			counts[accountID, default: 0] += 1
 			let id = (raw["id"] as? Int).map { "\(Transaction.migrationIDPrefix)\($0)" }
 			let currency = (raw["currency"] as? String) ?? "EUR"
 			let amount = Money(Decimal((raw["amount"] as? Double) ?? 0), currency: currency)
@@ -102,7 +100,8 @@ public struct MoneyMoneyMigration: Sendable {
 			rows.append(t)
 		}
 
-		for i in plan.sources.indices { plan.sources[i].transactions = counts[plan.sources[i].accountID] ?? 0 }
+		let byAccount = Dictionary(grouping: rows, by: \.accountID)
+		for i in plan.sources.indices { plan.sources[i].rows = byAccount[plan.sources[i].accountID] ?? [] }
 
 		// `reconcile` decides which rows are new. A new row keeps what MoneyMoney says: its category, comment,
 		// and checkmark, and no new mark. Only the review mark comes from `reconcile`.

@@ -773,6 +773,32 @@ struct MoneyMoneyMigrationTests {
 		#expect(report.rows.map(\.matches) == [false, true, true])
 	}
 
+	@Test("A transaction that a file added to a migrated account counts neither in the number nor in the balance of the report")
+	func reportCountsOnlySourceRows() throws {
+		let p = try plan()
+		let giro = try #require(p.accounts.first { $0.name == "Giro" })
+		let imported = Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 12), amountMinor: -480, name: "Bäckerei Gutbrot")
+		let report = p.report(after: Ledger(groups: p.groups, accounts: p.accounts, categories: p.categories, transactions: p.transactions + [imported]))
+		let row = try #require(report.rows.first)
+		#expect(row.transactions == 3 && row.sourceTransactions == 3)
+		#expect(row.balance == Money(minorUnits: 123_456, currency: "EUR"))
+		#expect(row.matches)
+	}
+
+	@Test("The report of a second run counts the rows of the source in an account of the first run")
+	func reportOfSecondRun() throws {
+		let first = try plan()
+		let giro = try #require(first.accounts.first { $0.name == "Giro" })
+		let imported = Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 12), amountMinor: -480, name: "Bäckerei Gutbrot")
+		let ledger = Ledger(groups: first.groups, accounts: first.accounts, categories: first.categories, transactions: first.transactions + [imported])
+		var rows = transactions["transactions"] as! [[String: Any]]
+		rows.append(["id": 5, "accountUuid": "A1", "bookingDate": date(2026, 11, 10), "amount": -20.0, "currency": "EUR", "name": "Tankstelle", "purpose": "", "booked": true])
+		let second = try secondPlan(into: ledger, balance: 1214.56, rows: rows)
+		let row = try #require(second.report(after: applying(second, to: ledger)).rows.first)
+		#expect(row.name == "Giro" && row.transactions == 4 && row.sourceTransactions == 4)
+		#expect(row.balance == Money(minorUnits: 121_456, currency: "EUR") && row.matches)
+	}
+
 	@Test("The text of the report lists the accounts and the notes")
 	func reportText() throws {
 		let p = try plan()

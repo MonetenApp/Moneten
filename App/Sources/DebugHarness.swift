@@ -357,7 +357,8 @@ final class DebugHarness {
 			case "bar": model.select(bar: .month(Day.today().firstOfMonth))
 			default: model.period = .all
 			}
-		// "<folder>": opens the MoneyMoney migration, which then reads the exports of that folder, such as Fixtures/moneymoney.
+		// "<folder>": opens the MoneyMoney migration, which then reads the exports of that folder, such as the absolute path of
+		// Fixtures/moneymoney. An app started with `open` runs in `/`, so a relative path does not work.
 		case "migrationfixture":
 			MigrationSheet.fixtureFolder = URL(filePath: argument)
 			model.sheet = .migration

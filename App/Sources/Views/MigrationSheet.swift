@@ -1,7 +1,6 @@
 import Domain
 import Import
 import SwiftUI
-import UniformTypeIdentifiers
 
 struct MigrationSheet: View {
 	@Environment(AppModel.self) private var model
@@ -61,7 +60,16 @@ struct MigrationSheet: View {
 					}
 				}
 				Section {
-					ForEach(Array(report.rows.enumerated()), id: \.offset) { _, row in reportRow(row) }
+					// The sheet grows with its rows, so a long list scrolls and the buttons stay on screen.
+					ScrollView {
+						VStack(spacing: 10) {
+							ForEach(Array(report.rows.enumerated()), id: \.offset) { i, row in
+								if i > 0 { Divider() }
+								reportRow(row)
+							}
+						}
+					}
+					.frame(height: min(CGFloat(report.rows.count) * 52, 180))
 				} header: {
 					Text("Accounts compared with MoneyMoney")
 				} footer: {
@@ -69,7 +77,16 @@ struct MigrationSheet: View {
 				}
 				if !report.notes.isEmpty {
 					Section("Notes") {
-						ForEach(report.notes, id: \.self) { Text($0).foregroundStyle(.secondary) }
+						ScrollView {
+							VStack(alignment: .leading, spacing: 10) {
+								ForEach(Array(report.notes.enumerated()), id: \.offset) { i, note in
+									if i > 0 { Divider() }
+									Text(note).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
+								}
+							}
+						}
+						// About 70 characters fit on a line of the sheet.
+						.frame(height: min(report.notes.reduce(0) { $0 + CGFloat($1.count / 70 + 1) * 17 + 21 }, 180))
 					}
 				}
 			case let .failed(message):
@@ -87,7 +104,7 @@ struct MigrationSheet: View {
 		} message: {
 			Text("Anyone who can open the file can read them.")
 		}
-		.fileExporter(isPresented: $savingReport, document: ReportFile(text: reportText), contentType: .plainText,
+		.fileExporter(isPresented: $savingReport, item: reportText, contentTypes: [.plainText],
 			defaultFilename: "MoneyMoney migration \(Day.today()).txt") { result in
 			if case let .failure(error) = result { model.alert = AlertMessage(title: "Could not save the report.", message: error.localizedDescription) }
 		}
@@ -102,7 +119,9 @@ struct MigrationSheet: View {
 	}
 
 	private func reportRow(_ row: MoneyMoneyMigration.Report.Row) -> some View {
-		LabeledContent {
+		HStack(alignment: .firstTextBaseline) {
+			Text(row.name)
+			Spacer(minLength: 12)
 			VStack(alignment: .trailing, spacing: 2) {
 				Text("\(Self.count(row.transactions)), \(Format.money(row.balance))")
 				if row.matches {
@@ -112,8 +131,6 @@ struct MigrationSheet: View {
 						.foregroundStyle(.orange)
 				}
 			}
-		} label: {
-			Text(row.name)
 		}
 	}
 
@@ -214,17 +231,3 @@ struct MigrationSheet: View {
 	}
 }
 
-private struct ReportFile: FileDocument {
-	static let readableContentTypes: [UTType] = [.plainText]
-	var text: String
-
-	init(text: String) { self.text = text }
-
-	init(configuration: ReadConfiguration) throws {
-		text = String(decoding: configuration.file.regularFileContents ?? Data(), as: UTF8.self)
-	}
-
-	func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
-		FileWrapper(regularFileWithContents: Data(text.utf8))
-	}
-}

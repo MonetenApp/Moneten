@@ -5,7 +5,8 @@ extension MoneyMoneyMigration {
 	/// An account of the export with what the source says about it.
 	public struct SourceAccount: Sendable, Equatable {
 		public var accountID: UUID
-		public var transactions = 0
+		/// The transactions of the export for this account.
+		public var rows: [Transaction] = []
 		public var balance: Money?
 	}
 
@@ -13,9 +14,11 @@ extension MoneyMoneyMigration {
 	public struct Report: Sendable, Equatable {
 		public struct Row: Sendable, Equatable {
 			public var name: String
+			/// The transactions of the source that the account holds, recognized as a second run recognizes them.
 			public var transactions: Int
 			public var sourceTransactions: Int
-			/// Without pending transactions, because the source reports its balance without them.
+			/// Without pending transactions, because the source reports its balance without them, and without
+			/// transactions that a file or a bank added.
 			public var balance: Money
 			public var sourceBalance: Money?
 
@@ -32,7 +35,7 @@ extension MoneyMoneyMigration {
 			func amount(_ money: Money) -> String {
 				money.decimal.formatted(Decimal.FormatStyle(locale: locale).precision(.fractionLength(money.decimalPlaces))) + " " + money.currency
 			}
-			func count(_ n: Int) -> String { n == 1 ? "1 transaction" : "\(n) transactions" }
+			func count(_ n: Int) -> String { n == 1 ? "1 transaction" : "\(n.formatted(.number.locale(locale))) transactions" }
 			var lines = ["Report of the migration from MoneyMoney", "", "Accounts"]
 			for row in rows {
 				let source = "MoneyMoney: \(count(row.sourceTransactions))" + (row.sourceBalance.map { ", balance \(amount($0))" } ?? "")
@@ -47,15 +50,19 @@ extension MoneyMoneyMigration {
 }
 
 extension MoneyMoneyMigration.Plan {
-	/// Compares the accounts of `ledger`, the ledger after the import, with the export.
+	/// Compares the accounts of `ledger`, the ledger after the import, with the export. A row that a file or a bank
+	/// added to the account is no row of the source, so it counts neither in the number nor in the balance, by the
+	/// rule of the initial balance.
 	public func report(after ledger: Ledger) -> MoneyMoneyMigration.Report {
+		let rules = Categorizer(ledger: ledger)
 		let rows = sources.compactMap { source -> MoneyMoneyMigration.Report.Row? in
 			guard let account = ledger.account(source.accountID) else { return nil }
-			let transactions = ledger.transactions(ofAccount: account.id)
-			let booked = transactions.reduce(account.initialBalanceMinor) { sum, t in
-				!t.isPending && t.currency == account.currency ? sum + t.amountMinor : sum
+			let stored = ledger.transactions(ofAccount: account.id)
+			let missing = reconcile(.migration(source.rows), into: account, stored: stored, deleted: [], rules: rules, now: Date()).added.count
+			let booked = stored.reduce(account.initialBalanceMinor) { sum, t in
+				!t.isPending && t.currency == account.currency && t.sourceID?.hasPrefix(Transaction.migrationIDPrefix) == true ? sum + t.amountMinor : sum
 			}
-			return .init(name: account.name, transactions: transactions.count, sourceTransactions: source.transactions,
+			return .init(name: account.name, transactions: source.rows.count - missing, sourceTransactions: source.rows.count,
 				balance: account.reportedBalance ?? Money(minorUnits: booked, currency: account.currency), sourceBalance: source.balance)
 		}
 		return .init(rows: rows, notes: notes)
