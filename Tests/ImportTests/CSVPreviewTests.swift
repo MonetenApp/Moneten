@@ -8,15 +8,41 @@ struct CSVPreviewTests {
 	@Test("A note cannot hide an empty, missing, or malformed first amount", arguments: ["", "abc", "missing"], ["Zwischensumme;;0,00", "Zwischensumme;;", "Zwischensumme;;n/a", "Hinweis;Dieser Export ist vorläufig;"])
 	func firstAmountBeforeSubtotal(amount: String, note: String) throws {
 		let first = amount == "missing" ? "01.11.2026;Kiosk" : "01.11.2026;Kiosk;\(amount)"
-		let file = try CSVFile(data: Data("Tag;Wer;Wieviel\n\(first)\n\(note)\n02.11.2026;Bakery;4.50\n".utf8))
-		#expect(file.header == ["Tag", "Wer", "Wieviel"])
+		let headers: [(String, [String])] = [
+			("Tag;Wer;Wieviel", ["Tag", "Wer", "Wieviel"]),
+			("Tag;Wer;Wieviel;", ["Tag", "Wer", "Wieviel", ""]),
+			("Tag;Wer;", ["Tag", "Wer", ""]),
+		]
+		for (header, titles) in headers {
+			let file = try CSVFile(data: Data("\(header)\n\(first)\n\(note)\n02.11.2026;Bakery;4.50\n".utf8))
+			#expect(file.header == titles)
+			var layout = try file.detectedLayout()
+			layout.assign(0, to: .bookingDate)
+			layout.assign(2, to: .amount)
+			let preview = try file.preview(layout, currency: "EUR")
+			if amount != "abc" {
+				#expect(preview.problem == nil)
+				#expect(preview.transactions.map(\.amountMinor) == [0, 450])
+			} else {
+				#expect(preview.problem == .line(2, "The amount cannot be read."))
+				#expect(preview.transactions.isEmpty)
+			}
+		}
+	}
+
+	@Test("An empty value date before a booking date cannot hide the first transaction", arguments: ["", "abc"])
+	func firstRowWithEmptyValueDate(amount: String) throws {
+		let file = try CSVFile(data: Data("Valuta;Tag;Wer;Wieviel\n;01.11.2026;Kiosk;\(amount)\nZwischensumme;;;\n02.11.2026;02.11.2026;Bakery;4.50\n".utf8))
+		#expect(file.header == ["Valuta", "Tag", "Wer", "Wieviel"])
 		var layout = try file.detectedLayout()
-		layout.assign(0, to: .bookingDate)
-		layout.assign(2, to: .amount)
+		layout.assign(0, to: .valueDate)
+		layout.assign(1, to: .bookingDate)
+		layout.assign(3, to: .amount)
 		let preview = try file.preview(layout, currency: "EUR")
-		if amount != "abc" {
+		if amount.isEmpty {
 			#expect(preview.problem == nil)
 			#expect(preview.transactions.map(\.amountMinor) == [0, 450])
+			#expect(preview.transactions.map(\.bookingDate) == [Day(year: 2026, month: 11, day: 1), Day(year: 2026, month: 11, day: 2)])
 		} else {
 			#expect(preview.problem == .line(2, "The amount cannot be read."))
 			#expect(preview.transactions.isEmpty)
