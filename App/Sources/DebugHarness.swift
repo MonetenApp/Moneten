@@ -357,9 +357,15 @@ final class DebugHarness {
 			case "bar": model.select(bar: .month(Day.today().firstOfMonth))
 			default: model.period = .all
 			}
+		// "<path>": writes the complete export to that file without the warning and the save panel.
+		case "exportall":
+			do { try model.writeAllData(to: URL(filePath: argument)); log("exportall done") } catch { log("exportall error=\(error)") }
+		// "<path>": imports that complete export without the open panel.
+		case "importall": Task { log("importall \(await model.readAllData(from: URL(filePath: argument)))") }
 		case "sheet":
 			switch argument {
 			case "migration": model.sheet = .migration
+			case "exportAllData": model.sheet = .exportAllData
 			case "newAccount": model.addAccount()
 			case "setPassword": model.sheet = .setPassword
 			case "changePassword": model.sheet = .changePassword

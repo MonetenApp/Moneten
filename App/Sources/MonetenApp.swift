@@ -79,6 +79,10 @@ struct AppCommands: Commands {
 		CommandGroup(replacing: .newItem) {
 			Button("Import from MoneyMoney...") { model.sheet = .migration }
 				.disabled(!unlocked)
+			Button("Import All Data...") { Task { await model.importAllData() } }
+				.disabled(!unlocked)
+			Button("Export All Data...") { model.sheet = .exportAllData }
+				.disabled(!unlocked)
 			Divider()
 			Button("Refresh All Accounts") { model.refresh(.all) }
 				.keyboardShortcut("r")

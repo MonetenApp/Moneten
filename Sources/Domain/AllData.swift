@@ -1,0 +1,459 @@
+import Foundation
+
+/// Every piece of user data in the database, as the complete export writes it. `json()` gives the documented
+/// file of docs/export-format.md, and `init(json:)` reads it again without loss. Saved PINs, the state of each
+/// access, and everything about extensions stay out.
+public struct AllData: Sendable, Equatable {
+	public static let formatVersion = 1
+
+	public var exportedAt: Date
+	public var groups: [AccountGroup]
+	public var accounts: [Account]
+	public var accesses: [Access]
+	public var categories: [Category]
+	public var transactions: [Transaction]
+	public var deletedTransactions: [DeletedTransaction]
+	public var portfolioValues: [PortfolioValue]
+	public var holdings: [Holding]
+
+	public init(exportedAt: Date = Date(), groups: [AccountGroup] = [], accounts: [Account] = [], accesses: [Access] = [], categories: [Category] = [],
+		transactions: [Transaction] = [], deletedTransactions: [DeletedTransaction] = [], portfolioValues: [PortfolioValue] = [], holdings: [Holding] = []) {
+		self.exportedAt = exportedAt
+		self.groups = groups
+		self.accounts = accounts
+		self.accesses = accesses
+		self.categories = categories
+		self.transactions = transactions
+		self.deletedTransactions = deletedTransactions
+		self.portfolioValues = portfolioValues
+		self.holdings = holdings
+	}
+
+	public enum ReadError: Error, Equatable, CustomStringConvertible {
+		case notAnExport
+		case newerVersion(Int)
+		/// The file cannot be read. The text names the place of the first error.
+		case damaged(String)
+
+		public var description: String {
+			switch self {
+			case .notAnExport: "The file is not a complete export of Moneten."
+			case let .newerVersion(v):
+				"The file has format version \(v), and this version of Moneten reads up to version \(AllData.formatVersion). Install a newer version of Moneten to import it."
+			case let .damaged(place): "The file is damaged or incomplete: \(place)."
+			}
+		}
+	}
+
+	public func json() throws -> Data {
+		let encoder = JSONEncoder()
+		encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+		encoder.dateEncodingStrategy = .custom { date, encoder in
+			var c = encoder.singleValueContainer()
+			try c.encode(Self.time.string(from: date))
+		}
+		return try encoder.encode(File(self))
+	}
+
+	public init(json data: Data) throws(ReadError) {
+		let decoder = JSONDecoder()
+		decoder.dateDecodingStrategy = .custom { decoder in
+			let text = try decoder.singleValueContainer().decode(String.self)
+			guard let date = Self.time.date(from: text) else {
+				throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "\"\(text)\" is not a time in ISO 8601"))
+			}
+			return date
+		}
+		let header: Header
+		do { header = try decoder.decode(Header.self, from: data) } catch { throw Self.readError(error) }
+		guard header.format == File.formatName else { throw .notAnExport }
+		guard header.version <= Self.formatVersion else { throw .newerVersion(header.version) }
+		do { self = try decoder.decode(File.self, from: data).allData() } catch let error as ReadError { throw error } catch { throw Self.readError(error) }
+	}
+
+	/// UTC with milliseconds, the precision of a time in the database.
+	nonisolated(unsafe) private static let time: ISO8601DateFormatter = {
+		let f = ISO8601DateFormatter()
+		f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+		return f
+	}()
+
+	private static func readError(_ error: Error) -> ReadError {
+		switch error as? DecodingError {
+		case let .dataCorrupted(c), let .typeMismatch(_, c), let .valueNotFound(_, c):
+			// The parser says where the text stops being JSON, such as "around line 120, column 7".
+			let detail = (c.underlyingError as NSError?)?.userInfo[NSDebugDescriptionErrorKey] as? String
+			return .damaged(place(c.codingPath, detail.map { "the text is not valid JSON: \($0)" } ?? c.debugDescription))
+		case let .keyNotFound(key, c):
+			return .damaged(place(c.codingPath, "the key \"\(key.stringValue)\" is missing"))
+		default:
+			return .damaged(error.localizedDescription)
+		}
+	}
+
+	private static func place(_ path: [CodingKey], _ what: String) -> String {
+		let keys = path.map { $0.intValue.map { "[\($0)]" } ?? ".\($0.stringValue)" }.joined()
+		return keys.isEmpty ? what : "at \(keys.hasPrefix(".") ? String(keys.dropFirst()) : keys), \(what)"
+	}
+}
+
+private struct Header: Decodable {
+	var format: String
+	var version: Int
+}
+
+/// The file. Each type below is one documented object of docs/export-format.md.
+private struct File: Codable {
+	static let formatName = "moneten-export"
+
+	var format = formatName
+	var version = AllData.formatVersion
+	var exportedAt: Date
+	var accountGroups: [AccountGroup]
+	var accounts: [AccountEntry]
+	var accesses: [AccessEntry]
+	var categories: [Category]
+	var transactions: [TransactionEntry]
+	var deletedTransactions: [DeletedEntry]
+	var portfolioValues: [PortfolioValueEntry]
+	var holdings: [HoldingEntry]
+
+	init(_ d: AllData) {
+		exportedAt = d.exportedAt
+		accountGroups = d.groups
+		accounts = d.accounts.map(AccountEntry.init)
+		accesses = d.accesses.map(AccessEntry.init)
+		categories = d.categories
+		transactions = d.transactions.map(TransactionEntry.init)
+		deletedTransactions = d.deletedTransactions.map(DeletedEntry.init)
+		let currencies = Dictionary(d.accounts.map { ($0.id, $0.currency) }, uniquingKeysWith: { a, _ in a })
+		portfolioValues = d.portfolioValues.map { PortfolioValueEntry($0, currency: currencies[$0.accountID] ?? "") }
+		holdings = d.holdings.map(HoldingEntry.init)
+	}
+
+	func allData() throws -> AllData {
+		AllData(exportedAt: exportedAt, groups: accountGroups, accounts: try each("accounts", accounts) { try $0.account() }, accesses: accesses.map(\.access),
+			categories: categories, transactions: try each("transactions", transactions) { try $0.transaction() },
+			deletedTransactions: try each("deletedTransactions", deletedTransactions) { try $0.deleted() },
+			portfolioValues: try each("portfolioValues", portfolioValues) { try $0.portfolioValue() },
+			holdings: try each("holdings", holdings) { try $0.holding() })
+	}
+
+	/// Converts the entries of one list and names the entry of the first value that cannot be read.
+	private func each<Entry, Value>(_ key: String, _ entries: [Entry], _ convert: (Entry) throws -> Value) throws -> [Value] {
+		try entries.enumerated().map { i, entry in
+			do { return try convert(entry) } catch let AllData.ReadError.damaged(what) { throw AllData.ReadError.damaged("at \(key)[\(i)], \(what)") }
+		}
+	}
+}
+
+/// An amount as decimal text with the decimal places of its currency, such as "-1234.56".
+enum AmountText {
+	static func text(_ minorUnits: Int64, _ currency: String) -> String {
+		let places = Currency.exponent(of: currency)
+		let magnitude = minorUnits.magnitude
+		var scale: UInt64 = 1
+		for _ in 0..<places { scale *= 10 }
+		let whole = "\(minorUnits < 0 ? "-" : "")\(magnitude / scale)"
+		guard places > 0 else { return whole }
+		let fraction = String(magnitude % scale)
+		return whole + "." + String(repeating: "0", count: places - fraction.count) + fraction
+	}
+
+	static func minorUnits(_ text: String, _ currency: String) throws -> Int64 {
+		guard let decimal = Decimal(string: text, locale: Locale(identifier: "en_US_POSIX")), text.allSatisfy({ $0.isNumber || $0 == "." || $0 == "-" }) else {
+			throw AllData.ReadError.damaged("the amount \"\(text)\" is not a decimal number")
+		}
+		return Money(decimal, currency: currency).minorUnits
+	}
+
+	static func decimal(_ text: String) throws -> Decimal {
+		guard let d = Decimal(string: text, locale: Locale(identifier: "en_US_POSIX")) else {
+			throw AllData.ReadError.damaged("\"\(text)\" is not a decimal number")
+		}
+		return d
+	}
+}
+
+private func day(_ text: String) throws -> Day {
+	guard let d = Day(string: text) else { throw AllData.ReadError.damaged("\"\(text)\" is not a day in the form yyyy-MM-dd") }
+	return d
+}
+
+private struct AccountEntry: Codable {
+	var id: UUID
+	var groupID: UUID?
+	var position: Int
+	var name: String
+	var kind: AccountKind
+	var source: AccountSource
+	var currency: String
+	var iban: String?
+	var bic: String?
+	var accountNumber: String?
+	var bankCode: String?
+	var bankName: String?
+	var owner: String?
+	var bankBalance: String?
+	var bankBalanceDate: Date?
+	var initialBalance: String
+	var initialBalanceIsSet: Bool
+	var isClosed: Bool
+	var comment: String?
+	var sourceID: String?
+	var color: String?
+	var accessID: UUID?
+	var remoteID: String?
+	var refreshedAt: Date?
+	var refreshError: RefreshError?
+	var refreshInterval: RefreshInterval
+
+	init(_ a: Account) {
+		id = a.id
+		groupID = a.groupID
+		position = a.position
+		name = a.name
+		kind = a.kind
+		source = a.source
+		currency = a.currency
+		iban = a.iban
+		bic = a.bic
+		accountNumber = a.accountNumber
+		bankCode = a.bankCode
+		bankName = a.bankName
+		owner = a.owner
+		bankBalance = a.bankBalanceMinor.map { AmountText.text($0, a.currency) }
+		bankBalanceDate = a.bankBalanceDate
+		initialBalance = AmountText.text(a.initialBalanceMinor, a.currency)
+		initialBalanceIsSet = a.initialBalanceIsSet
+		isClosed = a.isClosed
+		comment = a.comment
+		sourceID = a.sourceID
+		color = a.color
+		accessID = a.accessID
+		remoteID = a.remoteID
+		refreshedAt = a.refreshedAt
+		refreshError = a.refreshError
+		refreshInterval = a.refreshInterval
+	}
+
+	func account() throws -> Account {
+		Account(id: id, groupID: groupID, position: position, name: name, kind: kind, source: source, currency: currency, iban: iban, bic: bic,
+			accountNumber: accountNumber, bankCode: bankCode, bankName: bankName, owner: owner,
+			bankBalanceMinor: try bankBalance.map { try AmountText.minorUnits($0, currency) }, bankBalanceDate: bankBalanceDate,
+			initialBalanceMinor: try AmountText.minorUnits(initialBalance, currency), initialBalanceIsSet: initialBalanceIsSet, isClosed: isClosed,
+			comment: comment, sourceID: sourceID, color: color, accessID: accessID, remoteID: remoteID, refreshedAt: refreshedAt,
+			refreshError: refreshError, refreshInterval: refreshInterval)
+	}
+}
+
+private struct AccessEntry: Codable {
+	var id: UUID
+	var connector: AccessSource
+	var bankName: String
+	var userID: String
+
+	init(_ a: Access) {
+		id = a.id
+		connector = a.source
+		bankName = a.bankName
+		userID = a.loginName
+	}
+
+	var access: Access { Access(id: id, source: connector, bankName: bankName, loginName: userID) }
+}
+
+private struct TransactionEntry: Codable {
+	var id: UUID
+	var accountID: UUID
+	var bookingDate: String
+	var valueDate: String?
+	var amount: String
+	var currency: String
+	var name: String
+	var purpose: String
+	var counterpartyIBAN: String?
+	var counterpartyBIC: String?
+	var bookingText: String?
+	var endToEndReference: String?
+	var mandateReference: String?
+	var creditorID: String?
+	var comment: String?
+	var isChecked: Bool
+	var isPending: Bool
+	var categoryID: UUID?
+	var categorizedBy: Categorization
+	var isNew: Bool
+	var needsReview: Bool
+	var isFetched: Bool
+	var sourceID: String?
+	var createdAt: Date
+
+	init(_ t: Transaction) {
+		id = t.id
+		accountID = t.accountID
+		bookingDate = t.bookingDate.description
+		valueDate = t.valueDate?.description
+		amount = AmountText.text(t.amountMinor, t.currency)
+		currency = t.currency
+		name = t.name
+		purpose = t.purpose
+		counterpartyIBAN = t.counterpartyIBAN
+		counterpartyBIC = t.counterpartyBIC
+		bookingText = t.bookingText
+		endToEndReference = t.endToEndReference
+		mandateReference = t.mandateReference
+		creditorID = t.creditorID
+		comment = t.comment
+		isChecked = t.isChecked
+		isPending = t.isPending
+		categoryID = t.categoryID
+		categorizedBy = t.categorizedBy
+		isNew = t.isNew
+		needsReview = t.needsReview
+		isFetched = t.isFetched
+		sourceID = t.sourceID
+		createdAt = t.createdAt
+	}
+
+	func transaction() throws -> Transaction {
+		Transaction(id: id, accountID: accountID, bookingDate: try day(bookingDate), valueDate: try valueDate.map(day),
+			amountMinor: try AmountText.minorUnits(amount, currency), currency: currency, name: name, purpose: purpose,
+			counterpartyIBAN: counterpartyIBAN, counterpartyBIC: counterpartyBIC, bookingText: bookingText, endToEndReference: endToEndReference,
+			mandateReference: mandateReference, creditorID: creditorID, comment: comment, isChecked: isChecked, isPending: isPending,
+			categoryID: categoryID, categorizedBy: categorizedBy, isNew: isNew, needsReview: needsReview, isFetched: isFetched, sourceID: sourceID,
+			createdAt: createdAt)
+	}
+}
+
+private struct DeletedEntry: Codable {
+	var accountID: UUID
+	var sourceID: String?
+	var bookingDate: String
+	var amount: String
+	var currency: String
+	var isPending: Bool
+	var purpose: String
+	var counterpartyIBAN: String?
+	var endToEndReference: String?
+	var wasFetched: Bool
+	var deletedAt: Date
+
+	init(_ d: DeletedTransaction) {
+		accountID = d.accountID
+		sourceID = d.sourceID
+		bookingDate = d.bookingDate.description
+		amount = AmountText.text(d.amountMinor, d.currency)
+		currency = d.currency
+		isPending = d.isPending
+		purpose = d.purpose
+		counterpartyIBAN = d.counterpartyIBAN
+		endToEndReference = d.endToEndReference
+		wasFetched = d.wasFetched
+		deletedAt = d.deletedAt
+	}
+
+	func deleted() throws -> DeletedTransaction {
+		let row = Transaction(accountID: accountID, bookingDate: try day(bookingDate), amountMinor: try AmountText.minorUnits(amount, currency),
+			currency: currency, name: "", purpose: purpose, counterpartyIBAN: counterpartyIBAN, endToEndReference: endToEndReference, isPending: isPending,
+			isFetched: wasFetched, sourceID: sourceID)
+		return DeletedTransaction(row, deletedAt: deletedAt)
+	}
+}
+
+private struct PortfolioValueEntry: Codable {
+	var accountID: UUID
+	var day: String
+	var value: String
+	var currency: String
+
+	init(_ v: PortfolioValue, currency: String) {
+		accountID = v.accountID
+		day = v.day.description
+		value = AmountText.text(v.minorUnits, currency)
+		self.currency = currency
+	}
+
+	func portfolioValue() throws -> PortfolioValue {
+		PortfolioValue(accountID: accountID, day: try Domain.day(day), minorUnits: try AmountText.minorUnits(value, currency))
+	}
+}
+
+private struct AmountEntry: Codable {
+	var amount: String
+	var currency: String
+
+	init(_ m: Money) {
+		amount = AmountText.text(m.minorUnits, m.currency)
+		currency = m.currency
+	}
+
+	func money() throws -> Money { Money(minorUnits: try AmountText.minorUnits(amount, currency), currency: currency) }
+}
+
+private struct QuoteEntry: Codable {
+	var amount: String
+	var currency: String?
+	var day: String?
+
+	init(_ q: Quote) {
+		amount = q.amount.description
+		currency = q.currency
+		day = q.day?.description
+	}
+
+	func quote() throws -> Quote { Quote(amount: try AmountText.decimal(amount), currency: currency, day: try day.map(Domain.day)) }
+}
+
+private struct RateEntry: Codable {
+	var base: String
+	var quoted: String
+	var rate: String
+
+	init(_ r: ExchangeRate) {
+		base = r.base
+		quoted = r.quoted
+		rate = r.rate.description
+	}
+
+	func exchangeRate() throws -> ExchangeRate { ExchangeRate(base: base, quoted: quoted, rate: try AmountText.decimal(rate)) }
+}
+
+private struct HoldingEntry: Codable {
+	var id: UUID
+	var accountID: UUID
+	var name: String
+	var isin: String?
+	var securityNumber: String?
+	var quantity: String
+	var isNominal: Bool
+	var nominalCurrency: String?
+	var price: QuoteEntry?
+	var marketValue: AmountEntry?
+	var accruedInterest: AmountEntry?
+	var purchasePrice: QuoteEntry?
+	var exchangeRate: RateEntry?
+
+	init(_ h: Holding) {
+		id = h.id
+		accountID = h.accountID
+		name = h.security.name
+		isin = h.security.isin
+		securityNumber = h.security.securityNumber
+		quantity = h.quantity.description
+		isNominal = h.isNominal
+		nominalCurrency = h.nominalCurrency
+		price = h.quote.map(QuoteEntry.init)
+		marketValue = h.marketValue.map(AmountEntry.init)
+		accruedInterest = h.accruedInterest.map(AmountEntry.init)
+		purchasePrice = h.purchasePrice.map(QuoteEntry.init)
+		exchangeRate = h.exchangeRate.map(RateEntry.init)
+	}
+
+	func holding() throws -> Holding {
+		Holding(id: id, accountID: accountID, security: Security(name: name, isin: isin, securityNumber: securityNumber),
+			quantity: try AmountText.decimal(quantity), isNominal: isNominal, nominalCurrency: nominalCurrency, quote: try price?.quote(),
+			marketValue: try marketValue?.money(), accruedInterest: try accruedInterest?.money(), purchasePrice: try purchasePrice?.quote(),
+			exchangeRate: try exchangeRate?.exchangeRate())
+	}
+}

@@ -1107,6 +1107,13 @@ final class AppModel {
 		try store.save(groups: plan.groups, accounts: plan.accounts + plan.updatedAccounts, categories: plan.categories + plan.updatedCategories,
 			transactions: plan.transactions + plan.updatedTransactions, relinking: plan.relinkedDeletedRows)
 		for c in starters { try? store.deleteCategory(c.id) }
+		try await reloadAfterImport()
+	}
+
+	/// Loads the ledger again after a migration or a complete import replaced the table, and selects the first group
+	/// when the selection is gone.
+	func reloadAfterImport() async throws {
+		guard let store else { return }
 		try await replacingTable {
 			let loaded = try store.loadLedger()
 			ledgerChange = "load"
@@ -1131,7 +1138,7 @@ final class AppModel {
 	}
 
 	/// The starter categories that a migration replaces, once the database holds no transactions.
-	private var replaceableStarterCategories: [Domain.Category] {
+	var replaceableStarterCategories: [Domain.Category] {
 		ledger.transactions.isEmpty ? StarterCategories.unchangedRoots(in: ledger, language: starterLanguage) : []
 	}
 
@@ -1316,6 +1323,7 @@ enum SheetKind: Identifiable, Equatable {
 	case transaction(UUID?)
 	case comment(Set<UUID>)
 	case migration
+	case exportAllData
 	case setPassword
 	case changePassword
 
