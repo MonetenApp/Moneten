@@ -159,10 +159,24 @@ public struct RefreshResult: Sendable {
 	/// extension today, so the stored positions stay.
 	public let holdings: [Holding]?
 
+	/// The bank sent the balance without a transaction list, because it provides none for the account. A
+	/// portfolio has positions in place of transactions, and a failed request is an error of its own.
+	public func providesNoTransactions(for kind: AccountKind) -> Bool {
+		transactions == nil && transactionFailure == nil && !isPortfolio && kind != .portfolio
+	}
+
 	/// After a fetch of the full history, the day of the oldest transaction: the bank keeps none before it.
 	public var historyStart: Day? {
 		guard isComplete else { return nil }
 		return transactions?.rows.map(\.bookingDate).min()
+	}
+
+	/// What the account view says about the history at the bank after this refresh, given what it said
+	/// before. A refresh that is neither balance-only nor a full history keeps the start of the history.
+	public func bankHistory(after previous: BankHistory?, of kind: AccountKind) -> BankHistory? {
+		if providesNoTransactions(for: kind) { return .noTransactions }
+		if let historyStart { return .startsAt(historyStart) }
+		return previous == .noTransactions ? nil : previous
 	}
 
 	public init(balance: Money?, balanceDate: Date? = nil, transactions: FetchedTransactions?, isComplete: Bool = false,
@@ -175,6 +189,14 @@ public struct RefreshResult: Sendable {
 		self.isPortfolio = isPortfolio
 		self.holdings = holdings
 	}
+}
+
+/// What the bank keeps of the history of an account, as the last refreshes while the app runs showed.
+public enum BankHistory: Equatable, Sendable {
+	/// "The bank provides no transactions for this account."
+	case noTransactions
+	/// "The bank provides no transactions before" this day.
+	case startsAt(Day)
 }
 
 /// The transactions of one account as the bank answered, and the days that the answer covers.

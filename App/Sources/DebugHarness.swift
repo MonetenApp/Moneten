@@ -135,7 +135,7 @@ final class DebugHarness {
 		case "status":
 			// Each account by its position and kind, never by its name, IBAN, or account number.
 			for (position, a) in model.ledger.accounts.filter({ $0.accessID != nil }).enumerated() {
-				log("status #\(position) \(a.kind) refreshing=\(model.sync.refreshingAccounts.contains(a.id)) refreshedAt=\(a.refreshedAt.map { "\($0)" } ?? "-") error=\(Self.label(a.refreshError)) waitsForUser=\(a.refreshError?.waitsForUser ?? false) interval=\(a.refreshInterval.rawValue) balance=\(a.bankBalanceMinor.map(String.init) ?? "-") rows=\(model.ledger.transactions(ofAccount: a.id).count) new=\(model.ledger.newTransactionCounts[a.id] ?? 0) historyStart=\(model.historyStarts[a.id].map { "\($0)" } ?? "-")")
+				log("status #\(position) \(a.kind) refreshing=\(model.sync.refreshingAccounts.contains(a.id)) refreshedAt=\(a.refreshedAt.map { "\($0)" } ?? "-") error=\(Self.label(a.refreshError)) waitsForUser=\(a.refreshError?.waitsForUser ?? false) interval=\(a.refreshInterval.rawValue) balance=\(a.bankBalanceMinor.map(String.init) ?? "-") rows=\(model.ledger.transactions(ofAccount: a.id).count) new=\(model.ledger.newTransactionCounts[a.id] ?? 0) historyStart=\(model.bankHistories[a.id].flatMap { if case let .startsAt(day) = $0 { "\(day)" } else { nil } } ?? "-") noTransactions=\(model.bankHistories[a.id] == .noTransactions)")
 			}
 			log("status line=\(model.refreshStatus ?? "-") accesses=\(model.accesses.count) bankNotices=\(model.bankNotices.waiting.count)")
 		// "closemain" closes the main window as its close button does; both log the scenes of the visible windows.

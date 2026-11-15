@@ -189,9 +189,9 @@ final class AppModel {
 	var bankNotices = BankNotices()
 	/// Opens the window "Notice", or brings it forward. The main window sets it, as `openMainWindow`.
 	@ObservationIgnored var openNoticeWindow: () -> Void = {}
-	/// The first day of the history that the bank keeps, for each account whose full history a refresh
-	/// fetched while the app runs ("Say when the bank has no older transactions").
-	var historyStarts: [UUID: Day] = [:]
+	/// What the account view says about the history at the bank, by account, from the refreshes while the
+	/// app runs ("Say when the bank has no older transactions", "Use only what the bank allows").
+	var bankHistories: [UUID: BankHistory] = [:]
 
 	var selection: SidebarSelection? {
 		didSet {
@@ -295,7 +295,9 @@ final class AppModel {
 		sync.deliver = { [weak self] accountID, result in
 			guard let self else { return }
 			self.announcer.stored(try await self.mergeRefresh(result, into: accountID).added)
-			if let start = result.historyStart { self.historyStarts[accountID] = start }
+			if let kind = self.ledger.account(accountID)?.kind {
+				self.bankHistories[accountID] = result.bankHistory(after: self.bankHistories[accountID], of: kind)
+			}
 		}
 		sync.ended = { [weak self] access, state, accounts, attended in
 			let failed = accounts.values.filter { if case .failed = $0 { true } else { false } }.count
@@ -447,7 +449,7 @@ final class AppModel {
 		store = nil
 		accesses = [:]
 		bankNotices = BankNotices()
-		historyStarts = [:]
+		bankHistories = [:]
 		sheet = nil
 		phase = .locked
 		// The lock removes the transaction table in this drawing and empties its rows after it, so that the
