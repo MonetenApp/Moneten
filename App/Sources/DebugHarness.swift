@@ -393,9 +393,22 @@ final class DebugHarness {
 		#endif
 		// "<path>": writes the complete export to that file without the warning and the save panel.
 		case "exportall":
-			Task { do { try await model.writeAllData(to: URL(filePath: argument)); log("exportall done") } catch { log("exportall error=set") } }
+			Task {
+				await model.saveAllData(to: URL(filePath: argument))
+				log("exportall \(model.alert?.title == "All data has been exported." ? "done" : "error=set")")
+			}
 		// "<path>": imports that complete export without the open panel. The reason of a refusal can quote the file.
 		case "importall": Task { log("importall \(await model.readAllData(from: URL(filePath: argument)) == "done" ? "done" : "refused")") }
+		case "exportcsv":
+			model.export(model.rowsToExport, to: URL(filePath: argument))
+			log("exportcsv rows=\(model.rowsToExport.count)")
+		case "exportcontextcsv":
+			guard let account = model.selectedAccount else { return }
+			let rows = model.rowsToExport(of: .account(account.id))
+			model.export(rows, to: URL(filePath: argument))
+			log("exportcontextcsv rows=\(rows.count)")
+		case "exportstatus": log("exportstatus running=\(model.exportTask != nil) sheet=\(model.sheet?.trailName ?? "none")")
+		case "cancelexport": model.cancelExport()
 		case "sheet":
 			switch argument {
 			case "migration":

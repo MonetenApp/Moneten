@@ -354,16 +354,80 @@ struct AllDataTests {
 	func unreadableHolding() throws {
 		let store = try filledStore()
 		try store.write { db in try db.execute(sql: "UPDATE holding SET quantity = 'broken'") }
-		#expect(throws: AllData.ReadError.damaged("at holdings[0], the stored holding cannot be read")) {
+		#expect(throws: AllData.ReadError.unreadableDatabase("at holdings[0], the stored holding cannot be read")) {
 			try store.exportAllData(at: exportedAt)
 		}
 		let file = root.appending(path: "export.json")
 		try Data("keep".utf8).write(to: file)
-		#expect(throws: AllData.ReadError.damaged("at holdings[0], the stored holding cannot be read")) {
+		#expect(throws: AllData.ReadError.unreadableDatabase("at holdings[0], the stored holding cannot be read")) {
 			try store.exportAllData(to: file)
 		}
 		#expect(try String(contentsOf: file, encoding: .utf8) == "keep")
 		#expect(try FileManager.default.contentsOfDirectory(atPath: root.path).sorted() == ["export.json", "source"])
+	}
+
+	@Test("The export error describes an unreadable database, with its position")
+	func exportErrorDescription() throws {
+		let store = try filledStore()
+		try store.write { db in try db.execute(sql: "UPDATE holding SET quantity = 'broken'") }
+		let error = try #require(throws: AllData.ReadError.self) { try store.exportAllData() }
+		#expect(error.description == "The database contains unreadable data: at holdings[0], the stored holding cannot be read.")
+	}
+
+	@Test("Decimal values that would be rounded are refused without changing the database")
+	func decimalPrecision() throws {
+		let original = try JSONSerialization.jsonObject(with: try filledStore().exportAllData().json()) as! [String: Any]
+		let target = try emptyStore("precision")
+		for path in [["quantity"], ["price", "amount"], ["purchasePrice", "amount"], ["exchangeRate", "rate"]] {
+			var json = original
+			var rows = json["holdings"] as! [[String: Any]]
+			if path.count == 1 {
+				rows[0][path[0]] = "1.123456789012345678901234567890123456789"
+			} else {
+				var value = rows[0][path[0]] as! [String: Any]
+				value[path[1]] = "1.123456789012345678901234567890123456789"
+				rows[0][path[0]] = value
+			}
+			json["holdings"] = rows
+			#expect(throws: AllData.ReadError.damaged("at holdings[0], the decimal number cannot be represented without rounding")) {
+				try target.importAllData(try AllData(json: JSONSerialization.data(withJSONObject: json)))
+			}
+		}
+		#expect(try target.exportAllData(at: exportedAt) == AllData(exportedAt: exportedAt))
+		var boundary = original
+		var rows = boundary["holdings"] as! [[String: Any]]
+		rows[0]["quantity"] = "-1.1234567890123456789012345678901234567"
+		boundary["holdings"] = rows
+		let accepted = try AllData(json: JSONSerialization.data(withJSONObject: boundary))
+		#expect(accepted.holdings[0].quantity.description == "-1.1234567890123456789012345678901234567")
+	}
+
+	@Test("Every exactly represented decimal survives its own export", arguments: [
+		"0.12345678901234567890123456789012345678",
+		"0.000000000000000000000000000000000000001",
+		"100000000000000000000000000000000000000",
+		"123456789012345678901234567890123456789",
+		"340282366920938463463374607431768211455"
+	])
+	func exactDecimalRoundTrip(_ text: String) throws {
+		let account = Account(position: 0, name: "Test", kind: .portfolio, source: .offline)
+		let quantity = try #require(Decimal(string: text, locale: Locale(identifier: "en_US_POSIX")))
+		#expect(quantity.description == text)
+		let data = AllData(accounts: [account], holdings: [Holding(accountID: account.id, security: Security(name: "Test"), quantity: quantity)])
+		let imported = try AllData(json: data.json())
+		#expect(imported.holdings[0].quantity.description == text)
+	}
+
+	@Test("Insignificant zeros and negative zero do not change decimal values", arguments: [
+		("0001.2300", "1.23"), ("-0001.2300", "-1.23"), ("-000.000", "0"), ("000", "0")
+	])
+	func paddedDecimals(_ text: String, _ expected: String) throws {
+		var json = try JSONSerialization.jsonObject(with: try filledStore().exportAllData().json()) as! [String: Any]
+		var rows = json["holdings"] as! [[String: Any]]
+		rows[0]["quantity"] = text
+		json["holdings"] = rows
+		let imported = try AllData(json: JSONSerialization.data(withJSONObject: json))
+		#expect(imported.holdings[0].quantity.description == expected)
 	}
 
 	@Test("A complete export accepts a valid 235-byte destination name")

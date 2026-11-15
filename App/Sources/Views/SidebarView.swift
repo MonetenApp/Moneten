@@ -146,6 +146,9 @@ struct GroupRow: View {
 				}
 				.disabled(!model.canRefresh(.group(group.id)))
 			Divider()
+			Button("Export Transactions...") { model.exportTransactions(of: .group(group.id)) }
+				.disabled(model.isTransferringTransactions)
+			Divider()
 			Button("Add Account...") { model.addAccount(group: group.id) }
 			Button("Add Account Group") { model.sheet = .newGroup }
 			Divider()
@@ -211,6 +214,9 @@ struct AccountRow: View {
 				model.navigate(to: .account(account.id))
 				Task { await model.importFile(into: account.id) }
 			}
+			.disabled(model.isTransferringTransactions)
+			Button("Export Transactions...") { model.exportTransactions(of: .account(account.id)) }
+				.disabled(model.isTransferringTransactions)
 			Divider()
 			Menu("Move to Group") {
 				Button("No group") { model.move(account: account.id, toGroup: nil) }
@@ -279,6 +285,9 @@ struct CategoryRow: View {
 		.contextMenu {
 			Button("Add Category") { model.sheet = .newCategory(isGroup: false) }
 			Button("Add Category Group") { model.sheet = .newCategory(isGroup: true) }
+			Divider()
+			Button("Export Transactions...") { model.exportTransactions(of: .category(category.id)) }
+				.disabled(model.isTransferringTransactions)
 			if !category.isDefault {
 				Divider()
 				Menu("Move to Group") {

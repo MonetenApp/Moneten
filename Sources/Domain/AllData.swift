@@ -34,6 +34,7 @@ public struct AllData: Sendable, Equatable {
 		case newerVersion(Int)
 		/// The file cannot be read. The text names the place of the first error.
 		case damaged(String)
+		case unreadableDatabase(String)
 
 		public var description: String {
 			switch self {
@@ -41,6 +42,7 @@ public struct AllData: Sendable, Equatable {
 			case let .newerVersion(v):
 				"The file has format version \(v), and this version of Moneten reads up to version \(AllData.formatVersion). Install a newer version of Moneten to import it."
 			case let .damaged(place): "The file is damaged or incomplete: \(place)."
+			case let .unreadableDatabase(place): "The database contains unreadable data: \(place)."
 			}
 		}
 	}
@@ -224,6 +226,15 @@ enum AmountText {
 	static func decimal(_ text: String) throws -> Decimal {
 		guard text.wholeMatch(of: /-?[0-9]+(\.[0-9]+)?/) != nil, let d = Decimal(string: text, locale: Locale(identifier: "en_US_POSIX")) else {
 			throw AllData.ReadError.damaged("\"\(text)\" is not a decimal number")
+		}
+		let unsigned = text.hasPrefix("-") ? text.dropFirst() : text[...]
+		let parts = unsigned.split(separator: ".")
+		let whole = parts[0].drop(while: { $0 == "0" })
+		let fraction = parts.count > 1 ? String(parts[1].reversed().drop(while: { $0 == "0" }).reversed()) : ""
+		let magnitude = (whole.isEmpty ? "0" : String(whole)) + (fraction.isEmpty ? "" : "." + fraction)
+		let canonical = (text.hasPrefix("-") && magnitude != "0" ? "-" : "") + magnitude
+		guard d.description == canonical else {
+			throw AllData.ReadError.damaged("the decimal number cannot be represented without rounding")
 		}
 		return d
 	}

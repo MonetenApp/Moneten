@@ -1,3 +1,4 @@
+import Darwin
 import Domain
 import Foundation
 import GRDB
@@ -24,24 +25,36 @@ extension Store {
 				deletedTransactions: try DeletedTransaction.order(Column.rowID).fetchAll(db),
 				portfolioValues: try PortfolioValue.order(Column.rowID).fetchAll(db),
 				holdings: try HoldingRecord.order(Column.rowID).fetchAll(db).enumerated().map { index, record in
-					guard let holding = record.holding else { throw AllData.ReadError.damaged("at holdings[\(index)], the stored holding cannot be read") }
+					guard let holding = record.holding else { throw AllData.ReadError.unreadableDatabase("at holdings[\(index)], the stored holding cannot be read") }
 					return holding
 				})
 		}
 	}
 
 	public func exportAllData(to url: URL) throws {
-		let data = try exportAllData().json()
+		try Self.writeExport(try exportAllData().json(), to: url)
+	}
+
+	public static func writeExport(_ data: Data, to url: URL) throws {
+		try Task.checkCancellation()
 		let temporary = url.deletingLastPathComponent().appending(path: ".moneten-export-\(UUID().uuidString)")
 		let descriptor = open(temporary.path, O_WRONLY | O_CREAT | O_EXCL, 0o600)
 		guard descriptor >= 0 else { throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno), userInfo: [NSFilePathErrorKey: temporary.path]) }
 		defer { unlink(temporary.path) }
 		let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
 		try handle.write(contentsOf: data)
+		guard fcntl(descriptor, F_FULLFSYNC) == 0 || fsync(descriptor) == 0 else {
+			throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno), userInfo: [NSFilePathErrorKey: temporary.path])
+		}
 		try handle.close()
+		let directory = open(url.deletingLastPathComponent().path, O_EVTONLY | O_DIRECTORY)
+		defer { if directory >= 0 { Darwin.close(directory) } }
+		try Task.checkCancellation()
 		guard rename(temporary.path, url.path) == 0 else {
 			throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno), userInfo: [NSFilePathErrorKey: url.path])
 		}
+		// Some destinations allow writing but cannot be opened or synced as directories.
+		if directory >= 0 { _ = fsync(directory) }
 	}
 
 	/// Writes a complete export into this database in one transaction. The database must hold no account and no

@@ -168,6 +168,8 @@ final class AppModel {
 	}
 	/// The kind of the next change of `ledger`, for the trail.
 	@ObservationIgnored var ledgerChange = "edit"
+	var exportTask: Task<Void, Never>?
+	var isTransferringTransactions: Bool { fileImport != nil || exportTask != nil }
 	@ObservationIgnored private var trailRows = 0
 	/// "Automatically refresh accounts" and the notification settings of the "General" tab.
 	let refreshSettings = RefreshSettings(defaults: .standard)
@@ -279,7 +281,7 @@ final class AppModel {
 		didSet { if (alert == nil) != (oldValue == nil) { Trail.log(alert == nil ? "alert closed" : "alert shown") } }
 	}
 	/// The file import that runs. There is one at a time, and a lock cancels it.
-	@ObservationIgnored var fileImport: FileImport?
+	var fileImport: FileImport?
 	var sheet: SheetKind? {
 		didSet { if sheet != oldValue { Trail.log("sheet \(sheet?.trailName ?? "none")") } }
 	}
@@ -447,6 +449,7 @@ final class AppModel {
 		// The announcer locks first, because the cancel below can end the run at once.
 		announcer.lock(keeping: ledger)
 		fileImport?.cancel()
+		exportTask?.cancel()
 		autoRefresh.isUnlocked = false
 		notices.clearBadge()
 		sync.cancelAll()
@@ -1434,6 +1437,7 @@ enum SheetKind: Identifiable, Equatable {
 	case migration
 	case exportAllData
 	case fileImport(FileImport)
+	case exporting
 	case setPassword
 	case changePassword
 

@@ -139,6 +139,12 @@ poll "^snapshot .*error" errorsnapshot Tagesgeld
 poll "^ext account savings .*failed=" extstate
 send select Girokonto
 poll "^phase=" state
+send selectRows 1
+poll "^exportcontextcsv rows=" exportcontextcsv "$DATA/context.csv"
+poll "^exportstatus running=false" exportstatus
+poll "^exportcsv rows=" exportcsv "$DATA/rows.csv"
+send cancelexport
+poll "^exportstatus running=false" exportstatus
 poll "^snapshot " snapshot check
 printf '%s\n' "Buchungstag;Valuta;Empfänger;Verwendungszweck;Betrag" "09.11.2026;Wartungsarbeiten;Erika Mustermann;Gehalt November;1.250,00" \
 	"10.11.2026;10.11.2026;Wohnbau Musterstadt eG;Miete;-950,00" >"$WORK/Erika Mustermann.csv"
