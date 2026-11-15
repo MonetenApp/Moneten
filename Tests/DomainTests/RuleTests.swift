@@ -373,4 +373,26 @@ struct CategorizerTests {
 		}
 		#expect(reports == [1_000, 2_000, 2_500])
 	}
+
+	@Test("A rule run changes only the category of the rows that a refresh changed during the run")
+	func applyOntoCurrentRows() throws {
+		let streaming = Domain.Category(position: 0, name: "Streaming", rule: #""Netflix""#)
+		let day = Day(year: 2026, month: 3, day: 1)
+		let kept = Transaction(accountID: giro.id, bookingDate: day, amountMinor: -1_299, name: "Netflix")
+		let removed = Transaction(accountID: giro.id, bookingDate: day, amountMinor: -999, name: "Netflix")
+		var l = ledger([streaming], [kept, removed])
+		let changed = RuleApplier.apply(category: streaming, rule: try Rule(parsing: streaming.rule), to: l.transactions, ledger: l, mode: .all)
+		var refreshed = kept
+		refreshed.comment = "Abo"
+		refreshed.isChecked = true
+		l.update([refreshed])
+		l.remove(transactionIDs: [removed.id])
+		let rows = l.withCategories(of: changed)
+		#expect(rows.count == 1)
+		#expect(rows.first?.id == kept.id)
+		#expect(rows.first?.comment == "Abo")
+		#expect(rows.first?.isChecked == true)
+		#expect(rows.first?.categoryID == streaming.id)
+		#expect(rows.first?.categorizedBy == .rule)
+	}
 }
