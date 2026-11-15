@@ -259,6 +259,13 @@ final class DebugHarness {
 				c.symbol = parts[1].isEmpty ? nil : parts[1]
 				model.save(category: c)
 			}
+		case "sidebaramount":
+			// "<category>=<value>" sets "Display in sidebar", with a value of `SidebarAmount` such as "currentMonth".
+			let parts = argument.split(separator: "=").map(String.init)
+			if parts.count == 2, var c = model.ledger.categories.first(where: { $0.name == parts[0] }), let amount = SidebarAmount(rawValue: parts[1]) {
+				c.sidebarAmount = amount
+				model.save(category: c)
+			}
 		case "symbolsnapshot":
 			offscreenSnapshot(SymbolGrid(selection: "cart.fill", color: .green, isGroup: false) { _ in }, width: 360, name: "\(argument)-symbols")
 		case "rulehelpsnapshot":

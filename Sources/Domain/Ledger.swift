@@ -306,16 +306,51 @@ public struct Ledger: Sendable {
 		return sums
 	}
 
-	/// The amount next to a category in the sidebar: the transactions of its tree that a sum counts, in a
-	/// period and in the currency of the category. Rows in another currency stay in the category, and the
-	/// status line of its list sums them for each currency.
-	public func sum(ofCategory category: Category, in period: DayRange) -> Money {
-		var f = TransactionFilter()
-		f.period = period
-		let sum = transactions(in: .category(category.id), filter: f)
-			.filter { $0.isInSum(of: category.currency) }
-			.reduce(Int64(0)) { $0 + $1.amountMinor }
-		return Money(minorUnits: sum, currency: category.currency)
+	/// The amounts next to the categories in the sidebar, for their "Display in sidebar" on `today`, in one pass
+	/// over the transactions. A row counts in its category and in each group above it, in the period and the
+	/// currency of each. Rows in another currency stay in the category, and the status line of its list sums them
+	/// for each currency. A category with "No amount" or a sum of zero has no entry.
+	public func sidebarAmounts(today: Day) -> [UUID: Money] {
+		let index = CategoryIndex(categories.map(\.id))
+		// A row of category i adds to `targets[chains[i]]`, which holds i and each group above it that shows an amount.
+		var targets: [(category: Int, from: Int, through: Int, currency: String)] = []
+		var chains: [Range<Int>] = []
+		for c in categories {
+			let first = targets.count
+			var next = index.position(of: c.id)
+			while let n = next {
+				let k = categories[n]
+				if let period = Self.sidebarPeriod(of: k.sidebarAmount, today: today) {
+					targets.append((n, period.start?.rawValue ?? .min, period.end?.rawValue ?? .max, k.currency))
+				}
+				next = k.parentID.flatMap(index.position(of:))
+			}
+			chains.append(first..<targets.count)
+		}
+		var sums = [Int64](repeating: 0, count: categories.count)
+		let defaultID = defaultCategory?.id
+		for t in transactions {
+			guard let id = t.categoryID ?? defaultID, let i = index.position(of: id) else { continue }
+			let day = t.bookingDate.rawValue
+			for target in targets[chains[i]] where target.from <= day && day <= target.through && t.isInSum(of: target.currency) {
+				sums[target.category] += t.amountMinor
+			}
+		}
+		var amounts: [UUID: Money] = [:]
+		for (i, c) in categories.enumerated() where sums[i] != 0 {
+			amounts[c.id] = Money(minorUnits: sums[i], currency: c.currency)
+		}
+		return amounts
+	}
+
+	private static func sidebarPeriod(of amount: SidebarAmount, today: Day) -> DayRange? {
+		switch amount {
+		case .none: nil
+		case .totalSum: .all
+		case .currentMonth: DayRange(start: today.firstOfMonth, end: today.firstOfMonth.adding(months: 1).adding(days: -1))
+		case .currentQuarter: DayRange(start: today.firstOfQuarter, end: today.firstOfQuarter.adding(months: 3).adding(days: -1))
+		case .currentYear: DayRange(start: today.firstOfYear, end: Day(year: today.year, month: 12, day: 31))
+		}
 	}
 
 	// MARK: Filtering
@@ -530,4 +565,49 @@ public enum AccountTreeItem: Identifiable, Sendable {
 public struct CalibrationProposal: Hashable, Sendable {
 	public var difference: Money
 	public var balanceToday: Money
+}
+
+/// The position of each category ID in `Ledger.categories`. The sidebar looks up the category of every
+/// transaction, and a `Dictionary` hashes each UUID with SipHash in about 30 ns, most of the time of
+/// `sidebarAmounts(today:)` at 50,000 transactions. This table hashes the low half of the UUID with one multiplication.
+private struct CategoryIndex {
+	private struct Entry {
+		var low: UInt64
+		var high: UInt64
+		var position: Int
+	}
+
+	private var entries: [Entry]
+	private let shift: UInt64
+
+	init(_ ids: [UUID]) {
+		var bits: UInt64 = 3
+		while 1 << bits < ids.count * 4 { bits += 1 }
+		shift = 64 - bits
+		entries = Array(repeating: Entry(low: 0, high: 0, position: -1), count: 1 << bits)
+		for (position, id) in ids.enumerated() {
+			let (low, high) = Self.halves(of: id)
+			var k = slot(of: low)
+			while entries[k].position >= 0 { k = (k + 1) & (entries.count - 1) }
+			entries[k] = Entry(low: low, high: high, position: position)
+		}
+	}
+
+	func position(of id: UUID) -> Int? {
+		let (low, high) = Self.halves(of: id)
+		var k = slot(of: low)
+		while entries[k].position >= 0 {
+			if entries[k].low == low && entries[k].high == high { return entries[k].position }
+			k = (k + 1) & (entries.count - 1)
+		}
+		return nil
+	}
+
+	private func slot(of low: UInt64) -> Int {
+		Int(truncatingIfNeeded: (low &* 0x9E37_79B9_7F4A_7C15) >> shift)
+	}
+
+	private static func halves(of id: UUID) -> (UInt64, UInt64) {
+		withUnsafeBytes(of: id.uuid) { ($0.loadUnaligned(fromByteOffset: 8, as: UInt64.self), $0.loadUnaligned(as: UInt64.self)) }
+	}
 }
