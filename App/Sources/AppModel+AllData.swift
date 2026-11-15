@@ -27,7 +27,7 @@ extension AppModel {
 	func writeAllData(to url: URL) async throws {
 		guard let store else { return }
 		// Some 100,000 transactions take seconds to encode, so the window keeps drawing meanwhile.
-		try await Task.detached { try store.exportAllData().json().write(to: url, options: .atomic) }.value
+		try await Task.detached { try store.exportAllData(to: url) }.value
 	}
 
 	func importAllData() async {

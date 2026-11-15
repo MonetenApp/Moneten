@@ -278,6 +278,23 @@ struct AllDataTests {
 		#expect(try target.exportAllData(at: exportedAt) == AllData(exportedAt: exportedAt))
 	}
 
+	@Test("A complete export creates and replaces a file with mode 0600")
+	func privateExportFile() throws {
+		let store = try filledStore()
+		let file = root.appending(path: "export.json")
+		for replacing in [false, true] {
+			if replacing { try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: file.path) }
+			try store.exportAllData(to: file)
+			let attributes = try FileManager.default.attributesOfItem(atPath: file.path)
+			#expect((attributes[.posixPermissions] as? NSNumber)?.intValue == 0o600)
+			#expect(try AllData(json: Data(contentsOf: file)).accounts.count == 4)
+		}
+		let folder = root.appending(path: "directory")
+		try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
+		#expect(throws: (any Error).self) { try store.exportAllData(to: folder) }
+		#expect(try FileManager.default.contentsOfDirectory(atPath: root.path).sorted() == ["directory", "export.json", "source"])
+	}
+
 	@Test("Every key of an export is described in docs/export-format.md")
 	func documented() throws {
 		let json = try JSONSerialization.jsonObject(with: try filledStore().exportAllData(at: exportedAt).json())

@@ -27,6 +27,10 @@ extension Store {
 		}
 	}
 
+	public func exportAllData(to url: URL) throws {
+		try exportAllData().json().write(to: url, options: .atomic)
+	}
+
 	/// Writes a complete export into this database in one transaction. The database must hold no account and no
 	/// transaction, and no category except `replacing`, the starter categories that the file replaces. Account groups
 	/// without accounts hold no data, so the groups of the file replace them.
