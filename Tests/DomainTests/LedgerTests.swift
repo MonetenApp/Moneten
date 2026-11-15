@@ -1009,7 +1009,7 @@ struct LedgerTests {
 		f.searchText = "amazon"
 		f.period = DayRange(start: start, end: end)
 		f.status = .unchecked
-		f.amount = .range(min: -50_000, max: -10_000)
+		f.amount = .range(min: -500, max: -100)
 		f.categoryID = food.id
 		f.accountID = giro.id
 		let data = SavedFilterBar(period: .custom(start, end), filter: f).data
@@ -1020,14 +1020,17 @@ struct LedgerTests {
 		#expect(saved.filter(in: ledger()) == expected)
 	}
 
-	@Test("A filter bar saved before the version and its amount unit restores nothing, so the amount stays Show All")
-	func savedFilterBarOfOldForm() throws {
-		let old = #"{"period":{"all":{}},"status":{"unchecked":{}},"amount":{"range":{"min":-50000,"max":-10000}}}"#
-		#expect(SavedFilterBar(data: Data(old.utf8)) == nil)
-		let current = #"{"version":1,"period":{"all":{}},"status":{"unchecked":{}},"amount":{"rangeInMinorUnits":{"min":-50000,"max":-10000}}}"#
-		let saved = try #require(SavedFilterBar(data: Data(current.utf8)))
-		#expect(saved.filter(in: ledger()).amount == .range(min: -50_000, max: -10_000))
-		#expect(saved.filter(in: ledger()).status == .unchecked)
+	@Test("The pin saves an amount range as its decimal ends, and the next launch reads them back")
+	func savedAmountRange() throws {
+		var f = TransactionFilter()
+		f.status = .unchecked
+		f.amount = .range(min: -500, max: try #require(Decimal(string: "-99.99")))
+		let stored = try JSONSerialization.jsonObject(with: SavedFilterBar(period: .all, filter: f).data) as? NSDictionary
+		#expect(stored == ["period": ["all": [:]], "status": ["unchecked": [:]], "amount": ["range": ["min": -500, "max": -99.99]]])
+		let written = #"{"period":{"all":{}},"status":{"unchecked":{}},"amount":{"range":{"min":-500,"max":-99.99}}}"#
+		let restored = try #require(SavedFilterBar(data: Data(written.utf8))).filter(in: ledger())
+		#expect(restored.amount == .range(min: -500, max: Decimal(string: "-99.99")))
+		#expect(restored.status == .unchecked)
 	}
 
 	@Test("A saved category or account that no longer exists comes back as Show All")
