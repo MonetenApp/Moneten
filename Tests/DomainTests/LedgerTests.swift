@@ -238,6 +238,25 @@ struct LedgerTests {
 		}
 	}
 
+	@Test("One search adds the processor time of all regex calls", .timeLimit(.minutes(1)))
+	func searchRegexProcessorBudget() {
+		let account = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
+		let rows = (0..<100).map { _ in
+			Transaction(accountID: account.id, bookingDate: Day(year: 2026, month: 11, day: 1), amountMinor: -100, name: "Row", purpose: "aaaaaaaaaaaaaaaaaaaa!")
+		}
+		let ledger = Ledger(accounts: [account], transactions: rows)
+		var filter = TransactionFilter()
+		filter.searchText = "purpose:/^(a+)+$/"
+		let start = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)
+		let result = ledger.transactions(in: .account(account.id), filter: filter)
+		let milliseconds = Double(clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) - start) / 1_000_000
+		print("100 slow rows: \(milliseconds) ms searching-thread processor time, \(result.rows.count) rows, gaveUp=\(result.gaveUp)")
+		#expect(result.rows.map(\.name) == [])
+		#expect(result.gaveUp == true)
+		#expect(milliseconds >= 300)
+		#expect(milliseconds < 400)
+	}
+
 	@Test("Two word boundaries at the end of a value match the rows that the rule matches")
 	func searchTwoWordBoundaries() throws {
 		let giro = Account(position: 0, name: "Konto b", kind: .giro, source: .offline)
