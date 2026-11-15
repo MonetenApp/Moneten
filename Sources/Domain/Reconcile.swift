@@ -467,7 +467,7 @@ extension Transaction {
 			currency: delivered.currency, name: delivered.name, purpose: delivered.purpose, counterpartyIBAN: delivered.counterpartyIBAN,
 			counterpartyBIC: delivered.counterpartyBIC, bookingText: delivered.bookingText, endToEndReference: delivered.endToEndReference,
 			mandateReference: delivered.mandateReference, creditorID: delivered.creditorID, comment: delivered.comment, isPending: delivered.isPending,
-			isNew: true, isFetched: fetched, sourceID: delivered.sourceID, createdAt: delivered.createdAt)
+			isNew: true, isFetched: fetched, sourceID: delivered.sourceID, createdAt: delivered.createdAt, returnReason: delivered.returnReason)
 	}
 
 	func takingBankFields(of delivered: Transaction) -> Transaction {
@@ -484,6 +484,7 @@ extension Transaction {
 		t.endToEndReference = delivered.endToEndReference ?? endToEndReference
 		t.mandateReference = delivered.mandateReference ?? mandateReference
 		t.creditorID = delivered.creditorID ?? creditorID
+		t.returnReason = delivered.returnReason ?? returnReason
 		t.isPending = delivered.isPending
 		// A migration ID never replaces the ID of a source that took the row over.
 		if Identity.remote(delivered.sourceID) != nil || Identity.remote(sourceID) == nil {

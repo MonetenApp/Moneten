@@ -444,6 +444,7 @@ final class CAMTParser: NSObject, XMLParserDelegate {
 		case "Amt" where path.count >= 2 && path[path.count - 2] == "Ntry": entry["amount"] = value
 		case "CdtDbtInd" where path.count >= 2 && path[path.count - 2] == "Ntry": entry["sign"] = value
 		case "Cd" where ends("Ntry/Sts/Cd"): entry["status"] = value
+		case "Cd" where ends("RtrInf/Rsn/Cd"): detail["returnReason"] = value
 		case "Sts" where path.count >= 2 && path[path.count - 2] == "Ntry": if !value.isEmpty { entry["status"] = value }
 		case "Dt" where ends("BookgDt/Dt"): entry["booking"] = value
 		case "DtTm" where ends("BookgDt/DtTm"): entry["booking"] = String(value.prefix(10))
@@ -490,10 +491,11 @@ final class CAMTParser: NSObject, XMLParserDelegate {
 		// A batch to several counterparties keeps no counterparty and no reference.
 		let side = debit ? "creditor" : "debtor"
 		let oneParty = Set(details.map { [$0[side + "Name"], $0[side + "IBAN"]] }).count <= 1
-		func ofOneParty(_ key: String) -> String? {
+		func common(_ key: String) -> String? {
 			let values = Set(details.map { $0[key] })
-			return oneParty && values.count == 1 ? values.first! : nil
+			return values.count == 1 ? values.first! : nil
 		}
+		func ofOneParty(_ key: String) -> String? { oneParty ? common(key) : nil }
 		let valueDate = entry["value"].flatMap { text in
 			let day = Day(string: String(text.prefix(10)))
 			if day == nil { result.warnings.append(.unreadableValueDate(line: parser.lineNumber, cell: text)) }
@@ -508,7 +510,7 @@ final class CAMTParser: NSObject, XMLParserDelegate {
 			bookingText: entry["bookingText"],
 			endToEndReference: ofOneParty("e2e").flatMap { $0 == "NOTPROVIDED" ? nil : $0 },
 			mandateReference: ofOneParty("mandate"), creditorID: ofOneParty("creditor"),
-			isPending: entry["status"] == "PDNG")
+			isPending: entry["status"] == "PDNG", returnReason: common("returnReason"))
 		result.transactions.append(t)
 	}
 }
