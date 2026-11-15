@@ -539,7 +539,7 @@ final class DebugHarness {
 			log("", ("phase", .state(model.phase)), ("accounts", .count(model.ledger.accounts.count)), ("transactions", .count(model.ledger.transactions.count)),
 				("visible", .count(model.visibleTransactions.count)), ("selection", .state(model.selection)), ("selected", .state(model.selectedAccount?.kind)))
 			log(LogLine("", values: [("pin", .flag(model.isFilterBarPinned)), ("period", .state(model.period)), ("status", .state(model.filter.status)),
-				("filter", Self.kinds(of: model.filter))] + Self.filterTargets(model)))
+				("filter", .list(model.filter.activeKinds.map { .word($0) }))] + Self.filterTargets(model)))
 			logChart()
 		// Whether the selected account proposes a calibration, without amounts.
 		case "calibration":
@@ -558,31 +558,24 @@ final class DebugHarness {
 		case let .found(bank): [bank.code]
 		case .none, .searching, .failed: []
 		}
-		return [("lookup", .state(state)), ("banks", .list(codes.map { .code($0) }))]
+		return [("lookup", .state(state)), ("banks", .list(codes.map { .bankCode($0) }))]
 	}
 
 	/// The return code of the bank, "set" for an error without one, or "-". A text of the bank can hide a name or an IBAN.
 	private static func code(of error: RefreshError?) -> LogValue {
 		guard let error else { return .presence(false) }
-		return error.code.map { .code($0) } ?? .presence(true)
+		return error.code.map { .returnCode($0) } ?? .presence(true)
 	}
 
 	/// The case of a refresh state, and of a failure its case and the return code of the bank, without a text.
 	private static func sync(_ state: SyncState) -> [(StaticString, LogValue)] {
 		guard case let .failed(failure) = state else { return [("state", .state(state))] }
-		return [("state", .state(state)), ("failure", .state(failure)), ("code", failure.bankMessage?.code.map { .code($0) } ?? .presence(false))]
+		return [("state", .state(state)), ("failure", .state(failure)), ("code", failure.bankMessage?.code.map { .returnCode($0) } ?? .presence(false))]
 	}
 
 	/// The scene of a window by the id of the app, such as "main", or "other".
 	private static func scene(_ window: NSWindow) -> LogValue {
 		.choice(String((window.identifier?.rawValue ?? "").prefix { $0 != "-" }), of: ["main", "extensions", "notice"], otherwise: "other")
-	}
-
-	/// The kinds of the active filters, without their values.
-	private static func kinds(of filter: TransactionFilter) -> LogValue {
-		let kinds: [(Bool, StaticString)] = [(!filter.searchText.isEmpty, "search"), (filter.period != .all, "period"), (filter.status != .all, "status"),
-			(filter.amount != .all, "amount"), (filter.categoryID != nil, "category"), (filter.accountID != nil, "account")]
-		return .list(kinds.filter(\.0).map { .word($0.1) })
 	}
 
 	/// The category and the account of the filter by their positions, or "all".

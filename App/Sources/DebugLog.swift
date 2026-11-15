@@ -69,10 +69,19 @@ struct LogValue: Sendable {
 		LogValue(day.map { "\($0)" } ?? "-")
 	}
 
-	/// A bank code or a return code of the bank: one to eight ASCII digits. A bank can send any text in its
-	/// place, so anything else is "invalid".
-	static func code(_ code: String) -> LogValue {
-		LogValue((1...8).contains(code.count) && code.allSatisfy { $0.isASCII && $0.isNumber } ? code : "invalid")
+	/// A German bank code: eight ASCII digits, or "invalid".
+	static func bankCode(_ code: String) -> LogValue {
+		digits(code, counts: 8...8)
+	}
+
+	/// A return code of the bank: one to four ASCII digits, as FinTS sends it. A bank can send any text in its place,
+	/// even an account number, so anything else is "invalid".
+	static func returnCode(_ code: String) -> LogValue {
+		digits(code, counts: 1...4)
+	}
+
+	private static func digits(_ text: String, counts: ClosedRange<Int>) -> LogValue {
+		LogValue(counts.contains(text.count) && text.allSatisfy { $0.isASCII && $0.isNumber } ? text : "invalid")
 	}
 
 	/// The name of the case of an enum, without its values, or "-" for nil. Anything that is not an enum
