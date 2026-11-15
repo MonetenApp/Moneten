@@ -7,6 +7,31 @@ import Testing
 
 @Suite("File categories and storage")
 struct FileCategoryImportTests {
+	@Test("Cancel during category work rolls back all 2000 rows and 1000 new categories")
+	func cancelDuringCategories() async throws {
+		let store = try SchemaTests.emptyStore()
+		defer { try? store.close() }
+		let account = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
+		let existing = Domain.Category(position: 0, name: "Existing")
+		try store.save(accounts: [account], categories: [existing])
+		let rows = (0..<2_000).map { Transaction(accountID: account.id, bookingDate: Day(year: 2026, month: 11, day: 3), amountMinor: -420, name: "Kiosk \($0)") }
+		let names = Dictionary(uniqueKeysWithValues: rows.enumerated().map { ($0.element.id, "New \($0.offset % 1_000)") })
+		let canceled = Mutex(false)
+		try await store.queue.writeWithoutTransaction { db in
+			db.trace { event in
+				if event.expandedDescription.contains("INSERT INTO \"category\"") { canceled.withLock { $0 = true } }
+			}
+		}
+		await #expect(throws: CancellationError.self) {
+			try await store.mergeFile(rows, categories: names, creatingCategories: true, into: account.id,
+				isCanceled: { canceled.withLock { $0 } })
+		}
+		#expect(canceled.withLock { $0 })
+		let ledger = try store.loadLedger()
+		#expect(ledger.transactions.count == 0)
+		#expect(ledger.categories.map(\.name) == ["Existing"])
+	}
+
 	@Test("All skipped rows leave zero new categories")
 	func skipped() async throws {
 		let store = try SchemaTests.emptyStore()

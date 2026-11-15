@@ -26,3 +26,5 @@ Tasks marked as built in part may differ from the spec in the way their note say
 
 - `Storage` stores each CSV profile as versioned JSON in the encrypted database. Independent records keep unreadable profiles unchanged when another is saved or deleted. `Import` decodes known column fields and defaults a missing category option to false. Legacy profiles without a delimiter require preview confirmation.
 - `Domain` indexes category names and full paths once per file. `Storage` creates, assigns, merges and removes unused file categories in one database transaction, so a failed merge rolls back categories too.
+
+- Cancellation shares a thread-safe flag between the import sheet and the storage transaction. Storage checks it during category writes and before commit. Complete exports carry versioned profile payloads, including unreadable entries, without decoding them.

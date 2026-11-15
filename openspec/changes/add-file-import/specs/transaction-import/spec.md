@@ -398,8 +398,6 @@ The app SHALL let the user save the settings of the preview as a named profile. 
 - **WHEN** it is saved, renamed or deleted
 - **THEN** only the open encrypted database changes
 - **AND** another database has none of its profiles
-- **AND** the first profile load moves pre-release profiles from the old preferences and removes their key only after a successful database write
-- **AND** a test session with a custom data folder never reads or writes the regular app's old preferences
 
 #### Scenario: A newer profile is kept by an older reader
 
@@ -407,6 +405,7 @@ The app SHALL let the user save the settings of the preview as a named profile. 
 - **WHEN** the profiles are loaded and a readable profile is saved or deleted
 - **THEN** the missing category option defaults to off and the unknown column field is ignored
 - **AND** the unreadable profile stays stored unchanged
+- **AND** saving or renaming a readable profile preserves unknown fields, including "futureField" with the value 7 and unknown column mappings
 
 #### Scenario: Result describes the confirmed settings
 
@@ -457,6 +456,14 @@ The app SHALL assign the category from a category column to each imported transa
 - **AND** the result says "Auto-create categories is limited to 1,000 new categories per file. Remaining unknown categories were left to the rules."
 - **AND** a path is created only when all its missing levels fit within the remaining limit
 
+#### Scenario: Bounded paths that cannot be created
+
+- **GIVEN** "Food" is a category and a file names "Food › X0" through "Food › X299999"
+- **WHEN** the user imports it with "Auto-create categories" on
+- **THEN** the first 1,000 blocked paths use the category creation budget
+- **AND** the result lists only "Food › X0" through "Food › X9", then "and 990 more."
+- **AND** it reports the 1,000 limit and creates no category
+
 #### Scenario: Skipped rows and failed storage leave no new categories
 
 - **GIVEN** rows whose category cells name new categories
@@ -469,6 +476,7 @@ The app SHALL assign the category from a category column to each imported transa
 - **WHEN** "Miete - Nebenkosten" is imported with auto-create on and neither category exists
 - **THEN** it creates the group "Miete" and its category "Nebenkosten"
 - **AND** when "Other" exists under "Work" and "Living", a bare "Other" chooses the case-folded full path that sorts first, "Living › Other", regardless of load order
+- **AND** a top-level category "Other" takes precedence over either nested "Other"
 - **AND** equal case-folded paths choose the lowest UUID string, with assignable categories before groups
 
 ### Requirement: CAMT import
@@ -756,9 +764,17 @@ The app SHALL recompute the balance of an offline account and the balance histor
 
 ### Requirement: Progress and cancel
 
-The app SHALL show progress while it imports and let the user cancel. A canceled import leaves no transaction of the file that was being read.
+The app SHALL show progress while it imports and let the user cancel. Cancellation during reading or storing leaves no transaction or new category of the current file. Files stored before cancellation stay. The app stops the following files and reports "Import canceled. N files were imported before.", with N replaced by the number of files stored.
 
 #### Scenario: Cancel a large file
 
 - **WHEN** the user cancels while the app reads the third of five files
 - **THEN** the transactions of the first two files stay, and nothing of the third file is stored
+
+#### Scenario: Cancel during category storage
+
+- **GIVEN** the first file was imported and the second file has 2,000 transactions with 1,000 new categories
+- **WHEN** the user cancels during category work for the second file
+- **THEN** none of its transactions or new categories remain
+- **AND** the third file is not stored
+- **AND** the result starts with "Import canceled. 1 files were imported before."

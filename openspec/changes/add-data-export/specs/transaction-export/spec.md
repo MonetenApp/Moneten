@@ -228,6 +228,13 @@ The app SHALL offer "Export All Data..." in the File menu. The command writes on
 - **WHEN** the user chooses "Export All Data..." and saves the file
 - **THEN** the file contains all of these objects
 
+#### Scenario: Saved CSV profiles
+
+- **GIVEN** the database holds the profiles "Broker CSV" and "Bank CSV"
+- **WHEN** the user exports all data and imports the file into an empty database
+- **THEN** both profiles keep their settings, stored versions and unknown fields
+- **AND** a file without the optional "csvProfiles" key imports with no profiles
+
 #### Scenario: Later capability
 
 - **GIVEN** a version of the app that also stores transfer templates
