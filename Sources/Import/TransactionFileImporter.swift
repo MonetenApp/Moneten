@@ -98,8 +98,11 @@ enum CSVParser {
 	/// A file of 100 MB takes seconds to read, so each pass over its rows stops with `CancellationError`
 	/// at the next row once the task is canceled.
 	static func parse(_ text: String, currency: String) throws -> TransactionFileImporter.Parsed {
+		try Task.checkCancellation()
 		let delimiter = detectDelimiter(text)
+		try Task.checkCancellation()
 		let rows = try split(text, delimiter: delimiter)
+		try Task.checkCancellation()
 		guard let headerIndex = rows.firstIndex(where: { row in
 			let lower = row.cells.map { normalize($0) }
 			return lower.contains(where: { dateKeys.contains($0) }) && lower.contains(where: { (amountKeys + debitKeys + creditKeys).contains($0) })
@@ -279,7 +282,7 @@ enum CSVParser {
 	}
 
 	static func detectDelimiter(_ text: String) -> Character {
-		let sample = text.split(separator: "\n").prefix(20).joined(separator: "\n")
+		let sample = text.split(separator: "\n", maxSplits: 20).prefix(20).joined(separator: "\n")
 		let candidates: [Character] = [";", "\t", ","]
 		return candidates.max { a, b in sample.filter { $0 == a }.count < sample.filter { $0 == b }.count } ?? ";"
 	}
