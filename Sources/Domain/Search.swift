@@ -137,7 +137,7 @@ struct SearchQuery {
 				if let name = row.categoryName() { add(name) }
 			}
 			// An empty value matches only a pattern that matches the empty text, and it is no line of the joined text.
-			if hasEmpty, matchesEmpty { return true }
+			if hasEmpty, matchesEmpty, !watch.gaveUp { return true }
 			// A carriage return before the joining line break would make one line break of two.
 			if let anyLine, values.count > 1, !lineWatch.gaveUp, !values.contains(where: { $0.utf8.contains(0x0D) }) {
 				let joined = values.joined(separator: "\n")
@@ -156,37 +156,35 @@ struct SearchQuery {
 		}
 	}
 
-	/// Stops a regular expression that runs too long. ICU never returns for some patterns, such as a lazy quantifier
-	/// after an anchor in `/^+?49/`, and backtracks for many milliseconds on others, such as `/^(\w+\s?)+$/`, while the
-	/// search runs on the main thread at each keystroke. After one text of more than 100 ms, or when the texts of more
-	/// than 5 ms add up to 250 ms, every later text of the same search counts as no match.
+	/// Stops a regular expression that does not end. ICU never returns for some patterns, such as a lazy quantifier
+	/// after an anchor in `/^+?49/`, and the search runs on the main thread at each keystroke. After one text that
+	/// takes more than 100 ms of processor time, every later text of the same search counts as no match. Processor
+	/// time, because on a busy Mac the clock also counts the time the thread waits for a core.
 	private final class RegexWatch {
 		private(set) var gaveUp = false
-		private var slowTime = Duration.zero
 
 		func firstMatch(_ regex: NSRegularExpression, _ text: String) -> NSRange? {
 			if gaveUp { return nil }
-			let clock = ContinuousClock()
-			let start = clock.now
 			var found: NSRange?
 			var reports = 0
+			var start: UInt64 = 0
 			regex.enumerateMatches(in: text, options: .reportProgress, range: NSRange(text.startIndex..., in: text)) { result, _, stop in
 				if let result {
 					found = result.range
 					stop.pointee = true
 					return
 				}
-				// ICU reports progress about once for each character of a text, so a text of normal length reads no clock.
+				// ICU reports progress about once for each character of a text, so a text of normal length reads no
+				// clock. Reading it costs about 270 ns.
 				reports += 1
-				if reports % 256 == 0, clock.now - start > .milliseconds(100) {
+				guard reports % 256 == 0 else { return }
+				let now = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)
+				if start == 0 {
+					start = now
+				} else if now - start > 100_000_000 {
 					gaveUp = true
 					stop.pointee = true
 				}
-			}
-			if reports >= 256 {
-				let time = clock.now - start
-				if time > .milliseconds(5) { slowTime += time }
-				if slowTime > .milliseconds(250) { gaveUp = true }
 			}
 			return gaveUp ? nil : found
 		}
