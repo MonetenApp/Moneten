@@ -54,12 +54,10 @@ public struct CSVProfile: Hashable, Sendable, Codable {
 		return .changed(best.profile, best.layout)
 	}
 
-	/// The settings a profile supplies to the preview of this file.
+	/// The profile mappings and formats with the detected encoding of this file.
 	public func previewLayout(for file: CSVFile) -> CSVLayout {
 		var next = layout
-		if file.encoding != layout.encoding, layout.encoding.decode(file.data) != file.encoding.decode(file.data) {
-			next.encoding = file.encoding
-		}
+		next.encoding = file.encoding
 		return next
 	}
 
@@ -70,7 +68,7 @@ public struct CSVProfile: Hashable, Sendable, Codable {
 	/// with wrong letters, so it opens the preview too, unless both encodings give the same text, as for a
 	/// file in ASCII or for "ä" in ISO-8859-1 and Windows-1252.
 	public func read(_ file: CSVFile, currency: String) throws -> TransactionFileImporter.Parsed? {
-		guard previewLayout(for: file).encoding == layout.encoding else { return nil }
+		guard file.encoding == layout.encoding || layout.encoding.decode(file.data) == file.encoding.decode(file.data) else { return nil }
 		let reread: CSVFile
 		do { reread = try file.with(layout.encoding) } catch is TransactionFileImporter.Failure { return nil }
 		let preview = try reread.preview(layout, currency: currency)
