@@ -69,11 +69,15 @@ final class CSVPreviewModel {
 		preview = nil
 		problem = nil
 		let current = file, layout = layout, currency = currency, detectingDateOrder = detectsDateOrder
-		reading = Task.detached(priority: .userInitiated) { [weak self] in
-			do {
-				let file = layout.encoding == current.encoding ? current : try CSVFile(data: current.data, encoding: layout.encoding)
-				let preview = try file.preview(layout, currency: currency, detectingDateOrder: detectingDateOrder)
-				await MainActor.run {
+		let parsing = Task.detached(priority: .userInitiated) {
+			let file = layout.encoding == current.encoding ? current : try CSVFile(data: current.data, encoding: layout.encoding)
+			let preview = try file.preview(layout, currency: currency, detectingDateOrder: detectingDateOrder)
+			return (file, preview)
+		}
+		reading = Task { @MainActor [weak self] in
+			await withTaskCancellationHandler {
+				do {
+					let (file, preview) = try await parsing.value
 					guard !Task.isCancelled, let self else { return }
 					self.file = file
 					self.isAdopting = true
@@ -81,13 +85,13 @@ final class CSVPreviewModel {
 					self.isAdopting = false
 					self.detectsDateOrder = false
 					self.preview = preview
-				}
-			} catch let failure as TransactionFileImporter.Failure {
-				await MainActor.run {
+				} catch let failure as TransactionFileImporter.Failure {
 					guard !Task.isCancelled, let self else { return }
 					self.problem = failure.description
-				}
-			} catch {}
+				} catch {}
+			} onCancel: {
+				parsing.cancel()
+			}
 		}
 	}
 }
