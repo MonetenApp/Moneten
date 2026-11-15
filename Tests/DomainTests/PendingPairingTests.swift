@@ -146,9 +146,10 @@ extension ReconcileTests {
 		}
 	}
 
-	@Test("Gate 4 item 2: booked name reordering without an IBAN is skipped as on main", arguments: [false, true])
-	func gate4BookedNames(fileDelivery: Bool) {
-		let known = stored(row(10, -4_999, "MUSTERMANN, MAX", "Kartenzahlung 1234"))
+	@Test("Gate 4 item 2: booked name reordering without an IBAN is skipped as on main", arguments: [false, true], [false, true])
+	func gate4BookedNames(fileDelivery: Bool, identified: Bool) {
+		var known = stored(row(10, -4_999, "MUSTERMANN, MAX", "Kartenzahlung 1234"))
+		if identified { known = merge(.file([known])).added[0] }
 		var delivered = fresh(known)
 		delivered.name = "Max Mustermann"
 		let other = stored(row(11, -1_200, "Other", "OTHER"))
@@ -228,6 +229,32 @@ extension ReconcileTests {
 		#expect(r.updated.map(\.amountMinor) == [-10_050])
 		#expect(r.updated.map(\.comment) == ["ETF savings plan"])
 		#expect(r.updated.map(\.isChecked) == [true])
+	}
+
+	@Test("A reference-only pending delivery keeps main's booked-version eligibility", arguments: ["file", "refresh", "migration"], [false, true])
+	func gate4ReferenceEligibility(kind: String, identified: Bool) {
+		var booked = stored(rent(2, purpose: "BOOKED RENT", pending: false))
+		booked.endToEndReference = "RENT-A"
+		if identified { booked = stored(merge(.file([booked])).added[0]) }
+		var pending = rent(1, purpose: "PENDING RENT")
+		pending.endToEndReference = "RENT-A"
+		let other = stored(row(3, -1_200, "Other", "OTHER", month: 12))
+		for stored in permutations([booked, other]) {
+			for rows in permutations([pending, fresh(other)]) {
+				let delivery: Delivery = switch kind {
+				case "file": .file(rows)
+				case "refresh": refresh(rows)
+				default: .migration(rows)
+				}
+				let r = merge(delivery, stored: stored, at: noon(3, month: 12))
+				let after = history(stored, after: r)
+				#expect(after.first { $0.id == booked.id }?.isPending == false)
+				#expect(after.first { $0.id == booked.id }?.purpose == "BOOKED RENT")
+				#expect(after.first { $0.id == booked.id }?.bookingDate == day(2, month: 12))
+				#expect(after.count == (kind == "file" ? 2 : 3))
+				#expect(after.reduce(0) { $0 + $1.amountMinor } == (kind == "file" ? -81_200 : -161_200))
+			}
+		}
 	}
 
 	func permutations<T>(_ rows: [T]) -> [[T]] {

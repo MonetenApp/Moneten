@@ -648,7 +648,7 @@ The app SHALL pair pending or stored-file-identified rows one to one in this ord
 
 1. Original file identity or source ID.
 2. Exact, then compatible booked fingerprint, including pending repeats.
-3. End-to-end reference with equal amount and currency.
+3. Delivered pending row's end-to-end reference with equal amount and currency.
 4. Fitting fetched pending or honored deleted row within seven days.
 5. Nearest fitting unfetched pending file row within seven days.
 
@@ -665,6 +665,7 @@ Booked rows without file identity keep the existing booked-only rule.
 - **AND** a pending-to-booked transition within seven days ignores different file fingerprints when amount and currency agree and either the reference agrees or the counterparty fits. A booked repeat can use its current fingerprint even when it differs from the retained original file fingerprint.
 - **AND** pending fallback checks known counterparties by IBAN, otherwise by name. A file import bounds pending-to-pending pairs to seven days and uses nearest-day choice across fetched and unfetched rows outside the same-day fetched level.
 - **AND** a refresh ranks fetched pending rows within seven days before unfetched rows. Unfetched refresh candidates must have a covered date today or later and no review mark.
+- **AND** reference-only fallback excludes migration deliveries. Only a pending file delivery can find a historical booked version by reference alone. Booked fingerprint matches compare IBANs, not name order.
 - **AND** a pending tombstone cannot block a booking. A source arriving booked reserves its pending tombstone against unrelated look-alikes.
 
 - **AND** booking first prefers agreeing identities, then a unique fetched pending row. With no fetched partner, only nearest fitting file rows on or before the booked day participate, and an unresolved tie marks those rows and the delivery for review.
@@ -1093,3 +1094,17 @@ The app SHALL create an original file identity only on file import and preserve 
 - **WHEN** only the booked 7 December rent arrives
 - **THEN** the 7 December row becomes booked and the 14 December row stays pending without a review mark
 - **AND** two indistinguishable 7 December file rows cause only those two and the booked delivery to need review
+
+#### Scenario: A bank pending echo does not undo a booking
+
+- **GIVEN** a fetched booked rent of -800,00 € on 2 December 2026 with reference "RENT-A" and purpose "BOOKED RENT"
+- **WHEN** a refresh delivers pending rent on 1 December with that reference and purpose "PENDING RENT"
+- **THEN** the booked row stays booked with its date and purpose
+- **AND** the pending delivery follows the existing add rule because a reference-only refresh cannot take a booked partner
+- **AND** a file repeat with that reference is skipped without changing the booking, while a migration follows the existing add rule
+
+#### Scenario: An imported booked name changes its order
+
+- **GIVEN** a booked file payment of -49,99 € on 10 November 2026 named "MUSTERMANN, MAX", purpose "Kartenzahlung 1234", without an IBAN
+- **WHEN** a file or refresh delivers that booked payment named "Max Mustermann"
+- **THEN** the current booked fingerprint skips the repeat and one payment remains
