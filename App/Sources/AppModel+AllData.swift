@@ -12,14 +12,18 @@ extension AppModel {
 		panel.allowedContentTypes = [.json]
 		panel.nameFieldStringValue = "Moneten \(Day.today()).json"
 		guard panel.runModal() == .OK, let url = panel.url else { return }
-		Task {
-			do {
-				try await writeAllData(to: url)
-				alert = AlertMessage(title: "All data has been exported.",
-					message: "The file leaves out saved PINs, the data that bank accesses and extensions keep, and statement files.")
-			} catch {
-				alert = AlertMessage(title: "Could not export to file.", message: error.localizedDescription)
-			}
+		Task { await saveAllData(to: url) }
+	}
+
+	func saveAllData(to url: URL) async {
+		do {
+			try await writeAllData(to: url)
+			alert = AlertMessage(title: "All data has been exported.",
+				message: "The file leaves out saved PINs, the data that bank accesses and extensions keep, and statement files.")
+		} catch let error as AllData.ReadError {
+			alert = AlertMessage(title: "Could not export to file.", message: error.description)
+		} catch {
+			alert = AlertMessage(title: "Could not export to file.", message: error.localizedDescription)
 		}
 	}
 

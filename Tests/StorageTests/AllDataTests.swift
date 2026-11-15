@@ -354,12 +354,12 @@ struct AllDataTests {
 	func unreadableHolding() throws {
 		let store = try filledStore()
 		try store.write { db in try db.execute(sql: "UPDATE holding SET quantity = 'broken'") }
-		#expect(throws: AllData.ReadError.damaged("at holdings[0], the stored holding cannot be read")) {
+		#expect(throws: AllData.ReadError.unreadableDatabase("at holdings[0], the stored holding cannot be read")) {
 			try store.exportAllData(at: exportedAt)
 		}
 		let file = root.appending(path: "export.json")
 		try Data("keep".utf8).write(to: file)
-		#expect(throws: AllData.ReadError.damaged("at holdings[0], the stored holding cannot be read")) {
+		#expect(throws: AllData.ReadError.unreadableDatabase("at holdings[0], the stored holding cannot be read")) {
 			try store.exportAllData(to: file)
 		}
 		#expect(try String(contentsOf: file, encoding: .utf8) == "keep")
@@ -394,6 +394,12 @@ struct AllDataTests {
 			}
 		}
 		#expect(try target.exportAllData(at: exportedAt) == AllData(exportedAt: exportedAt))
+		var boundary = original
+		var rows = boundary["holdings"] as! [[String: Any]]
+		rows[0]["quantity"] = "-1.1234567890123456789012345678901234567"
+		boundary["holdings"] = rows
+		let accepted = try AllData(json: JSONSerialization.data(withJSONObject: boundary))
+		#expect(accepted.holdings[0].quantity.description == "-1.1234567890123456789012345678901234567")
 	}
 
 	@Test("A complete export accepts a valid 235-byte destination name")

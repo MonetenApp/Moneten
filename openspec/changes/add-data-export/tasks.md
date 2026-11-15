@@ -51,6 +51,13 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 
 Each regression failed before its fix. The focused AllDataTests suite passes with 19 tests.
 
+## Gate follow-ups on main after #197
+
+- [x] Share the private export writer with CSV. `scripts/check-export-files.py` measures mode 0600 on new and replaced CSV and JSON files. The CSV check failed with 0644 before the fix.
+- [x] Explain an unreadable database in the complete export alert. AllDataTests.exportErrorDescription asserts the literal message from the spec. The debug harness captures the same alert before and after the fix in light and dark mode. The existing export stays unchanged.
+- [x] Refuse decimal values longer than 38 digits with their position. AllDataTests.decimalPrecision checks holding quantities, prices, purchase prices, and exchange rates. It verifies that the database stays empty and that a signed 38-digit quantity imports without rounding. The test imported a truncated value before the fix.
+- [x] Sync both exports before reporting success. `scripts/check-export-sync.sh` observes a file sync before rename and a directory sync after rename for new and replaced CSV and JSON files. Before the fix it observed only renames.
+
 ## Workflow follow-up
 
 - Archive the change with `openspec archive add-data-export` when every task is checked.

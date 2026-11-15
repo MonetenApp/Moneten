@@ -34,6 +34,7 @@ public struct AllData: Sendable, Equatable {
 		case newerVersion(Int)
 		/// The file cannot be read. The text names the place of the first error.
 		case damaged(String)
+		case unreadableDatabase(String)
 
 		public var description: String {
 			switch self {
@@ -41,6 +42,7 @@ public struct AllData: Sendable, Equatable {
 			case let .newerVersion(v):
 				"The file has format version \(v), and this version of Moneten reads up to version \(AllData.formatVersion). Install a newer version of Moneten to import it."
 			case let .damaged(place): "The file is damaged or incomplete: \(place)."
+			case let .unreadableDatabase(place): "The database contains unreadable data: \(place)."
 			}
 		}
 	}
@@ -222,7 +224,13 @@ enum AmountText {
 
 	/// Only the plain form `-1234.56`: `Decimal(string:)` alone reads "1-2" as 1.
 	static func decimal(_ text: String) throws -> Decimal {
-		guard text.wholeMatch(of: /-?[0-9]+(\.[0-9]+)?/) != nil, let d = Decimal(string: text, locale: Locale(identifier: "en_US_POSIX")) else {
+		guard text.wholeMatch(of: /-?[0-9]+(\.[0-9]+)?/) != nil else {
+			throw AllData.ReadError.damaged("\"\(text)\" is not a decimal number")
+		}
+		guard text.filter(\.isNumber).count <= 38 else {
+			throw AllData.ReadError.damaged("the decimal number exceeds 38 digits")
+		}
+		guard let d = Decimal(string: text, locale: Locale(identifier: "en_US_POSIX")) else {
 			throw AllData.ReadError.damaged("\"\(text)\" is not a decimal number")
 		}
 		return d

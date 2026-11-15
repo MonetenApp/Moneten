@@ -1,3 +1,4 @@
+import Darwin
 import Domain
 import Foundation
 import GRDB
@@ -24,7 +25,7 @@ extension Store {
 				deletedTransactions: try DeletedTransaction.order(Column.rowID).fetchAll(db),
 				portfolioValues: try PortfolioValue.order(Column.rowID).fetchAll(db),
 				holdings: try HoldingRecord.order(Column.rowID).fetchAll(db).enumerated().map { index, record in
-					guard let holding = record.holding else { throw AllData.ReadError.damaged("at holdings[\(index)], the stored holding cannot be read") }
+					guard let holding = record.holding else { throw AllData.ReadError.unreadableDatabase("at holdings[\(index)], the stored holding cannot be read") }
 					return holding
 				})
 		}
@@ -41,9 +42,16 @@ extension Store {
 		defer { unlink(temporary.path) }
 		let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
 		try handle.write(contentsOf: data)
+		try handle.synchronize()
 		try handle.close()
+		let directory = open(url.deletingLastPathComponent().path, O_RDONLY | O_DIRECTORY)
+		guard directory >= 0 else { throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno), userInfo: [NSFilePathErrorKey: url.deletingLastPathComponent().path]) }
+		defer { Darwin.close(directory) }
 		guard rename(temporary.path, url.path) == 0 else {
 			throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno), userInfo: [NSFilePathErrorKey: url.path])
+		}
+		guard fsync(directory) == 0 else {
+			throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno), userInfo: [NSFilePathErrorKey: url.deletingLastPathComponent().path])
 		}
 	}
 
