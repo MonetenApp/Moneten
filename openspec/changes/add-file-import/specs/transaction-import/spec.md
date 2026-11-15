@@ -137,6 +137,26 @@ The app SHALL read amounts with a decimal comma or a decimal point, with or with
 - **WHEN** a row has "89,00" under "Soll" and nothing under "Haben"
 - **THEN** the app reads a withdrawal of 89,00 €
 
+#### Scenario: Empty amount cells are zero
+
+- **WHEN** a CSV file has the header "Datum;Betrag" and the rows "01.11.2026;-1,00" and "02.11.2026;"
+- **THEN** the app reads a withdrawal of 1,00 € and a transaction of 0,00 €
+
+#### Scenario: Empty debit and credit cells are zero
+
+- **WHEN** a CSV file has the header "Datum;Soll;Haben" and the rows "01.11.2026;1,00;" and "02.11.2026;;"
+- **THEN** the app reads a withdrawal of 1,00 € and a transaction of 0,00 €
+
+#### Scenario: Debit column alone
+
+- **WHEN** a CSV file has the header "Datum;Soll" and the row "01.11.2026;1,00"
+- **THEN** the app reads a withdrawal of 1,00 €
+
+#### Scenario: Credit column alone
+
+- **WHEN** a CSV file has the header "Datum;Haben" and the row "01.11.2026;1,00"
+- **THEN** the app reads a deposit of 1,00 €
+
 #### Scenario: Marker column
 
 - **WHEN** a row has the amount "89,00" and "S" in a debit and credit marker column

@@ -45,7 +45,7 @@ struct CSVPreviewTests {
 		#expect(layout.columns == [.bookingDate: 0, .purpose: 1, .amount: 3])
 	}
 
-	@Test("A layout without a booking date column, or without an amount column or both debit and credit columns, names the missing fields")
+	@Test("A layout without a booking date column, or without any amount, debit, or credit column, names the missing fields")
 	func missingFields() throws {
 		let file = try CSVFile(data: Data("Datum;Name;Betrag\n01.11.2026;Kiosk;-1,50\n".utf8))
 		var layout = try file.detectedLayout()
@@ -63,8 +63,8 @@ struct CSVPreviewTests {
 		var both = try split.detectedLayout()
 		#expect(both.missing == [])
 		both.assign(2, to: nil)
-		#expect(both.missing == [.amount])
-		#expect(try split.preview(both, currency: "EUR").transactions.isEmpty)
+		#expect(both.missing == [])
+		#expect(try split.preview(both, currency: "EUR").transactions.map(\.amountMinor) == [0])
 	}
 
 	@Test("The preview offers both date orders when every date fits day first and month first, and reads the order that the user picks")
@@ -137,16 +137,28 @@ struct CSVPreviewTests {
 		#expect(preview.transactions.map(\.amountMinor) == [-150])
 	}
 
-	@Test("A row with a date and an empty amount cell fails the file with its line")
-	func emptyAmount() throws {
-		let file = try CSVFile(data: Data("Datum;Name;Betrag\n01.11.2026;Kiosk;-1,50\n02.11.2026;Vormerkung;\n".utf8))
-		#expect(try file.preview(file.detectedLayout(), currency: "EUR").problem == .line(3, "The amount cannot be read."))
+	@Test("An empty amount cell is zero, as on main", arguments: [
+		"Datum;Betrag\n01.11.2026;-1,00\n02.11.2026;\n",
+		"Datum;Soll;Haben\n01.11.2026;1,00;\n02.11.2026;;\n",
+	])
+	func emptyAmountsAreZero(text: String) throws {
+		let file = try CSVFile(data: Data(text.utf8))
+		let preview = try file.preview(file.detectedLayout(), currency: "EUR")
+		#expect(preview.problem == nil)
+		#expect(preview.transactions.map(\.amountMinor) == [-100, 0])
+		#expect(try TransactionFileImporter.parse(Data(text.utf8), currency: "EUR").transactions.map(\.amountMinor) == [-100, 0])
 	}
 
-	@Test("A row with empty debit and credit cells fails the file with its line")
-	func emptyDebitAndCredit() throws {
-		let file = try CSVFile(data: Data("Datum;Name;Soll;Haben\n01.11.2026;Kiosk;1,50;\n02.11.2026;Vormerkung;;\n".utf8))
-		#expect(try file.preview(file.detectedLayout(), currency: "EUR").problem == .line(3, "The amount cannot be read."))
+	@Test("One debit or credit column is enough and keeps its sign", arguments: [("Soll", Int64(-100)), ("Haben", Int64(100))])
+	func oneSidedAmounts(header: String, amountMinor: Int64) throws {
+		let data = Data("Datum;\(header)\n01.11.2026;1,00\n".utf8)
+		let file = try CSVFile(data: data)
+		let layout = try file.detectedLayout()
+		#expect(layout.missing == [])
+		let preview = try file.preview(layout, currency: "EUR")
+		#expect(preview.problem == nil)
+		#expect(preview.transactions.map(\.amountMinor) == [amountMinor])
+		#expect(try TransactionFileImporter.parse(data, currency: "EUR").transactions.map(\.amountMinor) == [amountMinor])
 	}
 
 	@Test("A PDF or an Excel file is not a CSV file, and a UTF-16 CSV file is")
@@ -166,7 +178,7 @@ struct CSVPreviewTests {
 		layout.assign(2, to: .amount)
 		let emptyFirst = try CSVFile(data: Data("Tag;Wer;Wieviel\n01.11.2026;Kiosk;\n02.11.2026;Bakery;-2,00\n".utf8))
 		#expect(emptyFirst.header == ["Tag", "Wer", "Wieviel"])
-		#expect(try emptyFirst.preview(layout, currency: "EUR").problem == .line(2, "The amount cannot be read."))
+		#expect(try emptyFirst.preview(layout, currency: "EUR").transactions.map(\.amountMinor) == [0, -200])
 		var second = CSVLayout(encoding: .utf8, columns: [:], dateOrder: .dayMonthYear, decimalMark: nil)
 		second.assign(1, to: .bookingDate)
 		second.assign(3, to: .amount)
@@ -251,7 +263,7 @@ struct CSVPreviewTests {
 		let blank = try CSVFile(data: Data("Telefon;030-123-4567\nTag;Wer;Wieviel\n;;\n03.11.2026;Kiosk;-4,20\n".utf8))
 		#expect(blank.header == ["Tag", "Wer", "Wieviel"])
 		let pending = try CSVFile(data: Data("01.11.2026;Vormerkung;\n02.11.2026;Kiosk;-1,50\n".utf8))
-		#expect(try pending.preview(layout, currency: "EUR").problem == .line(1, "The amount cannot be read."))
+		#expect(try pending.preview(layout, currency: "EUR").transactions.map(\.amountMinor) == [0, -150])
 		#expect(try short.preview(layout, currency: "EUR").transactions.map(\.name) == ["Bäckerei Gutbrot"])
 		let padded = try CSVFile(data: Data("Kontonummer:;DE02120300000000202051;\nKontostand vom 31.10.2026:;1.234,56 EUR;\n;;\nTag;Wer;Wieviel\n03.11.2026;Kiosk;-4,20\n".utf8))
 		#expect(padded.header == ["Tag", "Wer", "Wieviel"])
