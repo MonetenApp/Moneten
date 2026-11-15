@@ -277,7 +277,7 @@ final class DebugHarness {
 			}
 
 		// Changes the CSV preview on screen: "column <n>=<field or none>", "date <order>", "encoding <name>",
-		// "decimal comma|point|detect", "skip" as "Skip File" does, "state", which logs the settings and counts of
+		// "decimal comma|point|detect", "confirm", "cancel", "skip" as the sheet buttons do, "state", which logs the settings and counts of
 		// the preview, or "rows", which logs its first rows.
 		case "csv": csvPreview(argument)
 		// "[<currency>]": the credit card in US dollars, or in another currency such as JPY.
@@ -851,6 +851,7 @@ final class DebugHarness {
 		case "encoding": preview.layout.encoding = CSVEncoding(rawValue: value) ?? preview.layout.encoding
 		case "decimal": preview.layout.decimalMark = value == "comma" ? .comma : value == "point" ? .point : nil
 		case "confirm": model?.fileImport?.confirm()
+		case "cancel": model?.fileImport?.cancel()
 		case "skip": model?.fileImport?.skip()
 		// The log holds kinds, counts, and positions, never a name or a purpose (#159), so a row is its day and amount.
 		case "rows":

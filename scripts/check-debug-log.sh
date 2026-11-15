@@ -211,7 +211,7 @@ printf '%s\n' "Buchungstag;Empfänger;Verwendungszweck;Betrag" "11.11.2026;Tanks
 send importfile "$WORK/Kontoauszug.csv"
 poll "^csv state .*problem=" csv state
 poll "^csv rows" csv rows
-send key escape
+send csv cancel
 poll "^importfile done" state
 poll "^alert " alert
 send selectRows 1
