@@ -104,9 +104,10 @@ public enum RuleApplier {
 
 extension Category {
 	/// The rule that `Categorizer` applies, or nil when the category has none.
+	/// A group has none, even with a migrated rule, because it holds no transactions of its own.
 	/// `ruleError` reads the same result, so a category that the categorizer leaves out always shows the mark.
 	func savedRule() throws(RuleSyntaxError) -> Rule? {
-		guard !isDefault, !rule.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+		guard !isDefault, !isGroup, !rule.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
 		return try Rule(parsing: rule)
 	}
 
