@@ -152,7 +152,7 @@ public struct FinTSConnector: BankConnector {
 		let shared = Dictionary(grouping: request.accounts, by: \.remoteID).filter { $0.value.count > 1 }
 		for clash in shared.values.joined() { outcomes[clash.accountID] = .failed(HelperFailure.clash) }
 		let accounts = request.accounts.filter { shared[$0.remoteID] == nil }
-		command.accounts = accounts.map { Command.Period(id: $0.remoteID, from: Self.firstDay($0.since, enforced: request.enforced, today: today)?.description) }
+		command.accounts = accounts.map { Command.Period(id: $0.remoteID, from: Self.firstDay($0.since, today: today)?.description) }
 		let byRemoteID = Dictionary(uniqueKeysWithValues: accounts.map { ($0.remoteID, $0) })
 		var state: AccessState?
 		var notices: [BankMessage] = []
@@ -187,9 +187,8 @@ public struct FinTSConnector: BankConnector {
 
 	/// The first day to ask the bank for. A first and an enforced refresh ask for the full history.
 	/// Any other asks for no more than 90 days, so that the bank needs no TAN for older transactions.
-	static func firstDay(_ since: Day?, enforced: Bool, today: Day) -> Day? {
-		guard let since, !enforced else { return nil }
-		return max(since, today.adding(days: -90))
+	static func firstDay(_ since: Day?, today: Day) -> Day? {
+		since.map { max($0, today.adding(days: -90)) }
 	}
 
 	private func command(_ type: String, _ access: Access, _ state: AccessState?) throws -> Command {

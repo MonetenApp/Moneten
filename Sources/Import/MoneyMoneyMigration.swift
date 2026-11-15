@@ -273,7 +273,7 @@ public struct MoneyMoneyMigration: Sendable {
 		for item in raw {
 			guard let source = item["uuid"] as? String, let name = item["name"] as? String else { continue }
 			if (item["default"] as? Bool) == true {
-				// The default category maps to "Uncategorized": its transactions get no category.
+				// The default category of MoneyMoney maps to the default category: its transactions get no category.
 				map[source] = .some(nil)
 				continue
 			}

@@ -83,14 +83,15 @@ public struct RefreshRequest: Sendable {
 	/// What the connector returned last time.
 	public let state: AccessState?
 	public let accounts: [AccountRequest]
-	/// "Enforced refresh": ask the bank for the full history.
-	public let enforced: Bool
 
+	/// `enforced` is the "enforced refresh": it asks for the full history of each account, as an account
+	/// without a first day does. Each account keeps what it asks for when requests join.
 	public init(access: Access, state: AccessState? = nil, accounts: [AccountRequest], enforced: Bool = false) {
 		self.access = access
 		self.state = state
-		self.accounts = accounts
-		self.enforced = enforced
+		self.accounts = enforced
+			? accounts.map { AccountRequest(accountID: $0.accountID, name: $0.name, remoteID: $0.remoteID, currency: $0.currency) }
+			: accounts
 	}
 }
 
@@ -157,6 +158,12 @@ public struct RefreshResult: Sendable {
 	/// The positions of a portfolio, which replace the stored ones. Nil when the source sent none, as an
 	/// extension today, so the stored positions stay.
 	public let holdings: [Holding]?
+
+	/// After a fetch of the full history, the day of the oldest transaction: the bank keeps none before it.
+	public var historyStart: Day? {
+		guard isComplete else { return nil }
+		return transactions?.rows.map(\.bookingDate).min()
+	}
 
 	public init(balance: Money?, balanceDate: Date? = nil, transactions: FetchedTransactions?, isComplete: Bool = false,
 		transactionFailure: SyncFailure? = nil, isPortfolio: Bool = false, holdings: [Holding]? = nil) {

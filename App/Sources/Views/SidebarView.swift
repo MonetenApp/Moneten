@@ -139,6 +139,9 @@ struct GroupRow: View {
 		}
 		.contextMenu {
 			Button("Refresh Accounts") { model.refresh(.group(group.id)) }
+				.modifierKeyAlternate(.option) {
+					Button("Refresh Accounts (enforced)") { model.refresh(.group(group.id), enforced: true) }
+				}
 				.disabled(!model.canRefresh(.group(group.id)))
 			Divider()
 			Button("Add Account...") { model.addAccount(group: group.id) }
@@ -193,6 +196,9 @@ struct AccountRow: View {
 		.contextMenu {
 			if account.accessID != nil {
 				Button("Refresh Account") { model.refresh(.account(account.id)) }
+					.modifierKeyAlternate(.option) {
+						Button("Refresh Account (enforced)") { model.refresh(.account(account.id), enforced: true) }
+					}
 					.disabled(!model.canRefresh(.account(account.id)))
 				Divider()
 			}

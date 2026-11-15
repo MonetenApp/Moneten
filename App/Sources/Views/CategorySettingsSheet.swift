@@ -14,7 +14,7 @@ struct CategorySettingsSheet: View {
 	@State private var confirmRemove = false
 
 	var body: some View {
-		SheetFrame(title: "Settings for \(category?.name ?? "")", canConfirm: ruleError == nil, width: 520, onConfirm: save, leading: {
+		SheetFrame(title: "Settings for \(category?.name ?? "")", canConfirm: ruleError == nil && currencyIsValid, width: 520, onConfirm: save, leading: {
 			if category?.isDefault == false {
 				Button("Remove Category...", role: .destructive) { confirmRemove = true }
 			}
@@ -23,6 +23,13 @@ struct CategorySettingsSheet: View {
 				let c = binding.wrappedValue
 				Section {
 					TextField("Name", text: binding.name)
+					TextField("Currency", text: binding.currency)
+				} footer: {
+					if !currencyIsValid {
+						Text("Enter a currency code such as EUR.").foregroundStyle(Palette.red)
+					}
+				}
+				Section {
 					if !c.isDefault {
 						LabeledContent("Color") { ColorSwatches(selection: $color) }
 						LabeledContent("Icon") { SymbolPicker(selection: binding.symbol, color: color, isGroup: c.isGroup) }
@@ -92,6 +99,12 @@ struct CategorySettingsSheet: View {
 		}
 	}
 
+	private static let isoCurrencies = Set(Locale.Currency.isoCurrencies.map(\.identifier))
+
+	private var currencyCode: String { category?.currency.trimmingCharacters(in: .whitespaces).uppercased() ?? "" }
+
+	private var currencyIsValid: Bool { Self.isoCurrencies.contains(currencyCode) }
+
 	private func validate(_ text: String) {
 		guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { ruleError = nil; return }
 		do {
@@ -110,6 +123,7 @@ struct CategorySettingsSheet: View {
 	/// Saves and closes, or keeps the sheet open to ask whether a changed rule applies to existing transactions.
 	private func save() -> Bool {
 		guard var c = category else { return true }
+		c.currency = currencyCode
 		// A category keeps the inherited palette color until the user picks one.
 		if !c.isDefault, color.hex != originalColor.hex { c.color = color.hex }
 		let ruleChanged = c.rule != model.ledger.category(categoryID)?.rule
@@ -138,17 +152,25 @@ struct RuleHelp: View {
 				example(#""Lohn" OR "Gehalt""#, "Either word")
 				example(#""Lohn" AND "Gehalt""#, "Both words. Two terms without an operator also need both.")
 				example(#""EC-Karte" AND (NOT "Barauszahlung")"#, "Negation and parentheses")
+				example(#""Netflix" + !"Gutschrift""#, "Short forms: + is AND, ! is NOT.")
+				example(#""Amazon" -"Erstattung""#, "A minus before a term is NOT.")
+				example(#""Telekom" -"1&1""#, #"A plus or minus sign before a digit is part of the term, so -1&1 searches for "-1&1". To exclude 1&1, write -"1&1"."#)
 				example(#""Bahn AG""#, "A phrase: the words next to each other, in this order")
-				example(#""Blumen*""#, "Wildcards: * for any characters, ? for one character")
+				example(#""Blumen*""#, #"Wildcards: * for any characters, ? for one character. A term matches whole words, so "REWE" does not find REWE-Markt, and "REWE*" does."#)
 				example(#"name:"Bahn AG""#, "Only one field: name:, purpose:, local_account:, remote_account:, currency:, reference:, mandate:, creditor_id:, comment:, booking_text:")
-				example("amount>0,00", "Amount: =, !=, <, >, <=, >=. No space after the operator.")
+				example("currency:=EUR", "The field matches. :, =, and == do the same.")
+				example(#""Abschlag" AND name<>"Stadtwerke""#, "The field does not match. != does the same.")
+				example(#"remote_account:"DE02 1203 0000 0000 2020 51""#, "A word without a field does not search account numbers or IBANs. local_account: and remote_account: do.")
+				example("amount>0,00", "Amount: =, ==, :=, !=, <>, <, >, <=, >=. No space after the operator.")
+				example("true", "Every transaction. Restricted to one account, the category takes what no category above it takes.")
+				example("false", "No transaction")
 				example("/GA NR[0-9]{8}/", "A regular expression between slashes")
-				Text("Case and umlauts do not matter. AND, OR, and NOT must be written in capitals.")
+				Text(#"Case and umlauts do not matter. The operators work in any letter case. A word in quotation marks, such as "or", is always a search word."#)
 					.font(.callout).foregroundStyle(.secondary)
 			}
 			.padding()
 		}
-		.frame(width: 420, height: 420)
+		.frame(width: 420, height: 640)
 	}
 
 	private func example(_ code: String, _ text: String) -> some View {

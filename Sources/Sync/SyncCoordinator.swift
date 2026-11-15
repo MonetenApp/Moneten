@@ -16,7 +16,8 @@ public final class SyncCoordinator {
 	public private(set) var states: [UUID: SyncState] = [:]
 	/// The accounts of the accesses that run or wait for their turn, for the progress indicator of each account.
 	public private(set) var refreshingAccounts: Set<UUID> = []
-	private var requestedAccounts: [UUID: Set<UUID>] = [:]
+	/// The accounts of each access that runs or waits, with what each asks for.
+	private var requested: [UUID: [AccountRequest]] = [:]
 	private var running: [UUID: Task<Void, Never>] = [:]
 	/// The source of each running access, so that the refreshes of one extension can be canceled, also the setup
 	/// of an access that the app does not have yet.
@@ -64,11 +65,13 @@ public final class SyncCoordinator {
 		let connector: any BankConnector
 		var attended: Bool
 
-		/// The job that also fetches the accounts of `other`.
+		/// The job that also fetches the accounts of `other`. An account in both asks for the full history
+		/// when one of the two does.
 		func adding(_ other: Job) -> Job {
 			var job = self
-			job.request = RefreshRequest(access: request.access, state: request.state, accounts: request.accounts + other.request.accounts,
-				enforced: request.enforced || other.request.enforced)
+			let kept = request.accounts.filter { mine in !other.request.accounts.contains { $0.covers(mine) } }
+			let added = other.request.accounts.filter { new in !kept.contains { $0.covers(new) } }
+			job.request = RefreshRequest(access: request.access, state: request.state, accounts: kept + added)
 			job.attended = attended || other.attended
 			return job
 		}
@@ -85,7 +88,9 @@ public final class SyncCoordinator {
 	public var isRefreshing: Bool { !running.isEmpty || !queue.isEmpty || !afterRun.isEmpty }
 
 	/// Refreshes the accounts of one access. A manual refresh is `attended` and may ask the user; an
-	/// automatic one is not. An account that is already requested is not added again. The other accounts
+	/// automatic one is not. An account that is already requested is not added again, unless the command asks
+	/// for its full history and the request does not: a refresh that waits then asks for it, and a running
+	/// one fetches it again when it ends. The other accounts
 	/// of an access that waits join its request, and those of an access that runs, also one that was
 	/// canceled and has not ended yet, run when it ends.
 	///
@@ -99,10 +104,9 @@ public final class SyncCoordinator {
 	public func refresh(_ request: RefreshRequest, with connector: any BankConnector, attended: Bool) {
 		let id = request.access.id
 		if attended { attend(id, naming: Set(request.accounts.map(\.accountID))) }
-		let requested = requestedAccounts[id] ?? []
-		let accounts = request.accounts.filter { !requested.contains($0.accountID) }
-		let job = Job(request: RefreshRequest(access: request.access, state: request.state, accounts: accounts, enforced: request.enforced),
-			connector: connector, attended: attended)
+		let requested = requested[id] ?? []
+		let accounts = request.accounts.filter { new in !requested.contains { $0.covers(new) } }
+		let job = Job(request: RefreshRequest(access: request.access, state: request.state, accounts: accounts), connector: connector, attended: attended)
 		let waiting = queue.firstIndex { $0.request.access.id == id }
 		// An automatic request never joins a command that waits, which would ask for accounts the user did
 		// not name. Its accounts stay due for a later run.
@@ -215,7 +219,7 @@ public final class SyncCoordinator {
 	}
 
 	private func userCancel(_ id: UUID) {
-		let accounts = requestedAccounts[id] ?? []
+		let accounts = Set((requested[id] ?? []).map(\.accountID))
 		cancel(id)
 		userCanceled(accounts)
 	}
@@ -230,13 +234,12 @@ public final class SyncCoordinator {
 	}
 
 	private func startProgress(of job: Job) {
-		let ids = job.request.accounts.map(\.accountID)
-		requestedAccounts[job.request.access.id, default: []].formUnion(ids)
-		refreshingAccounts.formUnion(ids)
+		requested[job.request.access.id, default: []] += job.request.accounts
+		refreshingAccounts.formUnion(job.request.accounts.map(\.accountID))
 	}
 
 	private func endProgress(of access: UUID) {
-		refreshingAccounts.subtract(requestedAccounts.removeValue(forKey: access) ?? [])
+		refreshingAccounts.subtract((requested.removeValue(forKey: access) ?? []).map(\.accountID))
 	}
 
 	/// An automatic refresh whose turn comes while it may not start is dropped. Its accounts stay due.
@@ -309,7 +312,7 @@ public final class SyncCoordinator {
 			if var next = afterRun.removeValue(forKey: access.id) {
 				// The state that this run returned replaces the one that the command read before.
 				if let state {
-					next.request = RefreshRequest(access: access, state: state, accounts: next.request.accounts, enforced: next.request.enforced)
+					next.request = RefreshRequest(access: access, state: state, accounts: next.request.accounts)
 				}
 				startProgress(of: next)
 				// Work of `exclusively(for:_:)` goes first, and the next run waits for its end.
@@ -437,5 +440,13 @@ extension ConnectorReport {
 			case let .failed(failure): failure.rejectsPIN
 			}
 		}
+	}
+}
+
+extension AccountRequest {
+	/// A refresh with this request fetches what `other` asks for. Only a request for the full history asks
+	/// for more than another request of the same account.
+	func covers(_ other: AccountRequest) -> Bool {
+		accountID == other.accountID && (since == nil || other.since != nil)
 	}
 }

@@ -189,6 +189,9 @@ final class AppModel {
 	var bankNotices = BankNotices()
 	/// Opens the window "Notice", or brings it forward. The main window sets it, as `openMainWindow`.
 	@ObservationIgnored var openNoticeWindow: () -> Void = {}
+	/// The first day of the history that the bank keeps, for each account whose full history a refresh
+	/// fetched while the app runs ("Say when the bank has no older transactions").
+	var historyStarts: [UUID: Day] = [:]
 
 	var selection: SidebarSelection? {
 		didSet {
@@ -292,6 +295,7 @@ final class AppModel {
 		sync.deliver = { [weak self] accountID, result in
 			guard let self else { return }
 			self.announcer.stored(try await self.mergeRefresh(result, into: accountID).added)
+			if let start = result.historyStart { self.historyStarts[accountID] = start }
 		}
 		sync.ended = { [weak self] access, state, accounts, attended in
 			let failed = accounts.values.filter { if case .failed = $0 { true } else { false } }.count
@@ -363,7 +367,7 @@ final class AppModel {
 
 	func createDatabase(password: String?) {
 		do {
-			let store = try vault.create(password: password, starterCategories: StarterCategories.make())
+			let store = try vault.create(password: password, starterCategories: StarterCategories.make(language: starterLanguage))
 			hasPassword = password != nil
 			try open(store)
 		} catch {
@@ -443,6 +447,7 @@ final class AppModel {
 		store = nil
 		accesses = [:]
 		bankNotices = BankNotices()
+		historyStarts = [:]
 		sheet = nil
 		phase = .locked
 		// The lock removes the transaction table in this drawing and empties its rows after it, so that the
@@ -856,14 +861,15 @@ final class AppModel {
 		return FinTSConnector()
 	}
 
-	/// "Refresh All Accounts", "Refresh Account", and "Refresh Accounts". Offline the accounts keep their
-	/// last state, and the app says why nothing happens.
-	func refresh(_ scope: RefreshScope) {
+	/// "Refresh All Accounts", "Refresh Account", and "Refresh Accounts", and with `enforced` the commands
+	/// that ask the bank for the full history. Offline the accounts keep their last state, and the app says
+	/// why nothing happens.
+	func refresh(_ scope: RefreshScope, enforced: Bool = false) {
 		guard autoRefresh.isOnline else {
 			alert = AlertMessage(title: SyncFailure.offline.message, message: "Connect this Mac to the Internet and try again.")
 			return
 		}
-		refresh(ledger.refreshAccounts(scope))
+		refresh(ledger.refreshAccounts(scope), enforced: enforced)
 	}
 
 	/// "Cancel Refresh". The lock cancels too, and then the accounts stay due for the unlock.
@@ -956,7 +962,7 @@ final class AppModel {
 
 	/// Starts one refresh per access, with the state its connector returned last. Only a refresh that the
 	/// user started shows an alert.
-	func refresh(_ plan: [UUID: [AccountRequest]], attended: Bool = true) {
+	func refresh(_ plan: [UUID: [AccountRequest]], attended: Bool = true, enforced: Bool = false) {
 		guard let store else { return }
 		let requests = plan.compactMap { id, accounts in accesses[id].map { ($0, accounts) } }.sorted { $0.0.bankName < $1.0.bankName }
 		for (access, accounts) in requests {
@@ -965,7 +971,8 @@ final class AppModel {
 				continue
 			}
 			do {
-				sync.refresh(RefreshRequest(access: access, state: try store.state(of: access.id), accounts: accounts), with: connector, attended: attended)
+				sync.refresh(RefreshRequest(access: access, state: try store.state(of: access.id), accounts: accounts, enforced: enforced), with: connector,
+					attended: attended)
 				Trail.log("refresh start access=\(trailNumber(of: access.id)) accounts=\(accounts.count) attended=\(attended)")
 			} catch {
 				if attended { alert = AlertMessage(title: "Could not refresh \(access.bankName).", message: String(describing: error)) }
@@ -1106,23 +1113,14 @@ final class AppModel {
 		try store?.deletedTransactions() ?? []
 	}
 
-	/// Root starter categories that the user has not changed: the same name, rule, and kind, no color
-	/// or icon of the user, and only unchanged starter subcategories below. A changed or extended tree stays.
+	/// The starter categories that a migration replaces, once the database holds no transactions.
 	private var replaceableStarterCategories: [Domain.Category] {
-		guard ledger.transactions.isEmpty else { return [] }
-		let template = StarterCategories.make()
-		func same(_ a: Domain.Category, _ b: Domain.Category) -> Bool {
-			a.name == b.name && a.isGroup == b.isGroup && a.rule == b.rule && a.sourceID == nil && !a.isDefault
-				&& a.color == b.color && a.symbol == b.symbol
-		}
-		return ledger.categories.filter { root in
-			guard root.parentID == nil, let starter = template.first(where: { $0.parentID == nil && same(root, $0) }) else { return false }
-			let starterChildren = template.filter { $0.parentID == starter.id }
-			return ledger.categoryIDs(inTree: root.id).subtracting([root.id]).allSatisfy { id in
-				guard let c = ledger.category(id), c.parentID == root.id else { return false }
-				return starterChildren.contains { same(c, $0) }
-			}
-		}
+		ledger.transactions.isEmpty ? StarterCategories.unchangedRoots(in: ledger, language: starterLanguage) : []
+	}
+
+	/// The language of the interface, so that a new database and the migration agree on the starter set.
+	private var starterLanguage: StarterCategories.Language {
+		.init(localization: Bundle.main.preferredLocalizations.first)
 	}
 
 	/// Stores a delivery and takes it into the ledger. An import goes through `replacingTable`, because a
@@ -1300,27 +1298,4 @@ enum SheetKind: Identifiable, Equatable {
 	case changePassword
 
 	var id: String { String(describing: self) }
-}
-
-enum StarterCategories {
-	static func make() -> [Domain.Category] {
-		var result: [Domain.Category] = []
-		var position = 0
-		func group(_ name: String, _ children: [String], rule: [String: String] = [:], showInDiagrams: Bool = true) {
-			let g = Domain.Category(position: position, name: name, isGroup: true, showInDiagrams: showInDiagrams)
-			position += 1
-			result.append(g)
-			for (i, c) in children.enumerated() {
-				result.append(Domain.Category(parentID: g.id, position: i, name: c, showInDiagrams: showInDiagrams, rule: rule[c] ?? ""))
-			}
-		}
-		group("Income", ["Salary", "Other income"], rule: ["Salary": #""Gehalt" OR "Lohn""#])
-		group("Living", ["Rent", "Groceries", "Electricity", "Internet & Phone"])
-		group("Mobility", ["Fuel", "Public transport", "Car"])
-		group("Leisure", ["Restaurants", "Travel", "Hobbies"])
-		group("Insurance", ["Health", "Liability", "Car insurance"])
-		result.append(Domain.Category(position: position, name: "Transfers", showInDiagrams: false))
-		result.append(Domain.Category(position: 1_000, name: "Uncategorized", isDefault: true))
-		return result
-	}
 }

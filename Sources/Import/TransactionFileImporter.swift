@@ -63,8 +63,8 @@ public enum TransactionFileImporter {
 		guard let format = detect(text) else { throw Failure.unsupported }
 		let result: Parsed
 		switch format {
-		case .camt: result = try CAMTParser.parse(data)
-		case .mt940: result = Parsed(transactions: try MT940Parser.parse(text))
+		case .camt: result = try CAMTParser.parse(data, currency: currency)
+		case .mt940: result = Parsed(transactions: try MT940Parser.parse(text, currency: currency))
 		case .csv: result = try CSVParser.parse(text, currency: currency)
 		}
 		guard !result.transactions.isEmpty else { throw Failure.empty }
@@ -264,7 +264,7 @@ enum CSVParser {
 // MARK: - MT940
 
 enum MT940Parser {
-	static func parse(_ text: String) throws -> [Transaction] {
+	static func parse(_ text: String, currency: String) throws -> [Transaction] {
 		var fields: [(tag: String, value: String, line: Int)] = []
 		for (n, rawLine) in text.replacingOccurrences(of: "\r\n", with: "\n").split(separator: "\n", omittingEmptySubsequences: false).enumerated() {
 			let line = String(rawLine)
@@ -275,7 +275,7 @@ enum MT940Parser {
 				fields[fields.count - 1].value += "\n" + line
 			}
 		}
-		var currency = "EUR"
+		var currency = currency
 		var result: [Transaction] = []
 		let placeholder = UUID()
 		for (i, f) in fields.enumerated() {
@@ -302,19 +302,16 @@ enum MT940Parser {
 	/// A field that cannot be read fails the whole file with its line, so nothing from the file is imported.
 	static func parse61(_ s: String, line: Int) throws -> Line61 {
 		func fail(_ reason: String) -> TransactionFileImporter.Failure { .line(line, reason) }
-		func isDay(_ month: Int, _ day: Int) -> Bool { (1...12).contains(month) && (1...31).contains(day) }
 		let chars = Array(s.replacingOccurrences(of: "\n", with: ""))
 		guard chars.count >= 6, let yy = Int(String(chars[0..<2])), let mm = Int(String(chars[2..<4])), let dd = Int(String(chars[4..<6])),
-			isDay(mm, dd) else { throw fail("The date cannot be read.") }
-		let year = 2000 + yy
-		let value = Day(year: year, month: mm, day: dd)
+			let value = Day.valid(year: 2000 + yy, month: mm, day: dd) else { throw fail("The date cannot be read.") }
 		var i = 6
 		var booking = value
 		if chars.count > i + 4, let bm = Int(String(chars[i..<i + 2])), let bd = Int(String(chars[i + 2..<i + 4])), chars[i].isNumber {
-			guard isDay(bm, bd) else { throw fail("The date cannot be read.") }
-			var by = year
-			if bm == 12 && mm == 1 { by -= 1 } else if bm == 1 && mm == 12 { by += 1 }
-			booking = Day(year: by, month: bm, day: bd)
+			var by = value.year
+			if bm - mm > 6 { by -= 1 } else if mm - bm > 6 { by += 1 }
+			guard let day = Day.valid(year: by, month: bm, day: bd) else { throw fail("The date cannot be read.") }
+			booking = day
 			i += 4
 		}
 		// RC is the reversal of a credit and books a debit. RD is the reversal of a debit and books a credit.
@@ -394,12 +391,16 @@ final class CAMTParser: NSObject, XMLParserDelegate {
 	private var entry: [String: String] = [:]
 	private var purposes: [String] = []
 	private var inEntry = false
-	private var currency = "EUR"
+	private let currency: String
 	/// The first entry that cannot be read. It stops the parser, so nothing from the file is imported.
 	private var failure: TransactionFileImporter.Failure?
 
-	static func parse(_ data: Data) throws -> TransactionFileImporter.Parsed {
-		let p = CAMTParser()
+	private init(currency: String) {
+		self.currency = currency
+	}
+
+	static func parse(_ data: Data, currency: String) throws -> TransactionFileImporter.Parsed {
+		let p = CAMTParser(currency: currency)
 		let parser = XMLParser(data: data)
 		parser.delegate = p
 		let parsed = parser.parse()

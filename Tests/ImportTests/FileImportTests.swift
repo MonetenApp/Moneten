@@ -109,6 +109,17 @@ struct FileImportTests {
 		])
 	}
 
+	@Test("A CSV date that the calendar does not have fails a booking date and warns for a value date")
+	func csvImpossibleDates() throws {
+		let text = "Datum;Valuta;Name;Betrag\n01.03.2026;31.02.2026;Kiosk;-1,50\n"
+		let parsed = try TransactionFileImporter.parse(Data(text.utf8), currency: "EUR")
+		#expect(parsed.transactions.map(\.valueDate) == [nil])
+		#expect(parsed.warnings == [.unreadableValueDate(line: 2, cell: "31.02.2026")])
+		#expect(throws: TransactionFileImporter.Failure.line(3, "The date 30.02.2026 cannot be read.")) {
+			try TransactionFileImporter.parse(Data((text + "30.02.2026;;Kiosk;-2,00\n").utf8), currency: "EUR")
+		}
+	}
+
 	@Test("A CAMT entry with an unreadable value date is imported with a warning for its line")
 	func camtValueDateWarning() throws {
 		let xml = """
@@ -183,6 +194,52 @@ struct FileImportTests {
 		#expect(ts[1].amountMinor == 125_000 && ts[1].name == "Erika Mustermann")
 	}
 
+	@Test("An MT940 file without an opening balance and a CAMT entry without a currency take the account currency")
+	func fileWithoutCurrency() throws {
+		let mt940 = """
+		:20:STARTUMS
+		:25:12030000/202051
+		:61:2611031103D1000,00NDDTNONREF
+		-
+		"""
+		let camt = """
+		<?xml version="1.0" encoding="UTF-8"?>
+		<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.053.001.08"><BkToCstmrStmt><Stmt>
+		<Ntry><Amt>1000.00</Amt><CdtDbtInd>DBIT</CdtDbtInd><BookgDt><Dt>2026-11-03</Dt></BookgDt></Ntry>
+		<Ntry><Amt Ccy="EUR">5.00</Amt><CdtDbtInd>CRDT</CdtDbtInd><BookgDt><Dt>2026-11-04</Dt></BookgDt></Ntry>
+		</Stmt></BkToCstmrStmt></Document>
+		"""
+		let fromMT940 = try TransactionFileImporter.parse(Data(mt940.utf8), currency: "USD").transactions
+		#expect(fromMT940.map(\.currency) == ["USD"])
+		#expect(fromMT940.map(\.amountMinor) == [-100_000])
+		let fromCAMT = try TransactionFileImporter.parse(Data(camt.utf8), currency: "USD").transactions
+		#expect(fromCAMT.map(\.currency) == ["USD", "EUR"])
+		#expect(fromCAMT.map(\.amountMinor) == [-100_000, 500])
+	}
+
+	@Test("An MT940 booking date takes the year of the value date, moved by the six-month rule", arguments: [
+		("2601021231", Day(year: 2026, month: 1, day: 2), Day(year: 2025, month: 12, day: 31)),
+		("2511200310", Day(year: 2025, month: 11, day: 20), Day(year: 2026, month: 3, day: 10)),
+		("2606300102", Day(year: 2026, month: 6, day: 30), Day(year: 2026, month: 1, day: 2)),
+		("800101", Day(year: 2080, month: 1, day: 1), Day(year: 2080, month: 1, day: 1)),
+		("2601150715", Day(year: 2026, month: 1, day: 15), Day(year: 2026, month: 7, day: 15)),
+		("2601150815", Day(year: 2026, month: 1, day: 15), Day(year: 2025, month: 8, day: 15)),
+		("2612150615", Day(year: 2026, month: 12, day: 15), Day(year: 2026, month: 6, day: 15)),
+	])
+	func mt940Dates(dates: String, value: Day, booking: Day) throws {
+		let text = """
+		:20:STARTUMS
+		:25:12030000/202051
+		:60F:C251031EUR1000,00
+		:61:\(dates)D50,00NDDTNONREF
+		:62F:C260630EUR950,00
+		-
+		"""
+		let ts = try TransactionFileImporter.parse(Data(text.utf8), currency: "EUR").transactions
+		#expect(ts.map(\.valueDate) == [value])
+		#expect(ts.map(\.bookingDate) == [booking])
+	}
+
 	@Test("MT940 always reads the comma as the decimal mark")
 	func mt940DecimalComma() throws {
 		let text = """
@@ -218,6 +275,8 @@ struct FileImportTests {
 		(":61:2611071107DNDDTNONREF", "The amount cannot be read."),
 		(":61:2613071107D50,00NDDTNONREF", "The date cannot be read."),
 		(":61:26", "The date cannot be read."),
+		(":61:2602301107D50,00NDDTNONREF", "The date cannot be read."),
+		(":61:2611070431D50,00NDDTNONREF", "The date cannot be read."),
 	])
 	func mt940Unreadable(line: String, reason: String) {
 		let text = """
@@ -235,6 +294,7 @@ struct FileImportTests {
 	@Test("A CAMT file with an entry that cannot be read is rejected with its line", arguments: [
 		(#"<Ntry><Amt Ccy="EUR">abc</Amt><CdtDbtInd>DBIT</CdtDbtInd><BookgDt><Dt>2026-11-03</Dt></BookgDt></Ntry>"#, "The amount of the entry cannot be read."),
 		(#"<Ntry><Amt Ccy="EUR">5.00</Amt><CdtDbtInd>CRDT</CdtDbtInd></Ntry>"#, "The booking date of the entry cannot be read."),
+		(#"<Ntry><Amt Ccy="EUR">5.00</Amt><CdtDbtInd>CRDT</CdtDbtInd><BookgDt><Dt>2026-02-30</Dt></BookgDt></Ntry>"#, "The booking date of the entry cannot be read."),
 	])
 	func camtUnreadable(entry: String, reason: String) {
 		let xml = """

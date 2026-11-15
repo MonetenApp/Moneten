@@ -60,7 +60,7 @@ A portfolio holds positions. The latest successful refresh of its account replac
 
 | Type | Fields | Rules |
 |---|---|---|
-| `Category` | `id`, `parentID?`, `position`, `name`, `isGroup`, `isDefault`, `color?`, `currency`, `showInDiagrams`, `sidebarAmount`, `restrictedToID?`, `rule`, `isExpanded`, `sourceID?` | A tree. Exactly one category has `isDefault` set. It is "Uncategorized" and holds every transaction without a category. `color` is `#RRGGBB`. Without a color, a category shows the palette color of its top-level category. `restrictedToID` is an account or an account group. `rule` is text in the rule language of the spec `categorization-rules`, and an empty rule means no rule. |
+| `Category` | `id`, `parentID?`, `position`, `name`, `isGroup`, `isDefault`, `color?`, `currency`, `showInDiagrams`, `sidebarAmount`, `restrictedToID?`, `rule`, `isExpanded`, `sourceID?` | A tree. Exactly one category has `isDefault` set. This default category holds every transaction without a category, and the sidebar shows it last. `color` is `#RRGGBB`. Without a color, a category shows the palette color of its top-level category. `restrictedToID` is an account or an account group. `rule` is text in the rule language of the spec `categorization-rules`, and an empty rule means no rule. |
 | `SidebarAmount` | `none`, `currentMonth`, `currentQuarter`, `currentYear`, `totalSum` | The sum that the sidebar shows next to the category. |
 
 When the rules of several categories match a transaction, the first category in sidebar order wins.
@@ -82,7 +82,7 @@ When the rules of several categories match a transaction, the first category in 
 | `comment` | `String?` | A comment that the user writes. |
 | `isChecked` | `Bool` | The user checked this transaction off. |
 | `isPending` | `Bool` | Not booked yet. A pending transaction counts toward the balance and the category sums, except one with `needsReview`. |
-| `categoryID` | `UUID?` | `nil` means "Uncategorized". |
+| `categoryID` | `UUID?` | `nil` means the default category. |
 | `categorizedBy` | `Categorization` | `manual`, `rule`, or `none`. A rule never replaces a manual category. Only "Apply to all transactions." for a changed rule does. |
 | `isNew` | `Bool` | Set when a merge adds the transaction, cleared when the user opens its account or checks it. |
 | `needsReview` | `Bool` | Set by a merge when more than one row could be the booked version of a pending row. Cleared when the user checks a booked row. A checked pending row keeps it. A merge drops a pending row that has it only after the user checked it, and a new review clears that checkmark. |
