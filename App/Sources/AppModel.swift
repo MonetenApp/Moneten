@@ -269,6 +269,8 @@ final class AppModel {
 
 	/// How far `apply(rule:of:mode:)` has come, or nil when no rule is applied.
 	private(set) var ruleProgress: (done: Int, total: Int)?
+	/// The run of `apply(rule:of:mode:)`, which a lock cancels.
+	@ObservationIgnored private var ruleRun: Task<[Transaction], Never>?
 
 	/// A message for an alert.
 	var alert: AlertMessage? {
@@ -447,6 +449,7 @@ final class AppModel {
 		extensionSetupStates.clear()
 		setup?.cancel()
 		setup = nil
+		ruleRun?.cancel()
 		extensions.close()
 		try? store?.close()
 		store = nil
@@ -1088,14 +1091,16 @@ final class AppModel {
 		let ledger = self.ledger
 		let total = ledger.transactions.count
 		ruleProgress = (0, total)
-		defer { ruleProgress = nil }
+		defer { ruleProgress = nil; ruleRun = nil }
 		let (reports, reporter) = AsyncStream.makeStream(of: Int.self, bufferingPolicy: .bufferingNewest(1))
 		let run = Task.detached(priority: .userInitiated) {
 			defer { reporter.finish() }
 			return RuleApplier.apply(category: category, rule: rule, to: ledger.transactions, ledger: ledger, mode: mode) { reporter.yield($0) }
 		}
+		ruleRun = run
 		for await done in reports { ruleProgress = (done, total) }
 		let changed = await run.value
+		guard !run.isCancelled else { return }
 		let saved = await replacingTable { () -> Int? in
 			// A run saves only into the database it started with. A lock closes it, and an unlock opens a new one.
 			guard self.store === store else { return nil }

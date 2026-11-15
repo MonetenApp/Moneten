@@ -58,11 +58,13 @@ public enum RuleApplication: Sendable {
 public enum RuleApplier {
 	/// Applies the rule of one category to existing transactions and returns the changed ones.
 	/// `progress` gets the count of checked transactions after every 1,000 and after the last one.
+	/// A cancelled task stops the run, and it returns no changes.
 	public static func apply(category: Category, rule: Rule, to transactions: [Transaction], ledger: Ledger, mode: RuleApplication,
 		progress: (Int) -> Void = { _ in }) -> [Transaction] {
 		let restriction = ledger.allowedAccounts(of: category)
 		var changed: [Transaction] = []
 		for (i, var t) in transactions.enumerated() {
+			guard !Task.isCancelled else { return [] }
 			defer { if (i + 1) % 1_000 == 0 || i + 1 == transactions.count { progress(i + 1) } }
 			let inScope = restriction.map { $0.contains(t.accountID) } ?? true
 			let matches = inScope && rule.matches(RuleSubject(t, account: ledger.account(t.accountID)))
