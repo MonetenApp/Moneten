@@ -6,15 +6,16 @@ import Foundation
 /// an open quotation mark while the user types, searches its plain words.
 struct SearchQuery {
 	private indirect enum Node {
-		case text(String)
+		case text(Needle)
 		/// Words with wildcards that must follow each other inside one field of the search text.
-		case words([WildcardPattern], literals: [String])
+		case words([WildcardPattern], literals: [Needle])
 		/// Words that must follow each other inside one value of a field, as in a rule. A row whose search text lacks
 		/// one of `literals` cannot match.
-		case field([WildcardPattern], RuleField, literals: [String])
+		case field([WildcardPattern], RuleField, literals: [Needle], shape: SearchText.WordShape?)
 		/// A regular expression over the text of the fields as it is. Without a field name it also reads the names of
-		/// the account and the category.
-		case regex(NSRegularExpression, [RuleField], names: Bool)
+		/// the account and the category. `anyLine` matches the fields joined by line breaks, which every row that the
+		/// expression matches also matches, so one call rules out most rows before a call for each field.
+		case regex(NSRegularExpression, anyLine: NSRegularExpression?, [RuleField], names: Bool)
 		case amount(AmountBounds)
 		case not(Node)
 		case and(Node, Node)
@@ -76,25 +77,33 @@ struct SearchQuery {
 			}
 		}
 
-		/// The folded words of each value of a field, as a rule splits them.
-		func words(of field: RuleField) -> [[Substring]] {
-			guard let places = SearchText.places[field] else { return texts(of: field).map(TextFolding.words) }
-			return places.map { SearchText.words(at: $0, of: searchText) }
+		/// The patterns match words that follow each other in one value of the field, as the phrase of a rule does.
+		func field(_ field: RuleField, holds patterns: [WildcardPattern], shape: SearchText.WordShape?) -> Bool {
+			guard let places = SearchText.places[field] else {
+				return texts(of: field).contains { SearchQuery.follow(patterns, in: TextFolding.words($0)) }
+			}
+			return places.contains { place in
+				let value = SearchText.field(at: place, of: searchText)
+				if patterns.count == 1 { return SearchText.containsWord(in: value, matching: patterns[0], shape: shape) }
+				return SearchQuery.follow(patterns, in: value.split(separator: " "))
+			}
 		}
 	}
 
 	private static func holds(_ node: Node, _ row: Row) -> Bool {
 		switch node {
-		case let .text(words):
-			return row.searchText.contains(words)
+		case let .text(needle):
+			return needle.occurs(in: row.searchText)
 		case let .words(patterns, literals):
-			return literals.allSatisfy(row.searchText.contains)
+			return literals.allSatisfy { $0.occurs(in: row.searchText) }
 				&& row.searchText.split(separator: "\u{1}").contains { follow(patterns, in: $0.split(separator: " ")) }
-		case let .field(patterns, field, literals):
-			return literals.allSatisfy(row.searchText.contains) && row.words(of: field).contains { follow(patterns, in: $0) }
-		case let .regex(regex, fields, names):
+		case let .field(patterns, field, literals, shape):
+			return literals.allSatisfy { $0.occurs(in: row.searchText) } && row.field(field, holds: patterns, shape: shape)
+		case let .regex(regex, anyLine, fields, names):
 			let texts = fields.flatMap(row.texts) + (names ? [row.account()?.name, row.categoryName()].compactMap { $0 } : [])
-			return texts.contains { regex.firstMatch(in: $0, range: NSRange($0.startIndex..., in: $0)) != nil }
+			func matches(_ regex: NSRegularExpression, _ text: String) -> Bool { regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) != nil }
+			if let anyLine, texts.count > 1, !matches(anyLine, texts.joined(separator: "\n")) { return false }
+			return texts.contains { matches(regex, $0) }
 		case let .amount(bounds):
 			return bounds.holds(row.transaction.amountMinor, decimals: row.transaction.amount.decimalPlaces)
 		case let .not(a):
@@ -107,7 +116,7 @@ struct SearchQuery {
 	}
 
 	/// The patterns match words that follow each other, as the phrase of a rule does.
-	private static func follow(_ patterns: [WildcardPattern], in words: [Substring]) -> Bool {
+	fileprivate static func follow(_ patterns: [WildcardPattern], in words: [Substring]) -> Bool {
 		guard !patterns.isEmpty, words.count >= patterns.count else { return false }
 		return (0...(words.count - patterns.count)).contains { start in patterns.indices.allSatisfy { patterns[$0].matches(words[start + $0]) } }
 	}
@@ -130,8 +139,8 @@ struct SearchQuery {
 	}
 
 	/// The text between the wildcards of the words, each of which the search text of a matching row holds.
-	private static func literals(_ patterns: [WildcardPatternBox]) -> [String] {
-		patterns.flatMap { $0.pattern.characters.split { $0 == "*" || $0 == "?" }.map { String($0) } }
+	private static func literals(_ patterns: [WildcardPatternBox]) -> [Needle] {
+		patterns.flatMap { $0.pattern.characters.split { $0 == "*" || $0 == "?" }.map { Needle(String($0)) } }
 	}
 
 	/// Of two joined terms, the one that reads no fields goes first, so that it often decides before a row reads its
@@ -143,15 +152,17 @@ struct SearchQuery {
 			let core = words.count == 1 ? words[0].trimmingCharacters(in: CharacterSet(charactersIn: "*")) : ""
 			if !core.isEmpty, !core.contains("*"), !core.contains("?") {
 				// A single word with `*` at its ends only: a search word finds text inside words anyway.
-				return .text(core)
+				return .text(Needle(core))
 			}
-			if !patterns.contains(where: \.pattern.hasWildcards) { return .text(words.joined(separator: " ")) }
+			if !patterns.contains(where: \.pattern.hasWildcards) { return .text(Needle(words.joined(separator: " "))) }
 			return .words(words.map { WildcardPattern("*" + $0 + "*") }, literals: literals(patterns))
 		case let .phrase(patterns, field?):
 			// The search text holds every field but the currency, folded as a rule folds it.
-			return .field(patterns.map(\.pattern), field, literals: field == .currency ? [] : literals(patterns))
+			return .field(patterns.map(\.pattern), field, literals: field == .currency ? [] : literals(patterns),
+				shape: patterns.count == 1 ? SearchText.WordShape(patterns[0].pattern) : nil)
 		case let .regex(box, field):
-			return .regex(box.regex, field.map { [$0] } ?? RuleField.unqualified, names: field == nil)
+			let anyLine = try? NSRegularExpression(pattern: box.regex.pattern, options: box.regex.options.union(.anchorsMatchLines))
+			return .regex(box.regex, anyLine: anyLine, field.map { [$0] } ?? RuleField.unqualified, names: field == nil)
 		case let .amount(op, value):
 			return .amount(AmountBounds(op, value))
 		case let .not(a):
@@ -183,19 +194,86 @@ enum SearchText {
 		let folded = TextFolding.fold(parts.joined(separator: "\u{1}"))
 		// Most rows have single spaces only, and splitting every row doubled the time to build the ledger. The lead
 		// bytes 0xC2, 0xE2, and 0xE3 start every other white space, such as U+00A0, U+202F, and U+3000.
-		let hasRuns = folded.contains("  ") || folded.utf8.contains { $0 < 0x20 && $0 != 1 || $0 == 0xC2 || $0 == 0xE2 || $0 == 0xE3 }
-		return hasRuns ? folded.split(whereSeparator: \.isWhitespace).joined(separator: " ") : folded
+		return hasRuns(folded) ? folded.split(whereSeparator: \.isWhitespace).joined(separator: " ") : folded
 	}
 
-	/// The folded words of the field at `place`.
-	static func words(at place: Int, of text: String) -> [Substring] {
+	private static func hasRuns(_ text: String) -> Bool {
+		var text = text
+		return text.withUTF8 { bytes in
+			var previous: UInt8 = 0
+			for byte in bytes {
+				if byte < 0x20 && byte != 1 || byte == 0x20 && previous == 0x20 || byte == 0xC2 || byte == 0xE2 || byte == 0xE3 { return true }
+				previous = byte
+			}
+			return false
+		}
+	}
+
+	/// The folded field at `place`.
+	static func field(at place: Int, of text: String) -> Substring {
 		var start = text.utf8.startIndex
 		for _ in 0..<place {
-			guard let separator = text.utf8[start...].firstIndex(of: 1) else { return [] }
+			guard let separator = text.utf8[start...].firstIndex(of: 1) else { return "" }
 			start = text.utf8.index(after: separator)
 		}
-		let end = text.utf8[start...].firstIndex(of: 1) ?? text.utf8.endIndex
-		return text[start..<end].split(separator: " ")
+		return text[start..<(text.utf8[start...].firstIndex(of: 1) ?? text.utf8.endIndex)]
+	}
+
+	/// One word of a folded field matches the pattern. Walks the bytes, so that a row allocates no list of words.
+	static func containsWord(in field: Substring, matching pattern: WildcardPattern, shape: WordShape?) -> Bool {
+		var start = field.startIndex
+		while start < field.endIndex {
+			let end = field.utf8[start...].firstIndex(of: 0x20) ?? field.endIndex
+			if start < end, shape?.matches(field.utf8[start..<end]) ?? pattern.matches(field[start..<end]) { return true }
+			start = end < field.endIndex ? field.utf8.index(after: end) : end
+		}
+		return false
+	}
+
+	/// A pattern whose only wildcards are `*` at its ends, compared byte by byte, because matching a word with
+	/// wildcards builds a list of its characters, which most of the time of a field term over 50,000 rows went to.
+	enum WordShape {
+		case exact([UInt8]), prefix([UInt8]), suffix([UInt8]), infix([UInt8])
+
+		init?(_ pattern: WildcardPattern) {
+			let text = String(pattern.characters)
+			let core = text.trimmingCharacters(in: CharacterSet(charactersIn: "*"))
+			guard !core.isEmpty, !core.contains("*"), !core.contains("?") else { return nil }
+			let bytes = Array(core.utf8)
+			switch (text.hasPrefix("*"), text.hasSuffix("*")) {
+			case (false, false): self = .exact(bytes)
+			case (false, true): self = .prefix(bytes)
+			case (true, false): self = .suffix(bytes)
+			case (true, true): self = .infix(bytes)
+			}
+		}
+
+		func matches(_ word: Substring.UTF8View) -> Bool {
+			switch self {
+			case let .exact(bytes): word.elementsEqual(bytes)
+			case let .prefix(bytes): word.starts(with: bytes)
+			case let .suffix(bytes): word.reversed().starts(with: bytes.reversed())
+			case let .infix(bytes): word.count >= bytes.count && (0...(word.count - bytes.count)).contains { word.dropFirst($0).starts(with: bytes) }
+			}
+		}
+	}
+}
+
+/// A folded text to find in the search text, compared byte by byte. Both sides are folded the same way, and
+/// `String.contains` cost about 2 µs per row, most of the time of a search over 50,000 rows.
+struct Needle {
+	private let bytes: [UInt8]
+
+	init(_ text: String) {
+		bytes = Array(text.utf8)
+	}
+
+	func occurs(in text: String) -> Bool {
+		guard !bytes.isEmpty else { return true }
+		var text = text
+		return text.withUTF8 { haystack in
+			bytes.withUnsafeBufferPointer { memmem(haystack.baseAddress, haystack.count, $0.baseAddress, $0.count) != nil }
+		}
 	}
 }
 

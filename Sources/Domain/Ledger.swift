@@ -418,17 +418,18 @@ public struct Ledger: Sendable {
 	// MARK: Filtering
 
 	public func transactions(in scope: LedgerScope, filter: TransactionFilter = TransactionFilter()) -> [Transaction] {
-		let base: [Transaction]
+		// One pass over the rows, because copying 50,000 rows into a list of the view first cost as much as the search.
+		let inScope: (Transaction) -> Bool
 		switch scope {
 		case let .account(id):
-			base = transactions.filter { $0.accountID == id }
+			inScope = { $0.accountID == id }
 		case let .accountGroup(id):
 			let ids = accountIDs(inGroupTree: id)
-			base = transactions.filter { ids.contains($0.accountID) }
+			inScope = { ids.contains($0.accountID) }
 		case let .category(id):
 			let ids = categoryIDs(inTree: id)
 			let defaultID = defaultCategory?.id
-			base = transactions.filter { ids.contains($0.categoryID ?? defaultID ?? UUID()) }
+			inScope = { ids.contains($0.categoryID ?? defaultID ?? UUID()) }
 		}
 		let query = SearchQuery(filter.searchText)
 		let accountsByID = query.readsFields ? Dictionary(uniqueKeysWithValues: accounts.map { ($0.id, $0) }) : [:]
@@ -436,7 +437,7 @@ public struct Ledger: Sendable {
 		let categoryFilter = filter.categoryID.map { categoryIDs(inTree: $0) }
 		let defaultID = defaultCategory?.id ?? UUID()
 		var amountBounds: [Int: MinorBounds] = [:]
-		return base.filter { t in
+		return Array(transactions.lazy.filter(inScope).filter { t in
 			guard filter.period.contains(t.bookingDate) else { return false }
 			switch filter.status {
 			case .all: break
@@ -457,7 +458,7 @@ public struct Ledger: Sendable {
 			if let a = filter.accountID, t.accountID != a { return false }
 			if query.isEmpty { return true }
 			return query.matches(t, searchText: searchText[t.id] ?? "", account: { accountsByID[t.accountID] }, categoryName: { names[t.categoryID] })
-		}
+		})
 	}
 
 	// MARK: Changes
