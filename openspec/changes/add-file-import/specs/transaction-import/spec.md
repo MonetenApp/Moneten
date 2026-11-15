@@ -210,6 +210,27 @@ The app SHALL assign CSV columns to transaction fields by common header keywords
 - **WHEN** a file has the headers "Date", "Payee", "Memo", and "Amount"
 - **THEN** the preview assigns them to booking date, name, purpose, and amount
 
+### Requirement: CSV data boundary
+
+The app SHALL apply this rule: A keyword header within the first 100 nonblank rows wins; without one, data starts after the nearest title row above the first transaction; dated rows above it are skipped with a warning.
+
+#### Scenario: Opening and closing balances before a header
+
+- **GIVEN** "01.11.2026;Anfangssaldo;100,00", "30.11.2026;Endsaldo;98,00", "Datum;Name;Betrag", and "02.11.2026;Kiosk;-2,00"
+- **WHEN** the file is imported
+- **THEN** the amounts are [-200] minor units
+- **AND** lines 1 and 2 each have a skipped-row warning
+
+#### Scenario: Boundary terms
+
+- **GIVEN** a keyword header has a booking-date keyword and an amount, debit, or credit keyword, with no numeric date candidate
+- **AND** a title row contains text labels without dates or amounts, with a date label in the date column when a short dated preamble precedes it
+- **AND** a transaction has a numeric date candidate and an amount, including an ambiguous, empty, missing, or invalid amount once the titles identify the data columns
+- **WHEN** the app locates the data
+- **THEN** "Tag;Wer;Wieviel" and "Wann;Wer;Wieviel" are title rows
+- **AND** "01.11.2026;Kiosk;1,234" and "01.11.2026;Kiosk" remain transactions
+- **AND** invalid dates and amounts reach validation rather than disappearing
+
 #### Scenario: Header words in a transaction
 
 - **GIVEN** "Tag;Wer;Zweck;Wieviel", followed by 101 ordinary transactions
@@ -221,13 +242,15 @@ The app SHALL assign CSV columns to transaction fields by common header keywords
 - **GIVEN** "01.11.2026;Anfangssaldo;100,00", "Datum;Name;Betrag", and "02.11.2026;Kiosk;-2,00"
 - **WHEN** the file is imported
 - **THEN** only the Kiosk transaction is imported, as -200 minor units
+- **AND** line 1 has a skipped-row warning
 
 #### Scenario: Account metadata before the column headings
 
 - **GIVEN** "Konto;12345678;Stand;30.11.2026", "Buchungstag;Empfänger;Betrag", and "01.11.2026;Kiosk;-4,20"
 - **WHEN** the file is imported
 - **THEN** the columns are assigned and the Kiosk transaction is imported as -420 minor units
-- **AND** the same outcome holds when the first row is "Kontostand;30.11.2026;1.234,56"
+- **AND** line 1 has a skipped-row warning
+- **AND** the same amount and warning hold when the first row is "Kontostand;30.11.2026;1.234,56"
 
 #### Scenario: Titles after a long preamble
 
@@ -271,6 +294,24 @@ The app SHALL assign CSV columns to transaction fields by common header keywords
 - **WHEN** the first and third columns are mapped to date and amount
 - **THEN** the earlier heading stays in use and the amounts are [0, 450] minor units
 - **AND** the same holds when the amount is mapped to a fourth column without a title and the note has four filled cells
+
+#### Scenario: Ambiguous first amount before a subtotal
+
+- **GIVEN** "Tag;Wer;Wieviel", "01.11.2026;Kiosk;1,234", "Zwischensumme;;0,00", and "02.11.2026;Bakery;4.50"
+- **WHEN** the first and third columns are mapped to date and amount
+- **THEN** the amounts are [123400, 450] minor units
+
+#### Scenario: Blank rows do not consume the keyword window
+
+- **GIVEN** 100 blank lines, "Datum;Betrag", and "01.11.2026;-1,00"
+- **WHEN** the file is imported
+- **THEN** the columns are assigned and the amount is -100 minor units
+
+#### Scenario: Keyword header outside the window
+
+- **GIVEN** 100 nonblank rows of "Preamble", then "Datum;Betrag" and "01.11.2026;-1,00"
+- **WHEN** the preview opens
+- **THEN** the titles are "Datum" and "Betrag" and the columns need manual assignment
 
 ### Requirement: CSV preview
 

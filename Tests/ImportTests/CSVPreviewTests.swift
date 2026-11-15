@@ -5,6 +5,27 @@ import Testing
 
 @Suite("CSV preview")
 struct CSVPreviewTests {
+	@Test("Opening and closing balances before keyword titles are skipped with their lines")
+	func twoBalancesBeforeKeywordHeader() throws {
+		let data = Data("01.11.2026;Anfangssaldo;100,00\n30.11.2026;Endsaldo;98,00\nDatum;Name;Betrag\n02.11.2026;Kiosk;-2,00\n".utf8)
+		let parsed = try TransactionFileImporter.parse(data, currency: "EUR")
+		#expect(parsed.transactions.map(\.amountMinor) == [-200])
+		#expect(parsed.warnings == [.skippedCSVRow(line: 1), .skippedCSVRow(line: 2)])
+	}
+
+	@Test("Only the first 100 nonblank rows can supply automatic keyword columns", arguments: [99, 100])
+	func keywordWindow(count: Int) throws {
+		let data = Data((String(repeating: "Preamble\n\n", count: count) + "Datum;Betrag\n01.11.2026;-1,00\n").utf8)
+		let file = try CSVFile(data: data)
+		#expect(file.header == ["Datum", "Betrag"])
+		#expect(try file.detectedLayout().columns == (count == 99 ? [.bookingDate: 0, .amount: 1] : [:]))
+		if count == 99 {
+			#expect(try TransactionFileImporter.parse(data, currency: "EUR").transactions.map(\.amountMinor) == [-100])
+		} else {
+			#expect(throws: TransactionFileImporter.Failure.noHeader) { try TransactionFileImporter.parse(data, currency: "EUR") }
+		}
+	}
+
 	@Test("A target-currency reread retains the confirmed CSV layout", arguments: [false, true])
 	func confirmedLayoutForTargetCurrency(hasHeader: Bool) throws {
 		let data = Data(((hasHeader ? "Date;Name;Amount\n" : "") + "03/04/2026;Kiosk;1,234\n").utf8)
@@ -45,6 +66,7 @@ struct CSVPreviewTests {
 		let parsed = try TransactionFileImporter.parse(data, currency: "EUR")
 		#expect(parsed.transactions.map(\.amountMinor) == [amount])
 		#expect(parsed.transactions.map(\.name) == ["Kiosk"])
+		#expect(parsed.warnings == [.skippedCSVRow(line: 1)])
 	}
 
 	@Test("A malformed first numeric date cannot be skipped or treated as a header", arguments: ["01.11.2026x", "2026-11-", "01/11", "20261101", ".11.2026", "/11/2026"], [false, true])
