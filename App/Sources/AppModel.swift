@@ -36,12 +36,9 @@ enum BalanceMode: String {
 /// Settings that the app needs before the database is open. Only `savedFilterBar` holds data of the user: the
 /// dates of a custom period, the ends of an amount range, and the IDs of a category and an account.
 enum Preference {
-	static let lockOnClose = "lockWhenMainWindowIsClosed"
-	/// Version 1 stored "lockAfterMinutes" also while the lock was off, as the suggestion of the
-	/// old number field. The new key starts at the default of 10 minutes; `registerDefaults` keeps
-	/// the old value only where the lock was on.
-	static let lockAfterMinutes = "lockAfterInactivityMinutes"
-	static let lockAfterEnabled = "lockAfterInactivity"
+	/// The three unlock settings only show the state of their toggles. An unlock also needs the Keychain entry
+	/// that the change on the "Security" tab writes after the password check, because any program of the user
+	/// can write the settings file. The lock settings live in the database (`LockSettings`) for the same reason.
 	static let unlockAutomatically = "unlockAutomatically"
 	static let unlockWithTouchID = "unlockWithTouchID"
 	static let unlockWithAppleWatch = "unlockWithAppleWatch"
@@ -55,27 +52,9 @@ enum Preference {
 	static let pinFilterBar = "pinFilterBar"
 	static let savedFilterBar = "savedFilterBar"
 
-	/// The app locks after 10 minutes without activity unless the user turns it off. MoneyMoney has
-	/// this off and suggests 5 minutes; the owner chose on with 10 minutes.
-	static let defaultLockAfterMinutes = 10
-
-	/// The values of settings the user has not changed. A user who turned the inactivity lock on in
-	/// version 1 keeps the minutes chosen there.
-	static func registerDefaults() {
-		adoptLegacyDomain()
-		let d = UserDefaults.standard
-		let oldMinutes = "lockAfterMinutes"
-		if d.object(forKey: lockAfterMinutes) == nil, d.object(forKey: lockAfterEnabled) as? Bool == true,
-			d.integer(forKey: oldMinutes) > 0 {
-			d.set(d.integer(forKey: oldMinutes), forKey: lockAfterMinutes)
-		}
-		d.removeObject(forKey: oldMinutes)
-		d.register(defaults: [lockAfterEnabled: true, lockAfterMinutes: defaultLockAfterMinutes])
-	}
-
 	/// Copies the settings of the bundle identifier before the rename to Moneten (ADR 0013) once.
 	/// Runs with their own data folder skip it, so tests never write the real settings.
-	private static func adoptLegacyDomain() {
+	static func adoptLegacyDomain() {
 		guard ProcessInfo.processInfo.environment["MONETEN_DATA_DIR"] == nil else { return }
 		let d = UserDefaults.standard, done = "adoptedSettingsOfMonetenMoneten"
 		guard !d.bool(forKey: done) else { return }
@@ -311,12 +290,14 @@ final class AppModel {
 	/// Column widths and order of the transaction table. They live here, so a new table keeps them.
 	var transactionColumns = TableColumnCustomization<Transaction>()
 
+	/// The lock settings of the open database. The database holds them, so they come with each unlock.
+	private(set) var lockSettings = LockSettings()
 	private var lastActivity = Date()
 	private var eventMonitor: Any?
 	private var idleTimer: Timer?
 
 	init() {
-		Preference.registerDefaults()
+		Preference.adoptLegacyDomain()
 		autoRefresh = AutoRefresh(settings: refreshSettings, now: Self.refreshClock)
 		announcer = NewTransactionsAnnouncer(settings: refreshSettings, center: notices)
 		// A closure that captures `self` can be handed over only once every stored property is set.
@@ -402,12 +383,14 @@ final class AppModel {
 					return
 				}
 				let stored: String?
-				do { stored = try vault.storedPassword() } catch {
+				do { stored = try vault.storedPassword(for: .automaticUnlock) } catch {
 					lockNotice = String(describing: error)
 					phase = .locked
 					return
 				}
 				guard let stored else {
+					// Only the settings write the entry. A setting without it was not turned on there, so the toggle goes off.
+					UserDefaults.standard.set(false, forKey: Preference.unlockAutomatically)
 					phase = .locked
 					return
 				}
@@ -483,7 +466,7 @@ final class AppModel {
 		let on = UnlockMethod.allCases.filter { UserDefaults.standard.bool(forKey: $0.preference) }
 		guard !on.isEmpty else { return [] }
 		do {
-			guard try vault.storedPassword() != nil else { return [] }
+			guard try vault.storedPassword(for: .unlockMethods) != nil else { return [] }
 		} catch {
 			lockNotice = String(describing: error)
 			return []
@@ -496,7 +479,7 @@ final class AppModel {
 			Task { @MainActor in
 				guard ok else { return }
 				do {
-					guard let pw = try self.vault.storedPassword() else { return }
+					guard let pw = try self.vault.storedPassword(for: .unlockMethods) else { return }
 					if !(await self.unlock(password: pw)) { self.lockNotice = Self.staleKeychainNotice }
 				} catch {
 					self.lockNotice = String(describing: error)
@@ -507,6 +490,7 @@ final class AppModel {
 
 	private func open(_ store: Store) throws {
 		self.store = store
+		lockSettings = try store.lockSettings()
 		let loaded = try store.loadLedger()
 		ledgerChange = "load"
 		ledger = loaded
@@ -615,15 +599,23 @@ final class AppModel {
 	}
 
 	private func checkIdle() {
-		let d = UserDefaults.standard
-		guard phase == .unlocked, d.bool(forKey: Preference.lockAfterEnabled) else { return }
-		let stored = d.integer(forKey: Preference.lockAfterMinutes)
-		let minutes = max(1, stored == 0 ? Preference.defaultLockAfterMinutes : stored)
-		if Date().timeIntervalSince(lastActivity) >= Double(minutes) * 60 { lock() }
+		guard phase == .unlocked, lockSettings.lockAfterMinutes > 0 else { return }
+		#if DEBUG || PERF_HARNESS
+		// The scripts of the debug harness run longer than the shortest lock time.
+		if ProcessInfo.processInfo.environment["MONETEN_DEBUG_NO_IDLE_LOCK"] == "1" { return }
+		#endif
+		if Date().timeIntervalSince(lastActivity) >= Double(lockSettings.lockAfterMinutes) * 60 { lock() }
 	}
 
 	func mainWindowClosed() {
-		if UserDefaults.standard.bool(forKey: Preference.lockOnClose) { lock() }
+		if lockSettings.lockOnClose { lock() }
+	}
+
+	/// Writes the lock settings to the database first, as every change does.
+	func saveLockSettings(_ settings: LockSettings) throws {
+		guard let store else { throw SecurityChangeFailure(description: "Unlock Moneten to change this setting.") }
+		try store.saveLockSettings(settings)
+		lockSettings = settings
 	}
 
 	/// Brings the window "Notice" forward when a notice came since it last did. The app calls it only when

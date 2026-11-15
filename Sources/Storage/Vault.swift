@@ -96,10 +96,33 @@ public struct Vault: Sendable {
 	/// The version of the running app. An upgrade records it in the database, so that an older version can name it.
 	public let version: String
 	let keyKeychain = Keychain(service: "Moneten database key")
-	let passwordKeychain = Keychain(service: "Moneten database password")
 	/// The entries of the old name (ADR 0013). A read moves them to the new name.
 	let legacyKeyKeychain = Keychain(service: "MonetenMoneten database key")
-	let legacyPasswordKeychain = Keychain(service: "MonetenMoneten database password")
+
+	/// The Keychain entries that hold the database password for an unlock without typing it. The automatic unlock
+	/// has an entry of its own, so that a setting that a program changed outside the app cannot let the launch
+	/// use the entry of Touch ID or Apple Watch.
+	public enum PasswordEntry: Sendable, CaseIterable {
+		/// "Unlock with Touch ID" and "Unlock with Apple Watch". The app reads it after macOS confirmed the user.
+		case unlockMethods
+		/// "Unlock automatically at application start". Only the launch reads it.
+		case automaticUnlock
+
+		var keychain: Keychain {
+			switch self {
+			case .unlockMethods: Keychain(service: "Moneten database password")
+			case .automaticUnlock: Keychain(service: "Moneten database password for automatic unlock")
+			}
+		}
+
+		/// The entry of the old name (ADR 0013). A read moves it to the new name. The automatic unlock had none.
+		var legacyKeychain: Keychain? {
+			switch self {
+			case .unlockMethods: Keychain(service: "MonetenMoneten database password")
+			case .automaticUnlock: nil
+			}
+		}
+	}
 
 	public init(folder: DataFolder, version: String = Vault.runningVersion) {
 		self.folder = folder
@@ -151,7 +174,7 @@ public struct Vault: Sendable {
 	public func create(password: String?, starterCategories: [Domain.Category]) throws -> Store {
 		guard try state() == .empty else { throw Failure.databaseExists(folder.databaseFile.path) }
 		try folder.createFolders()
-		try keychain { try passwordKeychain.delete(account: folder.keychainAccount) }
+		for entry in PasswordEntry.allCases { try keychain { try entry.keychain.delete(account: folder.keychainAccount) } }
 		try keychain { try keyKeychain.delete(account: folder.keychainAccount) }
 		let key: String
 		if let password {
@@ -215,15 +238,17 @@ public struct Vault: Sendable {
 		}
 	}
 
-	/// Changes the password after checking the current one. A password in the Keychain follows the change,
+	/// Changes the password after checking the current one. Each password in the Keychain follows the change,
 	/// and so do the copies in the database folder, so that the earlier password opens none of them.
 	public func changePassword(current: String, new: String, on store: Store) throws {
 		try openDatabase(key: current, migrate: false).close()
-		let keepsPassword = try storedPassword() != nil
+		let kept = try PasswordEntry.allCases.filter { try storedPassword(for: $0) != nil }
 		try store.queue.write { db in try db.changePassphrase(new) }
 		let leftover = changeKeyOfCopies(from: current, to: new)
-		if keepsPassword {
-			do { try passwordKeychain.write(new, account: folder.keychainAccount) } catch { throw Failure.keychainNotUpdated(String(describing: error)) }
+		do {
+			for entry in kept { try entry.keychain.write(new, account: folder.keychainAccount) }
+		} catch {
+			throw Failure.keychainNotUpdated(String(describing: error))
 		}
 		if !leftover.isEmpty { throw Failure.copiesNotUpdated(leftover) }
 	}
@@ -275,32 +300,34 @@ public struct Vault: Sendable {
 		return true
 	}
 
-	// MARK: Password in the Keychain for automatic unlocking
+	// MARK: Password in the Keychain for an unlock without typing it
 
-	public func storedPassword() throws -> String? {
-		try keychain { try read(passwordKeychain, legacy: legacyPasswordKeychain) }
+	public func storedPassword(for entry: PasswordEntry) throws -> String? {
+		try keychain { try read(entry.keychain, legacy: entry.legacyKeychain) }
 	}
 
-	public func storePassword(_ password: String) throws {
-		try keychain { try passwordKeychain.write(password, account: folder.keychainAccount) }
+	public func storePassword(_ password: String, for entry: PasswordEntry) throws {
+		try keychain { try entry.keychain.write(password, account: folder.keychainAccount) }
 	}
 
-	/// Replaces a password in the Keychain that differs from the one that just opened the database, such as
-	/// the newer password of a database that the user replaced with a backup. The next automatic unlock then
-	/// works again. Without a stored password nothing is stored.
+	/// Replaces each password in the Keychain that differs from the one that just opened the database, such as
+	/// the newer password of a database that the user replaced with a backup. The next unlock without the password
+	/// then works again. It never creates an entry: only a change of an unlock setting after the password check does.
 	public func refreshStoredPassword(_ password: String) throws {
-		if let stored = try storedPassword(), stored != password { try storePassword(password) }
+		for entry in PasswordEntry.allCases {
+			if let stored = try storedPassword(for: entry), stored != password { try storePassword(password, for: entry) }
+		}
 	}
 
-	public func removeStoredPassword() throws {
-		try keychain { try passwordKeychain.delete(account: folder.keychainAccount) }
-		try keychain { try legacyPasswordKeychain.delete(account: folder.legacyKeychainAccount) }
+	public func removeStoredPassword(for entry: PasswordEntry) throws {
+		try keychain { try entry.keychain.delete(account: folder.keychainAccount) }
+		if let legacy = entry.legacyKeychain { try keychain { try legacy.delete(account: folder.legacyKeychainAccount) } }
 	}
 
 	/// Reads an entry. An entry that only exists under the old name moves to the new name.
-	private func read(_ keychain: Keychain, legacy: Keychain) throws -> String? {
+	private func read(_ keychain: Keychain, legacy: Keychain?) throws -> String? {
 		if let value = try keychain.read(account: folder.keychainAccount) { return value }
-		guard let value = try legacy.read(account: folder.legacyKeychainAccount) else { return nil }
+		guard let legacy, let value = try legacy.read(account: folder.legacyKeychainAccount) else { return nil }
 		try keychain.write(value, account: folder.keychainAccount)
 		try legacy.delete(account: folder.legacyKeychainAccount)
 		return value

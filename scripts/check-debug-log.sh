@@ -47,8 +47,8 @@ mkdir -p "$DATA/Database/Moneten.sqlite"
 ditto "$BUILT" "$APP"
 /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $BUNDLE_ID" "$APP/Contents/Info.plist"
 codesign --force --sign - --entitlements App/Moneten.entitlements "$APP" 2>/dev/null
-MONETEN_DATA_DIR="$DATA" MONETEN_DEBUG_DIR="$WORK/debug" MONETEN_FINTS_HELPER="$PWD/scripts/fake-fints-helper.sh" \
-	"$APP/Contents/MacOS/Moneten" -lockAfterInactivity NO -ApplePersistenceIgnoreState YES >"$WORK/app.log" 2>&1 &
+MONETEN_DATA_DIR="$DATA" MONETEN_DEBUG_DIR="$WORK/debug" MONETEN_FINTS_HELPER="$PWD/scripts/fake-fints-helper.sh" MONETEN_DEBUG_NO_IDLE_LOCK=1 \
+	"$APP/Contents/MacOS/Moneten" -ApplePersistenceIgnoreState YES >"$WORK/app.log" 2>&1 &
 PID=$!
 
 cat >"$WORK/Check.lua" <<-'EOF'

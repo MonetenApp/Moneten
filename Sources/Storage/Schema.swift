@@ -320,6 +320,16 @@ enum Schema {
 				t.uniqueKey(["transactionID", "position"])
 			}
 		}
+		// The lock settings (add-app-lock): one row in the encrypted database, so a program that writes the settings
+		// file of the app cannot weaken the lock. Without the row the defaults apply. "v18" and "v19" belong to
+		// changes that come before this one.
+		m.registerMigration("v20") { db in
+			try db.create(table: "lockSetting") { t in
+				t.column("id", .integer).primaryKey().check { $0 == 1 }
+				t.column("lockOnClose", .boolean).notNull()
+				t.column("lockAfterMinutes", .integer).notNull()
+			}
+		}
 		return m
 	}
 }

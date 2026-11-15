@@ -4,6 +4,7 @@ import ExtensionHost
 import FinTS
 import Import
 import Foundation
+import Storage
 import Sync
 import SyncTesting
 import SwiftUI
@@ -90,10 +91,15 @@ final class DebugHarness {
 		// "<setting> <value> <password>" changes a setting of the Security tab as its password prompt does. The setting is
 		// lockOnClose, lockAfter, or the key of an unlock setting; the value is on, off, or minutes. The log never holds the password.
 		case "security": security(argument)
+		// "<password>" stores the password for Touch ID and Apple Watch; "automatic <password>" stores it for the automatic unlock.
 		case "storepassword":
-			do { try model.vault.storePassword(argument); log("storepassword true") } catch { log("storepassword failed: \(error)") }
+			let parts = argument.split(separator: " ", maxSplits: 1).map(String.init)
+			let (entry, password): (Vault.PasswordEntry, String) = parts.count == 2 && parts[0] == "automatic" ? (.automaticUnlock, parts[1]) : (.unlockMethods, argument)
+			do { try model.vault.storePassword(password, for: entry); log("storepassword true") } catch { log("storepassword failed: \(error)") }
 		case "removepassword":
-			do { try model.vault.removeStoredPassword() } catch { log("removepassword failed: \(error)") }
+			for entry in Vault.PasswordEntry.allCases {
+				do { try model.vault.removeStoredPassword(for: entry) } catch { log("removepassword failed: \(error)") }
+			}
 		case "seed": Task { await DemoData.seed(model); log("seed done") }
 		// "<name>" starts a made-up refresh that shows one dialog of SyncDemo.requests.
 		case "syncdemo": SyncDemo.start(argument, in: model.sync)
@@ -937,8 +943,8 @@ final class DebugHarness {
 		let result: String
 		do { result = try model.changeSecurity(change, password: parts[2]) ? "changed" : "incorrect password" } catch { result = "failed" }
 		let d = UserDefaults.standard
-		let stored = (try? model.vault.storedPassword()).map { $0 != nil } ?? false
-		log("security \(parts[0]) \(parts[1]) \(result) lockOnClose=\(d.bool(forKey: Preference.lockOnClose)) lockAfter=\(d.bool(forKey: Preference.lockAfterEnabled) ? d.integer(forKey: Preference.lockAfterMinutes) : 0) automatic=\(d.bool(forKey: Preference.unlockAutomatically)) touchID=\(d.bool(forKey: Preference.unlockWithTouchID)) watch=\(d.bool(forKey: Preference.unlockWithAppleWatch)) keychain=\(stored)")
+		func stored(_ entry: Vault.PasswordEntry) -> Bool { (try? model.vault.storedPassword(for: entry)).map { $0 != nil } ?? false }
+		log("security \(parts[0]) \(parts[1]) \(result) lockOnClose=\(model.lockSettings.lockOnClose) lockAfter=\(model.lockSettings.lockAfterMinutes) automatic=\(d.bool(forKey: Preference.unlockAutomatically)) touchID=\(d.bool(forKey: Preference.unlockWithTouchID)) watch=\(d.bool(forKey: Preference.unlockWithAppleWatch)) keychainAutomatic=\(stored(.automaticUnlock)) keychainMethods=\(stored(.unlockMethods))")
 	}
 
 	private func snapshot(_ name: String) {

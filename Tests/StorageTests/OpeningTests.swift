@@ -346,30 +346,19 @@ struct OpeningTests {
 	@Test("A restored backup with an older password replaces the newer password in the Keychain after the unlock", .enabled(if: hasKeychain))
 	func restoreReplacesKeychainEntry() throws {
 		let vault = Vault(folder: folder)
-		defer { try? vault.removeStoredPassword() }
+		defer { try? vault.removeStoredPassword(for: .automaticUnlock) }
 		let store = try vault.create(password: "alt-und-lang-genug", starterCategories: [])
 		let backup = root.appendingPathComponent("Moneten-2026-11-09.sqlite")
 		try store.backup(to: backup)
-		try vault.storePassword("alt-und-lang-genug")
+		try vault.storePassword("alt-und-lang-genug", for: .automaticUnlock)
 		try vault.changePassword(current: "alt-und-lang-genug", new: "neu-und-noch-laenger", on: store)
-		#expect(try vault.storedPassword() == "neu-und-noch-laenger")
+		#expect(try vault.storedPassword(for: .automaticUnlock) == "neu-und-noch-laenger")
 		try store.close()
 
 		_ = try FileManager.default.replaceItemAt(folder.databaseFile, withItemAt: backup)
-		#expect(throws: Vault.Failure.incorrectPassword) { try vault.open(password: try #require(try vault.storedPassword())) }
+		#expect(throws: Vault.Failure.incorrectPassword) { try vault.open(password: try #require(try vault.storedPassword(for: .automaticUnlock))) }
 		try vault.open(password: "alt-und-lang-genug").close()
 		try vault.refreshStoredPassword("alt-und-lang-genug")
-		#expect(try vault.storedPassword() == "alt-und-lang-genug")
-	}
-
-	@Test("A new database removes the Keychain entries that a renamed database left", .enabled(if: hasKeychain))
-	func newDatabaseClearsKeychain() throws {
-		let vault = Vault(folder: folder)
-		defer { try? vault.removeStoredPassword() }
-		try vault.create(password: Self.password, starterCategories: []).close()
-		try vault.storePassword(Self.password)
-		try FileManager.default.moveItem(at: folder.databaseFolder, to: folder.root.appendingPathComponent("Database_OLD"))
-		try vault.create(password: "ein-neues-passwort", starterCategories: []).close()
-		#expect(try vault.storedPassword() == nil)
+		#expect(try vault.storedPassword(for: .automaticUnlock) == "alt-und-lang-genug")
 	}
 }

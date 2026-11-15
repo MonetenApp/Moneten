@@ -1,4 +1,5 @@
 import Foundation
+import Storage
 
 /// A change on the "Security" tab. Each one waits for the database password.
 enum SecurityChange: Identifiable {
@@ -28,29 +29,34 @@ struct SecurityChangeFailure: Error, CustomStringConvertible {
 
 extension AppModel {
 	/// Applies a change of the "Security" tab after the database password. Returns false for a wrong password,
-	/// which changes nothing. Turning on the first unlock setting stores the password in the Keychain, and turning
-	/// off the last one deletes it. A Keychain failure is thrown and leaves the setting as it was.
+	/// which changes nothing. The lock settings go to the database. "Unlock automatically at application start"
+	/// stores the password in its own Keychain entry and deletes it when it turns off. Touch ID and Apple Watch
+	/// share the other entry, which goes when both are off. A failure is thrown and leaves the setting as it was.
 	func changeSecurity(_ change: SecurityChange, password: String) throws -> Bool {
 		guard vault.verify(password: password) else { return false }
 		let d = UserDefaults.standard
 		switch change {
 		case let .lockOnClose(on):
-			d.set(on, forKey: Preference.lockOnClose)
+			var settings = lockSettings
+			settings.lockOnClose = on
+			try saveLockSettings(settings)
 		case let .lockAfter(minutes):
-			d.set(minutes > 0, forKey: Preference.lockAfterEnabled)
-			if minutes > 0 { d.set(minutes, forKey: Preference.lockAfterMinutes) }
+			var settings = lockSettings
+			settings.lockAfterMinutes = minutes
+			try saveLockSettings(settings)
 		case let .unlock(key, true):
 			do {
-				try vault.storePassword(password)
+				try vault.storePassword(password, for: Self.passwordEntry(of: key))
 			} catch {
 				throw SecurityChangeFailure(description: "The database password could not be stored in the Keychain. \(error)")
 			}
 			d.set(true, forKey: key)
 		case let .unlock(key, false):
-			let others = [Preference.unlockAutomatically, Preference.unlockWithTouchID, Preference.unlockWithAppleWatch].filter { $0 != key }
-			if !others.contains(where: d.bool(forKey:)) {
+			let entry = Self.passwordEntry(of: key)
+			let sharing = UnlockMethod.allCases.map(\.preference).filter { $0 != key }
+			if entry == .automaticUnlock || !sharing.contains(where: d.bool(forKey:)) {
 				do {
-					try vault.removeStoredPassword()
+					try vault.removeStoredPassword(for: entry)
 				} catch {
 					throw SecurityChangeFailure(description: "The database password could not be deleted from the Keychain, so the setting stays on. \(error)")
 				}
@@ -58,5 +64,10 @@ extension AppModel {
 			d.set(false, forKey: key)
 		}
 		return true
+	}
+
+	/// The Keychain entry of an unlock setting.
+	static func passwordEntry(of key: String) -> Vault.PasswordEntry {
+		key == Preference.unlockAutomatically ? .automaticUnlock : .unlockMethods
 	}
 }

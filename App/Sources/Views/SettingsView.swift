@@ -21,9 +21,6 @@ struct SettingsView: View {
 
 struct SecuritySettings: View {
 	@Environment(AppModel.self) private var model
-	@AppStorage(Preference.lockOnClose) private var lockOnClose = false
-	@AppStorage(Preference.lockAfterEnabled) private var lockAfterEnabled = true
-	@AppStorage(Preference.lockAfterMinutes) private var lockAfterMinutes = Preference.defaultLockAfterMinutes
 	@AppStorage(Preference.unlockAutomatically) private var unlockAutomatically = false
 	@AppStorage(Preference.unlockWithTouchID) private var unlockWithTouchID = false
 	@AppStorage(Preference.unlockWithAppleWatch) private var unlockWithAppleWatch = false
@@ -49,7 +46,7 @@ struct SecuritySettings: View {
 				}
 			}
 			Section("Lock") {
-				Toggle("Lock when main window is closed", isOn: Binding(get: { lockOnClose }, set: { ask(.lockOnClose($0)) }))
+				Toggle("Lock when main window is closed", isOn: Binding(get: { model.lockSettings.lockOnClose }, set: { ask(.lockOnClose($0)) }))
 				Picker("Lock after inactivity", selection: lockAfter) {
 					Text("Never").tag(0)
 					ForEach(lockAfterChoices, id: \.self) { minutes in
@@ -57,7 +54,8 @@ struct SecuritySettings: View {
 					}
 				}
 			}
-			.disabled(!model.hasPassword)
+			// The lock settings live in the database, so they change only while it is open.
+			.disabled(!model.hasPassword || model.phase != .unlocked)
 			Section {
 				Toggle("Unlock automatically at application start", isOn: unlockToggle(Preference.unlockAutomatically, unlockAutomatically))
 				Toggle("Unlock with Touch ID", isOn: unlockToggle(Preference.unlockWithTouchID, unlockWithTouchID))
@@ -81,20 +79,15 @@ struct SecuritySettings: View {
 		}
 	}
 
-	/// The minutes that the picker offers. A value from an earlier version stays selectable.
+	/// The minutes that the picker offers. A stored value outside them stays selectable.
 	private var lockAfterChoices: [Int] {
-		let choices = [1, 2, 5, 10, 15, 30, 60]
-		return lockAfterEnabled && !choices.contains(storedMinutes) ? (choices + [storedMinutes]).sorted() : choices
+		let choices = [1, 2, 5, 10, 15, 30, 60], stored = model.lockSettings.lockAfterMinutes
+		return stored > 0 && !choices.contains(stored) ? (choices + [stored]).sorted() : choices
 	}
-
-	/// The minutes after which the app locks, read as `AppModel` reads them: a stored 0 from the old
-	/// number field means the default of 10 and anything below 1 means 1, so the picker shows what
-	/// the app does.
-	private var storedMinutes: Int { max(1, lockAfterMinutes == 0 ? Preference.defaultLockAfterMinutes : lockAfterMinutes) }
 
 	/// 0 is "Never". Any other value turns the inactivity lock on with that number of minutes.
 	private var lockAfter: Binding<Int> {
-		Binding(get: { lockAfterEnabled ? storedMinutes : 0 }, set: { ask(.lockAfter($0)) })
+		Binding(get: { model.lockSettings.lockAfterMinutes }, set: { ask(.lockAfter($0)) })
 	}
 
 	private func unlockToggle(_ key: String, _ value: Bool) -> Binding<Bool> {
