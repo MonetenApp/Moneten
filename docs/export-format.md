@@ -169,3 +169,33 @@ A position of a portfolio, as its bank reported it last.
 | `marketValue`, `accruedInterest` | Market value and accrued interest, each with `amount` and `currency` |
 | `purchasePrice` | The purchase price, with `amount`, `currency`, and `day` like `price` |
 | `exchangeRate` | The rate between two currencies, with `base`, `quoted`, and `rate` (decimal text, units of `quoted` for one unit of `base`) |
+
+## Planned format version 2 for split transactions
+
+Version 1 above is the format the app currently writes and reads. The [split design](../openspec/changes/add-split-transactions/design.md) and tasks 5.1a and 5.2a of its [task list](../openspec/changes/add-split-transactions/tasks.md) define version 2. The implementation updates this page to describe v2 as active before enabling split commands. Database migrations remain v17 for the split table and v18 for review reasons. The file format version is separate from those migration numbers.
+
+Version 2 keeps the version-1 objects, with the following changes.
+
+| Object | Key | Content |
+|---|---|---|
+| File | `version` | `2`. The reader accepts versions 1 and 2 and refuses a newer version. |
+| File | `splitParts` | Required list of split parts, empty when no transaction is split |
+| Transaction | `review` | `"unclearBooking"` for an unclear pending match or `"splitUndone"` for a split undone by a bank correction. Missing means no review. Replaces `needsReview`. |
+
+Each split part has these keys.
+
+| Key | Content |
+|---|---|
+| `id` | Identifier of the part |
+| `transactionID` | Identifier of its original in `transactions` |
+| `position` | Zero-based order within the split, a number |
+| `amount` | Decimal amount text in the currency of the original, such as `"-100.00"` |
+| `categoryID` | Identifier of its category, missing for "Uncategorized" |
+| `comment` | Comment of this part, missing for none |
+| `vat` | Optional object with `role` (`"net"` or `"tax"`) and `rate` (a number in hundredths of a percent, such as `1900` for 19 %) |
+
+The original stays once in `transactions` with its category and comment for undo. Parts stay in `splitParts`, never as additional transactions. Their IDs, links, positions, amounts, categories, comments, and VAT data survive an export and import. Each split has at least two parts of nonzero amounts that add up to its booked original. The reader refuses an unknown review reason or malformed part. The import refuses missing original or category references, duplicate part IDs or positions, pending originals, and parts that break the split rules, without changing the target database.
+
+A version-1 file has neither `splitParts` nor `review`. The version-2 reader imports it with no parts and maps `needsReview: true` to `review: "unclearBooking"` and `needsReview: false` to no review. A version-2 file writes `review` and omits `needsReview`. The version-1 app refuses a version-2 file as needing a newer app.
+
+The planned `AllDataTests` split round trip uses -119,00 € split into -100,00 € and -19,00 €, distinct categories and comments, both 19 % VAT roles, and both review reasons. A separate fixed version-1 fixture checks that `needsReview: true` imports as `unclearBooking` and false imports without review.

@@ -9,7 +9,7 @@ What main has today, and what a split must not break:
 - `Transaction` is stored in the table `bankTransaction`. `Ledger.transactions` holds every stored row, newest first. `Ledger.computedBalance` and `dailyBalances` add these rows to the initial balance, and `Account.deriveInitialBalance` subtracts them from the bank balance.
 - `reconcile` recognizes a delivered row by its source ID, then by a fingerprint of booking day, amount, purpose, counterparty IBAN, and end-to-end reference. It builds the fingerprint from the stored columns at every merge. `Store.merge` reads the stored rows of the account inside its write transaction. A refresh that delivers a known source ID gives the stored row the delivered bank fields, and the rules run again on a changed row, as the requirement "Update a transaction that the source changed" of `add-account-refresh` says. On the first refresh with a balance, `reconcile` derives the initial balance of a bank account once, from the stored rows with the changes of that merge.
 - `Transaction.needsReview` marks a row of an unclear pending match. The list shows it with one help text, which says that several transactions could belong together.
-- `Ledger.transactions(in:filter:)` gives the rows of the list, the category view, the status line, the charts of categories, the search, and the filters. `Ledger.sum(ofCategory:in:)` reads it for the amount in the sidebar.
+- `Ledger.transactions(in:filter:)` gives the rows of the list, the category view, the status line, the charts of categories, the search, and the filters. `Ledger.sidebarAmounts(today:)` reads the stored transactions directly in one pass for all amounts in the sidebar, with a 20 ms release budget in `PerformanceTests`.
 - `RuleApplier.apply` walks `Ledger.transactions`. `reconcile` runs `Categorizer.categorize` on a row whose bank fields changed.
 - `AppModel.commit` writes changed rows with `Store.save` and then calls `Ledger.update`. `AppModel.assign`, `setChecked`, `toggleChecked`, `markAllChecked`, and `setComment` find their rows with `Ledger.transaction(_:)`, and so do the views. `AppModel.save(transaction:)` runs the `Categorizer` on a row without a category whose category was not set by hand.
 - `Ledger.rebuildIndexes()` builds the search text of every row of `transactions`. `init` calls it, and so does `replace` with accounts or transactions, which the removal of an account and of an account group call. `Ledger.upsert(_:)` of a renamed account builds the search text of its transactions again, because the search text holds the account name.
@@ -28,7 +28,7 @@ What main has today, and what a split must not break:
 
 - The positions of a batch payment. The change `add-payment-outbox` knows them. It adds the name and the purpose of a part and enables "Split from Batch Payment". Until then the command is disabled.
 - A changed amount of a part after the split. The user undoes the split and splits again.
-- Split records of QIF files (`add-more-import-formats`) and the export, budgets, reports, and printouts of split transactions. Those changes read the rows that this design defines.
+- Split records of QIF files (`add-more-import-formats`) and the transaction exports, budgets, reports, and printouts of split transactions. The complete data export and import are part of this change. Those later changes read the rows that this design defines.
 
 ## Decisions
 
@@ -89,13 +89,26 @@ No place counts a split twice, because `rows(in:filter:)` never holds a split or
 
 | Place | Reads | Task |
 |---|---|---|
-| Amount of a category in the sidebar, `Ledger.sum(ofCategory:in:)` | rows | 3.1, 3.2, and task 3.3 of `add-categories` |
+| Amounts of categories in the sidebar, `Ledger.sidebarAmounts(today:)` | parts in place of each split original, within its single pass and 20 ms release budget | 3.1, 3.2, and task 3.3 of `add-categories` |
 | List, category view, and status line, `AppModel.visibleTransactions` | rows | 3.1, 3.2 |
 | Category bars and pie charts, `periodSums` and `categoryTotals` of `AppModel.chartTransactions` | rows | 3.1, 3.2 |
 | Search and filters | rows | 3.1, 3.2 |
 | Balance, daily balance, and initial balance | transactions | 3.1 checks that they stay |
 | Merge, migration, and new marks | transactions | 5.1, 5.2, 8.2, 8.3 |
-| Budgets, reports, printouts, and export | rows, and the parts for "Export All Data..." | the changes `add-budgets`, `add-reports`, `add-printing`, and `add-data-export` |
+| Budgets, reports, printouts, and transaction exports | rows | the changes `add-budgets`, `add-reports`, `add-printing`, and `add-more-export-formats` |
+| "Export All Data..." and "Import All Data..." | stored originals, parts, and review reasons | 5.1a, 5.2a, before group 6 |
+
+`Ledger.sidebarAmounts(today:)` keeps its single pass over the stored transactions. For each split original it accumulates the part rows instead of the original. Each part contributes to its own category and its ancestor groups, using the existing period, currency, and pending-review checks. It does not call the category filter for each category. Task 3.1 checks the literal amounts through this function, and task 3.3 includes split rows in its 20 ms release budget.
+
+### Complete export and import use format v2 before splits are enabled
+
+`Domain` owns `AllData` in `Sources/Domain/AllData.swift`, its `json()` encoder, and its `init(json:)` reader. Today its private `File` maps the format-v1 lists and `TransactionEntry` maps `needsReview`. `Storage` owns `Store.exportAllData(at:)` and `Store.importAllData` in `Sources/Storage/Store+AllData.swift`. Tasks 5.1a and 5.2a extend these existing paths in the same pull request as the review rename. Group 6 cannot enable split commands before they pass.
+
+`AllData.formatVersion` becomes 2. `AllData` and `File` gain `splitParts`, a list of every stored `SplitPart`. Each entry holds `id`, `transactionID`, `position`, `amount` as decimal text, `categoryID`, `comment`, and optional `vat` with `role` and `rate` in hundredths of a percent. The amount uses `AmountText` and the currency of the referenced original. The export keeps the original once in `transactions`, with its original category and comment for undo, and never exports a part row as a transaction. `TransactionEntry` writes `review` as `unclearBooking` or `splitUndone`, omitted for nil. The format preserves part IDs, positions, categories, comments, and VAT labels, even after the user changes the list of VAT rates.
+
+`AllData(json:)` accepts v1 and v2. A v1 file has no `splitParts`; it yields an empty list and maps `needsReview` true to `.unclearBooking` and false to nil. A v2 file requires `splitParts`, including an empty list, and reads `review`. Unknown review reasons, malformed parts, and unsupported newer versions are refused, rather than silently losing data. The same split invariants apply to an import as to `Store.replaceParts(of:with:)`. The store validates them for both decoded and programmatically constructed `AllData`. Missing original or category references, duplicate IDs or positions, pending originals, fewer than two parts, zero amounts, and an unequal sum fail the import without a write.
+
+`Store.exportAllData(at:)` reads originals and parts in its existing database read. `Store.importAllData` inserts the parts after the originals in its existing write transaction and keeps its empty-database check and rollback. Loading the imported ledger restores the split and review reasons without categorizing the parts again. Tasks 5.1a and 5.2a cover the literal split round trip and the fixed v1 fixture, and update [the export format](../../../docs/export-format.md). That page keeps v1 as the active format until the implementation lands and records v2 as planned.
 
 ### Writing a change of a row
 
@@ -197,7 +210,7 @@ Each group of `tasks.md` is one pull request. Groups 1 to 3 add code that at fir
 
 Task 6.8 removes both lines of `retain_files` and every `// periphery:ignore - task 6.8`. `periphery scan` then shows that each declaration has a caller in the app. `VATRate(text:)` comes with its only caller, the setting of group 7, so it needs no ignore.
 
-Group 3 makes the list read the rows, and group 4 makes the changes write parts. Between the two, a part row cannot be changed in the app. No path of the app makes a split before the harness command of group 4, so no user meets that state.
+Group 3 makes the list read the rows, and group 4 makes the changes write parts. Between those groups, a part row cannot be changed in the app. No path of the app makes a split before the harness command of group 4, so no user meets that state. The harness of group 4 uses throwaway data only. Group 5 completes format v2 in tasks 5.1a and 5.2a before group 6 enables split commands for users.
 
 ## Risks / Trade-offs
 
@@ -207,7 +220,7 @@ Group 3 makes the list read the rows, and group 4 makes the changes write parts.
 - Checking one part checks all parts of the transaction. A user who wants to check parts one by one cannot. The bank statement has one line for the transaction, so one checkmark fits it.
 - A search for the amount of the original lists all its parts. This finds the transaction by the amount on the bank statement.
 - The list of VAT rates belongs to the user account of the Mac, not to the database. A second database shows the same rates. Each part keeps its rate, so changing the list changes no part.
-- `rows(in:filter:)` looks up each row in the part rows when the ledger has splits, and the build and `update(_:)` build part rows. Task 3.3 builds the ledger of `PerformanceTests` with 1,000 splits among its 50,000 transactions and keeps its four budgets: the build, the search, the category view, and the update.
+- `rows(in:filter:)` looks up each row in the part rows when the ledger has splits, and the build and `update(_:)` build part rows. Task 3.3 builds the ledger of `PerformanceTests` with 1,000 splits among its 50,000 transactions and keeps all existing budgets, including the sidebar under 20 ms and the amount-range filter under 100 ms, as well as the build, search, category view, and update budgets.
 
 ## Migration Plan
 
