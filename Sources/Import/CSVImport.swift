@@ -208,15 +208,13 @@ public struct CSVFile: Sendable {
 			row.cells.contains(where: Self.isDateShaped) && row.cells.contains(where: isAmountShaped)
 		}
 		let firstTransaction = firstReadable.flatMap { first in
-			let dateColumn = rows[first].cells.firstIndex(where: Self.isDateShaped)!
 			let amountColumn = rows[first].cells.lastIndex(where: isAmountShaped)!
 			let firstTitle = rows[..<first].firstIndex { row in
-				row.cells.count > max(dateColumn, amountColumn) && row.cells.allSatisfy {
-					!$0.trimmingCharacters(in: .whitespaces).isEmpty && !Self.isDateShaped($0) && !isAmountShaped($0)
-				}
+				row.cells.count > amountColumn && row.cells.contains { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+					&& !row.cells.contains(where: Self.isDateShaped) && !row.cells.contains(where: isAmountShaped)
 			}
 			return rows[...first].indices.first { i in
-				Self.cell(rows[i].cells, dateColumn).map(Self.isDateShaped) == true
+				rows[i].cells.contains(where: Self.isDateShaped)
 					&& (rows[i].cells.indices.contains(amountColumn) || firstTitle.map { $0 < i } == true)
 			}
 		}
