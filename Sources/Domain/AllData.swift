@@ -342,6 +342,7 @@ private struct TransactionEntry: Codable {
 	var endToEndReference: String?
 	var mandateReference: String?
 	var creditorID: String?
+	var returnReason: String?
 	var comment: String?
 	var isChecked: Bool
 	var isPending: Bool
@@ -368,6 +369,7 @@ private struct TransactionEntry: Codable {
 		endToEndReference = t.endToEndReference
 		mandateReference = t.mandateReference
 		creditorID = t.creditorID
+		returnReason = t.returnReason
 		comment = t.comment
 		isChecked = t.isChecked
 		isPending = t.isPending
@@ -387,7 +389,7 @@ private struct TransactionEntry: Codable {
 			counterpartyIBAN: counterpartyIBAN, counterpartyBIC: counterpartyBIC, bookingText: bookingText, endToEndReference: endToEndReference,
 			mandateReference: mandateReference, creditorID: creditorID, comment: comment, isChecked: isChecked, isPending: isPending,
 			categoryID: categoryID, categorizedBy: categorizedBy, isNew: isNew, needsReview: needsReview, isFetched: isFetched, sourceID: sourceID,
-			createdAt: createdAt)
+			createdAt: createdAt, returnReason: returnReason)
 	}
 }
 

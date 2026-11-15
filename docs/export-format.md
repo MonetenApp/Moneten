@@ -116,6 +116,7 @@ An access is a login at a bank. The file never holds its PIN or the data that it
 | `counterpartyIBAN`, `counterpartyBIC` | Account and bank of the counterparty, an IBAN or an account number, and a BIC or a bank code |
 | `bookingText` | Booking text of the bank, such as "Lastschrift" |
 | `endToEndReference`, `mandateReference`, `creditorID` | SEPA references |
+| `returnReason` | ISO 20022 return reason of a returned payment, such as `"AC04"` for a closed account. Missing means no return reason. |
 | `comment` | Comment of the user |
 | `isChecked` | The checkmark |
 | `isPending` | Whether the bank has not booked the transaction yet |
