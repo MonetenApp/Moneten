@@ -126,9 +126,12 @@ struct PerformanceTests {
 	@Test("Suggestions for a typed name look through 50,000 transactions with different names within a frame")
 	func nameSuggestions() {
 		let wallet = Account(position: 0, name: "Wallet", kind: .cash, source: .offline)
-		let ts = (0..<50_000).map { i in
-			Transaction(accountID: wallet.id, bookingDate: Day(year: 2014 + i % 12, month: 1 + i % 12, day: 1 + i % 28), amountMinor: -Int64(i % 9_000),
-				name: i % 2 == 0 ? "Händler \(i)" : "Haendler \(i)")
+		// Separate lets with their types, because the compiler of CI gave up on one expression.
+		var ts: [Transaction] = []
+		for i in 0..<50_000 {
+			let day: Day = Day(year: 2014 + i % 12, month: 1 + i % 12, day: 1 + i % 28)
+			let name: String = i % 2 == 0 ? "Händler \(i)" : "Haendler \(i)"
+			ts.append(Transaction(accountID: wallet.id, bookingDate: day, amountMinor: -Int64(i % 9_000), name: name))
 		}
 		let ledger = Ledger(accounts: [wallet], transactions: ts)
 		var found = 0
