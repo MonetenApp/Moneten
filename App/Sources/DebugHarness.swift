@@ -359,9 +359,9 @@ final class DebugHarness {
 			}
 		// "<path>": writes the complete export to that file without the warning and the save panel.
 		case "exportall":
-			Task { do { try await model.writeAllData(to: URL(filePath: argument)); log("exportall done") } catch { log("exportall error=\(error)") } }
-		// "<path>": imports that complete export without the open panel.
-		case "importall": Task { log("importall \(await model.readAllData(from: URL(filePath: argument)))") }
+			Task { do { try await model.writeAllData(to: URL(filePath: argument)); log("exportall done") } catch { log("exportall error=set") } }
+		// "<path>": imports that complete export without the open panel. The reason of a refusal can quote the file.
+		case "importall": Task { log("importall \(await model.readAllData(from: URL(filePath: argument)) == "done" ? "done" : "refused")") }
 		case "sheet":
 			switch argument {
 			case "migration": model.sheet = .migration
