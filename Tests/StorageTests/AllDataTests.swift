@@ -295,6 +295,36 @@ struct AllDataTests {
 		#expect(try FileManager.default.contentsOfDirectory(atPath: root.path).sorted() == ["directory", "export.json", "source"])
 	}
 
+	@Test("Every currency code has exactly three uppercase ASCII letters")
+	func currencyCodes() throws {
+		let original = try JSONSerialization.jsonObject(with: try filledStore().exportAllData(at: exportedAt).json()) as! [String: Any]
+		let target = try emptyStore("codes")
+		let fields = [("accounts", ["currency"]), ("transactions", ["currency"]), ("deletedTransactions", ["currency"]),
+			("categories", ["currency"]), ("portfolioValues", ["currency"]), ("holdings", ["nominalCurrency"]),
+			("holdings", ["price", "currency"]), ("holdings", ["marketValue", "currency"]), ("holdings", ["accruedInterest", "currency"]),
+			("holdings", ["purchasePrice", "currency"]), ("holdings", ["exchangeRate", "base"]), ("holdings", ["exchangeRate", "quoted"])]
+		for (key, path) in fields {
+			for code in ["not a currency", "eur", "EU1", "EURO", "EU", "ÉUR", ""] {
+				var json = original
+				var rows = json[key] as! [[String: Any]]
+				if path.count == 1 {
+					rows[0][path[0]] = code
+				} else {
+					var amount = rows[0][path[0]] as? [String: Any] ?? ["amount": "1.00", "currency": "EUR"]
+					amount[path[1]] = code
+					rows[0][path[0]] = amount
+				}
+				json[key] = rows
+				#expect(throws: AllData.ReadError.damaged("at \(key)[0], \"\(code)\" is not a currency code in the form [A-Z]{3}")) {
+					try target.importAllData(try AllData(json: JSONSerialization.data(withJSONObject: json)))
+				}
+			}
+		}
+		#expect(try target.exportAllData(at: exportedAt) == AllData(exportedAt: exportedAt))
+		let syntacticallyValid = AllData(accounts: [Account(position: 0, name: "Test", kind: .cash, source: .offline, currency: "ZZZ")])
+		#expect(try AllData(json: syntacticallyValid.json()).accounts[0].currency == "ZZZ")
+	}
+
 	@Test("Every key of an export is described in docs/export-format.md")
 	func documented() throws {
 		let json = try JSONSerialization.jsonObject(with: try filledStore().exportAllData(at: exportedAt).json())
