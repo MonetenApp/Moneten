@@ -440,13 +440,13 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 			if fileAgrees || sourceAgrees {
 				candidates.append(Candidate(delivered: i, slot: slot, priority: .identity, historical: historical,
 					identityTombstone: tombstone, fit: 0, distance: distance,
-					evidence: sourceAgrees || (!t.isPending && identity.isPending) ? .sourceID : .fingerprint))
+					evidence: (!fileAgrees && sourceAgrees) || (!t.isPending && identity.isPending) ? .sourceID : .fingerprint))
 				continue
 			}
 			guard matches[i].amount == match.amount else { continue }
 			let sameReference = incoming[i].endToEnd != nil && incoming[i].endToEnd == identity.endToEnd
-			if matches[i].counterpartyConflicts(with: match) { continue }
 			let step = Identity.steps.firstIndex { $0.accepts(incoming[i], identity) }
+			if (t.isPending || identity.isPending || step == nil) && matches[i].counterpartyConflicts(with: match) { continue }
 			let fit = step.map { $0 % 2 } ?? 2
 			if let fileID = incoming[i].fileIdentity, let storedID = identity.fileIdentity, fileID != storedID,
 				!(t.isPending && !identity.isPending && sameReference),
@@ -456,7 +456,7 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 					identityTombstone: 0, fit: fit, distance: distance, evidence: .fingerprint))
 				continue
 			}
-			if sameReference && t.isPending {
+			if sameReference && t.isPending, step != nil || (!delivery.isMigration && (identity.isPending || !delivery.isFetched)) {
 				candidates.append(Candidate(delivered: i, slot: slot, priority: .reference, historical: historical,
 					identityTombstone: 0, fit: fit, distance: distance, evidence: step == nil && delivery.isFetched ? .pending : .fingerprint))
 				continue
