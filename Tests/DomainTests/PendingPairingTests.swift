@@ -257,6 +257,20 @@ extension ReconcileTests {
 		}
 	}
 
+	@Test("An agreeing original file identity keeps bank fields even when its source ID also agrees")
+	func gate4FileAndSourceIdentity() {
+		var file = rent(1)
+		file.sourceID = "FILE-A"
+		let imported = merge(.file([file]), at: noon(20, month: 11)).added
+		var bank = rent(2, purpose: "BANK")
+		bank.sourceID = "FILE-A"
+		let taken = history(imported, after: merge(refresh([bank]), stored: imported, at: noon(21, month: 11)))
+		let r = merge(.file([file]), stored: taken, at: noon(22, month: 11))
+		#expect(r.added == [] && r.skipped == 1)
+		#expect(pendingSummary(history(taken, after: r)) == ["20261202 -80000 true true false BANK"])
+		#expect(r.updated == [])
+	}
+
 	func permutations<T>(_ rows: [T]) -> [[T]] {
 		guard !rows.isEmpty else { return [[]] }
 		return rows.indices.flatMap { i in
