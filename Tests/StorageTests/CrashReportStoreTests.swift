@@ -166,4 +166,25 @@ struct CrashReportStoreTests {
 		#expect(state.pending?.date == Date(timeIntervalSince1970: 1_350))
 	}
 
+	@Test("Two fallback decisions suppress both delayed diagnostics")
+	func consecutiveFallbackDecisions() {
+		for decision in [PendingCrashReport.Decision.decline, .copy, .github] {
+			var state = CrashReportStore.State()
+			state.start(.init(start: Date(timeIntervalSince1970: 1_000), appVersion: "0.1.0", macOSVersion: "15.2"), files: [])
+			state.start(.init(start: Date(timeIntervalSince1970: 1_200), appVersion: "0.1.0", macOSVersion: "15.2"), files: [("Moneten-first.ips", Date(timeIntervalSince1970: 1_100))])
+			state.decide(decision)
+			state.start(.init(start: Date(timeIntervalSince1970: 1_400), appVersion: "0.1.0", macOSVersion: "15.2"), files: [("Moneten-second.ips", Date(timeIntervalSince1970: 1_300))])
+			state.decide(decision)
+			let diagnostic = CrashDiagnostic(appVersion: "0.1.0", macOSVersion: "15.2", exceptionType: 6, signal: 6, frames: [])
+			state.receive(diagnostic, at: Date(timeIntervalSince1970: 1_150), since: Date(timeIntervalSince1970: 1_000))
+			#expect(state.pending == nil)
+			state.receive(diagnostic, at: Date(timeIntervalSince1970: 1_350), since: Date(timeIntervalSince1970: 1_200))
+			#expect(state.pending == nil)
+			state.start(.init(start: Date(timeIntervalSince1970: 1_600), appVersion: "0.1.0", macOSVersion: "15.2"), files: [("Moneten-third.ips", Date(timeIntervalSince1970: 1_500))])
+			state.receive(diagnostic, at: Date(timeIntervalSince1970: 1_550), since: Date(timeIntervalSince1970: 1_400))
+			#expect(state.pending?.diagnostic.signal == 6)
+			#expect(state.pending?.fallbackDate == nil)
+		}
+	}
+
 }
