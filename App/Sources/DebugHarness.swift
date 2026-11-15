@@ -383,7 +383,6 @@ final class DebugHarness {
 			MigrationSheet.fixtureFolder = URL(filePath: argument)
 			MigrationSheet.simulatedFailure = nil
 			model.sheet = .migration
-		// "notInstalled", "notRunning", "locked", or "notAllowed": opens the MoneyMoney migration, whose export then fails so.
 		case "migrationfailure":
 			let failures: [String: MoneyMoneyExporter.Failure] = ["notInstalled": .notInstalled, "notRunning": .notRunning, "locked": .locked, "notAllowed": .notAllowed]
 			guard let failure = failures[argument] else { return log("migrationfailure: unknown failure") }

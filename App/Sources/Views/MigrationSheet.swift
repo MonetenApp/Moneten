@@ -19,7 +19,6 @@ struct MigrationSheet: View {
 	/// A folder with `accounts.plist`, `categories.plist`, and `transactions.plist`, which the debug harness reads
 	/// instead of asking MoneyMoney.
 	static var fixtureFolder: URL?
-	/// A failure that the debug harness lets the export throw, so each message can be checked without MoneyMoney.
 	static var simulatedFailure: MoneyMoneyExporter.Failure?
 	#endif
 
