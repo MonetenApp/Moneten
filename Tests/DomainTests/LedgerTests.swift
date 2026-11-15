@@ -360,7 +360,7 @@ struct LedgerTests {
 	@Test("The sum of a category for the current month counts a pending row and leaves out a pending row marked for review")
 	func categorySumWithPendingRows() {
 		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
-		let groceries = Domain.Category(position: 0, name: "Groceries")
+		let groceries = Domain.Category(position: 0, name: "Groceries", sidebarAmount: .currentMonth)
 		func row(_ day: Int, _ minor: Int64, pending: Bool, review: Bool = false) -> Transaction {
 			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: day), amountMinor: minor, name: "Supermarkt",
 				isPending: pending, categoryID: groceries.id, categorizedBy: .manual, needsReview: review)
@@ -373,9 +373,7 @@ struct LedgerTests {
 		let list = l.transactions(in: .category(groceries.id))
 		#expect(list.count == 3)
 		#expect(MoneySums(of: list).amounts == [Money(minorUnits: -12_000, currency: "EUR")])
-		var shown = groceries
-		shown.sidebarAmount = .currentMonth
-		#expect(l.sidebarAmount(of: shown, today: Day(year: 2026, month: 11, day: 9)) == Money(minorUnits: -12_000, currency: "EUR"))
+		#expect(l.sidebarAmounts(today: Day(year: 2026, month: 11, day: 9))[groceries.id] == Money(minorUnits: -12_000, currency: "EUR"))
 	}
 
 	@Test("The sidebar shows the sum of the current month, the sum of a group, and no amount when the category says so")
@@ -393,10 +391,12 @@ struct LedgerTests {
 		let monthly = (1...12).flatMap { [row($0, -80_000, rent), row($0, -7_000, electricity)] }
 		let l = Ledger(accounts: [giro], categories: [groceries, living, rent, electricity],
 			transactions: [row(11, -12_000, groceries), row(10, -48_000, groceries)] + monthly)
-		#expect(l.sidebarAmount(of: groceries, today: today) == Money(minorUnits: -12_000, currency: "EUR"))
-		#expect(l.sidebarAmount(of: living, today: today) == Money(minorUnits: -1_044_000, currency: "EUR"))
+		#expect(l.sidebarAmounts(today: today)[groceries.id] == Money(minorUnits: -12_000, currency: "EUR"))
+		#expect(l.sidebarAmounts(today: today)[living.id] == Money(minorUnits: -1_044_000, currency: "EUR"))
 		groceries.sidebarAmount = .none
-		#expect(l.sidebarAmount(of: groceries, today: today) == nil)
+		var hidden = l
+		hidden.upsert(groceries)
+		#expect(hidden.sidebarAmounts(today: today)[groceries.id] == nil)
 	}
 
 	@Test("Current month, current quarter, and current year in the sidebar end at the last day of the period")
@@ -413,9 +413,54 @@ struct LedgerTests {
 			}
 		}
 		let l = Ledger(accounts: [giro], categories: [groceries, fuel, insurance], transactions: rows)
-		#expect(l.sidebarAmount(of: groceries, today: today) == Money(minorUnits: -1_000, currency: "EUR"))
-		#expect(l.sidebarAmount(of: fuel, today: today) == Money(minorUnits: -1_200, currency: "EUR"))
-		#expect(l.sidebarAmount(of: insurance, today: today) == Money(minorUnits: -1_230, currency: "EUR"))
+		#expect(l.sidebarAmounts(today: today) == [
+			groceries.id: Money(minorUnits: -1_000, currency: "EUR"), fuel.id: Money(minorUnits: -1_200, currency: "EUR"),
+			insurance.id: Money(minorUnits: -1_230, currency: "EUR"),
+		])
+	}
+
+	@Test("Each amount in the sidebar is the sum that the list of its category gives for its period and currency")
+	func sidebarAmountsOfMixedLedger() {
+		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
+		let card = Account(position: 1, name: "Card", kind: .creditCard, source: .offline, currency: "USD")
+		let living = Domain.Category(position: 0, name: "Living", isGroup: true, sidebarAmount: .totalSum)
+		let rent = Domain.Category(parentID: living.id, position: 0, name: "Rent", sidebarAmount: .currentMonth)
+		let travel = Domain.Category(parentID: living.id, position: 1, name: "Travel", currency: "USD", sidebarAmount: .currentYear)
+		let fuel = Domain.Category(position: 1, name: "Fuel", sidebarAmount: .currentQuarter)
+		let hidden = Domain.Category(position: 2, name: "Hidden", sidebarAmount: .none)
+		let refunds = Domain.Category(position: 3, name: "Refunds", sidebarAmount: .totalSum)
+		let uncategorized = Domain.Category(position: 99, name: "Uncategorized", isDefault: true, sidebarAmount: .totalSum)
+		func row(_ category: UUID?, _ year: Int, _ month: Int, _ day: Int, _ minor: Int64, _ currency: String = "EUR", pending: Bool = false,
+			review: Bool = false) -> Transaction {
+			Transaction(accountID: currency == "USD" ? card.id : giro.id, bookingDate: Day(year: year, month: month, day: day), amountMinor: minor,
+				currency: currency, name: "Row", isPending: pending, categoryID: category, needsReview: review)
+		}
+		let l = Ledger(accounts: [giro, card], categories: [living, rent, travel, fuel, hidden, refunds, uncategorized], transactions: [
+			row(rent.id, 2026, 11, 3, -80_000), row(rent.id, 2026, 10, 3, -80_000), row(rent.id, 2026, 11, 5, -1_000, pending: true),
+			row(rent.id, 2026, 11, 6, -500, pending: true, review: true),
+			row(travel.id, 2026, 3, 10, -20_000, "USD"), row(travel.id, 2026, 4, 10, -3_000), row(travel.id, 2027, 1, 2, -700, "USD"),
+			row(fuel.id, 2026, 12, 1, -4_000), row(fuel.id, 2026, 9, 30, -6_000),
+			row(hidden.id, 2026, 11, 1, -900),
+			row(refunds.id, 2026, 11, 1, 500), row(refunds.id, 2026, 11, 2, -500),
+			row(nil, 2020, 1, 1, -50), row(UUID(), 2026, 11, 1, -77),
+		])
+		let amounts = l.sidebarAmounts(today: Day(year: 2026, month: 11, day: 9))
+		#expect(amounts == [
+			living.id: Money(minorUnits: -164_000, currency: "EUR"), rent.id: Money(minorUnits: -81_000, currency: "EUR"),
+			travel.id: Money(minorUnits: -20_000, currency: "USD"), fuel.id: Money(minorUnits: -4_000, currency: "EUR"),
+			uncategorized.id: Money(minorUnits: -50, currency: "EUR"),
+		])
+		let periods: [(Domain.Category, DayRange)] = [
+			(living, .all), (rent, DayRange(start: Day(year: 2026, month: 11, day: 1), end: Day(year: 2026, month: 11, day: 30))),
+			(travel, DayRange(start: Day(year: 2026, month: 1, day: 1), end: Day(year: 2026, month: 12, day: 31))),
+			(fuel, DayRange(start: Day(year: 2026, month: 10, day: 1), end: Day(year: 2026, month: 12, day: 31))), (uncategorized, .all),
+		]
+		for (category, period) in periods {
+			var f = TransactionFilter()
+			f.period = period
+			let list = MoneySums(of: l.transactions(in: .category(category.id), filter: f)).byCurrency[category.currency]
+			#expect(amounts[category.id]?.minorUnits == list)
+		}
 	}
 
 	@Test("The ledger knows which accounts have transactions, also after a delete")
