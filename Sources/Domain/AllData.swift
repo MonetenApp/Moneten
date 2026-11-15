@@ -175,13 +175,14 @@ private struct File: Codable {
 	func allData() throws -> AllData {
 		let currencies = Dictionary(accounts.map { ($0.id, $0.currency) }, uniquingKeysWith: { first, _ in first })
 		return AllData(exportedAt: exportedAt, groups: accountGroups, accounts: try each("accounts", accounts) { try $0.account() }, accesses: accesses.map(\.access),
-			categories: categories, transactions: try each("transactions", transactions) { try $0.transaction() },
+			categories: try each("categories", categories) { try currencyCode($0.currency); return $0 }, transactions: try each("transactions", transactions) { try $0.transaction() },
 			deletedTransactions: try each("deletedTransactions", deletedTransactions) { try $0.deleted() },
 			portfolioValues: try each("portfolioValues", portfolioValues) { entry in
+				let value = try entry.portfolioValue()
 				if let currency = currencies[entry.accountID], entry.currency != currency {
 					throw AllData.ReadError.damaged("the currency \(entry.currency) differs from the account currency \(currency)")
 				}
-				return try entry.portfolioValue()
+				return value
 			},
 			holdings: try each("holdings", holdings) { try $0.holding() })
 	}
@@ -224,6 +225,12 @@ enum AmountText {
 			throw AllData.ReadError.damaged("\"\(text)\" is not a decimal number")
 		}
 		return d
+	}
+}
+
+private func currencyCode(_ text: String) throws {
+	guard text.wholeMatch(of: /[A-Z]{3}/) != nil else {
+		throw AllData.ReadError.damaged("\"\(text)\" is not a currency code in the form [A-Z]{3}")
 	}
 }
 
@@ -293,7 +300,8 @@ private struct AccountEntry: Codable {
 	}
 
 	func account() throws -> Account {
-		Account(id: id, groupID: groupID, position: position, name: name, kind: kind, source: source, currency: currency, iban: iban, bic: bic,
+		try currencyCode(currency)
+		return Account(id: id, groupID: groupID, position: position, name: name, kind: kind, source: source, currency: currency, iban: iban, bic: bic,
 			accountNumber: accountNumber, bankCode: bankCode, bankName: bankName, owner: owner,
 			bankBalanceMinor: try bankBalance.map { try AmountText.minorUnits($0, currency) }, bankBalanceDate: bankBalanceDate,
 			initialBalanceMinor: try AmountText.minorUnits(initialBalance, currency), initialBalanceIsSet: initialBalanceIsSet, isClosed: isClosed,
@@ -372,7 +380,8 @@ private struct TransactionEntry: Codable {
 	}
 
 	func transaction() throws -> Transaction {
-		Transaction(id: id, accountID: accountID, bookingDate: try day(bookingDate), valueDate: try valueDate.map(day),
+		try currencyCode(currency)
+		return Transaction(id: id, accountID: accountID, bookingDate: try day(bookingDate), valueDate: try valueDate.map(day),
 			amountMinor: try AmountText.minorUnits(amount, currency), currency: currency, name: name, purpose: purpose,
 			counterpartyIBAN: counterpartyIBAN, counterpartyBIC: counterpartyBIC, bookingText: bookingText, endToEndReference: endToEndReference,
 			mandateReference: mandateReference, creditorID: creditorID, comment: comment, isChecked: isChecked, isPending: isPending,
@@ -409,6 +418,7 @@ private struct DeletedEntry: Codable {
 	}
 
 	func deleted() throws -> DeletedTransaction {
+		try currencyCode(currency)
 		let row = Transaction(accountID: accountID, bookingDate: try day(bookingDate), amountMinor: try AmountText.minorUnits(amount, currency),
 			currency: currency, name: "", purpose: purpose, counterpartyIBAN: counterpartyIBAN, endToEndReference: endToEndReference, isPending: isPending,
 			isFetched: wasFetched, sourceID: sourceID)
@@ -430,7 +440,8 @@ private struct PortfolioValueEntry: Codable {
 	}
 
 	func portfolioValue() throws -> PortfolioValue {
-		PortfolioValue(accountID: accountID, day: try Domain.day(day), minorUnits: try AmountText.minorUnits(value, currency))
+		try currencyCode(currency)
+		return PortfolioValue(accountID: accountID, day: try Domain.day(day), minorUnits: try AmountText.minorUnits(value, currency))
 	}
 }
 
@@ -506,7 +517,10 @@ private struct HoldingEntry: Codable {
 	}
 
 	func holding() throws -> Holding {
-		Holding(id: id, accountID: accountID, security: Security(name: name, isin: isin, securityNumber: securityNumber),
+		for code in [nominalCurrency, price?.currency, marketValue?.currency, accruedInterest?.currency, purchasePrice?.currency, exchangeRate?.base, exchangeRate?.quoted].compactMap({ $0 }) {
+			try currencyCode(code)
+		}
+		return Holding(id: id, accountID: accountID, security: Security(name: name, isin: isin, securityNumber: securityNumber),
 			quantity: try AmountText.decimal(quantity), isNominal: isNominal, nominalCurrency: nominalCurrency, quote: try price?.quote(),
 			marketValue: try marketValue?.money(), accruedInterest: try accruedInterest?.money(), purchasePrice: try purchasePrice?.quote(),
 			exchangeRate: try exchangeRate?.exchangeRate())
