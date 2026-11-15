@@ -409,6 +409,8 @@ private struct MinorBounds {
 
 	private static func minor(_ value: Decimal, _ decimalPlaces: Int, _ mode: NSDecimalNumber.RoundingMode) -> Int64 {
 		var scaled = value * Decimal(sign: .plus, exponent: decimalPlaces, significand: 1)
+		// A text of more than about 160 digits overflows Decimal, which gives NaN without a sign.
+		if scaled.isNaN { return value < 0 ? .min : .max }
 		var rounded = Decimal()
 		NSDecimalRound(&rounded, &scaled, 0, mode)
 		if rounded >= Decimal(Int64.max) { return .max }
