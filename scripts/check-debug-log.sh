@@ -4,10 +4,11 @@
 # fails on a data folder whose path holds a name, a login with a wrong PIN, the setup of the made-up bank
 # with its TAN dialog, two refreshes (the second fails an account with an error of the bank), the
 # transactions, the status, the error popover, and the state of each account, a snapshot, and a key in the
-# main window while the selected row has a new category. A made-up extension without a fixture then prints,
-# sets a status, returns a value, and fails a refresh. The check fails when debug.log holds an IBAN, an
-# account number, a name, a purpose, a booking text, a category name, the login name, the PIN, the TAN, the
-# password, a text of the bank, or a text of the extension.
+# main window while the selected row has a new category. An import of all data fails on a file with a name
+# as a day, and an export fails on a path that holds a name. A made-up extension without a fixture then
+# prints, sets a status, returns a value, and fails a refresh. The check fails when debug.log holds an IBAN,
+# an account number, a name, a purpose, a booking text, a category name, the login name, the PIN, the TAN,
+# the password, a text of the bank, or a text of the extension.
 # The app runs with a temporary data folder and a password, so it never opens the real database and
 # leaves no Keychain item, and as a copy under its own bundle ID, so it leaves an installed Moneten alone.
 set -e
@@ -101,6 +102,13 @@ poll "^phase=failed" state
 rmdir "$DATA/Database/Moneten.sqlite"
 send create check-debug-log
 poll "phase=unlocked" state
+cat >"$DATA/export.json" <<-'EOF'
+	{"format": "moneten-export", "version": 1, "exportedAt": "2026-11-14T23:46:40.000Z", "accountGroups": [], "accounts": [],
+	"accesses": [], "categories": [], "transactions": [], "deletedTransactions": [], "holdings": [],
+	"portfolioValues": [{"accountID": "6F1C2A1E-0000-4000-8000-000000000001", "day": "Erika Mustermann", "value": "1.00", "currency": "EUR"}]}
+EOF
+poll "^importall " importall "$DATA/export.json"
+poll "^exportall " exportall "$DATA/missing/export.json"
 send sheet newAccount
 send setup "entry 12030000"
 send setup next
