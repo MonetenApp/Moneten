@@ -568,9 +568,9 @@ final class DebugHarness {
 		case .pin: log("ext prompt pin")
 		case let .secondFactor(request):
 			switch request.challenge {
-			case let .enterTAN(text, image): log("ext prompt tan label=\(request.field.label) text=\(Self.isSet(text)) image=\(image != nil)")
+			case let .enterTAN(text, image): log("ext prompt tan label=\(Self.isSet(request.field.label)) text=\(Self.isSet(text)) image=\(image != nil)")
 			case let .approveInApp(text, app, image, _): log("ext prompt approve app=\(app ?? "-") text=\(Self.isSet(text)) image=\(image != nil)")
-			case let .chooseTANMethod(methods, current): log("ext prompt methods \(methods.map { "\($0.id)=\($0.name)\($0.unavailable == nil ? "" : " (unavailable)")" }.joined(separator: ", ")) current=\(current ?? "-")")
+			case let .chooseTANMethod(methods, current): log("ext prompt methods \(methods.map { "\($0.id)\($0.unavailable == nil ? "" : " (unavailable)")" }.joined(separator: ", ")) current=\(current ?? "-")")
 			case let .openBrowser(approval): log("ext prompt browser \(approval.url.host() ?? "")")
 			case let .captcha(captcha): log("ext prompt captcha \(captcha.provider.rawValue) page=\(captcha.page?.host() ?? "-")")
 			case .chooseTANMedium, .flickerCode: log("ext prompt other")
