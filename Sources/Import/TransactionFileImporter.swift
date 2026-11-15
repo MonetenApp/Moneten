@@ -29,10 +29,12 @@ public enum TransactionFileImporter {
 	public enum Warning: Sendable, Equatable, CustomStringConvertible {
 		case unknownCurrency(line: Int, cell: String, replacement: String)
 		case unreadableValueDate(line: Int, cell: String)
+		case mixedDateForms(line: Int)
 
 		public var description: String {
 			switch self {
 			case let .unknownCurrency(n, cell, replacement): "Line \(n): The currency \(cell) is unknown. The transaction is in \(replacement), the currency of the account."
+			case let .mixedDateForms(n): "Line \(n): The file mixes month-first dates and dotted dates. Dates with dots read day first."
 			case let .unreadableValueDate(n, cell): "Line \(n): The value date \(cell) cannot be read. The transaction has no value date."
 			}
 		}
@@ -162,6 +164,10 @@ enum CSVParser {
 		let placeholder = UUID()
 		var result = TransactionFileImporter.Parsed(transactions: [])
 		for (line, row, dateText) in dataRows {
+			if (dateOrder == .monthDayYear && dateText.contains("."))
+				|| (valueDateOrder == .monthDayYear && cell(row, valueCol)?.contains(".") == true) {
+				result.warnings.append(.mixedDateForms(line: line))
+			}
 			func value(_ c: Int?) -> String? { cell(row, c) }
 			guard let day = dateOrder.day(dateText) else {
 				throw TransactionFileImporter.Failure.line(line, "The date \(dateText) cannot be read.")
