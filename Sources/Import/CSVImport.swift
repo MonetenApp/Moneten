@@ -144,7 +144,13 @@ public struct CSVLayout: Hashable, Sendable, Codable {
 		let fields = try values.nestedContainer(keyedBy: ColumnKey.self, forKey: .columns)
 		columns = [:]
 		for key in fields.allKeys {
-			if let field = CSVField(rawValue: key.stringValue) { columns[field] = try fields.decode(Int.self, forKey: key) }
+			if let field = CSVField(rawValue: key.stringValue) {
+				let column = try fields.decode(Int.self, forKey: key)
+				guard column >= 0 else {
+					throw DecodingError.dataCorruptedError(forKey: key, in: fields, debugDescription: "Column positions must be zero or greater.")
+				}
+				columns[field] = column
+			}
 		}
 	}
 

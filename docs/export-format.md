@@ -40,7 +40,7 @@
 | `version` | Version of the profile payload, currently `1`, separate from the export format version |
 | `payload` | Base64 of the exact stored JSON bytes. The complete export preserves unreadable profiles and unknown fields without interpreting them. |
 
-A version-1 payload contains `name`, `header`, `delimiter`, and `layout`. The header is a list of column titles, and the optional delimiter is the saved field separator. The layout contains `encoding`, `columns`, `dateOrder`, optional `decimalMark`, and `createsCategories`. The columns object maps the field names of `CSVField` in [the CSV reader](../Sources/Import/CSVImport.swift) to zero-based column positions. The other settings use the raw values of `CSVEncoding`, `DateOrder`, and `DecimalMark` from the reader. A profile save updates known fields and preserves unknown fields, including unknown column mappings.
+A version-1 payload contains `name`, `header`, `delimiter`, and `layout`. The header is a list of column titles, and the optional delimiter is the saved field separator. The layout contains `encoding`, `columns`, `dateOrder`, optional `decimalMark`, and `createsCategories`. The columns object maps the field names of `CSVField` in [the CSV reader](../Sources/Import/CSVImport.swift) to zero-based column positions. The other settings use the raw values of `CSVEncoding`, `DateOrder`, and `DecimalMark` from the reader. A profile save updates known fields and preserves unknown fields, including unknown column mappings. A profile with a negative known column position is unreadable and is not applied. Its raw payload remains stored and exported.
 
 ## Account group
 
