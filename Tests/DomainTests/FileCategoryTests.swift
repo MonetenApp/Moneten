@@ -27,6 +27,32 @@ struct FileCategoryTests {
 		#expect(imported.map(\.amountMinor) == [-420])
 	}
 
+	@Test("Explicit path separators preserve a group name containing a dash", arguments: [" › ", "\\"], [false, true])
+	func explicitPathWithDash(separator: String, creating: Bool) {
+		let group = Domain.Category(position: 0, name: "Long - Term", isGroup: true)
+		let leaf = Domain.Category(parentID: group.id, position: 0, name: "Pets")
+		let cell = "Long - Term\(separator)Pets"
+		let found = FileCategories([cell], in: [group, leaf], creating: creating)
+		#expect(found.ids[cell] == leaf.id)
+		#expect(found.created.isEmpty)
+	}
+
+	@Test("A missing exported leaf reuses a group whose name contains a dash")
+	func exportedMissingLeafWithDash() throws {
+		let account = Account(position: 0, name: "Archive", kind: .giro, source: .offline)
+		let group = Domain.Category(position: 0, name: "Long - Term", isGroup: true)
+		let leaf = Domain.Category(parentID: group.id, position: 0, name: "Pets")
+		let row = Transaction(accountID: account.id, bookingDate: Day(year: 2026, month: 11, day: 3), amountMinor: -420, name: "Kiosk", categoryID: leaf.id)
+		let ledger = Ledger(accounts: [account], categories: [group, leaf])
+		let exported = String(decoding: try TransactionCSV.data([row], ledger: ledger, locale: Locale(identifier: "de_DE")), as: UTF8.self)
+		let cell = exported.components(separatedBy: "\r\n")[1].components(separatedBy: ";")[2]
+		#expect(cell == "Long - Term - Pets")
+		let found = FileCategories([cell], in: [group], creating: true)
+		#expect(found.created.map(\.name) == ["Pets"])
+		#expect(found.created.map(\.parentID) == [group.id])
+		#expect(found.ids[cell] == found.created.first?.id)
+	}
+
 	@Test("An exported path finds a category before a group at the same path")
 	func exportedPathBeforeGroup() {
 		let group = Domain.Category(parentID: living.id, position: 0, name: "Food", isGroup: true)
