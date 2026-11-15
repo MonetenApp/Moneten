@@ -165,6 +165,26 @@ struct VaultTests {
 
 @Suite("Schema migrations")
 struct SchemaTests {
+	@Test("v17 keeps the transactions of a v16 database and adds an empty table of parts")
+	func splitParts() throws {
+		let queue = try DatabaseQueue()
+		defer { try? queue.close() }
+		try Schema.migrator.migrate(queue, upTo: "v16")
+		let account = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
+		let t = Transaction(accountID: account.id, bookingDate: Day(year: 2026, month: 11, day: 3), amountMinor: -8000,
+			name: "Beispiel Markt", comment: "Weekly shop", needsReview: true, returnReason: "AC04")
+		try queue.write { db in
+			try account.insert(db)
+			try t.insert(db)
+		}
+		#expect(try queue.read { db in try db.tableExists("splitPart") } == false)
+		try Schema.migrator.migrate(queue)
+		#expect(try queue.read { db in try Transaction.fetchAll(db) } == [t])
+		#expect(try queue.read { db in try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM splitPart") } == 0)
+		try Schema.migrator.migrate(queue)
+		#expect(try queue.read { db in try Transaction.fetchAll(db) } == [t])
+	}
+
 	@Test("v2 keeps the groups of a v1 database and lists them without grouping by account")
 	func groupsByAccount() throws {
 		let queue = try DatabaseQueue()
