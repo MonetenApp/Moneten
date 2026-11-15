@@ -543,13 +543,38 @@ final class DebugHarness {
 	}
 
 	/// The case of a refresh state, and of a failure its case and the return code of the bank, without a text.
+	/// Each case has its own name here, not the text of `String(describing:)`, which a `description` could fill
+	/// with a text of the bank, and a new case fails to compile until it has a name.
 	private static func label(_ state: SyncState) -> String {
-		guard case let .failed(failure) = state else { return caseName(state) }
-		return (["failed", caseName(failure)] + [failure.bankMessage?.code].compactMap { $0 }).joined(separator: ":")
+		switch state {
+		case .idle: "idle"
+		case .connecting: "connecting"
+		case .fetching: "fetching"
+		case .needsUser: "needsUser"
+		case .finished: "finished"
+		case .cancelled: "cancelled"
+		case let .failed(failure): (["failed", label(failure)] + [failure.bankMessage?.code].compactMap { $0 }).joined(separator: ":")
+		}
 	}
 
-	private static func caseName(_ value: Any) -> String {
-		String(String(describing: value).prefix { $0 != "(" })
+	private static func label(_ failure: SyncFailure) -> String {
+		switch failure {
+		case .needsUser: "needsUser"
+		case .pinRejected: "pinRejected"
+		case .loginRejected: "loginRejected"
+		case .accessBlocked: "accessBlocked"
+		case .tanRejected: "tanRejected"
+		case .approvalDeclined: "approvalDeclined"
+		case .challengeExpired: "challengeExpired"
+		case .invalidChallenge: "invalidChallenge"
+		case .notRegistered: "notRegistered"
+		case .notFetched: "notFetched"
+		case .bank: "bank"
+		case .offline: "offline"
+		case .network: "network"
+		case .unsupported: "unsupported"
+		case .notSaved: "notSaved"
+		}
 	}
 
 	/// Whether a message is shown, without its text, which can repeat the login name or an IBAN.

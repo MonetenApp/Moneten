@@ -6,7 +6,7 @@
 # transactions, the status, the error popover, and the state of each account, an account filter, a snapshot, and a key in the
 # main window while the selected row has a new category. An import of all data fails on a file with a name
 # as a day, and an export fails on a path that holds a name. A made-up extension without a fixture then
-# prints, sets a status, returns a value, and fails a refresh. The check fails when debug.log holds an IBAN,
+# prints, sets a status, returns a value, fails a refresh, and fails a run with an error that names a person. The check fails when debug.log holds an IBAN,
 # an account number, a name, a purpose, a booking text, a category name, the login name, the PIN, the TAN,
 # the password, a text of the bank, or a text of the extension.
 # It also imports a CSV file whose name, rows, and value date hold made-up personal data and a text
@@ -71,6 +71,9 @@ cat >"$WORK/Check.lua" <<-'EOF'
 		print("Erika Mustermann")
 		MM.printStatus("Erika Mustermann")
 		return {owner = "Erika Mustermann", accountNumber = "5550001"}
+	end
+	function Fail()
+		error("Konto 5550001 von Erika Mustermann")
 	end
 EOF
 
@@ -216,6 +219,8 @@ send extrefresh "Check||"
 poll "^ext access Check Bank state=failed" extstate
 send extrun "$WORK/Check.lua|Result|"
 poll "^ext result" state
+send extrun "$WORK/Check.lua|Fail|"
+poll "^ext error=" state
 poll "^migrationfailure: unknown failure$" migrationfailure "$MIGRATION_UNKNOWN"
 send quit
 
