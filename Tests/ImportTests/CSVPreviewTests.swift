@@ -5,6 +5,28 @@ import Testing
 
 @Suite("CSV preview")
 struct CSVPreviewTests {
+	@Test("A dated row skipped before inferred titles is reported")
+	func inferredPreambleWarning() throws {
+		let file = try CSVFile(data: Data("15.11.2026;Umsatzanzeige\nTag;Wer;Wieviel\n03.11.2026;Kiosk;-4,20\n".utf8))
+		var layout = try file.detectedLayout()
+		layout.assign(0, to: .bookingDate)
+		layout.assign(2, to: .amount)
+		let preview = try file.preview(layout, currency: "EUR")
+		#expect(preview.transactions.map(\.amountMinor) == [-420])
+		#expect(preview.parsed.warnings.count == 1)
+	}
+
+	@Test("Mapped columns preserve a short row when the amount precedes the dates")
+	func amountBeforeDatesWithExtraNumber() throws {
+		let file = try CSVFile(data: Data("Wer;Wieviel;Tag\nKiosk;;01.11.2026\nZwischensumme;;;\nBakery;4.50;02.11.2026;123456\n".utf8))
+		var layout = try file.detectedLayout()
+		layout.assign(2, to: .bookingDate)
+		layout.assign(1, to: .amount)
+		let preview = try file.preview(layout, currency: "EUR")
+		#expect(preview.problem == nil)
+		#expect(preview.transactions.map(\.amountMinor) == [0, 450])
+	}
+
 	@Test("A later numeric extra column cannot hide a short first row")
 	func extraNumericColumnAfterAmount() throws {
 		let file = try CSVFile(data: Data("Tag;Wer;Wieviel\n01.11.2026;Kiosk\nZwischensumme;;\n02.11.2026;Bakery;4.50;123456\n".utf8))

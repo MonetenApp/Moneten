@@ -477,6 +477,12 @@ The app SHALL report a file that it cannot read with the file name, the line or 
 
 The app SHALL import a file that has values it can read around, and list them as warnings with the file name after the import. Examples are an unknown currency code that falls back to the account currency and a value date that is not a date.
 
+#### Scenario: A dated row before inferred CSV titles
+
+- **GIVEN** a CSV file without known header keywords has "15.11.2026;Umsatzanzeige" before the titles "Tag;Wer;Wieviel" and a transaction of -4,20 €
+- **WHEN** the user assigns the booking date and amount columns and imports the file
+- **THEN** the app imports -4,20 € and warns that the dated row in line 1 was skipped before the inferred titles
+
 #### Scenario: Unreadable value date
 
 - **WHEN** one row has "n/a" as the value date and a valid booking date
