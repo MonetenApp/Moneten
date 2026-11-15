@@ -89,7 +89,7 @@ When the rules of several categories match a transaction, the first category in 
 | `needsReview` | `Bool` | Set by a merge when more than one row could be the booked version of a pending row. Cleared when the user checks a booked row. A checked pending row keeps it. A merge drops a pending row that has it only after the user checked it, and a new review clears that checkmark. |
 | `isFetched` | `Bool` | A refresh delivered or matched the row. A file import does not bring back a deleted row that has it. |
 | `sourceID` | `String?` | The identifier that the source gave, for example `moneymoney:<id>` or the ID of an extension. A second migration skips known identifiers, and a merge matches a row by it first. A source with IDs of its own replaces a `moneymoney:` identifier when it links the row by its fingerprint. |
-| `fileIdentity` | `String?` | Original file fingerprint, set only by file import. Bank takeover, booking, and deletion preserve it. NULL means no file identity. Agreeing identities pair; conflicting identities never pair. |
+| `fileIdentity` | `String?` | Original file fingerprint, set only by file import. Bank takeover, booking, and deletion preserve it. NULL means no file identity. Different file fingerprints can pair for a verified pending-to-booked transition. Conflicting real source IDs or references never pair. |
 | `createdAt` | `Date` | |
 
 Refreshes and file imports go through `reconcile`, which recognizes a stored row by its source ID or by a fingerprint of booking day, amount and currency, counterparty IBAN, end-to-end reference, and purpose. [Architecture](architecture.md#transactions-need-an-identity-the-bank-does-not-give) has the rules.
@@ -143,4 +143,4 @@ Migration `v1` creates the tables. It also creates the table `setting`, which no
 |---|---|---|
 | `PaymentOrder`, `PaymentState` | v0.2 | SEPA transfers with the payee check. See [architecture](architecture.md#payments-are-a-separate-state-machine). |
 
-Migration `v18` adds one nullable TEXT `fileIdentity` column to `bankTransaction` and `deletedTransaction`. Existing rows retain NULL and their prior matching behavior. The original versioned file fingerprint includes booking day, amount, currency, folded purpose, counterparty, source ID, and end-to-end reference. Its length-prefixed encoding excludes pending state and user fields. The operator must accept this migration in the #203 gate.
+Migration `v18` adds one nullable TEXT `fileIdentity` column to `bankTransaction` and `deletedTransaction`. Existing rows retain NULL and their prior matching behavior. The original versioned file fingerprint includes booking day, amount, currency, folded purpose, counterparty, source ID, and end-to-end reference. Its length-prefixed encoding excludes pending state and user fields. The operator accepted this migration in the #203 gate.
