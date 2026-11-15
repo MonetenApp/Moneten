@@ -80,7 +80,7 @@ struct SyncCoordinatorTests {
 			await Task.yield()
 			events.append(id == Self.giro.accountID ? "giro" : "savings")
 		}
-		coordinator.ended = { _, _, _, _ in events.append("ended") }
+		coordinator.ended = { _, _, _ in events.append("ended") }
 		_ = refresh(bank, [.fetched(Self.giro.accountID), .fetched(Self.savings.accountID)], accounts: [Self.giro, Self.savings], attended: false)
 		await until { !coordinator.isRefreshing && events.count == 3 }
 		#expect(events == ["giro", "savings", "ended"])
@@ -104,7 +104,7 @@ struct SyncCoordinatorTests {
 			ledger.apply(reconcile(.refresh(result), into: account, stored: ledger.transactions(ofAccount: id), deleted: [], rules: Categorizer(ledger: ledger), now: today.date()))
 			whileRunning.append(header())
 		}
-		coordinator.ended = { _, _, results, _ in
+		coordinator.ended = { _, results, _ in
 			atEnd.append(header())
 			for (id, result) in results {
 				var a = ledger.account(id)!
@@ -385,7 +385,7 @@ struct SyncCoordinatorTests {
 
 	func logEnds(of coordinator: SyncCoordinator) -> EndLog {
 		let log = EndLog()
-		coordinator.ended = { access, _, accounts, _ in log.all.append((access, accounts)) }
+		coordinator.ended = { access, accounts, _ in log.all.append((access, accounts)) }
 		return log
 	}
 
@@ -652,16 +652,14 @@ struct SyncCoordinatorTests {
 	/// What `ended` reported, by access.
 	@MainActor
 	final class Ends {
-		var states: [UUID: AccessState?] = [:]
+		var states: [UUID: AccessState] = [:]
 		var accounts: [UUID: [UUID: AccountRefresh]] = [:]
 	}
 
 	func recordEnds() -> Ends {
 		let ends = Ends()
-		coordinator.ended = { access, state, accounts, _ in
-			ends.states[access] = state
-			ends.accounts[access] = accounts
-		}
+		coordinator.storeState = { access, state, _ in ends.states[access] = state }
+		coordinator.ended = { access, accounts, _ in ends.accounts[access] = accounts }
 		return ends
 	}
 
@@ -690,7 +688,7 @@ struct SyncCoordinatorTests {
 		let failing = Self.access("Musterbank")
 		_ = refresh(failing, [.state(AccessState(Data([1]))), .fail(.network("Zeitüberschreitung"))], accounts: [Self.giro, Self.savings])
 		await until { ends.accounts[failing.id] != nil }
-		#expect(ends.states[failing.id] == .some(nil))
+		#expect(ends.states[failing.id] == nil)
 		#expect(ends.accounts[failing.id]?.mapValues { refresh -> String? in
 			if case let .failed(error) = refresh { error.message } else { nil }
 		} == [Self.giro.accountID: "The bank could not be reached: Zeitüberschreitung", Self.savings.accountID: "The bank could not be reached: Zeitüberschreitung"])
@@ -702,7 +700,7 @@ struct SyncCoordinatorTests {
 		coordinator.cancelAll()
 		#expect(coordinator.refreshingAccounts.isEmpty)
 		await until { ends.accounts[canceled.id] != nil }
-		#expect(ends.states[canceled.id] == .some(nil))
+		#expect(ends.states[canceled.id] == nil)
 		#expect(ends.accounts[canceled.id] == [:])
 		#expect(coordinator.refreshingAccounts.isEmpty)
 	}
@@ -716,7 +714,7 @@ struct SyncCoordinatorTests {
 	@Test("The login of a setup waits for the refresh of its access, and a refresh asked for meanwhile waits for the login")
 	func setupBesideRefresh() async throws {
 		let events = Events()
-		coordinator.ended = { _, _, _, _ in events.all.append("refresh ended") }
+		coordinator.ended = { _, _, _ in events.all.append("refresh ended") }
 		let bank = Self.access("Musterbank")
 		_ = refresh(bank, [.ask(Self.pin), .fetched(Self.giro.accountID)])
 		await until { broker.current != nil }
@@ -735,6 +733,25 @@ struct SyncCoordinatorTests {
 		await until { events.all.count == 4 && !coordinator.isRefreshing }
 		#expect(events.all == ["refresh ended", "login started", "login ended", "refresh ended"])
 		#expect(coordinator.refreshingAccounts.isEmpty)
+	}
+
+	@Test("The state of a refresh is stored before the work that waits for its access starts, also when its accounts are stored later")
+	func stateBeforeWaitingWork() async throws {
+		let events = Events()
+		coordinator.storeState = { _, state, _ in events.all.append("state \(state.data.first ?? 0) stored") }
+		// The app stores the accounts after the transaction table is drawn.
+		coordinator.ended = { _, _, _ in Task { events.all.append("accounts stored") } }
+		let bank = Self.access("Musterbank")
+		_ = refresh(bank, [.ask(Self.pin), .state(AccessState(Data([7]))), .fetched(Self.giro.accountID)])
+		await until { broker.current != nil }
+		let login = Task {
+			try await coordinator.exclusively(for: bank.id) { events.all.append("login started") }
+		}
+		try await Task.sleep(for: .milliseconds(50))
+		answer(.pin(Secret("12345")))
+		try await login.value
+		await until { events.all.count == 3 }
+		#expect(events.all.filter { $0 != "accounts stored" } == ["state 7 stored", "login started"])
 	}
 
 	@Test("A refresh that waits while Edit Login Data holds the access runs with the new login and state")
@@ -764,7 +781,7 @@ struct SyncCoordinatorTests {
 	@Test("Cancel Refresh drops a refresh that waits for the login of a setup")
 	func cancelBehindSetup() async throws {
 		let events = Events()
-		coordinator.ended = { _, _, _, _ in events.all.append("refresh ended") }
+		coordinator.ended = { _, _, _ in events.all.append("refresh ended") }
 		let bank = Self.access("Musterbank")
 		try await coordinator.exclusively(for: bank.id) {
 			_ = refresh(bank, [.fetched(Self.giro.accountID)])
@@ -813,7 +830,7 @@ struct SyncCoordinatorTests {
 		var noticed: [String] = []
 		var ended: [UUID: AccountRefresh] = [:]
 		coordinator.noticed = { _, messages in noticed += messages.map(\.text) }
-		coordinator.ended = { _, _, accounts, _ in ended = accounts }
+		coordinator.ended = { _, accounts, _ in ended = accounts }
 		coordinator.refresh(RefreshRequest(access: Self.access("Musterbank"), accounts: [Self.giro]), with: FailingAfterNotice(), attended: true)
 		await until { !coordinator.isRefreshing }
 		#expect(noticed == ["Wartungsarbeiten bis 5 Uhr"])

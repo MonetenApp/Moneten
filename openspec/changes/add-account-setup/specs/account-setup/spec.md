@@ -439,7 +439,7 @@ The app SHALL let the user choose another access method for an existing access i
 
 ### Requirement: Reinitialize an access after an aborted authentication
 
-The app SHALL tell the user to use "Edit Login Data..." when a bank reports that the access must be set up again, for example after an aborted two-factor authentication or a new TAN method, and running the command with unchanged values SHALL perform that setup. Banks use different codes for this, so the error of an account names the command whenever the login of the whole FinTS access failed with a message of the bank, or the two-factor authentication did not finish.
+The app SHALL tell the user to use "Edit Login Data..." when a bank reports that the access must be set up again, for example after an aborted two-factor authentication or a new TAN method, and running the command with unchanged values SHALL perform that setup. Banks use different codes for this, so the error of an account names the command whenever the whole FinTS access failed with a message of the bank, also after the login, or the two-factor authentication did not finish.
 
 #### Scenario: TAN method changed at the bank
 

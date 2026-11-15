@@ -9,8 +9,8 @@ import Foundation
 /// of the bank ends the login in the same way, before the PIN is sent. Every other request opens the
 /// dialogs of the broker, one at a time together with the dialogs of running refreshes.
 ///
-/// For a login that the app has already, `replacing` names its access: a rejection or a block in the
-/// setup deletes the saved PIN of that access and forgets its PIN in memory.
+/// For a login that the app has already, `replacing` names its access: the login holds that access, and a
+/// rejection or a block in the setup deletes the saved PIN of that access and forgets its PIN in memory.
 ///
 /// Without a PIN, the session logs in to an access that the app has with the PIN of the access, for "Look
 /// for New Accounts...": the PIN in memory, the saved PIN, or the PIN sheet, as an attended refresh does. A PIN
@@ -40,11 +40,19 @@ public struct SetupSession: SyncSession {
 		return .pin(pin)
 	}
 
-	/// Runs the login with this session. When the login ends, also with an error, or is canceled, for
-	/// example by the lock or by Cancel in its progress, the dialog of the access no longer waits for a
-	/// challenge, so its progress closes at once, also while the connector still ends.
+	/// Runs the login with this session while it holds the access that it logs in to, through
+	/// `SyncCoordinator.exclusively(for:_:)`, so that it never runs beside a refresh of that access. When the
+	/// login ends, also with an error, or is canceled, for example by the lock or by Cancel in its progress, the
+	/// dialog of the access no longer waits for a challenge, so its progress closes at once, also while the
+	/// connector still ends. A login that is canceled while it waits for the access changes nothing: the
+	/// progress and the PIN of the refresh that holds the access stay.
 	@MainActor
-	public func logIn<T: Sendable>(_ login: @escaping @MainActor @Sendable (SetupSession) async throws -> T) async throws -> T {
+	public func logIn<T: Sendable>(holding coordinator: SyncCoordinator, _ login: @escaping @MainActor @Sendable (SetupSession) async throws -> T) async throws -> T {
+		try await coordinator.exclusively(for: replacing) { try await run(login) }
+	}
+
+	@MainActor
+	private func run<T: Sendable>(_ login: @escaping @MainActor @Sendable (SetupSession) async throws -> T) async throws -> T {
 		let broker = broker, access = access.id, session = self
 		let task = Task { @MainActor in try await login(session) }
 		broker.logins[access] = { task.cancel() }

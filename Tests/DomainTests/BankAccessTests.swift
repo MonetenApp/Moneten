@@ -165,6 +165,23 @@ struct BankAccessTests {
 		#expect(ledger.accountsToAdd([first, second], listed: [first, second], connecting: [second.id: migrated.id]).map(\.id) == [first.id, migrated.id])
 	}
 
+	@Test("Look for New Accounts shows only the new subaccount, and matches it against every subaccount that the bank listed")
+	func newSubaccountBesideMigrated() {
+		let linked = Account(position: 0, name: "Sparkonto 01", kind: .savings, source: .bank, accountNumber: "9", bankCode: "12030000",
+			accessID: Self.accessID, remoteID: "9/01")
+		let migrated = Account(position: 1, name: "Sparen", kind: .savings, source: .migrated, accountNumber: "9", bankCode: "12030000")
+		let ledger = Ledger(accounts: [linked, migrated])
+		let first = Self.candidate("Sparkonto 01", number: "9", remoteID: "9/01")
+		let second = Self.candidate("Sparkonto 02", number: "9", remoteID: "9/02")
+		let listing = SetupListing([first, second], in: ledger, onlyNew: true)
+		#expect(listing.candidates.map(\.id) == ["9/02"])
+		#expect(listing.candidates.map(\.match) == [.choice([migrated])])
+		// "New account" stays chosen, so the old history of "Sparen" is not attached to 9/02.
+		#expect(ledger.accountsToAdd([second], listed: listing.listed).map(\.id) == [second.id])
+		#expect(ledger.accountsToAdd([second], listed: listing.listed, connecting: [second.id: migrated.id]).map(\.id) == [migrated.id])
+		#expect(SetupListing([first, second], in: ledger).candidates.map(\.isPresent) == [true, false])
+	}
+
 	@Test("An account with another IBAN is new, also with the same account number")
 	func otherIBAN() {
 		let migrated = Account(position: 0, name: "Giro", kind: .giro, source: .migrated, iban: "DE02120300000000202051", accountNumber: "202051",

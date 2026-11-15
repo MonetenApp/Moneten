@@ -10,7 +10,12 @@ import Testing
 @Suite("Setup session")
 struct SetupSessionTests {
 	let broker = SessionBroker()
+	let coordinator: SyncCoordinator
 	static let access = Access(source: .fints(bankCode: "12030000", url: URL(string: "https://fints.example.com/")!), bankName: "Musterbank", loginName: "erika77")
+	init() {
+		coordinator = SyncCoordinator(broker: broker)
+	}
+
 	var session: SetupSession { SetupSession(broker: broker, access: Self.access, pin: Secret("12345")) }
 
 	@Test("The PIN of the login step answers the bank without a PIN sheet")
@@ -71,7 +76,7 @@ struct SetupSessionTests {
 		let chooseMethod = Self.chooseMethod
 		let session = session
 		let login = Task {
-			try await session.logIn { session in
+			try await session.logIn(holding: coordinator) { session in
 				_ = try await session.ask(chooseMethod)
 				try await Task.sleep(for: .milliseconds(200))
 				throw SyncFailure.network("The connection was lost.")
@@ -89,7 +94,7 @@ struct SetupSessionTests {
 		let chooseMethod = Self.chooseMethod
 		let session = session
 		let login = Task {
-			try await session.logIn { session in
+			try await session.logIn(holding: coordinator) { session in
 				_ = try await session.ask(chooseMethod)
 				// A connector that needs a second to end, as the helper does.
 				await withCheckedContinuation { done in DispatchQueue.global().asyncAfter(deadline: .now() + 1) { done.resume() } }
@@ -109,7 +114,7 @@ struct SetupSessionTests {
 		let chooseMethod = Self.chooseMethod
 		let session = session
 		let login = Task {
-			try await session.logIn { session -> Int in
+			try await session.logIn(holding: coordinator) { session -> Int in
 				_ = try await session.ask(chooseMethod)
 				try await Task.sleep(for: .seconds(5))
 				return 1
@@ -141,7 +146,7 @@ struct SetupSessionTests {
 		let session = SetupSession(broker: broker, access: Self.access, pin: Secret("54321"), replacing: Self.known.id)
 		let rejected = BankMessage(code: "9942", text: "PIN falsch")
 		await #expect(throws: SyncFailure.pinRejected(rejected)) {
-			try await session.logIn { try await $0.ask(.pin(PINRequest(rejected: rejected))) }
+			try await session.logIn(holding: coordinator) { try await $0.ask(.pin(PINRequest(rejected: rejected))) }
 		}
 		#expect(store.pins.isEmpty)
 		await #expect(throws: SyncFailure.needsUser(.pin)) {
@@ -155,7 +160,7 @@ struct SetupSessionTests {
 		let session = SetupSession(broker: broker, access: Self.access, pin: Secret("12345"), replacing: Self.known.id)
 		let blocked = BankMessage(code: "9930", text: "Zugang gesperrt")
 		await #expect(throws: SyncFailure.accessBlocked(blocked)) {
-			try await session.logIn { _ -> Int in throw SyncFailure.accessBlocked(blocked) }
+			try await session.logIn(holding: coordinator) { _ -> Int in throw SyncFailure.accessBlocked(blocked) }
 		}
 		#expect(store.pins.isEmpty)
 		await #expect(throws: SyncFailure.needsUser(.pin)) {
@@ -180,7 +185,7 @@ struct SetupSessionTests {
 		let store = try knownLogin()
 		let session = SetupSession(broker: broker, access: Self.access, pin: Secret("12345"), replacing: Self.known.id)
 		let login = Task {
-			try await session.logIn { session -> Int in
+			try await session.logIn(holding: coordinator) { session -> Int in
 				await session.rejected(.accessBlocked(BankMessage(code: "9930", text: "Zugang gesperrt")))
 				try await Task.sleep(for: .seconds(5))
 				return 1
@@ -194,7 +199,6 @@ struct SetupSessionTests {
 
 	@Test("The PIN of the setup answers the first refresh of the new access from memory")
 	func rememberedPIN() async throws {
-		let coordinator = SyncCoordinator(broker: broker)
 		try coordinator.broker.remember(Secret("12345"), for: Self.access.id, save: false)
 		let connector = ScriptedConnector([.ask(.pin(PINRequest()))])
 		coordinator.refresh(RefreshRequest(access: Self.access, accounts: []), with: connector, attended: true)
@@ -209,7 +213,7 @@ struct SetupSessionTests {
 		try store.savePIN(Secret("54321"), for: Self.access.id)
 		try broker.open(store)
 		let session = SetupSession(broker: broker, access: Self.access, pin: nil)
-		let answer = try await session.logIn { session in try await session.ask(.pin(PINRequest())) }
+		let answer = try await session.logIn(holding: coordinator) { session in try await session.ask(.pin(PINRequest())) }
 		#expect(answer == .pin(Secret("54321")))
 		#expect(broker.current == nil)
 	}
@@ -221,7 +225,7 @@ struct SetupSessionTests {
 		let session = SetupSession(broker: broker, access: Self.access, pin: nil)
 		func login(failing: Bool) async throws {
 			let login = Task {
-				try await session.logIn { session in
+				try await session.logIn(holding: coordinator) { session in
 					_ = try await session.ask(.pin(PINRequest()))
 					if failing { throw SyncFailure.offline }
 				}
@@ -235,5 +239,37 @@ struct SetupSessionTests {
 		try await login(failing: false)
 		#expect(store.pins == [Self.access.id: Secret("67890")])
 		#expect(broker.savedPINs == [Self.access.id])
+	}
+
+	/// Starts a refresh of the access, and then Look for New Accounts with the PIN of the access, which waits
+	/// for the refresh and is canceled before it gets the access.
+	func cancelWaitingLogin(behind steps: [ScriptedConnector.Step], whileRefreshing: () async throws -> Void = {}) async throws {
+		coordinator.refresh(RefreshRequest(access: Self.access, accounts: []), with: ScriptedConnector(steps), attended: true)
+		try await whileRefreshing()
+		let session = SetupSession(broker: broker, access: Self.access, pin: nil)
+		let login = Task { try await session.logIn(holding: coordinator) { _ in 1 } }
+		try await Task.sleep(for: .milliseconds(50))
+		login.cancel()
+		try await Task.sleep(for: .milliseconds(50))
+	}
+
+	@Test("Canceling Look for New Accounts while it waits for a refresh of the access keeps the TAN progress of the refresh")
+	func canceledWaitKeepsProgress() async throws {
+		try await cancelWaitingLogin(behind: [.ask(Self.chooseMethod), .wait(.seconds(1))]) {
+			for _ in 0..<200 where broker.current == nil { try await Task.sleep(for: .milliseconds(10)) }
+			broker.answer(.tanMethod("922"), to: try #require(broker.current).id)
+			#expect(broker.requesting?.access == Self.access)
+		}
+		#expect(broker.requesting?.access == Self.access)
+		coordinator.cancelAll()
+	}
+
+	@Test("Canceling Look for New Accounts while it waits for a refresh of the access keeps the PIN that the bank accepted")
+	func canceledWaitKeepsPIN() async throws {
+		try broker.remember(Secret("12345"), for: Self.access.id, save: false)
+		try await cancelWaitingLogin(behind: [.ask(.pin(PINRequest())), .wait(.milliseconds(200))])
+		for _ in 0..<200 where coordinator.isRefreshing { try await Task.sleep(for: .milliseconds(10)) }
+		try await Task.sleep(for: .milliseconds(50))
+		#expect(try await broker.ask(.pin(PINRequest()), for: Self.access, accountNames: [], attended: false) == .pin(Secret("12345")))
 	}
 }

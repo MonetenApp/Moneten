@@ -100,6 +100,30 @@ public enum SetupMatch: Equatable, Sendable {
 	case choice([Account])
 }
 
+/// The accounts that a login listed in a setup, each with its match. It keeps every listed account, also
+/// those that "Look for New Accounts..." does not show, because the match of one account depends on all of
+/// them: a migrated account without a subnumber is a choice only while the bank lists several subaccounts of
+/// its number. `Ledger.accountsToAdd(_:listed:connecting:)` gets `listed`, never only the shown candidates.
+public struct SetupListing: Sendable {
+	public struct Candidate: Identifiable, Sendable {
+		public let account: Account
+		public let match: SetupMatch
+		public var id: String { account.remoteID ?? "" }
+		public var isPresent: Bool { if case .present = match { true } else { false } }
+	}
+
+	/// Every account that the bank listed.
+	public let listed: [Account]
+	/// The listed accounts that the setup shows: all of them, or with `onlyNew` those that the app does not have.
+	public let candidates: [Candidate]
+
+	public init(_ listed: [Account], in ledger: Ledger, onlyNew: Bool = false) {
+		self.listed = listed
+		let all = listed.map { Candidate(account: $0, match: ledger.setupMatch(for: $0, listed: listed)) }
+		candidates = onlyNew ? all.filter { !$0.isPresent } : all
+	}
+}
+
 extension Ledger {
 	/// How `candidate` relates to the accounts of the app, of all the accounts that the bank `listed`.
 	/// An account matches in the currency of the candidate: by its IBAN when both have one, by the ID
@@ -335,8 +359,9 @@ extension Account {
 extension SyncState {
 	/// How each requested account ended, once the refresh ended. A canceled refresh gives no account an
 	/// outcome, so its accounts keep their last state ("Cancel a refresh"). `date` is the time of a failure
-	/// of the whole access. Only such a failure names "Edit Login Data...": the login worked when single
-	/// accounts fail.
+	/// of the whole access. Only such a failure names "Edit Login Data...", because the login worked when
+	/// single accounts fail. A failure of the whole access can also come after the login, and the app cannot
+	/// tell it apart, so the command is a suggestion.
 	public func accountRefreshes(of accounts: [UUID], notices: [BankMessage], at date: Date) -> [UUID: AccountRefresh] {
 		func error(_ failure: SyncFailure, at date: Date, ofAccess: Bool = false) -> AccountRefresh {
 			.failed(RefreshError(message: failure.message, code: failure.bankMessage?.code, date: date, notices: notices.map(\.text),

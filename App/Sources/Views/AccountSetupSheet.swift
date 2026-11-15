@@ -34,20 +34,12 @@ final class AccountSetup {
 	/// Why the extension of the chosen service cannot run now.
 	private(set) var serviceError: String?
 
-	/// An account that the bank listed, as the app would add it.
-	struct Candidate: Identifiable {
-		let account: Account
-		let match: SetupMatch
-		var id: String { account.remoteID ?? "" }
-		var isPresent: Bool { if case .present = match { true } else { false } }
-	}
-
 	private unowned let model: AppModel
 	let purpose: Purpose
 	var groupID: UUID?
 	private(set) var step = Step.bank
-	/// The bank of the access of "Edit Login Data...", which needs no search.
-	private let fixedBank: BankDirectory.Entry?
+	/// The bank of the access of "Look for New Accounts..." and "Edit Login Data...", which need no search.
+	private var fixedBank: BankDirectory.Entry?
 	/// "Look for New Accounts..." waits for the bank.
 	private(set) var isListing = false
 	/// Why "Look for New Accounts..." found nothing to add, or the message of the bank when its login failed.
@@ -80,7 +72,9 @@ final class AccountSetup {
 	private(set) var loginError: String?
 	private(set) var isLoggingIn = false
 
-	private(set) var candidates: [Candidate] = []
+	/// The accounts that the bank listed. The account step shows its candidates.
+	private(set) var listing: SetupListing?
+	var candidates: [SetupListing.Candidate] { listing?.candidates ?? [] }
 	var selected: Set<String> = []
 	/// The account that a candidate with a choice connects, by the ID of the candidate's account. None adds a new account.
 	var connecting: [UUID: UUID] = [:]
@@ -114,7 +108,16 @@ final class AccountSetup {
 			step = .login
 			loginName = access.loginName
 			savePIN = model.sync.broker.savedPINs.contains(access.id)
+			Task { await lookUpBank(of: access) }
 		}
+	}
+
+	/// Takes the bank of the access from the bank directory, with its BIC and place, and returns it. Until the
+	/// directory is there, and when the helper cannot send it, the bank stays as the access names it.
+	@discardableResult
+	private func lookUpBank(of access: Access) async -> FinTSBank? {
+		if let entry = try? await model.fints.bankDirectory().bank(of: access) { fixedBank = entry }
+		return fixedBank?.bank
 	}
 
 	/// The bank of the entry, or of the access that the assistant maintains.
@@ -167,7 +170,14 @@ final class AccountSetup {
 		case .login:
 			if case let .editLogin(access) = purpose { changeLogin(of: access) } else { logIn() }
 		case .accounts:
-			if candidates.isEmpty { model.closeAccountSetup() } else { finish() }
+			if candidates.isEmpty {
+				// "Look for New Accounts..." found nothing to add. The notices of the bank that the step showed
+				// count as shown, as at the end of a setup, so the window "Notice" does not show them again.
+				if let access { model.bankNotices.markShown(notices, from: access.bankName) }
+				model.closeAccountSetup()
+			} else {
+				finish()
+			}
 		case .offline:
 			let name = offlineName.trimmingCharacters(in: .whitespaces), kind = offlineKind, currency = offlineCurrency.uppercased(), group = groupID
 			Task { await model.addOfflineAccount(name: name, kind: kind, currency: currency, groupID: group) }
@@ -210,10 +220,8 @@ final class AccountSetup {
 		isLoggingIn = true
 		task = Task {
 			do {
-				let list = try await session.logIn { [model] session in
-					try await model.sync.exclusively(for: known) {
-						try await model.fints.listAccounts(of: access, state: nil, session: session)
-					}
+				let list = try await session.logIn(holding: model.sync) { [model] session in
+					try await model.fints.listAccounts(of: access, state: nil, session: session)
 				}
 				guard !Task.isCancelled else { return }
 				isLoggingIn = false
@@ -225,8 +233,7 @@ final class AccountSetup {
 				}
 				self.access = access
 				state = list.state
-				let listed = list.accounts.map { $0.account(access: access, bank: bank, group: groupID) }
-				candidates = listed.map { Candidate(account: $0, match: model.ledger.setupMatch(for: $0, listed: listed)) }
+				listing = SetupListing(list.accounts.map { $0.account(access: access, bank: bank, group: groupID) }, in: model.ledger)
 				selected = Set(candidates.filter { !$0.isPresent }.map(\.id))
 				step = .accounts
 			} catch {
@@ -272,17 +279,15 @@ final class AccountSetup {
 			do {
 				// The new login is stored while the login still holds the access, so a refresh that waits for it
 				// runs with the new login.
-				let notices = try await session.logIn { [model] session in
-					try await model.sync.exclusively(for: access.id) {
-						let list = try await model.fints.listAccounts(of: access, state: nil, session: session)
-						try Task.checkCancellation()
-						do {
-							try model.updateLogin(access, state: list.state, pin: pin, savePIN: savePIN)
-						} catch {
-							throw LoginNotSaved(error: error)
-						}
-						return list.notices
+				let notices = try await session.logIn(holding: model.sync) { [model] session in
+					let list = try await model.fints.listAccounts(of: access, state: nil, session: session)
+					try Task.checkCancellation()
+					do {
+						try model.updateLogin(access, state: list.state, pin: pin, savePIN: savePIN)
+					} catch {
+						throw LoginNotSaved(error: error)
 					}
+					return list.notices
 				}
 				model.bankNotices.add(notices, from: access.bankName)
 				model.closeAccountSetup()
@@ -305,27 +310,29 @@ final class AccountSetup {
 	/// the access, and a refresh asked for meanwhile waits for the login, which stores the new state of the
 	/// access before it lets the refresh go.
 	private func listAccounts(of access: Access) {
-		guard let bank = fixedBank?.bank else { return }
+		guard fixedBank != nil else { return }
 		let session = SetupSession(broker: model.sync.broker, access: access, pin: nil)
 		isListing = true
 		task = Task {
+			// The new accounts get the BIC of the bank directory, which loads while the login runs.
+			let directory = Task { await lookUpBank(of: access) }
 			do {
-				let (listed, notices) = try await session.logIn { [model, groupID] session in
-					try await model.sync.exclusively(for: access.id) {
-						let list = try await model.fints.listAccounts(of: access, state: try model.store?.state(of: access.id), session: session)
-						try Task.checkCancellation()
-						if let state = list.state {
-							try model.store?.recordRefresh(of: access.id, state: state, accounts: [])
-							model.sync.update(access, state: state)
-						}
-						return (list.accounts.map { $0.account(access: access, bank: bank, group: groupID) }, list.notices)
+				let list = try await session.logIn(holding: model.sync) { [model] session in
+					let list = try await model.fints.listAccounts(of: access, state: try model.store?.state(of: access.id), session: session)
+					try Task.checkCancellation()
+					if let state = list.state {
+						try model.store?.recordRefresh(of: access.id, state: state, accounts: [])
+						model.sync.update(access, state: state)
 					}
+					return list
 				}
+				guard let bank = await directory.value, !Task.isCancelled else { return }
 				isListing = false
 				self.access = access
 				// The account step shows the notices of the bank, as at the setup.
-				self.notices = notices
-				candidates = listed.map { Candidate(account: $0, match: model.ledger.setupMatch(for: $0, listed: listed)) }.filter { !$0.isPresent }
+				notices = list.notices
+				// The sheet shows only the new accounts, but each matches against all that the bank listed.
+				listing = SetupListing(list.accounts.map { $0.account(access: access, bank: bank, group: groupID) }, in: model.ledger, onlyNew: true)
 				selected = Set(candidates.map(\.id))
 				if candidates.isEmpty { listingMessage = "There are no new accounts." }
 			} catch {
@@ -351,13 +358,13 @@ final class AccountSetup {
 	}
 
 	private func finish() {
-		guard let access else { return }
+		guard let access, let listing else { return }
 		let chosen = candidates.filter { selected.contains($0.id) && !$0.isPresent }.map(\.account)
 		guard !chosen.isEmpty else { return }
 		do {
 			// "Look for New Accounts..." logged in with the PIN of the access, not with one of the login step.
 			let isNewLogin = purpose == .add
-			try model.add(access, state: state, accounts: chosen, listed: candidates.map(\.account), connecting: connecting, notices: notices,
+			try model.add(access, state: state, accounts: chosen, listed: listing.listed, connecting: connecting, notices: notices,
 				pin: isNewLogin ? Secret(pin) : nil, savePIN: savePIN)
 		} catch {
 			saveError = "Could not add the accounts. \(String(describing: error))"
@@ -697,7 +704,7 @@ struct BankStepHelp: View {
 
 /// An account that the bank listed: its name, type, IBAN or number, and currency, and whether the app has it already.
 private struct CandidateRow: View {
-	let candidate: AccountSetup.Candidate
+	let candidate: SetupListing.Candidate
 
 	var body: some View {
 		let a = candidate.account

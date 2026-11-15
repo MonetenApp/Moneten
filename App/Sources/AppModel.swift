@@ -329,21 +329,22 @@ final class AppModel {
 				self.bankHistories[accountID] = result.bankHistory(after: self.bankHistories[accountID], of: kind)
 			}
 		}
-		sync.ended = { [weak self] access, state, accounts, attended in
+		// The coordinator asks for the state before it lets the next work of the access go, so it is stored at once.
+		sync.storeState = { [weak self] access, state, attended in
+			self?.recordRefresh(of: access, state: state, accounts: [:], attended: attended)
+		}
+		sync.ended = { [weak self] access, accounts, attended in
 			let failed = accounts.values.filter { if case .failed = $0 { true } else { false } }.count
 			guard let self else { return }
 			Trail.log("refresh end access=\(self.trailNumber(of: access)) accounts=\(accounts.count) failed=\(failed)")
 			// The times and errors change the accounts in the ledger, which must not meet a new view in one drawing.
-			// The state goes into the database at once, before the coordinator lets the next work of the access
-			// go, so the state that "Edit Login Data..." or "Look for New Accounts..." stores comes after it.
 			if self.tableUndrawn {
-				if state != nil { self.recordRefresh(of: access, state: state, accounts: [:], attended: attended) }
 				Task {
 					while self.tableUndrawn { await self.drawn() }
 					self.recordRefresh(of: access, state: nil, accounts: accounts, attended: attended)
 				}
 			} else {
-				self.recordRefresh(of: access, state: state, accounts: accounts, attended: attended)
+				self.recordRefresh(of: access, state: nil, accounts: accounts, attended: attended)
 			}
 			self.extensions.sessionEnded()
 			if attended { self.showNotices() }
