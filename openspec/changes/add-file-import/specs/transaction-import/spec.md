@@ -376,6 +376,7 @@ The app SHALL let the user save the settings of the preview as a named profile. 
 - **THEN** quiet import opens the preview, which uses UTF-8 and retains the profile's mappings, date order, decimal mark and category option
 - **AND** the preview reads those texts unchanged and the amount as -420 minor units
 - **AND** a moved header and a profile picked in the preview preserve the detected encoding in the same way
+- **AND** ASCII rows such as "Datum;Name;Betrag" and "02.11.2026;Kiosk;-2,00" still import quietly with that profile, while a requested preview shows UTF-8
 
 ### Requirement: Categories from a CSV file
 
