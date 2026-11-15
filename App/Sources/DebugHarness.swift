@@ -86,6 +86,10 @@ final class DebugHarness {
 		case "settingssnapshot":
 			offscreenSnapshot(SecuritySettings().environment(model), width: 500, name: "\(argument)-security")
 			offscreenSnapshot(GeneralSettings().environment(model), width: 500, name: "\(argument)-general")
+			offscreenSnapshot(PasswordPromptSheet(storesPassword: false) { _ in nil }.environment(model), width: 400, name: "\(argument)-prompt")
+		// "<setting> <value> <password>" changes a setting of the Security tab as its password prompt does. The setting is
+		// lockOnClose, lockAfter, or the key of an unlock setting; the value is on, off, or minutes. The log never holds the password.
+		case "security": security(argument)
 		case "storepassword":
 			do { try model.vault.storePassword(argument); log("storepassword true") } catch { log("storepassword failed: \(error)") }
 		case "removepassword":
@@ -922,6 +926,21 @@ final class DebugHarness {
 	}
 
 	/// A web view draws in another process, so the window image gets its picture from WebKit first.
+	private func security(_ argument: String) {
+		let parts = argument.split(separator: " ", maxSplits: 2).map(String.init)
+		guard let model, parts.count == 3 else { return }
+		let change: SecurityChange = switch parts[0] {
+		case "lockOnClose": .lockOnClose(parts[1] == "on")
+		case "lockAfter": .lockAfter(Int(parts[1]) ?? 0)
+		default: .unlock(parts[0], parts[1] == "on")
+		}
+		let result: String
+		do { result = try model.changeSecurity(change, password: parts[2]) ? "changed" : "incorrect password" } catch { result = "failed" }
+		let d = UserDefaults.standard
+		let stored = (try? model.vault.storedPassword()).map { $0 != nil } ?? false
+		log("security \(parts[0]) \(parts[1]) \(result) lockOnClose=\(d.bool(forKey: Preference.lockOnClose)) lockAfter=\(d.bool(forKey: Preference.lockAfterEnabled) ? d.integer(forKey: Preference.lockAfterMinutes) : 0) automatic=\(d.bool(forKey: Preference.unlockAutomatically)) touchID=\(d.bool(forKey: Preference.unlockWithTouchID)) watch=\(d.bool(forKey: Preference.unlockWithAppleWatch)) keychain=\(stored)")
+	}
+
 	private func snapshot(_ name: String) {
 		guard let web = ExtensionWebDebug.current, web.window != nil else { return snapshotWindows(name) }
 		web.takeSnapshot(with: nil) { [weak self] image, _ in
