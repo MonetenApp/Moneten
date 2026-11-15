@@ -580,7 +580,6 @@ struct ReconcileTests {
 		#expect(r.account?.initialBalanceMinor == 12_000)
 	}
 
-	/// Noon of a day in the current time zone, so that `Day(now)` gives that day.
 	func noon(_ d: Int, month: Int) -> Date {
 		Calendar.current.date(from: DateComponents(year: 2026, month: month, day: d, hour: 12))!
 	}

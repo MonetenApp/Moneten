@@ -102,8 +102,7 @@ struct PerfScenario {
 				}
 			}),
 		// A refresh that drops pending rows of the open table starts the table over. Removing shown rows in
-		// place stopped the app in AttributeGraph (issue #135). The rows are from yesterday, because a refresh
-		// keeps a pending row from a file until its date (add-file-import 1.28).
+		// place stopped the app in AttributeGraph (issue #135).
 		PerfScenario(name: "refresh-drops-shown-pending", budget: halfSecond,
 			setUp: { c in
 				await c.select("Account 1")
