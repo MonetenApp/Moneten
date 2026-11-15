@@ -295,7 +295,8 @@ public struct CSVFile: Sendable {
 			return Self.cell(row.cells, column)?.contains(where: \.isNumber) == true
 		}
 		let amountColumns = [layout.columns[.amount], layout.columns[.debit], layout.columns[.credit]].compactMap { $0 }
-		let start = try Self.dataBoundary(in: rows, dateColumn: column, amountColumns: amountColumns).start
+		let boundary = try Self.dataBoundary(in: rows, dateColumn: column, amountColumns: amountColumns)
+		let start = boundary.title.map { $0 + 1 } ?? 0
 		return try rows[start...].filter(isDated)[...]
 	}
 

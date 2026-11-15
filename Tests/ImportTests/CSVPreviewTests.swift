@@ -5,16 +5,16 @@ import Testing
 
 @Suite("CSV preview")
 struct CSVPreviewTests {
-	@Test("An invalid mapped date with digits fails at the start as it does later", arguments: [false, true])
-	func invalidTextDateAtBoundary(first: Bool) throws {
+	@Test("An invalid mapped date with digits fails at the start as it does later", arguments: [false, true], [false, true])
+	func invalidTextDateAtBoundary(first: Bool, hasHeader: Bool) throws {
 		let bad = "November 1, 2026;Kiosk;-1.50\n"
 		let good = "02.11.2026;Bakery;-2.00\n"
-		let file = try CSVFile(data: Data(("Tag;Wer;Wieviel\n" + (first ? bad + good : good + bad)).utf8))
+		let file = try CSVFile(data: Data(((hasHeader ? "Tag;Wer;Wieviel\n" : "") + (first ? bad + good : good + bad)).utf8))
 		var layout = try file.detectedLayout()
 		layout.assign(0, to: .bookingDate)
 		layout.assign(2, to: .amount)
 		let preview = try file.preview(layout, currency: "EUR")
-		#expect(preview.problem == .line(first ? 2 : 3, "The date November 1, 2026 cannot be read."))
+		#expect(preview.problem == .line((hasHeader ? 1 : 0) + (first ? 1 : 2), "The date November 1, 2026 cannot be read."))
 		#expect(preview.transactions.isEmpty)
 	}
 
