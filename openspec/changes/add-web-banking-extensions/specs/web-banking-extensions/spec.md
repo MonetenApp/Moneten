@@ -1128,7 +1128,7 @@ The app SHALL offer `text()` for the combined text of the elements and their chi
 
 ### Requirement: Form helpers
 
-The app SHALL offer `val()` for the value of a form field, `select(value)` to choose one option of a `<select>` list, `click()` on a link, submit button, or image button, and `submit()` on a form. `click` and `submit` return `method`, `url`, `postContent`, and `postContentType` for `connection:request`. `val` and `select` respect `disabled`.
+The app SHALL offer `val()` for the value of a form field, `select(value)` to choose one option of a `<select>` list, `click()` on a link, submit button, or image button, and `submit()` on a form. `click` and `submit` return `method`, `url`, `postContent`, and `postContentType` for `connection:request`, and nothing on an empty list or on an element they do not apply to. `val` and `select` respect `disabled`.
 
 #### Scenario: Submit a login form
 
@@ -1140,6 +1140,11 @@ The app SHALL offer `val()` for the value of a form field, `select(value)` to ch
 
 - **WHEN** the script calls `html:xpath("//form"):submit()`
 - **THEN** the returned parameters contain the input values and no value of a submit button
+
+#### Scenario: No logout link
+
+- **WHEN** a page has no logout link and the script evaluates `html:xpath("//a[@id='logout']"):click() ~= nil`
+- **THEN** the result is false and the script goes on
 
 ### Requirement: JSON
 
@@ -1279,7 +1284,7 @@ The app SHALL offer `MM.urlencode(str, charset)` with the default character set 
 
 ### Requirement: Binary encoding helpers
 
-The app SHALL offer `MM.base64(data, linebreaks)`, `MM.base64urlencode(data)` without padding, `MM.base64decode(encoded)`, which also accepts the URL-safe form and line breaks, `MM.binToHex(data)` with upper case output, and `MM.hexToBin(hex)`, which ignores case and colons and returns `nil` for invalid input.
+The app SHALL offer `MM.base64(data, linebreaks)`, `MM.base64urlencode(data)` without padding, `MM.base64decode(encoded)`, which also accepts the URL-safe form and line breaks, `MM.binToHex(data)` with upper case output, and `MM.hexToBin(hex)`, which ignores case and colons, reads a text of odd length with a leading 0, and returns `nil` for invalid input.
 
 #### Scenario: Round trip
 
@@ -1290,6 +1295,11 @@ The app SHALL offer `MM.base64(data, linebreaks)`, `MM.base64urlencode(data)` wi
 
 - **WHEN** a script calls `MM.hexToBin("XY")`
 - **THEN** the result is `nil`
+
+#### Scenario: Odd length
+
+- **WHEN** a script calls `MM.hexToBin("10001")`, as a login page writes the RSA exponent 65537
+- **THEN** the result is the three bytes 01 00 01
 
 ### Requirement: Hashes and message authentication codes
 
