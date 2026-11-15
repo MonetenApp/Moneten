@@ -33,7 +33,8 @@ enum BalanceMode: String {
 	case daily, monthlyAverage
 }
 
-/// Settings that the app needs before the database is open. They hold no personal data.
+/// Settings that the app needs before the database is open. Only `savedFilterBar` holds data of the user: the
+/// dates of a custom period, the ends of an amount range, and the IDs of a category and an account.
 enum Preference {
 	static let lockOnClose = "lockWhenMainWindowIsClosed"
 	/// Version 1 stored "lockAfterMinutes" also while the lock was off, as the suggestion of the
@@ -237,15 +238,23 @@ final class AppModel {
 				saveFilterBar()
 			} else {
 				UserDefaults.standard.removeObject(forKey: Preference.savedFilterBar)
+				savedBar = nil
 				choose(period: .all)
 				filter = TransactionFilter()
 			}
 		}
 	}
 
+	/// What `saveFilterBar` last wrote, so that typing a search or a change of the period, which also changes
+	/// `filter.period`, writes nothing new.
+	@ObservationIgnored private var savedBar: SavedFilterBar?
+
 	private func saveFilterBar() {
 		guard isFilterBarPinned else { return }
-		UserDefaults.standard.set(SavedFilterBar(period: period, filter: filter).data, forKey: Preference.savedFilterBar)
+		let bar = SavedFilterBar(period: period, filter: filter)
+		guard bar != savedBar else { return }
+		savedBar = bar
+		UserDefaults.standard.set(bar.data, forKey: Preference.savedFilterBar)
 	}
 
 	/// Shows the saved filter bar of a pin that is on. The first view then resets the filter it does not show.
