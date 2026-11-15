@@ -145,7 +145,7 @@ send importfile "$WORK/Erika Mustermann.csv"
 poll "^importfile done" state
 poll "^alert " alert
 poll "^rows " rows Girokonto
-poll "^search gave up$" search "currency:/^+?49/"
+poll "^gave up$" search "currency:/^+?49/"
 send search ""
 send selectRows 1
 send newcategory Haushaltskasse

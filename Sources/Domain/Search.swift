@@ -268,7 +268,9 @@ struct SearchQuery {
 				excludedGroups.append(excluded)
 			case .close:
 				_ = excludedGroups.popLast()
-			case .constant, .amount:
+			case let .constant(value):
+				if value == excluded { return .constant(false) }
+			case .amount:
 				break
 			case let .word(w), let .quoted(w):
 				if !excluded { words += TextFolding.words(w) }

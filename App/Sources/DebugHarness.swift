@@ -356,7 +356,7 @@ final class DebugHarness {
 		case "balance": model.balanceMode = BalanceMode(rawValue: argument) ?? .daily
 		case "search":
 			model.filter.searchText = argument
-			if model.transactions(for: model.tableKey).gaveUp { log("search gave up") }
+			if model.transactions(for: model.tableKey).gaveUp { log("gave up") }
 		// "<min> <max>" as typed into "Custom..." of the amount filter, with "-" for an empty field.
 		case "amount", "amountsnapshot":
 			let ends = argument.split(separator: " ").map { $0 == "-" ? "" : String($0) } + ["", ""]
