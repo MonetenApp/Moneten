@@ -309,7 +309,7 @@ enum MT940Parser {
 		var booking = value
 		if chars.count > i + 4, let bm = Int(String(chars[i..<i + 2])), let bd = Int(String(chars[i + 2..<i + 4])), chars[i].isNumber {
 			var by = value.year
-			if bm == 12 && mm == 1 { by -= 1 } else if bm == 1 && mm == 12 { by += 1 }
+			if bm - mm > 6 { by -= 1 } else if mm - bm > 6 { by += 1 }
 			guard let day = Day.valid(year: by, month: bm, day: bd) else { throw fail("The date cannot be read.") }
 			booking = day
 			i += 4
