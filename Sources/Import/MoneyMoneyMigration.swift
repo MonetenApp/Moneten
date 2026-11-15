@@ -351,17 +351,21 @@ public struct MoneyMoneyMigration: Sendable {
 
 	/// The scripting dictionary of MoneyMoney has no command that exports these.
 	static let notMigratedNotes = [
-		"Login data was not migrated, because MoneyMoney does not export it. Connect each account to its bank with \"Add Account...\" and enter the login data there.",
-		"Transfer templates were not migrated, because MoneyMoney does not export them. Copy the ones you need from MoneyMoney.",
-		"Standing orders were not migrated, because MoneyMoney does not export them. Your bank keeps them, so they continue as before.",
-		"Statements were not migrated, because MoneyMoney does not export them. Copy the PDF files from the folder \"Statements\" in the data folder of MoneyMoney to keep them.",
+		"Login data was not migrated, because the AppleScript export of MoneyMoney does not contain it. Connect a migrated account to its bank with \"Add Account...\" and enter the login data there.",
+		"Transfer templates were not migrated, because the AppleScript export of MoneyMoney does not contain them. Copy the ones you need from MoneyMoney.",
+		"Standing orders were not migrated, because the AppleScript export of MoneyMoney does not contain them. Your bank keeps them, so they continue as before.",
+		"Statements were not migrated, because the AppleScript export of MoneyMoney does not contain them. Copy the PDF files from the folder \"Statements\" in the data folder of MoneyMoney to keep them.",
 	]
 
-	/// The key layout of a budget in `export categories` was not recorded with the real export. This
-	/// reads `budget` as a dictionary whose `amount` is the budget, and an amount of zero as no budget.
+	/// The key layout of a budget in `export categories` was not recorded with the real export. A
+	/// `budget` counts when it is a number other than zero, or a dictionary with such a number, such as
+	/// its `amount`. A budget of zero counts as none.
 	static func hasBudget(_ item: [String: Any]) -> Bool {
-		guard let budget = item["budget"] as? [String: Any], let amount = budget["amount"] as? Double else { return false }
-		return amount != 0
+		switch item["budget"] {
+		case let amount as Double: amount != 0
+		case let budget as [String: Any]: budget.values.contains { ($0 as? Double).map { $0 != 0 } ?? false }
+		default: false
+		}
 	}
 
 	/// Lists the groups whose balance in MoneyMoney differs from the sum of their accounts.

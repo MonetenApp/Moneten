@@ -710,10 +710,10 @@ struct MoneyMoneyMigrationTests {
 	@Test("The report names login data, templates, standing orders, and statements as not migrated")
 	func notMigrated() throws {
 		let notes = try plan().notes
-		#expect(notes.contains("Login data was not migrated, because MoneyMoney does not export it. Connect each account to its bank with \"Add Account...\" and enter the login data there."))
-		#expect(notes.contains("Transfer templates were not migrated, because MoneyMoney does not export them. Copy the ones you need from MoneyMoney."))
-		#expect(notes.contains("Standing orders were not migrated, because MoneyMoney does not export them. Your bank keeps them, so they continue as before."))
-		#expect(notes.contains("Statements were not migrated, because MoneyMoney does not export them. Copy the PDF files from the folder \"Statements\" in the data folder of MoneyMoney to keep them."))
+		#expect(notes.contains("Login data was not migrated, because the AppleScript export of MoneyMoney does not contain it. Connect a migrated account to its bank with \"Add Account...\" and enter the login data there."))
+		#expect(notes.contains("Transfer templates were not migrated, because the AppleScript export of MoneyMoney does not contain them. Copy the ones you need from MoneyMoney."))
+		#expect(notes.contains("Standing orders were not migrated, because the AppleScript export of MoneyMoney does not contain them. Your bank keeps them, so they continue as before."))
+		#expect(notes.contains("Statements were not migrated, because the AppleScript export of MoneyMoney does not contain them. Copy the PDF files from the folder \"Statements\" in the data folder of MoneyMoney to keep them."))
 	}
 
 	@Test("The report counts the categories with a budget and says that the budgets were not taken over")
@@ -726,6 +726,12 @@ struct MoneyMoneyMigrationTests {
 		let p = try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(accounts), categories: try plist(withBudgets), transactions: try plist(transactions), into: Ledger())
 		#expect(p.notes.contains("2 categories have a budget in MoneyMoney. Moneten did not take the budgets over."))
 
+		withBudgets[3]["budget"] = 75.0
+		withBudgets[1]["budget"] = ["value": 200.0, "interval": "monthly"]
+		let otherLayouts = try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(accounts), categories: try plist(withBudgets), transactions: try plist(transactions), into: Ledger())
+		#expect(otherLayouts.notes.contains("2 categories have a budget in MoneyMoney. Moneten did not take the budgets over."))
+
+		withBudgets[1]["budget"] = ["amount": 200.0, "available": 120.0, "period": "monthly"]
 		withBudgets[3]["budget"] = nil
 		let one = try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(accounts), categories: try plist(withBudgets), transactions: try plist(transactions), into: Ledger())
 		#expect(one.notes.contains("1 category has a budget in MoneyMoney. Moneten did not take the budget over."))
