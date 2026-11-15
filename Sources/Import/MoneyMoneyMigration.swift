@@ -30,6 +30,8 @@ public struct MoneyMoneyMigration: Sendable {
 		public var skippedTransactions = 0
 		public var portfolioAccounts: [String] = []
 		public var notes: [String] = []
+		/// Each account of the export, in its order, for the report.
+		public var sources: [SourceAccount] = []
 
 		public var isEmpty: Bool {
 			groups.isEmpty && accounts.isEmpty && categories.isEmpty && transactions.isEmpty && updatedAccounts.isEmpty && updatedTransactions.isEmpty
@@ -77,6 +79,7 @@ public struct MoneyMoneyMigration: Sendable {
 		mapCategories(rawCategories, ledger: ledger, plan: &plan, map: &categoryMap)
 
 		var rows: [Transaction] = []
+		var sourceRows: [String: [Transaction]] = [:]
 		for raw in rawTransactions {
 			guard let accountSource = raw["accountUuid"] as? String, let accountID = accountMap[accountSource] else { continue }
 			let id = (raw["id"] as? Int).map { "\(Transaction.migrationIDPrefix)\($0)" }
@@ -96,11 +99,14 @@ public struct MoneyMoneyMigration: Sendable {
 				comment: Self.string(raw["comment"]), isChecked: (raw["checkmark"] as? Bool) ?? false, isPending: pending,
 				categoryID: categoryID, categorizedBy: categoryID == nil ? .none : .manual, isNew: false, sourceID: id)
 			rows.append(t)
+			sourceRows[accountSource, default: []].append(t)
 		}
+
+		let delivered = Dictionary(grouping: rows, by: \.accountID)
+		for i in plan.sources.indices { plan.sources[i].rows = sourceRows[plan.sources[i].sourceID] ?? [] }
 
 		// `reconcile` decides which rows are new. A new row keeps what MoneyMoney says: its category, comment,
 		// and checkmark, and no new mark. Only the review mark comes from `reconcile`.
-		let delivered = Dictionary(grouping: rows, by: \.accountID)
 		let stored = Dictionary(grouping: ledger.transactions, by: \.accountID)
 		let tombstones = Dictionary(grouping: deleted, by: \.accountID)
 		let rules = Categorizer(ledger: ledger)
@@ -202,7 +208,7 @@ public struct MoneyMoneyMigration: Sendable {
 		}
 	}
 
-	private static func isOfSource(_ sourceID: String?) -> Bool {
+	static func isOfSource(_ sourceID: String?) -> Bool {
 		sourceID?.hasPrefix(Transaction.migrationIDPrefix) == true
 	}
 
@@ -244,6 +250,7 @@ public struct MoneyMoneyMigration: Sendable {
 			}
 			let balanceDate = (item["balanceDate"] as? Date) ?? (item["refreshTimestamp"] as? Date)
 			let color = (item["icon"] as? Data).flatMap(Self.iconColor)
+			defer { if let id = map[source] { plan.sources.append(SourceAccount(sourceID: source, name: name, accountID: id, balance: balanceMinor.map { Money(minorUnits: $0, currency: currency) })) } }
 			// The MoneyMoney identifier decides. IBAN or account number match only accounts without one,
 			// so that two MoneyMoney accounts with the same IBAN stay apart.
 			if var existing = ledger.accounts.first(where: { $0.sourceID == source }) ?? ledger.accounts.first(where: { a in
@@ -352,9 +359,9 @@ public struct MoneyMoneyMigration: Sendable {
 	/// The scripting dictionary of MoneyMoney has no command that exports these.
 	static let notMigratedNotes = [
 		"Login data was not migrated, because the AppleScript export of MoneyMoney does not contain it. Connect a migrated account to its bank with \"Add Account...\" and enter the login data there.",
-		"Transfer templates were not migrated, because the AppleScript export of MoneyMoney does not contain them. Copy the ones you need from MoneyMoney.",
+		"Transfer templates were not migrated, because the AppleScript export of MoneyMoney does not contain them. Use \"Export Transfer Templates...\" in MoneyMoney to keep them.",
 		"Standing orders were not migrated, because the AppleScript export of MoneyMoney does not contain them. Your bank keeps them, so they continue as before.",
-		"Statements were not migrated, because the AppleScript export of MoneyMoney does not contain them. Copy the PDF files from the folder \"Statements\" in the data folder of MoneyMoney to keep them.",
+		"Statements were not migrated, because the AppleScript export of MoneyMoney does not contain them. Use \"Show in Finder...\" on \"Statements\" in MoneyMoney to find the statement files and copy them to keep them.",
 	]
 
 	/// The key layout of a budget in `export categories` was not recorded with the real export. A

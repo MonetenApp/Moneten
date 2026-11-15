@@ -65,15 +65,22 @@ extension SheetFrame where Leading == EmptyView {
 
 /// A grouped form that is as tall as its content, for sheets, popovers, and the settings window.
 struct SheetForm<Content: View>: View {
+	@Environment(\.sheetHasScrollAreas) private var hasScrollAreas
 	@ViewBuilder var content: Content
 
 	var body: some View {
 		Form { content }
 			.formStyle(.grouped)
-			.scrollDisabled(true)
+			// A disabled form also disables the scroll views inside it.
+			.scrollDisabled(!hasScrollAreas)
 			.scrollContentBackground(.hidden)
 			.fixedSize(horizontal: false, vertical: true)
 	}
+}
+
+extension EnvironmentValues {
+	/// A sheet whose content has scroll views of its own, such as the report of a migration. Its form stays as tall as its content.
+	@Entry var sheetHasScrollAreas = false
 }
 
 /// The row of buttons at the bottom of a sheet, with the same insets everywhere.

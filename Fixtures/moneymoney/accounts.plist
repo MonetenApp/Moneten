@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<array>
+	<dict>
+		<key>balance</key>
+		<array>
+			<array>
+				<real>1734.56</real>
+				<string>EUR</string>
+			</array>
+		</array>
+		<key>group</key>
+		<true/>
+		<key>indentation</key>
+		<integer>0</integer>
+		<key>name</key>
+		<string>Private</string>
+		<key>type</key>
+		<string>Account group</string>
+		<key>uuid</key>
+		<string>G1</string>
+	</dict>
+	<dict>
+		<key>accountNumber</key>
+		<string>DE02120300000000202051</string>
+		<key>balance</key>
+		<array>
+			<array>
+				<real>1234.56</real>
+				<string>EUR</string>
+			</array>
+		</array>
+		<key>bankCode</key>
+		<string>BYLADEM1001</string>
+		<key>currency</key>
+		<string>EUR</string>
+		<key>group</key>
+		<false/>
+		<key>indentation</key>
+		<integer>1</integer>
+		<key>name</key>
+		<string>Giro</string>
+		<key>owner</key>
+		<string>Erika Mustermann</string>
+		<key>portfolio</key>
+		<false/>
+		<key>type</key>
+		<string>Giro account</string>
+		<key>uuid</key>
+		<string>A1</string>
+	</dict>
+	<dict>
+		<key>balance</key>
+		<array>
+			<array>
+				<real>500.0</real>
+				<string>EUR</string>
+			</array>
+		</array>
+		<key>currency</key>
+		<string>EUR</string>
+		<key>group</key>
+		<false/>
+		<key>indentation</key>
+		<integer>1</integer>
+		<key>name</key>
+		<string>Savings</string>
+		<key>portfolio</key>
+		<false/>
+		<key>type</key>
+		<string>Savings account</string>
+		<key>uuid</key>
+		<string>A2</string>
+	</dict>
+	<dict>
+		<key>balance</key>
+		<array>
+			<array>
+				<real>10000.0</real>
+				<string>EUR</string>
+			</array>
+		</array>
+		<key>currency</key>
+		<string>EUR</string>
+		<key>group</key>
+		<false/>
+		<key>indentation</key>
+		<integer>0</integer>
+		<key>name</key>
+		<string>Depot</string>
+		<key>portfolio</key>
+		<true/>
+		<key>type</key>
+		<string>Portfolio</string>
+		<key>uuid</key>
+		<string>A3</string>
+	</dict>
+</array>
+</plist>

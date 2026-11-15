@@ -375,6 +375,13 @@ final class DebugHarness {
 			case "bar": model.select(bar: .month(Day.today().firstOfMonth))
 			default: model.period = .all
 			}
+		// "<folder>": opens the MoneyMoney migration, which then reads the exports of that folder, such as the absolute path of
+		// Fixtures/moneymoney. An app started with `open` runs in `/`, so a relative path does not work.
+		#if DEBUG || PERF_HARNESS
+		case "migrationfixture":
+			MigrationSheet.fixtureFolder = URL(filePath: argument)
+			model.sheet = .migration
+		#endif
 		// "<path>": writes the complete export to that file without the warning and the save panel.
 		case "exportall":
 			Task { do { try await model.writeAllData(to: URL(filePath: argument)); log("exportall done") } catch { log("exportall error=set") } }
