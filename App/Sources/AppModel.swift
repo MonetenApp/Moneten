@@ -625,6 +625,57 @@ final class AppModel {
 		commit(changed)
 	}
 
+	/// The rows of the drag that started last in the transaction list. SwiftUI hands the dragged data to a
+	/// drop target only on the drop, so a category in the sidebar reads them here while the pointer is over it.
+	@ObservationIgnored private(set) var draggedTransactions: Set<UUID> = []
+
+	func startDrag(of ids: Set<UUID>) -> DraggedTransactions {
+		draggedTransactions = ids
+		return DraggedTransactions(ids: ids)
+	}
+
+	func canDrop(_ ids: Set<UUID>, on category: Domain.Category) -> Bool {
+		let rows = ids.compactMap { ledger.transaction($0) }
+		return !rows.isEmpty && ledger.canAssign(category, to: rows)
+	}
+
+	/// A drop of rows on a category in the sidebar. A group, or a category restricted to another account, refuses them.
+	@discardableResult
+	func drop(_ ids: Set<UUID>, on category: Domain.Category) -> Bool {
+		guard canDrop(ids, on: category) else { return false }
+		assign(category: category.id, to: ids)
+		return true
+	}
+
+	/// Moves a category, or a group with everything in it, to the gap `index` among the children of `parent`.
+	func move(category id: UUID, into parent: UUID?, at index: Int) {
+		guard let oldParent = ledger.category(id).map(\.parentID), !ledger.move(category: id, into: parent, at: index).isEmpty else { return }
+		// A category that comes into or leaves the open category view, or the category filter, would insert
+		// or remove its rows in place, which removes shown rows (issue #135), so it comes with a new table.
+		var roots = [tableKey.filter.categoryID]
+		if case let .category(shown) = tableKey.selection { roots.append(shown) }
+		let changesShownRows = roots.compactMap { $0 }.contains { root in
+			let tree = ledger.categoryIDs(inTree: root)
+			return (oldParent.map(tree.contains) ?? false) != (parent.map(tree.contains) ?? false)
+		}
+		if changesShownRows {
+			Task { await replacingTable { moveNow(category: id, into: parent, at: index) } }
+		} else {
+			moveNow(category: id, into: parent, at: index)
+		}
+	}
+
+	private func moveNow(category id: UUID, into parent: UUID?, at index: Int) {
+		let changed = ledger.move(category: id, into: parent, at: index)
+		guard let store, !changed.isEmpty else { return }
+		do {
+			try store.save(categories: changed)
+			for c in changed { ledger.upsert(c) }
+		} catch {
+			alert = AlertMessage(title: "Could not move the category.", message: String(describing: error))
+		}
+	}
+
 	func setChecked(_ checked: Bool, for ids: Set<UUID>) {
 		let rows = ids.compactMap { ledger.transaction($0) }
 		if checked {

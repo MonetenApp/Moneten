@@ -1,5 +1,6 @@
 import Domain
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct SidebarView: View {
 	@Environment(AppModel.self) private var model
@@ -229,15 +230,19 @@ struct CategoryTree: View {
 	var body: some View {
 		ForEach(model.ledger.childCategories(of: parent)) { category in
 			if model.ledger.childCategories(of: category.id).isEmpty {
-				CategoryRow(category: category).tag(SidebarSelection.category(category.id))
+				CategoryRow(category: category).draggable(DraggedCategory(id: category.id)).tag(SidebarSelection.category(category.id))
 			} else {
 				DisclosureGroup(isExpanded: Binding(get: { category.isExpanded }, set: { var c = category; c.isExpanded = $0; model.save(category: c) })) {
 					CategoryTree(parent: category.id)
 				} label: {
-					CategoryRow(category: category)
+					CategoryRow(category: category).draggable(DraggedCategory(id: category.id))
 				}
 				.tag(SidebarSelection.category(category.id))
 			}
+		}
+		// A drop between two rows. A drop on a group goes to `CategoryDrop`.
+		.dropDestination(for: DraggedCategory.self) { items, index in
+			if let item = items.first { model.move(category: item.id, into: parent, at: index) }
 		}
 	}
 }
@@ -265,12 +270,7 @@ struct CategoryRow: View {
 				AmountText(money: amount).fontWeight(.medium)
 			}
 		}
-		.dropDestination(for: String.self) { items, _ in
-			let ids = Set(items.flatMap { $0.split(separator: ",") }.compactMap { UUID(uuidString: String($0)) })
-			guard !ids.isEmpty else { return false }
-			model.assign(category: category.id, to: ids)
-			return true
-		}
+		.onDrop(of: [.monetenTransactions, .monetenCategory], delegate: CategoryDrop(model: model, category: category))
 		.contextMenu {
 			Button("Add Category") { model.sheet = .newCategory(isGroup: false) }
 			Button("Add Category Group") { model.sheet = .newCategory(isGroup: true) }
@@ -281,5 +281,53 @@ struct CategoryRow: View {
 			Divider()
 			Button("Settings...") { model.sheet = .categorySettings(category.id) }
 		}
+	}
+}
+
+/// Rows of the transaction list on their way to a category.
+struct DraggedTransactions: Codable, Transferable {
+	let ids: Set<UUID>
+
+	static var transferRepresentation: some TransferRepresentation { CodableRepresentation(contentType: .monetenTransactions) }
+}
+
+/// A category or a category group on its way to another place in the sidebar.
+struct DraggedCategory: Codable, Transferable {
+	let id: UUID
+
+	static var transferRepresentation: some TransferRepresentation { CodableRepresentation(contentType: .monetenCategory) }
+}
+
+/// Declared in Info.plist. Two types, so that a row of the sidebar takes only the kind of drag it can use.
+extension UTType {
+	static let monetenTransactions = UTType(exportedAs: "io.github.moneten.transactions")
+	static let monetenCategory = UTType(exportedAs: "io.github.moneten.category")
+}
+
+/// A drop on a category row: rows go into the category, and a category goes to the end of a group.
+/// A row that refuses the drop is not highlighted.
+struct CategoryDrop: DropDelegate {
+	let model: AppModel
+	let category: Domain.Category
+
+	func validateDrop(info: DropInfo) -> Bool {
+		if info.hasItemsConforming(to: [.monetenCategory]) { return category.isGroup }
+		return info.hasItemsConforming(to: [.monetenTransactions]) && model.canDrop(model.draggedTransactions, on: category)
+	}
+
+	func performDrop(info: DropInfo) -> Bool {
+		let target = category
+		if let provider = info.itemProviders(for: [.monetenCategory]).first {
+			_ = provider.loadTransferable(type: DraggedCategory.self) { [model] result in
+				guard let item = try? result.get() else { return }
+				Task { @MainActor in model.move(category: item.id, into: target.id, at: model.ledger.childCategories(of: target.id).count) }
+			}
+		} else if let provider = info.itemProviders(for: [.monetenTransactions]).first {
+			_ = provider.loadTransferable(type: DraggedTransactions.self) { [model] result in
+				guard let item = try? result.get() else { return }
+				Task { @MainActor in model.drop(item.ids, on: target) }
+			}
+		}
+		return true
 	}
 }

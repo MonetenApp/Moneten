@@ -506,9 +506,8 @@ struct TransactionTable: View {
 		}
 	}
 
-	private func draggedIDs(for t: Transaction) -> String {
-		let ids = model.selectedTransactions.contains(t.id) ? model.selectedTransactions : [t.id]
-		return ids.map(\.uuidString).joined(separator: ",")
+	private func draggedIDs(for t: Transaction) -> DraggedTransactions {
+		model.startDrag(of: model.selectedTransactions.contains(t.id) ? model.selectedTransactions : [t.id])
 	}
 }
 
