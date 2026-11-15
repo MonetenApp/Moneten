@@ -1019,6 +1019,15 @@ struct MoneyMoneyMigrationTests {
 		#expect(ledger.accountsToAdd([first, second], listed: [first, second], connecting: [first.id: sparen.id]).map(\.id) == [sparen.id, second.id])
 	}
 
+	@Test("The error output of osascript names a refused permission, the lock screen, or another failure")
+	func exporterFailures() {
+		#expect(MoneyMoneyExporter.Failure.of(errorOutput: "execution error: Not authorized to send Apple events to MoneyMoney. (-1743)\n") == .notAllowed)
+		#expect(MoneyMoneyExporter.Failure.of(errorOutput: "execution error: MoneyMoney got an error: Database is locked. (-2720)\n") == .locked)
+		#expect(MoneyMoneyExporter.Failure.of(errorOutput: "execution error: MoneyMoney got an error: Connection is invalid. (-609)\n")
+			== .failed("execution error: MoneyMoney got an error: Connection is invalid. (-609)"))
+		#expect(MoneyMoneyExporter.Failure.notRunning.description == "MoneyMoney is not running. Open MoneyMoney and unlock it, then choose \"Check again\".")
+	}
+
 	@Test("The report names a group whose balance in MoneyMoney leaves out an account")
 	func groupSum() throws {
 		#expect(try plan().notes.allSatisfy { !$0.contains("group") })

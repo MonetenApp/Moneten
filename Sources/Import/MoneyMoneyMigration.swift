@@ -454,8 +454,9 @@ public struct MoneyMoneyMigration: Sendable {
 
 /// Runs the export commands of MoneyMoney through `osascript`.
 public enum MoneyMoneyExporter {
-	public enum Failure: Error, CustomStringConvertible {
+	public enum Failure: Error, CustomStringConvertible, Equatable {
 		case notInstalled
+		case notRunning
 		case locked
 		case notAllowed
 		case failed(String)
@@ -463,14 +464,24 @@ public enum MoneyMoneyExporter {
 		public var description: String {
 			switch self {
 			case .notInstalled:
-				"MoneyMoney is not installed on this Mac. You can import transactions from CSV, CAMT, or MT940 files instead."
+				"MoneyMoney is not installed on this Mac. You can import transactions from CSV, CAMT, or MT940 files into an account instead."
+			case .notRunning:
+				"MoneyMoney is not running. Open MoneyMoney and unlock it, then choose \"Check again\"."
 			case .locked:
-				"MoneyMoney is locked. Unlock MoneyMoney with its database password, then try again."
+				"MoneyMoney is locked. Unlock MoneyMoney with its database password, then choose \"Check again\"."
 			case .notAllowed:
-				"macOS does not allow Moneten to read data from MoneyMoney. Allow it in System Settings → Privacy & Security → Automation, then try again."
+				"macOS does not allow Moneten to read data from MoneyMoney. Allow it in System Settings → Privacy & Security → Automation → Moneten, then choose \"Check again\"."
 			case let .failed(message):
 				"MoneyMoney did not answer: \(message)"
 			}
+		}
+
+		/// The failure that the error output of `osascript` names: -1743 is a refused Automation permission, and
+		/// -2720 or "locked" is the lock screen of MoneyMoney.
+		static func of(errorOutput message: String) -> Failure {
+			if message.contains("-1743") { return .notAllowed }
+			if message.contains("-2720") || message.localizedCaseInsensitiveContains("locked") { return .locked }
+			return .failed(message.trimmingCharacters(in: .whitespacesAndNewlines))
 		}
 	}
 
@@ -485,9 +496,17 @@ public enum MoneyMoneyExporter {
 		try await run(#"tell application "MoneyMoney" to export transactions from date "1990-01-01" as "plist""#)
 	}
 
+	/// Checks the preconditions in order before the export command runs. A `tell` would start MoneyMoney when
+	/// it is not running, so the check asks with `is running`, which starts nothing and needs no permission.
 	static func run(_ script: String) async throws -> Data {
 		guard isInstalled else { throw Failure.notInstalled }
-		return try await withCheckedThrowingContinuation { continuation in
+		guard String(decoding: try await osascript(#"application "MoneyMoney" is running"#), as: UTF8.self)
+			.trimmingCharacters(in: .whitespacesAndNewlines) == "true" else { throw Failure.notRunning }
+		return try await osascript(script)
+	}
+
+	private static func osascript(_ script: String) async throws -> Data {
+		try await withCheckedThrowingContinuation { continuation in
 			// One thread reads the whole output, so the export arrives in order however large it is.
 			DispatchQueue.global(qos: .userInitiated).async {
 				let process = Process()
@@ -506,12 +525,8 @@ public enum MoneyMoneyExporter {
 				process.waitUntilExit()
 				if process.terminationStatus == 0 {
 					continuation.resume(returning: output)
-				} else if message.contains("-2720") || message.localizedCaseInsensitiveContains("locked") {
-					continuation.resume(throwing: Failure.locked)
-				} else if message.contains("-1743") {
-					continuation.resume(throwing: Failure.notAllowed)
 				} else {
-					continuation.resume(throwing: Failure.failed(message.trimmingCharacters(in: .whitespacesAndNewlines)))
+					continuation.resume(throwing: Failure.of(errorOutput: message))
 				}
 			}
 		}

@@ -2,6 +2,7 @@ import AppKit
 import Domain
 import ExtensionHost
 import FinTS
+import Import
 import Foundation
 import Sync
 import SyncTesting
@@ -375,11 +376,18 @@ final class DebugHarness {
 			case "bar": model.select(bar: .month(Day.today().firstOfMonth))
 			default: model.period = .all
 			}
+		#if DEBUG || PERF_HARNESS
 		// "<folder>": opens the MoneyMoney migration, which then reads the exports of that folder, such as the absolute path of
 		// Fixtures/moneymoney. An app started with `open` runs in `/`, so a relative path does not work.
-		#if DEBUG || PERF_HARNESS
 		case "migrationfixture":
 			MigrationSheet.fixtureFolder = URL(filePath: argument)
+			MigrationSheet.simulatedFailure = nil
+			model.sheet = .migration
+		// "notInstalled", "notRunning", "locked", or "notAllowed": opens the MoneyMoney migration, whose export then fails so.
+		case "migrationfailure":
+			let failures: [String: MoneyMoneyExporter.Failure] = ["notInstalled": .notInstalled, "notRunning": .notRunning, "locked": .locked, "notAllowed": .notAllowed]
+			guard let failure = failures[argument] else { return log("migrationfailure: unknown \(argument)") }
+			MigrationSheet.simulatedFailure = failure
 			model.sheet = .migration
 		#endif
 		// "<path>": writes the complete export to that file without the warning and the save panel.

@@ -5,7 +5,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 ## 1. Requirements
 
 - [x] 1.1 Migration command. Verified by File menu and empty state, see the debug harness snapshot in the first build.
-- [ ] 1.2 Preconditions are checked first. Built in part: messages for a missing app, a locked database, and a refused permission, with "Check again". Finish it and verify it with a test or in the app.
+- [x] 1.2 Preconditions are checked first. Verified by MoneyMoneyMigrationTests "The error output of osascript names a refused permission, the lock screen, or another failure", and by the debug app check with the harness command `migrationfailure`: the assistant names what to do for a missing, a closed, and a locked source app and for a refused permission, with the place in System Settings, and offers "Check again". For a missing source app it also offers "Import File..." when an account is selected. The check whether the source app runs asks `application "MoneyMoney" is running`, which starts nothing, before any export command.
 - [x] 1.3 The source is only read. Verified by only the three export commands run.
 - [x] 1.4 Summary before the import. Verified by the sheet shows the counts before "Import".
 - [x] 1.5 Account groups and accounts. Verified by MoneyMoneyMigrationTests "Group tree with order and balances", and by the sidebar after a real migration: every visible account balance equals MoneyMoney. That holds for an account without pending transactions; one with pending transactions shows them on top, as task 3.4 of the change `add-charts` tests.

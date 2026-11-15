@@ -11,13 +11,15 @@ struct MigrationSheet: View {
 		case summary(MoneyMoneyMigration.Plan)
 		case importing
 		case done(MoneyMoneyMigration.Plan, MoneyMoneyMigration.Report)
-		case failed(String)
+		case failed(String, offersFileImport: Bool = false)
 	}
 
 	#if DEBUG || PERF_HARNESS
 	/// A folder with `accounts.plist`, `categories.plist`, and `transactions.plist`, which the debug harness reads
 	/// instead of asking MoneyMoney.
 	static var fixtureFolder: URL?
+	/// A failure that the debug harness lets the export throw, so each message can be checked without MoneyMoney.
+	static var simulatedFailure: MoneyMoneyExporter.Failure?
 	#endif
 
 	@State private var step = Step.intro
@@ -33,6 +35,12 @@ struct MigrationSheet: View {
 			onCancel: { task?.cancel() }, onConfirm: confirm) {
 			if case .done = step {
 				Button("Save Report...") { confirmSave = true }.keyboardShortcut("s")
+			}
+			if case .failed(_, offersFileImport: true) = step, model.selectedAccount != nil {
+				Button("Import File...") {
+					model.sheet = nil
+					Task { await model.importFile() }
+				}
 			}
 		} content: {
 			switch step {
@@ -92,7 +100,7 @@ struct MigrationSheet: View {
 						.frame(height: min(report.notes.reduce(0) { $0 + CGFloat($1.count / 70 + 1) * 17 + 21 }, 180))
 					}
 				}
-			case let .failed(message):
+			case let .failed(message, _):
 				Section {
 					Label(message, systemImage: "exclamationmark.triangle")
 						.foregroundStyle(.orange)
@@ -210,13 +218,14 @@ struct MigrationSheet: View {
 				step = .summary(plan)
 			} catch is CancellationError {
 			} catch {
-				step = .failed(String(describing: error))
+				step = .failed(String(describing: error), offersFileImport: error as? MoneyMoneyExporter.Failure == .notInstalled)
 			}
 		}
 	}
 
 	private func export(_ name: String, _ read: () async throws -> Data) async throws -> Data {
 		#if DEBUG || PERF_HARNESS
+		if let failure = Self.simulatedFailure { throw failure }
 		if let folder = Self.fixtureFolder { return try Data(contentsOf: folder.appendingPathComponent("\(name).plist")) }
 		#endif
 		return try await read()
