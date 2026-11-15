@@ -55,10 +55,6 @@ public enum TransactionFileImporter {
 		return nil
 	}
 
-	public static func decode(_ data: Data) -> String {
-		CSVEncoding.detect(data).decode(data) ?? String(decoding: data, as: UTF8.self)
-	}
-
 	/// The transactions of a file and the values that the import replaced in them.
 	public struct Parsed: Sendable {
 		public var transactions: [Transaction]
@@ -92,14 +88,14 @@ public enum TransactionFileImporter {
 
 	public static func parse(_ data: Data, currency: String) throws -> Parsed {
 		guard !data.isEmpty else { throw Failure.empty }
-		let text = decode(data)
+		let (encoding, text) = try CSVEncoding.read(data)
 		guard let format = detect(text) else { throw Failure.unsupported }
 		let result: Parsed
 		switch format {
 		case .camt: result = try CAMTParser.parse(data, currency: currency)
 		case .mt940: result = try MT940Parser.parse(text, currency: currency)
 		case .csv:
-			let file = try CSVFile(data: data)
+			let file = try CSVFile(data: data, encoding: encoding, text: text)
 			guard file.headerIndex != nil else { throw Failure.noHeader }
 			result = try file.read(file.detectedLayout(), currency: currency)
 		}

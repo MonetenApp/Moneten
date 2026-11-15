@@ -176,10 +176,15 @@ struct CSVPreviewTests {
 	func binaryFiles() throws {
 		let pdf = Data("%PDF-1.7\n%".utf8) + Data([0xE2, 0xE3, 0xCF, 0xD3, 0x0A]) + Data("1 0 obj <</Type /Catalog; /Pages 2 0 R>>\n".utf8) + Data([0x00, 0x01, 0x1F, 0x0A])
 		#expect(throws: TransactionFileImporter.Failure.unsupported) { try TransactionFileImporter.parse(pdf, currency: "EUR") }
+		#expect(try CSVFile.detect(pdf) == nil)
 		let xlsx = Data([0x50, 0x4B, 0x03, 0x04, 0x14, 0x00, 0x06, 0x00]) + Data("[Content_Types].xml;,".utf8) + Data([0x00, 0x00, 0x08])
 		#expect(throws: TransactionFileImporter.Failure.unsupported) { try TransactionFileImporter.parse(xlsx, currency: "EUR") }
+		#expect(try CSVFile.detect(xlsx) == nil)
 		let utf16 = Data([0xFF, 0xFE]) + "Datum;Name;Betrag\n01.11.2026;Kiosk;-1,50\n".data(using: .utf16LittleEndian)!
 		#expect(try TransactionFileImporter.parse(utf16, currency: "EUR").transactions.map(\.amountMinor) == [-150])
+		let detected = try #require(try CSVFile.detect(utf16))
+		#expect(detected.encoding == .utf16)
+		#expect(try detected.preview(detected.detectedLayout(), currency: "EUR").transactions.map(\.amountMinor) == [-150])
 	}
 
 	@Test("Titles skip dated rows and account lines, and rows start after the titles")

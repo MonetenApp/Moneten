@@ -66,10 +66,12 @@ final class CSVPreviewModel {
 
 	private func refresh() {
 		reading?.cancel()
+		let previous = preview
 		preview = nil
 		problem = nil
 		let current = file, layout = layout, currency = currency, detectingDateOrder = detectsDateOrder
 		let parsing = Task.detached(priority: .userInitiated) {
+			withExtendedLifetime(previous) {}
 			let file = layout.encoding == current.encoding ? current : try CSVFile(data: current.data, encoding: layout.encoding)
 			let preview = try file.preview(layout, currency: currency, detectingDateOrder: detectingDateOrder)
 			return (file, preview)

@@ -86,10 +86,13 @@ public enum CSVEncoding: String, CaseIterable, Sendable {
 	/// UTF-16 with its byte order mark, UTF-8 when the bytes are valid UTF-8, Windows-1252, which is what
 	/// German banks write, and ISO-8859-1, which reads every byte, for a file with a byte that
 	/// Windows-1252 does not have, such as 0x81.
-	static func detect(_ data: Data) -> CSVEncoding {
-		if data.starts(with: [0xFF, 0xFE]) || data.starts(with: [0xFE, 0xFF]) { return .utf16 }
-		if String(data: data, encoding: .utf8) != nil { return .utf8 }
-		return String(data: data, encoding: .windowsCP1252) == nil ? .isoLatin1 : .windows1252
+	static func read(_ data: Data) throws -> (encoding: CSVEncoding, text: String) {
+		let encodings: [CSVEncoding] = data.starts(with: [0xFF, 0xFE]) || data.starts(with: [0xFE, 0xFF])
+			? [.utf16] : [.utf8, .windows1252, .isoLatin1]
+		for encoding in encodings {
+			if let text = encoding.decode(data) { return (encoding, text) }
+		}
+		throw TransactionFileImporter.Failure.encoding(encodings[0].title)
 	}
 
 	func decode(_ data: Data) -> String? {
@@ -157,8 +160,23 @@ public struct CSVFile: Sendable {
 	/// Reads the file with the encoding that it shows, or with the given one. A file of 100 MB takes seconds
 	/// to read, so each pass over its rows stops with `CancellationError` at the next row once the task is canceled.
 	public init(data: Data, encoding: CSVEncoding? = nil) throws {
-		let encoding = encoding ?? CSVEncoding.detect(data)
-		guard let text = encoding.decode(data) else { throw TransactionFileImporter.Failure.encoding(encoding.title) }
+		if let encoding {
+			guard let text = encoding.decode(data) else { throw TransactionFileImporter.Failure.encoding(encoding.title) }
+			try self.init(data: data, encoding: encoding, text: text)
+		} else {
+			let (encoding, text) = try CSVEncoding.read(data)
+			try self.init(data: data, encoding: encoding, text: text)
+		}
+	}
+
+	/// Returns nil for a different file format, without splitting it into CSV rows.
+	public static func detect(_ data: Data) throws -> CSVFile? {
+		let (encoding, text) = try CSVEncoding.read(data)
+		guard TransactionFileImporter.detect(text) == .csv else { return nil }
+		return try CSVFile(data: data, encoding: encoding, text: text)
+	}
+
+	init(data: Data, encoding: CSVEncoding, text: String) throws {
 		self.data = data
 		self.encoding = encoding
 		try Task.checkCancellation()
@@ -260,11 +278,26 @@ public struct CSVFile: Sendable {
 	func read(_ layout: CSVLayout, currency: String) throws -> TransactionFileImporter.Parsed {
 		// Without an amount column, every missing debit and credit cell would read as zero.
 		guard layout.missing.isEmpty else { return TransactionFileImporter.Parsed(transactions: []) }
-		func column(_ field: CSVField) -> Int? { layout.columns[field] }
+		let bookingDateColumn = layout.columns[.bookingDate]
+		let valueDateColumn = layout.columns[.valueDate]
+		let amountColumn = layout.columns[.amount]
+		let debitColumn = layout.columns[.debit]
+		let creditColumn = layout.columns[.credit]
+		let debitCreditMarkColumn = layout.columns[.debitCreditMark]
+		let currencyColumn = layout.columns[.currency]
+		let nameColumn = layout.columns[.name]
+		let ibanColumn = layout.columns[.iban]
+		let bicColumn = layout.columns[.bic]
+		let purposeColumn = layout.columns[.purpose]
+		let bookingTextColumn = layout.columns[.bookingText]
+		let commentColumn = layout.columns[.comment]
+		let endToEndReferenceColumn = layout.columns[.endToEndReference]
+		let mandateReferenceColumn = layout.columns[.mandateReference]
+		let creditorIDColumn = layout.columns[.creditorID]
 		let dated = try dataRows(layout)
 		// The amount column, or the debit and credit columns when the amount cell is empty.
 		func amountCells(_ row: [String]) -> [String] {
-			(Self.cell(row, column(.amount)).map { [$0] } ?? [column(.debit), column(.credit)].compactMap { Self.cell(row, $0) })
+			(Self.cell(row, amountColumn).map { [$0] } ?? [debitColumn, creditColumn].compactMap { Self.cell(row, $0) })
 				.compactMap { Self.amountParts($0, account: currency)?.number }
 		}
 		// An amount such as "1,234" reads by the decimal mark that the other amounts of the file show.
@@ -308,10 +341,9 @@ public struct CSVFile: Sendable {
 		var result = TransactionFileImporter.Parsed(transactions: [])
 		for (line, row) in dated {
 			try Task.checkCancellation()
-			func value(_ field: CSVField) -> String? { Self.cell(row, column(field)) }
-			let dateText = value(.bookingDate)!
+			let dateText = Self.cell(row, bookingDateColumn)!
 			// Dates with dots read day first, so a month-first file that also has them gets a warning on each such row.
-			if layout.dateOrder == .monthDayYear, dateText.contains(".") || value(.valueDate)?.contains(".") == true {
+			if layout.dateOrder == .monthDayYear, dateText.contains(".") || Self.cell(row, valueDateColumn)?.contains(".") == true {
 				result.warnings.append(.mixedDateForms(line: line))
 			}
 			guard let day = layout.dateOrder.day(dateText) else {
@@ -320,23 +352,23 @@ public struct CSVFile: Sendable {
 			var amount: Decimal? = 0
 			amountCurrency = nil
 			zeroCurrency = nil
-			if let a = value(.amount) {
+			if let a = Self.cell(row, amountColumn) {
 				amount = try readAmount(a)
 				// A marker column says whether an unsigned amount is a debit (S, D, DR) or a credit (H, C, CR).
-				if let marker = value(.debitCreditMark)?.uppercased(), let a = amount {
+				if let marker = Self.cell(row, debitCreditMarkColumn)?.uppercased(), let a = amount {
 					if ["S", "D", "DR", "SOLL", "DEBIT"].contains(marker) { amount = -abs(a) }
 					else if ["H", "C", "CR", "HABEN", "CREDIT"].contains(marker) { amount = abs(a) }
 					else { amount = nil }
 				}
-			} else if value(.debit) != nil || value(.credit) != nil {
+			} else if Self.cell(row, debitColumn) != nil || Self.cell(row, creditColumn) != nil {
 				// An empty debit or credit cell next to a filled one counts as zero. A cell that cannot be read is an error.
-				let d = try value(.debit).map { try readAmount($0).map { -abs($0) } } ?? 0
-				let c = try value(.credit).map { try readAmount($0).map { abs($0) } } ?? 0
-				if let d, let c { amount = d + c }
+				let d = try Self.cell(row, debitColumn).map { try readAmount($0).map { -abs($0) } } ?? 0
+				let c = try Self.cell(row, creditColumn).map { try readAmount($0).map { abs($0) } } ?? 0
+				amount = if let d, let c { d + c } else { nil }
 			}
 			guard let amount else { throw TransactionFileImporter.Failure.line(line, "The amount cannot be read.") }
 			var cur = amountCurrency ?? zeroCurrency ?? currency
-			if let cell = value(.currency) {
+			if let cell = Self.cell(row, currencyColumn) {
 				if let code = Self.currencyCode(cell, account: currency) {
 					cur = code
 				} else {
@@ -344,16 +376,16 @@ public struct CSVFile: Sendable {
 					result.warnings.append(.unknownCurrency(line: line, cell: cell, replacement: currency))
 				}
 			}
-			let valueDate = value(.valueDate).flatMap { cell in
+			let valueDate = Self.cell(row, valueDateColumn).flatMap { cell in
 				let day = layout.dateOrder.day(cell)
 				if day == nil { result.warnings.append(.unreadableValueDate(line: line, cell: cell)) }
 				return day
 			}
 			var t = Transaction(accountID: placeholder, bookingDate: day, valueDate: valueDate,
 				amountMinor: Money(amount, currency: cur).minorUnits, currency: cur,
-				name: value(.name) ?? "", purpose: value(.purpose) ?? "", counterpartyIBAN: value(.iban), counterpartyBIC: value(.bic),
-				bookingText: value(.bookingText), endToEndReference: value(.endToEndReference), mandateReference: value(.mandateReference),
-				creditorID: value(.creditorID), comment: value(.comment))
+				name: Self.cell(row, nameColumn) ?? "", purpose: Self.cell(row, purposeColumn) ?? "", counterpartyIBAN: Self.cell(row, ibanColumn), counterpartyBIC: Self.cell(row, bicColumn),
+				bookingText: Self.cell(row, bookingTextColumn), endToEndReference: Self.cell(row, endToEndReferenceColumn), mandateReference: Self.cell(row, mandateReferenceColumn),
+				creditorID: Self.cell(row, creditorIDColumn), comment: Self.cell(row, commentColumn))
 			if t.name.isEmpty, t.purpose.isEmpty, let text = t.bookingText { t.name = text }
 			result.transactions.append(t)
 		}

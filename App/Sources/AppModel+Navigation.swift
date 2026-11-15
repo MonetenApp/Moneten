@@ -305,8 +305,7 @@ extension AppModel {
 
 	/// The rows of a CSV file and the layout that the app detects in them, or nil for another format.
 	nonisolated private static func csv(_ data: Data) async throws -> (CSVFile, CSVLayout)? {
-		guard TransactionFileImporter.detect(TransactionFileImporter.decode(data)) == .csv else { return nil }
-		let file = try CSVFile(data: data)
+		guard let file = try CSVFile.detect(data) else { return nil }
 		return (file, try file.detectedLayout())
 	}
 
