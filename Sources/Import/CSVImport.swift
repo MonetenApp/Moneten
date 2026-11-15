@@ -459,6 +459,11 @@ public struct CSVFile: Sendable {
 		return result
 	}
 
+	/// Reads a confirmed CSV again for its target currency.
+	public func reread(_ layout: CSVLayout, currency: String) throws -> TransactionFileImporter.Parsed {
+		try TransactionFileImporter.parse(data, currency: currency)
+	}
+
 	/// Reads the whole file in the layout, so that "Import" never fails on a row after the ones that the
 	/// preview shows. A row that cannot be read is the problem of the preview, and the user can change
 	/// the layout until it reads. After the user assigns a date column, `detectingDateOrder` takes the

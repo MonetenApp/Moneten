@@ -160,6 +160,7 @@ extension AppModel {
 				do {
 					let data = try await Self.load(url)
 					let parsed: TransactionFileImporter.Parsed
+					var confirmedCSV: (file: CSVFile, layout: CSVLayout)?
 					if let (file, layout) = try await Self.csv(data) {
 						if run.isCanceled { return (read, problems, canceledAt: i) }
 						// A menu command can open another sheet while the progress shows, and the preview must not close it.
@@ -175,6 +176,7 @@ extension AppModel {
 							continue
 						}
 						parsed = chosen
+						confirmedCSV = (preview.file, preview.layout)
 					} else {
 						parsed = try await Self.parse(data, currency: account.currency)
 					}
@@ -183,7 +185,7 @@ extension AppModel {
 					let currency = parsed.declaredCurrency
 					// A file without a currency takes the currency of the account it goes into, which can be another one.
 					func parsedFor(_ into: Account) async throws -> TransactionFileImporter.Parsed {
-						into.currency == account.currency ? parsed : try await Self.parse(data, currency: into.currency)
+						into.currency == account.currency ? parsed : try await Self.parse(data, currency: into.currency, csv: confirmedCSV)
 					}
 					let decision = try TransactionFileImporter.accountDecision([parsed.account], selected: account,
 						accounts: ledger.accounts + created, currency: parsed.transactions.first?.currency ?? account.currency)
@@ -309,8 +311,9 @@ extension AppModel {
 		return (file, try file.detectedLayout())
 	}
 
-	nonisolated private static func parse(_ data: Data, currency: String) async throws -> TransactionFileImporter.Parsed {
-		try TransactionFileImporter.parse(data, currency: currency)
+	nonisolated private static func parse(_ data: Data, currency: String, csv: (file: CSVFile, layout: CSVLayout)? = nil) async throws -> TransactionFileImporter.Parsed {
+		if let csv { return try csv.file.reread(csv.layout, currency: currency) }
+		return try TransactionFileImporter.parse(data, currency: currency)
 	}
 }
 
