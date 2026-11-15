@@ -50,7 +50,7 @@ extension ReconcileTests {
 		#expect(live.endToEndReference == (reference ? "RENT-A" : nil))
 		#expect(live.sourceID == (reference ? nil : "FILE-A"))
 		if booked {
-			let booking = merge(refresh([rent(1, purpose: "BOOKED BANK", pending: false)]), stored: [live], at: noon(1, month: 12))
+			let booking = merge(refresh([rent(2, purpose: "BOOKED BANK", pending: false)]), stored: [live], at: noon(1, month: 12))
 			live = try #require(history([live], after: booking).first)
 			#expect(!live.isPending)
 		}
@@ -119,6 +119,68 @@ extension ReconcileTests {
 		let r = merge(.file([file]), stored: [live], at: noon(21, month: 11))
 		#expect(r.updated == [])
 		#expect(history([live], after: r).map(\.comment) == [""])
+	}
+
+	@Test("A bank-first skip retains the file identity before deletion", arguments: [false, true])
+	func gate3BankFirstIdentity(booked: Bool) throws {
+		var file = rent(1)
+		file.counterpartyIBAN = nil
+		file.endToEndReference = "RENT-A"
+		var bank = stored(file)
+		bank.endToEndReference = nil
+		bank.purpose = "BANK"
+		let first = merge(.file([file]), stored: [bank], at: noon(20, month: 11))
+		var live = try #require(history([bank], after: first).first)
+		#expect(live.endToEndReference == "RENT-A")
+		var other = file
+		other.endToEndReference = "RENT-B"
+		#expect(merge(.file([other]), stored: [live], at: noon(21, month: 11)).added.map(\.amountMinor) == [-80_000])
+		if booked {
+			var booking = file
+			booking.isPending = false
+			booking.bookingDate = day(2, month: 12)
+			booking.purpose = "BOOKED BANK"
+			live = try #require(history([live], after: merge(refresh([booking]), stored: [live], at: noon(2, month: 12))).first)
+		}
+		let deleted = [DeletedTransaction(live, deletedAt: now)]
+		let repeated = merge(.file([file]), deleted: deleted, at: noon(21, month: 11))
+		#expect(repeated.added == [] && repeated.skipped == 1)
+		#expect(merge(.file([other]), deleted: deleted, at: noon(21, month: 11)).added.map(\.amountMinor) == [-80_000])
+	}
+
+	@Test("An unrelated booked row cannot absorb a new pending file payment", arguments: [false, true])
+	func gate3UnrelatedBooked(deleted: Bool) {
+		let bank = stored(rent(1, purpose: "BANK", pending: false))
+		let r = merge(.file([rent(1)]), stored: deleted ? [] : [bank], deleted: deleted ? [DeletedTransaction(bank, deletedAt: now)] : [], at: noon(20, month: 11))
+		#expect(r.added.map(\.amountMinor) == [-80_000])
+		#expect(r.skipped == 0)
+	}
+
+	@Test("An agreeing identity repeat preserves cleared user fields after a relaxed import", arguments: [false, true])
+	func gate3KnownIdentityKeepsClearedFields(bankAlreadyKnows: Bool) throws {
+		let housing = Domain.Category(position: 0, name: "Housing")
+		var file = rent(1)
+		file.endToEndReference = "RENT-A"
+		file.comment = "Shared rent"
+		file.categoryID = housing.id
+		file.categorizedBy = .manual
+		file.isChecked = true
+		var bank = stored(rent(1, purpose: "BANK"))
+		bank.endToEndReference = bankAlreadyKnows ? "RENT-A" : nil
+		var live = bank
+		if !bankAlreadyKnows {
+			live = try #require(history([bank], after: merge(.file([file]), stored: [bank], categories: [housing])).first)
+			#expect(live.comment == "Shared rent" && live.categoryID == housing.id && live.isChecked)
+		}
+		live.comment = ""
+		live.categoryID = nil
+		live.categorizedBy = .none
+		live.isChecked = false
+		let r = merge(.file([file]), stored: [live], categories: [housing])
+		let kept = try #require(history([live], after: r).first)
+		#expect(kept.comment == "")
+		#expect(kept.categoryID == nil)
+		#expect(!kept.isChecked)
 	}
 
 	@Test("Gate 3 items 1 4 5: every delivered and stored permutation has literal rows")

@@ -591,7 +591,7 @@ The app SHALL pair each free delivered pending transaction with at most one free
 
 ### Requirement: Pending file transactions already stored
 
-The app SHALL skip a pending file transaction when a free stored pending transaction has the same amount, counterparty, and booking day, even when the purposes differ. Each stored transaction absorbs one file transaction at most. The stored transaction keeps its fields and fetched status. Only a new relaxed same-day match fills empty user fields from the file. An exact repeat preserves cleared user fields.
+The app SHALL skip a pending file transaction when a free stored pending transaction has the same amount, counterparty, and booking day, even when the purposes differ. Each stored transaction absorbs one file transaction at most. The stored transaction keeps its fields and fetched status. Only a relaxed same-day match fills empty user fields from the file. A fingerprint or agreeing-identity repeat preserves cleared user fields.
 
 #### Scenario: The bank reported the scheduled rent before the import
 
@@ -623,7 +623,7 @@ The app SHALL skip a pending file transaction when a free stored pending transac
 
 ### Requirement: Order-independent pending pairing
 
-The app SHALL pair delivered pending transactions one to one with stored transactions by agreeing explicit identity, then a fitting fetched or deleted transaction on the same day, then the closest unfetched file transaction within seven days. Conflicting explicit identities never pair. File imports use the same day only. Pairs are taken greedily by priority, distance, and stable delivered and stored positions, independent of input order.
+The app SHALL pair delivered pending transactions one to one with stored transactions by agreeing explicit identity, then a fitting fetched or deleted transaction on the same day, then the closest unfetched file transaction within seven days. Conflicting explicit identities never pair. Pending-to-pending file pairs use the same day only. Pairs are taken greedily by priority, distance, and stable delivered and stored positions, independent of input order.
 
 #### Scenario: Global nearest choice
 
@@ -668,6 +668,34 @@ The app SHALL pair delivered pending transactions one to one with stored transac
 - **AND** the user clears the comment
 - **WHEN** the exact same entry is imported again
 - **THEN** the comment stays empty
+
+#### Scenario: A bank-first import retains the file reference
+
+- **GIVEN** a pending bank rent of -800,00 € on 1 December 2026 with purpose "BANK" and no reference
+- **WHEN** the file rent with reference "RENT-A" is skipped on the same day
+- **THEN** the stored row retains "RENT-A", also after booking and deletion
+- **AND** a second file rent with reference "RENT-B" stays separate
+
+#### Scenario: An identified booked repeat has another date
+
+- **GIVEN** a pending file rent of -800,00 € on 1 December 2026 with reference "RENT-A" that the bank books on 2 December
+- **WHEN** the original pending file rent arrives again
+- **THEN** the agreeing identity finds the booked row and the payment counts once, still booked
+- **AND** its booked tombstone also absorbs the original file
+- **AND** pending-to-pending file pairs on different dates still stay separate
+
+#### Scenario: A booked payment does not absorb a different pending payment
+
+- **GIVEN** a booked bank payment of -800,00 € on 1 December 2026 with purpose "BANK"
+- **WHEN** a file delivers a pending rent on that day with purpose "Miete Dezember" and no agreeing identity
+- **THEN** the new pending rent is added
+- **AND** the same holds when the booked payment is a tombstone
+
+#### Scenario: An agreeing identity preserves cleared user fields
+
+- **GIVEN** a pending bank rent with reference "RENT-A", purpose "BANK", and cleared comment, category and checkmark
+- **WHEN** the file repeats "RENT-A" with purpose "Miete Dezember", comment "Shared rent", category "Housing" and a checkmark
+- **THEN** the stored comment, category and checkmark stay cleared
 
 ### Requirement: MT940 import
 
