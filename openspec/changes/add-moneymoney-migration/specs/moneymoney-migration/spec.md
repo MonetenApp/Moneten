@@ -143,6 +143,13 @@ The app SHALL leave out a group rule and name the group in a note in the report.
 - **AND** a note says 'The rule of the group "Wohnen" was not taken over, because a group holds no transactions. Move it to a category below the group.'
 - **AND** no note says that the export contains no categorization rules
 
+#### Scenario: An unchanged repeat run still shows its notes
+
+- **GIVEN** an earlier migration stored the group "Wohnen" with `amount<-1000`, and the source export is unchanged
+- **WHEN** the user runs the migration again and there is nothing new to import
+- **THEN** the sheet shows the report with the note that the rule of "Wohnen" was not taken over
+- **AND** the sheet offers "Save Report..." and "Done" without importing anything
+
 #### Scenario: Only the default category has a rule
 
 - **GIVEN** the export contains a rule only for its default category "Sonstiges"

@@ -696,6 +696,32 @@ struct MoneyMoneyMigrationTests {
 		#expect(repeated.notes.filter { $0.contains("The rule of the group") } == ["The rule of the group \"Wohnen\" was not taken over, because a group holds no transactions. Move it to a category below the group."])
 	}
 
+	@Test("An unchanged repeat migration offers the report of a stored group rule")
+	func unchangedGroupRuleReport() throws {
+		var exported = categories
+		exported[0]["rules"] = "amount<-1000"
+		let first = try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(accounts), categories: try plist(exported), transactions: try plist(transactions), into: Ledger())
+		#expect(first.review(in: Ledger()) == .importChanges)
+		var stored = first.categories
+		stored[0].rule = "amount<-1000"
+		let ledger = Ledger(groups: first.groups, accounts: first.accounts, categories: stored, transactions: first.transactions)
+		let repeated = try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(accounts), categories: try plist(exported), transactions: try plist(transactions), into: ledger)
+		let notice = "The rule of the group \"Household\" was not taken over, because a group holds no transactions. Move it to a category below the group."
+		#expect(repeated.isEmpty)
+		#expect(repeated.notes.contains(notice))
+		guard case let .report(report) = repeated.review(in: ledger) else {
+			Issue.record("An unchanged migration with notes must offer the report")
+			return
+		}
+		#expect(report.notes.contains(notice))
+		#expect(report.text().contains(notice))
+		#expect(report.rows.map(\.sourceTransactions) == [3, 1, 0])
+		#expect(report.rows.allSatisfy { $0.matches })
+		var withoutNotes = repeated
+		withoutNotes.notes = []
+		#expect(withoutNotes.review(in: ledger) == .nothingNew)
+	}
+
 	@Test("A rule of the default category does not count as an exported categorization rule")
 	func defaultCategoryRule() throws {
 		var onlyDefault = categories

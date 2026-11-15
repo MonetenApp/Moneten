@@ -242,7 +242,10 @@ struct MigrationSheet: View {
 				let plan = try await Task.detached {
 					try MoneyMoneyMigration().plan(accounts: accounts, categories: categories, transactions: transactions, into: ledger, deleted: deleted)
 				}.value
-				step = .summary(plan)
+				switch plan.review(in: ledger) {
+				case .nothingNew, .importChanges: step = .summary(plan)
+				case let .report(report): step = .done(plan, report)
+				}
 			} catch is CancellationError {
 			} catch {
 				step = .failed(String(describing: error), offersFileImport: error as? MoneyMoneyExporter.Failure == .notInstalled)
