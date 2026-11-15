@@ -67,6 +67,9 @@ struct AppCommands: Commands {
 	var unlocked: Bool { model.phase == .unlocked && !model.isApplyingRule }
 
 	var body: some Commands {
+		CommandGroup(replacing: .appInfo) {
+			Button("About Moneten") { Self.showAbout() }
+		}
 		CommandGroup(after: .appSettings) {
 			Divider()
 			Button(model.hasPassword ? "Change Database Password..." : "Set Database Password...") {
@@ -153,9 +156,28 @@ struct AppCommands: Commands {
 		}
 		CommandGroup(replacing: .help) {
 			Button("Show Database in Finder...") { NSWorkspace.shared.activateFileViewerSelecting([model.vault.folder.root]) }
+			Button("Help and FAQ...") { NSWorkspace.shared.open(Self.helpPage) }
+				.keyboardShortcut("?")
 			Button("Moneten on GitHub...") { NSWorkspace.shared.open(URL(string: "https://github.com/MonetenApp/Moneten")!) }
 			Button("Report an Issue...") { NSWorkspace.shared.open(URL(string: "https://github.com/MonetenApp/Moneten/issues/new/choose")!) }
 		}
+	}
+}
+
+extension AppCommands {
+	/// The page of "Help and FAQ...". The project has no help pages of its own yet, so it is the README.
+	static let helpPage = URL(string: "https://github.com/MonetenApp/Moneten#readme")!
+
+	/// The standard About panel: the version, the license from `NSHumanReadableCopyright` in Info.plist, and a
+	/// link to the source code.
+	static func showAbout() {
+		let credits = NSMutableAttributedString(string: "Source code: ",
+			attributes: [.font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize), .foregroundColor: NSColor.labelColor])
+		credits.append(NSAttributedString(string: "github.com/MonetenApp/Moneten",
+			attributes: [.font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize), .link: URL(string: "https://github.com/MonetenApp/Moneten")!]))
+		credits.setAlignment(.center, range: NSRange(location: 0, length: credits.length))
+		NSApp.orderFrontStandardAboutPanel(options: [.credits: credits])
+		NSApp.activate()
 	}
 }
 

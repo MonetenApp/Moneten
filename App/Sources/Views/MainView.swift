@@ -24,25 +24,24 @@ struct MainView: View {
 		// The header of the detail view shows the title with its icon and balance, as in MoneyMoney.
 		.toolbar(removing: .title)
 		.toolbar {
+			// From left to right as in MoneyMoney: the lock, the view switch, back and forward, then the search
+			// field of the transaction view. The print menu and the action button come with printing and payments.
 			ToolbarItemGroup(placement: .navigation) {
-				Button { model.goBack() } label: { Image(systemName: "chevron.left") }
-					.help("Previous view").disabled(!model.canGoBack)
-				Button { model.goForward() } label: { Image(systemName: "chevron.right") }
-					.help("Next view").disabled(!model.canGoForward)
-			}
-			ToolbarItem(placement: .primaryAction) {
+				Button { model.lock() } label: { Image(systemName: "lock") }
+					.help(model.hasPassword ? "Lock Moneten" : "Set a database password to lock Moneten")
+					.accessibilityLabel("Lock Moneten")
+					.disabled(!model.hasPassword)
 				Picker("View", selection: $model.viewMode) {
-					Image(systemName: "list.bullet").help("Show list only").tag(ViewMode.list)
-					Image(systemName: "chart.bar").help("Show bar chart").tag(ViewMode.barChart)
-					Image(systemName: "chart.pie").help("Show pie chart").tag(ViewMode.pieChart)
+					Image(systemName: "list.bullet").help("Show list only").accessibilityLabel("Show list only").tag(ViewMode.list)
+					Image(systemName: "chart.bar").help("Show bar chart").accessibilityLabel("Show bar chart").tag(ViewMode.barChart)
+					Image(systemName: "chart.pie").help("Show pie chart").accessibilityLabel("Show pie chart").tag(ViewMode.pieChart)
 				}
 				.pickerStyle(.segmented)
 				.help("View")
-			}
-			ToolbarItem(placement: .primaryAction) {
-				Button { model.lock() } label: { Image(systemName: "lock") }
-					.help(model.hasPassword ? "Lock Moneten" : "Set a database password to lock Moneten")
-					.disabled(!model.hasPassword)
+				Button { model.goBack() } label: { Image(systemName: "chevron.left") }
+					.help("Previous view").accessibilityLabel("Previous view").disabled(!model.canGoBack)
+				Button { model.goForward() } label: { Image(systemName: "chevron.right") }
+					.help("Next view").accessibilityLabel("Next view").disabled(!model.canGoForward)
 			}
 		}
 		.sheet(item: $model.sheet, onDismiss: { model.fileImport?.sheetDismissed() }) { kind in

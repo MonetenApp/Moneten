@@ -23,6 +23,27 @@ enum SidebarSelection: Hashable {
 		case let .category(id): .category(id)
 		}
 	}
+
+	/// The row as the preference `Preference.selectedRow` stores it, such as "account:<UUID>".
+	var preferenceValue: String {
+		switch self {
+		case let .account(id): "account:\(id.uuidString)"
+		case let .group(id): "group:\(id.uuidString)"
+		case let .category(id): "category:\(id.uuidString)"
+		}
+	}
+
+	/// The stored row, or nil when it no longer exists in `ledger`.
+	init?(preferenceValue: String, in ledger: Ledger) {
+		let parts = preferenceValue.split(separator: ":", maxSplits: 1).map(String.init)
+		guard parts.count == 2, let id = UUID(uuidString: parts[1]) else { return nil }
+		switch parts[0] {
+		case "account" where ledger.account(id) != nil: self = .account(id)
+		case "group" where ledger.group(id) != nil: self = .group(id)
+		case "category" where ledger.category(id) != nil: self = .category(id)
+		default: return nil
+		}
+	}
 }
 
 enum ViewMode: String, CaseIterable {
@@ -46,6 +67,8 @@ enum Preference {
 	static let unlockWithTouchID = "unlockWithTouchID"
 	static let unlockWithAppleWatch = "unlockWithAppleWatch"
 	static let viewMode = "viewMode"
+	/// The selected sidebar row, which the next launch selects again.
+	static let selectedRow = "selectedSidebarRow"
 	static let balanceMode = "balanceMode"
 	/// "Update extensions automatically" in the Extensions window, on unless the user turns it off.
 	static let updateExtensionsAutomatically = "updateExtensionsAutomatically"
@@ -166,6 +189,7 @@ final class AppModel {
 	var selection: SidebarSelection? {
 		didSet {
 			guard selection != oldValue else { return }
+			UserDefaults.standard.set(selection?.preferenceValue, forKey: Preference.selectedRow)
 			// The selected rows go in a drawing of their own, and the table of the new view follows one drawing
 			// later: SwiftUI stopped the app in AttributeGraph when a table saw a change of its selection in the
 			// drawing that removed it (issue #135). Every view change clears them, so that no hidden row stays
@@ -444,11 +468,9 @@ final class AppModel {
 		try sync.broker.open(store)
 		if selection == nil {
 			restoreFilterBar()
-			if let first = ledger.childGroups(of: nil).first {
-				selection = .group(first.id)
-			} else if let a = ledger.accounts(inGroup: nil).first {
-				selection = .account(a.id)
-			}
+			// The row of the last session, or the first row when it no longer exists.
+			selection = UserDefaults.standard.string(forKey: Preference.selectedRow).flatMap { SidebarSelection(preferenceValue: $0, in: ledger) }
+				?? firstSidebarRow
 		}
 		lastActivity = Date()
 		phase = .unlocked
@@ -555,6 +577,15 @@ final class AppModel {
 	}
 
 	// MARK: Selection and filters
+
+	/// The first group or account of the sidebar, or nil without accounts.
+	var firstSidebarRow: SidebarSelection? {
+		switch ledger.accountTree(in: nil).first {
+		case let .group(g): .group(g.id)
+		case let .account(a): .account(a.id)
+		case nil: nil
+		}
+	}
 
 	func select(_ s: SidebarSelection?) {
 		guard s != selection else { return }
@@ -1243,9 +1274,7 @@ final class AppModel {
 			if case let .category(id) = selection, ledger.category(id) == nil { selection = nil }
 			// A complete import replaces the account groups.
 			if case let .group(id) = selection, ledger.group(id) == nil { selection = nil }
-			if selection == nil {
-				selection = ledger.childGroups(of: nil).first.map { .group($0.id) } ?? ledger.accounts(inGroup: nil).first.map { .account($0.id) }
-			}
+			if selection == nil { selection = firstSidebarRow }
 		}
 	}
 
