@@ -9,6 +9,8 @@
 # prints, sets a status, returns a value, and fails a refresh. The check fails when debug.log holds an IBAN,
 # an account number, a name, a purpose, a booking text, a category name, the login name, the PIN, the TAN,
 # the password, a text of the bank, or a text of the extension.
+# It also imports a CSV file whose name, rows, and value date hold made-up personal data and a text
+# of the bank.
 # The app runs with a temporary data folder and a password, so it never opens the real database and
 # leaves no Keychain item, and as a copy under its own bundle ID, so it leaves an installed Moneten alone.
 set -e
@@ -137,6 +139,12 @@ poll "^ext account savings .*failed=" extstate
 send select Girokonto
 poll "^phase=" state
 poll "^snapshot " snapshot check
+printf '%s\n' "Buchungstag;Valuta;Empfänger;Verwendungszweck;Betrag" "09.11.2026;Wartungsarbeiten;Erika Mustermann;Gehalt November;1.250,00" \
+	"10.11.2026;10.11.2026;Wohnbau Musterstadt eG;Miete;-950,00" >"$WORK/Erika Mustermann.csv"
+send importfile "$WORK/Erika Mustermann.csv"
+poll "^importfile done" state
+poll "^alert " alert
+poll "^rows " rows Girokonto
 send selectRows 1
 send newcategory Haushaltskasse
 poll "selection=.*SidebarSelection.category" state
