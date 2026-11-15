@@ -214,6 +214,28 @@ struct LedgerTests {
 		#expect(l.transactions(in: .account(giro.id), filter: f).map(\.purpose) == ["Miete Mai"])
 	}
 
+	@Test("A stopped regex discards all rows in either order, also with NOT", .timeLimit(.minutes(1)))
+	func stoppedSearchHasNoPartialRows() {
+		let account = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
+		let cases: [(String, [String])] = [
+			(#"purpose:/(\w+\s?)*:/"#, ["Kundennummer: 4711", "Abschlag Strom November 2026", "Kundennummer: 4711"]),
+			(#"NOT purpose:/(\w+\s?)*:/"#, ["Kundennummer: 4711", "Abschlag Strom November 2026", "Kundennummer: 4711"]),
+			("/ok|(a+)+$/", ["ok", "ok", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa!", "ok", "ok"]),
+		]
+		for (query, purposes) in cases {
+			for order in [purposes, Array(purposes.reversed()), [purposes[1]] + [purposes[0]] + Array(purposes.dropFirst(2))] {
+				let rows = order.enumerated().map {
+					Transaction(accountID: account.id, bookingDate: Day(year: 2026, month: 11, day: 10 - $0.offset), amountMinor: -100, name: "Row\($0.offset)", purpose: $0.element)
+				}
+				let ledger = Ledger(accounts: [account], transactions: rows)
+				var filter = TransactionFilter()
+				filter.searchText = query
+				let result = ledger.transactions(in: .account(account.id), filter: filter)
+				#expect(result.map(\.name) == [])
+			}
+		}
+	}
+
 	@Test("Two word boundaries at the end of a value match the rows that the rule matches")
 	func searchTwoWordBoundaries() throws {
 		let giro = Account(position: 0, name: "Konto b", kind: .giro, source: .offline)
