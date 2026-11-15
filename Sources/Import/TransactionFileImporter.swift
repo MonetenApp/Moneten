@@ -389,6 +389,9 @@ final class CAMTParser: NSObject, XMLParserDelegate {
 	private var text = ""
 	private var result = TransactionFileImporter.Parsed(transactions: [])
 	private var entry: [String: String] = [:]
+	/// The counterparty and the references of each transaction detail of the entry, a batch has several.
+	private var details: [[String: String]] = []
+	private var detail: [String: String] = [:]
 	private var purposes: [String] = []
 	private var inEntry = false
 	private let currency: String
@@ -417,6 +420,8 @@ final class CAMTParser: NSObject, XMLParserDelegate {
 		if name == "Ntry" {
 			inEntry = true
 			entry = [:]
+			details = []
+			detail = [:]
 			purposes = []
 		}
 		if inEntry, name == "Amt", path.count >= 2, path[path.count - 2] == "Ntry" {
@@ -446,15 +451,18 @@ final class CAMTParser: NSObject, XMLParserDelegate {
 		case "DtTm" where ends("ValDt/DtTm"): entry["value"] = value
 		case "AddtlNtryInf": entry["bookingText"] = value
 		case "Ustrd": purposes.append(value)
-		case "EndToEndId": entry["e2e"] = value
-		case "MndtId": entry["mandate"] = value
-		case "Id" where ends("CdtrSchmeId/Id/PrvtId/Othr/Id"): entry["creditor"] = value
-		case "Nm" where ends("RltdPties/Cdtr/Nm") || ends("RltdPties/Cdtr/Pty/Nm"): entry["creditorName"] = value
-		case "Nm" where ends("RltdPties/Dbtr/Nm") || ends("RltdPties/Dbtr/Pty/Nm"): entry["debtorName"] = value
-		case "IBAN" where ends("RltdPties/CdtrAcct/Id/IBAN"): entry["creditorIBAN"] = value
-		case "IBAN" where ends("RltdPties/DbtrAcct/Id/IBAN"): entry["debtorIBAN"] = value
-		case "BICFI" where ends("RltdAgts/CdtrAgt/FinInstnId/BICFI"), "BIC" where ends("RltdAgts/CdtrAgt/FinInstnId/BIC"): entry["creditorBIC"] = value
-		case "BICFI" where ends("RltdAgts/DbtrAgt/FinInstnId/BICFI"), "BIC" where ends("RltdAgts/DbtrAgt/FinInstnId/BIC"): entry["debtorBIC"] = value
+		case "EndToEndId": detail["e2e"] = value
+		case "MndtId": detail["mandate"] = value
+		case "Id" where ends("CdtrSchmeId/Id/PrvtId/Othr/Id"): detail["creditor"] = value
+		case "Nm" where ends("RltdPties/Cdtr/Nm") || ends("RltdPties/Cdtr/Pty/Nm"): detail["creditorName"] = value
+		case "Nm" where ends("RltdPties/Dbtr/Nm") || ends("RltdPties/Dbtr/Pty/Nm"): detail["debtorName"] = value
+		case "IBAN" where ends("RltdPties/CdtrAcct/Id/IBAN"): detail["creditorIBAN"] = value
+		case "IBAN" where ends("RltdPties/DbtrAcct/Id/IBAN"): detail["debtorIBAN"] = value
+		case "BICFI" where ends("RltdAgts/CdtrAgt/FinInstnId/BICFI"), "BIC" where ends("RltdAgts/CdtrAgt/FinInstnId/BIC"): detail["creditorBIC"] = value
+		case "BICFI" where ends("RltdAgts/DbtrAgt/FinInstnId/BICFI"), "BIC" where ends("RltdAgts/DbtrAgt/FinInstnId/BIC"): detail["debtorBIC"] = value
+		case "TxDtls":
+			details.append(detail)
+			detail = [:]
 		case "Ntry":
 			inEntry = false
 			finishEntry(parser)
@@ -463,6 +471,8 @@ final class CAMTParser: NSObject, XMLParserDelegate {
 	}
 
 	private func finishEntry(_ parser: XMLParser) {
+		// The bank booked nothing for an INFO entry. A FUTR entry applies on a future date and stays pending like PDNG.
+		if entry["status"] == "INFO" { return }
 		func fail(_ reason: String) {
 			failure = .line(parser.lineNumber, reason)
 			parser.abortParsing()
@@ -476,6 +486,14 @@ final class CAMTParser: NSObject, XMLParserDelegate {
 		let debit = entry["sign"] == "DBIT"
 		let currency = entry["currency"] ?? currency
 		let signed = debit ? -amount : amount
+		// A value that differs between the details of a batch belongs to none of them alone, so the entry leaves it out.
+		// A batch to several counterparties keeps no counterparty and no reference.
+		let side = debit ? "creditor" : "debtor"
+		let oneParty = Set(details.map { [$0[side + "Name"], $0[side + "IBAN"]] }).count <= 1
+		func ofOneParty(_ key: String) -> String? {
+			let values = Set(details.map { $0[key] })
+			return oneParty && values.count == 1 ? values.first! : nil
+		}
 		let valueDate = entry["value"].flatMap { text in
 			let day = Day(string: String(text.prefix(10)))
 			if day == nil { result.warnings.append(.unreadableValueDate(line: parser.lineNumber, cell: text)) }
@@ -483,14 +501,14 @@ final class CAMTParser: NSObject, XMLParserDelegate {
 		}
 		let t = Transaction(accountID: UUID(), bookingDate: booking, valueDate: valueDate,
 			amountMinor: Money(signed, currency: currency).minorUnits, currency: currency,
-			name: (debit ? entry["creditorName"] : entry["debtorName"]) ?? "",
+			name: ofOneParty(side + "Name") ?? "",
 			purpose: purposes.joined(separator: " "),
-			counterpartyIBAN: debit ? entry["creditorIBAN"] : entry["debtorIBAN"],
-			counterpartyBIC: debit ? entry["creditorBIC"] : entry["debtorBIC"],
+			counterpartyIBAN: ofOneParty(side + "IBAN"),
+			counterpartyBIC: ofOneParty(side + "BIC"),
 			bookingText: entry["bookingText"],
-			endToEndReference: entry["e2e"].flatMap { $0 == "NOTPROVIDED" ? nil : $0 },
-			mandateReference: entry["mandate"], creditorID: entry["creditor"],
-			isPending: entry["status"] == "PDNG")
+			endToEndReference: ofOneParty("e2e").flatMap { $0 == "NOTPROVIDED" ? nil : $0 },
+			mandateReference: ofOneParty("mandate"), creditorID: ofOneParty("creditor"),
+			isPending: entry["status"] == "PDNG" || entry["status"] == "FUTR")
 		result.transactions.append(t)
 	}
 }
