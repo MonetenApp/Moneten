@@ -547,15 +547,14 @@ public struct Ledger: Sendable {
 	}
 
 	public mutating func upsert(_ category: Category) {
-		if let i = categories.firstIndex(where: { $0.id == category.id }) {
-			let renamed = categories[i].name != category.name
-			categories[i] = category
-			if renamed {
-				let ids = Set(transactions.filter { effectiveCategoryID(of: $0) == category.id }.map(\.id))
-				refreshSearchText { ids.contains($0.id) }
-			}
-		} else {
-			categories.append(category)
+		let oldName = categories.first { $0.id == category.id }?.name
+		let oldDefaultName = defaultCategory?.name
+		if let i = categories.firstIndex(where: { $0.id == category.id }) { categories[i] = category } else { categories.append(category) }
+		// A row without a category holds the name of the default category in its search text.
+		let renamed = oldName.map { $0 != category.name } ?? false
+		let defaultRenamed = defaultCategory?.name != oldDefaultName
+		if renamed || defaultRenamed {
+			refreshSearchText { $0.categoryID == nil ? defaultRenamed : renamed && $0.categoryID == category.id }
 		}
 	}
 }

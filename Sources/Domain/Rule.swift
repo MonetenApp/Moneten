@@ -203,7 +203,7 @@ private struct RuleParser {
 	let chars: [Character]
 	var tokens: [(token: RuleToken, position: Int)] = []
 	/// Reads an open quotation mark or regular expression to the end of the text, and a sign after a field operator
-	/// as part of the word, so the search can read the text while the user types.
+	/// as the operator it is elsewhere, so the search can read the text while the user types.
 	var lenient = false
 	var index = 0
 
@@ -374,8 +374,9 @@ private struct RuleParser {
 				tokens.append((.regex(s), start))
 				continue
 			}
-			if !lenient, isFieldValue, ["-", "!", "+"].contains(c), i + 1 < chars.count, chars[i + 1] == "(" || chars[i + 1] == "/" || openQuotes.contains(chars[i + 1]),
+			if isFieldValue, ["-", "!", "+"].contains(c), i + 1 < chars.count, chars[i + 1] == "(" || chars[i + 1] == "/" || openQuotes.contains(chars[i + 1]),
 				case let .field(field, op, _)? = tokens.last?.token {
+				if lenient { tokens.append((c == "+" ? .and : .not, i)); i += 1; continue }
 				throw RuleSyntaxError(position: start, message: #"A sign cannot follow \#(field.rawValue)\#(op). Write \#(field.rawValue)!="…" to exclude a value, or \#(field.rawValue):"…" to match it."#)
 			}
 			var word = ""
