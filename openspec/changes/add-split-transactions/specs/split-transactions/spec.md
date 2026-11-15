@@ -58,13 +58,20 @@ The app SHALL accept a part whose sign is opposite to the original transaction. 
 
 ### Requirement: Each part has its own category and comment
 
-The app SHALL let the user assign a category and write a comment for each part, in the same way as for a whole transaction. A new part starts in the category of the original transaction. Every part keeps the date, the counterparty, and the purpose of the original.
+The app SHALL let the user assign a category and write a comment for each part, in the same way as for a whole transaction. A new part starts in the category of the original transaction. Every part keeps the date, the counterparty, and the purpose of the original. If a refresh removes a part while its edit window is open, confirming closes the window without saving.
 
 #### Scenario: Different categories
 
 - **GIVEN** the parts -25,00 € and -55,00 € of a transaction that was in "Groceries"
 - **WHEN** the user assigns the part of -25,00 € to "Household"
 - **THEN** "Household" contains -25,00 € and "Groceries" contains -55,00 € of that receipt
+
+#### Scenario: A correction removes the part being edited
+
+- **GIVEN** a booked "TX-1" of -80,00 € split into -25,00 € and -55,00 €, and the edit window is open for the part of -25,00 €
+- **WHEN** a refresh delivers a booked "TX-1" of -85,00 € and the user confirms the old edit window
+- **THEN** the window closes without saving the edit or adding a transaction
+- **AND** the list still shows only the corrected original of -85,00 €
 
 ### Requirement: Parts are recognizable
 
