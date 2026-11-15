@@ -20,5 +20,5 @@ The first build follows the spec where the task list marks a task as checked. Op
 
 Tasks marked as built in part may differ from the spec in the way their note says.
 
-- A batch entry stays one row, so a rule or a search does not see each payment of the batch on its own. Splitting it waits for the change that also matches the parts against a total, because split parts next to a refresh that brings the total would count the same payment twice.
+- A batch entry stays one row, so a rule or a search does not see each payment of the batch on its own. The change `split-camt-batch-entries` gives such a row one part per payment and keeps it one transaction, because separate rows next to a refresh that brings the total would count the same payment twice.
 - A pending row that the bank never books stays pending until the user deletes it, or until a refresh of the account after its booking date no longer delivers it.
