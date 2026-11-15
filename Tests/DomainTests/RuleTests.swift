@@ -277,7 +277,18 @@ struct CategorizerTests {
 		rent.rule = "amount<-1000"
 		#expect(rent.ruleError == nil)
 		#expect(Domain.Category(position: 1, name: "Groceries").ruleError == nil)
-		#expect(Domain.Category(position: 2, name: "Household", isGroup: true, rule: "(").ruleError == nil)
+	}
+
+	@Test("A category group has no rule, so it shows no mark, takes no transaction, and leaves the transaction to a category below it")
+	func groupHasNoRule() {
+		let rent = Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 1), amountMinor: -120_000, name: "Vermieter", purpose: "Miete 11/2026")
+		for groupRule in ["amount<-1,000", "amount<-1000"] {
+			let wohnen = Domain.Category(position: 0, name: "Wohnen", isGroup: true, rule: groupRule)
+			let miete = Domain.Category(parentID: wohnen.id, position: 0, name: "Miete", rule: #""Miete""#)
+			#expect(wohnen.ruleError == nil, "\(groupRule)")
+			#expect(Categorizer(ledger: ledger([wohnen])).category(for: rent) == nil, "\(groupRule)")
+			#expect(Categorizer(ledger: ledger([wohnen, miete])).category(for: rent) == miete.id, "\(groupRule)")
+		}
 	}
 
 	let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline, iban: "DE02120300000000202051")

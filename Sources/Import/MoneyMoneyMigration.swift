@@ -129,7 +129,7 @@ public struct MoneyMoneyMigration: Sendable {
 		}
 		Self.setInitialBalances(of: &plan, ledger: ledger, stored: stored, deleted: tombstones, relinked: relinked, exported: Set(accountMap.values),
 			delivered: delivered.mapValues { Set($0.compactMap(\.sourceID)) })
-		if !rawCategories.contains(where: { Self.string($0["rules"]) != nil }) {
+		if !rawCategories.contains(where: { ($0["default"] as? Bool) != true && Self.string($0["rules"]) != nil }) {
 			plan.notes.append("The export contains no categorization rules. Copy them from the category settings of MoneyMoney into the category settings of Moneten.")
 		}
 		for c in plan.categories {
@@ -304,6 +304,9 @@ public struct MoneyMoneyMigration: Sendable {
 			let position = positions[parent, default: 0]
 			positions[parent] = position + 1
 			let isGroup = (item["group"] as? Bool) == true
+			if isGroup, Self.string(item["rules"]) != nil {
+				plan.notes.append("The rule of the group \"\(name)\" was not taken over, because a group holds no transactions. Move it to a category below the group.")
+			}
 			let color = (item["icon"] as? Data).flatMap(Self.iconColor)
 			if let existing = known.first(where: { $0.sourceID == source || ($0.name == name && $0.parentID == parent && !$0.isDefault) }) {
 				map[source] = existing.id
@@ -317,8 +320,9 @@ public struct MoneyMoneyMigration: Sendable {
 				}
 				continue
 			}
+			// A group holds no transactions of its own, so the app gives it no rule.
 			let c = Domain.Category(parentID: parent, position: position, name: name, isGroup: isGroup, color: color,
-				currency: (item["currency"] as? String) ?? "EUR", rule: Self.string(item["rules"]) ?? "", sourceID: source)
+				currency: (item["currency"] as? String) ?? "EUR", rule: isGroup ? "" : Self.string(item["rules"]) ?? "", sourceID: source)
 			plan.categories.append(c)
 			map[source] = c.id
 			if isGroup { parents[indentation] = c.id }

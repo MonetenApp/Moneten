@@ -64,6 +64,17 @@ extension MoneyMoneyMigration {
 }
 
 extension MoneyMoneyMigration.Plan {
+	public enum Review: Sendable, Equatable {
+		case nothingNew
+		case importChanges
+		case report(MoneyMoneyMigration.Report)
+	}
+
+	public func review(in ledger: Ledger) -> Review {
+		guard isEmpty else { return .importChanges }
+		return notes.isEmpty ? .nothingNew : .report(report(after: ledger))
+	}
+
 	/// Compares the accounts of `ledger`, the ledger after the import, with the export. A row that a file or a bank
 	/// added to the account is no row of the source, so it counts neither in the number nor in the balance, by the
 	/// rule of the initial balance. A row of the source whose ID a bank took over still counts, by its fingerprint.

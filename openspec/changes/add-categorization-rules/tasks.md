@@ -25,7 +25,9 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [x] 1.19 A term matches a whole word. Verified by RuleTests "Word with a hyphen, whole word, and wildcard for part of a word" and "Wildcards".
 - [x] 1.20 The rules true and false. Verified by CategorizerTests "Catch-all category" and RuleTests "Rule that matches nothing" and "Quoted true is a word".
 - [x] 1.21 Short forms of the operators. Verified by RuleTests "Short forms", "Minus before a term", "Minus before a number", "Plus before a number", "Minus after a word, before a quotation mark or a parenthesis", "Minus after an amount comparison, before a parenthesis", "Plus sign inside a word", "Exclamation mark at the end of a word", and "Not equal after a field name".
-- [x] 1.22 A saved rule that cannot be read is marked. Verified by CategorizerTests "A category whose saved rule cannot be read reports the error until the rule is fixed", and in the app: the sidebar row of "Rent" with `amount<-1,000` shows the warning symbol, and with `amount<-1000` it shows none.
+- [x] 1.22 A saved rule that cannot be read is marked. Verified by CategorizerTests "A category whose saved rule cannot be read reports the error until the rule is fixed", and in the app: the sidebar row of "Rent" with `amount<-1,000` shows the warning symbol, and with `amount<-1000` it shows none. A group has no rule and shows no mark, even with a saved rule from a migration. Verified by CategorizerTests "A category group has no rule, so it shows no mark, takes no transaction, and leaves the transaction to a category below it", and in the app: the group "Living" with `amount<-1,000` shows no warning symbol.
+
+- [x] 1.23 A group has no rule. Verified by CategorizerTests "A category group has no rule, so it shows no mark, takes no transaction, and leaves the transaction to a category below it". Pending bookings run the same categorizer, verified by ReconcileTests "The rules run again on a booked row".
 
 ## 2. Changes to the first build
 

@@ -671,6 +671,67 @@ struct MoneyMoneyMigrationTests {
 		#expect(q.notes.contains { $0.contains("no categorization rules") })
 	}
 
+	@Test("A group rule is named in the report, with or without a rule on its child")
+	func groupRules() throws {
+		var noRules = categories
+		for i in noRules.indices { noRules[i]["rules"] = "" }
+		let housing: [[String: Any]] = [
+			["uuid": "C4", "name": "Wohnen", "group": true, "default": false, "indentation": 0, "currency": "EUR", "rules": "amount<-1000"],
+			["uuid": "C5", "name": "Miete", "group": false, "default": false, "indentation": 1, "currency": "EUR", "rules": "\"Miete\""],
+		]
+		let r = try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(accounts), categories: try plist(noRules + housing), transactions: try plist(transactions), into: Ledger())
+		#expect(r.categories.first { $0.name == "Wohnen" }?.rule == "")
+		#expect(r.categories.first { $0.name == "Miete" }?.rule == "\"Miete\"")
+		#expect(r.categories.filter { !$0.rule.isEmpty }.count == 1)
+		#expect(r.notes.filter { $0.contains("The rule of the group") } == ["The rule of the group \"Wohnen\" was not taken over, because a group holds no transactions. Move it to a category below the group."])
+		#expect(!r.notes.contains { $0.contains("no categorization rules") })
+
+		let s = try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(accounts), categories: try plist(noRules + [housing[0]]), transactions: try plist(transactions), into: Ledger())
+		#expect(s.categories.first { $0.name == "Wohnen" }?.rule == "")
+		#expect(s.categories.filter { !$0.rule.isEmpty }.count == 0)
+		#expect(s.notes.filter { $0.contains("The rule of the group") } == ["The rule of the group \"Wohnen\" was not taken over, because a group holds no transactions. Move it to a category below the group."])
+		#expect(!s.notes.contains { $0.contains("no categorization rules") })
+
+		let repeated = try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(accounts), categories: try plist(noRules + housing), transactions: try plist(transactions), into: Ledger(categories: r.categories))
+		#expect(repeated.notes.filter { $0.contains("The rule of the group") } == ["The rule of the group \"Wohnen\" was not taken over, because a group holds no transactions. Move it to a category below the group."])
+	}
+
+	@Test("An unchanged repeat migration offers the report of a stored group rule")
+	func unchangedGroupRuleReport() throws {
+		var exported = categories
+		exported[0]["rules"] = "amount<-1000"
+		let first = try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(accounts), categories: try plist(exported), transactions: try plist(transactions), into: Ledger())
+		#expect(first.review(in: Ledger()) == .importChanges)
+		var stored = first.categories
+		stored[0].rule = "amount<-1000"
+		let ledger = Ledger(groups: first.groups, accounts: first.accounts, categories: stored, transactions: first.transactions)
+		let repeated = try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(accounts), categories: try plist(exported), transactions: try plist(transactions), into: ledger)
+		let notice = "The rule of the group \"Household\" was not taken over, because a group holds no transactions. Move it to a category below the group."
+		#expect(repeated.isEmpty)
+		#expect(repeated.notes.contains(notice))
+		guard case let .report(report) = repeated.review(in: ledger) else {
+			Issue.record("An unchanged migration with notes must offer the report")
+			return
+		}
+		#expect(report.notes.contains(notice))
+		#expect(report.text().contains(notice))
+		#expect(report.rows.map(\.sourceTransactions) == [3, 1, 0])
+		#expect(report.rows.allSatisfy { $0.matches })
+		var withoutNotes = repeated
+		withoutNotes.notes = []
+		#expect(withoutNotes.review(in: ledger) == .nothingNew)
+	}
+
+	@Test("A rule of the default category does not count as an exported categorization rule")
+	func defaultCategoryRule() throws {
+		var onlyDefault = categories
+		for i in onlyDefault.indices { onlyDefault[i]["rules"] = (onlyDefault[i]["default"] as? Bool) == true ? "amount<-1000" : "" }
+		let p = try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(accounts), categories: try plist(onlyDefault), transactions: try plist(transactions), into: Ledger())
+		#expect(p.categories.filter { !$0.rule.isEmpty }.count == 0)
+		#expect(p.notes.contains("The export contains no categorization rules. Copy them from the category settings of MoneyMoney into the category settings of Moneten."))
+		#expect(!p.notes.contains { $0.contains("The rule of the group") })
+	}
+
 	func plan(rules: [String: String]) throws -> MoneyMoneyMigration.Plan {
 		var items: [[String: Any]] = rules.keys.sorted().enumerated().map { i, name in
 			["uuid": "R\(i)", "name": name, "group": false, "default": false, "indentation": 0, "currency": "EUR", "rules": rules[name]!]
