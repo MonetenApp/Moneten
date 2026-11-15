@@ -63,7 +63,8 @@ struct AppCommands: Commands {
 	let model: AppModel
 	@Environment(\.openWindow) private var openWindow
 
-	var unlocked: Bool { model.phase == .unlocked }
+	/// A rule run keeps the category settings open, so no command may open another sheet in its place.
+	var unlocked: Bool { model.phase == .unlocked && model.ruleProgress == nil }
 
 	var body: some Commands {
 		CommandGroup(after: .appSettings) {
@@ -74,7 +75,7 @@ struct AppCommands: Commands {
 			.disabled(!unlocked)
 			Button("Lock Moneten") { model.lock() }
 				.keyboardShortcut("l", modifiers: [.command, .control])
-				.disabled(!unlocked || !model.hasPassword)
+				.disabled(model.phase != .unlocked || !model.hasPassword)
 		}
 		CommandGroup(replacing: .newItem) {
 			Button("Import from MoneyMoney...") { model.sheet = .migration }
