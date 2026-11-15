@@ -221,22 +221,25 @@ extension ReconcileTests {
 		}
 	}
 
-	@Test("A live source-ID row wins over historical tombstones", arguments: [false, true])
-	func gate3LiveSourceBeforeTombstone(pendingTombstone: Bool) {
+	@Test("A live source-ID row wins over historical tombstones", arguments: [false, true], [false, true])
+	func gate3LiveSourceBeforeTombstone(pendingTombstone: Bool, pendingEcho: Bool) {
 		var old = stored(rent(1, purpose: "OLD", pending: pendingTombstone))
 		old.sourceID = "BANK-X"
 		var live = stored(rent(2, purpose: "OLD", pending: false))
 		live.sourceID = "BANK-X"
 		var corrected = rent(1, purpose: "CORRECTED", pending: false)
 		corrected.sourceID = "BANK-X"
+		var echo = fresh(old)
+		echo.isPending = true
+		echo.createdAt = Date(timeIntervalSince1970: 0)
 		let other = stored(row(3, -1_200, "Other", "OTHER", month: 12, sourceID: "BANK-Y"))
 		var oldOther = rent(4)
 		oldOther.sourceID = "BANK-Z"
 		for stored in permutations([live, other]) {
 			for deleted in permutations([DeletedTransaction(old, deletedAt: now), DeletedTransaction(oldOther, deletedAt: now)]) {
-				for delivered in permutations([corrected, fresh(other)]) {
+				for delivered in permutations([corrected, fresh(other)] + (pendingEcho ? [echo] : [])) {
 					let r = merge(refresh(delivered), stored: stored, deleted: deleted, at: noon(20, month: 11))
-					#expect(r.added == [] && r.skipped == 2)
+					#expect(r.added == [] && r.skipped == (pendingEcho ? 3 : 2))
 					#expect(r.updated.map(\.id) == [live.id])
 					#expect(pendingSummary(history(stored, after: r)) == ["20261201 -80000 false true false CORRECTED", "20261203 -1200 false true false OTHER"])
 				}

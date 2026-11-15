@@ -712,6 +712,7 @@ The app SHALL pair delivered pending transactions one to one by source ID, then 
 - **WHEN** the bank corrects the booked rent to 1 December
 - **THEN** the live row is updated and one booked payment of -800,00 € remains
 - **AND** a live source-ID partner also wins over a booked tombstone with that source ID
+- **AND** an accompanying pending echo uses the tombstone without consuming the live booked correction
 
 #### Scenario: A source ID wins before a shared reference
 
