@@ -32,9 +32,9 @@ struct ReconcileTests {
 	}
 
 	func merge(_ delivery: Delivery, into account: Account? = nil, stored: [Transaction] = [], deleted: [DeletedTransaction] = [],
-		categories: [Domain.Category] = []) -> Reconciliation {
+		categories: [Domain.Category] = [], at time: Date? = nil) -> Reconciliation {
 		let rules = Categorizer(ledger: Ledger(accounts: [giro, savings], categories: categories))
-		return reconcile(delivery, into: account ?? giro, stored: stored, deleted: deleted, rules: rules, now: now)
+		return reconcile(delivery, into: account ?? giro, stored: stored, deleted: deleted, rules: rules, now: time ?? now)
 	}
 
 	func history(_ stored: [Transaction], after r: Reconciliation) -> [Transaction] {
@@ -578,5 +578,103 @@ struct ReconcileTests {
 		let delivered = [row(10, -2_000, "Kiosk"), dollars].map { var t = $0; t.accountID = bankGiro.id; return t }
 		let r = merge(refresh(delivered, balance: Money(minorUnits: 10_000, currency: "EUR")), into: bankGiro)
 		#expect(r.account?.initialBalanceMinor == 12_000)
+	}
+
+	/// Noon of a day in the current time zone, so that `Day(now)` gives that day.
+	func noon(_ d: Int, month: Int) -> Date {
+		Calendar.current.date(from: DateComponents(year: 2026, month: month, day: d, hour: 12))!
+	}
+
+	func rent(_ d: Int, month: Int = 12, purpose: String = "Miete Dezember", pending: Bool = true) -> Transaction {
+		row(d, -80_000, "Vermieter A", purpose, month: month, pending: pending, iban: "DE02120300000000202051")
+	}
+
+	@Test("A future pending row from a file survives a refresh")
+	func futureFileRowSurvives() {
+		let fileRow = rent(1)
+		#expect(merge(refresh([]), stored: [fileRow], at: noon(20, month: 11)).dropped == [])
+		#expect(merge(refresh([]), stored: [fileRow], at: noon(1, month: 12)).dropped == [])
+		#expect(merge(refresh([]), stored: [fileRow], at: noon(5, month: 12)).dropped == [fileRow.id])
+		let fetchedRow = stored(rent(1))
+		#expect(merge(refresh([]), stored: [fetchedRow], at: noon(20, month: 11)).dropped == [fetchedRow.id])
+	}
+
+	@Test("The bank reports the scheduled rent as pending")
+	func bankReportsScheduledRent() {
+		let bankPurpose = "MIETE DEZEMBER WHG 3 DAUERAUFTRAG"
+		let fileRow = rent(1)
+		let first = merge(refresh([rent(1, purpose: bankPurpose)]), stored: [fileRow], at: noon(20, month: 11))
+		#expect(first.added == [])
+		#expect(first.dropped == [])
+		#expect(first.skipped == 1)
+		#expect(first.updated.map(\.id) == [fileRow.id])
+		#expect(first.updated.map(\.isPending) == [true])
+		#expect(first.updated.map(\.purpose) == [bankPurpose])
+		#expect(first.updated.map(\.isFetched) == [true])
+		let afterFirst = history([fileRow], after: first)
+		let repeated = merge(refresh([rent(1, purpose: bankPurpose)]), stored: afterFirst, at: noon(21, month: 11))
+		#expect(repeated.added == [] && repeated.updated == [] && repeated.dropped == [])
+
+		let second = merge(refresh([rent(2, purpose: bankPurpose, pending: false)]), stored: afterFirst, at: noon(2, month: 12))
+		#expect(second.booked.map(\.id) == [fileRow.id])
+		#expect(second.booked.map(\.needsReview) == [false])
+		#expect(second.added == [])
+		#expect(second.marked == [])
+		#expect(second.dropped == [])
+
+		let laterFileRow = rent(3)
+		let both = merge(refresh([rent(1, purpose: bankPurpose)]), stored: [fileRow, laterFileRow], at: noon(20, month: 11))
+		#expect(both.updated.map(\.id) == [fileRow.id])
+		#expect(both.dropped == [laterFileRow.id])
+	}
+
+	@Test("The bank reported the scheduled rent before the import")
+	func bankReportedRentBeforeImport() {
+		let bankPurpose = "MIETE DEZEMBER WHG 3 DAUERAUFTRAG"
+		let fileRow = rent(1)
+		let bankRow = stored(rent(1, purpose: bankPurpose))
+		let first = merge(refresh([fresh(bankRow)]), stored: [fileRow, bankRow], at: noon(20, month: 11))
+		#expect(first.dropped == [fileRow.id])
+		#expect(first.added == [])
+		#expect(first.skipped == 1)
+		let afterFirst = history([fileRow, bankRow], after: first)
+
+		let second = merge(refresh([rent(2, purpose: bankPurpose, pending: false)]), stored: afterFirst, at: noon(2, month: 12))
+		#expect(second.booked.map(\.id) == [bankRow.id])
+		#expect(second.added == [])
+		#expect(second.marked == [])
+		#expect(second.dropped == [])
+
+		let deleted = merge(refresh([fresh(bankRow)]), stored: [fileRow], deleted: [DeletedTransaction(bankRow, deletedAt: now)], at: noon(20, month: 11))
+		#expect(deleted.added == [])
+		#expect(deleted.updated == [])
+		#expect(deleted.dropped == [])
+		#expect(deleted.skipped == 1)
+	}
+
+	@Test("A bank row that is the version of one future file row does not remove a second one")
+	func weeklyFileRows() {
+		let first = rent(1)
+		let second = rent(8)
+		let r = merge(refresh([fresh(first)]), stored: [first, second], at: noon(20, month: 11))
+		#expect(r.dropped == [])
+		#expect(r.updated.map(\.id) == [first.id])
+		#expect(r.updated.map(\.isFetched) == [true])
+		#expect(r.added == [])
+		let again = merge(refresh([fresh(first)]), stored: history([first, second], after: r), at: noon(21, month: 11))
+		#expect(again.dropped == [])
+		#expect(again.updated == [])
+	}
+
+	@Test("A stored bank row that moves to the day of a future file row removes the file row in the same refresh")
+	func movedBankRow() {
+		let fileRow = rent(1)
+		let bankRow = stored(row(29, -80_000, "Vermieter A", "MIETE DEZEMBER", pending: true, sourceID: "bank-7", iban: "DE02120300000000202051"))
+		let moved = row(1, -80_000, "Vermieter A", "MIETE DEZEMBER", month: 12, pending: true, sourceID: "bank-7", iban: "DE02120300000000202051")
+		let first = merge(refresh([moved]), stored: [fileRow, bankRow], at: noon(20, month: 11))
+		#expect(first.dropped == [fileRow.id])
+		let again = merge(refresh([moved]), stored: history([fileRow, bankRow], after: first), at: noon(20, month: 11))
+		#expect(again.dropped == [])
+		#expect(again.updated == [])
 	}
 }
