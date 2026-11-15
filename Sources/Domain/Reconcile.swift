@@ -428,7 +428,7 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 				if let id = identity.sourceID, incoming[i].sourceID != id,
 					(bookedByID[id] ?? []).contains(where: { incoming[$0].agrees(with: identity) }) { continue }
 			}
-			guard incoming[i].agrees(with: identity), matches[i].amount == match.amount else { continue }
+			guard incoming[i].agrees(with: identity) else { continue }
 			let distance = abs(matches[i].day - match.day)
 			let sourceAgrees = t.sourceID != nil && t.sourceID == identity.sourceID
 			let sameDay = t.bookingDate == identity.key.day
@@ -443,6 +443,7 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 					evidence: sourceAgrees || (!t.isPending && identity.isPending) ? .sourceID : .fingerprint))
 				continue
 			}
+			guard matches[i].amount == match.amount else { continue }
 			let sameReference = incoming[i].endToEnd != nil && incoming[i].endToEnd == identity.endToEnd
 			if matches[i].counterpartyConflicts(with: match) { continue }
 			let step = Identity.steps.firstIndex { $0.accepts(incoming[i], identity) }
@@ -496,11 +497,9 @@ struct Identity {
 	/// same text in one line have the same key.
 	struct Key: Hashable {
 		// The synthesized Hashable conformance reads these properties, which Periphery cannot see.
-		// periphery:ignore
 		let day: Day
 		// periphery:ignore
 		let amount: Int64
-		// periphery:ignore
 		let purpose: String
 	}
 
