@@ -220,7 +220,8 @@ poll "^ext access Check Bank state=failed" extstate
 send extrun "$WORK/Check.lua|Result|"
 poll "^ext result" state
 send extrun "$WORK/Check.lua|Fail|"
-poll "^ext error=" state
+# Only the name of the error type, such as "ext error=ScriptError", and nothing after it.
+poll "^ext error=[A-Za-z_.]*$" state
 poll "^migrationfailure: unknown failure$" migrationfailure "$MIGRATION_UNKNOWN"
 send quit
 
