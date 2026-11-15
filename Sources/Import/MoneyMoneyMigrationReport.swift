@@ -71,21 +71,31 @@ extension MoneyMoneyMigration.Plan {
 		let rules = Categorizer(ledger: ledger)
 		let byAccount = Dictionary(grouping: ledger.transactions, by: \.accountID)
 		let byTarget = Dictionary(grouping: sources, by: \.accountID)
+		var missingRows: Set<UUID> = []
+		var goneByTarget: [UUID: Int] = [:]
 		var mergeNotes: [String] = []
 		for source in sources {
 			let merged = byTarget[source.accountID] ?? []
-			guard merged.count > 1, merged.first?.sourceID == source.sourceID, let account = ledger.account(source.accountID) else { continue }
-			let names = merged.map { "\"\($0.name)\"" }.joined(separator: ", ")
-			mergeNotes.append("\(merged.count) source accounts, \(names), were merged into \"\(account.name)\". Each line shows the source balance; only transactions are compared.")
+			guard merged.first?.sourceID == source.sourceID, let account = ledger.account(source.accountID) else { continue }
+			let delivered = merged.flatMap(\.rows)
+			let stored = byAccount[account.id] ?? []
+			missingRows.formUnion(reconcile(.migration(delivered), into: account, stored: stored, deleted: [], rules: rules, now: Date()).added.map(\.id))
+			let exported = Set(delivered.compactMap(\.sourceID))
+			let gone = stored.filter { MoneyMoneyMigration.isOfSource($0.sourceID) && !exported.contains($0.sourceID!) }.count
+			goneByTarget[account.id] = gone
+			if merged.count > 1 {
+				let names = merged.map { "\"\($0.name)\"" }.joined(separator: ", ")
+				var note = "\(merged.count) source accounts, \(names), were merged into \"\(account.name)\". Each line shows the source balance; only transactions are compared."
+				if gone > 0 { note += " The target also holds \(gone) migrated transaction\(gone == 1 ? "" : "s") no longer in the source export." }
+				mergeNotes.append(note)
+			}
 		}
 		let rows = sources.compactMap { source -> MoneyMoneyMigration.Report.Row? in
 			guard let account = ledger.account(source.accountID) else { return nil }
 			let stored = byAccount[account.id] ?? []
-			let missing = reconcile(.migration(source.rows), into: account, stored: stored, deleted: [], rules: rules, now: Date()).added.count
-			// A row that the source deleted after an earlier run stays in the app, so the account holds one more.
+			let missing = source.rows.filter { missingRows.contains($0.id) }.count
 			let shared = (byTarget[account.id]?.count ?? 0) > 1
-			let exported = Set(source.rows.compactMap(\.sourceID))
-			let gone = shared ? 0 : stored.filter { MoneyMoneyMigration.isOfSource($0.sourceID) && !exported.contains($0.sourceID!) }.count
+			let gone = shared ? 0 : goneByTarget[account.id, default: 0]
 			func sum(_ rows: [Transaction]) -> Int64 {
 				rows.reduce(0) { !$1.isPending && $1.currency == account.currency ? $0 + $1.amountMinor : $0 }
 			}
