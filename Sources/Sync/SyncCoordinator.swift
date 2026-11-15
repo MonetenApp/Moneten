@@ -126,8 +126,9 @@ public final class SyncCoordinator {
 		endRunIfIdle()
 	}
 
-	/// The login of an access changed, such as by "Edit Login Data..." while it held the access: each refresh
-	/// of the access that waits runs with the new login and state, not with those of the moment it was asked for.
+	/// The login or the state of an access changed while work of `exclusively(for:_:)` held it, such as "Edit
+	/// Login Data..." or "Look for New Accounts...": each refresh of the access that waits runs with the new
+	/// login and state, not with those of the moment it was asked for.
 	public func update(_ access: Access, state: AccessState?) {
 		func updated(_ job: Job) -> Job {
 			var job = job

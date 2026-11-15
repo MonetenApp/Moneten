@@ -314,7 +314,10 @@ final class AccountSetup {
 					try await model.sync.exclusively(for: access.id) {
 						let list = try await model.fints.listAccounts(of: access, state: try model.store?.state(of: access.id), session: session)
 						try Task.checkCancellation()
-						if let state = list.state { try model.store?.recordRefresh(of: access.id, state: state, accounts: []) }
+						if let state = list.state {
+							try model.store?.recordRefresh(of: access.id, state: state, accounts: [])
+							model.sync.update(access, state: state)
+						}
 						model.bankNotices.add(list.notices, from: access.bankName)
 						return list.accounts.map { $0.account(access: access, bank: bank, group: groupID) }
 					}
