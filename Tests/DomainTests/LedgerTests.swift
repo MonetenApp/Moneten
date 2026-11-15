@@ -227,6 +227,17 @@ struct LedgerTests {
 		#expect(l.sum(ofCategory: groceries, in: range).minorUnits == -320)
 	}
 
+	@Test("The sum of the list and its pending sum leave out a pending row marked for review")
+	func listSums() {
+		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
+		func row(_ minor: Int64, pending: Bool, review: Bool) -> Transaction {
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 12), amountMinor: minor, name: "Bäckerei Gutbrot", isPending: pending, needsReview: review)
+		}
+		let rows = [row(-320, pending: true, review: true), row(-320, pending: true, review: true), row(-320, pending: false, review: true), row(-1_000, pending: true, review: false)]
+		#expect(MoneySums(counting: rows).amounts == [Money(minorUnits: -1_320, currency: "EUR")])
+		#expect(MoneySums(counting: rows.filter(\.isPending)).amounts == [Money(minorUnits: -1_000, currency: "EUR")])
+	}
+
 	@Test("A balance counts only the rows in the currency of the account")
 	func balanceInAccountCurrency() {
 		let wallet = Account(position: 0, name: "Wallet", kind: .giro, source: .offline)
