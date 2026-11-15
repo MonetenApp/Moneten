@@ -145,7 +145,7 @@ struct OpeningTests {
 		#expect(throws: Vault.Failure.repairFailed(folder.databaseFile.path)) { try vault.open(password: Self.password) }
 		#expect(try Data(contentsOf: folder.databaseFile) == damaged)
 		#expect(try vault.state() == .password)
-		#expect(!(try files().contains("Moneten-Repair.sqlite")))
+		#expect(try files() == ["Moneten.sqlite", "RepairAtNextStart"])
 	}
 
 	@Test("A backup that the user put in place of a damaged database needs no repair")
@@ -195,6 +195,18 @@ struct OpeningTests {
 		try fm.setAttributes([.posixPermissions: 0o500], ofItemAtPath: folder.databaseFolder.path)
 		defer { try? fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: folder.databaseFolder.path) }
 		#expect(throws: Vault.Failure.folderNotWritable(folder.databaseFolder.path)) { try vault.state() }
+	}
+
+	@Test("Creating a database where one exists changes nothing")
+	func createKeepsExisting() throws {
+		let vault = Vault(folder: folder)
+		try vault.create(password: Self.password, starterCategories: []).close()
+		let before = try Data(contentsOf: folder.databaseFile)
+		#expect(throws: Vault.Failure.databaseExists(folder.databaseFile.path)) { try vault.create(password: "ein-anderes-passwort", starterCategories: []) }
+		#expect(try Data(contentsOf: folder.databaseFile) == before)
+		try FileManager.default.removeItem(at: folder.databaseFile)
+		try Data("old".utf8).write(to: vault.automaticBackup)
+		#expect(throws: Vault.Failure.fileIsMissing(folder.databaseFile.path)) { try vault.create(password: Self.password, starterCategories: []) }
 	}
 
 	@Test("A failure to open names the automatic backup copy and how to restore it")

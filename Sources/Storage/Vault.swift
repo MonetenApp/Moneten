@@ -26,6 +26,8 @@ public struct Vault: Sendable {
 		case newerVersion(needed: String?, running: String)
 		case fileIsEmpty(String)
 		case fileIsMissing(String)
+		/// A new database would replace the one at this path.
+		case databaseExists(String)
 		case pathIsFolder(String)
 		case writeProtected(String)
 		case folderNotWritable(String)
@@ -60,6 +62,7 @@ public struct Vault: Sendable {
 			case let .fileIsEmpty(path): "The database file is empty. Please replace the database file with a backup copy.\n\n\(path)"
 			case let .fileIsMissing(path):
 				"The database folder holds files but no database file. Moneten does not start a new database in their place. Please put the database file back or replace it with a backup copy.\n\n\(path)"
+			case let .databaseExists(path): "A database already exists. Moneten does not create a new one in its place.\n\n\(path)"
 			case let .pathIsFolder(path):
 				"The database file should be a file and not a directory. Move the folder away and put the database file in its place.\n\n\(path)"
 			case let .writeProtected(path):
@@ -69,7 +72,7 @@ public struct Vault: Sendable {
 			case let .damaged(path):
 				"The database file is damaged. Moneten keeps the file and tries to repair it at the next start. Quit Moneten and start it again.\n\n\(path)"
 			case let .repairFailed(path):
-				"The database file is damaged and could not be repaired. Please replace the database file with a backup copy. A copy of the damaged file stays in the database folder.\n\n\(path)"
+				"The database file is damaged and could not be repaired. Please replace the database file with a backup copy.\n\n\(path)"
 			case let .upgradeFailed(detail):
 				"Could not upgrade the database. The database is unchanged and still opens with the earlier version of Moneten.\n\n\(detail)"
 			case let .unreadable(detail): "Could not open database.\n\n\(detail)"
@@ -136,7 +139,9 @@ public struct Vault: Sendable {
 	/// Creates a new database. Without a password, a random key in the Keychain protects it.
 	/// Keychain entries of a database that was in this folder before, such as one the user renamed
 	/// after a lost password, are removed first.
+	/// A database folder that holds files is never touched, so a stale call cannot replace a database.
 	public func create(password: String?, starterCategories: [Domain.Category]) throws -> Store {
+		guard try state() == .empty else { throw Failure.databaseExists(folder.databaseFile.path) }
 		try folder.createFolders()
 		try keychain { try passwordKeychain.delete(account: folder.keychainAccount) }
 		try keychain { try keyKeychain.delete(account: folder.keychainAccount) }
@@ -357,7 +362,7 @@ public struct Vault: Sendable {
 
 	/// Repairs a database whose integrity check failed at the last open. A file that passes the check now,
 	/// such as a backup the user put in place, needs no repair. Otherwise the damaged file stays as a copy,
-	/// and the readable tables go into a new file that replaces it.
+	/// and the readable tables go into a new file that replaces it. A failed repair keeps the damaged file in place.
 	private func repair(_ queue: DatabaseQueue, key: String) throws -> DatabaseQueue {
 		let fm = FileManager.default
 		if try isIntact(queue) {
@@ -379,7 +384,9 @@ public struct Vault: Sendable {
 			_ = try fm.replaceItemAt(folder.databaseFile, withItemAt: repaired)
 			try fm.removeItem(at: repairMarker)
 		} catch {
+			// The damaged file stays in place, so a copy of it would only grow the folder at every start.
 			try? fm.removeItem(at: repaired)
+			try? fm.removeItem(at: damaged)
 			throw Failure.repairFailed(folder.databaseFile.path)
 		}
 		return try connect(folder.databaseFile, key: key)
