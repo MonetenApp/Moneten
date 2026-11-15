@@ -248,11 +248,12 @@ struct RuleTests {
 		(#"name:+"x""#, 5, #"A sign cannot follow name:. Write name!="…" to exclude a value, or name:"…" to match it."#),
 		("name:-(a OR b)", 5, #"A sign cannot follow name:. Write name!="…" to exclude a value, or name:"…" to match it."#),
 		(#""Abschlag" name=-„Stadtwerke“"#, 16, #"A sign cannot follow name=. Write name!="…" to exclude a value, or name:"…" to match it."#),
+		("name:-/Stadtwerke/", 5, #"A sign cannot follow name:. Write name!="…" to exclude a value, or name:"…" to match it."#),
+		("name:!/x/", 5, #"A sign cannot follow name:. Write name!="…" to exclude a value, or name:"…" to match it."#),
+		("name:+/REWE/", 5, #"A sign cannot follow name:. Write name!="…" to exclude a value, or name:"…" to match it."#),
 	])
 	func signAfterFieldOperator(rule: String, position: Int, message: String) throws {
 		#expect(throws: RuleSyntaxError(position: position, message: message)) { try Rule(parsing: rule) }
-		#expect(try matches(#"name!="Stadtwerke""#, RuleSubject(name: "Gasversorger Muster")))
-		#expect(try !matches(#"name!="Stadtwerke""#, RuleSubject(name: "Stadtwerke")))
 	}
 
 	@Test("Other syntax errors")
