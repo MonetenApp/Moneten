@@ -34,6 +34,8 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [x] 1.28 Future pending transactions from a file. Verified by ReconcileTests "A future pending row from a file survives a refresh" and "One delivered rent row takes over one of two identical file rows", including a repeated refresh that keeps -160,000 minor units. FileImportTests verifies FUTR through the real parser.
 - [x] 1.29 The bank's version of a future pending transaction from a file. ReconcileTests verifies takeover, reversed weekly rows, closest-day choice, and stable ties. FileImportTests verifies the 8 December entry before 1 December, and a daily import after takeover.
 
+- [x] 1.30 Pending file transactions already stored. ReconcileTests verifies same-day duplicate skipping, one-to-one counts, user fields, and the different-day exception. FileImportTests verifies the daily FUTR entry after a bank takeover and after the bank row was stored first.
+
 ## 2. Changes to the first build
 
 - [x] 2.1 Write FileImportTests tests for the scenarios "Future entry" and "Entry for information": a FUTR entry is pending on its booking date, and an INFO entry is left out. Write the ReconcileTests test "Pending entry booked by a later file": a file with a PDNG row of -89,00 € to "Stadtwerke Musterstadt" on 1 November 2026, then a file with the booked row of -89,00 € to "Stadtwerke Musterstadt", gives one booked transaction. Verified by FileImportTests "An entry for information is left out, and a future entry is pending on its booking date" and ReconcileTests "Pending entry booked by a later file".
@@ -51,7 +53,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [x] 2.13 Preserve user fields when a pending file row is skipped. ReconcileTests "A skipped pending file row fills only empty user fields of the stored row" checks nil and empty comments, "Shared rent", the manual "Housing" category and checkmark, and preserves "Bank note", "Bills", and an existing checkmark.
 - [x] 2.14 Start the `refresh-drops-shown-pending` PerfCheck refresh two days ago, so it still covers the rows dated yesterday if midnight falls between setup and refresh. Verified by `scripts/perf-check.sh` in gate round 1.
 - [ ] 2.15 Decide whether pending import matching may span seven days, closest day first. Same-day matching remains built. ReconcileTests "A pending file import on another day stays separate from the stored bank row" keeps 30 November and 1 December 2026 as two rows totaling -160,000 minor units.
-- [ ] 2.16 Gate round 2. Write failing tests for reversed stored order, nearest-day choice, ties, repeated refreshes, and import then refresh then import. Change the one-to-one matching until they pass. The real XML test also covers refresh then import. Record the before and after evidence, repository checks, and both independent reviews in PR #203.
+- [x] 2.16 Gate round 2. The tests for reversed stored order, nearest-day choice, repeated refreshes, import then refresh then import, and skipped-row user fields fail before the fix and pass after it. The tie case protects stored order. The real XML test also covers refresh then import. All 87 targeted tests pass. PR #203 records the repository checks and independent reviews.
 
 ## 3. Integration
 
