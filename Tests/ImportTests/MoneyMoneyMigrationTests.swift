@@ -854,6 +854,21 @@ struct MoneyMoneyMigrationTests {
 		#expect(report.text().contains(notice))
 	}
 
+	@Test("A repeat does not warn about an edited rule or a category matched only by name", arguments: ["stored", "exported", "sourceID"])
+	func changedRuleWithoutRepeatNote(change: String) throws {
+		var exported: [[String: Any]] = [["uuid": "R0", "name": "Review", "rules": "true OR \"Smoothie\""]]
+		let migration = MoneyMoneyMigration(calendar: calendar)
+		let first = try migration.plan(accounts: try plist(accounts), categories: try plist(exported), transactions: try plist(transactions), into: Ledger())
+		var stored = first.categories
+		if change == "stored" { stored[0].rule = "\"true\" \"fruits\"" }
+		if change == "exported" { exported[0]["rules"] = "FALSE" }
+		if change == "sourceID" { stored[0].sourceID = nil }
+		let ledger = Ledger(groups: first.groups, accounts: first.accounts, categories: stored, transactions: first.transactions)
+		let repeated = try migration.plan(accounts: try plist(accounts), categories: try plist(exported), transactions: try plist(transactions), into: ledger)
+		#expect(repeated.isEmpty)
+		#expect(!repeated.notes.contains { $0.hasPrefix("The rule of \"Review\"") })
+	}
+
 	@Test("True and false constants are named in their original case without changing the rule", arguments: [
 		("true OR \"Smoothie\"", "true", 1, "every transaction"),
 		("FALSE", "FALSE", 1, "no transaction"),

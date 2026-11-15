@@ -135,7 +135,14 @@ public struct MoneyMoneyMigration: Sendable {
 		let accountNumbers = Set(rawAccounts.filter { ($0["uuid"] as? String).flatMap { accountMap[$0] } != nil }
 			.flatMap { [Self.string($0["accountNumber"]), Self.string($0["iban"])] }.compactMap { $0 }.map(TextFolding.accountKey)
 			+ rows.compactMap(\.counterpartyIBAN).map(TextFolding.accountKey))
-		for c in plan.categories {
+		let exportedRules = rawCategories.reduce(into: [String: String]()) { rules, item in
+			if let source = item["uuid"] as? String { rules[source] = Self.string(item["rules"]) ?? "" }
+		}
+		let unchangedCategories = ledger.categories.filter { c in
+			guard let source = c.sourceID else { return false }
+			return exportedRules[source] == c.rule
+		}
+		for c in plan.categories + unchangedCategories {
 			if let error = c.ruleError {
 				plan.notes.append("The rule of \"\(c.name)\" cannot be read at position \(error.position + 1): \(error.message) \"\(c.name)\" receives no transaction through its rule until you correct the rule in its settings.")
 			}
@@ -168,8 +175,7 @@ public struct MoneyMoneyMigration: Sendable {
 			switch entry.token {
 			case let .word(term), let .quoted(term):
 				let number = TextFolding.accountKey(term)
-				let iban = (15...34).contains(number.count) && number.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber) }
-					&& number.prefix(2).allSatisfy(\.isLetter) && number.dropFirst(2).prefix(2).allSatisfy(\.isNumber)
+				let iban = !number.hasPrefix("RF") && Self.isIBAN(number)
 				let knownNumber = !number.isEmpty && number.allSatisfy { $0.isASCII && $0.isNumber } && accountNumbers.contains(number)
 				if iban || knownNumber {
 					notes.append("\(prefix) has an account term at position \(entry.position + 1) that does not search account fields. Use remote_account:\(number) to search the account of the counterparty.")
