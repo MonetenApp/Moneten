@@ -250,6 +250,20 @@ struct AllDataTests {
 		#expect(try target.exportAllData(at: exportedAt) == before)
 	}
 
+	@Test("Overflowing days are refused before date parsing", arguments: ["bookingDate", "valueDate", "day"])
+	func boundedDays(_ field: String) throws {
+		var json = try JSONSerialization.jsonObject(with: try filledStore().exportAllData(at: exportedAt).json()) as! [String: Any]
+		let key = field == "day" ? "portfolioValues" : "transactions"
+		var rows = json[key] as! [[String: Any]]
+		rows[0][field] = "01-01-9223372036854775807"
+		json[key] = rows
+		let target = try emptyStore("overflow")
+		#expect(throws: AllData.ReadError.damaged("at \(key)[0], \"01-01-9223372036854775807\" is not a day in the form yyyy-MM-dd")) {
+			try target.importAllData(try AllData(json: JSONSerialization.data(withJSONObject: json)))
+		}
+		#expect(try target.exportAllData(at: exportedAt) == AllData(exportedAt: exportedAt))
+	}
+
 	@Test("Every key of an export is described in docs/export-format.md")
 	func documented() throws {
 		let json = try JSONSerialization.jsonObject(with: try filledStore().exportAllData(at: exportedAt).json())
