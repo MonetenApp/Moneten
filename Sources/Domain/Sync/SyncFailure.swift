@@ -37,8 +37,8 @@ public enum SyncFailure: Error, Sendable, Equatable {
 	/// FinTS 9078: the bank does not know the product number of Moneten yet.
 	case notRegistered
 	/// The bank allows the user no TAN method for its FinTS server, so no login can succeed until the user
-	/// sets one up on the website of the bank.
-	case noTANMethod
+	/// sets one up on the website of the bank. The message is the answer of the bank that showed it.
+	case noTANMethod(BankMessage?)
 	/// The account was not fetched, because an earlier request of the same session failed.
 	case notFetched
 	/// Any other answer of the bank.
@@ -96,8 +96,8 @@ public enum SyncFailure: Error, Sendable, Equatable {
 	public var bankMessage: BankMessage? {
 		switch self {
 		case let .pinRejected(m), let .accessBlocked(m), let .tanRejected(m), let .bank(m): m
-		case let .approvalDeclined(m): m
-		case .needsUser, .loginRejected, .challengeExpired, .invalidChallenge, .notRegistered, .noTANMethod, .notFetched, .offline, .network, .unsupported, .notSaved: nil
+		case let .approvalDeclined(m), let .noTANMethod(m): m
+		case .needsUser, .loginRejected, .challengeExpired, .invalidChallenge, .notRegistered, .notFetched, .offline, .network, .unsupported, .notSaved: nil
 		}
 	}
 
@@ -137,8 +137,9 @@ public enum SyncFailure: Error, Sendable, Equatable {
 			"The bank responded with an invalid challenge."
 		case .notRegistered:
 			"The bank does not know Moneten yet. Banks take some weeks to accept a new app. Try again later."
-		case .noTANMethod:
-			"There are no available TAN methods. Set up a TAN method on the website of the bank, then choose “Edit Login Data...”."
+		case let .noTANMethod(m):
+			"There are no available TAN methods" + (m.map { ": \($0.text)" } ?? ".")
+				+ "\nSet up a TAN method on the website of the bank, then choose “Edit Login Data...”."
 		case .notFetched:
 			"Canceled because of the previous error."
 		case let .bank(m):

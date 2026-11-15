@@ -701,6 +701,10 @@ struct FinTSConnectorTests {
 		(#"{"type":"failed","code":"9340","text":"PIN ungültig"}"#, .pinRejected(BankMessage(code: "9340", text: "PIN ungültig"))),
 		(#"{"type":"failed","code":"9930","text":"PIN gesperrt"}"#, .accessBlocked(BankMessage(code: "9930", text: "PIN gesperrt"))),
 		(#"{"type":"failed","code":"9931","text":"Anmeldename oder PIN ist falsch"}"#, .pinRejected(BankMessage(code: "9931", text: "Anmeldename oder PIN ist falsch"))),
+		(#"{"type":"failed","code":"9931","text":"Teilnehmersperre durchgeführt, Entsperren nur durch Kreditinstitut"}"#,
+			.accessBlocked(BankMessage(code: "9931", text: "Teilnehmersperre durchgeführt, Entsperren nur durch Kreditinstitut"))),
+		(#"{"type":"ask","id":1,"kind":"pin","rejected":{"code":"9931","text":"Sperrung des Kontos nach 3 Fehlversuchen"}}"#,
+			.accessBlocked(BankMessage(code: "9931", text: "Sperrung des Kontos nach 3 Fehlversuchen"))),
 		(#"{"type":"failed","code":"9010","text":"Verarbeitung nicht möglich"}"#, .bank(BankMessage(code: "9010", text: "Verarbeitung nicht möglich"))),
 		(#"{"type":"failed","text":"Dialog abgebrochen"}"#, .bank(BankMessage(text: "Dialog abgebrochen"))),
 		(#"{"type":"failed","kind":"network","text":"Connection refused"}"#, .network("Connection refused")),
@@ -716,11 +720,14 @@ struct FinTSConnectorTests {
 		(#"{"type":"failed","code":"3931","text":"TAN-Generator gesperrt"}"#, .bank(BankMessage(code: "3931", text: "TAN-Generator gesperrt"))),
 		(#"{"type":"failed","code":"9941","text":"TAN ungültig"}"#, .tanRejected(BankMessage(code: "9941", text: "TAN ungültig"))),
 		(#"{"type":"failed","code":"9943","text":"TAN bereits verbraucht"}"#, .tanRejected(BankMessage(code: "9943", text: "TAN bereits verbraucht"))),
-		(#"{"type":"failed","code":"9951","text":"Zeitüberschreitung im Zwei-Schritt-Verfahren"}"#,
+		(#"{"type":"failed","code":"9948","text":"TAN-Prüfung fehlgeschlagen"}"#, .tanRejected(BankMessage(code: "9948", text: "TAN-Prüfung fehlgeschlagen"))),
+		(#"{"type":"failed","kind":"approvalDeclined","code":"9951","text":"Zeitüberschreitung im Zwei-Schritt-Verfahren"}"#,
 			.approvalDeclined(BankMessage(code: "9951", text: "Zeitüberschreitung im Zwei-Schritt-Verfahren"))),
+		(#"{"type":"failed","code":"9951","text":"Zeitüberschreitung im Zwei-Schritt-Verfahren"}"#, .bank(BankMessage(code: "9951", text: "Zeitüberschreitung im Zwei-Schritt-Verfahren"))),
 		(#"{"type":"failed","kind":"approvalDeclined","code":"9941","text":"Freigabe abgelehnt"}"#, .approvalDeclined(BankMessage(code: "9941", text: "Freigabe abgelehnt"))),
-		(#"{"type":"failed","kind":"noTANMethod","code":"9075","text":"There are no available TAN methods."}"#, .noTANMethod),
-		(#"{"type":"failed","code":"9955","text":"Ein-Schritt-TAN-Verfahren nicht zugelassen"}"#, .noTANMethod),
+		(#"{"type":"failed","kind":"noTANMethod","code":"9075","text":"Starke Kundenauthentifizierung notwendig"}"#,
+			.noTANMethod(BankMessage(code: "9075", text: "Starke Kundenauthentifizierung notwendig"))),
+		(#"{"type":"failed","code":"9955","text":"Ein-Schritt-TAN-Verfahren nicht zugelassen"}"#, .bank(BankMessage(code: "9955", text: "Ein-Schritt-TAN-Verfahren nicht zugelassen"))),
 	])
 	func errors(line: String, expected: SyncFailure) async throws {
 		let session = Session()
@@ -732,17 +739,31 @@ struct FinTSConnectorTests {
 	/// scripts/fake-fints-helper.sh, which a debug build runs in place of the helper, with the logins of its failures.
 	static let fakeHelper = URL(filePath: #filePath).deletingLastPathComponent().appending(path: "../../scripts/fake-fints-helper.sh").standardized
 
+	/// The fake helper without the wait of 3 seconds before it reports the declined approval. The app starts a helper with an
+	/// empty environment, so `env` sets the variable.
+	static let fakeConnector = FinTSConnector(helper: .init(executable: URL(filePath: "/usr/bin/env"),
+		arguments: ["MONETEN_FAKE_APPROVAL_SECONDS=0", "/bin/sh", fakeHelper.path]), productID: "TESTPRODUCT", version: "0.0.1")
+
+	static let blocked = SyncFailure.accessBlocked(BankMessage(code: "3938", text: "Ihr Zugang ist vorläufig gesperrt - Bitte PIN-Sperre aufheben."))
+
 	@Test("The fake helper of a debug build fails the refresh of each login of an error with that error", arguments: [
-		("gesperrt", SyncFailure.accessBlocked(BankMessage(code: "3938", text: "Ihr Zugang ist vorläufig gesperrt - Bitte PIN-Sperre aufheben."))),
-		("ohnetan", .noTANMethod),
+		("gesperrt", blocked),
+		("ohnetan", .noTANMethod(BankMessage(code: "9955", text: "Ein-Schritt-TAN-Verfahren nicht zugelassen"))),
 		("falschetan", .tanRejected(BankMessage(code: "9941", text: "TAN ungültig"))),
 		("abgelehnt", .approvalDeclined(BankMessage(code: "9941", text: "Freigabe abgelehnt"))),
 	])
 	func fakeHelper(login: String, expected: SyncFailure) async throws {
 		let access = Access(source: Self.access.source, bankName: "Musterbank", loginName: login)
-		let connector = FinTSConnector(helper: .init(executable: URL(filePath: "/bin/sh"), arguments: [Self.fakeHelper.path]), productID: "TESTPRODUCT", version: "0.0.1")
 		await #expect(throws: expected) {
-			_ = try await connector.refresh(RefreshRequest(access: access, accounts: [Self.giro]), Session())
+			_ = try await Self.fakeConnector.refresh(RefreshRequest(access: access, accounts: [Self.giro]), Session())
+		}
+	}
+
+	@Test("The fake helper of a debug build fails the setup login of a blocked access and lists no accounts")
+	func fakeHelperBlockedSetup() async throws {
+		let access = Access(source: Self.access.source, bankName: "Musterbank", loginName: "gesperrt")
+		await #expect(throws: Self.blocked) {
+			_ = try await Self.fakeConnector.listAccounts(of: access, state: nil, session: Session())
 		}
 	}
 

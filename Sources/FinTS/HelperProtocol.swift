@@ -188,10 +188,12 @@ struct Ask: Decodable {
 /// The codes are those of the FinTS return codes of the Deutsche Kreditwirtschaft
 /// (FinTS_Rueckmeldungscodes_2019-07-22): 9942 and 9340 a wrong PIN, 9930 a blocked PIN, 9933 a blocked
 /// access, 3938 an access that is blocked until the PIN block is lifted, 9941 and 9948 an invalid
-/// TAN, 9943 a TAN that was used before, and 9951 a two-step dialog that timed out. Sparkassen send 9931,
-/// "Sperrung des Kontos nach Fehlversuchen", also for a wrong login name or PIN, so 9931 counts as a wrong
-/// PIN. 3931 names a blocked PIN or a TAN generator that needs a synchronization, so it keeps the text of the
-/// bank. 9955, "Ein-Schritt-TAN-Verfahren nicht zugelassen", answers a login without a TAN method.
+/// TAN, and 9943 a TAN that was used before. 9931 means "Sperrung des Kontos nach Fehlversuchen", a block, but
+/// Sparkassen send it also for a wrong login name or PIN, "Anmeldename oder PIN ist falsch". So 9931 counts as a
+/// wrong PIN only when its text says that something is wrong ("falsch" or "ungültig"), and as a block otherwise.
+/// 3931 names a blocked PIN or a TAN generator that needs a synchronization, so it keeps the text of the bank.
+/// 9951, a two-step dialog that timed out, and 9955, "Ein-Schritt-TAN-Verfahren nicht zugelassen", mean a
+/// declined approval or a missing TAN method only with the evidence of the helper, which then sends the kind.
 struct HelperError: Decodable, Equatable {
 	let kind: String?
 	let code: String?
@@ -199,18 +201,24 @@ struct HelperError: Decodable, Equatable {
 
 	var message: BankMessage { BankMessage(code: code, text: text) }
 
+	/// The text of a 9931 says that the login name or the PIN is wrong, as that of Sparkassen does.
+	static func saysWrong(_ text: String) -> Bool {
+		let lowered = text.lowercased()
+		return lowered.contains("falsch") || lowered.contains("ungültig")
+	}
+
 	var failure: SyncFailure {
 		switch (kind, code) {
 		case ("network", _), ("certificate", _): .network(text)
 		case ("unsupported", _): .unsupported(text)
 		case ("invalidChallenge", _): .invalidChallenge
-		case ("noTANMethod", _), (_, "9955"): .noTANMethod
+		case ("noTANMethod", _): .noTANMethod(message)
 		case ("approvalDeclined", _): .approvalDeclined(message)
 		case (_, "9078"): .notRegistered
-		case (_, "9942"), (_, "9340"), (_, "9931"): .pinRejected(message)
+		case (_, "9931"): Self.saysWrong(text) ? .pinRejected(message) : .accessBlocked(message)
+		case (_, "9942"), (_, "9340"): .pinRejected(message)
 		case (_, "9930"), (_, "9933"), (_, "3938"): .accessBlocked(message)
 		case (_, "9941"), (_, "9943"), (_, "9948"): .tanRejected(message)
-		case (_, "9951"): .approvalDeclined(message)
 		default: .bank(message)
 		}
 	}

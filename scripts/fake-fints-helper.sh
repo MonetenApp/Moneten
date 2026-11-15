@@ -18,9 +18,10 @@
 # The login "langtext" lists only "Tagesgeld". Its refresh sends the transactions of "Tagesgeld" with the
 # error 9210 of the balance request, and then a notice of 100 lines. The refresh of the login "wartung" sends a
 # notice about maintenance and then fails the login with 9800. The login "setupwartung" does the same in the setup.
-# The refresh of the login "gesperrt" fails with the block 3938, of "ohnetan" with no TAN method, of "falschetan"
-# with the wrong TAN 9941 after a TAN request, and of "abgelehnt" with an approval in the app that the bank reports
-# as declined after 3 seconds.
+# The setup login and the refresh of the login "gesperrt" fail with the block 3938. The refresh of "ohnetan" fails
+# with no TAN method, of "falschetan" with the wrong TAN 9941 after a TAN request, and of "abgelehnt" with an approval
+# in the app that the bank reports as declined after 3 seconds, or after the seconds in MONETEN_FAKE_APPROVAL_SECONDS,
+# which the tests set to 0.
 # The bank directory has two branches of Musterbank, the bank without a FinTS server Neobank Muster
 # (99999999), a made-up Sparkasse, and Consorsbank (76030080) and DAB BNP Paribas (70120400) with
 # their real FinTS address, so the setup shows the login hint of Consorsbank and none for DAB.
@@ -39,6 +40,7 @@ answer() {
 	method=$(printf '%s\n' "$line" | sed -n 's/.*"method":"\([^"]*\)".*/\1/p')
 }
 pin='{"type":"ask","id":1,"kind":"pin","rules":{"minLength":4,"maxLength":10}}'
+blocked='{"type":"failed","code":"3938","text":"Ihr Zugang ist vorläufig gesperrt - Bitte PIN-Sperre aufheben."}'
 
 case "$cmd" in
 *'"type":"banks"'*)
@@ -53,6 +55,10 @@ case "$cmd" in
 *'"type":"accounts"'*)
 	echo "$pin"
 	answer
+	case "$cmd" in *'"user":"gesperrt"'*)
+		echo "$blocked"
+		exit 0
+	;; esac
 	if [ "$value" = 0000 ]; then
 		echo '{"type":"ask","id":2,"kind":"pin","rejected":{"code":"9942","text":"PIN falsch. Bitte prüfen Sie Ihre Eingabe."},"rules":{"minLength":4,"maxLength":10}}'
 		answer
@@ -102,11 +108,11 @@ case "$cmd" in
 		exit 0
 	;;
 	*'"user":"gesperrt"'*)
-		echo '{"type":"failed","code":"3938","text":"Ihr Zugang ist vorläufig gesperrt - Bitte PIN-Sperre aufheben."}'
+		echo "$blocked"
 		exit 0
 	;;
 	*'"user":"ohnetan"'*)
-		echo '{"type":"failed","kind":"noTANMethod","code":"9955","text":"There are no available TAN methods."}'
+		echo '{"type":"failed","kind":"noTANMethod","code":"9955","text":"Ein-Schritt-TAN-Verfahren nicht zugelassen"}'
 		exit 0
 	;;
 	*'"user":"falschetan"'*)
@@ -117,7 +123,7 @@ case "$cmd" in
 	;;
 	*'"user":"abgelehnt"'*)
 		echo '{"type":"ask","id":2,"kind":"approve","purpose":"login","prompt":"Bitte bestätigen Sie die Anmeldung in Ihrer App.","method":"pushTAN"}'
-		sleep 3
+		sleep "${MONETEN_FAKE_APPROVAL_SECONDS:-3}"
 		echo '{"type":"withdraw","id":2}'
 		echo '{"type":"failed","kind":"approvalDeclined","code":"9941","text":"Freigabe abgelehnt"}'
 		exit 0
