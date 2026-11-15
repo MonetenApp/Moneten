@@ -3,7 +3,7 @@ import Foundation
 
 /// Why the host process did not send a request. The message names the host, so the user sees where
 /// the extension wanted to go.
-enum HostRefusal: Error, Equatable, Sendable, CustomStringConvertible {
+enum HostRefusal: Error, Equatable, Sendable, Codable, CustomStringConvertible {
 	case notHTTPS(String)
 	/// Not an exact host name, a percent sign, a user name, or a port other than 443: what the user would
 	/// see is not what the request reaches.
@@ -37,6 +37,8 @@ final class HostPolicy {
 	private var decisions: [String: HostDecision]
 	private let testHosts: Set<String>
 	private let ask: (String) throws -> HostDecision
+	/// The last request that the policy refused, so that the host process can send the reason instead of its English text.
+	private(set) var lastRefusal: HostRefusal?
 
 	/// `decisions` holds the stored answers of the user by host. `ask` waits for the answer to a new host.
 	/// `testHosts` are special-use names that pass as if they were public, on any port, for the made-up
@@ -50,6 +52,15 @@ final class HostPolicy {
 	}
 
 	func check(_ url: URL) throws {
+		do {
+			try verify(url)
+		} catch let refusal as HostRefusal {
+			lastRefusal = refusal
+			throw refusal
+		}
+	}
+
+	private func verify(_ url: URL) throws {
 		guard url.scheme?.lowercased() == "https", let host = url.host(percentEncoded: false)?.lowercased(), !host.isEmpty else {
 			throw HostRefusal.notHTTPS(url.absoluteString)
 		}

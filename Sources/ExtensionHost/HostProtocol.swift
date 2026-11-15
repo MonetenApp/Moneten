@@ -113,6 +113,8 @@ enum HostEvent: Sendable, Codable {
 	case loaded(Registration, entryPoints: Set<EntryPoint>, milliseconds: Double)
 	case result(LuaValue)
 	case failed(String)
+	/// A failure that the app words itself, because the host process has no String Catalog.
+	case stopped(HostStop)
 	case askHost(String)
 	case print(String)
 	/// The text of `MM.printStatus`, for the status of the refresh.
@@ -123,6 +125,37 @@ enum HostEvent: Sendable, Codable {
 	case alive
 	case finished(storage: Data)
 	case trace(HostTrace)
+}
+
+/// Why the host process stopped a call or refused a request. The host process has no String Catalog, so it
+/// sends the reason, and the app writes the text in the language of its interface.
+enum HostStop: Sendable, Codable, Equatable {
+	case processorTime(extensionName: String, seconds: Int)
+	/// The memory ran out where Lua cannot report it, for example in a function of the app.
+	case memory(extensionName: String)
+	/// Lua reported that the script needs more than the limit.
+	case memoryLimit(megabytes: Int)
+	case processorLimitUnavailable
+	/// `position` is where Lua reports the error, such as "Demo.lua:3: ", or empty.
+	case refused(HostRefusal, position: String)
+
+	var message: String {
+		switch self {
+		case let .processorTime(name, seconds): String(localized: "\(name) used more than \(seconds) seconds of processor time, so Moneten stopped it.")
+		case let .memory(name): String(localized: "\(name) needs more memory than Moneten allows, so Moneten stopped it.")
+		case let .memoryLimit(megabytes): String(localized: "The extension needs more than \(megabytes) MB of memory.")
+		case .processorLimitUnavailable: String(localized: "The extension host cannot limit its processor time.")
+		case let .refused(refusal, position): position + refusal.description
+		}
+	}
+
+	/// The event for a call that failed with `error`. A message that ends with the last refusal of the host
+	/// policy is that refusal. A script that caught the refusal and then failed for another reason keeps its message.
+	static func event(for error: ScriptError, lastRefusal: HostRefusal?) -> HostEvent {
+		if let stop = error.stop { return .stopped(stop) }
+		guard let refusal = lastRefusal, error.message.hasSuffix(refusal.description) else { return .failed(error.message) }
+		return .stopped(.refused(refusal, position: String(error.message.dropLast(refusal.description.count))))
+	}
 }
 
 /// What `ext` sees of a session beyond the log: the recording of `ext record` and the result of each
@@ -158,10 +191,10 @@ public enum HostProcess {
 			switch command {
 			case let .start(setup):
 				let seconds = setup.limits.processorSeconds
-				let exceeded = encoded(.failed("\(setup.package.name) used more than \(seconds) seconds of processor time, so Moneten stopped it."))
-				clua_setmemoryline(String(decoding: encoded(.failed("\(setup.package.name) needs more memory than Moneten allows, so Moneten stopped it.")), as: UTF8.self))
+				let exceeded = encoded(.stopped(.processorTime(extensionName: setup.package.name, seconds: seconds)))
+				clua_setmemoryline(String(decoding: encoded(.stopped(.memory(extensionName: setup.package.name))), as: UTF8.self))
 				guard clua_limitprocessor(UInt32(seconds), String(decoding: exceeded, as: UTF8.self)) == 0 else {
-					emit(.failed("The extension host cannot limit its processor time."))
+					emit(.stopped(.processorLimitUnavailable))
 					continue
 				}
 				var transport: any Transport = setup.fixture.map { FixtureTransport($0) { emit(.sent("\($0.method) \($0.url.absoluteString)")) } }
@@ -178,7 +211,7 @@ public enum HostProcess {
 					session = new
 					emit(.loaded(registration, entryPoints: new.entryPoints, milliseconds: (ContinuousClock.now - started) / .milliseconds(1)))
 				} catch {
-					emit(.failed(error.message))
+					emit(HostStop.event(for: error, lastRefusal: new.network.policy.lastRefusal))
 				}
 			case let .call(entry):
 				guard let session else {
@@ -188,7 +221,7 @@ public enum HostProcess {
 				do {
 					emit(.result(try session.call(entry)))
 				} catch {
-					emit(.failed(error.message))
+					emit(HostStop.event(for: error, lastRefusal: session.network.policy.lastRefusal))
 				}
 			case .finish:
 				guard let session else {
