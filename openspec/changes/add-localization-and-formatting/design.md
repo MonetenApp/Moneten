@@ -59,6 +59,8 @@ The formats of dates and numbers follow the region of macOS and not the language
 
 `StarterCategories.make(language:)` already holds both sets. The app picks the set by the language of the interface when it creates the database. A later change of the language does not rename them, because the user may have changed them.
 
+The migration from MoneyMoney and "Import All Data" replace an untouched starter set. They recognize the set in either language, because a database created in English can open with a German interface and the other way round, and a database of an earlier English-only build has the English set. When parts of both sets are in the database, the set with more untouched groups counts, and the language of the interface decides a tie. An empty group of the user named like a group of the other set stays.
+
 ### A pure completion function in `Domain`
 
 The completion is a function in `Domain`. It takes the typed text, today as a `Day`, the order of day, month, and year from the region, and whether the field expects a future date. It returns a `Day`, or nothing when the text is not a date. The date field in `App` calls it when the user leaves the field. A pure function lets the tests set today to 9 November 2026 or 15 February 2027 without a clock.
