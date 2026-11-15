@@ -59,6 +59,19 @@ struct ListedAccount: Equatable {
 		}
 	}
 
+	/// The table for `RefreshAccount`: the one of `ListAccounts` with the stored balance in the account currency or
+	/// 0, the end of the last successful refresh or `now` in whole seconds, the notes or "", and the user-defined
+	/// fields, which the app does not have yet. Published scripts read these fields without a check for nil.
+	func forRefresh(balance: Money?, refreshedAt: Date?, comment: String?, now: Date) -> ListedAccount {
+		guard case var .object(fields) = table else { return self }
+		// `NewAccount.withoutRefreshFields` removes these four fields again.
+		fields["balance"] = balance.map { .number(NSDecimalNumber(decimal: $0.decimal).doubleValue) } ?? .integer(0)
+		fields["balanceDate"] = .integer(Int64((refreshedAt ?? now).timeIntervalSince1970))
+		fields["comment"] = .string(comment ?? "")
+		fields["attributes"] = .object([:])
+		return ListedAccount(.object(fields)) ?? self
+	}
+
 	/// The type of an account whose table has none: 16 characters or masked digits make a credit card.
 	static func derivedKind(of accountNumber: String) -> AccountKind {
 		let compact = accountNumber.filter { !$0.isWhitespace }

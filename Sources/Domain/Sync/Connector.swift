@@ -90,7 +90,8 @@ public struct RefreshRequest: Sendable {
 		self.access = access
 		self.state = state
 		self.accounts = enforced
-			? accounts.map { AccountRequest(accountID: $0.accountID, name: $0.name, remoteID: $0.remoteID, currency: $0.currency) }
+			? accounts.map { AccountRequest(accountID: $0.accountID, name: $0.name, remoteID: $0.remoteID, currency: $0.currency, balance: $0.balance,
+				refreshedAt: $0.refreshedAt, comment: $0.comment) }
 			: accounts
 	}
 }
@@ -106,13 +107,22 @@ public struct AccountRequest: Sendable, Equatable {
 	public let since: Day?
 	/// The currency of the account in the app, for a row that the source sends without one.
 	public let currency: String
+	/// The stored balance and the end of the last successful refresh, which an extension reads in its account table.
+	public let balance: Money?
+	public let refreshedAt: Date?
+	/// The notes of the account, which an extension reads in its account table.
+	public let comment: String?
 
-	public init(accountID: UUID, name: String, remoteID: String, since: Day? = nil, currency: String) {
+	public init(accountID: UUID, name: String, remoteID: String, since: Day? = nil, currency: String, balance: Money? = nil, refreshedAt: Date? = nil,
+		comment: String? = nil) {
 		self.accountID = accountID
 		self.name = name
 		self.remoteID = remoteID
 		self.since = since
 		self.currency = currency
+		self.balance = balance
+		self.refreshedAt = refreshedAt
+		self.comment = comment
 	}
 }
 

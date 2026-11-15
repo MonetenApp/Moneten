@@ -76,7 +76,9 @@ public struct ExtensionConnector: BankConnector {
 			}
 			for (index, account) in request.accounts.enumerated() {
 				await session.report(.fetching(done: index, of: request.accounts.count))
-				guard let table = state.accounts[account.remoteID], let listed = ListedAccount(table) else {
+				guard let table = state.accounts[account.remoteID],
+					let listed = ListedAccount(table)?.forRefresh(balance: account.balance, refreshedAt: account.refreshedAt, comment: account.comment, now: Date())
+				else {
 					outcomes[account.accountID] = .failed(.unsupported("\(package.name) does not know the account \(account.remoteID). Set up the access again."))
 					continue
 				}
@@ -115,7 +117,8 @@ public struct ExtensionConnector: BankConnector {
 			}
 			for index in accounts.indices {
 				await session.report(.fetching(done: index, of: accounts.count))
-				let outcome = try await run.refreshAccount(accounts[index].listed, since: nil, known: [:])
+				let new = accounts[index].listed.forRefresh(balance: nil, refreshedAt: nil, comment: nil, now: Date())
+				let outcome = try await run.refreshAccount(new, since: nil, known: [:])
 				accounts[index].outcome = outcome.result
 				if outcome.endsSession { break }
 			}
@@ -149,6 +152,14 @@ public struct NewAccount: Sendable {
 	init(_ listed: ListedAccount, outcome: AccountOutcome) {
 		self.listed = listed
 		self.outcome = outcome
+	}
+
+	/// An account table without the fields that the app adds for `RefreshAccount`, so that `ext` finds the
+	/// account of a call by its table of `ListAccounts`.
+	public static func withoutRefreshFields(_ table: LuaValue) -> LuaValue {
+		guard case var .object(fields) = table else { return table }
+		for key in ["balance", "balanceDate", "comment", "attributes"] { fields[key] = nil }
+		return .object(fields)
 	}
 
 	public var name: String { listed.name }
