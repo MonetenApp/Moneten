@@ -223,6 +223,33 @@ struct AllDataTests {
 		#expect(try target.loadLedger().groups.map(\.name).sorted() == ["Household", "Private"])
 	}
 
+	@Test("Category and account group parent loops are refused without changing the database", arguments: ["category-self", "category-loop", "group-self", "group-loop"])
+	func parentLoops(_ scenario: String) throws {
+		let a = UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
+		let b = UUID(uuidString: "00000000-0000-0000-0000-000000000002")!
+		let loop = scenario.hasSuffix("loop")
+		let categories = scenario.hasPrefix("category")
+		let data = AllData(groups: categories ? [] : [
+			AccountGroup(id: a, name: "A", parentID: loop ? b : a, position: 0),
+			AccountGroup(id: b, name: "B", parentID: a, position: 1)], categories: categories ? [
+			Domain.Category(id: a, parentID: loop ? b : a, position: 0, name: "A"),
+			Domain.Category(id: b, parentID: a, position: 1, name: "B")] : [])
+		let target = try emptyStore("loops")
+		let starter = Domain.Category(position: 0, name: "Starter")
+		try target.save(starter)
+		try target.save(AccountGroup(name: "Existing", position: 0))
+		let before = try target.exportAllData(at: exportedAt)
+		let reason = categories ? "at categories[0], the category is inside itself" : "at accountGroups[0], the account group is inside itself"
+		#expect(throws: AllData.ReadError.damaged(reason)) {
+			try target.importAllData(data, replacing: [starter.id])
+		}
+		#expect(try target.exportAllData(at: exportedAt) == before)
+		#expect(throws: AllData.ReadError.damaged(reason)) {
+			try target.importAllData(try AllData(json: data.json()), replacing: [starter.id])
+		}
+		#expect(try target.exportAllData(at: exportedAt) == before)
+	}
+
 	@Test("Every key of an export is described in docs/export-format.md")
 	func documented() throws {
 		let json = try JSONSerialization.jsonObject(with: try filledStore().exportAllData(at: exportedAt).json())

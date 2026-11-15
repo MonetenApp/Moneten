@@ -212,3 +212,55 @@ The app SHALL refuse a file with a newer format version and name the version of 
 
 - **WHEN** the file ends in the middle of the transactions
 - **THEN** the app reports the error and the database is still empty
+
+#### Scenario: Category or account group contains itself
+
+- **WHEN** category 0 has its own identifier as parent, or categories 0 and 1 refer to each other as parents
+- **THEN** the app refuses the file as damaged and names category 0
+- **AND** the database stays unchanged
+- **AND** the same refusal applies to account groups 0 and 1
+
+#### Scenario: Day exceeds the ISO form
+
+- **WHEN** a booking day, value day, or portfolio day is "01-01-9223372036854775807"
+- **THEN** the app refuses the file as damaged and names the object
+- **AND** the database stays unchanged
+
+#### Scenario: Portfolio value in a foreign currency
+
+- **GIVEN** a portfolio in EUR
+- **WHEN** its daily value is "100" in JPY
+- **THEN** the app refuses the file as damaged and names the daily value
+- **AND** the database stays unchanged
+
+#### Scenario: Invalid currency code
+
+- **WHEN** a currency code is "not a currency", "eur", or "EU1"
+- **THEN** the app refuses the file as damaged and names the object
+- **AND** a currency code consists of exactly three uppercase ASCII letters
+
+#### Scenario: Nonpositive format version
+
+- **WHEN** the file has format version 0 or -1
+- **THEN** the app refuses the file as damaged and names the version
+- **AND** the database stays unchanged
+
+### Requirement: Private complete export file
+
+The app SHALL create the complete export with read and write permission for its owner only.
+
+#### Scenario: Export to a shared folder
+
+- **WHEN** the user exports all data to a folder that other local users can read
+- **THEN** the file has mode 0600 before it contains financial data
+- **AND** replacing an existing file also gives the export mode 0600
+
+### Requirement: Unreadable stored holding
+
+The app SHALL fail a complete export when a stored holding cannot be read, and name its position instead of omitting it.
+
+#### Scenario: Broken quantity
+
+- **GIVEN** holding 0 has the unreadable quantity "broken"
+- **WHEN** the user exports all data
+- **THEN** the app reports the unreadable holding at position 0 and writes no export
