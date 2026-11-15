@@ -238,6 +238,7 @@ The app SHALL assign CSV columns to transaction fields by common header keywords
 - **WHEN** the first and third columns are mapped to date and amount
 - **THEN** the titles are "Tag", "Wer", and "Wieviel", and only -420 minor units is imported
 - **AND** the skipped dated preamble is reported on line 2
+- **AND** only a date-labelled heading, such as "Tag", can move the cutoff past an earlier short dated row; a generic filled note cannot
 
 #### Scenario: Malformed first numeric dates
 
