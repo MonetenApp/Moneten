@@ -833,6 +833,22 @@ The app SHALL read and pass the account fields `name`, `owner`, `accountNumber`,
 - **WHEN** the app calls `RefreshAccount` for an account that `ListAccounts` returned with `subAccount="01"`
 - **THEN** the `account` parameter has `subAccount` "01" and the other fields as returned
 
+### Requirement: Account table at refresh
+
+The app SHALL add four fields to the account table that `RefreshAccount` receives: `balance`, the stored balance in the account currency or 0, `balanceDate`, the end of the last successful refresh or else the current time in whole POSIX seconds, `comment`, the notes of the account or "", and `attributes`, a table of the user-defined fields that is empty while an account has none.
+
+#### Scenario: Stored balance
+
+- **GIVEN** an account in EUR whose last refresh ended on 9 November 2026 at 12:00 UTC with the balance 1.250,50 €
+- **WHEN** the app calls `RefreshAccount`
+- **THEN** `account.balance` is 1250.50 and `account.balanceDate` is 1794225600
+- **AND** `account.attributes` is an empty table, so `account.attributes.GroupTransactions` is nil and no error
+
+#### Scenario: New account
+
+- **WHEN** the app calls `RefreshAccount` during the setup of an access
+- **THEN** `account.balance` is 0 and `account.comment` is ""
+
 ### Requirement: Account type when the script gives none
 
 The app SHALL derive the account type from the account number and the name when `type` is missing. An account number with 16 characters or with masked digits counts as a credit card. A given type is taken as it is. The app sets the type only when it creates the account and does not change it at a refresh.
