@@ -125,10 +125,11 @@ public struct FileCategories: Sendable {
 
 	/// The rows with the category of their cell, as set by hand, so that the rules leave it.
 	public func assign(to rows: [Transaction], names: [UUID: String], for accountID: UUID, in ledger: Ledger) -> [Transaction] {
-		rows.map { row in
+		let byID = Dictionary(uniqueKeysWithValues: ledger.categories.map { ($0.id, $0) })
+		return rows.map { row in
 			var t = row
 			t.accountID = accountID
-			if let id = names[row.id].flatMap({ ids[$0] }), let category = ledger.category(id),
+			if let id = names[row.id].flatMap({ ids[$0] }), let category = byID[id],
 				ledger.canAssign(category, to: [t]) {
 				t.categoryID = id
 				t.categorizedBy = .manual

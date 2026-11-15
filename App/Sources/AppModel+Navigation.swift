@@ -360,14 +360,11 @@ private struct FileTooLarge: Error, CustomStringConvertible {
 	var description: String { "The file is too large. Please choose a file with a maximum size of 100 MB." }
 }
 
-/// A file that the import read, before its transactions are stored.
 private struct ReadFile {
 	let name: String
 	let parsed: TransactionFileImporter.Parsed
 	let into: Account
 	let isNew: Bool
-	/// The CSV profile that read the file.
 	let profile: String?
-	/// "Auto-create categories" of the CSV preview or profile.
 	let createsCategories: Bool
 }

@@ -156,7 +156,6 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored: [Tran
 			var next = stored[j].takingBankFields(of: delivered)
 			// A row of the source that a file or a bank books counts as imported until the source books it too.
 			if !delivery.isMigration, let id = next.sourceID { next.sourceID = Transaction.linkedID(id, pending: false, sourcePending: true) }
-			// The category column of a file books the row into its category, unless the user chose one.
 			if delivered.categorizedBy == .manual, next.categorizedBy != .manual {
 				next.categoryID = delivered.categoryID
 				next.categorizedBy = .manual
