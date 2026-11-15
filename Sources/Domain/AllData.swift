@@ -84,13 +84,18 @@ public struct AllData: Sendable, Equatable {
 		switch error as? DecodingError {
 		case let .dataCorrupted(c), let .typeMismatch(_, c), let .valueNotFound(_, c):
 			let parser = (c.underlyingError as NSError?)?.userInfo
-			guard let detail = parser?[NSDebugDescriptionErrorKey] as? String else { return .damaged(place(c.codingPath, c.debugDescription)) }
+			guard let detail = parser?[NSDebugDescriptionErrorKey] as? String else {
+				let what = c.debugDescription.hasSuffix(".") ? String(c.debugDescription.dropLast()) : c.debugDescription
+				return .damaged(place(c.codingPath, what.prefix(1).lowercased() + what.dropFirst()))
+			}
 			// The parser names the byte where the text stops being JSON. A file that ends early stops at its end.
 			let end = detail.localizedCaseInsensitiveContains("end of file") ? data.count : nil
 			if let index = parser?["NSJSONSerializationErrorIndex"] as? Int ?? end {
 				let before = data.prefix(index)
 				let line = before.reduce(1) { $1 == UInt8(ascii: "\n") ? $0 + 1 : $0 }
-				let column = index - (before.lastIndex(of: UInt8(ascii: "\n")).map { $0 + 1 } ?? 0) + 1
+				// In characters, so that an umlaut counts once.
+				let lineStart = before.lastIndex(of: UInt8(ascii: "\n")).map { $0 + 1 } ?? before.startIndex
+				let column = String(decoding: before[lineStart...], as: UTF8.self).count + 1
 				// The detail of the parser can name the place again, so it is left out here.
 				return .damaged("at line \(line), column \(column), the text is not valid JSON")
 			}

@@ -32,6 +32,12 @@ extension Store {
 	/// without accounts hold no data, so the groups of the file replace them.
 	/// An access arrives without its state and without a PIN, so its first refresh asks for the PIN.
 	public func importAllData(_ data: AllData, replacing starters: [UUID] = []) throws {
+		do { try write(data, replacing: starters) } catch let error as DatabaseError where error.resultCode == .SQLITE_CONSTRAINT {
+			throw AllData.ReadError.damaged("an object refers to another object that the file does not contain")
+		}
+	}
+
+	private func write(_ data: AllData, replacing starters: [UUID]) throws {
 		try queue.write { db in
 			let others = try Domain.Category.filter(!starters.contains(Column("id"))).fetchCount(db)
 			guard try Account.fetchCount(db) == 0, try Transaction.fetchCount(db) == 0, others == 0 else { throw ImportRefusal.notEmpty }

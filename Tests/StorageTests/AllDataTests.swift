@@ -166,7 +166,37 @@ struct AllDataTests {
 		}
 		#expect(throws: AllData.ReadError.notAnExport) { try AllData(json: Data(#"{"accounts": []}"#.utf8)) }
 		#expect(throws: AllData.ReadError.notAnExport) { try AllData(json: Data("[1, 2]".utf8)) }
+		rows[1]["amount"] = 5
+		json["transactions"] = rows
+		#expect(throws: AllData.ReadError.damaged("at transactions[1].amount, expected to decode String but found number instead")) {
+			try AllData(json: try JSONSerialization.data(withJSONObject: json))
+		}
 		#expect(throws: AllData.ReadError.notAnExport) { try AllData(json: Data(#"{"format": 5}"#.utf8)) }
+	}
+
+	@Test("An amount at the bounds of the minor units reads exactly, and one beyond them is refused")
+	func amountBounds() throws {
+		var json = try JSONSerialization.jsonObject(with: try filledStore().exportAllData(at: exportedAt).json()) as! [String: Any]
+		var rows = json["transactions"] as! [[String: Any]]
+		rows[1]["amount"] = "-92233720368547758.08"
+		json["transactions"] = rows
+		#expect(try AllData(json: try JSONSerialization.data(withJSONObject: json)).transactions[1].amountMinor == Int64.min)
+		rows[1]["amount"] = "92233720368547758.08"
+		json["transactions"] = rows
+		#expect(throws: AllData.ReadError.self) { try AllData(json: try JSONSerialization.data(withJSONObject: json)) }
+	}
+
+	@Test("A file whose transaction names an account that it does not contain is refused, and the database stays empty")
+	func brokenReference() throws {
+		var json = try JSONSerialization.jsonObject(with: try filledStore().exportAllData(at: exportedAt).json()) as! [String: Any]
+		var rows = json["transactions"] as! [[String: Any]]
+		rows[1]["accountID"] = UUID().uuidString
+		json["transactions"] = rows
+		let target = try emptyStore("broken")
+		#expect(throws: AllData.ReadError.damaged("an object refers to another object that the file does not contain")) {
+			try target.importAllData(try AllData(json: try JSONSerialization.data(withJSONObject: json)))
+		}
+		#expect(try target.loadLedger().accounts.isEmpty)
 	}
 
 	@Test("The import replaces account groups without accounts")
