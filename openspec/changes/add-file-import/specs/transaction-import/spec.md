@@ -224,6 +224,20 @@ The app SHALL assign CSV columns to transaction fields by common header keywords
 - **THEN** the mapped dates determine the transaction cutoff and both rows read as [0, 450] minor units
 - **AND** inferred titles use the nearest row above the transactions that is wide enough, with no 100-row preamble limit
 
+#### Scenario: Headerless rows before a note
+
+- **GIVEN** "01.11.2026;Kiosk;", "Hinweis;Export vorläufig;", and "02.11.2026;Bakery;4.50"
+- **WHEN** the first and third columns are mapped to date and amount
+- **THEN** the amounts are [0, 450] minor units
+- **AND** replacing the first empty amount with "abc" fails on line 1 instead of discarding that row
+
+#### Scenario: Metadata before a dated preamble
+
+- **GIVEN** "Konto;Giro;EUR", "15.11.2026;Umsatzanzeige", "Tag;Wer;Wieviel", and "03.11.2026;Kiosk;-4,20"
+- **WHEN** the first and third columns are mapped to date and amount
+- **THEN** the titles are "Tag", "Wer", and "Wieviel", and only -420 minor units is imported
+- **AND** the skipped dated preamble is reported on line 2
+
 ### Requirement: CSV preview
 
 The app SHALL show a preview before it imports a CSV file. The preview shows the first rows as the app reads them, the field that each column is assigned to, the date format, the decimal separator, and the encoding. The user can change each of these, and the preview updates at once.
