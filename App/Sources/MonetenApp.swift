@@ -64,7 +64,7 @@ struct AppCommands: Commands {
 	@Environment(\.openWindow) private var openWindow
 
 	/// A rule run keeps the category settings open, so no command may open another sheet in its place.
-	var unlocked: Bool { model.phase == .unlocked && model.ruleProgress == nil }
+	var unlocked: Bool { model.phase == .unlocked && !model.isApplyingRule }
 
 	var body: some Commands {
 		CommandGroup(after: .appSettings) {

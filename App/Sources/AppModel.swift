@@ -269,6 +269,8 @@ final class AppModel {
 
 	/// How far `apply(rule:of:mode:)` has come, or nil when no rule is applied.
 	private(set) var ruleProgress: (done: Int, total: Int)?
+	/// Set for the whole run, so views that only ask whether a run is active do not redraw on each report.
+	private(set) var isApplyingRule = false
 	/// The run of `apply(rule:of:mode:)`, which a lock cancels.
 	@ObservationIgnored private var ruleRun: Task<[Transaction], Never>?
 
@@ -1091,7 +1093,8 @@ final class AppModel {
 		let ledger = self.ledger
 		let total = ledger.transactions.count
 		ruleProgress = (0, total)
-		defer { ruleProgress = nil; ruleRun = nil }
+		isApplyingRule = true
+		defer { ruleProgress = nil; ruleRun = nil; isApplyingRule = false }
 		let (reports, reporter) = AsyncStream.makeStream(of: Int.self, bufferingPolicy: .bufferingNewest(1))
 		let run = Task.detached(priority: .userInitiated) {
 			defer { reporter.finish() }

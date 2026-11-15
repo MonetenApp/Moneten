@@ -95,6 +95,7 @@ public enum RuleApplier {
 	/// against `current`, and a row that `current` no longer holds drops out.
 	public static func rebase(_ results: [Transaction], from snapshot: Ledger, onto current: Ledger,
 		category: Category, rule: Rule, mode: RuleApplication) -> [Transaction] {
+		if current.transactions == snapshot.transactions { return results }
 		let changedSince = current.transactions.filter { snapshot.transaction($0.id) != $0 }
 		let rechecked = Set(changedSince.map(\.id))
 		let kept = results.filter { !rechecked.contains($0.id) && current.transaction($0.id) != nil }

@@ -116,7 +116,7 @@ struct CategorySettingsSheet: View {
 
 	private var currencyIsValid: Bool { Self.isoCurrencies.contains(currencyCode) }
 
-	private var isApplying: Bool { model.ruleProgress != nil }
+	private var isApplying: Bool { model.isApplyingRule }
 
 	private func validate(_ text: String) {
 		guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { ruleError = nil; return }
