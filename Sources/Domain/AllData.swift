@@ -223,7 +223,7 @@ enum AmountText {
 
 private func day(_ text: String) throws -> Day {
 	// `Day(string:)` also reads the forms of bank files, so the export checks the form.
-	guard let d = Day(string: text), d.description == text else {
+	guard text.wholeMatch(of: /[0-9]{4}-[0-9]{2}-[0-9]{2}/) != nil, let d = Day(string: text), d.description == text else {
 		throw AllData.ReadError.damaged("\"\(text)\" is not a day in the form yyyy-MM-dd")
 	}
 	return d
