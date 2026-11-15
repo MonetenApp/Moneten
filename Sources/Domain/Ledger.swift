@@ -182,7 +182,7 @@ public struct Ledger: Sendable {
 		categories.filter { $0.parentID == parent && !$0.isDefault }.sorted { $0.position < $1.position }
 	}
 
-	/// All categories from top to bottom as the sidebar shows them, with "Uncategorized" last.
+	/// All categories from top to bottom as the sidebar shows them, with the default category last.
 	public var categoriesInSidebarOrder: [Category] {
 		var result: [Category] = []
 		func walk(_ parent: UUID?) {

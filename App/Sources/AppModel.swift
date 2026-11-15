@@ -363,7 +363,7 @@ final class AppModel {
 
 	func createDatabase(password: String?) {
 		do {
-			let store = try vault.create(password: password, starterCategories: StarterCategories.make())
+			let store = try vault.create(password: password, starterCategories: StarterCategories.make(language: starterLanguage))
 			hasPassword = password != nil
 			try open(store)
 		} catch {
@@ -1106,23 +1106,14 @@ final class AppModel {
 		try store?.deletedTransactions() ?? []
 	}
 
-	/// Root starter categories that the user has not changed: the same name, rule, and kind, no color
-	/// or icon of the user, and only unchanged starter subcategories below. A changed or extended tree stays.
+	/// The starter categories that a migration replaces, once the database holds no transactions.
 	private var replaceableStarterCategories: [Domain.Category] {
-		guard ledger.transactions.isEmpty else { return [] }
-		let template = StarterCategories.make()
-		func same(_ a: Domain.Category, _ b: Domain.Category) -> Bool {
-			a.name == b.name && a.isGroup == b.isGroup && a.rule == b.rule && a.sourceID == nil && !a.isDefault
-				&& a.color == b.color && a.symbol == b.symbol
-		}
-		return ledger.categories.filter { root in
-			guard root.parentID == nil, let starter = template.first(where: { $0.parentID == nil && same(root, $0) }) else { return false }
-			let starterChildren = template.filter { $0.parentID == starter.id }
-			return ledger.categoryIDs(inTree: root.id).subtracting([root.id]).allSatisfy { id in
-				guard let c = ledger.category(id), c.parentID == root.id else { return false }
-				return starterChildren.contains { same(c, $0) }
-			}
-		}
+		ledger.transactions.isEmpty ? StarterCategories.unchangedRoots(in: ledger, language: starterLanguage) : []
+	}
+
+	/// The language of the interface, so that a new database and the migration agree on the starter set.
+	private var starterLanguage: StarterCategories.Language {
+		.init(localization: Bundle.main.preferredLocalizations.first)
 	}
 
 	/// Stores a delivery and takes it into the ledger. An import goes through `replacingTable`, because a
@@ -1300,27 +1291,4 @@ enum SheetKind: Identifiable, Equatable {
 	case changePassword
 
 	var id: String { String(describing: self) }
-}
-
-enum StarterCategories {
-	static func make() -> [Domain.Category] {
-		var result: [Domain.Category] = []
-		var position = 0
-		func group(_ name: String, _ children: [String], rule: [String: String] = [:], showInDiagrams: Bool = true) {
-			let g = Domain.Category(position: position, name: name, isGroup: true, showInDiagrams: showInDiagrams)
-			position += 1
-			result.append(g)
-			for (i, c) in children.enumerated() {
-				result.append(Domain.Category(parentID: g.id, position: i, name: c, showInDiagrams: showInDiagrams, rule: rule[c] ?? ""))
-			}
-		}
-		group("Income", ["Salary", "Other income"], rule: ["Salary": #""Gehalt" OR "Lohn""#])
-		group("Living", ["Rent", "Groceries", "Electricity", "Internet & Phone"])
-		group("Mobility", ["Fuel", "Public transport", "Car"])
-		group("Leisure", ["Restaurants", "Travel", "Hobbies"])
-		group("Insurance", ["Health", "Liability", "Car insurance"])
-		result.append(Domain.Category(position: position, name: "Transfers", showInDiagrams: false))
-		result.append(Domain.Category(position: 1_000, name: "Uncategorized", isDefault: true))
-		return result
-	}
 }

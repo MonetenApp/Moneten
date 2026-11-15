@@ -212,7 +212,7 @@ public struct Category: Identifiable, Hashable, Sendable, Codable {
 	public var position: Int
 	public var name: String
 	public var isGroup: Bool
-	/// The one category that holds every transaction without another category. Its name is "Uncategorized".
+	/// The one category that holds every transaction without another category. The sidebar shows it last.
 	public var isDefault: Bool
 	/// A color as "#RRGGBB".
 	public var color: String?

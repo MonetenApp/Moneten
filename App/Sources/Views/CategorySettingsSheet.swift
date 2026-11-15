@@ -14,7 +14,7 @@ struct CategorySettingsSheet: View {
 	@State private var confirmRemove = false
 
 	var body: some View {
-		SheetFrame(title: "Settings for \(category?.name ?? "")", canConfirm: ruleError == nil, width: 520, onConfirm: save, leading: {
+		SheetFrame(title: "Settings for \(category?.name ?? "")", canConfirm: ruleError == nil && currencyIsValid, width: 520, onConfirm: save, leading: {
 			if category?.isDefault == false {
 				Button("Remove Category...", role: .destructive) { confirmRemove = true }
 			}
@@ -23,6 +23,13 @@ struct CategorySettingsSheet: View {
 				let c = binding.wrappedValue
 				Section {
 					TextField("Name", text: binding.name)
+					TextField("Currency", text: binding.currency)
+				} footer: {
+					if !currencyIsValid {
+						Text("Enter a currency code such as EUR.").foregroundStyle(Palette.red)
+					}
+				}
+				Section {
 					if !c.isDefault {
 						LabeledContent("Color") { ColorSwatches(selection: $color) }
 						LabeledContent("Icon") { SymbolPicker(selection: binding.symbol, color: color, isGroup: c.isGroup) }
@@ -92,6 +99,12 @@ struct CategorySettingsSheet: View {
 		}
 	}
 
+	private static let isoCurrencies = Set(Locale.Currency.isoCurrencies.map(\.identifier))
+
+	private var currencyCode: String { category?.currency.trimmingCharacters(in: .whitespaces).uppercased() ?? "" }
+
+	private var currencyIsValid: Bool { Self.isoCurrencies.contains(currencyCode) }
+
 	private func validate(_ text: String) {
 		guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { ruleError = nil; return }
 		do {
@@ -110,6 +123,7 @@ struct CategorySettingsSheet: View {
 	/// Saves and closes, or keeps the sheet open to ask whether a changed rule applies to existing transactions.
 	private func save() -> Bool {
 		guard var c = category else { return true }
+		c.currency = currencyCode
 		// A category keeps the inherited palette color until the user picks one.
 		if !c.isDefault, color.hex != originalColor.hex { c.color = color.hex }
 		let ruleChanged = c.rule != model.ledger.category(categoryID)?.rule
