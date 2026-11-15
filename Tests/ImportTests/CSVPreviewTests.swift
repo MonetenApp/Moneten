@@ -5,6 +5,35 @@ import Testing
 
 @Suite("CSV preview")
 struct CSVPreviewTests {
+	@Test("A note after a headerless row cannot hide its amount", arguments: ["", "abc", "missing"], ["Zwischensumme;;", "Hinweis;Export vorläufig;"])
+	func headerlessRowBeforeNote(amount: String, note: String) throws {
+		let first = amount == "missing" ? "01.11.2026;Kiosk" : "01.11.2026;Kiosk;\(amount)"
+		let file = try CSVFile(data: Data((first + "\n" + note + "\n02.11.2026;Bakery;4.50\n").utf8))
+		var layout = try file.detectedLayout()
+		layout.assign(0, to: .bookingDate)
+		layout.assign(2, to: .amount)
+		let preview = try file.preview(layout, currency: "EUR")
+		if amount == "abc" {
+			#expect(preview.problem == .line(1, "The amount cannot be read."))
+			#expect(preview.transactions.isEmpty)
+		} else {
+			#expect(preview.problem == nil)
+			#expect(preview.transactions.map(\.amountMinor) == [0, 450])
+		}
+	}
+
+	@Test("A dated preamble behind metadata does not become a zero transaction")
+	func metadataBeforeDatedPreamble() throws {
+		let file = try CSVFile(data: Data("Konto;Giro;EUR\n15.11.2026;Umsatzanzeige\nTag;Wer;Wieviel\n03.11.2026;Kiosk;-4,20\n".utf8))
+		var layout = try file.detectedLayout()
+		layout.assign(0, to: .bookingDate)
+		layout.assign(2, to: .amount)
+		let preview = try file.preview(layout, currency: "EUR")
+		#expect(file.header == ["Tag", "Wer", "Wieviel"])
+		#expect(preview.transactions.map(\.amountMinor) == [-420])
+		#expect(preview.parsed.warnings == [.skippedCSVRow(line: 2)])
+	}
+
 	@Test("Header keywords in the 102nd transaction cannot replace the header")
 	func transactionKeywordsAfter101Rows() throws {
 		let text = "Tag;Wer;Zweck;Wieviel\n" + String(repeating: "01.11.2026;Kiosk;Brot;1.00\n", count: 101)
