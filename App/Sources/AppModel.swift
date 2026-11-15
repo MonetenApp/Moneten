@@ -860,15 +860,18 @@ final class AppModel {
 	}
 
 	/// "Edit Login Data...": stores the login name and the state of the login that the bank just accepted,
-	/// for all accounts of the access, and keeps the PIN of that login in memory. It is saved when "Save PIN"
-	/// is on, and a saved PIN is removed when the user turned it off. Throws the error of the database,
-	/// which the assistant shows.
+	/// for all accounts of the access, with the PIN of that login as the saved PIN when "Save PIN" is on and
+	/// no saved PIN when it is off, in one transaction. The PIN stays in memory, and each refresh of the access
+	/// that waits runs with the new login. Throws the error of the database, which the assistant shows, and
+	/// then nothing changed.
 	func updateLogin(_ access: Access, state: AccessState?, pin: Secret, savePIN: Bool) throws {
-		guard let store else { return }
-		try store.updateLogin(of: access.id, loginName: access.loginName, state: state)
+		guard let store else { throw CancellationError() }
+		try store.updateLogin(of: access.id, loginName: access.loginName, state: state, savedPIN: savePIN ? pin : nil)
 		accesses[access.id] = access
+		sync.update(access, state: state)
+		// The database holds the PIN already. The broker takes the same into memory.
 		do {
-			if !savePIN, sync.broker.savedPINs.contains(access.id) { try sync.broker.removeSavedPIN(of: access.id) }
+			if !savePIN { try sync.broker.removeSavedPIN(of: access.id) }
 			try sync.broker.remember(pin, for: access.id, save: savePIN)
 		} catch {
 			alert = AlertMessage(title: "Could not save the PIN.", message: String(describing: error))

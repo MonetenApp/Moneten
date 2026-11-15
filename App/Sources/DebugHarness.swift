@@ -337,6 +337,8 @@ final class DebugHarness {
 			}
 		case "symbolsnapshot":
 			offscreenSnapshot(SymbolGrid(selection: "cart.fill", color: .green, isGroup: false) { _ in }, width: 360, name: "\(argument)-symbols")
+		// "<name>": the help of the bank step of "Add Account", drawn offscreen.
+		case "bankstephelpsnapshot": offscreenSnapshot(BankStepHelp(), width: 332, name: argument)
 		case "rulehelpsnapshot":
 			offscreenSnapshot(RuleHelp(), width: 420, name: "\(argument)-rulehelp")
 			offscreenSnapshot(RuleHelp().defaultScrollAnchor(.bottom), width: 420, name: "\(argument)-rulehelp-end")

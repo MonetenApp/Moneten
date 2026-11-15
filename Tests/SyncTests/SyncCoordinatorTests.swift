@@ -752,6 +752,30 @@ struct SyncCoordinatorTests {
 		#expect(!coordinator.isBusy(bank.id))
 	}
 
+	@Test("A refresh that waits while Edit Login Data holds the access runs with the new login and state")
+	func refreshAfterEditedLogin() async throws {
+		let old = Self.access("Musterbank")
+		let edited = Access(id: old.id, source: old.source, bankName: old.bankName, loginName: "erika78")
+		let connector = Recording()
+		try await coordinator.exclusively(for: old.id) {
+			coordinator.refresh(RefreshRequest(access: old, state: AccessState(Data([1])), accounts: [Self.giro]), with: connector, attended: true)
+			coordinator.update(edited, state: AccessState(Data([2])))
+		}
+		await until { !coordinator.isRefreshing }
+		#expect(connector.requests.withLock { $0.map(\.access.loginName) } == ["erika78"])
+		#expect(connector.requests.withLock { $0.map(\.state) } == [AccessState(Data([2]))])
+	}
+
+	/// A connector that keeps each request it gets.
+	final class Recording: BankConnector {
+		let requests = Mutex<[RefreshRequest]>([])
+
+		func refresh(_ request: RefreshRequest, _ session: SyncSession) async throws -> ConnectorReport {
+			requests.withLock { $0.append(request) }
+			return ConnectorReport(outcomes: [:])
+		}
+	}
+
 	@Test("Cancel Refresh drops a refresh that waits for the login of a setup")
 	func cancelBehindSetup() async throws {
 		let events = Events()

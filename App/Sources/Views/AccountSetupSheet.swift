@@ -272,25 +272,34 @@ final class AccountSetup {
 		isLoggingIn = true
 		task = Task {
 			do {
-				let list = try await session.logIn { [model] session in
+				// The new login is stored while the login still holds the access, so a refresh that waits for it
+				// runs with the new login.
+				let notices = try await session.logIn { [model] session in
 					try await model.sync.exclusively(for: access.id) {
-						try await model.fints.listAccounts(of: access, state: nil, session: session)
+						let list = try await model.fints.listAccounts(of: access, state: nil, session: session)
+						try Task.checkCancellation()
+						do {
+							try model.updateLogin(access, state: list.state, pin: pin, savePIN: savePIN)
+						} catch {
+							throw LoginNotSaved(error: error)
+						}
+						return list.notices
 					}
 				}
-				guard !Task.isCancelled else { return }
-				isLoggingIn = false
-				model.bankNotices.add(list.notices, from: access.bankName)
-				do {
-					try model.updateLogin(access, state: list.state, pin: pin, savePIN: savePIN)
-				} catch {
-					saveError = "Could not save the login data. \(String(describing: error))"
-					return
-				}
+				model.bankNotices.add(notices, from: access.bankName)
 				model.closeAccountSetup()
+			} catch let failure as LoginNotSaved {
+				isLoggingIn = false
+				saveError = "Could not save the login data. \(String(describing: failure.error))"
 			} catch {
 				loginFailed(error, userIDHelp: userIDHelp, bankName: access.bankName)
 			}
 		}
+	}
+
+	/// The bank accepted the edited login, but the database could not store it, so the old login stays.
+	private struct LoginNotSaved: Error {
+		let error: any Error
 	}
 
 	/// "Look for New Accounts...": the login runs as a refresh of the access with the PIN of the access.
