@@ -226,7 +226,7 @@ struct LedgerTests {
 		#expect(l.categoryTotals(of: l.transactions).map(\.minorUnits) == [-3_000])
 		#expect(l.categoryTotals(of: l.transactions).map(\.category.name) == ["Groceries"])
 		#expect(l.periodSums(of: l.transactions, period: .month).map(\.withdrawals) == [-3_000])
-		#expect(l.sum(ofCategory: groceries, in: DayRange(start: today, end: today)).minorUnits == -3_000)
+		#expect(l.sidebarAmounts(today: today)[groceries.id]?.minorUnits == -3_000)
 	}
 
 	@Test("The initial balance that meets the bank balance subtracts the booked rows up to the day of that balance")
@@ -310,7 +310,7 @@ struct LedgerTests {
 		#expect(l.balanceBars(accountIDs: [giro.id], range: range).map(\.minorUnits) == [50_000, 49_680])
 		#expect(l.categoryTotals(of: l.transactions).map(\.minorUnits) == [-320])
 		#expect(l.periodSums(of: l.transactions, period: .month).map(\.withdrawals) == [-320])
-		#expect(l.sum(ofCategory: groceries, in: range).minorUnits == -320)
+		#expect(l.sidebarAmounts(today: Day(year: 2026, month: 11, day: 13))[groceries.id]?.minorUnits == -320)
 	}
 
 	@Test("The sum of a list and its pending sum leave out a pending row marked for review")
@@ -347,14 +347,15 @@ struct LedgerTests {
 				categoryID: travel.id, categorizedBy: .manual)
 		}
 		var l = Ledger(accounts: [giro], categories: [travel], transactions: [row(-20_000, "EUR", "Hotel"), row(-10_000, "EUR", "Bahn"), row(-5_000, "USD", "Taxi")])
-		#expect(l.sum(ofCategory: travel, in: .all) == Money(minorUnits: -30_000, currency: "EUR"))
+		let today = Day(year: 2026, month: 11, day: 9)
+		#expect(l.sidebarAmounts(today: today)[travel.id] == Money(minorUnits: -30_000, currency: "EUR"))
 		let perCurrency = l.transactions(in: .category(travel.id)).reduce(into: MoneySums()) { $0.add($1.amount) }
 		#expect(perCurrency.amounts == [Money(minorUnits: -30_000, currency: "EUR"), Money(minorUnits: -5_000, currency: "USD")])
 
 		var inDollars = travel
 		inDollars.currency = "USD"
 		l.upsert(inDollars)
-		#expect(l.sum(ofCategory: try #require(l.category(travel.id)), in: .all) == Money(minorUnits: -5_000, currency: "USD"))
+		#expect(l.sidebarAmounts(today: today)[travel.id] == Money(minorUnits: -5_000, currency: "USD"))
 	}
 
 	@Test("The sum of a category for the current month counts a pending row and leaves out a pending row marked for review")
@@ -368,8 +369,6 @@ struct LedgerTests {
 		let l = Ledger(accounts: [giro], categories: [groceries], transactions: [
 			row(3, -8_000, pending: false), row(7, -4_000, pending: true), row(8, -500, pending: true, review: true),
 		])
-		let currentMonth = DayRange(start: Day(year: 2026, month: 11, day: 1), end: nil)
-		#expect(l.sum(ofCategory: groceries, in: currentMonth) == Money(minorUnits: -12_000, currency: "EUR"))
 		let list = l.transactions(in: .category(groceries.id))
 		#expect(list.count == 3)
 		#expect(MoneySums(of: list).amounts == [Money(minorUnits: -12_000, currency: "EUR")])

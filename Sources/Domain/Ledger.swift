@@ -274,30 +274,43 @@ public struct Ledger: Sendable {
 		return sums
 	}
 
-	/// The amount next to a category in the sidebar, for its "Display in sidebar" on `today`. A sum of zero
-	/// shows no amount either.
-	public func sidebarAmount(of category: Category, today: Day) -> Money? {
-		let period: DayRange
-		switch category.sidebarAmount {
-		case .none: return nil
-		case .totalSum: period = .all
-		case .currentMonth: period = DayRange(start: today.firstOfMonth, end: today.firstOfMonth.adding(months: 1).adding(days: -1))
-		case .currentQuarter: period = DayRange(start: today.firstOfQuarter, end: today.firstOfQuarter.adding(months: 3).adding(days: -1))
-		case .currentYear: period = DayRange(start: today.firstOfYear, end: Day(year: today.year, month: 12, day: 31))
+	/// The amounts next to the categories in the sidebar, for their "Display in sidebar" on `today`, in one pass
+	/// over the transactions. A row counts in its category and in each group above it, in the period and the
+	/// currency of each. Rows in another currency stay in the category, and the status line of its list sums them
+	/// for each currency. A category with "No amount" or a sum of zero has no entry.
+	public func sidebarAmounts(today: Day) -> [UUID: Money] {
+		let byID = Dictionary(uniqueKeysWithValues: categories.map { ($0.id, $0) })
+		var targets: [UUID: [(id: UUID, period: DayRange, currency: String)]] = [:]
+		for c in categories {
+			var next: Category? = c
+			while let n = next {
+				if let period = Self.sidebarPeriod(of: n.sidebarAmount, today: today) {
+					targets[c.id, default: []].append((n.id, period, n.currency))
+				}
+				next = n.parentID.flatMap { byID[$0] }
+			}
 		}
-		let sum = sum(ofCategory: category, in: period)
-		return sum.minorUnits == 0 ? nil : sum
+		var sums: [UUID: Int64] = [:]
+		let defaultID = defaultCategory?.id
+		for t in transactions {
+			guard let id = t.categoryID ?? defaultID, let chain = targets[id] else { continue }
+			for target in chain where target.period.contains(t.bookingDate) && t.isInSum(of: target.currency) {
+				sums[target.id, default: 0] += t.amountMinor
+			}
+		}
+		return sums.reduce(into: [:]) { amounts, sum in
+			if sum.value != 0, let c = byID[sum.key] { amounts[sum.key] = Money(minorUnits: sum.value, currency: c.currency) }
+		}
 	}
 
-	/// The transactions of a category tree that a sum counts, in a period and in the currency of the category.
-	/// Rows in another currency stay in the category, and the status line of its list sums them for each currency.
-	func sum(ofCategory category: Category, in period: DayRange) -> Money {
-		var f = TransactionFilter()
-		f.period = period
-		let sum = transactions(in: .category(category.id), filter: f)
-			.filter { $0.isInSum(of: category.currency) }
-			.reduce(Int64(0)) { $0 + $1.amountMinor }
-		return Money(minorUnits: sum, currency: category.currency)
+	private static func sidebarPeriod(of amount: SidebarAmount, today: Day) -> DayRange? {
+		switch amount {
+		case .none: nil
+		case .totalSum: .all
+		case .currentMonth: DayRange(start: today.firstOfMonth, end: today.firstOfMonth.adding(months: 1).adding(days: -1))
+		case .currentQuarter: DayRange(start: today.firstOfQuarter, end: today.firstOfQuarter.adding(months: 3).adding(days: -1))
+		case .currentYear: DayRange(start: today.firstOfYear, end: Day(year: today.year, month: 12, day: 31))
+		}
 	}
 
 	// MARK: Filtering

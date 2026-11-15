@@ -6,6 +6,7 @@ struct SidebarView: View {
 
 	var body: some View {
 		let selection = Binding<SidebarSelection?>(get: { model.selection }, set: { model.navigate(to: $0) })
+		let amounts = model.ledger.sidebarAmounts(today: .today())
 		List(selection: selection) {
 			if !model.hasPassword {
 				Button {
@@ -21,9 +22,9 @@ struct SidebarView: View {
 				AccountTree(parent: nil)
 			}
 			Section("Categories") {
-				CategoryTree(parent: nil)
+				CategoryTree(parent: nil, amounts: amounts)
 				if let d = model.ledger.defaultCategory {
-					CategoryRow(category: d).tag(SidebarSelection.category(d.id))
+					CategoryRow(category: d, amount: amounts[d.id]).tag(SidebarSelection.category(d.id))
 				}
 			}
 		}
@@ -225,16 +226,17 @@ struct AccountRow: View {
 struct CategoryTree: View {
 	@Environment(AppModel.self) private var model
 	let parent: UUID?
+	let amounts: [UUID: Money]
 
 	var body: some View {
 		ForEach(model.ledger.childCategories(of: parent)) { category in
 			if model.ledger.childCategories(of: category.id).isEmpty {
-				CategoryRow(category: category).tag(SidebarSelection.category(category.id))
+				CategoryRow(category: category, amount: amounts[category.id]).tag(SidebarSelection.category(category.id))
 			} else {
 				DisclosureGroup(isExpanded: Binding(get: { category.isExpanded }, set: { var c = category; c.isExpanded = $0; model.save(category: c) })) {
-					CategoryTree(parent: category.id)
+					CategoryTree(parent: category.id, amounts: amounts)
 				} label: {
-					CategoryRow(category: category)
+					CategoryRow(category: category, amount: amounts[category.id])
 				}
 				.tag(SidebarSelection.category(category.id))
 			}
@@ -245,6 +247,7 @@ struct CategoryTree: View {
 struct CategoryRow: View {
 	@Environment(AppModel.self) private var model
 	let category: Domain.Category
+	let amount: Money?
 
 	var body: some View {
 		HStack {
@@ -261,7 +264,7 @@ struct CategoryRow: View {
 					.help("The rule cannot be read. New transactions do not get this category. \(error)")
 					.accessibilityLabel("The rule cannot be read.")
 			}
-			if let amount = model.ledger.sidebarAmount(of: category, today: .today()) {
+			if let amount {
 				AmountText(money: amount).fontWeight(.medium)
 			}
 		}
