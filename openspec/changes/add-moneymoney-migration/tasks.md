@@ -27,6 +27,8 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [ ] 1.21 Migrated rules with operators in lower case. Not built. Build it in 2.8 and 2.9.
 - [ ] 1.22 Migrated rules with the words true and false. Not built. Build it in 2.10 and 2.11.
 
+- [x] 1.23 A group rule in the export is reported. Verified by MoneyMoneyMigrationTests "A group rule is named in the report, with or without a rule on its child" and "A rule of the default category does not count as an exported categorization rule". The tests failed before the fix and pass after it, including a repeated run.
+
 ## 2. Changes to the first build
 
 - [x] 2.1 Write MoneyMoneyMigrationTests tests for the scenarios "Missing parenthesis" and "One part of a rule cannot be read": the rule is stored unchanged, and the plan has a note with the category, the position, and the reason. Verified by MoneyMoneyMigrationTests "A rule with a missing parenthesis is stored unchanged and named in the report", "A rule with one part that cannot be read is named with the position of that part, and its category receives nothing", and "A rule that the app reads gives no note and fills its category".
