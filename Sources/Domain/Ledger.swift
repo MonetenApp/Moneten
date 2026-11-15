@@ -437,7 +437,7 @@ public struct Ledger: Sendable {
 		let categoryFilter = filter.categoryID.map { categoryIDs(inTree: $0) }
 		let defaultID = defaultCategory?.id ?? UUID()
 		var amountBounds: [Int: MinorBounds] = [:]
-		let rows = Array(transactions.lazy.filter(inScope).filter { t in
+		let rows = Array(transactions.lazy.filter(inScope).prefix { _ in !query.gaveUp }.filter { t in
 			guard filter.period.contains(t.bookingDate) else { return false }
 			switch filter.status {
 			case .all: break

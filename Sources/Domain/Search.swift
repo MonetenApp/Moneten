@@ -43,7 +43,7 @@ struct SearchQuery {
 	private let root: Node?
 	private let watch: RegexWatch
 
-	var gaveUp: Bool { watch.gaveUp }
+	var gaveUp: Bool { watch.gaveUp || watch.budget.gaveUp }
 
 	init(_ text: String) {
 		let watch = RegexWatch()
@@ -121,10 +121,11 @@ struct SearchQuery {
 		let watch: RegexWatch
 		/// The joined text can run long where each value alone does not, as `\s` matches the joining line break, so it
 		/// has a watch of its own. When it gives up, the rows read each value.
-		let lineWatch = RegexWatch()
+		let lineWatch: RegexWatch
 
 		init(_ regex: NSRegularExpression, field: RuleField?, watch: RegexWatch) {
 			self.watch = watch
+			lineWatch = RegexWatch(budget: watch.budget)
 			let pattern = regex.pattern
 			// Anchors of the whole text, inline options, and quantifiers that never give back read the joined values
 			// differently, so such a pattern reads each value alone. So do `\X` and a second word boundary: at the end
@@ -173,39 +174,44 @@ struct SearchQuery {
 		}
 	}
 
-	/// Stops a regular expression that does not end. ICU never returns for some patterns, such as a lazy quantifier
-	/// after an anchor in `/^+?49/`, and the search runs on the main thread at each keystroke. After one text that
-	/// takes about 100 ms of processor time after the first reports of ICU, every later text of the same search
-	/// counts as no match. Processor
-	/// time, because on a busy Mac the clock also counts the time the thread waits for a core.
+	private final class RegexBudget {
+		var spent: UInt64 = 0
+		var gaveUp = false
+
+		func check(_ elapsed: UInt64) {
+			if spent + elapsed >= 300_000_000 { gaveUp = true }
+		}
+	}
+
+	/// Counts only the searching thread's processor time inside regex calls. Scheduling delays on a busy Mac
+	/// must not discard a normal search. The joined-fields optimization can stop without stopping real values.
 	private final class RegexWatch {
+		let budget: RegexBudget
 		private(set) var gaveUp = false
 
+		init(budget: RegexBudget = RegexBudget()) { self.budget = budget }
+
 		func firstMatch(_ regex: NSRegularExpression, _ text: String) -> NSRange? {
-			if gaveUp { return nil }
+			if gaveUp || budget.gaveUp { return nil }
+			let start = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)
 			var found: NSRange?
 			var reports = 0
-			// While ICU backtracks, the reports come less often, so a long text starts the clock at once.
-			var start: UInt64 = text.utf16.count > 1_000 ? clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) : 0
 			regex.enumerateMatches(in: text, options: .reportProgress, range: NSRange(text.startIndex..., in: text)) { result, _, stop in
 				if let result {
 					found = result.range
 					stop.pointee = true
 					return
 				}
-				// ICU reports progress about once for each character of a text, so a text of normal length reads no
-				// clock. Reading it costs about 270 ns.
 				reports += 1
 				guard reports % 256 == 0 else { return }
-				let now = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)
-				if start == 0 {
-					start = now
-				} else if now - start > 100_000_000 {
-					gaveUp = true
-					stop.pointee = true
-				}
+				let elapsed = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) - start
+				budget.check(elapsed)
+				if elapsed >= 100_000_000 { gaveUp = true }
+				if gaveUp || budget.gaveUp { stop.pointee = true }
 			}
-			return gaveUp ? nil : found
+			budget.spent += clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) - start
+			budget.check(0)
+			return gaveUp || budget.gaveUp ? nil : found
 		}
 	}
 
