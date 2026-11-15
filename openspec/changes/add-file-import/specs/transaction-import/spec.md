@@ -682,6 +682,7 @@ The app SHALL pair delivered pending transactions one to one with stored transac
 - **WHEN** the original pending file rent arrives again
 - **THEN** the agreeing identity finds the booked row and the payment counts once, still booked
 - **AND** its booked tombstone also absorbs the original file
+- **AND** the identity still finds the booked row if successive bank dates move it from 1 to 8 to 15 December
 - **AND** pending-to-pending file pairs on different dates still stay separate
 
 #### Scenario: A booked payment does not absorb a different pending payment
