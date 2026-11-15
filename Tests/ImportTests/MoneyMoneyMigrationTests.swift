@@ -720,7 +720,7 @@ struct MoneyMoneyMigrationTests {
 	func budgets() throws {
 		var withBudgets = categories
 		withBudgets[1]["budget"] = ["amount": 200.0, "available": 120.0, "period": "monthly"]
-		withBudgets[2]["budget"] = ["amount": 0.0, "available": 0.0, "period": "monthly"]
+		withBudgets[2]["budget"] = ["amount": 0.0, "available": -45.2, "rollover": true, "period": "monthly"]
 		withBudgets.insert(["uuid": "C4", "name": "Leisure", "group": false, "default": false, "indentation": 0, "currency": "EUR", "rules": "",
 			"budget": ["amount": 50.0, "available": 50.0, "period": "monthly"]], at: 3)
 		let p = try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(accounts), categories: try plist(withBudgets), transactions: try plist(transactions), into: Ledger())

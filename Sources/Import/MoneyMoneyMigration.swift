@@ -358,13 +358,16 @@ public struct MoneyMoneyMigration: Sendable {
 	]
 
 	/// The key layout of a budget in `export categories` was not recorded with the real export. A
-	/// `budget` counts when it is a number other than zero, or a dictionary with such a number, such as
-	/// its `amount`. A budget of zero counts as none.
+	/// `budget` counts when it is a number other than zero, or a dictionary whose `amount` is one. A
+	/// dictionary without `amount` counts when it has such a number. A budget of zero counts as none.
 	static func hasBudget(_ item: [String: Any]) -> Bool {
+		// A property list gives true as the number 1, so a flag such as a rollover must not count.
+		func amount(_ value: Any?) -> Double? { value is Bool ? nil : value as? Double }
 		switch item["budget"] {
-		case let amount as Double: amount != 0
-		case let budget as [String: Any]: budget.values.contains { ($0 as? Double).map { $0 != 0 } ?? false }
-		default: false
+		case let budget as [String: Any]:
+			if let value = budget["amount"] { return amount(value).map { $0 != 0 } ?? false }
+			return budget.values.contains { amount($0).map { $0 != 0 } ?? false }
+		case let value: return amount(value).map { $0 != 0 } ?? false
 		}
 	}
 
