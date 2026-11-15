@@ -241,25 +241,16 @@ public struct Ledger: Sendable {
 		return changed
 	}
 
-	/// Whether a view or a filter on one of the categories `roots` shows other rows after `transactions` go into `category`.
-	public func changesShownRows(assigning category: UUID?, to transactions: [Transaction], roots: [UUID]) -> Bool {
-		changesShownRows(from: Set(transactions.map(effectiveCategoryID)), to: category ?? defaultCategory?.id, roots: roots)
-	}
-
 	/// Whether a view or a filter on one of the categories `roots` shows other rows after the category `id` moves into `parent`.
 	public func changesShownRows(moving id: UUID, into parent: UUID?, roots: [UUID]) -> Bool {
-		guard let old = category(id), changesShownRows(from: [old.parentID], to: parent, roots: roots) else { return false }
+		guard let old = category(id) else { return false }
+		let crossesRoot = roots.contains { root in
+			let tree = categoryIDs(inTree: root)
+			return (old.parentID.map(tree.contains) ?? false) != (parent.map(tree.contains) ?? false)
+		}
+		guard crossesRoot else { return false }
 		let moved = categoryIDs(inTree: id)
 		return transactions.contains { $0.categoryID.map(moved.contains) ?? false }
-	}
-
-	/// Rows that go from under one of `sources` to under `target` come into or leave the tree of a root.
-	private func changesShownRows(from sources: Set<UUID?>, to target: UUID?, roots: [UUID]) -> Bool {
-		roots.contains { root in
-			let tree = categoryIDs(inTree: root)
-			let inTree = { (id: UUID?) in id.map(tree.contains) ?? false }
-			return sources.contains { inTree($0) != inTree(target) }
-		}
 	}
 
 	/// The categories that the category picker offers for a search, in sidebar order and without groups.
