@@ -34,7 +34,11 @@ Amounts travel as decimal strings and become minor units in the connector. Days 
 
 ### A wrong PIN
 
-hbci4java clears the PIN only when the bank reports a wrong PIN, and calls `WRONG_PIN` right after that. The helper keeps the answer of the bank for the whole run and sends it with the next PIN request. The connector turns that into `PINRequest(rejected:)`, so the broker never answers it from memory: the PIN sheet opens again in a manual refresh, and an automatic refresh fails with `pinRejected`. 9930 is a blocked access, and the connector stops without asking again. 9931 counts as a wrong PIN, because Sparkassen send it for a wrong login name or PIN.
+hbci4java clears the PIN only when the bank reports a wrong PIN, and calls `WRONG_PIN` right after that. The helper keeps the answer of the bank for the whole run and sends it with the next PIN request. The connector turns that into `PINRequest(rejected:)`, so the broker never answers it from memory: the PIN sheet opens again in a manual refresh, and an automatic refresh fails with `pinRejected`. 9930, 9933, and 3938 are a blocked access, and the connector stops without asking again. 3938 is a warning in FinTS, but no order succeeds after it, so a login that carries it fails the run. 3931 names a blocked PIN or a TAN generator that needs a synchronization, so it keeps the text of the bank. 9931 counts as a wrong PIN, because Sparkassen send it for a wrong login name or PIN.
+
+### Errors of the second factor
+
+The codes come from the FinTS return codes of the Deutsche Kreditwirtschaft (FinTS_Rueckmeldungscodes_2019-07-22), and `HelperError` in `Sources/FinTS/HelperProtocol.swift` lists their meaning. 9941, 9943, and 9948 are a TAN that the bank refused, and 9951 a two-step dialog that timed out. After an approval in the app these codes mean that the approval did not happen, so the helper marks such an error `approvalDeclined`: it knows which kind of challenge came last. A user whom the bank allows only the one-step method 999 (code 3920) has no TAN method for the FinTS server. When the bank then refuses the login with an error that names no other cause, such as a wrong PIN or a block, or answers 9955, the access fails with `noTANMethod`, which names the website of the bank and "Edit Login Data...". A blocked access and a missing TAN method wait for the user, and no dialog resolves them, so a command after a failed automatic refresh does not run the refresh again with dialogs.
 
 ### Trust in the server of the bank
 

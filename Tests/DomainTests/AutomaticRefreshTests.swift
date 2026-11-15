@@ -92,7 +92,8 @@ struct AutomaticRefreshTests {
 	@Test("Only failures that the user must resolve wait for a manual refresh", arguments: [
 		(SyncFailure.needsUser(.pin), true, false), (.needsUser(.secondFactor), true, false), (.needsUser(.login), true, false),
 		(.needsUser(.allowHost), true, false), (.pinRejected(BankMessage(code: "9942", text: "PIN falsch")), true, false), (.loginRejected, true, false),
-		(.accessBlocked(BankMessage(code: "9931", text: "Zugang gesperrt")), true, false),
+		(.accessBlocked(BankMessage(code: "9931", text: "Zugang gesperrt")), true, false), (.noTANMethod, true, false),
+		(.approvalDeclined(BankMessage(code: "9951", text: "Zeitüberschreitung")), false, true),
 		(.network("timeout"), false, false), (.bank(BankMessage(code: "9010", text: "Zugang vorübergehend gesperrt")), false, true), (.notFetched, false, false),
 		(.tanRejected(BankMessage(text: "TAN falsch")), false, false), (.challengeExpired, false, true), (.offline, false, false),
 	])

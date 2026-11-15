@@ -148,14 +148,14 @@ struct Ask: Decodable {
 	}
 
 	/// The request for the session. A PIN request after a rejection carries the answer of the bank, so
-	/// the broker never answers it from memory and shows the sheet again. 9930 means a blocked access,
-	/// and the app never asks for its PIN again (task 1.24). A flicker code that does not read fails the
-	/// access, because the user cannot produce a TAN without it.
+	/// the broker never answers it from memory and shows the sheet again. A code of a blocked access
+	/// stops the run, and the app never asks for its PIN again (task 1.24). A flicker code that does not
+	/// read fails the access, because the user cannot produce a TAN without it.
 	func request() throws -> UserRequest {
 		if kind == "pin" {
 			let rules = PINRules(minLength: rules?.minLength, maxLength: rules?.maxLength)
 			guard let rejected else { return .pin(PINRequest(rules: rules)) }
-			if rejected.code == "9930" { throw SyncFailure.accessBlocked(rejected.message) }
+			if case let .accessBlocked(message) = rejected.failure { throw SyncFailure.accessBlocked(message) }
 			return .pin(PINRequest(rejected: rejected.message, rules: rules))
 		}
 		let offered = (methods ?? []).map(\.method)
@@ -182,7 +182,16 @@ struct Ask: Decodable {
 	}
 }
 
-/// An error of the bank, or of the helper with `kind` "network", "certificate", or "unsupported".
+/// An error of the bank, or of the helper with `kind` "network", "certificate", "unsupported", "invalidChallenge",
+/// "noTANMethod", or "approvalDeclined".
+///
+/// The codes are those of the FinTS return codes of the Deutsche Kreditwirtschaft
+/// (FinTS_Rueckmeldungscodes_2019-07-22): 9942 and 9340 a wrong PIN, 9930 a blocked PIN, 9933 a blocked
+/// access, 3938 an access that is blocked until the PIN block is lifted, 9941 and 9948 an invalid
+/// TAN, 9943 a TAN that was used before, and 9951 a two-step dialog that timed out. Sparkassen send 9931,
+/// "Sperrung des Kontos nach Fehlversuchen", also for a wrong login name or PIN, so 9931 counts as a wrong
+/// PIN. 3931 names a blocked PIN or a TAN generator that needs a synchronization, so it keeps the text of the
+/// bank. 9955, "Ein-Schritt-TAN-Verfahren nicht zugelassen", answers a login without a TAN method.
 struct HelperError: Decodable, Equatable {
 	let kind: String?
 	let code: String?
@@ -195,10 +204,13 @@ struct HelperError: Decodable, Equatable {
 		case ("network", _), ("certificate", _): .network(text)
 		case ("unsupported", _): .unsupported(text)
 		case ("invalidChallenge", _): .invalidChallenge
+		case ("noTANMethod", _), (_, "9955"): .noTANMethod
+		case ("approvalDeclined", _): .approvalDeclined(message)
 		case (_, "9078"): .notRegistered
-		// Sparkassen send 9931 for a wrong login name or PIN, so only 9930 counts as blocked.
 		case (_, "9942"), (_, "9340"), (_, "9931"): .pinRejected(message)
-		case (_, "9930"): .accessBlocked(message)
+		case (_, "9930"), (_, "9933"), (_, "3938"): .accessBlocked(message)
+		case (_, "9941"), (_, "9943"), (_, "9948"): .tanRejected(message)
+		case (_, "9951"): .approvalDeclined(message)
 		default: .bank(message)
 		}
 	}
