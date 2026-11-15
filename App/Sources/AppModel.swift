@@ -54,6 +54,9 @@ enum Preference {
 	/// The pin of the filter bar, and the `SavedFilterBar` it keeps for the next launch.
 	static let pinFilterBar = "pinFilterBar"
 	static let savedFilterBar = "savedFilterBar"
+	/// "Checkmarks" and "Daily Balance" in the View menu.
+	static let showsCheckmarks = "showsCheckmarks"
+	static let showsDailyBalance = "showsDailyBalance"
 
 	/// The app locks after 10 minutes without activity unless the user turns it off. MoneyMoney has
 	/// this off and suggests 5 minutes; the owner chose on with 10 minutes.
@@ -271,6 +274,14 @@ final class AppModel {
 		didSet { UserDefaults.standard.set(balanceMode.rawValue, forKey: Preference.balanceMode) }
 	}
 	var chartPeriod: ChartPeriod = .month
+	/// The checkmark controls of the list. Hiding them keeps the stored checkmarks.
+	var showsCheckmarks = UserDefaults.standard.object(forKey: Preference.showsCheckmarks) as? Bool ?? true {
+		didSet { UserDefaults.standard.set(showsCheckmarks, forKey: Preference.showsCheckmarks) }
+	}
+	/// The balance at the end of each day in the list of a single account.
+	var showsDailyBalance = UserDefaults.standard.bool(forKey: Preference.showsDailyBalance) {
+		didSet { UserDefaults.standard.set(showsDailyBalance, forKey: Preference.showsDailyBalance) }
+	}
 	/// The cells of the transaction table read the selection, so a change of it waits for a drawing before the
 	/// table goes, like a change of the ledger (issue #135).
 	var selectedTransactions = Set<UUID>() {

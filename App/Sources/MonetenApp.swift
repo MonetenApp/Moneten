@@ -112,6 +112,11 @@ struct AppCommands: Commands {
 			.pickerStyle(.inline)
 			.disabled(!unlocked)
 			Divider()
+			Toggle("Daily Balance", isOn: Binding(get: { model.showsDailyBalance }, set: { model.showsDailyBalance = $0 }))
+				.disabled(!unlocked || model.selectedAccount == nil)
+			Toggle("Checkmarks", isOn: Binding(get: { model.showsCheckmarks }, set: { model.showsCheckmarks = $0 }))
+				.disabled(!unlocked)
+			Divider()
 		}
 		CommandMenu("Account") {
 			Button("Add Account...") { model.addAccount() }.disabled(!unlocked)

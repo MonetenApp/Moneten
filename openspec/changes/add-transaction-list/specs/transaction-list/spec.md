@@ -224,13 +224,19 @@ The app SHALL let the user write a comment for a transaction with "Add Comment..
 
 ### Requirement: Daily balance in the list
 
-The app SHALL show the balance at the end of each day between the rows of a single account when the user turns on "Daily balance" in the filter bar or chooses "Daily Balance" in the View menu. The switch and the command are available only in the view of a single account.
+The app SHALL show the balance at the end of each day below the amount of the top row of that day in the view of a single account when the user turns on "Daily balance" in the filter bar or chooses "Daily Balance" in the View menu. The switch and the command are available only in the view of a single account, and the app remembers the choice after a restart.
 
 #### Scenario: Turn on
 
 - **GIVEN** the account "Giro" with a computed balance of 1.200,00 € at the end of 02.11.2026 and two transactions of -50,00 € and -25,00 € on 03.11.2026
 - **WHEN** the user turns on "Daily balance"
-- **THEN** the list shows 1.125,00 € as the balance of 03.11.2026
+- **THEN** the top row of 03.11.2026 shows 1.125,00 € below its amount
+- **AND** the other row of 03.11.2026 shows no balance
+
+#### Scenario: Turn off
+
+- **WHEN** the user turns off "Daily balance"
+- **THEN** no row shows a balance
 
 #### Scenario: Group view
 

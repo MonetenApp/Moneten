@@ -268,6 +268,38 @@ struct PerfScenario {
 				c.model.move(account: moved.id, toGroup: bulk)
 				await c.settle()
 			}),
+		// "The list stays fluid with a large history" (add-transaction-list, task 1.20): the group of 50,000 rows from
+		// the top to the bottom in 20 steps, and every visible row has its view after each step.
+		PerfScenario(name: "scroll-large-group", budget: halfSecond,
+			setUp: { await $0.select("Bulk"); await $0.scroll { _ in 0 } },
+			run: { c in
+				for step in 1...20 {
+					c.harness.scrollTables { min($0 * step / 20, $0 - 1) }
+					await c.settle()
+					guard let table = c.harness.transactionTables().first else { return c.fail("no transaction table") }
+					let visible = table.rows(in: table.visibleRect)
+					let blank = (visible.location..<visible.location + visible.length).filter { table.rowView(atRow: $0, makeIfNecessary: false) == nil }
+					if !blank.isEmpty { c.fail("step \(step) shows \(blank.count) blank rows") }
+				}
+			}),
+		PerfScenario(name: "select-all-in-large-group", budget: halfSecond,
+			setUp: { await $0.select("Bulk") },
+			run: { c in
+				c.harness.transactionTables().first?.selectAll(nil)
+				await c.settle()
+				if c.model.selectedTransactions.count != c.model.visibleTransactions.count {
+					c.fail("\(c.model.selectedTransactions.count) of \(c.model.visibleTransactions.count) rows are selected")
+				}
+				c.harness.transactionTables().first?.deselectAll(nil)
+			}),
+		// "Daily balance" reads the balances of every day of the account from the whole ledger.
+		PerfScenario(name: "daily-balance-in-account", budget: halfSecond,
+			setUp: { await $0.select("Account 1") },
+			run: { c in
+				c.model.showsDailyBalance = true
+				await c.settle()
+				c.model.showsDailyBalance = false
+			}),
 		// Last, because it leaves "Bulk" grouped by account: its table has a section per account.
 		PerfScenario(name: "group-by-account", budget: halfSecond,
 			setUp: { c in
