@@ -679,11 +679,13 @@ final class AppModel {
 	/// Moves a category, or a group with everything in it, to the gap `index` among the children of `parent`.
 	func move(category id: UUID, into parent: UUID?, at index: Int) {
 		guard let oldParent = ledger.category(id).map(\.parentID), !ledger.move(category: id, into: parent, at: index).isEmpty else { return }
-		// A category that comes into or leaves the open category view, or the category filter, would insert
-		// or remove its rows in place, which removes shown rows (issue #135), so it comes with a new table.
+		// A category with rows that comes into or leaves the open category view, or the category filter, would
+		// insert or remove its rows in place, which removes shown rows (issue #135), so it comes with a new table.
 		var roots = [tableKey.filter.categoryID]
 		if case let .category(shown) = tableKey.selection { roots.append(shown) }
-		let changesShownRows = roots.compactMap { $0 }.contains { root in
+		let moved = ledger.categoryIDs(inTree: id)
+		let hasRows = ledger.transactions.contains { $0.categoryID.map(moved.contains) ?? false }
+		let changesShownRows = hasRows && roots.compactMap { $0 }.contains { root in
 			let tree = ledger.categoryIDs(inTree: root)
 			return (oldParent.map(tree.contains) ?? false) != (parent.map(tree.contains) ?? false)
 		}
@@ -699,7 +701,10 @@ final class AppModel {
 		guard let store, !changed.isEmpty else { return }
 		do {
 			try store.save(categories: changed)
-			for c in changed { ledger.upsert(c) }
+			var moved = ledger
+			for c in changed { moved.upsert(c) }
+			ledgerChange = "move categories=\(changed.count)"
+			ledger = moved
 		} catch {
 			alert = AlertMessage(title: "Could not move the category.", message: String(describing: error))
 		}
