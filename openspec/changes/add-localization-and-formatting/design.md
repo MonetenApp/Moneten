@@ -2,7 +2,9 @@
 
 ## Context
 
-This design so far covers only the completion of a partly typed date, because its rule needs decisions before code. The other requirements of the change get their design before their tasks are written.
+This design covers the languages of the interface and the completion of a partly typed date. The other requirements of the change, such as amount entry and the groups of an IBAN, get their design before their tasks are built.
+
+Today every text of the interface is English. SwiftUI already looks up the literal labels of `Text`, `Button`, and similar views, but the app has no translation, so the lookup finds nothing. Many texts are not looked up at all: a `String` built in code, an alert of the app, the title of a notification, and the messages that the libraries `Domain`, `Sync`, `Storage`, `Import`, `FinTS`, `ExtensionHost`, `ExtensionConnector`, and `ExtensionCatalog` write for the user.
 
 The sheet for a manual transaction in `App/Sources/Views/Sheets.swift` and the custom period in `App/Sources/Views/TransactionsView.swift` use the date picker of the system. That picker edits the day, the month, and the year one at a time. It does not take a day alone and complete it, so the rules of the spec need a date field of the app's own.
 
@@ -10,15 +12,52 @@ The sheet for a manual transaction in `App/Sources/Views/Sheets.swift` and the c
 
 **Goals:**
 
+- Every text that the app writes itself exists in English and German, and a check fails when a new text has no German translation.
+- One term for one thing in each language.
 - One rule for completing a date, used by every date field of the app.
 - The same result for the same typed text, today, region, and kind of field, so tests can fix all four.
 
 **Non-Goals:**
 
+- A third language. The catalog allows one later.
+- Translating text from a bank, an extension, or macOS, such as a bank message or a system error.
+
 - Words such as "today" or "heute" in a date field.
 - The minimum and maximum of a date field. A field that has them applies them after the completion.
 
 ## Decisions
+
+### One String Catalog in the app
+
+The app target holds `App/Resources/Localizable.xcstrings`, with English as the development language and German as the second language. The key of an entry is its English text, as Swift writes it for a literal, for example `%lld new transactions` for an interpolated count. A key without a German value shows its English text.
+
+The libraries have no catalog of their own. A library writes a text for the user with `String(localized:)`, which reads the main bundle. In the app that bundle is the app with its catalog. In the tests of the package it is the test runner without a catalog, so the tests read English. So the package still builds with the Command Line Tools alone, which cannot compile a catalog.
+
+Alternative: one catalog in each library with `defaultLocalization` in `Package.swift`. That adds a resource bundle to each library and the tool for the catalog to every build of the package, for a few hundred texts.
+
+### Literals are looked up, values are not
+
+A text of the app is a literal in the code: `Text("Balance")`, `String(localized: "Could not save the account.")`, or a parameter of the type `LocalizedStringKey` or `LocalizedStringResource`. A value that comes from the database, a bank, or an extension, such as an account name, reaches a view with `Text(verbatim:)` or as a `String`, which SwiftUI does not look up. The debug harness and the perf check write only to their log, so their texts stay English and outside the catalog.
+
+### Counts use the plural rules of the catalog
+
+A text with a count, such as `%lld new transactions`, has one entry with the variations "one" and "other" in each language. Code does not choose between a singular and a plural literal.
+
+### The check reads what the compiler extracts
+
+`scripts/check.sh` already builds the app for Periphery. That build sets `SWIFT_EMIT_LOC_STRINGS`, so the compiler writes the key of every literal that is looked up, in the app and in the libraries, to a `.stringsdata` file. `scripts/check-localization.py` reads these files and the catalog. It fails when a key is missing from the catalog, when a key has no German value, and when the catalog holds a key that no code uses. With `--update`, it adds the missing keys with an empty German value and removes the unused ones, so a contributor without the Xcode editor can add a text and then write its German value.
+
+Keys of the libraries carry the extraction state `manual` in the catalog, so Xcode keeps them when it updates the catalog from the sources of the app.
+
+### The language comes from macOS or from the setting
+
+The "Language" menu on the "General" tab stores `AppleLanguages` with `de` or `en` in the defaults of the app. macOS reads this value at the start of the app, so a change applies at the next start, and the menu says so. Without a stored value, the app reads the preferred languages of macOS at the start. When the first one is neither German nor English, the app sets English for this run, so a French Mac shows English even when German is the second language on that Mac. The setting lives outside the database, so the lock screen is already in the chosen language.
+
+The formats of dates and numbers follow the region of macOS and not the language of the app. An English interface on a Mac in the region Germany shows 1.234,56 € and 09.11.2026.
+
+### Starter categories follow the language at creation
+
+`StarterCategories.make(language:)` already holds both sets. The app picks the set by the language of the interface when it creates the database. A later change of the language does not rename them, because the user may have changed them.
 
 ### A pure completion function in `Domain`
 
@@ -44,6 +83,8 @@ The completion works on the numbers of the day and the month and checks the date
 
 ## Risks / Trade-offs
 
+- [A text that a library builds as a `String` without `String(localized:)` stays English.] → The check sees only literals that are looked up. Review a new message of a library for `String(localized:)`, as for any text of the app.
+- [A text stored in the database, such as the error of the last refresh, keeps the language in which it was written.] → It changes with the next refresh.
 - [A day typed more than two days ahead lands in the previous month.] → The field shows the full date at once, and the user can type the month as well.
 - [Near the end of a month, a day of the next month needs the month typed.] → The field shows the full date at once, so the user sees 01.11.2026 and can type "1.12" instead.
 
