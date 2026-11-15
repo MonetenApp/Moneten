@@ -150,7 +150,7 @@ The app SHALL read a regular expression without a field name in the search field
 
 ### Requirement: A regular expression that does not end
 
-The app SHALL stop a regular expression in the search that reads one text for longer than 100 ms of processor time, and count it and every later text of the same search as no match, so the window keeps responding.
+The app SHALL stop a regular expression in the search that reads one text for about 100 ms of processor time, and count it and every later text of the same search as no match, so the window keeps responding.
 
 #### Scenario: Lazy quantifier after an anchor
 

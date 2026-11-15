@@ -125,6 +125,7 @@ struct SearchQuery {
 		}
 
 		func holds(_ row: Row) -> Bool {
+			if watch.gaveUp { return false }
 			// Folding a text that is not ASCII can change its letters, as "e" and a combining accent become "é".
 			if let required, !required.occurs(in: row.searchText), row.searchText.utf8.allSatisfy({ $0 < 0x80 }) { return false }
 			var values: [String] = []
@@ -137,7 +138,7 @@ struct SearchQuery {
 				if let name = row.categoryName() { add(name) }
 			}
 			// An empty value matches only a pattern that matches the empty text, and it is no line of the joined text.
-			if hasEmpty, matchesEmpty, !watch.gaveUp { return true }
+			if hasEmpty, matchesEmpty { return true }
 			// A carriage return before the joining line break would make one line break of two.
 			if let anyLine, values.count > 1, !lineWatch.gaveUp, !values.contains(where: { $0.utf8.contains(0x0D) }) {
 				let joined = values.joined(separator: "\n")
@@ -158,7 +159,8 @@ struct SearchQuery {
 
 	/// Stops a regular expression that does not end. ICU never returns for some patterns, such as a lazy quantifier
 	/// after an anchor in `/^+?49/`, and the search runs on the main thread at each keystroke. After one text that
-	/// takes more than 100 ms of processor time, every later text of the same search counts as no match. Processor
+	/// takes about 100 ms of processor time after the first reports of ICU, every later text of the same search
+	/// counts as no match. Processor
 	/// time, because on a busy Mac the clock also counts the time the thread waits for a core.
 	private final class RegexWatch {
 		private(set) var gaveUp = false
@@ -167,7 +169,8 @@ struct SearchQuery {
 			if gaveUp { return nil }
 			var found: NSRange?
 			var reports = 0
-			var start: UInt64 = 0
+			// While ICU backtracks, the reports come less often, so a long text starts the clock at once.
+			var start: UInt64 = text.utf16.count > 1_000 ? clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) : 0
 			regex.enumerateMatches(in: text, options: .reportProgress, range: NSRange(text.startIndex..., in: text)) { result, _, stop in
 				if let result {
 					found = result.range
