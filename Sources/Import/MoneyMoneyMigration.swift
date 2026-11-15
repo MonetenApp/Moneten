@@ -498,9 +498,9 @@ public enum MoneyMoneyExporter {
 	public static func exportCategories() async throws -> Data { try await run(.categories) }
 	public static func exportTransactions() async throws -> Data { try await run(.transactions) }
 
-	static func run(_ command: Command, bundleIdentifier: String = "com.moneymoney-app.retail",
+	static func run(_ command: Command, bundleIdentifier: String = "com.moneymoney-app.retail", applicationURL: URL? = nil,
 		send: @escaping @Sendable (NSAppleEventDescriptor) throws -> NSAppleEventDescriptor = { try $0.sendEvent(options: .waitForReply, timeout: 120) }) async throws -> Data {
-		guard NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleIdentifier) != nil else { throw Failure.notInstalled }
+		guard (applicationURL ?? NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleIdentifier)) != nil else { throw Failure.notInstalled }
 		return try await withCheckedThrowingContinuation { continuation in
 			DispatchQueue.global(qos: .userInitiated).async {
 				do {

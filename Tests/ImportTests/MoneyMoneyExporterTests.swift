@@ -31,7 +31,6 @@ struct MoneyMoneyExporterTests {
 		try compiler.run()
 		compiler.waitUntilExit()
 		#expect(compiler.terminationStatus == 0)
-		#expect(LSRegisterURL(app as CFURL, true) == noErr)
 		let calls = Mutex<[UInt32]>([])
 		let replyText = "<?xml version=\"1.0\"?><plist version=\"1.0\"><array/></plist>"
 		let send: @Sendable (NSAppleEventDescriptor) throws -> NSAppleEventDescriptor = { event in
@@ -41,7 +40,7 @@ struct MoneyMoneyExporterTests {
 			return reply
 		}
 		do {
-			_ = try await MoneyMoneyExporter.run(.accounts, bundleIdentifier: identifier, send: send)
+			_ = try await MoneyMoneyExporter.run(.accounts, bundleIdentifier: identifier, applicationURL: app, send: send)
 			Issue.record("A stopped source exported accounts")
 		} catch {
 			#expect(error as? MoneyMoneyExporter.Failure == .notRunning)
@@ -61,7 +60,7 @@ struct MoneyMoneyExporterTests {
 		#expect(running.processIdentifier == process.processIdentifier)
 		let pid = process.processIdentifier
 		for command in [MoneyMoneyExporter.Command.accounts, .categories, .transactions] {
-			let data = try await MoneyMoneyExporter.run(command, bundleIdentifier: identifier) { event in
+			let data = try await MoneyMoneyExporter.run(command, bundleIdentifier: identifier, applicationURL: app) { event in
 				#expect(event.eventClass == 0x4d4f4e59)
 				#expect(event.attributeDescriptor(forKeyword: keyAddressAttr)?.descriptorType == typeKernelProcessID)
 				#expect(event.attributeDescriptor(forKeyword: keyAddressAttr)?.data == withUnsafeBytes(of: pid) { Data($0) })
@@ -75,7 +74,7 @@ struct MoneyMoneyExporterTests {
 		}
 		#expect(calls.withLock { $0 } == [0x65787061, 0x65787063, 0x65787074])
 		do {
-			_ = try await MoneyMoneyExporter.run(.accounts, bundleIdentifier: identifier) { _ in
+			_ = try await MoneyMoneyExporter.run(.accounts, bundleIdentifier: identifier, applicationURL: app) { _ in
 				let reply = NSAppleEventDescriptor.record()
 				reply.setParam(NSAppleEventDescriptor(int32: -1743), forKeyword: 0x6572726e)
 				return reply
@@ -85,7 +84,7 @@ struct MoneyMoneyExporterTests {
 			#expect(error as? MoneyMoneyExporter.Failure == .notAllowed)
 		}
 		do {
-			_ = try await MoneyMoneyExporter.run(.accounts, bundleIdentifier: identifier) { event in
+			_ = try await MoneyMoneyExporter.run(.accounts, bundleIdentifier: identifier, applicationURL: app) { event in
 				process.terminate()
 				process.waitUntilExit()
 				return try event.sendEvent(options: .waitForReply, timeout: 2)
@@ -99,7 +98,7 @@ struct MoneyMoneyExporterTests {
 			try await Task.sleep(for: .milliseconds(20))
 		}
 		do {
-			_ = try await MoneyMoneyExporter.run(.accounts, bundleIdentifier: identifier, send: send)
+			_ = try await MoneyMoneyExporter.run(.accounts, bundleIdentifier: identifier, applicationURL: app, send: send)
 			Issue.record("The source was exported after it quit")
 		} catch {
 			#expect(error as? MoneyMoneyExporter.Failure == .notRunning)
