@@ -43,11 +43,8 @@ struct MigrationSheet: View {
 						model.sheet = nil
 						Task { await model.importFile() }
 					}
-				} else {
-					Button("Add Account...") {
-						model.sheet = nil
-						model.addAccount()
-					}
+				} else if model.ledger.accounts.isEmpty {
+					Button("Add Account...") { model.addAccount() }
 				}
 			}
 		} content: {
