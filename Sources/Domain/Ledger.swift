@@ -196,12 +196,18 @@ public struct Ledger: Sendable {
 		return result
 	}
 
+	/// The accounts whose transactions a category takes: the account or the accounts of the account group
+	/// that it is restricted to, or nil when it has no restriction.
+	public func allowedAccounts(of category: Category) -> Set<UUID>? {
+		guard let r = category.restrictedToID else { return nil }
+		return account(r) != nil ? [r] : accountIDs(inGroupTree: r)
+	}
+
 	/// A category group holds no transactions, and a category restricted to an account or account group
 	/// takes only transactions of that account or of an account in that group.
 	public func canAssign(_ category: Category, to transactions: [Transaction]) -> Bool {
 		guard !category.isGroup else { return false }
-		guard let r = category.restrictedToID else { return true }
-		let allowed: Set<UUID> = account(r) != nil ? [r] : accountIDs(inGroupTree: r)
+		guard let allowed = allowedAccounts(of: category) else { return true }
 		return transactions.allSatisfy { allowed.contains($0.accountID) }
 	}
 
@@ -209,6 +215,12 @@ public struct Ledger: Sendable {
 	public func categories(matching query: String) -> [Category] {
 		let folded = TextFolding.fold(query.trimmingCharacters(in: .whitespaces))
 		return categoriesInSidebarOrder.filter { !$0.isGroup && (folded.isEmpty || TextFolding.fold($0.name).contains(folded)) }
+	}
+
+	/// The same categories without those that the transactions of `accounts` cannot take. The picker passes
+	/// the accounts of the selection, so a keystroke costs the same for 2 selected rows and for 50,000.
+	public func categories(matching query: String, assignableTo accounts: Set<UUID>) -> [Category] {
+		categories(matching: query).filter { allowedAccounts(of: $0).map(accounts.isSubset) ?? true }
 	}
 
 	public func categoryIDs(inTree root: UUID) -> Set<UUID> {
