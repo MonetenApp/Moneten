@@ -144,10 +144,8 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored: [Tran
 				next = live.takingBankFields(of: delivered)
 				if next != live { rules.categorize(&next) }
 			case .pending:
-				if fetched {
-					next = live.takingBankFields(of: delivered)
-					if next != live { rules.categorize(&next) }
-				}
+				next = live.takingBankFields(of: delivered)
+				if next != live { rules.categorize(&next) }
 				fallthrough
 			case .fingerprint, .sameDay:
 				if let id = delivered.sourceID, Identity.remote(next.sourceID) == nil {
@@ -348,9 +346,9 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 				let priority = t.isPending && identity.isPending ? (fetched ? 1 : 2) : 3 + step
 				candidates.append(Candidate(delivered: i, slot: slot, priority: priority, distance: distance, evidence: .fingerprint))
 			}
-			guard t.isPending, !delivery.isMigration, matches[i].fits(match),
-				identity.isPending || (!delivery.isFetched && fetched) else { continue }
 			let explicit = incoming[i].endToEnd != nil && incoming[i].endToEnd == identity.endToEnd
+			guard t.isPending, !delivery.isMigration, matches[i].amount == match.amount, distance <= PendingMatch.maxDaysApart,
+				explicit || matches[i].fits(match), identity.isPending || (!delivery.isFetched && fetched) else { continue }
 			guard delivery.isFetched ? (explicit || (fetched && sameDay) || future) : sameDay else { continue }
 			let priority = explicit ? 0 : (fetched ? 1 : 2)
 			let fingerprint = Identity.steps.contains { $0.accepts(incoming[i], identity) }

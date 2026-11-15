@@ -71,6 +71,18 @@ extension ReconcileTests {
 		#expect(r.skipped == 1)
 	}
 
+	@Test("An agreeing end-to-end reference finds a tombstone without a counterparty IBAN")
+	func gate3ReferenceWithoutIBAN() {
+		var file = rent(1)
+		file.counterpartyIBAN = nil
+		file.endToEndReference = "RENT-A"
+		var bank = stored(file)
+		bank.purpose = "BANK"
+		let r = merge(.file([file]), deleted: [DeletedTransaction(bank, deletedAt: now)], at: noon(21, month: 11))
+		#expect(r.added == [])
+		#expect(r.skipped == 1)
+	}
+
 	@Test("Gate 3 item 4: a changed bank purpose keeps the fetched partner")
 	func gate3ChangedPurpose() {
 		let file = [rent(1), rent(8)]
