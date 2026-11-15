@@ -24,6 +24,11 @@ extension AppModel {
 		case .fints:
 			addAccount(group: group, purpose: .newAccounts(access))
 		case let .extension(package):
+			// The setup of the extension is an access of its own for the coordinator, which would not wait for the refresh.
+			guard !sync.isBusy(access.id) else {
+				alert = AlertMessage(title: "Moneten is refreshing \(access.bankName).", message: "Look for new accounts again when the refresh has ended.")
+				return
+			}
 			do {
 				addExtensionAccess(package: try extensions.verifiedPackage(package), service: access.bankName, fixture: extensions.fixtures[package], groupID: group)
 			} catch {

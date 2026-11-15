@@ -197,6 +197,16 @@ public final class SessionBroker {
 		if save || savedPINs.contains(access) { try writeSavedPIN(pin, of: access) }
 	}
 
+	/// Keeps the PIN of a login that "Edit Login Data..." just stored, together with the saved PIN of the
+	/// access, in the database: `saved` says whether that saved the PIN or deleted the saved one. Nothing is
+	/// written here, so the marks in memory always follow the database, and a later rejection deletes a saved PIN.
+	public func adopt(_ pin: Secret, for access: UUID, saved: Bool) {
+		pins[access] = pin
+		toSave.remove(access)
+		undeleted.remove(access)
+		if saved { savedPINs.insert(access) } else { savedPINs.remove(access) }
+	}
+
 	/// "Remove saved PIN": deletes the saved PIN of an access, for all its accounts, and forgets it, so the
 	/// next refresh asks.
 	public func removeSavedPIN(of access: UUID) throws {

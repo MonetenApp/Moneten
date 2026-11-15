@@ -116,6 +116,25 @@ struct SavedPINTests {
 		await until { !coordinator.isRefreshing }
 	}
 
+	@Test("A PIN that Edit Login Data saved answers without a sheet, and a rejection of it deletes it from the database")
+	func adoptedPIN() async throws {
+		try store.savePIN(Secret("54321"), for: Self.bank.id)
+		broker.adopt(Secret("54321"), for: Self.bank.id, saved: true)
+		#expect(broker.savedPINs == [Self.bank.id])
+		let automatic = refresh([.ask(Self.pin), .ask(Self.rejected)], attended: false)
+		await until { !coordinator.isRefreshing }
+		#expect(automatic.answers.all == [.pin(Secret("54321"))])
+		#expect(store.pins.isEmpty)
+		#expect(broker.savedPINs.isEmpty)
+
+		broker.adopt(Secret("67890"), for: Self.bank.id, saved: false)
+		#expect(broker.savedPINs.isEmpty)
+		let next = refresh([.ask(Self.pin), .fetched(Self.giro.accountID)], attended: false)
+		await until { !coordinator.isRefreshing }
+		#expect(next.answers.all == [.pin(Secret("67890"))])
+		#expect(store.pins.isEmpty)
+	}
+
 	@Test("A saved PIN stays after a failure that is not about the PIN")
 	func savedAfterOtherFailure() async throws {
 		try store.savePIN(Secret("12345"), for: Self.bank.id)
