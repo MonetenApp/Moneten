@@ -87,6 +87,24 @@ The app SHALL detect the date format of each date column from all its values, in
 - **WHEN** a column holds "31.10.2026" and "03.11.2026"
 - **THEN** the app reads day, month, year
 
+#### Scenario: The other date column decides
+
+- **GIVEN** a CSV file with a booking date column and a value date column
+- **WHEN** a row has the booking date "10/30/2026" and the value date "11/01/2026"
+- **THEN** the app reads the value date as 1 November 2026
+
+#### Scenario: A value that fits no order decides nothing
+
+- **GIVEN** a CSV file with the booking dates "10/01/2026" and "10/02/2026"
+- **WHEN** their value dates are "10/30/2026" and "pending"
+- **THEN** the app reads the booking dates as 1 October and 2 October 2026
+
+#### Scenario: A date with dots stays day first
+
+- **GIVEN** a CSV file with the booking dates "01.11.2026" and "02.11.2026"
+- **WHEN** their value dates are "11.13.2026" and "03.11.2026"
+- **THEN** the app reads the booking dates as 1 November and 2 November 2026, the second value date as 3 November 2026, and warns that the value date in line 2 cannot be read
+
 #### Scenario: Ambiguous dates
 
 - **WHEN** every value of a column is like "03/04/2026" and "05/06/2026"
@@ -117,6 +135,16 @@ The app SHALL read amounts with a decimal comma or a decimal point, with or with
 
 - **WHEN** a row has the amount "89,00" and "S" in a debit and credit marker column
 - **THEN** the app reads a withdrawal of 89,00 €
+
+#### Scenario: Marker column wins over the sign
+
+- **WHEN** a row has the amount "89,00-" and "H" in a debit and credit marker column
+- **THEN** the app reads a deposit of 89,00 €
+
+#### Scenario: Amounts out of scope fail the file
+
+- **WHEN** a row has the amount "(12.50)", "($12.50)", or "¥1200"
+- **THEN** the app imports nothing and says that the amount in the line of that row cannot be read
 
 #### Scenario: Amount without decimals takes the decimal mark of the file
 

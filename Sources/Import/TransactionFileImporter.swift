@@ -348,15 +348,16 @@ enum DateOrder: CaseIterable {
 		return (counts, readable)
 	}
 
-	/// The day of "31.10.2026" or "10/31/26" in this order, or of "2026-10-31". A two-digit year below 70 is in
-	/// the 2000s, and from 70 on in the 1900s.
+	/// The day of "10/31/26" in this order, or of "2026-10-31". A two-digit year below 70 is in the 2000s, and
+	/// from 70 on in the 1900s. A date with dots, such as "31.10.2026", reads day first in any order, because
+	/// no bank writes month first with dots, and one typo in a value date must not turn every booking date.
 	func day(_ text: String) -> Day? {
 		let parts = text.split(whereSeparator: { $0 == "-" || $0 == "." || $0 == "/" })
 		guard parts.count == 3, let a = Int(parts[0]), let b = Int(parts[1]), var c = Int(parts[2]) else { return nil }
 		if parts[0].count == 4 { return Day.valid(year: a, month: b, day: c) }
 		guard parts[2].count == 2 || parts[2].count == 4 else { return nil }
 		if parts[2].count == 2 { c += c < 70 ? 2000 : 1900 }
-		switch self {
+		switch text.contains(".") ? .dayMonthYear : self {
 		case .dayMonthYear: return Day.valid(year: c, month: b, day: a)
 		case .monthDayYear: return Day.valid(year: c, month: a, day: b)
 		}
