@@ -363,6 +363,8 @@ The app SHALL show a report after the import. The report lists for each account 
 
 - **WHEN** the migration finishes
 - **THEN** the report names login data, templates, standing orders, and statements as not migrated, each with one sentence that says why or what to do
+- **AND** the templates note says to use "Export Transfer Templates..." in the source app to keep them
+- **AND** the statements note says to use "Show in Finder..." on "Statements" in the source app to find the statement files and copy them to keep them
 
 #### Scenario: Budgets in a version without budgets
 

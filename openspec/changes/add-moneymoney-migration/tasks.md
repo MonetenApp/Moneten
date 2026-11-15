@@ -44,6 +44,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 ## 3. Integration
 
 - [ ] 3.1 Check every scenario of the spec in a release build and record the result in the pull request.
+  Before this task, the operator exports one category with a budget of 10,00 EUR from MoneyMoney and records the key names. A dictionary without `amount`, for example `["value": 0, "available": 120]`, still counts as a budget today; that changes only the note.
 
 ## Workflow follow-up
 

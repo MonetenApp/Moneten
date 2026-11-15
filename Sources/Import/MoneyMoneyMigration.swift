@@ -357,9 +357,9 @@ public struct MoneyMoneyMigration: Sendable {
 	/// The scripting dictionary of MoneyMoney has no command that exports these.
 	static let notMigratedNotes = [
 		"Login data was not migrated, because the AppleScript export of MoneyMoney does not contain it. Connect a migrated account to its bank with \"Add Account...\" and enter the login data there.",
-		"Transfer templates were not migrated, because the AppleScript export of MoneyMoney does not contain them. Copy the ones you need from MoneyMoney.",
+		"Transfer templates were not migrated, because the AppleScript export of MoneyMoney does not contain them. Use \"Export Transfer Templates...\" in MoneyMoney to keep them.",
 		"Standing orders were not migrated, because the AppleScript export of MoneyMoney does not contain them. Your bank keeps them, so they continue as before.",
-		"Statements were not migrated, because the AppleScript export of MoneyMoney does not contain them. Copy the PDF files from the folder \"Statements\" in the data folder of MoneyMoney to keep them.",
+		"Statements were not migrated, because the AppleScript export of MoneyMoney does not contain them. Use \"Show in Finder...\" on \"Statements\" in MoneyMoney to find the statement files and copy them to keep them.",
 	]
 
 	/// The key layout of a budget in `export categories` was not recorded with the real export. A

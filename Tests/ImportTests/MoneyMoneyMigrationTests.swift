@@ -711,9 +711,9 @@ struct MoneyMoneyMigrationTests {
 	func notMigrated() throws {
 		let notes = try plan().notes
 		#expect(notes.contains("Login data was not migrated, because the AppleScript export of MoneyMoney does not contain it. Connect a migrated account to its bank with \"Add Account...\" and enter the login data there."))
-		#expect(notes.contains("Transfer templates were not migrated, because the AppleScript export of MoneyMoney does not contain them. Copy the ones you need from MoneyMoney."))
+		#expect(notes.contains("Transfer templates were not migrated, because the AppleScript export of MoneyMoney does not contain them. Use \"Export Transfer Templates...\" in MoneyMoney to keep them."))
 		#expect(notes.contains("Standing orders were not migrated, because the AppleScript export of MoneyMoney does not contain them. Your bank keeps them, so they continue as before."))
-		#expect(notes.contains("Statements were not migrated, because the AppleScript export of MoneyMoney does not contain them. Copy the PDF files from the folder \"Statements\" in the data folder of MoneyMoney to keep them."))
+		#expect(notes.contains("Statements were not migrated, because the AppleScript export of MoneyMoney does not contain them. Use \"Show in Finder...\" on \"Statements\" in MoneyMoney to find the statement files and copy them to keep them."))
 	}
 
 	@Test("The report counts the categories with a budget and says that the budgets were not taken over")
@@ -866,7 +866,7 @@ struct MoneyMoneyMigrationTests {
 			Notes
 			Portfolio accounts were taken over with their balance.
 			"""))
-		#expect(text.hasSuffix("Statements were not migrated, because the AppleScript export of MoneyMoney does not contain them. Copy the PDF files from the folder \"Statements\" in the data folder of MoneyMoney to keep them.\n"))
+		#expect(text.hasSuffix("Statements were not migrated, because the AppleScript export of MoneyMoney does not contain them. Use \"Show in Finder...\" on \"Statements\" in MoneyMoney to find the statement files and copy them to keep them.\n"))
 	}
 
 	@Test("The report names a group whose balance in MoneyMoney leaves out an account")
