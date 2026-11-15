@@ -132,7 +132,7 @@ A split original is booked, and a merge drops only pending rows, so a merge neve
 
 ### Storage
 
-Migration `v16` in `Sources/Storage/Schema.swift` adds the table `splitPart`. It is the next migration after `v15`.
+Migration `v17` in `Sources/Storage/Schema.swift` adds the table `splitPart`. It is the next migration after `v16`, which #198 adds for the CAMT return reason.
 
 - `id` (primary key), `transactionID` (references `bankTransaction` with `ON DELETE CASCADE`, indexed), `position`, `amountMinor`, `categoryID` (references `category` with `ON DELETE SET NULL`), `comment`, `vat`.
 - `vat` is JSON, as `account.refreshError` is.
@@ -187,4 +187,4 @@ Group 3 makes the list read the rows, and group 4 makes the changes write parts.
 
 ## Migration Plan
 
-`v16` creates an empty table and rewrites no row. Undoing every split empties the table again. No release has shipped, so no database has a `v16` from another build.
+`v17` creates an empty table and rewrites no row. Undoing every split empties the table again. No release has shipped, so no database has a `v17` from another build.
