@@ -71,7 +71,8 @@ extension MoneyMoneyMigration.Plan {
 	}
 
 	public func review(in ledger: Ledger) -> Review {
-		isEmpty ? .nothingNew : .importChanges
+		guard isEmpty else { return .importChanges }
+		return notes.isEmpty ? .nothingNew : .report(report(after: ledger))
 	}
 
 	/// Compares the accounts of `ledger`, the ledger after the import, with the export. A row that a file or a bank

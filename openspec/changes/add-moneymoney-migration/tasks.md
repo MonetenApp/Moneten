@@ -27,7 +27,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [ ] 1.21 Migrated rules with operators in lower case. Not built. Build it in 2.8 and 2.9.
 - [ ] 1.22 Migrated rules with the words true and false. Not built. Build it in 2.10 and 2.11.
 
-- [x] 1.23 A group rule in the export is reported. Verified by MoneyMoneyMigrationTests "A group rule is named in the report, with or without a rule on its child" and "A rule of the default category does not count as an exported categorization rule". The tests failed before the fix and pass after it, including a repeated run.
+- [x] 1.23 A group rule in the export is reported. Verified by MoneyMoneyMigrationTests "A group rule is named in the report, with or without a rule on its child" and "A rule of the default category does not count as an exported categorization rule". The tests failed before the fix and pass after it, including a repeated run. Gate round 2 adds "An unchanged repeat migration offers the report of a stored group rule" for an empty plan with notes, the sheet review decision, and the saved report text.
 
 ## 2. Changes to the first build
 

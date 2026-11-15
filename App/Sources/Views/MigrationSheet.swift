@@ -10,6 +10,7 @@ struct MigrationSheet: View {
 		case reading(String)
 		case summary(MoneyMoneyMigration.Plan)
 		case importing
+		case nothingNew
 		case fileAccount
 		case done(MoneyMoneyMigration.Plan, MoneyMoneyMigration.Report)
 		case failed(String, offersFileImport: Bool = false)
@@ -72,6 +73,10 @@ struct MigrationSheet: View {
 				}
 			case let .summary(plan):
 				summary(plan)
+			case .nothingNew:
+				Section {
+					Text("Everything from MoneyMoney is already here. There is nothing new to import.")
+				}
 			case .importing:
 				Section {
 					HStack(spacing: 8) { ProgressView().controlSize(.small); Text("Importing...") }
@@ -166,7 +171,8 @@ struct MigrationSheet: View {
 		switch step {
 		case .intro: "Start"
 		case .fileAccount: model.ledger.accounts.isEmpty ? nil : "Import File..."
-		case let .summary(plan): plan.isEmpty ? nil : "Import"
+		case .summary: "Import"
+		case .nothingNew: nil
 		case .done: "Done"
 		case .failed: "Check again"
 		case .reading, .importing: nil
@@ -196,33 +202,27 @@ struct MigrationSheet: View {
 			return true
 		case let .summary(plan): commit(plan); return false
 		case .done: return true
-		case .reading, .importing: return false
+		case .reading, .importing, .nothingNew: return false
 		}
 	}
 
 	@ViewBuilder
 	private func summary(_ plan: MoneyMoneyMigration.Plan) -> some View {
-		if plan.isEmpty {
-			Section {
-				Text("Everything from MoneyMoney is already here. There is nothing new to import.")
+		Section {
+			LabeledContent("Account groups", value: plan.groups.count.formatted())
+			LabeledContent("Accounts", value: plan.accounts.count.formatted())
+			LabeledContent("Categories", value: plan.categories.count.formatted())
+			LabeledContent("Rules", value: plan.categories.filter { !$0.rule.isEmpty }.count.formatted())
+			LabeledContent("Transactions", value: plan.transactions.count.formatted())
+			if !plan.updatedAccounts.isEmpty || !plan.updatedTransactions.isEmpty || !plan.updatedCategories.isEmpty {
+				LabeledContent("Updated", value: "\(plan.updatedAccounts.count) accounts, \(plan.updatedTransactions.count.formatted()) transactions, \(plan.updatedCategories.count) category colors")
 			}
-		} else {
-			Section {
-				LabeledContent("Account groups", value: plan.groups.count.formatted())
-				LabeledContent("Accounts", value: plan.accounts.count.formatted())
-				LabeledContent("Categories", value: plan.categories.count.formatted())
-				LabeledContent("Rules", value: plan.categories.filter { !$0.rule.isEmpty }.count.formatted())
-				LabeledContent("Transactions", value: plan.transactions.count.formatted())
-				if !plan.updatedAccounts.isEmpty || !plan.updatedTransactions.isEmpty || !plan.updatedCategories.isEmpty {
-					LabeledContent("Updated", value: "\(plan.updatedAccounts.count) accounts, \(plan.updatedTransactions.count.formatted()) transactions, \(plan.updatedCategories.count) category colors")
-				}
-			} header: {
-				Text("This will be imported")
-			} footer: {
-				if plan.skippedTransactions > 0 || plan.skippedAccounts > 0 {
-					Text("Already present and skipped: \(plan.skippedAccounts) accounts, \(plan.skippedTransactions.formatted()) transactions.")
-						.foregroundStyle(.secondary)
-				}
+		} header: {
+			Text("This will be imported")
+		} footer: {
+			if plan.skippedTransactions > 0 || plan.skippedAccounts > 0 {
+				Text("Already present and skipped: \(plan.skippedAccounts) accounts, \(plan.skippedTransactions.formatted()) transactions.")
+					.foregroundStyle(.secondary)
 			}
 		}
 	}
@@ -243,7 +243,8 @@ struct MigrationSheet: View {
 					try MoneyMoneyMigration().plan(accounts: accounts, categories: categories, transactions: transactions, into: ledger, deleted: deleted)
 				}.value
 				switch plan.review(in: ledger) {
-				case .nothingNew, .importChanges: step = .summary(plan)
+				case .nothingNew: step = .nothingNew
+				case .importChanges: step = .summary(plan)
 				case let .report(report): step = .done(plan, report)
 				}
 			} catch is CancellationError {
