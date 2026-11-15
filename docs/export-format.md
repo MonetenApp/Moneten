@@ -137,6 +137,7 @@ An access is a login at a bank. The file never holds its PIN or the data that it
 | `isNew` | Whether the transaction is marked as new |
 | `needsReview` | Whether the transaction is marked for review, because the app could not tell which pending transaction it books |
 | `isFetched` | Whether a refresh delivered the transaction |
+| `fileIdentity` | Original file fingerprint, if a file import recorded one; absent or null means no file identity |
 | `sourceID` | Identifier of the transaction at its bank or source, such as `moneymoney:<id>` |
 | `createdAt` | Time when the app stored the transaction |
 
@@ -147,6 +148,7 @@ What the app keeps of a transaction that the user deleted, so that no refresh, f
 | Key | Content |
 |---|---|
 | `accountID` | The account |
+| `fileIdentity` | Original file fingerprint, if a file import recorded one; absent or null means no file identity |
 | `sourceID` | Identifier of the transaction at its bank or source |
 | `bookingDate` | Booking day |
 | `amount`, `currency` | Amount and its currency |

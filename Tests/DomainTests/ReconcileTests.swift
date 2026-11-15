@@ -674,6 +674,8 @@ struct ReconcileTests {
 		#expect(imported.added.count == 1)
 		let secondFileRow = try #require(imported.added.first)
 		var all = history([bankRow], after: imported)
+		let identifiedBankRow = try #require(all.first { $0.id == bankRow.id })
+		#expect(identifiedBankRow.fileIdentity != nil)
 		for d in [20, 21] {
 			let r = merge(refresh([fresh(bankRow)]), stored: all, at: noon(d, month: 11))
 			#expect(r.added == [] && r.updated == [] && r.booked == [] && r.marked == [] && r.dropped == [])
@@ -681,7 +683,7 @@ struct ReconcileTests {
 			all = history(all, after: r)
 			#expect(all.count == 2)
 			#expect(all.reduce(0) { $0 + $1.amountMinor } == -160_000)
-			#expect(all.first { $0.id == bankRow.id } == bankRow)
+			#expect(all.first { $0.id == bankRow.id } == identifiedBankRow)
 			#expect(all.first { $0.id == secondFileRow.id } == secondFileRow)
 		}
 	}
@@ -758,19 +760,21 @@ struct ReconcileTests {
 		#expect(after.map(\.bookingDate) == [Day(year: 2026, month: 12, day: 1), Day(year: 2026, month: 11, day: 30)])
 	}
 
-	@Test("A later file with another purpose does not mark a future payment fetched")
-	func laterFileIsNotFetched() {
-		let first = merge(.file([rent(1)]), at: noon(15, month: 11)).added
+	@Test("A later file with another purpose does not mark a future payment fetched", arguments: [false, true])
+	func laterFileIsNotFetched(legacy: Bool) {
+		var first = merge(.file([rent(1)]), at: noon(15, month: 11)).added
+		if legacy { first[0].fileIdentity = nil }
 		let later = merge(.file([rent(1, purpose: "Miete Dezember Wohnung 3")]), stored: first, at: noon(19, month: 11))
 		let after = history(first, after: later)
-		#expect(later.skipped == 1 && later.added == [])
-		#expect(after.count == 1)
-		#expect(after.map(\.isFetched) == [false])
+		#expect(later.skipped == (legacy ? 1 : 0))
+		#expect(later.added.count == (legacy ? 0 : 1))
+		#expect(after.count == (legacy ? 1 : 2))
+		#expect(after.map(\.isFetched) == (legacy ? [false] : [false, false]))
 		let refreshed = history(after, after: merge(refresh([]), stored: after, at: noon(20, month: 11)))
-		#expect(refreshed.count == 1)
-		#expect(refreshed.map(\.amountMinor) == [-80_000])
-		#expect(refreshed.map(\.isPending) == [true])
-		#expect(refreshed.map(\.isFetched) == [false])
+		#expect(refreshed.count == (legacy ? 1 : 2))
+		#expect(refreshed.map(\.amountMinor) == (legacy ? [-80_000] : [-80_000, -80_000]))
+		#expect(refreshed.map(\.isPending) == (legacy ? [true] : [true, true]))
+		#expect(refreshed.map(\.isFetched) == (legacy ? [false] : [false, false]))
 	}
 
 	@Test("A skipped pending file row fills only empty user fields of the stored row", arguments: [false, true], [false, true])
@@ -790,7 +794,7 @@ struct ReconcileTests {
 		bank.isChecked = bankHasFields
 		let r = merge(.file([file]), stored: [bank], categories: [housing, bills], at: noon(20, month: 11))
 		#expect(r.dropped == [] && r.added == [] && r.skipped == 1)
-		#expect(r.updated.count == (bankHasFields ? 0 : 1))
+		#expect(r.updated.count == 1)
 		let kept = try #require(history([bank], after: r).first)
 		#expect(kept.id == bank.id)
 		#expect(kept.amountMinor == -80_000)

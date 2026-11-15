@@ -57,5 +57,15 @@ extension SchemaTests {
 		}
 		try Schema.migrator.migrate(opened)
 		#expect(try store.loadLedger().transactions == rows)
+		try opened.write { db in
+			try db.execute(sql: "UPDATE bankTransaction SET fileIdentity = 'file:original'")
+			try db.execute(sql: "UPDATE deletedTransaction SET fileIdentity = 'file:original'")
+		}
+		try opened.close()
+		let reopened = try DatabaseQueue(path: path)
+		defer { try? reopened.close() }
+		try Schema.migrator.migrate(reopened)
+		#expect(try Store(queue: reopened).loadLedger().transactions.map(\.fileIdentity) == ["file:original"])
+		#expect(try Store(queue: reopened).deletedTransactions().map(\.fileIdentity) == ["file:original"])
 	}
 }

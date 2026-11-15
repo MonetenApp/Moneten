@@ -19,6 +19,7 @@ public enum Delivery: Sendable {
 public struct DeletedTransaction: Hashable, Sendable, Codable {
 	public var accountID: UUID
 	public var sourceID: String?
+	public var fileIdentity: String?
 	public var bookingDate: Day
 	public var amountMinor: Int64
 	public var currency: String
@@ -44,6 +45,7 @@ public struct DeletedTransaction: Hashable, Sendable, Codable {
 	public init(_ t: Transaction, deletedAt: Date) {
 		accountID = t.accountID
 		sourceID = t.sourceID
+		fileIdentity = t.fileIdentity
 		bookingDate = t.bookingDate
 		amountMinor = t.amountMinor
 		currency = t.currency
@@ -153,6 +155,7 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored: [Tran
 				}
 			}
 			if fetched { next.isFetched = true }
+			if case .file = delivery, next.fileIdentity == nil { next.fileIdentity = delivered.fileIdentity }
 			if case .file = delivery, delivered.isPending, Identity(next).endToEnd == nil {
 				next.endToEndReference = Identity(delivered).endToEnd
 			}
@@ -172,6 +175,7 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored: [Tran
 			}
 		} else if case let .pair(j) = bookings.ofBooked[i] {
 			var next = stored[j].takingBankFields(of: delivered)
+			if case .file = delivery, next.fileIdentity == nil { next.fileIdentity = delivered.fileIdentity }
 			// A row of the source that a file or a bank books counts as imported until the source books it too.
 			if !delivery.isMigration, let id = next.sourceID { next.sourceID = Transaction.linkedID(id, pending: false, sourcePending: true) }
 			if delivered.categorizedBy == .manual, next.categorizedBy != .manual {
@@ -226,8 +230,9 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored: [Tran
 extension Delivery {
 	var rows: [Transaction] {
 		switch self {
-		case let .refresh(result): result.transactions?.rows ?? []
-		case let .file(rows), let .migration(rows): rows
+		case let .refresh(result): (result.transactions?.rows ?? []).map { var t = $0; t.fileIdentity = nil; return t }
+		case let .file(rows): rows.map { var t = $0; t.fileIdentity = t.originalFileIdentity; return t }
+		case let .migration(rows): rows.map { var t = $0; t.fileIdentity = nil; return t }
 		}
 	}
 
@@ -265,7 +270,7 @@ struct Partner {
 }
 
 func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTransaction], delivery: Delivery, today: Day) -> [Partner?] {
-	enum Priority: Int { case sourceID, reference, fetchedPending, filePending, fingerprint }
+	enum Priority: Int { case fileIdentity, sourceID, reference, fetchedPending, filePending, fingerprint }
 	struct Candidate {
 		let delivered: Int
 		let slot: Slot
@@ -282,17 +287,20 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 	var byDay: [Day: [Slot]] = [:]
 	var byKey: [Identity.Key: [Slot]] = [:]
 	var byReference: [String: [Slot]] = [:]
+	var byFileIdentity: [String: [Slot]] = [:]
 	var byID: [String: [Slot]] = [:]
 	for (j, t) in stored.enumerated() {
 		byDay[t.bookingDate, default: []].append(.live(j))
 		byKey[liveMatches[j].identity.key, default: []].append(.live(j))
 		if let reference = liveMatches[j].identity.endToEnd { byReference[reference, default: []].append(.live(j)) }
+		if let id = t.fileIdentity { byFileIdentity[id, default: []].append(.live(j)) }
 		if let id = t.sourceID { byID[Transaction.matchingID(id), default: []].append(.live(j)) }
 	}
 	for (k, d) in deleted.enumerated() {
 		byDay[d.bookingDate, default: []].append(.deleted(k))
 		byKey[deadMatches[k].identity.key, default: []].append(.deleted(k))
 		if let reference = deadMatches[k].identity.endToEnd { byReference[reference, default: []].append(.deleted(k)) }
+		if let id = d.fileIdentity { byFileIdentity[id, default: []].append(.deleted(k)) }
 		if let id = d.sourceID { byID[Transaction.matchingID(id), default: []].append(.deleted(k)) }
 	}
 	func positions(_ ts: [Transaction]) -> [Int: Int] {
@@ -303,7 +311,7 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 	let deliveredPositions = positions(rows)
 	let livePositions = positions(stored)
 	let deadKeys = deleted.map { d in
-		[String(d.bookingDate.rawValue), String(d.sourceID != nil), d.sourceID ?? "", String(d.endToEndReference != nil),
+		[String(d.bookingDate.rawValue), String(d.fileIdentity != nil), d.fileIdentity ?? "", String(d.sourceID != nil), d.sourceID ?? "", String(d.endToEndReference != nil),
 			d.endToEndReference ?? "", d.currency, String(d.amountMinor), d.purpose, String(d.counterpartyIBAN != nil),
 			d.counterpartyIBAN ?? "", String(d.isPending), String(d.wasFetched), String(d.deletedAt.timeIntervalSince1970)]
 	}
@@ -319,6 +327,7 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 	for (i, t) in rows.enumerated() {
 		var slots = Set((t.isPending ? byDay[t.bookingDate] : byKey[incoming[i].key]) ?? [])
 		if let id = t.sourceID { slots.formUnion(byID[id] ?? []) }
+		if let id = t.fileIdentity { slots.formUnion(byFileIdentity[id] ?? []) }
 		if t.isPending, let reference = incoming[i].endToEnd { slots.formUnion(byReference[reference] ?? []) }
 		if t.isPending && !delivery.isMigration && delivery.isFetched {
 			for offset in -PendingMatch.maxDaysApart...PendingMatch.maxDaysApart where offset != 0 {
@@ -351,6 +360,13 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 			let distance = abs(matches[i].day - match.day)
 			let sourceAgrees = t.sourceID != nil && t.sourceID == identity.sourceID
 			let sameDay = t.bookingDate == identity.key.day
+			if let fileIdentity = incoming[i].fileIdentity, fileIdentity == identity.fileIdentity {
+				if t.isPending && identity.isPending && !sameDay { continue }
+				let specificity = (t.isPending && !identity.isPending ? 2 : 0) + (fetched ? 0 : 1)
+				candidates.append(Candidate(delivered: i, slot: slot, priority: .fileIdentity, specificity: specificity,
+					distance: distance, evidence: !t.isPending && identity.isPending ? .sourceID : .fingerprint))
+				continue
+			}
 			if sourceAgrees {
 				if !delivery.isFetched && !delivery.isMigration && t.isPending && identity.isPending && !sameDay { continue }
 				let historical = if case .deleted = slot { 1 } else { 0 }
@@ -388,8 +404,8 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 	return result
 }
 
-/// Built from the bank fields at every merge and never stored, so a change of the rule needs no migration.
 struct Identity {
+	let fileIdentity: String?
 	let sourceID: String?
 	let remoteID: String?
 	let key: Key
@@ -437,7 +453,8 @@ struct Identity {
 	static let steps = [Step(fit: .exact, pending: .same), Step(fit: .compatible, pending: .same),
 		Step(fit: .exact, pending: .bookedVersion), Step(fit: .compatible, pending: .bookedVersion)]
 
-	init(sourceID: String?, day: Day, amount: Int64, isPending: Bool, purpose: String, counterparty: String?, endToEnd: String?) {
+	init(fileIdentity: String?, sourceID: String?, day: Day, amount: Int64, isPending: Bool, purpose: String, counterparty: String?, endToEnd: String?) {
+		self.fileIdentity = fileIdentity
 		self.sourceID = sourceID.map(Transaction.matchingID)
 		remoteID = Self.remote(sourceID)
 		key = Key(day: day, amount: amount, purpose: TextFolding.fold(purpose).filter { !$0.isWhitespace })
@@ -447,12 +464,12 @@ struct Identity {
 	}
 
 	init(_ t: Transaction) {
-		self.init(sourceID: t.sourceID, day: t.bookingDate, amount: t.amountMinor, isPending: t.isPending, purpose: t.purpose,
+		self.init(fileIdentity: t.fileIdentity, sourceID: t.sourceID, day: t.bookingDate, amount: t.amountMinor, isPending: t.isPending, purpose: t.purpose,
 			counterparty: t.counterpartyIBAN, endToEnd: t.endToEndReference)
 	}
 
 	init(_ d: DeletedTransaction) {
-		self.init(sourceID: d.sourceID, day: d.bookingDate, amount: d.amountMinor, isPending: d.isPending, purpose: d.purpose,
+		self.init(fileIdentity: d.fileIdentity, sourceID: d.sourceID, day: d.bookingDate, amount: d.amountMinor, isPending: d.isPending, purpose: d.purpose,
 			counterparty: d.counterpartyIBAN, endToEnd: d.endToEndReference)
 	}
 
@@ -461,10 +478,11 @@ struct Identity {
 	}
 
 	func sharesIdentity(with other: Identity) -> Bool {
-		(remoteID != nil && remoteID == other.remoteID) || (endToEnd != nil && endToEnd == other.endToEnd)
+		(fileIdentity != nil && fileIdentity == other.fileIdentity) || (remoteID != nil && remoteID == other.remoteID) || (endToEnd != nil && endToEnd == other.endToEnd)
 	}
 
 	func agrees(with other: Identity) -> Bool {
+		if let fileIdentity, let otherIdentity = other.fileIdentity, fileIdentity != otherIdentity { return false }
 		if let remoteID, let otherID = other.remoteID, remoteID != otherID { return false }
 		if let endToEnd, let otherReference = other.endToEnd, endToEnd != otherReference { return false }
 		return true
@@ -570,6 +588,13 @@ struct PendingMatch {
 }
 
 extension Transaction {
+	var originalFileIdentity: String {
+		let identity = Identity(self)
+		let counterparty = identity.counterparty.map { "iban:" + $0 } ?? "name:" + TextFolding.fold(name)
+		return "file:1:" + [String(bookingDate.rawValue), String(amountMinor), currency, identity.key.purpose,
+			counterparty, identity.sourceID ?? "", identity.endToEnd ?? ""].map { "\($0.utf8.count):\($0)" }.joined()
+	}
+
 	/// The migration ID of a booked row whose row in the source is still pending, because a file or a bank booked it
 	/// first. The row counts as imported, not as a row of the source, and a later migration still finds it by the ID.
 	/// The prefix does not start with `migrationIDPrefix`, so a sum over the rows of the source leaves the row out.
@@ -593,7 +618,7 @@ extension Transaction {
 			currency: delivered.currency, name: delivered.name, purpose: delivered.purpose, counterpartyIBAN: delivered.counterpartyIBAN,
 			counterpartyBIC: delivered.counterpartyBIC, bookingText: delivered.bookingText, endToEndReference: delivered.endToEndReference,
 			mandateReference: delivered.mandateReference, creditorID: delivered.creditorID, comment: delivered.comment, isPending: delivered.isPending,
-			categoryID: delivered.categoryID, categorizedBy: delivered.categorizedBy, isNew: true, isFetched: fetched, sourceID: delivered.sourceID, createdAt: delivered.createdAt, returnReason: delivered.returnReason)
+			categoryID: delivered.categoryID, categorizedBy: delivered.categorizedBy, isNew: true, isFetched: fetched, sourceID: delivered.sourceID, createdAt: delivered.createdAt, returnReason: delivered.returnReason, fileIdentity: delivered.fileIdentity)
 	}
 
 	func takingBankFields(of delivered: Transaction) -> Transaction {

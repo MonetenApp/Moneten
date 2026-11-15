@@ -175,7 +175,11 @@ struct SchemaTests {
 			name: "Beispiel Markt", comment: "Weekly shop", needsReview: true, createdAt: Date(timeIntervalSince1970: 1793664000), returnReason: "AC04")
 		try queue.write { db in
 			try account.insert(db)
-			try t.insert(db)
+			try db.execute(sql: """
+				INSERT INTO bankTransaction (id, accountID, bookingDate, amountMinor, currency, name, purpose, comment, isChecked, isPending,
+					categorizedBy, isNew, needsReview, isFetched, createdAt, returnReason)
+				VALUES (?, ?, 20261103, -8000, 'EUR', 'Beispiel Markt', '', 'Weekly shop', 0, 0, 'none', 0, 1, 0, ?, 'AC04')
+				""", arguments: [t.id, account.id, t.createdAt])
 		}
 		#expect(try queue.read { db in try db.tableExists("splitPart") } == false)
 		try Schema.migrator.migrate(queue)

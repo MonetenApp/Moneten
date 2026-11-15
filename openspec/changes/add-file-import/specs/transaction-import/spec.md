@@ -591,7 +591,7 @@ The app SHALL pair each free delivered pending transaction with at most one free
 
 ### Requirement: Pending file transactions already stored
 
-The app SHALL skip a pending file transaction when a free stored pending transaction has the same amount, counterparty, and booking day, even when the purposes differ. Each stored transaction absorbs one file transaction at most. The stored transaction keeps its fields and fetched status. Only a relaxed same-day match fills empty user fields from the file. A fingerprint or agreeing-identity repeat preserves cleared user fields.
+The app SHALL skip a pending file transaction when a free stored pending transaction has the same amount, counterparty, and booking day, even when the purposes differ, unless their non-NULL file identities conflict. Each stored transaction absorbs one file transaction at most. The stored transaction keeps its fields and fetched status. Only a relaxed same-day match fills empty user fields from the file. A fingerprint or agreeing-identity repeat preserves cleared user fields.
 
 #### Scenario: The bank reported the scheduled rent before the import
 

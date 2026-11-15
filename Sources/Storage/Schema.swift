@@ -327,6 +327,11 @@ enum Schema {
 				t.column("payload", .blob).notNull()
 			}
 		}
+		m.registerMigration("v18") { db in
+			for table in ["bankTransaction", "deletedTransaction"] {
+				try db.alter(table: table) { t in t.add(column: "fileIdentity", .text) }
+			}
+		}
 		return m
 	}
 }

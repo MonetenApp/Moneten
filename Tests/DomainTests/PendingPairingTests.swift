@@ -3,6 +3,33 @@ import Foundation
 import Testing
 
 extension ReconcileTests {
+	@Test("Only a file import creates the original file fingerprint")
+	func gate3FileFingerprintOrigin() throws {
+		var delivered = rent(1, purpose: "A|B")
+		delivered.fileIdentity = "forged"
+		let file = merge(.file([delivered]), at: noon(20, month: 11))
+		let identity = "file:1:8:202612016:-800003:EUR3:a|b27:iban:DE021203000000002020510:0:"
+		#expect(file.added.map(\.fileIdentity) == [identity])
+		#expect(merge(refresh([delivered]), at: noon(20, month: 11)).added.map(\.fileIdentity) == [nil])
+		#expect(merge(.migration([delivered]), at: noon(20, month: 11)).added.map(\.fileIdentity) == [nil])
+		var repeated = delivered
+		repeated.id = UUID()
+		repeated.comment = "Another comment"
+		repeated.isChecked = true
+		let again = merge(.file([repeated]), stored: file.added, at: noon(21, month: 11))
+		#expect(again.skipped == 1)
+		#expect(again.updated == [])
+		var booked = delivered
+		booked.isPending = false
+		let booking = merge(.file([booked]), stored: file.added, at: noon(21, month: 11))
+		#expect(booking.booked.map(\.fileIdentity) == [identity])
+		#expect(booking.booked.map(\.isPending) == [false])
+		var legacy = delivered
+		legacy.fileIdentity = nil
+		let legacyBooking = merge(.file([booked]), stored: [legacy], at: noon(21, month: 11))
+		#expect(legacyBooking.booked.map(\.fileIdentity) == [identity])
+	}
+
 	@Test("An unidentified file stays identified after takeover booking and deletion", arguments: [false, true])
 	func gate3OriginalFileFingerprint(bankFirst: Bool) throws {
 		let file = rent(1)
@@ -158,8 +185,10 @@ extension ReconcileTests {
 		var live = file
 		live.comment = ""
 		let r = merge(.file([file]), stored: [live], at: noon(21, month: 11))
-		#expect(r.updated == [])
-		#expect(history([live], after: r).map(\.comment) == [""])
+		#expect(r.updated.map(\.comment) == [""])
+		let identified = history([live], after: r)
+		#expect(identified.map(\.comment) == [""])
+		#expect(merge(.file([file]), stored: identified, at: noon(22, month: 11)).updated == [])
 	}
 
 	@Test("A bank-first skip retains the file identity before deletion", arguments: [false, true])
