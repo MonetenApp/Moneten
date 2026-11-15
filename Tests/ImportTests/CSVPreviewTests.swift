@@ -5,6 +5,23 @@ import Testing
 
 @Suite("CSV preview")
 struct CSVPreviewTests {
+	@Test("A subtotal cannot hide an empty or malformed first amount", arguments: ["", "abc"])
+	func firstAmountBeforeSubtotal(amount: String) throws {
+		let file = try CSVFile(data: Data("Tag;Wer;Wieviel\n01.11.2026;Kiosk;\(amount)\nZwischensumme;;0,00\n02.11.2026;Bakery;4.50\n".utf8))
+		#expect(file.header == ["Tag", "Wer", "Wieviel"])
+		var layout = try file.detectedLayout()
+		layout.assign(0, to: .bookingDate)
+		layout.assign(2, to: .amount)
+		let preview = try file.preview(layout, currency: "EUR")
+		if amount.isEmpty {
+			#expect(preview.problem == nil)
+			#expect(preview.transactions.map(\.amountMinor) == [0, 450])
+		} else {
+			#expect(preview.problem == .line(2, "The amount cannot be read."))
+			#expect(preview.transactions.isEmpty)
+		}
+	}
+
 	@Test("Filtering dated CSV rows observes cancellation without a time budget")
 	func canceledRowFilter() async throws {
 		let file = try CSVFile(data: Data(("Datum;Betrag\n" + String(repeating: "01.11.2026;-1,00\n", count: 150_000)).utf8))
