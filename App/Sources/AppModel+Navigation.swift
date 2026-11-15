@@ -167,15 +167,14 @@ extension AppModel {
 		let (read, readProblems, canceledAt) = await reading.value
 		var problems = readProblems
 		sheetDelay.cancel()
-		if sheet == .fileImport(run) { sheet = nil }
-		// A lock while the files were read or stored closed the database, and the import ends without a message.
-		guard store != nil else { return }
 		var added = 0
 		var skipped = 0
 		var booked = 0
 		var warnings: [String] = []
-		// A file can bring thousands of rows, so all files go in with one new table.
-		if !read.isEmpty {
+		// A file can bring thousands of rows, so all files go in with one new table. Storing 300,000 rows
+		// holds the main actor for seconds, so the sheet says so. It is drawn while the placeholder is.
+		if !read.isEmpty, store != nil {
+			run.storing = read.reduce(0) { $0 + $1.parsed.transactions.count }
 			await replacingTable {
 				for (name, parsed) in read {
 					do {
@@ -190,6 +189,8 @@ extension AppModel {
 				}
 			}
 		}
+		if sheet == .fileImport(run) { sheet = nil }
+		// A lock while the files were read or stored closed the database, and the import ends without a message.
 		guard store != nil else { return }
 		if let canceledAt {
 			let left = urls.count - canceledAt - 1

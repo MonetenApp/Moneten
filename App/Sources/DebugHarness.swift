@@ -74,6 +74,14 @@ final class DebugHarness {
 		case "unlock": log("unlock \(model.unlock(password: argument))")
 		case "lock": model.lock()
 		case "appearance": NSApp.appearance = NSAppearance(named: argument == "dark" ? .darkAqua : .aqua)
+		// "<name>": the import sheet while it reads the second of two made-up files, and while it stores their rows.
+		case "importsheetsnapshot":
+			let reading = FileImport(names: ["umsaetze-januar.csv", "umsaetze-februar.csv"])
+			reading.index = 1
+			offscreenSnapshot(FileImportSheet(run: reading).environment(model), width: 480, name: "\(argument)-reading")
+			let storing = FileImport(names: ["umsaetze-januar.csv", "umsaetze-februar.csv"])
+			storing.storing = 300_000
+			offscreenSnapshot(FileImportSheet(run: storing).environment(model), width: 480, name: "\(argument)-storing")
 		case "settingssnapshot":
 			offscreenSnapshot(SecuritySettings().environment(model), width: 500, name: "\(argument)-security")
 			offscreenSnapshot(GeneralSettings().environment(model), width: 500, name: "\(argument)-general")
