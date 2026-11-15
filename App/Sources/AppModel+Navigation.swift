@@ -128,7 +128,7 @@ extension AppModel {
 	/// it, because a click can wait for a drawing before it selects the account (issue #151).
 	func importFile(into accountID: UUID? = nil) async {
 		guard let account = accountID.flatMap({ ledger.account($0) }) ?? selectedAccount else { return }
-		guard fileImport == nil else { return NSSound.beep() }
+		guard !isTransferringTransactions else { return NSSound.beep() }
 		let panel = NSOpenPanel()
 		panel.title = "Import Transactions"
 		panel.message = "CSV, CAMT (camt.052, camt.053), and MT940 files are supported."
@@ -140,7 +140,7 @@ extension AppModel {
 
 	func importFiles(_ urls: [URL], into account: Account) async {
 		// One import runs at a time. A canceled one ends at its next row, line, or entry.
-		guard fileImport == nil else { return NSSound.beep() }
+		guard !isTransferringTransactions else { return NSSound.beep() }
 		let run = FileImport(names: urls.map(\.lastPathComponent))
 		fileImport = run
 		defer { fileImport = nil }

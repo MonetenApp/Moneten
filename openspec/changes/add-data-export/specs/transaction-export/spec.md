@@ -206,6 +206,18 @@ The app SHALL show progress for an export that takes longer than a moment, and l
 - **THEN** another CSV export cannot start until the canceled writer finishes
 - **AND** after cleanup a new export has its own working progress and cancellation
 
+### Requirement: One transaction file operation at a time
+
+The app SHALL keep transaction import and CSV export commands unavailable while either operation runs, including cancellation cleanup.
+
+#### Scenario: Import keeps its progress and cancel control
+
+- **GIVEN** the app is reading a CSV file with 300,000 transactions
+- **WHEN** the user attempts a CSV export
+- **THEN** no export starts and the import keeps its progress and cancel control
+- **AND** the same rule prevents a transaction import while a CSV export runs
+- **AND** both commands become available after the operation and its cleanup end
+
 ### Requirement: Complete export
 
 The app SHALL offer "Export All Data..." in the File menu. The command writes one JSON file with all accounts, account groups, transactions with their categories, comments, checkmarks, and splits, categories with their rules, balance history, and settings that describe the data. Every capability that stores user data adds its data to this file.

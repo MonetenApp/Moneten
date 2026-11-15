@@ -82,3 +82,7 @@ The selection, formula, Arabic digit, cancellation, and write-only folder regres
 ## Workflow follow-up
 
 - Archive the change with `openspec archive add-data-export` when every task is checked.
+
+## Rebase integration after #216
+
+- [x] Keep transaction import and CSV export from replacing each other's progress and cancel controls. A private harness check failed before the fix with `running=true sheet=exporting` during an active 300,000-row import. It now refuses the second operation in both directions and during export cancellation cleanup, preserves all 175 stored rows, and imports exactly one row with amount -12.34 after cleanup. The account menu and every CSV context-menu action observe the shared busy state.

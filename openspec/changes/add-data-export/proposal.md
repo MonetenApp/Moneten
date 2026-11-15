@@ -44,6 +44,7 @@ None.
 
 ### Decided for Moneten
 
+- Transaction import and CSV export run one at a time, including cancellation cleanup, so each operation keeps its progress and cancel control.
 - CSV text cells that start with `=`, `+`, `-`, `@`, a tab, or a carriage return get an apostrophe before CSV quoting. Amounts stay numeric. This formula-injection protection was not observed in MoneyMoney.
 - CSV dates and amounts use ASCII digits in every locale, including ar_EG. Date order and decimal marks follow the locale.
 - The account context menu exports the whole account, regardless of row selection, search, or filters.

@@ -877,7 +877,7 @@ struct TransactionMenu: View {
 				model.setChecked(!transactions.allSatisfy(\.isChecked), for: ids)
 			}
 			Button(ids.count == 1 ? "Export Transaction..." : "Export Transactions...") { model.exportTransactions(ids: ids) }
-				.disabled(model.exportTask != nil)
+				.disabled(model.isTransferringTransactions)
 			Divider()
 			if ids.count == 1 {
 				Button("Edit Transaction...") { model.sheet = .transaction(first.id) }
