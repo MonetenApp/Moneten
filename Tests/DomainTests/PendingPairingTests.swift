@@ -3,6 +3,48 @@ import Foundation
 import Testing
 
 extension ReconcileTests {
+	@Test("Gate 5: a booking cannot take the later fetched rent")
+	func gate5LaterFetchedBooking() {
+		let file = rent(7)
+		let bank = stored(rent(14, purpose: "BANK"))
+		let other = row(3, -1_200, "Other", "OTHER", month: 12)
+		for stored in permutations([file, bank]) {
+			for rows in permutations([rent(7, purpose: "BOOKED RENT", pending: false), other]) {
+				let r = merge(refresh(rows), stored: stored, at: noon(7, month: 12))
+				#expect(r.booked.map(\.id) == [file.id])
+				#expect(r.added.map(\.amountMinor) == [-1_200])
+				#expect(r.marked.isEmpty && r.dropped.isEmpty)
+				#expect(pendingSummary(history(stored, after: r)) == [
+					"20261203 -1200 false true false OTHER",
+					"20261207 -80000 false true false BOOKED RENT",
+					"20261214 -80000 true true false BANK"
+				])
+			}
+		}
+	}
+
+	@Test("Gate 5 seed 1948: a compatible name ranks before an equal IBAN with a conflicting name")
+	func gate5ConflictingNameRank() {
+		var a = stored(rent(1, purpose: "RENT"))
+		a.name = "Vermieter B"
+		a.createdAt = Date(timeIntervalSince1970: 0)
+		var b = stored(rent(1, purpose: "RENT"))
+		b.counterpartyIBAN = nil
+		b.comment = "Keep this comment"
+		b.createdAt = Date(timeIntervalSince1970: 1)
+		let incoming = rent(1, purpose: "RENT")
+		for stored in permutations([a, b]) {
+			let first = merge(refresh([incoming]), stored: stored, at: noon(20, month: 11))
+			#expect(first.updated.map(\.id) == [b.id])
+			#expect(first.dropped == [a.id])
+			let after = history(stored, after: first)
+			#expect(after.map(\.comment) == ["Keep this comment"])
+			let repeated = merge(refresh([incoming]), stored: after, at: noon(21, month: 11))
+			#expect(repeated.added.isEmpty && repeated.dropped.isEmpty && repeated.skipped == 1)
+			#expect(history(after, after: repeated).map(\.id) == [b.id])
+		}
+	}
+
 	@Test("A fingerprint cannot bypass the PendingMatch currency check", arguments: [false, true], [false, true])
 	func gate3FingerprintMoney(fileDelivery: Bool, booked: Bool) {
 		var bank = rent(1, purpose: "RENT", pending: !booked)

@@ -659,7 +659,7 @@ Booked rows without file identity keep the existing booked-only rule.
 - **GIVEN** free delivered and stored candidates at the same level
 - **WHEN** the app chooses a pair
 - **THEN** current versions precede pending repeats of booked versions.
-- **AND** identity matches prefer live rows to tombstones. Fingerprints rank exact, compatible, then absent. Remaining ties use day distance, stable delivered position, then stable stored position. Live positions use booking day, creation time, and UUID. Tombstone positions use persisted identity fields, optional-value presence, fetched flag, and deletion time as a tuple. Candidates are consumed greedily only when both sides are free. Legacy booked edges keep main's input positions and remain available until the shared rule chooses a pair.
+- **AND** identity matches prefer live rows to tombstones. Fingerprints rank exact, compatible, then absent. An equal IBAN with conflicting known names ranks below compatible pending candidates. Remaining ties use day distance, stable delivered position, then stable stored position. Live positions use booking day, creation time, and UUID. Tombstone positions use persisted identity fields, optional-value presence, fetched flag, and deletion time as a tuple. Candidates are consumed greedily only when both sides are free. Legacy booked edges keep main's input positions and remain available until the shared rule chooses a pair.
 
 - **AND** different real source IDs or nonempty end-to-end references never pair. Agreeing source IDs retain bank corrections and their existing date behavior. Different pending file fingerprints still stay separate.
 - **AND** a pending-to-booked transition within seven days ignores different file fingerprints when amount and currency agree and either the reference agrees or the counterparty fits. A booked repeat can use its current fingerprint even when it differs from the retained original file fingerprint.
@@ -669,7 +669,7 @@ Booked rows without file identity keep the existing booked-only rule.
 - **AND** a pending tombstone cannot block a booking. A source arriving booked reserves its pending tombstone against unrelated look-alikes.
 
 - **AND** an original file fingerprint does not select a unique occurrence. A fingerprint-only pending-to-booked transition uses the booking ambiguity rule.
-- **AND** booking first prefers agreeing identities, then a unique fetched pending row. With no fetched partner, only nearest fitting file rows on or before the booked day participate, and an unresolved tie marks those rows and the delivery for review.
+- **AND** booking considers only pending rows on or before the booked day, first prefers agreeing identities, then narrows to the nearest day before preferring a unique fetched pending row. An unresolved tie marks those rows and the delivery for review.
 
 #### Scenario: Global nearest choice
 
@@ -1137,3 +1137,16 @@ The app SHALL create an original file identity only on file import and preserve 
 - **WHEN** a file repeats the pending payment and then books the same fields
 - **THEN** the account has one booked payment and a computed balance of 40,00 €
 - **AND** replaying the still-pending source keeps the initial balance at 50,00 € and the computed balance at 40,00 €
+
+#### Scenario: A booking leaves a later fetched rent alone
+
+- **GIVEN** an unfetched FUTR file rent of -800,00 € on 7 December 2026 and a fetched pending rent of -800,00 € on 14 December
+- **WHEN** the booked 7 December rent arrives
+- **THEN** the 7 December file row becomes booked and the 14 December fetched row stays pending
+- **AND** this holds in every stored and delivered order
+
+#### Scenario: A booked file repeat after a bank purpose change
+
+- **GIVEN** a booked file row that the bank later delivers with a different purpose
+- **WHEN** the original booked file row is imported again without an agreeing source ID
+- **THEN** it is added again, as on main, because booked fingerprints include the purpose

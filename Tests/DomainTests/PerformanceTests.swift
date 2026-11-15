@@ -162,6 +162,28 @@ struct PerformanceTests {
 		#endif
 	}
 
+	@Test("Refreshing 300 booked rows in 50,000 file rows stays under 20 ms")
+	func bookedFileRefresh() {
+		let account = Account(position: 0, name: "File history", kind: .giro, source: .bank)
+		let today = Day(year: 2026, month: 12, day: 1)
+		let stored = (0..<50_000).map { i in
+			Transaction(accountID: account.id, bookingDate: today.adding(days: -(i % 2_000)), amountMinor: -Int64(i + 1),
+				name: "Shop", purpose: "Payment \(i)", fileIdentity: "file:fixture:\(i)")
+		}
+		var rows = Array(stored.prefix(300))
+		for i in rows.indices { rows[i].fileIdentity = nil }
+		let delivery = Delivery.refresh(RefreshResult(balance: nil, transactions: FetchedTransactions(rows: rows, from: today.adding(days: -299))))
+		let rules = Categorizer(ledger: Ledger(accounts: [account]))
+		var result = Reconciliation()
+		let elapsed = fastest { result = reconcile(delivery, into: account, stored: stored, deleted: [], rules: rules, now: Date()) }
+		#expect(result.skipped == 300 && result.updated.count == 300)
+		#expect(result.added.isEmpty && result.booked.isEmpty && result.dropped.isEmpty && result.marked.isEmpty)
+		print("booked file refresh 50,000/300 \(elapsed), skipped=\(result.skipped), updated=\(result.updated.count)")
+		#if !DEBUG
+		#expect(elapsed < .milliseconds(20))
+		#endif
+	}
+
 	/// The fastest of three runs. A shared CI machine sometimes stalls one run for longer than the
 	/// budget, which made this test fail at random; a slow change still makes every run slow.
 	private func fastest(_ work: () -> Void) -> Duration {

@@ -324,6 +324,28 @@ struct PerfScenario {
 				if model.ledger.transactions.count - before != importedRows { c.fail("the category import did not store every row") }
 				if model.ledger.categories.count - categories != 1_000 { c.fail("the category creation limit did not hold") }
 			}),
+		PerfScenario(name: "refresh-booked-file-history", budget: halfSecond,
+			setUp: { c in
+				guard let account = c.model.ledger.accounts.first(where: { $0.name == "Account 10" }) else { return c.fail("no history account") }
+				let rows = (0..<50_000).map { i in
+					Transaction(accountID: account.id, bookingDate: Day.today().adding(days: -(i % 2_000)), amountMinor: -Int64(i + 1),
+						name: "Shop", purpose: "File history \(i)")
+				}
+				do { _ = try c.model.merge(.file(rows), into: account.id) }
+				catch { c.fail("file history setup failed") }
+				await c.select("Account 10")
+			},
+			run: { c in
+				guard let account = c.model.ledger.accounts.first(where: { $0.name == "Account 10" }) else { return c.fail("no history account") }
+				let stored = c.model.ledger.transactions(ofAccount: account.id)
+				let rows = Array(stored.filter { $0.fileIdentity != nil }.prefix(300))
+				if stored.filter({ $0.fileIdentity != nil }).count != 50_000 || rows.count != 300 { c.fail("file history has wrong row count") }
+				do {
+					let result = try c.model.merge(.refresh(RefreshResult(balance: nil, transactions: FetchedTransactions(rows: rows, from: Day.today().adding(days: -2_000)))), into: account.id)
+					if result.skipped != 300 || !result.added.isEmpty || !result.dropped.isEmpty { c.fail("booked refresh changed history") }
+				} catch { c.fail("booked file refresh failed") }
+				if c.model.ledger.transactions(ofAccount: account.id).count != stored.count { c.fail("booked file refresh changed row count") }
+			}),
 	]
 
 	/// A CSV file waits in the preview, which reads it away from the main actor, until "Import".
