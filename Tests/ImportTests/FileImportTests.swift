@@ -323,6 +323,29 @@ struct FileImportTests {
 		#expect(ts.map(\.bookingDate) == [Day(year: 2026, month: 11, day: 3), Day(year: 2026, month: 11, day: 30)])
 	}
 
+	@Test("Scheduled rent from a FUTR entry stays after a refresh that does not deliver it")
+	func camtFutureRentSurvivesRefresh() throws {
+		let xml = """
+		<?xml version="1.0" encoding="UTF-8"?>
+		<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.052.001.08"><BkToCstmrAcctRpt><Rpt>
+		<Ntry><Amt Ccy="EUR">800.00</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts><Cd>FUTR</Cd></Sts><BookgDt><Dt>2026-12-01</Dt></BookgDt>
+		<NtryDtls><TxDtls><RltdPties><Cdtr><Pty><Nm>Vermieter A</Nm></Pty></Cdtr></RltdPties><RmtInf><Ustrd>Miete Dezember</Ustrd></RmtInf></TxDtls></NtryDtls></Ntry>
+		</Rpt></BkToCstmrAcctRpt></Document>
+		"""
+		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
+		let rules = Categorizer(ledger: Ledger(accounts: [giro]))
+		let imported = reconcile(.file(try TransactionFileImporter.parse(Data(xml.utf8), currency: "EUR").transactions), into: giro, stored: [], deleted: [],
+			rules: rules, now: Date()).added
+		#expect(imported.map(\.amountMinor) == [-80_000])
+		let november = FetchedTransactions(rows: [], from: Day(year: 2026, month: 11, day: 1))
+		for day in [12, 20] {
+			let now = Calendar.current.date(from: DateComponents(year: 2026, month: 11, day: day, hour: 12))!
+			let refresh = reconcile(.refresh(RefreshResult(balance: nil, balanceDate: nil, transactions: november)), into: giro, stored: imported, deleted: [],
+				rules: rules, now: now)
+			#expect(refresh.dropped == [])
+		}
+	}
+
 	@Test("Batch entry")
 	func camtBatch() throws {
 		let xml = """
