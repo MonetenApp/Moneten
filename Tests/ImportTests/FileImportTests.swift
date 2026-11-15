@@ -483,6 +483,15 @@ struct FileImportTests {
 		#expect(try TransactionFileImporter.parse(Data(pending.utf8), currency: "EUR").transactions.map(\.bookingDate) == [Day(year: 2026, month: 10, day: 1), Day(year: 2026, month: 10, day: 2)])
 	}
 
+	@Test("A date with dots reads day first, whatever the other date column shows")
+	func csvDottedDateStaysDayFirst() throws {
+		let text = "Buchungstag;Valuta;Name;Betrag\n01.11.2026;11.13.2026;Kiosk;-1,00\n02.11.2026;03.11.2026;Kiosk;-2,00\n"
+		let parsed = try TransactionFileImporter.parse(Data(text.utf8), currency: "EUR")
+		#expect(parsed.transactions.map(\.bookingDate) == [Day(year: 2026, month: 11, day: 1), Day(year: 2026, month: 11, day: 2)])
+		#expect(parsed.transactions.map(\.valueDate) == [nil, Day(year: 2026, month: 11, day: 3)])
+		#expect(parsed.warnings == [.unreadableValueDate(line: 2, cell: "11.13.2026")])
+	}
+
 	@Test("An ISO date reads as an ISO date in a column of any order")
 	func csvIsoInAnyColumn() throws {
 		let text = "Datum;Name;Betrag\n31.10.2026;Kiosk;-1,00\n2026-11-01;Kiosk;-1,00\n02.11.2026;Kiosk;-1,00\n"
@@ -527,6 +536,20 @@ struct FileImportTests {
 		let column = try TransactionFileImporter.parse(Data("Date,Payee,Amount,Currency\n2026-11-01,Shop,12.00 USD,GBP\n2026-11-02,Shop,12.00 USD,XYZ\n".utf8), currency: "EUR")
 		#expect(column.transactions.map(\.currency) == ["GBP", "EUR"])
 		#expect(column.warnings == [.unknownCurrency(line: 3, cell: "XYZ", replacement: "EUR")])
+	}
+
+	@Test("A debit and credit marker decides the sign of a signed amount")
+	func csvMarkerDecidesSign() throws {
+		let text = "Datum;Name;Betrag;S/H\n01.11.2026;Kiosk;89,00-;H\n02.11.2026;Kiosk;+12,00;S\n"
+		let ts = try TransactionFileImporter.parse(Data(text.utf8), currency: "EUR").transactions
+		#expect(ts.map(\.amountMinor) == [8_900, -1_200])
+	}
+
+	@Test("An amount in parentheses or with the yen sign is rejected with its line", arguments: ["(12.50)", "($12.50)", "\u{00A5}1200"])
+	func csvAmountOutOfScope(cell: String) {
+		#expect(throws: TransactionFileImporter.Failure.line(3, "The amount cannot be read.")) {
+			try TransactionFileImporter.parse(Data("Date,Payee,Amount\n2026-11-01,Shop,-1.50\n2026-11-02,Shop,\(cell)\n".utf8), currency: "EUR")
+		}
 	}
 
 	@Test("A CSV amount with a word that names no currency, or with a dash for no cents, is rejected with its line")
