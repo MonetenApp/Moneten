@@ -44,6 +44,15 @@ extension AppModel {
 		return nil
 	}
 
+	/// The currency of a sum of zero in the open view: that of the account or of the category.
+	var selectedCurrency: String? {
+		switch selection {
+		case let .account(id): ledger.account(id)?.currency
+		case let .category(id): ledger.category(id)?.currency
+		default: nil
+		}
+	}
+
 	/// The portfolios whose positions the view shows: the selected portfolio, or every account of the selected
 	/// group when all of them are portfolios.
 	var selectedPortfolios: [UUID]? {
