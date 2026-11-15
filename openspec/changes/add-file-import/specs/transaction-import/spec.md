@@ -472,11 +472,11 @@ The app SHALL report after an import how many new transactions were imported, fo
 - **WHEN** an import adds 128 transactions, skips 3, and creates 2 categories
 - **THEN** the message states all three numbers
 
-#### Scenario: A missing sheet dismissal notification
+#### Scenario: Dismissal resumes the import that was presented
 
-- **GIVEN** the user confirmed a CSV preview and the import sheet closed
-- **WHEN** the sheet does not report that it closed
-- **THEN** the app still shows the import result
+- **GIVEN** an import sheet was presented for a running import
+- **WHEN** the sheet reports its dismissal
+- **THEN** the callback resumes that presented run, even if the model no longer refers to it
 - **AND** a later import can start after the user closes the result
 
 ### Requirement: Errors name the file and the place
