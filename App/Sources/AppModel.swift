@@ -267,6 +267,9 @@ final class AppModel {
 	/// The number of selected rows of the table of positions, for the trail. The selection lives in that view.
 	@ObservationIgnored var selectedPositions = 0
 
+	/// How far `apply(rule:of:mode:)` has come, or nil when no rule is applied.
+	private(set) var ruleProgress: RuleProgress?
+
 	/// A message for an alert.
 	var alert: AlertMessage? {
 		didSet { if (alert == nil) != (oldValue == nil) { Trail.log(alert == nil ? "alert closed" : "alert shown") } }
@@ -1077,10 +1080,16 @@ final class AppModel {
 
 	func apply(rule: Rule, of category: Domain.Category, mode: RuleApplication) async {
 		let ledger = self.ledger
-		let changed = await Task.detached(priority: .userInitiated) {
-			RuleApplier.apply(category: category, rule: rule, to: ledger.transactions, ledger: ledger, mode: mode)
-		}.value
+		ruleProgress = RuleProgress(done: 0, total: ledger.transactions.count)
+		let (reports, reporter) = AsyncStream.makeStream(of: RuleProgress.self, bufferingPolicy: .bufferingNewest(1))
+		let run = Task.detached(priority: .userInitiated) {
+			defer { reporter.finish() }
+			return RuleApplier.apply(category: category, rule: rule, to: ledger.transactions, ledger: ledger, mode: mode) { reporter.yield($0) }
+		}
+		for await report in reports { ruleProgress = report }
+		let changed = await run.value
 		await replacingTable { commit(changed) }
+		ruleProgress = nil
 		alert = AlertMessage(title: "Categorized transactions: \(changed.count)", message: "")
 	}
 

@@ -381,6 +381,13 @@ final class DebugHarness {
 			c.rule = parts[1]
 			model.save(category: c)
 			log("rule error=\(c.ruleError.map { "\($0)" } ?? "none")")
+		// "<category>": what "Apply to all transactions." in the category settings does with the saved rule.
+		case "applyrule":
+			guard let c = model.ledger.categories.first(where: { $0.name == argument }), let rule = try? Rule(parsing: c.rule) else { return log("applyrule not found") }
+			Task {
+				await model.apply(rule: rule, of: c, mode: .all)
+				log("applyrule done")
+			}
 		// What "Add category" in "Assign Category" does with the selected rows.
 		case "newcategory": Task { await model.addCategory(name: argument, isGroup: false, parentID: nil, assigning: model.visibleSelection) }
 		case "selectRows": model.selectedTransactions = Set(model.visibleTransactions.prefix(Int(argument) ?? 1).map(\.id))

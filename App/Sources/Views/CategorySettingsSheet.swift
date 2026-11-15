@@ -14,7 +14,7 @@ struct CategorySettingsSheet: View {
 	@State private var confirmRemove = false
 
 	var body: some View {
-		SheetFrame(title: "Settings for \(category?.name ?? "")", canConfirm: ruleError == nil && currencyIsValid, width: 520, onConfirm: save, leading: {
+		SheetFrame(title: "Settings for \(category?.name ?? "")", canConfirm: ruleError == nil && currencyIsValid && model.ruleProgress == nil, width: 520, onConfirm: save, leading: {
 			if category?.isDefault == false {
 				Button("Remove Category...", role: .destructive) { confirmRemove = true }
 			}
@@ -64,7 +64,13 @@ struct CategorySettingsSheet: View {
 								.popover(isPresented: $showHelp) { RuleHelp() }
 						}
 					} footer: {
-						if let ruleError {
+						if let p = model.ruleProgress {
+							HStack(spacing: 8) {
+								ProgressView().controlSize(.small)
+								Text("Applying rule to transaction \(p.done.formatted()) of \(p.total.formatted())...")
+							}
+							.foregroundStyle(.secondary)
+						} else if let ruleError {
 							Text(ruleError).foregroundStyle(Palette.red)
 						} else if !c.rule.isEmpty {
 							let count = matchCount(c)
