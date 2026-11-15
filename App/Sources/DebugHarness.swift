@@ -392,11 +392,7 @@ final class DebugHarness {
 				let hover = model.acceptsDrag(on: c), accepted = model.canDrop(item?.ids ?? [], on: c)
 				model.endDrag()
 				model.drop(item?.ids ?? [], on: c)
-				let afterwards = model.acceptsDrag(on: c)
-				// A drop that changes the rows of the open view waits a drawing for its new table.
-				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [self] in
-					log("droprows category=\(Self.sidebarPosition(c.id, in: model.ledger)) hover=\(hover) accepted=\(accepted) afterwards=\(afterwards) visible=\(model.visibleTransactions.count)")
-				}
+				log("droprows category=\(Self.sidebarPosition(c.id, in: model.ledger)) hover=\(hover) accepted=\(accepted) afterwards=\(model.acceptsDrag(on: c)) visible=\(model.visibleTransactions.count)")
 			}
 		// "Name|Group": what a drop of the category on the row of the group does.
 		case "dropcategory":
