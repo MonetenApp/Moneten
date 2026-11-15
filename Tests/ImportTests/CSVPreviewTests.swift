@@ -5,6 +5,17 @@ import Testing
 
 @Suite("CSV preview")
 struct CSVPreviewTests {
+	@Test("Filtering dated CSV rows observes cancellation without a time budget")
+	func canceledRowFilter() async throws {
+		let file = try CSVFile(data: Data(("Datum;Betrag\n" + String(repeating: "01.11.2026;-1,00\n", count: 150_000)).utf8))
+		let layout = try file.detectedLayout()
+		let result = await Task {
+			withUnsafeCurrentTask { $0?.cancel() }
+			return Result { _ = try file.dataRows(layout) }
+		}.value
+		#expect(throws: CancellationError.self) { try result.get() }
+	}
+
 	@Test("An ambiguous first amount keeps the titles above a subtotal and both transactions")
 	func ambiguousFirstAmountBeforeSubtotal() throws {
 		let file = try CSVFile(data: Data("Tag;Wer;Wieviel\n01.11.2026;Kiosk;1,234\nZwischensumme;;0,00\n02.11.2026;Bakery;4.50\n".utf8))
