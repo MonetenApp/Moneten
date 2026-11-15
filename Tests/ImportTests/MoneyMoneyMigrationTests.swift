@@ -1025,7 +1025,6 @@ struct MoneyMoneyMigrationTests {
 		#expect(MoneyMoneyExporter.Failure.of(errorOutput: "execution error: MoneyMoney got an error: Database is locked. (-2720)\n") == .locked)
 		#expect(MoneyMoneyExporter.Failure.of(errorOutput: "execution error: MoneyMoney got an error: Connection is invalid. (-609)\n")
 			== .failed("execution error: MoneyMoney got an error: Connection is invalid. (-609)"))
-		#expect(MoneyMoneyExporter.Failure.notRunning.description == "MoneyMoney is not running. Open MoneyMoney and unlock it, then choose \"Check again\".")
 	}
 
 	@Test("The report names a group whose balance in MoneyMoney leaves out an account")

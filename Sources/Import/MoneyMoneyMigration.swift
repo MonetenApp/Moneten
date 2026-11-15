@@ -1,3 +1,4 @@
+import AppKit
 import Domain
 import CoreGraphics
 import Foundation
@@ -485,9 +486,12 @@ public enum MoneyMoneyExporter {
 		}
 	}
 
+	/// Also finds MoneyMoney in another folder, such as one of Setapp, by its bundle identifier. The identifier is the
+	/// name of the container folder of MoneyMoney.
 	public static var isInstalled: Bool {
 		FileManager.default.fileExists(atPath: "/Applications/MoneyMoney.app")
 			|| FileManager.default.fileExists(atPath: NSHomeDirectory() + "/Applications/MoneyMoney.app")
+			|| NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.moneymoney-app.retail") != nil
 	}
 
 	public static func exportAccounts() async throws -> Data { try await run(#"tell application "MoneyMoney" to export accounts"#) }

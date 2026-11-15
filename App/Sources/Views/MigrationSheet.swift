@@ -36,10 +36,18 @@ struct MigrationSheet: View {
 			if case .done = step {
 				Button("Save Report...") { confirmSave = true }.keyboardShortcut("s")
 			}
-			if case .failed(_, offersFileImport: true) = step, model.selectedAccount != nil {
-				Button("Import File...") {
-					model.sheet = nil
-					Task { await model.importFile() }
+			// A file goes into an account, so a database without one first gets an account.
+			if case .failed(_, offersFileImport: true) = step {
+				if model.selectedAccount != nil {
+					Button("Import File...") {
+						model.sheet = nil
+						Task { await model.importFile() }
+					}
+				} else {
+					Button("Add Account...") {
+						model.sheet = nil
+						model.addAccount()
+					}
 				}
 			}
 		} content: {
