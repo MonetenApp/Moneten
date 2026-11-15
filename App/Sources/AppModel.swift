@@ -562,15 +562,15 @@ final class AppModel {
 	}
 
 	/// The rows of the transaction table, for the view and the filters of `tableKey`.
-	var visibleTransactions: [Transaction] { transactions(for: tableKey) }
+	var visibleTransactions: [Transaction] { transactions(for: tableKey).rows }
 
 	/// The selected rows that the table shows. A search keeps the selection of the rows that it hides.
 	/// It filters the rows, so a menu reads it in its action and not in its `disabled` check.
 	var visibleSelection: Set<UUID> { selectedTransactions.intersection(visibleTransactions.map(\.id)) }
 
 	/// The rows of a transaction table with the view and the filters of `key`.
-	func transactions(for key: TableKey) -> [Transaction] {
-		guard let selection = key.selection else { return [] }
+	func transactions(for key: TableKey) -> TransactionSearchResult {
+		guard let selection = key.selection else { return TransactionSearchResult(rows: [], gaveUp: false) }
 		return ledger.transactions(in: selection.scope, filter: key.filter)
 	}
 
@@ -579,7 +579,7 @@ final class AppModel {
 		guard let selection else { return [] }
 		var f = filter
 		f.period = chartRange
-		return ledger.transactions(in: selection.scope, filter: f)
+		return ledger.transactions(in: selection.scope, filter: f).rows
 	}
 
 	/// New transactions count as seen when the user opens their account.

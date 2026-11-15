@@ -354,7 +354,9 @@ final class DebugHarness {
 		#endif
 		case "view": model.viewMode = ViewMode(rawValue: argument) ?? .list
 		case "balance": model.balanceMode = BalanceMode(rawValue: argument) ?? .daily
-		case "search": model.filter.searchText = argument
+		case "search":
+			model.filter.searchText = argument
+			if model.transactions(for: model.tableKey).gaveUp { log("search gave up") }
 		// "<min> <max>" as typed into "Custom..." of the amount filter, with "-" for an empty field.
 		case "amount", "amountsnapshot":
 			let ends = argument.split(separator: " ").map { $0 == "-" ? "" : String($0) } + ["", ""]
@@ -807,7 +809,7 @@ final class DebugHarness {
 		guard let c = ledger.category(id) else { return "not found" }
 		let index = ledger.childCategories(of: c.parentID).firstIndex { $0.id == id } ?? -1
 		return "position=\(sidebarPosition(id, in: ledger)) parent=\(c.parentID.map { sidebarPosition($0, in: ledger) } ?? "top") index=\(index) "
-			+ "rows=\(ledger.transactions(in: .category(id)).count) visible=\(model.visibleTransactions.count)"
+			+ "rows=\(ledger.transactions(in: .category(id)).rows.count) visible=\(model.visibleTransactions.count)"
 	}
 
 	/// Sends a drag payload through an item provider and back, as the system hands it from a drag to a drop.

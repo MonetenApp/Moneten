@@ -1,5 +1,15 @@
 import Foundation
 
+public struct TransactionSearchResult: Sendable {
+	public let rows: [Transaction]
+	public let gaveUp: Bool
+
+	public init(rows: [Transaction], gaveUp: Bool) {
+		self.rows = gaveUp ? [] : rows
+		self.gaveUp = gaveUp
+	}
+}
+
 /// The text of the search field, read as the rule language. A term without a field name searches every searched
 /// field and finds text inside words, as a plain search word does, also with wildcards. Field terms, regular
 /// expressions, and amounts keep the meaning they have in a rule. Text that the rule language cannot read, such as
@@ -31,10 +41,15 @@ struct SearchQuery {
 	}
 
 	private let root: Node?
+	private let watch: RegexWatch
+
+	var gaveUp: Bool { watch.gaveUp }
 
 	init(_ text: String) {
+		let watch = RegexWatch()
+		self.watch = watch
 		let expression = (try? Rule(parsing: text))?.expression ?? Self.plainWords(of: text)
-		root = expression.map(Self.node)
+		root = expression.map { Self.node($0, watch: watch) }
 	}
 
 	var isEmpty: Bool { root == nil }
@@ -103,12 +118,13 @@ struct SearchQuery {
 		let names: Bool
 		/// A row whose search text is plain ASCII and lacks this text cannot match, so it needs no call at all.
 		let required: Needle?
-		let watch = RegexWatch()
+		let watch: RegexWatch
 		/// The joined text can run long where each value alone does not, as `\s` matches the joining line break, so it
 		/// has a watch of its own. When it gives up, the rows read each value.
 		let lineWatch = RegexWatch()
 
-		init(_ regex: NSRegularExpression, field: RuleField?) {
+		init(_ regex: NSRegularExpression, field: RuleField?, watch: RegexWatch) {
+			self.watch = watch
 			let pattern = regex.pattern
 			// Anchors of the whole text, inline options, and quantifiers that never give back read the joined values
 			// differently, so such a pattern reads each value alone. So do `\X` and a second word boundary: at the end
@@ -318,7 +334,7 @@ struct SearchQuery {
 
 	/// Of two joined terms, the one that reads no fields goes first, so that it often decides before a row reads its
 	/// fields.
-	private static func node(_ e: RuleExpression) -> Node {
+	private static func node(_ e: RuleExpression, watch: RegexWatch) -> Node {
 		switch e {
 		case let .phrase(patterns, nil):
 			let words = patterns.map { String($0.pattern.characters) }
@@ -334,18 +350,18 @@ struct SearchQuery {
 			return .field(patterns.map { (box: WildcardPatternBox) in box.pattern }, field, literals: field == .currency ? [] : literals(patterns),
 				shape: patterns.count == 1 ? SearchText.WordShape(patterns[0].pattern) : nil)
 		case let .regex(box, field):
-			return .regex(RegexTerm(box.regex, field: field))
+			return .regex(RegexTerm(box.regex, field: field, watch: watch))
 		case let .amount(op, value):
 			return .amount(AmountBounds(op, value))
 		case let .constant(value):
 			return .constant(value)
 		case let .not(a):
-			return .not(node(a))
+			return .not(node(a, watch: watch))
 		case let .and(a, b):
-			let (x, y) = (node(a), node(b))
+			let (x, y) = (node(a, watch: watch), node(b, watch: watch))
 			return x.readsFields && !y.readsFields ? .and(y, x) : .and(x, y)
 		case let .or(a, b):
-			let (x, y) = (node(a), node(b))
+			let (x, y) = (node(a, watch: watch), node(b, watch: watch))
 			return x.readsFields && !y.readsFields ? .or(y, x) : .or(x, y)
 		}
 	}

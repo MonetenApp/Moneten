@@ -417,7 +417,7 @@ public struct Ledger: Sendable {
 
 	// MARK: Filtering
 
-	public func transactions(in scope: LedgerScope, filter: TransactionFilter = TransactionFilter()) -> [Transaction] {
+	public func transactions(in scope: LedgerScope, filter: TransactionFilter = TransactionFilter()) -> TransactionSearchResult {
 		// One pass over the rows, because copying 50,000 rows into a list of the view first cost as much as the search.
 		let inScope: (Transaction) -> Bool
 		switch scope {
@@ -437,7 +437,7 @@ public struct Ledger: Sendable {
 		let categoryFilter = filter.categoryID.map { categoryIDs(inTree: $0) }
 		let defaultID = defaultCategory?.id ?? UUID()
 		var amountBounds: [Int: MinorBounds] = [:]
-		return Array(transactions.lazy.filter(inScope).filter { t in
+		let rows = Array(transactions.lazy.filter(inScope).filter { t in
 			guard filter.period.contains(t.bookingDate) else { return false }
 			switch filter.status {
 			case .all: break
@@ -459,6 +459,7 @@ public struct Ledger: Sendable {
 			if query.isEmpty { return true }
 			return query.matches(t, searchText: searchText[t.id] ?? "", account: { accountsByID[t.accountID] }, categoryName: { names[t.categoryID] })
 		})
+		return TransactionSearchResult(rows: rows, gaveUp: query.gaveUp)
 	}
 
 	// MARK: Changes

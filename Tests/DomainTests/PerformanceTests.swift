@@ -23,13 +23,13 @@ struct PerformanceTests {
 		var f = TransactionFilter()
 		f.searchText = "kundennummer 7"
 		var count = 0
-		let search = fastest { count = ledger.transactions(in: .accountGroup(UUID()), filter: f).count + ledger.transactions(in: .account(accounts[0].id), filter: f).count }
+		let search = fastest { count = ledger.transactions(in: .accountGroup(UUID()), filter: f).rows.count + ledger.transactions(in: .account(accounts[0].id), filter: f).rows.count }
 		// "Uncategorized" holds three quarters of the rows.
 		func ruleSearch(_ text: String) -> (Duration, Int) {
 			var rule = TransactionFilter()
 			rule.searchText = text
 			var count = 0
-			return (fastest { count = ledger.transactions(in: .category(categories[60].id), filter: rule).count }, count)
+			return (fastest { count = ledger.transactions(in: .category(categories[60].id), filter: rule).rows.count }, count)
 		}
 		let (wildcard, wildcardCount) = ruleSearch("Haendler1*")
 		let (field, fieldCount) = ruleSearch(#"name:"Haendler1*""#)
@@ -40,7 +40,7 @@ struct PerformanceTests {
 			var filter = TransactionFilter()
 			filter.searchText = text
 			var count = 0
-			return (fastest { count = ledger.transactions(in: .accountGroup(everything.id), filter: filter).count }, count)
+			return (fastest { count = ledger.transactions(in: .accountGroup(everything.id), filter: filter).rows.count }, count)
 		}
 		let (fieldOverAll, fullScanCount) = overAll("name:Haendler*")
 		let (rareFieldOverAll, rareFieldCount) = overAll("name:Haendler1*")
@@ -51,11 +51,11 @@ struct PerformanceTests {
 		let (slowRegexOverAll, slowRegexCount) = overAll(#"/\d{5} Kunden/"#)
 		let (plainOverAll, plainOverAllCount) = overAll("kundennummer 7")
 		let (noSearch, noSearchCount) = overAll("")
-		let category = fastest { _ = ledger.transactions(in: .category(categories[3].id)) }
+		let category = fastest { _ = ledger.transactions(in: .category(categories[3].id)).rows }
 		var range = TransactionFilter()
 		range.amount = .range(min: -50, max: 50)
 		var rangeCount = 0
-		let amountRange = fastest { rangeCount = ledger.transactions(in: .category(categories[60].id), filter: range).count }
+		let amountRange = fastest { rangeCount = ledger.transactions(in: .category(categories[60].id), filter: range).rows.count }
 		var amounts: [UUID: Money] = [:]
 		let sidebar = fastest { amounts = ledger.sidebarAmounts(today: Day(year: 2022, month: 9, day: 15)) }
 		let imported = (0..<2_000).map { i in

@@ -12,7 +12,8 @@ struct TransactionsView: View {
 
 	var body: some View {
 		@Bindable var model = model
-		let rows = model.transactions(for: key)
+		let result = model.transactions(for: key)
+		let rows = result.rows
 		VStack(spacing: 0) {
 			// As in MoneyMoney: one slate band behind the title and the chart.
 			VStack(spacing: 0) {
@@ -36,7 +37,7 @@ struct TransactionsView: View {
 				FilterBar()
 				// The bordered table draws the lines above and below itself.
 				TransactionTable(key: key, holds: model.tableHolds > 0, rows: rows)
-				StatusLine(rows: rows)
+				StatusLine(rows: rows, gaveUp: result.gaveUp)
 			}
 		}
 		.background(DrawProbe())
@@ -904,6 +905,7 @@ struct StatusLine: View {
 
 	@Environment(AppModel.self) private var model
 	let rows: [Transaction]
+	let gaveUp: Bool
 
 	var body: some View {
 		let selected = rows.filter { model.selectedTransactions.contains($0.id) }
@@ -912,33 +914,38 @@ struct StatusLine: View {
 		// As in MoneyMoney, the count is centered in 11 points. The filter note takes the leading third
 		// and truncates before it reaches the count.
 		HStack(spacing: 12) {
-			Group {
-				if let status = model.refreshStatus {
-					HStack(spacing: 6) {
-						ProgressView().controlSize(.mini)
-						Text(status).lineLimit(1)
-					}
-					.foregroundStyle(.secondary)
-				} else if let problem = model.backgroundProblem {
-					BackgroundProblemButton(problem: problem)
-				} else if model.filter.isActive {
-					Label("A filter is active; some entries might be hidden.", systemImage: "line.3.horizontal.decrease.circle")
+			if gaveUp {
+				Text("The regular expression stopped because it is too slow")
+					.frame(maxWidth: .infinity)
+			} else {
+				Group {
+					if let status = model.refreshStatus {
+						HStack(spacing: 6) {
+							ProgressView().controlSize(.mini)
+							Text(status).lineLimit(1)
+						}
 						.foregroundStyle(.secondary)
-						.lineLimit(1)
-						.help("A filter is active; some entries might be hidden.")
+					} else if let problem = model.backgroundProblem {
+						BackgroundProblemButton(problem: problem)
+					} else if model.filter.isActive {
+						Label("A filter is active; some entries might be hidden.", systemImage: "line.3.horizontal.decrease.circle")
+							.foregroundStyle(.secondary)
+							.lineLimit(1)
+							.help("A filter is active; some entries might be hidden.")
+					}
 				}
+				.frame(maxWidth: .infinity, alignment: .leading)
+				HStack(spacing: 12) {
+					Text(selected.count > 1 ? "\(selected.count) of \(rows.count) transactions" : (rows.count == 1 ? "1 transaction" : "\(rows.count.formatted()) transactions"))
+						.foregroundStyle(Palette.detail)
+					Text("Sum: \(sums.isEmpty ? Format.money(0, shown.first?.currency ?? model.selectedCurrency ?? "EUR") : Format.sums(sums))")
+						.monospacedDigit()
+						.textSelection(.enabled)
+				}
+				.fixedSize()
+				// As wide as the note, so that the count stays in the middle and the note truncates first.
+				Color.clear.frame(maxWidth: .infinity, maxHeight: 0)
 			}
-			.frame(maxWidth: .infinity, alignment: .leading)
-			HStack(spacing: 12) {
-				Text(selected.count > 1 ? "\(selected.count) of \(rows.count) transactions" : (rows.count == 1 ? "1 transaction" : "\(rows.count.formatted()) transactions"))
-					.foregroundStyle(Palette.detail)
-				Text("Sum: \(sums.isEmpty ? Format.money(0, shown.first?.currency ?? model.selectedCurrency ?? "EUR") : Format.sums(sums))")
-					.monospacedDigit()
-					.textSelection(.enabled)
-			}
-			.fixedSize()
-			// As wide as the note, so that the count stays in the middle and the note truncates first.
-			Color.clear.frame(maxWidth: .infinity, maxHeight: 0)
 		}
 		.font(.system(size: 11))
 		.padding(.horizontal, 16)
