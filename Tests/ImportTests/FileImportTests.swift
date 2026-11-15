@@ -626,13 +626,14 @@ struct FileImportTests {
 		#expect(parsed.warnings.map(\.description) == ["Line 2: The file mixes month-first dates and dotted dates. Dates with dots read day first."])
 	}
 
-	@Test("A dotted value date warns when only the booking column reads month first")
+	@Test("A dotted value date warns when the file reads month first, and a value date that only fits day first warns as unreadable")
 	func csvMixedDateFormsAcrossColumns() throws {
+		// Both date columns share one order, the one of the preview's "Date format", so "31/01/2027" does not read month first.
 		let text = "Date;Value date;Amount\n12/31/2026;31/01/2027;-1.50\n12/30/2026;01.05.2027;-2.00\n"
 		let parsed = try TransactionFileImporter.parse(Data(text.utf8), currency: "EUR")
 		#expect(parsed.transactions.map(\.bookingDate) == [Day(year: 2026, month: 12, day: 31), Day(year: 2026, month: 12, day: 30)])
-		#expect(parsed.transactions.map(\.valueDate) == [Day(year: 2027, month: 1, day: 31), Day(year: 2027, month: 5, day: 1)])
-		#expect(parsed.warnings == [.mixedDateForms(line: 3)])
+		#expect(parsed.transactions.map(\.valueDate) == [nil, Day(year: 2027, month: 5, day: 1)])
+		#expect(parsed.warnings == [.unreadableValueDate(line: 2, cell: "31/01/2027"), .mixedDateForms(line: 3)])
 	}
 
 
@@ -664,7 +665,7 @@ struct FileImportTests {
 		let clock = ContinuousClock()
 		// "1,234" collects the decimal mark from all amounts. That pass runs from about 5 to 11 times the
 		// time of the split, measured in a debug build, so the cancel comes at 8 times.
-		let split = try clock.measure { _ = try CSVParser.split(text, delimiter: ";") }
+		let split = try clock.measure { _ = try CSVFile.split(text, delimiter: ";") }
 		let reading = Task.detached { Result { try TransactionFileImporter.parse(data, currency: "EUR") } }
 		try await Task.sleep(for: split * 8)
 		let canceled = clock.now
