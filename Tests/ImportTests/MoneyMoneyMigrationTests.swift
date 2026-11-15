@@ -951,7 +951,44 @@ struct MoneyMoneyMigrationTests {
 		#expect(r.added.map(\.name) == ["Tankstelle"])
 		#expect(r.dropped.isEmpty)
 		let kept = (r.updated + r.booked).first { $0.id == rewe.id } ?? rewe
-		#expect(kept.comment == "Wocheneinkauf" && kept.isChecked && kept.categorizedBy == .manual)
+		#expect(kept.comment == "Wocheneinkauf" && kept.isChecked && kept.categorizedBy == .manual && kept.categoryID == rewe.categoryID)
+	}
+
+	func bankAccount(_ name: String, iban: String? = nil, number: String, remoteID: String) -> Account {
+		Account(position: 0, name: name, kind: .giro, source: .bank, iban: iban, accountNumber: number, bankCode: "12030000", accessID: UUID(), remoteID: remoteID)
+	}
+
+	@Test("Two migrated accounts with the IBAN of a bank account are a choice, and only the chosen one is connected")
+	func connectChoiceByIBAN() throws {
+		var twins = accounts
+		twins[2]["name"] = "Haushalt"
+		twins[2]["accountNumber"] = "DE02120300000000202051"
+		twins[2]["bankCode"] = "BYLADEM1001"
+		let p = try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(twins), categories: try plist(categories), transactions: try plist(transactions), into: Ledger())
+		let ledger = Ledger(groups: p.groups, accounts: p.accounts, categories: p.categories, transactions: p.transactions)
+		let giro = try #require(p.accounts.first { $0.name == "Giro" })
+		let household = try #require(p.accounts.first { $0.name == "Haushalt" })
+		let listed = bankAccount("Girokonto", iban: "DE02120300000000202051", number: "202051", remoteID: "DE02120300000000202051")
+		#expect(ledger.setupMatch(for: listed, listed: [listed]) == .choice([giro, household]))
+		#expect(ledger.accountsToAdd([listed], listed: [listed]).map(\.id) == [listed.id])
+		#expect(ledger.accountsToAdd([listed], listed: [listed], connecting: [listed.id: household.id]).map(\.id) == [household.id])
+	}
+
+	@Test("A migrated account without an IBAN is a choice in each row of its subaccounts, and connects only where it is chosen")
+	func connectChoiceByAccountNumber() throws {
+		let source: [[String: Any]] = [["uuid": "S1", "name": "Sparen", "group": false, "indentation": 0, "type": "Savings account",
+			"accountNumber": "9", "bankCode": "12030000", "currency": "EUR", "portfolio": false, "balance": [[100.0, "EUR"]]]]
+		let p = try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(source), categories: try plist(categories),
+			transactions: try plist(["transactions": [] as [Any]]), into: Ledger())
+		let ledger = Ledger(accounts: p.accounts)
+		let sparen = try #require(p.accounts.first)
+		#expect(sparen.iban == nil && sparen.accountNumber == "9" && sparen.bankCode == "12030000")
+		let first = bankAccount("Sparkonto 01", number: "9", remoteID: "9/01")
+		let second = bankAccount("Sparkonto 02", number: "9", remoteID: "9/02")
+		#expect(ledger.setupMatch(for: first, listed: [first, second]) == .choice([sparen]))
+		#expect(ledger.setupMatch(for: second, listed: [first, second]) == .choice([sparen]))
+		#expect(ledger.accountsToAdd([first, second], listed: [first, second]).map(\.id) == [first.id, second.id])
+		#expect(ledger.accountsToAdd([first, second], listed: [first, second], connecting: [first.id: sparen.id]).map(\.id) == [sparen.id, second.id])
 	}
 
 	@Test("The report names a group whose balance in MoneyMoney leaves out an account")
