@@ -677,7 +677,7 @@ struct FileImportTests {
 	@Test("CSV delimiter detection uses only the first 20 nonempty lines", arguments: ["\n", "\r\n", "\r"])
 	func csvDelimiterSample(lineBreak: String) {
 		let text = lineBreak + String(repeating: "a;b" + lineBreak + lineBreak, count: 20) + String(repeating: ",", count: 21)
-		#expect(CSVParser.detectDelimiter(text) == ";")
+		#expect(CSVFile.detectDelimiter(text) == ";")
 	}
 
 }
