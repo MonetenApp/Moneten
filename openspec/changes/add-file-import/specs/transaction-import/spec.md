@@ -225,9 +225,9 @@ A title row has at least two text labels and no dates or amounts; after a dated 
 
 #### Scenario: Header words in a transaction
 
-- **GIVEN** "Tag;Wer;Zweck;Wieviel", followed by 101 ordinary transactions
-- **WHEN** the next row is "02.11.2026;Datum;Betrag;2.00" and one more transaction follows
-- **THEN** that dated amount row is not a header and all 103 transactions remain available after mapping the date and amount
+- **GIVEN** "Tag;Wer;Zweck;Wieviel", followed by 101 rows of "01.11.2026;Kiosk;Brot;1.00"
+- **WHEN** the next rows are "02.11.2026;Datum;Betrag;2.00" and "03.11.2026;Bakery;Cake;3.00"
+- **THEN** mapping the first and fourth columns to date and amount reads 101 amounts of 100, then 200 and 300 minor units
 
 #### Scenario: A balance before the column headings
 

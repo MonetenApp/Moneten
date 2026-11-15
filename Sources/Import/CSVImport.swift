@@ -185,7 +185,7 @@ public struct CSVFile: Sendable {
 		self.rows = rows
 		let boundary = try Self.dataBoundary(in: rows)
 		self.headerIndex = boundary.keyword
-		let width = rows.map(\.cells.count).max() ?? 0
+		let width = rows.lazy.map(\.cells.count).max() ?? 0
 		let titles = boundary.title.map { rows[$0] } ?? (boundary.start < rows.count ? rows[boundary.start] : rows.first)
 		let cells = titles?.cells.map { $0.trimmingCharacters(in: .whitespaces) } ?? []
 		header = cells + Array(repeating: "", count: max(0, width - cells.count))

@@ -266,9 +266,6 @@ final class DebugHarness {
 				let kind = switch question.named { case .iban: "iban"; case .number: "number" }
 				log("importanswer kind=\(kind) fileIndex=\(model.fileImport?.index ?? -1) selectedPosition=\(question.selected.position) otherPosition=\(question.other?.position ?? -1)")
 			}
-		// Changes the CSV preview on screen: "column <n>=<field or none>", "date <order>", "encoding <name>",
-		// "decimal comma|point|detect", "skip" as "Skip File" does, "state", which logs the settings and counts of
-		// the preview, or "rows", which logs its first rows.
 		case "csvhandoff":
 			Task {
 				do {
@@ -284,6 +281,9 @@ final class DebugHarness {
 					log("csvhandoff valid=\(valid)")
 				} catch { log("csvhandoff error=read") }
 			}
+		// Changes the CSV preview on screen: "column <n>=<field or none>", "date <order>", "encoding <name>",
+		// "decimal comma|point|detect", "skip" as "Skip File" does, "state", which logs the settings and counts of
+		// the preview, or "rows", which logs its first rows.
 		case "csv": csvPreview(argument)
 		// "[<currency>]": the credit card in US dollars, or in another currency such as JPY.
 		case "usd": Task { await DemoData.usdAccount(model, currency: argument.isEmpty ? "USD" : argument); log("usd done") }
