@@ -39,7 +39,8 @@ extension AppModel {
 			let progress = Task {
 				try await Task.sleep(for: .milliseconds(500))
 				try Task.checkCancellation()
-				sheet = .exporting
+				// Another sheet, such as "Edit Transaction", stays open, and the export runs on without the progress sheet.
+				if sheet == nil { sheet = .exporting }
 			}
 			defer { progress.cancel(); if sheet == .exporting { sheet = nil } }
 			do {

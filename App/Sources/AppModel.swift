@@ -449,6 +449,7 @@ final class AppModel {
 		// The announcer locks first, because the cancel below can end the run at once.
 		announcer.lock(keeping: ledger)
 		fileImport?.cancel()
+		exportTask?.cancel()
 		autoRefresh.isUnlocked = false
 		notices.clearBadge()
 		sync.cancelAll()
