@@ -635,4 +635,48 @@ struct FileImportTests {
 		#expect(parsed.warnings == [.mixedDateForms(line: 3)])
 	}
 
+
+	@Test("Reading a file stops with a cancellation error when its task is canceled", arguments: [
+		("Datum;Name;Betrag\n01.11.2026;Kiosk;-1,50\n", -150),
+		("Datum;Name;Betrag\r\n01.11.2026;Kiosk;-1,50\r\n", -150),
+		("Datum;Name;Betrag\r01.11.2026;Kiosk;-1,50\r", -150),
+		(":20:STARTUMS\n:25:12030000/202051\n:61:2611031103D1000,00NDDTNONREF\n-\n", -100_000),
+		("""
+		<?xml version="1.0" encoding="UTF-8"?>
+		<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.053.001.08"><BkToCstmrStmt><Stmt>
+		<Ntry><Amt Ccy="EUR">1000.00</Amt><CdtDbtInd>DBIT</CdtDbtInd><BookgDt><Dt>2026-11-03</Dt></BookgDt></Ntry>
+		</Stmt></BkToCstmrStmt></Document>
+		""", -100_000),
+	])
+	func fileCanceled(text: String, amountMinor: Int64) async throws {
+		let canceled = await Task {
+			withUnsafeCurrentTask { $0?.cancel() }
+			return Result { try TransactionFileImporter.parse(Data(text.utf8), currency: "EUR") }
+		}.value
+		#expect(throws: CancellationError.self) { try canceled.get() }
+		#expect(try TransactionFileImporter.parse(Data(text.utf8), currency: "EUR").transactions.map(\.amountMinor) == [amountMinor])
+	}
+
+	@Test("A cancel while the decimal mark of a large CSV file is collected ends the reading at once")
+	func csvCanceledWhileCollectingDecimalMark() async throws {
+		let text = "Datum;Name;Betrag\n01.11.2026;Kiosk;1,234\n" + String(repeating: "02.11.2026;Kiosk;4.50\n", count: 300_000)
+		let data = Data(text.utf8)
+		let clock = ContinuousClock()
+		// "1,234" collects the decimal mark from all amounts. That pass runs from about 5 to 11 times the
+		// time of the split, measured in a debug build, so the cancel comes at 8 times.
+		let split = try clock.measure { _ = try CSVParser.split(text, delimiter: ";") }
+		let reading = Task.detached { Result { try TransactionFileImporter.parse(data, currency: "EUR") } }
+		try await Task.sleep(for: split * 8)
+		let canceled = clock.now
+		reading.cancel()
+		let result = await reading.value
+		#expect(clock.now - canceled < .seconds(1))
+		#expect(throws: CancellationError.self) { try result.get() }
+	}
+	@Test("CSV delimiter detection uses only the first 20 nonempty lines", arguments: ["\n", "\r\n", "\r"])
+	func csvDelimiterSample(lineBreak: String) {
+		let text = lineBreak + String(repeating: "a;b" + lineBreak + lineBreak, count: 20) + String(repeating: ",", count: 21)
+		#expect(CSVParser.detectDelimiter(text) == ";")
+	}
+
 }

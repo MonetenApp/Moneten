@@ -74,6 +74,14 @@ final class DebugHarness {
 		case "unlock": log("unlock \(model.unlock(password: argument))")
 		case "lock": model.lock()
 		case "appearance": NSApp.appearance = NSAppearance(named: argument == "dark" ? .darkAqua : .aqua)
+		// "<name>": the import sheet while it reads the second of two made-up files, and while it stores their rows.
+		case "importsheetsnapshot":
+			let reading = FileImport(names: ["umsaetze-januar.csv", "umsaetze-februar.csv"])
+			reading.index = 1
+			offscreenSnapshot(FileImportSheet(run: reading).environment(model), width: 480, name: "\(argument)-reading")
+			let storing = FileImport(names: ["umsaetze-januar.csv", "umsaetze-februar.csv"])
+			storing.storing = 300_000
+			offscreenSnapshot(FileImportSheet(run: storing).environment(model), width: 480, name: "\(argument)-storing")
 		case "settingssnapshot":
 			offscreenSnapshot(SecuritySettings().environment(model), width: 500, name: "\(argument)-security")
 			offscreenSnapshot(GeneralSettings().environment(model), width: 500, name: "\(argument)-general")
@@ -234,10 +242,11 @@ final class DebugHarness {
 				g.groupsByAccount = true
 				model.save(group: g)
 			}
-		// Imports the file at the path into the selected account, as "Import Transactions..." does after the open panel.
+		// Imports the files at the paths, separated by "|", into the selected account, as "Import Transactions..." does after the open panel.
 		case "importfile":
 			guard let account = model.selectedAccount else { return log("importfile no account") }
-			Task { await model.importFiles([URL(filePath: argument)], into: account); log("importfile done") }
+			let urls = argument.split(separator: "|").map { URL(filePath: String($0)) }
+			Task { await model.importFiles(urls, into: account); log("importfile done") }
 		// "[<currency>]": the credit card in US dollars, or in another currency such as JPY.
 		case "usd": Task { await DemoData.usdAccount(model, currency: argument.isEmpty ? "USD" : argument); log("usd done") }
 		case "review": Task { await DemoData.review(model); log("review done") }

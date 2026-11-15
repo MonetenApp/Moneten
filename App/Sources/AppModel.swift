@@ -278,6 +278,8 @@ final class AppModel {
 	var alert: AlertMessage? {
 		didSet { if (alert == nil) != (oldValue == nil) { Trail.log(alert == nil ? "alert closed" : "alert shown") } }
 	}
+	/// The file import that runs. There is one at a time, and a lock cancels it.
+	@ObservationIgnored var fileImport: FileImport?
 	var sheet: SheetKind? {
 		didSet { if sheet != oldValue { Trail.log("sheet \(sheet?.trailName ?? "none")") } }
 	}
@@ -444,6 +446,7 @@ final class AppModel {
 		// A locked app refreshes nothing and forgets every PIN in memory. The saved ones come back from the database at the next unlock.
 		// The announcer locks first, because the cancel below can end the run at once.
 		announcer.lock(keeping: ledger)
+		fileImport?.cancel()
 		autoRefresh.isUnlocked = false
 		notices.clearBadge()
 		sync.cancelAll()
@@ -1343,6 +1346,7 @@ enum SheetKind: Identifiable, Equatable {
 	case comment(Set<UUID>)
 	case migration
 	case exportAllData
+	case fileImport(FileImport)
 	case setPassword
 	case changePassword
 

@@ -128,6 +128,7 @@ extension AppModel {
 	/// it, because a click can wait for a drawing before it selects the account (issue #151).
 	func importFile(into accountID: UUID? = nil) async {
 		guard let account = accountID.flatMap({ ledger.account($0) }) ?? selectedAccount else { return }
+		guard fileImport == nil else { return NSSound.beep() }
 		let panel = NSOpenPanel()
 		panel.title = "Import Transactions"
 		panel.message = "CSV, CAMT (camt.052, camt.053), and MT940 files are supported."
@@ -138,30 +139,65 @@ extension AppModel {
 	}
 
 	func importFiles(_ urls: [URL], into account: Account) async {
-		var added = 0
-		var skipped = 0
-		var booked = 0
-		var problems: [String] = []
-		var warnings: [String] = []
-		// A file can bring thousands of rows, so all files go in with one new table.
-		await replacingTable {
-			for url in urls {
+		// One import runs at a time. A canceled one ends at its next row, line, or entry.
+		guard fileImport == nil else { return NSSound.beep() }
+		let run = FileImport(names: urls.map(\.lastPathComponent))
+		fileImport = run
+		defer { fileImport = nil }
+		// A small file is read before the sheet would appear, so it shows only the result.
+		let sheetDelay = Task {
+			try await Task.sleep(for: .milliseconds(500))
+			if !Task.isCancelled, sheet == nil { sheet = .fileImport(run) }
+		}
+		let reading = Task { () -> (read: [(name: String, parsed: TransactionFileImporter.Parsed)], problems: [String], canceledAt: Int?) in
+			var read: [(name: String, parsed: TransactionFileImporter.Parsed)] = []
+			var problems: [String] = []
+			for (i, url) in urls.enumerated() {
+				run.index = i
 				do {
-					let data = try Data(contentsOf: url)
-					guard data.count <= 100 * 1024 * 1024 else {
-						problems.append("\(url.lastPathComponent): The file is too large. Please choose a file with a maximum size of 100 MB.")
-						continue
-					}
-					let parsed = try TransactionFileImporter.parse(data, currency: account.currency)
-					let result = try merge(.file(parsed.transactions), into: account.id)
-					added += result.added.count
-					skipped += result.skipped
-					booked += result.booked.count
-					if !result.added.isEmpty { warnings += parsed.warnings.map { "\(url.lastPathComponent): \($0)" } }
+					let parsed = try await Self.readFile(url, currency: account.currency)
+					if run.isCanceled { return (read, problems, canceledAt: i) }
+					read.append((url.lastPathComponent, parsed))
 				} catch {
+					if run.isCanceled { return (read, problems, canceledAt: i) }
 					problems.append("\(url.lastPathComponent): \(error)")
 				}
 			}
+			return (read, problems, nil)
+		}
+		run.onCancel = { reading.cancel() }
+		let (read, readProblems, canceledAt) = await reading.value
+		var problems = readProblems
+		sheetDelay.cancel()
+		var added = 0
+		var skipped = 0
+		var booked = 0
+		var warnings: [String] = []
+		// A file can bring thousands of rows, so all files go in with one new table. Storing 300,000 rows
+		// holds the main actor for seconds, so the sheet says so. It is drawn while the placeholder is.
+		if !read.isEmpty, store != nil {
+			run.storing = read.reduce(0) { $0 + $1.parsed.transactions.count }
+			await replacingTable {
+				for (name, parsed) in read {
+					do {
+						let result = try merge(.file(parsed.transactions), into: account.id)
+						added += result.added.count
+						skipped += result.skipped
+						booked += result.booked.count
+						if !result.added.isEmpty { warnings += parsed.warnings.map { "\(name): \($0)" } }
+					} catch {
+						problems.append("\(name): \(error)")
+					}
+				}
+			}
+		}
+		if sheet == .fileImport(run) { sheet = nil }
+		// A lock while the files were read or stored closed the database, and the import ends without a message.
+		guard store != nil else { return }
+		if let canceledAt {
+			let left = urls.count - canceledAt - 1
+			let rest = left == 0 ? " was" : left == 1 ? " and one more file were" : " and \(left) more files were"
+			problems.append("The import was canceled. \(run.names[canceledAt])\(rest) not imported.")
 		}
 		var message = added == 0 ? "Imported no new transactions." : added == 1 ? "Imported one new transaction." : "Imported \(added) new transactions."
 		if booked > 0 { message += booked == 1 ? " Booked one pending transaction." : " Booked \(booked) pending transactions." }
@@ -176,4 +212,15 @@ extension AppModel {
 		}
 		alert = AlertMessage(title: "Transaction Import", message: message)
 	}
+
+	/// Reads a file away from the main actor, so the import sheet can show progress and take "Cancel".
+	nonisolated private static func readFile(_ url: URL, currency: String) async throws -> TransactionFileImporter.Parsed {
+		let data = try Data(contentsOf: url)
+		guard data.count <= 100 * 1024 * 1024 else { throw FileTooLarge() }
+		return try TransactionFileImporter.parse(data, currency: currency)
+	}
+}
+
+private struct FileTooLarge: Error, CustomStringConvertible {
+	var description: String { "The file is too large. Please choose a file with a maximum size of 100 MB." }
 }

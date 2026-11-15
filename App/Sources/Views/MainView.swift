@@ -96,6 +96,7 @@ struct SheetView: View {
 		case let .comment(ids): CommentSheet(ids: ids)
 		case .migration: MigrationSheet()
 		case .exportAllData: ExportAllDataSheet()
+		case let .fileImport(run): FileImportSheet(run: run)
 		case .setPassword: SetPasswordSheet()
 		case .changePassword: ChangePasswordSheet()
 		}

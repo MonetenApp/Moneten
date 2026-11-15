@@ -285,7 +285,30 @@ struct PerfScenario {
 				await c.settle()
 			},
 			run: { $0.harness.openExtensionsWindow() }),
+		// A CSV file into the open account. The rows are read away from the main actor, so the stall is the
+		// time of storing them, while the import sheet says "Storing...".
+		PerfScenario(name: "import-large-csv", budget: halfSecond,
+			setUp: { c in
+				await c.select("Account 7")
+				let today = Day.today()
+				let rows = (0..<importedRows).map { i in
+					let d = today.adding(days: -(i % 2_000))
+					return String(format: "%02d.%02d.%04d;Online Shop;Large %d;-%d,%02d", d.day, d.month, d.year, i, 1 + i % 400, i % 100)
+				}
+				try? (["Buchungstag;Name;Verwendungszweck;Betrag"] + rows).joined(separator: "\n").write(to: importFile, atomically: true, encoding: .utf8)
+			},
+			run: { c in
+				guard let account = c.model.ledger.accounts.first(where: { $0.name == "Account 7" }) else { return }
+				let before = c.model.ledger.transactions(ofAccount: account.id).count
+				await c.model.importFiles([importFile], into: account)
+				c.model.alert = nil
+				let stored = c.model.ledger.transactions(ofAccount: account.id).count - before
+				if stored != importedRows { c.fail("the import stored \(stored) of \(importedRows) rows") }
+			}),
 	]
+
+	static let importedRows = 50_000
+	static let importFile = FileManager.default.temporaryDirectory.appending(path: "perf-import.csv")
 
 	/// `count` made-up positions of a portfolio, the same securities in every call.
 	static func positions(_ account: UUID, _ count: Int) -> [Holding] {
