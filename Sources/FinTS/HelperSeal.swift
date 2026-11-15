@@ -36,3 +36,12 @@ struct HelperSeal: @unchecked Sendable {
 		return requirement
 	}
 }
+
+/// The check at launch that the application file is complete and unchanged (spec: "Report a
+/// damaged application file"). It is the seal check of the helper, for the whole bundle.
+public enum AppSeal {
+	/// False when a sealed file of the running app was changed, added, or removed.
+	public static var isIntact: Bool {
+		(try? HelperSeal(bundle: Bundle.main.bundleURL, requirement: nil).check()) != nil
+	}
+}

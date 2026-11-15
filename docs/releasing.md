@@ -6,11 +6,21 @@ A release starts with a tag. `.github/workflows/release.yml` then builds the app
 
 ## Dry run
 
-The dry run needs no secrets and contacts no service. It builds the app signed to run locally, puts it on an unsigned disk image, checks the image as a user would get it, and writes a feed signed with a throwaway update key. Run it before a change to the packaging:
+The dry run needs no secrets and contacts no service. It builds the app signed to run locally, puts it on an unsigned disk image, checks the image as a user would get it, and writes a feed signed with the test update key of `Fixtures/update`. Run it before a change to the packaging:
 
 ```sh
 scripts/release.sh dry-run           # version 0.0.0-beta.1, on a copy of CHANGELOG.md
 ```
+
+A Debug build trusts the test key and reads the feed of the dry run:
+
+```sh
+scripts/build-app.sh debug
+python3 -m http.server --directory dist/release --bind 127.0.0.1 8793
+open --env MONETEN_FEED_URL=http://127.0.0.1:8793/appcast.xml --env MONETEN_DATA_DIR=/tmp/moneten-update dist/Moneten.app
+```
+
+`scripts/update-test-feed.sh` writes test feeds with several versions, signed with the same key, for the checks of the update window. A Debug build looks for updates only when `MONETEN_FEED_URL` is set.
 
 The workflow runs the same dry run on each pull request that changes the packaging. A run by hand under Actions, "Release", "Run workflow", does it too. With "notarize" checked, the run by hand also signs and notarizes with the secrets of the environment `build`. It signs nothing with the update key and publishes nothing.
 
@@ -60,7 +70,7 @@ Allow only the tags `v*`, and add the owner as a required reviewer. The workflow
 1. Run `"$(scripts/sparkle-tools.sh)/generate_keys"` on the Mac of the owner. It stores the private key in the login Keychain and prints the public key.
 2. Run `"$(scripts/sparkle-tools.sh)/generate_keys" -x update-key.txt` to export the private key, and paste the content of the file as `SPARKLE_ED_PRIVATE_KEY`.
 3. Store `update-key.txt` in the two offline backups below, then delete the file.
-4. Commit the public key as the production update key of the app, as the Sparkle tasks of add-software-update describe. The public key is not secret.
+4. In `App/project.yml`, replace the placeholder `none` of `MONETEN_UPDATE_PUBLIC_KEY` in the base settings of the target `Moneten` with the public key, and merge it in a pull request. The public key is not secret. Until then, a Release build does not look for updates, and `scripts/release.sh preflight` and `package` refuse to run. They also refuse the public test key of `Fixtures/update`, and `feed` refuses a private key that does not belong to the public key in the app.
 
 Never create a second key for the same feed. A lost key means that every user must download the next version by hand.
 
@@ -90,8 +100,8 @@ To start over after a failed run, delete the draft and run the workflow again on
 
 - [ ] `CHANGELOG.md` has the section of the version, and every entry is written for users.
 - [ ] CI is green on the commit.
-- [ ] The release candidate was tested on the newest major version of macOS, and the Info.plist key `MonetenTestedMacOS` names that version, once the app has the key (task 3.5 of add-software-update).
-- [ ] The production update key in the app is the public key of `SPARKLE_ED_PRIVATE_KEY`.
+- [ ] The release candidate was tested on the newest major version of macOS, and the key `MonetenTestedMacOS` in `App/Info.plist` names that version. The app warns at launch on a newer major version of macOS.
+- [ ] The production update key in `App/project.yml` is the public key of `SPARKLE_ED_PRIVATE_KEY`. `scripts/release.sh` checks this too.
 
 ## Withdraw a version
 

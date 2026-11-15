@@ -23,6 +23,11 @@ settings:
 packages:
   MonetenKit:
     path: ..
+  # Only the app uses Sparkle (design of add-software-update). scripts/generate-project.sh pins its
+  # revision, and scripts/sparkle-tools.sh downloads the command line tools of the same version.
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    exactVersion: 2.10.1
 targets:
   Moneten:
     type: application
@@ -59,6 +64,7 @@ targets:
         product: ExtensionConnector
       - package: MonetenKit
         product: ExtensionCatalog
+      - package: Sparkle
       # The process of one extension session, which ExtensionHostClient starts from Contents/Helpers.
       - target: MonetenExtensionHost
         embed: true
@@ -72,6 +78,10 @@ targets:
         CURRENT_PROJECT_VERSION: 1
         # The part of the version after the hyphen, such as beta.1. scripts/build-app.sh sets it from MONETEN_VERSION.
         MONETEN_PRE_RELEASE: ""
+        # The public update key of Sparkle. A release carries the production key, which the owner
+        # commits here in place of the placeholder "none" (docs/releasing.md). Until then a Release
+        # build does not look for updates, and scripts/release.sh refuses to package a release.
+        MONETEN_UPDATE_PUBLIC_KEY: none
         PRODUCT_BUNDLE_IDENTIFIER: io.github.alexander-schneider.Moneten
         PRODUCT_NAME: Moneten
         GENERATE_INFOPLIST_FILE: NO
@@ -82,6 +92,9 @@ targets:
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         ENABLE_HARDENED_RUNTIME: $(MONETEN_HARDENED_RUNTIME)
       configs:
+        # The public half of the test key in Fixtures/update. A Debug build looks for updates only in MONETEN_FEED_URL.
+        Debug:
+          MONETEN_UPDATE_PUBLIC_KEY: KCVfr5htNQFhNzFn1PReJQq2egc+Ny8yWsVLI1FEs/g=
         Perf:
           SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) PERF_HARNESS
   # The host process of ADR 0015: the main of the package target MonetenExtensionHost, with the app sandbox

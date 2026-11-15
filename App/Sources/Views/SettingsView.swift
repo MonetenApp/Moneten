@@ -170,11 +170,6 @@ struct GeneralSettings: View {
 	@AppStorage(RefreshSettings.playsSoundKey) private var playsSound = false
 	@State private var notificationsDenied = false
 
-	private var version: String {
-		let info = Bundle.main.infoDictionary
-		guard let short = info?["CFBundleShortVersionString"] as? String else { return "Development build" }
-		return info?["CFBundleVersion"].map { "\(short) (\($0))" } ?? short
-	}
 
 	var body: some View {
 		SheetForm {
@@ -193,7 +188,12 @@ struct GeneralSettings: View {
 				}
 			}
 			Section {
-				LabeledContent("Version", value: version)
+				LabeledContent("Version") {
+					HStack(spacing: 6) {
+						if AppVersion.current.isPreRelease { PreReleaseMark() }
+						Text(AboutPanel.version).textSelection(.enabled)
+					}
+				}
 				LabeledContent {
 					Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([model.vault.folder.root]) }
 				} label: {
@@ -204,6 +204,7 @@ struct GeneralSettings: View {
 						.textSelection(.enabled)
 				}
 			}
+			UpdateSettings(updater: model.updater)
 			Section {
 				LabeledContent("License") {
 					Link("GPL 3.0 or later", destination: URL(string: "https://www.gnu.org/licenses/gpl-3.0.html")!)

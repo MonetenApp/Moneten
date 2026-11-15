@@ -104,6 +104,8 @@ final class AppModel {
 	let fints = AppModel.makeFinTSConnector()
 	/// The installed extensions and the catalog.
 	let extensions = ExtensionLibrary()
+	/// The updates of the app through Sparkle.
+	let updater = AppUpdater()
 	/// The connector of each extension that the debug harness loaded from a path, by the name of its package.
 	/// An installed extension of the same name goes first.
 	var extensionConnectors: [String: ExtensionConnector] = [:]
@@ -364,11 +366,15 @@ final class AppModel {
 		installActivityMonitor()
 		installRefreshTriggers()
 		showDialogsInMainWindow()
+		updater.isBusy = { [weak self] in self.map { $0.sync.isRefreshing || $0.sync.broker.current != nil } ?? false }
+		// A window that opens while SwiftUI builds the scenes stops the app, so the checks run after it.
+		DispatchQueue.main.async { [updater] in LaunchChecks.run(updater: updater) }
 	}
 
 	// MARK: Opening and locking
 
 	func start() {
+		if let damaged = LaunchChecks.damagedApp { return phase = .failed(damaged) }
 		do {
 			switch try vault.state() {
 			case .empty:

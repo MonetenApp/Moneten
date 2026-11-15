@@ -67,6 +67,11 @@ struct AppCommands: Commands {
 	var unlocked: Bool { model.phase == .unlocked && !model.isApplyingRule }
 
 	var body: some Commands {
+		CommandGroup(replacing: .appInfo) {
+			Button("About Moneten") { AboutPanel.show() }
+			Button("Check for Updates...") { model.updater.checkForUpdates() }
+				.disabled(!model.updater.canCheck)
+		}
 		CommandGroup(after: .appSettings) {
 			Divider()
 			Button(model.hasPassword ? "Change Database Password..." : "Set Database Password...") {

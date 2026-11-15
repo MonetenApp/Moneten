@@ -74,6 +74,8 @@ final class DebugHarness {
 		case "create": model.createDatabase(password: argument.isEmpty ? nil : argument)
 		case "unlock": log("unlock \(model.unlock(password: argument))")
 		case "lock": model.lock()
+		// "<action>" drives the update window and the updater, see UpdateHarness.swift.
+		case "update": update(argument, model: model)
 		case "appearance": NSApp.appearance = NSAppearance(named: argument == "dark" ? .darkAqua : .aqua)
 		// "<name>": the import sheet while it reads the second of two made-up files, and while it stores their rows.
 		case "importsheetsnapshot":

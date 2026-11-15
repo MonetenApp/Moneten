@@ -3,7 +3,8 @@
 # and docs/releasing.md explains the secrets and the steps.
 #   scripts/release.sh dry-run [version]  every step without secrets and without GitHub: an app signed
 #                                         to run locally, an unsigned disk image, and a feed signed
-#                                         with a throwaway update key. Version 0.0.0-beta.1 by default.
+#                                         with the test update key of Fixtures/update, which a Debug
+#                                         build reads. Version 0.0.0-beta.1 by default.
 #                                         With MONETEN_SIGN=1 it also signs and notarizes.
 #   scripts/release.sh preflight <version>  step 1: the changelog section, the tag on main, and the feed
 #   scripts/release.sh package <version>    steps 2 to 4: the signed and notarized app on a notarized
@@ -16,7 +17,8 @@
 #                                           the text of earlier releases from CHANGELOG.md
 # Signing needs the Developer ID certificate in the Keychain and MONETEN_TEAM_ID. Notarization needs
 # MONETEN_NOTARY_KEY (the path of the .p8 file), MONETEN_NOTARY_KEY_ID, and MONETEN_NOTARY_ISSUER.
-# The feed needs MONETEN_UPDATE_KEY_FILE, the file with the private EdDSA key.
+# The feed needs MONETEN_UPDATE_KEY_FILE, the file with the private EdDSA key. A release needs the
+# production public key in App/project.yml in place of the placeholder "none" (docs/releasing.md).
 set -e
 cd "$(dirname "$0")/.."
 REPO=MonetenApp/Moneten
@@ -30,6 +32,25 @@ notes() { python3 scripts/release-notes.py --changelog "$CHANGELOG" "$@"; }
 fail() { echo "$*" >&2; exit 1; }
 plist() { /usr/libexec/PlistBuddy -c "Print $2" "$1/Contents/Info.plist"; }
 dmg_url() { echo "https://github.com/$REPO/releases/download/v$1/Moneten-$1.dmg"; }
+TEST_KEY_FILE=Fixtures/update/test-update.key
+
+# The public key of the private EdDSA key in the file $1: Sparkle keeps the 32 byte seed, which
+# becomes an Ed25519 key in PKCS#8 for openssl. The key never appears in an argument or a log.
+public_key() {
+	{ printf '\060\056\002\001\000\060\005\006\003\053\145\160\004\042\004\040'; base64 -d < "$1" | head -c 32; } \
+		| openssl pkey -inform DER -pubout -outform DER | tail -c 32 | base64
+}
+
+# The public update key that App/project.yml gives a Release build.
+committed_key() { sed -n 's/^ *MONETEN_UPDATE_PUBLIC_KEY: *//p' App/project.yml | head -1; }
+
+# A release must carry the production update key: not the placeholder, and not the public test key.
+check_production_key() {
+	case "$1" in
+		none|"") fail "App/project.yml has no production update key yet. docs/releasing.md explains how the owner adds it." ;;
+		"$(public_key "$TEST_KEY_FILE")") fail "The update key is the test key of Fixtures/update, which only Debug builds may trust." ;;
+	esac
+}
 
 # Writes the current feed to $WORK/current.xml and sets FEED_ARGS. Only an answer of GitHub that
 # no stable release exists makes this the first release, so a network error never starts an empty feed.
@@ -46,6 +67,7 @@ current_feed() {
 }
 
 preflight() {
+	check_production_key "$(committed_key)"
 	notes check
 	notes section "$1" >/dev/null
 	[ "$(git rev-parse --is-shallow-repository)" = false ] || fail "The checkout is shallow, so the build number would be wrong."
@@ -105,6 +127,8 @@ package() {
 		codesign -dvv "$APP" 2>&1 | grep -q '^Authority=Developer ID Application' || fail "The app is not signed with the Developer ID."
 		codesign -dv "$APP" 2>&1 | grep -q 'flags=.*runtime' || fail "The app has no hardened runtime."
 		plist "$APP" MonetenFinTSProductID >/dev/null 2>&1 || fail "The app has no FinTS product ID. See docs/releasing.md."
+		check_production_key "$(plist "$APP" SUPublicEDKey)"
+		[ "$(plist "$APP" SUPublicEDKey)" = "$(committed_key)" ] || fail "The app carries another update key than App/project.yml."
 		ditto -c -k --keepParent "$APP" "$WORK/Moneten.zip"
 		notarize "$WORK/Moneten.zip"
 		xcrun stapler staple -q "$APP"
@@ -129,6 +153,7 @@ package() {
 	VERSION=$1
 	BUILD=$(plist "$APP" CFBundleVersion)
 	MIN_MACOS=$(plist "$APP" LSMinimumSystemVersion)
+	UPDATE_KEY=$(plist "$APP" SUPublicEDKey)
 	EOF
 	echo "Packaged $DMG ($MODE, build $(plist "$APP" CFBundleVersion))."
 }
@@ -138,6 +163,10 @@ feed() {
 	[ -f "$MONETEN_UPDATE_KEY_FILE" ] || fail "The feed needs MONETEN_UPDATE_KEY_FILE, the private update key."
 	. "./$OUT/build.env"
 	[ "$VERSION" = "$1" ] || fail "dist/release holds version $VERSION, not $1."
+	# A feed that the installed apps cannot check would stop every update. A dry run builds without
+	# the production key and signs with the test key.
+	[ "$2" = first ] || [ "$(public_key "$MONETEN_UPDATE_KEY_FILE")" = "$UPDATE_KEY" ] \
+		|| fail "MONETEN_UPDATE_KEY_FILE is not the private half of the update key in the app."
 	SPARKLE=$(scripts/sparkle-tools.sh)
 	DMG="$OUT/Moneten-$1.dmg"
 	SIGNATURE=$("$SPARKLE/sign_update" --ed-key-file "$MONETEN_UPDATE_KEY_FILE" -p "$DMG")
@@ -220,13 +249,11 @@ dry_run() {
 	fi
 	notes check-release "$VERSION" --build "$(git rev-list --count HEAD)" --first-release
 	if [ "$MONETEN_SIGN" = 1 ]; then package "$VERSION" signed; else package "$VERSION" unsigned; fi
-	# A throwaway update key: an Ed25519 seed, the private key format of Sparkle.
-	openssl genpkey -algorithm ed25519 -outform DER -out "$WORK/key.der"
-	tail -c 32 "$WORK/key.der" | base64 > "$WORK/update.key"
-	MONETEN_UPDATE_KEY_FILE="$WORK/update.key" feed "$VERSION" first
+	# The test key, so a Debug build can read this feed (Fixtures/update/README.md).
+	MONETEN_UPDATE_KEY_FILE="$TEST_KEY_FILE" feed "$VERSION" first
 	# One changed byte must break the signature of the feed.
 	sed 's/Moneten/Monetem/' "$OUT/appcast.xml" > "$WORK/changed.xml"
-	if "$(scripts/sparkle-tools.sh)/sign_update" --verify --ed-key-file "$WORK/update.key" "$WORK/changed.xml" >/dev/null 2>&1; then
+	if "$(scripts/sparkle-tools.sh)/sign_update" --verify --ed-key-file "$TEST_KEY_FILE" "$WORK/changed.xml" >/dev/null 2>&1; then
 		fail "The changed feed passed the signature check."
 	fi
 	echo "Dry run of $VERSION passed: $(ls "$OUT" | tr '\n' ' ')"
