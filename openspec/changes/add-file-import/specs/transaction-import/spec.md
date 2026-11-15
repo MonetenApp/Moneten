@@ -535,7 +535,7 @@ The app SHALL import a CAMT entry with the status PDNG or FUTR as a pending tran
 
 ### Requirement: Future pending transactions from a file
 
-The app SHALL keep a pending transaction from a file that no refresh has delivered while its booking date is today or later and no free delivered pending transaction pairs with it. Each delivered transaction pairs with one stored transaction at most. A file transaction that only an already paired delivered transaction fits stays. After its booking date, a refresh that does not deliver it removes it.
+The app SHALL keep a pending transaction from a file that no refresh has delivered while its booking date is today or later and no free delivered pending transaction pairs with it. Each delivered transaction takes one unpaired file transaction at most. A file transaction that only an already paired delivered transaction fits stays. After its booking date, a refresh that does not deliver it removes it.
 
 #### Scenario: Scheduled rent before its date
 

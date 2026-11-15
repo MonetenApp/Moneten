@@ -117,7 +117,7 @@ struct PerfScenario {
 			run: { c in
 				guard let account = c.model.ledger.accounts.first(where: { $0.name == "Account 1" }) else { return }
 				let table = c.harness.transactionTables().first
-				let result = RefreshResult(balance: nil, transactions: FetchedTransactions(rows: [], from: Day.today().adding(days: -1)))
+				let result = RefreshResult(balance: nil, transactions: FetchedTransactions(rows: [], from: Day.today().adding(days: -2)))
 				try? await c.model.sync.deliver(account.id, result)
 				await c.settle()
 				if c.model.ledger.transactions(ofAccount: account.id).contains(where: \.isPending) { c.fail("the refresh dropped no pending row") }

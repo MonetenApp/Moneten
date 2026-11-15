@@ -177,6 +177,15 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored: [Tran
 				}
 			}
 			if fetched { next.isFetched = true }
+			if let fileIndex = fileRowOf[i] {
+				let file = stored[fileIndex]
+				if next.comment?.isEmpty != false, let comment = file.comment { next.comment = comment }
+				if next.categoryID == nil, let category = file.categoryID {
+					next.categoryID = category
+					next.categorizedBy = file.categorizedBy
+				}
+				next.isChecked = next.isChecked || file.isChecked
+			}
 			if live.isPending && !next.isPending {
 				r.booked.append(next)
 			} else {
@@ -196,7 +205,7 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored: [Tran
 			r.booked.append(next)
 		} else if let j = fileRowOf[i] {
 			var next = stored[j].takingBankFields(of: delivered)
-			next.isFetched = true
+			next.isFetched = fetched
 			rules.categorize(&next)
 			r.updated.append(next)
 			r.skipped += 1
