@@ -139,6 +139,28 @@ The app SHALL let the user select a range of rows with the Shift key, single row
 - **WHEN** the user clicks row three with the Command key held
 - **THEN** rows one, two, four, and five stay selected
 
+### Requirement: A sum of zero has the currency of the view
+
+The app SHALL show the sum 0 in the currency of the account or the category of the view when no shown row counts in the sum of the status line. A view of an account group takes the currency of its first row, and the euro when it shows no row.
+
+#### Scenario: Every row is under review
+
+- **GIVEN** the account "Travel" in USD whose only rows are two pending transactions of -12,50 USD that are marked for review
+- **WHEN** the user opens "Travel"
+- **THEN** the status line shows 2 transactions and the sum 0,00 USD
+
+#### Scenario: Empty list
+
+- **GIVEN** the account "Travel" in USD without transactions
+- **WHEN** the user opens "Travel"
+- **THEN** the status line shows the sum 0,00 USD
+
+#### Scenario: Category with rows in another currency
+
+- **GIVEN** the category "Travel" in USD whose only row is a pending transaction of -3,20 € that is marked for review
+- **WHEN** the user opens the category "Travel"
+- **THEN** the status line shows the sum 0,00 USD
+
 ### Requirement: The context menu acts on the selection
 
 The app SHALL apply a command of the context menu to all selected rows when the user opens the menu on a selected row. When the user opens the menu on a row outside the selection, the app selects that row first and applies the command only to it.

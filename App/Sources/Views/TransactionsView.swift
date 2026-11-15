@@ -940,7 +940,7 @@ struct StatusLine: View {
 				HStack(spacing: 12) {
 					Text(selected.count > 1 ? "\(selected.count) of \(rows.count) transactions" : (rows.count == 1 ? "1 transaction" : "\(rows.count.formatted()) transactions"))
 						.foregroundStyle(Palette.detail)
-					Text("Sum: \(sums.isEmpty ? Format.money(0, shown.first?.currency ?? model.selectedCurrency ?? "EUR") : Format.sums(sums))")
+					Text("Sum: \(Format.sums(sums.shownAmounts(viewCurrency: model.selectedCurrency, rows: shown)))")
 						.monospacedDigit()
 						.textSelection(.enabled)
 				}
