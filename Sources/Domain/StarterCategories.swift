@@ -33,17 +33,17 @@ public enum StarterCategories {
 		return result
 	}
 
-	/// The root categories of a starter set that the user has not changed, with only unchanged subcategories
+	/// The root categories of the starter set that the user has not changed, with only unchanged subcategories
 	/// of the same starter group below. The default category is never one of them.
 	///
-	/// The set can be in either language, because a database keeps the names it was created with while the
-	/// interface language changes. Only the set of one language counts: the one with more unchanged roots,
-	/// and `language` on a tie. So an empty group of the user that has the name of a group in the other
-	/// language stays.
+	/// A database keeps the names it was created with while the interface language changes, so the name of
+	/// its default category tells the language of its set: "Uncategorized" or "Unkategorisiert". With another
+	/// name, the set of `language` counts. Only one set counts, so a group of the user that has the name of a
+	/// group in the other language stays.
 	public static func unchangedRoots(in ledger: Ledger, language: Language) -> [Category] {
-		let preferred = unchangedRoots(in: ledger, template: make(language: language))
-		let other = unchangedRoots(in: ledger, template: make(language: language == .german ? .english : .german))
-		return other.count > preferred.count ? other : preferred
+		let defaultName = ledger.categories.first(where: \.isDefault)?.name
+		let created = Language.allCases.first { make(language: $0).contains { $0.isDefault && $0.name == defaultName } } ?? language
+		return unchangedRoots(in: ledger, template: make(language: created))
 	}
 
 	private static func unchangedRoots(in ledger: Ledger, template: [Category]) -> [Category] {

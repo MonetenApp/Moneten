@@ -94,6 +94,13 @@ struct StarterCategoriesTests {
 		#expect(unchangedRoots(l) == ["Income", "Living", "Mobility", "Leisure", "Insurance", "Transfers"])
 	}
 
+	@Test("A group \"Living\" of the user in a German ledger without untouched starter groups is kept", arguments: StarterCategories.Language.allCases)
+	func userGroupWithoutGermanStarters(_ interface: StarterCategories.Language) {
+		var l = Ledger(categories: StarterCategories.make(language: .german).filter { $0.isDefault })
+		l.upsert(Domain.Category(position: 0, name: "Living", isGroup: true))
+		#expect(unchangedRoots(l, interface) == [])
+	}
+
 	@Test("An unchanged English set is replaced")
 	func unchangedEnglish() {
 		#expect(unchangedRoots(Ledger(categories: StarterCategories.make(language: .english)))

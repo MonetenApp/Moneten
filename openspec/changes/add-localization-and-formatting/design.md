@@ -59,7 +59,7 @@ The formats of dates and numbers follow the region of macOS and not the language
 
 `StarterCategories.make(language:)` already holds both sets. The app picks the set by the language of the interface when it creates the database. A later change of the language does not rename them, because the user may have changed them.
 
-The migration from MoneyMoney and "Import All Data" replace an untouched starter set. They recognize the set in either language, because a database created in English can open with a German interface and the other way round, and a database of an earlier English-only build has the English set. When parts of both sets are in the database, the set with more untouched groups counts, and the language of the interface decides a tie. An empty group of the user named like a group of the other set stays.
+The migration from MoneyMoney and "Import All Data" replace an untouched starter set. They recognize the set in either language, because a database created in English can open with a German interface and the other way round, and a database of an earlier English-only build has the English set. The name of the default category tells the language of the set, "Uncategorized" or "Unkategorisiert". When the user renamed it, the language of the interface decides. Only that one set counts, so an empty group of the user named like a group of the other set stays.
 
 ### A pure completion function in `Domain`
 

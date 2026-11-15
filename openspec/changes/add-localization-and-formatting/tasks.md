@@ -36,7 +36,7 @@ One task per requirement of the spec, and the tasks of the design before them. A
 ## 3. Starter categories
 
 - [x] 3.1 The German starter categories of the change `add-categories` (task 1.20) appear in a database that the app creates with a German interface. Verify it in the debug harness. Verified in #268: a database created with `-AppleLanguages (de)` has Einnahmen, Wohnen, Mobilität, Freizeit, Versicherungen, Umbuchungen, and Unkategorisiert in the sidebar snapshot.
-- [x] 3.2 The migration from MoneyMoney and "Import All Data" recognize an untouched starter set in either language, so a database created in English and opened in German is still empty. Verified by StarterCategoriesTests "An unchanged English set is replaced when the interface is German", "An unchanged German set is replaced when the interface is English", and "An empty group \"Living\" that the user made in a German ledger is kept when the interface is English".
+- [x] 3.2 The migration from MoneyMoney and "Import All Data" recognize an untouched starter set in either language, so a database created in English and opened in German is still empty. Verified by StarterCategoriesTests "An unchanged English set is replaced when the interface is German", "An unchanged German set is replaced when the interface is English", "An empty group \"Living\" that the user made in a German ledger is kept when the interface is English", and "A group \"Living\" of the user in a German ledger without untouched starter groups is kept". The name of the default category tells the language of the set.
 
 ## 4. Integration
 
