@@ -92,6 +92,14 @@ The app SHALL accept every expression of the categorization rule language in the
 - **WHEN** the user searches for `"REWE" AND amount<0`, `Groc*`, `/groceries/`, or `Girok*`
 - **THEN** the list shows the transaction
 
+#### Scenario: True and false
+
+- **GIVEN** the account "Giro" with 2 transactions
+- **WHEN** the user searches for `true`
+- **THEN** the list shows both transactions
+- **WHEN** the user searches for `false`
+- **THEN** the list shows no transaction
+
 #### Scenario: A quoted word finds text inside words
 
 - **GIVEN** a transaction with the purpose "Lohnsteuer 10/2026"
@@ -108,13 +116,31 @@ The app SHALL accept every expression of the categorization rule language in the
 #### Scenario: Text the rule language rejects
 
 - **GIVEN** a transaction to "Stadtwerke Musterstadt"
-- **WHEN** the user types `"Stadtw` or `Stadtwerke OR`
+- **WHEN** the user types `"Stadtw`, `Stadtwerke OR`, `Stadtwerke or`, `Stadtwerke +`, `Name:Stadtwerke OR`, `name:="Stadtw`, or `Stadtwerke amount:=-`
 - **THEN** the list shows the transaction, because the app searches the plain words of the text
+
+#### Scenario: Rejected text with an excluded word
+
+- **GIVEN** a transaction to "Stadtwerke Musterstadt" without the word "Gehalt"
+- **WHEN** the user types `"Stadtw NOT Gehalt`, `"Stadtw -Gehalt`, or `name!=Gehalt "Stadtw`
+- **THEN** the list shows the transaction, because the app leaves out the words that the text excludes
 
 #### Scenario: Either word
 
 - **WHEN** the user searches for `"Lohn" OR "Gehalt"`
 - **THEN** the list shows the transactions that contain one of the two words
+
+### Requirement: A regular expression without a field name
+
+The app SHALL read a regular expression without a field name in the search field against the fields that a rule term without a field name reads, and against the names of the account and the category. It does not read account numbers or IBANs.
+
+#### Scenario: Category, account name, and IBAN
+
+- **GIVEN** a transaction in the category "Groceries" of the account "Girokonto" with the IBAN DE02 1203 0000 0000 2020 51
+- **WHEN** the user searches for `/groceries/` or `/^girok/`
+- **THEN** the list shows the transaction
+- **WHEN** the user searches for `/DE02 1203/`
+- **THEN** the list does not show the transaction
 
 ### Requirement: The search finds exact amounts
 
