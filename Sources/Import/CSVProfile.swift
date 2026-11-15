@@ -30,9 +30,18 @@ public struct CSVProfile: Hashable, Sendable, Codable {
 		// The newest profile of a header row wins, because the user saved it last.
 		if let same = profiles.last(where: { $0.header == file.header }) { return .same(same) }
 		let moved = profiles.compactMap { profile -> (profile: CSVProfile, layout: CSVLayout, kept: Int)? in
+			let previous = Dictionary(grouping: profile.header.indices, by: { profile.header[$0] })
+			let positions = Dictionary(grouping: file.header.indices, by: { file.header[$0] })
+			guard previous.allSatisfy({ title, columns in
+				let count = positions[title]?.count ?? 0
+				return count == columns.count || max(count, columns.count) <= 1
+			}) else { return nil }
 			var layout = profile.layout
 			layout.columns = profile.layout.columns.compactMapValues { column in
-				profile.header.indices.contains(column) ? file.header.firstIndex(of: profile.header[column]) : nil
+				guard profile.header.indices.contains(column),
+					let occurrence = previous[profile.header[column]]?.firstIndex(of: column),
+					let moved = positions[profile.header[column]], moved.indices.contains(occurrence) else { return nil }
+				return moved[occurrence]
 			}
 			let kept = layout.columns.count
 			guard kept * 2 >= profile.layout.columns.count else { return nil }

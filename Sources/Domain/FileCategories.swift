@@ -74,10 +74,11 @@ public struct FileCategories: Sendable {
 	}
 
 	/// The rows with the category of their cell, as set by hand, so that the rules leave it.
-	public func assign(to rows: [Transaction], names: [UUID: String]) -> [Transaction] {
+	public func assign(to rows: [Transaction], names: [UUID: String], for accountID: UUID, in ledger: Ledger) -> [Transaction] {
 		rows.map { row in
 			var t = row
-			if let id = names[row.id].flatMap({ ids[$0] }) {
+			if let id = names[row.id].flatMap({ ids[$0] }), let category = ledger.category(id),
+				ledger.allowedAccounts(of: category)?.contains(accountID) != false {
 				t.categoryID = id
 				t.categorizedBy = .manual
 			}

@@ -54,7 +54,7 @@ struct FileCategoryTests {
 	func assign() {
 		let row = Transaction(accountID: UUID(), bookingDate: Day(year: 2026, month: 11, day: 3), amountMinor: -420, name: "Kiosk")
 		let other = Transaction(accountID: UUID(), bookingDate: Day(year: 2026, month: 11, day: 4), amountMinor: -250, name: "Bank")
-		let rows = FileCategories(["Food"], in: [living, food], creating: false).assign(to: [row, other], names: [row.id: "Food"])
+		let rows = FileCategories(["Food"], in: [living, food], creating: false).assign(to: [row, other], names: [row.id: "Food"], for: row.accountID, in: Ledger(categories: [living, food]))
 		#expect(rows.map(\.categoryID) == [Self.foodID, nil])
 		#expect(rows.map(\.categorizedBy) == [.manual, .none])
 	}
@@ -66,9 +66,16 @@ struct FileCategoryTests {
 		let personal = Account(position: 1, name: "Private", kind: .giro, source: .offline)
 		let office = Domain.Category(position: 0, name: "Office", restrictedToID: toGroup ? group.id : business.id)
 		let row = Transaction(accountID: personal.id, bookingDate: Day(year: 2026, month: 11, day: 3), amountMinor: -420, name: "Kiosk")
-		let rows = FileCategories(["Office"], in: [office], creating: false).assign(to: [row], names: [row.id: "Office"])
+		let ledger = Ledger(groups: [group], accounts: [business, personal], categories: [office])
+		let categories = FileCategories(["Office"], in: [office], creating: false)
+		let rows = categories.assign(to: [row], names: [row.id: "Office"], for: personal.id, in: ledger)
 		#expect(rows.map(\.categoryID) == [nil])
 		#expect(rows.map(\.categorizedBy) == [.none])
+		let allowed = categories.assign(to: [row], names: [row.id: "Office"], for: business.id, in: ledger)
+		#expect(allowed.map(\.categoryID) == [office.id])
+		#expect(allowed.map(\.categorizedBy) == [.manual])
+		let missing = categories.assign(to: [row], names: [row.id: "Office"], for: business.id, in: Ledger())
+		#expect(missing.map(\.categoryID) == [nil])
 	}
 
 	@Test("A file row that books a stored pending row gives it the category of the file")

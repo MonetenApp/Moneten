@@ -264,15 +264,7 @@ extension AppModel {
 					}
 					var used = Set<UUID>()
 					do {
-						// A category that could not be saved leaves its rows without one.
-						let rows = categories.assign(to: parsed.transactions, names: parsed.categories).map { row in
-							var t = row
-							if let id = t.categoryID, ledger.category(id) == nil {
-								t.categoryID = nil
-								t.categorizedBy = .none
-							}
-							return t
-						}
+						let rows = categories.assign(to: parsed.transactions, names: parsed.categories, for: into.id, in: ledger)
 						let result = try merge(.file(rows), into: into.id)
 						used = Set((result.added + result.booked).compactMap(\.categoryID))
 						added += result.added.count
