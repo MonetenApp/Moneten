@@ -1,7 +1,7 @@
 import Foundation
 
 /// The categories that the category cells of an imported file name. A cell holds a name, such as
-/// "Food", or a path, such as "Living › Food" or "Living\Food", and both compare without regard to case.
+/// "Food", or a path, such as "Living › Food", "Living\Food", or the exported "Living - Food", and both compare without regard to case.
 /// A name matches a category anywhere in the tree, before a group of that name, and a path only the one at
 /// that place. A group never takes transactions, so a cell that names only a group stays without a
 /// category, and so does one that names the default category, which stands for no category.
@@ -30,7 +30,12 @@ public struct FileCategories: Sendable {
 		}
 		var seen = Set<String>()
 		for name in names where seen.insert(name).inserted {
-			let parts = name.split(whereSeparator: { $0 == "›" || $0 == "\\" }).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+			if name.contains(" - "), let found = find([name.trimmingCharacters(in: .whitespaces).lowercased()])
+				?? all.first(where: { path($0).joined(separator: " - ") == name.trimmingCharacters(in: .whitespaces).lowercased() }) {
+				if !found.isGroup, !found.isDefault { ids[name] = found.id }
+				continue
+			}
+			let parts = name.replacingOccurrences(of: " - ", with: "›").split(whereSeparator: { $0 == "›" || $0 == "\\" }).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
 			guard !parts.isEmpty else { continue }
 			let lower = parts.map { $0.lowercased() }
 			if let found = find(lower) {
