@@ -115,6 +115,11 @@ The app SHALL report a failed export with the reason, for example no write permi
 - **THEN** the app says that it could not export to the file and names the reason
 - **AND** no file is created
 
+#### Scenario: Private export file
+
+- **WHEN** the user saves a CSV export or replaces an existing CSV file
+- **THEN** only the current user can read or write the file
+
 ### Requirement: Progress of an export
 
 The app SHALL show progress for an export that takes longer than a moment, and let the user cancel it. A canceled export leaves no file.
