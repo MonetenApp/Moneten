@@ -661,7 +661,11 @@ Booked rows without file identity keep the existing booked-only rule.
 - **THEN** current versions precede pending repeats of booked versions.
 - **AND** identity matches prefer live rows to tombstones. Fingerprints rank exact, compatible, then absent. Remaining ties use day distance, stable delivered position, then stable stored position. Live positions use booking day, creation time, and UUID. Tombstone positions use persisted identity fields, optional-value presence, fetched flag, and deletion time as a tuple. Candidates are consumed greedily only when both sides are free.
 
-- **AND** different real source IDs or nonempty end-to-end references never pair. Different file fingerprints stay separate except for a verified pending-to-booked transition within seven days with the same amount and currency and either an agreeing reference or a fitting counterparty. A booked repeat can use its current fingerprint even when it differs from the retained original file fingerprint. Pending fallback checks known counterparties by IBAN, otherwise by name. An import bounds pending-to-pending pairs to seven days and keeps nearest-day choice across fetched and unfetched rows outside the same-day fetched level. A refresh ranks fetched pending rows within seven days before unfetched rows. Unfetched refresh candidates must have a covered date today or later and no review mark. A pending tombstone cannot block a booking. A source arriving booked reserves its pending tombstone against unrelated look-alikes.
+- **AND** different real source IDs or nonempty end-to-end references never pair. Agreeing source IDs retain bank corrections and their existing date behavior. Different pending file fingerprints still stay separate.
+- **AND** a pending-to-booked transition within seven days ignores different file fingerprints when amount and currency agree and either the reference agrees or the counterparty fits. A booked repeat can use its current fingerprint even when it differs from the retained original file fingerprint.
+- **AND** pending fallback checks known counterparties by IBAN, otherwise by name. A file import bounds pending-to-pending pairs to seven days and uses nearest-day choice across fetched and unfetched rows outside the same-day fetched level.
+- **AND** a refresh ranks fetched pending rows within seven days before unfetched rows. Unfetched refresh candidates must have a covered date today or later and no review mark.
+- **AND** a pending tombstone cannot block a booking. A source arriving booked reserves its pending tombstone against unrelated look-alikes.
 
 - **AND** booking first prefers agreeing identities, then a unique fetched pending row. With no fetched partner, only nearest fitting file rows on or before the booked day participate, and an unresolved tie marks those rows and the delivery for review.
 
@@ -1000,7 +1004,7 @@ The app SHALL show progress while it imports and let the user cancel. Cancellati
 
 ### Requirement: Persist the original file identity
 
-Only file imports SHALL create `fileIdentity`, a versioned original-file fingerprint. Takeover, booking, deletion, and complete export/import preserve it. Agreeing file identities pair, including booked versions on another day. Different non-NULL identities never pair. NULL retains prior matching behavior. Migration v18 adds one nullable TEXT column to each of bankTransaction and deletedTransaction, leaving existing rows NULL.
+The app SHALL create an original file identity only on file import and preserve it through takeover, booking, deletion, and complete export/import. Agreeing file identities find booked versions on another day. Different fingerprints follow the pending pairing rule's transition and repeat exceptions. Migration v18 adds nullable fileIdentity columns to transactions and tombstones. Existing NULL identities keep prior behavior.
 
 #### Scenario: An unidentified file survives booking and deletion
 
@@ -1043,7 +1047,7 @@ Only file imports SHALL create `fileIdentity`, a versioned original-file fingerp
 #### Scenario: The fingerprint also checks the currency
 
 - **GIVEN** a pending or booked payment of -800,00 USD on 1 December 2026
-- **WHEN** a file or refresh delivers -800,00 EUR with the same day, purpose, and counterparty but no agreeing explicit identity
+- **WHEN** a file or refresh delivers a pending payment of -800,00 EUR with the same day, purpose, and counterparty but no agreeing explicit identity
 - **THEN** the currency mismatch prevents pairing, including exact fingerprint fallback
 - **AND** both currency amounts remain separate
 
