@@ -121,8 +121,8 @@ final class SelfTest {
 		}
 		TimeZone.setDefault(zone);
 
-		expect("plain HTTP refused", refusal("http://bank.example/fints"), "unsupported: The bank offers no encrypted FinTS address.");
-		expect("address without host refused", refusal("https:///fints"), "unsupported: The bank offers no encrypted FinTS address.");
+		expect("plain HTTP refused", refusal(() -> FinTSHelper.https("http://bank.example/fints")), "unsupported: The bank offers no encrypted FinTS address.");
+		expect("address without host refused", refusal(() -> FinTSHelper.https("https:///fints")), "unsupported: The bank offers no encrypted FinTS address.");
 		expect("HTTPS accepted", FinTSHelper.https("https://bank.example/fints").getHost(), "bank.example");
 
 		Out.secret("geheim42");
@@ -174,7 +174,7 @@ final class SelfTest {
 			failures.add("certificate: " + e);
 		}
 
-		HBCIUtils.init(new Properties(), new FinTSHelper.Callback(Map.of(), null));
+		HBCIUtils.init(new Properties(), new FinTSHelper.Callback(Map.of()));
 		try {
 			fixture.add(FinTSHelper.Json.write(FinTSHelper.result("DE02120300000000202051", "2026-10-01", balance("1096.20", "2026-11-03"), mt940(), false)));
 			fixture.add(FinTSHelper.Json.write(FinTSHelper.result("1234567890", null, null, camt(), false)));
@@ -234,6 +234,11 @@ final class SelfTest {
 				List.of("{\"code\":\"76030080\",\"name\":\"Bnp Paribas S.A. Niederlassung Deutschland - Consorsbank\",\"city\":\"Nürnberg, Mittelfr\",\"bic\":\"CSDBDE71XXX\",\"url\":\"https://brokerage-hbci.consorsbank.de/hbci\"}"));
 			expect("bank without a FinTS address", directory.stream().map(FinTSHelper.Json::write).filter(b -> b.contains("\"10010424\"")).toList(),
 				List.of("{\"code\":\"10010424\",\"name\":\"Aareal Bank\",\"city\":\"Berlin\",\"bic\":\"AARBDE5W100\"}"));
+			FinTSHelper.Callback moved = new FinTSHelper.Callback(Map.of("bankCode", "76030080", "url", "https://hbci.old.example/hbci"));
+			moved.connect();
+			expect("address of the directory replaces the stored one", moved.host + " " + moved.port, "brokerage-hbci.consorsbank.de/hbci 443");
+			expect("bank without a FinTS address in the directory refused", refusal(() -> new FinTSHelper.Callback(
+				Map.of("bankCode", "10010424", "url", "https://fints.musterbank.example/fints")).connect()), "unsupported: The bank offers no FinTS address.");
 			pinTan();
 		} finally {
 			HBCIUtils.done();
@@ -580,7 +585,7 @@ final class SelfTest {
 		FinTSHelper.Passport passport = passport();
 		List<String> asked = new ArrayList<>();
 		List<String> answers = new ArrayList<>(List.of("48151", "16234"));
-		FinTSHelper.Callback callback = new FinTSHelper.Callback(Map.of(), null) {
+		FinTSHelper.Callback callback = new FinTSHelper.Callback(Map.of()) {
 			@Override
 			String ask(Map<String, Object> request) {
 				asked.add(FinTSHelper.Json.write(request));
@@ -656,7 +661,7 @@ final class SelfTest {
 	/// of the state. The user would choose "Karte 1".
 	static String medium(String saved, String... offers) {
 		int[] asked = {0};
-		FinTSHelper.Callback callback = new FinTSHelper.Callback(Map.of(), null) {
+		FinTSHelper.Callback callback = new FinTSHelper.Callback(Map.of()) {
 			@Override
 			String ask(Map<String, Object> request) {
 				asked[0]++;
@@ -677,7 +682,7 @@ final class SelfTest {
 	/// it sent.
 	static String trust(X509Certificate certificate, String verdict) {
 		List<String> sent = new ArrayList<>();
-		FinTSHelper.Callback callback = new FinTSHelper.Callback(Map.of(), null) {
+		FinTSHelper.Callback callback = new FinTSHelper.Callback(Map.of()) {
 			@Override
 			String ask(Map<String, Object> request) {
 				sent.add(request.get("type") + " " + request.get("host") + " " + ((List<?>) request.get("chain")).size());
@@ -703,9 +708,9 @@ final class SelfTest {
 		}
 	}
 
-	static String refusal(String url) {
+	static String refusal(Runnable run) {
 		try {
-			FinTSHelper.https(url);
+			run.run();
 			return "accepted";
 		} catch (FinTSHelper.Failure f) {
 			return f.kind + ": " + f.getMessage();

@@ -20,6 +20,8 @@ public struct Access: Identifiable, Hashable, Sendable {
 
 /// Where an access gets its data. The database keeps it as JSON, so a new case needs no migration.
 public enum AccessSource: Hashable, Sendable, Codable {
+	/// `url` is the address at the setup. Each dialog takes the address that the bank directory holds then,
+	/// and fails when the directory has none for the bank.
 	case fints(bankCode: String, url: URL)
 	case `extension`(id: String)
 	case finAPI(connection: String)

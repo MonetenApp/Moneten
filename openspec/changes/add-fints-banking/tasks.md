@@ -4,7 +4,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 
 ## 1. Requirements
 
-- [ ] 1.1 Find the FinTS address of a bank. Built in part: `FinTSConnector.bankDirectory` reads the bank directory of hbci4java, verified by FinTSHelper self-test "bank directory with every bank" and FinTSConnectorTests "Reads the bank directory of the helper". The setup that uses it comes with part 3.
+- [x] 1.1 Find the FinTS address of a bank. `FinTSConnector.bankDirectory` reads the bank directory of hbci4java, and the setup stores the address of the chosen bank, verified by FinTSHelper self-test "bank directory with every bank" and FinTSConnectorTests "Reads the bank directory of the helper". Each dialog of the helper takes the address that the directory holds then, and fails with "The bank offers no FinTS address." when the directory has none for the bank (#120), verified by FinTSHelper self-test "address of the directory replaces the stored one" and "bank without a FinTS address in the directory refused".
 - [ ] 1.2 Identify the app as a registered product. Built in part: the command carries the product ID from Info.plist and the version, verified by FinTSConnectorTests "Asks for the PIN, sends it through the pipe, and lists the accounts". Check the first message with a real bank.
 - [x] 1.3 FinTS messages travel over HTTPS only. Verified by FinTSConnectorTests "Refuses an access without https..." and FinTSHelper self-test "plain HTTP refused".
 - [ ] 1.4 List the accounts of a login. Built in part: `FinTSConnector.listAccounts`, with the account types verified by FinTSConnectorTests "Asks for the PIN, sends it through the pipe, and lists the accounts". Check with a real bank.
