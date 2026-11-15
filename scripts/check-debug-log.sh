@@ -160,7 +160,8 @@ poll "^importfile done" state
 poll "^alert " alert
 send importfile "$WORK/Erika Mustermann.csv"
 poll "^csv state .*canImport=true" csv state
-poll "^importfile done" key return
+send csv confirm
+poll "^importfile done" state
 poll "^alert " alert
 poll "^rows " rows Girokonto
 poll "^gave up$" search "currency:/^+?49/"

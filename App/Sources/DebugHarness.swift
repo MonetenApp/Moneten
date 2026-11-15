@@ -850,6 +850,7 @@ final class DebugHarness {
 		case "date": preview.layout.dateOrder = DateOrder(rawValue: value) ?? preview.layout.dateOrder
 		case "encoding": preview.layout.encoding = CSVEncoding(rawValue: value) ?? preview.layout.encoding
 		case "decimal": preview.layout.decimalMark = value == "comma" ? .comma : value == "point" ? .point : nil
+		case "confirm": model?.fileImport?.confirm()
 		case "skip": model?.fileImport?.skip()
 		// The log holds kinds, counts, and positions, never a name or a purpose (#159), so a row is its day and amount.
 		case "rows":
