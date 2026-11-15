@@ -412,8 +412,7 @@ final class DebugHarness {
 		// "<path>": writes the complete export to that file without the warning and the save panel.
 		case "exportall":
 			Task {
-				await model.saveAllData(to: URL(filePath: argument))
-				log("exportall \(model.alert?.title == "All data has been exported." ? "done" : "error=set")")
+				log("exportall \(await model.saveAllData(to: URL(filePath: argument)) ? "done" : "error=set")")
 			}
 		// "<path>": imports that complete export without the open panel. The reason of a refusal can quote the file.
 		case "importall": Task { log("importall \(await model.readAllData(from: URL(filePath: argument)) == "done" ? "done" : "refused")") }
@@ -800,7 +799,7 @@ final class DebugHarness {
 
 	/// Chooses "Extensions" in the Window menu, as the user does.
 	func openExtensionsWindow() {
-		let item = NSApp.mainMenu?.items.compactMap(\.submenu).flatMap(\.items).first { $0.title == "Extensions" }
+		let item = NSApp.mainMenu?.items.compactMap(\.submenu).flatMap(\.items).first { $0.title == String(localized: "Extensions") }
 		guard let item, let menu = item.menu else { return log("extensions no menu item") }
 		menu.performActionForItem(at: menu.index(of: item))
 		log("extensions opened")
@@ -857,7 +856,7 @@ final class DebugHarness {
 			}
 			log("contextmenu row \(index) \(menu?.items.map { ($0.isAlternate ? "alt:" : "") + $0.title } ?? [])")
 			if choice.count == 2, choice[0] == index,
-				let submenu = menu?.items.first(where: { $0.title == "Move to Group" })?.submenu {
+				let submenu = menu?.items.first(where: { $0.title == String(localized: "Move to Group") })?.submenu {
 				submenu.update()
 				guard submenu.items.indices.contains(choice[1]), submenu.items[choice[1]].isEnabled else {
 					return log("contextmenu move refused")

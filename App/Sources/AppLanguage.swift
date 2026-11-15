@@ -33,9 +33,21 @@ enum AppLanguage: String, CaseIterable {
 		return languages.first.flatMap(AppLanguage.init(code:))
 	}
 
-	/// macOS reads the value at the next start of the app.
-	static func store(_ language: AppLanguage) {
-		UserDefaults.standard.set([language.rawValue], forKey: "AppleLanguages")
+	/// The language that the app gets without a stored choice: the first language of macOS when it is German
+	/// or English, else English, as `applyAtLaunch` decides. It reads the global setting, because the defaults
+	/// of the app hold the stored choice.
+	static var system: AppLanguage {
+		let languages = CFPreferencesCopyValue("AppleLanguages" as CFString, kCFPreferencesAnyApplication, kCFPreferencesCurrentUser, kCFPreferencesAnyHost) as? [String]
+		return (languages ?? Locale.preferredLanguages).first.flatMap(AppLanguage.init(code:)) ?? .english
+	}
+
+	/// macOS reads the value at the next start of the app. Nil removes the stored choice, so the app follows macOS again.
+	static func store(_ language: AppLanguage?) {
+		if let language {
+			UserDefaults.standard.set([language.rawValue], forKey: "AppleLanguages")
+		} else {
+			UserDefaults.standard.removeObject(forKey: "AppleLanguages")
+		}
 	}
 
 	/// Without a stored language, a Mac whose first language is neither German nor English gets English for

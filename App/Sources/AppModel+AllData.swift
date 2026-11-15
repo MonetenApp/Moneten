@@ -15,16 +15,20 @@ extension AppModel {
 		Task { await saveAllData(to: url) }
 	}
 
-	func saveAllData(to url: URL) async {
+	/// Returns whether the file was written, so that the debug harness need not read the alert, whose title is localized.
+	@discardableResult
+	func saveAllData(to url: URL) async -> Bool {
 		do {
 			try await writeAllData(to: url)
 			alert = AlertMessage(title: String(localized: "All data has been exported."),
 				message: String(localized: "The file leaves out saved PINs, the data that bank accesses and extensions keep, and statement files."))
+			return true
 		} catch let error as AllData.ReadError {
 			alert = AlertMessage(title: String(localized: "Could not export to file."), message: error.description)
 		} catch {
 			alert = AlertMessage(title: String(localized: "Could not export to file."), message: error.localizedDescription)
 		}
+		return false
 	}
 
 	/// Writes to a temporary file first, so a failed export leaves no partly written file.

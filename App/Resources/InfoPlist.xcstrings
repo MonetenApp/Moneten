@@ -1,0 +1,50 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "Moneten category" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Moneten-Kategorie"
+          }
+        }
+      }
+    },
+    "Moneten transactions" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Moneten-Umsätze"
+          }
+        }
+      }
+    },
+    "NSAppleEventsUsageDescription" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Moneten liest Ihre Konten, Kategorien und Umsätze aus MoneyMoney, wenn Sie sie importieren. Es ändert nichts in MoneyMoney."
+          }
+        }
+      }
+    },
+    "NSHumanReadableCopyright" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Moneten ist freie Software unter der GNU GPL v3.0 oder später."
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.0"
+}

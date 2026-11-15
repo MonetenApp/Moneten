@@ -391,6 +391,17 @@
       },
       "extractionState" : "manual"
     },
+    "%@ needs more memory than Moneten allows, so Moneten stopped it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ braucht mehr Speicher, als Moneten erlaubt, deshalb hat Moneten die Erweiterung angehalten."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "%@ needs your input..." : {
       "localizations" : {
         "de" : {
@@ -450,6 +461,17 @@
           }
         }
       }
+    },
+    "%@ used more than %lld seconds of processor time, so Moneten stopped it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ hat mehr als %2$lld Sekunden Rechenzeit gebraucht, deshalb hat Moneten die Erweiterung angehalten."
+          }
+        }
+      },
+      "extractionState" : "manual"
     },
     "%@ waits for your input..." : {
       "localizations" : {
@@ -524,12 +546,23 @@
         }
       }
     },
+    "%@: %@, balance %@." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@: %2$@, Saldo %3$@."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "%@: The account \"%@\" could not be saved." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%1$@: Das Konto „%2$@“ konnte nicht gesichert werden."
+            "value" : "%1$@: Das Konto „%2$@“ konnte nicht gespeichert werden."
           }
         }
       }
@@ -594,12 +627,142 @@
         }
       }
     },
-    "%lld accounts, %@ transactions, %lld category colors" : {
+    "%lld accounts, %lld transactions, %lld category colors" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%1$lld Konten, %2$@ Umsätze, %3$lld Kategoriefarben"
+            "value" : "%#@accounts@, %#@transactions@, %#@colors@"
+          },
+          "substitutions" : {
+            "accounts" : {
+              "argNum" : 1,
+              "formatSpecifier" : "lld",
+              "variations" : {
+                "plural" : {
+                  "one" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg Konto"
+                    }
+                  },
+                  "other" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg Konten"
+                    }
+                  }
+                }
+              }
+            },
+            "transactions" : {
+              "argNum" : 2,
+              "formatSpecifier" : "lld",
+              "variations" : {
+                "plural" : {
+                  "one" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg Umsatz"
+                    }
+                  },
+                  "other" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg Umsätze"
+                    }
+                  }
+                }
+              }
+            },
+            "colors" : {
+              "argNum" : 3,
+              "formatSpecifier" : "lld",
+              "variations" : {
+                "plural" : {
+                  "one" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg Kategoriefarbe"
+                    }
+                  },
+                  "other" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg Kategoriefarben"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%#@accounts@, %#@transactions@, %#@colors@"
+          },
+          "substitutions" : {
+            "accounts" : {
+              "argNum" : 1,
+              "formatSpecifier" : "lld",
+              "variations" : {
+                "plural" : {
+                  "one" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg account"
+                    }
+                  },
+                  "other" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg accounts"
+                    }
+                  }
+                }
+              }
+            },
+            "transactions" : {
+              "argNum" : 2,
+              "formatSpecifier" : "lld",
+              "variations" : {
+                "plural" : {
+                  "one" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg transaction"
+                    }
+                  },
+                  "other" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg transactions"
+                    }
+                  }
+                }
+              }
+            },
+            "colors" : {
+              "argNum" : 3,
+              "formatSpecifier" : "lld",
+              "variations" : {
+                "plural" : {
+                  "one" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg category color"
+                    }
+                  },
+                  "other" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg category colors"
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -675,6 +838,17 @@
           }
         }
       }
+    },
+    "%lld source accounts, %@, were merged into \"%@\". Each line shows the source balance; only transactions are compared." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$lld Quellkonten, %2$@, wurden in „%3$@“ zusammengeführt. Jede Zeile zeigt den Saldo der Quelle, verglichen werden nur die Umsätze."
+          }
+        }
+      },
+      "extractionState" : "manual"
     },
     "%lld transactions" : {
       "localizations" : {
@@ -1590,6 +1764,17 @@
         }
       }
     },
+    "Another call of this extension session is still running." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein anderer Aufruf dieser Sitzung der Erweiterung läuft noch."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "Anyone who can open the file can read them." : {
       "localizations" : {
         "de" : {
@@ -1779,6 +1964,17 @@
           }
         }
       }
+    },
+    "Balances count only the transactions from MoneyMoney and leave out pending ones, as MoneyMoney shows them. An account that Moneten had before keeps its own balance, and only its transactions are compared." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Salden zählen nur die Umsätze aus MoneyMoney und lassen vorgemerkte Umsätze weg, wie MoneyMoney sie zeigt. Ein Konto, das Moneten schon vorher hatte, behält seinen eigenen Saldo, und nur seine Umsätze werden verglichen."
+          }
+        }
+      },
+      "extractionState" : "manual"
     },
     "Bank" : {
       "localizations" : {
@@ -2571,7 +2767,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Die Kontengruppe konnte nicht gesichert werden."
+            "value" : "Die Kontengruppe konnte nicht gespeichert werden."
           }
         }
       }
@@ -2581,7 +2777,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Das Konto konnte nicht gesichert werden."
+            "value" : "Das Konto konnte nicht gespeichert werden."
           }
         }
       }
@@ -2591,7 +2787,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Die Kategorie konnte nicht gesichert werden."
+            "value" : "Die Kategorie konnte nicht gespeichert werden."
           }
         }
       }
@@ -2601,7 +2797,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Die Änderung konnte nicht gesichert werden."
+            "value" : "Die Änderung konnte nicht gespeichert werden."
           }
         }
       }
@@ -2621,7 +2817,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Der Bericht konnte nicht gesichert werden."
+            "value" : "Der Bericht konnte nicht gespeichert werden."
           }
         }
       }
@@ -2631,7 +2827,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Das Ergebnis der Aktualisierung konnte nicht gesichert werden."
+            "value" : "Das Ergebnis der Aktualisierung konnte nicht gespeichert werden."
           }
         }
       }
@@ -2779,6 +2975,28 @@
         }
       }
     },
+    "Database integrity check failed." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Integritätsprüfung der Datenbank ist fehlgeschlagen."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "Database integrity check failed: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Integritätsprüfung der Datenbank ist fehlgeschlagen: %@"
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "Database password" : {
       "localizations" : {
         "de" : {
@@ -2918,6 +3136,17 @@
           }
         }
       }
+    },
+    "Differs." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Weicht ab."
+          }
+        }
+      },
+      "extractionState" : "manual"
     },
     "Display balance in sidebar" : {
       "localizations" : {
@@ -3085,7 +3314,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Verschlüsselt Ihre Zugangsdaten, Kontostände und Kontoumsätze."
+            "value" : "Verschlüsselt Ihre Zugangsdaten, Salden und Umsätze."
           }
         }
       }
@@ -3278,7 +3507,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Exportiert..."
+            "value" : "Wird exportiert..."
           }
         }
       }
@@ -3916,7 +4145,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Importiert..."
+            "value" : "Wird importiert..."
           }
         }
       }
@@ -4483,6 +4712,17 @@
         }
       }
     },
+    "Matches." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stimmt überein."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "max. amount" : {
       "localizations" : {
         "de" : {
@@ -4781,6 +5021,28 @@
           }
         }
       }
+    },
+    "MoneyMoney: %@, balance %@." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MoneyMoney: %1$@, Saldo %2$@."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "MoneyMoney: %@." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MoneyMoney: %@."
+          }
+        }
+      },
+      "extractionState" : "manual"
     },
     "Monthly average balance" : {
       "localizations" : {
@@ -6087,6 +6349,17 @@
         }
       }
     },
+    "Report of the migration from MoneyMoney" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bericht der Übernahme aus MoneyMoney"
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "Requesting the challenge of the bank..." : {
       "localizations" : {
         "de" : {
@@ -6202,7 +6475,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ sichern"
+            "value" : "%@ speichern"
           }
         }
       }
@@ -6232,7 +6505,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Bericht sichern..."
+            "value" : "Bericht speichern..."
           }
         }
       }
@@ -6747,7 +7020,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Kontoauszüge wurden nicht übernommen, weil der AppleScript-Export von MoneyMoney sie nicht enthält. Verwenden Sie in MoneyMoney „Show in Finder...“ bei „Statements“, um die Kontoauszugsdateien zu finden, und kopieren Sie sie, um sie zu behalten."
+            "value" : "Kontoauszüge wurden nicht übernommen, weil der AppleScript-Export von MoneyMoney sie nicht enthält. Verwenden Sie in MoneyMoney „Im Finder zeigen...“ bei „Kontoauszüge“, um die Kontoauszugsdateien zu finden, und kopieren Sie sie, um sie zu behalten."
           }
         }
       },
@@ -6873,6 +7146,16 @@
         }
       }
     },
+    "System" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "System"
+          }
+        }
+      }
+    },
     "Tag" : {
       "localizations" : {
         "de" : {
@@ -6928,7 +7211,57 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Die %1$@ ist zu lang. Erlaubt sind höchstens %2$lld Zeichen."
+            "value" : "Die %1$@ ist zu lang. Erlaubt %#@limit@."
+          },
+          "substitutions" : {
+            "limit" : {
+              "argNum" : 2,
+              "formatSpecifier" : "lld",
+              "variations" : {
+                "plural" : {
+                  "one" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "ist höchstens %arg Zeichen"
+                    }
+                  },
+                  "other" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "sind höchstens %arg Zeichen"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The %1$@ is too long. The maximum is %#@limit@."
+          },
+          "substitutions" : {
+            "limit" : {
+              "argNum" : 2,
+              "formatSpecifier" : "lld",
+              "variations" : {
+                "plural" : {
+                  "one" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg character"
+                    }
+                  },
+                  "other" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg characters"
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       },
@@ -6939,7 +7272,57 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Die %1$@ ist zu lang. Erlaubt sind höchstens %2$lld Ziffern."
+            "value" : "Die %1$@ ist zu lang. Erlaubt %#@limit@."
+          },
+          "substitutions" : {
+            "limit" : {
+              "argNum" : 2,
+              "formatSpecifier" : "lld",
+              "variations" : {
+                "plural" : {
+                  "one" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "ist höchstens %arg Ziffer"
+                    }
+                  },
+                  "other" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "sind höchstens %arg Ziffern"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The %1$@ is too long. The maximum is %#@limit@."
+          },
+          "substitutions" : {
+            "limit" : {
+              "argNum" : 2,
+              "formatSpecifier" : "lld",
+              "variations" : {
+                "plural" : {
+                  "one" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg digit"
+                    }
+                  },
+                  "other" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg digits"
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       },
@@ -6950,7 +7333,57 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Die %1$@ ist zu kurz. Nötig sind mindestens %2$lld Zeichen."
+            "value" : "Die %1$@ ist zu kurz. Nötig %#@limit@."
+          },
+          "substitutions" : {
+            "limit" : {
+              "argNum" : 2,
+              "formatSpecifier" : "lld",
+              "variations" : {
+                "plural" : {
+                  "one" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "ist mindestens %arg Zeichen"
+                    }
+                  },
+                  "other" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "sind mindestens %arg Zeichen"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The %1$@ is too short. The minimum is %#@limit@."
+          },
+          "substitutions" : {
+            "limit" : {
+              "argNum" : 2,
+              "formatSpecifier" : "lld",
+              "variations" : {
+                "plural" : {
+                  "one" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg character"
+                    }
+                  },
+                  "other" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg characters"
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       },
@@ -6961,7 +7394,57 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Die %1$@ ist zu kurz. Nötig sind mindestens %2$lld Ziffern."
+            "value" : "Die %1$@ ist zu kurz. Nötig %#@limit@."
+          },
+          "substitutions" : {
+            "limit" : {
+              "argNum" : 2,
+              "formatSpecifier" : "lld",
+              "variations" : {
+                "plural" : {
+                  "one" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "ist mindestens %arg Ziffer"
+                    }
+                  },
+                  "other" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "sind mindestens %arg Ziffern"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The %1$@ is too short. The minimum is %#@limit@."
+          },
+          "substitutions" : {
+            "limit" : {
+              "argNum" : 2,
+              "formatSpecifier" : "lld",
+              "variations" : {
+                "plural" : {
+                  "one" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg digit"
+                    }
+                  },
+                  "other" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg digits"
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       },
@@ -7324,7 +7807,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Die gebuchten Umsätze bis zum Tag des Bankstands ergeben nicht den Saldo der Bank. Kalibrieren verschiebt den Anfangssaldo um die Differenz."
+            "value" : "Die gebuchten Umsätze bis zum Tag des Banksaldos ergeben nicht den Saldo der Bank. Kalibrieren verschiebt den Anfangssaldo um die Differenz."
           }
         }
       }
@@ -7542,6 +8025,17 @@
         }
       }
     },
+    "The date %@ cannot be read." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Datum %@ kann nicht gelesen werden."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "The date cannot be read." : {
       "localizations" : {
         "de" : {
@@ -7553,12 +8047,45 @@
       },
       "extractionState" : "manual"
     },
-    "The export of %@ could not be read." : {
+    "The export contains no categorization rules. Copy them from the category settings of MoneyMoney into the category settings of Moneten." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Der Export von %@ konnte nicht gelesen werden."
+            "value" : "Der Export enthält keine Regeln für die Kategorisierung. Kopieren Sie sie aus den Einstellungen der Kategorien in MoneyMoney in die Einstellungen der Kategorien in Moneten."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The export of the accounts could not be read." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Export der Konten konnte nicht gelesen werden."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The export of the categories could not be read." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Export der Kategorien konnte nicht gelesen werden."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The export of the transactions could not be read." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Export der Umsätze konnte nicht gelesen werden."
           }
         }
       },
@@ -7585,6 +8112,83 @@
         }
       }
     },
+    "The extension did not respond for %lld seconds, so Moneten stopped it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Erweiterung hat %lld Sekunden lang nicht geantwortet, deshalb hat Moneten sie angehalten."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The extension host answered out of order." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Erweiterungsprozess hat in falscher Reihenfolge geantwortet."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The extension host asked about %@, which is not an exact host name." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Erweiterungsprozess hat nach %@ gefragt, das kein genauer Hostname ist."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The extension host cannot limit its processor time." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Erweiterungsprozess kann seine Rechenzeit nicht begrenzen."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The extension host ended unexpectedly." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Erweiterungsprozess wurde unerwartet beendet."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The extension host sent a line that the app cannot read." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Erweiterungsprozess hat eine Zeile gesendet, die die App nicht lesen kann."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The extension host sent more than the app can read." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Erweiterungsprozess hat mehr gesendet, als die App lesen kann."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "The extension is not from the catalog and does not list the hosts it contacts. Allow it only if %@ belongs to %@." : {
       "localizations" : {
         "de" : {
@@ -7606,12 +8210,34 @@
       },
       "extractionState" : "manual"
     },
+    "The extension needs more than %lld MB of memory." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Erweiterung braucht mehr als %lld MB Speicher."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "The extension returned no result table." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Die Erweiterung hat keine Ergebnistabelle geliefert."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The extension sent an answer larger than %lld MB." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Erweiterung hat eine Antwort gesendet, die größer als %lld MB ist."
           }
         }
       },
@@ -7816,12 +8442,23 @@
       },
       "extractionState" : "manual"
     },
-    "The FinTS helper stopped unexpectedly (%@ %d)." : {
+    "The FinTS helper stopped unexpectedly (signal %d)." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Der FinTS-Helfer wurde unerwartet beendet (%1$@ %2$d)."
+            "value" : "Der FinTS-Helfer wurde unerwartet beendet (Signal %d)."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The FinTS helper stopped unexpectedly (status %d)." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der FinTS-Helfer wurde unerwartet beendet (Status %d)."
           }
         }
       },
@@ -8023,7 +8660,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Die Liste der Erweiterungen konnte nicht gesichert werden. %@"
+            "value" : "Die Liste der Erweiterungen konnte nicht gespeichert werden. %@"
           }
         }
       }
@@ -8388,6 +9025,17 @@
         }
       }
     },
+    "The rule of \"%@\" cannot be read at position %lld: %@ \"%@\" receives no transaction through its rule until you correct the rule in its settings." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Regel von „%1$@“ kann an Position %2$lld nicht gelesen werden: %3$@ „%4$@“ erhält über seine Regel keine Umsätze, bis Sie die Regel in den Einstellungen korrigieren."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "The rule of the group \"%@\" was not taken over, because a group holds no transactions. Move it to a category below the group." : {
       "localizations" : {
         "de" : {
@@ -8469,6 +9117,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Das TAN-Verfahren %@ hat eine ungültige Länge."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The target also holds %lld migrated transactions no longer in the source export." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Zielkonto enthält außerdem %lld übernommene Umsätze, die nicht mehr im Export der Quelle sind."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The target also holds 1 migrated transaction no longer in the source export." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Zielkonto enthält außerdem 1 übernommenen Umsatz, der nicht mehr im Export der Quelle ist."
           }
         }
       },
@@ -8892,7 +9562,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Überweisungsvorlagen wurden nicht übernommen, weil der AppleScript-Export von MoneyMoney sie nicht enthält. Verwenden Sie in MoneyMoney „Export Transfer Templates...“, um sie zu behalten."
+            "value" : "Überweisungsvorlagen wurden nicht übernommen, weil der AppleScript-Export von MoneyMoney sie nicht enthält. Verwenden Sie in MoneyMoney „Überweisungsvorlagen exportieren...“, um sie zu behalten."
           }
         }
       },

@@ -169,7 +169,8 @@ struct GeneralSettings: View {
 	@AppStorage(RefreshSettings.showsBannerKey) private var showsBanner = true
 	@AppStorage(RefreshSettings.playsSoundKey) private var playsSound = false
 	@State private var notificationsDenied = false
-	@State private var language = AppLanguage.stored ?? AppLanguage.current
+	/// Nil while the app follows macOS.
+	@State private var language = AppLanguage.stored
 
 	private var version: String {
 		let info = Bundle.main.infoDictionary
@@ -195,11 +196,12 @@ struct GeneralSettings: View {
 			}
 			Section {
 				Picker("Language", selection: $language) {
-					ForEach(AppLanguage.allCases, id: \.self) { Text(verbatim: $0.name).tag($0) }
+					Text("System").tag(AppLanguage?.none)
+					ForEach(AppLanguage.allCases, id: \.self) { Text(verbatim: $0.name).tag(Optional($0)) }
 				}
 				.onChange(of: language) { _, new in AppLanguage.store(new) }
 			} footer: {
-				if language != AppLanguage.current {
+				if (language ?? AppLanguage.system) != AppLanguage.current {
 					Text("Moneten uses the new language after a restart.").foregroundStyle(.secondary)
 				}
 			}
