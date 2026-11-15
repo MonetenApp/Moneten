@@ -135,6 +135,33 @@ struct PerformanceTests {
 		#endif
 	}
 
+	@Test("50,000 file rows create and assign at most 1,000 categories within the import budget")
+	func fileCategoryLimit() {
+		let account = Account(position: 0, name: "Import", kind: .giro, source: .offline)
+		let rows = (0..<50_000).map { i in
+			Transaction(accountID: account.id, bookingDate: Day(year: 2026, month: 11, day: 3), amountMinor: -420, name: "Shop", purpose: "Purpose \(i)")
+		}
+		let names = Dictionary(uniqueKeysWithValues: rows.map { ($0.id, $0.purpose) })
+		var found = FileCategories([], in: [], creating: false)
+		var assigned: [Transaction] = []
+		let duration = fastest {
+			found = FileCategories(rows.map(\.purpose), in: [], creating: true)
+			let ledger = Ledger(accounts: [account], categories: found.created)
+			assigned = found.assign(to: rows, names: names, for: account.id, in: ledger)
+		}
+		print("file categories for 50,000 rows: \(duration), \(found.created.count) created, \(assigned.count) assigned rows")
+		#expect(found.created.count == 1_000)
+		#expect(found.limitReached)
+		#expect(assigned.count == 50_000)
+		let categoryNames = Dictionary(uniqueKeysWithValues: found.created.map { ($0.id, $0.name) })
+		#expect(assigned.prefix(1_000).allSatisfy { $0.categorizedBy == .manual && $0.categoryID.flatMap { categoryNames[$0] } == $0.purpose })
+		#expect(assigned.dropFirst(1_000).allSatisfy { $0.categoryID == nil && $0.categorizedBy == .none })
+		#expect(assigned.reduce(Int64(0)) { $0 + $1.amountMinor } == -21_000_000)
+		#if !DEBUG
+		#expect(duration < .milliseconds(500))
+		#endif
+	}
+
 	/// The fastest of three runs. A shared CI machine sometimes stalls one run for longer than the
 	/// budget, which made this test fail at random; a slow change still makes every run slow.
 	private func fastest(_ work: () -> Void) -> Duration {
