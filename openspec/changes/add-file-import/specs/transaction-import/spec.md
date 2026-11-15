@@ -591,7 +591,28 @@ The app SHALL pair each free delivered pending transaction with at most one free
 
 ### Requirement: Pending file transactions already stored
 
-The app SHALL skip a pending file transaction when a free stored pending transaction has the same amount, counterparty, and booking day, even when the purposes differ, unless their non-NULL file identities conflict. Each stored transaction absorbs one file transaction at most. The stored transaction keeps its fields and fetched status. Only a relaxed same-day match fills empty user fields from the file. A fingerprint or agreeing-identity repeat preserves cleared user fields.
+The app SHALL skip a pending file transaction when one free stored pending row fits PendingMatch within seven days. Conflicting explicit identities never pair. The closest day wins; tied candidates use stable delivered booking day, creation time and UUID, then stored position. Each stored row absorbs one file row. Stored bank fields and fetched status stay. A relaxed file match fills empty user fields; identified repeats preserve cleared fields.
+
+#### Scenario: The bank pending rent is one day earlier
+
+- **GIVEN** a fetched pending row of -800,00 € to "Vermieter A" stored on 30 November 2026
+- **WHEN** a camt.052 imports the same pending rent on 1 December
+- **THEN** the file row is skipped and the stored 30 November row stays
+- **AND** the planned balance counts -800,00 € once
+
+#### Scenario: A weekly file uses a stored bank row once
+
+- **GIVEN** one fetched pending rent of -800,00 € to "Vermieter A" on 1 December 2026
+- **WHEN** a file brings the rents on 1 and 8 December
+- **THEN** 1 December is skipped and 8 December is imported, totaling -1.600,00 €
+- **AND** the result is the same in either delivery order
+
+#### Scenario: Equidistant imported rents use stable booking-day order
+
+- **GIVEN** one fetched pending rent of -800,00 € to "Vermieter A" on 1 December 2026
+- **WHEN** a file brings pending rents on 30 November and 2 December, each one day away
+- **THEN** the stable delivered booking-day key pairs 30 November first, so that row is skipped and 2 December is imported
+- **AND** the stored bank row stays on 1 December and the total is -1.600,00 €, in every delivery and storage order
 
 #### Scenario: The bank reported the scheduled rent before the import
 
@@ -623,7 +644,7 @@ The app SHALL skip a pending file transaction when a free stored pending transac
 
 ### Requirement: Order-independent pending pairing
 
-The app SHALL pair pending transactions one to one by file identity, source ID, end-to-end reference, fitting same-day fetched or deleted row, then nearest unfetched file row within seven days. Conflicting identities never pair. Known counterparty conflicts invalidate reference matches. Pending file imports use the same day. Greedy candidate order is evidence priority, distance, and stable delivered and stored positions.
+The app SHALL pair pending transactions one to one by file identity, source ID, end-to-end reference, fitting same-day fetched or deleted row, then nearest unfetched file row within seven days. Conflicting identities never pair. Known counterparty conflicts invalidate reference matches. Pending file imports fit within seven days. Greedy candidate order is evidence priority, distance, and stable delivered and stored positions.
 
 #### Scenario: Global nearest choice
 
@@ -683,7 +704,7 @@ The app SHALL pair pending transactions one to one by file identity, source ID, 
 - **THEN** the agreeing identity finds the booked row and the payment counts once, still booked
 - **AND** its booked tombstone also absorbs the original file
 - **AND** the identity still finds the booked row if successive bank dates move it from 1 to 8 to 15 December
-- **AND** pending-to-pending file pairs on different dates still stay separate
+- **AND** pending-to-pending file pairs more than seven days apart still stay separate
 
 #### Scenario: A booked payment does not absorb a different pending payment
 

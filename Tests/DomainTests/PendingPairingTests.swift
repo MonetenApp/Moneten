@@ -3,6 +3,27 @@ import Foundation
 import Testing
 
 extension ReconcileTests {
+	@Test("Pending file import stops after seven days even with an agreeing reference", arguments: [8, 9], [false, true])
+	func gate3ImportDayBound(fileDay: Int, reference: Bool) {
+		var bank = stored(rent(1, purpose: "BANK"))
+		var file = rent(fileDay)
+		if reference { bank.endToEndReference = "SHARED"; file.endToEndReference = "SHARED" }
+		let r = merge(.file([file]), stored: [bank], at: noon(20, month: 11))
+		#expect(r.skipped == (fileDay == 8 ? 1 : 0))
+		#expect(r.added.count == (fileDay == 8 ? 0 : 1))
+	}
+
+	@Test("Closest pending import distance wins over fetched status on another day")
+	func gate3ImportClosestStored() {
+		let bank = stored(rent(30, month: 11, purpose: "BANK"))
+		let file = rent(1, purpose: "OLD FILE")
+		for stored in permutations([bank, file]) {
+			let r = merge(.file([rent(2)]), stored: stored, at: noon(20, month: 11))
+			#expect(r.skipped == 1 && r.added == [])
+			#expect(r.updated.map(\.id) == [file.id])
+		}
+	}
+
 	@Test("A shared reference cannot hide conflicting known names behind an exact fingerprint", arguments: [false, true])
 	func gate3ReferenceNameConflict(fileDelivery: Bool) {
 		var stored = rent(1, purpose: "RENT")
@@ -463,6 +484,27 @@ extension ReconcileTests {
 				}
 			}
 		}
+		let cases: [([Transaction], [String])] = [
+			([rent(1)], ["20261130 -80000 true true false BANK MIETE"]),
+			([rent(1), rent(8)], ["20261201 -80000 true true false BANK MIETE", "20261208 -80000 true false false Miete Dezember"]),
+			([rent(30, month: 11), rent(2)], ["20261201 -80000 true true false BANK MIETE", "20261202 -80000 true false false Miete Dezember"])
+		]
+		for (index, test) in cases.enumerated() {
+			let bank = stored(index == 0 ? rent(30, month: 11, purpose: "BANK MIETE") : rent(1, purpose: "BANK MIETE"))
+			let other = stored(row(3, -1200, "Other", "OTHER", month: 12, pending: true))
+			for stored in permutations([bank, other]) {
+				for delivered in permutations(test.0) {
+					let r = merge(.file(delivered), stored: stored, at: noon(20, month: 11))
+					let next = history(stored, after: r)
+					let expected = (test.1 + ["20261203 -1200 true true false OTHER"]).sorted()
+					#expect(r.skipped == 1)
+					#expect(pendingSummary(next) == expected)
+					let repeatResult = merge(.file(delivered), stored: next, at: noon(21, month: 11))
+					#expect(pendingSummary(history(next, after: repeatResult)) == expected)
+				}
+			}
+		}
+
 		let original = [rent(1), rent(8)]
 		let files = persisted ? merge(.file(original), at: noon(20, month: 11)).added : original
 		let first = history(files, after: merge(refresh([rent(1, purpose: "BANK")]), stored: files, at: noon(20, month: 11)))

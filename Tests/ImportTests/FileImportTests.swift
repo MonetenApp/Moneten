@@ -323,8 +323,8 @@ struct FileImportTests {
 		#expect(ts.map(\.bookingDate) == [Day(year: 2026, month: 11, day: 3), Day(year: 2026, month: 11, day: 30)])
 	}
 
-	@Test("Pending scheduled rent from a FUTR entry stays after a refresh before its date", arguments: [false, true])
-	func camtFutureRentSurvivesRefresh(bankFirst: Bool) throws {
+	@Test("Pending scheduled rent from a FUTR entry stays after a refresh before its date", arguments: [false, true], [false, true])
+	func camtFutureRentSurvivesRefresh(bankFirst: Bool, bankEarlier: Bool) throws {
 		let xml = """
 		<?xml version="1.0" encoding="UTF-8"?>
 		<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.052.001.08"><BkToCstmrAcctRpt><Rpt>
@@ -352,7 +352,8 @@ struct FileImportTests {
 			#expect(ledger.transactions(ofAccount: giro.id).map(\.isPending) == [true])
 			#expect(ledger.transactions(ofAccount: giro.id).map(\.isFetched) == [false])
 		}
-		let bank = Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 12, day: 1), amountMinor: -80_000,
+		let bankDay = bankEarlier ? Day(year: 2026, month: 11, day: 30) : Day(year: 2026, month: 12, day: 1)
+		let bank = Transaction(accountID: giro.id, bookingDate: bankDay, amountMinor: -80_000,
 			name: "Vermieter A", purpose: "MIETE DEZEMBER WHG 3 DAUERAUFTRAG", counterpartyIBAN: "DE02120300000000202051", isPending: true)
 		let now = Calendar.current.date(from: DateComponents(year: 2026, month: 11, day: 20, hour: 12))!
 		let refresh = reconcile(.refresh(RefreshResult(balance: nil, transactions: FetchedTransactions(rows: [bank], from: Day(year: 2026, month: 11, day: 1)))),
@@ -381,7 +382,8 @@ struct FileImportTests {
 		ledger.apply(nextRefresh)
 		#expect(ledger.transactions(ofAccount: giro.id).map(\.amountMinor) == [-80_000])
 		#expect(ledger.transactions(ofAccount: giro.id).map(\.purpose) == ["MIETE DEZEMBER WHG 3 DAUERAUFTRAG"])
-
+		#expect(ledger.transactions(ofAccount: giro.id).map(\.bookingDate) == [bankDay])
+		#expect(ledger.computedBalance(of: giro).minorUnits == -80_000)
 	}
 
 	@Test("A CAMT lists 8 December before 1 December and the bank takes over 1 December")

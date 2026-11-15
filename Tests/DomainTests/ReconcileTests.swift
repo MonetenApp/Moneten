@@ -749,15 +749,33 @@ struct ReconcileTests {
 		#expect(tie.added == [] && tie.dropped == [])
 	}
 
-	@Test("A pending file import on another day stays separate from the stored bank row")
-	func differentDayImportKeepsBoth() {
+	@Test("A pending file rent on 1 December skips the stored 30 November bank rent")
+	func importRentWithinSevenDays() {
 		let bank = stored(rent(30, month: 11, purpose: "BANK MIETE"))
 		let imported = merge(.file([rent(1)]), stored: [bank], at: noon(19, month: 11))
-		#expect(imported.skipped == 0 && imported.added.count == 1)
+		#expect(imported.skipped == 1 && imported.added == [])
 		let after = history([bank], after: imported)
-		#expect(after.count == 2)
-		#expect(after.reduce(0) { $0 + $1.amountMinor } == -160_000)
-		#expect(after.map(\.bookingDate) == [Day(year: 2026, month: 12, day: 1), Day(year: 2026, month: 11, day: 30)])
+		#expect(after.map(\.bookingDate) == [Day(year: 2026, month: 11, day: 30)])
+		#expect(after.map(\.purpose) == ["BANK MIETE"])
+		#expect(Ledger(accounts: [giro], transactions: after).computedBalance(of: giro).minorUnits == -80_000)
+	}
+
+	@Test("A weekly file skips 1 December and imports 8 December")
+	func importWeeklyRentOneToOne() {
+		let bank = stored(rent(1, purpose: "BANK MIETE"))
+		let imported = merge(.file([rent(8), rent(1)]), stored: [bank], at: noon(19, month: 11))
+		#expect(imported.skipped == 1)
+		#expect(imported.added.map(\.bookingDate) == [Day(year: 2026, month: 12, day: 8)])
+		#expect(pendingSummary(history([bank], after: imported)) == ["20261201 -80000 true true false BANK MIETE", "20261208 -80000 true false false Miete Dezember"])
+	}
+
+	@Test("Equidistant imported rents pair the earlier stable booking day")
+	func importRentStableTie() {
+		let bank = stored(rent(1, purpose: "BANK MIETE"))
+		let imported = merge(.file([rent(2), rent(30, month: 11)]), stored: [bank], at: noon(19, month: 11))
+		#expect(imported.skipped == 1)
+		#expect(imported.added.map(\.bookingDate) == [Day(year: 2026, month: 12, day: 2)])
+		#expect(pendingSummary(history([bank], after: imported)) == ["20261201 -80000 true true false BANK MIETE", "20261202 -80000 true false false Miete Dezember"])
 	}
 
 	@Test("A later file with another purpose does not mark a future payment fetched", arguments: [false, true])
