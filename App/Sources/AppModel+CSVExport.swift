@@ -1,6 +1,7 @@
 import AppKit
 import Domain
 import Foundation
+import Storage
 
 extension AppModel {
 	/// "Export Transactions...": the selected rows, or else the rows that the list shows with its search and filters.
@@ -45,8 +46,7 @@ extension AppModel {
 				// A detached task does not inherit the cancel of "Cancel", so it is passed on.
 				let data = try await withTaskCancellationHandler { try await work.value } onCancel: { work.cancel() }
 				try Task.checkCancellation()
-				// An atomic write goes through a temporary file, so a failed export leaves no file behind.
-				try data.write(to: url, options: .atomic)
+				try Store.writeExport(data, to: url)
 			} catch is CancellationError {
 			} catch {
 				alert = AlertMessage(title: "Could not export to file.", message: error.localizedDescription)
