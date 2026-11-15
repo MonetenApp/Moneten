@@ -363,6 +363,19 @@ The app SHALL show a report after the import. The report lists for each account 
 - **AND** one note says '2 source accounts, "Giro", "Savings", were merged into "Mein Giro". Each line shows the source balance; only transactions are compared.'
 - **AND** a missing transaction makes only its source account differ
 
+#### Scenario: Identical rows of sources that share a target
+
+- **GIVEN** "Giro" and "Savings" each export one booked transaction of -5,00 EUR with the same date and purpose into one existing account
+- **WHEN** only the transaction of "Savings" is stored
+- **THEN** the report shows "Giro" with 0 of 1 transactions as a difference and "Savings" with 1 of 1 as a match
+
+#### Scenario: A shared target keeps a row no longer in the source
+
+- **GIVEN** a shared target still holds one migrated transaction that neither source exports any more
+- **WHEN** the migration finishes
+- **THEN** the shared target note also says "The target also holds 1 migrated transaction no longer in the source export."
+- **AND** the report does not assign that transaction to an unknown source account
+
 #### Scenario: Everything matches
 
 - **WHEN** all counts and balances equal those of the source

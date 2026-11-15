@@ -788,6 +788,25 @@ struct MoneyMoneyMigrationTests {
 		#expect(p.report(after: missing).rows.map(\.matches) == [false, true, true])
 	}
 
+	@Test("Shared sources cannot count one stored transaction twice and report rows no longer exported")
+	func reportOfSharedTwins() throws {
+		var source = accounts
+		source[2]["accountNumber"] = "DE02120300000000202051"
+		let rows: [[String: Any]] = [
+			["id": 1, "accountUuid": "A1", "bookingDate": date(2026, 11, 1), "amount": -5.0, "currency": "EUR", "name": "Shop", "purpose": "Card", "booked": true],
+			["id": 2, "accountUuid": "A2", "bookingDate": date(2026, 11, 1), "amount": -5.0, "currency": "EUR", "name": "Shop", "purpose": "Card", "booked": true],
+		]
+		let existing = Account(position: 0, name: "Mein Giro", kind: .giro, source: .offline, iban: "DE02120300000000202051")
+		let migration = MoneyMoneyMigration(calendar: calendar)
+		let p = try migration.plan(accounts: try plist(source), categories: try plist(categories), transactions: try plist(["transactions": rows]), into: Ledger(accounts: [existing]))
+		let missing = Ledger(accounts: [existing] + p.accounts, transactions: p.transactions.filter { $0.sourceID != "moneymoney:1" })
+		#expect(p.report(after: missing).rows.map(\.transactions) == [0, 1, 0])
+		#expect(p.report(after: missing).rows.map(\.matches) == [false, true, true])
+		let full = Ledger(accounts: [existing] + p.accounts, transactions: p.transactions)
+		let second = try migration.plan(accounts: try plist(source), categories: try plist(categories), transactions: try plist(["transactions": Array(rows.dropFirst())]), into: full)
+		#expect(second.report(after: full).notes.first == "2 source accounts, \"Giro\", \"Savings\", were merged into \"Mein Giro\". Each line shows the source balance; only transactions are compared. The target also holds 1 migrated transaction no longer in the source export.")
+	}
+
 	@Test("A USD source row does not change the report balance of a EUR account")
 	func reportWithOtherCurrency() throws {
 		var rows = transactions["transactions"] as! [[String: Any]]
