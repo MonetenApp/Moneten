@@ -80,7 +80,7 @@ The app SHALL detect the delimiter of a CSV file among semicolon, comma, and tab
 
 ### Requirement: CSV date detection
 
-The app SHALL detect the date format of each date column from all its values, including day first and month first orders, two-digit and four-digit years, and ISO dates. When the values fit more than one order, the app marks the choice in the preview so that the user confirms or changes it.
+The app SHALL detect the date format of each date column from all its values, including day first and month first orders, two-digit and four-digit years, and ISO dates. A date with dots always reads day first. The app warns when the file mixes month-first dates with dotted dates. When the values fit more than one order, the app marks the choice in the preview so that the user confirms or changes it.
 
 #### Scenario: Clear European dates
 
@@ -104,6 +104,12 @@ The app SHALL detect the date format of each date column from all its values, in
 - **GIVEN** a CSV file with the booking dates "01.11.2026" and "02.11.2026"
 - **WHEN** their value dates are "11.13.2026" and "03.11.2026"
 - **THEN** the app reads the booking dates as 1 November and 2 November 2026, the second value date as 3 November 2026, and warns that the value date in line 2 cannot be read
+
+#### Scenario: Month-first and dotted dates in one file
+
+- **WHEN** a row has the booking date "12/31/2026" and the value date "01.05.2027"
+- **THEN** the app reads 31 December 2026 and 1 May 2027
+- **AND** the app warns that the file mixes date forms
 
 #### Scenario: Ambiguous dates
 
