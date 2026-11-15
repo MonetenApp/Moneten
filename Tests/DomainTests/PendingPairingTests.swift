@@ -216,6 +216,20 @@ extension ReconcileTests {
 		#expect(history(files, after: r).reduce(0) { $0 + $1.amountMinor } == -160_000)
 	}
 
+	@Test("A pending source-ID correction keeps its row and user fields")
+	func gate4PendingSourceCorrection() {
+		var known = stored(row(3, -10_000, "Broker", "Sparplan", pending: true, sourceID: "tx-1001"))
+		known.comment = "ETF savings plan"
+		known.isChecked = true
+		let corrected = row(3, -10_050, "Broker", "Sparplan", pending: true, sourceID: "tx-1001")
+		let r = merge(refresh([corrected]), stored: [known])
+		#expect(r.added == [] && r.dropped == [])
+		#expect(r.updated.map(\.id) == [known.id])
+		#expect(r.updated.map(\.amountMinor) == [-10_050])
+		#expect(r.updated.map(\.comment) == ["ETF savings plan"])
+		#expect(r.updated.map(\.isChecked) == [true])
+	}
+
 	func permutations<T>(_ rows: [T]) -> [[T]] {
 		guard !rows.isEmpty else { return [[]] }
 		return rows.indices.flatMap { i in
