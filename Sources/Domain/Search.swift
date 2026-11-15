@@ -161,7 +161,11 @@ struct SearchQuery {
 			return .field(patterns.map(\.pattern), field, literals: field == .currency ? [] : literals(patterns),
 				shape: patterns.count == 1 ? SearchText.WordShape(patterns[0].pattern) : nil)
 		case let .regex(box, field):
-			let anyLine = try? NSRegularExpression(pattern: box.regex.pattern, options: box.regex.options.union(.anchorsMatchLines))
+			// Anchors of the whole text and inline options mean something else in the joined fields, so such a pattern
+			// reads each field alone.
+			let pattern = box.regex.pattern
+			let keepsMeaning = !["\\A", "\\z", "\\Z", "\\G", "(?"].contains(where: pattern.contains)
+			let anyLine = keepsMeaning ? try? NSRegularExpression(pattern: pattern, options: box.regex.options.union(.anchorsMatchLines)) : nil
 			return .regex(box.regex, anyLine: anyLine, field.map { [$0] } ?? RuleField.unqualified, names: field == nil)
 		case let .amount(op, value):
 			return .amount(AmountBounds(op, value))
@@ -224,7 +228,12 @@ enum SearchText {
 		var start = field.startIndex
 		while start < field.endIndex {
 			let end = field.utf8[start...].firstIndex(of: 0x20) ?? field.endIndex
-			if start < end, shape?.matches(field.utf8[start..<end]) ?? pattern.matches(field[start..<end]) { return true }
+			let word = field.utf8[start..<end]
+			// Bytes and characters agree for ASCII only: a combining mark makes one character of several scalars.
+			if start < end {
+				let matched = if let shape, word.allSatisfy({ $0 < 0x80 }) { shape.matches(word) } else { pattern.matches(field[start..<end]) }
+				if matched { return true }
+			}
 			start = end < field.endIndex ? field.utf8.index(after: end) : end
 		}
 		return false

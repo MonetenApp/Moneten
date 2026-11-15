@@ -159,7 +159,7 @@ struct LedgerTests {
 				categoryID: groceries.id, categorizedBy: .manual),
 		])
 		var f = TransactionFilter()
-		for text in [#""REWE" AND amount<0"#, "Groc*", "/groceries/", "Girok*", "/^girok/", "DE02120300000000202051", "*0000202051", #""REWE-Mar"#, "(rewe",
+		for text in [#"/\AREWE-M/"#, #"/4711\z/"#, #""REWE" AND amount<0"#, "Groc*", "/groceries/", "Girok*", "/^girok/", "DE02120300000000202051", "*0000202051", #""REWE-Mar"#, "(rewe",
 			"REWE OR", "name:"] {
 			f.searchText = text
 			#expect(l.transactions(in: .account(giro.id), filter: f).count == 1, "\(text)")
@@ -209,7 +209,7 @@ struct LedgerTests {
 		let l = Ledger(accounts: [giro], transactions: rows)
 		let queries = [#"name:"Stadtwerke Musterstadt""#, "name:Stadt*", "purpose:November", #"purpose:"Abschlag November""#, "comment:strom",
 			"booking_text:lastschrift", "reference:E2E-1", "mandate:M-1", "creditor_id:DE98ZZZ*", "remote_account:DE89370400440532013000",
-			#"local_account:"DE02 1203 0000 0000 2020 51""#, "local_account:4711", "currency:USD", "name:baeckerei", "name:*gutbrot", "name:*ecke*", "name:Stadtwerke*", "purpose:/^Abschlag/", "name:/gutbrot$/"]
+			#"local_account:"DE02 1203 0000 0000 2020 51""#, "local_account:4711", "currency:USD", "name:baeckerei", "name:*gutbrot", "name:*ecke*", "name:Stadtwerke*", "purpose:/^Abschlag/", "name:/gutbrot$/", #"local_account:/\A4711/"#, #"booking_text:/\ALAST/"#, #"purpose:/zahlung\z/"#, "name:/(?-m)^b/"]
 		for query in queries {
 			var f = TransactionFilter()
 			f.searchText = query
