@@ -3,7 +3,7 @@
 # (scripts/build-app.sh debug) through the debug harness against scripts/fake-fints-helper.sh: a start that
 # fails on a data folder whose path holds a name, a login with a wrong PIN, the setup of the made-up bank
 # with its TAN dialog, two refreshes (the second fails an account with an error of the bank), the
-# transactions, the status, the error popover, and the state of each account, a snapshot, and a key in the
+# transactions, the status, the error popover, and the state of each account, an account filter, a snapshot, and a key in the
 # main window while the selected row has a new category. An import of all data fails on a file with a name
 # as a day, and an export fails on a path that holds a name. A made-up extension without a fixture then
 # prints, sets a status, returns a value, and fails a refresh. The check fails when debug.log holds an IBAN,
@@ -138,6 +138,8 @@ done
 poll "^snapshot .*error" errorsnapshot Tagesgeld
 poll "^ext account savings .*failed=" extstate
 send select Girokonto
+poll "^filterbar account .*account=[0-9A-F]" filterbar "account Tagesgeld"
+poll "^filterbar account .*account=all" filterbar account
 poll "^phase=" state
 send selectRows 1
 poll "^exportcontextcsv rows=" exportcontextcsv "$DATA/context.csv"
