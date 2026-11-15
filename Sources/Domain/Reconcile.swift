@@ -419,7 +419,7 @@ struct Identity {
 		let day: Day
 		// The synthesized Hashable conformance reads these properties, which Periphery cannot see.
 		// periphery:ignore
-		let amount: Int64
+		let amount: Money
 		let purpose: String
 	}
 
@@ -452,23 +452,23 @@ struct Identity {
 	static let steps = [Step(fit: .exact, pending: .same), Step(fit: .compatible, pending: .same),
 		Step(fit: .exact, pending: .bookedVersion), Step(fit: .compatible, pending: .bookedVersion)]
 
-	init(fileIdentity: String?, sourceID: String?, day: Day, amount: Int64, isPending: Bool, purpose: String, counterparty: String?, endToEnd: String?) {
+	init(fileIdentity: String?, sourceID: String?, day: Day, amount: Int64, currency: String, isPending: Bool, purpose: String, counterparty: String?, endToEnd: String?) {
 		self.fileIdentity = fileIdentity
 		self.sourceID = sourceID.map(Transaction.matchingID)
 		remoteID = Self.remote(sourceID)
-		key = Key(day: day, amount: amount, purpose: TextFolding.fold(purpose).filter { !$0.isWhitespace })
+		key = Key(day: day, amount: Money(minorUnits: amount, currency: currency), purpose: TextFolding.fold(purpose).filter { !$0.isWhitespace })
 		self.isPending = isPending
 		self.counterparty = counterparty.map(TextFolding.accountKey).flatMap { $0.isEmpty ? nil : $0 }
 		self.endToEnd = endToEnd.flatMap { $0.isEmpty || $0 == "NOTPROVIDED" ? nil : $0 }
 	}
 
 	init(_ t: Transaction) {
-		self.init(fileIdentity: t.fileIdentity, sourceID: t.sourceID, day: t.bookingDate, amount: t.amountMinor, isPending: t.isPending, purpose: t.purpose,
+		self.init(fileIdentity: t.fileIdentity, sourceID: t.sourceID, day: t.bookingDate, amount: t.amountMinor, currency: t.currency, isPending: t.isPending, purpose: t.purpose,
 			counterparty: t.counterpartyIBAN, endToEnd: t.endToEndReference)
 	}
 
 	init(_ d: DeletedTransaction) {
-		self.init(fileIdentity: d.fileIdentity, sourceID: d.sourceID, day: d.bookingDate, amount: d.amountMinor, isPending: d.isPending, purpose: d.purpose,
+		self.init(fileIdentity: d.fileIdentity, sourceID: d.sourceID, day: d.bookingDate, amount: d.amountMinor, currency: d.currency, isPending: d.isPending, purpose: d.purpose,
 			counterparty: d.counterpartyIBAN, endToEnd: d.endToEndReference)
 	}
 

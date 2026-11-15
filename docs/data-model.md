@@ -92,7 +92,7 @@ When the rules of several categories match a transaction, the first category in 
 | `fileIdentity` | `String?` | Original file fingerprint, set only by file import. Bank takeover, booking, and deletion preserve it. NULL means no file identity. Agreeing identities pair; conflicting identities never pair. |
 | `createdAt` | `Date` | |
 
-Refreshes and file imports go through `reconcile`, which recognizes a stored row by its source ID or by a fingerprint of booking day, amount, counterparty IBAN, end-to-end reference, and purpose. [Architecture](architecture.md#transactions-need-an-identity-the-bank-does-not-give) has the rules.
+Refreshes and file imports go through `reconcile`, which recognizes a stored row by its source ID or by a fingerprint of booking day, amount and currency, counterparty IBAN, end-to-end reference, and purpose. [Architecture](architecture.md#transactions-need-an-identity-the-bank-does-not-give) has the rules.
 
 | Type | Fields | Rules |
 |---|---|---|

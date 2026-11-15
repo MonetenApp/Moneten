@@ -71,6 +71,8 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 
 - [x] 2.24 Shared-reference counterparty eligibility. Autoreview round 4 reproduces an exact fingerprint bypassing known name conflicts without IBANs. The literal file/refresh regression fails with eight assertions before moving the conflict check ahead of fingerprint fallback. Strong file and source identities keep their precedence.
 
+- [x] 2.25 Fingerprint currency agreement. The literal EUR/USD test fails with 12 assertions before the fingerprint key uses Money, including both pending and booked stored rows in file import and refresh. Fingerprints now check amount and currency together instead of bypassing PendingMatch through equal minor units.
+
 ## 3. Integration
 
 - [ ] 3.1 Check every scenario of the spec in a release build and record the result in the pull request.
