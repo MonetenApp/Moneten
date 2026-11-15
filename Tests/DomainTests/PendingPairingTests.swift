@@ -3,6 +3,17 @@ import Foundation
 import Testing
 
 extension ReconcileTests {
+	@Test("A fingerprint cannot bypass the PendingMatch currency check", arguments: [false, true], [false, true])
+	func gate3FingerprintMoney(fileDelivery: Bool, booked: Bool) {
+		var bank = rent(1, purpose: "RENT", pending: !booked)
+		bank.currency = "USD"
+		let file = rent(1, purpose: "RENT")
+		let r = merge(fileDelivery ? .file([file]) : refresh([file]), stored: [bank], at: noon(20, month: 11))
+		#expect(r.skipped == 0)
+		#expect(r.added.map(\.currency) == ["EUR"])
+		#expect(history([bank], after: r).map { "\($0.currency) \($0.amountMinor)" }.sorted() == ["EUR -80000", "USD -80000"])
+	}
+
 	@Test("Pending file import stops after seven days even with an agreeing reference", arguments: [8, 9], [false, true])
 	func gate3ImportDayBound(fileDay: Int, reference: Bool) {
 		var bank = stored(rent(1, purpose: "BANK"))

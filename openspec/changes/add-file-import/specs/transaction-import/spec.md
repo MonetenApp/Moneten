@@ -1020,3 +1020,10 @@ Only file imports SHALL create `fileIdentity`, a versioned original-file fingerp
 - **WHEN** a file or refresh delivers the same day, amount, purpose and reference for "Vermieter B", also without an IBAN
 - **THEN** their known names conflict and the exact fingerprint cannot pair them
 - **AND** both rows remain, totaling -1.600,00 €
+
+#### Scenario: The fingerprint also checks the currency
+
+- **GIVEN** a pending or booked payment of -800,00 USD on 1 December 2026
+- **WHEN** a file or refresh delivers -800,00 EUR with the same day, purpose, and counterparty but no agreeing explicit identity
+- **THEN** the currency mismatch prevents pairing, including exact fingerprint fallback
+- **AND** both currency amounts remain separate
