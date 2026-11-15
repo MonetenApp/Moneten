@@ -43,6 +43,21 @@ struct PerfScenario {
 			run: { $0.model.filter.searchText = "" }),
 		PerfScenario(name: "large-category", budget: halfSecond,
 			run: { await $0.select("Uncategorized") }),
+		// The header compares the bank balance with the booked rows on each drawing, over all rows of the ledger.
+		PerfScenario(name: "open-account-with-calibration-proposal", budget: halfSecond,
+			setUp: { c in
+				guard var account = c.model.ledger.accounts.first(where: { $0.name == "Account 3" }) else { return }
+				account.source = .bank
+				account.initialBalanceIsSet = true
+				account.bankBalanceMinor = c.model.ledger.computedBalance(of: account, through: .today()).minorUnits + 5_000
+				account.bankBalanceDate = Date()
+				c.model.save(account: account)
+				await c.select("Bulk")
+			},
+			run: { c in
+				await c.select("Account 3")
+				if c.model.selectedAccount.flatMap(c.model.proposedCalibration) == nil { c.fail("the header proposes no calibration") }
+			}),
 		// Last, because it adds rows: "Uncategorized" above holds exactly the 50,000.
 		PerfScenario(name: "import-into-open-view", budget: halfSecond,
 			setUp: { await $0.select("Bulk"); await $0.scroll { $0 / 2 } },
