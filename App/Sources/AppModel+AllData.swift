@@ -55,8 +55,12 @@ extension AppModel {
 			try await Task.detached { try store.importAllData(try AllData(json: try Data(contentsOf: url)), replacing: starters) }.value
 			try await reloadAfterImport()
 			return "done"
+		} catch let error as AllData.ReadError {
+			return error.description
+		} catch let error as Store.ImportRefusal {
+			return error.description
 		} catch {
-			return String(describing: error)
+			return error.localizedDescription
 		}
 	}
 

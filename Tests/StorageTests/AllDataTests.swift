@@ -166,6 +166,14 @@ struct AllDataTests {
 		}
 		#expect(throws: AllData.ReadError.notAnExport) { try AllData(json: Data(#"{"accounts": []}"#.utf8)) }
 		#expect(throws: AllData.ReadError.notAnExport) { try AllData(json: Data("[1, 2]".utf8)) }
+		for day in ["2026-02-31", "31.12.2026", "2026/11/02"] {
+			rows[1]["bookingDate"] = day
+			json["transactions"] = rows
+			#expect(throws: AllData.ReadError.damaged("at transactions[1], \"\(day)\" is not a day in the form yyyy-MM-dd")) {
+				try AllData(json: try JSONSerialization.data(withJSONObject: json))
+			}
+		}
+		rows[1]["bookingDate"] = "2026-11-04"
 		rows[1]["amount"] = 5
 		json["transactions"] = rows
 		#expect(throws: AllData.ReadError.damaged("at transactions[1].amount, expected to decode String but found number instead")) {
@@ -197,6 +205,13 @@ struct AllDataTests {
 			try target.importAllData(try AllData(json: try JSONSerialization.data(withJSONObject: json)))
 		}
 		#expect(try target.loadLedger().accounts.isEmpty)
+
+		rows[1]["accountID"] = rows[0]["accountID"]
+		rows[1]["id"] = rows[0]["id"]
+		json["transactions"] = rows
+		#expect(throws: AllData.ReadError.damaged("the file holds an object twice")) {
+			try target.importAllData(try AllData(json: try JSONSerialization.data(withJSONObject: json)))
+		}
 	}
 
 	@Test("The import replaces account groups without accounts")
