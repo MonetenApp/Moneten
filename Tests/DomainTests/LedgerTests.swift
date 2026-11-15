@@ -206,16 +206,17 @@ struct LedgerTests {
 			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 2), amountMinor: -2_345, currency: "USD", name: "Bäckerei Gutbrot",
 				purpose: "Kartenzahlung", bookingText: "LASTSCHRIFT", endToEndReference: "E2E-1", mandateReference: "M-1", creditorID: "DE98ZZZ09999999999"),
 		]
-		let l = Ledger(accounts: [giro], transactions: rows)
+		let all = rows + [Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 3), amountMinor: -400, name: "Cafe\u{332}", purpose: "Kaffee\r")]
+		let l = Ledger(accounts: [giro], transactions: all)
 		let queries = [#"name:"Stadtwerke Musterstadt""#, "name:Stadt*", "purpose:November", #"purpose:"Abschlag November""#, "comment:strom",
 			"booking_text:lastschrift", "reference:E2E-1", "mandate:M-1", "creditor_id:DE98ZZZ*", "remote_account:DE89370400440532013000",
-			#"local_account:"DE02 1203 0000 0000 2020 51""#, "local_account:4711", "currency:USD", "name:baeckerei", "name:*gutbrot", "name:*ecke*", "name:Stadtwerke*", "purpose:/^Abschlag/", "name:/gutbrot$/", #"local_account:/\A4711/"#, #"booking_text:/\ALAST/"#, #"purpose:/zahlung\z/"#, "name:/(?-m)^b/"]
+			#"local_account:"DE02 1203 0000 0000 2020 51""#, "local_account:4711", "currency:USD", "name:baeckerei", "name:*gutbrot", "name:*ecke*", "name:Stadtwerke*", "purpose:/^Abschlag/", "name:/gutbrot$/", #"local_account:/\A4711/"#, #"booking_text:/\ALAST/"#, #"purpose:/zahlung\z/"#, "name:/(?-m)^b/", #"name:/gutbrot\D*+$/"#, "name:caf*", "name:*e", #"purpose:/kaffee\s$/"#, #"/kaffee\s$/"#, #"/gutbrot\D*+$/"#, "comment:/^$/", "/^$/"]
 		for query in queries {
 			var f = TransactionFilter()
 			f.searchText = query
 			let rule = try Rule(parsing: query)
 			let searched: Set<UUID> = Set(l.transactions(in: .account(giro.id), filter: f).map(\.id))
-			let ruled: Set<UUID> = Set(rows.filter { rule.matches(RuleSubject($0, account: giro)) }.map(\.id))
+			let ruled: Set<UUID> = Set(all.filter { rule.matches(RuleSubject($0, account: giro)) }.map(\.id))
 			#expect(!ruled.isEmpty, "\(query)")
 			#expect(searched == ruled, "\(query)")
 		}

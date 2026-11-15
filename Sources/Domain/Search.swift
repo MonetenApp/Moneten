@@ -12,10 +12,11 @@ struct SearchQuery {
 		/// Words that must follow each other inside one value of a field, as in a rule. A row whose search text lacks
 		/// one of `literals` cannot match.
 		case field([WildcardPattern], RuleField, literals: [Needle], shape: SearchText.WordShape?)
-		/// A regular expression over the text of the fields as it is. Without a field name it also reads the names of
-		/// the account and the category. `anyLine` matches the fields joined by line breaks, which every row that the
-		/// expression matches also matches, so one call rules out most rows before a call for each field.
-		case regex(NSRegularExpression, anyLine: NSRegularExpression?, [RuleField], names: Bool)
+		/// A regular expression over the text of each field as it is, as in a rule. Without a field name it also reads
+		/// the names of the account and the category. `anyLine` reads the values joined by line breaks with each line
+		/// as its own text, which every row that a value matches also matches, so one call rules out most rows
+		/// before a call for each value. A regular expression over 50,000 rows took about four times as long without.
+		case regex(NSRegularExpression, anyLine: NSRegularExpression?, matchesEmpty: Bool, [RuleField], names: Bool)
 		case amount(AmountBounds)
 		case not(Node)
 		case and(Node, Node)
@@ -99,11 +100,16 @@ struct SearchQuery {
 				&& row.searchText.split(separator: "\u{1}").contains { follow(patterns, in: $0.split(separator: " ")) }
 		case let .field(patterns, field, literals, shape):
 			return literals.allSatisfy { $0.occurs(in: row.searchText) } && row.field(field, holds: patterns, shape: shape)
-		case let .regex(regex, anyLine, fields, names):
+		case let .regex(regex, anyLine, matchesEmpty, fields, names):
 			let texts = fields.flatMap(row.texts) + (names ? [row.account()?.name, row.categoryName()].compactMap { $0 } : [])
 			func matches(_ regex: NSRegularExpression, _ text: String) -> Bool { regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) != nil }
-			if let anyLine, texts.count > 1, !matches(anyLine, texts.joined(separator: "\n")) { return false }
-			return texts.contains { matches(regex, $0) }
+			// An empty value matches only a pattern that matches the empty text, and it is no line of the joined text.
+			if texts.contains(where: \.isEmpty), matchesEmpty { return true }
+			let values = texts.filter { !$0.isEmpty }
+			// A carriage return before the joining line break would make one line break of two.
+			if let anyLine, values.count > 1, !values.contains(where: { $0.utf8.contains(0x0D) }),
+				!matches(anyLine, values.joined(separator: "\n")) { return false }
+			return values.contains { matches(regex, $0) }
 		case let .amount(bounds):
 			return bounds.holds(row.transaction.amountMinor, decimals: row.transaction.amount.decimalPlaces)
 		case let .not(a):
@@ -161,12 +167,12 @@ struct SearchQuery {
 			return .field(patterns.map(\.pattern), field, literals: field == .currency ? [] : literals(patterns),
 				shape: patterns.count == 1 ? SearchText.WordShape(patterns[0].pattern) : nil)
 		case let .regex(box, field):
-			// Anchors of the whole text and inline options mean something else in the joined fields, so such a pattern
-			// reads each field alone.
+			// Anchors of the whole text, inline options, and quantifiers that never give back read the joined values
+			// differently, so such a pattern reads each value alone.
 			let pattern = box.regex.pattern
-			let keepsMeaning = !["\\A", "\\z", "\\Z", "\\G", "(?"].contains(where: pattern.contains)
+			let keepsMeaning = !["\\A", "\\z", "\\Z", "\\G", "(?", "*+", "++", "?+", "}+"].contains(where: pattern.contains)
 			let anyLine = keepsMeaning ? try? NSRegularExpression(pattern: pattern, options: box.regex.options.union(.anchorsMatchLines)) : nil
-			return .regex(box.regex, anyLine: anyLine, field.map { [$0] } ?? RuleField.unqualified, names: field == nil)
+			return .regex(box.regex, anyLine: anyLine, matchesEmpty: box.regex.firstMatch(in: "", range: NSRange(location: 0, length: 0)) != nil, field.map { [$0] } ?? RuleField.unqualified, names: field == nil)
 		case let .amount(op, value):
 			return .amount(AmountBounds(op, value))
 		case let .not(a):
@@ -197,7 +203,7 @@ enum SearchText {
 			+ Ledger.amountTexts(t.amountMinor, decimals: t.amount.decimalPlaces)
 		let folded = TextFolding.fold(parts.joined(separator: "\u{1}"))
 		// Most rows have single spaces only, and splitting every row doubled the time to build the ledger. The lead
-		// bytes 0xC2, 0xE2, and 0xE3 start every other white space, such as U+00A0, U+202F, and U+3000.
+		// bytes 0xC2, 0xE1, 0xE2, and 0xE3 start every other white space, such as U+00A0, U+1680, U+202F, and U+3000.
 		return hasRuns(folded) ? folded.split(whereSeparator: \.isWhitespace).joined(separator: " ") : folded
 	}
 
@@ -206,7 +212,7 @@ enum SearchText {
 		return text.withUTF8 { bytes in
 			var previous: UInt8 = 0
 			for byte in bytes {
-				if byte < 0x20 && byte != 1 || byte == 0x20 && previous == 0x20 || byte == 0xC2 || byte == 0xE2 || byte == 0xE3 { return true }
+				if byte < 0x20 && byte != 1 || byte == 0x20 && previous == 0x20 || byte == 0xC2 || byte == 0xE1 || byte == 0xE2 || byte == 0xE3 { return true }
 				previous = byte
 			}
 			return false
