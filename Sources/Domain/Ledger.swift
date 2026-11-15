@@ -217,6 +217,11 @@ public struct Ledger: Sendable {
 		return categoriesInSidebarOrder.filter { !$0.isGroup && (folded.isEmpty || TextFolding.fold($0.name).contains(folded)) }
 	}
 
+	/// The accounts that hold these transactions, for `categories(matching:assignableTo:)`.
+	public func accountIDs(ofTransactions ids: Set<UUID>) -> Set<UUID> {
+		Set(ids.compactMap { transaction($0)?.accountID })
+	}
+
 	/// The same categories without those that the transactions of `accounts` cannot take. The picker passes
 	/// the accounts of the selection, so a keystroke costs the same for 2 selected rows and for 50,000.
 	public func categories(matching query: String, assignableTo accounts: Set<UUID>) -> [Category] {

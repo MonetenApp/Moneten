@@ -55,7 +55,7 @@ struct PerformanceTests {
 		let ledger = Ledger(groups: [company], accounts: accounts, categories: categories, transactions: ts)
 		let ids = Set(ts.map(\.id))
 		var selected: Set<UUID> = []
-		let open = fastest { selected = Set(ids.compactMap { ledger.transaction($0)?.accountID }) }
+		let open = fastest { selected = ledger.accountIDs(ofTransactions: ids) }
 		var listed = 0
 		let keystroke = fastest { listed = ledger.categories(matching: "kat", assignableTo: selected).count }
 		print("picker for 50,000 selected rows: open \(open), keystroke \(keystroke) (\(listed) categories)")

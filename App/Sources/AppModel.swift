@@ -609,7 +609,7 @@ final class AppModel {
 	/// What ⌘K does: the category picker for the selected rows on screen.
 	func openCategoryPicker() {
 		let ids = visibleSelection
-		if !ids.isEmpty { sheet = .assignCategory(ids) }
+		if !ids.isEmpty { sheet = .assignCategory(ids, accounts: ledger.accountIDs(ofTransactions: ids)) }
 	}
 
 	func assign(category: UUID?, to ids: Set<UUID>) {
@@ -1299,7 +1299,8 @@ enum SheetKind: Identifiable, Equatable {
 	/// `assigning` are the transactions that "Add category" in "Assign Category" moves into it.
 	case newCategory(isGroup: Bool, assigning: Set<UUID> = [])
 	/// The category picker of ⌘K for these transactions.
-	case assignCategory(Set<UUID>)
+	/// `accounts` are those of the transactions, looked up once when the picker opens.
+	case assignCategory(Set<UUID>, accounts: Set<UUID>)
 	case accountSettings(UUID)
 	case groupSettings(UUID)
 	case categorySettings(UUID)

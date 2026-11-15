@@ -87,7 +87,7 @@ struct SheetView: View {
 		case .newAccount: if let setup = model.setup { AccountSetupSheet(setup: setup) }
 		case .newGroup: NameSheet(title: "Add Account Group", placeholder: "Name") { name in Task { await model.addGroup(name: name) } }
 		case let .newCategory(isGroup, ids): NewCategorySheet(isGroup: isGroup, assigning: ids)
-		case let .assignCategory(ids): CategoryPickerSheet(ids: ids, accounts: Set(ids.compactMap { model.ledger.transaction($0)?.accountID }))
+		case let .assignCategory(ids, accounts): CategoryPickerSheet(ids: ids, accounts: accounts)
 		case let .accountSettings(id): AccountSettingsSheet(accountID: id)
 		case let .groupSettings(id): GroupSettingsSheet(groupID: id)
 		case let .categorySettings(id): CategorySettingsSheet(categoryID: id)
