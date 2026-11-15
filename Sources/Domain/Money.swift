@@ -53,7 +53,14 @@ public struct MoneySums: Hashable, Sendable {
 
 	/// The sum of the rows of a list, such as its status line or its pending sum shows.
 	public init(of rows: [Transaction]) {
-		for t in rows where t.countsInSums { add(t.amount) }
+		// A function of its own, because the same loop in this initializer took four times as long in a release build.
+		self = Self.sum(of: rows)
+	}
+
+	private static func sum(of rows: [Transaction]) -> MoneySums {
+		var sums = MoneySums()
+		for t in rows where t.countsInSums { sums.add(t.amount) }
+		return sums
 	}
 
 	public mutating func add(_ money: Money) {
