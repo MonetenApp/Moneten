@@ -783,6 +783,12 @@ final class AppModel {
 		commit([t])
 	}
 
+	/// "Create Offsetting Entry": one manual transaction in the offline account for each row.
+	func createOffsettingEntries(of ids: Set<UUID>, in accountID: UUID) {
+		guard let target = ledger.account(accountID) else { return }
+		commit(ledger.offsettingEntries(of: ids.compactMap { ledger.transaction($0) }, into: target))
+	}
+
 	func delete(transactions ids: Set<UUID>) {
 		guard let store else { return }
 		do {

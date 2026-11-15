@@ -467,6 +467,11 @@ final class DebugHarness {
 			}
 		// What "Add category" in "Assign Category" does with the selected rows.
 		case "newcategory": Task { await model.addCategory(name: argument, isGroup: false, parentID: nil, assigning: model.visibleSelection) }
+		// "<account>": what "Create Offsetting Entry" with that offline account does with the selected rows, and the menu it shows.
+		case "offsetting":
+			let targets = model.ledger.offsettingTargets(for: model.visibleSelection.compactMap { model.ledger.transaction($0) })
+			log("offsetting menu=\(targets.map { $0.isEnabled ? "on" : "off" })")
+			if let t = targets.first(where: { $0.account.name == argument && $0.isEnabled }) { model.createOffsettingEntries(of: model.visibleSelection, in: t.account.id) }
 		case "selectRows": model.selectedTransactions = Set(model.visibleTransactions.prefix(Int(argument) ?? 1).map(\.id))
 		// What a drop of the selected rows on the category "Name" in the sidebar does, with the payload sent
 		// through an item provider as a drag sends it. The harness cannot drag.
