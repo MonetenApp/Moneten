@@ -150,12 +150,18 @@ The app SHALL read a regular expression without a field name in the search field
 
 ### Requirement: A regular expression that does not end
 
-The app SHALL stop a regular expression in the search that reads one text for longer than 100 ms, and count it and every later text of the same search as no match, so the window keeps responding.
+The app SHALL stop a regular expression in the search that reads one text for longer than 100 ms, or whose texts of more than 5 ms each add up to 250 ms in one search, and count it and every later text of the same search as no match, so the window keeps responding.
 
 #### Scenario: Lazy quantifier after an anchor
 
 - **GIVEN** a transaction with the purpose "Tel. +49 170 1234567"
 - **WHEN** the user searches for `/^+?49/`
+- **THEN** the list shows no transaction within a second
+
+#### Scenario: Backtracking on many rows
+
+- **GIVEN** 100 transactions to "Stadtwerke Musterstadt." with the purpose "Abschlag Strom Mai."
+- **WHEN** the user searches for `purpose:/^(\w+\s?)+$/`
 - **THEN** the list shows no transaction within a second
 
 ### Requirement: The search finds exact amounts
