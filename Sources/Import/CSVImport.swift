@@ -147,7 +147,7 @@ public struct CSVFile: Sendable {
 	public let data: Data
 	public let encoding: CSVEncoding
 	/// The titles of the columns, one for each cell of the widest row. Without a header row of known
-	/// keywords, the most populated row without dates above the first transaction stands in for it, so an
+	/// keywords, the nearest wide-enough row without dates above the first transaction stands in for it, so an
 	/// account line such as "Von;01.11.2026" is passed over, and a file without such a row shows the values
 	/// of its first row.
 	public let header: [String]
@@ -222,28 +222,39 @@ public struct CSVFile: Sendable {
 			|| AmountParser.decimal(from: parts.number, decimalMark: .comma) != nil
 	}
 
+	private static func isDateCandidate(_ text: String) -> Bool {
+		text.contains(where: \.isNumber) && text.first.map { $0.isNumber || "-./".contains($0) } == true
+	}
+
 	private static func firstTransaction(in rows: ArraySlice<Row>, dateColumn: Int, amountColumns: [Int]) throws -> Int? {
 		var firstDate: Int?
 		var firstRecord: Int?
 		var firstReadable: Int?
 		for i in rows.indices {
 			try Task.checkCancellation()
-			guard cell(rows[i].cells, dateColumn).map(isDateShaped) == true else { continue }
+			guard cell(rows[i].cells, dateColumn).map(isDateCandidate) == true else { continue }
 			if firstDate == nil { firstDate = i }
 			// An amount cell that is present, even empty or invalid, must reach the row validation.
 			if firstRecord == nil, amountColumns.isEmpty || amountColumns.contains(where: rows[i].cells.indices.contains) { firstRecord = i }
 			if rows[i].cells.contains(where: isAmountShaped) { firstReadable = i; break }
 		}
 		guard let firstDate else { return nil }
-		let title = try rows[..<(firstReadable ?? rows.endIndex)].lastIndex { row in
+		let dateTitles = Set(CSVField.bookingDate.keys + CSVField.valueDate.keys)
+		let title = try rows[..<(firstReadable ?? rows.endIndex)].indices.first { i in
 			try Task.checkCancellation()
+			let row = rows[i]
+			guard row.cells.indices.contains(dateColumn), isTitle(row),
+				row.cells.filter({ !$0.trimmingCharacters(in: .whitespaces).isEmpty }).count >= 2 else { return false }
+			guard !row.cells.contains(where: { currencyCode($0, account: "EUR") != nil })
+				|| dateTitles.contains(normalize(row.cells[dateColumn])) else { return false }
+			if i < firstDate { return true }
 			let width = max(dateColumn, amountColumns.max() ?? dateColumn) + 1
-			return row.cells.count >= width && row.cells.prefix(width).allSatisfy { !$0.trimmingCharacters(in: .whitespaces).isEmpty } && isTitle(row)
+			return row.cells.count >= width && row.cells.prefix(width).allSatisfy { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
 		}
 		guard let title else { return firstDate }
 		let afterTitle = try rows[(title + 1)...].firstIndex { row in
 			try Task.checkCancellation()
-			return cell(row.cells, dateColumn).map(isDateShaped) == true
+			return cell(row.cells, dateColumn).map(isDateCandidate) == true
 		}
 		return [firstRecord, afterTitle].compactMap { $0 }.min() ?? firstDate
 	}
@@ -313,7 +324,8 @@ public struct CSVFile: Sendable {
 			return Self.cell(row.cells, column)?.contains(where: \.isNumber) == true
 		}
 		let amountColumns = [layout.columns[.amount], layout.columns[.debit], layout.columns[.credit]].compactMap { $0 }
-		let start = try headerIndex.map { $0 + 1 } ?? Self.firstTransaction(in: rows[...], dateColumn: column, amountColumns: amountColumns) ?? rows.count
+		let heading = headerIndex.flatMap { i in Self.cell(rows[i].cells, column).map(Self.isDateCandidate) == true ? nil : i }
+		let start = try heading.map { $0 + 1 } ?? Self.firstTransaction(in: rows[...], dateColumn: column, amountColumns: amountColumns) ?? rows.count
 		return try rows[start...].filter(isDated)[...]
 	}
 
