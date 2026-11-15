@@ -359,9 +359,11 @@ final class DebugHarness {
 			}
 		// "<folder>": opens the MoneyMoney migration, which then reads the exports of that folder, such as the absolute path of
 		// Fixtures/moneymoney. An app started with `open` runs in `/`, so a relative path does not work.
+		#if DEBUG || PERF_HARNESS
 		case "migrationfixture":
 			MigrationSheet.fixtureFolder = URL(filePath: argument)
 			model.sheet = .migration
+		#endif
 		case "sheet":
 			switch argument {
 			case "migration": model.sheet = .migration
