@@ -8,7 +8,7 @@ Users take their data out of the app, for a spreadsheet, for another program, or
 
 ### Requirement: Export command
 
-The app SHALL offer "Export Transactions..." in the Account menu and in the context menus of an account, an account group, and a category. The command exports the transactions of the selected view. For selected rows, the context menu of the list offers "Export Transaction..." or "Export Transactions...".
+The app SHALL offer "Export Transactions..." in the Account menu and in the context menus of an account, an account group, and a category. The Account menu exports the transactions of the selected view. The context menu of an account exports every transaction of that account, regardless of row selection, search, or filters. For selected rows, the context menu of the list offers "Export Transaction..." or "Export Transactions...".
 
 #### Scenario: Account
 
@@ -21,9 +21,15 @@ The app SHALL offer "Export Transactions..." in the Account menu and in the cont
 - **WHEN** the user opens the context menu of the category "Food" and chooses "Export Transactions..."
 - **THEN** the export covers the transactions of "Food" from all accounts
 
+#### Scenario: Context menu of the open account
+
+- **GIVEN** "Giro" has 500 transactions, a search shows 41, and 1 row is selected
+- **WHEN** the user exports from the context menu of "Giro"
+- **THEN** the file holds all 500 transactions
+
 ### Requirement: Only the selection
 
-The app SHALL export only the selected rows when rows are selected in the transaction list.
+The app SHALL export only the visible selected rows from the Account menu or the transaction list context menu when at least one selected row is visible.
 
 #### Scenario: Three rows
 
@@ -40,6 +46,12 @@ The app SHALL export the rows that the list shows when no row is selected. An ac
 - **GIVEN** the period filter shows the current year and the list shows 212 of 4,600 transactions
 - **WHEN** the user exports with no row selected
 - **THEN** the file holds 212 transactions
+
+#### Scenario: Search hides the selection
+
+- **GIVEN** 1 row is selected and a search hides it and shows 41 other rows
+- **WHEN** the user exports from the Account menu
+- **THEN** the file holds the 41 visible rows
 
 ### Requirement: Save panel with format choice
 
@@ -68,7 +80,7 @@ The app SHALL write a CSV file with a header row and these columns in this order
 
 ### Requirement: CSV format rules
 
-The app SHALL write CSV files in UTF-8 with a byte order mark and with a semicolon between fields. Dates and numbers use the formats of the system. Amounts have two decimals and no thousands separator. A field that contains a semicolon, a quotation mark, or a line break is put in quotation marks, and a quotation mark inside it is doubled.
+The app SHALL write CSV files in UTF-8 with a byte order mark and with a semicolon between fields. Dates and decimal marks use the system locale. Dates and amounts use ASCII digits. Amounts have the decimal places of their currency, with at least two, and no thousands separator. A field that contains a semicolon, a quotation mark, or a line break is put in quotation marks, and a quotation mark inside it is doubled.
 
 #### Scenario: Purpose with a semicolon
 
@@ -79,6 +91,32 @@ The app SHALL write CSV files in UTF-8 with a byte order mark and with a semicol
 
 - **WHEN** a purpose has two lines
 - **THEN** the field is in quotation marks and a spreadsheet program reads it as one cell
+
+#### Scenario: Currency with three decimal places
+
+- **WHEN** the user exports -12345 minor units in KWD with German formats
+- **THEN** Amount is "-12,345"
+
+#### Scenario: Egyptian Arabic formats
+
+- **WHEN** the user exports -8900 minor units in EUR on 3 November 2026 with ar_EG formats
+- **THEN** Date and Amount use only ASCII digits, with the local date order and decimal mark
+
+### Requirement: Spreadsheet formula protection
+
+The app SHALL prefix a text field with an apostrophe when its first character is `=`, `+`, `-`, `@`, a tab, or a carriage return. The Amount column stays numeric. CSV quoting follows this prefix.
+
+#### Scenario: Formula in bank text
+
+- **GIVEN** Name is `=HYPERLINK("http://x.example","Klick")` and Amount is -89,00
+- **WHEN** the user exports it
+- **THEN** the Name cell starts with an apostrophe and contains the unchanged formula as text
+- **AND** Amount is "-89,00" without an apostrophe
+
+#### Scenario: Other formula prefixes
+
+- **WHEN** a text field starts with `+1+1`, `-1+1`, `@SUM(1)`, a tab, or a carriage return
+- **THEN** its cell starts with an apostrophe
 
 ### Requirement: Categories in a CSV file
 
@@ -131,16 +169,30 @@ The app SHALL report a failed export with the reason, for example no write permi
 #### Scenario: Export survives a restart
 
 - **WHEN** the app finishes a CSV or complete export
-- **THEN** it has asked the file system to sync the file before replacing the destination and the folder after replacing it
+- **THEN** it has requested a full drive-cache sync of the file before replacing the destination, with file-system sync as a fallback
+- **AND** it attempts to sync the folder after replacing the destination when the folder can be opened for sync
+
+#### Scenario: Write-only folder
+
+- **GIVEN** the destination folder has mode 0300
+- **WHEN** the user saves an export
+- **THEN** the export succeeds with mode 0600 even if the folder cannot be synced
 
 ### Requirement: Progress of an export
 
-The app SHALL show progress for an export that takes longer than a moment, and let the user cancel it. A canceled export leaves no file.
+The app SHALL show progress for an export that takes longer than a moment, and let the user cancel it. Encoding, writing, and syncing keep the interface responsive. Cancellation before the destination is replaced leaves no new file and preserves an existing destination.
 
 #### Scenario: Large export
 
 - **WHEN** the user exports 200,000 transactions
 - **THEN** the app shows "Exporting..." with a cancel button until the file is complete
+
+#### Scenario: Slow storage
+
+- **GIVEN** syncing the temporary file takes 2 seconds
+- **WHEN** the user exports transactions
+- **THEN** "Exporting..." appears with "Cancel" while syncing continues
+- **AND** canceling during sync preserves an existing file and removes the temporary file
 
 ### Requirement: Complete export
 

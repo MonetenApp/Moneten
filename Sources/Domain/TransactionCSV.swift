@@ -3,6 +3,10 @@ import Foundation
 /// The CSV file of "Export Transactions...": a header and one line per transaction, separated by semicolons,
 /// with dates and decimal marks in the format of a locale and amounts without thousands separators.
 public enum TransactionCSV {
+	public static func rows(visible: [Transaction], selection: Set<UUID>) -> [Transaction] {
+		selection.isEmpty ? visible : visible.filter { selection.contains($0.id) }
+	}
+
 	static let columns = ["Date", "Value date", "Category", "Name", "Purpose", "Account", "Bank", "Amount", "Currency", "Own account", "Booking text",
 		"End-to-end reference", "Mandate reference", "Creditor ID", "Comment", "Checked", "Pending"]
 

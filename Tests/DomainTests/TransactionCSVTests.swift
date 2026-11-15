@@ -27,6 +27,39 @@ struct TransactionCSVTests {
 		try TransactionCSV.text(rows, ledger: ledger, locale: Locale(identifier: locale)).components(separatedBy: "\r\n")
 	}
 
+	@Test("A search that hides the one selected row exports all 41 visible rows")
+	func hiddenSelection() {
+		let selected = stadtwerke
+		let visible = (1...41).map { Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 5), amountMinor: Int64($0), name: "Visible") }
+		let rows = TransactionCSV.rows(visible: visible, selection: [selected.id])
+		#expect(rows.count == 41)
+		#expect(rows.map(\.amountMinor) == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41])
+		#expect(TransactionCSV.rows(visible: visible, selection: []).count == 41)
+		#expect(TransactionCSV.rows(visible: [], selection: [selected.id]).count == 0)
+		#expect(TransactionCSV.rows(visible: [selected] + visible, selection: [selected.id]).map(\.amountMinor) == [-8_900])
+		#expect(TransactionCSV.rows(visible: [visible[1], selected, visible[0]], selection: [selected.id, visible[0].id]).map(\.amountMinor) == [-8_900, 1])
+	}
+
+	@Test("Formula prefixes are text in every bank-controlled column, while Amount stays numeric", arguments: [
+		("=HYPERLINK(\"http://x.example\",\"Klick\")", "\"'=HYPERLINK(\"\"http://x.example\"\",\"\"Klick\"\")\""),
+		("+1+1", "'+1+1"), ("-1+1", "'-1+1"), ("@SUM(1)", "'@SUM(1)"),
+		("\tText", "'\tText"), ("\rText", "\"'\rText\"")
+	])
+	func formulaProtection(_ input: String, _ cell: String) throws {
+		let category = Domain.Category(position: 0, name: input)
+		let account = Account(position: 0, name: input, kind: .cash, source: .offline)
+		let row = Transaction(accountID: account.id, bookingDate: Day(year: 2026, month: 11, day: 3), amountMinor: -8_900,
+			name: input, purpose: input, counterpartyIBAN: input, counterpartyBIC: input, bookingText: input, endToEndReference: input,
+			mandateReference: input, creditorID: input, comment: input, categoryID: category.id)
+		let text = try TransactionCSV.text([row], ledger: Ledger(accounts: [account], categories: [category]), locale: Locale(identifier: "de_DE"))
+		#expect(text.components(separatedBy: "\r\n")[1] == "03.11.2026;;\(cell);\(cell);\(cell);\(cell);\(cell);-89,00;EUR;\(cell);\(cell);\(cell);\(cell);\(cell);\(cell);;")
+	}
+
+	@Test("Egyptian Arabic uses ASCII digits for both dates and amounts")
+	func arabicDigits() throws {
+		#expect(try lines([stadtwerke], "ar_EG")[1] == "03\u{200F}/11\u{200F}/2026;04\u{200F}/11\u{200F}/2026;Housing;Stadtwerke Musterstadt;Abschlag November;DE02120300000000202051;BYLADEM1001;-89٫00;EUR;DE02120300000000202051;Lastschrift;E2E-1;M-1;DE98ZZZ09999999999;Abschlag;X;")
+	}
+
 	@Test("The first line names the 17 columns in order")
 	func header() throws {
 		#expect(try lines([], "de_DE").first

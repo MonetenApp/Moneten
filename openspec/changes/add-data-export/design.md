@@ -18,7 +18,7 @@ The app keeps every account, category, and transaction of the open database in o
 
 ### CSV export
 
-- `Domain` writes the CSV text with a new type `TransactionCSV` from rows, the ledger, and a locale. The app chooses the rows: the selected rows, or the rows of the list with its search and filters.
+- `Domain` writes the CSV text with a new type `TransactionCSV` from rows, the ledger, and a locale. `TransactionCSV.rows(visible:selection:)` chooses the visible selected rows, or all visible rows when the selection is hidden or empty. The account context menu reads the whole account without filters.
 - The file is written to a temporary file next to the target and moved into place, so a failed or canceled export leaves no file.
 
 ## Risks / Trade-offs

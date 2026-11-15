@@ -44,6 +44,10 @@ None.
 
 ### Decided for Moneten
 
+- CSV text cells that start with `=`, `+`, `-`, `@`, a tab, or a carriage return get an apostrophe before CSV quoting. Amounts stay numeric. This formula-injection protection was not observed in MoneyMoney.
+- CSV dates and amounts use ASCII digits in every locale, including ar_EG. Date order and decimal marks follow the locale.
+- The account context menu exports the whole account, regardless of row selection, search, or filters.
+
 - The complete JSON export and its import come from issue #8. They are new.
 - The commands "Export All Data..." and "Import All Data..." are in the File menu.
 - The CSV file has more columns than MoneyMoney's default, namely the own account, the booking text, the SEPA references, the comment, and the checkmark.
