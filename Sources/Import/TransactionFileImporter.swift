@@ -406,7 +406,7 @@ final class CAMTParser: NSObject, XMLParserDelegate {
 		let parsed = parser.parse()
 		if let failure = p.failure { throw failure }
 		guard parsed else {
-			throw TransactionFileImporter.Failure.line(parser.lineNumber, parser.parserError?.localizedDescription ?? "The XML file cannot be read.")
+			throw TransactionFileImporter.Failure.line(parser.lineNumber, "The XML file cannot be read.")
 		}
 		return p.result
 	}
@@ -422,6 +422,12 @@ final class CAMTParser: NSObject, XMLParserDelegate {
 		if inEntry, name == "Amt", path.count >= 2, path[path.count - 2] == "Ntry" {
 			entry["currency"] = attributes["Ccy"]
 		}
+	}
+
+	/// The parser stops after the first error and moves on, so its position after `parse()` can lie lines
+	/// behind the error. An entry that `finishEntry` failed aborts the parser, which reports it here too.
+	func parser(_ parser: XMLParser, parseErrorOccurred parseError: Error) {
+		if failure == nil { failure = .line(parser.lineNumber, "The XML is not well-formed at column \(parser.columnNumber).") }
 	}
 
 	func parser(_ parser: XMLParser, foundCharacters string: String) {
