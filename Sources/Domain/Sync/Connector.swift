@@ -188,6 +188,8 @@ public struct RefreshResult: Sendable {
 		if providesNoTransactions(for: kind) { return .noTransactions }
 		if let historyStart { return .startsAt(historyStart) }
 		if missesOlder { return .olderMayBeMissing }
+		// A full history without rows ends a note about missing older transactions too.
+		if isComplete { return nil }
 		return previous == .noTransactions ? nil : previous
 	}
 

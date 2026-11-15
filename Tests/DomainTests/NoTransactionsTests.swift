@@ -60,5 +60,7 @@ struct BankHistoryTests {
 		#expect(short.bankHistory(after: .startsAt(start), of: .giro) == .olderMayBeMissing)
 		#expect(Self.dated.bankHistory(after: .olderMayBeMissing, of: .giro) == .olderMayBeMissing)
 		#expect(Self.full.bankHistory(after: .olderMayBeMissing, of: .giro) == .startsAt(start))
+		let empty = RefreshResult(balance: Self.balance, transactions: FetchedTransactions(rows: [], from: nil), isComplete: true)
+		#expect(empty.bankHistory(after: .olderMayBeMissing, of: .giro) == nil)
 	}
 }
