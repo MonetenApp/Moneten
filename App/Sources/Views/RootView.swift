@@ -3,6 +3,7 @@ import SwiftUI
 struct RootView: View {
 	@Environment(AppModel.self) private var model
 	@Environment(\.openWindow) private var openWindow
+	@Environment(\.appearsActive) private var appearsActive
 
 	var body: some View {
 		Group {
@@ -19,7 +20,14 @@ struct RootView: View {
 				FailureView(message: message)
 			}
 		}
-		.onAppear { model.openMainWindow = { [openWindow] in openWindow(id: "main") } }
+		.onAppear {
+			model.openMainWindow = { [openWindow] in openWindow(id: "main") }
+			model.openNoticeWindow = { [openWindow] in openWindow(id: "notice") }
+			model.showNotices()
+		}
+		.onChange(of: appearsActive) { _, active in
+			if active { model.showNotices() }
+		}
 		.onDisappear { model.mainWindowClosed() }
 		// The PIN sheet and the dialog "Two-Factor Authentication". The broker opens and closes them.
 		// While another sheet is open, that sheet shows them on top of itself (MainView).

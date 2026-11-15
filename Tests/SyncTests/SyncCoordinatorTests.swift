@@ -650,4 +650,68 @@ struct SyncCoordinatorTests {
 		try await Task.sleep(for: .milliseconds(50))
 		#expect(events.all.isEmpty)
 	}
+
+	@Test("The notices of the bank reach the app when a refresh ends, and a canceled refresh brings none")
+	func notices() async throws {
+		var noticed: [String] = []
+		coordinator.noticed = { access, messages in noticed += messages.map { "\(access.uuidString) \($0.text)" } }
+		let bank = Self.access("Musterbank")
+		coordinator.refresh(RefreshRequest(access: bank, accounts: [Self.giro]), with: Notifying(delay: .zero), attended: true)
+		await until { !coordinator.isRefreshing }
+		#expect(noticed == ["\(bank.id.uuidString) Wartungsarbeiten am 14.11.2026 von 1 bis 5 Uhr"])
+		let other = Self.access("Beispielbank")
+		coordinator.refresh(RefreshRequest(access: other, accounts: [Self.savings]), with: Notifying(delay: .milliseconds(100)), attended: true)
+		coordinator.cancelAll()
+		try await Task.sleep(for: .milliseconds(300))
+		#expect(noticed.count == 1)
+	}
+
+	@Test("A cancel while the app stores an account brings no notices of the bank")
+	func noticesOfACancelDuringDelivery() async {
+		var noticed: [String] = []
+		coordinator.noticed = { _, messages in noticed += messages.map(\.text) }
+		let gate = FailureWithStateTests.Gate()
+		coordinator.deliver = { _, _ in await gate.wait() }
+		let bank = Self.access("Musterbank")
+		coordinator.refresh(RefreshRequest(access: bank, accounts: [Self.giro]), with: Notifying(delay: .zero), attended: true)
+		await until { gate.isWaiting }
+		coordinator.cancelAll()
+		gate.open()
+		await until { !coordinator.isRefreshing }
+		#expect(state(bank) == .cancelled)
+		#expect(noticed == [])
+	}
+
+	@Test("The notices of a refresh that failed after them reach the app and the error of the account")
+	func noticesOfAFailure() async {
+		var noticed: [String] = []
+		var ended: [UUID: AccountRefresh] = [:]
+		coordinator.noticed = { _, messages in noticed += messages.map(\.text) }
+		coordinator.ended = { _, _, accounts, _ in ended = accounts }
+		coordinator.refresh(RefreshRequest(access: Self.access("Musterbank"), accounts: [Self.giro]), with: FailingAfterNotice(), attended: true)
+		await until { !coordinator.isRefreshing }
+		#expect(noticed == ["Wartungsarbeiten bis 5 Uhr"])
+		guard case let .failed(error) = ended[Self.giro.accountID] else { Issue.record("giro not failed"); return }
+		#expect(error.message == "Dialog abgebrochen")
+		#expect(error.code == "9800")
+		#expect(error.notices == ["Wartungsarbeiten bis 5 Uhr"])
+	}
+}
+
+/// Fails the login after the bank sent a notice, as during maintenance.
+struct FailingAfterNotice: BankConnector {
+	func refresh(_ refresh: RefreshRequest, _ session: SyncSession) async throws -> ConnectorReport {
+		throw FailureWithNotices(SyncFailure.bank(BankMessage(code: "9800", text: "Dialog abgebrochen")), notices: [BankMessage(text: "Wartungsarbeiten bis 5 Uhr")])
+	}
+}
+
+/// Fetches every requested account after `delay`, also when the refresh was canceled, and sends a notice of the bank.
+struct Notifying: BankConnector {
+	let delay: Duration
+
+	func refresh(_ refresh: RefreshRequest, _ session: SyncSession) async throws -> ConnectorReport {
+		try? await Task.sleep(for: delay)
+		return ConnectorReport(outcomes: Dictionary(uniqueKeysWithValues: refresh.accounts.map { ($0.accountID, .fetched(RefreshResult(balance: nil, transactions: nil))) }),
+			notices: [BankMessage(text: "Wartungsarbeiten am 14.11.2026 von 1 bis 5 Uhr")])
+	}
 }

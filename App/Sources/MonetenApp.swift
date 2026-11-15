@@ -26,6 +26,14 @@ struct MonetenApp: App {
 		.defaultSize(width: 900, height: 600)
 		.commandsRemoved()
 
+		Window("Notice", id: "notice") {
+			BankNoticeWindow()
+				.environment(model)
+		}
+		.windowResizability(.contentSize)
+		.restorationBehavior(.disabled)
+		.commandsRemoved()
+
 		Settings {
 			SettingsView()
 				.environment(model)

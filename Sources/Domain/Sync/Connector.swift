@@ -59,6 +59,18 @@ public struct FailureWithState: Error {
 	}
 }
 
+/// A refresh that failed after the bank sent notices, for example a login that fails during the maintenance
+/// that a notice announced. The coordinator hands on `notices`, and the refresh ends with `failure`.
+public struct FailureWithNotices: Error {
+	public let failure: any Error
+	public let notices: [BankMessage]
+
+	public init(_ failure: any Error, notices: [BankMessage]) {
+		self.failure = failure
+		self.notices = notices
+	}
+}
+
 /// Every source of bank data implements this protocol: FinTS, extensions, and finAPI.
 public protocol BankConnector: Sendable {
 	/// Fetches the balances and transactions of the requested accounts of one access, in one session.

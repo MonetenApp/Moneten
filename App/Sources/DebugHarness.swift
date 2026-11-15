@@ -136,22 +136,28 @@ final class DebugHarness {
 			for (position, a) in model.ledger.accounts.filter({ $0.accessID != nil }).enumerated() {
 				log("status #\(position) \(a.kind) refreshing=\(model.sync.refreshingAccounts.contains(a.id)) refreshedAt=\(a.refreshedAt.map { "\($0)" } ?? "-") error=\(a.refreshError?.message ?? "-") waitsForUser=\(a.refreshError?.waitsForUser ?? false) interval=\(a.refreshInterval.rawValue) balance=\(a.bankBalanceMinor.map(String.init) ?? "-") rows=\(model.ledger.transactions(ofAccount: a.id).count) new=\(model.ledger.newTransactionCounts[a.id] ?? 0)")
 			}
-			log("status line=\(model.refreshStatus ?? "-") accesses=\(model.accesses.count)")
+			log("status line=\(model.refreshStatus ?? "-") accesses=\(model.accesses.count) bankNotices=\(model.bankNotices.waiting.count)")
 		// "closemain" closes the main window as its close button does; both log the scenes of the visible windows.
 		case "closemain", "windows":
 			if command == "closemain" { NSApp.windows.first { $0.isVisible && $0.identifier?.rawValue.hasPrefix("main") == true }?.performClose(nil) }
 			DispatchQueue.main.async { [weak self] in
 				self?.log("windows \(NSApp.windows.filter { $0.isVisible && $0.frame.width > 50 }.map { $0.identifier?.rawValue ?? "-" })")
 			}
+		// Opens the main window as a click on a notification does.
+		case "openmain": model.openMainWindow()
 		// "off" or "on": what the network monitor reports, so that a check can refresh as if the Mac were offline.
 		case "network": model.autoRefresh.isOnline = argument != "off"
+		// "off" or "on": whether the display is awake, so that a check can run the automatic refresh while the display of the Mac sleeps.
+		case "present": model.autoRefresh.isUserPresent = argument != "off"
 		// The popover of the menu bar icon, drawn offscreen.
 		case "menubarsnapshot": offscreenSnapshot(MenuBarPopover().environment(model), width: 340, name: argument)
 		// The delivered notifications of this app in the Notification Center, with their titles and the number of their accounts.
 		case "notices": logNotices()
+		// What the button "OK" of the window "Notice" does.
+		case "noticeok": model.bankNotices.dismiss()
 		case "errorsnapshot":
-			if let error = model.ledger.accounts.first(where: { $0.name == argument })?.refreshError {
-				offscreenSnapshot(RefreshErrorPopover(error: error), width: 352, name: "\(argument)-error")
+			if let account = model.ledger.accounts.first(where: { $0.name == argument }), let error = account.refreshError {
+				offscreenSnapshot(RefreshErrorPopover(account: account, error: error), width: 352, name: "\(argument)-error")
 			}
 		case "extrun": runExtension(argument)
 		case "escape":

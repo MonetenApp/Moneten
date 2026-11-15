@@ -67,7 +67,7 @@ final class AccountSetup {
 	var selected: Set<String> = []
 	/// The account that a candidate with a choice connects, by the ID of the candidate's account. None adds a new account.
 	var connecting: [UUID: UUID] = [:]
-	private(set) var notices: [String] = []
+	private(set) var notices: [BankMessage] = []
 	/// The error of the database when "Done" could not store the accounts. The assistant stays open, so
 	/// that the login and its TAN are not lost.
 	private(set) var saveError: String?
@@ -185,7 +185,7 @@ final class AccountSetup {
 				}
 				self.access = access
 				state = list.state
-				notices = list.notices.map(\.text)
+				notices = list.notices
 				let listed = list.accounts.map { $0.account(access: access, bank: bank, group: groupID) }
 				candidates = listed.map { Candidate(account: $0, match: model.ledger.setupMatch(for: $0, listed: listed)) }
 				selected = Set(candidates.filter { !$0.isPresent }.map(\.id))
@@ -219,7 +219,8 @@ final class AccountSetup {
 		let chosen = candidates.filter { selected.contains($0.id) && !$0.isPresent }.map(\.account)
 		guard !chosen.isEmpty else { return }
 		do {
-			try model.add(access, state: state, accounts: chosen, listed: candidates.map(\.account), connecting: connecting, pin: Secret(pin), savePIN: savePIN)
+			try model.add(access, state: state, accounts: chosen, listed: candidates.map(\.account), connecting: connecting, notices: notices, pin: Secret(pin),
+				savePIN: savePIN)
 		} catch {
 			saveError = "Could not add the accounts. \(String(describing: error))"
 			return
@@ -471,7 +472,7 @@ struct AccountSetupSheet: View {
 		}
 		if !setup.notices.isEmpty {
 			Section("Notices of the bank") {
-				ForEach(setup.notices, id: \.self) { Text($0).fixedSize(horizontal: false, vertical: true) }
+				ForEach(setup.notices, id: \.text) { Text($0.text).fixedSize(horizontal: false, vertical: true) }
 			}
 		}
 	}

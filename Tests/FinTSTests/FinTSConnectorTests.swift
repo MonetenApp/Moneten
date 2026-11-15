@@ -662,7 +662,7 @@ struct FinTSConnectorTests {
 		#expect(loanFailure == .unsupported("The FinTS server of the bank offers neither the balance nor the transactions of this account."))
 
 		#expect(report.state == AccessState(Data([1, 2, 3])))
-		#expect(report.notices == [BankMessage(text: "Neue Bedingungen ab 1.12."), BankMessage(code: "9210", text: "Saldo nicht verfügbar")])
+		#expect(report.notices == [BankMessage(text: "Neue Bedingungen ab 1.12."), BankMessage(code: "9210", text: "Saldo nicht verfügbar", accountName: "Card")])
 		#expect(session.events == [.progress(.fetching(done: 0, of: 3)), .progress(.fetching(done: 1, of: 3))])
 	}
 
@@ -715,6 +715,18 @@ struct FinTSConnectorTests {
 		#expect(await failure(of: "read cmd; echo '\(line)'", session: session) as? SyncFailure == expected)
 		// No dialog opens. Only a rejection of the PIN or a block reaches the session, at once.
 		#expect(session.events == (expected.rejectsPIN ? [.rejected(expected)] : []))
+	}
+
+	@Test("A run that fails after a notice of the bank keeps the notice with the failure")
+	func noticeBeforeFailure() async throws {
+		let error = await failure(of: #"""
+			read cmd
+			echo '{"type":"notice","text":"Wartungsarbeiten bis 5 Uhr"}'
+			echo '{"type":"failed","code":"9800","text":"Dialog abgebrochen"}'
+			"""#)
+		let failure = try #require(error as? FailureWithNotices)
+		#expect(failure.failure as? SyncFailure == .bank(BankMessage(code: "9800", text: "Dialog abgebrochen")))
+		#expect(failure.notices == [BankMessage(text: "Wartungsarbeiten bis 5 Uhr")])
 	}
 
 	@Test("Refuses an access without https and a build without a product ID before it starts the helper")
