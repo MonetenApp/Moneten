@@ -81,7 +81,7 @@ public struct ExtensionConnector: BankConnector {
 					continue
 				}
 				let known = ResultMapping.knownTransactions(await services.transactions(account.accountID), timeZone: timeZone)
-				let outcome = try await run.refreshAccount(listed, since: account.since, known: known)
+				let outcome = try await run.refreshAccount(listed, id: account.accountID, since: account.since, known: known)
 				outcomes[account.accountID] = outcome.result
 				if outcome.endsSession { break }
 			}
@@ -115,7 +115,8 @@ public struct ExtensionConnector: BankConnector {
 			}
 			for index in accounts.indices {
 				await session.report(.fetching(done: index, of: accounts.count))
-				let outcome = try await run.refreshAccount(accounts[index].listed, since: nil, known: [:])
+				// The account does not exist yet; the merge gives the positions the ID of the new account.
+				let outcome = try await run.refreshAccount(accounts[index].listed, id: UUID(), since: nil, known: [:])
 				accounts[index].outcome = outcome.result
 				if outcome.endsSession { break }
 			}
@@ -326,7 +327,7 @@ private final class ScriptRun {
 
 	/// The outcome of one account. An error at the first call fails only this account; an error after
 	/// a challenge ends the session.
-	func refreshAccount(_ account: ListedAccount, since: Day?, known: [String: LuaValue]) async throws -> (result: AccountOutcome, endsSession: Bool) {
+	func refreshAccount(_ account: ListedAccount, id: UUID, since: Day?, known: [String: LuaValue]) async throws -> (result: AccountOutcome, endsSession: Bool) {
 		var calendar = Calendar(identifier: .gregorian)
 		calendar.timeZone = connector.timeZone
 		let seconds = account.kind == .portfolio ? 0 : since.map { Int64($0.date(in: calendar).timeIntervalSince1970) } ?? 0
@@ -342,7 +343,7 @@ private final class ScriptRun {
 			return (.failed(.bank(BankMessage(text: message))), answer.challenged)
 		}
 		do {
-			return (.fetched(try ResultMapping.refreshResult(answer.value, of: account, since: since, timeZone: connector.timeZone)), false)
+			return (.fetched(try ResultMapping.refreshResult(answer.value, of: account, accountID: id, since: since, timeZone: connector.timeZone)), false)
 		} catch {
 			return (.failed(.unsupported(error.message)), false)
 		}
