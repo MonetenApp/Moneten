@@ -34,7 +34,8 @@ public enum FileAccount: Hashable, Sendable {
 		case let .iban(text):
 			let iban = TextFolding.accountKey(text)
 			account.iban = iban
-			account.name = stride(from: 0, to: iban.count, by: 4).map { String(Array(iban)[$0..<min($0 + 4, iban.count)]) }.joined(separator: " ")
+			let characters = Array(iban)
+			account.name = stride(from: 0, to: characters.count, by: 4).map { String(characters[$0..<min($0 + 4, characters.count)]) }.joined(separator: " ")
 		case let .number(bankCode, number):
 			account.bankCode = bankCode
 			account.accountNumber = number
