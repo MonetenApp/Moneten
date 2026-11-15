@@ -230,18 +230,19 @@ struct CategoryTree: View {
 	var body: some View {
 		ForEach(model.ledger.childCategories(of: parent)) { category in
 			if model.ledger.childCategories(of: category.id).isEmpty {
-				CategoryRow(category: category).draggable(DraggedCategory(id: category.id)).tag(SidebarSelection.category(category.id))
+				CategoryRow(category: category).draggable(model.startDrag(category: category.id)).tag(SidebarSelection.category(category.id))
 			} else {
 				DisclosureGroup(isExpanded: Binding(get: { category.isExpanded }, set: { var c = category; c.isExpanded = $0; model.save(category: c) })) {
 					CategoryTree(parent: category.id)
 				} label: {
-					CategoryRow(category: category).draggable(DraggedCategory(id: category.id))
+					CategoryRow(category: category).draggable(model.startDrag(category: category.id))
 				}
 				.tag(SidebarSelection.category(category.id))
 			}
 		}
 		// A drop between two rows. A drop on a group goes to `CategoryDrop`.
 		.dropDestination(for: DraggedCategory.self) { items, index in
+			model.endDrag()
 			if let item = items.first { model.move(category: item.id, into: parent, at: index) }
 		}
 	}
@@ -310,23 +311,24 @@ struct CategoryDrop: DropDelegate {
 	let model: AppModel
 	let category: Domain.Category
 
-	func validateDrop(info: DropInfo) -> Bool {
-		if info.hasItemsConforming(to: [.monetenCategory]) { return category.isGroup }
-		return info.hasItemsConforming(to: [.monetenTransactions]) && model.canDrop(model.draggedTransactions, on: category)
-	}
+	func validateDrop(info: DropInfo) -> Bool { model.acceptsDrag(on: category) }
 
 	func performDrop(info: DropInfo) -> Bool {
+		defer { model.endDrag() }
+		guard model.acceptsDrag(on: category) else { return false }
 		let target = category
 		if let provider = info.itemProviders(for: [.monetenCategory]).first {
 			_ = provider.loadTransferable(type: DraggedCategory.self) { [model] result in
 				guard let item = try? result.get() else { return }
-				Task { @MainActor in model.move(category: item.id, into: target.id, at: model.ledger.childCategories(of: target.id).count) }
+				Task { @MainActor in model.drop(category: item.id, on: target) }
 			}
 		} else if let provider = info.itemProviders(for: [.monetenTransactions]).first {
 			_ = provider.loadTransferable(type: DraggedTransactions.self) { [model] result in
 				guard let item = try? result.get() else { return }
 				Task { @MainActor in model.drop(item.ids, on: target) }
 			}
+		} else {
+			return false
 		}
 		return true
 	}

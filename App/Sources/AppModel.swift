@@ -625,13 +625,35 @@ final class AppModel {
 		commit(changed)
 	}
 
-	/// The rows of the drag that started last in the transaction list. SwiftUI hands the dragged data to a
-	/// drop target only on the drop, so a category in the sidebar reads them here while the pointer is over it.
-	@ObservationIgnored private(set) var draggedTransactions: Set<UUID> = []
+	/// What a drag from this app carries: rows of the transaction list, or a category of the sidebar.
+	enum Drag {
+		case transactions(Set<UUID>)
+		case category(UUID)
+	}
+
+	/// The drag in progress. SwiftUI hands the dragged data to a drop target only on the drop, so a category
+	/// in the sidebar reads it here while the pointer is over it. A drop clears it, and the next drag replaces it.
+	@ObservationIgnored private(set) var drag: Drag?
 
 	func startDrag(of ids: Set<UUID>) -> DraggedTransactions {
-		draggedTransactions = ids
+		drag = .transactions(ids)
 		return DraggedTransactions(ids: ids)
+	}
+
+	func startDrag(category id: UUID) -> DraggedCategory {
+		drag = .category(id)
+		return DraggedCategory(id: id)
+	}
+
+	func endDrag() { drag = nil }
+
+	/// Whether the category row lights up for the drag in progress.
+	func acceptsDrag(on category: Domain.Category) -> Bool {
+		switch drag {
+		case let .transactions(ids): canDrop(ids, on: category)
+		case let .category(id): canDrop(category: id, on: category)
+		case nil: false
+		}
 	}
 
 	func canDrop(_ ids: Set<UUID>, on category: Domain.Category) -> Bool {
@@ -640,11 +662,18 @@ final class AppModel {
 	}
 
 	/// A drop of rows on a category in the sidebar. A group, or a category restricted to another account, refuses them.
-	@discardableResult
-	func drop(_ ids: Set<UUID>, on category: Domain.Category) -> Bool {
-		guard canDrop(ids, on: category) else { return false }
-		assign(category: category.id, to: ids)
-		return true
+	func drop(_ ids: Set<UUID>, on category: Domain.Category) {
+		if canDrop(ids, on: category) { assign(category: category.id, to: ids) }
+	}
+
+	/// A category dropped on a group goes to its end. `Ledger.move` refuses a category that is not a group,
+	/// the group itself or one above it, and a drop that changes nothing.
+	func canDrop(category id: UUID, on group: Domain.Category) -> Bool {
+		!ledger.move(category: id, into: group.id, at: ledger.childCategories(of: group.id).count).isEmpty
+	}
+
+	func drop(category id: UUID, on group: Domain.Category) {
+		move(category: id, into: group.id, at: ledger.childCategories(of: group.id).count)
 	}
 
 	/// Moves a category, or a group with everything in it, to the gap `index` among the children of `parent`.

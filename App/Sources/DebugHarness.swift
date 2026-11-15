@@ -389,13 +389,30 @@ final class DebugHarness {
 		case "droprows":
 			guard let c = model.ledger.categories.first(where: { $0.name == argument }) else { return log("droprows not found") }
 			handOver(model.startDrag(of: model.visibleSelection)) { [self] item in
-				log("droprows \(c.name) hover=\(model.canDrop(model.draggedTransactions, on: c)) accepted=\(model.drop(item?.ids ?? [], on: c))")
+				let hover = model.acceptsDrag(on: c), accepted = model.canDrop(item?.ids ?? [], on: c)
+				model.endDrag()
+				model.drop(item?.ids ?? [], on: c)
+				log("droprows \(c.name) hover=\(hover) accepted=\(accepted) afterwards=\(model.acceptsDrag(on: c))")
+			}
+		// "Name|Group": what a drop of the category on the row of the group does.
+		case "dropcategory":
+			let parts = argument.split(separator: "|").map(String.init)
+			guard parts.count == 2, let c = model.ledger.categories.first(where: { $0.name == parts[0] }),
+				let group = model.ledger.categories.first(where: { $0.name == parts[1] }) else { return log("dropcategory not found") }
+			handOver(model.startDrag(category: c.id)) { [self] item in
+				let hover = model.acceptsDrag(on: group)
+				model.endDrag()
+				if hover, let item { model.drop(category: item.id, on: group) }
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [self] in
+					log("dropcategory hover=\(hover) \(model.ledger.categoriesInSidebarOrder.map { model.ledger.categoryPath($0.id) }.joined(separator: ", "))")
+				}
 			}
 		// "Name|Group|index", with an empty group for the top level: what a drop of the category between two rows does.
 		case "movecategory":
 			let parts = argument.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
 			guard parts.count == 3, let c = model.ledger.categories.first(where: { $0.name == parts[0] }), let index = Int(parts[2]) else { return log("movecategory not found") }
-			handOver(DraggedCategory(id: c.id)) { [self] item in
+			handOver(model.startDrag(category: c.id)) { [self] item in
+				model.endDrag()
 				guard let item else { return log("movecategory no payload") }
 				model.move(category: item.id, into: model.ledger.categories.first { $0.name == parts[1] }?.id, at: index)
 				// A move that changes the rows of the open view waits a drawing for its new table.
