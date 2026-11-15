@@ -772,7 +772,7 @@ struct MoneyMoneyMigrationTests {
 		("DE02120300000000202051", 1, "DE02120300000000202051"),
 		("\"Miete\" AND DE02120300000000202051", 13, "DE02120300000000202051"),
 		("\"de02 1203 0000 0000 2020 51\"", 1, "DE02120300000000202051"),
-		("DE0212030000000", 1, "DE0212030000000"),
+		("\"DE02120300000000202051\"", 1, "DE02120300000000202051"),
 	])
 	func accountRuleNotes(rule: String, position: Int, number: String) throws {
 		let p = try plan(rules: ["Rent": rule])
@@ -801,7 +801,7 @@ struct MoneyMoneyMigrationTests {
 		let ledger = Ledger(accounts: p.accounts, categories: p.categories, transactions: p.transactions)
 		let repeated = try migration.plan(accounts: try plist(exportedAccounts), categories: try plist(exportedCategories),
 			transactions: try plist(["transactions": exportedRows]), into: ledger)
-		#expect(!repeated.notes.contains { $0.hasPrefix("The rule of \"Rent\"") })
+		#expect(repeated.notes.contains("The rule of \"Rent\" has an account term at position 12 that does not search account fields. Use remote_account:202051 to search the account of the counterparty."))
 	}
 
 	@Test("Customer numbers, short IBAN shapes, and qualified or quoted words give no rule note", arguments: [
@@ -810,6 +810,7 @@ struct MoneyMoneyMigrationTests {
 		"\"Lohn\" OR \"Gehalt\"", "\"Krieg\" \"and\" \"Frieden\"", "\"true\" \"fruits\"", "\"false\"",
 		"name:true OR purpose:false OR comment:and", "name:or purpose:not", "/true or DE02120300000000202051/",
 		"\"Lohn\" +\"Gehalt\" -\"Erstattung\"", "!\"Gehalt\"", "„true“ „or“",
+		"DE98ZZZ09999999999", "RF18539007547034", "\"Ab 01 Januar Miete\"", "\"EG 12 Hausverwaltung\"",
 	])
 	func unchangedRuleWithoutNote(rule: String) throws {
 		let p = try plan(rules: ["Plain": rule])
@@ -828,7 +829,29 @@ struct MoneyMoneyMigrationTests {
 		let p = try plan(rules: ["Salary": rule])
 		#expect(p.categories.first { $0.name == "Salary" }?.rule == rule)
 		#expect(p.notes.contains("The rule of \"Salary\" reads \"\(word)\" at position \(position) as an operator. Write \"\(word)\" in quotation marks to search the word itself."))
-		#expect(try Rule(parsing: "\"Lohn\" or \"Gehalt\"").matches(RuleSubject(purpose: "Gehalt Oktober")))
+		#expect(try Rule(parsing: rule).matches(RuleSubject(purpose: "Lohn Gehalt Oktober")) == (word != "not"))
+	}
+
+	@Test("An unchanged repeat offers each migrated rule note in the report and saved text", arguments: [
+		("true OR \"Smoothie\"", "The rule of \"Review\" reads \"true\" at position 1 as a constant that matches every transaction. Write \"true\" in quotation marks to search the word itself."),
+		("\"Lohn\" or \"Gehalt\"", "The rule of \"Review\" reads \"or\" at position 8 as an operator. Write \"or\" in quotation marks to search the word itself."),
+		("DE02120300000000202051", "The rule of \"Review\" has an account term at position 1 that does not search account fields. Use remote_account:DE02120300000000202051 to search the account of the counterparty."),
+	])
+	func unchangedRuleReport(rule: String, notice: String) throws {
+		let exported: [[String: Any]] = [["uuid": "R0", "name": "Review", "rules": rule]]
+		let migration = MoneyMoneyMigration(calendar: calendar)
+		let first = try migration.plan(accounts: try plist(accounts), categories: try plist(exported), transactions: try plist(transactions), into: Ledger())
+		let ledger = Ledger(groups: first.groups, accounts: first.accounts, categories: first.categories, transactions: first.transactions)
+		let repeated = try migration.plan(accounts: try plist(accounts), categories: try plist(exported), transactions: try plist(transactions), into: ledger)
+		#expect(repeated.isEmpty)
+		#expect(ledger.categories.first?.rule == rule)
+		#expect(repeated.notes.filter { $0.hasPrefix("The rule of \"Review\"") } == [notice])
+		guard case let .report(report) = repeated.review(in: ledger) else {
+			Issue.record("An unchanged migration with rule notes must offer the report")
+			return
+		}
+		#expect(report.notes.contains(notice))
+		#expect(report.text().contains(notice))
 	}
 
 	@Test("True and false constants are named in their original case without changing the rule", arguments: [

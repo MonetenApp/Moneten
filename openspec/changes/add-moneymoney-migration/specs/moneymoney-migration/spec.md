@@ -178,7 +178,7 @@ The app SHALL store a migrated rule that it cannot parse with its text unchanged
 
 ### Requirement: Migrated rules that search account numbers
 
-The app SHALL list in the report every migrated rule with a term without a field operator that is an IBAN or an account number, and keep the rule unchanged. A term of digits counts as an account number only when a migrated account or counterparty has that account number. An IBAN has 15 to 34 characters. The report entry names the category and position and says that `remote_account:` before the number searches the account of the counterparty.
+The app SHALL list in the report every migrated rule with a term without a field operator that is an IBAN or an account number, and keep the rule unchanged. A digit term counts only when a migrated account or counterparty has that account number. An IBAN has 15 to 34 characters and a valid mod-97 checksum. Creditor IDs, RF references, and quoted phrases are no IBANs. The entry names the category and position and suggests `remote_account:` for the counterparty.
 
 #### Scenario: Rule with an IBAN only
 
@@ -211,6 +211,12 @@ The app SHALL list in the report every migrated rule with a term without a field
 - **GIVEN** the category "Payroll" has the rule `"Lohn" AND KW45` in the source
 - **WHEN** the migration finishes
 - **THEN** the report does not list the rule of "Payroll", because `KW45` is too short for an IBAN
+
+#### Scenario: Other identifiers and quoted phrases
+
+- **GIVEN** categories with the rules `DE98ZZZ09999999999`, `RF18539007547034`, `"Ab 01 Januar Miete"`, and `"EG 12 Hausverwaltung"`
+- **WHEN** the migration finishes
+- **THEN** none of these rules gets an account-term note
 
 ### Requirement: Migrated rules with operators in lower case
 
@@ -312,7 +318,7 @@ The app SHALL show progress during reading and importing with the current accoun
 
 ### Requirement: Repeated runs add only what is new
 
-The app SHALL recognize accounts, categories, and transactions from an earlier run. A later run adds only new objects and creates no duplicate. Changes that the user made in the app since the earlier run stay.
+The app SHALL recognize accounts, categories, and transactions from an earlier run. A later run adds only new objects and creates no duplicate. Changes that the user made in the app since the earlier run stay. The report keeps notes for earlier migrated rules whose text is unchanged in both apps.
 
 #### Scenario: Second run a week later
 
@@ -344,6 +350,15 @@ The app SHALL recognize accounts, categories, and transactions from an earlier r
 - **GIVEN** a migrated pending transaction of 10.00 EUR to "Kiosk" was booked in the app by a file import, and the source still shows it as pending
 - **WHEN** the migration runs again
 - **THEN** the transaction stays booked
+
+#### Scenario: Unchanged migrated rules keep their notes
+
+- **GIVEN** an earlier run migrated "Drinks" with `true OR "Smoothie"`, "Salary" with `"Lohn" or "Gehalt"`, and "Rent" with `DE02120300000000202051`
+- **AND** the source export and the stored rules are unchanged
+- **WHEN** the user runs the migration again with nothing new to import
+- **THEN** the sheet shows the report with the constant, operator, and account-term notes for these rules
+- **AND** "Save Report..." includes all three notes in the saved text
+- **AND** the app keeps the stored rules and imports nothing
 
 ### Requirement: Migration into a database with accounts
 
@@ -464,12 +479,14 @@ The app SHALL show a report after the import. The report lists for each account 
 
 ### Requirement: The report contains no secrets
 
-The app SHALL write account names, counts, and balances to the report and no login data. The report says that it contains financial data before the user saves it.
+The app SHALL write account names, counts, balances, and rule notes to the report and no login data. Before saving, the report warns that it contains account names, balances, and counterparty IBANs from rules.
 
 #### Scenario: Save the report
 
 - **WHEN** the user chooses "Save Report..."
-- **THEN** the app says that the file contains account names and balances and saves it after the user confirms
+- **THEN** the app says "The report contains account names, balances, and counterparty IBANs from rules."
+- **AND** the message says "Anyone who can open the file can read them."
+- **AND** the app saves it only after the user confirms
 
 ### Requirement: Category colors
 
