@@ -423,7 +423,7 @@ struct SyncCoordinatorTests {
 		var requests: [[String]] { log.withLock { $0 } }
 
 		func refresh(_ request: RefreshRequest, _ session: SyncSession) async throws -> ConnectorReport {
-			log.withLock { $0.append(request.accounts.map { "\($0.name) \(request.enforced ? "full" : $0.since?.description ?? "full")" }.sorted()) }
+			log.withLock { $0.append(request.accounts.map { "\($0.name) \($0.since?.description ?? "full")" }.sorted()) }
 			try await Task.sleep(for: delay)
 			return ConnectorReport(outcomes: Dictionary(request.accounts.map { ($0.accountID, .fetched(RefreshResult(balance: nil, transactions: nil))) }) { first, _ in first })
 		}

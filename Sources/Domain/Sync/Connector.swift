@@ -83,14 +83,15 @@ public struct RefreshRequest: Sendable {
 	/// What the connector returned last time.
 	public let state: AccessState?
 	public let accounts: [AccountRequest]
-	/// "Enforced refresh": ask the bank for the full history.
-	public let enforced: Bool
 
+	/// `enforced` is the "enforced refresh": it asks for the full history of each account, as an account
+	/// without a first day does. Each account keeps what it asks for when requests join.
 	public init(access: Access, state: AccessState? = nil, accounts: [AccountRequest], enforced: Bool = false) {
 		self.access = access
 		self.state = state
-		self.accounts = accounts
-		self.enforced = enforced
+		self.accounts = enforced
+			? accounts.map { AccountRequest(accountID: $0.accountID, name: $0.name, remoteID: $0.remoteID, currency: $0.currency) }
+			: accounts
 	}
 }
 
