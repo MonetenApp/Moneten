@@ -134,7 +134,7 @@ Migration `v1` creates the tables. It also creates the table `setting`, which no
 
 ## Complete export
 
-`AllData` holds every stored object except saved PINs, the `AccessState` of each access, and the data of extensions. `Store.exportAllData` reads it and `Store.importAllData` writes it into an empty database. Its JSON form is the file of "Export All Data...", which [the export format](export-format.md) describes key by key.
+`AllData` holds every stored object except saved CSV profiles, saved PINs, the `AccessState` of each access, and the data of extensions. `Store.exportAllData` reads it and `Store.importAllData` writes it into an empty database. Its JSON form is the file of "Export All Data...", which [the export format](export-format.md) describes key by key.
 
 ## Types that the specs add later
 
