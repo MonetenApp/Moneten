@@ -121,9 +121,15 @@ The app SHALL accept every expression of the categorization rule language in the
 
 #### Scenario: Rejected text with an excluded word
 
-- **GIVEN** a transaction to "Stadtwerke Musterstadt" without the word "Gehalt"
-- **WHEN** the user types `"Stadtw NOT Gehalt`, `"Stadtw -Gehalt`, or `name!=Gehalt "Stadtw`
-- **THEN** the list shows the transaction, because the app leaves out the words that the text excludes
+- **GIVEN** a transaction to "Stadtwerke Musterstadt" without the words "Gehalt" and "Lohn"
+- **WHEN** the user types `"Stadtw NOT Gehalt`, `"Stadtw -Gehalt`, `name!=Gehalt "Stadtw`, `Stadtwerke -(Gehalt Lohn`, or `Stadtwerke -"Gehalt Lohn`
+- **THEN** the list shows the transaction, because the app leaves out the words that the text excludes, up to the end of an excluded group or phrase
+
+#### Scenario: Unfinished regular expression
+
+- **GIVEN** a transaction to "Stadtwerke Musterstadt"
+- **WHEN** the user types `Stadtwerke /\d`
+- **THEN** the list shows the transaction, because the app leaves out a word with a backslash
 
 #### Scenario: Either word
 
