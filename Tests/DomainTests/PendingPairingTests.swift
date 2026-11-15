@@ -183,6 +183,20 @@ extension ReconcileTests {
 		#expect(!kept.isChecked)
 	}
 
+	@Test("A file reference survives successive bank date changes through booking")
+	func gate3ReferenceAfterDateMoves() throws {
+		var file = rent(1)
+		file.endToEndReference = "RENT-A"
+		let taken = history([file], after: merge(refresh([rent(8, purpose: "BANK")]), stored: [file], at: noon(20, month: 11)))
+		let booked = history(taken, after: merge(refresh([rent(15, purpose: "BOOKED BANK", pending: false)]), stored: taken, at: noon(15, month: 12)))
+		let live = try #require(booked.first)
+		#expect(live.bookingDate == day(15, month: 12) && !live.isPending)
+		let repeated = merge(.file([file]), stored: booked, at: noon(16, month: 12))
+		#expect(repeated.added == [] && repeated.skipped == 1)
+		let deleted = merge(.file([file]), deleted: [DeletedTransaction(live, deletedAt: now)], at: noon(16, month: 12))
+		#expect(deleted.added == [] && deleted.skipped == 1)
+	}
+
 	@Test("Gate 3 items 1 4 5: every delivered and stored permutation has literal rows")
 	func gate3AllPermutations() {
 		for (fileDays, bankDays, expected) in [
