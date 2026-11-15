@@ -30,15 +30,23 @@ public struct FileCategories: Sendable {
 		}
 		var seen = Set<String>()
 		for name in names where seen.insert(name).inserted {
-			if name.contains(" - ") {
+			var text = name
+			var prefix: [String] = []
+			if name.contains(" - "), !name.contains("›"), !name.contains("\\") {
 				let lower = name.trimmingCharacters(in: .whitespaces).lowercased()
 				let matches = [find([lower])].compactMap { $0 } + all.filter { path($0).joined(separator: " - ") == lower }
 				if let found = matches.first(where: { !$0.isGroup && !$0.isDefault }) ?? matches.first {
 					if !found.isGroup, !found.isDefault { ids[name] = found.id }
 					continue
 				}
+				let groups = all.filter { $0.isGroup && lower.hasPrefix(path($0).joined(separator: " - ") + " - ") }
+				if let group = groups.max(by: { path($0).joined(separator: " - ").count < path($1).joined(separator: " - ").count }) {
+					prefix = path(group)
+					text = String(name.trimmingCharacters(in: .whitespaces).dropFirst(prefix.joined(separator: " - ").count + 3))
+				}
+				text = text.replacingOccurrences(of: " - ", with: "›")
 			}
-			let parts = name.replacingOccurrences(of: " - ", with: "›").split(whereSeparator: { $0 == "›" || $0 == "\\" }).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+			let parts = prefix + text.split(whereSeparator: { $0 == "›" || $0 == "\\" }).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
 			guard !parts.isEmpty else { continue }
 			let lower = parts.map { $0.lowercased() }
 			if let found = find(lower) {
