@@ -121,6 +121,7 @@ final class AppModel {
 	private(set) var store: Store?
 	private(set) var ledger = Ledger() {
 		didSet {
+			ledgerRevision += 1
 			// While locked the ledger is empty, which says nothing about the notifications of the database.
 			if store != nil { notices.update(newCounts: ledger.newTransactionCounts) }
 			// The count of the last line, not `oldValue`: reading `oldValue` would copy the ledger on every change.
@@ -136,6 +137,7 @@ final class AppModel {
 	}
 	/// The kind of the next change of `ledger`, for the trail.
 	@ObservationIgnored var ledgerChange = "edit"
+	@ObservationIgnored private var ledgerRevision = 0
 	var exportTask: Task<Void, Never>?
 	var isTransferringTransactions: Bool { fileImport != nil || exportTask != nil }
 	@ObservationIgnored private var trailRows = 0
@@ -1284,10 +1286,16 @@ final class AppModel {
 		return result
 	}
 
-	func applyFileImport(_ result: Reconciliation, categories: [Domain.Category]) {
-		for category in categories { ledger.upsert(category) }
-		ledgerChange = result.trailName("file")
-		ledger.apply(result)
+	func reloadFileImport(from store: Store) async throws {
+		while self.store === store {
+			let revision = ledgerRevision
+			let updated = try await Task.detached(priority: .userInitiated) { try store.loadLedger() }.value
+			guard self.store === store else { return }
+			guard ledgerRevision == revision else { continue }
+			ledgerChange = "file"
+			ledger = updated
+			return
+		}
 	}
 
 	/// A refresh changes the rows of the open table in place, also a first refresh that brings the whole
@@ -1323,7 +1331,7 @@ final class AppModel {
 	/// next one. Bumping the table id a drawing after the change instead let the old table insert every new
 	/// row first, and the app hung (863ac4b).
 	@discardableResult
-	func replacingTable<T>(_ change: () throws -> T) async rethrows -> T {
+	func replacingTable<T>(_ change: @MainActor () async throws -> T) async rethrows -> T {
 		// A change of the rows that SwiftUI has not drawn yet, such as the refresh of another account of the
 		// same run, must not meet the removal of the table.
 		while tableHolds == 0 && rowsUndrawn { await drawn() }
@@ -1337,7 +1345,7 @@ final class AppModel {
 			tableGeneration += 1
 			Trail.log("table new generation=\(tableGeneration)")
 		}
-		return try change()
+		return try await change()
 	}
 
 	/// The view or the filters changed. The table follows at once, or after SwiftUI drew a change of the

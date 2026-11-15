@@ -86,6 +86,7 @@ public struct FileCategories: Sendable {
 				continue
 			}
 			guard creating else { continue }
+			guard created.count < Self.creationLimit else { limitReached = true; continue }
 			var missing = 0
 			var blocked = false
 			for level in 1...parts.count {

@@ -146,6 +146,7 @@ extension AppModel {
 		// One import runs at a time. A canceled one ends at its next row, line, or entry.
 		guard !isTransferringTransactions, importResult == nil else { return NSSound.beep() }
 		guard sheet == nil else { return NSSound.beep() }
+		guard let importStore = store else { return }
 		let run = FileImport(names: urls.map(\.lastPathComponent))
 		fileImport = run
 		defer { fileImport = nil }
@@ -242,12 +243,11 @@ extension AppModel {
 		var booked = 0
 		var created = 0
 		var warnings: [String] = []
-		// A file can bring thousands of rows, so all files go in with one new table. Storing 300,000 rows
-		// holds the main actor for seconds, so the sheet says so. It is drawn while the placeholder is.
-		if !read.isEmpty, store != nil {
+		if !read.isEmpty, let store, store === importStore {
 			run.storing = read.reduce(0) { $0 + $1.parsed.transactions.count }
 			await replacingTable {
 				for file in read {
+					guard self.store === store else { return }
 					let name = file.name, parsed = file.parsed, into = file.into, isNew = file.isNew
 					if isNew { save(account: into) }
 					// A new account that could not be saved, or one that the user deleted during the import.
@@ -256,11 +256,10 @@ extension AppModel {
 						continue
 					}
 					do {
-						guard let store else { continue }
-						let imported = try store.mergeFile(parsed.transactions, categories: parsed.categories,
+						let imported = try await store.mergeFile(parsed.transactions, categories: parsed.categories,
 							creatingCategories: file.createsCategories, into: into.id)
+						guard self.store === store else { return }
 						let result = imported.reconciliation
-						applyFileImport(result, categories: imported.created)
 						added += result.added.count
 						skipped += result.skipped
 						booked += result.booked.count
@@ -271,11 +270,13 @@ extension AppModel {
 						problems.append("\(name): \(error)")
 					}
 				}
+				do { try await reloadFileImport(from: store) }
+				catch { problems.append("The imported transactions could not be loaded: \(error)") }
 			}
 		}
 		if sheet == .fileImport(run) { sheet = nil }
 		// A lock while the files were read or stored closed the database, and the import ends without a message.
-		guard store != nil else { return }
+		guard store === importStore else { return }
 		if let canceledAt {
 			let left = urls.count - canceledAt - 1
 			let rest = left == 0 ? " was" : left == 1 ? " and one more file were" : " and \(left) more files were"
@@ -296,7 +297,7 @@ extension AppModel {
 			if warnings.count > shown { message += "\nand \(warnings.count - shown) more." }
 		}
 		await run.waitForDismissal()
-		guard store != nil else { return }
+		guard store === importStore else { return }
 		guard let window = NSApp.windows.first(where: { $0.identifier?.rawValue == "main" }) else {
 			alert = AlertMessage(title: "Transaction Import", message: message)
 			return

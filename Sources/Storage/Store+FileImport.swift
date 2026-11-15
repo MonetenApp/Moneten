@@ -4,8 +4,8 @@ import GRDB
 
 extension Store {
 	public func mergeFile(_ rows: [Transaction], categories names: [UUID: String], creatingCategories: Bool,
-		into accountID: UUID, now: Date = Date()) throws -> (reconciliation: Reconciliation, created: [Domain.Category], problems: [String]) {
-		try queue.write { db in
+		into accountID: UUID, now: Date = Date()) async throws -> (reconciliation: Reconciliation, created: [Domain.Category], problems: [String]) {
+		try await queue.write { db in
 			guard try Account.fetchOne(db, key: accountID) != nil else { return (Reconciliation(), [], []) }
 			let categories = FileCategories(rows.compactMap { names[$0.id] }, in: try Domain.Category.fetchAll(db), creating: creatingCategories)
 			for category in categories.created { try category.insert(db) }
