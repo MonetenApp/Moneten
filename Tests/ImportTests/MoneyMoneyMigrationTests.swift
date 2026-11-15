@@ -954,6 +954,34 @@ struct MoneyMoneyMigrationTests {
 		#expect(kept.comment == "Wocheneinkauf" && kept.isChecked && kept.categorizedBy == .manual && kept.categoryID == rewe.categoryID)
 	}
 
+	@Test("The first full-history refresh keeps the old salary, books Kiosk, and honors a tombstone")
+	func connectedAccountFullHistoryRefresh() throws {
+		var rows = transactions["transactions"] as! [[String: Any]]
+		rows.append(["id": 5, "accountUuid": "A1", "bookingDate": date(2026, 10, 30), "amount": 3200.0, "currency": "EUR", "name": "Beispiel GmbH", "purpose": "Gehalt Oktober", "booked": true])
+		let p = try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(accounts), categories: try plist(categories), transactions: try plist(["transactions": rows]), into: Ledger())
+		let ledger = Ledger(groups: p.groups, accounts: p.accounts, categories: p.categories, transactions: p.transactions)
+		let migrated = try #require(p.accounts.first { $0.name == "Giro" })
+		let listed = Account(position: 0, name: "Girokonto", kind: .giro, source: .bank, iban: "DE02120300000000202051", accountNumber: "202051",
+			bankCode: "12030000", accessID: UUID(), remoteID: "DE02120300000000202051")
+		let connected = try #require(ledger.accountsToAdd([listed], listed: [listed]).first)
+		#expect(connected.id == migrated.id)
+		let history = ledger.transactions(ofAccount: migrated.id)
+		let stadtwerke = try #require(history.first { $0.name == "Stadtwerke Musterstadt" })
+		let delivered = [
+			Transaction(accountID: migrated.id, bookingDate: Day(year: 2026, month: 10, day: 30), amountMinor: 320_000, name: "Beispiel GmbH", purpose: "Gehalt Oktober"),
+			Transaction(accountID: migrated.id, bookingDate: Day(year: 2026, month: 11, day: 3), amountMinor: -8_900, name: "Stadtwerke Musterstadt", purpose: "Abschlag",
+				counterpartyIBAN: "DE02120300000000202051", endToEndReference: "E2E-1"),
+			Transaction(accountID: migrated.id, bookingDate: Day(year: 2026, month: 11, day: 6), amountMinor: -1_000, name: "Kiosk"),
+			Transaction(accountID: migrated.id, bookingDate: Day(year: 2026, month: 11, day: 12), amountMinor: -2_500, name: "Tankstelle", purpose: "KARTENZAHLUNG"),
+		]
+		let r = reconcile(.refresh(RefreshResult(balance: nil, transactions: FetchedTransactions(rows: delivered, from: nil))), into: connected,
+			stored: history.filter { $0.id != stadtwerke.id }, deleted: [DeletedTransaction(stadtwerke, deletedAt: Date())], rules: Categorizer(ledger: ledger), now: Date())
+		#expect(r.added.map(\.name) == ["Tankstelle"])
+		#expect(r.booked.map(\.name) == ["Kiosk"])
+		#expect(r.skipped == 2)
+		#expect(r.dropped.count == 0)
+	}
+
 	func bankAccount(_ name: String, iban: String? = nil, number: String, remoteID: String) -> Account {
 		Account(position: 0, name: name, kind: .giro, source: .bank, iban: iban, accountNumber: number, bankCode: "12030000", accessID: UUID(), remoteID: remoteID)
 	}
