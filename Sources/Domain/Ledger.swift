@@ -241,6 +241,13 @@ public struct Ledger: Sendable {
 		return changed
 	}
 
+	/// The groups that accept a move to their end, in sidebar order.
+	public func destinationGroups(forCategory id: UUID) -> [Category] {
+		categoriesInSidebarOrder.filter { group in
+			group.isGroup && !move(category: id, into: group.id, at: childCategories(of: group.id).count).isEmpty
+		}
+	}
+
 	/// Whether a view or a filter on one of the categories `roots` shows other rows after the category `id` moves into `parent`.
 	public func changesShownRows(moving id: UUID, into parent: UUID?, roots: [UUID]) -> Bool {
 		guard let old = category(id) else { return false }

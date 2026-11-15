@@ -42,4 +42,4 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 
 ## 4. Move without dragging
 
-- [ ] 4.1 Test the offered destination groups with literal names, then add "Move to Group" to the category context menu. Verify the real menu and a move through the debug harness.
+- [x] 4.1 Move categories from the context menu. CategoryMoveTests checks literal destination names, excludes the category and its descendants, omits an unchanged destination, and offers no groups for "Uncategorized". In the debug harness, "contextmenus" builds the real sidebar menu and invokes its submenu action by row and item indexes. "Fuel" moved into "Living", stayed there after a restart, and moved out with "No group". Light and dark snapshots show the move. The harness cannot open the menu for a snapshot or drive VoiceOver, so those interactions remain unobserved.

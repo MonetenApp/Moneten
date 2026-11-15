@@ -243,7 +243,8 @@ struct CategoryTree: View {
 		// A drop between two rows. A drop on a group goes to `CategoryDrop`.
 		.dropDestination(for: DraggedCategory.self) { items, index in
 			model.endDrag()
-			if let item = items.first { model.move(category: item.id, into: parent, at: index) }
+			guard let item = items.first, !model.ledger.move(category: item.id, into: parent, at: index).isEmpty else { return }
+			model.move(category: item.id, into: parent, at: index)
 		}
 	}
 }
@@ -277,6 +278,13 @@ struct CategoryRow: View {
 			Button("Add Category Group") { model.sheet = .newCategory(isGroup: true) }
 			if !category.isDefault {
 				Divider()
+				Menu("Move to Group") {
+					Button("No group") { model.move(category: category.id, into: nil, at: model.ledger.childCategories(of: nil).count) }
+						.disabled(model.ledger.move(category: category.id, into: nil, at: model.ledger.childCategories(of: nil).count).isEmpty)
+					ForEach(model.ledger.destinationGroups(forCategory: category.id)) { g in
+						Button(g.name) { model.move(category: category.id, into: g.id, at: model.ledger.childCategories(of: g.id).count) }
+					}
+				}
 				Button("Remove...") { model.sheet = .categorySettings(category.id) }
 			}
 			Divider()

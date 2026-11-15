@@ -330,7 +330,7 @@ final class DebugHarness {
 			}
 		case "scrolltable": scrollTables { argument == "end" ? $0 - 1 : min(Int(argument) ?? 0, $0 - 1) }
 		case "select": select(argument)
-		case "contextmenus": logContextMenus()
+		case "contextmenus": logContextMenus(argument)
 		#if DEBUG || PERF_HARNESS
 		case "perf": Task { await runPerf() }
 		#endif
@@ -729,7 +729,8 @@ final class DebugHarness {
 
 	/// Logs the context menu of each sidebar row as a right click with the Option key builds it. "alt:" marks
 	/// an item that the Option key shows in place of the item before it.
-	private func logContextMenus() {
+	private func logContextMenus(_ argument: String) {
+		let choice = argument.split(separator: "|").compactMap { Int($0) }
 		func outlines(in view: NSView) -> [NSOutlineView] { ((view as? NSOutlineView).map { [$0] } ?? []) + view.subviews.flatMap(outlines) }
 		guard let window = NSApp.windows.first(where: { $0.isVisible && $0.identifier?.rawValue.hasPrefix("main") == true }),
 			let content = window.contentView else { return log("contextmenu no window") }
@@ -749,6 +750,16 @@ final class DebugHarness {
 				view = v.superview
 			}
 			log("contextmenu row \(index) \(menu?.items.map { ($0.isAlternate ? "alt:" : "") + $0.title } ?? [])")
+			if choice.count == 2, choice[0] == index,
+				let submenu = menu?.items.first(where: { $0.title == "Move to Group" })?.submenu {
+				submenu.update()
+				guard submenu.items.indices.contains(choice[1]), submenu.items[choice[1]].isEnabled else {
+					return log("contextmenu move refused")
+				}
+				submenu.performActionForItem(at: choice[1])
+				log("contextmenu move row=\(index) item=\(choice[1]) count=\(submenu.items.count)")
+				return
+			}
 		}
 	}
 

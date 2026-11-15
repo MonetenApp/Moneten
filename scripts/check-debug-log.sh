@@ -134,6 +134,9 @@ send newcategory Haushaltskasse
 poll "selection=.*SidebarSelection.category" state
 send selectRows 1
 poll "^mainkey escape .*category=[^d]" mainkey escape
+poll "^droprows category=" droprows Haushaltskasse
+poll "^movecategory position=" movecategory "Haushaltskasse||0"
+poll "^dropcategory hover=false" dropcategory "Haushaltskasse|Haushaltskasse"
 
 send extfile "$WORK/Check.lua"
 poll "^ext allowed Check" extconfirm
