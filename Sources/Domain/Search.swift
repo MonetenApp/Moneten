@@ -144,33 +144,43 @@ struct SearchQuery {
 
 	/// The words of a text that the rule language rejects, without its operators, quotation marks, parentheses,
 	/// field names, the slashes of a regular expression, and amount terms, so the list keeps its rows while the user
-	/// types. A word that the text excludes, as after NOT, `!`, `-`, or `name!=`, is left out, because it can only
-	/// remove rows.
+	/// types. The words that the text excludes, as after NOT, `!`, `-`, or `name!=` up to the end of the group or
+	/// phrase that follows, are left out, because they can only remove rows. So is a word with a backslash, which an
+	/// unfinished regular expression holds.
 	private static func plainWords(of text: String) -> RuleExpression? {
 		func startsSignedNumber(_ word: Substring) -> Bool { "+-".contains(word.first ?? " ") && word.dropFirst().first?.isWholeNumber == true }
+		let quotes: Set<Character> = ["\"", "„", "“", "”"]
 		var words: [String] = []
-		var excluded = false
+		var negated = false
+		var openGroups = 0
+		var openQuote = false
 		for raw in text.split(whereSeparator: \.isWhitespace) {
+			let insideExclusion = openGroups > 0 || openQuote
 			var word = raw[...]
-			while let c = word.first, "()\"„“”+!-".contains(c), !startsSignedNumber(word) {
-				if c == "!" || c == "-" { excluded = true }
+			while let c = word.first, "()+!-".contains(c) || quotes.contains(c), !startsSignedNumber(word) {
+				if c == "!" || c == "-" { negated = true }
 				word.removeFirst()
 			}
 			let lower = word.lowercased()
 			if ["and", "or", "true", "false"].contains(lower) { continue }
-			if lower == "not" { excluded = true; continue }
-			if lower.hasPrefix("amount"), let next = lower.dropFirst("amount".count).first, "<>=!:".contains(next) { excluded = false; continue }
+			if lower == "not" { negated = true; continue }
 			for field in RuleField.allCases where lower.hasPrefix(field.rawValue) {
 				let rest = lower.dropFirst(field.rawValue.count)
 				guard let op = RuleField.operators.first(where: { rest.hasPrefix($0.text) }) else { continue }
 				word.removeFirst(field.rawValue.count + op.text.count)
-				if op.negates { excluded = true }
+				if op.negates { negated = true }
 				break
 			}
-			let plain = word.filter { !"\"„“”()".contains($0) }.trimmingCharacters(in: CharacterSet(charactersIn: "/^$"))
-			if plain.isEmpty { continue }
-			if !excluded { words.append(plain) }
-			excluded = false
+			let isAmount = lower.hasPrefix("amount") && lower.dropFirst("amount".count).first.map { "<>=!:".contains($0) } == true
+			let plain = word.filter { !"()".contains($0) && !quotes.contains($0) }.trimmingCharacters(in: CharacterSet(charactersIn: "/^$"))
+			let excluded = negated || insideExclusion
+			if excluded {
+				openGroups = max(0, openGroups + raw.count { $0 == "(" } - raw.count { $0 == ")" })
+				if raw.count(where: quotes.contains) % 2 == 1 { openQuote.toggle() }
+				// A sign alone, as in `- (Lohn`, excludes the next word.
+				if isAmount || !plain.isEmpty || openGroups > 0 || openQuote { negated = false }
+			}
+			if !excluded, !isAmount, !plain.isEmpty, !plain.contains("\\") { words.append(plain) }
 		}
 		let terms = TextFolding.words(words.joined(separator: " ")).map { RuleExpression.phrase([WildcardPatternBox(pattern: WildcardPattern(String($0)))], field: nil) }
 		return terms.first.map { terms.dropFirst().reduce($0) { .and($0, $1) } }
@@ -179,7 +189,8 @@ struct SearchQuery {
 	/// Plain text that every match of the pattern holds, in lower case, as the search text has it. A run with other
 	/// characters than ASCII or with two spaces in a row does not count, because folding can change those.
 	static func requiredText(of pattern: String) -> String? {
-		guard !pattern.contains("|"), !pattern.contains("(") else { return nil }
+		// After `\E` a quantifier applies to the last quoted character.
+		guard !pattern.contains("|"), !pattern.contains("("), !pattern.contains("\\Q") else { return nil }
 		var runs = [""]
 		var rest = pattern[...]
 		while let c = rest.popFirst() {
@@ -293,7 +304,8 @@ enum SearchText {
 	}
 
 	/// The number of U+0001 in the text, and whether it has white space other than single spaces. The lead bytes
-	/// 0xC2, 0xE1, 0xE2, and 0xE3 start every other white space, such as U+00A0, U+1680, U+202F, and U+3000.
+	/// 0xC2, 0xE1, 0xE2, and 0xE3 start every other white space, such as U+00A0, U+1680, U+202F, and U+3000. A space
+	/// with a combining mark after it, which starts with 0xCC or 0xCD, is one white space character too.
 	private static func scan(_ text: String) -> (separators: Int, hasRuns: Bool) {
 		var text = text
 		return text.withUTF8 { bytes in
@@ -301,7 +313,7 @@ enum SearchText {
 			var separators = 0
 			var hasRuns = false
 			for byte in bytes {
-				if byte == 1 { separators += 1 } else if byte < 0x20 || byte == 0x20 && previous == 0x20 || byte == 0xC2 || byte == 0xE1 || byte == 0xE2 || byte == 0xE3 { hasRuns = true }
+				if byte == 1 { separators += 1 } else if byte < 0x20 || previous == 0x20 && (byte == 0x20 || byte == 0xCC || byte == 0xCD) || byte == 0xC2 || byte == 0xE1 || byte == 0xE2 || byte == 0xE3 { hasRuns = true }
 				previous = byte
 			}
 			return (separators, hasRuns)
