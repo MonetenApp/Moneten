@@ -5,6 +5,14 @@ import Testing
 
 @Suite("CSV preview")
 struct CSVPreviewTests {
+	@Test("Numbered text labels do not exclude a keyword header", arguments: ["Name", "2. Name"])
+	func numberedKeywordHeader(name: String) throws {
+		let data = Data("01.11.2026;Anfangssaldo;100,00\nDatum;\(name);Betrag;1. Verwendungszweck\n02.11.2026;Kiosk;-2,00;Brot\n".utf8)
+		let parsed = try TransactionFileImporter.parse(data, currency: "EUR")
+		#expect(parsed.transactions.map(\.amountMinor) == [-200])
+		#expect(parsed.warnings == [.skippedCSVRow(line: 1)])
+	}
+
 	@Test("Whitespace before a date cannot turn a transaction into a keyword header", arguments: [" ", "\t"])
 	func paddedTransactionWithHeaderWords(padding: String) throws {
 		let data = Data("Tag;Wer;Zweck;Wieviel\n\(padding)01.11.2026;Datum;Betrag; -1.00\n02.11.2026;Kiosk;Brot;-2.00\n".utf8)
