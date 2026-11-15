@@ -5,6 +5,26 @@ import Testing
 
 @Suite("CSV preview")
 struct CSVPreviewTests {
+	@Test("A header after a long blank preamble keeps the detected columns")
+	func headerAfterBlankPreamble() throws {
+		let data = Data((String(repeating: "\n", count: 100) + "Datum;Betrag\n01.11.2026;-1,00\n").utf8)
+		let file = try CSVFile(data: data)
+		#expect(try file.detectedLayout().columns == [.bookingDate: 0, .amount: 1])
+		#expect(try TransactionFileImporter.parse(data, currency: "EUR").transactions.map(\.amountMinor) == [-100])
+	}
+
+	@Test("A shorter header keeps a zero row before the later amount column")
+	func shorterHeaderBeforeExtraAmountColumn() throws {
+		let file = try CSVFile(data: Data("Tag;Wer;Wieviel\n01.11.2026;Kiosk\nZwischensumme;;;\n02.11.2026;Bakery;;4.50\n".utf8))
+		var layout = try file.detectedLayout()
+		layout.assign(0, to: .bookingDate)
+		layout.assign(3, to: .amount)
+		let preview = try file.preview(layout, currency: "EUR")
+		#expect(file.header == ["Tag", "Wer", "Wieviel", ""])
+		#expect(preview.problem == nil)
+		#expect(preview.transactions.map(\.amountMinor) == [0, 450])
+	}
+
 	@Test("A dated row skipped before inferred titles is reported")
 	func inferredPreambleWarning() throws {
 		let file = try CSVFile(data: Data("15.11.2026;Umsatzanzeige\nTag;Wer;Wieviel\n03.11.2026;Kiosk;-4,20\n".utf8))
