@@ -97,8 +97,10 @@ final class DebugHarness {
 					(0..<(mode == "long" ? 500 : 3)).map { .init(binaryName: "Moneten", binaryUUID: "70B89F27-1634-3580-A695-57CDB41D7743", offset: UInt64(4096 + $0 * 16)) })
 			model.crashes.receive(.init(date: date, diagnostic: diagnostic))
 			log("crash inject frames=\(diagnostic.frames.count) pending=\(model.crashes.pending != nil) timeMatches=\(model.crashes.pending?.date == date)")
+		#if DEBUG || PERF_HARNESS
 		case "crashstatus":
 			log("crash status pending=\(model.crashes.pending != nil) fallback=\(model.crashes.pending?.fallbackDate != nil) received=\(model.crashes.receivedCount) failures=\(model.crashes.failureCount)")
+		#endif
 		case "crashdecision":
 			guard let pending = model.crashes.pending else { return log("crash decision pending=false") }
 			let decision: PendingCrashReport.Decision

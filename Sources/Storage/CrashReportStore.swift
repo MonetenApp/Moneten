@@ -70,11 +70,10 @@ public struct CrashReportStore {
 
 	public init(folder: DataFolder) { self.folder = folder }
 
-	public func load() throws -> PendingCrashReport? { try read()?.pending }
 
 	@discardableResult
 	public func startLaunch(at date: Date, appVersion: String, macOSVersion: String, files: [(name: String, date: Date)]) throws -> PendingCrashReport? {
-		var state = try read() ?? State()
+		var state = try load() ?? State()
 		state.start(.init(start: date, appVersion: appVersion, macOSVersion: macOSVersion), files: files)
 		try write(state)
 		return state.pending
@@ -82,7 +81,7 @@ public struct CrashReportStore {
 
 	@discardableResult
 	public func receive(_ diagnostic: CrashDiagnostic, at date: Date, since start: Date? = nil) throws -> PendingCrashReport? {
-		var state = try read() ?? State()
+		var state = try load() ?? State()
 		state.receive(diagnostic, at: date, since: start ?? date)
 		try write(state)
 		return state.pending
@@ -90,15 +89,14 @@ public struct CrashReportStore {
 
 	@discardableResult
 	public func decide(_ decision: PendingCrashReport.Decision) throws -> PendingCrashReport? {
-		guard var state = try read() else { return nil }
+		guard var state = try load() else { return nil }
 		state.decide(decision)
 		try write(state)
 		return state.pending
 	}
 
-	public func discard() throws { _ = try decide(.decline) }
 
-	private func read() throws -> State? {
+	func load() throws -> State? {
 		guard FileManager.default.fileExists(atPath: file.path) else { return nil }
 		let data = try Data(contentsOf: file)
 		do {
