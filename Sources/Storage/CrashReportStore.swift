@@ -5,10 +5,16 @@ import Foundation
 public struct PendingCrashReport: Codable, Equatable, Sendable {
 	public let date: Date
 	public let diagnostic: CrashDiagnostic
+	public let fallbackDate: Date?
 
-	public init(date: Date, diagnostic: CrashDiagnostic) {
+	public var report: String { crashReport(diagnostic, crashTime: fallbackDate) }
+	public var githubURL: URL { bugReportURL(version: diagnostic.appVersion, macOS: diagnostic.macOSVersion, report: report) }
+	public enum Decision { case github, copy, decline }
+
+	public init(date: Date, diagnostic: CrashDiagnostic, fallbackDate: Date? = nil) {
 		self.date = date
 		self.diagnostic = diagnostic
+		self.fallbackDate = fallbackDate
 	}
 }
 
@@ -29,9 +35,36 @@ public struct CrashReportStore {
 			let macOSVersion: String
 		}
 
-		mutating func start(_ launch: Launch, files: [(name: String, date: Date)]) {}
+		mutating func start(_ launch: Launch, files: [(name: String, date: Date)]) {
+			if let previous = self.launch,
+				let crash = files.filter({ file in
+					let matches = (file.name.hasPrefix("Moneten-") && file.name.hasSuffix(".ips")) ||
+						(file.name.hasPrefix("Moneten") && file.name.hasSuffix(".crash"))
+					return matches && file.date > previous.start && file.date < launch.start
+				}).max(by: { $0.date < $1.date }),
+				crash.date > (latest ?? .distantPast), crash.date != declinedFallback,
+				crash.date > (pending?.date ?? .distantPast) {
+				let diagnostic = CrashDiagnostic(appVersion: previous.appVersion, macOSVersion: previous.macOSVersion,
+					exceptionType: nil, signal: nil, frames: [])
+				pending = PendingCrashReport(date: crash.date, diagnostic: diagnostic, fallbackDate: crash.date)
+			}
+			self.launch = launch
+		}
 
-		mutating func receive(_ diagnostic: CrashDiagnostic, at date: Date, since start: Date) {}
+		mutating func receive(_ diagnostic: CrashDiagnostic, at date: Date, since start: Date) {
+			guard date > (latest ?? .distantPast) else { return }
+			latest = date
+			if let declinedFallback, start <= declinedFallback && declinedFallback <= date { return }
+			guard date >= (pending?.date ?? .distantPast) else { return }
+			pending = PendingCrashReport(date: date, diagnostic: diagnostic)
+		}
+
+		mutating func decide(_ decision: PendingCrashReport.Decision) {
+			guard let pending else { return }
+
+			if let date = pending.fallbackDate { declinedFallback = date }
+			self.pending = nil
+		}
 	}
 
 	public init(folder: DataFolder) { self.folder = folder }
@@ -39,17 +72,30 @@ public struct CrashReportStore {
 	public func load() throws -> PendingCrashReport? { try read()?.pending }
 
 	@discardableResult
-	public func receive(_ diagnostic: CrashDiagnostic, at date: Date) throws -> PendingCrashReport? {
-		if let state = try read(), date <= (state.latest ?? .distantPast) { return state.pending }
-		let pending = PendingCrashReport(date: date, diagnostic: diagnostic)
-		try write(State(latest: date, pending: pending))
-		return pending
+	public func startLaunch(at date: Date, appVersion: String, macOSVersion: String, files: [(name: String, date: Date)]) throws -> PendingCrashReport? {
+		var state = try read() ?? State()
+		state.start(.init(start: date, appVersion: appVersion, macOSVersion: macOSVersion), files: files)
+		try write(state)
+		return state.pending
 	}
 
-	public func discard() throws {
-		guard let state = try read() else { return }
-		try write(State(latest: state.latest, pending: nil))
+	@discardableResult
+	public func receive(_ diagnostic: CrashDiagnostic, at date: Date, since start: Date? = nil) throws -> PendingCrashReport? {
+		var state = try read() ?? State()
+		state.receive(diagnostic, at: date, since: start ?? date)
+		try write(state)
+		return state.pending
 	}
+
+	@discardableResult
+	public func decide(_ decision: PendingCrashReport.Decision) throws -> PendingCrashReport? {
+		guard var state = try read() else { return nil }
+		state.decide(decision)
+		try write(state)
+		return state.pending
+	}
+
+	public func discard() throws { _ = try decide(.decline) }
 
 	private func read() throws -> State? {
 		guard FileManager.default.fileExists(atPath: file.path) else { return nil }

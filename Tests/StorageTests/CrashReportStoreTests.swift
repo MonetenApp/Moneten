@@ -99,4 +99,44 @@ struct CrashReportStoreTests {
 		#expect(state.pending?.diagnostic.signal == 6)
 	}
 
+	@Test("Opening GitHub retains all 500 frames until Copy or Don't Report")
+	func githubRetainsLongReport() throws {
+		let folder = DataFolder(root: FileManager.default.temporaryDirectory.appendingPathComponent("MonetenCrashTests-\(UUID())"))
+		defer {
+			try? Keychain(service: "Moneten crash report key").delete(account: folder.keychainAccount)
+			try? FileManager.default.removeItem(at: folder.root)
+		}
+		let store = CrashReportStore(folder: folder)
+		let diagnostic = CrashDiagnostic(appVersion: "0.1.0", macOSVersion: "15.2", exceptionType: 6, signal: 6,
+			frames: (0..<500).map { .init(binaryName: "Moneten", binaryUUID: "70B89F27-1634-3580-A695-57CDB41D7743", offset: UInt64($0)) })
+		_ = try store.receive(diagnostic, at: Date(timeIntervalSince1970: 1_800_000_000))
+		_ = try store.decide(.github)
+		#expect(try store.load()?.diagnostic.frames.count == 500)
+		#expect(try store.load()?.report.hasSuffix("0x1f3") == true)
+		_ = try store.decide(.copy)
+		#expect(try store.load() == nil)
+		#expect(try store.receive(diagnostic, at: Date(timeIntervalSince1970: 1_800_000_000)) == nil)
+		_ = try store.receive(diagnostic, at: Date(timeIntervalSince1970: 1_800_000_100))
+		_ = try store.decide(.decline)
+		#expect(try store.load() == nil)
+	}
+
+	@Test("Saved launch survives an upgrade and a declined fallback suppresses late details")
+	func persistedLaunch() throws {
+		let folder = DataFolder(root: FileManager.default.temporaryDirectory.appendingPathComponent("MonetenCrashTests-\(UUID())"))
+		defer {
+			try? Keychain(service: "Moneten crash report key").delete(account: folder.keychainAccount)
+			try? FileManager.default.removeItem(at: folder.root)
+		}
+		let store = CrashReportStore(folder: folder)
+		#expect(try store.startLaunch(at: Date(timeIntervalSince1970: 1_000), appVersion: "0.1.0", macOSVersion: "15.2", files: []) == nil)
+		let upgraded = CrashReportStore(folder: folder)
+		let pending = try upgraded.startLaunch(at: Date(timeIntervalSince1970: 1_200), appVersion: "0.1.1", macOSVersion: "15.3",
+			files: [("Moneten-new.ips", Date(timeIntervalSince1970: 1_100))])
+		#expect(pending?.report == "Moneten crash report\nApp version: 0.1.0\nmacOS: 15.2\nCrash time: 1970-01-01T00:18:20Z\nNo details were available.")
+		#expect(try upgraded.decide(.decline) == nil)
+		let diagnostic = CrashDiagnostic(appVersion: "0.1.0", macOSVersion: "15.2", exceptionType: 6, signal: 6, frames: [])
+		#expect(try CrashReportStore(folder: folder).receive(diagnostic, at: Date(timeIntervalSince1970: 1_150), since: Date(timeIntervalSince1970: 1_000)) == nil)
+	}
+
 }

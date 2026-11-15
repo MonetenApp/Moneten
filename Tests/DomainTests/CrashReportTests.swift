@@ -69,7 +69,7 @@ struct CrashReportTests {
 		let report = crashReport(.init(appVersion: "0.1.0", macOSVersion: "15.2", exceptionType: 6, signal: 6, frames: []))
 		let crash = bugReportURL(version: "0.1.0", macOS: "15.2", report: report)
 		let fields = URLComponents(url: crash, resolvingAgainstBaseURL: false)!.queryItems!
-		#expect(fields.first { $0.name == "body" }?.value == report)
+		#expect(fields.first { $0.name == "body" } == nil)
 		#expect(fields.first { $0.name == "expected" }?.value == report)
 	}
 
@@ -79,7 +79,7 @@ struct CrashReportTests {
 			frames: (0..<500).map { .init(binaryName: "Moneten", binaryUUID: binaryUUID, offset: UInt64($0)) }))
 		let url = bugReportURL(version: "0.1.0", macOS: "15.2", report: report)
 		#expect(url.absoluteString.count < 8_000)
-		let body = try #require(URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "body" }?.value)
+		let body = try #require(URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "expected" }?.value)
 		let lines = body.components(separatedBy: "\n")
 		#expect(lines.last == "Report shortened for GitHub. Use Copy Report for the full text.")
 		let frame = try #require(lines.dropLast().last)
@@ -88,4 +88,14 @@ struct CrashReportTests {
 		#expect(report.components(separatedBy: "\n").filter { $0.hasPrefix("Frame:") }.count == 500)
 		#expect(!report.contains("shortened"))
 	}
+	@Test("A zero macOS patch is omitted in the Help and crash paths")
+	func zeroPatch() {
+		#expect(CrashReports.macOSVersion(.init(majorVersion: 15, minorVersion: 2, patchVersion: 0)) == "15.2")
+		#expect(CrashReports.macOSVersion(.init(majorVersion: 15, minorVersion: 2, patchVersion: 1)) == "15.2.1")
+		#expect(crashReport(.init(appVersion: "0.1.0", macOSVersion: "15.2.0", exceptionType: 6, signal: 6, frames: [])).contains("macOS: 15.2\n"))
+		#expect(crashReport(.init(appVersion: "0.1.0", macOSVersion: "15.2.1", exceptionType: 6, signal: 6, frames: [])).contains("macOS: 15.2.1\n"))
+		let url = bugReportURL(version: "0.1.0", macOS: "15.2.0")
+		#expect(URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "macos" }?.value == "15.2")
+	}
+
 }

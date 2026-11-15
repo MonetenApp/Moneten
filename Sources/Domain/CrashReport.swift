@@ -59,7 +59,11 @@ private struct StackTree: Decodable {
 	}
 }
 
-public func crashReport(_ diagnostic: CrashDiagnostic) -> String {
+public func crashReport(_ diagnostic: CrashDiagnostic, crashTime: Date? = nil) -> String {
+	if let crashTime {
+		return ["Moneten crash report", "App version: \(reportVersion(diagnostic.appVersion))", "macOS: \(reportMacOS(diagnostic.macOSVersion))",
+			"Crash time: \(crashTime.formatted(.iso8601))", "No details were available."].joined(separator: "\n")
+	}
 	// Binary names are diagnostic text too. A character filter would still admit an IBAN or a name.
 	let binaries: Set<String> = ["Moneten", "Moneten.debug.dylib", "SwiftUI", "SwiftUICore", "AppKit", "Foundation", "CoreFoundation",
 		"AttributeGraph", "libswiftCore.dylib", "libsystem_kernel.dylib", "libsystem_c.dylib", "libsystem_pthread.dylib",
@@ -110,4 +114,10 @@ private func reportMacOS(_ value: String) -> String {
 	guard let match = expression.firstMatch(in: value, range: NSRange(value.startIndex..., in: value)),
 		let range = Range(match.range(at: 1), in: value) else { return "Unknown" }
 	return String(value[range])
+}
+
+public enum CrashReports {
+	public static func macOSVersion(_ version: OperatingSystemVersion = ProcessInfo.processInfo.operatingSystemVersion) -> String {
+		"\(version.majorVersion).\(version.minorVersion).\(version.patchVersion)"
+	}
 }
