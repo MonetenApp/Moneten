@@ -87,3 +87,10 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 ## Workflow follow-up
 
 - Archive the change with `openspec archive add-file-import` when every task is checked.
+
+## Gate round 5
+
+- [x] Add a release reconcile budget for a 300-row booked refresh over 50,000 file-identity rows. The 20 ms assertion failed before the fix. Limit normalization to the delivery day window and explicit lookups, and stable positions to actual candidates. Add the app scenario `refresh-booked-file-history`.
+- [x] Filter booking candidates to dates on or before the booked date and the nearest day before the unique fetched preference. `gate5LaterFetchedBooking` asserts the 7 December booking and retained 14 December pending row in every file delivery and storage order.
+- [x] Rank an equal IBAN with conflicting known names below compatible pending candidates. `gate5ConflictingNameRank` preserves the comment through a repeated refresh.
+- [x] Preserve pending order independence with `gate5SeededOrderIndependence`, 3,000 seeds, and legacy pairing with `gate5LegacyComparisons`, 6,144 comparisons.

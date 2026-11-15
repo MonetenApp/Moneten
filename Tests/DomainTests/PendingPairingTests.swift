@@ -10,13 +10,13 @@ extension ReconcileTests {
 		let other = row(3, -1_200, "Other", "OTHER", month: 12)
 		for stored in permutations([file, bank]) {
 			for rows in permutations([rent(7, purpose: "BOOKED RENT", pending: false), other]) {
-				let r = merge(refresh(rows), stored: stored, at: noon(7, month: 12))
+				let r = merge(.file(rows), stored: stored, at: noon(7, month: 12))
 				#expect(r.booked.map(\.id) == [file.id])
 				#expect(r.added.map(\.amountMinor) == [-1_200])
 				#expect(r.marked.isEmpty && r.dropped.isEmpty)
 				#expect(pendingSummary(history(stored, after: r)) == [
-					"20261203 -1200 false true false OTHER",
-					"20261207 -80000 false true false BOOKED RENT",
+					"20261203 -1200 false false false OTHER",
+					"20261207 -80000 false false false BOOKED RENT",
 					"20261214 -80000 true true false BANK"
 				])
 			}
@@ -35,7 +35,7 @@ extension ReconcileTests {
 		let incoming = rent(1, purpose: "RENT")
 		for stored in permutations([a, b]) {
 			let first = merge(refresh([incoming]), stored: stored, at: noon(20, month: 11))
-			#expect(first.updated.map(\.id) == [b.id])
+			#expect(first.updated.isEmpty)
 			#expect(first.dropped == [a.id])
 			let after = history(stored, after: first)
 			#expect(after.map(\.comment) == ["Keep this comment"])

@@ -323,10 +323,24 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 }
 
 func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTransaction], delivery: Delivery, today: Day) -> [Partner?] {
-	if rows.allSatisfy({ !$0.isPending }), stored.allSatisfy({ !$0.isPending && $0.fileIdentity == nil }),
-		deleted.allSatisfy({ !$0.isPending && $0.fileIdentity == nil }) {
+	let days = Set(rows.flatMap { t in
+		(-PendingMatch.maxDaysApart...PendingMatch.maxDaysApart).map { t.bookingDate.adding(days: $0) }
+	})
+	let ids = Set(rows.compactMap(\.sourceID))
+	let fileIDs = Set(rows.compactMap(\.fileIdentity))
+	let references = Set(rows.filter(\.isPending).compactMap(\.endToEndReference))
+	func relevant(day: Day, sourceID: String?, fileIdentity: String?, reference: String?) -> Bool {
+		days.contains(day) || sourceID.map { ids.contains(Transaction.matchingID($0)) } == true
+			|| fileIdentity.map { fileIDs.contains($0) } == true
+			|| reference.map { references.contains($0) } == true
+	}
+	let live = stored.indices.filter { relevant(day: stored[$0].bookingDate, sourceID: stored[$0].sourceID, fileIdentity: stored[$0].fileIdentity, reference: stored[$0].endToEndReference) }
+	let dead = deleted.indices.filter { relevant(day: deleted[$0].bookingDate, sourceID: deleted[$0].sourceID, fileIdentity: deleted[$0].fileIdentity, reference: deleted[$0].endToEndReference) }
+	if rows.allSatisfy({ !$0.isPending }), stored.allSatisfy({ !$0.isPending }), deleted.allSatisfy({ !$0.isPending }),
+		live.allSatisfy({ stored[$0].fileIdentity == nil }), dead.allSatisfy({ deleted[$0].fileIdentity == nil }) {
 		return partners(of: rows, stored: stored, deleted: deleted)
 	}
+
 	enum Priority: Int { case identity, bookedFingerprint, reference, fetchedPending, filePending }
 	struct Candidate {
 		let delivered: Int
@@ -340,8 +354,8 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 		var legacy = false
 	}
 	let matches: [PendingMatch] = rows.map(PendingMatch.init)
-	let liveMatches: [PendingMatch] = stored.map(PendingMatch.init)
-	let deadMatches: [PendingMatch] = deleted.map(PendingMatch.init)
+	let liveMatches = Dictionary(uniqueKeysWithValues: live.map { ($0, PendingMatch(stored[$0])) })
+	let deadMatches = Dictionary(uniqueKeysWithValues: dead.map { ($0, PendingMatch(deleted[$0])) })
 	let incoming: [Identity] = matches.map(\.identity)
 	let identifiedBookings: [Int] = rows.indices.filter { (i: Int) -> Bool in
 		!rows[i].isPending && incoming[i].sourceID != nil
@@ -352,60 +366,21 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 	var byReference: [String: [Slot]] = [:]
 	var byFileIdentity: [String: [Slot]] = [:]
 	var byID: [String: [Slot]] = [:]
-	for (j, t) in stored.enumerated() {
+	for j in live {
+		let t = stored[j]
 		byDay[t.bookingDate, default: []].append(.live(j))
-		byKey[liveMatches[j].identity.key, default: []].append(.live(j))
-		if let reference = liveMatches[j].identity.endToEnd { byReference[reference, default: []].append(.live(j)) }
+		byKey[liveMatches[j]!.identity.key, default: []].append(.live(j))
+		if let reference = liveMatches[j]!.identity.endToEnd { byReference[reference, default: []].append(.live(j)) }
 		if let id = t.fileIdentity { byFileIdentity[id, default: []].append(.live(j)) }
 		if let id = t.sourceID { byID[Transaction.matchingID(id), default: []].append(.live(j)) }
 	}
-	for (k, d) in deleted.enumerated() {
+	for k in dead {
+		let d = deleted[k]
 		byDay[d.bookingDate, default: []].append(.deleted(k))
-		byKey[deadMatches[k].identity.key, default: []].append(.deleted(k))
-		if let reference = deadMatches[k].identity.endToEnd { byReference[reference, default: []].append(.deleted(k)) }
+		byKey[deadMatches[k]!.identity.key, default: []].append(.deleted(k))
+		if let reference = deadMatches[k]!.identity.endToEnd { byReference[reference, default: []].append(.deleted(k)) }
 		if let id = d.fileIdentity { byFileIdentity[id, default: []].append(.deleted(k)) }
 		if let id = d.sourceID { byID[Transaction.matchingID(id), default: []].append(.deleted(k)) }
-	}
-	func positions(_ ts: [Transaction]) -> [Int: Int] {
-		let keys: [(Day, Date, String)] = ts.map { (t: Transaction) -> (Day, Date, String) in
-			(t.bookingDate, t.createdAt, t.id.uuidString)
-		}
-		let sorted: [Int] = ts.indices.sorted { (left: Int, right: Int) -> Bool in keys[left] < keys[right] }
-		let pairs: [(Int, Int)] = sorted.enumerated().map { (entry: (offset: Int, element: Int)) -> (Int, Int) in
-			(entry.element, entry.offset)
-		}
-		return Dictionary(uniqueKeysWithValues: pairs)
-	}
-	let deliveredPositions: [Int: Int] = positions(rows)
-	let livePositions: [Int: Int] = positions(stored)
-	typealias DeadIdentityKey = (Day, String, String, String, String, Int64)
-	typealias DeadFieldsKey = (String, String, Int, Int, Date)
-	typealias DeadKey = (DeadIdentityKey, DeadFieldsKey)
-	let deadKeys: [DeadKey] = deleted.map { (d: DeletedTransaction) -> DeadKey in
-		let fileIdentity: String = d.fileIdentity.map { "1" + $0 } ?? "0"
-		let sourceID: String = d.sourceID.map { "1" + $0 } ?? "0"
-		let reference: String = d.endToEndReference.map { "1" + $0 } ?? "0"
-		let iban: String = d.counterpartyIBAN.map { "1" + $0 } ?? "0"
-		let pending: Int = d.isPending ? 1 : 0
-		let fetched: Int = d.wasFetched ? 1 : 0
-		let identity: DeadIdentityKey = (d.bookingDate, fileIdentity, sourceID, reference, d.currency, d.amountMinor)
-		let fields: DeadFieldsKey = (d.purpose, iban, pending, fetched, d.deletedAt)
-		return (identity, fields)
-	}
-	let deadOrder: [Int] = deleted.indices.sorted { (left: Int, right: Int) -> Bool in
-		let lhs: DeadKey = deadKeys[left]
-		let rhs: DeadKey = deadKeys[right]
-		return lhs.0 == rhs.0 ? lhs.1 < rhs.1 : lhs.0 < rhs.0
-	}
-	let deadPairs: [(Int, Int)] = deadOrder.enumerated().map { (entry: (offset: Int, element: Int)) -> (Int, Int) in
-		(entry.element, entry.offset + stored.count)
-	}
-	let deadPositions: [Int: Int] = Dictionary(uniqueKeysWithValues: deadPairs)
-	func position(_ slot: Slot, legacy: Bool = false) -> Int {
-		switch slot {
-		case let .live(j): legacy ? j : livePositions[j]!
-		case let .deleted(k): legacy ? stored.count + k : deadPositions[k]!
-		}
 	}
 	var candidates: [Candidate] = []
 
@@ -427,13 +402,13 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 			let future: Bool
 			switch slot {
 			case let .live(j):
-				identity = liveMatches[j].identity
-				match = liveMatches[j]
+				identity = liveMatches[j]!.identity
+				match = liveMatches[j]!
 				fetched = stored[j].isFetched
 				future = !stored[j].isFetched && !stored[j].needsReview && stored[j].bookingDate >= today && delivery.covers(stored[j].bookingDate)
 			case let .deleted(k):
-				identity = deadMatches[k].identity
-				match = deadMatches[k]
+				identity = deadMatches[k]!.identity
+				match = deadMatches[k]!
 				fetched = true
 				future = false
 			}
@@ -477,17 +452,18 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 			let step: Int? = Identity.steps.firstIndex { (step: Identity.Step) -> Bool in step.accepts(incoming[i], identity) }
 			if (t.isPending || identity.isPending || step == nil) && matches[i].counterpartyConflicts(with: match) { continue }
 			let fit = step.map { $0 % 2 } ?? 2
+			let rankedFit = t.isPending && matches[i].nameConflicts(with: match) ? 3 : fit
 			if let fileID = incoming[i].fileIdentity, let storedID = identity.fileIdentity, fileID != storedID,
 				!(t.isPending && !identity.isPending && sameReference),
 				!(!t.isPending && !identity.isPending && step != nil) { continue }
 			if step != nil && !identity.isPending {
 				candidates.append(Candidate(delivered: i, slot: slot, priority: .bookedFingerprint, historical: historical,
-					identityTombstone: 0, fit: fit, distance: distance, evidence: .fingerprint))
+					identityTombstone: 0, fit: rankedFit, distance: distance, evidence: .fingerprint))
 				continue
 			}
 			if sameReference && t.isPending, step != nil || (!delivery.isMigration && (identity.isPending || !delivery.isFetched)) {
 				candidates.append(Candidate(delivered: i, slot: slot, priority: .reference, historical: historical,
-					identityTombstone: 0, fit: fit, distance: distance, evidence: step == nil && delivery.isFetched ? .pending : .fingerprint))
+					identityTombstone: 0, fit: rankedFit, distance: distance, evidence: step == nil && delivery.isFetched ? .pending : .fingerprint))
 				continue
 			}
 			guard t.isPending, identity.isPending else { continue }
@@ -497,7 +473,54 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 			let priority: Priority = fetched && (delivery.isFetched || sameDay) ? .fetchedPending : .filePending
 			let evidence: Partner.Evidence = step != nil ? .fingerprint : (delivery.isFetched ? .pending : .relaxedFile)
 			candidates.append(Candidate(delivered: i, slot: slot, priority: priority, historical: 0,
-				identityTombstone: 0, fit: fit, distance: distance, evidence: evidence))
+				identityTombstone: 0, fit: rankedFit, distance: distance, evidence: evidence))
+		}
+	}
+	func positions(_ ts: [Transaction], indices: Set<Int>) -> [Int: Int] {
+		let keys = Dictionary(uniqueKeysWithValues: indices.map { i in
+			(i, (ts[i].bookingDate, ts[i].createdAt, ts[i].id.uuidString))
+		})
+		let sorted: [Int] = indices.sorted { (left: Int, right: Int) -> Bool in keys[left]! < keys[right]! }
+		let pairs: [(Int, Int)] = sorted.enumerated().map { (entry: (offset: Int, element: Int)) -> (Int, Int) in
+			(entry.element, entry.offset)
+		}
+		return Dictionary(uniqueKeysWithValues: pairs)
+	}
+	let deliveredPositions: [Int: Int] = positions(rows, indices: Set(candidates.filter { !$0.legacy }.map(\.delivered)))
+	let livePositions: [Int: Int] = positions(stored, indices: Set(candidates.compactMap { c in
+		if !c.legacy, case let .live(j) = c.slot { j } else { nil }
+	}))
+	typealias DeadIdentityKey = (Day, String, String, String, String, Int64)
+	typealias DeadFieldsKey = (String, String, Int, Int, Date)
+	typealias DeadKey = (DeadIdentityKey, DeadFieldsKey)
+	let deadCandidates = Set(candidates.compactMap { c -> Int? in
+		if !c.legacy, case let .deleted(k) = c.slot { k } else { nil }
+	})
+	let deadKeys: [Int: DeadKey] = Dictionary(uniqueKeysWithValues: deadCandidates.map { k in
+		let d = deleted[k]
+		let fileIdentity: String = d.fileIdentity.map { "1" + $0 } ?? "0"
+		let sourceID: String = d.sourceID.map { "1" + $0 } ?? "0"
+		let reference: String = d.endToEndReference.map { "1" + $0 } ?? "0"
+		let iban: String = d.counterpartyIBAN.map { "1" + $0 } ?? "0"
+		let pending: Int = d.isPending ? 1 : 0
+		let fetched: Int = d.wasFetched ? 1 : 0
+		let identity: DeadIdentityKey = (d.bookingDate, fileIdentity, sourceID, reference, d.currency, d.amountMinor)
+		let fields: DeadFieldsKey = (d.purpose, iban, pending, fetched, d.deletedAt)
+		return (k, (identity, fields))
+	})
+	let deadOrder: [Int] = deadCandidates.sorted { (left: Int, right: Int) -> Bool in
+		let lhs: DeadKey = deadKeys[left]!
+		let rhs: DeadKey = deadKeys[right]!
+		return lhs.0 == rhs.0 ? lhs.1 < rhs.1 : lhs.0 < rhs.0
+	}
+	let deadPairs: [(Int, Int)] = deadOrder.enumerated().map { (entry: (offset: Int, element: Int)) -> (Int, Int) in
+		(entry.element, entry.offset + stored.count)
+	}
+	let deadPositions: [Int: Int] = Dictionary(uniqueKeysWithValues: deadPairs)
+	func position(_ slot: Slot, legacy: Bool = false) -> Int {
+		switch slot {
+		case let .live(j): legacy ? j : livePositions[j]!
+		case let .deleted(k): legacy ? stored.count + k : deadPositions[k]!
 		}
 	}
 	candidates.sort { (left: Candidate, right: Candidate) -> Bool in
@@ -630,18 +653,16 @@ struct Bookings {
 		for (y, m) in b.enumerated() {
 			let sameAmount: [Int] = pendingByAmount[m.amount] ?? []
 			var fits: [Int] = sameAmount.filter { (i: Int) -> Bool in
-				p[i].fits(m) && (pending[i].1.isFetched || p[i].day <= m.day)
+				p[i].fits(m) && p[i].day <= m.day
 			}
 			let explicit: [Int] = fits.filter { (i: Int) -> Bool in p[i].identity.sharesIdentity(with: m.identity) }
 			if !explicit.isEmpty { fits = explicit }
-			let fetched: [Int] = fits.filter { (i: Int) -> Bool in pending[i].1.isFetched }
-			if fetched.count == 1 { fits = fetched }
-			if fetched.isEmpty {
-				let distances: [Int] = fits.map { (i: Int) -> Int in abs(p[i].day - m.day) }
-				if let nearest: Int = distances.min() {
-					fits = fits.filter { (i: Int) -> Bool in abs(p[i].day - m.day) == nearest }
-				}
+			if let nearest = fits.map({ abs(p[$0].day - m.day) }).min() {
+				fits = fits.filter { abs(p[$0].day - m.day) == nearest }
 			}
+			let fetched = fits.filter { pending[$0].1.isFetched }
+			if fetched.count == 1 { fits = fetched }
+
 			for x in fits {
 				edgesOfPending[x].append(y)
 				edgesOfBooked[y].append(x)
@@ -701,6 +722,10 @@ struct PendingMatch {
 		if let iban, let otherIBAN = other.iban { return iban != otherIBAN }
 		guard !words.isEmpty, !other.words.isEmpty else { return false }
 		return !words.starts(with: other.words) && !other.words.starts(with: words)
+	}
+
+	func nameConflicts(with other: PendingMatch) -> Bool {
+		!words.isEmpty && !other.words.isEmpty && !words.starts(with: other.words) && !other.words.starts(with: words)
 	}
 
 	func fits(_ other: PendingMatch) -> Bool {
