@@ -240,7 +240,7 @@ The app SHALL assign CSV columns to transaction fields by common header keywords
 
 #### Scenario: Malformed first numeric dates
 
-- **GIVEN** unfamiliar headings or no headings, a first row with "01.11.2026x", "2026-11-", "01/11", or "20261101" as its date and -1.50 as its amount, then a valid row of -2.00
+- **GIVEN** unfamiliar headings or no headings, a first row with "01.11.2026x", "2026-11-", "01/11", "20261101", ".11.2026", or "/11/2026" as its date and -1.50 as its amount, then a valid row of -2.00
 - **WHEN** date and amount are mapped
 - **THEN** the first row fails date validation and nothing is imported from the file
 - **AND** counterparty and purpose values "Datum" and "Betrag" cannot hide that invalid row as a header
@@ -250,6 +250,7 @@ The app SHALL assign CSV columns to transaction fields by common header keywords
 - **GIVEN** "Tag;Wer;Wieviel", "01.11.2026;Kiosk", "Hinweis;Export;vorläufig", and "02.11.2026;Bakery;4.50"
 - **WHEN** the first and third columns are mapped to date and amount
 - **THEN** the earlier heading stays in use and the amounts are [0, 450] minor units
+- **AND** the same holds when the amount is mapped to a fourth column without a title and the note has four filled cells
 
 ### Requirement: CSV preview
 

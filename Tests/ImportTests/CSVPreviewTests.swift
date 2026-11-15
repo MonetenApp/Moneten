@@ -5,7 +5,7 @@ import Testing
 
 @Suite("CSV preview")
 struct CSVPreviewTests {
-	@Test("A malformed first numeric date cannot be skipped or treated as a header", arguments: ["01.11.2026x", "2026-11-", "01/11", "20261101"], [false, true])
+	@Test("A malformed first numeric date cannot be skipped or treated as a header", arguments: ["01.11.2026x", "2026-11-", "01/11", "20261101", ".11.2026", "/11/2026"], [false, true])
 	func malformedFirstNumericDate(date: String, keywords: Bool) throws {
 		for hasHeader in [false, true] {
 			let heading = keywords ? "Tag;Wer;Zweck;Wieviel\n" : "Tag;Wer;Wieviel\n"
@@ -65,9 +65,9 @@ struct CSVPreviewTests {
 		#expect(preview.transactions.map(\.amountMinor) == Array(repeating: 100, count: 101) + [200, 300])
 	}
 
-	@Test("A filled subtotal cannot hide a short earlier transaction")
-	func filledSubtotalAfterShortRow() throws {
-		let file = try CSVFile(data: Data("Tag;Wer;Wieviel\n01.11.2026;Kiosk\nZwischensumme;EUR;Saldo;0,00\n02.11.2026;Bakery;;4.50\n".utf8))
+	@Test("A filled subtotal cannot hide a short earlier transaction", arguments: ["Zwischensumme;EUR;Saldo;0,00", "Hinweis;Export;vorläufig;Status"])
+	func filledSubtotalAfterShortRow(note: String) throws {
+		let file = try CSVFile(data: Data("Tag;Wer;Wieviel\n01.11.2026;Kiosk\n\(note)\n02.11.2026;Bakery;;4.50\n".utf8))
 		var layout = try file.detectedLayout()
 		layout.assign(0, to: .bookingDate)
 		layout.assign(3, to: .amount)
