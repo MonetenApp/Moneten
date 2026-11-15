@@ -147,12 +147,12 @@ struct SearchQuery {
 	/// types. A word that the text excludes, as after NOT, `!`, `-`, or `name!=`, is left out, because it can only
 	/// remove rows.
 	private static func plainWords(of text: String) -> RuleExpression? {
+		func startsSignedNumber(_ word: Substring) -> Bool { "+-".contains(word.first ?? " ") && word.dropFirst().first?.isWholeNumber == true }
 		var words: [String] = []
 		var excluded = false
 		for raw in text.split(whereSeparator: \.isWhitespace) {
 			var word = raw[...]
-			// The parser reads a sign before a digit as part of a number, as in -12,50.
-			while let c = word.first, "()\"„“”+!-".contains(c), !("+-".contains(c) && word.dropFirst().first?.isWholeNumber == true) {
+			while let c = word.first, "()\"„“”+!-".contains(c), !startsSignedNumber(word) {
 				if c == "!" || c == "-" { excluded = true }
 				word.removeFirst()
 			}
@@ -176,10 +176,8 @@ struct SearchQuery {
 		return terms.first.map { terms.dropFirst().reduce($0) { .and($0, $1) } }
 	}
 
-	/// Plain text that every match of the pattern holds, in lower case, as the search text has it. The longest run of
-	/// plain characters counts. The function gives up on alternatives, groups, and nested sets, and leaves out escapes,
-	/// sets, and a character that a quantifier makes optional. A run with other characters than ASCII or with two
-	/// spaces in a row does not count, because folding can change those.
+	/// Plain text that every match of the pattern holds, in lower case, as the search text has it. A run with other
+	/// characters than ASCII or with two spaces in a row does not count, because folding can change those.
 	static func requiredText(of pattern: String) -> String? {
 		guard !pattern.contains("|"), !pattern.contains("(") else { return nil }
 		var runs = [""]
@@ -244,8 +242,7 @@ struct SearchQuery {
 			let keepsMeaning = !["\\A", "\\z", "\\Z", "\\G", "(?", "*+", "++", "?+", "}+"].contains(where: pattern.contains)
 			let anyLine = keepsMeaning ? try? NSRegularExpression(pattern: pattern, options: box.regex.options.union(.anchorsMatchLines)) : nil
 			let fields = field.map { [$0] } ?? RuleField.unqualified
-			// The search text holds these fields and the names folded, but the account numbers without spaces.
-			let required = fields.allSatisfy(RuleField.unqualified.contains) ? requiredText(of: pattern).map(Needle.init) : nil
+			let required = fields.allSatisfy(SearchText.foldedAsTheyAre.contains) ? requiredText(of: pattern).map(Needle.init) : nil
 			return .regex(box.regex, anyLine: anyLine, matchesEmpty: box.regex.firstMatch(in: "", range: NSRange(location: 0, length: 0)) != nil, fields, names: field == nil,
 				required: required)
 		case let .amount(op, value):
@@ -268,6 +265,10 @@ struct SearchQuery {
 /// so that a phrase finds its words across a line break or a double space. A field term reads its field here,
 /// already folded, because folding the fields of 50,000 rows again for each keystroke was too slow.
 enum SearchText {
+	/// The fields that the search text holds as a rule reads them, only folded. It holds the account numbers without
+	/// spaces and lacks the currency.
+	static let foldedAsTheyAre: Set<RuleField> = [.name, .purpose, .bookingText, .reference, .mandate, .creditorID, .comment]
+
 	/// The place of each field that a rule reads, other than the currency. Account numbers and IBANs have no spaces,
 	/// as in a rule.
 	static let places: [RuleField: [Int]] = [.name: [0], .purpose: [1], .bookingText: [2], .reference: [3], .mandate: [4],
