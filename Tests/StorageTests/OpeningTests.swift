@@ -165,6 +165,46 @@ struct OpeningTests {
 		#expect(try files() == ["Moneten.sqlite"])
 	}
 
+	// MARK: Password change
+
+	func opens(_ name: String, with password: String) -> Bool {
+		var config = Configuration()
+		config.prepareDatabase { db in try db.usePassphrase(password) }
+		guard let queue = try? DatabaseQueue(path: folder.databaseFolder.appendingPathComponent(name).path, configuration: config) else { return false }
+		defer { try? queue.close() }
+		return (try? queue.read { db in try Int.fetchOne(db, sql: "SELECT count(*) FROM sqlite_master") }) != nil
+	}
+
+	@Test("A password change encrypts the copies in the database folder again, so the earlier password opens none of them")
+	func copiesFollowPasswordChange() throws {
+		try earlierDatabase(upTo: "v16")
+		let vault = Vault(folder: folder, version: "0.2.0")
+		let upgraded = try vault.open(password: Self.password)
+		_ = try sampleData(upgraded)
+		let page = try rootPage("bankTransaction_on_bookingDate", of: upgraded)
+		try upgraded.close()
+		try damage(page: page)
+		#expect(throws: Vault.Failure.damaged(folder.databaseFile.path)) { try vault.open(password: Self.password) }
+		let store = try vault.open(password: Self.password)
+		let fm = FileManager.default
+		try fm.copyItem(at: folder.databaseFile, to: folder.databaseFolder.appendingPathComponent("Moneten-Upgrade.sqlite"))
+		try fm.copyItem(at: folder.databaseFile, to: folder.databaseFolder.appendingPathComponent(".Moneten-Backup.sqlite.partial"))
+		let foreign = try Vault(folder: DataFolder(root: root.appendingPathComponent("Other", isDirectory: true))).create(password: "ein-anderes-passwort", starterCategories: [])
+		try foreign.close()
+		try fm.copyItem(at: root.appendingPathComponent("Other/Database/Moneten.sqlite"), to: folder.databaseFolder.appendingPathComponent("Moneten-Damaged-2026-01-01T000000.sqlite"))
+		#expect(try files().contains { $0.hasPrefix("Moneten-Damaged-") && $0 != "Moneten-Damaged-2026-01-01T000000.sqlite" })
+
+		try vault.changePassword(current: Self.password, new: "neu-und-noch-laenger", on: store)
+		try store.close()
+
+		let names = try files()
+		#expect(opens("Moneten-Backup.sqlite", with: "neu-und-noch-laenger"))
+		#expect(!names.contains("Moneten-Upgrade.sqlite"))
+		#expect(!names.contains(".Moneten-Backup.sqlite.partial"))
+		#expect(opens("Moneten-Damaged-2026-01-01T000000.sqlite", with: "ein-anderes-passwort"))
+		for name in names { #expect(!opens(name, with: Self.password), "\(name)") }
+	}
+
 	// MARK: Problems with the file
 
 	@Test("Each problem with the database file has its own message with the path")

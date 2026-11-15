@@ -18,7 +18,7 @@ The app keeps all accounts, categories, and transactions of the open database in
 - The vault starts a new database only when the database folder holds no files other than `.DS_Store`. It checks write permission for the file and for the folder before it opens anything.
 - Every Keychain and file failure is thrown as a `Vault.Failure` with a message for the user. A password change that worked but left the random key, or a Keychain entry that did not follow, is reported with the note that the password is changed.
 - A new database removes the Keychain entries that a database at the same path left, such as one the user renamed after a lost password.
-- A password change runs `PRAGMA rekey` through GRDB after the current password opened a second connection.
+- A password change runs `PRAGMA rekey` through GRDB after the current password opened a second connection. The same change runs `PRAGMA rekey` on `Moneten-Backup.sqlite` and on each `Moneten-Damaged-<time>.sqlite` that the current password opens, and checks that the new password opens the copy. A copy that fails is removed, because it would still open with the earlier password. Working files that an interrupted upgrade or repair left behind are removed. A copy that the current password does not open is left alone, because the earlier password does not open it either. A copy that could not be removed is reported with the note that the password is changed.
 
 ## Risks / Trade-offs
 

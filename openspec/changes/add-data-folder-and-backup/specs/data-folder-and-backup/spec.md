@@ -108,7 +108,7 @@ The app SHALL state, before it saves a backup with "Backup Database...", that th
 
 ### Requirement: A backup opens with the password of its time
 
-The app SHALL write backups that are encrypted with the database password that was valid when the backup was made. That password opens the backup on any Mac.
+The app SHALL write backups that are encrypted with the database password that was valid when the backup was made. That password opens the backup on any Mac. This applies to a backup that the user saves with "Backup Database...". The copies that the app keeps in the "Database" folder follow a change of the password.
 
 #### Scenario: Password changed after the backup
 

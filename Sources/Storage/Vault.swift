@@ -43,11 +43,13 @@ public struct Vault: Sendable {
 		case passwordSetWithLeftover(String)
 		/// The database has the new password, but the Keychain still holds the earlier one.
 		case keychainNotUpdated(String)
+		/// The database has the new password, but these copies in the database folder could not be removed.
+		case copiesNotUpdated([String])
 
 		/// True when the database has the new password although something after the change failed.
 		public var passwordChanged: Bool {
 			switch self {
-			case .passwordSetWithLeftover, .keychainNotUpdated: true
+			case .passwordSetWithLeftover, .keychainNotUpdated, .copiesNotUpdated: true
 			default: false
 			}
 		}
@@ -84,6 +86,8 @@ public struct Vault: Sendable {
 				"The database password has been set, but Moneten could not remove the random key of the database: \(detail)"
 			case let .keychainNotUpdated(detail):
 				"The database password has been changed, but the Keychain did not accept the new password: \(detail)\n\nEnter the database password at the next start. Moneten then stores the new password in the Keychain."
+			case let .copiesNotUpdated(paths):
+				"The database password has been changed, but Moneten could not remove these copies of the database. They still open with the earlier password. Please move them to the Trash.\n\n" + paths.joined(separator: "\n")
 			}
 		}
 	}
@@ -135,6 +139,10 @@ public struct Vault: Sendable {
 	var repairMarker: URL { folder.databaseFolder.appendingPathComponent("RepairAtNextStart") }
 	/// The copy of the database before the last upgrade of its layout.
 	public var automaticBackup: URL { folder.databaseFolder.appendingPathComponent("Moneten-Backup.sqlite") }
+	/// The working files of an upgrade and a repair. Only an interrupted run leaves them behind.
+	var upgradeCopyFile: URL { folder.databaseFolder.appendingPathComponent("Moneten-Upgrade.sqlite") }
+	var repairCopyFile: URL { folder.databaseFolder.appendingPathComponent("Moneten-Repair.sqlite") }
+	static let damagedCopyPrefix = "Moneten-Damaged-"
 
 	/// Creates a new database. Without a password, a random key in the Keychain protects it.
 	/// Keychain entries of a database that was in this folder before, such as one the user renamed
@@ -207,14 +215,50 @@ public struct Vault: Sendable {
 		}
 	}
 
-	/// Changes the password after checking the current one. A password in the Keychain follows the change.
+	/// Changes the password after checking the current one. A password in the Keychain follows the change,
+	/// and so do the copies in the database folder, so that the earlier password opens none of them.
 	public func changePassword(current: String, new: String, on store: Store) throws {
 		try openDatabase(key: current, migrate: false).close()
 		let keepsPassword = try storedPassword() != nil
 		try store.queue.write { db in try db.changePassphrase(new) }
+		let leftover = changeKeyOfCopies(from: current, to: new)
 		if keepsPassword {
 			do { try passwordKeychain.write(new, account: folder.keychainAccount) } catch { throw Failure.keychainNotUpdated(String(describing: error)) }
 		}
+		if !leftover.isEmpty { throw Failure.copiesNotUpdated(leftover) }
+	}
+
+	/// Encrypts the automatic backup copy and the copies of a damaged file with the new key, and removes the
+	/// working files of an interrupted upgrade or repair. A copy that cannot take the new key is removed,
+	/// because it would still open with the earlier one. A copy that the earlier key does not open, such as
+	/// one with an even older password, stays as it is. Returns the paths of the copies that could not be removed.
+	private func changeKeyOfCopies(from old: String, to new: String) -> [String] {
+		let fm = FileManager.default
+		let names = (try? fm.contentsOfDirectory(atPath: folder.databaseFolder.path)) ?? []
+		var leftover: [String] = []
+		func remove(_ url: URL) {
+			do { try fm.removeItem(at: url) } catch { leftover.append(url.path) }
+		}
+		for name in names {
+			let url = folder.databaseFolder.appendingPathComponent(name)
+			if url == upgradeCopyFile || url == repairCopyFile || (name.hasPrefix(".Moneten-") && name.hasSuffix(".partial")) {
+				remove(url)
+			} else if url == automaticBackup || (name.hasPrefix(Self.damagedCopyPrefix) && name.hasSuffix(".sqlite")) {
+				let copy: DatabaseQueue
+				do { copy = try connect(url, key: old) } catch Failure.incorrectPassword { continue } catch {
+					remove(url)
+					continue
+				}
+				let changed = (try? copy.write { db in try db.changePassphrase(new) }) != nil
+				try? copy.close()
+				if changed, let check = try? connect(url, key: new) {
+					try? check.close()
+				} else {
+					remove(url)
+				}
+			}
+		}
+		return leftover
 	}
 
 	/// Checks a password without keeping the database open.
@@ -335,7 +379,7 @@ public struct Vault: Sendable {
 	/// puts the copy in place of the database.
 	private func upgradeCopy(key: String) throws {
 		let fm = FileManager.default
-		let temporary = folder.databaseFolder.appendingPathComponent("Moneten-Upgrade.sqlite")
+		let temporary = upgradeCopyFile
 		do {
 			try copy(folder.databaseFile, to: automaticBackup)
 			if fm.fileExists(atPath: temporary.path) { try fm.removeItem(at: temporary) }
@@ -371,8 +415,8 @@ public struct Vault: Sendable {
 		}
 		try queue.close()
 		let stamp = Date().formatted(.iso8601.year().month().day().time(includingFractionalSeconds: false).timeSeparator(.omitted))
-		let damaged = folder.databaseFolder.appendingPathComponent("Moneten-Damaged-\(stamp).sqlite")
-		let repaired = folder.databaseFolder.appendingPathComponent("Moneten-Repair.sqlite")
+		let damaged = folder.databaseFolder.appendingPathComponent("\(Self.damagedCopyPrefix)\(stamp).sqlite")
+		let repaired = repairCopyFile
 		do {
 			try copy(folder.databaseFile, to: damaged)
 			if fm.fileExists(atPath: repaired.path) { try fm.removeItem(at: repaired) }

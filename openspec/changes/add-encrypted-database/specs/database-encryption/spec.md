@@ -123,7 +123,7 @@ The app SHALL state, in the sheet that sets or changes the password, that nobody
 
 ### Requirement: Change the password
 
-The app SHALL offer "Change Database Password..." while a password is set. The sheet asks for the "Current password" and for the new password twice. The new password must differ from the current one. After the change, only the new password opens the database.
+The app SHALL offer "Change Database Password..." while a password is set. The sheet asks for the "Current password" and for the new password twice. The new password must differ from the current one. After the change, only the new password opens the database and the copies that the app keeps in the database folder: the automatic backup copy and the copies of a damaged file. The app encrypts each such copy with the new password, and it removes a copy that it cannot encrypt again.
 
 #### Scenario: Successful change
 
@@ -131,6 +131,13 @@ The app SHALL offer "Change Database Password..." while a password is set. The s
 - **WHEN** the user enters "alt-und-lang-genug" as the current password and "neu-und-noch-laenger" twice as the new one
 - **THEN** the app shows that the password has been changed
 - **AND** at the next launch "neu-und-noch-laenger" opens the database and "alt-und-lang-genug" does not
+
+#### Scenario: Copies in the database folder follow the change
+
+- **GIVEN** a database with the password "alt-und-lang-genug", an automatic backup copy from the last upgrade, and a copy of a damaged file in the database folder
+- **WHEN** the user changes the password to "neu-und-noch-laenger"
+- **THEN** "neu-und-noch-laenger" opens the automatic backup copy and "alt-und-lang-genug" does not
+- **AND** "alt-und-lang-genug" opens no file in the database folder
 
 #### Scenario: Wrong current password
 

@@ -12,7 +12,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [x] 1.6 The new password is entered twice. Verified by the debug harness snapshot in the first build.
 - [x] 1.7 Show the strength of a new password. Verified by the form shows the grade while the user types.
 - [x] 1.8 Warn that a forgotten password cannot be recovered. Verified by the debug harness snapshot in the first build.
-- [x] 1.9 Change the password. Verified by VaultTests "Change the password".
+- [x] 1.9 Change the password. Verified by VaultTests "Change the password". The copies in the database folder follow the change: verified by OpeningTests "A password change encrypts the copies in the database folder again, so the earlier password opens none of them" (#266).
 - [ ] 1.10 A failed password change leaves the database usable. Build it and verify it with a test or in the app.
 - [x] 1.11 No way around the password. Verified by VaultTests "Many wrong attempts change nothing".
 - [x] 1.12 Show progress while the database opens. Verified by the debug harness: a database of layout v16 with 50,000 transactions shows "Upgrading database..." on the lock screen after the password, then the main window (#266).
