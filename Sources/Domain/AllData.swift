@@ -173,10 +173,16 @@ private struct File: Codable {
 	}
 
 	func allData() throws -> AllData {
-		AllData(exportedAt: exportedAt, groups: accountGroups, accounts: try each("accounts", accounts) { try $0.account() }, accesses: accesses.map(\.access),
+		let currencies = Dictionary(accounts.map { ($0.id, $0.currency) }, uniquingKeysWith: { first, _ in first })
+		return AllData(exportedAt: exportedAt, groups: accountGroups, accounts: try each("accounts", accounts) { try $0.account() }, accesses: accesses.map(\.access),
 			categories: categories, transactions: try each("transactions", transactions) { try $0.transaction() },
 			deletedTransactions: try each("deletedTransactions", deletedTransactions) { try $0.deleted() },
-			portfolioValues: try each("portfolioValues", portfolioValues) { try $0.portfolioValue() },
+			portfolioValues: try each("portfolioValues", portfolioValues) { entry in
+				if let currency = currencies[entry.accountID], entry.currency != currency {
+					throw AllData.ReadError.damaged("the currency \(entry.currency) differs from the account currency \(currency)")
+				}
+				return try entry.portfolioValue()
+			},
 			holdings: try each("holdings", holdings) { try $0.holding() })
 	}
 
