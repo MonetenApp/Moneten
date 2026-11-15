@@ -671,10 +671,10 @@ struct FileImportTests {
 		#expect(clock.now - canceled < .seconds(1))
 		#expect(throws: CancellationError.self) { try result.get() }
 	}
-	@Test("Cancel during delimiter detection of a 102 MB CSV ends within half a second")
-	func csvCanceledWhileDetectingDelimiter() async throws {
-		let row = "12/31/2026;Kiosk;" + String(repeating: "x", count: 180) + ";-1.50\n"
-		let header = "Date;Name;Memo;Amount\n"
+	@Test("Cancel during delimiter detection of a 102 MB CSV ends within half a second", arguments: ["\n", "\r\n", "\r"])
+	func csvCanceledWhileDetectingDelimiter(lineBreak: String) async throws {
+		let row = "12/31/2026;Kiosk;" + String(repeating: "x", count: 180) + ";-1.50" + lineBreak
+		let header = "Date;Name;Memo;Amount" + lineBreak
 		let data = Data((header + String(repeating: row, count: 500_000)).utf8)
 		let (started, start) = AsyncStream.makeStream(of: Void.self)
 		let reading = Task.detached {
