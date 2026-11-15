@@ -18,8 +18,9 @@ extension MoneyMoneyMigration {
 			/// the migrated transactions that the source no longer has.
 			public var transactions: Int
 			public var sourceTransactions: Int
-			/// Without pending transactions, because the source reports its balance without them, and without
-			/// transactions that a file or a bank added.
+			/// Without pending transactions, because the source reports its balance without them. For a migrated
+			/// account also without transactions that a file or a bank added. An account that the app had before
+			/// keeps its own balance, see `comparesBalance`.
 			public var balance: Money
 			public var sourceBalance: Money?
 			/// False for an account that the app had before the migration: its balance follows its bank or its own rows.
@@ -77,18 +78,22 @@ extension MoneyMoneyMigration.Plan {
 			func sum(_ rows: [Transaction]) -> Int64 {
 				rows.reduce(0) { !$1.isPending && $1.currency == account.currency ? $0 + $1.amountMinor : $0 }
 			}
-			let migrated = account.source == .migrated && account.kind != .portfolio
+			let migrated = account.source == .migrated
 			var balance = account.reportedBalance ?? Money(minorUnits: account.initialBalanceMinor + sum(stored), currency: account.currency)
-			if migrated {
-				// Rows without an ID of the source: those that match a row of the export by fingerprint are rows of the
-				// source with an ID that a bank took over. A booked form of an ID counts on top, as in the initial balance.
-				let others = stored.filter { !($0.sourceID?.hasPrefix("moneymoney") ?? false) }
-				let added = reconcile(.file(others), into: account, stored: source.rows, deleted: [], rules: rules, now: Date()).added
+			if migrated && account.kind != .portfolio {
+				// A row without the ID of the source that matches a booked row of the export by its fingerprint is a row
+				// of the source whose ID a bank took over. Rows that a stored row of the source holds are no match, and
+				// neither is a pending row, which the balance of the source leaves out. A booked form of an ID
+				// (`moneymoney-booked:`) counts neither here nor in the initial balance.
 				let ofSource = stored.filter { MoneyMoneyMigration.isOfSource($0.sourceID) }
+				let others = stored.filter { !MoneyMoneyMigration.isOfSource($0.sourceID) && $0.sourceID?.hasPrefix("moneymoney-booked:") != true }
+				let claimed = Set(ofSource.compactMap(\.sourceID))
+				let open = source.rows.filter { !$0.isPending && !claimed.contains($0.sourceID ?? "") }
+				let added = reconcile(.file(others), into: account, stored: open, deleted: [], rules: rules, now: Date()).added
 				balance = Money(minorUnits: account.initialBalanceMinor + sum(ofSource) + sum(others) - sum(added), currency: account.currency)
 			}
 			return .init(name: account.name, transactions: source.rows.count - missing + gone, sourceTransactions: source.rows.count,
-				balance: balance, sourceBalance: source.balance, comparesBalance: migrated || account.kind == .portfolio)
+				balance: balance, sourceBalance: source.balance, comparesBalance: migrated)
 		}
 		return .init(rows: rows, notes: notes)
 	}

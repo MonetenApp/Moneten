@@ -820,6 +820,26 @@ struct MoneyMoneyMigrationTests {
 		#expect(row.transactions == 3 && row.balance == Money(minorUnits: 123_456, currency: "EUR") && row.matches)
 	}
 
+	@Test("A second file row like a row of the source, and a booked file row like a pending one, stay out of the report balance")
+	func reportLeavesOutLookAlikes() throws {
+		let p = try plan()
+		let giro = try #require(p.accounts.first { $0.name == "Giro" })
+		let twin = Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 2), amountMinor: -4_590, name: "REWE Markt", purpose: "KARTENZAHLUNG")
+		let kiosk = Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 6), amountMinor: -1_000, name: "Kiosk")
+		let ledger = Ledger(groups: p.groups, accounts: p.accounts, categories: p.categories, transactions: p.transactions + [twin, kiosk])
+		let row = try #require(p.report(after: ledger).rows.first)
+		#expect(row.balance == Money(minorUnits: 123_456, currency: "EUR") && row.matches)
+	}
+
+	@Test("A portfolio that the app had before compares only its transactions")
+	func reportOfExistingPortfolio() throws {
+		let depot = Account(position: 0, name: "Depot", kind: .portfolio, source: .bank, bankBalanceMinor: 1_234_500, sourceID: "A3")
+		let p = try plan(into: Ledger(accounts: [depot]))
+		let row = try #require(p.report(after: Ledger(groups: p.groups, accounts: [depot] + p.accounts, categories: p.categories, transactions: p.transactions))
+			.rows.first { $0.name == "Depot" })
+		#expect(!row.comparesBalance && row.matches)
+	}
+
 	@Test("An account that the app had before the migration compares its transactions, not its balance")
 	func reportOfExistingAccount() throws {
 		let existing = Account(position: 0, name: "Mein Giro", kind: .giro, source: .offline, iban: "DE02120300000000202051", initialBalanceMinor: 99)
