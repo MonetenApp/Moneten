@@ -22,6 +22,14 @@ import Testing
 				.string("ä"), .string("a,b"), .string("table")]))
 	}
 
+	/// Published scripts compare `protocol` in `SupportsBank` with the text instead of the global.
+	@Test func protocolsAreTexts() throws {
+		#expect(run("return {ProtocolWebBanking, ProtocolFinTS}") == .array([.string("Web Banking"), .string("HBCI+/FinTS")]))
+		let run = Run(demo(Self.header + #"function SupportsBank(protocol, bankCode) return protocol == "Web Banking" and bankCode == "Demo" end"#))
+		_ = run.call("SupportsBank")
+		#expect(try run.session.call(.supportsBank(.webBanking, bankCode: "Demo")) == .boolean(true))
+	}
+
 	@Test func coroutines() {
 		#expect(run("""
 			local pages = coroutine.wrap(function() for i = 1, 3 do coroutine.yield(i) end end)
