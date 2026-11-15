@@ -214,22 +214,14 @@ The app SHALL assign CSV columns to transaction fields by common header keywords
 
 The app SHALL apply this rule: A keyword header within the first 100 nonblank rows wins; without one, data starts after the nearest title row above the first transaction; dated rows above it are skipped with a warning.
 
+A title row has at least two text labels and no dates or amounts; after a dated preamble it names the date column. A transaction has a numeric date candidate; empty, missing, ambiguous, or invalid amounts stay for validation.
+
 #### Scenario: Opening and closing balances before a header
 
 - **GIVEN** "01.11.2026;Anfangssaldo;100,00", "30.11.2026;Endsaldo;98,00", "Datum;Name;Betrag", and "02.11.2026;Kiosk;-2,00"
 - **WHEN** the file is imported
 - **THEN** the amounts are [-200] minor units
 - **AND** lines 1 and 2 each have a skipped-row warning
-
-#### Scenario: Boundary terms
-
-- **GIVEN** a keyword header has a booking-date keyword and an amount, debit, or credit keyword, with no numeric date candidate
-- **AND** a title row contains text labels without dates or amounts, with a date label in the date column when a short dated preamble precedes it
-- **AND** a transaction has a numeric date candidate and an amount, including an ambiguous, empty, missing, or invalid amount once the titles identify the data columns
-- **WHEN** the app locates the data
-- **THEN** "Tag;Wer;Wieviel" and "Wann;Wer;Wieviel" are title rows
-- **AND** "01.11.2026;Kiosk;1,234" and "01.11.2026;Kiosk" remain transactions
-- **AND** invalid dates and amounts reach validation rather than disappearing
 
 #### Scenario: Header words in a transaction
 
@@ -272,6 +264,12 @@ The app SHALL apply this rule: A keyword header within the first 100 nonblank ro
 - **THEN** the amounts are [0, 450] minor units
 - **AND** replacing the first empty amount with "abc" fails on line 1 instead of discarding that row
 - **AND** a missing first amount cell followed by the fully filled note "Hinweis;Export;vorläufig" still reads as zero, including after blank lines
+
+#### Scenario: Unfamiliar date label after a dated preamble
+
+- **GIVEN** "15.11.2026;Kontoauszug", "Wann;Wer;Wieviel", and "03.11.2026;Kiosk;-4,20"
+- **WHEN** the first and third columns are mapped to date and amount
+- **THEN** only -420 minor units is imported and line 1 has a skipped-row warning
 
 #### Scenario: Metadata before a dated preamble
 

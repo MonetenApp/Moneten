@@ -176,9 +176,9 @@ struct CSVPreviewTests {
 		#expect(preview.transactions.map(\.amountMinor) == [0, 450])
 	}
 
-	@Test("A dated row skipped before inferred titles is reported")
-	func inferredPreambleWarning() throws {
-		let file = try CSVFile(data: Data("15.11.2026;Umsatzanzeige\nTag;Wer;Wieviel\n03.11.2026;Kiosk;-4,20\n".utf8))
+	@Test("A dated row skipped before inferred titles is reported", arguments: ["Tag", "Wann"])
+	func inferredPreambleWarning(title: String) throws {
+		let file = try CSVFile(data: Data("15.11.2026;Umsatzanzeige\n\(title);Wer;Wieviel\n03.11.2026;Kiosk;-4,20\n".utf8))
 		var layout = try file.detectedLayout()
 		layout.assign(0, to: .bookingDate)
 		layout.assign(2, to: .amount)
