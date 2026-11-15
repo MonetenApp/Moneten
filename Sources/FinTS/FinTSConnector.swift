@@ -143,11 +143,11 @@ public struct FinTSConnector: BankConnector {
 				default: throw HelperFailure.unreadable
 				}
 			}
+			guard let accounts else { throw HelperFailure.noAnswer }
+			return (accounts, newState, notices)
 		} catch where !notices.isEmpty {
 			throw FailureWithNotices(error, notices: notices)
 		}
-		guard let accounts else { throw HelperFailure.noAnswer }
-		return (accounts, newState, notices)
 	}
 
 	/// Fetches all requested accounts in one dialog with the bank.

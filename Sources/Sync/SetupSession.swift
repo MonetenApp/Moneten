@@ -57,7 +57,7 @@ public struct SetupSession: SyncSession {
 			}
 		} catch {
 			// A rejection or a block can come after notices of the bank, inside `FailureWithNotices`.
-			let failure = (error as? FailureWithNotices)?.failure ?? error
+			let failure = FailureWithNotices.split(error).failure
 			if (failure as? SyncFailure)?.rejectsPIN == true { broker.forgetRejectedPIN(of: replacing) }
 			throw error
 		}

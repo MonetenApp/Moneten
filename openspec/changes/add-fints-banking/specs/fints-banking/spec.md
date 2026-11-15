@@ -353,7 +353,7 @@ The app SHALL fetch all accounts of one login that are due in a refresh inside o
 
 ### Requirement: Show notices of the bank
 
-The app SHALL show a notice that the bank sends through FinTS, such as planned maintenance, in a window titled "Notice" with the name and the text of the bank when the refresh ends. A notice about one account also names the account and the code of the bank. Each notice is shown once until the app locks. A notice of an automatic refresh waits until a refresh that the user started ends or the main window comes forward. The setup shows the notices of its login, also of a failed one.
+The app SHALL show a notice that the bank sends through FinTS, such as planned maintenance, in a window titled "Notice" with the name of the bank and the text of the bank when the refresh ends. A notice about one account also names the account and the code of the bank. Each notice is shown once until the app locks. A notice of an automatic refresh waits until a refresh that the user started ends or the main window comes forward.
 
 #### Scenario: Maintenance announcement
 
@@ -371,7 +371,7 @@ The app SHALL show a notice that the bank sends through FinTS, such as planned m
 
 #### Scenario: Notice before a failed login
 
-- **GIVEN** the bank sends the notice "Wartungsarbeiten bis 5 Uhr" and then rejects the login with the code 9800 and the text "Dialog abgebrochen"
+- **GIVEN** the bank sends the notice "Wartungsarbeiten bis 5 Uhr" and then ends the login with the code 9800 and the text "Dialog abgebrochen"
 - **WHEN** a refresh that the user started ends
 - **THEN** the window "Notice" shows "Wartungsarbeiten bis 5 Uhr"
 - **AND** the error of the account quotes "Dialog abgebrochen"
@@ -390,10 +390,12 @@ The app SHALL show a notice that the bank sends through FinTS, such as planned m
 
 #### Scenario: Notice before a failed login in the setup
 
-- **GIVEN** the bank sends the notice "Wartungsarbeiten bis 5 Uhr" and then rejects the first login of the assistant "Add Account" with the code 9800 and the text "Dialog abgebrochen"
+- **GIVEN** the app has an access of Musterbank
+- **AND** the bank sends the notice "Wartungsarbeiten bis 5 Uhr" and then ends the login of a new access in the assistant "Add Account" with the code 9800 and the text "Dialog abgebrochen"
 - **WHEN** the user clicks "Next" in the login step
 - **THEN** the login step shows the error with "Dialog abgebrochen"
 - **AND** it shows "Wartungsarbeiten bis 5 Uhr" under "Notices of the bank"
+- **AND** no window "Notice" opens when the next refresh of the access of Musterbank ends with the same notice
 
 #### Scenario: Lock
 
