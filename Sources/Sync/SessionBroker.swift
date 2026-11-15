@@ -143,9 +143,14 @@ public final class SessionBroker {
 		close(id, with: .success(answer), event: .answered)
 	}
 
-	/// The user canceled the dialog `id`. The refresh of its access stops.
+	/// The user canceled the dialog `id`. The refresh of its access stops, unless the bank asked for older
+	/// transactions: then only the request ends, and the refresh goes on with the last 90 days.
 	public func cancel(_ id: UUID) {
 		guard let current, current.id == id else { return }
+		if case let .secondFactor(request) = current.request, request.olderTransactions {
+			close(id, with: .failure(OlderTransactionsSkipped()), event: .answered)
+			return
+		}
 		close(id, with: .failure(CancellationError()), event: nil)
 		onUserCancel(current.access.id)
 	}

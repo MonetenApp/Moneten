@@ -507,6 +507,60 @@ struct FinTSConnectorTests {
 		])
 	}
 
+	@Test("A first refresh whose challenge for older transactions the user cancels gets the last 90 days without an error", arguments: ["tan", "approve"])
+	func olderTransactionsSkipped(kind: String) async throws {
+		let ninety = Day.today().adding(days: -90)
+		let session = Session { request in
+			if case let .secondFactor(second) = request, second.olderTransactions { throw OlderTransactionsSkipped() }
+			return try await Session.standard(request)
+		}
+		let report = try await refresh("""
+			read cmd
+			echo '{"type":"ask","id":1,"kind":"\(kind)","purpose":"download","prompt":"Bitte bestätigen Sie den Abruf.","history":true}'
+			read answer; printf '%s\\n' "$answer" >> "$R"
+			echo '{"type":"result","account":"DE02120300000000202051","balance":{"amount":"10.00","currency":"EUR"},"transactions":{"from":"\(ninety)","rows":[]},"errors":[]}'
+			""", session: session)
+		#expect(recorded == [["type": "answer", "id": "1", "skip": "true"]])
+		guard case let .fetched(result) = report.outcomes[Self.giro.accountID] else { Issue.record("giro not fetched"); return }
+		#expect(result.missesOlder)
+		#expect(!result.isComplete)
+		#expect(result.transactionFailure == nil)
+		#expect(session.events.contains { if case let .asked(.secondFactor(second)) = $0 { second.olderTransactions && second.purpose == .download } else { false } })
+	}
+
+	@Test("The fake helper of a debug build brings 90 days after the user canceled the TAN for the full history of the login \"historie\"")
+	func fakeHelperHistory() async throws {
+		let script = URL(filePath: #filePath).deletingLastPathComponent().appending(path: "../../scripts/fake-fints-helper.sh").standardized
+		let access = Access(source: Self.access.source, bankName: "Musterbank", loginName: "historie")
+		let connector = FinTSConnector(helper: .init(executable: URL(filePath: "/bin/sh"), arguments: [script.path]), productID: "TESTPRODUCT", version: "0.0.1")
+		let session = Session { request in
+			if case let .secondFactor(second) = request, second.olderTransactions { throw OlderTransactionsSkipped() }
+			return try await Session.standard(request)
+		}
+		let report = try await connector.refresh(RefreshRequest(access: access, accounts: [Self.giro]), session)
+		guard case let .fetched(result) = report.outcomes[Self.giro.accountID] else { Issue.record("giro not fetched"); return }
+		#expect(result.transactions?.from == Day.today().adding(days: -90))
+		#expect(result.bankHistory(after: nil, of: .giro) == .olderMayBeMissing)
+	}
+
+	@Test("A refresh after a long pause asks for 90 days and says that older transactions may be missing, and a recent one does not")
+	func longPause() async throws {
+		let today = Day.today()
+		let old = AccountRequest(accountID: UUID(), name: "Giro", remoteID: "A", since: today.adding(days: -200), currency: "EUR")
+		let recent = AccountRequest(accountID: UUID(), name: "Savings", remoteID: "B", since: today.adding(days: -10), currency: "EUR")
+		let report = try await refresh("""
+			read cmd
+			echo '{"type":"result","account":"A","transactions":{"from":"\(today.adding(days: -90))","rows":[]},"errors":[]}'
+			echo '{"type":"result","account":"B","transactions":{"from":"\(today.adding(days: -10))","rows":[]},"errors":[]}'
+			""", accounts: [old, recent])
+		guard case let .fetched(giro) = report.outcomes[old.accountID], case let .fetched(savings) = report.outcomes[recent.accountID] else {
+			Issue.record("not fetched")
+			return
+		}
+		#expect(giro.missesOlder)
+		#expect(!savings.missesOlder)
+	}
+
 	@Test("Reads the lines that the helper writes for an MT940 statement, a camt.052 report, securities accounts, and accounts that fail")
 	func helperLines() async throws {
 		// The self-test of the helper writes this file: scripts/build-fints-helper.sh.

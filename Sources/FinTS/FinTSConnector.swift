@@ -192,7 +192,8 @@ public struct FinTSConnector: BankConnector {
 	}
 
 	/// The first day to ask the bank for. A first and an enforced refresh ask for the full history.
-	/// Any other asks for no more than 90 days, so that the bank needs no TAN for older transactions.
+	/// Any other asks for no more than 90 days, so that the bank needs no TAN for older transactions. The
+	/// helper asks for the same 90 days when the user cancels a challenge for older transactions.
 	static func firstDay(_ since: Day?, today: Day) -> Day? {
 		since.map { max($0, today.adding(days: -90)) }
 	}
@@ -248,6 +249,8 @@ public struct FinTSConnector: BankConnector {
 								do {
 									// The user changed the TAN method while the dialog waited for the approval.
 									if case let .tanMethod(method) = try await task.value { process.send(Answer(id: id, method: method)) }
+								} catch is OlderTransactionsSkipped {
+									process.send(Answer(id: id, skip: true))
 								} catch where !task.isCancelled { process.fail(error) } catch {}
 							}
 							continue
@@ -258,6 +261,9 @@ public struct FinTSConnector: BankConnector {
 						} catch is CancellationError where asks.closed && !Task.isCancelled {
 							helperLeft = true
 							break reading
+						} catch is OlderTransactionsSkipped {
+							process.send(Answer(id: id, skip: true))
+							continue
 						}
 						if ask.kind != "tanMethod", case let .tanMethod(method) = answer {
 							process.send(Answer(id: id, method: method))

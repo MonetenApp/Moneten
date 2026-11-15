@@ -164,6 +164,10 @@ public struct RefreshResult: Sendable {
 	/// The positions of a portfolio, which replace the stored ones. Nil when the source sent none, as an
 	/// extension today, so the stored positions stay.
 	public let holdings: [Holding]?
+	/// The transactions start later than the account asked for: a normal refresh asks for no more than
+	/// 90 days, and the user may cancel the second factor for older transactions. So older transactions
+	/// may be missing until an enforced refresh.
+	public let missesOlder: Bool
 
 	/// The bank sent the balance without a transaction list, because it provides none for the account. A
 	/// portfolio has positions in place of transactions, and a failed request is an error of its own.
@@ -178,15 +182,18 @@ public struct RefreshResult: Sendable {
 	}
 
 	/// What the account view says about the history at the bank after this refresh, given what it said
-	/// before. A refresh that is neither balance-only nor a full history keeps the start of the history.
+	/// before. A refresh that is neither balance-only nor a full history nor shorter than asked keeps what
+	/// the view said, so the note about missing older transactions stays until an enforced refresh.
 	public func bankHistory(after previous: BankHistory?, of kind: AccountKind) -> BankHistory? {
 		if providesNoTransactions(for: kind) { return .noTransactions }
 		if let historyStart { return .startsAt(historyStart) }
+		if missesOlder { return .olderMayBeMissing }
 		return previous == .noTransactions ? nil : previous
 	}
 
 	public init(balance: Money?, balanceDate: Date? = nil, transactions: FetchedTransactions?, isComplete: Bool = false,
-		transactionFailure: SyncFailure? = nil, isPortfolio: Bool = false, holdings: [Holding]? = nil) {
+		transactionFailure: SyncFailure? = nil, isPortfolio: Bool = false, holdings: [Holding]? = nil, missesOlder: Bool = false) {
+		self.missesOlder = missesOlder
 		self.balance = balance
 		self.balanceDate = balanceDate
 		self.transactions = transactions
@@ -203,6 +210,9 @@ public enum BankHistory: Equatable, Sendable {
 	case noTransactions
 	/// "The bank provides no transactions before" this day.
 	case startsAt(Day)
+	/// "Older transactions may be missing." A refresh fetched less than the account asked for, and only an
+	/// enforced refresh closes the gap.
+	case olderMayBeMissing
 }
 
 /// The transactions of one account as the bank answered, and the days that the answer covers.

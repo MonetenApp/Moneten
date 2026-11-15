@@ -622,6 +622,8 @@ final class SelfTest {
 		expect("a TAN request offers the methods to change to", asked.get(0),
 			"{\"type\":\"ask\",\"kind\":\"tan\",\"purpose\":\"login\",\"prompt\":\"Bitte TAN eingeben\",\"current\":\"922\",\"methods\":" + methods + "}");
 
+		history(passport, callback, asked, answers);
+
 		passport.setPersistentData(FinTSHelper.Passport.KEY_PD_HHDUC, "0388A01239230520422");
 		passport.setPersistentData(FinTSHelper.Passport.KEY_PD_HHDUC, null);
 		expect("challenge data without a flicker code", FinTSHelper.Json.write(FinTSHelper.failure(thrown(() ->
@@ -655,6 +657,47 @@ final class SelfTest {
 		expect("the dialog that the bank keeps open after a change of the method", passport.open == null ? null : passport.open.getDialogId(), "D-4711");
 		callback.status(passport, FinTSHelper.Callback.STATUS_DIALOG_END_DONE, new Object[] {answer});
 		expect("a dialog that hbci4java ended", passport.open, null);
+	}
+
+	/// The purpose of a challenge, the mark of a challenge that may be for older transactions, and the 90 days
+	/// after the user canceled it (task 1.9 of add-fints-banking).
+	static void history(FinTSHelper.Passport passport, FinTSHelper.Callback callback, List<String> asked, List<String> answers) {
+		callback.fullHistory = true;
+		asked.clear();
+		answers.add("482915");
+		callback.callback(passport, FinTSHelper.Callback.NEED_PT_TAN, "pushTAN 2.0\n\nBitte TAN eingeben", 0, new StringBuffer());
+		expect("a challenge before the orders is for the login, also in a refresh of the full history", asked.get(0).contains("\"purpose\":\"login\"")
+			+ " " + asked.get(0).contains("history"), "true false");
+		passport.jobsSent = true;
+		asked.clear();
+		answers.add("482915");
+		callback.callback(passport, FinTSHelper.Callback.NEED_PT_TAN, "pushTAN 2.0\n\nBitte TAN eingeben", 0, new StringBuffer());
+		expect("a challenge after the orders of a refresh of the full history may be for older transactions",
+			asked.get(0).contains("\"purpose\":\"download\"") + " " + asked.get(0).contains("\"history\":true"), "true true");
+		callback.fullHistory = false;
+		asked.clear();
+		answers.add("482915");
+		callback.callback(passport, FinTSHelper.Callback.NEED_PT_TAN, "pushTAN 2.0\n\nBitte TAN eingeben", 0, new StringBuffer());
+		expect("a challenge of a refresh of 90 days is not for older transactions", asked.get(0).contains("history"), false);
+		passport.jobsSent = false;
+
+		FinTSHelper.Inbox.queue.add(new java.util.HashMap<>(Map.of("type", "answer", "id", "9", "skip", true)));
+		expect("a skipped challenge ends the dialog", thrown(() -> FinTSHelper.Inbox.answer(9)) instanceof FinTSHelper.SkipHistory, true);
+		FinTSHelper.Inbox.queue.add(new java.util.HashMap<>(Map.of("type", "answer", "id", "10", "skip", true)));
+		expect("an approval for older transactions that the user canceled", FinTSHelper.Inbox.skipped(10) + " " + FinTSHelper.Inbox.skipped(10)
+			+ " " + FinTSHelper.Inbox.queue.size(), "true false 0");
+		java.time.LocalDate today = java.time.LocalDate.of(2026, 11, 15);
+		expect("after a canceled challenge for older transactions the full history becomes 90 days, and a first day stays",
+			FinTSHelper.from(Map.of("id", "DE02120300000000202051"), true, today) + " " + FinTSHelper.from(Map.of("id", "1234567890", "from", "2026-11-01"), true, today)
+				+ " " + FinTSHelper.from(Map.of("id", "DE02120300000000202051"), false, today), "2026-08-17 2026-11-01 null");
+		FinTSHelper.Callback restarting = new FinTSHelper.Callback(Map.of());
+		restarting.skipHistory = true;
+		restarting.fullHistory = true;
+		expect("the next dialog after a canceled challenge for older transactions", restarting.restarts() + " "
+			+ (thrown(restarting::checkSwitch) instanceof FinTSHelper.SkipHistory), "true true");
+		restarting.restart();
+		expect("asks for 90 days and asks the user nothing more for the old dialog", restarting.narrowed + " " + restarting.restarts() + " "
+			+ restarting.fullHistory, "true false false");
 	}
 
 	/// The TAN media that hbci4java gets for each list of media it offers, starting from the medium

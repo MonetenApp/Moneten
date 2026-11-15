@@ -51,4 +51,14 @@ struct BankHistoryTests {
 		#expect(Self.dated.bankHistory(after: .noTransactions, of: .savings) == nil)
 		#expect(Self.dated.bankHistory(after: nil, of: .savings) == nil)
 	}
+
+	@Test("A refresh that fetched less than the account asked for says that older transactions may be missing, until a full history")
+	func olderMayBeMissing() {
+		let start = Day(year: 2024, month: 3, day: 1)
+		let short = RefreshResult(balance: Self.balance, transactions: FetchedTransactions(rows: [], from: Day(year: 2026, month: 8, day: 17)), missesOlder: true)
+		#expect(short.bankHistory(after: nil, of: .giro) == .olderMayBeMissing)
+		#expect(short.bankHistory(after: .startsAt(start), of: .giro) == .olderMayBeMissing)
+		#expect(Self.dated.bankHistory(after: .olderMayBeMissing, of: .giro) == .olderMayBeMissing)
+		#expect(Self.full.bankHistory(after: .olderMayBeMissing, of: .giro) == .startsAt(start))
+	}
 }

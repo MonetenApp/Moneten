@@ -18,6 +18,8 @@
 # The login "langtext" lists only "Tagesgeld". Its refresh sends the transactions of "Tagesgeld" with the
 # error 9210 of the balance request, and then a notice of 100 lines. The refresh of the login "wartung" sends a
 # notice about maintenance and then fails the login with 9800. The login "setupwartung" does the same in the setup.
+# The first refresh of the login "historie" asks for a TAN for the full history of "Girokonto". Canceling it brings
+# the last 90 days, and the account says that older transactions may be missing.
 # The bank directory has two branches of Musterbank, the bank without a FinTS server Neobank Muster
 # (99999999), a made-up Sparkasse, and Consorsbank (76030080) and DAB BNP Paribas (70120400) with
 # their real FinTS address, so the setup shows the login hint of Consorsbank and none for DAB.
@@ -96,6 +98,25 @@ case "$cmd" in
 	case "$cmd" in *'"user":"wartung"'*)
 		echo '{"type":"notice","text":"Wegen Wartungsarbeiten ist das Online-Banking bis 5 Uhr nicht erreichbar."}'
 		echo '{"type":"failed","code":"9800","text":"Dialog abgebrochen"}'
+		exit 0
+	;;
+	*'"user":"historie"'*)
+		# The full history of "Girokonto" needs a TAN for older transactions. A canceled TAN brings the last 90 days.
+		giro=$(printf '%s\n' "$cmd" | grep -o '{[^{}]*"id":"DE02120300000000202051"[^{}]*}')
+		case "$giro" in
+		*'"from":"'*) from="\"$(day 90)\"" ;;
+		*)
+			echo '{"type":"ask","id":2,"kind":"tan","purpose":"download","prompt":"Bitte geben Sie die TAN für den Abruf der Umsätze ein.","history":true}'
+			read -r line || exit 0
+			case "$line" in
+			*'"type":"cancel"'*) exit 0 ;;
+			*'"skip":true'*) from="\"$(day 90)\"" ;;
+			*) from=null ;;
+			esac
+		;;
+		esac
+		echo "{\"type\":\"result\",\"account\":\"DE02120300000000202051\",\"balance\":{\"amount\":\"2340.15\",\"currency\":\"EUR\",\"date\":\"$(day 0)\"},\"transactions\":{\"from\":$from,\"rows\":[{\"booked\":\"$(day 9)\",\"value\":\"$(day 9)\",\"amount\":\"3200.00\",\"currency\":\"EUR\",\"name\":\"Beispiel GmbH\",\"purpose\":\"Gehalt November\",\"pending\":false}]},\"errors\":[]}"
+		echo '{"type":"state","data":"MA=="}'
 		exit 0
 	;;
 	*'"user":"langtext"'*)

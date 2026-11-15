@@ -10,7 +10,9 @@
 //   request carries the PIN rules of the bank parameters, and a tan or approve request the methods
 //   that the user can change to. An answer with "method" in place of "value" to a tan or approve
 //   request changes the TAN method: the helper ends the dialog and starts a new one with that method,
-//   which requests a new challenge.
+//   which requests a new challenge. A tan or approve request with "history" comes while the refresh asks
+//   for the full history of an account. An answer with "skip" to it ends the dialog, and the helper starts a
+//   new one that asks for the last 90 days of those accounts.
 // - trust: the certificates of a server, leaf first, in Base64, with the host and an id. The app
 //   answers "trusted" or the reason why macOS does not trust them.
 // - alive, when hbci4java sends a message to the bank and when the answer arrives, so that the app
@@ -46,6 +48,7 @@ import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Date;
@@ -125,6 +128,14 @@ public class FinTSHelper {
 		SwitchMethod(String method) {
 			super("the user changed the TAN method");
 			this.method = method;
+		}
+	}
+
+	/// The user canceled the challenge for older transactions. The run ends the dialog and starts a new one
+	/// that asks for the last 90 days in place of the full history.
+	static final class SkipHistory extends RuntimeException {
+		SkipHistory() {
+			super("the user canceled the challenge for older transactions");
 		}
 	}
 
@@ -355,6 +366,7 @@ public class FinTSHelper {
 				}
 				if (!Integer.valueOf(id).toString().equals(string(m, "id"))) continue;
 				if (m.get("method") != null) throw new SwitchMethod(string(m, "method"));
+				if (Boolean.TRUE.equals(m.get("skip"))) throw new SkipHistory();
 				return string(m, "value");
 			}
 		}
@@ -368,6 +380,17 @@ public class FinTSHelper {
 				return string(m, "method");
 			}
 			return null;
+		}
+
+		/// Whether the user canceled the approval `id` because it was for older transactions.
+		static boolean skipped(Integer id) {
+			if (id == null) return false;
+			for (Map<String, Object> m : queue) {
+				if (m == CANCEL || !id.toString().equals(string(m, "id")) || !Boolean.TRUE.equals(m.get("skip"))) continue;
+				queue.remove(m);
+				return true;
+			}
+			return false;
 		}
 
 		static void check() {
@@ -425,6 +448,10 @@ public class FinTSHelper {
 			return taken;
 		}
 
+		/// hbci4java ended the login of the dialog and sends the orders. Every challenge from then on is for
+		/// the download.
+		boolean jobsSent;
+
 		/// The dialog whose last message the bank answered, until it ends. After a change of the TAN
 		/// method hbci4java leaves it open at the bank, where a challenge of the login may still wait.
 		DialogContext open;
@@ -433,6 +460,7 @@ public class FinTSHelper {
 		public void onDialogEvent(DialogEvent event, DialogContext ctx) {
 			// Recorded before hbci4java handles the answer, because a change of the method throws there.
 			if (event == DialogEvent.MSG_SENT && present(ctx.getDialogId()) && !"0".equals(ctx.getDialogId())) open = ctx;
+			if (event == DialogEvent.JOBS_CREATED) jobsSent = true;
 			super.onDialogEvent(event, ctx);
 		}
 
@@ -515,7 +543,13 @@ public class FinTSHelper {
 		final Map<?, ?> command;
 		String host;
 		int port;
-		boolean login = true;
+		/// The refresh asks for the full history of an account, so a challenge of the download may be for
+		/// transactions older than 90 days.
+		boolean fullHistory;
+		/// The user canceled the challenge for older transactions. Every request after it ends the dialog.
+		boolean skipHistory;
+		/// The next dialog asks for the last 90 days in place of the full history.
+		boolean narrowed;
 		int lastID;
 		Integer approval;
 		Map<String, Object> rejectedPIN;
@@ -557,6 +591,9 @@ public class FinTSHelper {
 			} catch (SwitchMethod e) {
 				switchTo = e.method;
 				throw e;
+			} catch (SkipHistory e) {
+				skipHistory = true;
+				throw e;
 			}
 		}
 
@@ -564,12 +601,21 @@ public class FinTSHelper {
 		/// of the callback in a status instead of throwing it.
 		void checkSwitch() {
 			if (switchTo != null) throw new SwitchMethod(switchTo);
+			if (skipHistory) throw new SkipHistory();
+		}
+
+		/// The dialog ends for a new one: the user changed the TAN method or canceled the challenge for older
+		/// transactions.
+		boolean restarts() {
+			return switchTo != null || skipHistory;
 		}
 
 		/// Prepares the next dialog after a change of the TAN method.
 		void restart() {
 			switchTo = null;
-			login = true;
+			if (skipHistory) narrowed = true;
+			skipHistory = false;
+			fullHistory = false;
 			jobs.clear();
 			jobCount = 0;
 			lastProgress = -1;
@@ -583,8 +629,15 @@ public class FinTSHelper {
 			approval = null;
 		}
 
-		String purpose() {
-			return login ? "login" : "download";
+		/// A challenge before hbci4java sends the orders is for the login, also the one of the dialog start
+		/// in `execute`, and every later one is for the download.
+		static String purpose(HBCIPassport passport) {
+			return passport instanceof Passport p && p.jobsSent ? "download" : "login";
+		}
+
+		/// Whether the bank may ask for the challenge because of transactions older than 90 days.
+		Boolean history(HBCIPassport passport) {
+			return fullHistory && "download".equals(purpose(passport)) ? true : null;
 		}
 
 		@Override
@@ -627,12 +680,12 @@ public class FinTSHelper {
 						String id = colon < 0 ? token : token.substring(0, colon);
 						methods.add(method(passport, id, colon < 0 ? token : token.substring(colon + 1)));
 					}
-					set(retData, ask(message("ask", "kind", "tanMethod", "purpose", purpose(), "methods", methods)));
+					set(retData, ask(message("ask", "kind", "tanMethod", "purpose", purpose(passport), "methods", methods)));
 				}
 				case NEED_PT_TANMEDIA -> {
 					List<Object> media = new ArrayList<>();
 					for (String name : retData.toString().split("\\|")) if (present(name)) media.add(name);
-					if (tanMedium == null || !media.contains(tanMedium)) tanMedium = ask(message("ask", "kind", "tanMedium", "purpose", purpose(), "media", media));
+					if (tanMedium == null || !media.contains(tanMedium)) tanMedium = ask(message("ask", "kind", "tanMedium", "purpose", purpose(passport), "media", media));
 					set(retData, tanMedium);
 				}
 				case NEED_PT_TAN, NEED_PT_PHOTOTAN, NEED_PT_QRTAN -> {
@@ -649,7 +702,8 @@ public class FinTSHelper {
 					if (reason == NEED_PT_TAN && flicker == null && present(hhduc)) {
 						throw new Failure("invalidChallenge", null, "The bank responded with an invalid challenge.");
 					}
-					Map<String, Object> request = message("ask", "kind", "tan", "purpose", purpose(), "prompt", challenge(msg), "image", image, "flicker", flicker);
+					Map<String, Object> request = message("ask", "kind", "tan", "purpose", purpose(passport), "prompt", challenge(msg), "image", image, "flicker", flicker,
+						"history", history(passport));
 					String tan = ask(choices(passport, request));
 					Out.secret(tan);
 					set(retData, tan);
@@ -657,13 +711,18 @@ public class FinTSHelper {
 				case NEED_PT_DECOUPLED -> {
 					if (passport instanceof Passport p) p.takeHHDuc();
 					approval = ++lastID;
-					send(choices(passport, message("ask", "id", approval, "kind", "approve", "purpose", purpose(), "prompt", challenge(msg), "method", firstLine(msg))));
+					send(choices(passport, message("ask", "id", approval, "kind", "approve", "purpose", purpose(passport), "prompt", challenge(msg), "method", firstLine(msg),
+						"history", history(passport))));
 				}
 				case NEED_PT_DECOUPLED_RETRY -> {
 					String method = Inbox.switchFor(approval);
 					if (method != null) {
 						switchTo = method;
 						throw new SwitchMethod(method);
+					}
+					if (Inbox.skipped(approval)) {
+						skipHistory = true;
+						throw new SkipHistory();
 					}
 					Inbox.check();
 				}
@@ -983,12 +1042,19 @@ public class FinTSHelper {
 	/// in the currency of the account.
 	record Jobs(String id, String from, String currency, HBCIJob balance, HBCIJob statements, HBCIJob holdings) { }
 
+	/// The first day of the transactions of an account, or null for the full history. After the user canceled the
+	/// challenge for older transactions, the full history becomes the last 90 days, as a normal refresh asks.
+	static String from(Map<?, ?> request, boolean narrowed, LocalDate today) {
+		String from = string(request, "from");
+		return from == null && narrowed ? today.minusDays(90).toString() : from;
+	}
+
 	static void refresh(HBCIHandler handle, HBCIPassport passport, Konto[] accounts, List<?> requested, Callback callback) {
 		applyTanRules(passport.getBLZ(), passport.getBPD());
 		List<Jobs> all = new ArrayList<>();
 		for (Object o : requested) {
 			Map<?, ?> request = (Map<?, ?>) o;
-			String id = string(request, "id"), from = string(request, "from");
+			String id = string(request, "id"), from = from(request, callback.narrowed, LocalDate.now());
 			Konto k = find(accounts, id);
 			if (k == null) {
 				send(message("accountFailed", "account", id, "kind", "unsupported", "text", "The bank does not list this account for the login."));
@@ -1018,7 +1084,7 @@ public class FinTSHelper {
 			all.add(new Jobs(id, from, text(k.curr), balance, statements, holdings));
 		}
 		callback.jobCount = all.size();
-		callback.login = false;
+		callback.fullHistory = all.stream().anyMatch(j -> j.statements() != null && j.from() == null);
 		if (all.isEmpty()) return;
 		callback.lastProgress = 0;
 		send(message("progress", "done", 0, "of", all.size()));
@@ -1181,15 +1247,16 @@ public class FinTSHelper {
 			Passport.loaded = loaded == null ? null : loaded.data();
 			callback.tanMedium = loaded == null ? null : loaded.tanMedium();
 			while (!dialog(type, command, callback)) {
-				diagnostic("FinTSHelper: the user changed the TAN method, starting a new dialog");
+				diagnostic("FinTSHelper: starting a new dialog after a change of the TAN method or a canceled challenge for older transactions");
 			}
 		} finally {
 			HBCIUtils.done();
 		}
 	}
 
-	/// One dialog with the bank. It returns false when the user changed the TAN method during it. The
-	/// passport then keeps its data with the new method for the next dialog, which requests a new challenge.
+	/// One dialog with the bank. It returns false when the user changed the TAN method during it, or canceled
+	/// the challenge for older transactions. The passport then keeps its data, with the new method, for the next
+	/// dialog, which requests a new challenge, or asks for the last 90 days in place of the full history.
 	static boolean dialog(String type, Map<?, ?> command, Callback callback) throws IOException {
 		HBCIHandler handle = null;
 		Passport passport = new Passport();
@@ -1214,10 +1281,10 @@ public class FinTSHelper {
 			send(message("state", "data", Base64.getEncoder().encodeToString(passport.state(callback.tanMedium))));
 			return true;
 		} catch (RuntimeException e) {
-			if (callback.switchTo == null) throw e;
+			if (!callback.restarts()) throw e;
 			passport.endOpenDialog();
 			Passport.loaded = passport.data();
-			Passport.loaded.tanMethod = callback.switchTo;
+			if (callback.switchTo != null) Passport.loaded.tanMethod = callback.switchTo;
 			callback.restart();
 			return false;
 		} finally {
