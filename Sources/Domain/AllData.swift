@@ -224,14 +224,17 @@ enum AmountText {
 
 	/// Only the plain form `-1234.56`: `Decimal(string:)` alone reads "1-2" as 1.
 	static func decimal(_ text: String) throws -> Decimal {
-		guard text.wholeMatch(of: /-?[0-9]+(\.[0-9]+)?/) != nil else {
+		guard text.wholeMatch(of: /-?[0-9]+(\.[0-9]+)?/) != nil, let d = Decimal(string: text, locale: Locale(identifier: "en_US_POSIX")) else {
 			throw AllData.ReadError.damaged("\"\(text)\" is not a decimal number")
 		}
-		guard text.filter(\.isNumber).count <= 38 else {
-			throw AllData.ReadError.damaged("the decimal number exceeds 38 digits")
-		}
-		guard let d = Decimal(string: text, locale: Locale(identifier: "en_US_POSIX")) else {
-			throw AllData.ReadError.damaged("\"\(text)\" is not a decimal number")
+		let unsigned = text.hasPrefix("-") ? text.dropFirst() : text[...]
+		let parts = unsigned.split(separator: ".")
+		let whole = parts[0].drop(while: { $0 == "0" })
+		let fraction = parts.count > 1 ? String(parts[1].reversed().drop(while: { $0 == "0" }).reversed()) : ""
+		let magnitude = (whole.isEmpty ? "0" : String(whole)) + (fraction.isEmpty ? "" : "." + fraction)
+		let canonical = (text.hasPrefix("-") && magnitude != "0" ? "-" : "") + magnitude
+		guard d.description == canonical else {
+			throw AllData.ReadError.damaged("the decimal number cannot be represented without rounding")
 		}
 		return d
 	}

@@ -374,7 +374,7 @@ struct AllDataTests {
 		#expect(error.description == "The database contains unreadable data: at holdings[0], the stored holding cannot be read.")
 	}
 
-	@Test("Decimal values longer than 38 digits are refused without changing the database")
+	@Test("Decimal values that would be rounded are refused without changing the database")
 	func decimalPrecision() throws {
 		let original = try JSONSerialization.jsonObject(with: try filledStore().exportAllData().json()) as! [String: Any]
 		let target = try emptyStore("precision")
@@ -389,7 +389,7 @@ struct AllDataTests {
 				rows[0][path[0]] = value
 			}
 			json["holdings"] = rows
-			#expect(throws: AllData.ReadError.damaged("at holdings[0], the decimal number exceeds 38 digits")) {
+			#expect(throws: AllData.ReadError.damaged("at holdings[0], the decimal number cannot be represented without rounding")) {
 				try target.importAllData(try AllData(json: JSONSerialization.data(withJSONObject: json)))
 			}
 		}
@@ -416,6 +416,18 @@ struct AllDataTests {
 		let data = AllData(accounts: [account], holdings: [Holding(accountID: account.id, security: Security(name: "Test"), quantity: quantity)])
 		let imported = try AllData(json: data.json())
 		#expect(imported.holdings[0].quantity.description == text)
+	}
+
+	@Test("Insignificant zeros and negative zero do not change decimal values", arguments: [
+		("0001.2300", "1.23"), ("-0001.2300", "-1.23"), ("-000.000", "0"), ("000", "0")
+	])
+	func paddedDecimals(_ text: String, _ expected: String) throws {
+		var json = try JSONSerialization.jsonObject(with: try filledStore().exportAllData().json()) as! [String: Any]
+		var rows = json["holdings"] as! [[String: Any]]
+		rows[0]["quantity"] = text
+		json["holdings"] = rows
+		let imported = try AllData(json: JSONSerialization.data(withJSONObject: json))
+		#expect(imported.holdings[0].quantity.description == expected)
 	}
 
 	@Test("A complete export accepts a valid 235-byte destination name")
