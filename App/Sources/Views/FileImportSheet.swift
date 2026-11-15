@@ -1,4 +1,5 @@
 import Domain
+import Import
 import SwiftUI
 
 /// A running import of files, which the import sheet shows. The files are read one after the other, and
@@ -16,6 +17,9 @@ final class FileImport {
 	@ObservationIgnored var isPresented = false
 	@ObservationIgnored private var dismissal: CheckedContinuation<Void, Never>?
 	@ObservationIgnored private var waiting: CheckedContinuation<AccountQuestion.Answer?, Never>?
+	/// The CSV file that waits for the user, which the sheet shows instead of the progress.
+	private(set) var preview: CSVPreviewModel?
+	@ObservationIgnored private var choice: CheckedContinuation<TransactionFileImporter.Parsed?, Never>?
 	/// Cancels the task that reads the files, which stops the reading of a CSV file at its next row.
 	@ObservationIgnored var onCancel: () -> Void = {}
 
@@ -49,10 +53,46 @@ final class FileImport {
 		waiting = nil
 	}
 
+	/// Shows the preview and waits for "Import", which gives the transactions of the file, or for
+	/// "Cancel", which gives nil.
+	func choose(_ preview: CSVPreviewModel) async -> TransactionFileImporter.Parsed? {
+		guard !isCanceled else { return nil }
+		return await withCheckedContinuation { continuation in
+			choice = continuation
+			self.preview = preview
+		}
+	}
+
+	func confirm() {
+		guard let chosen = preview?.chosen else { return }
+		end(chosen)
+	}
+
+#if DEBUG
+	func confirm(named account: FileAccount) {
+		guard var chosen = preview?.chosen else { return }
+		chosen.account = account
+		end(chosen)
+	}
+#endif
+
+	/// Leaves out the file in the preview and goes on with the next file.
+	func skip() {
+		end(nil)
+	}
+
 	func cancel() {
 		isCanceled = true
 		answer(nil)
+		end(nil)
 		onCancel()
+	}
+
+	private func end(_ result: TransactionFileImporter.Parsed?) {
+		preview?.stop()
+		preview = nil
+		choice?.resume(returning: result)
+		choice = nil
 	}
 }
 
@@ -66,6 +106,8 @@ struct FileImportSheet: View {
 	var body: some View {
 		if let question = run.question {
 			AccountQuestionView(run: run, question: question)
+		} else if let preview = run.preview {
+			CSVPreviewView(run: run, model: preview)
 		} else {
 			progress
 		}

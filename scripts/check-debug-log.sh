@@ -11,6 +11,7 @@
 # the password, a text of the bank, or a text of the extension.
 # It also imports a CSV file whose name, rows, and value date hold made-up personal data and a text
 # of the bank.
+# The check also opens a failing CSV preview and reads its rows.
 # The app runs with a temporary data folder and a password, so it never opens the real database and
 # leaves no Keychain item, and as a copy under its own bundle ID, so it leaves an installed Moneten alone.
 set -e
@@ -112,6 +113,7 @@ cat >"$DATA/export.json" <<-'EOF'
 EOF
 poll "^importall " importall "$DATA/export.json"
 poll "^exportall " exportall "$DATA/missing/export.json"
+poll "^alert " alert
 send sheet newAccount
 send setup "entry 12030000"
 send setup next
@@ -150,9 +152,41 @@ poll "^exportstatus running=false" exportstatus
 poll "^snapshot " snapshot check
 printf '%s\n' "Buchungstag;Valuta;Empfänger;Verwendungszweck;Betrag" "09.11.2026;Wartungsarbeiten;Erika Mustermann;Gehalt November;1.250,00" \
 	"10.11.2026;10.11.2026;Wohnbau Musterstadt eG;Miete;-950,00" >"$WORK/Erika Mustermann.csv"
+send filterbar "pin on"
+send filterbar "amount withdrawals"
+poll "^pin=true period=all status=all amount=withdrawals filter=amount category=all account=all saved=true$" state
+poll "^csvhandoff prepared$" csvhandoff prepare
+for header in "" "Date;Name;Amount"; do
+	printf '%s\n' "$header" '03/04/2026;Kiosk;1,234' '05/06/2026;Kiosk;2,345' >"$WORK/handoff.csv"
+	send importfile "$WORK/handoff.csv"
+	poll "^csv state " csv state
+	send csv "column 0=bookingDate"
+	send csv "column 1=name"
+	send csv "column 2=amount"
+	send csv "date monthDayYear"
+	send csv "decimal point"
+	poll "^csv state .*date=monthDayYear .*count=2 canImport=true" csv state
+	send csvhandoff confirm
+	poll "^importanswer .*otherPosition=[0-9]" importanswer
+	send importanswer named
+	poll "^importfile done" state
+	poll "^alert " alert
+	poll "^csvhandoff accounts=1 count=2 amountSum=3579 dateSum=40520810$" csvhandoff state
+done
 send importfile "$WORK/Erika Mustermann.csv"
+poll "^csv state .*canImport=true" csv state
+poll "^csv rows" csv rows
+poll "^pin=true period=all status=all amount=withdrawals filter=amount category=all account=all saved=true$" state
+send key return
 poll "^importfile done" state
 poll "^alert " alert
+send importfile "$WORK/Erika Mustermann.csv"
+poll "^csv state .*canImport=true" csv state
+send key return
+poll "^importfile done" state
+poll "^alert " alert
+poll "^pin=true period=all status=all amount=withdrawals filter=amount category=all account=all saved=true$" state
+send filterbar "pin off"
 poll "^rows " rows Girokonto
 poll "^gave up$" search "currency:/^+?49/"
 send search ""
@@ -195,6 +229,15 @@ poll "^importanswer .*fileIndex=3 " importanswer
 send importanswer selected
 poll "^importfile done" state
 poll "^alert " alert
+# A preview whose rows hold names and purposes, and whose problem names a cell of the file.
+printf '%s\n' "Buchungstag;Empfänger;Verwendungszweck;Betrag" "11.11.2026;Tankstelle Beispiel;Kartenzahlung;-42,50" \
+	"Miete 12;Beispiel GmbH;Sparen;-1,00" >"$WORK/Kontoauszug.csv"
+send importfile "$WORK/Kontoauszug.csv"
+poll "^csv state .*problem=line 3" csv state
+poll "^csv rows" csv rows
+send key escape
+poll "^importfile done" state
+poll "^alert " alert
 send selectRows 1
 send newcategory Haushaltskasse
 poll "selection=.*SidebarSelection.category" state
@@ -221,7 +264,7 @@ send quit
 
 found=0
 for value in DE02120300000000202051 "DE02 1203" 202051 1234567890 0099887766 "99 88 77 66" 4711 5550001 "$LOGIN" "$PIN" "$MIGRATION_UNKNOWN" 123456 check-debug-log \
-	Girokonto Tagesgeld Kreditkarte Extrakonto "Erika Mustermann" "Beispiel GmbH" "Wohnbau Musterstadt" "Tankstelle Beispiel" \
+	"Handoff Synthetic" 88776655 Kiosk Girokonto Tagesgeld Kreditkarte Extrakonto "Erika Mustermann" "Beispiel GmbH" "Wohnbau Musterstadt" "Tankstelle Beispiel" \
 	"Gehalt November" Miete Kartenzahlung Sparen Haushaltskasse MIETE-2026-11 GUTSCHRIFT DAUERAUFTRAG \
 	"Zugang vorübergehend gesperrt" "PIN falsch" Wartungsarbeiten pushTAN-App "currency:/^+?49/"; do
 	if grep -n -w -F -- "$value" "$LOG" >&2; then

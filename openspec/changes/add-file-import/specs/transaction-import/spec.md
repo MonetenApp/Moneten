@@ -80,7 +80,7 @@ The app SHALL detect the delimiter of a CSV file among semicolon, comma, and tab
 
 ### Requirement: CSV date detection
 
-The app SHALL detect the date format of each date column from all its values, including day first and month first orders, two-digit and four-digit years, and ISO dates. A date with dots always reads day first. The app warns when the file mixes month-first dates with dotted dates. When the values fit more than one order, the app marks the choice in the preview so that the user confirms or changes it.
+The app SHALL detect the date format of the date columns from all their values, including day first and month first orders, two-digit and four-digit years, and ISO dates. The booking date and the value date share one format. A date with dots always reads day first. The app warns when the file mixes month-first dates with dotted dates. When the values fit more than one order, the app marks the choice in the preview so that the user confirms or changes it.
 
 #### Scenario: Clear European dates
 
@@ -137,6 +137,26 @@ The app SHALL read amounts with a decimal comma or a decimal point, with or with
 - **WHEN** a row has "89,00" under "Soll" and nothing under "Haben"
 - **THEN** the app reads a withdrawal of 89,00 €
 
+#### Scenario: Empty amount cells are zero
+
+- **WHEN** a CSV file has the header "Datum;Betrag" and the rows "01.11.2026;-1,00" and "02.11.2026;"
+- **THEN** the app reads a withdrawal of 1,00 € and a transaction of 0,00 €
+
+#### Scenario: Empty debit and credit cells are zero
+
+- **WHEN** a CSV file has the header "Datum;Soll;Haben" and the rows "01.11.2026;1,00;" and "02.11.2026;;"
+- **THEN** the app reads a withdrawal of 1,00 € and a transaction of 0,00 €
+
+#### Scenario: Debit column alone
+
+- **WHEN** a CSV file has the header "Datum;Soll" and the row "01.11.2026;1,00"
+- **THEN** the app reads a withdrawal of 1,00 €
+
+#### Scenario: Credit column alone
+
+- **WHEN** a CSV file has the header "Datum;Haben" and the row "01.11.2026;1,00"
+- **THEN** the app reads a deposit of 1,00 €
+
 #### Scenario: Marker column
 
 - **WHEN** a row has the amount "89,00" and "S" in a debit and credit marker column
@@ -190,6 +210,121 @@ The app SHALL assign CSV columns to transaction fields by common header keywords
 - **WHEN** a file has the headers "Date", "Payee", "Memo", and "Amount"
 - **THEN** the preview assigns them to booking date, name, purpose, and amount
 
+### Requirement: CSV data boundary
+
+The app SHALL apply this rule: A keyword header within the first 100 nonblank rows wins; without one, data starts after the nearest title row above the first transaction; dated rows above it are skipped with a warning.
+
+A title row has at least two text labels and no dates or amounts; after a dated preamble it names the date column. A transaction has a numeric date candidate; empty, missing, ambiguous, or invalid amounts stay for validation.
+
+#### Scenario: Numbered labels in a keyword header
+
+- **GIVEN** "01.11.2026;Anfangssaldo;100,00", "Datum;Name;Betrag;1. Verwendungszweck", and "02.11.2026;Kiosk;-2,00;Brot"
+- **WHEN** the file is imported
+- **THEN** the amount is -200 minor units and line 1 has a skipped-row warning
+- **AND** replacing "Name" with "2. Name" gives the same amount and warning
+
+#### Scenario: Opening and closing balances before a header
+
+- **GIVEN** "01.11.2026;Anfangssaldo;100,00", "30.11.2026;Endsaldo;98,00", "Datum;Name;Betrag", and "02.11.2026;Kiosk;-2,00"
+- **WHEN** the file is imported
+- **THEN** the amounts are [-200] minor units
+- **AND** lines 1 and 2 each have a skipped-row warning
+
+#### Scenario: Header words in a transaction
+
+- **GIVEN** "Tag;Wer;Zweck;Wieviel", followed by 101 rows of "01.11.2026;Kiosk;Brot;1.00"
+- **WHEN** the next rows are "02.11.2026;Datum;Betrag;2.00" and "03.11.2026;Bakery;Cake;3.00"
+- **THEN** mapping the first and fourth columns to date and amount reads 101 amounts of 100, then 200 and 300 minor units
+
+#### Scenario: Spaces before a transaction date
+
+- **GIVEN** "Tag;Wer;Zweck;Wieviel", " 01.11.2026;Datum;Betrag; -1.00", and "02.11.2026;Kiosk;Brot;-2.00"
+- **WHEN** the first and fourth columns are mapped to date and amount
+- **THEN** the amounts are [-100, -200] minor units and no row is skipped
+- **AND** a tab before the first date has the same outcome
+
+#### Scenario: A balance before the column headings
+
+- **GIVEN** "01.11.2026;Anfangssaldo;100,00", "Datum;Name;Betrag", and "02.11.2026;Kiosk;-2,00"
+- **WHEN** the file is imported
+- **THEN** only the Kiosk transaction is imported, as -200 minor units
+- **AND** line 1 has a skipped-row warning
+
+#### Scenario: Account metadata before the column headings
+
+- **GIVEN** "Konto;12345678;Stand;30.11.2026", "Buchungstag;Empfänger;Betrag", and "01.11.2026;Kiosk;-4,20"
+- **WHEN** the file is imported
+- **THEN** the columns are assigned and the Kiosk transaction is imported as -420 minor units
+- **AND** line 1 has a skipped-row warning
+- **AND** the same amount and warning hold when the first row is "Kontostand;30.11.2026;1.234,56"
+
+#### Scenario: Titles after a long preamble
+
+- **GIVEN** 150 rows of "Preamble", then "Tag;Wer;Wieviel" and "01.11.2026;Kiosk;1.00"
+- **WHEN** the preview opens
+- **THEN** its titles are "Tag", "Wer", and "Wieviel"
+
+#### Scenario: A filled subtotal follows a short transaction
+
+- **GIVEN** "Tag;Wer;Wieviel", "01.11.2026;Kiosk", "Zwischensumme;EUR;Saldo;0,00", and "02.11.2026;Bakery;;4.50"
+- **WHEN** the user maps the first column to the booking date and the fourth to the amount
+- **THEN** both transactions read as [0, 450] minor units
+- **AND** the titles are "Tag", "Wer", "Wieviel" and a blank fourth title
+
+#### Scenario: Headerless rows before a note
+
+- **GIVEN** "01.11.2026;Kiosk;", "Hinweis;Export vorläufig;", and "02.11.2026;Bakery;4.50"
+- **WHEN** the first and third columns are mapped to date and amount
+- **THEN** the amounts are [0, 450] minor units
+- **AND** replacing the first empty amount with "abc" fails on line 1 instead of discarding that row
+- **AND** a missing first amount cell followed by the fully filled note "Hinweis;Export;vorläufig" still reads as zero, including after blank lines
+
+#### Scenario: Unfamiliar date label after a dated preamble
+
+- **GIVEN** "15.11.2026;Kontoauszug", "Wann;Wer;Wieviel", and "03.11.2026;Kiosk;-4,20"
+- **WHEN** the first and third columns are mapped to date and amount
+- **THEN** only -420 minor units is imported and line 1 has a skipped-row warning
+
+#### Scenario: Metadata before a dated preamble
+
+- **GIVEN** "Konto;Giro;EUR", "15.11.2026;Umsatzanzeige", "Tag;Wer;Wieviel", and "03.11.2026;Kiosk;-4,20"
+- **WHEN** the first and third columns are mapped to date and amount
+- **THEN** the titles are "Tag", "Wer", and "Wieviel", and only -420 minor units is imported
+- **AND** the skipped dated preamble is reported on line 2
+- **AND** replacing the first metadata row with "Hinweis;Export;vorläufig" still imports only -420 and reports the skipped dated preamble on line 2
+
+#### Scenario: Malformed first numeric dates
+
+- **GIVEN** unfamiliar headings or no headings, a first row with "01.11.2026x", "2026-11-", "01/11", "20261101", ".11.2026", or "/11/2026" as its date and -1.50 as its amount, then a valid row of -2.00
+- **WHEN** date and amount are mapped
+- **THEN** the first row fails date validation and nothing is imported from the file
+- **AND** counterparty and purpose values "Datum" and "Betrag" cannot hide that invalid row as a header
+
+#### Scenario: A complete note after a short row
+
+- **GIVEN** "Tag;Wer;Wieviel", "01.11.2026;Kiosk", "Hinweis;Export;vorläufig", and "02.11.2026;Bakery;4.50"
+- **WHEN** the first and third columns are mapped to date and amount
+- **THEN** the earlier heading stays in use and the amounts are [0, 450] minor units
+- **AND** the same holds when the amount is mapped to a fourth column without a title and the note has four filled cells
+
+#### Scenario: Ambiguous first amount before a subtotal
+
+- **GIVEN** "Tag;Wer;Wieviel", "01.11.2026;Kiosk;1,234", "Zwischensumme;;0,00", and "02.11.2026;Bakery;4.50"
+- **WHEN** the first and third columns are mapped to date and amount
+- **THEN** the amounts are [123400, 450] minor units
+
+#### Scenario: Blank rows do not consume the keyword window
+
+- **GIVEN** 100 blank lines, "Datum;Betrag", and "01.11.2026;-1,00"
+- **WHEN** the file is imported
+- **THEN** the columns are assigned and the amount is -100 minor units
+
+#### Scenario: Keyword header outside the window
+
+- **GIVEN** 100 nonblank rows of "Preamble", then "Datum;Betrag" and "01.11.2026;-1,00"
+- **WHEN** the preview opens
+- **THEN** the titles are "Datum" and "Betrag" and the columns need manual assignment
+
 ### Requirement: CSV preview
 
 The app SHALL show a preview before it imports a CSV file. The preview shows the first rows as the app reads them, the field that each column is assigned to, the date format, the decimal separator, and the encoding. The user can change each of these, and the preview updates at once.
@@ -204,6 +339,13 @@ The app SHALL show a preview before it imports a CSV file. The preview shows the
 
 - **WHEN** no column is assigned to the booking date or to the amount
 - **THEN** the "Import" button is disabled and the preview says which field is missing
+
+#### Scenario: Reread a confirmed CSV for a target currency
+
+- **GIVEN** "03/04/2026;Kiosk;1,234", with or without the titles "Date;Name;Amount"
+- **AND** the user maps the columns, chooses month-day-year and a decimal point, and confirms a preview of 123400 EUR minor units on March 4
+- **WHEN** the import reads the file again for a JPY target account
+- **THEN** it keeps that date and those column/decimal settings and reads 1234 JPY minor units without requiring a header row
 
 ### Requirement: CSV profiles
 
@@ -438,6 +580,13 @@ The app SHALL report after an import how many new transactions were imported, fo
 - **WHEN** an import adds 128 transactions, skips 3, and creates 2 categories
 - **THEN** the message states all three numbers
 
+#### Scenario: Dismissal resumes the import that was presented
+
+- **GIVEN** an import sheet was presented for a running import
+- **WHEN** the sheet reports its dismissal
+- **THEN** the callback resumes that presented run, even if the model no longer refers to it
+- **AND** a later import can start after the user closes the result
+
 ### Requirement: Errors name the file and the place
 
 The app SHALL report a file that it cannot read with the file name, the line or element, and the reason. The app imports nothing from that file.
@@ -456,6 +605,12 @@ The app SHALL report a file that it cannot read with the file name, the line or 
 ### Requirement: Warnings for a file
 
 The app SHALL import a file that has values it can read around, and list them as warnings with the file name after the import. Examples are an unknown currency code that falls back to the account currency and a value date that is not a date.
+
+#### Scenario: A dated row before inferred CSV titles
+
+- **GIVEN** a CSV file without known header keywords has "15.11.2026;Umsatzanzeige" before the titles "Tag;Wer;Wieviel" and a transaction of -4,20 €
+- **WHEN** the user assigns the booking date and amount columns and imports the file
+- **THEN** the app imports -4,20 € and warns that the dated row in line 1 was skipped before the inferred titles
 
 #### Scenario: Unreadable value date
 

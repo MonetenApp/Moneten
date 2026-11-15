@@ -158,13 +158,34 @@ extension AppModel {
 			for (i, url) in urls.enumerated() {
 				run.index = i
 				do {
-					let parsed = try await Self.readFile(url, currency: account.currency)
+					let data = try await Self.load(url)
+					let parsed: TransactionFileImporter.Parsed
+					var confirmedCSV: (file: CSVFile, layout: CSVLayout)?
+					if let (file, layout) = try await Self.csv(data) {
+						if run.isCanceled { return (read, problems, canceledAt: i) }
+						// A menu command can open another sheet while the progress shows, and the preview must not close it.
+						if sheet != nil, sheet != .fileImport(run) {
+							run.cancel()
+							return (read, problems, canceledAt: i)
+						}
+						sheet = .fileImport(run)
+						let preview = CSVPreviewModel(name: url.lastPathComponent, file: file, layout: layout, currency: account.currency)
+						guard let chosen = await run.choose(preview) else {
+							if run.isCanceled { return (read, problems, canceledAt: i) }
+							problems.append("\(url.lastPathComponent): \(preview.reason)")
+							continue
+						}
+						parsed = chosen
+						confirmedCSV = (preview.file, preview.layout)
+					} else {
+						parsed = try await Self.parse(data, currency: account.currency)
+					}
 					if run.isCanceled { return (read, problems, canceledAt: i) }
 					let created = read.filter(\.isNew).map(\.into)
 					let currency = parsed.declaredCurrency
 					// A file without a currency takes the currency of the account it goes into, which can be another one.
 					func parsedFor(_ into: Account) async throws -> TransactionFileImporter.Parsed {
-						into.currency == account.currency ? parsed : try await Self.readFile(url, currency: into.currency)
+						into.currency == account.currency ? parsed : try await Self.parse(data, currency: into.currency, csv: confirmedCSV)
 					}
 					let decision = try TransactionFileImporter.accountDecision([parsed.account], selected: account,
 						accounts: ledger.accounts + created, currency: parsed.transactions.first?.currency ?? account.currency)
@@ -234,7 +255,7 @@ extension AppModel {
 		if !warnings.isEmpty {
 			// A file can repeat one problem in every row, and the alert must stay short enough to read.
 			let shown = 10
-			message += "\n\n" + (warnings.count == 1 ? "One value was replaced:" : "\(warnings.count) values were replaced:")
+			message += "\n\n" + (warnings.count == 1 ? "One warning:" : "\(warnings.count) warnings:")
 			message += "\n" + warnings.prefix(shown).joined(separator: "\n")
 			if warnings.count > shown { message += "\nand \(warnings.count - shown) more." }
 		}
@@ -276,11 +297,22 @@ extension AppModel {
 		}
 	}
 
-	/// Reads a file away from the main actor, so the import sheet can show progress and take "Cancel".
-	nonisolated private static func readFile(_ url: URL, currency: String) async throws -> TransactionFileImporter.Parsed {
+	/// Loads a file away from the main actor, as the functions below read it, so the import sheet can
+	/// show progress and take "Cancel".
+	nonisolated private static func load(_ url: URL) async throws -> Data {
 		let data = try Data(contentsOf: url)
 		guard data.count <= 100 * 1024 * 1024 else { throw FileTooLarge() }
-		return try TransactionFileImporter.parse(data, currency: currency)
+		return data
+	}
+
+	/// The rows of a CSV file and the layout that the app detects in them, or nil for another format.
+	nonisolated private static func csv(_ data: Data) async throws -> (CSVFile, CSVLayout)? {
+		guard let file = try CSVFile.detect(data) else { return nil }
+		return (file, try file.detectedLayout())
+	}
+
+	nonisolated static func parse(_ data: Data, currency: String, csv: (file: CSVFile, layout: CSVLayout)? = nil) async throws -> TransactionFileImporter.Parsed {
+		try TransactionFileImporter.parse(data, currency: currency, csv: csv)
 	}
 }
 
