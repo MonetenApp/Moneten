@@ -158,18 +158,48 @@ struct LedgerTests {
 		let l = Ledger(accounts: [giro], transactions: [150_00, -150_00, 500_00, 1_000_00, -1_500_00, -300_00].enumerated().map {
 			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 1 + $0.offset), amountMinor: $0.element, name: "Row \($0.offset)")
 		})
-		func shown(_ min: Int64?, _ max: Int64?) throws -> [Int64] {
+		func shown(_ min: Decimal?, _ max: Decimal?) throws -> [Int64] {
 			var f = TransactionFilter()
 			f.amount = try #require(TransactionFilter.AmountFilter.custom(min: min, max: max))
 			return l.transactions(in: .account(giro.id), filter: f).map(\.amountMinor).sorted()
 		}
-		#expect(try shown(100_00, 500_00) == [150_00, 500_00])
-		#expect(try shown(-500_00, -100_00) == [-300_00, -150_00])
-		#expect(try shown(1_000_00, nil) == [1_000_00])
-		#expect(try shown(nil, -1_500_00) == [-1_500_00])
-		#expect(TransactionFilter.AmountFilter.custom(min: -100_00, max: -500_00) == nil)
-		#expect(TransactionFilter.AmountFilter.custom(min: -100_00, max: -100_00) != nil)
+		#expect(try shown(100, 500) == [150_00, 500_00])
+		#expect(try shown(-500, -100) == [-300_00, -150_00])
+		#expect(try shown(1_000, nil) == [1_000_00])
+		#expect(try shown(nil, -1_500) == [-1_500_00])
+		#expect(TransactionFilter.AmountFilter.custom(min: -100, max: -500) == nil)
+		#expect(TransactionFilter.AmountFilter.custom(min: -100, max: -100) != nil)
 		#expect(TransactionFilter.AmountFilter.custom(min: nil, max: nil) == .all)
+	}
+
+	@Test("The custom amount range compares each row in its own currency, and its ends before rounding")
+	func customAmountRangeCurrencies() throws {
+		let group = AccountGroup(name: "All", position: 0)
+		let accounts = ["EUR", "USD", "JPY", "KWD"].enumerated().map {
+			Account(groupID: group.id, position: $0.offset, name: $0.element, kind: .giro, source: .offline, currency: $0.element)
+		}
+		let rows: [(Int, Int64)] = [(0, -150_00), (1, -150_00), (2, -150), (3, -150_000), (2, 150), (2, 15_000), (3, -15_000), (0, 100_00), (0, 101_00)]
+		let l = Ledger(groups: [group], accounts: accounts, transactions: rows.enumerated().map { i, row in
+			Transaction(accountID: accounts[row.0].id, bookingDate: Day(year: 2026, month: 11, day: 1 + i), amountMinor: row.1, currency: accounts[row.0].currency, name: "Row \(i)")
+		})
+		func shown(_ scope: LedgerScope, _ min: Decimal?, _ max: Decimal?) throws -> [String] {
+			var f = TransactionFilter()
+			f.amount = try #require(TransactionFilter.AmountFilter.custom(min: min, max: max))
+			return l.transactions(in: scope, filter: f).map { "\($0.amountMinor) \($0.currency)" }.sorted()
+		}
+		#expect(try shown(.account(accounts[2].id), 100, 500) == ["150 JPY"])
+		#expect(try shown(.account(accounts[3].id), -500, -100) == ["-150000 KWD"])
+		#expect(try shown(.accountGroup(group.id), -500, -100) == ["-150 JPY", "-15000 EUR", "-15000 USD", "-150000 KWD"])
+		// An end between two minor units lets only the amounts inside the range through.
+		#expect(try shown(.account(accounts[0].id), Decimal(string: "100.004"), nil) == ["10100 EUR"])
+		#expect(try shown(.account(accounts[0].id), nil, Decimal(string: "-150.004")) == [])
+		#expect(try shown(.account(accounts[0].id), Decimal(string: "100.004"), Decimal(string: "100.006")) == [])
+		#expect(try shown(.accountGroup(group.id), Decimal(string: "18446744073709551616"), nil) == [])
+		#expect(try shown(.accountGroup(group.id), nil, Decimal(string: "-18446744073709551616")) == [])
+		#expect(try shown(.account(accounts[2].id), Decimal(string: "-18446744073709551616"), Decimal(string: "18446744073709551616")) == ["-150 JPY", "150 JPY", "15000 JPY"])
+		let min = try #require(AmountParser.decimal(from: "1,2340"))
+		let max = try #require(AmountParser.decimal(from: "1,2330"))
+		#expect(TransactionFilter.AmountFilter.custom(min: min, max: max) == nil)
 	}
 
 	@Test("Uncategorized holds every transaction without a category")
