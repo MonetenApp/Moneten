@@ -184,7 +184,7 @@ struct SearchQuery {
 	}
 
 	/// Counts only the searching thread's processor time inside regex calls. Scheduling delays on a busy Mac
-	/// must not discard a normal search. The joined-fields optimization can stop without stopping real values.
+	/// must not discard a normal search.
 	private final class RegexWatch {
 		let budget: RegexBudget
 		private(set) var gaveUp = false
