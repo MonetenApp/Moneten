@@ -992,3 +992,10 @@ Only file imports SHALL create `fileIdentity`, a versioned original-file fingerp
 - **WHEN** its pending state, local UUID, creation time, comment, checkmark, or category changes
 - **THEN** its original file identity stays unchanged
 - **AND** a refresh or migration cannot create a file identity
+
+#### Scenario: Known names conflict despite an exact fingerprint
+
+- **GIVEN** an unfetched pending rent of -800,00 € on 1 December 2026 to "Vermieter A", with purpose "RENT", reference "SHARED", and no IBAN
+- **WHEN** a file or refresh delivers the same day, amount, purpose and reference for "Vermieter B", also without an IBAN
+- **THEN** their known names conflict and the exact fingerprint cannot pair them
+- **AND** both rows remain, totaling -1.600,00 €

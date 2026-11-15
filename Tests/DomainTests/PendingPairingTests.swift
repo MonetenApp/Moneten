@@ -3,6 +3,23 @@ import Foundation
 import Testing
 
 extension ReconcileTests {
+	@Test("A shared reference cannot hide conflicting known names behind an exact fingerprint", arguments: [false, true])
+	func gate3ReferenceNameConflict(fileDelivery: Bool) {
+		var stored = rent(1, purpose: "RENT")
+		stored.counterpartyIBAN = nil
+		stored.endToEndReference = "SHARED"
+		var delivered = rent(1, purpose: "RENT")
+		delivered.counterpartyIBAN = nil
+		delivered.endToEndReference = "SHARED"
+		delivered.name = "Vermieter B"
+		let r = merge(fileDelivery ? .file([delivered]) : refresh([delivered]), stored: [stored], at: noon(20, month: 11))
+		#expect(r.skipped == 0)
+		#expect(r.added.map(\.name) == ["Vermieter B"])
+		let rows = history([stored], after: r)
+		#expect(rows.map(\.name).sorted() == ["Vermieter A", "Vermieter B"])
+		#expect(rows.reduce(0) { $0 + $1.amountMinor } == -160_000)
+	}
+
 	@Test("Only a file import creates the original file fingerprint")
 	func gate3FileFingerprintOrigin() throws {
 		var delivered = rent(1, purpose: "A|B")
