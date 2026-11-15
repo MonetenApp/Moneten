@@ -88,6 +88,7 @@ struct SheetView: View {
 		case .newGroup: NameSheet(title: "Add Account Group", placeholder: "Name") { name in Task { await model.addGroup(name: name) } }
 		case let .newCategory(isGroup, ids): NewCategorySheet(isGroup: isGroup, assigning: ids)
 		case let .accountSettings(id): AccountSettingsSheet(accountID: id)
+		case let .calibration(id): CalibrationSheet(accountID: id)
 		case let .groupSettings(id): GroupSettingsSheet(groupID: id)
 		case let .categorySettings(id): CategorySettingsSheet(categoryID: id)
 		case let .transaction(id): TransactionSheet(transactionID: id)

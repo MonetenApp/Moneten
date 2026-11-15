@@ -156,7 +156,7 @@ public struct Account: Identifiable, Hashable, Sendable, Codable {
 
 	/// The rows that a bank balance for the end of `day` holds: booked rows in the account currency up to that
 	/// day. Pending rows are not in it, with or without review, because a bank reports its booked balance.
-	func bookedSum(of rows: [Transaction], through day: Day) -> Int64 {
+	func bookedSum(of rows: some Sequence<Transaction>, through day: Day) -> Int64 {
 		rows.reduce(0) { sum, t in
 			!t.isPending && t.currency == currency && t.bookingDate <= day ? sum + t.amountMinor : sum
 		}
@@ -164,7 +164,7 @@ public struct Account: Identifiable, Hashable, Sendable, Codable {
 
 	/// The initial balance at which the booked rows up to the end of the day of the bank balance add up to
 	/// the bank balance. `rows` are all live rows of the account. The pending rows then count on top.
-	public func initialBalanceMeetingBankBalance(of rows: [Transaction], calendar: Calendar = .current) -> Int64? {
+	public func initialBalanceMeetingBankBalance(of rows: some Sequence<Transaction>, calendar: Calendar = .current) -> Int64? {
 		bankBalanceMinor.map { $0 - bookedSum(of: rows, through: Day(bankBalanceDate ?? Date(), calendar: calendar)) }
 	}
 

@@ -42,6 +42,16 @@ public enum SyncState: Sendable, Equatable {
 		}
 	}
 
+	/// Whether a bank balance that this refresh stored for `account` may lack the rows it covers: the refresh
+	/// runs, or it failed for the account.
+	func mayLackRows(of account: UUID) -> Bool {
+		switch self {
+		case .connecting, .fetching, .needsUser, .failed: true
+		case let .finished(summary): summary.failures[account] != nil
+		case .idle, .cancelled: false
+		}
+	}
+
 	private var activity: Activity? {
 		switch self {
 		case .connecting: .connecting

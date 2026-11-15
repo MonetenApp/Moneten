@@ -244,6 +244,58 @@ struct LedgerTests {
 		#expect(offline.initialBalanceMeetingBankBalance(of: rows) == nil)
 	}
 
+	@Test("A bank balance that the booked rows miss proposes a calibration, and a pending row or an account without a bank access proposes none")
+	func proposeCalibration() {
+		let today = Day(year: 2026, month: 11, day: 12)
+		func giro(initial: Int64) -> Account {
+			Account(position: 0, name: "Giro", kind: .giro, source: .bank, bankBalanceMinor: 120_000, bankBalanceDate: today.date(),
+				initialBalanceMinor: initial, initialBalanceIsSet: true)
+		}
+		func ledger(_ account: Account, pending: Bool) -> Ledger {
+			var rows = [Transaction(accountID: account.id, bookingDate: Day(year: 2026, month: 11, day: 2), amountMinor: 100_000, name: "Beispiel GmbH")]
+			if pending { rows.append(Transaction(accountID: account.id, bookingDate: today, amountMinor: -5_000, name: "Tankstelle Beispiel", isPending: true)) }
+			return Ledger(accounts: [account], transactions: rows)
+		}
+		let unexplained = giro(initial: 25_000)
+		#expect(ledger(unexplained, pending: false).computedBalance(of: unexplained, through: today).minorUnits == 125_000)
+		#expect(ledger(unexplained, pending: false).proposedCalibration(of: unexplained, today: today, refresh: .idle)
+			== CalibrationProposal(difference: Money(minorUnits: -5_000, currency: "EUR"), balanceToday: Money(minorUnits: 120_000, currency: "EUR")))
+
+		let pending = giro(initial: 20_000)
+		#expect(ledger(pending, pending: true).computedBalance(of: pending, through: today).minorUnits == 115_000)
+		#expect(ledger(pending, pending: true).proposedCalibration(of: pending, today: today, refresh: .idle) == nil)
+
+		var migrated = unexplained
+		migrated.source = .migrated
+		#expect(ledger(migrated, pending: false).proposedCalibration(of: migrated, today: today, refresh: .idle) == nil)
+		var notSetYet = unexplained
+		notSetYet.initialBalanceIsSet = false
+		#expect(ledger(notSetYet, pending: false).proposedCalibration(of: notSetYet, today: today, refresh: .idle) == nil)
+		var failed = unexplained
+		failed.refreshError = RefreshError(message: "The transactions could not be fetched.", date: Date())
+		#expect(ledger(failed, pending: false).proposedCalibration(of: failed, today: today, refresh: .idle) == nil)
+	}
+
+	@Test("A row booked after the day of the bank balance proposes nothing, and a calibration fills in the balance of today and moves the initial balance by the difference")
+	func calibrationOnTheDayOfTheBankBalance() {
+		let today = Day(year: 2026, month: 11, day: 12)
+		var giro = Account(position: 0, name: "Giro", kind: .giro, source: .bank, bankBalanceMinor: 50_000,
+			bankBalanceDate: Day(year: 2026, month: 11, day: 10).date(), initialBalanceMinor: 70_000, initialBalanceIsSet: true)
+		let rows = [
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 1), amountMinor: -20_000, name: "Wohnbau Musterstadt eG"),
+			Transaction(accountID: giro.id, bookingDate: today, amountMinor: -3_000, name: "Bäckerei Gutbrot"),
+		]
+		#expect(Ledger(accounts: [giro], transactions: rows).computedBalance(of: giro, through: today).minorUnits == 47_000)
+		#expect(Ledger(accounts: [giro], transactions: rows).proposedCalibration(of: giro, today: today, refresh: .idle) == nil)
+
+		giro.bankBalanceMinor = 45_000
+		let l = Ledger(accounts: [giro], transactions: rows)
+		#expect(l.proposedCalibration(of: giro, today: today, refresh: .idle)?.balanceToday == Money(minorUnits: 42_000, currency: "EUR"))
+		#expect(l.calibratedInitialBalance(of: giro, balanceToday: 42_000, today: today) == 65_000)
+		giro.initialBalanceMinor = 65_000
+		#expect(Ledger(accounts: [giro], transactions: rows).proposedCalibration(of: giro, today: today, refresh: .idle) == nil)
+	}
+
 	@Test("A pending transaction marked for review counts nowhere, a booked one marked for review counts")
 	func pendingForReview() {
 		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline, initialBalanceMinor: 50_000)

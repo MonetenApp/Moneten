@@ -113,11 +113,34 @@ struct HeaderView: View {
 					let date = account.bankBalanceDate {
 					Text("Balance as of \(Format.dayAndTime(date))").font(.subheadline).foregroundStyle(Palette.detail)
 				}
+				if let account = model.selectedAccount, let proposal = model.proposedCalibration(of: account) {
+					CalibrationNotice(accountID: account.id, difference: proposal.difference)
+				}
 			}
 		}
 		.padding(.horizontal, 16)
 		.padding(.top, 12)
 		.padding(.bottom, 8)
+	}
+}
+
+/// The calibration proposal: the booked transactions miss the bank balance by `difference`. It stays until a
+/// calibration, a new transaction, or a new bank balance makes them meet again.
+struct CalibrationNotice: View {
+	@Environment(AppModel.self) private var model
+	let accountID: UUID
+	let difference: Money
+
+	var body: some View {
+		HStack(spacing: 6) {
+			Text("Transactions differ by \(Format.money(Money(minorUnits: abs(difference.minorUnits), currency: difference.currency)))")
+				.foregroundStyle(Palette.detail)
+			Button("Calibrate...") { model.sheet = .calibration(accountID) }
+				.buttonStyle(.link)
+		}
+		.font(.subheadline)
+		.monospacedDigit()
+		.help("The booked transactions up to the day of the bank balance do not add up to it. Calibrate moves the initial balance by the difference.")
 	}
 }
 

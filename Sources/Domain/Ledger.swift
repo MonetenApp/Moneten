@@ -241,6 +241,31 @@ public struct Ledger: Sendable {
 		return Money(minorUnits: sum, currency: account.currency)
 	}
 
+	/// The calibration that an account of a bank access needs when its booked rows up to the day of the bank
+	/// balance miss that balance. It compares through `Account.initialBalanceMeetingBankBalance(of:calendar:)`,
+	/// the rule that derives the initial balance, so neither a pending row nor a row booked after that day
+	/// raises one. Nil before the initial balance is set, because the next full refresh derives it. `refresh` is
+	/// the state of the refresh of its access.
+	public func proposedCalibration(of account: Account, today: Day, refresh: SyncState, calendar: Calendar = .current) -> CalibrationProposal? {
+		// A refresh whose transactions failed stores the bank balance without the rows it covers. `refreshError`
+		// tells it only once the app recorded the end, so the state of the refresh covers the time before. The rows
+		// are read in place, because copying the rows of an account on each drawing of the header cost most of a
+		// frame with 50,000 rows.
+		guard account.source == .bank, account.kind != .portfolio, account.initialBalanceIsSet, account.refreshError == nil,
+			!refresh.mayLackRows(of: account.id),
+			let meeting = account.initialBalanceMeetingBankBalance(of: transactions.lazy.filter { $0.accountID == account.id }, calendar: calendar),
+			meeting != account.initialBalanceMinor else { return nil }
+		let difference = meeting - account.initialBalanceMinor
+		return CalibrationProposal(difference: Money(minorUnits: difference, currency: account.currency),
+			balanceToday: Money(minorUnits: computedBalance(of: account, through: today).minorUnits + difference, currency: account.currency))
+	}
+
+	/// The initial balance at which the computed balance at the end of `today` is `balanceToday`. Every computed
+	/// balance moves by the same difference.
+	public func calibratedInitialBalance(of account: Account, balanceToday: Int64, today: Day) -> Int64 {
+		account.initialBalanceMinor + balanceToday - computedBalance(of: account, through: today).minorUnits
+	}
+
 	public func sum(ofGroup group: UUID) -> MoneySums {
 		var sums = MoneySums()
 		for id in accountIDs(inGroupTree: group) {
@@ -466,4 +491,11 @@ public enum AccountTreeItem: Identifiable, Sendable {
 		case let .account(a): a.position
 		}
 	}
+}
+
+/// What the account view proposes after a refresh: the bank balance less the initial balance and the
+/// booked rows up to its day, and the balance of today that the calibration window fills in.
+public struct CalibrationProposal: Hashable, Sendable {
+	public var difference: Money
+	public var balanceToday: Money
 }

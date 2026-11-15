@@ -87,6 +87,48 @@ struct SyncCoordinatorTests {
 		#expect(finished(bank)?.fetched == [Self.giro.accountID, Self.savings.accountID])
 	}
 
+	/// The app stores the bank balance in `deliver` and the failure of the transactions only in `ended`, and
+	/// SwiftUI can draw the header in between.
+	@Test("A refresh whose transactions fail proposes no calibration while it runs, nor after it ends, and the next good refresh proposes one")
+	func noCalibrationFromAFailedRefresh() async {
+		let bank = Self.access("Musterbank")
+		let today = Day(year: 2026, month: 11, day: 12)
+		let giro = Account(id: Self.giro.accountID, position: 0, name: "Giro", kind: .giro, source: .bank, bankBalanceMinor: 120_000,
+			bankBalanceDate: today.date(), initialBalanceMinor: 20_000, initialBalanceIsSet: true, accessID: bank.id)
+		var ledger = Ledger(accounts: [giro], transactions: [Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 2), amountMinor: 100_000, name: "Beispiel GmbH")])
+		func header() -> CalibrationProposal? { ledger.proposedCalibration(of: ledger.account(giro.id)!, today: today, refresh: coordinator.states[bank.id] ?? .idle) }
+		var whileRunning: [CalibrationProposal?] = []
+		var atEnd: [CalibrationProposal?] = []
+		coordinator.deliver = { id, result in
+			let account = ledger.account(id)!
+			ledger.apply(reconcile(.refresh(result), into: account, stored: ledger.transactions(ofAccount: id), deleted: [], rules: Categorizer(ledger: ledger), now: today.date()))
+			whileRunning.append(header())
+		}
+		coordinator.ended = { _, _, results, _ in
+			atEnd.append(header())
+			for (id, result) in results {
+				var a = ledger.account(id)!
+				a.record(result)
+				ledger.upsert(a)
+			}
+		}
+		#expect(header() == nil)
+
+		_ = refresh(bank, [.fetched(giro.id, RefreshResult(balance: Money(minorUnits: 115_000, currency: "EUR"), balanceDate: today.date(), transactions: nil,
+			transactionFailure: .challengeExpired))])
+		await until { !coordinator.isRefreshing && atEnd.count == 1 }
+		#expect(ledger.account(giro.id)?.bankBalanceMinor == 115_000)
+		#expect(ledger.account(giro.id)?.refreshError?.message == "The two-factor authentication timed out.")
+		#expect(whileRunning == [nil])
+		#expect(atEnd == [nil])
+		#expect(header() == nil)
+
+		_ = refresh(bank, [.fetched(giro.id, RefreshResult(balance: Money(minorUnits: 115_000, currency: "EUR"), balanceDate: today.date(), transactions: nil))])
+		await until { !coordinator.isRefreshing && atEnd.count == 2 }
+		#expect(ledger.account(giro.id)?.refreshError == nil)
+		#expect(header()?.difference == Money(minorUnits: -5_000, currency: "EUR"))
+	}
+
 	@Test("A PIN in memory is used again, until the app locks")
 	func pinInMemory() async {
 		let bank = Self.access("Musterbank")
