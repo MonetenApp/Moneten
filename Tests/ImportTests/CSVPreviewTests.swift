@@ -39,7 +39,7 @@ struct CSVPreviewTests {
 		let confirmed = try file.preview(layout, currency: "EUR")
 		#expect(confirmed.problem == nil)
 		#expect(confirmed.transactions.map(\.amountMinor) == [123400])
-		let reread = try file.reread(layout, currency: "JPY")
+		let reread = try TransactionFileImporter.parse(data, currency: "JPY", csv: (file, layout))
 		#expect(reread.transactions.map(\.bookingDate) == [Day(year: 2026, month: 3, day: 4)])
 		#expect(reread.transactions.map(\.amountMinor) == [1234])
 		#expect(reread.transactions.map(\.currency) == ["JPY"])
@@ -129,6 +129,7 @@ struct CSVPreviewTests {
 		let preview = try file.preview(layout, currency: "EUR")
 		#expect(preview.problem == nil)
 		#expect(preview.transactions.map(\.amountMinor) == Array(repeating: 100, count: 101) + [200, 300])
+		#expect(try TransactionFileImporter.parse(file.data, currency: "EUR", csv: (file, layout)).transactions.map(\.amountMinor) == Array(repeating: 100, count: 101) + [200, 300])
 	}
 
 	@Test("A filled subtotal cannot hide a short earlier transaction", arguments: ["Zwischensumme;EUR;Saldo;0,00", "Hinweis;Export;vorläufig;Status"])
@@ -140,6 +141,7 @@ struct CSVPreviewTests {
 		let preview = try file.preview(layout, currency: "EUR")
 		#expect(preview.problem == nil)
 		#expect(preview.transactions.map(\.amountMinor) == [0, 450])
+		#expect(try TransactionFileImporter.parse(file.data, currency: "EUR", csv: (file, layout)).transactions.map(\.amountMinor) == [0, 450])
 	}
 
 	@Test("Inferred titles follow a long preamble without a 100-row cutoff", arguments: [99, 100, 150])
@@ -275,6 +277,7 @@ struct CSVPreviewTests {
 		#expect(preview.problem == nil)
 		#expect(preview.transactions.map(\.amountMinor) == [123_400, 450])
 		#expect(preview.transactions.map(\.name) == ["Kiosk", "Bakery"])
+		#expect(try TransactionFileImporter.parse(file.data, currency: "EUR", csv: (file, layout)).transactions.map(\.amountMinor) == [123400, 450])
 	}
 
 	@Test("The CSV preview shows the first dated rows as the import reads them and counts all of them")

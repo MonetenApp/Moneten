@@ -183,35 +183,10 @@ public struct CSVFile: Sendable {
 		let rows = try Self.split(text, delimiter: delimiter)
 		try Task.checkCancellation()
 		self.rows = rows
-		let dateKeys = Set(CSVField.bookingDate.keys)
-		let amountKeys = Set(CSVField.amount.keys + CSVField.debit.keys + CSVField.credit.keys)
-		var headerIndex: Int?
-		var firstReadable: Int?
-		for (i, row) in rows.enumerated() {
-			try Task.checkCancellation()
-			if row.cells.contains(where: Self.isDateShaped) {
-				if row.cells.contains(where: Self.isAmountShaped) {
-					if firstReadable != nil { break }
-					firstReadable = i
-				}
-				continue
-			}
-			let header = row.cells.map(Self.normalize)
-			if header.contains(where: dateKeys.contains), header.contains(where: amountKeys.contains) {
-				headerIndex = i
-				break
-			}
-		}
-		self.headerIndex = headerIndex
+		let boundary = try Self.dataBoundary(in: rows)
+		self.headerIndex = boundary.keyword
 		let width = rows.map(\.cells.count).max() ?? 0
-		let firstTransaction = try firstReadable.flatMap { first in
-			let dates = rows[first].cells.indices.filter { Self.isDateShaped(rows[first].cells[$0]) }
-			let amount = rows[first].cells.indices.first { $0 > dates.last! && Self.isAmountShaped(rows[first].cells[$0]) }
-				?? rows[first].cells.indices.last { Self.isAmountShaped(rows[first].cells[$0]) }!
-			return try dates.compactMap { try Self.firstTransaction(in: rows[...first], dateColumn: $0, amountColumns: [amount]) }.min()
-		}
-		let above = try firstTransaction.flatMap { try Self.titleRow(in: rows[..<$0], width: rows[$0].cells.count) }
-		let titles = headerIndex.map { rows[$0] } ?? above.map { rows[$0] } ?? firstTransaction.map { rows[$0] } ?? rows.first
+		let titles = boundary.title.map { rows[$0] } ?? (boundary.start < rows.count ? rows[boundary.start] : rows.first)
 		let cells = titles?.cells.map { $0.trimmingCharacters(in: .whitespaces) } ?? []
 		header = cells + Array(repeating: "", count: max(0, width - cells.count))
 	}
@@ -226,57 +201,48 @@ public struct CSVFile: Sendable {
 		text.contains(where: \.isNumber) && text.first.map { $0.isNumber || "-./".contains($0) } == true
 	}
 
-	private static func firstTransaction(in rows: ArraySlice<Row>, dateColumn: Int, amountColumns: [Int]) throws -> Int? {
-		var firstDate: Int?
-		var firstRecord: Int?
-		var firstReadable: Int?
+	private static func dataBoundary(in rows: [Row], dateColumn: Int? = nil, amountColumns: [Int] = []) throws
+		-> (keyword: Int?, title: Int?, start: Int) {
+		let dateKeys = Set(CSVField.bookingDate.keys)
+		let amountKeys = Set(CSVField.amount.keys + CSVField.debit.keys + CSVField.credit.keys)
+		var nonblank = 0
 		for i in rows.indices {
 			try Task.checkCancellation()
-			guard cell(rows[i].cells, dateColumn).map(isDateCandidate) == true else { continue }
-			if firstDate == nil { firstDate = i }
-			// An amount cell that is present, even empty or invalid, must reach the row validation.
-			if firstRecord == nil, amountColumns.isEmpty || amountColumns.contains(where: rows[i].cells.indices.contains) { firstRecord = i }
-			if rows[i].cells.contains(where: isAmountShaped) { firstReadable = i; break }
-		}
-		guard let firstDate else { return nil }
-		let dateTitles = Set(CSVField.bookingDate.keys + CSVField.valueDate.keys + ["tag"])
-		var title: Int?
-		for i in rows[..<(firstReadable ?? rows.endIndex)].indices {
-			try Task.checkCancellation()
-			let row = rows[i]
-			guard row.cells.indices.contains(dateColumn), isTitle(row),
-				row.cells.filter({ !$0.trimmingCharacters(in: .whitespaces).isEmpty }).count >= 2 else { continue }
-			let hasDateTitle = dateTitles.contains(normalize(row.cells[dateColumn]))
-			if i >= firstDate {
-				let width = max(dateColumn, amountColumns.max() ?? dateColumn) + 1
-				guard hasDateTitle, row.cells.count >= width,
-					row.cells.prefix(width).allSatisfy({ !$0.trimmingCharacters(in: .whitespaces).isEmpty }) else { continue }
+			let cells = rows[i].cells
+			guard cells.contains(where: { !$0.trimmingCharacters(in: .whitespaces).isEmpty }) else { continue }
+			nonblank += 1
+			if nonblank > 100 { break }
+			guard !cells.contains(where: isDateCandidate) else { continue }
+			let labels = cells.map(normalize)
+			if labels.contains(where: dateKeys.contains), labels.contains(where: amountKeys.contains) {
+				return (i, i, i + 1)
 			}
-			if hasDateTitle { title = i; break }
-			if title == nil { title = i }
 		}
-		guard let title else { return firstDate }
-		let afterTitle = try rows[(title + 1)...].firstIndex { row in
+		let dateTitles = Set(CSVField.bookingDate.keys + CSVField.valueDate.keys + ["tag", "wann"])
+		var title: Int?
+		var firstDate: Int?
+		for i in rows.indices {
 			try Task.checkCancellation()
-			return cell(row.cells, dateColumn).map(isDateCandidate) == true
+			let cells = rows[i].cells
+			let dated = dateColumn.map { cell(cells, $0).map(isDateCandidate) == true }
+				?? cells.contains { isDateShaped($0) || (isDateCandidate($0) && !isAmountShaped($0)) }
+			if dated {
+				if firstDate == nil { firstDate = i }
+				if cells.contains(where: isAmountShaped) || amountColumns.contains(where: cells.indices.contains) {
+					return (nil, title, firstDate!)
+				}
+				continue
+			}
+			guard !cells.contains(where: isDateShaped), !cells.contains(where: isAmountShaped),
+				cells.filter({ !$0.trimmingCharacters(in: .whitespaces).isEmpty }).count >= 2 else { continue }
+			let dateLabel = dateColumn.map { cell(cells, $0).map { dateTitles.contains(normalize($0)) } == true }
+				?? cells.contains { dateTitles.contains(normalize($0)) }
+			if firstDate == nil || dateLabel {
+				title = i
+				firstDate = nil
+			}
 		}
-		return [firstRecord, afterTitle].compactMap { $0 }.min() ?? firstDate
-	}
-
-	private static func isTitle(_ row: Row) -> Bool {
-		!row.cells.contains(where: isDateShaped) && !row.cells.contains(where: isAmountShaped)
-			&& row.cells.contains { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
-	}
-
-	private static func titleRow(in rows: ArraySlice<Row>, width: Int) throws -> Int? {
-		var nearest: Int?
-		for i in rows.indices.reversed() {
-			try Task.checkCancellation()
-			guard isTitle(rows[i]) else { continue }
-			if rows[i].cells.count >= width { return i }
-			if nearest == nil { nearest = i }
-		}
-		return nearest
+		return (nil, title, firstDate ?? rows.count)
 	}
 
 	/// The layout that the header keywords and the values of the file show.
@@ -328,8 +294,7 @@ public struct CSVFile: Sendable {
 			return Self.cell(row.cells, column)?.contains(where: \.isNumber) == true
 		}
 		let amountColumns = [layout.columns[.amount], layout.columns[.debit], layout.columns[.credit]].compactMap { $0 }
-		let heading = headerIndex.flatMap { i in Self.cell(rows[i].cells, column).map(Self.isDateCandidate) == true ? nil : i }
-		let start = try heading.map { $0 + 1 } ?? Self.firstTransaction(in: rows[...], dateColumn: column, amountColumns: amountColumns) ?? rows.count
+		let start = try Self.dataBoundary(in: rows, dateColumn: column, amountColumns: amountColumns).start
 		return try rows[start...].filter(isDated)[...]
 	}
 
@@ -398,10 +363,10 @@ public struct CSVFile: Sendable {
 		}
 		let placeholder = UUID()
 		var result = TransactionFileImporter.Parsed(transactions: [])
-		if headerIndex == nil, let first = dated.first {
+		if let first = dated.first {
 			for (line, row) in rows.prefix(while: { $0.line < first.line }) {
 				try Task.checkCancellation()
-				if Self.cell(row, bookingDateColumn)?.contains(where: \.isNumber) == true {
+				if row.contains(where: Self.isDateShaped) || Self.cell(row, bookingDateColumn).map(Self.isDateCandidate) == true {
 					result.warnings.append(.skippedCSVRow(line: line))
 				}
 			}
@@ -457,13 +422,6 @@ public struct CSVFile: Sendable {
 			result.transactions.append(t)
 		}
 		return result
-	}
-
-	/// Reads a confirmed CSV again for its target currency.
-	public func reread(_ layout: CSVLayout, currency: String) throws -> TransactionFileImporter.Parsed {
-		let parsed = try read(layout, currency: currency)
-		guard !parsed.transactions.isEmpty else { throw TransactionFileImporter.Failure.empty }
-		return parsed
 	}
 
 	/// Reads the whole file in the layout, so that "Import" never fails on a row after the ones that the

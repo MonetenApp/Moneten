@@ -155,6 +155,10 @@ printf '%s\n' "Buchungstag;Valuta;Empfänger;Verwendungszweck;Betrag" "09.11.202
 send filterbar "pin on"
 send filterbar "amount withdrawals"
 poll "^pin=true period=all status=all amount=withdrawals filter=amount category=all account=all saved=true$" state
+for header in "" "Date;Name;Amount"; do
+	printf '%s\n' "$header" '03/04/2026;Kiosk;1,234' >"$WORK/handoff.csv"
+	poll "^csvhandoff valid=true$" csvhandoff "$WORK/handoff.csv"
+done
 send importfile "$WORK/Erika Mustermann.csv"
 poll "^csv state .*canImport=true" csv state
 poll "^csv rows" csv rows
@@ -246,7 +250,7 @@ send quit
 
 found=0
 for value in DE02120300000000202051 "DE02 1203" 202051 1234567890 0099887766 "99 88 77 66" 4711 5550001 "$LOGIN" "$PIN" "$MIGRATION_UNKNOWN" 123456 check-debug-log \
-	Girokonto Tagesgeld Kreditkarte Extrakonto "Erika Mustermann" "Beispiel GmbH" "Wohnbau Musterstadt" "Tankstelle Beispiel" \
+	Kiosk Girokonto Tagesgeld Kreditkarte Extrakonto "Erika Mustermann" "Beispiel GmbH" "Wohnbau Musterstadt" "Tankstelle Beispiel" \
 	"Gehalt November" Miete Kartenzahlung Sparen Haushaltskasse MIETE-2026-11 GUTSCHRIFT DAUERAUFTRAG \
 	"Zugang vorübergehend gesperrt" "PIN falsch" Wartungsarbeiten pushTAN-App "currency:/^+?49/"; do
 	if grep -n -w -F -- "$value" "$LOG" >&2; then

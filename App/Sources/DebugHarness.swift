@@ -269,6 +269,21 @@ final class DebugHarness {
 		// Changes the CSV preview on screen: "column <n>=<field or none>", "date <order>", "encoding <name>",
 		// "decimal comma|point|detect", "skip" as "Skip File" does, "state", which logs the settings and counts of
 		// the preview, or "rows", which logs its first rows.
+		case "csvhandoff":
+			Task {
+				do {
+					let data = try Data(contentsOf: URL(filePath: argument))
+					let file = try CSVFile(data: data)
+					let layout = CSVLayout(encoding: file.encoding, columns: [.bookingDate: 0, .name: 1, .amount: 2],
+						dateOrder: .monthDayYear, decimalMark: .point)
+					let parsed = try await AppModel.parse(data, currency: "JPY", csv: (file, layout))
+					let valid = parsed.transactions.map(\.bookingDate) == [Day(year: 2026, month: 3, day: 4)]
+						&& parsed.transactions.map(\.amountMinor) == [1234]
+						&& parsed.transactions.map(\.currency) == ["JPY"]
+						&& parsed.transactions.map(\.name) == ["Kiosk"]
+					log("csvhandoff valid=\(valid)")
+				} catch { log("csvhandoff error=read") }
+			}
 		case "csv": csvPreview(argument)
 		// "[<currency>]": the credit card in US dollars, or in another currency such as JPY.
 		case "usd": Task { await DemoData.usdAccount(model, currency: argument.isEmpty ? "USD" : argument); log("usd done") }

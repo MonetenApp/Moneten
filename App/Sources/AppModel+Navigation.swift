@@ -311,9 +311,8 @@ extension AppModel {
 		return (file, try file.detectedLayout())
 	}
 
-	nonisolated private static func parse(_ data: Data, currency: String, csv: (file: CSVFile, layout: CSVLayout)? = nil) async throws -> TransactionFileImporter.Parsed {
-		if let csv { return try csv.file.reread(csv.layout, currency: currency) }
-		return try TransactionFileImporter.parse(data, currency: currency)
+	nonisolated static func parse(_ data: Data, currency: String, csv: (file: CSVFile, layout: CSVLayout)? = nil) async throws -> TransactionFileImporter.Parsed {
+		try TransactionFileImporter.parse(data, currency: currency, csv: csv)
 	}
 }
 

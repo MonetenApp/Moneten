@@ -88,7 +88,12 @@ public enum TransactionFileImporter {
 		return (account, destination, keys.first)
 	}
 
-	public static func parse(_ data: Data, currency: String) throws -> Parsed {
+	public static func parse(_ data: Data, currency: String, csv: (file: CSVFile, layout: CSVLayout)? = nil) throws -> Parsed {
+		if let csv {
+			let result = try csv.file.read(csv.layout, currency: currency)
+			guard !result.transactions.isEmpty else { throw Failure.empty }
+			return result
+		}
 		guard !data.isEmpty else { throw Failure.empty }
 		let (encoding, text) = try CSVEncoding.read(data)
 		guard let format = detect(text) else { throw Failure.unsupported }
