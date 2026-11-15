@@ -119,6 +119,14 @@ The app SHALL accept every expression of the categorization rule language in the
 - **WHEN** the user types `"Stadtw`, `Stadtwerke OR`, `Stadtwerke or`, `Stadtwerke +`, `Name:Stadtwerke OR`, `name:="Stadtw`, or `Stadtwerke amount:=-`
 - **THEN** the list shows the transaction, because the app searches the plain words of the text
 
+#### Scenario: A constant in rejected text
+
+- **GIVEN** a transaction to "Stadtwerke Musterstadt"
+- **WHEN** the user types `false "Stadtw` or `NOT true "Stadtw`
+- **THEN** the list shows no transaction, because the fallback keeps the constants and their negation
+- **WHEN** the user types `true "Stadtw` or `NOT false "Stadtw`
+- **THEN** the list shows the transaction
+
 #### Scenario: Rejected text with an excluded word
 
 - **GIVEN** a transaction to "Stadtwerke Musterstadt" without the words "Gehalt" and "Lohn"
