@@ -926,6 +926,99 @@ struct MoneyMoneyMigrationTests {
 		#expect(text.hasSuffix("Statements were not migrated, because the AppleScript export of MoneyMoney does not contain them. Use \"Show in Finder...\" on \"Statements\" in MoneyMoney to find the statement files and copy them to keep them.\n"))
 	}
 
+	@Test("A migrated account that the setup connects keeps its history, and its first refresh adds only new transactions")
+	func connectedAccountFirstRefresh() throws {
+		let p = try plan()
+		let ledger = Ledger(groups: p.groups, accounts: p.accounts, categories: p.categories, transactions: p.transactions)
+		let migrated = try #require(p.accounts.first { $0.name == "Giro" })
+		let listed = Account(position: 0, name: "Girokonto", kind: .giro, source: .bank, iban: "DE02120300000000202051", accountNumber: "202051",
+			bankCode: "12030000", accessID: UUID(), remoteID: "DE02120300000000202051")
+		let connected = try #require(ledger.accountsToAdd([listed], listed: [listed]).first)
+		#expect(connected.id == migrated.id && connected.name == "Giro" && connected.source == .bank && connected.groupID == migrated.groupID)
+
+		let stored = ledger.transactions(ofAccount: migrated.id)
+		let rewe = try #require(stored.first { $0.name == "REWE Markt" })
+		// The bank delivers the two booked rows of the source without their source IDs, the pending row, and one new row.
+		let delivered = [
+			Transaction(accountID: migrated.id, bookingDate: Day(year: 2026, month: 11, day: 2), amountMinor: -4_590, name: "REWE Markt", purpose: "KARTENZAHLUNG"),
+			Transaction(accountID: migrated.id, bookingDate: Day(year: 2026, month: 11, day: 3), amountMinor: -8_900, name: "Stadtwerke Musterstadt", purpose: "Abschlag",
+				counterpartyIBAN: "DE02120300000000202051", endToEndReference: "E2E-1"),
+			Transaction(accountID: migrated.id, bookingDate: Day(year: 2026, month: 11, day: 4), amountMinor: -1_000, name: "Kiosk", isPending: true),
+			Transaction(accountID: migrated.id, bookingDate: Day(year: 2026, month: 11, day: 12), amountMinor: -2_500, name: "Tankstelle", purpose: "KARTENZAHLUNG"),
+		]
+		let r = reconcile(.refresh(RefreshResult(balance: nil, balanceDate: nil, transactions: FetchedTransactions(rows: delivered, from: Day(year: 2026, month: 11, day: 1)))),
+			into: connected, stored: stored, deleted: [], rules: Categorizer(ledger: ledger), now: Date())
+		#expect(r.added.map(\.name) == ["Tankstelle"])
+		#expect(r.dropped.isEmpty)
+		let kept = (r.updated + r.booked).first { $0.id == rewe.id } ?? rewe
+		#expect(kept.comment == "Wocheneinkauf" && kept.isChecked && kept.categorizedBy == .manual && kept.categoryID == rewe.categoryID)
+	}
+
+	@Test("The first full-history refresh keeps the old salary, books Kiosk, and honors a tombstone")
+	func connectedAccountFullHistoryRefresh() throws {
+		var rows = transactions["transactions"] as! [[String: Any]]
+		rows.append(["id": 5, "accountUuid": "A1", "bookingDate": date(2026, 10, 30), "amount": 3200.0, "currency": "EUR", "name": "Beispiel GmbH", "purpose": "Gehalt Oktober", "booked": true])
+		let p = try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(accounts), categories: try plist(categories), transactions: try plist(["transactions": rows]), into: Ledger())
+		let ledger = Ledger(groups: p.groups, accounts: p.accounts, categories: p.categories, transactions: p.transactions)
+		let migrated = try #require(p.accounts.first { $0.name == "Giro" })
+		let listed = Account(position: 0, name: "Girokonto", kind: .giro, source: .bank, iban: "DE02120300000000202051", accountNumber: "202051",
+			bankCode: "12030000", accessID: UUID(), remoteID: "DE02120300000000202051")
+		let connected = try #require(ledger.accountsToAdd([listed], listed: [listed]).first)
+		#expect(connected.id == migrated.id)
+		let history = ledger.transactions(ofAccount: migrated.id)
+		let stadtwerke = try #require(history.first { $0.name == "Stadtwerke Musterstadt" })
+		let delivered = [
+			Transaction(accountID: migrated.id, bookingDate: Day(year: 2026, month: 10, day: 30), amountMinor: 320_000, name: "Beispiel GmbH", purpose: "Gehalt Oktober"),
+			Transaction(accountID: migrated.id, bookingDate: Day(year: 2026, month: 11, day: 3), amountMinor: -8_900, name: "Stadtwerke Musterstadt", purpose: "Abschlag",
+				counterpartyIBAN: "DE02120300000000202051", endToEndReference: "E2E-1"),
+			Transaction(accountID: migrated.id, bookingDate: Day(year: 2026, month: 11, day: 6), amountMinor: -1_000, name: "Kiosk"),
+			Transaction(accountID: migrated.id, bookingDate: Day(year: 2026, month: 11, day: 12), amountMinor: -2_500, name: "Tankstelle", purpose: "KARTENZAHLUNG"),
+		]
+		let r = reconcile(.refresh(RefreshResult(balance: nil, transactions: FetchedTransactions(rows: delivered, from: nil))), into: connected,
+			stored: history.filter { $0.id != stadtwerke.id }, deleted: [DeletedTransaction(stadtwerke, deletedAt: Date())], rules: Categorizer(ledger: ledger), now: Date())
+		#expect(r.added.map(\.name) == ["Tankstelle"])
+		#expect(r.booked.map(\.name) == ["Kiosk"])
+		#expect(r.skipped == 2)
+		#expect(r.dropped.count == 0)
+	}
+
+	func bankAccount(_ name: String, iban: String? = nil, number: String, remoteID: String) -> Account {
+		Account(position: 0, name: name, kind: .giro, source: .bank, iban: iban, accountNumber: number, bankCode: "12030000", accessID: UUID(), remoteID: remoteID)
+	}
+
+	@Test("Two migrated accounts with the IBAN of a bank account are a choice, and only the chosen one is connected")
+	func connectChoiceByIBAN() throws {
+		var twins = accounts
+		twins[2]["name"] = "Haushalt"
+		twins[2]["accountNumber"] = "DE02120300000000202051"
+		twins[2]["bankCode"] = "BYLADEM1001"
+		let p = try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(twins), categories: try plist(categories), transactions: try plist(transactions), into: Ledger())
+		let ledger = Ledger(groups: p.groups, accounts: p.accounts, categories: p.categories, transactions: p.transactions)
+		let giro = try #require(p.accounts.first { $0.name == "Giro" })
+		let household = try #require(p.accounts.first { $0.name == "Haushalt" })
+		let listed = bankAccount("Girokonto", iban: "DE02120300000000202051", number: "202051", remoteID: "DE02120300000000202051")
+		#expect(ledger.setupMatch(for: listed, listed: [listed]) == .choice([giro, household]))
+		#expect(ledger.accountsToAdd([listed], listed: [listed]).map(\.id) == [listed.id])
+		#expect(ledger.accountsToAdd([listed], listed: [listed], connecting: [listed.id: household.id]).map(\.id) == [household.id])
+	}
+
+	@Test("A migrated account without an IBAN is a choice in each row of its subaccounts, and connects only where it is chosen")
+	func connectChoiceByAccountNumber() throws {
+		let source: [[String: Any]] = [["uuid": "S1", "name": "Sparen", "group": false, "indentation": 0, "type": "Savings account",
+			"accountNumber": "9", "bankCode": "12030000", "currency": "EUR", "portfolio": false, "balance": [[100.0, "EUR"]]]]
+		let p = try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(source), categories: try plist(categories),
+			transactions: try plist(["transactions": [] as [Any]]), into: Ledger())
+		let ledger = Ledger(accounts: p.accounts)
+		let sparen = try #require(p.accounts.first)
+		#expect(sparen.iban == nil && sparen.accountNumber == "9" && sparen.bankCode == "12030000")
+		let first = bankAccount("Sparkonto 01", number: "9", remoteID: "9/01")
+		let second = bankAccount("Sparkonto 02", number: "9", remoteID: "9/02")
+		#expect(ledger.setupMatch(for: first, listed: [first, second]) == .choice([sparen]))
+		#expect(ledger.setupMatch(for: second, listed: [first, second]) == .choice([sparen]))
+		#expect(ledger.accountsToAdd([first, second], listed: [first, second]).map(\.id) == [first.id, second.id])
+		#expect(ledger.accountsToAdd([first, second], listed: [first, second], connecting: [first.id: sparen.id]).map(\.id) == [sparen.id, second.id])
+	}
+
 	@Test("The report names a group whose balance in MoneyMoney leaves out an account")
 	func groupSum() throws {
 		#expect(try plan().notes.allSatisfy { !$0.contains("group") })
