@@ -5,7 +5,8 @@ import SwiftUI
 
 /// The "Add Account" assistant (add-account-setup): the bank, the login data, and the accounts.
 /// Progress, cancel, and errors stay inside the assistant. A TAN that the bank asks for during the
-/// login opens the dialog of the session broker on top of the assistant.
+/// login opens the dialog of the session broker on top of the assistant. "Look for New Accounts..." shows
+/// only its account step, and "Edit Login Data..." only its login step.
 @MainActor
 @Observable
 final class AccountSetup {
@@ -13,6 +14,15 @@ final class AccountSetup {
 		case bank, login, accounts
 		/// "Offline account / Cash" under "Other": the name and the currency, and no bank.
 		case offline
+	}
+
+	enum Purpose: Equatable {
+		case add
+		/// "Look for New Accounts...": the accounts of the login that the app does not have yet.
+		case newAccounts(Access)
+		/// "Edit Login Data...": a new login with the login data of the step, which replaces the old one only
+		/// after the bank accepted it.
+		case editLogin(Access)
 	}
 
 	/// The entries of "Other": the services of the extensions that may run, which the library lists with the
@@ -33,8 +43,15 @@ final class AccountSetup {
 	}
 
 	private unowned let model: AppModel
+	let purpose: Purpose
 	var groupID: UUID?
 	private(set) var step = Step.bank
+	/// The bank of the access of "Edit Login Data...", which needs no search.
+	private let fixedBank: BankDirectory.Entry?
+	/// "Look for New Accounts..." waits for the bank.
+	private(set) var isListing = false
+	/// Why "Look for New Accounts..." found nothing to add, or could not ask the bank.
+	private(set) var listingMessage: String?
 
 	/// "Bank, IBAN, or Bankleitzahl" and the bank that it names.
 	let lookup: BankLookup
@@ -80,21 +97,38 @@ final class AccountSetup {
 
 	private var task: Task<Void, Never>?
 
-	init(model: AppModel, groupID: UUID?) {
+	init(model: AppModel, groupID: UUID?, purpose: Purpose = .add) {
 		self.model = model
 		self.groupID = groupID
+		self.purpose = purpose
 		lookup = BankLookup { [fints = model.fints] in try await fints.bankDirectory() }
+		switch purpose {
+		case .add:
+			fixedBank = nil
+		case let .newAccounts(access):
+			fixedBank = BankDirectory.Entry(access: access)
+			step = .accounts
+			listAccounts(of: access)
+		case let .editLogin(access):
+			fixedBank = BankDirectory.Entry(access: access)
+			step = .login
+			loginName = access.loginName
+			savePIN = model.sync.broker.savedPINs.contains(access.id)
+		}
 	}
 
-	var bank: FinTSBank? { lookup.bank?.bank }
+	/// The bank of the entry, or of the access that the assistant maintains.
+	var chosenBank: BankDirectory.Entry? { fixedBank ?? lookup.bank }
+	var bank: FinTSBank? { chosenBank?.bank }
 	/// What the bank calls the login name, when Moneten knows it.
-	var loginHint: LoginHint? { lookup.bank?.loginHint }
+	var loginHint: LoginHint? { chosenBank?.loginHint }
 
 	var canGoOn: Bool {
 		switch step {
 		case .bank: lookup.state != .searching
 		case .login: !isLoggingIn && !loginName.trimmingCharacters(in: .whitespaces).isEmpty && !pin.isEmpty
-		case .accounts: !selected.isEmpty
+		// Without a new account "Done" closes "Look for New Accounts...".
+		case .accounts: !selected.isEmpty || (!isListing && candidates.isEmpty)
 		case .offline: !offlineName.trimmingCharacters(in: .whitespaces).isEmpty
 		}
 	}
@@ -131,9 +165,9 @@ final class AccountSetup {
 				if bank != nil { step = .login }
 			}
 		case .login:
-			logIn()
+			if case let .editLogin(access) = purpose { changeLogin(of: access) } else { logIn() }
 		case .accounts:
-			finish()
+			if candidates.isEmpty { model.closeAccountSetup() } else { finish() }
 		case .offline:
 			let name = offlineName.trimmingCharacters(in: .whitespaces), kind = offlineKind, currency = offlineCurrency.uppercased(), group = groupID
 			Task { await model.addOfflineAccount(name: name, kind: kind, currency: currency, groupID: group) }
@@ -150,6 +184,8 @@ final class AccountSetup {
 
 	func cancel() {
 		cancelTask()
+		// The listing runs in the sync coordinator, so it ends with the assistant.
+		if isListing, case let .newAccounts(access) = purpose { model.sync.cancelRefresh(of: access.id) }
 	}
 
 	private func cancelTask() {
@@ -163,7 +199,7 @@ final class AccountSetup {
 	/// so a second "Next" sends no second PIN. The login of an access that the app has waits for its
 	/// refresh, and its refresh waits for the login.
 	private func logIn() {
-		guard !isLoggingIn, let code = lookup.bank?.code, let bank, let url = bank.url else { return }
+		guard !isLoggingIn, let code = chosenBank?.code, let bank, let url = bank.url else { return }
 		let userIDHelp = loginHint?.help
 		let access = Access(source: .fints(bankCode: code, url: url), bankName: bank.name, loginName: loginName.trimmingCharacters(in: .whitespaces))
 		let knownAccess = model.accesses.values.first { $0.isSameLogin(as: access) }
@@ -196,17 +232,97 @@ final class AccountSetup {
 				selected = Set(candidates.filter { !$0.isPresent }.map(\.id))
 				step = .accounts
 			} catch {
+				loginFailed(error, userIDHelp: userIDHelp, bankName: bankName)
+			}
+		}
+	}
+
+	/// The login step stays with its entries and the message of the bank, and an empty PIN field. The
+	/// notices of the bank before the error, such as a maintenance that makes the login fail, show under it.
+	private func loginFailed(_ error: any Error, userIDHelp: String?, bankName: String) {
+		guard !Task.isCancelled else { return }
+		isLoggingIn = false
+		let (error, shown) = model.bankNotices.setupFailed(error, from: bankName)
+		// The user canceled the TAN dialog: the login step stays as it was. Its notices are dropped on
+		// purpose, so the next refresh shows them in the window "Notice".
+		if error is CancellationError { return }
+		pin = ""
+		notices = shown
+		loginError = (error as? SyncFailure)?.messageAtFirstLogin(userIDHelp: userIDHelp) ?? error.localizedDescription
+	}
+
+	/// "Edit Login Data...": logs in with the login data of the step and without the stored state of the
+	/// access, as a setup does, so the bank sends its parameters and TAN methods again. The bank must accept
+	/// the login before the new login name and state replace the old ones ("Edit the login data of an
+	/// access"). Unchanged values set the access up again ("Reinitialize an access"). The login waits for a
+	/// refresh of the access, and a refresh waits for the login.
+	private func changeLogin(of old: Access) {
+		guard !isLoggingIn else { return }
+		let userIDHelp = loginHint?.help
+		let access = Access(id: old.id, source: old.source, bankName: old.bankName, loginName: loginName.trimmingCharacters(in: .whitespaces))
+		guard !model.accesses.values.contains(where: { $0.id != old.id && $0.isSameLogin(as: access) }) else {
+			loginError = "Another bank access in Moneten uses this login already."
+			return
+		}
+		let session = SetupSession(broker: model.sync.broker, access: access, pin: Secret(pin))
+		let pin = Secret(pin), savePIN = savePIN
+		loginError = nil
+		saveError = nil
+		notices = []
+		isLoggingIn = true
+		task = Task {
+			do {
+				let list = try await session.logIn { [model] session in
+					try await model.sync.exclusively(for: access.id) {
+						try await model.fints.listAccounts(of: access, state: nil, session: session)
+					}
+				}
 				guard !Task.isCancelled else { return }
 				isLoggingIn = false
-				// The notices of the bank before the error, such as a maintenance that makes the login fail.
-				let (error, shown) = model.bankNotices.setupFailed(error, from: bankName)
-				// The user canceled the TAN dialog: the login step stays as it was. Its notices are dropped on
-				// purpose, so the next refresh shows them in the window "Notice".
-				if error is CancellationError { return }
-				pin = ""
-				notices = shown
-				loginError = (error as? SyncFailure)?.messageAtFirstLogin(userIDHelp: userIDHelp) ?? error.localizedDescription
+				model.bankNotices.add(list.notices, from: access.bankName)
+				do {
+					try model.updateLogin(access, state: list.state, pin: pin, savePIN: savePIN)
+				} catch {
+					saveError = "Could not save the login data. \(String(describing: error))"
+					return
+				}
+				model.closeAccountSetup()
+			} catch {
+				loginFailed(error, userIDHelp: userIDHelp, bankName: access.bankName)
 			}
+		}
+	}
+
+	/// "Look for New Accounts...": the login runs as a refresh of the access with the PIN of the access.
+	/// The account step lists the accounts that the app does not have yet, all selected.
+	private func listAccounts(of access: Access) {
+		guard !model.sync.isBusy(access.id) else {
+			listingMessage = "Moneten is refreshing \(access.bankName). Look for new accounts again when the refresh has ended."
+			return
+		}
+		let state: AccessState?
+		do {
+			state = try model.store?.state(of: access.id)
+		} catch {
+			listingMessage = "Could not read the bank access. \(String(describing: error))"
+			return
+		}
+		isListing = true
+		let job = AccountListingJob(connector: model.fints, group: groupID) { [weak self] result in self?.listed(result, of: access) }
+		model.sync.refresh(RefreshRequest(access: access, state: state, accounts: []), with: job, attended: true)
+	}
+
+	private func listed(_ result: Result<[Account], any Error>, of access: Access) {
+		isListing = false
+		switch result {
+		case let .success(listed):
+			self.access = access
+			candidates = listed.map { Candidate(account: $0, match: model.ledger.setupMatch(for: $0, listed: listed)) }.filter { !$0.isPresent }
+			selected = Set(candidates.map(\.id))
+			if candidates.isEmpty { listingMessage = "There are no new accounts." }
+		case let .failure(error):
+			if error is CancellationError { return }
+			listingMessage = (error as? SyncFailure)?.message ?? error.localizedDescription
 		}
 	}
 
@@ -228,8 +344,10 @@ final class AccountSetup {
 		let chosen = candidates.filter { selected.contains($0.id) && !$0.isPresent }.map(\.account)
 		guard !chosen.isEmpty else { return }
 		do {
-			try model.add(access, state: state, accounts: chosen, listed: candidates.map(\.account), connecting: connecting, notices: notices, pin: Secret(pin),
-				savePIN: savePIN)
+			// "Look for New Accounts..." logged in with the PIN of the access, not with one of the login step.
+			let isNewLogin = purpose == .add
+			try model.add(access, state: state, accounts: chosen, listed: candidates.map(\.account), connecting: connecting, notices: notices,
+				pin: isNewLogin ? Secret(pin) : nil, savePIN: savePIN)
 		} catch {
 			saveError = "Could not add the accounts. \(String(describing: error))"
 			return
@@ -242,6 +360,7 @@ struct AccountSetupSheet: View {
 	@Environment(AppModel.self) private var model
 	@Bindable var setup: AccountSetup
 	@FocusState private var focus: Field?
+	@State private var showsHelp = false
 
 	private enum Field { case entry, loginName, pin }
 
@@ -251,7 +370,7 @@ struct AccountSetupSheet: View {
 	var body: some View {
 		VStack(alignment: .leading, spacing: 0) {
 			VStack(alignment: .leading, spacing: 2) {
-				Text("Add Account")
+				Text(title)
 					.font(.title3.weight(.semibold))
 				Text(stepTitle)
 					.foregroundStyle(.secondary)
@@ -267,12 +386,18 @@ struct AccountSetupSheet: View {
 				}
 			}
 			SheetButtons {
-				if setup.step != .bank {
+				if setup.purpose == .add, setup.step != .bank {
 					Button("Back") { setup.back() }
+				}
+				if setup.purpose == .add, setup.step == .bank {
+					Button { showsHelp = true } label: { Image(systemName: "questionmark.circle") }
+						.buttonStyle(.borderless)
+						.help("Help")
+						.popover(isPresented: $showsHelp) { BankStepHelp() }
 				}
 				Spacer(minLength: 16)
 				Button("Cancel", role: .cancel) { model.closeAccountSetup() }.keyboardShortcut(.cancelAction)
-				Button(setup.step == .accounts || setup.step == .offline ? "Done" : "Next") { setup.next() }
+				Button(setup.step == .accounts || setup.step == .offline || setup.purpose != .add ? "Done" : "Next") { setup.next() }
 					.keyboardShortcut(.defaultAction)
 					.disabled(!setup.canGoOn)
 			}
@@ -298,9 +423,22 @@ struct AccountSetupSheet: View {
 		}
 	}
 
-	/// Which step is on screen, so that "Back" and "Next" say where the user is.
+	private var title: String {
+		switch setup.purpose {
+		case .add: "Add Account"
+		case .newAccounts: "Look for New Accounts"
+		case .editLogin: "Edit Login Data"
+		}
+	}
+
+	/// Which step is on screen, so that "Back" and "Next" say where the user is. The commands on an
+	/// access have one step and name the bank.
 	private var stepTitle: String {
-		switch setup.step {
+		switch setup.purpose {
+		case let .newAccounts(access), let .editLogin(access): return access.bankName
+		case .add: break
+		}
+		return switch setup.step {
 		case .bank: "Step 1 of 3: Bank"
 		case .login: "Step 2 of 3: Login data"
 		case .accounts: "Step 3 of 3: Accounts"
@@ -410,7 +548,7 @@ struct AccountSetupSheet: View {
 			LabeledContent("Bank") {
 				VStack(alignment: .trailing, spacing: 2) {
 					Text(setup.bank?.name ?? "")
-					if let bank = setup.lookup.bank {
+					if let bank = setup.chosenBank {
 						Text(Self.place(of: bank)).font(.callout)
 					}
 				}
@@ -443,17 +581,52 @@ struct AccountSetupSheet: View {
 			}
 			noticesSection
 		}
+		if let error = setup.saveError, setup.step == .login {
+			Section {
+				Label(error, systemImage: "exclamationmark.triangle")
+					.foregroundStyle(.orange)
+					.fixedSize(horizontal: false, vertical: true)
+			}
+		}
 		if setup.isLoggingIn {
 			Section {
 				HStack(spacing: 6) {
 					ProgressView().controlSize(.small)
-					Text("Setting up Accounts...").foregroundStyle(.secondary)
+					Text(setup.purpose == .add ? "Setting up Accounts..." : "Checking the login data...").foregroundStyle(.secondary)
 				}
 			}
 		}
 	}
 
 	@ViewBuilder private var accountsStep: some View {
+		if setup.isListing {
+			Section {
+				HStack(spacing: 6) {
+					ProgressView().controlSize(.small)
+					Text("Looking for new Accounts...").foregroundStyle(.secondary)
+				}
+			}
+		}
+		if let message = setup.listingMessage {
+			Section {
+				Label(message, systemImage: "info.circle")
+					.fixedSize(horizontal: false, vertical: true)
+			}
+		}
+		if !setup.candidates.isEmpty {
+			accountRows
+		}
+		if let error = setup.saveError {
+			Section {
+				Label(error, systemImage: "exclamationmark.triangle")
+					.foregroundStyle(.orange)
+					.fixedSize(horizontal: false, vertical: true)
+			}
+		}
+		noticesSection
+	}
+
+	@ViewBuilder private var accountRows: some View {
 		Section("Accounts of \(setup.bank?.name ?? "the bank")") {
 			ForEach(setup.candidates) { candidate in
 				Toggle(isOn: Binding(get: { setup.selected.contains(candidate.id) },
@@ -473,14 +646,6 @@ struct AccountSetupSheet: View {
 				}
 			}
 		}
-		if let error = setup.saveError {
-			Section {
-				Label(error, systemImage: "exclamationmark.triangle")
-					.foregroundStyle(.orange)
-					.fixedSize(horizontal: false, vertical: true)
-			}
-		}
-		noticesSection
 	}
 
 	@ViewBuilder private var noticesSection: some View {
@@ -503,6 +668,19 @@ struct AccountSetupSheet: View {
 				ForEach(model.ledger.groups) { Text($0.name).tag(UUID?.some($0.id)) }
 			}
 		}
+	}
+}
+
+/// The help of the bank step: what it accepts, and how a credit card comes in.
+struct BankStepHelp: View {
+	var body: some View {
+		VStack(alignment: .leading, spacing: 8) {
+			Text("Enter the name of your bank, your IBAN, or the Bankleitzahl, which is digits 5 to 12 of the IBAN.")
+			Text("A credit card is added with the Bankleitzahl of the bank that issued it, or with “Look for New Accounts...” on the giro account at that bank.")
+		}
+		.fixedSize(horizontal: false, vertical: true)
+		.frame(width: 300, alignment: .leading)
+		.padding(16)
 	}
 }
 

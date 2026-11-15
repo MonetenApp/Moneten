@@ -811,10 +811,11 @@ final class AppModel {
 		}
 	}
 
-	/// Opens the "Add Account" assistant. The new accounts go into `group`.
-	func addAccount(group: UUID? = nil) {
+	/// Opens the "Add Account" assistant, or with `purpose` "Look for New Accounts..." or "Edit Login
+	/// Data...". The new accounts go into `group`.
+	func addAccount(group: UUID? = nil, purpose: AccountSetup.Purpose = .add) {
 		setup?.cancel()
-		setup = AccountSetup(model: self, groupID: group)
+		setup = AccountSetup(model: self, groupID: group, purpose: purpose)
 		sheet = .newAccount
 	}
 
@@ -832,16 +833,19 @@ final class AppModel {
 	/// of the bank that the assistant showed, which the window "Notice" then leaves out. Throws the error of
 	/// the database, which the assistant shows.
 	func add(_ new: Access, state: AccessState?, accounts candidates: [Account], listed: [Account], connecting: [UUID: UUID], notices: [BankMessage],
-		pin: Secret, savePIN: Bool) throws {
+		pin: Secret?, savePIN: Bool) throws {
 		guard let store else { return }
 		let (access, accounts) = try store.add(new, state: state, accounts: ledger.accountsToAdd(candidates, listed: listed, connecting: connecting))
 		bankNotices.markShown(notices, from: access.bankName)
 		let first = accounts.first { ledger.account($0.id) == nil } ?? accounts.first
-		// The bank accepted the PIN at the login of the setup.
-		do {
-			try sync.broker.remember(pin, for: access.id, save: savePIN)
-		} catch {
-			alert = AlertMessage(title: "Could not save the PIN.", message: String(describing: error))
+		// The bank accepted the PIN at the login of the setup. "Look for New Accounts..." logged in with the
+		// PIN of the access, which the broker keeps already.
+		if let pin {
+			do {
+				try sync.broker.remember(pin, for: access.id, save: savePIN)
+			} catch {
+				alert = AlertMessage(title: "Could not save the PIN.", message: String(describing: error))
+			}
 		}
 		accesses[access.id] = access
 		// The new accounts and the view of the first one come with a new transaction table.
@@ -852,6 +856,22 @@ final class AppModel {
 				if let first { navigate(to: .account(first.id)) }
 			}
 			refresh(ledger.refreshAccounts(.all).filter { $0.key == access.id })
+		}
+	}
+
+	/// "Edit Login Data...": stores the login name and the state of the login that the bank just accepted,
+	/// for all accounts of the access, and keeps the PIN of that login in memory. It is saved when "Save PIN"
+	/// is on, and a saved PIN is removed when the user turned it off. Throws the error of the database,
+	/// which the assistant shows.
+	func updateLogin(_ access: Access, state: AccessState?, pin: Secret, savePIN: Bool) throws {
+		guard let store else { return }
+		try store.updateLogin(of: access.id, loginName: access.loginName, state: state)
+		accesses[access.id] = access
+		do {
+			if !savePIN, sync.broker.savedPINs.contains(access.id) { try sync.broker.removeSavedPIN(of: access.id) }
+			try sync.broker.remember(pin, for: access.id, save: savePIN)
+		} catch {
+			alert = AlertMessage(title: "Could not save the PIN.", message: String(describing: error))
 		}
 	}
 

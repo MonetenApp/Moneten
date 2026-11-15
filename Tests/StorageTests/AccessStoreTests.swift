@@ -48,6 +48,17 @@ struct AccessStoreTests {
 		#expect(try store.loadLedger().account(giro.id)?.refreshError?.message == "Zugang vorübergehend gesperrt")
 	}
 
+	@Test("Edit Login Data stores the new login name and the state of the new login, and the accounts keep their access")
+	func updateLogin() throws {
+		let store = try Vault(folder: folder).create(password: Self.password, starterCategories: [])
+		let giro = giro()
+		try store.add(Self.access, state: AccessState(Data([1])), accounts: [giro])
+		try store.updateLogin(of: Self.access.id, loginName: "erika78", state: AccessState(Data([2])))
+		#expect(try store.accesses() == [Access(id: Self.access.id, source: Self.access.source, bankName: "Musterbank", loginName: "erika78")])
+		#expect(try store.state(of: Self.access.id) == AccessState(Data([2])))
+		#expect(try store.loadLedger().accounts.map(\.accessID) == [Self.access.id])
+	}
+
 	@Test("Adding an access stores nothing when one of its accounts cannot be written")
 	func addIsAtomic() throws {
 		let store = try Vault(folder: folder).create(password: Self.password, starterCategories: [])

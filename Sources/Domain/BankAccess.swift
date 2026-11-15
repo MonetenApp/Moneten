@@ -269,16 +269,21 @@ public struct RefreshError: Codable, Hashable, Sendable {
 	public var notices: [String]
 	/// Only the user can resolve the error, with a refresh command (`SyncFailure.waitsForUser`).
 	public var waitsForUser: Bool
+	/// The login of the whole access failed in a way that can mean that the bank wants it set up again, so
+	/// the error popover names "Edit Login Data..." (`SyncFailure.mayAskForNewSetup`).
+	public var suggestsEditLoginData: Bool
 
-	public init(message: String, code: String? = nil, date: Date, notices: [String] = [], waitsForUser: Bool = false) {
+	public init(message: String, code: String? = nil, date: Date, notices: [String] = [], waitsForUser: Bool = false,
+		suggestsEditLoginData: Bool = false) {
 		self.message = message
 		self.code = code
 		self.date = date
 		self.notices = notices
 		self.waitsForUser = waitsForUser
+		self.suggestsEditLoginData = suggestsEditLoginData
 	}
 
-	/// An error stored before `waitsForUser` existed has no such key.
+	/// An error stored before `waitsForUser` or `suggestsEditLoginData` existed has no such key.
 	public init(from decoder: Decoder) throws {
 		let c = try decoder.container(keyedBy: CodingKeys.self)
 		message = try c.decode(String.self, forKey: .message)
@@ -286,6 +291,7 @@ public struct RefreshError: Codable, Hashable, Sendable {
 		date = try c.decode(Date.self, forKey: .date)
 		notices = try c.decode([String].self, forKey: .notices)
 		waitsForUser = try c.decodeIfPresent(Bool.self, forKey: .waitsForUser) ?? false
+		suggestsEditLoginData = try c.decodeIfPresent(Bool.self, forKey: .suggestsEditLoginData) ?? false
 	}
 }
 
@@ -329,11 +335,12 @@ extension Account {
 extension SyncState {
 	/// How each requested account ended, once the refresh ended. A canceled refresh gives no account an
 	/// outcome, so its accounts keep their last state ("Cancel a refresh"). `date` is the time of a failure
-	/// of the whole access.
+	/// of the whole access. Only such a failure names "Edit Login Data...": the login worked when single
+	/// accounts fail.
 	public func accountRefreshes(of accounts: [UUID], notices: [BankMessage], at date: Date) -> [UUID: AccountRefresh] {
-		func error(_ failure: SyncFailure, at date: Date) -> AccountRefresh {
+		func error(_ failure: SyncFailure, at date: Date, ofAccess: Bool = false) -> AccountRefresh {
 			.failed(RefreshError(message: failure.message, code: failure.bankMessage?.code, date: date, notices: notices.map(\.text),
-				waitsForUser: failure.waitsForUser))
+				waitsForUser: failure.waitsForUser, suggestsEditLoginData: ofAccess && failure.mayAskForNewSetup))
 		}
 		switch self {
 		case let .finished(summary):
@@ -344,7 +351,7 @@ extension SyncState {
 			}
 			return result
 		case let .failed(failure):
-			return Dictionary(uniqueKeysWithValues: accounts.map { ($0, error(failure, at: date)) })
+			return Dictionary(uniqueKeysWithValues: accounts.map { ($0, error(failure, at: date, ofAccess: true)) })
 		case .idle, .connecting, .fetching, .needsUser, .cancelled:
 			return [:]
 		}

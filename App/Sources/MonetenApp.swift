@@ -139,6 +139,10 @@ struct AppCommands: Commands {
 			Button(model.refreshTitle) { if let scope = model.refreshScopeOfSelection { model.refresh(scope) } }
 				.keyboardShortcut("r", modifiers: [.command, .shift])
 				.disabled(!(model.refreshScopeOfSelection.map(model.canRefresh) ?? false))
+			Button("Edit Login Data...") { if let id = model.selectedAccount?.id { model.editLoginData(account: id) } }
+				.disabled(!unlocked || !(model.selectedAccount.map { model.canEditLoginData(of: $0.id) } ?? false))
+			Button("Look for New Accounts...") { if let id = model.selectedAccount?.id { model.lookForNewAccounts(account: id) } }
+				.disabled(!unlocked || model.selectedAccount?.accessID == nil)
 			Divider()
 			Button(model.settingsTitle) { model.openSettingsOfSelection() }
 				.keyboardShortcut("i")

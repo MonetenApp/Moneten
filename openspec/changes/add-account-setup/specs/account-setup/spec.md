@@ -375,9 +375,23 @@ The app SHALL offer "Look for New Accounts..." for an account with a bank access
 - **WHEN** the bank reports only accounts that the app already has
 - **THEN** the app says that there are no new accounts
 
+#### Scenario: Access that is being refreshed
+
+- **GIVEN** the app refreshes the access of "Giro"
+- **WHEN** the user chooses "Look for New Accounts..." on "Giro"
+- **THEN** the app says that it is refreshing the bank and asks the user to look for new accounts again when the refresh has ended
+- **AND** the app contacts the bank only once
+
+#### Scenario: Service of an extension
+
+- **GIVEN** the account "Brokerkonto" uses the service "Musterbroker" of an installed extension
+- **WHEN** the user chooses "Look for New Accounts..." on "Brokerkonto"
+- **THEN** the extension runs its setup again
+- **AND** the app adds only the accounts that it does not have yet, or says that it has every account of the login
+
 ### Requirement: Edit the login data of an access
 
-The app SHALL offer "Edit Login Data..." for an account with a bank access. The command opens the login data step with the stored values except secrets, lets the user change every field, and applies the change to all accounts of that access.
+The app SHALL offer "Edit Login Data..." for an account with a FinTS access. The command opens the login data step with the stored values except secrets, lets the user change every field, and applies the change to all accounts of that access. The login of the command starts without the stored state of the access, as the first login of a setup does.
 
 #### Scenario: New user ID
 
@@ -390,6 +404,23 @@ The app SHALL offer "Edit Login Data..." for an account with a bank access. The 
 - **WHEN** the user confirms changed login data that the bank rejects
 - **THEN** the app shows the message of the bank
 - **AND** the app keeps the old login data
+
+#### Scenario: Rejected PIN removes the saved PIN
+
+- **GIVEN** the access has a saved PIN
+- **WHEN** the bank rejects the PIN that the user entered in "Edit Login Data..."
+- **THEN** the app removes the saved PIN, so the next refresh asks for the PIN
+
+#### Scenario: Login of another access
+
+- **GIVEN** the app has two accesses at Musterbank with the user IDs "erika77" and "max55"
+- **WHEN** the user enters "max55" in "Edit Login Data..." of the access "erika77"
+- **THEN** the app says that another bank access uses this login already and contacts no bank
+
+#### Scenario: Extension
+
+- **WHEN** the user opens the menu of an account that uses the service of an extension
+- **THEN** "Edit Login Data..." is disabled, because the extension asks for its login data in its own dialog
 
 ### Requirement: Switch the access method and keep the history
 
@@ -411,7 +442,7 @@ The app SHALL let the user choose another access method for an existing access i
 
 ### Requirement: Reinitialize an access after an aborted authentication
 
-The app SHALL tell the user to use "Edit Login Data..." when a bank reports that the access must be set up again, for example after an aborted two-factor authentication or a new TAN method, and running the command with unchanged values SHALL perform that setup.
+The app SHALL tell the user to use "Edit Login Data..." when a bank reports that the access must be set up again, for example after an aborted two-factor authentication or a new TAN method, and running the command with unchanged values SHALL perform that setup. Banks use different codes for this, so the error of an account names the command whenever the login of the whole FinTS access failed with a message of the bank, or the two-factor authentication did not finish.
 
 #### Scenario: TAN method changed at the bank
 
@@ -419,6 +450,21 @@ The app SHALL tell the user to use "Edit Login Data..." when a bank reports that
 - **WHEN** the next refresh fails with a message of the bank about the TAN method
 - **THEN** the account error names "Edit Login Data..." as the next step
 - **AND** after the user runs the command and confirms, the app offers the new TAN methods of the bank
+
+#### Scenario: Aborted authentication
+
+- **WHEN** the refresh of an access fails because the user did not approve the login in the app of the bank in time
+- **THEN** the account error names "Edit Login Data..." as the next step
+
+#### Scenario: Error of one account
+
+- **WHEN** the login of an access works and the bank rejects the request of one of its accounts with "9010 Zugang vorübergehend gesperrt"
+- **THEN** the error of that account does not name "Edit Login Data..."
+
+#### Scenario: Network error
+
+- **WHEN** the refresh of an access fails because the bank cannot be reached
+- **THEN** the account error does not name "Edit Login Data..."
 
 ### Requirement: List of supported banks
 

@@ -99,7 +99,8 @@ struct AutomaticRefreshTests {
 		let at = Self.eight
 		let id = UUID()
 		let refreshes = SyncState.failed(failure).accountRefreshes(of: [id], notices: [], at: at)
-		#expect(refreshes == [id: .failed(RefreshError(message: failure.message, code: failure.bankMessage?.code, date: at, waitsForUser: waits))])
+		#expect(refreshes == [id: .failed(RefreshError(message: failure.message, code: failure.bankMessage?.code, date: at, waitsForUser: waits,
+			suggestsEditLoginData: failure.mayAskForNewSetup))])
 	}
 
 	@Test("An error stored before the mark existed does not wait for the user")

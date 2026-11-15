@@ -337,6 +337,28 @@ struct BankAccessTests {
 		#expect(current.kind == .giro)
 	}
 
+	@Test("A login that the bank ends with its own message or an authentication that did not finish names Edit Login Data, a failure of one account does not")
+	func editLoginDataAfterFailedLogin() {
+		let giro = UUID(), savings = UUID()
+		let at = Self.noon
+		let tanMethod = BankMessage(code: "9955", text: "Das gewählte TAN-Verfahren ist nicht mehr zugelassen.")
+		for failure in [SyncFailure.bank(tanMethod), .approvalDeclined(nil), .challengeExpired, .invalidChallenge] {
+			#expect(SyncState.failed(failure).accountRefreshes(of: [giro], notices: [], at: at)[giro]
+				== .failed(RefreshError(message: failure.message, code: failure.bankMessage?.code, date: at, suggestsEditLoginData: true)))
+		}
+		for failure in [SyncFailure.network("timeout"), .offline, .pinRejected(BankMessage(code: "9942", text: "PIN falsch")), .tanRejected(tanMethod),
+			.needsUser(.pin), .notRegistered] {
+			guard case let .failed(error)? = SyncState.failed(failure).accountRefreshes(of: [giro], notices: [], at: at)[giro] else {
+				Issue.record("no error")
+				continue
+			}
+			#expect(!error.suggestsEditLoginData)
+		}
+		let finished = SyncState.finished(SyncSummary(finishedAt: at, fetched: [giro], failures: [savings: .bank(tanMethod)]))
+		#expect(finished.accountRefreshes(of: [giro, savings], notices: [], at: at)[savings]
+			== .failed(RefreshError(message: tanMethod.text, code: "9955", date: at)))
+	}
+
 	@Test("The end of a refresh gives each requested account its outcome, and a cancel gives none")
 	func endOfRefresh() {
 		let giro = UUID(), savings = UUID(), card = UUID()

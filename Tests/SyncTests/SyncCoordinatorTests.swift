@@ -737,6 +737,21 @@ struct SyncCoordinatorTests {
 		#expect(coordinator.refreshingAccounts.isEmpty)
 	}
 
+	@Test("An access is busy while it runs or waits for its turn, and while the login of a setup holds it")
+	func busy() async throws {
+		let bank = Self.access("Musterbank"), other = Self.access("Beispielbank")
+		#expect(!coordinator.isBusy(bank.id))
+		_ = refresh(bank, [.ask(Self.pin), .fetched(Self.giro.accountID)])
+		#expect(coordinator.isBusy(bank.id))
+		#expect(!coordinator.isBusy(other.id))
+		await until { broker.current != nil }
+		answer(.pin(Secret("12345")))
+		await until { !coordinator.isRefreshing }
+		#expect(!coordinator.isBusy(bank.id))
+		try await coordinator.exclusively(for: bank.id) { #expect(coordinator.isBusy(bank.id)) }
+		#expect(!coordinator.isBusy(bank.id))
+	}
+
 	@Test("Cancel Refresh drops a refresh that waits for the login of a setup")
 	func cancelBehindSetup() async throws {
 		let events = Events()

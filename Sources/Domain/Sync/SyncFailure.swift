@@ -67,6 +67,18 @@ public enum SyncFailure: Error, Sendable, Equatable {
 		}
 	}
 
+	/// The bank ended the login with a message of its own, or the authentication did not finish. Such an
+	/// answer can mean that the bank wants the access set up again, for example after the user chose a new
+	/// TAN method on its website or aborted an authentication, so the error of the account names
+	/// "Edit Login Data..." ("Reinitialize an access after an aborted authentication"). The codes of the
+	/// banks for it differ, so the app cannot tell it apart from other messages.
+	public var mayAskForNewSetup: Bool {
+		switch self {
+		case .bank, .approvalDeclined, .challengeExpired, .invalidChallenge: true
+		default: false
+		}
+	}
+
 	/// The answer of the bank in this failure, for its code in the error popover.
 	public var bankMessage: BankMessage? {
 		switch self {

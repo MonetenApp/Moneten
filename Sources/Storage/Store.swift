@@ -149,6 +149,14 @@ public final class Store: SavedPINStore {
 		}
 	}
 
+	/// "Edit Login Data...": the login name and the state of the login with it, after the bank accepted it.
+	/// The accounts stay linked to the access, so the next refresh of each of them uses the new login.
+	public func updateLogin(of access: UUID, loginName: String, state: AccessState?) throws {
+		try queue.write { db in
+			try AccessRecord.filter(key: access).updateAll(db, Column("loginName").set(to: loginName), Column("state").set(to: state?.data))
+		}
+	}
+
 	/// Stores the end of a refresh of an access: the status of its accounts, and the new state when the
 	/// connector returned one. Without one the last state stays, so the next refresh starts from it.
 	public func recordRefresh(of access: UUID, state: AccessState?, accounts: [Account]) throws {

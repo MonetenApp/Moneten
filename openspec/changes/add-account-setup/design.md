@@ -64,14 +64,25 @@ The access keeps its stored state, and `Store.add(_:state:accounts:)` ignores th
 
 A second "Next" during the login sends nothing, so the bank gets the PIN once. When "Done" cannot store the accounts, the assistant stays at the third step and shows the error of the database, so the login and its TAN are not lost.
 
+### Look for new accounts
+
+"Look for New Accounts..." on an account of a FinTS access runs `AccountListingJob` as a refresh of the access in `SyncCoordinator`, with no accounts and the stored state. So the login takes the PIN in memory or the saved PIN, or asks in the PIN sheet, its TAN dialogs join the dialog queue, the coordinator stores the new state of the access, and "Cancel" stops it as any refresh. The job hands the listed accounts to the assistant, which opens at its account step with the accounts whose `Ledger.setupMatch(for:listed:)` is not "present", all selected. "Done" adds them with `Store.add(_:state:accounts:)`, which joins them to the access. A refresh without accounts would not start while the access runs or waits, so the command then says that the bank is being refreshed (`SyncCoordinator.isBusy(_:)`). On the service of an extension, the command runs the setup of the extension again, which adds only the accounts that the app does not have.
+
+### Edit login data
+
+"Edit Login Data..." opens the login step of the assistant with the login name of the access, an empty PIN, and "Save PIN" on when a PIN is saved. "Done" logs in like the setup, with `SetupSession` in `SyncCoordinator.exclusively(for:_:)`, but with the ID of the access and without its stored state. Only after the bank accepted the login does `Store.updateLogin(of:loginName:state:)` store the login name and the new state, and the broker keep the PIN, save it, or remove the saved one when the user turned "Save PIN" off. A rejected PIN ends the login with the message of the bank and removes the saved PIN of the access, as any rejection does, so no refresh sends it again.
+
+The login without the state is what sets an access up again after an aborted authentication or a new TAN method: the bank sends its parameters, a new system ID, and its TAN methods. The codes of the banks for an access that must be set up again differ, so `SyncFailure.mayAskForNewSetup` holds for every message of the bank and every unfinished authentication that ends the login of the whole access. `RefreshError.suggestsEditLoginData` keeps it with the error of each account, and the error popover then offers "Edit Login Data...". A failure of one account means that the login worked, so it does not.
+
 ## Deviations from the spec
 
 - The bank directory of hbci4java holds no field names, formats, or notes. The login step asks for "User ID" and "PIN", except for the five banks of `LoginHint`, and has no customer ID and no format checks. The five banks ask to leave the customer ID empty.
-- The country menu is not built. A valid IBAN of another country gets the message that the app finds banks only by a German IBAN or Bankleitzahl so far, and the search covers only the German bank directory.
+- The country menu is not built. A valid IBAN of another country gets the message that the app finds banks only by a German IBAN or Bankleitzahl so far, and the search covers only the German bank directory. In v0.1 the menu would change nothing: the bank directory has only German banks, and the extensions declare no country for their services.
 - The bank directory marks no outdated Bankleitzahl, so the app cannot say that one is outdated.
 - "Access with" is not shown, because FinTS is the only method until E6.
 - The progress text is "Setting up Accounts..." without the current step, because the helper reports no progress while it lists accounts.
-- "Look for New Accounts...", "Edit Login Data...", the switch of the access method, and the list of supported banks are not built.
+- The switch of the access method and the list of supported banks are not built. The switch needs a second access method for one bank, which comes with "Access with".
+- The bank directory holds no notes, so the login step shows no note of the bank before the first login. The help of the first step says how a credit card is added.
 
 ## Risks / Trade-offs
 

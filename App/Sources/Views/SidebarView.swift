@@ -205,6 +205,9 @@ struct AccountRow: View {
 						Button("Refresh Account (enforced)") { model.refresh(.account(account.id), enforced: true) }
 					}
 					.disabled(!model.canRefresh(.account(account.id)))
+				Button("Edit Login Data...") { model.editLoginData(account: account.id) }
+					.disabled(!model.canEditLoginData(of: account.id))
+				Button("Look for New Accounts...") { model.lookForNewAccounts(account: account.id) }
 				Divider()
 			}
 			if account.isOffline {

@@ -80,7 +80,7 @@ A version-1 payload contains `name`, `header`, `delimiter`, and `layout`. The he
 | `accessID` | The bank access that refreshes the account |
 | `remoteID` | Identifier of the account at its bank |
 | `refreshedAt` | Time of the last successful refresh |
-| `refreshError` | The error of the last refresh, with `message`, `code` (the return code of the bank), `date`, `notices` (the notices of the bank), and `waitsForUser` (whether only a refresh command of the user can resolve it) |
+| `refreshError` | The error of the last refresh, with `message`, `code` (the return code of the bank), `date`, `notices` (the notices of the bank), `waitsForUser` (whether only a refresh command of the user can resolve it), and `suggestsEditLoginData` (whether the login of the whole access failed in a way that can mean that the bank wants it set up again, so the error names "Edit Login Data..."). A reader takes a missing `waitsForUser` or `suggestsEditLoginData` as false. |
 | `refreshInterval` | `everyTwoHours`, `fourTimesADay`, `onceADay`, `onceAWeek`, `onlyManually`, or `never` |
 
 ## Access
