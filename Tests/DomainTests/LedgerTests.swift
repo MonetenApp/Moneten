@@ -237,6 +237,9 @@ struct LedgerTests {
 		var notSetYet = unexplained
 		notSetYet.initialBalanceIsSet = false
 		#expect(ledger(notSetYet, pending: false).proposedCalibration(of: notSetYet, today: today) == nil)
+		var failed = unexplained
+		failed.refreshError = RefreshError(message: "The transactions could not be fetched.", date: Date())
+		#expect(ledger(failed, pending: false).proposedCalibration(of: failed, today: today) == nil)
 	}
 
 	@Test("A row booked after the day of the bank balance proposes nothing, and a calibration fills in the balance of today and moves the initial balance by the difference")

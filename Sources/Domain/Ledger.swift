@@ -246,8 +246,10 @@ public struct Ledger: Sendable {
 	/// the rule that derives the initial balance, so neither a pending row nor a row booked after that day
 	/// raises one. Nil before the initial balance is set, because the next full refresh derives it.
 	public func proposedCalibration(of account: Account, today: Day, calendar: Calendar = .current) -> CalibrationProposal? {
-		guard account.source == .bank, account.kind != .portfolio, account.initialBalanceIsSet,
-			let meeting = account.initialBalanceMeetingBankBalance(of: transactions(ofAccount: account.id), calendar: calendar),
+		// A failed refresh can store a bank balance without the rows it covers. The rows are read in place, because
+		// copying the rows of an account on each drawing of the header cost most of a frame with 50,000 rows.
+		guard account.source == .bank, account.kind != .portfolio, account.initialBalanceIsSet, account.refreshError == nil,
+			let meeting = account.initialBalanceMeetingBankBalance(of: transactions.lazy.filter { $0.accountID == account.id }, calendar: calendar),
 			meeting != account.initialBalanceMinor else { return nil }
 		let difference = meeting - account.initialBalanceMinor
 		return CalibrationProposal(difference: Money(minorUnits: difference, currency: account.currency),
