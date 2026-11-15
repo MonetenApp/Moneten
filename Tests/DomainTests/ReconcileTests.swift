@@ -630,7 +630,7 @@ struct ReconcileTests {
 	}
 
 	@Test("One delivered rent row takes over one of two identical file rows")
-	func oneBankRentForTwoFileRows() throws {
+	func repeatedRefreshMustKeepUnpairedFile() throws {
 		let fileRows = merge(.file([rent(1), rent(1)]), at: noon(15, month: 11)).added
 		#expect(fileRows.count == 2)
 		let firstFileRow = try #require(fileRows.first)
@@ -655,34 +655,33 @@ struct ReconcileTests {
 		#expect(kept.amountMinor == -80_000)
 		#expect(kept.purpose == "Miete Dezember")
 		#expect(kept.isPending && !kept.isFetched)
+		let repeated = merge(refresh([rent(1, purpose: "MIETE DEZEMBER WHG 3 DAUERAUFTRAG")]), stored: after, at: noon(21, month: 11))
+		#expect(repeated.dropped == [])
+		#expect(repeated.updated == [])
+		#expect(history(after, after: repeated).count == 2)
+		#expect(history(after, after: repeated).reduce(0) { $0 + $1.amountMinor } == -160_000)
+		#expect(history(after, after: repeated).first { $0.id == secondFileRow.id } == secondFileRow)
 		#expect(Set(merge(refresh([]), stored: after, at: noon(5, month: 12)).dropped) == Set(fileRows.map(\.id)))
 	}
 
-	@Test("A delivered rent row with a stored bank partner removes one of two identical file rows")
+	@Test("Two pending file rows use one stored bank row only once")
 	func oneStoredBankRentForTwoFileRows() throws {
 		let bankRow = stored(rent(1, purpose: "MIETE DEZEMBER WHG 3 DAUERAUFTRAG"))
-		let fileRows = merge(.file([rent(1), rent(1)]), stored: [bankRow], at: noon(19, month: 11)).added
-		#expect(fileRows.count == 2)
-		let firstFileRow = try #require(fileRows.first)
-		let secondFileRow = try #require(fileRows.last)
-		let all = [bankRow] + fileRows
-		let r = merge(refresh([fresh(bankRow)]), stored: all, at: noon(20, month: 11))
-		#expect(r.added == [])
-		#expect(r.updated == [])
-		#expect(r.booked == [])
-		#expect(r.marked == [])
-		#expect(r.dropped == [firstFileRow.id])
-		#expect(r.skipped == 1)
-		let after = history(all, after: r)
-		#expect(after.count == 2)
-		#expect(after.first { $0.id == bankRow.id } == bankRow)
-		let kept = try #require(after.first { $0.id == secondFileRow.id })
-		#expect(kept.amountMinor == -80_000)
-		#expect(kept.name == "Vermieter A")
-		#expect(kept.counterpartyIBAN == "DE02120300000000202051")
-		#expect(kept.bookingDate == Day(year: 2026, month: 12, day: 1))
-		#expect(kept.purpose == "Miete Dezember")
-		#expect(kept.isPending && !kept.isFetched)
+		let imported = merge(.file([rent(1), rent(1)]), stored: [bankRow], at: noon(19, month: 11))
+		#expect(imported.skipped == 1)
+		#expect(imported.added.count == 1)
+		let secondFileRow = try #require(imported.added.first)
+		var all = history([bankRow], after: imported)
+		for d in [20, 21] {
+			let r = merge(refresh([fresh(bankRow)]), stored: all, at: noon(d, month: 11))
+			#expect(r.added == [] && r.updated == [] && r.booked == [] && r.marked == [] && r.dropped == [])
+			#expect(r.skipped == 1)
+			all = history(all, after: r)
+			#expect(all.count == 2)
+			#expect(all.reduce(0) { $0 + $1.amountMinor } == -160_000)
+			#expect(all.first { $0.id == bankRow.id } == bankRow)
+			#expect(all.first { $0.id == secondFileRow.id } == secondFileRow)
+		}
 	}
 
 	@Test("The bank reported the scheduled rent before the import")
@@ -690,11 +689,15 @@ struct ReconcileTests {
 		let bankPurpose = "MIETE DEZEMBER WHG 3 DAUERAUFTRAG"
 		let fileRow = rent(1)
 		let bankRow = stored(rent(1, purpose: bankPurpose))
-		let first = merge(refresh([fresh(bankRow)]), stored: [fileRow, bankRow], at: noon(20, month: 11))
-		#expect(first.dropped == [fileRow.id])
+		let first = merge(.file([fileRow]), stored: [bankRow], at: noon(19, month: 11))
+		#expect(first.dropped == [])
 		#expect(first.added == [])
 		#expect(first.skipped == 1)
-		let afterFirst = history([fileRow, bankRow], after: first)
+		let afterFirst = history([bankRow], after: first)
+		#expect(afterFirst.count == 1)
+		#expect(afterFirst.map(\.amountMinor) == [-80_000])
+		let repeated = merge(refresh([fresh(bankRow)]), stored: afterFirst, at: noon(20, month: 11))
+		#expect(repeated.added == [] && repeated.updated == [] && repeated.dropped == [])
 
 		let second = merge(refresh([rent(2, purpose: bankPurpose, pending: false)]), stored: afterFirst, at: noon(2, month: 12))
 		#expect(second.booked.map(\.id) == [bankRow.id])
@@ -709,17 +712,18 @@ struct ReconcileTests {
 		#expect(deleted.skipped == 1)
 	}
 
-	@Test("A bank row that is the version of one future file row does not remove a second one", arguments: [3, 8])
-	func weeklyFileRows(laterDay: Int) {
+	@Test("A bank row that is the version of one future file row does not remove a second one", arguments: [3, 8], [false, true])
+	func weeklyFileRows(laterDay: Int, reversed: Bool) {
 		let first = rent(1)
 		let second = rent(laterDay)
 		let bank = rent(1, purpose: "MIETE DEZEMBER WHG 3 DAUERAUFTRAG")
-		let r = merge(refresh([bank]), stored: [first, second], at: noon(20, month: 11))
+		let all = reversed ? [second, first] : [first, second]
+		let r = merge(refresh([bank]), stored: all, at: noon(20, month: 11))
 		#expect(r.dropped == [])
 		#expect(r.updated.map(\.id) == [first.id])
 		#expect(r.updated.map(\.isFetched) == [true])
 		#expect(r.added == [])
-		let after = history([first, second], after: r)
+		let after = history(all, after: r)
 		#expect(after.count == 2)
 		#expect(after.first { $0.id == second.id } == second)
 		let again = merge(refresh([bank]), stored: after, at: noon(21, month: 11))
@@ -727,22 +731,48 @@ struct ReconcileTests {
 		#expect(again.updated == [])
 	}
 
+	@Test("A free pending bank row takes the closest day, with stored order breaking ties")
+	func closestFutureFileRow() {
+		let second = rent(8)
+		let first = rent(2)
+		let closest = merge(refresh([rent(4, purpose: "BANK MIETE")]), stored: [second, first], at: noon(20, month: 11))
+		#expect(closest.updated.map(\.id) == [first.id])
+		#expect(closest.updated.map(\.bookingDate) == [Day(year: 2026, month: 12, day: 4)])
+		#expect(history([second, first], after: closest).first { $0.id == second.id } == second)
+		let tie = merge(refresh([rent(5, purpose: "BANK MIETE")]), stored: [second, first], at: noon(20, month: 11))
+		#expect(tie.updated.map(\.id) == [second.id])
+		#expect(tie.updated.map(\.bookingDate) == [Day(year: 2026, month: 12, day: 5)])
+		#expect(tie.added == [] && tie.dropped == [])
+	}
+
+	@Test("A pending file import on another day stays separate from the stored bank row")
+	func differentDayImportKeepsBoth() {
+		let bank = stored(rent(30, month: 11, purpose: "BANK MIETE"))
+		let imported = merge(.file([rent(1)]), stored: [bank], at: noon(19, month: 11))
+		#expect(imported.skipped == 0 && imported.added.count == 1)
+		let after = history([bank], after: imported)
+		#expect(after.count == 2)
+		#expect(after.reduce(0) { $0 + $1.amountMinor } == -160_000)
+		#expect(after.map(\.bookingDate) == [Day(year: 2026, month: 12, day: 1), Day(year: 2026, month: 11, day: 30)])
+	}
+
 	@Test("A later file with another purpose does not mark a future payment fetched")
 	func laterFileIsNotFetched() {
 		let first = merge(.file([rent(1)]), at: noon(15, month: 11)).added
 		let later = merge(.file([rent(1, purpose: "Miete Dezember Wohnung 3")]), stored: first, at: noon(19, month: 11))
 		let after = history(first, after: later)
-		#expect(after.count == 2)
-		#expect(after.map(\.isFetched) == [false, false])
+		#expect(later.skipped == 1 && later.added == [])
+		#expect(after.count == 1)
+		#expect(after.map(\.isFetched) == [false])
 		let refreshed = history(after, after: merge(refresh([]), stored: after, at: noon(20, month: 11)))
-		#expect(refreshed.count == 2)
-		#expect(refreshed.map(\.amountMinor) == [-80_000, -80_000])
-		#expect(refreshed.map(\.isPending) == [true, true])
-		#expect(refreshed.map(\.isFetched) == [false, false])
+		#expect(refreshed.count == 1)
+		#expect(refreshed.map(\.amountMinor) == [-80_000])
+		#expect(refreshed.map(\.isPending) == [true])
+		#expect(refreshed.map(\.isFetched) == [false])
 	}
 
-	@Test("A dropped file row fills only empty user fields of the bank row", arguments: [false, true])
-	func droppedFileUserFields(bankHasFields: Bool) throws {
+	@Test("A skipped pending file row fills only empty user fields of the stored row", arguments: [false, true], [false, true])
+	func skippedFileUserFields(bankHasFields: Bool, nilComment: Bool) throws {
 		let housing = Domain.Category(position: 0, name: "Housing")
 		let bills = Domain.Category(position: 1, name: "Bills", rule: #"purpose:"DAUERAUFTRAG""#)
 		var file = rent(1)
@@ -750,18 +780,16 @@ struct ReconcileTests {
 		file.categoryID = housing.id
 		file.categorizedBy = .manual
 		file.isChecked = !bankHasFields
-		var bank = stored(rent(1, purpose: "BANK MIETE"))
+		var bank = stored(rent(1, purpose: "MIETE DEZEMBER WHG 3 DAUERAUFTRAG"))
 		bank.sourceID = "bank-7"
-		bank.comment = bankHasFields ? "Bank note" : ""
+		bank.comment = bankHasFields ? "Bank note" : (nilComment ? nil : "")
 		bank.categoryID = bankHasFields ? bills.id : nil
 		bank.categorizedBy = bankHasFields ? .manual : .none
 		bank.isChecked = bankHasFields
-		var delivered = fresh(bank)
-		delivered.purpose = "MIETE DEZEMBER WHG 3 DAUERAUFTRAG"
-		let r = merge(refresh([delivered]), stored: [file, bank], categories: [housing, bills], at: noon(20, month: 11))
-		#expect(r.dropped == [file.id])
-		#expect(r.updated.count == 1)
-		let kept = try #require(history([file, bank], after: r).first)
+		let r = merge(.file([file]), stored: [bank], categories: [housing, bills], at: noon(20, month: 11))
+		#expect(r.dropped == [] && r.added == [] && r.skipped == 1)
+		#expect(r.updated.count == (bankHasFields ? 0 : 1))
+		let kept = try #require(history([bank], after: r).first)
 		#expect(kept.id == bank.id)
 		#expect(kept.amountMinor == -80_000)
 		#expect(kept.purpose == "MIETE DEZEMBER WHG 3 DAUERAUFTRAG")
@@ -769,18 +797,19 @@ struct ReconcileTests {
 		#expect(kept.categoryID == (bankHasFields ? bills.id : housing.id))
 		#expect(kept.categorizedBy == .manual)
 		#expect(kept.isChecked)
-		let again = merge(refresh([delivered]), stored: [kept], categories: [housing, bills], at: noon(21, month: 11))
+		let again = merge(.file([file]), stored: [kept], categories: [housing, bills], at: noon(21, month: 11))
 		#expect(again.updated == [])
 		#expect(again.dropped == [])
 	}
 
-	@Test("A stored bank row that moves to the day of a future file row removes the file row in the same refresh")
+	@Test("A stored bank row that moves to a future file day leaves the unpaired file row")
 	func movedBankRow() {
 		let fileRow = rent(1)
 		let bankRow = stored(row(29, -80_000, "Vermieter A", "MIETE DEZEMBER", pending: true, sourceID: "bank-7", iban: "DE02120300000000202051"))
 		let moved = row(1, -80_000, "Vermieter A", "MIETE DEZEMBER", month: 12, pending: true, sourceID: "bank-7", iban: "DE02120300000000202051")
 		let first = merge(refresh([moved]), stored: [fileRow, bankRow], at: noon(20, month: 11))
-		#expect(first.dropped == [fileRow.id])
+		#expect(first.dropped == [])
+		#expect(history([fileRow, bankRow], after: first).count == 2)
 		let again = merge(refresh([moved]), stored: history([fileRow, bankRow], after: first), at: noon(20, month: 11))
 		#expect(again.dropped == [])
 		#expect(again.updated == [])
