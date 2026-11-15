@@ -198,7 +198,8 @@ public struct CSVFile: Sendable {
 	}
 
 	private static func isDateCandidate(_ text: String) -> Bool {
-		text.contains(where: \.isNumber) && text.first.map { $0.isNumber || "-./".contains($0) } == true
+		let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+		return text.contains(where: \.isNumber) && text.first.map { $0.isNumber || "-./".contains($0) } == true
 	}
 
 	private static func dataBoundary(in rows: [Row], dateColumn: Int? = nil, amountColumns: [Int] = []) throws
