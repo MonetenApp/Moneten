@@ -194,6 +194,8 @@ private final class ScriptRun {
 	let session: SyncSession
 	let access: Access
 	let mapping: (SecondFactorRequest.Purpose) -> ChallengeMapping
+	/// The hosts that a browser login of this run may load.
+	private let hosts: AllowedHosts
 	private(set) var tanMethod: String?
 	private var loggedIn = false
 	let loginName: String
@@ -210,9 +212,11 @@ private final class ScriptRun {
 		self.session = session
 		self.access = access
 		tanMethod = remembered
+		self.hosts = hosts
 		mapping = { purpose in
 			ChallengeMapping(purpose: purpose, qrCodeName: connector.environment.language == "de" ? "QR-Code" : "QR Code", hosts: hosts.current,
-				rememberedMethod: remembered, validity: connector.challengeValidity, newState: { UUID().uuidString.lowercased() })
+				asksForHosts: connector.package.manifest?.hosts == nil, rememberedMethod: remembered, validity: connector.challengeValidity,
+				newState: { UUID().uuidString.lowercased() })
 		}
 	}
 
@@ -238,6 +242,8 @@ private final class ScriptRun {
 		let client: ExtensionHostClient
 		do {
 			client = try await ExtensionHostClient.start(setup, executable: connector.executable, arguments: connector.arguments, ask: { host in
+				// The user allowed the host for its login page earlier in this run.
+				if hosts.current.contains(host) { return .allowed }
 				guard case let .host(decision) = try await session.ask(.allowHost(HostPermissionRequest(extensionName: package.name, host: host))) else {
 					throw CancellationError()
 				}
@@ -378,6 +384,17 @@ private final class ScriptRun {
 				throw SyncFailure.bank(BankMessage(text: error.message))
 			}
 			switch interaction {
+			case let .allowHost(host):
+				guard case let .host(decision) = try await session.ask(.allowHost(HostPermissionRequest(extensionName: connector.package.name, host: host))) else {
+					throw CancellationError()
+				}
+				try await connector.services.saveDecision(decision, host)
+				guard decision == .allowed else {
+					throw SyncFailure.bank(BankMessage(text: "The login page \(host) is not a host that the extension may contact."))
+				}
+				hosts.insert(host)
+				// The same table, now with the host allowed, opens the browser window.
+				pending = value
 			case let .answer(request, increment):
 				guard case let .tan(secret) = try await session.ask(.secondFactor(request)) else { throw CancellationError() }
 				credentials = [.string(secret.value), .string(ExtensionConnector.cancelMessage)]
