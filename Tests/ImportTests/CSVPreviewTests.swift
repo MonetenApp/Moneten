@@ -13,7 +13,7 @@ struct CSVPreviewTests {
 		layout.assign(2, to: .amount)
 		let preview = try file.preview(layout, currency: "EUR")
 		#expect(preview.transactions.map(\.amountMinor) == [-420])
-		#expect(preview.parsed.warnings.count == 1)
+		#expect(preview.parsed.warnings == [.skippedCSVRow(line: 1)])
 	}
 
 	@Test("Mapped columns preserve a short row when the amount precedes the dates")

@@ -29,15 +29,17 @@ public enum TransactionFileImporter {
 		}
 	}
 
-	/// A value of a file that the import could not use and replaced. The file is imported anyway.
+	/// A value or row that the import replaced or skipped. The file is imported anyway.
 	public enum Warning: Sendable, Equatable, CustomStringConvertible {
 		case unknownCurrency(line: Int, cell: String, replacement: String)
 		case unreadableValueDate(line: Int, cell: String)
 		case mixedDateForms(line: Int)
+		case skippedCSVRow(line: Int)
 
 		public var description: String {
 			switch self {
 			case let .unknownCurrency(n, cell, replacement): "Line \(n): The currency \(cell) is unknown. The transaction is in \(replacement), the currency of the account."
+			case let .skippedCSVRow(n): "Line \(n): The row was before the inferred CSV titles and was skipped. Check the header row."
 			case let .mixedDateForms(n): "Line \(n): The file mixes month-first dates and dotted dates. Dates with dots read day first."
 			case let .unreadableValueDate(n, cell): "Line \(n): The value date \(cell) cannot be read. The transaction has no value date."
 			}

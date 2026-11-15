@@ -253,7 +253,7 @@ extension AppModel {
 		if !warnings.isEmpty {
 			// A file can repeat one problem in every row, and the alert must stay short enough to read.
 			let shown = 10
-			message += "\n\n" + (warnings.count == 1 ? "One value was replaced:" : "\(warnings.count) values were replaced:")
+			message += "\n\n" + (warnings.count == 1 ? "One warning:" : "\(warnings.count) warnings:")
 			message += "\n" + warnings.prefix(shown).joined(separator: "\n")
 			if warnings.count > shown { message += "\nand \(warnings.count - shown) more." }
 		}

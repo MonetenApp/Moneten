@@ -283,7 +283,14 @@ public struct CSVFile: Sendable {
 			try Task.checkCancellation()
 			return Self.cell(row.cells, column)?.contains(where: \.isNumber) == true
 		}
-		let below = titleIndex.map { $0 + 1 } ?? 0
+		let lastRequired = [column, layout.columns[.amount], layout.columns[.debit], layout.columns[.credit]].compactMap { $0 }.max() ?? 0
+		let inferredTitle = titleIndex.flatMap { last in
+			rows[...last].firstIndex { row in
+				row.cells.count > lastRequired && row.cells.contains { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+					&& !row.cells.contains(where: Self.isDateShaped)
+			}
+		}
+		let below = inferredTitle.map { $0 + 1 } ?? 0
 		let start = try headerIndex.map { $0 + 1 } ?? rows[below...].firstIndex { row in
 			try Task.checkCancellation()
 			return Self.cell(row.cells, column).map(Self.isDateShaped) == true
@@ -356,6 +363,14 @@ public struct CSVFile: Sendable {
 		}
 		let placeholder = UUID()
 		var result = TransactionFileImporter.Parsed(transactions: [])
+		if headerIndex == nil, let first = dated.first {
+			for (line, row) in rows.prefix(while: { $0.line < first.line }) {
+				try Task.checkCancellation()
+				if Self.cell(row, bookingDateColumn)?.contains(where: \.isNumber) == true {
+					result.warnings.append(.skippedCSVRow(line: line))
+				}
+			}
+		}
 		for (line, row) in dated {
 			try Task.checkCancellation()
 			let dateText = Self.cell(row, bookingDateColumn)!
