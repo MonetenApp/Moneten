@@ -148,6 +148,16 @@ The app SHALL read a regular expression without a field name in the search field
 - **WHEN** the user searches for `/DE02 1203/`
 - **THEN** the list does not show the transaction
 
+### Requirement: A regular expression that does not end
+
+The app SHALL stop a regular expression in the search that reads one text for longer than 100 ms, and count it and every later text of the same search as no match, so the window keeps responding.
+
+#### Scenario: Lazy quantifier after an anchor
+
+- **GIVEN** a transaction with the purpose "Tel. +49 170 1234567"
+- **WHEN** the user searches for `/^+?49/`
+- **THEN** the list shows no transaction within a second
+
 ### Requirement: The search finds exact amounts
 
 The app SHALL find a transaction by its amount when the user enters the amount with its decimals, with a decimal comma or a decimal point, and with or without a sign.
