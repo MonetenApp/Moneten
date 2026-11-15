@@ -383,7 +383,8 @@ final class DebugHarness {
 			log("rule error=\(c.ruleError.map { "\($0)" } ?? "none")")
 		// "<category>": what "Apply to all transactions." in the category settings does with the saved rule.
 		case "applyrule":
-			guard let c = model.ledger.categories.first(where: { $0.name == argument }), let rule = try? Rule(parsing: c.rule) else { return log("applyrule not found") }
+			guard let c = model.ledger.categories.first(where: { $0.name == argument }) else { return log("applyrule not found") }
+			guard let rule = try? Rule(parsing: c.rule) else { return log("applyrule rule error") }
 			Task {
 				await model.apply(rule: rule, of: c, mode: .all)
 				log("applyrule done")
