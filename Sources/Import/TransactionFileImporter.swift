@@ -164,8 +164,8 @@ enum CSVParser {
 		let placeholder = UUID()
 		var result = TransactionFileImporter.Parsed(transactions: [])
 		for (line, row, dateText) in dataRows {
-			if (dateOrder == .monthDayYear && dateText.contains("."))
-				|| (valueDateOrder == .monthDayYear && cell(row, valueCol)?.contains(".") == true) {
+			if (dateOrder == .monthDayYear || valueDateOrder == .monthDayYear)
+				&& (dateText.contains(".") || cell(row, valueCol)?.contains(".") == true) {
 				result.warnings.append(.mixedDateForms(line: line))
 			}
 			func value(_ c: Int?) -> String? { cell(row, c) }
