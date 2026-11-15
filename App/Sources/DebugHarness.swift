@@ -266,18 +266,8 @@ final class DebugHarness {
 				let kind = switch question.named { case .iban: "iban"; case .number: "number" }
 				log("importanswer kind=\(kind) fileIndex=\(model.fileImport?.index ?? -1) selectedPosition=\(question.selected.position) otherPosition=\(question.other?.position ?? -1)")
 			}
-		case "importmissdismissal":
-			guard let run = model.fileImport, run.isPresented, run.preview?.chosen != nil else { return log("importmissdismissal unavailable") }
-			let ignored = FileImport(names: [])
-			model.fileImport = ignored
-			run.confirm()
-			Task {
-				try? await Task.sleep(for: .seconds(1))
-				log("importmissdismissal waiting=\(run.isPresented && model.fileImport === ignored)")
-			}
-
 		// Changes the CSV preview on screen: "column <n>=<field or none>", "date <order>", "encoding <name>",
-		// "decimal comma|point|detect", "confirm", "cancel", "skip" as the sheet buttons do, "state", which logs the settings and counts of
+		// "decimal comma|point|detect", "skip" as "Skip File" does, "state", which logs the settings and counts of
 		// the preview, or "rows", which logs its first rows.
 		case "csv": csvPreview(argument)
 		// "[<currency>]": the credit card in US dollars, or in another currency such as JPY.
@@ -850,8 +840,6 @@ final class DebugHarness {
 		case "date": preview.layout.dateOrder = DateOrder(rawValue: value) ?? preview.layout.dateOrder
 		case "encoding": preview.layout.encoding = CSVEncoding(rawValue: value) ?? preview.layout.encoding
 		case "decimal": preview.layout.decimalMark = value == "comma" ? .comma : value == "point" ? .point : nil
-		case "confirm": model?.fileImport?.confirm()
-		case "cancel": model?.fileImport?.cancel()
 		case "skip": model?.fileImport?.skip()
 		// The log holds kinds, counts, and positions, never a name or a purpose (#159), so a row is its day and amount.
 		case "rows":

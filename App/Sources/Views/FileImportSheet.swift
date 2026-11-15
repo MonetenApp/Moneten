@@ -38,11 +38,6 @@ final class FileImport {
 
 	func waitForDismissal() async {
 		guard isPresented else { return }
-		let timeout = Task {
-			try? await Task.sleep(for: .seconds(2))
-			if !Task.isCancelled { self.sheetDismissed() }
-		}
-		defer { timeout.cancel() }
 		await withCheckedContinuation { dismissal = $0 }
 	}
 

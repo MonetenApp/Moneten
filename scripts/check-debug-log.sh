@@ -154,13 +154,12 @@ printf '%s\n' "Buchungstag;Valuta;Empfänger;Verwendungszweck;Betrag" "09.11.202
 send importfile "$WORK/Erika Mustermann.csv"
 poll "^csv state .*canImport=true" csv state
 poll "^csv rows" csv rows
-send importmissdismissal
-poll "^importmissdismissal waiting=true" state
+send key return
 poll "^importfile done" state
 poll "^alert " alert
 send importfile "$WORK/Erika Mustermann.csv"
 poll "^csv state .*canImport=true" csv state
-send csv confirm
+send key return
 poll "^importfile done" state
 poll "^alert " alert
 poll "^rows " rows Girokonto
@@ -209,9 +208,9 @@ poll "^alert " alert
 printf '%s\n' "Buchungstag;Empfänger;Verwendungszweck;Betrag" "11.11.2026;Tankstelle Beispiel;Kartenzahlung;-42,50" \
 	"Miete 12;Beispiel GmbH;Sparen;-1,00" >"$WORK/Kontoauszug.csv"
 send importfile "$WORK/Kontoauszug.csv"
-poll "^csv state .*problem=" csv state
+poll "^csv state .*problem=line 3" csv state
 poll "^csv rows" csv rows
-send csv cancel
+send key escape
 poll "^importfile done" state
 poll "^alert " alert
 send selectRows 1
