@@ -17,9 +17,21 @@ public struct CrashReportStore {
 	private let keychain = Keychain(service: "Moneten crash report key")
 	private var file: URL { folder.root.appendingPathComponent("CrashReport.encrypted") }
 
-	private struct State: Codable {
-		let latest: Date
-		let pending: PendingCrashReport?
+	struct State: Codable {
+		var latest: Date? = nil
+		var pending: PendingCrashReport? = nil
+		var launch: Launch? = nil
+		var declinedFallback: Date? = nil
+
+		struct Launch: Codable {
+			let start: Date
+			let appVersion: String
+			let macOSVersion: String
+		}
+
+		mutating func start(_ launch: Launch, files: [(name: String, date: Date)]) {}
+
+		mutating func receive(_ diagnostic: CrashDiagnostic, at date: Date, since start: Date) {}
 	}
 
 	public init(folder: DataFolder) { self.folder = folder }
@@ -28,7 +40,7 @@ public struct CrashReportStore {
 
 	@discardableResult
 	public func receive(_ diagnostic: CrashDiagnostic, at date: Date) throws -> PendingCrashReport? {
-		if let state = try read(), date <= state.latest { return state.pending }
+		if let state = try read(), date <= (state.latest ?? .distantPast) { return state.pending }
 		let pending = PendingCrashReport(date: date, diagnostic: diagnostic)
 		try write(State(latest: date, pending: pending))
 		return pending
