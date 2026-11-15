@@ -282,7 +282,7 @@ enum CSVParser {
 	}
 
 	static func detectDelimiter(_ text: String) -> Character {
-		let sample = text.split(separator: "\n", maxSplits: 20).prefix(20).joined(separator: "\n")
+		let sample = text.split(maxSplits: 20, whereSeparator: { $0 == "\n" || $0 == "\r\n" || $0 == "\r" }).prefix(20).joined(separator: "\n")
 		let candidates: [Character] = [";", "\t", ","]
 		return candidates.max { a, b in sample.filter { $0 == a }.count < sample.filter { $0 == b }.count } ?? ";"
 	}
