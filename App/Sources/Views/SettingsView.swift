@@ -119,12 +119,12 @@ struct SecuritySettings: View {
 
 	/// Returns an error for the prompt, or nil when the setting is on.
 	private func enable(_ key: String, password: String) -> String? {
-		guard model.vault.verify(password: password) else { return "Incorrect password!" }
+		guard model.vault.verify(password: password) else { return String(localized: "Incorrect password!") }
 		do {
 			try model.vault.storePassword(password)
 			UserDefaults.standard.set(true, forKey: key)
 		} catch {
-			message = "The database password could not be stored in the Keychain. \(error)"
+			message = String(localized: "The database password could not be stored in the Keychain. \(String(describing: error))")
 		}
 		return nil
 	}
@@ -169,10 +169,11 @@ struct GeneralSettings: View {
 	@AppStorage(RefreshSettings.showsBannerKey) private var showsBanner = true
 	@AppStorage(RefreshSettings.playsSoundKey) private var playsSound = false
 	@State private var notificationsDenied = false
+	@State private var language = AppLanguage.stored ?? AppLanguage.current
 
 	private var version: String {
 		let info = Bundle.main.infoDictionary
-		guard let short = info?["CFBundleShortVersionString"] as? String else { return "Development build" }
+		guard let short = info?["CFBundleShortVersionString"] as? String else { return String(localized: "Development build") }
 		return info?["CFBundleVersion"].map { "\(short) (\($0))" } ?? short
 	}
 
@@ -190,6 +191,16 @@ struct GeneralSettings: View {
 				Toggle("Play sound on new transactions", isOn: askingPermission($playsSound))
 				if notificationsDenied {
 					Button("Open Notification Settings...") { NSWorkspace.shared.open(Self.notificationSettings) }
+				}
+			}
+			Section {
+				Picker("Language", selection: $language) {
+					ForEach(AppLanguage.allCases, id: \.self) { Text(verbatim: $0.name).tag($0) }
+				}
+				.onChange(of: language) { _, new in AppLanguage.store(new) }
+			} footer: {
+				if language != AppLanguage.current {
+					Text("Moneten uses the new language after a restart.").foregroundStyle(.secondary)
 				}
 			}
 			Section {

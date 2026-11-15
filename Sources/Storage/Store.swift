@@ -273,7 +273,7 @@ public final class Store: SavedPINStore {
 	public func backup(to url: URL) throws {
 		let source = URL(fileURLWithPath: queue.path)
 		guard url.resolvingSymlinksInPath().standardizedFileURL != source.resolvingSymlinksInPath().standardizedFileURL else {
-			throw CocoaError(.fileWriteFileExists, userInfo: [NSLocalizedDescriptionKey: "A backup cannot replace the open database. Choose another location."])
+			throw CocoaError(.fileWriteFileExists, userInfo: [NSLocalizedDescriptionKey: String(localized: "A backup cannot replace the open database. Choose another location.")])
 		}
 		let fm = FileManager.default
 		let temporary = url.deletingLastPathComponent().appendingPathComponent(".\(url.lastPathComponent).\(UUID().uuidString).partial")

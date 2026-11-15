@@ -65,10 +65,10 @@ extension AppModel {
 
 	var settingsTitle: String {
 		switch selection {
-		case .account: "Account Settings..."
-		case .group: "Account Group Settings..."
-		case .category: "Category Settings..."
-		case nil: "Settings..."
+		case .account: String(localized: "Account Settings...")
+		case .group: String(localized: "Account Group Settings...")
+		case .category: String(localized: "Category Settings...")
+		case nil: String(localized: "Settings...")
 		}
 	}
 
@@ -82,7 +82,7 @@ extension AppModel {
 	}
 
 	var refreshTitle: String {
-		if case .group = selection { "Refresh Accounts" } else { "Refresh Account" }
+		if case .group = selection { String(localized: "Refresh Accounts") } else { String(localized: "Refresh Account") }
 	}
 
 	func openSettingsOfSelection() {
@@ -98,11 +98,11 @@ extension AppModel {
 		guard let store else { return }
 		if !hasPassword {
 			let warning = NSAlert()
-			warning.messageText = "No database password is set."
-			warning.informativeText = "The copy opens only on this Mac and with this user account, with the key in the Keychain. Setting a database password later deletes that key, and the copy can then no longer be opened."
-			warning.addButton(withTitle: "Set Database Password...")
-			warning.addButton(withTitle: "Back Up Anyway")
-			warning.addButton(withTitle: "Cancel")
+			warning.messageText = String(localized: "No database password is set.")
+			warning.informativeText = String(localized: "The copy opens only on this Mac and with this user account, with the key in the Keychain. Setting a database password later deletes that key, and the copy can then no longer be opened.")
+			warning.addButton(withTitle: String(localized: "Set Database Password..."))
+			warning.addButton(withTitle: String(localized: "Back Up Anyway"))
+			warning.addButton(withTitle: String(localized: "Cancel"))
 			switch warning.runModal() {
 			case .alertFirstButtonReturn: sheet = .setPassword; return
 			case .alertSecondButtonReturn: break
@@ -110,17 +110,17 @@ extension AppModel {
 			}
 		}
 		let panel = NSSavePanel()
-		panel.title = "Backup Database"
+		panel.title = String(localized: "Backup Database")
 		panel.message = hasPassword
-			? "A copy of the Moneten database will be saved. It opens with the current database password. This function does not replace a regular backup of your Mac."
-			: "A copy of the Moneten database will be saved. It opens only on this Mac, with the key in the Keychain. This function does not replace a regular backup of your Mac."
+			? String(localized: "A copy of the Moneten database will be saved. It opens with the current database password. This function does not replace a regular backup of your Mac.")
+			: String(localized: "A copy of the Moneten database will be saved. It opens only on this Mac, with the key in the Keychain. This function does not replace a regular backup of your Mac.")
 		panel.nameFieldStringValue = "Moneten-\(Day.today()).sqlite"
 		guard panel.runModal() == .OK, let url = panel.url else { return }
 		do {
 			try store.backup(to: url)
-			alert = AlertMessage(title: "Backup Database", message: "The copy has been saved.")
+			alert = AlertMessage(title: String(localized: "Backup Database"), message: String(localized: "The copy has been saved."))
 		} catch {
-			alert = AlertMessage(title: "Could not create backup of database file.", message: String(describing: error))
+			alert = AlertMessage(title: String(localized: "Could not create backup of database file."), message: String(describing: error))
 		}
 	}
 
@@ -130,8 +130,8 @@ extension AppModel {
 		guard sheet == nil, let account = accountID.flatMap({ ledger.account($0) }) ?? selectedAccount else { return }
 		guard !isTransferringTransactions, importResult == nil else { return NSSound.beep() }
 		let panel = NSOpenPanel()
-		panel.title = "Import Transactions"
-		panel.message = "CSV, CAMT (camt.052, camt.053), and MT940 files are supported."
+		panel.title = String(localized: "Import Transactions")
+		panel.message = String(localized: "CSV, CAMT (camt.052, camt.053), and MT940 files are supported.")
 		panel.allowsMultipleSelection = true
 		panel.allowedContentTypes = [.commaSeparatedText, .xml, .plainText, UTType(filenameExtension: "sta") ?? .data, .data]
 		guard panel.runModal() == .OK else { return }
@@ -205,7 +205,7 @@ extension AppModel {
 						if isNew { save(account: into) }
 						// A new account that could not be saved, or one that the user deleted during the import.
 						guard ledger.account(into.id) != nil else {
-							problems.append("\(name): The account \"\(into.name)\" \(isNew ? "could not be saved" : "does not exist").")
+							problems.append(isNew ? String(localized: "\(name): The account \"\(into.name)\" could not be saved.") : String(localized: "\(name): The account \"\(into.name)\" does not exist."))
 							continue
 						}
 						let result = try merge(.file(parsed.transactions), into: into.id)
@@ -224,29 +224,31 @@ extension AppModel {
 		guard store != nil else { return }
 		if let canceledAt {
 			let left = urls.count - canceledAt - 1
-			let rest = left == 0 ? " was" : left == 1 ? " and one more file were" : " and \(left) more files were"
-			problems.append("The import was canceled. \(run.names[canceledAt])\(rest) not imported.")
+			let name = run.names[canceledAt]
+			problems.append(left == 0 ? String(localized: "The import was canceled. \(name) was not imported.")
+				: left == 1 ? String(localized: "The import was canceled. \(name) and one more file were not imported.")
+				: String(localized: "The import was canceled. \(name) and \(left) more files were not imported."))
 		}
-		var message = added == 0 ? "Imported no new transactions." : added == 1 ? "Imported one new transaction." : "Imported \(added) new transactions."
-		if booked > 0 { message += booked == 1 ? " Booked one pending transaction." : " Booked \(booked) pending transactions." }
-		if skipped > 0 { message += skipped == 1 ? " Skipped one already existing transaction." : " Skipped \(skipped) already existing transactions." }
+		var message = added == 0 ? String(localized: "Imported no new transactions.") : added == 1 ? String(localized: "Imported one new transaction.") : String(localized: "Imported \(added) new transactions.")
+		if booked > 0 { message += " " + (booked == 1 ? String(localized: "Booked one pending transaction.") : String(localized: "Booked \(booked) pending transactions.")) }
+		if skipped > 0 { message += " " + (skipped == 1 ? String(localized: "Skipped one already existing transaction.") : String(localized: "Skipped \(skipped) already existing transactions.")) }
 		if !problems.isEmpty { message += "\n\n" + problems.joined(separator: "\n") }
 		if !warnings.isEmpty {
 			// A file can repeat one problem in every row, and the alert must stay short enough to read.
 			let shown = 10
-			message += "\n\n" + (warnings.count == 1 ? "One value was replaced:" : "\(warnings.count) values were replaced:")
+			message += "\n\n" + (warnings.count == 1 ? String(localized: "One value was replaced:") : String(localized: "\(warnings.count) values were replaced:"))
 			message += "\n" + warnings.prefix(shown).joined(separator: "\n")
-			if warnings.count > shown { message += "\nand \(warnings.count - shown) more." }
+			if warnings.count > shown { message += "\n" + String(localized: "and \(warnings.count - shown) more.") }
 		}
 		await run.waitForDismissal()
 		guard store != nil else { return }
 		guard let window = NSApp.windows.first(where: { $0.identifier?.rawValue == "main" }) else {
-			alert = AlertMessage(title: "Transaction Import", message: message)
+			alert = AlertMessage(title: String(localized: "Transaction Import"), message: message)
 			return
 		}
 		// SwiftUI's alert bridge can reenter AppKit layout when the result closes after an import sheet.
 		let result = NSAlert()
-		result.messageText = "Transaction Import"
+		result.messageText = String(localized: "Transaction Import")
 		result.informativeText = message
 		importResult = result
 		result.beginSheetModal(for: window) { [weak self] _ in self?.importResult = nil }
@@ -285,5 +287,5 @@ extension AppModel {
 }
 
 private struct FileTooLarge: Error, CustomStringConvertible {
-	var description: String { "The file is too large. Please choose a file with a maximum size of 100 MB." }
+	var description: String { String(localized: "The file is too large. Please choose a file with a maximum size of 100 MB.") }
 }

@@ -77,7 +77,7 @@ public struct ExtensionConnector: BankConnector {
 			for (index, account) in request.accounts.enumerated() {
 				await session.report(.fetching(done: index, of: request.accounts.count))
 				guard let table = state.accounts[account.remoteID], let listed = ListedAccount(table) else {
-					outcomes[account.accountID] = .failed(.unsupported("\(package.name) does not know the account \(account.remoteID). Set up the access again."))
+					outcomes[account.accountID] = .failed(.unsupported(String(localized: "\(package.name) does not know the account \(account.remoteID). Set up the access again.")))
 					continue
 				}
 				let known = ResultMapping.knownTransactions(await services.transactions(account.accountID), timeZone: timeZone)
@@ -271,7 +271,7 @@ private final class ScriptRun {
 		}
 		switch supported {
 		case .boolean(true), .string: break
-		default: throw SyncFailure.unsupported("\(connector.package.name) does not support \(access.bankName).")
+		default: throw SyncFailure.unsupported(String(localized: "\(connector.package.name) does not support \(access.bankName)."))
 		}
 		let answer: LuaValue
 		if await client.entryPoints.contains(.initializeSession2) {
@@ -300,7 +300,7 @@ private final class ScriptRun {
 			await session.rejected(.loginRejected)
 			throw SyncFailure.loginRejected
 		case let .string(message): throw SyncFailure.bank(BankMessage(text: message))
-		default: throw SyncFailure.bank(BankMessage(text: "The login of \(connector.package.name) returned a value that is not valid."))
+		default: throw SyncFailure.bank(BankMessage(text: String(localized: "The login of \(connector.package.name) returned a value that is not valid.")))
 		}
 	}
 
@@ -316,11 +316,11 @@ private final class ScriptRun {
 			let accounts = items.compactMap(ListedAccount.init)
 			var seen: Set<String> = []
 			if let twice = accounts.first(where: { !seen.insert($0.remoteID).inserted }) {
-				throw SyncFailure.bank(BankMessage(text: "\(connector.package.name) lists the account \(twice.number) in \(twice.currency) twice, so Moneten cannot tell the two apart."))
+				throw SyncFailure.bank(BankMessage(text: String(localized: "\(connector.package.name) lists the account \(twice.number) in \(twice.currency) twice, so Moneten cannot tell the two apart.")))
 			}
 			return accounts
 		case let .string(message): throw SyncFailure.bank(BankMessage(text: message))
-		default: throw SyncFailure.bank(BankMessage(text: "ListAccounts of \(connector.package.name) returned no list of accounts."))
+		default: throw SyncFailure.bank(BankMessage(text: String(localized: "ListAccounts of \(connector.package.name) returned no list of accounts.")))
 		}
 	}
 

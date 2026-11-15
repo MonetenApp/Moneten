@@ -46,17 +46,17 @@ struct ExtensionLoginWindow: View {
 
 	private var title: String {
 		switch page {
-		case .approval: "Log In to “\(prompt.access.bankName)”"
-		case .captcha: "Confirm That You Are Not a Robot"
+		case .approval: String(localized: "Log In to “\(prompt.access.bankName)”")
+		case .captcha: String(localized: "Confirm That You Are Not a Robot")
 		}
 	}
 
 	private var explanation: String {
 		switch page {
 		case let .approval(approval):
-			"The website \(approval.url.host() ?? "") asks you to log in. The window closes when the login is complete."
+			String(localized: "The website \(approval.url.host() ?? "") asks you to log in. The window closes when the login is complete.")
 		case let .captcha(captcha):
-			"\(captcha.page?.host() ?? prompt.access.bankName) asks for a captcha before the login."
+			String(localized: "\(captcha.page?.host() ?? prompt.access.bankName) asks for a captcha before the login.")
 		}
 	}
 }
@@ -112,7 +112,7 @@ private struct ExtensionWebView: NSViewRepresentable {
 				// The user may have canceled the dialog while the rules compiled.
 				guard isOpen() else { return }
 				guard let list else {
-					return fail("The login window could not be secured: \(error?.localizedDescription ?? "no rules").")
+					return fail(String(localized: "The login window could not be secured: \(error?.localizedDescription ?? "no rules")."))
 				}
 				view.configuration.userContentController.add(list)
 				ExtensionWebDebug.log("ext browser rules ok")

@@ -131,7 +131,7 @@ public struct RuleSyntaxError: Error, Equatable, Sendable, CustomStringConvertib
 	public let position: Int
 	public let message: String
 
-	public var description: String { "\(message) (position \(position + 1))" }
+	public var description: String { String(localized: "\(message) (position \(position + 1))") }
 }
 
 public struct Rule: Sendable {
@@ -211,12 +211,12 @@ private struct RuleParser {
 
 	mutating func parse() throws(RuleSyntaxError) -> RuleExpression {
 		try tokenize()
-		guard !tokens.isEmpty else { throw RuleSyntaxError(position: 0, message: "The rule is empty.") }
+		guard !tokens.isEmpty else { throw RuleSyntaxError(position: 0, message: String(localized: "The rule is empty.")) }
 		let e = try parseOr()
 		if index < tokens.count {
 			let t = tokens[index]
-			if t.token == .close { throw RuleSyntaxError(position: t.position, message: "This closing parenthesis has no opening parenthesis.") }
-			throw RuleSyntaxError(position: t.position, message: "Unexpected text.")
+			if t.token == .close { throw RuleSyntaxError(position: t.position, message: String(localized: "This closing parenthesis has no opening parenthesis.")) }
+			throw RuleSyntaxError(position: t.position, message: String(localized: "Unexpected text."))
 		}
 		return e
 	}
@@ -259,7 +259,7 @@ private struct RuleParser {
 
 	private mutating func parsePrimary() throws(RuleSyntaxError) -> RuleExpression {
 		guard index < tokens.count else {
-			throw RuleSyntaxError(position: endPosition, message: "A search term is missing at the end of the rule.")
+			throw RuleSyntaxError(position: endPosition, message: String(localized: "A search term is missing at the end of the rule."))
 		}
 		let (token, position) = tokens[index]
 		index += 1
@@ -267,16 +267,16 @@ private struct RuleParser {
 		case .open:
 			let e = try parseOr()
 			guard index < tokens.count, tokens[index].token == .close else {
-				throw RuleSyntaxError(position: index < tokens.count ? tokens[index].position : endPosition, message: "A closing parenthesis is missing at the end of the rule.")
+				throw RuleSyntaxError(position: index < tokens.count ? tokens[index].position : endPosition, message: String(localized: "A closing parenthesis is missing at the end of the rule."))
 			}
 			index += 1
 			return e
 		case .close:
-			throw RuleSyntaxError(position: position, message: "A search term is missing before this closing parenthesis.")
+			throw RuleSyntaxError(position: position, message: String(localized: "A search term is missing before this closing parenthesis."))
 		case .and, .or:
-			throw RuleSyntaxError(position: position, message: "A search term is missing before this operator.")
+			throw RuleSyntaxError(position: position, message: String(localized: "A search term is missing before this operator."))
 		case .not:
-			throw RuleSyntaxError(position: position, message: "Unexpected operator.")
+			throw RuleSyntaxError(position: position, message: String(localized: "Unexpected operator."))
 		case let .constant(value):
 			return .constant(value)
 		case let .word(w), let .quoted(w):
@@ -285,23 +285,23 @@ private struct RuleParser {
 			return .regex(try regex(r, position: position), field: nil)
 		case let .field(f, op, negates):
 			guard index < tokens.count else {
-				throw RuleSyntaxError(position: endPosition, message: "A search term is missing after \(f.rawValue)\(op).")
+				throw RuleSyntaxError(position: endPosition, message: String(localized: "A search term is missing after \(f.rawValue)\(op)."))
 			}
 			let (next, p) = tokens[index]
 			index += 1
 			guard p == position + f.rawValue.count + op.count else {
-				throw RuleSyntaxError(position: p, message: "A search term must follow \(f.rawValue)\(op) without a space.")
+				throw RuleSyntaxError(position: p, message: String(localized: "A search term must follow \(f.rawValue)\(op) without a space."))
 			}
 			let test: RuleExpression
 			switch next {
 			case let .word(w), let .quoted(w): test = try phrase(w, field: f, position: p)
 			case let .regex(r): test = .regex(try regex(r, position: p), field: f)
-			default: throw RuleSyntaxError(position: p, message: "A search term must follow \(f.rawValue)\(op) without a space.")
+			default: throw RuleSyntaxError(position: p, message: String(localized: "A search term must follow \(f.rawValue)\(op) without a space."))
 			}
 			return negates ? .not(test) : test
 		case let .amount(op, text):
 			guard let value = AmountParser.decimal(from: text) else {
-				throw RuleSyntaxError(position: position, message: "The amount \(text) is not a number.")
+				throw RuleSyntaxError(position: position, message: String(localized: "The amount \(text) is not a number."))
 			}
 			return .amount(op, value)
 		}
@@ -314,16 +314,16 @@ private struct RuleParser {
 		} else {
 			words = TextFolding.words(text).map(String.init)
 		}
-		guard !words.isEmpty else { throw RuleSyntaxError(position: position, message: "The search term is empty.") }
+		guard !words.isEmpty else { throw RuleSyntaxError(position: position, message: String(localized: "The search term is empty.")) }
 		return .phrase(words.map { WildcardPatternBox(pattern: WildcardPattern($0)) }, field: field)
 	}
 
 	private func regex(_ pattern: String, position: Int) throws(RuleSyntaxError) -> RegexBox {
-		guard !pattern.isEmpty else { throw RuleSyntaxError(position: position, message: "The regular expression is empty.") }
+		guard !pattern.isEmpty else { throw RuleSyntaxError(position: position, message: String(localized: "The regular expression is empty.")) }
 		do {
 			return RegexBox(regex: try NSRegularExpression(pattern: pattern, options: [.caseInsensitive]))
 		} catch {
-			throw RuleSyntaxError(position: position, message: "The regular expression is not valid.")
+			throw RuleSyntaxError(position: position, message: String(localized: "The regular expression is not valid."))
 		}
 	}
 
@@ -356,7 +356,7 @@ private struct RuleParser {
 				i += 1
 				var s = ""
 				while i < chars.count, !openQuotes.contains(chars[i]) { s.append(chars[i]); i += 1 }
-				guard i < chars.count || lenient else { throw RuleSyntaxError(position: start, message: "A closing quotation mark is missing.") }
+				guard i < chars.count || lenient else { throw RuleSyntaxError(position: start, message: String(localized: "A closing quotation mark is missing.")) }
 				i += 1
 				tokens.append((.quoted(s), start))
 				continue
@@ -369,7 +369,7 @@ private struct RuleParser {
 					s.append(chars[i])
 					i += 1
 				}
-				guard i < chars.count || lenient else { throw RuleSyntaxError(position: start, message: "The closing slash of the regular expression is missing.") }
+				guard i < chars.count || lenient else { throw RuleSyntaxError(position: start, message: String(localized: "The closing slash of the regular expression is missing.")) }
 				i += 1
 				tokens.append((.regex(s), start))
 				continue
@@ -377,7 +377,7 @@ private struct RuleParser {
 			if isFieldValue, ["-", "!", "+"].contains(c), i + 1 < chars.count, chars[i + 1] == "(" || chars[i + 1] == "/" || openQuotes.contains(chars[i + 1]),
 				case let .field(field, op, _)? = tokens.last?.token {
 				if lenient { tokens.append((c == "+" ? .and : .not, i)); i += 1; continue }
-				throw RuleSyntaxError(position: start, message: #"A sign cannot follow \#(field.rawValue)\#(op). Write \#(field.rawValue)!="…" to exclude a value, or \#(field.rawValue):"…" to match it."#)
+				throw RuleSyntaxError(position: start, message: String(localized: #"A sign cannot follow \#(field.rawValue)\#(op). Write \#(field.rawValue)!="…" to exclude a value, or \#(field.rawValue):"…" to match it."#))
 			}
 			var word = ""
 			while i < chars.count, !chars[i].isWhitespace, chars[i] != "(", chars[i] != ")", !openQuotes.contains(chars[i]) {

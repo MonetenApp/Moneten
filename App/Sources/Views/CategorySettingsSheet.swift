@@ -186,7 +186,7 @@ struct RuleHelp: View {
 		.frame(width: 420, height: 640)
 	}
 
-	private func example(_ code: String, _ text: String) -> some View {
+	private func example(_ code: String, _ text: LocalizedStringKey) -> some View {
 		VStack(alignment: .leading, spacing: 2) {
 			Text(code).font(.system(.body, design: .monospaced)).textSelection(.enabled)
 			Text(text).font(.callout).foregroundStyle(.secondary)

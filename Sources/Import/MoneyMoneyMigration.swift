@@ -45,7 +45,7 @@ public struct MoneyMoneyMigration: Sendable {
 
 		public var description: String {
 			switch self {
-			case let .unreadable(what): "The export of \(what) could not be read."
+			case let .unreadable(what): String(localized: "The export of \(what) could not be read.")
 			}
 		}
 	}
@@ -138,17 +138,17 @@ public struct MoneyMoneyMigration: Sendable {
 		}
 		plan.notes += Self.groupSumNotes(rawAccounts)
 		if !plan.portfolioAccounts.isEmpty {
-			plan.notes.append("Portfolio accounts were taken over with their balance. Their positions follow when securities accounts are supported.")
+			plan.notes.append(String(localized: "Portfolio accounts were taken over with their balance. Their positions follow when securities accounts are supported."))
 		}
 		plan.notes += Self.notMigratedNotes
 		let budgets = rawCategories.filter(Self.hasBudget).count
 		if budgets == 1 {
-			plan.notes.append("1 category has a budget in MoneyMoney. Moneten did not take the budget over.")
+			plan.notes.append(String(localized: "1 category has a budget in MoneyMoney. Moneten did not take the budget over."))
 		} else if budgets > 1 {
-			plan.notes.append("\(budgets) categories have a budget in MoneyMoney. Moneten did not take the budgets over.")
+			plan.notes.append(String(localized: "\(budgets) categories have a budget in MoneyMoney. Moneten did not take the budgets over."))
 		}
 		if (rawAccounts + rawCategories).contains(where: { $0["icon"] is Data }) {
-			plan.notes.append("Moneten takes the color of each icon of MoneyMoney and shows its own icons instead of the pictures.")
+			plan.notes.append(String(localized: "Moneten takes the color of each icon of MoneyMoney and shows its own icons instead of the pictures."))
 		}
 		return plan
 	}
@@ -305,7 +305,7 @@ public struct MoneyMoneyMigration: Sendable {
 			positions[parent] = position + 1
 			let isGroup = (item["group"] as? Bool) == true
 			if isGroup, Self.string(item["rules"]) != nil {
-				plan.notes.append("The rule of the group \"\(name)\" was not taken over, because a group holds no transactions. Move it to a category below the group.")
+				plan.notes.append(String(localized: "The rule of the group \"\(name)\" was not taken over, because a group holds no transactions. Move it to a category below the group."))
 			}
 			let color = (item["icon"] as? Data).flatMap(Self.iconColor)
 			if let existing = known.first(where: { $0.sourceID == source || ($0.name == name && $0.parentID == parent && !$0.isDefault) }) {
@@ -363,10 +363,10 @@ public struct MoneyMoneyMigration: Sendable {
 
 	/// The scripting dictionary of MoneyMoney has no command that exports these.
 	static let notMigratedNotes = [
-		"Login data was not migrated, because the AppleScript export of MoneyMoney does not contain it. Connect a migrated account to its bank with \"Add Account...\" and enter the login data there.",
-		"Transfer templates were not migrated, because the AppleScript export of MoneyMoney does not contain them. Use \"Export Transfer Templates...\" in MoneyMoney to keep them.",
-		"Standing orders were not migrated, because the AppleScript export of MoneyMoney does not contain them. Your bank keeps them, so they continue as before.",
-		"Statements were not migrated, because the AppleScript export of MoneyMoney does not contain them. Use \"Show in Finder...\" on \"Statements\" in MoneyMoney to find the statement files and copy them to keep them.",
+		String(localized: "Login data was not migrated, because the AppleScript export of MoneyMoney does not contain it. Connect a migrated account to its bank with \"Add Account...\" and enter the login data there."),
+		String(localized: "Transfer templates were not migrated, because the AppleScript export of MoneyMoney does not contain them. Use \"Export Transfer Templates...\" in MoneyMoney to keep them."),
+		String(localized: "Standing orders were not migrated, because the AppleScript export of MoneyMoney does not contain them. Your bank keeps them, so they continue as before."),
+		String(localized: "Statements were not migrated, because the AppleScript export of MoneyMoney does not contain them. Use \"Show in Finder...\" on \"Statements\" in MoneyMoney to find the statement files and copy them to keep them."),
 	]
 
 	/// The key layout of a budget in `export categories` was not recorded with the real export. A
@@ -413,7 +413,7 @@ public struct MoneyMoneyMigration: Sendable {
 			let shown = balances(item)
 			let currencies = Set(shown.keys).union(sum.keys)
 			if currencies.contains(where: { shown[$0, default: 0] != sum[$0, default: 0] }) {
-				notes.append("The group \"\(item["name"] as? String ?? "")\" has a different balance in MoneyMoney than the sum of its accounts. MoneyMoney leaves closed accounts out of the sum, and its export does not say which accounts are closed. Turn on \"The account has been closed\" in the settings of each closed account of this group.")
+				notes.append(String(localized: "The group \"\(item["name"] as? String ?? "")\" has a different balance in MoneyMoney than the sum of its accounts. MoneyMoney leaves closed accounts out of the sum, and its export does not say which accounts are closed. Turn on \"The account has been closed\" in the settings of each closed account of this group."))
 			}
 		}
 		return notes
@@ -469,15 +469,15 @@ public enum MoneyMoneyExporter {
 		public var description: String {
 			switch self {
 			case .notInstalled:
-				"MoneyMoney is not installed on this Mac. You can import transactions from CSV, CAMT, or MT940 files into an account instead."
+				String(localized: "MoneyMoney is not installed on this Mac. You can import transactions from CSV, CAMT, or MT940 files into an account instead.")
 			case .notRunning:
-				"MoneyMoney is not running. Open MoneyMoney and unlock it, then choose \"Check again\"."
+				String(localized: "MoneyMoney is not running. Open MoneyMoney and unlock it, then choose \"Check again\".")
 			case .locked:
-				"MoneyMoney is locked. Unlock MoneyMoney with its database password, then choose \"Check again\"."
+				String(localized: "MoneyMoney is locked. Unlock MoneyMoney with its database password, then choose \"Check again\".")
 			case .notAllowed:
-				"macOS does not allow Moneten to read data from MoneyMoney. Allow it in System Settings → Privacy & Security → Automation → Moneten, then choose \"Check again\"."
+				String(localized: "macOS does not allow Moneten to read data from MoneyMoney. Allow it in System Settings → Privacy & Security → Automation → Moneten, then choose \"Check again\".")
 			case let .failed(message):
-				"MoneyMoney did not answer: \(message)"
+				String(localized: "MoneyMoney did not answer: \(message)")
 			}
 		}
 
@@ -521,7 +521,7 @@ public enum MoneyMoneyExporter {
 					if let code = reply.paramDescriptor(forKeyword: 0x6572726e)?.int32Value, code != 0 {
 						throw Failure.of(code: Int(code), message: reply.paramDescriptor(forKeyword: 0x65727273)?.stringValue ?? "Error \(code)")
 					}
-					guard let text = reply.paramDescriptor(forKeyword: 0x2d2d2d2d)?.stringValue else { throw Failure.failed("The export returned no property list.") }
+					guard let text = reply.paramDescriptor(forKeyword: 0x2d2d2d2d)?.stringValue else { throw Failure.failed(String(localized: "The export returned no property list.")) }
 					continuation.resume(returning: Data(text.utf8))
 				} catch let failure as Failure {
 					continuation.resume(throwing: failure)

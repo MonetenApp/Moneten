@@ -180,7 +180,7 @@ final class AccountSetup {
 				guard !Task.isCancelled else { return }
 				isLoggingIn = false
 				guard !list.accounts.isEmpty else {
-					loginError = "The bank reported no accounts for this login. Enter your user ID in place of an alias, or ask the bank to activate the FinTS access."
+					loginError = String(localized: "The bank reported no accounts for this login. Enter your user ID in place of an alias, or ask the bank to activate the FinTS access.")
 					return
 				}
 				self.access = access
@@ -222,7 +222,7 @@ final class AccountSetup {
 			try model.add(access, state: state, accounts: chosen, listed: candidates.map(\.account), connecting: connecting, notices: notices, pin: Secret(pin),
 				savePIN: savePIN)
 		} catch {
-			saveError = "Could not add the accounts. \(String(describing: error))"
+			saveError = String(localized: "Could not add the accounts. \(String(describing: error))")
 			return
 		}
 		model.closeAccountSetup()
@@ -292,10 +292,10 @@ struct AccountSetupSheet: View {
 	/// Which step is on screen, so that "Back" and "Next" say where the user is.
 	private var stepTitle: String {
 		switch setup.step {
-		case .bank: "Step 1 of 3: Bank"
-		case .login: "Step 2 of 3: Login data"
-		case .accounts: "Step 3 of 3: Accounts"
-		case .offline: "Step 2 of 2: Offline account"
+		case .bank: String(localized: "Step 1 of 3: Bank")
+		case .login: String(localized: "Step 2 of 3: Login data")
+		case .accounts: String(localized: "Step 3 of 3: Accounts")
+		case .offline: String(localized: "Step 2 of 2: Offline account")
 		}
 	}
 
@@ -393,7 +393,7 @@ struct AccountSetupSheet: View {
 
 	/// "Nürnberg · 76030080", and a note when the bank has no FinTS address.
 	private static func place(of bank: BankDirectory.Entry) -> String {
-		([bank.city, bank.code] + (bank.bank.url == nil ? ["No FinTS"] : [])).filter { !$0.isEmpty }.joined(separator: " · ")
+		([bank.city, bank.code] + (bank.bank.url == nil ? [String(localized: "No FinTS")] : [])).filter { !$0.isEmpty }.joined(separator: " · ")
 	}
 
 	@ViewBuilder private var loginStep: some View {
@@ -408,7 +408,7 @@ struct AccountSetupSheet: View {
 			}
 		}
 		Section {
-			TextField(setup.loginHint?.label ?? "User ID", text: $setup.loginName, prompt: Text("Required"))
+			TextField(setup.loginHint?.label ?? String(localized: "User ID"), text: $setup.loginName, prompt: Text("Required"))
 				.focused($focus, equals: .loginName)
 			if let hint = setup.loginHint {
 				VStack(alignment: .leading, spacing: 4) {
@@ -444,7 +444,7 @@ struct AccountSetupSheet: View {
 	}
 
 	@ViewBuilder private var accountsStep: some View {
-		Section("Accounts of \(setup.bank?.name ?? "the bank")") {
+		Section("Accounts of \(setup.bank?.name ?? String(localized: "the bank"))") {
 			ForEach(setup.candidates) { candidate in
 				Toggle(isOn: Binding(get: { setup.selected.contains(candidate.id) },
 					set: { if $0 { setup.selected.insert(candidate.id) } else { setup.selected.remove(candidate.id) } })) {

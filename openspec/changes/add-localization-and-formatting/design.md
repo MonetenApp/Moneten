@@ -41,7 +41,7 @@ A text of the app is a literal in the code: `Text("Balance")`, `String(localized
 
 ### Counts use the plural rules of the catalog
 
-A text with a count, such as `%lld new transactions`, has one entry with the variations "one" and "other" in each language. Code does not choose between a singular and a plural literal.
+A new text with a count, such as `%lld transactions`, has one entry with the plural variations "one" and "other" in each language. Code that already chooses between a literal for one and a literal for other counts, such as "1 new transaction" and `%lld new transactions`, keeps both entries. German and English have the same two forms, so both ways read correctly.
 
 ### The check reads what the compiler extracts
 

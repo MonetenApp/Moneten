@@ -61,13 +61,13 @@ public final class BankLookup {
 		do {
 			let directory = try await directory()
 			if let code {
-				result = directory.bank(code: code).map(Self.usable) ?? .failed("The Bankleitzahl is invalid.")
+				result = directory.bank(code: code).map(Self.usable) ?? .failed(String(localized: "The Bankleitzahl is invalid."))
 			} else {
 				// A search of the whole directory takes about 10 ms, too long for the main thread. The start of
 				// a Bankleitzahl is one word also when it is typed in groups, such as "760 30".
 				let query = text.allSatisfy(\.isNumber) ? text : entry
 				let matches = await Task.detached(priority: .userInitiated) { directory.search(query) }.value
-				result = matches.isEmpty ? .failed("No bank matches “\(entry.trimmingCharacters(in: .whitespaces))”.") : .matches(matches)
+				result = matches.isEmpty ? .failed(String(localized: "No bank matches “\(entry.trimmingCharacters(in: .whitespaces))”.")) : .matches(matches)
 			}
 		} catch {
 			result = .failed((error as? SyncFailure)?.message ?? error.localizedDescription)
@@ -94,6 +94,6 @@ public final class BankLookup {
 	}
 
 	private static func usable(_ bank: BankDirectory.Entry) -> State {
-		bank.bank.url == nil ? .failed("\(bank.bank.name) does not provide a FinTS/HBCI server. An extension can add support for the bank.") : .found(bank)
+		bank.bank.url == nil ? .failed(String(localized: "\(bank.bank.name) does not provide a FinTS/HBCI server. An extension can add support for the bank.")) : .found(bank)
 	}
 }

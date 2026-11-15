@@ -15,7 +15,7 @@ public struct NewTransactionsNotice: Sendable, Equatable {
 	public private(set) var accountNames: [String]
 	public let tone: Tone
 
-	public var title: String { count == 1 ? "1 new transaction" : "\(count) new transactions" }
+	public var title: String { count == 1 ? String(localized: "1 new transaction") : String(localized: "\(count) new transactions") }
 	public var body: String { accountNames.joined(separator: ", ") }
 
 	/// The notice of an app that locked after the notice was made.

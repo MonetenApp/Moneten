@@ -8,7 +8,7 @@ extension Store {
 		case notEmpty
 
 		public var description: String {
-			"The import of all data works only in an empty database. This database already holds accounts, categories, or transactions."
+			String(localized: "The import of all data works only in an empty database. This database already holds accounts, categories, or transactions.")
 		}
 	}
 

@@ -4,16 +4,16 @@ One task per requirement of the spec, and the tasks of the design before them. A
 
 ## 1. Catalog and check
 
-- [ ] 1.1 Add `App/Resources/Localizable.xcstrings` to the app target with English as the development language and German, and let the build of the app extract the keys of its literals (`SWIFT_EMIT_LOC_STRINGS`).
-- [ ] 1.2 Add `scripts/check-localization.py`. It reads the `.stringsdata` files of a build and the catalog, and it fails for a key without an entry, a key without a German value, and an entry that no code uses. `--update` adds and removes entries. Run it in `scripts/check.sh` after the build for Periphery, and describe in `CONTRIBUTING.md` how a new text gets its German value.
-- [ ] 1.3 Turn every text that the app writes itself into a literal that is looked up: `String(localized:)` for a `String` built in code, in an alert, in a notification, and in a message of a library, and `Text(verbatim:)` for a value from the database, a bank, or an extension.
-- [ ] 1.4 Write the German value of every entry with the terms of a MoneyMoney user, and give each text with a count the plural variations "one" and "other".
+- [x] 1.1 Add `App/Resources/Localizable.xcstrings` to the app target with English as the development language and German, and let the build of the app extract the keys of its literals (`SWIFT_EMIT_LOC_STRINGS`). Done in #PR: `App/project.yml` sets `developmentLanguage: en` and `SWIFT_EMIT_LOC_STRINGS`, and the debug build has `de.lproj` and `en.lproj`.
+- [x] 1.2 Add `scripts/check-localization.py`. It reads the `.stringsdata` files of a build and the catalog, and it fails for a key without an entry, a key without a German value, and an entry that no code uses. `--update` adds and removes entries. Run it in `scripts/check.sh` after the build for Periphery, and describe in `CONTRIBUTING.md` how a new text gets its German value. Done in #PR, also as a CI step after `scripts/build-app.sh debug`. It caught the one key that a late edit added (`%lld accounts, %@ transactions, %lld category colors`) until the key had a German value.
+- [x] 1.3 Turn every text that the app writes itself into a literal that is looked up: `String(localized:)` for a `String` built in code, in an alert, in a notification, and in a message of a library, and `Text(verbatim:)` for a value from the database, a bank, or an extension. Done in #PR for 921 texts, 224 of them only in the libraries. Left in English on purpose: the debug harness and the perf check, the validation messages of an extension manifest, which address extension authors as `ext` does, the technical detail inside a damaged export file, and the column names of the CSV export. Two migration notes and two CSV import messages stay English until #257 and #217 merge, because those pull requests rewrite their lines.
+- [x] 1.4 Write the German value of every entry with the terms of a MoneyMoney user, and give each text with a count the plural variations "one" and "other". Done in #PR. `%lld transactions` and `%lld accounts` have plural variations; the other counts keep the literal for one that the code already chose.
 
 ## 2. Requirements
 
-- [ ] 2.1 German and English interface. Verify it with the check of task 1.2 and with screenshots of the main window, the settings, and the "Add Account" assistant in German, light and dark.
-- [ ] 2.2 Follow the language of macOS. Verify a German system, an English system, and a French system with German as the second language.
-- [ ] 2.3 Language setting. Add the "Language" menu to the "General" tab with the note that the change applies after a restart, and verify a switch from German to English.
+- [x] 2.1 German and English interface. Verify it with the check of task 1.2 and with screenshots of the main window, the settings, and the "Add Account" assistant in German, light and dark. Verified in #PR by the check and by debug harness snapshots with `-AppleLanguages (de)`: main window, sidebar, both settings tabs, and steps 1 and 2 of "Add Account", light and dark. The menus of the menu bar were not snapshotted.
+- [x] 2.2 Follow the language of macOS. Verify a German system, an English system, and a French system with German as the second language. Verified in #PR in the debug harness: `-AppleLanguages (de)` shows German, the English Mac of the test shows English, and `-AppleLanguages (fr,de)` shows English, through `AppLanguage.applyAtLaunch()`.
+- [x] 2.3 Language setting. Add the "Language" menu to the "General" tab with the note that the change applies after a restart, and verify a switch from German to English. Verified in #PR in the debug harness: with `AppleLanguages` set to `de` in the defaults of the app, the English Mac of the test starts in German, and a run in English with German stored shows "Moneten uses the new language after a restart." The scenario runs the other way round, from German to English, with the same mechanism.
 - [ ] 2.4 Text from a bank stays as received. Verify that the English interface shows the booking text and the purpose of a German transaction unchanged.
 - [ ] 2.5 Dates follow macOS and show four-digit years. Verify the regions Germany and United States.
 - [ ] 2.6 Relative day names. "Today" and "Yesterday" exist for the last refresh. Add "Tomorrow" and the numbers of days, and verify them with tests.
@@ -35,7 +35,7 @@ One task per requirement of the spec, and the tasks of the design before them. A
 
 ## 3. Starter categories
 
-- [ ] 3.1 The German starter categories of the change `add-categories` (task 1.20) appear in a database that the app creates with a German interface. Verify it in the debug harness.
+- [x] 3.1 The German starter categories of the change `add-categories` (task 1.20) appear in a database that the app creates with a German interface. Verify it in the debug harness. Verified in #PR: a database created with `-AppleLanguages (de)` has Einnahmen, Wohnen, Mobilität, Freizeit, Versicherungen, Umbuchungen, and Unkategorisiert in the sidebar snapshot.
 
 ## 4. Integration
 

@@ -28,14 +28,14 @@ public struct Vault: Sendable {
 
 		public var description: String {
 			switch self {
-			case .incorrectPassword: "Incorrect password!"
-			case .newerVersion: "The database has a more recent version than this application is able to support."
-			case let .fileIsEmpty(path): "The database file is missing or empty. Please replace the database file with a backup copy.\n\n\(path)"
-			case let .pathIsFolder(path): "The database file should be a file and not a directory.\n\n\(path)"
-			case let .writeProtected(path): "The database file is write-protected.\n\n\(path)"
-			case let .unreadable(detail): "Could not open database.\n\n\(detail)"
+			case .incorrectPassword: String(localized: "Incorrect password!")
+			case .newerVersion: String(localized: "The database has a more recent version than this application is able to support.")
+			case let .fileIsEmpty(path): String(localized: "The database file is missing or empty. Please replace the database file with a backup copy.\n\n\(path)")
+			case let .pathIsFolder(path): String(localized: "The database file should be a file and not a directory.\n\n\(path)")
+			case let .writeProtected(path): String(localized: "The database file is write-protected.\n\n\(path)")
+			case let .unreadable(detail): String(localized: "Could not open database.\n\n\(detail)")
 			case .keyNotInKeychain:
-				"No database password is set, and the key of the database could not be read from the Keychain. This happens when a new build of the app has a different signature than the build that created the database. Open the database with that build and set a database password."
+				String(localized: "No database password is set, and the key of the database could not be read from the Keychain. This happens when a new build of the app has a different signature than the build that created the database. Open the database with that build and set a database password.")
 			}
 		}
 	}

@@ -13,10 +13,10 @@ enum HostRefusal: Error, Equatable, Sendable, CustomStringConvertible {
 
 	var description: String {
 		switch self {
-		case let .notHTTPS(url): "Moneten sends requests only over HTTPS, not to \(url)."
-		case let .unusualAddress(url): "Moneten sends requests only to a plain host name on the HTTPS port, not to \(url)."
-		case let .notListed(name, host): "\(name) may not contact \(host), because its manifest does not list that host."
-		case let .denied(name, host): "\(name) may not contact \(host), because the user did not allow it."
+		case let .notHTTPS(url): String(localized: "Moneten sends requests only over HTTPS, not to \(url).")
+		case let .unusualAddress(url): String(localized: "Moneten sends requests only to a plain host name on the HTTPS port, not to \(url).")
+		case let .notListed(name, host): String(localized: "\(name) may not contact \(host), because its manifest does not list that host.")
+		case let .denied(name, host): String(localized: "\(name) may not contact \(host), because the user did not allow it.")
 		}
 	}
 }
