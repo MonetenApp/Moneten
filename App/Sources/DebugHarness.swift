@@ -384,6 +384,25 @@ final class DebugHarness {
 		// What "Add category" in "Assign Category" does with the selected rows.
 		case "newcategory": Task { await model.addCategory(name: argument, isGroup: false, parentID: nil, assigning: model.visibleSelection) }
 		case "selectRows": model.selectedTransactions = Set(model.visibleTransactions.prefix(Int(argument) ?? 1).map(\.id))
+		// What a drop of the selected rows on the category "Name" in the sidebar does, with the payload sent
+		// through an item provider as a drag sends it. The harness cannot drag.
+		case "droprows":
+			guard let c = model.ledger.categories.first(where: { $0.name == argument }) else { return log("droprows not found") }
+			handOver(model.startDrag(of: model.visibleSelection)) { [self] item in
+				log("droprows \(c.name) hover=\(model.canDrop(model.draggedTransactions, on: c)) accepted=\(model.drop(item?.ids ?? [], on: c))")
+			}
+		// "Name|Group|index", with an empty group for the top level: what a drop of the category between two rows does.
+		case "movecategory":
+			let parts = argument.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
+			guard parts.count == 3, let c = model.ledger.categories.first(where: { $0.name == parts[0] }), let index = Int(parts[2]) else { return log("movecategory not found") }
+			handOver(DraggedCategory(id: c.id)) { [self] item in
+				guard let item else { return log("movecategory no payload") }
+				model.move(category: item.id, into: model.ledger.categories.first { $0.name == parts[1] }?.id, at: index)
+				// A move that changes the rows of the open view waits a drawing for its new table.
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [self] in
+					log("movecategory \(model.ledger.categoriesInSidebarOrder.map { model.ledger.categoryPath($0.id) }.joined(separator: ", "))")
+				}
+			}
 		// "table" puts the focus in the transaction table, as a click on it does. "down", "up", "return", "escape",
 		// and "cmd+k" go to the main window or its sheet as the keyboard sends them. Then it logs where the focus is,
 		// and for each selected row the position of its category in sidebar order from 0, or "default".
@@ -711,6 +730,16 @@ final class DebugHarness {
 				view = v.superview
 			}
 			log("contextmenu row \(index) \(menu?.items.map { ($0.isAlternate ? "alt:" : "") + $0.title } ?? [])")
+		}
+	}
+
+	/// Sends a drag payload through an item provider and back, as the system hands it from a drag to a drop.
+	private func handOver<T: Transferable & Sendable>(_ payload: T, then use: @escaping @MainActor (T?) -> Void) {
+		let provider = NSItemProvider()
+		provider.register(payload)
+		_ = provider.loadTransferable(type: T.self) { result in
+			let item = try? result.get()
+			Task { @MainActor in use(item) }
 		}
 	}
 
