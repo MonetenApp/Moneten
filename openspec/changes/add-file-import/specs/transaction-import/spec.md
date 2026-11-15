@@ -80,12 +80,36 @@ The app SHALL detect the delimiter of a CSV file among semicolon, comma, and tab
 
 ### Requirement: CSV date detection
 
-The app SHALL detect the date format of each date column from all its values, including day first and month first orders, two-digit and four-digit years, and ISO dates. When the values fit more than one order, the app marks the choice in the preview so that the user confirms or changes it.
+The app SHALL detect the date format of each date column from all its values, including day first and month first orders, two-digit and four-digit years, and ISO dates. A date with dots always reads day first. The app warns when the file mixes month-first dates with dotted dates. When the values fit more than one order, the app marks the choice in the preview so that the user confirms or changes it.
 
 #### Scenario: Clear European dates
 
 - **WHEN** a column holds "31.10.2026" and "03.11.2026"
 - **THEN** the app reads day, month, year
+
+#### Scenario: The other date column decides
+
+- **GIVEN** a CSV file with a booking date column and a value date column
+- **WHEN** a row has the booking date "10/30/2026" and the value date "11/01/2026"
+- **THEN** the app reads the value date as 1 November 2026
+
+#### Scenario: A value that fits no order decides nothing
+
+- **GIVEN** a CSV file with the booking dates "10/01/2026" and "10/02/2026"
+- **WHEN** their value dates are "10/30/2026" and "pending"
+- **THEN** the app reads the booking dates as 1 October and 2 October 2026
+
+#### Scenario: A date with dots stays day first
+
+- **GIVEN** a CSV file with the booking dates "01.11.2026" and "02.11.2026"
+- **WHEN** their value dates are "11.13.2026" and "03.11.2026"
+- **THEN** the app reads the booking dates as 1 November and 2 November 2026, the second value date as 3 November 2026, and warns that the value date in line 2 cannot be read
+
+#### Scenario: Month-first and dotted dates in one file
+
+- **WHEN** a row has the booking date "12/31/2026" and the value date "01.05.2027"
+- **THEN** the app reads 31 December 2026 and 1 May 2027
+- **AND** the app warns that the file mixes date forms
 
 #### Scenario: Ambiguous dates
 
@@ -95,6 +119,12 @@ The app SHALL detect the date format of each date column from all its values, in
 ### Requirement: CSV amount detection
 
 The app SHALL read amounts with a decimal comma or a decimal point, with or without thousands separators, with a leading or trailing sign, and with a currency symbol or code. The app also reads files with separate columns for debit and credit and files with a column that marks debit or credit. An amount that fits both decimal marks with different values, such as "1,234", takes the decimal mark that the other amounts of the dated rows show.
+
+#### Scenario: Currency in the amount
+
+- **GIVEN** the account "Giro" in euros and a CSV file without a currency column
+- **WHEN** a row has the amount "-$12.50"
+- **THEN** the app reads a withdrawal of 12.50 US dollars
 
 #### Scenario: German format
 
@@ -111,6 +141,16 @@ The app SHALL read amounts with a decimal comma or a decimal point, with or with
 
 - **WHEN** a row has the amount "89,00" and "S" in a debit and credit marker column
 - **THEN** the app reads a withdrawal of 89,00 €
+
+#### Scenario: Marker column wins over the sign
+
+- **WHEN** a row has the amount "89,00-" and "H" in a debit and credit marker column
+- **THEN** the app reads a deposit of 89,00 €
+
+#### Scenario: Amounts out of scope fail the file
+
+- **WHEN** a row has the amount "(12.50)", "($12.50)", or "¥1200"
+- **THEN** the app imports nothing and says that the amount in the line of that row cannot be read
 
 #### Scenario: Amount without decimals takes the decimal mark of the file
 
