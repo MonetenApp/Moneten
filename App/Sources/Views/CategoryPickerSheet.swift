@@ -8,15 +8,14 @@ struct CategoryPickerSheet: View {
 	@Environment(AppModel.self) private var model
 	@Environment(\.dismiss) private var dismiss
 	let ids: Set<UUID>
+	/// The accounts of the rows in `ids`, looked up once when the sheet opens and not on each keystroke.
+	let accounts: Set<UUID>
 	@State private var query = ""
 	@State private var highlighted = 0
 	@FocusState private var fieldFocused: Bool
 
 	/// Computed where it is used, so that a key handler reads the current search and not the one of its drawing.
-	private var matches: [Domain.Category] {
-		let transactions = ids.compactMap { model.ledger.transaction($0) }
-		return model.ledger.categories(matching: query).filter { model.ledger.canAssign($0, to: transactions) }
-	}
+	private var matches: [Domain.Category] { model.ledger.categories(matching: query, assignableTo: accounts) }
 
 	var body: some View {
 		let ledger = model.ledger
