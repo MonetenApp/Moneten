@@ -132,8 +132,7 @@ final class DebugHarness {
 			if let sheet = topSheet, let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: command ? .command : [], timestamp: 0,
 				windowNumber: sheet.windowNumber, context: nil, characters: characters, charactersIgnoringModifiers: characters, isARepeat: false,
 				keyCode: argument == "escape" ? 53 : argument == "return" ? 36 : 24) {
-				NSApp.sendEvent(event)
-				log("key \(argument) sent")
+				log("key \(argument) handled=\(sheet.performKeyEquivalent(with: event))")
 			}
 		// "<text>" types into the field that has the focus.
 		case "type": (topSheet?.firstResponder as? NSTextView)?.insertText(argument, replacementRange: NSRange(location: NSNotFound, length: 0))

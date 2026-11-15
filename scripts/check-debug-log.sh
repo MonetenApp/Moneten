@@ -113,6 +113,7 @@ cat >"$DATA/export.json" <<-'EOF'
 EOF
 poll "^importall " importall "$DATA/export.json"
 poll "^exportall " exportall "$DATA/missing/export.json"
+poll "^alert " alert
 send sheet newAccount
 send setup "entry 12030000"
 send setup next
