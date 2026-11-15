@@ -183,6 +183,29 @@ struct FileImportTests {
 		#expect(ts[1].amountMinor == 125_000 && ts[1].name == "Erika Mustermann")
 	}
 
+	@Test("An MT940 file without an opening balance and a CAMT entry without a currency take the account currency")
+	func fileWithoutCurrency() throws {
+		let mt940 = """
+		:20:STARTUMS
+		:25:12030000/202051
+		:61:2611031103D1000,00NDDTNONREF
+		-
+		"""
+		let camt = """
+		<?xml version="1.0" encoding="UTF-8"?>
+		<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.053.001.08"><BkToCstmrStmt><Stmt>
+		<Ntry><Amt>1000.00</Amt><CdtDbtInd>DBIT</CdtDbtInd><BookgDt><Dt>2026-11-03</Dt></BookgDt></Ntry>
+		<Ntry><Amt Ccy="EUR">5.00</Amt><CdtDbtInd>CRDT</CdtDbtInd><BookgDt><Dt>2026-11-04</Dt></BookgDt></Ntry>
+		</Stmt></BkToCstmrStmt></Document>
+		"""
+		let fromMT940 = try TransactionFileImporter.parse(Data(mt940.utf8), currency: "USD").transactions
+		#expect(fromMT940.map(\.currency) == ["USD"])
+		#expect(fromMT940.map(\.amountMinor) == [-100_000])
+		let fromCAMT = try TransactionFileImporter.parse(Data(camt.utf8), currency: "USD").transactions
+		#expect(fromCAMT.map(\.currency) == ["USD", "EUR"])
+		#expect(fromCAMT.map(\.amountMinor) == [-100_000, 500])
+	}
+
 	@Test("MT940 always reads the comma as the decimal mark")
 	func mt940DecimalComma() throws {
 		let text = """
