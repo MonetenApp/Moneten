@@ -671,4 +671,30 @@ struct FileImportTests {
 		#expect(clock.now - canceled < .seconds(1))
 		#expect(throws: CancellationError.self) { try result.get() }
 	}
+	@Test("Cancel during delimiter detection of a 102 MB CSV ends within half a second")
+	func csvCanceledWhileDetectingDelimiter() async throws {
+		let row = "12/31/2026;Kiosk;" + String(repeating: "x", count: 180) + ";-1.50\n"
+		let header = "Date;Name;Memo;Amount\n"
+		let data = Data((header + String(repeating: row, count: 500_000)).utf8)
+		let (started, start) = AsyncStream.makeStream(of: Void.self)
+		let reading = Task.detached {
+			start.yield()
+			start.finish()
+			return Result { try TransactionFileImporter.parse(data, currency: "EUR") }
+		}
+		for await _ in started { break }
+		try await Task.sleep(for: .milliseconds(100))
+		let clock = ContinuousClock()
+		let canceled = clock.now
+		reading.cancel()
+		let result = await reading.value
+		let latency = clock.now - canceled
+		print("delimiter cancellation bytes=\(data.count) latency=\(latency)")
+		#expect(latency < .milliseconds(500))
+		#expect(throws: CancellationError.self) { try result.get() }
+		let control = try TransactionFileImporter.parse(Data((header + String(repeating: row, count: 200)).utf8), currency: "EUR")
+		#expect(control.transactions.count == 200)
+		#expect(control.transactions.allSatisfy { $0.amountMinor == -150 && $0.bookingDate == Day(year: 2026, month: 12, day: 31) })
+	}
+
 }
