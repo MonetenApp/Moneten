@@ -71,17 +71,8 @@ public struct Ledger: Sendable {
 		return names
 	}
 
-	/// The folded fields, separated by U+0001, with one space between words, so that a phrase finds its words
-	/// across a line break or a double space. Account numbers and IBANs have no spaces, as in a rule.
 	private func searchText(of t: Transaction, account: Account?, categoryNames: [UUID?: String]) -> String {
-		let amounts = Self.amountTexts(t.amountMinor, decimals: t.amount.decimalPlaces)
-		let accountNumbers = [t.counterpartyIBAN, account?.iban, account?.accountNumber].map { $0.map(TextFolding.accountKey) }
-		let parts: [String?] = [t.name, t.purpose, t.bookingText, t.endToEndReference, t.mandateReference, t.creditorID, t.comment,
-			t.counterpartyBIC, account?.name, categoryNames[t.categoryID]] + accountNumbers + amounts
-		let folded = TextFolding.fold(parts.compactMap { $0 }.joined(separator: "\u{1}"))
-		// Most rows have single spaces only, and splitting every row doubled the time to build the ledger.
-		let hasRuns = folded.contains("  ") || folded.utf8.contains { $0 < 0x20 && $0 != 1 || $0 == 0xA0 }
-		return hasRuns ? folded.split(whereSeparator: \.isWhitespace).joined(separator: " ") : folded
+		SearchText.of(t, account: account, categoryName: categoryNames[t.categoryID])
 	}
 
 	/// Builds the search texts of the rows that `isAffected` picks again, after a change of a name or a number they hold.

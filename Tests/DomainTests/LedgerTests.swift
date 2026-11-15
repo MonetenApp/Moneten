@@ -183,6 +183,58 @@ struct LedgerTests {
 		#expect(try Rule(parsing: #""Lohn""#).matches(RuleSubject(lohn, account: giro)) == false)
 	}
 
+	@Test("Typing a field term, a regular expression, or an amount searches the plain words until the text reads")
+	func searchWhileTyping() {
+		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
+		let l = Ledger(accounts: [giro], transactions: [
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 1), amountMinor: -8_900, name: "Stadtwerke Musterstadt",
+				purpose: "Abschlag\u{202F}November"),
+		])
+		var f = TransactionFilter()
+		for text in [#"name:"Stadtw"#, "name:Stadtwerke OR", "purpose:/^Absch", "Stadtwerke amount<-", "/Stadt", #""Abschlag November""#] {
+			f.searchText = text
+			#expect(l.transactions(in: .account(giro.id), filter: f).count == 1, "\(text)")
+		}
+	}
+
+	@Test("A field term and a regular expression with a field name match the rows that the same rule matches")
+	func fieldTermsMatchRules() throws {
+		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline, iban: "DE02 1203 0000 0000 2020 51", accountNumber: "4711")
+		let rows = [
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 1), amountMinor: -8_900, name: "Stadtwerke  Musterstadt",
+				purpose: "Abschlag\nNovember", counterpartyIBAN: "DE89 3704 0044 0532 0130 00", comment: "Strom"),
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 2), amountMinor: -2_345, currency: "USD", name: "Bäckerei Gutbrot",
+				purpose: "Kartenzahlung", bookingText: "LASTSCHRIFT", endToEndReference: "E2E-1", mandateReference: "M-1", creditorID: "DE98ZZZ09999999999"),
+		]
+		let l = Ledger(accounts: [giro], transactions: rows)
+		let queries = [#"name:"Stadtwerke Musterstadt""#, "name:Stadt*", "purpose:November", #"purpose:"Abschlag November""#, "comment:strom",
+			"booking_text:lastschrift", "reference:E2E-1", "mandate:M-1", "creditor_id:DE98ZZZ*", "remote_account:DE89370400440532013000",
+			#"local_account:"DE02 1203 0000 0000 2020 51""#, "local_account:4711", "currency:USD", "name:baeckerei", "purpose:/^Abschlag/", "name:/gutbrot$/"]
+		for query in queries {
+			var f = TransactionFilter()
+			f.searchText = query
+			let rule = try Rule(parsing: query)
+			let searched: Set<UUID> = Set(l.transactions(in: .account(giro.id), filter: f).map(\.id))
+			let ruled: Set<UUID> = Set(rows.filter { rule.matches(RuleSubject($0, account: giro)) }.map(\.id))
+			#expect(!ruled.isEmpty, "\(query)")
+			#expect(searched == ruled, "\(query)")
+		}
+	}
+
+	@Test("Search for finds the row it starts from, also with quotation marks in the name")
+	func searchForName() {
+		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
+		let names = [#"Restaurant "Zum Hirschen""#, "Verein „Freunde“ e.V.", "Tom OR Jerry GbR", "Stadtwerke Musterstadt"]
+		let l = Ledger(accounts: [giro], transactions: names.enumerated().map {
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 1 + $0.offset), amountMinor: -1_000, name: $0.element)
+		})
+		var f = TransactionFilter()
+		for name in names {
+			f.searchText = TransactionFilter.searchText(for: name)
+			#expect(l.transactions(in: .account(giro.id), filter: f).map(\.name) == [name])
+		}
+	}
+
 	@Test("An amount term beyond the range of an amount compares as a rule does")
 	func searchAmountBeyondRange() {
 		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline)

@@ -1234,6 +1234,8 @@ final class AppModel {
 	/// leaves out the starter categories, which the migration replaces with the categories of MoneyMoney.
 	var ledgerForMigration: Ledger {
 		let removed = Set(replaceableStarterCategories.flatMap { ledger.categoryIDs(inTree: $0.id) })
+		// Replacing the categories builds the search text of every row again.
+		guard !removed.isEmpty else { return ledger }
 		var l = ledger
 		l.replace(categories: ledger.categories.filter { !removed.contains($0.id) })
 		return l
