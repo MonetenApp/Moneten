@@ -61,6 +61,8 @@ public enum TransactionFileImporter {
 		public var warnings: [Warning] = []
 		/// The account that a CAMT or MT940 file names.
 		public var account: FileAccount?
+		/// The first transaction currency written in the file, or nil when the account supplies it.
+		public var declaredCurrency: String?
 	}
 
 	public static func parse(_ data: Data, currency: String) throws -> Parsed {
@@ -70,7 +72,7 @@ public enum TransactionFileImporter {
 		let result: Parsed
 		switch format {
 		case .camt: result = try CAMTParser.parse(data, currency: currency)
-		case .mt940: result = Parsed(transactions: try MT940Parser.parse(text, currency: currency), account: try MT940Parser.account(text))
+		case .mt940: result = try MT940Parser.parse(text, currency: currency)
 		case .csv: result = try CSVParser.parse(text, currency: currency)
 		}
 		guard !result.transactions.isEmpty else { throw Failure.empty }
@@ -393,7 +395,7 @@ enum DateOrder: CaseIterable {
 // MARK: - MT940
 
 enum MT940Parser {
-	static func parse(_ text: String, currency: String) throws -> [Transaction] {
+	static func parse(_ text: String, currency: String) throws -> TransactionFileImporter.Parsed {
 		var fields: [(tag: String, value: String, line: Int)] = []
 		for (n, rawLine) in text.replacingOccurrences(of: "\r\n", with: "\n").split(separator: "\n", omittingEmptySubsequences: false).enumerated() {
 			try Task.checkCancellation()
@@ -407,11 +409,13 @@ enum MT940Parser {
 		}
 		var currency = currency
 		var result: [Transaction] = []
+		var declaredCurrency: String?
 		let placeholder = UUID()
 		for (i, f) in fields.enumerated() {
 			try Task.checkCancellation()
 			if f.tag == "60F" || f.tag == "60M", f.value.count >= 10 {
 				currency = String(f.value.dropFirst(7).prefix(3))
+				if result.isEmpty { declaredCurrency = currency }
 			}
 			guard f.tag == "61" else { continue }
 			let line = try parse61(f.value, line: f.line)
@@ -420,7 +424,7 @@ enum MT940Parser {
 			if i + 1 < fields.count, fields[i + 1].tag == "86" { apply86(fields[i + 1].value, to: &t) }
 			result.append(t)
 		}
-		return result
+		return TransactionFileImporter.Parsed(transactions: result, account: try account(text), declaredCurrency: declaredCurrency)
 	}
 
 	/// Field 25 holds the IBAN, the bank code or the BIC and the account number or the IBAN separated by a
@@ -697,6 +701,7 @@ final class CAMTParser: NSObject, XMLParserDelegate {
 			endToEndReference: ofOneParty("e2e").flatMap { $0 == "NOTPROVIDED" ? nil : $0 },
 			mandateReference: ofOneParty("mandate"), creditorID: ofOneParty("creditor"),
 			isPending: entry["status"] == "PDNG", returnReason: common("returnReason"))
+		if result.transactions.isEmpty { result.declaredCurrency = entry["currency"] }
 		result.transactions.append(t)
 	}
 }

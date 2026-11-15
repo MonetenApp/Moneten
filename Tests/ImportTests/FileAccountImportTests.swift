@@ -70,4 +70,22 @@ struct FileAccountImportTests {
 		let same = ":20:STARTUMS\n:25:12030000/0000202051\n\(statement):20:STARTUMS\n:25:12030000/0000202051\n\(statement)"
 		#expect(try TransactionFileImporter.parse(Data(same.utf8), currency: "EUR").account == .number(bankCode: "12030000", account: "0000202051"))
 	}
+	@Test("A file keeps an omitted currency distinct from its explicit account fallback", arguments: ["EUR", "USD"])
+	func declaredCurrency(fallback: String) throws {
+		let camt = "<Document xmlns=\"urn:iso:std:iso:20022:tech:xsd:camt.053.001.08\"><BkToCstmrStmt><Stmt>" + Self.entry + "</Stmt></BkToCstmrStmt></Document>"
+		let explicit = try TransactionFileImporter.parse(Data(camt.utf8), currency: fallback)
+		#expect(explicit.declaredCurrency == "EUR")
+		#expect(explicit.transactions.map(\.currency) == ["EUR"])
+		let missing = try TransactionFileImporter.parse(Data(camt.replacingOccurrences(of: " Ccy=\"EUR\"", with: "").utf8), currency: fallback)
+		#expect(missing.declaredCurrency == nil)
+		#expect(missing.transactions.map(\.currency) == [fallback])
+		let mt940 = ":20:STARTUMS\n:60F:C261101EUR0,00\n:61:2611031103D89,00NDDTNONREF\n-\n"
+		let explicitMT = try TransactionFileImporter.parse(Data(mt940.utf8), currency: fallback)
+		#expect(explicitMT.declaredCurrency == "EUR")
+		#expect(explicitMT.transactions.map(\.currency) == ["EUR"])
+		let missingMT = try TransactionFileImporter.parse(Data(mt940.replacingOccurrences(of: ":60F:C261101EUR0,00\n", with: "").utf8), currency: fallback)
+		#expect(missingMT.declaredCurrency == nil)
+		#expect(missingMT.transactions.map(\.currency) == [fallback])
+	}
+
 }

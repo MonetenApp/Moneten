@@ -154,14 +154,14 @@ extension AppModel {
 			var read: [(name: String, parsed: TransactionFileImporter.Parsed, into: Account, isNew: Bool)] = []
 			var problems: [String] = []
 			// The answer for the account and the currency of a file holds for the later files of both.
-			var answers: [FileAccount: [String: Account]] = [:]
+			var answers: [FileAccount: [String?: Account]] = [:]
 			for (i, url) in urls.enumerated() {
 				run.index = i
 				do {
 					let parsed = try await Self.readFile(url, currency: account.currency)
 					if run.isCanceled { return (read, problems, canceledAt: i) }
 					let created = read.filter(\.isNew).map(\.into)
-					let currency = parsed.transactions.first?.currency ?? account.currency
+					let currency = parsed.declaredCurrency
 					// A file without a currency takes the currency of the account it goes into, which can be another one.
 					func parsedFor(_ into: Account) async throws -> TransactionFileImporter.Parsed {
 						into.currency == account.currency ? parsed : try await Self.readFile(url, currency: into.currency)

@@ -254,7 +254,9 @@ final class DebugHarness {
 			switch argument {
 			case "selected": model.fileImport?.answer(.selected)
 			case "named": model.fileImport?.answer(.named)
-			default: log("importanswer file=\(question.file) named=\(question.named) selected=\(question.selected.name) other=\(question.other?.name ?? "-")")
+			default:
+				let kind = switch question.named { case .iban: "iban"; case .number: "number" }
+				log("importanswer kind=\(kind) fileIndex=\(model.fileImport?.index ?? -1) selectedPosition=\(question.selected.position) otherPosition=\(question.other?.position ?? -1)")
 			}
 		// "[<currency>]": the credit card in US dollars, or in another currency such as JPY.
 		case "usd": Task { await DemoData.usdAccount(model, currency: argument.isEmpty ? "USD" : argument); log("usd done") }
