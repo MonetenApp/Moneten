@@ -82,16 +82,15 @@ struct HeaderView: View {
 					}
 					.font(.callout)
 					.foregroundStyle(Palette.detail)
-					if model.withoutTransactions.contains(account.id) {
-						Text("The bank provides no transactions for this account.")
-							.font(.callout)
-							.foregroundStyle(Palette.detail)
+					Group {
+						switch model.bankHistories[account.id] {
+						case .noTransactions where account.kind != .portfolio: Text("The bank provides no transactions for this account.")
+						case let .startsAt(start): Text("The bank provides no transactions before \(Format.day(start)).")
+						default: EmptyView()
+						}
 					}
-					if let start = model.historyStarts[account.id] {
-						Text("The bank provides no transactions before \(Format.day(start)).")
-							.font(.callout)
-							.foregroundStyle(Palette.detail)
-					}
+					.font(.callout)
+					.foregroundStyle(Palette.detail)
 				}
 			}
 			Spacer()
