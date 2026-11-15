@@ -21,20 +21,22 @@ struct CSVPreviewTests {
 		}
 	}
 
-	@Test("A note after a headerless row cannot hide its amount", arguments: ["", "abc", "missing"], ["Zwischensumme;;", "Hinweis;Export vorläufig;"])
+	@Test("A note after a headerless row cannot hide its amount", arguments: ["", "abc", "missing"], ["Zwischensumme;;", "Hinweis;Export vorläufig;", "Hinweis;Export;vorläufig"])
 	func headerlessRowBeforeNote(amount: String, note: String) throws {
 		let first = amount == "missing" ? "01.11.2026;Kiosk" : "01.11.2026;Kiosk;\(amount)"
-		let file = try CSVFile(data: Data((first + "\n" + note + "\n02.11.2026;Bakery;4.50\n").utf8))
-		var layout = try file.detectedLayout()
-		layout.assign(0, to: .bookingDate)
-		layout.assign(2, to: .amount)
-		let preview = try file.preview(layout, currency: "EUR")
-		if amount == "abc" {
-			#expect(preview.problem == .line(1, "The amount cannot be read."))
-			#expect(preview.transactions.isEmpty)
-		} else {
-			#expect(preview.problem == nil)
-			#expect(preview.transactions.map(\.amountMinor) == [0, 450])
+		for (prefix, line) in [("", 1), ("\n \n", 3)] {
+			let file = try CSVFile(data: Data((prefix + first + "\n" + note + "\n02.11.2026;Bakery;4.50\n").utf8))
+			var layout = try file.detectedLayout()
+			layout.assign(0, to: .bookingDate)
+			layout.assign(2, to: .amount)
+			let preview = try file.preview(layout, currency: "EUR")
+			if amount == "abc" {
+				#expect(preview.problem == .line(line, "The amount cannot be read."))
+				#expect(preview.transactions.isEmpty)
+			} else {
+				#expect(preview.problem == nil)
+				#expect(preview.transactions.map(\.amountMinor) == [0, 450])
+			}
 		}
 	}
 
