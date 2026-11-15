@@ -371,6 +371,7 @@ enum HelperFailure {
 	static let insecure = SyncFailure.unsupported("The bank offers no encrypted FinTS address.")
 	static let noBookingDate = SyncFailure.unsupported("The bank sent a transaction without a booking date, so nothing of this account was stored.")
 	static let clash = SyncFailure.unsupported("Two accounts of this access are the same account at the bank.")
+	static let damaged = SyncFailure.unsupported("The files of the FinTS helper do not match the signature of Moneten. Download Moneten again and replace this copy.")
 	static let timeout = SyncFailure.network("The connection to the FinTS server of the bank timed out. Try again later.")
 
 	static func stopped(_ status: Int32, signal: Bool) -> SyncFailure {

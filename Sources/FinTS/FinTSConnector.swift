@@ -60,6 +60,8 @@ public struct FinTSConnector: BankConnector {
 	struct Helper: Sendable {
 		let executable: URL
 		let arguments: [String]
+		/// The seal that `run` checks before each start, or nil for a helper outside the app bundle.
+		var seal: HelperSeal? = nil
 
 		/// The helper that scripts/build-app.sh puts into the app. A crash of the JVM writes no file,
 		/// because the file would hold the memory of the helper with the PIN. No other process may
@@ -70,7 +72,8 @@ public struct FinTSConnector: BankConnector {
 			return Helper(executable: folder.appending(path: "runtime/bin/java"),
 				arguments: ["-Djava.awt.headless=true", "-Djava.net.useSystemProxies=true", "-XX:ErrorFile=/dev/null",
 					"-XX:+DisableAttachMechanism", "-Xrs",
-					"-cp", folder.appending(path: "lib").path + "/*", "FinTSHelper"])
+					"-cp", folder.appending(path: "lib").path + "/*", "FinTSHelper"],
+				seal: HelperSeal(bundle: Bundle.main.bundleURL, requirement: nil))
 		}
 	}
 
@@ -209,6 +212,7 @@ public struct FinTSConnector: BankConnector {
 		let watchdog = Watchdog(after: inactivity)
 		let asks = OpenAsks(watchdog: watchdog)
 		let rejections = Rejections(session: session)
+		try helper.seal?.check()
 		let process = try HelperProcess(executable: helper.executable, arguments: helper.arguments, grace: grace, onLine: { line in
 			watchdog.received()
 			rejections.read(line)
