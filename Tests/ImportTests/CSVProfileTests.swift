@@ -93,6 +93,38 @@ struct CSVProfileTests {
 		#expect(try profile.read(late, currency: "EUR") == nil)
 	}
 
+	@Test("A profile fallback keeps detected encoding and all mapped settings", arguments: [false, true])
+	func fallbackEncoding(headerChanged: Bool) throws {
+		let header = "Date;Name;Purpose;Amount;Category"
+		let row = "03.11.2026;Bäckerei;Frühstück;-4,20;Büro"
+		let original = try CSVFile(data: "\(header)\n\(row)\n".data(using: .windowsCP1252)!)
+		var layout = try original.detectedLayout()
+		layout.decimalMark = .comma
+		layout.createsCategories = true
+		let profile = CSVProfile(name: "Text encoding", header: original.header, layout: layout)
+		let nextHeader = headerChanged ? "Date;Extra;Name;Purpose;Amount;Category" : header
+		let nextRow = headerChanged ? "03.11.2026;Note;Bäckerei;Frühstück;-4,20;Büro" : row
+		let file = try CSVFile(data: Data("\(nextHeader)\n\(nextRow)\n".utf8))
+		#expect(file.encoding == .utf8)
+		#expect(try profile.read(file, currency: "EUR") == nil)
+		let start: CSVLayout
+		switch CSVProfile.match(for: file, in: [profile], detected: try file.detectedLayout()) {
+		case let .same(saved): start = saved.previewLayout(for: file)
+		case let .changed(_, moved): start = moved
+		case .none: Issue.record("The profile must remain a starting point"); return
+		}
+		#expect(start.encoding == .utf8)
+		#expect(start.dateOrder == layout.dateOrder)
+		#expect(start.decimalMark == .comma)
+		#expect(start.createsCategories)
+		#expect(start.columns[.name] == (headerChanged ? 2 : 1))
+		let parsed = try file.with(start.encoding).preview(start, currency: "EUR").parsed
+		#expect(parsed.transactions.map(\.name) == ["Bäckerei"])
+		#expect(parsed.transactions.map(\.purpose) == ["Frühstück"])
+		#expect(parsed.transactions.map(\.amountMinor) == [-420])
+		#expect(Array(parsed.categories.values) == ["Büro"])
+	}
+
 	@Test("A stored list keeps the profiles that read when one does not")
 	func lenientList() throws {
 		let profile = try Self.broker()
