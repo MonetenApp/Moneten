@@ -644,7 +644,19 @@ The app SHALL skip a pending file transaction when one free stored pending row f
 
 ### Requirement: Order-independent pending pairing
 
-The app SHALL pair pending transactions one to one by file identity, source ID, end-to-end reference, fitting same-day fetched or deleted row, then nearest unfetched file row within seven days. Conflicting identities never pair. Known counterparty conflicts invalidate every weaker match. Pending file imports fit within seven days. Current booked fingerprints precede historical reference matches. Greedy candidate order is evidence priority, distance, and stable delivered and stored positions.
+The app SHALL use the following one-to-one pairing order only when at least one row is pending or the stored row has a file identity. Booked deliveries against booked rows without a file identity use the existing booked matching rule.
+
+1. Agreeing original file identity or source ID.
+2. Same-day exact or compatible fingerprint of a booked row, including a pending repeat of its booked version.
+3. Agreeing end-to-end reference with the same amount and currency.
+4. Fitting fetched pending or honored deleted row within seven days.
+5. Nearest fitting unfetched pending file row within seven days.
+
+Within a level, current versions precede pending repeats of booked versions. Identity matches prefer live rows to tombstones. Fingerprints rank exact, compatible, then absent. Remaining ties use day distance, stable delivered position, then stable stored position. Live positions use booking day, creation time, and UUID. Tombstone positions use persisted identity fields, optional-value presence, fetched flag, and deletion time as a tuple. Candidates are consumed greedily only when both sides are free.
+
+Different real source IDs or nonempty end-to-end references never pair. Different file fingerprints stay separate except for a verified pending-to-booked transition within seven days with the same amount and currency and either an agreeing reference or a fitting counterparty. Pending fallback checks known counterparties by IBAN, otherwise by name. An import bounds pending-to-pending pairs to seven days and keeps nearest-day choice across fetched and unfetched rows outside the same-day fetched level. A refresh ranks fetched pending rows within seven days before unfetched rows. Unfetched refresh candidates must have a covered date today or later and no review mark. A pending tombstone cannot block a booking. A source arriving booked reserves its pending tombstone against unrelated look-alikes.
+
+Booking first prefers agreeing identities, then a unique fetched pending row. With no fetched partner, only nearest fitting file rows on or before the booked day participate, and an unresolved tie marks those rows and the delivery for review.
 
 #### Scenario: Global nearest choice
 
@@ -1041,3 +1053,32 @@ Only file imports SHALL create `fileIdentity`, a versioned original-file fingerp
 - **WHEN** a file or refresh delivers the same fields for "Vermieter B"
 - **THEN** their known counterparty conflict invalidates every weaker fingerprint and both rows stay
 - **AND** unknown counterparties keep the existing fingerprint behavior
+
+#### Scenario: A file booking changes its date or purpose
+
+- **GIVEN** a CAMT PDNG rent of -800,00 € to "Vermieter A" on 1 December 2026 with reference "RENT-A"
+- **WHEN** a CAMT BOOK rent arrives on 2 December with that reference, also with a changed purpose
+- **THEN** one booked row remains and totals -800,00 €
+- **AND** the original pending file and booked file are skipped on re-import and after deletion of the fetched booked row
+- **AND** the same transition works without a reference when payee and amount fit within seven days
+- **AND** conflicting explicit references or source IDs still keep payments separate
+
+#### Scenario: A booked name changes its order
+
+- **GIVEN** a booked payment of -49,99 € on 10 November 2026 named "MUSTERMANN, MAX", purpose "Kartenzahlung 1234", with no IBAN or file identity
+- **WHEN** a file or refresh delivers that payment named "Max Mustermann"
+- **THEN** the delivery is skipped as under the existing booked rule
+
+#### Scenario: The bank moves its pending rent by one day
+
+- **GIVEN** file rents of -800,00 € on 1 and 8 December 2026 and the bank has taken over 1 December
+- **WHEN** the next refresh delivers the pending rent on 2 December
+- **THEN** the fetched row moves to 2 December and the 8 December file row stays
+- **AND** two rents total -1.600,00 € in every delivery and storage order
+
+#### Scenario: A booking leaves later file rents alone
+
+- **GIVEN** FUTR file rents of -800,00 € on 7 and 14 December 2026
+- **WHEN** only the booked 7 December rent arrives
+- **THEN** the 7 December row becomes booked and the 14 December row stays pending without a review mark
+- **AND** two indistinguishable 7 December file rows cause only those two and the booked delivery to need review

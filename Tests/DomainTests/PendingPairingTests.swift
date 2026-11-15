@@ -113,6 +113,109 @@ extension ReconcileTests {
 		#expect(history(stored, after: r).reduce(0) { $0 + $1.amountMinor } == -160_000)
 	}
 
+	@Test("Gate 4 item 1: a changed file booking keeps one payment through repeats and deletion", arguments: [false, true], [false, true])
+	func gate4FileBooking(changedPurpose: Bool, reference: Bool) throws {
+		var pending = rent(1)
+		pending.endToEndReference = reference ? "RENT-A" : nil
+		var booked = pending
+		booked.id = UUID()
+		booked.bookingDate = day(2, month: 12)
+		booked.purpose = changedPurpose ? "BOOKED RENT" : "Miete Dezember"
+		booked.isPending = false
+		let other = row(3, -1_200, "Other", "OTHER", month: 12)
+		let initial = merge(.file([pending, other]), at: noon(20, month: 11)).added
+		for stored in permutations(initial) {
+			for delivered in permutations([booked, fresh(other)]) {
+				let r = merge(.file(delivered), stored: stored, at: noon(2, month: 12))
+				#expect(r.booked.map(\.id) == [pending.id])
+				let after = history(stored, after: r)
+				#expect(after.count == 2)
+				#expect(after.reduce(0) { $0 + $1.amountMinor } == -81_200)
+				let live = try #require(after.first { $0.id == pending.id })
+				#expect(!live.isPending && live.bookingDate == day(2, month: 12))
+				#expect(live.purpose == (changedPurpose ? "BOOKED RENT" : "Miete Dezember"))
+				for repeated in [pending, booked] {
+					let again = merge(.file([repeated]), stored: after, at: noon(3, month: 12))
+					#expect(again.added == [] && again.skipped == 1)
+					var fetched = live
+					fetched.isFetched = true
+					let deleted = merge(.file([repeated]), deleted: [DeletedTransaction(fetched, deletedAt: now)], at: noon(3, month: 12))
+					#expect(deleted.added == [] && deleted.skipped == 1)
+				}
+			}
+		}
+	}
+
+	@Test("Gate 4 item 2: booked name reordering without an IBAN is skipped as on main", arguments: [false, true])
+	func gate4BookedNames(fileDelivery: Bool) {
+		let known = stored(row(10, -4_999, "MUSTERMANN, MAX", "Kartenzahlung 1234"))
+		var delivered = fresh(known)
+		delivered.name = "Max Mustermann"
+		let other = stored(row(11, -1_200, "Other", "OTHER"))
+		for stored in permutations([known, other]) {
+			for rows in permutations([delivered, fresh(other)]) {
+				let r = merge(fileDelivery ? .file(rows) : refresh(rows), stored: stored)
+				#expect(r.added == [] && r.skipped == 2)
+				let after = history(stored, after: r)
+				#expect(after.count == 2)
+				#expect(after.reduce(0) { $0 + $1.amountMinor } == -6_199)
+				#expect(after.first { $0.id == known.id }?.name == "MUSTERMANN, MAX")
+			}
+		}
+	}
+
+	@Test("Gate 4 item 3: a fetched pending rent within seven days keeps its partner", arguments: [false, true])
+	func gate4FetchedDateMove(persisted: Bool) {
+		let originals = [rent(1), rent(8)]
+		let files = persisted ? merge(.file(originals), at: noon(20, month: 11)).added : originals
+		for firstStored in permutations(files) {
+			let first = history(firstStored, after: merge(refresh([rent(1, purpose: "BANK")]), stored: firstStored, at: noon(20, month: 11)))
+			let other = row(3, -1_200, "Other", "OTHER", month: 12)
+			for stored in permutations(first) {
+				for delivered in permutations([rent(2, purpose: "CHANGED BANK"), other]) {
+					let r = merge(refresh(delivered), stored: stored, at: noon(21, month: 11))
+					let after = history(stored, after: r)
+					#expect(pendingSummary(after) == ["20261202 -80000 true true false CHANGED BANK", "20261203 -1200 false true false OTHER", "20261208 -80000 true false false Miete Dezember"])
+					#expect(r.updated.map(\.id) == [originals[0].id])
+					#expect(r.dropped == [])
+					let repeated = merge(refresh(delivered), stored: after, at: noon(22, month: 11))
+					#expect(pendingSummary(history(after, after: repeated)) == pendingSummary(after))
+				}
+			}
+		}
+	}
+
+	@Test("Gate 4 item 4: booking considers only nearest file rows on or before its date", arguments: [false, true])
+	func gate4NearestBooking(ambiguous: Bool) {
+		let originals = [rent(7), rent(14)] + (ambiguous ? [rent(7)] : [])
+		let files = merge(.file(originals), at: noon(20, month: 11)).added
+		let other = row(3, -1_200, "Other", "OTHER", month: 12)
+		for stored in permutations(files) {
+			for delivered in permutations([rent(7, purpose: "BOOKED RENT", pending: false), other]) {
+				let r = merge(refresh(delivered), stored: stored, at: noon(7, month: 12))
+				let after = history(stored, after: r)
+				#expect(after.first { $0.id == originals[1].id }?.needsReview == false)
+				#expect(!r.marked.contains { $0.id == originals[1].id })
+				#expect(r.booked.count == (ambiguous ? 0 : 1))
+				#expect(r.marked.count == (ambiguous ? 2 : 0))
+				#expect(after.count == (ambiguous ? 5 : 3))
+				#expect(after.reduce(0) { $0 + $1.amountMinor } == (ambiguous ? -321_200 : -161_200))
+			}
+		}
+	}
+
+	@Test("Gate 4 booking never overrides conflicting real identities", arguments: [false, true])
+	func gate4BookingConflict(source: Bool) {
+		var pending = rent(1)
+		var booked = rent(2, purpose: "BOOKED RENT", pending: false)
+		if source { pending.sourceID = "FILE-A"; booked.sourceID = "FILE-B" }
+		else { pending.endToEndReference = "RENT-A"; booked.endToEndReference = "RENT-B" }
+		let files = merge(.file([pending]), at: noon(20, month: 11)).added
+		let r = merge(.file([booked]), stored: files, at: noon(2, month: 12))
+		#expect(r.booked == [] && r.marked == [])
+		#expect(history(files, after: r).reduce(0) { $0 + $1.amountMinor } == -160_000)
+	}
+
 	func permutations<T>(_ rows: [T]) -> [[T]] {
 		guard !rows.isEmpty else { return [[]] }
 		return rows.indices.flatMap { i in

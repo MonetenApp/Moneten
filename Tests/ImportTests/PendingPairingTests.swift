@@ -23,3 +23,34 @@ extension MoneyMoneyMigrationTests {
 		#expect(after.balance(of: account).minorUnits == 4_000)
 	}
 }
+
+extension FileImportTests {
+	@Test("Gate 4 CAMT PDNG on 1 December books once on 2 December", arguments: [false, true])
+	func gate4CAMTBooking(changedPurpose: Bool) throws {
+		func parse(_ status: String, _ day: String, _ purpose: String) throws -> [Transaction] {
+			let xml = """
+			<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.052.001.08"><BkToCstmrAcctRpt><Rpt>
+			<Ntry><Amt Ccy="EUR">800.00</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts><Cd>\(status)</Cd></Sts><BookgDt><Dt>2026-12-\(day)</Dt></BookgDt>
+			<NtryDtls><TxDtls><Refs><EndToEndId>RENT-A</EndToEndId></Refs><RltdPties><Cdtr><Pty><Nm>Vermieter A</Nm></Pty></Cdtr><CdtrAcct><Id><IBAN>DE02120300000000202051</IBAN></Id></CdtrAcct></RltdPties><RmtInf><Ustrd>\(purpose)</Ustrd></RmtInf></TxDtls></NtryDtls></Ntry>
+			</Rpt></BkToCstmrAcctRpt></Document>
+			"""
+			return try TransactionFileImporter.parse(Data(xml.utf8), currency: "EUR").transactions
+		}
+		let account = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
+		let rules = Categorizer(ledger: Ledger(accounts: [account]))
+		let now = Calendar.current.date(from: DateComponents(year: 2026, month: 12, day: 2, hour: 12))!
+		let pending = try parse("PDNG", "01", "Miete Dezember")
+		let booked = try parse("BOOK", "02", changedPurpose ? "BOOKED RENT" : "Miete Dezember")
+		var ledger = Ledger(accounts: [account])
+		for rows in [pending, booked] {
+			ledger.apply(reconcile(.file(rows), into: account, stored: ledger.transactions, deleted: [], rules: rules, now: now))
+		}
+		#expect(ledger.transactions.map(\.amountMinor) == [-80_000])
+		#expect(ledger.transactions.map(\.isPending) == [false])
+		#expect(ledger.transactions.map(\.bookingDate) == [Day(year: 2026, month: 12, day: 2)])
+		for rows in [pending, booked] {
+			let repeated = reconcile(.file(rows), into: account, stored: ledger.transactions, deleted: [], rules: rules, now: now)
+			#expect(repeated.added == [] && repeated.skipped == 1)
+		}
+	}
+}
