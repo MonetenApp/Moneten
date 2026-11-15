@@ -381,7 +381,8 @@ final class DebugHarness {
 		case "newcategory": Task { await model.addCategory(name: argument, isGroup: false, parentID: nil, assigning: model.visibleSelection) }
 		case "selectRows": model.selectedTransactions = Set(model.visibleTransactions.prefix(Int(argument) ?? 1).map(\.id))
 		// "table" puts the focus in the transaction table, as a click on it does. "down", "up", "return", "escape",
-		// and "cmd+k" go to the main window or its sheet as the keyboard sends them. Then it logs where the focus is.
+		// and "cmd+k" go to the main window or its sheet as the keyboard sends them. Then it logs where the focus is,
+		// and for each selected row the position of its category in sidebar order from 0, or "default".
 		case "mainkey": mainKey(argument)
 		case "state":
 			log("phase=\(model.phase.trailName) accounts=\(model.ledger.accounts.count) transactions=\(model.ledger.transactions.count) visible=\(model.visibleTransactions.count) selection=\(String(describing: model.selection)) selected=\(model.selectedAccount.map { "\($0.kind)" } ?? "-")")
@@ -531,9 +532,13 @@ final class DebugHarness {
 		}
 		DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
 			guard let self, let table = self.transactionTables().first else { return }
-			let selected = model.selectedTransactions.compactMap { model.ledger.transaction($0) }
+			let ledger = model.ledger
+			let order = ledger.categoriesInSidebarOrder.filter { !$0.isDefault }.map(\.id)
+			// Category names are typed by the user, so the log names a category by its place in the sidebar.
+			let categories = model.selectedTransactions.compactMap { ledger.transaction($0) }
+				.map { ledger.effectiveCategoryID(of: $0).flatMap(order.firstIndex).map(String.init) ?? "default" }
 			self.log("mainkey \(name) handled=\(handledBy) sheet=\(model.sheet?.trailName ?? "none") tablefocus=\(table.window?.firstResponder === table) key=\(NSApp.keyWindow === table.window) row=\(table.selectedRow) "
-				+ "category=\(selected.map { model.ledger.categoryPath(model.ledger.effectiveCategoryID(of: $0)) }.joined(separator: ","))")
+				+ "category=\(categories.joined(separator: ","))")
 		}
 	}
 
