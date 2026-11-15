@@ -416,6 +416,21 @@ struct LedgerTests {
 		#expect(hidden.sidebarAmounts(today: today)[groceries.id] == nil)
 	}
 
+	@Test("Each of 300 categories in the sidebar sums its own rows, and a row of an unknown category counts in none")
+	func sidebarAmountsOfManyCategories() {
+		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
+		let categories = (0..<300).map { Domain.Category(position: $0, name: "Category \($0)", sidebarAmount: .totalSum) }
+		let rows = categories.enumerated().map { i, c in
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 2), amountMinor: -Int64(i + 1), name: "Shop", categoryID: c.id, categorizedBy: .manual)
+		}
+		let unknown = Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 2), amountMinor: -5_000, name: "Shop", categoryID: UUID(), categorizedBy: .manual)
+		let amounts = Ledger(accounts: [giro], categories: categories, transactions: rows + [unknown]).sidebarAmounts(today: Day(year: 2026, month: 11, day: 9))
+		#expect(amounts.count == 300)
+		#expect(amounts[categories[0].id] == Money(minorUnits: -1, currency: "EUR"))
+		#expect(amounts[categories[299].id] == Money(minorUnits: -300, currency: "EUR"))
+		#expect(categories.enumerated().allSatisfy { i, c in amounts[c.id] == Money(minorUnits: -Int64(i + 1), currency: "EUR") })
+	}
+
 	@Test("Current month, current quarter, and current year in the sidebar end at the last day of the period")
 	func sidebarPeriodEnds() {
 		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
