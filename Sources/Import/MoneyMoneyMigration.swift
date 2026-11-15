@@ -361,8 +361,11 @@ public struct MoneyMoneyMigration: Sendable {
 	/// `budget` counts when it is a number other than zero, or a dictionary whose `amount` is one. A
 	/// dictionary without `amount` counts when it has such a number. A budget of zero counts as none.
 	static func hasBudget(_ item: [String: Any]) -> Bool {
-		// A property list gives true as the number 1, so a flag such as a rollover must not count.
-		func amount(_ value: Any?) -> Double? { value is Bool ? nil : value as? Double }
+		// A cast to Double also accepts a Boolean, so a flag such as a rollover would count as 1.
+		func amount(_ value: Any?) -> Double? {
+			guard let n = value as? NSNumber, CFGetTypeID(n) != CFBooleanGetTypeID() else { return nil }
+			return n.doubleValue
+		}
 		switch item["budget"] {
 		case let budget as [String: Any]:
 			if let value = budget["amount"] { return amount(value).map { $0 != 0 } ?? false }

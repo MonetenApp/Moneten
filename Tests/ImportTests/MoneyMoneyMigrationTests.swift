@@ -726,7 +726,7 @@ struct MoneyMoneyMigrationTests {
 		let p = try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(accounts), categories: try plist(withBudgets), transactions: try plist(transactions), into: Ledger())
 		#expect(p.notes.contains("2 categories have a budget in MoneyMoney. Moneten did not take the budgets over."))
 
-		withBudgets[3]["budget"] = 75.0
+		withBudgets[3]["budget"] = 1.0
 		withBudgets[1]["budget"] = ["value": 200.0, "interval": "monthly"]
 		let otherLayouts = try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(accounts), categories: try plist(withBudgets), transactions: try plist(transactions), into: Ledger())
 		#expect(otherLayouts.notes.contains("2 categories have a budget in MoneyMoney. Moneten did not take the budgets over."))
