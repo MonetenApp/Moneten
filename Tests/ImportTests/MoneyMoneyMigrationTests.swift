@@ -731,8 +731,8 @@ struct MoneyMoneyMigrationTests {
 		let otherLayouts = try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(accounts), categories: try plist(withBudgets), transactions: try plist(transactions), into: Ledger())
 		#expect(otherLayouts.notes.contains("2 categories have a budget in MoneyMoney. Moneten did not take the budgets over."))
 
-		withBudgets[1]["budget"] = ["amount": 200.0, "available": 120.0, "period": "monthly"]
-		withBudgets[3]["budget"] = nil
+		withBudgets[1]["budget"] = ["amount": [[200.0, "EUR"]], "available": 120.0, "period": "monthly"]
+		withBudgets[3]["budget"] = ["rollover": true, "period": "monthly"]
 		let one = try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(accounts), categories: try plist(withBudgets), transactions: try plist(transactions), into: Ledger())
 		#expect(one.notes.contains("1 category has a budget in MoneyMoney. Moneten did not take the budget over."))
 		#expect(try plan().notes.allSatisfy { !$0.contains("budget") })
