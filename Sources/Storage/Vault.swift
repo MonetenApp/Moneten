@@ -43,7 +43,7 @@ public struct Vault: Sendable {
 		case passwordSetWithLeftover(String)
 		/// The database has the new password, but the Keychain still holds the earlier one.
 		case keychainNotUpdated(String)
-		/// The database has the new password, but these copies in the database folder could not be removed.
+		/// The database has the new password, but the copies at these paths could not be updated or removed.
 		case copiesNotUpdated([String])
 
 		/// True when the database has the new password although something after the change failed.
@@ -87,7 +87,7 @@ public struct Vault: Sendable {
 			case let .keychainNotUpdated(detail):
 				"The database password has been changed, but the Keychain did not accept the new password: \(detail)\n\nEnter the database password at the next start. Moneten then stores the new password in the Keychain."
 			case let .copiesNotUpdated(paths):
-				"The database password has been changed, but Moneten could not remove these copies of the database. They still open with the earlier password. Please move them to the Trash.\n\n" + paths.joined(separator: "\n")
+				"The database password has been changed, but Moneten could not update the copies of the database at these paths. They may still open with the earlier password. Please move them to the Trash.\n\n" + paths.joined(separator: "\n")
 			}
 		}
 	}
@@ -231,19 +231,26 @@ public struct Vault: Sendable {
 	/// Encrypts the automatic backup copy and the copies of a damaged file with the new key, and removes the
 	/// working files of an interrupted upgrade or repair. A copy that cannot take the new key is removed,
 	/// because it would still open with the earlier one. A copy that the earlier key does not open, such as
-	/// one with an even older password, stays as it is. Returns the paths of the copies that could not be removed.
+	/// one with an even older password, stays as it is. Only regular files with the names of the vault are
+	/// touched. Returns the paths of the copies that could not be removed, or the folder when it cannot be listed.
 	private func changeKeyOfCopies(from old: String, to new: String) -> [String] {
 		let fm = FileManager.default
-		let names = (try? fm.contentsOfDirectory(atPath: folder.databaseFolder.path)) ?? []
+		let names: [String]
+		do { names = try fm.contentsOfDirectory(atPath: folder.databaseFolder.path) } catch { return [folder.databaseFolder.path] }
 		var leftover: [String] = []
 		func remove(_ url: URL) {
 			do { try fm.removeItem(at: url) } catch { leftover.append(url.path) }
 		}
+		func isCopy(_ name: some StringProtocol) -> Bool {
+			name == automaticBackup.lastPathComponent || (name.hasPrefix(Self.damagedCopyPrefix) && name.hasSuffix(".sqlite"))
+		}
 		for name in names {
 			let url = folder.databaseFolder.appendingPathComponent(name)
-			if url == upgradeCopyFile || url == repairCopyFile || (name.hasPrefix(".Moneten-") && name.hasSuffix(".partial")) {
+			guard (try? url.resourceValues(forKeys: [.isRegularFileKey]))?.isRegularFile == true else { continue }
+			let isPartialCopy = name.hasPrefix(".") && name.hasSuffix(".partial") && isCopy(name.dropFirst().dropLast(".partial".count))
+			if name == upgradeCopyFile.lastPathComponent || name == repairCopyFile.lastPathComponent || isPartialCopy {
 				remove(url)
-			} else if url == automaticBackup || (name.hasPrefix(Self.damagedCopyPrefix) && name.hasSuffix(".sqlite")) {
+			} else if isCopy(name) {
 				let copy: DatabaseQueue
 				do { copy = try connect(url, key: old) } catch Failure.incorrectPassword { continue } catch {
 					remove(url)

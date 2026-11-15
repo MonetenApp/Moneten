@@ -193,6 +193,8 @@ struct OpeningTests {
 		try foreign.close()
 		try fm.copyItem(at: root.appendingPathComponent("Other/Database/Moneten.sqlite"), to: folder.databaseFolder.appendingPathComponent("Moneten-Damaged-2026-01-01T000000.sqlite"))
 		#expect(try files().contains { $0.hasPrefix("Moneten-Damaged-") && $0 != "Moneten-Damaged-2026-01-01T000000.sqlite" })
+		let unrelated = folder.databaseFolder.appendingPathComponent(".Moneten-Notes.partial")
+		try Data("notes".utf8).write(to: unrelated)
 
 		try vault.changePassword(current: Self.password, new: "neu-und-noch-laenger", on: store)
 		try store.close()
@@ -202,6 +204,7 @@ struct OpeningTests {
 		#expect(!names.contains("Moneten-Upgrade.sqlite"))
 		#expect(!names.contains(".Moneten-Backup.sqlite.partial"))
 		#expect(opens("Moneten-Damaged-2026-01-01T000000.sqlite", with: "ein-anderes-passwort"))
+		#expect(names.contains(unrelated.lastPathComponent))
 		for name in names { #expect(!opens(name, with: Self.password), "\(name)") }
 	}
 
