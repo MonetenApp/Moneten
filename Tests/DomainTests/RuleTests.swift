@@ -395,4 +395,38 @@ struct CategorizerTests {
 		#expect(rows.first?.categoryID == streaming.id)
 		#expect(rows.first?.categorizedBy == .rule)
 	}
+
+	@Test("A rule run keeps a row that a refresh changed during the run in the category that its current text gives it")
+	func rebaseOntoRefresh() throws {
+		let streaming = Domain.Category(position: 0, name: "Streaming", rule: #""Netflix""#)
+		let groceries = Domain.Category(position: 1, name: "Groceries", rule: #""REWE""#)
+		let day = Day(year: 2026, month: 3, day: 1)
+		let unchanged = Transaction(accountID: giro.id, bookingDate: day, amountMinor: -1_299, name: "Netflix")
+		let rebooked = Transaction(accountID: giro.id, bookingDate: day, amountMinor: -4_210, name: "Netflix", isPending: true)
+		let renamed = Transaction(accountID: giro.id, bookingDate: day, amountMinor: -999, name: "Kartenzahlung", isPending: true)
+		let removed = Transaction(accountID: giro.id, bookingDate: day, amountMinor: -1_799, name: "Netflix")
+		let snapshot = ledger([streaming, groceries], [unchanged, rebooked, renamed, removed])
+		let rule = try Rule(parsing: streaming.rule)
+		let results = RuleApplier.apply(category: streaming, rule: rule, to: snapshot.transactions, ledger: snapshot, mode: .all)
+
+		var current = snapshot
+		var booked = rebooked
+		booked.isPending = false
+		booked.name = "REWE Markt"
+		booked.categoryID = groceries.id
+		booked.categorizedBy = .rule
+		var matching = renamed
+		matching.isPending = false
+		matching.name = "Netflix International"
+		let arrived = Transaction(accountID: giro.id, bookingDate: day, amountMinor: -1_299, name: "Netflix")
+		current.update([booked, matching, arrived])
+		current.remove(transactionIDs: [removed.id])
+
+		let rows = RuleApplier.rebase(results, from: snapshot, onto: current, category: streaming, rule: rule, mode: .all)
+		#expect(Set(rows.map(\.id)) == [unchanged.id, matching.id, arrived.id])
+		current.update(rows)
+		let categories = Dictionary(uniqueKeysWithValues: current.transactions.map { ($0.id, $0.categoryID) })
+		#expect(categories == [unchanged.id: streaming.id, rebooked.id: groceries.id, renamed.id: streaming.id, arrived.id: streaming.id])
+		#expect(current.transaction(renamed.id)?.name == "Netflix International")
+	}
 }
