@@ -164,6 +164,32 @@ struct LedgerTests {
 			f.searchText = text
 			#expect(l.transactions(in: .account(giro.id), filter: f).count == 1, "\(text)")
 		}
+		for text in ["/DE02 1203/", "/DE02120300000000202051/"] {
+			f.searchText = text
+			#expect(l.transactions(in: .account(giro.id), filter: f).isEmpty, "\(text)")
+		}
+	}
+
+	@Test("The search true finds every row, and false finds none")
+	func searchConstants() {
+		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
+		let l = Ledger(accounts: [giro], transactions: [
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 2), amountMinor: -8_900, name: "Stadtwerke Musterstadt"),
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 1), amountMinor: -2_345, name: "Bäckerei Gutbrot"),
+		])
+		func found(_ text: String) -> [String] {
+			var f = TransactionFilter()
+			f.searchText = text
+			return l.transactions(in: .account(giro.id), filter: f).map(\.name)
+		}
+		#expect(found("true") == ["Stadtwerke Musterstadt", "Bäckerei Gutbrot"])
+		#expect(found("TRUE") == ["Stadtwerke Musterstadt", "Bäckerei Gutbrot"])
+		#expect(found("false").isEmpty)
+		#expect(found("Stadtwerke AND true") == ["Stadtwerke Musterstadt"])
+		#expect(found("Stadtwerke OR true") == ["Stadtwerke Musterstadt", "Bäckerei Gutbrot"])
+		#expect(found("Stadtwerke OR false") == ["Stadtwerke Musterstadt"])
+		#expect(found("NOT false") == ["Stadtwerke Musterstadt", "Bäckerei Gutbrot"])
+		#expect(found(#""true""#).isEmpty)
 	}
 
 	@Test("A phrase finds its words across any white space, and a quoted word finds text inside words, which a rule does not")
@@ -191,7 +217,9 @@ struct LedgerTests {
 				purpose: "Abschlag\u{202F}November"),
 		])
 		var f = TransactionFilter()
-		for text in [#"name:"Stadtw"#, "name:Stadtwerke OR", "purpose:/^Absch", "Stadtwerke amount<-", "/Stadt", #""Abschlag November""#] {
+		for text in [#"name:"Stadtw"#, "name:Stadtwerke OR", "purpose:/^Absch", "Stadtwerke amount<-", "/Stadt", #""Abschlag November""#,
+			"Stadtwerke or", "Stadtwerke +", "Name:Stadtwerke OR", #"name:="Stadtw"#, "Stadtwerke amount:=-", "Stadtwerke !", "Stadtwerke -",
+			#""Stadtw NOT Gehalt"#, #""Stadtw not Gehalt"#, #""Stadtw !Gehalt"#, #""Stadtw -Gehalt"#, #"name!=Gehalt "Stadtw"#, #"NAME<>Gehalt "Stadtw"#] {
 			f.searchText = text
 			#expect(l.transactions(in: .account(giro.id), filter: f).count == 1, "\(text)")
 		}
@@ -206,11 +234,14 @@ struct LedgerTests {
 			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 2), amountMinor: -2_345, currency: "USD", name: "Bäckerei Gutbrot",
 				purpose: "Kartenzahlung", bookingText: "LASTSCHRIFT", endToEndReference: "E2E-1", mandateReference: "M-1", creditorID: "DE98ZZZ09999999999"),
 		]
-		let all = rows + [Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 3), amountMinor: -400, name: "Cafe\u{332}", purpose: "Kaffee\r")]
+		let all = rows + [Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 3), amountMinor: -400, name: "Cafe\u{332}", purpose: "Kaffee\r"),
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 4), amountMinor: -250, name: "Kiosk\u{1}Am Markt", purpose: "Zeitung")]
 		let l = Ledger(accounts: [giro], transactions: all)
 		let queries = [#"name:"Stadtwerke Musterstadt""#, "name:Stadt*", "purpose:November", #"purpose:"Abschlag November""#, "comment:strom",
 			"booking_text:lastschrift", "reference:E2E-1", "mandate:M-1", "creditor_id:DE98ZZZ*", "remote_account:DE89370400440532013000",
-			#"local_account:"DE02 1203 0000 0000 2020 51""#, "local_account:4711", "currency:USD", "name:baeckerei", "name:*gutbrot", "name:*ecke*", "name:Stadtwerke*", "purpose:/^Abschlag/", "name:/gutbrot$/", #"local_account:/\A4711/"#, #"booking_text:/\ALAST/"#, #"purpose:/zahlung\z/"#, "name:/(?-m)^b/", #"name:/gutbrot\D*+$/"#, "name:caf*", "name:*e", #"purpose:/kaffee\s$/"#, #"/kaffee\s$/"#, #"/gutbrot\D*+$/"#, "comment:/^$/", "/^$/"]
+			#"local_account:"DE02 1203 0000 0000 2020 51""#, "local_account:4711", "currency:USD", "name:baeckerei", "name:*gutbrot", "name:*ecke*", "name:Stadtwerke*", "purpose:/^Abschlag/", "name:/gutbrot$/", #"local_account:/\A4711/"#, #"booking_text:/\ALAST/"#, #"purpose:/zahlung\z/"#, "name:/(?-m)^b/", #"name:/gutbrot\D*+$/"#, "name:caf*", "name:*e", #"purpose:/kaffee\s$/"#, #"/kaffee\s$/"#, #"/gutbrot\D*+$/"#, "comment:/^$/", "/^$/",
+			"purpose:Zeitung", "name:markt", "name:kiosk*", "Name:Stadtwerke*", "NAME:=baeckerei", "name==*gutbrot", "name=caf*", "name!=Stadtwerke*", "name<>*e",
+			"true", "NOT false", "comment:strom OR false"]
 		for query in queries {
 			var f = TransactionFilter()
 			f.searchText = query
