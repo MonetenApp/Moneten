@@ -68,6 +68,14 @@ final class FileImport {
 		end(chosen)
 	}
 
+#if DEBUG
+	func confirm(named account: FileAccount) {
+		guard var chosen = preview?.chosen else { return }
+		chosen.account = account
+		end(chosen)
+	}
+#endif
+
 	/// Leaves out the file in the preview and goes on with the next file.
 	func skip() {
 		end(nil)

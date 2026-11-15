@@ -216,6 +216,13 @@ The app SHALL apply this rule: A keyword header within the first 100 nonblank ro
 
 A title row has at least two text labels and no dates or amounts; after a dated preamble it names the date column. A transaction has a numeric date candidate; empty, missing, ambiguous, or invalid amounts stay for validation.
 
+#### Scenario: Numbered labels in a keyword header
+
+- **GIVEN** "01.11.2026;Anfangssaldo;100,00", "Datum;Name;Betrag;1. Verwendungszweck", and "02.11.2026;Kiosk;-2,00;Brot"
+- **WHEN** the file is imported
+- **THEN** the amount is -200 minor units and line 1 has a skipped-row warning
+- **AND** replacing "Name" with "2. Name" gives the same amount and warning
+
 #### Scenario: Opening and closing balances before a header
 
 - **GIVEN** "01.11.2026;Anfangssaldo;100,00", "30.11.2026;Endsaldo;98,00", "Datum;Name;Betrag", and "02.11.2026;Kiosk;-2,00"

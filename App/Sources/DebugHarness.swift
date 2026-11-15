@@ -267,19 +267,24 @@ final class DebugHarness {
 				log("importanswer kind=\(kind) fileIndex=\(model.fileImport?.index ?? -1) selectedPosition=\(question.selected.position) otherPosition=\(question.other?.position ?? -1)")
 			}
 		case "csvhandoff":
-			Task {
+			switch argument {
+			case "prepare":
+				guard !model.ledger.accounts.contains(where: { $0.accountNumber == "88776655" }) else { return log("csvhandoff prepared") }
+				var account = Account(position: model.ledger.nextTreePosition(in: nil), name: "Handoff Synthetic", kind: .giro, source: .offline, currency: "JPY")
+				account.accountNumber = "88776655"
+				model.save(account: account)
+				log("csvhandoff prepared")
+#if DEBUG
+			case "confirm": model.fileImport?.confirm(named: .number(bankCode: nil, account: "88776655"))
+#endif
+			default:
 				do {
-					let data = try Data(contentsOf: URL(filePath: argument))
-					let file = try CSVFile(data: data)
-					let layout = CSVLayout(encoding: file.encoding, columns: [.bookingDate: 0, .name: 1, .amount: 2],
-						dateOrder: .monthDayYear, decimalMark: .point)
-					let parsed = try await AppModel.parse(data, currency: "JPY", csv: (file, layout))
-					let valid = parsed.transactions.map(\.bookingDate) == [Day(year: 2026, month: 3, day: 4)]
-						&& parsed.transactions.map(\.amountMinor) == [1234]
-						&& parsed.transactions.map(\.currency) == ["JPY"]
-						&& parsed.transactions.map(\.name) == ["Kiosk"]
-					log("csvhandoff valid=\(valid)")
-				} catch { log("csvhandoff error=read") }
+					guard let store = model.store else { return log("csvhandoff error=locked") }
+					let stored = try store.loadLedger()
+					let accounts = stored.accounts.filter { $0.accountNumber == "88776655" && $0.currency == "JPY" }
+					let rows = accounts.flatMap { stored.transactions(ofAccount: $0.id) }
+					log("csvhandoff accounts=\(accounts.count) count=\(rows.count) amountSum=\(rows.reduce(Int64(0)) { $0 + $1.amountMinor }) dateSum=\(rows.reduce(0) { $0 + $1.bookingDate.rawValue })")
+				} catch { log("csvhandoff error=store") }
 			}
 		// Changes the CSV preview on screen: "column <n>=<field or none>", "date <order>", "encoding <name>",
 		// "decimal comma|point|detect", "skip" as "Skip File" does, "state", which logs the settings and counts of

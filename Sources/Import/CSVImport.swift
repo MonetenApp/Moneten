@@ -213,7 +213,7 @@ public struct CSVFile: Sendable {
 			guard cells.contains(where: { !$0.trimmingCharacters(in: .whitespaces).isEmpty }) else { continue }
 			nonblank += 1
 			if nonblank > 100 { break }
-			guard !cells.contains(where: isDateCandidate) else { continue }
+			guard !cells.contains(where: { isDateShaped($0) || (isDateCandidate($0) && !$0.contains(where: \.isLetter)) }) else { continue }
 			let labels = cells.map(normalize)
 			if labels.contains(where: dateKeys.contains), labels.contains(where: amountKeys.contains) {
 				return (i, i, i + 1)

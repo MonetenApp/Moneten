@@ -136,9 +136,9 @@ struct CSVPreviewTests {
 		#expect(preview.parsed.warnings == [.skippedCSVRow(line: 2)])
 	}
 
-	@Test("Header keywords in the 102nd transaction cannot replace the header")
-	func transactionKeywordsAfter101Rows() throws {
-		let text = "Tag;Wer;Zweck;Wieviel\n" + String(repeating: "01.11.2026;Kiosk;Brot;1.00\n", count: 101)
+	@Test("Header keywords in an early or late transaction cannot replace the header", arguments: [0, 101])
+	func transactionKeywordsAfter101Rows(count: Int) throws {
+		let text = "Tag;Wer;Zweck;Wieviel\n" + String(repeating: "01.11.2026;Kiosk;Brot;1.00\n", count: count)
 			+ "02.11.2026;Datum;Betrag;2.00\n03.11.2026;Bakery;Cake;3.00\n"
 		let file = try CSVFile(data: Data(text.utf8))
 		#expect(file.headerIndex == nil)
@@ -148,8 +148,8 @@ struct CSVPreviewTests {
 		layout.assign(3, to: .amount)
 		let preview = try file.preview(layout, currency: "EUR")
 		#expect(preview.problem == nil)
-		#expect(preview.transactions.map(\.amountMinor) == Array(repeating: 100, count: 101) + [200, 300])
-		#expect(try TransactionFileImporter.parse(file.data, currency: "EUR", csv: (file, layout)).transactions.map(\.amountMinor) == Array(repeating: 100, count: 101) + [200, 300])
+		#expect(preview.transactions.map(\.amountMinor) == Array(repeating: 100, count: count) + [200, 300])
+		#expect(try TransactionFileImporter.parse(file.data, currency: "EUR", csv: (file, layout)).transactions.map(\.amountMinor) == Array(repeating: 100, count: count) + [200, 300])
 	}
 
 	@Test("A filled subtotal cannot hide a short earlier transaction", arguments: ["Zwischensumme;EUR;Saldo;0,00", "Hinweis;Export;vorläufig;Status"])
