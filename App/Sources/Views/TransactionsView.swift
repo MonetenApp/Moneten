@@ -876,6 +876,7 @@ struct TransactionMenu: View {
 			Button(transactions.allSatisfy(\.isChecked) ? "Mark as Unchecked" : "Mark as Checked") {
 				model.setChecked(!transactions.allSatisfy(\.isChecked), for: ids)
 			}
+			Button(ids.count == 1 ? "Export Transaction..." : "Export Transactions...") { model.exportTransactions(ids: ids) }
 			Divider()
 			if ids.count == 1 {
 				Button("Edit Transaction...") { model.sheet = .transaction(first.id) }

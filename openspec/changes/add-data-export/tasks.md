@@ -6,13 +6,13 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 
 - [ ] 1.1 Export command. Build it in 2.10 and verify it in the app.
 - [ ] 1.2 Only the selection. Build it in 2.10.
-- [ ] 1.3 Export follows search and filters. Build it in 2.10.
+- [x] 1.3 Export follows search and filters. Verified by the debug app check of 2.10: "Girokonto" exports 162 rows, and with the period "current month" 6 rows, the rows that the list shows.
 - [ ] 1.4 Save panel with format choice. Build it in 2.10.
-- [ ] 1.5 CSV columns. Build it in 2.8 and 2.9.
-- [ ] 1.6 CSV format rules. Build it in 2.8 and 2.9.
-- [ ] 1.7 Categories in a CSV file. Build it in 2.8 and 2.9. The scenario "Split transaction" waits for the change `add-split-transactions`.
-- [ ] 1.8 Own account in group and category exports. Build it in 2.8 and 2.9.
-- [ ] 1.9 Export failures. Build it in 2.10.
+- [x] 1.5 CSV columns. Verified by TransactionCSVTests "The first line names the 17 columns in order" and "One transaction in German and in English formats".
+- [x] 1.6 CSV format rules. Verified by TransactionCSVTests "A large amount has no thousands separator, and a pending row is marked", "A field with a semicolon, a quotation mark, or a line break is quoted, with the quotation mark doubled", and "The file starts with a byte order mark and is UTF-8".
+- [ ] 1.7 Categories in a CSV file. Built and verified by TransactionCSVTests "The category is written with its group, and a row without one names the default category" and by the debug app check of 2.10, which writes "Living - Groceries". The scenario "Split transaction" waits for the change `add-split-transactions` (task 2.11).
+- [x] 1.8 Own account in group and category exports. Verified by TransactionCSVTests "Own account is the IBAN, else the account number, else the name of the account".
+- [x] 1.9 Export failures. Verified by the debug app check of 2.10: an export into /System says "Could not export to file." with the reason, and no file is created.
 - [ ] 1.10 Progress of an export. Build it in 2.10.
 - [x] 1.11 Complete export. Verified by AllDataTests "A complete export imports into an empty database, and its export equals the first file apart from the export date", which holds groups, accounts of each kind, an access, categories with rules, transactions, deleted transactions, portfolio values, and positions, and by the debug app check of 2.7. The scenario "Later capability" applies to each later change.
 - [x] 1.12 Secrets and files that the complete export leaves out. Verified by AllDataTests "The file names the bank, the user ID, and the connector of an access, and holds neither its PIN nor its state", and by the warning and the message after the export, which name what the file leaves out.
@@ -31,9 +31,9 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [x] 2.5 Write `docs/export-format.md` with every key of version 1, and a test that each key of the file of 2.1 is in it. Verified by AllDataTests "Every key of an export is described in docs/export-format.md", which found the undocumented key `waitsForUser`.
 - [x] 2.6 Name the place of the first error in the message for a damaged file, as the scenario "Truncated file" asks. Verified by AllDataTests "A file that ends in the middle of the transactions, or has a broken amount, is refused with the place of the error": a cut file and a bad character name their line and column, and a bad amount, such as "1-2" or "12.345" in EUR, names `transactions[1]`.
 - [x] 2.7 Add "Export All Data..." and "Import All Data..." to the File menu with the warning, the save and open panels, and the refusal of a database in use. Check them in the debug app with made-up data, and record the snapshots in the pull request. Verified by the debug app check: a database with the demo data exported with the harness command `exportall`, an empty database imported the file with `importall`, and its export equals the first file apart from `exportedAt` (175 transactions, 22 categories). A second `importall` was refused. The snapshots of the warning are in the pull request.
-- [ ] 2.8 Write TransactionCSVTests for the scenarios "Header row", "One transaction", "Purpose with a semicolon", "Purpose with several lines", "Nested category", and "Group export", with German and English formats.
-- [ ] 2.9 Build `TransactionCSV` in the module `Domain` until the tests of 2.8 pass.
-- [ ] 2.10 Add "Export Transactions..." to the Account menu and to the context menus of accounts, groups, categories, and rows. Export the selected rows or the rows of the list, propose the file name, write through a temporary file, and show progress with "Cancel". Check it in the debug app.
+- [x] 2.8 Write TransactionCSVTests for the scenarios "Header row", "One transaction", "Purpose with a semicolon", "Purpose with several lines", "Nested category", and "Group export", with German and English formats. Verified by the seven TransactionCSVTests.
+- [x] 2.9 Build `TransactionCSV` in the module `Domain` until the tests of 2.8 pass. Verified by the tests of 2.8.
+- [ ] 2.10 Add "Export Transactions..." to the Account menu and to the context menus of accounts, groups, categories, and rows. Export the selected rows or the rows of the list, propose the file name, write through a temporary file, and show progress with "Cancel". Check it in the debug app. Built. Checked in the debug app with the harness command `exportcsv`, which writes through the same code without the save panel: an account, a category from all accounts, the period filter, the byte order mark, and a write-protected folder. Not checked yet: the save panel with its "Format" menu and proposed name, an export of selected rows, and the progress of a long export.
 - [ ] 2.11 Write one line for each part of a split transaction when the change `add-split-transactions` stores splits, and add the splits to the complete export.
 
 ## 3. Integration

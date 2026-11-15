@@ -133,6 +133,8 @@ struct AppCommands: Commands {
 			Divider()
 			Button("Import Transactions...") { Task { await model.importFile() } }
 				.disabled(!unlocked || model.selectedAccount == nil)
+			Button("Export Transactions...") { model.exportTransactions() }
+				.disabled(!unlocked || model.selection == nil)
 			Divider()
 			Button(model.refreshTitle) { if let scope = model.refreshScopeOfSelection { model.refresh(scope) } }
 				.keyboardShortcut("r", modifiers: [.command, .shift])

@@ -380,6 +380,10 @@ final class DebugHarness {
 			Task { do { try await model.writeAllData(to: URL(filePath: argument)); log("exportall done") } catch { log("exportall error=set") } }
 		// "<path>": imports that complete export without the open panel. The reason of a refusal can quote the file.
 		case "importall": Task { log("importall \(await model.readAllData(from: URL(filePath: argument)) == "done" ? "done" : "refused")") }
+		// "<path>": writes the CSV file of the selected rows, or of the rows of the list, without the save panel.
+		case "exportcsv":
+			model.export(model.rowsToExport, to: URL(filePath: argument))
+			log("exportcsv rows=\(model.rowsToExport.count)")
 		case "sheet":
 			switch argument {
 			case "migration": model.sheet = .migration
