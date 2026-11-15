@@ -631,7 +631,10 @@ struct ReconcileTests {
 
 	@Test("One delivered rent row takes over one of two identical file rows")
 	func repeatedRefreshMustKeepUnpairedFile() throws {
-		let fileRows = merge(.file([rent(1), rent(1)]), at: noon(15, month: 11)).added
+		var input = [rent(1), rent(1)]
+		input[0].createdAt = now
+		input[1].createdAt = now.addingTimeInterval(1)
+		let fileRows = merge(.file(input), at: noon(15, month: 11)).added
 		#expect(fileRows.count == 2)
 		let firstFileRow = try #require(fileRows.first)
 		let secondFileRow = try #require(fileRows.last)

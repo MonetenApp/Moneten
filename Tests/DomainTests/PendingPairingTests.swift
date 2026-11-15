@@ -321,18 +321,21 @@ extension ReconcileTests {
 		}
 	}
 
-	@Test("A source arriving booked prevents its pending tombstone from absorbing a new look-alike")
-	func gate3BookedSourceReleasesLookalike() {
+	@Test("A source arriving booked prevents its pending tombstone from absorbing a new look-alike", arguments: [false, true])
+	func gate3BookedSourceReleasesLookalike(referenceAgrees: Bool) {
 		var old = rent(1)
 		old.sourceID = "moneymoney:3"
+		old.endToEndReference = "RENT-A"
 		var booked = fresh(old)
 		booked.isPending = false
+		booked.endToEndReference = referenceAgrees ? "RENT-A" : "RENT-B"
 		var other = rent(1)
 		other.sourceID = "moneymoney:7"
+		other.endToEndReference = "RENT-A"
 		for delivered in permutations([booked, other]) {
 			let r = merge(.migration(delivered), deleted: [DeletedTransaction(old, deletedAt: now)], at: noon(20, month: 11))
-			#expect(r.skipped == 0)
-			#expect(r.added.map { "\($0.sourceID ?? "") \($0.isPending)" }.sorted() == ["moneymoney:3 false", "moneymoney:7 true"])
+			#expect(r.skipped == (referenceAgrees ? 0 : 1))
+			#expect(r.added.map { "\($0.sourceID ?? "") \($0.isPending)" }.sorted() == (referenceAgrees ? ["moneymoney:3 false", "moneymoney:7 true"] : ["moneymoney:3 false"]))
 		}
 	}
 
