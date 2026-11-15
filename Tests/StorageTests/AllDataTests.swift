@@ -40,7 +40,7 @@ struct AllDataTests {
 			Transaction(accountID: migrated.id, bookingDate: Day(year: 2026, month: 11, day: 2), valueDate: Day(year: 2026, month: 11, day: 3), amountMinor: -123_456,
 				name: "Stadtwerke Musterstadt", purpose: "Abschlag\nNovember", counterpartyIBAN: "DE02120300000000202051", counterpartyBIC: "BYLADEM1001",
 				bookingText: "Lastschrift", endToEndReference: "E2E-1", mandateReference: "M-1", creditorID: "DE98ZZZ09999999999", comment: "Strom",
-				isChecked: true, categoryID: pets.id, categorizedBy: .manual, sourceID: "moneymoney:1", createdAt: Date(timeIntervalSince1970: 1_794_600_001.123)),
+				isChecked: true, categoryID: pets.id, categorizedBy: .manual, sourceID: "moneymoney:1", createdAt: Date(timeIntervalSince1970: 1_794_600_001.123), returnReason: "AC04"),
 			Transaction(accountID: migrated.id, bookingDate: Day(year: 2026, month: 11, day: 4), amountMinor: -1_000, name: "Kiosk", isPending: true,
 				categoryID: food.id, categorizedBy: .rule, isNew: true, needsReview: true, sourceID: "moneymoney:2"),
 			Transaction(accountID: bank.id, bookingDate: Day(year: 2026, month: 11, day: 5), amountMinor: -2_000, currency: "USD", name: "Diner New York",
@@ -76,6 +76,7 @@ struct AllDataTests {
 
 		let before = try source.loadLedger()
 		let after = try target.loadLedger()
+		#expect(after.transactions.first { $0.sourceID == "moneymoney:1" }?.returnReason == "AC04")
 		#expect(Set(after.accounts) == Set(before.accounts))
 		#expect(Set(after.groups) == Set(before.groups))
 		#expect(Set(after.categories) == Set(before.categories))
@@ -84,6 +85,19 @@ struct AllDataTests {
 		let depot = try #require(before.accounts.first { $0.name == "Depot" })
 		#expect(after.portfolioValues(of: depot.id) == before.portfolioValues(of: depot.id))
 		#expect(Set(try target.deletedTransactions()) == Set(try source.deletedTransactions()))
+	}
+
+	@Test("An export without returnReason imports its transactions with no return reason")
+	func missingReturnReason() throws {
+		var json = try JSONSerialization.jsonObject(with: try filledStore().exportAllData(at: exportedAt).json()) as! [String: Any]
+		var rows = json["transactions"] as! [[String: Any]]
+		for i in rows.indices { rows[i].removeValue(forKey: "returnReason") }
+		json["transactions"] = rows
+		let target = try emptyStore("target")
+		try target.importAllData(try AllData(json: try JSONSerialization.data(withJSONObject: json)))
+		let imported = try target.loadLedger().transactions
+		#expect(imported.count == 3)
+		#expect(imported.allSatisfy { $0.returnReason == nil })
 	}
 
 	@Test("Amounts are decimal text with a currency, and nothing is rounded")
