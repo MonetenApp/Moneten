@@ -810,6 +810,25 @@ struct MoneyMoneyMigrationTests {
 		#expect(!row.matches)
 	}
 
+	@Test("A row of the source whose ID a bank took over still counts in the balance of the report")
+	func reportAfterIDTakeover() throws {
+		let p = try plan()
+		var rows = p.transactions
+		let rewe = try #require(rows.firstIndex { $0.name == "REWE Markt" })
+		rows[rewe].sourceID = "bank-4711"
+		let row = try #require(p.report(after: Ledger(groups: p.groups, accounts: p.accounts, categories: p.categories, transactions: rows)).rows.first)
+		#expect(row.transactions == 3 && row.balance == Money(minorUnits: 123_456, currency: "EUR") && row.matches)
+	}
+
+	@Test("An account that the app had before the migration compares its transactions, not its balance")
+	func reportOfExistingAccount() throws {
+		let existing = Account(position: 0, name: "Mein Giro", kind: .giro, source: .offline, iban: "DE02120300000000202051", initialBalanceMinor: 99)
+		let p = try plan(into: Ledger(accounts: [existing]))
+		let row = try #require(p.report(after: Ledger(groups: p.groups, accounts: [existing] + p.accounts, categories: p.categories, transactions: p.transactions)).rows.first)
+		#expect(row.name == "Mein Giro" && row.transactions == 3 && !row.comparesBalance && row.matches)
+		#expect(row.balance == Money(minorUnits: 99 - 4_590 - 8_900, currency: "EUR"))
+	}
+
 	@Test("The text of the report lists the accounts and the notes")
 	func reportText() throws {
 		let p = try plan()
@@ -819,7 +838,7 @@ struct MoneyMoneyMigrationTests {
 			Report of the migration from MoneyMoney
 
 			Accounts
-			Balances count only the transactions from MoneyMoney and leave out pending ones, as MoneyMoney shows them.
+			Balances count only the transactions from MoneyMoney and leave out pending ones, as MoneyMoney shows them. An account that Moneten had before keeps its own balance, and only its transactions are compared.
 			Giro: 2 transactions, balance 1,280.46 EUR. MoneyMoney: 3 transactions, balance 1,234.56 EUR. Differs.
 			Savings: 1 transaction, balance 500.00 EUR. MoneyMoney: 1 transaction, balance 500.00 EUR. Matches.
 			Depot: 0 transactions, balance 10,000.00 EUR. MoneyMoney: 0 transactions, balance 10,000.00 EUR. Matches.

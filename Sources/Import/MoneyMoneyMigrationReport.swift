@@ -22,24 +22,26 @@ extension MoneyMoneyMigration {
 			/// transactions that a file or a bank added.
 			public var balance: Money
 			public var sourceBalance: Money?
+			/// False for an account that the app had before the migration: its balance follows its bank or its own rows.
+			public var comparesBalance = true
 
 			public var matches: Bool {
-				transactions == sourceTransactions && (sourceBalance == nil || sourceBalance == balance)
+				transactions == sourceTransactions && (!comparesBalance || sourceBalance == nil || sourceBalance == balance)
 			}
 		}
 
 		public var rows: [Row]
 		public var notes: [String]
 
-		/// The report as plain text for a file, with amounts in the format of `locale`.
 		/// "1 transaction" or "1,234 transactions" in the format of `locale`.
 		public static func count(_ n: Int, locale: Locale = .current) -> String {
 			n == 1 ? "1 transaction" : "\(n.formatted(.number.locale(locale))) transactions"
 		}
 
 		/// The footer of the list of accounts.
-		public static let balanceRule = "Balances count only the transactions from MoneyMoney and leave out pending ones, as MoneyMoney shows them."
+		public static let balanceRule = "Balances count only the transactions from MoneyMoney and leave out pending ones, as MoneyMoney shows them. An account that Moneten had before keeps its own balance, and only its transactions are compared."
 
+		/// The report as plain text for a file, with amounts in the format of `locale`.
 		public func text(locale: Locale = .current) -> String {
 			func count(_ n: Int) -> String { Self.count(n, locale: locale) }
 			func amount(_ money: Money) -> String {
@@ -61,21 +63,32 @@ extension MoneyMoneyMigration {
 extension MoneyMoneyMigration.Plan {
 	/// Compares the accounts of `ledger`, the ledger after the import, with the export. A row that a file or a bank
 	/// added to the account is no row of the source, so it counts neither in the number nor in the balance, by the
-	/// rule of the initial balance.
+	/// rule of the initial balance. A row of the source whose ID a bank took over still counts, by its fingerprint.
 	public func report(after ledger: Ledger) -> MoneyMoneyMigration.Report {
 		let rules = Categorizer(ledger: ledger)
+		let byAccount = Dictionary(grouping: ledger.transactions, by: \.accountID)
 		let rows = sources.compactMap { source -> MoneyMoneyMigration.Report.Row? in
 			guard let account = ledger.account(source.accountID) else { return nil }
-			let stored = ledger.transactions(ofAccount: account.id)
+			let stored = byAccount[account.id] ?? []
 			let missing = reconcile(.migration(source.rows), into: account, stored: stored, deleted: [], rules: rules, now: Date()).added.count
 			// A row that the source deleted after an earlier run stays in the app, so the account holds one more.
 			let exported = Set(source.rows.compactMap(\.sourceID))
 			let gone = stored.filter { MoneyMoneyMigration.isOfSource($0.sourceID) && !exported.contains($0.sourceID!) }.count
-			let booked = stored.reduce(account.initialBalanceMinor) { sum, t in
-				!t.isPending && t.currency == account.currency && MoneyMoneyMigration.isOfSource(t.sourceID) ? sum + t.amountMinor : sum
+			func sum(_ rows: [Transaction]) -> Int64 {
+				rows.reduce(0) { !$1.isPending && $1.currency == account.currency ? $0 + $1.amountMinor : $0 }
+			}
+			let migrated = account.source == .migrated && account.kind != .portfolio
+			var balance = account.reportedBalance ?? Money(minorUnits: account.initialBalanceMinor + sum(stored), currency: account.currency)
+			if migrated {
+				// Rows without an ID of the source: those that match a row of the export by fingerprint are rows of the
+				// source with an ID that a bank took over. A booked form of an ID counts on top, as in the initial balance.
+				let others = stored.filter { !($0.sourceID?.hasPrefix("moneymoney") ?? false) }
+				let added = reconcile(.file(others), into: account, stored: source.rows, deleted: [], rules: rules, now: Date()).added
+				let ofSource = stored.filter { MoneyMoneyMigration.isOfSource($0.sourceID) }
+				balance = Money(minorUnits: account.initialBalanceMinor + sum(ofSource) + sum(others) - sum(added), currency: account.currency)
 			}
 			return .init(name: account.name, transactions: source.rows.count - missing + gone, sourceTransactions: source.rows.count,
-				balance: account.reportedBalance ?? Money(minorUnits: booked, currency: account.currency), sourceBalance: source.balance)
+				balance: balance, sourceBalance: source.balance, comparesBalance: migrated || account.kind == .portfolio)
 		}
 		return .init(rows: rows, notes: notes)
 	}

@@ -24,6 +24,7 @@ struct MigrationSheet: View {
 	@State private var task: Task<Void, Never>?
 	@State private var confirmSave = false
 	@State private var savingReport = false
+	@State private var reportText = ""
 	/// Shown on this sheet: an alert of the main window would wait until the sheet closes.
 	@State private var saveError: String?
 
@@ -102,7 +103,10 @@ struct MigrationSheet: View {
 		.environment(\.sheetHasScrollAreas, true)
 		.onDisappear { task?.cancel() }
 		.alert("The report contains account names and balances.", isPresented: $confirmSave) {
-			Button("Save Report...") { savingReport = true }
+			Button("Save Report...") {
+				if case let .done(_, report) = step { reportText = report.text() }
+				savingReport = true
+			}
 			Button("Cancel", role: .cancel) {}
 		} message: {
 			Text("Anyone who can open the file can read them.")
@@ -116,10 +120,6 @@ struct MigrationSheet: View {
 			defaultFilename: "MoneyMoney migration \(Day.today()).txt") { result in
 			if case let .failure(error) = result { saveError = error.localizedDescription }
 		}
-	}
-
-	private var reportText: String {
-		if case let .done(_, report) = step { report.text() } else { "" }
 	}
 
 	private func reportRow(_ row: MoneyMoneyMigration.Report.Row) -> some View {
