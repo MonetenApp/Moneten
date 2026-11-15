@@ -391,6 +391,7 @@ The app SHALL assign the category from a category column to each imported transa
 - **THEN** the row receives the existing "Food" category with either setting of "Auto-create categories"
 - **AND** if "Pets" is missing, "Living - Pets" with auto-create on creates "Pets" under "Living"
 - **AND** an existing category whose literal name is "Living - Food" takes precedence over interpreting that text as a path
+- **AND** a group whose literal name is "Living - Food" cannot mask the assignable category at that exported path
 
 #### Scenario: Imported category is restricted to another account
 
