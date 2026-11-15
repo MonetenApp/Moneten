@@ -122,12 +122,11 @@ public struct CSVLayout: Hashable, Sendable {
 		self.decimalMark = decimalMark
 	}
 
-	/// The fields without which no transaction can be read: the booking date, and the amount or both a debit
-	/// and a credit column. With only one of the two, every row of the other kind would read as zero.
+	/// The booking date and at least one amount, debit, or credit column are required.
 	public var missing: [CSVField] {
 		var result: [CSVField] = []
 		if columns[.bookingDate] == nil { result.append(.bookingDate) }
-		if columns[.amount] == nil, columns[.debit] == nil || columns[.credit] == nil { result.append(.amount) }
+		if columns[.amount] == nil, columns[.debit] == nil, columns[.credit] == nil { result.append(.amount) }
 		return result
 	}
 
@@ -308,7 +307,7 @@ public struct CSVFile: Sendable {
 			guard let day = layout.dateOrder.day(dateText) else {
 				throw TransactionFileImporter.Failure.line(line, "The date \(dateText) cannot be read.")
 			}
-			var amount: Decimal?
+			var amount: Decimal? = 0
 			amountCurrency = nil
 			zeroCurrency = nil
 			if let a = value(.amount) {
