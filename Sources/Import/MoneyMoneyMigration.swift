@@ -133,6 +133,16 @@ public struct MoneyMoneyMigration: Sendable {
 		if !plan.portfolioAccounts.isEmpty {
 			plan.notes.append("Portfolio accounts were taken over with their balance. Their positions follow when securities accounts are supported.")
 		}
+		plan.notes += Self.notMigratedNotes
+		let budgets = rawCategories.filter(Self.hasBudget).count
+		if budgets == 1 {
+			plan.notes.append("1 category has a budget in MoneyMoney. Moneten did not take the budget over.")
+		} else if budgets > 1 {
+			plan.notes.append("\(budgets) categories have a budget in MoneyMoney. Moneten did not take the budgets over.")
+		}
+		if (rawAccounts + rawCategories).contains(where: { $0["icon"] is Data }) {
+			plan.notes.append("Moneten takes the color of each icon of MoneyMoney and shows its own icons instead of the pictures.")
+		}
 		return plan
 	}
 
@@ -337,6 +347,33 @@ public struct MoneyMoneyMigration: Sendable {
 		guard sum.3 > 0 else { return nil }
 		func byte(_ v: Double) -> Int { min(255, max(0, Int((v / sum.3).rounded()))) }
 		return String(format: "#%02X%02X%02X", byte(sum.0), byte(sum.1), byte(sum.2))
+	}
+
+	/// The scripting dictionary of MoneyMoney has no command that exports these.
+	static let notMigratedNotes = [
+		"Login data was not migrated, because the AppleScript export of MoneyMoney does not contain it. Connect a migrated account to its bank with \"Add Account...\" and enter the login data there.",
+		"Transfer templates were not migrated, because the AppleScript export of MoneyMoney does not contain them. Copy the ones you need from MoneyMoney.",
+		"Standing orders were not migrated, because the AppleScript export of MoneyMoney does not contain them. Your bank keeps them, so they continue as before.",
+		"Statements were not migrated, because the AppleScript export of MoneyMoney does not contain them. Copy the PDF files from the folder \"Statements\" in the data folder of MoneyMoney to keep them.",
+	]
+
+	/// The key layout of a budget in `export categories` was not recorded with the real export. A
+	/// `budget` counts when it is a number other than zero, or a dictionary whose `amount` is one. A
+	/// dictionary without `amount` counts when it has such a number. A budget of zero counts as none.
+	static func hasBudget(_ item: [String: Any]) -> Bool {
+		// A cast to Double also accepts a Boolean, so a flag such as a rollover would count as 1. A list such as
+		// [[200.0, "EUR"]] is the form of a balance in the same export.
+		func amount(_ value: Any?) -> Double? {
+			if let list = value as? [Any] { return amount((list.first as? [Any])?.first) }
+			guard let n = value as? NSNumber, CFGetTypeID(n) != CFBooleanGetTypeID() else { return nil }
+			return n.doubleValue
+		}
+		switch item["budget"] {
+		case let budget as [String: Any]:
+			if let value = budget["amount"] { return amount(value).map { $0 != 0 } ?? false }
+			return budget.values.contains { amount($0).map { $0 != 0 } ?? false }
+		case let value: return amount(value).map { $0 != 0 } ?? false
+		}
 	}
 
 	/// Lists the groups whose balance in MoneyMoney differs from the sum of their accounts.
