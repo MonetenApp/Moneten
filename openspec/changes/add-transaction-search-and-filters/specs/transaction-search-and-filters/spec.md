@@ -256,6 +256,13 @@ The app SHALL filter the list by amount with the "Amount" menu. Its values are "
 - **THEN** the list shows -150,00 €
 - **AND** the list does not show 150,00 €
 
+#### Scenario: Range in an account in yen
+
+- **GIVEN** the account "Yen card" in JPY with transactions of 150 ¥ and 15.000 ¥
+- **WHEN** the user chooses "Custom..." and enters 100 in "min. amount" and 500 in "max. amount"
+- **THEN** the list shows 150 ¥
+- **AND** the list does not show 15.000 ¥
+
 #### Scenario: Only a minimum
 
 - **GIVEN** transactions of 1.000,00 € and -1.500,00 €
