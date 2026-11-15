@@ -153,8 +153,6 @@ public struct CSVFile: Sendable {
 	public let header: [String]
 	/// The header row of known keywords, if the file has one.
 	let headerIndex: Int?
-	/// Without a header row of known keywords, the row that gives the titles, above the transactions.
-	let titleIndex: Int?
 	let rows: [Row]
 
 	/// Reads the file with the encoding that it shows, or with the given one. A file of 100 MB takes seconds
@@ -188,8 +186,16 @@ public struct CSVFile: Sendable {
 		let dateKeys = Set(CSVField.bookingDate.keys)
 		let amountKeys = Set(CSVField.amount.keys + CSVField.debit.keys + CSVField.credit.keys)
 		var headerIndex: Int?
+		var firstReadable: Int?
 		for (i, row) in rows.enumerated() {
 			try Task.checkCancellation()
+			if row.cells.contains(where: Self.isDateShaped) {
+				if row.cells.contains(where: Self.isAmountShaped) {
+					firstReadable = i
+					break
+				}
+				continue
+			}
 			let header = row.cells.map(Self.normalize)
 			if header.contains(where: dateKeys.contains), header.contains(where: amountKeys.contains) {
 				headerIndex = i
@@ -198,43 +204,57 @@ public struct CSVFile: Sendable {
 		}
 		self.headerIndex = headerIndex
 		let width = rows.map(\.cells.count).max() ?? 0
-		func isAmountShaped(_ cell: String) -> Bool {
-			guard !Self.isDateShaped(cell), let parts = Self.amountParts(cell, account: "EUR") else { return false }
-			return AmountParser.decimal(from: parts.number, decimalMark: .point) != nil
-				|| AmountParser.decimal(from: parts.number, decimalMark: .comma) != nil
+		let firstTransaction = try firstReadable.flatMap { first in
+			try rows[first].cells.indices.filter { Self.isDateShaped(rows[first].cells[$0]) }
+				.compactMap { try Self.firstTransaction(in: rows[...first], dateColumn: $0) }.min()
 		}
-		let firstReadable = rows.prefix(100).firstIndex { row in
-			row.cells.contains(where: Self.isDateShaped) && row.cells.contains(where: isAmountShaped)
-		}
-		let firstTransaction = firstReadable.flatMap { first in
-			let cells = rows[first].cells
-			let firstDate = cells.firstIndex(where: Self.isDateShaped)!
-			let amountColumn = cells.indices.first { $0 > firstDate && isAmountShaped(cells[$0]) }
-				?? cells.lastIndex(where: isAmountShaped)!
-			let firstTitle = rows[..<first].firstIndex { row in
-				row.cells.count > amountColumn && row.cells.contains { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
-					&& !row.cells.contains(where: Self.isDateShaped) && !row.cells.contains(where: isAmountShaped)
-			}
-			return rows[...first].indices.first { i in
-				rows[i].cells.contains(where: Self.isDateShaped)
-					&& (rows[i].cells.indices.contains(amountColumn) || firstTitle.map { $0 < i } == true)
-			}
-		}
-		let above = firstTransaction.flatMap { Self.titleRow(in: rows[..<$0]) }
-		titleIndex = headerIndex == nil ? above : nil
+		let above = try firstTransaction.flatMap { try Self.titleRow(in: rows[..<$0], width: rows[$0].cells.count) }
 		let titles = headerIndex.map { rows[$0] } ?? above.map { rows[$0] } ?? firstTransaction.map { rows[$0] } ?? rows.first
 		let cells = titles?.cells.map { $0.trimmingCharacters(in: .whitespaces) } ?? []
 		header = cells + Array(repeating: "", count: max(0, width - cells.count))
 	}
 
-	private static func titleRow(in rows: ArraySlice<Row>) -> Int? {
-		rows.indices.compactMap { index -> (index: Int, filled: Int)? in
-			guard !rows[index].cells.contains(where: Self.isDateShaped) else { return nil }
-			let filled = rows[index].cells.filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }.count
-			return filled == 0 ? nil : (index, filled)
-		}.max { a, b in
-			a.filled == b.filled ? a.index > b.index : a.filled < b.filled
-		}?.index
+	private static func isAmountShaped(_ cell: String) -> Bool {
+		guard !isDateShaped(cell), let parts = amountParts(cell, account: "EUR") else { return false }
+		return AmountParser.decimal(from: parts.number, decimalMark: .point) != nil
+			|| AmountParser.decimal(from: parts.number, decimalMark: .comma) != nil
+	}
+
+	private static func firstTransaction(in rows: ArraySlice<Row>, dateColumn: Int) throws -> Int? {
+		var firstDate: Int?
+		var firstReadable: Int?
+		for i in rows.indices {
+			try Task.checkCancellation()
+			guard cell(rows[i].cells, dateColumn).map(isDateShaped) == true else { continue }
+			if firstDate == nil { firstDate = i }
+			if rows[i].cells.contains(where: isAmountShaped) { firstReadable = i; break }
+		}
+		guard let firstReadable else { return firstDate }
+		let title = try rows[..<firstReadable].firstIndex { row in
+			try Task.checkCancellation()
+			return row.cells.count > dateColumn && isTitle(row)
+		}
+		let below = title.map { $0 + 1 } ?? rows.startIndex
+		return try rows[below...].firstIndex { row in
+			try Task.checkCancellation()
+			return cell(row.cells, dateColumn).map(isDateShaped) == true
+		}
+	}
+
+	private static func isTitle(_ row: Row) -> Bool {
+		!row.cells.contains(where: isDateShaped) && !row.cells.contains(where: isAmountShaped)
+			&& row.cells.contains { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+	}
+
+	private static func titleRow(in rows: ArraySlice<Row>, width: Int) throws -> Int? {
+		var nearest: Int?
+		for i in rows.indices.reversed() {
+			try Task.checkCancellation()
+			guard isTitle(rows[i]) else { continue }
+			if rows[i].cells.count >= width { return i }
+			if nearest == nil { nearest = i }
+		}
+		return nearest
 	}
 
 	/// The layout that the header keywords and the values of the file show.
@@ -283,17 +303,12 @@ public struct CSVFile: Sendable {
 	/// transactions, so there the rows start below the title row at the first row with the shape of a date
 	/// in the date cell, such as "31.02.2026", which then fails.
 	func dataRows(_ layout: CSVLayout) throws -> ArraySlice<Row> {
-		let column = layout.columns[.bookingDate]
+		guard let column = layout.columns[.bookingDate] else { return [] }
 		func isDated(_ row: Row) throws -> Bool {
 			try Task.checkCancellation()
 			return Self.cell(row.cells, column)?.contains(where: \.isNumber) == true
 		}
-		let inferredTitle = titleIndex.flatMap { Self.titleRow(in: rows[...$0]) }
-		let below = inferredTitle.map { $0 + 1 } ?? 0
-		let start = try headerIndex.map { $0 + 1 } ?? rows[below...].firstIndex { row in
-			try Task.checkCancellation()
-			return Self.cell(row.cells, column).map(Self.isDateShaped) == true
-		} ?? rows.count
+		let start = try headerIndex.map { $0 + 1 } ?? Self.firstTransaction(in: rows[...], dateColumn: column) ?? rows.count
 		return try rows[start...].filter(isDated)[...]
 	}
 
