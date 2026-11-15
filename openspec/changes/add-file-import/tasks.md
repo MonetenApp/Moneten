@@ -63,6 +63,10 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 
 - [x] 2.20 Valid pair evidence. Four permutation regressions fail with 84 assertions before excluding pending tombstones from booked candidates, preferring live source-ID partners and unique source IDs over references, and reserving exact reference fingerprints before reference-only matches. Shared references preserve known counterparties and user comments. A simultaneous pending echo fails with 120 assertions before reserving current or booking source-ID partners ahead of already-booked versions of pending repeats. Every candidate now represents an actual pair; nil evidence and consumed-without-partner state are removed. Existing migration tombstone consumption is preserved by candidate eligibility against the delivery's booked source IDs. The new look-alike test fails with four assertions before this eligibility fix.
 
+- [x] 2.21 Stable tombstone keys. Fetched flags and optional-value presence distinguish rows that otherwise have the same matching fields. The permutation test fails with five assertions before the key fix and passes after it, including migration relinking. Live UUID keys are built once before sorting.
+
+- [x] 2.22 Shared-reference booking. The unique fetched row wins after candidate identity narrowing, including when both future file rows share an end-to-end reference. The extended literal item-5 test fails with three assertions before the tie-break fix and passes after it.
+
 ## 3. Integration
 
 - [ ] 3.1 Check every scenario of the spec in a release build and record the result in the pull request.

@@ -296,16 +296,16 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 		if let id = d.sourceID { byID[Transaction.matchingID(id), default: []].append(.deleted(k)) }
 	}
 	func positions(_ ts: [Transaction]) -> [Int: Int] {
-		let sorted = ts.indices.sorted {
-			(ts[$0].bookingDate, ts[$0].createdAt, ts[$0].id.uuidString) < (ts[$1].bookingDate, ts[$1].createdAt, ts[$1].id.uuidString)
-		}
+		let keys = ts.map { ($0.bookingDate, $0.createdAt, $0.id.uuidString) }
+		let sorted = ts.indices.sorted { keys[$0] < keys[$1] }
 		return Dictionary(uniqueKeysWithValues: sorted.enumerated().map { ($0.element, $0.offset) })
 	}
 	let deliveredPositions = positions(rows)
 	let livePositions = positions(stored)
 	let deadKeys = deleted.map { d in
-		[String(d.bookingDate.rawValue), d.sourceID ?? "", d.endToEndReference ?? "", d.currency, String(d.amountMinor), d.purpose,
-			d.counterpartyIBAN ?? "", String(d.isPending), String(d.deletedAt.timeIntervalSince1970)]
+		[String(d.bookingDate.rawValue), String(d.sourceID != nil), d.sourceID ?? "", String(d.endToEndReference != nil),
+			d.endToEndReference ?? "", d.currency, String(d.amountMinor), d.purpose, String(d.counterpartyIBAN != nil),
+			d.counterpartyIBAN ?? "", String(d.isPending), String(d.wasFetched), String(d.deletedAt.timeIntervalSince1970)]
 	}
 	let deadOrder = deleted.indices.sorted { deadKeys[$0].lexicographicallyPrecedes(deadKeys[$1]) }
 	let deadPositions = Dictionary(uniqueKeysWithValues: deadOrder.enumerated().map { ($0.element, $0.offset + stored.count) })
@@ -499,10 +499,8 @@ struct Bookings {
 			var fits = (pendingByAmount[m.amount] ?? []).filter { p[$0].fits(m) }
 			let explicit = fits.filter { p[$0].identity.sharesIdentity(with: m.identity) }
 			if !explicit.isEmpty { fits = explicit }
-			else {
-				let fetched = fits.filter { pending[$0].1.isFetched }
-				if fetched.count == 1 { fits = fetched }
-			}
+			let fetched = fits.filter { pending[$0].1.isFetched }
+			if fetched.count == 1 { fits = fetched }
 			for x in fits {
 				edgesOfPending[x].append(y)
 				edgesOfBooked[y].append(x)
