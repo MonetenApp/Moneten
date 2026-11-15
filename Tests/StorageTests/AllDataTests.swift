@@ -142,24 +142,38 @@ struct AllDataTests {
 		#expect(throws: AllData.ReadError.notAnExport) { try AllData(json: Data(#"{"format": "other", "version": 1}"#.utf8)) }
 	}
 
-	@Test("A file that ends in the middle of the transactions is refused with the place of the error")
+	@Test("A file that ends in the middle of the transactions, or has a broken amount, is refused with the place of the error")
 	func truncatedFile() throws {
 		let file = try filledStore().exportAllData(at: exportedAt).json()
 		let text = String(decoding: file, as: UTF8.self)
 		let cut = try #require(text.range(of: "Stadtwerke Musterstadt"))
 		let truncated = Data(text[..<cut.upperBound].utf8)
-		#expect(throws: AllData.ReadError.damaged("the text is not valid JSON: Unexpected end of file")) { try AllData(json: truncated) }
+		let line = text[..<cut.upperBound].filter { $0 == "\n" }.count + 1
+		let error = #expect(throws: AllData.ReadError.self) { try AllData(json: truncated) }
+		#expect(error.map { "\($0)".contains("at line \(line), column ") } == true, "\(String(describing: error))")
 		let broken = Data(text.replacingOccurrences(of: #""name" : "Kiosk","#, with: #""name" : "Kiosk";"#).utf8)
-		let error = #expect(throws: AllData.ReadError.self) { try AllData(json: broken) }
-		#expect(error.map { "\($0)".contains("around line ") } == true, "\(String(describing: error))")
+		let brokenError = #expect(throws: AllData.ReadError.self) { try AllData(json: broken) }
+		#expect(brokenError.map { "\($0)".contains("at line ") } == true, "\(String(describing: brokenError))")
 
 		var json = try JSONSerialization.jsonObject(with: file) as! [String: Any]
 		var rows = json["transactions"] as! [[String: Any]]
-		rows[1]["amount"] = "zehn"
-		json["transactions"] = rows
-		#expect(throws: AllData.ReadError.damaged("at transactions[1], the amount \"zehn\" is not a decimal number")) {
-			try AllData(json: try JSONSerialization.data(withJSONObject: json))
+		for (amount, reason) in [("zehn", "zehn"), ("1-2", "1-2"), ("12.345", "12.345"), ("99999999999999999.99", "99999999999999999.99")] {
+			rows[1]["amount"] = amount
+			json["transactions"] = rows
+			#expect(throws: AllData.ReadError.damaged("at transactions[1], the amount \"\(reason)\" is not a decimal number with the decimal places of EUR")) {
+				try AllData(json: try JSONSerialization.data(withJSONObject: json))
+			}
 		}
+		#expect(throws: AllData.ReadError.notAnExport) { try AllData(json: Data(#"{"accounts": []}"#.utf8)) }
+	}
+
+	@Test("The import replaces account groups without accounts")
+	func emptyGroupsReplaced() throws {
+		let data = try AllData(json: try filledStore().exportAllData(at: exportedAt).json())
+		let target = try emptyStore("groups")
+		try target.save(AccountGroup(name: "Mine", position: 0))
+		try target.importAllData(data)
+		#expect(try target.loadLedger().groups.map(\.name).sorted() == ["Household", "Private"])
 	}
 
 	@Test("Every key of an export is described in docs/export-format.md")

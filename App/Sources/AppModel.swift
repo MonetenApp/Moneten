@@ -1110,14 +1110,15 @@ final class AppModel {
 		try await reloadAfterImport()
 	}
 
-	/// Loads the ledger again after a migration or a complete import replaced the table, and selects the first group
-	/// when the selection is gone.
+	/// Loads the ledger and the bank accesses again after a migration or a complete import replaced the table, and
+	/// selects the first group when the selection is gone.
 	func reloadAfterImport() async throws {
 		guard let store else { return }
 		try await replacingTable {
 			let loaded = try store.loadLedger()
 			ledgerChange = "load"
 			ledger = loaded
+			accesses = Dictionary(uniqueKeysWithValues: try store.accesses().map { ($0.id, $0) })
 			if case let .category(id) = selection, ledger.category(id) == nil { selection = nil }
 			if selection == nil, let g = ledger.childGroups(of: nil).first { selection = .group(g.id) }
 		}

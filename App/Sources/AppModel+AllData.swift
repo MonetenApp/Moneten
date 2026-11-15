@@ -12,19 +12,22 @@ extension AppModel {
 		panel.allowedContentTypes = [.json]
 		panel.nameFieldStringValue = "Moneten \(Day.today()).json"
 		guard panel.runModal() == .OK, let url = panel.url else { return }
-		do {
-			try writeAllData(to: url)
-			alert = AlertMessage(title: "All data has been exported.",
-				message: "The file leaves out saved PINs, the data that bank accesses and extensions keep, and statement files.")
-		} catch {
-			alert = AlertMessage(title: "Could not export to file.", message: error.localizedDescription)
+		Task {
+			do {
+				try await writeAllData(to: url)
+				alert = AlertMessage(title: "All data has been exported.",
+					message: "The file leaves out saved PINs, the data that bank accesses and extensions keep, and statement files.")
+			} catch {
+				alert = AlertMessage(title: "Could not export to file.", message: error.localizedDescription)
+			}
 		}
 	}
 
 	/// Writes to a temporary file first, so a failed export leaves no partly written file.
-	func writeAllData(to url: URL) throws {
+	func writeAllData(to url: URL) async throws {
 		guard let store else { return }
-		try store.exportAllData().json().write(to: url, options: .atomic)
+		// Some 100,000 transactions take seconds to encode, so the window keeps drawing meanwhile.
+		try await Task.detached { try store.exportAllData().json().write(to: url, options: .atomic) }.value
 	}
 
 	func importAllData() async {
@@ -48,9 +51,8 @@ extension AppModel {
 		guard let store else { return "The database is locked." }
 		if let refusal = importRefusal { return refusal }
 		do {
-			let data = try AllData(json: try Data(contentsOf: url))
 			let starters = replaceableStarterCategories.flatMap { ledger.categoryIDs(inTree: $0.id) } + ledger.categories.filter(\.isDefault).map(\.id)
-			try store.importAllData(data, replacing: starters)
+			try await Task.detached { try store.importAllData(try AllData(json: try Data(contentsOf: url)), replacing: starters) }.value
 			try await reloadAfterImport()
 			return "done"
 		} catch {

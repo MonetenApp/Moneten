@@ -28,7 +28,8 @@ extension Store {
 	}
 
 	/// Writes a complete export into this database in one transaction. The database must hold no account and no
-	/// transaction, and no category except `replacing`, the starter categories that the file replaces.
+	/// transaction, and no category except `replacing`, the starter categories that the file replaces. Account groups
+	/// without accounts hold no data, so the groups of the file replace them.
 	/// An access arrives without its state and without a PIN, so its first refresh asks for the PIN.
 	public func importAllData(_ data: AllData, replacing starters: [UUID] = []) throws {
 		try queue.write { db in
@@ -37,6 +38,7 @@ extension Store {
 			// A group or category can come before its parent in the order of the database.
 			try db.execute(sql: "PRAGMA defer_foreign_keys = ON")
 			_ = try Domain.Category.deleteAll(db)
+			_ = try AccountGroup.deleteAll(db)
 			for g in data.groups { try g.insert(db) }
 			for a in data.accesses {
 				try AccessRecord(id: a.id, source: a.source, bankName: a.bankName, loginName: a.loginName, state: nil).insert(db)

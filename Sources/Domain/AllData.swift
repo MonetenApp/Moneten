@@ -65,10 +65,10 @@ public struct AllData: Sendable, Equatable {
 			return date
 		}
 		let header: Header
-		do { header = try decoder.decode(Header.self, from: data) } catch { throw Self.readError(error) }
-		guard header.format == File.formatName else { throw .notAnExport }
-		guard header.version <= Self.formatVersion else { throw .newerVersion(header.version) }
-		do { self = try decoder.decode(File.self, from: data).allData() } catch let error as ReadError { throw error } catch { throw Self.readError(error) }
+		do { header = try decoder.decode(Header.self, from: data) } catch { throw Self.readError(error, in: data) }
+		guard header.format == File.formatName, let version = header.version else { throw .notAnExport }
+		guard version <= Self.formatVersion else { throw .newerVersion(version) }
+		do { self = try decoder.decode(File.self, from: data).allData() } catch let error as ReadError { throw error } catch { throw Self.readError(error, in: data) }
 	}
 
 	/// UTC with milliseconds, the precision of a time in the database.
@@ -78,12 +78,20 @@ public struct AllData: Sendable, Equatable {
 		return f
 	}()
 
-	private static func readError(_ error: Error) -> ReadError {
+	private static func readError(_ error: Error, in data: Data) -> ReadError {
 		switch error as? DecodingError {
 		case let .dataCorrupted(c), let .typeMismatch(_, c), let .valueNotFound(_, c):
-			// The parser says where the text stops being JSON, such as "around line 120, column 7".
-			let detail = (c.underlyingError as NSError?)?.userInfo[NSDebugDescriptionErrorKey] as? String
-			return .damaged(place(c.codingPath, detail.map { "the text is not valid JSON: \($0)" } ?? c.debugDescription))
+			let parser = (c.underlyingError as NSError?)?.userInfo
+			guard let detail = parser?[NSDebugDescriptionErrorKey] as? String else { return .damaged(place(c.codingPath, c.debugDescription)) }
+			// The parser names the byte where the text stops being JSON. A file that ends early stops at its end.
+			let end = detail.localizedCaseInsensitiveContains("end of file") ? data.count : nil
+			if let index = parser?["NSJSONSerializationErrorIndex"] as? Int ?? end {
+				let before = data.prefix(index)
+				let line = before.reduce(1) { $1 == UInt8(ascii: "\n") ? $0 + 1 : $0 }
+				let column = index - (before.lastIndex(of: UInt8(ascii: "\n")).map { $0 + 1 } ?? 0) + 1
+				return .damaged("at line \(line), column \(column), the text is not valid JSON: \(detail)")
+			}
+			return .damaged("the text is not valid JSON: \(detail)")
 		case let .keyNotFound(key, c):
 			return .damaged(place(c.codingPath, "the key \"\(key.stringValue)\" is missing"))
 		default:
@@ -97,9 +105,10 @@ public struct AllData: Sendable, Equatable {
 	}
 }
 
+/// Optional, so that another JSON file counts as no export rather than as a damaged one.
 private struct Header: Decodable {
-	var format: String
-	var version: Int
+	var format: String?
+	var version: Int?
 }
 
 /// The file. Each type below is one documented object of docs/export-format.md.
@@ -160,15 +169,20 @@ enum AmountText {
 		return whole + "." + String(repeating: "0", count: places - fraction.count) + fraction
 	}
 
+	/// Refuses more decimal places than the currency has, and an amount beyond the range of minor units,
+	/// so that nothing is rounded.
 	static func minorUnits(_ text: String, _ currency: String) throws -> Int64 {
-		guard let decimal = Decimal(string: text, locale: Locale(identifier: "en_US_POSIX")), text.allSatisfy({ $0.isNumber || $0 == "." || $0 == "-" }) else {
-			throw AllData.ReadError.damaged("the amount \"\(text)\" is not a decimal number")
+		let places = text.split(separator: ".", omittingEmptySubsequences: false).dropFirst().first?.count ?? 0
+		let exponent = Currency.exponent(of: currency)
+		guard let d = try? decimal(text), places <= exponent, (d * pow(10, exponent)).magnitude <= Decimal(Int64.max) else {
+			throw AllData.ReadError.damaged("the amount \"\(text)\" is not a decimal number with the decimal places of \(currency)")
 		}
-		return Money(decimal, currency: currency).minorUnits
+		return Money(d, currency: currency).minorUnits
 	}
 
+	/// Only the plain form `-1234.56`: `Decimal(string:)` alone reads "1-2" as 1.
 	static func decimal(_ text: String) throws -> Decimal {
-		guard let d = Decimal(string: text, locale: Locale(identifier: "en_US_POSIX")) else {
+		guard text.wholeMatch(of: /-?[0-9]+(\.[0-9]+)?/) != nil, let d = Decimal(string: text, locale: Locale(identifier: "en_US_POSIX")) else {
 			throw AllData.ReadError.damaged("\"\(text)\" is not a decimal number")
 		}
 		return d

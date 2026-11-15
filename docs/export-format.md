@@ -8,7 +8,7 @@
 - A day is text in the form `yyyy-MM-dd`, such as `"2026-11-03"`. It has no time zone.
 - A time is ISO 8601 text in UTC with milliseconds, such as `"2026-11-14T23:46:40.000Z"`.
 - An identifier is a UUID as text. Objects refer to each other by these identifiers.
-- A key whose value is empty is left out. A reader takes a missing optional key as empty.
+- An optional key without a value is left out, and a reader takes a missing optional key as empty. Every other key is always written, also an empty list or an empty text such as `purpose`.
 - The lists keep the order of the database.
 
 ## File
