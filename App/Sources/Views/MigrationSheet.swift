@@ -10,14 +10,16 @@ struct MigrationSheet: View {
 		case reading(String)
 		case summary(MoneyMoneyMigration.Plan)
 		case importing
+		case fileAccount
 		case done(MoneyMoneyMigration.Plan, MoneyMoneyMigration.Report)
-		case failed(String)
+		case failed(String, offersFileImport: Bool = false)
 	}
 
 	#if DEBUG || PERF_HARNESS
 	/// A folder with `accounts.plist`, `categories.plist`, and `transactions.plist`, which the debug harness reads
 	/// instead of asking MoneyMoney.
 	static var fixtureFolder: URL?
+	static var simulatedFailure: MoneyMoneyExporter.Failure?
 	#endif
 
 	@State private var step = Step.intro
@@ -25,14 +27,21 @@ struct MigrationSheet: View {
 	@State private var confirmSave = false
 	@State private var savingReport = false
 	@State private var reportText = ""
+	@State private var fileAccountID: UUID?
 	/// Shown on this sheet: an alert of the main window would wait until the sheet closes.
 	@State private var saveError: String?
 
 	var body: some View {
-		SheetFrame(title: "Import from MoneyMoney", confirmTitle: confirmTitle, cancelTitle: cancelTitle, width: 500,
+		SheetFrame(title: "Import from MoneyMoney", confirmTitle: confirmTitle, cancelTitle: cancelTitle, canConfirm: canConfirm, width: 500,
 			onCancel: { task?.cancel() }, onConfirm: confirm) {
 			if case .done = step {
 				Button("Save Report...") { confirmSave = true }.keyboardShortcut("s")
+			}
+			if case .failed(_, offersFileImport: true) = step {
+				Button("Import File...") {
+					fileAccountID = model.selectedAccount?.id ?? model.ledger.accounts.first?.id
+					step = .fileAccount
+				}.keyboardShortcut("i")
 			}
 		} content: {
 			switch step {
@@ -41,6 +50,21 @@ struct MigrationSheet: View {
 					Label("Moneten reads your account groups, accounts, categories with their rules, and transactions through the AppleScript export of MoneyMoney. MoneyMoney stays unchanged.", systemImage: "arrow.down.doc")
 					Label("MoneyMoney must be running and unlocked. macOS asks once whether Moneten may control MoneyMoney. Allow it.", systemImage: "lock.open")
 						.foregroundStyle(.secondary)
+				}
+			case .fileAccount:
+				Section {
+					if model.ledger.accounts.isEmpty {
+						Text("Add an account before importing transactions.")
+						Button("Add Account...") { model.addAccount() }
+					} else {
+						Picker("Account", selection: $fileAccountID) {
+							ForEach(model.ledger.accounts) { account in
+								Text(account.name).tag(Optional(account.id))
+							}
+						}
+					}
+				} header: {
+					Text("Choose an account for the file import")
 				}
 			case let .reading(what):
 				Section {
@@ -92,7 +116,7 @@ struct MigrationSheet: View {
 						.frame(height: min(report.notes.reduce(0) { $0 + CGFloat($1.count / 70 + 1) * 17 + 21 }, 180))
 					}
 				}
-			case let .failed(message):
+			case let .failed(message, _):
 				Section {
 					Label(message, systemImage: "exclamationmark.triangle")
 						.foregroundStyle(.orange)
@@ -141,11 +165,17 @@ struct MigrationSheet: View {
 	private var confirmTitle: String? {
 		switch step {
 		case .intro: "Start"
+		case .fileAccount: model.ledger.accounts.isEmpty ? nil : "Import File..."
 		case let .summary(plan): plan.isEmpty ? nil : "Import"
 		case .done: "Done"
 		case .failed: "Check again"
 		case .reading, .importing: nil
 		}
+	}
+
+	private var canConfirm: Bool {
+		if case .fileAccount = step { return fileAccountID != nil }
+		return true
 	}
 
 	private var cancelTitle: String? {
@@ -159,6 +189,11 @@ struct MigrationSheet: View {
 	private func confirm() -> Bool {
 		switch step {
 		case .intro, .failed: start(); return false
+		case .fileAccount:
+			guard let id = fileAccountID else { return false }
+			model.sheet = nil
+			Task { await model.importFile(into: id) }
+			return true
 		case let .summary(plan): commit(plan); return false
 		case .done: return true
 		case .reading, .importing: return false
@@ -210,13 +245,14 @@ struct MigrationSheet: View {
 				step = .summary(plan)
 			} catch is CancellationError {
 			} catch {
-				step = .failed(String(describing: error))
+				step = .failed(String(describing: error), offersFileImport: error as? MoneyMoneyExporter.Failure == .notInstalled)
 			}
 		}
 	}
 
 	private func export(_ name: String, _ read: () async throws -> Data) async throws -> Data {
 		#if DEBUG || PERF_HARNESS
+		if let failure = Self.simulatedFailure { throw failure }
 		if let folder = Self.fixtureFolder { return try Data(contentsOf: folder.appendingPathComponent("\(name).plist")) }
 		#endif
 		return try await read()

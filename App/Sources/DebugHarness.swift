@@ -2,6 +2,7 @@ import AppKit
 import Domain
 import ExtensionHost
 import FinTS
+import Import
 import Foundation
 import Sync
 import SyncTesting
@@ -347,7 +348,7 @@ final class DebugHarness {
 				log("columnwidth " + table.tableColumns.map { "\($0.title)=\(Int($0.width))" }.joined(separator: " "))
 			}
 		case "scrolltable": scrollTables { argument == "end" ? $0 - 1 : min(Int(argument) ?? 0, $0 - 1) }
-		case "select": select(argument)
+		case "select": if argument.isEmpty { model.selection = nil } else { select(argument) }
 		case "contextmenus": logContextMenus(argument)
 		#if DEBUG || PERF_HARNESS
 		case "perf": Task { await runPerf() }
@@ -377,11 +378,17 @@ final class DebugHarness {
 			case "bar": model.select(bar: .month(Day.today().firstOfMonth))
 			default: model.period = .all
 			}
+		#if DEBUG || PERF_HARNESS
 		// "<folder>": opens the MoneyMoney migration, which then reads the exports of that folder, such as the absolute path of
 		// Fixtures/moneymoney. An app started with `open` runs in `/`, so a relative path does not work.
-		#if DEBUG || PERF_HARNESS
 		case "migrationfixture":
 			MigrationSheet.fixtureFolder = URL(filePath: argument)
+			MigrationSheet.simulatedFailure = nil
+			model.sheet = .migration
+		case "migrationfailure":
+			let failures: [String: MoneyMoneyExporter.Failure] = ["notInstalled": .notInstalled, "notRunning": .notRunning, "locked": .locked, "notAllowed": .notAllowed]
+			guard let failure = failures[argument] else { return log("migrationfailure: unknown failure") }
+			MigrationSheet.simulatedFailure = failure
 			model.sheet = .migration
 		#endif
 		// "<path>": writes the complete export to that file without the warning and the save panel.
@@ -391,7 +398,12 @@ final class DebugHarness {
 		case "importall": Task { log("importall \(await model.readAllData(from: URL(filePath: argument)) == "done" ? "done" : "refused")") }
 		case "sheet":
 			switch argument {
-			case "migration": model.sheet = .migration
+			case "migration":
+				#if DEBUG || PERF_HARNESS
+				MigrationSheet.fixtureFolder = nil
+				MigrationSheet.simulatedFailure = nil
+				#endif
+				model.sheet = .migration
 			case "exportAllData": model.sheet = .exportAllData
 			case "newAccount": model.addAccount()
 			case "setPassword": model.sheet = .setPassword

@@ -34,7 +34,22 @@ The app SHALL check, before it reads any data, that the source app is installed,
 #### Scenario: Source app not installed
 
 - **WHEN** the source app is not on the Mac
-- **THEN** the assistant says so and offers the file import as the other way to bring in transactions
+- **THEN** the assistant says so and offers "Import File..." as the other way to bring in transactions
+- **AND** "Import File..." first asks the user to choose an account, then opens the file chooser for that account
+
+#### Scenario: A group, category, or nothing is selected
+
+- **GIVEN** the database has the accounts "Giro" and "Savings", the source app is not installed, and a group, a category, or nothing is selected
+- **WHEN** the assistant reports that the source app is not installed
+- **THEN** it offers "Import File..."
+- **AND** choosing "Savings" imports the file into "Savings", regardless of the sidebar selection
+
+#### Scenario: File import without an account
+
+- **GIVEN** the source app is not installed and the database has no accounts
+- **WHEN** the user chooses "Import File..."
+- **THEN** the assistant asks the user to add an account before importing transactions
+- **AND** it offers "Add Account..."
 
 ### Requirement: The source is only read
 
