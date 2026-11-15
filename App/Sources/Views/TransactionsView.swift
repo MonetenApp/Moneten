@@ -310,8 +310,7 @@ struct CustomAmountView: View {
 
 	/// The range of two typed ends, or nil when "min. amount" lies above "max. amount".
 	static func range(min: String, max: String) -> TransactionFilter.AmountFilter? {
-		.custom(min: AmountParser.decimal(from: min).map { Money($0, currency: "EUR").minorUnits },
-			max: AmountParser.decimal(from: max).map { Money($0, currency: "EUR").minorUnits })
+		.custom(min: AmountParser.decimal(from: min), max: AmountParser.decimal(from: max))
 	}
 
 	private var range: TransactionFilter.AmountFilter? { Self.range(min: min, max: max) }

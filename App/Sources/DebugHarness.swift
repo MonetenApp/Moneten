@@ -236,7 +236,8 @@ final class DebugHarness {
 		case "importfile":
 			guard let account = model.selectedAccount else { return log("importfile no account") }
 			Task { await model.importFiles([URL(filePath: argument)], into: account); log("importfile done") }
-		case "usd": Task { await DemoData.usdAccount(model); log("usd done") }
+		// "[<currency>]": the credit card in US dollars, or in another currency such as JPY.
+		case "usd": Task { await DemoData.usdAccount(model, currency: argument.isEmpty ? "USD" : argument); log("usd done") }
 		case "review": Task { await DemoData.review(model); log("review done") }
 		case "fetch": DemoData.fetch(model, argument)
 		case "deleterows":
@@ -340,8 +341,9 @@ final class DebugHarness {
 		case "amount", "amountsnapshot":
 			let ends = argument.split(separator: " ").map { $0 == "-" ? "" : String($0) } + ["", ""]
 			if command == "amount" {
-				if let range = CustomAmountView.range(min: ends[0], max: ends[1]) { model.filter.amount = range }
-				log("amount applied=\(model.filter.amount != .all) visible=\(model.visibleTransactions.count)")
+				let range = Format.isReadableAmount(ends[0]) && Format.isReadableAmount(ends[1]) ? CustomAmountView.range(min: ends[0], max: ends[1]) : nil
+				if let range { model.filter.amount = range }
+				log("amount applied=\(range != nil) visible=\(model.visibleTransactions.count)")
 			} else {
 				offscreenSnapshot(CustomAmountView(min: ends[0], max: ends[1]).environment(model), width: 300, name: "amount")
 			}
@@ -780,11 +782,11 @@ enum DemoData {
 		}
 	}
 
-	/// A credit card in US dollars in the group "Private" of `seed`, for a group with two currencies.
+	/// A credit card in the group "Private" of `seed`, for a group with two currencies.
 	@MainActor
-	static func usdAccount(_ model: AppModel) async {
+	static func usdAccount(_ model: AppModel, currency: String) async {
 		let group = model.ledger.groups.first { $0.name == "Private" }?.id
-		await model.addOfflineAccount(name: "Travel Card", kind: .creditCard, currency: "USD", groupID: group)
+		await model.addOfflineAccount(name: "Travel Card", kind: .creditCard, currency: currency, groupID: group)
 		guard let card = model.ledger.accounts.first(where: { $0.name == "Travel Card" }) else { return }
 		let today = Day.today()
 		// Explicit types: the compiler of CI gives up on this closure otherwise.
@@ -792,7 +794,7 @@ enum DemoData {
 			let payment: Bool = i % 5 == 0
 			let amount: Int64 = payment ? 60_000 : -Int64(2_500 + i * 731)
 			let day: Day = today.adding(days: -i * 9)
-			return Transaction(accountID: card.id, bookingDate: day, amountMinor: amount, currency: "USD", name: payment ? "Payment" : "Diner", purpose: "Card")
+			return Transaction(accountID: card.id, bookingDate: day, amountMinor: amount, currency: currency, name: payment ? "Payment" : "Diner", purpose: "Card")
 		}
 		await model.replacingTable { try? model.merge(.file(ts), into: card.id) }
 	}
