@@ -444,4 +444,16 @@ struct FileImportTests {
 		#expect(ts[0].counterpartyIBAN == "DE02120300000000202051" && ts[0].endToEndReference == "E2E-1")
 		#expect(ts[1].amountMinor == 125_000 && ts[1].isPending && ts[1].name == "Erika Mustermann")
 	}
+
+	@Test("A CAMT file that is not well-formed XML is rejected with the line and the column of the first error")
+	func camtBrokenXML() {
+		let xml = "<?xml version=\"1.0\"?>\n<Document><BkToCstmrStmt>\n<Stmt><Ntry><Amt>1.00</Amt>\n</Stmt></Document>\n"
+		#expect(throws: TransactionFileImporter.Failure.line(4, "The XML is not well-formed at column 8.")) {
+			try TransactionFileImporter.parse(Data(xml.utf8), currency: "EUR")
+		}
+		let unquoted = "<?xml version=\"1.0\"?>\n<Document><BkToCstmrStmt><Stmt>\n<Ntry><Amt Ccy=EUR>1.00</Amt></Ntry>\n</Stmt>\n</BkToCstmrStmt>\n</Document>\n"
+		#expect(throws: TransactionFileImporter.Failure.line(3, "The XML is not well-formed at column 16.")) {
+			try TransactionFileImporter.parse(Data(unquoted.utf8), currency: "EUR")
+		}
+	}
 }
