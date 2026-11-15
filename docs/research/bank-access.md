@@ -58,7 +58,68 @@ The product registration number arrived on 11 November 2026. The FinTSProbe of i
 
 | Bank | Quirk | Workaround in the helper | Upstream |
 |---|---|---|---|
-| Consorsbank | HKSAL and HKKAZ need HKTAN although the bank parameters say `needtan=N`. HKWPD must stay without HKTAN | Send HKSAL, HKKAZ, and HKCAZ with HKTAN, and HKWPD without HKTAN (`TAN_RULES` in `Tools/FinTSHelper/FinTSHelper.java`) | [hbci4j/hbci4java#155](https://github.com/hbci4j/hbci4java/issues/155) |
+| Consorsbank, DAB BNP Paribas | HKSAL and HKKAZ need HKTAN although the bank parameters say `needtan=N`. HKWPD must stay without HKTAN | Send HKSAL, HKKAZ, and HKCAZ with HKTAN, and HKWPD without HKTAN, on every access to the server `brokerage-hbci.consorsbank.de`, which both Bankleitzahlen share (`tanRules` in `Tools/FinTSHelper/FinTSHelper.java`) | [hbci4j/hbci4java#155](https://github.com/hbci4j/hbci4java/issues/155) |
+| Consorsbank | The account information carries no BIC | The BIC of the bank directory of hbci4java (`dialog` in `Tools/FinTSHelper/FinTSHelper.java`) | None |
+| DKB | A credit card allows no balance (HKSAL) and no statement (HKKAZ, HKCAZ), only the card statement DKKKU | Send DKKKU for an account that allows it and none of the three, and take the balance from its answer (`jobs` and `card` in `Tools/FinTSHelper/FinTSHelper.java`) | None |
+
+## Test plan for the bank runs of issue #11
+
+Each run takes a few minutes and contacts only the bank under test. It uses a debug build with a throwaway data folder, so it never touches the real database. The debug log holds no names, IBANs, account numbers, purposes, PINs, or TANs (`scripts/check-debug-log.sh` checks that), so its status lines can go into the issue.
+
+### Setup, once
+
+1. Put the product registration number into the login Keychain, if it is not there: `security add-generic-password -s 'Moneten FinTS product ID' -a moneten -w` (it asks for the number).
+2. Build: `scripts/build-app.sh debug`. The build bundles the FinTS helper and the product ID.
+3. Start with a throwaway folder and the debug harness, without `MONETEN_FINTS_HELPER`, so the real helper runs:
+
+   ```sh
+   RUN=$(mktemp -d); mkdir "$RUN/debug"
+   open --env MONETEN_DATA_DIR="$RUN/data" --env MONETEN_DEBUG_DIR="$RUN/debug" dist/Moneten.app
+   ```
+
+4. Make the command for the harness, as `scripts/check-debug-log.sh` does, and create the database with a password, so the run leaves no Keychain item:
+
+   ```sh
+   cat > .build/notify.swift <<'EOF'
+   import Foundation
+   let a = CommandLine.arguments
+   DistributedNotificationCenter.default().postNotificationName(Notification.Name("io.github.moneten.debug"), object: a[1],
+   	userInfo: ["command": a[2], "argument": a.count > 3 ? a[3] : ""], deliverImmediately: true)
+   EOF
+   swiftc -o .build/notify .build/notify.swift
+   send() { .build/notify "$RUN/debug" "$@"; }
+   send create bank-test
+   ```
+
+After each step, `send status` writes one line per account into `$RUN/debug/debug.log`: its kind, the error, the balance in minor units, the number of rows, and `historyStart`. Copy the lines of the run into issue #11.
+
+### Run 1: a savings bank with pushTAN
+
+1. "Add Account..." (or `send sheet newAccount`), search the savings bank by its Bankleitzahl, enter the login name and the PIN. Approve the login in the pushTAN app.
+2. Expected: the dialog says "to allow the login", closes by itself after the approval, and the account list shows every account with its type. Record the types (giro, savings, credit card, portfolio) and whether a credit card is in the list.
+3. Add all accounts. The first refresh asks for the full history. When the bank asks for a second approval "to allow the download of transactions", approve it once and note whether the list then starts more than 90 days ago (`historyStart`).
+4. `send refreshenforced all`, and this time click "Cancel" in the dialog for the download. Expected: no error on the account, the last 90 days, and the line "Older transactions may be missing." Record whether the bank asked for the approval at all.
+5. `send refresh all` again within a few minutes. Expected: no dialog after the login, or only the login approval.
+6. Decline one login approval in the pushTAN app. Expected: "The required authorization was not carried out." Record the code that `send status` shows.
+
+### Run 2: a direct bank with an approval in its app (DKB or Consorsbank)
+
+1. Add the login as in run 1, with the approval in the bank's app. At DKB, record whether 9078 "FinTS-Produkt ist nicht registriert" still comes.
+2. At DKB, add a credit card if the bank lists one. Expected: the card shows a balance and transactions from the card statement. If it fails, record its error.
+3. At Consorsbank, refresh the giro account and the depot. Expected: balance, transactions, and the value of the depot, without 9075.
+
+### Run 3: another TAN method (chipTAN, photoTAN, or smsTAN)
+
+1. Add the login with a bank or a method that types a TAN: chipTAN optical (the flicker code), chipTAN QR, photoTAN, or smsTAN with a TAN medium.
+2. Expected: the dialog shows the flicker code or the image, or asks for the TAN medium and then for the SMS code. Type a wrong TAN once. Expected: "The bank did not accept the entered TAN" with the code of the bank (9941 or another), and no second request.
+3. Change the method inside the dialog, if the bank offers two. Expected: a new challenge with the new method.
+
+### What each run records
+
+- The return codes that the bank sends for a declined approval, a wrong TAN, and a blocked access, when they occur. The app maps 9941, 9943, 9948, and 9951 (`HelperError` in `Sources/FinTS/HelperProtocol.swift`), and a code it does not know shows as the text of the bank.
+- The code of a PIN change that the bank requires, if one comes. No source names it yet (task 1.23 of add-fints-banking).
+- Whether a login without a TAN method for FinTS says "There are no available TAN methods."
+- The account types of the login, and the error line of `send status` for each account that fails.
 
 ## What follows
 

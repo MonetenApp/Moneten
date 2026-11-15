@@ -28,6 +28,7 @@ import org.kapott.hbci.GV_Result.GVRKUms;
 import org.kapott.hbci.GV_Result.GVRSaldoReq;
 import org.kapott.hbci.GV_Result.GVRWPDepotList;
 import org.kapott.hbci.GV_Result.GVRKUms.UmsLine;
+import org.kapott.hbci.GV_Result.GVRKreditkartenUmsatz;
 import org.kapott.hbci.dialog.DialogContext;
 import org.kapott.hbci.dialog.DialogEvent;
 import org.kapott.hbci.exceptions.HBCI_Exception;
@@ -223,6 +224,7 @@ final class SelfTest {
 				"{\"type\":\"accountFailed\",\"code\":\"3040\",\"text\":\"The bank sent only part of the transactions, so nothing of this account was stored.\",\"account\":\"DE02120300000000202051\"}");
 
 			securities();
+			cards();
 
 			expect("network error", FinTSHelper.Json.write(FinTSHelper.failure(new HBCI_Exception("can not create HBCI handle", new java.net.ConnectException("Connection refused")))),
 				"{\"type\":\"failed\",\"kind\":\"network\",\"text\":\"Connection refused\"}");
@@ -504,11 +506,66 @@ final class SelfTest {
 			bpd.setProperty("Params_" + (i + 1) + ".PinTanPar1.ParPinTan.PinTanGV_" + (i + 1) + ".segcode", orders[i]);
 			bpd.setProperty("Params_" + (i + 1) + ".PinTanPar1.ParPinTan.PinTanGV_" + (i + 1) + ".needtan", orders[i].equals("HKWPD") ? "J" : "N");
 		}
-		Properties other = (Properties) bpd.clone();
-		FinTSHelper.applyTanRules("76030080", bpd);
-		FinTSHelper.applyTanRules("12030000", other);
+		Properties other = (Properties) bpd.clone(), dab = (Properties) bpd.clone(), lookalike = (Properties) bpd.clone();
+		FinTSHelper.applyTanRules("brokerage-hbci.consorsbank.de/hbci", bpd);
+		FinTSHelper.applyTanRules("fints.musterbank.example/fints", other);
+		// DAB BNP Paribas (70120400) shares the server of Consorsbank. hbci4java keeps the host with its path.
+		FinTSHelper.applyTanRules("Brokerage-HBCI.consorsbank.de/hbci?x=1", dab);
+		FinTSHelper.applyTanRules("brokerage-hbci.consorsbank.de.example/hbci", lookalike);
 		expect("Consorsbank: HKSAL and HKKAZ with HKTAN, HKWPD without", needtan(bpd, orders), "HKSAL=J HKKAZ=J HKCAZ=J HKWPD=N HKTAN=N");
-		expect("other banks: HKTAN as their parameters say", needtan(other, orders), "HKSAL=N HKKAZ=N HKCAZ=N HKWPD=J HKTAN=N");
+		expect("DAB BNP Paribas on the server of Consorsbank: the same rules", needtan(dab, orders), "HKSAL=J HKKAZ=J HKCAZ=J HKWPD=N HKTAN=N");
+		expect("other banks: HKTAN as their parameters say", needtan(other, orders) + " | " + needtan(lookalike, orders),
+			"HKSAL=N HKKAZ=N HKCAZ=N HKWPD=J HKTAN=N | HKSAL=N HKKAZ=N HKCAZ=N HKWPD=J HKTAN=N");
+	}
+
+	/// The card statement DKKKU of a credit card, with made-up data as hbci4java parses it from DIKKU (task 1.19).
+	static void cards() {
+		Konto card = allowing("50", "DKKKU", "HKTAN");
+		expect("jobs of a credit card with only the card statement", FinTSHelper.jobs(null, card), "[KreditkartenUmsatz]");
+		expect("jobs of a credit card with the balance and the transactions", FinTSHelper.jobs(null, allowing("50", "HKSAL", "HKKAZ", "DKKKU")), "[SaldoReq, KUmsAll]");
+		GVRKreditkartenUmsatz statement = cardStatement();
+		statement.storeResult("content.balance.CreditDebit", "D");
+		statement.storeResult("content.balance.value", "1.234,56");
+		statement.storeResult("content.balance.curr", "EUR");
+		statement.storeResult("content.balance.date", "2026-11-12");
+		String line = FinTSHelper.Json.write(FinTSHelper.alone("1234567890123456", () -> FinTSHelper.card("1234567890123456", "2026-10-01", statement, false, "EUR")));
+		fixture.add(line);
+		expect("card statement with its balance and transactions", line,
+			"{\"type\":\"result\",\"account\":\"1234567890123456\",\"balance\":{\"type\":\"balance\",\"amount\":\"-1234.56\",\"currency\":\"EUR\",\"date\":\"2026-11-12\"},"
+				+ "\"transactions\":{\"type\":\"transactions\",\"from\":\"2026-10-01\",\"rows\":[{\"type\":\"row\",\"booked\":\"2026-11-09\",\"value\":\"2026-11-08\","
+				+ "\"amount\":\"-19.9\",\"currency\":\"EUR\",\"purpose\":\"Streaming Beispiel / Musterstadt\",\"bookingText\":\"Kreditkartenzahlung\",\"pending\":false}]},\"errors\":[]}");
+		GVRKreditkartenUmsatz withoutBalance = cardStatement();
+		withoutBalance.storeResult("content.balance.value", "x");
+		expect("card statement without a balance that reads keeps its transactions", FinTSHelper.card("1234567890123456", null, withoutBalance, false, "EUR").get("balance")
+			+ " " + ((List<?>) ((Map<?, ?>) FinTSHelper.card("1234567890123456", null, withoutBalance, false, "EUR").get("transactions")).get("rows")).size(), "null 1");
+		GVRKreditkartenUmsatz signed = cardStatement();
+		signed.storeResult("content_2.balance.value", "-80.10");
+		signed.storeResult("content_2.balance.date", "20261112");
+		expect("card statement with a signed balance in its second part, without currency and with a date that does not read",
+			String.valueOf(FinTSHelper.card("1234567890123456", null, signed, false, "USD").get("balance")), "{type=balance, amount=-80.10, currency=USD, date=null}");
+		GVRKreditkartenUmsatz partial = cardStatement();
+		expect("card statement in part fails", FinTSHelper.alone("1234567890123456", () -> FinTSHelper.card("1234567890123456", null, partial, true, "EUR")).get("code"), "3040");
+		GVRKreditkartenUmsatz refused = new GVRKreditkartenUmsatz();
+		refused.jobStatus.addRetVal(new HBCIRetVal(null, null, null, "9010", "Verarbeitung nicht möglich", null));
+		expect("card statement that the bank refuses", FinTSHelper.Json.write(FinTSHelper.card("1234567890123456", null, refused, false, "EUR")),
+			"{\"type\":\"result\",\"account\":\"1234567890123456\",\"errors\":[{\"type\":\"error\",\"code\":\"9010\",\"text\":\"Verarbeitung nicht möglich\"}]}");
+	}
+
+	/// A card statement with one debit of 19,90 EUR.
+	static GVRKreditkartenUmsatz cardStatement() {
+		GVRKreditkartenUmsatz statement = new GVRKreditkartenUmsatz();
+		statement.jobStatus.addRetVal(new HBCIRetVal(null, null, null, "0020", "ok", null));
+		Properties data = new Properties();
+		data.setProperty("t.cardnumber", "1234567890123456");
+		data.setProperty("t.bookingdate", "2026-11-09");
+		data.setProperty("t.valuedate", "20261108");
+		data.setProperty("t.value", "19,90");
+		data.setProperty("t.currency", "EUR");
+		data.setProperty("t.creditdebit", "D");
+		data.setProperty("t.purpose", "Streaming Beispiel");
+		data.setProperty("t.location", "Musterstadt");
+		statement.addTransaction(data, "t");
+		return statement;
 	}
 
 	static String needtan(Properties bpd, String[] orders) {

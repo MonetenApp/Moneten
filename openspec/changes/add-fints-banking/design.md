@@ -36,6 +36,10 @@ Amounts travel as decimal strings and become minor units in the connector. Days 
 
 hbci4java clears the PIN only when the bank reports a wrong PIN, and calls `WRONG_PIN` right after that. The helper keeps the answer of the bank for the whole run and sends it with the next PIN request. The connector turns that into `PINRequest(rejected:)`, so the broker never answers it from memory: the PIN sheet opens again in a manual refresh, and an automatic refresh fails with `pinRejected`. 9930 is a blocked access, and the connector stops without asking again. 9931 counts as a wrong PIN, because Sparkassen send it for a wrong login name or PIN.
 
+### Credit cards
+
+A credit card of FinTS type 50 to 59 gets the balance and the transactions like any other account, when it allows them. DKB and other banks offer their cards only through the card statement DKKKU, which hbci4java reads as `GVKreditkartenUmsatz`. The helper sends it for an account that allows it and none of HKSAL, HKKAZ, and HKCAZ, with the account number as the card number. Its answer DIKKU carries the transactions and the balance of the card. hbci4java keeps the transactions as rows of a statement and the balance only in the raw data of the job, so the helper reads the balance there, with the sign of C or D.
+
 ### Trust in the server of the bank
 
 The helper installs a trust manager that sends the certificate chain and the host to the app. The app evaluates the chain with `SecTrustEvaluateWithError` and the SSL policy for the host, on a queue of its own: the check can wait for the network, and a thread of Swift concurrency that waits holds up the timers and the other refreshes. Only the answer "trusted" lets the connection go on. The root certificates of the Java runtime play no part, and nothing turns the check off.

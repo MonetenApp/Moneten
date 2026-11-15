@@ -73,6 +73,7 @@ import org.kapott.hbci.GV.HBCIJob;
 import org.kapott.hbci.GV.HBCIJobImpl;
 import org.kapott.hbci.GV_Result.GVRKUms;
 import org.kapott.hbci.GV_Result.GVRKUms.UmsLine;
+import org.kapott.hbci.GV_Result.GVRKreditkartenUmsatz;
 import org.kapott.hbci.GV_Result.GVRSaldoReq;
 import org.kapott.hbci.GV_Result.GVRWPDepotList;
 import org.kapott.hbci.GV_Result.HBCIJobResult;
@@ -910,13 +911,22 @@ public class FinTSHelper {
 		}
 	}
 
-	/// Whether an order goes with HKTAN ("J") or without ("N"), by bank code, for banks whose bank
-	/// parameters say otherwise. Consorsbank answers HKSAL and HKKAZ without HKTAN with 9075, although
-	/// its parameters say that they need no TAN, and HKWPD with HKTAN with 9160 (hbci4j/hbci4java#155).
-	static final Map<String, Map<String, String>> TAN_RULES = Map.of("76030080", Map.of("HKSAL", "J", "HKKAZ", "J", "HKCAZ", "J", "HKWPD", "N"));
+	/// Whether an order goes with HKTAN ("J") or without ("N") on the FinTS server of Consorsbank, whose bank
+	/// parameters say otherwise. The server answers HKSAL and HKKAZ without HKTAN with 9075, although its
+	/// parameters say that they need no TAN, and HKWPD with HKTAN with 9160 (hbci4j/hbci4java#155).
+	static final Map<String, String> CONSORSBANK_TAN_RULES = Map.of("HKSAL", "J", "HKKAZ", "J", "HKCAZ", "J", "HKWPD", "N");
 
-	static void applyTanRules(String bankCode, Properties bpd) {
-		Map<String, String> rules = TAN_RULES.get(bankCode);
+	/// The rules of the server at `host`, as hbci4java keeps it with its path, or null. Consorsbank and DAB BNP
+	/// Paribas share the server brokerage-hbci.consorsbank.de, so the server decides and not the Bankleitzahl.
+	static Map<String, String> tanRules(String host) {
+		if (host == null) return null;
+		int slash = host.indexOf('/');
+		String name = (slash < 0 ? host : host.substring(0, slash)).toLowerCase(java.util.Locale.ROOT);
+		return name.startsWith("brokerage-hbci") && name.endsWith(".consorsbank.de") ? CONSORSBANK_TAN_RULES : null;
+	}
+
+	static void applyTanRules(String host, Properties bpd) {
+		Map<String, String> rules = tanRules(host);
 		if (rules == null) return;
 		for (String key : bpd.stringPropertyNames()) {
 			if (!key.contains(".ParPinTan.PinTanGV") || !key.endsWith(".segcode")) continue;
@@ -955,13 +965,16 @@ public class FinTSHelper {
 	}
 
 	/// The jobs that a refresh sends for an account: the custody account balance of a securities account
-	/// that allows it, or else the balance and the transactions, in CAMT when the account allows it.
+	/// that allows it, or else the balance and the transactions, in CAMT when the account allows it. A credit
+	/// card that allows none of them but the card statement DKKKU, which DKB and other banks offer for their
+	/// cards, gets the card statement, which brings the balance and the transactions in one answer.
 	static List<String> jobs(HBCIHandler handle, Konto k) {
 		if (securities(k) && allows(handle, k, "HKWPD", "WPDepotList")) return List.of("WPDepotList");
 		List<String> jobs = new ArrayList<>();
 		if (allows(handle, k, "HKSAL", "SaldoReq")) jobs.add("SaldoReq");
 		if (allows(handle, k, "HKCAZ", "KUmsAllCamt")) jobs.add("KUmsAllCamt");
 		else if (allows(handle, k, "HKKAZ", "KUmsAll")) jobs.add("KUmsAll");
+		if (jobs.isEmpty() && allows(handle, k, "DKKKU", "KreditkartenUmsatz")) jobs.add("KreditkartenUmsatz");
 		return jobs;
 	}
 
@@ -979,12 +992,12 @@ public class FinTSHelper {
 			: "The FinTS server of the bank offers neither the balance nor the transactions of this account.");
 	}
 
-	/// The jobs of one account: the balance and the transactions, or the holdings of a securities account
-	/// in the currency of the account.
-	record Jobs(String id, String from, String currency, HBCIJob balance, HBCIJob statements, HBCIJob holdings) { }
+	/// The jobs of one account: the balance and the transactions, the card statement, or the holdings of a
+	/// securities account in the currency of the account.
+	record Jobs(String id, String from, String currency, HBCIJob balance, HBCIJob statements, HBCIJob card, HBCIJob holdings) { }
 
 	static void refresh(HBCIHandler handle, HBCIPassport passport, Konto[] accounts, List<?> requested, Callback callback) {
-		applyTanRules(passport.getBLZ(), passport.getBPD());
+		applyTanRules(passport.getHost(), passport.getBPD());
 		List<Jobs> all = new ArrayList<>();
 		for (Object o : requested) {
 			Map<?, ?> request = (Map<?, ?>) o;
@@ -1000,13 +1013,19 @@ public class FinTSHelper {
 				send(nothingAllowed(id, k));
 				continue;
 			}
-			HBCIJob balance = null, statements = null, holdings = null;
+			HBCIJob balance = null, statements = null, card = null, holdings = null;
 			for (String name : names) {
 				HBCIJob job = handle.newJob(name);
 				job.setParam("my", k);
 				switch (name) {
 					case "SaldoReq" -> balance = job;
 					case "WPDepotList" -> holdings = job;
+					case "KreditkartenUmsatz" -> {
+						// The account number of such a card is its card number.
+						job.setParam("cardnumber", k.number);
+						if (from != null) job.setParam("startdate", date(from));
+						card = job;
+					}
 					default -> {
 						if (from != null) job.setParam("startdate", date(from));
 						statements = job;
@@ -1015,7 +1034,7 @@ public class FinTSHelper {
 				job.addToQueue();
 				callback.jobs.put(job, all.size());
 			}
-			all.add(new Jobs(id, from, text(k.curr), balance, statements, holdings));
+			all.add(new Jobs(id, from, text(k.curr), balance, statements, card, holdings));
 		}
 		callback.jobCount = all.size();
 		callback.login = false;
@@ -1027,7 +1046,11 @@ public class FinTSHelper {
 		callback.checkSwitch();
 		requireLogin(status);
 		for (Jobs jobs : all) {
-			HBCIJob statements = jobs.statements(), holdings = jobs.holdings();
+			HBCIJob statements = jobs.statements(), card = jobs.card(), holdings = jobs.holdings();
+			if (card != null) {
+				send(alone(jobs.id(), () -> card(jobs.id(), jobs.from(), (GVRKreditkartenUmsatz) card.getJobResult(), ((HBCIJobImpl) card).redo() != null, jobs.currency())));
+				continue;
+			}
 			if (holdings != null) {
 				send(alone(jobs.id(), () -> value(jobs.id(), (GVRWPDepotList) holdings.getJobResult(), ((HBCIJobImpl) holdings).redo() != null, jobs.currency())));
 				continue;
@@ -1145,6 +1168,53 @@ public class FinTSHelper {
 			}
 		}
 		return message("result", "account", id, "balance", balance, "transactions", transactions, "errors", errors);
+	}
+
+	/// The result of the card statement DKKKU: its transactions as booked rows, and the balance of the card that the
+	/// answer carries (DIKKU, field "balance"), which hbci4java keeps only in the raw data of the job. The bank may
+	/// send the amount with a sign and with a decimal comma, and C or D decides the sign.
+	static Map<String, Object> card(String id, String from, GVRKreditkartenUmsatz statement, boolean incomplete, String currency) {
+		Map<String, Object> result = result(id, from, null, statement, incomplete);
+		if (statement.isOK()) result.put("balance", cardBalance(statement.getResultData(), currency));
+		return result;
+	}
+
+	/// A day of the raw data of hbci4java, which keeps dates as yyyy-mm-dd, or null.
+	static String day(String text) {
+		return text != null && text.matches("[0-9]{4}-[0-9]{2}-[0-9]{2}") ? text : null;
+	}
+
+	static final Pattern CARD_BALANCE = Pattern.compile("content(?:_([0-9]+))?\\.balance\\.value");
+
+	/// The balance of the first part of the answer that has one. hbci4java keeps part n as "content_n", and
+	/// the first part as "content".
+	static Map<String, Object> cardBalance(Properties data, String currency) {
+		String prefix = null;
+		int first = Integer.MAX_VALUE;
+		for (String key : data.stringPropertyNames()) {
+			Matcher m = CARD_BALANCE.matcher(key);
+			if (!m.matches()) continue;
+			int part = m.group(1) == null ? 1 : Integer.parseInt(m.group(1));
+			if (part < first) {
+				first = part;
+				prefix = key.substring(0, key.length() - "value".length());
+			}
+		}
+		String value = prefix == null ? null : text(data.getProperty(prefix + "value"));
+		if (value == null) return null;
+		BigDecimal amount;
+		try {
+			amount = new BigDecimal(value.indexOf(',') < 0 ? value : value.replace(".", "").replace(',', '.'));
+		} catch (NumberFormatException e) {
+			diagnostic("FinTSHelper: the balance of a card statement does not read, keeping its transactions");
+			return null;
+		}
+		String sign = text(data.getProperty(prefix + "CreditDebit"));
+		if ("D".equals(sign)) amount = amount.abs().negate();
+		else if ("C".equals(sign)) amount = amount.abs();
+		String curr = text(data.getProperty(prefix + "curr"));
+		return message("balance", "amount", amount.toPlainString(), "currency", curr != null ? curr : present(currency) ? currency.trim() : "EUR",
+			"date", day(text(data.getProperty(prefix + "date"))));
 	}
 
 	static void run(Map<?, ?> command) throws IOException {
