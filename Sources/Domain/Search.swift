@@ -287,11 +287,14 @@ enum SearchText {
 	}
 
 	private static func joined(_ parts: [String]) -> String {
-		let folded = TextFolding.fold(parts.joined(separator: "\u{1}"))
-		let (separators, hasRuns) = scan(folded)
-		// A U+0001 inside a field would move every later field to the wrong place. U+FFFD keeps the words of the
-		// field as a rule reads them.
-		if separators != parts.count - 1 { return joined(parts.map { $0.replacingOccurrences(of: "\u{1}", with: "\u{FFFD}") }) }
+		var folded = TextFolding.fold(parts.joined(separator: "\u{1}"))
+		var (separators, hasRuns) = scan(folded)
+		if separators != parts.count - 1 {
+			// A U+0001 inside a field would move every later field to the wrong place. U+FFFD keeps the words of the
+			// field as a rule reads them. Without `.literal`, a U+0001 with a combining mark after it stays.
+			folded = TextFolding.fold(parts.map { $0.replacingOccurrences(of: "\u{1}", with: "\u{FFFD}", options: .literal) }.joined(separator: "\u{1}"))
+			hasRuns = scan(folded).hasRuns
+		}
 		// Most rows have single spaces only, and splitting every row doubled the time to build the ledger.
 		return hasRuns ? folded.split(whereSeparator: \.isWhitespace).joined(separator: " ") : folded
 	}
