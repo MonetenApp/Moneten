@@ -471,7 +471,7 @@ final class CAMTParser: NSObject, XMLParserDelegate {
 	}
 
 	private func finishEntry(_ parser: XMLParser) {
-		// The bank booked nothing for an INFO entry. A FUTR entry applies on a future date and stays pending like PDNG.
+		// The bank booked nothing for an INFO entry.
 		if entry["status"] == "INFO" { return }
 		func fail(_ reason: String) {
 			failure = .line(parser.lineNumber, reason)
@@ -508,7 +508,7 @@ final class CAMTParser: NSObject, XMLParserDelegate {
 			bookingText: entry["bookingText"],
 			endToEndReference: ofOneParty("e2e").flatMap { $0 == "NOTPROVIDED" ? nil : $0 },
 			mandateReference: ofOneParty("mandate"), creditorID: ofOneParty("creditor"),
-			isPending: entry["status"] == "PDNG" || entry["status"] == "FUTR")
+			isPending: entry["status"] == "PDNG")
 		result.transactions.append(t)
 	}
 }

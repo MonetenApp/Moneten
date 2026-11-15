@@ -307,7 +307,7 @@ struct FileImportTests {
 		#expect(throws: TransactionFileImporter.Failure.line(4, reason)) { try TransactionFileImporter.parse(Data(xml.utf8), currency: "EUR") }
 	}
 
-	@Test("Future entry and entry for information")
+	@Test("An entry for information is left out, and a future entry is booked until a refresh keeps future pending rows from a file")
 	func camtFutureAndInfo() throws {
 		let xml = """
 		<?xml version="1.0" encoding="UTF-8"?>
@@ -319,7 +319,7 @@ struct FileImportTests {
 		"""
 		let ts = try TransactionFileImporter.parse(Data(xml.utf8), currency: "EUR").transactions
 		#expect(ts.map(\.amountMinor) == [-8_900, 125_000])
-		#expect(ts.map(\.isPending) == [false, true])
+		#expect(ts.map(\.isPending) == [false, false])
 		#expect(ts.map(\.bookingDate) == [Day(year: 2026, month: 11, day: 3), Day(year: 2026, month: 11, day: 30)])
 	}
 
