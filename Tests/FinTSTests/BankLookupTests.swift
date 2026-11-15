@@ -15,7 +15,10 @@ struct BankLookupTests {
 	nonisolated static let musterbankNord = BankDirectory.Entry(code: "20030000", city: "Nordstadt",
 		bank: FinTSBank(name: "Musterbank", bic: nil, url: URL(string: "https://fints.musterbank.example/fints")))
 	nonisolated static let ohnebank = BankDirectory.Entry(code: "37040044", city: "Köln", bank: FinTSBank(name: "Ohnebank", bic: nil, url: nil))
-	nonisolated static let directory = BankDirectory([musterbank, beispielbank, musterbankNord, ohnebank])
+	/// The directory keeps the Bankleitzahl of a merged bank with "-alt-" at the end of its name.
+	nonisolated static let altbank = BankDirectory.Entry(code: "50050000", city: "Altstadt",
+		bank: FinTSBank(name: "Sparkasse Altstadt -alt-", bic: nil, url: URL(string: "https://banking.s-fints-pt-muster.example/fints30")))
+	nonisolated static let directory = BankDirectory([musterbank, beispielbank, musterbankNord, ohnebank, altbank])
 
 	@Test("A new entry drops the bank of the entry before")
 	func newEntryDropsBank() async {
@@ -67,6 +70,26 @@ struct BankLookupTests {
 		lookup.entry = "123456789012"
 		await lookup.lookUp(showingErrors: true)
 		#expect(lookup.state == .failed("A Bankleitzahl has 8 digits."))
+	}
+
+	@Test("An outdated Bankleitzahl asks for the current one, also inside an IBAN and when the user chooses it in the list")
+	func outdatedBankCode() async {
+		let lookup = BankLookup { Self.directory }
+		lookup.entry = "DE70 5005 0000 0000 2020 51"
+		await lookup.lookUp(showingErrors: true)
+		#expect(lookup.state == .failed("This IBAN contains an outdated Bankleitzahl. Enter your current IBAN."))
+		#expect(lookup.bank == nil)
+
+		lookup.entry = "50050000"
+		await lookup.lookUp(showingErrors: true)
+		#expect(lookup.state == .failed("The Bankleitzahl 50050000 is outdated. Enter your current Bankleitzahl."))
+
+		lookup.entry = "altstadt"
+		await lookup.lookUp(showingErrors: false)
+		#expect(lookup.state == .matches([Self.altbank]))
+		lookup.choose(Self.altbank)
+		#expect(lookup.state == .failed("The Bankleitzahl 50050000 is outdated. Enter your current Bankleitzahl."))
+		#expect(lookup.bank == nil)
 	}
 
 	@Test("A name lists the banks that match, and the chosen bank takes the place of the entry")

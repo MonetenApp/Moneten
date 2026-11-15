@@ -48,6 +48,14 @@ public struct BankDirectory: Sendable {
 		byCode[code]
 	}
 
+	/// The banks that the app reaches through FinTS: those with a FinTS address that are not old entries
+	/// of a merged bank. Without a query they come in the order of their names, and with one in the order
+	/// of `search(_:)`.
+	public func reachable(_ query: String) -> [Entry] {
+		let found = query.contains(where: { $0.isLetter || $0.isNumber }) ? search(query) : entries.sorted { $0.sortKey < $1.sortKey }.map(\.entry)
+		return found.filter { $0.bank.url != nil && !$0.isObsolete }
+	}
+
 	/// The banks whose name or place has every word of the query, or whose Bankleitzahl starts with
 	/// it. Banks with a FinTS address that are not old entries come first. Among them, a bank whose name starts with the query
 	/// comes first, then a bank where each word starts a word of the name or place, and last a bank
@@ -81,7 +89,7 @@ public struct BankDirectory: Sendable {
 	}
 
 	/// "München" as "muenchen" and as "munchen", and "Société" as "société" and "societe".
-	private static func spellings(_ word: String) -> [String] {
+	static func spellings(_ word: String) -> [String] {
 		let spelledOut = TextFolding.fold(word)
 		let stripped = word.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil).lowercased()
 		return spelledOut == stripped ? [stripped] : [spelledOut, stripped]

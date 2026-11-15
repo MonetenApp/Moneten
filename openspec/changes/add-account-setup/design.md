@@ -38,6 +38,14 @@ A search compares each word of the entry with the words of the name and the plac
 
 The directory names some banks differently from their customers, such as "Deutsche Kreditbank Berlin" for DKB, so the short name of each bank with a login hint is a search word too. A search takes 4 to 12 ms in a release build and runs off the main thread. The step shows the first 50 matches. Each row has the place and the Bankleitzahl, and the step says that the Bankleitzahl is digits 5 to 12 of the IBAN, because the login sends the Bankleitzahl that the user chooses, and Consorsbank, for example, has two.
 
+### An outdated Bankleitzahl
+
+The bank directory of hbci4java has no field for a replaced Bankleitzahl. It keeps the Bankleitzahl of a merged bank with "-alt-" at the end of the name, such as "Sparkasse Bonn -alt-", 280 of its 4,063 entries. Such an entry is outdated: the bank gave its customers a new IBAN, so the first step asks for the current IBAN or Bankleitzahl and does not go on, also when the entry still has a FinTS address. The search still lists it last, so a user who searches by name sees why the bank of an old letter does not work.
+
+### Supported banks
+
+"Supported Banks..." in the Help menu opens a window of its own. `SupportedBanks` holds the bank directory and the services of the extensions that may run, the same services that "Other" lists. A search uses the words of the first step: the banks in the order of `BankDirectory.search(_:)`, and a service when every word is in its name or in the name of its extension. The list shows only what the app reaches: a bank with a FinTS address that is not outdated, with "FinTS/HBCI with TAN method" and the help of its login hint as its note, and each service with the name of its extension. It shows at most 500 banks, and says how many match when there are more, so that the window stays quick. Without a search the banks come by name.
+
 ### Login hints
 
 `LoginHint` is a table in `Sources/FinTS/LoginHints.swift`: a label for the login name field, one sentence of help, and the URL of the public page of the bank that confirms it. A hint covers the Bankleitzahlen that a page of the bank names as its own: 76030080 for Consorsbank, 12030000 for DKB, the four that comdirect names, and 50010517 for ING. The FinTS server is no rule: DAB BNP Paribas (70120400) uses the server of Consorsbank, and no page of the bank confirms that its login is the same, so it gets no hint. The same holds for the four other Bankleitzahlen of comdirect in the directory. The savings banks are too many for a list and have a host each, so a savings bank is a bank with "Sparkasse" in its name on the FinTS servers of the savings banks (`s-fints-pt-` and `s-hbci.de`). That rule leaves out a Bausparkasse, the Südtiroler Sparkasse, which uses the servers of the cooperative banks, and the old entries of merged savings banks. The link of the savings banks is the guide of Ostseesparkasse Rostock and says so, because no page of the savings banks as a group describes FinTS. A hint without a public page of the bank is left out.
@@ -68,10 +76,9 @@ A second "Next" during the login sends nothing, so the bank gets the PIN once. W
 
 - The bank directory of hbci4java holds no field names, formats, or notes. The login step asks for "User ID" and "PIN", except for the five banks of `LoginHint`, and has no customer ID and no format checks. The five banks ask to leave the customer ID empty.
 - The country menu is not built. A valid IBAN of another country gets the message that the app finds banks only by a German IBAN or Bankleitzahl so far, and the search covers only the German bank directory.
-- The bank directory marks no outdated Bankleitzahl, so the app cannot say that one is outdated.
 - "Access with" is not shown, because FinTS is the only method until E6.
 - The progress text is "Setting up Accounts..." without the current step, because the helper reports no progress while it lists accounts.
-- "Look for New Accounts...", "Edit Login Data...", the switch of the access method, and the list of supported banks are not built.
+- "Look for New Accounts...", "Edit Login Data...", and the switch of the access method are not built.
 
 ## Risks / Trade-offs
 

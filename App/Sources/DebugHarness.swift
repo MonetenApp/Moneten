@@ -135,7 +135,7 @@ final class DebugHarness {
 				log("key \(argument) handled=\(sheet.performKeyEquivalent(with: event))")
 			}
 		// "<text>" types into the field that has the focus.
-		case "type": (topSheet?.firstResponder as? NSTextView)?.insertText(argument, replacementRange: NSRange(location: NSNotFound, length: 0))
+		case "type": ((topSheet ?? NSApp.windows.first { $0.isVisible && $0.firstResponder is NSTextView })?.firstResponder as? NSTextView)?.insertText(argument, replacementRange: NSRange(location: NSNotFound, length: 0))
 		// Focuses the first secure field of the sheet on screen and logs what macOS sees of it, for the check that the password manager does not offer it.
 		case "securefield": secureField()
 		// "all", or the name of an account or a group. "refreshenforced" is the command with the Option key.
@@ -211,6 +211,8 @@ final class DebugHarness {
 		case "extstate": logExtensionState()
 		// The Extensions window and the catalog (ADR 0015). "extcatalog <url>" points the catalog at a test index and checks it.
 		case "extensions": openExtensionsWindow()
+		// Opens "Supported Banks..." of the Help menu. "type" then types into its search field.
+		case "supportedbanks": openMenuItem("Supported Banks...")
 		// An app in the background shows every item of the menu bar disabled, so this reads the condition of the commands.
 		case "menucommands": log("menucommands enabled=\(AppCommands(model: model).unlocked)")
 		#if DEBUG
@@ -800,10 +802,14 @@ final class DebugHarness {
 
 	/// Chooses "Extensions" in the Window menu, as the user does.
 	func openExtensionsWindow() {
-		let item = NSApp.mainMenu?.items.compactMap(\.submenu).flatMap(\.items).first { $0.title == "Extensions" }
-		guard let item, let menu = item.menu else { return log("extensions no menu item") }
+		openMenuItem("Extensions")
+	}
+
+	private func openMenuItem(_ title: String) {
+		let item = NSApp.mainMenu?.items.compactMap(\.submenu).flatMap(\.items).first { $0.title == title }
+		guard let item, let menu = item.menu else { return log("menu no item \(title)") }
 		menu.performActionForItem(at: menu.index(of: item))
-		log("extensions opened")
+		log("menu opened \(title)")
 	}
 
 	private func filterBar(_ argument: String) {

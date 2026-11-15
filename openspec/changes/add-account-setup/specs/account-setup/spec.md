@@ -132,6 +132,13 @@ The app SHALL reject a Bankleitzahl that is not in the bank directory, and it SH
 - **WHEN** the user enters an IBAN that contains 10010010
 - **THEN** the app says that the IBAN contains an outdated Bankleitzahl and asks for the current IBAN
 
+#### Scenario: Outdated Bankleitzahl entered or chosen
+
+- **GIVEN** the bank directory marks the Bankleitzahl 10010010 as replaced
+- **WHEN** the user enters "10010010", or chooses the bank with 10010010 in the list of matches
+- **THEN** the app says that the Bankleitzahl 10010010 is outdated and asks for the current Bankleitzahl
+- **AND** "Next" stays on the first step
+
 ### Requirement: Country menu
 
 The app SHALL offer a country menu in the first step with the entries for Germany, Austria, and the European Union. The selected country decides which banks the app finds and which services "Other" lists. The menu starts with Germany.
@@ -434,3 +441,9 @@ The app SHALL show a list of the banks and services it can reach, with a search 
 - **GIVEN** an installed extension declares the service "Musterbroker"
 - **WHEN** the user opens the list
 - **THEN** the list contains "Musterbroker" with the name of the extension as its access method
+
+#### Scenario: Bank that the app cannot reach
+
+- **GIVEN** the bank directory lists "Neobank Muster" without a FinTS address, and "Sparkasse Altstadt -alt-" as the old entry of a merged bank
+- **WHEN** the user opens the list and types "Muster" or "Altstadt"
+- **THEN** the list shows neither bank
