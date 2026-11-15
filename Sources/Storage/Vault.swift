@@ -168,8 +168,7 @@ public struct Vault: Sendable {
 		guard migrate else { return Store(queue: queue) }
 		let migrator = Schema.migrator
 		try queue.read { db in
-			// PR #203 reserves v18. Keep its marker without applying or replacing that migration.
-			let unknown = try migrator.appliedIdentifiers(db).subtracting(migrator.appliedMigrations(db)).subtracting(["v18"])
+			let unknown = try migrator.appliedIdentifiers(db).subtracting(migrator.appliedMigrations(db))
 			if !unknown.isEmpty { throw Failure.newerVersion }
 		}
 		let needsUpgrade = try queue.read { db in try !migrator.hasCompletedMigrations(db) }

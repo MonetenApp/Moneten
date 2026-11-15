@@ -118,7 +118,7 @@ Lists and sums by category read `Ledger.rows(in:filter:)`, which returns `Transa
 | `accountGroup` | `AccountGroup` |
 | `account` | `Account` |
 | `category` | `Category` |
-| `csvProfile` | A profile name, JSON version, and payload containing `CSVProfile`. Migration v19 follows the v18 reserved by PR #203. Unreadable versions or payloads remain stored when another profile changes. |
+| `csvProfile` | A profile name, JSON version, and payload containing `CSVProfile`. Unreadable versions or payloads remain stored when another profile changes. |
 | `bankTransaction` | `Transaction` |
 | `splitPart` | `SplitPart`, with `vat` as JSON. Parts go with their transaction and become uncategorized when their category is removed. |
 | `portfolioValue` | `PortfolioValue`, with the primary key `accountID` and `day` |
@@ -134,7 +134,7 @@ Migration `v1` creates the tables. It also creates the table `setting`, which no
 
 ## Complete export
 
-`AllData` holds every stored object except saved CSV profiles, saved PINs, the `AccessState` of each access, and the data of extensions. `Store.exportAllData` reads it and `Store.importAllData` writes it into an empty database. Its JSON form is the file of "Export All Data...", which [the export format](export-format.md) describes key by key.
+`AllData` holds every stored object except saved PINs, the `AccessState` of each access, and the data of extensions. `Store.exportAllData` reads it and `Store.importAllData` writes it into an empty database. Its JSON form is the file of "Export All Data...", which [the export format](export-format.md) describes key by key.
 
 ## Types that the specs add later
 

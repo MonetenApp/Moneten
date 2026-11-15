@@ -39,6 +39,7 @@ public struct FileCategories: Sendable {
 			let assignableA = !a.isGroup && !a.isDefault
 			let assignableB = !b.isGroup && !b.isDefault
 			if assignableA != assignableB { return assignableA ? a : b }
+			if (a.parentID == nil) != (b.parentID == nil) { return a.parentID == nil ? a : b }
 			let ap = paths[a.id]!, bp = paths[b.id]!
 			if ap != bp { return ap.lexicographicallyPrecedes(bp) ? a : b }
 			return a.id.uuidString < b.id.uuidString ? a : b
@@ -86,7 +87,7 @@ public struct FileCategories: Sendable {
 				continue
 			}
 			guard creating else { continue }
-			guard created.count < Self.creationLimit else { limitReached = true; continue }
+			guard created.count + unplaced.count < Self.creationLimit else { limitReached = true; continue }
 			var missing = 0
 			var blocked = false
 			for level in 1...parts.count {
@@ -96,7 +97,7 @@ public struct FileCategories: Sendable {
 				} else { missing += 1 }
 			}
 			if blocked { unplaced.append(name); continue }
-			guard created.count + missing <= Self.creationLimit else { limitReached = true; continue }
+			guard created.count + unplaced.count + missing <= Self.creationLimit else { limitReached = true; continue }
 			var parentID: UUID?
 			for level in 1...parts.count {
 				let key = Array(lower.prefix(level))

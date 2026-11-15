@@ -238,6 +238,8 @@ extension AppModel {
 		let (read, readProblems, canceledAt) = await reading.value
 		var problems = readProblems
 		sheetDelay.cancel()
+		var importedFiles = 0
+		var storedFiles: [ReadFile] = []
 		var added = 0
 		var skipped = 0
 		var booked = 0
@@ -248,6 +250,7 @@ extension AppModel {
 			await replacingTable {
 				for file in read {
 					guard self.store === store else { return }
+					if run.isCanceled && canceledAt == nil { break }
 					let name = file.name, parsed = file.parsed, into = file.into, isNew = file.isNew
 					if isNew { save(account: into) }
 					// A new account that could not be saved, or one that the user deleted during the import.
@@ -257,8 +260,10 @@ extension AppModel {
 					}
 					do {
 						let imported = try await store.mergeFile(parsed.transactions, categories: parsed.categories,
-							creatingCategories: file.createsCategories, into: into.id)
+							creatingCategories: file.createsCategories, into: into.id, isCanceled: { canceledAt == nil && run.isCanceled })
 						guard self.store === store else { return }
+						importedFiles += 1
+						storedFiles.append(file)
 						let result = imported.reconciliation
 						added += result.added.count
 						skipped += result.skipped
@@ -266,6 +271,8 @@ extension AppModel {
 						created += imported.created.count
 						problems += imported.problems.map { "\(name): \($0)" }
 						if !result.added.isEmpty { warnings += parsed.warnings.map { "\(name): \($0)" } }
+					} catch is CancellationError {
+						break
 					} catch {
 						problems.append("\(name): \(error)")
 					}
@@ -283,10 +290,11 @@ extension AppModel {
 			problems.append("The import was canceled. \(run.names[canceledAt])\(rest) not imported.")
 		}
 		var message = added == 0 ? "Imported no new transactions." : added == 1 ? "Imported one new transaction." : "Imported \(added) new transactions."
+		if run.isCanceled { message = "Import canceled. \(importedFiles) files were imported before. " + message }
 		if booked > 0 { message += booked == 1 ? " Booked one pending transaction." : " Booked \(booked) pending transactions." }
 		if skipped > 0 { message += skipped == 1 ? " Skipped one already existing transaction." : " Skipped \(skipped) already existing transactions." }
 		if created > 0 { message += created == 1 ? " Created one new category." : " Created \(created) new categories." }
-		let profiles = read.compactMap { file in file.profile.map { "\(file.name) used the settings saved as profile \"\($0)\"." } }
+		let profiles = storedFiles.compactMap { file in file.profile.map { "\(file.name) used the settings saved as profile \"\($0)\"." } }
 		if !profiles.isEmpty { message += "\n\n" + profiles.joined(separator: "\n") }
 		if !problems.isEmpty { message += "\n\n" + problems.joined(separator: "\n") }
 		if !warnings.isEmpty {

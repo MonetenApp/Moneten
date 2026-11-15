@@ -259,6 +259,11 @@ final class DebugHarness {
 			let urls = argument.dropFirst(alwaysPreview ? 8 : 0).split(separator: "|").map { URL(filePath: String($0)) }
 			Task { await model.importFiles(urls, into: account, alwaysPreview: alwaysPreview); log("importfile done") }
 		// "selected" or "named" answers the question about the account of a file, an empty argument logs it.
+		case "cancelimport": model.fileImport?.cancel()
+		case "importstate":
+			let run = model.fileImport
+			log("importstate phase=\(run == nil ? "none" : run?.storing == nil ? "reading" : "storing") canceled=\(run?.isCanceled ?? false)")
+
 		case "importanswer":
 			guard let question = model.fileImport?.question else { return log("importanswer no question") }
 			switch argument {

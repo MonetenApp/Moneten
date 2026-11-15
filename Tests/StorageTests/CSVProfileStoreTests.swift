@@ -79,6 +79,29 @@ struct CSVProfileStoreTests {
 		#expect(try store.csvProfiles().count == 0)
 	}
 
+	@Test("Saving or deleting another profile keeps unreadable records")
+	func unreadableProfile() throws {
+		let store = try SchemaTests.emptyStore()
+		defer { try? store.close() }
+		let raw = Data("unreadable future payload".utf8)
+		try store.queue.write { db in
+			try db.execute(sql: "INSERT INTO csvProfile VALUES ('Future', 7, ?)", arguments: [raw])
+		}
+		try store.saveCSVProfile(profile(), replacing: nil)
+		try store.deleteCSVProfile(named: "Broker CSV")
+		#expect(try store.csvProfiles().count == 0)
+		#expect(try store.queue.read { db in try Data.fetchOne(db, sql: "SELECT payload FROM csvProfile WHERE name = 'Future' AND version = 7") } == raw)
+	}
+
+	@Test("Complete import refuses a database with saved profiles")
+	func profileIsUserData() throws {
+		let store = try SchemaTests.emptyStore()
+		defer { try? store.close() }
+		try store.saveCSVProfile(profile(), replacing: nil)
+		#expect(throws: Store.ImportRefusal.notEmpty) { try store.importAllData(AllData()) }
+		#expect(try store.csvProfiles().map(\.name) == ["Broker CSV"])
+	}
+
 	@Test("Profiles stay encrypted across reopen and are separate for every database")
 	func isolation() throws {
 		let root = URL(fileURLWithPath: "/private/tmp/moneten-profile-\(UUID())")
@@ -98,34 +121,11 @@ struct CSVProfileStoreTests {
 		try other.close()
 	}
 
-	@Test("A plain move removes the legacy key only after successful storage and keeps unreadable entries")
-	func legacyAndUnknown() throws {
-		let suite = "MonetenCSVTests-\(UUID())"
-		let defaults = try #require(UserDefaults(suiteName: suite))
-		defer { defaults.removePersistentDomain(forName: suite) }
-		let store = try SchemaTests.emptyStore()
-		let saved = try profile()
-		let json = try #require(String(data: JSONEncoder().encode(saved), encoding: .utf8))
-		defaults.set(Data("[\(json),{\"name\":\"Future\",\"layout\":\"unknown\"}]".utf8), forKey: "csvProfiles")
-		#expect(try store.csvProfiles(movingLegacyFrom: defaults) == [saved])
-		#expect(defaults.data(forKey: "csvProfiles") == nil)
-		let raw = try store.queue.read { db in try Data.fetchOne(db, sql: "SELECT payload FROM csvProfile WHERE name = 'Future'") }
-		var renamed = saved
-		renamed.name = "Renamed"
-		try store.saveCSVProfile(renamed, replacing: saved.name)
-		try store.deleteCSVProfile(named: renamed.name)
-		#expect(try store.csvProfiles().isEmpty)
-		#expect(try store.queue.read { db in try Data.fetchOne(db, sql: "SELECT payload FROM csvProfile WHERE name = 'Future'") } == raw)
-		try store.close()
-		defaults.set(try JSONEncoder().encode([saved]), forKey: "csvProfiles")
-		#expect(throws: (any Error).self) { try store.csvProfiles(movingLegacyFrom: defaults) }
-		#expect(defaults.data(forKey: "csvProfiles") != nil)
-	}
 }
 
 extension SchemaTests {
-	@Test("v19 opens encrypted v17 and v18 databases without changing their rows", arguments: [false, true])
-	func profileMigration(withV18: Bool) throws {
+	@Test("v19 opens encrypted v17 databases without changing their rows")
+	func profileMigration() throws {
 		let root = URL(fileURLWithPath: "/private/tmp/moneten-profile-schema-\(UUID())")
 		defer { try? FileManager.default.removeItem(at: root) }
 		let folder = DataFolder(root: root)
@@ -137,7 +137,6 @@ extension SchemaTests {
 		let account = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
 		try queue.write { db in
 			try account.insert(db)
-			if withV18 { try db.execute(sql: "INSERT INTO grdb_migrations(identifier) VALUES ('v18')") }
 		}
 		try queue.close()
 		let store = try Vault(folder: folder).open(password: "synthetic-password")

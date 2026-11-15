@@ -438,8 +438,6 @@ final class AppModel {
 
 	private func open(_ store: Store) throws {
 		self.store = store
-		let legacy: UserDefaults? = ProcessInfo.processInfo.environment["MONETEN_DATA_DIR"] == nil ? .standard : nil
-		_ = try store.csvProfiles(movingLegacyFrom: legacy)
 		let loaded = try store.loadLedger()
 		ledgerChange = "load"
 		ledger = loaded

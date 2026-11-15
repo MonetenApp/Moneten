@@ -292,7 +292,7 @@ The app SHALL offer "Import All Data..." in the File menu, which reads a complet
 
 ### Requirement: Complete import needs an empty database
 
-The app SHALL refuse "Import All Data..." when the database holds an account, a category that the user created, or a transaction, and say that the import works only in an empty database.
+The app SHALL refuse "Import All Data..." when the database holds an account, a category that the user created, a transaction, or a saved CSV profile, and say that the import works only in an empty database.
 
 #### Scenario: Database in use
 
