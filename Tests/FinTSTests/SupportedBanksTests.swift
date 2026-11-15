@@ -39,6 +39,7 @@ struct SupportedBanksTests {
 	func serviceByExtension() {
 		#expect(Self.list.matching("broker ext").services.map(\.name) == ["Musterbroker"])
 		#expect(Self.list.matching("munchen").banks.map(\.code) == ["70150000"])
+		#expect(Self.list.matching("120 30").banks.map(\.code) == ["12030000"])
 		#expect(Self.list.matching("keine bank").services.isEmpty)
 		#expect(Self.list.matching("keine bank").banks.isEmpty)
 	}

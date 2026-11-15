@@ -39,6 +39,8 @@ public struct SupportedBanks: Sendable {
 			let text = [service.name, service.extensionName].flatMap { BankDirectory.spellings($0) }
 			return terms.allSatisfy { spellings in spellings.contains { term in text.contains { $0.contains(term) } } }
 		}
-		return (services, directory.reachable(query))
+		// The start of a Bankleitzahl is one word also when it is typed in groups, such as "760 30".
+		let digits = query.filter { !$0.isWhitespace }
+		return (services, directory.reachable(!digits.isEmpty && digits.allSatisfy(\.isNumber) ? digits : query))
 	}
 }

@@ -11,8 +11,9 @@ struct SupportedBanksWindow: View {
 	@State private var search = ""
 	@FocusState private var searching: Bool
 	@State private var directory: Result<BankDirectory, any Error>?
-	/// The rows for `search`, which a search of the whole directory computes off the main thread.
-	@State private var shown: (services: [SupportedBanks.Service], banks: [BankDirectory.Entry]) = ([], [])
+	/// The rows for `search`, which a search of the whole directory computes off the main thread. Nil until
+	/// the first search ends, so that the list does not say "No Results" while it loads.
+	@State private var shown: (services: [SupportedBanks.Service], banks: [BankDirectory.Entry])?
 
 	/// The list shows this many banks, so that the window stays quick. A longer list asks for more of the name.
 	private static let shownBanks = 500
@@ -36,13 +37,14 @@ struct SupportedBanksWindow: View {
 
 	@ViewBuilder private var content: some View {
 		switch directory {
-		case nil:
+		case nil, .success? where shown == nil:
 			ProgressView("Loading the bank directory...")
 				.frame(maxWidth: .infinity, maxHeight: .infinity)
 		case let .failure(error)?:
 			ContentUnavailableView("Could not load the bank directory", systemImage: "exclamationmark.triangle",
 				description: Text((error as? SyncFailure)?.message ?? error.localizedDescription))
 		case .success?:
+			let shown = shown ?? ([], [])
 			if shown.services.isEmpty, shown.banks.isEmpty {
 				ContentUnavailableView.search(text: search)
 			} else {
