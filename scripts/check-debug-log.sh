@@ -154,6 +154,22 @@ poll "^alert " alert
 poll "^rows " rows Girokonto
 poll "^gave up$" search "currency:/^+?49/"
 send search ""
+cat >"$WORK/Erika Mustermann.xml" <<-'EOF'
+	<?xml version="1.0" encoding="UTF-8"?>
+	<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.053.001.08"><BkToCstmrStmt><Stmt>
+	<Acct><Id><IBAN>DE02120300000000202051</IBAN></Id></Acct>
+	<Ntry><Amt Ccy="EUR">1.00</Amt><CdtDbtInd>DBIT</CdtDbtInd><BookgDt><Dt>2026-11-03</Dt></BookgDt></Ntry>
+	</Stmt></BkToCstmrStmt></Document>
+EOF
+send select Tagesgeld
+poll "^phase=" state
+send importfile "$WORK/Erika Mustermann.xml"
+poll "^importanswer .*other" importanswer
+send importanswer selected
+poll "^importfile done" state
+poll "^alert " alert
+send select Girokonto
+poll "^phase=" state
 send selectRows 1
 send newcategory Haushaltskasse
 poll "selection=.*SidebarSelection.category" state
