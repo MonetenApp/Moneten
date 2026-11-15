@@ -239,7 +239,7 @@ public struct CSVFile: Sendable {
 			if rows[i].cells.contains(where: isAmountShaped) { firstReadable = i; break }
 		}
 		guard let firstDate else { return nil }
-		let dateTitles = Set(CSVField.bookingDate.keys + CSVField.valueDate.keys)
+		let dateTitles = Set(CSVField.bookingDate.keys + CSVField.valueDate.keys + ["tag"])
 		let title = try rows[..<(firstReadable ?? rows.endIndex)].indices.first { i in
 			try Task.checkCancellation()
 			let row = rows[i]
@@ -248,6 +248,7 @@ public struct CSVFile: Sendable {
 			guard !row.cells.contains(where: { currencyCode($0, account: "EUR") != nil })
 				|| dateTitles.contains(normalize(row.cells[dateColumn])) else { return false }
 			if i < firstDate { return true }
+			guard dateTitles.contains(normalize(row.cells[dateColumn])) else { return false }
 			let width = max(dateColumn, amountColumns.max() ?? dateColumn) + 1
 			return row.cells.count >= width && row.cells.prefix(width).allSatisfy { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
 		}
