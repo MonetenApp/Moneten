@@ -15,6 +15,12 @@ public enum AccountKind: String, Codable, Sendable, CaseIterable {
 		case .other: "Other"
 		}
 	}
+
+	/// The types that the menu "Account type" offers for an account of this type, or nil for a portfolio.
+	/// "Portfolio" decides that an account shows securities, so the user can neither choose it nor leave it.
+	public var choices: [AccountKind]? {
+		self == .portfolio ? nil : Self.allCases.filter { $0 != .portfolio }
+	}
 }
 
 /// Where an account gets its data from.

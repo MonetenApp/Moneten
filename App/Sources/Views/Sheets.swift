@@ -161,8 +161,12 @@ struct AccountSettingsSheet: View {
 				if let binding = Binding($account) {
 					Section {
 						TextField("Name", text: binding.name)
-						Picker("Account type", selection: binding.kind) {
-							ForEach(AccountKind.allCases, id: \.self) { Text($0.title).tag($0) }
+						if let choices = original.kind.choices {
+							Picker("Account type", selection: binding.kind) {
+								ForEach(choices, id: \.self) { Text($0.title).tag($0) }
+							}
+						} else {
+							LabeledContent("Account type", value: original.kind.title)
 						}
 						LabeledContent("Color") { ColorSwatches(selection: $color) }
 					}

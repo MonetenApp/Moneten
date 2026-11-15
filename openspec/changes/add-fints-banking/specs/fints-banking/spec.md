@@ -332,7 +332,7 @@ The app SHALL make an account a portfolio when a refresh fetches the value of a 
 - **GIVEN** an earlier setup added "Depot" as an account of the type "Other", and the bank allows the custody account balance (HKWPD) for it and neither the balance (HKSAL) nor the transactions (HKKAZ, HKCAZ)
 - **WHEN** the user refreshes "Depot"
 - **THEN** the app fetches the custody account balance (HKWPD)
-- **AND** "Depot" becomes a portfolio and shows its value
+- **AND** "Depot" becomes a portfolio and shows its value of 24,518.37 EUR
 
 ### Requirement: One dialog for all accounts of a login
 
