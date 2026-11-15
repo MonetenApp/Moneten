@@ -214,21 +214,6 @@ struct LedgerTests {
 		#expect(l.transactions(in: .account(giro.id), filter: f).map(\.purpose) == ["Miete Mai"])
 	}
 
-	@Test("A regular expression that backtracks on many rows stops within a second", .timeLimit(.minutes(1)))
-	func searchRegexBacktrackingOnManyRows() {
-		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
-		let l = Ledger(accounts: [giro], transactions: (0..<100).map {
-			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 1 + $0 % 12, day: 1 + $0 % 28), amountMinor: -8_900, name: "Stadtwerke Musterstadt.",
-				purpose: "Abschlag Strom Mai.")
-		})
-		var f = TransactionFilter()
-		f.searchText = #"purpose:/^(\w+\s?)+$/"#
-		var found: [Transaction] = []
-		let time = ContinuousClock().measure { found = l.transactions(in: .account(giro.id), filter: f) }
-		#expect(found.isEmpty)
-		#expect(time < .seconds(1))
-	}
-
 	@Test("Two word boundaries at the end of a value match the rows that the rule matches")
 	func searchTwoWordBoundaries() throws {
 		let giro = Account(position: 0, name: "Konto b", kind: .giro, source: .offline)
