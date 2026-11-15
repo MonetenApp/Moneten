@@ -125,6 +125,10 @@ public struct MoneyMoneyMigration: Sendable {
 		if !rawCategories.contains(where: { Self.string($0["rules"]) != nil }) {
 			plan.notes.append("The export contains no categorization rules. Copy them from the category settings of MoneyMoney into the category settings of Moneten.")
 		}
+		for c in plan.categories {
+			guard let error = c.ruleError else { continue }
+			plan.notes.append("The rule of \"\(c.name)\" cannot be read at position \(error.position + 1): \(error.message) \"\(c.name)\" receives no transaction through its rule until you correct the rule in its settings.")
+		}
 		plan.notes += Self.groupSumNotes(rawAccounts)
 		if !plan.portfolioAccounts.isEmpty {
 			plan.notes.append("Portfolio accounts were taken over with their balance. Their positions follow when securities accounts are supported.")
