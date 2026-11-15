@@ -47,9 +47,94 @@ struct RuleTests {
 		#expect(try matches(#""Bücher" OR "eBooks" OR ("Waren" AND "Versand")"#, RuleSubject(purpose: "Waren und Versand")))
 	}
 
-	@Test("Lower case operator is a term")
+	@Test("Lower case operator")
 	func lowerCaseOperator() throws {
-		#expect(try !matches(#""Lohn" or "Gehalt""#, RuleSubject(purpose: "Gehalt Oktober")))
+		#expect(try matches(#""Lohn" or "Gehalt""#, RuleSubject(purpose: "Gehalt Oktober", amount: 2500)))
+		#expect(try !matches(#""Lohn" or "Gehalt""#, RuleSubject(purpose: "Miete November", amount: -950)))
+	}
+
+	@Test("Mixed case operator")
+	func mixedCaseOperator() throws {
+		#expect(try matches(#""EC-Karte" And Not "Barauszahlung""#, RuleSubject(purpose: "EC-Karte Supermarkt")))
+		#expect(try !matches(#""EC-Karte" And Not "Barauszahlung""#, RuleSubject(purpose: "EC-Karte Barauszahlung")))
+	}
+
+	@Test("Operator word in quotation marks")
+	func quotedOperator() throws {
+		#expect(try matches(#""Lohn" "or" "Gehalt""#, RuleSubject(purpose: "Lohn or Gehalt")))
+		#expect(try !matches(#""Lohn" "or" "Gehalt""#, RuleSubject(purpose: "Gehalt Oktober")))
+	}
+
+	@Test("Short forms")
+	func shortForms() throws {
+		#expect(try matches(#""Netflix" + !"Gutschrift""#, RuleSubject(purpose: "Netflix Abo")))
+		#expect(try !matches(#""Netflix" + !"Gutschrift""#, RuleSubject(purpose: "Netflix Gutschrift")))
+	}
+
+	@Test("Minus before a term")
+	func minusBeforeTerm() throws {
+		#expect(try matches(#""Amazon" -"Erstattung""#, RuleSubject(purpose: "Amazon Bestellung", amount: Decimal(string: "-19.99")!)))
+		#expect(try !matches(#""Amazon" -"Erstattung""#, RuleSubject(purpose: "Amazon Erstattung", amount: Decimal(string: "19.99")!)))
+	}
+
+	@Test("Minus before a number")
+	func minusBeforeNumber() throws {
+		#expect(try matches("-12,50", RuleSubject(purpose: "Rückbuchung -12,50")))
+		#expect(try !matches("-12,50", RuleSubject(purpose: "Miete November")))
+	}
+
+	@Test("Minus after a word, before a quotation mark or a parenthesis", arguments: [#"Amazon-"Erstattung""#, "Amazon-„Erstattung“", #"Amazon-("Erstattung")"#])
+	func minusAfterWord(rule: String) throws {
+		#expect(try matches(rule, RuleSubject(purpose: "Amazon Bestellung", amount: Decimal(string: "-19.99")!)))
+		#expect(try !matches(rule, RuleSubject(purpose: "Amazon Erstattung", amount: Decimal(string: "19.99")!)))
+	}
+
+	@Test("Minus after an amount comparison, before a parenthesis")
+	func minusAfterAmount() throws {
+		#expect(try matches(#"amount>0-("Erstattung")"#, RuleSubject(purpose: "Gutschrift", amount: Decimal(string: "19.99")!)))
+		#expect(try !matches(#"amount>0-("Erstattung")"#, RuleSubject(purpose: "Amazon Erstattung", amount: Decimal(string: "19.99")!)))
+	}
+
+	@Test("Plus before a number", arguments: [#""Tel" +4917012345"#, "+4917012345"])
+	func plusBeforeNumber(rule: String) throws {
+		#expect(try matches(rule, RuleSubject(purpose: "Tel +4917012345")))
+		#expect(try !matches(rule, RuleSubject(purpose: "Tel 4917012345")))
+	}
+
+	@Test("A hyphen inside a word is not an operator")
+	func hyphenInWord() throws {
+		#expect(try matches("EC-Karte", RuleSubject(purpose: "EC-Karte Supermarkt")))
+		#expect(try !matches("EC-Karte", RuleSubject(purpose: "EC Karte Supermarkt")))
+	}
+
+	@Test("Plus sign inside a word")
+	func plusInWord() throws {
+		#expect(try matches("Disney+", RuleSubject(purpose: "Disney+ Abo", amount: Decimal(string: "-9.99")!)))
+		#expect(try !matches("Disney+", RuleSubject(purpose: "Disney Store", amount: -24)))
+	}
+
+	@Test("Exclamation mark at the end of a word")
+	func exclamationInWord() throws {
+		#expect(try matches(#"Yahoo! OR "Spotify""#, RuleSubject(purpose: "Yahoo! Mail Pro")))
+		#expect(try !matches(#"Yahoo! OR "Spotify""#, RuleSubject(purpose: "Yahoo Finanzen")))
+	}
+
+	@Test("Not equal after a field name")
+	func notEqualAfterField() throws {
+		#expect(try matches(#""Abschlag" AND name!="Stadtwerke""#, RuleSubject(name: "Gasversorger Muster", purpose: "Abschlag")))
+		#expect(try !matches(#""Abschlag" AND name!="Stadtwerke""#, RuleSubject(name: "Stadtwerke", purpose: "Abschlag")))
+	}
+
+	@Test("Rule that matches nothing")
+	func falseRule() throws {
+		#expect(try !matches("FALSE", RuleSubject(purpose: "False Angabe korrigiert")))
+		#expect(try matches(#""False""#, RuleSubject(purpose: "False Angabe korrigiert")))
+	}
+
+	@Test("Quoted true is a word")
+	func quotedTrue() throws {
+		#expect(try matches(#""true""#, RuleSubject(purpose: "true fruits Smoothie")))
+		#expect(try !matches(#""true""#, RuleSubject(purpose: "Miete November")))
 	}
 
 	@Test("Adjacent terms must both occur")
@@ -66,6 +151,56 @@ struct RuleTests {
 		#expect(try matches(#"local_account:"DE02 1203 0000 0000 2020 51""#, RuleSubject(localAccounts: ["DE02120300000000202051"])))
 	}
 
+	@Test("Field does not match")
+	func fieldDoesNotMatch() throws {
+		#expect(try matches(#""Abschlag" AND name<>"Stadtwerke""#, RuleSubject(name: "Gasversorger Muster", purpose: "Abschlag")))
+		#expect(try !matches(#""Abschlag" AND name<>"Stadtwerke""#, RuleSubject(name: "Stadtwerke", purpose: "Abschlag")))
+	}
+
+	@Test("Equality forms")
+	func equalityForms() throws {
+		for rule in ["currency:EUR", "currency=EUR", "currency==EUR", "currency:=EUR"] {
+			#expect(try matches(rule, RuleSubject(currency: "EUR", amount: -1.5)), "\(rule)")
+			#expect(try !matches(rule, RuleSubject(currency: "USD", amount: -1.5)), "\(rule)")
+		}
+	}
+
+	@Test("Field name in capitals")
+	func fieldNameInCapitals() throws {
+		#expect(try matches(#"Name:"Bahn AG""#, RuleSubject(name: "Deutsche Bahn AG")))
+		#expect(try !matches(#"Name:"Bahn AG""#, RuleSubject(name: "Stadtwerke", purpose: "Bahn AG Ticket")))
+		#expect(try matches(#""Abschlag" NAME!="Stadtwerke""#, RuleSubject(name: "Gasversorger Muster", purpose: "Abschlag")))
+		#expect(try !matches(#""Abschlag" NAME!="Stadtwerke""#, RuleSubject(name: "Stadtwerke", purpose: "Abschlag")))
+	}
+
+	@Test("IBAN without a field operator")
+	func ibanWithoutField() throws {
+		let s = RuleSubject(name: "Stadtwerke", purpose: "Abschlag", remoteAccounts: ["DE02120300000000202051"], amount: -89)
+		#expect(try !matches(#""DE02120300000000202051""#, s))
+		#expect(try matches(#"remote_account:"DE02120300000000202051""#, s))
+	}
+
+	@Test("Word with a hyphen, whole word, and wildcard for part of a word")
+	func wholeWord() throws {
+		#expect(try !matches(#""REWE""#, RuleSubject(purpose: "REWE-Markt", amount: -12.5)))
+		#expect(try matches(#""REWE""#, RuleSubject(purpose: "REWE Markt Musterstadt")))
+		#expect(try matches(#""REWE*""#, RuleSubject(purpose: "REWE-Markt")))
+	}
+
+	@Test("A word after a field operator is a term, also an operator word or a word that starts with a sign", arguments: [
+		("name:and", RuleSubject(name: "Muster and Partner"), RuleSubject(name: "Muster Partner")),
+		("name:true", RuleSubject(name: "true fruits"), RuleSubject(name: "Stadtwerke")),
+		("purpose:Not", RuleSubject(purpose: "Not Aus Service"), RuleSubject(purpose: "Abschlag")),
+		("comment:false", RuleSubject(comment: "false Buchung"), RuleSubject(comment: "für die Steuer")),
+		("name:-Stadtwerke", RuleSubject(name: "-Stadtwerke"), RuleSubject(name: "Gasversorger Muster")),
+		("name:!x", RuleSubject(name: "!x"), RuleSubject(name: "Gasversorger Muster")),
+		("name:+49", RuleSubject(name: "+49 Telefon"), RuleSubject(name: "49 Telefon")),
+	])
+	func wordAfterFieldOperator(rule: String, match: RuleSubject, other: RuleSubject) throws {
+		#expect(try matches(rule, match))
+		#expect(try !matches(rule, other))
+	}
+
 	@Test("A field operator needs its term without a space")
 	func fieldSpace() {
 		#expect(throws: RuleSyntaxError.self) { try Rule(parsing: #"name: "Bahn""#) }
@@ -80,6 +215,18 @@ struct RuleTests {
 		#expect(try matches("amount!=5", RuleSubject(amount: 4)))
 	}
 
+	@Test("Amount not equal")
+	func amountNotEqual() throws {
+		#expect(try matches("amount<>0", RuleSubject(amount: -1.5)))
+		#expect(try !matches("amount<>0", RuleSubject(amount: 0)))
+	}
+
+	@Test("Amount equal with :=")
+	func amountColonEqual() throws {
+		#expect(try matches("amount:=-1,50", RuleSubject(amount: -1.5)))
+		#expect(try !matches("amount:=-1,50", RuleSubject(amount: 0)))
+	}
+
 	@Test("Regular expressions")
 	func regex() throws {
 		#expect(try matches("/GA NR[0-9]{8}/", RuleSubject(purpose: "GA NR00012345 BLZ12030000")))
@@ -92,6 +239,21 @@ struct RuleTests {
 		#expect(throws: RuleSyntaxError(position: rule.count, message: "A closing parenthesis is missing at the end of the rule.")) {
 			try Rule(parsing: rule)
 		}
+	}
+
+	@Test("Sign after a field operator", arguments: [
+		(#"name:-"Stadtwerke""#, 5, #"A sign cannot follow name:. Write name!="…" to exclude a value, or name:"…" to match it."#),
+		(#"purpose:-"Miete""#, 8, #"A sign cannot follow purpose:. Write purpose!="…" to exclude a value, or purpose:"…" to match it."#),
+		(#"name:!"x""#, 5, #"A sign cannot follow name:. Write name!="…" to exclude a value, or name:"…" to match it."#),
+		(#"name:+"x""#, 5, #"A sign cannot follow name:. Write name!="…" to exclude a value, or name:"…" to match it."#),
+		("name:-(a OR b)", 5, #"A sign cannot follow name:. Write name!="…" to exclude a value, or name:"…" to match it."#),
+		(#""Abschlag" name=-„Stadtwerke“"#, 16, #"A sign cannot follow name=. Write name!="…" to exclude a value, or name:"…" to match it."#),
+		("name:-/Stadtwerke/", 5, #"A sign cannot follow name:. Write name!="…" to exclude a value, or name:"…" to match it."#),
+		("name:!/x/", 5, #"A sign cannot follow name:. Write name!="…" to exclude a value, or name:"…" to match it."#),
+		("name:+/REWE/", 5, #"A sign cannot follow name:. Write name!="…" to exclude a value, or name:"…" to match it."#),
+	])
+	func signAfterFieldOperator(rule: String, position: Int, message: String) throws {
+		#expect(throws: RuleSyntaxError(position: position, message: message)) { try Rule(parsing: rule) }
 	}
 
 	@Test("Other syntax errors")
@@ -148,6 +310,16 @@ struct CategorizerTests {
 		#expect(c.category(for: t) == nil)
 		let t2 = Transaction(accountID: business.id, bookingDate: Day(year: 2026, month: 1, day: 2), amountMinor: -10_000, name: "Vermieter", purpose: "Miete")
 		#expect(c.category(for: t2) == office.id)
+	}
+
+	@Test("Catch-all category")
+	func catchAll() {
+		let business = Domain.Category(position: 0, name: "Business", restrictedToID: self.business.id, rule: "true")
+		let c = Categorizer(ledger: ledger([business]))
+		let t = Transaction(accountID: self.business.id, bookingDate: Day(year: 2026, month: 1, day: 2), amountMinor: -4_200, name: "Bürobedarf")
+		#expect(c.category(for: t) == business.id)
+		let other = Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 1, day: 2), amountMinor: -4_200, name: "Bürobedarf")
+		#expect(c.category(for: other) == nil)
 	}
 
 	@Test("A manual assignment is kept")

@@ -150,7 +150,7 @@ The app SHALL combine expressions with the operators `AND`, `OR`, and `NOT` in a
 
 ### Requirement: Short forms of the operators
 
-The app SHALL read a plus sign between two expressions as `AND`, and an exclamation mark or a minus sign before an expression as `NOT`. A minus sign before a digit belongs to the number. A plus sign or an exclamation mark directly after a letter or a digit is part of the word, as in Disney+. The field operator `!=` after a field name is the exception, as in `name!="Stadtwerke"` and `amount!=0`.
+The app SHALL read a plus sign between two expressions as `AND`, and an exclamation mark or a minus sign before an expression as `NOT`. A plus sign or a minus sign before a digit belongs to the number. A plus sign or an exclamation mark directly after a letter or a digit is part of the word, as in Disney+. The field operator `!=` after a field name is the exception, as in `name!="Stadtwerke"` and `amount!=0`.
 
 #### Scenario: Short forms
 
@@ -164,11 +164,23 @@ The app SHALL read a plus sign between two expressions as `AND`, and an exclamat
 - **WHEN** one transaction has the purpose "Amazon Bestellung" and the amount -19,99 €, and another has the purpose "Amazon Erstattung" and the amount 19,99 €
 - **THEN** the rule matches the first and not the second
 
+#### Scenario: Minus at the end of a word
+
+- **GIVEN** the rule `Amazon-"Erstattung"`
+- **WHEN** one transaction has the purpose "Amazon Bestellung" and the amount -19,99 €, and another has the purpose "Amazon Erstattung" and the amount 19,99 €
+- **THEN** the rule matches the first and not the second, because a minus before a quotation mark is `NOT` and not part of the word Amazon
+
 #### Scenario: Minus before a number
 
 - **GIVEN** the rule `-12,50`
 - **WHEN** one transaction has the purpose "Rückbuchung -12,50" and another has the purpose "Miete November"
 - **THEN** the rule matches the first and not the second, because `-12,50` is a term and not `NOT` before 12,50
+
+#### Scenario: Plus before a number
+
+- **GIVEN** the rule `"Tel" +4917012345`
+- **WHEN** one transaction has the purpose "Tel +4917012345" and another has the purpose "Tel 4917012345"
+- **THEN** the rule matches the first and not the second, because `+4917012345` is a term and not `AND` before 4917012345
 
 #### Scenario: Plus sign inside a word
 
@@ -212,7 +224,7 @@ The app SHALL read the words `true` and `false` in any letter case and without q
 
 ### Requirement: Field operators
 
-The app SHALL restrict a term or a regular expression to one field when it follows a field operator with no space between them. The fields are `name`, `purpose`, `local_account`, `remote_account`, `currency`, `reference`, `mandate`, `creditor_id`, `comment`, and `booking_text`. After the field, `:`, `=`, `==`, and `:=` test that the field matches, and `!=` and `<>` test that it does not.
+The app SHALL restrict a term or a regular expression to one field when it follows a field operator with no space between them. The fields are `name`, `purpose`, `local_account`, `remote_account`, `currency`, `reference`, `mandate`, `creditor_id`, `comment`, and `booking_text`. After the field, `:`, `=`, `==`, and `:=` test that the field matches, and `!=` and `<>` test that it does not. A field name counts in any letter case. A word right after a field operator is always a term.
 
 #### Scenario: Name only
 
@@ -243,6 +255,18 @@ The app SHALL restrict a term or a regular expression to one field when it follo
 - **GIVEN** the rules `currency:EUR`, `currency=EUR`, `currency==EUR`, and `currency:=EUR`
 - **WHEN** a transaction has the amount -1,50 €
 - **THEN** each of the four rules matches
+
+#### Scenario: Field name in capitals
+
+- **GIVEN** the rule `Name:"Bahn AG"`
+- **WHEN** one transaction has the counterparty "Deutsche Bahn AG", and another has the counterparty "Stadtwerke" and the purpose "Bahn AG Ticket"
+- **THEN** the rule matches the first and not the second, because `Name:` is the field operator `name:`
+
+#### Scenario: Operator word after a field operator
+
+- **GIVEN** the rule `name:and`
+- **WHEN** one transaction has the counterparty "Muster and Partner" and another has the counterparty "Muster Partner"
+- **THEN** the rule matches the first and not the second, because `and` after `name:` is a term and not the operator `AND`
 
 ### Requirement: Amount comparisons
 
@@ -284,6 +308,12 @@ The app SHALL refuse to store a rule that it cannot parse. It shows a message th
 
 - **WHEN** the user enters `("Lohn" OR "Gehalt"` and closes the settings
 - **THEN** the app shows that a closing parenthesis is missing at the end of the rule
+- **AND** the app does not change the stored rule
+
+#### Scenario: Sign after a field operator
+
+- **WHEN** the user enters `name:-"Stadtwerke"` or the regular expression `name:-/Stadtwerke/` and closes the settings
+- **THEN** the app shows at position 6 that a sign cannot follow `name:`, and that `name!="…"` excludes a value
 - **AND** the app does not change the stored rule
 
 ### Requirement: A saved rule that cannot be read is marked
