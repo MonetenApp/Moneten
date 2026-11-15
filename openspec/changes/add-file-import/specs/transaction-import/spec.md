@@ -566,7 +566,7 @@ The app SHALL keep a pending transaction from a file that no refresh has deliver
 
 #### Scenario: A later file does not make a payment fetched
 
-- **GIVEN** a pending file transaction of -800,00 € to "Vermieter A" on 1 December 2026 with the purpose "Miete Dezember"
+- **GIVEN** a pending file transaction of -800,00 € to "Vermieter A" on 1 December 2026 with the purpose "Miete Dezember", from an older import without a retained original file identity
 - **WHEN** a later file delivers the payment on the same day with the purpose "Miete Dezember Wohnung 3"
 - **THEN** the file transaction is skipped, and one pending unfetched transaction stays
 - **AND** a refresh on 20 November 2026 that delivers neither version keeps it
