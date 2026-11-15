@@ -217,6 +217,29 @@ struct FileImportTests {
 		#expect(fromCAMT.map(\.amountMinor) == [-100_000, 500])
 	}
 
+	@Test("An MT940 booking date takes the year of the value date, moved by the six-month rule", arguments: [
+		("2601021231", Day(year: 2026, month: 1, day: 2), Day(year: 2025, month: 12, day: 31)),
+		("2511200310", Day(year: 2025, month: 11, day: 20), Day(year: 2026, month: 3, day: 10)),
+		("2606300102", Day(year: 2026, month: 6, day: 30), Day(year: 2026, month: 1, day: 2)),
+		("800101", Day(year: 2080, month: 1, day: 1), Day(year: 2080, month: 1, day: 1)),
+		("2601150715", Day(year: 2026, month: 1, day: 15), Day(year: 2026, month: 7, day: 15)),
+		("2601150815", Day(year: 2026, month: 1, day: 15), Day(year: 2025, month: 8, day: 15)),
+		("2612150615", Day(year: 2026, month: 12, day: 15), Day(year: 2026, month: 6, day: 15)),
+	])
+	func mt940Dates(dates: String, value: Day, booking: Day) throws {
+		let text = """
+		:20:STARTUMS
+		:25:12030000/202051
+		:60F:C251031EUR1000,00
+		:61:\(dates)D50,00NDDTNONREF
+		:62F:C260630EUR950,00
+		-
+		"""
+		let ts = try TransactionFileImporter.parse(Data(text.utf8), currency: "EUR").transactions
+		#expect(ts.map(\.valueDate) == [value])
+		#expect(ts.map(\.bookingDate) == [booking])
+	}
+
 	@Test("MT940 always reads the comma as the decimal mark")
 	func mt940DecimalComma() throws {
 		let text = """
