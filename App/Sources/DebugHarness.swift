@@ -397,7 +397,12 @@ final class DebugHarness {
 		case "importall": Task { log("importall \(await model.readAllData(from: URL(filePath: argument)) == "done" ? "done" : "refused")") }
 		case "sheet":
 			switch argument {
-			case "migration": model.sheet = .migration
+			case "migration":
+				#if DEBUG || PERF_HARNESS
+				MigrationSheet.fixtureFolder = nil
+				MigrationSheet.simulatedFailure = nil
+				#endif
+				model.sheet = .migration
 			case "exportAllData": model.sheet = .exportAllData
 			case "newAccount": model.addAccount()
 			case "setPassword": model.sheet = .setPassword
