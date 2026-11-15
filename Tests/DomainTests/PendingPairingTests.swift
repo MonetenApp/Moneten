@@ -3,6 +3,40 @@ import Foundation
 import Testing
 
 extension ReconcileTests {
+	@Test("An unidentified file stays identified after takeover booking and deletion", arguments: [false, true])
+	func gate3OriginalFileFingerprint(bankFirst: Bool) throws {
+		let file = rent(1)
+		let bank = rent(1, purpose: "BANK")
+		let initial = bankFirst ? history([], after: merge(refresh([bank]), at: noon(20, month: 11))) : []
+		let imported = history(initial, after: merge(.file([file]), stored: initial, at: noon(20, month: 11)))
+		let taken = history(imported, after: merge(refresh([bank]), stored: imported, at: noon(20, month: 11)))
+		let booked = history(taken, after: merge(refresh([rent(2, purpose: "BOOKED BANK", pending: false)]), stored: taken, at: noon(1, month: 12)))
+		let live = try #require(booked.first)
+		#expect(booked.count == 1)
+		let repeated = merge(.file([file]), stored: booked, at: noon(2, month: 12))
+		#expect(repeated.added == [])
+		#expect(repeated.skipped == 1)
+		#expect(history(booked, after: repeated).map(\.isPending) == [false])
+		let deleted = merge(.file([file]), deleted: [DeletedTransaction(live, deletedAt: now)], at: noon(2, month: 12))
+		#expect(deleted.added == [])
+		#expect(deleted.skipped == 1)
+		var native = rent(2, purpose: "BOOKED BANK", pending: false)
+		native.isFetched = true
+		#expect(merge(.file([file]), stored: [native], at: noon(2, month: 12)).added.map(\.amountMinor) == [-80_000])
+	}
+
+	@Test("Different original file fingerprints cannot share a payment", arguments: [false, true])
+	func gate3DifferentFileFingerprints(reference: Bool) {
+		var first = rent(1, purpose: "Rent A")
+		var second = rent(1, purpose: "Rent B")
+		if reference { first.endToEndReference = "SHARED"; second.endToEndReference = "SHARED" }
+		let stored = history([], after: merge(.file([first]), at: noon(20, month: 11)))
+		let r = merge(.file([second]), stored: stored, at: noon(20, month: 11))
+		#expect(r.skipped == 0)
+		#expect(r.added.map(\.amountMinor) == [-80_000])
+		#expect(history(stored, after: r).reduce(0) { $0 + $1.amountMinor } == -160_000)
+	}
+
 	func permutations<T>(_ rows: [T]) -> [[T]] {
 		guard !rows.isEmpty else { return [[]] }
 		return rows.indices.flatMap { i in
