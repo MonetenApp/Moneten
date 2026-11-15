@@ -362,6 +362,13 @@ The app SHALL let the user save the settings of the preview as a named profile. 
 - **WHEN** the bank adds a column and the header row no longer matches the profile
 - **THEN** the app shows the preview again with the profile as the starting point
 
+#### Scenario: Repeated amount titles move
+
+- **GIVEN** a profile maps the two "Betrag" columns of "Datum;Betrag;Betrag" to debit and credit
+- **WHEN** the header becomes "Datum;Extra;Betrag;Betrag" and the row is "01.11.2026;Note;10,00;0,00"
+- **THEN** the preview maps debit to column 2 and credit to column 3, counting from zero, and reads -1000 minor units
+- **AND** a changed number of repeated titles leaves the file without a suggested profile
+
 ### Requirement: Categories from a CSV file
 
 The app SHALL assign the category from a category column to each imported transaction when a category with that name or path exists. With the option "Auto-create categories" the app creates the missing categories and reports their number. Without the option, a transaction with an unknown category is treated as one without a category.
@@ -376,6 +383,14 @@ The app SHALL assign the category from a category column to each imported transa
 
 - **WHEN** the same file is imported with the option off
 - **THEN** the "Pets" rows pass the categorization rules like any new transaction
+
+#### Scenario: Imported category is restricted to another account
+
+- **GIVEN** "Office" is restricted to "Business" or its "Work" account group
+- **WHEN** a row of -420 minor units names "Office" while being imported into "Private"
+- **THEN** the row stays without a category and passes the rules
+- **AND** importing into "Business" assigns "Office" as set by hand
+- **AND** a category that could not be saved leaves the row without that category
 
 ### Requirement: CAMT import
 
