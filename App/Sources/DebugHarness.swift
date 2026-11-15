@@ -392,7 +392,11 @@ final class DebugHarness {
 				let hover = model.acceptsDrag(on: c), accepted = model.canDrop(item?.ids ?? [], on: c)
 				model.endDrag()
 				model.drop(item?.ids ?? [], on: c)
-				log("droprows \(c.name) hover=\(hover) accepted=\(accepted) afterwards=\(model.acceptsDrag(on: c))")
+				let afterwards = model.acceptsDrag(on: c)
+				// A drop that changes the rows of the open view waits a drawing for its new table.
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [self] in
+					log("droprows category=\(Self.sidebarPosition(c.id, in: model.ledger)) hover=\(hover) accepted=\(accepted) afterwards=\(afterwards) visible=\(model.visibleTransactions.count)")
+				}
 			}
 		// "Name|Group": what a drop of the category on the row of the group does.
 		case "dropcategory":
@@ -404,7 +408,7 @@ final class DebugHarness {
 				model.endDrag()
 				if hover, let item { model.drop(category: item.id, on: group) }
 				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [self] in
-					log("dropcategory hover=\(hover) \(model.ledger.categoriesInSidebarOrder.map { model.ledger.categoryPath($0.id) }.joined(separator: ", "))")
+					log("dropcategory hover=\(hover) \(Self.place(of: c.id, in: model))")
 				}
 			}
 		// "Name|Group|index", with an empty group for the top level: what a drop of the category between two rows does.
@@ -417,7 +421,7 @@ final class DebugHarness {
 				model.move(category: item.id, into: model.ledger.categories.first { $0.name == parts[1] }?.id, at: index)
 				// A move that changes the rows of the open view waits a drawing for its new table.
 				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [self] in
-					log("movecategory \(model.ledger.categoriesInSidebarOrder.map { model.ledger.categoryPath($0.id) }.joined(separator: ", "))")
+					log("movecategory \(Self.place(of: c.id, in: model))")
 				}
 			}
 		// "table" puts the focus in the transaction table, as a click on it does. "down", "up", "return", "escape",
@@ -748,6 +752,21 @@ final class DebugHarness {
 			}
 			log("contextmenu row \(index) \(menu?.items.map { ($0.isAlternate ? "alt:" : "") + $0.title } ?? [])")
 		}
+	}
+
+	/// A category by its position in sidebar order from 0, or "default", because the user types category names.
+	private static func sidebarPosition(_ id: UUID, in ledger: Ledger) -> String {
+		ledger.categoriesInSidebarOrder.filter { !$0.isDefault }.firstIndex { $0.id == id }.map(String.init) ?? "default"
+	}
+
+	/// Where a category is after a move: its position, its parent's position or "top", its index among the
+	/// children of that parent, the rows of its tree, and the rows of the open view.
+	private static func place(of id: UUID, in model: AppModel) -> String {
+		let ledger = model.ledger
+		guard let c = ledger.category(id) else { return "not found" }
+		let index = ledger.childCategories(of: c.parentID).firstIndex { $0.id == id } ?? -1
+		return "position=\(sidebarPosition(id, in: ledger)) parent=\(c.parentID.map { sidebarPosition($0, in: ledger) } ?? "top") index=\(index) "
+			+ "rows=\(ledger.transactions(in: .category(id)).count) visible=\(model.visibleTransactions.count)"
 	}
 
 	/// Sends a drag payload through an item provider and back, as the system hands it from a drag to a drop.
