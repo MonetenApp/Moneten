@@ -361,6 +361,10 @@ private struct RuleParser {
 				tokens.append((.regex(s), start))
 				continue
 			}
+			if isFieldValue, ["-", "!", "+"].contains(c), i + 1 < chars.count, chars[i + 1] == "(" || chars[i + 1] == "/" || openQuotes.contains(chars[i + 1]),
+				case let .field(field, op, _)? = tokens.last?.token {
+				throw RuleSyntaxError(position: start, message: #"A sign cannot follow \#(field.rawValue)\#(op). Write \#(field.rawValue)!="…" to exclude a value, or \#(field.rawValue):"…" to match it."#)
+			}
 			var word = ""
 			while i < chars.count, !chars[i].isWhitespace, chars[i] != "(", chars[i] != ")", !openQuotes.contains(chars[i]) {
 				// A minus before a quotation mark or a parenthesis is NOT, also right after a word, as in Amazon-"Erstattung".
@@ -369,9 +373,6 @@ private struct RuleParser {
 				i += 1
 			}
 			if isFieldValue {
-				if ["-", "!", "+"].contains(word), i < chars.count, chars[i] == "(" || openQuotes.contains(chars[i]), case let .field(field, op, _)? = tokens.last?.token {
-					throw RuleSyntaxError(position: start, message: #"A sign cannot follow \#(field.rawValue)\#(op). Write \#(field.rawValue)!="…" to exclude a value, or \#(field.rawValue):"…" to match it."#)
-				}
 				tokens.append((.word(word), start))
 				continue
 			}
