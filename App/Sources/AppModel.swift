@@ -663,7 +663,13 @@ final class AppModel {
 
 	/// A drop of rows on a category in the sidebar. A group, or a category restricted to another account, refuses them.
 	func drop(_ ids: Set<UUID>, on category: Domain.Category) {
-		if canDrop(ids, on: category) { assign(category: category.id, to: ids) }
+		let rows = ids.compactMap { ledger.transaction($0) }
+		guard !rows.isEmpty, ledger.canAssign(category, to: rows) else { return }
+		if ledger.changesShownRows(assigning: category.id, to: rows, roots: shownCategoryRoots) {
+			Task { await replacingTable { assign(category: category.id, to: ids) } }
+		} else {
+			assign(category: category.id, to: ids)
+		}
 	}
 
 	/// A category dropped on a group goes to its end. `Ledger.move` refuses a category that is not a group,
@@ -678,22 +684,20 @@ final class AppModel {
 
 	/// Moves a category, or a group with everything in it, to the gap `index` among the children of `parent`.
 	func move(category id: UUID, into parent: UUID?, at index: Int) {
-		guard let oldParent = ledger.category(id).map(\.parentID), !ledger.move(category: id, into: parent, at: index).isEmpty else { return }
-		// A category with rows that comes into or leaves the open category view, or the category filter, would
-		// insert or remove its rows in place, which removes shown rows (issue #135), so it comes with a new table.
-		var roots = [tableKey.filter.categoryID]
-		if case let .category(shown) = tableKey.selection { roots.append(shown) }
-		let moved = ledger.categoryIDs(inTree: id)
-		let hasRows = ledger.transactions.contains { $0.categoryID.map(moved.contains) ?? false }
-		let changesShownRows = hasRows && roots.compactMap { $0 }.contains { root in
-			let tree = ledger.categoryIDs(inTree: root)
-			return (oldParent.map(tree.contains) ?? false) != (parent.map(tree.contains) ?? false)
-		}
-		if changesShownRows {
+		guard !ledger.move(category: id, into: parent, at: index).isEmpty else { return }
+		if ledger.changesShownRows(moving: id, into: parent, roots: shownCategoryRoots) {
 			Task { await replacingTable { moveNow(category: id, into: parent, at: index) } }
 		} else {
 			moveNow(category: id, into: parent, at: index)
 		}
+	}
+
+	/// The categories whose trees the open table shows: the open category view and the category filter. Rows that
+	/// come into or leave them in place remove shown rows (issue #135), so such a change comes with a new table.
+	private var shownCategoryRoots: [UUID] {
+		var roots = [tableKey.filter.categoryID]
+		if case let .category(shown) = tableKey.selection { roots.append(shown) }
+		return roots.compactMap { $0 }
 	}
 
 	private func moveNow(category id: UUID, into parent: UUID?, at index: Int) {
