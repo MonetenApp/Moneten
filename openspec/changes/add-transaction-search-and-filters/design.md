@@ -24,6 +24,8 @@ The search field reads its text with the parser of the rule language. A term wit
 
 A regular expression reads the fields of a row as they are, which costs about 2 µs per row. Before that, the search looks for the longest run of plain characters of the pattern in the search text of the row, in lower case. Every match holds that run, so a row without it cannot match. The check only rules out a row whose search text is plain ASCII, because folding changes other text: "e" with a combining accent becomes "é". A pattern with an alternative or a group has no such run.
 
+ICU never returns for some patterns, such as `/^+?49/`, and the search runs on the main thread. Each regular expression of a search therefore matches with progress reports and gives up after 100 ms on one text, and the rest of that search counts it as no match. The reports cost one call for each character, which a second change pays for: when the match over the joined values lies inside one value and no value has a line end of its own, that match decides the row without a call for each value.
+
 ## Risks / Trade-offs
 
 Tasks marked as built in part may differ from the spec in the way their note says.
