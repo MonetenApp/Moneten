@@ -1,3 +1,4 @@
+import Domain
 import SwiftUI
 
 /// A running import of files, which the import sheet shows. The files are read one after the other, and
@@ -10,6 +11,11 @@ final class FileImport {
 	/// The number of transactions being stored, once all files are read.
 	var storing: Int?
 	private(set) var isCanceled = false
+	/// The file that names another account, which the sheet asks about instead of showing the progress.
+	private(set) var question: AccountQuestion?
+	@ObservationIgnored var isPresented = false
+	@ObservationIgnored private var dismissal: CheckedContinuation<Void, Never>?
+	@ObservationIgnored private var waiting: CheckedContinuation<AccountQuestion.Answer?, Never>?
 	/// Cancels the task that reads the files, which stops the reading of a CSV file at its next row.
 	@ObservationIgnored var onCancel: () -> Void = {}
 
@@ -17,8 +23,35 @@ final class FileImport {
 		self.names = names
 	}
 
+	/// Asks where the file goes, and waits for the answer, or for "Cancel", which gives nil.
+	func ask(_ question: AccountQuestion) async -> AccountQuestion.Answer? {
+		guard !isCanceled else { return nil }
+		return await withCheckedContinuation { continuation in
+			waiting = continuation
+			self.question = question
+		}
+	}
+
+	func waitForDismissal() async {
+		guard isPresented else { return }
+		await withCheckedContinuation { dismissal = $0 }
+	}
+
+	func sheetDismissed() {
+		isPresented = false
+		dismissal?.resume()
+		dismissal = nil
+	}
+
+	func answer(_ choice: AccountQuestion.Answer?) {
+		question = nil
+		waiting?.resume(returning: choice)
+		waiting = nil
+	}
+
 	func cancel() {
 		isCanceled = true
+		answer(nil)
 		onCancel()
 	}
 }
@@ -31,6 +64,14 @@ struct FileImportSheet: View {
 	let run: FileImport
 
 	var body: some View {
+		if let question = run.question {
+			AccountQuestionView(run: run, question: question)
+		} else {
+			progress
+		}
+	}
+
+	private var progress: some View {
 		SheetFrame(title: "Import Transactions", confirmTitle: nil, onCancel: run.cancel, onConfirm: { false }) {
 			Section {
 				VStack(alignment: .leading, spacing: 8) {
@@ -51,5 +92,51 @@ struct FileImportSheet: View {
 	private var status: String {
 		if let n = run.storing { return n == 1 ? "Storing one transaction..." : "Storing \(n.formatted()) transactions..." }
 		return run.names.count == 1 ? "Reading \(run.names[0])..." : "Reading file \(run.index + 1) of \(run.names.count): \(run.names[run.index])..."
+	}
+}
+
+/// A CAMT or MT940 file that names another account than the selected one.
+struct AccountQuestion {
+	enum Answer {
+		/// Into the selected account.
+		case selected
+		/// Into the account that the file names, or into a new offline account when no account has it.
+		case named
+	}
+
+	let file: String
+	let named: FileAccount
+	let selected: Account
+	/// The account of the app that the file names, or nil when no account has it.
+	let other: Account?
+}
+
+struct AccountQuestionView: View {
+	let run: FileImport
+	let question: AccountQuestion
+
+	var body: some View {
+		SheetFrame(title: "Import \(question.file)", confirmTitle: question.other.map { "Import into \"\($0.name)\"" } ?? "Import into the selected account",
+			width: 560, onCancel: run.cancel, onConfirm: { run.answer(question.other == nil ? .selected : .named); return false }) {
+			Button(question.other == nil ? "Create offline account" : "Import into \"\(question.selected.name)\"") {
+				run.answer(question.other == nil ? .named : .selected)
+			}
+		} content: {
+			Section {
+				Text(message).fixedSize(horizontal: false, vertical: true)
+			}
+		}
+		.interactiveDismissDisabled()
+	}
+
+	private var message: String {
+		let named = switch question.named {
+		case let .iban(iban): "the IBAN \(Format.iban(iban))"
+		case let .number(bankCode, number, _): bankCode.map { "the account number \(number) at the bank code \($0)" } ?? "the account number \(number)"
+		}
+		if let other = question.other {
+			return "The file names \(named), which belongs to the account \"\(other.name)\". Do you want to import it into \"\(other.name)\" instead of \"\(question.selected.name)\"?"
+		}
+		return "The file names \(named), which no account has. Import it into the selected account \"\(question.selected.name)\", or into a new offline account?"
 	}
 }

@@ -127,8 +127,8 @@ extension AppModel {
 	/// Imports files into `accountID`, or into the selected account. The context menu of an account names
 	/// it, because a click can wait for a drawing before it selects the account (issue #151).
 	func importFile(into accountID: UUID? = nil) async {
-		guard let account = accountID.flatMap({ ledger.account($0) }) ?? selectedAccount else { return }
-		guard !isTransferringTransactions else { return NSSound.beep() }
+		guard sheet == nil, let account = accountID.flatMap({ ledger.account($0) }) ?? selectedAccount else { return }
+		guard !isTransferringTransactions, importResult == nil else { return NSSound.beep() }
 		let panel = NSOpenPanel()
 		panel.title = "Import Transactions"
 		panel.message = "CSV, CAMT (camt.052, camt.053), and MT940 files are supported."
@@ -140,7 +140,8 @@ extension AppModel {
 
 	func importFiles(_ urls: [URL], into account: Account) async {
 		// One import runs at a time. A canceled one ends at its next row, line, or entry.
-		guard !isTransferringTransactions else { return NSSound.beep() }
+		guard !isTransferringTransactions, importResult == nil else { return NSSound.beep() }
+		guard sheet == nil else { return NSSound.beep() }
 		let run = FileImport(names: urls.map(\.lastPathComponent))
 		fileImport = run
 		defer { fileImport = nil }
@@ -149,15 +150,36 @@ extension AppModel {
 			try await Task.sleep(for: .milliseconds(500))
 			if !Task.isCancelled, sheet == nil { sheet = .fileImport(run) }
 		}
-		let reading = Task { () -> (read: [(name: String, parsed: TransactionFileImporter.Parsed)], problems: [String], canceledAt: Int?) in
-			var read: [(name: String, parsed: TransactionFileImporter.Parsed)] = []
+		let reading = Task { () -> (read: [(name: String, parsed: TransactionFileImporter.Parsed, into: Account, isNew: Bool)], problems: [String], canceledAt: Int?) in
+			var read: [(name: String, parsed: TransactionFileImporter.Parsed, into: Account, isNew: Bool)] = []
 			var problems: [String] = []
+			// The answer for the account and the currency of a file holds for the later files of both.
+			var answers: [FileAccount: [String?: Account]] = [:]
 			for (i, url) in urls.enumerated() {
 				run.index = i
 				do {
 					let parsed = try await Self.readFile(url, currency: account.currency)
 					if run.isCanceled { return (read, problems, canceledAt: i) }
-					read.append((url.lastPathComponent, parsed))
+					let created = read.filter(\.isNew).map(\.into)
+					let currency = parsed.declaredCurrency
+					// A file without a currency takes the currency of the account it goes into, which can be another one.
+					func parsedFor(_ into: Account) async throws -> TransactionFileImporter.Parsed {
+						into.currency == account.currency ? parsed : try await Self.readFile(url, currency: into.currency)
+					}
+					let decision = try TransactionFileImporter.accountDecision([parsed.account], selected: account,
+						accounts: ledger.accounts + created, currency: parsed.transactions.first?.currency ?? account.currency)
+					if let key = decision.cacheKey, let answer = answers[key]?[currency] {
+						let reread = try await parsedFor(answer)
+						if run.isCanceled { return (read, problems, canceledAt: i) }
+						read.append((url.lastPathComponent, reread, answer, false))
+						continue
+					}
+					guard let (into, isNew) = await target(of: parsed, file: url.lastPathComponent, selected: account, created: created, destination: decision.destination, run: run)
+					else { return (read, problems, canceledAt: i) }
+					let reread = try await parsedFor(into)
+					if run.isCanceled { return (read, problems, canceledAt: i) }
+					read.append((url.lastPathComponent, reread, into, isNew))
+					if let key = decision.cacheKey { answers[key, default: [:]][currency] = into }
 				} catch {
 					if run.isCanceled { return (read, problems, canceledAt: i) }
 					problems.append("\(url.lastPathComponent): \(error)")
@@ -178,9 +200,15 @@ extension AppModel {
 		if !read.isEmpty, store != nil {
 			run.storing = read.reduce(0) { $0 + $1.parsed.transactions.count }
 			await replacingTable {
-				for (name, parsed) in read {
+				for (name, parsed, into, isNew) in read {
 					do {
-						let result = try merge(.file(parsed.transactions), into: account.id)
+						if isNew { save(account: into) }
+						// A new account that could not be saved, or one that the user deleted during the import.
+						guard ledger.account(into.id) != nil else {
+							problems.append("\(name): The account \"\(into.name)\" \(isNew ? "could not be saved" : "does not exist").")
+							continue
+						}
+						let result = try merge(.file(parsed.transactions), into: into.id)
 						added += result.added.count
 						skipped += result.skipped
 						booked += result.booked.count
@@ -210,7 +238,42 @@ extension AppModel {
 			message += "\n" + warnings.prefix(shown).joined(separator: "\n")
 			if warnings.count > shown { message += "\nand \(warnings.count - shown) more." }
 		}
-		alert = AlertMessage(title: "Transaction Import", message: message)
+		await run.waitForDismissal()
+		guard store != nil else { return }
+		guard let window = NSApp.windows.first(where: { $0.identifier?.rawValue == "main" }) else {
+			alert = AlertMessage(title: "Transaction Import", message: message)
+			return
+		}
+		// SwiftUI's alert bridge can reenter AppKit layout when the result closes after an import sheet.
+		let result = NSAlert()
+		result.messageText = "Transaction Import"
+		result.informativeText = message
+		importResult = result
+		result.beginSheetModal(for: window) { [weak self] _ in self?.importResult = nil }
+	}
+
+	/// The account for the transactions of a file. A file that names another account than the selected
+	/// one asks the user first, and nil means that the import ends at this file. `created` are the offline
+	/// accounts that earlier files of this import add, and `isNew` marks one more that this file adds.
+	private func target(of parsed: TransactionFileImporter.Parsed, file: String, selected: Account, created: [Account],
+		destination: FileAccount.Destination, run: FileImport) async -> (account: Account, isNew: Bool)? {
+		guard let named = parsed.account else { return (selected, false) }
+		if destination == .selected { return (selected, false) }
+		let other: Account? = if case let .other(account) = destination { account } else { nil }
+		// A menu command can open another sheet while the progress shows, and the question must not close it.
+		if sheet != nil, sheet != .fileImport(run) {
+			run.cancel()
+			return nil
+		}
+		sheet = .fileImport(run)
+		switch await run.ask(AccountQuestion(file: file, named: named, selected: selected, other: other)) {
+		case nil: return nil
+		case .selected: return (selected, false)
+		case .named:
+			if let other { return (other, false) }
+			return (named.offlineAccount(groupID: selected.groupID, position: ledger.nextTreePosition(in: selected.groupID) + created.count,
+				currency: parsed.transactions.first?.currency ?? selected.currency), true)
+		}
 	}
 
 	/// Reads a file away from the main actor, so the import sheet can show progress and take "Cancel".

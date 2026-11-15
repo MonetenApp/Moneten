@@ -282,8 +282,15 @@ final class AppModel {
 	}
 	/// The file import that runs. There is one at a time, and a lock cancels it.
 	var fileImport: FileImport?
+	@ObservationIgnored var importResult: NSAlert?
 	var sheet: SheetKind? {
-		didSet { if sheet != oldValue { Trail.log("sheet \(sheet?.trailName ?? "none")") } }
+		didSet {
+			guard sheet != oldValue else { return }
+			Trail.log("sheet \(sheet?.trailName ?? "none")")
+			// A menu command can open another sheet over the question of an import, which then would wait
+			// for an answer that never comes.
+			if case let .fileImport(run) = oldValue, run.question != nil { run.cancel() }
+		}
 	}
 	var settingsTab = SettingsTab.security
 	/// The number of transaction tables that `replacingTable` started, for the trail.
@@ -450,6 +457,7 @@ final class AppModel {
 		announcer.lock(keeping: ledger)
 		fileImport?.cancel()
 		exportTask?.cancel()
+		if let result = importResult { result.window.sheetParent?.endSheet(result.window) }
 		autoRefresh.isUnlocked = false
 		notices.clearBadge()
 		sync.cancelAll()

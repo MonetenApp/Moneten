@@ -154,6 +154,45 @@ poll "^alert " alert
 poll "^rows " rows Girokonto
 poll "^gave up$" search "currency:/^+?49/"
 send search ""
+cat >"$WORK/Erika Mustermann.xml" <<-'EOF'
+	<?xml version="1.0" encoding="UTF-8"?>
+	<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.053.001.08"><BkToCstmrStmt><Stmt>
+	<Acct><Id><IBAN>DE02120300000000202051</IBAN></Id></Acct>
+	<Ntry><Amt Ccy="EUR">1.00</Amt><CdtDbtInd>DBIT</CdtDbtInd><BookgDt><Dt>2026-11-03</Dt></BookgDt></Ntry>
+	</Stmt></BkToCstmrStmt></Document>
+EOF
+send select Tagesgeld
+poll "^phase=" state
+send importfile "$WORK/Erika Mustermann.xml"
+poll "^importanswer .*other" importanswer
+send importanswer selected
+poll "^importfile done" state
+poll "^alert " alert
+send select Girokonto
+poll "^phase=" state
+for part in explicit missing repeat later; do
+	attribute=' Ccy="EUR"'
+	[ "$part" = explicit ] && attribute=' Ccy="USD"'
+	case "$part" in missing | repeat) attribute='' ;; esac
+	account=0099887766
+	[ "$part" = repeat ] && account='99 88 77 66'
+	cat >"$WORK/Erika Mustermann-$part.xml" <<-EOF
+		<?xml version="1.0" encoding="UTF-8"?>
+		<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.053.001.08"><BkToCstmrStmt><Stmt>
+		<Acct><Id><Othr><Id>$account</Id></Othr></Id></Acct>
+		<Ntry><Amt$attribute>1.00</Amt><CdtDbtInd>DBIT</CdtDbtInd><BookgDt><Dt>2026-11-04</Dt></BookgDt></Ntry>
+		</Stmt></BkToCstmrStmt></Document>
+	EOF
+done
+send importfile "$WORK/Erika Mustermann-explicit.xml|$WORK/Erika Mustermann-missing.xml|$WORK/Erika Mustermann-repeat.xml|$WORK/Erika Mustermann-later.xml"
+poll "^importanswer .*fileIndex=0 " importanswer
+send importanswer named
+poll "^importanswer .*fileIndex=1 " importanswer
+send importanswer named
+poll "^importanswer .*fileIndex=3 " importanswer
+send importanswer selected
+poll "^importfile done" state
+poll "^alert " alert
 send selectRows 1
 send newcategory Haushaltskasse
 poll "selection=.*SidebarSelection.category" state
@@ -179,7 +218,7 @@ poll "^migrationfailure: unknown failure$" migrationfailure "$MIGRATION_UNKNOWN"
 send quit
 
 found=0
-for value in DE02120300000000202051 "DE02 1203" 202051 1234567890 4711 5550001 "$LOGIN" "$PIN" "$MIGRATION_UNKNOWN" 123456 check-debug-log \
+for value in DE02120300000000202051 "DE02 1203" 202051 1234567890 0099887766 "99 88 77 66" 4711 5550001 "$LOGIN" "$PIN" "$MIGRATION_UNKNOWN" 123456 check-debug-log \
 	Girokonto Tagesgeld Kreditkarte Extrakonto "Erika Mustermann" "Beispiel GmbH" "Wohnbau Musterstadt" "Tankstelle Beispiel" \
 	"Gehalt November" Miete Kartenzahlung Sparen Haushaltskasse MIETE-2026-11 GUTSCHRIFT DAUERAUFTRAG \
 	"Zugang vorübergehend gesperrt" "PIN falsch" Wartungsarbeiten pushTAN-App "currency:/^+?49/"; do
