@@ -141,7 +141,7 @@ The app SHALL let the user select a range of rows with the Shift key, single row
 
 ### Requirement: A sum of zero has the currency of the view
 
-The app SHALL show the sum 0 in the currency of the account or the category of the view when no shown row counts in the sum of the status line. A view of an account group takes the currency of its first row, and the euro when it shows no row.
+The app SHALL show the sum 0 in the currency of the account or the category of the view when no shown row counts in the sum of the status line. A view of an account group takes the currency of the first shown row in the order of the list, or of the first selected row when rows are selected, and the euro when it shows no row.
 
 #### Scenario: Every row is under review
 
@@ -160,6 +160,18 @@ The app SHALL show the sum 0 in the currency of the account or the category of t
 - **GIVEN** the category "Travel" in USD whose only row is a pending transaction of -3,20 € that is marked for review
 - **WHEN** the user opens the category "Travel"
 - **THEN** the status line shows the sum 0,00 USD
+
+#### Scenario: Empty account group
+
+- **GIVEN** the account group "Holidays" without transactions
+- **WHEN** the user opens "Holidays"
+- **THEN** the status line shows the sum 0,00 €
+
+#### Scenario: Account group whose rows are all under review
+
+- **GIVEN** the account group "Holidays" whose only rows are two pending transactions of -12,50 USD that are marked for review
+- **WHEN** the user opens "Holidays"
+- **THEN** the status line shows 2 transactions and the sum 0,00 USD
 
 ### Requirement: The context menu acts on the selection
 
