@@ -55,12 +55,29 @@ public enum RuleApplication: Sendable {
 	case all
 }
 
+/// How far `RuleApplier.apply` has come: `done` of `total` transactions are checked.
+public struct RuleProgress: Sendable, Equatable {
+	public let done: Int
+	public let total: Int
+
+	public init(done: Int, total: Int) {
+		self.done = done
+		self.total = total
+	}
+}
+
 public enum RuleApplier {
 	/// Applies the rule of one category to existing transactions and returns the changed ones.
-	public static func apply(category: Category, rule: Rule, to transactions: [Transaction], ledger: Ledger, mode: RuleApplication) -> [Transaction] {
+	/// `progress` gets a report after every 1,000 transactions and after the last one.
+	public static func apply(category: Category, rule: Rule, to transactions: [Transaction], ledger: Ledger, mode: RuleApplication,
+		progress: (RuleProgress) -> Void = { _ in }) -> [Transaction] {
 		let restriction = ledger.allowedAccounts(of: category)
 		var changed: [Transaction] = []
-		for var t in transactions {
+		for (i, var t) in transactions.enumerated() {
+			defer {
+				let done = i + 1
+				if done % 1_000 == 0 || done == transactions.count { progress(RuleProgress(done: done, total: transactions.count)) }
+			}
 			let inScope = restriction.map { $0.contains(t.accountID) } ?? true
 			let matches = inScope && rule.matches(RuleSubject(t, account: ledger.account(t.accountID)))
 			switch mode {
