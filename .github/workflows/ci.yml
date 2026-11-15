@@ -6,6 +6,12 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# A new push to a pull request makes its older run worthless. Cancel that run, so the few macOS
+# runners of the repository work on the newest head of each branch. Runs on main are never cancelled.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   specs:
     runs-on: ubuntu-latest
