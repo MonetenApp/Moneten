@@ -36,7 +36,7 @@ public struct CSVProfile: Hashable, Sendable, Codable {
 				let count = positions[title]?.count ?? 0
 				return count == columns.count || max(count, columns.count) <= 1
 			}) else { return nil }
-			var layout = profile.layout
+			var layout = profile.previewLayout(for: file)
 			layout.columns = profile.layout.columns.compactMapValues { column in
 				guard profile.header.indices.contains(column),
 					let occurrence = previous[profile.header[column]]?.firstIndex(of: column),
@@ -53,6 +53,9 @@ public struct CSVProfile: Hashable, Sendable, Codable {
 		guard let best = moved.max(by: { $0.kept < $1.kept }) else { return .none }
 		return .changed(best.profile, best.layout)
 	}
+
+	/// The settings a profile supplies to the preview of this file.
+	public func previewLayout(for file: CSVFile) -> CSVLayout { layout }
 
 	/// The transactions of a file with the header row of the profile, or nil when the file does not read in
 	/// the profile, such as a month with an umlaut for a profile saved on a file in plain ASCII, so that the

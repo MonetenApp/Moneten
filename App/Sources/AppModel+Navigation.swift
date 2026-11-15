@@ -179,7 +179,7 @@ extension AppModel {
 						} else {
 							// A profile that no longer reads the file is the starting point of the preview, like a changed header row.
 							let (start, name, matched): (CSVLayout, String?, String?) = switch match {
-							case let .same(saved): (saved.layout, saved.name, saved.name)
+							case let .same(saved): (saved.previewLayout(for: file), saved.name, saved.name)
 							case let .changed(saved, moved): (moved, saved.name, nil)
 							case .none: (layout, nil, nil)
 							}

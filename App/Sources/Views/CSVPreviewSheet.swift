@@ -65,7 +65,7 @@ final class CSVPreviewModel {
 		// A picked profile is a starting point; only the matched one keeps its name, so "Import" never moves another bank's profile.
 		profileName = name == matched ? name ?? "" : ""
 		guard let saved = profiles.first(where: { $0.name == name }) else { return }
-		var next = saved.layout
+		var next = saved.previewLayout(for: file)
 		switch CSVProfile.match(for: file, in: [saved], detected: layout) {
 		case .same: break
 		case let .changed(_, moved): next = moved
