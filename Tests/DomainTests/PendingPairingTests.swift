@@ -35,14 +35,14 @@ extension ReconcileTests {
 		}
 	}
 
-	@Test("A shared reference cannot hide conflicting known names behind an exact fingerprint", arguments: [false, true])
-	func gate3ReferenceNameConflict(fileDelivery: Bool) {
+	@Test("Known name conflicts invalidate every weaker fingerprint", arguments: [false, true], [false, true])
+	func gate3ReferenceNameConflict(fileDelivery: Bool, reference: Bool) {
 		var stored = rent(1, purpose: "RENT")
 		stored.counterpartyIBAN = nil
-		stored.endToEndReference = "SHARED"
+		stored.endToEndReference = reference ? "SHARED" : nil
 		var delivered = rent(1, purpose: "RENT")
 		delivered.counterpartyIBAN = nil
-		delivered.endToEndReference = "SHARED"
+		delivered.endToEndReference = reference ? "SHARED" : nil
 		delivered.name = "Vermieter B"
 		let r = merge(fileDelivery ? .file([delivered]) : refresh([delivered]), stored: [stored], at: noon(20, month: 11))
 		#expect(r.skipped == 0)
@@ -420,22 +420,27 @@ extension ReconcileTests {
 		}
 	}
 
-	@Test("A known booked fingerprint wins before a pending reference-only repeat")
-	func gate3BookedReferenceFingerprint() {
-		let pending = rent(1)
-		var booked = rent(1, pending: false)
-		booked.endToEndReference = "RECURRING-RENT"
+	@Test("A current booked fingerprint wins before a historical pending reference", arguments: [false, true])
+	func gate3BookedReferenceFingerprint(missingReference: Bool) {
+		var pending = stored(rent(1, purpose: "PENDING"))
+		pending.comment = "USER-A"
+		var booked = stored(rent(1, purpose: "BOOKED", pending: false))
+		booked.endToEndReference = "SHARED"
+		booked.comment = "USER-B"
 		var incomingPending = fresh(pending)
-		incomingPending.endToEndReference = "RECURRING-RENT"
+		incomingPending.purpose = "CHANGED"
+		incomingPending.endToEndReference = "SHARED"
 		incomingPending.createdAt = Date(timeIntervalSince1970: 0)
-		let incomingBooked = fresh(booked)
+		var incomingBooked = fresh(booked)
+		if missingReference { incomingBooked.endToEndReference = nil }
 		for stored in permutations([pending, booked]) {
 			for delivered in permutations([incomingPending, incomingBooked]) {
 				let r = merge(.file(delivered), stored: stored, at: noon(20, month: 11))
 				let after = history(stored, after: r)
 				#expect(r.added == [] && r.booked == [] && r.skipped == 2)
-				#expect(after.first { $0.id == pending.id }?.isPending == true)
-				#expect(after.first { $0.id == booked.id }?.isPending == false)
+				#expect(pendingSummary(after) == ["20261201 -80000 false true false BOOKED", "20261201 -80000 true true false PENDING"])
+				#expect(after.first { $0.id == pending.id }?.comment == "USER-A")
+				#expect(after.first { $0.id == booked.id }?.comment == "USER-B")
 			}
 		}
 	}

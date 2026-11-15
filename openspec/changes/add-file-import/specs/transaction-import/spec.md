@@ -644,7 +644,7 @@ The app SHALL skip a pending file transaction when one free stored pending row f
 
 ### Requirement: Order-independent pending pairing
 
-The app SHALL pair pending transactions one to one by file identity, source ID, end-to-end reference, fitting same-day fetched or deleted row, then nearest unfetched file row within seven days. Conflicting identities never pair. Known counterparty conflicts invalidate reference matches. Pending file imports fit within seven days. Greedy candidate order is evidence priority, distance, and stable delivered and stored positions.
+The app SHALL pair pending transactions one to one by file identity, source ID, end-to-end reference, fitting same-day fetched or deleted row, then nearest unfetched file row within seven days. Conflicting identities never pair. Known counterparty conflicts invalidate every weaker match. Pending file imports fit within seven days. Current booked fingerprints precede historical reference matches. Greedy candidate order is evidence priority, distance, and stable delivered and stored positions.
 
 #### Scenario: Global nearest choice
 
@@ -1027,3 +1027,17 @@ Only file imports SHALL create `fileIdentity`, a versioned original-file fingerp
 - **WHEN** a file or refresh delivers -800,00 EUR with the same day, purpose, and counterparty but no agreeing explicit identity
 - **THEN** the currency mismatch prevents pairing, including exact fingerprint fallback
 - **AND** both currency amounts remain separate
+
+#### Scenario: A missing reference does not give away a current booked partner
+
+- **GIVEN** fetched pending "PENDING" with comment "USER-A" and fetched booked "BOOKED" with comment "USER-B" and reference "SHARED", each -800,00 € on 1 December 2026
+- **WHEN** a file delivers pending "CHANGED" with "SHARED" and the booked "BOOKED" repeat without its reference
+- **THEN** the compatible current booked fingerprint pairs before the historical pending-to-booked reference lookup
+- **AND** the other pending row remains pending, both comments stay, and two rows total -1.600,00 € in every input order
+
+#### Scenario: No reference does not excuse a known name conflict
+
+- **GIVEN** pending "RENT" of -800,00 € on 1 December 2026 for "Vermieter A", without an IBAN or end-to-end reference
+- **WHEN** a file or refresh delivers the same fields for "Vermieter B"
+- **THEN** their known counterparty conflict invalidates every weaker fingerprint and both rows stay
+- **AND** unknown counterparties keep the existing fingerprint behavior
