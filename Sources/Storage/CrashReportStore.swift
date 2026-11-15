@@ -38,9 +38,7 @@ public struct CrashReportStore {
 		mutating func start(_ launch: Launch, files: [(name: String, date: Date)]) {
 			if let previous = self.launch,
 				let crash = files.filter({ file in
-					let matches = (file.name.hasPrefix("Moneten-") && file.name.hasSuffix(".ips")) ||
-						(file.name.hasPrefix("Moneten") && file.name.hasSuffix(".crash"))
-					return matches && file.date > previous.start && file.date < launch.start
+					CrashReports.isCrashFile(file.name) && file.date > previous.start && file.date < launch.start
 				}).max(by: { $0.date < $1.date }),
 				crash.date > (latest ?? .distantPast), crash.date != declinedFallback,
 				crash.date > (pending?.date ?? .distantPast) {
@@ -54,7 +52,8 @@ public struct CrashReportStore {
 		mutating func receive(_ diagnostic: CrashDiagnostic, at date: Date, since start: Date) {
 			guard date > (latest ?? .distantPast) else { return }
 			latest = date
-			if let declinedFallback, start <= declinedFallback && declinedFallback <= date { return }
+			if let declinedFallback, start <= declinedFallback && declinedFallback <= date,
+				(pending?.fallbackDate ?? .distantPast) <= declinedFallback { return }
 			guard date >= (pending?.date ?? .distantPast) else { return }
 			pending = PendingCrashReport(date: date, diagnostic: diagnostic)
 		}
@@ -69,7 +68,6 @@ public struct CrashReportStore {
 	}
 
 	public init(folder: DataFolder) { self.folder = folder }
-
 
 	@discardableResult
 	public func startLaunch(at date: Date, appVersion: String, macOSVersion: String, files: [(name: String, date: Date)]) throws -> PendingCrashReport? {
@@ -94,7 +92,6 @@ public struct CrashReportStore {
 		try write(state)
 		return state.pending
 	}
-
 
 	func load() throws -> State? {
 		guard FileManager.default.fileExists(atPath: file.path) else { return nil }

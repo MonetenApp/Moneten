@@ -118,6 +118,11 @@ private func reportMacOS(_ value: String) -> String {
 }
 
 public enum CrashReports {
+	public static func isCrashFile(_ name: String) -> Bool {
+		(name.hasPrefix("Moneten-") && name.hasSuffix(".ips")) ||
+			((name == "Moneten.crash" || name.hasPrefix("Moneten_") || name.hasPrefix("Moneten-")) && name.hasSuffix(".crash"))
+	}
+
 	public static func macOSVersion(_ version: OperatingSystemVersion = ProcessInfo.processInfo.operatingSystemVersion) -> String {
 		let base = "\(version.majorVersion).\(version.minorVersion)"
 		return version.patchVersion == 0 ? base : "\(base).\(version.patchVersion)"

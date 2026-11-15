@@ -26,7 +26,7 @@ final class CrashReportController: NSObject, MXMetricManagerSubscriber {
 			let files = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.contentModificationDateKey], options: [.skipsHiddenFiles])) ?? []
 			let dates = files.compactMap { file -> (name: String, date: Date)? in
 				let name = file.lastPathComponent
-				guard (name.hasPrefix("Moneten-") && name.hasSuffix(".ips")) || (name.hasPrefix("Moneten") && name.hasSuffix(".crash")),
+				guard CrashReports.isCrashFile(name),
 					let date = try? file.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate else { return nil }
 				return (name, date)
 			}
