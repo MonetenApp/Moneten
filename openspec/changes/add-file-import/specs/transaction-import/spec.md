@@ -215,14 +215,32 @@ The app SHALL assign CSV columns to transaction fields by common header keywords
 - **GIVEN** "Tag;Wer;Zweck;Wieviel", followed by 101 ordinary transactions
 - **WHEN** the next row is "02.11.2026;Datum;Betrag;2.00" and one more transaction follows
 - **THEN** that dated amount row is not a header and all 103 transactions remain available after mapping the date and amount
-- **AND** keyword header search stops at the first row with a date and an amount
+
+#### Scenario: A balance before the column headings
+
+- **GIVEN** "01.11.2026;Anfangssaldo;100,00", "Datum;Name;Betrag", and "02.11.2026;Kiosk;-2,00"
+- **WHEN** the file is imported
+- **THEN** only the Kiosk transaction is imported, as -200 minor units
+
+#### Scenario: Account metadata before the column headings
+
+- **GIVEN** "Konto;12345678;Stand;30.11.2026", "Buchungstag;Empfänger;Betrag", and "01.11.2026;Kiosk;-4,20"
+- **WHEN** the file is imported
+- **THEN** the columns are assigned and the Kiosk transaction is imported as -420 minor units
+- **AND** the same outcome holds when the first row is "Kontostand;30.11.2026;1.234,56"
+
+#### Scenario: Titles after a long preamble
+
+- **GIVEN** 150 rows of "Preamble", then "Tag;Wer;Wieviel" and "01.11.2026;Kiosk;1.00"
+- **WHEN** the preview opens
+- **THEN** its titles are "Tag", "Wer", and "Wieviel"
 
 #### Scenario: A filled subtotal follows a short transaction
 
 - **GIVEN** "Tag;Wer;Wieviel", "01.11.2026;Kiosk", "Zwischensumme;EUR;Saldo;0,00", and "02.11.2026;Bakery;;4.50"
 - **WHEN** the user maps the first column to the booking date and the fourth to the amount
-- **THEN** the mapped dates determine the transaction cutoff and both rows read as [0, 450] minor units
-- **AND** inferred titles use the nearest row above the transactions that is wide enough, with no 100-row preamble limit
+- **THEN** both transactions read as [0, 450] minor units
+- **AND** the titles are "Tag", "Wer", "Wieviel" and a blank fourth title
 
 #### Scenario: Headerless rows before a note
 
@@ -238,7 +256,6 @@ The app SHALL assign CSV columns to transaction fields by common header keywords
 - **WHEN** the first and third columns are mapped to date and amount
 - **THEN** the titles are "Tag", "Wer", and "Wieviel", and only -420 minor units is imported
 - **AND** the skipped dated preamble is reported on line 2
-- **AND** only a date-labelled heading, such as "Tag", can move the cutoff past an earlier short dated row; a generic filled note cannot
 - **AND** replacing the first metadata row with "Hinweis;Export;vorläufig" still imports only -420 and reports the skipped dated preamble on line 2
 
 #### Scenario: Malformed first numeric dates
@@ -269,6 +286,13 @@ The app SHALL show a preview before it imports a CSV file. The preview shows the
 
 - **WHEN** no column is assigned to the booking date or to the amount
 - **THEN** the "Import" button is disabled and the preview says which field is missing
+
+#### Scenario: Reread a confirmed CSV for a target currency
+
+- **GIVEN** "03/04/2026;Kiosk;1,234", with or without the titles "Date;Name;Amount"
+- **AND** the user maps the columns, chooses month-day-year and a decimal point, and confirms a preview of 123400 EUR minor units on March 4
+- **WHEN** the import reads the file again for a JPY target account
+- **THEN** it keeps that date and those column/decimal settings and reads 1234 JPY minor units without requiring a header row
 
 ### Requirement: CSV profiles
 
