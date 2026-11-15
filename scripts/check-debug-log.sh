@@ -151,9 +151,13 @@ poll "^exportstatus running=false" exportstatus
 poll "^snapshot " snapshot check
 printf '%s\n' "Buchungstag;Valuta;Empfänger;Verwendungszweck;Betrag" "09.11.2026;Wartungsarbeiten;Erika Mustermann;Gehalt November;1.250,00" \
 	"10.11.2026;10.11.2026;Wohnbau Musterstadt eG;Miete;-950,00" >"$WORK/Erika Mustermann.csv"
+send filterbar "pin on"
+send filterbar "amount withdrawals"
+poll "^pin=true period=all status=all amount=withdrawals filter=amount category=all account=all saved=true$" state
 send importfile "$WORK/Erika Mustermann.csv"
 poll "^csv state .*canImport=true" csv state
 poll "^csv rows" csv rows
+poll "^pin=true period=all status=all amount=withdrawals filter=amount category=all account=all saved=true$" state
 send key return
 poll "^importfile done" state
 poll "^alert " alert
@@ -162,6 +166,8 @@ poll "^csv state .*canImport=true" csv state
 send key return
 poll "^importfile done" state
 poll "^alert " alert
+poll "^pin=true period=all status=all amount=withdrawals filter=amount category=all account=all saved=true$" state
+send filterbar "pin off"
 poll "^rows " rows Girokonto
 poll "^gave up$" search "currency:/^+?49/"
 send search ""

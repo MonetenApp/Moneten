@@ -518,8 +518,9 @@ final class DebugHarness {
 		// "account <name>", "custom <yyyymmdd> <yyyymmdd>", or "pin on" and "pin off".
 		case "filterbar": filterBar(argument)
 		case "state":
+			let savedFilter = UserDefaults.standard.data(forKey: Preference.savedFilterBar).flatMap(SavedFilterBar.init(data:))
 			log("phase=\(model.phase.trailName) accounts=\(model.ledger.accounts.count) transactions=\(model.ledger.transactions.count) visible=\(model.visibleTransactions.count) selection=\(String(describing: model.selection)) selected=\(model.selectedAccount.map { "\($0.kind)" } ?? "-")")
-			log("pin=\(model.isFilterBarPinned) period=\(model.period.trailName) status=\(model.filter.status) filter=\(model.filter.trailName) category=\(model.filter.categoryID?.uuidString ?? "all") account=\(model.filter.accountID?.uuidString ?? "all")")
+			log("pin=\(model.isFilterBarPinned) period=\(model.period.trailName) status=\(model.filter.status) amount=\(model.filter.amount) filter=\(model.filter.trailName) category=\(model.filter.categoryID?.uuidString ?? "all") account=\(model.filter.accountID?.uuidString ?? "all") saved=\(savedFilter == SavedFilterBar(period: model.period, filter: model.filter))")
 			logChart()
 		// Whether the selected account proposes a calibration, without amounts.
 		case "calibration":
