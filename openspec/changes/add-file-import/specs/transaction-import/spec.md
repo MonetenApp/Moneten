@@ -698,6 +698,14 @@ The app SHALL pair delivered pending transactions one to one with stored transac
 - **WHEN** the file repeats "RENT-A" with purpose "Miete Dezember", comment "Shared rent", category "Housing" and a checkmark
 - **THEN** the stored comment, category and checkmark stay cleared
 
+#### Scenario: Exact fingerprints keep their partners
+
+- **GIVEN** two pending rents of -800,00 € to "Vermieter A" on 1 December 2026 with the same purpose but IBANs DE02120300000000202051 and DE89370400440532013000
+- **WHEN** one delivered rent omits its IBAN and another retains the first IBAN
+- **THEN** the exact fingerprint pairs first and the IBAN-less rent pairs with the other stored row
+- **AND** both stored IDs and IBANs remain, with no added or dropped payment in any delivery or storage order
+- **AND** this holds for fetched rows, file rows, file imports and refreshes
+
 ### Requirement: MT940 import
 
 The app SHALL import MT940 files, with the usual extension `.sta`, including the structured purpose fields of German banks for the counterparty name, the account, the bank code, the booking text, and the SEPA references.

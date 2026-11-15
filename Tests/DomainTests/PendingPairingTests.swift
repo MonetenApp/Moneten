@@ -197,6 +197,30 @@ extension ReconcileTests {
 		#expect(deleted.added == [] && deleted.skipped == 1)
 	}
 
+	@Test("Exact pending fingerprints win before compatible and relaxed partners", arguments: [false, true], [false, true])
+	func gate3FingerprintPrecedence(fetched: Bool, fileDelivery: Bool) {
+		var a = rent(1)
+		a.counterpartyIBAN = "DE02120300000000202051"
+		a.isFetched = fetched
+		var b = rent(1)
+		b.counterpartyIBAN = "DE89370400440532013000"
+		b.isFetched = fetched
+		var deliveredB = fresh(b)
+		deliveredB.counterpartyIBAN = nil
+		deliveredB.createdAt = Date(timeIntervalSince1970: 0)
+		var deliveredA = fresh(a)
+		deliveredA.createdAt = Date(timeIntervalSince1970: 1)
+		for stored in permutations([a, b]) {
+			for rows in permutations([deliveredB, deliveredA]) {
+				let r = merge(fileDelivery ? .file(rows) : refresh(rows), stored: stored, at: noon(20, month: 11))
+				#expect(r.added == [] && r.dropped == [] && r.skipped == 2)
+				let after = history(stored, after: r)
+				#expect(Set(after.map(\.id)) == Set([a.id, b.id]))
+				#expect(after.map { $0.counterpartyIBAN ?? "" }.sorted() == ["DE02120300000000202051", "DE89370400440532013000"])
+			}
+		}
+	}
+
 	@Test("Gate 3 items 1 4 5: every delivered and stored permutation has literal rows")
 	func gate3AllPermutations() {
 		for (fileDays, bankDays, expected) in [
