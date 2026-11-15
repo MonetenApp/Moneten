@@ -16,7 +16,8 @@ struct SearchQuery {
 		/// the names of the account and the category. `anyLine` reads the values joined by line breaks with each line
 		/// as its own text, which every row that a value matches also matches, so one call rules out most rows
 		/// before a call for each value. A regular expression over 50,000 rows took about four times as long without.
-		case regex(NSRegularExpression, anyLine: NSRegularExpression?, matchesEmpty: Bool, [RuleField], names: Bool)
+		/// A row whose search text is plain ASCII and lacks `required` cannot match, so it needs no call at all.
+		case regex(NSRegularExpression, anyLine: NSRegularExpression?, matchesEmpty: Bool, [RuleField], names: Bool, required: Needle?)
 		case amount(AmountBounds)
 		case constant(Bool)
 		case not(Node)
@@ -63,26 +64,28 @@ struct SearchQuery {
 		let categoryName: () -> String?
 
 		/// The values of a field as a rule reads them.
-		func texts(of field: RuleField) -> [String] {
+		func forEachText(of field: RuleField, _ body: (String) -> Void) {
 			let t = transaction
 			switch field {
-			case .name: return [t.name]
-			case .purpose: return [t.purpose]
-			case .bookingText: return [t.bookingText ?? ""]
-			case .reference: return [t.endToEndReference ?? ""]
-			case .mandate: return [t.mandateReference ?? ""]
-			case .creditorID: return [t.creditorID ?? ""]
-			case .comment: return [t.comment ?? ""]
-			case .localAccount: return [account()?.iban, account()?.accountNumber].compactMap { $0 }
-			case .remoteAccount: return [t.counterpartyIBAN].compactMap { $0 }
-			case .currency: return [t.currency]
+			case .name: body(t.name)
+			case .purpose: body(t.purpose)
+			case .bookingText: body(t.bookingText ?? "")
+			case .reference: body(t.endToEndReference ?? "")
+			case .mandate: body(t.mandateReference ?? "")
+			case .creditorID: body(t.creditorID ?? "")
+			case .comment: body(t.comment ?? "")
+			case .localAccount: if let a = account() { a.iban.map(body); a.accountNumber.map(body) }
+			case .remoteAccount: t.counterpartyIBAN.map(body)
+			case .currency: body(t.currency)
 			}
 		}
 
 		/// The patterns match words that follow each other in one value of the field, as the phrase of a rule does.
 		func field(_ field: RuleField, holds patterns: [WildcardPattern], shape: SearchText.WordShape?) -> Bool {
 			guard let places = SearchText.places[field] else {
-				return texts(of: field).contains { SearchQuery.follow(patterns, in: TextFolding.words($0)) }
+				var found = false
+				forEachText(of: field) { found = found || SearchQuery.follow(patterns, in: TextFolding.words($0)) }
+				return found
 			}
 			return places.contains { place in
 				let value = SearchText.field(at: place, of: searchText)
@@ -101,12 +104,21 @@ struct SearchQuery {
 				&& row.searchText.split(separator: "\u{1}").contains { follow(patterns, in: $0.split(separator: " ")) }
 		case let .field(patterns, field, literals, shape):
 			return literals.allSatisfy { $0.occurs(in: row.searchText) } && row.field(field, holds: patterns, shape: shape)
-		case let .regex(regex, anyLine, matchesEmpty, fields, names):
-			let texts = fields.flatMap(row.texts) + (names ? [row.account()?.name, row.categoryName()].compactMap { $0 } : [])
+		case let .regex(regex, anyLine, matchesEmpty, fields, names, required):
+			// Folding a text that is not ASCII can change its letters, as "e" and a combining accent become "é".
+			if let required, !required.occurs(in: row.searchText), row.searchText.utf8.allSatisfy({ $0 < 0x80 }) { return false }
+			var values: [String] = []
+			values.reserveCapacity(fields.count + 2)
+			var hasEmpty = false
+			func add(_ text: String) { if text.isEmpty { hasEmpty = true } else { values.append(text) } }
+			for field in fields { row.forEachText(of: field, add) }
+			if names {
+				if let name = row.account()?.name { add(name) }
+				if let name = row.categoryName() { add(name) }
+			}
 			func matches(_ regex: NSRegularExpression, _ text: String) -> Bool { regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) != nil }
 			// An empty value matches only a pattern that matches the empty text, and it is no line of the joined text.
-			if texts.contains(where: \.isEmpty), matchesEmpty { return true }
-			let values = texts.filter { !$0.isEmpty }
+			if hasEmpty, matchesEmpty { return true }
 			// A carriage return before the joining line break would make one line break of two.
 			if let anyLine, values.count > 1, !values.contains(where: { $0.utf8.contains(0x0D) }),
 				!matches(anyLine, values.joined(separator: "\n")) { return false }
@@ -164,6 +176,45 @@ struct SearchQuery {
 		return terms.first.map { terms.dropFirst().reduce($0) { .and($0, $1) } }
 	}
 
+	/// Plain text that every match of the pattern holds, in lower case, as the search text has it. The longest run of
+	/// plain characters counts. The function gives up on alternatives, groups, and nested sets, and leaves out escapes,
+	/// sets, and a character that a quantifier makes optional. A run with other characters than ASCII or with two
+	/// spaces in a row does not count, because folding can change those.
+	static func requiredText(of pattern: String) -> String? {
+		guard !pattern.contains("|"), !pattern.contains("(") else { return nil }
+		var runs = [""]
+		var rest = pattern[...]
+		while let c = rest.popFirst() {
+			switch c {
+			case "\\":
+				runs.append("")
+				rest = rest.dropFirst().drop { $0.isASCII && ($0.isLetter || $0.isNumber) }
+			case "[":
+				runs.append("")
+				if rest.first == "^" { rest.removeFirst() }
+				if rest.first == "]" { return nil }
+				while let d = rest.popFirst(), d != "]" {
+					if d == "[" { return nil }
+					if d == "\\" { rest = rest.dropFirst() }
+				}
+			case "{":
+				runs[runs.count - 1].removeLast(min(1, runs[runs.count - 1].count))
+				runs.append("")
+				rest = rest.drop { $0 != "}" }.dropFirst()
+			case "?", "*":
+				runs[runs.count - 1].removeLast(min(1, runs[runs.count - 1].count))
+				runs.append("")
+			case "+", ".", "^", "$", "]", "}":
+				runs.append("")
+			default:
+				runs[runs.count - 1].append(c)
+			}
+		}
+		let text = runs.map { $0.trimmingCharacters(in: .whitespaces) }.max { $0.count < $1.count } ?? ""
+		guard !text.isEmpty, text.unicodeScalars.allSatisfy({ (0x20...0x7E).contains($0.value) }), !text.contains("  ") else { return nil }
+		return text.lowercased()
+	}
+
 	/// The text between the wildcards of the words, each of which the search text of a matching row holds.
 	private static func literals(_ patterns: [WildcardPatternBox]) -> [Needle] {
 		patterns.flatMap { $0.pattern.characters.split { $0 == "*" || $0 == "?" }.map { Needle(String($0)) } }
@@ -192,7 +243,11 @@ struct SearchQuery {
 			let pattern = box.regex.pattern
 			let keepsMeaning = !["\\A", "\\z", "\\Z", "\\G", "(?", "*+", "++", "?+", "}+"].contains(where: pattern.contains)
 			let anyLine = keepsMeaning ? try? NSRegularExpression(pattern: pattern, options: box.regex.options.union(.anchorsMatchLines)) : nil
-			return .regex(box.regex, anyLine: anyLine, matchesEmpty: box.regex.firstMatch(in: "", range: NSRange(location: 0, length: 0)) != nil, field.map { [$0] } ?? RuleField.unqualified, names: field == nil)
+			let fields = field.map { [$0] } ?? RuleField.unqualified
+			// The search text holds these fields and the names folded, but the account numbers without spaces.
+			let required = fields.allSatisfy(RuleField.unqualified.contains) ? requiredText(of: pattern).map(Needle.init) : nil
+			return .regex(box.regex, anyLine: anyLine, matchesEmpty: box.regex.firstMatch(in: "", range: NSRange(location: 0, length: 0)) != nil, fields, names: field == nil,
+				required: required)
 		case let .amount(op, value):
 			return .amount(AmountBounds(op, value))
 		case let .constant(value):
