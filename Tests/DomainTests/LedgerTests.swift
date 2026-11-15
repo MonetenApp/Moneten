@@ -112,6 +112,34 @@ struct LedgerTests {
 		#expect(found("DE02120300000000202051").isEmpty)
 	}
 
+	@Test("A row without a category is found by the name of the default category, also after the default changes")
+	func searchDefaultCategoryChange() {
+		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
+		var groceries = Domain.Category(position: 0, name: "Groceries")
+		var other = Domain.Category(position: 9, name: "Uncategorized", isDefault: true)
+		var l = Ledger(accounts: [giro], categories: [groceries, other], transactions: [
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 1), amountMinor: -1_000, name: "Kiosk"),
+		])
+		func found(_ text: String) -> [String] {
+			var f = TransactionFilter()
+			f.searchText = text
+			return l.transactions(in: .account(giro.id), filter: f).map(\.name)
+		}
+		#expect(found("uncategorized") == ["Kiosk"])
+		other.isDefault = false
+		l.upsert(other)
+		#expect(found("uncategorized").isEmpty)
+		groceries.isDefault = true
+		l.upsert(groceries)
+		#expect(found("groceries") == ["Kiosk"])
+		l.upsert(Domain.Category(position: 10, name: "Sonstiges"))
+		#expect(found("groceries") == ["Kiosk"])
+		groceries.name = "Food"
+		l.upsert(groceries)
+		#expect(found("food") == ["Kiosk"])
+		#expect(found("groceries").isEmpty)
+	}
+
 	@Test("The search accepts the rule language, and a term without a field name searches every searched field inside words")
 	func searchRuleLanguage() {
 		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
@@ -256,6 +284,11 @@ struct LedgerTests {
 		#expect(found("Stadtwerke /Lohn|Absch") == all)
 		#expect(found("Stadtwerke /[A-Z") == all)
 		#expect(found(#"/\d+ Abschl"#) == ["Abschlag November", "Abschlag Oktober"])
+		#expect(found(#"Stadtwerke name:-"Lohn"#) == all)
+		#expect(found(#"Stadtwerke name:-"Lohn""#) == all)
+		#expect(found("Stadtwerke name:!/Lohn") == all)
+		#expect(found("Stadtwerke name:-/Lohn") == all)
+		#expect(found("Stadtwerke name:+(Lohn") == ["Lohn"])
 	}
 
 	@Test("A field term and a regular expression with a field name match the rows that the same rule matches")
