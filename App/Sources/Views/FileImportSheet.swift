@@ -3,8 +3,6 @@ import Import
 import SwiftUI
 import Synchronization
 
-/// A running import of files, which the import sheet shows. The files are read one after the other, and
-/// "Cancel" rolls back the current file and stops the files after it.
 @MainActor @Observable
 final class FileImport {
 	let names: [String]
