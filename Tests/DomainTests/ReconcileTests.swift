@@ -230,6 +230,16 @@ struct ReconcileTests {
 		#expect(again.skipped == 2)
 	}
 
+	@Test("Pending entry booked by a later file")
+	func pendingFileRowBookedByFile() {
+		let first = merge(.file([row(1, -8_900, "Stadtwerke Musterstadt", pending: true)]))
+		let second = merge(.file([row(1, -8_900, "Stadtwerke Musterstadt")]), stored: first.added)
+		let rows = history(first.added, after: second)
+		#expect(rows.map(\.amountMinor) == [-8_900])
+		#expect(rows.map(\.isPending) == [false])
+		#expect(rows.map(\.id) == first.added.map(\.id))
+	}
+
 	@Test("A category that the user set by hand stays at the booking")
 	func manualCategoryStays() {
 		let gifts = Domain.Category(position: 0, name: "Gifts")

@@ -307,6 +307,122 @@ struct FileImportTests {
 		#expect(throws: TransactionFileImporter.Failure.line(4, reason)) { try TransactionFileImporter.parse(Data(xml.utf8), currency: "EUR") }
 	}
 
+	@Test("An entry for information is left out, and a future entry is booked until a refresh keeps future pending rows from a file")
+	func camtFutureAndInfo() throws {
+		let xml = """
+		<?xml version="1.0" encoding="UTF-8"?>
+		<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.052.001.08"><BkToCstmrAcctRpt><Rpt>
+		<Ntry><Amt Ccy="EUR">89.00</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts><Cd>BOOK</Cd></Sts><BookgDt><Dt>2026-11-03</Dt></BookgDt></Ntry>
+		<Ntry><Amt Ccy="EUR">20.00</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts><Cd>INFO</Cd></Sts><BookgDt><Dt>2026-11-04</Dt></BookgDt></Ntry>
+		<Ntry><Amt Ccy="EUR">1250.00</Amt><CdtDbtInd>CRDT</CdtDbtInd><Sts><Cd>FUTR</Cd></Sts><BookgDt><Dt>2026-11-30</Dt></BookgDt></Ntry>
+		</Rpt></BkToCstmrAcctRpt></Document>
+		"""
+		let ts = try TransactionFileImporter.parse(Data(xml.utf8), currency: "EUR").transactions
+		#expect(ts.map(\.amountMinor) == [-8_900, 125_000])
+		#expect(ts.map(\.isPending) == [false, false])
+		#expect(ts.map(\.bookingDate) == [Day(year: 2026, month: 11, day: 3), Day(year: 2026, month: 11, day: 30)])
+	}
+
+	@Test("Scheduled rent from a FUTR entry stays after a refresh that does not deliver it")
+	func camtFutureRentSurvivesRefresh() throws {
+		let xml = """
+		<?xml version="1.0" encoding="UTF-8"?>
+		<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.052.001.08"><BkToCstmrAcctRpt><Rpt>
+		<Ntry><Amt Ccy="EUR">800.00</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts><Cd>FUTR</Cd></Sts><BookgDt><Dt>2026-12-01</Dt></BookgDt>
+		<NtryDtls><TxDtls><RltdPties><Cdtr><Pty><Nm>Vermieter A</Nm></Pty></Cdtr></RltdPties><RmtInf><Ustrd>Miete Dezember</Ustrd></RmtInf></TxDtls></NtryDtls></Ntry>
+		</Rpt></BkToCstmrAcctRpt></Document>
+		"""
+		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
+		let rules = Categorizer(ledger: Ledger(accounts: [giro]))
+		let imported = reconcile(.file(try TransactionFileImporter.parse(Data(xml.utf8), currency: "EUR").transactions), into: giro, stored: [], deleted: [],
+			rules: rules, now: Date()).added
+		#expect(imported.map(\.amountMinor) == [-80_000])
+		let november = FetchedTransactions(rows: [], from: Day(year: 2026, month: 11, day: 1))
+		for day in [12, 20] {
+			let now = Calendar.current.date(from: DateComponents(year: 2026, month: 11, day: day, hour: 12))!
+			let refresh = reconcile(.refresh(RefreshResult(balance: nil, balanceDate: nil, transactions: november)), into: giro, stored: imported, deleted: [],
+				rules: rules, now: now)
+			#expect(refresh.dropped == [])
+		}
+	}
+
+	@Test("Batch entry")
+	func camtBatch() throws {
+		let xml = """
+		<?xml version="1.0" encoding="UTF-8"?>
+		<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.053.001.08"><BkToCstmrStmt><Stmt>
+		<Ntry><Amt Ccy="EUR">150.00</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts><Cd>BOOK</Cd></Sts><BookgDt><Dt>2026-11-03</Dt></BookgDt>
+		<NtryDtls>
+		<TxDtls><Refs><EndToEndId>E2E-1</EndToEndId><MndtId>M-1</MndtId></Refs><Amt Ccy="EUR">100.00</Amt>
+		<RltdPties><Cdtr><Pty><Nm>Hausverwaltung Muster</Nm></Pty></Cdtr><CdtrAcct><Id><IBAN>DE02120300000000202051</IBAN></Id></CdtrAcct></RltdPties>
+		<RltdAgts><CdtrAgt><FinInstnId><BICFI>BYLADEM1001</BICFI></FinInstnId></CdtrAgt></RltdAgts>
+		<RmtInf><Ustrd>Miete November</Ustrd></RmtInf></TxDtls>
+		<TxDtls><Refs><EndToEndId>E2E-2</EndToEndId><MndtId>M-2</MndtId></Refs><Amt Ccy="EUR">50.00</Amt>
+		<RltdPties><Cdtr><Pty><Nm>Stadtwerke Musterstadt</Nm></Pty></Cdtr>
+		<CdtrSchmeId><Id><PrvtId><Othr><Id>DE98ZZZ09999999999</Id></Othr></PrvtId></Id></CdtrSchmeId></RltdPties>
+		<RmtInf><Ustrd>Abschlag Strom</Ustrd></RmtInf></TxDtls>
+		</NtryDtls></Ntry>
+		</Stmt></BkToCstmrStmt></Document>
+		"""
+		let ts = try TransactionFileImporter.parse(Data(xml.utf8), currency: "EUR").transactions
+		#expect(ts.count == 1)
+		let t = try #require(ts.first)
+		#expect(t.amountMinor == -15_000 && t.bookingDate == Day(year: 2026, month: 11, day: 3))
+		#expect(t.purpose == "Miete November Abschlag Strom")
+		#expect(t.name == "")
+		#expect(t.counterpartyIBAN == nil)
+		#expect(t.counterpartyBIC == nil)
+		#expect(t.endToEndReference == nil)
+		#expect(t.mandateReference == nil)
+		#expect(t.creditorID == nil)
+	}
+
+	@Test("A batch entry whose details give one name with two IBANs has no counterparty and no shared reference")
+	func camtBatchTwoAccounts() throws {
+		func detail(_ iban: String) -> String {
+			"""
+			<TxDtls><Refs><MndtId>M-1</MndtId></Refs><Amt Ccy="EUR">60.00</Amt><RltdPties><Cdtr><Pty><Nm>Stadtwerke Musterstadt</Nm></Pty></Cdtr>
+			<CdtrAcct><Id><IBAN>\(iban)</IBAN></Id></CdtrAcct></RltdPties>
+			<RltdAgts><CdtrAgt><FinInstnId><BICFI>BYLADEM1001</BICFI></FinInstnId></CdtrAgt></RltdAgts></TxDtls>
+			"""
+		}
+		let xml = """
+		<?xml version="1.0" encoding="UTF-8"?>
+		<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.053.001.08"><BkToCstmrStmt><Stmt>
+		<Ntry><Amt Ccy="EUR">120.00</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts><Cd>BOOK</Cd></Sts><BookgDt><Dt>2026-11-03</Dt></BookgDt>
+		<NtryDtls>\(detail("DE02120300000000202051"))\(detail("DE89370400440532013000"))</NtryDtls></Ntry>
+		</Stmt></BkToCstmrStmt></Document>
+		"""
+		let ts = try TransactionFileImporter.parse(Data(xml.utf8), currency: "EUR").transactions
+		#expect(ts.map(\.name) == [""])
+		#expect(ts.map(\.counterpartyIBAN) == [nil])
+		#expect(ts.map(\.counterpartyBIC) == [nil])
+		#expect(ts.map(\.mandateReference) == [nil])
+	}
+
+	@Test("Batch entry to one counterparty")
+	func camtBatchOneCounterparty() throws {
+		func detail(_ e2e: String) -> String {
+			"""
+			<TxDtls><Refs><EndToEndId>\(e2e)</EndToEndId><MndtId>M-1</MndtId></Refs><Amt Ccy="EUR">60.00</Amt><RltdPties><Cdtr><Pty><Nm>Stadtwerke Musterstadt</Nm></Pty></Cdtr>
+			<CdtrAcct><Id><IBAN>DE02120300000000202051</IBAN></Id></CdtrAcct></RltdPties><RmtInf><Ustrd>Abschlag</Ustrd></RmtInf></TxDtls>
+			"""
+		}
+		let xml = """
+		<?xml version="1.0" encoding="UTF-8"?>
+		<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.053.001.08"><BkToCstmrStmt><Stmt>
+		<Ntry><Amt Ccy="EUR">120.00</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts><Cd>BOOK</Cd></Sts><BookgDt><Dt>2026-11-03</Dt></BookgDt>
+		<NtryDtls>\(detail("E2E-1"))\(detail("E2E-2"))</NtryDtls></Ntry>
+		</Stmt></BkToCstmrStmt></Document>
+		"""
+		let ts = try TransactionFileImporter.parse(Data(xml.utf8), currency: "EUR").transactions
+		#expect(ts.map(\.amountMinor) == [-12_000])
+		#expect(ts.map(\.name) == ["Stadtwerke Musterstadt"])
+		#expect(ts.map(\.counterpartyIBAN) == ["DE02120300000000202051"])
+		#expect(ts.map(\.endToEndReference) == [nil])
+		#expect(ts.map(\.mandateReference) == ["M-1"])
+	}
+
 	@Test("camt.053 with a debit and a pending credit")
 	func camt() throws {
 		let xml = """
