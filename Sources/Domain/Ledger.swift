@@ -211,6 +211,36 @@ public struct Ledger: Sendable {
 		return transactions.allSatisfy { allowed.contains($0.accountID) }
 	}
 
+	/// Moves a category, or a group with everything in it, into `parent` at the gap `index` of its
+	/// children as the sidebar shows them before the move. Returns the categories whose parent or
+	/// position changes, with positions without gaps in the old and the new parent. Transactions keep
+	/// their category. "Uncategorized" does not move, and only a group or the top level takes a category.
+	public func move(category id: UUID, into parent: UUID?, at index: Int) -> [Category] {
+		guard var moved = category(id), !moved.isDefault else { return [] }
+		if let parent {
+			guard category(parent)?.isGroup == true, !categoryIDs(inTree: id).contains(parent) else { return [] }
+		}
+		var target = childCategories(of: parent)
+		var gap = min(max(index, 0), target.count)
+		if let old = target.firstIndex(where: { $0.id == id }) {
+			target.remove(at: old)
+			if old < gap { gap -= 1 }
+		}
+		let oldParent = moved.parentID
+		moved.parentID = parent
+		target.insert(moved, at: gap)
+		var lists = [target]
+		if oldParent != parent { lists.append(childCategories(of: oldParent).filter { $0.id != id }) }
+		var changed: [Category] = []
+		for list in lists {
+			for (position, var c) in list.enumerated() {
+				c.position = position
+				if c != category(c.id) { changed.append(c) }
+			}
+		}
+		return changed
+	}
+
 	/// The categories that the category picker offers for a search, in sidebar order and without groups.
 	public func categories(matching query: String) -> [Category] {
 		let folded = TextFolding.fold(query.trimmingCharacters(in: .whitespaces))
