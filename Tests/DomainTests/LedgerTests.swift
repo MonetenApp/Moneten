@@ -20,7 +20,7 @@ struct LedgerTests {
 	func search(_ text: String) -> [String] {
 		var f = TransactionFilter()
 		f.searchText = text
-		return ledger().transactions(in: .account(giro.id), filter: f).map(\.name)
+		return ledger().transactions(in: .account(giro.id), filter: f).rows.map(\.name)
 	}
 
 	@Test("Accounts and subgroups of a group share one order")
@@ -82,6 +82,459 @@ struct LedgerTests {
 		#expect(search(decomposed) == ["Bäckerei Gutbrot"])
 	}
 
+	@Test("The search finds the category name and the IBAN and the account number of the own account, also after a change")
+	func searchCategoryAndOwnAccount() {
+		var account = Account(position: 0, name: "Giro", kind: .giro, source: .offline, iban: "DE02120300000000202051", accountNumber: "4711")
+		var groceries = Domain.Category(position: 0, name: "Groceries")
+		var l = Ledger(accounts: [account], categories: [groceries, Domain.Category(position: 9, name: "Uncategorized", isDefault: true)], transactions: [
+			Transaction(accountID: account.id, bookingDate: Day(year: 2026, month: 11, day: 3), amountMinor: -2_345, name: "Bäckerei Gutbrot",
+				categoryID: groceries.id, categorizedBy: .manual),
+			Transaction(accountID: account.id, bookingDate: Day(year: 2026, month: 11, day: 4), amountMinor: -1_000, name: "Kiosk"),
+		])
+		func found(_ text: String) -> [String] {
+			var f = TransactionFilter()
+			f.searchText = text
+			return l.transactions(in: .account(account.id), filter: f).rows.map(\.name)
+		}
+		#expect(found("groceries") == ["Bäckerei Gutbrot"])
+		#expect(found("uncategorized") == ["Kiosk"])
+		#expect(found("DE02120300000000202051") == ["Kiosk", "Bäckerei Gutbrot"])
+		#expect(found("4711") == ["Kiosk", "Bäckerei Gutbrot"])
+		groceries.name = "Food"
+		l.upsert(groceries)
+		#expect(found("food") == ["Bäckerei Gutbrot"])
+		#expect(found("groceries").isEmpty)
+		account.iban = "DE89370400440532013000"
+		account.accountNumber = "0815"
+		l.upsert(account)
+		#expect(found("DE89370400440532013000").count == 2)
+		#expect(found("0815").count == 2)
+		#expect(found("DE02120300000000202051").isEmpty)
+	}
+
+	@Test("A row without a category is found by the name of the default category, also after the default changes")
+	func searchDefaultCategoryChange() {
+		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
+		var groceries = Domain.Category(position: 0, name: "Groceries")
+		var other = Domain.Category(position: 9, name: "Uncategorized", isDefault: true)
+		var l = Ledger(accounts: [giro], categories: [groceries, other], transactions: [
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 1), amountMinor: -1_000, name: "Kiosk"),
+		])
+		func found(_ text: String) -> [String] {
+			var f = TransactionFilter()
+			f.searchText = text
+			return l.transactions(in: .account(giro.id), filter: f).rows.map(\.name)
+		}
+		#expect(found("uncategorized") == ["Kiosk"])
+		other.isDefault = false
+		l.upsert(other)
+		#expect(found("uncategorized").isEmpty)
+		groceries.isDefault = true
+		l.upsert(groceries)
+		#expect(found("groceries") == ["Kiosk"])
+		l.upsert(Domain.Category(position: 10, name: "Sonstiges"))
+		#expect(found("groceries") == ["Kiosk"])
+		groceries.name = "Food"
+		l.upsert(groceries)
+		#expect(found("food") == ["Kiosk"])
+		#expect(found("groceries").isEmpty)
+	}
+
+	@Test("The search accepts the rule language, and a term without a field name searches every searched field inside words")
+	func searchRuleLanguage() {
+		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
+		let groceries = Domain.Category(position: 0, name: "Groceries")
+		let l = Ledger(accounts: [giro], categories: [groceries], transactions: [
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 6), amountMinor: -12_000, name: "Stadtwerke Musterstadt", purpose: "Abschlag"),
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 5), amountMinor: -5_000, name: "Stadtwerke Musterstadt", purpose: "Abschlag"),
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 4), amountMinor: -15_000, name: "Beispiel GmbH", purpose: "Stadtwerke\n Umlage"),
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 3), amountMinor: 250_000, name: "Beispiel GmbH", purpose: "Gehalt Oktober"),
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 2), amountMinor: 30_000, name: "Erika Mustermann", purpose: "Lohn Aushilfe"),
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 1), amountMinor: -2_345, name: "Bäckerei Gutbrot",
+				categoryID: groceries.id, categorizedBy: .manual),
+		])
+		func found(_ text: String) -> [Int64] {
+			var f = TransactionFilter()
+			f.searchText = text
+			return l.transactions(in: .account(giro.id), filter: f).rows.map(\.amountMinor)
+		}
+		#expect(found(#"name:"Stadtwerke" AND amount<-100"#) == [-12_000])
+		#expect(found(#""Lohn" OR "Gehalt""#) == [250_000, 30_000])
+		#expect(found(#"werke NOT name:Stadtwerke"#) == [-15_000])
+		#expect(found(#""groceries" AND amount<0"#) == [-2_345])
+		#expect(found(#""Gehalt Oktober""#) == [250_000])
+		#expect(found(#""Oktober Gehalt""#).isEmpty)
+		#expect(found(#""Stadtwerke Umlage""#) == [-15_000])
+		#expect(found("Stadtw*") == [-12_000, -5_000, -15_000])
+		#expect(found("Groc*") == [-2_345])
+		#expect(found("*werke Muster*") == [-12_000, -5_000])
+		#expect(found(#""Stadtw"#) == [-12_000, -5_000, -15_000])
+		#expect(found(#"purpose:/^Lohn/"#) == [30_000])
+		#expect(found("amount=-50") == [-5_000])
+		#expect(found("amount<=-120") == [-12_000, -15_000])
+		#expect(found("amount<-120") == [-15_000])
+		#expect(found("amount>-120.0001 AND amount<0") == [-12_000, -5_000, -2_345])
+		#expect(found("amount=-120.0001").isEmpty)
+		#expect(found("amount!=-120.0001").count == 6)
+	}
+
+	@Test("A word without a field name finds text inside words, also with a wildcard, and a rejected text searches its words")
+	func searchWordWithoutField() {
+		let giro = Account(position: 0, name: "Girokonto", kind: .giro, source: .offline, iban: "DE02 1203 0000 0000 2020 51")
+		let groceries = Domain.Category(position: 0, name: "Groceries")
+		let l = Ledger(accounts: [giro], categories: [groceries], transactions: [
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 2), amountMinor: -1_250, name: "Markt", purpose: "REWE-Markt 4711",
+				categoryID: groceries.id, categorizedBy: .manual),
+		])
+		var f = TransactionFilter()
+		for text in [#"/\AREWE-M/"#, #"/4711\z/"#, #""REWE" AND amount<0"#, "Groc*", "/groceries/", "Girok*", "/^girok/", "DE02120300000000202051", "*0000202051", #""REWE-Mar"#, "(rewe",
+			"REWE OR", "name:"] {
+			f.searchText = text
+			#expect(l.transactions(in: .account(giro.id), filter: f).rows.count == 1, "\(text)")
+		}
+		for text in ["/DE02 1203/", "/DE02120300000000202051/"] {
+			f.searchText = text
+			#expect(l.transactions(in: .account(giro.id), filter: f).rows.isEmpty, "\(text)")
+		}
+	}
+
+	@Test("A regular expression that does not end counts as no match", .timeLimit(.minutes(1)))
+	func searchRegexThatDoesNotEnd() {
+		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
+		let l = Ledger(accounts: [giro], transactions: [
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 2), amountMinor: -1_000, name: "Vermieter", purpose: "Tel. +49 170 1234567"),
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 1), amountMinor: -90_000, name: "Vermieter", purpose: "Miete Mai"),
+		])
+		var f = TransactionFilter()
+		for text in ["/^+?49/", #"/\s^+?a/"#, "currency:/^+?49/"] {
+			f.searchText = text
+			#expect(l.transactions(in: .account(giro.id), filter: f).rows.isEmpty, "\(text)")
+		}
+		f.searchText = "/miete mai/"
+		#expect(l.transactions(in: .account(giro.id), filter: f).rows.map(\.purpose) == ["Miete Mai"])
+	}
+
+	@Test("A stopped regex discards all rows in either order, also with NOT", .timeLimit(.minutes(1)))
+	func stoppedSearchHasNoPartialRows() {
+		let account = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
+		let cases: [(String, [String])] = [
+			(#"purpose:/(\w+\s?)*:/"#, ["Kundennummer: 4711", "Abschlag Strom November 2026", "Kundennummer: 4711"]),
+			(#"NOT purpose:/(\w+\s?)*:/"#, ["Kundennummer: 4711", "Abschlag Strom November 2026", "Kundennummer: 4711"]),
+			("/ok|(a+)+$/", ["ok", "ok", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa!", "ok", "ok"]),
+		]
+		for (query, purposes) in cases {
+			for offset in purposes.indices {
+				let order = Array(purposes[offset...] + purposes[..<offset])
+				let rows = order.enumerated().map {
+					Transaction(accountID: account.id, bookingDate: Day(year: 2026, month: 11, day: 10 - $0.offset), amountMinor: -100, name: "Row\($0.offset)", purpose: $0.element)
+				}
+				let ledger = Ledger(accounts: [account], transactions: rows)
+				var filter = TransactionFilter()
+				filter.searchText = query
+				let result = ledger.transactions(in: .account(account.id), filter: filter)
+				#expect(result.rows.map(\.name) == [])
+				#expect(result.gaveUp == true)
+			}
+		}
+	}
+
+	@Test("One search adds the processor time of all regex calls", .timeLimit(.minutes(1)))
+	func searchRegexProcessorBudget() {
+		let account = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
+		let rows = (0..<100).map { _ in
+			Transaction(accountID: account.id, bookingDate: Day(year: 2026, month: 11, day: 1), amountMinor: -100, name: "Row", purpose: "aaaaaaaaaaaaaaaaaaaa!")
+		}
+		let ledger = Ledger(accounts: [account], transactions: rows)
+		var filter = TransactionFilter()
+		filter.searchText = "purpose:/^(a+)+$/"
+		let start = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)
+		let result = ledger.transactions(in: .account(account.id), filter: filter)
+		let milliseconds = Double(clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) - start) / 1_000_000
+		print("100 slow rows: \(milliseconds) ms searching-thread processor time, \(result.rows.count) rows, gaveUp=\(result.gaveUp)")
+		#expect(result.rows.map(\.name) == [])
+		#expect(result.gaveUp == true)
+		#expect(milliseconds >= 300)
+		#expect(milliseconds < 400)
+	}
+
+	@Test("Two word boundaries at the end of a value match the rows that the rule matches")
+	func searchTwoWordBoundaries() throws {
+		let giro = Account(position: 0, name: "Konto b", kind: .giro, source: .offline)
+		let rows = [("x a", "x b"), ("Kiosk A", "Zeitung"), ("a", "Zeitung")].enumerated().map {
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 3 - $0.offset), amountMinor: -1_000, name: $0.element.0, purpose: $0.element.1)
+		}
+		let l = Ledger(accounts: [giro], transactions: rows)
+		for query in [#"/a\b\s*?\b/"#, #"/a(\B|\b)/"#, #"/\b$\b/"#, #"/\b\s*\B/"#, #"/miete\b\b/"#] {
+			var f = TransactionFilter()
+			f.searchText = query
+			let rule = try Rule(parsing: query)
+			#expect(l.transactions(in: .account(giro.id), filter: f).rows.map(\.name) == rows.filter { rule.matches(RuleSubject($0, account: giro)) }.map(\.name), "\(query)")
+		}
+	}
+
+	@Test("A regular expression that runs long only over the joined values still finds the rows of the rule", .timeLimit(.minutes(1)))
+	func searchRegexSlowOnlyWhenJoined() throws {
+		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
+		let rows = [
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 4), amountMinor: -1_000, name: "Vermieter", purpose: "Miete Mai"),
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 3), amountMinor: -1_000, name: "Kiosk", purpose: "Mai Zeitung"),
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 2), amountMinor: -1_000, name: "Stadtwerke Muster", purpose: "Abschlag Strom 11"),
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 1), amountMinor: -1_000, name: "Vermieter", purpose: "Kundennummer: 4711"),
+		]
+		let l = Ledger(accounts: [giro], transactions: rows)
+		for query in [#"/mai|\s^+?a/"#, #"/(\w+\s?)*:/"#] {
+			var f = TransactionFilter()
+			f.searchText = query
+			let rule = try Rule(parsing: query)
+			let ruled = rows.filter { rule.matches(RuleSubject($0, account: giro)) }.map(\.purpose)
+			#expect(!ruled.isEmpty, "\(query)")
+			#expect(l.transactions(in: .account(giro.id), filter: f).rows.map(\.purpose) == ruled, "\(query)")
+		}
+	}
+
+	@Test("The search true finds every row, and false finds none")
+	func searchConstants() {
+		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
+		let l = Ledger(accounts: [giro], transactions: [
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 2), amountMinor: -8_900, name: "Stadtwerke Musterstadt"),
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 1), amountMinor: -2_345, name: "Bäckerei Gutbrot"),
+		])
+		func found(_ text: String) -> [String] {
+			var f = TransactionFilter()
+			f.searchText = text
+			return l.transactions(in: .account(giro.id), filter: f).rows.map(\.name)
+		}
+		#expect(found("true") == ["Stadtwerke Musterstadt", "Bäckerei Gutbrot"])
+		#expect(found("TRUE") == ["Stadtwerke Musterstadt", "Bäckerei Gutbrot"])
+		#expect(found("false").isEmpty)
+		#expect(found("Stadtwerke AND true") == ["Stadtwerke Musterstadt"])
+		#expect(found("Stadtwerke OR true") == ["Stadtwerke Musterstadt", "Bäckerei Gutbrot"])
+		#expect(found("Stadtwerke OR false") == ["Stadtwerke Musterstadt"])
+		#expect(found("NOT false") == ["Stadtwerke Musterstadt", "Bäckerei Gutbrot"])
+		#expect(found(#""true""#).isEmpty)
+	}
+
+	@Test("The fallback keeps constants and their negation")
+	func unfinishedSearchConstants() {
+		let account = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
+		let ledger = Ledger(accounts: [account], transactions: [
+			Transaction(accountID: account.id, bookingDate: Day(year: 2026, month: 11, day: 1), amountMinor: -100, name: "Stadtwerke Musterstadt"),
+		])
+		let cases: [(String, [String])] = [
+			(#"false "Stadtw"#, []),
+			(#"NOT true "Stadtw"#, []),
+			(#"true "Stadtw"#, ["Stadtwerke Musterstadt"]),
+			(#"NOT false "Stadtw"#, ["Stadtwerke Musterstadt"]),
+			(#"true "Kiosk"#, []),
+		]
+		for (text, expected) in cases {
+			var filter = TransactionFilter()
+			filter.searchText = text
+			let result = ledger.transactions(in: .account(account.id), filter: filter)
+			#expect(result.rows.map(\.name) == expected)
+			#expect(result.gaveUp == false)
+		}
+	}
+
+	@Test("A phrase finds its words across any white space, and a quoted word finds text inside words, which a rule does not")
+	func searchPhraseAcrossWhiteSpace() throws {
+		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
+		let l = Ledger(accounts: [giro], transactions: ["Abschlag\nNovember", "Abschlag\tNovember", "Abschlag  November", "Lohnsteuer 10/2026"].enumerated().map {
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 1 + $0.offset), amountMinor: -1_000, name: "Row \($0.offset)", purpose: $0.element)
+		})
+		func found(_ text: String) -> [String] {
+			var f = TransactionFilter()
+			f.searchText = text
+			return l.transactions(in: .account(giro.id), filter: f).rows.map(\.name).sorted()
+		}
+		#expect(found(#""Abschlag November""#) == ["Row 0", "Row 1", "Row 2"])
+		#expect(found(#""Lohn""#) == ["Row 3"])
+		let lohn = try #require(l.transactions.first { $0.purpose.hasPrefix("Lohn") })
+		#expect(try Rule(parsing: #""Lohn""#).matches(RuleSubject(lohn, account: giro)) == false)
+	}
+
+	@Test("Typing a field term, a regular expression, or an amount searches the plain words until the text reads")
+	func searchWhileTyping() {
+		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
+		let l = Ledger(accounts: [giro], transactions: [
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 1), amountMinor: -8_900, name: "Stadtwerke Musterstadt",
+				purpose: "Abschlag\u{202F}November"),
+		])
+		var f = TransactionFilter()
+		for text in [#"name:"Stadtw"#, "name:Stadtwerke OR", "purpose:/^Absch", "Stadtwerke amount<-", "/Stadt", #""Abschlag November""#,
+			"Stadtwerke or", "Stadtwerke +", "Name:Stadtwerke OR", #"name:="Stadtw"#, "Stadtwerke amount:=-", "Stadtwerke !", "Stadtwerke -",
+			#"Stadtwerke NOT "Gehalt"#, #"Stadtwerke not "Gehalt"#, #"Stadtwerke !"Gehalt"#, #"Stadtwerke -"Gehalt"#, #"Stadtwerke-"Gehalt"#,
+			#"name!=Gehalt "Stadtw"#, #"NAME<>Gehalt "Stadtw"#] {
+			f.searchText = text
+			#expect(l.transactions(in: .account(giro.id), filter: f).rows.count == 1, "\(text)")
+		}
+	}
+
+	@Test("Rejected text reads open quotation marks, regular expressions, and groups to the end, and leaves out the words it excludes")
+	func searchWhileTypingExclusions() {
+		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
+		let l = Ledger(accounts: [giro], transactions: ["Abschlag November", "Abschlag Oktober", "Lohn"].enumerated().map {
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 3 - $0.offset), amountMinor: -1_000, name: "Stadtwerke Musterstadt", purpose: $0.element)
+		})
+		func found(_ text: String) -> [String] {
+			var f = TransactionFilter()
+			f.searchText = text
+			return l.transactions(in: .account(giro.id), filter: f).rows.map(\.purpose)
+		}
+		let all = ["Abschlag November", "Abschlag Oktober", "Lohn"]
+		#expect(found("Stadtwerke NOT (Gehalt OR Lohn") == all)
+		#expect(found(#"Stadtwerke -"Abschlag November"#) == all)
+		#expect(found(#"Stadtwerke name!="x Oktober"#) == all)
+		#expect(found("Stadtwerke -(Lohn Oktober") == all)
+		#expect(found("Stadtwerke - (Lohn Oktober") == all)
+		#expect(found("Stadtwerke -(Lohn) Oktober OR") == ["Abschlag Oktober"])
+		#expect(found(#"Stadtwerke -"Lohn" Oktober OR"#) == ["Abschlag Oktober"])
+		#expect(found("Stadtwerke -/Lohn Oktober") == all)
+		#expect(found("Stadtwerke NOT /Lohn Oktober") == all)
+		#expect(found(#"Stadtwerke-"Lohn"#) == all)
+		#expect(found("Stadtwerke NOT(Lohn") == all)
+		#expect(found(#"Stadtwerke -"and Lohn" Abschlag "Nov"#) == ["Abschlag November"])
+		#expect(found(#"Stadtwerke "Abschlag -Nov" Lohn (x"#).isEmpty)
+		#expect(found(#"Stadtwerke /\d"#) == all)
+		#expect(found("Stadtwerke /Absch.*") == all)
+		#expect(found("Stadtwerke /Lohn|Absch") == all)
+		#expect(found("Stadtwerke /[A-Z") == all)
+		#expect(found(#"/\d+ Abschl"#) == ["Abschlag November", "Abschlag Oktober"])
+		#expect(found(#"Stadtwerke name:-"Lohn"#) == all)
+		#expect(found(#"Stadtwerke name:-"Lohn""#) == all)
+		#expect(found("Stadtwerke name:!/Lohn") == all)
+		#expect(found("Stadtwerke name:-/Lohn") == all)
+		#expect(found("Stadtwerke name:+(Lohn") == ["Lohn"])
+	}
+
+	@Test("A field term and a regular expression with a field name match the rows that the same rule matches")
+	func fieldTermsMatchRules() throws {
+		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline, iban: "DE02 1203 0000 0000 2020 51", accountNumber: "4711")
+		let rows = [
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 1), amountMinor: -8_900, name: "Stadtwerke  Musterstadt",
+				purpose: "Abschlag\nNovember", counterpartyIBAN: "DE89 3704 0044 0532 0130 00", comment: "Strom"),
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 2), amountMinor: -2_345, currency: "USD", name: "Bäckerei Gutbrot",
+				purpose: "Kartenzahlung", bookingText: "LASTSCHRIFT", endToEndReference: "E2E-1", mandateReference: "M-1", creditorID: "DE98ZZZ09999999999"),
+		]
+		let all = rows + [Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 3), amountMinor: -400, name: "Cafe\u{332}", purpose: "Kaffee\r"),
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 4), amountMinor: -250, name: "Kiosk\u{1}Am Markt", purpose: "Zeitung"),
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 5), amountMinor: -320, name: "Cafe\u{301}", purpose: "Rechnung 12"),
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 6), amountMinor: -180, name: "Imbiss \u{301}Nord", purpose: "Pommes"),
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 7), amountMinor: -190, name: "Grill \u{FE20}Ost", purpose: "Wurst"),
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 8), amountMinor: -60, name: "Bude\u{1}\u{301}", purpose: "Karte ****1234"),
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 9), amountMinor: -70, name: "Automat", purpose: "Code\u{1F}abc"),
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 10), amountMinor: -80, name: "Linie\u{2028}Neun", purpose: "Fahrkarte"),
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 11), amountMinor: -90, name: "Miete.", purpose: "Mai")]
+		let l = Ledger(accounts: [giro], transactions: all)
+		let queries = [#"name:"Stadtwerke Musterstadt""#, "name:Stadt*", "purpose:November", #"purpose:"Abschlag November""#, "comment:strom",
+			"booking_text:lastschrift", "reference:E2E-1", "mandate:M-1", "creditor_id:DE98ZZZ*", "remote_account:DE89370400440532013000",
+			#"local_account:"DE02 1203 0000 0000 2020 51""#, "local_account:4711", "currency:USD", "name:baeckerei", "name:*gutbrot", "name:*ecke*", "name:Stadtwerke*", "purpose:/^Abschlag/", "name:/gutbrot$/", #"local_account:/\A4711/"#, #"booking_text:/\ALAST/"#, #"purpose:/zahlung\z/"#, "name:/(?-m)^b/", #"name:/gutbrot\D*+$/"#, "name:caf*", "name:*e", #"purpose:/kaffee\s$/"#, #"/kaffee\s$/"#, #"/gutbrot\D*+$/"#, "comment:/^$/", "/^$/",
+			"purpose:Zeitung", "name:markt", "name:kiosk*", "Name:Stadtwerke*", "NAME:=baeckerei", "name==*gutbrot", "name=caf*", "name!=Stadtwerke*", "name<>*e",
+			"true", "NOT false", "comment:strom OR false",
+			"/cafe/", "/rechnung 1/", "/RECHNUNG 1/", "purpose:/chnung 1/", "/k[a-z]ffee/", "/kaffe?e/", "/zahl+ung/", #"/e2e-\d/"#, #"mandate:/m\x2d1/"#,
+			#"/\p{Lu}utbrot/"#, #"/abschlag\nnov/"#, "/stadtwerke  muster/", "/b.ckerei/", "/^kiosk/", "/zahlungs?/", "/zahlungx*/", "/zahlungx{0,2}/",
+			"/zahl[uvwxyzabcdef]ng/", "/zahl[^xyzabcdefgh]ng/", #"/\x7aahlung/"#, #"/zahl\u0075ng/"#, "/zahlung$/", #"/zahl\Bung/"#,
+			#"/\QM-1x\E?/"#, #"mandate:/\QM-1x\E{0}/"#, #"/kartenzahlungx\Q\E?/"#, "name:nord", "name:imbiss", "name:ost", #"name:"Grill Ost""#, "purpose:karte", "purpose:*1234", "purpose:**1234", "purpose:*12?4",
+			"name:bude??", "/kartenzahlungxyz.|\u{308}?kartenzahlung/", "/(\u{308}.kartenzahlungxyz)?kartenzahlung/", #"/\c_abc/"#, "/^linie/", "/fahrkarte$/", #"/linie\sneun/"#, #"/miete\X\b/"#]
+		for query in queries {
+			var f = TransactionFilter()
+			f.searchText = query
+			let rule = try Rule(parsing: query)
+			let searched: Set<UUID> = Set(l.transactions(in: .account(giro.id), filter: f).rows.map(\.id))
+			let ruled: Set<UUID> = Set(all.filter { rule.matches(RuleSubject($0, account: giro)) }.map(\.id))
+			#expect(!ruled.isEmpty, "\(query)")
+			#expect(searched == ruled, "\(query)")
+		}
+		for query in ["/^neun/", #"/strom\sgiro/"#, #"/miete\X\B/"#] {
+			var f = TransactionFilter()
+			f.searchText = query
+			let rule = try Rule(parsing: query)
+			#expect(l.transactions(in: .account(giro.id), filter: f).rows.isEmpty, "\(query)")
+			#expect(!all.contains { rule.matches(RuleSubject($0, account: giro)) }, "\(query)")
+		}
+	}
+
+	@Test("Search for finds the row it starts from, also with quotation marks in the name")
+	func searchForName() {
+		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
+		let names = [#"Restaurant "Zum Hirschen""#, "Verein „Freunde“ e.V.", "Tom OR Jerry GbR", "Stadtwerke Musterstadt"]
+		let l = Ledger(accounts: [giro], transactions: names.enumerated().map {
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 1 + $0.offset), amountMinor: -1_000, name: $0.element)
+		})
+		var f = TransactionFilter()
+		for name in names {
+			f.searchText = TransactionFilter.searchText(for: name)
+			#expect(l.transactions(in: .account(giro.id), filter: f).rows.map(\.name) == [name])
+		}
+	}
+
+	@Test("An amount term beyond the range of an amount compares as a rule does")
+	func searchAmountBeyondRange() {
+		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
+		let l = Ledger(accounts: [giro], transactions: [
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 1), amountMinor: 0, name: "Zero"),
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 2), amountMinor: 5_000, name: "Fifty"),
+		])
+		var f = TransactionFilter()
+		f.searchText = "amount<100000000000000000"
+		#expect(l.transactions(in: .account(giro.id), filter: f).rows.count == 2)
+		f.searchText = "amount=184467440737095516.16"
+		#expect(l.transactions(in: .account(giro.id), filter: f).rows.isEmpty)
+		f.searchText = "amount>-100000000000000000"
+		#expect(l.transactions(in: .account(giro.id), filter: f).rows.count == 2)
+		f.searchText = "amount<1" + String(repeating: "0", count: 130)
+		#expect(l.transactions(in: .account(giro.id), filter: f).rows.count == 2)
+		f.searchText = "amount>-1" + String(repeating: "0", count: 130)
+		#expect(l.transactions(in: .account(giro.id), filter: f).rows.count == 2)
+	}
+
+	@Test("Amounts outside Int64 have constant truth values at both stored edges")
+	func searchAmountAtInt64Edges() throws {
+		let account = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
+		let rows = [
+			Transaction(accountID: account.id, bookingDate: Day(year: 2026, month: 11, day: 3), amountMinor: Int64.max, name: "Maximum"),
+			Transaction(accountID: account.id, bookingDate: Day(year: 2026, month: 11, day: 2), amountMinor: Int64.min, name: "Minimum"),
+			Transaction(accountID: account.id, bookingDate: Day(year: 2026, month: 11, day: 1), amountMinor: 100_000_000_000_000_000, currency: "JPY", name: "Yen"),
+		]
+		let ledger = Ledger(accounts: [account], transactions: rows)
+		let cases: [(String, [String])] = [
+			("amount=100000000000000000", ["Yen"]),
+			("amount<99999999999999999999", ["Maximum", "Minimum", "Yen"]),
+			("amount<=99999999999999999999", ["Maximum", "Minimum", "Yen"]),
+			("amount>99999999999999999999", []),
+			("amount>=99999999999999999999", []),
+			("amount!=99999999999999999999", ["Maximum", "Minimum", "Yen"]),
+			("amount=-100000000000000000", []),
+			("amount>-99999999999999999999", ["Maximum", "Minimum", "Yen"]),
+			("amount<=-99999999999999999999", []),
+			("amount=92233720368547758.07", ["Maximum"]),
+			("amount=-92233720368547758.08", ["Minimum"]),
+			("amount>92233720368547758.07", ["Yen"]),
+			("amount<-92233720368547758.08", []),
+		]
+		for (text, expected) in cases {
+			var filter = TransactionFilter()
+			filter.searchText = text
+			#expect(ledger.transactions(in: .account(account.id), filter: filter).rows.map(\.name) == expected, "\(text)")
+			let rule = try Rule(parsing: text)
+			#expect(rows.filter { rule.matches(RuleSubject($0, account: account)) }.map(\.name) == expected, "\(text)")
+		}
+	}
+
+	@Test("An amount term compares the amount in the decimals of its currency")
+	func searchAmountInCurrency() {
+		let wallet = Account(position: 0, name: "Wallet", kind: .giro, source: .offline, currency: "JPY")
+		let l = Ledger(accounts: [wallet], transactions: [
+			Transaction(accountID: wallet.id, bookingDate: Day(year: 2026, month: 11, day: 2), amountMinor: -1_500, currency: "JPY", name: "Ramen"),
+			Transaction(accountID: wallet.id, bookingDate: Day(year: 2026, month: 11, day: 1), amountMinor: -1_500, currency: "EUR", name: "Café"),
+		])
+		var f = TransactionFilter()
+		f.searchText = "amount=-1500"
+		#expect(l.transactions(in: .account(wallet.id), filter: f).rows.map(\.name) == ["Ramen"])
+		f.searchText = "amount=-15"
+		#expect(l.transactions(in: .account(wallet.id), filter: f).rows.map(\.name) == ["Café"])
+	}
+
 	@Test("The search follows changes: a renamed account, an update, and a removal")
 	func searchAfterChanges() {
 		var l = ledger()
@@ -91,25 +544,26 @@ struct LedgerTests {
 		l.upsert(renamed)
 		l.replace()
 		f.searchText = "haushaltskonto"
-		#expect(l.transactions(in: .account(giro.id), filter: f).count == 4)
+		#expect(l.transactions(in: .account(giro.id), filter: f).rows.count == 4)
 		var kiosk = l.transactions.first { $0.name == "Kiosk" }!
 		kiosk.purpose = "Zeitung"
 		kiosk.bookingDate = Day(year: 2026, month: 1, day: 1)
 		l.update([kiosk, Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 5), amountMinor: -500, name: "Optiker")])
 		f.searchText = "zeitung"
-		#expect(l.transactions(in: .account(giro.id), filter: f).map(\.name) == ["Kiosk"])
+		#expect(l.transactions(in: .account(giro.id), filter: f).rows.map(\.name) == ["Kiosk"])
 		f.searchText = "optiker"
-		#expect(l.transactions(in: .account(giro.id), filter: f).map(\.name) == ["Optiker"])
+		#expect(l.transactions(in: .account(giro.id), filter: f).rows.map(\.name) == ["Optiker"])
 		#expect(l.transactions.first?.name == "Optiker")
 		l.remove(transactionIDs: [kiosk.id])
 		f.searchText = "zeitung"
-		#expect(l.transactions(in: .account(giro.id), filter: f).isEmpty)
+		#expect(l.transactions(in: .account(giro.id), filter: f).rows.isEmpty)
 	}
 
 	@Test("The search finds exact amounts")
 	func searchAmount() {
 		#expect(search("89,00") == ["Stadtwerke Musterstadt"])
 		#expect(search("-23,45") == ["Bäckerei Gutbrot"])
+		#expect(search("-23.45") == ["Bäckerei Gutbrot"])
 		// The list shows the minus sign U+2212. An amount copied from there matches too.
 		#expect(search("\u{2212}23,45") == ["Bäckerei Gutbrot"])
 	}
@@ -118,7 +572,7 @@ struct LedgerTests {
 	func amountSearchText() {
 		func text(_ minor: Int64, _ currency: String = "EUR") -> [String] {
 			let t = Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 1, day: 1), amountMinor: minor, currency: currency, name: "")
-			return Ledger.searchText(of: t, account: nil).split(separator: "\u{1}").map(String.init)
+			return Ledger.amountTexts(t.amountMinor, decimals: t.amount.decimalPlaces)
 		}
 		#expect(text(-2_345) == ["-23.45", "-23,45", "-23,45", "-23.45"])
 		#expect(text(-2_340) == ["-23.4", "-23,4", "-23,40", "-23.40"])
@@ -140,16 +594,16 @@ struct LedgerTests {
 		let l = ledger()
 		var f = TransactionFilter()
 		f.status = .checked
-		#expect(l.transactions(in: .account(giro.id), filter: f).map(\.name) == ["Beispiel GmbH"])
+		#expect(l.transactions(in: .account(giro.id), filter: f).rows.map(\.name) == ["Beispiel GmbH"])
 		f = TransactionFilter()
 		f.amount = .deposits
-		#expect(l.transactions(in: .account(giro.id), filter: f).count == 1)
+		#expect(l.transactions(in: .account(giro.id), filter: f).rows.count == 1)
 		f.amount = .withdrawals
 		f.period = DayRange(start: Day(year: 2026, month: 11, day: 1), end: Day(year: 2026, month: 11, day: 30))
-		#expect(l.transactions(in: .account(giro.id), filter: f).map(\.name) == ["Kiosk", "Stadtwerke Musterstadt"])
+		#expect(l.transactions(in: .account(giro.id), filter: f).rows.map(\.name) == ["Kiosk", "Stadtwerke Musterstadt"])
 		f = TransactionFilter()
 		f.categoryID = food.id
-		#expect(l.transactions(in: .account(giro.id), filter: f).map(\.name) == ["Bäckerei Gutbrot"])
+		#expect(l.transactions(in: .account(giro.id), filter: f).rows.map(\.name) == ["Bäckerei Gutbrot"])
 	}
 
 	@Test("The custom amount range compares the amount with its sign, with both ends included")
@@ -161,7 +615,7 @@ struct LedgerTests {
 		func shown(_ min: Decimal?, _ max: Decimal?) throws -> [Int64] {
 			var f = TransactionFilter()
 			f.amount = try #require(TransactionFilter.AmountFilter.custom(min: min, max: max))
-			return l.transactions(in: .account(giro.id), filter: f).map(\.amountMinor).sorted()
+			return l.transactions(in: .account(giro.id), filter: f).rows.map(\.amountMinor).sorted()
 		}
 		#expect(try shown(100, 500) == [150_00, 500_00])
 		#expect(try shown(-500, -100) == [-300_00, -150_00])
@@ -185,7 +639,7 @@ struct LedgerTests {
 		func shown(_ scope: LedgerScope, _ min: Decimal?, _ max: Decimal?) throws -> [String] {
 			var f = TransactionFilter()
 			f.amount = try #require(TransactionFilter.AmountFilter.custom(min: min, max: max))
-			return l.transactions(in: scope, filter: f).map { "\($0.amountMinor) \($0.currency)" }.sorted()
+			return l.transactions(in: scope, filter: f).rows.map { "\($0.amountMinor) \($0.currency)" }.sorted()
 		}
 		#expect(try shown(.account(accounts[2].id), 100, 500) == ["150 JPY"])
 		#expect(try shown(.account(accounts[3].id), -500, -100) == ["-150000 KWD"])
@@ -209,7 +663,7 @@ struct LedgerTests {
 	func uncategorized() throws {
 		let l = ledger()
 		let d = try #require(l.defaultCategory)
-		#expect(l.transactions(in: .category(d.id)).count == 3)
+		#expect(l.transactions(in: .category(d.id)).rows.count == 3)
 	}
 
 	@Test("A pending transaction counts in the balance, the bars, and the pie")
@@ -349,7 +803,7 @@ struct LedgerTests {
 		var l = Ledger(accounts: [giro], categories: [travel], transactions: [row(-20_000, "EUR", "Hotel"), row(-10_000, "EUR", "Bahn"), row(-5_000, "USD", "Taxi")])
 		let today = Day(year: 2026, month: 11, day: 9)
 		#expect(l.sidebarAmounts(today: today)[travel.id] == Money(minorUnits: -30_000, currency: "EUR"))
-		let perCurrency = l.transactions(in: .category(travel.id)).reduce(into: MoneySums()) { $0.add($1.amount) }
+		let perCurrency = l.transactions(in: .category(travel.id)).rows.reduce(into: MoneySums()) { $0.add($1.amount) }
 		#expect(perCurrency.amounts == [Money(minorUnits: -30_000, currency: "EUR"), Money(minorUnits: -5_000, currency: "USD")])
 
 		var inDollars = travel
@@ -387,7 +841,7 @@ struct LedgerTests {
 		let l = Ledger(accounts: [giro], categories: [groceries], transactions: [
 			row(3, -8_000, pending: false), row(7, -4_000, pending: true), row(8, -500, pending: true, review: true),
 		])
-		let list = l.transactions(in: .category(groceries.id))
+		let list = l.transactions(in: .category(groceries.id)).rows
 		#expect(list.count == 3)
 		#expect(MoneySums(of: list).amounts == [Money(minorUnits: -12_000, currency: "EUR")])
 		#expect(l.sidebarAmounts(today: Day(year: 2026, month: 11, day: 9))[groceries.id] == Money(minorUnits: -12_000, currency: "EUR"))
@@ -490,7 +944,7 @@ struct LedgerTests {
 		for (category, period) in periods {
 			var f = TransactionFilter()
 			f.period = period
-			let list = MoneySums(of: l.transactions(in: .category(category.id), filter: f)).byCurrency[category.currency]
+			let list = MoneySums(of: l.transactions(in: .category(category.id), filter: f).rows).byCurrency[category.currency]
 			#expect(amounts[category.id]?.minorUnits == list)
 		}
 	}

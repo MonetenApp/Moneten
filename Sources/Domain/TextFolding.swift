@@ -43,13 +43,14 @@ struct WildcardPattern: Hashable, Sendable {
 		let w = Array(word)
 		var p = 0, i = 0, star = -1, mark = 0
 		while i < w.count {
-			if p < characters.count, characters[p] == "?" || characters[p] == w[i] {
-				p += 1
-				i += 1
-			} else if p < characters.count, characters[p] == "*" {
+			// A `*` in the pattern is a wildcard, also where the word holds a `*`, as in "****1234".
+			if p < characters.count, characters[p] == "*" {
 				star = p
 				mark = i
 				p += 1
+			} else if p < characters.count, characters[p] == "?" || characters[p] == w[i] {
+				p += 1
+				i += 1
 			} else if star >= 0 {
 				p = star + 1
 				mark += 1

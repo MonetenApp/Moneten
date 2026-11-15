@@ -79,17 +79,115 @@ The app SHALL show a transaction only when every word of the search text occurs 
 
 ### Requirement: The search accepts the rule language
 
-The app SHALL accept every expression of the categorization rule language in the search field, with the same meaning as in a rule. A plain search word without a field name searches the fields that the requirement on searched fields names, so it finds account numbers, IBANs, and the category name.
+The app SHALL accept every expression of the categorization rule language in the search field, with the same meaning as in a rule. A search word or phrase without a field name, also with a wildcard, searches the fields that the requirement on searched fields names and finds text inside words, so it finds account numbers, IBANs, and the category name.
 
 #### Scenario: Field operator and amount
 
 - **WHEN** the user searches for `name:"Stadtwerke" AND amount<-100`
 - **THEN** the list shows the transactions to counterparties with "Stadtwerke" in the name that withdrew more than 100,00 €
 
+#### Scenario: Word without a field name
+
+- **GIVEN** a transaction with the purpose "REWE-Markt 4711" in the category "Groceries" of the account "Girokonto"
+- **WHEN** the user searches for `"REWE" AND amount<0`, `Groc*`, `/groceries/`, or `Girok*`
+- **THEN** the list shows the transaction
+
+#### Scenario: True and false
+
+- **GIVEN** the account "Giro" with 2 transactions
+- **WHEN** the user searches for `true`
+- **THEN** the list shows both transactions
+- **WHEN** the user searches for `false`
+- **THEN** the list shows no transaction
+
+#### Scenario: A quoted word finds text inside words
+
+- **GIVEN** a transaction with the purpose "Lohnsteuer 10/2026"
+- **WHEN** the user searches for `"Lohn"`
+- **THEN** the list shows the transaction
+- **AND** a categorization rule `"Lohn"` does not match it
+
+#### Scenario: Phrase across white space
+
+- **GIVEN** a transaction with the purpose "Abschlag" and "November" on two lines
+- **WHEN** the user searches for `"Abschlag November"`
+- **THEN** the list shows the transaction
+
+#### Scenario: Text the rule language rejects
+
+- **GIVEN** a transaction to "Stadtwerke Musterstadt"
+- **WHEN** the user types `"Stadtw`, `Stadtwerke OR`, `Stadtwerke or`, `Stadtwerke +`, `Name:Stadtwerke OR`, `name:="Stadtw`, or `Stadtwerke amount:=-`
+- **THEN** the list shows the transaction, because the app searches the plain words of the text
+
+#### Scenario: A constant in rejected text
+
+- **GIVEN** a transaction to "Stadtwerke Musterstadt"
+- **WHEN** the user types `false "Stadtw` or `NOT true "Stadtw`
+- **THEN** the list shows no transaction, because the fallback keeps the constants and their negation
+- **WHEN** the user types `true "Stadtw` or `NOT false "Stadtw`
+- **THEN** the list shows the transaction
+
+#### Scenario: Rejected text with an excluded word
+
+- **GIVEN** a transaction to "Stadtwerke Musterstadt" without the words "Gehalt" and "Lohn"
+- **WHEN** the user types `Stadtwerke NOT "Gehalt`, `Stadtwerke -"Gehalt Lohn`, `name!=Gehalt "Stadtw`, `Stadtwerke -(Gehalt Lohn`, `Stadtwerke NOT /Gehalt Lohn`, or `Stadtwerke name:-"Gehalt`
+- **THEN** the list shows the transaction, because the app reads an open quotation mark, regular expression, or parenthesis up to the end of the text and leaves out the words that the text excludes
+
+#### Scenario: Unfinished regular expression
+
+- **GIVEN** a transaction to "Stadtwerke Musterstadt"
+- **WHEN** the user types `Stadtwerke /\d` or `Stadtwerke /Absch.*`
+- **THEN** the list shows the transaction, because the app leaves out a word of a regular expression with a special character
+
 #### Scenario: Either word
 
 - **WHEN** the user searches for `"Lohn" OR "Gehalt"`
 - **THEN** the list shows the transactions that contain one of the two words
+
+#### Scenario: An amount outside the stored range
+
+- **GIVEN** a transaction of 92.233.720.368.547.758,07 €
+- **WHEN** the user searches for `amount=100000000000000000`
+- **THEN** the list shows no transaction, as the same categorization rule does
+- **WHEN** the user searches for `amount<99999999999999999999`
+- **THEN** the list shows the transaction, as the same categorization rule does
+
+### Requirement: A regular expression without a field name
+
+The app SHALL read a regular expression without a field name in the search field against the fields that a rule term without a field name reads, and against the names of the account and the category. It does not read account numbers or IBANs.
+
+#### Scenario: Category, account name, and IBAN
+
+- **GIVEN** a transaction in the category "Groceries" of the account "Girokonto" with the IBAN DE02 1203 0000 0000 2020 51
+- **WHEN** the user searches for `/groceries/` or `/^girok/`
+- **THEN** the list shows the transaction
+- **WHEN** the user searches for `/DE02 1203/`
+- **THEN** the list does not show the transaction
+
+### Requirement: A regular expression that does not end
+
+The app SHALL stop a regular expression in the search that reads one text for about 100 ms of processor time or spends 300 ms of processor time in all regular expression calls of one search, show no results for the whole search, and show "The regular expression stopped because it is too slow" without a sum in the status line.
+
+#### Scenario: Lazy quantifier after an anchor
+
+- **GIVEN** a transaction with the purpose "Tel. +49 170 1234567"
+- **WHEN** the user searches for `/^+?49/`
+- **THEN** the list shows no transaction within a second
+
+#### Scenario: A slow row and a fast matching row
+
+- **GIVEN** transactions with the purposes "Kundennummer: 4711" and "Abschlag Strom November 2026"
+- **WHEN** the user searches for `purpose:/(\w+\s?)*:/` or `NOT purpose:/(\w+\s?)*:/`
+- **THEN** the list shows no transaction, in either row order
+- **AND** the status line shows "The regular expression stopped because it is too slow" without a sum
+
+#### Scenario: Many slow rows share one processor-time limit
+
+- **GIVEN** 100 transactions whose purpose is "aaaaaaaaaaaaaaaaaaaa!"
+- **WHEN** the user searches for `purpose:/^(a+)+$/`
+- **THEN** the search stops after about 300 ms of processor time spent on regular expressions on the searching thread
+- **AND** the list shows no transaction and the status line shows "The regular expression stopped because it is too slow" without a sum
+- **AND** waiting for a processor on a busy Mac uses none of the limit
 
 ### Requirement: The search finds exact amounts
 

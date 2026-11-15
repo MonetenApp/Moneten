@@ -41,7 +41,8 @@ public struct Ledger: Sendable {
 	private mutating func rebuildIndexes() {
 		sortAndIndex()
 		let accountsByID = Dictionary(uniqueKeysWithValues: accounts.map { ($0.id, $0) })
-		searchText = Dictionary(uniqueKeysWithValues: transactions.map { ($0.id, Self.searchText(of: $0, account: accountsByID[$0.accountID])) })
+		let names = categoryNames
+		searchText = Dictionary(uniqueKeysWithValues: transactions.map { ($0.id, searchText(of: $0, account: accountsByID[$0.accountID], categoryNames: names)) })
 		countNew()
 	}
 
@@ -62,11 +63,23 @@ public struct Ledger: Sendable {
 		accountsWithTransactions = used
 	}
 
-	static func searchText(of t: Transaction, account: Account?) -> String {
-		let amounts = amountTexts(t.amountMinor, decimals: t.amount.decimalPlaces)
-		let parts: [String?] = [t.name, t.purpose, t.bookingText, t.endToEndReference, t.mandateReference, t.creditorID, t.comment,
-			t.counterpartyIBAN, t.counterpartyBIC, account?.name] + amounts
-		return TextFolding.fold(parts.compactMap { $0 }.joined(separator: "\u{1}"))
+	/// The name of each category, looked up once for the search texts of many rows. The key nil holds the name
+	/// of the default category, which a row without a category is in.
+	private var categoryNames: [UUID?: String] {
+		var names = Dictionary(uniqueKeysWithValues: categories.map { (Optional($0.id), $0.name) })
+		names[nil] = defaultCategory?.name
+		return names
+	}
+
+	private func searchText(of t: Transaction, account: Account?, categoryNames: [UUID?: String]) -> String {
+		SearchText.of(t, account: account, categoryName: categoryNames[t.categoryID])
+	}
+
+	/// Builds the search texts of the rows that `isAffected` picks again, after a change of a name or a number they hold.
+	private mutating func refreshSearchText(where isAffected: (Transaction) -> Bool) {
+		let accountsByID = Dictionary(uniqueKeysWithValues: accounts.map { ($0.id, $0) })
+		let names = categoryNames
+		for t in transactions where isAffected(t) { searchText[t.id] = searchText(of: t, account: accountsByID[t.accountID], categoryNames: names) }
 	}
 
 	/// An amount as a user types it into the search: without trailing zeros ("-23.4", "-23,4") and
@@ -404,24 +417,27 @@ public struct Ledger: Sendable {
 
 	// MARK: Filtering
 
-	public func transactions(in scope: LedgerScope, filter: TransactionFilter = TransactionFilter()) -> [Transaction] {
-		let base: [Transaction]
+	public func transactions(in scope: LedgerScope, filter: TransactionFilter = TransactionFilter()) -> TransactionSearchResult {
+		// One pass over the rows, because copying 50,000 rows into a list of the view first cost as much as the search.
+		let inScope: (Transaction) -> Bool
 		switch scope {
 		case let .account(id):
-			base = transactions.filter { $0.accountID == id }
+			inScope = { $0.accountID == id }
 		case let .accountGroup(id):
 			let ids = accountIDs(inGroupTree: id)
-			base = transactions.filter { ids.contains($0.accountID) }
+			inScope = { ids.contains($0.accountID) }
 		case let .category(id):
 			let ids = categoryIDs(inTree: id)
 			let defaultID = defaultCategory?.id
-			base = transactions.filter { ids.contains($0.categoryID ?? defaultID ?? UUID()) }
+			inScope = { ids.contains($0.categoryID ?? defaultID ?? UUID()) }
 		}
-		let words = TextFolding.words(filter.searchText).map(String.init)
+		let query = SearchQuery(filter.searchText)
+		let accountsByID = query.readsFields ? Dictionary(uniqueKeysWithValues: accounts.map { ($0.id, $0) }) : [:]
+		let names = query.readsFields ? categoryNames : [:]
 		let categoryFilter = filter.categoryID.map { categoryIDs(inTree: $0) }
 		let defaultID = defaultCategory?.id ?? UUID()
 		var amountBounds: [Int: MinorBounds] = [:]
-		return base.filter { t in
+		let rows = Array(transactions.lazy.filter(inScope).prefix { _ in !query.gaveUp }.filter { t in
 			guard filter.period.contains(t.bookingDate) else { return false }
 			switch filter.status {
 			case .all: break
@@ -440,12 +456,10 @@ public struct Ledger: Sendable {
 			}
 			if let categoryFilter, !categoryFilter.contains(t.categoryID ?? defaultID) { return false }
 			if let a = filter.accountID, t.accountID != a { return false }
-			if !words.isEmpty {
-				let haystack = searchText[t.id] ?? ""
-				if !words.allSatisfy({ haystack.contains($0) }) { return false }
-			}
-			return true
-		}
+			if query.isEmpty { return true }
+			return query.matches(t, searchText: searchText[t.id] ?? "", account: { accountsByID[t.accountID] }, categoryName: { names[t.categoryID] })
+		})
+		return TransactionSearchResult(rows: rows, gaveUp: query.gaveUp)
 	}
 
 	// MARK: Changes
@@ -460,14 +474,16 @@ public struct Ledger: Sendable {
 		}
 		if let categories { self.categories = categories }
 		if let transactions { self.transactions = transactions }
-		// The search text holds the account name, so only new accounts or transactions build it again.
-		if accounts != nil || transactions != nil { rebuildIndexes() } else { countNew() }
+		// The search text holds the names of the account and the category, so only new accounts, categories,
+		// or transactions build it again.
+		if accounts != nil || categories != nil || transactions != nil { rebuildIndexes() } else { countNew() }
 	}
 
 	/// Replaces transactions with the same identifier. Faster than `replace` for a handful of rows.
 	public mutating func update(_ changed: [Transaction]) {
 		var needsSort = false
 		let accountsByID = Dictionary(uniqueKeysWithValues: accounts.map { ($0.id, $0) })
+		let names = categoryNames
 		for t in changed {
 			if let i = transactionIndex[t.id] {
 				if transactions[i].bookingDate != t.bookingDate { needsSort = true }
@@ -476,7 +492,7 @@ public struct Ledger: Sendable {
 				transactions.append(t)
 				needsSort = true
 			}
-			searchText[t.id] = Self.searchText(of: t, account: accountsByID[t.accountID])
+			searchText[t.id] = searchText(of: t, account: accountsByID[t.accountID], categoryNames: names)
 		}
 		// An import of 2,000 rows into 50,000 sorts again but builds the search text of the new rows only.
 		if needsSort { sortAndIndex() }
@@ -504,11 +520,10 @@ public struct Ledger: Sendable {
 
 	public mutating func upsert(_ account: Account) {
 		if let i = accounts.firstIndex(where: { $0.id == account.id }) {
-			let renamed = accounts[i].name != account.name
+			let old = accounts[i]
 			accounts[i] = account
-			// The search text holds the account name.
-			if renamed {
-				for t in transactions where t.accountID == account.id { searchText[t.id] = Self.searchText(of: t, account: account) }
+			if (old.name, old.iban, old.accountNumber) != (account.name, account.iban, account.accountNumber) {
+				refreshSearchText { $0.accountID == account.id }
 			}
 		} else {
 			accounts.append(account)
@@ -533,7 +548,15 @@ public struct Ledger: Sendable {
 	}
 
 	public mutating func upsert(_ category: Category) {
+		let oldName = categories.first { $0.id == category.id }?.name
+		let oldDefaultName = defaultCategory?.name
 		if let i = categories.firstIndex(where: { $0.id == category.id }) { categories[i] = category } else { categories.append(category) }
+		// A row without a category holds the name of the default category in its search text.
+		let renamed = oldName.map { $0 != category.name } ?? false
+		let defaultRenamed = defaultCategory?.name != oldDefaultName
+		if renamed || defaultRenamed {
+			refreshSearchText { $0.categoryID == nil ? defaultRenamed : renamed && $0.categoryID == category.id }
+		}
 	}
 }
 

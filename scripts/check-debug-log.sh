@@ -145,6 +145,8 @@ send importfile "$WORK/Erika Mustermann.csv"
 poll "^importfile done" state
 poll "^alert " alert
 poll "^rows " rows Girokonto
+poll "^gave up$" search "currency:/^+?49/"
+send search ""
 send selectRows 1
 send newcategory Haushaltskasse
 poll "selection=.*SidebarSelection.category" state
@@ -172,7 +174,7 @@ found=0
 for value in DE02120300000000202051 "DE02 1203" 202051 1234567890 4711 5550001 "$LOGIN" "$PIN" 123456 check-debug-log \
 	Girokonto Tagesgeld Kreditkarte Extrakonto "Erika Mustermann" "Beispiel GmbH" "Wohnbau Musterstadt" "Tankstelle Beispiel" \
 	"Gehalt November" Miete Kartenzahlung Sparen Haushaltskasse MIETE-2026-11 GUTSCHRIFT DAUERAUFTRAG \
-	"Zugang vorübergehend gesperrt" "PIN falsch" Wartungsarbeiten pushTAN-App; do
+	"Zugang vorübergehend gesperrt" "PIN falsch" Wartungsarbeiten pushTAN-App "currency:/^+?49/"; do
 	if grep -n -w -F -- "$value" "$LOG" >&2; then
 		echo "debug.log holds \"$value\"." >&2
 		found=1

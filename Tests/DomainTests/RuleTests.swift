@@ -38,6 +38,10 @@ struct RuleTests {
 		#expect(try matches(#""Kundennummer 67890*""#, RuleSubject(purpose: "Kundennummer 67890/Rechnung 12345")))
 		#expect(try !matches(#""Kundennummer 67890""#, RuleSubject(purpose: "Kundennummer 67890/Rechnung 12345")))
 		#expect(try matches(#""M??er""#, RuleSubject(name: "Maier")))
+		#expect(try matches("purpose:*1234", RuleSubject(purpose: "Karte ****1234")))
+		#expect(try matches("purpose:**1234", RuleSubject(purpose: "Karte ****1234")))
+		#expect(try matches("purpose:*12?4", RuleSubject(purpose: "Karte ****1234")))
+		#expect(try !matches("purpose:*1235", RuleSubject(purpose: "Karte ****1234")))
 	}
 
 	@Test("Logical operators")
