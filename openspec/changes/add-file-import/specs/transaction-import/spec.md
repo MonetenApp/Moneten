@@ -230,6 +230,7 @@ The app SHALL assign CSV columns to transaction fields by common header keywords
 - **WHEN** the first and third columns are mapped to date and amount
 - **THEN** the amounts are [0, 450] minor units
 - **AND** replacing the first empty amount with "abc" fails on line 1 instead of discarding that row
+- **AND** a missing first amount cell followed by the fully filled note "Hinweis;Export;vorläufig" still reads as zero, including after blank lines
 
 #### Scenario: Metadata before a dated preamble
 
