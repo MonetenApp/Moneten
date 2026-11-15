@@ -42,6 +42,25 @@ The app SHALL compute the remainder so that all parts of a split add up to the a
 - **WHEN** the user enters 80,00 and confirms
 - **THEN** the app does not split and marks the amount field
 
+#### Scenario: A zero transaction has opposite parts
+
+- **GIVEN** a booked transaction of 0,00 €
+- **WHEN** the user splits off +5,00
+- **THEN** the list shows parts of 5,00 € and -5,00 €
+
+#### Scenario: A part in another currency is unbalanced
+
+- **GIVEN** a transaction of -80,00 €
+- **WHEN** a split contains a part of -25,00 USD
+- **THEN** the app refuses the split as unbalanced and changes nothing
+
+#### Scenario: Amount text has at most 38 digits
+
+- **GIVEN** a transaction of -80,00 €
+- **WHEN** the amount text is "1," followed by 37 zeros
+- **THEN** the entered part is -1,00 €
+- **AND** adding one more zero makes the text unreadable
+
 ### Requirement: Several parts in one pass
 
 The app SHALL split the remainder again when the user clicks "Next Split" in the split window, so that one pass can create any number of parts.
@@ -207,6 +226,13 @@ The app SHALL count each part with its own amount and category in search results
 - **GIVEN** a transaction of -80,00 € split into -25,00 € and -55,00 €
 - **WHEN** the user searches for "-80,00"
 - **THEN** the list shows both parts
+
+#### Scenario: CSV exports the parts
+
+- **GIVEN** a transaction of -80,00 € split into -25,00 € in "Household" with comment "Detergent" and -55,00 € in "Groceries"
+- **WHEN** the user exports the account as CSV
+- **THEN** the CSV contains the two parts with their amounts, categories, and comments
+- **AND** it contains no extra row of -80,00 €
 
 ### Requirement: A complete export preserves splits and review reasons
 
