@@ -79,13 +79,14 @@ struct PerfScenario {
 				}
 			}),
 		// A refresh that drops pending rows of the open table starts the table over. Removing shown rows in
-		// place stopped the app in AttributeGraph (issue #135).
+		// place stopped the app in AttributeGraph (issue #135). The rows are from yesterday, because a refresh
+		// keeps a pending row from a file until its date (add-file-import 1.28).
 		PerfScenario(name: "refresh-drops-shown-pending", budget: halfSecond,
 			setUp: { c in
 				await c.select("Account 1")
 				guard let account = c.model.ledger.accounts.first(where: { $0.name == "Account 1" }) else { return }
 				let pending = (0..<20).map { i in
-					Transaction(accountID: account.id, bookingDate: Day.today(), amountMinor: -Int64(500 + i), name: "Card Payment", purpose: "Pending \(i)", isPending: true)
+					Transaction(accountID: account.id, bookingDate: Day.today().adding(days: -1), amountMinor: -Int64(500 + i), name: "Card Payment", purpose: "Pending \(i)", isPending: true)
 				}
 				await c.model.replacingTable { _ = try? c.model.merge(.file(pending), into: account.id) }
 				await c.settle()
