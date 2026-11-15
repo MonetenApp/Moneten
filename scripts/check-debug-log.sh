@@ -3,10 +3,11 @@
 # (scripts/build-app.sh debug) through the debug harness against scripts/fake-fints-helper.sh: a start that
 # fails on a data folder whose path holds a name, a login with a wrong PIN, the setup of the made-up bank
 # with its TAN dialog, two refreshes (the second fails an account with an error of the bank), the
-# transactions, the status, the error popover, and the state of each account, and a snapshot. A made-up
-# extension without a fixture then prints, sets a status, returns a value, and fails a refresh. The check
-# fails when debug.log holds an IBAN, an account number, a name, a purpose, a booking text, the login
-# name, the PIN, the TAN, the password, a text of the bank, or a text of the extension.
+# transactions, the status, the error popover, and the state of each account, a snapshot, and a key in the
+# main window while the selected row has a new category. A made-up extension without a fixture then prints,
+# sets a status, returns a value, and fails a refresh. The check fails when debug.log holds an IBAN, an
+# account number, a name, a purpose, a booking text, a category name, the login name, the PIN, the TAN, the
+# password, a text of the bank, or a text of the extension.
 # The app runs with a temporary data folder and a password, so it never opens the real database and
 # leaves no Keychain item, and as a copy under its own bundle ID, so it leaves an installed Moneten alone.
 set -e
@@ -128,6 +129,11 @@ poll "^ext account savings .*failed=" extstate
 send select Girokonto
 poll "^phase=" state
 poll "^snapshot " snapshot check
+send selectRows 1
+send newcategory Haushaltskasse
+poll "selection=.*SidebarSelection.category" state
+send selectRows 1
+poll "^mainkey escape .*category=[^d]" mainkey escape
 
 send extfile "$WORK/Check.lua"
 poll "^ext allowed Check" extconfirm
@@ -146,7 +152,7 @@ send quit
 found=0
 for value in DE02120300000000202051 "DE02 1203" 202051 1234567890 4711 5550001 "$LOGIN" "$PIN" 123456 check-debug-log \
 	Girokonto Tagesgeld Kreditkarte Extrakonto "Erika Mustermann" "Beispiel GmbH" "Wohnbau Musterstadt" "Tankstelle Beispiel" \
-	"Gehalt November" Miete Kartenzahlung Sparen MIETE-2026-11 GUTSCHRIFT DAUERAUFTRAG \
+	"Gehalt November" Miete Kartenzahlung Sparen Haushaltskasse MIETE-2026-11 GUTSCHRIFT DAUERAUFTRAG \
 	"Zugang vorübergehend gesperrt" "PIN falsch" Wartungsarbeiten pushTAN-App; do
 	if grep -n -w -F -- "$value" "$LOG" >&2; then
 		echo "debug.log holds \"$value\"." >&2
