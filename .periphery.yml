@@ -12,3 +12,5 @@ strict: true
 retain_files:
   - Sources/Domain/Sync/*.swift
   - Sources/SyncTesting/*.swift
+  # Task 6.8 removes this retention when the split commands call the arithmetic.
+  - Sources/Domain/Split.swift

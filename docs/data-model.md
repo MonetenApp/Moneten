@@ -97,6 +97,16 @@ Refreshes and file imports go through `reconcile`, which recognizes a stored row
 |---|---|---|
 | `DeletedTransaction` | `accountID`, `sourceID?`, `bookingDate`, `amountMinor`, `currency`, `isPending`, `purpose`, `counterpartyIBAN?`, `endToEndReference?`, `wasFetched`, `deletedAt` | One record for each transaction that the user deleted, with the raw fields of its fingerprint. A refresh does not add the transaction again. A file adds it again only when `wasFetched` is false. The records go with their account. |
 
+## Splits
+
+| Type | Fields | Rules |
+|---|---|---|
+| `SplitPart` | `id`, `transactionID`, `position`, `amountMinor`, `categoryID?`, `comment?`, `vat?` | At least two nonzero parts add up to their original transaction. Each part uses its original's currency. The original keeps its category and comment for undo. |
+| `VATShare` | `role`, `rate` | The net or tax label of a VAT part keeps the rate used for the split. |
+| `VATRate` | `hundredths` | A percent in hundredths. The standard rates are 1900 and 700. The net amount is cut toward zero at the smallest unit of the currency, and tax takes the remainder. |
+| `SplitError` | `pending`, `zeroPart`, `onePart`, `unbalanced` | A refused split leaves the stored parts unchanged. |
+| `Split` | Amount parsing and split arithmetic | An unsigned amount takes the sign of the row. An explicit sign stays. Amounts must fit the decimals of the row's currency. |
+
 ## Tables
 
 `Sources/Storage/Schema.swift` holds the migrations of the encrypted database. Each table stores one type with the same field names:
@@ -126,5 +136,4 @@ Migration `v1` creates the tables. It also creates the table `setting`, which no
 
 | Type | Arrives with | Purpose |
 |---|---|---|
-| `Split` | v0.1 | Parts of a transaction with their own amounts and categories. The parts add up to the transaction amount. |
 | `PaymentOrder`, `PaymentState` | v0.2 | SEPA transfers with the payee check. See [architecture](architecture.md#payments-are-a-separate-state-machine). |
