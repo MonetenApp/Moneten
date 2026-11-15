@@ -178,7 +178,7 @@ The app SHALL store a migrated rule that it cannot parse with its text unchanged
 
 ### Requirement: Migrated rules that search account numbers
 
-The app SHALL list in the report every migrated rule with a term without a field operator that is an IBAN or an account number, and keep the rule unchanged. A term of digits counts as an account number only when a migrated account or counterparty has that account number. The report entry names the category and says that `remote_account:` before the number searches the account of the counterparty.
+The app SHALL list in the report every migrated rule with a term without a field operator that is an IBAN or an account number, and keep the rule unchanged. A term of digits counts as an account number only when a migrated account or counterparty has that account number. An IBAN has 15 to 34 characters. The report entry names the category and position and says that `remote_account:` before the number searches the account of the counterparty.
 
 #### Scenario: Rule with an IBAN only
 
@@ -214,7 +214,7 @@ The app SHALL list in the report every migrated rule with a term without a field
 
 ### Requirement: Migrated rules with operators in lower case
 
-The app SHALL list in the report every migrated rule that contains the word and, or, or not without quotation marks and not in capitals. The app reads such a word as an operator, so the rule changes its meaning. The report entry names the category, quotes the word, and says that the word in quotation marks searches the word itself. The rule stays unchanged.
+The app SHALL list in the report every migrated rule that contains and, or, or not as an operator not in capitals. The app reads such a word as an operator, so the rule changes its meaning. The report entry names the category and position, quotes the word, and says that the word in quotation marks searches the word itself. The rule stays unchanged.
 
 #### Scenario: Rule with a lower case or
 
@@ -231,7 +231,7 @@ The app SHALL list in the report every migrated rule that contains the word and,
 
 ### Requirement: Migrated rules with the words true and false
 
-The app SHALL list in the report every migrated rule that contains the word true or false without quotation marks, in any letter case. The app reads `true` as a rule that matches every transaction and `false` as one that matches none, so the rule changes its meaning. The report entry names the category, quotes the word, and says that the word in quotation marks searches the word itself. The rule stays unchanged.
+The app SHALL list in the report every migrated rule that contains true or false as a constant, in any letter case. The app reads `true` as a rule that matches every transaction and `false` as one that matches none, so the rule changes its meaning. The report entry names the category and position, quotes the word, and says that the word in quotation marks searches the word itself. The rule stays unchanged.
 
 #### Scenario: Rule with the word true
 
@@ -245,6 +245,19 @@ The app SHALL list in the report every migrated rule that contains the word true
 - **GIVEN** the category "Drinks" has the rule `"true" "fruits"` in the source
 - **WHEN** the migration finishes
 - **THEN** the report does not list the rule of "Drinks"
+
+#### Scenario: False in capitals
+
+- **GIVEN** the category "Drinks" has the rule `FALSE` in the source
+- **WHEN** the migration finishes
+- **THEN** the report names "Drinks", position 1, and `FALSE`, and says that `"FALSE"` searches the word
+- **AND** the category "Drinks" keeps the rule `FALSE`
+
+#### Scenario: Words after a field operator
+
+- **GIVEN** the category "Drinks" has the rule `name:true OR purpose:false OR comment:and` in the source
+- **WHEN** the migration finishes
+- **THEN** the report does not list the rule, because each word searches its field
 
 ### Requirement: Transactions
 

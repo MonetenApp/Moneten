@@ -23,9 +23,9 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [x] 1.17 The report contains no secrets. Verified by the report holds account names, counts, balances, and notes only, and by the debug app check of 1.16: "Save Report..." first says "The report contains account names and balances." and saves only after the user confirms.
 - [ ] 1.18 Category colors. Built: the color of the icon of each category, verified by MoneyMoneyMigrationTests "The color of a category comes from its icon" and "Categories take the color of MoneyMoney". Verify it with the real export, which was locked in MoneyMoney when this was built.
 - [x] 1.19 Migrated rules that the app cannot read. Verified by the tests of 2.1 and the debug app check of 2.5.
-- [ ] 1.20 Migrated rules that search account numbers. Not built. Build it in 2.6 and 2.7.
-- [ ] 1.21 Migrated rules with operators in lower case. Not built. Build it in 2.8 and 2.9.
-- [ ] 1.22 Migrated rules with the words true and false. Not built. Build it in 2.10 and 2.11.
+- [x] 1.20 Migrated rules that search account numbers. Verified by the tests of 2.6 and the implementation of 2.7.
+- [x] 1.21 Migrated rules with operators in lower case. Verified by the tests of 2.8 and the implementation of 2.9.
+- [x] 1.22 Migrated rules with the words true and false. Verified by the tests of 2.10 and the implementation of 2.11.
 
 - [x] 1.23 A group rule in the export is reported. Verified by MoneyMoneyMigrationTests "A group rule is named in the report, with or without a rule on its child" and "A rule of the default category does not count as an exported categorization rule". The tests failed before the fix and pass after it, including a repeated run. Gate round 2 adds "An unchanged repeat migration offers the report of a stored group rule" for an empty plan with notes, the sheet review decision, and the saved report text.
 
@@ -36,12 +36,12 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [x] 2.3 Write MoneyMoneyMigrationTests tests for the scenarios "Not migrated", "Budgets in a version without budgets", and "Icons", with a synthetic category export that carries two budgets. The budget note says that the app did not take the budgets over and promises no later step. Verified by MoneyMoneyMigrationTests "The report names login data, templates, standing orders, and statements as not migrated", "The report counts the categories with a budget and says that the budgets were not taken over", and "The report says that the app takes the color of each icon and draws its own icons".
 - [x] 2.4 Add the notes on login data, templates, standing orders, statements, budgets, and icons to the plan until the tests of 2.3 pass. Verified by the tests of 2.3. The key of a budget in the category export is an assumption, see the design.
 - [x] 2.5 The category settings check the stored rule when they open, show the message of a rule that cannot be read, and keep OK disabled until the rule can be read. Built by pull request #141 in `App/Sources/Views/CategorySettingsSheet.swift`. Verified by the debug app check: with the stored rule `("Lohn" OR "Gehalt"`, the settings of "Salary" show "A closing parenthesis is missing at the end of the rule. (position 20)" and OK is disabled, see the light and dark snapshots in the pull request.
-- [ ] 2.6 Write MoneyMoneyMigrationTests tests for the scenarios "Rule with an IBAN only", "Rule with a word and an IBAN", "Customer number", "Account number of a counterparty", and "Calendar week": the first two rules have a note with the category and `remote_account:DE02120300000000202051`, the fourth has a note with `remote_account:202051`, the third and the fifth have none, and all rules are stored unchanged.
-- [ ] 2.7 Add the note for rules with an IBAN or an account number as a term without a field to `MoneyMoneyMigration.plan` in `Sources/Import/MoneyMoneyMigration.swift` until the tests of 2.6 pass.
-- [ ] 2.8 Write MoneyMoneyMigrationTests tests for the scenarios "Rule with a lower case or" and "Operators in capitals or in quotation marks": the first rule has a note with the category and the word `or`, the other two have none, and all rules are stored unchanged.
-- [ ] 2.9 Add the note for rules with and, or, or not in lower case to `MoneyMoneyMigration.plan` until the tests of 2.8 pass.
-- [ ] 2.10 Write MoneyMoneyMigrationTests tests for the scenarios "Rule with the word true" and "Quoted true": the first rule has a note with the category and the word `true`, the second has none, and both rules are stored unchanged. Add a rule `FALSE` and expect a note with the word `FALSE`.
-- [ ] 2.11 Add the note for rules with true or false to `MoneyMoneyMigration.plan` until the tests of 2.10 pass.
+- [x] 2.6 Write MoneyMoneyMigrationTests tests for the account-term scenarios. Verified by `accountRuleNotes`, `knownAccountRuleNotes`, and `unchangedRuleWithoutNote` with literal IBANs, 202051, 67890, and KW45. The missing account notes failed before 2.7 and pass after it. Rules stay unchanged; known own accounts and counterparties give notes, and customer numbers, short IBAN shapes, and qualified terms give none.
+- [x] 2.7 Add the account-term notes to `MoneyMoneyMigration.plan`. Verified by the tests of 2.6, including quoted spaces, the 15-character minimum, and a repeated migration.
+- [x] 2.8 Write MoneyMoneyMigrationTests tests for lower case operators. Verified by `operatorRuleNotes` and `unchangedRuleWithoutNote` with and, or, not, AnD, capital operators, quoted words, field values, and regular expressions. Missing operator notes failed before 2.9 and pass after it. Every rule stays unchanged.
+- [x] 2.9 Add lower case operator notes to `MoneyMoneyMigration.plan`. Verified by the tests of 2.8 with literal category names, words, and one-based positions.
+- [x] 2.10 Write MoneyMoneyMigrationTests tests for true and false. Verified by `constantRuleNotes` and `unchangedRuleWithoutNote` with `true OR "Smoothie"`, `FALSE`, mixed case, quoted words, and field values. Missing constant notes failed before 2.11 and pass after it. Every rule stays unchanged.
+- [x] 2.11 Add true and false notes to `MoneyMoneyMigration.plan`. Verified by the tests of 2.10 with literal category names, words, and one-based positions.
 
 ## 3. Integration
 

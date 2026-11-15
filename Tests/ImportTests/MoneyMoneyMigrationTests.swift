@@ -768,6 +768,81 @@ struct MoneyMoneyMigrationTests {
 		#expect(Categorizer(ledger: ledger).category(for: imported) == p.categories.first { $0.name == "Salary" }?.id)
 	}
 
+	@Test("An unqualified IBAN is stored unchanged and named with its position and field form", arguments: [
+		("DE02120300000000202051", 1, "DE02120300000000202051"),
+		("\"Miete\" AND DE02120300000000202051", 13, "DE02120300000000202051"),
+		("\"de02 1203 0000 0000 2020 51\"", 1, "DE02120300000000202051"),
+		("DE0212030000000", 1, "DE0212030000000"),
+	])
+	func accountRuleNotes(rule: String, position: Int, number: String) throws {
+		let p = try plan(rules: ["Rent": rule])
+		#expect(p.categories.first { $0.name == "Rent" }?.rule == rule)
+		#expect(p.notes.contains("The rule of \"Rent\" has an account term at position \(position) that does not search account fields. Use remote_account:\(number) to search the account of the counterparty."))
+		#expect(try !Rule(parsing: rule).matches(RuleSubject(purpose: "Miete", remoteAccounts: ["DE02120300000000202051"])))
+	}
+
+	@Test("A digit term gets a note only for an exported own account or counterparty", arguments: [false, true])
+	func knownAccountRuleNotes(counterparty: Bool) throws {
+		var exportedAccounts = accounts
+		var exportedRows = transactions["transactions"] as! [[String: Any]]
+		if counterparty {
+			exportedRows[1]["accountNumber"] = "202051"
+			exportedRows[1]["bankCode"] = "12030000"
+		} else {
+			exportedAccounts[2]["accountNumber"] = "202051"
+			exportedAccounts[2]["bankCode"] = "12030000"
+		}
+		let exportedCategories: [[String: Any]] = [["uuid": "R1", "name": "Rent", "rules": "\"Miete\" OR 202051"]]
+		let migration = MoneyMoneyMigration(calendar: calendar)
+		let p = try migration.plan(accounts: try plist(exportedAccounts), categories: try plist(exportedCategories),
+			transactions: try plist(["transactions": exportedRows]), into: Ledger())
+		#expect(p.categories.first { $0.name == "Rent" }?.rule == "\"Miete\" OR 202051")
+		#expect(p.notes.contains("The rule of \"Rent\" has an account term at position 12 that does not search account fields. Use remote_account:202051 to search the account of the counterparty."))
+		let ledger = Ledger(accounts: p.accounts, categories: p.categories, transactions: p.transactions)
+		let repeated = try migration.plan(accounts: try plist(exportedAccounts), categories: try plist(exportedCategories),
+			transactions: try plist(["transactions": exportedRows]), into: ledger)
+		#expect(!repeated.notes.contains { $0.hasPrefix("The rule of \"Rent\"") })
+	}
+
+	@Test("Customer numbers, short IBAN shapes, and qualified or quoted words give no rule note", arguments: [
+		"\"67890\"", "202051", "\"Lohn\" AND KW45", "DE021203000000", "DE02120300000000202051X12345678901234",
+		"local_account:DE02120300000000202051 OR remote_account:\"202051\"", "amount=202051", "name:DE02120300000000202051",
+		"\"Lohn\" OR \"Gehalt\"", "\"Krieg\" \"and\" \"Frieden\"", "\"true\" \"fruits\"", "\"false\"",
+		"name:true OR purpose:false OR comment:and", "name:or purpose:not", "/true or DE02120300000000202051/",
+		"\"Lohn\" +\"Gehalt\" -\"Erstattung\"", "!\"Gehalt\"", "„true“ „or“",
+	])
+	func unchangedRuleWithoutNote(rule: String) throws {
+		let p = try plan(rules: ["Plain": rule])
+		#expect(p.categories.first { $0.name == "Plain" }?.rule == rule)
+		#expect(!p.notes.contains { $0.hasPrefix("The rule of \"Plain\"") })
+		_ = try Rule(parsing: rule)
+	}
+
+	@Test("Lower case and mixed case operators are named without changing the rule", arguments: [
+		("\"Lohn\" or \"Gehalt\"", "or", 8),
+		("\"Lohn\" and \"Gehalt\"", "and", 8),
+		("not \"Gehalt\"", "not", 1),
+		("\"Lohn\" AnD \"Gehalt\"", "AnD", 8),
+	])
+	func operatorRuleNotes(rule: String, word: String, position: Int) throws {
+		let p = try plan(rules: ["Salary": rule])
+		#expect(p.categories.first { $0.name == "Salary" }?.rule == rule)
+		#expect(p.notes.contains("The rule of \"Salary\" reads \"\(word)\" at position \(position) as an operator. Write \"\(word)\" in quotation marks to search the word itself."))
+		#expect(try Rule(parsing: "\"Lohn\" or \"Gehalt\"").matches(RuleSubject(purpose: "Gehalt Oktober")))
+	}
+
+	@Test("True and false constants are named in their original case without changing the rule", arguments: [
+		("true OR \"Smoothie\"", "true", 1, "every transaction"),
+		("FALSE", "FALSE", 1, "no transaction"),
+		("\"Smoothie\" OR TrUe", "TrUe", 15, "every transaction"),
+	])
+	func constantRuleNotes(rule: String, word: String, position: Int, matches: String) throws {
+		let p = try plan(rules: ["Drinks": rule])
+		#expect(p.categories.first { $0.name == "Drinks" }?.rule == rule)
+		#expect(p.notes.contains("The rule of \"Drinks\" reads \"\(word)\" at position \(position) as a constant that matches \(matches). Write \"\(word)\" in quotation marks to search the word itself."))
+		#expect(try Rule(parsing: rule).matches(RuleSubject(purpose: "Water")) == (word != "FALSE"))
+	}
+
 	@Test("The report names login data, templates, standing orders, and statements as not migrated")
 	func notMigrated() throws {
 		let notes = try plan().notes

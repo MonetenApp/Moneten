@@ -132,9 +132,14 @@ public struct MoneyMoneyMigration: Sendable {
 		if !rawCategories.contains(where: { ($0["default"] as? Bool) != true && Self.string($0["rules"]) != nil }) {
 			plan.notes.append("The export contains no categorization rules. Copy them from the category settings of MoneyMoney into the category settings of Moneten.")
 		}
+		let accountNumbers = Set(rawAccounts.filter { ($0["uuid"] as? String).flatMap { accountMap[$0] } != nil }
+			.flatMap { [Self.string($0["accountNumber"]), Self.string($0["iban"])] }.compactMap { $0 }.map(TextFolding.accountKey)
+			+ rows.compactMap(\.counterpartyIBAN).map(TextFolding.accountKey))
 		for c in plan.categories {
-			guard let error = c.ruleError else { continue }
-			plan.notes.append("The rule of \"\(c.name)\" cannot be read at position \(error.position + 1): \(error.message) \"\(c.name)\" receives no transaction through its rule until you correct the rule in its settings.")
+			if let error = c.ruleError {
+				plan.notes.append("The rule of \"\(c.name)\" cannot be read at position \(error.position + 1): \(error.message) \"\(c.name)\" receives no transaction through its rule until you correct the rule in its settings.")
+			}
+			plan.notes += Self.ruleNotes(c, accountNumbers: accountNumbers)
 		}
 		plan.notes += Self.groupSumNotes(rawAccounts)
 		if !plan.portfolioAccounts.isEmpty {
@@ -151,6 +156,37 @@ public struct MoneyMoneyMigration: Sendable {
 			plan.notes.append("Moneten takes the color of each icon of MoneyMoney and shows its own icons instead of the pictures.")
 		}
 		return plan
+	}
+
+	private static func ruleNotes(_ category: Domain.Category, accountNumbers: Set<String>) -> [String] {
+		guard !category.isGroup, !category.isDefault, let tokens = try? RuleToken.positioned(in: category.rule) else { return [] }
+		let chars = Array(category.rule)
+		var notes: [String] = []
+		for (i, entry) in tokens.enumerated() {
+			if i > 0, case .field = tokens[i - 1].token { continue }
+			let prefix = "The rule of \"\(category.name)\""
+			switch entry.token {
+			case let .word(term), let .quoted(term):
+				let number = TextFolding.accountKey(term)
+				let iban = (15...34).contains(number.count) && number.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber) }
+					&& number.prefix(2).allSatisfy(\.isLetter) && number.dropFirst(2).prefix(2).allSatisfy(\.isNumber)
+				let knownNumber = !number.isEmpty && number.allSatisfy { $0.isASCII && $0.isNumber } && accountNumbers.contains(number)
+				if iban || knownNumber {
+					notes.append("\(prefix) has an account term at position \(entry.position + 1) that does not search account fields. Use remote_account:\(number) to search the account of the counterparty.")
+				}
+			case .and, .or, .not:
+				let length = entry.token == .or ? 2 : 3
+				let word = String(chars[entry.position...].prefix(length))
+				if ["and", "or", "not"].contains(word.lowercased()), word != word.uppercased() {
+					notes.append("\(prefix) reads \"\(word)\" at position \(entry.position + 1) as an operator. Write \"\(word)\" in quotation marks to search the word itself.")
+				}
+			case let .constant(value):
+				let word = String(chars[entry.position...].prefix(value ? 4 : 5))
+				notes.append("\(prefix) reads \"\(word)\" at position \(entry.position + 1) as a constant that matches \(value ? "every transaction" : "no transaction"). Write \"\(word)\" in quotation marks to search the word itself.")
+			default: break
+			}
+		}
+		return notes
 	}
 
 	/// The initial balance makes the booked rows of the source end at the balance of the source. A later run
