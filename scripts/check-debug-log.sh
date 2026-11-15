@@ -13,6 +13,10 @@
 # an IBAN, an account number, an amount, a balance, a name, a purpose, a booking text, a category name, the
 # login name, the PIN, the TAN, the password, a text of the bank, or a text of the extension. It also
 # imports a CSV file whose name, rows, and value date hold made-up personal data and a text of the bank.
+# Round 2 of issue #188 added a full import with an access named after a person, a local extension whose
+# file is named after a person, a catalog folder under a path with a name, and a name as the argument of
+# "key", "mainkey", and "filterbar". The log names an extension by the first 8 hex digits of the SHA-256
+# of its name, which `digest` computes here, so the check compares the hash and never the name.
 # The app runs with a temporary data folder and a password, so it never opens the real database and
 # leaves no Keychain item, and as a copy under its own bundle ID, so it leaves an installed Moneten alone.
 set -e
@@ -83,6 +87,11 @@ send() {
 	"$NOTIFY" "$WORK/debug" "$@"
 }
 
+# The hash of LogValue.hash in App/Sources/DebugLog.swift.
+digest() {
+	printf %s "$1" | shasum -a 256 | cut -c1-8
+}
+
 alive() {
 	case "$(ps -o stat= -p "$PID")" in "" | Z*) return 1 ;; esac
 }
@@ -122,6 +131,17 @@ cat >"$DATA/export.json" <<-'EOF'
 	"portfolioValues": [{"accountID": "6F1C2A1E-0000-4000-8000-000000000001", "day": "Erika Mustermann", "value": "1.00", "currency": "EUR"}]}
 EOF
 poll "^importall " importall "$DATA/export.json"
+# A full import of the empty database with an access named after a person, which only a full import can name freely.
+poll "^exportall done$" exportall "$DATA/start.json"
+python3 -I - "$DATA/start.json" "$DATA/access.json" <<-'EOF'
+	import json, sys
+	data = json.load(open(sys.argv[1]))
+	data["accesses"] = [{"id": "6F1C2A1E-0000-4000-8000-000000000002", "connector": {"extension": {"id": "Erika Mustermann"}},
+		"bankName": "Erika Mustermann Private Access", "userID": "emuster42"}]
+	json.dump(data, open(sys.argv[2], "w"))
+EOF
+poll "^importall done$" importall "$DATA/access.json"
+poll "^ext access 0 source=extension state=idle$" extstate
 poll "^exportall " exportall "$DATA/missing/export.json"
 send sheet newAccount
 send setup "entry 12030000"
@@ -138,21 +158,21 @@ poll "^ext prompt tan" extprompt
 send answer 123456
 poll "setup step=accounts" setup
 send setup next
-poll "status line=.* accesses=1" status
+poll "status line=.* accesses=2" status
 send refresh all
-poll "status #2 [a-zA-Z]* refreshing=false refreshedAt=[^-]" status
+poll "status account=2 kind=[a-zA-Z]* refreshing=false refreshedAt=set" status
 send refresh all
-poll "status #1 savings refreshing=false .*error=[^-]" status
+poll "status account=1 kind=savings refreshing=false .*error=[^-]" status
 for account in Girokonto Tagesgeld Kreditkarte; do
 	poll "^rows " rows "$account"
 done
 poll "^snapshot .*error" errorsnapshot Tagesgeld
 poll "^ext account savings .*failed=" extstate
 send refresh Kreditkarte
-poll "^ext access Musterbank state=failed:bank:invalid$" extstate
-poll "status #2 creditCard refreshing=false .*error=invalid " status
+poll "^ext access [0-9] source=fints state=failed failure=bank code=invalid$" extstate
+poll "status account=2 kind=creditCard refreshing=false .*error=invalid " status
 send select Girokonto
-poll "^filterbar account .*account=[0-9A-F]" filterbar "account Tagesgeld"
+poll "^filterbar account .*account=[0-9]" filterbar "account Tagesgeld"
 poll "^filterbar account .*account=all" filterbar account
 poll "^phase=" state
 send selectRows 1
@@ -211,16 +231,16 @@ poll "^importfile done" state
 poll "^alert " alert
 send selectRows 1
 send newcategory Haushaltskasse
-poll "selection=.*SidebarSelection.category" state
+poll "selection=category" state
 send selectRows 1
-poll "^mainkey escape .*category=[^d]" mainkey escape
+poll "^mainkey escape .*category=[0-9]" mainkey escape
 poll "^droprows category=" droprows Haushaltskasse
 poll "^movecategory position=" movecategory "Haushaltskasse||0"
 poll "^dropcategory hover=false" dropcategory "Haushaltskasse|Haushaltskasse"
 poll "^rule error=RuleSyntaxError position=1$" rule "Haushaltskasse|amount>Mustermann"
 poll "^rule error=RuleSyntaxError position=1$" rule "Haushaltskasse|amount>DE02120300000000202051"
 poll "^unknown command$" "Erika Mustermann"
-poll "^snapshot window-0 " snapshot erika-mustermann
+poll "^snapshot window 0 " snapshot erika-mustermann
 poll "^snapshot sidebar " sidebarsnapshot "Erika Mustermann"
 poll "^ext error=PackageProblem$" extrun "$DATA/Erika Mustermann.lua|Result|"
 poll "^ext error=NSError$" extrun "$WORK/Check.lua|Result|$DATA/fixture.json"
@@ -228,28 +248,49 @@ poll "^ext error=PackageProblem$" extaccess "$DATA/Erika Mustermann.lua||Check B
 poll "^ext error=NSError$" extaccess "$WORK/Check.lua|$DATA/fixture.json|Check Bank"
 
 send extfile "$WORK/Check.lua"
-poll "^ext allowed Check" extconfirm
+poll "^ext allowed unverified extension=$(digest Check)$" extconfirm
 send extaccess "Check||Check Bank"
 poll "^ext prompt login" extprompt
+# The status line names the bank of the access that waits for the login.
+poll "^status line=set " status
 send extlogin "$LOGIN|check-debug-log"
 poll "^ext account giro rows=0 balance=ok" extstate 81547
 send extrefresh "Check||"
-poll "^ext print Check" extstate
+poll "^ext print extension=$(digest Check) " extstate
 send extrefresh "Check||"
-poll "^ext access Check Bank state=failed" extstate
+poll "^ext access [0-9] source=extension state=failed" extstate
 send extrun "$WORK/Check.lua|Result|"
 poll "^ext result" state
 from=$(lines)
 send extrun "$WORK/Check.lua|Fail|"
 # Only the name of the error type and nothing after it.
 poll "^ext error=ScriptError$" state
+# A local extension takes its name from its file, here the name of a person.
+cp "$WORK/Check.lua" "$WORK/Erika Mustermann.lua"
+start=$(lines)
+send extrun "$WORK/Erika Mustermann.lua|Result|"
+from=$start
+poll "^ext print extension=$(digest "Erika Mustermann") characters=16$" state
+from=$start
+poll "^ext result object count=2$" state
+# A catalog in a folder that does not exist, under a path with a name: the error quotes the path.
+poll "^ext catalog unreachable error=" extcatalog "file://$WORK/Erika%20Mustermann/catalog/"
+# A name as the argument of a command that takes one of a few words.
+send sheet changePassword
+poll "^key rejected$" key "Erika Mustermann"
+send sheet ""
+send select Girokonto
+poll "visible=[1-9]" state
+poll "^mainkey rejected$" mainkey "Erika Mustermann"
+poll "^filterbar rejected$" filterbar "Mustermann Erika"
 poll "^migrationfailure: unknown failure$" migrationfailure "$MIGRATION_UNKNOWN"
 send quit
 
 found=0
 for value in DE02120300000000202051 "DE02 1203" 202051 1234567890 0099887766 "99 88 77 66" 4711 5550001 "$LOGIN" "$PIN" "$MIGRATION_UNKNOWN" 123456 check-debug-log \
 	234015 501240 12000 320000 95000 4250 229765 471123 "4711,23" 81547 815.47 \
-	Girokonto Tagesgeld Kreditkarte Extrakonto "Erika Mustermann" Mustermann erika-mustermann "Beispiel GmbH" "Wohnbau Musterstadt" "Tankstelle Beispiel" \
+	Girokonto Tagesgeld Kreditkarte Extrakonto "Erika Mustermann" Erika Mustermann erika-mustermann "Private Access" Musterbank "Check Bank" \
+	"Beispiel GmbH" "Wohnbau Musterstadt" "Tankstelle Beispiel" \
 	"Gehalt November" Miete Kartenzahlung Sparen Haushaltskasse MIETE-2026-11 GUTSCHRIFT DAUERAUFTRAG \
 	"Zugang vorübergehend gesperrt" "PIN falsch" Wartungsarbeiten pushTAN-App "currency:/^+?49/"; do
 	if grep -n -w -F -- "$value" "$LOG" >&2; then
