@@ -357,6 +357,30 @@ struct LedgerTests {
 		])
 		let currentMonth = DayRange(start: Day(year: 2026, month: 11, day: 1), end: nil)
 		#expect(l.sum(ofCategory: groceries, in: currentMonth) == Money(minorUnits: -12_000, currency: "EUR"))
+		var shown = groceries
+		shown.sidebarAmount = .currentMonth
+		#expect(l.sidebarAmount(of: shown, today: Day(year: 2026, month: 11, day: 9)) == Money(minorUnits: -12_000, currency: "EUR"))
+	}
+
+	@Test("The sidebar shows the sum of the current month, the sum of a group, and no amount when the category says so")
+	func sidebarAmount() {
+		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
+		let today = Day(year: 2026, month: 11, day: 9)
+		var groceries = Domain.Category(position: 0, name: "Groceries", sidebarAmount: .currentMonth)
+		let living = Domain.Category(position: 1, name: "Living", isGroup: true, sidebarAmount: .totalSum)
+		let rent = Domain.Category(parentID: living.id, position: 0, name: "Rent")
+		let electricity = Domain.Category(parentID: living.id, position: 1, name: "Electricity")
+		func row(_ month: Int, _ minor: Int64, _ category: Domain.Category) -> Transaction {
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: month, day: 2), amountMinor: minor, name: category.name,
+				categoryID: category.id, categorizedBy: .manual)
+		}
+		let monthly = (1...12).flatMap { [row($0, -80_000, rent), row($0, -7_000, electricity)] }
+		let l = Ledger(accounts: [giro], categories: [groceries, living, rent, electricity],
+			transactions: [row(11, -12_000, groceries), row(10, -48_000, groceries)] + monthly)
+		#expect(l.sidebarAmount(of: groceries, today: today) == Money(minorUnits: -12_000, currency: "EUR"))
+		#expect(l.sidebarAmount(of: living, today: today) == Money(minorUnits: -1_044_000, currency: "EUR"))
+		groceries.sidebarAmount = .none
+		#expect(l.sidebarAmount(of: groceries, today: today) == nil)
 	}
 
 	@Test("The ledger knows which accounts have transactions, also after a delete")

@@ -261,7 +261,7 @@ struct CategoryRow: View {
 					.help("The rule cannot be read. New transactions do not get this category. \(error)")
 					.accessibilityLabel("The rule cannot be read.")
 			}
-			if let amount = model.sidebarAmount(of: category) {
+			if let amount = model.ledger.sidebarAmount(of: category, today: .today()) {
 				AmountText(money: amount).fontWeight(.medium)
 			}
 		}

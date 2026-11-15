@@ -274,10 +274,24 @@ public struct Ledger: Sendable {
 		return sums
 	}
 
-	/// The amount next to a category in the sidebar: the transactions of its tree that a sum counts, in a
-	/// period and in the currency of the category. Rows in another currency stay in the category, and the
-	/// status line of its list sums them for each currency.
-	public func sum(ofCategory category: Category, in period: DayRange) -> Money {
+	/// The amount next to a category in the sidebar, for its "Display in sidebar" on `today`. A sum of zero
+	/// shows no amount either.
+	public func sidebarAmount(of category: Category, today: Day) -> Money? {
+		let start: Day?
+		switch category.sidebarAmount {
+		case .none: return nil
+		case .totalSum: start = nil
+		case .currentMonth: start = today.firstOfMonth
+		case .currentQuarter: start = today.firstOfQuarter
+		case .currentYear: start = today.firstOfYear
+		}
+		let sum = sum(ofCategory: category, in: DayRange(start: start, end: nil))
+		return sum.minorUnits == 0 ? nil : sum
+	}
+
+	/// The transactions of a category tree that a sum counts, in a period and in the currency of the category.
+	/// Rows in another currency stay in the category, and the status line of its list sums them for each currency.
+	func sum(ofCategory category: Category, in period: DayRange) -> Money {
 		var f = TransactionFilter()
 		f.period = period
 		let sum = transactions(in: .category(category.id), filter: f)

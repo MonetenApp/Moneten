@@ -1074,21 +1074,6 @@ final class AppModel {
 		alert = AlertMessage(title: "Categorized transactions: \(changed.count)", message: "")
 	}
 
-	/// The transactions of a category tree, for the amount next to it in the sidebar.
-	func sidebarAmount(of category: Domain.Category) -> Money? {
-		let range: DayRange
-		let today = Day.today()
-		switch category.sidebarAmount {
-		case .none: return nil
-		case .totalSum: range = .all
-		case .currentMonth: range = DayRange(start: today.firstOfMonth, end: nil)
-		case .currentQuarter: range = DayRange(start: today.firstOfQuarter, end: nil)
-		case .currentYear: range = DayRange(start: today.firstOfYear, end: nil)
-		}
-		let sum = ledger.sum(ofCategory: category, in: range)
-		return sum.minorUnits == 0 ? nil : sum
-	}
-
 	// MARK: Migration
 
 	func runMigration(plan: MoneyMoneyMigration.Plan) async throws {
