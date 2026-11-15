@@ -210,6 +210,20 @@ The app SHALL assign CSV columns to transaction fields by common header keywords
 - **WHEN** a file has the headers "Date", "Payee", "Memo", and "Amount"
 - **THEN** the preview assigns them to booking date, name, purpose, and amount
 
+#### Scenario: Header words in a transaction
+
+- **GIVEN** "Tag;Wer;Zweck;Wieviel", followed by 101 ordinary transactions
+- **WHEN** the next row is "02.11.2026;Datum;Betrag;2.00" and one more transaction follows
+- **THEN** that dated amount row is not a header and all 103 transactions remain available after mapping the date and amount
+- **AND** keyword header search stops at the first row with a date and an amount
+
+#### Scenario: A filled subtotal follows a short transaction
+
+- **GIVEN** "Tag;Wer;Wieviel", "01.11.2026;Kiosk", "Zwischensumme;EUR;Saldo;0,00", and "02.11.2026;Bakery;;4.50"
+- **WHEN** the user maps the first column to the booking date and the fourth to the amount
+- **THEN** the mapped dates determine the transaction cutoff and both rows read as [0, 450] minor units
+- **AND** inferred titles use the nearest row above the transactions that is wide enough, with no 100-row preamble limit
+
 ### Requirement: CSV preview
 
 The app SHALL show a preview before it imports a CSV file. The preview shows the first rows as the app reads them, the field that each column is assigned to, the date format, the decimal separator, and the encoding. The user can change each of these, and the preview updates at once.
