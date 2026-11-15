@@ -73,6 +73,8 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 
 - [x] 2.25 Fingerprint currency agreement. The literal EUR/USD test fails with 12 assertions before the fingerprint key uses Money, including both pending and booked stored rows in file import and refresh. Fingerprints now check amount and currency together instead of bypassing PendingMatch through equal minor units.
 
+- [x] 2.26 Round-5 review regressions. Two extended tests fail with 16 assertions before one known-counterparty eligibility check covers all weaker matches and current booked fingerprints precede historical pending-to-booked references. The tests cover nil and shared references, compatible booked repeats without references, literal states and comments, and every delivery/storage permutation. Strong file and source identities retain precedence; unknown legacy counterparties retain their fingerprint behavior.
+
 ## 3. Integration
 
 - [ ] 3.1 Check every scenario of the spec in a release build and record the result in the pull request.

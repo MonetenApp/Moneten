@@ -270,7 +270,7 @@ struct Partner {
 }
 
 func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTransaction], delivery: Delivery, today: Day) -> [Partner?] {
-	enum Priority: Int { case fileIdentity, sourceID, reference, fetchedPending, filePending, fingerprint }
+	enum Priority: Int { case fileIdentity, sourceID, reference, bookedFingerprint, bookedReference, fetchedPending, filePending, fingerprint }
 	struct Candidate {
 		let delivered: Int
 		let slot: Slot
@@ -374,10 +374,11 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 				continue
 			}
 			let sameReference = incoming[i].endToEnd != nil && incoming[i].endToEnd == identity.endToEnd
-			if sameReference && matches[i].counterpartyConflicts(with: match) { continue }
+			if matches[i].counterpartyConflicts(with: match) { continue }
 			let referenceAgrees = sameReference && matches[i].amount == match.amount
 			if let step = Identity.steps.firstIndex(where: { $0.accepts(incoming[i], identity) }) {
-				let priority: Priority = if referenceAgrees { .reference }
+				let priority: Priority = if referenceAgrees { t.isPending && !identity.isPending ? .bookedReference : .reference }
+					else if !t.isPending && !identity.isPending { .bookedFingerprint }
 					else if t.isPending && identity.isPending { fetched ? .fetchedPending : .filePending }
 					else { .fingerprint }
 				candidates.append(Candidate(delivered: i, slot: slot, priority: priority, specificity: step, distance: distance, evidence: .fingerprint))
@@ -386,7 +387,7 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 			guard t.isPending, !delivery.isMigration, matches[i].amount == match.amount,
 				referenceAgrees || matches[i].fits(match), identity.isPending || (!delivery.isFetched && referenceAgrees) else { continue }
 			guard delivery.isFetched ? (referenceAgrees || (fetched && sameDay) || future) : (identity.isPending || referenceAgrees) else { continue }
-			let priority: Priority = referenceAgrees ? .reference : (fetched && sameDay ? .fetchedPending : .filePending)
+			let priority: Priority = referenceAgrees ? (identity.isPending ? .reference : .bookedReference) : (fetched && sameDay ? .fetchedPending : .filePending)
 			let evidence: Partner.Evidence = !delivery.isFetched && referenceAgrees ? .fingerprint : (delivery.isFetched ? .pending : .relaxedFile)
 			candidates.append(Candidate(delivered: i, slot: slot, priority: priority, specificity: referenceAgrees ? 4 : 2, distance: distance, evidence: evidence))
 		}
