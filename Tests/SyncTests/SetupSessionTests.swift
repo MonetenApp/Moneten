@@ -202,4 +202,38 @@ struct SetupSessionTests {
 		#expect(connector.answers.all == [.pin(Secret("12345"))])
 		#expect(broker.current == nil)
 	}
+
+	@Test("Look for New Accounts logs in with the saved PIN of the access and opens no sheet")
+	func savedPINOfAccess() async throws {
+		let store = MemoryPINStore()
+		try store.savePIN(Secret("54321"), for: Self.access.id)
+		try broker.open(store)
+		let session = SetupSession(broker: broker, access: Self.access, pin: nil)
+		let answer = try await session.logIn { session in try await session.ask(.pin(PINRequest())) }
+		#expect(answer == .pin(Secret("54321")))
+		#expect(broker.current == nil)
+	}
+
+	@Test("Look for New Accounts asks for a missing PIN in the sheet, and saves it on request only after the login succeeded")
+	func typedPINOfAccess() async throws {
+		let store = MemoryPINStore()
+		try broker.open(store)
+		let session = SetupSession(broker: broker, access: Self.access, pin: nil)
+		func login(failing: Bool) async throws {
+			let login = Task {
+				try await session.logIn { session in
+					_ = try await session.ask(.pin(PINRequest()))
+					if failing { throw SyncFailure.offline }
+				}
+			}
+			for _ in 0..<200 where broker.current == nil { try await Task.sleep(for: .milliseconds(10)) }
+			broker.answer(.pin(Secret("67890"), save: true), to: try #require(broker.current).id)
+			try await login.value
+		}
+		await #expect(throws: SyncFailure.offline) { try await login(failing: true) }
+		#expect(store.pins.isEmpty)
+		try await login(failing: false)
+		#expect(store.pins == [Self.access.id: Secret("67890")])
+		#expect(broker.savedPINs == [Self.access.id])
+	}
 }

@@ -11,13 +11,17 @@ import Foundation
 ///
 /// For a login that the app has already, `replacing` names its access: a rejection or a block in the
 /// setup deletes the saved PIN of that access and forgets its PIN in memory.
+///
+/// Without a PIN, the session logs in to an access that the app has with the PIN of the access, for "Look
+/// for New Accounts...": the PIN in memory, the saved PIN, or the PIN sheet, as an attended refresh does. A PIN
+/// that the user typed is kept, and saved on request, only when the login succeeded.
 public struct SetupSession: SyncSession {
 	let broker: SessionBroker
 	let access: Access
-	let pin: Secret
+	let pin: Secret?
 	let replacing: UUID
 
-	public init(broker: SessionBroker, access: Access, pin: Secret, replacing: UUID? = nil) {
+	public init(broker: SessionBroker, access: Access, pin: Secret?, replacing: UUID? = nil) {
 		self.broker = broker
 		self.access = access
 		self.pin = pin
@@ -25,7 +29,7 @@ public struct SetupSession: SyncSession {
 	}
 
 	public func ask(_ request: UserRequest) async throws -> UserAnswer {
-		guard case let .pin(pinRequest) = request else {
+		guard case let .pin(pinRequest) = request, let pin else {
 			return try await broker.ask(request, for: access, accountNames: [], attended: true)
 		}
 		if let rejected = pinRequest.rejected {
@@ -44,17 +48,21 @@ public struct SetupSession: SyncSession {
 		let broker = broker, access = access.id, session = self
 		let task = Task { @MainActor in try await login(session) }
 		broker.logins[access] = { task.cancel() }
+		var succeeded = false
 		defer {
 			broker.logins[access] = nil
 			broker.endRequest(of: access)
+			if pin == nil { broker.loginEnded(access, succeeded: succeeded) }
 		}
 		do {
-			return try await withTaskCancellationHandler {
+			let result = try await withTaskCancellationHandler {
 				try await task.value
 			} onCancel: {
 				task.cancel()
 				Task { @MainActor in broker.endRequest(of: access) }
 			}
+			succeeded = true
+			return result
 		} catch {
 			// A rejection or a block can come after notices of the bank, inside `FailureWithNotices`.
 			let failure = FailureWithNotices.split(error).failure

@@ -50,7 +50,7 @@ final class AccountSetup {
 	private let fixedBank: BankDirectory.Entry?
 	/// "Look for New Accounts..." waits for the bank.
 	private(set) var isListing = false
-	/// Why "Look for New Accounts..." found nothing to add, or could not ask the bank.
+	/// Why "Look for New Accounts..." found nothing to add, or the message of the bank when its login failed.
 	private(set) var listingMessage: String?
 
 	/// "Bank, IBAN, or Bankleitzahl" and the bank that it names.
@@ -184,8 +184,6 @@ final class AccountSetup {
 
 	func cancel() {
 		cancelTask()
-		// The listing runs in the sync coordinator, so it ends with the assistant.
-		if isListing, case let .newAccounts(access) = purpose { model.sync.cancelRefresh(of: access.id) }
 	}
 
 	private func cancelTask() {
@@ -302,36 +300,36 @@ final class AccountSetup {
 		let error: any Error
 	}
 
-	/// "Look for New Accounts...": the login runs as a refresh of the access with the PIN of the access.
-	/// The account step lists the accounts that the app does not have yet, all selected.
+	/// "Look for New Accounts...": logs in with the PIN of the access and the stored state, and lists the
+	/// accounts of the login that the app does not have yet, all selected. The login waits for a refresh of
+	/// the access, and a refresh asked for meanwhile waits for the login, which stores the new state of the
+	/// access before it lets the refresh go.
 	private func listAccounts(of access: Access) {
-		guard !model.sync.isBusy(access.id) else {
-			listingMessage = "Moneten is refreshing \(access.bankName). Look for new accounts again when the refresh has ended."
-			return
-		}
-		let state: AccessState?
-		do {
-			state = try model.store?.state(of: access.id)
-		} catch {
-			listingMessage = "Could not read the bank access. \(String(describing: error))"
-			return
-		}
+		guard let bank = fixedBank?.bank else { return }
+		let session = SetupSession(broker: model.sync.broker, access: access, pin: nil)
 		isListing = true
-		let job = AccountListingJob(connector: model.fints, group: groupID) { [weak self] result in self?.listed(result, of: access) }
-		model.sync.refresh(RefreshRequest(access: access, state: state, accounts: []), with: job, attended: true)
-	}
-
-	private func listed(_ result: Result<[Account], any Error>, of access: Access) {
-		isListing = false
-		switch result {
-		case let .success(listed):
-			self.access = access
-			candidates = listed.map { Candidate(account: $0, match: model.ledger.setupMatch(for: $0, listed: listed)) }.filter { !$0.isPresent }
-			selected = Set(candidates.map(\.id))
-			if candidates.isEmpty { listingMessage = "There are no new accounts." }
-		case let .failure(error):
-			if error is CancellationError { return }
-			listingMessage = (error as? SyncFailure)?.message ?? error.localizedDescription
+		task = Task {
+			do {
+				let listed = try await session.logIn { [model, groupID] session in
+					try await model.sync.exclusively(for: access.id) {
+						let list = try await model.fints.listAccounts(of: access, state: try model.store?.state(of: access.id), session: session)
+						try Task.checkCancellation()
+						if let state = list.state { try model.store?.recordRefresh(of: access.id, state: state, accounts: []) }
+						model.bankNotices.add(list.notices, from: access.bankName)
+						return list.accounts.map { $0.account(access: access, bank: bank, group: groupID) }
+					}
+				}
+				isListing = false
+				self.access = access
+				candidates = listed.map { Candidate(account: $0, match: model.ledger.setupMatch(for: $0, listed: listed)) }.filter { !$0.isPresent }
+				selected = Set(candidates.map(\.id))
+				if candidates.isEmpty { listingMessage = "There are no new accounts." }
+			} catch {
+				guard !Task.isCancelled else { return }
+				isListing = false
+				if error is CancellationError { return }
+				listingMessage = (error as? SyncFailure)?.message ?? String(describing: error)
+			}
 		}
 	}
 

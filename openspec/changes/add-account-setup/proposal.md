@@ -62,9 +62,9 @@ None.
 - All accounts in the third step are selected at first. The initial selection was not observed.
 - "Cancel" at any step leaves no access, no account, and no saved PIN. This was not observed.
 - "Edit Login Data" checks the new login data with the bank before it replaces the old data. This was not observed.
-- "Edit Login Data" logs in without the stored state of the access, so unchanged values set the access up again and the bank offers its TAN methods again. It applies to FinTS accesses. An extension asks for its login data in its own dialog at each session. MoneyMoney's handling of the stored state was not observed.
+- "Edit Login Data" logs in without the stored state of the access, so unchanged values set the access up again and the bank offers its TAN methods again. An extension asks for its login data in its own dialog at each session. MoneyMoney's handling of the stored state was not observed.
 - The account error names "Edit Login Data..." when the login of the whole access failed with a message of the bank or an unfinished two-factor authentication, because banks use different codes for an access that must be set up again. Which answers MoneyMoney treats so was not observed.
-- "Look for New Accounts..." on the service of an extension runs the setup of the extension again, which adds the new accounts without a selection.
+- "Look for New Accounts..." and "Edit Login Data..." apply to FinTS accesses. For the service of an extension, "Add Account..." with the service adds only the accounts that the app does not have yet.
 - An account is the same account only in the same currency, and two subaccounts of one account number are two accounts. A closed account without a bank access is left as it is, and the setup adds the account of the bank as a new one. The matching rule of the third step was not observed.
 - When the access method changes, the app matches accounts by IBAN, or by account number and Bankleitzahl. The matching rule was not observed.
 - The subscription appears as an access method only when the change `add-aggregator-subscription` is built.

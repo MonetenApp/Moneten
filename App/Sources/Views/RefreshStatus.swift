@@ -16,7 +16,7 @@ struct RefreshErrorButton: View {
 		.buttonStyle(.plain)
 		.help("The last refresh failed")
 		.popover(isPresented: $shown, arrowEdge: .trailing) {
-			RefreshErrorPopover(account: account, error: error, editLoginData: error.suggestsEditLoginData && model.canEditLoginData(of: account.id) ? {
+			RefreshErrorPopover(account: account, error: error, editLoginData: error.suggestsEditLoginData && model.fintsAccess(of: account.id) != nil ? {
 				shown = false
 				model.editLoginData(account: account.id)
 			} : nil)

@@ -177,7 +177,7 @@ final class DebugHarness {
 			// By the position and the kind of the account, as in "status", never by its name.
 			let accounts = model.ledger.accounts.filter { $0.accessID != nil }
 			if let position = accounts.firstIndex(where: { $0.name == argument }), let error = accounts[position].refreshError {
-				let edit: (() -> Void)? = error.suggestsEditLoginData && model.canEditLoginData(of: accounts[position].id) ? {} : nil
+				let edit: (() -> Void)? = error.suggestsEditLoginData && model.fintsAccess(of: accounts[position].id) != nil ? {} : nil
 				offscreenSnapshot(RefreshErrorPopover(account: accounts[position], error: error, editLoginData: edit), width: 352,
 					name: "error-\(position)-\(accounts[position].kind)")
 			}

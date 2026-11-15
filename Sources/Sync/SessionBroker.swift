@@ -245,6 +245,12 @@ public final class SessionBroker {
 		}
 	}
 
+	/// A login with the PIN of the access outside a refresh ended, such as "Look for New Accounts...": the PIN
+	/// in memory and a saved PIN follow the same rules as at the end of a refresh.
+	func loginEnded(_ access: UUID, succeeded: Bool) {
+		refreshEnded(access, with: succeeded ? .finish(SyncSummary(finishedAt: Date(), fetched: [], failures: [:])) : .cancel)
+	}
+
 	/// The access went on or ended, so its dialog no longer waits for a challenge.
 	func endRequest(of access: UUID) {
 		guard requesting?.access.id == access else { return }

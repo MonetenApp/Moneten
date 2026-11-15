@@ -94,3 +94,12 @@ public struct BankDirectory: Sendable {
 			.joined(separator: "\u{1}") + "\u{1}" + entry.code
 	}
 }
+
+extension BankDirectory.Entry {
+	/// The bank of a FinTS access, for "Look for New Accounts..." and "Edit Login Data...", which log in to
+	/// the bank of the access without a search. Nil for an access of another source.
+	public init?(access: Access) {
+		guard case let .fints(code, url) = access.source else { return nil }
+		self.init(code: code, city: "", bank: FinTSBank(name: access.bankName, bic: nil, url: url))
+	}
+}

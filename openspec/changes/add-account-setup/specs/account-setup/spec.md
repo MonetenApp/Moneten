@@ -361,7 +361,7 @@ The app SHALL, when the user finishes the assistant, add the selected accounts t
 
 ### Requirement: Look for new accounts
 
-The app SHALL offer "Look for New Accounts..." for an account with a bank access. The command asks the bank for the accounts of that login and opens the account selection with only the accounts that the app does not have yet.
+The app SHALL offer "Look for New Accounts..." for an account with a FinTS access. The command asks the bank for the accounts of that login and opens the account selection with only the accounts that the app does not have yet.
 
 #### Scenario: New credit card
 
@@ -379,15 +379,12 @@ The app SHALL offer "Look for New Accounts..." for an account with a bank access
 
 - **GIVEN** the app refreshes the access of "Giro"
 - **WHEN** the user chooses "Look for New Accounts..." on "Giro"
-- **THEN** the app says that it is refreshing the bank and asks the user to look for new accounts again when the refresh has ended
-- **AND** the app contacts the bank only once
+- **THEN** the login of the command starts when the refresh has ended, so the bank never has two sessions of one login
 
 #### Scenario: Service of an extension
 
-- **GIVEN** the account "Brokerkonto" uses the service "Musterbroker" of an installed extension
-- **WHEN** the user chooses "Look for New Accounts..." on "Brokerkonto"
-- **THEN** the extension runs its setup again
-- **AND** the app adds only the accounts that it does not have yet, or says that it has every account of the login
+- **WHEN** the user opens the menu of an account that uses the service of an extension
+- **THEN** "Look for New Accounts..." is disabled, because "Add Account..." with that service adds only the accounts that the app does not have yet
 
 ### Requirement: Edit the login data of an access
 

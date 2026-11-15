@@ -138,12 +138,6 @@ public final class SyncCoordinator {
 		afterRun[access.id] = afterRun[access.id].map(updated)
 	}
 
-	/// True while the access runs, waits for its turn, or is held by `exclusively(for:_:)`. A refresh for it
-	/// without accounts, such as "Look for New Accounts...", would then be dropped.
-	public func isBusy(_ access: UUID) -> Bool {
-		running[access] != nil || held.contains(access) || afterRun[access] != nil || queue.contains { $0.request.access.id == access }
-	}
-
 	/// True while the access runs a refresh that may not ask the user.
 	public func runsUnattended(_ access: UUID) -> Bool {
 		attendance[access].map { !$0.isOn } ?? false

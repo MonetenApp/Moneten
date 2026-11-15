@@ -1,3 +1,4 @@
+import Domain
 import Foundation
 import Testing
 @testable import FinTS
@@ -150,6 +151,16 @@ struct LoginHintTests {
 		#expect(Self.bank("12030000", "Musterbank", "https://fints.musterbank.example/fints").loginHint?.label == "Login name")
 		#expect(Self.bank("12030001", "Musterbank", "https://fints.musterbank.example/fints").loginHint == nil)
 		#expect(Self.bank("10010424", "Aareal Bank", nil).loginHint == nil)
+	}
+
+	@Test("The bank of a FinTS access has its Bankleitzahl, address, and login hint, and an access of an extension has none")
+	func bankOfAccess() throws {
+		let url = URL(string: "https://fints.dkb.de/fints")!
+		let entry = try #require(BankDirectory.Entry(access: Access(source: .fints(bankCode: "12030000", url: url), bankName: "DKB", loginName: "erika77")))
+		#expect(entry.code == "12030000")
+		#expect(entry.bank.url == url)
+		#expect(entry.loginHint?.label == "Login name")
+		#expect(BankDirectory.Entry(access: Access(source: .extension(id: "Example"), bankName: "Example Bank", loginName: "")) == nil)
 	}
 
 	@Test("Every hint names a public page of the bank as its source")

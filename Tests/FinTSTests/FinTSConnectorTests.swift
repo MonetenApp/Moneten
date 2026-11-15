@@ -79,44 +79,6 @@ struct FinTSConnectorTests {
 		#expect(list.notices == [BankMessage(text: "Wartungsarbeiten am 14.11.2026 von 1 bis 5 Uhr")])
 	}
 
-	@Test("Look for New Accounts logs in with the state of the access, hands on the listed accounts, and returns the new state and the notices")
-	@MainActor
-	func listingJob() async throws {
-		var listed: [Account] = []
-		let group = UUID()
-		let job = AccountListingJob(connector: connector("""
-			read cmd; printf '%s\\n' "$cmd" >> "$R"
-			echo '{"type":"ask","id":1,"kind":"pin"}'
-			read answer
-			echo '{"type":"notice","text":"Neue Kreditkarte verfügbar"}'
-			echo '{"type":"accounts","accounts":[{"number":"202051","iban":"DE02120300000000202051","product":"Girokonto","kind":"1","currency":"EUR"},{"number":"4711","product":"Kreditkarte","kind":"50","currency":"EUR"}]}'
-			echo '{"type":"state","data":"AQID"}'
-			"""), group: group) { listed = (try? $0.get()) ?? [] }
-		let report = try await job.refresh(RefreshRequest(access: Self.access, state: AccessState(Data([9])), accounts: []), Session())
-		#expect(recorded.first?["type"] == "accounts")
-		#expect(recorded.first?["state"] == "CQ==")
-		#expect(listed.map(\.name) == ["Girokonto", "Kreditkarte"])
-		#expect(listed.map(\.remoteID) == ["DE02120300000000202051", "4711"])
-		#expect(listed.allSatisfy { $0.accessID == Self.access.id && $0.groupID == group && $0.bankCode == "12030000" && $0.bankName == "Musterbank" })
-		#expect(report.outcomes.isEmpty)
-		#expect(report.state == AccessState(Data([1, 2, 3])))
-		#expect(report.notices == [BankMessage(text: "Neue Kreditkarte verfügbar")])
-	}
-
-	@Test("Look for New Accounts hands on the failure of the login")
-	@MainActor
-	func listingJobFails() async {
-		var failure: SyncFailure?
-		let job = AccountListingJob(connector: connector("""
-			read cmd
-			echo '{"type":"failed","code":"9800","text":"Dialog abgebrochen"}'
-			"""), group: nil) { if case let .failure(error) = $0 { failure = error as? SyncFailure } }
-		await #expect(throws: SyncFailure.bank(BankMessage(code: "9800", text: "Dialog abgebrochen"))) {
-			try await job.refresh(RefreshRequest(access: Self.access, accounts: []), Session())
-		}
-		#expect(failure == .bank(BankMessage(code: "9800", text: "Dialog abgebrochen")))
-	}
-
 	@Test("Asks for the PIN again with the answer of the bank after a rejection, and sends the new PIN", arguments: ["9942", "9931"])
 	func pinRejectedAsksAgain(code: String) async throws {
 		let session = Session()
