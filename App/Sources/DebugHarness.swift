@@ -411,10 +411,12 @@ final class DebugHarness {
 		case "movecategory":
 			let parts = argument.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
 			guard parts.count == 3, let c = model.ledger.categories.first(where: { $0.name == parts[0] }), let index = Int(parts[2]) else { return log("movecategory not found") }
+			let parent = model.ledger.categories.first { $0.name == parts[1] }
+			guard parts[1].isEmpty || parent != nil else { return log("movecategory not found") }
 			handOver(model.startDrag(category: c.id)) { [self] item in
 				model.endDrag()
 				guard let item else { return log("movecategory no payload") }
-				model.move(category: item.id, into: model.ledger.categories.first { $0.name == parts[1] }?.id, at: index)
+				model.move(category: item.id, into: parent?.id, at: index)
 				// A move that changes the rows of the open view waits a drawing for its new table.
 				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [self] in
 					log("movecategory \(Self.place(of: c.id, in: model))")
