@@ -12,6 +12,19 @@ struct CSVProfileStoreTests {
 		return CSVProfile(name: name, header: file.header, layout: try file.detectedLayout(), delimiter: file.delimiter)
 	}
 
+	@Test("An imported profile with a negative known column stays stored but is not applied", arguments: [-1, Int.min])
+	func negativeColumn(_ position: Int) throws {
+		let store = try SchemaTests.emptyStore()
+		defer { try? store.close() }
+		let payload = Data("""
+		{"name":"Unsafe CSV","header":["Datum","Name","Betrag"],"delimiter":";",
+		"layout":{"encoding":"utf8","columns":{"bookingDate":\(position),"name":1,"amount":2},"dateOrder":"dayMonthYear","createsCategories":false}}
+		""".utf8)
+		try store.importAllData(AllData(csvProfiles: [CSVProfileData(name: "Unsafe CSV", version: 1, payload: payload)]))
+		#expect(try store.csvProfiles().count == 0)
+		#expect(try store.exportAllData().csvProfiles.map(\.payload) == [payload])
+	}
+
 	@Test("Saving and renaming a readable profile keeps unknown fields", arguments: [false, true])
 	func unknownFields(rename: Bool) throws {
 		let store = try SchemaTests.emptyStore()

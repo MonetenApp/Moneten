@@ -405,6 +405,7 @@ The app SHALL let the user save the settings of the preview as a named profile. 
 - **WHEN** the profiles are loaded and a readable profile is saved or deleted
 - **THEN** the missing category option defaults to off and the unknown column field is ignored
 - **AND** the unreadable profile stays stored unchanged
+- **AND** a profile with a negative known column position, such as -1, stays stored but is not applied
 - **AND** saving or renaming a readable profile preserves unknown fields, including "futureField" with the value 7 and unknown column mappings
 
 #### Scenario: Result describes the confirmed settings
