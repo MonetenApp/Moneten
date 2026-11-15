@@ -58,8 +58,8 @@ struct PerfScenario {
 				await c.select("Account 3")
 				if c.model.selectedAccount.flatMap(c.model.proposedCalibration) == nil { c.fail("the header proposes no calibration") }
 			}),
-		// A change of a category draws every row of the sidebar again. Each row filtered all transactions for its
-		// own amount, which took about 60 ms for 61 categories. The sidebar now sums them in one pass.
+		// A change of a category draws every row of the sidebar again, and each row used to filter all transactions
+		// for its own amount.
 		PerfScenario(name: "change-sidebar-amount", budget: halfSecond,
 			run: { c in
 				guard var category = c.model.ledger.categories.first(where: { $0.name == "Uncategorized" }) else { return c.fail("no category Uncategorized") }
