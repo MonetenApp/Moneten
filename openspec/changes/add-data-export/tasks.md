@@ -73,6 +73,12 @@ Each regression failed before its fix. The focused AllDataTests suite passes wit
 
 The selection, formula, Arabic digit, cancellation, and write-only folder regressions failed before their fixes. The KWD and private-file checks confirmed behavior that already worked. The harness checks use only a private debug app and made-up data. Menu clicks, the save panel, 200,000 rows, and release-build integration remain unchecked.
 
+## Review follow-up after CSV gate round 1
+
+- [x] Keep one CSV export active through cancellation cleanup. The first Ponytail review found that an old canceled worker could clear the next export's task and progress. The harness regression first observed 2 writers after cancel and immediate retry, where 1 was expected. The shared entry points now refuse a second export while cleanup is pending, and every CSV export command observes and disables for that busy state. Retrying after cleanup shows progress and remains cancelable.
+
+- [x] Preserve the locale calendar when choosing ASCII digits. TransactionCSVTests.localeCalendar first failed with th_TH "03/11/2026" and now checks "03/11/2569". The formatter changes only the numbering system.
+
 ## Workflow follow-up
 
 - Archive the change with `openspec archive add-data-export` when every task is checked.

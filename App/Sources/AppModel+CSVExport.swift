@@ -27,11 +27,13 @@ extension AppModel {
 	}
 
 	private func exportTransactions(_ rows: [Transaction]) {
+		guard exportTask == nil else { return }
 		guard let url = askExportFile(for: rows) else { return }
 		export(rows, to: url)
 	}
 
 	func export(_ rows: [Transaction], to url: URL) {
+		guard exportTask == nil else { return }
 		let ledger = ledger
 		exportTask = Task {
 			let progress = Task {

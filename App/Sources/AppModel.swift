@@ -168,7 +168,7 @@ final class AppModel {
 	}
 	/// The kind of the next change of `ledger`, for the trail.
 	@ObservationIgnored var ledgerChange = "edit"
-	@ObservationIgnored var exportTask: Task<Void, Never>?
+	var exportTask: Task<Void, Never>?
 	@ObservationIgnored private var trailRows = 0
 	/// "Automatically refresh accounts" and the notification settings of the "General" tab.
 	let refreshSettings = RefreshSettings(defaults: .standard)

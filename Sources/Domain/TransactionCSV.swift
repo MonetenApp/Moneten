@@ -18,7 +18,9 @@ public enum TransactionCSV {
 
 	static func text(_ rows: [Transaction], ledger: Ledger, locale: Locale) throws -> String {
 		let dates = DateFormatter()
-		dates.locale = Locale(identifier: "en_US_POSIX")
+		var dateLocale = Locale.Components(locale: locale)
+		dateLocale.numberingSystem = "latn"
+		dates.locale = Locale(components: dateLocale)
 		dates.timeZone = TimeZone(identifier: "UTC")
 		dates.dateFormat = DateFormatter.dateFormat(fromTemplate: "ddMMyyyy", options: 0, locale: locale)
 		var calendar = Calendar(identifier: .gregorian)
