@@ -103,7 +103,7 @@ The app SHALL create the categories and category groups of the source with their
 
 ### Requirement: Rules
 
-The app SHALL take over the categorization rule of each category when the export of the source contains it, without changing its text.
+The app SHALL take over the categorization rule of each category that is neither a group nor the default category when the export of the source contains it, without changing its text.
 
 #### Scenario: Rule taken over
 
@@ -122,6 +122,33 @@ The app SHALL take over the categorization rule of each category when the export
 
 - **WHEN** the export of the source contains no rules
 - **THEN** the report says that rules were not migrated and that the user can copy them by hand from the category settings of the source app
+
+### Requirement: A group rule in the export is reported
+
+The app SHALL leave out a group rule and name the group in a note in the report. The note says that a group holds no transactions and asks the user to move the rule to a category below the group. The note about an export without rules counts group rules but ignores rules of the default category.
+
+#### Scenario: A group and its category both have a rule
+
+- **GIVEN** the export contains the group "Wohnen" with `amount<-1000` and its category "Miete" with `"Miete"`
+- **WHEN** the migration finishes
+- **THEN** one categorization rule is taken over
+- **AND** a note says 'The rule of the group "Wohnen" was not taken over, because a group holds no transactions. Move it to a category below the group.'
+- **AND** no note says that the export contains no categorization rules
+
+#### Scenario: Only a group has a rule
+
+- **GIVEN** the export contains the group "Wohnen" with `amount<-1000` and no other rule
+- **WHEN** the migration finishes
+- **THEN** no categorization rule is taken over
+- **AND** a note says 'The rule of the group "Wohnen" was not taken over, because a group holds no transactions. Move it to a category below the group.'
+- **AND** no note says that the export contains no categorization rules
+
+#### Scenario: Only the default category has a rule
+
+- **GIVEN** the export contains a rule only for its default category "Sonstiges"
+- **WHEN** the migration finishes
+- **THEN** no categorization rule is taken over
+- **AND** a note says that the export contains no categorization rules
 
 ### Requirement: Migrated rules that the app cannot read
 

@@ -22,6 +22,25 @@ The app SHALL let the user enter one rule for each category in the category sett
 - **WHEN** the app fetches new transactions
 - **THEN** no transaction enters "Gifts" automatically
 
+### Requirement: A group has no rule
+
+The app SHALL treat a category group as having no rule, even if an earlier migration stored rule text for it. A group shows no rule warning symbol. New transactions and pending transactions assigned by a rule go to the next matching category or to "Uncategorized" when the rules run.
+
+#### Scenario: A migrated group leaves the transaction to its child
+
+- **GIVEN** the group "Living" with the migrated rule `amount<-1000` and its category "Rent" with the rule `"Miete"`
+- **WHEN** a new transaction has the purpose "Miete November" and the amount -1.200,00 €
+- **THEN** the transaction is in "Rent"
+- **AND** "Living" shows no warning symbol
+
+#### Scenario: Booking a transaction previously assigned by a group rule
+
+- **GIVEN** a pending transaction of -1.200,00 € with the purpose "Miete November" that a rule assigned to "Living" in an existing database
+- **AND** "Living" has the saved rule `amount<-1000` and its category "Rent" has the rule `"Miete"`
+- **WHEN** the bank books the transaction
+- **THEN** the transaction moves to "Rent"
+- **AND** if no category rule matches, the transaction moves to "Uncategorized"
+
 ### Requirement: Terms match text without regard to case and umlauts
 
 The app SHALL compare a term with the text of a transaction without regard to upper and lower case, and it SHALL treat the umlauts ä, ö, ü and the letter ß as equal to ae, oe, ue, and ss.
