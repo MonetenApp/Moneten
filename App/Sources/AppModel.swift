@@ -600,14 +600,19 @@ final class AppModel {
 
 	// MARK: Changing transactions
 
-	private func commit(_ changed: [Transaction]) {
-		guard let store, !changed.isEmpty else { return }
+	/// Saves the rows and returns whether they are saved. A locked app has no database and saves nothing.
+	@discardableResult
+	private func commit(_ changed: [Transaction]) -> Bool {
+		guard let store else { return false }
+		guard !changed.isEmpty else { return true }
 		do {
 			try store.save(changed)
 			ledgerChange = "commit rows=\(changed.count)"
 			ledger.update(changed)
+			return true
 		} catch {
 			alert = AlertMessage(title: "Could not save the change.", message: String(describing: error))
+			return false
 		}
 	}
 
@@ -1079,9 +1084,11 @@ final class AppModel {
 	}
 
 	func apply(rule: Rule, of category: Domain.Category, mode: RuleApplication) async {
+		guard ruleProgress == nil, let store else { return }
 		let ledger = self.ledger
 		let total = ledger.transactions.count
 		ruleProgress = (0, total)
+		defer { ruleProgress = nil }
 		let (reports, reporter) = AsyncStream.makeStream(of: Int.self, bufferingPolicy: .bufferingNewest(1))
 		let run = Task.detached(priority: .userInitiated) {
 			defer { reporter.finish() }
@@ -1089,9 +1096,13 @@ final class AppModel {
 		}
 		for await done in reports { ruleProgress = (done, total) }
 		let changed = await run.value
-		await replacingTable { commit(changed) }
-		ruleProgress = nil
-		alert = AlertMessage(title: "Categorized transactions: \(changed.count)", message: "")
+		let saved = await replacingTable { () -> Int? in
+			// A run saves only into the database it started with. A lock closes it, and an unlock opens a new one.
+			guard self.store === store else { return nil }
+			let rows = self.ledger.withCategories(of: changed)
+			return commit(rows) ? rows.count : nil
+		}
+		if let saved { alert = AlertMessage(title: "Categorized transactions: \(saved)", message: "") }
 	}
 
 	/// The transactions of a category tree, for the amount next to it in the sidebar.
