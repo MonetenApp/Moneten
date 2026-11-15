@@ -31,9 +31,9 @@ struct CategoryMoveTests {
 
 		#expect(names(after, in: nil) == ["0 Mobility"])
 		#expect(names(after, in: mobility.id) == ["0 Public transport", "1 Fuel"])
-		#expect(after.transactions(in: .category(fuel.id), filter: TransactionFilter()).rows.count == 20)
-		#expect(after.transactions(in: .category(mobility.id), filter: TransactionFilter()).rows.count == 20)
-		#expect(after.transactions(in: .category(uncategorized.id), filter: TransactionFilter()).rows.count == 0)
+		#expect(after.rows(in: .category(fuel.id), filter: TransactionFilter()).rows.count == 20)
+		#expect(after.rows(in: .category(mobility.id), filter: TransactionFilter()).rows.count == 20)
+		#expect(after.rows(in: .category(uncategorized.id), filter: TransactionFilter()).rows.count == 0)
 	}
 
 	@Test("Groceries moves above Leisure, and Leisure below Groceries")
