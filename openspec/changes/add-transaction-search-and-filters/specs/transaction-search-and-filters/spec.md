@@ -150,7 +150,7 @@ The app SHALL read a regular expression without a field name in the search field
 
 ### Requirement: A regular expression that does not end
 
-The app SHALL stop a regular expression in the search that reads one text for about 100 ms of processor time, show no results for the whole search, and show "The regular expression stopped because it is too slow" without a sum in the status line.
+The app SHALL stop a regular expression in the search that reads one text for about 100 ms of processor time or spends 300 ms of processor time in all regular expression calls of one search, show no results for the whole search, and show "The regular expression stopped because it is too slow" without a sum in the status line.
 
 #### Scenario: Lazy quantifier after an anchor
 
@@ -164,6 +164,14 @@ The app SHALL stop a regular expression in the search that reads one text for ab
 - **WHEN** the user searches for `purpose:/(\w+\s?)*:/` or `NOT purpose:/(\w+\s?)*:/`
 - **THEN** the list shows no transaction, in either row order
 - **AND** the status line shows "The regular expression stopped because it is too slow" without a sum
+
+#### Scenario: Many slow rows share one processor-time limit
+
+- **GIVEN** 100 transactions whose purpose is "aaaaaaaaaaaaaaaaaaaa!"
+- **WHEN** the user searches for `purpose:/^(a+)+$/`
+- **THEN** the search stops after about 300 ms of processor time spent on regular expressions on the searching thread
+- **AND** the list shows no transaction and the status line shows "The regular expression stopped because it is too slow" without a sum
+- **AND** waiting for a processor on a busy Mac uses none of the limit
 
 ### Requirement: The search finds exact amounts
 
