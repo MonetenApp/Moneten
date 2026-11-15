@@ -277,15 +277,15 @@ public struct Ledger: Sendable {
 	/// The amount next to a category in the sidebar, for its "Display in sidebar" on `today`. A sum of zero
 	/// shows no amount either.
 	public func sidebarAmount(of category: Category, today: Day) -> Money? {
-		let start: Day?
+		let period: DayRange
 		switch category.sidebarAmount {
 		case .none: return nil
-		case .totalSum: start = nil
-		case .currentMonth: start = today.firstOfMonth
-		case .currentQuarter: start = today.firstOfQuarter
-		case .currentYear: start = today.firstOfYear
+		case .totalSum: period = .all
+		case .currentMonth: period = DayRange(start: today.firstOfMonth, end: today.firstOfMonth.adding(months: 1).adding(days: -1))
+		case .currentQuarter: period = DayRange(start: today.firstOfQuarter, end: today.firstOfQuarter.adding(months: 3).adding(days: -1))
+		case .currentYear: period = DayRange(start: today.firstOfYear, end: Day(year: today.year, month: 12, day: 31))
 		}
-		let sum = sum(ofCategory: category, in: DayRange(start: start, end: nil))
+		let sum = sum(ofCategory: category, in: period)
 		return sum.minorUnits == 0 ? nil : sum
 	}
 
