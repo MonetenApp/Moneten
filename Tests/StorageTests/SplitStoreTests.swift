@@ -12,7 +12,7 @@ struct SplitStoreTests {
 
 	func original(_ amount: Int64 = -8000, pending: Bool = false) -> Transaction {
 		Transaction(accountID: account.id, bookingDate: Day(year: 2026, month: 11, day: 3), amountMinor: amount,
-			name: "Beispiel Markt", comment: "Weekly shop", isPending: pending, categoryID: groceries.id, categorizedBy: .manual)
+			name: "Beispiel Markt", comment: "Weekly shop", isPending: pending, categoryID: groceries.id, categorizedBy: .manual, createdAt: Date(timeIntervalSince1970: 1793664000))
 	}
 
 	func parts(of transaction: UUID, amounts: [Int64] = [-2500, -5500]) -> [SplitPart] {
@@ -93,7 +93,7 @@ struct SplitStoreTests {
 		#expect(try store.loadLedger().parts(of: t.id) == before)
 	}
 
-	@Test("Replacing the parts gives them the transaction of of:")
+	@Test("Replacing the parts gives them the transaction of `of:`")
 	func transactionLink() throws {
 		let t = original()
 		let other = original(-1200)
@@ -138,6 +138,12 @@ struct SplitStoreTests {
 		invalid = parts(of: t.id)
 		invalid[1].id = invalid[0].id
 		#expect(throws: DatabaseError.self) { try store.replaceParts(of: t.id, with: invalid) }
+		#expect(try store.loadLedger().parts(of: t.id) == before)
+		invalid = parts(of: t.id)
+		invalid[1].position = invalid[0].position
+		#expect(throws: DatabaseError.self) { try store.replaceParts(of: t.id, with: invalid) }
+		#expect(try store.loadLedger().parts(of: t.id) == before)
+		#expect(throws: SplitError.unbalanced) { try store.replaceParts(of: t.id, with: parts(of: t.id, amounts: [.max, 1])) }
 		#expect(try store.loadLedger().parts(of: t.id) == before)
 		#expect(throws: RecordError.self) { try store.replaceParts(of: UUID(), with: before) }
 		#expect(try store.loadLedger().parts(of: t.id) == before)
