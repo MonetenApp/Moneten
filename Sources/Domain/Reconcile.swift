@@ -155,7 +155,7 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored: [Tran
 				}
 			}
 			if fetched { next.isFetched = true }
-			if case .file = delivery, next.fileIdentity == nil { next.fileIdentity = delivered.fileIdentity }
+			if case .file = delivery, next.fileIdentity == nil, live.isPending || delivered.isPending { next.fileIdentity = delivered.fileIdentity }
 			if case .file = delivery, delivered.isPending, Identity(next).endToEnd == nil {
 				next.endToEndReference = Identity(delivered).endToEnd
 			}
@@ -269,13 +269,67 @@ struct Partner {
 	let evidence: Evidence
 }
 
+/// Each step takes rows out of the pool, so a weaker rule never takes a row that a stronger one claimed.
+/// At each step a stored row comes before a deleted one.
+func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTransaction]) -> [Partner?] {
+	var result = [Partner?](repeating: nil, count: rows.count)
+	var taken = Set<Slot>()
+	let ids = Set(rows.compactMap(\.sourceID))
+	if !ids.isEmpty {
+		var byID: [String: [Slot]] = [:]
+		for (j, t) in stored.enumerated() {
+			if let id = t.sourceID.map(Transaction.matchingID), ids.contains(id) { byID[id, default: []].append(.live(j)) }
+		}
+		for (k, d) in deleted.enumerated() {
+			if let id = d.sourceID.map(Transaction.matchingID), ids.contains(id) { byID[id, default: []].append(.deleted(k)) }
+		}
+		func isDeletedPending(_ slot: Slot) -> Bool {
+			if case let .deleted(k) = slot { deleted[k].isPending } else { false }
+		}
+		for (i, t) in rows.enumerated() {
+			guard let id = t.sourceID, let slots = byID[id] else { continue }
+			let free = slots.filter { !taken.contains($0) }
+			if let slot = free.first(where: { t.isPending || !isDeletedPending($0) }) {
+				taken.insert(slot)
+				result[i] = Partner(slot: slot, evidence: .sourceID)
+			} else if let used = free.first {
+				// A deleted pending row does not block its booked version, also when both carry the same ID.
+				// The booked version uses it up, so it cannot absorb another pending row later.
+				taken.insert(used)
+			}
+		}
+	}
+	let days = Set(rows.map(\.bookingDate))
+	var candidates: [Identity.Key: [(slot: Slot, identity: Identity)]] = [:]
+	for (j, t) in stored.enumerated() where days.contains(t.bookingDate) && !taken.contains(.live(j)) {
+		let identity = Identity(t)
+		candidates[identity.key, default: []].append((.live(j), identity))
+	}
+	for (k, d) in deleted.enumerated() where days.contains(d.bookingDate) && !taken.contains(.deleted(k)) {
+		let identity = Identity(d)
+		candidates[identity.key, default: []].append((.deleted(k), identity))
+	}
+	let identities = rows.map(Identity.init)
+	for step in Identity.steps {
+		for i in rows.indices where result[i] == nil {
+			let delivered = identities[i]
+			guard let match = candidates[delivered.key]?.first(where: { !taken.contains($0.slot) && step.accepts(delivered, $0.identity) }) else { continue }
+			taken.insert(match.slot)
+			result[i] = Partner(slot: match.slot, evidence: .fingerprint)
+		}
+	}
+	return result
+}
+
 func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTransaction], delivery: Delivery, today: Day) -> [Partner?] {
-	enum Priority: Int { case fileIdentity, sourceID, reference, bookedFingerprint, bookedReference, fetchedPending, filePending, fingerprint }
+	enum Priority: Int { case identity, bookedFingerprint, reference, fetchedPending, filePending }
 	struct Candidate {
 		let delivered: Int
 		let slot: Slot
 		let priority: Priority
-		let specificity: Int
+		let historical: Int
+		let identityTombstone: Int
+		let fit: Int
 		let distance: Int
 		let evidence: Partner.Evidence
 	}
@@ -311,11 +365,13 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 	let deliveredPositions = positions(rows)
 	let livePositions = positions(stored)
 	let deadKeys = deleted.map { d in
-		[String(d.bookingDate.rawValue), String(d.fileIdentity != nil), d.fileIdentity ?? "", String(d.sourceID != nil), d.sourceID ?? "", String(d.endToEndReference != nil),
-			d.endToEndReference ?? "", d.currency, String(d.amountMinor), d.purpose, String(d.counterpartyIBAN != nil),
-			d.counterpartyIBAN ?? "", String(d.isPending), String(d.wasFetched), String(d.deletedAt.timeIntervalSince1970)]
+		((d.bookingDate, d.fileIdentity.map { "1" + $0 } ?? "0", d.sourceID.map { "1" + $0 } ?? "0",
+			d.endToEndReference.map { "1" + $0 } ?? "0", d.currency, d.amountMinor),
+			(d.purpose, d.counterpartyIBAN.map { "1" + $0 } ?? "0", d.isPending ? 1 : 0, d.wasFetched ? 1 : 0, d.deletedAt))
 	}
-	let deadOrder = deleted.indices.sorted { deadKeys[$0].lexicographicallyPrecedes(deadKeys[$1]) }
+	let deadOrder = deleted.indices.sorted {
+		deadKeys[$0].0 == deadKeys[$1].0 ? deadKeys[$0].1 < deadKeys[$1].1 : deadKeys[$0].0 < deadKeys[$1].0
+	}
 	let deadPositions = Dictionary(uniqueKeysWithValues: deadOrder.enumerated().map { ($0.element, $0.offset + stored.count) })
 	func position(_ slot: Slot) -> Int {
 		switch slot {
@@ -324,6 +380,21 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 		}
 	}
 	var candidates: [Candidate] = []
+	let bookedRows = rows.indices.filter { !rows[$0].isPending }
+	let bookedStored = stored.indices.filter { !stored[$0].isPending && stored[$0].fileIdentity == nil }
+	let bookedDeleted = deleted.indices.filter { !deleted[$0].isPending && deleted[$0].fileIdentity == nil }
+	let legacy = partners(of: bookedRows.map { rows[$0] }, stored: bookedStored.map { stored[$0] }, deleted: bookedDeleted.map { deleted[$0] })
+	for (index, partner) in legacy.enumerated() {
+		guard let partner else { continue }
+		let slot: Slot
+		switch partner.slot {
+		case let .live(j): slot = .live(bookedStored[j])
+		case let .deleted(k): slot = .deleted(bookedDeleted[k])
+		}
+		candidates.append(Candidate(delivered: bookedRows[index], slot: slot,
+			priority: partner.evidence == .sourceID ? .identity : .bookedFingerprint,
+			historical: 0, identityTombstone: 0, fit: 0, distance: 0, evidence: partner.evidence))
+	}
 	for (i, t) in rows.enumerated() {
 		var slots = Set((t.isPending ? byDay[t.bookingDate] : byKey[incoming[i].key]) ?? [])
 		if let id = t.sourceID { slots.formUnion(byID[id] ?? []) }
@@ -351,50 +422,57 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 				fetched = true
 				future = false
 			}
+			if !t.isPending && !identity.isPending && identity.fileIdentity == nil { continue }
 			if case .deleted = slot, identity.isPending {
 				if !t.isPending { continue }
 				if let id = identity.sourceID, incoming[i].sourceID != id,
 					(bookedByID[id] ?? []).contains(where: { incoming[$0].agrees(with: identity) }) { continue }
 			}
-			guard incoming[i].agrees(with: identity) else { continue }
+			guard incoming[i].agrees(with: identity), matches[i].amount == match.amount else { continue }
 			let distance = abs(matches[i].day - match.day)
 			let sourceAgrees = t.sourceID != nil && t.sourceID == identity.sourceID
 			let sameDay = t.bookingDate == identity.key.day
+			let historical = t.isPending && !identity.isPending ? 1 : 0
+			let tombstone = if case .deleted = slot { 1 } else { 0 }
 			if case .file = delivery, t.isPending, identity.isPending, distance > PendingMatch.maxDaysApart { continue }
-			if let fileIdentity = incoming[i].fileIdentity, fileIdentity == identity.fileIdentity {
-				let specificity = (t.isPending && !identity.isPending ? 2 : 0) + (fetched ? 0 : 1)
-				candidates.append(Candidate(delivered: i, slot: slot, priority: .fileIdentity, specificity: specificity,
-					distance: distance, evidence: !t.isPending && identity.isPending ? .sourceID : .fingerprint))
-				continue
-			}
-			if sourceAgrees {
-				let historical = if case .deleted = slot { 1 } else { 0 }
-				let specificity = historical + (t.isPending && !identity.isPending ? 2 : 0)
-				candidates.append(Candidate(delivered: i, slot: slot, priority: .sourceID, specificity: specificity, distance: distance, evidence: .sourceID))
+			if t.isPending, identity.isPending, let fileID = incoming[i].fileIdentity, let storedID = identity.fileIdentity, fileID != storedID { continue }
+			let fileAgrees = incoming[i].fileIdentity != nil && incoming[i].fileIdentity == identity.fileIdentity
+			if fileAgrees || sourceAgrees {
+				candidates.append(Candidate(delivered: i, slot: slot, priority: .identity, historical: historical,
+					identityTombstone: tombstone, fit: 0, distance: distance,
+					evidence: sourceAgrees || (!t.isPending && identity.isPending) ? .sourceID : .fingerprint))
 				continue
 			}
 			let sameReference = incoming[i].endToEnd != nil && incoming[i].endToEnd == identity.endToEnd
 			if matches[i].counterpartyConflicts(with: match) { continue }
-			let referenceAgrees = sameReference && matches[i].amount == match.amount
-			if let step = Identity.steps.firstIndex(where: { $0.accepts(incoming[i], identity) }) {
-				let priority: Priority = if referenceAgrees { t.isPending && !identity.isPending ? .bookedReference : .reference }
-					else if !t.isPending && !identity.isPending { .bookedFingerprint }
-					else if t.isPending && identity.isPending { fetched ? .fetchedPending : .filePending }
-					else { .fingerprint }
-				candidates.append(Candidate(delivered: i, slot: slot, priority: priority, specificity: step, distance: distance, evidence: .fingerprint))
+			let step = Identity.steps.firstIndex { $0.accepts(incoming[i], identity) }
+			let fit = step.map { $0 % 2 } ?? 2
+			if let fileID = incoming[i].fileIdentity, let storedID = identity.fileIdentity, fileID != storedID,
+				!(t.isPending && !identity.isPending && sameReference),
+				!(!t.isPending && !identity.isPending && step != nil) { continue }
+			if step != nil && !identity.isPending {
+				candidates.append(Candidate(delivered: i, slot: slot, priority: .bookedFingerprint, historical: historical,
+					identityTombstone: 0, fit: fit, distance: distance, evidence: .fingerprint))
 				continue
 			}
-			guard t.isPending, !delivery.isMigration, matches[i].amount == match.amount,
-				referenceAgrees || matches[i].fits(match), identity.isPending || (!delivery.isFetched && referenceAgrees) else { continue }
-			guard delivery.isFetched ? (referenceAgrees || (fetched && sameDay) || future) : (identity.isPending || referenceAgrees) else { continue }
-			let priority: Priority = referenceAgrees ? (identity.isPending ? .reference : .bookedReference) : (fetched && sameDay ? .fetchedPending : .filePending)
-			let evidence: Partner.Evidence = !delivery.isFetched && referenceAgrees ? .fingerprint : (delivery.isFetched ? .pending : .relaxedFile)
-			candidates.append(Candidate(delivered: i, slot: slot, priority: priority, specificity: referenceAgrees ? 4 : 2, distance: distance, evidence: evidence))
+			if sameReference && t.isPending {
+				candidates.append(Candidate(delivered: i, slot: slot, priority: .reference, historical: historical,
+					identityTombstone: 0, fit: fit, distance: distance, evidence: step == nil && delivery.isFetched ? .pending : .fingerprint))
+				continue
+			}
+			guard t.isPending, identity.isPending else { continue }
+			let pendingFits = !delivery.isMigration && matches[i].fits(match)
+			guard step != nil || pendingFits else { continue }
+			guard step != nil || !delivery.isFetched || fetched || future else { continue }
+			let priority: Priority = fetched && (delivery.isFetched || sameDay) ? .fetchedPending : .filePending
+			let evidence: Partner.Evidence = step != nil ? .fingerprint : (delivery.isFetched ? .pending : .relaxedFile)
+			candidates.append(Candidate(delivered: i, slot: slot, priority: priority, historical: 0,
+				identityTombstone: 0, fit: fit, distance: distance, evidence: evidence))
 		}
 	}
 	candidates.sort {
-		($0.priority.rawValue, $0.specificity, $0.distance, deliveredPositions[$0.delivered]!, position($0.slot))
-			< ($1.priority.rawValue, $1.specificity, $1.distance, deliveredPositions[$1.delivered]!, position($1.slot))
+		($0.priority.rawValue, $0.historical * 2 + $0.identityTombstone, $0.fit, $0.distance, deliveredPositions[$0.delivered]!, position($0.slot))
+			< ($1.priority.rawValue, $1.historical * 2 + $1.identityTombstone, $1.fit, $1.distance, deliveredPositions[$1.delivered]!, position($1.slot))
 	}
 	var result = [Partner?](repeating: nil, count: rows.count)
 	var taken = Set<Slot>()
@@ -417,10 +495,12 @@ struct Identity {
 	/// The purpose is folded without white space, so the 27-character lines of an MT940 purpose and the
 	/// same text in one line have the same key.
 	struct Key: Hashable {
-		let day: Day
 		// The synthesized Hashable conformance reads these properties, which Periphery cannot see.
 		// periphery:ignore
-		let amount: Money
+		let day: Day
+		// periphery:ignore
+		let amount: Int64
+		// periphery:ignore
 		let purpose: String
 	}
 
@@ -453,23 +533,23 @@ struct Identity {
 	static let steps = [Step(fit: .exact, pending: .same), Step(fit: .compatible, pending: .same),
 		Step(fit: .exact, pending: .bookedVersion), Step(fit: .compatible, pending: .bookedVersion)]
 
-	init(fileIdentity: String?, sourceID: String?, day: Day, amount: Int64, currency: String, isPending: Bool, purpose: String, counterparty: String?, endToEnd: String?) {
+	init(fileIdentity: String?, sourceID: String?, day: Day, amount: Int64, isPending: Bool, purpose: String, counterparty: String?, endToEnd: String?) {
 		self.fileIdentity = fileIdentity
 		self.sourceID = sourceID.map(Transaction.matchingID)
 		remoteID = Self.remote(sourceID)
-		key = Key(day: day, amount: Money(minorUnits: amount, currency: currency), purpose: TextFolding.fold(purpose).filter { !$0.isWhitespace })
+		key = Key(day: day, amount: amount, purpose: TextFolding.fold(purpose).filter { !$0.isWhitespace })
 		self.isPending = isPending
 		self.counterparty = counterparty.map(TextFolding.accountKey).flatMap { $0.isEmpty ? nil : $0 }
 		self.endToEnd = endToEnd.flatMap { $0.isEmpty || $0 == "NOTPROVIDED" ? nil : $0 }
 	}
 
 	init(_ t: Transaction) {
-		self.init(fileIdentity: t.fileIdentity, sourceID: t.sourceID, day: t.bookingDate, amount: t.amountMinor, currency: t.currency, isPending: t.isPending, purpose: t.purpose,
+		self.init(fileIdentity: t.fileIdentity, sourceID: t.sourceID, day: t.bookingDate, amount: t.amountMinor, isPending: t.isPending, purpose: t.purpose,
 			counterparty: t.counterpartyIBAN, endToEnd: t.endToEndReference)
 	}
 
 	init(_ d: DeletedTransaction) {
-		self.init(fileIdentity: d.fileIdentity, sourceID: d.sourceID, day: d.bookingDate, amount: d.amountMinor, currency: d.currency, isPending: d.isPending, purpose: d.purpose,
+		self.init(fileIdentity: d.fileIdentity, sourceID: d.sourceID, day: d.bookingDate, amount: d.amountMinor, isPending: d.isPending, purpose: d.purpose,
 			counterparty: d.counterpartyIBAN, endToEnd: d.endToEndReference)
 	}
 
@@ -482,7 +562,6 @@ struct Identity {
 	}
 
 	func agrees(with other: Identity) -> Bool {
-		if let fileIdentity, let otherIdentity = other.fileIdentity, fileIdentity != otherIdentity { return false }
 		if let remoteID, let otherID = other.remoteID, remoteID != otherID { return false }
 		if let endToEnd, let otherReference = other.endToEnd, endToEnd != otherReference { return false }
 		return true
@@ -514,11 +593,16 @@ struct Bookings {
 		var pendingByAmount: [Money: [Int]] = [:]
 		for (x, m) in p.enumerated() { pendingByAmount[m.amount, default: []].append(x) }
 		for (y, m) in b.enumerated() {
-			var fits = (pendingByAmount[m.amount] ?? []).filter { p[$0].fits(m) }
+			var fits = (pendingByAmount[m.amount] ?? []).filter {
+				p[$0].fits(m) && (pending[$0].1.isFetched || p[$0].day <= m.day)
+			}
 			let explicit = fits.filter { p[$0].identity.sharesIdentity(with: m.identity) }
 			if !explicit.isEmpty { fits = explicit }
 			let fetched = fits.filter { pending[$0].1.isFetched }
 			if fetched.count == 1 { fits = fetched }
+			if fetched.isEmpty, let nearest = fits.map({ abs(p[$0].day - m.day) }).min() {
+				fits = fits.filter { abs(p[$0].day - m.day) == nearest }
+			}
 			for x in fits {
 				edgesOfPending[x].append(y)
 				edgesOfBooked[y].append(x)
@@ -583,7 +667,10 @@ struct PendingMatch {
 	func fits(_ other: PendingMatch) -> Bool {
 		guard identity.agrees(with: other.identity), amount == other.amount, abs(day - other.day) <= Self.maxDaysApart,
 			!counterpartyConflicts(with: other) else { return false }
-		return (iban != nil && other.iban != nil) || (!words.isEmpty && !other.words.isEmpty)
+		if identity.isPending == other.identity.isPending,
+			let fileID = identity.fileIdentity, let otherID = other.identity.fileIdentity, fileID != otherID { return false }
+		return identity.endToEnd != nil && identity.endToEnd == other.identity.endToEnd
+			|| (iban != nil && other.iban != nil) || (!words.isEmpty && !other.words.isEmpty)
 	}
 }
 
@@ -632,7 +719,8 @@ extension Transaction {
 		t.counterpartyIBAN = delivered.counterpartyIBAN ?? counterpartyIBAN
 		t.counterpartyBIC = delivered.counterpartyBIC ?? counterpartyBIC
 		t.bookingText = delivered.bookingText ?? bookingText
-		t.endToEndReference = Identity(delivered).endToEnd ?? endToEndReference
+		t.endToEndReference = delivered.endToEndReference ?? endToEndReference
+		if isPending || fileIdentity != nil { t.endToEndReference = Identity(delivered).endToEnd ?? endToEndReference }
 		t.mandateReference = delivered.mandateReference ?? mandateReference
 		t.creditorID = delivered.creditorID ?? creditorID
 		t.returnReason = delivered.returnReason ?? returnReason

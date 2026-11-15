@@ -82,3 +82,5 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 ## Workflow follow-up
 
 - Archive the change with `openspec archive add-file-import` when every task is checked.
+
+- [x] 2.27 Gate round 4. Four Domain regressions with literal values and every delivery/storage order fail with 220 assertions on f7feeab. The CAMT PDNG/BOOK regression fails with six assertions. Booking accepts a date or purpose change within seven days despite differing file fingerprints, but real source IDs and references must agree. Re-imports and honored tombstones keep one payment. A fetched pending row within seven days precedes a free future file row on refresh. Booking leaves later file rows out and marks only nearest tied candidates. Main's booked-only pairing function, fingerprint key, step order and fit stay unchanged; the main ReconcileTests scenarios remain and the -49.99 name-order regression covers file and refresh. The shared rule has five numbered levels and tuple sort keys. Migration v18 stays unchanged.
