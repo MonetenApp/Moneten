@@ -138,19 +138,27 @@ enum CSVParser {
 		}
 		// An amount such as "1,234" reads by the decimal mark that the other amounts of the file show.
 		// Most files have no such amount, so the marks are collected once, at the first such amount.
-		lazy var fileMark: DecimalMark? = {
-			let marks = Set(dataRows.flatMap { amountCells($0.1) }.compactMap(AmountParser.decimalMark(of:)))
-			return marks.count == 1 ? marks.first : nil
-		}()
+		var collectedMark: DecimalMark??
+		func fileMark() throws -> DecimalMark? {
+			if let collectedMark { return collectedMark }
+			var marks = Set<DecimalMark>()
+			for row in dataRows {
+				try Task.checkCancellation()
+				marks.formUnion(amountCells(row.1).compactMap(AmountParser.decimalMark(of:)))
+			}
+			let mark = marks.count == 1 ? marks.first : nil
+			collectedMark = .some(mark)
+			return mark
+		}
 		// The currency that an amount cell names, such as USD in "-12.00 USD", is the currency of the row
 		// when the file has no currency column. A debit cell and a credit cell add up only in one currency.
 		// A cell without a currency is in the account currency, and a zero, such as "0,00" in the unused
 		// column, counts in any.
 		var amountCurrency: String?
 		var zeroCurrency: String?
-		func readAmount(_ text: String) -> Decimal? {
+		func readAmount(_ text: String) throws -> Decimal? {
 			guard let parts = amountParts(text, account: currency),
-				let value = AmountParser.decimal(from: parts.number) ?? fileMark.flatMap({ AmountParser.decimal(from: parts.number, decimalMark: $0) }) else { return nil }
+				let value = try AmountParser.decimal(from: parts.number) ?? fileMark().flatMap({ AmountParser.decimal(from: parts.number, decimalMark: $0) }) else { return nil }
 			if value == 0 {
 				zeroCurrency = zeroCurrency ?? parts.currency
 			} else {
@@ -179,7 +187,7 @@ enum CSVParser {
 			amountCurrency = nil
 			zeroCurrency = nil
 			if let a = value(amountCol) {
-				amount = readAmount(a)
+				amount = try readAmount(a)
 				// A marker column says whether an unsigned amount is a debit (S, D, DR) or a credit (H, C, CR).
 				if let marker = value(markerCol)?.uppercased(), let a = amount {
 					if ["S", "D", "DR", "SOLL", "DEBIT"].contains(marker) { amount = -abs(a) }
@@ -188,8 +196,8 @@ enum CSVParser {
 				}
 			} else {
 				// An empty debit or credit cell counts as zero. A cell that cannot be read is an error.
-				let d = value(debitCol).map { readAmount($0).map { -abs($0) } } ?? 0
-				let c = value(creditCol).map { readAmount($0).map { abs($0) } } ?? 0
+				let d = try value(debitCol).map { try readAmount($0).map { -abs($0) } } ?? 0
+				let c = try value(creditCol).map { try readAmount($0).map { abs($0) } } ?? 0
 				if let d, let c { amount = d + c }
 			}
 			guard let amount else { throw TransactionFileImporter.Failure.line(line, "The amount cannot be read.") }
@@ -381,6 +389,7 @@ enum MT940Parser {
 	static func parse(_ text: String, currency: String) throws -> [Transaction] {
 		var fields: [(tag: String, value: String, line: Int)] = []
 		for (n, rawLine) in text.replacingOccurrences(of: "\r\n", with: "\n").split(separator: "\n", omittingEmptySubsequences: false).enumerated() {
+			try Task.checkCancellation()
 			let line = String(rawLine)
 			if line.hasPrefix(":"), let end = line.dropFirst().firstIndex(of: ":") {
 				let tag = String(line[line.index(after: line.startIndex)..<end])
@@ -393,6 +402,7 @@ enum MT940Parser {
 		var result: [Transaction] = []
 		let placeholder = UUID()
 		for (i, f) in fields.enumerated() {
+			try Task.checkCancellation()
 			if f.tag == "60F" || f.tag == "60M", f.value.count >= 10 {
 				currency = String(f.value.dropFirst(7).prefix(3))
 			}
@@ -521,6 +531,7 @@ final class CAMTParser: NSObject, XMLParserDelegate {
 		let parser = XMLParser(data: data)
 		parser.delegate = p
 		let parsed = parser.parse()
+		try Task.checkCancellation()
 		if let failure = p.failure { throw failure }
 		guard parsed else {
 			throw TransactionFileImporter.Failure.line(parser.lineNumber, "The XML file cannot be read.")
@@ -532,6 +543,7 @@ final class CAMTParser: NSObject, XMLParserDelegate {
 		path.append(name)
 		text = ""
 		if name == "Ntry" {
+			if Task.isCancelled { return parser.abortParsing() }
 			inEntry = true
 			entry = [:]
 			details = []
