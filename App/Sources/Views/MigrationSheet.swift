@@ -24,6 +24,8 @@ struct MigrationSheet: View {
 	@State private var task: Task<Void, Never>?
 	@State private var confirmSave = false
 	@State private var savingReport = false
+	/// Shown on this sheet: an alert of the main window would wait until the sheet closes.
+	@State private var saveError: String?
 
 	var body: some View {
 		SheetFrame(title: "Import from MoneyMoney", confirmTitle: confirmTitle, cancelTitle: cancelTitle, width: 500,
@@ -73,7 +75,7 @@ struct MigrationSheet: View {
 				} header: {
 					Text("Accounts compared with MoneyMoney")
 				} footer: {
-					Text("Balances without pending transactions, as MoneyMoney shows them.").foregroundStyle(.secondary)
+					Text(MoneyMoneyMigration.Report.balanceRule).foregroundStyle(.secondary)
 				}
 				if !report.notes.isEmpty {
 					Section("Notes") {
@@ -104,9 +106,14 @@ struct MigrationSheet: View {
 		} message: {
 			Text("Anyone who can open the file can read them.")
 		}
+		.alert("Could not save the report.", isPresented: Binding(get: { saveError != nil }, set: { if !$0 { saveError = nil } })) {
+			Button("OK") {}
+		} message: {
+			Text(saveError ?? "")
+		}
 		.fileExporter(isPresented: $savingReport, item: reportText, contentTypes: [.plainText],
 			defaultFilename: "MoneyMoney migration \(Day.today()).txt") { result in
-			if case let .failure(error) = result { model.alert = AlertMessage(title: "Could not save the report.", message: error.localizedDescription) }
+			if case let .failure(error) = result { saveError = error.localizedDescription }
 		}
 	}
 
@@ -114,20 +121,16 @@ struct MigrationSheet: View {
 		if case let .done(_, report) = step { report.text() } else { "" }
 	}
 
-	private static func count(_ n: Int) -> String {
-		n == 1 ? "1 transaction" : "\(n.formatted()) transactions"
-	}
-
 	private func reportRow(_ row: MoneyMoneyMigration.Report.Row) -> some View {
 		HStack(alignment: .firstTextBaseline) {
 			Text(row.name)
 			Spacer(minLength: 12)
 			VStack(alignment: .trailing, spacing: 2) {
-				Text("\(Self.count(row.transactions)), \(Format.money(row.balance))")
+				Text("\(MoneyMoneyMigration.Report.count(row.transactions)), \(Format.money(row.balance))")
 				if row.matches {
 					Label("Matches MoneyMoney", systemImage: "checkmark").foregroundStyle(.secondary)
 				} else {
-					Text("MoneyMoney: \(Self.count(row.sourceTransactions))\(row.sourceBalance.map { ", \(Format.money($0))" } ?? "")")
+					Text("MoneyMoney: \(MoneyMoneyMigration.Report.count(row.sourceTransactions))\(row.sourceBalance.map { ", \(Format.money($0))" } ?? "")")
 						.foregroundStyle(.orange)
 				}
 			}

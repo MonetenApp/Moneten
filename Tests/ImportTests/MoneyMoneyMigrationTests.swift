@@ -819,6 +819,7 @@ struct MoneyMoneyMigrationTests {
 			Report of the migration from MoneyMoney
 
 			Accounts
+			Balances count only the transactions from MoneyMoney and leave out pending ones, as MoneyMoney shows them.
 			Giro: 2 transactions, balance 1,280.46 EUR. MoneyMoney: 3 transactions, balance 1,234.56 EUR. Differs.
 			Savings: 1 transaction, balance 500.00 EUR. MoneyMoney: 1 transaction, balance 500.00 EUR. Matches.
 			Depot: 0 transactions, balance 10,000.00 EUR. MoneyMoney: 0 transactions, balance 10,000.00 EUR. Matches.

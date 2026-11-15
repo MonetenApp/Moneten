@@ -100,12 +100,11 @@ public struct MoneyMoneyMigration: Sendable {
 			rows.append(t)
 		}
 
-		let byAccount = Dictionary(grouping: rows, by: \.accountID)
-		for i in plan.sources.indices { plan.sources[i].rows = byAccount[plan.sources[i].accountID] ?? [] }
+		let delivered = Dictionary(grouping: rows, by: \.accountID)
+		for i in plan.sources.indices { plan.sources[i].rows = delivered[plan.sources[i].accountID] ?? [] }
 
 		// `reconcile` decides which rows are new. A new row keeps what MoneyMoney says: its category, comment,
 		// and checkmark, and no new mark. Only the review mark comes from `reconcile`.
-		let delivered = Dictionary(grouping: rows, by: \.accountID)
 		let stored = Dictionary(grouping: ledger.transactions, by: \.accountID)
 		let tombstones = Dictionary(grouping: deleted, by: \.accountID)
 		let rules = Categorizer(ledger: ledger)
@@ -207,7 +206,7 @@ public struct MoneyMoneyMigration: Sendable {
 		}
 	}
 
-	private static func isOfSource(_ sourceID: String?) -> Bool {
+	static func isOfSource(_ sourceID: String?) -> Bool {
 		sourceID?.hasPrefix(Transaction.migrationIDPrefix) == true
 	}
 
