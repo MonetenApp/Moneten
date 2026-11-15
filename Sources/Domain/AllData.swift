@@ -198,10 +198,8 @@ enum AmountText {
 }
 
 private func day(_ text: String) throws -> Day {
-	// `Day(string:)` also reads the forms of bank files and does not check the calendar, so the export checks both.
-	var utc = Calendar(identifier: .gregorian)
-	utc.timeZone = TimeZone(identifier: "UTC")!
-	guard let d = Day(string: text), d.description == text, Day(d.date(in: utc), calendar: utc) == d else {
+	// `Day(string:)` also reads the forms of bank files, so the export checks the form.
+	guard let d = Day(string: text), d.description == text else {
 		throw AllData.ReadError.damaged("\"\(text)\" is not a day in the form yyyy-MM-dd")
 	}
 	return d
