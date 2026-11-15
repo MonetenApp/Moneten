@@ -111,10 +111,11 @@ struct SearchQuery {
 		init(_ regex: NSRegularExpression, field: RuleField?) {
 			let pattern = regex.pattern
 			// Anchors of the whole text, inline options, and quantifiers that never give back read the joined values
-			// differently, so such a pattern reads each value alone. So do `\X` and two word boundaries in a row, which
-			// ICU reads wrong at the end of a text but not before a line break.
-			let differs = ["\\A", "\\z", "\\Z", "\\G", "(?", "*+", "++", "?+", "}+", "\\X", "\\b\\b", "\\b\\B", "\\B\\b", "\\B\\B"]
-			let keepsMeaning = !differs.contains { pattern.range(of: $0, options: .literal) != nil }
+			// differently, so such a pattern reads each value alone. So do `\X` and a second word boundary: at the end
+			// of a text ICU reads a boundary from the position of its last read, and before a line break it does not.
+			let differs = ["\\A", "\\z", "\\Z", "\\G", "(?", "*+", "++", "?+", "}+", "\\X"]
+			let boundaries = pattern.components(separatedBy: "\\b").count + pattern.components(separatedBy: "\\B").count - 2
+			let keepsMeaning = boundaries < 2 && !differs.contains { pattern.range(of: $0, options: .literal) != nil }
 			self.regex = regex
 			anyLine = keepsMeaning ? try? NSRegularExpression(pattern: pattern, options: regex.options.union(.anchorsMatchLines)) : nil
 			fields = field.map { [$0] } ?? RuleField.unqualified
@@ -156,16 +157,19 @@ struct SearchQuery {
 	}
 
 	/// Stops a regular expression that runs too long. ICU never returns for some patterns, such as a lazy quantifier
-	/// after an anchor in `/^+?49/`, and the search runs on the main thread at each keystroke. After the first text
-	/// that takes longer than 100 ms, every later text of the same search counts as no match.
+	/// after an anchor in `/^+?49/`, and backtracks for many milliseconds on others, such as `/^(\w+\s?)+$/`, while the
+	/// search runs on the main thread at each keystroke. After one text of more than 100 ms, or when the texts of more
+	/// than 5 ms add up to 250 ms, every later text of the same search counts as no match.
 	private final class RegexWatch {
 		private(set) var gaveUp = false
+		private var slowTime = Duration.zero
 
 		func firstMatch(_ regex: NSRegularExpression, _ text: String) -> NSRange? {
 			if gaveUp { return nil }
+			let clock = ContinuousClock()
+			let start = clock.now
 			var found: NSRange?
 			var reports = 0
-			var deadline: ContinuousClock.Instant?
 			regex.enumerateMatches(in: text, options: .reportProgress, range: NSRange(text.startIndex..., in: text)) { result, _, stop in
 				if let result {
 					found = result.range
@@ -174,17 +178,17 @@ struct SearchQuery {
 				}
 				// ICU reports progress about once for each character of a text, so a text of normal length reads no clock.
 				reports += 1
-				guard reports % 256 == 0 else { return }
-				if let deadline {
-					if ContinuousClock.now > deadline {
-						gaveUp = true
-						stop.pointee = true
-					}
-				} else {
-					deadline = .now + .milliseconds(100)
+				if reports % 256 == 0, clock.now - start > .milliseconds(100) {
+					gaveUp = true
+					stop.pointee = true
 				}
 			}
-			return found
+			if reports >= 256 {
+				let time = clock.now - start
+				if time > .milliseconds(5) { slowTime += time }
+				if slowTime > .milliseconds(250) { gaveUp = true }
+			}
+			return gaveUp ? nil : found
 		}
 	}
 
