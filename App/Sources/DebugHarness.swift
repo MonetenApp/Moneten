@@ -348,7 +348,7 @@ final class DebugHarness {
 			}
 		case "scrolltable": scrollTables { argument == "end" ? $0 - 1 : min(Int(argument) ?? 0, $0 - 1) }
 		case "select": select(argument)
-		case "contextmenus": logContextMenus()
+		case "contextmenus": logContextMenus(argument)
 		#if DEBUG || PERF_HARNESS
 		case "perf": Task { await runPerf() }
 		#endif
@@ -416,6 +416,44 @@ final class DebugHarness {
 		// What "Add category" in "Assign Category" does with the selected rows.
 		case "newcategory": Task { await model.addCategory(name: argument, isGroup: false, parentID: nil, assigning: model.visibleSelection) }
 		case "selectRows": model.selectedTransactions = Set(model.visibleTransactions.prefix(Int(argument) ?? 1).map(\.id))
+		// What a drop of the selected rows on the category "Name" in the sidebar does, with the payload sent
+		// through an item provider as a drag sends it. The harness cannot drag.
+		case "droprows":
+			guard let c = model.ledger.categories.first(where: { $0.name == argument }) else { return log("droprows not found") }
+			handOver(model.startDrag(of: model.visibleSelection)) { [self] item in
+				let hover = model.acceptsDrag(on: c), accepted = model.canDrop(item?.ids ?? [], on: c)
+				model.endDrag()
+				model.drop(item?.ids ?? [], on: c)
+				log("droprows category=\(Self.sidebarPosition(c.id, in: model.ledger)) hover=\(hover) accepted=\(accepted) afterwards=\(model.acceptsDrag(on: c)) visible=\(model.visibleTransactions.count)")
+			}
+		// "Name|Group": what a drop of the category on the row of the group does.
+		case "dropcategory":
+			let parts = argument.split(separator: "|").map(String.init)
+			guard parts.count == 2, let c = model.ledger.categories.first(where: { $0.name == parts[0] }),
+				let group = model.ledger.categories.first(where: { $0.name == parts[1] }) else { return log("dropcategory not found") }
+			handOver(model.startDrag(category: c.id)) { [self] item in
+				let hover = model.acceptsDrag(on: group)
+				model.endDrag()
+				if hover, let item { model.drop(category: item.id, on: group) }
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [self] in
+					log("dropcategory hover=\(hover) \(Self.place(of: c.id, in: model))")
+				}
+			}
+		// "Name|Group|index", with an empty group for the top level: what a drop of the category between two rows does.
+		case "movecategory":
+			let parts = argument.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
+			guard parts.count == 3, let c = model.ledger.categories.first(where: { $0.name == parts[0] }), let index = Int(parts[2]) else { return log("movecategory not found") }
+			let parent = model.ledger.categories.first { $0.name == parts[1] }
+			guard parts[1].isEmpty || parent != nil else { return log("movecategory not found") }
+			handOver(model.startDrag(category: c.id)) { [self] item in
+				model.endDrag()
+				guard let item else { return log("movecategory no payload") }
+				model.move(category: item.id, into: parent?.id, at: index)
+				// A move that changes the rows of the open view waits a drawing for its new table.
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [self] in
+					log("movecategory \(Self.place(of: c.id, in: model))")
+				}
+			}
 		// "table" puts the focus in the transaction table, as a click on it does. "down", "up", "return", "escape",
 		// and "cmd+k" go to the main window or its sheet as the keyboard sends them. Then it logs where the focus is,
 		// and for each selected row the position of its category in sidebar order from 0, or "default".
@@ -723,7 +761,8 @@ final class DebugHarness {
 
 	/// Logs the context menu of each sidebar row as a right click with the Option key builds it. "alt:" marks
 	/// an item that the Option key shows in place of the item before it.
-	private func logContextMenus() {
+	private func logContextMenus(_ argument: String) {
+		let choice = argument.split(separator: "|").compactMap { Int($0) }
 		func outlines(in view: NSView) -> [NSOutlineView] { ((view as? NSOutlineView).map { [$0] } ?? []) + view.subviews.flatMap(outlines) }
 		guard let window = NSApp.windows.first(where: { $0.isVisible && $0.identifier?.rawValue.hasPrefix("main") == true }),
 			let content = window.contentView else { return log("contextmenu no window") }
@@ -743,6 +782,41 @@ final class DebugHarness {
 				view = v.superview
 			}
 			log("contextmenu row \(index) \(menu?.items.map { ($0.isAlternate ? "alt:" : "") + $0.title } ?? [])")
+			if choice.count == 2, choice[0] == index,
+				let submenu = menu?.items.first(where: { $0.title == "Move to Group" })?.submenu {
+				submenu.update()
+				guard submenu.items.indices.contains(choice[1]), submenu.items[choice[1]].isEnabled else {
+					return log("contextmenu move refused")
+				}
+				submenu.performActionForItem(at: choice[1])
+				log("contextmenu move row=\(index) item=\(choice[1]) count=\(submenu.items.count)")
+				return
+			}
+		}
+	}
+
+	/// A category by its position in sidebar order from 0, or "default", because the user types category names.
+	private static func sidebarPosition(_ id: UUID, in ledger: Ledger) -> String {
+		ledger.categoriesInSidebarOrder.filter { !$0.isDefault }.firstIndex { $0.id == id }.map(String.init) ?? "default"
+	}
+
+	/// Where a category is after a move: its position, its parent's position or "top", its index among the
+	/// children of that parent, the rows of its tree, and the rows of the open view.
+	private static func place(of id: UUID, in model: AppModel) -> String {
+		let ledger = model.ledger
+		guard let c = ledger.category(id) else { return "not found" }
+		let index = ledger.childCategories(of: c.parentID).firstIndex { $0.id == id } ?? -1
+		return "position=\(sidebarPosition(id, in: ledger)) parent=\(c.parentID.map { sidebarPosition($0, in: ledger) } ?? "top") index=\(index) "
+			+ "rows=\(ledger.transactions(in: .category(id)).count) visible=\(model.visibleTransactions.count)"
+	}
+
+	/// Sends a drag payload through an item provider and back, as the system hands it from a drag to a drop.
+	private func handOver<T: Transferable & Sendable>(_ payload: T, then use: @escaping @MainActor (T?) -> Void) {
+		let provider = NSItemProvider()
+		provider.register(payload)
+		_ = provider.loadTransferable(type: T.self) { result in
+			let item = try? result.get()
+			Task { @MainActor in use(item) }
 		}
 	}
 

@@ -641,6 +641,91 @@ final class AppModel {
 		commit(changed)
 	}
 
+	/// What a drag from this app carries: rows of the transaction list, or a category of the sidebar.
+	enum Drag {
+		case transactions(Set<UUID>)
+		case category(UUID)
+	}
+
+	/// The drag in progress. SwiftUI hands the dragged data to a drop target only on the drop, so a category
+	/// in the sidebar reads it here while the pointer is over it. A drop clears it, and the next drag replaces it.
+	@ObservationIgnored private(set) var drag: Drag?
+
+	func startDrag(of ids: Set<UUID>) -> DraggedTransactions {
+		drag = .transactions(ids)
+		return DraggedTransactions(ids: ids)
+	}
+
+	func startDrag(category id: UUID) -> DraggedCategory {
+		drag = .category(id)
+		return DraggedCategory(id: id)
+	}
+
+	func endDrag() { drag = nil }
+
+	/// Whether the category row lights up for the drag in progress.
+	func acceptsDrag(on category: Domain.Category) -> Bool {
+		switch drag {
+		case let .transactions(ids): canDrop(ids, on: category)
+		case let .category(id): canDrop(category: id, on: category)
+		case nil: false
+		}
+	}
+
+	func canDrop(_ ids: Set<UUID>, on category: Domain.Category) -> Bool {
+		let rows = ids.compactMap { ledger.transaction($0) }
+		return !rows.isEmpty && ledger.canAssign(category, to: rows)
+	}
+
+	/// A drop of rows on a category in the sidebar. A group, or a category restricted to another account, refuses them.
+	/// Like ⌘K and the context menu, the drop changes the table in place, also out of the open category view (issue #154).
+	func drop(_ ids: Set<UUID>, on category: Domain.Category) {
+		guard canDrop(ids, on: category) else { return }
+		assign(category: category.id, to: ids)
+	}
+
+	/// A category dropped on a group goes to its end. `Ledger.move` refuses a category that is not a group,
+	/// the group itself or one above it, and a drop that changes nothing.
+	func canDrop(category id: UUID, on group: Domain.Category) -> Bool {
+		!ledger.move(category: id, into: group.id, at: ledger.childCategories(of: group.id).count).isEmpty
+	}
+
+	func drop(category id: UUID, on group: Domain.Category) {
+		move(category: id, into: group.id, at: ledger.childCategories(of: group.id).count)
+	}
+
+	/// Moves a category, or a group with everything in it, to the gap `index` among the children of `parent`.
+	func move(category id: UUID, into parent: UUID?, at index: Int) {
+		guard !ledger.move(category: id, into: parent, at: index).isEmpty else { return }
+		if ledger.changesShownRows(moving: id, into: parent, roots: shownCategoryRoots) {
+			Task { await replacingTable { moveNow(category: id, into: parent, at: index) } }
+		} else {
+			moveNow(category: id, into: parent, at: index)
+		}
+	}
+
+	/// The categories whose trees the open table shows: the open category view and the category filter. Rows that
+	/// come into or leave them in place remove shown rows (issue #135), so a move that does this comes with a new table.
+	private var shownCategoryRoots: [UUID] {
+		var roots = [tableKey.filter.categoryID]
+		if case let .category(shown) = tableKey.selection { roots.append(shown) }
+		return roots.compactMap { $0 }
+	}
+
+	private func moveNow(category id: UUID, into parent: UUID?, at index: Int) {
+		let changed = ledger.move(category: id, into: parent, at: index)
+		guard let store, !changed.isEmpty else { return }
+		do {
+			try store.save(categories: changed)
+			var moved = ledger
+			for c in changed { moved.upsert(c) }
+			ledgerChange = "move categories=\(changed.count)"
+			ledger = moved
+		} catch {
+			alert = AlertMessage(title: "Could not move the category.", message: String(describing: error))
+		}
+	}
+
 	func setChecked(_ checked: Bool, for ids: Set<UUID>) {
 		let rows = ids.compactMap { ledger.transaction($0) }
 		if checked {

@@ -1,5 +1,6 @@
 import Domain
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct SidebarView: View {
 	@Environment(AppModel.self) private var model
@@ -231,15 +232,21 @@ struct CategoryTree: View {
 	var body: some View {
 		ForEach(model.ledger.childCategories(of: parent)) { category in
 			if model.ledger.childCategories(of: category.id).isEmpty {
-				CategoryRow(category: category, amount: amounts[category.id]).tag(SidebarSelection.category(category.id))
+				CategoryRow(category: category, amount: amounts[category.id]).draggable(model.startDrag(category: category.id)).tag(SidebarSelection.category(category.id))
 			} else {
 				DisclosureGroup(isExpanded: Binding(get: { category.isExpanded }, set: { var c = category; c.isExpanded = $0; model.save(category: c) })) {
 					CategoryTree(parent: category.id, amounts: amounts)
 				} label: {
-					CategoryRow(category: category, amount: amounts[category.id])
+					CategoryRow(category: category, amount: amounts[category.id]).draggable(model.startDrag(category: category.id))
 				}
 				.tag(SidebarSelection.category(category.id))
 			}
+		}
+		// A drop between two rows. A drop on a group goes to `CategoryDrop`.
+		.dropDestination(for: DraggedCategory.self) { items, index in
+			model.endDrag()
+			guard let item = items.first, !model.ledger.move(category: item.id, into: parent, at: index).isEmpty else { return }
+			model.move(category: item.id, into: parent, at: index)
 		}
 	}
 }
@@ -268,21 +275,72 @@ struct CategoryRow: View {
 				AmountText(money: amount).fontWeight(.medium)
 			}
 		}
-		.dropDestination(for: String.self) { items, _ in
-			let ids = Set(items.flatMap { $0.split(separator: ",") }.compactMap { UUID(uuidString: String($0)) })
-			guard !ids.isEmpty else { return false }
-			model.assign(category: category.id, to: ids)
-			return true
-		}
+		.onDrop(of: [.monetenTransactions, .monetenCategory], delegate: CategoryDrop(model: model, category: category))
 		.contextMenu {
 			Button("Add Category") { model.sheet = .newCategory(isGroup: false) }
 			Button("Add Category Group") { model.sheet = .newCategory(isGroup: true) }
 			if !category.isDefault {
 				Divider()
+				Menu("Move to Group") {
+					Button("No group") { model.move(category: category.id, into: nil, at: model.ledger.childCategories(of: nil).count) }
+						.disabled(model.ledger.move(category: category.id, into: nil, at: model.ledger.childCategories(of: nil).count).isEmpty)
+					ForEach(model.ledger.destinationGroups(forCategory: category.id)) { g in
+						Button(g.name) { model.move(category: category.id, into: g.id, at: model.ledger.childCategories(of: g.id).count) }
+					}
+				}
 				Button("Remove...") { model.sheet = .categorySettings(category.id) }
 			}
 			Divider()
 			Button("Settings...") { model.sheet = .categorySettings(category.id) }
 		}
+	}
+}
+
+/// Rows of the transaction list on their way to a category.
+struct DraggedTransactions: Codable, Transferable {
+	let ids: Set<UUID>
+
+	static var transferRepresentation: some TransferRepresentation { CodableRepresentation(contentType: .monetenTransactions) }
+}
+
+/// A category or a category group on its way to another place in the sidebar.
+struct DraggedCategory: Codable, Transferable {
+	let id: UUID
+
+	static var transferRepresentation: some TransferRepresentation { CodableRepresentation(contentType: .monetenCategory) }
+}
+
+/// Declared in Info.plist. Two types, so that a row of the sidebar takes only the kind of drag it can use.
+extension UTType {
+	static let monetenTransactions = UTType(exportedAs: "io.github.moneten.transactions")
+	static let monetenCategory = UTType(exportedAs: "io.github.moneten.category")
+}
+
+/// A drop on a category row: rows go into the category, and a category goes to the end of a group.
+/// A row that refuses the drop is not highlighted.
+struct CategoryDrop: DropDelegate {
+	let model: AppModel
+	let category: Domain.Category
+
+	func validateDrop(info: DropInfo) -> Bool { model.acceptsDrag(on: category) }
+
+	func performDrop(info: DropInfo) -> Bool {
+		defer { model.endDrag() }
+		guard model.acceptsDrag(on: category) else { return false }
+		let target = category
+		if let provider = info.itemProviders(for: [.monetenCategory]).first {
+			_ = provider.loadTransferable(type: DraggedCategory.self) { [model] result in
+				guard let item = try? result.get() else { return }
+				Task { @MainActor in model.drop(category: item.id, on: target) }
+			}
+		} else if let provider = info.itemProviders(for: [.monetenTransactions]).first {
+			_ = provider.loadTransferable(type: DraggedTransactions.self) { [model] result in
+				guard let item = try? result.get() else { return }
+				Task { @MainActor in model.drop(item.ids, on: target) }
+			}
+		} else {
+			return false
+		}
+		return true
 	}
 }

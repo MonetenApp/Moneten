@@ -52,6 +52,8 @@ None.
 
 ### Decided for Moneten
 
+- "Move to Group" in a category context menu provides a way to move a category without dragging. It uses the same labels as the account menu. This menu was not observed in MoneyMoney.
+
 - Category icons are SF Symbols. MoneyMoney offers its own pictures, which belong to its maker; the migration takes only their color.
 - The transactions of a removed category go to "Uncategorized". MoneyMoney says only that they are kept.
 - Assignment with the keyboard through a picker with the shortcut ⌘K comes from issue #18. MoneyMoney has no such picker.
