@@ -218,7 +218,11 @@ public struct CSVFile: Sendable {
 	/// as the same day in both, such as "2026-10-31" or "01.01.2026". When the dates fit no single order,
 	/// the order that most of them fit comes alone.
 	public func dateOrders(_ layout: CSVLayout) throws -> [DateOrder] {
-		let values = dataRows(layout).flatMap { row in [layout.columns[.bookingDate], layout.columns[.valueDate]].compactMap { Self.cell(row.cells, $0) } }
+		let dateColumns = [layout.columns[.bookingDate], layout.columns[.valueDate]]
+		let values = try dataRows(layout).flatMap { row in
+			try Task.checkCancellation()
+			return dateColumns.compactMap { Self.cell(row.cells, $0) }
+		}
 		var counts = Dictionary(uniqueKeysWithValues: DateOrder.allCases.map { ($0, 0) })
 		var deciding = 0
 		for value in values {
@@ -238,12 +242,18 @@ public struct CSVFile: Sendable {
 	/// Kontostand". A file without a header row of known keywords has rows of any kind above its
 	/// transactions, so there the rows start below the title row at the first row with the shape of a date
 	/// in the date cell, such as "31.02.2026", which then fails.
-	func dataRows(_ layout: CSVLayout) -> ArraySlice<Row> {
+	func dataRows(_ layout: CSVLayout) throws -> ArraySlice<Row> {
 		let column = layout.columns[.bookingDate]
-		func isDated(_ row: Row) -> Bool { Self.cell(row.cells, column)?.contains(where: \.isNumber) == true }
+		func isDated(_ row: Row) throws -> Bool {
+			try Task.checkCancellation()
+			return Self.cell(row.cells, column)?.contains(where: \.isNumber) == true
+		}
 		let below = titleIndex.map { $0 + 1 } ?? 0
-		let start = headerIndex.map { $0 + 1 } ?? rows[below...].firstIndex { Self.cell($0.cells, column).map(Self.isDateShaped) == true } ?? rows.count
-		return rows[start...].filter(isDated)[...]
+		let start = try headerIndex.map { $0 + 1 } ?? rows[below...].firstIndex { row in
+			try Task.checkCancellation()
+			return Self.cell(row.cells, column).map(Self.isDateShaped) == true
+		} ?? rows.count
+		return try rows[start...].filter(isDated)[...]
 	}
 
 	/// The transactions of the file in the layout. A row that cannot be read fails with its line.
@@ -251,7 +261,7 @@ public struct CSVFile: Sendable {
 		// Without an amount column, every missing debit and credit cell would read as zero.
 		guard layout.missing.isEmpty else { return TransactionFileImporter.Parsed(transactions: []) }
 		func column(_ field: CSVField) -> Int? { layout.columns[field] }
-		let dated = dataRows(layout)
+		let dated = try dataRows(layout)
 		// The amount column, or the debit and credit columns when the amount cell is empty.
 		func amountCells(_ row: [String]) -> [String] {
 			(Self.cell(row, column(.amount)).map { [$0] } ?? [column(.debit), column(.credit)].compactMap { Self.cell(row, $0) })
