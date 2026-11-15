@@ -303,7 +303,7 @@ struct PerfScenario {
 				let model = c.model
 				Task { await confirmPreview(model) }
 				await c.model.importFiles([importFile], into: account)
-				c.model.alert = nil
+				c.harness.run("alert", "")
 				let stored = c.model.ledger.transactions(ofAccount: account.id).count - before
 				if stored != importedRows { c.fail("the import stored \(stored) of \(importedRows) rows") }
 			}),
