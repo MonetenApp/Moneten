@@ -10,9 +10,19 @@ public enum UpdatePlan: Sendable, Equatable {
 	case afterSession
 	/// "Update extensions automatically" is off.
 	case waitsForUser
-	/// The update adds these hosts or login field labels and waits for the user. The installed version runs only
+	/// The update adds these hosts or login fields and waits for the user. The installed version runs only
 	/// while the index lists it, which an index of one version per package does not (`Standing.outdated`).
-	case needsConfirmation(hosts: [String], fields: [String])
+	case needsConfirmation(hosts: [String], fields: [Field])
+
+	/// A login field with its service. The parts stay apart, so no text of a service or a label can make
+	/// two different fields look the same.
+	public struct Field: Hashable, Sendable, CustomStringConvertible {
+		public let service: String
+		public let label: String
+
+		/// "Password (Example Depot)", as the review shows it.
+		public var description: String { "\(label) (\(service))" }
+	}
 
 	/// What the user confirmed in the review or chose with "Update": a version with the hosts and login fields of
 	/// the manifest that the review showed. "Update" shows no new ones, so it approves those of the installed version.
@@ -27,8 +37,8 @@ public enum UpdatePlan: Sendable, Equatable {
 	}
 
 	/// `confirmed` installs its version, also with new rights or with automatic updates off, but never a later
-	/// one, and only while that version adds no host or login field beyond those the user saw. The catalog
-	/// could list the same version again with other rights.
+	/// one, and only while that version adds no host or login field beyond those the user saw in the review or
+	/// runs in the installed version. The catalog could list the same version again with other rights.
 	public init(installed: Manifest, available: Manifest, automatic: Bool, sessionRuns: Bool, confirmed: Approval?) {
 		guard let version = available.version, Self.isNewer(version, than: installed.version ?? "0") else {
 			self = .upToDate
@@ -37,35 +47,27 @@ public enum UpdatePlan: Sendable, Equatable {
 		let oldHosts = Set(installed.hosts ?? [])
 		let hosts = (available.hosts ?? []).filter { !oldHosts.contains($0) }.map(\.value)
 		let oldFields = Set(Self.fields(installed))
-		let fields = Self.fields(available).filter { !oldFields.contains($0) }.map(\.label)
-		let chosen = confirmed.map { $0.version == version && Self.rights(available).isSubset(of: $0.rights ?? Self.rights(installed)) } ?? false
+		let fields = Self.fields(available).filter { !oldFields.contains($0) }
+		let chosen = confirmed.map { $0.version == version && Self.rights(available).isSubset(of: Self.rights(installed).union($0.rights ?? [])) } ?? false
 		self = if !chosen, !hosts.isEmpty || !fields.isEmpty { .needsConfirmation(hosts: hosts, fields: fields) }
 			else if !chosen, !automatic { .waitsForUser }
 			else if sessionRuns { .afterSession }
 			else { .install }
 	}
 
-	/// A host or a login field with its service, which an approval compares. The parts stay apart, so no
-	/// text of a service or a label can make two different rights look the same.
+	/// A host or a login field, which an approval compares.
 	enum Right: Hashable, Sendable {
 		case host(String)
-		case field(service: String, label: String)
-
-		var label: String {
-			switch self {
-			case let .host(value): value
-			case let .field(_, label): label
-			}
-		}
+		case field(Field)
 	}
 
-	private static func fields(_ manifest: Manifest) -> [Right] {
-		(manifest.services ?? []).flatMap { service in service.login.map { Right.field(service: service.name, label: $0.label) } }
+	private static func fields(_ manifest: Manifest) -> [Field] {
+		(manifest.services ?? []).flatMap { service in service.login.map { Field(service: service.name, label: $0.label) } }
 	}
 
 	/// The hosts and the login fields with their services, which an approval compares.
 	private static func rights(_ manifest: Manifest) -> Set<Right> {
-		Set((manifest.hosts ?? []).map { Right.host($0.value) } + fields(manifest))
+		Set((manifest.hosts ?? []).map { Right.host($0.value) } + fields(manifest).map(Right.field))
 	}
 
 	/// The order of the catalog tools: "2.31" is (2, 31), compared as tuples without padding, so 1.10 is

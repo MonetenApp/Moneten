@@ -230,7 +230,7 @@ The app SHALL install a newer version of an installed catalog extension by itsel
 
 ### Requirement: An update that asks for new rights waits
 
-The app SHALL hold an update of a catalog extension that adds a host or a login field until the user confirms it. The confirmation shows the new version, the new hosts, and the new login fields, and says that the accounts of the extension can be refreshed only after the update. Until the user confirms, the installed version does not run, because the index no longer lists it.
+The app SHALL hold an update of a catalog extension that adds a host or a login field until the user confirms it. The confirmation shows the new version, the new hosts, and the new login fields, each field with its service, and says that the accounts of the extension can be refreshed only after the update. Until the user confirms, the installed version does not run, because the index no longer lists it.
 
 #### Scenario: New host
 
@@ -263,10 +263,18 @@ The app SHALL hold an update of a catalog extension that adds a host or a login 
 - **WHEN** the app accepts an index that lists 2.32 again, which also adds the host `data.broker.example`
 - **THEN** the app does not install 2.32, and the entry asks for the review of both hosts
 
+#### Scenario: Same version listed again with a host of the installed version
+
+- **GIVEN** "Broker" 2.31 contacts `old.broker.example`
+- **AND** the user confirmed the update to 2.32, which drops `old.broker.example` and adds `login.broker.example`, and the update waits for the end of a refresh
+- **WHEN** the app accepts an index that lists 2.32 again, which contacts both hosts
+- **THEN** the app installs 2.32 after the refresh and asks for no review
+
 #### Scenario: New login field
 
-- **WHEN** version 2.32 of "Broker" adds the login field "One-time code"
+- **WHEN** version 2.32 of "Broker" adds the login field "One-time code" to the service "Broker Depot"
 - **THEN** the update waits for the user and the window names the field "One-time code"
+- **AND** the confirmation lists it as "One-time code (Broker Depot)"
 
 ### Requirement: Remove a catalog extension
 

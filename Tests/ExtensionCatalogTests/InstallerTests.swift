@@ -249,7 +249,7 @@ import Testing
 		let reviewed: Manifest
 		let relisted: Manifest
 		let index: CatalogIndex
-		let rights = UpdatePlan.needsConfirmation(hosts: ["login.example.org", "data.example.net"], fields: ["One-time code"])
+		let rights = UpdatePlan.needsConfirmation(hosts: ["login.example.org", "data.example.net"], fields: [.init(service: "Example Bank", label: "One-time code")])
 
 		init(reviewedHosts: [String] = ["login.example.org"]) throws {
 			let old = TestCatalog.Package(version: "1.1")
