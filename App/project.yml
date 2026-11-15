@@ -76,7 +76,8 @@ targets:
         PRODUCT_NAME: Moneten
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: Info.plist
-        CODE_SIGN_ENTITLEMENTS: Moneten.entitlements
+        # Moneten.entitlements, or MonetenLocal.entitlements for a Release build without a team (App/Signing.xcconfig).
+        CODE_SIGN_ENTITLEMENTS: $(MONETEN_APP_ENTITLEMENTS)
         # A muted slate blue for selections and controls, calmer than the system blue.
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         ENABLE_HARDENED_RUNTIME: $(MONETEN_HARDENED_RUNTIME)
