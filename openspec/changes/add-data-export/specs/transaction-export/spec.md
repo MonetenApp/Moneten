@@ -102,6 +102,11 @@ The app SHALL write CSV files in UTF-8 with a byte order mark and with a semicol
 - **WHEN** the user exports -8900 minor units in EUR on 3 November 2026 with ar_EG formats
 - **THEN** Date and Amount use only ASCII digits, with the local date order and decimal mark
 
+#### Scenario: Calendar is preserved with ASCII digits
+
+- **WHEN** the user exports 3 November 2026 with th_TH formats
+- **THEN** Date is "03/11/2569" in the local calendar with ASCII digits
+
 ### Requirement: Spreadsheet formula protection
 
 The app SHALL prefix a text field with an apostrophe when its first character is `=`, `+`, `-`, `@`, a tab, or a carriage return. The Amount column stays numeric. CSV quoting follows this prefix.
@@ -180,7 +185,7 @@ The app SHALL report a failed export with the reason, for example no write permi
 
 ### Requirement: Progress of an export
 
-The app SHALL show progress for an export that takes longer than a moment, and let the user cancel it. Encoding, writing, and syncing keep the interface responsive. Cancellation before the destination is replaced leaves no new file and preserves an existing destination.
+The app SHALL show progress for an export that takes longer than a moment, and let the user cancel it. Encoding, writing, and syncing keep the interface responsive. Cancellation before the destination is replaced leaves no new file and preserves an existing destination. CSV export commands stay unavailable until the current export finishes, including cancellation cleanup.
 
 #### Scenario: Large export
 
@@ -193,6 +198,13 @@ The app SHALL show progress for an export that takes longer than a moment, and l
 - **WHEN** the user exports transactions
 - **THEN** "Exporting..." appears with "Cancel" while syncing continues
 - **AND** canceling during sync preserves an existing file and removes the temporary file
+
+#### Scenario: Cancel and retry
+
+- **GIVEN** a CSV export is syncing its temporary file
+- **WHEN** the user cancels it
+- **THEN** another CSV export cannot start until the canceled writer finishes
+- **AND** after cleanup a new export has its own working progress and cancellation
 
 ### Requirement: Complete export
 

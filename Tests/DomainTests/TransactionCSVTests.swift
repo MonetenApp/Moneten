@@ -59,6 +59,11 @@ struct TransactionCSVTests {
 		#expect(try lines([stadtwerke], "ar_EG")[1] == "03\u{200F}/11\u{200F}/2026;04\u{200F}/11\u{200F}/2026;Housing;Stadtwerke Musterstadt;Abschlag November;DE02120300000000202051;BYLADEM1001;-89٫00;EUR;DE02120300000000202051;Lastschrift;E2E-1;M-1;DE98ZZZ09999999999;Abschlag;X;")
 	}
 
+	@Test("Choosing ASCII digits preserves the calendar of the locale")
+	func localeCalendar() throws {
+		#expect(try lines([stadtwerke], "th_TH")[1].hasPrefix("03/11/2569;04/11/2569;"))
+	}
+
 	@Test("The first line names the 17 columns in order")
 	func header() throws {
 		#expect(try lines([], "de_DE").first
