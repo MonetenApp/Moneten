@@ -47,6 +47,8 @@ struct PerformanceTests {
 		let (prefixOverAll, prefixCount) = overAll("Kunden*")
 		let (purposeOverAll, purposeCount) = overAll("purpose:Rech*")
 		let (regexOverAll, regexOverAllCount) = overAll("/Rechnung 1/")
+		// Every row holds " kunden", so every row reads its fields.
+		let (slowRegexOverAll, slowRegexCount) = overAll(#"/\d{5} Kunden/"#)
 		let (plainOverAll, plainOverAllCount) = overAll("kundennummer 7")
 		let (noSearch, noSearchCount) = overAll("")
 		let category = fastest { _ = ledger.transactions(in: .category(categories[3].id)) }
@@ -63,10 +65,10 @@ struct PerformanceTests {
 		let update = fastest { var copy = ledger; copy.update(imported) }
 		let categorizer = Categorizer(ledger: ledger)
 		let rules = fastest { for t in ts.prefix(5_000) { _ = categorizer.category(for: t) } }
-		print("build \(build), import of 2,000 \(update), search \(search) (\(count) rows), wildcard \(wildcard) (\(wildcardCount) rows), field \(field) (\(fieldCount) rows), amount \(amount) (\(amountCount) rows), regex \(regex) (\(regexCount) rows), over 50,000: name:Haendler* \(fieldOverAll) (\(fullScanCount) rows), name:Haendler1* \(rareFieldOverAll) (\(rareFieldCount) rows), Kunden* \(prefixOverAll) (\(prefixCount) rows), purpose:Rech* \(purposeOverAll) (\(purposeCount) rows), regex \(regexOverAll) (\(regexOverAllCount) rows), plain \(plainOverAll) (\(plainOverAllCount) rows), no search \(noSearch) (\(noSearchCount) rows), category \(category), amount range \(amountRange) (\(rangeCount) rows), sidebar \(sidebar) (\(amounts.count) amounts), 5,000 categorizations \(rules)")
+		print("build \(build), import of 2,000 \(update), search \(search) (\(count) rows), wildcard \(wildcard) (\(wildcardCount) rows), field \(field) (\(fieldCount) rows), amount \(amount) (\(amountCount) rows), regex \(regex) (\(regexCount) rows), over 50,000: name:Haendler* \(fieldOverAll) (\(fullScanCount) rows), name:Haendler1* \(rareFieldOverAll) (\(rareFieldCount) rows), Kunden* \(prefixOverAll) (\(prefixCount) rows), purpose:Rech* \(purposeOverAll) (\(purposeCount) rows), regex \(regexOverAll) (\(regexOverAllCount) rows), regex every row reads \(slowRegexOverAll) (\(slowRegexCount) rows), plain \(plainOverAll) (\(plainOverAllCount) rows), no search \(noSearch) (\(noSearchCount) rows), category \(category), amount range \(amountRange) (\(rangeCount) rows), sidebar \(sidebar) (\(amounts.count) amounts), 5,000 categorizations \(rules)")
 		#expect(count > 0)
 		#expect(rangeCount == 15_868)
-		#expect([wildcardCount, fieldCount, amountCount, regexCount, fullScanCount, prefixCount, purposeCount, regexOverAllCount, plainOverAllCount, rareFieldCount].allSatisfy { $0 > 0 })
+		#expect([wildcardCount, fieldCount, amountCount, regexCount, fullScanCount, prefixCount, purposeCount, regexOverAllCount, slowRegexCount, plainOverAllCount, rareFieldCount].allSatisfy { $0 > 0 })
 		#expect(amounts.count > 0)
 		// A debug build runs several times slower than the app and depends on the load of the machine,
 		// so the budgets hold for a release build only: `scripts/test.sh -c release -Xswiftc -enable-testing
@@ -80,9 +82,10 @@ struct PerformanceTests {
 		#expect(prefixOverAll < .milliseconds(150))
 		#expect(purposeOverAll < .milliseconds(150))
 		#expect(regexOverAll < .milliseconds(600))
+		#expect(slowRegexOverAll < .milliseconds(600))
 		#expect(plainOverAll < .milliseconds(150))
 		#expect(amount < .milliseconds(150))
-		// A regular expression reads the fields as they are, so the search text cannot rule out a row.
+		// A regular expression reads the fields as they are, so the search text rules out only the rows without its plain text.
 		#expect(regex < .milliseconds(600))
 		#expect(category < .milliseconds(100))
 		#expect(amountRange < .milliseconds(100))

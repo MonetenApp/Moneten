@@ -235,13 +235,17 @@ struct LedgerTests {
 				purpose: "Kartenzahlung", bookingText: "LASTSCHRIFT", endToEndReference: "E2E-1", mandateReference: "M-1", creditorID: "DE98ZZZ09999999999"),
 		]
 		let all = rows + [Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 3), amountMinor: -400, name: "Cafe\u{332}", purpose: "Kaffee\r"),
-			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 4), amountMinor: -250, name: "Kiosk\u{1}Am Markt", purpose: "Zeitung")]
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 4), amountMinor: -250, name: "Kiosk\u{1}Am Markt", purpose: "Zeitung"),
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 5), amountMinor: -320, name: "Cafe\u{301}", purpose: "Rechnung 12")]
 		let l = Ledger(accounts: [giro], transactions: all)
 		let queries = [#"name:"Stadtwerke Musterstadt""#, "name:Stadt*", "purpose:November", #"purpose:"Abschlag November""#, "comment:strom",
 			"booking_text:lastschrift", "reference:E2E-1", "mandate:M-1", "creditor_id:DE98ZZZ*", "remote_account:DE89370400440532013000",
 			#"local_account:"DE02 1203 0000 0000 2020 51""#, "local_account:4711", "currency:USD", "name:baeckerei", "name:*gutbrot", "name:*ecke*", "name:Stadtwerke*", "purpose:/^Abschlag/", "name:/gutbrot$/", #"local_account:/\A4711/"#, #"booking_text:/\ALAST/"#, #"purpose:/zahlung\z/"#, "name:/(?-m)^b/", #"name:/gutbrot\D*+$/"#, "name:caf*", "name:*e", #"purpose:/kaffee\s$/"#, #"/kaffee\s$/"#, #"/gutbrot\D*+$/"#, "comment:/^$/", "/^$/",
 			"purpose:Zeitung", "name:markt", "name:kiosk*", "Name:Stadtwerke*", "NAME:=baeckerei", "name==*gutbrot", "name=caf*", "name!=Stadtwerke*", "name<>*e",
-			"true", "NOT false", "comment:strom OR false"]
+			"true", "NOT false", "comment:strom OR false",
+			"/cafe/", "/rechnung 1/", "/RECHNUNG 1/", "purpose:/chnung 1/", "/k[a-z]ffee/", "/kaffe?e/", "/zahl+ung/", #"/e2e-\d/"#, #"mandate:/m\x2d1/"#,
+			#"/\p{Lu}utbrot/"#, #"/abschlag\nnov/"#, "/stadtwerke  muster/", "/b.ckerei/", "/^kiosk/", "/zahlungs?/", "/zahlungx*/", "/zahlungx{0,2}/",
+			"/zahl[uvwxyzabcdef]ng/", "/zahl[^xyzabcdefgh]ng/", #"/\x7aahlung/"#, #"/zahl\u0075ng/"#, "/zahlung$/", #"/zahl\Bung/"#]
 		for query in queries {
 			var f = TransactionFilter()
 			f.searchText = query
