@@ -287,5 +287,11 @@ The app SHALL fail a complete export when a stored holding cannot be read, and n
 
 - **GIVEN** a holding has the quantity "1.123456789012345678901234567890123456789"
 - **WHEN** the user imports the complete export
-- **THEN** the app refuses the file and names holdings[0] and the limit of 38 digits
+- **THEN** the app refuses the file and names holdings[0] and says that the value cannot be represented without rounding
 - **AND** the database stays empty
+
+#### Scenario: Exact decimal values
+
+- **GIVEN** a holding has the quantity "0.12345678901234567890123456789012345678" or "123456789012345678901234567890123456789"
+- **WHEN** the user exports all data and imports it into an empty database
+- **THEN** the quantity stays unchanged

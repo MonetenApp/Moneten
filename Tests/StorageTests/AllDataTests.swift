@@ -402,6 +402,22 @@ struct AllDataTests {
 		#expect(accepted.holdings[0].quantity.description == "-1.1234567890123456789012345678901234567")
 	}
 
+	@Test("Every exactly represented decimal survives its own export", arguments: [
+		"0.12345678901234567890123456789012345678",
+		"0.000000000000000000000000000000000000001",
+		"100000000000000000000000000000000000000",
+		"123456789012345678901234567890123456789",
+		"340282366920938463463374607431768211455"
+	])
+	func exactDecimalRoundTrip(_ text: String) throws {
+		let account = Account(position: 0, name: "Test", kind: .portfolio, source: .offline)
+		let quantity = try #require(Decimal(string: text, locale: Locale(identifier: "en_US_POSIX")))
+		#expect(quantity.description == text)
+		let data = AllData(accounts: [account], holdings: [Holding(accountID: account.id, security: Security(name: "Test"), quantity: quantity)])
+		let imported = try AllData(json: data.json())
+		#expect(imported.holdings[0].quantity.description == text)
+	}
+
 	@Test("A complete export accepts a valid 235-byte destination name")
 	func longExportFilename() throws {
 		let store = try filledStore()
