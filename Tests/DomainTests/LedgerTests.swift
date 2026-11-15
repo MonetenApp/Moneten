@@ -304,7 +304,8 @@ struct LedgerTests {
 			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 4), amountMinor: -250, name: "Kiosk\u{1}Am Markt", purpose: "Zeitung"),
 			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 5), amountMinor: -320, name: "Cafe\u{301}", purpose: "Rechnung 12"),
 			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 6), amountMinor: -180, name: "Imbiss \u{301}Nord", purpose: "Pommes"),
-			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 7), amountMinor: -190, name: "Grill \u{FE20}Ost", purpose: "Wurst")]
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 7), amountMinor: -190, name: "Grill \u{FE20}Ost", purpose: "Wurst"),
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 8), amountMinor: -60, name: "Bude\u{1}\u{301}", purpose: "Karte ****1234")]
 		let l = Ledger(accounts: [giro], transactions: all)
 		let queries = [#"name:"Stadtwerke Musterstadt""#, "name:Stadt*", "purpose:November", #"purpose:"Abschlag November""#, "comment:strom",
 			"booking_text:lastschrift", "reference:E2E-1", "mandate:M-1", "creditor_id:DE98ZZZ*", "remote_account:DE89370400440532013000",
@@ -314,7 +315,7 @@ struct LedgerTests {
 			"/cafe/", "/rechnung 1/", "/RECHNUNG 1/", "purpose:/chnung 1/", "/k[a-z]ffee/", "/kaffe?e/", "/zahl+ung/", #"/e2e-\d/"#, #"mandate:/m\x2d1/"#,
 			#"/\p{Lu}utbrot/"#, #"/abschlag\nnov/"#, "/stadtwerke  muster/", "/b.ckerei/", "/^kiosk/", "/zahlungs?/", "/zahlungx*/", "/zahlungx{0,2}/",
 			"/zahl[uvwxyzabcdef]ng/", "/zahl[^xyzabcdefgh]ng/", #"/\x7aahlung/"#, #"/zahl\u0075ng/"#, "/zahlung$/", #"/zahl\Bung/"#,
-			#"/\QM-1x\E?/"#, #"mandate:/\QM-1x\E{0}/"#, #"/kartenzahlungx\Q\E?/"#, "name:nord", "name:imbiss", "name:ost", #"name:"Grill Ost""#]
+			#"/\QM-1x\E?/"#, #"mandate:/\QM-1x\E{0}/"#, #"/kartenzahlungx\Q\E?/"#, "name:nord", "name:imbiss", "name:ost", #"name:"Grill Ost""#, "purpose:karte", "purpose:*1234", "purpose:**1234", "purpose:*12?4"]
 		for query in queries {
 			var f = TransactionFilter()
 			f.searchText = query
@@ -398,6 +399,7 @@ struct LedgerTests {
 	func searchAmount() {
 		#expect(search("89,00") == ["Stadtwerke Musterstadt"])
 		#expect(search("-23,45") == ["Bäckerei Gutbrot"])
+		#expect(search("-23.45") == ["Bäckerei Gutbrot"])
 		// The list shows the minus sign U+2212. An amount copied from there matches too.
 		#expect(search("\u{2212}23,45") == ["Bäckerei Gutbrot"])
 	}
