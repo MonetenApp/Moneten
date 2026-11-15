@@ -669,6 +669,19 @@ struct MoneyMoneyMigrationTests {
 		for i in noRules.indices { noRules[i]["rules"] = "" }
 		let q = try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(accounts), categories: try plist(noRules), transactions: try plist(transactions), into: Ledger())
 		#expect(q.notes.contains { $0.contains("no categorization rules") })
+
+		let housing: [[String: Any]] = [
+			["uuid": "C4", "name": "Wohnen", "group": true, "default": false, "indentation": 0, "currency": "EUR", "rules": "amount<-1000"],
+			["uuid": "C5", "name": "Miete", "group": false, "default": false, "indentation": 1, "currency": "EUR", "rules": "\"Miete\""],
+		]
+		let r = try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(accounts), categories: try plist(noRules + housing), transactions: try plist(transactions), into: Ledger())
+		#expect(r.categories.first { $0.name == "Wohnen" }?.rule == "")
+		#expect(r.categories.first { $0.name == "Miete" }?.rule == "\"Miete\"")
+		#expect(r.categories.filter { !$0.rule.isEmpty }.count == 1)
+		#expect(!r.notes.contains { $0.contains("rules") })
+
+		let s = try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(accounts), categories: try plist(noRules + [housing[0]]), transactions: try plist(transactions), into: Ledger())
+		#expect(s.notes.contains { $0.contains("no categorization rules") })
 	}
 
 	func plan(rules: [String: String]) throws -> MoneyMoneyMigration.Plan {
