@@ -9,7 +9,7 @@ import Testing
 struct CSVProfileStoreTests {
 	func profile(_ name: String = "Broker CSV") throws -> CSVProfile {
 		let file = try CSVFile(data: Data("Datum;Name;Betrag;DE02120300000000202051\n".utf8))
-		return CSVProfile(name: name, header: file.header, layout: try file.detectedLayout())
+		return CSVProfile(name: name, header: file.header, layout: try file.detectedLayout(), delimiter: file.delimiter)
 	}
 
 	@Test("Profiles stay encrypted across reopen and are separate for every database")

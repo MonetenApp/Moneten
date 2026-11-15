@@ -12,7 +12,7 @@ struct CSVProfileTests {
 		let file = try CSVFile(data: Data("\(header)\n\(row)\n".utf8))
 		var layout = try file.detectedLayout()
 		layout.assign(5, to: .purpose)
-		return CSVProfile(name: "Broker CSV", header: file.header, layout: layout)
+		return CSVProfile(name: "Broker CSV", header: file.header, layout: layout, delimiter: file.delimiter)
 	}
 
 	@Test("A changed delimiter or detected date order requires confirmation")
@@ -20,7 +20,7 @@ struct CSVProfileTests {
 		let original = try CSVFile(data: Data("Date;Name;Amount\n03/11/2026;Kiosk;-4.20\n".utf8))
 		var layout = try original.detectedLayout()
 		layout.dateOrder = .monthDayYear
-		let profile = CSVProfile(name: "Month first", header: original.header, layout: layout)
+		let profile = CSVProfile(name: "Month first", header: original.header, layout: layout, delimiter: original.delimiter)
 		let changed = try CSVFile(data: Data("Date,Name,Amount\n03/11/2026,Kiosk,-4.20\n".utf8))
 		for file in [original, changed] {
 			guard case let .changed(_, start) = CSVProfile.match(for: file, in: [profile], detected: try file.detectedLayout()) else {
@@ -35,7 +35,7 @@ struct CSVProfileTests {
 	@Test("An added empty title still suggests the saved column mapping")
 	func emptyTitles() throws {
 		let original = try CSVFile(data: Data("Datum;Name;Betrag;\n".utf8))
-		let profile = CSVProfile(name: "Empty titles", header: original.header, layout: try original.detectedLayout())
+		let profile = CSVProfile(name: "Empty titles", header: original.header, layout: try original.detectedLayout(), delimiter: original.delimiter)
 		let file = try CSVFile(data: Data("Datum;;Name;Betrag;\n".utf8))
 		guard case let .changed(_, layout) = CSVProfile.match(for: file, in: [profile], detected: try file.detectedLayout()) else {
 			Issue.record("Empty titles must not count as repeated names")
@@ -55,7 +55,7 @@ struct CSVProfileTests {
 		columns["futureField"] = 99
 		layout["columns"] = columns
 		json["layout"] = layout
-		let decoded = CSVProfile.list(from: try JSONSerialization.data(withJSONObject: [json]))
+		let decoded = try JSONDecoder().decode([CSVProfile].self, from: JSONSerialization.data(withJSONObject: [json]))
 		#expect(decoded.count == 1)
 		#expect(decoded.first?.layout.createsCategories == false)
 		#expect(decoded.first?.layout.columns[.amount] == 6)
@@ -68,7 +68,7 @@ struct CSVProfileTests {
 		#expect(CSVProfile.match(for: second, in: [profile], detected: try second.detectedLayout()) == .same(profile))
 		var newer = profile
 		newer.name = "Broker neu"
-		newer.layout.dateOrder = .monthDayYear
+		newer.layout.decimalMark = .comma
 		#expect(CSVProfile.match(for: second, in: [profile, newer], detected: try second.detectedLayout()) == .same(newer))
 		#expect(try second.preview(profile.layout, currency: "EUR").transactions.map(\.purpose) == ["Dividende"])
 	}
@@ -92,7 +92,7 @@ struct CSVProfileTests {
 		var layout = try original.detectedLayout()
 		layout.assign(1, to: .debit)
 		layout.assign(2, to: .credit)
-		let profile = CSVProfile(name: "Separate amounts", header: original.header, layout: layout)
+		let profile = CSVProfile(name: "Separate amounts", header: original.header, layout: layout, delimiter: original.delimiter)
 		let changed = try CSVFile(data: Data("Datum;Extra;Betrag;Betrag\n01.11.2026;Note;10,00;0,00\n".utf8))
 		guard case let .changed(_, moved) = CSVProfile.match(for: changed, in: [profile], detected: try changed.detectedLayout()) else {
 			Issue.record("The profile must match the moved columns")
@@ -109,7 +109,7 @@ struct CSVProfileTests {
 		var layout = try original.detectedLayout()
 		layout.assign(1, to: .debit)
 		layout.assign(2, to: .credit)
-		let profile = CSVProfile(name: "Separate amounts", header: original.header, layout: layout)
+		let profile = CSVProfile(name: "Separate amounts", header: original.header, layout: layout, delimiter: original.delimiter)
 		let changed = try CSVFile(data: Data((header + "\n").utf8))
 		#expect(CSVProfile.match(for: changed, in: [profile], detected: try changed.detectedLayout()) == .none)
 	}
@@ -126,7 +126,7 @@ struct CSVProfileTests {
 		profile.layout.encoding = .windows1252
 		#expect(try profile.read(utf8, currency: "EUR") == nil)
 		let ascii = try CSVFile(data: Data("Datum;Name;Betrag\n02.11.2026;Kiosk;-2,00\n".utf8))
-		var plain = CSVProfile(name: "Plain", header: ascii.header, layout: try ascii.detectedLayout())
+		var plain = CSVProfile(name: "Plain", header: ascii.header, layout: try ascii.detectedLayout(), delimiter: ascii.delimiter)
 		plain.layout.encoding = .windows1252
 		#expect(try plain.read(ascii, currency: "EUR")?.transactions.map(\.name) == ["Kiosk"])
 		#expect(plain.previewLayout(for: ascii).encoding == .utf8)
@@ -148,7 +148,7 @@ struct CSVProfileTests {
 		var layout = try original.detectedLayout()
 		layout.decimalMark = .comma
 		layout.createsCategories = true
-		let profile = CSVProfile(name: "Text encoding", header: original.header, layout: layout)
+		let profile = CSVProfile(name: "Text encoding", header: original.header, layout: layout, delimiter: original.delimiter)
 		let nextHeader = headerChanged ? "Date;Extra;Name;Purpose;Amount;Category" : header
 		let nextRow = headerChanged ? "03.11.2026;Note;Bäckerei;Frühstück;-4,20;Büro" : row
 		let file = try CSVFile(data: Data("\(nextHeader)\n\(nextRow)\n".utf8))
@@ -170,14 +170,6 @@ struct CSVProfileTests {
 		#expect(parsed.transactions.map(\.purpose) == ["Frühstück"])
 		#expect(parsed.transactions.map(\.amountMinor) == [-420])
 		#expect(Array(parsed.categories.values) == ["Büro"])
-	}
-
-	@Test("A stored list keeps the profiles that read when one does not")
-	func lenientList() throws {
-		let profile = try Self.broker()
-		let good = String(data: try JSONEncoder().encode(profile), encoding: .utf8)!
-		let data = Data("[\(good), {\"name\": \"Broken\"}]".utf8)
-		#expect(CSVProfile.list(from: data) == [profile])
 	}
 
 	@Test("A saved profile comes back with every setting")
@@ -215,7 +207,7 @@ struct CSVProfileTests {
 		layout.createsCategories = true
 		let parsed = try file.preview(layout, currency: "EUR").parsed
 		#expect(parsed.transactions.map { parsed.categories[$0.id] } == ["Food", "Pets", nil])
-		let profile = CSVProfile(name: "Card CSV", header: file.header, layout: layout)
+		let profile = CSVProfile(name: "Card CSV", header: file.header, layout: layout, delimiter: file.delimiter)
 		#expect(try JSONDecoder().decode(CSVProfile.self, from: JSONEncoder().encode(profile)).layout.createsCategories)
 	}
 

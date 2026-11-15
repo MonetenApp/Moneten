@@ -169,7 +169,8 @@ extension AppModel {
 					var createsCategories = false
 					if let (file, layout) = try await Self.csv(data) {
 						if run.isCanceled { return (read, problems, canceledAt: i) }
-						let profiles = CSVProfileStore.load()
+						guard let store else { return (read, problems, canceledAt: i) }
+						let profiles = try store.csvProfiles()
 						let match = CSVProfile.match(for: file, in: profiles, detected: layout)
 						if case let .same(saved) = match, !alwaysPreview, let quiet = try await Self.read(file, with: saved, currency: account.currency) {
 							parsed = quiet
@@ -189,7 +190,7 @@ extension AppModel {
 								return (read, problems, canceledAt: i)
 							}
 							sheet = .fileImport(run)
-							let preview = CSVPreviewModel(name: url.lastPathComponent, file: file, layout: start, currency: account.currency, profiles: profiles, profile: name, matched: matched)
+							let preview = CSVPreviewModel(name: url.lastPathComponent, file: file, layout: start, currency: account.currency, profiles: profiles, profile: name, matched: matched, store: store)
 							guard let chosen = await run.choose(preview) else {
 								if run.isCanceled { return (read, problems, canceledAt: i) }
 								problems.append("\(url.lastPathComponent): \(preview.reason)")
@@ -254,30 +255,21 @@ extension AppModel {
 						problems.append("\(name): The account \"\(into.name)\" \(isNew ? "could not be saved" : "does not exist").")
 						continue
 					}
-					let categories = FileCategories(parsed.transactions.compactMap { parsed.categories[$0.id] }, in: ledger.categories, creating: file.createsCategories)
-					for category in categories.created { save(category: category) }
-					for path in categories.unplaced {
-						problems.append("\(name): The category \"\(path)\" was not created, because a level of it is a category and not a group.")
-					}
-					for category in categories.created where ledger.category(category.id) == nil {
-						problems.append("\(name): The category \"\(category.name)\" could not be created.")
-					}
-					var used = Set<UUID>()
 					do {
-						let rows = categories.assign(to: parsed.transactions, names: parsed.categories, for: into.id, in: ledger)
-						let result = try merge(.file(rows), into: into.id)
-						used = Set((result.added + result.booked).compactMap(\.categoryID))
+						guard let store else { continue }
+						let imported = try store.mergeFile(parsed.transactions, categories: parsed.categories,
+							creatingCategories: file.createsCategories, into: into.id)
+						let result = imported.reconciliation
+						applyFileImport(result, categories: imported.created)
 						added += result.added.count
 						skipped += result.skipped
 						booked += result.booked.count
+						created += imported.created.count
+						problems += imported.problems.map { "\(name): \($0)" }
 						if !result.added.isEmpty { warnings += parsed.warnings.map { "\(name): \($0)" } }
 					} catch {
 						problems.append("\(name): \(error)")
 					}
-					// A new category that no stored row took, because the rows were in the account already, goes again.
-					let unused = categories.unused(taking: used)
-					discard(newCategories: unused.filter { ledger.category($0) != nil })
-					created += categories.created.filter { !unused.contains($0.id) && ledger.category($0.id) != nil }.count
 				}
 			}
 		}
@@ -293,7 +285,7 @@ extension AppModel {
 		if booked > 0 { message += booked == 1 ? " Booked one pending transaction." : " Booked \(booked) pending transactions." }
 		if skipped > 0 { message += skipped == 1 ? " Skipped one already existing transaction." : " Skipped \(skipped) already existing transactions." }
 		if created > 0 { message += created == 1 ? " Created one new category." : " Created \(created) new categories." }
-		let profiles = read.compactMap { file in file.profile.map { "\(file.name) was read with the profile \"\($0)\"." } }
+		let profiles = read.compactMap { file in file.profile.map { "\(file.name) used the settings saved as profile \"\($0)\"." } }
 		if !profiles.isEmpty { message += "\n\n" + profiles.joined(separator: "\n") }
 		if !problems.isEmpty { message += "\n\n" + problems.joined(separator: "\n") }
 		if !warnings.isEmpty {

@@ -13,77 +13,111 @@ public struct FileCategories: Sendable {
 	/// The paths that `creating` could not place, because a level is a category and not a group.
 	public private(set) var unplaced: [String] = []
 
+	public static let creationLimit = 1_000
+	public static let limitMessage = "Auto-create categories is limited to 1,000 new categories per file. Remaining unknown categories were left to the rules."
+	public private(set) var limitReached = false
+
 	public init(_ names: [String], in categories: [Category], creating: Bool) {
-		var all = categories
-		func path(_ c: Category) -> [String] {
-			var result = [c.name.lowercased()]
-			var parent = c.parentID
-			while let id = parent, let p = all.first(where: { $0.id == id }) {
-				result.insert(p.name.lowercased(), at: 0)
-				parent = p.parentID
-			}
+		let byID = Dictionary(uniqueKeysWithValues: categories.map { ($0.id, $0) })
+		var paths: [UUID: [String]] = [:]
+		func path(_ category: Category) -> [String] {
+			if let cached = paths[category.id] { return cached }
+			let prefix = category.parentID.flatMap { byID[$0] }.map(path) ?? []
+			let result = prefix + [category.name.lowercased()]
+			paths[category.id] = result
 			return result
 		}
-		func find(_ parts: [String]) -> Category? {
-			let named = all.filter { parts.count == 1 ? $0.name.lowercased() == parts[0] : path($0) == parts }
-			return named.first { !$0.isGroup && !$0.isDefault } ?? named.first
+		for category in categories { _ = path(category) }
+		var byName: [String: Category] = [:]
+		var byPath: [[String]: Category] = [:]
+		var groups: [[String]: Category] = [:]
+		var exported: [String: Category] = [:]
+		var exportedGroups: [String: Category] = [:]
+		var nextPosition: [UUID?: Int] = [:]
+		func preferred(_ a: Category, _ b: Category?) -> Category {
+			guard let b else { return a }
+			let assignableA = !a.isGroup && !a.isDefault
+			let assignableB = !b.isGroup && !b.isDefault
+			if assignableA != assignableB { return assignableA ? a : b }
+			let ap = paths[a.id]!, bp = paths[b.id]!
+			if ap != bp { return ap.lexicographicallyPrecedes(bp) ? a : b }
+			return a.id.uuidString < b.id.uuidString ? a : b
 		}
+		func index(_ category: Category, at parts: [String]) {
+			paths[category.id] = parts
+			byName[category.name.lowercased()] = preferred(category, byName[category.name.lowercased()])
+			byPath[parts] = preferred(category, byPath[parts])
+			let text = parts.joined(separator: " - ")
+			exported[text] = preferred(category, exported[text])
+			if category.isGroup {
+				groups[parts] = preferred(category, groups[parts])
+				exportedGroups[text] = preferred(category, exportedGroups[text])
+			}
+			nextPosition[category.parentID] = max(nextPosition[category.parentID] ?? 0, category.position + 1)
+		}
+		for category in categories { index(category, at: paths[category.id]!) }
 		var seen = Set<String>()
 		for name in names where seen.insert(name).inserted {
-			var text = name
+			var text = name.trimmingCharacters(in: .whitespaces)
 			var prefix: [String] = []
-			if name.contains(" - "), !name.contains("›"), !name.contains("\\") {
-				let lower = name.trimmingCharacters(in: .whitespaces).lowercased()
-				let matches = [find([lower])].compactMap { $0 } + all.filter { path($0).joined(separator: " - ") == lower }
-				if let found = matches.first(where: { !$0.isGroup && !$0.isDefault }) ?? matches.first {
+			if text.contains(" - "), !text.contains("›"), !text.contains("\\") {
+				let lower = text.lowercased()
+				let literal = byName[lower], full = exported[lower]
+				if let found = [literal, full].compactMap({ $0 }).first(where: { !$0.isGroup && !$0.isDefault }) ?? literal ?? full {
 					if !found.isGroup, !found.isDefault { ids[name] = found.id }
 					continue
 				}
-				let groups = all.filter { $0.isGroup && lower.hasPrefix(path($0).joined(separator: " - ") + " - ") }
-				if let group = groups.max(by: { path($0).joined(separator: " - ").count < path($1).joined(separator: " - ").count }) {
-					prefix = path(group)
-					text = String(name.trimmingCharacters(in: .whitespaces).dropFirst(prefix.joined(separator: " - ").count + 3))
+				let parts = lower.components(separatedBy: " - ")
+				for level in (1..<parts.count).reversed() {
+					let groupText = parts.prefix(level).joined(separator: " - ")
+					if let group = exportedGroups[groupText] {
+						prefix = paths[group.id]!
+						text = String(text.dropFirst(groupText.count + 3))
+						break
+					}
 				}
 				text = text.replacingOccurrences(of: " - ", with: "›")
 			}
 			let parts = prefix + text.split(whereSeparator: { $0 == "›" || $0 == "\\" }).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
 			guard !parts.isEmpty else { continue }
 			let lower = parts.map { $0.lowercased() }
-			if let found = find(lower) {
+			if let found = parts.count == 1 ? byName[lower[0]] : byPath[lower] {
 				if !found.isGroup, !found.isDefault { ids[name] = found.id }
 				continue
 			}
 			guard creating else { continue }
+			var missing = 0
+			var blocked = false
+			for level in 1...parts.count {
+				let key = Array(lower.prefix(level))
+				if level < parts.count, let existing = groups[key] ?? byPath[key] {
+					if !existing.isGroup { blocked = true; break }
+				} else { missing += 1 }
+			}
+			if blocked { unplaced.append(name); continue }
+			guard created.count + missing <= Self.creationLimit else { limitReached = true; continue }
 			var parentID: UUID?
 			for level in 1...parts.count {
-				let isLeaf = level == parts.count
-				let prefix = Array(lower.prefix(level))
-				if !isLeaf, let group = all.first(where: { $0.isGroup && path($0) == prefix }) ?? all.first(where: { path($0) == prefix }) {
-					guard group.isGroup else {
-						unplaced.append(name)
-						break
-					}
-					parentID = group.id
-					continue
-				}
-				let position = (all.filter { $0.parentID == parentID }.map(\.position).max() ?? -1) + 1
-				let category = Category(parentID: parentID, position: position, name: parts[level - 1], isGroup: !isLeaf)
-				all.append(category)
+				let key = Array(lower.prefix(level))
+				if level < parts.count, let group = groups[key] { parentID = group.id; continue }
+				let category = Category(parentID: parentID, position: nextPosition[parentID] ?? 0, name: parts[level - 1], isGroup: level < parts.count)
+				index(category, at: key)
 				created.append(category)
 				parentID = category.id
-				if isLeaf { ids[name] = category.id }
+				if level == parts.count { ids[name] = category.id }
 			}
 		}
 	}
 
 	/// The created categories that no row took, without the groups above one that a row took.
 	public func unused(taking used: Set<UUID>) -> Set<UUID> {
+		let byID = Dictionary(uniqueKeysWithValues: created.map { ($0.id, $0) })
 		var kept = used
 		for id in used {
-			var parent = created.first { $0.id == id }?.parentID
+			var parent = byID[id]?.parentID
 			while let next = parent {
 				kept.insert(next)
-				parent = created.first { $0.id == next }?.parentID
+				parent = byID[next]?.parentID
 			}
 		}
 		return Set(created.map(\.id)).subtracting(kept)
@@ -93,8 +127,9 @@ public struct FileCategories: Sendable {
 	public func assign(to rows: [Transaction], names: [UUID: String], for accountID: UUID, in ledger: Ledger) -> [Transaction] {
 		rows.map { row in
 			var t = row
+			t.accountID = accountID
 			if let id = names[row.id].flatMap({ ids[$0] }), let category = ledger.category(id),
-				ledger.allowedAccounts(of: category)?.contains(accountID) != false {
+				ledger.canAssign(category, to: [t]) {
 				t.categoryID = id
 				t.categorizedBy = .manual
 			}

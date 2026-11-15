@@ -6,15 +6,17 @@ public struct CSVProfile: Hashable, Sendable, Codable {
 	/// The column titles of the file that the profile was saved for.
 	public var header: [String]
 	public var layout: CSVLayout
+	public var delimiter: String?
 
-	public init(name: String, header: [String], layout: CSVLayout) {
+	public init(name: String, header: [String], layout: CSVLayout, delimiter: String? = nil) {
 		self.name = name
 		self.header = header
 		self.layout = layout
+		self.delimiter = delimiter
 	}
 
 	public enum Match: Hashable, Sendable {
-		/// The file has the header row of the profile, so it imports without the preview.
+		/// The header, delimiter and detected date order match, so the file imports without the preview.
 		case same(CSVProfile)
 		/// The header row changed, and the preview starts from the profile, with each field in the column
 		/// of the title that the profile had for it.
@@ -28,17 +30,18 @@ public struct CSVProfile: Hashable, Sendable, Codable {
 	/// such as a new "Kategorie", keep their field.
 	public static func match(for file: CSVFile, in profiles: [CSVProfile], detected: CSVLayout) -> Match {
 		// The newest profile of a header row wins, because the user saved it last.
-		if let same = profiles.last(where: { $0.header == file.header }) { return .same(same) }
+		if let same = profiles.last(where: { $0.header == file.header && $0.delimiter == file.delimiter && $0.layout.dateOrder == detected.dateOrder }) { return .same(same) }
 		let moved = profiles.compactMap { profile -> (profile: CSVProfile, layout: CSVLayout, kept: Int)? in
 			let previous = Dictionary(grouping: profile.header.indices, by: { profile.header[$0] })
 			let positions = Dictionary(grouping: file.header.indices, by: { file.header[$0] })
 			guard previous.allSatisfy({ title, columns in
 				let count = positions[title]?.count ?? 0
-				return count == columns.count || max(count, columns.count) <= 1
+				return title.isEmpty || count == columns.count || max(count, columns.count) <= 1
 			}) else { return nil }
 			var layout = profile.previewLayout(for: file)
+			if profile.delimiter != file.delimiter || profile.layout.dateOrder != detected.dateOrder { layout.dateOrder = detected.dateOrder }
 			layout.columns = profile.layout.columns.compactMapValues { column in
-				guard profile.header.indices.contains(column),
+				guard profile.header.indices.contains(column), !profile.header[column].isEmpty,
 					let occurrence = previous[profile.header[column]]?.firstIndex(of: column),
 					let moved = positions[profile.header[column]], moved.indices.contains(occurrence) else { return nil }
 				return moved[occurrence]
@@ -75,14 +78,6 @@ public struct CSVProfile: Hashable, Sendable, Codable {
 		return preview.problem == nil && !preview.transactions.isEmpty ? preview.parsed : nil
 	}
 
-	/// The stored profiles that still decode, so that one that a later version cannot read does not take the others with it.
-	public static func list(from data: Data) -> [CSVProfile] {
-		struct Lenient: Decodable {
-			let profile: CSVProfile?
-			init(from decoder: Decoder) throws { profile = try? CSVProfile(from: decoder) }
-		}
-		return ((try? JSONDecoder().decode([Lenient].self, from: data)) ?? []).compactMap(\.profile)
-	}
 }
 
 extension [CSVProfile] {

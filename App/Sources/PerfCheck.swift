@@ -307,11 +307,29 @@ struct PerfScenario {
 				let stored = c.model.ledger.transactions(ofAccount: account.id).count - before
 				if stored != importedRows { c.fail("the import stored \(stored) of \(importedRows) rows") }
 			}),
+		PerfScenario(name: "import-csv-category-limit", budget: halfSecond,
+			setUp: { c in
+				await c.select("Account 8")
+				let rows = (0..<importedRows).map { "03.11.2026;Online Shop;Purpose \($0);-4,20" }
+				try? (["Buchungstag;Name;Kategorie;Betrag"] + rows).joined(separator: "\n").write(to: importFile, atomically: true, encoding: .utf8)
+			},
+			run: { c in
+				guard let account = c.model.selectedAccount else { return c.fail("no target account") }
+				let before = c.model.ledger.transactions.count
+				let categories = c.model.ledger.categories.count
+				let model = c.model
+				Task { await confirmPreview(model, creatingCategories: true) }
+				await model.importFiles([importFile], into: account, alwaysPreview: true)
+				c.harness.run("alert", "")
+				if model.ledger.transactions.count - before != importedRows { c.fail("the category import did not store every row") }
+				if model.ledger.categories.count - categories != 1_000 { c.fail("the category creation limit did not hold") }
+			}),
 	]
 
 	/// A CSV file waits in the preview, which reads it away from the main actor, until "Import".
-	@MainActor static func confirmPreview(_ model: AppModel) async {
+	@MainActor static func confirmPreview(_ model: AppModel, creatingCategories: Bool = false) async {
 		for _ in 0..<1_200 where model.fileImport?.preview?.chosen == nil { try? await Task.sleep(for: .milliseconds(50)) }
+		model.fileImport?.preview?.layout.createsCategories = creatingCategories
 		model.fileImport?.confirm()
 	}
 

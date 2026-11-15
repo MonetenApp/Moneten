@@ -8,6 +8,17 @@ struct FileCategoryTests {
 	var food: Domain.Category { Domain.Category(id: Self.foodID, parentID: living.id, position: 0, name: "Food") }
 	static let foodID = UUID()
 
+	@Test("A path must fit in the remaining category budget as a whole")
+	func pathAtLimit() {
+		let names = (0..<999).map { "Purpose \($0)" }
+		let found = FileCategories(names + ["Miete - Nebenkosten", "Last"], in: [], creating: true)
+		#expect(found.created.count == 1_000)
+		#expect(found.ids["Miete - Nebenkosten"] == nil)
+		#expect(found.created.last?.name == "Last")
+		#expect(found.limitReached)
+		#expect(FileCategories.limitMessage == "Auto-create categories is limited to 1,000 new categories per file. Remaining unknown categories were left to the rules.")
+	}
+
 	@Test("Bare Other chooses Living before Work regardless of load order")
 	func deterministicOther() {
 		let work = Domain.Category(position: 0, name: "Work", isGroup: true)

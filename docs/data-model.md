@@ -118,6 +118,7 @@ Lists and sums by category read `Ledger.rows(in:filter:)`, which returns `Transa
 | `accountGroup` | `AccountGroup` |
 | `account` | `Account` |
 | `category` | `Category` |
+| `csvProfile` | A profile name, JSON version, and payload containing `CSVProfile`. Migration v19 follows the v18 reserved by PR #203. Unreadable versions or payloads remain stored when another profile changes. |
 | `bankTransaction` | `Transaction` |
 | `splitPart` | `SplitPart`, with `vat` as JSON. Parts go with their transaction and become uncategorized when their category is removed. |
 | `portfolioValue` | `PortfolioValue`, with the primary key `accountID` and `day` |

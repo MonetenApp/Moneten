@@ -65,7 +65,7 @@ final class FileImport {
 
 	func confirm() {
 		guard let preview, let chosen = preview.chosen else { return }
-		preview.saveProfile()
+		guard preview.saveProfile() else { return }
 		end(chosen)
 	}
 

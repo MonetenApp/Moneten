@@ -436,6 +436,8 @@ final class AppModel {
 
 	private func open(_ store: Store) throws {
 		self.store = store
+		let legacy: UserDefaults? = ProcessInfo.processInfo.environment["MONETEN_DATA_DIR"] == nil ? .standard : nil
+		_ = try store.csvProfiles(movingLegacyFrom: legacy)
 		let loaded = try store.loadLedger()
 		ledgerChange = "load"
 		ledger = loaded
@@ -1174,13 +1176,6 @@ final class AppModel {
 		}
 	}
 
-	/// Deletes categories that an import created and no row took, inside the table change of the import.
-	func discard(newCategories ids: Set<UUID>) {
-		guard let store, !ids.isEmpty else { return }
-		let deleted = ids.filter { (try? store.deleteCategory($0)) != nil }
-		ledger.replace(categories: ledger.categories.filter { !deleted.contains($0.id) })
-	}
-
 	func remove(category id: UUID) async {
 		guard let store, let c = ledger.category(id), !c.isDefault else { return }
 		do {
@@ -1287,6 +1282,12 @@ final class AppModel {
 		ledgerChange = result.trailName(kind)
 		ledger.apply(result)
 		return result
+	}
+
+	func applyFileImport(_ result: Reconciliation, categories: [Domain.Category]) {
+		for category in categories { ledger.upsert(category) }
+		ledgerChange = result.trailName("file")
+		ledger.apply(result)
 	}
 
 	/// A refresh changes the rows of the open table in place, also a first refresh that brings the whole

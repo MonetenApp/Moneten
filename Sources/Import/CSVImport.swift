@@ -131,6 +131,30 @@ public struct CSVLayout: Hashable, Sendable, Codable {
 		self.createsCategories = createsCategories
 	}
 
+	private enum CodingKeys: String, CodingKey {
+		case encoding, columns, dateOrder, decimalMark, createsCategories
+	}
+
+	public init(from decoder: Decoder) throws {
+		let values = try decoder.container(keyedBy: CodingKeys.self)
+		encoding = try values.decode(CSVEncoding.self, forKey: .encoding)
+		dateOrder = try values.decode(DateOrder.self, forKey: .dateOrder)
+		decimalMark = try values.decodeIfPresent(DecimalMark.self, forKey: .decimalMark)
+		createsCategories = try values.decodeIfPresent(Bool.self, forKey: .createsCategories) ?? false
+		let fields = try values.nestedContainer(keyedBy: ColumnKey.self, forKey: .columns)
+		columns = [:]
+		for key in fields.allKeys {
+			if let field = CSVField(rawValue: key.stringValue) { columns[field] = try fields.decode(Int.self, forKey: key) }
+		}
+	}
+
+	private struct ColumnKey: CodingKey {
+		let stringValue: String
+		var intValue: Int? { nil }
+		init?(stringValue: String) { self.stringValue = stringValue }
+		init?(intValue: Int) { return nil }
+	}
+
 	/// The booking date and at least one amount, debit, or credit column are required.
 	public var missing: [CSVField] {
 		var result: [CSVField] = []
@@ -152,6 +176,7 @@ public struct CSVFile: Sendable {
 
 	public let data: Data
 	public let encoding: CSVEncoding
+	public let delimiter: String
 	/// The titles of the columns, one for each cell of the widest row. Without a header row of known
 	/// keywords, the nearest wide-enough row without dates above the first transaction stands in for it, so an
 	/// account line such as "Von;01.11.2026" is passed over, and a file without such a row shows the values
@@ -188,6 +213,7 @@ public struct CSVFile: Sendable {
 		self.encoding = encoding
 		try Task.checkCancellation()
 		let delimiter = Self.detectDelimiter(text)
+		self.delimiter = String(delimiter)
 		try Task.checkCancellation()
 		let rows = try Self.split(text, delimiter: delimiter)
 		try Task.checkCancellation()

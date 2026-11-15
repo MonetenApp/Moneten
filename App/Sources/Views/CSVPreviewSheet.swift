@@ -1,5 +1,6 @@
 import Domain
 import Import
+import Storage
 import SwiftUI
 
 /// A CSV file that waits for the user to check how the app reads it. Each change of the layout reads
@@ -33,6 +34,7 @@ final class CSVPreviewModel {
 	/// The profile that the file matched, which "Import" renames when the user changed the name. A profile
 	/// that the user picks is only a starting point, so a new name leaves it.
 	@ObservationIgnored private let matched: String?
+	@ObservationIgnored private let store: Store
 	@ObservationIgnored private var reading: Task<Void, Never>?
 	/// Set while the model takes a layout that needs no new reading or keeps its date order.
 	@ObservationIgnored private var isAdopting = false
@@ -42,7 +44,7 @@ final class CSVPreviewModel {
 
 	/// `profile` is the starting point, and `matched` the profile with the header row of the file. A near
 	/// match starts from its profile with an empty name, so that "Import" never moves it to another bank.
-	init(name: String, file: CSVFile, layout: CSVLayout, currency: String, profiles: [CSVProfile], profile: String?, matched: String?) {
+	init(name: String, file: CSVFile, layout: CSVLayout, currency: String, profiles: [CSVProfile], profile: String?, matched: String?, store: Store) {
 		self.name = name
 		self.file = file
 		self.layout = layout
@@ -50,6 +52,7 @@ final class CSVPreviewModel {
 		self.profiles = profiles
 		self.profile = profile
 		self.matched = matched
+		self.store = store
 		profileName = matched ?? ""
 		refresh()
 	}
@@ -80,16 +83,25 @@ final class CSVPreviewModel {
 
 	func deleteProfile() {
 		guard let profile else { return }
-		profiles.removeAll { $0.name == profile }
-		CSVProfileStore.save(profiles)
-		self.profile = nil
-		profileName = ""
+		do {
+			try store.deleteCSVProfile(named: profile)
+			profiles.removeAll { $0.name == profile }
+			self.profile = nil
+			profileName = ""
+		} catch { problem = "Could not delete the CSV profile. \(error)" }
 	}
 
-	func saveProfile() {
-		guard let savedProfile else { return }
-		profiles.save(CSVProfile(name: savedProfile, header: file.header, layout: layout), matched: matched, applied: profile)
-		CSVProfileStore.save(profiles)
+	func saveProfile() -> Bool {
+		guard let savedProfile else { return true }
+		let saved = CSVProfile(name: savedProfile, header: file.header, layout: layout, delimiter: file.delimiter)
+		do {
+			try store.saveCSVProfile(saved, replacing: profile == matched ? matched : nil)
+			profiles.save(saved, matched: matched, applied: profile)
+			return true
+		} catch {
+			problem = "Could not save the CSV profile. \(error)"
+			return false
+		}
 	}
 
 	/// The transactions to import, once every row of the file reads in `layout`.
@@ -286,19 +298,5 @@ struct CSVPreviewView: View {
 		} set: {
 			model.layout.assign(column, to: $0)
 		}
-	}
-}
-
-/// The CSV profiles of the user. They hold column titles and settings, no transactions, so they live in
-/// the settings of the app and not in the database.
-enum CSVProfileStore {
-	private static let key = "csvProfiles"
-
-	static func load() -> [CSVProfile] {
-		UserDefaults.standard.data(forKey: key).map(CSVProfile.list(from:)) ?? []
-	}
-
-	static func save(_ profiles: [CSVProfile]) {
-		UserDefaults.standard.set(try? JSONEncoder().encode(profiles), forKey: key)
 	}
 }
