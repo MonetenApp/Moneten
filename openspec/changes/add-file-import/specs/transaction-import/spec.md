@@ -229,6 +229,13 @@ A title row has at least two text labels and no dates or amounts; after a dated 
 - **WHEN** the next rows are "02.11.2026;Datum;Betrag;2.00" and "03.11.2026;Bakery;Cake;3.00"
 - **THEN** mapping the first and fourth columns to date and amount reads 101 amounts of 100, then 200 and 300 minor units
 
+#### Scenario: Spaces before a transaction date
+
+- **GIVEN** "Tag;Wer;Zweck;Wieviel", " 01.11.2026;Datum;Betrag; -1.00", and "02.11.2026;Kiosk;Brot;-2.00"
+- **WHEN** the first and fourth columns are mapped to date and amount
+- **THEN** the amounts are [-100, -200] minor units and no row is skipped
+- **AND** a tab before the first date has the same outcome
+
 #### Scenario: A balance before the column headings
 
 - **GIVEN** "01.11.2026;Anfangssaldo;100,00", "Datum;Name;Betrag", and "02.11.2026;Kiosk;-2,00"

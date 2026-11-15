@@ -5,6 +5,18 @@ import Testing
 
 @Suite("CSV preview")
 struct CSVPreviewTests {
+	@Test("Whitespace before a date cannot turn a transaction into a keyword header", arguments: [" ", "\t"])
+	func paddedTransactionWithHeaderWords(padding: String) throws {
+		let data = Data("Tag;Wer;Zweck;Wieviel\n\(padding)01.11.2026;Datum;Betrag; -1.00\n02.11.2026;Kiosk;Brot;-2.00\n".utf8)
+		let file = try CSVFile(data: data)
+		var layout = try file.detectedLayout()
+		layout.assign(0, to: .bookingDate)
+		layout.assign(3, to: .amount)
+		let parsed = try TransactionFileImporter.parse(data, currency: "EUR", csv: (file, layout))
+		#expect(parsed.transactions.map(\.amountMinor) == [-100, -200])
+		#expect(parsed.warnings.isEmpty)
+	}
+
 	@Test("Opening and closing balances before keyword titles are skipped with their lines")
 	func twoBalancesBeforeKeywordHeader() throws {
 		let data = Data("01.11.2026;Anfangssaldo;100,00\n30.11.2026;Endsaldo;98,00\nDatum;Name;Betrag\n02.11.2026;Kiosk;-2,00\n".utf8)
