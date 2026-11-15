@@ -1,30 +1,11 @@
 import Domain
 import SwiftUI
 
-/// The error indicator of an account whose last refresh failed. It opens the error popover.
+/// The error indicator of an account whose last refresh failed, or of a collapsed group with such accounts. It
+/// opens the error popover of each failed account.
 struct RefreshErrorButton: View {
-	let account: Account
-	let error: RefreshError
-	@State private var shown = false
-
-	var body: some View {
-		Button { shown = true } label: {
-			Image(systemName: "exclamationmark.triangle.fill")
-				.foregroundStyle(.orange)
-		}
-		.buttonStyle(.plain)
-		.help("The last refresh failed")
-		.accessibilityLabel("The last refresh failed")
-		.popover(isPresented: $shown, arrowEdge: .trailing) {
-			RefreshErrorPopover(account: account, error: error)
-		}
-	}
-}
-
-/// The error indicator of a collapsed account group with accounts whose last refresh failed. It opens the
-/// errors of all of them.
-struct GroupErrorButton: View {
 	let accounts: [Account]
+	var help = "The last refresh failed"
 	@State private var shown = false
 
 	var body: some View {
@@ -33,8 +14,8 @@ struct GroupErrorButton: View {
 				.foregroundStyle(.orange)
 		}
 		.buttonStyle(.plain)
-		.help("The last refresh of an account in this group failed")
-		.accessibilityLabel("The last refresh of an account in this group failed")
+		.help(help)
+		.accessibilityLabel(help)
 		.popover(isPresented: $shown, arrowEdge: .trailing) {
 			VStack(alignment: .leading, spacing: 0) {
 				ForEach(Array(accounts.enumerated()), id: \.element.id) { i, account in
@@ -94,8 +75,8 @@ struct AccountRefreshLine: View {
 					.help("Refresh Account")
 					.disabled(!model.canRefresh(.account(account.id)))
 			}
-			if let error = account.refreshError {
-				RefreshErrorButton(account: account, error: error)
+			if account.refreshError != nil {
+				RefreshErrorButton(accounts: [account])
 			}
 		}
 	}

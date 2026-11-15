@@ -147,7 +147,7 @@ struct GroupRow: View {
 			}
 			Spacer()
 			if let markers, !markers.failedAccounts.isEmpty {
-				GroupErrorButton(accounts: markers.failedAccounts)
+				RefreshErrorButton(accounts: markers.failedAccounts, help: "The last refresh of an account in this group failed")
 			}
 			if group.showSum {
 				let sums = model.ledger.sum(ofGroup: group.id)
@@ -203,7 +203,7 @@ struct AccountRow: View {
 					.lineLimit(1)
 					.foregroundStyle(.secondary)
 					.frame(maxWidth: 140, alignment: .trailing)
-				RefreshErrorButton(account: account, error: error)
+				RefreshErrorButton(accounts: [account])
 			} else if !account.isClosed {
 				// A closed account stays in the sidebar without its balance, as in MoneyMoney.
 				AmountText(money: balance).fontWeight(.medium)
