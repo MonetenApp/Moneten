@@ -12,12 +12,7 @@ struct SearchQuery {
 		/// Words that must follow each other inside one value of a field, as in a rule. A row whose search text lacks
 		/// one of `literals` cannot match.
 		case field([WildcardPattern], RuleField, literals: [Needle], shape: SearchText.WordShape?)
-		/// A regular expression over the text of each field as it is, as in a rule. Without a field name it also reads
-		/// the names of the account and the category. `anyLine` reads the values joined by line breaks with each line
-		/// as its own text, which every row that a value matches also matches, so one call rules out most rows
-		/// before a call for each value. A regular expression over 50,000 rows took about four times as long without.
-		/// A row whose search text is plain ASCII and lacks `required` cannot match, so it needs no call at all.
-		case regex(NSRegularExpression, anyLine: NSRegularExpression?, matchesEmpty: Bool, [RuleField], names: Bool, required: Needle?)
+		case regex(RegexTerm)
 		case amount(AmountBounds)
 		case constant(Bool)
 		case not(Node)
@@ -95,16 +90,35 @@ struct SearchQuery {
 		}
 	}
 
-	private static func holds(_ node: Node, _ row: Row) -> Bool {
-		switch node {
-		case let .text(needle):
-			return needle.occurs(in: row.searchText)
-		case let .words(patterns, literals):
-			return literals.allSatisfy { $0.occurs(in: row.searchText) }
-				&& row.searchText.split(separator: "\u{1}").contains { follow(patterns, in: $0.split(separator: " ")) }
-		case let .field(patterns, field, literals, shape):
-			return literals.allSatisfy { $0.occurs(in: row.searchText) } && row.field(field, holds: patterns, shape: shape)
-		case let .regex(regex, anyLine, matchesEmpty, fields, names, required):
+	/// A regular expression over the text of each field as it is, as in a rule. Without a field name it also reads the
+	/// names of the account and the category.
+	private struct RegexTerm {
+		let regex: NSRegularExpression
+		/// Reads the values joined by line breaks with each line as its own text, which every row that a value matches
+		/// also matches, so one call rules out most rows before a call for each value. A regular expression over 50,000
+		/// rows took about four times as long without.
+		let anyLine: NSRegularExpression?
+		let matchesEmpty: Bool
+		let fields: [RuleField]
+		let names: Bool
+		/// A row whose search text is plain ASCII and lacks this text cannot match, so it needs no call at all.
+		let required: Needle?
+		let watch = RegexWatch()
+
+		init(_ regex: NSRegularExpression, field: RuleField?) {
+			let pattern = regex.pattern
+			// Anchors of the whole text, inline options, and quantifiers that never give back read the joined values
+			// differently, so such a pattern reads each value alone.
+			let keepsMeaning = !["\\A", "\\z", "\\Z", "\\G", "(?", "*+", "++", "?+", "}+"].contains { pattern.range(of: $0, options: .literal) != nil }
+			self.regex = regex
+			anyLine = keepsMeaning ? try? NSRegularExpression(pattern: pattern, options: regex.options.union(.anchorsMatchLines)) : nil
+			fields = field.map { [$0] } ?? RuleField.unqualified
+			names = field == nil
+			required = fields.allSatisfy(SearchText.foldedAsTheyAre.contains) ? SearchQuery.requiredText(of: pattern).map(Needle.init) : nil
+			matchesEmpty = watch.firstMatch(regex, "") != nil
+		}
+
+		func holds(_ row: Row) -> Bool {
 			// Folding a text that is not ASCII can change its letters, as "e" and a combining accent become "é".
 			if let required, !required.occurs(in: row.searchText), row.searchText.utf8.allSatisfy({ $0 < 0x80 }) { return false }
 			var values: [String] = []
@@ -116,13 +130,69 @@ struct SearchQuery {
 				if let name = row.account()?.name { add(name) }
 				if let name = row.categoryName() { add(name) }
 			}
-			func matches(_ regex: NSRegularExpression, _ text: String) -> Bool { regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) != nil }
 			// An empty value matches only a pattern that matches the empty text, and it is no line of the joined text.
 			if hasEmpty, matchesEmpty { return true }
 			// A carriage return before the joining line break would make one line break of two.
-			if let anyLine, values.count > 1, !values.contains(where: { $0.utf8.contains(0x0D) }),
-				!matches(anyLine, values.joined(separator: "\n")) { return false }
-			return values.contains { matches(regex, $0) }
+			if let anyLine, values.count > 1, !values.contains(where: { $0.utf8.contains(0x0D) }) {
+				let joined = values.joined(separator: "\n")
+				guard let match = watch.firstMatch(anyLine, joined) else { return false }
+				// A match inside one value is a match of that value alone, unless a value has a line end of its own,
+				// after which `anyLine` reads a new line.
+				if let range = Range(match, in: joined), !joined[range].utf8.contains(0x0A), !values.contains(where: Self.hasLineEnd) { return true }
+			}
+			return values.contains { watch.firstMatch(regex, $0) != nil }
+		}
+
+		/// A line end of ICU: U+000A to U+000D, U+0085, U+2028, or U+2029.
+		private static func hasLineEnd(_ text: String) -> Bool {
+			text.unicodeScalars.contains { (0x0A...0x0D).contains($0.value) || $0.value == 0x85 || $0.value == 0x2028 || $0.value == 0x2029 }
+		}
+	}
+
+	/// Stops a regular expression that runs too long. ICU never returns for some patterns, such as a lazy quantifier
+	/// after an anchor in `/^+?49/`, and the search runs on the main thread at each keystroke. After the first text
+	/// that takes longer than 100 ms, every later text of the same search counts as no match.
+	private final class RegexWatch {
+		private var gaveUp = false
+
+		func firstMatch(_ regex: NSRegularExpression, _ text: String) -> NSRange? {
+			if gaveUp { return nil }
+			var found: NSRange?
+			var reports = 0
+			var deadline: ContinuousClock.Instant?
+			regex.enumerateMatches(in: text, options: .reportProgress, range: NSRange(text.startIndex..., in: text)) { result, _, stop in
+				if let result {
+					found = result.range
+					stop.pointee = true
+					return
+				}
+				// ICU reports progress about once for each character of a text, so a text of normal length reads no clock.
+				reports += 1
+				guard reports % 256 == 0 else { return }
+				if let deadline {
+					if ContinuousClock.now > deadline {
+						gaveUp = true
+						stop.pointee = true
+					}
+				} else {
+					deadline = .now + .milliseconds(100)
+				}
+			}
+			return found
+		}
+	}
+
+	private static func holds(_ node: Node, _ row: Row) -> Bool {
+		switch node {
+		case let .text(needle):
+			return needle.occurs(in: row.searchText)
+		case let .words(patterns, literals):
+			return literals.allSatisfy { $0.occurs(in: row.searchText) }
+				&& row.searchText.split(separator: "\u{1}").contains { follow(patterns, in: $0.split(separator: " ")) }
+		case let .field(patterns, field, literals, shape):
+			return literals.allSatisfy { $0.occurs(in: row.searchText) } && row.field(field, holds: patterns, shape: shape)
+		case let .regex(term):
+			return term.holds(row)
 		case let .amount(bounds):
 			return bounds.holds(row.transaction.amountMinor, decimals: row.transaction.amount.decimalPlaces)
 		case let .constant(value):
@@ -180,39 +250,52 @@ struct SearchQuery {
 	}
 
 	/// Plain text that every match of the pattern holds, in lower case, as the search text has it. A run with other
-	/// characters than ASCII or with two spaces in a row does not count, because folding can change those.
+	/// characters than ASCII or with two spaces in a row does not count, because folding can change those. Reads code
+	/// points, as ICU does, because a combining mark after `|` or `(` makes one character of both.
 	static func requiredText(of pattern: String) -> String? {
+		let scalars = Array(pattern.unicodeScalars)
 		// After `\E` a quantifier applies to the last quoted character.
-		guard !pattern.contains("|"), !pattern.contains("("), !pattern.contains("\\Q") else { return nil }
-		var runs = [""]
-		var rest = pattern[...]
-		while let c = rest.popFirst() {
+		guard !scalars.contains("|"), !scalars.contains("("), pattern.range(of: "\\Q", options: .literal) == nil else { return nil }
+		func isASCIIAlphanumeric(_ c: Unicode.Scalar) -> Bool { ("a"..."z").contains(c) || ("A"..."Z").contains(c) || ("0"..."9").contains(c) }
+		var runs: [[Unicode.Scalar]] = [[]]
+		func cut(droppingLast: Bool = false) {
+			if droppingLast, !runs[runs.count - 1].isEmpty { runs[runs.count - 1].removeLast() }
+			runs.append([])
+		}
+		var i = 0
+		while i < scalars.count {
+			let c = scalars[i]
+			i += 1
 			switch c {
 			case "\\":
-				runs.append("")
-				rest = rest.dropFirst().drop { $0.isASCII && ($0.isLetter || $0.isNumber) }
+				cut()
+				// `\c` takes the next character as its argument, as in `\c_`.
+				if i < scalars.count, scalars[i] == "c" { i += 1 }
+				i += 1
+				while i < scalars.count, isASCIIAlphanumeric(scalars[i]) { i += 1 }
 			case "[":
-				runs.append("")
-				if rest.first == "^" { rest.removeFirst() }
-				if rest.first == "]" { return nil }
-				while let d = rest.popFirst(), d != "]" {
-					if d == "[" { return nil }
-					if d == "\\" { rest = rest.dropFirst() }
+				cut()
+				if i < scalars.count, scalars[i] == "^" { i += 1 }
+				if i < scalars.count, scalars[i] == "]" { return nil }
+				while i < scalars.count, scalars[i] != "]" {
+					if scalars[i] == "[" { return nil }
+					if scalars[i] == "\\" { i += 1 }
+					i += 1
 				}
+				i += 1
 			case "{":
-				runs[runs.count - 1].removeLast(min(1, runs[runs.count - 1].count))
-				runs.append("")
-				rest = rest.drop { $0 != "}" }.dropFirst()
+				cut(droppingLast: true)
+				while i < scalars.count, scalars[i] != "}" { i += 1 }
+				i += 1
 			case "?", "*":
-				runs[runs.count - 1].removeLast(min(1, runs[runs.count - 1].count))
-				runs.append("")
+				cut(droppingLast: true)
 			case "+", ".", "^", "$", "]", "}":
-				runs.append("")
+				cut()
 			default:
 				runs[runs.count - 1].append(c)
 			}
 		}
-		let text = runs.map { $0.trimmingCharacters(in: .whitespaces) }.max { $0.count < $1.count } ?? ""
+		let text = runs.map { String(String.UnicodeScalarView($0)).trimmingCharacters(in: .whitespaces) }.max { $0.unicodeScalars.count < $1.unicodeScalars.count } ?? ""
 		guard !text.isEmpty, text.unicodeScalars.allSatisfy({ (0x20...0x7E).contains($0.value) }), !text.contains("  ") else { return nil }
 		return text.lowercased()
 	}
@@ -240,15 +323,7 @@ struct SearchQuery {
 			return .field(patterns.map(\.pattern), field, literals: field == .currency ? [] : literals(patterns),
 				shape: patterns.count == 1 ? SearchText.WordShape(patterns[0].pattern) : nil)
 		case let .regex(box, field):
-			// Anchors of the whole text, inline options, and quantifiers that never give back read the joined values
-			// differently, so such a pattern reads each value alone.
-			let pattern = box.regex.pattern
-			let keepsMeaning = !["\\A", "\\z", "\\Z", "\\G", "(?", "*+", "++", "?+", "}+"].contains(where: pattern.contains)
-			let anyLine = keepsMeaning ? try? NSRegularExpression(pattern: pattern, options: box.regex.options.union(.anchorsMatchLines)) : nil
-			let fields = field.map { [$0] } ?? RuleField.unqualified
-			let required = fields.allSatisfy(SearchText.foldedAsTheyAre.contains) ? requiredText(of: pattern).map(Needle.init) : nil
-			return .regex(box.regex, anyLine: anyLine, matchesEmpty: box.regex.firstMatch(in: "", range: NSRange(location: 0, length: 0)) != nil, fields, names: field == nil,
-				required: required)
+			return .regex(RegexTerm(box.regex, field: field))
 		case let .amount(op, value):
 			return .amount(AmountBounds(op, value))
 		case let .constant(value):
@@ -290,9 +365,10 @@ enum SearchText {
 		var folded = TextFolding.fold(parts.joined(separator: "\u{1}"))
 		var (separators, hasRuns) = scan(folded)
 		if separators != parts.count - 1 {
-			// A U+0001 inside a field would move every later field to the wrong place. U+FFFD keeps the words of the
-			// field as a rule reads them. Without `.literal`, a U+0001 with a combining mark after it stays.
-			folded = TextFolding.fold(parts.map { $0.replacingOccurrences(of: "\u{1}", with: "\u{FFFD}", options: .literal) }.joined(separator: "\u{1}"))
+			// A U+0001 inside a field would move every later field to the wrong place. U+0002 stands alone as a
+			// character, as U+0001 does, so the field keeps its words and characters as a rule reads them. Without
+			// `.literal`, a U+0001 with a combining mark after it stays.
+			folded = TextFolding.fold(parts.map { $0.replacingOccurrences(of: "\u{1}", with: "\u{2}", options: .literal) }.joined(separator: "\u{1}"))
 			hasRuns = scan(folded).hasRuns
 		}
 		// Most rows have single spaces only, and splitting every row doubled the time to build the ledger.
@@ -412,6 +488,9 @@ private struct AmountBounds {
 
 	init(_ comparison: AmountComparison, _ value: Decimal) {
 		self.comparison = comparison
+		// No amount comes near 10^19, and from 10^126 on the scaled value overflows to NaN.
+		let limit = Decimal(sign: .plus, exponent: 19, significand: 1)
+		let value = min(max(value, -limit), limit)
 		func rounded(_ places: Int, _ mode: NSDecimalNumber.RoundingMode) -> Int64 {
 			var scaled = value * Decimal(sign: .plus, exponent: places, significand: 1)
 			var result = Decimal()
