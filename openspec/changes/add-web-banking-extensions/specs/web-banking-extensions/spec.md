@@ -776,6 +776,23 @@ The app SHALL open any other `https://` URL in `challenge` in its own browser wi
 - **WHEN** the URL has a host that the manifest does not list
 - **THEN** the session ends with an error that names the host
 
+### Requirement: Login page on a new host
+
+The app SHALL ask the host question of "Host prompts without a manifest" before it opens a browser window on a new host for an extension without a list of hosts, because a script can return its login page before it contacted that host.
+
+#### Scenario: Allow the login page
+
+- **GIVEN** "Demo" has no manifest and the user allowed no host yet
+- **WHEN** the function returns `{challenge="https://auth.broker.example/authorize?client_id=abc", state="xyz"}` in a refresh that the user started
+- **THEN** the app asks whether "Demo" may contact `auth.broker.example` before it opens the window
+- **AND** after "Allow" the window opens and the app does not ask again for this host
+
+#### Scenario: Deny the login page
+
+- **GIVEN** "Demo" has no manifest
+- **WHEN** the function returns a login page on `auth.broker.example` and the user answers "Deny"
+- **THEN** no window opens and the session ends with an error that names `auth.broker.example`
+
 ### Requirement: App-to-app challenge
 
 The app SHALL show the URL in `challenge` as a QR code and not open it in a browser when `appToApp` holds the name of a banking app. The instruction text names that app.
