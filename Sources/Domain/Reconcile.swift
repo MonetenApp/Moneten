@@ -168,6 +168,7 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored: [Tran
 				next.isChecked = next.isChecked || delivered.isChecked
 			}
 			if live.isPending && !next.isPending {
+				if !delivery.isMigration, let id = next.sourceID { next.sourceID = Transaction.linkedID(id, pending: false, sourcePending: true) }
 				r.booked.append(next)
 			} else {
 				r.skipped += 1
@@ -322,6 +323,10 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 }
 
 func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTransaction], delivery: Delivery, today: Day) -> [Partner?] {
+	if rows.allSatisfy({ !$0.isPending }), stored.allSatisfy({ !$0.isPending && $0.fileIdentity == nil }),
+		deleted.allSatisfy({ !$0.isPending && $0.fileIdentity == nil }) {
+		return partners(of: rows, stored: stored, deleted: deleted)
+	}
 	enum Priority: Int { case identity, bookedFingerprint, reference, fetchedPending, filePending }
 	struct Candidate {
 		let delivered: Int
@@ -332,6 +337,7 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 		let fit: Int
 		let distance: Int
 		let evidence: Partner.Evidence
+		var legacy = false
 	}
 	let matches = rows.map(PendingMatch.init)
 	let liveMatches = stored.map(PendingMatch.init)
@@ -373,28 +379,14 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 		deadKeys[$0].0 == deadKeys[$1].0 ? deadKeys[$0].1 < deadKeys[$1].1 : deadKeys[$0].0 < deadKeys[$1].0
 	}
 	let deadPositions = Dictionary(uniqueKeysWithValues: deadOrder.enumerated().map { ($0.element, $0.offset + stored.count) })
-	func position(_ slot: Slot) -> Int {
+	func position(_ slot: Slot, legacy: Bool = false) -> Int {
 		switch slot {
-		case let .live(j): livePositions[j]!
-		case let .deleted(k): deadPositions[k]!
+		case let .live(j): legacy ? j : livePositions[j]!
+		case let .deleted(k): legacy ? stored.count + k : deadPositions[k]!
 		}
 	}
 	var candidates: [Candidate] = []
-	let bookedRows = rows.indices.filter { !rows[$0].isPending }
-	let bookedStored = stored.indices.filter { !stored[$0].isPending && stored[$0].fileIdentity == nil }
-	let bookedDeleted = deleted.indices.filter { !deleted[$0].isPending && deleted[$0].fileIdentity == nil }
-	let legacy = partners(of: bookedRows.map { rows[$0] }, stored: bookedStored.map { stored[$0] }, deleted: bookedDeleted.map { deleted[$0] })
-	for (index, partner) in legacy.enumerated() {
-		guard let partner else { continue }
-		let slot: Slot
-		switch partner.slot {
-		case let .live(j): slot = .live(bookedStored[j])
-		case let .deleted(k): slot = .deleted(bookedDeleted[k])
-		}
-		candidates.append(Candidate(delivered: bookedRows[index], slot: slot,
-			priority: partner.evidence == .sourceID ? .identity : .bookedFingerprint,
-			historical: 0, identityTombstone: 0, fit: 0, distance: 0, evidence: partner.evidence))
-	}
+
 	for (i, t) in rows.enumerated() {
 		var slots = Set((t.isPending ? byDay[t.bookingDate] : byKey[incoming[i].key]) ?? [])
 		if let id = t.sourceID { slots.formUnion(byID[id] ?? []) }
@@ -422,15 +414,29 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 				fetched = true
 				future = false
 			}
-			if !t.isPending && !identity.isPending && identity.fileIdentity == nil { continue }
+			let distance = abs(matches[i].day - match.day)
+			if !t.isPending && !identity.isPending && identity.fileIdentity == nil {
+				let legacy: Partner? = switch slot {
+				case let .live(j): partners(of: [t], stored: [stored[j]], deleted: [])[0]
+				case let .deleted(k): partners(of: [t], stored: [], deleted: [deleted[k]])[0]
+				}
+				guard let legacy else { continue }
+				let source = legacy.evidence == .sourceID
+				let tombstone = if case .deleted = slot { 1 } else { 0 }
+				let fit = incoming[i].fit(identity) == .exact ? 0 : 1
+				candidates.append(Candidate(delivered: i, slot: slot, priority: source ? .identity : .bookedFingerprint,
+					historical: 0, identityTombstone: source ? tombstone : 0, fit: source ? 0 : fit,
+					distance: distance, evidence: legacy.evidence, legacy: true))
+				continue
+			}
 			if case .deleted = slot, identity.isPending {
 				if !t.isPending { continue }
 				if let id = identity.sourceID, incoming[i].sourceID != id,
 					(bookedByID[id] ?? []).contains(where: { incoming[$0].agrees(with: identity) }) { continue }
 			}
 			guard incoming[i].agrees(with: identity) else { continue }
-			let distance = abs(matches[i].day - match.day)
 			let sourceAgrees = t.sourceID != nil && t.sourceID == identity.sourceID
+			if !t.isPending && identity.isPending && !sourceAgrees { continue }
 			let sameDay = t.bookingDate == identity.key.day
 			let historical = t.isPending && !identity.isPending ? 1 : 0
 			let tombstone = if case .deleted = slot { 1 } else { 0 }
@@ -472,8 +478,8 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 		}
 	}
 	candidates.sort {
-		($0.priority.rawValue, $0.historical * 2 + $0.identityTombstone, $0.fit, $0.distance, deliveredPositions[$0.delivered]!, position($0.slot))
-			< ($1.priority.rawValue, $1.historical * 2 + $1.identityTombstone, $1.fit, $1.distance, deliveredPositions[$1.delivered]!, position($1.slot))
+		($0.priority.rawValue, $0.historical * 2 + $0.identityTombstone, $0.fit, $0.distance, $0.legacy ? $0.delivered : deliveredPositions[$0.delivered]!, position($0.slot, legacy: $0.legacy))
+			< ($1.priority.rawValue, $1.historical * 2 + $1.identityTombstone, $1.fit, $1.distance, $1.legacy ? $1.delivered : deliveredPositions[$1.delivered]!, position($1.slot, legacy: $1.legacy))
 	}
 	var result = [Partner?](repeating: nil, count: rows.count)
 	var taken = Set<Slot>()
