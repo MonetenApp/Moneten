@@ -623,7 +623,7 @@ The app SHALL skip a pending file transaction when a free stored pending transac
 
 ### Requirement: Order-independent pending pairing
 
-The app SHALL pair delivered pending transactions one to one by original file identity, then source ID, then end-to-end reference, then fitting fetched or deleted rows on the same day, then the closest unfetched file row within seven days. Conflicting explicit identities never pair. Reference agreement does not override known counterparty conflicts. Pending-to-pending file pairs use the same day only. Pairs are taken greedily by evidence priority, distance, and stable delivered and stored positions.
+The app SHALL pair pending transactions one to one by file identity, source ID, end-to-end reference, fitting same-day fetched or deleted row, then nearest unfetched file row within seven days. Conflicting identities never pair. Known counterparty conflicts invalidate reference matches. Pending file imports use the same day. Greedy candidate order is evidence priority, distance, and stable delivered and stored positions.
 
 #### Scenario: Global nearest choice
 
@@ -960,7 +960,7 @@ The app SHALL show progress while it imports and let the user cancel. Cancellati
 
 ### Requirement: Persist the original file identity
 
-A file import SHALL set `fileIdentity` to a versioned, unambiguous fingerprint of the original booking day, amount, currency, folded purpose, counterparty, source ID, and end-to-end reference. The pending state and user fields are excluded. Only a file import creates this identity. A takeover, booking, and tombstone copy it unchanged. An agreeing file identity is explicit evidence for pairing, including an already booked version on another day. Different non-NULL file identities SHALL never pair, before any relaxed match. NULL means no file identity and retains the existing matching behavior. Migration v18 adds one nullable TEXT column to each of bankTransaction and deletedTransaction, with NULL for existing rows.
+Only file imports SHALL create `fileIdentity`, a versioned original-file fingerprint. Takeover, booking, deletion, and complete export/import preserve it. Agreeing file identities pair, including booked versions on another day. Different non-NULL identities never pair. NULL retains prior matching behavior. Migration v18 adds one nullable TEXT column to each of bankTransaction and deletedTransaction, leaving existing rows NULL.
 
 #### Scenario: An unidentified file survives booking and deletion
 
@@ -984,3 +984,11 @@ A file import SHALL set `fileIdentity` to a versioned, unambiguous fingerprint o
 - **WHEN** the database opens with v18
 - **THEN** both rows retain their fields and have NULL fileIdentity
 - **AND** a later reopen retains file identities that file imports have stored
+
+#### Scenario: Fingerprint fields stay independent of user edits
+
+- **GIVEN** an imported row with booking day, amount, currency, purpose, counterparty, source ID, and end-to-end reference
+- **THEN** its versioned length-prefixed fingerprint includes those original fields, with folded purpose and normalized counterparty
+- **WHEN** its pending state, local UUID, creation time, comment, checkmark, or category changes
+- **THEN** its original file identity stays unchanged
+- **AND** a refresh or migration cannot create a file identity

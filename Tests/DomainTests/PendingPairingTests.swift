@@ -430,13 +430,14 @@ extension ReconcileTests {
 		}
 	}
 
-	@Test("Gate 3 items 1 4 5: every delivered and stored permutation has literal rows")
-	func gate3AllPermutations() {
+	@Test("Gate 3 items 1 4 5: every delivered and stored permutation has literal rows", arguments: [false, true])
+	func gate3AllPermutations(persisted: Bool) {
 		for (fileDays, bankDays, expected) in [
 			([1, 8], [7, 15], ["20261201 -80000 true false false Miete Dezember", "20261207 -80000 true true false BANK", "20261215 -80000 true true false BANK"]),
 			([5, 1], [4, 10], ["20261201 -80000 true false false Miete Dezember", "20261204 -80000 true true false BANK", "20261210 -80000 true true false BANK"])
 		] {
-			let files = fileDays.map { rent($0) }
+			let original = fileDays.map { rent($0) }
+			let files = persisted ? merge(.file(original), at: noon(20, month: 11)).added : original
 			let banks = bankDays.map { rent($0, purpose: "BANK") }
 			for stored in permutations(files) {
 				for delivered in permutations(banks) {
@@ -445,7 +446,8 @@ extension ReconcileTests {
 				}
 			}
 		}
-		let files = [rent(1), rent(8)]
+		let original = [rent(1), rent(8)]
+		let files = persisted ? merge(.file(original), at: noon(20, month: 11)).added : original
 		let first = history(files, after: merge(refresh([rent(1, purpose: "BANK")]), stored: files, at: noon(20, month: 11)))
 		let extra = row(3, -1_200, "Other", "OTHER", month: 12, pending: true)
 		for booked in [false, true] {
