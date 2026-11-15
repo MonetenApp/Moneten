@@ -644,19 +644,25 @@ The app SHALL skip a pending file transaction when one free stored pending row f
 
 ### Requirement: Order-independent pending pairing
 
-The app SHALL use the following one-to-one pairing order only when at least one row is pending or the stored row has a file identity. Booked deliveries against booked rows without a file identity use the existing booked matching rule.
+The app SHALL pair pending or stored-file-identified rows one to one in this order:
 
-1. Agreeing original file identity or source ID.
-2. Same-day exact or compatible fingerprint of a booked row, including a pending repeat of its booked version.
-3. Agreeing end-to-end reference with the same amount and currency.
+1. Original file identity or source ID.
+2. Exact, then compatible booked fingerprint, including pending repeats.
+3. End-to-end reference with equal amount and currency.
 4. Fitting fetched pending or honored deleted row within seven days.
 5. Nearest fitting unfetched pending file row within seven days.
 
-Within a level, current versions precede pending repeats of booked versions. Identity matches prefer live rows to tombstones. Fingerprints rank exact, compatible, then absent. Remaining ties use day distance, stable delivered position, then stable stored position. Live positions use booking day, creation time, and UUID. Tombstone positions use persisted identity fields, optional-value presence, fetched flag, and deletion time as a tuple. Candidates are consumed greedily only when both sides are free.
+Booked rows without file identity keep the existing booked-only rule.
 
-Different real source IDs or nonempty end-to-end references never pair. Different file fingerprints stay separate except for a verified pending-to-booked transition within seven days with the same amount and currency and either an agreeing reference or a fitting counterparty. A booked repeat can use its current fingerprint even when it differs from the retained original file fingerprint. Pending fallback checks known counterparties by IBAN, otherwise by name. An import bounds pending-to-pending pairs to seven days and keeps nearest-day choice across fetched and unfetched rows outside the same-day fetched level. A refresh ranks fetched pending rows within seven days before unfetched rows. Unfetched refresh candidates must have a covered date today or later and no review mark. A pending tombstone cannot block a booking. A source arriving booked reserves its pending tombstone against unrelated look-alikes.
+#### Scenario: Candidate eligibility and ties
 
-Booking first prefers agreeing identities, then a unique fetched pending row. With no fetched partner, only nearest fitting file rows on or before the booked day participate, and an unresolved tie marks those rows and the delivery for review.
+- **GIVEN** free delivered and stored candidates at the same level
+- **WHEN** the app chooses a pair
+- **THEN** current versions precede pending repeats of booked versions. - **AND** identity matches prefer live rows to tombstones. Fingerprints rank exact, compatible, then absent. Remaining ties use day distance, stable delivered position, then stable stored position. Live positions use booking day, creation time, and UUID. Tombstone positions use persisted identity fields, optional-value presence, fetched flag, and deletion time as a tuple. Candidates are consumed greedily only when both sides are free.
+
+- **AND** different real source IDs or nonempty end-to-end references never pair. Different file fingerprints stay separate except for a verified pending-to-booked transition within seven days with the same amount and currency and either an agreeing reference or a fitting counterparty. A booked repeat can use its current fingerprint even when it differs from the retained original file fingerprint. Pending fallback checks known counterparties by IBAN, otherwise by name. An import bounds pending-to-pending pairs to seven days and keeps nearest-day choice across fetched and unfetched rows outside the same-day fetched level. A refresh ranks fetched pending rows within seven days before unfetched rows. Unfetched refresh candidates must have a covered date today or later and no review mark. A pending tombstone cannot block a booking. A source arriving booked reserves its pending tombstone against unrelated look-alikes.
+
+- **AND** booking first prefers agreeing identities, then a unique fetched pending row. With no fetched partner, only nearest fitting file rows on or before the booked day participate, and an unresolved tie marks those rows and the delivery for review.
 
 #### Scenario: Global nearest choice
 
