@@ -264,6 +264,20 @@ struct AllDataTests {
 		#expect(try target.exportAllData(at: exportedAt) == AllData(exportedAt: exportedAt))
 	}
 
+	@Test("A portfolio value in a foreign currency is refused without changing the database")
+	func portfolioCurrency() throws {
+		var json = try JSONSerialization.jsonObject(with: try filledStore().exportAllData(at: exportedAt).json()) as! [String: Any]
+		var values = json["portfolioValues"] as! [[String: Any]]
+		values[0]["value"] = "100"
+		values[0]["currency"] = "JPY"
+		json["portfolioValues"] = values
+		let target = try emptyStore("currency")
+		#expect(throws: AllData.ReadError.damaged("at portfolioValues[0], the currency JPY differs from the account currency EUR")) {
+			try target.importAllData(try AllData(json: JSONSerialization.data(withJSONObject: json)))
+		}
+		#expect(try target.exportAllData(at: exportedAt) == AllData(exportedAt: exportedAt))
+	}
+
 	@Test("Every key of an export is described in docs/export-format.md")
 	func documented() throws {
 		let json = try JSONSerialization.jsonObject(with: try filledStore().exportAllData(at: exportedAt).json())
