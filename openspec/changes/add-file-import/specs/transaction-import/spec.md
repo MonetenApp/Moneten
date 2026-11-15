@@ -551,7 +551,7 @@ The app SHALL keep a pending transaction from a file that no refresh has deliver
 
 ### Requirement: The bank's version of a future pending transaction from a file
 
-The app SHALL count a payment once when a successful refresh delivers a pending transaction with the same amount and the same counterparty, at most seven days apart from a future pending transaction from a file. A delivered transaction that the account does not hold yet and that the user did not delete takes the place of the one from the file. A delivered transaction that the account holds already counts there, so the app removes the one from the file.
+The app SHALL count a payment once when a successful refresh delivers a pending transaction with the same amount and the same counterparty, at most seven days apart from a future pending transaction from a file. A delivered transaction that the account does not hold yet and that the user did not delete takes the place of the one from the file. A delivered transaction that the account holds already counts there when it arrives on the day of the one from the file, which the app then removes.
 
 #### Scenario: The bank reports the scheduled rent as pending
 

@@ -114,6 +114,37 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored: [Tran
 	let released = stored.indices.filter { stored[$0].isPending && !taken.contains($0) }
 	let fresh = rows.indices.filter { partners[$0] == nil && !rows[$0].isPending }
 	let bookings = Bookings(pending: released.map { ($0, stored[$0]) }, booked: fresh.map { ($0, rows[$0]) })
+	// A pending row from a file that lies in the future, such as a scheduled rent from a camt.052 file, which a bank
+	// may report only from its booking date on. A delivered pending row that fits it is the bank's version of it.
+	let today = Day(now)
+	let future = released.filter { j in
+		let t = stored[j]
+		return bookings.ofPending[j] == nil && delivery.covers(t.bookingDate) && !t.needsReview && !t.isFetched && t.bookingDate >= today
+	}
+	// A row that the user deleted does not count. A row that the account holds already stands for a file row on its own
+	// day only, so it does not remove the next payment of a weekly order from the same file.
+	let bankVersions: [(i: Int, match: PendingMatch, day: Day?)] = rows.indices.compactMap { i in
+		guard rows[i].isPending else { return nil }
+		switch partners[i]?.slot {
+		case .deleted: return nil
+		case .live: return (i, PendingMatch(rows[i]), rows[i].bookingDate)
+		case nil: return (i, PendingMatch(rows[i]), nil)
+		}
+	}
+	func fits(_ v: (i: Int, match: PendingMatch, day: Day?), _ j: Int, _ match: PendingMatch) -> Bool {
+		v.match.fits(match) && (v.day == nil || v.day == stored[j].bookingDate)
+	}
+	// Each delivered row takes one file row at most, the first in the order of the stored rows.
+	var fileRowOf: [Int: Int] = [:]
+	var takenBy: [Int: Int] = [:]
+	for j in future {
+		let match = PendingMatch(stored[j])
+		if let v = bankVersions.first(where: { fileRowOf[$0.i] == nil && fits($0, j, match) }) {
+			fileRowOf[v.i] = j
+			takenBy[j] = v.i
+		}
+	}
+	let isFuture = Set(future)
 
 	var r = Reconciliation()
 	for (i, delivered) in rows.enumerated() {
@@ -163,6 +194,12 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored: [Tran
 			rules.categorize(&next)
 			if fetched { next.isFetched = true }
 			r.booked.append(next)
+		} else if let j = fileRowOf[i] {
+			var next = stored[j].takingBankFields(of: delivered)
+			next.isFetched = true
+			rules.categorize(&next)
+			r.updated.append(next)
+			r.skipped += 1
 		} else {
 			var t = Transaction(arriving: delivered, in: account.id, fetched: fetched)
 			t.needsReview = bookings.ofBooked[i] == .review
@@ -180,6 +217,14 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored: [Tran
 				t.needsReview = true
 				t.isChecked = false
 				r.marked.append(t)
+			}
+		case nil where isFuture.contains(j):
+			// The bank's version stands for the file row: it took the file row over, or a stored row holds it already.
+			// A file row that only a taken bank row fits is the same payment, because the bank reported one.
+			if let i = takenBy[j] {
+				if partners[i] != nil { r.dropped.append(pending.id) }
+			} else if case let match = PendingMatch(pending), bankVersions.contains(where: { fits($0, j, match) }) {
+				r.dropped.append(pending.id)
 			}
 		case nil:
 			if delivery.covers(pending.bookingDate), !pending.needsReview || pending.isChecked { r.dropped.append(pending.id) }
