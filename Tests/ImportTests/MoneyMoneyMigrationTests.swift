@@ -779,7 +779,7 @@ struct MoneyMoneyMigrationTests {
 		#expect(report.rows.map { $0.balance.minorUnits } == [123_456, 50_000, 1_000_000])
 		#expect(report.rows.map { $0.sourceBalance?.minorUnits } == [123_456, 50_000, 1_000_000])
 		#expect(report.rows.map(\.matches) == [true, true, true])
-		let note = "2 MoneyMoney accounts, \"Giro\", \"Savings\", were merged into \"Mein Giro\". Each line shows the source balance; only transactions are compared."
+		let note = "2 source accounts, \"Giro\", \"Savings\", were merged into \"Mein Giro\". Each line shows the source balance; only transactions are compared."
 		#expect(report.notes.filter { $0 == note }.count == 1)
 		#expect(report.text(locale: Locale(identifier: "en_US")).contains(note))
 		var missing = ledger
@@ -883,7 +883,7 @@ struct MoneyMoneyMigrationTests {
 		let existing = Account(position: 0, name: "Mein Giro", kind: .giro, source: .offline, iban: "DE02120300000000202051", initialBalanceMinor: 99)
 		let p = try plan(into: Ledger(accounts: [existing]))
 		let row = try #require(p.report(after: Ledger(groups: p.groups, accounts: [existing] + p.accounts, categories: p.categories, transactions: p.transactions)).rows.first)
-		#expect(row.name == "Mein Giro" && row.transactions == 3 && !row.comparesBalance && row.matches)
+		#expect(row.name == "Giro" && row.transactions == 3 && !row.comparesBalance && row.matches)
 		#expect(row.balance == Money(minorUnits: 99 - 4_590 - 8_900, currency: "EUR"))
 	}
 

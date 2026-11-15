@@ -360,7 +360,7 @@ The app SHALL show a report after the import. The report lists for each account 
 - **AND** the existing account "Mein Giro" has that IBAN
 - **WHEN** the migration finishes
 - **THEN** the report lists "Giro" with 3 of 3 transactions and its source balance of 1.234,56 EUR, and "Savings" with 1 of 1 transaction and its source balance of 500,00 EUR
-- **AND** one note says '2 MoneyMoney accounts, "Giro", "Savings", were merged into "Mein Giro". Each line shows the source balance; only transactions are compared.'
+- **AND** one note says '2 source accounts, "Giro", "Savings", were merged into "Mein Giro". Each line shows the source balance; only transactions are compared.'
 - **AND** a missing transaction makes only its source account differ
 
 #### Scenario: Everything matches

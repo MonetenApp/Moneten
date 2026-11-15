@@ -4,6 +4,8 @@ import Foundation
 extension MoneyMoneyMigration {
 	/// An account of the export with what the source says about it.
 	public struct SourceAccount: Sendable, Equatable {
+		public var sourceID: String
+		public var name: String
 		public var accountID: UUID
 		/// The transactions of the export for this account.
 		public var rows: [Transaction] = []
@@ -68,17 +70,26 @@ extension MoneyMoneyMigration.Plan {
 	public func report(after ledger: Ledger) -> MoneyMoneyMigration.Report {
 		let rules = Categorizer(ledger: ledger)
 		let byAccount = Dictionary(grouping: ledger.transactions, by: \.accountID)
+		let byTarget = Dictionary(grouping: sources, by: \.accountID)
+		var mergeNotes: [String] = []
+		for source in sources {
+			let merged = byTarget[source.accountID] ?? []
+			guard merged.count > 1, merged.first?.sourceID == source.sourceID, let account = ledger.account(source.accountID) else { continue }
+			let names = merged.map { "\"\($0.name)\"" }.joined(separator: ", ")
+			mergeNotes.append("\(merged.count) source accounts, \(names), were merged into \"\(account.name)\". Each line shows the source balance; only transactions are compared.")
+		}
 		let rows = sources.compactMap { source -> MoneyMoneyMigration.Report.Row? in
 			guard let account = ledger.account(source.accountID) else { return nil }
 			let stored = byAccount[account.id] ?? []
 			let missing = reconcile(.migration(source.rows), into: account, stored: stored, deleted: [], rules: rules, now: Date()).added.count
 			// A row that the source deleted after an earlier run stays in the app, so the account holds one more.
+			let shared = (byTarget[account.id]?.count ?? 0) > 1
 			let exported = Set(source.rows.compactMap(\.sourceID))
-			let gone = stored.filter { MoneyMoneyMigration.isOfSource($0.sourceID) && !exported.contains($0.sourceID!) }.count
+			let gone = shared ? 0 : stored.filter { MoneyMoneyMigration.isOfSource($0.sourceID) && !exported.contains($0.sourceID!) }.count
 			func sum(_ rows: [Transaction]) -> Int64 {
 				rows.reduce(0) { !$1.isPending && $1.currency == account.currency ? $0 + $1.amountMinor : $0 }
 			}
-			let migrated = account.source == .migrated
+			let migrated = account.source == .migrated && !shared
 			var balance = account.reportedBalance ?? Money(minorUnits: account.initialBalanceMinor + sum(stored), currency: account.currency)
 			if migrated && account.kind != .portfolio {
 				// A row without the ID of the source that matches a booked row of the export by its fingerprint is a row
@@ -86,15 +97,16 @@ extension MoneyMoneyMigration.Plan {
 				// neither is a pending row, which the balance of the source leaves out. A booked form of an ID
 				// (`moneymoney-booked:`) counts neither here nor in the initial balance.
 				let ofSource = stored.filter { MoneyMoneyMigration.isOfSource($0.sourceID) }
-				let others = stored.filter { !MoneyMoneyMigration.isOfSource($0.sourceID) && $0.sourceID?.hasPrefix("moneymoney-booked:") != true }
+				let others = stored.filter { !MoneyMoneyMigration.isOfSource($0.sourceID) && $0.sourceID?.hasPrefix(Transaction.bookedMigrationIDPrefix) != true }
 				let claimed = Set(ofSource.compactMap(\.sourceID))
 				let open = source.rows.filter { !$0.isPending && !claimed.contains($0.sourceID ?? "") }
 				let added = reconcile(.file(others), into: account, stored: open, deleted: [], rules: rules, now: Date()).added
 				balance = Money(minorUnits: account.initialBalanceMinor + sum(ofSource) + sum(others) - sum(added), currency: account.currency)
 			}
-			return .init(name: account.name, transactions: source.rows.count - missing + gone, sourceTransactions: source.rows.count,
+			if shared, let sourceBalance = source.balance { balance = sourceBalance }
+			return .init(name: source.name, transactions: source.rows.count - missing + gone, sourceTransactions: source.rows.count,
 				balance: balance, sourceBalance: source.balance, comparesBalance: migrated)
 		}
-		return .init(rows: rows, notes: notes)
+		return .init(rows: rows, notes: mergeNotes + notes)
 	}
 }

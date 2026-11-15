@@ -447,7 +447,7 @@ extension Transaction {
 	/// The migration ID of a booked row whose row in the source is still pending, because a file or a bank booked it
 	/// first. The row counts as imported, not as a row of the source, and a later migration still finds it by the ID.
 	/// The prefix does not start with `migrationIDPrefix`, so a sum over the rows of the source leaves the row out.
-	static let bookedMigrationIDPrefix = "moneymoney-booked:"
+	public static let bookedMigrationIDPrefix = "moneymoney-booked:"
 
 	/// The ID by which a delivered row finds this one: the plain migration ID for its booked form, any other ID as it is.
 	static func matchingID(_ id: String) -> String {

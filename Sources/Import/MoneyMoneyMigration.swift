@@ -79,6 +79,7 @@ public struct MoneyMoneyMigration: Sendable {
 		mapCategories(rawCategories, ledger: ledger, plan: &plan, map: &categoryMap)
 
 		var rows: [Transaction] = []
+		var sourceRows: [String: [Transaction]] = [:]
 		for raw in rawTransactions {
 			guard let accountSource = raw["accountUuid"] as? String, let accountID = accountMap[accountSource] else { continue }
 			let id = (raw["id"] as? Int).map { "\(Transaction.migrationIDPrefix)\($0)" }
@@ -98,10 +99,11 @@ public struct MoneyMoneyMigration: Sendable {
 				comment: Self.string(raw["comment"]), isChecked: (raw["checkmark"] as? Bool) ?? false, isPending: pending,
 				categoryID: categoryID, categorizedBy: categoryID == nil ? .none : .manual, isNew: false, sourceID: id)
 			rows.append(t)
+			sourceRows[accountSource, default: []].append(t)
 		}
 
 		let delivered = Dictionary(grouping: rows, by: \.accountID)
-		for i in plan.sources.indices { plan.sources[i].rows = delivered[plan.sources[i].accountID] ?? [] }
+		for i in plan.sources.indices { plan.sources[i].rows = sourceRows[plan.sources[i].sourceID] ?? [] }
 
 		// `reconcile` decides which rows are new. A new row keeps what MoneyMoney says: its category, comment,
 		// and checkmark, and no new mark. Only the review mark comes from `reconcile`.
@@ -248,7 +250,7 @@ public struct MoneyMoneyMigration: Sendable {
 			}
 			let balanceDate = (item["balanceDate"] as? Date) ?? (item["refreshTimestamp"] as? Date)
 			let color = (item["icon"] as? Data).flatMap(Self.iconColor)
-			defer { if let id = map[source] { plan.sources.append(SourceAccount(accountID: id, balance: balanceMinor.map { Money(minorUnits: $0, currency: currency) })) } }
+			defer { if let id = map[source] { plan.sources.append(SourceAccount(sourceID: source, name: name, accountID: id, balance: balanceMinor.map { Money(minorUnits: $0, currency: currency) })) } }
 			// The MoneyMoney identifier decides. IBAN or account number match only accounts without one,
 			// so that two MoneyMoney accounts with the same IBAN stay apart.
 			if var existing = ledger.accounts.first(where: { $0.sourceID == source }) ?? ledger.accounts.first(where: { a in
