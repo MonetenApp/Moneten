@@ -39,3 +39,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 ## Workflow follow-up
 
 - Archive the change with `openspec archive add-categories` when every task is checked.
+
+## 4. Move without dragging
+
+- [ ] 4.1 Test the offered destination groups with literal names, then add "Move to Group" to the category context menu. Verify the real menu and a move through the debug harness.

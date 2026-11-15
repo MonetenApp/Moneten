@@ -56,6 +56,18 @@ The app SHALL let the user drag a category or a category group to another positi
 - **WHEN** the user drags "Groceries" above "Leisure"
 - **THEN** the sidebar and every category menu list "Groceries" before "Leisure"
 
+### Requirement: Move categories from the context menu
+
+The app SHALL offer "Move to Group" in the context menu of each category and category group except "Uncategorized". The menu lists "No group" and every group that accepts the move, in sidebar order. A choice moves the category to the end of that group or the top level. "No group" is disabled when it changes nothing.
+
+#### Scenario: Move without dragging
+
+- **GIVEN** "Mobility" contains the group "Car", "Car" contains the group "Electric", and "Living" is another group
+- **WHEN** the user opens "Move to Group" for "Car" with the keyboard or VoiceOver
+- **THEN** the menu offers "No group" and "Living", and omits "Car", "Electric", and "Mobility", where "Car" is already last
+- **WHEN** the user chooses "Living"
+- **THEN** "Car" and "Electric" stand at the end of "Living", and their transactions keep their categories
+
 ### Requirement: Default category
 
 The app SHALL keep one default category named "Uncategorized" as the last entry of the section. It holds every transaction that has no other category. The user can rename it in its settings and cannot remove or move it.

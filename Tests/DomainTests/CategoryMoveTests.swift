@@ -72,6 +72,22 @@ struct CategoryMoveTests {
 		#expect(moving(living.id, into: nil, at: 99, in: l).categoriesInSidebarOrder.map(\.name) == ["Transfers", "Living", "Uncategorized"])
 	}
 
+	@Test("Car offers Living and Leisure, but never itself, Electric, or its unchanged parent")
+	func destinationGroups() {
+		let mobility = Domain.Category(position: 0, name: "Mobility", isGroup: true)
+		let car = Domain.Category(parentID: mobility.id, position: 0, name: "Car", isGroup: true)
+		let electric = Domain.Category(parentID: car.id, position: 0, name: "Electric", isGroup: true)
+		let living = Domain.Category(position: 1, name: "Living", isGroup: true)
+		let leisure = Domain.Category(parentID: living.id, position: 0, name: "Leisure", isGroup: true)
+		let fuel = Domain.Category(position: 2, name: "Fuel")
+		let l = Ledger(categories: [leisure, fuel, electric, car, uncategorized, living, mobility])
+
+		#expect(l.destinationGroups(forCategory: car.id).map(\.name) == ["Living", "Leisure"])
+		#expect(l.destinationGroups(forCategory: mobility.id).map(\.name) == ["Living", "Leisure"])
+		#expect(l.destinationGroups(forCategory: fuel.id).map(\.name) == ["Mobility", "Car", "Electric", "Living", "Leisure"])
+		#expect(l.destinationGroups(forCategory: uncategorized.id).map(\.name) == [])
+	}
+
 	@Test("The old and the new group both keep positions without gaps")
 	func densePositions() {
 		let living = Domain.Category(position: 0, name: "Living", isGroup: true)
