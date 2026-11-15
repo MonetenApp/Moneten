@@ -9,7 +9,7 @@ struct RootView: View {
 		Group {
 			switch model.phase {
 			case .starting:
-				ProgressView("Opening database...")
+				ProgressView(model.opening ?? "Opening database...")
 			case .firstLaunch:
 				FirstLaunchView()
 			case .locked:
@@ -82,22 +82,21 @@ struct LockView: View {
 			if wrong {
 				Text("Incorrect password!").foregroundStyle(Palette.red)
 			}
+			if let notice = model.lockNotice {
+				Text(notice).font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 360)
+			}
 			ForEach(unavailable, id: \.self) { reason in
 				Text(reason).font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 360)
 			}
-			HStack {
-				if !available.isEmpty {
-					Button {
-						model.unlock(with: available)
-					} label: {
-						Label("Open with \(UnlockMethod.names(available))", systemImage: available == [.appleWatch] ? "applewatch" : "touchid")
-					}
-				}
-				Button("Open", action: submit).keyboardShortcut(.defaultAction).disabled(password.isEmpty)
+			if let opening = model.opening {
+				ProgressView(opening).controlSize(.small)
+			} else {
+				unlockButtons
 			}
 			Button("Forgot your password?") { showHelp = true }
 				.buttonStyle(.link)
 		}
+		.disabled(model.opening != nil)
 		.padding(40)
 		.frame(maxWidth: .infinity, maxHeight: .infinity)
 		.onAppear {
@@ -127,11 +126,24 @@ struct LockView: View {
 		}
 	}
 
+	private var unlockButtons: some View {
+		HStack {
+			if !available.isEmpty {
+				Button {
+					model.unlock(with: available)
+				} label: {
+					Label("Open with \(UnlockMethod.names(available))", systemImage: available == [.appleWatch] ? "applewatch" : "touchid")
+				}
+			}
+			Button("Open", action: submit).keyboardShortcut(.defaultAction).disabled(password.isEmpty)
+		}
+	}
+
 	private func refreshAvailability() {
 		let on = UnlockMethod.allCases.filter { UserDefaults.standard.bool(forKey: $0.preference) }
 		if on != switches {
 			switches = on
-			enabled = model.unlockMethods
+			enabled = model.unlockMethods()
 		}
 		let reasons = enabled.map { ($0, $0.unavailableReason(for: .lockScreen)) }
 		available = reasons.filter { $0.1 == nil }.map(\.0)
@@ -140,9 +152,12 @@ struct LockView: View {
 
 	private func submit() {
 		guard !password.isEmpty else { return }
-		if !model.unlock(password: password) {
-			wrong = true
-			password = ""
+		let typed = password
+		Task {
+			if !(await model.unlock(password: typed)) {
+				wrong = true
+				password = ""
+			}
 		}
 	}
 }
