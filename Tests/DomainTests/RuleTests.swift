@@ -277,7 +277,17 @@ struct CategorizerTests {
 		rent.rule = "amount<-1000"
 		#expect(rent.ruleError == nil)
 		#expect(Domain.Category(position: 1, name: "Groceries").ruleError == nil)
-		#expect(Domain.Category(position: 2, name: "Household", isGroup: true, rule: "(").ruleError == nil)
+	}
+
+	@Test("A category group whose saved rule cannot be read reports the error and gets no transactions until the rule is fixed")
+	func unreadableGroupRule() {
+		var wohnen = Domain.Category(position: 0, name: "Wohnen", isGroup: true, rule: "amount<-1,000")
+		let rent = Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 1), amountMinor: -120_000, name: "Vermieter", purpose: "Miete 11/2026")
+		#expect(wohnen.ruleError?.description == "The amount -1,000 is not a number. (position 1)")
+		#expect(Categorizer(ledger: ledger([wohnen])).category(for: rent) == nil)
+		wohnen.rule = "amount<-1000"
+		#expect(wohnen.ruleError == nil)
+		#expect(Categorizer(ledger: ledger([wohnen])).category(for: rent) == wohnen.id)
 	}
 
 	let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline, iban: "DE02120300000000202051")
