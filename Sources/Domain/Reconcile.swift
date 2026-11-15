@@ -420,7 +420,6 @@ struct Identity {
 		// The synthesized Hashable conformance reads these properties, which Periphery cannot see.
 		// periphery:ignore
 		let amount: Int64
-		// periphery:ignore
 		let purpose: String
 	}
 
