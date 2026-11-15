@@ -1120,7 +1120,11 @@ final class AppModel {
 			ledger = loaded
 			accesses = Dictionary(uniqueKeysWithValues: try store.accesses().map { ($0.id, $0) })
 			if case let .category(id) = selection, ledger.category(id) == nil { selection = nil }
-			if selection == nil, let g = ledger.childGroups(of: nil).first { selection = .group(g.id) }
+			// A complete import replaces the account groups.
+			if case let .group(id) = selection, ledger.group(id) == nil { selection = nil }
+			if selection == nil {
+				selection = ledger.childGroups(of: nil).first.map { .group($0.id) } ?? ledger.accounts(inGroup: nil).first.map { .account($0.id) }
+			}
 		}
 	}
 

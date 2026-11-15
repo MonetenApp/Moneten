@@ -65,7 +65,9 @@ public struct AllData: Sendable, Equatable {
 			return date
 		}
 		let header: Header
-		do { header = try decoder.decode(Header.self, from: data) } catch { throw Self.readError(error, in: data) }
+		do { header = try decoder.decode(Header.self, from: data) } catch DecodingError.typeMismatch { throw .notAnExport } catch {
+			throw Self.readError(error, in: data)
+		}
 		guard header.format == File.formatName, let version = header.version else { throw .notAnExport }
 		guard version <= Self.formatVersion else { throw .newerVersion(version) }
 		do { self = try decoder.decode(File.self, from: data).allData() } catch let error as ReadError { throw error } catch { throw Self.readError(error, in: data) }
@@ -89,9 +91,10 @@ public struct AllData: Sendable, Equatable {
 				let before = data.prefix(index)
 				let line = before.reduce(1) { $1 == UInt8(ascii: "\n") ? $0 + 1 : $0 }
 				let column = index - (before.lastIndex(of: UInt8(ascii: "\n")).map { $0 + 1 } ?? 0) + 1
-				return .damaged("at line \(line), column \(column), the text is not valid JSON: \(detail)")
+				// The detail of the parser can name the place again, so it is left out here.
+				return .damaged("at line \(line), column \(column), the text is not valid JSON")
 			}
-			return .damaged("the text is not valid JSON: \(detail)")
+			return .damaged("the text is not valid JSON: \(detail.hasSuffix(".") ? String(detail.dropLast()) : detail)")
 		case let .keyNotFound(key, c):
 			return .damaged(place(c.codingPath, "the key \"\(key.stringValue)\" is missing"))
 		default:
@@ -174,7 +177,7 @@ enum AmountText {
 	static func minorUnits(_ text: String, _ currency: String) throws -> Int64 {
 		let places = text.split(separator: ".", omittingEmptySubsequences: false).dropFirst().first?.count ?? 0
 		let exponent = Currency.exponent(of: currency)
-		guard let d = try? decimal(text), places <= exponent, (d * pow(10, exponent)).magnitude <= Decimal(Int64.max) else {
+		guard let d = try? decimal(text), places <= exponent, case let scaled = d * pow(10, exponent), scaled <= Decimal(Int64.max), scaled >= Decimal(Int64.min) else {
 			throw AllData.ReadError.damaged("the amount \"\(text)\" is not a decimal number with the decimal places of \(currency)")
 		}
 		return Money(d, currency: currency).minorUnits
