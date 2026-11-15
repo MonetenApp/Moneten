@@ -778,3 +778,11 @@ The app SHALL show progress while it imports and let the user cancel. Cancellati
 - **THEN** none of its transactions or new categories remain
 - **AND** the third file is not stored
 - **AND** the result starts with "Import canceled. 1 files were imported before."
+
+#### Scenario: Cancel reading, then cancel storing
+
+- **GIVEN** the first two files were read and the third file is still being read
+- **WHEN** the user cancels reading and then cancels while the first file is stored
+- **THEN** no transaction or new category of the first file remains
+- **AND** the second file is not stored
+- **AND** the result starts with "Import canceled. 0 files were imported before."

@@ -36,6 +36,11 @@ final class FileImport {
 		}
 	}
 
+	func beginStoring(_ count: Int, resumingAfterCancel: Bool) {
+		if resumingAfterCancel { canceled.withLock { $0 = false } }
+		storing = count
+	}
+
 	func waitForDismissal() async {
 		guard isPresented else { return }
 		await withCheckedContinuation { dismissal = $0 }

@@ -246,11 +246,11 @@ extension AppModel {
 		var created = 0
 		var warnings: [String] = []
 		if !read.isEmpty, let store, store === importStore {
-			run.storing = read.reduce(0) { $0 + $1.parsed.transactions.count }
+			run.beginStoring(read.reduce(0) { $0 + $1.parsed.transactions.count }, resumingAfterCancel: canceledAt != nil)
 			await replacingTable {
 				for file in read {
 					guard self.store === store else { return }
-					if run.isCanceled && canceledAt == nil { break }
+					if run.isCanceled { break }
 					let name = file.name, parsed = file.parsed, into = file.into, isNew = file.isNew
 					if isNew { save(account: into) }
 					// A new account that could not be saved, or one that the user deleted during the import.
@@ -260,7 +260,7 @@ extension AppModel {
 					}
 					do {
 						let imported = try await store.mergeFile(parsed.transactions, categories: parsed.categories,
-							creatingCategories: file.createsCategories, into: into.id, isCanceled: { canceledAt == nil && run.isCanceled })
+							creatingCategories: file.createsCategories, into: into.id, isCanceled: { run.isCanceled })
 						guard self.store === store else { return }
 						importedFiles += 1
 						storedFiles.append(file)
@@ -290,7 +290,7 @@ extension AppModel {
 			problems.append("The import was canceled. \(run.names[canceledAt])\(rest) not imported.")
 		}
 		var message = added == 0 ? "Imported no new transactions." : added == 1 ? "Imported one new transaction." : "Imported \(added) new transactions."
-		if run.isCanceled { message = "Import canceled. \(importedFiles) files were imported before. " + message }
+		if canceledAt != nil || run.isCanceled { message = "Import canceled. \(importedFiles) files were imported before. " + message }
 		if booked > 0 { message += booked == 1 ? " Booked one pending transaction." : " Booked \(booked) pending transactions." }
 		if skipped > 0 { message += skipped == 1 ? " Skipped one already existing transaction." : " Skipped \(skipped) already existing transactions." }
 		if created > 0 { message += created == 1 ? " Created one new category." : " Created \(created) new categories." }
