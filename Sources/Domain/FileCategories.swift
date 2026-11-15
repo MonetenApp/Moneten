@@ -32,8 +32,8 @@ public struct FileCategories: Sendable {
 		for name in names where seen.insert(name).inserted {
 			if name.contains(" - ") {
 				let lower = name.trimmingCharacters(in: .whitespaces).lowercased()
-				let paths = all.filter { path($0).joined(separator: " - ") == lower }
-				if let found = find([lower]) ?? paths.first(where: { !$0.isGroup && !$0.isDefault }) ?? paths.first {
+				let matches = [find([lower])].compactMap { $0 } + all.filter { path($0).joined(separator: " - ") == lower }
+				if let found = matches.first(where: { !$0.isGroup && !$0.isDefault }) ?? matches.first {
 					if !found.isGroup, !found.isDefault { ids[name] = found.id }
 					continue
 				}
