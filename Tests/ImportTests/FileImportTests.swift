@@ -678,6 +678,13 @@ struct FileImportTests {
 	func csvDelimiterSample(lineBreak: String) {
 		let text = lineBreak + String(repeating: "a;b" + lineBreak + lineBreak, count: 20) + String(repeating: ",", count: 21)
 		#expect(CSVFile.detectDelimiter(text) == ";")
+		var tailReads = 0
+		let measured = (text + lineBreak + String(repeating: "!", count: 100)).lazy.map { character in
+			if character == "!" { tailReads += 1 }
+			return character
+		}
+		#expect(CSVFile.detectDelimiter(measured) == ";")
+		#expect(tailReads == 0)
 	}
 
 }
