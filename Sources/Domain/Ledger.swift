@@ -244,11 +244,15 @@ public struct Ledger: Sendable {
 	/// The calibration that an account of a bank access needs when its booked rows up to the day of the bank
 	/// balance miss that balance. It compares through `Account.initialBalanceMeetingBankBalance(of:calendar:)`,
 	/// the rule that derives the initial balance, so neither a pending row nor a row booked after that day
-	/// raises one. Nil before the initial balance is set, because the next full refresh derives it.
-	public func proposedCalibration(of account: Account, today: Day, calendar: Calendar = .current) -> CalibrationProposal? {
-		// A failed refresh can store a bank balance without the rows it covers. The rows are read in place, because
-		// copying the rows of an account on each drawing of the header cost most of a frame with 50,000 rows.
+	/// raises one. Nil before the initial balance is set, because the next full refresh derives it. `refresh` is
+	/// the state of the refresh of its access.
+	public func proposedCalibration(of account: Account, today: Day, refresh: SyncState, calendar: Calendar = .current) -> CalibrationProposal? {
+		// A refresh whose transactions failed stores the bank balance without the rows it covers. `refreshError`
+		// tells it only once the app recorded the end, so the state of the refresh covers the time before. The rows
+		// are read in place, because copying the rows of an account on each drawing of the header cost most of a
+		// frame with 50,000 rows.
 		guard account.source == .bank, account.kind != .portfolio, account.initialBalanceIsSet, account.refreshError == nil,
+			!refresh.mayLackRows(of: account.id),
 			let meeting = account.initialBalanceMeetingBankBalance(of: transactions.lazy.filter { $0.accountID == account.id }, calendar: calendar),
 			meeting != account.initialBalanceMinor else { return nil }
 		let difference = meeting - account.initialBalanceMinor

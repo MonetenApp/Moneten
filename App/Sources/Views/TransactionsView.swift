@@ -104,7 +104,7 @@ struct HeaderView: View {
 					let date = account.bankBalanceDate {
 					Text("Balance as of \(Format.dayAndTime(date))").font(.subheadline).foregroundStyle(Palette.detail)
 				}
-				if let account = model.selectedAccount, let proposal = model.ledger.proposedCalibration(of: account, today: .today()) {
+				if let account = model.selectedAccount, let proposal = model.proposedCalibration(of: account) {
 					CalibrationNotice(accountID: account.id, difference: proposal.difference)
 				}
 			}

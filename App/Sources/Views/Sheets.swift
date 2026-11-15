@@ -267,7 +267,7 @@ struct CalibrationSheet: View {
 			}
 			.onAppear {
 				let today = Day.today()
-				let value = model.ledger.proposedCalibration(of: account, today: today)?.balanceToday ?? model.ledger.computedBalance(of: account, through: today)
+				let value = model.proposedCalibration(of: account)?.balanceToday ?? model.ledger.computedBalance(of: account, through: today)
 				balance = Format.editableAmount(value.minorUnits, value.currency)
 			}
 		}

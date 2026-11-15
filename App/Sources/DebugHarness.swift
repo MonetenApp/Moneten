@@ -379,7 +379,7 @@ final class DebugHarness {
 			logChart()
 		// Whether the selected account proposes a calibration, without amounts.
 		case "calibration":
-			log("calibration proposed=\(model.selectedAccount.flatMap { model.ledger.proposedCalibration(of: $0, today: .today()) } != nil)")
+			log("calibration proposed=\(model.selectedAccount.flatMap(model.proposedCalibration) != nil)")
 		case "quit": NSApp.terminate(nil)
 		default: log("unknown command \(command)")
 		}

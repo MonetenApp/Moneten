@@ -95,7 +95,7 @@ struct SyncCoordinatorTests {
 		let giro = Account(id: Self.giro.accountID, position: 0, name: "Giro", kind: .giro, source: .bank, bankBalanceMinor: 120_000,
 			bankBalanceDate: today.date(), initialBalanceMinor: 20_000, initialBalanceIsSet: true, accessID: bank.id)
 		var ledger = Ledger(accounts: [giro], transactions: [Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 2), amountMinor: 100_000, name: "Beispiel GmbH")])
-		func header() -> CalibrationProposal? { ledger.proposedCalibration(of: ledger.account(giro.id)!, today: today) }
+		func header() -> CalibrationProposal? { ledger.proposedCalibration(of: ledger.account(giro.id)!, today: today, refresh: coordinator.states[bank.id] ?? .idle) }
 		var whileRunning: [CalibrationProposal?] = []
 		var atEnd: [CalibrationProposal?] = []
 		coordinator.deliver = { id, result in

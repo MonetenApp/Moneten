@@ -224,22 +224,22 @@ struct LedgerTests {
 		}
 		let unexplained = giro(initial: 25_000)
 		#expect(ledger(unexplained, pending: false).computedBalance(of: unexplained, through: today).minorUnits == 125_000)
-		#expect(ledger(unexplained, pending: false).proposedCalibration(of: unexplained, today: today)
+		#expect(ledger(unexplained, pending: false).proposedCalibration(of: unexplained, today: today, refresh: .idle)
 			== CalibrationProposal(difference: Money(minorUnits: -5_000, currency: "EUR"), balanceToday: Money(minorUnits: 120_000, currency: "EUR")))
 
 		let pending = giro(initial: 20_000)
 		#expect(ledger(pending, pending: true).computedBalance(of: pending, through: today).minorUnits == 115_000)
-		#expect(ledger(pending, pending: true).proposedCalibration(of: pending, today: today) == nil)
+		#expect(ledger(pending, pending: true).proposedCalibration(of: pending, today: today, refresh: .idle) == nil)
 
 		var migrated = unexplained
 		migrated.source = .migrated
-		#expect(ledger(migrated, pending: false).proposedCalibration(of: migrated, today: today) == nil)
+		#expect(ledger(migrated, pending: false).proposedCalibration(of: migrated, today: today, refresh: .idle) == nil)
 		var notSetYet = unexplained
 		notSetYet.initialBalanceIsSet = false
-		#expect(ledger(notSetYet, pending: false).proposedCalibration(of: notSetYet, today: today) == nil)
+		#expect(ledger(notSetYet, pending: false).proposedCalibration(of: notSetYet, today: today, refresh: .idle) == nil)
 		var failed = unexplained
 		failed.refreshError = RefreshError(message: "The transactions could not be fetched.", date: Date())
-		#expect(ledger(failed, pending: false).proposedCalibration(of: failed, today: today) == nil)
+		#expect(ledger(failed, pending: false).proposedCalibration(of: failed, today: today, refresh: .idle) == nil)
 	}
 
 	@Test("A row booked after the day of the bank balance proposes nothing, and a calibration fills in the balance of today and moves the initial balance by the difference")
@@ -252,14 +252,14 @@ struct LedgerTests {
 			Transaction(accountID: giro.id, bookingDate: today, amountMinor: -3_000, name: "Bäckerei Gutbrot"),
 		]
 		#expect(Ledger(accounts: [giro], transactions: rows).computedBalance(of: giro, through: today).minorUnits == 47_000)
-		#expect(Ledger(accounts: [giro], transactions: rows).proposedCalibration(of: giro, today: today) == nil)
+		#expect(Ledger(accounts: [giro], transactions: rows).proposedCalibration(of: giro, today: today, refresh: .idle) == nil)
 
 		giro.bankBalanceMinor = 45_000
 		let l = Ledger(accounts: [giro], transactions: rows)
-		#expect(l.proposedCalibration(of: giro, today: today)?.balanceToday == Money(minorUnits: 42_000, currency: "EUR"))
+		#expect(l.proposedCalibration(of: giro, today: today, refresh: .idle)?.balanceToday == Money(minorUnits: 42_000, currency: "EUR"))
 		#expect(l.calibratedInitialBalance(of: giro, balanceToday: 42_000, today: today) == 65_000)
 		giro.initialBalanceMinor = 65_000
-		#expect(Ledger(accounts: [giro], transactions: rows).proposedCalibration(of: giro, today: today) == nil)
+		#expect(Ledger(accounts: [giro], transactions: rows).proposedCalibration(of: giro, today: today, refresh: .idle) == nil)
 	}
 
 	@Test("A pending transaction marked for review counts nowhere, a booked one marked for review counts")

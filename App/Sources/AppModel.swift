@@ -997,6 +997,11 @@ final class AppModel {
 		}
 	}
 
+	/// The calibration that `account` proposes now. None while the refresh of its access runs or failed for it.
+	func proposedCalibration(of account: Account) -> CalibrationProposal? {
+		ledger.proposedCalibration(of: account, today: .today(), refresh: account.accessID.flatMap { sync.states[$0] } ?? .idle)
+	}
+
 	/// The step of the first running refresh, for the status line.
 	var refreshStatus: String? {
 		let running = sync.states.compactMap { id, state in state.isRunning ? (accesses[id]?.bankName ?? "the bank", state) : nil }.sorted { $0.0 < $1.0 }
