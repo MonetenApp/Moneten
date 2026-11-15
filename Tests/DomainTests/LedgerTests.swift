@@ -399,6 +399,25 @@ struct LedgerTests {
 		#expect(l.sidebarAmount(of: groceries, today: today) == nil)
 	}
 
+	@Test("Current month, current quarter, and current year in the sidebar end at the last day of the period")
+	func sidebarPeriodEnds() {
+		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
+		let today = Day(year: 2026, month: 11, day: 9)
+		let groceries = Domain.Category(position: 0, name: "Groceries", sidebarAmount: .currentMonth)
+		let fuel = Domain.Category(position: 1, name: "Fuel", sidebarAmount: .currentQuarter)
+		let insurance = Domain.Category(position: 2, name: "Insurance", sidebarAmount: .currentYear)
+		let rows = [groceries, fuel, insurance].flatMap { category in
+			[(Day(year: 2026, month: 11, day: 3), -1_000), (Day(year: 2026, month: 12, day: 1), -200), (Day(year: 2026, month: 8, day: 2), -30),
+				(Day(year: 2027, month: 1, day: 2), -4)].map { day, minor in
+				Transaction(accountID: giro.id, bookingDate: day, amountMinor: Int64(minor), name: category.name, categoryID: category.id, categorizedBy: .manual)
+			}
+		}
+		let l = Ledger(accounts: [giro], categories: [groceries, fuel, insurance], transactions: rows)
+		#expect(l.sidebarAmount(of: groceries, today: today) == Money(minorUnits: -1_000, currency: "EUR"))
+		#expect(l.sidebarAmount(of: fuel, today: today) == Money(minorUnits: -1_200, currency: "EUR"))
+		#expect(l.sidebarAmount(of: insurance, today: today) == Money(minorUnits: -1_230, currency: "EUR"))
+	}
+
 	@Test("The ledger knows which accounts have transactions, also after a delete")
 	func accountsWithTransactions() {
 		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
