@@ -15,6 +15,52 @@ struct CSVProfileTests {
 		return CSVProfile(name: "Broker CSV", header: file.header, layout: layout)
 	}
 
+	@Test("A changed delimiter or detected date order requires confirmation")
+	func signatureMismatch() throws {
+		let original = try CSVFile(data: Data("Date;Name;Amount\n03/11/2026;Kiosk;-4.20\n".utf8))
+		var layout = try original.detectedLayout()
+		layout.dateOrder = .monthDayYear
+		let profile = CSVProfile(name: "Month first", header: original.header, layout: layout)
+		let changed = try CSVFile(data: Data("Date,Name,Amount\n03/11/2026,Kiosk,-4.20\n".utf8))
+		for file in [original, changed] {
+			guard case let .changed(_, start) = CSVProfile.match(for: file, in: [profile], detected: try file.detectedLayout()) else {
+				Issue.record("A signature change must open the preview")
+				continue
+			}
+			#expect(start.dateOrder == .dayMonthYear)
+			#expect(try file.preview(start, currency: "EUR").transactions.map(\.bookingDate) == [Day(year: 2026, month: 11, day: 3)])
+		}
+	}
+
+	@Test("An added empty title still suggests the saved column mapping")
+	func emptyTitles() throws {
+		let original = try CSVFile(data: Data("Datum;Name;Betrag;\n".utf8))
+		let profile = CSVProfile(name: "Empty titles", header: original.header, layout: try original.detectedLayout())
+		let file = try CSVFile(data: Data("Datum;;Name;Betrag;\n".utf8))
+		guard case let .changed(_, layout) = CSVProfile.match(for: file, in: [profile], detected: try file.detectedLayout()) else {
+			Issue.record("Empty titles must not count as repeated names")
+			return
+		}
+		#expect(layout.columns[.name] == 2)
+		#expect(layout.columns[.amount] == 3)
+	}
+
+	@Test("Missing category options and unknown column fields keep a profile readable")
+	func tolerantLayout() throws {
+		let profile = try Self.broker()
+		var json = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(profile)) as? [String: Any])
+		var layout = try #require(json["layout"] as? [String: Any])
+		layout.removeValue(forKey: "createsCategories")
+		var columns = try #require(layout["columns"] as? [String: Any])
+		columns["futureField"] = 99
+		layout["columns"] = columns
+		json["layout"] = layout
+		let decoded = CSVProfile.list(from: try JSONSerialization.data(withJSONObject: [json]))
+		#expect(decoded.count == 1)
+		#expect(decoded.first?.layout.createsCategories == false)
+		#expect(decoded.first?.layout.columns[.amount] == 6)
+	}
+
 	@Test("A later file with the same header row matches the saved profile")
 	func sameHeader() throws {
 		let profile = try Self.broker()

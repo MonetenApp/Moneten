@@ -8,6 +8,36 @@ struct FileCategoryTests {
 	var food: Domain.Category { Domain.Category(id: Self.foodID, parentID: living.id, position: 0, name: "Food") }
 	static let foodID = UUID()
 
+	@Test("Bare Other chooses Living before Work regardless of load order")
+	func deterministicOther() {
+		let work = Domain.Category(position: 0, name: "Work", isGroup: true)
+		let home = Domain.Category(position: 1, name: "Living", isGroup: true)
+		let a = Domain.Category(parentID: work.id, position: 0, name: "Other")
+		let b = Domain.Category(parentID: home.id, position: 0, name: "Other")
+		for categories in [[work, a, home, b], [b, home, a, work]] {
+			#expect(FileCategories(["Other"], in: categories, creating: false).ids["Other"] == b.id)
+		}
+	}
+
+	@Test("A mistaken purpose mapping creates at most 1000 categories", arguments: [2_000, 50_000])
+	func categoryLimit(count: Int) {
+		let existing = Domain.Category(position: 0, name: "Existing")
+		let found = FileCategories((0..<count).map { "Purpose \($0)" } + ["Existing"], in: [existing], creating: true)
+		#expect(found.created.count == 1_000)
+		#expect(found.ids.count == 1_001)
+		#expect(found.ids["Purpose 999"] != nil)
+		#expect(found.ids["Purpose 1000"] == nil)
+		#expect(found.ids["Existing"] == existing.id)
+	}
+
+	@Test("Miete - Nebenkosten creates a group and its leaf")
+	func rentDashPath() {
+		let found = FileCategories(["Miete - Nebenkosten"], in: [], creating: true)
+		#expect(found.created.map(\.name) == ["Miete", "Nebenkosten"])
+		#expect(found.created.map(\.isGroup) == [true, false])
+		#expect(found.created.last?.parentID == found.created.first?.id)
+	}
+
 	@Test("An exported category path resolves without creating a second category", arguments: [false, true], [false, true])
 	func exportedCategoryPath(creating: Bool, literalGroup: Bool) throws {
 		let account = Account(position: 0, name: "Archive", kind: .giro, source: .offline)
