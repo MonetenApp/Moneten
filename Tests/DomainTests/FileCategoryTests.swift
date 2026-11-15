@@ -8,6 +8,40 @@ struct FileCategoryTests {
 	var food: Domain.Category { Domain.Category(id: Self.foodID, parentID: living.id, position: 0, name: "Food") }
 	static let foodID = UUID()
 
+	@Test("An exported category path resolves without creating a second category", arguments: [false, true])
+	func exportedCategoryPath(creating: Bool) throws {
+		let account = Account(position: 0, name: "Archive", kind: .giro, source: .offline)
+		let row = Transaction(accountID: account.id, bookingDate: Day(year: 2026, month: 11, day: 3), amountMinor: -420, name: "Kiosk", categoryID: Self.foodID)
+		let ledger = Ledger(accounts: [account], categories: [living, food])
+		let exported = String(decoding: try TransactionCSV.data([row], ledger: ledger, locale: Locale(identifier: "de_DE")), as: UTF8.self)
+		let cell = exported.components(separatedBy: "\r\n")[1].components(separatedBy: ";")[2]
+		#expect(cell == "Living - Food")
+		let found = FileCategories([cell], in: ledger.categories, creating: creating)
+		#expect(found.ids[cell] == Self.foodID)
+		#expect(found.created.isEmpty)
+		var incoming = row
+		incoming.categoryID = nil
+		let imported = found.assign(to: [incoming], names: [row.id: cell], for: account.id, in: ledger)
+		#expect(imported.map(\.categoryID) == [Self.foodID])
+		#expect(imported.map(\.amountMinor) == [-420])
+	}
+
+	@Test("An exact category name wins over an exported path of the same text")
+	func literalDashName() {
+		let literal = Domain.Category(position: 1, name: "Living - Food")
+		let found = FileCategories(["Living - Food"], in: [living, food, literal], creating: true)
+		#expect(found.ids["Living - Food"] == literal.id)
+		#expect(found.created.isEmpty)
+	}
+
+	@Test("An exported path creates its missing leaf under the existing group")
+	func createDashPath() {
+		let found = FileCategories(["Living - Pets"], in: [living], creating: true)
+		#expect(found.created.map(\.name) == ["Pets"])
+		#expect(found.created.map(\.parentID) == [living.id])
+		#expect(found.ids["Living - Pets"] == found.created.first?.id)
+	}
+
 	@Test("A name or a path finds its category, and the option creates the missing ones")
 	func createMissing() {
 		let categories = [living, food]
