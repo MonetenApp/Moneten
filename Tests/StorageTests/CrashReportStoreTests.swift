@@ -61,7 +61,7 @@ struct CrashReportStoreTests {
 	@Test("Only a Moneten crash file after the saved launch offers a short report")
 	func fallbackFiles() {
 		for files: [(name: String, date: Date)] in [[], [("Moneten-old.ips", Date(timeIntervalSince1970: 999))],
-			[("FinTSHelper.crash", Date(timeIntervalSince1970: 1_100))], [("Moneten2026.ips", Date(timeIntervalSince1970: 1_100))], [("AnotherApp.crash", Date(timeIntervalSince1970: 1_100))],
+			[("FinTSHelper.crash", Date(timeIntervalSince1970: 1_100))], [("MonetenExtensionHost_2026.crash", Date(timeIntervalSince1970: 1_100))], [("Moneten2026.ips", Date(timeIntervalSince1970: 1_100))], [("AnotherApp.crash", Date(timeIntervalSince1970: 1_100))],
 			[("Moneten-new.ips", Date(timeIntervalSince1970: 1_300))]] {
 			var state = CrashReportStore.State()
 			state.start(.init(start: Date(timeIntervalSince1970: 1_000), appVersion: "0.1.0", macOSVersion: "15.2"), files: [])
