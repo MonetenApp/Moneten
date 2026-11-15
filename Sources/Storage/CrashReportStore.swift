@@ -41,8 +41,14 @@ public struct CrashReportStore {
 
 	private func read() throws -> State? {
 		guard FileManager.default.fileExists(atPath: file.path) else { return nil }
-		let box = try AES.GCM.SealedBox(combined: Data(contentsOf: file))
-		return try JSONDecoder().decode(State.self, from: AES.GCM.open(box, using: key(create: false)))
+		let data = try Data(contentsOf: file)
+		do {
+			let box = try AES.GCM.SealedBox(combined: data)
+			return try JSONDecoder().decode(State.self, from: AES.GCM.open(box, using: key(create: false)))
+		} catch {
+			try FileManager.default.removeItem(at: file)
+			return nil
+		}
 	}
 
 	private func write(_ state: State) throws {
