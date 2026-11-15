@@ -271,20 +271,21 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 		let distance: Int
 		let evidence: Partner.Evidence?
 	}
-	let incoming = rows.map(Identity.init)
-	let live = stored.map(Identity.init)
-	let dead = deleted.map(Identity.init)
 	let matches = rows.map(PendingMatch.init)
 	let liveMatches = stored.map(PendingMatch.init)
 	let deadMatches = deleted.map(PendingMatch.init)
+	let incoming = matches.map(\.identity)
 	var byDay: [Day: [Slot]] = [:]
+	var byKey: [Identity.Key: [Slot]] = [:]
 	var byID: [String: [Slot]] = [:]
 	for (j, t) in stored.enumerated() {
 		byDay[t.bookingDate, default: []].append(.live(j))
+		byKey[liveMatches[j].identity.key, default: []].append(.live(j))
 		if let id = t.sourceID { byID[Transaction.matchingID(id), default: []].append(.live(j)) }
 	}
 	for (k, d) in deleted.enumerated() {
 		byDay[d.bookingDate, default: []].append(.deleted(k))
+		byKey[deadMatches[k].identity.key, default: []].append(.deleted(k))
 		if let id = d.sourceID { byID[Transaction.matchingID(id), default: []].append(.deleted(k)) }
 	}
 	func positions(_ ts: [Transaction]) -> [Int: Int] {
@@ -309,7 +310,7 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 	}
 	var candidates: [Candidate] = []
 	for (i, t) in rows.enumerated() {
-		var slots = Set(byDay[t.bookingDate] ?? [])
+		var slots = Set((t.isPending ? byDay[t.bookingDate] : byKey[incoming[i].key]) ?? [])
 		if let id = t.sourceID { slots.formUnion(byID[id] ?? []) }
 		if t.isPending && !delivery.isMigration && delivery.isFetched {
 			for offset in -PendingMatch.maxDaysApart...PendingMatch.maxDaysApart where offset != 0 {
@@ -323,12 +324,12 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 			let future: Bool
 			switch slot {
 			case let .live(j):
-				identity = live[j]
+				identity = liveMatches[j].identity
 				match = liveMatches[j]
 				fetched = stored[j].isFetched
 				future = !stored[j].isFetched && !stored[j].needsReview && stored[j].bookingDate >= today && delivery.covers(stored[j].bookingDate)
 			case let .deleted(k):
-				identity = dead[k]
+				identity = deadMatches[k].identity
 				match = deadMatches[k]
 				fetched = true
 				future = false
