@@ -581,7 +581,7 @@ The app SHALL keep a pending transaction from a file that no refresh has deliver
 
 ### Requirement: The bank's version of a future pending transaction from a file
 
-The app SHALL pair each free delivered pending transaction with at most one free future file transaction with the same amount and counterparty, at most seven days apart. The file transaction with the smallest distance in days wins. Ties follow stored order. The file transaction keeps its identity and user fields and takes the bank's fields.
+The app SHALL pair each free delivered pending transaction with at most one free future file transaction with the same amount and counterparty, at most seven days apart. The shared pending pairing rule chooses the partner. The file transaction keeps its identity and user fields and takes the bank's fields.
 
 #### Scenario: The bank reports the scheduled rent as pending
 
@@ -591,7 +591,7 @@ The app SHALL pair each free delivered pending transaction with at most one free
 
 ### Requirement: Pending file transactions already stored
 
-The app SHALL skip a pending file transaction when a free stored pending transaction has the same amount, counterparty, and booking day, even when the purposes differ. Each stored transaction absorbs one file transaction at most. The stored transaction keeps its fields and fetched status. Empty user fields take the file's comment, category and assignment kind, and checkmark.
+The app SHALL skip a pending file transaction when a free stored pending transaction has the same amount, counterparty, and booking day, even when the purposes differ. Each stored transaction absorbs one file transaction at most. The stored transaction keeps its fields and fetched status. Only a new relaxed same-day match fills empty user fields from the file. An exact repeat preserves cleared user fields.
 
 #### Scenario: The bank reported the scheduled rent before the import
 
@@ -620,6 +620,54 @@ The app SHALL skip a pending file transaction when a free stored pending transac
 - **WHEN** the import skips that transaction in favor of the stored pending transaction
 - **THEN** the stored transaction takes the comment when its own comment is empty, the category when it is uncategorized, and the checkmark when it is unchecked
 - **AND** an existing comment "Bank note", category "Bills", or checkmark stays
+
+### Requirement: Order-independent pending pairing
+
+The app SHALL pair delivered pending transactions one to one with stored transactions by agreeing explicit identity, then a fitting fetched or deleted transaction on the same day, then the closest unfetched file transaction within seven days. Conflicting explicit identities never pair. File imports use the same day only. Pairs are taken greedily by priority, distance, and stable delivered and stored positions, independent of input order.
+
+#### Scenario: Global nearest choice
+
+- **GIVEN** file rents of -800,00 € to "Vermieter A" on 1 and 8 December 2026
+- **WHEN** a refresh on 20 November delivers pending rents on 7 and 15 December in either order
+- **THEN** the 8 December row takes the 7 December bank fields, the 1 December row stays unfetched, and 15 December is added
+- **AND** three rows total -2.400,00 € in either stored order
+- **AND** for file days 1 and 5 and bank days 4 and 10, day 4 takes day 5 and three rows remain
+
+#### Scenario: Explicit identities disagree
+
+- **GIVEN** a pending rent of -800,00 € on 1 December 2026 with end-to-end reference "RENT-A"
+- **WHEN** a file imports an otherwise equal rent with reference "RENT-B"
+- **THEN** both rows stay and total -1.600,00 €
+- **AND** the same protection applies to a refresh and to different source IDs
+
+#### Scenario: File identity survives a takeover and deletion
+
+- **GIVEN** a FUTR rent of -800,00 € on 1 December 2026 with reference "RENT-A"
+- **AND** a refresh takes it over with another purpose and no reference
+- **WHEN** the user deletes it and the original file arrives again
+- **THEN** the honored deleted row absorbs the file entry and no rent is added
+- **AND** if the bank first books the rent, the reference stays and the original pending file entry is skipped without undoing the booking
+
+#### Scenario: A changed bank purpose keeps its partner
+
+- **GIVEN** file rents of -800,00 € on 1 and 8 December 2026 and the bank has taken over 1 December
+- **WHEN** the bank delivers 1 December with a new purpose on 21 November
+- **THEN** the fetched row takes the new purpose and 8 December stays unfetched
+- **AND** the account still has two rows totaling -1.600,00 € in every input order
+
+#### Scenario: Booking prefers the fetched pending row
+
+- **GIVEN** file rents of -800,00 € on 1 and 8 December 2026 and the bank has taken over 1 December
+- **WHEN** the booked rent arrives on 2 December
+- **THEN** only the fetched row becomes booked and 8 December stays pending
+- **AND** neither row is marked for review, in every input order
+
+#### Scenario: An exact repeat preserves a cleared comment
+
+- **GIVEN** an imported pending rent of -800,00 € on 1 December 2026 whose file comment was "Shared rent"
+- **AND** the user clears the comment
+- **WHEN** the exact same entry is imported again
+- **THEN** the comment stays empty
 
 ### Requirement: MT940 import
 
