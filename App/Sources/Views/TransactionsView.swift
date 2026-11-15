@@ -66,7 +66,7 @@ struct HeaderView: View {
 
 	var body: some View {
 		// "Pending" with the sum of the transactions of the view that the bank has not booked yet.
-		let pending = rows.filter(\.isPending).reduce(into: MoneySums()) { $0.add($1.amount) }
+		let pending = MoneySums(of: rows.filter(\.isPending))
 		HStack(alignment: .center, spacing: 10) {
 			HeaderIcon()
 			VStack(alignment: .leading, spacing: 2) {
@@ -602,7 +602,7 @@ struct CategoryRibbon: View {
 			// the rows that are still visible: a search keeps the selection of rows it hides.
 			var ids: Set<UUID> = [transaction.id]
 			if model.selectedTransactions.contains(transaction.id), model.selectedTransactions.count > 1 {
-				ids = model.selectedTransactions.intersection(model.visibleTransactions.map(\.id))
+				ids = model.visibleSelection
 			}
 			CategoryChoices.popUp(model: model, ids: ids)
 		} label: {
@@ -796,20 +796,10 @@ struct CategoryChoices: View {
 			} label: {
 				if current { Label(model.ledger.categoryPath(c.id), systemImage: "checkmark") } else { Text(model.ledger.categoryPath(c.id)) }
 			}
-			.disabled(c.isGroup || isRestricted(c, transactions))
+			.disabled(!model.ledger.canAssign(c, to: transactions))
 		}
 		Divider()
 		Button("Add category") { model.sheet = .newCategory(isGroup: false, assigning: ids) }
-	}
-
-	private func isRestricted(_ c: Domain.Category, _ ts: [Transaction]) -> Bool {
-		Self.isRestricted(c, ts, in: model.ledger)
-	}
-
-	static func isRestricted(_ c: Domain.Category, _ ts: [Transaction], in ledger: Ledger) -> Bool {
-		guard let r = c.restrictedToID else { return false }
-		let allowed: Set<UUID> = ledger.account(r) != nil ? [r] : ledger.accountIDs(inGroupTree: r)
-		return !ts.allSatisfy { allowed.contains($0.accountID) }
 	}
 
 	/// The same choices as a menu at the pointer, for the category ribbon.
@@ -822,7 +812,7 @@ struct CategoryChoices: View {
 		for c in ledger.categoriesInSidebarOrder {
 			let item = ActionMenuItem(title: ledger.categoryPath(c.id)) { model.assign(category: c.id, to: ids) }
 			item.state = transactions.allSatisfy { ledger.effectiveCategoryID(of: $0) == c.id } ? .on : .off
-			item.isEnabled = !c.isGroup && !isRestricted(c, transactions, in: ledger)
+			item.isEnabled = ledger.canAssign(c, to: transactions)
 			item.image = image(of: c, in: ledger)
 			// From macOS 27, AppKit hides most menu images unless the item asks for them. Set by name,
 			// because the SDK of CI predates the property; 1 is NSMenuItem.ImageVisibility.visible.
@@ -918,7 +908,7 @@ struct StatusLine: View {
 	var body: some View {
 		let selected = rows.filter { model.selectedTransactions.contains($0.id) }
 		let shown = selected.count > 1 ? selected : rows
-		let sums = shown.reduce(into: MoneySums()) { $0.add($1.amount) }
+		let sums = MoneySums(of: shown)
 		// As in MoneyMoney, the count is centered in 11 points. The filter note takes the leading third
 		// and truncates before it reaches the count.
 		HStack(spacing: 12) {
@@ -942,7 +932,7 @@ struct StatusLine: View {
 			HStack(spacing: 12) {
 				Text(selected.count > 1 ? "\(selected.count) of \(rows.count) transactions" : (rows.count == 1 ? "1 transaction" : "\(rows.count.formatted()) transactions"))
 					.foregroundStyle(Palette.detail)
-				Text("Sum: \(sums.isEmpty ? Format.money(0, "EUR") : Format.sums(sums))")
+				Text("Sum: \(sums.isEmpty ? Format.money(0, shown.first?.currency ?? model.selectedCurrency ?? "EUR") : Format.sums(sums))")
 					.monospacedDigit()
 					.textSelection(.enabled)
 			}

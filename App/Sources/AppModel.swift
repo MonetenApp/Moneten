@@ -267,10 +267,19 @@ final class AppModel {
 	/// The number of selected rows of the table of positions, for the trail. The selection lives in that view.
 	@ObservationIgnored var selectedPositions = 0
 
+	/// How far `apply(rule:of:mode:)` has come, or nil when no rule is applied.
+	private(set) var ruleProgress: (done: Int, total: Int)?
+	/// Set for the whole run, so views that only ask whether a run is active do not redraw on each report.
+	private(set) var isApplyingRule = false
+	/// The run of `apply(rule:of:mode:)`, which a lock cancels.
+	@ObservationIgnored private var ruleRun: Task<[Transaction], Never>?
+
 	/// A message for an alert.
 	var alert: AlertMessage? {
 		didSet { if (alert == nil) != (oldValue == nil) { Trail.log(alert == nil ? "alert closed" : "alert shown") } }
 	}
+	/// The file import that runs. There is one at a time, and a lock cancels it.
+	@ObservationIgnored var fileImport: FileImport?
 	var sheet: SheetKind? {
 		didSet { if sheet != oldValue { Trail.log("sheet \(sheet?.trailName ?? "none")") } }
 	}
@@ -437,6 +446,7 @@ final class AppModel {
 		// A locked app refreshes nothing and forgets every PIN in memory. The saved ones come back from the database at the next unlock.
 		// The announcer locks first, because the cancel below can end the run at once.
 		announcer.lock(keeping: ledger)
+		fileImport?.cancel()
 		autoRefresh.isUnlocked = false
 		notices.clearBadge()
 		sync.cancelAll()
@@ -444,6 +454,7 @@ final class AppModel {
 		extensionSetupStates.clear()
 		setup?.cancel()
 		setup = nil
+		ruleRun?.cancel()
 		extensions.close()
 		try? store?.close()
 		store = nil
@@ -553,6 +564,10 @@ final class AppModel {
 	/// The rows of the transaction table, for the view and the filters of `tableKey`.
 	var visibleTransactions: [Transaction] { transactions(for: tableKey) }
 
+	/// The selected rows that the table shows. A search keeps the selection of the rows that it hides.
+	/// It filters the rows, so a menu reads it in its action and not in its `disabled` check.
+	var visibleSelection: Set<UUID> { selectedTransactions.intersection(visibleTransactions.map(\.id)) }
+
 	/// The rows of a transaction table with the view and the filters of `key`.
 	func transactions(for key: TableKey) -> [Transaction] {
 		guard let selection = key.selection else { return [] }
@@ -593,15 +608,26 @@ final class AppModel {
 
 	// MARK: Changing transactions
 
-	private func commit(_ changed: [Transaction]) {
-		guard let store, !changed.isEmpty else { return }
+	/// Saves the rows and returns whether they are saved. A locked app has no database and saves nothing.
+	@discardableResult
+	private func commit(_ changed: [Transaction]) -> Bool {
+		guard let store else { return false }
+		guard !changed.isEmpty else { return true }
 		do {
 			try store.save(changed)
 			ledgerChange = "commit rows=\(changed.count)"
 			ledger.update(changed)
+			return true
 		} catch {
 			alert = AlertMessage(title: "Could not save the change.", message: String(describing: error))
+			return false
 		}
+	}
+
+	/// What ⌘K does: the category picker for the selected rows on screen.
+	func openCategoryPicker() {
+		let ids = visibleSelection
+		if !ids.isEmpty { sheet = .assignCategory(ids, accounts: ledger.accountIDs(ofTransactions: ids)) }
 	}
 
 	func assign(category: UUID?, to ids: Set<UUID>) {
@@ -1066,27 +1092,28 @@ final class AppModel {
 	}
 
 	func apply(rule: Rule, of category: Domain.Category, mode: RuleApplication) async {
+		guard ruleProgress == nil, let store else { return }
 		let ledger = self.ledger
-		let changed = await Task.detached(priority: .userInitiated) {
-			RuleApplier.apply(category: category, rule: rule, to: ledger.transactions, ledger: ledger, mode: mode)
-		}.value
-		await replacingTable { commit(changed) }
-		alert = AlertMessage(title: "Categorized transactions: \(changed.count)", message: "")
-	}
-
-	/// The transactions of a category tree, for the amount next to it in the sidebar.
-	func sidebarAmount(of category: Domain.Category) -> Money? {
-		let range: DayRange
-		let today = Day.today()
-		switch category.sidebarAmount {
-		case .none: return nil
-		case .totalSum: range = .all
-		case .currentMonth: range = DayRange(start: today.firstOfMonth, end: nil)
-		case .currentQuarter: range = DayRange(start: today.firstOfQuarter, end: nil)
-		case .currentYear: range = DayRange(start: today.firstOfYear, end: nil)
+		let total = ledger.transactions.count
+		ruleProgress = (0, total)
+		isApplyingRule = true
+		defer { ruleProgress = nil; ruleRun = nil; isApplyingRule = false }
+		let (reports, reporter) = AsyncStream.makeStream(of: Int.self, bufferingPolicy: .bufferingNewest(1))
+		let run = Task.detached(priority: .userInitiated) {
+			defer { reporter.finish() }
+			return RuleApplier.apply(category: category, rule: rule, to: ledger.transactions, ledger: ledger, mode: mode) { reporter.yield($0) }
 		}
-		let sum = ledger.sum(ofCategory: category, in: range)
-		return sum.minorUnits == 0 ? nil : sum
+		ruleRun = run
+		for await done in reports { ruleProgress = (done, total) }
+		let changed = await run.value
+		guard !run.isCancelled else { return }
+		let saved = await replacingTable { () -> Int? in
+			// A run saves only into the database it started with. A lock closes it, and an unlock opens a new one.
+			guard self.store === store else { return nil }
+			let rows = RuleApplier.rebase(changed, from: ledger, onto: self.ledger, category: category, rule: rule, mode: mode)
+			return commit(rows) ? rows.count : nil
+		}
+		if let saved { alert = AlertMessage(title: "Categorized transactions: \(saved)", message: "") }
 	}
 
 	// MARK: Migration
@@ -1097,12 +1124,24 @@ final class AppModel {
 		try store.save(groups: plan.groups, accounts: plan.accounts + plan.updatedAccounts, categories: plan.categories + plan.updatedCategories,
 			transactions: plan.transactions + plan.updatedTransactions, relinking: plan.relinkedDeletedRows)
 		for c in starters { try? store.deleteCategory(c.id) }
+		try await reloadAfterImport()
+	}
+
+	/// Loads the ledger and the bank accesses again after a migration or a complete import replaced the table, and
+	/// selects the first group when the selection is gone.
+	func reloadAfterImport() async throws {
+		guard let store else { return }
 		try await replacingTable {
 			let loaded = try store.loadLedger()
 			ledgerChange = "load"
 			ledger = loaded
+			accesses = Dictionary(uniqueKeysWithValues: try store.accesses().map { ($0.id, $0) })
 			if case let .category(id) = selection, ledger.category(id) == nil { selection = nil }
-			if selection == nil, let g = ledger.childGroups(of: nil).first { selection = .group(g.id) }
+			// A complete import replaces the account groups.
+			if case let .group(id) = selection, ledger.group(id) == nil { selection = nil }
+			if selection == nil {
+				selection = ledger.childGroups(of: nil).first.map { .group($0.id) } ?? ledger.accounts(inGroup: nil).first.map { .account($0.id) }
+			}
 		}
 	}
 
@@ -1121,7 +1160,7 @@ final class AppModel {
 	}
 
 	/// The starter categories that a migration replaces, once the database holds no transactions.
-	private var replaceableStarterCategories: [Domain.Category] {
+	var replaceableStarterCategories: [Domain.Category] {
 		ledger.transactions.isEmpty ? StarterCategories.unchangedRoots(in: ledger, language: starterLanguage) : []
 	}
 
@@ -1295,6 +1334,9 @@ enum SheetKind: Identifiable, Equatable {
 	case newGroup
 	/// `assigning` are the transactions that "Add category" in "Assign Category" moves into it.
 	case newCategory(isGroup: Bool, assigning: Set<UUID> = [])
+	/// The category picker of ⌘K for these transactions.
+	/// `accounts` are those of the transactions, looked up once when the picker opens.
+	case assignCategory(Set<UUID>, accounts: Set<UUID>)
 	case accountSettings(UUID)
 	/// The calibration window that the proposal in the account header opens.
 	case calibration(UUID)
@@ -1303,6 +1345,8 @@ enum SheetKind: Identifiable, Equatable {
 	case transaction(UUID?)
 	case comment(Set<UUID>)
 	case migration
+	case exportAllData
+	case fileImport(FileImport)
 	case setPassword
 	case changePassword
 

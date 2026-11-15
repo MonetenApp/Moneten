@@ -58,6 +58,14 @@ struct PerfScenario {
 				await c.select("Account 3")
 				if c.model.selectedAccount.flatMap(c.model.proposedCalibration) == nil { c.fail("the header proposes no calibration") }
 			}),
+		// A change of a category draws every row of the sidebar again, and each row used to filter all transactions
+		// for its own amount.
+		PerfScenario(name: "change-sidebar-amount", budget: halfSecond,
+			run: { c in
+				guard var category = c.model.ledger.categories.first(where: { $0.name == "Uncategorized" }) else { return c.fail("no category Uncategorized") }
+				category.sidebarAmount = .currentMonth
+				c.model.save(category: category)
+			}),
 		// Last, because it adds rows: "Uncategorized" above holds exactly the 50,000.
 		PerfScenario(name: "import-into-open-view", budget: halfSecond,
 			setUp: { await $0.select("Bulk"); await $0.scroll { $0 / 2 } },
@@ -277,7 +285,30 @@ struct PerfScenario {
 				await c.settle()
 			},
 			run: { $0.harness.openExtensionsWindow() }),
+		// A CSV file into the open account. The rows are read away from the main actor, so the stall is the
+		// time of storing them, while the import sheet says "Storing...".
+		PerfScenario(name: "import-large-csv", budget: halfSecond,
+			setUp: { c in
+				await c.select("Account 7")
+				let today = Day.today()
+				let rows = (0..<importedRows).map { i in
+					let d = today.adding(days: -(i % 2_000))
+					return String(format: "%02d.%02d.%04d;Online Shop;Large %d;-%d,%02d", d.day, d.month, d.year, i, 1 + i % 400, i % 100)
+				}
+				try? (["Buchungstag;Name;Verwendungszweck;Betrag"] + rows).joined(separator: "\n").write(to: importFile, atomically: true, encoding: .utf8)
+			},
+			run: { c in
+				guard let account = c.model.ledger.accounts.first(where: { $0.name == "Account 7" }) else { return }
+				let before = c.model.ledger.transactions(ofAccount: account.id).count
+				await c.model.importFiles([importFile], into: account)
+				c.model.alert = nil
+				let stored = c.model.ledger.transactions(ofAccount: account.id).count - before
+				if stored != importedRows { c.fail("the import stored \(stored) of \(importedRows) rows") }
+			}),
 	]
+
+	static let importedRows = 50_000
+	static let importFile = FileManager.default.temporaryDirectory.appending(path: "perf-import.csv")
 
 	/// `count` made-up positions of a portfolio, the same securities in every call.
 	static func positions(_ account: UUID, _ count: Int) -> [Holding] {

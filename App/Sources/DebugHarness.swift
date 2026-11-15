@@ -74,6 +74,14 @@ final class DebugHarness {
 		case "unlock": log("unlock \(model.unlock(password: argument))")
 		case "lock": model.lock()
 		case "appearance": NSApp.appearance = NSAppearance(named: argument == "dark" ? .darkAqua : .aqua)
+		// "<name>": the import sheet while it reads the second of two made-up files, and while it stores their rows.
+		case "importsheetsnapshot":
+			let reading = FileImport(names: ["umsaetze-januar.csv", "umsaetze-februar.csv"])
+			reading.index = 1
+			offscreenSnapshot(FileImportSheet(run: reading).environment(model), width: 480, name: "\(argument)-reading")
+			let storing = FileImport(names: ["umsaetze-januar.csv", "umsaetze-februar.csv"])
+			storing.storing = 300_000
+			offscreenSnapshot(FileImportSheet(run: storing).environment(model), width: 480, name: "\(argument)-storing")
 		case "settingssnapshot":
 			offscreenSnapshot(SecuritySettings().environment(model), width: 500, name: "\(argument)-security")
 			offscreenSnapshot(GeneralSettings().environment(model), width: 500, name: "\(argument)-general")
@@ -194,6 +202,8 @@ final class DebugHarness {
 		case "extstate": logExtensionState()
 		// The Extensions window and the catalog (ADR 0015). "extcatalog <url>" points the catalog at a test index and checks it.
 		case "extensions": openExtensionsWindow()
+		// An app in the background shows every item of the menu bar disabled, so this reads the condition of the commands.
+		case "menucommands": log("menucommands enabled=\(AppCommands(model: model).unlocked)")
 		#if DEBUG
 		case "extcatalog":
 			guard let url = URL(string: argument) else { return log("ext error=extcatalog needs a URL") }
@@ -232,10 +242,11 @@ final class DebugHarness {
 				g.groupsByAccount = true
 				model.save(group: g)
 			}
-		// Imports the file at the path into the selected account, as "Import Transactions..." does after the open panel.
+		// Imports the files at the paths, separated by "|", into the selected account, as "Import Transactions..." does after the open panel.
 		case "importfile":
 			guard let account = model.selectedAccount else { return log("importfile no account") }
-			Task { await model.importFiles([URL(filePath: argument)], into: account); log("importfile done") }
+			let urls = argument.split(separator: "|").map { URL(filePath: String($0)) }
+			Task { await model.importFiles(urls, into: account); log("importfile done") }
 		// "[<currency>]": the credit card in US dollars, or in another currency such as JPY.
 		case "usd": Task { await DemoData.usdAccount(model, currency: argument.isEmpty ? "USD" : argument); log("usd done") }
 		case "review": Task { await DemoData.review(model); log("review done") }
@@ -257,6 +268,13 @@ final class DebugHarness {
 			let parts = argument.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false).map(String.init)
 			if parts.count == 2, var c = model.ledger.categories.first(where: { $0.name == parts[0] }) {
 				c.symbol = parts[1].isEmpty ? nil : parts[1]
+				model.save(category: c)
+			}
+		case "sidebaramount":
+			// "<category>=<value>" sets "Display in sidebar", with a value of `SidebarAmount` such as "currentMonth".
+			let parts = argument.split(separator: "=").map(String.init)
+			if parts.count == 2, var c = model.ledger.categories.first(where: { $0.name == parts[0] }), let amount = SidebarAmount(rawValue: parts[1]) {
+				c.sidebarAmount = amount
 				model.save(category: c)
 			}
 		case "symbolsnapshot":
@@ -364,9 +382,15 @@ final class DebugHarness {
 			MigrationSheet.fixtureFolder = URL(filePath: argument)
 			model.sheet = .migration
 		#endif
+		// "<path>": writes the complete export to that file without the warning and the save panel.
+		case "exportall":
+			Task { do { try await model.writeAllData(to: URL(filePath: argument)); log("exportall done") } catch { log("exportall error=set") } }
+		// "<path>": imports that complete export without the open panel. The reason of a refusal can quote the file.
+		case "importall": Task { log("importall \(await model.readAllData(from: URL(filePath: argument)) == "done" ? "done" : "refused")") }
 		case "sheet":
 			switch argument {
 			case "migration": model.sheet = .migration
+			case "exportAllData": model.sheet = .exportAllData
 			case "newAccount": model.addAccount()
 			case "setPassword": model.sheet = .setPassword
 			case "changePassword": model.sheet = .changePassword
@@ -375,6 +399,10 @@ final class DebugHarness {
 			// What "Calibrate..." in the account header does.
 			case "calibration": if case let .account(id) = model.selection { model.sheet = .calibration(id) }
 			case "transaction": model.sheet = .transaction(model.visibleTransactions.first?.id)
+			// What ⌘K does, for a run without a key window, where SwiftUI disables the menu commands.
+			case "assignCategory": model.openCategoryPicker()
+			// The real sheet, as a click on "Add category" in "Assign Category" opens it. "newcategory" skips the sheet.
+			case "newCategory": model.sheet = .newCategory(isGroup: false, assigning: model.visibleSelection)
 			default: model.sheet = nil
 			}
 		// "Name|rule" saves the rule of a category without the check of the settings, as an older version could have stored it.
@@ -384,9 +412,21 @@ final class DebugHarness {
 			c.rule = parts[1]
 			model.save(category: c)
 			log("rule error=\(c.ruleError.map { "\($0)" } ?? "none")")
+		// "<category>": what "Apply to all transactions." in the category settings does with the saved rule.
+		case "applyrule":
+			guard let c = model.ledger.categories.first(where: { $0.name == argument }) else { return log("applyrule not found") }
+			guard let rule = try? Rule(parsing: c.rule) else { return log("applyrule rule error") }
+			Task {
+				await model.apply(rule: rule, of: c, mode: .all)
+				log("applyrule done")
+			}
 		// What "Add category" in "Assign Category" does with the selected rows.
-		case "newcategory": Task { await model.addCategory(name: argument, isGroup: false, parentID: nil, assigning: model.selectedTransactions) }
+		case "newcategory": Task { await model.addCategory(name: argument, isGroup: false, parentID: nil, assigning: model.visibleSelection) }
 		case "selectRows": model.selectedTransactions = Set(model.visibleTransactions.prefix(Int(argument) ?? 1).map(\.id))
+		// "table" puts the focus in the transaction table, as a click on it does. "down", "up", "return", "escape",
+		// and "cmd+k" go to the main window or its sheet as the keyboard sends them. Then it logs where the focus is,
+		// and for each selected row the position of its category in sidebar order from 0, or "default".
+		case "mainkey": mainKey(argument)
 		case "state":
 			log("phase=\(model.phase.trailName) accounts=\(model.ledger.accounts.count) transactions=\(model.ledger.transactions.count) visible=\(model.visibleTransactions.count) selection=\(String(describing: model.selection)) selected=\(model.selectedAccount.map { "\($0.kind)" } ?? "-")")
 			logChart()
@@ -511,6 +551,41 @@ final class DebugHarness {
 		let shown = Set(ids.filter { model.ledger.account($0).map { !$0.isClosed && $0.currency == "EUR" } ?? false })
 		let bars = BalanceChart.stripBars(model.ledger, ids: shown, range: model.chartRange, currency: "EUR", monthly: model.balanceMode == .monthlyAverage)
 		log("chart bars=\(bars.count) first=\(bars.first.map { "\($0.start) \($0.money.minorUnits)" } ?? "-") last=\(bars.last.map { "\($0.start) \($0.money.minorUnits)" } ?? "-") total=\(total.map(String.init) ?? "-")")
+	}
+
+	private func mainKey(_ name: String) {
+		guard let model, let table = transactionTables().first, let main = table.window else { return log("mainkey no table") }
+		let target = topSheet ?? main
+		let keys: [String: (String, UInt16)] = ["down": (String(UnicodeScalar(NSDownArrowFunctionKey)!), 125), "up": (String(UnicodeScalar(NSUpArrowFunctionKey)!), 126),
+			"return": ("\r", 36), "escape": ("\u{1b}", 53), "cmd+k": ("k", 40)]
+		var handledBy = "-"
+		if name == "table" {
+			NSApp.activate()
+			main.makeKeyAndOrderFront(nil)
+			main.makeFirstResponder(table)
+		} else if let key = keys[name], let event = NSEvent.keyEvent(with: .keyDown, location: .zero,
+			modifierFlags: name == "cmd+k" ? .command : key.1 >= 125 ? [.numericPad, .function] : [], timestamp: 0, windowNumber: target.windowNumber,
+			context: nil, characters: key.0, charactersIgnoringModifiers: key.0, isARepeat: false, keyCode: key.1) {
+			// The order of NSApplication: the key equivalents of the window, then the menu bar, then the focused view.
+			if target.performKeyEquivalent(with: event) {
+				handledBy = "window"
+			} else if NSApp.mainMenu?.performKeyEquivalent(with: event) ?? false {
+				handledBy = "menu"
+			} else {
+				target.sendEvent(event)
+				handledBy = "view"
+			}
+		}
+		DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+			guard let self, let table = self.transactionTables().first else { return }
+			let ledger = model.ledger
+			let order = ledger.categoriesInSidebarOrder.filter { !$0.isDefault }.map(\.id)
+			// Category names are typed by the user, so the log names a category by its place in the sidebar.
+			let categories = model.selectedTransactions.compactMap { ledger.transaction($0) }
+				.map { ledger.effectiveCategoryID(of: $0).flatMap(order.firstIndex).map(String.init) ?? "default" }
+			self.log("mainkey \(name) handled=\(handledBy) sheet=\(model.sheet?.trailName ?? "none") tablefocus=\(table.window?.firstResponder === table) key=\(NSApp.keyWindow === table.window) row=\(table.selectedRow) "
+				+ "category=\(categories.joined(separator: ","))")
+		}
 	}
 
 	/// The tables of transactions in all windows, told apart from the sidebar by their amount column.

@@ -14,9 +14,10 @@ struct CategorySettingsSheet: View {
 	@State private var confirmRemove = false
 
 	var body: some View {
-		SheetFrame(title: "Settings for \(category?.name ?? "")", canConfirm: ruleError == nil && currencyIsValid, width: 520, onConfirm: save, leading: {
+		SheetFrame(title: "Settings for \(category?.name ?? "")", canConfirm: ruleError == nil && currencyIsValid && !isApplying, canCancel: !isApplying, width: 520, onConfirm: save, leading: {
 			if category?.isDefault == false {
 				Button("Remove Category...", role: .destructive) { confirmRemove = true }
+					.disabled(isApplying)
 			}
 		}) {
 			if let binding = Binding($category) {
@@ -29,6 +30,7 @@ struct CategorySettingsSheet: View {
 						Text("Enter a currency code such as EUR.").foregroundStyle(Palette.red)
 					}
 				}
+				.disabled(isApplying)
 				Section {
 					if !c.isDefault {
 						LabeledContent("Color") { ColorSwatches(selection: $color) }
@@ -47,6 +49,7 @@ struct CategorySettingsSheet: View {
 						}
 					}
 				}
+				.disabled(isApplying)
 				if !c.isDefault && !c.isGroup {
 					Section {
 						TextEditor(text: binding.rule)
@@ -54,6 +57,7 @@ struct CategorySettingsSheet: View {
 							.scrollContentBackground(.hidden)
 							.frame(height: 88)
 							.onChange(of: c.rule) { _, text in validate(text) }
+							.disabled(isApplying)
 					} header: {
 						HStack {
 							Text("Rules for automatic categorization")
@@ -64,7 +68,13 @@ struct CategorySettingsSheet: View {
 								.popover(isPresented: $showHelp) { RuleHelp() }
 						}
 					} footer: {
-						if let ruleError {
+						if let p = model.ruleProgress {
+							HStack(spacing: 8) {
+								ProgressView().controlSize(.small)
+								Text("Applying rule to transaction \(p.done.formatted()) of \(p.total.formatted())...")
+							}
+							.foregroundStyle(.secondary)
+						} else if let ruleError {
 							Text(ruleError).foregroundStyle(Palette.red)
 						} else if !c.rule.isEmpty {
 							let count = matchCount(c)
@@ -75,6 +85,7 @@ struct CategorySettingsSheet: View {
 				}
 			}
 		}
+		.interactiveDismissDisabled(isApplying)
 		.onAppear {
 			category = model.ledger.category(categoryID)
 			color = category.map { CategoryColors.color(of: $0, in: model.ledger) } ?? .accentColor
@@ -104,6 +115,8 @@ struct CategorySettingsSheet: View {
 	private var currencyCode: String { category?.currency.trimmingCharacters(in: .whitespaces).uppercased() ?? "" }
 
 	private var currencyIsValid: Bool { Self.isoCurrencies.contains(currencyCode) }
+
+	private var isApplying: Bool { model.isApplyingRule }
 
 	private func validate(_ text: String) {
 		guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { ruleError = nil; return }
@@ -139,7 +152,7 @@ struct CategorySettingsSheet: View {
 		guard let c = category, let rule = try? Rule(parsing: c.rule) else { return }
 		Task {
 			await model.apply(rule: rule, of: c, mode: mode)
-			dismiss()
+			if model.sheet == .categorySettings(categoryID) { dismiss() }
 		}
 	}
 }

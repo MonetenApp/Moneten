@@ -423,6 +423,55 @@ struct FileImportTests {
 		#expect(ts.map(\.mandateReference) == ["M-1"])
 	}
 
+	@Test("A camt.053 entry with a return reason")
+	func camtReturnReason() throws {
+		let xml = """
+		<?xml version="1.0" encoding="UTF-8"?>
+		<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.053.001.08"><BkToCstmrStmt><Stmt>
+		<Ntry><Amt Ccy="EUR">89.00</Amt><CdtDbtInd>CRDT</CdtDbtInd><Sts><Cd>BOOK</Cd></Sts><BookgDt><Dt>2026-11-05</Dt></BookgDt>
+		<NtryDtls><TxDtls><RltdPties><Dbtr><Pty><Nm>Stadtwerke Musterstadt</Nm></Pty></Dbtr></RltdPties>
+		<RtrInf><Rsn><Cd>AC04</Cd></Rsn></RtrInf></TxDtls></NtryDtls></Ntry>
+		<Ntry><Amt Ccy="EUR">5.00</Amt><CdtDbtInd>CRDT</CdtDbtInd><Sts><Cd>BOOK</Cd></Sts><BookgDt><Dt>2026-11-05</Dt></BookgDt></Ntry>
+		</Stmt></BkToCstmrStmt></Document>
+		"""
+		let ts = try TransactionFileImporter.parse(Data(xml.utf8), currency: "EUR").transactions
+		#expect(ts.map(\.returnReason) == ["AC04", nil])
+		#expect(ts.map(\.isPending) == [false, false])
+	}
+
+	@Test("A batch entry whose details give different return reasons has none", arguments: [("AC04", "MD06"), ("AC04", "")])
+	func camtBatchReturnReasons(first: String, second: String) throws {
+		func detail(_ code: String) -> String {
+			let reason = code.isEmpty ? "" : "<RtrInf><Rsn><Cd>\(code)</Cd></Rsn></RtrInf>"
+			return "<TxDtls><Amt Ccy=\"EUR\">10.00</Amt>\(reason)</TxDtls>"
+		}
+		let xml = """
+		<?xml version="1.0" encoding="UTF-8"?>
+		<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.053.001.08"><BkToCstmrStmt><Stmt>
+		<Ntry><Amt Ccy="EUR">20.00</Amt><CdtDbtInd>CRDT</CdtDbtInd><Sts><Cd>BOOK</Cd></Sts><BookgDt><Dt>2026-11-05</Dt></BookgDt>
+		<NtryDtls>\(detail(first))\(detail(second))</NtryDtls></Ntry>
+		</Stmt></BkToCstmrStmt></Document>
+		"""
+		#expect(try TransactionFileImporter.parse(Data(xml.utf8), currency: "EUR").transactions.map(\.returnReason) == [nil])
+	}
+
+	@Test("A batch entry from two payers keeps the return reason that both details give")
+	func camtBatchSharedReturnReason() throws {
+		func detail(_ name: String) -> String {
+			"<TxDtls><Amt Ccy=\"EUR\">10.00</Amt><RltdPties><Dbtr><Pty><Nm>\(name)</Nm></Pty></Dbtr></RltdPties><RtrInf><Rsn><Cd>AC04</Cd></Rsn></RtrInf></TxDtls>"
+		}
+		let xml = """
+		<?xml version="1.0" encoding="UTF-8"?>
+		<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.053.001.08"><BkToCstmrStmt><Stmt>
+		<Ntry><Amt Ccy="EUR">20.00</Amt><CdtDbtInd>CRDT</CdtDbtInd><Sts><Cd>BOOK</Cd></Sts><BookgDt><Dt>2026-11-05</Dt></BookgDt>
+		<NtryDtls>\(detail("Erika Mustermann"))\(detail("Max Mustermann"))</NtryDtls></Ntry>
+		</Stmt></BkToCstmrStmt></Document>
+		"""
+		let ts = try TransactionFileImporter.parse(Data(xml.utf8), currency: "EUR").transactions
+		#expect(ts.map(\.name) == [""])
+		#expect(ts.map(\.returnReason) == ["AC04"])
+	}
+
 	@Test("camt.053 with a debit and a pending credit")
 	func camt() throws {
 		let xml = """
@@ -456,4 +505,178 @@ struct FileImportTests {
 			try TransactionFileImporter.parse(Data(unquoted.utf8), currency: "EUR")
 		}
 	}
+
+	@Test("A CSV date column takes the order of day, month, and year that all its values fit", arguments: [
+		("31.10.2026", "03.11.2026", Day(year: 2026, month: 10, day: 31), Day(year: 2026, month: 11, day: 3)),
+		("12/31/2026", "01/05/2027", Day(year: 2026, month: 12, day: 31), Day(year: 2027, month: 1, day: 5)),
+		("05/01/2027", "31/12/2026", Day(year: 2027, month: 1, day: 5), Day(year: 2026, month: 12, day: 31)),
+		("31.10.26", "03.11.26", Day(year: 2026, month: 10, day: 31), Day(year: 2026, month: 11, day: 3)),
+		("2026-10-31", "2026-11-03", Day(year: 2026, month: 10, day: 31), Day(year: 2026, month: 11, day: 3)),
+		("03/04/2026", "05/06/2026", Day(year: 2026, month: 4, day: 3), Day(year: 2026, month: 6, day: 5)),
+	])
+	func csvDateOrder(first: String, second: String, firstDay: Day, secondDay: Day) throws {
+		let text = "Date,Value date,Payee,Amount\n\(first),\(second),Kiosk,-1.50\n\(second),\(first),Kiosk,-2.00\n"
+		let ts = try TransactionFileImporter.parse(Data(text.utf8), currency: "EUR").transactions
+		#expect(ts.map(\.bookingDate) == [firstDay, secondDay])
+		#expect(ts.map(\.valueDate) == [secondDay, firstDay])
+	}
+
+	@Test("A CSV date column that fits day first and month first takes the order of the other date column")
+	func csvDateOrderOfOtherColumn() throws {
+		let text = "Date,Value date,Payee,Amount\n10/30/2026,11/01/2026,Kiosk,-1.50\n10/31/2026,11/02/2026,Kiosk,-2.00\n"
+		let ts = try TransactionFileImporter.parse(Data(text.utf8), currency: "EUR").transactions
+		#expect(ts.map(\.valueDate) == [Day(year: 2026, month: 11, day: 1), Day(year: 2026, month: 11, day: 2)])
+		let swapped = "Date,Value date,Payee,Amount\n11/01/2026,10/30/2026,Kiosk,-1.50\n"
+		#expect(try TransactionFileImporter.parse(Data(swapped.utf8), currency: "EUR").transactions.map(\.bookingDate) == [Day(year: 2026, month: 11, day: 1)])
+		let pending = "Date,Value date,Payee,Amount\n10/01/2026,10/30/2026,Kiosk,-1.50\n10/02/2026,pending,Kiosk,-2.00\n"
+		#expect(try TransactionFileImporter.parse(Data(pending.utf8), currency: "EUR").transactions.map(\.bookingDate) == [Day(year: 2026, month: 10, day: 1), Day(year: 2026, month: 10, day: 2)])
+	}
+
+	@Test("A date with dots reads day first, whatever the other date column shows")
+	func csvDottedDateStaysDayFirst() throws {
+		let text = "Buchungstag;Valuta;Name;Betrag\n01.11.2026;11.13.2026;Kiosk;-1,00\n02.11.2026;03.11.2026;Kiosk;-2,00\n"
+		let parsed = try TransactionFileImporter.parse(Data(text.utf8), currency: "EUR")
+		#expect(parsed.transactions.map(\.bookingDate) == [Day(year: 2026, month: 11, day: 1), Day(year: 2026, month: 11, day: 2)])
+		#expect(parsed.transactions.map(\.valueDate) == [nil, Day(year: 2026, month: 11, day: 3)])
+		#expect(parsed.warnings == [.unreadableValueDate(line: 2, cell: "11.13.2026")])
+	}
+
+	@Test("An ISO date reads as an ISO date in a column of any order")
+	func csvIsoInAnyColumn() throws {
+		let text = "Datum;Name;Betrag\n31.10.2026;Kiosk;-1,00\n2026-11-01;Kiosk;-1,00\n02.11.2026;Kiosk;-1,00\n"
+		let ts = try TransactionFileImporter.parse(Data(text.utf8), currency: "EUR").transactions
+		#expect(ts.map(\.bookingDate) == [Day(year: 2026, month: 10, day: 31), Day(year: 2026, month: 11, day: 1), Day(year: 2026, month: 11, day: 2)])
+	}
+
+	@Test("A CSV date that the calendar does not have is rejected with its line")
+	func csvDateNotInCalendar() {
+		#expect(throws: TransactionFileImporter.Failure.line(3, "The date 02/30/2026 cannot be read.")) {
+			try TransactionFileImporter.parse(Data("Date,Payee,Amount\n12/31/2026,Kiosk,-1.50\n02/30/2026,Kiosk,-1.50\n".utf8), currency: "EUR")
+		}
+	}
+
+	@Test("A CSV date that the order of its column does not fit is rejected with its line")
+	func csvDateOutsideOrder() {
+		let text = "Date,Payee,Amount\n12/31/2026,Kiosk,-1.50\n12/30/2026,Kiosk,-1.50\n31/12/2026,Kiosk,-1.50\n"
+		#expect(throws: TransactionFileImporter.Failure.line(4, "The date 31/12/2026 cannot be read.")) {
+			try TransactionFileImporter.parse(Data(text.utf8), currency: "EUR")
+		}
+	}
+
+	@Test("A CSV amount with a trailing sign or a currency symbol or code is read")
+	func csvAmountDecorations() throws {
+		let cells = ["89,00-", "1.234,56-", "89,00 -", "+12,00", "12,00+", "EUR -89,00", "-89,00 EUR", "€ 12,50", "-12,50 €", "€-12,50", "-€12,50", "12,50 eur", ",50", "50,", "12,50 EUR-", "12,50€-"]
+		let text = "Datum;Name;Betrag\n" + cells.map { "01.11.2026;Kiosk;\($0)\n" }.joined()
+		let ts = try TransactionFileImporter.parse(Data(text.utf8), currency: "EUR").transactions
+		#expect(ts.map(\.amountMinor) == [-8_900, -123_456, -8_900, 1_200, 1_200, -8_900, -8_900, 1_250, -1_250, -1_250, -1_250, 1_250, 50, 5_000, -1_250, -1_250])
+		#expect(ts.map(\.currency) == Array(repeating: "EUR", count: 16))
+	}
+
+	@Test("A currency in the amount cell gives the row its currency when the file has no currency column")
+	func csvAmountCurrency() throws {
+		let text = "Date,Payee,Amount\n2026-11-01,Shop,\"$1,234.56\"\n2026-11-02,Shop,-12.00 USD\n2026-11-03,Shop,CHF 5.00\n2026-11-04,Shop,SFr. 5.00\n2026-11-05,Shop,-$12.50\n2026-11-06,Shop,-USD 12.00\n2026-11-07,Shop,-€12.50\n2026-11-08,Shop,SFr.50\n2026-11-09,Shop,SFr.12.50\n2026-11-10,Shop,Fr.12.50\n2026-11-11,Shop,0.00 USD\n"
+		let ts = try TransactionFileImporter.parse(Data(text.utf8), currency: "EUR").transactions
+		#expect(ts.map(\.amountMinor) == [123_456, -1_200, 500, 500, -1_250, -1_200, -1_250, 5_000, 1_250, 1_250, 0])
+		#expect(ts.map(\.currency) == ["USD", "USD", "CHF", "CHF", "USD", "USD", "EUR", "CHF", "CHF", "CHF", "USD"])
+		let filler = "Datum;Name;Soll;Haben\n01.11.2026;Kiosk;12,00 EUR;0,00\n02.11.2026;Kiosk;0,00;5,00 USD\n03.11.2026;Kiosk;12,00 EUR;5,00\n"
+		let filled = try TransactionFileImporter.parse(Data(filler.utf8), currency: "EUR").transactions
+		#expect(filled.map(\.amountMinor) == [-1_200, 500, -700])
+		#expect(filled.map(\.currency) == ["EUR", "USD", "EUR"])
+		let column = try TransactionFileImporter.parse(Data("Date,Payee,Amount,Currency\n2026-11-01,Shop,12.00 USD,GBP\n2026-11-02,Shop,12.00 USD,XYZ\n".utf8), currency: "EUR")
+		#expect(column.transactions.map(\.currency) == ["GBP", "EUR"])
+		#expect(column.warnings == [.unknownCurrency(line: 3, cell: "XYZ", replacement: "EUR")])
+	}
+
+	@Test("A debit and credit marker decides the sign of a signed amount")
+	func csvMarkerDecidesSign() throws {
+		let text = "Datum;Name;Betrag;S/H\n01.11.2026;Kiosk;89,00-;H\n02.11.2026;Kiosk;+12,00;S\n"
+		let ts = try TransactionFileImporter.parse(Data(text.utf8), currency: "EUR").transactions
+		#expect(ts.map(\.amountMinor) == [8_900, -1_200])
+	}
+
+	@Test("An amount in parentheses or with the yen sign is rejected with its line", arguments: ["(12.50)", "($12.50)", "\u{00A5}1200"])
+	func csvAmountOutOfScope(cell: String) {
+		#expect(throws: TransactionFileImporter.Failure.line(3, "The amount cannot be read.")) {
+			try TransactionFileImporter.parse(Data("Date,Payee,Amount\n2026-11-01,Shop,-1.50\n2026-11-02,Shop,\(cell)\n".utf8), currency: "EUR")
+		}
+	}
+
+	@Test("A CSV amount with a word that names no currency, or with a dash for no cents, is rejected with its line")
+	func csvAmountUnknownWord() {
+		#expect(throws: TransactionFileImporter.Failure.line(3, "The amount cannot be read.")) {
+			try TransactionFileImporter.parse(Data("Datum;Name;Betrag\n01.11.2026;Kiosk;-1,50\n02.11.2026;Kiosk;12,00 XYZ\n".utf8), currency: "EUR")
+		}
+		#expect(throws: TransactionFileImporter.Failure.line(2, "The amount cannot be read.")) {
+			try TransactionFileImporter.parse(Data("Datum;Name;Soll;Haben\n01.11.2026;Kiosk;12,00 USD;5,00 EUR\n".utf8), currency: "EUR")
+		}
+		#expect(throws: TransactionFileImporter.Failure.line(2, "The amount cannot be read.")) {
+			try TransactionFileImporter.parse(Data("Datum;Name;Soll;Haben\n01.11.2026;Kiosk;12,00 USD;5,00\n".utf8), currency: "EUR")
+		}
+		// "5,-" is 5 euros without cents, not a withdrawal, and reads as no amount.
+		#expect(throws: TransactionFileImporter.Failure.line(2, "The amount cannot be read.")) {
+			try TransactionFileImporter.parse(Data("Datum;Name;Betrag\n01.11.2026;Kiosk;5,-\n".utf8), currency: "EUR")
+		}
+	}
+	@Test("A CSV file with month-first and dotted dates warns without changing their days")
+	func csvMixedDateForms() throws {
+		let text = "Date;Value date;Amount\n12/31/2026;01.05.2027;-1.50\n"
+		let parsed = try TransactionFileImporter.parse(Data(text.utf8), currency: "EUR")
+		#expect(parsed.transactions.map(\.bookingDate) == [Day(year: 2026, month: 12, day: 31)])
+		#expect(parsed.transactions.map(\.valueDate) == [Day(year: 2027, month: 5, day: 1)])
+		#expect(parsed.warnings.map(\.description) == ["Line 2: The file mixes month-first dates and dotted dates. Dates with dots read day first."])
+	}
+
+	@Test("A dotted value date warns when only the booking column reads month first")
+	func csvMixedDateFormsAcrossColumns() throws {
+		let text = "Date;Value date;Amount\n12/31/2026;31/01/2027;-1.50\n12/30/2026;01.05.2027;-2.00\n"
+		let parsed = try TransactionFileImporter.parse(Data(text.utf8), currency: "EUR")
+		#expect(parsed.transactions.map(\.bookingDate) == [Day(year: 2026, month: 12, day: 31), Day(year: 2026, month: 12, day: 30)])
+		#expect(parsed.transactions.map(\.valueDate) == [Day(year: 2027, month: 1, day: 31), Day(year: 2027, month: 5, day: 1)])
+		#expect(parsed.warnings == [.mixedDateForms(line: 3)])
+	}
+
+
+	@Test("Reading a file stops with a cancellation error when its task is canceled", arguments: [
+		("Datum;Name;Betrag\n01.11.2026;Kiosk;-1,50\n", -150),
+		("Datum;Name;Betrag\r\n01.11.2026;Kiosk;-1,50\r\n", -150),
+		("Datum;Name;Betrag\r01.11.2026;Kiosk;-1,50\r", -150),
+		(":20:STARTUMS\n:25:12030000/202051\n:61:2611031103D1000,00NDDTNONREF\n-\n", -100_000),
+		("""
+		<?xml version="1.0" encoding="UTF-8"?>
+		<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.053.001.08"><BkToCstmrStmt><Stmt>
+		<Ntry><Amt Ccy="EUR">1000.00</Amt><CdtDbtInd>DBIT</CdtDbtInd><BookgDt><Dt>2026-11-03</Dt></BookgDt></Ntry>
+		</Stmt></BkToCstmrStmt></Document>
+		""", -100_000),
+	])
+	func fileCanceled(text: String, amountMinor: Int64) async throws {
+		let canceled = await Task {
+			withUnsafeCurrentTask { $0?.cancel() }
+			return Result { try TransactionFileImporter.parse(Data(text.utf8), currency: "EUR") }
+		}.value
+		#expect(throws: CancellationError.self) { try canceled.get() }
+		#expect(try TransactionFileImporter.parse(Data(text.utf8), currency: "EUR").transactions.map(\.amountMinor) == [amountMinor])
+	}
+
+	@Test("A cancel while the decimal mark of a large CSV file is collected ends the reading at once")
+	func csvCanceledWhileCollectingDecimalMark() async throws {
+		let text = "Datum;Name;Betrag\n01.11.2026;Kiosk;1,234\n" + String(repeating: "02.11.2026;Kiosk;4.50\n", count: 300_000)
+		let data = Data(text.utf8)
+		let clock = ContinuousClock()
+		// "1,234" collects the decimal mark from all amounts. That pass runs from about 5 to 11 times the
+		// time of the split, measured in a debug build, so the cancel comes at 8 times.
+		let split = try clock.measure { _ = try CSVParser.split(text, delimiter: ";") }
+		let reading = Task.detached { Result { try TransactionFileImporter.parse(data, currency: "EUR") } }
+		try await Task.sleep(for: split * 8)
+		let canceled = clock.now
+		reading.cancel()
+		let result = await reading.value
+		#expect(clock.now - canceled < .seconds(1))
+		#expect(throws: CancellationError.self) { try result.get() }
+	}
+	@Test("CSV delimiter detection uses only the first 20 nonempty lines", arguments: ["\n", "\r\n", "\r"])
+	func csvDelimiterSample(lineBreak: String) {
+		let text = lineBreak + String(repeating: "a;b" + lineBreak + lineBreak, count: 20) + String(repeating: ",", count: 21)
+		#expect(CSVParser.detectDelimiter(text) == ";")
+	}
+
 }

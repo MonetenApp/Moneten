@@ -48,6 +48,15 @@ struct MergeTests {
 		#expect(ledger.transactions(ofAccount: giro.id).map(\.needsReview) == stored.map(\.needsReview))
 	}
 
+	@Test("A stored transaction keeps its return reason")
+	func returnReason() throws {
+		let store = try makeStore()
+		var returned = row(5, 8_900, "Stadtwerke Musterstadt", "Rücklastschrift")
+		returned.returnReason = "AC04"
+		_ = try store.merge(.file([returned]), into: giro.id)
+		#expect(try store.loadLedger().transactions(ofAccount: giro.id).map(\.returnReason) == ["AC04"])
+	}
+
 	@Test("The merge plans from the database, so a row that the database holds as booked is never dropped")
 	func plansFromTheDatabase() throws {
 		let store = try makeStore()

@@ -4,10 +4,12 @@ import Testing
 
 @Suite("Performance with a long history")
 struct PerformanceTests {
-	@Test("Search, filters, and sums over 50,000 transactions stay well under a frame budget per keystroke")
+	@Test("Search, filters, sums, and the amounts of the sidebar over 50,000 transactions stay well under a frame budget per keystroke")
 	func largeLedger() {
 		let accounts = (0..<20).map { Account(position: $0, name: "Konto \($0)", kind: .giro, source: .offline) }
-		let categories = (0..<60).map { Domain.Category(position: $0, name: "Kategorie \($0)", rule: $0 % 3 == 0 ? "\"Haendler\($0)\"" : "") }
+		let categories = (0..<60).map {
+			Domain.Category(position: $0, name: "Kategorie \($0)", sidebarAmount: SidebarAmount.allCases[$0 % 5], rule: $0 % 3 == 0 ? "\"Haendler\($0)\"" : "")
+		}
 			+ [Domain.Category(position: 99, name: "Uncategorized", isDefault: true)]
 		var ts: [Transaction] = []
 		for i in 0..<50_000 {
@@ -26,6 +28,8 @@ struct PerformanceTests {
 		range.amount = .range(min: -50, max: 50)
 		var rangeCount = 0
 		let amountRange = fastest { rangeCount = ledger.transactions(in: .category(categories[60].id), filter: range).count }
+		var amounts: [UUID: Money] = [:]
+		let sidebar = fastest { amounts = ledger.sidebarAmounts(today: Day(year: 2022, month: 9, day: 15)) }
 		let imported = (0..<2_000).map { i in
 			Transaction(accountID: accounts[i % accounts.count].id, bookingDate: Day(year: 2026, month: 11, day: 1 + i % 28), amountMinor: -Int64(i),
 				name: "Neu \(i)", purpose: "Import \(i)")
@@ -33,9 +37,10 @@ struct PerformanceTests {
 		let update = fastest { var copy = ledger; copy.update(imported) }
 		let categorizer = Categorizer(ledger: ledger)
 		let rules = fastest { for t in ts.prefix(5_000) { _ = categorizer.category(for: t) } }
-		print("build \(build), import of 2,000 \(update), search \(search) (\(count) rows), category \(category), amount range \(amountRange) (\(rangeCount) rows), 5,000 categorizations \(rules)")
+		print("build \(build), import of 2,000 \(update), search \(search) (\(count) rows), category \(category), amount range \(amountRange) (\(rangeCount) rows), sidebar \(sidebar) (\(amounts.count) amounts), 5,000 categorizations \(rules)")
 		#expect(count > 0)
 		#expect(rangeCount == 15_868)
+		#expect(amounts.count > 0)
 		// A debug build runs several times slower than the app and depends on the load of the machine,
 		// so the budgets hold for a release build only: `scripts/test.sh -c release -Xswiftc -enable-testing
 		// --filter PerformanceTests`, which CI runs as its own step.
@@ -43,8 +48,36 @@ struct PerformanceTests {
 		#expect(search < .milliseconds(150))
 		#expect(category < .milliseconds(100))
 		#expect(amountRange < .milliseconds(100))
+		#expect(sidebar < .milliseconds(20))
 		#expect(build < .seconds(1))
 		#expect(update < .milliseconds(300))
+		#endif
+	}
+
+	@Test("The category picker narrows its list for 50,000 selected rows well within a frame")
+	func pickerNarrowing() {
+		let company = AccountGroup(name: "Firma", position: 0)
+		let accounts = (0..<10).map { Account(groupID: company.id, position: $0, name: "Konto \($0)", kind: .giro, source: .offline) }
+		let categories = (0..<60).map { Domain.Category(position: $0, name: "Kategorie \($0)", restrictedToID: $0 < 10 ? company.id : nil) }
+			+ [Domain.Category(position: 99, name: "Uncategorized", isDefault: true)]
+		var ts: [Transaction] = []
+		for i in 0..<50_000 {
+			let accountID: UUID = accounts[i % accounts.count].id
+			let day = Day(year: 2014 + i % 12, month: 1 + i % 12, day: 1 + i % 28)
+			let amount: Int64 = -Int64(i % 9_000)
+			ts.append(Transaction(accountID: accountID, bookingDate: day, amountMinor: amount, name: "Haendler\(i % 70) Musterstadt"))
+		}
+		let ledger = Ledger(groups: [company], accounts: accounts, categories: categories, transactions: ts)
+		let ids: Set<UUID> = Set(ts.map(\Transaction.id))
+		var selected: Set<UUID> = []
+		let open = fastest { selected = ledger.accountIDs(ofTransactions: ids) }
+		var listed = 0
+		let keystroke = fastest { listed = ledger.categories(matching: "kat", assignableTo: selected).count }
+		print("picker for 50,000 selected rows: open \(open), keystroke \(keystroke) (\(listed) categories)")
+		#expect(listed == 60)
+		#if !DEBUG
+		#expect(keystroke < .milliseconds(2))
+		#expect(open < .milliseconds(100))
 		#endif
 	}
 

@@ -63,7 +63,8 @@ struct AppCommands: Commands {
 	let model: AppModel
 	@Environment(\.openWindow) private var openWindow
 
-	var unlocked: Bool { model.phase == .unlocked }
+	/// A rule run keeps the category settings open, so no command may open another sheet in its place.
+	var unlocked: Bool { model.phase == .unlocked && !model.isApplyingRule }
 
 	var body: some Commands {
 		CommandGroup(after: .appSettings) {
@@ -74,10 +75,14 @@ struct AppCommands: Commands {
 			.disabled(!unlocked)
 			Button("Lock Moneten") { model.lock() }
 				.keyboardShortcut("l", modifiers: [.command, .control])
-				.disabled(!unlocked || !model.hasPassword)
+				.disabled(model.phase != .unlocked || !model.hasPassword)
 		}
 		CommandGroup(replacing: .newItem) {
 			Button("Import from MoneyMoney...") { model.sheet = .migration }
+				.disabled(!unlocked)
+			Button("Import All Data...") { Task { await model.importAllData() } }
+				.disabled(!unlocked)
+			Button("Export All Data...") { model.sheet = .exportAllData }
 				.disabled(!unlocked)
 			Divider()
 			Button("Refresh All Accounts") { model.refresh(.all) }
@@ -118,6 +123,10 @@ struct AppCommands: Commands {
 			Button("Add Transaction...") { model.sheet = .transaction(nil) }
 				.keyboardShortcut("+")
 				.disabled(!unlocked || model.selectedOfflineAccount == nil)
+			// A bank dialog shows only while no other sheet is open, so ⌘K would close it and drop a half-typed PIN.
+			Button("Assign Category...") { model.openCategoryPicker() }
+				.keyboardShortcut("k")
+				.disabled(!unlocked || model.selectedTransactions.isEmpty || model.sheet != nil || model.sync.broker.sheet != nil)
 			Button("Add Comment...") { model.sheet = .comment(model.selectedTransactions) }
 				.keyboardShortcut("k", modifiers: [.command, .shift])
 				.disabled(!unlocked || model.selectedTransactions.isEmpty)

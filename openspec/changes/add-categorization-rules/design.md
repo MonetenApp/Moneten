@@ -21,7 +21,7 @@ The app keeps all accounts, categories, and transactions of the open database in
 - A term without a field operator searches the name, the purpose, the booking text, the references, the creditor ID, and the comment. The account fields are searched only through `local_account:` and `remote_account:`.
 - Account fields compare without spaces, so `local_account:"DE02 1203 ..."` matches.
 - Regular expressions are case-insensitive and run on the unfolded text of each field.
-- `Categorizer` walks the categories in sidebar order and returns the first match. `RuleApplier` applies one changed rule to existing transactions in the two modes of the spec.
+- `Categorizer` walks the categories in sidebar order and returns the first match. `RuleApplier` applies one changed rule to existing transactions in the two modes of the spec. It reports its progress after every 1,000 transactions, and the category settings show it. One run goes at a time. While it runs, the category settings cannot be closed or changed, and the menu commands that open a sheet are disabled. The run reads a copy of the ledger. At the end, a row that is the same as in the copy takes the result of the run, a row that a refresh changed or added during the run is checked again against the current ledger, and a row that a refresh removed drops out. A lock cancels the run, and it saves nothing.
 
 ## Risks / Trade-offs
 

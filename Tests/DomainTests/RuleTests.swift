@@ -358,4 +358,71 @@ struct CategorizerTests {
 		#expect(changed.count == 1)
 		#expect(changed[0].categoryID == nil)
 	}
+
+	@Test("Applying a rule reports progress every 1,000 transactions and at the end")
+	func applyProgress() throws {
+		let streaming = Domain.Category(position: 0, name: "Streaming", rule: #""Netflix""#)
+		let day = Day(year: 2026, month: 3, day: 1)
+		let ts = (0..<2_500).map { i in
+			Transaction(accountID: giro.id, bookingDate: day, amountMinor: -1_299, name: i % 2 == 0 ? "Netflix" : "REWE")
+		}
+		let l = ledger([streaming], ts)
+		var reports: [Int] = []
+		_ = RuleApplier.apply(category: streaming, rule: try Rule(parsing: streaming.rule), to: l.transactions, ledger: l, mode: .all) {
+			reports.append($0)
+		}
+		#expect(reports == [1_000, 2_000, 2_500])
+	}
+
+	@Test("A cancelled rule run stops and changes nothing")
+	func applyCancelled() async throws {
+		let streaming = Domain.Category(position: 0, name: "Streaming", rule: #""Netflix""#)
+		let day = Day(year: 2026, month: 3, day: 1)
+		let l = ledger([streaming], (0..<2_500).map { _ in Transaction(accountID: giro.id, bookingDate: day, amountMinor: -1_299, name: "Netflix") })
+		let rule = try Rule(parsing: streaming.rule)
+		let (changed, reports) = await Task {
+			var reports: [Int] = []
+			let changed = RuleApplier.apply(category: streaming, rule: rule, to: l.transactions, ledger: l, mode: .all) {
+				reports.append($0)
+				withUnsafeCurrentTask { $0?.cancel() }
+			}
+			return (changed, reports)
+		}.value
+		#expect(reports == [1_000])
+		#expect(changed.isEmpty)
+	}
+
+	@Test("A rule run keeps a row that a refresh changed during the run in the category that its current text gives it")
+	func rebaseOntoRefresh() throws {
+		let streaming = Domain.Category(position: 0, name: "Streaming", rule: #""Netflix""#)
+		let groceries = Domain.Category(position: 1, name: "Groceries", rule: #""REWE""#)
+		let day = Day(year: 2026, month: 3, day: 1)
+		let unchanged = Transaction(accountID: giro.id, bookingDate: day, amountMinor: -1_299, name: "Netflix")
+		let rebooked = Transaction(accountID: giro.id, bookingDate: day, amountMinor: -4_210, name: "Netflix", isPending: true)
+		let renamed = Transaction(accountID: giro.id, bookingDate: day, amountMinor: -999, name: "Kartenzahlung", isPending: true)
+		let removed = Transaction(accountID: giro.id, bookingDate: day, amountMinor: -1_799, name: "Netflix")
+		let snapshot = ledger([streaming, groceries], [unchanged, rebooked, renamed, removed])
+		let rule = try Rule(parsing: streaming.rule)
+		let results = RuleApplier.apply(category: streaming, rule: rule, to: snapshot.transactions, ledger: snapshot, mode: .all)
+
+		var current = snapshot
+		var booked = rebooked
+		booked.isPending = false
+		booked.name = "REWE Markt"
+		booked.categoryID = groceries.id
+		booked.categorizedBy = .rule
+		var matching = renamed
+		matching.isPending = false
+		matching.name = "Netflix International"
+		let arrived = Transaction(accountID: giro.id, bookingDate: day, amountMinor: -1_299, name: "Netflix")
+		current.update([booked, matching, arrived])
+		current.remove(transactionIDs: [removed.id])
+
+		let rows = RuleApplier.rebase(results, from: snapshot, onto: current, category: streaming, rule: rule, mode: .all)
+		#expect(Set(rows.map(\.id)) == [unchanged.id, matching.id, arrived.id])
+		current.update(rows)
+		let categories = Dictionary(uniqueKeysWithValues: current.transactions.map { ($0.id, $0.categoryID) })
+		#expect(categories == [unchanged.id: streaming.id, rebooked.id: groceries.id, renamed.id: streaming.id, arrived.id: streaming.id])
+		#expect(current.transaction(renamed.id)?.name == "Netflix International")
+	}
 }

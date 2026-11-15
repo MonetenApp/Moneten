@@ -269,6 +269,8 @@ public struct Transaction: Identifiable, Hashable, Sendable, Codable {
 	public var endToEndReference: String?
 	public var mandateReference: String?
 	public var creditorID: String?
+	/// The ISO 20022 code with which the bank returned the payment, for example "AC04" for a closed account.
+	public var returnReason: String?
 	public var comment: String?
 	public var isChecked: Bool
 	public var isPending: Bool
@@ -288,7 +290,7 @@ public struct Transaction: Identifiable, Hashable, Sendable, Codable {
 	public init(id: UUID = UUID(), accountID: UUID, bookingDate: Day, valueDate: Day? = nil, amountMinor: Int64, currency: String = "EUR", name: String, purpose: String = "",
 		counterpartyIBAN: String? = nil, counterpartyBIC: String? = nil, bookingText: String? = nil, endToEndReference: String? = nil, mandateReference: String? = nil,
 		creditorID: String? = nil, comment: String? = nil, isChecked: Bool = false, isPending: Bool = false, categoryID: UUID? = nil, categorizedBy: Categorization = .none,
-		isNew: Bool = false, needsReview: Bool = false, isFetched: Bool = false, sourceID: String? = nil, createdAt: Date = Date()) {
+		isNew: Bool = false, needsReview: Bool = false, isFetched: Bool = false, sourceID: String? = nil, createdAt: Date = Date(), returnReason: String? = nil) {
 		self.id = id
 		self.accountID = accountID
 		self.bookingDate = bookingDate
@@ -303,6 +305,7 @@ public struct Transaction: Identifiable, Hashable, Sendable, Codable {
 		self.endToEndReference = endToEndReference
 		self.mandateReference = mandateReference
 		self.creditorID = creditorID
+		self.returnReason = returnReason
 		self.comment = comment
 		self.isChecked = isChecked
 		self.isPending = isPending

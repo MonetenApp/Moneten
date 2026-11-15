@@ -79,6 +79,7 @@ When the rules of several categories match a transaction, the first category in 
 | `counterpartyIBAN`, `counterpartyBIC` | `String?` | |
 | `bookingText` | `String?` | The kind of booking as the bank names it, for example "SEPA-BASISLASTSCHRIFT". |
 | `endToEndReference`, `mandateReference`, `creditorID` | `String?` | SEPA references. |
+| `returnReason` | `String?` | The ISO 20022 code with which the bank returned the payment, for example "AC04". Read from a CAMT file. |
 | `comment` | `String?` | A comment that the user writes. |
 | `isChecked` | `Bool` | The user checked this transaction off. |
 | `isPending` | `Bool` | Not booked yet. A pending transaction counts toward the balance and the category sums, except one with `needsReview`. |
@@ -116,6 +117,10 @@ Refreshes and file imports go through `reconcile`, which recognizes a stored row
 | `installedExtension` | The origin of an installed extension by its name, `catalog` with its `InstalledPackage` or `file` with the digests the user allowed |
 
 Migration `v1` creates the tables. It also creates the table `setting`, which no code uses, because app settings live in `UserDefaults`. Migration `v2` drops it. Migration `v4` adds `portfolioValue`, whose rows go with their account. Migration `v5` adds `account.color`, the `#RRGGBB` color of the account's icon. Migration `v6` adds `bankTransaction.needsReview` and `bankTransaction.isFetched`, both false for existing rows, and the table `deletedTransaction`. It rewrites no row. Migration `v7` adds the table `access` and the columns `account.accessID`, `account.remoteID`, `account.refreshedAt`, and `account.refreshError`, all empty for existing accounts. Migration `v8` adds `extensionHostDecision`. Migration `v9` adds the table `savedPIN`, whose rows go with their access. Migration `v10` adds `extensionCatalog` and `installedExtension`. Migration `v12` adds `account.refreshInterval`, `everyTwoHours` for existing accounts. Migration `v14` adds `holding`, whose rows go with their account. Migration `v15` adds `deletedTransaction.currency`, the currency of its account for existing rows.
+
+## Complete export
+
+`AllData` holds every stored object except saved PINs, the `AccessState` of each access, and the data of extensions. `Store.exportAllData` reads it and `Store.importAllData` writes it into an empty database. Its JSON form is the file of "Export All Data...", which [the export format](export-format.md) describes key by key.
 
 ## Types that the specs add later
 
