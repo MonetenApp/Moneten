@@ -12,7 +12,10 @@ final class CSVPreviewModel {
 	private(set) var file: CSVFile
 	var layout: CSVLayout {
 		didSet {
-			guard layout != oldValue, !isAdopting else { return }
+			// "Auto-create categories" changes nothing that the preview reads.
+			var old = oldValue
+			old.createsCategories = layout.createsCategories
+			guard layout != old, !isAdopting else { return }
 			let dates: [CSVField] = [.bookingDate, .valueDate]
 			if dates.contains(where: { layout.columns[$0] != oldValue.columns[$0] }) { detectsDateOrder = true }
 			refresh()
@@ -22,19 +25,71 @@ final class CSVPreviewModel {
 	private(set) var preview: CSVPreview?
 	/// Why the file cannot be read with the encoding of `layout`.
 	private(set) var problem: String?
+	/// The saved profiles, and the name under which "Import" saves the settings. An empty name saves none.
+	private(set) var profiles: [CSVProfile]
+	var profileName: String
+	/// The saved profile that the settings come from.
+	private(set) var profile: String?
+	/// The profile that the file matched, which "Import" renames when the user changed the name. A profile
+	/// that the user picks is only a starting point, so a new name leaves it.
+	@ObservationIgnored private let matched: String?
 	@ObservationIgnored private var reading: Task<Void, Never>?
-	/// Set while the model takes the date order that the preview detected, which needs no new reading.
+	/// Set while the model takes a layout that needs no new reading or keeps its date order.
 	@ObservationIgnored private var isAdopting = false
 	/// Set from a change of a date column until a reading finishes, so that a quick second change, which
 	/// cancels the reading, still detects the date order.
 	@ObservationIgnored private var detectsDateOrder = false
 
-	init(name: String, file: CSVFile, layout: CSVLayout, currency: String) {
+	/// `profile` is the starting point, and `matched` the profile with the header row of the file. A near
+	/// match starts from its profile with an empty name, so that "Import" never moves it to another bank.
+	init(name: String, file: CSVFile, layout: CSVLayout, currency: String, profiles: [CSVProfile], profile: String?, matched: String?) {
 		self.name = name
 		self.file = file
 		self.layout = layout
 		self.currency = currency
+		self.profiles = profiles
+		self.profile = profile
+		self.matched = matched
+		profileName = matched ?? ""
 		refresh()
+	}
+
+	var savedProfile: String? {
+		let name = profileName.trimmingCharacters(in: .whitespaces)
+		return name.isEmpty || !file.hasHeaderRow ? nil : name
+	}
+
+	/// Takes the settings of a saved profile, with each field in the column of the title that the profile had for it.
+	func apply(_ name: String?) {
+		profile = name
+		// A picked profile is a starting point; only the matched one keeps its name, so "Import" never moves another bank's profile.
+		profileName = name == matched ? name ?? "" : ""
+		guard let saved = profiles.first(where: { $0.name == name }) else { return }
+		var next = saved.layout
+		switch CSVProfile.match(for: file, in: [saved], detected: layout) {
+		case .same: break
+		case let .changed(_, moved): next = moved
+		case .none: next.columns = layout.columns
+		}
+		isAdopting = true
+		layout = next
+		isAdopting = false
+		detectsDateOrder = false
+		refresh()
+	}
+
+	func deleteProfile() {
+		guard let profile else { return }
+		profiles.removeAll { $0.name == profile }
+		CSVProfileStore.save(profiles)
+		self.profile = nil
+		profileName = ""
+	}
+
+	func saveProfile() {
+		guard let savedProfile else { return }
+		profiles.save(CSVProfile(name: savedProfile, header: file.header, layout: layout), matched: matched, applied: profile)
+		CSVProfileStore.save(profiles)
 	}
 
 	/// The transactions to import, once every row of the file reads in `layout`.
@@ -72,7 +127,7 @@ final class CSVPreviewModel {
 		let current = file, layout = layout, currency = currency, detectingDateOrder = detectsDateOrder
 		let parsing = Task.detached(priority: .userInitiated) {
 			withExtendedLifetime(previous) {}
-			let file = layout.encoding == current.encoding ? current : try CSVFile(data: current.data, encoding: layout.encoding)
+			let file = try current.with(layout.encoding)
 			let preview = try file.preview(layout, currency: currency, detectingDateOrder: detectingDateOrder)
 			return (file, preview)
 		}
@@ -83,7 +138,9 @@ final class CSVPreviewModel {
 					guard !Task.isCancelled, let self else { return }
 					self.file = file
 					self.isAdopting = true
-					self.layout = preview.layout
+					var read = preview.layout
+					read.createsCategories = self.layout.createsCategories
+					self.layout = read
 					self.isAdopting = false
 					self.detectsDateOrder = false
 					self.preview = preview
@@ -111,6 +168,26 @@ struct CSVPreviewView: View {
 			Text(status).foregroundStyle(.secondary)
 		} content: {
 			Section {
+				Picker("Profile", selection: Binding { model.profile } set: { model.apply($0) }) {
+					Text("None").tag(String?.none)
+					ForEach(model.profiles, id: \.name) { Text($0.name).tag(String?.some($0.name)) }
+				}
+				if !model.file.hasHeaderRow {
+					Text("A file without a header row cannot be saved as a profile.").foregroundStyle(.secondary)
+				} else {
+					LabeledContent("Save as profile") {
+						HStack {
+							TextField("Save as profile", text: $model.profileName, prompt: Text("Name"))
+								.labelsHidden()
+								.textFieldStyle(.roundedBorder)
+								.frame(width: 220)
+							Button("Delete Profile", role: .destructive) { model.deleteProfile() }
+								.disabled(model.profile == nil)
+						}
+					}
+				}
+			}
+			Section {
 				Picker("Encoding", selection: $model.layout.encoding) {
 					ForEach(CSVEncoding.allCases, id: \.self) { Text($0.title) }
 				}
@@ -125,6 +202,10 @@ struct CSVPreviewView: View {
 					Text("Detect").tag(DecimalMark?.none)
 					Text("Comma").tag(DecimalMark?.some(.comma))
 					Text("Point").tag(DecimalMark?.some(.point))
+				}
+				if model.layout.columns[.category] != nil {
+					Toggle("Auto-create categories", isOn: $model.layout.createsCategories)
+						.toggleStyle(.checkbox)
 				}
 			}
 			Section("Columns") {
@@ -205,5 +286,19 @@ struct CSVPreviewView: View {
 		} set: {
 			model.layout.assign(column, to: $0)
 		}
+	}
+}
+
+/// The CSV profiles of the user. They hold column titles and settings, no transactions, so they live in
+/// the settings of the app and not in the database.
+enum CSVProfileStore {
+	private static let key = "csvProfiles"
+
+	static func load() -> [CSVProfile] {
+		UserDefaults.standard.data(forKey: key).map(CSVProfile.list(from:)) ?? []
+	}
+
+	static func save(_ profiles: [CSVProfile]) {
+		UserDefaults.standard.set(try? JSONEncoder().encode(profiles), forKey: key)
 	}
 }

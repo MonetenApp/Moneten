@@ -101,7 +101,7 @@ public struct Reconciliation: Sendable, Equatable {
 /// Pure: the same input gives the same result, and merging the same delivery into the result gives
 /// nothing to write except the balance. `stored` must be all live rows of `account`, and `deleted` all
 /// its deleted rows, and `holdings` all its stored positions. Delivered rows are read for their bank fields
-/// and, from a file, the comment.
+/// and, from a file, the comment and a category set by hand.
 public func reconcile(_ delivery: Delivery, into account: Account, stored: [Transaction], deleted: [DeletedTransaction],
 	holdings: [Holding] = [], rules: Categorizer, now: Date) -> Reconciliation {
 	let rows = delivery.rows
@@ -156,6 +156,11 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored: [Tran
 			var next = stored[j].takingBankFields(of: delivered)
 			// A row of the source that a file or a bank books counts as imported until the source books it too.
 			if !delivery.isMigration, let id = next.sourceID { next.sourceID = Transaction.linkedID(id, pending: false, sourcePending: true) }
+			// The category column of a file books the row into its category, unless the user chose one.
+			if delivered.categorizedBy == .manual, next.categorizedBy != .manual {
+				next.categoryID = delivered.categoryID
+				next.categorizedBy = .manual
+			}
 			rules.categorize(&next)
 			if fetched { next.isFetched = true }
 			r.booked.append(next)
@@ -467,7 +472,7 @@ extension Transaction {
 			currency: delivered.currency, name: delivered.name, purpose: delivered.purpose, counterpartyIBAN: delivered.counterpartyIBAN,
 			counterpartyBIC: delivered.counterpartyBIC, bookingText: delivered.bookingText, endToEndReference: delivered.endToEndReference,
 			mandateReference: delivered.mandateReference, creditorID: delivered.creditorID, comment: delivered.comment, isPending: delivered.isPending,
-			isNew: true, isFetched: fetched, sourceID: delivered.sourceID, createdAt: delivered.createdAt, returnReason: delivered.returnReason)
+			categoryID: delivered.categoryID, categorizedBy: delivered.categorizedBy, isNew: true, isFetched: fetched, sourceID: delivered.sourceID, createdAt: delivered.createdAt, returnReason: delivered.returnReason)
 	}
 
 	func takingBankFields(of delivered: Transaction) -> Transaction {

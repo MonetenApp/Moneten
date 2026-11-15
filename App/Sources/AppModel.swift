@@ -1174,6 +1174,13 @@ final class AppModel {
 		}
 	}
 
+	/// Deletes categories that an import created and no row took, inside the table change of the import.
+	func discard(newCategories ids: Set<UUID>) {
+		guard let store, !ids.isEmpty else { return }
+		let deleted = ids.filter { (try? store.deleteCategory($0)) != nil }
+		ledger.replace(categories: ledger.categories.filter { !deleted.contains($0.id) })
+	}
+
 	func remove(category id: UUID) async {
 		guard let store, let c = ledger.category(id), !c.isDefault else { return }
 		do {

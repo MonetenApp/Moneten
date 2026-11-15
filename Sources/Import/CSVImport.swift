@@ -2,7 +2,7 @@ import Domain
 import Foundation
 
 /// A field of a transaction that a column of a CSV file can hold.
-public enum CSVField: String, CaseIterable, Sendable {
+public enum CSVField: String, CaseIterable, Sendable, Codable, CodingKeyRepresentable {
 	case bookingDate
 	case valueDate
 	case amount
@@ -15,6 +15,7 @@ public enum CSVField: String, CaseIterable, Sendable {
 	case bic
 	case purpose
 	case bookingText
+	case category
 	case comment
 	case endToEndReference
 	case mandateReference
@@ -34,6 +35,7 @@ public enum CSVField: String, CaseIterable, Sendable {
 		case .bic: "Bank code or BIC"
 		case .purpose: "Purpose"
 		case .bookingText: "Booking text"
+		case .category: "Category"
 		case .comment: "Comment"
 		case .endToEndReference: "End-to-end reference"
 		case .mandateReference: "Mandate reference"
@@ -59,6 +61,7 @@ public enum CSVField: String, CaseIterable, Sendable {
 		case .bic: ["bic", "bic (swift-code)", "bic zahlungsbeteiligter", "blz"]
 		case .purpose: ["verwendungszweck", "purpose", "beschreibung", "description", "memo", "buchungsdetails", "vorgang/verwendungszweck", "reference"]
 		case .bookingText: ["buchungstext", "umsatzart", "transaktionstyp", "booking text", "type", "art"]
+		case .category: ["kategorie", "category"]
 		case .comment: ["notiz", "comment", "kommentar", "note"]
 		case .endToEndReference: ["kundenreferenz", "end-to-end-referenz", "end-to-end reference", "e2e"]
 		case .mandateReference: ["mandatsreferenz", "mandate reference"]
@@ -68,7 +71,7 @@ public enum CSVField: String, CaseIterable, Sendable {
 }
 
 /// The text encodings of a CSV file that the app reads.
-public enum CSVEncoding: String, CaseIterable, Sendable {
+public enum CSVEncoding: String, CaseIterable, Sendable, Codable {
 	case utf8
 	case utf16
 	case isoLatin1
@@ -108,7 +111,7 @@ public enum CSVEncoding: String, CaseIterable, Sendable {
 }
 
 /// How the app reads a CSV file. The preview shows it, and the user can change each part.
-public struct CSVLayout: Hashable, Sendable {
+public struct CSVLayout: Hashable, Sendable, Codable {
 	public var encoding: CSVEncoding
 	/// The column of each field, counted from 0.
 	public var columns: [CSVField: Int]
@@ -117,12 +120,15 @@ public struct CSVLayout: Hashable, Sendable {
 	/// The decimal mark of every amount. Without one, each amount shows its own, and an amount such as
 	/// "1,234" takes the mark that the other amounts of the file show.
 	public var decimalMark: DecimalMark?
+	/// "Auto-create categories": the import creates the categories of the category column that do not exist.
+	public var createsCategories: Bool
 
-	public init(encoding: CSVEncoding, columns: [CSVField: Int], dateOrder: DateOrder, decimalMark: DecimalMark?) {
+	public init(encoding: CSVEncoding, columns: [CSVField: Int], dateOrder: DateOrder, decimalMark: DecimalMark?, createsCategories: Bool = false) {
 		self.encoding = encoding
 		self.columns = columns
 		self.dateOrder = dateOrder
 		self.decimalMark = decimalMark
+		self.createsCategories = createsCategories
 	}
 
 	/// The booking date and at least one amount, debit, or credit column are required.
@@ -153,6 +159,9 @@ public struct CSVFile: Sendable {
 	public let header: [String]
 	/// The header row of known keywords, if the file has one.
 	let headerIndex: Int?
+	/// Whether the titles come from a header row. Without one, they are values of the file, such as a
+	/// payee, which a profile must not keep in the settings of the app.
+	public var hasHeaderRow: Bool { headerIndex != nil }
 	let rows: [Row]
 
 	/// Reads the file with the encoding that it shows, or with the given one. A file of 100 MB takes seconds
@@ -247,6 +256,11 @@ public struct CSVFile: Sendable {
 		return (nil, title, firstDate ?? rows.count)
 	}
 
+	/// The file read with `encoding`, which is this file when it has that encoding already.
+	public func with(_ encoding: CSVEncoding) throws -> CSVFile {
+		encoding == self.encoding ? self : try CSVFile(data: data, encoding: encoding)
+	}
+
 	/// The layout that the header keywords and the values of the file show.
 	public func detectedLayout() throws -> CSVLayout {
 		var layout = CSVLayout(encoding: encoding, columns: [:], dateOrder: .dayMonthYear, decimalMark: nil)
@@ -318,6 +332,7 @@ public struct CSVFile: Sendable {
 		let purposeColumn = layout.columns[.purpose]
 		let bookingTextColumn = layout.columns[.bookingText]
 		let commentColumn = layout.columns[.comment]
+		let categoryColumn = layout.columns[.category]
 		let endToEndReferenceColumn = layout.columns[.endToEndReference]
 		let mandateReferenceColumn = layout.columns[.mandateReference]
 		let creditorIDColumn = layout.columns[.creditorID]
@@ -422,6 +437,7 @@ public struct CSVFile: Sendable {
 				bookingText: Self.cell(row, bookingTextColumn), endToEndReference: Self.cell(row, endToEndReferenceColumn), mandateReference: Self.cell(row, mandateReferenceColumn),
 				creditorID: Self.cell(row, creditorIDColumn), comment: Self.cell(row, commentColumn))
 			if t.name.isEmpty, t.purpose.isEmpty, let text = t.bookingText { t.name = text }
+			if let category = Self.cell(row, categoryColumn) { result.categories[t.id] = category }
 			result.transactions.append(t)
 		}
 		return result
@@ -580,7 +596,7 @@ public struct CSVPreview: Sendable {
 
 /// The order of day and month in the dates of a CSV column. An ISO date such as "2026-10-31" reads the
 /// same in both.
-public enum DateOrder: String, CaseIterable, Sendable {
+public enum DateOrder: String, CaseIterable, Sendable, Codable {
 	case dayMonthYear
 	case monthDayYear
 

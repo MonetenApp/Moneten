@@ -134,11 +134,15 @@ extension AppModel {
 		panel.message = "CSV, CAMT (camt.052, camt.053), and MT940 files are supported."
 		panel.allowsMultipleSelection = true
 		panel.allowedContentTypes = [.commaSeparatedText, .xml, .plainText, UTType(filenameExtension: "sta") ?? .data, .data]
+		let showsPreview = NSButton(checkboxWithTitle: "Show the preview also for CSV files with a profile", target: nil, action: nil)
+		panel.accessoryView = showsPreview
+		panel.isAccessoryViewDisclosed = true
 		guard panel.runModal() == .OK else { return }
-		await importFiles(panel.urls, into: account)
+		await importFiles(panel.urls, into: account, alwaysPreview: showsPreview.state == .on)
 	}
 
-	func importFiles(_ urls: [URL], into account: Account) async {
+	/// A CSV file with the header row of a saved profile imports without the preview, unless `alwaysPreview` is set.
+	func importFiles(_ urls: [URL], into account: Account, alwaysPreview: Bool) async {
 		// One import runs at a time. A canceled one ends at its next row, line, or entry.
 		guard !isTransferringTransactions, importResult == nil else { return NSSound.beep() }
 		guard sheet == nil else { return NSSound.beep() }
@@ -150,8 +154,8 @@ extension AppModel {
 			try await Task.sleep(for: .milliseconds(500))
 			if !Task.isCancelled, sheet == nil { sheet = .fileImport(run) }
 		}
-		let reading = Task { () -> (read: [(name: String, parsed: TransactionFileImporter.Parsed, into: Account, isNew: Bool)], problems: [String], canceledAt: Int?) in
-			var read: [(name: String, parsed: TransactionFileImporter.Parsed, into: Account, isNew: Bool)] = []
+		let reading = Task { () -> (read: [ReadFile], problems: [String], canceledAt: Int?) in
+			var read: [ReadFile] = []
 			var problems: [String] = []
 			// The answer for the account and the currency of a file holds for the later files of both.
 			var answers: [FileAccount: [String?: Account]] = [:]
@@ -161,22 +165,42 @@ extension AppModel {
 					let data = try await Self.load(url)
 					let parsed: TransactionFileImporter.Parsed
 					var confirmedCSV: (file: CSVFile, layout: CSVLayout)?
+					var profile: String?
+					var createsCategories = false
 					if let (file, layout) = try await Self.csv(data) {
 						if run.isCanceled { return (read, problems, canceledAt: i) }
-						// A menu command can open another sheet while the progress shows, and the preview must not close it.
-						if sheet != nil, sheet != .fileImport(run) {
-							run.cancel()
-							return (read, problems, canceledAt: i)
+						let profiles = CSVProfileStore.load()
+						let match = CSVProfile.match(for: file, in: profiles, detected: layout)
+						if case let .same(saved) = match, !alwaysPreview, let quiet = try await Self.read(file, with: saved, currency: account.currency) {
+							parsed = quiet
+							profile = saved.name
+							createsCategories = saved.layout.createsCategories
+							confirmedCSV = (file, saved.layout)
+						} else {
+							// A profile that no longer reads the file is the starting point of the preview, like a changed header row.
+							let (start, name, matched): (CSVLayout, String?, String?) = switch match {
+							case let .same(saved): (saved.layout, saved.name, saved.name)
+							case let .changed(saved, moved): (moved, saved.name, nil)
+							case .none: (layout, nil, nil)
+							}
+							// A menu command can open another sheet while the progress shows, and the preview must not close it.
+							if sheet != nil, sheet != .fileImport(run) {
+								run.cancel()
+								return (read, problems, canceledAt: i)
+							}
+							sheet = .fileImport(run)
+							let preview = CSVPreviewModel(name: url.lastPathComponent, file: file, layout: start, currency: account.currency, profiles: profiles, profile: name, matched: matched)
+							guard let chosen = await run.choose(preview) else {
+								if run.isCanceled { return (read, problems, canceledAt: i) }
+								problems.append("\(url.lastPathComponent): \(preview.reason)")
+								continue
+							}
+							parsed = chosen
+							confirmedCSV = (preview.file, preview.layout)
+							profile = preview.savedProfile
+							createsCategories = preview.layout.createsCategories
 						}
-						sheet = .fileImport(run)
-						let preview = CSVPreviewModel(name: url.lastPathComponent, file: file, layout: layout, currency: account.currency)
-						guard let chosen = await run.choose(preview) else {
-							if run.isCanceled { return (read, problems, canceledAt: i) }
-							problems.append("\(url.lastPathComponent): \(preview.reason)")
-							continue
-						}
-						parsed = chosen
-						confirmedCSV = (preview.file, preview.layout)
+
 					} else {
 						parsed = try await Self.parse(data, currency: account.currency)
 					}
@@ -192,14 +216,14 @@ extension AppModel {
 					if let key = decision.cacheKey, let answer = answers[key]?[currency] {
 						let reread = try await parsedFor(answer)
 						if run.isCanceled { return (read, problems, canceledAt: i) }
-						read.append((url.lastPathComponent, reread, answer, false))
+						read.append(ReadFile(name: url.lastPathComponent, parsed: reread, into: answer, isNew: false, profile: profile, createsCategories: createsCategories))
 						continue
 					}
 					guard let (into, isNew) = await target(of: parsed, file: url.lastPathComponent, selected: account, created: created, destination: decision.destination, run: run)
 					else { return (read, problems, canceledAt: i) }
 					let reread = try await parsedFor(into)
 					if run.isCanceled { return (read, problems, canceledAt: i) }
-					read.append((url.lastPathComponent, reread, into, isNew))
+					read.append(ReadFile(name: url.lastPathComponent, parsed: reread, into: into, isNew: isNew, profile: profile, createsCategories: createsCategories))
 					if let key = decision.cacheKey { answers[key, default: [:]][currency] = into }
 				} catch {
 					if run.isCanceled { return (read, problems, canceledAt: i) }
@@ -215,21 +239,42 @@ extension AppModel {
 		var added = 0
 		var skipped = 0
 		var booked = 0
+		var created = 0
 		var warnings: [String] = []
 		// A file can bring thousands of rows, so all files go in with one new table. Storing 300,000 rows
 		// holds the main actor for seconds, so the sheet says so. It is drawn while the placeholder is.
 		if !read.isEmpty, store != nil {
 			run.storing = read.reduce(0) { $0 + $1.parsed.transactions.count }
 			await replacingTable {
-				for (name, parsed, into, isNew) in read {
+				for file in read {
+					let name = file.name, parsed = file.parsed, into = file.into, isNew = file.isNew
+					if isNew { save(account: into) }
+					// A new account that could not be saved, or one that the user deleted during the import.
+					guard ledger.account(into.id) != nil else {
+						problems.append("\(name): The account \"\(into.name)\" \(isNew ? "could not be saved" : "does not exist").")
+						continue
+					}
+					let categories = FileCategories(parsed.transactions.compactMap { parsed.categories[$0.id] }, in: ledger.categories, creating: file.createsCategories)
+					for category in categories.created { save(category: category) }
+					for path in categories.unplaced {
+						problems.append("\(name): The category \"\(path)\" was not created, because a level of it is a category and not a group.")
+					}
+					for category in categories.created where ledger.category(category.id) == nil {
+						problems.append("\(name): The category \"\(category.name)\" could not be created.")
+					}
+					var used = Set<UUID>()
 					do {
-						if isNew { save(account: into) }
-						// A new account that could not be saved, or one that the user deleted during the import.
-						guard ledger.account(into.id) != nil else {
-							problems.append("\(name): The account \"\(into.name)\" \(isNew ? "could not be saved" : "does not exist").")
-							continue
+						// A category that could not be saved leaves its rows without one.
+						let rows = categories.assign(to: parsed.transactions, names: parsed.categories).map { row in
+							var t = row
+							if let id = t.categoryID, ledger.category(id) == nil {
+								t.categoryID = nil
+								t.categorizedBy = .none
+							}
+							return t
 						}
-						let result = try merge(.file(parsed.transactions), into: into.id)
+						let result = try merge(.file(rows), into: into.id)
+						used = Set((result.added + result.booked).compactMap(\.categoryID))
 						added += result.added.count
 						skipped += result.skipped
 						booked += result.booked.count
@@ -237,6 +282,10 @@ extension AppModel {
 					} catch {
 						problems.append("\(name): \(error)")
 					}
+					// A new category that no stored row took, because the rows were in the account already, goes again.
+					let unused = categories.unused(taking: used)
+					discard(newCategories: unused.filter { ledger.category($0) != nil })
+					created += categories.created.filter { !unused.contains($0.id) && ledger.category($0.id) != nil }.count
 				}
 			}
 		}
@@ -251,6 +300,9 @@ extension AppModel {
 		var message = added == 0 ? "Imported no new transactions." : added == 1 ? "Imported one new transaction." : "Imported \(added) new transactions."
 		if booked > 0 { message += booked == 1 ? " Booked one pending transaction." : " Booked \(booked) pending transactions." }
 		if skipped > 0 { message += skipped == 1 ? " Skipped one already existing transaction." : " Skipped \(skipped) already existing transactions." }
+		if created > 0 { message += created == 1 ? " Created one new category." : " Created \(created) new categories." }
+		let profiles = read.compactMap { file in file.profile.map { "\(file.name) was read with the profile \"\($0)\"." } }
+		if !profiles.isEmpty { message += "\n\n" + profiles.joined(separator: "\n") }
 		if !problems.isEmpty { message += "\n\n" + problems.joined(separator: "\n") }
 		if !warnings.isEmpty {
 			// A file can repeat one problem in every row, and the alert must stay short enough to read.
@@ -311,6 +363,10 @@ extension AppModel {
 		return (file, try file.detectedLayout())
 	}
 
+	nonisolated private static func read(_ file: CSVFile, with profile: CSVProfile, currency: String) async throws -> TransactionFileImporter.Parsed? {
+		try profile.read(file, currency: currency)
+	}
+
 	nonisolated static func parse(_ data: Data, currency: String, csv: (file: CSVFile, layout: CSVLayout)? = nil) async throws -> TransactionFileImporter.Parsed {
 		try TransactionFileImporter.parse(data, currency: currency, csv: csv)
 	}
@@ -318,4 +374,16 @@ extension AppModel {
 
 private struct FileTooLarge: Error, CustomStringConvertible {
 	var description: String { "The file is too large. Please choose a file with a maximum size of 100 MB." }
+}
+
+/// A file that the import read, before its transactions are stored.
+private struct ReadFile {
+	let name: String
+	let parsed: TransactionFileImporter.Parsed
+	let into: Account
+	let isNew: Bool
+	/// The CSV profile that read the file.
+	let profile: String?
+	/// "Auto-create categories" of the CSV preview or profile.
+	let createsCategories: Bool
 }
