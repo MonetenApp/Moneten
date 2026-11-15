@@ -6,10 +6,14 @@ public struct BankMessage: Sendable, Equatable {
 	/// The return code, for example "9942" in FinTS. Nil when the source has none.
 	public let code: String?
 	public let text: String
+	/// The name of the account in the app that the message is about, such as a balance request that failed
+	/// beside transactions that worked. Nil for a message about the whole access.
+	public let accountName: String?
 
-	public init(code: String? = nil, text: String) {
+	public init(code: String? = nil, text: String, accountName: String? = nil) {
 		self.code = code
 		self.text = text
+		self.accountName = accountName
 	}
 }
 

@@ -286,6 +286,23 @@ The app SHALL refuse to store a rule that it cannot parse. It shows a message th
 - **THEN** the app shows that a closing parenthesis is missing at the end of the rule
 - **AND** the app does not change the stored rule
 
+### Requirement: A saved rule that cannot be read is marked
+
+The app SHALL mark a category in the sidebar when it cannot parse the saved rule of the category, because such a category gets no new transactions. The mark is a warning symbol with a tooltip that names the error. The mark goes away when the user saves a rule that the app can parse.
+
+#### Scenario: Ambiguous amount in a saved rule
+
+- **GIVEN** the category "Rent" with the saved rule `amount<-1,000`
+- **WHEN** the sidebar shows "Rent"
+- **THEN** the row of "Rent" shows a warning symbol
+- **AND** its tooltip says that the amount -1,000 is not a number
+
+#### Scenario: Fixed rule
+
+- **GIVEN** the category "Rent" with the mark
+- **WHEN** the user saves the rule `amount<-1000`
+- **THEN** the row of "Rent" shows no warning symbol
+
 ### Requirement: Rules run on new transactions
 
 The app SHALL apply the rules to every transaction that enters the database without a category. That includes transactions from a refresh, from a file import, from manual entry, and from automation.

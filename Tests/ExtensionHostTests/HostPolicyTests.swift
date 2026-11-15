@@ -174,9 +174,11 @@ import Testing
 		#expect(run.sent.isEmpty)
 	}
 
-	/// Names under the special-use domains of RFC 6761 and RFC 8375, and under `internal`, which ICANN
-	/// keeps for private networks. Each reaches the Mac, the local network, or nowhere.
-	static let specialUse = ["bank.localhost", "api.bank.localhost", "printer.local", "home.arpa", "router.home.arpa", "bank.internal", "bank.test", "bank.invalid"]
+	/// Names under the special-use domains of RFC 6761 and RFC 8375, under `internal`, which ICANN keeps
+	/// for private networks, and under the private names of RFC 6762, Appendix G. Each reaches the Mac,
+	/// the local network, or nowhere.
+	static let specialUse = ["bank.localhost", "api.bank.localhost", "printer.local", "home.arpa", "router.home.arpa", "bank.internal", "bank.test", "bank.invalid",
+		"nas.lan", "router.home", "mail.corp", "wiki.intranet", "bank.private"]
 
 	@Test(arguments: specialUse)
 	func specialUseNameIsNeverAsked(host: String) {
@@ -198,6 +200,18 @@ import Testing
 		let listed = Run(demo(Self.script("https://bank.localhost/"), hosts: ["api.bank.example"]), exchanges: exchanges, testHosts: ["bank.localhost"])
 		#expect(listed.call("Check") == .string("error: Demo.lua:3: Demo may not contact bank.localhost, because its manifest does not list that host."))
 		#expect(other.sent.isEmpty && listed.sent.isEmpty)
+	}
+
+	/// Each made-up bank of the `ext` tests listens on a free port, so a test host passes on any port.
+	/// Every other name still needs the HTTPS port.
+	@Test func testHostPassesOnAnyPort() {
+		let exchanges = [("GET", "https://bank.localhost:52144/", 200, Self.page, ""), ("GET", "https://api.bank.example:52144/", 200, Self.page, "")]
+		let local = Run(demo(Self.script("https://bank.localhost:52144/")), exchanges: exchanges, testHosts: ["bank.localhost"])
+		#expect(local.call("Check") != .null)
+		#expect(local.asked == ["bank.localhost"] && local.sent == ["GET https://bank.localhost:52144/"])
+		let other = Run(demo(Self.script("https://api.bank.example:52144/")), exchanges: exchanges, testHosts: ["bank.localhost"])
+		#expect(other.call("Check") == .string("error: Demo.lua:3: Moneten sends requests only to a plain host name on the HTTPS port, not to https://api.bank.example:52144/."))
+		#expect(other.asked.isEmpty && other.sent.isEmpty)
 	}
 
 	@Test func redirectToAnIPAddressIsNeverAsked() {

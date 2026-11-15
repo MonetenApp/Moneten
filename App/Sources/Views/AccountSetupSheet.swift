@@ -15,23 +15,10 @@ final class AccountSetup {
 		case offline
 	}
 
-	/// The services under "Other": an offline account, and each service of an installed extension that
-	/// may run, which goes on to the login dialog of the extension.
-	enum Service: Hashable {
-		case offline
-		case extensionService(id: String, name: String)
-
-		var title: String {
-			switch self {
-			case .offline: "Offline account / Cash"
-			case let .extensionService(_, name): name
-			}
-		}
-	}
-
-	/// The services of the extensions that may run, as the library lists them with the rows of the Extensions window.
-	var otherServices: [Service] {
-		[.offline] + model.extensions.setupServices.map { Service.extensionService(id: $0.id, name: $0.service) }
+	/// The entries of "Other": the services of the extensions that may run, which the library lists with the
+	/// rows of the Extensions window, and the offline account.
+	var otherServices: [SetupService] {
+		SetupService.menu(extensionServices: model.extensions.setupServices)
 	}
 
 	/// Why the extension of the chosen service cannot run now.
@@ -62,7 +49,7 @@ final class AccountSetup {
 	/// The match that "Next" chooses, which the arrow keys move.
 	var highlighted = 0
 	/// The choice under "Other" in place of a bank.
-	var service: Service? {
+	var service: SetupService? {
 		didSet { serviceError = nil }
 	}
 	var usesOther: Bool { service != nil }
@@ -80,7 +67,7 @@ final class AccountSetup {
 	var selected: Set<String> = []
 	/// The account that a candidate with a choice connects, by the ID of the candidate's account. None adds a new account.
 	var connecting: [UUID: UUID] = [:]
-	private(set) var notices: [String] = []
+	private(set) var notices: [BankMessage] = []
 	/// The error of the database when "Done" could not store the accounts. The assistant stays open, so
 	/// that the login and its TAN are not lost.
 	private(set) var saveError: String?
@@ -198,7 +185,7 @@ final class AccountSetup {
 				}
 				self.access = access
 				state = list.state
-				notices = list.notices.map(\.text)
+				notices = list.notices
 				let listed = list.accounts.map { $0.account(access: access, bank: bank, group: groupID) }
 				candidates = listed.map { Candidate(account: $0, match: model.ledger.setupMatch(for: $0, listed: listed)) }
 				selected = Set(candidates.filter { !$0.isPresent }.map(\.id))
@@ -232,7 +219,8 @@ final class AccountSetup {
 		let chosen = candidates.filter { selected.contains($0.id) && !$0.isPresent }.map(\.account)
 		guard !chosen.isEmpty else { return }
 		do {
-			try model.add(access, state: state, accounts: chosen, listed: candidates.map(\.account), connecting: connecting, pin: Secret(pin), savePIN: savePIN)
+			try model.add(access, state: state, accounts: chosen, listed: candidates.map(\.account), connecting: connecting, notices: notices, pin: Secret(pin),
+				savePIN: savePIN)
 		} catch {
 			saveError = "Could not add the accounts. \(String(describing: error))"
 			return
@@ -346,8 +334,8 @@ struct AccountSetupSheet: View {
 		}
 		Section {
 			Picker("Other", selection: $setup.service) {
-				Text("None").tag(AccountSetup.Service?.none)
-				ForEach(setup.otherServices, id: \.self) { Text($0.title).tag(AccountSetup.Service?.some($0)) }
+				Text("None").tag(SetupService?.none)
+				ForEach(setup.otherServices, id: \.self) { Text($0.title).tag(SetupService?.some($0)) }
 			}
 			.onChange(of: setup.otherServices) { _, services in
 				// An extension that was blocked or removed while the assistant is open leaves the choice.
@@ -484,7 +472,7 @@ struct AccountSetupSheet: View {
 		}
 		if !setup.notices.isEmpty {
 			Section("Notices of the bank") {
-				ForEach(setup.notices, id: \.self) { Text($0).fixedSize(horizontal: false, vertical: true) }
+				ForEach(setup.notices, id: \.text) { Text($0.text).fixedSize(horizontal: false, vertical: true) }
 			}
 		}
 	}

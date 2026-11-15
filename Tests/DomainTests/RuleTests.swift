@@ -104,6 +104,16 @@ struct RuleTests {
 
 @Suite("Categorizer")
 struct CategorizerTests {
+	@Test("A category whose saved rule cannot be read reports the error until the rule is fixed")
+	func unreadableRule() {
+		var rent = Domain.Category(position: 0, name: "Rent", rule: "amount<-1,000")
+		#expect(rent.ruleError?.description == "The amount -1,000 is not a number. (position 1)")
+		rent.rule = "amount<-1000"
+		#expect(rent.ruleError == nil)
+		#expect(Domain.Category(position: 1, name: "Groceries").ruleError == nil)
+		#expect(Domain.Category(position: 2, name: "Household", isGroup: true, rule: "(").ruleError == nil)
+	}
+
 	let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline, iban: "DE02120300000000202051")
 	let business = Account(position: 1, name: "Business", kind: .giro, source: .offline)
 

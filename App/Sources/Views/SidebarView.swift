@@ -183,7 +183,7 @@ struct AccountRow: View {
 					.lineLimit(1)
 					.foregroundStyle(.secondary)
 					.frame(maxWidth: 140, alignment: .trailing)
-				RefreshErrorButton(error: error)
+				RefreshErrorButton(account: account, error: error)
 			} else if !account.isClosed {
 				// A closed account stays in the sidebar without its balance, as in MoneyMoney.
 				AmountText(money: balance).fontWeight(.medium)
@@ -249,6 +249,12 @@ struct CategoryRow: View {
 					.foregroundStyle(CategoryColors.color(of: category, in: model.ledger))
 			}
 			Spacer()
+			if let error = category.ruleError {
+				Image(systemName: "exclamationmark.triangle.fill")
+					.foregroundStyle(.yellow)
+					.help("The rule cannot be read. New transactions do not get this category. \(error)")
+					.accessibilityLabel("The rule cannot be read.")
+			}
 			if let amount = model.sidebarAmount(of: category) {
 				AmountText(money: amount).fontWeight(.medium)
 			}

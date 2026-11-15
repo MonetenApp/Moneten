@@ -231,7 +231,7 @@ public struct Ledger: Sendable {
 		account.reportedBalance ?? computedBalance(of: account)
 	}
 
-	/// The initial balance plus all booked transactions in the currency of the account.
+	/// The initial balance plus the transactions in the currency of the account that a balance counts.
 	public func computedBalance(of account: Account, through day: Day? = nil) -> Money {
 		var sum = account.initialBalanceMinor
 		for t in transactions where t.accountID == account.id && account.isInBalance(t) {
@@ -249,8 +249,8 @@ public struct Ledger: Sendable {
 		return sums
 	}
 
-	/// The amount next to a category in the sidebar: the booked transactions of its tree in a period
-	/// and in the currency of the category. Rows in another currency stay in the category, and the
+	/// The amount next to a category in the sidebar: the transactions of its tree that a sum counts, in a
+	/// period and in the currency of the category. Rows in another currency stay in the category, and the
 	/// status line of its list sums them for each currency.
 	public func sum(ofCategory category: Category, in period: DayRange) -> Money {
 		var f = TransactionFilter()
@@ -291,9 +291,8 @@ public struct Ledger: Sendable {
 			case .deposits: if t.amountMinor <= 0 { return false }
 			case .withdrawals: if t.amountMinor >= 0 { return false }
 			case let .range(min, max):
-				let value = abs(t.amountMinor)
-				if let min, value < min { return false }
-				if let max, value > max { return false }
+				if let min, t.amountMinor < min { return false }
+				if let max, t.amountMinor > max { return false }
 			}
 			if let categoryFilter, !categoryFilter.contains(t.categoryID ?? defaultID) { return false }
 			if let a = filter.accountID, t.accountID != a { return false }
@@ -398,8 +397,14 @@ public struct TransactionFilter: Hashable, Sendable {
 	public enum Status: Hashable, Sendable { case all, checked, unchecked }
 	public enum AmountFilter: Hashable, Sendable {
 		case all, deposits, withdrawals
-		/// Absolute amounts in minor units.
+		/// Amounts with their sign in minor units, both ends included. A missing end leaves the range open.
 		case range(min: Int64?, max: Int64?)
+
+		/// The range of "Custom...", or nil when the minimum lies above the maximum.
+		public static func custom(min: Int64?, max: Int64?) -> AmountFilter? {
+			if let min, let max, min > max { return nil }
+			return .range(min: min, max: max)
+		}
 	}
 
 	public var searchText = ""

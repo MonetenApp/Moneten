@@ -15,7 +15,7 @@ struct FileImportTests {
 		"03.11.2026";"03.11.2026";"DE98ZZZ09999999999";"Stadtwerke Musterstadt";"Abschlag November";"DE02120300000000202051";"BYLADEM1001";"-89,00";"M-1";"E2E-1";
 		"02.11.2026";"02.11.2026";"";"Erika Mustermann";"Miete; November";"DE02120300000000202051";"";"1.250,00";"";"";
 		"""
-		let ts = try TransactionFileImporter.parse(Data(text.utf8))
+		let ts = try TransactionFileImporter.parse(Data(text.utf8), currency: "EUR").transactions
 		#expect(ts.count == 2)
 		#expect(ts[0].bookingDate == Day(year: 2026, month: 11, day: 3))
 		#expect(ts[0].amountMinor == -8_900)
@@ -29,7 +29,7 @@ struct FileImportTests {
 	@Test("CSV with commas, ISO dates, and a point as decimal separator")
 	func csvEnglish() throws {
 		let text = "Date,Payee,Memo,Amount\n2026-11-01,Max Mustermann,Dinner,-42.50\n2026-11-02,Employer,Salary,3000\n"
-		let ts = try TransactionFileImporter.parse(Data(text.utf8))
+		let ts = try TransactionFileImporter.parse(Data(text.utf8), currency: "EUR").transactions
 		#expect(ts.map(\.amountMinor) == [-4_250, 300_000])
 		#expect(ts[0].purpose == "Dinner")
 	}
@@ -37,9 +37,9 @@ struct FileImportTests {
 	@Test("Amounts with thousands separators in German and English notation")
 	func groupedAmounts() throws {
 		let english = "Date,Payee,Memo,Amount\n2026-11-01,Landlord,Rent,\"-1,250.00\"\n2026-11-02,Employer,Salary,\"3,000.00\"\n"
-		#expect(try TransactionFileImporter.parse(Data(english.utf8)).map(\.amountMinor) == [-125_000, 300_000])
+		#expect(try TransactionFileImporter.parse(Data(english.utf8), currency: "EUR").transactions.map(\.amountMinor) == [-125_000, 300_000])
 		let german = "Buchungstag;Empfänger;Betrag\n01.11.2026;Vermieter;-1.250,00\n02.11.2026;Arbeitgeber;3.000,00\n"
-		#expect(try TransactionFileImporter.parse(Data(german.utf8)).map(\.amountMinor) == [-125_000, 300_000])
+		#expect(try TransactionFileImporter.parse(Data(german.utf8), currency: "EUR").transactions.map(\.amountMinor) == [-125_000, 300_000])
 	}
 
 	@Test("A CSV amount without decimals takes the decimal mark of the file", arguments: [
@@ -51,7 +51,7 @@ struct FileImportTests {
 		("Date,Payee,Amount\n2026-11-01,Kiosk,4.50\n2026-11-02,Bakery,\"-89,00\"\n", [450, -8_900]),
 	])
 	func fileDecimalMark(text: String, amounts: [Int64]) throws {
-		#expect(try TransactionFileImporter.parse(Data(text.utf8)).map(\.amountMinor) == amounts)
+		#expect(try TransactionFileImporter.parse(Data(text.utf8), currency: "EUR").transactions.map(\.amountMinor) == amounts)
 	}
 
 	@Test("A CSV file with an amount that cannot be read without doubt is rejected with its line", arguments: [
@@ -63,18 +63,18 @@ struct FileImportTests {
 	])
 	func ambiguousAmount(text: String) {
 		let line = text.split(separator: "\n").count
-		#expect(throws: TransactionFileImporter.Failure.line(line, "The amount cannot be read.")) { try TransactionFileImporter.parse(Data(text.utf8)) }
+		#expect(throws: TransactionFileImporter.Failure.line(line, "The amount cannot be read.")) { try TransactionFileImporter.parse(Data(text.utf8), currency: "EUR") }
 	}
 
 	@Test("CSV with separate debit and credit columns")
 	func debitCredit() throws {
 		let text = "Datum;Name;Soll;Haben\n01.11.2026;Kiosk;12,30;\n02.11.2026;Erika Mustermann;;50,00\n"
-		let ts = try TransactionFileImporter.parse(Data(text.utf8))
+		let ts = try TransactionFileImporter.parse(Data(text.utf8), currency: "EUR").transactions
 		#expect(ts.map(\.amountMinor) == [-1_230, 5_000])
-		let marked = try TransactionFileImporter.parse(Data("Buchungstag;Empfänger;Betrag;S/H\n01.11.2026;Kiosk;89,00;S\n02.11.2026;Erika Mustermann;50,00;H\n".utf8))
+		let marked = try TransactionFileImporter.parse(Data("Buchungstag;Empfänger;Betrag;S/H\n01.11.2026;Kiosk;89,00;S\n02.11.2026;Erika Mustermann;50,00;H\n".utf8), currency: "EUR").transactions
 		#expect(marked.map(\.amountMinor) == [-8_900, 5_000])
 		#expect(throws: TransactionFileImporter.Failure.line(2, "The amount cannot be read.")) {
-			try TransactionFileImporter.parse(Data("Datum;Name;Soll;Haben\n01.11.2026;Kiosk;zwölf;\n".utf8))
+			try TransactionFileImporter.parse(Data("Datum;Name;Soll;Haben\n01.11.2026;Kiosk;zwölf;\n".utf8), currency: "EUR")
 		}
 	}
 
@@ -82,7 +82,7 @@ struct FileImportTests {
 	func csvCurrency() throws {
 		let cells = ["eur", "€", "Euro", " usd ", "$", "US$", "£", "Fr.", "chf", "ABC", "XYZ"]
 		let text = "Datum;Name;Betrag;Währung\n" + cells.map { "01.11.2026;Kiosk;-1,50;\($0)\n" }.joined()
-		let ts = try TransactionFileImporter.parse(Data(text.utf8), currency: "SEK")
+		let ts = try TransactionFileImporter.parse(Data(text.utf8), currency: "SEK").transactions
 		#expect(ts.map(\.currency) == ["EUR", "EUR", "EUR", "USD", "USD", "USD", "GBP", "CHF", "CHF", "SEK", "SEK"])
 		#expect(ts.map(\.amountMinor) == Array(repeating: -150, count: 11))
 	}
@@ -90,20 +90,72 @@ struct FileImportTests {
 	@Test("A dollar sign takes the currency of a dollar account, and SFr. names the Swiss franc")
 	func csvDollarAndFranc() throws {
 		let text = "Datum;Name;Betrag;Währung\n" + ["$", "US$", "SFr.", "SFR"].map { "01.11.2026;Kiosk;-1,50;\($0)\n" }.joined()
-		let ts = try TransactionFileImporter.parse(Data(text.utf8), currency: "CAD")
+		let ts = try TransactionFileImporter.parse(Data(text.utf8), currency: "CAD").transactions
 		#expect(ts.map(\.currency) == ["CAD", "USD", "CHF", "CHF"])
-		let euro = try TransactionFileImporter.parse(Data("Datum;Name;Betrag;Währung\n01.11.2026;Kiosk;-1,50;$\n".utf8), currency: "EUR")
+		let euro = try TransactionFileImporter.parse(Data("Datum;Name;Betrag;Währung\n01.11.2026;Kiosk;-1,50;$\n".utf8), currency: "EUR").transactions
 		#expect(euro.map(\.currency) == ["USD"])
+	}
+
+	@Test("A CSV row with an unknown currency or an unreadable value date is imported with a warning for its line")
+	func csvWarnings() throws {
+		let text = "Datum;Valuta;Name;Betrag;Währung\n01.11.2026;n/a;Kiosk;-1,50;XYZ\n02.11.2026;02.11.2026;Bäckerei Gutbrot;-2,00;EUR\n03.11.2026;;Kiosk;-3,00;$\n"
+		let parsed = try TransactionFileImporter.parse(Data(text.utf8), currency: "EUR")
+		#expect(parsed.transactions.map(\.currency) == ["EUR", "EUR", "USD"])
+		#expect(parsed.transactions.map(\.valueDate) == [nil, Day(year: 2026, month: 11, day: 2), nil])
+		#expect(parsed.warnings == [.unknownCurrency(line: 2, cell: "XYZ", replacement: "EUR"), .unreadableValueDate(line: 2, cell: "n/a")])
+		#expect(parsed.warnings.map(\.description) == [
+			"Line 2: The currency XYZ is unknown. The transaction is in EUR, the currency of the account.",
+			"Line 2: The value date n/a cannot be read. The transaction has no value date.",
+		])
+	}
+
+	@Test("A CAMT entry with an unreadable value date is imported with a warning for its line")
+	func camtValueDateWarning() throws {
+		let xml = """
+		<?xml version="1.0" encoding="UTF-8"?>
+		<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.053.001.08"><BkToCstmrStmt><Stmt>
+		<Ntry><Amt Ccy="EUR">89.00</Amt><CdtDbtInd>DBIT</CdtDbtInd><BookgDt><Dt>2026-11-02</Dt></BookgDt><ValDt><Dt>2026-11-02</Dt></ValDt></Ntry>
+		<Ntry><Amt Ccy="EUR">5.00</Amt><CdtDbtInd>CRDT</CdtDbtInd><BookgDt><Dt>2026-11-03</Dt></BookgDt><ValDt><Dt>morgen</Dt></ValDt></Ntry>
+		</Stmt></BkToCstmrStmt></Document>
+		"""
+		let parsed = try TransactionFileImporter.parse(Data(xml.utf8), currency: "EUR")
+		#expect(parsed.transactions.map(\.valueDate) == [Day(year: 2026, month: 11, day: 2), nil])
+		#expect(parsed.warnings == [.unreadableValueDate(line: 4, cell: "morgen")])
+	}
+
+	@Test("A CSV warning or error names the line of the file where its row starts, after a cell with a line break")
+	func csvPhysicalLines() throws {
+		let text = "Datum;Valuta;Name;Betrag;Währung\n01.11.2026;01.11.2026;\"Bäckerei\nGutbrot\";-2,00;EUR\n02.11.2026;n/a;Kiosk;-1,50;XYZ\n"
+		let parsed = try TransactionFileImporter.parse(Data(text.utf8), currency: "EUR")
+		#expect(parsed.transactions.map(\.name) == ["Bäckerei\nGutbrot", "Kiosk"])
+		#expect(parsed.warnings == [.unknownCurrency(line: 4, cell: "XYZ", replacement: "EUR"), .unreadableValueDate(line: 4, cell: "n/a")])
+		#expect(throws: TransactionFileImporter.Failure.line(5, "The amount cannot be read.")) {
+			try TransactionFileImporter.parse(Data((text + "03.11.2026;;Kiosk;zwölf;EUR\n").utf8), currency: "EUR")
+		}
+	}
+
+	@Test("A CAMT value date with a time is read, and one that cannot be read is imported with a warning")
+	func camtValueDateTime() throws {
+		let xml = """
+		<?xml version="1.0" encoding="UTF-8"?>
+		<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.053.001.08"><BkToCstmrStmt><Stmt>
+		<Ntry><Amt Ccy="EUR">89.00</Amt><CdtDbtInd>DBIT</CdtDbtInd><BookgDt><Dt>2026-11-02</Dt></BookgDt><ValDt><DtTm>2026-11-03T10:00:00</DtTm></ValDt></Ntry>
+		<Ntry><Amt Ccy="EUR">5.00</Amt><CdtDbtInd>CRDT</CdtDbtInd><BookgDt><Dt>2026-11-03</Dt></BookgDt><ValDt><DtTm>später</DtTm></ValDt></Ntry>
+		</Stmt></BkToCstmrStmt></Document>
+		"""
+		let parsed = try TransactionFileImporter.parse(Data(xml.utf8), currency: "EUR")
+		#expect(parsed.transactions.map(\.valueDate) == [Day(year: 2026, month: 11, day: 3), nil])
+		#expect(parsed.warnings == [.unreadableValueDate(line: 4, cell: "später")])
 	}
 
 	@Test("A CSV file without a date column is rejected")
 	func noHeader() {
-		#expect(throws: TransactionFileImporter.Failure.noHeader) { try TransactionFileImporter.parse(Data("a;b;c\n1;2;3\n".utf8)) }
+		#expect(throws: TransactionFileImporter.Failure.noHeader) { try TransactionFileImporter.parse(Data("a;b;c\n1;2;3\n".utf8), currency: "EUR") }
 	}
 
 	@Test("An empty file is rejected")
 	func empty() {
-		#expect(throws: TransactionFileImporter.Failure.empty) { try TransactionFileImporter.parse(Data()) }
+		#expect(throws: TransactionFileImporter.Failure.empty) { try TransactionFileImporter.parse(Data(), currency: "EUR") }
 	}
 
 	@Test("MT940 with a structured field 86")
@@ -120,7 +172,7 @@ struct FileImportTests {
 		:62F:C261103EUR2161,00
 		-
 		"""
-		let ts = try TransactionFileImporter.parse(Data(text.utf8))
+		let ts = try TransactionFileImporter.parse(Data(text.utf8), currency: "EUR").transactions
 		#expect(ts.count == 2)
 		#expect(ts[0].amountMinor == -8_900)
 		#expect(ts[0].bookingDate == Day(year: 2026, month: 11, day: 3))
@@ -141,7 +193,7 @@ struct FileImportTests {
 		:62F:C261103EUR998,50
 		-
 		"""
-		#expect(try TransactionFileImporter.parse(Data(text.utf8)).map(\.amountMinor) == [-150])
+		#expect(try TransactionFileImporter.parse(Data(text.utf8), currency: "EUR").transactions.map(\.amountMinor) == [-150])
 	}
 
 	@Test("MT940 reversals book the opposite sign")
@@ -157,7 +209,7 @@ struct FileImportTests {
 		:62F:C261106EUR1000,00
 		-
 		"""
-		let ts = try TransactionFileImporter.parse(Data(text.utf8))
+		let ts = try TransactionFileImporter.parse(Data(text.utf8), currency: "EUR").transactions
 		#expect(ts.map(\.amountMinor) == [-5_000, 5_000, 2_000, -2_000])
 	}
 
@@ -177,7 +229,7 @@ struct FileImportTests {
 		:62F:C261107EUR950,00
 		-
 		"""
-		#expect(throws: TransactionFileImporter.Failure.line(5, reason)) { try TransactionFileImporter.parse(Data(text.utf8)) }
+		#expect(throws: TransactionFileImporter.Failure.line(5, reason)) { try TransactionFileImporter.parse(Data(text.utf8), currency: "EUR") }
 	}
 
 	@Test("A CAMT file with an entry that cannot be read is rejected with its line", arguments: [
@@ -192,7 +244,7 @@ struct FileImportTests {
 		\(entry)
 		</Stmt></BkToCstmrStmt></Document>
 		"""
-		#expect(throws: TransactionFileImporter.Failure.line(4, reason)) { try TransactionFileImporter.parse(Data(xml.utf8)) }
+		#expect(throws: TransactionFileImporter.Failure.line(4, reason)) { try TransactionFileImporter.parse(Data(xml.utf8), currency: "EUR") }
 	}
 
 	@Test("camt.053 with a debit and a pending credit")
@@ -210,7 +262,7 @@ struct FileImportTests {
 		<NtryDtls><TxDtls><RltdPties><Dbtr><Pty><Nm>Erika Mustermann</Nm></Pty></Dbtr></RltdPties><RmtInf><Ustrd>Miete</Ustrd></RmtInf></TxDtls></NtryDtls></Ntry>
 		</Stmt></BkToCstmrStmt></Document>
 		"""
-		let ts = try TransactionFileImporter.parse(Data(xml.utf8))
+		let ts = try TransactionFileImporter.parse(Data(xml.utf8), currency: "EUR").transactions
 		#expect(ts.count == 2)
 		#expect(ts[0].amountMinor == -8_900 && ts[0].name == "Stadtwerke Musterstadt" && ts[0].purpose == "Abschlag November")
 		#expect(ts[0].counterpartyIBAN == "DE02120300000000202051" && ts[0].endToEndReference == "E2E-1")

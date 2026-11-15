@@ -78,6 +78,25 @@ import Testing
 		await client.end()
 	}
 
+	/// A release build of the host ignores test hosts, even when a caller sets them. Run it with
+	/// `scripts/test.sh -c release -Xswiftc -enable-testing --filter SessionTests/testHosts`.
+	@Test func testHostsPassOnlyInADebugHost() async throws {
+		let recorder = Recorder()
+		let package = demo("WebBanking{version = 1, description = \"Demo\"}\nfunction Check() return Connection():request(\"GET\", \"https://bank.localhost/\") end")
+		let setup = HostSetup(package: package, fixture: try Self.fixture([("https://bank.localhost/", "made-up bank")]), developer: DeveloperOptions(testHosts: ["bank.localhost"]))
+		let client = try await ExtensionHostClient.start(setup, executable: hostExecutable, ask: { host in recorder.asked.withLock { $0.append(host) }; return .allowed }).client
+		#if DEBUG
+		#expect(try await client.call("Check") == .string("made-up bank"))
+		#expect(recorder.asked.withLock { $0 } == ["bank.localhost"])
+		#else
+		await #expect(throws: ScriptError("Demo.lua:2: Moneten sends requests only to a plain host name on the HTTPS port, not to https://bank.localhost/.")) {
+			try await client.call("Check")
+		}
+		#expect(recorder.asked.withLock { $0 }.isEmpty)
+		#endif
+		await client.end()
+	}
+
 	@Test func resultThatJSONCannotHoldFailsTheCall() async throws {
 		let client = try await Self.start(demo("WebBanking{version = 1}\nfunction Check() return 0/0 end"), fixture: Self.fixture([]))
 		await #expect(throws: ScriptError("The value nan is not a finite number.")) { try await client.call("Check") }

@@ -6,7 +6,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 
 - [x] 1.1 Account types. Verified by account settings.
 - [ ] 1.2 Derive a missing account type. Build it and verify it with a test or in the app.
-- [x] 1.3 Change the account type. Verified by account settings.
+- [x] 1.3 Change the account type. Verified by BankAccessTests "accountTypeChoices": the menu "Account type" offers every type but "Portfolio", and a portfolio has none. "settingsAfterPortfolioRefresh" and "settingsNeverChoosePortfolio": saving the settings neither leaves nor chooses "Portfolio". In the app, the settings of a portfolio show "Portfolio" as text.
 - [x] 1.4 Account settings window. Verified by sheet with ⌘I.
 - [x] 1.5 Account name. Verified by account settings.
 - [x] 1.6 Bank details of an account. Verified by IBAN, BIC, account number, and owner in the settings.
@@ -14,7 +14,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [x] 1.8 Account owner. Verified by shown in the settings.
 - [x] 1.9 Balance comes from the bank. Verified by LedgerTests "balanceSource": an account of a bank access and a portfolio show the reported balance, a migrated and an offline account follow their transactions.
 - [ ] 1.10 Several balances and bonus points. Build it and verify it with a test or in the app.
-- [ ] 1.11 Initial balance. The field in the account settings is built and editable. Open: at setup, the derived value must leave out booked rows in another currency than the account. Today `Account.deriveInitialBalance` in `Sources/Domain/Models.swift` leaves out pending rows and rows after the day of the bank balance only. Task 3.3 of the change `add-charts` builds the rule and its test with `Account.bookedSum(of:through:)`. Check this task when that task is checked.
+- [x] 1.11 Initial balance. The field in the account settings is built and editable. At setup, `Account.deriveInitialBalance` subtracts `Account.bookedSum(of:through:)` from the bank balance, which leaves out pending rows, rows after the day of the bank balance, and booked rows in another currency than the account. Verified by LedgerTests "The initial balance that meets the bank balance subtracts the booked rows up to the day of that balance", whose row in USD stays out, and by OpeningBalanceTests (task 3.3 of the change `add-charts`).
 - [x] 1.12 Mark an account as closed. Verified by "The account has been closed".
 - [ ] 1.13 Clearing entry for a closed account. Build it and verify it with a test or in the app.
 - [ ] 1.14 Reopen a closed account. Built in part: the switch can be turned off; no clearing entry exists yet. Finish it and verify it with a test or in the app.

@@ -400,6 +400,8 @@ final class AutoRefreshTests {
 		let coordinator = SyncCoordinator()
 		let bank = Self.access("Musterbank")
 		let gate = FailureWithStateTests.Gate()
+		var reported: Set<UUID> = []
+		coordinator.ended = { _, _, results, _ in reported.formUnion(results.keys) }
 		let connector = HeldFailure(request: Self.tan, account: Self.giro.accountID, gate: gate, holdsCancel: false)
 		coordinator.refresh(RefreshRequest(access: bank, accounts: [Self.giro]), with: connector, attended: false)
 		await until { gate.isWaiting }
@@ -410,8 +412,10 @@ final class AutoRefreshTests {
 		gate.open()
 		await until { coordinator.broker.current != nil }
 		#expect(coordinator.broker.current?.accountNames == ["Giro"])
-		coordinator.cancelAll()
+		#expect(coordinator.refreshingAccounts == [Self.giro.accountID])
+		if let id = coordinator.broker.current?.id { coordinator.broker.answer(.tan(Secret("123456")), to: id) }
 		await until { !coordinator.isRefreshing }
+		#expect(reported == [Self.giro.accountID])
 	}
 
 	@Test("An automatic request that waits after a run stays unattended when a command names only accounts of that run")
@@ -453,7 +457,7 @@ final class AutoRefreshTests {
 		let coordinator = SyncCoordinator()
 		let bank = Self.access("Musterbank")
 		let gate = FailureWithStateTests.Gate()
-		coordinator.refresh(RefreshRequest(access: bank, accounts: [Self.giro]), with: GatedAsk(gate: gate, request: Self.tan, account: Self.giro.accountID),
+		coordinator.refresh(RefreshRequest(access: bank, accounts: [Self.giro]), with: GatedAsk(gate: gate, request: Self.tan),
 			attended: false)
 		await until { gate.isWaiting }
 		coordinator.refresh(RefreshRequest(access: bank, accounts: [Self.card]), with: AsksForAccount(account: Self.card.accountID, request: Self.tan),
@@ -696,12 +700,11 @@ struct GatedFetch: BankConnector {
 struct GatedAsk: BankConnector {
 	let gate: FailureWithStateTests.Gate
 	let request: UserRequest
-	let account: UUID
 
 	func refresh(_ refresh: RefreshRequest, _ session: SyncSession) async throws -> ConnectorReport {
 		await gate.wait()
 		_ = try await session.ask(request)
-		return ConnectorReport(outcomes: [account: .fetched(RefreshResult(balance: nil, transactions: nil))])
+		return ConnectorReport(outcomes: Dictionary(uniqueKeysWithValues: refresh.accounts.map { ($0.accountID, .fetched(RefreshResult(balance: nil, transactions: nil))) }))
 	}
 }
 

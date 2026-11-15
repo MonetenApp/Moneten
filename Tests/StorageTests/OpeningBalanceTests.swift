@@ -74,13 +74,13 @@ struct OpeningBalanceTests {
 		#expect(bars(stored).last == 110_000)
 	}
 
-	@Test("Pending rows do not count toward the opening balance")
+	@Test("Pending rows do not count toward the opening balance, and the last bar counts them on top of the bank balance")
 	func pendingRows() throws {
 		let store = try makeStore([giro])
-		_ = try store.merge(refresh([row(3, -10_000, "Shop"), row(0, -5_000, "Café", pending: true)], balance: 100_000), into: giro.id)
+		_ = try store.merge(refresh([row(5, 100_000, "Salary"), row(3, -30_000, "Rent"), row(0, -3_000, "Café", pending: true)], balance: 250_000), into: giro.id)
 		let stored = try store.loadLedger()
-		#expect(stored.account(giro.id)?.initialBalanceMinor == 110_000)
-		#expect(bars(stored).last == 100_000)
+		#expect(stored.account(giro.id)?.initialBalanceMinor == 180_000)
+		#expect(bars(stored).last == 247_000)
 	}
 
 	@Test("Rows after the day of the bank balance are not in it, so the chart meets the bank balance on that day and goes on from there")
@@ -244,7 +244,6 @@ struct OpeningBalanceTests {
 		let fetched = Account(position: 4, name: "Giro", kind: .giro, source: .bank, bankBalanceMinor: 30_000, initialBalanceMinor: 25_000)
 		let depot = Account(position: 5, name: "Depot", kind: .portfolio, source: .migrated, bankBalanceMinor: 1_000_000, initialBalanceMinor: 900_000)
 		try store.save(accounts: [travel, wallet, household, cash, fetched, depot])
-		let fee = Transaction(accountID: household.id, bookingDate: day, amountMinor: -1_000, name: "Kontoführung", sourceID: "moneymoney:3")
 		try store.save([
 			Transaction(accountID: travel.id, bookingDate: day, amountMinor: -2_000, currency: "USD", name: "Diner New York", sourceID: "moneymoney:1"),
 			Transaction(accountID: household.id, bookingDate: day, amountMinor: -480, name: "Bäckerei Gutbrot"),
@@ -252,9 +251,8 @@ struct OpeningBalanceTests {
 			Transaction(accountID: cash.id, bookingDate: day, amountMinor: -1_200, name: "Kiosk", sourceID: "moneymoney:5"),
 			Transaction(accountID: fetched.id, bookingDate: day, amountMinor: -1_000, name: "Kiosk", sourceID: "moneymoney:6"),
 			Transaction(accountID: depot.id, bookingDate: day, amountMinor: -50_000, name: "Kauf", sourceID: "moneymoney:7"),
-			fee,
 		])
-		try store.deleteTransactions([fee.id])
+		try insertDeletedRow(queue, accountID: household.id, sourceID: "moneymoney:3", amountMinor: -1_000)
 		try Schema.migrator.migrate(queue)
 
 		let ledger = try store.loadLedger()
@@ -280,6 +278,38 @@ struct OpeningBalanceTests {
 		#expect(ledger.balance(of: try #require(ledger.account(wallet.id))).minorUnits == 49_700)
 	}
 
+	@Test("A deleted row keeps its currency")
+	func deletedRowCurrency() throws {
+		let travel = Account(position: 0, name: "Travel", kind: .creditCard, source: .migrated)
+		let store = try makeStore([travel])
+		let diner = Transaction(accountID: travel.id, bookingDate: today, amountMinor: -2_000, currency: "USD", name: "Diner New York", sourceID: "moneymoney:1")
+		try store.save([diner])
+		try store.deleteTransactions([diner.id])
+		#expect(try store.deletedTransactions().map(\.currency) == ["USD"])
+	}
+
+	@Test("v15 gives a deleted row the currency of its account")
+	func deletedRowCurrencyMigration() throws {
+		let queue = try DatabaseQueue()
+		try Schema.migrator.migrate(queue, upTo: "v14")
+		let store = Store(queue: queue)
+		let travel = Account(position: 0, name: "Travel", kind: .creditCard, source: .migrated, currency: "CHF")
+		try store.save(accounts: [travel])
+		try insertDeletedRow(queue, accountID: travel.id, sourceID: "moneymoney:1", amountMinor: -2_000)
+		try Schema.migrator.migrate(queue)
+		#expect(try store.deletedTransactions().map(\.currency) == ["CHF"])
+	}
+
+	/// A deleted row as a database before v15 stores it, without a currency.
+	func insertDeletedRow(_ queue: DatabaseQueue, accountID: UUID, sourceID: String, amountMinor: Int64) throws {
+		try queue.write { db in
+			try db.execute(sql: """
+				INSERT INTO deletedTransaction (accountID, sourceID, bookingDate, amountMinor, isPending, purpose, wasFetched, deletedAt)
+				VALUES (?, ?, ?, ?, 0, '', 0, ?)
+				""", arguments: [accountID, sourceID, Day(year: 2026, month: 11, day: 2).rawValue, amountMinor, Date()])
+		}
+	}
+
 	@Test("A migration gives one deleted row another source ID, also a deleted row without one")
 	func relinksDeletedRows() throws {
 		let wallet = Account(position: 0, name: "Wallet", kind: .cash, source: .migrated)
@@ -294,5 +324,19 @@ struct OpeningBalanceTests {
 		try store.save(relinking: [DeletedTransaction.Relink(row: gone, sourceID: nil), DeletedTransaction.Relink(row: restored, sourceID: "moneymoney:4"),
 			DeletedTransaction.Relink(row: restored, sourceID: "moneymoney:5")])
 		#expect(try store.deletedTransactions().map(\.sourceID).sorted { ($0 ?? "") < ($1 ?? "") } == [nil, nil, "moneymoney:4", "moneymoney:5"])
+	}
+
+	@Test("A migration gives the source ID to the deleted row of the same currency, not to one that differs only in its currency")
+	func relinksByCurrency() throws {
+		let travel = Account(position: 0, name: "Travel", kind: .cash, source: .migrated)
+		let store = try makeStore([travel])
+		let diners = ["EUR", "USD"].map { Transaction(accountID: travel.id, bookingDate: today, amountMinor: -2_000, currency: $0, name: "Diner") }
+		try store.save(diners)
+		// The euro row is deleted first, so a match without the currency would take it.
+		for diner in diners { try store.deleteTransactions([diner.id]) }
+		let dollar = try #require(try store.deletedTransactions().first { $0.accountID == travel.id && $0.currency == "USD" })
+		try store.save(relinking: [DeletedTransaction.Relink(row: dollar, sourceID: "moneymoney:9")])
+		let linked = try store.deletedTransactions().filter { $0.accountID == travel.id && $0.sourceID != nil }.map(\.currency)
+		#expect(linked == ["USD"])
 	}
 }

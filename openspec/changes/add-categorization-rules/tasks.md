@@ -25,6 +25,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [ ] 1.19 A term matches a whole word. Built: RuleTests "Wildcards" shows it for a slash, where `"Kundennummer 67890"` does not match "Kundennummer 67890/Rechnung 12345". Check it when 2.6 shows it for a hyphen.
 - [ ] 1.20 The rules true and false. Not built. Build it in 2.1 and 2.2.
 - [ ] 1.21 Short forms of the operators. Not built: `+`, `!`, and `-` are not operators. Build it in 2.1 and 2.2.
+- [x] 1.22 A saved rule that cannot be read is marked. Verified by CategorizerTests "A category whose saved rule cannot be read reports the error until the rule is fixed", and in the app: the sidebar row of "Rent" with `amount<-1,000` shows the warning symbol, and with `amount<-1000` it shows none.
 
 ## 2. Changes to the first build
 

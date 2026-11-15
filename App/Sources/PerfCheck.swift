@@ -189,6 +189,34 @@ struct PerfScenario {
 				await c.settle()
 				if c.model.tableKey.portfolios != [depot.id] || c.harness.holdingsTables().isEmpty { c.fail("the view did not change to the positions") }
 			}),
+		// A view change with selected rows, from transactions to positions and back. The old table loses its
+		// selection in a drawing of its own and goes one drawing later, and a click that it reports after that
+		// is ignored: SwiftUI stopped the app in AttributeGraph when a table saw a change of its selection in the
+		// drawing that removed it (issue #135).
+		PerfScenario(name: "view-change-with-selected-rows", budget: halfSecond,
+			setUp: { c in
+				await c.select("Account 1")
+				c.harness.transactionTables().first?.selectRowIndexes(IndexSet(0..<3), byExtendingSelection: false)
+				await c.settle()
+			},
+			run: { c in
+				guard let depot = c.model.ledger.accounts.first(where: { $0.name == "Perf Depot" }) else { return c.fail("no portfolio") }
+				let selected = c.model.selectedTransactions
+				if selected.count != 3 { c.fail("the table reported \(selected.count) selected rows instead of 3") }
+				let old = c.model.tableKey
+				c.harness.select("Perf Depot")
+				if c.model.tableKey != old { c.fail("the table changed in the drawing that clears its selection") }
+				if !c.model.selectedTransactions.isEmpty { c.fail("the view change kept the selected rows") }
+				await c.settle()
+				if c.model.tableKey.portfolios != [depot.id] { c.fail("the view did not change to the positions") }
+				c.model.select(transactions: selected, in: old)
+				if !c.model.selectedTransactions.isEmpty { c.fail("a table that went changed the selection") }
+				c.harness.holdingsTables().first?.selectRowIndexes(IndexSet(0..<2), byExtendingSelection: false)
+				await c.settle()
+				if c.model.selectedPositions != 2 { c.fail("the trail counts \(c.model.selectedPositions) selected positions instead of 2") }
+				await c.select("Account 1")
+				if c.model.tableKey.portfolios != nil || c.harness.transactionTables().isEmpty { c.fail("the view did not change back to the transactions") }
+			}),
 		// A refresh lands while a move out of the open group waits for its drawing. The move reads the account
 		// when it happens, so it keeps what the refresh stored, in the ledger and in the database (issue #151).
 		PerfScenario(name: "refresh-while-move-waits", budget: halfSecond,

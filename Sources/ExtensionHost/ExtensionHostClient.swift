@@ -57,7 +57,7 @@ public actor ExtensionHostClient {
 		ask: @escaping @Sendable (String) async throws -> HostDecision, log: @escaping @Sendable (HostLog) -> Void = { _ in },
 		trace: @escaping @Sendable (HostTrace) -> Void = { _ in }) async throws -> (client: ExtensionHostClient, registration: Registration, loadMilliseconds: Double) {
 		let client = try ExtensionHostClient(executable: executable, arguments: arguments, extensionName: setup.package.name, silence: silence,
-			testHosts: setup.developer?.testHosts ?? [],
+			testHosts: setup.testHosts,
 			ask: ask, log: log, trace: trace)
 		do {
 			guard case let .loaded(registration, entryPoints, milliseconds) = try await client.send(.start(setup)) else {

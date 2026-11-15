@@ -147,7 +147,7 @@ The app SHALL start no refresh while the Mac is in Power Nap or in another state
 
 ### Requirement: An automatic refresh never asks the user
 
-The app SHALL open no dialog for an automatic refresh. When a bank asks for a TAN or another confirmation, the app ends that access, marks its accounts with a text that tells the user to run "Refresh Account" to give the authorization, and continues with the other accesses.
+The app SHALL open no dialog for an automatic refresh. When a bank asks for a TAN or another confirmation, the app ends that access, marks its accounts with a text that tells the user to run "Refresh Account" to give the authorization, and continues with the other accesses. A notice of the bank from an automatic refresh waits until the user starts a refresh or brings the main window forward.
 
 #### Scenario: Bank asks for a TAN after 90 days
 
@@ -156,6 +156,13 @@ The app SHALL open no dialog for an automatic refresh. When a bank asks for a TA
 - **THEN** no TAN dialog appears
 - **AND** the sidebar row of "Giro" shows that an authorization is needed
 - **AND** the TAN dialog appears when the user chooses "Refresh Account" on "Giro"
+
+#### Scenario: Notice of the bank at night
+
+- **GIVEN** the main window is closed
+- **WHEN** the automatic refresh at 03:00 ends and the bank of "Giro" sent a notice about maintenance
+- **THEN** no window opens
+- **AND** the notice appears when the user opens the main window or chooses "Refresh Account" on "Giro"
 
 ### Requirement: One session for the accounts of one login
 

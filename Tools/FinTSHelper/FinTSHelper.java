@@ -513,8 +513,8 @@ public class FinTSHelper {
 	static class Callback extends AbstractHBCICallback {
 		static final Pattern PIN_ERROR = Pattern.compile("Meldung der Bank: (\\d{4}): (.*)");
 		final Map<?, ?> command;
-		final String host;
-		final int port;
+		String host;
+		int port;
 		boolean login = true;
 		int lastID;
 		Integer approval;
@@ -531,14 +531,18 @@ public class FinTSHelper {
 		final Map<HBCIJob, Integer> jobs = new IdentityHashMap<>();
 		int jobCount, lastProgress = -1;
 
-		/// hbci4java takes the host with the path and the query, and the port on its own.
-		Callback(Map<?, ?> command, URI url) {
+		Callback(Map<?, ?> command) {
 			this.command = command;
-			if (url == null) {
-				host = null;
-				port = 0;
-				return;
-			}
+		}
+
+		/// The FinTS address of a dialog is the one that the bank directory of hbci4java holds now, so that an
+		/// update of the directory reaches every access without a new setup. hbci4java takes the host with
+		/// the path and the query, and the port on its own.
+		void connect() {
+			String bankCode = string(command, "bankCode");
+			BankInfo bank = present(bankCode) ? HBCIUtils.getBankInfo(bankCode) : null;
+			if (bank == null || !present(bank.getPinTanAddress())) throw new Failure("unsupported", null, "The bank offers no FinTS address.");
+			URI url = https(bank.getPinTanAddress());
 			String path = url.getRawPath() == null || url.getRawPath().isEmpty() ? "/" : url.getRawPath();
 			host = url.getHost() + path + (url.getRawQuery() == null ? "" : "?" + url.getRawQuery());
 			port = url.getPort() > 0 ? url.getPort() : 443;
@@ -1148,7 +1152,7 @@ public class FinTSHelper {
 		Properties props = new Properties();
 		props.setProperty("log.loglevel.default", "3");
 		if ("banks".equals(type)) {
-			HBCIUtils.init(props, new Callback(command, null));
+			HBCIUtils.init(props, new Callback(command));
 			try {
 				send(banks());
 			} finally {
@@ -1157,12 +1161,11 @@ public class FinTSHelper {
 			return;
 		}
 		if (!"accounts".equals(type) && !"refresh".equals(type)) throw new IllegalArgumentException("unknown command " + type);
-		URI url = https(string(command, "url"));
 		props.setProperty("client.product.name", string(command, "product"));
 		props.setProperty("client.product.version", string(command, "version"));
 		props.setProperty("client.passport.PinTan.init", "1");
 		props.setProperty("client.passport.PinTan.checkcert", "1");
-		Callback callback = new Callback(command, url);
+		Callback callback = new Callback(command);
 		try {
 			SSLContext tls = SSLContext.getInstance("TLS");
 			tls.init(null, new TrustManager[] {new MacTrust(callback)}, null);
@@ -1172,6 +1175,7 @@ public class FinTSHelper {
 		}
 		HBCIUtils.init(props, callback);
 		try {
+			callback.connect();
 			String state = string(command, "state");
 			Passport.State loaded = state == null ? null : Passport.deserialize(Base64.getDecoder().decode(state));
 			Passport.loaded = loaded == null ? null : loaded.data();

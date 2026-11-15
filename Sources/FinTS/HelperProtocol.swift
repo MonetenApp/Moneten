@@ -265,7 +265,8 @@ struct AccountResult: Decodable {
 		let result = RefreshResult(balance: money, balanceDate: try balance?.date.map { try Self.day($0).date() }, transactions: fetched,
 			isComplete: transactions != nil && transactions?.from == nil, transactionFailure: transactionFailure, isPortfolio: securities == true,
 			holdings: try holdings?.map { try $0.holding(of: account) })
-		return (.fetched(result), transactionFailure == nil ? errors.map(\.message) : [])
+		let notices = errors.map { BankMessage(code: $0.code, text: $0.text, accountName: account.name) }
+		return (.fetched(result), transactionFailure == nil ? notices : [])
 	}
 
 	static func money(_ amount: String, _ currency: String) throws -> Money {

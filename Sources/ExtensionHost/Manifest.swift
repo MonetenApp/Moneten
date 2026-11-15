@@ -9,11 +9,12 @@ public let extensionAPIVersion = 1
 public struct HostName: Hashable, Sendable, Codable, CustomStringConvertible {
 	public let value: String
 
-	/// The special-use domains of RFC 6761 and RFC 8375, and `internal`, which ICANN keeps for private
-	/// networks. A name under them reaches the Mac, the local network, or nowhere, and a person who reads
-	/// it in the host dialog would not see that. `example` stays allowed, because the examples and
-	/// fixtures use it, and no common tool points it at a local service, as tools for web developers do with `test`.
-	static let specialUseDomains = ["localhost", "local", "home.arpa", "internal", "test", "invalid"]
+	/// The special-use domains of RFC 6761 and RFC 8375, `internal`, which ICANN keeps for private
+	/// networks, and the private names of RFC 6762, Appendix G. A name under them reaches the Mac, the local
+	/// network, or nowhere, and a person who reads it in the host dialog would not see that. `example` stays
+	/// allowed, because the examples and fixtures use it, and no common tool points it at a local service,
+	/// as tools for web developers do with `test`.
+	static let specialUseDomains = ["localhost", "local", "home.arpa", "internal", "test", "invalid", "lan", "home", "corp", "intranet", "private"]
 
 	public init?(exactly text: String) {
 		guard text.utf8.count <= 253, Pattern.isHostName(text), !Self.specialUseDomains.contains(where: { text == $0 || text.hasSuffix("." + $0) }) else { return nil }

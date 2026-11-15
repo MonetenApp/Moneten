@@ -136,24 +136,30 @@ final class DebugHarness {
 			for (position, a) in model.ledger.accounts.filter({ $0.accessID != nil }).enumerated() {
 				log("status #\(position) \(a.kind) refreshing=\(model.sync.refreshingAccounts.contains(a.id)) refreshedAt=\(a.refreshedAt.map { "\($0)" } ?? "-") error=\(Self.label(a.refreshError)) waitsForUser=\(a.refreshError?.waitsForUser ?? false) interval=\(a.refreshInterval.rawValue) balance=\(a.bankBalanceMinor.map(String.init) ?? "-") rows=\(model.ledger.transactions(ofAccount: a.id).count) new=\(model.ledger.newTransactionCounts[a.id] ?? 0)")
 			}
-			log("status line=\(model.refreshStatus ?? "-") accesses=\(model.accesses.count)")
+			log("status line=\(model.refreshStatus ?? "-") accesses=\(model.accesses.count) bankNotices=\(model.bankNotices.waiting.count)")
 		// "closemain" closes the main window as its close button does; both log the scenes of the visible windows.
 		case "closemain", "windows":
 			if command == "closemain" { NSApp.windows.first { $0.isVisible && $0.identifier?.rawValue.hasPrefix("main") == true }?.performClose(nil) }
 			DispatchQueue.main.async { [weak self] in
 				self?.log("windows \(NSApp.windows.filter { $0.isVisible && $0.frame.width > 50 }.map { $0.identifier?.rawValue ?? "-" })")
 			}
+		// Opens the main window as a click on a notification does.
+		case "openmain": model.openMainWindow()
 		// "off" or "on": what the network monitor reports, so that a check can refresh as if the Mac were offline.
 		case "network": model.autoRefresh.isOnline = argument != "off"
+		// "off" or "on": whether the display is awake, so that a check can run the automatic refresh while the display of the Mac sleeps.
+		case "present": model.autoRefresh.isUserPresent = argument != "off"
 		// The popover of the menu bar icon, drawn offscreen.
 		case "menubarsnapshot": offscreenSnapshot(MenuBarPopover().environment(model), width: 340, name: argument)
 		// The delivered notifications of this app in the Notification Center, with their titles and the number of their accounts.
 		case "notices": logNotices()
+		// What the button "OK" of the window "Notice" does.
+		case "noticeok": model.bankNotices.dismiss()
 		case "errorsnapshot":
 			// By the position and the kind of the account, as in "status", never by its name.
 			let accounts = model.ledger.accounts.filter { $0.accessID != nil }
 			if let position = accounts.firstIndex(where: { $0.name == argument }), let error = accounts[position].refreshError {
-				offscreenSnapshot(RefreshErrorPopover(error: error), width: 352, name: "error-\(position)-\(accounts[position].kind)")
+				offscreenSnapshot(RefreshErrorPopover(account: accounts[position], error: error), width: 352, name: "error-\(position)-\(accounts[position].kind)")
 			}
 		case "extrun": runExtension(argument)
 		case "escape":
@@ -225,6 +231,10 @@ final class DebugHarness {
 				g.groupsByAccount = true
 				model.save(group: g)
 			}
+		// Imports the file at the path into the selected account, as "Import Transactions..." does after the open panel.
+		case "importfile":
+			guard let account = model.selectedAccount else { return log("importfile no account") }
+			Task { await model.importFiles([URL(filePath: argument)], into: account); log("importfile done") }
 		case "usd": Task { await DemoData.usdAccount(model); log("usd done") }
 		case "review": Task { await DemoData.review(model); log("review done") }
 		case "fetch": DemoData.fetch(model, argument)
@@ -321,6 +331,15 @@ final class DebugHarness {
 		case "view": model.viewMode = ViewMode(rawValue: argument) ?? .list
 		case "balance": model.balanceMode = BalanceMode(rawValue: argument) ?? .daily
 		case "search": model.filter.searchText = argument
+		// "<min> <max>" as typed into "Custom..." of the amount filter, with "-" for an empty field.
+		case "amount", "amountsnapshot":
+			let ends = argument.split(separator: " ").map { $0 == "-" ? "" : String($0) } + ["", ""]
+			if command == "amount" {
+				if let range = CustomAmountView.range(min: ends[0], max: ends[1]) { model.filter.amount = range }
+				log("amount applied=\(model.filter.amount != .all) visible=\(model.visibleTransactions.count)")
+			} else {
+				offscreenSnapshot(CustomAmountView(min: ends[0], max: ends[1]).environment(model), width: 300, name: "amount")
+			}
 		case "period":
 			switch argument {
 			case "90": model.period = .days90
@@ -342,6 +361,13 @@ final class DebugHarness {
 			case "transaction": model.sheet = .transaction(model.visibleTransactions.first?.id)
 			default: model.sheet = nil
 			}
+		// "Name|rule" saves the rule of a category without the check of the settings, as an older version could have stored it.
+		case "rule":
+			let parts = argument.split(separator: "|", maxSplits: 1).map(String.init)
+			guard parts.count == 2, var c = model.ledger.categories.first(where: { $0.name == parts[0] }) else { return log("rule not found") }
+			c.rule = parts[1]
+			model.save(category: c)
+			log("rule error=\(c.ruleError.map { "\($0)" } ?? "none")")
 		// What "Add category" in "Assign Category" does with the selected rows.
 		case "newcategory": Task { await model.addCategory(name: argument, isGroup: false, parentID: nil, assigning: model.selectedTransactions) }
 		case "selectRows": model.selectedTransactions = Set(model.visibleTransactions.prefix(Int(argument) ?? 1).map(\.id))

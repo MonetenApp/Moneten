@@ -20,6 +20,8 @@ public struct Access: Identifiable, Hashable, Sendable {
 
 /// Where an access gets its data. The database keeps it as JSON, so a new case needs no migration.
 public enum AccessSource: Hashable, Sendable, Codable {
+	/// `url` is the address at the setup. Each dialog takes the address that the bank directory holds then,
+	/// and fails when the directory has none for the bank.
 	case fints(bankCode: String, url: URL)
 	case `extension`(id: String)
 	case finAPI(connection: String)
@@ -54,6 +56,18 @@ public struct FailureWithState: Error {
 	public init(_ failure: any Error, state: AccessState) {
 		self.failure = failure
 		self.state = state
+	}
+}
+
+/// A refresh that failed after the bank sent notices, for example a login that fails during the maintenance
+/// that a notice announced. The coordinator hands on `notices`, and the refresh ends with `failure`.
+public struct FailureWithNotices: Error {
+	public let failure: any Error
+	public let notices: [BankMessage]
+
+	public init(_ failure: any Error, notices: [BankMessage]) {
+		self.failure = failure
+		self.notices = notices
 	}
 }
 

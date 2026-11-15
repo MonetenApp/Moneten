@@ -261,7 +261,7 @@ The app SHALL send a request of an extension only to an exact host name over HTT
 
 ### Requirement: Special-use host names
 
-The app SHALL treat a name under the special-use domains `localhost`, `local`, `home.arpa`, `internal`, `test`, and `invalid` as not an exact host name, in a manifest, in the host dialog, after a redirect, and in a browser login. Such a name reaches the Mac, the local network, or nowhere. Names under `example` stay allowed. The app checks the name, not the address that the name resolves to.
+The app SHALL treat a name under the special-use domains `localhost`, `local`, `home.arpa`, `internal`, `test`, and `invalid`, or under the private top-level names `lan`, `home`, `corp`, `intranet`, and `private`, as not an exact host name, in a manifest, in the host dialog, after a redirect, and in a browser login. Such a name reaches the Mac, the local network, or nowhere. Names under `example` stay allowed. The app checks the name, not the address that the name resolves to.
 
 #### Scenario: Name under localhost
 
@@ -275,6 +275,13 @@ The app SHALL treat a name under the special-use domains `localhost`, `local`, `
 - **GIVEN** a manifest that lists the host `printer.local`
 - **WHEN** the app loads the extension
 - **THEN** the extension is not usable and the list says "A host name must be exact: printer.local."
+
+#### Scenario: Private name in the host dialog
+
+- **GIVEN** "Demo" has no manifest
+- **WHEN** line 3 of `Demo.lua` calls `connection:get("https://nas.lan/")`
+- **THEN** no dialog appears and no request is sent
+- **AND** the script stops with "Demo.lua:3: Moneten sends requests only to a plain host name on the HTTPS port, not to https://nas.lan/."
 
 #### Scenario: Browser login on a stored special-use name
 

@@ -161,8 +161,12 @@ struct AccountSettingsSheet: View {
 				if let binding = Binding($account) {
 					Section {
 						TextField("Name", text: binding.name)
-						Picker("Account type", selection: binding.kind) {
-							ForEach(AccountKind.allCases, id: \.self) { Text($0.title).tag($0) }
+						if let choices = original.kind.choices {
+							Picker("Account type", selection: binding.kind) {
+								ForEach(choices, id: \.self) { Text($0.title).tag($0) }
+							}
+						} else {
+							LabeledContent("Account type", value: original.kind.title)
 						}
 						LabeledContent("Color") { ColorSwatches(selection: $color) }
 					}
@@ -182,14 +186,12 @@ struct AccountSettingsSheet: View {
 									.multilineTextAlignment(.trailing)
 									.monospacedDigit()
 								Button("Calibrate") {
-									// Sets the initial balance so that the computed balance meets the balance of the bank.
-									if let bank = original.reportedBalance {
-										let booked = model.ledger.computedBalance(of: original).minorUnits - original.initialBalanceMinor
-										initialBalance = Format.editableAmount(bank.minorUnits - booked, original.currency)
+									if let value = original.initialBalanceMeetingBankBalance(of: model.ledger.transactions(ofAccount: original.id)) {
+										initialBalance = Format.editableAmount(value, original.currency)
 									}
 								}
 								.disabled(original.reportedBalance == nil)
-								.help("Make the computed balance end at the balance of the bank")
+								.help("Make the booked transactions meet the balance of the bank")
 							}
 						}
 						Toggle("The account has been closed", isOn: binding.isClosed)

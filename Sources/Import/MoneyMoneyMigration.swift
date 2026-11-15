@@ -140,7 +140,7 @@ public struct MoneyMoneyMigration: Sendable {
 	/// of the row of the source that it keeps out, also one that it matched by its fingerprint. The export holds every
 	/// transaction of an exported account, so a deleted row whose ID it leaves out is gone from the source: it counts
 	/// before this run and not after, and the store forgets its source ID, so no later run counts it again.
-	/// A deleted row stores no currency, so a deleted row in another currency counts as one in the account currency.
+	/// A deleted row in another currency never moves the balance, like a stored one.
 	private static func setInitialBalances(of plan: inout Plan, ledger: Ledger, stored: [UUID: [Transaction]],
 		deleted: [UUID: [DeletedTransaction]], relinked: [UUID: [DeletedTransaction.Relink]], exported: Set<UUID>,
 		delivered: [UUID: Set<String>]) {
@@ -164,8 +164,8 @@ public struct MoneyMoneyMigration: Sendable {
 			var a = k.map { plan.updatedAccounts[$0] } ?? old
 			guard let balance = a.bankBalanceMinor else { continue }
 			let before = stored[old.id] ?? []
-			let deletedBefore = tombstones.filter(isCounted).reduce(0) { $0 + $1.amountMinor }
-			let deletedAfter = after.filter(isCounted).reduce(0) { $0 + $1.amountMinor }
+			let deletedBefore = tombstones.filter { isCounted($0) && $0.currency == old.currency }.reduce(0) { $0 + $1.amountMinor }
+			let deletedAfter = after.filter { isCounted($0) && $0.currency == old.currency }.reduce(0) { $0 + $1.amountMinor }
 			let target = initialBalance(balance, of: a, rows: before.map { changed[$0.id] ?? $0 } + (added[old.id] ?? [])) - deletedAfter
 			a.initialBalanceMinor = old.bankBalanceMinor.map {
 				old.initialBalanceMinor + target - (initialBalance($0, of: old, rows: before) - deletedBefore)

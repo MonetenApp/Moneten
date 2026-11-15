@@ -160,7 +160,7 @@ final class AppModel {
 			Trail.log("ledger \(ledgerChange) rows=\(rows) delta=\(rows - trailRows) accounts=\(ledger.accounts.count)")
 			trailRows = rows
 			ledgerChange = "edit"
-			noteUndrawn(ledger: true)
+			noteUndrawn(rows: true)
 			// The ledger decides between positions and transactions, for example when the last transaction of a
 			// portfolio goes. That changes the table like a click, one drawing after the rows.
 			if selectedPortfolios != tableKey.portfolios { tableChanged() }
@@ -185,9 +185,21 @@ final class AppModel {
 	private var canceledRefreshes: [UUID: Date] = [:]
 	/// Opens the main window, also when it is closed. The window sets it, because only a view can open a scene.
 	@ObservationIgnored var openMainWindow: () -> Void = {}
+	/// The notices of the banks for the window "Notice". The lock drops them.
+	var bankNotices = BankNotices()
+	/// Opens the window "Notice", or brings it forward. The main window sets it, as `openMainWindow`.
+	@ObservationIgnored var openNoticeWindow: () -> Void = {}
 
 	var selection: SidebarSelection? {
-		didSet { if selection != oldValue { tableChanged() } }
+		didSet {
+			guard selection != oldValue else { return }
+			// The selected rows go in a drawing of their own, and the table of the new view follows one drawing
+			// later: SwiftUI stopped the app in AttributeGraph when a table saw a change of its selection in the
+			// drawing that removed it (issue #135). Every view change clears them, so that no hidden row stays
+			// selected for "Add Comment...". Setting an empty selection again would notify its readers too.
+			if !selectedTransactions.isEmpty { selectedTransactions = [] }
+			tableChanged()
+		}
 	}
 	var filter = TransactionFilter() {
 		didSet { if filter != oldValue { tableChanged() } }
@@ -198,14 +210,16 @@ final class AppModel {
 	/// because new rows in place would remove shown rows, and the search field changes at once.
 	private(set) var tableKey = TableKey()
 	@ObservationIgnored private var tableKeyWaits = false
-	/// A change of the ledger, or of the identity of the transaction table, that SwiftUI has not drawn yet.
-	/// The two must not meet in one drawing (issue #151), so each one waits until the other is drawn.
-	@ObservationIgnored private var ledgerUndrawn = false
+	/// A change that the cells of the open table read (the ledger or the selected rows), or a change of the
+	/// identity of the table, that SwiftUI has not drawn yet. The two must not meet in one drawing (issues
+	/// #135, #151), so each one waits until the other is drawn.
+	@ObservationIgnored private var rowsUndrawn = false
 	@ObservationIgnored private var tableUndrawn = false
 	@ObservationIgnored private var watchesDrawing = false
 	/// Counts the drawings that changes wait for. `DrawProbe` in the transaction view reads it and reports
 	/// the number it saw once SwiftUI has updated that view.
 	private(set) var drawRequest = 0
+	@ObservationIgnored private var requestCount = 0
 	/// Each work waits for the number that its call of `afterDraw` set, so a drawing that came before the call
 	/// never releases it, also when the call came from an action inside that update.
 	@ObservationIgnored private var drawWaiters: [(request: Int, work: @MainActor () -> Void)] = []
@@ -242,7 +256,13 @@ final class AppModel {
 		didSet { UserDefaults.standard.set(balanceMode.rawValue, forKey: Preference.balanceMode) }
 	}
 	var chartPeriod: ChartPeriod = .month
-	var selectedTransactions = Set<UUID>()
+	/// The cells of the transaction table read the selection, so a change of it waits for a drawing before the
+	/// table goes, like a change of the ledger (issue #135).
+	var selectedTransactions = Set<UUID>() {
+		didSet { noteUndrawn(rows: true) }
+	}
+	/// The number of selected rows of the table of positions, for the trail. The selection lives in that view.
+	@ObservationIgnored var selectedPositions = 0
 
 	/// A message for an alert.
 	var alert: AlertMessage? {
@@ -287,6 +307,11 @@ final class AppModel {
 				self.recordRefresh(of: access, state: state, accounts: accounts, attended: attended)
 			}
 			self.extensions.sessionEnded()
+			if attended { self.showNotices() }
+		}
+		sync.noticed = { [weak self] access, messages in
+			guard let self, let bank = self.accesses[access]?.bankName else { return }
+			self.bankNotices.add(messages, from: bank)
 		}
 		sync.runEnded = { [weak self] in
 			guard let self else { return }
@@ -417,6 +442,7 @@ final class AppModel {
 		try? store?.close()
 		store = nil
 		accesses = [:]
+		bankNotices = BankNotices()
 		sheet = nil
 		phase = .locked
 		// The lock removes the transaction table in this drawing and empties its rows after it, so that the
@@ -481,12 +507,19 @@ final class AppModel {
 		if UserDefaults.standard.bool(forKey: Preference.lockOnClose) { lock() }
 	}
 
+	/// Brings the window "Notice" forward when a notice came since it last did. The app calls it only when
+	/// the user is there, at the end of a refresh that the user started and when the main window comes
+	/// forward, because an automatic refresh opens no dialog ("An automatic refresh never asks the user").
+	func showNotices() {
+		if bankNotices.bringForward() { openNoticeWindow() }
+	}
+
 	// MARK: Selection and filters
 
 	func select(_ s: SidebarSelection?) {
 		guard s != selection else { return }
+		Trail.log("view change from=\(tableKey.trailKind) selected=\(tableKey.portfolios == nil ? selectedTransactions.count : selectedPositions)")
 		selection = s
-		selectedTransactions = []
 		if !keepFilters {
 			var kept = TransactionFilter()
 			kept.period = filter.period
@@ -498,10 +531,25 @@ final class AppModel {
 		afterDraw { [weak self] in Task { @MainActor in self?.markSeen() } }
 	}
 
+	/// True while the tables show `key`, its view is still the chosen one, and no placeholder is about to take
+	/// their place. A table that SwiftUI removes in its next update can still report a click, and a change of
+	/// its selection would reach it in the update that removes it (issue #135), or stay selected, hidden, in the
+	/// next view. So the tables keep a selection only while this holds. It reads without observing, because a
+	/// table asks inside an update of SwiftUI.
+	func shows(_ key: TableKey) -> Bool { _tableKey == key && _selection == key.selection && _tableHolds == 0 }
+
+	/// A selection that the transaction table of `key` reports.
+	func select(transactions ids: Set<UUID>, in key: TableKey) {
+		if shows(key) { selectedTransactions = ids }
+	}
+
 	/// The rows of the transaction table, for the view and the filters of `tableKey`.
-	var visibleTransactions: [Transaction] {
-		guard let selection = tableKey.selection else { return [] }
-		return ledger.transactions(in: selection.scope, filter: tableKey.filter)
+	var visibleTransactions: [Transaction] { transactions(for: tableKey) }
+
+	/// The rows of a transaction table with the view and the filters of `key`.
+	func transactions(for key: TableKey) -> [Transaction] {
+		guard let selection = key.selection else { return [] }
+		return ledger.transactions(in: selection.scope, filter: key.filter)
 	}
 
 	/// The transactions of the bar charts: the filters of the list, but over the period of the charts.
@@ -563,13 +611,11 @@ final class AppModel {
 	func setChecked(_ checked: Bool, for ids: Set<UUID>) {
 		let rows = ids.compactMap { ledger.transaction($0) }
 		if checked {
-			commit(rows.filter(Self.changesWhenChecked).map { var t = $0; t.markChecked(); return t })
+			commit(rows.filter(\.changesWhenChecked).map { var t = $0; t.markChecked(); return t })
 		} else {
 			commit(rows.filter(\.isChecked).map { var t = $0; t.isChecked = false; return t })
 		}
 	}
-
-	private static func changesWhenChecked(_ t: Transaction) -> Bool { !t.isChecked || t.isNew || t.needsReview }
 
 	func toggleChecked(_ id: UUID) {
 		guard let t = ledger.transaction(id) else { return }
@@ -577,7 +623,7 @@ final class AppModel {
 	}
 
 	func markAllChecked() {
-		let rows = visibleTransactions.filter(Self.changesWhenChecked)
+		let rows = visibleTransactions.filter(\.changesWhenChecked)
 		guard !rows.isEmpty else { return }
 		let accounts = Set(rows.map(\.accountID)).count
 		let alert = NSAlert()
@@ -646,11 +692,14 @@ final class AppModel {
 	/// Stores the access with the accounts that the user selected, keeps the PIN of the login in
 	/// memory and saves it when the user asked to, selects the first new account, or the first connected
 	/// one when none is new, and starts the first refresh ("Finish the setup"). A login that the app has
-	/// already keeps its access. `listed` holds every account that the bank listed. Throws the error of
+	/// already keeps its access. `listed` holds every account that the bank listed, and `notices` the notices
+	/// of the bank that the assistant showed, which the window "Notice" then leaves out. Throws the error of
 	/// the database, which the assistant shows.
-	func add(_ new: Access, state: AccessState?, accounts candidates: [Account], listed: [Account], connecting: [UUID: UUID], pin: Secret, savePIN: Bool) throws {
+	func add(_ new: Access, state: AccessState?, accounts candidates: [Account], listed: [Account], connecting: [UUID: UUID], notices: [BankMessage],
+		pin: Secret, savePIN: Bool) throws {
 		guard let store else { return }
 		let (access, accounts) = try store.add(new, state: state, accounts: ledger.accountsToAdd(candidates, listed: listed, connecting: connecting))
+		bankNotices.markShown(notices, from: access.bankName)
 		let first = accounts.first { ledger.account($0.id) == nil } ?? accounts.first
 		// The bank accepted the PIN at the login of the setup.
 		do {
@@ -1124,10 +1173,10 @@ final class AppModel {
 	func replacingTable<T>(_ change: () throws -> T) async rethrows -> T {
 		// A change of the rows that SwiftUI has not drawn yet, such as the refresh of another account of the
 		// same run, must not meet the removal of the table.
-		while tableHolds == 0 && ledgerUndrawn { await drawn() }
+		while tableHolds == 0 && rowsUndrawn { await drawn() }
 		tableHolds += 1
 		// Removing the table is a change of its identity: a refresh in place waits until it is drawn.
-		noteUndrawn(ledger: false)
+		noteUndrawn(rows: false)
 		Trail.log("table placeholder generation=\(tableGeneration)")
 		await drawn()
 		defer {
@@ -1141,7 +1190,7 @@ final class AppModel {
 	/// The view or the filters changed. The table follows at once, or after SwiftUI drew a change of the
 	/// ledger. While the placeholder stands in for the table, there is no table to protect.
 	private func tableChanged() {
-		guard !(ledgerUndrawn && tableHolds == 0) else {
+		guard !(rowsUndrawn && tableHolds == 0) else {
 			if !tableKeyWaits {
 				tableKeyWaits = true
 				Trail.log("table waits for drawing")
@@ -1157,16 +1206,16 @@ final class AppModel {
 		let key = TableKey(selection: selection, filter: filter, portfolios: selectedPortfolios)
 		guard key != tableKey else { return }
 		tableKey = key
-		Trail.log("table selection=\(selection?.trailName ?? "none") filter=\(filter.trailName) generation=\(tableGeneration)")
-		noteUndrawn(ledger: false)
+		Trail.log("table selection=\(selection?.trailName ?? "none") view=\(key.trailKind) filter=\(filter.trailName) generation=\(tableGeneration)")
+		noteUndrawn(rows: false)
 	}
 
-	private func noteUndrawn(ledger: Bool) {
-		if ledger { ledgerUndrawn = true } else { tableUndrawn = true }
+	private func noteUndrawn(rows: Bool) {
+		if rows { rowsUndrawn = true } else { tableUndrawn = true }
 		guard !watchesDrawing else { return }
 		watchesDrawing = true
 		afterDraw { [weak self] in
-			self?.ledgerUndrawn = false
+			self?.rowsUndrawn = false
 			self?.tableUndrawn = false
 			self?.watchesDrawing = false
 		}
@@ -1187,8 +1236,11 @@ final class AppModel {
 			Task { @MainActor in work() }
 			return
 		}
-		drawRequest += 1
-		let request = drawRequest
+		// A write only: reading `drawRequest` here, inside an update of SwiftUI such as a selection that a table
+		// writes, would make that view depend on every later drawing request (issue #135).
+		requestCount += 1
+		let request = requestCount
+		drawRequest = request
 		drawWaiters.append((request, work))
 		DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
 			MainActor.assumeIsolated {
