@@ -40,6 +40,34 @@ struct CSVProfileTests {
 		#expect(CSVProfile.match(for: anotherBank, in: [profile], detected: try anotherBank.detectedLayout()) == .none)
 	}
 
+	@Test("A changed header keeps separate debit and credit columns with the same title")
+	func repeatedHeader() throws {
+		let original = try CSVFile(data: Data("Datum;Betrag;Betrag\n01.11.2026;10,00;0,00\n".utf8))
+		var layout = try original.detectedLayout()
+		layout.assign(1, to: .debit)
+		layout.assign(2, to: .credit)
+		let profile = CSVProfile(name: "Separate amounts", header: original.header, layout: layout)
+		let changed = try CSVFile(data: Data("Datum;Extra;Betrag;Betrag\n01.11.2026;Note;10,00;0,00\n".utf8))
+		guard case let .changed(_, moved) = CSVProfile.match(for: changed, in: [profile], detected: try changed.detectedLayout()) else {
+			Issue.record("The profile must match the moved columns")
+			return
+		}
+		#expect(moved.columns[.debit] == 2)
+		#expect(moved.columns[.credit] == 3)
+		#expect(try changed.preview(moved, currency: "EUR").transactions.map(\.amountMinor) == [-1000])
+	}
+
+	@Test("A changed number of repeated header titles does not remap a saved profile", arguments: ["Datum;Betrag", "Datum;Betrag;Betrag;Betrag"])
+	func repeatedHeaderCountChanged(header: String) throws {
+		let original = try CSVFile(data: Data("Datum;Betrag;Betrag\n".utf8))
+		var layout = try original.detectedLayout()
+		layout.assign(1, to: .debit)
+		layout.assign(2, to: .credit)
+		let profile = CSVProfile(name: "Separate amounts", header: original.header, layout: layout)
+		let changed = try CSVFile(data: Data((header + "\n").utf8))
+		#expect(CSVProfile.match(for: changed, in: [profile], detected: try changed.detectedLayout()) == .none)
+	}
+
 	@Test("A profile reads a file with its header row, and gives nil when the file does not read in it, so the preview opens")
 	func quietRead() throws {
 		var profile = try Self.broker()

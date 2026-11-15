@@ -59,6 +59,18 @@ struct FileCategoryTests {
 		#expect(rows.map(\.categorizedBy) == [.manual, .none])
 	}
 
+	@Test("A category restricted to another account or group leaves an imported row for the rules", arguments: [false, true])
+	func restrictedCategory(toGroup: Bool) {
+		let group = AccountGroup(name: "Work", position: 0)
+		let business = Account(groupID: group.id, position: 0, name: "Business", kind: .giro, source: .offline)
+		let personal = Account(position: 1, name: "Private", kind: .giro, source: .offline)
+		let office = Domain.Category(position: 0, name: "Office", restrictedToID: toGroup ? group.id : business.id)
+		let row = Transaction(accountID: personal.id, bookingDate: Day(year: 2026, month: 11, day: 3), amountMinor: -420, name: "Kiosk")
+		let rows = FileCategories(["Office"], in: [office], creating: false).assign(to: [row], names: [row.id: "Office"])
+		#expect(rows.map(\.categoryID) == [nil])
+		#expect(rows.map(\.categorizedBy) == [.none])
+	}
+
 	@Test("A file row that books a stored pending row gives it the category of the file")
 	func bookedPending() {
 		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
