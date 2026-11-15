@@ -96,6 +96,12 @@ The app SHALL detect the date format of each date column from all its values, in
 
 The app SHALL read amounts with a decimal comma or a decimal point, with or without thousands separators, with a leading or trailing sign, and with a currency symbol or code. The app also reads files with separate columns for debit and credit and files with a column that marks debit or credit. An amount that fits both decimal marks with different values, such as "1,234", takes the decimal mark that the other amounts of the dated rows show.
 
+#### Scenario: Currency in the amount
+
+- **GIVEN** the account "Giro" in euros and a CSV file without a currency column
+- **WHEN** a row has the amount "-$12.50"
+- **THEN** the app reads a withdrawal of 12.50 US dollars
+
 #### Scenario: German format
 
 - **WHEN** an amount column holds "-1.234,56"

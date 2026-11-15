@@ -130,7 +130,7 @@ enum CSVParser {
 		let dataRows = rows.dropFirst(headerIndex + 1).compactMap { row in cell(row.cells, dateCol).map { (row.line, row.cells, $0) } }
 		// The amount column, or the debit and credit columns when the amount cell is empty.
 		func amountCells(_ row: [String]) -> [String] {
-			cell(row, amountCol).map { [$0] } ?? [debitCol, creditCol].compactMap { cell(row, $0) }
+			(cell(row, amountCol).map { [$0] } ?? [debitCol, creditCol].compactMap { cell(row, $0) }).compactMap { amountParts($0, account: currency)?.number }
 		}
 		// An amount such as "1,234" reads by the decimal mark that the other amounts of the file show.
 		// Most files have no such amount, so the marks are collected once, at the first such amount.
@@ -138,17 +138,37 @@ enum CSVParser {
 			let marks = Set(dataRows.flatMap { amountCells($0.1) }.compactMap(AmountParser.decimalMark(of:)))
 			return marks.count == 1 ? marks.first : nil
 		}()
+		// The currency that an amount cell names, such as USD in "-12.00 USD", is the currency of the row
+		// when the file has no currency column. A debit cell and a credit cell add up only in one currency.
+		// A cell without a currency is in the account currency, and a zero, such as "0,00" in the unused
+		// column, counts in any.
+		var amountCurrency: String?
+		var zeroCurrency: String?
 		func readAmount(_ text: String) -> Decimal? {
-			AmountParser.decimal(from: text) ?? fileMark.flatMap { AmountParser.decimal(from: text, decimalMark: $0) }
+			guard let parts = amountParts(text, account: currency),
+				let value = AmountParser.decimal(from: parts.number) ?? fileMark.flatMap({ AmountParser.decimal(from: parts.number, decimalMark: $0) }) else { return nil }
+			if value == 0 {
+				zeroCurrency = zeroCurrency ?? parts.currency
+			} else {
+				let code = parts.currency ?? currency
+				guard amountCurrency == nil || amountCurrency == code else { return nil }
+				amountCurrency = code
+			}
+			return value
 		}
+		let bookingDates = dataRows.map(\.2)
+		let valueDates = dataRows.compactMap { cell($0.1, valueCol) }
+		let (dateOrder, valueDateOrder) = DateOrder.of(bookingDates, valueDates)
 		let placeholder = UUID()
 		var result = TransactionFileImporter.Parsed(transactions: [])
 		for (line, row, dateText) in dataRows {
 			func value(_ c: Int?) -> String? { cell(row, c) }
-			guard let day = Day(string: dateText) else {
+			guard let day = dateOrder.day(dateText) else {
 				throw TransactionFileImporter.Failure.line(line, "The date \(dateText) cannot be read.")
 			}
 			var amount: Decimal?
+			amountCurrency = nil
+			zeroCurrency = nil
 			if let a = value(amountCol) {
 				amount = readAmount(a)
 				// A marker column says whether an unsigned amount is a debit (S, D, DR) or a credit (H, C, CR).
@@ -164,16 +184,17 @@ enum CSVParser {
 				if let d, let c { amount = d + c }
 			}
 			guard let amount else { throw TransactionFileImporter.Failure.line(line, "The amount cannot be read.") }
-			var cur = currency
+			var cur = amountCurrency ?? zeroCurrency ?? currency
 			if let cell = value(currencyCol) {
 				if let code = currencyCode(cell, account: currency) {
 					cur = code
 				} else {
+					cur = currency
 					result.warnings.append(.unknownCurrency(line: line, cell: cell, replacement: currency))
 				}
 			}
 			let valueDate = value(valueCol).flatMap { cell in
-				let day = Day(string: cell)
+				let day = valueDateOrder.day(cell)
 				if day == nil { result.warnings.append(.unreadableValueDate(line: line, cell: cell)) }
 				return day
 			}
@@ -201,6 +222,39 @@ enum CSVParser {
 		if s == "$" { return dollars.contains(account) ? account : "USD" }
 		if let code = currencyNames[s] { return code }
 		return isoCurrencies.contains(s) ? s : nil
+	}
+
+	/// The number of an amount cell and the currency that the cell names: "89,00-" gives "-89,00", and
+	/// "-$12.50" gives "-12.50" in USD. A word that names no currency, as in "12,00 XYZ", gives nil, and so
+	/// does "5,-", where the dash stands for no cents.
+	static func amountParts(_ cell: String, account: String) -> (number: String, currency: String?)? {
+		let signs = Set("+-\u{2212}")
+		let digits = Set("0123456789")
+		guard var start = cell.firstIndex(where: digits.contains), let last = cell.lastIndex(where: digits.contains) else { return nil }
+		var end = cell.index(after: last)
+		// The mark of ",50" belongs to the number, the dot of "SFr.50" to the currency.
+		if start > cell.startIndex, ",.".contains(cell[cell.index(before: start)]),
+			cell[..<cell.index(before: start)].last?.isLetter != true { start = cell.index(before: start) }
+		if end < cell.endIndex, ",.".contains(cell[end]) { end = cell.index(after: end) }
+		var prefix = cell[..<start].trimmingCharacters(in: .whitespaces)
+		var suffix = cell[end...].trimmingCharacters(in: .whitespaces)
+		var sign = ""
+		if let c = prefix.first, signs.contains(c) {
+			sign = String(prefix.removeFirst())
+		} else if let c = prefix.last, signs.contains(c) {
+			sign = String(prefix.removeLast())
+		} else if cell.index(after: last) == end, let c = suffix.first, signs.contains(c) {
+			sign = String(suffix.removeFirst())
+		} else if cell.index(after: last) == end, suffix.count > 1, let c = suffix.last, signs.contains(c) {
+			sign = String(suffix.removeLast())
+		}
+		let symbol = (prefix + suffix).trimmingCharacters(in: .whitespaces)
+		var currency: String?
+		if !symbol.isEmpty {
+			guard let code = currencyCode(symbol, account: account) else { return nil }
+			currency = code
+		}
+		return (sign + cell[start..<end], currency)
 	}
 
 	static func normalize(_ s: String) -> String {
@@ -258,6 +312,54 @@ enum CSVParser {
 			rows.append((start, row))
 		}
 		return rows
+	}
+}
+
+/// The order of day and month in the dates of a CSV column. An ISO date such as "2026-10-31" reads the
+/// same in both.
+enum DateOrder: CaseIterable {
+	case dayMonthYear
+	case monthDayYear
+
+	/// The orders of the booking date column and the value date column. Each takes the first order that
+	/// every value of both columns fits, else the first that every value of its own column fits, else the
+	/// one that most of its values fit. So a value date column of "11/01/2026" takes month first from a
+	/// booking date column of "10/30/2026". Day first comes before month first, so "03/04/2026" is
+	/// 3 April when no value decides.
+	static func of(_ booking: [String], _ value: [String]) -> (booking: DateOrder, value: DateOrder) {
+		let b = fits(booking), v = fits(value)
+		func pick(_ mine: (counts: [DateOrder: Int], readable: Int), _ theirs: (counts: [DateOrder: Int], readable: Int)) -> DateOrder {
+			let fitting = allCases.filter { mine.counts[$0] == mine.readable }
+			return fitting.first { theirs.counts[$0] == theirs.readable } ?? fitting.first ?? allCases.max { mine.counts[$0]! < mine.counts[$1]! }!
+		}
+		return (pick(b, v), pick(v, b))
+	}
+
+	/// How many of the values each order fits, and how many fit any order. A value that fits none, such as
+	/// "pending" as a value date, decides nothing.
+	private static func fits(_ values: [String]) -> (counts: [DateOrder: Int], readable: Int) {
+		var counts = Dictionary(uniqueKeysWithValues: allCases.map { ($0, 0) })
+		var readable = 0
+		for value in values {
+			let orders = allCases.filter { $0.day(value) != nil }
+			for order in orders { counts[order]! += 1 }
+			if !orders.isEmpty { readable += 1 }
+		}
+		return (counts, readable)
+	}
+
+	/// The day of "31.10.2026" or "10/31/26" in this order, or of "2026-10-31". A two-digit year below 70 is in
+	/// the 2000s, and from 70 on in the 1900s.
+	func day(_ text: String) -> Day? {
+		let parts = text.split(whereSeparator: { $0 == "-" || $0 == "." || $0 == "/" })
+		guard parts.count == 3, let a = Int(parts[0]), let b = Int(parts[1]), var c = Int(parts[2]) else { return nil }
+		if parts[0].count == 4 { return Day.valid(year: a, month: b, day: c) }
+		guard parts[2].count == 2 || parts[2].count == 4 else { return nil }
+		if parts[2].count == 2 { c += c < 70 ? 2000 : 1900 }
+		switch self {
+		case .dayMonthYear: return Day.valid(year: c, month: b, day: a)
+		case .monthDayYear: return Day.valid(year: c, month: a, day: b)
+		}
 	}
 }
 

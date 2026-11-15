@@ -456,4 +456,93 @@ struct FileImportTests {
 			try TransactionFileImporter.parse(Data(unquoted.utf8), currency: "EUR")
 		}
 	}
+
+	@Test("A CSV date column takes the order of day, month, and year that all its values fit", arguments: [
+		("31.10.2026", "03.11.2026", Day(year: 2026, month: 10, day: 31), Day(year: 2026, month: 11, day: 3)),
+		("12/31/2026", "01/05/2027", Day(year: 2026, month: 12, day: 31), Day(year: 2027, month: 1, day: 5)),
+		("05/01/2027", "31/12/2026", Day(year: 2027, month: 1, day: 5), Day(year: 2026, month: 12, day: 31)),
+		("31.10.26", "03.11.26", Day(year: 2026, month: 10, day: 31), Day(year: 2026, month: 11, day: 3)),
+		("2026-10-31", "2026-11-03", Day(year: 2026, month: 10, day: 31), Day(year: 2026, month: 11, day: 3)),
+		("03/04/2026", "05/06/2026", Day(year: 2026, month: 4, day: 3), Day(year: 2026, month: 6, day: 5)),
+	])
+	func csvDateOrder(first: String, second: String, firstDay: Day, secondDay: Day) throws {
+		let text = "Date,Value date,Payee,Amount\n\(first),\(second),Kiosk,-1.50\n\(second),\(first),Kiosk,-2.00\n"
+		let ts = try TransactionFileImporter.parse(Data(text.utf8), currency: "EUR").transactions
+		#expect(ts.map(\.bookingDate) == [firstDay, secondDay])
+		#expect(ts.map(\.valueDate) == [secondDay, firstDay])
+	}
+
+	@Test("A CSV date column that fits day first and month first takes the order of the other date column")
+	func csvDateOrderOfOtherColumn() throws {
+		let text = "Date,Value date,Payee,Amount\n10/30/2026,11/01/2026,Kiosk,-1.50\n10/31/2026,11/02/2026,Kiosk,-2.00\n"
+		let ts = try TransactionFileImporter.parse(Data(text.utf8), currency: "EUR").transactions
+		#expect(ts.map(\.valueDate) == [Day(year: 2026, month: 11, day: 1), Day(year: 2026, month: 11, day: 2)])
+		let swapped = "Date,Value date,Payee,Amount\n11/01/2026,10/30/2026,Kiosk,-1.50\n"
+		#expect(try TransactionFileImporter.parse(Data(swapped.utf8), currency: "EUR").transactions.map(\.bookingDate) == [Day(year: 2026, month: 11, day: 1)])
+		let pending = "Date,Value date,Payee,Amount\n10/01/2026,10/30/2026,Kiosk,-1.50\n10/02/2026,pending,Kiosk,-2.00\n"
+		#expect(try TransactionFileImporter.parse(Data(pending.utf8), currency: "EUR").transactions.map(\.bookingDate) == [Day(year: 2026, month: 10, day: 1), Day(year: 2026, month: 10, day: 2)])
+	}
+
+	@Test("An ISO date reads as an ISO date in a column of any order")
+	func csvIsoInAnyColumn() throws {
+		let text = "Datum;Name;Betrag\n31.10.2026;Kiosk;-1,00\n2026-11-01;Kiosk;-1,00\n02.11.2026;Kiosk;-1,00\n"
+		let ts = try TransactionFileImporter.parse(Data(text.utf8), currency: "EUR").transactions
+		#expect(ts.map(\.bookingDate) == [Day(year: 2026, month: 10, day: 31), Day(year: 2026, month: 11, day: 1), Day(year: 2026, month: 11, day: 2)])
+	}
+
+	@Test("A CSV date that the calendar does not have is rejected with its line")
+	func csvDateNotInCalendar() {
+		#expect(throws: TransactionFileImporter.Failure.line(3, "The date 02/30/2026 cannot be read.")) {
+			try TransactionFileImporter.parse(Data("Date,Payee,Amount\n12/31/2026,Kiosk,-1.50\n02/30/2026,Kiosk,-1.50\n".utf8), currency: "EUR")
+		}
+	}
+
+	@Test("A CSV date that the order of its column does not fit is rejected with its line")
+	func csvDateOutsideOrder() {
+		let text = "Date,Payee,Amount\n12/31/2026,Kiosk,-1.50\n12/30/2026,Kiosk,-1.50\n31/12/2026,Kiosk,-1.50\n"
+		#expect(throws: TransactionFileImporter.Failure.line(4, "The date 31/12/2026 cannot be read.")) {
+			try TransactionFileImporter.parse(Data(text.utf8), currency: "EUR")
+		}
+	}
+
+	@Test("A CSV amount with a trailing sign or a currency symbol or code is read")
+	func csvAmountDecorations() throws {
+		let cells = ["89,00-", "1.234,56-", "89,00 -", "+12,00", "12,00+", "EUR -89,00", "-89,00 EUR", "€ 12,50", "-12,50 €", "€-12,50", "-€12,50", "12,50 eur", ",50", "50,", "12,50 EUR-", "12,50€-"]
+		let text = "Datum;Name;Betrag\n" + cells.map { "01.11.2026;Kiosk;\($0)\n" }.joined()
+		let ts = try TransactionFileImporter.parse(Data(text.utf8), currency: "EUR").transactions
+		#expect(ts.map(\.amountMinor) == [-8_900, -123_456, -8_900, 1_200, 1_200, -8_900, -8_900, 1_250, -1_250, -1_250, -1_250, 1_250, 50, 5_000, -1_250, -1_250])
+		#expect(ts.map(\.currency) == Array(repeating: "EUR", count: 16))
+	}
+
+	@Test("A currency in the amount cell gives the row its currency when the file has no currency column")
+	func csvAmountCurrency() throws {
+		let text = "Date,Payee,Amount\n2026-11-01,Shop,\"$1,234.56\"\n2026-11-02,Shop,-12.00 USD\n2026-11-03,Shop,CHF 5.00\n2026-11-04,Shop,SFr. 5.00\n2026-11-05,Shop,-$12.50\n2026-11-06,Shop,-USD 12.00\n2026-11-07,Shop,-€12.50\n2026-11-08,Shop,SFr.50\n2026-11-09,Shop,SFr.12.50\n2026-11-10,Shop,Fr.12.50\n2026-11-11,Shop,0.00 USD\n"
+		let ts = try TransactionFileImporter.parse(Data(text.utf8), currency: "EUR").transactions
+		#expect(ts.map(\.amountMinor) == [123_456, -1_200, 500, 500, -1_250, -1_200, -1_250, 5_000, 1_250, 1_250, 0])
+		#expect(ts.map(\.currency) == ["USD", "USD", "CHF", "CHF", "USD", "USD", "EUR", "CHF", "CHF", "CHF", "USD"])
+		let filler = "Datum;Name;Soll;Haben\n01.11.2026;Kiosk;12,00 EUR;0,00\n02.11.2026;Kiosk;0,00;5,00 USD\n03.11.2026;Kiosk;12,00 EUR;5,00\n"
+		let filled = try TransactionFileImporter.parse(Data(filler.utf8), currency: "EUR").transactions
+		#expect(filled.map(\.amountMinor) == [-1_200, 500, -700])
+		#expect(filled.map(\.currency) == ["EUR", "USD", "EUR"])
+		let column = try TransactionFileImporter.parse(Data("Date,Payee,Amount,Currency\n2026-11-01,Shop,12.00 USD,GBP\n2026-11-02,Shop,12.00 USD,XYZ\n".utf8), currency: "EUR")
+		#expect(column.transactions.map(\.currency) == ["GBP", "EUR"])
+		#expect(column.warnings == [.unknownCurrency(line: 3, cell: "XYZ", replacement: "EUR")])
+	}
+
+	@Test("A CSV amount with a word that names no currency, or with a dash for no cents, is rejected with its line")
+	func csvAmountUnknownWord() {
+		#expect(throws: TransactionFileImporter.Failure.line(3, "The amount cannot be read.")) {
+			try TransactionFileImporter.parse(Data("Datum;Name;Betrag\n01.11.2026;Kiosk;-1,50\n02.11.2026;Kiosk;12,00 XYZ\n".utf8), currency: "EUR")
+		}
+		#expect(throws: TransactionFileImporter.Failure.line(2, "The amount cannot be read.")) {
+			try TransactionFileImporter.parse(Data("Datum;Name;Soll;Haben\n01.11.2026;Kiosk;12,00 USD;5,00 EUR\n".utf8), currency: "EUR")
+		}
+		#expect(throws: TransactionFileImporter.Failure.line(2, "The amount cannot be read.")) {
+			try TransactionFileImporter.parse(Data("Datum;Name;Soll;Haben\n01.11.2026;Kiosk;12,00 USD;5,00\n".utf8), currency: "EUR")
+		}
+		// "5,-" is 5 euros without cents, not a withdrawal, and reads as no amount.
+		#expect(throws: TransactionFileImporter.Failure.line(2, "The amount cannot be read.")) {
+			try TransactionFileImporter.parse(Data("Datum;Name;Betrag\n01.11.2026;Kiosk;5,-\n".utf8), currency: "EUR")
+		}
+	}
 }
