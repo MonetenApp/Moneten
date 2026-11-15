@@ -515,36 +515,41 @@ extension TransactionFilter {
 /// An amount term in minor units, so that a row compares integers and never builds a `Decimal`, which took
 /// most of the time of a search over 50,000 rows. The bounds hold for each number of decimal places.
 private struct AmountBounds {
+	private enum Bound {
+		case constant(Bool)
+		case range(floor: Int64, ceiling: Int64)
+	}
+
 	private let comparison: AmountComparison
-	/// The value in minor units for 0, 1, 2, and 3 decimal places, rounded down and up, and kept inside the range
-	/// of an amount.
-	private let floor: [Int64]
-	private let ceiling: [Int64]
+	private let bounds: [Bound]
 
 	init(_ comparison: AmountComparison, _ value: Decimal) {
 		self.comparison = comparison
-		// No amount comes near 10^19, and from 10^126 on the scaled value overflows to NaN.
-		let limit = Decimal(sign: .plus, exponent: 19, significand: 1)
-		let value = min(max(value, -limit), limit)
-		func rounded(_ places: Int, _ mode: NSDecimalNumber.RoundingMode) -> Int64 {
-			var scaled = value * Decimal(sign: .plus, exponent: places, significand: 1)
-			var result = Decimal()
-			NSDecimalRound(&result, &scaled, 0, mode)
-			return NSDecimalNumber(decimal: min(max(result, Decimal(Int64.min)), Decimal(Int64.max))).int64Value
+		bounds = (0...3).map { places in
+			let scale = Decimal(sign: .plus, exponent: places, significand: 1)
+			guard value >= Decimal(Int64.min) / scale, value <= Decimal(Int64.max) / scale else {
+				return .constant(comparison.holds(0, value))
+			}
+			var scaled = value * scale
+			var low = Decimal(), high = Decimal()
+			NSDecimalRound(&low, &scaled, 0, .down)
+			NSDecimalRound(&high, &scaled, 0, .up)
+			return .range(floor: NSDecimalNumber(decimal: low).int64Value, ceiling: NSDecimalNumber(decimal: high).int64Value)
 		}
-		floor = (0...3).map { rounded($0, .down) }
-		ceiling = (0...3).map { rounded($0, .up) }
 	}
 
 	func holds(_ minor: Int64, decimals: Int) -> Bool {
-		let low = floor[decimals], high = ceiling[decimals]
-		switch comparison {
-		case .equal: return low == high && minor == low
-		case .notEqual: return low != high || minor != low
-		case .less: return minor < high
-		case .lessOrEqual: return minor <= low
-		case .greater: return minor > low
-		case .greaterOrEqual: return minor >= high
+		switch bounds[decimals] {
+		case let .constant(value): return value
+		case let .range(low, high):
+			switch comparison {
+			case .equal: return low == high && minor == low
+			case .notEqual: return low != high || minor != low
+			case .less: return minor < high
+			case .lessOrEqual: return minor <= low
+			case .greater: return minor > low
+			case .greaterOrEqual: return minor >= high
+			}
 		}
 	}
 }
