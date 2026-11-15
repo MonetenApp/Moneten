@@ -57,6 +57,8 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 
 - [x] 2.17 Gate round 3. PendingPairingTests reproduces every MUST and the SHOULD with -80,000 minor-unit rents and the gate dates. Eight new tests fail with 54 assertions against the unchanged f41516b reconciliation before the shared pairing fix. All delivery and storage permutations cover global nearest choice, changed bank purpose, and fetched-first booking, with literal rows and repeat checks. Explicit identity, booked repeats, honored tombstones, and cleared comments have separate tests.
 
+- [x] 2.18 Independent review lifecycles. Literal tests fail with 29 assertions before preserving bank-first references, looking up identified booked rows across dates, rejecting unrelated booked partners, preserving cleared fields for known identities, and restoring migration relinking. The migration replay keeps a 4,000 minor-unit balance and 5,000 minor-unit opening balance. A missing explicit identity with a different purpose remains governed by relaxed field filling.
+
 ## 3. Integration
 
 - [ ] 3.1 Check every scenario of the spec in a release build and record the result in the pull request.

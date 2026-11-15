@@ -134,13 +134,13 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored: [Tran
 			var next = live
 			switch partner.evidence {
 			case .sourceID:
-				if delivered.isPending && !live.isPending { break }
 				// A migration only books a pending row. Any other change could undo a booking or an edit
 				// that the app made since the earlier run. Only the link follows the source.
 				if delivery.isMigration, !(live.isPending && !delivered.isPending) {
 					next.sourceID = delivered.sourceID.map { Transaction.linkedID($0, pending: live.isPending, sourcePending: delivered.isPending) }
 					break
 				}
+				if delivered.isPending && !live.isPending { break }
 				next = live.takingBankFields(of: delivered)
 				if next != live { rules.categorize(&next) }
 			case .pending:
@@ -153,6 +153,9 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored: [Tran
 				}
 			}
 			if fetched { next.isFetched = true }
+			if case .file = delivery, delivered.isPending, Identity(next).endToEnd == nil {
+				next.endToEndReference = Identity(delivered).endToEnd
+			}
 			if case .file = delivery, partner.evidence == .sameDay {
 				if next.comment?.isEmpty != false, let comment = delivered.comment { next.comment = comment }
 				if live.categoryID == nil, let category = delivered.categoryID {
@@ -275,15 +278,18 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 	let incoming = matches.map(\.identity)
 	var byDay: [Day: [Slot]] = [:]
 	var byKey: [Identity.Key: [Slot]] = [:]
+	var byReference: [String: [Slot]] = [:]
 	var byID: [String: [Slot]] = [:]
 	for (j, t) in stored.enumerated() {
 		byDay[t.bookingDate, default: []].append(.live(j))
 		byKey[liveMatches[j].identity.key, default: []].append(.live(j))
+		if let reference = liveMatches[j].identity.endToEnd { byReference[reference, default: []].append(.live(j)) }
 		if let id = t.sourceID { byID[Transaction.matchingID(id), default: []].append(.live(j)) }
 	}
 	for (k, d) in deleted.enumerated() {
 		byDay[d.bookingDate, default: []].append(.deleted(k))
 		byKey[deadMatches[k].identity.key, default: []].append(.deleted(k))
+		if let reference = deadMatches[k].identity.endToEnd { byReference[reference, default: []].append(.deleted(k)) }
 		if let id = d.sourceID { byID[Transaction.matchingID(id), default: []].append(.deleted(k)) }
 	}
 	func positions(_ ts: [Transaction]) -> [Int: Int] {
@@ -310,6 +316,7 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 	for (i, t) in rows.enumerated() {
 		var slots = Set((t.isPending ? byDay[t.bookingDate] : byKey[incoming[i].key]) ?? [])
 		if let id = t.sourceID { slots.formUnion(byID[id] ?? []) }
+		if t.isPending, let reference = incoming[i].endToEnd { slots.formUnion(byReference[reference] ?? []) }
 		if t.isPending && !delivery.isMigration && delivery.isFetched {
 			for offset in -PendingMatch.maxDaysApart...PendingMatch.maxDaysApart where offset != 0 {
 				slots.formUnion(byDay[t.bookingDate.adding(days: offset)] ?? [])
@@ -337,7 +344,7 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 			let sourceAgrees = t.sourceID != nil && t.sourceID == identity.sourceID
 			let sameDay = t.bookingDate == identity.key.day
 			if sourceAgrees {
-				if !delivery.isFetched && !delivery.isMigration && t.isPending && !sameDay { continue }
+				if !delivery.isFetched && !delivery.isMigration && t.isPending && identity.isPending && !sameDay { continue }
 				let evidence: Partner.Evidence? = if case .deleted = slot, !t.isPending && identity.isPending { nil } else { .sourceID }
 				candidates.append(Candidate(delivered: i, slot: slot, priority: 0, distance: distance, evidence: evidence))
 				continue
@@ -348,11 +355,11 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 			}
 			let explicit = incoming[i].endToEnd != nil && incoming[i].endToEnd == identity.endToEnd
 			guard t.isPending, !delivery.isMigration, matches[i].amount == match.amount, distance <= PendingMatch.maxDaysApart,
-				explicit || matches[i].fits(match), identity.isPending || (!delivery.isFetched && fetched) else { continue }
-			guard delivery.isFetched ? (explicit || (fetched && sameDay) || future) : sameDay else { continue }
+				explicit || matches[i].fits(match), identity.isPending || (!delivery.isFetched && explicit) else { continue }
+			guard delivery.isFetched ? (explicit || (fetched && sameDay) || future) : (sameDay || (!identity.isPending && explicit)) else { continue }
 			let priority = explicit ? 0 : (fetched ? 1 : 2)
 			let fingerprint = Identity.steps.contains { $0.accepts(incoming[i], identity) }
-			let evidence: Partner.Evidence = fingerprint ? .fingerprint : (delivery.isFetched ? .pending : .sameDay)
+			let evidence: Partner.Evidence = fingerprint || (!delivery.isFetched && explicit) ? .fingerprint : (delivery.isFetched ? .pending : .sameDay)
 			candidates.append(Candidate(delivered: i, slot: slot, priority: priority, distance: distance, evidence: evidence))
 		}
 	}
