@@ -46,7 +46,7 @@ You need macOS 15 or newer, Xcode 16.3 or newer, and [XcodeGen](https://github.c
 scripts/test.sh                     # run the tests of the libraries
 scripts/generate-project.sh         # write App/Moneten.xcodeproj, then open it in Xcode
 scripts/build-app.sh                # build dist/Moneten.app; add "debug" for a debug build
-scripts/build-app.sh developer-id   # sign it with the Developer ID of the team, for other Macs
+scripts/build-app.sh developer-id   # sign it with the Developer ID certificate, see docs/releasing.md
 open dist/Moneten.app
 scripts/check.sh                    # run the checks before a pull request; needs OpenSpec and Periphery
 ```

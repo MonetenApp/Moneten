@@ -60,11 +60,11 @@ An automatic refresh opens no dialog ("An automatic refresh never asks the user"
 
 ### Signing
 
-`scripts/build-app.sh` builds a runtime with jlink, puts the helper into `Contents/Resources/FinTSHelper`, and signs every Mach-O file of it with the identity of the app. Only the java of the helper gets the JIT entitlement. The build fails when a file cannot be signed or is not signed like the app. A Developer ID build leaves the helper out until task 3.2, see the risks.
+`scripts/build-app.sh` builds a runtime with jlink, puts the helper into `Contents/Resources/FinTSHelper`, and signs every Mach-O file of it with the identity of the app. Only the java of the helper gets the JIT entitlement. The build fails when a file cannot be signed or is not signed like the app. A Developer ID build signs it with the Developer ID certificate in the Keychain ([ADR 0016](../../../docs/decisions/0016-developer-id-certificate-in-ci.md)).
 
 ## Risks / Trade-offs
 
-- [The helper is signed with `codesign` after the export] → This needs the private key of the Developer ID in the Keychain, which a certificate that only Xcode manages does not provide. Until task 3.2 lets the export sign the helper, a Developer ID build leaves it out, and the app cannot use FinTS in a release.
+- [The helper is signed with `codesign` after the export] → This needs the private key of the Developer ID in the Keychain, which a certificate that only Xcode manages does not provide. [ADR 0016](../../../docs/decisions/0016-developer-id-certificate-in-ci.md) signs releases with a certificate whose private key the release workflow imports, so a Developer ID build includes the helper.
 - [hbci4java reads only the date form of CAMT booking dates] → See task 2.4.
 - [The app grows by about 46 MB for the Java runtime] → Accepted in ADR 0014.
 

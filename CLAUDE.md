@@ -21,6 +21,8 @@ scripts/check.sh                                   # docs, chrome rule, specs, P
 
 scripts/generate-project.sh                        # writes App/Moneten.xcodeproj
 scripts/build-app.sh                               # dist/Moneten.app, Release; "debug" for a Debug build
+scripts/release.sh dry-run                         # the release pipeline without secrets: disk image and signed test feed
+python3 scripts/release-notes.py check             # the format of CHANGELOG.md
 swift run --disable-keychain ext test Extensions/Example Fixtures/example/fixture.json Fixtures/example/expected.json
 scripts/perf-check.sh                              # UI performance scenarios in the Perf build; shows a window
 scripts/fints-probe-java.sh --build-only           # compiles the hbci4java probe, as CI does

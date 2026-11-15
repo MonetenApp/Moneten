@@ -1,0 +1,205 @@
+#!/usr/bin/env python3
+"""Tests of scripts/release-notes.py, run by scripts/check.sh and by the specs job of CI."""
+
+import subprocess
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+SCRIPT = Path(__file__).resolve().parent / "release-notes.py"
+
+GOOD = """# Changelog
+
+## Unreleased
+
+- **Moneten now needs macOS 15 or later.**
+
+## 0.2.0-beta.2 (2026-12-08)
+
+- Faster search.
+- [Creating transfers](https://github.com/MonetenApp/Moneten/wiki/Transfers) from a QR code.
+
+## 0.2.0-beta.1 (2026-12-01)
+
+- [Creating transfers](https://github.com/MonetenApp/Moneten/wiki/Transfers) from a QR code.
+
+## 0.1.3 (2026-11-20)
+
+- Larger display of photoTAN images.
+- Fixed the sum of a split transaction.
+"""
+
+
+class ReleaseNotesTests(unittest.TestCase):
+	def setUp(self):
+		self.folder = tempfile.TemporaryDirectory()
+		self.dir = Path(self.folder.name)
+		self.changelog = self.dir / "CHANGELOG.md"
+		self.changelog.write_text(GOOD)
+
+	def tearDown(self):
+		self.folder.cleanup()
+
+	def run_script(self, *args):
+		return subprocess.run([sys.executable, str(SCRIPT), "--changelog", str(self.changelog), *args],
+			capture_output=True, text=True)
+
+	def assert_fails(self, text, line, message):
+		self.changelog.write_text(text)
+		result = self.run_script("check")
+		self.assertNotEqual(result.returncode, 0, text)
+		self.assertIn("line %d:" % line, result.stderr)
+		self.assertIn(message, result.stderr)
+
+	# check
+
+	def test_good_file_passes(self):
+		self.assertEqual(self.run_script("check").returncode, 0)
+
+	def test_repository_changelog_passes(self):
+		result = subprocess.run([sys.executable, str(SCRIPT), "check"], cwd=SCRIPT.parent.parent, capture_output=True, text=True)
+		self.assertEqual(result.returncode, 0, result.stderr)
+
+	def test_nested_list_fails(self):
+		self.assert_fails(GOOD.replace("- Faster search.", "- Faster search.\n  - In the sidebar too."), 10, "no nesting")
+
+	def test_html_fails(self):
+		self.assert_fails(GOOD.replace("Faster search.", "Faster <b>search</b>."), 9, "no HTML")
+
+	def test_link_without_https_fails(self):
+		self.assert_fails(GOOD.replace("](https://github.com/MonetenApp/Moneten/wiki/Transfers) from a QR code.\n\n## 0.2.0-beta.1",
+			"](http://example.org) from a QR code.\n\n## 0.2.0-beta.1"), 10, "https://")
+
+	def test_empty_released_section_fails(self):
+		self.assert_fails(GOOD.replace("- Larger display of photoTAN images.\n- Fixed the sum of a split transaction.\n", ""), 16, "no entries")
+
+	def test_version_twice_fails(self):
+		self.assert_fails(GOOD.replace("## 0.2.0-beta.1 (2026-12-01)", "## 0.1.3 (2026-12-01)"), 16, "appears twice")
+
+	def test_heading_inside_section_fails(self):
+		self.assert_fails(GOOD.replace("- Faster search.", "### Fixes\n- Faster search."), 9, "heading")
+
+	def test_empty_unreleased_passes(self):
+		self.changelog.write_text(GOOD.replace("- **Moneten now needs macOS 15 or later.**\n", ""))
+		self.assertEqual(self.run_script("check").returncode, 0)
+
+	# cut and section
+
+	def test_cut_pre_release(self):
+		self.changelog.write_text(GOOD.replace("0.2.0-beta.2", "0.1.4"))
+		result = self.run_script("cut", "0.2.0-beta.3", "--date", "2026-12-15")
+		self.assertEqual(result.returncode, 0, result.stderr)
+		text = self.changelog.read_text()
+		self.assertTrue(text.startswith("# Changelog\n\n## Unreleased\n\n## 0.2.0-beta.3 (2026-12-15)\n\n- **Moneten now needs macOS 15 or later.**\n\n## 0.1.4"))
+		self.assertEqual(self.run_script("check").returncode, 0)
+
+	def test_cut_stable_takes_entries_of_its_pre_releases_once(self):
+		result = self.run_script("cut", "0.2.0", "--date", "2026-12-15")
+		self.assertEqual(result.returncode, 0, result.stderr)
+		self.assertEqual(self.run_script("section", "0.2.0").stdout.splitlines(), [
+			"- **Moneten now needs macOS 15 or later.**",
+			"- Faster search.",
+			"- [Creating transfers](https://github.com/MonetenApp/Moneten/wiki/Transfers) from a QR code.",
+		])
+		# The pre-release sections stay as they are.
+		self.assertEqual(self.run_script("section", "0.2.0-beta.1").stdout.splitlines(), [
+			"- [Creating transfers](https://github.com/MonetenApp/Moneten/wiki/Transfers) from a QR code.",
+		])
+
+	def test_cut_with_today(self):
+		self.assertEqual(self.run_script("cut", "0.2.0").returncode, 0)
+		import datetime
+		self.assertIn("## 0.2.0 (%s)" % datetime.date.today().isoformat(), self.changelog.read_text())
+
+	def test_cut_existing_version_fails(self):
+		self.assertNotEqual(self.run_script("cut", "0.1.3").returncode, 0)
+
+	def test_cut_empty_unreleased_fails(self):
+		self.changelog.write_text(GOOD.replace("- **Moneten now needs macOS 15 or later.**\n", ""))
+		self.assertNotEqual(self.run_script("cut", "0.1.4").returncode, 0)
+
+	def test_section_prints_exactly_its_entries(self):
+		result = self.run_script("section", "0.1.3")
+		self.assertEqual(result.stdout, "- Larger display of photoTAN images.\n- Fixed the sum of a split transaction.\n")
+
+	def test_section_of_unknown_version_fails(self):
+		self.assertNotEqual(self.run_script("section", "9.9.9").returncode, 0)
+
+	# appcast, remove, and check-release
+
+	def appcast(self, version, build, out, feed=None, url=None):
+		source = ["--feed", str(feed)] if feed else ["--first-release"]
+		return self.run_script("appcast", version, "--build", str(build), *source, "--min-macos", "15.0",
+			"--url", url or "https://github.com/MonetenApp/Moneten/releases/download/v%s/Moneten-%s.dmg" % (version, version),
+			"--length", "1000", "--signature", "sig-%s==" % version, "--out", str(out))
+
+	def test_appcast_is_idempotent_and_keeps_older_items(self):
+		first = self.dir / "first.xml"
+		self.assertEqual(self.appcast("0.1.3", 100, first).returncode, 0)
+		again = self.dir / "again.xml"
+		self.assertEqual(self.appcast("0.1.3", 100, again, feed=first).returncode, 0)
+		self.assertEqual(first.read_bytes(), again.read_bytes())
+
+		self.changelog.write_text(GOOD.replace("## Unreleased\n\n- **Moneten now needs macOS 15 or later.**\n",
+			"## Unreleased\n\n## 0.1.4 (2026-11-27)\n\n- Fixed the balance of a credit card.\n"))
+		second = self.dir / "second.xml"
+		self.assertEqual(self.appcast("0.1.4", 105, second, feed=first).returncode, 0)
+		text = second.read_text()
+		self.assertIn("sig-0.1.3==", text)
+		self.assertIn("sig-0.1.4==", text)
+		self.assertLess(text.index("<title>0.1.4</title>"), text.index("<title>0.1.3</title>"))
+		self.assertIn("Fixed the balance of a credit card.", text)
+
+		removed = self.dir / "removed.xml"
+		self.assertEqual(self.run_script("remove", "0.1.4", "--feed", str(second), "--out", str(removed)).returncode, 0)
+		self.assertEqual(removed.read_bytes(), first.read_bytes())
+
+	def test_appcast_rewrites_notes_from_changelog_and_escapes_them(self):
+		feed = self.dir / "feed.xml"
+		self.appcast("0.1.3", 100, feed)
+		self.changelog.write_text(GOOD.replace("Fixed the sum of a split transaction.", "Fixed the sum of a split transaction & its parts <3."))
+		# The heading text of the release is not HTML, so check passes no entry with a tag; "<3" is no tag.
+		rewritten = self.dir / "rewritten.xml"
+		result = self.appcast("0.1.3", 100, rewritten, feed=feed)
+		self.assertEqual(result.returncode, 0, result.stderr)
+		self.assertIn("split transaction &amp; its parts &lt;3.", rewritten.read_text())
+
+	def test_appcast_marks_pre_release_with_channel_beta(self):
+		feed = self.dir / "feed.xml"
+		self.assertEqual(self.appcast("0.2.0-beta.1", 100, feed).returncode, 0)
+		text = feed.read_text()
+		self.assertIn("<sparkle:channel>beta</sparkle:channel>", text)
+		self.assertIn("<sparkle:shortVersionString>0.2.0-beta.1</sparkle:shortVersionString>", text)
+		self.assertIn("<sparkle:version>100</sparkle:version>", text)
+		self.assertIn('<description sparkle:format="markdown">', text)
+		self.assertIn("<pubDate>Tue, 01 Dec 2026 00:00:00 +0000</pubDate>", text)
+
+	def test_appcast_without_readable_feed_fails(self):
+		result = self.appcast("0.1.3", 100, self.dir / "out.xml", feed=self.dir / "missing.xml")
+		self.assertNotEqual(result.returncode, 0)
+		self.assertIn("cannot read the current feed", result.stderr)
+		self.assertFalse((self.dir / "out.xml").exists())
+
+	def test_appcast_refuses_latest_url(self):
+		result = self.appcast("0.1.3", 100, self.dir / "out.xml",
+			url="https://github.com/MonetenApp/Moneten/releases/latest/download/Moneten.dmg")
+		self.assertNotEqual(result.returncode, 0)
+
+	def test_check_release_refuses_lower_build_and_lower_version(self):
+		feed = self.dir / "feed.xml"
+		self.changelog.write_text(GOOD.replace("## Unreleased\n\n- **Moneten now needs macOS 15 or later.**\n",
+			"## Unreleased\n\n## 0.1.4 (2026-12-20)\n\n- Fixed the balance of a credit card.\n"))
+		self.assertEqual(self.appcast("0.2.0-beta.1", 200, feed).returncode, 0)
+		low_build = self.run_script("check-release", "0.2.0-beta.2", "--build", "200", "--feed", str(feed))
+		self.assertIn("build 200 is not above", low_build.stderr)
+		low_version = self.run_script("check-release", "0.1.4", "--build", "300", "--feed", str(feed))
+		self.assertIn("version 0.1.4 is not above version 0.2.0-beta.1", low_version.stderr)
+		ok = self.run_script("check-release", "0.2.0-beta.2", "--build", "201", "--feed", str(feed))
+		self.assertEqual(ok.returncode, 0, ok.stderr)
+		missing = self.run_script("check-release", "0.3.0", "--build", "400", "--feed", str(feed))
+		self.assertIn("no section for version 0.3.0", missing.stderr)
+
+
+if __name__ == "__main__":
+	unittest.main()

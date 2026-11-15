@@ -1,0 +1,156 @@
+name: Release
+
+# A pushed tag v1.2.3 or v1.2.3-beta.4 builds, signs, and notarizes the app, and creates the GitHub
+# release as a draft with the disk image and the signed update feed. scripts/release.sh publish
+# publishes the draft. docs/releasing.md lists the secrets and the steps.
+# A pull request that changes the packaging, and a run by hand, make a dry run that publishes nothing.
+# A run by hand with "notarize" also signs and notarizes with the secrets of the environment build.
+
+on:
+  push:
+    tags: ["v*"]
+  pull_request:
+    paths:
+      - .github/workflows/release.yml
+      - App/project.yml
+      - App/Info.plist
+      - App/*.entitlements
+      - App/Signing.xcconfig
+      - Package.swift
+      - Package.resolved
+      - scripts/build-app.sh
+      - scripts/build-fints-helper.sh
+      - scripts/release.sh
+      - scripts/release-notes.py
+      - scripts/sparkle-tools.sh
+  workflow_dispatch:
+    inputs:
+      notarize:
+        description: Sign and notarize with the secrets of the environment build. Publishes nothing.
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  SIGNED: ${{ github.event_name == 'push' || inputs.notarize == true }}
+
+jobs:
+  package:
+    runs-on: macos-15
+    # The Developer ID certificate and the notary key live only in the environment build, which
+    # allows the branch main and the tags v*. A dry run of a pull request uses no environment.
+    environment: ${{ (github.event_name == 'push' || inputs.notarize == true) && 'build' || '' }}
+    steps:
+      # Pinned by commit: actions/checkout v4.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          # The build number is the number of commits, so a shallow clone would count wrong.
+          fetch-depth: 0
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
+        with:
+          distribution: temurin
+          java-version: "17"
+      - run: brew install xcodegen
+      - name: Import the Developer ID certificate
+        if: env.SIGNED == 'true'
+        env:
+          CERTIFICATE: ${{ secrets.DEVELOPER_ID_CERTIFICATE_P12 }}
+          PASSWORD: ${{ secrets.DEVELOPER_ID_CERTIFICATE_PASSWORD }}
+          NOTARY_KEY: ${{ secrets.NOTARY_API_KEY_P8 }}
+          FINTS_PRODUCT_ID: ${{ secrets.FINTS_PRODUCT_ID }}
+        run: |
+          umask 077
+          KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
+          KEYCHAIN_PASSWORD=$(openssl rand -hex 24)
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          # The intermediate certificate of Developer ID, checked against its hash.
+          curl -fsSL -o "$RUNNER_TEMP/DeveloperIDG2CA.cer" https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer
+          echo "f16cd3c54c7f83cea4bf1a3e6a0819c8aaa8e4a1528fd144715f350643d2df3a  $RUNNER_TEMP/DeveloperIDG2CA.cer" | shasum -a 256 -c
+          security import "$RUNNER_TEMP/DeveloperIDG2CA.cer" -k "$KEYCHAIN"
+          printf '%s' "$CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          security import "$RUNNER_TEMP/certificate.p12" -k "$KEYCHAIN" -P "$PASSWORD" -T /usr/bin/codesign
+          rm "$RUNNER_TEMP/certificate.p12"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" >/dev/null
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+          printf '%s\n' "$NOTARY_KEY" > "$RUNNER_TEMP/notary.p8"
+          printf '%s' "$FINTS_PRODUCT_ID" > "$RUNNER_TEMP/fints-product-id"
+      - name: Check the tag, the changelog, and the feed
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/release.sh preflight "${GITHUB_REF_NAME#v}"
+      - name: Build, sign, notarize, and package
+        if: github.event_name == 'push'
+        env:
+          MONETEN_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+          MONETEN_NOTARY_KEY_ID: ${{ secrets.NOTARY_API_KEY_ID }}
+          MONETEN_NOTARY_ISSUER: ${{ secrets.NOTARY_API_ISSUER_ID }}
+        run: |
+          MONETEN_NOTARY_KEY="$RUNNER_TEMP/notary.p8" MONETEN_FINTS_PRODUCT_ID_FILE="$RUNNER_TEMP/fints-product-id" \
+            scripts/release.sh package "${GITHUB_REF_NAME#v}"
+      - name: Dry run
+        if: github.event_name != 'push'
+        env:
+          MONETEN_SIGN: ${{ env.SIGNED == 'true' && '1' || '0' }}
+          MONETEN_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+          MONETEN_NOTARY_KEY_ID: ${{ secrets.NOTARY_API_KEY_ID }}
+          MONETEN_NOTARY_ISSUER: ${{ secrets.NOTARY_API_ISSUER_ID }}
+        run: |
+          if [ "$MONETEN_SIGN" = 1 ]; then
+            export MONETEN_NOTARY_KEY="$RUNNER_TEMP/notary.p8" MONETEN_FINTS_PRODUCT_ID_FILE="$RUNNER_TEMP/fints-product-id"
+          fi
+          scripts/release.sh dry-run
+      - name: Remove the signing keychain
+        if: always() && env.SIGNED == 'true'
+        run: |
+          security delete-keychain "$RUNNER_TEMP/signing.keychain-db" || true
+          rm -f "$RUNNER_TEMP/notary.p8" "$RUNNER_TEMP/fints-product-id"
+      # Pinned by commit: actions/upload-artifact v4.
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: release
+          path: dist/release
+          retention-days: 7
+
+  draft:
+    needs: package
+    if: github.event_name == 'push'
+    runs-on: macos-15
+    # The private update key lives only in the environment release, which allows the tags v* and
+    # waits for the approval of the owner.
+    environment: release
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+      # Pinned by commit: actions/download-artifact v4.
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: release
+          path: dist/release
+      - name: Sign the disk image and write the feed
+        env:
+          UPDATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          umask 077
+          printf '%s' "$UPDATE_KEY" > "$RUNNER_TEMP/update.key"
+          MONETEN_UPDATE_KEY_FILE="$RUNNER_TEMP/update.key" scripts/release.sh feed "${GITHUB_REF_NAME#v}"
+          rm "$RUNNER_TEMP/update.key"
+      - name: Create the draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/release.sh draft "${GITHUB_REF_NAME#v}"
+      - name: Remove the update key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/update.key"
