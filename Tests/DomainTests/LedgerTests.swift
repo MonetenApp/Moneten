@@ -225,6 +225,29 @@ struct LedgerTests {
 		}
 	}
 
+	@Test("Rejected text leaves out every word of an excluded group or phrase, and the words of an unfinished regex escape")
+	func searchWhileTypingExclusions() {
+		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
+		let l = Ledger(accounts: [giro], transactions: ["Abschlag November", "Abschlag Oktober", "Lohn"].enumerated().map {
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 3 - $0.offset), amountMinor: -1_000, name: "Stadtwerke Musterstadt", purpose: $0.element)
+		})
+		func found(_ text: String) -> [String] {
+			var f = TransactionFilter()
+			f.searchText = text
+			return l.transactions(in: .account(giro.id), filter: f).map(\.purpose)
+		}
+		let all = ["Abschlag November", "Abschlag Oktober", "Lohn"]
+		#expect(found("Stadtwerke NOT (Gehalt OR Lohn") == all)
+		#expect(found(#"Stadtwerke -"Abschlag November"#) == all)
+		#expect(found(#"Stadtwerke name!="x Oktober"#) == all)
+		#expect(found("Stadtwerke -(Lohn Oktober") == all)
+		#expect(found("Stadtwerke - (Lohn Oktober") == all)
+		#expect(found(#""Stadtw -(Lohn) Oktober"#) == ["Abschlag Oktober"])
+		#expect(found(#""Stadtw -"Lohn" Oktober"#) == ["Abschlag Oktober"])
+		#expect(found(#"Stadtwerke /\d"#) == all)
+		#expect(found(#"/\d+ Abschl"#) == ["Abschlag November", "Abschlag Oktober"])
+	}
+
 	@Test("A field term and a regular expression with a field name match the rows that the same rule matches")
 	func fieldTermsMatchRules() throws {
 		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline, iban: "DE02 1203 0000 0000 2020 51", accountNumber: "4711")
@@ -236,7 +259,8 @@ struct LedgerTests {
 		]
 		let all = rows + [Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 3), amountMinor: -400, name: "Cafe\u{332}", purpose: "Kaffee\r"),
 			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 4), amountMinor: -250, name: "Kiosk\u{1}Am Markt", purpose: "Zeitung"),
-			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 5), amountMinor: -320, name: "Cafe\u{301}", purpose: "Rechnung 12")]
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 5), amountMinor: -320, name: "Cafe\u{301}", purpose: "Rechnung 12"),
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 6), amountMinor: -180, name: "Imbiss \u{301}Nord", purpose: "Pommes")]
 		let l = Ledger(accounts: [giro], transactions: all)
 		let queries = [#"name:"Stadtwerke Musterstadt""#, "name:Stadt*", "purpose:November", #"purpose:"Abschlag November""#, "comment:strom",
 			"booking_text:lastschrift", "reference:E2E-1", "mandate:M-1", "creditor_id:DE98ZZZ*", "remote_account:DE89370400440532013000",
@@ -245,7 +269,8 @@ struct LedgerTests {
 			"true", "NOT false", "comment:strom OR false",
 			"/cafe/", "/rechnung 1/", "/RECHNUNG 1/", "purpose:/chnung 1/", "/k[a-z]ffee/", "/kaffe?e/", "/zahl+ung/", #"/e2e-\d/"#, #"mandate:/m\x2d1/"#,
 			#"/\p{Lu}utbrot/"#, #"/abschlag\nnov/"#, "/stadtwerke  muster/", "/b.ckerei/", "/^kiosk/", "/zahlungs?/", "/zahlungx*/", "/zahlungx{0,2}/",
-			"/zahl[uvwxyzabcdef]ng/", "/zahl[^xyzabcdefgh]ng/", #"/\x7aahlung/"#, #"/zahl\u0075ng/"#, "/zahlung$/", #"/zahl\Bung/"#]
+			"/zahl[uvwxyzabcdef]ng/", "/zahl[^xyzabcdefgh]ng/", #"/\x7aahlung/"#, #"/zahl\u0075ng/"#, "/zahlung$/", #"/zahl\Bung/"#,
+			#"/\QM-1x\E?/"#, #"mandate:/\QM-1x\E{0}/"#, #"/kartenzahlungx\Q\E?/"#, "name:nord", "name:imbiss"]
 		for query in queries {
 			var f = TransactionFilter()
 			f.searchText = query
