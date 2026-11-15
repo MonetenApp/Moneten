@@ -180,7 +180,7 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored: [Tran
 			if let fileIndex = fileRowOf[i] {
 				let file = stored[fileIndex]
 				if next.comment?.isEmpty != false, let comment = file.comment { next.comment = comment }
-				if next.categoryID == nil, let category = file.categoryID {
+				if live.categoryID == nil, let category = file.categoryID {
 					next.categoryID = category
 					next.categorizedBy = file.categorizedBy
 				}
