@@ -70,7 +70,31 @@ public struct AllData: Sendable, Equatable {
 		}
 		guard header.format == File.formatName, let version = header.version else { throw .notAnExport }
 		guard version <= Self.formatVersion else { throw .newerVersion(version) }
-		do { self = try decoder.decode(File.self, from: data).allData() } catch let error as ReadError { throw error } catch { throw Self.readError(error, in: data) }
+		do {
+			self = try decoder.decode(File.self, from: data).allData()
+			try validateParentLinks()
+		} catch let error as ReadError { throw error } catch { throw Self.readError(error, in: data) }
+	}
+
+	public func validateParentLinks() throws {
+		try Self.checkParents(categories.map { ($0.id, $0.parentID) }, key: "categories", kind: "category")
+		try Self.checkParents(groups.map { ($0.id, $0.parentID) }, key: "accountGroups", kind: "account group")
+	}
+
+	private static func checkParents(_ links: [(UUID, UUID?)], key: String, kind: String) throws {
+		let parents = Dictionary(links, uniquingKeysWith: { first, _ in first })
+		var checked = Set<UUID>()
+		for (index, link) in links.enumerated() {
+			var path = Set<UUID>()
+			var current: UUID? = link.0
+			while let id = current, !checked.contains(id) {
+				guard path.insert(id).inserted else {
+					throw ReadError.damaged("at \(key)[\(index)], the \(kind) is inside itself")
+				}
+				current = parents[id] ?? nil
+			}
+			checked.formUnion(path)
+		}
 	}
 
 	/// UTC with milliseconds, the precision of a time in the database.
