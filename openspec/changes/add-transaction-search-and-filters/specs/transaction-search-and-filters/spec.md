@@ -136,6 +136,14 @@ The app SHALL accept every expression of the categorization rule language in the
 - **WHEN** the user searches for `"Lohn" OR "Gehalt"`
 - **THEN** the list shows the transactions that contain one of the two words
 
+#### Scenario: An amount outside the stored range
+
+- **GIVEN** a transaction of 92.233.720.368.547.758,07 €
+- **WHEN** the user searches for `amount=100000000000000000`
+- **THEN** the list shows no transaction, as the same categorization rule does
+- **WHEN** the user searches for `amount<99999999999999999999`
+- **THEN** the list shows the transaction, as the same categorization rule does
+
 ### Requirement: A regular expression without a field name
 
 The app SHALL read a regular expression without a field name in the search field against the fields that a rule term without a field name reads, and against the names of the account and the category. It does not read account numbers or IBANs.

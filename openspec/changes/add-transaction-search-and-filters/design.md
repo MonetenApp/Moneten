@@ -28,6 +28,8 @@ ICU never returns for some patterns, such as `/^+?49/`. In `Domain`, the ledger 
 
 Round 11 used a wall-clock budget for a whole search. Round 12 removed it because scheduling delays on a busy Mac dropped matching rows. The replacement counts processor time only on the searching thread, never wall-clock time. A stopped search returns no rows at all, never a partial list, and its status line explains the stop. A search owns its watches and one 300 ms processor-time budget. Every regex call, including an empty-value check and a joined-fields attempt, adds its duration to that budget. Each duration uses `CLOCK_THREAD_CPUTIME_ID` on the same thread before and after the call. Progress reports check both the 100 ms call limit and the remaining search budget, and the end of each call checks the total again. Non-regex work and time when the thread does not run use none of the budget. The joined-fields optimization keeps a separate watch because a joining line break can make only that call slow. If that watch stops, the search retries individual values unless the whole search has stopped. Moving the search off the main thread belongs to #244. Watching categorization in `Rule.evaluate` belongs to #246. Neither is part of this change.
 
+An amount comparison compiles once for each currency exponent in `Domain`. If its value in minor units lies outside `Int64`, that exponent uses a `.constant` with the comparison's truth value. It never clamps a bound to an amount that could exist. This matters at `Int64.max`, and an amount can be outside the range for EUR but inside it for JPY.
+
 ## Risks / Trade-offs
 
 Tasks marked as built in part may differ from the spec in the way their note says.
