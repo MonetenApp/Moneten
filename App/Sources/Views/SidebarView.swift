@@ -73,6 +73,7 @@ struct AddMenuButton: View {
 		.onHover { hovered = $0 }
 		.animation(.easeOut(duration: 0.15), value: hovered)
 		.help("Add item")
+		.accessibilityLabel("Add item")
 	}
 }
 
