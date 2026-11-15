@@ -5,6 +5,48 @@ import Testing
 
 @Suite("CSV preview")
 struct CSVPreviewTests {
+	@Test("A target-currency reread retains the confirmed CSV layout", arguments: [false, true])
+	func confirmedLayoutForTargetCurrency(hasHeader: Bool) throws {
+		let data = Data(((hasHeader ? "Date;Name;Amount\n" : "") + "03/04/2026;Kiosk;1,234\n").utf8)
+		let file = try CSVFile(data: data)
+		var layout = try file.detectedLayout()
+		layout.assign(0, to: .bookingDate)
+		layout.assign(1, to: .name)
+		layout.assign(2, to: .amount)
+		layout.dateOrder = .monthDayYear
+		layout.decimalMark = .point
+		let confirmed = try file.preview(layout, currency: "EUR")
+		#expect(confirmed.problem == nil)
+		#expect(confirmed.transactions.map(\.amountMinor) == [123400])
+		let reread = try file.reread(layout, currency: "JPY")
+		#expect(reread.transactions.map(\.bookingDate) == [Day(year: 2026, month: 3, day: 4)])
+		#expect(reread.transactions.map(\.amountMinor) == [1234])
+		#expect(reread.transactions.map(\.currency) == ["JPY"])
+		#expect(reread.transactions.map(\.name) == ["Kiosk"])
+	}
+
+	@Test("A balance or account preamble leaves the keyword headings readable", arguments: [
+		("01.11.2026;Anfangssaldo;100,00\nDatum;Name;Betrag\n02.11.2026;Kiosk;-2,00\n", Int64(-200)),
+		("Konto;12345678;Stand;30.11.2026\nBuchungstag;Empfänger;Betrag\n01.11.2026;Kiosk;-4,20\n", Int64(-420)),
+		("Kontostand;30.11.2026;1.234,56\nBuchungstag;Empfänger;Betrag\n01.11.2026;Kiosk;-4,20\n", Int64(-420)),
+	])
+	func balanceBeforeKeywordHeader(text: String, amount: Int64) throws {
+		let data = Data(text.utf8)
+		let file = try CSVFile(data: data)
+		let layout = try file.detectedLayout()
+		#expect(layout.columns[.bookingDate] == 0)
+		#expect(layout.columns[.name] == 1)
+		#expect(layout.columns[.amount] == 2)
+		var mapped = layout
+		mapped.assign(0, to: .bookingDate)
+		mapped.assign(1, to: .name)
+		mapped.assign(2, to: .amount)
+		#expect(try file.preview(mapped, currency: "EUR").transactions.map(\.amountMinor) == [amount])
+		let parsed = try TransactionFileImporter.parse(data, currency: "EUR")
+		#expect(parsed.transactions.map(\.amountMinor) == [amount])
+		#expect(parsed.transactions.map(\.name) == ["Kiosk"])
+	}
+
 	@Test("A malformed first numeric date cannot be skipped or treated as a header", arguments: ["01.11.2026x", "2026-11-", "01/11", "20261101", ".11.2026", "/11/2026"], [false, true])
 	func malformedFirstNumericDate(date: String, keywords: Bool) throws {
 		for hasHeader in [false, true] {
