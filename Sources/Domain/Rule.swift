@@ -82,6 +82,9 @@ public enum RuleField: String, CaseIterable, Sendable {
 
 	/// The fields that a term without a field operator searches. The account fields need `local_account:` or `remote_account:`.
 	static let unqualified: [RuleField] = [.name, .purpose, .bookingText, .reference, .mandate, .creditorID, .comment]
+
+	/// The operators after a field name, longest first so that `:=` is not read as `:`.
+	static let operators: [(text: String, negates: Bool)] = [(":=", false), ("==", false), ("!=", true), ("<>", true), (":", false), ("=", false)]
 }
 
 public enum AmountComparison: String, Sendable {
@@ -391,13 +394,10 @@ private struct RuleParser {
 		}
 	}
 
-	/// The operators after a field name, longest first so that `:=` is not read as `:`.
-	private static let fieldOperators: [(text: String, negates: Bool)] = [(":=", false), ("==", false), ("!=", true), ("<>", true), (":", false), ("=", false)]
-
 	private func fieldOperator(at i: Int) -> (RuleField, (text: String, negates: Bool))? {
 		for field in RuleField.allCases where String(chars[i...].prefix(field.rawValue.count)).lowercased() == field.rawValue {
 			let rest = chars[(i + field.rawValue.count)...]
-			if let op = Self.fieldOperators.first(where: { rest.starts(with: $0.text) }) { return (field, op) }
+			if let op = RuleField.operators.first(where: { rest.starts(with: $0.text) }) { return (field, op) }
 		}
 		return nil
 	}

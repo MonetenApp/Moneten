@@ -18,6 +18,7 @@ struct SearchQuery {
 		/// before a call for each value. A regular expression over 50,000 rows took about four times as long without.
 		case regex(NSRegularExpression, anyLine: NSRegularExpression?, matchesEmpty: Bool, [RuleField], names: Bool)
 		case amount(AmountBounds)
+		case constant(Bool)
 		case not(Node)
 		case and(Node, Node)
 		case or(Node, Node)
@@ -25,7 +26,7 @@ struct SearchQuery {
 		/// The term reads the fields of a row, which costs more than the search text.
 		var readsFields: Bool {
 			switch self {
-			case .text, .words, .amount: false
+			case .text, .words, .amount, .constant: false
 			case .field, .regex: true
 			case let .not(a): a.readsFields
 			case let .and(a, b), let .or(a, b): a.readsFields || b.readsFields
@@ -112,6 +113,8 @@ struct SearchQuery {
 			return values.contains { matches(regex, $0) }
 		case let .amount(bounds):
 			return bounds.holds(row.transaction.amountMinor, decimals: row.transaction.amount.decimalPlaces)
+		case let .constant(value):
+			return value
 		case let .not(a):
 			return !holds(a, row)
 		case let .and(a, b):
@@ -127,18 +130,35 @@ struct SearchQuery {
 		return (0...(words.count - patterns.count)).contains { start in patterns.indices.allSatisfy { patterns[$0].matches(words[start + $0]) } }
 	}
 
-	/// The words of a text that the rule language rejects, without its quotation marks, parentheses, operators,
-	/// field names, the slashes of a regular expression, and an unfinished amount, so the list keeps its rows while
-	/// the user types.
+	/// The words of a text that the rule language rejects, without its operators, quotation marks, parentheses,
+	/// field names, the slashes of a regular expression, and amount terms, so the list keeps its rows while the user
+	/// types. A word that the text excludes, as after NOT, `!`, `-`, or `name!=`, is left out, because it can only
+	/// remove rows.
 	private static func plainWords(of text: String) -> RuleExpression? {
-		let fieldNames = RuleField.allCases.map { $0.rawValue + ":" }
-		let words = text.split(whereSeparator: \.isWhitespace).compactMap { raw -> String? in
-			var word = String(raw)
-			if ["AND", "OR", "NOT"].contains(word) { return nil }
-			if word.lowercased().hasPrefix("amount"), let next = word.dropFirst("amount".count).first, "<>=!".contains(next) { return nil }
-			if let prefix = fieldNames.first(where: word.hasPrefix) { word.removeFirst(prefix.count) }
-			word = word.filter { !"\"„“”()".contains($0) }.trimmingCharacters(in: CharacterSet(charactersIn: "/^$"))
-			return word.isEmpty ? nil : word
+		var words: [String] = []
+		var excluded = false
+		for raw in text.split(whereSeparator: \.isWhitespace) {
+			var word = raw[...]
+			// The parser reads a sign before a digit as part of a number, as in -12,50.
+			while let c = word.first, "()\"„“”+!-".contains(c), !("+-".contains(c) && word.dropFirst().first?.isWholeNumber == true) {
+				if c == "!" || c == "-" { excluded = true }
+				word.removeFirst()
+			}
+			let lower = word.lowercased()
+			if ["and", "or", "true", "false"].contains(lower) { continue }
+			if lower == "not" { excluded = true; continue }
+			if lower.hasPrefix("amount"), let next = lower.dropFirst("amount".count).first, "<>=!:".contains(next) { excluded = false; continue }
+			for field in RuleField.allCases where lower.hasPrefix(field.rawValue) {
+				let rest = lower.dropFirst(field.rawValue.count)
+				guard let op = RuleField.operators.first(where: { rest.hasPrefix($0.text) }) else { continue }
+				word.removeFirst(field.rawValue.count + op.text.count)
+				if op.negates { excluded = true }
+				break
+			}
+			let plain = word.filter { !"\"„“”()".contains($0) }.trimmingCharacters(in: CharacterSet(charactersIn: "/^$"))
+			if plain.isEmpty { continue }
+			if !excluded { words.append(plain) }
+			excluded = false
 		}
 		let terms = TextFolding.words(words.joined(separator: " ")).map { RuleExpression.phrase([WildcardPatternBox(pattern: WildcardPattern(String($0)))], field: nil) }
 		return terms.first.map { terms.dropFirst().reduce($0) { .and($0, $1) } }
@@ -175,6 +195,8 @@ struct SearchQuery {
 			return .regex(box.regex, anyLine: anyLine, matchesEmpty: box.regex.firstMatch(in: "", range: NSRange(location: 0, length: 0)) != nil, field.map { [$0] } ?? RuleField.unqualified, names: field == nil)
 		case let .amount(op, value):
 			return .amount(AmountBounds(op, value))
+		case let .constant(value):
+			return .constant(value)
 		case let .not(a):
 			return .not(node(a))
 		case let .and(a, b):
@@ -201,21 +223,32 @@ enum SearchText {
 		let parts = [t.name, t.purpose, t.bookingText ?? "", t.endToEndReference ?? "", t.mandateReference ?? "", t.creditorID ?? "", t.comment ?? ""]
 			+ accountNumbers + [t.counterpartyBIC ?? "", account?.name ?? "", categoryName ?? ""]
 			+ Ledger.amountTexts(t.amountMinor, decimals: t.amount.decimalPlaces)
-		let folded = TextFolding.fold(parts.joined(separator: "\u{1}"))
-		// Most rows have single spaces only, and splitting every row doubled the time to build the ledger. The lead
-		// bytes 0xC2, 0xE1, 0xE2, and 0xE3 start every other white space, such as U+00A0, U+1680, U+202F, and U+3000.
-		return hasRuns(folded) ? folded.split(whereSeparator: \.isWhitespace).joined(separator: " ") : folded
+		return joined(parts)
 	}
 
-	private static func hasRuns(_ text: String) -> Bool {
+	private static func joined(_ parts: [String]) -> String {
+		let folded = TextFolding.fold(parts.joined(separator: "\u{1}"))
+		let (separators, hasRuns) = scan(folded)
+		// A U+0001 inside a field would move every later field to the wrong place. U+FFFD keeps the words of the
+		// field as a rule reads them.
+		if separators != parts.count - 1 { return joined(parts.map { $0.replacingOccurrences(of: "\u{1}", with: "\u{FFFD}") }) }
+		// Most rows have single spaces only, and splitting every row doubled the time to build the ledger.
+		return hasRuns ? folded.split(whereSeparator: \.isWhitespace).joined(separator: " ") : folded
+	}
+
+	/// The number of U+0001 in the text, and whether it has white space other than single spaces. The lead bytes
+	/// 0xC2, 0xE1, 0xE2, and 0xE3 start every other white space, such as U+00A0, U+1680, U+202F, and U+3000.
+	private static func scan(_ text: String) -> (separators: Int, hasRuns: Bool) {
 		var text = text
 		return text.withUTF8 { bytes in
 			var previous: UInt8 = 0
+			var separators = 0
+			var hasRuns = false
 			for byte in bytes {
-				if byte < 0x20 && byte != 1 || byte == 0x20 && previous == 0x20 || byte == 0xC2 || byte == 0xE1 || byte == 0xE2 || byte == 0xE3 { return true }
+				if byte == 1 { separators += 1 } else if byte < 0x20 || byte == 0x20 && previous == 0x20 || byte == 0xC2 || byte == 0xE1 || byte == 0xE2 || byte == 0xE3 { hasRuns = true }
 				previous = byte
 			}
-			return false
+			return (separators, hasRuns)
 		}
 	}
 
