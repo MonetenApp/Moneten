@@ -352,6 +352,14 @@ struct AllDataTests {
 		#expect(try FileManager.default.contentsOfDirectory(atPath: root.path).sorted() == ["export.json", "source"])
 	}
 
+	@Test("A complete export accepts a valid 235-byte destination name")
+	func longExportFilename() throws {
+		let store = try filledStore()
+		let file = root.appending(path: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json")
+		try store.exportAllData(to: file)
+		#expect(try AllData(json: Data(contentsOf: file)).accounts.count == 4)
+	}
+
 	@Test("Every key of an export is described in docs/export-format.md")
 	func documented() throws {
 		let json = try JSONSerialization.jsonObject(with: try filledStore().exportAllData(at: exportedAt).json())
