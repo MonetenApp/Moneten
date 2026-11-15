@@ -762,6 +762,44 @@ struct MoneyMoneyMigrationTests {
 		#expect(report.rows.map(\.matches) == [true, true, true])
 	}
 
+	@Test("The report keeps each source when two accounts merge into one existing account")
+	func reportOfSharedTarget() throws {
+		var source = accounts
+		source[2]["accountNumber"] = "DE02120300000000202051"
+		let existing = Account(position: 0, name: "Mein Giro", kind: .giro, source: .offline, iban: "DE02120300000000202051", initialBalanceMinor: 99)
+		let p = try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(source), categories: try plist(categories),
+			transactions: try plist(transactions), into: Ledger(accounts: [existing]))
+		#expect(p.sources.map { $0.rows.count } == [3, 1, 0])
+		let ledger = Ledger(groups: p.groups, accounts: [existing] + p.accounts, categories: p.categories, transactions: p.transactions)
+		#expect(ledger.transactions(ofAccount: existing.id).count == 4)
+		let report = p.report(after: ledger)
+		#expect(report.rows.map(\.name) == ["Giro", "Savings", "Depot"])
+		#expect(report.rows.map(\.transactions) == [3, 1, 0])
+		#expect(report.rows.map(\.sourceTransactions) == [3, 1, 0])
+		#expect(report.rows.map { $0.balance.minorUnits } == [123_456, 50_000, 1_000_000])
+		#expect(report.rows.map { $0.sourceBalance?.minorUnits } == [123_456, 50_000, 1_000_000])
+		#expect(report.rows.map(\.matches) == [true, true, true])
+		let note = "2 MoneyMoney accounts, \"Giro\", \"Savings\", were merged into \"Mein Giro\". Each line shows the source balance; only transactions are compared."
+		#expect(report.notes.filter { $0 == note }.count == 1)
+		#expect(report.text(locale: Locale(identifier: "en_US")).contains(note))
+		var missing = ledger
+		missing.remove(transactionIDs: Set(ledger.transactions.filter { $0.name == "REWE Markt" }.map(\.id)))
+		#expect(p.report(after: missing).rows.map(\.transactions) == [2, 1, 0])
+		#expect(p.report(after: missing).rows.map(\.matches) == [false, true, true])
+	}
+
+	@Test("A USD source row does not change the report balance of a EUR account")
+	func reportWithOtherCurrency() throws {
+		var rows = transactions["transactions"] as! [[String: Any]]
+		rows.append(["id": 5, "accountUuid": "A1", "bookingDate": date(2026, 11, 5), "amount": -5.0, "currency": "USD", "name": "Diner", "booked": true])
+		let p = try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(accounts), categories: try plist(categories),
+			transactions: try plist(["transactions": rows]), into: Ledger())
+		let row = try #require(p.report(after: Ledger(groups: p.groups, accounts: p.accounts, categories: p.categories, transactions: p.transactions)).rows.first)
+		#expect(row.transactions == 4 && row.sourceTransactions == 4)
+		#expect(row.balance == Money(minorUnits: 123_456, currency: "EUR"))
+		#expect(row.matches)
+	}
+
 	@Test("The report shows a difference when an account misses a transaction of the source")
 	func reportDiffers() throws {
 		let p = try plan()

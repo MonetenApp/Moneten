@@ -354,6 +354,15 @@ The app SHALL show a report after the import. The report lists for each account 
 - **WHEN** the migration finishes
 - **THEN** the report shows 1.000,00 € for "Giro" next to the balance of the source, 1.000,00 €, as a match
 
+#### Scenario: Two source accounts share an existing target
+
+- **GIVEN** the source accounts "Giro" with 3 transactions and 1.234,56 EUR and "Savings" with 1 transaction and 500,00 EUR both have the IBAN DE02120300000000202051
+- **AND** the existing account "Mein Giro" has that IBAN
+- **WHEN** the migration finishes
+- **THEN** the report lists "Giro" with 3 of 3 transactions and its source balance of 1.234,56 EUR, and "Savings" with 1 of 1 transaction and its source balance of 500,00 EUR
+- **AND** one note says '2 MoneyMoney accounts, "Giro", "Savings", were merged into "Mein Giro". Each line shows the source balance; only transactions are compared.'
+- **AND** a missing transaction makes only its source account differ
+
 #### Scenario: Everything matches
 
 - **WHEN** all counts and balances equal those of the source
