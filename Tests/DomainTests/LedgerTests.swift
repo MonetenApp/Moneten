@@ -358,6 +358,24 @@ struct LedgerTests {
 		#expect(l.sidebarAmounts(today: today)[travel.id] == Money(minorUnits: -5_000, currency: "USD"))
 	}
 
+	@Test("A euro group sums only the euro rows below it, also when a child holds a dollar row")
+	func euroGroupLeavesOutDollarRows() {
+		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
+		let living = Domain.Category(position: 0, name: "Living", isGroup: true)
+		let rent = Domain.Category(parentID: living.id, position: 0, name: "Rent")
+		let trips = Domain.Category(parentID: living.id, position: 1, name: "Trips", currency: "USD")
+		func row(_ minor: Int64, _ currency: String, _ category: Domain.Category) -> Transaction {
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 10, day: 5), amountMinor: minor, currency: currency, name: "Muster",
+				categoryID: category.id, categorizedBy: .manual)
+		}
+		let l = Ledger(accounts: [giro], categories: [living, rent, trips],
+			transactions: [row(-20_000, "EUR", rent), row(-1_000, "EUR", rent), row(-5_000, "USD", rent), row(-3_000, "USD", trips)])
+		let amounts = l.sidebarAmounts(today: Day(year: 2026, month: 11, day: 9))
+		#expect(amounts[living.id] == Money(minorUnits: -21_000, currency: "EUR"))
+		#expect(amounts[rent.id] == Money(minorUnits: -21_000, currency: "EUR"))
+		#expect(amounts[trips.id] == Money(minorUnits: -3_000, currency: "USD"))
+	}
+
 	@Test("The sum of a category for the current month counts a pending row and leaves out a pending row marked for review")
 	func categorySumWithPendingRows() {
 		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
