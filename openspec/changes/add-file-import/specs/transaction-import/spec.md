@@ -384,6 +384,14 @@ The app SHALL assign the category from a category column to each imported transa
 - **WHEN** the same file is imported with the option off
 - **THEN** the "Pets" rows pass the categorization rules like any new transaction
 
+#### Scenario: Category path from a Moneten CSV export
+
+- **GIVEN** the category "Food" is under the group "Living"
+- **WHEN** a Moneten CSV export names it "Living - Food" and is imported again
+- **THEN** the row receives the existing "Food" category with either setting of "Auto-create categories"
+- **AND** if "Pets" is missing, "Living - Pets" with auto-create on creates "Pets" under "Living"
+- **AND** an existing category whose literal name is "Living - Food" takes precedence over interpreting that text as a path
+
 #### Scenario: Imported category is restricted to another account
 
 - **GIVEN** "Office" is restricted to "Business" or its "Work" account group
