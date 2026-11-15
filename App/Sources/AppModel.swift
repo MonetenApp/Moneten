@@ -98,6 +98,7 @@ final class AppModel {
 	}
 
 	let vault = Vault(folder: .standard())
+	let crashes = CrashReports(folder: .standard())
 	/// The refreshes of the bank accesses and their dialogs.
 	let sync = SyncCoordinator(broker: SessionBroker(defaults: .standard, scope: DataFolder.standard().databaseFile.path))
 	/// The FinTS connector of the setup and of every refresh.

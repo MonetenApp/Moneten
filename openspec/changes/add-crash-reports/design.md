@@ -1,0 +1,13 @@
+## Ownership
+
+[ADR 0002](../../../docs/decisions/0002-local-first-no-server.md) forbids telemetry. Domain accepts a plain crash diagnostic struct and builds a report without I/O. Only numeric versions, exception and signal numbers, known binary names, valid binary UUIDs, and offsets can enter its text. Unknown binary names become "Other". Binary UUIDs identify release artifacts, never a device, installation, or database.
+
+App maps MXCrashDiagnostic to the struct. It reads only the crashed thread of the stack tree. Objective-C reasons, termination reasons, memory details, process identifiers, and other metadata never enter the report builder.
+
+Storage uses AES-GCM and a dedicated random key protected by the existing Keychain implementation. This works before the database unlocks and needs no schema migration. One encrypted state holds the latest payload end time and the pending diagnostic. A decision removes the diagnostic but retains the time, so a repeated payload cannot ask again. MetricKit exposes payload times, not individual crash times. Within the newest payload the last crash is kept.
+
+App shows the sheet above the root view, including while the database is locked. Only the three explicit actions remove a report. A failed deletion leaves it available and shows an error. Opening a browser is an explicit action; submitting the issue remains the user's choice.
+
+Domain constructs the GitHub URL with template bug-report.yml and fields version and macos. The report goes into body and the form's expected field so GitHub issue forms retain it. The encoded URL stays below 8,000 characters. It truncates only between frame lines and appends a notice. The pasteboard always gets the full report.
+
+Maintainers use scripts/symbolicate-crash.sh with the matching dSYMs. The script matches binary UUIDs and adds each offset to the Mach-O text segment address before calling atos. This change records dSYM retention in the open release tasks and does not implement uploading.

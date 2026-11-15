@@ -29,9 +29,12 @@ struct RootView: View {
 			if active { model.showNotices() }
 		}
 		.onDisappear { model.mainWindowClosed() }
+		.sheet(isPresented: Binding(get: { model.crashes.pending != nil }, set: { _ in })) {
+			CrashReportSheet(reports: model.crashes)
+		}
 		// The PIN sheet and the dialog "Two-Factor Authentication". The broker opens and closes them.
 		// While another sheet is open, that sheet shows them on top of itself (MainView).
-		.sheet(item: Binding(get: { model.sheet == nil ? model.sync.broker.sheet : nil }, set: { _ in })) { sheet in
+		.sheet(item: Binding(get: { model.sheet == nil && model.crashes.pending == nil ? model.sync.broker.sheet : nil }, set: { _ in })) { sheet in
 			SyncDialog(broker: model.sync.broker, sheet: sheet)
 				.interactiveDismissDisabled()
 		}

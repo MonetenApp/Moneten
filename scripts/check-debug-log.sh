@@ -38,6 +38,7 @@ fi
 WORK="$(mktemp -d "$PWD/.build/check-debug-log.XXXXXX")"
 finish() {
 	if [ -n "$PID" ]; then kill "$PID" 2>/dev/null || true; fi
+	security delete-generic-password -s "Moneten crash report key" -a "$DATA/Database/Moneten.sqlite" >/dev/null 2>&1 || true
 	[ -n "$KEEP" ] && echo "The log stays in $WORK/debug." || rm -rf "$WORK"
 }
 trap finish EXIT
@@ -266,11 +267,22 @@ poll "^ext access Check Bank state=failed" extstate
 send extrun "$WORK/Check.lua|Result|"
 poll "^ext result" state
 poll "^migrationfailure: unknown failure$" migrationfailure "$MIGRATION_UNKNOWN"
+poll "^crash inject frames=1 pending=true" crashinject private
+poll "^crash url characters=" crashurl
+for value in DE02120300000000202051 "Erika Mustermann" /Users/erika; do
+	if grep -F -- "$value" "$WORK/debug/crash-report.txt" "$WORK/debug/crash-url.txt"; then
+		echo "The crash report contains personal data." >&2
+		exit 1
+	fi
+done
+poll "^crash decision pending=false copied=true" crashdecision copy
+poll "^crash inject frames=3 pending=true" crashinject
+poll "^crash decision pending=false copied=false" crashdecision decline
 send quit
 
 found=0
 for value in "25,00" DE02120300000000202051 "DE02 1203" 202051 1234567890 0099887766 "99 88 77 66" 4711 5550001 "$LOGIN" "$PIN" "$MIGRATION_UNKNOWN" 123456 check-debug-log \
-	"Handoff Synthetic" 88776655 Kiosk Girokonto Tagesgeld Kreditkarte Extrakonto "Erika Mustermann" "Beispiel GmbH" "Wohnbau Musterstadt" "Tankstelle Beispiel" \
+	"Handoff Synthetic" 88776655 Kiosk Girokonto Tagesgeld Kreditkarte Extrakonto "Erika Mustermann" /Users/erika "Beispiel GmbH" "Wohnbau Musterstadt" "Tankstelle Beispiel" \
 	"Gehalt November" Miete Kartenzahlung Sparen Haushaltskasse MIETE-2026-11 GUTSCHRIFT DAUERAUFTRAG \
 	"Zugang vorübergehend gesperrt" "PIN falsch" Wartungsarbeiten pushTAN-App "currency:/^+?49/"; do
 	if grep -n -w -F -- "$value" "$LOG" >&2; then
