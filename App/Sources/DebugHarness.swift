@@ -135,7 +135,7 @@ final class DebugHarness {
 		case "status":
 			// Each account by its position and kind, never by its name, IBAN, or account number.
 			for (position, a) in model.ledger.accounts.filter({ $0.accessID != nil }).enumerated() {
-				log("status #\(position) \(a.kind) refreshing=\(model.sync.refreshingAccounts.contains(a.id)) refreshedAt=\(a.refreshedAt.map { "\($0)" } ?? "-") error=\(a.refreshError?.message ?? "-") waitsForUser=\(a.refreshError?.waitsForUser ?? false) interval=\(a.refreshInterval.rawValue) balance=\(a.bankBalanceMinor.map(String.init) ?? "-") rows=\(model.ledger.transactions(ofAccount: a.id).count) new=\(model.ledger.newTransactionCounts[a.id] ?? 0) historyStart=\(model.historyStarts[a.id].map { "\($0)" } ?? "-")")
+				log("status #\(position) \(a.kind) refreshing=\(model.sync.refreshingAccounts.contains(a.id)) refreshedAt=\(a.refreshedAt.map { "\($0)" } ?? "-") error=\(Self.label(a.refreshError)) waitsForUser=\(a.refreshError?.waitsForUser ?? false) interval=\(a.refreshInterval.rawValue) balance=\(a.bankBalanceMinor.map(String.init) ?? "-") rows=\(model.ledger.transactions(ofAccount: a.id).count) new=\(model.ledger.newTransactionCounts[a.id] ?? 0) historyStart=\(model.historyStarts[a.id].map { "\($0)" } ?? "-")")
 			}
 			log("status line=\(model.refreshStatus ?? "-") accesses=\(model.accesses.count) bankNotices=\(model.bankNotices.waiting.count)")
 		// "closemain" closes the main window as its close button does; both log the scenes of the visible windows.
@@ -157,8 +157,10 @@ final class DebugHarness {
 		// What the button "OK" of the window "Notice" does.
 		case "noticeok": model.bankNotices.dismiss()
 		case "errorsnapshot":
-			if let account = model.ledger.accounts.first(where: { $0.name == argument }), let error = account.refreshError {
-				offscreenSnapshot(RefreshErrorPopover(account: account, error: error), width: 352, name: "\(argument)-error")
+			// By the position and the kind of the account, as in "status", never by its name.
+			let accounts = model.ledger.accounts.filter { $0.accessID != nil }
+			if let position = accounts.firstIndex(where: { $0.name == argument }), let error = accounts[position].refreshError {
+				offscreenSnapshot(RefreshErrorPopover(account: accounts[position], error: error), width: 352, name: "error-\(position)-\(accounts[position].kind)")
 			}
 		case "extrun": runExtension(argument)
 		case "escape":
@@ -245,7 +247,7 @@ final class DebugHarness {
 			if let account = model.ledger.accounts.first(where: { $0.name == argument }) {
 				let rows = model.ledger.transactions(ofAccount: account.id).filter { $0.isFetched || $0.needsReview }
 				for t in rows {
-					log("row \(t.bookingDate) \(t.amountMinor) \(t.name)\(t.isPending ? " pending" : "")\(t.isNew ? " new" : "")\(t.needsReview ? " review" : "")")
+					log("row \(t.bookingDate) \(t.amountMinor)\(t.isPending ? " pending" : "")\(t.isNew ? " new" : "")\(t.needsReview ? " review" : "")")
 				}
 				log("rows \(rows.count) new=\(model.ledger.newTransactionCounts[account.id] ?? 0) balance=\(account.bankBalanceMinor.map(String.init) ?? "-")")
 			}
@@ -370,12 +372,12 @@ final class DebugHarness {
 			guard parts.count == 2, var c = model.ledger.categories.first(where: { $0.name == parts[0] }) else { return log("rule not found") }
 			c.rule = parts[1]
 			model.save(category: c)
-			log("rule \(c.name) error=\(c.ruleError.map { "\($0)" } ?? "none")")
+			log("rule error=\(c.ruleError.map { "\($0)" } ?? "none")")
 		// What "Add category" in "Assign Category" does with the selected rows.
 		case "newcategory": Task { await model.addCategory(name: argument, isGroup: false, parentID: nil, assigning: model.selectedTransactions) }
 		case "selectRows": model.selectedTransactions = Set(model.visibleTransactions.prefix(Int(argument) ?? 1).map(\.id))
 		case "state":
-			log("phase=\(model.phase) accounts=\(model.ledger.accounts.count) transactions=\(model.ledger.transactions.count) visible=\(model.visibleTransactions.count) selection=\(String(describing: model.selection)) selected=\(model.selectedAccount?.name ?? "-")")
+			log("phase=\(model.phase.trailName) accounts=\(model.ledger.accounts.count) transactions=\(model.ledger.transactions.count) visible=\(model.visibleTransactions.count) selection=\(String(describing: model.selection)) selected=\(model.selectedAccount.map { "\($0.kind)" } ?? "-")")
 			logChart()
 		case "quit": NSApp.terminate(nil)
 		default: log("unknown command \(command)")
@@ -391,6 +393,27 @@ final class DebugHarness {
 		case let .found(bank): "found(\(bank.code))"
 		case .failed: "failed"
 		}
+	}
+
+	/// The return code of the bank, which a text of the bank can hide a name or an IBAN in.
+	private static func label(_ error: RefreshError?) -> String {
+		guard let error else { return "-" }
+		return error.code ?? "set"
+	}
+
+	/// The case of a refresh state, and of a failure its case and the return code of the bank, without a text.
+	private static func label(_ state: SyncState) -> String {
+		guard case let .failed(failure) = state else { return caseName(state) }
+		return (["failed", caseName(failure)] + [failure.bankMessage?.code].compactMap { $0 }).joined(separator: ":")
+	}
+
+	private static func caseName(_ value: Any) -> String {
+		String(String(describing: value).prefix { $0 != "(" })
+	}
+
+	/// Whether a message is shown, without its text, which can repeat the login name or an IBAN.
+	private static func isSet(_ message: String?) -> String {
+		message == nil ? "-" : "set"
 	}
 
 	/// The match of a listed account by the kind of the account in the app, without its name.
@@ -429,8 +452,8 @@ final class DebugHarness {
 		case "cancel": model.closeAccountSetup()
 		default: break
 		}
-		log("setup service=\(setup.service?.title ?? "-") other=\(setup.otherServices.map(\.title)) error=\(setup.serviceError ?? "-")")
-		log("setup step=\(setup.step) entry=\(!setup.entry.isEmpty) login=\(!setup.loginName.isEmpty) highlighted=\(setup.highlighted) lookup=\(Self.label(setup.lookup.state)) error=\(setup.loginError ?? "-") saveError=\(setup.saveError ?? "-") dialog=\(model.sync.broker.current != nil) candidates=\(setup.candidates.count) [\(setup.candidates.map { "\($0.account.kind):\(Self.label($0.match))" }.joined(separator: ", "))] selected=\(setup.candidates.indices.filter { setup.selected.contains(setup.candidates[$0].id) })")
+		log("setup service=\(setup.service?.title ?? "-") other=\(setup.otherServices.map(\.title)) error=\(Self.isSet(setup.serviceError))")
+		log("setup step=\(setup.step) entry=\(!setup.entry.isEmpty) login=\(!setup.loginName.isEmpty) highlighted=\(setup.highlighted) lookup=\(Self.label(setup.lookup.state)) error=\(Self.isSet(setup.loginError)) saveError=\(Self.isSet(setup.saveError)) dialog=\(model.sync.broker.current != nil) candidates=\(setup.candidates.count) [\(setup.candidates.map { "\($0.account.kind):\(Self.label($0.match))" }.joined(separator: ", "))] selected=\(setup.candidates.indices.filter { setup.selected.contains(setup.candidates[$0].id) })")
 	}
 
 	/// The sheet on top of all others, where the dialogs of a refresh appear.
@@ -537,14 +560,8 @@ final class DebugHarness {
 				ExtensionWebDebug.pages[ExtensionWebDebug.key(exchange.request.url)] = exchange.response.body ?? ""
 			}
 			ExtensionWebDebug.log = { [weak self] in self?.log($0) }
-			let log: @Sendable (HostLog) -> Void = { [weak self, package] line in
-				Task { @MainActor in
-					switch line {
-					case let .print(text): self?.log("ext print \(package.name): \(text)")
-					case let .status(text): self?.log("ext status \(package.name): \(text)")
-					case let .sent(request): self?.log("ext sent \(request)")
-					}
-				}
+			let log: @Sendable (HostLog) -> Void = { [weak self, package, madeUp = fixture != nil] line in
+				Task { @MainActor in self?.log(line.debugLine(package.name, madeUp: madeUp)) }
 			}
 			if command == "extaccess" {
 				model.addExtensionAccess(package: package, service: parts.count > 2 ? parts[2] : package.name, fixture: fixture, log: log)
@@ -582,9 +599,9 @@ final class DebugHarness {
 		case .pin: log("ext prompt pin")
 		case let .secondFactor(request):
 			switch request.challenge {
-			case let .enterTAN(text, image): log("ext prompt tan label=\(request.field.label) text=\(text.replacingOccurrences(of: "\n", with: " / ")) image=\(image != nil)")
-			case let .approveInApp(text, app, image, _): log("ext prompt approve app=\(app ?? "-") text=\(text) image=\(image != nil)")
-			case let .chooseTANMethod(methods, current): log("ext prompt methods \(methods.map { "\($0.id)=\($0.name)\($0.unavailable == nil ? "" : " (unavailable)")" }.joined(separator: ", ")) current=\(current ?? "-")")
+			case let .enterTAN(text, image): log("ext prompt tan label=\(Self.isSet(request.field.label)) text=\(Self.isSet(text)) image=\(image != nil)")
+			case let .approveInApp(text, app, image, _): log("ext prompt approve app=\(app ?? "-") text=\(Self.isSet(text)) image=\(image != nil)")
+			case let .chooseTANMethod(methods, current): log("ext prompt methods \(methods.map { "\($0.id)\($0.unavailable == nil ? "" : " (unavailable)")" }.joined(separator: ", ")) current=\(current ?? "-")")
 			case let .openBrowser(approval): log("ext prompt browser \(approval.url.host() ?? "")")
 			case let .captcha(captcha): log("ext prompt captcha \(captcha.provider.rawValue) page=\(captcha.page?.host() ?? "-")")
 			case .chooseTANMedium, .flickerCode: log("ext prompt other")
@@ -596,10 +613,10 @@ final class DebugHarness {
 	private func logExtensionState() {
 		guard let model else { return }
 		for access in model.accesses.values.sorted(by: { $0.bankName < $1.bankName }) {
-			log("ext access \(access.bankName) state=\(String(describing: model.sync.states[access.id] ?? .idle).prefix(60))")
+			log("ext access \(access.bankName) state=\(Self.label(model.sync.states[access.id] ?? .idle))")
 			for account in model.ledger.accounts where account.accessID == access.id {
 				let rows = model.ledger.transactions.filter { $0.accountID == account.id }
-				let failure = account.refreshError.map { " failed=\($0.message)" } ?? ""
+				let failure = account.refreshError.map { " failed=\(Self.label($0))" } ?? ""
 				log("ext account \(account.kind) rows=\(rows.count) balance=\(model.ledger.balance(of: account).minorUnits)\(failure)")
 			}
 		}
@@ -619,7 +636,7 @@ final class DebugHarness {
 		if let a = model.ledger.accounts.first(where: { $0.name == name }) { model.navigate(to: .account(a.id)) }
 		else if let g = model.ledger.groups.first(where: { $0.name == name }) { model.navigate(to: .group(g.id)) }
 		else if let c = model.ledger.categories.first(where: { $0.name == name }) { model.navigate(to: .category(c.id)) }
-		else { log("select: not found \(name)") }
+		else { log("select: not found") }
 	}
 
 	/// Logs the context menu of each sidebar row as a right click with the Option key builds it. "alt:" marks
@@ -699,7 +716,7 @@ final class DebugHarness {
 				}
 				let file = folder.appendingPathComponent("\(name)-\(i)\(String(repeating: "-sheet", count: j)).png")
 				try? rep.representation(using: .png, properties: [:])?.write(to: file)
-				log("snapshot \(file.lastPathComponent) \(w.title) \(Int(view.bounds.width))x\(Int(view.bounds.height))")
+				log("snapshot \(file.lastPathComponent) \(w.identifier?.rawValue ?? "-") \(Int(view.bounds.width))x\(Int(view.bounds.height))")
 			}
 		}
 	}
@@ -862,6 +879,18 @@ enum DemoData {
 		await model.replacingTable {
 			_ = try? model.merge(.file(ts.filter { $0.accountID == giro.id }), into: giro.id)
 			_ = try? model.merge(.file(ts.filter { $0.accountID == savings.id }), into: savings.id)
+		}
+	}
+}
+
+extension HostLog {
+	/// The line of `debug.log`. A text of the extension is written only with a fixture, whose data is made up.
+	/// Without one the extension talks to the real service, and its texts can hold names, IBANs, or tokens.
+	func debugLine(_ name: String, madeUp: Bool) -> String {
+		switch self {
+		case let .print(text): madeUp ? "ext print \(name): \(text)" : "ext print \(name) (\(text.count) characters)"
+		case let .status(text): madeUp ? "ext status \(name): \(text)" : "ext status \(name) (\(text.count) characters)"
+		case let .sent(request): "ext sent \(request)"
 		}
 	}
 }
