@@ -178,7 +178,7 @@ public struct Rule: Sendable {
 	}
 }
 
-private enum Token: Equatable {
+enum RuleToken: Equatable {
 	case open, close, and, or, not
 	case constant(Bool)
 	case word(String)
@@ -189,9 +189,22 @@ private enum Token: Equatable {
 	case amount(AmountComparison, String)
 }
 
+extension RuleToken {
+	/// The tokens of a rule text that may be unfinished, as the user types it.
+	static func ofUnfinished(_ text: String) -> [RuleToken] {
+		var parser = RuleParser(text)
+		parser.lenient = true
+		try? parser.tokenize()
+		return parser.tokens.map { $0.token }
+	}
+}
+
 private struct RuleParser {
 	let chars: [Character]
-	var tokens: [(token: Token, position: Int)] = []
+	var tokens: [(token: RuleToken, position: Int)] = []
+	/// Reads an open quotation mark or regular expression to the end of the text, and a sign after a field operator
+	/// as the operator it is elsewhere, so the search can read the text while the user types.
+	var lenient = false
 	var index = 0
 
 	init(_ text: String) { chars = Array(text) }
@@ -314,7 +327,7 @@ private struct RuleParser {
 		}
 	}
 
-	private mutating func tokenize() throws(RuleSyntaxError) {
+	mutating func tokenize() throws(RuleSyntaxError) {
 		var i = 0
 		let openQuotes: Set<Character> = ["\"", "„", "“", "”"]
 		// Right after a field operator, a word is the search term, so `name:and` and `name:-x` search for "and" and "-x".
@@ -343,7 +356,7 @@ private struct RuleParser {
 				i += 1
 				var s = ""
 				while i < chars.count, !openQuotes.contains(chars[i]) { s.append(chars[i]); i += 1 }
-				guard i < chars.count else { throw RuleSyntaxError(position: start, message: "A closing quotation mark is missing.") }
+				guard i < chars.count || lenient else { throw RuleSyntaxError(position: start, message: "A closing quotation mark is missing.") }
 				i += 1
 				tokens.append((.quoted(s), start))
 				continue
@@ -356,13 +369,14 @@ private struct RuleParser {
 					s.append(chars[i])
 					i += 1
 				}
-				guard i < chars.count else { throw RuleSyntaxError(position: start, message: "The closing slash of the regular expression is missing.") }
+				guard i < chars.count || lenient else { throw RuleSyntaxError(position: start, message: "The closing slash of the regular expression is missing.") }
 				i += 1
 				tokens.append((.regex(s), start))
 				continue
 			}
 			if isFieldValue, ["-", "!", "+"].contains(c), i + 1 < chars.count, chars[i + 1] == "(" || chars[i + 1] == "/" || openQuotes.contains(chars[i + 1]),
 				case let .field(field, op, _)? = tokens.last?.token {
+				if lenient { tokens.append((c == "+" ? .and : .not, i)); i += 1; continue }
 				throw RuleSyntaxError(position: start, message: #"A sign cannot follow \#(field.rawValue)\#(op). Write \#(field.rawValue)!="…" to exclude a value, or \#(field.rawValue):"…" to match it."#)
 			}
 			var word = ""

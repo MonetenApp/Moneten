@@ -354,6 +354,28 @@ The app SHALL show a report after the import. The report lists for each account 
 - **WHEN** the migration finishes
 - **THEN** the report shows 1.000,00 € for "Giro" next to the balance of the source, 1.000,00 €, as a match
 
+#### Scenario: Two source accounts share an existing target
+
+- **GIVEN** the source accounts "Giro" with 3 transactions and 1.234,56 EUR and "Savings" with 1 transaction and 500,00 EUR both have the IBAN DE02120300000000202051
+- **AND** the existing account "Mein Giro" has that IBAN
+- **WHEN** the migration finishes
+- **THEN** the report lists "Giro" with 3 of 3 transactions and its source balance of 1.234,56 EUR, and "Savings" with 1 of 1 transaction and its source balance of 500,00 EUR
+- **AND** one note says '2 source accounts, "Giro", "Savings", were merged into "Mein Giro". Each line shows the source balance; only transactions are compared.'
+- **AND** a missing transaction makes only its source account differ
+
+#### Scenario: Identical rows of sources that share a target
+
+- **GIVEN** "Giro" and "Savings" each export one booked transaction of -5,00 EUR with the same date and purpose into one existing account
+- **WHEN** only the transaction of "Savings" is stored
+- **THEN** the report shows "Giro" with 0 of 1 transactions as a difference and "Savings" with 1 of 1 as a match
+
+#### Scenario: A shared target keeps a row no longer in the source
+
+- **GIVEN** a shared target still holds one migrated transaction that neither source exports any more
+- **WHEN** the migration finishes
+- **THEN** the shared target note also says "The target also holds 1 migrated transaction no longer in the source export."
+- **AND** the report does not assign that transaction to an unknown source account
+
 #### Scenario: Everything matches
 
 - **WHEN** all counts and balances equal those of the source
@@ -363,6 +385,8 @@ The app SHALL show a report after the import. The report lists for each account 
 
 - **WHEN** the migration finishes
 - **THEN** the report names login data, templates, standing orders, and statements as not migrated, each with one sentence that says why or what to do
+- **AND** the templates note says to use "Export Transfer Templates..." in the source app to keep them
+- **AND** the statements note says to use "Show in Finder..." on "Statements" in the source app to find the statement files and copy them to keep them
 
 #### Scenario: Budgets in a version without budgets
 
