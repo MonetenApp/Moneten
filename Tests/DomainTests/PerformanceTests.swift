@@ -48,12 +48,15 @@ struct PerformanceTests {
 		let accounts = (0..<10).map { Account(groupID: company.id, position: $0, name: "Konto \($0)", kind: .giro, source: .offline) }
 		let categories = (0..<60).map { Domain.Category(position: $0, name: "Kategorie \($0)", restrictedToID: $0 < 10 ? company.id : nil) }
 			+ [Domain.Category(position: 99, name: "Uncategorized", isDefault: true)]
-		let ts = (0..<50_000).map { i in
-			Transaction(accountID: accounts[i % accounts.count].id, bookingDate: Day(year: 2014 + i % 12, month: 1 + i % 12, day: 1 + i % 28),
-				amountMinor: -Int64(i % 9_000), name: "Haendler\(i % 70) Musterstadt")
+		var ts: [Transaction] = []
+		for i in 0..<50_000 {
+			let accountID: UUID = accounts[i % accounts.count].id
+			let day = Day(year: 2014 + i % 12, month: 1 + i % 12, day: 1 + i % 28)
+			let amount: Int64 = -Int64(i % 9_000)
+			ts.append(Transaction(accountID: accountID, bookingDate: day, amountMinor: amount, name: "Haendler\(i % 70) Musterstadt"))
 		}
 		let ledger = Ledger(groups: [company], accounts: accounts, categories: categories, transactions: ts)
-		let ids = Set(ts.map(\.id))
+		let ids: Set<UUID> = Set(ts.map(\Transaction.id))
 		var selected: Set<UUID> = []
 		let open = fastest { selected = ledger.accountIDs(ofTransactions: ids) }
 		var listed = 0
