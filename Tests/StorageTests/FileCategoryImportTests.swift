@@ -7,6 +7,23 @@ import Testing
 
 @Suite("File categories and storage")
 struct FileCategoryImportTests {
+	@Test("Blocked category warnings show ten paths and a remaining count")
+	func boundedProblems() async throws {
+		let store = try SchemaTests.emptyStore()
+		defer { try? store.close() }
+		let account = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
+		try store.save(accounts: [account], categories: [Domain.Category(position: 0, name: "Food")])
+		let rows = (0..<1_001).map { Transaction(accountID: account.id, bookingDate: Day(year: 2026, month: 11, day: 3), amountMinor: -1, name: "Kiosk \($0)") }
+		let names = Dictionary(uniqueKeysWithValues: rows.enumerated().map { ($0.element.id, "Food › X\($0.offset)") })
+		let result = try await store.mergeFile(rows, categories: names, creatingCategories: true, into: account.id)
+		#expect(result.problems.count == 12)
+		#expect(result.problems.first == "The category \"Food › X0\" was not created, because a level of it is a category and not a group.")
+		#expect(result.problems.dropFirst(9).first == "The category \"Food › X9\" was not created, because a level of it is a category and not a group.")
+		#expect(result.problems.dropFirst(10).first == "and 990 more.")
+		#expect(result.problems.last == "Auto-create categories is limited to 1,000 new categories per file. Remaining unknown categories were left to the rules.")
+		#expect(result.created.count == 0)
+	}
+
 	@Test("Cancel during category work rolls back all 2000 rows and 1000 new categories")
 	func cancelDuringCategories() async throws {
 		let store = try SchemaTests.emptyStore()

@@ -8,6 +8,28 @@ struct FileCategoryTests {
 	var food: Domain.Category { Domain.Category(id: Self.foodID, parentID: living.id, position: 0, name: "Food") }
 	static let foodID = UUID()
 
+	@Test("Blocked paths use the 1000 category budget")
+	func blockedPathLimit() {
+		let food = Domain.Category(position: 0, name: "Food")
+		let found = FileCategories((0..<300_000).map { "Food › X\($0)" }, in: [food], creating: true)
+		#expect(found.created.count == 0)
+		#expect(found.unplaced.count == 1_000)
+		#expect(found.unplaced.first == "Food › X0")
+		#expect(found.unplaced.last == "Food › X999")
+		#expect(found.limitReached)
+	}
+
+	@Test("Bare Other prefers the top-level category over Leisure and Living", arguments: [false, true])
+	func topLevelOther(reversed: Bool) {
+		let leisure = Domain.Category(position: 0, name: "Leisure", isGroup: true)
+		let nested = Domain.Category(parentID: leisure.id, position: 0, name: "Other")
+		let root = Domain.Category(position: 1, name: "Other")
+		let categories = reversed ? [root, nested, leisure] : [leisure, nested, root]
+		let found = FileCategories(["Other", "Leisure › Other"], in: categories, creating: false)
+		#expect(found.ids["Other"] == root.id)
+		#expect(found.ids["Leisure › Other"] == nested.id)
+	}
+
 	@Test("A path must fit in the remaining category budget as a whole")
 	func pathAtLimit() {
 		let names = (0..<999).map { "Purpose \($0)" }

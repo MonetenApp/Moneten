@@ -12,6 +12,73 @@ struct CSVProfileStoreTests {
 		return CSVProfile(name: name, header: file.header, layout: try file.detectedLayout(), delimiter: file.delimiter)
 	}
 
+	@Test("Saving and renaming a readable profile keeps unknown fields", arguments: [false, true])
+	func unknownFields(rename: Bool) throws {
+		let store = try SchemaTests.emptyStore()
+		defer { try? store.close() }
+		let saved = try profile()
+		var object = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(saved)) as? [String: Any])
+		object["futureField"] = 7
+		var layout = try #require(object["layout"] as? [String: Any])
+		layout["futureLayout"] = ["value": 8]
+		var columns = try #require(layout["columns"] as? [String: Any])
+		columns["futureColumn"] = 9
+		layout["columns"] = columns
+		object["layout"] = layout
+		let payload = try JSONSerialization.data(withJSONObject: object)
+		try store.queue.write { db in
+			try db.execute(sql: "INSERT INTO csvProfile VALUES (?, 1, ?)", arguments: [saved.name, payload])
+		}
+		var edited = try #require(store.csvProfiles().first)
+		edited.name = rename ? "Renamed" : saved.name
+		edited.layout.createsCategories = true
+		edited.layout.columns[.name] = nil
+		try store.saveCSVProfile(edited, replacing: saved.name)
+		let raw = try store.queue.read { db in try #require(try Data.fetchOne(db, sql: "SELECT payload FROM csvProfile WHERE name = ?", arguments: [edited.name])) }
+		let result = try #require(JSONSerialization.jsonObject(with: raw) as? [String: Any])
+		#expect(result["futureField"] as? Int == 7)
+		let newLayout = try #require(result["layout"] as? [String: Any])
+		#expect((newLayout["futureLayout"] as? [String: Int])?["value"] == 8)
+		let newColumns = try #require(newLayout["columns"] as? [String: Int])
+		#expect(newColumns["futureColumn"] == 9)
+		#expect(newColumns["name"] == nil)
+		#expect(try store.csvProfiles().map(\.name) == [rename ? "Renamed" : "Broker CSV"])
+		#expect(try store.csvProfiles().first?.layout.createsCategories == true)
+	}
+
+	@Test("Complete exports round trip two CSV profiles and their raw payloads")
+	func completeExport() throws {
+		let source = try SchemaTests.emptyStore()
+		let target = try SchemaTests.emptyStore()
+		defer { try? source.close(); try? target.close() }
+		let first = try profile("Broker CSV"), second = try profile("Bank CSV")
+		try source.saveCSVProfile(first, replacing: nil)
+		try source.saveCSVProfile(second, replacing: nil)
+		try source.queue.write { db in
+			try db.execute(sql: "INSERT INTO csvProfile VALUES ('Future', 7, ?)", arguments: [Data("unreadable future payload".utf8)])
+		}
+		let exported = try source.exportAllData(at: Date(timeIntervalSince1970: 0))
+		let data = try exported.json()
+		let json = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+		let profiles = try #require(json["csvProfiles"] as? [[String: Any]])
+		#expect(profiles.compactMap { $0["name"] as? String } == ["Broker CSV", "Bank CSV", "Future"])
+		try target.importAllData(AllData(json: data))
+		#expect(try target.csvProfiles() == [first, second])
+		#expect(try target.exportAllData(at: Date(timeIntervalSince1970: 0)).json() == data)
+		let future = try target.queue.read { db in try Data.fetchOne(db, sql: "SELECT payload FROM csvProfile WHERE name = 'Future' AND version = 7") }
+		#expect(future == Data("unreadable future payload".utf8))
+	}
+
+	@Test("A complete export without csvProfiles still imports")
+	func missingProfiles() throws {
+		let store = try SchemaTests.emptyStore()
+		defer { try? store.close() }
+		var object = try #require(JSONSerialization.jsonObject(with: AllData().json()) as? [String: Any])
+		object.removeValue(forKey: "csvProfiles")
+		try store.importAllData(AllData(json: JSONSerialization.data(withJSONObject: object)))
+		#expect(try store.csvProfiles().count == 0)
+	}
+
 	@Test("Profiles stay encrypted across reopen and are separate for every database")
 	func isolation() throws {
 		let root = URL(fileURLWithPath: "/private/tmp/moneten-profile-\(UUID())")
