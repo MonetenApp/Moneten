@@ -214,6 +214,36 @@ struct LedgerTests {
 		#expect(l.transactions(in: .account(giro.id), filter: f).map(\.purpose) == ["Miete Mai"])
 	}
 
+	@Test("A regular expression that backtracks on many rows stops within a second", .timeLimit(.minutes(1)))
+	func searchRegexBacktrackingOnManyRows() {
+		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
+		let l = Ledger(accounts: [giro], transactions: (0..<100).map {
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 1 + $0 % 12, day: 1 + $0 % 28), amountMinor: -8_900, name: "Stadtwerke Musterstadt.",
+				purpose: "Abschlag Strom Mai.")
+		})
+		var f = TransactionFilter()
+		f.searchText = #"purpose:/^(\w+\s?)+$/"#
+		var found: [Transaction] = []
+		let time = ContinuousClock().measure { found = l.transactions(in: .account(giro.id), filter: f) }
+		#expect(found.isEmpty)
+		#expect(time < .seconds(1))
+	}
+
+	@Test("Two word boundaries at the end of a value match the rows that the rule matches")
+	func searchTwoWordBoundaries() throws {
+		let giro = Account(position: 0, name: "Konto b", kind: .giro, source: .offline)
+		let rows = [("x a", "x b"), ("Kiosk A", "Zeitung"), ("a", "Zeitung")].enumerated().map {
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 3 - $0.offset), amountMinor: -1_000, name: $0.element.0, purpose: $0.element.1)
+		}
+		let l = Ledger(accounts: [giro], transactions: rows)
+		for query in [#"/a\b\s*?\b/"#, #"/a(\B|\b)/"#, #"/\b$\b/"#, #"/\b\s*\B/"#, #"/miete\b\b/"#] {
+			var f = TransactionFilter()
+			f.searchText = query
+			let rule = try Rule(parsing: query)
+			#expect(l.transactions(in: .account(giro.id), filter: f).map(\.name) == rows.filter { rule.matches(RuleSubject($0, account: giro)) }.map(\.name), "\(query)")
+		}
+	}
+
 	@Test("A regular expression that runs long only over the joined values still finds the rows of the rule", .timeLimit(.minutes(1)))
 	func searchRegexSlowOnlyWhenJoined() throws {
 		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
