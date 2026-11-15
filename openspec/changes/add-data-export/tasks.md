@@ -40,6 +40,17 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 
 - [ ] 3.1 Check every scenario of the spec in a release build and record the result in the pull request.
 
+## Gate round 1
+
+- [x] Refuse category and account group parent loops before writing. AllDataTests.parentLoops checks self parents and A/B loops through both JSON and direct store import, names position 0, and compares all stored data before and after each refusal.
+- [x] Bound ISO days before parsing. AllDataTests.boundedDays refuses "01-01-9223372036854775807" in booking dates, value dates, and portfolio days without changing the database.
+- [x] Refuse portfolio values in a foreign currency. AllDataTests.portfolioCurrency refuses "100" JPY for a EUR portfolio and verifies an empty database.
+- [x] Write complete exports with mode 0600 before writing financial data. AllDataTests.privateExportFile measures a new file and an existing file with mode 0644, checks the readable export, and verifies cleanup after a failed replacement.
+- [x] Accept only three uppercase ASCII letters in currency codes. AllDataTests.currencyCodes checks seven invalid literal codes in twelve currency fields, including optional holding currencies and exchange rates, and accepts "ZZZ" as a syntactically valid code.
+- [x] Refuse versions below 1 and unreadable stored holdings. AllDataTests.positiveVersion checks 0 and -1. AllDataTests.unreadableHolding checks a broken quantity, a positional error, and preservation of an existing export.
+
+Each regression failed before its fix. The focused AllDataTests suite passes with 18 tests.
+
 ## Workflow follow-up
 
 - Archive the change with `openspec archive add-data-export` when every task is checked.

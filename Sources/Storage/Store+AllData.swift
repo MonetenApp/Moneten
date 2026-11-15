@@ -23,7 +23,10 @@ extension Store {
 				transactions: try Transaction.order(Column.rowID).fetchAll(db),
 				deletedTransactions: try DeletedTransaction.order(Column.rowID).fetchAll(db),
 				portfolioValues: try PortfolioValue.order(Column.rowID).fetchAll(db),
-				holdings: try HoldingRecord.order(Column.rowID).fetchAll(db).compactMap(\.holding))
+				holdings: try HoldingRecord.order(Column.rowID).fetchAll(db).enumerated().map { index, record in
+					guard let holding = record.holding else { throw AllData.ReadError.damaged("at holdings[\(index)], the stored holding cannot be read") }
+					return holding
+				})
 		}
 	}
 

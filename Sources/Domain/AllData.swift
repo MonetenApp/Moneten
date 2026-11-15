@@ -69,6 +69,7 @@ public struct AllData: Sendable, Equatable {
 			throw Self.readError(error, in: data)
 		}
 		guard header.format == File.formatName, let version = header.version else { throw .notAnExport }
+		guard version >= 1 else { throw .damaged("at version, the format version must be at least 1") }
 		guard version <= Self.formatVersion else { throw .newerVersion(version) }
 		do {
 			self = try decoder.decode(File.self, from: data).allData()

@@ -5,18 +5,21 @@
 ## Conventions
 
 - An amount is decimal text with a point and the decimal places of its currency, such as `"-1234.56"`, next to an ISO 4217 currency code. No amount is a JSON number, so no reader rounds it.
-- A day is text in the form `yyyy-MM-dd`, such as `"2026-11-03"`. It has no time zone.
+- A day is a valid calendar day with exactly four ASCII year digits, two month digits, and two day digits, separated by hyphens, such as `"2026-11-03"`. It has no time zone. The reader checks this bounded form before parsing the date.
 - A time is ISO 8601 text in UTC with milliseconds, such as `"2026-11-14T23:46:40.000Z"`.
 - An identifier is a UUID as text. Objects refer to each other by these identifiers.
 - An optional key without a value is left out, and a reader takes a missing optional key as empty. Every other key is always written, also an empty list or an empty text such as `purpose`.
+- A currency code has exactly three uppercase ASCII letters, `[A-Z]{3}`. This also applies to optional currencies of holdings and both currencies of an exchange rate.
 - The lists keep the order of the database.
+- A category or account group cannot contain itself, directly or through its parents. The reader refuses a loop and names its position.
+- The complete export is written atomically with mode 0600, so only its owner can read or write it. An unreadable stored holding fails the export instead of being omitted.
 
 ## File
 
 | Key | Content |
 |---|---|
 | `format` | Always `"moneten-export"` |
-| `version` | The format version as a number, `1` for this page. A reader refuses a file with a higher version. |
+| `version` | The format version as a number, `1` for this page. A reader refuses a version below 1 as damaged and a higher version as needing a newer app. |
 | `exportedAt` | The time of the export |
 | `accountGroups` | List of account groups |
 | `accounts` | List of accounts |
@@ -147,7 +150,7 @@ What the app keeps of a transaction that the user deleted, so that no refresh, f
 |---|---|
 | `accountID` | The portfolio |
 | `day` | Day of the value |
-| `value`, `currency` | Value of the portfolio on that day and the currency of the portfolio |
+| `value`, `currency` | Value of the portfolio on that day and the currency of the portfolio. The reader refuses a different currency instead of converting it. |
 
 ## Holding
 
