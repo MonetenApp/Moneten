@@ -66,6 +66,13 @@ The app SHALL let the user assign a category and write a comment for each part, 
 - **WHEN** the user assigns the part of -25,00 € to "Household"
 - **THEN** "Household" contains -25,00 € and "Groceries" contains -55,00 € of that receipt
 
+#### Scenario: The category picker keeps account restrictions for parts
+
+- **GIVEN** a -80,00 € transaction of account "Private" split into -25,00 € and -55,00 €
+- **AND** "Groceries" has no account restriction, "Household" is restricted to "Private", and "Office" is restricted to account "Business"
+- **WHEN** the user selects either part or both and opens "Assign Category"
+- **THEN** the picker offers "Groceries" and "Household" and does not offer "Office"
+
 #### Scenario: A correction removes the part being edited
 
 - **GIVEN** a booked "TX-1" of -80,00 € split into -25,00 € and -55,00 €, and the edit window is open for the part of -25,00 €
