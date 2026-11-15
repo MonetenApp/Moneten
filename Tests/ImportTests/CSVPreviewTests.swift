@@ -40,9 +40,9 @@ struct CSVPreviewTests {
 		}
 	}
 
-	@Test("A dated preamble behind metadata does not become a zero transaction")
-	func metadataBeforeDatedPreamble() throws {
-		let file = try CSVFile(data: Data("Konto;Giro;EUR\n15.11.2026;Umsatzanzeige\nTag;Wer;Wieviel\n03.11.2026;Kiosk;-4,20\n".utf8))
+	@Test("A dated preamble behind metadata does not become a zero transaction", arguments: ["Konto;Giro;EUR", "Hinweis;Export;vorläufig"])
+	func metadataBeforeDatedPreamble(metadata: String) throws {
+		let file = try CSVFile(data: Data("\(metadata)\n15.11.2026;Umsatzanzeige\nTag;Wer;Wieviel\n03.11.2026;Kiosk;-4,20\n".utf8))
 		var layout = try file.detectedLayout()
 		layout.assign(0, to: .bookingDate)
 		layout.assign(2, to: .amount)
