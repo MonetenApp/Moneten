@@ -104,12 +104,17 @@ struct SearchQuery {
 		/// A row whose search text is plain ASCII and lacks this text cannot match, so it needs no call at all.
 		let required: Needle?
 		let watch = RegexWatch()
+		/// The joined text can run long where each value alone does not, as `\s` matches the joining line break, so it
+		/// has a watch of its own. When it gives up, the rows read each value.
+		let lineWatch = RegexWatch()
 
 		init(_ regex: NSRegularExpression, field: RuleField?) {
 			let pattern = regex.pattern
 			// Anchors of the whole text, inline options, and quantifiers that never give back read the joined values
-			// differently, so such a pattern reads each value alone.
-			let keepsMeaning = !["\\A", "\\z", "\\Z", "\\G", "(?", "*+", "++", "?+", "}+"].contains { pattern.range(of: $0, options: .literal) != nil }
+			// differently, so such a pattern reads each value alone. So do `\X` and two word boundaries in a row, which
+			// ICU reads wrong at the end of a text but not before a line break.
+			let differs = ["\\A", "\\z", "\\Z", "\\G", "(?", "*+", "++", "?+", "}+", "\\X", "\\b\\b", "\\b\\B", "\\B\\b", "\\B\\B"]
+			let keepsMeaning = !differs.contains { pattern.range(of: $0, options: .literal) != nil }
 			self.regex = regex
 			anyLine = keepsMeaning ? try? NSRegularExpression(pattern: pattern, options: regex.options.union(.anchorsMatchLines)) : nil
 			fields = field.map { [$0] } ?? RuleField.unqualified
@@ -133,12 +138,13 @@ struct SearchQuery {
 			// An empty value matches only a pattern that matches the empty text, and it is no line of the joined text.
 			if hasEmpty, matchesEmpty { return true }
 			// A carriage return before the joining line break would make one line break of two.
-			if let anyLine, values.count > 1, !values.contains(where: { $0.utf8.contains(0x0D) }) {
+			if let anyLine, values.count > 1, !lineWatch.gaveUp, !values.contains(where: { $0.utf8.contains(0x0D) }) {
 				let joined = values.joined(separator: "\n")
-				guard let match = watch.firstMatch(anyLine, joined) else { return false }
+				let match = lineWatch.firstMatch(anyLine, joined)
+				if match == nil, !lineWatch.gaveUp { return false }
 				// A match inside one value is a match of that value alone, unless a value has a line end of its own,
 				// after which `anyLine` reads a new line.
-				if let range = Range(match, in: joined), !joined[range].utf8.contains(0x0A), !values.contains(where: Self.hasLineEnd) { return true }
+				if let match, let range = Range(match, in: joined), !joined[range].utf8.contains(0x0A), !values.contains(where: Self.hasLineEnd) { return true }
 			}
 			return values.contains { watch.firstMatch(regex, $0) != nil }
 		}
@@ -153,7 +159,7 @@ struct SearchQuery {
 	/// after an anchor in `/^+?49/`, and the search runs on the main thread at each keystroke. After the first text
 	/// that takes longer than 100 ms, every later text of the same search counts as no match.
 	private final class RegexWatch {
-		private var gaveUp = false
+		private(set) var gaveUp = false
 
 		func firstMatch(_ regex: NSRegularExpression, _ text: String) -> NSRange? {
 			if gaveUp { return nil }
