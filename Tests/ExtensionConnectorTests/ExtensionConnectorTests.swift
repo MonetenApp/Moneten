@@ -10,15 +10,16 @@ import Testing
 
 	/// A refresh of the accounts `A` and `B`, whose tables `ListAccounts` returned earlier.
 	/// A failure after the login comes with the new state of the access, which the helper drops unless `unwrap` is false.
-	static func refresh(_ connector: ExtensionConnector, _ session: TestSession, state: ExtensionState? = nil, unwrap: Bool = true) async throws
-		-> (ConnectorReport, [UUID]) {
+	static func refresh(_ connector: ExtensionConnector, _ session: TestSession, state: ExtensionState? = nil, since: Day? = nil, enforced: Bool = false,
+		unwrap: Bool = true) async throws -> (ConnectorReport, [UUID]) {
 		let ids = [UUID(), UUID()]
 		var stored = state ?? ExtensionState(nil)
 		if state == nil {
 			stored.accounts = ["A EUR": .object(["accountNumber": .string("A"), "name": .string("Giro A")]), "B EUR": .object(["accountNumber": .string("B"), "name": .string("Giro B")])]
 		}
 		let request = RefreshRequest(access: access, state: stored.accessState,
-			accounts: [AccountRequest(accountID: ids[0], name: "Giro A", remoteID: "A EUR", currency: "EUR"), AccountRequest(accountID: ids[1], name: "Giro B", remoteID: "B EUR", currency: "EUR")])
+			accounts: [AccountRequest(accountID: ids[0], name: "Giro A", remoteID: "A EUR", since: since, currency: "EUR"),
+				AccountRequest(accountID: ids[1], name: "Giro B", remoteID: "B EUR", since: since, currency: "EUR")], enforced: enforced)
 		do {
 			return (try await connector.refresh(request, session), ids)
 		} catch let failure as FailureWithState where unwrap {
@@ -47,6 +48,17 @@ import Testing
 		#expect(session.printed == ["SupportsBank ProtocolWebBanking Demo", "InitializeSession2 1 erika geheim true 0 refresh", "RefreshAccount A 0", "RefreshAccount B 0", "EndSession"])
 		#expect(report.outcomes[ids[0]]?.balance == 100)
 		#expect(report.outcomes[ids[1]]?.balance == 100)
+	}
+
+	@Test func enforcedRefreshAsksForEverything() async throws {
+		let script = Self.calls + """
+			function RefreshAccount(account, since) print("RefreshAccount " .. account.accountNumber .. " " .. since) return {balance = 1, transactions = {}} end
+			"""
+		let dated = TestSession(), enforced = TestSession()
+		_ = try await Self.refresh(dated.connector(demo(script)), dated, since: Day(year: 2026, month: 11, day: 1))
+		_ = try await Self.refresh(enforced.connector(demo(script)), enforced, since: Day(year: 2026, month: 11, day: 1), enforced: true)
+		#expect(dated.printed.filter { $0.hasPrefix("RefreshAccount") } == ["RefreshAccount A 1793487600", "RefreshAccount B 1793487600"])
+		#expect(enforced.printed.filter { $0.hasPrefix("RefreshAccount") } == ["RefreshAccount A 0", "RefreshAccount B 0"])
 	}
 
 	@Test func classicLoginGetsTheFieldsInItsOrder() async throws {

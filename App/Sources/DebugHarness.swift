@@ -126,15 +126,16 @@ final class DebugHarness {
 		case "type": (topSheet?.firstResponder as? NSTextView)?.insertText(argument, replacementRange: NSRange(location: NSNotFound, length: 0))
 		// Focuses the first secure field of the sheet on screen and logs what macOS sees of it, for the check that the password manager does not offer it.
 		case "securefield": secureField()
-		// "all", or the name of an account or a group.
-		case "refresh":
-			if argument == "all" { model.refresh(.all) }
-			else if let a = model.ledger.accounts.first(where: { $0.name == argument }) { model.refresh(.account(a.id)) }
-			else if let g = model.ledger.groups.first(where: { $0.name == argument }) { model.refresh(.group(g.id)) }
+		// "all", or the name of an account or a group. "refreshenforced" is the command with the Option key.
+		case "refresh", "refreshenforced":
+			let enforced = command == "refreshenforced"
+			if argument == "all" { model.refresh(.all, enforced: enforced) }
+			else if let a = model.ledger.accounts.first(where: { $0.name == argument }) { model.refresh(.account(a.id), enforced: enforced) }
+			else if let g = model.ledger.groups.first(where: { $0.name == argument }) { model.refresh(.group(g.id), enforced: enforced) }
 		case "status":
 			// Each account by its position and kind, never by its name, IBAN, or account number.
 			for (position, a) in model.ledger.accounts.filter({ $0.accessID != nil }).enumerated() {
-				log("status #\(position) \(a.kind) refreshing=\(model.sync.refreshingAccounts.contains(a.id)) refreshedAt=\(a.refreshedAt.map { "\($0)" } ?? "-") error=\(a.refreshError?.message ?? "-") waitsForUser=\(a.refreshError?.waitsForUser ?? false) interval=\(a.refreshInterval.rawValue) balance=\(a.bankBalanceMinor.map(String.init) ?? "-") rows=\(model.ledger.transactions(ofAccount: a.id).count) new=\(model.ledger.newTransactionCounts[a.id] ?? 0)")
+				log("status #\(position) \(a.kind) refreshing=\(model.sync.refreshingAccounts.contains(a.id)) refreshedAt=\(a.refreshedAt.map { "\($0)" } ?? "-") error=\(a.refreshError?.message ?? "-") waitsForUser=\(a.refreshError?.waitsForUser ?? false) interval=\(a.refreshInterval.rawValue) balance=\(a.bankBalanceMinor.map(String.init) ?? "-") rows=\(model.ledger.transactions(ofAccount: a.id).count) new=\(model.ledger.newTransactionCounts[a.id] ?? 0) historyStart=\(model.historyStarts[a.id].map { "\($0)" } ?? "-")")
 			}
 			log("status line=\(model.refreshStatus ?? "-") accesses=\(model.accesses.count) bankNotices=\(model.bankNotices.waiting.count)")
 		// "closemain" closes the main window as its close button does; both log the scenes of the visible windows.
@@ -326,6 +327,7 @@ final class DebugHarness {
 			}
 		case "scrolltable": scrollTables { argument == "end" ? $0 - 1 : min(Int(argument) ?? 0, $0 - 1) }
 		case "select": select(argument)
+		case "contextmenus": logContextMenus()
 		#if DEBUG || PERF_HARNESS
 		case "perf": Task { await runPerf() }
 		#endif
@@ -618,6 +620,31 @@ final class DebugHarness {
 		else if let g = model.ledger.groups.first(where: { $0.name == name }) { model.navigate(to: .group(g.id)) }
 		else if let c = model.ledger.categories.first(where: { $0.name == name }) { model.navigate(to: .category(c.id)) }
 		else { log("select: not found \(name)") }
+	}
+
+	/// Logs the context menu of each sidebar row as a right click with the Option key builds it. "alt:" marks
+	/// an item that the Option key shows in place of the item before it.
+	private func logContextMenus() {
+		func outlines(in view: NSView) -> [NSOutlineView] { ((view as? NSOutlineView).map { [$0] } ?? []) + view.subviews.flatMap(outlines) }
+		guard let window = NSApp.windows.first(where: { $0.isVisible && $0.identifier?.rawValue.hasPrefix("main") == true }),
+			let content = window.contentView else { return log("contextmenu no window") }
+		// The sidebar is the leftmost list. The transaction table is a list too.
+		guard let list = outlines(in: content).min(by: { $0.convert($0.bounds, to: nil).minX < $1.convert($1.bounds, to: nil).minX }) else {
+			return log("contextmenu no list")
+		}
+		for index in 0..<list.numberOfRows {
+			let row = list.rect(ofRow: index)
+			let point = list.convert(NSPoint(x: row.midX, y: row.midY), to: nil)
+			guard let event = NSEvent.mouseEvent(with: .rightMouseDown, location: point, modifierFlags: .option, timestamp: 0,
+				windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1) else { continue }
+			var view = content.hitTest(content.convert(point, from: nil))
+			var menu: NSMenu?
+			while let v = view, menu == nil {
+				menu = v.menu(for: event)
+				view = v.superview
+			}
+			log("contextmenu row \(index) \(menu?.items.map { ($0.isAlternate ? "alt:" : "") + $0.title } ?? [])")
+		}
 	}
 
 	/// Draws the sidebar in a plain window that is off screen, because the sidebar of the main

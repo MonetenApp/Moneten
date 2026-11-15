@@ -189,6 +189,9 @@ final class AppModel {
 	var bankNotices = BankNotices()
 	/// Opens the window "Notice", or brings it forward. The main window sets it, as `openMainWindow`.
 	@ObservationIgnored var openNoticeWindow: () -> Void = {}
+	/// The first day of the history that the bank keeps, for each account whose full history a refresh
+	/// fetched while the app runs ("Say when the bank has no older transactions").
+	var historyStarts: [UUID: Day] = [:]
 
 	var selection: SidebarSelection? {
 		didSet {
@@ -292,6 +295,7 @@ final class AppModel {
 		sync.deliver = { [weak self] accountID, result in
 			guard let self else { return }
 			self.announcer.stored(try await self.mergeRefresh(result, into: accountID).added)
+			if let start = result.historyStart { self.historyStarts[accountID] = start }
 		}
 		sync.ended = { [weak self] access, state, accounts, attended in
 			let failed = accounts.values.filter { if case .failed = $0 { true } else { false } }.count
@@ -443,6 +447,7 @@ final class AppModel {
 		store = nil
 		accesses = [:]
 		bankNotices = BankNotices()
+		historyStarts = [:]
 		sheet = nil
 		phase = .locked
 		// The lock removes the transaction table in this drawing and empties its rows after it, so that the
@@ -856,14 +861,15 @@ final class AppModel {
 		return FinTSConnector()
 	}
 
-	/// "Refresh All Accounts", "Refresh Account", and "Refresh Accounts". Offline the accounts keep their
-	/// last state, and the app says why nothing happens.
-	func refresh(_ scope: RefreshScope) {
+	/// "Refresh All Accounts", "Refresh Account", and "Refresh Accounts", and with `enforced` the commands
+	/// that ask the bank for the full history. Offline the accounts keep their last state, and the app says
+	/// why nothing happens.
+	func refresh(_ scope: RefreshScope, enforced: Bool = false) {
 		guard autoRefresh.isOnline else {
 			alert = AlertMessage(title: SyncFailure.offline.message, message: "Connect this Mac to the Internet and try again.")
 			return
 		}
-		refresh(ledger.refreshAccounts(scope))
+		refresh(ledger.refreshAccounts(scope), enforced: enforced)
 	}
 
 	/// "Cancel Refresh". The lock cancels too, and then the accounts stay due for the unlock.
@@ -956,7 +962,7 @@ final class AppModel {
 
 	/// Starts one refresh per access, with the state its connector returned last. Only a refresh that the
 	/// user started shows an alert.
-	func refresh(_ plan: [UUID: [AccountRequest]], attended: Bool = true) {
+	func refresh(_ plan: [UUID: [AccountRequest]], attended: Bool = true, enforced: Bool = false) {
 		guard let store else { return }
 		let requests = plan.compactMap { id, accounts in accesses[id].map { ($0, accounts) } }.sorted { $0.0.bankName < $1.0.bankName }
 		for (access, accounts) in requests {
@@ -965,7 +971,8 @@ final class AppModel {
 				continue
 			}
 			do {
-				sync.refresh(RefreshRequest(access: access, state: try store.state(of: access.id), accounts: accounts), with: connector, attended: attended)
+				sync.refresh(RefreshRequest(access: access, state: try store.state(of: access.id), accounts: accounts, enforced: enforced), with: connector,
+					attended: attended)
 				Trail.log("refresh start access=\(trailNumber(of: access.id)) accounts=\(accounts.count) attended=\(attended)")
 			} catch {
 				if attended { alert = AlertMessage(title: "Could not refresh \(access.bankName).", message: String(describing: error)) }
