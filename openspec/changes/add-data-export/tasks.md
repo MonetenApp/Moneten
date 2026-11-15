@@ -5,7 +5,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 ## 1. Requirements
 
 - [ ] 1.1 Export command. Build it in 2.10 and verify it in the app.
-- [ ] 1.2 Only the selection. Build it in 2.10.
+- [x] 1.2 Only the selection. TransactionCSVTests.hiddenSelection checks visible selections, hidden selections, empty selections, and list order through the shared library function that the app calls.
 - [x] 1.3 Export follows search and filters. Verified by the debug app check of 2.10: "Girokonto" exports 162 rows, and with the period "current month" 6 rows, the rows that the list shows.
 - [ ] 1.4 Save panel with format choice. Build it in 2.10.
 - [x] 1.5 CSV columns. Verified by TransactionCSVTests "The first line names the 17 columns in order" and "One transaction in German and in English formats".
@@ -13,7 +13,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [ ] 1.7 Categories in a CSV file. Built and verified by TransactionCSVTests "The category is written with its group, and a row without one names the default category" and by the debug app check of 2.10, which writes "Living - Groceries". The scenario "Split transaction" waits for the change `add-split-transactions` (task 2.11).
 - [x] 1.8 Own account in group and category exports. Verified by TransactionCSVTests "Own account is the IBAN, else the account number, else the name of the account".
 - [x] 1.9 Export failures. Verified by the debug app check of 2.10: an export into /System says "Could not export to file." with the reason, and no file is created.
-- [ ] 1.10 Progress of an export. Build it in 2.10.
+- [x] 1.10 Progress of an export. A debug harness check with a 2-second file sync delay captured the actual progress sheet in light and dark appearance while the destination was still absent. Cancel during sync preserved an existing file and removed the temporary file.
 - [x] 1.11 Complete export. Verified by AllDataTests "A complete export imports into an empty database, and its export equals the first file apart from the export date", which holds groups, accounts of each kind, an access, categories with rules, transactions, deleted transactions, portfolio values, and positions, and by the debug app check of 2.7. The scenario "Later capability" applies to each later change.
 - [x] 1.12 Secrets and files that the complete export leaves out. Verified by AllDataTests "The file names the bank, the user ID, and the connector of an access, and holds neither its PIN nor its state", and by the warning and the message after the export, which name what the file leaves out.
 - [x] 1.13 Warning before a complete export. Verified by the debug app check of 2.7: "Export All Data..." shows the warning with "Cancel" and "Export", and only "Export" opens the save panel.
@@ -33,7 +33,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [x] 2.7 Add "Export All Data..." and "Import All Data..." to the File menu with the warning, the save and open panels, and the refusal of a database in use. Check them in the debug app with made-up data, and record the snapshots in the pull request. Verified by the debug app check: a database with the demo data exported with the harness command `exportall`, an empty database imported the file with `importall`, and its export equals the first file apart from `exportedAt` (175 transactions, 22 categories). A second `importall` was refused. The snapshots of the warning are in the pull request.
 - [x] 2.8 Write TransactionCSVTests for the scenarios "Header row", "One transaction", "Purpose with a semicolon", "Purpose with several lines", "Nested category", and "Group export", with German and English formats. Verified by the seven TransactionCSVTests.
 - [x] 2.9 Build `TransactionCSV` in the module `Domain` until the tests of 2.8 pass. Verified by the tests of 2.8.
-- [ ] 2.10 Add "Export Transactions..." to the Account menu and to the context menus of accounts, groups, categories, and rows. Export the selected rows or the rows of the list, propose the file name, write through a temporary file, and show progress with "Cancel". Check it in the debug app. Built. Checked in the debug app with the harness command `exportcsv`, which writes through the same code without the save panel: an account, a category from all accounts, the period filter, the byte order mark, and a write-protected folder. Not checked yet: the save panel with its "Format" menu and proposed name, an export of selected rows, and the progress of a long export.
+- [ ] 2.10 Add "Export Transactions..." to the Account menu and to the context menus of accounts, groups, categories, and rows. Export the selected rows or the rows of the list, propose the file name, write through a temporary file, and show progress with "Cancel". Check it in the debug app. Built. Checked in the debug app with the harness command `exportcsv`, which writes through the same code without the save panel: an account, a category from all accounts, the period filter, the byte order mark, and a write-protected folder. Gate round 1 additionally checks visible selections through TransactionCSVTests.hiddenSelection, the full-account context export through the harness, and progress and cancellation with a 2-second sync delay. Not checked yet: actual menu clicks and the save panel with its "Format" menu and proposed name.
 - [ ] 2.11 Write one line for each part of a split transaction when the change `add-split-transactions` stores splits, and add the splits to the complete export.
 
 ## 3. Integration
@@ -53,12 +53,25 @@ Each regression failed before its fix. The focused AllDataTests suite passes wit
 
 ## Gate follow-ups on main after #197
 
-- [x] Share the private export writer with CSV. `scripts/check-export-files.py` measures mode 0600 on new and replaced CSV and JSON files. The CSV check failed with 0644 before the fix.
+- [x] Share the private export writer with CSV. ExportFileTests.privateExportFile and AllDataTests.privateExportFile measure mode 0600 through the shared writer on new and replaced files. The CSV check failed with 0644 before the fix.
 - [x] Explain an unreadable database in the complete export alert. AllDataTests.exportErrorDescription asserts the literal message from the spec. The debug harness captures the same alert before and after the fix in light mode. The existing export stays unchanged.
 - [x] Refuse decimal values that would be rounded, with their position. AllDataTests.decimalPrecision checks holding quantities, prices, purchase prices, and exchange rates. It verifies that the database stays empty and that a signed 38-digit quantity imports without rounding. AllDataTests.exactDecimalRoundTrip preserves five exactly represented values, including small fractions and 39-digit coefficients. The test imported a truncated value before the fix.
-- [x] Sync both exports before reporting success. `scripts/check-export-sync.sh` observes a file sync before rename and a directory sync after rename for new and replaced CSV and JSON files. Before the fix it observed only renames.
+- [x] Sync both exports before reporting success. `scripts/check-export-sync.sh` observes full file sync before rename and directory sync after rename through the shared writer for new and replaced files. Before the fix it observed only renames.
 
 - [ ] Verify the error alert in dark appearance. Two harness capture attempts produced unreadable images, so the dark check is inconclusive. The PR includes only the readable light snapshots.
+
+## CSV gate round 1
+
+- [x] Choose rows in Domain. TransactionCSVTests.hiddenSelection reproduces one hidden selection and 41 visible exported rows, visible and mixed selections, an empty list, and list order.
+- [x] Protect formula-like text. TransactionCSVTests.formulaProtection checks six literal prefixes in Category, Name, Purpose, Account, Bank, Own account, Booking text, the SEPA references, and Comment. Amount stays "-89,00".
+- [x] Specify currency precision. TransactionCSVTests.otherCurrencies checks KWD "-12,345" and JPY "-1000,00". This behavior already passed before the round.
+- [x] Check the shared writer in StorageTests. ExportFileTests.privateExportFile checks mode 0600 for a new file and replacement of mode 0644. The standalone GUI permissions script is removed. The sync probe stays because storage results cannot prove sync order. Both scripts/check.sh and CI run scripts/check-export-sync.sh, which checks full sync, forced fsync fallback, rename, directory sync, and cancellation during sync.
+- [x] Export the whole account from its context menu. The harness check writes all 162 demo rows with a row selected, a search, and a month filter. Before the fix it wrote only 1 selected row.
+- [x] Keep CSV encoding and file I/O off the main actor. With the injected 2-second sync delay, the before snapshot arrived only after sync. After snapshots arrived while sync was pending and show the progress sheet in both appearances. Cancellation preserves an existing destination.
+- [x] Allow a mode 0300 destination folder. ExportFileTests.writeOnlyFolder checks the literal contents and mode 0600. Directory sync is best effort because some destinations cannot open or sync a directory.
+- [x] Use one digit set in ar_EG. TransactionCSVTests.arabicDigits checks the complete literal CSV row with ASCII digits in dates and amounts and the Arabic decimal mark.
+
+The selection, formula, Arabic digit, cancellation, and write-only folder regressions failed before their fixes. The KWD and private-file checks confirmed behavior that already worked. The harness checks use only a private debug app and made-up data. Menu clicks, the save panel, 200,000 rows, and release-build integration remain unchecked.
 
 ## Workflow follow-up
 

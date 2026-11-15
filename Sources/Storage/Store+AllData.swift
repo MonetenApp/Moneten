@@ -36,23 +36,25 @@ extension Store {
 	}
 
 	public static func writeExport(_ data: Data, to url: URL) throws {
+		try Task.checkCancellation()
 		let temporary = url.deletingLastPathComponent().appending(path: ".moneten-export-\(UUID().uuidString)")
 		let descriptor = open(temporary.path, O_WRONLY | O_CREAT | O_EXCL, 0o600)
 		guard descriptor >= 0 else { throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno), userInfo: [NSFilePathErrorKey: temporary.path]) }
 		defer { unlink(temporary.path) }
 		let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
 		try handle.write(contentsOf: data)
-		try handle.synchronize()
+		guard fcntl(descriptor, F_FULLFSYNC) == 0 || fsync(descriptor) == 0 else {
+			throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno), userInfo: [NSFilePathErrorKey: temporary.path])
+		}
 		try handle.close()
-		let directory = open(url.deletingLastPathComponent().path, O_RDONLY | O_DIRECTORY)
-		guard directory >= 0 else { throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno), userInfo: [NSFilePathErrorKey: url.deletingLastPathComponent().path]) }
-		defer { Darwin.close(directory) }
+		let directory = open(url.deletingLastPathComponent().path, O_EVTONLY | O_DIRECTORY)
+		defer { if directory >= 0 { Darwin.close(directory) } }
+		try Task.checkCancellation()
 		guard rename(temporary.path, url.path) == 0 else {
 			throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno), userInfo: [NSFilePathErrorKey: url.path])
 		}
-		guard fsync(directory) == 0 else {
-			throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno), userInfo: [NSFilePathErrorKey: url.deletingLastPathComponent().path])
-		}
+		// Some destinations allow writing but cannot be opened or synced as directories.
+		if directory >= 0 { _ = fsync(directory) }
 	}
 
 	/// Writes a complete export into this database in one transaction. The database must hold no account and no

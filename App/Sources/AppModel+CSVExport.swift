@@ -4,22 +4,22 @@ import Foundation
 import Storage
 
 extension AppModel {
-	/// "Export Transactions...": the selected rows, or else the rows that the list shows with its search and filters.
 	func exportTransactions() {
 		exportTransactions(rowsToExport)
 	}
 
 	var rowsToExport: [Transaction] {
-		let visible = visibleTransactions
-		return selectedTransactions.isEmpty ? visible : visible.filter { selectedTransactions.contains($0.id) }
+		TransactionCSV.rows(visible: visibleTransactions, selection: selectedTransactions)
 	}
 
-	/// The context menu of an account, group, or category shows it first, so the export covers what its list shows.
-	/// The table follows a new selection only after a drawing, so the rows come from the key of the target.
 	func exportTransactions(of target: SidebarSelection) {
-		if selection == target { return exportTransactions() }
+		exportTransactions(rowsToExport(of: target))
+	}
+
+	func rowsToExport(of target: SidebarSelection) -> [Transaction] {
 		navigate(to: target)
-		exportTransactions(transactions(for: TableKey(selection: target, filter: filter, portfolios: selectedPortfolios)))
+		if case .account = target { return ledger.transactions(in: target.scope) }
+		return transactions(for: TableKey(selection: target, filter: filter, portfolios: selectedPortfolios))
 	}
 
 	func exportTransactions(ids: Set<UUID>) {
@@ -34,7 +34,6 @@ extension AppModel {
 	func export(_ rows: [Transaction], to url: URL) {
 		let ledger = ledger
 		exportTask = Task {
-			// A short export finishes before the progress appears.
 			let progress = Task {
 				try await Task.sleep(for: .milliseconds(500))
 				try Task.checkCancellation()
@@ -42,11 +41,11 @@ extension AppModel {
 			}
 			defer { progress.cancel(); if sheet == .exporting { sheet = nil } }
 			do {
-				let work = Task.detached { try TransactionCSV.data(rows, ledger: ledger) }
+				let work = Task.detached {
+					try Store.writeExport(TransactionCSV.data(rows, ledger: ledger), to: url)
+				}
 				// A detached task does not inherit the cancel of "Cancel", so it is passed on.
-				let data = try await withTaskCancellationHandler { try await work.value } onCancel: { work.cancel() }
-				try Task.checkCancellation()
-				try Store.writeExport(data, to: url)
+				try await withTaskCancellationHandler { try await work.value } onCancel: { work.cancel() }
 			} catch is CancellationError {
 			} catch {
 				alert = AlertMessage(title: "Could not export to file.", message: error.localizedDescription)
@@ -59,7 +58,6 @@ extension AppModel {
 		exportTask?.cancel()
 	}
 
-	/// The save panel with a "Format" menu and a name from the selection and the days of the rows.
 	private func askExportFile(for rows: [Transaction]) -> URL? {
 		let panel = NSSavePanel()
 		panel.title = "Export Transactions"

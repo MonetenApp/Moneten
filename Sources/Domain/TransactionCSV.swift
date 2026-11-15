@@ -4,7 +4,8 @@ import Foundation
 /// with dates and decimal marks in the format of a locale and amounts without thousands separators.
 public enum TransactionCSV {
 	public static func rows(visible: [Transaction], selection: Set<UUID>) -> [Transaction] {
-		selection.isEmpty ? visible : visible.filter { selection.contains($0.id) }
+		let selected = visible.filter { selection.contains($0.id) }
+		return selected.isEmpty ? visible : selected
 	}
 
 	static let columns = ["Date", "Value date", "Category", "Name", "Purpose", "Account", "Bank", "Amount", "Currency", "Own account", "Booking text",
@@ -15,10 +16,9 @@ public enum TransactionCSV {
 		Data([0xEF, 0xBB, 0xBF]) + Data(try text(rows, ledger: ledger, locale: locale).utf8)
 	}
 
-	/// Throws `CancellationError` when the task that builds it is canceled.
 	static func text(_ rows: [Transaction], ledger: Ledger, locale: Locale) throws -> String {
 		let dates = DateFormatter()
-		dates.locale = locale
+		dates.locale = Locale(identifier: "en_US_POSIX")
 		dates.timeZone = TimeZone(identifier: "UTC")
 		dates.dateFormat = DateFormatter.dateFormat(fromTemplate: "ddMMyyyy", options: 0, locale: locale)
 		var calendar = Calendar(identifier: .gregorian)
@@ -28,7 +28,6 @@ public enum TransactionCSV {
 			return dates.string(from: date)
 		}
 		let mark = locale.decimalSeparator ?? "."
-		/// The decimal places of the currency, at least two, with the decimal mark of the locale.
 		func amount(_ minorUnits: Int64, _ currency: String) -> String {
 			var text = AmountText.text(minorUnits, currency)
 			if !text.contains(".") { text += "." }
@@ -45,12 +44,11 @@ public enum TransactionCSV {
 			let fields = [day(t.bookingDate), day(t.valueDate), categoryPath(t.categoryID, in: ledger), t.name, t.purpose, t.counterpartyIBAN ?? "",
 				t.counterpartyBIC ?? "", amount(t.amountMinor, t.currency), t.currency, own, t.bookingText ?? "", t.endToEndReference ?? "", t.mandateReference ?? "",
 				t.creditorID ?? "", t.comment ?? "", t.isChecked ? "X" : "", t.isPending ? "X" : ""]
-			lines.append(fields.map(quoted).joined(separator: ";"))
+			lines.append(fields.enumerated().map { quoted($0.element, protectFormula: $0.offset != 7) }.joined(separator: ";"))
 		}
 		return lines.joined(separator: "\r\n") + "\r\n"
 	}
 
-	/// "Household - Food", or the name of the default category for a row without a category.
 	private static func categoryPath(_ id: UUID?, in ledger: Ledger) -> String {
 		guard let id, var c = ledger.category(id) else { return ledger.defaultCategory?.name ?? "" }
 		var names = [c.name]
@@ -61,7 +59,9 @@ public enum TransactionCSV {
 		return names.joined(separator: " - ")
 	}
 
-	private static func quoted(_ field: String) -> String {
+	private static func quoted(_ field: String, protectFormula: Bool) -> String {
+		var field = field
+		if protectFormula, let first = field.unicodeScalars.first, "=+-@\t\r".unicodeScalars.contains(first) { field = "'" + field }
 		guard field.contains(where: { $0 == ";" || $0 == "\"" || $0.isNewline }) else { return field }
 		return "\"" + field.replacingOccurrences(of: "\"", with: "\"\"") + "\""
 	}

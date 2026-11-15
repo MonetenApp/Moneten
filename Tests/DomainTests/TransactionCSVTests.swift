@@ -2,7 +2,6 @@ import Foundation
 import Testing
 @testable import Domain
 
-/// All names and numbers are made up.
 @Suite("CSV export of transactions")
 struct TransactionCSVTests {
 	let household = Domain.Category(position: 0, name: "Household", isGroup: true)

@@ -1,6 +1,5 @@
 import SwiftUI
 
-/// Shown while a long export runs. "Cancel" stops it, and no file is written.
 struct ExportProgressSheet: View {
 	@Environment(AppModel.self) private var model
 
