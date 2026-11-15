@@ -369,6 +369,14 @@ The app SHALL let the user save the settings of the preview as a named profile. 
 - **THEN** the preview maps debit to column 2 and credit to column 3, counting from zero, and reads -1000 minor units
 - **AND** a changed number of repeated titles leaves the file without a suggested profile
 
+#### Scenario: A profile meets a different text encoding
+
+- **GIVEN** a Windows-1252 profile with ASCII titles and mapped date, name, purpose, amount and category columns
+- **WHEN** a UTF-8 file with the same titles contains "Bäckerei", "Frühstück", "Büro" and -4,20
+- **THEN** quiet import opens the preview, which uses UTF-8 and retains the profile's mappings, date order, decimal mark and category option
+- **AND** the preview reads those texts unchanged and the amount as -420 minor units
+- **AND** a moved header and a profile picked in the preview preserve the detected encoding in the same way
+
 ### Requirement: Categories from a CSV file
 
 The app SHALL assign the category from a category column to each imported transaction when a category with that name or path exists. With the option "Auto-create categories" the app creates the missing categories and reports their number. Without the option, a transaction with an unknown category is treated as one without a category.
