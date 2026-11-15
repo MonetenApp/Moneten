@@ -298,6 +298,12 @@ enum Schema {
 			}
 			try db.execute(sql: "UPDATE deletedTransaction SET currency = (SELECT currency FROM account WHERE account.id = deletedTransaction.accountID)")
 		}
+		// The ISO 20022 return reason of a returned payment, read from a CAMT file (add-file-import, task 2.5).
+		m.registerMigration("v16") { db in
+			try db.alter(table: "bankTransaction") { t in
+				t.add(column: "returnReason", .text)
+			}
+		}
 		return m
 	}
 }

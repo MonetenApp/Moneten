@@ -240,6 +240,19 @@ struct ReconcileTests {
 		#expect(rows.map(\.id) == first.added.map(\.id))
 	}
 
+	@Test("A booked row with a return reason books a pending row and keeps the reason")
+	func bookedReturnReason() {
+		let pending = row(5, 8_900, "Stadtwerke Musterstadt", "Rücklastschrift", pending: true)
+		var booked = row(5, 8_900, "Stadtwerke Musterstadt", "Rücklastschrift")
+		booked.returnReason = "AC04"
+		let r = merge(.file([booked]), stored: [pending])
+		#expect(r.booked.map(\.id) == [pending.id])
+		#expect(r.booked.map(\.returnReason) == ["AC04"])
+		var returnedPending = pending
+		returnedPending.returnReason = "AC04"
+		#expect(merge(.file([row(5, 8_900, "Stadtwerke Musterstadt", "Rücklastschrift")]), stored: [returnedPending]).booked.map(\.returnReason) == ["AC04"])
+	}
+
 	@Test("A category that the user set by hand stays at the booking")
 	func manualCategoryStays() {
 		let gifts = Domain.Category(position: 0, name: "Gifts")

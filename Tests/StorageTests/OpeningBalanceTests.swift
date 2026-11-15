@@ -244,7 +244,7 @@ struct OpeningBalanceTests {
 		let fetched = Account(position: 4, name: "Giro", kind: .giro, source: .bank, bankBalanceMinor: 30_000, initialBalanceMinor: 25_000)
 		let depot = Account(position: 5, name: "Depot", kind: .portfolio, source: .migrated, bankBalanceMinor: 1_000_000, initialBalanceMinor: 900_000)
 		try store.save(accounts: [travel, wallet, household, cash, fetched, depot])
-		try store.save([
+		try insertOldRows(queue, [
 			Transaction(accountID: travel.id, bookingDate: day, amountMinor: -2_000, currency: "USD", name: "Diner New York", sourceID: "moneymoney:1"),
 			Transaction(accountID: household.id, bookingDate: day, amountMinor: -480, name: "Bäckerei Gutbrot"),
 			Transaction(accountID: household.id, bookingDate: day, amountMinor: -300, name: "Kiosk", isPending: true, sourceID: "moneymoney:4"),
@@ -269,12 +269,11 @@ struct OpeningBalanceTests {
 		let day = Day(year: 2026, month: 11, day: 2)
 		let wallet = Account(position: 0, name: "Wallet", kind: .cash, source: .migrated, bankBalanceMinor: 50_000, initialBalanceMinor: 50_000)
 		try store.save(accounts: [wallet])
-		try store.save([Transaction(accountID: wallet.id, bookingDate: day, amountMinor: -300, name: "Kiosk", isPending: true, sourceID: "moneymoney:9")])
-		_ = try store.merge(.file([Transaction(accountID: wallet.id, bookingDate: day, amountMinor: -300, name: "Kiosk")]), into: wallet.id)
+		// The migrated pending row "moneymoney:9" as a file import leaves it when it books the row.
+		try insertOldRows(queue, [Transaction(accountID: wallet.id, bookingDate: day, amountMinor: -300, name: "Kiosk", sourceID: "moneymoney-booked:9")])
 		try Schema.migrator.migrate(queue)
 
 		let ledger = try store.loadLedger()
-		#expect(ledger.transactions.map(\.sourceID) == ["moneymoney-booked:9"])
 		#expect(ledger.balance(of: try #require(ledger.account(wallet.id))).minorUnits == 49_700)
 	}
 
@@ -298,6 +297,19 @@ struct OpeningBalanceTests {
 		try insertDeletedRow(queue, accountID: travel.id, sourceID: "moneymoney:1", amountMinor: -2_000)
 		try Schema.migrator.migrate(queue)
 		#expect(try store.deletedTransactions().map(\.currency) == ["CHF"])
+	}
+
+	/// Rows as a database at an older version stores them, with only the columns that its table has.
+	func insertOldRows(_ queue: DatabaseQueue, _ rows: [Transaction]) throws {
+		try queue.write { db in
+			let columns = Set(try db.columns(in: "bankTransaction").map(\.name))
+			for row in rows {
+				let values = try row.databaseDictionary.filter { columns.contains($0.key) }
+				let names = values.keys.map { "\"\($0)\"" }.joined(separator: ", ")
+				let marks = Array(repeating: "?", count: values.count).joined(separator: ", ")
+				try db.execute(sql: "INSERT INTO bankTransaction (\(names)) VALUES (\(marks))", arguments: StatementArguments(Array(values.values)))
+			}
+		}
 	}
 
 	/// A deleted row as a database before v15 stores it, without a currency.
