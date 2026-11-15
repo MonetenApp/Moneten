@@ -5,6 +5,20 @@ import Testing
 
 @Suite("CSV preview")
 struct CSVPreviewTests {
+	@Test("An ambiguous first amount keeps the titles above a subtotal and both transactions")
+	func ambiguousFirstAmountBeforeSubtotal() throws {
+		let file = try CSVFile(data: Data("Tag;Wer;Wieviel\n01.11.2026;Kiosk;1,234\nZwischensumme;;0,00\n02.11.2026;Bakery;4.50\n".utf8))
+		#expect(file.header == ["Tag", "Wer", "Wieviel"])
+		var layout = try file.detectedLayout()
+		layout.assign(0, to: .bookingDate)
+		layout.assign(1, to: .name)
+		layout.assign(2, to: .amount)
+		let preview = try file.preview(layout, currency: "EUR")
+		#expect(preview.problem == nil)
+		#expect(preview.transactions.map(\.amountMinor) == [123_400, 450])
+		#expect(preview.transactions.map(\.name) == ["Kiosk", "Bakery"])
+	}
+
 	@Test("The CSV preview shows the first dated rows as the import reads them and counts all of them")
 	func firstRows() throws {
 		let rows = (1...12).map { "\(String(format: "%02d", $0)).11.2026;Kiosk \($0);-\($0),50" }
