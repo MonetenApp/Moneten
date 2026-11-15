@@ -147,7 +147,7 @@ final class DebugHarness {
 		case "status":
 			// Each account by its position and kind, never by its name, IBAN, or account number.
 			for (position, a) in model.ledger.accounts.filter({ $0.accessID != nil }).enumerated() {
-				log("status #\(position) \(a.kind) refreshing=\(model.sync.refreshingAccounts.contains(a.id)) refreshedAt=\(a.refreshedAt.map { "\($0)" } ?? "-") error=\(Self.label(a.refreshError)) waitsForUser=\(a.refreshError?.waitsForUser ?? false) interval=\(a.refreshInterval.rawValue) balance=\(a.bankBalanceMinor.map(String.init) ?? "-") rows=\(model.ledger.transactions(ofAccount: a.id).count) new=\(model.ledger.newTransactionCounts[a.id] ?? 0) historyStart=\(model.bankHistories[a.id].flatMap { if case let .startsAt(day) = $0 { "\(day)" } else { nil } } ?? "-") noTransactions=\(model.bankHistories[a.id] == .noTransactions)")
+				log("status #\(position) \(a.kind) refreshing=\(model.sync.refreshingAccounts.contains(a.id)) refreshedAt=\(a.refreshedAt.map { "\($0)" } ?? "-") error=\(Self.label(a.refreshError)) waitsForUser=\(a.refreshError?.waitsForUser ?? false) interval=\(a.refreshInterval.rawValue) balance=\(a.bankBalanceMinor == nil ? "-" : "set") rows=\(model.ledger.transactions(ofAccount: a.id).count) new=\(model.ledger.newTransactionCounts[a.id] ?? 0) historyStart=\(model.bankHistories[a.id].flatMap { if case let .startsAt(day) = $0 { "\(day)" } else { nil } } ?? "-") noTransactions=\(model.bankHistories[a.id] == .noTransactions)")
 			}
 			log("status line=\(model.refreshStatus ?? "-") accesses=\(model.accesses.count) bankNotices=\(model.bankNotices.waiting.count)")
 		// "closemain" closes the main window as its close button does; both log the scenes of the visible windows.
@@ -172,7 +172,7 @@ final class DebugHarness {
 			// By the position and the kind of the account, as in "status", never by its name.
 			let accounts = model.ledger.accounts.filter { $0.accessID != nil }
 			if let position = accounts.firstIndex(where: { $0.name == argument }), let error = accounts[position].refreshError {
-				offscreenSnapshot(RefreshErrorPopover(account: accounts[position], error: error), width: 352, name: "error-\(position)-\(accounts[position].kind)")
+				offscreenSnapshot(RefreshErrorPopover(account: accounts[position], error: error), width: 352, name: "error-\(position)-\(accounts[position].kind.rawValue.lowercased())")
 			}
 		case "extrun": runExtension(argument)
 		case "escape":
@@ -208,7 +208,8 @@ final class DebugHarness {
 		// Runs JavaScript in the login window of an extension, such as "solve('stub-token')" on the captcha stub.
 		case "extjs": ExtensionWebDebug.current?.evaluateJavaScript(argument) { [weak self] _, error in self?.log("extjs \(error.map { "error=\($0.localizedDescription)" } ?? "ok")") }
 		case "extcaptchastub": ExtensionWebDebug.captchaStub = argument != "off"
-		case "extstate": logExtensionState()
+		// The state of each access and account. "extstate <minor units>" logs whether a balance is that amount.
+		case "extstate": logExtensionState(expecting: argument)
 		// The Extensions window and the catalog (ADR 0015). "extcatalog <url>" points the catalog at a test index and checks it.
 		case "extensions": openExtensionsWindow()
 		// An app in the background shows every item of the menu bar disabled, so this reads the condition of the commands.
@@ -274,13 +275,14 @@ final class DebugHarness {
 			if let giro = model.ledger.accounts.first(where: { $0.name == "Girokonto" }) {
 				model.delete(transactions: Set(model.ledger.transactions(ofAccount: giro.id).filter { $0.name == argument }.map(\.id)))
 			}
+		// The rows of an account by their day and flags, and whether the bank sent a balance, without amounts.
 		case "rows":
 			if let account = model.ledger.accounts.first(where: { $0.name == argument }) {
 				let rows = model.ledger.transactions(ofAccount: account.id).filter { $0.isFetched || $0.needsReview }
 				for t in rows {
-					log("row \(t.bookingDate) \(t.amountMinor)\(t.isPending ? " pending" : "")\(t.isNew ? " new" : "")\(t.needsReview ? " review" : "")")
+					log("row \(t.bookingDate)\(t.isPending ? " pending" : "")\(t.isNew ? " new" : "")\(t.needsReview ? " review" : "")")
 				}
-				log("rows \(rows.count) new=\(model.ledger.newTransactionCounts[account.id] ?? 0) balance=\(account.bankBalanceMinor.map(String.init) ?? "-")")
+				log("rows \(rows.count) new=\(model.ledger.newTransactionCounts[account.id] ?? 0) balance=\(account.bankBalanceMinor == nil ? "-" : "set")")
 			}
 		case "symbol":
 			// "<category>=<symbol>" sets the icon of a category, "<category>=" removes it.
@@ -456,7 +458,8 @@ final class DebugHarness {
 			guard parts.count == 2, var c = model.ledger.categories.first(where: { $0.name == parts[0] }) else { return log("rule not found") }
 			c.rule = parts[1]
 			model.save(category: c)
-			log("rule error=\(c.ruleError.map { "\($0)" } ?? "none")")
+			// The position only: the message of the error repeats a part of the rule, which can be a name or an IBAN.
+			log("rule error=\(c.ruleError.map { "RuleSyntaxError position=\($0.position + 1)" } ?? "none")")
 		// "<category>": what "Apply to all transactions." in the category settings does with the saved rule.
 		case "applyrule":
 			guard let c = model.ledger.categories.first(where: { $0.name == argument }) else { return log("applyrule not found") }
@@ -521,7 +524,8 @@ final class DebugHarness {
 		case "calibration":
 			log("calibration proposed=\(model.selectedAccount.flatMap(model.proposedCalibration) != nil)")
 		case "quit": NSApp.terminate(nil)
-		default: log("unknown command \(command)")
+		// Without the name, which arrives from outside the app and can be anything.
+		default: log("unknown command")
 		}
 	}
 
@@ -539,7 +543,19 @@ final class DebugHarness {
 	/// The return code of the bank, which a text of the bank can hide a name or an IBAN in.
 	private static func label(_ error: RefreshError?) -> String {
 		guard let error else { return "-" }
-		return error.code ?? "set"
+		return error.code.map(label(code:)) ?? "set"
+	}
+
+	/// A return code of up to four digits, as FinTS sends it. The helper can send any text as the code, so
+	/// a code that is not such a number is "invalid".
+	private static func label(code: String) -> String {
+		(1...4).contains(code.count) && code.allSatisfy { $0.isASCII && $0.isNumber } ? code : "invalid"
+	}
+
+	/// The name of a snapshot when it is short and made of lowercase letters, digits, and hyphens, as the
+	/// checks name their snapshots. Any other name can come from outside the app and hold a name or a path.
+	private static func loggable(_ name: String) -> String {
+		name.wholeMatch(of: #/[a-z0-9-]{1,32}/#) == nil ? "invalid" : name
 	}
 
 	/// The case of a refresh state, and of a failure its case and the return code of the bank, without a text.
@@ -553,7 +569,7 @@ final class DebugHarness {
 		case .needsUser: "needsUser"
 		case .finished: "finished"
 		case .cancelled: "cancelled"
-		case let .failed(failure): (["failed", label(failure)] + [failure.bankMessage?.code].compactMap { $0 }).joined(separator: ":")
+		case let .failed(failure): (["failed", label(failure)] + [failure.bankMessage?.code.map(label(code:))].compactMap { $0 }).joined(separator: ":")
 		}
 	}
 
@@ -645,8 +661,8 @@ final class DebugHarness {
 		}
 	}
 
-	/// The euro balance chart of the selected account or group: its first and last bar and the total
-	/// in the title, which the last bar of a daily chart equals.
+	/// The euro balance chart of the selected account or group: the days of its first and last bar, and
+	/// whether the last bar equals the total in the title, without the amounts.
 	private func logChart() {
 		guard let model else { return }
 		let ids: Set<UUID>
@@ -662,7 +678,7 @@ final class DebugHarness {
 		}
 		let shown = Set(ids.filter { model.ledger.account($0).map { !$0.isClosed && $0.currency == "EUR" } ?? false })
 		let bars = BalanceChart.stripBars(model.ledger, ids: shown, range: model.chartRange, currency: "EUR", monthly: model.balanceMode == .monthlyAverage)
-		log("chart bars=\(bars.count) first=\(bars.first.map { "\($0.start) \($0.money.minorUnits)" } ?? "-") last=\(bars.last.map { "\($0.start) \($0.money.minorUnits)" } ?? "-") total=\(total.map(String.init) ?? "-")")
+		log("chart bars=\(bars.count) first=\(bars.first.map { "\($0.start)" } ?? "-") last=\(bars.last.map { "\($0.start)" } ?? "-") lastIsTotal=\(bars.last.flatMap { last in total.map { "\($0 == last.money.minorUnits)" } } ?? "-")")
 	}
 
 	private func mainKey(_ name: String) {
@@ -736,7 +752,7 @@ final class DebugHarness {
 			let run = ExtensionRun(package: package, function: parts[1], fixture: fixture, store: store) { [weak self] in self?.log($0) }
 			model.sync.refresh(RefreshRequest(access: access, accounts: []), with: run, attended: true)
 		} catch {
-			log("ext error=\(error)")
+			log("ext error=\(type(of: error))")
 		}
 	}
 
@@ -770,7 +786,7 @@ final class DebugHarness {
 				model.refreshExtensionAccesses(package: package, fixture: fixture, attended: !(parts.count > 2 && parts[2] == "auto"), log: log)
 			}
 		} catch {
-			log("ext error=\(error)")
+			log("ext error=\(type(of: error))")
 		}
 	}
 
@@ -810,15 +826,17 @@ final class DebugHarness {
 		}
 	}
 
-	/// The state of every bank access and the failure of each of its accounts.
-	private func logExtensionState() {
+	/// The state of every bank access and the failure of each of its accounts. The balance of an account is
+	/// "ok" when it is the amount in minor units that the command expects, "differs" when not, and "set" without one.
+	private func logExtensionState(expecting expected: String) {
 		guard let model else { return }
 		for access in model.accesses.values.sorted(by: { $0.bankName < $1.bankName }) {
 			log("ext access \(access.bankName) state=\(Self.label(model.sync.states[access.id] ?? .idle))")
 			for account in model.ledger.accounts where account.accessID == access.id {
 				let rows = model.ledger.transactions.filter { $0.accountID == account.id }
 				let failure = account.refreshError.map { " failed=\(Self.label($0))" } ?? ""
-				log("ext account \(account.kind) rows=\(rows.count) balance=\(model.ledger.balance(of: account).minorUnits)\(failure)")
+				let balance = model.ledger.balance(of: account).minorUnits
+				log("ext account \(account.kind) rows=\(rows.count) balance=\(Int64(expected).map { $0 == balance ? "ok" : "differs" } ?? "set")\(failure)")
 			}
 		}
 	}
@@ -940,7 +958,7 @@ final class DebugHarness {
 				try? rep.representation(using: .png, properties: [:])?.write(to: self.folder.appendingPathComponent("\(name).png"))
 			}
 			window.orderOut(nil)
-			self.log("snapshot \(name) \(Int(host.bounds.width))x\(Int(host.bounds.height))")
+			self.log("snapshot \(Self.loggable(name)) \(Int(host.bounds.width))x\(Int(host.bounds.height))")
 		}
 	}
 
@@ -969,9 +987,9 @@ final class DebugHarness {
 					web.image.draw(in: frame)
 					NSGraphicsContext.restoreGraphicsState()
 				}
-				let file = folder.appendingPathComponent("\(name)-\(i)\(String(repeating: "-sheet", count: j)).png")
-				try? rep.representation(using: .png, properties: [:])?.write(to: file)
-				log("snapshot \(file.lastPathComponent) \(w.identifier?.rawValue ?? "-") \(Int(view.bounds.width))x\(Int(view.bounds.height))")
+				let suffix = "-\(i)\(String(repeating: "-sheet", count: j)).png"
+				try? rep.representation(using: .png, properties: [:])?.write(to: folder.appendingPathComponent(name + suffix))
+				log("snapshot \(Self.loggable(name))\(suffix) \(w.identifier?.rawValue ?? "-") \(Int(view.bounds.width))x\(Int(view.bounds.height))")
 			}
 		}
 	}

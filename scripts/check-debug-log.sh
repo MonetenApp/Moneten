@@ -2,15 +2,17 @@
 # Checks that the debug log holds no personal data. It drives the debug build of dist/Moneten.app
 # (scripts/build-app.sh debug) through the debug harness against scripts/fake-fints-helper.sh: a start that
 # fails on a data folder whose path holds a name, a login with a wrong PIN, the setup of the made-up bank
-# with its TAN dialog, two refreshes (the second fails an account with an error of the bank), the
-# transactions, the status, the error popover, and the state of each account, an account filter, a snapshot, and a key in the
-# main window while the selected row has a new category. An import of all data fails on a file with a name
-# as a day, and an export fails on a path that holds a name. A made-up extension without a fixture then
-# prints, sets a status, returns a value, fails a refresh, and fails a run with an error that names a person. The check fails when debug.log holds an IBAN,
-# an account number, a name, a purpose, a booking text, a category name, the login name, the PIN, the TAN,
-# the password, a text of the bank, or a text of the extension.
-# It also imports a CSV file whose name, rows, and value date hold made-up personal data and a text
-# of the bank.
+# with its TAN dialog, two refreshes (the second fails an account with an error of the bank), a refresh of
+# one account that fails the access with a return code that holds a name, the transactions, the status, the
+# error popover, and the state of each account, an account filter, a snapshot, and a key in the main window
+# while the selected row has a new category. An import of all data fails on a file with a name as a day, and
+# an export fails on a path that holds a name. A rule with a name or an IBAN as its amount fails to parse, a
+# command and a snapshot have a name as their name, and an extension and a fixture fail to load from a path
+# that holds a name. A made-up extension without a fixture then prints, sets a status, returns a value,
+# fails a refresh, and fails a run with an error that names a person. The check fails when debug.log holds
+# an IBAN, an account number, an amount, a balance, a name, a purpose, a booking text, a category name, the
+# login name, the PIN, the TAN, the password, a text of the bank, or a text of the extension. It also
+# imports a CSV file whose name, rows, and value date hold made-up personal data and a text of the bank.
 # The app runs with a temporary data folder and a password, so it never opens the real database and
 # leaves no Keychain item, and as a copy under its own bundle ID, so it leaves an installed Moneten alone.
 set -e
@@ -64,7 +66,7 @@ cat >"$WORK/Check.lua" <<-'EOF'
 		LocalStorage.runs = (LocalStorage.runs or 0) + 1
 		print("Konto von Erika Mustermann")
 		MM.printStatus("Erika Mustermann")
-		return {balance = 12.5, transactions = {}}
+		return {balance = 815.47, transactions = {}}
 	end
 	function EndSession() end
 	function Result()
@@ -85,11 +87,17 @@ alive() {
 	case "$(ps -o stat= -p "$PID")" in "" | Z*) return 1 ;; esac
 }
 
+lines() {
+	{ wc -l <"$LOG"; } 2>/dev/null || echo 0
+}
+
 # Sends the command in $2 and the rest until a line written after the first send matches $1, for up to 30 seconds.
+# With $from set to a count of lines from before an earlier send, it looks at the lines after that send instead.
 poll() {
 	pattern=$1
 	shift
-	seen=$({ wc -l <"$LOG"; } 2>/dev/null || echo 0)
+	seen=${from:-$(lines)}
+	from=
 	deadline=$(($(date +%s) + 30))
 	while :; do
 		send "$@"
@@ -140,6 +148,9 @@ for account in Girokonto Tagesgeld Kreditkarte; do
 done
 poll "^snapshot .*error" errorsnapshot Tagesgeld
 poll "^ext account savings .*failed=" extstate
+send refresh Kreditkarte
+poll "^ext access Musterbank state=failed:bank:invalid$" extstate
+poll "status #2 creditCard refreshing=false .*error=invalid " status
 send select Girokonto
 poll "^filterbar account .*account=[0-9A-F]" filterbar "account Tagesgeld"
 poll "^filterbar account .*account=all" filterbar account
@@ -151,7 +162,7 @@ poll "^exportcsv rows=" exportcsv "$DATA/rows.csv"
 send cancelexport
 poll "^exportstatus running=false" exportstatus
 poll "^snapshot " snapshot check
-printf '%s\n' "Buchungstag;Valuta;Empfänger;Verwendungszweck;Betrag" "09.11.2026;Wartungsarbeiten;Erika Mustermann;Gehalt November;1.250,00" \
+printf '%s\n' "Buchungstag;Valuta;Empfänger;Verwendungszweck;Betrag" "09.11.2026;Wartungsarbeiten;Erika Mustermann;Gehalt November;4.711,23" \
 	"10.11.2026;10.11.2026;Wohnbau Musterstadt eG;Miete;-950,00" >"$WORK/Erika Mustermann.csv"
 send importfile "$WORK/Erika Mustermann.csv"
 poll "^importfile done" state
@@ -206,28 +217,38 @@ poll "^mainkey escape .*category=[^d]" mainkey escape
 poll "^droprows category=" droprows Haushaltskasse
 poll "^movecategory position=" movecategory "Haushaltskasse||0"
 poll "^dropcategory hover=false" dropcategory "Haushaltskasse|Haushaltskasse"
+poll "^rule error=RuleSyntaxError position=1$" rule "Haushaltskasse|amount>Mustermann"
+poll "^rule error=RuleSyntaxError position=1$" rule "Haushaltskasse|amount>DE02120300000000202051"
+poll "^unknown command$" "Erika Mustermann"
+poll "^snapshot invalid-0.png " snapshot "Erika Mustermann"
+poll "^ext error=PackageProblem$" extrun "$DATA/Erika Mustermann.lua|Result|"
+poll "^ext error=NSError$" extrun "$WORK/Check.lua|Result|$DATA/fixture.json"
+poll "^ext error=PackageProblem$" extaccess "$DATA/Erika Mustermann.lua||Check Bank"
+poll "^ext error=NSError$" extaccess "$WORK/Check.lua|$DATA/fixture.json|Check Bank"
 
 send extfile "$WORK/Check.lua"
 poll "^ext allowed Check" extconfirm
 send extaccess "Check||Check Bank"
 poll "^ext prompt login" extprompt
 send extlogin "$LOGIN|check-debug-log"
-poll "^ext account giro rows=0 balance=1250" extstate
+poll "^ext account giro rows=0 balance=ok" extstate 81547
 send extrefresh "Check||"
 poll "^ext print Check" extstate
 send extrefresh "Check||"
 poll "^ext access Check Bank state=failed" extstate
 send extrun "$WORK/Check.lua|Result|"
 poll "^ext result" state
+from=$(lines)
 send extrun "$WORK/Check.lua|Fail|"
-# Only the name of the error type, such as "ext error=ScriptError", and nothing after it.
-poll "^ext error=[A-Za-z_.]*$" state
+# Only the name of the error type and nothing after it.
+poll "^ext error=ScriptError$" state
 poll "^migrationfailure: unknown failure$" migrationfailure "$MIGRATION_UNKNOWN"
 send quit
 
 found=0
 for value in DE02120300000000202051 "DE02 1203" 202051 1234567890 0099887766 "99 88 77 66" 4711 5550001 "$LOGIN" "$PIN" "$MIGRATION_UNKNOWN" 123456 check-debug-log \
-	Girokonto Tagesgeld Kreditkarte Extrakonto "Erika Mustermann" "Beispiel GmbH" "Wohnbau Musterstadt" "Tankstelle Beispiel" \
+	234015 501240 12000 320000 95000 4250 229765 471123 "4711,23" 81547 815.47 \
+	Girokonto Tagesgeld Kreditkarte Extrakonto "Erika Mustermann" Mustermann "Beispiel GmbH" "Wohnbau Musterstadt" "Tankstelle Beispiel" \
 	"Gehalt November" Miete Kartenzahlung Sparen Haushaltskasse MIETE-2026-11 GUTSCHRIFT DAUERAUFTRAG \
 	"Zugang vorübergehend gesperrt" "PIN falsch" Wartungsarbeiten pushTAN-App "currency:/^+?49/"; do
 	if grep -n -w -F -- "$value" "$LOG" >&2; then
