@@ -378,6 +378,11 @@ The app SHALL compare the IBAN or account number inside a CAMT or MT940 file wit
 - **WHEN** the file names an IBAN that no account has
 - **THEN** the app offers "Import into the selected account" and "Create offline account"
 
+#### Scenario: Statements of several accounts
+
+- **WHEN** a camt.053 file holds a statement for "Giro" and one for "Savings"
+- **THEN** the app imports nothing from the file and says that it holds the statements of several accounts
+
 ### Requirement: Existing transactions are skipped
 
 The app SHALL not import a transaction that the account already holds, and it SHALL not change the stored transaction. The result message states the number of skipped transactions.

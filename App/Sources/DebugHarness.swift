@@ -248,6 +248,14 @@ final class DebugHarness {
 			guard let account = model.selectedAccount else { return log("importfile no account") }
 			let urls = argument.split(separator: "|").map { URL(filePath: String($0)) }
 			Task { await model.importFiles(urls, into: account); log("importfile done") }
+		// "selected" or "named" answers the question about the account of a file, an empty argument logs it.
+		case "importanswer":
+			guard let question = model.fileImport?.question else { return log("importanswer no question") }
+			switch argument {
+			case "selected": model.fileImport?.answer(.selected)
+			case "named": model.fileImport?.answer(.named)
+			default: log("importanswer file=\(question.file) named=\(question.named) selected=\(question.selected.name) other=\(question.other?.name ?? "-")")
+			}
 		// "[<currency>]": the credit card in US dollars, or in another currency such as JPY.
 		case "usd": Task { await DemoData.usdAccount(model, currency: argument.isEmpty ? "USD" : argument); log("usd done") }
 		case "review": Task { await DemoData.review(model); log("review done") }
