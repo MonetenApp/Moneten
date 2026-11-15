@@ -250,7 +250,7 @@ The app SHALL import a CAMT entry with the status PDNG or FUTR as a pending tran
 
 ### Requirement: Future pending transactions from a file
 
-The app SHALL keep a pending transaction from a file that no refresh has delivered when a successful refresh does not deliver it and its booking date is today or later. Once its booking date has passed, such a refresh removes it like any pending transaction that the bank dropped.
+The app SHALL keep a pending transaction from a file that no refresh has delivered while its booking date is today or later and no free delivered pending transaction pairs with it. Each delivered transaction pairs with one stored transaction at most. A file transaction that only an already paired delivered transaction fits stays. After its booking date, a refresh that does not deliver it removes it.
 
 #### Scenario: Scheduled rent before its date
 
@@ -263,6 +263,23 @@ The app SHALL keep a pending transaction from a file that no refresh has deliver
 - **GIVEN** the pending transaction of -800,00 € to "Vermieter A" on 1 December 2026 from the scenario "Scheduled rent before its date"
 - **WHEN** a successful refresh on 5 December 2026 delivers neither the pending entry nor a booked one for it
 - **THEN** the pending transaction is gone from the list
+
+#### Scenario: One delivered rent row for two file rows
+
+- **GIVEN** one file imported two pending transactions of -800,00 € to "Vermieter A", each with the IBAN DE02120300000000202051, the purpose "Miete Dezember", and the booking date 1 December 2026
+- **WHEN** a successful refresh on 20 November 2026 delivers one pending transaction of -800,00 € to "Vermieter A" with the same IBAN, the purpose "MIETE DEZEMBER WHG 3 DAUERAUFTRAG", and the booking date 1 December 2026
+- **THEN** one file transaction takes the bank's fields and counts as fetched
+- **AND** the other stays pending and unfetched with the purpose "Miete Dezember"
+- **AND** no transaction is removed
+
+#### Scenario: One delivered rent row already stored before two file rows
+
+- **GIVEN** the account holds a fetched pending bank transaction of -800,00 € to "Vermieter A" with the IBAN DE02120300000000202051, the purpose "MIETE DEZEMBER WHG 3 DAUERAUFTRAG", and the booking date 1 December 2026
+- **AND** one file imported two pending transactions of -800,00 € to "Vermieter A", each with the same IBAN, the purpose "Miete Dezember", and the booking date 1 December 2026
+- **WHEN** a successful refresh on 20 November 2026 delivers the bank transaction again
+- **THEN** one file transaction is removed
+- **AND** the other stays pending and unfetched with the purpose "Miete Dezember"
+- **AND** the fetched bank transaction stays
 
 ### Requirement: The bank's version of a future pending transaction from a file
 
