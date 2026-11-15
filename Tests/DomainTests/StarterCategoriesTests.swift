@@ -45,7 +45,7 @@ struct StarterCategoriesTests {
 	}
 
 	@Test("A German localization of the interface gives the German set, any other the English set", arguments: [
-		("de", StarterCategories.Language.german), ("de-CH", .german),
+		("de", StarterCategories.Language.german), ("de-CH", .german), ("de_DE", .german), ("de_AT", .german),
 		("en", .english), ("en-GB", .english), ("fr", .english), (nil, .english),
 	] as [(String?, StarterCategories.Language)])
 	func language(localization: String?, expected: StarterCategories.Language) {
