@@ -147,7 +147,7 @@ public struct CSVFile: Sendable {
 	public let data: Data
 	public let encoding: CSVEncoding
 	/// The titles of the columns, one for each cell of the widest row. Without a header row of known
-	/// keywords, the first filled row above the first row with a date and an amount stands in for it, so an
+	/// keywords, the most populated row without dates above the first transaction stands in for it, so an
 	/// account line such as "Von;01.11.2026" is passed over, and a file without such a row shows the values
 	/// of its first row.
 	public let header: [String]
@@ -188,8 +188,7 @@ public struct CSVFile: Sendable {
 		let dateKeys = Set(CSVField.bookingDate.keys)
 		let amountKeys = Set(CSVField.amount.keys + CSVField.debit.keys + CSVField.credit.keys)
 		var headerIndex: Int?
-		// A preamble has a few lines, and a file without keywords would otherwise normalize every cell.
-		for (i, row) in rows.prefix(100).enumerated() {
+		for (i, row) in rows.enumerated() {
 			try Task.checkCancellation()
 			let header = row.cells.map(Self.normalize)
 			if header.contains(where: dateKeys.contains), header.contains(where: amountKeys.contains) {
@@ -221,15 +220,21 @@ public struct CSVFile: Sendable {
 					&& (rows[i].cells.indices.contains(amountColumn) || firstTitle.map { $0 < i } == true)
 			}
 		}
-		let above = firstTransaction.flatMap { first in
-			rows[..<first].lastIndex { row in
-				row.cells.contains { !$0.trimmingCharacters(in: .whitespaces).isEmpty } && !row.cells.contains(where: Self.isDateShaped)
-			}
-		}
+		let above = firstTransaction.flatMap { Self.titleRow(in: rows[..<$0]) }
 		titleIndex = headerIndex == nil ? above : nil
 		let titles = headerIndex.map { rows[$0] } ?? above.map { rows[$0] } ?? firstTransaction.map { rows[$0] } ?? rows.first
 		let cells = titles?.cells.map { $0.trimmingCharacters(in: .whitespaces) } ?? []
 		header = cells + Array(repeating: "", count: max(0, width - cells.count))
+	}
+
+	private static func titleRow(in rows: ArraySlice<Row>) -> Int? {
+		rows.indices.compactMap { index -> (index: Int, filled: Int)? in
+			guard !rows[index].cells.contains(where: Self.isDateShaped) else { return nil }
+			let filled = rows[index].cells.filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }.count
+			return filled == 0 ? nil : (index, filled)
+		}.max { a, b in
+			a.filled == b.filled ? a.index > b.index : a.filled < b.filled
+		}?.index
 	}
 
 	/// The layout that the header keywords and the values of the file show.
@@ -283,13 +288,7 @@ public struct CSVFile: Sendable {
 			try Task.checkCancellation()
 			return Self.cell(row.cells, column)?.contains(where: \.isNumber) == true
 		}
-		let lastRequired = [column, layout.columns[.amount], layout.columns[.debit], layout.columns[.credit]].compactMap { $0 }.max() ?? 0
-		let inferredTitle = titleIndex.flatMap { last in
-			rows[...last].firstIndex { row in
-				row.cells.count > lastRequired && row.cells.contains { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
-					&& !row.cells.contains(where: Self.isDateShaped)
-			}
-		}
+		let inferredTitle = titleIndex.flatMap { Self.titleRow(in: rows[...$0]) }
 		let below = inferredTitle.map { $0 + 1 } ?? 0
 		let start = try headerIndex.map { $0 + 1 } ?? rows[below...].firstIndex { row in
 			try Task.checkCancellation()
