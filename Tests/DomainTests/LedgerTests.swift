@@ -659,6 +659,22 @@ struct LedgerTests {
 		#expect(TransactionFilter.AmountFilter.custom(min: min, max: max) == nil)
 	}
 
+	@Test("A filter on a category or an account that the ledger no longer has goes back to Show All")
+	func dropMissingFilters() {
+		let card = Account(position: 1, name: "Credit card", kind: .creditCard, source: .offline)
+		var f = TransactionFilter()
+		f.categoryID = food.id
+		f.accountID = card.id
+		f.status = .unchecked
+		var kept = f
+		kept.dropMissing(in: Ledger(accounts: [giro, card], categories: [food]))
+		#expect(kept == f)
+		f.dropMissing(in: Ledger(accounts: [giro], categories: []))
+		#expect(f.categoryID == nil)
+		#expect(f.accountID == nil)
+		#expect(f.status == .unchecked)
+	}
+
 	@Test("Uncategorized holds every transaction without a category")
 	func uncategorized() throws {
 		let l = ledger()

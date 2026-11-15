@@ -70,8 +70,9 @@ public struct SavedFilterBar: Hashable, Sendable, Codable {
 		f.period = period.range(today: today)
 		f.status = status
 		f.amount = amount
-		f.categoryID = categoryID.flatMap { ledger.category($0)?.id }
-		f.accountID = accountID.flatMap { ledger.account($0)?.id }
+		f.categoryID = categoryID
+		f.accountID = accountID
+		f.dropMissing(in: ledger)
 		return f
 	}
 }

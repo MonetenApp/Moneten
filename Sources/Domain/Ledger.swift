@@ -626,6 +626,13 @@ public struct TransactionFilter: Hashable, Sendable {
 		case .category: categoryID = nil
 		}
 	}
+
+	/// A filter on a category or an account that `ledger` no longer has goes back to "Show All", so the list does
+	/// not stay empty after a removal.
+	public mutating func dropMissing(in ledger: Ledger) {
+		categoryID = categoryID.flatMap { ledger.category($0)?.id }
+		accountID = accountID.flatMap { ledger.account($0)?.id }
+	}
 }
 
 /// A row of the account tree: a group or an account.

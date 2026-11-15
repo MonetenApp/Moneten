@@ -940,6 +940,7 @@ final class AppModel {
 			}
 			await replacingTable {
 				ledger.replace(accounts: ledger.accounts.filter { $0.id != id }, transactions: ledger.transactions.filter { $0.accountID != id })
+				filter.dropMissing(in: ledger)
 				if selection == .account(id) { selection = nil }
 			}
 		} catch {
@@ -1168,6 +1169,7 @@ final class AppModel {
 					return t
 				}
 				ledger.replace(categories: ledger.categories.filter { !removed.contains($0.id) }, transactions: transactions)
+				filter.dropMissing(in: ledger)
 				if case let .category(sel) = selection, removed.contains(sel) { selection = nil }
 			}
 		} catch {
@@ -1220,6 +1222,7 @@ final class AppModel {
 			ledgerChange = "load"
 			ledger = loaded
 			accesses = Dictionary(uniqueKeysWithValues: try store.accesses().map { ($0.id, $0) })
+			filter.dropMissing(in: ledger)
 			if case let .category(id) = selection, ledger.category(id) == nil { selection = nil }
 			// A complete import replaces the account groups.
 			if case let .group(id) = selection, ledger.group(id) == nil { selection = nil }
