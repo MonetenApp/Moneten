@@ -5,6 +5,44 @@ import Testing
 
 @Suite("CSV preview")
 struct CSVPreviewTests {
+	@Test("Header keywords in the 102nd transaction cannot replace the header")
+	func transactionKeywordsAfter101Rows() throws {
+		let text = "Tag;Wer;Zweck;Wieviel\n" + String(repeating: "01.11.2026;Kiosk;Brot;1.00\n", count: 101)
+			+ "02.11.2026;Datum;Betrag;2.00\n03.11.2026;Bakery;Cake;3.00\n"
+		let file = try CSVFile(data: Data(text.utf8))
+		#expect(file.headerIndex == nil)
+		#expect(file.header == ["Tag", "Wer", "Zweck", "Wieviel"])
+		var layout = try file.detectedLayout()
+		layout.assign(0, to: .bookingDate)
+		layout.assign(3, to: .amount)
+		let preview = try file.preview(layout, currency: "EUR")
+		#expect(preview.problem == nil)
+		#expect(preview.transactions.map(\.amountMinor) == Array(repeating: 100, count: 101) + [200, 300])
+	}
+
+	@Test("A filled subtotal cannot hide a short earlier transaction")
+	func filledSubtotalAfterShortRow() throws {
+		let file = try CSVFile(data: Data("Tag;Wer;Wieviel\n01.11.2026;Kiosk\nZwischensumme;EUR;Saldo;0,00\n02.11.2026;Bakery;;4.50\n".utf8))
+		var layout = try file.detectedLayout()
+		layout.assign(0, to: .bookingDate)
+		layout.assign(3, to: .amount)
+		let preview = try file.preview(layout, currency: "EUR")
+		#expect(preview.problem == nil)
+		#expect(preview.transactions.map(\.amountMinor) == [0, 450])
+	}
+
+	@Test("Inferred titles follow a long preamble without a 100-row cutoff", arguments: [99, 100, 150])
+	func titlesAfterLongPreamble(count: Int) throws {
+		let file = try CSVFile(data: Data((String(repeating: "Preamble\n", count: count) + "Tag;Wer;Wieviel\n01.11.2026;Kiosk;1.00\n").utf8))
+		#expect(file.header == ["Tag", "Wer", "Wieviel"])
+	}
+
+	@Test("The nearest wide-enough titles win over a wider account line")
+	func nearbyTitlesBeforeWideAccountLine() throws {
+		let file = try CSVFile(data: Data("Konto;Giro;Stand;DE02120300000000202051;EUR\nTag;Wer;Wieviel\n01.11.2026;Kiosk;1.00\n".utf8))
+		#expect(file.header == ["Tag", "Wer", "Wieviel", "", ""])
+	}
+
 	@Test("A header after a long blank preamble keeps the detected columns")
 	func headerAfterBlankPreamble() throws {
 		let data = Data((String(repeating: "\n", count: 100) + "Datum;Betrag\n01.11.2026;-1,00\n").utf8)
