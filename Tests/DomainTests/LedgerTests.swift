@@ -198,6 +198,22 @@ struct LedgerTests {
 		}
 	}
 
+	@Test("A regular expression that does not end counts as no match", .timeLimit(.minutes(1)))
+	func searchRegexThatDoesNotEnd() {
+		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
+		let l = Ledger(accounts: [giro], transactions: [
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 2), amountMinor: -1_000, name: "Vermieter", purpose: "Tel. +49 170 1234567"),
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 1), amountMinor: -90_000, name: "Vermieter", purpose: "Miete Mai"),
+		])
+		var f = TransactionFilter()
+		for text in ["/^+?49/", #"/\s^+?a/"#] {
+			f.searchText = text
+			#expect(l.transactions(in: .account(giro.id), filter: f).isEmpty, "\(text)")
+		}
+		f.searchText = "/miete mai/"
+		#expect(l.transactions(in: .account(giro.id), filter: f).map(\.purpose) == ["Miete Mai"])
+	}
+
 	@Test("The search true finds every row, and false finds none")
 	func searchConstants() {
 		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
@@ -305,7 +321,9 @@ struct LedgerTests {
 			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 5), amountMinor: -320, name: "Cafe\u{301}", purpose: "Rechnung 12"),
 			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 6), amountMinor: -180, name: "Imbiss \u{301}Nord", purpose: "Pommes"),
 			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 7), amountMinor: -190, name: "Grill \u{FE20}Ost", purpose: "Wurst"),
-			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 8), amountMinor: -60, name: "Bude\u{1}\u{301}", purpose: "Karte ****1234")]
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 8), amountMinor: -60, name: "Bude\u{1}\u{301}", purpose: "Karte ****1234"),
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 9), amountMinor: -70, name: "Automat", purpose: "Code\u{1F}abc"),
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 10), amountMinor: -80, name: "Linie\u{2028}Neun", purpose: "Fahrkarte")]
 		let l = Ledger(accounts: [giro], transactions: all)
 		let queries = [#"name:"Stadtwerke Musterstadt""#, "name:Stadt*", "purpose:November", #"purpose:"Abschlag November""#, "comment:strom",
 			"booking_text:lastschrift", "reference:E2E-1", "mandate:M-1", "creditor_id:DE98ZZZ*", "remote_account:DE89370400440532013000",
@@ -315,7 +333,8 @@ struct LedgerTests {
 			"/cafe/", "/rechnung 1/", "/RECHNUNG 1/", "purpose:/chnung 1/", "/k[a-z]ffee/", "/kaffe?e/", "/zahl+ung/", #"/e2e-\d/"#, #"mandate:/m\x2d1/"#,
 			#"/\p{Lu}utbrot/"#, #"/abschlag\nnov/"#, "/stadtwerke  muster/", "/b.ckerei/", "/^kiosk/", "/zahlungs?/", "/zahlungx*/", "/zahlungx{0,2}/",
 			"/zahl[uvwxyzabcdef]ng/", "/zahl[^xyzabcdefgh]ng/", #"/\x7aahlung/"#, #"/zahl\u0075ng/"#, "/zahlung$/", #"/zahl\Bung/"#,
-			#"/\QM-1x\E?/"#, #"mandate:/\QM-1x\E{0}/"#, #"/kartenzahlungx\Q\E?/"#, "name:nord", "name:imbiss", "name:ost", #"name:"Grill Ost""#, "purpose:karte", "purpose:*1234", "purpose:**1234", "purpose:*12?4"]
+			#"/\QM-1x\E?/"#, #"mandate:/\QM-1x\E{0}/"#, #"/kartenzahlungx\Q\E?/"#, "name:nord", "name:imbiss", "name:ost", #"name:"Grill Ost""#, "purpose:karte", "purpose:*1234", "purpose:**1234", "purpose:*12?4",
+			"name:bude??", "/kartenzahlungxyz.|\u{308}?kartenzahlung/", "/(\u{308}.kartenzahlungxyz)?kartenzahlung/", #"/\c_abc/"#, "/^linie/", "/fahrkarte$/", #"/linie\sneun/"#]
 		for query in queries {
 			var f = TransactionFilter()
 			f.searchText = query
@@ -324,6 +343,13 @@ struct LedgerTests {
 			let ruled: Set<UUID> = Set(all.filter { rule.matches(RuleSubject($0, account: giro)) }.map(\.id))
 			#expect(!ruled.isEmpty, "\(query)")
 			#expect(searched == ruled, "\(query)")
+		}
+		for query in ["/^neun/", #"/strom\sgiro/"#] {
+			var f = TransactionFilter()
+			f.searchText = query
+			let rule = try Rule(parsing: query)
+			#expect(l.transactions(in: .account(giro.id), filter: f).isEmpty, "\(query)")
+			#expect(!all.contains { rule.matches(RuleSubject($0, account: giro)) }, "\(query)")
 		}
 	}
 
@@ -354,6 +380,10 @@ struct LedgerTests {
 		f.searchText = "amount=184467440737095516.16"
 		#expect(l.transactions(in: .account(giro.id), filter: f).isEmpty)
 		f.searchText = "amount>-100000000000000000"
+		#expect(l.transactions(in: .account(giro.id), filter: f).count == 2)
+		f.searchText = "amount<1" + String(repeating: "0", count: 130)
+		#expect(l.transactions(in: .account(giro.id), filter: f).count == 2)
+		f.searchText = "amount>-1" + String(repeating: "0", count: 130)
 		#expect(l.transactions(in: .account(giro.id), filter: f).count == 2)
 	}
 
