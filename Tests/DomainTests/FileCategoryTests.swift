@@ -26,6 +26,14 @@ struct FileCategoryTests {
 		#expect(imported.map(\.amountMinor) == [-420])
 	}
 
+	@Test("An exported path finds a category before a group at the same path")
+	func exportedPathBeforeGroup() {
+		let group = Domain.Category(parentID: living.id, position: 0, name: "Food", isGroup: true)
+		let found = FileCategories(["Living - Food"], in: [living, group, food], creating: true)
+		#expect(found.ids["Living - Food"] == Self.foodID)
+		#expect(found.created.isEmpty)
+	}
+
 	@Test("An exact category name wins over an exported path of the same text")
 	func literalDashName() {
 		let literal = Domain.Category(position: 1, name: "Living - Food")
