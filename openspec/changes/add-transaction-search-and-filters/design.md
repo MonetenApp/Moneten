@@ -22,6 +22,8 @@ The custom amount range compares the signed `amountMinor` with the signed ends, 
 
 The search field reads its text with the parser of the rule language. A term with a field name, a regular expression, and an amount mean what they mean in a rule. A term without a field name works like a plain search word: it searches the folded text of every searched field and finds text inside words, also with a wildcard, so `"REWE"` finds "REWE-Markt", which a rule does not. Text that the parser rejects, such as an open quotation mark while the user types, searches its words without the quotation marks. "Search for" puts the name in quotation marks, so a name such as "Tom OR Jerry GbR" stays one phrase.
 
+A regular expression reads the fields of a row as they are, which costs about 2 µs per row. Before that, the search looks for the longest run of plain characters of the pattern in the search text of the row, in lower case. Every match holds that run, so a row without it cannot match. The check only rules out a row whose search text is plain ASCII, because folding changes other text: "e" with a combining accent becomes "é". A pattern with an alternative or a group has no such run.
+
 ## Risks / Trade-offs
 
 Tasks marked as built in part may differ from the spec in the way their note says.
