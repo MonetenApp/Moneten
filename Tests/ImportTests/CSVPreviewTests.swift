@@ -5,6 +5,22 @@ import Testing
 
 @Suite("CSV preview")
 struct CSVPreviewTests {
+	@Test("A malformed first numeric date cannot be skipped or treated as a header", arguments: ["01.11.2026x", "2026-11-", "01/11", "20261101"], [false, true])
+	func malformedFirstNumericDate(date: String, keywords: Bool) throws {
+		for hasHeader in [false, true] {
+			let heading = keywords ? "Tag;Wer;Zweck;Wieviel\n" : "Tag;Wer;Wieviel\n"
+			let first = keywords ? "\(date);Datum;Betrag;-1.50\n" : "\(date);Kiosk;-1.50\n"
+			let last = keywords ? "02.11.2026;Bakery;Bread;-2.00\n" : "02.11.2026;Bakery;-2.00\n"
+			let file = try CSVFile(data: Data(((hasHeader ? heading : "") + first + last).utf8))
+			var layout = try file.detectedLayout()
+			layout.assign(0, to: .bookingDate)
+			layout.assign(keywords ? 3 : 2, to: .amount)
+			let preview = try file.preview(layout, currency: "EUR")
+			#expect(preview.problem == .line(hasHeader ? 2 : 1, "The date \(date) cannot be read."))
+			#expect(preview.transactions.isEmpty)
+		}
+	}
+
 	@Test("A note after a headerless row cannot hide its amount", arguments: ["", "abc", "missing"], ["Zwischensumme;;", "Hinweis;Export vorläufig;"])
 	func headerlessRowBeforeNote(amount: String, note: String) throws {
 		let first = amount == "missing" ? "01.11.2026;Kiosk" : "01.11.2026;Kiosk;\(amount)"
@@ -126,7 +142,7 @@ struct CSVPreviewTests {
 		#expect(preview.transactions.map(\.amountMinor) == [0, 450])
 	}
 
-	@Test("A note cannot hide an empty, missing, or malformed first amount", arguments: ["", "abc", "missing"], ["Zwischensumme;;0,00", "Zwischensumme;;", "Zwischensumme;;n/a", "Hinweis;Dieser Export ist vorläufig;"])
+	@Test("A note cannot hide an empty, missing, or malformed first amount", arguments: ["", "abc", "missing"], ["Zwischensumme;;0,00", "Zwischensumme;;", "Zwischensumme;;n/a", "Hinweis;Dieser Export ist vorläufig;", "Hinweis;Export;vorläufig"])
 	func firstAmountBeforeSubtotal(amount: String, note: String) throws {
 		let first = amount == "missing" ? "01.11.2026;Kiosk" : "01.11.2026;Kiosk;\(amount)"
 		let headers: [(String, [String])] = [
