@@ -240,17 +240,20 @@ public struct CSVFile: Sendable {
 		}
 		guard let firstDate else { return nil }
 		let dateTitles = Set(CSVField.bookingDate.keys + CSVField.valueDate.keys + ["tag"])
-		let title = try rows[..<(firstReadable ?? rows.endIndex)].indices.first { i in
+		var title: Int?
+		for i in rows[..<(firstReadable ?? rows.endIndex)].indices {
 			try Task.checkCancellation()
 			let row = rows[i]
 			guard row.cells.indices.contains(dateColumn), isTitle(row),
-				row.cells.filter({ !$0.trimmingCharacters(in: .whitespaces).isEmpty }).count >= 2 else { return false }
-			guard !row.cells.contains(where: { currencyCode($0, account: "EUR") != nil })
-				|| dateTitles.contains(normalize(row.cells[dateColumn])) else { return false }
-			if i < firstDate { return true }
-			guard dateTitles.contains(normalize(row.cells[dateColumn])) else { return false }
-			let width = max(dateColumn, amountColumns.max() ?? dateColumn) + 1
-			return row.cells.count >= width && row.cells.prefix(width).allSatisfy { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+				row.cells.filter({ !$0.trimmingCharacters(in: .whitespaces).isEmpty }).count >= 2 else { continue }
+			let hasDateTitle = dateTitles.contains(normalize(row.cells[dateColumn]))
+			if i >= firstDate {
+				let width = max(dateColumn, amountColumns.max() ?? dateColumn) + 1
+				guard hasDateTitle, row.cells.count >= width,
+					row.cells.prefix(width).allSatisfy({ !$0.trimmingCharacters(in: .whitespaces).isEmpty }) else { continue }
+			}
+			if hasDateTitle { title = i; break }
+			if title == nil { title = i }
 		}
 		guard let title else { return firstDate }
 		let afterTitle = try rows[(title + 1)...].firstIndex { row in
