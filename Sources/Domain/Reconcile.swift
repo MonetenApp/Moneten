@@ -386,9 +386,8 @@ struct Identity {
 	/// The purpose is folded without white space, so the 27-character lines of an MT940 purpose and the
 	/// same text in one line have the same key.
 	struct Key: Hashable {
-		// The synthesized Hashable conformance reads these properties, which Periphery cannot see.
-		// periphery:ignore
 		let day: Day
+		// The synthesized Hashable conformance reads these properties, which Periphery cannot see.
 		// periphery:ignore
 		let amount: Int64
 		// periphery:ignore
