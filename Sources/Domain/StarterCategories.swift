@@ -33,10 +33,11 @@ public enum StarterCategories {
 		return result
 	}
 
-	/// The root categories of a starter set, in either language, that the user has not changed, with only
+	/// The root categories of the starter set in `language` that the user has not changed, with only
 	/// unchanged subcategories of the same starter group below. The default category is never one of them.
-	public static func unchangedRoots(in ledger: Ledger) -> [Category] {
-		let template = Language.allCases.flatMap { make(language: $0) }
+	/// Starter categories in another language stay, because a group of the user can have the same name.
+	public static func unchangedRoots(in ledger: Ledger, language: Language) -> [Category] {
+		let template = make(language: language)
 		func same(_ c: Category, _ starter: Category) -> Bool {
 			// The place in the sidebar and the expanded state are not settings, so they may differ.
 			var s = starter

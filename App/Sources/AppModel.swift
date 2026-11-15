@@ -354,7 +354,7 @@ final class AppModel {
 
 	func createDatabase(password: String?) {
 		do {
-			let store = try vault.create(password: password, starterCategories: StarterCategories.make(language: .init(localization: Bundle.main.preferredLocalizations.first)))
+			let store = try vault.create(password: password, starterCategories: StarterCategories.make(language: starterLanguage))
 			hasPassword = password != nil
 			try open(store)
 		} catch {
@@ -1088,7 +1088,12 @@ final class AppModel {
 
 	/// The starter categories that a migration replaces, once the database holds no transactions.
 	private var replaceableStarterCategories: [Domain.Category] {
-		ledger.transactions.isEmpty ? StarterCategories.unchangedRoots(in: ledger) : []
+		ledger.transactions.isEmpty ? StarterCategories.unchangedRoots(in: ledger, language: starterLanguage) : []
+	}
+
+	/// The language of the interface, so that a new database and the migration agree on the starter set.
+	private var starterLanguage: StarterCategories.Language {
+		.init(localization: Bundle.main.preferredLocalizations.first)
 	}
 
 	/// Stores a delivery and takes it into the ledger. An import goes through `replacingTable`, because a
