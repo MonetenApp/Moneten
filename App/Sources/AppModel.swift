@@ -628,13 +628,13 @@ final class AppModel {
 
 	/// Saves the rows and returns whether they are saved. A locked app has no database and saves nothing.
 	@discardableResult
-	private func commit(_ changed: [Transaction]) -> Bool {
+	private func commit(_ changed: (transactions: [Transaction], parts: [SplitPart])) -> Bool {
 		guard let store else { return false }
-		guard !changed.isEmpty else { return true }
+		guard !changed.transactions.isEmpty || !changed.parts.isEmpty else { return true }
 		do {
-			try store.save(changed)
-			ledgerChange = "commit rows=\(changed.count)"
-			ledger.update(changed)
+			try store.save(changed.transactions, parts: changed.parts)
+			ledgerChange = "commit rows=\(changed.transactions.count) parts=\(changed.parts.count)"
+			ledger.update(changed.transactions, parts: changed.parts)
 			return true
 		} catch {
 			alert = AlertMessage(title: "Could not save the change.", message: String(describing: error))
@@ -650,13 +650,13 @@ final class AppModel {
 
 	func assign(category: UUID?, to ids: Set<UUID>) {
 		let target = category == ledger.defaultCategory?.id ? nil : category
-		let changed = ids.compactMap { ledger.transaction($0) }.map { t -> Transaction in
+		let changed = ids.compactMap { ledger.row($0) }.map { t -> Transaction in
 			var t = t
 			t.categoryID = target
 			t.categorizedBy = target == nil ? .none : .manual
 			return t
 		}
-		commit(changed)
+		commit(ledger.changes(from: changed))
 	}
 
 	/// What a drag from this app carries: rows of the transaction list, or a category of the sidebar.
@@ -691,7 +691,7 @@ final class AppModel {
 	}
 
 	func canDrop(_ ids: Set<UUID>, on category: Domain.Category) -> Bool {
-		let rows = ids.compactMap { ledger.transaction($0) }
+		let rows = ids.compactMap { ledger.row($0) }
 		return !rows.isEmpty && ledger.canAssign(category, to: rows)
 	}
 
@@ -745,26 +745,28 @@ final class AppModel {
 	}
 
 	func setChecked(_ checked: Bool, for ids: Set<UUID>) {
-		let rows = ids.compactMap { ledger.transaction($0) }
+		let rows = ids.compactMap { ledger.row($0) }
 		if checked {
-			commit(rows.filter(\.changesWhenChecked).map { var t = $0; t.markChecked(); return t })
+			commit(ledger.changes(from: rows.filter(\.changesWhenChecked).map { var t = $0; t.markChecked(); return t }))
 		} else {
-			commit(rows.filter(\.isChecked).map { var t = $0; t.isChecked = false; return t })
+			commit(ledger.changes(from: rows.filter(\.isChecked).map { var t = $0; t.isChecked = false; return t }))
 		}
 	}
 
 	func toggleChecked(_ id: UUID) {
-		guard let t = ledger.transaction(id) else { return }
+		guard let t = ledger.row(id) else { return }
 		setChecked(!t.isChecked, for: [id])
 	}
 
 	func markAllChecked() {
-		let rows = visibleTransactions.filter(\.changesWhenChecked)
-		guard !rows.isEmpty else { return }
+		let rows = visibleTransactions.compactMap { ledger.row($0.id) }.filter(\.changesWhenChecked)
+		let changed = ledger.changes(from: rows.map { var t = $0; t.markChecked(); return t })
+		let count = changed.transactions.count
+		guard count > 0 else { return }
 		let accounts = Set(rows.map(\.accountID)).count
 		let alert = NSAlert()
 		alert.messageText = "Mark all transactions as checked?"
-		alert.informativeText = "A total of \(rows.count) \(rows.count == 1 ? "transaction" : "transactions") in \(accounts) \(accounts == 1 ? "account" : "accounts") will be marked as checked."
+		alert.informativeText = "A total of \(count) \(count == 1 ? "transaction" : "transactions") in \(accounts) \(accounts == 1 ? "account" : "accounts") will be marked as checked."
 		alert.addButton(withTitle: "Mark as Checked")
 		alert.addButton(withTitle: "Cancel")
 		if alert.runModal() == .alertFirstButtonReturn { setChecked(true, for: Set(rows.map(\.id))) }
@@ -772,17 +774,34 @@ final class AppModel {
 
 	func setComment(_ comment: String, for ids: Set<UUID>) {
 		let value = comment.trimmingCharacters(in: .whitespacesAndNewlines)
-		commit(ids.compactMap { ledger.transaction($0) }.map { var t = $0; t.comment = value.isEmpty ? nil : value; return t })
+		commit(ledger.changes(from: ids.compactMap { ledger.row($0) }.map { var t = $0; t.comment = value.isEmpty ? nil : value; return t }))
 	}
 
 	func save(transaction t: Transaction) {
-		var t = t
-		if t.categoryID == nil, t.categorizedBy != .manual {
-			var ledgerWithNew = ledger
-			ledgerWithNew.update([t])
-			Categorizer(ledger: ledgerWithNew).categorize(&t)
+		var changed = ledger.changes(from: [t])
+		let categorizer = Categorizer(ledger: ledger)
+		for i in changed.transactions.indices where changed.transactions[i].categoryID == nil && changed.transactions[i].categorizedBy != .manual {
+			categorizer.categorize(&changed.transactions[i])
 		}
-		commit([t])
+		commit(changed)
+	}
+
+	@discardableResult
+	func replaceParts(of transactionID: UUID, with parts: [SplitPart]) async -> Bool {
+		guard let store else { return false }
+		return await replacingTable {
+			guard self.store === store else { return false }
+			do {
+				try store.replaceParts(of: transactionID, with: parts)
+				ledgerChange = "split parts=\(parts.count)"
+				ledger.replaceParts(of: transactionID, with: parts)
+				selectedTransactions = parts.isEmpty ? [transactionID] : Set(parts.map(\.id))
+				return true
+			} catch {
+				alert = AlertMessage(title: "Could not split the transaction.", message: String(describing: error))
+				return false
+			}
+		}
 	}
 
 	func delete(transactions ids: Set<UUID>) {
@@ -1211,7 +1230,7 @@ final class AppModel {
 			// A run saves only into the database it started with. A lock closes it, and an unlock opens a new one.
 			guard self.store === store else { return nil }
 			let rows = RuleApplier.rebase(changed, from: ledger, onto: self.ledger, category: category, rule: rule, mode: mode)
-			return commit(rows) ? rows.count : nil
+			return commit((transactions: rows, parts: [])) ? rows.count : nil
 		}
 		if let saved { alert = AlertMessage(title: "Categorized transactions: \(saved)", message: "") }
 	}

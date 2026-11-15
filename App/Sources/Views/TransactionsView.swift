@@ -789,7 +789,7 @@ struct CategoryChoices: View {
 	let ids: Set<UUID>
 
 	var body: some View {
-		let transactions = ids.compactMap { model.ledger.transaction($0) }
+		let transactions = ids.compactMap { model.ledger.row($0) }
 		ForEach(model.ledger.categoriesInSidebarOrder) { c in
 			let current = transactions.allSatisfy { model.ledger.effectiveCategoryID(of: $0) == c.id }
 			Button {
@@ -807,7 +807,7 @@ struct CategoryChoices: View {
 	@MainActor
 	static func popUp(model: AppModel, ids: Set<UUID>) {
 		let ledger = model.ledger
-		let transactions = ids.compactMap { ledger.transaction($0) }
+		let transactions = ids.compactMap { ledger.row($0) }
 		let menu = NSMenu()
 		menu.autoenablesItems = false
 		for c in ledger.categoriesInSidebarOrder {
@@ -856,7 +856,7 @@ struct TransactionMenu: View {
 	let ids: Set<UUID>
 
 	var body: some View {
-		let transactions = ids.compactMap { model.ledger.transaction($0) }
+		let transactions = ids.compactMap { model.ledger.row($0) }
 		if let first = transactions.first {
 			if !first.name.isEmpty {
 				Button("Search for “\(first.name)”") { model.filter.searchText = TransactionFilter.searchText(for: first.name) }
