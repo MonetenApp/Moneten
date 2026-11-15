@@ -466,6 +466,39 @@ struct LedgerTests {
 		#expect(l.transactions(in: .account(giro.id), filter: f).rows.count == 2)
 	}
 
+	@Test("Amounts outside Int64 have constant truth values at both stored edges")
+	func searchAmountAtInt64Edges() throws {
+		let account = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
+		let rows = [
+			Transaction(accountID: account.id, bookingDate: Day(year: 2026, month: 11, day: 3), amountMinor: Int64.max, name: "Maximum"),
+			Transaction(accountID: account.id, bookingDate: Day(year: 2026, month: 11, day: 2), amountMinor: Int64.min, name: "Minimum"),
+			Transaction(accountID: account.id, bookingDate: Day(year: 2026, month: 11, day: 1), amountMinor: 100_000_000_000_000_000, currency: "JPY", name: "Yen"),
+		]
+		let ledger = Ledger(accounts: [account], transactions: rows)
+		let cases: [(String, [String])] = [
+			("amount=100000000000000000", ["Yen"]),
+			("amount<99999999999999999999", ["Maximum", "Minimum", "Yen"]),
+			("amount<=99999999999999999999", ["Maximum", "Minimum", "Yen"]),
+			("amount>99999999999999999999", []),
+			("amount>=99999999999999999999", []),
+			("amount!=99999999999999999999", ["Maximum", "Minimum", "Yen"]),
+			("amount=-100000000000000000", []),
+			("amount>-99999999999999999999", ["Maximum", "Minimum", "Yen"]),
+			("amount<=-99999999999999999999", []),
+			("amount=92233720368547758.07", ["Maximum"]),
+			("amount=-92233720368547758.08", ["Minimum"]),
+			("amount>92233720368547758.07", ["Yen"]),
+			("amount<-92233720368547758.08", []),
+		]
+		for (text, expected) in cases {
+			var filter = TransactionFilter()
+			filter.searchText = text
+			#expect(ledger.transactions(in: .account(account.id), filter: filter).rows.map(\.name) == expected, "\(text)")
+			let rule = try Rule(parsing: text)
+			#expect(rows.filter { rule.matches(RuleSubject($0, account: account)) }.map(\.name) == expected, "\(text)")
+		}
+	}
+
 	@Test("An amount term compares the amount in the decimals of its currency")
 	func searchAmountInCurrency() {
 		let wallet = Account(position: 0, name: "Wallet", kind: .giro, source: .offline, currency: "JPY")
