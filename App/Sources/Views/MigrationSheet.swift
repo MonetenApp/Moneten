@@ -99,6 +99,7 @@ struct MigrationSheet: View {
 				}
 			}
 		}
+		.environment(\.sheetHasScrollAreas, true)
 		.onDisappear { task?.cancel() }
 		.alert("The report contains account names and balances.", isPresented: $confirmSave) {
 			Button("Save Report...") { savingReport = true }
@@ -233,4 +234,3 @@ struct MigrationSheet: View {
 		}
 	}
 }
-
