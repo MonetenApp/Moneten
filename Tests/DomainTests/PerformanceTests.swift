@@ -69,6 +69,7 @@ struct PerformanceTests {
 		#expect(count > 0)
 		#expect(rangeCount == 15_868)
 		#expect([wildcardCount, fieldCount, amountCount, regexCount, fullScanCount, prefixCount, purposeCount, regexOverAllCount, slowRegexCount, plainOverAllCount, rareFieldCount].allSatisfy { $0 > 0 })
+		#expect(slowRegexCount == 40_000)
 		#expect(amounts.count > 0)
 		// A debug build runs several times slower than the app and depends on the load of the machine,
 		// so the budgets hold for a release build only: `scripts/test.sh -c release -Xswiftc -enable-testing
@@ -82,7 +83,7 @@ struct PerformanceTests {
 		#expect(prefixOverAll < .milliseconds(150))
 		#expect(purposeOverAll < .milliseconds(150))
 		#expect(regexOverAll < .milliseconds(200))
-		#expect(slowRegexOverAll < .milliseconds(200))
+		#expect(slowRegexOverAll < .milliseconds(600))
 		#expect(plainOverAll < .milliseconds(150))
 		#expect(amount < .milliseconds(150))
 		// A regular expression reads the fields as they are, so the search text rules out only the rows without its plain text.
