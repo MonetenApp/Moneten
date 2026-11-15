@@ -231,7 +231,7 @@ public struct Ledger: Sendable {
 		account.reportedBalance ?? computedBalance(of: account)
 	}
 
-	/// The initial balance plus all booked transactions in the currency of the account.
+	/// The initial balance plus the transactions in the currency of the account that a balance counts.
 	public func computedBalance(of account: Account, through day: Day? = nil) -> Money {
 		var sum = account.initialBalanceMinor
 		for t in transactions where t.accountID == account.id && account.isInBalance(t) {
@@ -249,8 +249,8 @@ public struct Ledger: Sendable {
 		return sums
 	}
 
-	/// The amount next to a category in the sidebar: the booked transactions of its tree in a period
-	/// and in the currency of the category. Rows in another currency stay in the category, and the
+	/// The amount next to a category in the sidebar: the transactions of its tree that a sum counts, in a
+	/// period and in the currency of the category. Rows in another currency stay in the category, and the
 	/// status line of its list sums them for each currency.
 	public func sum(ofCategory category: Category, in period: DayRange) -> Money {
 		var f = TransactionFilter()

@@ -30,6 +30,27 @@ struct BalanceChartTests {
 		#expect(bars.map(\.minorUnits) == [50_000, -12_000, -12_000, -12_000, 8_000, 8_000])
 	}
 
+	@Test("A booked version on the day of its pending row leaves every bar as it was")
+	func bookedOnSameDay() {
+		let day = Day(year: 2026, month: 11, day: 12)
+		let range = DayRange(start: Day(year: 2026, month: 11, day: 11), end: Day(year: 2026, month: 11, day: 14))
+		let pending = Ledger(accounts: [giro], transactions: [Transaction(accountID: giro.id, bookingDate: day, amountMinor: -3_000, name: "Row", isPending: true)])
+		let booked = ledger([(day, -3_000)])
+		#expect(pending.balanceBars(accountIDs: [giro.id], range: range).map(\.minorUnits) == [50_000, 47_000, 47_000, 47_000])
+		#expect(booked.balanceBars(accountIDs: [giro.id], range: range).map(\.minorUnits) == [50_000, 47_000, 47_000, 47_000])
+	}
+
+	@Test("A booked version two days after its pending row raises the bars between them and keeps the rest")
+	func bookedTwoDaysLater() {
+		let range = DayRange(start: Day(year: 2026, month: 11, day: 11), end: Day(year: 2026, month: 11, day: 14))
+		let pending = Ledger(accounts: [giro], transactions: [
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 12), amountMinor: -3_000, name: "Row", isPending: true),
+		])
+		let booked = ledger([(Day(year: 2026, month: 11, day: 14), -3_000)])
+		#expect(pending.balanceBars(accountIDs: [giro.id], range: range).map(\.minorUnits) == [50_000, 47_000, 47_000, 47_000])
+		#expect(booked.balanceBars(accountIDs: [giro.id], range: range).map(\.minorUnits) == [50_000, 50_000, 50_000, 47_000])
+	}
+
 	@Test("Days of the period before the first transaction show the initial balance")
 	func beforeFirstTransaction() {
 		let l = ledger([(Day(year: 2026, month: 10, day: 15), -20_000)])

@@ -349,6 +349,31 @@ struct ReconcileTests {
 		#expect(r.skipped == 1)
 	}
 
+	@Test("A checked pending row under review leaves when the bank drops it")
+	func checkedReviewRowLeaves() {
+		var pending = stored(row(9, -320, "Café Beispiel", "Kartenzahlung", pending: true))
+		pending.needsReview = true
+		pending.isChecked = true
+		var booked = stored(row(10, -320, "Café Beispiel", "Kartenzahlung"))
+		booked.needsReview = true
+		#expect(merge(refresh([fresh(booked)]), stored: [pending, booked]).dropped == [pending.id])
+	}
+
+	@Test("A new review clears the checkmark of a pending row, so the next refresh keeps it until the user checks it again")
+	func newReviewClearsCheckmark() {
+		for hadReview in [false, true] {
+			var pending = stored(row(9, -320, "Café Beispiel", "Kartenzahlung", pending: true))
+			pending.isChecked = true
+			pending.needsReview = hadReview
+			let first = merge(refresh([row(10, -320, "Café Beispiel", "Kartenzahlung"), row(11, -320, "Café Beispiel", "Kartenzahlung")]), stored: [pending])
+			#expect(first.marked.map(\.id) == [pending.id])
+			#expect(first.marked.map(\.needsReview) == [true])
+			#expect(first.marked.map(\.isChecked) == [false])
+			let second = merge(refresh(first.added.map(fresh)), stored: first.marked + first.added.map(stored))
+			#expect(second.dropped == [])
+		}
+	}
+
 	@Test("One pending coffee and two booked: all three marked for review")
 	func onePendingTwoBooked() {
 		var withMax = stored(row(9, -320, "Café Beispiel", "Kartenzahlung", pending: true))
@@ -449,14 +474,23 @@ struct ReconcileTests {
 		#expect(ledger.newTransactionCounts == [:])
 	}
 
-	@Test("Checking a row clears its review mark")
-	func checkingClearsReview() {
-		var t = row(10, -320, "Café Beispiel", "Kartenzahlung")
-		t.needsReview = true
-		t.isNew = true
-		t.markChecked()
-		#expect(t.needsReview == false)
-		#expect(t.isNew == false)
+	@Test("Checking a booked row clears its review mark, and checking a pending row keeps it")
+	func checkingClearsReviewOfBookedRows() {
+		var booked = row(10, -320, "Café Beispiel", "Kartenzahlung")
+		booked.needsReview = true
+		booked.isNew = true
+		booked.markChecked()
+		#expect(booked.needsReview == false)
+		#expect(booked.isNew == false)
+		var pending = row(10, -320, "Café Beispiel", "Kartenzahlung", pending: true)
+		pending.needsReview = true
+		pending.isNew = true
+		#expect(pending.changesWhenChecked)
+		pending.markChecked()
+		#expect(pending.needsReview == true)
+		#expect(pending.isNew == false)
+		#expect(pending.isChecked == true)
+		#expect(pending.changesWhenChecked == false)
 	}
 
 	@Test("A booked row keeps the new mark of its pending row")

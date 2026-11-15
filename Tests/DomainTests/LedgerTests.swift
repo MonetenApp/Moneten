@@ -178,12 +178,53 @@ struct LedgerTests {
 		#expect(l.transactions(in: .category(d.id)).count == 3)
 	}
 
-	@Test("Balances leave out pending transactions")
-	func balances() {
-		let l = ledger()
-		#expect(l.computedBalance(of: giro).minorUnits == 100_000 - 8_900 - 2_345 + 320_000)
-		let expected: Int64 = 100_000 - 8_900 - 2_345 + 320_000
-		#expect(l.dailyBalances(accountIDs: [giro.id]).last?.minorUnits == Optional(expected))
+	@Test("A pending transaction counts in the balance, the bars, and the pie")
+	func pendingCounts() {
+		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline, initialBalanceMinor: 100_000)
+		let groceries = Domain.Category(position: 0, name: "Groceries")
+		let today = Day(year: 2026, month: 11, day: 12)
+		let l = Ledger(accounts: [giro], categories: [groceries], transactions: [
+			Transaction(accountID: giro.id, bookingDate: today, amountMinor: -3_000, name: "Supermarkt", isPending: true,
+				categoryID: groceries.id, categorizedBy: .manual),
+		])
+		#expect(l.computedBalance(of: giro).minorUnits == 97_000)
+		#expect(l.balanceBars(accountIDs: [giro.id], range: DayRange(start: today, end: today)).map(\.minorUnits) == [97_000])
+		#expect(l.categoryTotals(of: l.transactions).map(\.minorUnits) == [-3_000])
+		#expect(l.categoryTotals(of: l.transactions).map(\.category.name) == ["Groceries"])
+		#expect(l.periodSums(of: l.transactions, period: .month).map(\.withdrawals) == [-3_000])
+		#expect(l.sum(ofCategory: groceries, in: DayRange(start: today, end: today)).minorUnits == -3_000)
+	}
+
+	@Test("The initial balance that meets the bank balance subtracts the booked rows up to the day of that balance")
+	func initialBalanceMeetingBankBalance() {
+		let balanceDay = Day(year: 2026, month: 11, day: 10)
+		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .bank, bankBalanceMinor: 250_000, bankBalanceDate: balanceDay.date(),
+			initialBalanceMinor: 99_999)
+		func row(_ day: Int, _ minor: Int64, pending: Bool = false, currency: String = "EUR") -> Transaction {
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: day), amountMinor: minor, currency: currency, name: "Row", isPending: pending)
+		}
+		let rows = [row(2, 100_000), row(5, -30_000), row(9, -3_000, pending: true), row(12, -5_000), row(6, -1_000, currency: "USD")]
+		#expect(giro.initialBalanceMeetingBankBalance(of: rows) == 180_000)
+		var offline = giro
+		offline.bankBalanceMinor = nil
+		#expect(offline.initialBalanceMeetingBankBalance(of: rows) == nil)
+	}
+
+	@Test("A pending transaction marked for review counts nowhere, a booked one marked for review counts")
+	func pendingForReview() {
+		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline, initialBalanceMinor: 50_000)
+		let groceries = Domain.Category(position: 0, name: "Groceries")
+		func row(_ day: Int, pending: Bool) -> Transaction {
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: day), amountMinor: -320, name: "Bäckerei Gutbrot",
+				isPending: pending, categoryID: groceries.id, categorizedBy: .manual, needsReview: true)
+		}
+		let l = Ledger(accounts: [giro], categories: [groceries], transactions: [row(12, pending: true), row(12, pending: true), row(13, pending: false)])
+		let range = DayRange(start: Day(year: 2026, month: 11, day: 12), end: Day(year: 2026, month: 11, day: 13))
+		#expect(l.computedBalance(of: giro).minorUnits == 49_680)
+		#expect(l.balanceBars(accountIDs: [giro.id], range: range).map(\.minorUnits) == [50_000, 49_680])
+		#expect(l.categoryTotals(of: l.transactions).map(\.minorUnits) == [-320])
+		#expect(l.periodSums(of: l.transactions, period: .month).map(\.withdrawals) == [-320])
+		#expect(l.sum(ofCategory: groceries, in: range).minorUnits == -320)
 	}
 
 	@Test("A balance counts only the rows in the currency of the account")

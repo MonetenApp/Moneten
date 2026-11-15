@@ -154,15 +154,24 @@ public struct Account: Identifiable, Hashable, Sendable, Codable {
 	/// history from its recorded values instead.
 	var derivesInitialBalance: Bool { source == .bank && kind != .portfolio && !initialBalanceIsSet }
 
-	/// Sets the initial balance once, so that the computed balance at the end of the day of the bank
-	/// balance equals the bank balance. `rows` are all live rows of the account. Pending rows, rows in
-	/// another currency, and rows booked after that day are not in the bank balance.
-	mutating func deriveInitialBalance(from rows: [Transaction], calendar: Calendar = .current) {
-		guard derivesInitialBalance, let bankBalanceMinor else { return }
-		let day = Day(bankBalanceDate ?? Date(), calendar: calendar)
-		initialBalanceMinor = rows.reduce(bankBalanceMinor) { sum, t in
-			isInBalance(t) && t.bookingDate <= day ? sum - t.amountMinor : sum
+	/// The rows that a bank balance for the end of `day` holds: booked rows in the account currency up to that
+	/// day. Pending rows are not in it, with or without review, because a bank reports its booked balance.
+	func bookedSum(of rows: [Transaction], through day: Day) -> Int64 {
+		rows.reduce(0) { sum, t in
+			!t.isPending && t.currency == currency && t.bookingDate <= day ? sum + t.amountMinor : sum
 		}
+	}
+
+	/// The initial balance at which the booked rows up to the end of the day of the bank balance add up to
+	/// the bank balance. `rows` are all live rows of the account. The pending rows then count on top.
+	public func initialBalanceMeetingBankBalance(of rows: [Transaction], calendar: Calendar = .current) -> Int64? {
+		bankBalanceMinor.map { $0 - bookedSum(of: rows, through: Day(bankBalanceDate ?? Date(), calendar: calendar)) }
+	}
+
+	/// Sets the initial balance once, so that the computed balance meets the bank balance.
+	mutating func deriveInitialBalance(from rows: [Transaction], calendar: Calendar = .current) {
+		guard derivesInitialBalance, let value = initialBalanceMeetingBankBalance(of: rows, calendar: calendar) else { return }
+		initialBalanceMinor = value
 		initialBalanceIsSet = true
 	}
 }
@@ -267,8 +276,9 @@ public struct Transaction: Identifiable, Hashable, Sendable, Codable {
 	public var categorizedBy: Categorization
 	/// True from the moment the transaction arrives until the user has seen it.
 	public var isNew: Bool
-	/// Set by a merge when more than one row could be the booked version of a pending row. The list
-	/// shows a mark until the user checks or deletes the row. A merge never drops a pending row that has it.
+	/// Set by a merge when more than one row could be the booked version of a pending row. The list shows a
+	/// mark until the user checks a booked row or deletes the row. A merge drops a pending row that has it only
+	/// after the user checked it, and a new review clears that checkmark.
 	public var needsReview: Bool
 	/// A refresh delivered this row. Once the user deletes it, a file import does not add it again.
 	public var isFetched: Bool
@@ -307,20 +317,28 @@ public struct Transaction: Identifiable, Hashable, Sendable, Codable {
 
 	public var amount: Money { Money(minorUnits: amountMinor, currency: currency) }
 
-	/// The rule for every sum in one currency, such as the balance of an account or the amount of a
-	/// category. The minor units of another currency are not those of the sum, and a sum never converts.
+	/// The rule for every sum, such as a balance, a bar of a chart, or the amount of a category. A pending row
+	/// counts like a booked one, except while it waits for review: then the booked row stands for the money.
+	var countsInSums: Bool { !isPending || !needsReview }
+
+	/// The rule for every sum in one currency. The minor units of another currency are not those of the sum,
+	/// and a sum never converts.
 	public func isInSum(of currency: String) -> Bool {
-		!isPending && self.currency == currency
+		countsInSums && self.currency == currency
 	}
 
 	/// The prefix of the IDs that the MoneyMoney migration gives. Such an ID says where a row came from,
 	/// not which source delivers it, so a source with IDs of its own takes the row over.
 	public static let migrationIDPrefix = "moneymoney:"
 
-	/// The user checked the row: it is no longer new and needs no more review.
+	/// The user checked the row: it is no longer new, and a booked row needs no more review. A pending row keeps
+	/// its mark, so it still counts in no sum while the booked row stands for its money.
 	public mutating func markChecked() {
 		isChecked = true
 		isNew = false
-		needsReview = false
+		if !isPending { needsReview = false }
 	}
+
+	/// Checking the row changes it, so "Mark All Transactions as Checked" counts it.
+	public var changesWhenChecked: Bool { !isChecked || isNew || (needsReview && !isPending) }
 }
