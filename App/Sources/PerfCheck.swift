@@ -326,17 +326,18 @@ struct PerfScenario {
 			}),
 		PerfScenario(name: "refresh-booked-file-history", budget: halfSecond,
 			setUp: { c in
-				guard let account = c.model.ledger.accounts.first(where: { $0.name == "Account 10" }) else { return c.fail("no history account") }
+				let account = Account(position: c.model.ledger.accounts.count, name: "Booked file history", kind: .giro, source: .offline)
+				c.model.save(account: account)
 				let rows = (0..<50_000).map { i in
 					Transaction(accountID: account.id, bookingDate: Day.today().adding(days: -(i % 2_000)), amountMinor: -Int64(i + 1),
 						name: "Shop", purpose: "File history \(i)")
 				}
 				do { _ = try c.model.merge(.file(rows), into: account.id) }
 				catch { c.fail("file history setup failed") }
-				await c.select("Account 10")
+				await c.select("Booked file history")
 			},
 			run: { c in
-				guard let account = c.model.ledger.accounts.first(where: { $0.name == "Account 10" }) else { return c.fail("no history account") }
+				guard let account = c.model.ledger.accounts.first(where: { $0.name == "Booked file history" }) else { return c.fail("no history account") }
 				let stored = c.model.ledger.transactions(ofAccount: account.id)
 				let rows = Array(stored.filter { $0.fileIdentity != nil }.prefix(300))
 				if stored.filter({ $0.fileIdentity != nil }).count != 50_000 || rows.count != 300 { c.fail("file history has wrong row count") }
