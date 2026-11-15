@@ -16,6 +16,16 @@ struct SplitTests {
 		#expect(Split.amount(from: "abc", on: money(-8000), decimalMark: .comma) == nil)
 		#expect(Split.amount(from: "1.250", on: money(-300000), decimalMark: .point) == money(-125))
 		#expect(Split.amount(from: "  +5,00  ", on: money(-8000), decimalMark: .comma) == money(500))
+		#expect(Split.amount(from: "-5,00", on: money(-8000), decimalMark: .comma) == money(-500))
+		#expect(Split.amount(from: "−5,00", on: money(-8000), decimalMark: .comma) == money(-500))
+		#expect(Split.amount(from: "€ -5,00", on: money(-8000), decimalMark: .comma) == money(-500))
+		#expect(Split.amount(from: "€ +5,00", on: money(-8000), decimalMark: .comma) == money(500))
+		#expect(Split.amount(from: "5,00 €", on: money(-8000), decimalMark: .comma) == money(-500))
+	}
+
+	@Test("An amount with more digits than a decimal holds exactly is refused, not rounded")
+	func longAmount() {
+		#expect(Split.amount(from: "92233720368547758,07000000000000000000001", on: money(8000), decimalMark: .comma) == nil)
 	}
 
 	@Test("The remainder makes the parts add up")

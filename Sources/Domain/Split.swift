@@ -70,9 +70,11 @@ public enum SplitError: Error, Equatable {
 
 public enum Split {
 	public static func amount(from text: String, on row: Money, decimalMark: DecimalMark) -> Money? {
-		guard var value = AmountParser.decimal(from: text, decimalMark: decimalMark) else { return nil }
-		let sign = text.trimmingCharacters(in: .whitespacesAndNewlines).first
-		if sign != "+" && sign != "-" && sign != "−" && row.isNegative { value = -value }
+		// A Decimal holds 38 digits exactly. A longer text would be rounded before the check for exactness below.
+		guard text.filter(\.isNumber).count <= 38, var value = AmountParser.decimal(from: text, decimalMark: decimalMark) else { return nil }
+		// The sign is read where AmountParser reads it, after spaces and the euro sign, so "€ -5,00" keeps its minus.
+		let sign = text.unicodeScalars.first { !CharacterSet.whitespacesAndNewlines.contains($0) && $0 != "€" }
+		if sign != "+" && sign != "-" && sign != "\u{2212}" && row.isNegative { value = -value }
 		var scaled = value * Decimal(sign: .plus, exponent: row.decimalPlaces, significand: 1)
 		var whole = Decimal()
 		NSDecimalRound(&whole, &scaled, 0, .plain)
