@@ -329,33 +329,49 @@ struct TransactionSheet: View {
 	@Environment(AppModel.self) private var model
 	let transactionID: UUID?
 	@State private var date = Date()
-	@State private var name = ""
-	@State private var purpose = ""
-	@State private var amount = ""
-	@State private var isDeposit = false
-	@State private var categoryID: UUID?
+	@State private var draft = TransactionDraft()
 	@State private var comment = ""
+	@State private var problem: AmountProblem?
+	@FocusState private var nameHasFocus: Bool
 
 	private var existing: Transaction? { transactionID.flatMap { model.ledger.transaction($0) } }
 	private var account: Account? { existing.flatMap { model.ledger.account($0.accountID) } ?? model.selectedAccount }
-	private var editable: Bool { account?.isOffline ?? false }
+
+	/// Every field of a new transaction and of a manual one can change. In an account with bank access, a row
+	/// counts as manual when no refresh delivered it and no migration brought it.
+	private var editable: Bool {
+		guard let t = existing else { return true }
+		return account?.isOffline == true || (!t.isFetched && t.sourceID == nil)
+	}
+
+	/// The name field: a typed name that equals an earlier one, as a chosen suggestion does, also fills the
+	/// purpose and the category while they are empty. Loading a row sets the name without this.
+	private var name: Binding<String> {
+		Binding(get: { draft.name }, set: { typed in
+			draft.name = typed
+			guard existing == nil, let account, let earlier = model.ledger.nameSuggestions(for: typed).first(where: { $0.name == typed }) else { return }
+			draft.take(earlier, for: account.id, in: model.ledger)
+		})
+	}
 
 	var body: some View {
-		SheetFrame(title: existing == nil ? "New Transaction" : "Edit Transaction", canConfirm: !editable || AmountParser.decimal(from: amount) != nil, width: 500, onConfirm: save) {
+		SheetFrame(title: existing == nil ? "New Transaction" : "Edit Transaction", width: 500, onConfirm: save) {
 			if editable {
 				Section {
 					DatePicker("Date", selection: $date, displayedComponents: .date)
-					TextField("Name", text: $name)
-					Picker("Type", selection: $isDeposit) {
-						Text("Withdrawal").tag(false)
-						Text("Deposit").tag(true)
-					}
-					.pickerStyle(.segmented)
-					TextField("Amount", text: $amount, prompt: Text("0,00"))
+					TextField("Name", text: name)
+						.focused($nameHasFocus)
+						.textInputSuggestions(existing == nil ? model.ledger.nameSuggestions(for: draft.name) : []) { t in
+							Text(t.name).textInputCompletion(t.name)
+						}
+					TextField("Amount", text: $draft.amount, prompt: Text("-0,00"))
 						.multilineTextAlignment(.trailing)
-						.marksUnreadableAmount(amount)
+						.marksUnreadableAmount(draft.amount)
 						.monospacedDigit()
-					TextField("Purpose", text: $purpose, prompt: Text("Optional"), axis: .vertical).lineLimit(1...4)
+					if let problem {
+						Text(problem.message).foregroundStyle(Palette.red)
+					}
+					TextField("Purpose", text: $draft.purpose, prompt: Text("Optional"), axis: .vertical).lineLimit(1...4)
 				}
 			} else if let t = existing {
 				Section {
@@ -377,40 +393,50 @@ struct TransactionSheet: View {
 				}
 			}
 			Section {
-				Picker("Category", selection: $categoryID) {
+				Picker("Category", selection: $draft.categoryID) {
 					Text(model.ledger.defaultCategory?.name ?? "Uncategorized").tag(UUID?.none)
 					ForEach(model.ledger.categoriesInSidebarOrder.filter { !$0.isGroup && !$0.isDefault }) { Text(model.ledger.categoryPath($0.id)).tag(UUID?.some($0.id)) }
 				}
 				TextField("Comment", text: $comment, prompt: Text("Optional"), axis: .vertical).lineLimit(1...4)
 			}
 		}
-		.onAppear(perform: load)
+		.onChange(of: draft.amount) { problem = nil }
+		.onAppear {
+			load()
+			nameHasFocus = editable
+		}
 	}
 
+	/// An existing row shows its values. A new one repeats the one selected row of the account, with today's date.
 	private func load() {
-		guard let t = existing else { return }
-		date = t.bookingDate.date()
-		name = t.name
-		purpose = t.purpose
-		isDeposit = t.amountMinor > 0
-		amount = Format.editableAmount(abs(t.amountMinor), t.currency)
-		categoryID = t.categoryID
-		comment = t.comment ?? ""
+		if let t = existing {
+			date = t.bookingDate.date()
+			draft = TransactionDraft(template: t)
+			comment = t.comment ?? ""
+		} else if let account, model.visibleSelection.count == 1, let id = model.visibleSelection.first,
+			let template = model.ledger.transaction(id), template.accountID == account.id {
+			draft = TransactionDraft(template: template)
+		}
 	}
 
 	private func save() -> Bool {
 		guard let account else { return true }
 		var t = existing ?? Transaction(accountID: account.id, bookingDate: Day(date), amountMinor: 0, currency: account.currency, name: "")
 		if editable {
-			guard let value = AmountParser.decimal(from: amount) else { return false }
+			switch draft.amountMinor(in: t.currency) {
+			case let .failure(p):
+				problem = p
+				return false
+			case let .success(minor):
+				t.amountMinor = minor
+			}
 			t.bookingDate = Day(date)
-			t.name = name
-			t.purpose = purpose
-			t.amountMinor = Money(abs(value), currency: account.currency).minorUnits * (isDeposit ? 1 : -1)
+			t.name = draft.name
+			t.purpose = draft.purpose
 		}
-		if categoryID != t.categoryID {
-			t.categoryID = categoryID
-			t.categorizedBy = categoryID == nil ? .none : .manual
+		if draft.categoryID != t.categoryID {
+			t.categoryID = draft.categoryID
+			t.categorizedBy = draft.categoryID == nil ? .none : .manual
 		}
 		t.comment = comment.isEmpty ? nil : comment
 		model.save(transaction: t)

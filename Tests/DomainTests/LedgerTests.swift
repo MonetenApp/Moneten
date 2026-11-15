@@ -808,6 +808,31 @@ struct LedgerTests {
 		#expect(l.dailyBalances(accountIDs: [wallet.id]).map(\.minorUnits) == [10_000, 10_000])
 	}
 
+	@Test("An offline account adds its initial balance and its rows in its currency, pending rows included, except one marked for review")
+	func offlineBalance() {
+		let wallet = Account(position: 0, name: "Wallet", kind: .cash, source: .offline, initialBalanceMinor: 5_000)
+		func row(_ day: Int, _ minor: Int64, currency: String = "EUR", pending: Bool = false, review: Bool = false) -> Transaction {
+			Transaction(accountID: wallet.id, bookingDate: Day(year: 2026, month: 11, day: day), amountMinor: minor, currency: currency, name: "Row",
+				isPending: pending, needsReview: review)
+		}
+		let l = Ledger(accounts: [wallet], transactions: [
+			row(2, 10_000), row(3, -480), row(4, -1_200), row(5, -1_000, pending: true), row(5, -500, pending: true, review: true),
+			row(6, -1_000, currency: "USD"),
+		])
+		#expect(l.balance(of: wallet) == Money(minorUnits: 12_320, currency: "EUR"))
+	}
+
+	@Test("A manual row in an account with bank access counts in the daily balance and leaves the bank balance unchanged")
+	func manualRowInBankAccount() {
+		let deposit = Account(position: 0, name: "Festgeld", kind: .fixedTermDeposit, source: .bank, bankBalanceMinor: 1_000_000, initialBalanceIsSet: true)
+		let start = Day(year: 2026, month: 3, day: 1)
+		let l = Ledger(accounts: [deposit], transactions: [
+			Transaction(accountID: deposit.id, bookingDate: start, amountMinor: 1_000_000, name: "Anlage"),
+		])
+		#expect(l.balance(of: deposit) == Money(minorUnits: 1_000_000, currency: "EUR"))
+		#expect(l.dailyBalances(accountIDs: [deposit.id]).first == BalancePoint(day: start, minorUnits: 1_000_000))
+	}
+
 	@Test("Mixed currencies: the sidebar sums the category currency, and the rows of the category add up per currency")
 	func categorySumInCategoryCurrency() throws {
 		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline)

@@ -389,7 +389,9 @@ struct TransactionTable: View {
 				Spacer()
 				Text(key.filter.isActive || !key.filter.searchText.isEmpty ? "No matching transactions found." : "No transactions found.")
 					.foregroundStyle(.secondary)
-				if let a = model.selectedOfflineAccount, model.ledger.transactions(ofAccount: a.id).isEmpty {
+				if let a = model.selectedAccount, a.isOffline, !model.ledger.accountsWithTransactions.contains(a.id) {
+					Text(a.kind == .loan ? "Add at least the initial payout with “Add Transaction”." : "Add at least the initial deposit with “Add Transaction”.")
+						.foregroundStyle(.secondary)
 					Button("Add Transaction...") { model.sheet = .transaction(nil) }.padding(.top, 6)
 				}
 				Spacer()

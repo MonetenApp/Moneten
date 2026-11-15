@@ -240,6 +240,16 @@ struct ReconcileTests {
 		#expect(rows.map(\.id) == first.added.map(\.id))
 	}
 
+	@Test("A refresh keeps a row that the user added by hand in an account with bank access")
+	func keepsManualRow() {
+		let bank = Account(position: 0, name: "Festgeld", kind: .fixedTermDeposit, source: .bank)
+		let manual = Transaction(accountID: bank.id, bookingDate: day(3), amountMinor: 1_000_000, name: "Anlage")
+		let r = merge(refresh([], balance: Money(minorUnits: 1_000_000, currency: "EUR")), into: bank, stored: [manual])
+		#expect(r.dropped == [])
+		#expect(r.updated == [])
+		#expect(r.account?.bankBalanceMinor == 1_000_000)
+	}
+
 	@Test("A booked row with a return reason books a pending row and keeps the reason")
 	func bookedReturnReason() {
 		let pending = row(5, 8_900, "Stadtwerke Musterstadt", "Rücklastschrift", pending: true)

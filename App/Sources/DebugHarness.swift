@@ -134,6 +134,8 @@ final class DebugHarness {
 				keyCode: argument == "escape" ? 53 : argument == "return" ? 36 : 24) {
 				log("key \(argument) handled=\(sheet.performKeyEquivalent(with: event))")
 			}
+		// Moves the focus to the next field of the sheet on top, as the Tab key does.
+		case "tab": (topSheet?.firstResponder as? NSTextView)?.insertTab(nil)
 		// "<text>" types into the field that has the focus.
 		case "type": (topSheet?.firstResponder as? NSTextView)?.insertText(argument, replacementRange: NSRange(location: NSNotFound, length: 0))
 		// Focuses the first secure field of the sheet on screen and logs what macOS sees of it, for the check that the password manager does not offer it.
@@ -267,6 +269,10 @@ final class DebugHarness {
 				log("importanswer kind=\(kind) fileIndex=\(model.fileImport?.index ?? -1) selectedPosition=\(question.selected.position) otherPosition=\(question.other?.position ?? -1)")
 			}
 		// "[<currency>]": the credit card in US dollars, or in another currency such as JPY.
+		// "<kind> <name>": an empty offline account in euros, such as "loan Darlehen".
+		case "offline":
+			let parts = argument.split(separator: " ", maxSplits: 1).map(String.init)
+			Task { await model.addOfflineAccount(name: parts.last ?? "", kind: AccountKind(rawValue: parts[0]) ?? .cash, currency: "EUR", groupID: nil); log("offline done") }
 		case "usd": Task { await DemoData.usdAccount(model, currency: argument.isEmpty ? "USD" : argument); log("usd done") }
 		case "review": Task { await DemoData.review(model); log("review done") }
 		case "fetch": DemoData.fetch(model, argument)
@@ -444,6 +450,8 @@ final class DebugHarness {
 			// What "Calibrate..." in the account header does.
 			case "calibration": if case let .account(id) = model.selection { model.sheet = .calibration(id) }
 			case "transaction": model.sheet = .transaction(model.visibleTransactions.first?.id)
+			// What "Add Transaction..." does, with the selected row as the template.
+			case "newTransaction": model.sheet = .transaction(nil)
 			// What ⌘K does, for a run without a key window, where SwiftUI disables the menu commands.
 			case "assignCategory": model.openCategoryPicker()
 			// The real sheet, as a click on "Add category" in "Assign Category" opens it. "newcategory" skips the sheet.

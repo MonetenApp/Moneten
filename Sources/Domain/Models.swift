@@ -130,6 +130,10 @@ public struct Account: Identifiable, Hashable, Sendable, Codable {
 
 	public var isOffline: Bool { source == .offline }
 
+	/// "Add Transaction..." works in every account except a portfolio, whose value comes from its positions.
+	/// In an account with bank access, a manual row covers what the bank does not deliver.
+	public var takesManualTransactions: Bool { kind != .portfolio }
+
 	/// The balance that a portfolio or an account of a bank access shows. A portfolio gets its value from the
 	/// bank, not from transactions. Every other account computes its balance, also a migrated one that keeps
 	/// the balance of the source.

@@ -207,7 +207,7 @@ struct AccountRow: View {
 					.disabled(!model.canRefresh(.account(account.id)))
 				Divider()
 			}
-			if account.isOffline {
+			if account.takesManualTransactions {
 				Button("Add Transaction...") { model.navigate(to: .account(account.id)); model.sheet = .transaction(nil) }
 			}
 			Button("Import Transactions...") {

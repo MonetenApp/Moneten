@@ -59,8 +59,9 @@ extension AppModel {
 		selection.flatMap { ledger.portfolioAccounts(in: $0.scope) }
 	}
 
-	var selectedOfflineAccount: Account? {
-		selectedAccount.flatMap { $0.isOffline ? $0 : nil }
+	/// The selected account when "Add Transaction..." can add to it.
+	var selectedManualAccount: Account? {
+		selectedAccount.flatMap { $0.takesManualTransactions ? $0 : nil }
 	}
 
 	var settingsTitle: String {

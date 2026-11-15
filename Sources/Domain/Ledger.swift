@@ -23,7 +23,7 @@ public struct Ledger: Sendable {
 	private var partsByTransaction: [UUID: [SplitPart]] = [:]
 
 	private var transactionIndex: [UUID: Int] = [:]
-	private var searchText: [UUID: String] = [:]
+	private(set) var searchText: [UUID: String] = [:]
 	/// The number of new transactions per account.
 	public private(set) var newTransactionCounts: [UUID: Int] = [:]
 	/// The accounts that have at least one transaction.

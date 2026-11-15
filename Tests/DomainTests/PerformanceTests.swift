@@ -123,6 +123,23 @@ struct PerformanceTests {
 		#endif
 	}
 
+	@Test("Suggestions for a typed name look through 50,000 transactions with different names within a frame")
+	func nameSuggestions() {
+		let wallet = Account(position: 0, name: "Wallet", kind: .cash, source: .offline)
+		let ts = (0..<50_000).map { i in
+			Transaction(accountID: wallet.id, bookingDate: Day(year: 2014 + i % 12, month: 1 + i % 12, day: 1 + i % 28), amountMinor: -Int64(i % 9_000),
+				name: i % 2 == 0 ? "Händler \(i)" : "Haendler \(i)")
+		}
+		let ledger = Ledger(accounts: [wallet], transactions: ts)
+		var found = 0
+		let keystroke = fastest { found = ledger.nameSuggestions(for: "Bäckerei").count }
+		print("suggestions over 50,000 names: \(keystroke)")
+		#expect(found == 0)
+		#if !DEBUG
+		#expect(keystroke < .milliseconds(16))
+		#endif
+	}
+
 	/// The fastest of three runs. A shared CI machine sometimes stalls one run for longer than the
 	/// budget, which made this test fail at random; a slow change still makes every run slow.
 	private func fastest(_ work: () -> Void) -> Duration {

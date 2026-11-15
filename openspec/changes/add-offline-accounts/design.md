@@ -18,6 +18,16 @@ The first build follows the spec where the task list marks a task as checked. Op
 
 The transaction window in `App` has one amount field. `AmountParser` in `Domain` reads the text with its sign, and the window stores that value as it is. The window has no choice between money in and money out, so no switch can flip a typed sign.
 
+### The window for a manual transaction
+
+`TransactionDraft` in `Domain` holds the typed name, amount, purpose, and category, so that a test checks the rules of the window. `amountMinor(in:)` refuses an empty field, text that `AmountParser` cannot read, and an amount that rounds to zero in the currency, each with its own message under the amount field. A selected row of the account fills the draft as a template, and an existing row fills it for editing, both with the amount in every decimal place of its currency and a decimal comma, such as "-12,00".
+
+`Ledger.nameSuggestions(for:)` lists one earlier row for each name that starts with the typed text, newest first. It compares the folded name at the start of the search text of each row, which the ledger keeps already, so a keystroke stays within a frame with 50,000 names. A name that equals a suggestion fills the purpose and the category while they are empty, and leaves out a category restricted to other accounts.
+
+### Manual transactions in an account with bank access
+
+"Add Transaction..." works in every account except a portfolio, whose value comes from its positions. In an account with bank access, a row that no refresh delivered and no migration brought counts as manual, so the user can edit all its fields. A row from a file import into such an account counts as manual too, because the app keeps no other mark for it. A refresh never drops a booked row, so the manual row stays. The sidebar shows the balance that the bank reports. The computed balance and the charts count the row, so the header offers "Calibrate..." when the rows then differ from the bank balance.
+
 ### Offsetting entry
 
 `Domain` builds the offsetting entry from the source transaction, the source account, and the target account, so that a test can check every field. The entry is a manual transaction. It takes the name, the purpose, the comment, and the category of the source, and the booking date of the source as its booking date and value date. A copied category gets `categorizedBy` `.manual`, because `Categorizer.categorize` keeps only a manual category and would otherwise move a copied rule category, or clear it when no rule matches. A source without a category gives `categorizedBy` `.none`, so that the rules run on the entry. The IBAN and BIC of the source account become `counterpartyIBAN` and `counterpartyBIC`. `Transaction` has no fields for an account number and a bank code, so a source account without an IBAN gives no counterparty account. A category whose restriction does not include the target account is dropped, and then the categorization rules run on the entry, which has `categorizedBy` `.none`. No link joins the two rows, so an edit of one changes only that row.
