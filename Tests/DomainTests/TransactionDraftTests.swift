@@ -30,6 +30,9 @@ struct TransactionDraftTests {
 		#expect(draft(amount: "vier").amountMinor(in: "EUR") == .failure(.notANumber))
 		#expect(draft(amount: "1,234").amountMinor(in: "EUR") == .failure(.notANumber))
 		#expect(draft(amount: " ").amountMinor(in: "EUR") == .failure(.missing))
+		#expect(draft(amount: "100000000000000000000").amountMinor(in: "EUR") == .failure(.tooLarge))
+		#expect(draft(amount: "-92233720368547758,08").amountMinor(in: "EUR") == .failure(.tooLarge))
+		#expect(draft(amount: "-92233720368547758,07").amountMinor(in: "EUR") == .success(-9_223_372_036_854_775_807))
 		#expect(AmountProblem.zero.message == "The amount should not be zero.")
 	}
 

@@ -37,6 +37,9 @@ public struct TransactionDraft: Hashable, Sendable {
 	public func amountMinor(in currency: String) -> Result<Int64, AmountProblem> {
 		guard !amount.allSatisfy(\.isWhitespace) else { return .failure(.missing) }
 		guard let value = AmountParser.decimal(from: amount) else { return .failure(.notANumber) }
+		// Beyond the range of minor units, the conversion would store another amount.
+		let limit = Money(minorUnits: .max, currency: currency).decimal
+		guard -limit <= value, value <= limit else { return .failure(.tooLarge) }
 		let minor = Money(value, currency: currency).minorUnits
 		return minor == 0 ? .failure(.zero) : .success(minor)
 	}
@@ -56,13 +59,14 @@ public struct TransactionDraft: Hashable, Sendable {
 
 /// Why the window for a manual transaction refuses an amount.
 public enum AmountProblem: Error, Hashable, Sendable {
-	case missing, notANumber, zero
+	case missing, notANumber, zero, tooLarge
 
 	public var message: String {
 		switch self {
 		case .missing: "Enter an amount."
 		case .notANumber: "The amount is not a number."
 		case .zero: "The amount should not be zero."
+		case .tooLarge: "The amount is too large."
 		}
 	}
 }
