@@ -24,9 +24,13 @@ public enum TransactionCSV {
 			return dates.string(from: date)
 		}
 		let mark = locale.decimalSeparator ?? "."
-		func amount(_ minorUnits: Int64) -> String {
-			let whole = minorUnits.magnitude / 100, cents = minorUnits.magnitude % 100
-			return "\(minorUnits < 0 ? "-" : "")\(whole)\(mark)\(cents < 10 ? "0" : "")\(cents)"
+		/// The decimal places of the currency, at least two, with the decimal mark of the locale.
+		func amount(_ minorUnits: Int64, _ currency: String) -> String {
+			var text = AmountText.text(minorUnits, currency)
+			if !text.contains(".") { text += "." }
+			let places = text.count - text.distance(from: text.startIndex, to: text.firstIndex(of: ".")!) - 1
+			text += String(repeating: "0", count: max(0, 2 - places))
+			return text.replacingOccurrences(of: ".", with: mark)
 		}
 		let accounts = Dictionary(ledger.accounts.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
 		var lines = [columns.joined(separator: ";")]
@@ -35,7 +39,7 @@ public enum TransactionCSV {
 			if i % 1_000 == 0 { try Task.checkCancellation() }
 			let own = accounts[t.accountID].map { $0.iban ?? $0.accountNumber ?? $0.name } ?? ""
 			let fields = [day(t.bookingDate), day(t.valueDate), categoryPath(t.categoryID, in: ledger), t.name, t.purpose, t.counterpartyIBAN ?? "",
-				t.counterpartyBIC ?? "", amount(t.amountMinor), t.currency, own, t.bookingText ?? "", t.endToEndReference ?? "", t.mandateReference ?? "",
+				t.counterpartyBIC ?? "", amount(t.amountMinor, t.currency), t.currency, own, t.bookingText ?? "", t.endToEndReference ?? "", t.mandateReference ?? "",
 				t.creditorID ?? "", t.comment ?? "", t.isChecked ? "X" : "", t.isPending ? "X" : ""]
 			lines.append(fields.map(quoted).joined(separator: ";"))
 		}

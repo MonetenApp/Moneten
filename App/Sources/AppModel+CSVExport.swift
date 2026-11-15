@@ -14,9 +14,11 @@ extension AppModel {
 	}
 
 	/// The context menu of an account, group, or category shows it first, so the export covers what its list shows.
+	/// The table follows a new selection only after a drawing, so the rows come from the key of the target.
 	func exportTransactions(of target: SidebarSelection) {
+		if selection == target { return exportTransactions() }
 		navigate(to: target)
-		exportTransactions(visibleTransactions)
+		exportTransactions(transactions(for: TableKey(selection: target, filter: filter, portfolios: selectedPortfolios)))
 	}
 
 	func exportTransactions(ids: Set<UUID>) {
@@ -32,10 +34,16 @@ extension AppModel {
 		let ledger = ledger
 		exportTask = Task {
 			// A short export finishes before the progress appears.
-			let progress = Task { try await Task.sleep(for: .milliseconds(500)); sheet = .exporting }
+			let progress = Task {
+				try await Task.sleep(for: .milliseconds(500))
+				try Task.checkCancellation()
+				sheet = .exporting
+			}
 			defer { progress.cancel(); if sheet == .exporting { sheet = nil } }
 			do {
-				let data = try await Task.detached { try TransactionCSV.data(rows, ledger: ledger) }.value
+				let work = Task.detached { try TransactionCSV.data(rows, ledger: ledger) }
+				// A detached task does not inherit the cancel of "Cancel", so it is passed on.
+				let data = try await withTaskCancellationHandler { try await work.value } onCancel: { work.cancel() }
 				try Task.checkCancellation()
 				// An atomic write goes through a temporary file, so a failed export leaves no file behind.
 				try data.write(to: url, options: .atomic)

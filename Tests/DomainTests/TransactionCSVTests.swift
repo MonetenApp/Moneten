@@ -47,6 +47,13 @@ struct TransactionCSVTests {
 		#expect(try lines([rent], "de_DE")[1] == "01.11.2026;;Uncategorized;Hausverwaltung;;;;-1234,56;EUR;DE02120300000000202051;;;;;;;X")
 	}
 
+	@Test("An amount has the decimal places of its currency, and at least two")
+	func otherCurrencies() throws {
+		let yen = Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 1), amountMinor: -1_000, currency: "JPY", name: "Tokyo")
+		let dinar = Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 1), amountMinor: -12_345, currency: "KWD", name: "Kuwait")
+		#expect(try lines([yen, dinar], "de_DE").dropFirst().prefix(2).map { $0.split(separator: ";", omittingEmptySubsequences: false)[7] } == ["-1000,00", "-12,345"])
+	}
+
 	@Test("A field with a semicolon, a quotation mark, or a line break is quoted, with the quotation mark doubled")
 	func quoting() throws {
 		var t = stadtwerke
