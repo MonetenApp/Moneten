@@ -66,7 +66,7 @@ struct HeaderView: View {
 
 	var body: some View {
 		// "Pending" with the sum of the transactions of the view that the bank has not booked yet.
-		let pending = rows.filter(\.isPending).reduce(into: MoneySums()) { $0.add($1.amount) }
+		let pending = MoneySums(of: rows.filter(\.isPending))
 		HStack(alignment: .center, spacing: 10) {
 			HeaderIcon()
 			VStack(alignment: .leading, spacing: 2) {
@@ -918,7 +918,7 @@ struct StatusLine: View {
 	var body: some View {
 		let selected = rows.filter { model.selectedTransactions.contains($0.id) }
 		let shown = selected.count > 1 ? selected : rows
-		let sums = shown.reduce(into: MoneySums()) { $0.add($1.amount) }
+		let sums = MoneySums(of: shown)
 		// As in MoneyMoney, the count is centered in 11 points. The filter note takes the leading third
 		// and truncates before it reaches the count.
 		HStack(spacing: 12) {

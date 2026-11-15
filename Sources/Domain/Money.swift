@@ -51,6 +51,11 @@ public struct MoneySums: Hashable, Sendable {
 
 	public init() {}
 
+	/// The sum of the rows of a list, such as its status line or its pending sum shows.
+	public init(of rows: [Transaction]) {
+		for t in rows where t.countsInSums { add(t.amount) }
+	}
+
 	public mutating func add(_ money: Money) {
 		byCurrency[money.currency, default: 0] += money.minorUnits
 	}

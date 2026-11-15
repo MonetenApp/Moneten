@@ -313,6 +313,19 @@ struct LedgerTests {
 		#expect(l.sum(ofCategory: groceries, in: range).minorUnits == -320)
 	}
 
+	@Test("The sum of a list and its pending sum leave out a pending row marked for review")
+	func listSumsWithReview() {
+		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
+		func row(_ minor: Int64, pending: Bool, review: Bool) -> Transaction {
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 12), amountMinor: minor, name: "Café Beispiel",
+				isPending: pending, needsReview: review)
+		}
+		let rows = [row(-320, pending: true, review: true), row(-320, pending: true, review: true), row(-320, pending: false, review: true),
+			row(-1_000, pending: true, review: false)]
+		#expect(MoneySums(of: rows).amounts == [Money(minorUnits: -1_320, currency: "EUR")])
+		#expect(MoneySums(of: rows.filter(\.isPending)).amounts == [Money(minorUnits: -1_000, currency: "EUR")])
+	}
+
 	@Test("A balance counts only the rows in the currency of the account")
 	func balanceInAccountCurrency() {
 		let wallet = Account(position: 0, name: "Wallet", kind: .giro, source: .offline)
@@ -357,6 +370,9 @@ struct LedgerTests {
 		])
 		let currentMonth = DayRange(start: Day(year: 2026, month: 11, day: 1), end: nil)
 		#expect(l.sum(ofCategory: groceries, in: currentMonth) == Money(minorUnits: -12_000, currency: "EUR"))
+		let list = l.transactions(in: .category(groceries.id))
+		#expect(list.count == 3)
+		#expect(MoneySums(of: list).amounts == [Money(minorUnits: -12_000, currency: "EUR")])
 		var shown = groceries
 		shown.sidebarAmount = .currentMonth
 		#expect(l.sidebarAmount(of: shown, today: Day(year: 2026, month: 11, day: 9)) == Money(minorUnits: -12_000, currency: "EUR"))
