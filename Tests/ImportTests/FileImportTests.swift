@@ -109,6 +109,17 @@ struct FileImportTests {
 		])
 	}
 
+	@Test("A CSV date that the calendar does not have fails a booking date and warns for a value date")
+	func csvImpossibleDates() throws {
+		let text = "Datum;Valuta;Name;Betrag\n01.03.2026;31.02.2026;Kiosk;-1,50\n"
+		let parsed = try TransactionFileImporter.parse(Data(text.utf8), currency: "EUR")
+		#expect(parsed.transactions.map(\.valueDate) == [nil])
+		#expect(parsed.warnings == [.unreadableValueDate(line: 2, cell: "31.02.2026")])
+		#expect(throws: TransactionFileImporter.Failure.line(3, "The date 30.02.2026 cannot be read.")) {
+			try TransactionFileImporter.parse(Data((text + "30.02.2026;;Kiosk;-2,00\n").utf8), currency: "EUR")
+		}
+	}
+
 	@Test("A CAMT entry with an unreadable value date is imported with a warning for its line")
 	func camtValueDateWarning() throws {
 		let xml = """
@@ -241,6 +252,8 @@ struct FileImportTests {
 		(":61:2611071107DNDDTNONREF", "The amount cannot be read."),
 		(":61:2613071107D50,00NDDTNONREF", "The date cannot be read."),
 		(":61:26", "The date cannot be read."),
+		(":61:2602301107D50,00NDDTNONREF", "The date cannot be read."),
+		(":61:2611070431D50,00NDDTNONREF", "The date cannot be read."),
 	])
 	func mt940Unreadable(line: String, reason: String) {
 		let text = """
@@ -258,6 +271,7 @@ struct FileImportTests {
 	@Test("A CAMT file with an entry that cannot be read is rejected with its line", arguments: [
 		(#"<Ntry><Amt Ccy="EUR">abc</Amt><CdtDbtInd>DBIT</CdtDbtInd><BookgDt><Dt>2026-11-03</Dt></BookgDt></Ntry>"#, "The amount of the entry cannot be read."),
 		(#"<Ntry><Amt Ccy="EUR">5.00</Amt><CdtDbtInd>CRDT</CdtDbtInd></Ntry>"#, "The booking date of the entry cannot be read."),
+		(#"<Ntry><Amt Ccy="EUR">5.00</Amt><CdtDbtInd>CRDT</CdtDbtInd><BookgDt><Dt>2026-02-30</Dt></BookgDt></Ntry>"#, "The booking date of the entry cannot be read."),
 	])
 	func camtUnreadable(entry: String, reason: String) {
 		let xml = """

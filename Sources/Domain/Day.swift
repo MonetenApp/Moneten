@@ -9,6 +9,14 @@ public struct Day: Hashable, Comparable, Sendable, Codable, CustomStringConverti
 		rawValue = year * 10_000 + month * 100 + day
 	}
 
+	/// The day, or nil when the calendar has no such day, such as 31 April or 29 February 2027.
+	public static func valid(year: Int, month: Int, day: Int) -> Day? {
+		guard (1...12).contains(month) else { return nil }
+		let isLeap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0)
+		let length = [31, isLeap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1]
+		return (1...length).contains(day) ? Day(year: year, month: month, day: day) : nil
+	}
+
 	/// The day of a point in time in the given calendar.
 	public init(_ date: Date, calendar: Calendar = .current) {
 		let c = calendar.dateComponents([.year, .month, .day], from: date)
@@ -19,13 +27,15 @@ public struct Day: Hashable, Comparable, Sendable, Codable, CustomStringConverti
 	public init?(string: String) {
 		let parts = string.split(whereSeparator: { $0 == "-" || $0 == "." || $0 == "/" }).map(String.init)
 		guard parts.count == 3, let a = Int(parts[0]), let b = Int(parts[1]), var c = Int(parts[2]) else { return nil }
+		let day: Day?
 		if parts[0].count == 4 {
-			self.init(year: a, month: b, day: c)
+			day = Day.valid(year: a, month: b, day: c)
 		} else {
 			if parts[2].count == 2 { c += c < 70 ? 2000 : 1900 }
-			self.init(year: c, month: b, day: a)
+			day = Day.valid(year: c, month: b, day: a)
 		}
-		guard (1...12).contains(month), (1...31).contains(day) else { return nil }
+		guard let day else { return nil }
+		self = day
 	}
 
 	public var year: Int { rawValue / 10_000 }
