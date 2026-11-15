@@ -11,12 +11,11 @@ struct CategorySettingsSheet: View {
 	@State private var ruleError: String?
 	@State private var askApply = false
 	@State private var showHelp = false
-	@State private var confirmRemove = false
 
 	var body: some View {
 		SheetFrame(title: "Settings for \(category?.name ?? "")", canConfirm: ruleError == nil && currencyIsValid && !isApplying, canCancel: !isApplying, width: 520, onConfirm: save, leading: {
 			if category?.isDefault == false {
-				Button("Remove Category...", role: .destructive) { confirmRemove = true }
+				Button("Remove Category...", role: .destructive) { if model.confirmRemove(.category(categoryID)) { dismiss() } }
 					.disabled(isApplying)
 			}
 		}) {
@@ -99,14 +98,6 @@ struct CategorySettingsSheet: View {
 			Button("Not now", role: .cancel) { dismiss() }
 		} message: {
 			Text("\"Apply to all transactions\" also replaces categories that you assigned by hand, and transactions that no longer match leave this category.")
-		}
-		.confirmationDialog("Are you sure you want to remove the category \(category?.name ?? "")?", isPresented: $confirmRemove) {
-			Button("Remove", role: .destructive) {
-				Task { await model.remove(category: categoryID) }
-				dismiss()
-			}
-		} message: {
-			Text("The transactions will be retained and become uncategorized.")
 		}
 	}
 

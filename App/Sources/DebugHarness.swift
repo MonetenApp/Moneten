@@ -212,6 +212,13 @@ final class DebugHarness {
 		// The Extensions window and the catalog (ADR 0015). "extcatalog <url>" points the catalog at a test index and checks it.
 		case "extensions": openExtensionsWindow()
 		// An app in the background shows every item of the menu bar disabled, so this reads the condition of the commands.
+		// The items of a menu of the menu bar with their shortcuts, as the menu shows them after an update. "-" marks a
+		// disabled item.
+		case "menu":
+			guard let menu = NSApp.mainMenu?.items.first(where: { $0.title == argument })?.submenu else { return log("menu not found") }
+			menu.delegate?.menuNeedsUpdate?(menu)
+			menu.update()
+			log("menu \(argument) \(menu.items.filter { !$0.isSeparatorItem && !$0.isHidden }.map { ($0.isEnabled ? "" : "-") + $0.title + ($0.keyEquivalent.isEmpty ? "" : " ⌘\($0.keyEquivalent)") })")
 		case "menucommands": log("menucommands enabled=\(AppCommands(model: model).unlocked)")
 		#if DEBUG
 		case "extcatalog":
@@ -368,6 +375,25 @@ final class DebugHarness {
 		case "scrolltable": scrollTables { argument == "end" ? $0 - 1 : min(Int(argument) ?? 0, $0 - 1) }
 		case "select": if argument.isEmpty { model.selection = nil } else { select(argument) }
 		case "contextmenus": logContextMenus(argument)
+		// The frame of each sidebar row on the screen, with the origin at the top left as mouse events have it, so
+		// that a check can drag a row with the mouse.
+		case "sidebarrows": logSidebarRows()
+		// "<row>|<group>|<gap>" moves an account or a group by its name into a group, or to the top level for an empty
+		// group, at a gap among its rows, as a drop between sidebar rows does. "movetree" then logs the rows of the target.
+		case "movetree":
+			let parts = argument.components(separatedBy: "|")
+			guard parts.count == 3, let gap = Int(parts[2]),
+				let id = model.ledger.accounts.first(where: { $0.name == parts[0] })?.id ?? model.ledger.groups.first(where: { $0.name == parts[0] })?.id
+			else { return log("movetree bad argument") }
+			let parent = model.ledger.groups.first { $0.name == parts[1] }?.id
+			model.move(treeItem: id, into: parent, at: gap)
+			log("movetree rows=\(model.ledger.accountTree(in: parent).map { "\($0.position)" }.joined(separator: ","))")
+		// "<group>|on" or "<group>|off" expands or collapses a group, as its disclosure triangle does.
+		case "expand":
+			let parts = argument.components(separatedBy: "|")
+			guard var g = model.ledger.groups.first(where: { $0.name == parts[0] }) else { return log("expand no group") }
+			g.isExpanded = parts.last != "off"
+			model.save(group: g)
 		#if DEBUG || PERF_HARNESS
 		case "perf": Task { await runPerf() }
 		#endif
@@ -837,13 +863,7 @@ final class DebugHarness {
 	/// an item that the Option key shows in place of the item before it.
 	private func logContextMenus(_ argument: String) {
 		let choice = argument.split(separator: "|").compactMap { Int($0) }
-		func outlines(in view: NSView) -> [NSOutlineView] { ((view as? NSOutlineView).map { [$0] } ?? []) + view.subviews.flatMap(outlines) }
-		guard let window = NSApp.windows.first(where: { $0.isVisible && $0.identifier?.rawValue.hasPrefix("main") == true }),
-			let content = window.contentView else { return log("contextmenu no window") }
-		// The sidebar is the leftmost list. The transaction table is a list too.
-		guard let list = outlines(in: content).min(by: { $0.convert($0.bounds, to: nil).minX < $1.convert($1.bounds, to: nil).minX }) else {
-			return log("contextmenu no list")
-		}
+		guard let (window, content, list) = sidebarList() else { return log("contextmenu no list") }
 		for index in 0..<list.numberOfRows {
 			let row = list.rect(ofRow: index)
 			let point = list.convert(NSPoint(x: row.midX, y: row.midY), to: nil)
@@ -896,6 +916,23 @@ final class DebugHarness {
 
 	/// Draws the sidebar in a plain window that is off screen, because the sidebar of the main
 	/// window uses a material that only the window server draws.
+	/// The main window, its content view, and the sidebar, which is the leftmost list. The transaction table is a list too.
+	private func sidebarList() -> (NSWindow, NSView, NSOutlineView)? {
+		func outlines(in view: NSView) -> [NSOutlineView] { ((view as? NSOutlineView).map { [$0] } ?? []) + view.subviews.flatMap(outlines) }
+		guard let window = NSApp.windows.first(where: { $0.isVisible && $0.identifier?.rawValue.hasPrefix("main") == true }),
+			let content = window.contentView,
+			let list = outlines(in: content).min(by: { $0.convert($0.bounds, to: nil).minX < $1.convert($1.bounds, to: nil).minX }) else { return nil }
+		return (window, content, list)
+	}
+
+	private func logSidebarRows() {
+		guard let (window, _, list) = sidebarList(), let screen = NSScreen.screens.first else { return log("sidebarrows no list") }
+		for index in 0..<list.numberOfRows {
+			let frame = window.convertToScreen(list.convert(list.rect(ofRow: index), to: nil))
+			log("sidebarrow \(index) x=\(Int(frame.minX)) y=\(Int(screen.frame.maxY - frame.maxY)) w=\(Int(frame.width)) h=\(Int(frame.height)) level=\(list.level(forRow: index))")
+		}
+	}
+
 	private func sidebarSnapshot(_ name: String) {
 		guard let model else { return }
 		offscreenSnapshot(SidebarView().environment(model).frame(height: 900), width: 340, name: "\(name)-sidebar")

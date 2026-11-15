@@ -14,8 +14,34 @@ struct RefreshErrorButton: View {
 		}
 		.buttonStyle(.plain)
 		.help("The last refresh failed")
+		.accessibilityLabel("The last refresh failed")
 		.popover(isPresented: $shown, arrowEdge: .trailing) {
 			RefreshErrorPopover(account: account, error: error)
+		}
+	}
+}
+
+/// The error indicator of a collapsed account group with accounts whose last refresh failed. It opens the
+/// errors of all of them.
+struct GroupErrorButton: View {
+	let accounts: [Account]
+	@State private var shown = false
+
+	var body: some View {
+		Button { shown = true } label: {
+			Image(systemName: "exclamationmark.triangle.fill")
+				.foregroundStyle(.orange)
+		}
+		.buttonStyle(.plain)
+		.help("The last refresh of an account in this group failed")
+		.accessibilityLabel("The last refresh of an account in this group failed")
+		.popover(isPresented: $shown, arrowEdge: .trailing) {
+			VStack(alignment: .leading, spacing: 0) {
+				ForEach(Array(accounts.enumerated()), id: \.element.id) { i, account in
+					if i > 0 { Divider() }
+					if let error = account.refreshError { RefreshErrorPopover(account: account, error: error) }
+				}
+			}
 		}
 	}
 }

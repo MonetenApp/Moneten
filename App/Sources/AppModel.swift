@@ -657,10 +657,11 @@ final class AppModel {
 		commit(changed)
 	}
 
-	/// What a drag from this app carries: rows of the transaction list, or a category of the sidebar.
+	/// What a drag from this app carries: rows of the transaction list, a category, or a group or an account of the sidebar.
 	enum Drag {
 		case transactions(Set<UUID>)
 		case category(UUID)
+		case treeItem(UUID)
 	}
 
 	/// The drag in progress. SwiftUI hands the dragged data to a drop target only on the drop, so a category
@@ -677,14 +678,25 @@ final class AppModel {
 		return DraggedCategory(id: id)
 	}
 
+	func startDrag(treeItem id: UUID) -> DraggedTreeItem {
+		drag = .treeItem(id)
+		return DraggedTreeItem(id: id)
+	}
+
 	func endDrag() { drag = nil }
+
+	/// Whether the group row lights up for the drag in progress: a group or an account that would move into it.
+	func acceptsDrag(on group: AccountGroup) -> Bool {
+		guard case let .treeItem(id) = drag else { return false }
+		return !ledger.move(treeItem: id, into: group.id, at: ledger.accountTree(in: group.id).count).isEmpty
+	}
 
 	/// Whether the category row lights up for the drag in progress.
 	func acceptsDrag(on category: Domain.Category) -> Bool {
 		switch drag {
 		case let .transactions(ids): canDrop(ids, on: category)
 		case let .category(id): canDrop(category: id, on: category)
-		case nil: false
+		case .treeItem, nil: false
 		}
 	}
 
@@ -908,35 +920,42 @@ final class AppModel {
 		}
 	}
 
+	/// "Move to Group" and a drop on a group row put the account at the end of the group.
 	func move(account id: UUID, toGroup groupID: UUID?) {
 		guard ledger.account(id).map({ $0.groupID != groupID }) == true else { return }
-		// An account with rows that comes into or leaves the open group view inserts or removes all of them in
-		// place, which removes shown rows (issue #135), so it comes with a new table.
-		if case let .group(shown) = tableKey.selection, ledger.accountsWithTransactions.contains(id),
-			ledger.accountIDs(inGroupTree: shown).contains(id) || isGroup(groupID, in: shown) {
-			Task { await replacingTable { moveNow(account: id, toGroup: groupID) } }
-		} else {
-			moveNow(account: id, toGroup: groupID)
-		}
+		move(treeItem: id, into: groupID, at: ledger.accountTree(in: groupID).count)
 	}
 
-	/// Reads the account when the move happens, so that a refresh that stored it meanwhile keeps its balance,
-	/// its time, and its kind, and changes only the group and the place in it.
-	private func moveNow(account id: UUID, toGroup groupID: UUID?) {
-		guard var a = ledger.account(id), a.groupID != groupID else { return }
-		a.groupID = groupID
-		a.position = ledger.nextTreePosition(in: groupID)
-		save(account: a)
+	/// Moves a group or an account to the gap `index` among the rows of `parent` in the section "Accounts".
+	func move(treeItem id: UUID, into parent: UUID?, at index: Int) {
+		let change = ledger.move(treeItem: id, into: parent, at: index)
+		guard !change.isEmpty else { return }
+		// Accounts with rows that come into or leave the open group view insert or remove all of them in place,
+		// which removes shown rows (issue #135), so such a move comes with a new table.
+		if case let .group(shown) = tableKey.selection {
+			var moved = ledger
+			moved.apply(change)
+			let entering = ledger.accountIDs(inGroupTree: shown).symmetricDifference(moved.accountIDs(inGroupTree: shown))
+			if !entering.isDisjoint(with: ledger.accountsWithTransactions) {
+				Task { await replacingTable { moveNow(treeItem: id, into: parent, at: index) } }
+				return
+			}
+		}
+		moveNow(treeItem: id, into: parent, at: index)
 	}
 
-	/// True when `group` is `tree` or a group below it.
-	private func isGroup(_ group: UUID?, in tree: UUID) -> Bool {
-		var next = group
-		while let id = next {
-			if id == tree { return true }
-			next = ledger.group(id)?.parentID
+	/// Reads the rows when the move happens, so that a refresh that stored an account meanwhile keeps its balance,
+	/// its time, and its kind, and the move changes only the group and the place in it.
+	private func moveNow(treeItem id: UUID, into parent: UUID?, at index: Int) {
+		let change = ledger.move(treeItem: id, into: parent, at: index)
+		guard let store, !change.isEmpty else { return }
+		do {
+			try store.save(groups: change.groups, accounts: change.accounts)
+			ledgerChange = "move groups=\(change.groups.count) accounts=\(change.accounts.count)"
+			ledger.apply(change)
+		} catch {
+			alert = AlertMessage(title: "Could not move the account.", message: String(describing: error))
 		}
-		return false
 	}
 
 	/// "Remove saved PIN": the next refresh of every account of the access asks for the PIN.

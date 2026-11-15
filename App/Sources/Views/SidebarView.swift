@@ -76,24 +76,30 @@ struct AddMenuButton: View {
 	}
 }
 
-/// "Refresh All Accounts" below the sidebar.
+/// "Refresh All Accounts" below the sidebar. It turns into a spinner while any refresh runs.
 struct RefreshAllButton: View {
 	@Environment(AppModel.self) private var model
 	@State private var hovered = false
 
 	var body: some View {
+		let refreshing = model.sync.isRefreshing
 		Button { model.refresh(.all) } label: {
-			Image(systemName: "arrow.clockwise")
-				.font(.system(size: 13, weight: .medium))
+			Group {
+				if refreshing {
+					ProgressView().controlSize(.small)
+				} else {
+					Image(systemName: "arrow.clockwise").font(.system(size: 13, weight: .medium))
+				}
+			}
 				.frame(width: 24, height: 24)
 				.background(.primary.opacity(hovered ? 0.1 : 0), in: .circle)
 				.contentShape(.circle)
 		}
 		.buttonStyle(.plain)
-		.disabled(!model.canRefresh(.all))
+		.disabled(refreshing || !model.canRefresh(.all))
 		.onHover { hovered = $0 }
 		.animation(.easeOut(duration: 0.15), value: hovered)
-		.help("Refresh All Accounts")
+		.help(refreshing ? "Refreshing accounts" : "Refresh All Accounts")
 	}
 }
 
@@ -108,13 +114,21 @@ struct AccountTree: View {
 				DisclosureGroup(isExpanded: Binding(get: { group.isExpanded }, set: { var g = group; g.isExpanded = $0; model.save(group: g) })) {
 					AccountTree(parent: group.id)
 				} label: {
-					GroupRow(group: group)
+					GroupRow(group: group).draggable(model.startDrag(treeItem: group.id))
 				}
 				.tag(SidebarSelection.group(group.id))
 			case let .account(account):
-				AccountRow(account: account)
+				AccountRow(account: account).draggable(model.startDrag(treeItem: account.id))
 					.tag(SidebarSelection.account(account.id))
 			}
+		}
+		// A drop between two rows. A drop on a group goes to `GroupDrop`. Only rows of this section are
+		// `DraggedTreeItem`s, so a category or a transaction never lands here, and a group or an account never
+		// lands among the categories.
+		.dropDestination(for: DraggedTreeItem.self) { items, index in
+			model.endDrag()
+			guard let item = items.first else { return }
+			model.move(treeItem: item.id, into: parent, at: index)
 		}
 	}
 }
@@ -126,7 +140,15 @@ struct GroupRow: View {
 	var body: some View {
 		HStack {
 			Label(group.name, systemImage: "folder")
+			// A collapsed group stands for its accounts and shows their markers.
+			let markers = group.isExpanded ? nil : model.ledger.markers(ofGroup: group.id)
+			if let markers, markers.newTransactions > 0 {
+				NewCountBadge(count: markers.newTransactions)
+			}
 			Spacer()
+			if let markers, !markers.failedAccounts.isEmpty {
+				GroupErrorButton(accounts: markers.failedAccounts)
+			}
 			if group.showSum {
 				let sums = model.ledger.sum(ofGroup: group.id)
 				Text(Format.sums(sums))
@@ -135,24 +157,20 @@ struct GroupRow: View {
 					.foregroundStyle(sums.amounts.contains(where: \.isNegative) && sums.amounts.count == 1 ? Palette.red : Color.primary)
 			}
 		}
-		.dropDestination(for: String.self) { items, _ in
-			for item in items { if let id = UUID(uuidString: item), model.ledger.account(id) != nil { model.move(account: id, toGroup: group.id) } }
-			return true
-		}
+		.onDrop(of: [.monetenTreeItem], delegate: GroupDrop(model: model, group: group))
 		.contextMenu {
+			Button("Add Account...") { model.addAccount(group: group.id) }
+			Button("Add Account Group") { model.sheet = .newGroup }
+			Divider()
+			Button("Export Transactions...") { model.exportTransactions(of: .group(group.id)) }
+				.disabled(model.isTransferringTransactions)
+			Divider()
+			Button("Remove...") { model.confirmRemove(.group(group.id)) }
 			Button("Refresh Accounts") { model.refresh(.group(group.id)) }
 				.modifierKeyAlternate(.option) {
 					Button("Refresh Accounts (enforced)") { model.refresh(.group(group.id), enforced: true) }
 				}
 				.disabled(!model.canRefresh(.group(group.id)))
-			Divider()
-			Button("Export Transactions...") { model.exportTransactions(of: .group(group.id)) }
-				.disabled(model.isTransferringTransactions)
-			Divider()
-			Button("Add Account...") { model.addAccount(group: group.id) }
-			Button("Add Account Group") { model.sheet = .newGroup }
-			Divider()
-			Button("Remove...") { Task { await model.remove(group: group.id) } }
 			Divider()
 			Button("Settings...") { model.sheet = .groupSettings(group.id) }
 		}
@@ -173,13 +191,7 @@ struct AccountRow: View {
 				AccountIcon(account: account)
 			}
 			if newCount > 0 {
-				Text("\(newCount)")
-					.font(.subheadline.weight(.semibold))
-					.monospacedDigit()
-					.padding(.horizontal, 6)
-					.padding(.vertical, 1)
-					.background(Capsule().fill(.tint))
-					.foregroundStyle(.white)
+				NewCountBadge(count: newCount)
 			}
 			Spacer()
 			if model.sync.refreshingAccounts.contains(account.id) {
@@ -197,19 +209,13 @@ struct AccountRow: View {
 				AmountText(money: balance).fontWeight(.medium)
 			}
 		}
-		.draggable(account.id.uuidString)
 		.contextMenu {
-			if account.accessID != nil {
-				Button("Refresh Account") { model.refresh(.account(account.id)) }
-					.modifierKeyAlternate(.option) {
-						Button("Refresh Account (enforced)") { model.refresh(.account(account.id), enforced: true) }
-					}
-					.disabled(!model.canRefresh(.account(account.id)))
-				Divider()
-			}
+			Button("Add Account...") { model.addAccount(group: account.groupID) }
+			Button("Add Account Group") { model.sheet = .newGroup }
 			if account.isOffline {
 				Button("Add Transaction...") { model.navigate(to: .account(account.id)); model.sheet = .transaction(nil) }
 			}
+			Divider()
 			Button("Import Transactions...") {
 				model.navigate(to: .account(account.id))
 				Task { await model.importFile(into: account.id) }
@@ -222,9 +228,13 @@ struct AccountRow: View {
 				Button("No group") { model.move(account: account.id, toGroup: nil) }
 				ForEach(model.ledger.groups) { g in Button(g.name) { model.move(account: account.id, toGroup: g.id) } }
 			}
-			Button("Remove...") { model.sheet = .accountSettings(account.id) }
+			Button("Remove...") { model.confirmRemove(.account(account.id)) }
+			Button("Refresh Account") { model.refresh(.account(account.id)) }
+				.modifierKeyAlternate(.option) {
+					Button("Refresh Account (enforced)") { model.refresh(.account(account.id), enforced: true) }
+				}
+				.disabled(!model.canRefresh(.account(account.id)))
 			Divider()
-			Button("Add Account...") { model.addAccount(group: account.groupID) }
 			Button("Settings...") { model.sheet = .accountSettings(account.id) }
 		}
 	}
@@ -297,7 +307,7 @@ struct CategoryRow: View {
 						Button(g.name) { model.move(category: category.id, into: g.id, at: model.ledger.childCategories(of: g.id).count) }
 					}
 				}
-				Button("Remove...") { model.sheet = .categorySettings(category.id) }
+				Button("Remove...") { model.confirmRemove(.category(category.id)) }
 			}
 			Divider()
 			Button("Settings...") { model.sheet = .categorySettings(category.id) }
@@ -319,10 +329,55 @@ struct DraggedCategory: Codable, Transferable {
 	static var transferRepresentation: some TransferRepresentation { CodableRepresentation(contentType: .monetenCategory) }
 }
 
-/// Declared in Info.plist. Two types, so that a row of the sidebar takes only the kind of drag it can use.
+/// A group or an account on its way to another place in the section "Accounts".
+struct DraggedTreeItem: Codable, Transferable {
+	let id: UUID
+
+	static var transferRepresentation: some TransferRepresentation { CodableRepresentation(contentType: .monetenTreeItem) }
+}
+
+/// Declared in Info.plist. One type for each kind of drag, so that a row of the sidebar takes only the kind it can use,
+/// and a row never lands in another section.
 extension UTType {
 	static let monetenTransactions = UTType(exportedAs: "io.github.moneten.transactions")
 	static let monetenCategory = UTType(exportedAs: "io.github.moneten.category")
+	static let monetenTreeItem = UTType(exportedAs: "io.github.moneten.account")
+}
+
+/// A drop of a group or an account on a group row puts it at the end of that group. A group refuses itself and
+/// the groups above it, and a row that refuses the drop is not highlighted.
+struct GroupDrop: DropDelegate {
+	let model: AppModel
+	let group: AccountGroup
+
+	func validateDrop(info: DropInfo) -> Bool { model.acceptsDrag(on: group) }
+
+	func performDrop(info: DropInfo) -> Bool {
+		defer { model.endDrag() }
+		guard model.acceptsDrag(on: group), let provider = info.itemProviders(for: [.monetenTreeItem]).first else { return false }
+		let target = group.id
+		_ = provider.loadTransferable(type: DraggedTreeItem.self) { [model] result in
+			guard let item = try? result.get() else { return }
+			Task { @MainActor in model.move(treeItem: item.id, into: target, at: model.ledger.accountTree(in: target).count) }
+		}
+		return true
+	}
+}
+
+/// The number of new transactions of an account, or of the accounts in a collapsed group.
+struct NewCountBadge: View {
+	let count: Int
+
+	var body: some View {
+		Text("\(count)")
+			.font(.subheadline.weight(.semibold))
+			.monospacedDigit()
+			.padding(.horizontal, 6)
+			.padding(.vertical, 1)
+			.background(Capsule().fill(.tint))
+			.foregroundStyle(.white)
+			.accessibilityLabel(count == 1 ? "1 new transaction" : "\(count) new transactions")
+	}
 }
 
 /// A drop on a category row: rows go into the category, and a category goes to the end of a group.
