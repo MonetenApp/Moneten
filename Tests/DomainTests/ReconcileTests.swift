@@ -731,7 +731,7 @@ struct ReconcileTests {
 		#expect(again.updated == [])
 	}
 
-	@Test("A free pending bank row takes the closest day, with stored order breaking ties")
+	@Test("A free pending bank row takes the closest day, with stable day order breaking ties")
 	func closestFutureFileRow() {
 		let second = rent(8)
 		let first = rent(2)
@@ -740,7 +740,7 @@ struct ReconcileTests {
 		#expect(closest.updated.map(\.bookingDate) == [Day(year: 2026, month: 12, day: 4)])
 		#expect(history([second, first], after: closest).first { $0.id == second.id } == second)
 		let tie = merge(refresh([rent(5, purpose: "BANK MIETE")]), stored: [second, first], at: noon(20, month: 11))
-		#expect(tie.updated.map(\.id) == [second.id])
+		#expect(tie.updated.map(\.id) == [first.id])
 		#expect(tie.updated.map(\.bookingDate) == [Day(year: 2026, month: 12, day: 5)])
 		#expect(tie.added == [] && tie.dropped == [])
 	}

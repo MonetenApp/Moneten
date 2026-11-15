@@ -97,10 +97,11 @@ extension ReconcileTests {
 		#expect(r.marked == [])
 	}
 
-	@Test("Gate 3 item 6: an exact file repeat cannot restore a cleared comment")
-	func gate3ClearedComment() {
+	@Test("Gate 3 item 6: an exact file repeat cannot restore a cleared comment", arguments: [false, true])
+	func gate3ClearedComment(reference: Bool) {
 		var file = rent(1)
 		file.comment = "Shared rent"
+		if reference { file.endToEndReference = "RENT-A" }
 		var live = file
 		live.comment = ""
 		let r = merge(.file([file]), stored: [live], at: noon(21, month: 11))

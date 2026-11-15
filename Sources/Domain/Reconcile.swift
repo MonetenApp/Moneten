@@ -107,39 +107,15 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored: [Tran
 	let rows = delivery.rows
 	let fetched = delivery.isFetched
 	let honored = deleted.filter(delivery.honors)
-	var partners = partners(of: rows, stored: stored, deleted: honored)
-	var taken = Set(partners.compactMap { partner -> Int? in
+	let today = Day(now)
+	let partners = partners(of: rows, stored: stored, deleted: honored, delivery: delivery, today: today)
+	let taken = Set(partners.compactMap { partner -> Int? in
 		if case let .live(j) = partner?.slot { j } else { nil }
 	})
-	if case .file = delivery {
-		for i in rows.indices where partners[i] == nil && rows[i].isPending {
-			let match = PendingMatch(rows[i])
-			if let j = stored.indices.first(where: { !taken.contains($0) && stored[$0].isPending
-				&& stored[$0].bookingDate == rows[i].bookingDate && match.fits(PendingMatch(stored[$0])) }) {
-				partners[i] = Partner(slot: .live(j), evidence: .fingerprint)
-				taken.insert(j)
-			}
-		}
-	}
 	let released = stored.indices.filter { stored[$0].isPending && !taken.contains($0) }
 	let fresh = rows.indices.filter { partners[$0] == nil && !rows[$0].isPending }
 	let bookings = Bookings(pending: released.map { ($0, stored[$0]) }, booked: fresh.map { ($0, rows[$0]) })
-	let today = Day(now)
-	let future = released.filter { j in
-		let t = stored[j]
-		return bookings.ofPending[j] == nil && delivery.covers(t.bookingDate) && !t.needsReview && !t.isFetched && t.bookingDate >= today
-	}
-	var fileRowOf: [Int: Int] = [:]
-	var takenFileRows = Set<Int>()
-	for i in rows.indices where partners[i] == nil && rows[i].isPending {
-		let match = PendingMatch(rows[i])
-		let candidates = future.filter { !takenFileRows.contains($0) && match.fits(PendingMatch(stored[$0])) }
-		if let j = candidates.min(by: { abs(stored[$0].bookingDate.daysSince1970 - match.day) < abs(stored[$1].bookingDate.daysSince1970 - match.day) }) {
-			fileRowOf[i] = j
-			takenFileRows.insert(j)
-		}
-	}
-	let isFuture = Set(future)
+	let future = Set(released.filter { !stored[$0].isFetched && stored[$0].bookingDate >= today && !stored[$0].needsReview })
 
 	var r = Reconciliation()
 	for (i, delivered) in rows.enumerated() {
@@ -158,6 +134,7 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored: [Tran
 			var next = live
 			switch partner.evidence {
 			case .sourceID:
+				if delivered.isPending && !live.isPending { break }
 				// A migration only books a pending row. Any other change could undo a booking or an edit
 				// that the app made since the earlier run. Only the link follows the source.
 				if delivery.isMigration, !(live.isPending && !delivered.isPending) {
@@ -166,13 +143,19 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored: [Tran
 				}
 				next = live.takingBankFields(of: delivered)
 				if next != live { rules.categorize(&next) }
-			case .fingerprint:
+			case .pending:
+				if fetched {
+					next = live.takingBankFields(of: delivered)
+					if next != live { rules.categorize(&next) }
+				}
+				fallthrough
+			case .fingerprint, .sameDay:
 				if let id = delivered.sourceID, Identity.remote(next.sourceID) == nil {
 					next.sourceID = Transaction.linkedID(id, pending: live.isPending, sourcePending: delivered.isPending)
 				}
 			}
 			if fetched { next.isFetched = true }
-			if case .file = delivery, live.isPending && delivered.isPending && live.bookingDate == delivered.bookingDate {
+			if case .file = delivery, partner.evidence == .sameDay {
 				if next.comment?.isEmpty != false, let comment = delivered.comment { next.comment = comment }
 				if live.categoryID == nil, let category = delivered.categoryID {
 					next.categoryID = category
@@ -197,12 +180,6 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored: [Tran
 			rules.categorize(&next)
 			if fetched { next.isFetched = true }
 			r.booked.append(next)
-		} else if let j = fileRowOf[i] {
-			var next = stored[j].takingBankFields(of: delivered)
-			next.isFetched = fetched
-			rules.categorize(&next)
-			r.updated.append(next)
-			r.skipped += 1
 		} else {
 			var t = Transaction(arriving: delivered, in: account.id, fetched: fetched)
 			t.needsReview = bookings.ofBooked[i] == .review
@@ -221,7 +198,7 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored: [Tran
 				t.isChecked = false
 				r.marked.append(t)
 			}
-		case nil where isFuture.contains(j): break
+		case nil where future.contains(j): break
 		case nil:
 			if delivery.covers(pending.bookingDate), !pending.needsReview || pending.isChecked { r.dropped.append(pending.id) }
 		}
@@ -280,59 +257,118 @@ enum Slot: Hashable {
 }
 
 struct Partner {
-	enum Evidence { case sourceID, fingerprint }
+	enum Evidence { case sourceID, fingerprint, pending, sameDay }
 
 	let slot: Slot
 	let evidence: Evidence
 }
 
-/// Each step takes rows out of the pool, so a weaker rule never takes a row that a stronger one claimed.
-/// At each step a stored row comes before a deleted one.
-func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTransaction]) -> [Partner?] {
-	var result = [Partner?](repeating: nil, count: rows.count)
-	var taken = Set<Slot>()
-	let ids = Set(rows.compactMap(\.sourceID))
-	if !ids.isEmpty {
-		var byID: [String: [Slot]] = [:]
-		for (j, t) in stored.enumerated() {
-			if let id = t.sourceID.map(Transaction.matchingID), ids.contains(id) { byID[id, default: []].append(.live(j)) }
+func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTransaction], delivery: Delivery, today: Day) -> [Partner?] {
+	struct Candidate {
+		let delivered: Int
+		let slot: Slot
+		let priority: Int
+		let distance: Int
+		let evidence: Partner.Evidence?
+	}
+	let incoming = rows.map(Identity.init)
+	let live = stored.map(Identity.init)
+	let dead = deleted.map(Identity.init)
+	let matches = rows.map(PendingMatch.init)
+	let liveMatches = stored.map(PendingMatch.init)
+	let deadMatches = deleted.map(PendingMatch.init)
+	var byDay: [Day: [Slot]] = [:]
+	var byID: [String: [Slot]] = [:]
+	for (j, t) in stored.enumerated() {
+		byDay[t.bookingDate, default: []].append(.live(j))
+		if let id = t.sourceID { byID[Transaction.matchingID(id), default: []].append(.live(j)) }
+	}
+	for (k, d) in deleted.enumerated() {
+		byDay[d.bookingDate, default: []].append(.deleted(k))
+		if let id = d.sourceID { byID[Transaction.matchingID(id), default: []].append(.deleted(k)) }
+	}
+	func positions(_ ts: [Transaction]) -> [Int: Int] {
+		let sorted = ts.indices.sorted {
+			(ts[$0].bookingDate, ts[$0].createdAt, ts[$0].id.uuidString) < (ts[$1].bookingDate, ts[$1].createdAt, ts[$1].id.uuidString)
 		}
-		for (k, d) in deleted.enumerated() {
-			if let id = d.sourceID.map(Transaction.matchingID), ids.contains(id) { byID[id, default: []].append(.deleted(k)) }
+		return Dictionary(uniqueKeysWithValues: sorted.enumerated().map { ($0.element, $0.offset) })
+	}
+	let deliveredPositions = positions(rows)
+	let livePositions = positions(stored)
+	let deadKeys = deleted.map { d in
+		[String(d.bookingDate.rawValue), d.sourceID ?? "", d.endToEndReference ?? "", d.currency, String(d.amountMinor), d.purpose,
+			d.counterpartyIBAN ?? "", String(d.isPending), String(d.deletedAt.timeIntervalSince1970)]
+	}
+	let deadOrder = deleted.indices.sorted { deadKeys[$0].lexicographicallyPrecedes(deadKeys[$1]) }
+	let deadPositions = Dictionary(uniqueKeysWithValues: deadOrder.enumerated().map { ($0.element, $0.offset + stored.count) })
+	func position(_ slot: Slot) -> Int {
+		switch slot {
+		case let .live(j): livePositions[j]!
+		case let .deleted(k): deadPositions[k]!
 		}
-		func isDeletedPending(_ slot: Slot) -> Bool {
-			if case let .deleted(k) = slot { deleted[k].isPending } else { false }
-		}
-		for (i, t) in rows.enumerated() {
-			guard let id = t.sourceID, let slots = byID[id] else { continue }
-			let free = slots.filter { !taken.contains($0) }
-			if let slot = free.first(where: { t.isPending || !isDeletedPending($0) }) {
-				taken.insert(slot)
-				result[i] = Partner(slot: slot, evidence: .sourceID)
-			} else if let used = free.first {
-				// A deleted pending row does not block its booked version, also when both carry the same ID.
-				// The booked version uses it up, so it cannot absorb another pending row later.
-				taken.insert(used)
+	}
+	var candidates: [Candidate] = []
+	for (i, t) in rows.enumerated() {
+		var slots = Set(byDay[t.bookingDate] ?? [])
+		if let id = t.sourceID { slots.formUnion(byID[id] ?? []) }
+		if t.isPending && !delivery.isMigration && delivery.isFetched {
+			for offset in -PendingMatch.maxDaysApart...PendingMatch.maxDaysApart where offset != 0 {
+				slots.formUnion(byDay[t.bookingDate.adding(days: offset)] ?? [])
 			}
 		}
+		for slot in slots {
+			let identity: Identity
+			let match: PendingMatch
+			let fetched: Bool
+			let future: Bool
+			switch slot {
+			case let .live(j):
+				identity = live[j]
+				match = liveMatches[j]
+				fetched = stored[j].isFetched
+				future = !stored[j].isFetched && !stored[j].needsReview && stored[j].bookingDate >= today && delivery.covers(stored[j].bookingDate)
+			case let .deleted(k):
+				identity = dead[k]
+				match = deadMatches[k]
+				fetched = true
+				future = false
+			}
+			guard incoming[i].agrees(with: identity) else { continue }
+			let distance = abs(matches[i].day - match.day)
+			let sourceAgrees = t.sourceID != nil && t.sourceID == identity.sourceID
+			let sameDay = t.bookingDate == identity.key.day
+			if sourceAgrees {
+				if !delivery.isFetched && !delivery.isMigration && t.isPending && !sameDay { continue }
+				let evidence: Partner.Evidence? = if case .deleted = slot, !t.isPending && identity.isPending { nil } else { .sourceID }
+				candidates.append(Candidate(delivered: i, slot: slot, priority: 0, distance: distance, evidence: evidence))
+				continue
+			}
+			if let step = Identity.steps.firstIndex(where: { $0.accepts(incoming[i], identity) }) {
+				let priority = t.isPending && identity.isPending ? (fetched ? 1 : 2) : 3 + step
+				candidates.append(Candidate(delivered: i, slot: slot, priority: priority, distance: distance, evidence: .fingerprint))
+			}
+			guard t.isPending, !delivery.isMigration, matches[i].fits(match),
+				identity.isPending || (!delivery.isFetched && fetched) else { continue }
+			let explicit = incoming[i].endToEnd != nil && incoming[i].endToEnd == identity.endToEnd
+			guard delivery.isFetched ? (explicit || (fetched && sameDay) || future) : sameDay else { continue }
+			let priority = explicit ? 0 : (fetched ? 1 : 2)
+			let fingerprint = Identity.steps.contains { $0.accepts(incoming[i], identity) }
+			let evidence: Partner.Evidence = fingerprint ? .fingerprint : (delivery.isFetched ? .pending : .sameDay)
+			candidates.append(Candidate(delivered: i, slot: slot, priority: priority, distance: distance, evidence: evidence))
+		}
 	}
-	let days = Set(rows.map(\.bookingDate))
-	var candidates: [Identity.Key: [(slot: Slot, identity: Identity)]] = [:]
-	for (j, t) in stored.enumerated() where days.contains(t.bookingDate) && !taken.contains(.live(j)) {
-		let identity = Identity(t)
-		candidates[identity.key, default: []].append((.live(j), identity))
+	candidates.sort {
+		($0.priority, $0.distance, deliveredPositions[$0.delivered]!, position($0.slot), $0.evidence == .sameDay ? 1 : 0)
+			< ($1.priority, $1.distance, deliveredPositions[$1.delivered]!, position($1.slot), $1.evidence == .sameDay ? 1 : 0)
 	}
-	for (k, d) in deleted.enumerated() where days.contains(d.bookingDate) && !taken.contains(.deleted(k)) {
-		let identity = Identity(d)
-		candidates[identity.key, default: []].append((.deleted(k), identity))
-	}
-	let identities = rows.map(Identity.init)
-	for step in Identity.steps {
-		for i in rows.indices where result[i] == nil {
-			let delivered = identities[i]
-			guard let match = candidates[delivered.key]?.first(where: { !taken.contains($0.slot) && step.accepts(delivered, $0.identity) }) else { continue }
-			taken.insert(match.slot)
-			result[i] = Partner(slot: match.slot, evidence: .fingerprint)
+	var result = [Partner?](repeating: nil, count: rows.count)
+	var taken = Set<Slot>()
+	var consumed = Set<Int>()
+	for candidate in candidates where !consumed.contains(candidate.delivered) && !taken.contains(candidate.slot) {
+		consumed.insert(candidate.delivered)
+		taken.insert(candidate.slot)
+		if let evidence = candidate.evidence {
+			result[candidate.delivered] = Partner(slot: candidate.slot, evidence: evidence)
 		}
 	}
 	return result
@@ -340,6 +376,7 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 
 /// Built from the bank fields at every merge and never stored, so a change of the rule needs no migration.
 struct Identity {
+	let sourceID: String?
 	let remoteID: String?
 	let key: Key
 	let isPending: Bool
@@ -388,6 +425,7 @@ struct Identity {
 		Step(fit: .exact, pending: .bookedVersion), Step(fit: .compatible, pending: .bookedVersion)]
 
 	init(sourceID: String?, day: Day, amount: Int64, isPending: Bool, purpose: String, counterparty: String?, endToEnd: String?) {
+		self.sourceID = sourceID.map(Transaction.matchingID)
 		remoteID = Self.remote(sourceID)
 		key = Key(day: day, amount: amount, purpose: TextFolding.fold(purpose).filter { !$0.isWhitespace })
 		self.isPending = isPending
@@ -407,6 +445,16 @@ struct Identity {
 
 	static func remote(_ sourceID: String?) -> String? {
 		sourceID.flatMap { Transaction.matchingID($0).hasPrefix(Transaction.migrationIDPrefix) ? nil : $0 }
+	}
+
+	func sharesIdentity(with other: Identity) -> Bool {
+		(remoteID != nil && remoteID == other.remoteID) || (endToEnd != nil && endToEnd == other.endToEnd)
+	}
+
+	func agrees(with other: Identity) -> Bool {
+		if let remoteID, let otherID = other.remoteID, remoteID != otherID { return false }
+		if let endToEnd, let otherReference = other.endToEnd, endToEnd != otherReference { return false }
+		return true
 	}
 
 	func fit(_ other: Identity) -> Fit? {
@@ -430,12 +478,19 @@ struct Bookings {
 		guard !pending.isEmpty, !booked.isEmpty else { return }
 		let p = pending.map { PendingMatch($0.1) }
 		let b = booked.map { PendingMatch($0.1) }
-		var bookedByAmount: [Money: [Int]] = [:]
-		for (y, m) in b.enumerated() { bookedByAmount[m.amount, default: []].append(y) }
 		var edgesOfPending = [[Int]](repeating: [], count: p.count)
 		var edgesOfBooked = [[Int]](repeating: [], count: b.count)
-		for (x, m) in p.enumerated() {
-			for y in bookedByAmount[m.amount] ?? [] where m.fits(b[y]) {
+		var pendingByAmount: [Money: [Int]] = [:]
+		for (x, m) in p.enumerated() { pendingByAmount[m.amount, default: []].append(x) }
+		for (y, m) in b.enumerated() {
+			var fits = (pendingByAmount[m.amount] ?? []).filter { p[$0].fits(m) }
+			let explicit = fits.filter { p[$0].identity.sharesIdentity(with: m.identity) }
+			if !explicit.isEmpty { fits = explicit }
+			else {
+				let fetched = fits.filter { pending[$0].1.isFetched }
+				if fetched.count == 1 { fits = fetched }
+			}
+			for x in fits {
 				edgesOfPending[x].append(y)
 				edgesOfBooked[y].append(x)
 			}
@@ -472,16 +527,26 @@ struct PendingMatch {
 	let day: Int
 	let iban: String?
 	let words: [Substring]
+	let identity: Identity
 
 	init(_ t: Transaction) {
+		identity = Identity(t)
 		amount = t.amount
 		day = t.bookingDate.daysSince1970
 		iban = t.counterpartyIBAN.map(TextFolding.accountKey).flatMap { $0.isEmpty ? nil : $0 }
 		words = TextFolding.fold(t.name).split { !$0.isLetter && !$0.isNumber }
 	}
 
+	init(_ d: DeletedTransaction) {
+		identity = Identity(d)
+		amount = Money(minorUnits: d.amountMinor, currency: d.currency)
+		day = d.bookingDate.daysSince1970
+		iban = d.counterpartyIBAN.map(TextFolding.accountKey).flatMap { $0.isEmpty ? nil : $0 }
+		words = []
+	}
+
 	func fits(_ other: PendingMatch) -> Bool {
-		guard amount == other.amount, abs(day - other.day) <= Self.maxDaysApart else { return false }
+		guard identity.agrees(with: other.identity), amount == other.amount, abs(day - other.day) <= Self.maxDaysApart else { return false }
 		if let iban, let otherIBAN = other.iban { return iban == otherIBAN }
 		guard !words.isEmpty, !other.words.isEmpty else { return false }
 		return words.starts(with: other.words) || other.words.starts(with: words)
@@ -526,7 +591,7 @@ extension Transaction {
 		t.counterpartyIBAN = delivered.counterpartyIBAN ?? counterpartyIBAN
 		t.counterpartyBIC = delivered.counterpartyBIC ?? counterpartyBIC
 		t.bookingText = delivered.bookingText ?? bookingText
-		t.endToEndReference = delivered.endToEndReference ?? endToEndReference
+		t.endToEndReference = Identity(delivered).endToEnd ?? endToEndReference
 		t.mandateReference = delivered.mandateReference ?? mandateReference
 		t.creditorID = delivered.creditorID ?? creditorID
 		t.returnReason = delivered.returnReason ?? returnReason
