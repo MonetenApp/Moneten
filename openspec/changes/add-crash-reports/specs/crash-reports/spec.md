@@ -19,7 +19,14 @@ The app SHALL offer the newest available crash report in a sheet after an unexpe
 
 ### Requirement: Keep a report until a decision
 
-The app SHALL keep the newest pending diagnostic encrypted in its data folder until the user chooses one of the three actions.
+The app SHALL keep the newest pending report encrypted in its data folder until the user decides.
+
+#### Scenario: The encryption key is lost
+
+- **GIVEN** a saved report from November 15 has no readable key, or its ciphertext cannot be decrypted
+- **WHEN** the app reads it
+- **THEN** it deletes that file and continues without saved state
+- **AND** a new crash on November 16 can be saved and offered
 
 #### Scenario: Decline once
 

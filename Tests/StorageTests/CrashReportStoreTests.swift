@@ -36,6 +36,26 @@ struct CrashReportStoreTests {
 		var damaged = try Data(contentsOf: file)
 		damaged[damaged.count - 1] ^= 1
 		try damaged.write(to: file)
-		#expect(throws: (any Error).self) { try reopened.load() }
+		#expect(try reopened.load() == nil)
+		#expect(!FileManager.default.fileExists(atPath: file.path))
+		#expect(try reopened.receive(second, at: date.addingTimeInterval(3))?.diagnostic == second)
+	}
+
+	@Test("Losing the key deletes unreadable state and permits a new crash")
+	func lostKey() throws {
+		let folder = DataFolder(root: FileManager.default.temporaryDirectory.appendingPathComponent("MonetenCrashTests-\(UUID())"))
+		let keychain = Keychain(service: "Moneten crash report key")
+		defer {
+			try? keychain.delete(account: folder.keychainAccount)
+			try? FileManager.default.removeItem(at: folder.root)
+		}
+		let store = CrashReportStore(folder: folder)
+		let diagnostic = CrashDiagnostic(appVersion: "0.1.0", macOSVersion: "15.2", exceptionType: 6, signal: 6, frames: [])
+		_ = try store.receive(diagnostic, at: Date(timeIntervalSince1970: 1_800_000_000))
+		try keychain.delete(account: folder.keychainAccount)
+		#expect(try store.load() == nil)
+		#expect(!FileManager.default.fileExists(atPath: folder.root.appendingPathComponent("CrashReport.encrypted").path))
+		#expect(try store.receive(diagnostic, at: Date(timeIntervalSince1970: 1_800_000_100))?.date == Date(timeIntervalSince1970: 1_800_000_100))
+		#expect(try CrashReportStore(folder: folder).load()?.diagnostic == diagnostic)
 	}
 }
