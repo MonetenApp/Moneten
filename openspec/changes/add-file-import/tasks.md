@@ -61,6 +61,8 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 
 - [x] 2.19 Fingerprint precedence. The literal exact-versus-compatible test fails with 48 assertions before restoring exact, compatible, then relaxed priority within fetched and file rows. It covers every delivery and storage permutation for fetched and unfetched rows in both import and refresh.
 
+- [x] 2.20 Valid pair evidence. Four permutation regressions fail with 84 assertions before excluding pending tombstones from booked candidates, preferring live source-ID partners and unique source IDs over references, and reserving exact reference fingerprints before reference-only matches. Shared references preserve known counterparties and user comments. A simultaneous pending echo fails with 120 assertions before reserving current or booking source-ID partners ahead of already-booked versions of pending repeats. Every candidate now represents an actual pair; nil evidence and consumed-without-partner state are removed.
+
 ## 3. Integration
 
 - [ ] 3.1 Check every scenario of the spec in a release build and record the result in the pull request.

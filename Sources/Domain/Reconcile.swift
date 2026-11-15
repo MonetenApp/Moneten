@@ -265,12 +265,14 @@ struct Partner {
 }
 
 func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTransaction], delivery: Delivery, today: Day) -> [Partner?] {
+	enum Priority: Int { case sourceID, reference, fetchedPending, filePending, fingerprint }
 	struct Candidate {
 		let delivered: Int
 		let slot: Slot
-		let priority: Int
+		let priority: Priority
+		let specificity: Int
 		let distance: Int
-		let evidence: Partner.Evidence?
+		let evidence: Partner.Evidence
 	}
 	let matches = rows.map(PendingMatch.init)
 	let liveMatches = stored.map(PendingMatch.init)
@@ -339,43 +341,44 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 				fetched = true
 				future = false
 			}
+			if case .deleted = slot, !t.isPending && identity.isPending { continue }
 			guard incoming[i].agrees(with: identity) else { continue }
 			let distance = abs(matches[i].day - match.day)
 			let sourceAgrees = t.sourceID != nil && t.sourceID == identity.sourceID
 			let sameDay = t.bookingDate == identity.key.day
 			if sourceAgrees {
 				if !delivery.isFetched && !delivery.isMigration && t.isPending && identity.isPending && !sameDay { continue }
-				let evidence: Partner.Evidence? = if case .deleted = slot, !t.isPending && identity.isPending { nil } else { .sourceID }
-				candidates.append(Candidate(delivered: i, slot: slot, priority: 0, distance: distance, evidence: evidence))
+				let historical = if case .deleted = slot { 1 } else { 0 }
+				let specificity = historical + (t.isPending && !identity.isPending ? 2 : 0)
+				candidates.append(Candidate(delivered: i, slot: slot, priority: .sourceID, specificity: specificity, distance: distance, evidence: .sourceID))
 				continue
 			}
+			let referenceAgrees = incoming[i].endToEnd != nil && incoming[i].endToEnd == identity.endToEnd
+				&& matches[i].amount == match.amount && !matches[i].counterpartyConflicts(with: match)
 			if let step = Identity.steps.firstIndex(where: { $0.accepts(incoming[i], identity) }) {
-				let priority = t.isPending && identity.isPending ? (fetched ? 1 : 4) + step : 7 + step
-				candidates.append(Candidate(delivered: i, slot: slot, priority: priority, distance: distance, evidence: .fingerprint))
+				let priority: Priority = if referenceAgrees { .reference }
+					else if t.isPending && identity.isPending { fetched ? .fetchedPending : .filePending }
+					else { .fingerprint }
+				candidates.append(Candidate(delivered: i, slot: slot, priority: priority, specificity: step, distance: distance, evidence: .fingerprint))
+				continue
 			}
-			let explicit = incoming[i].endToEnd != nil && incoming[i].endToEnd == identity.endToEnd
 			guard t.isPending, !delivery.isMigration, matches[i].amount == match.amount,
-				explicit || matches[i].fits(match), identity.isPending || (!delivery.isFetched && explicit) else { continue }
-			guard delivery.isFetched ? (explicit || (fetched && sameDay) || future) : (sameDay || (!identity.isPending && explicit)) else { continue }
-			let priority = explicit ? 0 : (fetched ? 3 : 6)
-			let fingerprint = Identity.steps.contains { $0.accepts(incoming[i], identity) }
-			let evidence: Partner.Evidence = fingerprint || (!delivery.isFetched && explicit) ? .fingerprint : (delivery.isFetched ? .pending : .sameDay)
-			candidates.append(Candidate(delivered: i, slot: slot, priority: priority, distance: distance, evidence: evidence))
+				referenceAgrees || matches[i].fits(match), identity.isPending || (!delivery.isFetched && referenceAgrees) else { continue }
+			guard delivery.isFetched ? (referenceAgrees || (fetched && sameDay) || future) : (sameDay || (!identity.isPending && referenceAgrees)) else { continue }
+			let priority: Priority = referenceAgrees ? .reference : (fetched ? .fetchedPending : .filePending)
+			let evidence: Partner.Evidence = !delivery.isFetched && referenceAgrees ? .fingerprint : (delivery.isFetched ? .pending : .sameDay)
+			candidates.append(Candidate(delivered: i, slot: slot, priority: priority, specificity: referenceAgrees ? 4 : 2, distance: distance, evidence: evidence))
 		}
 	}
 	candidates.sort {
-		($0.priority, $0.distance, deliveredPositions[$0.delivered]!, position($0.slot), $0.evidence == .sameDay ? 1 : 0)
-			< ($1.priority, $1.distance, deliveredPositions[$1.delivered]!, position($1.slot), $1.evidence == .sameDay ? 1 : 0)
+		($0.priority.rawValue, $0.specificity, $0.distance, deliveredPositions[$0.delivered]!, position($0.slot))
+			< ($1.priority.rawValue, $1.specificity, $1.distance, deliveredPositions[$1.delivered]!, position($1.slot))
 	}
 	var result = [Partner?](repeating: nil, count: rows.count)
 	var taken = Set<Slot>()
-	var consumed = Set<Int>()
-	for candidate in candidates where !consumed.contains(candidate.delivered) && !taken.contains(candidate.slot) {
-		consumed.insert(candidate.delivered)
+	for candidate in candidates where result[candidate.delivered] == nil && !taken.contains(candidate.slot) {
 		taken.insert(candidate.slot)
-		if let evidence = candidate.evidence {
-			result[candidate.delivered] = Partner(slot: candidate.slot, evidence: evidence)
-		}
+		result[candidate.delivered] = Partner(slot: candidate.slot, evidence: candidate.evidence)
 	}
 	return result
 }
@@ -550,11 +553,16 @@ struct PendingMatch {
 		words = []
 	}
 
-	func fits(_ other: PendingMatch) -> Bool {
-		guard identity.agrees(with: other.identity), amount == other.amount, abs(day - other.day) <= Self.maxDaysApart else { return false }
-		if let iban, let otherIBAN = other.iban { return iban == otherIBAN }
+	func counterpartyConflicts(with other: PendingMatch) -> Bool {
+		if let iban, let otherIBAN = other.iban { return iban != otherIBAN }
 		guard !words.isEmpty, !other.words.isEmpty else { return false }
-		return words.starts(with: other.words) || other.words.starts(with: words)
+		return !words.starts(with: other.words) && !other.words.starts(with: words)
+	}
+
+	func fits(_ other: PendingMatch) -> Bool {
+		guard identity.agrees(with: other.identity), amount == other.amount, abs(day - other.day) <= Self.maxDaysApart,
+			!counterpartyConflicts(with: other) else { return false }
+		return (iban != nil && other.iban != nil) || (!words.isEmpty && !other.words.isEmpty)
 	}
 }
 
