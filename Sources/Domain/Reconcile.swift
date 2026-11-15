@@ -278,6 +278,7 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 	let liveMatches = stored.map(PendingMatch.init)
 	let deadMatches = deleted.map(PendingMatch.init)
 	let incoming = matches.map(\.identity)
+	let bookedByID = Dictionary(grouping: rows.indices.filter { !rows[$0].isPending && incoming[$0].sourceID != nil }, by: { incoming[$0].sourceID! })
 	var byDay: [Day: [Slot]] = [:]
 	var byKey: [Identity.Key: [Slot]] = [:]
 	var byReference: [String: [Slot]] = [:]
@@ -341,7 +342,11 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 				fetched = true
 				future = false
 			}
-			if case .deleted = slot, !t.isPending && identity.isPending { continue }
+			if case .deleted = slot, identity.isPending {
+				if !t.isPending { continue }
+				if let id = identity.sourceID, incoming[i].sourceID != id,
+					(bookedByID[id] ?? []).contains(where: { incoming[$0].agrees(with: identity) }) { continue }
+			}
 			guard incoming[i].agrees(with: identity) else { continue }
 			let distance = abs(matches[i].day - match.day)
 			let sourceAgrees = t.sourceID != nil && t.sourceID == identity.sourceID
