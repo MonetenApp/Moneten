@@ -1020,6 +1020,16 @@ struct LedgerTests {
 		#expect(saved.filter(in: ledger()) == expected)
 	}
 
+	@Test("A filter bar saved before the version and its amount unit restores nothing, so the amount stays Show All")
+	func savedFilterBarOfOldForm() throws {
+		let old = #"{"period":{"all":{}},"status":{"unchecked":{}},"amount":{"range":{"min":-50000,"max":-10000}}}"#
+		#expect(SavedFilterBar(data: Data(old.utf8)) == nil)
+		let current = #"{"version":1,"period":{"all":{}},"status":{"unchecked":{}},"amount":{"rangeInMinorUnits":{"min":-50000,"max":-10000}}}"#
+		let saved = try #require(SavedFilterBar(data: Data(current.utf8)))
+		#expect(saved.filter(in: ledger()).amount == .range(min: -50_000, max: -10_000))
+		#expect(saved.filter(in: ledger()).status == .unchecked)
+	}
+
 	@Test("A saved category or account that no longer exists comes back as Show All")
 	func savedFilterBarOfRemovedEntries() throws {
 		var f = TransactionFilter()

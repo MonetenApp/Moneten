@@ -591,7 +591,7 @@ private struct MinorBounds {
 
 public struct TransactionFilter: Hashable, Sendable {
 	public enum Status: Hashable, Sendable, Codable { case all, checked, unchecked }
-	public enum AmountFilter: Hashable, Sendable, Codable {
+	public enum AmountFilter: Hashable, Sendable {
 		case all, deposits, withdrawals
 		/// Amounts with their sign, both ends included. A missing end leaves the range open.
 		case range(min: Decimal?, max: Decimal?)
