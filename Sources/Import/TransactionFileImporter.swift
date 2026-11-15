@@ -39,7 +39,7 @@ public enum TransactionFileImporter {
 		public var description: String {
 			switch self {
 			case let .unknownCurrency(n, cell, replacement): "Line \(n): The currency \(cell) is unknown. The transaction is in \(replacement), the currency of the account."
-			case let .skippedCSVRow(n): "Line \(n): The row was before the inferred CSV titles and was skipped. Check the header row."
+			case let .skippedCSVRow(n): "Line \(n): The row was skipped while locating the CSV transactions. Check the header row."
 			case let .mixedDateForms(n): "Line \(n): The file mixes month-first dates and dotted dates. Dates with dots read day first."
 			case let .unreadableValueDate(n, cell): "Line \(n): The value date \(cell) cannot be read. The transaction has no value date."
 			}
