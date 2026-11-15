@@ -223,6 +223,7 @@ struct FileImportTests {
 		("2606300102", Day(year: 2026, month: 6, day: 30), Day(year: 2026, month: 1, day: 2)),
 		("800101", Day(year: 2080, month: 1, day: 1), Day(year: 2080, month: 1, day: 1)),
 		("2601150715", Day(year: 2026, month: 1, day: 15), Day(year: 2026, month: 7, day: 15)),
+		("2601150815", Day(year: 2026, month: 1, day: 15), Day(year: 2025, month: 8, day: 15)),
 		("2612150615", Day(year: 2026, month: 12, day: 15), Day(year: 2026, month: 6, day: 15)),
 	])
 	func mt940Dates(dates: String, value: Day, booking: Day) throws {
