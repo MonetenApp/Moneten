@@ -96,11 +96,18 @@ extension ReconcileTests {
 		#expect(r.dropped == [])
 	}
 
-	@Test("Gate 3 item 5: exactly one fetched pending row wins a booking")
-	func gate3BookedPrefersFetched() {
-		let file = [rent(1), rent(8)]
-		let first = history(file, after: merge(refresh([rent(1, purpose: "BANK")]), stored: file, at: noon(20, month: 11)))
-		let r = merge(refresh([rent(2, purpose: "BOOKED BANK", pending: false)]), stored: first, at: noon(2, month: 12))
+	@Test("Gate 3 item 5: exactly one fetched pending row wins a booking", arguments: [false, true])
+	func gate3BookedPrefersFetched(sharedReference: Bool) {
+		var file = [rent(1), rent(8)]
+		var pending = rent(1, purpose: "BANK")
+		var booked = rent(2, purpose: "BOOKED BANK", pending: false)
+		if sharedReference {
+			for i in file.indices { file[i].endToEndReference = "RECURRING-RENT" }
+			pending.endToEndReference = "RECURRING-RENT"
+			booked.endToEndReference = "RECURRING-RENT"
+		}
+		let first = history(file, after: merge(refresh([pending]), stored: file, at: noon(20, month: 11)))
+		let r = merge(refresh([booked]), stored: first, at: noon(2, month: 12))
 		#expect(pendingSummary(history(first, after: r)) == [
 			"20261202 -80000 false true false BOOKED BANK",
 			"20261208 -80000 true false false Miete Dezember"
