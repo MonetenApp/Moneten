@@ -12,7 +12,7 @@ struct PerformanceTests {
 		var ts: [Transaction] = []
 		for i in 0..<50_000 {
 			let a = accounts[i % accounts.count]
-			ts.append(Transaction(accountID: a.id, bookingDate: Day(year: 2014 + i % 12, month: 1 + i % 12, day: 1 + i % 28), amountMinor: Int64(i % 2 == 0 ? -(i % 9_000) : i % 50_000),
+			ts.append(Transaction(accountID: a.id, bookingDate: Day(year: 2014 + i % 12, month: 1 + i % 12, day: 1 + i % 28), amountMinor: Int64(i % 2 == 0 ? -(i % 9_000) : i % 50_000), currency: ["EUR", "JPY", "KWD"][i % 3],
 				name: "Haendler\(i % 70) Musterstadt", purpose: "Rechnung \(i) Kundennummer \(i * 7)", categoryID: i % 4 == 0 ? categories[i % 60].id : nil))
 		}
 		var ledger = Ledger()
@@ -22,6 +22,10 @@ struct PerformanceTests {
 		var count = 0
 		let search = fastest { count = ledger.transactions(in: .accountGroup(UUID()), filter: f).count + ledger.transactions(in: .account(accounts[0].id), filter: f).count }
 		let category = fastest { _ = ledger.transactions(in: .category(categories[3].id)) }
+		var range = TransactionFilter()
+		range.amount = .range(min: -50, max: 50)
+		var rangeCount = 0
+		let amountRange = fastest { rangeCount = ledger.transactions(in: .category(categories[60].id), filter: range).count }
 		let imported = (0..<2_000).map { i in
 			Transaction(accountID: accounts[i % accounts.count].id, bookingDate: Day(year: 2026, month: 11, day: 1 + i % 28), amountMinor: -Int64(i),
 				name: "Neu \(i)", purpose: "Import \(i)")
@@ -29,14 +33,16 @@ struct PerformanceTests {
 		let update = fastest { var copy = ledger; copy.update(imported) }
 		let categorizer = Categorizer(ledger: ledger)
 		let rules = fastest { for t in ts.prefix(5_000) { _ = categorizer.category(for: t) } }
-		print("build \(build), import of 2,000 \(update), search \(search) (\(count) rows), category \(category), 5,000 categorizations \(rules)")
+		print("build \(build), import of 2,000 \(update), search \(search) (\(count) rows), category \(category), amount range \(amountRange) (\(rangeCount) rows), 5,000 categorizations \(rules)")
 		#expect(count > 0)
+		#expect(rangeCount == 15_868)
 		// A debug build runs several times slower than the app and depends on the load of the machine,
 		// so the budgets hold for a release build only: `scripts/test.sh -c release -Xswiftc -enable-testing
 		// --filter PerformanceTests`, which CI runs as its own step.
 		#if !DEBUG
 		#expect(search < .milliseconds(150))
 		#expect(category < .milliseconds(100))
+		#expect(amountRange < .milliseconds(100))
 		#expect(build < .seconds(1))
 		#expect(update < .milliseconds(300))
 		#endif

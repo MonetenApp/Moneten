@@ -279,6 +279,7 @@ public struct Ledger: Sendable {
 		let words = TextFolding.words(filter.searchText).map(String.init)
 		let categoryFilter = filter.categoryID.map { categoryIDs(inTree: $0) }
 		let defaultID = defaultCategory?.id ?? UUID()
+		var amountBounds: [Int: MinorBounds] = [:]
 		return base.filter { t in
 			guard filter.period.contains(t.bookingDate) else { return false }
 			switch filter.status {
@@ -291,8 +292,10 @@ public struct Ledger: Sendable {
 			case .deposits: if t.amountMinor <= 0 { return false }
 			case .withdrawals: if t.amountMinor >= 0 { return false }
 			case let .range(min, max):
-				if let min, t.amountMinor < min { return false }
-				if let max, t.amountMinor > max { return false }
+				let places = t.amount.decimalPlaces
+				let bounds = amountBounds[places] ?? MinorBounds(min: min, max: max, decimalPlaces: places)
+				amountBounds[places] = bounds
+				if t.amountMinor < bounds.min || t.amountMinor > bounds.max { return false }
 			}
 			if let categoryFilter, !categoryFilter.contains(t.categoryID ?? defaultID) { return false }
 			if let a = filter.accountID, t.accountID != a { return false }
@@ -393,15 +396,36 @@ public struct Ledger: Sendable {
 	}
 }
 
+/// The ends of a custom amount range in the minor units of one number of decimal places. An end
+/// between two minor units moves inward, so a row passes only when its exact amount lies in the range.
+private struct MinorBounds {
+	let min: Int64
+	let max: Int64
+
+	init(min: Decimal?, max: Decimal?, decimalPlaces: Int) {
+		self.min = min.map { Self.minor($0, decimalPlaces, .up) } ?? .min
+		self.max = max.map { Self.minor($0, decimalPlaces, .down) } ?? .max
+	}
+
+	private static func minor(_ value: Decimal, _ decimalPlaces: Int, _ mode: NSDecimalNumber.RoundingMode) -> Int64 {
+		var scaled = value * Decimal(sign: .plus, exponent: decimalPlaces, significand: 1)
+		var rounded = Decimal()
+		NSDecimalRound(&rounded, &scaled, 0, mode)
+		if rounded >= Decimal(Int64.max) { return .max }
+		if rounded <= Decimal(Int64.min) { return .min }
+		return NSDecimalNumber(decimal: rounded).int64Value
+	}
+}
+
 public struct TransactionFilter: Hashable, Sendable {
 	public enum Status: Hashable, Sendable { case all, checked, unchecked }
 	public enum AmountFilter: Hashable, Sendable {
 		case all, deposits, withdrawals
-		/// Amounts with their sign in minor units, both ends included. A missing end leaves the range open.
-		case range(min: Int64?, max: Int64?)
+		/// Amounts with their sign, both ends included. A missing end leaves the range open.
+		case range(min: Decimal?, max: Decimal?)
 
 		/// The range of "Custom...", or nil when the minimum lies above the maximum. Two empty ends hide nothing.
-		public static func custom(min: Int64?, max: Int64?) -> AmountFilter? {
+		public static func custom(min: Decimal?, max: Decimal?) -> AmountFilter? {
 			if min == nil, max == nil { return .all }
 			if let min, let max, min > max { return nil }
 			return .range(min: min, max: max)
