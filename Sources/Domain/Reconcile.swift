@@ -374,8 +374,9 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 				candidates.append(Candidate(delivered: i, slot: slot, priority: .sourceID, specificity: specificity, distance: distance, evidence: .sourceID))
 				continue
 			}
-			let referenceAgrees = incoming[i].endToEnd != nil && incoming[i].endToEnd == identity.endToEnd
-				&& matches[i].amount == match.amount && !matches[i].counterpartyConflicts(with: match)
+			let sameReference = incoming[i].endToEnd != nil && incoming[i].endToEnd == identity.endToEnd
+			if sameReference && matches[i].counterpartyConflicts(with: match) { continue }
+			let referenceAgrees = sameReference && matches[i].amount == match.amount
 			if let step = Identity.steps.firstIndex(where: { $0.accepts(incoming[i], identity) }) {
 				let priority: Priority = if referenceAgrees { .reference }
 					else if t.isPending && identity.isPending { fetched ? .fetchedPending : .filePending }

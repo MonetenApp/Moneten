@@ -69,6 +69,8 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 
 - [x] 2.23 Persist original file identity under the operator-approved schema exception. The unidentified file lifecycle and conflicting-fingerprint tests fail with 16 assertions before the change; both v18 schema tests fail before the migration. Nullable `fileIdentity` columns keep existing v17 rows at NULL. New tests cover literal fingerprints, file-only creation, bank-first import, takeover, booking, tombstones, reopening, and complete export/import. The split review-reason migration plan moves from v18 to v19. The gate must accept v18; otherwise identified booked repeats remain the fallback.
 
+- [x] 2.24 Shared-reference counterparty eligibility. Autoreview round 4 reproduces an exact fingerprint bypassing known name conflicts without IBANs. The literal file/refresh regression fails with eight assertions before moving the conflict check ahead of fingerprint fallback. Strong file and source identities keep their precedence.
+
 ## 3. Integration
 
 - [ ] 3.1 Check every scenario of the spec in a release build and record the result in the pull request.
