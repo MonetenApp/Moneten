@@ -2,7 +2,7 @@ import Domain
 import Foundation
 import SwiftUI
 
-enum Format {
+extension Format {
 	/// An amount with its currency, such as "−42,50 €", with a minus sign as in MoneyMoney.
 	static func money(_ m: Money) -> String {
 		minus(m.decimal.formatted(.currency(code: m.currency)))
@@ -74,12 +74,6 @@ enum Format {
 		}
 	}
 
-	static func iban(_ s: String) -> String {
-		let compact = s.replacingOccurrences(of: " ", with: "")
-		guard compact.count > 8, compact.prefix(2).allSatisfy(\.isLetter) else { return s }
-		let characters = Array(compact)
-		return stride(from: 0, to: characters.count, by: 4).map { String(characters[$0..<min($0 + 4, characters.count)]) }.joined(separator: " ")
-	}
 }
 
 extension Color {

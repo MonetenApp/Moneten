@@ -45,8 +45,9 @@ struct MainView: View {
 					.disabled(!model.hasPassword)
 			}
 		}
-		.sheet(item: $model.sheet) { kind in
+		.sheet(item: $model.sheet, onDismiss: { model.fileImport?.sheetDismissed() }) { kind in
 			SheetView(kind: kind).environment(model)
+				.onAppear { if case let .fileImport(run) = kind { run.isPresented = true } }
 				// A TAN dialog opens on top of the open sheet, for example during the login of "Add Account".
 				.sheet(item: Binding(get: { model.sync.broker.sheet }, set: { _ in })) { sheet in
 					SyncDialog(broker: model.sync.broker, sheet: sheet)

@@ -1,10 +1,10 @@
 import Foundation
 
-/// The account that a CAMT or MT940 file names: an IBAN, or an account number with its bank code when
+/// The account that a CAMT or MT940 file names: an IBAN, or an account number with its bank code or BIC when
 /// the file has one.
 public enum FileAccount: Hashable, Sendable {
 	case iban(String)
-	case number(bankCode: String?, account: String)
+	case number(bankCode: String?, account: String, bic: String? = nil)
 
 	/// Where the transactions of a file go when the user imports it into `selected`.
 	public enum Destination: Hashable, Sendable {
@@ -17,10 +17,10 @@ public enum FileAccount: Hashable, Sendable {
 	}
 
 	/// Of several accounts with the number of the file, such as a portfolio and a giro account of one
-	/// broker, the one in the `currency` of the file that is not a portfolio comes first.
+	/// broker, the one in the `currency` of the file comes first, then an open account, then a non-portfolio account.
 	/// The selected account keeps the file unless another match ranks higher.
 	public func destination(selected: Account, accounts: [Account], currency: String) -> Destination {
-		func rank(_ account: Account) -> Int { (account.currency == currency ? 2 : 0) + (account.kind != .portfolio ? 1 : 0) }
+		func rank(_ account: Account) -> Int { (account.currency == currency ? 4 : 0) + (account.isClosed ? 0 : 2) + (account.kind != .portfolio ? 1 : 0) }
 		let others = accounts.filter { $0.id != selected.id && matches($0) }
 		let best = others.max { rank($0) < rank($1) }
 		if matches(selected), rank(selected) >= best.map(rank) ?? 0 { return .selected }
@@ -34,10 +34,10 @@ public enum FileAccount: Hashable, Sendable {
 		case let .iban(text):
 			let iban = TextFolding.accountKey(text)
 			account.iban = iban
-			let characters = Array(iban)
-			account.name = stride(from: 0, to: characters.count, by: 4).map { String(characters[$0..<min($0 + 4, characters.count)]) }.joined(separator: " ")
-		case let .number(bankCode, number):
+			account.name = Format.iban(iban)
+		case let .number(bankCode, number, bic):
 			account.bankCode = bankCode
+			account.bic = bic
 			account.accountNumber = number
 			account.name = "Account \(number)"
 		}
@@ -58,11 +58,12 @@ public enum FileAccount: Hashable, Sendable {
 			guard iban == nil, own.hasPrefix("DE"), own.count == 22 else { return false }
 			let digits = Array(own)
 			return FileAccount.number(bankCode: String(digits[4..<12]), account: String(digits[12...])).matches(account)
-		case let .number(bankCode, number):
+		case let .number(bankCode, number, bic):
+			if let bic, account.bic.map(TextFolding.accountKey) != TextFolding.accountKey(bic) { return false }
 			let number = Self.withoutLeadingZeros(number)
 			// An extension can list the IBAN as the account number.
 			let german = (iban ?? account.accountNumber.map(TextFolding.accountKey)).flatMap { $0.hasPrefix("DE") && $0.count == 22 ? Array($0) : nil }
-			let ownBankCode = account.bankCode ?? german.map { String($0[4..<12]) }
+			let ownBankCode = account.bankCode.map(TextFolding.accountKey) ?? german.map { String($0[4..<12]) }
 			// A file that names a bank never takes an account without a bank code, which an exact match elsewhere may own.
 			if let own = account.accountNumber, Self.withoutLeadingZeros(own) == number, bankCode == nil || ownBankCode == bankCode { return true }
 			guard let german else { return false }
@@ -71,6 +72,8 @@ public enum FileAccount: Hashable, Sendable {
 	}
 
 	private static func withoutLeadingZeros(_ text: String) -> String {
-		String(text.drop { $0 == "0" })
+		let key = TextFolding.accountKey(text)
+		let number = String(key.drop { $0 == "0" })
+		return number.isEmpty && !key.isEmpty ? "0" : number
 	}
 }

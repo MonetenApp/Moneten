@@ -65,6 +65,27 @@ public enum TransactionFileImporter {
 		public var declaredCurrency: String?
 	}
 
+	public static func accountDecision(_ names: [FileAccount?], selected: Account? = nil, accounts: [Account] = [], currency: String = "") throws
+		-> (account: FileAccount?, destination: FileAccount.Destination, cacheKey: FileAccount?) {
+		let readable = names.compactMap { $0 }
+		let keys = readable.map { account -> FileAccount in
+			switch account {
+			case let .iban(text): return .iban(TextFolding.accountKey(text))
+			case let .number(bankCode, number, bic):
+				let number = TextFolding.accountKey(number)
+				let digits = String(number.drop { $0 == "0" })
+				return .number(bankCode: bankCode.map(TextFolding.accountKey), account: digits.isEmpty && !number.isEmpty ? "0" : digits,
+					bic: bic.map(TextFolding.accountKey))
+			}
+		}
+		guard Set(keys).count < 2 else { throw Failure.severalAccounts }
+		let account = readable.first
+		let destination: FileAccount.Destination = if let selected, let key = keys.first {
+			key.destination(selected: selected, accounts: accounts, currency: currency)
+		} else { .selected }
+		return (account, destination, keys.first)
+	}
+
 	public static func parse(_ data: Data, currency: String) throws -> Parsed {
 		guard !data.isEmpty else { throw Failure.empty }
 		let text = decode(data)
@@ -397,7 +418,7 @@ enum DateOrder: CaseIterable {
 enum MT940Parser {
 	static func parse(_ text: String, currency: String) throws -> TransactionFileImporter.Parsed {
 		var fields: [(tag: String, value: String, line: Int)] = []
-		for (n, rawLine) in text.replacingOccurrences(of: "\r\n", with: "\n").split(separator: "\n", omittingEmptySubsequences: false).enumerated() {
+		for (n, rawLine) in text.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline).enumerated() {
 			try Task.checkCancellation()
 			let line = String(rawLine)
 			if line.hasPrefix(":"), let end = line.dropFirst().firstIndex(of: ":") {
@@ -424,14 +445,14 @@ enum MT940Parser {
 			if i + 1 < fields.count, fields[i + 1].tag == "86" { apply86(fields[i + 1].value, to: &t) }
 			result.append(t)
 		}
-		return TransactionFileImporter.Parsed(transactions: result, account: try account(text), declaredCurrency: declaredCurrency)
+		return TransactionFileImporter.Parsed(transactions: result, account: try TransactionFileImporter.accountDecision(account(fields.filter { $0.tag == "25" }.map(\.value))).account, declaredCurrency: declaredCurrency)
 	}
 
 	/// Field 25 holds the IBAN, the bank code or the BIC and the account number or the IBAN separated by a
 	/// slash, or the account number alone, which some banks follow with the currency. A file with the
 	/// statements of several accounts is refused, because its entries would all go into one account.
-	static func account(_ text: String) throws -> FileAccount? {
-		func read(_ value: Substring, bankCode: String?) -> FileAccount? {
+	static func account(_ values: [String]) -> [FileAccount?] {
+		func read(_ value: Substring, bankCode: String?, bic: String? = nil) -> FileAccount? {
 			if value.count > 4, value.prefix(2).allSatisfy(\.isLetter) {
 				// An IBAN followed by its currency, such as "…0123456789EUR". Some IBANs end in letters, so the checksum
 				// of the text without them decides.
@@ -439,19 +460,19 @@ enum MT940Parser {
 				let hasCurrency = value.suffix(3).allSatisfy(\.isLetter) && MoneyMoneyMigration.isIBAN(trimmed)
 				return .iban(hasCurrency ? trimmed : text)
 			}
-			let number = String(value.prefix { $0.isNumber })
-			return number.isEmpty ? nil : .number(bankCode: bankCode, account: number)
+			let number = value.suffix(3).allSatisfy(\.isLetter) ? value.dropLast(3) : value
+			guard number.first?.isNumber == true, number.allSatisfy({ $0.isNumber || $0 == "-" }) else { return nil }
+			return .number(bankCode: bankCode, account: String(number), bic: bic)
 		}
-		let accounts = Set(text.split(whereSeparator: \.isNewline).filter { $0.hasPrefix(":25:") }.map { line -> FileAccount? in
-			let value = line.dropFirst(4).filter { !$0.isWhitespace }[...]
+		return values.map { raw -> FileAccount? in
+			let value = raw.filter { !$0.isWhitespace }[...]
 			// Some banks write the account number after a slash without a bank code, as in ":25:/00797453990".
 			let parts = value.split(separator: "/", maxSplits: 1, omittingEmptySubsequences: false)
 			guard parts.count == 2 else { return read(value, bankCode: nil) }
-			// A BIC before the slash is no bank code.
-			return read(parts[1], bankCode: parts[0].count == 8 && parts[0].allSatisfy(\.isNumber) ? String(parts[0]) : nil)
-		})
-		guard accounts.count < 2 else { throw TransactionFileImporter.Failure.severalAccounts }
-		return accounts.first ?? nil
+			let bank = String(parts[0])
+			let isBIC = [8, 11].contains(bank.count) && bank.prefix(6).allSatisfy(\.isLetter) && bank.allSatisfy { $0.isLetter || $0.isNumber }
+			return read(parts[1], bankCode: bank.count == 8 && bank.allSatisfy(\.isNumber) ? bank : nil, bic: isBIC ? bank : nil)
+		}
 	}
 
 	struct Line61 {
@@ -572,7 +593,7 @@ final class CAMTParser: NSObject, XMLParserDelegate {
 		let parsed = parser.parse()
 		try Task.checkCancellation()
 		if let failure = p.failure { throw failure }
-		guard p.accounts.count < 2 else { throw TransactionFileImporter.Failure.severalAccounts }
+		p.result.account = try TransactionFileImporter.accountDecision(p.accounts.map(Optional.some)).account
 		guard parsed else {
 			throw TransactionFileImporter.Failure.line(parser.lineNumber, "The XML file cannot be read.")
 		}

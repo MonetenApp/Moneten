@@ -13,6 +13,8 @@ final class FileImport {
 	private(set) var isCanceled = false
 	/// The file that names another account, which the sheet asks about instead of showing the progress.
 	private(set) var question: AccountQuestion?
+	@ObservationIgnored var isPresented = false
+	@ObservationIgnored private var dismissal: CheckedContinuation<Void, Never>?
 	@ObservationIgnored private var waiting: CheckedContinuation<AccountQuestion.Answer?, Never>?
 	/// Cancels the task that reads the files, which stops the reading of a CSV file at its next row.
 	@ObservationIgnored var onCancel: () -> Void = {}
@@ -28,6 +30,17 @@ final class FileImport {
 			waiting = continuation
 			self.question = question
 		}
+	}
+
+	func waitForDismissal() async {
+		guard isPresented else { return }
+		await withCheckedContinuation { dismissal = $0 }
+	}
+
+	func sheetDismissed() {
+		isPresented = false
+		dismissal?.resume()
+		dismissal = nil
 	}
 
 	func answer(_ choice: AccountQuestion.Answer?) {
@@ -119,7 +132,7 @@ struct AccountQuestionView: View {
 	private var message: String {
 		let named = switch question.named {
 		case let .iban(iban): "the IBAN \(Format.iban(iban))"
-		case let .number(bankCode, number): bankCode.map { "the account number \(number) at the bank code \($0)" } ?? "the account number \(number)"
+		case let .number(bankCode, number, _): bankCode.map { "the account number \(number) at the bank code \($0)" } ?? "the account number \(number)"
 		}
 		if let other = question.other {
 			return "The file names \(named), which belongs to the account \"\(other.name)\". Do you want to import it into \"\(other.name)\" instead of \"\(question.selected.name)\"?"

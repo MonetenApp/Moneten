@@ -174,10 +174,12 @@ for part in explicit missing repeat later; do
 	attribute=' Ccy="EUR"'
 	[ "$part" = explicit ] && attribute=' Ccy="USD"'
 	case "$part" in missing | repeat) attribute='' ;; esac
+	account=0099887766
+	[ "$part" = repeat ] && account='99 88 77 66'
 	cat >"$WORK/Erika Mustermann-$part.xml" <<-EOF
 		<?xml version="1.0" encoding="UTF-8"?>
 		<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.053.001.08"><BkToCstmrStmt><Stmt>
-		<Acct><Id><Othr><Id>0099887766</Id></Othr></Id></Acct>
+		<Acct><Id><Othr><Id>$account</Id></Othr></Id></Acct>
 		<Ntry><Amt$attribute>1.00</Amt><CdtDbtInd>DBIT</CdtDbtInd><BookgDt><Dt>2026-11-04</Dt></BookgDt></Ntry>
 		</Stmt></BkToCstmrStmt></Document>
 	EOF
@@ -216,7 +218,7 @@ poll "^migrationfailure: unknown failure$" migrationfailure "$MIGRATION_UNKNOWN"
 send quit
 
 found=0
-for value in DE02120300000000202051 "DE02 1203" 202051 1234567890 0099887766 4711 5550001 "$LOGIN" "$PIN" "$MIGRATION_UNKNOWN" 123456 check-debug-log \
+for value in DE02120300000000202051 "DE02 1203" 202051 1234567890 0099887766 "99 88 77 66" 4711 5550001 "$LOGIN" "$PIN" "$MIGRATION_UNKNOWN" 123456 check-debug-log \
 	Girokonto Tagesgeld Kreditkarte Extrakonto "Erika Mustermann" "Beispiel GmbH" "Wohnbau Musterstadt" "Tankstelle Beispiel" \
 	"Gehalt November" Miete Kartenzahlung Sparen Haushaltskasse MIETE-2026-11 GUTSCHRIFT DAUERAUFTRAG \
 	"Zugang vorübergehend gesperrt" "PIN falsch" Wartungsarbeiten pushTAN-App "currency:/^+?49/"; do

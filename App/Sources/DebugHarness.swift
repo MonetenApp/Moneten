@@ -183,8 +183,13 @@ final class DebugHarness {
 			}
 		case "alert":
 			// Logs the title of the alert on screen and closes it, as its OK button does.
-			log("alert \(model.alert?.title ?? "none")")
-			model.alert = nil
+			if let result = model.importResult {
+				log("alert Transaction Import")
+				result.window.sheetParent?.endSheet(result.window)
+			} else {
+				log("alert \(model.alert?.title ?? "none")")
+				model.alert = nil
+			}
 		case "extanswer":
 			// Clicks "Allow" or "Deny" in the question about a new host.
 			guard let prompt = model.sync.broker.current, case .allowHost = prompt.request else { return log("extanswer no host question") }

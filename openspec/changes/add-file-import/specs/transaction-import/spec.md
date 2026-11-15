@@ -378,6 +378,27 @@ The app SHALL compare the IBAN or account number inside a CAMT or MT940 file wit
 - **WHEN** the file names an IBAN that no account has
 - **THEN** the app offers "Import into the selected account" and "Create offline account"
 
+#### Scenario: Equal numbers at different banks
+
+- **GIVEN** the selected account has BIC AAAADEFFXXX and number 202051, and another account has BIC BBBBDEFFXXX and number 202051
+- **WHEN** field 25 names BBBBDEFFXXX/202051
+- **THEN** the app asks before importing into the other account
+- **AND** a file with both AAAADEFFXXX/202051 and BBBBDEFFXXX/202051 is refused as statements of several accounts
+
+#### Scenario: Repeated account identifiers
+
+- **WHEN** field 25 repeats 12030000/0000202051 as 12030000/202051, or adds an unreadable EUR line to a valid account
+- **THEN** the app treats the file as one account
+- **AND** a CAMT file that repeats DE02120300000000202051 with spaces names one account too
+- **AND** each file needs at most one account question, and later files of the same account and declared currency reuse the answer
+
+#### Scenario: An open account replaces a closed match
+
+- **GIVEN** "Old closed" and "New open" have IBAN DE02120300000000202051, and "Savings" is selected
+- **WHEN** the file names that IBAN in the currency of both accounts
+- **THEN** the question offers "New open"
+- **AND** a match in the currency of the file still outranks an open match in another currency
+
 #### Scenario: Statements of several accounts
 
 - **WHEN** a camt.053 file holds a statement for "Giro" and one for "Savings"

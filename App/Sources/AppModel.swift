@@ -282,6 +282,7 @@ final class AppModel {
 	}
 	/// The file import that runs. There is one at a time, and a lock cancels it.
 	var fileImport: FileImport?
+	@ObservationIgnored var importResult: NSAlert?
 	var sheet: SheetKind? {
 		didSet {
 			guard sheet != oldValue else { return }
@@ -456,6 +457,7 @@ final class AppModel {
 		announcer.lock(keeping: ledger)
 		fileImport?.cancel()
 		exportTask?.cancel()
+		if let result = importResult { result.window.sheetParent?.endSheet(result.window) }
 		autoRefresh.isUnlocked = false
 		notices.clearBadge()
 		sync.cancelAll()
