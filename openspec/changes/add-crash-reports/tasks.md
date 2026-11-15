@@ -19,7 +19,7 @@ MetricKit check on November 15: the owned debug process crashed through its harn
 ## 4. Gate round 1
 
 - [x] 4.1 Recover from a lost key or damaged ciphertext. Proof: lostKey and pendingReport failed before recovery and pass after it. A new diagnostic can be persisted and offered.
-- [x] 4.2 Record launch times and versions in encrypted state across updates. Decide the fallback from file names and dates only. Proof: fallbackFiles, fallbackDiagnostic, persistedLaunch, and legacyState cover old files, force quit, first launch, update, delayed details, and a decision.
+- [x] 4.2 Record launch times and versions in encrypted state across updates. Decide the fallback from file names and dates only. Proof: fallbackFiles, fallbackDiagnostic, persistedLaunch, legacyState, newerFallbackDetails, and consecutiveFallbackDecisions cover old files, force quit, first launch, update, delayed details, and a decision.
 - [x] 4.3 Keep a cut report after opening GitHub and use expected only. Proof: githubRetainsLongReport and boundedURL check 500 frames and persistence until Copy or Don't Report.
 - [x] 4.4 Omit a zero macOS patch in both paths. Proof: zeroPatch calls the shared Help formatter with 15.2.0 and 15.2.1 and checks crash text and URL fields.
 - [x] 4.5 Open the main window for a pending report and use the injected report time. Keep counters in debug builds. Proof: the owned harness closes the main window, injects a 500-frame report at a supplied time, and checks that the window returns and the time matches. The privacy script repeats the timestamp check.

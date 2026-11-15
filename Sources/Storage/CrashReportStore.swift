@@ -62,7 +62,10 @@ public struct CrashReportStore {
 			guard let pending else { return }
 			if decision == .github,
 				URLComponents(url: pending.githubURL, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "expected" })?.value != pending.report { return }
-			if let date = pending.fallbackDate { declinedFallback = date }
+			if let date = pending.fallbackDate {
+				declinedFallback = date
+				latest = max(latest ?? .distantPast, date)
+			}
 			self.pending = nil
 		}
 	}
