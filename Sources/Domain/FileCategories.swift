@@ -30,10 +30,13 @@ public struct FileCategories: Sendable {
 		}
 		var seen = Set<String>()
 		for name in names where seen.insert(name).inserted {
-			if name.contains(" - "), let found = find([name.trimmingCharacters(in: .whitespaces).lowercased()])
-				?? all.first(where: { path($0).joined(separator: " - ") == name.trimmingCharacters(in: .whitespaces).lowercased() }) {
-				if !found.isGroup, !found.isDefault { ids[name] = found.id }
-				continue
+			if name.contains(" - ") {
+				let lower = name.trimmingCharacters(in: .whitespaces).lowercased()
+				let paths = all.filter { path($0).joined(separator: " - ") == lower }
+				if let found = find([lower]) ?? paths.first(where: { !$0.isGroup && !$0.isDefault }) ?? paths.first {
+					if !found.isGroup, !found.isDefault { ids[name] = found.id }
+					continue
+				}
 			}
 			let parts = name.replacingOccurrences(of: " - ", with: "›").split(whereSeparator: { $0 == "›" || $0 == "\\" }).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
 			guard !parts.isEmpty else { continue }
