@@ -14,7 +14,7 @@ enum MMLibrary {
 		case .beta: "BETA"
 		case .retail: "RETAIL"
 		}
-		let values: [(String, LuaValue)] = [("productName", .string("Moneten")), ("productVersion", .string(environment.productVersion)),
+		let values: [(String, LuaValue)] = [("productName", .string("Moneten")), ("productVersion", .string(Self.threeNumbers(environment.productVersion))),
 			("productBuild", .integer(Int64(environment.productBuild))), ("apiVersion", .integer(Int64(extensionAPIVersion))),
 			("language", .string(environment.language)), ("deviceUuid", .string(environment.deviceUuid)), (variant, .string(""))]
 		lua_createtable(L, 0, Int32(functions.count + values.count))
@@ -28,6 +28,15 @@ enum MMLibrary {
 		}
 		Environment.reportMisses(stack, of: "MM")
 		stack.setGlobal("MM")
+	}
+
+	/// The version as three numbers, such as "0.1.0" for "0.1", because scripts compare it field by field
+	/// with a version of three numbers and stop when the counts differ. A field without digits counts as 0.
+	static func threeNumbers(_ version: String) -> String {
+		let fields = version.split(separator: ".", omittingEmptySubsequences: false).prefix(3).map { field in
+			String(Int(field.prefix(while: \.isASCII).prefix(while: \.isNumber)) ?? 0)
+		}
+		return (fields + Array(repeating: "0", count: 3 - fields.count)).joined(separator: ".")
 	}
 
 	private static let functions: [(String, clua_Function)] = [
