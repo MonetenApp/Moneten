@@ -321,6 +321,21 @@ extension ReconcileTests {
 		}
 	}
 
+	@Test("A source arriving booked prevents its pending tombstone from absorbing a new look-alike")
+	func gate3BookedSourceReleasesLookalike() {
+		var old = rent(1)
+		old.sourceID = "moneymoney:3"
+		var booked = fresh(old)
+		booked.isPending = false
+		var other = rent(1)
+		other.sourceID = "moneymoney:7"
+		for delivered in permutations([booked, other]) {
+			let r = merge(.migration(delivered), deleted: [DeletedTransaction(old, deletedAt: now)], at: noon(20, month: 11))
+			#expect(r.skipped == 0)
+			#expect(r.added.map { "\($0.sourceID ?? "") \($0.isPending)" }.sorted() == ["moneymoney:3 false", "moneymoney:7 true"])
+		}
+	}
+
 	@Test("Gate 3 items 1 4 5: every delivered and stored permutation has literal rows")
 	func gate3AllPermutations() {
 		for (fileDays, bankDays, expected) in [
