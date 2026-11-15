@@ -325,6 +325,33 @@ struct AllDataTests {
 		#expect(try AllData(json: syntacticallyValid.json()).accounts[0].currency == "ZZZ")
 	}
 
+	@Test("Nonpositive format versions are refused", arguments: [0, -1])
+	func positiveVersion(_ version: Int) throws {
+		var json = try JSONSerialization.jsonObject(with: AllData().json()) as! [String: Any]
+		json["version"] = version
+		let target = try emptyStore("version")
+		#expect(throws: AllData.ReadError.damaged("at version, the format version must be at least 1")) {
+			try target.importAllData(try AllData(json: JSONSerialization.data(withJSONObject: json)))
+		}
+		#expect(try target.exportAllData(at: exportedAt) == AllData(exportedAt: exportedAt))
+	}
+
+	@Test("An unreadable stored holding fails the export and preserves an existing file")
+	func unreadableHolding() throws {
+		let store = try filledStore()
+		try store.write { db in try db.execute(sql: "UPDATE holding SET quantity = 'broken'") }
+		#expect(throws: AllData.ReadError.damaged("at holdings[0], the stored holding cannot be read")) {
+			try store.exportAllData(at: exportedAt)
+		}
+		let file = root.appending(path: "export.json")
+		try Data("keep".utf8).write(to: file)
+		#expect(throws: AllData.ReadError.damaged("at holdings[0], the stored holding cannot be read")) {
+			try store.exportAllData(to: file)
+		}
+		#expect(try String(contentsOf: file, encoding: .utf8) == "keep")
+		#expect(try FileManager.default.contentsOfDirectory(atPath: root.path).sorted() == ["export.json", "source"])
+	}
+
 	@Test("Every key of an export is described in docs/export-format.md")
 	func documented() throws {
 		let json = try JSONSerialization.jsonObject(with: try filledStore().exportAllData(at: exportedAt).json())
