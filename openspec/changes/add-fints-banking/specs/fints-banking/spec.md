@@ -412,6 +412,12 @@ The app SHALL show the text and the return code that the bank sends when the ban
 - **WHEN** the bank answers a transaction request with the code 9010 and the text "Verarbeitung nicht möglich"
 - **THEN** the error of the account quotes "Verarbeitung nicht möglich" and shows the code 9010
 
+#### Scenario: Code of the second factor without its cause
+
+- **GIVEN** the last challenge of the refresh asked for a typed TAN, and the bank allows the user the TAN method "pushTAN 2.0"
+- **WHEN** the bank answers with the code 9951 and the text "Zeitüberschreitung im Zwei-Schritt-Verfahren", or with the code 9955 and the text "Ein-Schritt-TAN-Verfahren nicht zugelassen"
+- **THEN** the error of the account quotes the text of the bank and shows its code
+
 #### Scenario: Warning with a successful answer
 
 - **WHEN** the bank delivers the transactions together with a warning text
@@ -434,9 +440,34 @@ The app SHALL stop when the bank reports that the PIN or the access is blocked, 
 
 #### Scenario: PIN blocked after wrong attempts
 
-- **WHEN** the bank reports that the PIN is blocked
-- **THEN** the accounts of the access show that the server has blocked the PIN
+- **WHEN** the bank answers the login with the code 9930 and the text "PIN gesperrt"
+- **THEN** the accounts of the access show that the bank blocked the access, the text "PIN gesperrt" with the code 9930, and "Ask the bank to unblock it."
+- **AND** the app asks for no new PIN
 - **AND** the automatic refresh skips this access from then on
+
+#### Scenario: Warning of a blocked access in a login
+
+- **GIVEN** a refresh of "Giro"
+- **WHEN** the bank accepts the login with the code 0020 and the warning 3938 "Ihr Zugang ist vorläufig gesperrt - Bitte PIN-Sperre aufheben."
+- **THEN** the app sends no request for "Giro" and the refresh fails
+- **AND** "Giro" shows that the bank blocked the access, the text of the warning with the code 3938, and "Ask the bank to unblock it."
+
+#### Scenario: Warning of a blocked access in the setup
+
+- **GIVEN** the assistant "Add Account" logs in to "Musterbank"
+- **WHEN** the bank accepts the login with the warning 3938 "Ihr Zugang ist vorläufig gesperrt - Bitte PIN-Sperre aufheben."
+- **THEN** the assistant lists no accounts and shows that the bank blocked the access with "Ask the bank to unblock it."
+
+#### Scenario: Block with the code of a failed login
+
+- **WHEN** the bank answers the login with the code 9931 and the text "Teilnehmersperre durchgeführt, Entsperren nur durch Kreditinstitut"
+- **THEN** the accounts of the access show that the bank blocked the access and "Ask the bank to unblock it."
+- **AND** the app asks for no new PIN
+
+#### Scenario: Wrong PIN with the code of a failed login
+
+- **WHEN** the bank answers the login with the code 9931 and the text "Anmeldename oder PIN ist falsch"
+- **THEN** the PIN sheet opens again with "Anmeldename oder PIN ist falsch"
 
 ### Requirement: Cancel and interruption
 
