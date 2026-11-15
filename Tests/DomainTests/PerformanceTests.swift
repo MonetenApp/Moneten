@@ -48,6 +48,33 @@ struct PerformanceTests {
 		#endif
 	}
 
+	@Test("The category picker narrows its list for 50,000 selected rows well within a frame")
+	func pickerNarrowing() {
+		let company = AccountGroup(name: "Firma", position: 0)
+		let accounts = (0..<10).map { Account(groupID: company.id, position: $0, name: "Konto \($0)", kind: .giro, source: .offline) }
+		let categories = (0..<60).map { Domain.Category(position: $0, name: "Kategorie \($0)", restrictedToID: $0 < 10 ? company.id : nil) }
+			+ [Domain.Category(position: 99, name: "Uncategorized", isDefault: true)]
+		var ts: [Transaction] = []
+		for i in 0..<50_000 {
+			let accountID: UUID = accounts[i % accounts.count].id
+			let day = Day(year: 2014 + i % 12, month: 1 + i % 12, day: 1 + i % 28)
+			let amount: Int64 = -Int64(i % 9_000)
+			ts.append(Transaction(accountID: accountID, bookingDate: day, amountMinor: amount, name: "Haendler\(i % 70) Musterstadt"))
+		}
+		let ledger = Ledger(groups: [company], accounts: accounts, categories: categories, transactions: ts)
+		let ids: Set<UUID> = Set(ts.map(\Transaction.id))
+		var selected: Set<UUID> = []
+		let open = fastest { selected = ledger.accountIDs(ofTransactions: ids) }
+		var listed = 0
+		let keystroke = fastest { listed = ledger.categories(matching: "kat", assignableTo: selected).count }
+		print("picker for 50,000 selected rows: open \(open), keystroke \(keystroke) (\(listed) categories)")
+		#expect(listed == 60)
+		#if !DEBUG
+		#expect(keystroke < .milliseconds(2))
+		#expect(open < .milliseconds(100))
+		#endif
+	}
+
 	/// The fastest of three runs. A shared CI machine sometimes stalls one run for longer than the
 	/// budget, which made this test fail at random; a slow change still makes every run slow.
 	private func fastest(_ work: () -> Void) -> Duration {

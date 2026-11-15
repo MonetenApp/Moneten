@@ -118,6 +118,10 @@ struct AppCommands: Commands {
 			Button("Add Transaction...") { model.sheet = .transaction(nil) }
 				.keyboardShortcut("+")
 				.disabled(!unlocked || model.selectedOfflineAccount == nil)
+			// A bank dialog shows only while no other sheet is open, so ⌘K would close it and drop a half-typed PIN.
+			Button("Assign Category...") { model.openCategoryPicker() }
+				.keyboardShortcut("k")
+				.disabled(!unlocked || model.selectedTransactions.isEmpty || model.sheet != nil || model.sync.broker.sheet != nil)
 			Button("Add Comment...") { model.sheet = .comment(model.selectedTransactions) }
 				.keyboardShortcut("k", modifiers: [.command, .shift])
 				.disabled(!unlocked || model.selectedTransactions.isEmpty)

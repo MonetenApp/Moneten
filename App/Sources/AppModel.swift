@@ -553,6 +553,10 @@ final class AppModel {
 	/// The rows of the transaction table, for the view and the filters of `tableKey`.
 	var visibleTransactions: [Transaction] { transactions(for: tableKey) }
 
+	/// The selected rows that the table shows. A search keeps the selection of the rows that it hides.
+	/// It filters the rows, so a menu reads it in its action and not in its `disabled` check.
+	var visibleSelection: Set<UUID> { selectedTransactions.intersection(visibleTransactions.map(\.id)) }
+
 	/// The rows of a transaction table with the view and the filters of `key`.
 	func transactions(for key: TableKey) -> [Transaction] {
 		guard let selection = key.selection else { return [] }
@@ -602,6 +606,12 @@ final class AppModel {
 		} catch {
 			alert = AlertMessage(title: "Could not save the change.", message: String(describing: error))
 		}
+	}
+
+	/// What ⌘K does: the category picker for the selected rows on screen.
+	func openCategoryPicker() {
+		let ids = visibleSelection
+		if !ids.isEmpty { sheet = .assignCategory(ids, accounts: ledger.accountIDs(ofTransactions: ids)) }
 	}
 
 	func assign(category: UUID?, to ids: Set<UUID>) {
@@ -1295,6 +1305,9 @@ enum SheetKind: Identifiable, Equatable {
 	case newGroup
 	/// `assigning` are the transactions that "Add category" in "Assign Category" moves into it.
 	case newCategory(isGroup: Bool, assigning: Set<UUID> = [])
+	/// The category picker of ⌘K for these transactions.
+	/// `accounts` are those of the transactions, looked up once when the picker opens.
+	case assignCategory(Set<UUID>, accounts: Set<UUID>)
 	case accountSettings(UUID)
 	/// The calibration window that the proposal in the account header opens.
 	case calibration(UUID)

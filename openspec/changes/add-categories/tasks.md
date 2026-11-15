@@ -15,9 +15,9 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [ ] 1.9 Amount in the sidebar. Built for the earlier rule, which left pending transactions out. Tasks 3.1 and 3.2 change it.
 - [x] 1.10 Restrict a category to an account. Verified by CategorizerTests "Rules respect the account restriction".
 - [x] 1.11 Assign a category from the context menu. Verified by "Assign Category" with a checkmark at the current category.
-- [ ] 1.12 Add a category while assigning. Built in part: the menu opens the sheet but does not assign the new category. Finish it and verify it with a test or in the app.
+- [x] 1.12 Add a category while assigning. Verified by the debug harness on 40 made-up rows: with 2 rows selected, "sheet newCategory" opened the real "Add Category" sheet as a click on "Add category" in "Assign Category" does, and "Pets" typed into its name field and Return on OK made the top-level category "Pets" with the 2 rows. The trail logged "sheet newCategory", "sheet none", and "ledger commit rows=2".
 - [ ] 1.13 Assign a category by drag and drop. Built in part: rows can be dragged onto a category. Finish it and verify it with a test or in the app.
-- [ ] 1.14 Assign a category with the keyboard. Build it and verify it with a test or in the app.
+- [ ] 1.14 Assign a category with the keyboard. Built; the ⌘K menu path is not yet observed. CategoryAssignmentTests check the search and the restriction. In the debug harness, the picker that the stand-in of the menu command opens assigns with Return, closes with Escape, and moves and scrolls the highlight with the arrow keys. The screen was locked during each run, and SwiftUI disables menu commands without a key window, so ⌘K reached "Assign Category..." disabled.
 - [x] 1.15 Remove a transaction from its category. Verified by "Remove Transaction from Category".
 - [ ] 1.16 Category view. The list and the status line are built, verified by the debug harness snapshot in the first build. The scenarios "Pending transaction" and "Split transaction" are open. Tasks 3.1 to 3.3 build them.
 - [x] 1.17 Category group view. Verified by LedgerTests filter by a category tree.

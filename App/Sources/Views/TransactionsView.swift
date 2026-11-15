@@ -602,7 +602,7 @@ struct CategoryRibbon: View {
 			// the rows that are still visible: a search keeps the selection of rows it hides.
 			var ids: Set<UUID> = [transaction.id]
 			if model.selectedTransactions.contains(transaction.id), model.selectedTransactions.count > 1 {
-				ids = model.selectedTransactions.intersection(model.visibleTransactions.map(\.id))
+				ids = model.visibleSelection
 			}
 			CategoryChoices.popUp(model: model, ids: ids)
 		} label: {
@@ -796,20 +796,10 @@ struct CategoryChoices: View {
 			} label: {
 				if current { Label(model.ledger.categoryPath(c.id), systemImage: "checkmark") } else { Text(model.ledger.categoryPath(c.id)) }
 			}
-			.disabled(c.isGroup || isRestricted(c, transactions))
+			.disabled(!model.ledger.canAssign(c, to: transactions))
 		}
 		Divider()
 		Button("Add category") { model.sheet = .newCategory(isGroup: false, assigning: ids) }
-	}
-
-	private func isRestricted(_ c: Domain.Category, _ ts: [Transaction]) -> Bool {
-		Self.isRestricted(c, ts, in: model.ledger)
-	}
-
-	static func isRestricted(_ c: Domain.Category, _ ts: [Transaction], in ledger: Ledger) -> Bool {
-		guard let r = c.restrictedToID else { return false }
-		let allowed: Set<UUID> = ledger.account(r) != nil ? [r] : ledger.accountIDs(inGroupTree: r)
-		return !ts.allSatisfy { allowed.contains($0.accountID) }
 	}
 
 	/// The same choices as a menu at the pointer, for the category ribbon.
@@ -822,7 +812,7 @@ struct CategoryChoices: View {
 		for c in ledger.categoriesInSidebarOrder {
 			let item = ActionMenuItem(title: ledger.categoryPath(c.id)) { model.assign(category: c.id, to: ids) }
 			item.state = transactions.allSatisfy { ledger.effectiveCategoryID(of: $0) == c.id } ? .on : .off
-			item.isEnabled = !c.isGroup && !isRestricted(c, transactions, in: ledger)
+			item.isEnabled = ledger.canAssign(c, to: transactions)
 			item.image = image(of: c, in: ledger)
 			// From macOS 27, AppKit hides most menu images unless the item asks for them. Set by name,
 			// because the SDK of CI predates the property; 1 is NSMenuItem.ImageVisibility.visible.

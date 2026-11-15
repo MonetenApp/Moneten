@@ -19,11 +19,7 @@ public struct Categorizer: Sendable {
 		entries = ledger.categoriesInSidebarOrder.compactMap { c in
 			guard !c.isDefault, !c.rule.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
 				let rule = try? Rule(parsing: c.rule) else { return nil }
-			var restriction: Set<UUID>?
-			if let r = c.restrictedToID {
-				restriction = ledger.account(r) != nil ? [r] : ledger.accountIDs(inGroupTree: r)
-			}
-			return Entry(categoryID: c.id, rule: rule, accounts: restriction)
+			return Entry(categoryID: c.id, rule: rule, accounts: ledger.allowedAccounts(of: c))
 		}
 	}
 
@@ -62,10 +58,7 @@ public enum RuleApplication: Sendable {
 public enum RuleApplier {
 	/// Applies the rule of one category to existing transactions and returns the changed ones.
 	public static func apply(category: Category, rule: Rule, to transactions: [Transaction], ledger: Ledger, mode: RuleApplication) -> [Transaction] {
-		var restriction: Set<UUID>?
-		if let r = category.restrictedToID {
-			restriction = ledger.account(r) != nil ? [r] : ledger.accountIDs(inGroupTree: r)
-		}
+		let restriction = ledger.allowedAccounts(of: category)
 		var changed: [Transaction] = []
 		for var t in transactions {
 			let inScope = restriction.map { $0.contains(t.accountID) } ?? true
