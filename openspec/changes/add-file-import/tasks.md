@@ -59,6 +59,8 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 
 - [x] 2.18 Independent review lifecycles. Literal tests fail with 29 assertions before preserving bank-first references, looking up identified booked rows across dates, rejecting unrelated booked partners, preserving cleared fields for known identities, and restoring migration relinking. The migration replay keeps a 4,000 minor-unit balance and 5,000 minor-unit opening balance. A missing explicit identity with a different purpose remains governed by relaxed field filling.
 
+- [x] 2.19 Fingerprint precedence. The literal exact-versus-compatible test fails with 48 assertions before restoring exact, compatible, then relaxed priority within fetched and file rows. It covers every delivery and storage permutation for fetched and unfetched rows in both import and refresh.
+
 ## 3. Integration
 
 - [ ] 3.1 Check every scenario of the spec in a release build and record the result in the pull request.

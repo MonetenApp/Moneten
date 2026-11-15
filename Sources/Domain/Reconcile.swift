@@ -350,14 +350,14 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 				continue
 			}
 			if let step = Identity.steps.firstIndex(where: { $0.accepts(incoming[i], identity) }) {
-				let priority = t.isPending && identity.isPending ? (fetched ? 1 : 2) : 3 + step
+				let priority = t.isPending && identity.isPending ? (fetched ? 1 : 4) + step : 7 + step
 				candidates.append(Candidate(delivered: i, slot: slot, priority: priority, distance: distance, evidence: .fingerprint))
 			}
 			let explicit = incoming[i].endToEnd != nil && incoming[i].endToEnd == identity.endToEnd
 			guard t.isPending, !delivery.isMigration, matches[i].amount == match.amount,
 				explicit || matches[i].fits(match), identity.isPending || (!delivery.isFetched && explicit) else { continue }
 			guard delivery.isFetched ? (explicit || (fetched && sameDay) || future) : (sameDay || (!identity.isPending && explicit)) else { continue }
-			let priority = explicit ? 0 : (fetched ? 1 : 2)
+			let priority = explicit ? 0 : (fetched ? 3 : 6)
 			let fingerprint = Identity.steps.contains { $0.accepts(incoming[i], identity) }
 			let evidence: Partner.Evidence = fingerprint || (!delivery.isFetched && explicit) ? .fingerprint : (delivery.isFetched ? .pending : .sameDay)
 			candidates.append(Candidate(delivered: i, slot: slot, priority: priority, distance: distance, evidence: evidence))
