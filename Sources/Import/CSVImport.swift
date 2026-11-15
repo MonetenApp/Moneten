@@ -41,10 +41,12 @@ public enum CSVField: String, CaseIterable, Sendable {
 		}
 	}
 
-	/// The header keywords of the column, in lowercase. The first column whose header is one of them holds the field.
-	var keys: [String] {
+	/// The header keywords of the field as `CSVFile.normalize` writes them. The first column whose header is one of them holds the field.
+	var keys: [String] { words.map(CSVFile.normalize) }
+
+	private var words: [String] {
 		switch self {
-		case .bookingDate: ["buchungstag", "buchungsdatum", "datum", "date", "booking date", "bookingdate", "transaction date", "belegdatum"]
+		case .bookingDate: ["buchungstag", "buchungsdatum", "datum", "date", "booking date", "bookingdate", "transaction date", "belegdatum", "buchung"]
 		case .valueDate: ["valuta", "wertstellung", "valutadatum", "value date", "wertstellungsdatum"]
 		case .amount: ["betrag", "amount", "umsatz", "betrag (eur)", "betrag (€)", "betrag eur", "value"]
 		case .debit: ["soll", "debit", "ausgang", "belastung"]
@@ -52,7 +54,7 @@ public enum CSVField: String, CaseIterable, Sendable {
 		case .debitCreditMark: ["s/h", "soll/haben", "soll / haben", "haben/soll", "d/c", "debit/credit", "cr/dr", "dr/cr"]
 		case .currency: ["währung", "waehrung", "currency", "wahrung"]
 		case .name: ["empfänger", "auftraggeber", "name", "zahlungsempfänger", "zahlungspflichtiger", "beguenstigter/zahlungspflichtiger", "auftraggeber / begünstigter",
-			"zahlungsempfänger*in", "zahlungspflichtige*r", "payee", "counterparty", "gegenkonto name", "name zahlungsbeteiligter", "empfänger/auftraggeber", "partner"]
+			"zahlungsempfänger*in", "zahlungspflichtige*r", "payee", "counterparty", "gegenkonto name", "name zahlungsbeteiligter", "empfänger/auftraggeber", "auftraggeber/empfänger", "partner"]
 		case .iban: ["iban", "kontonummer/iban", "iban zahlungsbeteiligter", "gegenkonto", "kontonummer", "iban auftraggeber"]
 		case .bic: ["bic", "bic (swift-code)", "bic zahlungsbeteiligter", "blz"]
 		case .purpose: ["verwendungszweck", "purpose", "beschreibung", "description", "memo", "buchungsdetails", "vorgang/verwendungszweck", "reference"]
@@ -81,11 +83,13 @@ public enum CSVEncoding: String, CaseIterable, Sendable {
 		}
 	}
 
-	/// UTF-16 with its byte order mark, UTF-8 when the bytes are valid UTF-8, and Windows-1252 otherwise,
-	/// which reads every byte and is what German banks write.
+	/// UTF-16 with its byte order mark, UTF-8 when the bytes are valid UTF-8, Windows-1252, which is what
+	/// German banks write, and ISO-8859-1, which reads every byte, for a file with a byte that
+	/// Windows-1252 does not have, such as 0x81.
 	static func detect(_ data: Data) -> CSVEncoding {
 		if data.starts(with: [0xFF, 0xFE]) || data.starts(with: [0xFE, 0xFF]) { return .utf16 }
-		return String(data: data, encoding: .utf8) == nil ? .windows1252 : .utf8
+		if String(data: data, encoding: .utf8) != nil { return .utf8 }
+		return String(data: data, encoding: .windowsCP1252) == nil ? .isoLatin1 : .windows1252
 	}
 
 	func decode(_ data: Data) -> String? {
@@ -118,11 +122,12 @@ public struct CSVLayout: Hashable, Sendable {
 		self.decimalMark = decimalMark
 	}
 
-	/// The fields without which no transaction can be read: the booking date, and the amount or a debit or credit column.
+	/// The fields without which no transaction can be read: the booking date, and the amount or both a debit
+	/// and a credit column. With only one of the two, every row of the other kind would read as zero.
 	public var missing: [CSVField] {
 		var result: [CSVField] = []
 		if columns[.bookingDate] == nil { result.append(.bookingDate) }
-		if columns[.amount] == nil, columns[.debit] == nil, columns[.credit] == nil { result.append(.amount) }
+		if columns[.amount] == nil, columns[.debit] == nil || columns[.credit] == nil { result.append(.amount) }
 		return result
 	}
 
@@ -139,10 +144,15 @@ public struct CSVFile: Sendable {
 
 	public let data: Data
 	public let encoding: CSVEncoding
-	/// The titles of the columns. Without a header row of known keywords, the first row stands in for it.
+	/// The titles of the columns, one for each cell of the widest row. Without a header row of known
+	/// keywords, the first filled row above the first row with a date and an amount stands in for it, so an
+	/// account line such as "Von;01.11.2026" is passed over, and a file without such a row shows the values
+	/// of its first row.
 	public let header: [String]
 	/// The header row of known keywords, if the file has one.
 	let headerIndex: Int?
+	/// Without a header row of known keywords, the row that gives the titles, above the transactions.
+	let titleIndex: Int?
 	let rows: [Row]
 
 	/// Reads the file with the encoding that it shows, or with the given one. A file of 100 MB takes seconds
@@ -158,13 +168,34 @@ public struct CSVFile: Sendable {
 		let rows = try Self.split(text, delimiter: delimiter)
 		try Task.checkCancellation()
 		self.rows = rows
-		let headerIndex = rows.firstIndex { row in
+		let dateKeys = Set(CSVField.bookingDate.keys)
+		let amountKeys = Set(CSVField.amount.keys + CSVField.debit.keys + CSVField.credit.keys)
+		var headerIndex: Int?
+		// A preamble has a few lines, and a file without keywords would otherwise normalize every cell.
+		for (i, row) in rows.prefix(100).enumerated() {
+			try Task.checkCancellation()
 			let header = row.cells.map(Self.normalize)
-			return header.contains { CSVField.bookingDate.keys.contains($0) }
-				&& header.contains { (CSVField.amount.keys + CSVField.debit.keys + CSVField.credit.keys).contains($0) }
+			if header.contains(where: dateKeys.contains), header.contains(where: amountKeys.contains) {
+				headerIndex = i
+				break
+			}
 		}
 		self.headerIndex = headerIndex
-		header = (headerIndex.map { rows[$0] } ?? rows.first)?.cells.map { $0.trimmingCharacters(in: .whitespaces) } ?? []
+		let width = rows.map(\.cells.count).max() ?? 0
+		let firstTransaction = rows.prefix(100).firstIndex { row in
+			row.cells.contains(where: Self.isDateShaped)
+				&& row.cells.contains { !Self.isDateShaped($0) && Self.amountParts($0, account: "EUR").map { AmountParser.decimal(from: $0.number) != nil } == true }
+		}
+		// A row with a date above the first transaction is a transaction without an amount or an account line, never the titles.
+		let above = firstTransaction.flatMap { first in
+			rows[..<first].lastIndex { row in
+				row.cells.contains { !$0.trimmingCharacters(in: .whitespaces).isEmpty } && !row.cells.contains(where: Self.isDateShaped)
+			}
+		}
+		titleIndex = headerIndex == nil ? above : nil
+		let titles = headerIndex.map { rows[$0] } ?? above.map { rows[$0] } ?? firstTransaction.map { rows[$0] } ?? rows.first
+		let cells = titles?.cells.map { $0.trimmingCharacters(in: .whitespaces) } ?? []
+		header = cells + Array(repeating: "", count: max(0, width - cells.count))
 	}
 
 	/// The layout that the header keywords and the values of the file show.
@@ -182,37 +213,46 @@ public struct CSVFile: Sendable {
 		return layout
 	}
 
-	/// The date orders that every readable booking date and value date of the layout fits, day first
-	/// first. Two orders mean that the file does not decide, and the preview asks the user to check. A
-	/// value that fits no order, such as "pending" as a value date, decides nothing. When the dates fit
-	/// no single order, the order that most of them fit comes alone.
+	/// The date orders that every booking date and value date of the layout fits, day first first. Two
+	/// orders mean that the file does not decide, and the preview asks the user to check. A value that
+	/// fits no order, such as "pending" as a value date, decides nothing, and neither does one that reads
+	/// as the same day in both, such as "2026-10-31" or "01.01.2026". When the dates fit no single order,
+	/// the order that most of them fit comes alone.
 	public func dateOrders(_ layout: CSVLayout) throws -> [DateOrder] {
 		let values = dataRows(layout).flatMap { row in [layout.columns[.bookingDate], layout.columns[.valueDate]].compactMap { Self.cell(row.cells, $0) } }
 		var counts = Dictionary(uniqueKeysWithValues: DateOrder.allCases.map { ($0, 0) })
-		var readable = 0
+		var deciding = 0
 		for value in values {
 			try Task.checkCancellation()
-			let orders = DateOrder.allCases.filter { $0.day(value) != nil }
-			for order in orders { counts[order]! += 1 }
-			if !orders.isEmpty { readable += 1 }
+			let days = DateOrder.allCases.map { $0.day(value) }
+			guard days.contains(where: { $0 != nil }), Set(days).count > 1 else { continue }
+			for (order, day) in zip(DateOrder.allCases, days) where day != nil { counts[order]! += 1 }
+			deciding += 1
 		}
-		let fitting = DateOrder.allCases.filter { counts[$0] == readable }
+		guard deciding > 0 else { return [.dayMonthYear] }
+		let fitting = DateOrder.allCases.filter { counts[$0] == deciding }
 		return fitting.isEmpty ? [DateOrder.allCases.max { counts[$0]! < counts[$1]! }!] : fitting
 	}
 
-	/// The rows after the header row with a booking date. A row without a date is a total or a note, which the import skips.
+	/// The rows after the header row with a booking date. A row without a date is a total or a note, which
+	/// the import skips, and so is one with a text without a digit in the date cell, such as "Alter
+	/// Kontostand". A file without a header row of known keywords has rows of any kind above its
+	/// transactions, so there the rows start below the title row at the first row with the shape of a date
+	/// in the date cell, such as "31.02.2026", which then fails.
 	func dataRows(_ layout: CSVLayout) -> ArraySlice<Row> {
-		let start = headerIndex.map { $0 + 1 } ?? 1
-		guard start < rows.count else { return [] }
-		return rows[start...].filter { Self.cell($0.cells, layout.columns[.bookingDate]) != nil }[...]
+		let column = layout.columns[.bookingDate]
+		func isDated(_ row: Row) -> Bool { Self.cell(row.cells, column)?.contains(where: \.isNumber) == true }
+		let below = titleIndex.map { $0 + 1 } ?? 0
+		let start = headerIndex.map { $0 + 1 } ?? rows[below...].firstIndex { Self.cell($0.cells, column).map(Self.isDateShaped) == true } ?? rows.count
+		return rows[start...].filter(isDated)[...]
 	}
 
-	/// The transactions of the file in the layout, or of its first `limit` dated rows for the preview.
-	/// A row that cannot be read fails with its line.
-	public func read(_ layout: CSVLayout, currency: String, limit: Int? = nil) throws -> TransactionFileImporter.Parsed {
+	/// The transactions of the file in the layout. A row that cannot be read fails with its line.
+	func read(_ layout: CSVLayout, currency: String) throws -> TransactionFileImporter.Parsed {
+		// Without an amount column, every missing debit and credit cell would read as zero.
+		guard layout.missing.isEmpty else { return TransactionFileImporter.Parsed(transactions: []) }
 		func column(_ field: CSVField) -> Int? { layout.columns[field] }
 		let dated = dataRows(layout)
-		let rows = limit.map { dated.prefix($0) } ?? dated
 		// The amount column, or the debit and credit columns when the amount cell is empty.
 		func amountCells(_ row: [String]) -> [String] {
 			(Self.cell(row, column(.amount)).map { [$0] } ?? [column(.debit), column(.credit)].compactMap { Self.cell(row, $0) })
@@ -257,7 +297,7 @@ public struct CSVFile: Sendable {
 		}
 		let placeholder = UUID()
 		var result = TransactionFileImporter.Parsed(transactions: [])
-		for (line, row) in rows {
+		for (line, row) in dated {
 			try Task.checkCancellation()
 			func value(_ field: CSVField) -> String? { Self.cell(row, column(field)) }
 			let dateText = value(.bookingDate)!
@@ -279,8 +319,8 @@ public struct CSVFile: Sendable {
 					else if ["H", "C", "CR", "HABEN", "CREDIT"].contains(marker) { amount = abs(a) }
 					else { amount = nil }
 				}
-			} else {
-				// An empty debit or credit cell counts as zero. A cell that cannot be read is an error.
+			} else if value(.debit) != nil || value(.credit) != nil {
+				// An empty debit or credit cell next to a filled one counts as zero. A cell that cannot be read is an error.
 				let d = try value(.debit).map { try readAmount($0).map { -abs($0) } } ?? 0
 				let c = try value(.credit).map { try readAmount($0).map { abs($0) } } ?? 0
 				if let d, let c { amount = d + c }
@@ -309,6 +349,28 @@ public struct CSVFile: Sendable {
 			result.transactions.append(t)
 		}
 		return result
+	}
+
+	/// Reads the whole file in the layout, so that "Import" never fails on a row after the ones that the
+	/// preview shows. A row that cannot be read is the problem of the preview, and the user can change
+	/// the layout until it reads. After the user assigns a date column, `detectingDateOrder` takes the
+	/// order that its values fit, unless they fit the order of the layout.
+	public func preview(_ layout: CSVLayout, currency: String, detectingDateOrder: Bool = false) throws -> CSVPreview {
+		var layout = layout
+		let orders = try dateOrders(layout)
+		if detectingDateOrder, !orders.contains(layout.dateOrder) { layout.dateOrder = orders[0] }
+		do {
+			return CSVPreview(layout: layout, parsed: try read(layout, currency: currency), problem: nil, dateOrders: orders)
+		} catch let failure as TransactionFileImporter.Failure {
+			return CSVPreview(layout: layout, parsed: TransactionFileImporter.Parsed(transactions: []), problem: failure, dateOrders: orders)
+		}
+	}
+
+	/// Three groups of digits split by ".", "/", or "-", as `DateOrder.day` reads them.
+	static func isDateShaped(_ text: String) -> Bool {
+		let parts = text.trimmingCharacters(in: .whitespaces).split(separator: "-", omittingEmptySubsequences: false)
+			.flatMap { $0.split(separator: ".", omittingEmptySubsequences: false) }.flatMap { $0.split(separator: "/", omittingEmptySubsequences: false) }
+		return parts.count == 3 && parts.allSatisfy { !$0.isEmpty && $0.allSatisfy(\.isNumber) }
 	}
 
 	static func cell(_ row: [String], _ column: Int?) -> String? {
@@ -365,8 +427,11 @@ public struct CSVFile: Sendable {
 		return (sign + cell[start..<end], currency)
 	}
 
+	/// A header without case, spaces, and umlauts, so "Auftraggeber / Empfaenger" matches "auftraggeber/empfänger".
 	static func normalize(_ s: String) -> String {
-		s.trimmingCharacters(in: CharacterSet(charactersIn: "\" \u{FEFF}")).lowercased()
+		s.lowercased().filter { !$0.isWhitespace && $0 != "\"" && $0 != "\u{FEFF}" }
+			.replacingOccurrences(of: "ä", with: "ae").replacingOccurrences(of: "ö", with: "oe")
+			.replacingOccurrences(of: "ü", with: "ue").replacingOccurrences(of: "ß", with: "ss")
 	}
 
 	static func detectDelimiter(_ text: String) -> Character {
@@ -422,6 +487,19 @@ public struct CSVFile: Sendable {
 		}
 		return rows
 	}
+}
+
+/// A CSV file as the import reads it in one layout.
+public struct CSVPreview: Sendable {
+	public var layout: CSVLayout
+	/// What the import stores. Empty when a row cannot be read.
+	public var parsed: TransactionFileImporter.Parsed
+	/// The row that cannot be read, which would stop the import of the file.
+	public var problem: TransactionFileImporter.Failure?
+	/// The date orders that the dates fit. Two orders mean that the file does not decide.
+	public var dateOrders: [DateOrder]
+
+	public var transactions: [Transaction] { parsed.transactions }
 }
 
 /// The order of day and month in the dates of a CSV column. An ISO date such as "2026-10-31" reads the

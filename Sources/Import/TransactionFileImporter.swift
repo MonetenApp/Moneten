@@ -48,13 +48,15 @@ public enum TransactionFileImporter {
 		let head = text.prefix(4096)
 		if head.contains("<Document") || head.contains("camt.05") { return .camt }
 		if head.contains(":20:") && text.contains(":61:") { return .mt940 }
-		if head.contains(";") || head.contains(",") || head.contains("\t") { return .csv }
+		// A PDF or an Excel file has delimiters too, but also control characters, which no CSV file has.
+		// Only C0 controls count, because ISO-8859-1 turns a byte such as 0x81 into the C1 control U+0081.
+		let isText = !head.unicodeScalars.contains { $0.value < 0x20 && !"\t\r\n".unicodeScalars.contains($0) }
+		if isText, head.contains(";") || head.contains(",") || head.contains("\t") { return .csv }
 		return nil
 	}
 
 	public static func decode(_ data: Data) -> String {
-		if let s = String(data: data, encoding: .utf8) { return s.hasPrefix("\u{FEFF}") ? String(s.dropFirst()) : s }
-		return String(data: data, encoding: .windowsCP1252) ?? String(decoding: data, as: UTF8.self)
+		CSVEncoding.detect(data).decode(data) ?? String(decoding: data, as: UTF8.self)
 	}
 
 	/// The transactions of a file and the values that the import replaced in them.

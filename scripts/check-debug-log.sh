@@ -11,6 +11,7 @@
 # the password, a text of the bank, or a text of the extension.
 # It also imports a CSV file whose name, rows, and value date hold made-up personal data and a text
 # of the bank.
+# The check also opens a failing CSV preview and reads its rows.
 # The app runs with a temporary data folder and a password, so it never opens the real database and
 # leaves no Keychain item, and as a copy under its own bundle ID, so it leaves an installed Moneten alone.
 set -e
@@ -151,6 +152,9 @@ poll "^snapshot " snapshot check
 printf '%s\n' "Buchungstag;Valuta;Empfänger;Verwendungszweck;Betrag" "09.11.2026;Wartungsarbeiten;Erika Mustermann;Gehalt November;1.250,00" \
 	"10.11.2026;10.11.2026;Wohnbau Musterstadt eG;Miete;-950,00" >"$WORK/Erika Mustermann.csv"
 send importfile "$WORK/Erika Mustermann.csv"
+poll "^csv state .*canImport=true" csv state
+poll "^csv rows" csv rows
+send key return
 poll "^importfile done" state
 poll "^alert " alert
 poll "^rows " rows Girokonto
@@ -193,6 +197,15 @@ poll "^importanswer .*fileIndex=1 " importanswer
 send importanswer named
 poll "^importanswer .*fileIndex=3 " importanswer
 send importanswer selected
+poll "^importfile done" state
+poll "^alert " alert
+# A preview whose rows hold names and purposes, and whose problem names a cell of the file.
+printf '%s\n' "Buchungstag;Empfänger;Verwendungszweck;Betrag" "11.11.2026;Tankstelle Beispiel;Kartenzahlung;-42,50" \
+	"Miete 12;Beispiel GmbH;Sparen;-1,00" >"$WORK/Kontoauszug.csv"
+send importfile "$WORK/Kontoauszug.csv"
+poll "^csv state .*problem=" csv state
+poll "^csv rows" csv rows
+send key escape
 poll "^importfile done" state
 poll "^alert " alert
 send selectRows 1

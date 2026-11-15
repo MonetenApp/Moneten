@@ -4,6 +4,7 @@ import ExtensionHost
 import FinTS
 import Import
 import Foundation
+import Import
 import Sync
 import SyncTesting
 import SwiftUI
@@ -266,6 +267,10 @@ final class DebugHarness {
 				let kind = switch question.named { case .iban: "iban"; case .number: "number" }
 				log("importanswer kind=\(kind) fileIndex=\(model.fileImport?.index ?? -1) selectedPosition=\(question.selected.position) otherPosition=\(question.other?.position ?? -1)")
 			}
+		// Changes the CSV preview on screen: "column <n>=<field or none>", "date <order>", "encoding <name>",
+		// "decimal comma|point|detect", "skip" as "Skip File" does, "state", which logs the settings and counts of
+		// the preview, or "rows", which logs its first rows.
+		case "csv": csvPreview(argument)
 		// "[<currency>]": the credit card in US dollars, or in another currency such as JPY.
 		case "usd": Task { await DemoData.usdAccount(model, currency: argument.isEmpty ? "USD" : argument); log("usd done") }
 		case "review": Task { await DemoData.review(model); log("review done") }
@@ -822,6 +827,38 @@ final class DebugHarness {
 		default: break
 		}
 		log("filterbar \(parts.first ?? "") category=\(model.filter.categoryID?.uuidString ?? "all") account=\(model.filter.accountID?.uuidString ?? "all")")
+	}
+
+	private func csvPreview(_ argument: String) {
+		guard let preview = model?.fileImport?.preview else { return log("csv no preview") }
+		let parts = argument.split(separator: " ", maxSplits: 1).map(String.init)
+		let value = parts.count == 2 ? parts[1] : ""
+		switch parts.first {
+		case "column":
+			let assignment = value.split(separator: "=").map(String.init)
+			guard assignment.count == 2, let column = Int(assignment[0]) else { return log("csv error=column needs <n>=<field>") }
+			preview.layout.assign(column, to: CSVField(rawValue: assignment[1]))
+		case "date": preview.layout.dateOrder = DateOrder(rawValue: value) ?? preview.layout.dateOrder
+		case "encoding": preview.layout.encoding = CSVEncoding(rawValue: value) ?? preview.layout.encoding
+		case "decimal": preview.layout.decimalMark = value == "comma" ? .comma : value == "point" ? .point : nil
+		case "skip": model?.fileImport?.skip()
+		// The log holds kinds, counts, and positions, never a name or a purpose (#159), so a row is its day and amount.
+		case "rows":
+			let rows = preview.preview?.transactions.prefix(10).map { "\($0.bookingDate) \($0.amountMinor)" }.joined(separator: ";") ?? "-"
+			log("csv rows \(rows)")
+		default:
+			let columns = preview.layout.columns.sorted { $0.value < $1.value }.map { "\($0.value)=\($0.key.rawValue)" }.joined(separator: ",")
+			let problem: String = switch preview.preview?.problem {
+			case let .line(n, _): "line \(n)"
+			case .empty: "empty"
+			case .unsupported: "unsupported"
+			case .noHeader: "noHeader"
+			case .encoding: "encoding"
+			case nil: preview.problem == nil ? "-" : "encoding"
+			}
+			log("csv state columns=\(columns) date=\(preview.layout.dateOrder.rawValue) uncertain=\(preview.isDateOrderUncertain) encoding=\(preview.layout.encoding.rawValue)"
+				+ " missing=\(preview.layout.missing.map(\.rawValue)) count=\(preview.preview?.transactions.count ?? -1) canImport=\(preview.chosen != nil) problem=\(problem)")
+		}
 	}
 
 	/// Selects the account, group, or category with this name.

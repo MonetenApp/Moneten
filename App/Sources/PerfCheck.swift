@@ -285,8 +285,8 @@ struct PerfScenario {
 				await c.settle()
 			},
 			run: { $0.harness.openExtensionsWindow() }),
-		// A CSV file into the open account. The rows are read away from the main actor, so the stall is the
-		// time of storing them, while the import sheet says "Storing...".
+		// A CSV file into the open account, confirmed in its preview. The rows are read away from the main actor,
+		// so the stall is the time of storing them, while the import sheet says "Storing...".
 		PerfScenario(name: "import-large-csv", budget: halfSecond,
 			setUp: { c in
 				await c.select("Account 7")
@@ -300,12 +300,20 @@ struct PerfScenario {
 			run: { c in
 				guard let account = c.model.ledger.accounts.first(where: { $0.name == "Account 7" }) else { return }
 				let before = c.model.ledger.transactions(ofAccount: account.id).count
+				let model = c.model
+				Task { await confirmPreview(model) }
 				await c.model.importFiles([importFile], into: account)
 				c.model.alert = nil
 				let stored = c.model.ledger.transactions(ofAccount: account.id).count - before
 				if stored != importedRows { c.fail("the import stored \(stored) of \(importedRows) rows") }
 			}),
 	]
+
+	/// A CSV file waits in the preview, which reads it away from the main actor, until "Import".
+	@MainActor static func confirmPreview(_ model: AppModel) async {
+		for _ in 0..<1_200 where model.fileImport?.preview?.chosen == nil { try? await Task.sleep(for: .milliseconds(50)) }
+		model.fileImport?.confirm()
+	}
 
 	static let importedRows = 50_000
 	static let importFile = FileManager.default.temporaryDirectory.appending(path: "perf-import.csv")

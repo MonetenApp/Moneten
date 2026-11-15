@@ -297,9 +297,9 @@ final class AppModel {
 		didSet {
 			guard sheet != oldValue else { return }
 			Trail.log("sheet \(sheet?.trailName ?? "none")")
-			// A menu command can open another sheet over the question of an import, which then would wait
+			// A menu command can open another sheet over the question or preview of an import, which then would wait
 			// for an answer that never comes.
-			if case let .fileImport(run) = oldValue, run.question != nil { run.cancel() }
+			if case let .fileImport(run) = oldValue, (run.question != nil || run.preview != nil) { run.cancel() }
 		}
 	}
 	var settingsTab = SettingsTab.security
