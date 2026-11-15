@@ -83,6 +83,7 @@ struct CSVProfileTests {
 		var plain = CSVProfile(name: "Plain", header: ascii.header, layout: try ascii.detectedLayout())
 		plain.layout.encoding = .windows1252
 		#expect(try plain.read(ascii, currency: "EUR")?.transactions.map(\.name) == ["Kiosk"])
+		#expect(plain.previewLayout(for: ascii).encoding == .utf8)
 		profile.layout.encoding = .isoLatin1
 		profile.layout.dateOrder = .dayMonthYear
 		#expect(file.encoding == .windows1252)
