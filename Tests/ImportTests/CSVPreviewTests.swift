@@ -5,6 +5,18 @@ import Testing
 
 @Suite("CSV preview")
 struct CSVPreviewTests {
+	@Test("A later numeric extra column cannot hide a short first row")
+	func extraNumericColumnAfterAmount() throws {
+		let file = try CSVFile(data: Data("Tag;Wer;Wieviel\n01.11.2026;Kiosk\nZwischensumme;;\n02.11.2026;Bakery;4.50;123456\n".utf8))
+		var layout = try file.detectedLayout()
+		layout.assign(0, to: .bookingDate)
+		layout.assign(2, to: .amount)
+		let preview = try file.preview(layout, currency: "EUR")
+		#expect(file.header == ["Tag", "Wer", "Wieviel", ""])
+		#expect(preview.problem == nil)
+		#expect(preview.transactions.map(\.amountMinor) == [0, 450])
+	}
+
 	@Test("A note cannot hide an empty, missing, or malformed first amount", arguments: ["", "abc", "missing"], ["Zwischensumme;;0,00", "Zwischensumme;;", "Zwischensumme;;n/a", "Hinweis;Dieser Export ist vorläufig;"])
 	func firstAmountBeforeSubtotal(amount: String, note: String) throws {
 		let first = amount == "missing" ? "01.11.2026;Kiosk" : "01.11.2026;Kiosk;\(amount)"
