@@ -342,3 +342,11 @@ public struct Transaction: Identifiable, Hashable, Sendable, Codable {
 	/// Checking the row changes it, so "Mark All Transactions as Checked" counts it.
 	public var changesWhenChecked: Bool { !isChecked || isNew || (needsReview && !isPending) }
 }
+
+extension MoneySums {
+	/// The sum of the rows that count in sums, for the sum of the list and its "Pending" sum.
+	public init(counting transactions: some Sequence<Transaction>) {
+		self.init()
+		for t in transactions where t.countsInSums { add(t.amount) }
+	}
+}
