@@ -32,7 +32,7 @@ extension Store {
 
 	public func exportAllData(to url: URL) throws {
 		let data = try exportAllData().json()
-		let temporary = url.deletingLastPathComponent().appending(path: ".\(url.lastPathComponent).\(UUID().uuidString)")
+		let temporary = url.deletingLastPathComponent().appending(path: ".moneten-export-\(UUID().uuidString)")
 		let descriptor = open(temporary.path, O_WRONLY | O_CREAT | O_EXCL, 0o600)
 		guard descriptor >= 0 else { throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno), userInfo: [NSFilePathErrorKey: temporary.path]) }
 		defer { unlink(temporary.path) }
