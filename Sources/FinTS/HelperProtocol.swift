@@ -190,8 +190,9 @@ struct Ask: Decodable {
 /// access, 3938 an access that is blocked until the PIN block is lifted, 9941 and 9948 an invalid
 /// TAN, and 9943 a TAN that was used before. 9931 means "Sperrung des Kontos nach Fehlversuchen", a block, but
 /// Sparkassen send it also for a wrong login name or PIN, "Anmeldename oder PIN ist falsch". So 9931 counts as a
-/// wrong PIN only when its text says that something is wrong ("falsch" or "ungültig") and not that the access is
-/// blocked ("gesperrt"), and as a block otherwise.
+/// wrong PIN only when its text says that something is wrong ("falsch" or "ungültig") and names no block ("sperr",
+/// as in "gesperrt" or "Sperrung"), and as a block otherwise. A text that only warns of a block also counts as a
+/// block, so the app sends no further PIN that could cause one.
 /// 3931 names a blocked PIN or a TAN generator that needs a synchronization, so it keeps the text of the bank.
 /// 9951, a two-step dialog that timed out, and 9955, "Ein-Schritt-TAN-Verfahren nicht zugelassen", mean a
 /// declined approval or a missing TAN method only with the evidence of the helper, which then sends the kind.
@@ -202,11 +203,11 @@ struct HelperError: Decodable, Equatable {
 
 	var message: BankMessage { BankMessage(code: code, text: text) }
 
-	/// The text of a 9931 says that the login name or the PIN is wrong, as that of Sparkassen does, and not that the
-	/// access is blocked, as "Zugang wegen ungültiger PIN gesperrt" does.
+	/// The text of a 9931 says that the login name or the PIN is wrong, as that of Sparkassen does, and names no
+	/// block, as "Zugang wegen ungültiger PIN gesperrt" and "Sperrung des Kontos wegen ungültiger PIN" do.
 	static func saysWrong(_ text: String) -> Bool {
 		let lowered = text.lowercased()
-		return (lowered.contains("falsch") || lowered.contains("ungültig")) && !lowered.contains("gesperrt")
+		return (lowered.contains("falsch") || lowered.contains("ungültig")) && !lowered.contains("sperr")
 	}
 
 	var failure: SyncFailure {

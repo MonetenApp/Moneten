@@ -558,12 +558,14 @@ final class SelfTest {
 		expect("an error of another cause while only the one-step method is allowed", refused(passport, status("9010", "Verarbeitungssystem nicht verfügbar")) + " "
 			+ refused(passport, status("9942", "PIN falsch", "9075", "Starke Kundenauthentifizierung notwendig")) + " "
 			+ refused(passport, status("9933", "Zugang gesperrt", "9955", "Ein-Schritt-TAN-Verfahren nicht zugelassen")), "false false false");
-		expect("a failure without a code while only the one-step method is allowed", FinTSHelper.refusedForTanMethod(passport,
-			new HBCI_Exception("canceled")) + " " + FinTSHelper.refusedForTanMethod(passport, new HBCI_Exception("can not connect",
-			new java.net.ConnectException("Connection refused"))), "false false");
-		expect("the failure of a login without a TAN method keeps the code and the text of the bank", FinTSHelper.Json.write(FinTSHelper.failure(
-			FinTSHelper.noTanMethod(new ProcessException("init", status("9955", "Ein-Schritt-TAN-Verfahren nicht zugelassen"))))),
-			"{\"type\":\"failed\",\"kind\":\"noTANMethod\",\"code\":\"9955\",\"text\":\"Ein-Schritt-TAN-Verfahren nicht zugelassen\"}");
+		expect("a failure without a code while only the one-step method is allowed", FinTSHelper.oneStepRefusal(passport,
+			new HBCI_Exception("canceled")) + " " + FinTSHelper.oneStepRefusal(passport, new HBCI_Exception("can not connect",
+			new java.net.ConnectException("Connection refused"))), "null null");
+		expect("the failure of a login without a TAN method keeps the code and the text of the bank", noTanMethod(passport,
+			status("9955", "Ein-Schritt-TAN-Verfahren nicht zugelassen")) + " " + noTanMethod(passport, status("9800", "Dialog abgebrochen",
+			"9075", "Starke Kundenauthentifizierung notwendig")), "{\"type\":\"failed\",\"kind\":\"noTANMethod\",\"code\":\"9955\","
+			+ "\"text\":\"Ein-Schritt-TAN-Verfahren nicht zugelassen\"} {\"type\":\"failed\",\"kind\":\"noTANMethod\",\"code\":\"9075\","
+			+ "\"text\":\"Starke Kundenauthentifizierung notwendig\"}");
 		passport.setAllowedTwostepMechanisms(new ArrayList<>(List.of("999", "922")));
 		expect("a user with pushTAN has a TAN method", FinTSHelper.withoutTanMethod(passport) + " " + refused(passport, status("9955", "Ein-Schritt-TAN-Verfahren nicht zugelassen")),
 			"false false");
@@ -578,7 +580,12 @@ final class SelfTest {
 	}
 
 	static boolean refused(FinTSHelper.Passport passport, HBCIMsgStatus status) {
-		return FinTSHelper.refusedForTanMethod(passport, new ProcessException("init", status));
+		return FinTSHelper.oneStepRefusal(passport, new ProcessException("init", status)) != null;
+	}
+
+	static String noTanMethod(FinTSHelper.Passport passport, HBCIMsgStatus status) {
+		ProcessException e = new ProcessException("init", status);
+		return FinTSHelper.Json.write(FinTSHelper.failure(FinTSHelper.noTanMethod(FinTSHelper.oneStepRefusal(passport, e), e)));
 	}
 
 	/// The warning 3938 in the answer to a dialog initialization, which hbci4java counts as a successful login.

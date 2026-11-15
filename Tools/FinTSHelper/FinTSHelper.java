@@ -1268,7 +1268,10 @@ public class FinTSHelper {
 			send(message("state", "data", Base64.getEncoder().encodeToString(passport.state(callback.tanMedium))));
 			return true;
 		} catch (RuntimeException e) {
-			if (callback.switchTo == null) throw refusedForTanMethod(passport, e) ? noTanMethod(e) : e;
+			if (callback.switchTo == null) {
+				HBCIRetVal refusal = oneStepRefusal(passport, e);
+				throw refusal != null ? noTanMethod(refusal, e) : e;
+			}
 			passport.endOpenDialog();
 			Passport.loaded = passport.data();
 			Passport.loaded.tanMethod = callback.switchTo;
@@ -1287,27 +1290,25 @@ public class FinTSHelper {
 	/// notwendig" and 9955 "Ein-Schritt-TAN-Verfahren nicht zugelassen".
 	static final Set<String> ONE_STEP_REFUSED = Set.of("9075", "9955");
 
-	/// The bank refused the one-step method for the login of a user whom it allows no other method. Only such an
-	/// answer of the bank means a missing TAN method: an error of another cause, such as a wrong PIN, a block, or a
-	/// server that is not available, keeps its own code and text.
-	static boolean refusedForTanMethod(HBCIPassport passport, Throwable e) {
-		if (!withoutTanMethod(passport)) return false;
+	/// The answer with which the bank refused the one-step method for the login of a user whom it allows no other
+	/// method, or null. Only such an answer means a missing TAN method: an error of another cause, such as a wrong
+	/// PIN, a block, or a server that is not available, keeps its own code and text.
+	static HBCIRetVal oneStepRefusal(HBCIPassport passport, Throwable e) {
+		if (!withoutTanMethod(passport)) return null;
 		Map<String, Object> failed = failure(e);
 		String code = string(failed, "code");
-		if (failed.get("kind") != null || code == null) return false;
-		if ("9955".equals(code)) return true;
-		if (URGENT.contains(code)) return false;
+		if (failed.get("kind") != null || code == null || URGENT.contains(code) && !"9955".equals(code)) return null;
 		for (Throwable t : causes(e)) {
 			if (!(t instanceof ProcessException p) || p.getMsgStatus() == null) continue;
-			for (HBCIRetVal r : errors(p.getMsgStatus().globStatus, p.getMsgStatus().segStatus)) if (r.code != null && ONE_STEP_REFUSED.contains(r.code)) return true;
+			for (HBCIRetVal r : errors(p.getMsgStatus().globStatus, p.getMsgStatus().segStatus)) if (r.code != null && ONE_STEP_REFUSED.contains(r.code)) return r;
 		}
-		return false;
+		return null;
 	}
 
-	/// The failure of a run that the bank refused because the user has no TAN method, with the code and the text of the bank.
-	static Failure noTanMethod(RuntimeException e) {
-		Map<String, Object> failed = failure(e);
-		Failure f = new Failure("noTANMethod", string(failed, "code"), string(failed, "text"));
+	/// The failure of a run that the bank refused because the user has no TAN method, with the code and the text of
+	/// the refusal, also when another error such as 9800 "Dialog abgebrochen" came first in the answer.
+	static Failure noTanMethod(HBCIRetVal refusal, RuntimeException e) {
+		Failure f = new Failure("noTANMethod", refusal.code, Out.withoutSecrets(refusal.text));
 		f.initCause(e);
 		return f;
 	}
