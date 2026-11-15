@@ -8,11 +8,12 @@ struct FileCategoryTests {
 	var food: Domain.Category { Domain.Category(id: Self.foodID, parentID: living.id, position: 0, name: "Food") }
 	static let foodID = UUID()
 
-	@Test("An exported category path resolves without creating a second category", arguments: [false, true])
-	func exportedCategoryPath(creating: Bool) throws {
+	@Test("An exported category path resolves without creating a second category", arguments: [false, true], [false, true])
+	func exportedCategoryPath(creating: Bool, literalGroup: Bool) throws {
 		let account = Account(position: 0, name: "Archive", kind: .giro, source: .offline)
 		let row = Transaction(accountID: account.id, bookingDate: Day(year: 2026, month: 11, day: 3), amountMinor: -420, name: "Kiosk", categoryID: Self.foodID)
-		let ledger = Ledger(accounts: [account], categories: [living, food])
+		let group = Domain.Category(position: 1, name: "Living - Food", isGroup: true)
+		let ledger = Ledger(accounts: [account], categories: [living, food] + (literalGroup ? [group] : []))
 		let exported = String(decoding: try TransactionCSV.data([row], ledger: ledger, locale: Locale(identifier: "de_DE")), as: UTF8.self)
 		let cell = exported.components(separatedBy: "\r\n")[1].components(separatedBy: ";")[2]
 		#expect(cell == "Living - Food")
