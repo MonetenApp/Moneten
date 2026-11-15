@@ -392,6 +392,8 @@ The app SHALL assign the category from a category column to each imported transa
 - **AND** if "Pets" is missing, "Living - Pets" with auto-create on creates "Pets" under "Living"
 - **AND** an existing category whose literal name is "Living - Food" takes precedence over interpreting that text as a path
 - **AND** a group whose literal name is "Living - Food" cannot mask the assignable category at that exported path
+- **AND** explicit paths "Long - Term › Pets" and "Long - Term\\Pets" keep "Long - Term" as one group name with either auto-create setting
+- **AND** auto-create of the exported path "Long - Term - Pets" reuses the existing "Long - Term" group instead of creating extra groups
 
 #### Scenario: Imported category is restricted to another account
 
