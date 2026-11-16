@@ -66,6 +66,35 @@ struct PerfScenario {
 				category.sidebarAmount = .currentMonth
 				c.model.save(category: category)
 			}),
+		PerfScenario(name: "split-row-in-open-view", budget: halfSecond,
+			setUp: { c in
+				await c.select("Bulk")
+				guard var row = c.model.visibleTransactions.first else { return c.fail("no split row") }
+				row.amountMinor = -8000
+				c.model.save(transaction: row, adding: false)
+				c.model.selectedTransactions = [row.id]
+				await c.settle()
+			},
+			run: { c in
+				guard c.model.visibleTransactions.count == 50000,
+					let row = c.model.visibleTransactions.first, row.amountMinor == -8000,
+					let account = c.model.ledger.account(row.accountID),
+					let table = c.harness.transactionTables().first, table.numberOfRows == 50000 else {
+					return c.fail("the split did not start in a drawn view of 50000 rows")
+				}
+				let balance = c.model.ledger.computedBalance(of: account)
+				guard await c.model.split(row: row.id, off: [Money(minorUnits: -2500, currency: row.currency)]) else {
+					return c.fail("split failed")
+				}
+				await c.settle()
+				let parts = c.model.ledger.parts(of: row.id)
+				if parts.map(\.amountMinor) != [-2500, -5500] || c.model.visibleTransactions.count != 50001
+					|| c.model.visibleSelection != Set(parts.map(\.id)) || c.model.ledger.row(row.id) != nil
+					|| c.model.ledger.computedBalance(of: account) != balance {
+					c.fail("split rows, selection, or balance differ")
+				}
+				if c.harness.transactionTables().first === table { c.fail("split removed a shown row in place") }
+			}),
 		// Last, because it adds rows: "Uncategorized" above holds exactly the 50,000.
 		PerfScenario(name: "import-into-open-view", budget: halfSecond,
 			setUp: { await $0.select("Bulk"); await $0.scroll { $0 / 2 } },

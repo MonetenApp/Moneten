@@ -335,7 +335,48 @@ send select Girokonto
 poll "visible=[1-9]" state
 poll "^mainkey rejected$" mainkey "Erika Mustermann"
 poll "^filterbar rejected$" filterbar "Mustermann Erika"
-poll "^migrationfailure: unknown failure$" migrationfailure "$MIGRATION_UNKNOWN"
+send sheet ""
+send alert
+send seed
+sleep 2
+send select Girokonto
+send search Stadtwerke
+poll "^phase=.*visible=13 " state
+send sheet split
+poll "^splitui amountLabel=true nextLabel=true nextEnabled=false sheet=split$" splitui
+send type 25,00
+poll "^splitui amountLabel=true nextLabel=true nextEnabled=true sheet=split$" splitui
+send splitnext
+poll "^splitui .*nextEnabled=false sheet=split$" splitui
+send key tab
+send key return
+poll "^splitstate parts=2 .*sheet=none$" splitstate
+send selectRows 2
+poll "^deleteparts refused=true selected=2$" deleteparts
+send alert
+send undosplit
+send key escape
+poll "^splitstate parts=2 .*sheet=none$" splitstate
+send undosplit
+send key return
+poll "^splitstate parts=0 .*sheet=none$" splitstate
+for value in 0,00 89,00 abc; do
+	send sheet split
+	send type "$value"
+	poll "^splitui .*nextEnabled=false sheet=split$" splitui
+	send key escape
+done
+send split 7%
+poll "^splitstate parts=2 .*sheet=none$" splitstate
+send undosplit
+send key return
+poll "^splitstate parts=0 .*sheet=none$" splitstate
+send split 19%
+poll "^splitstate parts=2 .*sheet=none$" splitstate
+poll "^snapshot split-menu " splitmenusnapshot
+send split 5,00
+poll "^splitstate parts=3 .*sheet=none$" splitstate
+send search ""poll "^migrationfailure: unknown failure$" migrationfailure "$MIGRATION_UNKNOWN"
 # "Look for New Accounts..." on an account named in the argument: the log names neither the account nor the access.
 poll "^lookfornew setup=true$" lookfornew Girokonto
 poll "^setup purpose=newAccounts " setup ""
@@ -362,6 +403,7 @@ for value in "25,00" "20,00" "30,00" "Synthetic extra" DE02120300000000202051 "D
 	Girokonto Tagesgeld Kreditkarte Extrakonto "Erika Mustermann" Erika Mustermann erika-mustermann "Private Access" Musterbank "Check Bank" \
 	"Beispiel GmbH" "Wohnbau Musterstadt" "Tankstelle Beispiel" /Users/erika \
 	"Gehalt November" Miete Kartenzahlung Sparen Haushaltskasse MIETE-2026-11 GUTSCHRIFT DAUERAUFTRAG \
+	"0,00" "89,00" "5,00" abc "Stadtwerke Musterstadt" "Streaming Dienst" Electricity Groceries \
 	"Zugang vorübergehend gesperrt" "PIN falsch" Wartungsarbeiten pushTAN-App "currency:/^+?49/"; do
 	if grep -n -w -F -- "$value" "$LOG" >&2; then
 		echo "debug.log holds \"$value\"." >&2
