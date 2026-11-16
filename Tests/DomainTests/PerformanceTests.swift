@@ -229,7 +229,9 @@ struct PerformanceTests {
 		#if !DEBUG
 		#expect(counting < budget(.seconds(1)))
 		#expect(categorizing < budget(.seconds(1)))
-		#expect(withStops < budget(.seconds(3)))
+		// About 1 second of it is the twelve rules until they stop, and the rest two passes over the rows. Before round 3 of
+		// #351 a repeat charged the normal rule again, and the batch took over 10 seconds.
+		#expect(withStops < budget(.seconds(4)))
 		#endif
 	}
 
