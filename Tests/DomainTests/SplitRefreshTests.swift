@@ -36,6 +36,17 @@ extension ReconcileTests {
 		#expect(linked.unsplit.isEmpty)
 	}
 
+	@Test("A correction replaces unclearBooking with splitUndone", arguments: [false, true])
+	func replacesReview(currencyOnly: Bool) {
+		var original = stored(row(3, -8000, "REWE Markt GmbH", sourceID: "TX-1"))
+		original.review = .unclearBooking
+		var delivered = row(3, currencyOnly ? -8000 : -8500, "REWE Markt GmbH", sourceID: "TX-1")
+		if currencyOnly { delivered.currency = "USD" }
+		let result = reconcile(refresh([delivered]), into: giro, stored: [original], deleted: [], split: [original.id], rules: Categorizer(ledger: Ledger()), now: now)
+		#expect(result.unsplit == [original.id])
+		#expect(result.updated.map(\.review) == [.splitUndone])
+	}
+
 	@Test("A pending delivery leaves a split booked", arguments: [-8000, -8500])
 	func pendingSplit(amount: Int64) {
 		let original = stored(row(3, -8000, "REWE Markt GmbH", "Receipt", sourceID: "TX-1"))

@@ -149,7 +149,7 @@ extension SchemaTests {
 		try Schema.migrator.migrate(queue, upTo: "v17")
 		let account = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
 		try queue.write { db in
-			try account.insert(db)
+			try account.insertOld(db)
 		}
 		try queue.close()
 		let store = try Vault(folder: folder).open(password: "synthetic-password")

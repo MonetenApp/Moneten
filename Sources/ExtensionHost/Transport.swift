@@ -64,7 +64,9 @@ struct Network {
 	/// Sends `request` with the cookies of the run and keeps the cookies of each answer. It follows
 	/// redirects unless `followRedirects` is false, and returns the last answer with the URL it came from.
 	func send(_ request: HTTPRequest, followRedirects: Bool) throws -> (url: URL, response: HTTPResponse) {
-		var request = request
+		// A name with a leading colon is an HTTP/2 field that a browser shows, such as `:path:`, and that
+		// scripts copy from its developer tools. The transport sets those fields itself, so they never go out.
+		var request = HTTPRequest(method: request.method, url: request.url, headers: request.headers.filter { !$0.key.hasPrefix(":") }, body: request.body)
 		for _ in 0...Self.maxRedirects {
 			let sent = cookies.adding(to: request)
 			try Self.check(sent.headers)
