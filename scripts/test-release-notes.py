@@ -202,6 +202,16 @@ class ReleaseNotesTests(unittest.TestCase):
 		missing = self.run_script("check-release", "0.3.0", "--build", "400", "--feed", str(feed))
 		self.assertIn("no section for version 0.3.0", missing.stderr)
 
+	def test_same_version_refuses_a_lower_build(self):
+		feed = self.dir / "feed.xml"
+		self.assertEqual(self.appcast("0.1.3", 200, feed).returncode, 0)
+		lower = self.run_script("check-release", "0.1.3", "--build", "100", "--feed", str(feed))
+		self.assertIn("build 100 is below build 200 of version 0.1.3", lower.stderr)
+		self.assertNotEqual(self.appcast("0.1.3", 100, self.dir / "out.xml", feed=feed).returncode, 0)
+		self.assertFalse((self.dir / "out.xml").exists())
+		same = self.run_script("check-release", "0.1.3", "--build", "200", "--feed", str(feed))
+		self.assertEqual(same.returncode, 0, same.stderr)
+
 	# stale-releases
 
 	def test_stale_releases_lists_only_changed_texts(self):
