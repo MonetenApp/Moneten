@@ -17,6 +17,7 @@
   release-notes.py check-feed --feed FILE --public-key KEY
                                              fail unless the update key KEY signed the feed and every
                                              disk image in it lies in a release of the repository
+  release-notes.py openssl                   print the path of an OpenSSL 3 or later, which check-feed uses
 
 The format is in the design of the change add-software-update. A version is 1.2.3 or 1.2.3-beta.4.
 The feed this script writes is not signed. sign_update of Sparkle signs it afterwards, and this
@@ -30,6 +31,7 @@ import email.utils
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -275,6 +277,18 @@ def stale_releases(sections, lines):
 	return stale
 
 
+def openssl():
+	"""An OpenSSL 3 or later. The LibreSSL of macOS in /usr/bin cannot verify Ed25519 with -rawin."""
+	for path in (os.environ.get("MONETEN_OPENSSL"), shutil.which("openssl"),
+			"/opt/homebrew/opt/openssl@3/bin/openssl", "/usr/local/opt/openssl@3/bin/openssl"):
+		if path and os.access(path, os.X_OK):
+			version = subprocess.run([path, "version"], capture_output=True, text=True).stdout
+			match = re.match(r"OpenSSL (\d+)\.", version)
+			if match and int(match.group(1)) >= 3:
+				return path
+	raise Failure("the feed check needs OpenSSL 3 or later, which macOS does not include: brew install openssl@3, or set MONETEN_OPENSSL.")
+
+
 def check_feed(path, public_key):
 	"""Fails unless the update key signed the feed as Sparkle checks it, and every disk image lies in
 	a release of the repository. The release script signs a new feed that keeps the items of the
@@ -302,7 +316,7 @@ def check_feed(path, public_key):
 		for name, data in (("key.der", ED25519_PUBLIC_PREFIX + key), ("feed", text[:length]), ("signature", signature)):
 			with open(files[name], "wb") as f:
 				f.write(data)
-		result = subprocess.run(["openssl", "pkeyutl", "-verify", "-pubin", "-keyform", "DER", "-inkey", files["key.der"],
+		result = subprocess.run([openssl(), "pkeyutl", "-verify", "-pubin", "-keyform", "DER", "-inkey", files["key.der"],
 			"-rawin", "-in", files["feed"], "-sigfile", files["signature"]], capture_output=True)
 	if result.returncode != 0:
 		raise Failure("the update key did not sign the feed %s." % path)
@@ -338,6 +352,7 @@ def main():
 	command.add_argument("--feed", required=True)
 	command.add_argument("--out", required=True)
 	commands.add_parser("stale-releases")
+	commands.add_parser("openssl")
 	command = commands.add_parser("check-feed")
 	command.add_argument("--feed", required=True)
 	command.add_argument("--public-key", required=True)
@@ -373,6 +388,8 @@ def main():
 		elif args.command == "stale-releases":
 			for tag in stale_releases(load(args.changelog), sys.stdin):
 				print(tag)
+		elif args.command == "openssl":
+			print(openssl())
 		elif args.command == "check-feed":
 			check_feed(args.feed, args.public_key)
 	except Failure as error:

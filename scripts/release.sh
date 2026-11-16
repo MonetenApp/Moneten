@@ -38,8 +38,9 @@ TEST_KEY_FILE=Fixtures/update/test-update.key
 # The public key of the private EdDSA key in the file $1: Sparkle keeps the 32 byte seed, which
 # becomes an Ed25519 key in PKCS#8 for openssl. The key never appears in an argument or a log.
 public_key() {
+	OPENSSL=${OPENSSL:-$(notes openssl)} || exit 1
 	{ printf '\060\056\002\001\000\060\005\006\003\053\145\160\004\042\004\040'; base64 -d < "$1" | head -c 32; } \
-		| openssl pkey -inform DER -pubout -outform DER | tail -c 32 | base64
+		| "$OPENSSL" pkey -inform DER -pubout -outform DER | tail -c 32 | base64
 }
 
 # The value of the build setting $2 under the path $1 of App/project.yml, such as
@@ -297,7 +298,7 @@ check_feeds() {
 	fi
 	refused "$WORK/changed.xml" "$KEY" "did not sign" "The changed feed passed the check of a current feed."
 	# Another key must not pass.
-	openssl genpkey -algorithm ed25519 -outform DER -out "$WORK/other.der"
+	"$(notes openssl)" genpkey -algorithm ed25519 -outform DER -out "$WORK/other.der"
 	tail -c 32 "$WORK/other.der" | base64 > "$WORK/other.key"
 	refused "$OUT/appcast.xml" "$(public_key "$WORK/other.key")" "did not sign" "A feed of another key passed the check of a current feed."
 	# A disk image over http must not pass, even in a feed that the update key signed.
