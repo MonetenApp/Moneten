@@ -78,6 +78,7 @@ public struct ExtensionConnector: BankConnector {
 		var state = ExtensionState(request.state)
 		let run = try await ScriptRun.start(self, access: request.access, state: state, session: session, reason: .refresh)
 		var outcomes: [UUID: AccountOutcome] = [:]
+		var notices: [BankMessage] = []
 		do {
 			// A second setup of a login keeps the state of its access, which lacks the tables of its new accounts.
 			if request.accounts.contains(where: { state.accounts[$0.remoteID] == nil }) {
@@ -94,6 +95,7 @@ public struct ExtensionConnector: BankConnector {
 				let known = ResultMapping.knownTransactions(await services.transactions(account.accountID), timeZone: timeZone)
 				let outcome = try await run.refreshAccount(listed, since: account.since, known: known)
 				outcomes[account.accountID] = outcome.result
+				notices += outcome.notices.map { BankMessage(text: $0, accountName: account.name) }
 				if outcome.endsSession { break }
 			}
 		} catch {
@@ -106,7 +108,7 @@ public struct ExtensionConnector: BankConnector {
 		state.storage = await run.end() ?? state.storage
 		state.tanMethod = run.tanMethod ?? state.tanMethod
 		state.loginRejected = nil
-		return ConnectorReport(outcomes: outcomes, state: state.accessState)
+		return ConnectorReport(outcomes: outcomes, state: state.accessState, notices: notices)
 	}
 
 	/// Sets up a new access: logs in, lists the accounts, and fetches each of them in one session.
@@ -119,6 +121,7 @@ public struct ExtensionConnector: BankConnector {
 		let run = try await ScriptRun.start(self, access: access, state: start, session: session, reason: .newAccount, restore: kept)
 		var state = run.startState
 		var accounts: [NewAccount] = []
+		var notices: [BankMessage] = []
 		do {
 			for listed in try await run.listAccounts() {
 				state.accounts[listed.remoteID] = listed.table
@@ -129,6 +132,7 @@ public struct ExtensionConnector: BankConnector {
 				let new = accounts[index].listed.forRefresh(balance: nil, refreshedAt: nil, comment: nil, now: scriptNow)
 				let outcome = try await run.refreshAccount(new, since: nil, known: [:])
 				accounts[index].outcome = outcome.result
+				notices += outcome.notices.map { BankMessage(text: $0, accountName: accounts[index].name) }
 				if outcome.endsSession { break }
 			}
 		} catch {
@@ -140,7 +144,7 @@ public struct ExtensionConnector: BankConnector {
 		state.storage = await run.end() ?? state.storage
 		state.tanMethod = run.tanMethod
 		state.loginRejected = nil
-		return AccessSetup(accounts: accounts, state: state.accessState, loginName: run.loginName)
+		return AccessSetup(accounts: accounts, state: state.accessState, loginName: run.loginName, notices: notices)
 	}
 }
 
@@ -151,6 +155,8 @@ public struct AccessSetup: Sendable {
 	/// The value of the first login field when that field is not secret, else "". Dialogs show it as the
 	/// user ID of the access.
 	public let loginName: String
+	/// What the user learns about single accounts, such as a position that the balance leaves out.
+	public let notices: [BankMessage]
 }
 
 /// An account that `ListAccounts` returned for a new access.
@@ -351,9 +357,10 @@ private final class ScriptRun {
 		}
 	}
 
-	/// The outcome of one account. An error at the first call fails only this account; an error after
+	/// The outcome of one account and its notices. An error at the first call fails only this account; an error after
 	/// a challenge ends the session.
-	func refreshAccount(_ account: ListedAccount, since: Day?, known: [String: LuaValue]) async throws -> (result: AccountOutcome, endsSession: Bool) {
+	func refreshAccount(_ account: ListedAccount, since: Day?, known: [String: LuaValue]) async throws
+		-> (result: AccountOutcome, endsSession: Bool, notices: [String]) {
 		var calendar = Calendar(identifier: .gregorian)
 		calendar.timeZone = connector.timeZone
 		let seconds = account.holdsSecurities ? 0 : since.map { Int64($0.date(in: calendar).timeIntervalSince1970) } ?? 0
@@ -363,15 +370,16 @@ private final class ScriptRun {
 				.refreshAccount(account: account.table, since: seconds, known: known, step: step, credentials: credentials, interactive: session.isAttended)
 			}
 		} catch let failure as RunFailure {
-			return (.failed(.bank(BankMessage(text: failure.message))), failure.afterChallenge)
+			return (.failed(.bank(BankMessage(text: failure.message))), failure.afterChallenge, [])
 		}
 		if case let .string(message) = answer.value {
-			return (.failed(.bank(BankMessage(text: message))), answer.challenged)
+			return (.failed(.bank(BankMessage(text: message))), answer.challenged, [])
 		}
 		do {
-			return (.fetched(try ResultMapping.refreshResult(answer.value, of: account, since: since, timeZone: connector.timeZone)), false)
+			let mapped = try ResultMapping.refreshResult(answer.value, of: account, since: since, timeZone: connector.timeZone)
+			return (.fetched(mapped.result), false, mapped.notices)
 		} catch {
-			return (.failed(.unsupported(error.message)), false)
+			return (.failed(.unsupported(error.message)), false, [])
 		}
 	}
 

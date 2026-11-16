@@ -99,10 +99,15 @@ public struct Holding: Identifiable, Hashable, Sendable {
 	/// market value from the source, the quantity times the quote, in `currency` when the exchange rate
 	/// links the currencies. Nil without a market value and without a quote.
 	public func value(in currency: String) -> Money? {
+		exactValue(in: currency).map { Money($0.amount, currency: $0.currency) }
+	}
+
+	/// The value before it is rounded to the currency, so that a source of untrusted numbers can check its range first.
+	public func exactValue(in currency: String) -> (amount: Decimal, currency: String)? {
 		guard let market = marketDecimal(in: currency) else { return nil }
 		var total = market.amount
 		if let accruedInterest, let interest = convert(accruedInterest.decimal, from: accruedInterest.currency, to: market.currency) { total += interest }
-		return Money(total, currency: market.currency)
+		return (total, market.currency)
 	}
 
 	/// The value less the purchase value, without the accrued interest. Nil without a purchase price, and

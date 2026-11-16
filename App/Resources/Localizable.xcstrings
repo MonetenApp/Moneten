@@ -1751,6 +1751,17 @@
         }
       }
     },
+    "amount" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Betrag"
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "Amount to split off" : {
       "localizations" : {
         "de" : {
@@ -4074,6 +4085,17 @@
           }
         }
       }
+    },
+    "exchange rate" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wechselkurs"
+          }
+        }
+      },
+      "extractionState" : "manual"
     },
     "Export" : {
       "localizations" : {
@@ -6979,6 +7001,17 @@
         }
       }
     },
+    "price" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kurs"
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "Profile" : {
       "localizations" : {
         "de" : {
@@ -7029,6 +7062,17 @@
         }
       }
     },
+    "purchase price" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kaufpreis"
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "Purpose" : {
       "localizations" : {
         "de" : {
@@ -7068,6 +7112,17 @@
           }
         }
       }
+    },
+    "quantity" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anzahl"
+          }
+        }
+      },
+      "extractionState" : "manual"
     },
     "Quarterly view" : {
       "localizations" : {
@@ -7682,12 +7737,12 @@
         }
       }
     },
-    "Security %lld has no amount." : {
+    "Security %lld is not a table." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Wertpapier %lld hat keinen Betrag."
+            "value" : "Wertpapier %lld ist keine Tabelle."
           }
         }
       },
@@ -8672,6 +8727,17 @@
       },
       "extractionState" : "manual"
     },
+    "The %@ of security %lld is not a number." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Feld „%1$@“ von Wertpapier %2$lld ist keine Zahl."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "The %@ of transaction %lld is not a date." : {
       "localizations" : {
         "de" : {
@@ -8847,6 +8913,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Der Saldo ist keine Zahl."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The balance leaves out %@, because its price is in %@ and the extension gives no exchange rate." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Saldo enthält %1$@ nicht, weil der Kurs in %2$@ angegeben ist und die Erweiterung keinen Wechselkurs liefert."
           }
         }
       },
@@ -10686,6 +10763,28 @@
       },
       "extractionState" : "manual"
     },
+    "The value of security %lld at its price" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Wert von Wertpapier %lld zu seinem Kurs"
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The value of security %lld at its purchase price" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Wert von Wertpapier %lld zu seinem Kaufpreis"
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "The VAT split would leave a part of zero." : {
       "localizations" : {
         "de" : {
@@ -11004,6 +11103,17 @@
           }
         }
       }
+    },
+    "trade time" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Handelszeitpunkt"
+          }
+        }
+      },
+      "extractionState" : "manual"
     },
     "Train" : {
       "localizations" : {
