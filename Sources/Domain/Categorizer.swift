@@ -32,6 +32,8 @@ public struct Categorizer: Sendable {
 	}
 
 	/// The fields of a row that a rule reads. Two rows with the same fields give every rule the same result.
+	// The synthesized Hashable conformance reads the fields, which Periphery cannot see.
+	// periphery:ignore
 	private struct Texts: Hashable {
 		let accountID: UUID
 		let name: String
