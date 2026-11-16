@@ -98,6 +98,24 @@ The app SHALL fetch transactions in the CAMT format when the bank offers it for 
 - **WHEN** the app fetches the transactions of "Savings"
 - **THEN** it requests MT940 and shows booking date, value date, amount, counterparty, and purpose
 
+### Requirement: Read statement tags of 1822direkt that start inside a line
+
+The app SHALL read a ":61:" or ":62F:" tag that follows other text on the same line of an MT940 statement as the start of a new line, when the FinTS host of the bank is "1822direkt.com" or ends with ".1822direkt.com". No character of the statement is lost. The statements of other hosts stay as the bank sent them.
+
+#### Scenario: Booking that starts inside a line
+
+- **GIVEN** an account at 1822direkt with the FinTS address "https://fints.1822direkt.com/fints/hbci"
+- **AND** the bank offers only MT940 for the account
+- **WHEN** the statement has the line "?20Miete November:61:2611151115D12,50NTRFNONREF"
+- **THEN** the app stores a booking of -12.50 EUR on 15.11.2026
+- **AND** the purpose of the booking before it ends with "Miete November"
+
+#### Scenario: Same line from another bank
+
+- **GIVEN** an account at "Musterbank" with the FinTS address "https://fints.musterbank.example/fints"
+- **WHEN** the statement has the line "?20Miete November:61:2611151115D12,50NTRFNONREF"
+- **THEN** the app reads the line as the bank sent it, as part of the purpose of the booking before it
+
 ### Requirement: A normal refresh asks for at most 90 days
 
 The app SHALL ask in a normal refresh for the transactions since the last successful fetch of the account with an overlap of 14 days, or from its oldest pending transaction when that is earlier, and for no more than the last 90 days. The bank then needs no TAN for older transactions, and the refresh can remove a pending transaction that the bank dropped. Only when the 90 days start after the day of the last successful fetch does the account view say that older transactions may be missing.
@@ -545,6 +563,30 @@ The app SHALL stop when the bank reports that the PIN or the access is blocked, 
 - **WHEN** the bank answers the login with the code 9931 and the text "Zugang ist gesperrt und wird erst nach Freischaltung wieder nutzbar."
 - **THEN** the accounts of the access show that the bank blocked the access and "Ask the bank to unblock it."
 - **AND** the app asks for no new PIN
+
+### Requirement: Say how to unblock the app at a savings bank
+
+The app SHALL stop when a bank on the FinTS servers of the savings banks answers that the user deactivated the app, and tell the user to unblock it under "Kontozugriffe" in the online banking of the Sparkasse. A bank is on these servers when the part of its FinTS host before ".de" starts with "s-fints-pt-" or is "s-hbci". The app forgets the PIN, asks for no new PIN, and logs in again only when the user starts a refresh by hand.
+
+#### Scenario: App deactivated in the online banking
+
+- **GIVEN** a refresh of "Giro" at a Sparkasse with the FinTS address "https://banking-hs6.s-fints-pt-hs.de/fints30"
+- **WHEN** the bank answers the login with the code 9800 "Dialog abgebrochen" and the code 9010 "Kundenprodukt wurde vom Benutzer deaktiviert"
+- **THEN** "Giro" shows that Moneten is blocked in the online banking of the Sparkasse, the text "Kundenprodukt wurde vom Benutzer deaktiviert" with the code 9010, and "Unblock Moneten there under “Service > Persönliche Einstellungen > Kontozugriffe”, then refresh the account."
+- **AND** the app asks for no new PIN
+- **AND** the automatic refresh skips this access until the user starts a refresh
+
+#### Scenario: App deactivated during the setup
+
+- **GIVEN** the assistant "Add Account" logs in to a Sparkasse with the FinTS address "https://banking-hs6.s-fints-pt-hs.de/fints30"
+- **WHEN** the bank answers the login with the code 9010 "Kundenprodukt wurde vom Benutzer deaktiviert"
+- **THEN** the assistant lists no accounts and says where the user unblocks Moneten
+
+#### Scenario: Same text from another bank
+
+- **GIVEN** a refresh of "Giro" at "Musterbank" with the FinTS address "https://fints.musterbank.example/fints"
+- **WHEN** the bank answers the login with the code 9010 "Kundenprodukt wurde vom Benutzer deaktiviert"
+- **THEN** "Giro" shows the text of the bank with the code 9010 and no hint about "Kontozugriffe"
 
 ### Requirement: Cancel and interruption
 

@@ -588,6 +588,8 @@ public class FinTSHelper {
 		/// The last challenge of the run was an approval in the app, so a refused TAN means that the approval
 		/// did not happen. One helper runs one command, so the field can be static for `failure`.
 		static volatile boolean approvalAsked;
+		/// The host of the bank with its path, as `connect` sets it, for the rules of a bank group in `failure`.
+		static volatile String server;
 		/// The TAN medium of the state, or the one the user chose in this run. hbci4java asks for it
 		/// before every order that needs a TAN.
 		String tanMedium;
@@ -609,6 +611,7 @@ public class FinTSHelper {
 			String path = url.getRawPath() == null || url.getRawPath().isEmpty() ? "/" : url.getRawPath();
 			host = url.getHost() + path + (url.getRawQuery() == null ? "" : "?" + url.getRawQuery());
 			port = url.getPort() > 0 ? url.getPort() : 443;
+			server = host;
 		}
 
 		String ask(Map<String, Object> request) {
@@ -686,7 +689,7 @@ public class FinTSHelper {
 		public void log(String msg, int level, Date date, StackTraceElement trace) {
 			if (msg == null) return;
 			Matcher m = PIN_ERROR.matcher(msg);
-			if (m.find()) pinError = message("rejected", "code", m.group(1), "text", Out.withoutSecrets(m.group(2)));
+			if (m.find()) pinError = message("rejected", "kind", kind(m.group(1), m.group(2)), "code", m.group(1), "text", Out.withoutSecrets(m.group(2)));
 			if (level <= 2) diagnostic("[" + (level <= 1 ? "error" : "warning") + "] " + msg);
 		}
 
@@ -991,8 +994,10 @@ public class FinTSHelper {
 	/// did not happen.
 	static final Set<String> TAN_REFUSED = Set.of("9941", "9943", "9948", "9951");
 
-	/// The error of the bank that the app shows: the first urgent one, or else the first one.
+	/// The error of the bank that the app shows: an app that the user blocked at a savings bank, the first urgent one,
+	/// or else the first one.
 	static HBCIRetVal relevant(List<HBCIRetVal> errors) {
+		for (HBCIRetVal r : errors) if (SavingsBanks.appBlocked(Callback.server, r.text)) return r;
 		for (String code : URGENT) {
 			for (HBCIRetVal r : errors) if (code.equals(r.code)) return r;
 		}
@@ -1012,9 +1017,15 @@ public class FinTSHelper {
 	/// The error of a job, or of the message when the job has none.
 	static Map<String, Object> problem(HBCIJobResult result) {
 		HBCIRetVal r = relevant(errors(result.getJobStatus(), result.getGlobStatus()));
-		if (r != null) return message("error", "kind", Callback.approvalAsked && TAN_REFUSED.contains(r.code) ? "approvalDeclined" : null,
-			"code", r.code, "text", Out.withoutSecrets(r.text));
+		if (r != null) return message("error", "kind", kind(r.code, r.text), "code", r.code, "text", Out.withoutSecrets(r.text));
 		return message("error", "text", "The bank did not answer the request.");
+	}
+
+	/// The meaning of an error that only the helper knows: an app that the user blocked in the online banking of a
+	/// savings bank, or a refused TAN after an approval in the app, which means that the approval did not happen.
+	static String kind(String code, String text) {
+		if (SavingsBanks.appBlocked(Callback.server, text)) return "appBlocked";
+		return Callback.approvalAsked && TAN_REFUSED.contains(code) ? "approvalDeclined" : null;
 	}
 
 	/// hbci4java reports a failed dialog start, for example a wrong PIN, in the status of execute and
@@ -1085,6 +1096,7 @@ public class FinTSHelper {
 		}
 
 		public HBCIJob newJob(String name) {
+			if (name.equals("KUmsAll") && SavingsBanks.repairsStatements(passport.getHost())) return new SavingsBanks.StatementJob(handle);
 			return handle.newJob(name);
 		}
 
@@ -1461,8 +1473,7 @@ public class FinTSHelper {
 		for (Throwable t : all) {
 			if (!(t instanceof ProcessException p) || p.getMsgStatus() == null) continue;
 			HBCIRetVal r = relevant(errors(p.getMsgStatus().globStatus, p.getMsgStatus().segStatus));
-			if (r != null) return message("failed", "kind", Callback.approvalAsked && TAN_REFUSED.contains(r.code) ? "approvalDeclined" : null,
-				"code", r.code, "text", Out.withoutSecrets(r.text));
+			if (r != null) return message("failed", "kind", kind(r.code, r.text), "code", r.code, "text", Out.withoutSecrets(r.text));
 		}
 		for (Throwable t : all) {
 			if (t instanceof CertificateException c) return message("failed", "kind", "certificate", "text", Out.withoutSecrets(String.valueOf(c.getMessage())));

@@ -21,7 +21,8 @@
 # The login "langtext" lists only "Tagesgeld". Its refresh sends the transactions of "Tagesgeld" with the
 # error 9210 of the balance request, and then a notice of 100 lines. The refresh of the login "wartung" sends a
 # notice about maintenance and then fails the login with 9800. The login "setupwartung" does the same in the setup.
-# The setup login and the refresh of the login "gesperrt" fail with the block 3938. The refresh of "ohnetan" fails
+# The setup login and the refresh of the login "gesperrt" fail with the block 3938, and those of "deaktiviert" with the
+# answer of a Sparkasse whose user blocked the app in its online banking. The refresh of "ohnetan" fails
 # with no TAN method, of "falschetan" with the wrong TAN 9941 after a TAN request, and of "abgelehnt" with an approval
 # in the app that the bank reports as declined after 3 seconds, or after the seconds in MONETEN_FAKE_APPROVAL_SECONDS,
 # which the tests set to 0.
@@ -30,6 +31,8 @@
 # The bank directory has two branches of Musterbank, the bank without a FinTS server Neobank Muster
 # (99999999), a made-up Sparkasse, the entry of a merged Sparkasse (21099999), and Consorsbank
 # (76030080) and DAB BNP Paribas (70120400) with their real FinTS address, so the setup shows the login hint of Consorsbank and none for DAB.
+# Frankfurter Sparkasse (50050201) and 1822direkt (50050222) have their real FinTS addresses too, so an IBAN with
+# 50050201 shows the note about 1822direkt. The made-up Sparkassen are on a made-up server of the savings banks.
 # Musterbank 12030000 has the Bankleitzahl of DKB and shows the hint of DKB. The login of every
 # bank goes to this script.
 # The app starts the helper with an empty environment.
@@ -46,6 +49,7 @@ answer() {
 }
 pin='{"type":"ask","id":1,"kind":"pin","rules":{"minLength":4,"maxLength":10}}'
 blocked='{"type":"failed","code":"3938","text":"Ihr Zugang ist vorläufig gesperrt - Bitte PIN-Sperre aufheben."}'
+deactivated='{"type":"failed","kind":"appBlocked","code":"9010","text":"Kundenprodukt wurde vom Benutzer deaktiviert"}'
 
 case "$cmd" in
 *'"type":"banks"'*)
@@ -53,8 +57,10 @@ case "$cmd" in
 '{"code":"12030000","name":"Musterbank","city":"Musterstadt","bic":"BYLADEM1001","url":"https://fints.musterbank.example/fints"},'\
 '{"code":"12030001","name":"Musterbank","city":"Beispielstadt","url":"https://fints.musterbank.example/fints"},'\
 '{"code":"99999999","name":"Neobank Muster","city":"Musterstadt","bic":"NEOMDEM1XXX"},'\
-'{"code":"40099999","name":"Sparkasse Münsterland Muster","city":"Münster","url":"https://banking.s-fints-pt-muster.example/fints30"},'\
-'{"code":"21099999","name":"Sparkasse Altstadt -alt-","city":"Altstadt","url":"https://banking.s-fints-pt-muster.example/fints30"},'\
+'{"code":"40099999","name":"Sparkasse Münsterland Muster","city":"Münster","url":"https://banking-mu1.s-fints-pt-mu.de/fints30"},'\
+'{"code":"21099999","name":"Sparkasse Altstadt -alt-","city":"Altstadt","url":"https://banking-mu1.s-fints-pt-mu.de/fints30"},'\
+'{"code":"50050201","name":"Frankfurter Sparkasse","city":"Frankfurt am Main","bic":"HELADEF1822","url":"https://banking-hs6.s-fints-pt-hs.de/fints30"},'\
+'{"code":"50050222","name":"1822direkt (PIN/TAN)","city":"Frankfurt am Main","bic":"HELADEF1822","url":"https://fints.1822direkt.com/fints/hbci"},'\
 '{"code":"70120400","name":"BNP Paribas S.A. Niederlassung Deutschland-Consorsbank","city":"München","bic":"DABBDEMMXXX","url":"https://brokerage-hbci.consorsbank.de/hbci"},'\
 '{"code":"76030080","name":"Bnp Paribas S.A. Niederlassung Deutschland - Consorsbank","city":"Nürnberg, Mittelfr","bic":"CSDBDE71XXX","url":"https://brokerage-hbci.consorsbank.de/hbci"}]}'
 	;;
@@ -63,6 +69,10 @@ case "$cmd" in
 	answer
 	case "$cmd" in *'"user":"gesperrt"'*)
 		echo "$blocked"
+		exit 0
+	;;
+	*'"user":"deaktiviert"'*)
+		echo "$deactivated"
 		exit 0
 	;; esac
 	if [ "$value" = 0000 ]; then
@@ -115,6 +125,10 @@ case "$cmd" in
 	;;
 	*'"user":"gesperrt"'*)
 		echo "$blocked"
+		exit 0
+	;;
+	*'"user":"deaktiviert"'*)
+		echo "$deactivated"
 		exit 0
 	;;
 	*'"user":"ohnetan"'*)

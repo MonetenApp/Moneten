@@ -1117,6 +1117,17 @@
         }
       }
     },
+    "A customer of 1822direkt enters the Bankleitzahl 50050222 here in place of the IBAN." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kundinnen und Kunden der 1822direkt geben hier statt der IBAN die Bankleitzahl 50050222 ein."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "A database already exists. Moneten does not create a new one in its place.\n\n%@" : {
       "localizations" : {
         "de" : {
@@ -5336,6 +5347,17 @@
         }
       }
     },
+    "Log in with the login name and the PIN of the online banking of your Sparkasse. Before the first login, set up a TAN method such as pushTAN or chipTAN in the online banking." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Melden Sie sich mit dem Anmeldenamen und der PIN des Online-Bankings Ihrer Sparkasse an. Richten Sie vor der ersten Anmeldung im Online-Banking ein TAN-Verfahren wie pushTAN oder chipTAN ein."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "Login data was not migrated, because the AppleScript export of MoneyMoney does not contain it. Connect a migrated account to its bank with \"Add Account...\" and enter the login data there." : {
       "localizations" : {
         "de" : {
@@ -5685,6 +5707,17 @@
           }
         }
       }
+    },
+    "Moneten is blocked in the online banking of the Sparkasse: %@\nUnblock Moneten there under “Service > Persönliche Einstellungen > Kontozugriffe”, then refresh the account." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Moneten ist im Online-Banking der Sparkasse gesperrt: %@\nEntsperren Sie Moneten dort unter „Service > Persönliche Einstellungen > Kontozugriffe“ und aktualisieren Sie dann das Konto."
+          }
+        }
+      },
+      "extractionState" : "manual"
     },
     "Moneten is free software. It sends data only to the banks that you add." : {
       "localizations" : {
