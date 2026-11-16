@@ -961,13 +961,18 @@ The app SHALL read these transaction fields. `amount` and `bookingDate` are requ
 
 ### Requirement: Amount limit of a result
 
-The app SHALL fail an account when its result has a balance, a security value, or a transaction amount of more than 1,000,000,000,000,000 in the smallest unit of its currency, which is 10.000.000.000.000,00 € for the euro. The app also fails the account when the values of its securities add up to more. The message names the field.
+The app SHALL fail an account when its result has a balance, a security value, or a transaction amount of more than 1,000,000,000,000,000 in the smallest unit of its currency, which is 10.000.000.000.000,00 € for the euro. The app also fails the account when the values of its securities add up to more, in any order. The message names the field.
 
 #### Scenario: Absurd transaction
 
 - **WHEN** the first transaction of the result of a giro account has `amount=1e14`
 - **THEN** the account shows that the amount of transaction 1 is out of range
 - **AND** no transaction of this result is stored
+
+#### Scenario: Securities that cancel out
+
+- **WHEN** the result of a portfolio has securities with the amounts `9e12`, `9e12`, and `-9e12`
+- **THEN** the portfolio shows a value of 9.000.000.000.000,00 €
 
 ### Requirement: Booking codes of a transaction
 

@@ -407,8 +407,9 @@ public struct Ledger: Sendable {
 
 	/// The initial balance at which the computed balance at the end of `today` is `balanceToday`. Every computed
 	/// balance moves by the same difference.
-	public func calibratedInitialBalance(of account: Account, balanceToday: Int64, today: Day) -> Int64 {
-		Int64(clampingSum: Int128(account.initialBalanceMinor) + Int128(balanceToday) - exactBalance(of: account, through: today))
+	/// Nil when it would be above `Money.maxMinorUnits`, because a stored value is never clamped.
+	public func calibratedInitialBalance(of account: Account, balanceToday: Int64, today: Day) -> Int64? {
+		Int64(limitedAmount: Int128(account.initialBalanceMinor) + Int128(balanceToday) - exactBalance(of: account, through: today))
 	}
 
 	public func sum(ofGroup group: UUID) -> MoneySums {

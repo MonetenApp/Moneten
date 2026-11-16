@@ -176,6 +176,14 @@ import Testing
 		}
 	}
 
+	/// The securities add up exactly and only their total must fit, so their order does not matter (issue #324).
+	@Test(arguments: [[9e12, 9e12, -9e12], [9e12, -9e12, 9e12], [-9e12, 9e12, 9e12]])
+	func securitiesInAnyOrder(amounts: [Double]) throws {
+		let depot = ListedAccount(.object(["accountNumber": .string("D-1"), "portfolio": .boolean(true)]))!
+		let securities = amounts.map { LuaValue.object(["name": .string("Muster AG"), "amount": .number($0)]) }
+		#expect(try result(["securities": .array(securities)], of: depot).balance?.minorUnits == 900_000_000_000_000)
+	}
+
 	@Test func bookingDateOutOfRange() {
 		#expect(throws: MappingError("The booking date of transaction 1 is not a date.")) {
 			try result(["balance": .integer(0), "transactions": .array([.object(["bookingDate": .number(1e300), "amount": .integer(1)])])])

@@ -124,25 +124,44 @@ struct AmountOverflowTests {
 		#expect(notice.tone == .positive)
 	}
 
-	@Test("The initial balance that meets a bank balance and the calibration add up exactly and hold at the bounds")
-	func bankBalance() throws {
+	@Test("An initial balance that meets a bank balance or a calibration beyond the limit of one amount is refused, never clamped")
+	func derivedInitialBalanceBeyondTheLimit() throws {
+		let limit = Money.maxMinorUnits
 		var account = giro
-		account.bankBalanceMinor = -Self.huge
+		account.bankBalanceMinor = 0
 		account.bankBalanceDate = Date()
-		#expect(account.initialBalanceMeetingBankBalance(of: rows([Self.huge, Self.huge])) == -.max)
-		#expect(account.initialBalanceMeetingBankBalance(of: rows([Self.huge, Self.huge, -Self.huge, -Self.huge])) == -Self.huge)
+		#expect(account.initialBalanceMeetingBankBalance(of: rows([limit, -limit, limit])) == -limit)
+		#expect(account.initialBalanceMeetingBankBalance(of: rows([limit, limit])) == nil)
+		// 10,000 rows at the limit and a balance of 0: a clamp would store 776.627.963.145.224.193 minor units.
+		let many = (0..<10_000).map { _ in Transaction(accountID: Self.giroID, bookingDate: Self.day, amountMinor: limit, name: "Musterfirma GmbH") }
+		#expect(account.initialBalanceMeetingBankBalance(of: many) == nil)
+		let l = Ledger(groups: [group], accounts: [account], categories: [food], transactions: many)
+		#expect(l.calibratedInitialBalance(of: account, balanceToday: 0, today: .today()) == nil)
+		#expect(ledger([limit, -limit], account: account).calibratedInitialBalance(of: account, balanceToday: limit, today: .today()) == limit)
+		// A proposal only shows amounts, so it may hold at the bounds.
 		var set = account
 		set.source = .bank
 		set.initialBalanceIsSet = true
-		set.initialBalanceMinor = Self.huge
-		let l = ledger([Self.huge], account: set)
-		// Booked rows of 50.000.000.000.000.000,00 € miss the bank balance of -50.000.000.000.000.000,00 € by three times that amount.
 		let proposal = try #require(l.proposedCalibration(of: set, today: .today(), refresh: .idle))
 		#expect(proposal.difference.minorUnits == -.max)
-		#expect(proposal.balanceToday.minorUnits == -Self.huge)
-		#expect(l.calibratedInitialBalance(of: set, balanceToday: -Self.huge, today: .today()) == -.max)
-		// The initial balance plus the wanted balance is beyond the range, and less the computed balance it is not.
-		#expect(ledger([], account: set).calibratedInitialBalance(of: set, balanceToday: Self.huge, today: .today()) == Self.huge)
+		#expect(proposal.balanceToday.minorUnits == 0)
+	}
+
+	@Test("A refresh whose balance gives an initial balance beyond the limit keeps the old one and is refused")
+	func refreshRefusesInitialBalance() throws {
+		var bank = giro
+		bank.source = .bank
+		let limit = Money.maxMinorUnits
+		let delivered = rows([limit, limit])
+		let result = RefreshResult(balance: Money(minorUnits: 0, currency: "EUR"), balanceDate: Date(), transactions: FetchedTransactions(rows: delivered, from: nil))
+		let r = reconcile(.refresh(result), into: bank, stored: [], deleted: [], rules: Categorizer(ledger: Ledger()), now: Date())
+		#expect(r.refusal == InitialBalanceTooLarge(accountName: "Giro"))
+		#expect(r.account?.initialBalanceIsSet != true && r.account?.initialBalanceMinor ?? 0 == 0)
+		#expect(SyncFailure.notSaved(String(describing: InitialBalanceTooLarge(accountName: "Giro"))).message
+			== "The fetched transactions could not be saved: The initial balance of the account \"Giro\" is too large.")
+		let fits = RefreshResult(balance: Money(minorUnits: 0, currency: "EUR"), balanceDate: Date(), transactions: FetchedTransactions(rows: rows([limit]), from: nil))
+		let accepted = reconcile(.refresh(fits), into: bank, stored: [], deleted: [], rules: Categorizer(ledger: Ledger()), now: Date())
+		#expect(accepted.refusal == nil && accepted.account?.initialBalanceMinor == -limit)
 	}
 }
 

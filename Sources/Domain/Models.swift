@@ -170,9 +170,10 @@ public struct Account: Identifiable, Hashable, Sendable, Codable {
 	}
 
 	/// The initial balance at which the booked rows up to the end of the day of the bank balance add up to
-	/// the bank balance. `rows` are all live rows of the account. The pending rows then count on top.
+	/// the bank balance. `rows` are all live rows of the account. The pending rows then count on top. Nil without a bank
+	/// balance, and when the initial balance would be above `Money.maxMinorUnits`, because a stored value is never clamped.
 	public func initialBalanceMeetingBankBalance(of rows: some Sequence<Transaction>, calendar: Calendar = .current) -> Int64? {
-		exactInitialBalanceMeetingBankBalance(of: rows, calendar: calendar).map(Int64.init(clampingSum:))
+		exactInitialBalanceMeetingBankBalance(of: rows, calendar: calendar).flatMap(Int64.init(limitedAmount:))
 	}
 
 	/// The initial balance that meets the bank balance before it holds at the bounds of `Int64`, so that a calibration adds up exactly.
@@ -182,10 +183,13 @@ public struct Account: Identifiable, Hashable, Sendable, Codable {
 
 	/// Sets the initial balance, so that the computed balance meets the bank balance. It is set for good unless
 	/// `missesOlderTransactions`: then the next refresh derives it again, and the one that brings the full history sets it.
-	mutating func deriveInitialBalance(from rows: [Transaction], calendar: Calendar = .current) {
-		guard derivesInitialBalance, let value = initialBalanceMeetingBankBalance(of: rows, calendar: calendar) else { return }
+	/// False, with the account unchanged, when the initial balance would be above `Money.maxMinorUnits`.
+	mutating func deriveInitialBalance(from rows: [Transaction], calendar: Calendar = .current) -> Bool {
+		guard derivesInitialBalance, let exact = exactInitialBalanceMeetingBankBalance(of: rows, calendar: calendar) else { return true }
+		guard let value = Int64(limitedAmount: exact) else { return false }
 		initialBalanceMinor = value
 		initialBalanceIsSet = !missesOlderTransactions
+		return true
 	}
 }
 

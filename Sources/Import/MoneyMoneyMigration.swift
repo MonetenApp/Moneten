@@ -44,11 +44,14 @@ public struct MoneyMoneyMigration: Sendable {
 		case unreadable(String)
 		/// An amount above `Money.maxMinorUnits`, named by what holds it, such as "The amount of transaction 4711".
 		case tooLarge(String)
+		/// An amount that is not a finite number, named as in `tooLarge`.
+		case unreadableAmount(String)
 
 		public var description: String {
 			switch self {
 			case let .unreadable(what): "The export of \(what) could not be read."
 			case let .tooLarge(what): "\(what) is too large."
+			case let .unreadableAmount(what): "\(what) cannot be read."
 			}
 		}
 	}
@@ -88,9 +91,8 @@ public struct MoneyMoneyMigration: Sendable {
 			guard let accountSource = raw["accountUuid"] as? String, let accountID = accountMap[accountSource] else { continue }
 			let id = (raw["id"] as? Int).map { "\(Transaction.migrationIDPrefix)\($0)" }
 			let currency = (raw["currency"] as? String) ?? "EUR"
-			guard let amount = Money(fitting: Decimal((raw["amount"] as? Double) ?? 0), currency: currency) else {
-				throw Failure.tooLarge((raw["id"] as? Int).map { "The amount of transaction \($0)" } ?? "The amount of a transaction")
-			}
+			let amount = try Self.money((raw["amount"] as? Double) ?? 0, currency,
+				(raw["id"] as? Int).map { "The amount of transaction \($0)" } ?? "The amount of a transaction")
 			let booking = (raw["bookingDate"] as? Date).map { Day($0, calendar: calendar) } ?? Day.today(calendar: calendar)
 			let pending = !((raw["booked"] as? Bool) ?? true)
 			var categoryID: UUID?
@@ -132,7 +134,7 @@ public struct MoneyMoneyMigration: Sendable {
 			t.review = review
 			plan.transactions.append(t)
 		}
-		Self.setInitialBalances(of: &plan, ledger: ledger, stored: stored, deleted: tombstones, relinked: relinked, exported: Set(accountMap.values),
+		try Self.setInitialBalances(of: &plan, ledger: ledger, stored: stored, deleted: tombstones, relinked: relinked, exported: Set(accountMap.values),
 			delivered: delivered.mapValues { Set($0.compactMap(\.sourceID)) })
 		if !rawCategories.contains(where: { ($0["default"] as? Bool) != true && Self.string($0["rules"]) != nil }) {
 			plan.notes.append("The export contains no categorization rules. Copy them from the category settings of MoneyMoney into the category settings of Moneten.")
@@ -153,7 +155,7 @@ public struct MoneyMoneyMigration: Sendable {
 			}
 			plan.notes += Self.ruleNotes(c, accountNumbers: accountNumbers)
 		}
-		plan.notes += Self.groupSumNotes(rawAccounts)
+		plan.notes += try Self.groupSumNotes(rawAccounts)
 		if !plan.portfolioAccounts.isEmpty {
 			plan.notes.append("Portfolio accounts were taken over with their balance. Their positions follow when securities accounts are supported.")
 		}
@@ -232,11 +234,16 @@ public struct MoneyMoneyMigration: Sendable {
 	/// A deleted row in another currency never moves the balance, like a stored one.
 	private static func setInitialBalances(of plan: inout Plan, ledger: Ledger, stored: [UUID: [Transaction]],
 		deleted: [UUID: [DeletedTransaction]], relinked: [UUID: [DeletedTransaction.Relink]], exported: Set<UUID>,
-		delivered: [UUID: Set<String>]) {
+		delivered: [UUID: Set<String>]) throws {
+		// An initial balance is stored, so one above `Money.maxMinorUnits` fails the migration instead of holding at a bound.
+		func limited(_ value: Int128, of account: Account) throws -> Int64 {
+			guard let minor = Int64(limitedAmount: value) else { throw Failure.tooLarge("The initial balance of the account \"\(account.name)\"") }
+			return minor
+		}
 		let added = Dictionary(grouping: plan.transactions, by: \.accountID)
 		for i in plan.accounts.indices {
 			guard let balance = plan.accounts[i].bankBalanceMinor else { continue }
-			plan.accounts[i].initialBalanceMinor = Int64(clampingSum: initialBalance(balance, of: plan.accounts[i], rows: added[plan.accounts[i].id] ?? []))
+			plan.accounts[i].initialBalanceMinor = try limited(initialBalance(balance, of: plan.accounts[i], rows: added[plan.accounts[i].id] ?? []), of: plan.accounts[i])
 		}
 		let changed = Dictionary(uniqueKeysWithValues: plan.updatedTransactions.map { ($0.id, $0) })
 		for old in ledger.accounts where old.source == .migrated && old.kind != .portfolio {
@@ -256,9 +263,9 @@ public struct MoneyMoneyMigration: Sendable {
 			let deletedBefore = tombstones.filter { isCounted($0) && $0.currency == old.currency }.reduce(Int128(0)) { $0 + Int128($1.amountMinor) }
 			let deletedAfter = after.filter { isCounted($0) && $0.currency == old.currency }.reduce(Int128(0)) { $0 + Int128($1.amountMinor) }
 			let target = initialBalance(balance, of: a, rows: before.map { changed[$0.id] ?? $0 } + (added[old.id] ?? [])) - deletedAfter
-			a.initialBalanceMinor = Int64(clampingSum: old.bankBalanceMinor.map {
+			a.initialBalanceMinor = try limited(old.bankBalanceMinor.map {
 				Int128(old.initialBalanceMinor) + target - (initialBalance($0, of: old, rows: before) - deletedBefore)
-			} ?? target)
+			} ?? target, of: old)
 			if let k {
 				plan.updatedAccounts[k] = a
 			} else if a != old {
@@ -315,8 +322,7 @@ public struct MoneyMoneyMigration: Sendable {
 			if let balance = item["balance"] as? [[Any]], let first = balance.first, first.count >= 2,
 				let amount = first[0] as? Double, let c = first[1] as? String {
 				currency = c
-				guard let money = Money(fitting: Decimal(amount), currency: c) else { throw Failure.tooLarge("The balance of the account \"\(name)\"") }
-				balanceMinor = money.minorUnits
+				balanceMinor = try Self.money(amount, c, "The balance of the account \"\(name)\"").minorUnits
 			}
 			let balanceDate = (item["balanceDate"] as? Date) ?? (item["refreshTimestamp"] as? Date)
 			let color = (item["icon"] as? Data).flatMap(Self.iconColor)
@@ -460,12 +466,13 @@ public struct MoneyMoneyMigration: Sendable {
 	/// Lists the groups whose balance in MoneyMoney differs from the sum of their accounts.
 	/// MoneyMoney leaves closed accounts out of the sum of their group, and the export does not say
 	/// which accounts are closed.
-	static func groupSumNotes(_ raw: [[String: Any]]) -> [String] {
-		func balances(_ item: [String: Any]) -> [String: Decimal] {
+	static func groupSumNotes(_ raw: [[String: Any]]) throws -> [String] {
+		func balances(_ item: [String: Any]) throws -> [String: Decimal] {
 			var r: [String: Decimal] = [:]
+			let what = "The balance of the \((item["group"] as? Bool) == true ? "group" : "account") \"\(item["name"] as? String ?? "")\""
 			for case let entry as [Any] in (item["balance"] as? [Any]) ?? [] where entry.count >= 2 {
 				if let amount = entry[0] as? Double, let currency = entry[1] as? String {
-					r[currency, default: 0] += Money(Decimal(amount), currency: currency).decimal
+					r[currency, default: 0] += try money(amount, currency, what).decimal
 				}
 			}
 			return r
@@ -477,15 +484,23 @@ public struct MoneyMoneyMigration: Sendable {
 			for child in raw[(i + 1)...] {
 				if ((child["indentation"] as? Int) ?? 0) <= indentation { break }
 				if (child["group"] as? Bool) == true { continue }
-				for (c, v) in balances(child) { sum[c, default: 0] += v }
+				for (c, v) in try balances(child) { sum[c, default: 0] += v }
 			}
-			let shown = balances(item)
+			let shown = try balances(item)
 			let currencies = Set(shown.keys).union(sum.keys)
 			if currencies.contains(where: { shown[$0, default: 0] != sum[$0, default: 0] }) {
 				notes.append("The group \"\(item["name"] as? String ?? "")\" has a different balance in MoneyMoney than the sum of its accounts. MoneyMoney leaves closed accounts out of the sum, and its export does not say which accounts are closed. Turn on \"The account has been closed\" in the settings of each closed account of this group.")
 			}
 		}
 		return notes
+	}
+
+	/// An amount of the export, named by `what` in the error, such as "The amount of transaction 4711". A number that is
+	/// not finite fails before its conversion, because `Decimal(Double.infinity)` stops the app.
+	static func money(_ value: Double, _ currency: String, _ what: String) throws -> Money {
+		guard value.isFinite else { throw Failure.unreadableAmount(what) }
+		guard let money = Money(fitting: Decimal(value), currency: currency) else { throw Failure.tooLarge(what) }
+		return money
 	}
 
 	static func isIBAN(_ value: String) -> Bool {

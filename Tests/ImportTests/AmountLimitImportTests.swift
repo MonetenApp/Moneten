@@ -80,3 +80,48 @@ extension MoneyMoneyMigrationTests {
 		#expect(try failure() == nil)
 	}
 }
+
+extension MoneyMoneyMigrationTests {
+	/// `Decimal(Double.infinity)` traps, so a number that is not finite must fail before the conversion (issue #324).
+	@Test("A transaction amount that is not a finite number fails the migration and names the transaction", arguments: [Double.infinity, -Double.infinity, Double.nan])
+	func transactionAmountNotFinite(amount: Double) throws {
+		let row: [String: Any] = ["id": 4711, "accountUuid": "A1", "bookingDate": date(2026, 11, 2), "amount": amount, "currency": "EUR",
+			"name": "Musterfirma GmbH", "purpose": "", "booked": true]
+		let rows = (transactions["transactions"] as! [Any]) + [row]
+		#expect(try failure(transactions: ["creator": "MoneyMoney", "transactions": rows]) == "The amount of transaction 4711 cannot be read.")
+	}
+
+	@Test("An account balance that is not a finite number fails the migration and names the account", arguments: [Double.infinity, Double.nan])
+	func accountBalanceNotFinite(balance: Double) throws {
+		var source = accounts
+		source[2]["balance"] = [[balance, "EUR"]]
+		#expect(try failure(accounts: source) == "The balance of the account \"Savings\" cannot be read.")
+	}
+
+	@Test("A group balance that is not a finite number fails the migration and names the group", arguments: [Double.infinity, Double.nan])
+	func groupBalanceNotFinite(balance: Double) throws {
+		var source = accounts
+		source[0]["balance"] = [[balance, "EUR"]]
+		#expect(try failure(accounts: source) == "The balance of the group \"Private\" cannot be read.")
+	}
+
+	/// Two rows at the limit of one amount and a balance of 0 give an initial balance beyond it, which the app never clamps.
+	@Test("An initial balance beyond the limit fails the migration and names the account, in the first run and in a later one")
+	func derivedInitialBalanceBeyondTheLimit() throws {
+		let large: [[String: Any]] = [4711, 4712].map { id in
+			["id": id, "accountUuid": "A1", "bookingDate": date(2026, 11, 2), "amount": 1e13, "currency": "EUR", "name": "Musterfirma GmbH", "purpose": "", "booked": true]
+		}
+		var source = accounts
+		source[1]["balance"] = [[0.0, "EUR"]]
+		let rows = (transactions["transactions"] as! [[String: Any]]) + large
+		#expect(try failure(accounts: source, transactions: ["creator": "MoneyMoney", "transactions": rows]) == "The initial balance of the account \"Giro\" is too large.")
+		let first = try plan()
+		let ledger = Ledger(groups: first.groups, accounts: first.accounts, categories: first.categories, transactions: first.transactions)
+		#expect(throws: MoneyMoneyMigration.Failure.self) { try secondPlan(into: ledger, balance: 0, rows: rows) }
+		do {
+			_ = try secondPlan(into: ledger, balance: 0, rows: rows)
+		} catch {
+			#expect("\(error)" == "The initial balance of the account \"Giro\" is too large.")
+		}
+	}
+}

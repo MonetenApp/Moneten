@@ -158,6 +158,8 @@ struct AccountSettingsSheet: View {
 
 	var body: some View {
 		if let original = model.ledger.account(accountID) {
+			// An initial balance above the limit, which an older version may have stored, keeps OK disabled even when the
+			// user changes another field: saving would store the text of the field, and that amount must not pass again.
 			SheetFrame(title: "Settings for \(original.name)", canConfirm: initialBalance.isEmpty || typedInitialBalance(in: original.currency) != nil, width: 500, onConfirm: {
 				guard var edited = account, let opened, var a = model.ledger.account(accountID) else { return true }
 				if let typed = typedInitialBalance(in: a.currency) { edited.initialBalanceMinor = typed.minorUnits }
@@ -252,11 +254,16 @@ struct CalibrationSheet: View {
 		AmountParser.decimal(from: balance).flatMap { Money(fitting: $0, currency: currency) }
 	}
 
+	/// The initial balance that the typed balance gives, nil while there is none or it is above `Money.maxMinorUnits`.
+	private func calibrated(_ account: Account) -> Int64? {
+		typedBalance(in: account.currency).flatMap { model.ledger.calibratedInitialBalance(of: account, balanceToday: $0.minorUnits, today: .today()) }
+	}
+
 	var body: some View {
 		if let account = model.ledger.account(accountID) {
-			SheetFrame(title: "Calibrate \(account.name)", canConfirm: typedBalance(in: account.currency) != nil, onConfirm: {
-				guard var a = model.ledger.account(accountID), let typed = typedBalance(in: a.currency) else { return true }
-				a.initialBalanceMinor = model.ledger.calibratedInitialBalance(of: a, balanceToday: typed.minorUnits, today: .today())
+			SheetFrame(title: "Calibrate \(account.name)", canConfirm: calibrated(account) != nil, onConfirm: {
+				guard var a = model.ledger.account(accountID), let value = calibrated(a) else { return true }
+				a.initialBalanceMinor = value
 				a.initialBalanceIsSet = true
 				model.save(account: a)
 				return true
@@ -270,6 +277,12 @@ struct CalibrationSheet: View {
 							.marksUnreadableAmount(balance)
 							.multilineTextAlignment(.trailing)
 							.monospacedDigit()
+					}
+					// The transactions add up to so much that no initial balance within the limit meets the typed balance.
+					if typedBalance(in: account.currency) != nil, calibrated(account) == nil {
+						Text(InitialBalanceTooLarge(accountName: account.name).description)
+							.foregroundStyle(Palette.red)
+							.fixedSize(horizontal: false, vertical: true)
 					}
 				}
 			}
@@ -343,6 +356,8 @@ struct TransactionSheet: View {
 	/// (add-transaction-list, task 1.16).
 	private var editable: Bool { transactionID.map(model.ledger.editsFields) ?? (account?.isOffline == true) }
 	/// The typed amount with the sign of the type, nil while it cannot be read or does not fit.
+	/// A stored amount above the limit, which an older version may have stored, keeps OK disabled even when the user
+	/// changes another field: saving writes the amount of the field, and that amount must not pass again.
 	private var amountMinor: Int64? {
 		guard let currency = existing?.currency ?? account?.currency, let value = AmountParser.decimal(from: amount) else { return nil }
 		return Money(fitting: isDeposit ? abs(value) : -abs(value), currency: currency)?.minorUnits

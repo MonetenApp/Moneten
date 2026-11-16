@@ -109,17 +109,17 @@ enum ResultMapping {
 			guard case let .array(securities)? = fields["securities"] else {
 				throw MappingError("The securities could not be fetched.")
 			}
-			var total = Money(minorUnits: 0, currency: account.currency)
+			// The values add up exactly, and only their total must fit, so their order does not matter.
+			var total: Int128 = 0
 			for (index, security) in securities.enumerated() {
 				guard case let .object(item) = security, let amount = item["amount"].flatMap(\.decimal) else {
 					throw MappingError("Security \(index + 1) has no amount.")
 				}
 				let value = try money(amount, account.currency, "The value of security \(index + 1)")
-				let (sum, overflow) = total.minorUnits.addingReportingOverflow(value.minorUnits)
-				guard !overflow, abs(sum) <= Money.maxMinorUnits else { throw MappingError("The securities add up to more than Moneten can hold.") }
-				total.minorUnits = sum
+				total += Int128(value.minorUnits)
 			}
-			return RefreshResult(balance: total, transactions: nil)
+			guard let minor = Int64(limitedAmount: total) else { throw MappingError("The securities add up to more than Moneten can hold.") }
+			return RefreshResult(balance: Money(minorUnits: minor, currency: account.currency), transactions: nil)
 		}
 		guard let balance = try self.balance(fields, currency: account.currency) else { throw MappingError("The balance could not be fetched.") }
 		guard case let .array(rows)? = fields["transactions"] else { throw MappingError("The transactions could not be fetched.") }

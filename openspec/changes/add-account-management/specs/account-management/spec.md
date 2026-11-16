@@ -206,6 +206,13 @@ The app SHALL keep an "Initial balance" for each account. The first refresh that
 - **WHEN** the user enters 10.000.000.000.000,01 under "Initial balance"
 - **THEN** "OK" stays disabled and the initial balance stays as it was
 
+#### Scenario: Derived initial balance beyond the limit
+
+- **GIVEN** the bank reports a balance of 0,00 € and the first refresh brings two booked transactions of 10.000.000.000.000,00 €
+- **WHEN** the first refresh ends
+- **THEN** the account shows that the fetched transactions could not be saved, because the initial balance of the account is too large
+- **AND** the account keeps its initial balance and its transactions as they were
+
 ### Requirement: Mark an account as closed
 
 The app SHALL offer the option "The account has been closed" in the account settings. A closed account keeps its transactions, is left out of every refresh, and is left out of the dashboard and of the sum of its group. The sidebar still lists it, without its balance.

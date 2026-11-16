@@ -7,9 +7,9 @@ public struct BalancePoint: Hashable, Sendable, Identifiable {
 }
 
 /// The exact balance at the end of a day, before it holds at the bounds of `Int64`.
-public struct DayBalance: Hashable, Sendable {
-	public let day: Day
-	public let balance: Int128
+struct DayBalance: Hashable, Sendable {
+	let day: Day
+	let balance: Int128
 }
 
 /// One bar of the balance chart: the average end-of-day balance from `start` up to `end`, which is
@@ -30,8 +30,8 @@ public struct BalanceBar: Hashable, Sendable, Identifiable {
 public struct PeriodSum: Hashable, Sendable, Identifiable {
 	public var start: Day
 	/// The exact sums of the deposits and the withdrawals, so that the total adds them before it holds at the bounds of `Int64`.
-	public var deposits: Int128
-	public var withdrawals: Int128
+	var deposits: Int128
+	var withdrawals: Int128
 	public var id: Int { start.rawValue }
 	public var total: Int64 { Int64(clampingSum: deposits + withdrawals) }
 
@@ -82,7 +82,7 @@ extension Ledger {
 	///
 	/// The balances add up exactly in Int128, so that rows that cancel out give the same balance in every order, and a
 	/// monthly average adds the exact balances of its days. A bar or a point holds at the bounds of `Int64` only when shown.
-	public func dailyBalances(accountIDs: Set<UUID>) -> [DayBalance] {
+	func dailyBalances(accountIDs: Set<UUID>) -> [DayBalance] {
 		let portfolios = Set(accountIDs.filter { account($0)?.kind == .portfolio })
 		let others = Dictionary(uniqueKeysWithValues: accountIDs.subtracting(portfolios).compactMap { account($0) }.map { ($0.id, $0) })
 		var balance = initialBalance(of: accountIDs)

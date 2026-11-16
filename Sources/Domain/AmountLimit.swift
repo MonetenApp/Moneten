@@ -17,3 +17,24 @@ extension Int64 {
 		self = sum > Int128(Int64.max) ? .max : sum < -Int128(Int64.max) ? -.max : Int64(sum)
 	}
 }
+
+extension Int64 {
+	/// An exact amount that the app stores, such as an initial balance that follows from a balance less the sum of rows.
+	/// Nil above `Money.maxMinorUnits`, because a stored value must never be clamped.
+	public init?(limitedAmount amount: Int128) {
+		guard amount.magnitude <= UInt128(Money.maxMinorUnits) else { return nil }
+		self = Int64(amount)
+	}
+}
+
+/// An initial balance that follows from a balance less the sum of the rows of an account and is above
+/// `Money.maxMinorUnits`. The app refuses it and keeps the initial balance it has, instead of storing a clamped value.
+public struct InitialBalanceTooLarge: Error, Equatable, Sendable, CustomStringConvertible {
+	public let accountName: String
+
+	public init(accountName: String) {
+		self.accountName = accountName
+	}
+
+	public var description: String { "The initial balance of the account \"\(accountName)\" is too large." }
+}

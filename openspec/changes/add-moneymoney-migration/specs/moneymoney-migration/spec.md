@@ -303,12 +303,25 @@ The app SHALL create every transaction of the source with its booking date, valu
 
 ### Requirement: Amount limit of the source
 
-The app SHALL refuse a migration when a transaction or an account balance of the source has an amount of more than 1,000,000,000,000,000 in the smallest unit of its currency, which is 10.000.000.000.000,00 € for the euro. The app names the transaction or the account and stores nothing.
+The app SHALL refuse a migration when a transaction, an account balance, or a group balance of the source has an amount that is not a finite number or is more than 1,000,000,000,000,000 in the smallest unit of its currency, which is 10.000.000.000.000,00 € for the euro. The app also refuses it when the initial balance of an account would be more. The app names the transaction, the account, or the group and stores nothing.
 
 #### Scenario: Absurd amount in the source
 
 - **WHEN** the transaction 4711 of the source has an amount of 50.000.000.000.000.000,00 €
 - **THEN** the assistant says that the amount of transaction 4711 is too large
+- **AND** no account, category, or transaction of this run is stored
+
+#### Scenario: Amount that is not a number
+
+- **WHEN** the balance of the account "Savings" in the source is infinite
+- **THEN** the assistant says that the balance of the account "Savings" cannot be read
+- **AND** no account, category, or transaction of this run is stored
+
+#### Scenario: Initial balance beyond the limit
+
+- **GIVEN** the account "Giro" has a balance of 0,00 € in the source and two transactions of 10.000.000.000.000,00 €
+- **WHEN** the migration runs
+- **THEN** the assistant says that the initial balance of the account "Giro" is too large
 - **AND** no account, category, or transaction of this run is stored
 
 ### Requirement: Category, comment, and checkmark of each transaction
