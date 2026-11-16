@@ -30,9 +30,10 @@ public struct ChallengeRequest: Identifiable, Equatable, Sendable {
 ///
 /// A PIN request that carries the rejection of the bank is never answered from memory. The broker
 /// forgets the PIN, deletes the saved one, and shows the sheet again, or fails an automatic refresh with
-/// `SyncFailure.pinRejected`. So a connector must set `PINRequest.rejected` on every PIN request that
-/// follows a rejection, or else throw `SyncFailure.pinRejected` itself. A plain PIN request is answered
-/// from memory, which would send the wrong PIN again.
+/// `SyncFailure.pinRejected`, whose answer the next PIN sheet of the access shows. So a connector must
+/// set `PINRequest.rejected` on every PIN request that follows a rejection, or else throw
+/// `SyncFailure.pinRejected` itself. A plain PIN request is answered from memory, which would send the
+/// wrong PIN again.
 ///
 /// After the user chose a TAN method or a TAN medium, the dialog of the access stays open as
 /// `requesting` with what the app requests from the bank, until the next request of that access or
@@ -69,6 +70,9 @@ public final class SessionBroker {
 	private var undeleted: Set<UUID> {
 		didSet { defaults?.set(undeleted.map(\.uuidString).sorted(), forKey: undeletedKey) }
 	}
+	/// The answer of the bank to the PIN of a refresh that failed with `SyncFailure.pinRejected`, such as the
+	/// warning of a block to come, until the PIN sheet of a later refresh of the access shows it.
+	private var rejections: [UUID: BankMessage] = [:]
 	/// The login data of extension accesses. It lives only in memory, like a PIN that is not saved.
 	private var loginData: [UUID: [Secret]] = [:]
 
@@ -107,6 +111,10 @@ public final class SessionBroker {
 		}
 		guard attended else { throw SyncFailure.needsUser(request.kind) }
 		try Task.checkCancellation()
+		var request = request
+		if case let .pin(pinRequest) = request, pinRequest.rejected == nil, let rejected = rejections.removeValue(forKey: access.id) {
+			request = .pin(PINRequest(secretName: pinRequest.secretName, rejected: rejected, rules: pinRequest.rules))
+		}
 		let prompt = Prompt(id: UUID(), access: access, accountNames: accountNames, request: request)
 		let answer = try await withTaskCancellationHandler {
 			try await withCheckedThrowingContinuation { continuation in
@@ -220,6 +228,7 @@ public final class SessionBroker {
 	/// database deletes a saved PIN together with its access.
 	public func forgetPIN(of access: UUID) {
 		pins[access] = nil
+		rejections[access] = nil
 		loginData[access] = nil
 		toSave.remove(access)
 		savedPINs.remove(access)
@@ -230,16 +239,19 @@ public final class SessionBroker {
 	/// PIN, so a PIN that the user asked to save goes into the database now. After any other end, a PIN
 	/// that is not saved is forgotten, so a typing error is never sent again on its own. A saved PIN
 	/// stays. A rejection or a block reaches `forgetRejectedPIN(of:)` before, from the session or from
-	/// the coordinator, whatever the end of the refresh.
+	/// the coordinator, whatever the end of the refresh. The answer of the bank to a rejected PIN waits for
+	/// the next PIN sheet of the access, so that the user sees it, also when an automatic refresh got it.
 	func refreshEnded(_ access: UUID, with event: SyncEvent) {
 		endRequest(of: access)
 		chosenMethods[access] = nil
 		let save = toSave.remove(access) != nil
 		switch event {
 		case .finish:
+			rejections[access] = nil
 			guard save, let pin = pins[access] else { return }
 			do { try writeSavedPIN(pin, of: access) } catch { onStoreFailure(SavedPINFailure(kind: .notSaved, access: access, reason: String(describing: error))) }
 		default:
+			if case let .fail(.pinRejected(message)) = event { rejections[access] = message }
 			if !savedPINs.contains(access) { pins[access] = nil }
 			loginData[access] = nil
 		}

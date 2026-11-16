@@ -190,9 +190,9 @@ struct Ask: Decodable {
 /// access, 3938 an access that is blocked until the PIN block is lifted, 9941 and 9948 an invalid
 /// TAN, and 9943 a TAN that was used before. 9931 means "Sperrung des Kontos nach Fehlversuchen", a block, but
 /// Sparkassen send it also for a wrong login name or PIN, "Anmeldename oder PIN ist falsch". So 9931 counts as a
-/// wrong PIN only when its text says that something is wrong ("falsch" or "ungültig") and names no block ("sperr",
-/// as in "gesperrt" or "Sperrung"), and as a block otherwise. A text that only warns of a block also counts as a
-/// block, so the app sends no further PIN that could cause one.
+/// block only when its text reports a block that happened (`reportsBlock`), and as a wrong PIN otherwise. A text that
+/// only warns of a block to come is a wrong PIN: the app forgets the PIN and sends it never again on its own, and the
+/// next PIN sheet shows the warning.
 /// 3931 names a blocked PIN or a TAN generator that needs a synchronization, so it keeps the text of the bank.
 /// 9951, a two-step dialog that timed out, and 9955, "Ein-Schritt-TAN-Verfahren nicht zugelassen", mean a
 /// declined approval or a missing TAN method only with the evidence of the helper, which then sends the kind.
@@ -203,12 +203,38 @@ struct HelperError: Decodable, Equatable {
 
 	var message: BankMessage { BankMessage(code: code, text: text) }
 
-	/// The text of a 9931 says that the login name or the PIN is wrong, as that of Sparkassen does, and names no
-	/// block, as "Zugang wegen ungültiger PIN gesperrt" and "Sperrung des Kontos wegen ungültiger PIN" do.
-	static func saysWrong(_ text: String) -> Bool {
-		let lowered = text.lowercased()
-		return (lowered.contains("falsch") || lowered.contains("ungültig")) && !lowered.contains("sperr")
+	/// Whether the text of a 9931 reports a block that happened. The text is read clause by clause, split at
+	/// punctuation and at a dash between words. A clause reports a block when it names one, as "gesperrt",
+	/// "Teilnehmersperre", "Sperrung", or "blockiert" do, and neither denies it ("nicht", "kein") nor warns of it
+	/// ("Weitere Fehlversuche führen zur Sperrung", "wird gesperrt"). A text without such a clause is a wrong PIN
+	/// when it says that something is wrong ("falsch", "ungültig") or warns of a block, and a block otherwise,
+	/// because 9931 means "Sperrung des Kontos nach Fehlversuchen".
+	static func reportsBlock(_ text: String) -> Bool {
+		let clauses = text.lowercased().components(separatedBy: CharacterSet(charactersIn: ".,;:!?\n"))
+			.flatMap { $0.components(separatedBy: " - ") }
+		var wrongOrWarned = false
+		for clause in clauses {
+			let words = clause.components(separatedBy: CharacterSet.letters.inverted).filter { !$0.isEmpty }
+			let named = words.contains(where: namesBlock)
+			let warns = words.contains(where: blockWarnings.contains)
+			if named, !warns, !words.contains(where: denials.contains) { return true }
+			if named && warns || words.contains(where: { $0.hasPrefix("falsch") || $0.hasPrefix("ungültig") }) { wrongOrWarned = true }
+		}
+		return !wrongOrWarned
 	}
+
+	/// A word that names a block, but not an unblock such as "Entsperren".
+	private static func namesBlock(_ word: String) -> Bool {
+		!word.hasPrefix("ent") && (word.contains("gesperrt") || word.hasSuffix("sperre") || word.hasSuffix("sperrung") || word.hasPrefix("blockiert"))
+	}
+
+	/// The words with which a clause denies a block.
+	private static let denials: Set<String> = ["nicht", "kein", "keine", "keiner", "keinen"]
+
+	/// The words with which a clause warns of a block to come.
+	private static let blockWarnings: Set<String> = [
+		"weitere", "weiteren", "weiterer", "führen", "führt", "droht", "drohen", "bevor", "wird", "werden", "nächsten", "nächste",
+	]
 
 	var failure: SyncFailure {
 		switch (kind, code) {
@@ -218,7 +244,7 @@ struct HelperError: Decodable, Equatable {
 		case ("noTANMethod", _): .noTANMethod(message)
 		case ("approvalDeclined", _): .approvalDeclined(message)
 		case (_, "9078"): .notRegistered
-		case (_, "9931"): Self.saysWrong(text) ? .pinRejected(message) : .accessBlocked(message)
+		case (_, "9931"): Self.reportsBlock(text) ? .accessBlocked(message) : .pinRejected(message)
 		case (_, "9942"), (_, "9340"): .pinRejected(message)
 		case (_, "9930"), (_, "9933"), (_, "3938"): .accessBlocked(message)
 		case (_, "9941"), (_, "9943"), (_, "9948"): .tanRejected(message)

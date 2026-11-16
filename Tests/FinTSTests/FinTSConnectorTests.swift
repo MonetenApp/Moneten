@@ -707,6 +707,10 @@ struct FinTSConnectorTests {
 			.accessBlocked(BankMessage(code: "9931", text: "Sperrung des Kontos nach 3 Fehlversuchen"))),
 		(#"{"type":"failed","code":"9931","text":"Zugang wegen ungültiger PIN gesperrt"}"#, .accessBlocked(BankMessage(code: "9931", text: "Zugang wegen ungültiger PIN gesperrt"))),
 		(#"{"type":"failed","code":"9931","text":"Sperrung des Kontos wegen ungültiger PIN"}"#, .accessBlocked(BankMessage(code: "9931", text: "Sperrung des Kontos wegen ungültiger PIN"))),
+		(#"{"type":"failed","code":"9931","text":"PIN falsch. Weitere Fehlversuche führen zur Sperrung."}"#,
+			.pinRejected(BankMessage(code: "9931", text: "PIN falsch. Weitere Fehlversuche führen zur Sperrung."))),
+		(#"{"type":"failed","code":"9931","text":"PIN falsch, Zugang nicht gesperrt"}"#, .pinRejected(BankMessage(code: "9931", text: "PIN falsch, Zugang nicht gesperrt"))),
+		(#"{"type":"failed","code":"9931","text":"PIN ungültig - Zugang ist blockiert"}"#, .accessBlocked(BankMessage(code: "9931", text: "PIN ungültig - Zugang ist blockiert"))),
 		(#"{"type":"failed","code":"9010","text":"Verarbeitung nicht möglich"}"#, .bank(BankMessage(code: "9010", text: "Verarbeitung nicht möglich"))),
 		(#"{"type":"failed","text":"Dialog abgebrochen"}"#, .bank(BankMessage(text: "Dialog abgebrochen"))),
 		(#"{"type":"failed","kind":"network","text":"Connection refused"}"#, .network("Connection refused")),
@@ -736,6 +740,30 @@ struct FinTSConnectorTests {
 		#expect(await failure(of: "read cmd; echo '\(line)'", session: session) as? SyncFailure == expected)
 		// No dialog opens. Only a rejection of the PIN or a block reaches the session, at once.
 		#expect(session.events == (expected.rejectsPIN ? [.rejected(expected)] : []))
+	}
+
+	/// 9931 is a block only when its text reports one that happened. A text that warns of a block to come, or that says
+	/// that the PIN is wrong, is a wrong PIN, and a text that says neither keeps the meaning of the code.
+	@Test("Reads a 9931 as a block only when its text reports a block that happened", arguments: [
+		("Anmeldename oder PIN ist falsch", false),
+		("PIN falsch. Weitere Fehlversuche führen zur Sperrung.", false),
+		("Weitere Fehlversuche führen zur Sperrung", false),
+		("Falsche PIN. Bei 2 weiteren Fehlversuchen wird Ihr Zugang gesperrt.", false),
+		("PIN ungültig. Ihr Zugang wird nach dem nächsten Fehlversuch gesperrt.", false),
+		("PIN falsch, Zugang nicht gesperrt", false),
+		("PIN falsch - kein gesperrter Zugang", false),
+		("Teilnehmersperre durchgeführt, Entsperren nur durch Kreditinstitut", true),
+		("Zugang wegen ungültiger PIN gesperrt", true),
+		("Sperrung des Kontos wegen ungültiger PIN", true),
+		("Sperrung des Kontos nach 3 Fehlversuchen", true),
+		("PIN ungültig - Zugang ist blockiert", true),
+		("PIN falsch. Ihr Zugang wurde gesperrt.", true),
+		("Ihr Zugang ist vorläufig gesperrt - Bitte PIN-Sperre aufheben.", true),
+		("Anmeldung fehlgeschlagen", true),
+		("", true),
+	])
+	func reads9931(text: String, blocked: Bool) {
+		#expect(HelperError.reportsBlock(text) == blocked)
 	}
 
 	/// scripts/fake-fints-helper.sh, which a debug build runs in place of the helper, with the logins of its failures.

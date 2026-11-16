@@ -66,10 +66,12 @@ struct SavedPINTests {
 		await until { !coordinator.isRefreshing }
 		#expect(store.pins.isEmpty)
 
+		// The sheet of the next refresh shows the answer of the bank to the PIN of the last one.
 		_ = refresh([.ask(Self.pin), .ask(Self.rejected), .fetched(Self.giro.accountID)])
-		await until { broker.current?.request == Self.pin }
-		answer(.pin(Secret("11111"), save: true))
 		await until { broker.current?.request == Self.rejected }
+		let first = broker.current?.id
+		answer(.pin(Secret("11111"), save: true))
+		await until { broker.current?.request == Self.rejected && broker.current?.id != first }
 		answer(.pin(Secret("22222"), save: true))
 		await until { !coordinator.isRefreshing }
 		#expect(store.pins == [Self.bank.id: Secret("22222")])
@@ -110,6 +112,32 @@ struct SavedPINTests {
 		#expect(store.pins.isEmpty)
 		#expect(broker.savedPINs.isEmpty)
 
+		_ = refresh([.ask(Self.pin)])
+		await until { broker.current?.request == Self.rejected }
+		broker.cancel(broker.current!.id)
+		await until { !coordinator.isRefreshing }
+	}
+
+	@Test("A 9931 that warns of a block deletes the saved PIN, the automatic refresh sends no PIN, and the PIN sheet the user opens next shows the warning once")
+	func warningOfABlock() async throws {
+		let warning = BankMessage(code: "9931", text: "PIN falsch. Weitere Fehlversuche führen zur Sperrung.")
+		let warned = UserRequest.pin(PINRequest(rejected: warning))
+		try store.savePIN(Secret("12345"), for: Self.bank.id)
+		try broker.open(store)
+		let automatic = refresh([.ask(Self.pin), .ask(warned), .fetched(Self.giro.accountID)], attended: false)
+		await until { !coordinator.isRefreshing }
+		#expect(automatic.answers.all == [.pin(Secret("12345"))])
+		#expect(coordinator.states[Self.bank.id] == .failed(.pinRejected(warning)))
+		#expect(store.pins.isEmpty)
+
+		let again = refresh([.ask(Self.pin), .fetched(Self.giro.accountID)], attended: false)
+		await until { !coordinator.isRefreshing }
+		#expect(again.answers.all.isEmpty)
+
+		_ = refresh([.ask(Self.pin)])
+		await until { broker.current?.request == warned }
+		broker.cancel(broker.current!.id)
+		await until { !coordinator.isRefreshing }
 		_ = refresh([.ask(Self.pin)])
 		await until { broker.current?.request == Self.pin }
 		broker.cancel(broker.current!.id)
