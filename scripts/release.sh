@@ -12,8 +12,8 @@
 #   scripts/release.sh feed <version>       step 5: the update signature of the disk image and the new
 #                                           signed feed dist/release/appcast.xml
 #   scripts/release.sh draft <version>      step 6: the GitHub release as a draft with both files
-#   scripts/release.sh publish <version>    step 7, run by the owner with the update key in the login
-#                                           Keychain: checks the feeds with it, publishes the draft, moves the feed
+#   scripts/release.sh publish <version>    step 7, run by the owner: checks the feeds with the committed
+#                                           update key, publishes the draft, moves the feed
 #                                           of a pre-release to the newest stable release, and updates
 #                                           the text of earlier releases from CHANGELOG.md
 # Signing needs the Developer ID certificate in the Keychain and MONETEN_TEAM_ID. Notarization needs
@@ -42,8 +42,31 @@ public_key() {
 		| openssl pkey -inform DER -pubout -outform DER | tail -c 32 | base64
 }
 
-# The public update key that App/project.yml gives a Release build.
-committed_key() { sed -n 's/^ *MONETEN_UPDATE_PUBLIC_KEY: *//p' App/project.yml | head -1; }
+# The value of the build setting $2 under the path $1 of App/project.yml, such as
+# targets.Moneten.settings.base. It follows the indentation, so the order of the lines does not matter.
+project_setting() {
+	python3 - "$1" "$2" App/project.yml <<-'EOF'
+	import sys
+	path, key, stack = sys.argv[1].split("."), sys.argv[2], []
+	for line in open(sys.argv[3], encoding="utf-8"):
+	    text = line.rstrip()
+	    if not text.strip() or text.lstrip().startswith("#"):
+	        continue
+	    indent = len(text) - len(text.lstrip())
+	    name, _, value = text.strip().partition(":")
+	    while stack and stack[-1][0] >= indent:
+	        stack.pop()
+	    if [s[1] for s in stack] == path and name == key:
+	        print(value.strip())
+	        sys.exit(0)
+	    stack.append((indent, name))
+	sys.exit("App/project.yml has no %s under %s." % (key, sys.argv[1]))
+	EOF
+}
+
+# The public update key that App/project.yml gives a Release build, and the test key of a Debug build.
+committed_key() { project_setting targets.Moneten.settings.base MONETEN_UPDATE_PUBLIC_KEY; }
+debug_key() { project_setting targets.Moneten.settings.configs.Debug MONETEN_UPDATE_PUBLIC_KEY; }
 
 # A release must carry the production update key: not the placeholder, and not the public test key.
 check_production_key() {
@@ -59,9 +82,8 @@ check_feed() { notes check-feed --feed "$1" --public-key "$2"; }
 
 # Writes the current feed to $WORK/current.xml and sets FEED_ARGS. Only an answer of GitHub that
 # no stable release exists makes this the first release, so a network error never starts an empty feed.
-# With the public update key $1, the feed must carry its signature, because a new feed keeps its items
-# and gets a new signature. preflight reads it without a key, because the job package has none: the
-# job draft checks the versions again on the checked feed before it signs anything.
+# The feed must carry the signature of the public update key $1, because a new feed keeps its items
+# and gets a new signature.
 current_feed() {
 	set -- -sS -o /dev/null -w '%{http_code}'
 	[ -z "$GH_TOKEN" ] || set -- "$@" -H "Authorization: Bearer $GH_TOKEN"
@@ -81,7 +103,7 @@ preflight() {
 	notes section "$1" >/dev/null
 	[ "$(git rev-parse --is-shallow-repository)" = false ] || fail "The checkout is shallow, so the build number would be wrong."
 	git merge-base --is-ancestor HEAD origin/main || fail "The tagged commit is not on main."
-	current_feed
+	current_feed "$(committed_key)"
 	notes check-release "$1" --build "$(git rev-list --count HEAD)" $FEED_ARGS
 	echo "Version $1 with build $(git rev-list --count HEAD) can be released."
 }
@@ -188,7 +210,7 @@ feed() {
 	DMG="$OUT/Moneten-$1.dmg"
 	SIGNATURE=$("$SPARKLE/sign_update" --ed-key-file "$MONETEN_UPDATE_KEY_FILE" -p "$DMG")
 	"$SPARKLE/sign_update" --verify --ed-key-file "$MONETEN_UPDATE_KEY_FILE" "$DMG" "$SIGNATURE"
-	if [ "$2" = first ]; then FEED_ARGS=--first-release; else current_feed "$(public_key "$MONETEN_UPDATE_KEY_FILE")"; fi
+	if [ "$2" = first ]; then FEED_ARGS=--first-release; else current_feed "$UPDATE_KEY"; fi
 	notes appcast "$1" --build "$BUILD" --min-macos "$MIN_MACOS" --url "$(dmg_url "$1")" \
 		--length "$(stat -f%z "$DMG")" --signature "$SIGNATURE" $FEED_ARGS --out "$OUT/appcast.xml"
 	"$SPARKLE/sign_update" --ed-key-file "$MONETEN_UPDATE_KEY_FILE" "$OUT/appcast.xml" >/dev/null
@@ -214,9 +236,9 @@ publish() {
 	[ "$(head -1 "$WORK/draft")" = true ] || fail "v$1 is not a draft."
 	grep -qx "Moneten-$1.dmg" "$WORK/draft" && grep -qx appcast.xml "$WORK/draft" || fail "The draft of v$1 lacks its disk image or appcast.xml."
 	gh release download "v$1" --repo "$REPO" -p appcast.xml -D "$WORK/draft-feed"
-	# The owner's Mac holds the update key in the login Keychain (docs/releasing.md). Every copy of the
-	# app refuses a feed that this key did not sign, so no other feed may go out.
-	KEY=$("$(scripts/sparkle-tools.sh)/generate_keys" -p) || fail "No update key in the login Keychain. docs/releasing.md explains it."
+	# Every copy of the app refuses a feed that the committed update key did not sign, so no other feed may go out.
+	KEY=$(committed_key)
+	check_production_key "$KEY"
 	check_feed "$WORK/draft-feed/appcast.xml" "$KEY" || fail "The feed of the draft of v$1 failed its check. Delete the draft and run the release again."
 	current_feed "$KEY"
 	# A release that was published after this draft was made must be in the draft's feed too.
@@ -282,6 +304,17 @@ check_feeds() {
 	echo "The check of a current feed refuses a changed feed, another key, and an http disk image."
 }
 
+# The update keys of App/project.yml: a Debug build trusts the test key of Fixtures/update, and the
+# check of a release refuses that key and the placeholder.
+check_keys() {
+	TEST_KEY=$(public_key "$TEST_KEY_FILE")
+	[ "$(debug_key)" = "$TEST_KEY" ] || fail "The Debug key of App/project.yml is not the public half of $TEST_KEY_FILE."
+	(check_production_key "$TEST_KEY") 2>/dev/null && fail "The check of a release accepts the test key."
+	(check_production_key none) 2>/dev/null && fail "The check of a release accepts the placeholder."
+	[ "$(committed_key)" = none ] || check_production_key "$(committed_key)"
+	echo "The test key is the Debug key, and the check of a release refuses it and the placeholder."
+}
+
 dry_run() {
 	VERSION=${1:-0.0.0-beta.1}
 	cp CHANGELOG.md "$WORK/CHANGELOG.md"
@@ -301,6 +334,7 @@ dry_run() {
 	fi
 	notes check-release "$VERSION" --build "$(git rev-list --count HEAD)" --first-release
 	if [ "$MONETEN_SIGN" = 1 ]; then package "$VERSION" signed dry-run; else package "$VERSION" unsigned; fi
+	check_keys
 	# The test key, so a Debug build can read this feed (Fixtures/update/README.md).
 	MONETEN_UPDATE_KEY_FILE="$TEST_KEY_FILE" feed "$VERSION" first
 	check_feeds "$TEST_KEY_FILE"
