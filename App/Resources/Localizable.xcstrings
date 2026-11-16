@@ -6262,6 +6262,16 @@
         }
       }
     },
+    "Older transactions may be missing. Choose “Refresh Account (enforced)” with the Option key to fetch them." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ältere Umsätze fehlen möglicherweise. Wählen Sie „Konto aktualisieren (erzwungen)“ mit der Wahltaste, um sie abzurufen."
+          }
+        }
+      }
+    },
     "once a day" : {
       "localizations" : {
         "de" : {
