@@ -12,8 +12,10 @@ struct DayEndBalanceTests {
 	@Test("The top row of a day shows the balance at the end of that day, and the other rows of the day show none")
 	func topRowOfTheDay() throws {
 		let rent = Transaction(accountID: giro.id, bookingDate: day(1), amountMinor: -5_000, name: "Stadtwerke")
-		let first = Transaction(accountID: giro.id, bookingDate: day(3), amountMinor: -5_000, name: "Bäckerei")
-		let last = Transaction(accountID: giro.id, bookingDate: day(3), amountMinor: -2_500, name: "Kiosk")
+		// Two rows of one day sort by the time they were stored, so the test sets it: created in the same instant,
+		// they would sort by their random IDs.
+		let first = Transaction(accountID: giro.id, bookingDate: day(3), amountMinor: -5_000, name: "Bäckerei", createdAt: Date(timeIntervalSince1970: 1))
+		let last = Transaction(accountID: giro.id, bookingDate: day(3), amountMinor: -2_500, name: "Kiosk", createdAt: Date(timeIntervalSince1970: 2))
 		let interest = Transaction(accountID: savings.id, bookingDate: day(3), amountMinor: 900, name: "Zinsen")
 		let ledger = Ledger(accounts: [giro, savings], transactions: [rent, first, last, interest])
 		let rows = ledger.rows(in: .account(giro.id)).rows
@@ -24,8 +26,10 @@ struct DayEndBalanceTests {
 
 	@Test("A search that hides rows of a day leaves the balance of the whole day")
 	func hiddenRows() {
-		let first = Transaction(accountID: giro.id, bookingDate: day(3), amountMinor: -5_000, name: "Bäckerei")
-		let last = Transaction(accountID: giro.id, bookingDate: day(3), amountMinor: -2_500, name: "Kiosk")
+		// Two rows of one day sort by the time they were stored, so the test sets it: created in the same instant,
+		// they would sort by their random IDs.
+		let first = Transaction(accountID: giro.id, bookingDate: day(3), amountMinor: -5_000, name: "Bäckerei", createdAt: Date(timeIntervalSince1970: 1))
+		let last = Transaction(accountID: giro.id, bookingDate: day(3), amountMinor: -2_500, name: "Kiosk", createdAt: Date(timeIntervalSince1970: 2))
 		let ledger = Ledger(accounts: [giro], transactions: [first, last])
 		var filter = TransactionFilter()
 		filter.searchText = "Bäckerei"
