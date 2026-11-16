@@ -108,7 +108,7 @@ The app SHALL state, before it saves a backup with "Backup Database...", that th
 
 ### Requirement: A backup opens with the password of its time
 
-The app SHALL write backups that are encrypted with the database password that was valid when the backup was made. That password opens the backup on any Mac.
+The app SHALL write backups that are encrypted with the database password that was valid when the backup was made. That password opens the backup on any Mac. This applies to a backup that the user saves with "Backup Database...". The copies that the app keeps in the "Database" folder follow a change of the password.
 
 #### Scenario: Password changed after the backup
 
@@ -183,6 +183,20 @@ The app SHALL start with a new and empty database when the user has renamed or r
 - **GIVEN** the renamed folder "Database_OLD"
 - **WHEN** the user quits the app, removes the new "Database" folder, renames "Database_OLD" back to "Database", and starts the app
 - **THEN** the old password opens the old data
+
+#### Scenario: Renamed database without a password
+
+- **GIVEN** a database without a password, renamed to "Database_OLD"
+- **WHEN** the user starts the app, sets the password "ein-neues-passwort" for the new database, and unlocks it once
+- **AND** the user quits the app, removes the new "Database" folder, renames "Database_OLD" back to "Database", and starts the app
+- **THEN** the old data opens without a password
+
+#### Scenario: Backup of the renamed database in the new folder
+
+- **GIVEN** a database without a password, renamed to "Database_OLD", and a new database with the password "ein-neues-passwort"
+- **WHEN** the user copies "Moneten-Backup.sqlite" from "Database_OLD" into the new "Database" folder and unlocks the new database
+- **AND** the user later renames "Database_OLD" back to "Database"
+- **THEN** the old data opens without a password
 
 ### Requirement: Take over the data of the old app name
 
