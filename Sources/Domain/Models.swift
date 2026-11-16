@@ -258,8 +258,8 @@ public enum ReviewReason: String, Codable, Sendable {
 
 	public var note: String {
 		switch self {
-		case .unclearBooking: "Several transactions could belong together. Check the rows and delete the ones you don't need."
-		case .splitUndone: "The bank changed the amount; the split was undone."
+		case .unclearBooking: String(localized: "Several transactions could belong together. Check the rows and delete the ones you don't need.")
+		case .splitUndone: String(localized: "The bank changed the amount; the split was undone.")
 		}
 	}
 }

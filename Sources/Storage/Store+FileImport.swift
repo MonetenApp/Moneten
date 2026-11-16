@@ -18,7 +18,7 @@ extension Store {
 			let result = try merge(.file(assigned), into: accountID, now: now, in: db)
 			let unused = categories.unused(taking: Set((result.added + result.booked).compactMap(\.categoryID)))
 			_ = try Domain.Category.deleteAll(db, keys: unused)
-			var problems = categories.unplaced.prefix(10).map { "The category \"\($0)\" was not created, because a level of it is a category and not a group." }
+			var problems = categories.unplaced.prefix(10).map { String(localized: "The category \"\($0)\" was not created, because a level of it is a category and not a group.") }
 			if categories.unplaced.count > 10 { problems.append("and \(categories.unplaced.count - 10) more.") }
 			if categories.limitReached { problems.append(FileCategories.limitMessage) }
 			if isCanceled() { throw CancellationError() }

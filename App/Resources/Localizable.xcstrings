@@ -473,6 +473,16 @@
       },
       "extractionState" : "manual"
     },
+    "%@ used the settings saved as profile \"%@\"." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ hat die Einstellungen des Profils „%2$@“ verwendet."
+          }
+        }
+      }
+    },
     "%@ waits for your input..." : {
       "localizations" : {
         "de" : {
@@ -890,12 +900,12 @@
         }
       }
     },
-    "%lld values were replaced:" : {
+    "%lld warnings:" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%lld Werte wurden ersetzt:"
+            "value" : "%lld Warnungen:"
           }
         }
       }
@@ -1073,6 +1083,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Eine Kopie der Moneten-Datenbank wird gesichert. Sie lässt sich mit dem aktuellen Datenbankpasswort öffnen. Diese Funktion ersetzt keine regelmäßige Sicherung Ihres Macs."
+          }
+        }
+      }
+    },
+    "A credit card is added with the Bankleitzahl of the bank that issued it, or with “Look for New Accounts...” on the giro account at that bank." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eine Kreditkarte fügen Sie mit der Bankleitzahl der Bank hinzu, die sie ausgegeben hat, oder mit „Nach neuen Konten suchen...“ am Girokonto bei dieser Bank."
+          }
+        }
+      }
+    },
+    "A file without a header row cannot be saved as a profile." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eine Datei ohne Kopfzeile kann nicht als Profil gespeichert werden."
           }
         }
       }
@@ -1323,6 +1353,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Kontonummer + 001"
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "Account or IBAN" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kontonummer oder IBAN"
           }
         }
       },
@@ -1764,6 +1805,16 @@
         }
       }
     },
+    "Another bank access in Moneten uses this login already." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein anderer Bankzugang in Moneten verwendet diese Anmeldung bereits."
+          }
+        }
+      }
+    },
     "Another call of this extension session is still running." : {
       "localizations" : {
         "de" : {
@@ -1855,6 +1906,16 @@
         }
       }
     },
+    "Assign a column to %@." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ordnen Sie %@ eine Spalte zu."
+          }
+        }
+      }
+    },
     "Assign Category" : {
       "localizations" : {
         "de" : {
@@ -1874,6 +1935,37 @@
           }
         }
       }
+    },
+    "Assign columns to %@." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ordnen Sie %@ Spalten zu."
+          }
+        }
+      }
+    },
+    "Auto-create categories" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kategorien automatisch anlegen"
+          }
+        }
+      }
+    },
+    "Auto-create categories is limited to 1,000 new categories per file. Remaining unknown categories were left to the rules." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "„Kategorien automatisch anlegen“ legt höchstens 1.000 neue Kategorien pro Datei an. Die übrigen unbekannten Kategorien wurden den Regeln überlassen."
+          }
+        }
+      },
+      "extractionState" : "manual"
     },
     "Automatically refresh accounts" : {
       "localizations" : {
@@ -1986,6 +2078,17 @@
         }
       }
     },
+    "Bank code or BIC" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bankleitzahl oder BIC"
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "Bank details" : {
       "localizations" : {
         "de" : {
@@ -2092,6 +2195,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Buchungsdatum"
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "Booking date" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Buchungsdatum"
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "Booking text" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Buchungstext"
           }
         }
       },
@@ -2388,6 +2513,16 @@
         }
       }
     },
+    "Checking the login data..." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zugangsdaten werden geprüft..."
+          }
+        }
+      }
+    },
     "Checkmark" : {
       "localizations" : {
         "de" : {
@@ -2488,6 +2623,16 @@
         }
       }
     },
+    "Columns" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Spalten"
+          }
+        }
+      }
+    },
     "comdirect expects the Zugangsnummer that you also use for its online banking." : {
       "localizations" : {
         "de" : {
@@ -2498,6 +2643,16 @@
         }
       },
       "extractionState" : "manual"
+    },
+    "Comma" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Komma"
+          }
+        }
+      }
     },
     "Comment" : {
       "localizations" : {
@@ -2600,6 +2755,16 @@
         }
       }
     },
+    "Copy Report" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bericht kopieren"
+          }
+        }
+      }
+    },
     "Could not add the accounts. %@" : {
       "localizations" : {
         "de" : {
@@ -2626,6 +2791,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Das Passwort der Datenbank konnte nicht geändert werden. %@"
+          }
+        }
+      }
+    },
+    "Could not copy the report. Try again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Bericht konnte nicht kopiert werden. Versuchen Sie es erneut."
           }
         }
       }
@@ -2701,6 +2876,26 @@
       },
       "extractionState" : "manual"
     },
+    "Could not open GitHub. You can copy the report instead." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GitHub konnte nicht geöffnet werden. Sie können den Bericht stattdessen kopieren."
+          }
+        }
+      }
+    },
+    "Could not read the saved crash report." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der gespeicherte Absturzbericht konnte nicht gelesen werden."
+          }
+        }
+      }
+    },
     "Could not refresh %@." : {
       "localizations" : {
         "de" : {
@@ -2752,6 +2947,16 @@
       },
       "extractionState" : "manual"
     },
+    "Could not remove the saved crash report. Try again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der gespeicherte Absturzbericht konnte nicht entfernt werden. Versuchen Sie es erneut."
+          }
+        }
+      }
+    },
     "Could not remove the saved PIN." : {
       "localizations" : {
         "de" : {
@@ -2802,6 +3007,26 @@
         }
       }
     },
+    "Could not save the crash report on this Mac." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Absturzbericht konnte auf diesem Mac nicht gespeichert werden."
+          }
+        }
+      }
+    },
+    "Could not save the login data. %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Zugangsdaten konnten nicht gespeichert werden. %@"
+          }
+        }
+      }
+    },
     "Could not save the PIN." : {
       "localizations" : {
         "de" : {
@@ -2832,6 +3057,16 @@
         }
       }
     },
+    "Could not split the transaction." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Umsatz konnte nicht aufgeteilt werden."
+          }
+        }
+      }
+    },
     "Create offline account" : {
       "localizations" : {
         "de" : {
@@ -2841,6 +3076,37 @@
           }
         }
       }
+    },
+    "Created %lld new categories." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld neue Kategorien angelegt."
+          }
+        }
+      }
+    },
+    "Created one new category." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eine neue Kategorie angelegt."
+          }
+        }
+      }
+    },
+    "Credit" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Haben"
+          }
+        }
+      },
+      "extractionState" : "manual"
     },
     "Credit card" : {
       "localizations" : {
@@ -3017,6 +3283,59 @@
         }
       }
     },
+    "Date format" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Datumsformat"
+          }
+        }
+      }
+    },
+    "Day, month, year" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tag, Monat, Jahr"
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "Debit" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Soll"
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "Debit or credit mark" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Soll-/Haben-Kennzeichen"
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "Decimal separator" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dezimaltrennzeichen"
+          }
+        }
+      }
+    },
     "Delete" : {
       "localizations" : {
         "de" : {
@@ -3033,6 +3352,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%lld ausgewählte Umsätze löschen?"
+          }
+        }
+      }
+    },
+    "Delete Profile" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Profil löschen"
           }
         }
       }
@@ -3113,6 +3442,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Details"
+          }
+        }
+      }
+    },
+    "Detect" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erkennen"
           }
         }
       }
@@ -3219,6 +3558,16 @@
         }
       }
     },
+    "Don't Report" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nicht melden"
+          }
+        }
+      }
+    },
     "Done" : {
       "localizations" : {
         "de" : {
@@ -3255,6 +3604,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Kommentar bearbeiten..."
+          }
+        }
+      }
+    },
+    "Edit Login Data" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zugangsdaten bearbeiten"
+          }
+        }
+      }
+    },
+    "Edit Login Data..." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zugangsdaten bearbeiten..."
           }
         }
       }
@@ -3305,6 +3674,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Strom"
+          }
+        }
+      }
+    },
+    "Encoding" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zeichenkodierung"
           }
         }
       }
@@ -3380,12 +3759,32 @@
       },
       "extractionState" : "manual"
     },
+    "Enter the name of your bank, your IBAN, or the Bankleitzahl, which is digits 5 to 12 of the IBAN." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Geben Sie den Namen Ihrer Bank, Ihre IBAN oder die Bankleitzahl ein, also die Stellen 5 bis 12 der IBAN."
+          }
+        }
+      }
+    },
     "Euro" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Euro"
+          }
+        }
+      }
+    },
+    "Every date fits both orders. Check that the dates below are right." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jedes Datum passt zu beiden Reihenfolgen. Prüfen Sie, ob die Daten unten stimmen."
           }
         }
       }
@@ -4000,6 +4399,16 @@
         }
       }
     },
+    "If the bank asks to set up the access again, for example after a new TAN method or an aborted authentication, choose “Edit Login Data...” and confirm the login data." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wenn die Bank verlangt, den Zugang neu einzurichten, etwa nach einem neuen TAN-Verfahren oder einer abgebrochenen Authentifizierung, wählen Sie „Zugangsdaten bearbeiten...“ und bestätigen Sie die Zugangsdaten."
+          }
+        }
+      }
+    },
     "Import" : {
       "localizations" : {
         "de" : {
@@ -4036,6 +4445,46 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Alle Daten importieren..."
+          }
+        }
+      }
+    },
+    "Import canceled. %lld files were imported before." : {
+      "localizations" : {
+        "de" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Import abgebrochen. %lld Datei wurde vorher importiert."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Import abgebrochen. %lld Dateien wurden vorher importiert."
+                }
+              }
+            }
+          }
+        },
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Import canceled. %lld file was imported before."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Import canceled. %lld files were imported before."
+                }
+              }
+            }
           }
         }
       }
@@ -4415,6 +4864,17 @@
       },
       "extractionState" : "manual"
     },
+    "Line %lld: The row was skipped while locating the CSV transactions. Check the header row." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zeile %lld: Die Zeile wurde bei der Suche nach den CSV-Umsätzen übersprungen. Prüfen Sie die Kopfzeile."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "Line %lld: The value date %@ cannot be read. The transaction has no value date." : {
       "localizations" : {
         "de" : {
@@ -4570,6 +5030,36 @@
         }
       },
       "extractionState" : "manual"
+    },
+    "Look for New Accounts" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nach neuen Konten suchen"
+          }
+        }
+      }
+    },
+    "Look for New Accounts..." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nach neuen Konten suchen..."
+          }
+        }
+      }
+    },
+    "Looking for new Accounts..." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neue Konten werden gesucht..."
+          }
+        }
+      }
     },
     "Looking up the bank..." : {
       "localizations" : {
@@ -4875,6 +5365,26 @@
         }
       }
     },
+    "Moneten quit unexpectedly" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Moneten wurde unerwartet beendet"
+          }
+        }
+      }
+    },
+    "Moneten quit unexpectedly recently. You can report the crash as an issue on GitHub. The report holds no account data. Read it before you send it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Moneten wurde vor Kurzem unerwartet beendet. Sie können den Absturz als Issue auf GitHub melden. Der Bericht enthält keine Kontodaten. Lesen Sie ihn, bevor Sie ihn senden."
+          }
+        }
+      }
+    },
     "Moneten reads your account groups, accounts, categories with their rules, and transactions through the AppleScript export of MoneyMoney. MoneyMoney stays unchanged." : {
       "localizations" : {
         "de" : {
@@ -5039,6 +5549,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "MoneyMoney: %@."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "Month, day, year" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Monat, Tag, Jahr"
           }
         }
       },
@@ -5308,6 +5829,16 @@
         }
       }
     },
+    "No column is assigned to %@." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ ist keine Spalte zugeordnet."
+          }
+        }
+      }
+    },
     "No column with a date and no column with an amount was found. The columns should be headed with common keywords like Date, Amount, Name, and Purpose." : {
       "localizations" : {
         "de" : {
@@ -5531,6 +6062,16 @@
         }
       }
     },
+    "Not imported" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nicht importieren"
+          }
+        }
+      }
+    },
     "Not installable, because its manifest is incomplete. %@" : {
       "localizations" : {
         "de" : {
@@ -5673,12 +6214,22 @@
       },
       "extractionState" : "manual"
     },
-    "One value was replaced:" : {
+    "One transaction" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ein Wert wurde ersetzt:"
+            "value" : "Ein Umsatz"
+          }
+        }
+      }
+    },
+    "One warning:" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eine Warnung:"
           }
         }
       }
@@ -5967,6 +6518,16 @@
         }
       }
     },
+    "Point" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Punkt"
+          }
+        }
+      }
+    },
     "Portfolio" : {
       "localizations" : {
         "de" : {
@@ -6009,12 +6570,32 @@
         }
       }
     },
+    "Preview" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorschau"
+          }
+        }
+      }
+    },
     "Previous view" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Vorherige Ansicht"
+          }
+        }
+      }
+    },
+    "Profile" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Profil"
           }
         }
       }
@@ -6145,6 +6726,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Datei %1$lld von %2$lld wird gelesen: %3$@..."
+          }
+        }
+      }
+    },
+    "Reading the file..." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Datei wird gelesen..."
           }
         }
       }
@@ -6360,6 +6951,16 @@
       },
       "extractionState" : "manual"
     },
+    "Report on GitHub..." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auf GitHub melden..."
+          }
+        }
+      }
+    },
     "Requesting the challenge of the bank..." : {
       "localizations" : {
         "de" : {
@@ -6476,6 +7077,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@ speichern"
+          }
+        }
+      }
+    },
+    "Save as profile" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Als Profil speichern"
           }
         }
       }
@@ -6662,6 +7273,17 @@
           }
         }
       }
+    },
+    "Set up a TAN method on the website of the bank, then choose “Edit Login Data...”." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Richten Sie auf der Website der Bank ein TAN-Verfahren ein und wählen Sie dann „Zugangsdaten bearbeiten...“."
+          }
+        }
+      },
+      "extractionState" : "manual"
     },
     "Setting up Accounts..." : {
       "localizations" : {
@@ -6893,12 +7515,32 @@
         }
       }
     },
+    "Show the preview also for CSV files with a profile" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorschau auch für CSV-Dateien mit Profil zeigen"
+          }
+        }
+      }
+    },
     "Shows its transactions in the list" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Zeigt seine Umsätze in der Liste"
+          }
+        }
+      }
+    },
+    "Skip File" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Datei überspringen"
           }
         }
       }
@@ -7631,12 +8273,23 @@
         }
       }
     },
-    "The bank blocked the access: %@" : {
+    "The bank blocked the access: %@\nAsk the bank to unblock it." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Die Bank hat den Zugang gesperrt: %@"
+            "value" : "Die Bank hat den Zugang gesperrt: %@\nBitten Sie die Bank, ihn zu entsperren."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The bank changed the amount; the split was undone." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Bank hat den Betrag geändert, die Aufteilung wurde rückgängig gemacht."
           }
         }
       },
@@ -7853,6 +8506,17 @@
           }
         }
       }
+    },
+    "The category \"%@\" was not created, because a level of it is a category and not a group." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Kategorie „%@“ wurde nicht angelegt, weil eine ihrer Ebenen eine Kategorie und keine Gruppe ist."
+          }
+        }
+      },
+      "extractionState" : "manual"
     },
     "The certificate of the bank's server %@ is not valid: %@" : {
       "localizations" : {
@@ -8304,6 +8968,17 @@
         }
       }
     },
+    "The file cannot be read as %@." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Datei kann nicht als %@ gelesen werden."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "The file has format version %lld, and this version of Moneten reads up to version %lld. Install a newer version of Moneten to import it." : {
       "localizations" : {
         "de" : {
@@ -8409,6 +9084,16 @@
         }
       }
     },
+    "The file was skipped." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Datei wurde übersprungen."
+          }
+        }
+      }
+    },
     "The FinTS helper could not start: %@" : {
       "localizations" : {
         "de" : {
@@ -8506,12 +9191,12 @@
       },
       "extractionState" : "manual"
     },
-    "The import of all data works only in an empty database. This database already holds accounts, categories, or transactions." : {
+    "The import of all data works only in an empty database. This database already holds accounts, categories, transactions, or CSV profiles." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Der Import aller Daten funktioniert nur in einer leeren Datenbank. Diese Datenbank enthält bereits Konten, Kategorien oder Umsätze."
+            "value" : "Der Import aller Daten funktioniert nur in einer leeren Datenbank. Diese Datenbank enthält bereits Konten, Kategorien, Umsätze oder CSV-Profile."
           }
         }
       },
@@ -8953,12 +9638,12 @@
         }
       }
     },
-    "The report contains account names and balances." : {
+    "The report contains account names, balances, and account numbers and IBANs from rules." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Der Bericht enthält Kontonamen und Salden."
+            "value" : "Der Bericht enthält Kontonamen, Salden sowie Kontonummern und IBANs aus Regeln."
           }
         }
       }
@@ -9031,6 +9716,50 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Die Regel von „%1$@“ kann an Position %2$lld nicht gelesen werden: %3$@ „%4$@“ erhält über seine Regel keine Umsätze, bis Sie die Regel in den Einstellungen korrigieren."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The rule of \"%@\" has an account term at position %lld that does not search account fields. Use remote_account:%@ to search the account of the counterparty." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Regel von „%1$@“ hat an Position %2$lld einen Kontobegriff, der keine Kontofelder durchsucht. Verwenden Sie remote_account:%3$@, um das Konto der Gegenseite zu durchsuchen."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The rule of \"%@\" reads \"%@\" at position %lld as a constant that matches every transaction. Write \"%@\" in quotation marks to search the word itself." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Regel von „%1$@“ liest „%2$@“ an Position %3$lld als Konstante, die auf jeden Umsatz passt. Schreiben Sie „%4$@“ in Anführungszeichen, um nach dem Wort selbst zu suchen."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The rule of \"%@\" reads \"%@\" at position %lld as a constant that matches no transaction. Write \"%@\" in quotation marks to search the word itself." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Regel von „%1$@“ liest „%2$@“ an Position %3$lld als Konstante, die auf keinen Umsatz passt. Schreiben Sie „%4$@“ in Anführungszeichen, um nach dem Wort selbst zu suchen."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The rule of \"%@\" reads \"%@\" at position %lld as an operator. Write \"%@\" in quotation marks to search the word itself." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Regel von „%1$@“ liest „%2$@“ an Position %3$lld als Operator. Schreiben Sie „%4$@“ in Anführungszeichen, um nach dem Wort selbst zu suchen."
           }
         }
       },
@@ -9256,6 +9985,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Es gibt noch keine Konten"
+          }
+        }
+      }
+    },
+    "There are no available TAN methods." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Es sind keine TAN-Verfahren verfügbar."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "There are no available TAN methods: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Es sind keine TAN-Verfahren verfügbar: %@"
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "There are no new accounts." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Es gibt keine neuen Konten."
           }
         }
       }
