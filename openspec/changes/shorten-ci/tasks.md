@@ -1,7 +1,8 @@
 ## Implementation
 
-- [ ] 1. Route paths on Ubuntu and prove the documentation-only case.
-- [ ] 2. Split checks without sharing measurement load and cache verified dependencies.
-- [ ] 3. Fix compiler warnings and fail new warnings from repository targets.
-- [ ] 4. Shorten timeout proof with existing parameters while retaining production-default proof.
-- [ ] 5. Run local checks, independent reviews, a full CI run, and a docs-only CI run. Report elapsed time and macOS job minutes.
+- [x] 1. Route paths on Ubuntu. `python3 scripts/test-ci.py` proves documentation-only, mixed, Swift, tooling, empty, main, and manual cases.
+- [x] 2. Split checks and cache verified dependencies. The two local UI halves cover all 21 scenarios once. Periphery passes against the reused app index. Every discovered test has one shard.
+- [x] 3. Fix compiler warnings and fail new warnings from repository targets. The warning gate rejects the original diagnostics and passes the repaired owner tests and app builds.
+- [x] 4. Shorten timeout proof with existing parameters. FinTS tests pass with shorter waits, and the unchanged default-grace test still checks five seconds.
+
+Verification requires `scripts/check.sh`, independent autoreview and ponytail reviews, a full CI run, and a docs-only CI run. The PR body records the remote measurements after publication.
