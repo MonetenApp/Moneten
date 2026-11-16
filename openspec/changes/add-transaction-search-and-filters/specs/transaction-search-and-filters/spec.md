@@ -392,13 +392,21 @@ The app SHALL filter the list of an account or an account group with the "Catego
 
 ### Requirement: Account filter in category views
 
-The app SHALL filter the list of a category or a category group with the "Account" menu. The menu lists "Show All" and every account and account group.
+The app SHALL filter the list of a category or a category group with the "Account" menu. The menu lists "Show All" and every account and account group in the order of the sidebar, with the entries of a group indented below it. The entry of an account group includes the accounts of its subgroups.
 
 #### Scenario: One account in one category
 
 - **GIVEN** the category view "Groceries"
 - **WHEN** the user chooses "Credit card" in the "Account" menu
 - **THEN** the list shows the transactions of "Groceries" that belong to "Credit card"
+
+#### Scenario: One account group in one category
+
+- **GIVEN** the group "Private" with the account "Giro" and the subgroup "Cards" with the account "Credit card"
+- **AND** the account "Savings" outside "Private"
+- **WHEN** the user chooses "Private" in the "Account" menu of the category view "Groceries"
+- **THEN** the list shows the transactions of "Groceries" that belong to "Giro" or "Credit card"
+- **AND** the menu shows "Private"
 
 ### Requirement: Search and filters combine
 
@@ -452,6 +460,13 @@ The app SHALL let the user save the current search text and filters under a name
 
 - **WHEN** the user removes "Tax payments"
 - **THEN** the entry leaves the sidebar and no transaction changes
+
+#### Scenario: A removed account group
+
+- **GIVEN** the saved search "Tax payments" with the group "Private" in the "Account" menu
+- **WHEN** the user removes the group "Private" and selects "Tax payments"
+- **THEN** the "Account" menu shows "Show All"
+- **AND** the list shows the matching transactions of every account
 
 ### Requirement: The search is fast with a large history
 
