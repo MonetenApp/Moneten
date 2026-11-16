@@ -58,7 +58,7 @@ ditto "$BUILT" "$APP"
 /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $BUNDLE_ID" "$APP/Contents/Info.plist"
 codesign --force --sign - --entitlements App/Moneten.entitlements "$APP" 2>/dev/null
 MONETEN_DATA_DIR="$DATA" MONETEN_DEBUG_DIR="$WORK/debug" MONETEN_FINTS_HELPER="$PWD/scripts/fake-fints-helper.sh" \
-	"$APP/Contents/MacOS/Moneten" -lockAfterInactivity NO -ApplePersistenceIgnoreState YES >"$WORK/app.log" 2>&1 &
+	"$APP/Contents/MacOS/Moneten" -lockAfterInactivity NO -ApplePersistenceIgnoreState YES -AppleLocale de_DE >"$WORK/app.log" 2>&1 &
 PID=$!
 
 cat >"$WORK/Check.lua" <<-'EOF'
@@ -341,7 +341,7 @@ send seed
 sleep 2
 send select Girokonto
 send search Stadtwerke
-poll "^phase=.*visible=13 " state
+poll "^phase=.*visible=[1-9][0-9]* " state
 send sheet split
 poll "^splitui amountLabel=true nextLabel=true nextEnabled=false sheet=split$" splitui
 send type 25,00
