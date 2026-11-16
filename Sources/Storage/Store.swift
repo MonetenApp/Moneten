@@ -46,9 +46,10 @@ public final class Store: SavedPINStore {
 	}
 	public func save(_ category: Domain.Category) throws { try queue.write { db in try category.save(db) } }
 
-	public func save(_ transactions: [Transaction]) throws {
+	public func save(_ transactions: [Transaction], parts: [SplitPart] = []) throws {
 		try queue.write { db in
 			for t in transactions { try t.save(db) }
+			for part in parts { try part.update(db, columns: ["categoryID", "comment"]) }
 		}
 	}
 
@@ -69,9 +70,9 @@ public final class Store: SavedPINStore {
 				try db.execute(sql: """
 					UPDATE deletedTransaction SET sourceID = ? WHERE rowid = (SELECT rowid FROM deletedTransaction WHERE accountID = ?
 						AND sourceID IS ? AND bookingDate = ? AND amountMinor = ? AND currency = ? AND isPending = ? AND purpose = ?
-						AND counterpartyIBAN IS ? AND endToEndReference IS ? AND wasFetched = ? LIMIT 1)
+						AND counterpartyIBAN IS ? AND endToEndReference IS ? AND wasFetched = ? AND fileIdentity IS ? LIMIT 1)
 					""", arguments: [r.sourceID, d.accountID, d.sourceID, d.bookingDate.rawValue, d.amountMinor, d.currency, d.isPending, d.purpose,
-						d.counterpartyIBAN, d.endToEndReference, d.wasFetched])
+						d.counterpartyIBAN, d.endToEndReference, d.wasFetched, d.fileIdentity])
 			}
 		}
 	}
@@ -90,31 +91,38 @@ public final class Store: SavedPINStore {
 	/// transaction, so the result is exactly what was written, and `Ledger.apply` can take it over. An
 	/// account that no longer exists, such as one removed during its refresh, gets nothing.
 	public func merge(_ delivery: Delivery, into accountID: UUID, now: Date = Date()) throws -> Reconciliation {
-		try queue.write { db in
-			guard let account = try Account.fetchOne(db, key: accountID) else { return Reconciliation() }
-			let rules = Categorizer(ledger: Ledger(groups: try AccountGroup.fetchAll(db), accounts: try Account.fetchAll(db),
-				categories: try Domain.Category.fetchAll(db)))
-			let stored = try Transaction.filter(Column("accountID") == accountID).fetchAll(db)
-			let deleted = try DeletedTransaction.filter(Column("accountID") == accountID).fetchAll(db)
-			// Only a refresh with positions reads the stored ones. A file or a migration never touches them.
-			var holdings: [Holding] = []
-			if case let .refresh(result) = delivery, result.holdings != nil {
-				holdings = try HoldingRecord.filter(Column("accountID") == accountID).fetchAll(db).compactMap(\.holding)
-			}
-			let r = reconcile(delivery, into: account, stored: stored, deleted: deleted, holdings: holdings, rules: rules, now: now)
-			for t in r.added { try t.insert(db) }
-			for t in r.booked + r.updated + r.marked { try t.update(db) }
-			_ = try Transaction.deleteAll(db, keys: r.dropped)
-			if let a = r.account {
-				try a.update(db)
-				try a.portfolioValue()?.save(db)
-			}
-			if let h = r.holdings {
-				_ = try HoldingRecord.filter(Column("accountID") == h.accountID).deleteAll(db)
-				for holding in h.holdings { try HoldingRecord(holding).insert(db) }
-			}
-			return r
+		try queue.write { db in try merge(delivery, into: accountID, now: now, in: db) }
+	}
+
+	func merge(_ delivery: Delivery, into accountID: UUID, now: Date, in db: Database) throws -> Reconciliation {
+		guard let account = try Account.fetchOne(db, key: accountID) else { return Reconciliation() }
+		let rules = Categorizer(ledger: Ledger(groups: try AccountGroup.fetchAll(db), accounts: try Account.fetchAll(db),
+			categories: try Domain.Category.fetchAll(db)))
+		let stored = try Transaction.filter(Column("accountID") == accountID).fetchAll(db)
+		let deleted = try DeletedTransaction.filter(Column("accountID") == accountID).fetchAll(db)
+		// Only a refresh with positions reads the stored ones. A file or a migration never touches them.
+		var holdings: [Holding] = []
+		if case let .refresh(result) = delivery, result.holdings != nil {
+			holdings = try HoldingRecord.filter(Column("accountID") == accountID).fetchAll(db).compactMap(\.holding)
 		}
+		let split = Set(try UUID.fetchAll(db, sql: """
+			SELECT DISTINCT splitPart.transactionID FROM splitPart
+			JOIN bankTransaction ON bankTransaction.id = splitPart.transactionID WHERE bankTransaction.accountID = ?
+			""", arguments: [accountID]))
+		let r = reconcile(delivery, into: account, stored: stored, deleted: deleted, holdings: holdings, split: split, rules: rules, now: now)
+		_ = try SplitPart.filter(r.unsplit.contains(Column("transactionID"))).deleteAll(db)
+		for t in r.added { try t.insert(db) }
+		for t in r.booked + r.updated + r.marked { try t.update(db) }
+		_ = try Transaction.deleteAll(db, keys: r.dropped)
+		if let a = r.account {
+			try a.update(db)
+			try a.portfolioValue()?.save(db)
+		}
+		if let h = r.holdings {
+			_ = try HoldingRecord.filter(Column("accountID") == h.accountID).deleteAll(db)
+			for holding in h.holdings { try HoldingRecord(holding).insert(db) }
+		}
+		return r
 	}
 
 	/// The bank accesses. Their states stay in the database until a refresh reads them.
@@ -144,6 +152,21 @@ public final class Store: SavedPINStore {
 			let linked = accounts.map { a -> Account in var a = a; a.accessID = record.id; return a }
 			for a in linked { try a.save(db) }
 			return (record.access, linked)
+		}
+	}
+
+	/// "Edit Login Data...": the login name and the state of the login with it, after the bank accepted it,
+	/// and the saved PIN of the access: `savedPIN` replaces it, and nil deletes it. One transaction writes all,
+	/// so the database never keeps the old PIN with the new login. The accounts stay linked to the access, so
+	/// the next refresh of each of them uses the new login.
+	public func updateLogin(of access: UUID, loginName: String, state: AccessState?, savedPIN: Secret?) throws {
+		try queue.write { db in
+			try AccessRecord.filter(key: access).updateAll(db, Column("loginName").set(to: loginName), Column("state").set(to: state?.data))
+			if let savedPIN {
+				try SavedPINRecord(accessID: access, pin: savedPIN.value).save(db)
+			} else {
+				_ = try SavedPINRecord.deleteOne(db, key: access)
+			}
 		}
 	}
 

@@ -253,8 +253,11 @@ final class Visit {
 		#expect(check("return {html:xpath('//a'):click()}", page: "<a href=\"/konto?id=1&amp;x=2\">Konto</a>") == .array([.string("GET"), .string("/konto?id=1&x=2")]))
 	}
 
-	@Test func clickOnSomethingElseStops() {
-		#expect(check("return html:xpath('//p'):click()", page: "<p>Text</p>") == .string("error: Demo.lua:4: elements:click needs a link, or a submit or image button in a form."))
+	/// Published scripts test `click()` for nil, as when a page has no logout link.
+	@Test(arguments: ["//p", "//a[@id='logout']"])
+	func clickOnSomethingElseGivesNothing(path: String) {
+		#expect(check("return {select('#', html:xpath(\"\(path)\"):click()), select('#', html:xpath(\"\(path)\"):submit()), html:xpath(\"\(path)\"):click() == nil}",
+			page: "<p>Text</p>") == .array([.integer(0), .integer(0), .boolean(true)]))
 	}
 
 	@Test func invalidXPathStops() {

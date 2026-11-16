@@ -22,7 +22,7 @@ let package = Package(
 	],
 	targets: [
 		.target(name: "Domain"),
-		.target(name: "Storage", dependencies: ["Domain", .product(name: "GRDB", package: "GRDB.swift")]),
+		.target(name: "Storage", dependencies: ["Domain", "Import", .product(name: "GRDB", package: "GRDB.swift")]),
 		.target(name: "Import", dependencies: ["Domain"]),
 		.target(name: "Sync", dependencies: ["Domain"]),
 		// ScriptedConnector, for the tests and for the previews and the debug harness of the app.

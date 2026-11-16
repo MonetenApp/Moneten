@@ -69,6 +69,12 @@ public struct FailureWithNotices: Error {
 		self.failure = failure
 		self.notices = notices
 	}
+
+	/// The failure inside `error` and the notices of the bank before it, or `error` itself and no notices.
+	public static func split(_ error: any Error) -> (failure: any Error, notices: [BankMessage]) {
+		guard let error = error as? FailureWithNotices else { return (error, []) }
+		return (error.failure, error.notices)
+	}
 }
 
 /// Every source of bank data implements this protocol: FinTS, extensions, and finAPI.

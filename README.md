@@ -62,6 +62,7 @@ The project uses [OpenSpec](https://github.com/Fission-AI/OpenSpec). Every behav
 - [openspec/changes](openspec/changes/) holds one folder for each planned change. A change has a proposal and the specs that it adds.
 - [openspec/specs](openspec/specs/) holds the specs of what is built. A change moves there when its code is merged and the change is archived, so the folder is empty until then.
 - [MoneyMoney analysis](docs/research/moneymoney-analysis.md) records the behavior that the specs start from, and [MoneyMoney features](docs/research/moneymoney-features.md) maps each feature to its change.
+- [Extension coverage](docs/research/extension-coverage.md) lists which providers the published MoneyMoney extensions reach in Moneten and what blocks the others.
 
 [CONTRIBUTING.md](CONTRIBUTING.md) explains how to work on a change.
 
