@@ -30,7 +30,7 @@ extension ReconcileTests {
 	}
 
 	@Test("Gate 5: 6,144 booked comparisons keep main's legacy pairing")
-	func gate5LegacyComparisons() {
+	func gate5LegacyComparisons() async {
 		for seed in 0..<6_144 {
 			var random = PairingRandom(state: UInt64(seed) + 1)
 			let stored = (0..<4).map { i in
@@ -45,12 +45,13 @@ extension ReconcileTests {
 			let expected = partners(of: rows, stored: stored + [unrelated], deleted: tombstones)
 			let actual = partners(of: rows, stored: stored + [unrelated], deleted: tombstones, delivery: refresh(rows), today: day(20))
 			#expect(actual.map { $0?.slot } == expected.map { $0?.slot }, "legacy seed \(seed)")
+			if (seed + 1) % 200 == 0 { await Task.yield() }
 		}
 		print("gate5 legacy: 6,144 comparisons with main's unchanged partner function")
 	}
 
 	@Test("Gate 5: 3,000 seeded histories keep the same result in reversed input order")
-	func gate5SeededOrderIndependence() {
+	func gate5SeededOrderIndependence() async {
 		for seed in 0..<3_000 {
 			var random = PairingRandom(state: UInt64(seed) + 1)
 			func make(_ index: Int) -> Transaction {
@@ -85,6 +86,7 @@ extension ReconcileTests {
 			#expect(a == b, "seed \(seed)")
 			#expect(first.skipped == second.skipped, "seed \(seed)")
 			#expect(Set(first.relinked) == Set(second.relinked), "seed \(seed)")
+			if (seed + 1) % 200 == 0 { await Task.yield() }
 		}
 		print("gate5 fuzz: 3,000 seeds, two delivery/storage/tombstone orders")
 	}
