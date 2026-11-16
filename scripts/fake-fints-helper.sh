@@ -8,6 +8,8 @@
 # and then for the SMS code. The login lists
 # "Girokonto" with the test IBAN, "Tagesgeld", and "Kreditkarte". The state of the access counts the
 # refreshes: the second refresh fails "Tagesgeld" with an error of the bank, and the others succeed.
+# A refresh of "Kreditkarte" alone fails the access with a return code that is a name and not a number, as a
+# broken helper could send it.
 # The login and every refresh send the notice of the bank about maintenance.
 # A refresh of the full history, the first one and an enforced one, brings one more "Girokonto" row from 30 days ago.
 # The login "unterkonten" lists two subaccounts of the account number 9 in place of these accounts.
@@ -134,6 +136,10 @@ case "$cmd" in
 		echo "{\"type\":\"result\",\"account\":\"1234567890\",\"transactions\":{\"from\":\"$(day 90)\",\"rows\":[{\"booked\":\"$(day 6)\",\"value\":\"$(day 6)\",\"amount\":\"500.00\",\"currency\":\"EUR\",\"name\":\"Erika Mustermann\",\"purpose\":\"Sparen\",\"pending\":false}]},\"errors\":[{\"code\":\"9210\",\"text\":\"Saldo nicht verfügbar\"}]}"
 		printf '%s\n' "{\"type\":\"notice\",\"text\":\"$notice\"}"
 		echo '{"type":"state","data":"MA=="}'
+		exit 0
+	;; esac
+	case "$cmd" in *'"id":"DE02120300000000202051"'* | *'"id":"1234567890"'*) ;; *'"id":"4711"'*)
+		echo '{"type":"failed","code":"Erika Mustermann","text":"Dialog abgebrochen"}'
 		exit 0
 	;; esac
 	echo '{"type":"notice","text":"Wartungsarbeiten am 14.11.2026 von 1 bis 5 Uhr."}'

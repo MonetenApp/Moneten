@@ -55,11 +55,15 @@ extension TableKey {
 }
 
 extension TransactionFilter {
-	/// The kinds of the active filters, without their values.
+	/// The kinds of the active filters, without their values. The trail and `debug.log` both use them.
+	var activeKinds: [StaticString] {
+		let kinds: [(Bool, StaticString)] = [(!searchText.isEmpty, "search"), (period != .all, "period"), (status != .all, "status"), (amount != .all, "amount"),
+			(categoryID != nil, "category"), (accountID != nil, "account")]
+		return kinds.filter(\.0).map(\.1)
+	}
+
 	var trailName: String {
-		let kinds = [(!searchText.isEmpty, "search"), (period != .all, "period"), (status != .all, "status"), (amount != .all, "amount"),
-			(categoryID != nil, "category"), (accountID != nil, "account")].filter(\.0).map(\.1)
-		return kinds.isEmpty ? "none" : kinds.joined(separator: ",")
+		activeKinds.isEmpty ? "none" : activeKinds.map { "\($0)" }.joined(separator: ",")
 	}
 }
 
