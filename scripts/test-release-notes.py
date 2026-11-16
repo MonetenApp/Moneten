@@ -337,11 +337,11 @@ class ReleaseNotesTests(unittest.TestCase):
 		_, second = self.two_versions()
 		second.write_bytes(second.read_bytes().replace(b"https://github.com/MonetenApp/Moneten/releases/download/v0.1.3/",
 			b"https://example.com/v0.1.3/"))
-		for feed in (second, self.sign(second, private)):
-			result = self.remove(feed, public)
-			self.assertNotEqual(result.returncode, 0)
-			self.assertFalse((self.dir / "removed.xml").exists())
-		self.assertIn("has a disk image outside", result.stderr)
+		unsigned = self.remove(second, public)
+		self.assertIn("has no signature", unsigned.stderr)
+		signed = self.remove(self.sign(second, private), public)
+		self.assertIn("has a disk image outside", signed.stderr)
+		self.assertFalse((self.dir / "removed.xml").exists())
 
 
 if __name__ == "__main__":
