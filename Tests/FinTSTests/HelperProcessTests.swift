@@ -146,6 +146,15 @@ struct HelperProcessTests {
 		#expect(try await lineLengths("printf 'first\\nlast'; sleep 3 &").lengths == [5, 4])
 	}
 
+	@Test("A helper that ends in the middle of a line reports how it stopped, not the cut-off line", arguments: [
+		("kill -9 $$", "signal 9"), ("exit 3", "status 3"),
+	])
+	func endInMiddleOfLine(end: String, reason: String) async throws {
+		await #expect(throws: SyncFailure.network("The FinTS helper stopped unexpectedly (\(reason)).")) {
+			_ = try await connector(#"read cmd; printf '{"type":"accounts","acc'; "# + end).listAccounts(of: Self.access, state: nil, session: Session())
+		}
+	}
+
 	@Test("A line longer than 64 MiB fails the run with an error that names the limit", .timeLimit(.minutes(1)))
 	func lineTooLong() async throws {
 		// The helper would end on its own after 600 seconds. The cancel and the grace end it.

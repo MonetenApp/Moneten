@@ -26,6 +26,9 @@ final class HelperProcess: @unchecked Sendable {
 	/// serial queue of its own runs on the overcommitting root queue, which always gets a thread.
 	static let timers = DispatchQueue(label: "io.github.moneten.fints.timers")
 	private let canceled = Mutex(false)
+	/// Whether the app sent SIGTERM or SIGKILL, so that a stop by a signal or with a status other than 0
+	/// was the app's doing and not the helper's.
+	private let signaled = Mutex(false)
 	private let failure = Mutex<(any Error)?>(nil)
 	private let grace: TimeInterval
 	private let killAfter: TimeInterval
@@ -144,6 +147,7 @@ final class HelperProcess: @unchecked Sendable {
 		// reach it then, and a helper that ended is released at once instead of after the grace.
 		Self.timers.asyncAfter(deadline: .now() + grace) { [weak self] in
 			guard let self, process.isRunning else { return }
+			signaled.withLock { $0 = true }
 			process.terminate()
 			Self.timers.asyncAfter(deadline: .now() + killAfter) { [weak self] in
 				guard let self, process.isRunning else { return }
@@ -160,6 +164,8 @@ final class HelperProcess: @unchecked Sendable {
 	}
 
 	var firstFailure: (any Error)? { failure.withLock { $0 } }
+
+	var wasSignaled: Bool { signaled.withLock { $0 } }
 
 	var isRunning: Bool { process.isRunning }
 
