@@ -196,6 +196,22 @@ struct SavedPINTests {
 		#expect(automatic.answers.all == [.pin(Secret("67890"))])
 	}
 
+	@Test("The lock forgets the answer of the bank to a rejected PIN, so the PIN sheet after the unlock shows none")
+	func rejectionForgottenOnLock() async throws {
+		_ = refresh([.ask(Self.pin), .fail(.pinRejected(BankMessage(code: "9931", text: "PIN falsch. Noch 1 Fehlversuch bis zur Sperrung.")))])
+		await until { broker.current != nil }
+		answer(.pin(Secret("11111")))
+		await until { !coordinator.isRefreshing }
+
+		broker.forgetPINs()
+		try broker.open(store)
+		_ = refresh([.ask(Self.pin)])
+		await until { broker.current != nil }
+		#expect(broker.current?.request == Self.pin)
+		broker.cancel(broker.current!.id)
+		await until { !coordinator.isRefreshing }
+	}
+
 	@Test("A saved PIN stays after a failure that is not about the PIN")
 	func savedAfterOtherFailure() async throws {
 		try store.savePIN(Secret("12345"), for: Self.bank.id)

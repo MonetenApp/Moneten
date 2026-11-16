@@ -203,43 +203,37 @@ struct HelperError: Decodable, Equatable {
 
 	var message: BankMessage { BankMessage(code: code, text: text) }
 
-	/// Whether the text of a 9931 reports a block that happened. The text is read clause by clause, split at
-	/// punctuation and at a dash between words. A clause reports a block when it names one, as "gesperrt",
-	/// "Teilnehmersperre", "Sperrung", or "blockiert" do, and neither denies it nor warns of it. A denial stands
-	/// next to the block word, as in "nicht gesperrt", "keine Sperrung", or "Sperrung nicht durchgeführt", so a
-	/// "nicht" elsewhere in "Zugang gesperrt und Anmeldung nicht mehr möglich" denies nothing. A warning speaks of
-	/// the future ("führen zur Sperrung", "wird gesperrt"), or counts attempts ("weitere", "nächsten") in a clause
-	/// that says nothing happened yet, so "Nach weiteren Fehlversuchen wurde der Zugang gesperrt" is a block.
-	/// Every other text is a wrong PIN.
+	/// Whether the text of a 9931 reports a block that happened: it has a phrase of a finished block and no phrase of
+	/// attempts that remain, of a block to come, or of a denial. Every other text is a wrong PIN, which the project owner
+	/// chose as the safe side: at worst a blocked access gets one more PIN sheet, and the app never sends a PIN on its own.
 	static func reportsBlock(_ text: String) -> Bool {
-		text.lowercased().components(separatedBy: CharacterSet(charactersIn: ".,;:!?\n"))
-			.flatMap { $0.components(separatedBy: " - ") }
-			.contains { clause in
-				let words = clause.components(separatedBy: CharacterSet.letters.inverted).filter { !$0.isEmpty }
-				let warns = words.contains(where: futureWords.contains)
-					|| words.contains(where: countWords.contains) && !words.contains(where: doneWords.contains)
-				return !warns && words.indices.contains { i in
-					namesBlock(words[i]) && !words[max(0, i - 2)...min(words.count - 1, i + 1)].contains(where: denials.contains)
-				}
-			}
+		func has(_ patterns: [String]) -> Bool {
+			patterns.contains { text.range(of: $0, options: [.regularExpression, .caseInsensitive]) != nil }
+		}
+		return has(finishedBlocks) && !has(noFinishedBlock)
 	}
 
-	/// A word that names a block, but not an unblock such as "Entsperren".
-	private static func namesBlock(_ word: String) -> Bool {
-		!word.hasPrefix("ent") && (word.contains("gesperrt") || word.hasSuffix("sperre") || word.hasSuffix("sperrung") || word.hasPrefix("blockiert"))
-	}
+	/// The phrases of a block that happened: the block itself, or the access, the PIN, or the account with at most four
+	/// words before "gesperrt" or "blockiert", as in "Zugang wegen ungültiger PIN gesperrt" or "Ihr Zugang wurde gesperrt".
+	private static let finishedBlocks = [
+		#"teilnehmersperre"#,
+		#"sperre (wurde )?durchgeführt"#,
+		#"sperrung (ist|wurde) (erfolgt|durchgeführt)"#,
+		#"sperrung (des|der) (kontos|zugangs|pin|teilnehmers)"#,
+		#"\b(zugang|pin|konto|kennung|teilnehmer)(\s+[\p{L}\d]+){0,4}\s+(gesperrt|blockiert)\b"#,
+	]
 
-	/// The words with which a clause denies a block.
-	private static let denials: Set<String> = ["nicht", "kein", "keine", "keiner", "keinen"]
-
-	/// The words of a block to come.
-	private static let futureWords: Set<String> = ["wird", "werden", "führen", "führt", "droht", "drohen", "bevor"]
-
-	/// The words that count the attempts before a block.
-	private static let countWords: Set<String> = ["weitere", "weiteren", "weiterer", "nächsten", "nächste"]
-
-	/// The words of a block that happened, which a count of attempts does not turn into a warning.
-	private static let doneWords: Set<String> = ["wurde", "wurden", "ist", "sind", "durchgeführt", "erfolgt", "bereits"]
+	/// The phrases of attempts that remain, of a block to come, or of a denial, which make any text a wrong PIN.
+	private static let noFinishedBlock = [
+		#"noch (\d+|ein|einen|zwei|drei) (fehl)?versuch"#,
+		#"verbleibend"#,
+		#"weitere[nr]? fehlversuch"#,
+		#"bis zur sperr"#,
+		#"(führt|führen) zur sperr"#,
+		#"\bwird\b[^.!?]*\b(gesperrt|blockiert)\b"#,
+		#"nicht (gesperrt|blockiert)"#,
+		#"\bkein\p{L}* (gesperrt|sperr)"#,
+	]
 
 	var failure: SyncFailure {
 		switch (kind, code) {

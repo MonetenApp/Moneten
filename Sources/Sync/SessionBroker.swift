@@ -188,9 +188,11 @@ public final class SessionBroker {
 		savedPINs = Set(saved.keys)
 	}
 
-	/// Forgets every PIN in memory and the store of saved PINs, when the app locks.
+	/// Forgets every PIN in memory, the answers of the bank to rejected PINs, and the store of saved PINs, when the
+	/// app locks, so that nothing of the locked database shows in a PIN sheet after the unlock.
 	public func forgetPINs() {
 		pins = [:]
+		rejections = [:]
 		toSave = []
 		savedPINs = []
 		store = nil

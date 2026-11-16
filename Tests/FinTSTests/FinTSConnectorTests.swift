@@ -743,8 +743,9 @@ struct FinTSConnectorTests {
 		#expect(session.events == (expected.rejectsPIN ? [.rejected(expected)] : []))
 	}
 
-	/// 9931 is a block only when its text reports one that happened. Every other text is a wrong PIN, also one that warns
-	/// of a block to come or names no cause.
+	/// 9931 is a block only when its text has the phrase of a block that happened and no phrase of attempts that remain,
+	/// of a block to come, or of a denial. Every other text is a wrong PIN. Where a text has both, as the last text with a
+	/// block, the app shows one more PIN sheet, and never sends a PIN on its own.
 	@Test("Reads a 9931 as a block only when its text reports a block that happened", arguments: [
 		("Anmeldename oder PIN ist falsch", false),
 		("PIN falsch. Weitere Fehlversuche führen zur Sperrung.", false),
@@ -760,12 +761,19 @@ struct FinTSConnectorTests {
 		("PIN ungültig - Zugang ist blockiert", true),
 		("PIN falsch. Ihr Zugang wurde gesperrt.", true),
 		("Zugang gesperrt und Anmeldung nicht mehr möglich", true),
-		("Nach weiteren Fehlversuchen wurde der Zugang gesperrt", true),
+		("Nach weiteren Fehlversuchen wurde der Zugang gesperrt", false),
 		("Keine Sperrung erfolgt, PIN falsch", false),
 		("Sperrung nicht durchgeführt", false),
 		("Ihr Zugang ist vorläufig gesperrt - Bitte PIN-Sperre aufheben.", true),
 		("Anmeldung fehlgeschlagen", false),
 		("", false),
+		("PIN falsch. Noch 1 Fehlversuch bis zur Sperrung.", false),
+		("Zugang ist gesperrt und wird erst nach Freischaltung wieder nutzbar.", true),
+		("Ihr Zugang wurde gesperrt.", true),
+		("Bei der nächsten falschen Eingabe wird Ihr Zugang gesperrt.", false),
+		("Noch 2 Versuche verbleibend. Danach wird die PIN gesperrt.", false),
+		("Die Sperrung wurde durchgeführt.", true),
+		("Ihre PIN ist gesperrt worden.", true),
 	])
 	func reads9931(text: String, blocked: Bool) {
 		#expect(HelperError.reportsBlock(text) == blocked)
