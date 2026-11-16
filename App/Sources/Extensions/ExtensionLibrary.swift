@@ -99,7 +99,8 @@ final class ExtensionLibrary {
 	}
 
 	@ObservationIgnored weak var model: AppModel?
-	@ObservationIgnored var log: @MainActor @Sendable (String) -> Void = { _ in }
+	/// Writes to `debug.log` when the debug harness runs. Only a `LogLine` gets there, which holds no value from outside the app.
+	@ObservationIgnored var log: @MainActor @Sendable (LogLine) -> Void = { _ in }
 	/// The fixture that replaces the network for an installed extension, for the debug harness.
 	@ObservationIgnored var fixtures: [String: Fixture] = [:]
 	@ObservationIgnored private var indexData: Data?
@@ -115,8 +116,8 @@ final class ExtensionLibrary {
 	@ObservationIgnored private var downloads: [String: InstallCancellation] = [:]
 	@ObservationIgnored private var daily: Task<Void, Never>?
 
-	private var folder: URL { DataFolder.standard().extensionsFolder }
-	private var staging: URL { DataFolder.standard().root.appending(path: "Downloads") }
+	private var folder: URL { DataFolder.current.extensionsFolder }
+	private var staging: URL { DataFolder.current.root.appending(path: "Downloads") }
 	private var installer: Installer {
 		let source = configuration.source
 		return Installer(folder: folder, staging: staging) { path, limit in try await source.fetch(path, limit: limit) }
@@ -201,7 +202,7 @@ final class ExtensionLibrary {
 		} catch {
 			reachable = false
 			problem = (error as? CatalogError)?.description ?? "The catalog cannot be reached."
-			log("ext catalog unreachable \(error)")
+			log(LogLine("ext catalog unreachable", ("error", .type(of: error))))
 			return reload()
 		}
 		reachable = true
@@ -211,15 +212,15 @@ final class ExtensionLibrary {
 				indexData = data
 				index = accepted.index
 				self.floors = accepted.floors
-				log("ext catalog accepted version=\(accepted.index.version)")
+				log(LogLine("ext catalog accepted", ("version", .count(accepted.index.version))))
 				stopSessionsOfStoppedPackages()
 			} else {
-				log("ext catalog unchanged version=\(index?.version ?? 0)")
+				log(LogLine("ext catalog unchanged", ("version", .count(index?.version ?? 0))))
 			}
 			problem = nil
 		} catch let error as CatalogError {
 			problem = error.description
-			log("ext catalog rejected \(error.description) kept=\(index?.version ?? 0)")
+			log(LogLine("ext catalog rejected", ("error", .type(of: error)), ("kept", .count(index?.version ?? 0))))
 		} catch {
 			problem = "The list of extensions could not be saved. \(error)"
 		}
@@ -336,14 +337,14 @@ final class ExtensionLibrary {
 				if let saved = self.savedUpdates.removeValue(forKey: id) { self.updateState.restore(saved, of: id) }
 			})
 			savedUpdates[id] = nil
-			log("ext installed \(id) version=\(installed.version)")
+			log(LogLine("ext installed", ("extension", .hash(id)), ("version", .hash(installed.version))))
 			// An index that arrived during the download can list a newer version. The task starts after this
 			// install leaves `working`, so `applyUpdates` can install that version.
 			if index?.entry(id)?.version != installed.version { Task { await applyUpdates() } }
 		} catch {
-			if case .removed = error { return log("ext install stopped \(id) \(error)") }
+			if case .removed = error { return log(LogLine("ext install stopped", ("extension", .hash(id)), ("error", .type(of: error)))) }
 			failure = "\(error)"
-			log("ext install failed \(id) \(error)")
+			log(LogLine("ext install failed", ("extension", .hash(id)), ("error", .type(of: error))))
 		}
 	}
 
@@ -402,7 +403,7 @@ final class ExtensionLibrary {
 		do {
 			try store.saveInstalledExtension(InstalledExtension(id: name, origin: .file, record: try JSONEncoder().encode(loaded.digests)))
 			records[name] = .file(allowed: loaded.digests)
-			log("ext allowed \(name) unverified")
+			log(LogLine("ext allowed unverified", ("extension", .hash(name))))
 		} catch {
 			failure = "\(name) could not be allowed. \(error)"
 		}
@@ -481,7 +482,7 @@ final class ExtensionLibrary {
 			model?.extensionConnectors[id] = nil
 			records[id] = nil
 			_ = updateState.clear(id)
-			log("ext removed \(id)")
+			log(LogLine("ext removed", ("extension", .hash(id))))
 		} catch {
 			failure = "\(id) could not be removed. \(error)"
 		}
@@ -499,9 +500,9 @@ final class ExtensionLibrary {
 			try await MainActor.run {
 				guard let self, let model = self.model else { throw CancellationError() }
 				let package = try self.verifiedPackage(id)
-				let log = self.log, madeUp = self.fixtures[id] != nil
+				let log = self.log
 				guard let connector = model.makeExtensionConnector(package, fixture: self.fixtures[id], log: { line in
-					if case .print = line { Task { @MainActor in log(line.debugLine(id, madeUp: madeUp)) } }
+					if case .print = line { Task { @MainActor in log(line.debugLine(id)) } }
 				}) else { throw CancellationError() }
 				return connector
 			}
@@ -516,7 +517,7 @@ final class ExtensionLibrary {
 			if let index {
 				switch Standing(of: installed, in: index) {
 				case let .stopped(reason), let .outdated(reason):
-					log("ext stopped \(id) \(reason)")
+					log(LogLine("ext stopped", ("extension", .hash(id))))
 					throw .unsupported(reason)
 				case .runs: break
 				}
@@ -524,12 +525,12 @@ final class ExtensionLibrary {
 			do {
 				let package = try Installer.load(installed, from: folder)
 				if updateState.changed.remove(id) != nil { reload() }
-				log("ext run \(id) version=\(installed.version)")
+				log(LogLine("ext run", ("extension", .hash(id)), ("version", .hash(installed.version))))
 				return package
 			} catch {
 				updateState.changed.insert(id)
 				reload()
-				log("ext stopped \(id) \(error)")
+				log(LogLine("ext stopped", ("extension", .hash(id)), ("error", .type(of: error))))
 				throw .unsupported(error.description)
 			}
 		case .unreadableCatalog?:
@@ -538,7 +539,7 @@ final class ExtensionLibrary {
 			guard let url = FileInstall.url(of: id, in: folder) else { throw .unsupported("The extension \(id) is not installed.") }
 			do {
 				let package = try FileInstall.load(url, allowed: allowed)
-				log("ext run \(id) unverified")
+				log(LogLine("ext run unverified", ("extension", .hash(id))))
 				return package
 			} catch {
 				reload()

@@ -57,6 +57,24 @@ struct MergeTests {
 		#expect(try store.loadLedger().transactions(ofAccount: giro.id).map(\.returnReason) == ["AC04"])
 	}
 
+	@Test("An edited transaction keeps its values in the database, and neither a refresh nor a deletion brings the original back")
+	func editedTransaction() throws {
+		let store = try makeStore()
+		let gym = row(3, -4_990, "Fitnessstudio", "LASTSCHRIFT 8837271")
+		_ = try store.merge(refresh([gym]), into: giro.id)
+		var mine = try #require(try store.loadLedger().transaction(gym.id))
+		mine.edit(OriginalValues(bookingDate: mine.bookingDate, valueDate: nil, amountMinor: mine.amountMinor, name: mine.name, purpose: "Gym membership October"))
+		try store.save([mine])
+		#expect(try store.loadLedger().transaction(gym.id) == mine)
+		let again = try store.merge(refresh([fresh(gym)]), into: giro.id)
+		#expect(again.added == [] && again.updated == [])
+		#expect(try store.loadLedger().transactions(ofAccount: giro.id).map(\.purpose) == ["Gym membership October"])
+		try store.deleteTransactions([gym.id])
+		let afterDelete = try store.merge(refresh([fresh(gym)]), into: giro.id)
+		#expect(afterDelete.added == [])
+		#expect(try store.loadLedger().transactions.isEmpty)
+	}
+
 	@Test("The merge plans from the database, so a row that the database holds as booked is never dropped")
 	func plansFromTheDatabase() throws {
 		let store = try makeStore()

@@ -11,12 +11,11 @@ struct CategorySettingsSheet: View {
 	@State private var ruleError: String?
 	@State private var askApply = false
 	@State private var showHelp = false
-	@State private var confirmRemove = false
 
 	var body: some View {
 		SheetFrame(title: "Settings for \(category?.name ?? "")", canConfirm: ruleError == nil && currencyIsValid && !isApplying, canCancel: !isApplying, width: 520, onConfirm: save, leading: {
 			if category?.isDefault == false {
-				Button("Remove Category...", role: .destructive) { confirmRemove = true }
+				Button("Remove Category...", role: .destructive) { if model.confirmRemove(.category(categoryID)) { dismiss() } }
 					.disabled(isApplying)
 			}
 		}) {
@@ -100,14 +99,6 @@ struct CategorySettingsSheet: View {
 		} message: {
 			Text("\"Apply to all transactions\" also replaces categories that you assigned by hand, and transactions that no longer match leave this category.")
 		}
-		.confirmationDialog("Are you sure you want to remove the category \(category?.name ?? "")?", isPresented: $confirmRemove) {
-			Button("Remove", role: .destructive) {
-				Task { await model.remove(category: categoryID) }
-				dismiss()
-			}
-		} message: {
-			Text("The transactions will be retained and become uncategorized.")
-		}
 	}
 
 	private static let isoCurrencies = Set(Locale.Currency.isoCurrencies.map(\.identifier))
@@ -130,7 +121,7 @@ struct CategorySettingsSheet: View {
 
 	private func matchCount(_ c: Domain.Category) -> Int {
 		guard let rule = try? Rule(parsing: c.rule) else { return 0 }
-		return model.ledger.transactions.reduce(0) { $0 + (rule.matches(RuleSubject($1, account: model.ledger.account($1.accountID))) ? 1 : 0) }
+		return RuleApplier.matchCount(category: c, rule: rule, ledger: model.ledger)
 	}
 
 	/// Saves and closes, or keeps the sheet open to ask whether a changed rule applies to existing transactions.

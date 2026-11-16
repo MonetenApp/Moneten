@@ -86,6 +86,9 @@ struct HeaderView: View {
 					Group {
 						switch model.bankHistories[account.id] {
 						case .noTransactions where account.kind != .portfolio: Text("The bank provides no transactions for this account.")
+						// The mark is stored with the account, so the note stays through a lock, a restart, and an import.
+						case _ where account.missesOlderTransactions:
+							Text("Older transactions may be missing. Choose “Refresh Account (enforced)” with the Option key to fetch them.")
 						case let .startsAt(start): Text("The bank provides no transactions before \(Format.day(start)).")
 						default: EmptyView()
 						}
@@ -134,7 +137,7 @@ struct CalibrationNotice: View {
 
 	var body: some View {
 		HStack(spacing: 6) {
-			Text("Transactions differ by \(Format.money(Money(minorUnits: abs(difference.minorUnits), currency: difference.currency)))")
+			Text("Transactions differ by \(Format.money(Money(minorUnits: Int64(clamping: difference.minorUnits.magnitude), currency: difference.currency)))")
 				.foregroundStyle(Palette.detail)
 			Button("Calibrate...") { model.sheet = .calibration(accountID) }
 				.buttonStyle(.link)
@@ -167,6 +170,8 @@ struct HeaderIcon: View {
 		}
 		.font(.title2)
 		.frame(width: 28, height: 28)
+		// The title beside it names the view.
+		.accessibilityHidden(true)
 	}
 }
 
@@ -187,6 +192,7 @@ struct FilterBar: View {
 			.buttonStyle(.borderless)
 			.hoverHighlight()
 			.help("Save filter bar")
+			.accessibilityLabel("Save filter bar")
 			separator
 			filterMenu("Period:", title: periodTitle) {
 				Button("Show All") { model.choose(period: .all) }
@@ -458,7 +464,7 @@ struct TransactionTable: View {
 			// A group or category view names the account of a selected row.
 			TableColumn("Name / Purpose") { (t: Transaction) in
 				let account = showsAccount && !groupedByAccount && model.selectedTransactions.contains(t.id) ? model.ledger.account(t.accountID)?.name : nil
-				TransactionCell(transaction: t, account: account).padding(.trailing, 12).rowChrome(t).draggable(draggedIDs(for: t))
+				TransactionCell(transaction: t, model: model, account: account).padding(.trailing, 12).rowChrome(t).draggable(draggedIDs(for: t))
 			}
 			.width(min: 240, ideal: 520)
 			.customizationID("name")
@@ -515,6 +521,7 @@ struct TransactionTable: View {
 
 struct TransactionCell: View {
 	let transaction: Transaction
+	let model: AppModel
 	/// The account of the transaction, shown at the end of the first line.
 	var account: String?
 
@@ -523,11 +530,12 @@ struct TransactionCell: View {
 			HStack(spacing: 4) {
 				Text(transaction.name.isEmpty ? (transaction.bookingText ?? "") : transaction.name).fontWeight(.bold).lineLimit(1)
 				if let comment = transaction.comment {
-					Image(systemName: "note.text").foregroundStyle(.yellow).help(comment)
+					Image(systemName: "note.text").foregroundStyle(.yellow).help(comment).accessibilityLabel("Comment: \(comment)")
 				}
 				if let review = transaction.review {
 					Image(systemName: "exclamationmark.circle").foregroundStyle(.orange)
 						.help(review.note)
+						.accessibilityLabel(review.note)
 				}
 				// MoneyMoney adds a third line, which made the selected row taller and moved the rows
 				// below it. At the end of the first line the row keeps its height.
@@ -540,6 +548,14 @@ struct TransactionCell: View {
 						.frame(maxWidth: 140, alignment: .trailing)
 						.layoutPriority(1)
 				}
+			}
+			if let part = model.ledger.part(transaction.id), let original = model.ledger.transaction(part.transactionID) {
+				HStack(spacing: 4) {
+					Label("Part of \(Format.money(original.amount))", systemImage: "arrow.triangle.branch")
+					if let vat = part.vat { Text(vat.role == .net ? "(net)" : "(\(vat.rate.text) VAT)") }
+				}
+				.font(.system(size: 11)).foregroundStyle(Palette.detail)
+				.accessibilityElement(children: .combine)
 			}
 			// A row without a purpose keeps the empty line, so that every row is the same height.
 			// As in MoneyMoney, the purpose takes one line, its lines joined with spaces. The whole text
@@ -571,7 +587,7 @@ struct DateCell: View {
 				.padding(.top, 1)
 				.overlay(alignment: .leading) {
 					if transaction.isNew {
-						Circle().fill(.tint).frame(width: 6, height: 6).help("New transaction")
+						Circle().fill(.tint).frame(width: 6, height: 6).help("New transaction").accessibilityLabel("New transaction")
 					}
 				}
 			// The ribbon is wider than the column and reaches into the gap before the name. As an
@@ -625,6 +641,9 @@ struct CategoryRibbon: View {
 		.onHover { hovered = $0 }
 		.animation(.easeOut(duration: 0.15), value: hovered)
 		.help(category.map { ledger.categoryPath($0.id) } ?? "Assign Category")
+		// VoiceOver reads the category of the row, also where an uncategorized row shows no ribbon.
+		.accessibilityLabel(category.map { ledger.categoryPath($0.id) } ?? ledger.defaultCategory?.name ?? "Uncategorized")
+		.accessibilityHint("Assign Category")
 	}
 }
 
@@ -872,6 +891,15 @@ struct TransactionMenu: View {
 			if case let .category(id) = model.selection, model.ledger.defaultCategory?.id != id {
 				Button("Remove Transaction from Category") { model.assign(category: nil, to: ids) }
 			}
+			Menu("Create Offsetting Entry") {
+				let targets = model.ledger.offsettingTargets(for: transactions)
+				ForEach(targets, id: \.account.id) { target in
+					Button(target.account.name) { model.createOffsettingEntries(of: ids, in: target.account.id) }.disabled(!target.isEnabled)
+				}
+				if targets.isEmpty {
+					Text(model.ledger.accounts.contains(where: { $0.isOffline && !$0.isClosed }) ? "No other offline account available" : "No offline accounts available")
+				}
+			}
 			Button(first.comment == nil ? "Add Comment..." : "Edit Comment...") { model.sheet = .comment(ids) }
 			Divider()
 			Button(transactions.allSatisfy(\.isChecked) ? "Mark as Unchecked" : "Mark as Checked") {
@@ -882,6 +910,7 @@ struct TransactionMenu: View {
 			Divider()
 			if ids.count == 1 {
 				Button("Edit Transaction...") { model.sheet = .transaction(first.id) }
+				Menu("Split Transaction") { SplitCommands(row: first) }
 			}
 			// As in MoneyMoney: a group or category view mixes accounts, so it offers no delete.
 			if case .account = model.selection {
@@ -891,6 +920,7 @@ struct TransactionMenu: View {
 	}
 
 	private func confirmDelete(_ ids: Set<UUID>) {
+		guard !model.refusePartDeletion(in: ids) else { return }
 		let alert = NSAlert()
 		alert.messageText = ids.count == 1 ? "Delete selected transaction?" : "Delete \(ids.count) selected transactions?"
 		alert.informativeText = "Deleted transactions CANNOT be restored!"

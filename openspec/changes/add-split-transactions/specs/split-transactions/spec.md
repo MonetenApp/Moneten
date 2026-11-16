@@ -71,6 +71,29 @@ The app SHALL split the remainder again when the user clicks "Next Split" in the
 - **WHEN** the user enters 25,00, clicks "Next Split", enters 15,00, and confirms
 - **THEN** the list shows parts of -25,00 €, -15,00 €, and -40,00 €
 
+#### Scenario: Confirm after keeping an amount
+
+- **GIVEN** a transaction of -89,00 €
+- **WHEN** the user enters 25,00, clicks "Next Split", and confirms with the amount field empty
+- **THEN** the list shows parts of -25,00 € and -64,00 €
+
+#### Scenario: An empty first amount
+
+- **WHEN** the user opens the split window and leaves the amount field empty
+- **THEN** the confirm button is disabled
+
+#### Scenario: An unsigned next amount follows the remainder
+
+- **GIVEN** a transaction of -80,00 €
+- **WHEN** the user enters 100,00, clicks "Next Split", enters 5,00, and confirms
+- **THEN** the list shows parts of -100,00 €, 5,00 €, and 15,00 €
+
+#### Scenario: An explicit next sign stays
+
+- **GIVEN** a transaction of -80,00 €
+- **WHEN** the user enters 100,00, clicks "Next Split", enters -5,00, and confirms
+- **THEN** the list shows parts of -100,00 €, -5,00 €, and 25,00 €
+
 #### Scenario: Split a part again
 
 - **GIVEN** the parts -25,00 € and -55,00 € of a transaction of -80,00 €
@@ -111,6 +134,12 @@ The app SHALL let the user assign a category and write a comment for each part, 
 - **WHEN** a refresh delivers a booked "TX-1" of -85,00 € and the user confirms the old edit window
 - **THEN** the window closes without saving the edit or adding a transaction
 - **AND** the list still shows only the corrected original of -85,00 €
+
+#### Scenario: An unchanged editor runs no rule
+
+- **GIVEN** an uncategorized -30,00 € transaction whose purpose matches the rule of "Groceries"
+- **WHEN** the user opens "Edit Transaction..." and confirms without changing a field
+- **THEN** the transaction stays uncategorized and no data changes
 
 ### Requirement: The checkmark belongs to the whole transaction
 
@@ -318,15 +347,29 @@ The app SHALL undo the split when a source that gives IDs delivers the booked or
 - **WHEN** the user marks "TX-1" as checked
 - **THEN** the checkmark stays and the review mark and its note disappear
 
+#### Scenario: A correction replaces an earlier review reason
+
+- **GIVEN** a booked -80,00 € transaction with the review reason for an unclear booking and parts of -25,00 € and -55,00 €
+- **WHEN** the bank delivers its source ID with the booked amount -85,00 €
+- **THEN** the split is undone and the review reason is replaced by the reason for an undone split
+
 ### Requirement: Rules leave parts alone
 
-The app SHALL keep the category of each part when categorization rules run or when a changed rule is applied to all transactions.
+The app SHALL leave split originals and their parts unchanged when a changed rule is applied to existing transactions. The number of matching transactions excludes split originals and parts.
 
 #### Scenario: Apply to all
 
-- **GIVEN** a part in "Household" whose purpose matches the rule of "Groceries"
-- **WHEN** the user applies the rule of "Groceries" to all transactions
-- **THEN** the part stays in "Household"
+- **GIVEN** a -80,00 € transaction in "Groceries" split into -25,00 € in "Household" and -55,00 € in "Groceries"
+- **AND** its purpose matches the rule of "Drinks"
+- **WHEN** the user applies the rule of "Drinks" to all transactions
+- **THEN** the original stays in "Groceries" and the parts stay in "Household" and "Groceries"
+- **AND** the count of matching transactions excludes the split
+
+#### Scenario: Apply only to uncategorized transactions
+
+- **GIVEN** an uncategorized -80,00 € transaction with two parts whose purpose matches the rule of "Drinks"
+- **WHEN** the user applies that rule only to not yet categorized transactions
+- **THEN** the original and parts stay unchanged
 
 ### Requirement: Undo a split
 

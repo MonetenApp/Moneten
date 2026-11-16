@@ -317,12 +317,41 @@ struct SplitLedgerTests {
 		#expect(checked.parts.isEmpty)
 		let added = Transaction(accountID: account.id, bookingDate: day, amountMinor: -3000, name: "Made-up purchase")
 		let changes = l.changes(from: [added])
-		#expect(changes.transactions == [added])
-		#expect(changes.transactions.first?.amountMinor == -3000)
+		#expect(changes.transactions.isEmpty)
 		#expect(changes.parts.isEmpty)
 		#expect(l.row(original.id) == nil)
 		#expect(l.changes(from: [original]).transactions.isEmpty)
 		#expect(l.changes(from: [original]).parts.isEmpty)
+	}
+
+	@Test("Stale parts and deleted rows never become new transactions")
+	func staleRows() throws {
+		var (ledger, original, parts) = editableSplit()
+		var stale = try #require(ledger.row(parts[0].id))
+		stale.comment = "Old edit"
+		ledger.replaceParts(of: original.id, with: [])
+		let ordinary = Transaction(accountID: account.id, bookingDate: day, amountMinor: -3000, name: "Made-up purchase")
+		ledger.update([ordinary])
+		ledger.remove(transactionIDs: [ordinary.id])
+		for row in [stale, ordinary] {
+			let changes = ledger.changes(from: [row])
+			#expect(changes.transactions.isEmpty)
+			#expect(changes.parts.isEmpty)
+		}
+		#expect(ledger.transactions.count == 1)
+		#expect(ledger.transaction(original.id)?.amountMinor == -8000)
+	}
+
+	@Test("An unchanged uncategorized editor gives no transaction to categorize")
+	func unchangedEditor() {
+		let transaction = Transaction(accountID: account.id, bookingDate: day, amountMinor: -3000, name: "REWE Markt GmbH")
+		let drinks = Domain.Category(position: 0, name: "Drinks", rule: "REWE")
+		let ledger = Ledger(accounts: [account], categories: [drinks], transactions: [transaction])
+		#expect(Categorizer(ledger: ledger).category(for: transaction) == drinks.id)
+		let changes = ledger.changes(from: [transaction])
+		#expect(changes.transactions.isEmpty)
+		#expect(changes.parts.isEmpty)
+		#expect(ledger.transaction(transaction.id)?.categoryID == nil)
 	}
 
 	@Test("The category picker keeps account restrictions for selected parts")
@@ -346,6 +375,64 @@ struct SplitLedgerTests {
 		let accounts = l.accountIDs(ofTransactions: [ps[0].id, other.id])
 		#expect(accounts == [a.id, business.id])
 		#expect(l.categories(matching: "", assignableTo: accounts).map(\.name) == ["Groceries"])
+	}
+
+	@Test("Split Amount makes two parts in the category of the row, with its comment")
+	func splitAmount() throws {
+		let t = original()
+		let l = ledger([t])
+		let ps = try l.splitting(row: t.id, off: [Money(minorUnits: -2500, currency: "EUR")])
+		#expect(ps.map(\.amountMinor) == [-2500, -5500])
+		#expect(ps.map(\.categoryID) == [groceries.id, groceries.id])
+		#expect(ps.map(\.comment) == ["Weekly shop", "Weekly shop"])
+		#expect(ps.map(\.position) == [0, 1])
+		#expect(ps.allSatisfy { $0.transactionID == t.id && $0.vat == nil })
+	}
+
+	@Test("Splitting a part replaces it in place")
+	func splitPart() throws {
+		let t = original(), ps = parts(t)
+		var l = ledger([t]); l.replaceParts(of: t.id, with: ps)
+		let result = try l.splitting(row: ps[1].id, off: [Money(minorUnits: -1500, currency: "EUR")])
+		#expect(result.map(\.amountMinor) == [-2500, -1500, -4000])
+		#expect(result.map(\.position) == [0, 1, 2])
+		#expect(result.allSatisfy { $0.transactionID == t.id })
+		#expect(result[0] == ps[0])
+		#expect(!result.map(\.id).contains(ps[1].id))
+		l.replaceParts(of: t.id, with: result)
+		l.replaceParts(of: t.id, with: [])
+		#expect(l.rows(in: .account(account.id)).rows == [t])
+	}
+
+	@Test("Splitting a VAT part drops its label")
+	func splitVATPart() throws {
+		let t = original(-11900), rate = VATRate(hundredths: 1900)
+		var l = ledger([t])
+		let ps = try l.splittingVAT(row: t.id, rate: rate)
+		l.replaceParts(of: t.id, with: ps)
+		let result = try l.splitting(row: ps[0].id, off: [Money(minorUnits: -5000, currency: "EUR")])
+		#expect(result.map(\.amountMinor) == [-5000, -5000, -1900])
+		#expect(result.map(\.vat) == [nil, nil, VATShare(role: .tax, rate: rate)])
+		#expect(result[2].id == ps[1].id)
+	}
+
+	@Test("A pending row cannot be split")
+	func splitPending() {
+		var t = original(); t.isPending = true
+		let l = ledger([t])
+		#expect(throws: SplitError.pending) { try l.splitting(row: t.id, off: [Money(minorUnits: -2500, currency: "EUR")]) }
+		#expect(throws: SplitError.pending) { try l.splittingVAT(row: t.id, rate: VATRate(hundredths: 1900)) }
+	}
+
+	@Test("A VAT split labels its parts")
+	func splitVAT() throws {
+		let t = original(-11900), rate = VATRate(hundredths: 1900)
+		let ps = try ledger([t]).splittingVAT(row: t.id, rate: rate)
+		#expect(ps.map(\.amountMinor) == [-10000, -1900])
+		#expect(ps.map(\.vat) == [VATShare(role: .net, rate: rate), VATShare(role: .tax, rate: rate)])
+		#expect(ps.map(\.categoryID) == [groceries.id, groceries.id])
+		#expect(ps.map(\.comment) == ["Weekly shop", "Weekly shop"])
+		#expect(ps.map(\.position) == [0, 1])
 	}
 
 }

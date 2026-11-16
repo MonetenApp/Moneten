@@ -241,12 +241,29 @@ struct BankAccessTests {
 		#expect(Self.names(ledger.refreshAccounts(.group(privat.id))) == [Self.accessID: ["Giro"], Self.otherAccessID: ["Card"]])
 	}
 
+	@Test("A refresh request carries the stored balance, the end of the last refresh, and the notes, which an extension reads")
+	func requestCarriesTheStoredBalance() {
+		var giro = Self.bankAccount("Giro", refreshedAt: Self.noon)
+		giro.bankBalanceMinor = 125_050
+		giro.comment = "Contract 4711"
+		let request = Ledger(accounts: [giro]).refreshAccounts(.all)[Self.accessID]?.first
+		#expect(request?.balance == Money(minorUnits: 125_050, currency: giro.currency))
+		#expect(request?.refreshedAt == Self.noon)
+		#expect(request?.comment == "Contract 4711")
+	}
+
 	@Test("A first refresh asks for the full history, and a later one from 14 days before the last success")
 	func since() {
 		let fresh = Self.bankAccount("Giro")
 		let known = Self.bankAccount("Savings", refreshedAt: Self.noon)
 		let plan = Ledger(accounts: [fresh, known]).refreshAccounts(.all, calendar: Self.utc)[Self.accessID]
 		#expect(plan?.map(\.since) == [nil, Day(year: 2026, month: 10, day: 18)])
+		// The day of the last success itself, so an answer that starts after it may miss older transactions.
+		#expect(plan?.map(\.lastFetched) == [nil, Day(year: 2026, month: 11, day: 1)])
+		let enforced = RefreshRequest(access: Access(source: .fints(bankCode: "12030000", url: URL(string: "https://fints.example.com/fints")!),
+			bankName: "Musterbank", loginName: "erika77"), accounts: plan ?? [], enforced: true)
+		#expect(enforced.accounts.map(\.since) == [nil, nil])
+		#expect(enforced.accounts.map(\.lastFetched) == [nil, Day(year: 2026, month: 11, day: 1)])
 	}
 
 	@Test("A refresh asks from the oldest pending row, so it removes a deposit older than the overlap that the bank dropped")

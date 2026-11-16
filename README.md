@@ -46,14 +46,14 @@ You need macOS 15 or newer, Xcode 16.3 or newer, and [XcodeGen](https://github.c
 scripts/test.sh                     # run the tests of the libraries
 scripts/generate-project.sh         # write App/Moneten.xcodeproj, then open it in Xcode
 scripts/build-app.sh                # build dist/Moneten.app; add "debug" for a debug build
-scripts/build-app.sh developer-id   # sign it with the Developer ID of the team, for other Macs
+scripts/build-app.sh developer-id   # sign it with the Developer ID certificate, see docs/releasing.md
 open dist/Moneten.app
 scripts/check.sh                    # run the checks before a pull request; needs OpenSpec and Periphery
 ```
 
 To sign with your team, create `App/Local.xcconfig` as `App/Signing.xcconfig` describes. A build without a team is signed to run locally. Every new build then has a new signature, and the Keychain does not hand the entries of an older build to a newer one. Set a database password when you rebuild often, or sign with a team. [ADR 0011](docs/decisions/0011-app-target-in-an-xcode-project.md) explains the build.
 
-The app keeps its data in `~/Library/Application Support/Moneten`. To try it with another folder, start it with `open --env MONETEN_DATA_DIR=/path/to/folder dist/Moneten.app`. Builds from before the rename used the folder `MonetenMoneten`, and the app moves it on its first start ([ADR 0013](docs/decisions/0013-name-the-app-moneten.md)).
+The app keeps its data in `~/Library/Application Support/Moneten`. To try it with another folder, build a debug build with `scripts/build-app.sh debug` and start it with `open --env MONETEN_DATA_DIR=/path/to/folder dist/Moneten.app`. A release build ignores the variable. Builds from before the rename used the folder `MonetenMoneten`, and the app moves it on its first start ([ADR 0013](docs/decisions/0013-name-the-app-moneten.md)).
 
 ## How the project is planned
 
@@ -62,6 +62,7 @@ The project uses [OpenSpec](https://github.com/Fission-AI/OpenSpec). Every behav
 - [openspec/changes](openspec/changes/) holds one folder for each planned change. A change has a proposal and the specs that it adds.
 - [openspec/specs](openspec/specs/) holds the specs of what is built. A change moves there when its code is merged and the change is archived, so the folder is empty until then.
 - [MoneyMoney analysis](docs/research/moneymoney-analysis.md) records the behavior that the specs start from, and [MoneyMoney features](docs/research/moneymoney-features.md) maps each feature to its change.
+- [Extension coverage](docs/research/extension-coverage.md) lists which providers the published MoneyMoney extensions reach in Moneten and what blocks the others.
 
 [CONTRIBUTING.md](CONTRIBUTING.md) explains how to work on a change.
 

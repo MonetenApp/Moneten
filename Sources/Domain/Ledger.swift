@@ -150,6 +150,11 @@ public struct Ledger: Sendable {
 		return partsByTransaction[id] == nil ? transaction(id) : nil
 	}
 
+	/// Whether "Edit Transaction..." changes the date, the value date, the name, the purpose, and the amount of the
+	/// row. A split transaction shows only its parts, and a part offers only its category and comment, so that the
+	/// parts always add up to the amount of the split transaction.
+	public func editsFields(of rowID: UUID) -> Bool { row(rowID) != nil && part(rowID) == nil }
+
 	public func parts(of transactionID: UUID) -> [SplitPart] { partsByTransaction[transactionID] ?? [] }
 
 	public func part(_ rowID: UUID) -> SplitPart? {
@@ -548,7 +553,7 @@ public struct Ledger: Sendable {
 				if row.isNew != original.isNew { t.isNew = row.isNew }
 				if row.review != original.review { t.review = row.review }
 				if t != original { changed[t.id] = t }
-			} else if partsByTransaction[row.id] == nil, row != transaction(row.id) {
+			} else if partsByTransaction[row.id] == nil, let stored = transaction(row.id), row != stored {
 				changed[row.id] = row
 			}
 		}
@@ -607,6 +612,35 @@ public struct Ledger: Sendable {
 		}
 		sortAndIndex()
 		countNew()
+	}
+
+	public func splitting(row rowID: UUID, off amounts: [Money]) throws -> [SplitPart] {
+		guard let row = row(rowID) else { throw SplitError.unbalanced }
+		guard !row.isPending else { throw SplitError.pending }
+		return try splitting(row: row, amounts: Split.amounts(of: row.amount, off: amounts))
+	}
+
+	public func splittingVAT(row rowID: UUID, rate: VATRate) throws -> [SplitPart] {
+		guard let row = row(rowID) else { throw SplitError.unbalanced }
+		guard !row.isPending else { throw SplitError.pending }
+		return try splitting(row: row, amounts: rate.split(row.amount), rate: rate)
+	}
+
+	private func splitting(row: Transaction, amounts: [Money], rate: VATRate? = nil) throws -> [SplitPart] {
+		let originalID = part(row.id)?.transactionID ?? row.id
+		let new = amounts.enumerated().map { index, amount in
+			SplitPart(transactionID: originalID, position: index, amountMinor: amount.minorUnits,
+				categoryID: row.categoryID, comment: row.comment,
+				vat: rate.map { VATShare(role: index == 0 ? .net : .tax, rate: $0) })
+		}
+		var result = parts(of: originalID)
+		if let index = result.firstIndex(where: { $0.id == row.id }) {
+			result.replaceSubrange(index...index, with: new)
+		} else {
+			result = new
+		}
+		for i in result.indices { result[i].position = i }
+		return result
 	}
 
 	public mutating func replaceParts(of transactionID: UUID, with parts: [SplitPart]) {
