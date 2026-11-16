@@ -29,10 +29,6 @@ public enum TransactionFileImporter {
 		}
 	}
 
-	/// The reason of a line whose amount is above `Money.maxMinorUnits`, in every format. A larger amount fails the
-	/// file, so that no sum of stored amounts can overflow.
-	static let tooLarge = "The amount is too large."
-
 	/// A value or row that the import replaced or skipped. The file is imported anyway.
 	public enum Warning: Sendable, Equatable, CustomStringConvertible {
 		case unknownCurrency(line: Int, cell: String, replacement: String)
@@ -144,9 +140,9 @@ enum MT940Parser {
 			}
 			guard f.tag == "61" else { continue }
 			let line = try parse61(f.value, line: f.line)
-			guard let amount = Money(limited: line.amount, currency: currency) else { throw TransactionFileImporter.Failure.line(f.line, TransactionFileImporter.tooLarge) }
+			guard let money = Money(fitting: line.amount, currency: currency) else { throw TransactionFileImporter.Failure.line(f.line, "The amount is too large.") }
 			var t = Transaction(accountID: placeholder, bookingDate: line.booking, valueDate: line.value,
-				amountMinor: amount.minorUnits, currency: currency, name: "")
+				amountMinor: money.minorUnits, currency: currency, name: "")
 			if i + 1 < fields.count, fields[i + 1].tag == "86" { apply86(fields[i + 1].value, to: &t) }
 			result.append(t)
 		}
@@ -402,7 +398,7 @@ final class CAMTParser: NSObject, XMLParserDelegate {
 		}
 		let debit = entry["sign"] == "DBIT"
 		let currency = entry["currency"] ?? currency
-		guard let signed = Money(limited: debit ? -amount : amount, currency: currency) else { return fail(TransactionFileImporter.tooLarge) }
+		guard let money = Money(fitting: debit ? -amount : amount, currency: currency) else { return fail("The amount of the entry is too large.") }
 		// A value that differs between the details of a batch belongs to none of them alone, so the entry leaves it out.
 		// A batch to several counterparties keeps no counterparty and no reference.
 		let side = debit ? "creditor" : "debtor"
@@ -418,7 +414,7 @@ final class CAMTParser: NSObject, XMLParserDelegate {
 			return day
 		}
 		let t = Transaction(accountID: UUID(), bookingDate: booking, valueDate: valueDate,
-			amountMinor: signed.minorUnits, currency: currency,
+			amountMinor: money.minorUnits, currency: currency,
 			name: ofOneParty(side + "Name") ?? "",
 			purpose: purposes.joined(separator: " "),
 			counterpartyIBAN: ofOneParty(side + "IBAN"),

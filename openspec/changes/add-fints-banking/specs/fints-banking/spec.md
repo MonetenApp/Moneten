@@ -100,7 +100,7 @@ The app SHALL fetch transactions in the CAMT format when the bank offers it for 
 
 ### Requirement: A normal refresh asks for at most 90 days
 
-The app SHALL ask in a normal refresh for the transactions since the last successful fetch of the account with an overlap of 14 days, or from its oldest pending transaction when that is earlier, and for no more than the last 90 days. The bank then needs no TAN for older transactions, and the refresh can remove a pending transaction that the bank dropped.
+The app SHALL ask in a normal refresh for the transactions since the last successful fetch of the account with an overlap of 14 days, or from its oldest pending transaction when that is earlier, and for no more than the last 90 days. The bank then needs no TAN for older transactions, and the refresh can remove a pending transaction that the bank dropped. Only when the 90 days start after the day of the last successful fetch does the account view say that older transactions may be missing.
 
 #### Scenario: Daily use
 
@@ -121,9 +121,23 @@ The app SHALL ask in a normal refresh for the transactions since the last succes
 - **THEN** the app asks for the last 90 days
 - **AND** the account view says that older transactions may be missing and names "Refresh Account (enforced)"
 
+#### Scenario: Pause shorter than 90 days
+
+- **GIVEN** today is 16.11.2026 and the last successful fetch of "Giro" was 80 days ago, on 28.08.2026
+- **WHEN** a normal refresh runs
+- **THEN** the app asks for the transactions from 18.08.2026 on, 90 days ago
+- **AND** the account view says nothing about missing older transactions
+
+#### Scenario: Pending transaction older than 90 days
+
+- **GIVEN** the last successful fetch of "Giro" was yesterday and "Giro" has a pending transaction of -500,00 € from 120 days ago
+- **WHEN** a normal refresh runs
+- **THEN** the app asks for the last 90 days
+- **AND** the account view says nothing about missing older transactions
+
 ### Requirement: The first refresh asks for the full history
 
-The app SHALL ask in the first refresh of a new account for all transactions that the bank keeps. When the bank asks for a TAN for transactions older than 90 days and the user cancels that TAN, the app fetches the last 90 days.
+The app SHALL ask in the first refresh of a new account for all transactions that the bank keeps. When the bank asks for a TAN or a confirmation for transactions older than 90 days and the user cancels it, the app fetches the last 90 days. The account view then says that older transactions may be missing, until a refresh brings the full history of the account. The note stays with the account.
 
 #### Scenario: Bank keeps 450 days
 
@@ -136,6 +150,33 @@ The app SHALL ask in the first refresh of a new account for all transactions tha
 - **WHEN** the bank asks for a TAN for transactions older than 90 days and the user cancels
 - **THEN** the list of "Giro" contains the last 90 days
 - **AND** the account shows no error
+- **AND** the account view says "Older transactions may be missing. Choose “Refresh Account (enforced)” with the Option key to fetch them."
+
+#### Scenario: Confirmation for older transactions canceled before the bank answers
+
+- **GIVEN** the bank asks for a confirmation in the banking app for transactions older than 90 days
+- **WHEN** the user rejects the request in the banking app and clicks "Cancel" in the app before the app asks the bank about the confirmation again
+- **THEN** the list of "Giro" contains the last 90 days
+- **AND** the account shows no error
+
+#### Scenario: The note stays after a lock
+
+- **GIVEN** the account view of "Giro" says that older transactions may be missing
+- **WHEN** the user locks the app and unlocks it, or quits the app and starts it again
+- **THEN** the account view of "Giro" still says that older transactions may be missing
+
+#### Scenario: The note stays after an export and an import
+
+- **GIVEN** the account view of "Giro" says that older transactions may be missing
+- **WHEN** the user chooses "Export All Data..." and imports the file with "Import All Data..." into an empty database
+- **THEN** the account view of "Giro" says that older transactions may be missing
+
+#### Scenario: Enforced refresh after the canceled TAN
+
+- **GIVEN** the first refresh of "Giro" brought the last 90 days after the user canceled the TAN for older transactions, and the bank balance and the computed balance of "Giro" are 10.000,00 €
+- **WHEN** the user chooses "Refresh Account (enforced)", enters the TAN, and the bank delivers older transactions that add up to -500,00 € with a bank balance of 10.000,00 €
+- **THEN** the computed balance of "Giro" is 10.000,00 €, not 9.500,00 €
+- **AND** the account view no longer says that older transactions may be missing
 
 ### Requirement: Enforced refresh
 

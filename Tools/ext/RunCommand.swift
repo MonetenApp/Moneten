@@ -167,8 +167,9 @@ final class Trace: Sendable {
 			case let .keyFingerprint(fingerprint): state.keyUses.append(Session.KeyUse(fingerprint: fingerprint, request: state.exchanges.count))
 			case let .storage(data): state.storage = data
 			case let .result(.refreshAccount(account, _, _, _, _, _), result):
-				state.refreshed.removeAll { $0.account == account }
-				state.refreshed.append((account, result))
+				let listed = NewAccount.withoutRefreshFields(account)
+				state.refreshed.removeAll { $0.account == listed }
+				state.refreshed.append((listed, result))
 			case .result: break
 			}
 		}
@@ -180,7 +181,7 @@ final class Trace: Sendable {
 		state.withLock { state in
 			let entries = accounts.map { account -> LuaValue in
 				guard case var .object(fields) = account.table else { return account.table }
-				if case let .object(result)? = state.refreshed.first(where: { $0.account == account.table })?.result {
+				if case let .object(result)? = state.refreshed.first(where: { $0.account == NewAccount.withoutRefreshFields(account.table) })?.result {
 					fields.merge(result) { $1 }
 				}
 				if case let .failed(failure) = account.outcome { fields["error"] = .string(failure.message) }

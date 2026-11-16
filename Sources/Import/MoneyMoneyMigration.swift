@@ -88,7 +88,7 @@ public struct MoneyMoneyMigration: Sendable {
 			guard let accountSource = raw["accountUuid"] as? String, let accountID = accountMap[accountSource] else { continue }
 			let id = (raw["id"] as? Int).map { "\(Transaction.migrationIDPrefix)\($0)" }
 			let currency = (raw["currency"] as? String) ?? "EUR"
-			guard let amount = Money(limited: Decimal((raw["amount"] as? Double) ?? 0), currency: currency) else {
+			guard let amount = Money(fitting: Decimal((raw["amount"] as? Double) ?? 0), currency: currency) else {
 				throw Failure.tooLarge((raw["id"] as? Int).map { "The amount of transaction \($0)" } ?? "The amount of a transaction")
 			}
 			let booking = (raw["bookingDate"] as? Date).map { Day($0, calendar: calendar) } ?? Day.today(calendar: calendar)
@@ -315,7 +315,7 @@ public struct MoneyMoneyMigration: Sendable {
 			if let balance = item["balance"] as? [[Any]], let first = balance.first, first.count >= 2,
 				let amount = first[0] as? Double, let c = first[1] as? String {
 				currency = c
-				guard let money = Money(limited: Decimal(amount), currency: c) else { throw Failure.tooLarge("The balance of the account \"\(name)\"") }
+				guard let money = Money(fitting: Decimal(amount), currency: c) else { throw Failure.tooLarge("The balance of the account \"\(name)\"") }
 				balanceMinor = money.minorUnits
 			}
 			let balanceDate = (item["balanceDate"] as? Date) ?? (item["refreshTimestamp"] as? Date)

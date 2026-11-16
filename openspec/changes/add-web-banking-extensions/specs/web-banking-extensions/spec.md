@@ -527,6 +527,11 @@ The app SHALL call `SupportsBank(protocol, bankCode)` to find the extension for 
 - **WHEN** the script returns `"https://bank.example/login"`
 - **THEN** the app uses this extension, and the global `url` has that value for the rest of the session
 
+#### Scenario: Protocol as text
+
+- **WHEN** a script compares `protocol == "Web Banking"` in `SupportsBank` for a web banking access
+- **THEN** the comparison is true, because `ProtocolWebBanking` holds the text "Web Banking" and `ProtocolFinTS` the text "HBCI+/FinTS"
+
 ### Requirement: Extensions add accounts to a FinTS access
 
 The app SHALL ask the installed extensions with `ProtocolFinTS` and the Bankleitzahl when a FinTS access is set up or refreshed. A responsible extension can add accounts that the bank does not offer through FinTS. `ListAccounts` then receives the accounts that are already known.
@@ -776,6 +781,29 @@ The app SHALL open any other `https://` URL in `challenge` in its own browser wi
 - **WHEN** the URL has a host that the manifest does not list
 - **THEN** the session ends with an error that names the host
 
+### Requirement: Login page on a new host
+
+The app SHALL ask the host question of "Host prompts without a manifest" before it opens a browser window on a new host for an extension without a list of hosts, because a script can return its login page before it contacted that host.
+
+#### Scenario: Allow the login page
+
+- **GIVEN** "Demo" has no manifest and the user allowed no host yet
+- **WHEN** the function returns `{challenge="https://auth.broker.example/authorize?client_id=abc", state="xyz"}` in a refresh that the user started
+- **THEN** the app asks whether "Demo" may contact `auth.broker.example` before it opens the window
+- **AND** after "Allow" the window opens and the app does not ask again for this host
+
+#### Scenario: Deny the login page
+
+- **GIVEN** "Demo" has no manifest
+- **WHEN** the function returns a login page on `auth.broker.example` and the user answers "Deny"
+- **THEN** no window opens and the session ends with an error that names `auth.broker.example`
+
+#### Scenario: Login page on a denied host
+
+- **GIVEN** "Demo" has no manifest and the user denied `auth.broker.example` in an earlier refresh
+- **WHEN** the function returns a login page on `auth.broker.example`
+- **THEN** the app does not ask again, no window opens, and the session ends with an error that names `auth.broker.example`
+
 ### Requirement: App-to-app challenge
 
 The app SHALL show the URL in `challenge` as a QR code and not open it in a browser when `appToApp` holds the name of a banking app. The instruction text names that app.
@@ -832,6 +860,36 @@ The app SHALL read and pass the account fields `name`, `owner`, `accountNumber`,
 
 - **WHEN** the app calls `RefreshAccount` for an account that `ListAccounts` returned with `subAccount="01"`
 - **THEN** the `account` parameter has `subAccount` "01" and the other fields as returned
+
+### Requirement: Account table at refresh
+
+The app SHALL add four fields to the account table that `RefreshAccount` receives: `balance`, the stored balance in the account currency or 0, `balanceDate`, the end of the last successful refresh or else the current time in whole POSIX seconds, `comment`, the notes of the account or "", and `attributes`, a table of the user-defined fields that is empty while an account has none.
+
+#### Scenario: Stored balance
+
+- **GIVEN** an account in EUR whose last refresh ended on 9 November 2026 at 12:00 UTC with the balance 1.250,50 €
+- **WHEN** the app calls `RefreshAccount`
+- **THEN** `account.balance` is 1250.50 and `account.balanceDate` is 1794225600
+- **AND** `account.attributes` is an empty table, so `account.attributes.GroupTransactions` is nil and no error
+
+#### Scenario: New account
+
+- **WHEN** the app calls `RefreshAccount` during the setup of an access
+- **THEN** `account.balance` is 0 and `account.comment` is ""
+
+### Requirement: Securities only with the portfolio field
+
+The app SHALL read `securities` from the results of an account only when its `portfolio` field holds a value other than `false` or nil, and SHALL read `balance` and `transactions` otherwise, whatever its `type` is.
+
+#### Scenario: Securities account with transactions
+
+- **WHEN** `ListAccounts` returns `{accountNumber="D-1", portfolio=false, type=AccountTypePortfolio}` and `RefreshAccount` returns `{balance=100.00, transactions={{bookingDate=1794182400, amount=100.00, purpose="Kauf"}}}`
+- **THEN** the account has the type of a securities account, the balance 100,00 €, and one transaction
+
+#### Scenario: Type without the field
+
+- **WHEN** `ListAccounts` returns `{accountNumber="D-2", type=AccountTypePortfolio}` and `RefreshAccount` returns a balance and transactions
+- **THEN** the app reads the balance and the transactions and does not ask for `securities`
 
 ### Requirement: Account type when the script gives none
 
@@ -1042,6 +1100,20 @@ The app SHALL offer `Connection()` and `connection:request(method, url, postCont
 - **WHEN** a script requests `http://bank.example/`
 - **THEN** the request is not sent and the script stops with an error
 
+### Requirement: Header names of a script
+
+The app SHALL stop the script with an error that names the header when a header name of the script is not a token of HTTP, and SHALL leave out a header whose name starts with a colon, such as `:path:`, which a browser shows for its own HTTP/2 fields, and send the request without it.
+
+#### Scenario: Name with a line break
+
+- **WHEN** a script sends a request with the header name "X-Id\r\nHost"
+- **THEN** no request is sent and the script stops with an error that names the header
+
+#### Scenario: Fields copied from a browser
+
+- **WHEN** a script sends a POST to `https://sso.bank.example/login` with the headers `:authority:` "sso.bank.example", `:method:` "POST", `:path:` "/login", and `Accept: text/html`
+- **THEN** the app sends the POST with `Accept: text/html` and without the four names that start with a colon
+
 ### Requirement: HTTP errors
 
 The app SHALL stop the script and show an error when the server answers a request with an HTTP error status. When the request header `Accept` is `application/json`, the app returns the response to the script and does not stop it.
@@ -1138,7 +1210,7 @@ The app SHALL offer `text()` for the combined text of the elements and their chi
 
 ### Requirement: Form helpers
 
-The app SHALL offer `val()` for the value of a form field, `select(value)` to choose one option of a `<select>` list, `click()` on a link, submit button, or image button, and `submit()` on a form. `click` and `submit` return `method`, `url`, `postContent`, and `postContentType` for `connection:request`. `val` and `select` respect `disabled`.
+The app SHALL offer `val()` for the value of a form field, `select(value)` to choose one option of a `<select>` list, `click()` on a link, submit button, or image button, and `submit()` on a form. `click` and `submit` return `method`, `url`, `postContent`, and `postContentType` for `connection:request`, and nothing on an empty list or on an element they do not apply to. `val` and `select` respect `disabled`.
 
 #### Scenario: Submit a login form
 
@@ -1150,6 +1222,11 @@ The app SHALL offer `val()` for the value of a form field, `select(value)` to ch
 
 - **WHEN** the script calls `html:xpath("//form"):submit()`
 - **THEN** the returned parameters contain the input values and no value of a submit button
+
+#### Scenario: No logout link
+
+- **WHEN** a page has no logout link and the script evaluates `html:xpath("//a[@id='logout']"):click() ~= nil`
+- **THEN** the result is false and the script goes on
 
 ### Requirement: JSON
 
@@ -1289,7 +1366,7 @@ The app SHALL offer `MM.urlencode(str, charset)` with the default character set 
 
 ### Requirement: Binary encoding helpers
 
-The app SHALL offer `MM.base64(data, linebreaks)`, `MM.base64urlencode(data)` without padding, `MM.base64decode(encoded)`, which also accepts the URL-safe form and line breaks, `MM.binToHex(data)` with upper case output, and `MM.hexToBin(hex)`, which ignores case and colons and returns `nil` for invalid input.
+The app SHALL offer `MM.base64(data, linebreaks)`, `MM.base64urlencode(data)` without padding, `MM.base64decode(encoded)`, which also accepts the URL-safe form and line breaks, `MM.binToHex(data)` with upper case output, and `MM.hexToBin(hex)`, which ignores case and colons, reads a text of odd length with a leading 0, and returns `nil` for invalid input.
 
 #### Scenario: Round trip
 
@@ -1300,6 +1377,11 @@ The app SHALL offer `MM.base64(data, linebreaks)`, `MM.base64urlencode(data)` wi
 
 - **WHEN** a script calls `MM.hexToBin("XY")`
 - **THEN** the result is `nil`
+
+#### Scenario: Odd length
+
+- **WHEN** a script calls `MM.hexToBin("10001")`, as a login page writes the RSA exponent 65537
+- **THEN** the result is the three bytes 01 00 01
 
 ### Requirement: Hashes and message authentication codes
 
@@ -1326,7 +1408,13 @@ The app SHALL offer `MM.random(length)`, which returns that many random bytes fr
 
 ### Requirement: Environment values
 
-The app SHALL offer `MM.productName` with the value "Moneten", `MM.productVersion` as text, `MM.productBuild` as a number, `MM.apiVersion` as a number, `MM.language` with the language code of the interface, and `MM.deviceUuid` with a random identifier that the app creates once and keeps.
+The app SHALL offer `MM.productName` with the value "Moneten", `MM.productVersion` as text with three numbers separated by periods, `MM.productBuild` as a number, `MM.apiVersion` as a number, `MM.language` with the language code of the interface, and `MM.deviceUuid` with a random identifier that the app creates once and keeps.
+
+#### Scenario: Version with three numbers
+
+- **GIVEN** the version of the app is 0.1
+- **WHEN** a script reads `MM.productVersion`
+- **THEN** the value is "0.1.0", so that a script that compares it field by field with "2.3.4" gets three fields
 
 #### Scenario: Stable device identifier
 

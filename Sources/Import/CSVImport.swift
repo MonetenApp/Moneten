@@ -458,12 +458,12 @@ public struct CSVFile: Sendable {
 					result.warnings.append(.unknownCurrency(line: line, cell: cell, replacement: currency))
 				}
 			}
+			guard let money = Money(fitting: amount, currency: cur) else { throw TransactionFileImporter.Failure.line(line, "The amount is too large.") }
 			let valueDate = Self.cell(row, valueDateColumn).flatMap { cell in
 				let day = layout.dateOrder.day(cell)
 				if day == nil { result.warnings.append(.unreadableValueDate(line: line, cell: cell)) }
 				return day
 			}
-			guard let money = Money(limited: amount, currency: cur) else { throw TransactionFileImporter.Failure.line(line, TransactionFileImporter.tooLarge) }
 			var t = Transaction(accountID: placeholder, bookingDate: day, valueDate: valueDate,
 				amountMinor: money.minorUnits, currency: cur,
 				name: Self.cell(row, nameColumn) ?? "", purpose: Self.cell(row, purposeColumn) ?? "", counterpartyIBAN: Self.cell(row, ibanColumn), counterpartyBIC: Self.cell(row, bicColumn),

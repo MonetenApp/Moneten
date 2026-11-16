@@ -94,12 +94,18 @@ public struct Account: Identifiable, Hashable, Sendable, Codable {
 	public var refreshError: RefreshError?
 	/// "Refresh" in the account settings: how often the automatic refresh fetches the account.
 	public var refreshInterval: RefreshInterval
+	/// Older transactions of the account may be missing in the app, because a refresh fetched
+	/// less than the time since its last successful fetch, such as after a canceled TAN for older transactions.
+	/// It goes with the account, so a lock, a restart, and an export and import keep it, and `Store.merge` writes it
+	/// in the same transaction as the rows of the refresh. While it is set, each refresh derives the initial balance
+	/// again, and the refresh that brings the full history clears it.
+	public var missesOlderTransactions: Bool
 
 	public init(id: UUID = UUID(), groupID: UUID? = nil, position: Int, name: String, kind: AccountKind, source: AccountSource, currency: String = "EUR",
 		iban: String? = nil, bic: String? = nil, accountNumber: String? = nil, bankCode: String? = nil, bankName: String? = nil, owner: String? = nil,
 		bankBalanceMinor: Int64? = nil, bankBalanceDate: Date? = nil, initialBalanceMinor: Int64 = 0, initialBalanceIsSet: Bool = false, isClosed: Bool = false, comment: String? = nil, sourceID: String? = nil,
 		color: String? = nil, accessID: UUID? = nil, remoteID: String? = nil, refreshedAt: Date? = nil, refreshError: RefreshError? = nil,
-		refreshInterval: RefreshInterval = .everyTwoHours) {
+		refreshInterval: RefreshInterval = .everyTwoHours, missesOlderTransactions: Bool = false) {
 		self.id = id
 		self.groupID = groupID
 		self.position = position
@@ -126,6 +132,7 @@ public struct Account: Identifiable, Hashable, Sendable, Codable {
 		self.refreshedAt = refreshedAt
 		self.refreshError = refreshError
 		self.refreshInterval = refreshInterval
+		self.missesOlderTransactions = missesOlderTransactions
 	}
 
 	public var isOffline: Bool { source == .offline }
@@ -168,11 +175,12 @@ public struct Account: Identifiable, Hashable, Sendable, Codable {
 		bankBalanceMinor.map { $0.subtractingClamped(bookedSum(of: rows, through: Day(bankBalanceDate ?? Date(), calendar: calendar))) }
 	}
 
-	/// Sets the initial balance once, so that the computed balance meets the bank balance.
+	/// Sets the initial balance, so that the computed balance meets the bank balance. It is set for good unless
+	/// `missesOlderTransactions`: then the next refresh derives it again, and the one that brings the full history sets it.
 	mutating func deriveInitialBalance(from rows: [Transaction], calendar: Calendar = .current) {
 		guard derivesInitialBalance, let value = initialBalanceMeetingBankBalance(of: rows, calendar: calendar) else { return }
 		initialBalanceMinor = value
-		initialBalanceIsSet = true
+		initialBalanceIsSet = !missesOlderTransactions
 	}
 }
 
@@ -298,6 +306,9 @@ public struct Transaction: Identifiable, Hashable, Sendable, Codable {
 	public var sourceID: String?
 	public var fileIdentity: String?
 	public var createdAt: Date
+	/// The fields that "Edit Transaction..." changes, as the source delivered them. Nil until the user changes one
+	/// of them. A merge finds the row by these values and updates them, and the fields keep what the user wrote.
+	public var original: OriginalValues?
 
 	public init(id: UUID = UUID(), accountID: UUID, bookingDate: Day, valueDate: Day? = nil, amountMinor: Int64, currency: String = "EUR", name: String, purpose: String = "",
 		counterpartyIBAN: String? = nil, counterpartyBIC: String? = nil, bookingText: String? = nil, endToEndReference: String? = nil, mandateReference: String? = nil,
@@ -333,6 +344,26 @@ public struct Transaction: Identifiable, Hashable, Sendable, Codable {
 
 	public var amount: Money { Money(minorUnits: amountMinor, currency: currency) }
 
+	/// The editable fields as the source delivered them: `original` after an edit, otherwise the fields themselves.
+	public var sourceValues: OriginalValues { original ?? OriginalValues(self) }
+
+	/// What "Edit Transaction..." writes. The first change of a row from a source keeps the delivered values in
+	/// `original`, so that a later refresh still finds the row and does not add it again. Values equal to the
+	/// delivered ones clear it. A row that the user typed in has no source, so a correction replaces its values,
+	/// and a file finds the row by the corrected ones.
+	public mutating func edit(_ values: OriginalValues) {
+		let delivered = sourceValues
+		bookingDate = values.bookingDate
+		valueDate = values.valueDate
+		amountMinor = values.amountMinor
+		name = values.name
+		purpose = values.purpose
+		original = !hasSource || values == delivered ? nil : delivered
+	}
+
+	/// Whether a bank, a file, or a migration delivered the row. A row that the user typed in has none.
+	var hasSource: Bool { isFetched || sourceID != nil || fileIdentity != nil }
+
 	/// The rule for every sum, such as a balance, a bar of a chart, or the amount of a category. A pending row
 	/// counts like a booked one, except while it waits for review: then the booked row stands for the money.
 	var countsInSums: Bool { !isPending || review == nil }
@@ -357,4 +388,25 @@ public struct Transaction: Identifiable, Hashable, Sendable, Codable {
 
 	/// Checking the row changes it, so "Mark All Transactions as Checked" counts it.
 	public var changesWhenChecked: Bool { !isChecked || isNew || (review != nil && !isPending) }
+}
+
+/// The fields of a transaction that the user can change with "Edit Transaction...".
+public struct OriginalValues: Hashable, Sendable, Codable {
+	public var bookingDate: Day
+	public var valueDate: Day?
+	public var amountMinor: Int64
+	public var name: String
+	public var purpose: String
+
+	public init(bookingDate: Day, valueDate: Day?, amountMinor: Int64, name: String, purpose: String) {
+		self.bookingDate = bookingDate
+		self.valueDate = valueDate
+		self.amountMinor = amountMinor
+		self.name = name
+		self.purpose = purpose
+	}
+
+	public init(_ t: Transaction) {
+		self.init(bookingDate: t.bookingDate, valueDate: t.valueDate, amountMinor: t.amountMinor, name: t.name, purpose: t.purpose)
+	}
 }

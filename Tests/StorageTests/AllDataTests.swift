@@ -29,6 +29,158 @@ struct AllDataTests {
 		#expect(imported.deletedTransactions.map(\.fileIdentity) == ["file:1:8:202612086:-800003:EUR4:rent16:name:vermieter a0:0:"])
 	}
 
+	@Test("A split round trip keeps literal amounts, categories, comments, VAT, and review reasons")
+	func splitRoundTrip() throws {
+		defer { try? FileManager.default.removeItem(at: root) }
+		let source = try emptyStore("split-source")
+		let account = Account(position: 0, name: "Giro", kind: .giro, source: .offline, initialBalanceMinor: 100_000)
+		let groceries = Domain.Category(position: 0, name: "Groceries")
+		let household = Domain.Category(position: 1, name: "Household")
+		let drinks = Domain.Category(position: 2, name: "Drinks")
+		try source.save(accounts: [account], categories: [groceries, household, drinks])
+		let original = Transaction(accountID: account.id, bookingDate: Day(year: 2026, month: 11, day: 3), amountMinor: -11900,
+			name: "Example Market", comment: "Invoice", categoryID: groceries.id, categorizedBy: .manual, review: .unclearBooking, createdAt: exportedAt)
+		let corrected = Transaction(accountID: account.id, bookingDate: Day(year: 2026, month: 11, day: 4), amountMinor: -8500,
+			name: "Example Shop", review: .splitUndone, createdAt: exportedAt)
+		try source.save([original, corrected])
+		let parts = [
+			SplitPart(transactionID: original.id, position: 0, amountMinor: -10000, categoryID: household.id, comment: "Net goods", vat: VATShare(role: .net, rate: VATRate(hundredths: 1900))),
+			SplitPart(transactionID: original.id, position: 1, amountMinor: -1900, categoryID: drinks.id, comment: "Tax", vat: VATShare(role: .tax, rate: VATRate(hundredths: 1900)))]
+		try source.replaceParts(of: original.id, with: parts)
+		let file = try source.exportAllData(at: exportedAt).json()
+		let json = try #require(try JSONSerialization.jsonObject(with: file) as? [String: Any])
+		#expect(json["version"] as? Int == 2)
+		let entries = json["splitParts"] as? [[String: Any]] ?? []
+		#expect(entries.compactMap { $0["amount"] as? String } == ["-100.00", "-19.00"])
+		#expect(entries.compactMap { ($0["vat"] as? [String: Any])?["rate"] as? Int } == [1900, 1900])
+		let rows = try #require(json["transactions"] as? [[String: Any]])
+		#expect(rows.compactMap { $0["review"] as? String } == ["unclearBooking", "splitUndone"])
+		#expect(rows.allSatisfy { $0["needsReview"] == nil })
+		let target = try emptyStore("split-target")
+		try target.importAllData(try AllData(json: file))
+		let reopened = try Vault(folder: DataFolder(root: root.appendingPathComponent("split-target"))).open(password: "korrekt-pferd-batterie-heftklammer")
+		let ledger = try reopened.loadLedger()
+		#expect(ledger.transactions.count == 2)
+		#expect(ledger.transaction(original.id) == original)
+		#expect(ledger.transaction(corrected.id) == corrected)
+		let saved = ledger.parts(of: original.id)
+		#expect(saved.map(\.id) == parts.map(\.id))
+		#expect(saved.map(\.transactionID) == [original.id, original.id])
+		#expect(saved.map(\.position) == [0, 1])
+		#expect(saved.map(\.amountMinor) == [-10000, -1900])
+		#expect(saved.map(\.categoryID) == [household.id, drinks.id])
+		#expect(saved.map(\.comment) == ["Net goods", "Tax"])
+		#expect(saved.map { $0.vat?.role } == [.net, .tax])
+		#expect(saved.map { $0.vat?.rate.hundredths } == [1900, 1900])
+		#expect(ledger.rows(in: .account(account.id)).rows.allSatisfy { $0.currency == "EUR" })
+		#expect(ledger.computedBalance(of: account).minorUnits == 79600)
+	}
+
+	@Test("A v1 file with needsReview true imports as unclearBooking")
+	func v1Review() throws {
+		defer { try? FileManager.default.removeItem(at: root) }
+		let file = Data(#"""
+		{"format":"moneten-export","version":1,"exportedAt":"2026-11-14T23:46:40.000Z",
+		"accountGroups":[],"accesses":[],"categories":[],"deletedTransactions":[],"portfolioValues":[],"holdings":[],
+		"accounts":[{"id":"00000000-0000-0000-0000-000000000001","position":0,"name":"Giro","kind":"giro","source":"offline","currency":"EUR","initialBalance":"0.00","initialBalanceIsSet":true,"isClosed":false,"refreshInterval":"onlyManually"}],
+		"transactions":[
+		{"id":"00000000-0000-0000-0000-000000000002","accountID":"00000000-0000-0000-0000-000000000001","bookingDate":"2026-11-03","amount":"-20.00","currency":"EUR","name":"Example A","purpose":"","isChecked":false,"isPending":true,"categorizedBy":"none","isNew":false,"needsReview":true,"isFetched":false,"createdAt":"2026-11-14T23:46:40.000Z"},
+		{"id":"00000000-0000-0000-0000-000000000003","accountID":"00000000-0000-0000-0000-000000000001","bookingDate":"2026-11-04","amount":"-30.00","currency":"EUR","name":"Example B","purpose":"","isChecked":false,"isPending":false,"categorizedBy":"none","isNew":false,"needsReview":false,"isFetched":false,"createdAt":"2026-11-14T23:46:40.000Z"}]}
+		"""#.utf8)
+		let target = try emptyStore("v1-target")
+		try target.importAllData(try AllData(json: file))
+		let reopened = try Vault(folder: DataFolder(root: root.appendingPathComponent("v1-target"))).open(password: "korrekt-pferd-batterie-heftklammer")
+		let ledger = try reopened.loadLedger()
+		let pending = try #require(ledger.transactions.first { $0.isPending })
+		let booked = try #require(ledger.transactions.first { !$0.isPending })
+		#expect(pending.amountMinor == -2000)
+		#expect(pending.review == .unclearBooking)
+		#expect(booked.amountMinor == -3000)
+		#expect(booked.review == nil)
+		#expect(ledger.parts(of: pending.id).isEmpty && ledger.parts(of: booked.id).isEmpty)
+	}
+
+	@Test("An invalid split import writes nothing", arguments: ["transaction", "category", "pending", "id", "transaction-id", "position", "negative-position", "one", "zero", "sum", "overflow"])
+	func invalidSplits(_ kind: String) throws {
+		defer { try? FileManager.default.removeItem(at: root) }
+		let account = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
+		var original = Transaction(accountID: account.id, bookingDate: Day(year: 2026, month: 11, day: 3), amountMinor: -11900, name: "Example")
+		var parts = [SplitPart(transactionID: original.id, position: 0, amountMinor: -10000), SplitPart(transactionID: original.id, position: 1, amountMinor: -1900)]
+		switch kind {
+		case "transaction": parts[0].transactionID = UUID()
+		case "category": parts[0].categoryID = UUID()
+		case "pending": original.isPending = true
+		case "id": parts[1].id = parts[0].id
+		case "transaction-id": parts[0].id = original.id
+		case "position": parts[1].position = 0
+		case "negative-position": parts[0].position = -1
+		case "one": parts = [SplitPart(transactionID: original.id, position: 0, amountMinor: -11900)]
+		case "zero": parts[0].amountMinor = 0; parts[1].amountMinor = -11900
+		case "sum": parts[1].amountMinor = -1800
+		default: parts[0].amountMinor = Int64.max; parts[1].amountMinor = Int64.max
+		}
+		var data = AllData(exportedAt: exportedAt, accounts: [account], transactions: [original])
+		data.splitParts = parts
+		let target = try emptyStore("invalid")
+		let before = try target.exportAllData(at: exportedAt)
+		#expect(throws: AllData.ReadError.self) { try target.importAllData(data) }
+		#expect(try target.exportAllData(at: exportedAt) == before)
+		#expect(throws: AllData.ReadError.self) { try target.importAllData(try AllData(json: data.json())) }
+		#expect(try target.exportAllData(at: exportedAt) == before)
+	}
+
+	@Test("Malformed v2 split fields and unknown review reasons are refused", arguments: ["missing", "null", "review", "role", "rate-zero", "rate-negative", "rate-text", "amount", "transaction", "category", "id", "transaction-id", "position", "negative-position", "pending", "one", "zero", "sum", "overflow"])
+	func malformedSplitFile(_ kind: String) throws {
+		defer { try? FileManager.default.removeItem(at: root) }
+		let account = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
+		let original = Transaction(accountID: account.id, bookingDate: Day(year: 2026, month: 11, day: 3), amountMinor: -11900, name: "Example")
+		let parts = [SplitPart(transactionID: original.id, position: 0, amountMinor: -10000), SplitPart(transactionID: original.id, position: 1, amountMinor: -1900)]
+		let data = AllData(accounts: [account], transactions: [original], splitParts: parts)
+		var json = try #require(JSONSerialization.jsonObject(with: data.json()) as? [String: Any])
+		var entries = try #require(json["splitParts"] as? [[String: Any]])
+		var rows = try #require(json["transactions"] as? [[String: Any]])
+		switch kind {
+		case "review": rows[0]["review"] = "futureReason"
+		case "role": entries[0]["vat"] = ["role": "gross", "rate": 1900]
+		case "rate-zero": entries[0]["vat"] = ["role": "net", "rate": 0]
+		case "rate-negative": entries[0]["vat"] = ["role": "net", "rate": -1]
+		case "rate-text": entries[0]["vat"] = ["role": "net", "rate": "19"]
+		case "amount": entries[0]["amount"] = "-100.001"
+		case "transaction": entries[0]["transactionID"] = UUID().uuidString
+		case "category": entries[0]["categoryID"] = UUID().uuidString
+		case "id": entries[1]["id"] = entries[0]["id"]
+		case "transaction-id": entries[0]["id"] = original.id.uuidString
+		case "position": entries[1]["position"] = 0
+		case "negative-position": entries[0]["position"] = -1
+		case "pending": rows[0]["isPending"] = true
+		case "one": entries.removeLast(); entries[0]["amount"] = "-119.00"
+		case "zero": entries[0]["amount"] = "0.00"; entries[1]["amount"] = "-119.00"
+		case "sum": entries[1]["amount"] = "-18.00"
+		case "overflow": entries[0]["amount"] = "92233720368547758.07"; entries[1]["amount"] = "92233720368547758.07"
+		default: break
+		}
+		json["transactions"] = rows
+		json["splitParts"] = kind == "null" ? NSNull() : entries
+		if kind == "missing" { json.removeValue(forKey: "splitParts") }
+		let target = try emptyStore("malformed")
+		let before = try target.exportAllData(at: exportedAt)
+		#expect(throws: AllData.ReadError.self) { try target.importAllData(AllData(json: JSONSerialization.data(withJSONObject: json))) }
+		#expect(try target.exportAllData(at: exportedAt) == before)
+	}
+
+	@Test("Split amounts use the original currency and keep Int64 bounds", arguments: ["EUR", "JPY", "KWD"])
+	func splitCurrency(_ currency: String) throws {
+		let original = Transaction(accountID: UUID(), bookingDate: Day(year: 2026, month: 11, day: 3), amountMinor: -1, currency: currency, name: "Example")
+		let parts = [SplitPart(transactionID: original.id, position: 0, amountMinor: Int64.min), SplitPart(transactionID: original.id, position: 1, amountMinor: Int64.max)]
+		let data = AllData(transactions: [original], splitParts: parts)
+		let file = try data.json()
+		let json = try #require(JSONSerialization.jsonObject(with: file) as? [String: Any])
+		let entries = try #require(json["splitParts"] as? [[String: Any]])
+		let expected = currency == "JPY" ? ["-9223372036854775808", "9223372036854775807"] : currency == "KWD" ? ["-9223372036854775.808", "9223372036854775.807"] : ["-92233720368547758.08", "92233720368547758.07"]
+		#expect(entries.compactMap { $0["amount"] as? String } == expected)
+		#expect(try AllData(json: file).splitParts.map(\.amountMinor) == [Int64.min, Int64.max])
+	}
+
 	let root = FileManager.default.temporaryDirectory.appendingPathComponent("MonetenTests-\(UUID().uuidString)")
 	let exportedAt = Date(timeIntervalSince1970: 1_794_700_000)
 
@@ -54,7 +206,7 @@ struct AllDataTests {
 		let giro = Account(groupID: privat.id, position: 2, name: "Girokonto", kind: .giro, source: .bank, iban: "DE02120300000000202051", bankBalanceMinor: 250_000,
 			refreshedAt: Date(timeIntervalSince1970: 1_794_650_000.5),
 			refreshError: RefreshError(message: "Die PIN ist falsch.", code: "9931", date: Date(timeIntervalSince1970: 1_794_660_000), notices: ["Wartung am Sonntag"]),
-			refreshInterval: .onceADay)
+			refreshInterval: .onceADay, missesOlderTransactions: true)
 		let linked = try store.add(access, state: AccessState(Data("bank parameters".utf8)), accounts: [giro])
 		try store.savePIN(Secret("24680"), for: linked.access.id)
 		let bank = try #require(linked.accounts.first)
@@ -65,8 +217,13 @@ struct AllDataTests {
 				isChecked: true, categoryID: pets.id, categorizedBy: .manual, sourceID: "moneymoney:1", createdAt: Date(timeIntervalSince1970: 1_794_600_001.123), returnReason: "AC04"),
 			Transaction(accountID: migrated.id, bookingDate: Day(year: 2026, month: 11, day: 4), amountMinor: -1_000, name: "Kiosk", isPending: true,
 				categoryID: food.id, categorizedBy: .rule, isNew: true, review: .unclearBooking, sourceID: "moneymoney:2"),
-			Transaction(accountID: bank.id, bookingDate: Day(year: 2026, month: 11, day: 5), amountMinor: -2_000, currency: "USD", name: "Diner New York",
-				isFetched: true, sourceID: "bank-4711"),
+			{
+				var t = Transaction(accountID: bank.id, bookingDate: Day(year: 2026, month: 11, day: 5), amountMinor: -2_000, currency: "USD", name: "Diner New York",
+					isFetched: true, sourceID: "bank-4711")
+				t.edit(OriginalValues(bookingDate: Day(year: 2026, month: 11, day: 4), valueDate: Day(year: 2026, month: 11, day: 6), amountMinor: -2_050,
+					name: "Diner", purpose: "Dinner with a client"))
+				return t
+			}(),
 			Transaction(accountID: offline.id, bookingDate: Day(year: 2026, month: 11, day: 6), amountMinor: -480, name: "Bäckerei Gutbrot"),
 		]
 		try store.save(rows)
@@ -99,6 +256,8 @@ struct AllDataTests {
 		let before = try source.loadLedger()
 		let after = try target.loadLedger()
 		#expect(after.transactions.first { $0.sourceID == "moneymoney:1" }?.returnReason == "AC04")
+		#expect(after.transactions.first { $0.sourceID == "bank-4711" }?.original == OriginalValues(bookingDate: Day(year: 2026, month: 11, day: 5),
+			valueDate: nil, amountMinor: -2_000, name: "Diner New York", purpose: ""))
 		#expect(Set(after.accounts) == Set(before.accounts))
 		#expect(Set(after.groups) == Set(before.groups))
 		#expect(Set(after.categories) == Set(before.categories))
@@ -122,6 +281,27 @@ struct AllDataTests {
 		#expect(imported.allSatisfy { $0.returnReason == nil })
 	}
 
+	@Test("The mark of missing older transactions goes with the account, and a file without it imports the account without the mark")
+	func missingOlderTransactionsMark() throws {
+		let exported = try filledStore().exportAllData(at: exportedAt).json()
+		var json = try #require(try JSONSerialization.jsonObject(with: exported) as? [String: Any])
+		var accounts = try #require(json["accounts"] as? [[String: Any]])
+		// Every account carries the key, and only the giro account is marked.
+		let marks = accounts.map { $0["missesOlderTransactions"] as? Bool }
+		#expect(marks.allSatisfy { $0 != nil })
+		#expect(marks.filter { $0 == true }.count == 1)
+		let marked = try emptyStore("marked")
+		try marked.importAllData(try AllData(json: exported))
+		#expect(try marked.loadLedger().accounts.filter(\.missesOlderTransactions).map(\.name) == ["Girokonto"])
+		for i in accounts.indices { accounts[i].removeValue(forKey: "missesOlderTransactions") }
+		json["accounts"] = accounts
+		let older = try emptyStore("older")
+		try older.importAllData(try AllData(json: try JSONSerialization.data(withJSONObject: json)))
+		let imported = try older.loadLedger().accounts
+		#expect(imported.count == 4)
+		#expect(imported.allSatisfy { !$0.missesOlderTransactions })
+	}
+
 	@Test("Amounts are decimal text with a currency, and nothing is rounded")
 	func noRounding() throws {
 		let text = String(decoding: try filledStore().exportAllData(at: exportedAt).json(), as: UTF8.self)
@@ -131,7 +311,7 @@ struct AllDataTests {
 		#expect(text.contains(#""quantity" : "12.345""#))
 		#expect(text.contains(#""bookingDate" : "2026-11-02""#))
 		#expect(text.contains(#""exportedAt" : "2026-11-14T23:46:40.000Z""#))
-		#expect(text.contains(#""version" : 1"#))
+		#expect(text.contains(#""version" : 2"#))
 	}
 
 	@Test("The file names the bank, the user ID, and the connector of an access, and holds neither its PIN nor its state")
@@ -174,7 +354,7 @@ struct AllDataTests {
 		json["version"] = 5
 		#expect(throws: AllData.ReadError.newerVersion(5)) { try AllData(json: try JSONSerialization.data(withJSONObject: json)) }
 		#expect(AllData.ReadError.newerVersion(5).description
-			== "The file has format version 5, and this version of Moneten reads up to version 1. Install a newer version of Moneten to import it.")
+			== "The file has format version 5, and this version of Moneten reads up to version 2. Install a newer version of Moneten to import it.")
 		#expect(throws: AllData.ReadError.notAnExport) { try AllData(json: Data(#"{"format": "other", "version": 1}"#.utf8)) }
 	}
 
@@ -218,13 +398,18 @@ struct AllDataTests {
 		#expect(throws: AllData.ReadError.notAnExport) { try AllData(json: Data(#"{"format": 5}"#.utf8)) }
 	}
 
-	@Test("An amount at the bounds of the minor units reads exactly, and one beyond them is refused")
+	@Test("A transaction amount at the bounds of the minor units reads exactly, and one without a magnitude or beyond them is refused")
 	func amountBounds() throws {
 		var json = try JSONSerialization.jsonObject(with: try filledStore().exportAllData(at: exportedAt).json()) as! [String: Any]
 		var rows = json["transactions"] as! [[String: Any]]
+		rows[1]["amount"] = "-92233720368547758.07"
+		json["transactions"] = rows
+		#expect(try AllData(json: try JSONSerialization.data(withJSONObject: json)).transactions[1].amountMinor == -Int64.max)
 		rows[1]["amount"] = "-92233720368547758.08"
 		json["transactions"] = rows
-		#expect(try AllData(json: try JSONSerialization.data(withJSONObject: json)).transactions[1].amountMinor == Int64.min)
+		#expect(throws: AllData.ReadError.damaged("at transactions[1], the amount \"-92233720368547758.08\" is too large for a transaction")) {
+			try AllData(json: try JSONSerialization.data(withJSONObject: json))
+		}
 		rows[1]["amount"] = "92233720368547758.08"
 		json["transactions"] = rows
 		#expect(throws: AllData.ReadError.self) { try AllData(json: try JSONSerialization.data(withJSONObject: json)) }
@@ -462,7 +647,12 @@ struct AllDataTests {
 
 	@Test("Every key of an export is described in docs/export-format.md")
 	func documented() throws {
-		let json = try JSONSerialization.jsonObject(with: try filledStore().exportAllData(at: exportedAt).json())
+		let store = try filledStore()
+		let original = try #require(store.loadLedger().transactions.first { !$0.isPending })
+		try store.replaceParts(of: original.id, with: [
+			SplitPart(transactionID: original.id, position: 0, amountMinor: -10000, comment: "Net", vat: VATShare(role: .net, rate: VATRate(hundredths: 1900))),
+			SplitPart(transactionID: original.id, position: 1, amountMinor: original.amountMinor + 10000, vat: VATShare(role: .tax, rate: VATRate(hundredths: 1900)))])
+		let json = try JSONSerialization.jsonObject(with: store.exportAllData(at: exportedAt).json())
 		var keys = Set<String>()
 		func collect(_ value: Any) {
 			if let object = value as? [String: Any] {

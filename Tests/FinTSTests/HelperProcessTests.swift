@@ -10,10 +10,12 @@ import Testing
 struct HelperProcessTests {
 	static let access = FinTSConnectorTests.access
 
+	/// A connector whose helper is `/bin/sh -c script`, with 30 seconds from SIGTERM to SIGKILL, as in
+	/// `FinTSConnectorTests.connector`.
 	func connector(_ script: String, inactivity: TimeInterval = 30, grace: TimeInterval = 5,
 		trust: @escaping @Sendable (String, [Data]) -> String = FinTSConnector.verdict) -> FinTSConnector {
 		FinTSConnector(helper: .init(executable: URL(filePath: "/bin/sh"), arguments: ["-c", script]), productID: "TESTPRODUCT", version: "0.0.1",
-			inactivity: inactivity, grace: grace, trust: trust)
+			inactivity: inactivity, grace: grace, killAfter: 30, trust: trust)
 	}
 
 	@Test("The end of a helper waits until every line that it wrote has reached the reader of its lines")
@@ -34,11 +36,14 @@ struct HelperProcessTests {
 		// A write that blocks a thread of Swift concurrency or of the global queue would hold up the
 		// timers that end the helpers, and every other task of the app.
 		let state = AccessState(Data(repeating: 7, count: 1_000_000))
+		let record = FileManager.default.temporaryDirectory.appending(path: "fints-\(UUID().uuidString).txt")
+		let script = "R='\(record.path)'\n\(FinTSConnectorTests.terminatedTrap); sleep 60 & wait"
+		let started = Date.now
 		let start = ContinuousClock.now
 		let runs = (0..<ProcessInfo.processInfo.activeProcessorCount + 2).map { _ in
 			Task { () -> (any Error)? in
 				do {
-					_ = try await connector("exec sleep 60", inactivity: 1, grace: 10).listAccounts(of: Self.access, state: state, session: Session())
+					_ = try await connector(script, inactivity: 1, grace: 10).listAccounts(of: Self.access, state: state, session: Session())
 					return nil
 				} catch {
 					return error
@@ -54,9 +59,41 @@ struct HelperProcessTests {
 		for run in runs {
 			#expect(await run.value as? SyncFailure == .network("The connection to the FinTS server of the bank timed out. Try again later."))
 		}
-		// The end stays below the 60 seconds after which the helpers would end on their own. CI takes
-		// up to 25 seconds here, so a tighter bound would fail on a loaded runner again.
-		#expect(ContinuousClock.now - start < .seconds(55))
+		// Each helper ends by termination after about 11 seconds, by the clock of the helpers, before the
+		// 60 seconds after which it would end on its own. The end of the runs would also count the wait
+		// for a thread of Swift concurrency, which takes up to 40 seconds on CI.
+		let times = ((try? String(contentsOf: record, encoding: .utf8)) ?? "").split(separator: "\n").compactMap { line in
+			(try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any])?["at"] as? Double
+		}
+		#expect(times.count == runs.count)
+		#expect(times.allSatisfy { $0 - started.timeIntervalSince1970 < 30 })
+	}
+
+	@Test("A timeout terminates a helper on time also while more blocks than the Mac has cores keep the global queue busy")
+	func timeoutWhileGlobalQueueIsBusy() async throws {
+		// Busy threads, of the global queue as here or of Swift concurrency as with the CPU-bound tests
+		// on CI, keep the global queue from getting a thread. A timer there would end the helper only
+		// when they stop. The blocks stop when the helper recorded its SIGTERM, or after 20 seconds.
+		let record = FileManager.default.temporaryDirectory.appending(path: "fints-\(UUID().uuidString).txt")
+		let started = Date.now
+		let deadline = started + 20
+		for _ in 0..<ProcessInfo.processInfo.activeProcessorCount * 2 {
+			DispatchQueue.global().async {
+				while Date.now < deadline, !FileManager.default.fileExists(atPath: record.path) {
+					var x = 0
+					for i in 0..<100_000 { x &+= i }
+					precondition(x > 0)
+				}
+			}
+		}
+		await #expect(throws: SyncFailure.network("The connection to the FinTS server of the bank timed out. Try again later.")) {
+			_ = try await connector("R='\(record.path)'\n\(FinTSConnectorTests.terminatedTrap); sleep 60 & wait", inactivity: 1, grace: 1)
+				.listAccounts(of: Self.access, state: nil, session: Session())
+		}
+		let line = try #require(try? String(contentsOf: record, encoding: .utf8))
+		let at = try #require((try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any])?["at"] as? Double)
+		// About 2 seconds: 1 of silence and 1 of grace.
+		#expect(at - started.timeIntervalSince1970 < 10)
 	}
 
 	@Test("More certificate checks that wait than the Mac has cores hold up neither a timeout nor another refresh")
