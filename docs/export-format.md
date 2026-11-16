@@ -135,7 +135,7 @@ An access is a login at a bank. The file never holds its PIN or the data that it
 | `categoryID` | The category, missing for "Uncategorized" |
 | `categorizedBy` | `none`, `rule` for a category from a rule, or `manual` for a category the user chose |
 | `isNew` | Whether the transaction is marked as new |
-| `needsReview` | Whether the transaction is marked for review, because the app could not tell which pending transaction it books |
+| `needsReview` | Whether `review` is non-nil. Import maps true to `unclearBooking` and false to nil. Until format v2, an undone split loses its specific review reason in this format. |
 | `isFetched` | Whether a refresh delivered the transaction |
 | `fileIdentity` | Original file fingerprint, if a file import recorded one; absent or null means no file identity |
 | `sourceID` | Identifier of the transaction at its bank or source, such as `moneymoney:<id>` |
@@ -186,7 +186,7 @@ A position of a portfolio, as its bank reported it last.
 
 ## Planned format version 2 for split transactions
 
-Version 1 above is the format the app currently writes and reads. The [split design](../openspec/changes/add-split-transactions/design.md) and tasks 5.1a and 5.2a of its [task list](../openspec/changes/add-split-transactions/tasks.md) define version 2. The implementation updates this page to describe v2 as active before enabling split commands. Database migrations remain v17 for the split table and v18 for review reasons. The file format version is separate from those migration numbers.
+Version 1 above is the format the app currently writes and reads. The [split design](../openspec/changes/add-split-transactions/design.md) and tasks 5.1a and 5.2a of its [task list](../openspec/changes/add-split-transactions/tasks.md) define version 2. The implementation updates this page to describe v2 as active before enabling split commands. Database migrations are v17 for the split table and v20 for review reasons; v18 is the file identity of #203. The file format version is separate from those migration numbers.
 
 Version 2 keeps the version-1 objects, with the following changes.
 

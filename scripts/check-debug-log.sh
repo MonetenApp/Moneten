@@ -181,8 +181,8 @@ poll "^filterbar account .*account=all" filterbar account
 poll "^phase=" state
 send search Miete
 poll "^phase=.*visible=1 " state
-send split 25,00
-poll "^split saved=true parts=2" state
+poll "^split saved=true parts=2" split 25,00
+poll "^splitstate parts=2 pending=0 selected=[0-9]* checked=0 review=none sheet=none$" splitstate
 send search ""
 poll "^phase=" state
 send selectRows 1
@@ -342,9 +342,9 @@ send setup cancel
 send quit
 
 found=0
-for value in "25,00" DE02120300000000202051 "DE02 1203" 202051 1234567890 0099887766 "99 88 77 66" 4711 5550001 "$LOGIN" "$PIN" "$MIGRATION_UNKNOWN" 123456 check-debug-log \
-	234015 501240 12000 320000 95000 4250 229765 471123 "4711,23" 81547 815.47 1234 2345 3579 2500 92500 \
-	"Handoff Synthetic" 88776655 Kiosk \
+for value in "25,00" "20,00" "30,00" "Synthetic extra" DE02120300000000202051 "DE02 1203" 202051 1234567890 0099887766 "99 88 77 66" 4711 5550001 "$LOGIN" "$PIN" "$MIGRATION_UNKNOWN" 123456 check-debug-log \
+	234015 501240 12000 12500 320000 95000 4250 229765 471123 "4711,23" 81547 815.47 1234 2345 3579 2500 92500 \
+	"Baumarkt Beispiel" "Weekly shop" "REWE SAGT DANKE" "REWE receipt" "Receipt" "demo-split" "Handoff Synthetic" 88776655 Kiosk \
 	Girokonto Tagesgeld Kreditkarte Extrakonto "Erika Mustermann" Erika Mustermann erika-mustermann "Private Access" Musterbank "Check Bank" \
 	"Beispiel GmbH" "Wohnbau Musterstadt" "Tankstelle Beispiel" \
 	"Gehalt November" Miete Kartenzahlung Sparen Haushaltskasse MIETE-2026-11 GUTSCHRIFT DAUERAUFTRAG \

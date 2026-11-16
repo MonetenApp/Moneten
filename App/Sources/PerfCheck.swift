@@ -124,6 +124,44 @@ struct PerfScenario {
 					c.fail("the refresh removed shown rows in place")
 				}
 			}),
+		PerfScenario(name: "refresh-undoes-shown-split", budget: halfSecond,
+			setUp: { c in
+				guard let account = c.model.ledger.accounts.first(where: { $0.name == "Account 1" }) else { return c.fail("no account for split") }
+				let original = Transaction(accountID: account.id, bookingDate: .today(), amountMinor: -8000,
+					name: "Split refresh", sourceID: "TX-1")
+				do {
+					try await c.model.sync.deliver(account.id, RefreshResult(balance: nil, transactions: FetchedTransactions(rows: [original], from: .today())))
+				} catch { return c.fail("split setup refresh failed") }
+				let parts = [-2500, -5500].enumerated().map { SplitPart(transactionID: original.id, position: $0.offset, amountMinor: Int64($0.element)) }
+				guard await c.model.replaceParts(of: original.id, with: parts) else { return c.fail("split setup failed") }
+				c.model.filter.searchText = "Split refresh"
+				await c.select("Account 1")
+				c.model.selectedTransactions = Set(parts.map(\.id))
+				await c.settle()
+			},
+			run: { c in
+				let rows = c.model.visibleTransactions
+				guard rows.map(\.amountMinor) == [-2500, -5500], !rows.contains(where: \.isPending),
+					let part = rows.first.flatMap({ c.model.ledger.part($0.id) }),
+					let original = c.model.ledger.transaction(part.transactionID),
+					let table = c.harness.transactionTables().first, table.numberOfRows == 2,
+					c.model.visibleSelection == Set(rows.map(\.id)) else { return c.fail("split parts were not drawn and selected") }
+				var corrected = original; corrected.amountMinor = -8500
+				do {
+					try await c.model.sync.deliver(original.accountID, RefreshResult(balance: nil,
+						transactions: FetchedTransactions(rows: [corrected], from: .today())))
+				} catch { return c.fail("split correction refresh failed") }
+				await c.settle()
+				if c.harness.transactionTables().first === table { c.fail("the correction removed shown parts in place") }
+				let shown = c.model.visibleTransactions
+				if shown.map(\.id) != [original.id] || shown.first?.amountMinor != -8500 || shown.first?.review != .splitUndone {
+					c.fail("the correction did not show the reviewed original")
+				}
+				if rows.contains(where: { c.model.ledger.row($0.id) != nil }) || !c.model.ledger.parts(of: original.id).isEmpty {
+					c.fail("the correction kept old parts")
+				}
+				c.model.filter.searchText = ""
+			}),
 		// An import replaces the table while a refresh of another account of the open group lands in the same
 		// pass. The refresh changes the rows in place only after the placeholder is drawn (issue #151).
 		PerfScenario(name: "import-meets-refresh", budget: halfSecond,

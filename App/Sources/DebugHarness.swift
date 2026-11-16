@@ -160,7 +160,19 @@ final class DebugHarness {
 				keyCode: argument == "escape" ? 53 : argument == "return" ? 36 : 24) {
 				log("key", ("", .choice(argument, of: keys)), ("handled", .flag(sheet.performKeyEquivalent(with: event))))
 			}
-		// "<text>" types into the field that has the focus.
+		case "focusfield":
+			func fields(in view: NSView) -> [NSTextField] {
+				if let field = view as? NSTextField, field.isEditable { return [field] }
+				return view.subviews.flatMap(fields)
+			}
+			guard let sheet = topSheet, let view = sheet.contentView, let position = Int(argument) else { return }
+			let editable = fields(in: view)
+			guard editable.indices.contains(position) else { return log("focusfield", ("count", .count(editable.count))) }
+			NSApp.activate()
+			sheet.makeKeyAndOrderFront(nil)
+			sheet.makeFirstResponder(editable[position])
+			editable[position].selectText(nil)
+			log("focusfield", ("count", .count(editable.count)), ("position", .position(position)), ("editor", .flag(sheet.firstResponder is NSTextView)))
 		case "type": (topSheet?.firstResponder as? NSTextView)?.insertText(argument, replacementRange: NSRange(location: NSNotFound, length: 0))
 		// Focuses the first secure field of the sheet on screen and logs what macOS sees of it, for the check that the password manager does not offer it.
 		case "securefield": secureField()
@@ -353,9 +365,9 @@ final class DebugHarness {
 		// The rows of an account by their day and flags, and whether the bank sent a balance, without amounts.
 		case "rows":
 			if let account = model.ledger.accounts.first(where: { $0.name == argument }) {
-				let rows = model.ledger.transactions(ofAccount: account.id).filter { $0.isFetched || $0.needsReview }
+				let rows = model.ledger.transactions(ofAccount: account.id).filter { $0.isFetched || $0.review != nil }
 				for t in rows {
-					log("row", ("day", .day(t.bookingDate)), ("pending", .flag(t.isPending)), ("new", .flag(t.isNew)), ("review", .flag(t.needsReview)))
+					log("row", ("day", .day(t.bookingDate)), ("pending", .flag(t.isPending)), ("new", .flag(t.isNew)), ("review", .state(t.review)))
 				}
 				log("rows", ("", .count(rows.count)), ("new", .count(model.ledger.newTransactionCounts[account.id] ?? 0)), ("balance", .presence(account.bankBalanceMinor != nil)))
 			}
@@ -522,6 +534,7 @@ final class DebugHarness {
 			case "accountSettings": if case let .account(id) = model.selection { model.sheet = .accountSettings(id) }
 			// What "Calibrate..." in the account header does.
 			case "calibration": if case let .account(id) = model.selection { model.sheet = .calibration(id) }
+			case "newTransaction": model.sheet = .transaction(nil)
 			case "transaction": model.sheet = .transaction(model.visibleTransactions.first?.id)
 			// What ⌘K does, for a run without a key window, where SwiftUI disables the menu commands.
 			case "assignCategory": model.openCategoryPicker()
@@ -558,6 +571,13 @@ final class DebugHarness {
 				let saved = await model.replaceParts(of: row.id, with: parts)
 				log("split", ("saved", .flag(saved)), ("parts", .count(saved ? parts.count : 0)), ("transactions", .count(model.ledger.transactions.count)))
 			}
+		case "checkrows": model.setChecked(true, for: model.visibleSelection)
+		case "splitstate":
+			let rows = model.visibleTransactions
+			let originals = Set(rows.map { model.ledger.part($0.id)?.transactionID ?? $0.id }).compactMap { model.ledger.transaction($0) }
+			log("splitstate", ("parts", .count(rows.filter { model.ledger.part($0.id) != nil }.count)), ("pending", .count(rows.filter(\.isPending).count)),
+				("selected", .count(model.visibleSelection.count)), ("checked", .count(originals.filter(\.isChecked).count)),
+				("review", originals.first?.review.map { .state($0) } ?? .word("none")), ("sheet", model.sheet.map { .state($0) } ?? .word("none")))
 		case "selectRows": model.selectedTransactions = Set(model.visibleTransactions.prefix(Int(argument) ?? 1).map(\.id))
 		// What a drop of the selected rows on the category "Name" in the sidebar does, with the payload sent
 		// through an item provider as a drag sends it. The harness cannot drag.
@@ -1193,8 +1213,31 @@ enum DemoData {
 		func row(_ daysAgo: Int, _ minor: Int64, _ name: String, _ purpose: String, pending: Bool = false) -> Transaction {
 			Transaction(accountID: giro.id, bookingDate: today.adding(days: -daysAgo), amountMinor: minor, name: name, purpose: purpose, isPending: pending)
 		}
+		if scenario.hasSuffix("rule") {
+			var drinks = model.ledger.categories.first(where: { $0.name == "Drinks" }) ?? Domain.Category(position: -1, name: "Drinks")
+			drinks.rule = "DANKE"
+			drinks.position = -1
+			model.save(category: drinks)
+		}
+		func splitRow(corrected: Bool, currency: Bool = false, rule: Bool = false) -> Transaction {
+			var t = row(0, corrected && !currency ? -12500 : -12000, "Baumarkt Beispiel", rule ? (corrected ? "REWE SAGT DANKE" : "REWE receipt") : "Receipt")
+			t.sourceID = "demo-split"
+			t.currency = corrected && currency ? "USD" : "EUR"
+			if !rule {
+				t.categoryID = model.ledger.categories.first { $0.name == "Groceries" }?.id
+				t.categorizedBy = .manual
+				t.comment = "Weekly shop"
+			}
+			return t
+		}
 		let known = [row(4, -61_000, "Hausverwaltung Beispiel", "Nebenkosten Abruf"), row(3, -320, "Café Beispiel", "Kartenzahlung")]
 		let rows: [Transaction] = switch scenario {
+		case "sourced": [splitRow(corrected: false)]
+		case "corrected": [splitRow(corrected: true)]
+		case "sourcedcurrency": [splitRow(corrected: false, currency: true)]
+		case "correctedcurrency": [splitRow(corrected: true, currency: true)]
+		case "sourcedrule": [splitRow(corrected: false, rule: true)]
+		case "correctedrule": [splitRow(corrected: true, rule: true)]
 		case "first": known + [row(2, -20_000, "Hotel Beispiel", "Kaution", pending: true)]
 		case "booked": known + [row(0, -20_000, "Hotel Beispiel GmbH", "Kaution Zimmer 12")]
 		case "parking": known + [row(1, -1_500, "Parkhaus Beispiel", "Reservierung", pending: true)]
