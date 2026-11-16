@@ -789,16 +789,39 @@ final class DebugHarness {
 				if let rate = Preference.rates.first(where: { $0.text == argument }) {
 					saved = await model.splitVAT(row: row.id, rate: rate)
 				} else if let amount = Split.amount(from: argument, on: row.amount, decimalMark: .comma) {
-					saved = await model.split(row: row.id, off: [amount])
+					saved = await model.split(row: row.id, off: [amount]) == .done
 				} else { return log("split refused") }
 				let count = saved ? model.ledger.parts(of: originalID).count : 0
-				log("split", ("saved", .flag(saved)), ("parts", .count(count)), ("transactions", .count(model.ledger.transactions.count)))			}
+				log("split", ("saved", .flag(saved)), ("parts", .count(count)), ("transactions", .count(model.ledger.transactions.count)))
+			}
 		case "undosplit":
 			if let row = model.visibleTransactions.first { model.askUndoSplit(row: row.id) }
 			log("undosplit", ("sheet", model.sheet.map { .state($0) } ?? .word("none")))
 		case "deleteparts":
 			model.delete(transactions: model.visibleSelection)
 			log("deleteparts", ("refused", .flag(model.alert != nil)), ("selected", .count(model.visibleSelection.count)))
+		// What a cancel right after the confirm of the split window does, before the window shows its disabled
+		// "Cancel": the split must store nothing. Logs the parts of the row after the drawing wait.
+		case "splitcancel":
+			guard case let .split(row) = model.sheet, let sheet = topSheet else { return log("splitcancel refused") }
+			let originalID = model.ledger.part(row.id)?.transactionID ?? row.id
+			for (key, code) in [("\r", 36), ("\u{1b}", 53)] {
+				if let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: sheet.windowNumber,
+					context: nil, characters: key, charactersIgnoringModifiers: key, isARepeat: false, keyCode: UInt16(code)) {
+					_ = sheet.performKeyEquivalent(with: event)
+				}
+			}
+			Task {
+				try? await Task.sleep(for: .seconds(2))
+				log("splitcancel", ("parts", .count(model.ledger.parts(of: originalID).count)), ("sheet", model.sheet.map { .state($0) } ?? .word("none")))
+			}
+		// "<currency>": what a refresh that corrects the currency does to the transaction of the open split window.
+		case "splitcurrency":
+			guard case let .split(row) = model.sheet,
+				var t = model.ledger.transaction(model.ledger.part(row.id)?.transactionID ?? row.id) else { return log("splitcurrency refused") }
+			t.currency = argument
+			model.save(transaction: t, adding: false)
+			log("splitcurrency", ("currency", .flag(model.ledger.transaction(t.id)?.currency == argument)))
 		case "splitnext":
 			let control = sheetAccessibility().first { ($0 as AnyObject).accessibilityIdentifier?() == "next-split" }
 			log("splitnext", ("handled", .flag(control.map { ($0 as AnyObject).accessibilityPerformPress?() ?? false } ?? false)))
@@ -809,6 +832,8 @@ final class DebugHarness {
 			log("splitui", ("amountLabel", .flag(amount.map { !(($0 as AnyObject).accessibilityLabel?() ?? "").isEmpty } ?? false)),
 				("nextLabel", .flag(next.map { !(($0 as AnyObject).accessibilityLabel?() ?? "").isEmpty } ?? false)),
 				("nextEnabled", .flag(next.map { ($0 as AnyObject).isAccessibilityEnabled?() ?? false } ?? false)),
+				("changed", .flag(controls.contains { ($0 as AnyObject).accessibilityIdentifier?() == "split-changed" })),
+				("currencyChanged", .flag(controls.contains { ($0 as AnyObject).accessibilityIdentifier?() == "split-currency-changed" })),
 				("sheet", model.sheet.map { .state($0) } ?? .word("none")))
 		case "splitmenusnapshot":
 			guard let row = model.visibleTransactions.first else { return }

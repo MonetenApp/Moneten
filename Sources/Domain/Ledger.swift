@@ -670,16 +670,33 @@ public struct Ledger: Sendable {
 		countNew()
 	}
 
-	public func splitting(row rowID: UUID, off amounts: [Money]) throws -> [SplitPart] {
-		guard let row = row(rowID) else { throw SplitError.unbalanced }
-		guard !row.isPending else { throw SplitError.pending }
+	/// The parts of a split of the row. With `seen`, the row the split window shows, it refuses a row whose
+	/// amount, category, or comment changed since, because the parts copy those values.
+	public func splitting(row rowID: UUID, off amounts: [Money], seen: Transaction? = nil) throws -> [SplitPart] {
+		let row = try splittable(rowID, seen: seen)
 		return try splitting(row: row, amounts: Split.amounts(of: row.amount, off: amounts))
 	}
 
 	public func splittingVAT(row rowID: UUID, rate: VATRate) throws -> [SplitPart] {
-		guard let row = row(rowID) else { throw SplitError.unbalanced }
-		guard !row.isPending else { throw SplitError.pending }
+		let row = try splittable(rowID, seen: nil)
 		return try splitting(row: row, amounts: rate.split(row.amount), rate: rate)
+	}
+
+	private func splittable(_ rowID: UUID, seen: Transaction?) throws -> Transaction {
+		guard let row = row(rowID) else { throw SplitError.missing }
+		if let seen, row.amount != seen.amount || row.categoryID != seen.categoryID || row.comment != seen.comment {
+			throw SplitError.changed
+		}
+		guard !row.isPending else { throw SplitError.pending }
+		return row
+	}
+
+	/// What a split of the transaction or of one of its parts was computed from. When it differs after a wait,
+	/// the computed parts would bring back an old amount, category, or comment, so the split must not be stored.
+	public func splitBase(of transactionID: UUID) -> SplitBase? {
+		transaction(transactionID).map {
+			SplitBase(amount: $0.amount, categoryID: $0.categoryID, comment: $0.comment, parts: parts(of: transactionID))
+		}
 	}
 
 	private func splitting(row: Transaction, amounts: [Money], rate: VATRate? = nil) throws -> [SplitPart] {

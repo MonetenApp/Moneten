@@ -4115,12 +4115,12 @@
         }
       }
     },
-    "Enter a rate above zero with up to two decimal places." : {
+    "Enter a rate from 0.01 to 100 with up to two decimal places." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Geben Sie einen Satz über null mit höchstens zwei Nachkommastellen ein."
+            "value" : "Geben Sie einen Satz von 0,01 bis 100 mit höchstens zwei Nachkommastellen ein."
           }
         }
       }
@@ -9637,6 +9637,16 @@
         }
       }
     },
+    "The currency of the transaction changed, so the kept splits were removed. Enter them again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Währung des Umsatzes hat sich geändert, deshalb wurden die behaltenen Teile entfernt. Geben Sie sie erneut ein."
+          }
+        }
+      }
+    },
     "The database contains unreadable data: %@." : {
       "localizations" : {
         "de" : {
@@ -11097,6 +11107,16 @@
         }
       },
       "extractionState" : "manual"
+    },
+    "The transaction changed. Try again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Umsatz hat sich geändert. Versuchen Sie es erneut."
+          }
+        }
+      }
     },
     "The transaction has no debit or credit mark." : {
       "localizations" : {
