@@ -324,18 +324,20 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 
 func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTransaction], delivery: Delivery, today: Day) -> [Partner?] {
 	let days = Set(rows.flatMap { t in
-		(-PendingMatch.maxDaysApart...PendingMatch.maxDaysApart).map { t.bookingDate.adding(days: $0) }
+		let day = t.bookingDate.daysSince1970
+		return (-PendingMatch.maxDaysApart...PendingMatch.maxDaysApart).map { day + $0 }
 	})
+	let amounts = Set(rows.map(\.amountMinor))
 	let ids = Set(rows.compactMap(\.sourceID))
 	let fileIDs = Set(rows.compactMap(\.fileIdentity))
 	let references = Set(rows.filter(\.isPending).compactMap(\.endToEndReference).filter { !$0.isEmpty && $0 != "NOTPROVIDED" })
-	func relevant(day: Day, sourceID: String?, fileIdentity: String?, reference: String?) -> Bool {
-		days.contains(day) || sourceID.map { ids.contains(Transaction.matchingID($0)) } == true
+	func relevant(day: Day, amount: Int64, sourceID: String?, fileIdentity: String?, reference: String?) -> Bool {
+		(days.contains(day.daysSince1970) && amounts.contains(amount)) || sourceID.map { ids.contains(Transaction.matchingID($0)) } == true
 			|| fileIdentity.map { fileIDs.contains($0) } == true
 			|| reference.map { references.contains($0) } == true
 	}
-	let live = stored.indices.filter { relevant(day: stored[$0].bookingDate, sourceID: stored[$0].sourceID, fileIdentity: stored[$0].fileIdentity, reference: stored[$0].endToEndReference) }
-	let dead = deleted.indices.filter { relevant(day: deleted[$0].bookingDate, sourceID: deleted[$0].sourceID, fileIdentity: deleted[$0].fileIdentity, reference: deleted[$0].endToEndReference) }
+	let live = stored.indices.filter { relevant(day: stored[$0].bookingDate, amount: stored[$0].amountMinor, sourceID: stored[$0].sourceID, fileIdentity: stored[$0].fileIdentity, reference: stored[$0].endToEndReference) }
+	let dead = deleted.indices.filter { relevant(day: deleted[$0].bookingDate, amount: deleted[$0].amountMinor, sourceID: deleted[$0].sourceID, fileIdentity: deleted[$0].fileIdentity, reference: deleted[$0].endToEndReference) }
 	if rows.allSatisfy({ !$0.isPending }), stored.allSatisfy({ !$0.isPending }), deleted.allSatisfy({ !$0.isPending }),
 		live.allSatisfy({ stored[$0].fileIdentity == nil }), dead.allSatisfy({ deleted[$0].fileIdentity == nil }) {
 		return partners(of: rows, stored: stored, deleted: deleted)
@@ -361,14 +363,14 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 		!rows[i].isPending && incoming[i].sourceID != nil
 	}
 	let bookedByID: [String: [Int]] = Dictionary(grouping: identifiedBookings, by: { (i: Int) -> String in incoming[i].sourceID! })
-	var byDay: [Day: [Slot]] = [:]
+	var byDay: [Int: [Slot]] = [:]
 	var byKey: [Identity.Key: [Slot]] = [:]
 	var byReference: [String: [Slot]] = [:]
 	var byFileIdentity: [String: [Slot]] = [:]
 	var byID: [String: [Slot]] = [:]
 	for j in live {
 		let t = stored[j]
-		byDay[t.bookingDate, default: []].append(.live(j))
+		byDay[liveMatches[j]!.day, default: []].append(.live(j))
 		byKey[liveMatches[j]!.identity.key, default: []].append(.live(j))
 		if let reference = liveMatches[j]!.identity.endToEnd { byReference[reference, default: []].append(.live(j)) }
 		if let id = t.fileIdentity { byFileIdentity[id, default: []].append(.live(j)) }
@@ -376,7 +378,7 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 	}
 	for k in dead {
 		let d = deleted[k]
-		byDay[d.bookingDate, default: []].append(.deleted(k))
+		byDay[deadMatches[k]!.day, default: []].append(.deleted(k))
 		byKey[deadMatches[k]!.identity.key, default: []].append(.deleted(k))
 		if let reference = deadMatches[k]!.identity.endToEnd { byReference[reference, default: []].append(.deleted(k)) }
 		if let id = d.fileIdentity { byFileIdentity[id, default: []].append(.deleted(k)) }
@@ -385,14 +387,14 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 	var candidates: [Candidate] = []
 
 	for (i, t) in rows.enumerated() {
-		let initialSlots: [Slot] = (t.isPending ? byDay[t.bookingDate] : byKey[incoming[i].key]) ?? []
+		let initialSlots: [Slot] = (t.isPending ? byDay[matches[i].day] : byKey[incoming[i].key]) ?? []
 		var slots: Set<Slot> = Set(initialSlots)
 		if let id = t.sourceID { slots.formUnion(byID[id] ?? []) }
 		if let id = t.fileIdentity { slots.formUnion(byFileIdentity[id] ?? []) }
 		if t.isPending, let reference = incoming[i].endToEnd { slots.formUnion(byReference[reference] ?? []) }
 		if t.isPending && !delivery.isMigration {
 			for offset in -PendingMatch.maxDaysApart...PendingMatch.maxDaysApart where offset != 0 {
-				slots.formUnion(byDay[t.bookingDate.adding(days: offset)] ?? [])
+				slots.formUnion(byDay[matches[i].day + offset] ?? [])
 			}
 		}
 		for slot in slots {
