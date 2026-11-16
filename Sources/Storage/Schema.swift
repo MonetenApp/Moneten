@@ -338,8 +338,9 @@ enum Schema {
 			try db.alter(table: "bankTransaction") { t in t.drop(column: "needsReview") }
 		}
 		// The lock settings (add-app-lock): one row in the encrypted database, so a program that writes the settings
-		// file of the app cannot weaken the lock. Without the row the defaults apply.
-		m.registerMigration("v21") { db in
+		// file of the app cannot weaken the lock. Without the row the defaults apply. "v21" belongs to a change that
+		// comes before this one.
+		m.registerMigration("v22") { db in
 			try db.create(table: "lockSetting") { t in
 				t.column("id", .integer).primaryKey().check { $0 == 1 }
 				t.column("lockOnClose", .boolean).notNull()

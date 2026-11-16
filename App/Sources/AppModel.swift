@@ -386,8 +386,19 @@ final class AppModel {
 				}
 			case .password:
 				hasPassword = true
-				do { try vault.removeSharedEntry() } catch { lockNotice = String(describing: error) }
-				guard UserDefaults.standard.bool(forKey: Preference.unlockAutomatically) else {
+				let d = UserDefaults.standard
+				let usable: [Vault.PasswordEntry]
+				do {
+					try vault.removeSharedEntry()
+					// A setting that is off loses its entry, and a setting without an entry goes off: the entries decide.
+					usable = try vault.alignEntries(switchedOn: Set(Vault.PasswordEntry.allCases.filter { d.bool(forKey: $0.rawValue) }))
+					for entry in Vault.PasswordEntry.allCases where !usable.contains(entry) { d.set(false, forKey: entry.rawValue) }
+				} catch {
+					lockNotice = String(describing: error)
+					phase = .locked
+					return
+				}
+				guard usable.contains(.automaticUnlock) else {
 					phase = .locked
 					return
 				}
@@ -398,8 +409,6 @@ final class AppModel {
 					return
 				}
 				guard let stored else {
-					// Only the settings write the entry. A setting without it was not turned on there, so the toggle goes off.
-					UserDefaults.standard.set(false, forKey: Preference.unlockAutomatically)
 					phase = .locked
 					return
 				}
@@ -457,9 +466,7 @@ final class AppModel {
 		do {
 			let store = try vault.create(password: password, starterCategories: StarterCategories.make(language: starterLanguage))
 			// A new database starts without the unlock settings of the database that was here before.
-			for key in [Preference.unlockAutomatically, Preference.unlockWithTouchID, Preference.unlockWithAppleWatch] {
-				UserDefaults.standard.removeObject(forKey: key)
-			}
+			for entry in Vault.PasswordEntry.allCases { UserDefaults.standard.removeObject(forKey: entry.rawValue) }
 			hasPassword = password != nil
 			try open(store)
 		} catch {

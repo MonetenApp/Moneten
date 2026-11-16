@@ -199,6 +199,13 @@ The app SHALL store the database password in a Keychain entry of its own for eac
 - **THEN** the lock screen offers only the Apple Watch
 - **AND** the confirmation on the watch unlocks the app with the entry of the Apple Watch
 
+#### Scenario: Settings file turns a setting off
+
+- **GIVEN** "Unlock automatically at application start" is on
+- **WHEN** a program changes the settings file of the app outside the app to turn it off, and the user starts the app
+- **THEN** the lock screen asks for the database password
+- **AND** the Keychain no longer holds the entry of the automatic unlock, so turning the setting on in the settings file again unlocks nothing
+
 ### Requirement: Report a Keychain failure
 
 The app SHALL leave an unlock setting off when it cannot store the password or the configuration in the Keychain, and it tells the user that the Keychain did not accept the entry.

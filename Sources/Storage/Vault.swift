@@ -518,6 +518,14 @@ public struct Vault: Sendable {
 		try PasswordEntry.allCases.filter { try switchedOn.contains($0) && storedPassword(for: $0) != nil }
 	}
 
+	/// Makes the entries match the settings at launch: the entry of every setting that is off goes, so a setting
+	/// that a program turned off cannot come back by a later write of the settings file. Returns the settings that
+	/// are on and have an entry; the app turns the others off, so the toggles show what unlocks.
+	public func alignEntries(switchedOn: Set<PasswordEntry>) throws -> [PasswordEntry] {
+		for entry in PasswordEntry.allCases where !switchedOn.contains(entry) { try removeStoredPassword(for: entry) }
+		return try usableMethods(switchedOn: switchedOn)
+	}
+
 	/// The password after macOS confirmed the user for a request that offered `offered`. A request that offers
 	/// Touch ID and the Apple Watch does not say which one the user used, so the entry of the first offered
 	/// setting that has one counts. The entry of the automatic unlock is never read here.

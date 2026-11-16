@@ -85,6 +85,20 @@ struct AppLockStorageTests {
 		#expect(try vault.launchPassword() == nil)
 	}
 
+	@Test("A setting that is off loses its entry, so turning it on in the settings file later unlocks nothing", .enabled(if: hasKeychain))
+	func offSettingLosesEntry() throws {
+		let (vault, store) = try vaultWithDatabase()
+		defer { removeEntries(vault) }
+		try store.close()
+		for entry in Vault.PasswordEntry.allCases { #expect(try vault.setUnlockMethod(entry, on: true, password: Self.password)) }
+		// A program turns the automatic unlock off in the settings file, and the app starts.
+		#expect(try vault.alignEntries(switchedOn: [.touchID, .appleWatch]) == [.touchID, .appleWatch])
+		#expect(try stored(vault) == [.touchID, .appleWatch])
+		// Later it turns the setting on again.
+		#expect(try vault.alignEntries(switchedOn: Set(Vault.PasswordEntry.allCases)) == [.touchID, .appleWatch])
+		#expect(try vault.launchPassword() == nil)
+	}
+
 	@Test("The shared entry of earlier builds is removed, so it unlocks nothing", .enabled(if: hasKeychain))
 	func sharedEntryIsRemoved() throws {
 		let (vault, store) = try vaultWithDatabase()
