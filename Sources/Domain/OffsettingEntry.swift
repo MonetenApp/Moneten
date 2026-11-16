@@ -7,13 +7,19 @@ public struct OffsettingTarget: Hashable, Sendable {
 	public let isEnabled: Bool
 }
 
+/// Why "Create Offsetting Entry" adds no entry.
+enum OffsettingEntryFailure: Error, Equatable {
+	/// The amount of a row is `Int64.min`, which a complete import accepts and whose opposite does not fit into `Int64`.
+	case noOppositeAmount
+}
+
 extension Ledger {
-	/// The offline accounts that "Create Offsetting Entry" offers for `rows`, in sidebar order, without the
+	/// The open offline accounts that "Create Offsetting Entry" offers for `rows`, in sidebar order, without the
 	/// accounts of the rows themselves.
 	public func offsettingTargets(for rows: [Transaction]) -> [OffsettingTarget] {
 		let own = Set(rows.map(\.accountID))
 		let currencies = Set(rows.map(\.currency))
-		return accountsInSidebarOrder.filter { $0.isOffline && !own.contains($0.id) }.map {
+		return accountsInSidebarOrder.filter { $0.isOffline && !$0.isClosed && !own.contains($0.id) }.map {
 			OffsettingTarget(account: $0, isEnabled: currencies.allSatisfy { [currency = $0.currency] in $0 == currency })
 		}
 	}
@@ -25,7 +31,11 @@ extension Ledger {
 	///
 	/// The copied category counts as chosen by hand, so no rule moves it. A row without a category, or with
 	/// one whose restriction leaves out `target`, gives an entry that the rules sort.
-	public func offsettingEntries(of rows: [Transaction], into target: Account, now: Date = Date()) -> [Transaction] {
+	///
+	/// `rows` are the rows the list shows, so a part of a split gives the amount of the part. The entry is booked,
+	/// because no refresh books a row of an offline account. One row without an opposite amount stops all of them.
+	public func offsettingEntries(of rows: [Transaction], into target: Account, now: Date = Date()) throws -> [Transaction] {
+		guard rows.allSatisfy({ $0.amountMinor != .min }) else { throw OffsettingEntryFailure.noOppositeAmount }
 		let rules = Categorizer(ledger: self)
 		return rows.map { source in
 			let from = account(source.accountID)

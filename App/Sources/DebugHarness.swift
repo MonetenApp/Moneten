@@ -612,7 +612,7 @@ final class DebugHarness {
 		case "newcategory": Task { await model.addCategory(name: argument, isGroup: false, parentID: nil, assigning: model.visibleSelection) }
 		// "<account>": what "Create Offsetting Entry" with that offline account does with the selected rows, and the menu it shows.
 		case "offsetting":
-			let targets = model.ledger.offsettingTargets(for: model.visibleSelection.compactMap { model.ledger.transaction($0) })
+			let targets = model.ledger.offsettingTargets(for: model.visibleSelection.compactMap { model.ledger.row($0) })
 			log("offsetting", ("menu", .list(targets.map { .word($0.isEnabled ? "on" : "off") })))
 			if let t = targets.first(where: { $0.account.name == argument && $0.isEnabled }) { model.createOffsettingEntries(of: model.visibleSelection, in: t.account.id) }
 		case "split":

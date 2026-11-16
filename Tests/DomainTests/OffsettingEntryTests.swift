@@ -1,4 +1,4 @@
-import Domain
+@testable import Domain
 import Foundation
 import Testing
 
@@ -92,9 +92,9 @@ struct OffsettingEntryTests {
 	}
 
 	@Test("Each selected transaction gives one entry")
-	func severalRows() {
+	func severalRows() throws {
 		let rows = [withdrawal(), withdrawal(-5_000), withdrawal(-2_500)]
-		#expect(ledger(rows).offsettingEntries(of: rows, into: wallet).map(\.amountMinor) == [20_000, 5_000, 2_500])
+		#expect(try ledger(rows).offsettingEntries(of: rows, into: wallet).map(\.amountMinor) == [20_000, 5_000, 2_500])
 	}
 
 	@Test("The menu lists the offline accounts in sidebar order and enables those in the currency of every selected row")
@@ -116,5 +116,47 @@ struct OffsettingEntryTests {
 		#expect(ledger([cash]).offsettingTargets(for: [cash]).map(\.account.name) == ["Dollar Cash"])
 		let onlyBank = Ledger(accounts: [giro], transactions: [withdrawal()])
 		#expect(onlyBank.offsettingTargets(for: [withdrawal()]).isEmpty)
+	}
+
+	@Test("A selected part of a split transaction gives an entry with the amount of the part")
+	func splitPart() throws {
+		let cash = Domain.Category(position: 0, name: "Cash")
+		let groceries = Domain.Category(position: 1, name: "Groceries")
+		let source = withdrawal(-8_000)
+		var l = ledger([source], categories: [cash, groceries])
+		let parts = [SplitPart(transactionID: source.id, position: 0, amountMinor: -4_000, categoryID: cash.id),
+			SplitPart(transactionID: source.id, position: 1, amountMinor: -4_000, categoryID: groceries.id)]
+		l.replaceParts(of: source.id, with: parts)
+		let part = try #require(l.row(parts[0].id))
+		let entry = try #require(l.offsettingEntries(of: [part], into: wallet).first)
+		#expect(entry.amount == Money(minorUnits: 4_000, currency: "EUR"))
+		#expect(entry.categoryID == cash.id)
+		#expect(entry.id != part.id && entry.id != source.id)
+		#expect(l.transaction(source.id) == source)
+		#expect(l.parts(of: source.id) == parts)
+	}
+
+	@Test("A pending source gives a booked entry")
+	func pendingSource() throws {
+		var source = withdrawal()
+		source.isPending = true
+		let entry = try #require(ledger([source]).offsettingEntries(of: [source], into: wallet).first)
+		#expect(!entry.isPending)
+		#expect(entry.amountMinor == 20_000)
+	}
+
+	@Test("The menu leaves out a closed offline account")
+	func closedAccount() {
+		var oldWallet = Account(position: 5, name: "Old Wallet", kind: .cash, source: .offline)
+		oldWallet.isClosed = true
+		let source = withdrawal()
+		let l = Ledger(accounts: [giro, wallet, oldWallet], categories: [uncategorized], transactions: [source])
+		#expect(l.offsettingTargets(for: [source]).map(\.account.name) == ["Wallet"])
+	}
+
+	@Test("An amount without an opposite amount gives no entry for any selected row")
+	func noOpposite() {
+		let rows = [withdrawal(), withdrawal(.min)]
+		#expect(throws: OffsettingEntryFailure.noOppositeAmount) { try ledger(rows).offsettingEntries(of: rows, into: wallet) }
 	}
 }

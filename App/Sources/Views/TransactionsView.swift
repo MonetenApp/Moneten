@@ -885,7 +885,7 @@ struct TransactionMenu: View {
 					Button(target.account.name) { model.createOffsettingEntries(of: ids, in: target.account.id) }.disabled(!target.isEnabled)
 				}
 				if targets.isEmpty {
-					Text(model.ledger.accounts.contains(where: \.isOffline) ? "No other offline account available" : "No offline accounts available")
+					Text(model.ledger.accounts.contains(where: { $0.isOffline && !$0.isClosed }) ? "No other offline account available" : "No offline accounts available")
 				}
 			}
 			Button(first.comment == nil ? "Add Comment..." : "Edit Comment...") { model.sheet = .comment(ids) }
