@@ -189,6 +189,17 @@ extension ExtensionConnectorTests {
 		#expect(!session.asked.withLock { $0 }.contains { if case .secondFactor = $0 { true } else { false } })
 	}
 
+	/// A stored "Deny" stays the answer: the app does not ask again and opens no window.
+	@Test func deniedLoginPageIsNotAskedAgain() async throws {
+		let session = TestSession([.login([Secret("erika"), Secret("geheim")])])
+		await #expect(throws: SyncFailure.bank(BankMessage(text: "The login page auth.bank.example is not a host that the extension may contact."))) {
+			_ = try await Self.refresh(session.connector(demo(Self.calls + """
+				function InitializeSession2() return {challenge = "https://auth.bank.example/authorize"} end
+				"""), decisions: ["auth.bank.example": .denied]), session)
+		}
+		#expect(!session.asked.withLock { $0 }.contains { if case .allowHost = $0 { true } else { false } })
+	}
+
 	@Test func secretFirstFieldIsNoLoginName() async throws {
 		let session = TestSession([.login([Secret("sk-4711")])])
 		let package = try Self.package(Self.calls + """

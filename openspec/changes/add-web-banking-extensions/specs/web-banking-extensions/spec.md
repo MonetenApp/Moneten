@@ -793,6 +793,12 @@ The app SHALL ask the host question of "Host prompts without a manifest" before 
 - **WHEN** the function returns a login page on `auth.broker.example` and the user answers "Deny"
 - **THEN** no window opens and the session ends with an error that names `auth.broker.example`
 
+#### Scenario: Login page on a denied host
+
+- **GIVEN** "Demo" has no manifest and the user denied `auth.broker.example` in an earlier refresh
+- **WHEN** the function returns a login page on `auth.broker.example`
+- **THEN** the app does not ask again, no window opens, and the session ends with an error that names `auth.broker.example`
+
 ### Requirement: App-to-app challenge
 
 The app SHALL show the URL in `challenge` as a QR code and not open it in a browser when `appToApp` holds the name of a banking app. The instruction text names that app.

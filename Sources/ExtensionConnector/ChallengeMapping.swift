@@ -124,6 +124,8 @@ struct ChallengeMapping {
 	let hosts: Set<String>
 	/// The extension has no list of hosts, so the user may allow the host of a login page.
 	var asksForHosts = false
+	/// The hosts the user refused for this extension; their login page fails without a question.
+	var deniedHosts: Set<String> = []
 	/// The `hbciMethod` that the user chose at the last login of the access.
 	let rememberedMethod: String?
 	/// How long a challenge stays valid after its dialog opens.
@@ -168,7 +170,7 @@ struct ChallengeMapping {
 		case let .url(url) where table.label == nil:
 			let host = url.host()?.lowercased()
 			guard let host, hosts.contains(host) else {
-				if asksForHosts, url.scheme == "https", url.port == nil, let host, HostName(exactly: host) != nil { return .allowHost(host) }
+				if asksForHosts, let host, !deniedHosts.contains(host), url.scheme == "https", url.port == nil, HostName(exactly: host) != nil { return .allowHost(host) }
 				throw MappingError("The login page \(url.host() ?? url.absoluteString) is not a host that the extension may contact.")
 			}
 			return .answer(request(.openBrowser(browserApproval(url, state: table.state)), table), stepIncrement: increment)
