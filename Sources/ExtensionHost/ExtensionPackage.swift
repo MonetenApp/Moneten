@@ -12,11 +12,11 @@ public enum PackageProblem: Error, Equatable, Sendable, CustomStringConvertible 
 
 	public var message: String {
 		switch self {
-		case .missingManifest: "The manifest is missing."
+		case .missingManifest: String(localized: "The manifest is missing.")
 		case let .invalidManifest(text): text
-		case let .needsNewerApp(version): "The extension needs API version \(version), which a newer version of Moneten offers."
-		case let .unreadableFile(name): "\(name) is missing or cannot be read."
-		case .notLua: "An extension is a .lua file or a folder with a manifest."
+		case let .needsNewerApp(version): String(localized: "The extension needs API version \(version), which a newer version of Moneten offers.")
+		case let .unreadableFile(name): String(localized: "\(name) is missing or cannot be read.")
+		case .notLua: String(localized: "An extension is a .lua file or a folder with a manifest.")
 		}
 	}
 }

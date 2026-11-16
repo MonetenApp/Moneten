@@ -90,7 +90,7 @@ struct HoldingsTable: View {
 				if let gain = h.gain(in: currency(of: h)) {
 					VStack(alignment: .trailing, spacing: 2) {
 						AmountText(money: gain.amount)
-						Text([gain.amount.isNegative ? "Loss" : "Profit", gain.percent.map(Format.percent)].compactMap { $0 }.joined(separator: " "))
+						Text([gain.amount.isNegative ? String(localized: "Loss") : String(localized: "Profit"), gain.percent.map(Format.percent)].compactMap { $0 }.joined(separator: " "))
 							.font(.callout).monospacedDigit().foregroundStyle(Palette.detail)
 					}
 				}
@@ -156,7 +156,7 @@ struct TotalGainText: View {
 		let gain = model.ledger.totalGain(of: accountIDs)
 		if !gain.isEmpty {
 			let amounts = gain.amounts
-			let label = amounts.allSatisfy { !$0.isNegative } ? "Profit" : amounts.allSatisfy(\.isNegative) ? "Loss" : "Profit/Loss"
+			let label = amounts.allSatisfy { !$0.isNegative } ? String(localized: "Profit") : amounts.allSatisfy(\.isNegative) ? String(localized: "Loss") : String(localized: "Profit/Loss")
 			Text("\(label): \(Format.sums(gain))").font(.subheadline).monospacedDigit().foregroundStyle(Palette.detail)
 		}
 	}
@@ -173,7 +173,7 @@ extension Format {
 			return signed(h.quantity.formatted(.currency(code: currency).precision(precision)))
 		}
 		let number = signed(h.quantity.formatted(.number.precision(.fractionLength(0...places))))
-		return h.quantity == 1 ? "\(number) share" : "\(number) shares"
+		return h.quantity == 1 ? String(localized: "\(number) share") : String(localized: "\(number) shares")
 	}
 
 	/// "25,00 €", "12,3456 €", "0,00000123 $", or "98,50 %": at least two decimal places, and those of the source

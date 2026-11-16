@@ -298,7 +298,7 @@ public final class Store: SavedPINStore {
 		let file = try queue.read { db in try String.fetchOne(db, sql: "SELECT file FROM pragma_database_list WHERE name = 'main'") }
 		let source = URL(fileURLWithPath: file ?? queue.path)
 		guard url.resolvingSymlinksInPath().standardizedFileURL != source.resolvingSymlinksInPath().standardizedFileURL else {
-			throw CocoaError(.fileWriteFileExists, userInfo: [NSLocalizedDescriptionKey: "A backup cannot replace the open database. Choose another location."])
+			throw CocoaError(.fileWriteFileExists, userInfo: [NSLocalizedDescriptionKey: String(localized: "A backup cannot replace the open database. Choose another location.")])
 		}
 		let fm = FileManager.default
 		let temporary = url.deletingLastPathComponent().appendingPathComponent(".\(url.lastPathComponent).\(UUID().uuidString).partial")

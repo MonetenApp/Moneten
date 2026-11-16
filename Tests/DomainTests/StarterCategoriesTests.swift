@@ -68,9 +68,23 @@ struct StarterCategoriesTests {
 			== ["Einnahmen", "Wohnen", "Mobilität", "Freizeit", "Versicherungen", "Umbuchungen"])
 	}
 
-	@Test("An unchanged English set is kept when the interface is German")
+	@Test("An unchanged English set is replaced when the interface is German")
 	func englishSetInGerman() {
-		#expect(unchangedRoots(Ledger(categories: StarterCategories.make(language: .english)), .german) == [])
+		#expect(unchangedRoots(Ledger(categories: StarterCategories.make(language: .english)), .german)
+			== ["Income", "Living", "Mobility", "Leisure", "Insurance", "Transfers"])
+	}
+
+	@Test("An unchanged German set is replaced when the interface is English")
+	func germanSetInEnglish() {
+		#expect(unchangedRoots(Ledger(categories: StarterCategories.make(language: .german)), .english)
+			== ["Einnahmen", "Wohnen", "Mobilität", "Freizeit", "Versicherungen", "Umbuchungen"])
+	}
+
+	@Test("An empty group \"Living\" that the user made in a German ledger is kept when the interface is English")
+	func userGroupWithEnglishName() {
+		var l = Ledger(categories: StarterCategories.make(language: .german))
+		l.upsert(Domain.Category(position: 6, name: "Living", isGroup: true))
+		#expect(unchangedRoots(l, .english) == ["Einnahmen", "Wohnen", "Mobilität", "Freizeit", "Versicherungen", "Umbuchungen"])
 	}
 
 	@Test("An empty group \"Wohnen\" that the user made in an English ledger is kept")
@@ -78,6 +92,13 @@ struct StarterCategoriesTests {
 		var l = Ledger(categories: StarterCategories.make(language: .english))
 		l.upsert(Domain.Category(position: 6, name: "Wohnen", isGroup: true))
 		#expect(unchangedRoots(l) == ["Income", "Living", "Mobility", "Leisure", "Insurance", "Transfers"])
+	}
+
+	@Test("A group \"Living\" of the user in a German ledger without untouched starter groups is kept", arguments: StarterCategories.Language.allCases)
+	func userGroupWithoutGermanStarters(_ interface: StarterCategories.Language) {
+		var l = Ledger(categories: StarterCategories.make(language: .german).filter { $0.isDefault })
+		l.upsert(Domain.Category(position: 0, name: "Living", isGroup: true))
+		#expect(unchangedRoots(l, interface) == [])
 	}
 
 	@Test("An unchanged English set is replaced")

@@ -155,7 +155,7 @@ struct SupportedBanksList: View {
 		}
 	}
 
-	private func header(_ title: String) -> some View {
+	private func header(_ title: LocalizedStringKey) -> some View {
 		Text(title)
 			.font(.subheadline.weight(.semibold))
 			.foregroundStyle(.secondary)
