@@ -392,12 +392,87 @@ public struct CaptchaRequest: Sendable, Equatable {
 	}
 }
 
-/// A photoTAN or QR code image as the bank sends it, in PNG or JPEG.
+/// A photoTAN or QR code image as the bank sends it. The bytes come from the bank, the FinTS helper, or
+/// an extension, and the image decoders of macOS have had exploited memory bugs. So the image keeps its
+/// bytes only when they pass the check of `Picture`: a PNG or JPEG signature, at most `maximumBytes`, and at
+/// most `maximumSide` pixels on each side as the header states. Real photoTAN images and QR codes have
+/// a few kilobytes and a few hundred pixels. An image that fails keeps nothing, and the dialog says
+/// that it cannot be shown.
 public struct ChallengeImage: Sendable, Equatable {
-	public let data: Data
+	public static let maximumBytes = 1_048_576
+	public static let maximumSide = 2048
+
+	public enum Format: Sendable, Equatable {
+		case png, jpeg
+	}
+
+	/// Bytes that passed the check, with the format and the size that their header states.
+	public struct Picture: Sendable, Equatable {
+		public let data: Data
+		public let format: Format
+		public let width: Int
+		public let height: Int
+
+		/// Reads only the signature and the header, never the image data.
+		init?(checking data: Data) {
+			guard data.count <= ChallengeImage.maximumBytes else { return nil }
+			let bytes = [UInt8](data)
+			let header: (Format, Int, Int)?
+			if bytes.starts(with: [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]) {
+				header = Self.pngSize(bytes).map { (.png, $0.width, $0.height) }
+			} else if bytes.starts(with: [0xFF, 0xD8, 0xFF]) {
+				header = Self.jpegSize(bytes).map { (.jpeg, $0.width, $0.height) }
+			} else {
+				header = nil
+			}
+			guard let (format, width, height) = header, (1...ChallengeImage.maximumSide).contains(width),
+				(1...ChallengeImage.maximumSide).contains(height) else { return nil }
+			self.data = data
+			self.format = format
+			self.width = width
+			self.height = height
+		}
+
+		/// The IHDR chunk, which a PNG must have first: its length 13, its name, the width, and the height.
+		private static func pngSize(_ bytes: [UInt8]) -> (width: Int, height: Int)? {
+			guard bytes.count >= 24, bytes[8..<16].elementsEqual([0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52]) else { return nil }
+			return (bigEndian(bytes, at: 16, count: 4), bigEndian(bytes, at: 20, count: 4))
+		}
+
+		/// The first frame header (SOF0 to SOF15 without DHT, JPG, and DAC), found by walking the segments.
+		/// A scan or the end of the image before it fails the check.
+		private static func jpegSize(_ bytes: [UInt8]) -> (width: Int, height: Int)? {
+			var index = 2
+			while index < bytes.count {
+				guard bytes[index] == 0xFF else { return nil }
+				index += 1
+				while index < bytes.count, bytes[index] == 0xFF { index += 1 }
+				guard index < bytes.count else { return nil }
+				let marker = bytes[index]
+				index += 1
+				if marker == 0x01 || (0xD0...0xD7).contains(marker) { continue }
+				guard marker != 0xD9, marker != 0xDA, index + 2 <= bytes.count else { return nil }
+				let length = bigEndian(bytes, at: index, count: 2)
+				guard length >= 2 else { return nil }
+				if (0xC0...0xCF).contains(marker), ![0xC4, 0xC8, 0xCC].contains(marker) {
+					guard length >= 7, index + 7 <= bytes.count else { return nil }
+					return (bigEndian(bytes, at: index + 5, count: 2), bigEndian(bytes, at: index + 3, count: 2))
+				}
+				index += length
+			}
+			return nil
+		}
+
+		private static func bigEndian(_ bytes: [UInt8], at index: Int, count: Int) -> Int {
+			bytes[index..<index + count].reduce(0) { $0 << 8 | Int($1) }
+		}
+	}
+
+	/// The checked bytes, or nil when they failed the check.
+	public let picture: Picture?
 
 	public init(_ data: Data) {
-		self.data = data
+		picture = Picture(checking: data)
 	}
 }
 

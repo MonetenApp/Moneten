@@ -20,6 +20,7 @@ After the user chooses a method or a medium, `SessionBroker` keeps the dialog of
 
 ### Images and the flicker code
 
+- Image bytes come from the bank, from the FinTS helper, and from extensions, and the image decoders of macOS have had exploited memory bugs. So `ChallengeImage` checks the bytes where a connector creates it: a PNG or JPEG signature, at most 1 MB, and at most 2048 by 2048 pixels as the PNG header or the JPEG frame header states. It keeps no bytes that fail the check. Real photoTAN images and QR codes are a few kilobytes and a few hundred pixels wide, so the limits leave room. The dialog then decodes with ImageIO through `ChallengePicture` in `Sync`, which allows only the checked type, checks the dimensions again, and draws at most 2048 pixels on the long side. An image that fails a check shows "The bank sent an image that cannot be shown." under the text of the bank, and the TAN field stays.
 - A photoTAN image or a QR code has "Enlarge", which shows it at 400 points instead of 220, and the dialog grows with it. Command-plus and Command-minus do the same.
 - `FlickerCodeSize` in `Sync` keeps the width of the flicker code in the settings, from 160 to 400 points in steps of 40, and 240 at first. "Larger" waits for the warning that flicker codes might cause epileptic seizures, and enlarges only after "Continue". The answer is kept, so the warning comes once.
 

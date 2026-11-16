@@ -54,9 +54,22 @@ import Testing
 	}
 
 	@Test func photoTANImage() throws {
-		let png = Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0xFF])
+		let png = Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,
+			0x00, 0x00, 0x00, 0xC8, 0x00, 0x00, 0x00, 0xC8, 0x08, 0x06, 0x00, 0x00, 0x00])
 		#expect(try interaction(["label": .string("photoTAN"), "challenge": .bytes(png)])
 			== .answer(request(.enterTAN(prompt: "", image: ChallengeImage(png)), field: TANField(label: "photoTAN")), stepIncrement: 1))
+		#expect(ChallengeImage(png).picture?.data == png)
+	}
+
+	/// web-banking-extensions "Image challenge": data in another format keeps the entry field and no bytes.
+	@Test func imageInAnotherFormat() throws {
+		guard case let .answer(request, _) = try interaction(["label": .string("photoTAN"), "challenge": .bytes(Data("GIF89a".utf8) + Data(count: 32))]),
+			case let .enterTAN(_, image?) = request.challenge else {
+			Issue.record("no TAN request with an image")
+			return
+		}
+		#expect(request.field.label == "photoTAN")
+		#expect(image.picture == nil)
 	}
 
 	@Test func qrCodeWithPolling() throws {
@@ -65,7 +78,7 @@ import Testing
 			Issue.record("no QR code notice")
 			return
 		}
-		#expect(image.data.starts(with: [0x89, 0x50, 0x4E, 0x47]))
+		#expect(image.picture?.format == .png)
 	}
 
 	@Test func otherMethodNameShowsTheURLAsText() throws {
@@ -228,7 +241,7 @@ import Testing
 		}
 		#expect(text == "Scan the QR code with the camera of your phone to open “Example Banking” and approve there.")
 		#expect(app == "Example Banking")
-		#expect(image != nil)
+		#expect(image?.picture != nil)
 	}
 
 	@Test func manualChipTANShowsTheStartCode() throws {

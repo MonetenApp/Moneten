@@ -349,10 +349,10 @@ private struct ChallengeImageView: View {
 	@Binding var enlarged: Bool
 
 	var body: some View {
-		if let picture = NSImage(data: image.data) {
+		if let picture = ChallengePicture.decode(image) {
 			let side: CGFloat = enlarged ? 400 : 220
 			VStack(spacing: 8) {
-				Image(nsImage: picture)
+				Image(decorative: picture, scale: 1)
 					.resizable()
 					.interpolation(.none)
 					.scaledToFit()

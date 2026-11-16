@@ -640,12 +640,17 @@ The app SHALL show an instruction text and an entry field for a challenge with a
 
 ### Requirement: Image challenge
 
-The app SHALL show the image when `challenge` holds the binary data of a PNG or JPEG image, for example a photoTAN graphic or an image captcha. With a `label` the dialog also has an entry field.
+The app SHALL show the image when `challenge` holds the binary data of a PNG or JPEG image, for example a photoTAN graphic or an image captcha. With a `label` the dialog also has an entry field. For data in any other format, the dialog shows a note that the image cannot be shown, and no decoder reads the data.
 
 #### Scenario: photoTAN image
 
 - **WHEN** the function returns `{label="photoTAN", challenge=image}` and `image` is PNG data
 - **THEN** the dialog shows the image and an entry field labeled "photoTAN"
+
+#### Scenario: Image in another format
+
+- **WHEN** the function returns `{label="photoTAN", challenge=image}` and `image` is GIF data
+- **THEN** the dialog shows an entry field labeled "photoTAN" and the note "The bank sent an image that cannot be shown."
 
 ### Requirement: QR code challenge
 

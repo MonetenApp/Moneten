@@ -105,7 +105,7 @@ struct FinTSConnectorTests {
 			read a; printf '%s\\n' "$a" >> "$R"
 			echo '{"type":"ask","id":3,"kind":"tan","purpose":"download","prompt":"Bitte TAN erzeugen","flicker":"0f04871100030333"}'
 			read a; printf '%s\\n' "$a" >> "$R"
-			echo '{"type":"ask","id":4,"kind":"tan","purpose":"download","prompt":"Bitte scannen","image":"iVBORw=="}'
+			echo '{"type":"ask","id":4,"kind":"tan","purpose":"download","prompt":"Bitte scannen","image":"iVBORw0KGgoAAAANSUhEUgAAAMgAAADICAYAAAA="}'
 			read a; printf '%s\\n' "$a" >> "$R"
 			echo '{"type":"accounts","accounts":[]}'
 			""").listAccounts(of: Self.access, state: nil, session: session)
@@ -117,10 +117,15 @@ struct FinTSConnectorTests {
 			.asked(.secondFactor(SecondFactorRequest(purpose: .download, system: .fintsServer,
 				challenge: .flickerCode(prompt: "Bitte TAN erzeugen", code: FlickerCode(hex: "0F04871100030333")!)))),
 			.asked(.secondFactor(SecondFactorRequest(purpose: .download, system: .fintsServer,
-				challenge: .enterTAN(prompt: "Bitte scannen", image: ChallengeImage(Data([0x89, 0x50, 0x4E, 0x47])))))),
+				challenge: .enterTAN(prompt: "Bitte scannen", image: ChallengeImage(Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAMgAAADICAYAAAA=")!))))),
 		])
 		#expect(recorded.map { $0["value"] } == ["921", "Handy", "123456", "123456"])
 		#expect(!recorded.map { $0["id"] }.contains(nil))
+		if case let .asked(.secondFactor(request))? = session.events.last, case let .enterTAN(_, image?) = request.challenge {
+			#expect(image.picture?.width == 200)
+		} else {
+			Issue.record("no TAN request with an image")
+		}
 	}
 
 	@Test("Sends the PIN rules of the bank with the PIN request")
