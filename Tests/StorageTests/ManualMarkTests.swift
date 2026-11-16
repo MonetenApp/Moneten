@@ -51,6 +51,21 @@ struct ManualMarkTests {
 		#expect(r.added.map(\.sourceID) == ["TX-7"])
 	}
 
+	@Test("A manual row that the user edited keeps no original values, and deleting it keeps no record")
+	func editedManualRow() throws {
+		defer { try? FileManager.default.removeItem(at: folder.root) }
+		let store = try makeStore()
+		var manual = kiosk
+		try store.save([manual])
+		manual.edit(OriginalValues(bookingDate: Day(year: 2026, month: 11, day: 4), valueDate: nil, amountMinor: -1_500, name: "Kiosk am Markt", purpose: "Zeitung"))
+		try store.save([manual])
+		let stored = try #require(try store.loadLedger().transactions(ofAccount: giro.id).first)
+		#expect(stored.amountMinor == -1_500 && stored.original == nil && stored.isOnlyManual)
+		try store.deleteTransactions([manual.id])
+		#expect(try store.deletedTransactions().isEmpty)
+		#expect(try store.merge(delivered(), into: giro.id).added.map(\.sourceID) == ["TX-7"])
+	}
+
 	/// The CSV export of the bank: the booking of the manual row "Kiosk".
 	var csvRow: Transaction { Transaction(accountID: giro.id, bookingDate: day, amountMinor: -1_200, name: "KIOSK", purpose: "Kartenzahlung") }
 

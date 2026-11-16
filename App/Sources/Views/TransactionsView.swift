@@ -134,7 +134,7 @@ struct CalibrationNotice: View {
 
 	var body: some View {
 		HStack(spacing: 6) {
-			Text("Transactions differ by \(Format.money(Money(minorUnits: abs(difference.minorUnits), currency: difference.currency)))")
+			Text("Transactions differ by \(Format.money(Money(minorUnits: Int64(clamping: difference.minorUnits.magnitude), currency: difference.currency)))")
 				.foregroundStyle(Palette.detail)
 			Button("Calibrate...") { model.sheet = .calibration(accountID) }
 				.buttonStyle(.link)

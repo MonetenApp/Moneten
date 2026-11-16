@@ -21,6 +21,18 @@ public struct Money: Hashable, Sendable, Codable, Comparable {
 		self.currency = currency
 	}
 
+	/// An amount that a file, a bank, or the user gives, rounded like `init(_:currency:)`. Nil when its minor units
+	/// do not fit into `Int64` with room for the opposite sign: the plain initializer wraps such an amount around,
+	/// and `Int64.min` has no magnitude, which the amount field of a transaction and a pie chart show.
+	public init?(fitting decimal: Decimal, currency: String) {
+		let scale = Decimal(sign: .plus, exponent: Currency.exponent(of: currency), significand: 1)
+		var scaled = decimal * scale
+		var rounded = Decimal()
+		NSDecimalRound(&rounded, &scaled, 0, .plain)
+		guard rounded.isFinite, rounded <= Decimal(Int64.max), rounded >= -Decimal(Int64.max) else { return nil }
+		self.init(minorUnits: NSDecimalNumber(decimal: rounded).int64Value, currency: currency)
+	}
+
 	public var decimal: Decimal {
 		Decimal(minorUnits) / Decimal(sign: .plus, exponent: Currency.exponent(of: currency), significand: 1)
 	}

@@ -37,6 +37,13 @@ struct TransactionDraftTests {
 		#expect(AmountProblem.zero.message == "The amount should not be zero.")
 	}
 
+	@Test("A row from a source keeps an amount of zero when the user edits it, and a manual one refuses it")
+	func zeroFromSource() {
+		#expect(draft(amount: "0,00").amountMinor(in: "EUR", region: .comma, allowsZero: true) == .success(0))
+		#expect(draft(amount: "vier").amountMinor(in: "EUR", region: .comma, allowsZero: true) == .failure(.notANumber))
+		#expect(draft(amount: "0,00").amountMinor(in: "EUR", region: .comma, allowsZero: false) == .failure(.zero))
+	}
+
 	@Test("A reading with more decimal places than the currency has does not count, and the decimal mark of the region decides a tie", arguments: [
 		("1.234", "EUR", DecimalMark.comma, Int64(123_400)), ("1.234", "EUR", .point, 123_400),
 		("1,200", "JPY", .comma, 1_200), ("1.200", "JPY", .point, 1_200),
@@ -100,33 +107,6 @@ struct TransactionDraftTests {
 		#expect(l.newTransactionDraft(in: wallet, selection: []) == TransactionDraft())
 		let part = l.newTransactionDraft(in: wallet, selection: [parts[0].id])
 		#expect(part.name == "Markt" && part.amount == "-10,00" && part.categoryID == groceries.id)
-	}
-
-	@Test("What the window can change: everything in a new, offline, or manual row, the name too in a file row of a bank account, else the category and the comment")
-	func editing() {
-		let bank = Account(position: 2, name: "Giro", kind: .giro, source: .bank)
-		func row(_ account: Account, manual: Bool = false, file: Bool = false, fetched: Bool = false, source: String? = nil) -> Transaction {
-			Transaction(accountID: account.id, bookingDate: Day(year: 2026, month: 11, day: 3), amountMinor: -1_200, name: "Kiosk", isFetched: fetched,
-				sourceID: source, fileIdentity: file ? "file:v1:kiosk" : nil, isManual: manual)
-		}
-		let rows = [
-			row(wallet), row(wallet, file: true), row(wallet, source: "moneymoney:1"),
-			row(bank, manual: true), row(bank, file: true), row(bank, file: true, fetched: true), row(bank, fetched: true, source: "TX-1"),
-			row(bank, source: "moneymoney:2"), row(bank),
-			// A manual row that a file or a migration matched is a row of that source from then on.
-			row(bank, manual: true, file: true), row(bank, manual: true, source: "moneymoney:3"), row(wallet, manual: true, file: true),
-		]
-		let split = row(bank, manual: true)
-		let part = SplitPart(transactionID: split.id, position: 0, amountMinor: -200)
-		let l = Ledger(accounts: [wallet, bank], transactions: rows + [split], parts: [part, SplitPart(transactionID: split.id, position: 1, amountMinor: -1_000)])
-		#expect(l.editing(nil) == .allFields)
-		#expect(rows.map { l.editing($0.id) } == [
-			.allFields, .allFields, .allFields,
-			.allFields, .nameCategoryAndComment, .categoryAndComment, .categoryAndComment,
-			.categoryAndComment, .categoryAndComment,
-			.nameCategoryAndComment, .categoryAndComment, .allFields,
-		])
-		#expect(l.editing(part.id) == .categoryAndComment)
 	}
 
 	@Test("The window shows an amount with every decimal place of its currency, and the text reads back to the same amount")

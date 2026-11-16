@@ -321,6 +321,9 @@ public struct Transaction: Identifiable, Hashable, Sendable, Codable {
 	/// A manual row that no file and no migration matched. No source has it, so a refresh never pairs a delivered
 	/// row with it, and deleting it keeps no record. A manual row that a source matched is a row of that source.
 	public var isOnlyManual: Bool { isManual && sourceID == nil && fileIdentity == nil }
+	/// The fields that "Edit Transaction..." changes, as the source delivered them. Nil until the user changes one
+	/// of them. A merge finds the row by these values and updates them, and the fields keep what the user wrote.
+	public var original: OriginalValues?
 
 	public init(id: UUID = UUID(), accountID: UUID, bookingDate: Day, valueDate: Day? = nil, amountMinor: Int64, currency: String = "EUR", name: String, purpose: String = "",
 		counterpartyIBAN: String? = nil, counterpartyBIC: String? = nil, bookingText: String? = nil, endToEndReference: String? = nil, mandateReference: String? = nil,
@@ -357,6 +360,26 @@ public struct Transaction: Identifiable, Hashable, Sendable, Codable {
 
 	public var amount: Money { Money(minorUnits: amountMinor, currency: currency) }
 
+	/// The editable fields as the source delivered them: `original` after an edit, otherwise the fields themselves.
+	public var sourceValues: OriginalValues { original ?? OriginalValues(self) }
+
+	/// What "Edit Transaction..." writes. The first change of a row from a source keeps the delivered values in
+	/// `original`, so that a later refresh still finds the row and does not add it again. Values equal to the
+	/// delivered ones clear it. A row that the user typed in has no source, so a correction replaces its values,
+	/// and a file finds the row by the corrected ones.
+	public mutating func edit(_ values: OriginalValues) {
+		let delivered = sourceValues
+		bookingDate = values.bookingDate
+		valueDate = values.valueDate
+		amountMinor = values.amountMinor
+		name = values.name
+		purpose = values.purpose
+		original = !hasSource || values == delivered ? nil : delivered
+	}
+
+	/// Whether a bank, a file, or a migration delivered the row. A row that the user typed in has none.
+	var hasSource: Bool { isFetched || sourceID != nil || fileIdentity != nil }
+
 	/// The rule for every sum, such as a balance, a bar of a chart, or the amount of a category. A pending row
 	/// counts like a booked one, except while it waits for review: then the booked row stands for the money.
 	var countsInSums: Bool { !isPending || review == nil }
@@ -381,4 +404,25 @@ public struct Transaction: Identifiable, Hashable, Sendable, Codable {
 
 	/// Checking the row changes it, so "Mark All Transactions as Checked" counts it.
 	public var changesWhenChecked: Bool { !isChecked || isNew || (review != nil && !isPending) }
+}
+
+/// The fields of a transaction that the user can change with "Edit Transaction...".
+public struct OriginalValues: Hashable, Sendable, Codable {
+	public var bookingDate: Day
+	public var valueDate: Day?
+	public var amountMinor: Int64
+	public var name: String
+	public var purpose: String
+
+	public init(bookingDate: Day, valueDate: Day?, amountMinor: Int64, name: String, purpose: String) {
+		self.bookingDate = bookingDate
+		self.valueDate = valueDate
+		self.amountMinor = amountMinor
+		self.name = name
+		self.purpose = purpose
+	}
+
+	public init(_ t: Transaction) {
+		self.init(bookingDate: t.bookingDate, valueDate: t.valueDate, amountMinor: t.amountMinor, name: t.name, purpose: t.purpose)
+	}
 }

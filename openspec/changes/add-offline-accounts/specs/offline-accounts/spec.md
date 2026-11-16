@@ -420,23 +420,24 @@ The app SHALL count a manual transaction after the day of the bank balance on to
 
 ### Requirement: What a transaction in an account with bank access can change
 
-The app SHALL let the user change every field of a manual transaction in an account with bank access that no file and no migration matched. A transaction from a file import, also a manual one that a file matched, keeps its date, its amount, and its purpose, and the user can change its name, its category, and its comment. A transaction that a refresh or a migration brought, and any other transaction without the manual mark, keeps every field except its category and its comment.
+The app SHALL let the user change the date, the value date, the name, the amount, the purpose, the category, and the comment of every transaction in an account with bank access, except a part of a split transaction, which offers only its category and its comment. The app keeps the values that a refresh, a file, or a migration delivered, so that the next refresh finds the transaction by them. A manual transaction that no file and no migration matched has no such values and takes the changed ones.
 
 #### Scenario: Manual transaction
 
 - **GIVEN** an account with bank access and a manual transaction of -12,00 € "Kiosk"
-- **WHEN** the user opens "Edit Transaction..."
-- **THEN** the window offers the date, the name, the amount, the purpose, the category, and the comment for a change
-
-#### Scenario: Transaction from a file
-
-- **GIVEN** an account with bank access and a transaction of -12,00 € "KIOSK" from a CSV file
-- **WHEN** the user opens "Edit Transaction..."
-- **THEN** the window shows the date, the amount, and the purpose without a field to change them
-- **AND** offers the name, the category, and the comment for a change
+- **WHEN** the user changes the amount to -15,00 € with "Edit Transaction..."
+- **THEN** the transaction shows -15,00 € and keeps no delivered values
+- **AND** after the user deletes it, a refresh that delivers -15,00 € "KIOSK" adds the delivered transaction
 
 #### Scenario: Fetched transaction
 
 - **GIVEN** an account with bank access and a transaction of -12,00 € "KIOSK" from a refresh
-- **WHEN** the user opens "Edit Transaction..."
+- **WHEN** the user changes the name to "Kiosk am Markt" with "Edit Transaction..."
+- **THEN** the transaction shows "Kiosk am Markt"
+- **AND** the next refresh that delivers -12,00 € "KIOSK" adds no second transaction
+
+#### Scenario: Part of a split transaction
+
+- **GIVEN** an account with bank access and a transaction of -80,00 € split into parts of -25,00 € and -55,00 €
+- **WHEN** the user opens "Edit Transaction..." for the part of -25,00 €
 - **THEN** the window offers only the category and the comment for a change

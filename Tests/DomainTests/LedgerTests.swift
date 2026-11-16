@@ -882,6 +882,13 @@ struct LedgerTests {
 		corrected.amountMinor = 500_000
 		#expect(ledger.keepingBankBalance(replacing: [deposit], with: [corrected], calendar: calendar).map(\.initialBalanceMinor) == [500_000])
 		#expect(ledger.keepingBankBalance(replacing: [deposit], with: [], calendar: calendar).map(\.initialBalanceMinor) == [1_000_000])
+
+		// "Edit Transaction..." gives a manual row the corrected values and no original ones, so it stays only manual.
+		var edited = deposit
+		edited.edit(OriginalValues(bookingDate: deposit.bookingDate, valueDate: nil, amountMinor: 450_000, name: "Anlage", purpose: "Festgeld"))
+		#expect(edited.isOnlyManual && edited.original == nil)
+		#expect(ledger.keepingBankBalance(replacing: [deposit], with: [edited], calendar: calendar).map(\.initialBalanceMinor) == [550_000])
+		#expect(ledger.keepingBankBalance(replacing: [edited], with: [], calendar: calendar).map(\.initialBalanceMinor) == [1_050_000])
 	}
 
 	@Test("Only a manual row booked by the day of the bank balance, in an account whose initial balance a refresh derived, moves the initial balance")

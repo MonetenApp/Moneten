@@ -337,8 +337,15 @@ enum Schema {
 			try db.execute(sql: "UPDATE bankTransaction SET review = 'unclearBooking' WHERE needsReview = 1")
 			try db.alter(table: "bankTransaction") { t in t.drop(column: "needsReview") }
 		}
-		// The mark of a row that the user added with "Add Transaction..." (add-offline-accounts). v21 and v22 are
-		// reserved for other changes.
+		// The values that the source delivered for the fields that the user edited, as JSON (add-transaction-list,
+		// task 1.16). Empty for every existing row, because no row could be edited before.
+		m.registerMigration("v24") { db in
+			try db.alter(table: "bankTransaction") { t in
+				t.add(column: "original", .text)
+			}
+		}
+		// The mark of a row that the user added with "Add Transaction..." (add-offline-accounts). It comes after v24
+		// in the list, because GRDB applies the migrations in the order of registration and v24 shipped first.
 		m.registerMigration("v23") { db in
 			try db.alter(table: "bankTransaction") { t in t.add(column: "isManual", .boolean).notNull().defaults(to: false) }
 			// The database does not tell a derived value from one that the user entered, so every stored value stays as it is.

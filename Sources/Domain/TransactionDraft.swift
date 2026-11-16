@@ -26,8 +26,9 @@ public struct TransactionDraft: Hashable, Sendable {
 	/// The text has a reading with a decimal comma and one with a decimal point. A reading with more decimal places
 	/// than the currency has does not count, so "1.234" is 1.234,00 € and "1,200" is 1.200 JPY. When two readings
 	/// with different values remain, as "12,345" in KWD has, `region`, the decimal mark of the Mac, decides. A text
-	/// whose readings all have too many decimal places is refused and never rounded.
-	public func amountMinor(in currency: String, region: DecimalMark) -> Result<Int64, AmountProblem> {
+	/// whose readings all have too many decimal places is refused and never rounded. Zero is refused unless
+	/// `allowsZero`: a row that a source delivered with zero keeps it when the user edits another field.
+	public func amountMinor(in currency: String, region: DecimalMark, allowsZero: Bool = false) -> Result<Int64, AmountProblem> {
 		let text = Currency.removingSigns(of: currency, from: amount)
 		guard !text.allSatisfy(\.isWhitespace) else { return .failure(.missing) }
 		let readings = DecimalMark.allCases.compactMap { mark in AmountParser.decimal(from: text, decimalMark: mark).map { (mark: mark, value: $0) } }
@@ -39,7 +40,7 @@ public struct TransactionDraft: Hashable, Sendable {
 		let limit = Money(minorUnits: .max, currency: currency).decimal
 		guard -limit <= value, value <= limit else { return .failure(.tooLarge) }
 		let minor = Money(value, currency: currency).minorUnits
-		return minor == 0 ? .failure(.zero) : .success(minor)
+		return minor == 0 && !allowsZero ? .failure(.zero) : .success(minor)
 	}
 
 	/// The user changed the name field to `text`. `offered` are the suggestions that the field showed for the
@@ -81,15 +82,6 @@ public enum AmountProblem: Error, Hashable, Sendable {
 	}
 }
 
-/// The fields of a row that the window for a transaction can change.
-public enum TransactionEditing: Sendable {
-	case allFields
-	/// A row from a file in an account with bank access: its date, amount, and purpose stay, because the next
-	/// refresh pairs the row by them.
-	case nameCategoryAndComment
-	case categoryAndComment
-}
-
 extension DecimalMark {
 	/// The decimal mark of a region, such as the comma for Germany and the point for the United States.
 	public init(region: Locale) {
@@ -98,19 +90,6 @@ extension DecimalMark {
 }
 
 extension Ledger {
-	/// What the window can change in the row `rowID`, or in a new row for nil. A row of an offline account and a
-	/// manual row that no source matched change in every field. A manual row that a file or a migration matched is a
-	/// row of that source, because the next refresh pairs it by its date, amount, and purpose. A part of a split changes its category and its comment. In an account
-	/// with bank access, a row from a file keeps its date, amount, and purpose, because a change of them makes the
-	/// next refresh add the booking a second time. A row that a refresh or a migration brought, and an older row
-	/// without the manual mark, changes only its category and its comment.
-	public func editing(_ rowID: UUID?) -> TransactionEditing {
-		guard let rowID else { return .allFields }
-		guard part(rowID) == nil, let t = row(rowID), let account = account(t.accountID) else { return .categoryAndComment }
-		if account.isOffline || t.isOnlyManual { return .allFields }
-		return t.fileIdentity != nil && !t.isFetched ? .nameCategoryAndComment : .categoryAndComment
-	}
-
 	/// What "Add Transaction..." in `account` starts from: the one selected row of the account, also a part of a split,
 	/// or an empty draft. A row in another currency gives no amount, because the window stores the amount in the
 	/// currency of the account and would change its value.

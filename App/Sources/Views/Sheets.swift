@@ -147,7 +147,6 @@ struct AccountSettingsSheet: View {
 	/// The account as the settings opened.
 	@State private var opened: Account?
 	@State private var initialBalance = ""
-	@State private var confirmRemove = false
 	@State private var confirmRemovePIN = false
 	@State private var color = Color.accentColor
 	@State private var originalColor = Color.accentColor
@@ -165,7 +164,7 @@ struct AccountSettingsSheet: View {
 				model.save(account: a)
 				return true
 			}, leading: {
-				Button("Remove Account...", role: .destructive) { confirmRemove = true }
+				Button("Remove Account...", role: .destructive) { if model.confirmRemove(.account(accountID)) { dismiss() } }
 			}) {
 				if let binding = Binding($account) {
 					Section {
@@ -231,16 +230,6 @@ struct AccountSettingsSheet: View {
 				initialBalance = Format.editableAmount(original.initialBalanceMinor, original.currency)
 				color = AccountColors.color(of: original)
 				originalColor = color
-			}
-			.confirmationDialog("Are you sure you want to remove the account \(original.name)?", isPresented: $confirmRemove) {
-				Button("Remove", role: .destructive) {
-					Task { await model.remove(account: original.id) }
-					dismiss()
-				}
-			} message: {
-				Text(original.kind == .portfolio
-					? "All transactions and the recorded value history of this portfolio will be removed as well. You could alternatively mark the account as closed in the account settings."
-					: "All transactions of this account will be removed as well. You could alternatively mark the account as closed in the account settings.")
 			}
 		}
 	}
@@ -328,6 +317,8 @@ struct TransactionSheet: View {
 	@Environment(AppModel.self) private var model
 	let transactionID: UUID?
 	@State private var date = Date()
+	/// The value date of an existing row, nil for none.
+	@State private var valueDate: Date?
 	@State private var draft = TransactionDraft()
 	@State private var comment = ""
 	@State private var problem: AmountProblem?
@@ -337,7 +328,9 @@ struct TransactionSheet: View {
 
 	private var existing: Transaction? { transactionID.flatMap { model.ledger.row($0) } }
 	private var account: Account? { existing.flatMap { model.ledger.account($0.accountID) } ?? model.selectedAccount }
-	private var editing: TransactionEditing { model.ledger.editing(transactionID) }
+	/// "Add Transaction..." adds a row to every account but a portfolio, also to one with bank access (add-offline-accounts,
+	/// task 1.13). "Edit Transaction..." changes every row but a part of a split (add-transaction-list, task 1.16).
+	private var editable: Bool { transactionID.map(model.ledger.editsFields) ?? true }
 
 	/// The name field of a new transaction offers earlier names. A chosen one fills the purpose and the category
 	/// while they are empty.
@@ -354,9 +347,21 @@ struct TransactionSheet: View {
 			if let review = existing?.review {
 				Section { Label(review.note, systemImage: "exclamationmark.circle").foregroundStyle(.orange) }
 			}
-			if editing == .allFields {
+			if editable {
 				Section {
 					DatePicker("Date", selection: $date, displayedComponents: .date)
+					if existing != nil {
+						LabeledContent("Value date") {
+							HStack {
+								Toggle("Value date", isOn: Binding(get: { valueDate != nil }, set: { valueDate = $0 ? (valueDate ?? date) : nil }))
+									.labelsHidden()
+								if let shown = valueDate {
+									DatePicker("Value date", selection: Binding(get: { shown }, set: { valueDate = $0 }), displayedComponents: .date)
+										.labelsHidden()
+								}
+							}
+						}
+					}
 					TextField("Name", text: name)
 						.focused($nameHasFocus)
 						.textInputSuggestions(suggestions) { t in
@@ -372,17 +377,17 @@ struct TransactionSheet: View {
 					TextField("Purpose", text: $draft.purpose, prompt: Text("Optional"), axis: .vertical).lineLimit(1...4)
 				}
 			} else if let t = existing {
+				// A part of a split shows its values, because the parts must add up to the amount of the split transaction.
 				Section {
 					LabeledContent("Date", value: Format.day(t.bookingDate))
-					if editing == .nameCategoryAndComment {
-						TextField("Name", text: $draft.name)
-					} else {
-						LabeledContent("Name", value: t.name)
-					}
+					if let v = t.valueDate { LabeledContent("Value date", value: Format.day(v)) }
+					LabeledContent("Name", value: t.name)
 					LabeledContent("Amount") { AmountText(money: t.amount) }
 					LabeledContent("Purpose") { Text(t.purpose).textSelection(.enabled).multilineTextAlignment(.trailing) }
 				}
-				if t.counterpartyIBAN != nil || t.bookingText != nil || t.endToEndReference != nil || t.mandateReference != nil || t.creditorID != nil || t.valueDate != nil {
+			}
+			if let t = existing {
+				if t.counterpartyIBAN != nil || t.bookingText != nil || t.endToEndReference != nil || t.mandateReference != nil || t.creditorID != nil {
 					Section("Details") {
 						if let iban = t.counterpartyIBAN { LabeledContent("IBAN") { Text(Format.iban(iban)).textSelection(.enabled) } }
 						if let bic = t.counterpartyBIC { LabeledContent("BIC", value: bic) }
@@ -390,7 +395,6 @@ struct TransactionSheet: View {
 						if let e = t.endToEndReference { LabeledContent("End-to-end reference") { Text(e).textSelection(.enabled) } }
 						if let m = t.mandateReference { LabeledContent("Mandate reference") { Text(m).textSelection(.enabled) } }
 						if let c = t.creditorID { LabeledContent("Creditor ID") { Text(c).textSelection(.enabled) } }
-						if let v = t.valueDate { LabeledContent("Value date", value: Format.day(v)) }
 					}
 				}
 			}
@@ -405,7 +409,7 @@ struct TransactionSheet: View {
 		.onChange(of: draft.amount) { problem = nil }
 		.onAppear {
 			load()
-			nameHasFocus = editing == .allFields
+			nameHasFocus = editable
 		}
 	}
 
@@ -413,6 +417,7 @@ struct TransactionSheet: View {
 	private func load() {
 		if let t = existing {
 			date = t.bookingDate.date()
+			valueDate = t.valueDate?.date()
 			draft = TransactionDraft(template: t)
 			comment = t.comment ?? ""
 		} else if let account {
@@ -424,22 +429,16 @@ struct TransactionSheet: View {
 		if let transactionID, model.ledger.row(transactionID) == nil { return true }
 		guard let account else { return true }
 		var t = existing ?? Transaction(accountID: account.id, bookingDate: Day(date), amountMinor: 0, currency: account.currency, name: "", isManual: true)
-		switch editing {
-		case .allFields:
-			switch draft.amountMinor(in: t.currency, region: DecimalMark(region: .current)) {
+		if editable {
+			switch draft.amountMinor(in: t.currency, region: DecimalMark(region: .current), allowsZero: existing.map { !$0.isManual } ?? false) {
 			case let .failure(p):
 				problem = p
 				return false
 			case let .success(minor):
-				t.amountMinor = minor
+				// `edit` keeps the values of a source, so that a refresh or a file does not add the row again. A manual
+				// row has no source and takes the values.
+				t.edit(OriginalValues(bookingDate: Day(date), valueDate: valueDate.map { Day($0) }, amountMinor: minor, name: draft.name, purpose: draft.purpose))
 			}
-			t.bookingDate = Day(date)
-			t.name = draft.name
-			t.purpose = draft.purpose
-		case .nameCategoryAndComment:
-			t.name = draft.name
-		case .categoryAndComment:
-			break
 		}
 		if draft.categoryID != t.categoryID {
 			t.categoryID = draft.categoryID

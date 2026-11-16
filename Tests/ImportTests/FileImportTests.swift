@@ -83,6 +83,14 @@ struct FileImportTests {
 		#expect(throws: TransactionFileImporter.Failure.line(line, "The amount cannot be read.")) { try TransactionFileImporter.parse(Data(text.utf8), currency: "EUR") }
 	}
 
+	@Test("A CSV amount whose minor units do not fit is rejected with its line, instead of turning into another amount", arguments: [
+		"Datum;Name;Betrag\n01.11.2026;Kiosk;-89,00\n02.11.2026;Vermieter;-92233720368547758,08\n",
+		"Datum;Name;Betrag\n01.11.2026;Kiosk;-89,00\n02.11.2026;Vermieter;100000000000000000000\n",
+	])
+	func amountTooLarge(text: String) {
+		#expect(throws: TransactionFileImporter.Failure.line(3, "The amount is too large.")) { try TransactionFileImporter.parse(Data(text.utf8), currency: "EUR") }
+	}
+
 	@Test("CSV with separate debit and credit columns")
 	func debitCredit() throws {
 		let text = "Datum;Name;Soll;Haben\n01.11.2026;Kiosk;12,30;\n02.11.2026;Erika Mustermann;;50,00\n"
@@ -294,6 +302,7 @@ struct FileImportTests {
 		(":61:26", "The date cannot be read."),
 		(":61:2602301107D50,00NDDTNONREF", "The date cannot be read."),
 		(":61:2611070431D50,00NDDTNONREF", "The date cannot be read."),
+		(":61:2611071107D92233720368547758,08NDDTNONREF", "The amount is too large."),
 	])
 	func mt940Unreadable(line: String, reason: String) {
 		let text = """
@@ -312,6 +321,7 @@ struct FileImportTests {
 		(#"<Ntry><Amt Ccy="EUR">abc</Amt><CdtDbtInd>DBIT</CdtDbtInd><BookgDt><Dt>2026-11-03</Dt></BookgDt></Ntry>"#, "The amount of the entry cannot be read."),
 		(#"<Ntry><Amt Ccy="EUR">5.00</Amt><CdtDbtInd>CRDT</CdtDbtInd></Ntry>"#, "The booking date of the entry cannot be read."),
 		(#"<Ntry><Amt Ccy="EUR">5.00</Amt><CdtDbtInd>CRDT</CdtDbtInd><BookgDt><Dt>2026-02-30</Dt></BookgDt></Ntry>"#, "The booking date of the entry cannot be read."),
+		(#"<Ntry><Amt Ccy="EUR">92233720368547758.08</Amt><CdtDbtInd>DBIT</CdtDbtInd><BookgDt><Dt>2026-11-03</Dt></BookgDt></Ntry>"#, "The amount of the entry is too large."),
 	])
 	func camtUnreadable(entry: String, reason: String) {
 		let xml = """
