@@ -321,7 +321,7 @@ struct CommentSheet: View {
 					.lineLimit(5...10)
 			}
 		}
-		.onAppear { text = ids.first.flatMap { model.ledger.transaction($0)?.comment } ?? "" }
+		.onAppear { text = ids.first.flatMap { model.ledger.row($0)?.comment } ?? "" }
 	}
 }
 
@@ -336,12 +336,12 @@ struct TransactionSheet: View {
 	@State private var categoryID: UUID?
 	@State private var comment = ""
 
-	private var existing: Transaction? { transactionID.flatMap { model.ledger.transaction($0) } }
+	private var existing: Transaction? { transactionID.flatMap { model.ledger.row($0) } }
 	private var account: Account? { existing.flatMap { model.ledger.account($0.accountID) } ?? model.selectedAccount }
-	private var editable: Bool { account?.isOffline ?? false }
+	private var editable: Bool { (account?.isOffline ?? false) && transactionID.flatMap { model.ledger.part($0) } == nil }
 
 	var body: some View {
-		SheetFrame(title: existing == nil ? "New Transaction" : "Edit Transaction", canConfirm: !editable || AmountParser.decimal(from: amount) != nil, width: 500, onConfirm: save) {
+		SheetFrame(title: transactionID == nil ? "New Transaction" : "Edit Transaction", canConfirm: !editable || AmountParser.decimal(from: amount) != nil, width: 500, onConfirm: save) {
 			if editable {
 				Section {
 					DatePicker("Date", selection: $date, displayedComponents: .date)
@@ -399,6 +399,7 @@ struct TransactionSheet: View {
 	}
 
 	private func save() -> Bool {
+		if let transactionID, model.ledger.row(transactionID) == nil { return true }
 		guard let account else { return true }
 		var t = existing ?? Transaction(accountID: account.id, bookingDate: Day(date), amountMinor: 0, currency: account.currency, name: "")
 		if editable {

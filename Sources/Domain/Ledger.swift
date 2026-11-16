@@ -145,10 +145,14 @@ public struct Ledger: Sendable {
 	public func group(_ id: UUID) -> AccountGroup? { groups.first { $0.id == id } }
 	public func category(_ id: UUID) -> Category? { categories.first { $0.id == id } }
 	public func transaction(_ id: UUID) -> Transaction? { transactionIndex[id].map { transactions[$0] } }
+	public func row(_ id: UUID) -> Transaction? {
+		if let original = transactionByPart[id] { return partRows[original]?.first { $0.id == id } }
+		return partsByTransaction[id] == nil ? transaction(id) : nil
+	}
+
 	// periphery:ignore - task 6.8
 	public func parts(of transactionID: UUID) -> [SplitPart] { partsByTransaction[transactionID] ?? [] }
 
-	// periphery:ignore - task 6.8
 	public func part(_ rowID: UUID) -> SplitPart? {
 		guard let id = transactionByPart[rowID] else { return nil }
 		return partsByTransaction[id]?.first { $0.id == rowID }
@@ -319,7 +323,7 @@ public struct Ledger: Sendable {
 
 	/// The accounts that hold these transactions, for `categories(matching:assignableTo:)`.
 	public func accountIDs(ofTransactions ids: Set<UUID>) -> Set<UUID> {
-		Set(ids.compactMap { transaction($0)?.accountID })
+		Set(ids.compactMap { row($0)?.accountID })
 	}
 
 	/// The same categories without those that the transactions of `accounts` cannot take. The picker passes
@@ -530,8 +534,30 @@ public struct Ledger: Sendable {
 		if accounts != nil || categories != nil || transactions != nil { rebuildIndexes() } else { countNew() }
 	}
 
+	public func changes(from rows: [Transaction]) -> (transactions: [Transaction], parts: [SplitPart]) {
+		var changed: [UUID: Transaction] = [:]
+		var parts: [SplitPart] = []
+		for row in rows {
+			if var part = part(row.id), let original = transaction(part.transactionID) {
+				if part.categoryID != row.categoryID || part.comment != row.comment {
+					part.categoryID = row.categoryID
+					part.comment = row.comment
+					parts.append(part)
+				}
+				var t = changed[original.id] ?? original
+				if row.isChecked != original.isChecked { t.isChecked = row.isChecked }
+				if row.isNew != original.isNew { t.isNew = row.isNew }
+				if row.needsReview != original.needsReview { t.needsReview = row.needsReview }
+				if t != original { changed[t.id] = t }
+			} else if partsByTransaction[row.id] == nil, row != transaction(row.id) {
+				changed[row.id] = row
+			}
+		}
+		return (Array(changed.values), parts)
+	}
+
 	/// Replaces transactions with the same identifier. Faster than `replace` for a handful of rows.
-	public mutating func update(_ changed: [Transaction]) {
+	public mutating func update(_ changed: [Transaction], parts: [SplitPart] = []) {
 		var needsSort = false
 		let accountsByID = Dictionary(uniqueKeysWithValues: accounts.map { ($0.id, $0) })
 		let names = categoryNames
@@ -544,6 +570,16 @@ public struct Ledger: Sendable {
 				needsSort = true
 			}
 			rebuildRows(of: t, account: accountsByID[t.accountID], categoryNames: names)
+		}
+		var affected: Set<UUID> = []
+		for part in parts {
+			guard let id = transactionByPart[part.id], let i = partsByTransaction[id]?.firstIndex(where: { $0.id == part.id }) else { continue }
+			partsByTransaction[id]?[i].categoryID = part.categoryID
+			partsByTransaction[id]?[i].comment = part.comment
+			affected.insert(id)
+		}
+		for id in affected {
+			if let t = transaction(id) { rebuildRows(of: t, account: accountsByID[t.accountID], categoryNames: names) }
 		}
 		// An import of 2,000 rows into 50,000 sorts again but builds the search text of the new rows only.
 		if needsSort { sortAndIndex() }
@@ -573,7 +609,6 @@ public struct Ledger: Sendable {
 		countNew()
 	}
 
-	// periphery:ignore - task 6.8
 	public mutating func replaceParts(of transactionID: UUID, with parts: [SplitPart]) {
 		guard let original = transaction(transactionID) else { return }
 		partsByTransaction[transactionID] = parts.isEmpty ? nil : parts.map { part in

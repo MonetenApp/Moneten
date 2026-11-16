@@ -98,7 +98,7 @@ Refreshes and file imports go through `reconcile`, which recognizes a stored row
 |---|---|---|
 | `DeletedTransaction` | `accountID`, `sourceID?`, `fileIdentity?`, `bookingDate`, `amountMinor`, `currency`, `isPending`, `purpose`, `counterpartyIBAN?`, `endToEndReference?`, `wasFetched`, `deletedAt` | One record for each transaction that the user deleted, with the raw fields of its fingerprint. A refresh does not add the transaction again. A file adds it again only when `wasFetched` is false. The records go with their account. |
 
-Lists and sums by category read `Ledger.rows(in:filter:)`, which returns `TransactionSearchResult` with part rows and the search failure flag. Balances read the stored originals in `Ledger.transactions`.
+Lists and sums by category read `Ledger.rows(in:filter:)`, which returns `TransactionSearchResult` with part rows and the search failure flag. `Ledger.sidebarAmounts(today:)` counts the part rows itself within its single pass over the stored transactions. Balances read the stored originals in `Ledger.transactions`.
 
 ## Splits
 

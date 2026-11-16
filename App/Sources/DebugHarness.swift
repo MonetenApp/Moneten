@@ -499,6 +499,17 @@ final class DebugHarness {
 			}
 		// What "Add category" in "Assign Category" does with the selected rows.
 		case "newcategory": Task { await model.addCategory(name: argument, isGroup: false, parentID: nil, assigning: model.visibleSelection) }
+		case "split":
+			guard let row = model.visibleTransactions.first, model.ledger.part(row.id) == nil,
+				let amount = Split.amount(from: argument, on: row.amount, decimalMark: .comma),
+				let amounts = try? Split.amounts(of: row.amount, off: [amount]) else { return log("split refused") }
+			let parts = amounts.enumerated().map {
+				SplitPart(transactionID: row.id, position: $0.offset, amountMinor: $0.element.minorUnits, categoryID: row.categoryID, comment: row.comment)
+			}
+			Task {
+				let saved = await model.replaceParts(of: row.id, with: parts)
+				log("split saved=\(saved) parts=\(saved ? parts.count : 0) transactions=\(model.ledger.transactions.count)")
+			}
 		case "selectRows": model.selectedTransactions = Set(model.visibleTransactions.prefix(Int(argument) ?? 1).map(\.id))
 		// What a drop of the selected rows on the category "Name" in the sidebar does, with the payload sent
 		// through an item provider as a drag sends it. The harness cannot drag.
@@ -701,7 +712,7 @@ final class DebugHarness {
 			let ledger = model.ledger
 			let order = ledger.categoriesInSidebarOrder.filter { !$0.isDefault }.map(\.id)
 			// Category names are typed by the user, so the log names a category by its place in the sidebar.
-			let categories = model.selectedTransactions.compactMap { ledger.transaction($0) }
+			let categories = model.selectedTransactions.compactMap { ledger.row($0) }
 				.map { ledger.effectiveCategoryID(of: $0).flatMap(order.firstIndex).map(String.init) ?? "default" }
 			self.log("mainkey \(name) handled=\(handledBy) sheet=\(model.sheet?.trailName ?? "none") tablefocus=\(table.window?.firstResponder === table) key=\(NSApp.keyWindow === table.window) row=\(table.selectedRow) "
 				+ "category=\(categories.joined(separator: ","))")

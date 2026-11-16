@@ -207,4 +207,145 @@ struct SplitLedgerTests {
 		#expect(lines[2].contains("Groceries") && lines[2].contains(";-55.00;EUR;"))
 		#expect(!lines.contains { $0.contains(";-80.00;") })
 	}
+	func editableSplit() -> (Ledger, Transaction, [SplitPart]) {
+		var t = original(); t.comment = nil
+		let ps = [-2500, -5500].enumerated().map {
+			SplitPart(transactionID: t.id, position: $0.offset, amountMinor: Int64($0.element), categoryID: groceries.id)
+		}
+		var l = ledger([t]); l.replaceParts(of: t.id, with: ps)
+		return (l, t, ps)
+	}
+
+	@Test("A category and a comment on a part change the part and not the original")
+	func editPart() throws {
+		var (l, t, ps) = editableSplit()
+		var row = try #require(l.row(ps[0].id))
+		row.categoryID = household.id; row.comment = "Detergent"
+		let changed = l.changes(from: [row])
+		#expect(changed.transactions.isEmpty)
+		#expect(changed.parts.count == 1)
+		#expect(changed.parts.first?.id == ps[0].id)
+		#expect(changed.parts.first?.categoryID == household.id)
+		#expect(changed.parts.first?.comment == "Detergent")
+		l.update(changed.transactions, parts: changed.parts)
+		#expect(l.row(ps[0].id)?.categoryID == household.id)
+		#expect(l.row(ps[0].id)?.comment == "Detergent")
+		#expect(l.row(ps[0].id)?.amountMinor == -2500)
+		#expect(l.transaction(t.id)?.categoryID == groceries.id)
+		#expect(l.transaction(t.id)?.comment == nil)
+	}
+
+	@Test("A checkmark on a part checks the original")
+	func checkPart() throws {
+		var (l, t, ps) = editableSplit()
+		var row = try #require(l.row(ps[0].id)); row.markChecked()
+		let changed = l.changes(from: [row])
+		#expect(changed.parts.isEmpty)
+		#expect(changed.transactions.count == 1)
+		#expect(changed.transactions.first?.id == t.id)
+		#expect(changed.transactions.first?.isChecked == true)
+		l.update(changed.transactions, parts: changed.parts)
+		#expect(ps.map { l.row($0.id)?.isChecked } == [true, true])
+		#expect(l.transaction(t.id)?.categoryID == groceries.id)
+		let (before, _, _) = editableSplit()
+		var both = before.rows(in: .account(account.id)).rows
+		for i in both.indices { both[i].markChecked() }
+		#expect(before.changes(from: both).transactions.count == 1)
+	}
+
+	@Test("Only what differs comes back")
+	func changedFieldsOnly() throws {
+		let (l, t, ps) = editableSplit()
+		let unchanged = try #require(l.row(ps[1].id))
+		#expect(l.changes(from: [unchanged]).transactions.isEmpty)
+		#expect(l.changes(from: [unchanged]).parts.isEmpty)
+		var checked = try #require(l.row(ps[0].id)); checked.markChecked()
+		for rows in [[checked, unchanged], [unchanged, checked]] {
+			let changed = l.changes(from: rows)
+			#expect(changed.parts.isEmpty)
+			#expect(changed.transactions.count == 1)
+			#expect(changed.transactions.first?.id == t.id)
+			#expect(changed.transactions.first?.isChecked == true)
+		}
+	}
+
+	@Test("New and review marks on parts change the original independent of row order")
+	func partMarks() throws {
+		var (l, t, ps) = editableSplit()
+		t.isNew = true; t.needsReview = true; l.update([t])
+		let unchanged = try #require(l.row(ps[1].id))
+		var seen = try #require(l.row(ps[0].id)); seen.isNew = false
+		var reviewed = unchanged; reviewed.needsReview = false
+		for rows in [[seen, reviewed], [reviewed, seen]] {
+			let changed = l.changes(from: rows)
+			#expect(changed.parts.isEmpty)
+			#expect(changed.transactions.count == 1)
+			#expect(changed.transactions.first?.id == t.id)
+			#expect(changed.transactions.first?.isNew == false)
+			#expect(changed.transactions.first?.needsReview == false)
+			#expect(changed.transactions.first?.isChecked == false)
+		}
+	}
+
+	@Test("A part whose category the user removes stays without one")
+	func clearPartCategory() throws {
+		var (l, _, ps) = editableSplit()
+		var ruleCategory = drinks; ruleCategory.rule = "REWE"; l.upsert(ruleCategory)
+		var row = try #require(l.row(ps[0].id))
+		row.categoryID = nil; row.categorizedBy = .none
+		let changed = l.changes(from: [row])
+		#expect(changed.transactions.isEmpty)
+		#expect(changed.parts.count == 1)
+		#expect(changed.parts.first?.categoryID == nil)
+		l.update(changed.transactions, parts: changed.parts)
+		var saved = try #require(l.row(ps[0].id))
+		#expect(saved.categoryID == nil)
+		#expect(saved.categorizedBy == .manual)
+		Categorizer(ledger: l).categorize(&saved)
+		#expect(saved.categoryID == nil)
+	}
+
+	@Test("Other rows pass through")
+	func otherRows() throws {
+		var (l, original, _) = editableSplit()
+		let other = Transaction(accountID: account.id, bookingDate: day, amountMinor: -1200, name: "Bäckerei Gutbrot")
+		l.update([other])
+		#expect(l.changes(from: [other]).transactions.isEmpty)
+		var row = try #require(l.row(other.id)); row.markChecked()
+		let checked = l.changes(from: [row])
+		#expect(checked.transactions == [row])
+		#expect(checked.parts.isEmpty)
+		let added = Transaction(accountID: account.id, bookingDate: day, amountMinor: -3000, name: "Made-up purchase")
+		let changes = l.changes(from: [added])
+		#expect(changes.transactions == [added])
+		#expect(changes.transactions.first?.amountMinor == -3000)
+		#expect(changes.parts.isEmpty)
+		#expect(l.row(original.id) == nil)
+		#expect(l.changes(from: [original]).transactions.isEmpty)
+		#expect(l.changes(from: [original]).parts.isEmpty)
+	}
+
+	@Test("The category picker keeps account restrictions for selected parts")
+	func pickerAccounts() {
+		var a = account; a.name = "Private"
+		let business = Account(position: 1, name: "Business", kind: .giro, source: .offline)
+		var home = household; home.restrictedToID = a.id
+		let office = Domain.Category(position: 2, name: "Office", restrictedToID: business.id)
+		let t = original()
+		let other = Transaction(accountID: business.id, bookingDate: day, amountMinor: -1200, name: "Business purchase")
+		let ps = [-2500, -5500].enumerated().map {
+			SplitPart(transactionID: t.id, position: $0.offset, amountMinor: Int64($0.element), categoryID: groceries.id)
+		}
+		var l = Ledger(accounts: [a, business], categories: [groceries, home, office], transactions: [t, other])
+		l.replaceParts(of: t.id, with: ps)
+		for selection: Set<UUID> in [[ps[0].id], [ps[1].id], Set(ps.map(\.id))] {
+			let accounts = l.accountIDs(ofTransactions: selection)
+			#expect(accounts == [a.id])
+			#expect(l.categories(matching: "", assignableTo: accounts).map(\.name) == ["Groceries", "Household"])
+		}
+		let accounts = l.accountIDs(ofTransactions: [ps[0].id, other.id])
+		#expect(accounts == [a.id, business.id])
+		#expect(l.categories(matching: "", assignableTo: accounts).map(\.name) == ["Groceries"])
+	}
+
 }

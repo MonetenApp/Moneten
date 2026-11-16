@@ -4,8 +4,8 @@ import Testing
 
 @Suite("Performance with a long history")
 struct PerformanceTests {
-	@Test("Sidebar amounts with 1,000 split transactions stay under 20 ms")
-	func largeLedger() {
+	@Test("Build, update, search, category filtering, and sidebar amounts meet budgets with 1,000 split transactions")
+	func splitHistoryBudgets() {
 		let everything = AccountGroup(name: "Alle", position: 0)
 		let accounts = (0..<20).map { Account(groupID: everything.id, position: $0, name: "Konto \($0)", kind: .giro, source: .offline) }
 		let categories = (0..<60).map {

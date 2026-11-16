@@ -46,9 +46,10 @@ public final class Store: SavedPINStore {
 	}
 	public func save(_ category: Domain.Category) throws { try queue.write { db in try category.save(db) } }
 
-	public func save(_ transactions: [Transaction]) throws {
+	public func save(_ transactions: [Transaction], parts: [SplitPart] = []) throws {
 		try queue.write { db in
 			for t in transactions { try t.save(db) }
+			for part in parts { try part.update(db, columns: ["categoryID", "comment"]) }
 		}
 	}
 
