@@ -157,6 +157,9 @@ final class SelfTest {
 		expect("TAN medium asked once in a run", medium(null, "Handy|Karte 1", "Handy|Karte 1"), "Karte 1 Karte 1, asked 1");
 		expect("TAN medium of the last refresh", medium("Handy", "Handy|Karte 1"), "Handy, asked 0");
 		expect("TAN medium that the bank no longer offers", medium("Alte Karte", "Handy|Karte 1"), "Karte 1, asked 1");
+		expect("TAN medium without a list asked once in a run", medium(null, "", ""), "Karte 1 Karte 1, asked 1");
+		expect("TAN medium without a list from the last refresh", medium("Karte 1", ""), "Karte 1, asked 0");
+		expect("empty TAN medium without a list from the last refresh", medium("", ""), ", asked 0");
 
 		try {
 			X509Certificate selfSigned = (X509Certificate) CertificateFactory.getInstance("X.509").generateCertificate(new ByteArrayInputStream(Base64.getDecoder().decode(

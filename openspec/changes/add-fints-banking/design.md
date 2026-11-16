@@ -62,6 +62,16 @@ The helper sends the passport of hbci4java as the new state after a successful r
 
 An automatic refresh opens no dialog ("An automatic refresh never asks the user" in add-account-refresh), and the window "Notice" counts as one. So a new notice waits, and the window comes forward only when the user is there: when the main window comes forward, which is the next change of focus, or at the end of the next refresh that the user starts. Each new notice brings the window forward once. A notice that only repeats one that waits does not bring it forward again. The window lists all waiting notices and scrolls when they are taller than 400 points, and OK or the close button dismisses them.
 
+### Cooperative banks and apoBank
+
+The rules of the cooperative banks are rules of their FinTS servers, so `Sources/FinTS/CooperativeBanks.swift` recognizes the group by the host of the FinTS address: a host that ends in `.atruvia.de` or `.bankenit.de` is a server of Atruvia, and `fints.apobank.de` is the server of apoBank. A few rules follow a Bankleitzahl instead, such as the BIC of EthikBank (83094495), which still sends `GENODEF1ESN` for some accounts. The setup stores `GENODEF1ETK` in its place (`FinTSAccount.account`). The other bank groups, such as the savings banks, keep their rules in entries and files of their own, so the groups change independently.
+
+On a server of Atruvia the connector adds the refused length 6 to the PIN rules of the bank parameters (`PINRules.refusedLength`). A six character PIN still works on the website of the bank, so a minimum of 8 alone would say only "too short". With the refused length, the login step and the PIN sheet say that the server no longer accepts PINs of 6 characters and that the user sets a longer PIN in the online banking first.
+
+apoBank asks for the TAN medium of apoTAN and lists none. For that server the connector turns the empty list into `Challenge.nameTANMedium`, a field that may stay empty, with the hint that the name is needed only when the bank reports an error. For another bank an empty list stays `chooseTANMedium([])`, whose field must be filled in. The helper keeps the name that the user typed, also an empty one, in the state of the access and sends it again while the bank lists no media, so an automatic refresh of apoBank needs no dialog.
+
+The accounts of the partners, such as a building savings contract of Bausparkasse Schwäbisch Hall or a fund depot of Union Investment, are not in the user parameters that hbci4java reads. The servers of Atruvia deliver them through jobs of their own, which hbci4java does not define, so the helper cannot send or read them yet. The bank test of issue #11 records, for one login with a partner account, which jobs the bank parameters list, which jobs each account allows, and the answer of the bank. Requirement "Accounts of the partners of a cooperative bank" is built from that record.
+
 ### Signing
 
 `scripts/build-app.sh` builds a runtime with jlink, puts the helper into `Contents/Resources/FinTSHelper`, and signs every Mach-O file of it with the identity of the app. Only the java of the helper gets the JIT entitlement. The build fails when a file cannot be signed or is not signed like the app. A Developer ID build leaves the helper out until task 3.2, see the risks.
@@ -74,4 +84,4 @@ An automatic refresh opens no dialog ("An automatic refresh never asks the user"
 
 ## Open Questions
 
-None.
+- A building savings contract of Bausparkasse Schwäbisch Hall may deliver a booked transaction again with another date or purpose, so that the contract would show it twice (issue #230, rule 9). Option A keeps every booked transaction, as "Keep the history for good" in add-account-refresh requires, and accepts the duplicate. Option B replaces the booked transactions of such a contract from the first delivered day on by the delivered ones, and keeps the category, the comment, and the checkmark of each row it can match. The decision waits for the product owner and for the partner accounts, because no contract reaches the app before they exist.

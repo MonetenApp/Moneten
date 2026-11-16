@@ -11,6 +11,12 @@ public struct BankDirectory: Sendable {
 
 		public var id: String { code }
 
+		/// The entry under the name of its brand, such as "VR-Bank Altenburger Land / Skatbank".
+		var branded: Entry {
+			guard let name = CooperativeBanks.brandNames[code] else { return self }
+			return Entry(code: code, city: city, bank: FinTSBank(name: name, bic: bank.bic, url: bank.url))
+		}
+
 		/// The directory keeps the Bankleitzahl of a merged bank as "Sparkasse Bonn -alt-".
 		var isObsolete: Bool {
 			let name = bank.name.trimmingCharacters(in: .whitespaces)
@@ -21,7 +27,7 @@ public struct BankDirectory: Sendable {
 	/// An entry with the words that a search compares, in both spellings of umlauts and accents.
 	private struct Indexed: Sendable {
 		let entry: Entry
-		/// The first word of the name, or the name that customers know, such as "DKB".
+		/// The first word of the name, or the name that customers know, such as "DKB" or "Skatbank".
 		let start: [String]
 		let words: [String]
 		/// A bank with a login hint comes first among banks of one rank, such as the four Bankleitzahlen
@@ -34,9 +40,10 @@ public struct BankDirectory: Sendable {
 	private let byCode: [String: Entry]
 
 	public init(_ entries: [Entry]) {
+		let entries = entries.map(\.branded)
 		self.entries = entries.map { entry in
 			let hint = entry.loginHint
-			let common = hint?.bankName ?? ""
+			let common = hint?.bankName ?? CooperativeBanks.knownNames[entry.code] ?? ""
 			let start = Self.words(String(entry.bank.name.split(whereSeparator: { !$0.isLetter && !$0.isNumber }).first ?? "")) + Self.words(common)
 			return Indexed(entry: entry, start: start, words: Self.words(entry.bank.name) + Self.words(entry.city) + Self.words(common), hinted: hint != nil,
 				sortKey: Self.sortKey(entry))

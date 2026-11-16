@@ -1017,7 +1017,7 @@ final class DebugHarness {
 					("current", .position(current.flatMap { id in methods.firstIndex { $0.id == id } })))
 			case let .openBrowser(approval): log("ext prompt browser", ("host", .hash(approval.url.host() ?? "")))
 			case let .captcha(captcha): log("ext prompt captcha", ("provider", .state(captcha.provider)), ("page", captcha.page?.host().map { .hash($0) } ?? .presence(false)))
-			case .chooseTANMedium, .flickerCode: log("ext prompt other")
+			case .chooseTANMedium, .nameTANMedium, .flickerCode: log("ext prompt other")
 			}
 		}
 	}

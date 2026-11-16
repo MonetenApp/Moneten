@@ -653,7 +653,10 @@ public class FinTSHelper {
 				case NEED_PT_TANMEDIA -> {
 					List<Object> media = new ArrayList<>();
 					for (String name : retData.toString().split("\\|")) if (present(name)) media.add(name);
-					if (tanMedium == null || !media.contains(tanMedium)) tanMedium = ask(message("ask", "kind", "tanMedium", "purpose", purpose(), "media", media));
+					// A bank that lists no media, as apoBank for apoTAN, keeps the name that the user typed, also an empty one.
+					if (tanMedium == null || (!media.isEmpty() && !media.contains(tanMedium))) {
+						tanMedium = ask(message("ask", "kind", "tanMedium", "purpose", purpose(), "media", media));
+					}
 					set(retData, tanMedium);
 				}
 				case NEED_PT_TAN, NEED_PT_PHOTOTAN, NEED_PT_QRTAN -> {

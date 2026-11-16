@@ -33,7 +33,7 @@ public struct FinTSAccount: Sendable, Equatable {
 	public func account(access: Access, bank: FinTSBank, group: UUID?) -> Account {
 		let bankCode: String? = if case let .fints(code, _) = access.source { code } else { nil }
 		return Account(groupID: group, position: 0, name: productName ?? kind.title, kind: kind, source: .bank, currency: currency, iban: iban,
-			bic: bic ?? bank.bic, accountNumber: number, bankCode: bankCode, bankName: bank.name, owner: owner, accessID: access.id, remoteID: remoteID)
+			bic: CooperativeBanks.bic(bic ?? bank.bic, bankCode: bankCode), accountNumber: number, bankCode: bankCode, bankName: bank.name, owner: owner, accessID: access.id, remoteID: remoteID)
 	}
 
 	/// The FinTS account types are ranges: 1 to 9 giro accounts, 10 to 19 savings, 20 to 29 fixed
@@ -204,8 +204,8 @@ public struct FinTSConnector: BankConnector {
 		guard case let .fints(bankCode, url) = access.source else { throw SyncFailure.unsupported("The access does not use FinTS.") }
 		guard url.scheme?.lowercased() == "https", url.host() != nil else { throw HelperFailure.insecure }
 		guard let productID, !productID.isEmpty else { throw HelperFailure.noProductID }
-		return Command(type: type, bankCode: bankCode, url: url.absoluteString, user: access.loginName, product: productID, version: version,
-			state: state?.data.base64EncodedString())
+		return Command(type: type, bankCode: bankCode, url: url.absoluteString, user: CooperativeBanks.loginName(access.loginName, server: url),
+			product: productID, version: version, state: state?.data.base64EncodedString())
 	}
 
 	/// Runs one command. Requests of the helper go to the session, and every other message to `handle`.
@@ -242,7 +242,7 @@ public struct FinTSConnector: BankConnector {
 					switch message {
 					case let .ask(id, ask):
 						guard let session else { throw HelperFailure.unreadable }
-						let request = try ask.request()
+						let request = try ask.request(server: command.url.flatMap { URL(string: $0) })
 						let task = await asks.start(request, session)
 						guard ask.kind != "approve" else {
 							approvals[id] = task

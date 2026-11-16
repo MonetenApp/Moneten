@@ -1,5 +1,6 @@
 import CoreImage
 import Domain
+import FinTS
 import Sync
 import SyncTesting
 import SwiftUI
@@ -33,6 +34,7 @@ enum SyncDemo {
 		("method", secondFactor(.chooseTANMethod(methods, current: nil), purpose: .login)),
 		("medium", secondFactor(.chooseTANMedium(["Handy privat", "Handy Firma"]), purpose: .login)),
 		("nomedia", secondFactor(.chooseTANMedium([]), purpose: .login)),
+		("apotan", secondFactor(.nameTANMedium(.apoTANDevice), purpose: .login)),
 		("tan", secondFactor(.enterTAN(prompt: "Bitte geben Sie die TAN für den Auftrag vom 09.11.2026 ein", image: nil))),
 		("smstan", secondFactor(.enterTAN(prompt: "Bitte geben Sie die TAN aus der SMS an Handy Firma ein.", image: nil), purpose: .login, method: "901")),
 		("phototan", secondFactor(.enterTAN(prompt: "Bitte scannen Sie die Grafik mit Ihrer photoTAN-App.", image: qrCode("Moneten photoTAN demo")), method: "913")),

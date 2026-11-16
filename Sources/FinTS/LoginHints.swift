@@ -50,6 +50,7 @@ extension BankDirectory.Entry {
 	/// a bank of another group with "Sparkasse" in its name, nor an old entry of a merged savings bank.
 	public var loginHint: LoginHint? {
 		if let hint = LoginHint.byCode[code] { return hint }
+		if let hint = cooperativeHint { return hint }
 		guard let host = bank.url?.host()?.lowercased() else { return nil }
 		let name = TextFolding.fold(bank.name)
 		let savingsServer = host.contains(".s-fints-pt-") || host.hasSuffix(".s-hbci.de")

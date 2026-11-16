@@ -271,6 +271,12 @@ struct TwoFactorSheet: View {
 					Text("The list of TAN media could not be fetched. Type the name of the medium as you registered it at the bank.").foregroundStyle(.secondary)
 				}
 			}
+		case let .nameTANMedium(name):
+			Section {
+				TextField(name.label, text: $medium, prompt: Text("Optional"))
+			} footer: {
+				Text(name.help).foregroundStyle(.secondary)
+			}
 		case let .enterTAN(text, image):
 			Section {
 				ChallengeText(text: text)
@@ -306,6 +312,7 @@ struct TwoFactorSheet: View {
 		switch request.challenge {
 		case .chooseTANMethod: method.map(UserAnswer.tanMethod)
 		case .chooseTANMedium: medium.isEmpty ? nil : .tanMedium(medium)
+		case .nameTANMedium: .tanMedium(medium.trimmingCharacters(in: .whitespaces))
 		case .enterTAN, .flickerCode: request.field.isComplete(input) ? .tan(Secret(input)) : nil
 		case .approveInApp, .openBrowser, .captcha: nil
 		}

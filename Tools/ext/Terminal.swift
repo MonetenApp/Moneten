@@ -134,6 +134,11 @@ struct TerminalSession: SyncSession {
 			let medium = media.isEmpty ? try line("TAN medium: ") : media[try number(of: media.count)]
 			answers?.append(.tanMedium(medium))
 			return .tanMedium(medium)
+		case let .nameTANMedium(name):
+			Terminal.error(name.help)
+			let medium = try line("\(name.label): ")
+			answers?.append(.tanMedium(medium))
+			return .tanMedium(medium)
 		case let .enterTAN(prompt, image):
 			Terminal.error(prompt)
 			if let image { try show(image) }
