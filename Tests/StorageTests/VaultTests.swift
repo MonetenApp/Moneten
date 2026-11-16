@@ -172,7 +172,7 @@ struct SchemaTests {
 		try Schema.migrator.migrate(queue, upTo: "v16")
 		let account = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
 		let t = Transaction(accountID: account.id, bookingDate: Day(year: 2026, month: 11, day: 3), amountMinor: -8000,
-			name: "Beispiel Markt", comment: "Weekly shop", needsReview: true, createdAt: Date(timeIntervalSince1970: 1793664000), returnReason: "AC04")
+			name: "Beispiel Markt", comment: "Weekly shop", review: .unclearBooking, createdAt: Date(timeIntervalSince1970: 1793664000), returnReason: "AC04")
 		try queue.write { db in
 			try account.insert(db)
 			try db.execute(sql: """
@@ -292,7 +292,7 @@ struct SchemaTests {
 		let store = Store(queue: queue)
 		let ledger = try store.loadLedger()
 		#expect(ledger.transactions.map(\.id) == [transactionID])
-		#expect(ledger.transactions.map(\.needsReview) == [false])
+		#expect(ledger.transactions.map(\.review) == [nil])
 		#expect(ledger.transactions.map(\.isFetched) == [false])
 		#expect(try queue.read { db in try DeletedTransaction.fetchCount(db) } == 0)
 		try store.deleteTransactions([transactionID])

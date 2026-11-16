@@ -135,7 +135,7 @@ An access is a login at a bank. The file never holds its PIN or the data that it
 | `categoryID` | The category, missing for "Uncategorized" |
 | `categorizedBy` | `none`, `rule` for a category from a rule, or `manual` for a category the user chose |
 | `isNew` | Whether the transaction is marked as new |
-| `needsReview` | Whether the transaction is marked for review, because the app could not tell which pending transaction it books |
+| `needsReview` | Whether `review` is non-nil. Import maps true to `unclearBooking` and false to nil. Until format v2, an undone split loses its specific review reason in this format. |
 | `isFetched` | Whether a refresh delivered the transaction |
 | `fileIdentity` | Original file fingerprint, if a file import recorded one; absent or null means no file identity |
 | `sourceID` | Identifier of the transaction at its bank or source, such as `moneymoney:<id>` |

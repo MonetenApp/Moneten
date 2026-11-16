@@ -150,7 +150,6 @@ public struct Ledger: Sendable {
 		return partsByTransaction[id] == nil ? transaction(id) : nil
 	}
 
-	// periphery:ignore - task 6.8
 	public func parts(of transactionID: UUID) -> [SplitPart] { partsByTransaction[transactionID] ?? [] }
 
 	public func part(_ rowID: UUID) -> SplitPart? {
@@ -547,7 +546,7 @@ public struct Ledger: Sendable {
 				var t = changed[original.id] ?? original
 				if row.isChecked != original.isChecked { t.isChecked = row.isChecked }
 				if row.isNew != original.isNew { t.isNew = row.isNew }
-				if row.needsReview != original.needsReview { t.needsReview = row.needsReview }
+				if row.review != original.review { t.review = row.review }
 				if t != original { changed[t.id] = t }
 			} else if partsByTransaction[row.id] == nil, row != transaction(row.id) {
 				changed[row.id] = row
@@ -595,6 +594,7 @@ public struct Ledger: Sendable {
 		}
 		if let h = r.holdings { holdingsByAccount[h.accountID] = h.holdings.sorted(by: Holding.isOrdered) }
 		if !r.dropped.isEmpty { remove(transactionIDs: Set(r.dropped)) }
+		for id in r.unsplit { replaceParts(of: id, with: []) }
 		update(r.added + r.booked + r.updated + r.marked)
 	}
 

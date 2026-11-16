@@ -1328,7 +1328,7 @@ final class AppModel {
 		return try await replacingTable { try merge(.refresh(result), into: accountID) }
 	}
 
-	/// The open table shows pending rows of the account, which the bank can drop or book, or a position of
+	/// The open table shows pending rows or split parts that a correction can remove, or a position of
 	/// the account that the delivered positions no longer hold.
 	private func removesShownRows(_ result: RefreshResult, of accountID: UUID) -> Bool {
 		if let portfolios = tableKey.portfolios {
@@ -1337,7 +1337,7 @@ final class AppModel {
 			let kept = Set(Holding.identify(delivered, stored: shown).map(\.id))
 			return shown.contains { !kept.contains($0.id) }
 		}
-		return visibleTransactions.contains { $0.accountID == accountID && $0.isPending }
+		return visibleTransactions.contains { $0.accountID == accountID && ($0.isPending || ledger.part($0.id) != nil) }
 	}
 
 	/// Applies a change of the rows that comes with a new transaction table: an import, a migration, a

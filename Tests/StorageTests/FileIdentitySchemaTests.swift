@@ -37,7 +37,7 @@ extension SchemaTests {
 		let opened = try DatabaseQueue(path: path)
 		defer { try? opened.close() }
 		try Schema.migrator.migrate(opened)
-		#expect(try opened.read { try String.fetchAll($0, sql: "SELECT identifier FROM grdb_migrations ORDER BY rowid") } == mainVersions + ["v18"])
+		#expect(try opened.read { try String.fetchAll($0, sql: "SELECT identifier FROM grdb_migrations ORDER BY rowid") } == mainVersions + ["v18", "v20"])
 		let store = Store(queue: opened)
 		let rows = try store.loadLedger().transactions
 		#expect(rows.map(\.id) == [id])

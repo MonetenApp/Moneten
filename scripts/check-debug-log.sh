@@ -269,8 +269,8 @@ poll "^migrationfailure: unknown failure$" migrationfailure "$MIGRATION_UNKNOWN"
 send quit
 
 found=0
-for value in "25,00" DE02120300000000202051 "DE02 1203" 202051 1234567890 0099887766 "99 88 77 66" 4711 5550001 "$LOGIN" "$PIN" "$MIGRATION_UNKNOWN" 123456 check-debug-log \
-	"Handoff Synthetic" 88776655 Kiosk Girokonto Tagesgeld Kreditkarte Extrakonto "Erika Mustermann" "Beispiel GmbH" "Wohnbau Musterstadt" "Tankstelle Beispiel" \
+for value in "25,00" "20,00" "30,00" "Synthetic extra" DE02120300000000202051 "DE02 1203" 202051 1234567890 0099887766 "99 88 77 66" 4711 5550001 "$LOGIN" "$PIN" "$MIGRATION_UNKNOWN" 123456 check-debug-log \
+	"Baumarkt Beispiel" "Weekly shop" "REWE SAGT DANKE" "REWE receipt" "Receipt" "demo-split" "Handoff Synthetic" 88776655 Kiosk Girokonto Tagesgeld Kreditkarte Extrakonto "Erika Mustermann" "Beispiel GmbH" "Wohnbau Musterstadt" "Tankstelle Beispiel" \
 	"Gehalt November" Miete Kartenzahlung Sparen Haushaltskasse MIETE-2026-11 GUTSCHRIFT DAUERAUFTRAG \
 	"Zugang vorübergehend gesperrt" "PIN falsch" Wartungsarbeiten pushTAN-App "currency:/^+?49/"; do
 	if grep -n -w -F -- "$value" "$LOG" >&2; then

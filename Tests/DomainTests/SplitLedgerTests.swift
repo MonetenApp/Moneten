@@ -272,17 +272,17 @@ struct SplitLedgerTests {
 	@Test("New and review marks on parts change the original independent of row order")
 	func partMarks() throws {
 		var (l, t, ps) = editableSplit()
-		t.isNew = true; t.needsReview = true; l.update([t])
+		t.isNew = true; t.review = .unclearBooking; l.update([t])
 		let unchanged = try #require(l.row(ps[1].id))
 		var seen = try #require(l.row(ps[0].id)); seen.isNew = false
-		var reviewed = unchanged; reviewed.needsReview = false
+		var reviewed = unchanged; reviewed.review = nil
 		for rows in [[seen, reviewed], [reviewed, seen]] {
 			let changed = l.changes(from: rows)
 			#expect(changed.parts.isEmpty)
 			#expect(changed.transactions.count == 1)
 			#expect(changed.transactions.first?.id == t.id)
 			#expect(changed.transactions.first?.isNew == false)
-			#expect(changed.transactions.first?.needsReview == false)
+			#expect(changed.transactions.first?.review == nil)
 			#expect(changed.transactions.first?.isChecked == false)
 		}
 	}
