@@ -1,7 +1,7 @@
 #!/bin/sh
 # A made-up FinTS helper for a debug build: it speaks the JSON lines of Sources/FinTS/HelperProtocol.swift
 # for the bank "Musterbank" (12030000) and contacts no bank. Start the app with it:
-#   open --env MONETEN_DATA_DIR=<folder> --env MONETEN_DEBUG_DIR=<folder> \
+#   open -g --env MONETEN_DATA_DIR=<folder> --env MONETEN_DEBUG_DIR=<folder> \
 #     --env MONETEN_FINTS_HELPER="$PWD/scripts/fake-fints-helper.sh" dist/Moneten.app
 # The login asks for a PIN and a TAN. The PIN has 4 to 10 characters, 0000 is wrong, and any other works.
 # The TAN dialog of the login offers to change from pushTAN to mobileTAN, which asks for a TAN medium

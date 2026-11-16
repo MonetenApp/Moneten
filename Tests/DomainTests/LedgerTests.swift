@@ -796,6 +796,26 @@ struct LedgerTests {
 		#expect(MoneySums(of: rows.filter(\.isPending)).amounts == [Money(minorUnits: -1_000, currency: "EUR")])
 	}
 
+	@Test("A sum of zero has the currency of the view, also when every row is under review or the list is empty")
+	func zeroSumInViewCurrency() {
+		let travel = Account(position: 0, name: "Travel", kind: .giro, source: .offline, currency: "USD")
+		func row(_ minor: Int64, _ currency: String) -> Transaction {
+			Transaction(accountID: travel.id, bookingDate: Day(year: 2026, month: 11, day: 12), amountMinor: minor, currency: currency,
+				name: "Diner Example", isPending: true, review: .unclearBooking)
+		}
+		let usd = [row(-1_250, "USD"), row(-1_250, "USD")]
+		let eur = [row(-320, "EUR")]
+		#expect(MoneySums(of: usd).shownAmounts(viewCurrency: "USD", rows: usd) == [Money(minorUnits: 0, currency: "USD")])
+		#expect(MoneySums(of: []).shownAmounts(viewCurrency: "USD", rows: []) == [Money(minorUnits: 0, currency: "USD")])
+		// A category in USD whose only rows are euro rows under review.
+		#expect(MoneySums(of: eur).shownAmounts(viewCurrency: "USD", rows: eur) == [Money(minorUnits: 0, currency: "USD")])
+		// A group has no currency of its own.
+		#expect(MoneySums(of: usd).shownAmounts(viewCurrency: nil, rows: usd) == [Money(minorUnits: 0, currency: "USD")])
+		#expect(MoneySums(of: []).shownAmounts(viewCurrency: nil, rows: []) == [Money(minorUnits: 0, currency: "EUR")])
+		let counted = [Transaction(accountID: travel.id, bookingDate: Day(year: 2026, month: 11, day: 12), amountMinor: -500, currency: "USD", name: "Taxi")]
+		#expect(MoneySums(of: counted).shownAmounts(viewCurrency: "USD", rows: counted) == [Money(minorUnits: -500, currency: "USD")])
+	}
+
 	@Test("A balance counts only the rows in the currency of the account")
 	func balanceInAccountCurrency() {
 		let wallet = Account(position: 0, name: "Wallet", kind: .giro, source: .offline)
