@@ -43,11 +43,17 @@ public_key() {
 # release of the repository.
 check_feed() { notes check-feed --feed "$1" --public-key "$2"; }
 
+# current_feed, and the feed must carry the signature of the public update key $1, because a new
+# feed keeps its items and gets a new signature.
+checked_current_feed() {
+	current_feed
+	[ "$FEED_ARGS" = --first-release ] || check_feed "$WORK/current.xml" "$1" || fail "The current feed at $FEED_URL failed its check."
+}
+
 # Writes the current feed to $WORK/current.xml and sets FEED_ARGS. Only an answer of GitHub that
 # no stable release exists makes this the first release, so a network error never starts an empty feed.
-# With the public update key $1, the feed must carry its signature, because a new feed keeps its items
-# and gets a new signature. preflight reads it without a key, because the job package has none: the
-# job draft checks the versions again on the checked feed before it signs anything.
+# preflight reads it without a key, because the job package has none: the job draft checks the
+# versions again on the checked feed before it signs anything.
 current_feed() {
 	set -- -sS -o /dev/null -w '%{http_code}'
 	[ -z "$GH_TOKEN" ] || set -- "$@" -H "Authorization: Bearer $GH_TOKEN"
@@ -55,7 +61,6 @@ current_feed() {
 	case "$STATUS" in
 		404) FEED_ARGS=--first-release; echo "No stable release yet: this is the first feed." ;;
 		200) curl -fsSL -o "$WORK/current.xml" "$FEED_URL" || fail "The newest stable release has no readable $FEED_URL."
-			[ -z "$1" ] || check_feed "$WORK/current.xml" "$1" || fail "The current feed at $FEED_URL failed its check."
 			FEED_ARGS="--feed $WORK/current.xml" ;;
 		*) fail "GitHub answered $STATUS for the newest release." ;;
 	esac
@@ -163,7 +168,7 @@ feed() {
 	DMG="$OUT/Moneten-$1.dmg"
 	SIGNATURE=$("$SPARKLE/sign_update" --ed-key-file "$MONETEN_UPDATE_KEY_FILE" -p "$DMG")
 	"$SPARKLE/sign_update" --verify --ed-key-file "$MONETEN_UPDATE_KEY_FILE" "$DMG" "$SIGNATURE"
-	if [ "$2" = first ]; then FEED_ARGS=--first-release; else current_feed "$(public_key "$MONETEN_UPDATE_KEY_FILE")"; fi
+	if [ "$2" = first ]; then FEED_ARGS=--first-release; else checked_current_feed "$(public_key "$MONETEN_UPDATE_KEY_FILE")"; fi
 	notes appcast "$1" --build "$BUILD" --min-macos "$MIN_MACOS" --url "$(dmg_url "$1")" \
 		--length "$(stat -f%z "$DMG")" --signature "$SIGNATURE" $FEED_ARGS --out "$OUT/appcast.xml"
 	"$SPARKLE/sign_update" --ed-key-file "$MONETEN_UPDATE_KEY_FILE" "$OUT/appcast.xml" >/dev/null
@@ -193,7 +198,7 @@ publish() {
 	# app refuses a feed that this key did not sign, so no other feed may go out.
 	KEY=$("$(scripts/sparkle-tools.sh)/generate_keys" -p) || fail "No update key in the login Keychain. docs/releasing.md explains it."
 	check_feed "$WORK/draft-feed/appcast.xml" "$KEY" || fail "The feed of the draft of v$1 failed its check. Delete the draft and run the release again."
-	current_feed "$KEY"
+	checked_current_feed "$KEY"
 	# A release that was published after this draft was made must be in the draft's feed too.
 	if [ "$FEED_ARGS" != --first-release ]; then
 		python3 - "$WORK/current.xml" "$WORK/draft-feed/appcast.xml" <<-'EOF' || fail "The feed of the draft misses a published version. Delete the draft and run the release again."
@@ -254,6 +259,10 @@ check_feeds() {
 	"$SPARKLE/sign_update" --ed-key-file "$1" "$WORK/http.xml" >/dev/null
 	"$SPARKLE/sign_update" --verify --ed-key-file "$1" "$WORK/http.xml" || fail "Sparkle did not sign the feed with the http disk image."
 	refused "$WORK/http.xml" "$KEY" "has a disk image outside" "A feed with an http disk image passed the check of a current feed."
+	# The path of a release, with the new feed in place of the download from GitHub.
+	current_feed() { cp "$OUT/appcast.xml" "$WORK/current.xml"; FEED_ARGS="--feed $WORK/current.xml"; }
+	checked_current_feed "$KEY"
+	(checked_current_feed "$(public_key "$WORK/other.key")") 2>/dev/null && fail "checked_current_feed accepted a feed of another key."
 	echo "The check of a current feed refuses a changed feed, another key, and an http disk image."
 }
 
