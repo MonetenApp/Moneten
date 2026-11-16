@@ -773,6 +773,9 @@ struct FinTSConnectorTests {
 		(#"{"type":"result","account":"DE02120300000000202051","transactions":{"rows":[{"booked":"2026-11-02","amount":"zwölf","pending":false}]},"errors":[]}"#,
 			HelperFailure.unreadable),
 		(#"{"type":"result","account":"DE02120300000000202051","balance":{"currency":"EUR"},"errors":[]}"#, HelperFailure.unreadable),
+		// An amount whose minor units do not fit would otherwise turn into another amount.
+		(#"{"type":"result","account":"DE02120300000000202051","transactions":{"rows":[{"booked":"2026-11-02","amount":"-92233720368547758.08","pending":false}]},"errors":[]}"#,
+			HelperFailure.unreadable),
 		(#"{"type":"result","account":"DE02120300000000202051","transactions":{"rows":[{"amount":"-1","pending":true}]},"errors":[]}"#,
 			SyncFailure.unsupported("The bank sent a transaction without a booking date, so nothing of this account was stored.")),
 		(#"{"type":"result","account":"DE02120300000000202051","balance":{"amount":"1","currency":"EUR"},"errors":[],"securities":true,"holdings":[{"name":"Gold","quantity":"12abc"}]}"#,

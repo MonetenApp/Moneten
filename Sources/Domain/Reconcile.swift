@@ -42,15 +42,17 @@ public struct DeletedTransaction: Hashable, Sendable, Codable {
 		}
 	}
 
+	/// An edited row keeps the values of its source, so that the source cannot bring it back.
 	public init(_ t: Transaction, deletedAt: Date) {
+		let delivered = t.sourceValues
 		accountID = t.accountID
 		sourceID = t.sourceID
 		fileIdentity = t.fileIdentity
-		bookingDate = t.bookingDate
-		amountMinor = t.amountMinor
+		bookingDate = delivered.bookingDate
+		amountMinor = delivered.amountMinor
 		currency = t.currency
 		isPending = t.isPending
-		purpose = t.purpose
+		purpose = delivered.purpose
 		counterpartyIBAN = t.counterpartyIBAN
 		endToEndReference = t.endToEndReference
 		wasFetched = t.isFetched
@@ -119,7 +121,8 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored: [Tran
 	let released = stored.indices.filter { stored[$0].isPending && !taken.contains($0) }
 	let fresh = rows.indices.filter { partners[$0] == nil && !rows[$0].isPending }
 	let bookings = Bookings(pending: released.map { ($0, stored[$0]) }, booked: fresh.map { ($0, rows[$0]) })
-	let future = Set(released.filter { !stored[$0].isFetched && stored[$0].bookingDate >= today && stored[$0].review == nil })
+	// An edited row counts by the day of its source, as the pairing and the drop below read it.
+	let future = Set(released.filter { !stored[$0].isFetched && stored[$0].sourceValues.bookingDate >= today && stored[$0].review == nil })
 
 	var r = Reconciliation()
 	for (i, delivered) in rows.enumerated() {
@@ -147,7 +150,8 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored: [Tran
 				if delivered.isPending && !live.isPending { break }
 				next = live.takingBankFields(of: delivered)
 				if split.contains(live.id) {
-					if next.amount != live.amount {
+					// An edited amount stays, so the amount that the source delivered tells whether the bank changed it.
+					if next.amount != live.amount || next.sourceValues.amountMinor != live.sourceValues.amountMinor {
 						next.review = .splitUndone
 						r.unsplit.append(live.id)
 						rules.categorize(&next)
@@ -214,7 +218,7 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored: [Tran
 			}
 		case nil where future.contains(j): break
 		case nil:
-			if delivery.covers(pending.bookingDate), pending.review == nil || pending.isChecked { r.dropped.append(pending.id) }
+			if delivery.covers(pending.sourceValues.bookingDate), pending.review == nil || pending.isChecked { r.dropped.append(pending.id) }
 		}
 	}
 	if case let .refresh(result) = delivery {
@@ -316,7 +320,7 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 	}
 	let days = Set(rows.map(\.bookingDate))
 	var candidates: [Identity.Key: [(slot: Slot, identity: Identity)]] = [:]
-	for (j, t) in stored.enumerated() where days.contains(t.bookingDate) && !taken.contains(.live(j)) {
+	for (j, t) in stored.enumerated() where days.contains(t.sourceValues.bookingDate) && !taken.contains(.live(j)) {
 		let identity = Identity(t)
 		candidates[identity.key, default: []].append((.live(j), identity))
 	}
@@ -350,7 +354,8 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 			|| fileIdentity.map { fileIDs.contains($0) } == true
 			|| reference.map { references.contains($0) } == true
 	}
-	let live = stored.indices.filter { relevant(day: stored[$0].bookingDate, amount: stored[$0].amountMinor, sourceID: stored[$0].sourceID, fileIdentity: stored[$0].fileIdentity, reference: stored[$0].endToEndReference) }
+	// An edited row is found by the values of its source.
+	let live = stored.indices.filter { relevant(day: stored[$0].sourceValues.bookingDate, amount: stored[$0].sourceValues.amountMinor, sourceID: stored[$0].sourceID, fileIdentity: stored[$0].fileIdentity, reference: stored[$0].endToEndReference) }
 	let dead = deleted.indices.filter { relevant(day: deleted[$0].bookingDate, amount: deleted[$0].amountMinor, sourceID: deleted[$0].sourceID, fileIdentity: deleted[$0].fileIdentity, reference: deleted[$0].endToEndReference) }
 	if rows.allSatisfy({ !$0.isPending }), stored.allSatisfy({ !$0.isPending }), deleted.allSatisfy({ !$0.isPending }),
 		live.allSatisfy({ stored[$0].fileIdentity == nil }), dead.allSatisfy({ deleted[$0].fileIdentity == nil }) {
@@ -421,7 +426,8 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 				identity = liveMatches[j]!.identity
 				match = liveMatches[j]!
 				fetched = stored[j].isFetched
-				future = !stored[j].isFetched && stored[j].review == nil && stored[j].bookingDate >= today && delivery.covers(stored[j].bookingDate)
+				let day = stored[j].sourceValues.bookingDate
+				future = !stored[j].isFetched && stored[j].review == nil && day >= today && delivery.covers(day)
 			case let .deleted(k):
 				identity = deadMatches[k]!.identity
 				match = deadMatches[k]!
@@ -516,12 +522,13 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 	}
 	func positions(_ ts: [Transaction], indices: Set<Int>) -> [Int: Int] {
 		let keys = Dictionary(uniqueKeysWithValues: indices.map { i in
-			(i, (ts[i].bookingDate, ts[i].createdAt, ts[i].id.uuidString))
+			(i, (ts[i].sourceValues.bookingDate, ts[i].createdAt, ts[i].id.uuidString))
 		})
 		let sorted = indices.sorted { keys[$0]! < keys[$1]! }
 		return ranks(sorted, count: ts.count) { i, j in
 			let key = keys[j]!
-			if ts[i].bookingDate != key.0 { return ts[i].bookingDate < key.0 }
+			let day = ts[i].sourceValues.bookingDate
+			if day != key.0 { return day < key.0 }
 			if ts[i].createdAt != key.1 { return ts[i].createdAt < key.1 }
 			return ts[i].id.uuidString < key.2
 		}
@@ -643,8 +650,10 @@ struct Identity {
 		self.endToEnd = endToEnd.flatMap { $0.isEmpty || $0 == "NOTPROVIDED" ? nil : $0 }
 	}
 
+	/// An edited row is found by the values of its source.
 	init(_ t: Transaction) {
-		self.init(fileIdentity: t.fileIdentity, sourceID: t.sourceID, day: t.bookingDate, amount: t.amountMinor, isPending: t.isPending, purpose: t.purpose,
+		let delivered = t.sourceValues
+		self.init(fileIdentity: t.fileIdentity, sourceID: t.sourceID, day: delivered.bookingDate, amount: delivered.amountMinor, isPending: t.isPending, purpose: delivered.purpose,
 			counterparty: t.counterpartyIBAN, endToEnd: t.endToEndReference)
 	}
 
@@ -749,11 +758,12 @@ struct PendingMatch {
 	let identity: Identity
 
 	init(_ t: Transaction) {
+		let delivered = t.sourceValues
 		identity = Identity(t)
-		amount = t.amount
-		day = t.bookingDate.daysSince1970
+		amount = Money(minorUnits: delivered.amountMinor, currency: t.currency)
+		day = delivered.bookingDate.daysSince1970
 		iban = t.counterpartyIBAN.map(TextFolding.accountKey).flatMap { $0.isEmpty ? nil : $0 }
-		words = TextFolding.fold(t.name).split { !$0.isLetter && !$0.isNumber }
+		words = TextFolding.fold(delivered.name).split { !$0.isLetter && !$0.isNumber }
 	}
 
 	init(_ d: DeletedTransaction) {
@@ -838,6 +848,19 @@ extension Transaction {
 		// A migration ID never replaces the ID of a source that took the row over.
 		if Identity.remote(delivered.sourceID) != nil || Identity.remote(sourceID) == nil {
 			t.sourceID = delivered.sourceID ?? sourceID
+		}
+		// An edited field keeps what the user wrote, and `original` follows the source.
+		if let original {
+			let source = OriginalValues(bookingDate: delivered.bookingDate, valueDate: delivered.valueDate ?? original.valueDate,
+				amountMinor: delivered.amountMinor, name: delivered.name, purpose: delivered.purpose)
+			var kept = source
+			if bookingDate != original.bookingDate { kept.bookingDate = bookingDate }
+			if valueDate != original.valueDate { kept.valueDate = valueDate }
+			if amountMinor != original.amountMinor { kept.amountMinor = amountMinor }
+			if name != original.name { kept.name = name }
+			if purpose != original.purpose { kept.purpose = purpose }
+			t.original = source
+			t.edit(kept)
 		}
 		return t
 	}

@@ -337,8 +337,16 @@ enum Schema {
 			try db.execute(sql: "UPDATE bankTransaction SET review = 'unclearBooking' WHERE needsReview = 1")
 			try db.alter(table: "bankTransaction") { t in t.drop(column: "needsReview") }
 		}
-		// The mark of missing older transactions goes with the account (#264), so an export keeps it and the merge writes
-		// it with the rows. A debug build before it kept the mark in the state of a FinTS access, which this moves once.
+		// The values that the source delivered for the fields that the user edited, as JSON (add-transaction-list,
+		// task 1.16). Empty for every existing row, because no row could be edited before.
+		m.registerMigration("v24") { db in
+			try db.alter(table: "bankTransaction") { t in
+				t.add(column: "original", .text)
+			}
+		}
+		// Registered after v24, which landed first. The mark of missing older transactions goes with the account (#264),
+		// so an export keeps it and the merge writes it with the rows. A debug build before it kept the mark in the state
+		// of a FinTS access, which this moves once.
 		m.registerMigration("v21") { db in
 			try db.alter(table: "account") { t in
 				t.add(column: "missesOlderTransactions", .boolean).notNull().defaults(to: false)

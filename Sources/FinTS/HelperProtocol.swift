@@ -328,7 +328,8 @@ struct AccountResult: Decodable {
 	}
 
 	static func money(_ amount: String, _ currency: String) throws -> Money {
-		Money(try decimal(amount), currency: currency)
+		guard let money = Money(fitting: try decimal(amount), currency: currency) else { throw HelperFailure.unreadable }
+		return money
 	}
 
 	/// A plain decimal text of the helper, as `BigDecimal.toPlainString` writes it, with every decimal place. The
