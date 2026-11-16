@@ -155,7 +155,7 @@ The app SHALL, when a bank rejects a PIN, stop the login, delete the saved PIN o
 - **WHEN** the automatic refresh logs in and the bank rejects the PIN
 - **THEN** the app sends no second login with that PIN
 - **AND** the account shows an error with the message of the bank
-- **AND** the next manual refresh asks for the PIN
+- **AND** the next manual refresh asks for the PIN and shows the message of the bank
 
 #### Scenario: Typing error
 

@@ -436,7 +436,7 @@ The app SHALL stop the dialog when the bank reports that the PIN must be changed
 
 ### Requirement: Handle a blocked access
 
-The app SHALL stop when the bank reports that the PIN or the access is blocked, show the message of the bank, tell the user to ask the bank to unblock it, and not log in again for that access until the user starts a refresh by hand.
+The app SHALL stop when the bank reports that the PIN or the access is blocked, show the message of the bank, tell the user to ask the bank to unblock it, and not log in again for that access until the user starts a refresh by hand. A text that only warns of a block to come reports no block, so the app treats it as a wrong PIN.
 
 #### Scenario: PIN blocked after wrong attempts
 
@@ -468,6 +468,31 @@ The app SHALL stop when the bank reports that the PIN or the access is blocked, 
 
 - **WHEN** the bank answers the login with the code 9931 and the text "Anmeldename oder PIN ist falsch"
 - **THEN** the PIN sheet opens again with "Anmeldename oder PIN ist falsch"
+
+#### Scenario: Warning of a block to come in an automatic refresh
+
+- **GIVEN** the app has the PIN of "Musterbank" saved
+- **WHEN** the automatic refresh logs in and the bank answers with the code 9931 and the text "PIN falsch. Weitere Fehlversuche führen zur Sperrung."
+- **THEN** the app deletes the saved PIN and sends no second login
+- **AND** the accounts of the access show that the bank did not accept the PIN, with "PIN falsch. Weitere Fehlversuche führen zur Sperrung."
+- **AND** the automatic refresh sends no PIN for this access until the user starts a refresh
+- **AND** the PIN sheet of the refresh that the user starts shows "PIN falsch. Weitere Fehlversuche führen zur Sperrung."
+
+#### Scenario: Warning of a block to come in a manual refresh
+
+- **WHEN** the bank answers the login with the code 9931 and the text "Weitere Fehlversuche führen zur Sperrung"
+- **THEN** the PIN sheet opens again with "Weitere Fehlversuche führen zur Sperrung"
+
+#### Scenario: Wrong PIN with a text that denies a block
+
+- **WHEN** the bank answers the login with the code 9931 and the text "PIN falsch, Zugang nicht gesperrt"
+- **THEN** the PIN sheet opens again with "PIN falsch, Zugang nicht gesperrt"
+
+#### Scenario: Block with a text that also names a wrong PIN
+
+- **WHEN** the bank answers the login with the code 9931 and the text "PIN ungültig - Zugang ist blockiert"
+- **THEN** the accounts of the access show that the bank blocked the access and "Ask the bank to unblock it."
+- **AND** the app asks for no new PIN
 
 ### Requirement: Cancel and interruption
 
