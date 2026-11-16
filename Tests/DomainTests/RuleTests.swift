@@ -275,13 +275,15 @@ struct CategorizerTests {
 		let account = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
 		let groceries = Domain.Category(position: 0, name: "Groceries")
 		let household = Domain.Category(position: 1, name: "Household")
-		let drinks = Domain.Category(position: 2, name: "Drinks", rule: "REWE")
+		let drinks = Domain.Category(position: 2, name: "Drinks", restrictedToID: account.id, rule: "REWE")
 		let original = Transaction(accountID: account.id, bookingDate: Day(year: 2026, month: 11, day: 3), amountMinor: -8000, name: "REWE Markt GmbH",
 			categoryID: mode == .all ? groceries.id : nil, categorizedBy: mode == .all ? .manual : .none)
 		let parts = [SplitPart(transactionID: original.id, position: 0, amountMinor: -2500, categoryID: household.id),
 			SplitPart(transactionID: original.id, position: 1, amountMinor: -5500, categoryID: groceries.id)]
 		let plain = Transaction(accountID: account.id, bookingDate: original.bookingDate, amountMinor: -1200, name: "REWE Markt GmbH")
-		var ledger = Ledger(accounts: [account], categories: [groceries, household, drinks], transactions: [original, plain], parts: parts)
+		let otherAccount = Account(position: 1, name: "Other", kind: .giro, source: .offline)
+		let foreign = Transaction(accountID: otherAccount.id, bookingDate: original.bookingDate, amountMinor: -900, name: "REWE Markt GmbH")
+		var ledger = Ledger(accounts: [account, otherAccount], categories: [groceries, household, drinks], transactions: [original, plain, foreign], parts: parts)
 		let rule = try Rule(parsing: drinks.rule)
 		#expect(RuleApplier.matchCount(category: drinks, rule: rule, ledger: ledger) == 1)
 		let changed = RuleApplier.apply(category: drinks, rule: rule, to: ledger.transactions, ledger: ledger, mode: mode)
@@ -289,6 +291,7 @@ struct CategorizerTests {
 		ledger.update(changed)
 		#expect(ledger.transaction(original.id)?.categoryID == (mode == .all ? groceries.id : nil))
 		#expect(ledger.transaction(plain.id)?.categoryID == drinks.id)
+		#expect(ledger.transaction(foreign.id)?.categoryID == nil)
 		#expect(ledger.parts(of: original.id).map(\.categoryID) == [household.id, groceries.id])
 	}
 

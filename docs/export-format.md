@@ -199,12 +199,10 @@ Each split part has these keys.
 | `amount` | Decimal amount text in the currency of the original, such as `"-100.00"` |
 | `categoryID` | Identifier of its category, missing for "Uncategorized" |
 | `comment` | Comment of this part, missing for none |
-| `vat` | Optional object with `role` (`"net"` or `"tax"`) and `rate` (a number in hundredths of a percent, such as `1900` for 19 %) |
+| `vat` | Optional object with `role` (`"net"` or `"tax"`) and `rate` (a number in hundredths of a percent, such as `1900` for 19 %, always above zero) |
 
 The original stays once in `transactions` with its category and comment for undo. Parts stay in `splitParts`, never as additional transactions. Their IDs, links, positions, amounts, categories, comments, and VAT data survive an export and import. Each split has at least two parts of nonzero amounts that add up to its booked original. The reader refuses an unknown review reason or malformed part. The import refuses missing original or category references, duplicate row IDs or positions, negative positions, pending originals, and parts that break the split rules, without changing the target database.
 
 ## Version 1 compatibility
 
 A version-1 file has neither `splitParts` nor `review`. The version-2 reader imports it with no parts and maps `needsReview: true` to `review: "unclearBooking"` and `needsReview: false` to no review. A version-2 file writes `review` and omits `needsReview`. The version-1 app refuses a version-2 file as needing a newer app.
-
-The `AllDataTests` split round trip uses -119,00 € split into -100,00 € and -19,00 €, distinct categories and comments, both 19 % VAT roles, and both review reasons. A separate fixed version-1 fixture checks that `needsReview: true` imports as `unclearBooking` and false imports without review.
