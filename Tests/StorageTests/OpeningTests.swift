@@ -23,7 +23,8 @@ struct OpeningTests {
 	}
 
 	/// An encrypted database at an earlier step of the layout, as an earlier version of the app left it.
-	func earlierDatabase(upTo step: String, then sql: String? = nil) throws {
+	func earlierDatabase(upTo step: String, then sql: String? = nil, in target: DataFolder? = nil) throws {
+		let folder = target ?? folder
 		try folder.createFolders()
 		var config = Configuration()
 		config.prepareDatabase { db in try db.usePassphrase(Self.password) }
@@ -38,8 +39,8 @@ struct OpeningTests {
 	}
 
 	/// Overwrites bytes in the middle of a page, which SQLCipher then cannot authenticate.
-	func damage(page: Int) throws {
-		let handle = try FileHandle(forWritingTo: folder.databaseFile)
+	func damage(page: Int, in target: DataFolder? = nil) throws {
+		let handle = try FileHandle(forWritingTo: (target ?? folder).databaseFile)
 		try handle.seek(toOffset: UInt64((page - 1) * 4096 + 200))
 		try handle.write(contentsOf: Data(repeating: 0xA5, count: 64))
 		try handle.close()
@@ -168,6 +169,24 @@ struct OpeningTests {
 		}
 		#expect(try !files().contains("Moneten-Backup.sqlite"))
 		try other.close()
+
+		// A program that reads the database in the usual mode at that moment stops the upgrade too.
+		let reader = try DatabaseQueue(path: folder.databaseFile.path, configuration: Self.keyed(Self.password))
+		try reader.writeWithoutTransaction { db in try db.execute(sql: "PRAGMA journal_mode = DELETE") }
+		let before = try Data(contentsOf: folder.databaseFile)
+		try reader.writeWithoutTransaction { db in
+			try db.execute(sql: "BEGIN")
+			_ = try Int.fetchOne(db, sql: "SELECT count(*) FROM account")
+			#expect {
+				try Vault(folder: folder, version: "0.2.0").open(password: Self.password)
+			} throws: { error in
+				guard case .upgradeFailed? = error as? Vault.Failure else { return false }
+				return true
+			}
+			try db.execute(sql: "COMMIT")
+		}
+		try reader.close()
+		#expect(try Data(contentsOf: folder.databaseFile) == before)
 
 		let store = try Vault(folder: folder, version: "0.2.0").open(password: Self.password)
 		#expect(try store.loadLedger().accounts.map(\.name).sorted() == ["Giro", "Tagesgeld"])
@@ -361,7 +380,7 @@ struct OpeningTests {
 		return store
 	}
 
-	@Test("A copy that another program has locked is named and kept, not removed")
+	@Test("A copy that another program has locked stops the change, and the old password still opens everything")
 	func lockedCopyIsKept() throws {
 		let vault = Vault(folder: folder)
 		let store = try databaseWithCopies(vault)
@@ -369,16 +388,15 @@ struct OpeningTests {
 		let locker = try DatabaseQueue(path: damaged.path, configuration: Self.keyed("alt-und-lang-genug"))
 		try locker.writeWithoutTransaction { db in
 			try db.execute(sql: "BEGIN EXCLUSIVE")
-			#expect(throws: Vault.Failure.copiesNotUpdated([damaged.path])) {
+			#expect(throws: Vault.Failure.copiesUnreadable([damaged.path])) {
 				try vault.changePassword(current: "alt-und-lang-genug", new: "neu-und-noch-laenger", on: store)
 			}
 			try db.execute(sql: "ROLLBACK")
 		}
 		try locker.close()
 		try store.close()
-		#expect(opens(damaged.lastPathComponent, with: "alt-und-lang-genug"))
-		#expect(opens("Moneten-Backup.sqlite", with: "neu-und-noch-laenger"))
-		#expect(opens("Moneten.sqlite", with: "neu-und-noch-laenger"))
+		for name in try files() { #expect(opens(name, with: "alt-und-lang-genug"), "\(name)") }
+		#expect(try !files().contains("RekeyCopies"))
 	}
 
 	@Test("A password change that stopped after the database took the new password is finished at the next start")
@@ -450,17 +468,26 @@ struct OpeningTests {
 		#expect(try files().isEmpty)
 	}
 
-	@Test("A data folder whose path holds a space and the characters of a URI opens, upgrades, and backs up")
+	@Test("A data folder whose path holds a space and the characters of a URI upgrades, repairs, and backs up")
 	func pathWithURICharacters() throws {
 		let odd = DataFolder(root: root.appendingPathComponent("Application Support/Mo#ne?ten 100%", isDirectory: true))
-		let store = try Vault(folder: odd).create(password: Self.password, starterCategories: [])
-		_ = try sampleData(store)
+		let vault = Vault(folder: odd, version: "0.2.0")
+		try earlierDatabase(upTo: "v16", in: odd)
+		let store = try vault.open(password: Self.password)
+		let t = try sampleData(store)
 		let backup = root.appendingPathComponent("Backup.sqlite")
 		try store.backup(to: backup)
+		let page = try rootPage("bankTransaction_on_bookingDate", of: store)
 		try store.close()
-		#expect(try Vault(folder: odd).open(password: Self.password).loadLedger().accounts.map(\.name) == ["Giro"])
+		try damage(page: page, in: odd)
+		#expect(throws: Vault.Failure.damaged(odd.databaseFile.path)) { try vault.open(password: Self.password) }
+		let repaired = try vault.open(password: Self.password)
+		#expect(try repaired.loadLedger().transaction(t.id)?.name == "Stadtwerke Musterstadt")
+		try repaired.close()
 		#expect(FileManager.default.fileExists(atPath: backup.path))
-		#expect(try FileManager.default.contentsOfDirectory(atPath: odd.databaseFolder.path) == ["Moneten.sqlite"])
+		let names = try FileManager.default.contentsOfDirectory(atPath: odd.databaseFolder.path).sorted()
+		#expect(names.count == 3 && names.contains("Moneten-Backup.sqlite") && names.contains("Moneten.sqlite"))
+		#expect(names.contains { Vault.isCopy($0) && $0.hasPrefix("Moneten-Damaged-") })
 	}
 
 	@Test("A new database that fails halfway leaves an empty folder")
@@ -664,14 +691,25 @@ struct OpeningTests {
 		#expect(try vault.storedPassword() == "alt-und-lang-genug")
 	}
 
-	@Test("A new database removes the Keychain entries that a renamed database left", .enabled(if: hasKeychain))
-	func newDatabaseClearsKeychain() throws {
+	@Test("A new database keeps the Keychain entries that a renamed database still needs", .enabled(if: hasKeychain))
+	func newDatabaseKeepsKeychain() throws {
+		let fm = FileManager.default
 		let vault = Vault(folder: folder)
-		defer { try? vault.removeStoredPassword() }
-		try vault.create(password: Self.password, starterCategories: []).close()
+		defer {
+			try? vault.removeStoredPassword()
+			try? vault.keyKeychain.delete(account: folder.keychainAccount)
+		}
+		let old = try vault.create(password: nil, starterCategories: [])
+		_ = try sampleData(old)
+		try old.close()
 		try vault.storePassword(Self.password)
-		try FileManager.default.moveItem(at: folder.databaseFolder, to: folder.root.appendingPathComponent("Database_OLD"))
-		try vault.create(password: "ein-neues-passwort", starterCategories: []).close()
-		#expect(try vault.storedPassword() == nil)
+		let renamed = folder.root.appendingPathComponent("Database_OLD")
+		try fm.moveItem(at: folder.databaseFolder, to: renamed)
+		try vault.create(password: nil, starterCategories: []).close()
+		#expect(try vault.storedPassword() == Self.password)
+
+		try fm.removeItem(at: folder.databaseFolder)
+		try fm.moveItem(at: renamed, to: folder.databaseFolder)
+		#expect(try vault.openWithRandomKey().loadLedger().accounts.map(\.name) == ["Giro"])
 	}
 }

@@ -158,7 +158,7 @@ The app SHALL offer "Change Database Password..." while a password is set. The s
 
 ### Requirement: Copies in the database folder follow a password change
 
-The app SHALL encrypt the copies that it keeps in the database folder, the automatic backup copy and the copies of a damaged file, with the new password when the password changes. It removes a copy that the old password opened and that it cannot encrypt again, and names a copy that it could not read. A change that stops halfway is finished at the next start.
+The app SHALL encrypt the copies that it keeps in the database folder, the automatic backup copy and the copies of a damaged file, with the new password when the password changes. It removes a copy that the old password opened and that it cannot encrypt again. When it cannot read a copy, it names the copy and keeps the old password. A change that stops halfway is finished at the next start.
 
 #### Scenario: Copies in the database folder follow the change
 
@@ -178,8 +178,8 @@ The app SHALL encrypt the copies that it keeps in the database folder, the autom
 
 - **GIVEN** a database with the password "alt-und-lang-genug" and a copy of a damaged file that another program has locked
 - **WHEN** the user changes the password to "neu-und-noch-laenger"
-- **THEN** the app shows that the password has been changed and names the path of the copy that it could not update
-- **AND** the copy is still in the database folder
+- **THEN** the app names the path of the copy that it could not read
+- **AND** "alt-und-lang-genug" still opens the database and the copy
 
 ### Requirement: A failed password change leaves the database usable
 
@@ -256,9 +256,9 @@ The app SHALL, when an update of the app needs a new database layout, first save
 - **WHEN** the user starts version 0.2
 - **THEN** the backup copy and the upgraded database both hold "Tagesgeld"
 
-#### Scenario: Another program has the database open
+#### Scenario: Another program uses the database
 
-- **GIVEN** a database from version 0.1 that another program has open
+- **GIVEN** a database from version 0.1 that another program is reading or writing
 - **WHEN** the user starts version 0.2
 - **THEN** the app shows that it could not upgrade the database
 - **AND** the database of version 0.1 is unchanged

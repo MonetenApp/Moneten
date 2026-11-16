@@ -170,7 +170,7 @@ struct LockView: View {
 				wrong = true
 				password = ""
 			case .busy: busy = true
-			case .unlocked: break
+			case .unlocked, .failed: break
 			}
 		}
 	}

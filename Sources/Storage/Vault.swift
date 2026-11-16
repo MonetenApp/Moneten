@@ -48,6 +48,8 @@ public struct Vault: Sendable {
 		case copiesNotUpdated([String])
 		/// The database has the new password, but the copies at these paths still open with the random key, which stays in the Keychain.
 		case copiesKeepRandomKey([String])
+		/// The copies at these paths could not be read, so the password stays unchanged.
+		case copiesUnreadable([String])
 
 		/// True when the database has the new password although something after the change failed.
 		public var passwordChanged: Bool {
@@ -92,6 +94,8 @@ public struct Vault: Sendable {
 					+ (copies.isEmpty ? "" : "\n\n" + Failure.copiesNotUpdated(copies).description)
 			case let .copiesNotUpdated(paths):
 				"The database password has been changed, but Moneten could not update the copies of the database at these paths. They may still open with the earlier password. Please move them to the Trash.\n\n" + paths.joined(separator: "\n")
+			case let .copiesUnreadable(paths):
+				"Moneten could not read these copies of the database, so the password has not been changed. Close the program that uses them, or move them to the Trash, and try again.\n\n" + paths.joined(separator: "\n")
 			case let .copiesKeepRandomKey(paths):
 				"The database password has been set, but Moneten could not encrypt the copies of the database at these paths with it. They still open with the random key, which stays in the Keychain. Moneten tries again at the next start.\n\n" + paths.joined(separator: "\n")
 			}
@@ -159,17 +163,18 @@ public struct Vault: Sendable {
 	var rekeyMarker: URL { folder.databaseFolder.appendingPathComponent("RekeyCopies") }
 
 	/// Creates a new database. Without a password, a random key in the Keychain protects it.
-	/// Keychain entries of a database that was in this folder before, such as one the user renamed
-	/// after a lost password, are removed first.
+	/// The Keychain entries of a database that was in this folder before, such as one the user renamed,
+	/// stay: a random key that is already there protects the new database too, so the renamed one still
+	/// opens, and a stored password may be the last copy of a password the user forgot.
 	/// A database folder that holds files is never touched, so a stale call cannot replace a database.
 	public func create(password: String?, starterCategories: [Domain.Category]) throws -> Store {
 		guard try state() == .empty else { throw Failure.databaseExists(folder.databaseFile.path) }
 		try folder.createFolders()
-		try keychain { try passwordKeychain.delete(account: folder.keychainAccount) }
-		try keychain { try keyKeychain.delete(account: folder.keychainAccount) }
 		let key: String
 		if let password {
 			key = password
+		} else if let existing = try keychain({ try read(keyKeychain, legacy: legacyKeyKeychain) }) {
+			key = existing
 		} else {
 			key = Self.randomKey()
 			try keychain { try keyKeychain.write(key, account: folder.keychainAccount) }
@@ -200,24 +205,15 @@ public struct Vault: Sendable {
 	/// that still have the random key take the password first, so the key goes only when no copy needs it.
 	public func open(password: String, upgrading: @Sendable () -> Void = {}) throws -> Store {
 		let store = try openDatabase(key: password, upgrading: upgrading)
-		do {
-			let randomKey: String?
-			if FileManager.default.fileExists(atPath: noPasswordMarker.path) {
-				try FileManager.default.removeItem(at: noPasswordMarker)
-				randomKey = try keychain { try read(keyKeychain, legacy: legacyKeyKeychain) }
-			} else {
-				// Next to a password, a random key stays only for copies that could not take the first password.
-				// A Keychain that does not answer must not stop the unlock, so those copies wait for the next start.
-				randomKey = (try? keyKeychain.read(account: folder.keychainAccount)) ?? nil
-			}
-			if let randomKey {
-				// A folder that cannot be listed keeps the key, and the next start tries again.
-				let kept = (try? rekeyCopies(from: randomKey, to: password, removingFailures: false)) ?? [folder.databaseFolder.path]
-				if kept.isEmpty { try deleteRandomKey() }
-			}
-		} catch {
-			try? store.close()
-			throw error
+		// The password opened the database, so the unlock succeeds. The rest tidies up, and whatever fails here
+		// is tried again at the next start: a marker that stays sends the next start to the password prompt,
+		// and a random key that stays is read again below.
+		if FileManager.default.fileExists(atPath: noPasswordMarker.path) { try? FileManager.default.removeItem(at: noPasswordMarker) }
+		// Next to a password, a random key stays only for an interrupted first password and for copies that
+		// could not take it. Those copies take the password now, and the key goes once no copy needs it.
+		if let randomKey = (try? read(keyKeychain, legacy: legacyKeyKeychain)) ?? nil,
+		   let kept = try? rekeyCopies(from: randomKey, to: password, removingFailures: false), kept.isEmpty {
+			try? deleteRandomKey()
 		}
 		return store
 	}
@@ -260,9 +256,11 @@ public struct Vault: Sendable {
 		try connect(folder.databaseFile, key: current).close()
 		let keepsPassword = try storedPassword() != nil
 		let plan = try planRekey(from: current)
+		// Nobody could tell later whether a copy that cannot be read now still opens with the current password.
+		guard plan.unreadable.isEmpty else { throw Failure.copiesUnreadable(plan.unreadable) }
 		try writeRekeyList(plan.toRekey + (try rekeyList()))
 		try store.queue.write { db in try db.changePassphrase(new) }
-		let notUpdated = plan.unreadable + rekeyCopies(plan.toRekey, from: current, to: new, removingFailures: true) + removeWorkFiles()
+		let notUpdated = rekeyCopies(plan.toRekey, from: current, to: new, removingFailures: true) + removeWorkFiles()
 		if keepsPassword {
 			do { try passwordKeychain.write(new, account: folder.keychainAccount) } catch {
 				throw Failure.keychainNotUpdated(String(describing: error), copies: notUpdated)
@@ -457,7 +455,7 @@ public struct Vault: Sendable {
 		try legacyKeyKeychain.delete(account: folder.legacyKeychainAccount)
 	}
 
-		// MARK: Password in the Keychain for automatic unlocking
+	// MARK: Password in the Keychain for automatic unlocking
 
 	public func storedPassword() throws -> String? {
 		try keychain { try read(passwordKeychain, legacy: legacyPasswordKeychain) }
@@ -518,12 +516,12 @@ public struct Vault: Sendable {
 		return config
 	}
 
-	/// The file as an SQLite URI with `mode=rw`, which opens an existing file for writing and never creates one.
-	static func existingFile(_ url: URL) -> String {
+	/// The file as an SQLite URI. `rw` opens an existing file for writing and `ro` for reading, and neither creates one.
+	static func fileURI(_ url: URL, mode: String) -> String {
 		var components = URLComponents()
 		components.scheme = "file"
 		components.path = url.path
-		components.queryItems = [URLQueryItem(name: "mode", value: "rw")]
+		components.queryItems = [URLQueryItem(name: "mode", value: mode)]
 		return components.string ?? url.path
 	}
 
@@ -531,7 +529,7 @@ public struct Vault: Sendable {
 	/// create the file. Every other caller gets `fileIsMissing` or an SQLite error for a missing file.
 	private func connect(_ url: URL, key: String, creating: Bool = false) throws -> DatabaseQueue {
 		do {
-			let queue = try DatabaseQueue(path: creating ? url.path : Self.existingFile(url), configuration: configuration(key: key))
+			let queue = try DatabaseQueue(path: creating ? url.path : Self.fileURI(url, mode: "rw"), configuration: configuration(key: key))
 			try queue.read { db in _ = try Int.fetchOne(db, sql: "SELECT count(*) FROM sqlite_master") }
 			return queue
 		} catch let error as DatabaseError where error.resultCode == .SQLITE_NOTADB {
@@ -596,6 +594,17 @@ public struct Vault: Sendable {
 			// another connection has the database open.
 			let mode = try queue.writeWithoutTransaction { db in try String.fetchOne(db, sql: "PRAGMA journal_mode = DELETE") }
 			guard mode == "delete" else { throw Failure.unreadable("Another program has the database open.") }
+			// The exclusive lock stays until the connection closes right before the rename, so no other
+			// connection writes a row between the copy and the rename.
+			do {
+				try queue.writeWithoutTransaction { db in
+					try db.execute(sql: "PRAGMA locking_mode = EXCLUSIVE")
+					try db.execute(sql: "BEGIN EXCLUSIVE")
+					try db.execute(sql: "COMMIT")
+				}
+			} catch let error as DatabaseError where error.resultCode == .SQLITE_BUSY || error.resultCode == .SQLITE_LOCKED {
+				throw Failure.unreadable("Another program is using the database.")
+			}
 			try snapshot(queue, into: backupPartial, key: key)
 			try removeSideFiles(of: automaticBackup)
 			try place(backupPartial, at: automaticBackup)
@@ -681,11 +690,7 @@ public struct Vault: Sendable {
 		let queue = try DatabaseQueue(path: target.path, configuration: config)
 		do {
 			try queue.writeWithoutTransaction { db in
-				var source = URLComponents()
-				source.scheme = "file"
-				source.path = damaged.path
-				source.queryItems = [URLQueryItem(name: "mode", value: "ro")]
-				try db.execute(sql: "ATTACH DATABASE ? AS damaged KEY ?", arguments: [source.string ?? damaged.path, key])
+				try db.execute(sql: "ATTACH DATABASE ? AS damaged KEY ?", arguments: [Self.fileURI(damaged, mode: "ro"), key])
 				let objects = try Row.fetchAll(db, sql: "SELECT type, name, sql FROM damaged.sqlite_master WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' ORDER BY type = 'table' DESC")
 				let version = try Int.fetchOne(db, sql: "PRAGMA damaged.user_version") ?? 0
 				try db.inTransaction {
@@ -734,8 +739,21 @@ public struct Vault: Sendable {
 	}
 
 	/// Renames a finished file to its target in one step, so the target is always either the old or the new file.
+	/// The data reaches the disk before the rename, and the rename before the function returns, so a power loss
+	/// cannot leave the new name with old or missing data.
 	private func place(_ file: URL, at target: URL) throws {
-		guard rename(file.path, target.path) == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+		func failure() -> POSIXError { POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+		let descriptor = Darwin.open(file.path, O_RDONLY)
+		guard descriptor >= 0 else { throw failure() }
+		let synced = fcntl(descriptor, F_FULLFSYNC) == 0 || fsync(descriptor) == 0
+		Darwin.close(descriptor)
+		guard synced else { throw failure() }
+		guard rename(file.path, target.path) == 0 else { throw failure() }
+		let folder = Darwin.open(target.deletingLastPathComponent().path, O_RDONLY | O_DIRECTORY)
+		if folder >= 0 {
+			_ = fsync(folder)
+			Darwin.close(folder)
+		}
 	}
 
 	private static let sideFileSuffixes = ["-journal", "-wal", "-shm"]

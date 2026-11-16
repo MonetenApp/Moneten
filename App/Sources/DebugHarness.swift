@@ -134,7 +134,7 @@ final class DebugHarness {
 		case "sidebarsnapshot": sidebarSnapshot(argument)
 		case "setpassword": model.setPassword(argument)
 		case "create": model.createDatabase(password: argument.isEmpty ? nil : argument)
-		case "unlock": Task { log("unlock", ("", .flag(await model.unlock(password: argument) != .incorrectPassword))) }
+		case "unlock": Task { log("unlock", ("", .flag(await model.unlock(password: argument) == .unlocked))) }
 		case "lock": model.lock()
 		case "appearance": NSApp.appearance = NSAppearance(named: argument == "dark" ? .darkAqua : .aqua)
 		// "<name>": the import sheet while it reads the second of two made-up files, and while it stores their rows.
