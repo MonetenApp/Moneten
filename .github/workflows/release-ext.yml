@@ -40,8 +40,8 @@ jobs:
   package:
     if: github.event_name == 'push'
     runs-on: macos-15
-    # The Developer ID certificate and the notary key live only in the environment build, which must
-    # allow the tags ext-v* as well as the tags v* of the app release.
+    # The Developer ID certificate and the notary key live only in the environment build, which allows
+    # the tags ext-v* as well as the tags v* of the app release (ADR 0019).
     environment: build
     outputs:
       sha256: ${{ steps.hash.outputs.sha256 }}
@@ -71,8 +71,8 @@ jobs:
           persist-credentials: false
       - name: Check the tag
         run: scripts/release-ext.sh check-tag "${GITHUB_REF_NAME#ext-v}"
-      # The same import as the app release of PR #273, without the FinTS product ID. It can move to a
-      # shared script once both are merged.
+      # A copy of the import step of .github/workflows/release.yml, without the FinTS product ID.
+      # Both can move to a shared script or composite action.
       - name: Import the Developer ID certificate
         env:
           CERTIFICATE: ${{ secrets.DEVELOPER_ID_CERTIFICATE_P12 }}

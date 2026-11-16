@@ -31,7 +31,8 @@ check_tag() {
 	echo "The tag ext-v$1 matches the tool and lies on main."
 }
 
-# The same notarization as the app release of PR #273. It can move to a shared script once both are merged.
+# The same notarization as notarize() of scripts/release.sh. It is a copy, because that script runs one command
+# per call and cannot be sourced. Both can move to a shared script.
 notarize() {
 	[ -n "$MONETEN_NOTARY_KEY" ] && [ -n "$MONETEN_NOTARY_KEY_ID" ] && [ -n "$MONETEN_NOTARY_ISSUER" ] \
 		|| fail "Notarization needs MONETEN_NOTARY_KEY, MONETEN_NOTARY_KEY_ID, and MONETEN_NOTARY_ISSUER."

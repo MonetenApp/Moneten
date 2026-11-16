@@ -31,7 +31,7 @@ None.
 - Issues: #16, #17, #105
 - Modules: `ext` in `Tools/ext` owns the commands. It uses `ExtensionHost` so that the API behaves exactly as in the app. Example extensions and their fixtures live in `Extensions/` and `Fixtures/`.
 - Depends on the change `add-web-banking-extensions`.
-- Decisions: [ADR 0004](../../../docs/decisions/0004-moneymoney-compatible-extension-api.md), [ADR 0015](../../../docs/decisions/0015-extension-program.md).
+- Decisions: [ADR 0004](../../../docs/decisions/0004-moneymoney-compatible-extension-api.md), [ADR 0015](../../../docs/decisions/0015-extension-program.md), [ADR 0016](../../../docs/decisions/0016-developer-id-certificate-in-ci.md), [ADR 0019](../../../docs/decisions/0019-ext-releases-in-the-build-environment.md).
 
 ## Reference behavior
 

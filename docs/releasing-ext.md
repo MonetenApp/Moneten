@@ -19,15 +19,15 @@ The dry run needs no secrets and contacts no service. It builds the same zip, si
 scripts/release-ext.sh dry-run       # writes dist/ext
 ```
 
-The workflow runs the dry run on each pull request that changes the tool, the package, or the packaging.
+The workflow runs the dry run on each pull request that changes the tool, the libraries in `Sources`, the package, or the packaging.
 
 ## Set up once
 
 The release uses the secrets of the app release, so the owner creates them only once. Without them the workflow fails at its first step and names each missing secret.
 
-1. Create the secrets and the variable of the GitHub environment `build`, as the release guide of the app describes: `DEVELOPER_ID_CERTIFICATE_P12`, `DEVELOPER_ID_CERTIFICATE_PASSWORD`, `NOTARY_API_KEY_P8`, `NOTARY_API_KEY_ID`, `NOTARY_API_ISSUER_ID`, and the variable `APPLE_TEAM_ID`. The release of `ext` does not need `FINTS_PRODUCT_ID` or the update key.
-2. Under Settings, Environments, `build`, "Deployment branches and tags", add the tag pattern `ext-v*` next to `main` and `v*`. Without it GitHub refuses to start the job.
-3. Under Settings, Rules, add the tags `ext-v*` to the ruleset that allows only the owner to create, update, or delete the tags `v*`. A tag starts a signed release, so nobody else may push one.
+1. Create the secrets and the variable of the GitHub environment `build`, as [the release guide of the app](releasing.md#secrets) describes: `DEVELOPER_ID_CERTIFICATE_P12`, `DEVELOPER_ID_CERTIFICATE_PASSWORD`, `NOTARY_API_KEY_P8`, `NOTARY_API_KEY_ID`, `NOTARY_API_ISSUER_ID`, and the variable `APPLE_TEAM_ID`. The release of `ext` does not need `FINTS_PRODUCT_ID` or the update key.
+2. Under Settings, Environments, `build`, "Deployment branches and tags", add the tag pattern `ext-v*` next to `main` and `v*` ([ADR 0019](decisions/0019-ext-releases-in-the-build-environment.md)). Without it GitHub refuses to start the job.
+3. Under Settings, Rules, add the tags `ext-v*` to the [ruleset](releasing.md#protected-tags) that allows only the owner to create, update, or delete the tags `v*`. A tag starts a signed release, so nobody else may push one.
 
 The job that holds the certificate can only read the repository. A second job without secrets creates the release. The workflow never marks the release as the latest release, because the update feed of the app lives on the latest release.
 
