@@ -236,7 +236,7 @@ public struct MoneyMoneyMigration: Sendable {
 		let added = Dictionary(grouping: plan.transactions, by: \.accountID)
 		for i in plan.accounts.indices {
 			guard let balance = plan.accounts[i].bankBalanceMinor else { continue }
-			plan.accounts[i].initialBalanceMinor = initialBalance(balance, of: plan.accounts[i], rows: added[plan.accounts[i].id] ?? [])
+			plan.accounts[i].initialBalanceMinor = Int64(clampingSum: initialBalance(balance, of: plan.accounts[i], rows: added[plan.accounts[i].id] ?? []))
 		}
 		let changed = Dictionary(uniqueKeysWithValues: plan.updatedTransactions.map { ($0.id, $0) })
 		for old in ledger.accounts where old.source == .migrated && old.kind != .portfolio {
@@ -253,12 +253,12 @@ public struct MoneyMoneyMigration: Sendable {
 			var a = k.map { plan.updatedAccounts[$0] } ?? old
 			guard let balance = a.bankBalanceMinor else { continue }
 			let before = stored[old.id] ?? []
-			let deletedBefore = tombstones.filter { isCounted($0) && $0.currency == old.currency }.reduce(Int64(0)) { $0.addingClamped($1.amountMinor) }
-			let deletedAfter = after.filter { isCounted($0) && $0.currency == old.currency }.reduce(Int64(0)) { $0.addingClamped($1.amountMinor) }
-			let target = initialBalance(balance, of: a, rows: before.map { changed[$0.id] ?? $0 } + (added[old.id] ?? [])).subtractingClamped(deletedAfter)
-			a.initialBalanceMinor = old.bankBalanceMinor.map {
-				old.initialBalanceMinor.addingClamped(target).subtractingClamped(initialBalance($0, of: old, rows: before).subtractingClamped(deletedBefore))
-			} ?? target
+			let deletedBefore = tombstones.filter { isCounted($0) && $0.currency == old.currency }.reduce(Int128(0)) { $0 + Int128($1.amountMinor) }
+			let deletedAfter = after.filter { isCounted($0) && $0.currency == old.currency }.reduce(Int128(0)) { $0 + Int128($1.amountMinor) }
+			let target = initialBalance(balance, of: a, rows: before.map { changed[$0.id] ?? $0 } + (added[old.id] ?? [])) - deletedAfter
+			a.initialBalanceMinor = Int64(clampingSum: old.bankBalanceMinor.map {
+				Int128(old.initialBalanceMinor) + target - (initialBalance($0, of: old, rows: before) - deletedBefore)
+			} ?? target)
 			if let k {
 				plan.updatedAccounts[k] = a
 			} else if a != old {
@@ -271,9 +271,9 @@ public struct MoneyMoneyMigration: Sendable {
 	/// migration ID. A row that the user imported carries none, and a row that a file or a bank booked while the
 	/// source has it pending carries the booked form of the ID, so both count on top. `v13` in `Schema` repairs stored
 	/// values by the same rule, so this filter is spelled out here and in its SQL.
-	private static func initialBalance(_ balance: Int64, of account: Account, rows: [Transaction]) -> Int64 {
-		rows.reduce(balance) { sum, t in
-			!t.isPending && t.currency == account.currency && isOfSource(t.sourceID) ? sum.subtractingClamped(t.amountMinor) : sum
+	private static func initialBalance(_ balance: Int64, of account: Account, rows: [Transaction]) -> Int128 {
+		rows.reduce(Int128(balance)) { sum, t in
+			!t.isPending && t.currency == account.currency && isOfSource(t.sourceID) ? sum - Int128(t.amountMinor) : sum
 		}
 	}
 

@@ -42,7 +42,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [x] 2.9 Add lower case operator notes to `MoneyMoneyMigration.plan`. Verified by the tests of 2.8 with literal category names, words, and one-based positions. Gate round 1 adds `unchangedRuleReport` for the unchanged repeat, its report decision, and saved text.
 - [x] 2.10 Write MoneyMoneyMigrationTests tests for true and false. Verified by `constantRuleNotes` and `unchangedRuleWithoutNote` with `true OR "Smoothie"`, `FALSE`, mixed case, quoted words, and field values. Missing constant notes failed before 2.11 and pass after it. Every rule stays unchanged.
 - [x] 2.11 Add true and false notes to `MoneyMoneyMigration.plan`. Verified by the tests of 2.10 with literal category names, words, and one-based positions. Gate round 1 adds `unchangedRuleReport` for the unchanged repeat, its report decision, and saved text.
-- [x] 2.12 Amount limit of the source (issue #324). `MoneyMoneyMigrationTests` "A transaction or a balance above the limit fails the migration and names it" failed before `Money(limited:currency:)` and passes after it. Sums over stored rows in the plan and the report hold at the bounds of `Int64`.
+- [x] 2.12 Amount limit of the source (issue #324). `MoneyMoneyMigrationTests` "A transaction or a balance above the limit fails the migration and names it" failed before `Money(fitting:currency:)` enforced `Money.maxMinorUnits` and passes after it. Sums over stored rows in the plan and the report add up in `Int128`.
 
 ## 3. Integration
 

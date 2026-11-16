@@ -25,8 +25,20 @@ public struct PeriodSum: Hashable, Sendable, Identifiable {
 	public var start: Day
 	public var deposits: Int64
 	public var withdrawals: Int64
+	/// The deposits plus the withdrawals from their exact sums, so that a total beyond the bounds of `Int64` keeps its sign.
+	public let total: Int64
 	public var id: Int { start.rawValue }
-	public var total: Int64 { deposits + withdrawals }
+
+	init(start: Day, deposits: Int64, withdrawals: Int64) {
+		self.init(start: start, exactDeposits: Int128(deposits), exactWithdrawals: Int128(withdrawals))
+	}
+
+	init(start: Day, exactDeposits deposits: Int128, exactWithdrawals withdrawals: Int128) {
+		self.start = start
+		self.deposits = Int64(clampingSum: deposits)
+		self.withdrawals = Int64(clampingSum: withdrawals)
+		total = Int64(clampingSum: deposits + withdrawals)
+	}
 
 	/// Every period from the first sum through the period of `last`, with zero for a period without
 	/// transactions, as MoneyMoney draws a line at zero for it. A sum after `last` stays.
@@ -75,23 +87,25 @@ extension Ledger {
 	public func dailyBalances(accountIDs: Set<UUID>, range: DayRange = .all) -> [BalancePoint] {
 		let portfolios = Set(accountIDs.filter { account($0)?.kind == .portfolio })
 		let others = Dictionary(uniqueKeysWithValues: accountIDs.subtracting(portfolios).compactMap { account($0) }.map { ($0.id, $0) })
+		// The balances add up in Int128 and hold at the bounds of Int64 only in each point, so rows that cancel out
+		// give the same balance in every order.
 		var balance = initialBalance(of: accountIDs)
-		var byDay: [Day: Int64] = [:]
+		var byDay: [Day: Int128] = [:]
 		for t in transactions {
 			guard let a = others[t.accountID] else { continue }
-			byDay[t.bookingDate, default: 0].addClamped(a.isInBalance(t) ? t.amountMinor : 0)
+			byDay[t.bookingDate, default: 0] += a.isInBalance(t) ? Int128(t.amountMinor) : 0
 		}
 		for id in portfolios {
-			var previous: Int64 = 0
+			var previous: Int128 = 0
 			for v in portfolioValues(of: id) {
-				byDay[v.day, default: 0].addClamped(v.minorUnits.subtractingClamped(previous))
-				previous = v.minorUnits
+				byDay[v.day, default: 0] += Int128(v.minorUnits) - previous
+				previous = Int128(v.minorUnits)
 			}
 		}
 		var points: [BalancePoint] = []
 		for day in byDay.keys.sorted() {
-			balance.addClamped(byDay[day]!)
-			if range.contains(day) { points.append(BalancePoint(day: day, minorUnits: balance)) }
+			balance += byDay[day]!
+			if range.contains(day) { points.append(BalancePoint(day: day, minorUnits: Int64(clampingSum: balance))) }
 		}
 		return points
 	}
@@ -135,8 +149,8 @@ extension Ledger {
 	}
 
 	/// The initial balances of the accounts other than portfolios.
-	private func initialBalance(of accountIDs: Set<UUID>) -> Int64 {
-		accountIDs.compactMap { account($0) }.filter { $0.kind != .portfolio }.reduce(0) { $0.addingClamped($1.initialBalanceMinor) }
+	private func initialBalance(of accountIDs: Set<UUID>) -> Int128 {
+		accountIDs.compactMap { account($0) }.filter { $0.kind != .portfolio }.reduce(0) { $0 + Int128($1.initialBalanceMinor) }
 	}
 
 	/// The balance at the end of each day from `start` through `end`. Days before the first
@@ -144,7 +158,7 @@ extension Ledger {
 	private func endOfDayBalances(_ daily: [BalancePoint], accountIDs: Set<UUID>, from start: Day, through end: Day, calendar: Calendar) -> [BalancePoint] {
 		var result: [BalancePoint] = []
 		var index = 0
-		var current = initialBalance(of: accountIDs)
+		var current = Int64(clampingSum: initialBalance(of: accountIDs))
 		var day = start
 		while day <= end {
 			while index < daily.count, daily[index].day <= day {
@@ -161,15 +175,13 @@ extension Ledger {
 	/// Transactions in categories that are left out of charts do not count.
 	public func periodSums(of transactions: [Transaction], period: ChartPeriod) -> [PeriodSum] {
 		let hidden = Set(categories.filter { !$0.showInDiagrams }.flatMap { categoryIDs(inTree: $0.id) })
-		var sums: [Day: PeriodSum] = [:]
+		var sums: [Day: (deposits: Int128, withdrawals: Int128)] = [:]
 		for t in transactions where t.countsInSums {
 			if let c = effectiveCategoryID(of: t), hidden.contains(c) { continue }
 			let start = period.start(of: t.bookingDate)
-			var s = sums[start] ?? PeriodSum(start: start, deposits: 0, withdrawals: 0)
-			if t.amountMinor >= 0 { s.deposits.addClamped(t.amountMinor) } else { s.withdrawals.addClamped(t.amountMinor) }
-			sums[start] = s
+			if t.amountMinor >= 0 { sums[start, default: (0, 0)].deposits += Int128(t.amountMinor) } else { sums[start, default: (0, 0)].withdrawals += Int128(t.amountMinor) }
 		}
-		return sums.values.sorted { $0.start < $1.start }
+		return sums.map { PeriodSum(start: $0.key, exactDeposits: $0.value.deposits, exactWithdrawals: $0.value.withdrawals) }.sorted { $0.start < $1.start }
 	}
 
 	/// The sum of a list of transactions per top-level category below a parent, for a pie chart.
@@ -177,11 +189,11 @@ extension Ledger {
 		let roots = parent.map { childCategories(of: $0) } ?? (childCategories(of: nil) + [defaultCategory].compactMap { $0 })
 		var rootOf: [UUID: UUID] = [:]
 		for r in roots { for id in categoryIDs(inTree: r.id) { rootOf[id] = r.id } }
-		var totals: [UUID: Int64] = [:]
+		var totals: [UUID: Int128] = [:]
 		for t in transactions where t.countsInSums {
 			guard let c = effectiveCategoryID(of: t), let r = rootOf[c] else { continue }
-			totals[r, default: 0].addClamped(t.amountMinor)
+			totals[r, default: 0] += Int128(t.amountMinor)
 		}
-		return roots.filter { $0.showInDiagrams }.compactMap { r in totals[r.id].map { (r, $0) } }
+		return roots.filter { $0.showInDiagrams }.compactMap { r in totals[r.id].map { (r, Int64(clampingSum: $0)) } }
 	}
 }

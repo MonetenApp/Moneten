@@ -216,13 +216,18 @@ The app SHALL request the next part when a bank delivers a transaction list in s
 
 ### Requirement: Amount limit of a bank answer
 
-The app SHALL fail an account when the bank sends a balance, a value, or a transaction with an amount of more than 1,000,000,000,000 in the smallest unit of its currency, which is 10.000.000.000,00 € for the euro. The app stores nothing of that account from this refresh, and the other accounts of the login refresh as usual.
+The app SHALL fail an account when the bank sends a balance, a value, or a transaction, or a position whose quantity times its price gives an amount, of more than 1,000,000,000,000,000 in the smallest unit of its currency, which is 10.000.000.000.000,00 € for the euro. The app stores nothing of that account from this refresh, and the other accounts of the login refresh as usual.
 
 #### Scenario: Absurd balance
 
 - **WHEN** the bank sends a balance of 50.000.000.000.000.000,00 € for the account "Giro"
 - **THEN** the account "Giro" shows that the bank sent an amount that is too large
 - **AND** the account "Tagesgeld" of the same login shows its new balance
+
+#### Scenario: Absurd position
+
+- **WHEN** the bank sends a position of 10.000.000.000 units at a price of 10.000.000.000,00 € without a market value for the portfolio "Depot"
+- **THEN** the portfolio "Depot" shows that the bank sent an amount that is too large
 
 ### Requirement: Mark pending transactions
 

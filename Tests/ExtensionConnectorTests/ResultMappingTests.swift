@@ -165,19 +165,15 @@ import Testing
 		}
 	}
 
-	/// Each row of 1e13 euros passed an older limit, and 9,224 of them added up beyond an `Int64` (issue #324).
-	@Test func manyLargeAmounts() {
-		let row = LuaValue.object(["bookingDate": .integer(1794182400), "amount": .number(1e13)])
-		#expect(throws: MappingError("The amount of transaction 1 is out of range.")) {
-			try result(["balance": .integer(0), "transactions": .array(Array(repeating: row, count: 9_224))])
-		}
-	}
-
-	@Test(arguments: [(LuaValue.number(1e10), Int64(1_000_000_000_000)), (.number(-1e10), -1_000_000_000_000)])
+	/// The shared limit of `Money.maxMinorUnits` applies to every row; their sum adds up exactly in the ledger (issue #324).
+	@Test(arguments: [(LuaValue.number(1e13), Int64(1_000_000_000_000_000)), (.number(-1e13), -1_000_000_000_000_000)])
 	func amountAtTheLimit(amount: LuaValue, minor: Int64) throws {
 		#expect(try result(["balance": amount, "transactions": .array([.object(["bookingDate": .integer(1794182400), "amount": amount])])])
 			.transactions?.rows.first?.amountMinor == minor)
-		#expect(throws: MappingError("The balance is out of range.")) { try result(["balance": .number(10_000_000_000.01), "transactions": .array([])]) }
+		#expect(throws: MappingError("The balance is out of range.")) { try result(["balance": .number(10_000_000_000_000.01), "transactions": .array([])]) }
+		#expect(throws: MappingError("The amount of transaction 1 is out of range.")) {
+			try result(["balance": .integer(0), "transactions": .array([.object(["bookingDate": .integer(1794182400), "amount": .number(1e14)])])])
+		}
 	}
 
 	@Test func bookingDateOutOfRange() {

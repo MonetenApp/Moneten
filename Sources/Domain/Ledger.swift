@@ -373,12 +373,17 @@ public struct Ledger: Sendable {
 
 	/// The initial balance plus the transactions in the currency of the account that a balance counts.
 	public func computedBalance(of account: Account, through day: Day? = nil) -> Money {
-		var sum = account.initialBalanceMinor
+		Money(minorUnits: Int64(clampingSum: exactBalance(of: account, through: day)), currency: account.currency)
+	}
+
+	/// The computed balance before it holds at the bounds of `Int64`, so that a calibration adds up exactly.
+	private func exactBalance(of account: Account, through day: Day?) -> Int128 {
+		var sum = Int128(account.initialBalanceMinor)
 		for t in transactions where t.accountID == account.id && account.isInBalance(t) {
 			if let day, t.bookingDate > day { continue }
-			sum.addClamped(t.amountMinor)
+			sum += Int128(t.amountMinor)
 		}
-		return Money(minorUnits: sum, currency: account.currency)
+		return sum
 	}
 
 	/// The calibration that an account of a bank access needs when its booked rows up to the day of the bank
@@ -393,17 +398,17 @@ public struct Ledger: Sendable {
 		// frame with 50,000 rows.
 		guard account.source == .bank, account.kind != .portfolio, account.initialBalanceIsSet, account.refreshError == nil,
 			!refresh.mayLackRows(of: account.id),
-			let meeting = account.initialBalanceMeetingBankBalance(of: transactions.lazy.filter { $0.accountID == account.id }, calendar: calendar),
-			meeting != account.initialBalanceMinor else { return nil }
-		let difference = meeting.subtractingClamped(account.initialBalanceMinor)
-		return CalibrationProposal(difference: Money(minorUnits: difference, currency: account.currency),
-			balanceToday: Money(minorUnits: computedBalance(of: account, through: today).minorUnits.addingClamped(difference), currency: account.currency))
+			let meeting = account.exactInitialBalanceMeetingBankBalance(of: transactions.lazy.filter { $0.accountID == account.id }, calendar: calendar),
+			meeting != Int128(account.initialBalanceMinor) else { return nil }
+		let difference = meeting - Int128(account.initialBalanceMinor)
+		return CalibrationProposal(difference: Money(minorUnits: Int64(clampingSum: difference), currency: account.currency),
+			balanceToday: Money(minorUnits: Int64(clampingSum: exactBalance(of: account, through: today) + difference), currency: account.currency))
 	}
 
 	/// The initial balance at which the computed balance at the end of `today` is `balanceToday`. Every computed
 	/// balance moves by the same difference.
 	public func calibratedInitialBalance(of account: Account, balanceToday: Int64, today: Day) -> Int64 {
-		account.initialBalanceMinor.addingClamped(balanceToday).subtractingClamped(computedBalance(of: account, through: today).minorUnits)
+		Int64(clampingSum: Int128(account.initialBalanceMinor) + Int128(balanceToday) - exactBalance(of: account, through: today))
 	}
 
 	public func sum(ofGroup group: UUID) -> MoneySums {
@@ -435,13 +440,13 @@ public struct Ledger: Sendable {
 			}
 			chains.append(first..<targets.count)
 		}
-		var sums = [Int64](repeating: 0, count: categories.count)
+		var sums = [Int128](repeating: 0, count: categories.count)
 		let defaultID = defaultCategory?.id
 		func add(_ t: Transaction) {
 			guard let id = t.categoryID ?? defaultID, let i = index.position(of: id) else { return }
 			let day = t.bookingDate.rawValue
 			for target in targets[chains[i]] where target.from <= day && day <= target.through && t.isInSum(of: target.currency) {
-				sums[target.category].addClamped(t.amountMinor)
+				sums[target.category] += Int128(t.amountMinor)
 			}
 		}
 		for t in transactions {
@@ -449,7 +454,7 @@ public struct Ledger: Sendable {
 		}
 		var amounts: [UUID: Money] = [:]
 		for (i, c) in categories.enumerated() where sums[i] != 0 {
-			amounts[c.id] = Money(minorUnits: sums[i], currency: c.currency)
+			amounts[c.id] = Money(minorUnits: Int64(clampingSum: sums[i]), currency: c.currency)
 		}
 		return amounts
 	}

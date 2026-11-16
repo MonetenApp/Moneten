@@ -17,13 +17,13 @@ struct AmountLimitImportTests {
 	}
 
 	@Test("A CSV amount at the limit is read, and one cent above it fails the file", arguments: [
-		("Datum;Betrag\n01.11.2026;-10.000.000.000,00\n", Int64(-1_000_000_000_000)),
-		("Datum;Soll;Haben\n01.11.2026;;10.000.000.000,00\n", 1_000_000_000_000),
+		("Datum;Betrag\n01.11.2026;-10.000.000.000.000,00\n", Int64(-1_000_000_000_000_000)),
+		("Datum;Soll;Haben\n01.11.2026;;10.000.000.000.000,00\n", 1_000_000_000_000_000),
 	])
 	func csvAtLimit(text: String, minor: Int64) throws {
 		#expect(try parse(text).map(\.amountMinor) == [minor])
 		#expect(throws: TransactionFileImporter.Failure.line(2, "The amount is too large.")) {
-			try parse(text.replacingOccurrences(of: "10.000.000.000,00", with: "10.000.000.000,01"))
+			try parse(text.replacingOccurrences(of: "10.000.000.000.000,00", with: "10.000.000.000.000,01"))
 		}
 	}
 
@@ -36,7 +36,7 @@ struct AmountLimitImportTests {
 		<Ntry><Amt Ccy="EUR">50000000000000000.00</Amt><CdtDbtInd>CRDT</CdtDbtInd><BookgDt><Dt>2026-11-03</Dt></BookgDt></Ntry>
 		</Stmt></BkToCstmrStmt></Document>
 		"""
-		#expect(throws: TransactionFileImporter.Failure.line(4, "The amount is too large.")) { try parse(xml) }
+		#expect(throws: TransactionFileImporter.Failure.line(4, "The amount of the entry is too large.")) { try parse(xml) }
 	}
 
 	@Test("An MT940 transaction one cent above the limit fails the file with its line")
@@ -46,13 +46,13 @@ struct AmountLimitImportTests {
 		:25:12030000/202051
 		:28C:00001/001
 		:60F:C261031EUR1000,00
-		:61:2611031103CR10000000000,00NTRFNONREF
+		:61:2611031103CR10000000000000,00NTRFNONREF
 		:62F:C261103EUR2161,00
 		-
 		"""
-		#expect(try parse(text).map(\.amountMinor) == [1_000_000_000_000])
+		#expect(try parse(text).map(\.amountMinor) == [1_000_000_000_000_000])
 		#expect(throws: TransactionFileImporter.Failure.line(5, "The amount is too large.")) {
-			try parse(text.replacingOccurrences(of: "10000000000,00", with: "10000000000,01"))
+			try parse(text.replacingOccurrences(of: "10000000000000,00", with: "10000000000000,01"))
 		}
 	}
 }
@@ -75,7 +75,7 @@ extension MoneyMoneyMigrationTests {
 		let rows = (transactions["transactions"] as! [Any]) + [absurd]
 		#expect(try failure(transactions: ["creator": "MoneyMoney", "transactions": rows]) == "The amount of transaction 4711 is too large.")
 		var source = accounts
-		source[2]["balance"] = [[-1e11, "EUR"]]
+		source[2]["balance"] = [[-1e14, "EUR"]]
 		#expect(try failure(accounts: source) == "The balance of the account \"Savings\" is too large.")
 		#expect(try failure() == nil)
 	}

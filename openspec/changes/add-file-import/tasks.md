@@ -80,7 +80,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 
 
 - [x] 2.28 Shared legacy pool and fingerprint bookings. Four new tests fail with 124 Domain and six migration assertions before removing eager legacy partner allocation. Main's matcher stays unchanged and validates each legacy edge in mixed histories. True slot, fit, and distance prevent a tombstone from taking a live pending booking. Fingerprint-only booking transitions use Bookings for ambiguity and migration-prefix conversion. Replaying the pending 50,00 € source after a 10,00 € file booking keeps the computed balance at 40,00 €, with or without a source ID in the file.
-- [x] 2.29 Amount limit of a file (issue #324). `AmountLimitImportTests` cover two CSV rows of 50.000.000.000.000.000,00 €, an amount at 10.000.000.000,00 € and one cent above it in a CSV, a CAMT, and an MT940 file. They failed before `Money(limited:currency:)` and pass after it.
+- [x] 2.29 Amount limit of a file (issue #324). `AmountLimitImportTests` cover two CSV rows of 50.000.000.000.000.000,00 €, an amount at 10.000.000.000.000,00 € and one cent above it in a CSV, a CAMT, and an MT940 file. They failed before `Money(fitting:currency:)` enforced `Money.maxMinorUnits` and pass after it.
 
 ## 3. Integration
 

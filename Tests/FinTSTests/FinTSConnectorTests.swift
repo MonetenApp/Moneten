@@ -798,20 +798,23 @@ struct FinTSConnectorTests {
 		(#"{"type":"result","account":"DE02120300000000202051","balance":{"currency":"EUR"},"errors":[]}"#, HelperFailure.unreadable),
 		// An amount whose minor units do not fit would otherwise turn into another amount.
 		(#"{"type":"result","account":"DE02120300000000202051","transactions":{"rows":[{"booked":"2026-11-02","amount":"-92233720368547758.08","pending":false}]},"errors":[]}"#,
-			HelperFailure.unreadable),
+			HelperFailure.tooLarge),
 		(#"{"type":"result","account":"DE02120300000000202051","transactions":{"rows":[{"amount":"-1","pending":true}]},"errors":[]}"#,
 			SyncFailure.unsupported("The bank sent a transaction without a booking date, so nothing of this account was stored.")),
 		(#"{"type":"result","account":"DE02120300000000202051","balance":{"amount":"1","currency":"EUR"},"errors":[],"securities":true,"holdings":[{"name":"Gold","quantity":"12abc"}]}"#,
 			HelperFailure.unreadable),
 		(#"{"type":"result","account":"DE02120300000000202051","balance":{"amount":"1","currency":"EUR"},"errors":[],"securities":true,"holdings":[{"name":"Gold"}]}"#,
 			HelperFailure.unreadable),
-		// An amount above 10.000.000.000,00 € fails its account, so no sum of stored amounts can overflow (issue #324).
+		// A quantity times a price beyond the limit fails its account, also without a market value from the bank.
+		(#"{"type":"result","account":"DE02120300000000202051","balance":{"amount":"1","currency":"EUR"},"errors":[],"securities":true,"holdings":[{"name":"Gold","quantity":"10000000000","price":{"amount":"10000000000","currency":"EUR"}}]}"#,
+			HelperFailure.tooLarge),
+		// An amount above 10.000.000.000.000,00 € fails its account, so no sum of stored amounts can overflow (issue #324).
 		(#"{"type":"result","account":"DE02120300000000202051","balance":{"amount":"50000000000000000.00","currency":"EUR"},"errors":[]}"#, HelperFailure.tooLarge),
-		(#"{"type":"result","account":"DE02120300000000202051","transactions":{"rows":[{"booked":"2026-11-02","amount":"-10000000000.01","pending":false}]},"errors":[]}"#,
+		(#"{"type":"result","account":"DE02120300000000202051","transactions":{"rows":[{"booked":"2026-11-02","amount":"-10000000000000.01","pending":false}]},"errors":[]}"#,
 			HelperFailure.tooLarge),
 		(#"{"type":"result","account":"DE02120300000000202051","balance":{"amount":"1","currency":"EUR"},"errors":[],"securities":true,"holdings":[{"name":"Gold","quantity":"1","value":{"amount":"1e20","currency":"EUR"}}]}"#,
 			HelperFailure.unreadable),
-		(#"{"type":"result","account":"DE02120300000000202051","balance":{"amount":"1","currency":"EUR"},"errors":[],"securities":true,"holdings":[{"name":"Gold","quantity":"1","value":{"amount":"20000000000","currency":"EUR"}}]}"#,
+		(#"{"type":"result","account":"DE02120300000000202051","balance":{"amount":"1","currency":"EUR"},"errors":[],"securities":true,"holdings":[{"name":"Gold","quantity":"1","value":{"amount":"20000000000000","currency":"EUR"}}]}"#,
 			HelperFailure.tooLarge),
 	] + ["12.3.4", "1-2", "-", ".", "--5", "1.", ".5", "-0.5.1"].flatMap { number in [
 		// A number that reads only in part fails its account, in a quantity, a price, and a balance alike.

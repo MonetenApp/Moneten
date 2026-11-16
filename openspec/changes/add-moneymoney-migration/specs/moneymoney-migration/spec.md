@@ -303,7 +303,7 @@ The app SHALL create every transaction of the source with its booking date, valu
 
 ### Requirement: Amount limit of the source
 
-The app SHALL refuse a migration when a transaction or an account balance of the source has an amount of more than 1,000,000,000,000 in the smallest unit of its currency, which is 10.000.000.000,00 € for the euro. The app names the transaction or the account and stores nothing.
+The app SHALL refuse a migration when a transaction or an account balance of the source has an amount of more than 1,000,000,000,000,000 in the smallest unit of its currency, which is 10.000.000.000.000,00 € for the euro. The app names the transaction or the account and stores nothing.
 
 #### Scenario: Absurd amount in the source
 

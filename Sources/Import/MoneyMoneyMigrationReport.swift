@@ -107,11 +107,11 @@ extension MoneyMoneyMigration.Plan {
 			let missing = source.rows.filter { missingRows.contains($0.id) }.count
 			let shared = (byTarget[account.id]?.count ?? 0) > 1
 			let gone = shared ? 0 : goneByTarget[account.id, default: 0]
-			func sum(_ rows: [Transaction]) -> Int64 {
-				rows.reduce(0) { !$1.isPending && $1.currency == account.currency ? $0.addingClamped($1.amountMinor) : $0 }
+			func sum(_ rows: [Transaction]) -> Int128 {
+				rows.reduce(0) { !$1.isPending && $1.currency == account.currency ? $0 + Int128($1.amountMinor) : $0 }
 			}
 			let migrated = account.source == .migrated && !shared
-			var balance = account.reportedBalance ?? Money(minorUnits: account.initialBalanceMinor.addingClamped(sum(stored)), currency: account.currency)
+			var balance = account.reportedBalance ?? Money(minorUnits: Int64(clampingSum: Int128(account.initialBalanceMinor) + sum(stored)), currency: account.currency)
 			if migrated && account.kind != .portfolio {
 				// A row without the ID of the source that matches a booked row of the export by its fingerprint is a row
 				// of the source whose ID a bank took over. Rows that a stored row of the source holds are no match, and
@@ -122,7 +122,7 @@ extension MoneyMoneyMigration.Plan {
 				let claimed = Set(ofSource.compactMap(\.sourceID))
 				let open = source.rows.filter { !$0.isPending && !claimed.contains($0.sourceID ?? "") }
 				let added = reconcile(.file(others), into: account, stored: open, deleted: [], rules: rules, now: Date()).added
-				balance = Money(minorUnits: account.initialBalanceMinor.addingClamped(sum(ofSource)).addingClamped(sum(others)).subtractingClamped(sum(added)), currency: account.currency)
+				balance = Money(minorUnits: Int64(clampingSum: Int128(account.initialBalanceMinor) + sum(ofSource) + sum(others) - sum(added)), currency: account.currency)
 			}
 			if shared, let sourceBalance = source.balance { balance = sourceBalance }
 			return .init(name: source.name, transactions: source.rows.count - missing + gone, sourceTransactions: source.rows.count,

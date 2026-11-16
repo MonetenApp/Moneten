@@ -383,10 +383,13 @@ extension AccountResult {
 			guard let quantity else { throw HelperFailure.unreadable }
 			let value = try value.map { try AccountResult.money($0.amount, $0.currency ?? account.currency) }
 			let exchangeRate = try rate.map { ExchangeRate(base: $0.base, quoted: $0.quoted, rate: try AccountResult.decimal($0.rate)) }
-			return Holding(accountID: account.accountID, security: Security(name: name ?? isin ?? wkn ?? "", isin: isin, securityNumber: wkn),
+			let holding = Holding(accountID: account.accountID, security: Security(name: name ?? isin ?? wkn ?? "", isin: isin, securityNumber: wkn),
 				quantity: try AccountResult.decimal(quantity), isNominal: nominal == true, nominalCurrency: nominal == true ? currency : nil,
 				quote: try price.map(Self.quote), marketValue: value, accruedInterest: try accrued.map { try AccountResult.money($0.amount, $0.currency ?? account.currency) },
 				purchasePrice: try purchase.map(Self.quote), exchangeRate: exchangeRate)
+			// A quantity times a price beyond the limit fails the account, as an amount beyond it does.
+			guard holding.amountsFit(in: account.currency) else { throw HelperFailure.tooLarge }
+			return holding
 		}
 
 		private static func quote(_ a: Amount) throws -> Quote {

@@ -68,7 +68,7 @@ struct BalanceChart: View {
 	private func portfolioCaption(_ portfolios: [Account], currency: String) -> some View {
 		let first = portfolios.compactMap { model.ledger.portfolioValues(of: $0.id).first?.day }.min()
 		let unrecorded = portfolios.filter { model.ledger.portfolioValues(of: $0.id).isEmpty }
-		let leftOut = Money(minorUnits: unrecorded.reduce(0) { $0.addingClamped(model.ledger.balance(of: $1).minorUnits) }, currency: currency)
+		let leftOut = Money(minorUnits: Int64(clampingSum: unrecorded.reduce(Int128(0)) { $0 + Int128(model.ledger.balance(of: $1).minorUnits) }), currency: currency)
 		let parts = [first.map { "Portfolios from \(Format.day($0))" }, unrecorded.isEmpty ? nil : "Portfolios not shown: \(Format.money(leftOut))"]
 		let text = parts.compactMap { $0 }.joined(separator: " · ")
 		if !text.isEmpty {
