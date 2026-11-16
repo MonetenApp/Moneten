@@ -74,9 +74,9 @@ SQLite keeps the side files `-journal`, `-wal`, and `-shm` next to a file. Befor
 2. List the copies. Each copy that the random key opens is to be re-keyed. A copy that the random key does not open stays as it is. A copy with another error is reported.
 3. Write `RekeyCopies` with the names to re-key. A failure throws before anything changed.
 4. Re-key the database. A failure throws, and the database keeps the random key.
-5. Remove `NoPassword`.
-6. Re-key each listed copy and check that the password opens it.
-7. Write the copies that failed back into `RekeyCopies`, or remove the marker when none failed.
+5. Re-key each listed copy and check that the password opens it.
+6. Write the copies that failed back into `RekeyCopies`, or remove the marker when none failed.
+7. Remove `NoPassword`.
 8. Remove the random key from the Keychain, but only when no copy still needs it. Otherwise the key stays and the error names the copies.
 
 A stop before step 4: the next start opens with the random key, and step 4 of "Open" finds every listed copy done. A stop after step 4: `NoPassword` may still exist, the random key does not open the database, and the lock screen asks for the password. Step 4 of "Open" then re-keys each copy with the random key, and the vault removes the key once no copy needs it.
