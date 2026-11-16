@@ -147,7 +147,6 @@ struct AccountSettingsSheet: View {
 	/// The account as the settings opened.
 	@State private var opened: Account?
 	@State private var initialBalance = ""
-	@State private var confirmRemove = false
 	@State private var confirmRemovePIN = false
 	@State private var color = Color.accentColor
 	@State private var originalColor = Color.accentColor
@@ -165,7 +164,7 @@ struct AccountSettingsSheet: View {
 				model.save(account: a)
 				return true
 			}, leading: {
-				Button("Remove Account...", role: .destructive) { confirmRemove = true }
+				Button("Remove Account...", role: .destructive) { if model.confirmRemove(.account(accountID)) { dismiss() } }
 			}) {
 				if let binding = Binding($account) {
 					Section {
@@ -231,16 +230,6 @@ struct AccountSettingsSheet: View {
 				initialBalance = Format.editableAmount(original.initialBalanceMinor, original.currency)
 				color = AccountColors.color(of: original)
 				originalColor = color
-			}
-			.confirmationDialog("Are you sure you want to remove the account \(original.name)?", isPresented: $confirmRemove) {
-				Button("Remove", role: .destructive) {
-					Task { await model.remove(account: original.id) }
-					dismiss()
-				}
-			} message: {
-				Text(original.kind == .portfolio
-					? "All transactions and the recorded value history of this portfolio will be removed as well. You could alternatively mark the account as closed in the account settings."
-					: "All transactions of this account will be removed as well. You could alternatively mark the account as closed in the account settings.")
 			}
 		}
 	}
