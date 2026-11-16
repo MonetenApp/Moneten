@@ -80,8 +80,9 @@ final class TestSession: SyncSession, Sendable {
 		log.withLock { $0.compactMap { if case let .sent(line) = $0 { line } else { nil } } }
 	}
 
-	func connector(_ package: ExtensionPackage, fixture: Fixture = network([]), known: [Transaction] = [], decisions: [String: HostDecision] = [:]) -> ExtensionConnector {
-		let services = ExtensionConnector.Services(hostDecisions: { decisions }, saveDecision: { _, _ in }, transactions: { _ in known },
+	func connector(_ package: ExtensionPackage, fixture: Fixture = network([]), known: [Transaction] = [], decisions: [String: HostDecision] = [:],
+		save: @escaping @Sendable (HostDecision, String) -> Void = { _, _ in }) -> ExtensionConnector {
+		let services = ExtensionConnector.Services(hostDecisions: { decisions }, saveDecision: { save($0, $1) }, transactions: { _ in known },
 			log: { line in
 				self.log.withLock { $0.append(line) }
 				if case let .print(text) = line, text == self.attendsAt { self.attended.withLock { $0 = true } }

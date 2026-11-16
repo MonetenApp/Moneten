@@ -25,6 +25,9 @@ struct ListedAccount: Equatable {
 	let iban: String?
 	let bic: String?
 	let kind: AccountKind
+	/// The results of the account have `securities`. Only the field `portfolio` decides, whatever `type` says:
+	/// any value but `false` and nil, also the number 0, makes it true.
+	let holdsSecurities: Bool
 
 	/// The number with the sub-account when there is one, as messages name the account.
 	var number: String {
@@ -50,6 +53,8 @@ struct ListedAccount: Equatable {
 		currency = fields.text("currency")?.uppercased() ?? "EUR"
 		iban = fields.text("iban")
 		bic = fields.text("bic")
+		holdsSecurities = fields["portfolio"].map { $0 != .boolean(false) && $0 != .null } ?? false
+		// The kind keeps its rule, because the remote ID depends on it and a stored access knows its accounts by it.
 		if fields["portfolio"] == .boolean(true) {
 			kind = .portfolio
 		} else if let type = fields.text("type").flatMap(AccountType.init(rawValue:)) {
@@ -83,11 +88,11 @@ extension AccountType {
 
 /// What `RefreshAccount` returned for one account.
 enum ResultMapping {
-	/// Reads the result table. A portfolio needs `securities`, every other account a balance and
+	/// Reads the result table. An account with `portfolio` needs `securities`, every other account a balance and
 	/// `transactions`; a missing part fails the account with a message that names it.
 	static func refreshResult(_ value: LuaValue, of account: ListedAccount, since: Day?, timeZone: TimeZone) throws(MappingError) -> RefreshResult {
 		guard case let .object(fields) = value else { throw MappingError("The extension returned no result table.") }
-		if account.kind == .portfolio {
+		if account.holdsSecurities {
 			guard case let .array(securities)? = fields["securities"] else {
 				throw MappingError("The securities could not be fetched.")
 			}
