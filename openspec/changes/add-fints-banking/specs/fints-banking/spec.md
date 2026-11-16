@@ -353,7 +353,7 @@ The app SHALL fetch all accounts of one login that are due in a refresh inside o
 
 ### Requirement: Show notices of the bank
 
-The app SHALL show a notice that the bank sends through FinTS, for example about planned maintenance, in a window titled "Notice" with the name of the bank and the text of the bank. A notice about one account also names the account and the code of the bank. Each notice is shown once until the app locks. A notice of an automatic refresh waits until the user starts a refresh or brings the main window forward.
+The app SHALL show a notice that the bank sends through FinTS, such as planned maintenance, in a window titled "Notice" with the name of the bank and the text of the bank when the refresh ends. A notice about one account also names the account and the code of the bank. Each notice is shown once until the app locks. A notice of an automatic refresh waits until a refresh that the user started ends or the main window comes forward.
 
 #### Scenario: Maintenance announcement
 
@@ -371,7 +371,7 @@ The app SHALL show a notice that the bank sends through FinTS, for example about
 
 #### Scenario: Notice before a failed login
 
-- **GIVEN** the bank sends the notice "Wartungsarbeiten bis 5 Uhr" and then rejects the login with the code 9800 and the text "Dialog abgebrochen"
+- **GIVEN** the bank sends the notice "Wartungsarbeiten bis 5 Uhr" and then ends the login with the code 9800 and the text "Dialog abgebrochen"
 - **WHEN** a refresh that the user started ends
 - **THEN** the window "Notice" shows "Wartungsarbeiten bis 5 Uhr"
 - **AND** the error of the account quotes "Dialog abgebrochen"
@@ -388,6 +388,15 @@ The app SHALL show a notice that the bank sends through FinTS, for example about
 - **WHEN** the first refresh after the setup ends with the same notice
 - **THEN** no window "Notice" opens
 
+#### Scenario: Notice before a failed login in the setup
+
+- **GIVEN** the app has an access of Musterbank
+- **AND** the bank sends the notice "Wartungsarbeiten bis 5 Uhr" and then ends the login of a new access in the assistant "Add Account" with the code 9800 and the text "Dialog abgebrochen"
+- **WHEN** the user clicks "Next" in the login step
+- **THEN** the login step shows the error with "Dialog abgebrochen"
+- **AND** it shows "Wartungsarbeiten bis 5 Uhr" under "Notices of the bank"
+- **AND** no window "Notice" opens when the next refresh of the access of Musterbank ends with the same notice
+
 #### Scenario: Lock
 
 - **GIVEN** the window "Notice" showed the notice "Wartungsarbeiten am 14.11.2026 von 1 bis 5 Uhr"
@@ -402,6 +411,12 @@ The app SHALL show the text and the return code that the bank sends when the ban
 
 - **WHEN** the bank answers a transaction request with the code 9010 and the text "Verarbeitung nicht möglich"
 - **THEN** the error of the account quotes "Verarbeitung nicht möglich" and shows the code 9010
+
+#### Scenario: Code of the second factor without its cause
+
+- **GIVEN** the last challenge of the refresh asked for a typed TAN, and the bank allows the user the TAN method "pushTAN 2.0"
+- **WHEN** the bank answers with the code 9951 and the text "Zeitüberschreitung im Zwei-Schritt-Verfahren", or with the code 9955 and the text "Ein-Schritt-TAN-Verfahren nicht zugelassen"
+- **THEN** the error of the account quotes the text of the bank and shows its code
 
 #### Scenario: Warning with a successful answer
 
@@ -421,13 +436,74 @@ The app SHALL stop the dialog when the bank reports that the PIN must be changed
 
 ### Requirement: Handle a blocked access
 
-The app SHALL stop when the bank reports that the PIN or the access is blocked, show the message of the bank, tell the user to ask the bank to unblock it, and not log in again for that access until the user starts a refresh by hand.
+The app SHALL stop when the bank reports that the PIN or the access is blocked, show the message of the bank, tell the user to ask the bank to unblock it, and not log in again for that access until the user starts a refresh by hand. When one code of the bank means a wrong PIN or a block, the app treats the answer as a block only when its text reports a block that happened and names no remaining attempts, no block to come, and no denial, and as a wrong PIN with the text of the bank otherwise.
 
 #### Scenario: PIN blocked after wrong attempts
 
-- **WHEN** the bank reports that the PIN is blocked
-- **THEN** the accounts of the access show that the server has blocked the PIN
+- **WHEN** the bank answers the login with the code 9930 and the text "PIN gesperrt"
+- **THEN** the accounts of the access show that the bank blocked the access, the text "PIN gesperrt" with the code 9930, and "Ask the bank to unblock it."
+- **AND** the app asks for no new PIN
 - **AND** the automatic refresh skips this access from then on
+
+#### Scenario: Warning of a blocked access in a login
+
+- **GIVEN** a refresh of "Giro"
+- **WHEN** the bank accepts the login with the code 0020 and the warning 3938 "Ihr Zugang ist vorläufig gesperrt - Bitte PIN-Sperre aufheben."
+- **THEN** the app sends no request for "Giro" and the refresh fails
+- **AND** "Giro" shows that the bank blocked the access, the text of the warning with the code 3938, and "Ask the bank to unblock it."
+
+#### Scenario: Warning of a blocked access in the setup
+
+- **GIVEN** the assistant "Add Account" logs in to "Musterbank"
+- **WHEN** the bank accepts the login with the warning 3938 "Ihr Zugang ist vorläufig gesperrt - Bitte PIN-Sperre aufheben."
+- **THEN** the assistant lists no accounts and shows that the bank blocked the access with "Ask the bank to unblock it."
+
+#### Scenario: Block with the code of a failed login
+
+- **WHEN** the bank answers the login with the code 9931 and the text "Teilnehmersperre durchgeführt, Entsperren nur durch Kreditinstitut"
+- **THEN** the accounts of the access show that the bank blocked the access and "Ask the bank to unblock it."
+- **AND** the app asks for no new PIN
+
+#### Scenario: Wrong PIN with the code of a failed login
+
+- **WHEN** the bank answers the login with the code 9931 and the text "Anmeldename oder PIN ist falsch"
+- **THEN** the PIN sheet opens again with "Anmeldename oder PIN ist falsch"
+
+#### Scenario: Warning of a block to come in an automatic refresh
+
+- **GIVEN** the app has the PIN of "Musterbank" saved
+- **WHEN** the automatic refresh logs in and the bank answers with the code 9931 and the text "PIN falsch. Weitere Fehlversuche führen zur Sperrung."
+- **THEN** the app deletes the saved PIN and sends no second login
+- **AND** the accounts of the access show that the bank did not accept the PIN, with "PIN falsch. Weitere Fehlversuche führen zur Sperrung."
+- **AND** the automatic refresh sends no PIN for this access until the user starts a refresh
+- **AND** the PIN sheet of the refresh that the user starts shows "PIN falsch. Weitere Fehlversuche führen zur Sperrung."
+
+#### Scenario: Warning of a block to come in a manual refresh
+
+- **WHEN** the bank answers the login with the code 9931 and the text "Weitere Fehlversuche führen zur Sperrung"
+- **THEN** the PIN sheet opens again with "Weitere Fehlversuche führen zur Sperrung"
+
+#### Scenario: Wrong PIN with a text that denies a block
+
+- **WHEN** the bank answers the login with the code 9931 and the text "PIN falsch, Zugang nicht gesperrt"
+- **THEN** the PIN sheet opens again with "PIN falsch, Zugang nicht gesperrt"
+
+#### Scenario: Block with a text that also names a wrong PIN
+
+- **WHEN** the bank answers the login with the code 9931 and the text "PIN ungültig - Zugang ist blockiert"
+- **THEN** the accounts of the access show that the bank blocked the access and "Ask the bank to unblock it."
+- **AND** the app asks for no new PIN
+
+#### Scenario: Wrong PIN with a count of the attempts that remain before a block
+
+- **WHEN** the bank answers the login with the code 9931 and the text "PIN falsch. Noch 1 Fehlversuch bis zur Sperrung."
+- **THEN** the PIN sheet opens again with "PIN falsch. Noch 1 Fehlversuch bis zur Sperrung."
+
+#### Scenario: Block with a text that names the unblock to come
+
+- **WHEN** the bank answers the login with the code 9931 and the text "Zugang ist gesperrt und wird erst nach Freischaltung wieder nutzbar."
+- **THEN** the accounts of the access show that the bank blocked the access and "Ask the bank to unblock it."
+- **AND** the app asks for no new PIN
 
 ### Requirement: Cancel and interruption
 

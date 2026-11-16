@@ -356,7 +356,8 @@ public struct Vault: Sendable {
 			let fm = FileManager.default
 			if fm.fileExists(atPath: repairMarker.path) { queue = try repair(queue, key: key) }
 			let migrator = Schema.migrator
-			if try queue.read({ db in try migrator.hasBeenSuperseded(db) }) {
+			let unknown = try queue.read { db in try migrator.appliedIdentifiers(db).subtracting(migrator.appliedMigrations(db)) }
+			if !unknown.isEmpty {
 				let recorded = try queue.read { db in try Int.fetchOne(db, sql: "PRAGMA user_version") ?? 0 }
 				throw Failure.newerVersion(needed: Self.versionName(recorded), running: Self.versionName(Self.versionCode(version)) ?? version)
 			}

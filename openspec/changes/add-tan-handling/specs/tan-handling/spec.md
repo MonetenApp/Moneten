@@ -96,6 +96,26 @@ The app SHALL tell the user when the bank reports no TAN method that the app can
 - **THEN** the app says that there are no available TAN methods and names both steps
 - **AND** the account shows this text as its error
 
+#### Scenario: Only the one-step method allowed
+
+- **GIVEN** the bank allows the user only the one-step method 999
+- **WHEN** the bank refuses the login with the code 9075 and the text "Starke Kundenauthentifizierung notwendig", or with the code 9955 and the text "Ein-Schritt-TAN-Verfahren nicht zugelassen"
+- **THEN** the account shows that there are no available TAN methods, the text of the bank with its code, and both steps
+
+#### Scenario: Other error while only the one-step method is allowed
+
+- **GIVEN** the bank allows the user only the one-step method 999
+- **WHEN** the bank refuses the login with the code 9010 and the text "Verarbeitungssystem nicht verfügbar"
+- **THEN** the account shows "Verarbeitungssystem nicht verfügbar" with the code 9010
+- **AND** the automatic refresh tries the access again after its interval
+
+#### Scenario: Automatic refresh without a TAN method
+
+- **GIVEN** the refresh of "Giro" failed because there are no available TAN methods
+- **WHEN** the automatic refresh runs
+- **THEN** it skips the access
+- **AND** after a refresh of "Giro" that the user started succeeds, the automatic refresh fetches "Giro" again after its interval
+
 #### Scenario: Method only on the website
 
 - **WHEN** the bank offers a method for its website only and not for its FinTS server
@@ -180,6 +200,13 @@ The app SHALL show that the required authorization was not carried out when the 
 
 - **WHEN** the user declines the request in the app of the bank
 - **THEN** the dialog closes and the account shows that the required authorization was not carried out
+
+#### Scenario: No answer in the app in time
+
+- **GIVEN** the dialog waits for an approval in the app of the bank
+- **WHEN** the bank answers with the code 9951 and the text "Zeitüberschreitung im Zwei-Schritt-Verfahren"
+- **THEN** the dialog closes and the account shows that the required authorization was not carried out, with the text of the bank
+- **AND** the app sends no new request
 
 ### Requirement: Image challenges
 
