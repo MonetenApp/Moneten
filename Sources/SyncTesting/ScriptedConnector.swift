@@ -7,9 +7,10 @@ public struct ScriptedConnector: BankConnector {
 	public enum Step: Sendable {
 		/// Asks the user and records the answer.
 		case ask(UserRequest)
-		/// Asks the user and withdraws the request after `after`, as a connector does when the bank
-		/// reports an approval in its app.
-		case approve(UserRequest, after: Duration)
+		/// Asks the user and withdraws the request when `until` returns, as a connector does when the bank
+		/// reports an approval in its app. A test that waits for the dialog first lets `until` return
+		/// after it saw the dialog, so a busy machine cannot withdraw it before the test looks.
+		case approve(UserRequest, until: @Sendable () async throws -> Void)
 		case progress(SyncProgress)
 		case wait(Duration)
 		case fetched(UUID, RefreshResult = RefreshResult(balance: nil, transactions: nil))
@@ -35,10 +36,10 @@ public struct ScriptedConnector: BankConnector {
 			switch step {
 			case let .ask(userRequest):
 				answers.append(try await session.ask(userRequest))
-			case let .approve(userRequest, delay):
+			case let .approve(userRequest, withdrawal):
 				try await withThrowingTaskGroup(of: Void.self) { group in
 					group.addTask { _ = try await session.ask(userRequest) }
-					group.addTask { try await Task.sleep(for: delay) }
+					group.addTask { try await withdrawal() }
 					try await group.next()
 					group.cancelAll()
 				}

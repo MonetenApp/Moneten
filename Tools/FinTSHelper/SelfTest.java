@@ -198,6 +198,8 @@ final class SelfTest {
 			expect("the error that needs action", FinTSHelper.Json.write(FinTSHelper.failure(new ProcessException("init", rejected))),
 				"{\"type\":\"failed\",\"code\":\"9942\",\"text\":\"PIN falsch\"}");
 
+			errorsOfTheBank();
+
 			HBCIExecStatus loginFailed = new HBCIExecStatus();
 			HBCIDialogStatus dialog = new HBCIDialogStatus();
 			dialog.setInitStatus(rejected);
@@ -511,6 +513,160 @@ final class SelfTest {
 		expect("other banks: HKTAN as their parameters say", needtan(other, orders), "HKSAL=N HKKAZ=N HKCAZ=N HKWPD=J HKTAN=N");
 	}
 
+	/// The errors that decide what the user must do (tasks 1.22 and 1.24 of add-fints-banking, and 1.7, 1.14, and 1.22
+	/// of add-tan-handling), with the codes of the FinTS return codes and made-up texts.
+	static void errorsOfTheBank() {
+		expect("a blocked access comes before a wrong PIN and the end of the dialog", failed(status("9800", "Dialog abgebrochen", "9942", "PIN falsch",
+			"9933", "Ihr Zugang ist gesperrt - Bitte informieren Sie Ihren Berater.")),
+			"{\"type\":\"failed\",\"code\":\"9933\",\"text\":\"Ihr Zugang ist gesperrt - Bitte informieren Sie Ihren Berater.\"}");
+		HBCIMsgStatus warned = status("0020", "Dialoginitialisierung erfolgreich");
+		warned.globStatus.addRetVal(new HBCIRetVal(null, null, null, "3938", "Ihr Zugang ist vorläufig gesperrt - Bitte PIN-Sperre aufheben.", null));
+		HBCIDialogStatus dialog = new HBCIDialogStatus();
+		dialog.setInitStatus(warned);
+		HBCIExecStatus login = new HBCIExecStatus();
+		login.addDialogStatus("erika77", dialog);
+		expect("a login with the warning of a PIN block fails the run", FinTSHelper.Json.write(FinTSHelper.failure(thrown(() -> FinTSHelper.requireLogin(login)))),
+			"{\"type\":\"failed\",\"code\":\"3938\",\"text\":\"Ihr Zugang ist vorläufig gesperrt - Bitte PIN-Sperre aufheben.\"}");
+		HBCIMsgStatus noted = status("0020", "Dialoginitialisierung erfolgreich");
+		noted.globStatus.addRetVal(new HBCIRetVal(null, null, null, "3076", "Starke Kundenauthentifizierung nicht notwendig", null));
+		HBCIDialogStatus fine = new HBCIDialogStatus();
+		fine.setInitStatus(noted);
+		HBCIExecStatus loggedIn = new HBCIExecStatus();
+		loggedIn.addDialogStatus("erika77", fine);
+		expect("a login with another warning goes on", thrown(() -> FinTSHelper.requireLogin(loggedIn)), null);
+
+		FinTSHelper.Callback.approvalAsked = false;
+		expect("a wrong TAN", failed(status("9050", "Teilweise fehlerhaft", "9941", "TAN ungültig")),
+			"{\"type\":\"failed\",\"code\":\"9941\",\"text\":\"TAN ungültig\"}");
+		FinTSHelper.Callback.approvalAsked = true;
+		expect("a refused TAN after an approval in the app is an approval that did not happen", failed(status("9941", "Freigabe abgelehnt")),
+			"{\"type\":\"failed\",\"kind\":\"approvalDeclined\",\"code\":\"9941\",\"text\":\"Freigabe abgelehnt\"}");
+		expect("a refused TAN of one order after an approval", FinTSHelper.Json.write(FinTSHelper.problem(refusedJob("9951", "Zeitüberschreitung im Zwei-Schritt-Verfahren"))),
+			"{\"type\":\"error\",\"kind\":\"approvalDeclined\",\"code\":\"9951\",\"text\":\"Zeitüberschreitung im Zwei-Schritt-Verfahren\"}");
+		expect("another error after an approval keeps its code alone", failed(status("9010", "Verarbeitung nicht möglich")),
+			"{\"type\":\"failed\",\"code\":\"9010\",\"text\":\"Verarbeitung nicht möglich\"}");
+		FinTSHelper.Callback.approvalAsked = false;
+		expect("a refused TAN of one order", FinTSHelper.Json.write(FinTSHelper.problem(refusedJob("9943", "TAN bereits verbraucht"))),
+			"{\"type\":\"error\",\"code\":\"9943\",\"text\":\"TAN bereits verbraucht\"}");
+
+		FinTSHelper.Passport passport = passport();
+		passport.setAllowedTwostepMechanisms(new ArrayList<>(List.of("999")));
+		expect("a user with only the one-step method has no TAN method", FinTSHelper.withoutTanMethod(passport), true);
+		expect("the one-step method refused for the login of such a user", refused(passport, status("9075", "Starke Kundenauthentifizierung notwendig")) + " "
+			+ refused(passport, status("9800", "Dialog abgebrochen", "9075", "Starke Kundenauthentifizierung notwendig")) + " "
+			+ refused(passport, status("9955", "Ein-Schritt-TAN-Verfahren nicht zugelassen")), "true true true");
+		expect("an error of another cause while only the one-step method is allowed", refused(passport, status("9010", "Verarbeitungssystem nicht verfügbar")) + " "
+			+ refused(passport, status("9942", "PIN falsch", "9075", "Starke Kundenauthentifizierung notwendig")) + " "
+			+ refused(passport, status("9933", "Zugang gesperrt", "9955", "Ein-Schritt-TAN-Verfahren nicht zugelassen")), "false false false");
+		expect("a failure without a code while only the one-step method is allowed", FinTSHelper.oneStepRefusal(passport,
+			new HBCI_Exception("canceled")) + " " + FinTSHelper.oneStepRefusal(passport, new HBCI_Exception("can not connect",
+			new java.net.ConnectException("Connection refused"))), "null null");
+		expect("the failure of a login without a TAN method keeps the code and the text of the bank", noTanMethod(passport,
+			status("9955", "Ein-Schritt-TAN-Verfahren nicht zugelassen")) + " " + noTanMethod(passport, status("9800", "Dialog abgebrochen",
+			"9075", "Starke Kundenauthentifizierung notwendig")), "{\"type\":\"failed\",\"kind\":\"noTANMethod\",\"code\":\"9955\","
+			+ "\"text\":\"Ein-Schritt-TAN-Verfahren nicht zugelassen\"} {\"type\":\"failed\",\"kind\":\"noTANMethod\",\"code\":\"9075\","
+			+ "\"text\":\"Starke Kundenauthentifizierung notwendig\"}");
+		passport.setAllowedTwostepMechanisms(new ArrayList<>(List.of("999", "922")));
+		expect("a user with pushTAN has a TAN method", FinTSHelper.withoutTanMethod(passport) + " " + refused(passport, status("9955", "Ein-Schritt-TAN-Verfahren nicht zugelassen")),
+			"false false");
+		passport.setAllowedTwostepMechanisms(new ArrayList<>());
+		expect("a bank that names no methods of the user", FinTSHelper.withoutTanMethod(passport), false);
+
+		FinTSHelper.Callback.approvalAsked = true;
+		new FinTSHelper.Callback(Map.of()).restart();
+		expect("a new dialog after a change of the method starts without the approval", FinTSHelper.Callback.approvalAsked, false);
+
+		blockedLogin();
+	}
+
+	static boolean refused(FinTSHelper.Passport passport, HBCIMsgStatus status) {
+		return FinTSHelper.oneStepRefusal(passport, new ProcessException("init", status)) != null;
+	}
+
+	static String noTanMethod(FinTSHelper.Passport passport, HBCIMsgStatus status) {
+		ProcessException e = new ProcessException("init", status);
+		return FinTSHelper.Json.write(FinTSHelper.failure(FinTSHelper.noTanMethod(FinTSHelper.oneStepRefusal(passport, e), e)));
+	}
+
+	/// The warning 3938 in the answer to a dialog initialization, which hbci4java counts as a successful login.
+	static void blockedLogin() {
+		Properties upd = new Properties();
+		upd.setProperty("KInfo.KTV.number", "0000202051");
+		upd.setProperty("KInfo.KTV.KIK.country", "DE");
+		upd.setProperty("KInfo.KTV.KIK.blz", "12030000");
+		upd.setProperty("KInfo.iban", "DE02120300000000202051");
+		upd.setProperty("KInfo.customerid", "erika77");
+		upd.setProperty("KInfo.cur", "EUR");
+		upd.setProperty("KInfo.konto", "Girokonto");
+		FinTSHelper.Passport passport = passport(upd);
+		HBCIMsgStatus answer = status();
+		answer.globStatus.addRetVal(new HBCIRetVal(null, null, null, "0020", "Dialoginitialisierung erfolgreich", null));
+		answer.segStatus.addRetVal(new HBCIRetVal(null, null, null, "3938", "Ihr Zugang ist vorläufig gesperrt - Bitte PIN-Sperre aufheben.", null));
+		answer.getData().setProperty("MsgHead.dialogid", "D-3938");
+		DialogContext login = DialogContext.create(null, passport);
+		try {
+			Method update = DialogContext.class.getDeclaredMethod("update", HBCIMsgStatus.class);
+			update.setAccessible(true);
+			update.invoke(login, answer);
+		} catch (ReflectiveOperationException e) {
+			failures.add("dialog context: " + e);
+		}
+		String blocked = "{\"type\":\"failed\",\"code\":\"3938\",\"text\":\"Ihr Zugang ist vorläufig gesperrt - Bitte PIN-Sperre aufheben.\"}";
+		expect("the warning of a PIN block fails the dialog initialization", json(thrown(() -> passport.onDialogEvent(DialogEvent.MSG_SENT, login))), blocked);
+		expect("no order after the warning of a PIN block", json(thrown(() -> passport.onDialogEvent(DialogEvent.JOBS_CREATED, login))), blocked);
+		expect("no further message after the warning of a PIN block", json(thrown(() -> passport.onDialogEvent(DialogEvent.MSG_CREATE, login))), blocked);
+		expect("the setup login after the warning of a PIN block", json(thrown(passport::requireUnblocked)), blocked);
+		expect("a passport without the warning lets the setup go on", thrown(passport()::requireUnblocked), null);
+
+		// hbci4java keeps the failed request of the TAN media to itself, so HBCIHandler returns, and the setup goes on.
+		expect("the setup after a login whose request of the TAN media got the warning of a PIN block fails and lists no accounts",
+			loggedIn("accounts", passport), blocked + " sent nothing");
+		expect("the setup after a login without the warning lists the accounts", loggedIn("accounts", passport(upd)).replaceAll("\"data\":\"[^\"]*\"", "\"data\":…"),
+			"nothing thrown sent {\"type\":\"accounts\",\"accounts\":[{\"type\":\"account\",\"number\":\"0000202051\",\"iban\":\"DE02120300000000202051\","
+				+ "\"bic\":\"BYLADEM1001\",\"product\":\"Girokonto\",\"currency\":\"EUR\"}]}\n{\"type\":\"state\",\"data\":…}");
+	}
+
+	/// The failure of the rest of a dialog after the login, and the lines that it sent to the app.
+	static String loggedIn(String type, FinTSHelper.Passport passport) {
+		PrintStream pipe = FinTSHelper.out;
+		ByteArrayOutputStream lines = new ByteArrayOutputStream();
+		FinTSHelper.out = new PrintStream(lines, true, StandardCharsets.UTF_8);
+		try {
+			Throwable failure = thrown(() -> {
+				try {
+					FinTSHelper.loggedIn(type, Map.of(), new FinTSHelper.Callback(Map.of()), null, passport);
+				} catch (IOException e) {
+					throw new java.io.UncheckedIOException(e);
+				}
+			});
+			String sent = lines.toString(StandardCharsets.UTF_8).trim();
+			return json(failure) + " sent " + (sent.isEmpty() ? "nothing" : sent);
+		} finally {
+			FinTSHelper.out = pipe;
+		}
+	}
+
+	static String json(Throwable e) {
+		return e == null ? "nothing thrown" : FinTSHelper.Json.write(FinTSHelper.failure(e));
+	}
+
+	/// A message status with the errors of the codes and texts.
+	static HBCIMsgStatus status(String... codesAndTexts) {
+		HBCIMsgStatus status = new HBCIMsgStatus();
+		for (int i = 0; i < codesAndTexts.length; i += 2) status.segStatus.addRetVal(new HBCIRetVal(null, null, null, codesAndTexts[i], codesAndTexts[i + 1], null));
+		return status;
+	}
+
+	static String failed(HBCIMsgStatus status) {
+		return FinTSHelper.Json.write(FinTSHelper.failure(new ProcessException("execute", status)));
+	}
+
+	static GVRSaldoReq refusedJob(String code, String text) {
+		GVRSaldoReq result = new GVRSaldoReq();
+		result.jobStatus.addRetVal(new HBCIRetVal(null, null, null, code, text, null));
+		return result;
+	}
+
 	static String needtan(Properties bpd, String[] orders) {
 		List<String> all = new ArrayList<>();
 		for (int i = 0; i < orders.length; i++) all.add(orders[i] + "=" + bpd.getProperty("Params_" + (i + 1) + ".PinTanPar1.ParPinTan.PinTanGV_" + (i + 1) + ".needtan"));
@@ -550,6 +706,11 @@ final class SelfTest {
 	/// A passport with made-up bank parameters: a PIN of 5 to 10 characters, and the methods pushTAN 2.0
 	/// (an approval in the app), chipTAN QR, and mobileTAN with a TAN medium, all three allowed for the user.
 	static FinTSHelper.Passport passport() {
+		return passport(null);
+	}
+
+	/// A passport with the parameters of a made-up bank, and with the accounts of `upd` when it is not null.
+	static FinTSHelper.Passport passport(Properties upd) {
 		Properties bpd = new Properties();
 		bpd.setProperty("Params_1.PinTanPar1.ParPinTan.pinlen_min", "5");
 		bpd.setProperty("Params_1.PinTanPar1.ParPinTan.pinlen_max", "10");
@@ -572,6 +733,7 @@ final class SelfTest {
 		d.filter = "Base64";
 		d.hbciVersion = "300";
 		d.bpd = bpd;
+		d.upd = upd;
 		d.twostepMechs = new ArrayList<>(List.of("901", "913", "922"));
 		d.tanMethod = "922";
 		FinTSHelper.Passport.loaded = d;
