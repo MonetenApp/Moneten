@@ -86,8 +86,8 @@ public struct Reconciliation: Sendable, Equatable {
 	/// counts them as rows of the source while the source has them. Only a migration fills it.
 	public internal(set) var relinked: [DeletedTransaction.Relink] = []
 	/// The account with the balance and the date of this refresh, and, on its first refresh with a
-	/// balance, the initial balance that follows from them. Nil for a file, and when the refresh brought
-	/// no balance in the currency of the account.
+	/// balance, the initial balance that follows from them, and the mark of missing older transactions. Nil for
+	/// a file, and when the refresh brought no balance in the currency of the account and left the mark.
 	public internal(set) var account: Account?
 	/// The positions that replace those of the account, with the IDs of the stored positions of the same
 	/// securities. Nil when the delivery brought none.
@@ -221,18 +221,24 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored: [Tran
 			if delivery.covers(pending.sourceValues.bookingDate), pending.review == nil || pending.isChecked { r.dropped.append(pending.id) }
 		}
 	}
-	if case let .refresh(result) = delivery, let balance = result.balance, balance.currency == account.currency {
+	if case let .refresh(result) = delivery {
 		var a = account
-		a.bankBalanceMinor = balance.minorUnits
-		a.bankBalanceDate = result.balanceDate ?? now
-		if result.isPortfolio { a.kind = .portfolio }
-		// A balance whose transactions failed would set the value without the rows that the next refresh brings.
-		if a.derivesInitialBalance, result.transactionFailure == nil {
-			// Dropped and marked rows are pending and do not count.
-			let changed = Dictionary(uniqueKeysWithValues: (r.booked + r.updated).map { ($0.id, $0) })
-			a.deriveInitialBalance(from: stored.map { changed[$0.id] ?? $0 } + r.added)
+		// The mark goes into the same write as the rows, so a failed merge changes neither.
+		a.missesOlderTransactions = result.missesOlder(after: account.missesOlderTransactions)
+		if let balance = result.balance, balance.currency == account.currency {
+			a.bankBalanceMinor = balance.minorUnits
+			a.bankBalanceDate = result.balanceDate ?? now
+			if result.isPortfolio { a.kind = .portfolio }
+			// A balance whose transactions failed would set the value without the rows that the next refresh brings.
+			if a.derivesInitialBalance, result.transactionFailure == nil {
+				// Dropped and marked rows are pending and do not count.
+				let changed = Dictionary(uniqueKeysWithValues: (r.booked + r.updated).map { ($0.id, $0) })
+				a.deriveInitialBalance(from: stored.map { changed[$0.id] ?? $0 } + r.added)
+			}
+			r.account = a
+		} else if a != account {
+			r.account = a
 		}
-		r.account = a
 	}
 	if case let .refresh(result) = delivery, let delivered = result.holdings {
 		r.holdings = Reconciliation.Holdings(accountID: account.id, holdings: Holding.identify(delivered, stored: holdings))
