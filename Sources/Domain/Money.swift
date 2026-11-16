@@ -182,7 +182,7 @@ public enum AmountParser {
 		var digits = String(money.minorUnits.magnitude)
 		if digits.count <= places { digits = String(repeating: "0", count: places + 1 - digits.count) + digits }
 		let sign = money.isNegative ? "-" : ""
-		let text = places == 0 ? sign + digits : sign + digits.dropLast(places) + String(decimalMark.rawValue) + digits.suffix(places)
+		let text = places == 0 ? sign + digits : sign + String(digits.dropLast(places)) + String(decimalMark.rawValue) + String(digits.suffix(places))
 		return decimal(from: text) == nil ? text + "0" : text
 	}
 
