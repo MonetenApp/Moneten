@@ -205,7 +205,7 @@ The app SHALL count manual transactions when it derives the initial balance of a
 
 ### Requirement: A refresh past a manual transaction sets the initial balance
 
-The app SHALL set an initial balance that a refresh derived to the new bank balance less the booked transactions in the account currency up to the end of its day when a refresh reports a balance whose day passes a manual transaction, whether the bank delivered a booking for it or not. This also takes in a difference that an older bank transaction left. A value that the user enters stays.
+The app SHALL set an initial balance that a refresh derived to the new bank balance less the booked transactions in the account currency up to the end of its day when a refresh reports a balance whose day passes a manual transaction, whether the bank delivered a booking for it or not. This also takes in a difference that an older bank transaction left. A refresh whose transactions failed keeps the earlier bank balance until one brings them. A value that the user enters stays.
 
 #### Scenario: Bank that reports only a balance
 
@@ -224,6 +224,13 @@ The app SHALL set an initial balance that a refresh derived to the new bank bala
 - **GIVEN** a credit card whose first refresh derived an initial balance of 100,00 € with the bank balance of 100,00 € on 01.11.2026, a bank transaction of -7,00 € on 20.10.2026 that a later refresh brought, so the app proposes a calibration of 7,00 €, and a manual transaction of -50,00 € on 05.11.2026
 - **WHEN** a refresh on 10.11.2026 reports the balance 50,00 € and no transactions
 - **THEN** the initial balance is 107,00 €, the computed balance on 10.11.2026 is 50,00 €, and the app proposes no calibration
+
+#### Scenario: Refresh whose transactions failed, then a retry
+
+- **GIVEN** a credit card whose first refresh derived an initial balance of 100,00 € with the bank balance of 100,00 € on 01.11.2026, and a manual transaction of -50,00 € on 05.11.2026
+- **WHEN** a refresh on 10.11.2026 reports the balance 50,00 € and the bank refuses its transactions
+- **THEN** the account keeps the bank balance of 100,00 € on 01.11.2026 and the initial balance of 100,00 €
+- **AND** a refresh on 11.11.2026 that brings the booking of -50,00 € on 05.11.2026 and the balance 50,00 € sets the initial balance to 150,00 €, and the computed balance on 11.11.2026 is 50,00 €
 
 #### Scenario: Entered value and a planned manual transaction
 

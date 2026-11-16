@@ -335,6 +335,26 @@ struct ReconcileTests {
 		#expect(ledger.computedBalance(of: account, through: day(10)) == Money(minorUnits: 5_000, currency: "EUR"))
 	}
 
+	@Test("A refresh whose transactions failed does not use up the crossing of a manual row, so the retry with the booking meets the bank balance")
+	func failedRefreshKeepsCrossingOfManualRow() throws {
+		let card = derivedCard
+		let planned = Transaction(accountID: card.id, bookingDate: day(5), amountMinor: -5_000, name: "Hotel Beispiel", isManual: true)
+		var ledger = Ledger(accounts: [card], transactions: [planned])
+		let failed = merge(.refresh(RefreshResult(balance: Money(minorUnits: 5_000, currency: "EUR"), balanceDate: day(10).date(in: .current), transactions: nil,
+			transactionFailure: .notFetched)), into: card, stored: [planned], at: day(10).date(in: .current))
+		ledger.apply(failed)
+		let kept = try #require(ledger.account(card.id))
+		// The balance waits for its rows, so the next refresh still passes the manual row.
+		#expect(kept.bankBalanceMinor == 10_000 && kept.bankBalanceDate == card.bankBalanceDate && kept.initialBalanceMinor == 10_000)
+		let booked = Transaction(accountID: card.id, bookingDate: day(5), amountMinor: -5_000, name: "HOTEL BEISPIEL", purpose: "Kartenzahlung", sourceID: "TX-9")
+		let retry = merge(refresh([booked], balance: Money(minorUnits: 5_000, currency: "EUR"), balanceDate: day(11).date(in: .current)),
+			into: kept, stored: ledger.transactions(ofAccount: card.id), at: day(11).date(in: .current))
+		ledger.apply(retry)
+		let account = try #require(ledger.account(card.id))
+		#expect(account.initialBalanceMinor == 15_000)
+		#expect(ledger.computedBalance(of: account, through: day(11)) == Money(minorUnits: 5_000, currency: "EUR"))
+	}
+
 	@Test("A bank that reports only a balance leaves an initial balance that the user entered")
 	func balanceOnlyRefreshWithEnteredValue() throws {
 		var card = derivedCard

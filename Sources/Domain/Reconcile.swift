@@ -237,10 +237,17 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored all: [
 		// The mark goes into the same write as the rows, so a failed merge changes neither.
 		a.missesOlderTransactions = result.missesOlder(after: account.missesOlderTransactions)
 		if let balance = result.balance, balance.currency == account.currency {
-			a.bankBalanceMinor = balance.minorUnits
-			a.bankBalanceDate = result.balanceDate ?? now
-			if result.isPortfolio { a.kind = .portfolio }
-			balanceArrived = true
+			var fresh = a
+			fresh.bankBalanceMinor = balance.minorUnits
+			fresh.bankBalanceDate = result.balanceDate ?? now
+			if result.isPortfolio { fresh.kind = .portfolio }
+			// A new day that passes a manual row sets a derived value with the rows up to that day. Without them the
+			// crossing would be used up, and the refresh that brings them would leave the value: a planned -50,00 €
+			// and its booking would both count. So the account keeps its balance until a refresh brings the rows.
+			if !(rowsFailed && account.followsBankBalance && passesManualRow(of: all, from: account, to: fresh)) {
+				a = fresh
+				balanceArrived = true
+			}
 		}
 		if balanceArrived || a != account { r.account = a }
 	}
