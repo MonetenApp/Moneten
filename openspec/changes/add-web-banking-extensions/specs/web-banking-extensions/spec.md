@@ -527,6 +527,11 @@ The app SHALL call `SupportsBank(protocol, bankCode)` to find the extension for 
 - **WHEN** the script returns `"https://bank.example/login"`
 - **THEN** the app uses this extension, and the global `url` has that value for the rest of the session
 
+#### Scenario: Protocol as text
+
+- **WHEN** a script compares `protocol == "Web Banking"` in `SupportsBank` for a web banking access
+- **THEN** the comparison is true, because `ProtocolWebBanking` holds the text "Web Banking" and `ProtocolFinTS` the text "HBCI+/FinTS"
+
 ### Requirement: Extensions add accounts to a FinTS access
 
 The app SHALL ask the installed extensions with `ProtocolFinTS` and the Bankleitzahl when a FinTS access is set up or refreshed. A responsible extension can add accounts that the bank does not offer through FinTS. `ListAccounts` then receives the accounts that are already known.
