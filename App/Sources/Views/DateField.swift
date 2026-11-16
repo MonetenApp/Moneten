@@ -20,12 +20,18 @@ struct DateField: View {
 	/// The text that the field wrote for the bound day. It keeps that day even where `Day(typed:)` cannot read the
 	/// format of the region back, such as a year of the Buddhist calendar.
 	@State private var shown = ""
+	@State private var shownDay: Day?
 	@State private var isMarked = false
 	@State private var showsCalendar = false
 	@FocusState private var hasFocus: Bool
 
 	private func completed(_ text: String) -> Day? {
 		Day(typed: text, today: .today(), order: DateOrder(locale: .current), expectsFuture: expectsFuture)
+	}
+
+	/// The day of a text. A text that returns to the one the field wrote, such as after Undo, brings its day back.
+	private func reading(_ text: String) -> Day? {
+		text == shown ? shownDay : completed(text)
 	}
 
 	var body: some View {
@@ -59,25 +65,25 @@ struct DateField: View {
 		}
 		.onAppear { show(day) }
 		.onChange(of: text) {
-			guard text != shown else { return }
-			day = completed(text)
+			day = reading(text)
 			if day != nil { isMarked = false }
 		}
 		.onChange(of: day) {
 			// A date from outside the text replaces the text.
-			if day.map(Format.day) != text, day != completed(text) { show(day) }
+			if day != reading(text) { show(day) }
 		}
 		.onChange(of: hasFocus) { if !hasFocus { leave() } }
 	}
 
-	/// Shows the full date, or marks the field and keeps it in editing ("Reject an impossible date").
 	private func show(_ day: Day?) {
+		shownDay = day
 		shown = day.map(Format.day) ?? ""
 		text = shown
 	}
 
+	/// Shows the full date, or marks the field and keeps it in editing ("Reject an impossible date").
 	private func leave() {
-		if text == shown, day != nil {
+		if text == shown, shownDay != nil {
 			isMarked = false
 		} else if let day = completed(text) {
 			isMarked = false
