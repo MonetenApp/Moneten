@@ -2,7 +2,9 @@
 import AppKit
 import Domain
 import ExtensionCatalog
+import FinTS
 import Foundation
+import SwiftUI
 import Synchronization
 
 /// The UI performance check of `scripts/perf-check.sh`. Each scenario drives the real app on
@@ -385,6 +387,41 @@ struct PerfScenario {
 				} catch { c.fail("booked file refresh failed") }
 				if c.model.ledger.transactions(ofAccount: account.id).count != stored.count { c.fail("booked file refresh changed row count") }
 			}),
+		// "Supported Banks..." on a directory of 2,700 banks, as many as the bank directory of the helper has with a
+		// FinTS address. The window used a `List`, and its rows are now a lazy stack (add-account-setup, task 1.21).
+		PerfScenario(name: "open-supported-banks", budget: halfSecond,
+			setUp: { _ in
+				SupportedBanksPerf.directory = SupportedBanksPerf.load()
+				SupportedBanksList.lastShown = nil
+			},
+			run: { c in
+				guard let directory = SupportedBanksPerf.directory else { return }
+				let window = NSWindow(contentViewController: NSHostingController(rootView: SupportedBanksList(directory: .success(directory)).environment(c.model)))
+				window.title = "Supported Banks Perf"
+				window.setContentSize(NSSize(width: 560, height: 640))
+				window.isReleasedWhenClosed = false
+				window.makeKeyAndOrderFront(nil)
+				SupportedBanksPerf.window = window
+				await SupportedBanksPerf.expect(c, "open", banks: 2_700, first: "Musterbank Altstadt 1028")
+			}),
+		PerfScenario(name: "search-supported-banks", budget: halfSecond,
+			run: { c in
+				guard let field = SupportedBanksPerf.field else { return c.fail("the search field has no focus") }
+				SupportedBanksList.lastShown = nil
+				field.insertText("Sparkasse", replacementRange: NSRange(location: NSNotFound, length: 0))
+				await SupportedBanksPerf.expect(c, "search", banks: 540, first: "Sparkasse Beispielstadt 1015")
+			}),
+		PerfScenario(name: "clear-supported-banks-search", budget: halfSecond,
+			run: { c in
+				guard let field = SupportedBanksPerf.field else { return c.fail("the search field has no focus") }
+				SupportedBanksList.lastShown = nil
+				field.selectAll(nil)
+				field.deleteBackward(nil)
+				await SupportedBanksPerf.expect(c, "clear", banks: 2_700, first: "Musterbank Altstadt 1028")
+				await c.settle()
+				SupportedBanksPerf.window?.close()
+				SupportedBanksPerf.window = nil
+			}),
 		// Last, because it adds 50,000 rows and leaves the window for a new transaction open: closing it draws the
 		// table of 100,000 rows again, which this scenario does not measure. Each keystroke in the name field searches
 		// 50,000 different names for suggestions. A name that matches none reads every row, the slowest case.
@@ -442,6 +479,42 @@ struct PerfScenario {
 		}
 		let index: [String: Any] = ["formatVersion": 1, "version": 1, "published": "2026-11-13T08:00:00Z", "extensions": packages]
 		return (try? JSONSerialization.data(withJSONObject: index)) ?? Data()
+	}
+}
+
+/// The window and the made-up bank directory of the scenarios of "Supported Banks".
+@MainActor
+enum SupportedBanksPerf {
+	static var directory: BankDirectory?
+	static var window: NSWindow?
+
+	static var field: NSTextView? { window?.firstResponder as? NSTextView }
+
+	/// Waits up to five seconds for the rows that `step` expects: `banks` banks match, the list shows at most
+	/// 500 of them, and `first` is the first bank. A search that the list starts again for other reasons can
+	/// end first, so this waits for the expected rows and reports the last rows only when they never come.
+	static func expect(_ c: PerfContext, _ step: StaticString, banks: Int, first: String) async {
+		for _ in 0..<100 {
+			if let shown = SupportedBanksList.lastShown, shown.bankCount == banks, shown.banks.count == min(banks, 500),
+				shown.banks.first?.name == first { return }
+			try? await Task.sleep(for: .milliseconds(50))
+		}
+		// The log holds the counts and the hash of the first name, never a name.
+		let shown = SupportedBanksList.lastShown
+		c.fail("supported banks rows", ("step", .word(step)), ("rows", .presence(shown != nil)), ("banks", .count(shown?.bankCount ?? 0)),
+			("shown", .count(shown?.banks.count ?? 0)), ("first", .hash(shown?.banks.first?.name ?? "")))
+	}
+
+	/// 2,700 made-up banks, as many as the bank directory of the FinTS helper has with a FinTS address, one in
+	/// ten of a merged bank.
+	static func load() -> BankDirectory {
+		let places = ["Musterstadt", "Beispielstadt", "Altstadt", "Neustadt", "Bergdorf", "Talheim"]
+		let kinds = ["Sparkasse", "Volksbank", "Raiffeisenbank", "Musterbank", "Privatbank"]
+		return BankDirectory((0..<2_700).map { i in
+			let place = places[i % places.count]
+			return BankDirectory.Entry(code: String(10_000_000 + i * 3_217), city: place,
+				bank: FinTSBank(name: "\(kinds[i % kinds.count]) \(place) \(i)\(i % 10 == 0 ? " -alt-" : "")", bic: nil, url: URL(string: "https://fints.bank\(i).example/fints")))
+		})
 	}
 }
 

@@ -393,6 +393,10 @@ public struct Transaction: Identifiable, Hashable, Sendable, Codable {
 
 	/// The editable fields as the source delivered them: `original` after an edit, otherwise the fields themselves.
 	public var sourceValues: OriginalValues { original ?? OriginalValues(self) }
+	/// The day and the amount that the source delivered, without building `sourceValues`, which copies the name and
+	/// the purpose: the merge reads them for every stored row of an account.
+	public var sourceBookingDate: Day { original?.bookingDate ?? bookingDate }
+	public var sourceAmountMinor: Int64 { original?.amountMinor ?? amountMinor }
 
 	/// What "Edit Transaction..." writes. The first change of a row from a source keeps the delivered values in
 	/// `original`, so that a later refresh still finds the row and does not add it again. Values equal to the
