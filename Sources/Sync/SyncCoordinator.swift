@@ -286,6 +286,8 @@ public final class SyncCoordinator {
 			var notices: [BankMessage] = []
 			// The state that a failed or canceled run changed, such as a token the source rotated before the end.
 			var failedState: AccessState?
+			// The accounts whose results the app has not stored. The state keeps what the last one said about them.
+			var unsaved: [AccountRequest] = []
 			do {
 				let fetched = try await job.connector.refresh(job.request, session)
 				// The report decides about the PIN, before a cancel or an error of the storage hides an account.
@@ -293,10 +295,12 @@ public final class SyncCoordinator {
 				// A canceled access stores no account, also when its connector returned all the same. Its new
 				// state stays, such as a token that the source rotated before its session ended.
 				failedState = fetched.state
+				unsaved = job.request.accounts
 				try Task.checkCancellation()
 				report = fetched
 				notices = fetched.notices
 				let notSaved = await deliverFetched(fetched, of: job.request)
+				unsaved = job.request.accounts.filter { notSaved[$0.accountID] != nil }
 				event = .finish(Self.summary(of: fetched, for: job.request, notSaved: notSaved))
 			} catch {
 				let withState = error as? FailureWithState
@@ -308,7 +312,9 @@ public final class SyncCoordinator {
 				if (error as? SyncFailure)?.rejectsPIN == true { broker.forgetRejectedPIN(of: access.id) }
 				event = Task.isCancelled || error is CancellationError ? .cancel : .fail(Self.failure(error))
 			}
-			let state = report?.state ?? failedState
+			let state = (report?.state ?? failedState).map {
+				unsaved.isEmpty ? $0 : job.connector.state($0, keepingUnsaved: unsaved, from: job.request.state)
+			}
 			// A PIN is kept, and saved on request, only after a refresh with it succeeded. A typo is never sent again on its own.
 			broker.refreshEnded(access.id, with: event)
 			apply(event, to: access.id)

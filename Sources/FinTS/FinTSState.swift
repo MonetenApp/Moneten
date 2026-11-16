@@ -46,6 +46,15 @@ extension FinTSConnector {
 		Set(FinTSState(state).olderMayBeMissing)
 	}
 
+	/// The new state with the marks of `previous` for the accounts whose results the app did not store, so that a full
+	/// history that did not reach the database does not end the note about missing older transactions.
+	public func state(_ state: AccessState, keepingUnsaved unsaved: [AccountRequest], from previous: AccessState?) -> AccessState {
+		let ids = Set(unsaved.map(\.remoteID))
+		let new = FinTSState(state)
+		let kept = Set(new.olderMayBeMissing).subtracting(ids).union(Set(FinTSState(previous).olderMayBeMissing).intersection(ids))
+		return FinTSState(passport: new.passport, olderMayBeMissing: kept).accessState ?? state
+	}
+
 	/// The state of a new login of an access ("Edit Login Data..."), with the marks of `old`, because the accounts
 	/// and their transactions stay.
 	public static func state(_ new: AccessState?, keepingMarksOf old: AccessState?) -> AccessState? {

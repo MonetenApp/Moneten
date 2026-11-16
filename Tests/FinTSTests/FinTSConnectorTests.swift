@@ -613,6 +613,20 @@ struct FinTSConnectorTests {
 		#expect(FinTSConnector.state(login, keepingMarksOf: passport) == login)
 	}
 
+	@Test("A full history that the app did not store keeps the mark of its account, and a new mark of an unsaved account goes")
+	func unsavedKeepsMark() {
+		let passport = Data([0xAC, 0xED, 0x00, 0x05, 0x02])
+		let previous = FinTSState(passport: Data([0xAC, 0xED]), olderMayBeMissing: ["DE02120300000000202051"]).accessState
+		// The refresh cleared the mark of the giro account and set one for the savings account, and neither was stored.
+		let returned = FinTSState(passport: passport, olderMayBeMissing: ["1234567890"]).accessState!
+		let connector = connector("exit 0")
+		#expect(FinTSState(connector.state(returned, keepingUnsaved: [Self.giro, Self.savings], from: previous))
+			== FinTSState(passport: passport, olderMayBeMissing: ["DE02120300000000202051"]))
+		// Only the giro account was not stored.
+		#expect(FinTSState(connector.state(returned, keepingUnsaved: [Self.giro], from: previous))
+			== FinTSState(passport: passport, olderMayBeMissing: ["DE02120300000000202051", "1234567890"]))
+	}
+
 	@Test("A challenge with \"history\" may be for older transactions, and one without is not")
 	func historyOfAsk() throws {
 		func request(_ history: String) throws -> UserRequest {

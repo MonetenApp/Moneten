@@ -82,6 +82,18 @@ public protocol BankConnector: Sendable {
 	/// Fetches the balances and transactions of the requested accounts of one access, in one session.
 	/// Throws a `SyncFailure` when the whole access fails, and `CancellationError` when the refresh is canceled.
 	func refresh(_ request: RefreshRequest, _ session: SyncSession) async throws -> ConnectorReport
+
+	/// The state to store when the app could not store what the refresh fetched for `unsaved`, after a failed
+	/// write or a cancel. A connector that keeps something about each account in the state keeps what `previous`
+	/// said about these accounts, because their history in the app did not change.
+	func state(_ state: AccessState, keepingUnsaved unsaved: [AccountRequest], from previous: AccessState?) -> AccessState
+}
+
+extension BankConnector {
+	/// Keeps nothing about single accounts in the state.
+	public func state(_ state: AccessState, keepingUnsaved unsaved: [AccountRequest], from previous: AccessState?) -> AccessState {
+		state
+	}
 }
 
 public struct RefreshRequest: Sendable {
