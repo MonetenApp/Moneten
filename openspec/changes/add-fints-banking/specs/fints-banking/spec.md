@@ -436,7 +436,7 @@ The app SHALL stop the dialog when the bank reports that the PIN must be changed
 
 ### Requirement: Handle a blocked access
 
-The app SHALL stop when the bank reports that the PIN or the access is blocked, show the message of the bank, tell the user to ask the bank to unblock it, and not log in again for that access until the user starts a refresh by hand. When the bank sends one code for a wrong PIN and for a block, the app treats the answer as a block only when its text reports a block that happened, and as a wrong PIN otherwise, also when the text only warns of a block to come.
+The app SHALL stop when the bank reports that the PIN or the access is blocked, show the message of the bank, tell the user to ask the bank to unblock it, and not log in again for that access until the user starts a refresh by hand. When one code of the bank means a wrong PIN or a block, the app treats the answer as a block only when its text reports a block that happened and names no remaining attempts, no block to come, and no denial, and as a wrong PIN with the text of the bank otherwise.
 
 #### Scenario: PIN blocked after wrong attempts
 
@@ -491,6 +491,17 @@ The app SHALL stop when the bank reports that the PIN or the access is blocked, 
 #### Scenario: Block with a text that also names a wrong PIN
 
 - **WHEN** the bank answers the login with the code 9931 and the text "PIN ungültig - Zugang ist blockiert"
+- **THEN** the accounts of the access show that the bank blocked the access and "Ask the bank to unblock it."
+- **AND** the app asks for no new PIN
+
+#### Scenario: Wrong PIN with a count of the attempts that remain before a block
+
+- **WHEN** the bank answers the login with the code 9931 and the text "PIN falsch. Noch 1 Fehlversuch bis zur Sperrung."
+- **THEN** the PIN sheet opens again with "PIN falsch. Noch 1 Fehlversuch bis zur Sperrung."
+
+#### Scenario: Block with a text that names the unblock to come
+
+- **WHEN** the bank answers the login with the code 9931 and the text "Zugang ist gesperrt und wird erst nach Freischaltung wieder nutzbar."
 - **THEN** the accounts of the access show that the bank blocked the access and "Ask the bank to unblock it."
 - **AND** the app asks for no new PIN
 

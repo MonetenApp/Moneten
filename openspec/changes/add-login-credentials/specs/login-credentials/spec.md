@@ -157,6 +157,12 @@ The app SHALL, when a bank rejects a PIN, stop the login, delete the saved PIN o
 - **AND** the account shows an error with the message of the bank
 - **AND** the next manual refresh asks for the PIN and shows the message of the bank
 
+#### Scenario: Message of the bank after a lock
+
+- **GIVEN** the bank rejected the PIN of "Giro" with "PIN falsch. Noch 1 Fehlversuch bis zur Sperrung."
+- **WHEN** the app locks, the user unlocks it, and refreshes "Giro"
+- **THEN** the PIN sheet asks for the PIN without the message of the bank
+
 #### Scenario: Typing error
 
 - **WHEN** the user enters a wrong PIN in the sheet
