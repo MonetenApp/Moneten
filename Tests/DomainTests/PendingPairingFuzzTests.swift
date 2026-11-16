@@ -3,6 +3,32 @@ import Testing
 @testable import Domain
 
 extension ReconcileTests {
+	@Test("Gate 5: mixed booked candidates retain absolute stable positions")
+	func gate5MixedBookedPositions() {
+		var a = stored(rent(7, purpose: "RENT", pending: false))
+		a.createdAt = Date(timeIntervalSince1970: 1)
+		var b = a
+		b.id = UUID()
+		b.createdAt = Date(timeIntervalSince1970: 2)
+		b.fileIdentity = b.originalFileIdentity
+		var c = stored(row(6, -1_200, "Other", "OTHER", month: 12))
+		c.fileIdentity = c.originalFileIdentity
+		let old = (10..<20).map { stored(row(2, -Int64($0), "Old", "OLD \($0)")) }
+		var x = fresh(a)
+		x.sourceID = "BANK-X"
+		var y = fresh(c)
+		y.sourceID = "BANK-C"
+		for stored in permutations([a, c, b]) {
+			for rows in permutations([y, x]) {
+				let all = stored + old
+				let r = merge(refresh(rows), stored: all)
+				#expect(r.updated.filter { $0.sourceID == "BANK-X" }.map(\.id) == [a.id])
+				#expect(r.updated.filter { $0.sourceID == "BANK-C" }.map(\.id) == [c.id])
+				#expect(r.skipped == 2 && r.added.isEmpty && r.dropped.isEmpty)
+			}
+		}
+	}
+
 	@Test("Gate 5: 6,144 booked comparisons keep main's legacy pairing")
 	func gate5LegacyComparisons() {
 		for seed in 0..<6_144 {

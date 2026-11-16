@@ -3,6 +3,21 @@ import Foundation
 import Testing
 
 extension ReconcileTests {
+	@Test("A recurring reference cannot hide a later pending file rent", arguments: [false, true], [false, true])
+	func gate5LaterRecurringRent(tombstone: Bool, nextMonth: Bool) {
+		var booked = stored(rent(7, purpose: "BOOKED RENT", pending: false))
+		booked.endToEndReference = "RECURRING-RENT"
+		booked.fileIdentity = "file:booked-rent"
+		var pending = rent(8, purpose: "NEXT RENT")
+		if nextMonth { pending.bookingDate = Day(year: 2027, month: 1, day: 7) }
+		pending.endToEndReference = "RECURRING-RENT"
+		let r = merge(.file([pending]), stored: tombstone ? [] : [booked],
+			deleted: tombstone ? [DeletedTransaction(booked, deletedAt: now)] : [])
+		#expect(r.added.map(\.id) == [pending.id])
+		#expect(r.added.map(\.isPending) == [true])
+		#expect(r.skipped == 0 && r.updated.isEmpty && r.booked.isEmpty)
+	}
+
 	@Test("Gate 5: a booking cannot take the later fetched rent")
 	func gate5LaterFetchedBooking() {
 		let file = rent(7)
