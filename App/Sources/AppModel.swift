@@ -15,12 +15,15 @@ enum SidebarSelection: Hashable {
 	case account(UUID)
 	case group(UUID)
 	case category(UUID)
+	/// A saved search, which shows the rows of every account.
+	case search(UUID)
 
 	var scope: LedgerScope {
 		switch self {
 		case let .account(id): .account(id)
 		case let .group(id): .accountGroup(id)
 		case let .category(id): .category(id)
+		case .search: .all
 		}
 	}
 }
@@ -111,6 +114,8 @@ final class AppModel {
 	/// What failed setups of extension services left for the next setup of the same service and login.
 	/// It lives in memory until the lock.
 	let extensionSetupStates = KeptSetupStates()
+	/// The entries of the sidebar section "Searches", in their order. The lock empties them with the ledger.
+	var savedSearches: [SavedSearch] = []
 	/// The bank accesses, by ID. Their states stay in the database until a refresh reads them.
 	private(set) var accesses: [UUID: Access] = [:]
 	/// The "Add Account" assistant while its sheet is open.
@@ -176,6 +181,7 @@ final class AppModel {
 			if !selectedTransactions.isEmpty { selectedTransactions = [] }
 			// After the selected rows, so that the new filter waits for their drawing like the new view.
 			if let selection { filter.resetHidden(in: selection.scope) }
+			if case let .search(id) = selection { applySavedSearch(id) }
 			tableChanged()
 		}
 	}
@@ -541,6 +547,7 @@ final class AppModel {
 		ledgerChange = "load"
 		ledger = loaded
 		accesses = Dictionary(uniqueKeysWithValues: try store.accesses().map { ($0.id, $0) })
+		savedSearches = try store.savedSearches()
 		// The saved PINs live only in the database, so a refresh after a restart or an unlock does not ask.
 		try sync.broker.open(store)
 		if selection == nil {
@@ -593,6 +600,7 @@ final class AppModel {
 				guard let self, self.phase == .locked else { return }
 				self.ledgerChange = "clear"
 				self.ledger = Ledger()
+				self.savedSearches = []
 				self.selectedTransactions = []
 			}
 		}
@@ -727,6 +735,7 @@ final class AppModel {
 		case let .account(id): ledger.account(id)?.name ?? ""
 		case let .group(id): ledger.group(id)?.name ?? ""
 		case let .category(id): ledger.categoryPath(id)
+		case let .search(id): savedSearches.first { $0.id == id }?.name ?? ""
 		case nil: "Moneten"
 		}
 	}
@@ -1428,6 +1437,8 @@ final class AppModel {
 			ledgerChange = "load"
 			ledger = loaded
 			accesses = Dictionary(uniqueKeysWithValues: try store.accesses().map { ($0.id, $0) })
+			// A complete import brings saved searches.
+			savedSearches = try store.savedSearches()
 			filter.dropMissing(in: ledger)
 			if case let .category(id) = selection, ledger.category(id) == nil { selection = nil }
 			// A complete import replaces the account groups.
@@ -1660,6 +1671,9 @@ enum SheetKind: Identifiable, Equatable {
 	case exporting
 	case setPassword
 	case changePassword
+	/// The name of a new saved search, with the search field and the filter bar that are on screen.
+	case saveSearch
+	case renameSearch(UUID)
 
 	var id: String { String(describing: self) }
 }

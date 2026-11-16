@@ -8,7 +8,7 @@ extension Store {
 		case notEmpty
 
 		public var description: String {
-			"The import of all data works only in an empty database. This database already holds accounts, categories, transactions, or CSV profiles."
+			"The import of all data works only in an empty database. This database already holds accounts, categories, transactions, CSV profiles, or saved searches."
 		}
 	}
 
@@ -30,7 +30,8 @@ extension Store {
 				},
 				csvProfiles: try Row.fetchAll(db, sql: "SELECT name, version, payload FROM csvProfile ORDER BY rowid").map {
 					CSVProfileData(name: $0["name"], version: $0["version"], payload: $0["payload"])
-				}, splitParts: try SplitPart.order(Column.rowID).fetchAll(db))
+				}, splitParts: try SplitPart.order(Column.rowID).fetchAll(db),
+				savedSearches: try Row.fetchAll(db, sql: "SELECT id, name, position, searchText, filterBar FROM savedSearch ORDER BY rowid").map(Self.savedSearch))
 		}
 	}
 
@@ -78,7 +79,8 @@ extension Store {
 		try queue.write { db in
 			let others = try Domain.Category.filter(!starters.contains(Column("id"))).fetchCount(db)
 			guard try Account.fetchCount(db) == 0, try Transaction.fetchCount(db) == 0, others == 0,
-				try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM csvProfile") == 0 else { throw ImportRefusal.notEmpty }
+				try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM csvProfile") == 0,
+				try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM savedSearch") == 0 else { throw ImportRefusal.notEmpty }
 			// A group or category can come before its parent in the order of the database.
 			try db.execute(sql: "PRAGMA defer_foreign_keys = ON")
 			_ = try Domain.Category.deleteAll(db)
@@ -96,6 +98,14 @@ extension Store {
 			for h in data.holdings { try HoldingRecord(h).insert(db) }
 			for profile in data.csvProfiles {
 				try db.execute(sql: "INSERT INTO csvProfile(name, version, payload) VALUES (?, ?, ?)", arguments: [profile.name, profile.version, profile.payload])
+			}
+			// The file can hold any number as a position, such as the largest one, after which the next saved
+			// search would have none. So the searches get 0, 1, 2, and so on in their order.
+			let ordered = data.savedSearches.enumerated().sorted { ($0.element.position, $0.offset) < ($1.element.position, $1.offset) }
+			for (position, entry) in ordered.enumerated() {
+				var search = entry.element
+				search.position = position
+				try Self.insert(search, into: db)
 			}
 		}
 	}
