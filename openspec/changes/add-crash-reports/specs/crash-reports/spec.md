@@ -95,6 +95,14 @@ The app SHALL keep the newest pending report encrypted in its data folder until 
 - **THEN** that crash is not offered again, even if the system delivers it again
 - **AND** its diagnostic is removed from storage
 
+#### Scenario: Decide before delayed details arrive
+
+- **GIVEN** the previous launch started at second 1000 and a crash file dated second 1103 supplies the short report
+- **WHEN** the user chooses "Copy Report", "Don't Report", or opens GitHub with the uncut short report
+- **THEN** a later diagnostic starting at second 1104, 1162, or 1163 does not offer that crash again
+- **AND** this holds whether its end equals its start or is second 1300
+- **AND** a diagnostic starting at second 1164 can offer a new report
+
 #### Scenario: Copy or report
 
 - **WHEN** the user chooses "Copy Report" or opens GitHub with an uncut report

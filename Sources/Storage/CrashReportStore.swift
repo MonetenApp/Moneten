@@ -10,6 +10,10 @@ public struct PendingCrashReport: Codable, Equatable, Sendable {
 	public struct Fallback: Codable, Equatable, Sendable {
 		public let date: Date
 		let launchStart: Date
+
+		func matches(start: Date) -> Bool {
+			start > launchStart && start <= date.addingTimeInterval(60)
+		}
 	}
 
 	public var report: String { crashReport(diagnostic, crashTime: fallback?.date) }
@@ -39,7 +43,7 @@ public struct CrashReportStore {
 		var latest: Date? = nil
 		var pending: PendingCrashReport? = nil
 		var launch: Launch? = nil
-		var declinedFallback: Date? = nil
+		var decidedFallback: PendingCrashReport.Fallback? = nil
 
 		struct Launch: Codable {
 			let start: Date
@@ -52,7 +56,7 @@ public struct CrashReportStore {
 				let crash = files.filter({ file in
 					CrashReports.isCrashFile(file.name) && file.date > previous.start && file.date < launch.start
 				}).max(by: { $0.date < $1.date }),
-				crash.date > (latest ?? .distantPast), crash.date != declinedFallback,
+				crash.date > (latest ?? .distantPast), crash.date != decidedFallback?.date,
 				crash.date > (pending?.date ?? .distantPast) {
 				let diagnostic = CrashDiagnostic(appVersion: previous.appVersion, macOSVersion: previous.macOSVersion,
 					exceptionType: nil, signal: nil, frames: [])
@@ -64,15 +68,16 @@ public struct CrashReportStore {
 		mutating func receive(_ diagnostic: CrashDiagnostic, at date: Date, since start: Date) {
 			let replacesFallback: Bool
 			if let fallback = pending?.fallback {
-				guard start > fallback.launchStart, start <= fallback.date.addingTimeInterval(60) else { return }
+				guard fallback.matches(start: start) else { return }
 				replacesFallback = true
 			} else {
 				replacesFallback = false
 			}
 			guard replacesFallback || date > (latest ?? .distantPast) else { return }
 			latest = max(latest ?? .distantPast, date)
-			if let declinedFallback, start <= declinedFallback && declinedFallback <= date,
-				(pending?.fallback?.date ?? .distantPast) <= declinedFallback { return }
+			if let decidedFallback,
+				decidedFallback.matches(start: start) || (start <= decidedFallback.date && decidedFallback.date <= date),
+				(pending?.fallback?.date ?? .distantPast) <= decidedFallback.date { return }
 			guard replacesFallback || date >= (pending?.date ?? .distantPast) else { return }
 			pending = PendingCrashReport(date: date, diagnostic: diagnostic)
 		}
@@ -81,9 +86,9 @@ public struct CrashReportStore {
 			guard let pending else { return }
 			if decision == .github,
 				URLComponents(url: pending.githubURL, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "expected" })?.value != pending.report { return }
-			if let date = pending.fallback?.date {
-				declinedFallback = date
-				latest = max(latest ?? .distantPast, date)
+			if let fallback = pending.fallback {
+				decidedFallback = fallback
+				latest = max(latest ?? .distantPast, fallback.date)
 			}
 			self.pending = nil
 		}
