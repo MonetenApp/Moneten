@@ -237,6 +237,40 @@ struct RuleTests {
 		#expect(try !matches("/GA NR[0-9]{8}/", RuleSubject(purpose: "GA NR123")))
 	}
 
+	@Test("An IBAN written with a no-break or a narrow no-break space matches the plain IBAN", arguments: ["\u{00A0}", "\u{202F}"])
+	func ibanWithOtherSpaces(_ space: String) throws {
+		let iban = ["DE02", "1203", "0000", "0000", "2020", "51"].joined(separator: space)
+		#expect(try matches("remote_account:DE02120300000000202051", RuleSubject(remoteAccounts: [iban])))
+		#expect(try matches("local_account:DE02120300000000202051", RuleSubject(localAccounts: [iban])))
+		#expect(try matches("local_account:\"\(iban)\"", RuleSubject(localAccounts: ["DE02120300000000202051"])))
+		// The IBAN reads as the plain IBAN: `?` needs one character, and the key has none between DE02 and 1203.
+		for value in [iban, "DE02 1203 0000 0000 2020 51", "DE02120300000000202051"] {
+			#expect(try !matches("local_account:DE02?1203*", RuleSubject(localAccounts: [value])), "\(value)")
+			#expect(try matches("local_account:DE0?1203*", RuleSubject(localAccounts: [value])), "\(value)")
+		}
+		#expect(try !matches("local_account:DE0?1203*", RuleSubject(localAccounts: ["DE89370400440532013000"])))
+	}
+
+	@Test("A regular expression that does not end stops, and the rule matches no further row", .timeLimit(.minutes(1)))
+	func regexThatDoesNotEnd() throws {
+		let rule = try Rule(parsing: "/^+?49/")
+		let subject = RuleSubject(purpose: "Tel. +49 170 1234567")
+		let start = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)
+		#expect((0..<1_000).allSatisfy { _ in !rule.matches(subject) })
+		let milliseconds = (clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) - start) / 1_000_000
+		#expect(milliseconds < 1_000)
+		#expect(rule.stoppedRegexPosition == 0)
+		// The stop is no match of the rule, so NOT before it does not match every row.
+		let negated = try Rule(parsing: #"name:"Telekom" OR NOT /^+?49/"#)
+		#expect(!negated.matches(subject))
+		#expect(!negated.matches(RuleSubject(name: "Telekom")))
+		#expect(negated.stoppedRegexPosition == 22)
+		// A rule that ends keeps no stop.
+		let fast = try Rule(parsing: "/GA NR[0-9]{8}/")
+		#expect(fast.matches(RuleSubject(purpose: "GA NR00012345")))
+		#expect(fast.stoppedRegexPosition == nil)
+	}
+
 	@Test("Missing parenthesis is reported at the end")
 	func missingParenthesis() {
 		let rule = #"("Lohn" OR "Gehalt""#
@@ -407,6 +441,40 @@ struct CategorizerTests {
 		var t = Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 1, day: 2), amountMinor: -2_000, name: "REWE", categoryID: gifts.id, categorizedBy: .manual)
 		c.categorize(&t)
 		#expect(t.categoryID == gifts.id)
+	}
+
+	@Test("A rule that does not end leaves 1,000 rows to the next category", .timeLimit(.minutes(1)))
+	func ruleThatDoesNotEnd() {
+		let phone = Domain.Category(position: 0, name: "Phone", rule: "/^+?49/")
+		let other = Domain.Category(position: 1, name: "Other", rule: #""Telefon""#)
+		let c = Categorizer(ledger: ledger([phone, other]))
+		var rows = (0..<1_000).map { i in
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 2), amountMinor: -1_000 - Int64(i), name: "Mobilfunk", purpose: "Telefon +49 170 1234567")
+		}
+		let start = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)
+		for i in rows.indices { c.categorize(&rows[i]) }
+		#expect((clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) - start) / 1_000_000 < 1_000)
+		#expect(rows.allSatisfy { $0.categoryID == other.id && $0.categorizedBy == .rule })
+	}
+
+	@Test("Applying a rule that does not end changes no row", .timeLimit(.minutes(1)), arguments: [RuleApplication.all, .uncategorizedOnly])
+	func applyRuleThatDoesNotEnd(_ mode: RuleApplication) throws {
+		let phone = Domain.Category(position: 0, name: "Phone", rule: "/^+?49/")
+		let day = Day(year: 2026, month: 11, day: 2)
+		let inPhone = (0..<2).map { _ in
+			Transaction(accountID: giro.id, bookingDate: day, amountMinor: -2_000, name: "Telekom", purpose: "Rechnung", categoryID: phone.id, categorizedBy: .rule)
+		}
+		let open = (0..<1_000).map { _ in Transaction(accountID: giro.id, bookingDate: day, amountMinor: -1_000, name: "Telefon", purpose: "+49 170 1234567") }
+		let l = ledger([phone], inPhone + open)
+		let rule = try Rule(parsing: phone.rule)
+		#expect(RuleApplier.apply(category: phone, rule: rule, to: l.transactions, ledger: l, mode: mode) == [])
+		#expect(rule.stoppedRegexPosition == 0)
+		var current = l
+		current.update([Transaction(accountID: giro.id, bookingDate: day, amountMinor: -3_000, name: "Telefon", purpose: "+49 170 7654321")])
+		#expect(RuleApplier.rebase([], from: l, onto: current, category: phone, rule: rule, mode: mode) == [])
+		let counted = try Rule(parsing: phone.rule)
+		#expect(RuleApplier.matchCount(category: phone, rule: counted, ledger: l) == 0)
+		#expect(counted.stoppedRegexPosition == 0)
 	}
 
 	@Test("Apply only to uncategorized transactions, or to all")

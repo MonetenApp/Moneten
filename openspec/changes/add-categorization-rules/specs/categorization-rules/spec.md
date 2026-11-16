@@ -319,6 +319,33 @@ The app SHALL treat text between two slashes as a regular expression and match i
 - **WHEN** a transaction has the purpose "GA NR00012345 BLZ12030000"
 - **THEN** the rule matches
 
+### Requirement: A regular expression in a rule that does not end
+
+The app SHALL stop a regular expression in a rule after about 100 ms of processor time on one text, and the rule then matches no further transaction in that run. A run is the categorization of one refresh, one import, or one entry, one application of a rule to existing transactions, or one count of matches in the category settings. The rules of the other categories still run.
+
+#### Scenario: Refresh with a rule that does not end
+
+- **GIVEN** the category "Phone" above "Other" in the sidebar, "Phone" with the rule `/^+?49/`, and "Other" with the rule `"Telefon"`
+- **WHEN** a refresh brings 1,000 transactions with the purpose "Telefon +49 170 1234567"
+- **THEN** the refresh ends within a few seconds
+- **AND** no transaction is in "Phone", and all 1,000 are in "Other"
+
+### Requirement: A stopped rule is shown
+
+The app SHALL show "The regular expression at position N stopped because it is too slow." for a rule whose regular expression stopped, with N as the position of the regular expression in the rule, counted from 1. The category settings show it in place of the number of matches. An application of the stopped rule to existing transactions changes no transaction and shows it as well.
+
+#### Scenario: Category settings
+
+- **WHEN** the user enters the rule `name:"Telekom" OR /^+?49/` in the settings of "Phone"
+- **THEN** the settings show "The regular expression at position 19 stopped because it is too slow." in place of the number of matches
+
+#### Scenario: Apply to all transactions
+
+- **GIVEN** the category "Phone" contains 2 transactions
+- **WHEN** the user sets the rule of "Phone" to `/^+?49/` and chooses "Apply to all transactions."
+- **THEN** both transactions stay in "Phone"
+- **AND** the app shows "The regular expression at position 1 stopped because it is too slow."
+
 ### Requirement: Invalid rules are rejected
 
 The app SHALL refuse to store a rule that it cannot parse. It shows a message that names the position of the error and keeps the settings open with the text that the user entered.

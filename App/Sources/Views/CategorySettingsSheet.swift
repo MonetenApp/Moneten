@@ -1,6 +1,13 @@
 import Domain
 import SwiftUI
 
+/// The text for a rule whose regular expression ran too long (`Rule.stoppedRegexPosition`).
+enum RuleStop {
+	static func message(position: Int) -> String {
+		String(localized: "The regular expression at position \(position + 1) stopped because it is too slow.")
+	}
+}
+
 struct CategorySettingsSheet: View {
 	@Environment(AppModel.self) private var model
 	@Environment(\.dismiss) private var dismiss
@@ -76,9 +83,13 @@ struct CategorySettingsSheet: View {
 						} else if let ruleError {
 							Text(ruleError).foregroundStyle(Palette.red)
 						} else if !c.rule.isEmpty {
-							let count = matchCount(c)
-							Text(count == 1 ? "The rule matches 1 transaction." : "The rule matches \(count) transactions.")
-								.foregroundStyle(.secondary)
+							switch matchCount(c) {
+							case let .stopped(position):
+								Text(RuleStop.message(position: position)).foregroundStyle(Palette.red)
+							case let .count(count):
+								Text(count == 1 ? "The rule matches 1 transaction." : "The rule matches \(count) transactions.")
+									.foregroundStyle(.secondary)
+							}
 						}
 					}
 				}
@@ -119,9 +130,16 @@ struct CategorySettingsSheet: View {
 		}
 	}
 
-	private func matchCount(_ c: Domain.Category) -> Int {
-		guard let rule = try? Rule(parsing: c.rule) else { return 0 }
-		return RuleApplier.matchCount(category: c, rule: rule, ledger: model.ledger)
+	private enum MatchCount {
+		case count(Int)
+		/// The position of the regular expression that ran too long, counted from 0.
+		case stopped(Int)
+	}
+
+	private func matchCount(_ c: Domain.Category) -> MatchCount {
+		guard let rule = try? Rule(parsing: c.rule) else { return .count(0) }
+		let count = RuleApplier.matchCount(category: c, rule: rule, ledger: model.ledger)
+		return rule.stoppedRegexPosition.map(MatchCount.stopped) ?? .count(count)
 	}
 
 	/// Saves and closes, or keeps the sheet open to ask whether a changed rule applies to existing transactions.

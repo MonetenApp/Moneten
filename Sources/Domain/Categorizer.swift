@@ -57,7 +57,8 @@ public enum RuleApplication: Sendable {
 public enum RuleApplier {
 	/// Applies the rule of one category to existing transactions and returns the changed ones.
 	/// `progress` gets the count of checked transactions after every 1,000 and after the last one.
-	/// A cancelled task stops the run, and it returns no changes.
+	/// A cancelled task stops the run, and it returns no changes. So does a rule whose regular expression stopped
+	/// (`Rule.stoppedRegexPosition`), because "Apply to all transactions." would otherwise empty the category.
 	public static func apply(category: Category, rule: Rule, to transactions: [Transaction], ledger: Ledger, mode: RuleApplication,
 		progress: (Int) -> Void = { _ in }) -> [Transaction] {
 		let restriction = ledger.allowedAccounts(of: category)
@@ -68,6 +69,7 @@ public enum RuleApplier {
 			guard ledger.parts(of: t.id).isEmpty else { continue }
 			let inScope = restriction.map { $0.contains(t.accountID) } ?? true
 			let matches = inScope && rule.matches(RuleSubject(t, account: ledger.account(t.accountID)))
+			if rule.stoppedRegexPosition != nil { return [] }
 			switch mode {
 			case .uncategorizedOnly:
 				guard t.categoryID == nil, matches else { continue }
@@ -90,13 +92,16 @@ public enum RuleApplier {
 		return changed
 	}
 
+	/// The number of transactions that the rule matches, or 0 when its regular expression stopped.
 	public static func matchCount(category: Category, rule: Rule, ledger: Ledger) -> Int {
 		let restriction = ledger.allowedAccounts(of: category)
-		return ledger.transactions.reduce(0) { count, transaction in
-			guard ledger.parts(of: transaction.id).isEmpty,
-				restriction.map({ $0.contains(transaction.accountID) }) ?? true else { return count }
-			return count + (rule.matches(RuleSubject(transaction, account: ledger.account(transaction.accountID))) ? 1 : 0)
+		var count = 0
+		for transaction in ledger.transactions {
+			guard ledger.parts(of: transaction.id).isEmpty, restriction.map({ $0.contains(transaction.accountID) }) ?? true else { continue }
+			if rule.matches(RuleSubject(transaction, account: ledger.account(transaction.accountID))) { count += 1 }
+			if rule.stoppedRegexPosition != nil { return 0 }
 		}
+		return count
 	}
 
 	/// The rows to save for a run of `apply` on `snapshot` when the ledger is now `current`. A row that is the

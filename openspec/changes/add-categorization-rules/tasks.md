@@ -28,6 +28,8 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [x] 1.22 A saved rule that cannot be read is marked. Verified by CategorizerTests "A category whose saved rule cannot be read reports the error until the rule is fixed", and in the app: the sidebar row of "Rent" with `amount<-1,000` shows the warning symbol, and with `amount<-1000` it shows none. A group has no rule and shows no mark, even with a saved rule from a migration. Verified by CategorizerTests "A category group has no rule, so it shows no mark, takes no transaction, and leaves the transaction to a category below it", and in the app: the group "Living" with `amount<-1,000` shows no warning symbol.
 
 - [x] 1.23 A group has no rule. Verified by CategorizerTests "A category group has no rule, so it shows no mark, takes no transaction, and leaves the transaction to a category below it". Pending bookings run the same categorizer, verified by ReconcileTests "The rules run again on a booked row".
+- [x] 1.24 A regular expression in a rule that does not end. Verified by RuleTests "A regular expression that does not end stops, and the rule matches no further row" and CategorizerTests "A rule that does not end leaves 1,000 rows to the next category": `/^+?49/` over 1,000 rows ends in under a second of processor time, and the category below takes all 1,000.
+- [x] 1.25 A stopped rule is shown. Verified by CategorizerTests "Applying a rule that does not end changes no row" for both modes, and in a debug build: with `name:"Telekom" OR /^+?49/` on "Internet & Phone", the category settings show "The regular expression at position 19 stopped because it is too slow." in light and dark mode, and the harness command `applyrule` shows the same text as an alert. The snapshots are in the pull request.
 
 ## 2. Changes to the first build
 
@@ -41,6 +43,13 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 ## 3. Integration
 
 - [ ] 3.1 Check every scenario of the spec in a release build and record the result in the pull request.
+
+## 4. Regular expressions that do not end and IBANs with other spaces (#246, #245)
+
+- [x] 4.1 Write RuleTests for a rule `/^+?49/` over 1,000 rows: the run ends, no row matches, the next category takes every row, `stoppedRegexPosition` is 0, the first character of the rule, NOT before the regular expression matches no row, and "Apply to all transactions." changes nothing. Proof: the tests failed to compile before `stoppedRegexPosition` existed, and pass now in RuleTests and CategorizerTests.
+- [x] 4.2 Move `RegexWatch` out of the search into its own file and use it in `Rule.matches`, `Categorizer`, and `RuleApplier` until the tests of 4.1 pass. Keep the search tests of #172 green. Proof: `scripts/test.sh` passes, and the existing regex tests of LedgerTests are unchanged. An empty field takes an answer found once per regular expression, as in the search. A release run over 50,000 rows with four filled fields takes 166 to 169 ms with the watch, against 81 to 84 ms without it.
+- [x] 4.3 Show the stop in the category settings in place of the number of matches, and as an alert after "Apply to all transactions." and "Apply only to not yet categorized transactions.", with a German value. Proof: the debug harness snapshots of task 1.25.
+- [x] 4.4 Write tests for an IBAN stored with U+00A0 and with U+202F: the search for the plain IBAN and for `local_account:DE02?1203*`, the same rule, and a file row with the IBAN in U+00A0 form that is skipped as stored. Then make `TextFolding.accountKey` remove every Unicode space separator until they pass. Proof: RuleTests "An IBAN written with a no-break or a narrow no-break space matches the plain IBAN", LedgerTests "An IBAN written with a no-break or a narrow no-break space is found by the plain IBAN, as the rule finds it", and FileImportTests "A file row with the IBAN in no-break space form is skipped as stored, also against a row that a file stored before" failed with 20 issues before the change and pass after it. `local_account:DE02?1203*` now matches no form of the IBAN in the search and in a rule alike, because `?` needs one character and the key has none between DE02 and 1203. `local_account:DE0?1203*` matches every form.
 
 ## Workflow follow-up
 

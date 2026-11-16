@@ -10620,6 +10620,16 @@
         }
       }
     },
+    "The regular expression at position %lld stopped because it is too slow." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der reguläre Ausdruck an Position %lld wurde angehalten, weil er zu langsam ist."
+          }
+        }
+      }
+    },
     "The regular expression is empty." : {
       "localizations" : {
         "de" : {

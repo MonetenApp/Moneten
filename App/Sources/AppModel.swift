@@ -1424,13 +1424,21 @@ final class AppModel {
 		for await done in reports { ruleProgress = (done, total) }
 		let changed = await run.value
 		guard !run.isCancelled else { return }
+		if let position = rule.stoppedRegexPosition {
+			alert = AlertMessage(title: RuleStop.message(position: position), message: "")
+			return
+		}
 		let saved = await replacingTable { () -> Int? in
 			// A run saves only into the database it started with. A lock closes it, and an unlock opens a new one.
 			guard self.store === store else { return nil }
 			let rows = RuleApplier.rebase(changed, from: ledger, onto: self.ledger, category: category, rule: rule, mode: mode)
+			// A row that a refresh changed during the run can stop the rule too, and then nothing is saved.
+			guard rule.stoppedRegexPosition == nil else { return nil }
 			return commit((transactions: rows, parts: [])) ? rows.count : nil
 		}
-		if let saved { alert = AlertMessage(title: String(localized: "Categorized transactions: \(saved)"), message: "") }
+		if let position = rule.stoppedRegexPosition {
+			alert = AlertMessage(title: RuleStop.message(position: position), message: "")
+		} else if let saved { alert = AlertMessage(title: String(localized: "Categorized transactions: \(saved)"), message: "") }
 	}
 
 	// MARK: Migration
