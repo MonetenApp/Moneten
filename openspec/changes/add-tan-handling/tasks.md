@@ -32,6 +32,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [x] 1.26 One dialog at a time. Verified by SyncCoordinatorTests "Two accesses that ask at the same time get one dialog after the other" and TANDialogTests "While the progress of one access shows, the dialog of another waits...".
 - [x] 1.27 Cancel the dialog. Verified by SyncCoordinatorTests "Canceling the dialog stops only its access".
 - [ ] 1.28 No dialog when no TAN is needed. Built by hbci4java, which asks only when the bank sends a challenge. Check with a real bank.
+- [x] 1.29 Checked challenge images. Verified by ChallengeImageTests, which accept a PNG and a JPEG and reject a TIFF, a HEIC, a GIF, a file over 1 MB, and a PNG that states 50000 by 50000 pixels, ChallengePictureTests, which decode only the checked type, and the debug app check of the `SyncDemo` request "badphototan" (#325).
 
 ## 2. Build
 

@@ -645,12 +645,17 @@ The app SHALL show an instruction text and an entry field for a challenge with a
 
 ### Requirement: Image challenge
 
-The app SHALL show the image when `challenge` holds the binary data of a PNG or JPEG image, for example a photoTAN graphic or an image captcha. With a `label` the dialog also has an entry field.
+The app SHALL show the image when `challenge` holds the binary data of a PNG or JPEG image, for example a photoTAN graphic or an image captcha. With a `label` the dialog also has an entry field. For data in any other format, the dialog shows a note that the image cannot be shown, and no decoder reads the data.
 
 #### Scenario: photoTAN image
 
 - **WHEN** the function returns `{label="photoTAN", challenge=image}` and `image` is PNG data
 - **THEN** the dialog shows the image and an entry field labeled "photoTAN"
+
+#### Scenario: Image in another format
+
+- **WHEN** the function returns `{label="photoTAN", challenge=image}` and `image` is GIF data
+- **THEN** the dialog shows an entry field labeled "photoTAN" and the note "The bank sent an image that cannot be shown."
 
 ### Requirement: QR code challenge
 
@@ -1030,6 +1035,34 @@ The app SHALL read these fields of a security. `name`, `isin`, `securityNumber`,
 
 - **WHEN** a security has `quantity=5000` and `currencyOfQuantity="EUR"`
 - **THEN** the app shows the quantity as a nominal amount of 5.000,00 € and not as a number of shares
+
+### Requirement: Value of a security in another currency
+
+The app SHALL convert the price of a security in another currency into the account currency with `exchangeRateOfPrice`, and its purchase price with `exchangeRateOfPurchasePrice`. A rate gives the units of the other currency for one unit of the account currency. The other currency is `currencyOfPrice` and `currencyOfPurchasePrice`, or `currencyOfQuantity` for a nominal amount, whose prices are percentages. Without `amount` the value is the quantity times the converted price.
+
+#### Scenario: Price in US dollars
+
+- **GIVEN** a portfolio in EUR
+- **WHEN** a security has `quantity=10`, `price=110`, `currencyOfPrice="USD"`, `exchangeRateOfPrice=1.10`, and no `amount`
+- **THEN** the security has the value 1.000,00 € and the balance of the portfolio is 1.000,00 €
+
+#### Scenario: Bond in US dollars bought at another rate
+
+- **GIVEN** a portfolio in EUR
+- **WHEN** a security has `quantity=5000`, `currencyOfQuantity="USD"`, `price=100`, `exchangeRateOfPrice=1.25`, `purchasePrice=100`, `exchangeRateOfPurchasePrice=1`, and no `amount`
+- **THEN** the security has the value 4.000,00 €, the purchase value 5.000,00 €, and the profit −1.000,00 €
+
+### Requirement: Security priced without a rate
+
+The app SHALL keep the value of a security with a price in another currency and without a rate in that currency, leave it out of the balance of the portfolio, and name it in a notice. The portfolio still counts as refreshed.
+
+#### Scenario: Price without a rate
+
+- **GIVEN** a portfolio in EUR
+- **WHEN** a result has `securities={{name="Token A", quantity=10, price=2}, {name="Token B", quantity=10, price=110, currencyOfPrice="USDC"}}`
+- **THEN** "Token B" has the value 1.100,00 USDC and the balance of the portfolio is 20,00 €
+- **AND** a notice says "The balance leaves out Token B, because its price is in USDC and the extension gives no exchange rate."
+- **AND** the portfolio shows the time of this refresh as its last refresh
 
 ### Requirement: FetchStatements
 
