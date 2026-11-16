@@ -321,7 +321,7 @@ struct CommentSheet: View {
 					.lineLimit(5...10)
 			}
 		}
-		.onAppear { text = ids.first.flatMap { model.ledger.transaction($0)?.comment } ?? "" }
+		.onAppear { text = ids.first.flatMap { model.ledger.row($0)?.comment } ?? "" }
 	}
 }
 
@@ -338,13 +338,17 @@ struct TransactionSheet: View {
 	@State private var categoryID: UUID?
 	@State private var comment = ""
 
-	private var existing: Transaction? { transactionID.flatMap { model.ledger.transaction($0) } }
+	private var existing: Transaction? { transactionID.flatMap { model.ledger.row($0) } }
 	private var account: Account? { existing.flatMap { model.ledger.account($0.accountID) } ?? model.selectedAccount }
-	/// A new row only goes into an offline account. "Edit Transaction..." changes every row (add-transaction-list, task 1.16).
-	private var editable: Bool { existing != nil || account?.isOffline == true }
+	/// A new row only goes into an offline account. "Edit Transaction..." changes every row but a part of a split
+	/// (add-transaction-list, task 1.16).
+	private var editable: Bool { transactionID.flatMap { model.ledger.part($0) } == nil && (existing != nil || account?.isOffline == true) }
 
 	var body: some View {
-		SheetFrame(title: existing == nil ? "New Transaction" : "Edit Transaction", canConfirm: !editable || AmountParser.decimal(from: amount) != nil, width: 500, onConfirm: save) {
+		SheetFrame(title: transactionID == nil ? "New Transaction" : "Edit Transaction", canConfirm: !editable || AmountParser.decimal(from: amount) != nil, width: 500, onConfirm: save) {
+			if let review = existing?.review {
+				Section { Label(review.note, systemImage: "exclamationmark.circle").foregroundStyle(.orange) }
+			}
 			if editable {
 				Section {
 					DatePicker("Date", selection: $date, displayedComponents: .date)
@@ -403,12 +407,13 @@ struct TransactionSheet: View {
 		name = t.name
 		purpose = t.purpose
 		isDeposit = t.amountMinor > 0
-		amount = Format.editableAmount(abs(t.amountMinor), t.currency)
+		if editable { amount = Format.editableAmount(abs(t.amountMinor), t.currency) }
 		categoryID = t.categoryID
 		comment = t.comment ?? ""
 	}
 
 	private func save() -> Bool {
+		if let transactionID, model.ledger.row(transactionID) == nil { return true }
 		guard let account else { return true }
 		var t = existing ?? Transaction(accountID: account.id, bookingDate: Day(date), amountMinor: 0, currency: account.currency, name: "")
 		if editable {
@@ -429,7 +434,7 @@ struct TransactionSheet: View {
 			t.categorizedBy = categoryID == nil ? .none : .manual
 		}
 		t.comment = comment.isEmpty ? nil : comment
-		model.save(transaction: t)
+		model.save(transaction: t, adding: transactionID == nil)
 		return true
 	}
 }

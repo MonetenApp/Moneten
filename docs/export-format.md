@@ -1,6 +1,6 @@
 # Format of the complete export
 
-"Export All Data..." writes one JSON file with all user data of a database, and "Import All Data..." reads it into an empty database. This page describes format version 1 key by key. The test `AllDataTests` checks that each key of an export is described here.
+"Export All Data..." writes one JSON file with all user data of a database, and "Import All Data..." reads it into an empty database. This page describes format version 2 key by key. The reader also accepts version 1. The test `AllDataTests` checks that each key of an export is described here.
 
 ## Conventions
 
@@ -10,6 +10,7 @@
 - An identifier is a UUID as text. Objects refer to each other by these identifiers.
 - An optional key without a value is left out, and a reader takes a missing optional key as empty. Every other key is always written, also an empty list or an empty text such as `purpose`.
 - A currency code has exactly three uppercase ASCII letters, `[A-Z]{3}`. This also applies to optional currencies of holdings and both currencies of an exchange rate.
+- Adding an optional key does not change the format version. A reader treats a missing `csvProfiles` key as an empty list.
 - The lists keep the order of the database.
 - A category or account group cannot contain itself, directly or through its parents. The reader refuses a loop and names its position.
 - The complete export is written atomically with mode 0600, so only its owner can read or write it. An unreadable stored holding fails the export instead of being omitted.
@@ -19,16 +20,28 @@
 | Key | Content |
 |---|---|
 | `format` | Always `"moneten-export"` |
-| `version` | The format version as a number, `1` for this page. A reader refuses a version below 1 as damaged and a higher version as needing a newer app. |
+| `version` | The format version as a number, `2` for this page. A reader refuses a version below 1 as damaged and a version above 2 as needing a newer app. |
 | `exportedAt` | The time of the export |
 | `accountGroups` | List of account groups |
 | `accounts` | List of accounts |
 | `accesses` | List of bank accesses |
 | `categories` | List of categories and category groups |
-| `transactions` | List of transactions |
+| `transactions` | List of stored originals, once each |
+| `splitParts` | Required list of split parts, empty when none |
 | `deletedTransactions` | List of deleted transactions, so that a refresh or a migration does not add them again |
 | `portfolioValues` | List of daily values of portfolios |
 | `holdings` | List of positions of portfolios |
+| `csvProfiles` | Optional list of saved CSV profiles, including unreadable versions. Left out when there are none. |
+
+## CSV profile
+
+| Key | Content |
+|---|---|
+| `name` | Saved profile name |
+| `version` | Version of the profile payload, currently `1`, separate from the export format version |
+| `payload` | Base64 of the exact stored JSON bytes. The complete export preserves unreadable profiles and unknown fields without interpreting them. |
+
+A version-1 payload contains `name`, `header`, `delimiter`, and `layout`. The header is a list of column titles, and the optional delimiter is the saved field separator. The layout contains `encoding`, `columns`, `dateOrder`, optional `decimalMark`, and `createsCategories`. The columns object maps the field names of `CSVField` in [the CSV reader](../Sources/Import/CSVImport.swift) to zero-based column positions. The other settings use the raw values of `CSVEncoding`, `DateOrder`, and `DecimalMark` from the reader. A profile save updates known fields and preserves unknown fields, including unknown column mappings. A profile with a negative known column position is unreadable and is not applied. Its raw payload remains stored and exported.
 
 ## Account group
 
@@ -68,7 +81,7 @@
 | `accessID` | The bank access that refreshes the account |
 | `remoteID` | Identifier of the account at its bank |
 | `refreshedAt` | Time of the last successful refresh |
-| `refreshError` | The error of the last refresh, with `message`, `code` (the return code of the bank), `date`, `notices` (the notices of the bank), and `waitsForUser` (whether only a refresh command of the user can resolve it) |
+| `refreshError` | The error of the last refresh, with `message`, `code` (the return code of the bank), `date`, `notices` (the notices of the bank), `waitsForUser` (whether only a refresh command of the user can resolve it), and `suggestsEditLoginData` (whether the refresh of the whole access failed, at the login or after it, in a way that can mean that the bank wants it set up again, so the error names "Edit Login Data..."). A reader takes a missing `waitsForUser` or `suggestsEditLoginData` as false. |
 | `refreshInterval` | `everyTwoHours`, `fourTimesADay`, `onceADay`, `onceAWeek`, `onlyManually`, or `never` |
 
 ## Access
@@ -123,8 +136,9 @@ An access is a login at a bank. The file never holds its PIN or the data that it
 | `categoryID` | The category, missing for "Uncategorized" |
 | `categorizedBy` | `none`, `rule` for a category from a rule, or `manual` for a category the user chose |
 | `isNew` | Whether the transaction is marked as new |
-| `needsReview` | Whether the transaction is marked for review, because the app could not tell which pending transaction it books |
+| `review` | Optional `"unclearBooking"` for an unclear pending match or `"splitUndone"` for a split undone by a bank correction. Missing means no review. |
 | `isFetched` | Whether a refresh delivered the transaction |
+| `fileIdentity` | Original file fingerprint, if a file import recorded one; absent or null means no file identity |
 | `sourceID` | Identifier of the transaction at its bank or source, such as `moneymoney:<id>` |
 | `createdAt` | Time when the app stored the transaction |
 | `original` | Present only for a transaction that the user edited: the values that its source delivered, with the keys `bookingDate`, `valueDate`, `amount`, `name`, and `purpose`, in the currency of the transaction. A refresh finds the transaction by these values and keeps the edited ones. |
@@ -136,6 +150,7 @@ What the app keeps of a transaction that the user deleted, so that no refresh, f
 | Key | Content |
 |---|---|
 | `accountID` | The account |
+| `fileIdentity` | Original file fingerprint, if a file import recorded one; absent or null means no file identity |
 | `sourceID` | Identifier of the transaction at its bank or source |
 | `bookingDate` | Booking day |
 | `amount`, `currency` | Amount and its currency |
@@ -171,17 +186,9 @@ A position of a portfolio, as its bank reported it last.
 | `purchasePrice` | The purchase price, with `amount`, `currency`, and `day` like `price` |
 | `exchangeRate` | The rate between two currencies, with `base`, `quoted`, and `rate` (decimal text, units of `quoted` for one unit of `base`) |
 
-## Planned format version 2 for split transactions
+## Split part
 
-Version 1 above is the format the app currently writes and reads. The [split design](../openspec/changes/add-split-transactions/design.md) and tasks 5.1a and 5.2a of its [task list](../openspec/changes/add-split-transactions/tasks.md) define version 2. The implementation updates this page to describe v2 as active before enabling split commands. Database migrations remain v17 for the split table and v18 for review reasons. The file format version is separate from those migration numbers.
-
-Version 2 keeps the version-1 objects, with the following changes.
-
-| Object | Key | Content |
-|---|---|---|
-| File | `version` | `2`. The reader accepts versions 1 and 2 and refuses a newer version. |
-| File | `splitParts` | Required list of split parts, empty when no transaction is split |
-| Transaction | `review` | `"unclearBooking"` for an unclear pending match or `"splitUndone"` for a split undone by a bank correction. Missing means no review. Replaces `needsReview`. |
+Database migrations are v17 for the split table and v20 for review reasons. v18 adds file identity and v19 adds CSV profiles. The file format version is separate from these migration numbers.
 
 Each split part has these keys.
 
@@ -193,10 +200,10 @@ Each split part has these keys.
 | `amount` | Decimal amount text in the currency of the original, such as `"-100.00"` |
 | `categoryID` | Identifier of its category, missing for "Uncategorized" |
 | `comment` | Comment of this part, missing for none |
-| `vat` | Optional object with `role` (`"net"` or `"tax"`) and `rate` (a number in hundredths of a percent, such as `1900` for 19 %) |
+| `vat` | Optional object with `role` (`"net"` or `"tax"`) and `rate` (a number in hundredths of a percent, such as `1900` for 19 %, always above zero) |
 
-The original stays once in `transactions` with its category and comment for undo. Parts stay in `splitParts`, never as additional transactions. Their IDs, links, positions, amounts, categories, comments, and VAT data survive an export and import. Each split has at least two parts of nonzero amounts that add up to its booked original. The reader refuses an unknown review reason or malformed part. The import refuses missing original or category references, duplicate part IDs or positions, pending originals, and parts that break the split rules, without changing the target database.
+The original stays once in `transactions` with its category and comment for undo. Parts stay in `splitParts`, never as additional transactions. Their IDs, links, positions, amounts, categories, comments, and VAT data survive an export and import. Each split has at least two parts of nonzero amounts that add up to its booked original. The reader refuses an unknown review reason or malformed part. The import refuses missing original or category references, duplicate row IDs or positions, negative positions, pending originals, and parts that break the split rules, without changing the target database.
+
+## Version 1 compatibility
 
 A version-1 file has neither `splitParts` nor `review`. The version-2 reader imports it with no parts and maps `needsReview: true` to `review: "unclearBooking"` and `needsReview: false` to no review. A version-2 file writes `review` and omits `needsReview`. The version-1 app refuses a version-2 file as needing a newer app.
-
-The planned `AllDataTests` split round trip uses -119,00 € split into -100,00 € and -19,00 €, distinct categories and comments, both 19 % VAT roles, and both review reasons. A separate fixed version-1 fixture checks that `needsReview: true` imports as `unclearBooking` and false imports without review.

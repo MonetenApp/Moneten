@@ -41,11 +41,11 @@ struct MergeTests {
 		ledger.apply(r)
 		let stored = try store.loadLedger().transactions(ofAccount: giro.id)
 		#expect(stored.map(\.name) == ["Kiosk", "Café Beispiel", "Café Beispiel", "Café Beispiel"])
-		#expect(stored.map(\.needsReview) == [false, true, true, true])
+		#expect(stored.map(\.review) == [nil, .unclearBooking, .unclearBooking, .unclearBooking])
 		#expect(stored.map(\.isFetched) == [true, true, false, false])
 		#expect(stored.map(\.isNew) == [true, true, false, false])
 		#expect(ledger.transactions(ofAccount: giro.id).map(\.id) == stored.map(\.id))
-		#expect(ledger.transactions(ofAccount: giro.id).map(\.needsReview) == stored.map(\.needsReview))
+		#expect(ledger.transactions(ofAccount: giro.id).map(\.review) == stored.map(\.review))
 	}
 
 	@Test("A stored transaction keeps its return reason")
