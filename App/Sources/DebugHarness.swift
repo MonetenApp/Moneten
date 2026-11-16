@@ -172,6 +172,24 @@ final class DebugHarness {
 		// "<setting> <value> <password>" changes a setting of the Security tab as its password prompt does. The setting is
 		// lockOnClose, lockAfter, or the key of an unlock setting; the value is on, off, or minutes. The log never holds the password.
 		case "security": security(argument)
+		case "vatsettings":
+			guard let main = NSApp.windows.first(where: { $0.identifier?.rawValue.hasPrefix("main") == true }), main.attachedSheet == nil else { return }
+			let host = NSHostingView(rootView: GeneralSettings().environment(model).frame(width: 500))
+			let window = NSWindow(contentRect: NSRect(origin: .zero, size: host.fittingSize), styleMask: [.titled], backing: .buffered, defer: false)
+			window.contentView = host
+			main.beginSheet(window)
+			log("vatsettings opened")
+		case "vatbutton":
+			let control = sheetAccessibility().first { ($0 as AnyObject).accessibilityIdentifier?() == "vat-\(argument)" }
+			log("vatbutton", ("handled", .flag(control.map { ($0 as AnyObject).accessibilityPerformPress?() ?? false } ?? false)))
+		case "vatstate":
+			let controls = sheetAccessibility()
+			let expected = argument.split(separator: ",").compactMap { Int64($0) }
+			log("vatstate", ("rates", .count(Preference.rates.count)),
+				("matches", .flag(Preference.rates.map(\.hundredths) == expected)),
+				("error", .flag(controls.contains { ($0 as AnyObject).accessibilityIdentifier?() == "vat-error" })))
+		case "vatclose":
+			if let sheet = topSheet { sheet.sheetParent?.endSheet(sheet); sheet.orderOut(nil) }
 		// "<setting> <password>" turns an unlock setting on as the Security tab does, after the password check.
 		case "storepassword":
 			let parts = argument.split(separator: " ", maxSplits: 1).map(String.init)
@@ -541,10 +559,11 @@ final class DebugHarness {
 				.frame(maxWidth: .infinity).foregroundStyle(Palette.onBand).environment(\.negativeRed, Palette.bandRed).background(Palette.band)
 				.environment(model), width: 520, name: argument, kind: "pie")
 		case "portfolio":
-			// "<group> <euros>" adds a portfolio with that bank balance to a group.
+			// "<group> <euros> [currency]" adds a portfolio with that bank balance to a group, in euros or in the currency.
 			let parts = argument.split(separator: " ")
-			if parts.count == 2, let euros = Int64(parts[1]), let group = model.ledger.groups.first(where: { $0.name == String(parts[0]) }) {
-				var a = Account(groupID: group.id, position: model.ledger.nextTreePosition(in: group.id), name: "Depot", kind: .portfolio, source: .offline, currency: "EUR")
+			if parts.count == 2 || parts.count == 3, let euros = Int64(parts[1]), let group = model.ledger.groups.first(where: { $0.name == String(parts[0]) }) {
+				let currency = parts.count == 3 ? String(parts[2]) : "EUR"
+				var a = Account(groupID: group.id, position: model.ledger.nextTreePosition(in: group.id), name: "Depot", kind: .portfolio, source: .offline, currency: currency)
 				a.bankBalanceMinor = euros * 100
 				model.save(account: a)
 			}
@@ -746,7 +765,7 @@ final class DebugHarness {
 			let originalID = model.ledger.part(row.id)?.transactionID ?? row.id
 			Task {
 				let saved: Bool
-				if let rate = VATRate.standard.first(where: { $0.text == argument }) {
+				if let rate = Preference.rates.first(where: { $0.text == argument }) {
 					saved = await model.splitVAT(row: row.id, rate: rate)
 				} else if let amount = Split.amount(from: argument, on: row.amount, decimalMark: .comma) {
 					saved = await model.split(row: row.id, off: [amount])

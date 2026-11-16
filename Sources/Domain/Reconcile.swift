@@ -241,7 +241,9 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored: [Tran
 		}
 	}
 	if case let .refresh(result) = delivery, let delivered = result.holdings {
-		r.holdings = Reconciliation.Holdings(accountID: account.id, holdings: Holding.identify(delivered, stored: holdings))
+		// A connector need not know the account, as a setup fetches the positions before their account exists.
+		let owned = delivered.map { var holding = $0; holding.accountID = account.id; return holding }
+		r.holdings = Reconciliation.Holdings(accountID: account.id, holdings: Holding.identify(owned, stored: holdings))
 	}
 	return r
 }

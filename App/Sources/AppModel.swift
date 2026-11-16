@@ -50,10 +50,23 @@ enum Preference {
 	/// The pin of the filter bar, and the `SavedFilterBar` it keeps for the next launch.
 	static let pinFilterBar = "pinFilterBar"
 	static let savedFilterBar = "savedFilterBar"
+	static let vatRates = "vatRates"
+
+	static var rates: [VATRate] {
+		(UserDefaults.standard.array(forKey: vatRates) as? [Int64] ?? []).compactMap {
+			$0 > 0 ? VATRate(hundredths: $0) : nil
+		}
+	}
+
+	/// The values of settings the user has not changed.
+	static func registerDefaults() {
+		adoptLegacyDomain()
+		UserDefaults.standard.register(defaults: [vatRates: VATRate.standard.map(\.hundredths)])
+	}
 
 	/// Copies the settings of the bundle identifier before the rename to Moneten (ADR 0013) once.
 	/// Runs with their own data folder skip it, so tests never write the real settings.
-	static func adoptLegacyDomain() {
+	private static func adoptLegacyDomain() {
 		guard DataFolder.requestedPath == nil else { return }
 		let d = UserDefaults.standard, done = "adoptedSettingsOfMonetenMoneten"
 		guard !d.bool(forKey: done) else { return }
@@ -305,7 +318,7 @@ final class AppModel {
 	private var idleTimer: Timer?
 
 	init() {
-		Preference.adoptLegacyDomain()
+		Preference.registerDefaults()
 		autoRefresh = AutoRefresh(settings: refreshSettings, now: Self.refreshClock)
 		announcer = NewTransactionsAnnouncer(settings: refreshSettings, center: notices)
 		// A closure that captures `self` can be handed over only once every stored property is set.
@@ -337,8 +350,9 @@ final class AppModel {
 			if attended { self.showNotices() }
 		}
 		sync.noticed = { [weak self] access, messages in
-			guard let self, let bank = self.accesses[access]?.bankName else { return }
-			self.bankNotices.add(messages, from: bank)
+			// A setup access is not stored, so its service names the bank.
+			guard let self else { return }
+			self.bankNotices.add(messages, from: self.accesses[access.id]?.bankName ?? access.bankName)
 		}
 		sync.runEnded = { [weak self] in
 			guard let self else { return }

@@ -411,6 +411,40 @@ poll "^splitstate parts=2 .*sheet=none$" splitstate
 poll "^snapshot split-menu " splitmenusnapshot
 send split 5,00
 poll "^splitstate parts=3 .*sheet=none$" splitstate
+send vatsettings
+poll "^vatstate rates=2 matches=true error=false$" vatstate "1900,700"
+send focusfield 0
+send type 20
+poll "^vatbutton handled=true$" vatbutton save
+poll "^vatstate rates=3 matches=true error=false$" vatstate "1900,700,2000"
+send vatbutton change-1
+send focusfield 0
+send type 8,1
+send vatbutton save
+poll "^vatstate rates=3 matches=true error=false$" vatstate "1900,810,2000"
+send focusfield 0
+send type 7,125
+send vatbutton save
+poll "^vatstate rates=3 matches=true error=true$" vatstate "1900,810,2000"
+send vatbutton change-0
+send vatbutton cancel
+send focusfield 0
+send type "Erika Mustermann"
+send vatbutton save
+poll "^vatstate rates=3 matches=true error=true$" vatstate "1900,810,2000"
+for count in 2 1 0; do
+	send vatbutton remove-0
+	poll "^vatstate rates=$count " vatstate
+done
+poll "^vatstate rates=0 matches=true error=false$" vatstate
+poll "^snapshot split-menu " splitmenusnapshot
+for rate in 19 7; do
+	send focusfield 0
+	send type "$rate"
+	send vatbutton save
+done
+poll "^vatstate rates=2 matches=true error=false$" vatstate "1900,700"
+send vatclose
 send search ""
 poll "^migrationfailure: unknown failure$" migrationfailure "$MIGRATION_UNKNOWN"
 # "Look for New Accounts..." on an account named in the argument: the log names neither the account nor the access.
@@ -439,7 +473,7 @@ for value in "25,00" "20,00" "30,00" "Synthetic extra" DE02120300000000202051 "D
 	Girokonto Tagesgeld Kreditkarte Extrakonto "Erika Mustermann" Erika Mustermann erika-mustermann "Private Access" Musterbank "Check Bank" \
 	"Beispiel GmbH" "Wohnbau Musterstadt" "Tankstelle Beispiel" /Users/erika \
 	"Gehalt November" Miete Kartenzahlung Sparen Haushaltskasse MIETE-2026-11 GUTSCHRIFT DAUERAUFTRAG \
-	"0,00" "89,00" "100,00" "5,00" "+5,00" "-5,00" abc "Stadtwerke Musterstadt" "Streaming Dienst" Electricity Groceries \
+	"8,1" "7,125" "1900,700" "1900,810,2000" "1900,700,2000" "0,00" "89,00" "100,00" "5,00" "+5,00" "-5,00" abc "Stadtwerke Musterstadt" "Streaming Dienst" Electricity Groceries \
 	"Zugang vorübergehend gesperrt" "PIN falsch" Wartungsarbeiten pushTAN-App "currency:/^+?49/"; do
 	if grep -n -w -F -- "$value" "$LOG" >&2; then
 		echo "debug.log holds \"$value\"." >&2

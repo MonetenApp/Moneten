@@ -8,9 +8,14 @@ import Testing
 @Suite struct ResultMappingTests {
 	let giro = ListedAccount(.object(["name": .string("Premium Account"), "accountNumber": .string("111222333444"), "currency": .string("EUR"),
 		"type": .string("AccountTypeGiro")]))!
+	let depot = ListedAccount(.object(["accountNumber": .string("D-1"), "portfolio": .boolean(true)]))!
 	let berlinZone = TimeZone(identifier: "Europe/Berlin")!
 
 	func result(_ fields: [String: LuaValue], of account: ListedAccount? = nil) throws -> RefreshResult {
+		try mapped(fields, of: account).result
+	}
+
+	func mapped(_ fields: [String: LuaValue], of account: ListedAccount? = nil) throws -> (result: RefreshResult, notices: [String]) {
 		try ResultMapping.refreshResult(.object(fields), of: account ?? giro, since: nil, timeZone: berlinZone)
 	}
 
@@ -112,14 +117,117 @@ import Testing
 	}
 
 	@Test func portfolioWithoutSecurities() {
-		let depot = ListedAccount(.object(["accountNumber": .string("D-1"), "portfolio": .boolean(true)]))!
 		#expect(throws: MappingError("The securities could not be fetched.")) { try result(["balance": .integer(125)], of: depot) }
 	}
 
 	@Test func portfolioValueIsTheSumOfItsSecurities() throws {
-		let depot = ListedAccount(.object(["accountNumber": .string("D-1"), "portfolio": .boolean(true)]))!
-		#expect(try result(["securities": .array([.object(["name": .string("Muster AG"), "isin": .string("DE0001234567"), "quantity": .integer(10),
-			"price": .number(12.50), "amount": .number(125.00)])])], of: depot) .balance == Money(minorUnits: 12500, currency: "EUR"))
+		let shares = try result(["securities": .array([.object(["name": .string("Muster AG"), "isin": .string("DE0001234567"), "securityNumber": .string("123456"),
+			"quantity": .integer(10), "price": .number(12.50), "purchasePrice": .number(10.00), "amount": .number(125.00), "market": .string("Xetra"),
+			"tradeTimestamp": .integer(1794182400)])])], of: depot)
+		#expect(shares.balance == Money(minorUnits: 12500, currency: "EUR"))
+		#expect(shares.isPortfolio)
+		let first = try #require(shares.holdings?.first)
+		#expect(shares.holdings == [Holding(id: first.id, accountID: first.accountID,
+			security: Security(name: "Muster AG", isin: "DE0001234567", securityNumber: "123456"), quantity: 10,
+			quote: Quote(amount: 12.5, currency: "EUR", day: Day(year: 2026, month: 11, day: 9)), marketValue: Money(minorUnits: 12500, currency: "EUR"),
+			purchasePrice: Quote(amount: 10, currency: "EUR"))])
+	}
+
+	/// Most published crypto and peer-to-peer extensions give the quantity and the price and leave the value to the app.
+	@Test func securityWithoutAmountIsWorthItsQuantityTimesItsPrice() throws {
+		let coins = try result(["securities": .array([.object(["name": .string("Bitcoin"), "quantity": .string("0.5"), "price": .number(60000)]),
+			.object(["name": .string("Fonds"), "quantity": .integer(10), "price": .number(99.99)])])], of: depot)
+		#expect(coins.balance == Money(minorUnits: 3_099_990, currency: "EUR"))
+		#expect(coins.holdings?.map { $0.value(in: "EUR") } == [Money(minorUnits: 3_000_000, currency: "EUR"), Money(minorUnits: 99_990, currency: "EUR")])
+	}
+
+	@Test func priceInAnotherCurrencyConvertsWithTheCurrentRate() throws {
+		let shares = try result(["securities": .array([.object(["name": .string("Muster Inc."), "quantity": .integer(10), "price": .number(110),
+			"currencyOfPrice": .string("USD"), "exchangeRateOfPrice": .number(1.10)])])], of: depot)
+		#expect(shares.balance == Money(minorUnits: 100_000, currency: "EUR"))
+		#expect(shares.holdings?.first?.quote == Quote(amount: 110, currency: "USD"))
+	}
+
+	/// A script that knows no rate leaves out `amount`; the position keeps its value in the currency of its price.
+	/// The account still refreshed, so the message is a notice and no failure.
+	@Test func priceInAnotherCurrencyWithoutARateAddsNothingToTheBalance() throws {
+		let (tokens, notices) = try mapped(["securities": .array([.object(["name": .string("Token A"), "quantity": .integer(10), "price": .number(2), "amount": .integer(20)]),
+			.object(["name": .string("Token B"), "quantity": .integer(10), "price": .number(110), "currencyOfPrice": .string("USDC")])])], of: depot)
+		#expect(tokens.balance == Money(minorUnits: 2000, currency: "EUR"))
+		#expect(tokens.holdings?.last?.value(in: "EUR") == Money(minorUnits: 110_000, currency: "USDC"))
+		#expect(tokens.transactionFailure == nil)
+		#expect(notices == ["The balance leaves out Token B, because its price is in USDC and the extension gives no exchange rate."])
+	}
+
+	/// The gain compares the value at today's rate with the cost at the rate of the day of the purchase.
+	@Test func purchasePriceConvertsWithTheRateOfThePurchase() throws {
+		let shares = try result(["securities": .array([.object(["name": .string("Muster Inc."), "quantity": .integer(10), "price": .number(110),
+			"currencyOfPrice": .string("USD"), "exchangeRateOfPrice": .number(1.1), "purchasePrice": .integer(100), "currencyOfPurchasePrice": .string("USD"),
+			"exchangeRateOfPurchasePrice": .number(1.25)])])], of: depot)
+		let holding = try #require(shares.holdings?.first)
+		#expect(holding.purchasePrice == Quote(amount: 80, currency: "EUR"))
+		#expect(holding.gain(in: "EUR")?.amount == Money(minorUnits: 20_000, currency: "EUR"))
+	}
+
+	@Test func purchasePriceOutOfRange() {
+		#expect(throws: MappingError("The value of security 1 at its purchase price is out of range.")) {
+			try result(["securities": .array([.object(["quantity": .integer(1), "amount": .integer(5), "purchasePrice": .number(1e17)])])], of: depot)
+		}
+	}
+
+	@Test func nominalAmountIsValuedAtAPercentage() throws {
+		let bond = try result(["securities": .array([.object(["name": .string("Anleihe Musterland"), "quantity": .integer(5000),
+			"currencyOfQuantity": .string("EUR"), "price": .number(98.5), "purchasePrice": .number(97)])])], of: depot)
+		#expect(bond.balance == Money(minorUnits: 492_500, currency: "EUR"))
+		#expect(bond.holdings?.first?.isNominal == true)
+		#expect(bond.holdings?.first?.quote == Quote(amount: 98.5, currency: nil))
+	}
+
+	/// The rate of a nominal amount links the account currency with `currencyOfQuantity`, as the price is a percentage.
+	@Test func nominalAmountInAnotherCurrencyConvertsWithTheCurrentRate() throws {
+		let bond = try result(["securities": .array([.object(["name": .string("Anleihe Musterstaat"), "quantity": .integer(5000),
+			"currencyOfQuantity": .string("USD"), "price": .number(98.5), "exchangeRateOfPrice": .number(1.25)])])], of: depot)
+		#expect(bond.balance == Money(minorUnits: 394_000, currency: "EUR"))
+		#expect(bond.holdings?.first?.exchangeRate == ExchangeRate(base: "EUR", quoted: "USD", rate: 1.25))
+	}
+
+	/// A bond bought at 100 % when 1 USD cost 1 EUR is worth less at 100 % when 1 EUR costs 1.25 USD.
+	@Test func nominalPurchaseConvertsWithTheRateOfThePurchase() throws {
+		let bond = try result(["securities": .array([.object(["name": .string("Anleihe Musterstaat"), "quantity": .integer(5000),
+			"currencyOfQuantity": .string("USD"), "price": .integer(100), "exchangeRateOfPrice": .number(1.25), "purchasePrice": .integer(100),
+			"exchangeRateOfPurchasePrice": .integer(1)])])], of: depot)
+		let holding = try #require(bond.holdings?.first)
+		#expect(holding.value(in: "EUR") == Money(minorUnits: 400_000, currency: "EUR"))
+		#expect(holding.gain(in: "EUR")?.amount == Money(minorUnits: -100_000, currency: "EUR"))
+	}
+
+	/// Older scripts set `currency = nil` or the account currency on a security, a field that the API no longer
+	/// names, so it never makes the quantity a nominal amount.
+	@Test func olderCurrencyFieldKeepsUnits() throws {
+		let coins = try result(["securities": .array([.object(["quantity": .integer(2), "price": .integer(3), "currency": .string("EUR")])])], of: depot)
+		#expect(coins.balance == Money(minorUnits: 600, currency: "EUR"))
+		#expect(coins.holdings?.first?.isNominal == false)
+	}
+
+	@Test func securityWithoutAmountAndPriceHasNoValue() throws {
+		let coins = try result(["securities": .array([.object(["name": .string("Bitcoin"), "quantity": .integer(1)])])], of: depot)
+		#expect(coins.balance == Money(minorUnits: 0, currency: "EUR"))
+		#expect(coins.holdings?.map(\.security.name) == ["Bitcoin"])
+		#expect(coins.holdings?.first?.value(in: "EUR") == nil)
+	}
+
+	/// A script may index its securities by name in the same table, and only the numbered ones are the list.
+	@Test func securitiesKeptAlsoUnderTheirNames() throws {
+		let share = LuaValue.object(["name": .string("Example Corp"), "quantity": .integer(4), "price": .integer(25)])
+		let shares = try result(["securities": .object(["Example Corp": share, "1": share])], of: depot)
+		#expect(shares.holdings?.count == 1)
+		#expect(shares.balance == Money(minorUnits: 10_000, currency: "EUR"))
+	}
+
+	@Test func quantityThatIsNotANumber() {
+		#expect(throws: MappingError("The quantity of security 1 is not a number.")) {
+			try result(["securities": .array([.object(["quantity": .string("1,5"), "price": .integer(3)])])], of: depot)
+		}
 	}
 
 	@Test func knownTransactionsLeaveOutPendingAndRepeatedIdentifiers() {
@@ -172,7 +280,6 @@ import Testing
 	}
 
 	@Test func securitiesThatAddUpBeyondTheRange() {
-		let depot = ListedAccount(.object(["accountNumber": .string("D-1"), "portfolio": .boolean(true)]))!
 		let big = LuaValue.object(["name": .string("Muster AG"), "amount": .number(9e12)])
 		#expect(throws: MappingError("The value of security 1 is out of range.")) {
 			try result(["securities": .array([.object(["amount": .number(9e16)])])], of: depot)
