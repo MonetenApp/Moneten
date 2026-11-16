@@ -52,7 +52,6 @@ finish() {
 		kill "$PID" 2>/dev/null || true
 		wait "$PID" 2>/dev/null || true
 	fi
-	security delete-generic-password -s "Moneten crash report key" -a "$DATA/Database/Moneten.sqlite" >/dev/null 2>&1 || true
 	scripts/forget-bundle.sh "$BUNDLE_ID" "$APP"
 	[ -n "$KEEP" ] && echo "The log stays in $WORK/debug." || rm -rf "$WORK"
 }

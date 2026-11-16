@@ -44,7 +44,6 @@ report() {
 		/^perf .* stall_ms=/ { printf "%-30s %9s %10s %13s  %s\n", $2, $4, $6, $8, $10; next } /^perf / { print }' "$LOG"
 	kill $PID 2>/dev/null || true
 	wait $PID 2>/dev/null || true
-	security delete-generic-password -s "Moneten crash report key" -a "$WORK/data/Database/Moneten.sqlite" >/dev/null 2>&1 || true
 	scripts/forget-bundle.sh "$BUNDLE_ID" "$APP"
 	rm -rf "$WORK"
 }
