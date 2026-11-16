@@ -46,7 +46,6 @@ fi
 WORK="$(mktemp -d "$PWD/.build/check-debug-log.XXXXXX")"
 finish() {
 	if [ -n "$PID" ]; then kill "$PID" 2>/dev/null || true; fi
-	security delete-generic-password -s "Moneten crash report key" -a "$DATA/Database/Moneten.sqlite" >/dev/null 2>&1 || true
 	[ -n "$KEEP" ] && echo "The log stays in $WORK/debug." || rm -rf "$WORK"
 }
 trap finish EXIT

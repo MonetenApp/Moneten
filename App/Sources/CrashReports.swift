@@ -18,7 +18,7 @@ final class CrashReportController: NSObject, MXMetricManagerSubscriber {
 	static var appVersion: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Unknown" }
 
 	init(folder: DataFolder) {
-		store = CrashReportStore(folder: folder)
+		store = CrashReportStore(folder: folder, keyInFolder: DebugHarness.isRequested)
 		super.init()
 		do {
 			let start = Date()
