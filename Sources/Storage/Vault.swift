@@ -50,6 +50,8 @@ public struct Vault: Sendable {
 		case copiesKeepRandomKey([String])
 		/// The copies at these paths could not be read, so the password stays unchanged.
 		case copiesUnreadable([String])
+		/// The work files at these paths could not be removed, so the password stays unchanged.
+		case workFilesNotRemoved([String])
 
 		/// True when the database has the new password although something after the change failed.
 		public var passwordChanged: Bool {
@@ -96,6 +98,8 @@ public struct Vault: Sendable {
 				"The database password has been changed, but Moneten could not update the copies of the database at these paths. They may still open with the earlier password. Please move them to the Trash.\n\n" + paths.joined(separator: "\n")
 			case let .copiesUnreadable(paths):
 				"Moneten could not read these copies of the database, so the password has not been changed. Close the program that uses them, or move them to the Trash, and try again.\n\n" + paths.joined(separator: "\n")
+			case let .workFilesNotRemoved(paths):
+				"Moneten could not remove these work files of an interrupted upgrade or repair, so the password has not been changed. They still open with the current password. Move them to the Trash and try again.\n\n" + paths.joined(separator: "\n")
 			case let .copiesKeepRandomKey(paths):
 				"The database password has been set, but Moneten could not encrypt the copies of the database at these paths with it. They still open with the random key, which stays in the Keychain. Moneten tries again at the next start.\n\n" + paths.joined(separator: "\n")
 			}
@@ -181,7 +185,7 @@ public struct Vault: Sendable {
 		}
 		var store: Store?
 		do {
-			let created = try openDatabase(key: key, creating: true)
+			let created = try openDatabase(key: key, creating: true).store
 			store = created
 			if password == nil, !FileManager.default.createFile(atPath: noPasswordMarker.path, contents: Data()) {
 				throw Failure.unreadable("Could not create \(noPasswordMarker.path).")
@@ -204,18 +208,22 @@ public struct Vault: Sendable {
 	/// `setPassword` left behind are removed, because the password opens the database now. The copies
 	/// that still have the random key take the password first, so the key goes only when no copy needs it.
 	public func open(password: String, upgrading: @Sendable () -> Void = {}) throws -> Store {
-		let store = try openDatabase(key: password, upgrading: upgrading)
+		let opened = try openDatabase(key: password, upgrading: upgrading)
 		// The password opened the database, so the unlock succeeds. The rest tidies up, and whatever fails here
 		// is tried again at the next start: a marker that stays sends the next start to the password prompt,
 		// and a random key that stays is read again below.
-		if FileManager.default.fileExists(atPath: noPasswordMarker.path) { try? FileManager.default.removeItem(at: noPasswordMarker) }
-		// Next to a password, a random key stays only for an interrupted first password and for copies that
-		// could not take it. Those copies take the password now, and the key goes once no copy needs it.
-		if let randomKey = (try? read(keyKeychain, legacy: legacyKeyKeychain)) ?? nil,
-		   let kept = try? rekeyCopies(from: randomKey, to: password, removingFailures: false), kept.isEmpty {
-			try? deleteRandomKey()
+		let hadMarker = FileManager.default.fileExists(atPath: noPasswordMarker.path)
+		if hadMarker { try? FileManager.default.removeItem(at: noPasswordMarker) }
+		// Next to a password, a random key stays for an interrupted first password and for copies that could not
+		// take it. It may also be the key of a database that the user renamed, which shares the Keychain entry of
+		// this path. So the key goes only when this folder shows a first password that is not finished: the
+		// marker, a copy that step 4 of "Open" found with the key, or a copy that the key opens.
+		if let randomKey = (try? read(keyKeychain, legacy: legacyKeyKeychain)) ?? nil, let plan = try? planRekey(from: randomKey),
+		   hadMarker || opened.tookRandomKeyCopy || !plan.toRekey.isEmpty {
+			let kept = plan.unreadable + rekeyCopies(plan.toRekey, from: randomKey, to: password, removingFailures: false)
+			if kept.isEmpty { try? deleteRandomKey() }
 		}
-		return store
+		return opened.store
 	}
 
 	/// Opens a database that has no password with the random key from the Keychain.
@@ -223,7 +231,7 @@ public struct Vault: Sendable {
 		let key: String?
 		do { key = try read(keyKeychain, legacy: legacyKeyKeychain) } catch { throw Failure.keyNotInKeychain(String(describing: error)) }
 		guard let key else { throw Failure.keyNotInKeychain(nil) }
-		return try openDatabase(key: key, upgrading: upgrading)
+		return try openDatabase(key: key, upgrading: upgrading).store
 	}
 
 	/// Sets the first password of a database that had a random key. The copies in the database folder take the
@@ -231,6 +239,7 @@ public struct Vault: Sendable {
 	/// password" in the design of add-encrypted-database.
 	public func setPassword(_ password: String, on store: Store) throws {
 		let randomKey = try keychain { try read(keyKeychain, legacy: legacyKeyKeychain) }
+		try removeWorkFilesFirst()
 		var kept: [String] = []
 		if let randomKey {
 			let plan = try planRekey(from: randomKey)
@@ -255,12 +264,13 @@ public struct Vault: Sendable {
 	public func changePassword(current: String, new: String, on store: Store) throws {
 		try connect(folder.databaseFile, key: current).close()
 		let keepsPassword = try storedPassword() != nil
+		try removeWorkFilesFirst()
 		let plan = try planRekey(from: current)
 		// Nobody could tell later whether a copy that cannot be read now still opens with the current password.
 		guard plan.unreadable.isEmpty else { throw Failure.copiesUnreadable(plan.unreadable) }
 		try writeRekeyList(plan.toRekey + (try rekeyList()))
 		try store.queue.write { db in try db.changePassphrase(new) }
-		let notUpdated = rekeyCopies(plan.toRekey, from: current, to: new, removingFailures: true) + removeWorkFiles()
+		let notUpdated = rekeyCopies(plan.toRekey, from: current, to: new, removingFailures: true)
 		if keepsPassword {
 			do { try passwordKeychain.write(new, account: folder.keychainAccount) } catch {
 				throw Failure.keychainNotUpdated(String(describing: error), copies: notUpdated)
@@ -374,18 +384,14 @@ public struct Vault: Sendable {
 		return paths
 	}
 
-	/// Re-keys every copy that the old key opens. Used when an interrupted first password is finished.
-	private func rekeyCopies(from old: String, to new: String, removingFailures: Bool) throws -> [String] {
-		let plan = try planRekey(from: old)
-		return plan.unreadable + rekeyCopies(plan.toRekey, from: old, to: new, removingFailures: removingFailures)
-	}
-
 	/// Step 4 of "Open": finishes a re-key that a stop interrupted. A listed copy that the key of the database
 	/// opens is done. One that the random key opens takes the key of the database. One that neither opens
 	/// still has the earlier key and is removed. Everything else stays listed for the next start, so the
-	/// database opens even when a copy is not finished.
-	private func finishRekey(key: String) {
-		guard let names = try? rekeyList(), !names.isEmpty else { return }
+	/// database opens even when a copy is not finished. Returns true when the random key opened a listed copy,
+	/// which shows a first password that is not finished.
+	private func finishRekey(key: String) -> Bool {
+		guard let names = try? rekeyList(), !names.isEmpty else { return false }
+		var tookRandomKeyCopy = false
 		let randomKey = Result { try read(keyKeychain, legacy: legacyKeyKeychain) }
 		var left: [String] = []
 		for name in names {
@@ -402,9 +408,15 @@ public struct Vault: Sendable {
 			switch randomKey {
 			case let .success(random?) where random != key:
 				switch rekeyCopy(url, from: random, to: key) {
-				case .done: continue
+				case .done:
+					tookRandomKeyCopy = true
+					continue
 				case .otherKey: break
-				case .unreadable, .notChanged:
+				case .notChanged:
+					tookRandomKeyCopy = true
+					left.append(name)
+					continue
+				case .unreadable:
 					left.append(name)
 					continue
 				}
@@ -417,6 +429,7 @@ public struct Vault: Sendable {
 			if (try? removeWithSideFiles(url)) == nil { left.append(name) }
 		}
 		try? writeRekeyList(left)
+		return tookRandomKeyCopy
 	}
 
 	/// The names in `RekeyCopies`. Only exact names of copies count, so the list cannot remove another file.
@@ -436,10 +449,12 @@ public struct Vault: Sendable {
 		}
 	}
 
-	/// Removes the work files of an interrupted upgrade or repair and the partial copies, which hold the
-	/// earlier key. Returns the paths that could not be removed.
-	private func removeWorkFiles() -> [String] {
-		guard let names = try? FileManager.default.contentsOfDirectory(atPath: folder.databaseFolder.path) else { return [folder.databaseFolder.path] }
+	/// Removes the work files of an interrupted upgrade or repair and the partial copies before a password change.
+	/// They hold the current key, and `RekeyCopies` does not list them, so a stop after the change would leave
+	/// them readable with the earlier key. A work file that stays stops the change before anything changed.
+	private func removeWorkFilesFirst() throws {
+		let names: [String]
+		do { names = try FileManager.default.contentsOfDirectory(atPath: folder.databaseFolder.path) } catch { throw Failure.unreadable(String(describing: error)) }
 		var failed: [String] = []
 		for name in names {
 			let isPartial = name.hasPrefix(".") && name.hasSuffix(".partial") && Self.isCopy(String(name.dropFirst().dropLast(".partial".count)))
@@ -447,7 +462,7 @@ public struct Vault: Sendable {
 			let url = folder.databaseFolder.appendingPathComponent(name)
 			do { try removeWithSideFiles(url) } catch { failed.append(url.path) }
 		}
-		return failed
+		if !failed.isEmpty { throw Failure.workFilesNotRemoved(failed) }
 	}
 
 	private func deleteRandomKey() throws {
@@ -539,14 +554,15 @@ public struct Vault: Sendable {
 		}
 	}
 
-	/// Opens the database in the order of "Open" in the design of add-encrypted-database.
-	private func openDatabase(key: String, creating: Bool = false, upgrading: @Sendable () -> Void = {}) throws -> Store {
+	/// Opens the database in the order of "Open" in the design of add-encrypted-database. `tookRandomKeyCopy`
+	/// is the result of step 4.
+	private func openDatabase(key: String, creating: Bool = false, upgrading: @Sendable () -> Void = {}) throws -> (store: Store, tookRandomKeyCopy: Bool) {
 		if !creating { try checkFile() }
 		var queue = try connect(folder.databaseFile, key: key, creating: creating)
 		do {
 			let fm = FileManager.default
 			try refuseNewer(queue)
-			finishRekey(key: key)
+			let tookRandomKeyCopy = finishRekey(key: key)
 			if fm.fileExists(atPath: repairMarker.path) { queue = try repair(queue, key: key) }
 			if try !isIntact(queue) {
 				guard fm.createFile(atPath: repairMarker.path, contents: Data()) else { throw Failure.unreadable("Could not create \(repairMarker.path).") }
@@ -560,7 +576,7 @@ public struct Vault: Sendable {
 				upgrading()
 				queue = try upgrade(queue, key: key)
 			}
-			return Store(queue: queue)
+			return (Store(queue: queue), tookRandomKeyCopy)
 		} catch {
 			try? queue.close()
 			throw error

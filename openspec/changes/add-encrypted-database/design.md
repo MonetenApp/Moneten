@@ -64,36 +64,39 @@ SQLite keeps the side files `-journal`, `-wal`, and `-shm` next to a file. Befor
 
 ### Create
 
-`create` runs only when the database folder holds no files. It keeps the Keychain entries of a database that was at this path before, such as one the user renamed: a new database without a password takes the random key that is already there, so the renamed database still opens with it, and a stored password stays as the last copy of a password the user may have forgotten. The app turns the unlock settings off. When a step after the first write fails, `create` closes its connection first and then removes the new file and the `NoPassword` marker.
+`create` runs only when the database folder holds no files. It keeps the Keychain entries of a database that was at this path before, such as one the user renamed: a new database without a password takes the random key that is already there, so the renamed database still opens with it, and a stored password stays as the last copy of a password the user may have forgotten. An unlock with the password removes such a random key only when the new folder shows a first password that is not finished, as "Set the first password" describes, so a new database with a password leaves the key of the renamed one alone. One limit remains: a new database without a password shares the key of the renamed one, and a later `setPassword` on the new database removes that key, because nothing tells the two databases apart. The renamed database then opens only with a build that still has the key, or not at all. The app turns the unlock settings off. When a step after the first write fails, `create` closes its connection first and then removes the new file and the `NoPassword` marker.
 
 ### Set the first password
 
 `setPassword` changes the random key to a password:
 
-1. List the copies. Each copy that the random key opens is to be re-keyed. A copy that the random key does not open stays as it is. A copy with another error is reported.
-2. Write `RekeyCopies` with the names to re-key. A failure throws before anything changed.
-3. Re-key the database. A failure throws, and the database keeps the random key.
-4. Remove `NoPassword`.
-5. Re-key each listed copy and check that the password opens it.
-6. Write the copies that failed back into `RekeyCopies`, or remove the marker when none failed.
-7. Remove the random key from the Keychain, but only when no copy still needs it. Otherwise the key stays and the error names the copies.
+1. Remove the work files, which hold the random key and which `RekeyCopies` does not list. A work file that cannot be removed throws `workFilesNotRemoved` before anything changed.
+2. List the copies. Each copy that the random key opens is to be re-keyed. A copy that the random key does not open stays as it is. A copy with another error is reported.
+3. Write `RekeyCopies` with the names to re-key. A failure throws before anything changed.
+4. Re-key the database. A failure throws, and the database keeps the random key.
+5. Remove `NoPassword`.
+6. Re-key each listed copy and check that the password opens it.
+7. Write the copies that failed back into `RekeyCopies`, or remove the marker when none failed.
+8. Remove the random key from the Keychain, but only when no copy still needs it. Otherwise the key stays and the error names the copies.
 
-A stop before step 3: the next start opens with the random key, and step 4 of "Open" finds every listed copy done. A stop after step 3: `NoPassword` may still exist, the random key does not open the database, and the lock screen asks for the password. Step 4 of "Open" then re-keys each copy with the random key, and the vault removes the key once no copy needs it.
+A stop before step 4: the next start opens with the random key, and step 4 of "Open" finds every listed copy done. A stop after step 4: `NoPassword` may still exist, the random key does not open the database, and the lock screen asks for the password. Step 4 of "Open" then re-keys each copy with the random key, and the vault removes the key once no copy needs it.
+
+The unlock with the password removes the random key only when the folder shows a first password that is not finished: `NoPassword` existed, step 4 of "Open" found a listed copy that the random key opens, or a copy in the folder opens with the random key. Otherwise the key may belong to a renamed database at the same path, and it stays. A stop between step 7 and step 8 leaves no such sign, so the key stays in the Keychain. It opens no file of this folder.
 
 ### Change the password
 
 `changePassword`:
 
 1. Check the current password on a second connection.
-2. List the copies. Each copy that the current password opens is to be re-keyed. A copy that it does not open, such as one with an even older password, stays as it is. A copy with another error, such as `SQLITE_BUSY`, stops the change with `copiesUnreadable`, before anything changed, because nobody could tell later whether it still opens with the current password.
-3. Write `RekeyCopies` with the names to re-key, together with the names that an earlier change left. A failure throws before anything changed.
-4. Re-key the database. A failure throws, and the current password still opens it.
-5. Re-key each listed copy and check that the new password opens it. A copy that the current password opened and that could not be re-keyed is removed. A copy with any other error is reported as not updated and stays listed, so step 4 of "Open" removes it at the next start when the new password does not open it.
-6. Write the copies that are still not done back into `RekeyCopies`, or remove the marker.
-7. Remove the work files, which hold the current key.
+2. Remove the work files, which hold the current key and which `RekeyCopies` does not list. A work file that cannot be removed throws `workFilesNotRemoved` before anything changed.
+3. List the copies. Each copy that the current password opens is to be re-keyed. A copy that it does not open, such as one with an even older password, stays as it is. A copy with another error, such as `SQLITE_BUSY`, stops the change with `copiesUnreadable`, before anything changed, because nobody could tell later whether it still opens with the current password.
+4. Write `RekeyCopies` with the names to re-key, together with the names that an earlier change left. A failure throws before anything changed.
+5. Re-key the database. A failure throws, and the current password still opens it.
+6. Re-key each listed copy and check that the new password opens it. A copy that the current password opened and that could not be re-keyed is removed. A copy with any other error is reported as not updated and stays listed, so step 4 of "Open" removes it at the next start when the new password does not open it.
+7. Write the copies that are still not done back into `RekeyCopies`, or remove the marker.
 8. Store the new password in the Keychain when the Keychain held the old one. A failure reports the Keychain error and the copies that were not updated.
 
-A stop before step 4: the next start opens with the current password and finds every listed copy done. A stop after step 4: only the new password opens the database, and step 4 of "Open" removes each listed copy that the new password does not open. So no copy stays readable with the earlier password once the database has the new one.
+A stop before step 5: the next start opens with the current password and finds every listed copy done. A stop after step 5: only the new password opens the database, and step 4 of "Open" removes each listed copy that the new password does not open. So no copy stays readable with the earlier password once the database has the new one.
 
 ## Risks / Trade-offs
 

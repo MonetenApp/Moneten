@@ -181,6 +181,24 @@ The app SHALL encrypt the copies that it keeps in the database folder, the autom
 - **THEN** the app names the path of the copy that it could not read
 - **AND** "alt-und-lang-genug" still opens the database and the copy
 
+### Requirement: Work files go before a password change
+
+The app SHALL remove the work files that an interrupted upgrade or repair left in the database folder before it sets or changes the database password. When it cannot remove one, it names the file and changes no key.
+
+#### Scenario: A work file stops the change
+
+- **GIVEN** a database with the password "alt-und-lang-genug" and a work file of an interrupted upgrade that the app cannot remove
+- **WHEN** the user changes the password to "neu-und-noch-laenger"
+- **THEN** the app names the path of the work file
+- **AND** "alt-und-lang-genug" still opens the database and the work file
+
+#### Scenario: A work file stops the first password
+
+- **GIVEN** a database without a password and a work file of an interrupted upgrade that the app cannot remove
+- **WHEN** the user sets the password "korrekt-pferd-batterie"
+- **THEN** the app names the path of the work file
+- **AND** the database still opens without a password
+
 ### Requirement: A failed password change leaves the database usable
 
 The app SHALL keep the database readable with the earlier password when a password change fails, for example because the disk is full.
