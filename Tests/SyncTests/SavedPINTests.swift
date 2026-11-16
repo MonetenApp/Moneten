@@ -66,10 +66,12 @@ struct SavedPINTests {
 		await until { !coordinator.isRefreshing }
 		#expect(store.pins.isEmpty)
 
+		// The sheet of the next refresh shows the answer of the bank to the PIN of the last one.
 		_ = refresh([.ask(Self.pin), .ask(Self.rejected), .fetched(Self.giro.accountID)])
-		await until { broker.current?.request == Self.pin }
-		answer(.pin(Secret("11111"), save: true))
 		await until { broker.current?.request == Self.rejected }
+		let first = broker.current?.id
+		answer(.pin(Secret("11111"), save: true))
+		await until { broker.current?.request == Self.rejected && broker.current?.id != first }
 		answer(.pin(Secret("22222"), save: true))
 		await until { !coordinator.isRefreshing }
 		#expect(store.pins == [Self.bank.id: Secret("22222")])
@@ -111,7 +113,119 @@ struct SavedPINTests {
 		#expect(broker.savedPINs.isEmpty)
 
 		_ = refresh([.ask(Self.pin)])
+		await until { broker.current?.request == Self.rejected }
+		broker.cancel(broker.current!.id)
+		await until { !coordinator.isRefreshing }
+	}
+
+	@Test("A 9931 that warns of a block deletes the saved PIN, the automatic refresh sends no PIN, and the PIN sheet the user opens next shows the warning once")
+	func warningOfABlock() async throws {
+		let warning = BankMessage(code: "9931", text: "PIN falsch. Weitere Fehlversuche führen zur Sperrung.")
+		let warned = UserRequest.pin(PINRequest(rejected: warning))
+		try store.savePIN(Secret("12345"), for: Self.bank.id)
+		try broker.open(store)
+		let automatic = refresh([.ask(Self.pin), .ask(warned), .fetched(Self.giro.accountID)], attended: false)
+		await until { !coordinator.isRefreshing }
+		#expect(automatic.answers.all == [.pin(Secret("12345"))])
+		#expect(coordinator.states[Self.bank.id] == .failed(.pinRejected(warning)))
+		#expect(store.pins.isEmpty)
+
+		let again = refresh([.ask(Self.pin), .fetched(Self.giro.accountID)], attended: false)
+		await until { !coordinator.isRefreshing }
+		#expect(again.answers.all.isEmpty)
+
+		_ = refresh([.ask(Self.pin)])
+		await until { broker.current?.request == warned }
+		broker.cancel(broker.current!.id)
+		await until { !coordinator.isRefreshing }
+		_ = refresh([.ask(Self.pin)])
 		await until { broker.current?.request == Self.pin }
+		broker.cancel(broker.current!.id)
+		await until { !coordinator.isRefreshing }
+	}
+
+	@Test("A PIN that Edit Login Data saved answers without a sheet, and a rejection of it deletes it from the database")
+	func adoptedPIN() async throws {
+		try store.savePIN(Secret("54321"), for: Self.bank.id)
+		broker.adopt(Secret("54321"), for: Self.bank.id, saved: true)
+		#expect(broker.savedPINs == [Self.bank.id])
+		let automatic = refresh([.ask(Self.pin), .ask(Self.rejected)], attended: false)
+		await until { !coordinator.isRefreshing }
+		#expect(automatic.answers.all == [.pin(Secret("54321"))])
+		#expect(store.pins.isEmpty)
+		#expect(broker.savedPINs.isEmpty)
+
+		broker.adopt(Secret("67890"), for: Self.bank.id, saved: false)
+		#expect(broker.savedPINs.isEmpty)
+		let next = refresh([.ask(Self.pin), .fetched(Self.giro.accountID)], attended: false)
+		await until { !coordinator.isRefreshing }
+		#expect(next.answers.all == [.pin(Secret("67890"))])
+		#expect(store.pins.isEmpty)
+	}
+
+	@Test("Edit Login Data with Save PIN off drops a request to save an earlier PIN, so the next refresh saves nothing")
+	func adoptDropsEarlierSave() async throws {
+		// A PIN typed with "Save PIN" on, whose login never ended.
+		let typed = Task { try await broker.ask(Self.pin, for: Self.bank, accountNames: [], attended: true) }
+		await until { broker.current != nil }
+		answer(.pin(Secret("12345"), save: true))
+		_ = try await typed.value
+		broker.adopt(Secret("67890"), for: Self.bank.id, saved: false)
+		let next = refresh([.ask(Self.pin), .fetched(Self.giro.accountID)], attended: false)
+		await until { !coordinator.isRefreshing }
+		#expect(next.answers.all == [.pin(Secret("67890"))])
+		#expect(store.pins.isEmpty)
+	}
+
+	@Test("A PIN that Edit Login Data saved after a rejected PIN could not be deleted answers after the next unlock")
+	func adoptClearsUndeletedMark() async throws {
+		let defaults = try #require(UserDefaults(suiteName: "MonetenTests-\(UUID().uuidString)"))
+		let coordinator = SyncCoordinator(broker: SessionBroker(defaults: defaults, scope: "/A/Moneten.sqlite"))
+		let failing = FailingRemovalStore(failures: .max)
+		try failing.savePIN(Secret("12345"), for: Self.bank.id)
+		try coordinator.broker.open(failing)
+		_ = refresh([.ask(Self.pin), .ask(Self.rejected)], attended: false, in: coordinator)
+		await until { !coordinator.isRefreshing }
+		// "Edit Login Data..." stores the new PIN with the new login in one transaction.
+		try failing.savePIN(Secret("67890"), for: Self.bank.id)
+		coordinator.broker.adopt(Secret("67890"), for: Self.bank.id, saved: true)
+		coordinator.broker.forgetPINs()
+		try coordinator.broker.open(failing)
+		let automatic = refresh([.ask(Self.pin), .fetched(Self.giro.accountID)], attended: false, in: coordinator)
+		await until { !coordinator.isRefreshing }
+		#expect(automatic.answers.all == [.pin(Secret("67890"))])
+	}
+
+	@Test("The lock forgets the answer of the bank to a rejected PIN, so the PIN sheet after the unlock shows none")
+	func rejectionForgottenOnLock() async throws {
+		_ = refresh([.ask(Self.pin), .fail(.pinRejected(BankMessage(code: "9931", text: "PIN falsch. Noch 1 Fehlversuch bis zur Sperrung.")))])
+		await until { broker.current != nil }
+		answer(.pin(Secret("11111")))
+		await until { !coordinator.isRefreshing }
+
+		broker.forgetPINs()
+		try broker.open(store)
+		_ = refresh([.ask(Self.pin)])
+		await until { broker.current != nil }
+		#expect(broker.current?.request == Self.pin)
+		broker.cancel(broker.current!.id)
+		await until { !coordinator.isRefreshing }
+	}
+
+	@Test("A new PIN from Edit Login Data or from the setup forgets the answer of the bank to the old one", arguments: [true, false])
+	func rejectionForgottenWithNewPIN(edited: Bool) async throws {
+		_ = refresh([.ask(Self.pin), .fail(.pinRejected(BankMessage(code: "9931", text: "PIN falsch. Noch 1 Fehlversuch bis zur Sperrung.")))])
+		await until { broker.current != nil }
+		answer(.pin(Secret("11111")))
+		await until { !coordinator.isRefreshing }
+
+		if edited { broker.adopt(Secret("22222"), for: Self.bank.id, saved: false) } else { try broker.remember(Secret("22222"), for: Self.bank.id, save: false) }
+		// The refresh with the new PIN fails for another cause, so the PIN is forgotten and the next refresh asks.
+		_ = refresh([.ask(Self.pin), .fail(.offline)], attended: false)
+		await until { !coordinator.isRefreshing }
+		_ = refresh([.ask(Self.pin)])
+		await until { broker.current != nil }
+		#expect(broker.current?.request == Self.pin)
 		broker.cancel(broker.current!.id)
 		await until { !coordinator.isRefreshing }
 	}
@@ -365,7 +479,7 @@ struct SavedPINTests {
 	@Test("A rejected PIN never reaches the error of the account")
 	func rejectionRecord() async {
 		var refreshes: [UUID: AccountRefresh] = [:]
-		coordinator.ended = { _, _, accounts, _ in refreshes = accounts }
+		coordinator.ended = { _, accounts, _ in refreshes = accounts }
 		_ = refresh([.ask(Self.pin), .fail(.pinRejected(BankMessage(code: "9942", text: "Die PIN ist falsch.")))])
 		await until { broker.current != nil }
 		answer(.pin(Secret("48151"), save: true))

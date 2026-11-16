@@ -321,7 +321,7 @@ struct CommentSheet: View {
 					.lineLimit(5...10)
 			}
 		}
-		.onAppear { text = ids.first.flatMap { model.ledger.transaction($0)?.comment } ?? "" }
+		.onAppear { text = ids.first.flatMap { model.ledger.row($0)?.comment } ?? "" }
 	}
 }
 
@@ -334,13 +334,14 @@ struct TransactionSheet: View {
 	@State private var problem: AmountProblem?
 	@FocusState private var nameHasFocus: Bool
 
-	private var existing: Transaction? { transactionID.flatMap { model.ledger.transaction($0) } }
+	private var existing: Transaction? { transactionID.flatMap { model.ledger.row($0) } }
 	private var account: Account? { existing.flatMap { model.ledger.account($0.accountID) } ?? model.selectedAccount }
 
 	/// Every field of a new transaction and of a manual one can change. In an account with bank access, a row
 	/// counts as manual when no refresh delivered it and no migration brought it.
 	private var editable: Bool {
-		guard let t = existing else { return true }
+		guard let transactionID else { return true }
+		guard model.ledger.part(transactionID) == nil, let t = existing else { return false }
 		return account?.isOffline == true || (!t.isFetched && t.sourceID == nil)
 	}
 
@@ -355,7 +356,10 @@ struct TransactionSheet: View {
 	}
 
 	var body: some View {
-		SheetFrame(title: existing == nil ? "New Transaction" : "Edit Transaction", width: 500, onConfirm: save) {
+		SheetFrame(title: transactionID == nil ? "New Transaction" : "Edit Transaction", width: 500, onConfirm: save) {
+			if let review = existing?.review {
+				Section { Label(review.note, systemImage: "exclamationmark.circle").foregroundStyle(.orange) }
+			}
 			if editable {
 				Section {
 					DatePicker("Date", selection: $date, displayedComponents: .date)
@@ -414,12 +418,13 @@ struct TransactionSheet: View {
 			draft = TransactionDraft(template: t)
 			comment = t.comment ?? ""
 		} else if let account, model.visibleSelection.count == 1, let id = model.visibleSelection.first,
-			let template = model.ledger.transaction(id), template.accountID == account.id {
+			let template = model.ledger.row(id), template.accountID == account.id {
 			draft = TransactionDraft(template: template)
 		}
 	}
 
 	private func save() -> Bool {
+		if let transactionID, model.ledger.row(transactionID) == nil { return true }
 		guard let account else { return true }
 		var t = existing ?? Transaction(accountID: account.id, bookingDate: Day(date), amountMinor: 0, currency: account.currency, name: "")
 		if editable {
@@ -439,7 +444,7 @@ struct TransactionSheet: View {
 			t.categorizedBy = draft.categoryID == nil ? .none : .manual
 		}
 		t.comment = comment.isEmpty ? nil : comment
-		model.save(transaction: t)
+		model.save(transaction: t, adding: transactionID == nil)
 		return true
 	}
 }

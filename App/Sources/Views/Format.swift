@@ -37,7 +37,11 @@ extension Format {
 	}
 
 	static func sums(_ s: MoneySums) -> String {
-		s.isEmpty ? "" : s.amounts.map(money).joined(separator: "  ")
+		sums(s.amounts)
+	}
+
+	static func sums(_ amounts: [Money]) -> String {
+		amounts.map(money).joined(separator: "  ")
 	}
 
 	static func day(_ d: Day) -> String {
