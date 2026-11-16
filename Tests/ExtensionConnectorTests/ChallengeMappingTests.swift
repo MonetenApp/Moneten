@@ -233,6 +233,19 @@ import Testing
 		}
 	}
 
+	/// Without a list of hosts the user may allow the login page, but never a special-use name or another port.
+	@Test(arguments: [("https://auth.broker.example/authorize", Interaction?.some(.allowHost("auth.broker.example"))),
+		("https://auth.bank.local/authorize", nil), ("https://auth.broker.example:8443/authorize", nil)])
+	func loginPageOnANewHostWithoutAList(url: String, expected: Interaction?) throws {
+		let asking = ChallengeMapping(purpose: .login, qrCodeName: "QR Code", hosts: [], asksForHosts: true, rememberedMethod: nil, newState: { "random-state" })
+		let table = try #require(try ChallengeTable(["challenge": .string(url)]))
+		if let expected {
+			#expect(try asking.interaction(for: table) == expected)
+		} else {
+			#expect(throws: MappingError.self) { try asking.interaction(for: table) }
+		}
+	}
+
 	@Test func startTheBankingAppByPhoneCamera() throws {
 		guard case let .poll(request) = try interaction(["challenge": .string("https://bank.example/app/approve/abc"), "appToApp": .string("Example Banking"),
 			"poll": .boolean(true)]), case let .approveInApp(text, app, image, _) = request.challenge else {

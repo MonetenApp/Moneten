@@ -150,6 +150,11 @@ public struct Ledger: Sendable {
 		return partsByTransaction[id] == nil ? transaction(id) : nil
 	}
 
+	/// Whether "Edit Transaction..." changes the date, the value date, the name, the purpose, and the amount of the
+	/// row. A split transaction shows only its parts, and a part offers only its category and comment, so that the
+	/// parts always add up to the amount of the split transaction.
+	public func editsFields(of rowID: UUID) -> Bool { row(rowID) != nil && part(rowID) == nil }
+
 	public func parts(of transactionID: UUID) -> [SplitPart] { partsByTransaction[transactionID] ?? [] }
 
 	public func part(_ rowID: UUID) -> SplitPart? {
@@ -548,7 +553,7 @@ public struct Ledger: Sendable {
 				if row.isNew != original.isNew { t.isNew = row.isNew }
 				if row.review != original.review { t.review = row.review }
 				if t != original { changed[t.id] = t }
-			} else if partsByTransaction[row.id] == nil, row != transaction(row.id) {
+			} else if partsByTransaction[row.id] == nil, let stored = transaction(row.id), row != stored {
 				changed[row.id] = row
 			}
 		}

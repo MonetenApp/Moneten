@@ -37,6 +37,49 @@ import Testing
 
 		"""
 
+	/// A replay runs on the clock of its recording, so a new account gets that time as `balanceDate`.
+	@Test func newAccountTakesTheBalanceDateFromTheReplayClock() async throws {
+		let session = TestSession()
+		_ = try await session.connector(demo(Self.calls + """
+			function RefreshAccount(account)
+				print("date " .. account.balanceDate .. " " .. MM.time())
+				return {balance = 0, transactions = {}}
+			end
+			function ListAccounts() return {{accountNumber = "N", name = "New"}} end
+			"""), developer: DeveloperOptions(capture: .replay(start: 1_794_225_600, random: []))).setUp(Self.access, session)
+		#expect(session.printed.contains("date 1794225600 1794225600.0"))
+	}
+
+	/// Published scripts read `account.balance` and `account.attributes.Name` without a check for nil.
+	@Test func accountTableAtRefreshHasTheStoredBalance() async throws {
+		let session = TestSession()
+		let connector = session.connector(demo(Self.calls + """
+			function RefreshAccount(account)
+				print(account.accountNumber .. " " .. account.balance .. " " .. account.balanceDate .. " [" .. account.comment .. "] "
+					.. type(account.attributes) .. " " .. tostring(account.attributes.GroupTransactions))
+				return {balance = account.balance, transactions = {}}
+			end
+			"""))
+		var stored = ExtensionState(nil)
+		stored.accounts = ["A EUR": .object(["accountNumber": .string("A"), "name": .string("Giro A")])]
+		let refreshed = Date(timeIntervalSince1970: 1_794_225_600)
+		let request = RefreshRequest(access: Self.access, state: stored.accessState, accounts: [AccountRequest(accountID: UUID(), name: "Giro A", remoteID: "A EUR",
+			currency: "EUR", balance: Money(minorUnits: 125_050, currency: "EUR"), refreshedAt: refreshed, comment: "Contract 4711")])
+		_ = try await connector.refresh(request, session)
+		#expect(session.printed.contains("A 1250.5 1794225600 [Contract 4711] table nil"))
+		let second = TestSession()
+		let setup = try await second.connector(demo(Self.calls + """
+			function RefreshAccount(account)
+				print(account.accountNumber .. " " .. account.balance .. " [" .. account.comment .. "] " .. type(account.attributes))
+				return {balance = account.balance, transactions = {}}
+			end
+			function ListAccounts() return {{accountNumber = "N", name = "New"}} end
+			""")).setUp(Self.access, second)
+		#expect(setup.accounts.first?.outcome.balance == 0)
+		#expect(second.printed.contains("N 0 [] table"))
+		#expect(ExtensionState(setup.state).accounts["N EUR"] == .object(["accountNumber": .string("N"), "name": .string("New")]))
+	}
+
 	@Test func refreshOfTwoAccountsCallsTheEntryPointsInOrder() async throws {
 		let session = TestSession()
 		let (report, ids) = try await Self.refresh(session.connector(demo(Self.calls + """
@@ -45,7 +88,7 @@ import Testing
 			end
 			function RefreshAccount(account, since) print("RefreshAccount " .. account.accountNumber .. " " .. since) return {balance = 1, transactions = {}} end
 			""")), session)
-		#expect(session.printed == ["SupportsBank ProtocolWebBanking Demo", "InitializeSession2 1 erika geheim true 0 refresh", "RefreshAccount A 0", "RefreshAccount B 0", "EndSession"])
+		#expect(session.printed == ["SupportsBank Web Banking Demo", "InitializeSession2 1 erika geheim true 0 refresh", "RefreshAccount A 0", "RefreshAccount B 0", "EndSession"])
 		#expect(report.outcomes[ids[0]]?.balance == 100)
 		#expect(report.outcomes[ids[1]]?.balance == 100)
 	}
@@ -185,7 +228,7 @@ import Testing
 				end
 				""")), session)
 		}
-		#expect(session.printed == ["SupportsBank ProtocolWebBanking Demo", "interactive false"])
+		#expect(session.printed == ["SupportsBank Web Banking Demo", "interactive false"])
 		#expect(session.asked.withLock { $0.map(\.kind) } == [.login])
 	}
 
@@ -269,7 +312,7 @@ import Testing
 				return {balance = 42.5, transactions = {{bookingDate = 1325764800, purpose = "Hello World!", amount = 42.00}}}
 			end
 			""")).setUp(Self.access, session)
-		#expect(session.printed == ["SupportsBank ProtocolWebBanking Demo", "session new account", "known 0", "EndSession"])
+		#expect(session.printed == ["SupportsBank Web Banking Demo", "session new account", "known 0", "EndSession"])
 		#expect(setup.accounts.map(\.name) == ["Premium Account"])
 		#expect(setup.accounts.first?.kind == .giro)
 		#expect(setup.accounts.first?.outcome.rows == [Row(Day(year: 2012, month: 1, day: 5), 4200, "", "Hello World!", nil)])
@@ -288,7 +331,7 @@ import Testing
 			function ListAccounts() print("ListAccounts") return {{accountNumber = "A", name = "Giro A"}, {accountNumber = "B", name = "Giro B"}} end
 			function RefreshAccount(account) print("RefreshAccount " .. account.accountNumber) return {balance = 1, transactions = {}} end
 			""")), session, state: state)
-		#expect(session.printed == ["SupportsBank ProtocolWebBanking Demo", "InitializeSession", "ListAccounts", "RefreshAccount A", "RefreshAccount B", "EndSession"])
+		#expect(session.printed == ["SupportsBank Web Banking Demo", "InitializeSession", "ListAccounts", "RefreshAccount A", "RefreshAccount B", "EndSession"])
 		#expect(report.outcomes[ids[1]]?.balance == 100)
 		#expect(ExtensionState(report.state).accounts["B EUR"] == .object(["accountNumber": .string("B"), "name": .string("Giro B")]))
 	}
