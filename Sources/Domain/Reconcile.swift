@@ -613,6 +613,9 @@ struct Identity {
 		let day: Day
 		// periphery:ignore
 		let amount: Int64
+		/// The same amount in another currency is another transaction (#225).
+		// periphery:ignore
+		let currency: String
 		let purpose: String
 	}
 
@@ -645,11 +648,11 @@ struct Identity {
 	static let steps = [Step(fit: .exact, pending: .same), Step(fit: .compatible, pending: .same),
 		Step(fit: .exact, pending: .bookedVersion), Step(fit: .compatible, pending: .bookedVersion)]
 
-	init(fileIdentity: String?, sourceID: String?, day: Day, amount: Int64, isPending: Bool, purpose: String, counterparty: String?, endToEnd: String?) {
+	init(fileIdentity: String?, sourceID: String?, day: Day, amount: Int64, currency: String, isPending: Bool, purpose: String, counterparty: String?, endToEnd: String?) {
 		self.fileIdentity = fileIdentity
 		self.sourceID = sourceID.map(Transaction.matchingID)
 		remoteID = Self.remote(sourceID)
-		key = Key(day: day, amount: amount, purpose: TextFolding.fold(purpose).filter { !$0.isWhitespace })
+		key = Key(day: day, amount: amount, currency: currency, purpose: TextFolding.fold(purpose).filter { !$0.isWhitespace })
 		self.isPending = isPending
 		self.counterparty = counterparty.map(TextFolding.accountKey).flatMap { $0.isEmpty ? nil : $0 }
 		self.endToEnd = endToEnd.flatMap { $0.isEmpty || $0 == "NOTPROVIDED" ? nil : $0 }
@@ -658,12 +661,12 @@ struct Identity {
 	/// An edited row is found by the values of its source.
 	init(_ t: Transaction) {
 		let delivered = t.sourceValues
-		self.init(fileIdentity: t.fileIdentity, sourceID: t.sourceID, day: delivered.bookingDate, amount: delivered.amountMinor, isPending: t.isPending, purpose: delivered.purpose,
+		self.init(fileIdentity: t.fileIdentity, sourceID: t.sourceID, day: delivered.bookingDate, amount: delivered.amountMinor, currency: t.currency, isPending: t.isPending, purpose: delivered.purpose,
 			counterparty: t.counterpartyIBAN, endToEnd: t.endToEndReference)
 	}
 
 	init(_ d: DeletedTransaction) {
-		self.init(fileIdentity: d.fileIdentity, sourceID: d.sourceID, day: d.bookingDate, amount: d.amountMinor, isPending: d.isPending, purpose: d.purpose,
+		self.init(fileIdentity: d.fileIdentity, sourceID: d.sourceID, day: d.bookingDate, amount: d.amountMinor, currency: d.currency, isPending: d.isPending, purpose: d.purpose,
 			counterparty: d.counterpartyIBAN, endToEnd: d.endToEndReference)
 	}
 
