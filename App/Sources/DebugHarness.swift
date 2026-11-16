@@ -654,6 +654,9 @@ final class DebugHarness {
 		case "perf": Task { await runPerf() }
 		#endif
 		case "view": model.viewMode = ViewMode(rawValue: argument) ?? .list
+		case "selectall": transactionTables().first?.selectAll(nil)
+		case "checkmarks": model.showsCheckmarks = argument != "off"
+		case "dailybalance": model.showsDailyBalance = argument != "off"
 		case "balance": model.balanceMode = BalanceMode(rawValue: argument) ?? .daily
 		case "search":
 			model.filter.searchText = argument

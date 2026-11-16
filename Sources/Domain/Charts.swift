@@ -106,6 +106,19 @@ extension Ledger {
 		return points
 	}
 
+	/// The balance at the end of each day of `account` for "Daily balance" in the list, keyed by the first of `rows`
+	/// on that day: the row at the top of the day, because the list shows the newest first. A day counts all rows
+	/// of the account, also those that a search or a filter hides.
+	public func dayEndBalances(of account: Account, rows: [Transaction]) -> [UUID: Money] {
+		let byDay = Dictionary(uniqueKeysWithValues: dailyBalances(accountIDs: [account.id]).map { ($0.day, $0.minorUnits) })
+		var seen = Set<Day>()
+		var result: [UUID: Money] = [:]
+		for t in rows where t.accountID == account.id && seen.insert(t.bookingDate).inserted {
+			if let balance = byDay[t.bookingDate] { result[t.id] = Money(minorUnits: balance, currency: account.currency) }
+		}
+		return result
+	}
+
 	/// One bar for each day of the range, never past today. "Show All" starts at the oldest
 	/// transaction or portfolio record. Days before the first transaction show the initial balance.
 	/// Every day keeps its own bar, as in MoneyMoney: a long history scrolls instead of sharing bars.

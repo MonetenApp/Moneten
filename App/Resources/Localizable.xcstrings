@@ -2152,6 +2152,16 @@
         }
       }
     },
+    "Balance at the end of %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saldo am Ende des %@"
+          }
+        }
+      }
+    },
     "Balance at the end of today" : {
       "localizations" : {
         "de" : {
@@ -2689,6 +2699,16 @@
       }
     },
     "Checkmark" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Häkchen"
+          }
+        }
+      }
+    },
+    "Checkmarks" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -3519,6 +3539,16 @@
       }
     },
     "Daily balance" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tagessaldo"
+          }
+        }
+      }
+    },
+    "Daily Balance" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
