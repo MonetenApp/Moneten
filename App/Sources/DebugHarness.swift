@@ -192,7 +192,7 @@ final class DebugHarness {
 				sheet.sendEvent(event)
 				log("key", ("", .choice(argument, of: ["down", "up"])), ("highlighted", .position(model.setup?.highlighted)))
 			}
-		// "return", "escape", "cmd+", or "cmd-" sends that key to the sheet on top, as the keyboard does. The log rejects any other key.
+		// "return", "escape", "tab", "cmd+", or "cmd-" sends that key to the sheet on top, as the keyboard does. The log rejects any other key.
 		case "key":
 			let keys: [StaticString] = ["return", "escape", "tab", "cmd+", "cmd-"]
 			guard keys.contains(where: { "\($0)" == argument }) else { return log("key rejected") }
