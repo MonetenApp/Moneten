@@ -63,6 +63,17 @@ struct SavingsBankTests {
 		#expect(try #require(BankDirectory.Entry(access: access)).loginName("12345678901234567") == "1234567890123456")
 	}
 
+	@Test("A login name of 17 digits goes to the server as 16 digits also from an access that stored all 17, and both are one login")
+	func loginNameOfServer() throws {
+		let server = try #require(URL(string: "https://banking-hs6.s-fints-pt-hs.de/fints30"))
+		#expect(FinTSServer.loginName("12345678901234567", server: server) == "1234567890123456")
+		#expect(FinTSServer.loginName("12345678901234567", server: URL(string: "https://fints.musterbank.example/fints")) == "12345678901234567")
+		let stored = Access(source: .fints(bankCode: "50850049", url: server), bankName: "Sparkasse Musterstadt", loginName: "12345678901234567")
+		let new = Access(source: .fints(bankCode: "50850049", url: server), bankName: "Sparkasse Musterstadt", loginName: "1234567890123456")
+		#expect(stored.isSameLogin(as: new) && new.isSameLogin(as: stored))
+		#expect(!new.isSameLogin(as: Access(source: .fints(bankCode: "50850049", url: server), bankName: "Sparkasse Musterstadt", loginName: "1234567890123457")))
+	}
+
 	@Test("The login step of a savings bank says to use the login of the online banking and to set up a TAN method there first")
 	func tanMethodFirst() throws {
 		let hint = try #require(Self.sparkasse.loginHint)

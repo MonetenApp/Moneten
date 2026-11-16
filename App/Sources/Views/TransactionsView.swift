@@ -102,7 +102,11 @@ struct HeaderView: View {
 				switch model.selection {
 				case let .account(id):
 					if let a = model.ledger.account(id) {
-						AmountText(money: model.ledger.balance(of: a)).font(.title2)
+						BalancesText(amounts: model.ledger.balances(of: a)).font(.title2)
+						// A portfolio never stores bonus points, so the line shows only for an account with a bonus program.
+						if let points = a.bonusPoints {
+							Text("Bonus points: \(points.formatted())").font(.subheadline).monospacedDigit().foregroundStyle(Palette.detail)
+						}
 					}
 				case let .group(id):
 					Text(Format.sums(model.ledger.sum(ofGroup: id))).font(.title2).monospacedDigit()
@@ -1020,9 +1024,16 @@ struct StatusLine: View {
 				HStack(spacing: 12) {
 					Text(selected.count > 1 ? "\(selected.count) of \(rows.count) transactions" : (rows.count == 1 ? "1 transaction" : "\(rows.count.formatted()) transactions"))
 						.foregroundStyle(Palette.detail)
-					Text("Sum: \(Format.sums(sums.shownAmounts(viewCurrency: model.selectedCurrency, rows: shown)))")
+					let amounts = sums.shownAmounts(viewCurrency: model.selectedCurrency, rows: shown)
+					Text("Sum: \(Format.sums(amounts))")
 						.monospacedDigit()
-						.textSelection(.enabled)
+						// The number alone, which a spreadsheet or a text field takes as it is.
+						.contextMenu {
+							Button("Copy Sum") {
+								NSPasteboard.general.clearContents()
+								NSPasteboard.general.setString(MoneySums.copyText(amounts, locale: .current), forType: .string)
+							}
+						}
 				}
 				.fixedSize()
 				// As wide as the note, so that the count stays in the middle and the note truncates first.

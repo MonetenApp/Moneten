@@ -60,7 +60,7 @@ struct ListedAccount: Equatable {
 		} else if let type = fields.text("type").flatMap(AccountType.init(rawValue:)) {
 			kind = type.kind
 		} else {
-			kind = Self.derivedKind(of: number)
+			kind = Self.derivedKind(number: number, name: name)
 		}
 	}
 
@@ -77,11 +77,29 @@ struct ListedAccount: Equatable {
 		return ListedAccount(.object(fields)) ?? self
 	}
 
-	/// The type of an account whose table has none: 16 characters or masked digits make a credit card.
-	static func derivedKind(of accountNumber: String) -> AccountKind {
-		let compact = accountNumber.filter { !$0.isWhitespace }
-		let masked = compact.contains { "xX*•".contains($0) } && compact.contains(where: \.isNumber)
-		return compact.count == 16 || masked ? .creditCard : .giro
+	/// The type of an account whose table has none, by the requirement "Derive a missing account type": the number
+	/// first, then words in the name, in a fixed order, and "Other" when nothing matches. Scripts name their accounts
+	/// in the words of their bank, so the words are mostly German.
+	static func derivedKind(number: String, name: String) -> AccountKind {
+		// The length counts every character as sent, so a card number with spaces needs another hint.
+		if number.count == 16 || number.contains(where: { "xX*".contains($0) }) { return .creditCard }
+		let name = name.lowercased()
+		func any(_ words: String...) -> Bool { words.contains { name.contains($0) } }
+		// "spar" names a savings account, but also the banks Sparkasse and Sparda.
+		let savingsWord = name.replacing("sparkasse", with: "").replacing("sparda", with: "").contains("spar")
+		if any("giro", "kontokorrent", "sichteinlage", "gehalt") { return .giro }
+		if any("karte", "card", "visa"), !savingsWord, !name.replacing("kartenkonto", with: "").contains("konto"), !any("zins", " mit ") {
+			return .creditCard
+		}
+		if any("festgeld", "festzins", "termingeld", "termineinlage", "sparbrief", "schatzbrief", "sparkassenbrief") || name.hasSuffix("brief") {
+			return .fixedTermDeposit
+		}
+		if any("darlehen", "darlehn", "konsumentenkredit", "privatkredit", "gewerbekredit", "baufinanzierung") || name.hasSuffix("kredit") {
+			return .loan
+		}
+		if savingsWord || any("sparkassenbuch", "geld", "cash", "zins", "anlage", "verrechnung", "anteil") { return .savings }
+		if any("geschäfts", "geschaefts", "firmen", "verein", "privat", "direkt"), name.contains("konto") { return .giro }
+		return .other
 	}
 }
 
@@ -138,12 +156,15 @@ enum ResultMapping {
 			guard let minor = Int64(limitedAmount: total) else { throw MappingError(String(localized: "The securities add up to more than Moneten can hold.")) }
 			return (RefreshResult(balance: Money(minorUnits: minor, currency: account.currency), transactions: nil, isPortfolio: true, holdings: holdings), notices)
 		}
-		guard let balance = try self.balance(fields, currency: account.currency) else { throw MappingError(String(localized: "The balance could not be fetched.")) }
+		guard let (balance, otherBalances) = try self.balances(fields, currency: account.currency) else {
+			throw MappingError(String(localized: "The balance could not be fetched."))
+		}
 		guard case let .array(rows)? = fields["transactions"] else { throw MappingError(String(localized: "The transactions could not be fetched.")) }
 		let mapped = try rows.enumerated().map { index, row throws(MappingError) in
 			try transaction(row, number: index + 1, currency: account.currency, calendar: calendar)
 		}
-		return (RefreshResult(balance: balance, transactions: FetchedTransactions(rows: mapped, from: since)), [])
+		return (RefreshResult(balance: balance, transactions: FetchedTransactions(rows: mapped, from: since), otherBalances: otherBalances,
+			bonusPoints: try bonusPoints(fields["bonusPoints"])), [])
 	}
 
 	/// An amount in the minor units of `currency`, or an error that names `what` when it is above `Money.maxMinorUnits`.
@@ -202,20 +223,57 @@ enum ResultMapping {
 			purchasePrice: purchase, exchangeRate: try rate("exchangeRateOfPrice", nominalCurrency == nil ? "currencyOfPrice" : "currencyOfQuantity"))
 	}
 
-	/// `balance`, or the amount of the account's currency in `balances`, a list of pairs of amount and currency.
-	private static func balance(_ fields: [String: LuaValue], currency: String) throws(MappingError) -> Money? {
-		if let amount = fields["balance"] {
-			guard let decimal = amount.decimal else { throw MappingError(String(localized: "The balance is not a number.")) }
-			return try money(decimal, currency, String(localized: "The balance"))
+	/// The balance in the account currency and the balances in other currencies. `balances`, a list of pairs of amount
+	/// and currency, takes the place of `balance` when it holds a pair. Pairs in one currency add up, a missing account
+	/// currency has the balance 0, and a zero in another currency is left out. A `balances` that is not a list fails, so
+	/// that a broken script never clears the stored balances in other currencies.
+	private static func balances(_ fields: [String: LuaValue], currency: String) throws(MappingError) -> (Money, [Money])? {
+		let pairs: [LuaValue]
+		switch fields["balances"] {
+		case nil, .null: pairs = []
+		case let .array(list): pairs = list
+		default: throw MappingError(String(localized: "The balances are not a list of pairs of amount and currency."))
 		}
-		guard case let .array(pairs)? = fields["balances"] else { return nil }
+		guard !pairs.isEmpty else {
+			guard let amount = fields["balance"] else { return nil }
+			guard let decimal = amount.decimal else { throw MappingError(String(localized: "The balance is not a number.")) }
+			return (try money(decimal, currency, String(localized: "The balance")), [])
+		}
+		// The sums add up exactly, and only the sum of each currency has to be within the limit, as with the securities.
+		var sums: [(currency: String, total: Int128)] = [(currency, 0)]
 		for pair in pairs {
-			guard case let .array(parts) = pair, parts.count == 2, let decimal = parts[0].decimal, case let .string(code) = parts[1] else {
+			guard case let .array(parts) = pair, parts.count == 2, let decimal = parts[0].decimal, case let .string(text) = parts[1],
+				let code = currencyCode(text) else {
 				throw MappingError(String(localized: "An entry of balances is not a pair of amount and currency."))
 			}
-			if code.uppercased() == currency { return try money(decimal, currency, String(localized: "The balance")) }
+			let value = try money(decimal, code, String(localized: "The balance in \(code)"))
+			let index = sums.firstIndex { $0.currency == value.currency } ?? { sums.append((value.currency, 0)); return sums.count - 1 }()
+			sums[index].total += Int128(value.minorUnits)
 		}
-		return nil
+		let balances = try sums.map { sum throws(MappingError) in
+			guard let minor = Int64(limitedAmount: sum.total) else { throw MappingError(String(localized: "The balances add up to more than Moneten can hold.")) }
+			return Money(minorUnits: minor, currency: sum.currency)
+		}
+		return (balances[0], balances.dropFirst().filter { $0.minorUnits != 0 })
+	}
+
+	/// An ISO 4217 code, three letters A to Z after trimming and uppercasing, or nil. A code such as "US$" would reach the
+	/// complete export, whose import refuses it.
+	private static func currencyCode(_ text: String) -> String? {
+		let code = text.trimmingCharacters(in: .whitespaces).uppercased()
+		return code.wholeMatch(of: /[A-Z]{3}/) != nil ? code : nil
+	}
+
+	/// The whole part of `bonusPoints`, or nil for a missing value, an empty text, or 0.
+	private static func bonusPoints(_ value: LuaValue?) throws(MappingError) -> Int64? {
+		guard let value, value != .null, value != .string("") else { return nil }
+		guard var magnitude = value.decimal.map(abs) else { throw MappingError(String(localized: "The bonus points are not a number.")) }
+		// The decimal stays exact, where a double would round 12400.9999999999999999 up to 12401.
+		var whole = Decimal()
+		NSDecimalRound(&whole, &magnitude, 0, .down)
+		let negative = value.decimal.map { $0 < 0 } ?? false
+		guard let points = Int64((negative ? -whole : whole).description) else { throw MappingError(String(localized: "The bonus points are not a number.")) }
+		return points == 0 ? nil : points
 	}
 
 	/// One transaction table. Dates are POSIX time stamps, read as days in the user's time zone.

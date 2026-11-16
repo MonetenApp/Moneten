@@ -63,7 +63,7 @@ enum HelperMessage: Decodable {
 		case let .result(_, .success(result)): failure = result.shownError?.failure
 		case let .ask(_, ask):
 			do {
-				_ = try ask.request()
+				_ = try ask.request(server: nil)
 				failure = nil
 			} catch {
 				failure = error as? SyncFailure
@@ -156,9 +156,10 @@ struct Ask: Decodable {
 	/// the broker never answers it from memory and shows the sheet again. A blocked access, or an app that
 	/// the user blocked at a savings bank, stops the run, and the app never asks for its PIN again (task 1.24).
 	/// A flicker code that does not read fails the access, because the user cannot produce a TAN without it.
-	func request() throws -> UserRequest {
+	/// `server` is the FinTS address of the bank, whose rules some requests follow.
+	func request(server: URL?) throws -> UserRequest {
 		if kind == "pin" {
-			let rules = PINRules(minLength: rules?.minLength, maxLength: rules?.maxLength)
+			let rules = CooperativeBanks.pinRules(minLength: rules?.minLength, maxLength: rules?.maxLength, server: server)
 			guard let rejected else { return .pin(PINRequest(rules: rules)) }
 			switch rejected.failure {
 			case .accessBlocked, .appBlocked: throw rejected.failure
@@ -170,7 +171,9 @@ struct Ask: Decodable {
 		let challenge: Challenge
 		switch kind {
 		case "tanMethod": return secondFactor(.chooseTANMethod(offered, current: nil), methods: [])
-		case "tanMedium": challenge = .chooseTANMedium(media ?? [])
+		case "tanMedium":
+			let media = media ?? []
+			challenge = media.isEmpty && FinTSServer.isApoBank(server) ? .nameTANMedium(.apoTANDevice) : .chooseTANMedium(media)
 		case "tan":
 			if let flicker {
 				guard let code = FlickerCode(hex: flicker) else { throw SyncFailure.invalidChallenge }

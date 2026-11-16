@@ -76,6 +76,19 @@ The app SHALL find the bank from a name, an IBAN, or a Bankleitzahl that the use
 - **WHEN** the user enters "760 30"
 - **THEN** the list shows the banks whose Bankleitzahl starts with 76030, Consorsbank 76030080 first
 
+#### Scenario: Brand of a bank
+
+- **GIVEN** the bank directory names the Bankleitzahl 83065408 "VR-Bank Altenburger Land" and 51090000 "Wiesbadener Volksbank", and Skatbank and Ordensbank are brands of these two banks
+- **WHEN** the user enters "skatbank"
+- **THEN** the list starts with "VR-Bank Altenburger Land / Skatbank" with 83065408
+- **AND** "ordensbank" lists "Wiesbadener Volksbank / Ordensbank" with 51090000 first
+
+#### Scenario: Short name of a bank with a FinTS address
+
+- **GIVEN** the bank directory names the Bankleitzahl 30060601 "Deutsche Apotheker- und Ärztebank eG" with a FinTS address, and other Bankleitzahlen "apoBank" without one
+- **WHEN** the user enters "apobank"
+- **THEN** the list starts with "Deutsche Apotheker- und Ärztebank eG" with 30060601
+
 #### Scenario: Old entry of a merged bank
 
 - **GIVEN** the bank directory lists "Sparkasse Bonn -alt-" and "Sparkasse KölnBonn"
@@ -258,6 +271,19 @@ The app SHALL ask for the login data in the second step with the field names tha
 - **WHEN** the assistant shows the second step
 - **THEN** the first field has the label "Login name or Legitimations-ID"
 
+#### Scenario: Cooperative bank
+
+- **GIVEN** the user chose Wiesbadener Volksbank with the Bankleitzahl 51090000, whose FinTS address is on the host `fints2.atruvia.de`
+- **WHEN** the assistant shows the second step
+- **THEN** the first field has the label "VR-NetKey or alias"
+- **AND** the line under it says that a Volksbank or Raiffeisenbank expects the VR-NetKey or the alias of its online banking
+
+#### Scenario: Sparda-Bank on the servers of the cooperative banks
+
+- **GIVEN** the user chose Sparda-Bank Baden-Württemberg with the Bankleitzahl 60090800, whose FinTS address is on the host `fints2.atruvia.de`
+- **WHEN** the assistant shows the second step
+- **THEN** the first field has the label "User ID" and no hint, because a Sparda-Bank calls its login name differently
+
 #### Scenario: Optional customer ID
 
 - **GIVEN** "Musterbank" accepts a customer ID in addition to the user ID
@@ -308,6 +334,56 @@ The app SHALL check each login field against the format that the bank directory 
 - **GIVEN** an extension declares a field "Date of birth" as a date
 - **WHEN** the user enters "1.2.80"
 - **THEN** the app says that the date of birth must be in the format DD.MM.YYYY
+
+#### Scenario: Long alias at a cooperative bank
+
+- **GIVEN** the chosen bank has its FinTS address on a host that ends in `.atruvia.de` or `.bankenit.de`
+- **WHEN** the user enters a login name of 31 characters and clicks "Next"
+- **THEN** the app says that the FinTS server of the bank accepts no alias longer than 30 characters and that the user changes the alias in the online banking of the bank first
+- **AND** the app sends nothing to the bank and stays on the second step
+
+#### Scenario: Six character PIN at a cooperative bank
+
+- **GIVEN** the chosen bank has its FinTS address on a host that ends in `.atruvia.de` or `.bankenit.de`, and its bank parameters require a PIN of at least 8 characters
+- **WHEN** the user enters the PIN "123456"
+- **THEN** the app says that the FinTS server of the bank no longer accepts PINs of 6 characters and that the user sets a longer PIN in the online banking of the bank first
+- **AND** the app sends nothing to the bank
+- **AND** the PIN sheet of a refresh shows the same message for the same PIN
+
+### Requirement: Send the login name in the form that the bank expects
+
+The app SHALL send and store a VR-Kennung in capitals and without spaces when the FinTS address of the bank is on a host that ends in `.atruvia.de` or `.bankenit.de`, or on the host `fints.apobank.de`. A VR-Kennung is a login name that starts with "VRK" in any case and has only digits after it once the spaces are removed. Any other login name stays as the user typed it. Two login names that agree in this form are the same login.
+
+#### Scenario: VR-Kennung in lower case
+
+- **GIVEN** the user chose Wiesbadener Volksbank on the host `fints2.atruvia.de`
+- **WHEN** the user enters the login name "vrk 12345678" and clicks "Next"
+- **THEN** the app sends "VRK12345678" to the bank
+- **AND** the access stores "VRK12345678" as its login name
+
+#### Scenario: Alias that starts with the same letters
+
+- **GIVEN** the user chose Wiesbadener Volksbank on the host `fints2.atruvia.de`
+- **WHEN** the user enters the login name "vrkonto1"
+- **THEN** the app sends "vrkonto1"
+
+#### Scenario: Bank on another server
+
+- **GIVEN** the user chose a bank whose FinTS address is on another host
+- **WHEN** the user enters the login name "vrk12345678"
+- **THEN** the app sends "vrk12345678"
+
+#### Scenario: Access that the app stored before
+
+- **GIVEN** an access to a bank on `fints1.atruvia.de` stores the login name "vrk12345678"
+- **WHEN** the app refreshes the access
+- **THEN** the app sends "VRK12345678" to the bank
+
+#### Scenario: Same login in another case
+
+- **GIVEN** an access to Wiesbadener Volksbank on `fints2.atruvia.de` stores the login name "vrk12345678"
+- **WHEN** the user adds an account of the same bank with the login name "VRK12345678"
+- **THEN** the setup joins the access that the app has, and the app keeps one access with the login name "VRK12345678"
 
 ### Requirement: Show what the bank requires before the first login
 

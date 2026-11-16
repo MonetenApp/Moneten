@@ -92,6 +92,16 @@ A host counts in lower case, without its port and one trailing dot, in the helpe
 
 A repair of 1822direkt MT940 statements whose ":61:" or ":62F:" tags start inside a line is deferred until bank test #11 records such a statement. Issue #355 holds its design and the findings of its review.
 
+### Cooperative banks and apoBank
+
+The rules of the cooperative banks are rules of their FinTS servers, so `Sources/FinTS/CooperativeBanks.swift` recognizes the group by the host of the FinTS address: a host that ends in `.atruvia.de` or `.bankenit.de` is a server of Atruvia, and `fints.apobank.de` is the server of apoBank. A few rules follow a Bankleitzahl instead, such as the BIC of EthikBank (83094495), which still sends `GENODEF1ESN` for some accounts. The setup stores `GENODEF1ETK` in its place (`FinTSAccount.account`). The other bank groups, such as the savings banks, keep their rules in entries and files of their own, so the groups change independently.
+
+On a server of Atruvia the connector adds the refused length 6 to the PIN rules of the bank parameters (`PINRules.refusedLength`). A six character PIN still works on the website of the bank, so a minimum of 8 alone would say only "too short". With the refused length, the login step and the PIN sheet say that the server no longer accepts PINs of 6 characters and that the user sets a longer PIN in the online banking first.
+
+apoBank asks for the TAN medium of apoTAN and lists none. For that server the connector turns the empty list into `Challenge.nameTANMedium`, a field that may stay empty, with the hint that the name is needed only when the bank reports an error. For another bank an empty list stays `chooseTANMedium([])`, whose field must be filled in. The helper keeps the name that the user typed, also an empty one, in the state of the access and sends it again while the bank lists no media, so an automatic refresh of apoBank needs no dialog.
+
+The accounts of the partners, such as a building savings contract of Bausparkasse Schwäbisch Hall or a fund depot of Union Investment, are not in the user parameters that hbci4java reads. The servers of Atruvia deliver them through jobs of their own, which hbci4java does not define, so the helper cannot send or read them yet. The bank test of issue #11 records, for one login with a partner account, which jobs the bank parameters list, which jobs each account allows, and the answer of the bank. Requirement "Accounts of the partners of a cooperative bank" is built from that record.
+
 ### Signing
 
 `scripts/build-app.sh` builds a runtime with jlink, puts the helper into `Contents/Resources/FinTSHelper`, and signs every Mach-O file of it with the identity of the app. Only the java of the helper gets the JIT entitlement. The build fails when a file cannot be signed or is not signed like the app. A Developer ID build signs it with the Developer ID certificate in the Keychain ([ADR 0016](../../../docs/decisions/0016-developer-id-certificate-in-ci.md)).
@@ -104,4 +114,4 @@ A repair of 1822direkt MT940 statements whose ":61:" or ":62F:" tags start insid
 
 ## Open Questions
 
-None.
+None. Decided for issue #230, rule 9: a building savings contract of Bausparkasse Schwäbisch Hall keeps every booked transaction, as "Keep the history for good" in add-account-refresh requires, until a bank test shows real duplicates.

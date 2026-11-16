@@ -182,6 +182,11 @@ public struct RefreshResult: Sendable {
 	/// normal refresh asks for no more than 90 days, or because the user canceled the second factor for older
 	/// transactions. The merge turns it into `Account.missesOlderTransactions`, which stays until a full history.
 	public let missesOlder: Bool
+	/// The balances in other currencies than `balance`, one per currency in the order of the source, without a zero, such
+	/// as the dollars of a wallet in euros.
+	public let otherBalances: [Money]
+	/// The bonus points of the account, or nil when the source reported none.
+	public let bonusPoints: Int64?
 
 	/// The bank sent the balance without a transaction list, because it provides none for the account. A
 	/// portfolio has positions in place of transactions, and a failed request is an error of its own.
@@ -211,15 +216,38 @@ public struct RefreshResult: Sendable {
 	}
 
 	public init(balance: Money?, balanceDate: Date? = nil, transactions: FetchedTransactions?, isComplete: Bool = false,
-		transactionFailure: SyncFailure? = nil, isPortfolio: Bool = false, holdings: [Holding]? = nil, missesOlder: Bool = false) {
+		transactionFailure: SyncFailure? = nil, isPortfolio: Bool = false, holdings: [Holding]? = nil, missesOlder: Bool = false,
+		otherBalances: [Money] = [], bonusPoints: Int64? = nil) {
 		self.missesOlder = missesOlder
-		self.balance = balance
+		// One entry per currency, so the sidebar row lists each currency once and the sum of a group counts it once.
+		// The sums run in Int128 and stop at the bounds of Int64 only at the end, so amounts that cancel out
+		// give their exact sum in any order.
+		var main = balance.map { Int128($0.minorUnits) }
+		var sums: [(currency: String, minorUnits: Int128)] = []
+		for money in otherBalances {
+			if let current = balance, money.currency == current.currency {
+				main = (main ?? 0) + Int128(money.minorUnits)
+			} else if let index = sums.firstIndex(where: { $0.currency == money.currency }) {
+				sums[index].minorUnits += Int128(money.minorUnits)
+			} else {
+				sums.append((money.currency, Int128(money.minorUnits)))
+			}
+		}
+		let combined = sums.map { Money(minorUnits: Self.clamped($0.minorUnits), currency: $0.currency) }
+		self.balance = balance.map { Money(minorUnits: Self.clamped(main ?? 0), currency: $0.currency) }
 		self.balanceDate = balanceDate
 		self.transactions = transactions
 		self.isComplete = isComplete
 		self.transactionFailure = transactionFailure
 		self.isPortfolio = isPortfolio
 		self.holdings = holdings
+		self.otherBalances = combined.filter { $0.minorUnits != 0 }
+		self.bonusPoints = bonusPoints
+	}
+
+	/// A sum within the bounds of `Int64`, which a connector keeps each amount far below.
+	private static func clamped(_ sum: Int128) -> Int64 {
+		Int64(clamping: sum)
 	}
 }
 

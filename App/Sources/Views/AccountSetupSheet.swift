@@ -125,11 +125,6 @@ final class AccountSetup {
 	var bank: FinTSBank? { chosenBank?.bank }
 	/// What the bank calls the login name, when Moneten knows it.
 	var loginHint: LoginHint? { chosenBank?.loginHint }
-	/// The login name in the form that the bank accepts, which the login sends and the access stores, such as the
-	/// first 16 digits of a login name of 17 digits at a savings bank.
-	private var sentLoginName: String {
-		chosenBank?.loginName(loginName) ?? loginName.trimmingCharacters(in: .whitespaces)
-	}
 
 	var canGoOn: Bool {
 		switch step {
@@ -212,9 +207,14 @@ final class AccountSetup {
 	/// so a second "Next" sends no second PIN. The login of an access that the app has waits for its
 	/// refresh, and its refresh waits for the login.
 	private func logIn() {
-		guard !isLoggingIn, let code = chosenBank?.code, let bank, let url = bank.url else { return }
+		guard !isLoggingIn, let chosenBank, let bank, let url = bank.url else { return }
 		let userIDHelp = loginHint?.help
-		let access = Access(source: .fints(bankCode: code, url: url), bankName: bank.name, loginName: sentLoginName)
+		let name = chosenBank.loginName(loginName)
+		if let problem = chosenBank.loginNameProblem(name) {
+			loginError = problem
+			return
+		}
+		let access = Access(source: .fints(bankCode: chosenBank.code, url: url), bankName: bank.name, loginName: name)
 		let knownAccess = model.accesses.values.first { $0.isSameLogin(as: access) }
 		let known = knownAccess?.id ?? access.id
 		// A refresh of the access that the app has names its notices with the bank name of that access.
@@ -267,9 +267,14 @@ final class AccountSetup {
 	/// access"). Unchanged values set the access up again ("Reinitialize an access"). The login waits for a
 	/// refresh of the access, and a refresh waits for the login.
 	private func changeLogin(of old: Access) {
-		guard !isLoggingIn else { return }
+		guard !isLoggingIn, let chosenBank else { return }
 		let userIDHelp = loginHint?.help
-		let access = Access(id: old.id, source: old.source, bankName: old.bankName, loginName: sentLoginName)
+		let name = chosenBank.loginName(loginName)
+		if let problem = chosenBank.loginNameProblem(name) {
+			loginError = problem
+			return
+		}
+		let access = Access(id: old.id, source: old.source, bankName: old.bankName, loginName: name)
 		guard !model.accesses.values.contains(where: { $0.id != old.id && $0.isSameLogin(as: access) }) else {
 			loginError = String(localized: "Another bank access in Moneten uses this login already.")
 			return
