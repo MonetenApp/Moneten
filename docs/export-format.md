@@ -83,6 +83,7 @@ A version-1 payload contains `name`, `header`, `delimiter`, and `layout`. The he
 | `refreshedAt` | Time of the last successful refresh |
 | `refreshError` | The error of the last refresh, with `message`, `code` (the return code of the bank), `date`, `notices` (the notices of the bank), `waitsForUser` (whether only a refresh command of the user can resolve it), and `suggestsEditLoginData` (whether the refresh of the whole access failed, at the login or after it, in a way that can mean that the bank wants it set up again, so the error names "Edit Login Data..."). A reader takes a missing `waitsForUser` or `suggestsEditLoginData` as false. |
 | `refreshInterval` | `everyTwoHours`, `fourTimesADay`, `onceADay`, `onceAWeek`, `onlyManually`, or `never` |
+| `missesOlderTransactions` | Whether older transactions of the account may be missing, because a refresh fetched less than the time since the last successful fetch, such as after a canceled TAN for older transactions. While it is true, no refresh sets `initialBalanceIsSet`, and the refresh that brings the full history sets this key to false. A reader takes a missing key as false. |
 
 ## Access
 
@@ -141,6 +142,7 @@ An access is a login at a bank. The file never holds its PIN or the data that it
 | `fileIdentity` | Original file fingerprint, if a file import recorded one; absent or null means no file identity |
 | `sourceID` | Identifier of the transaction at its bank or source, such as `moneymoney:<id>` |
 | `createdAt` | Time when the app stored the transaction |
+| `original` | Present only for a transaction that the user edited: the values that its source delivered, with the keys `bookingDate`, `valueDate`, `amount`, `name`, and `purpose`, in the currency of the transaction. A refresh finds the transaction by these values and keeps the edited ones. |
 
 ## Deleted transaction
 

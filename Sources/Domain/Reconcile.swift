@@ -42,15 +42,17 @@ public struct DeletedTransaction: Hashable, Sendable, Codable {
 		}
 	}
 
+	/// An edited row keeps the values of its source, so that the source cannot bring it back.
 	public init(_ t: Transaction, deletedAt: Date) {
+		let delivered = t.sourceValues
 		accountID = t.accountID
 		sourceID = t.sourceID
 		fileIdentity = t.fileIdentity
-		bookingDate = t.bookingDate
-		amountMinor = t.amountMinor
+		bookingDate = delivered.bookingDate
+		amountMinor = delivered.amountMinor
 		currency = t.currency
 		isPending = t.isPending
-		purpose = t.purpose
+		purpose = delivered.purpose
 		counterpartyIBAN = t.counterpartyIBAN
 		endToEndReference = t.endToEndReference
 		wasFetched = t.isFetched
@@ -84,8 +86,8 @@ public struct Reconciliation: Sendable, Equatable {
 	/// counts them as rows of the source while the source has them. Only a migration fills it.
 	public internal(set) var relinked: [DeletedTransaction.Relink] = []
 	/// The account with the balance and the date of this refresh, and, on its first refresh with a
-	/// balance, the initial balance that follows from them. Nil for a file, and when the refresh brought
-	/// no balance in the currency of the account.
+	/// balance, the initial balance that follows from them, and the mark of missing older transactions. Nil for
+	/// a file, and when the refresh brought no balance in the currency of the account and left the mark.
 	public internal(set) var account: Account?
 	/// The positions that replace those of the account, with the IDs of the stored positions of the same
 	/// securities. Nil when the delivery brought none.
@@ -125,7 +127,8 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored: [Tran
 	let released = stored.indices.filter { stored[$0].isPending && !taken.contains($0) }
 	let fresh = rows.indices.filter { partners[$0] == nil && !rows[$0].isPending }
 	let bookings = try Bookings(pending: released.map { ($0, stored[$0]) }, booked: fresh.map { ($0, rows[$0]) }, checkpoint: { try checkpoint(0) })
-	let future = Set(released.filter { !stored[$0].isFetched && stored[$0].bookingDate >= today && stored[$0].review == nil })
+	// An edited row counts by the day of its source, as the pairing and the drop below read it.
+	let future = Set(released.filter { !stored[$0].isFetched && stored[$0].sourceBookingDate >= today && stored[$0].review == nil })
 
 	var r = Reconciliation()
 	for (i, delivered) in rows.enumerated() {
@@ -154,7 +157,8 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored: [Tran
 				if delivered.isPending && !live.isPending { break }
 				next = live.takingBankFields(of: delivered)
 				if split.contains(live.id) {
-					if next.amount != live.amount {
+					// An edited amount stays, so the amount that the source delivered tells whether the bank changed it.
+					if next.amount != live.amount || next.sourceAmountMinor != live.sourceAmountMinor {
 						next.review = .splitUndone
 						r.unsplit.append(live.id)
 						rules.categorize(&next)
@@ -222,21 +226,27 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored: [Tran
 			}
 		case nil where future.contains(j): break
 		case nil:
-			if delivery.covers(pending.bookingDate), pending.review == nil || pending.isChecked { r.dropped.append(pending.id) }
+			if delivery.covers(pending.sourceBookingDate), pending.review == nil || pending.isChecked { r.dropped.append(pending.id) }
 		}
 	}
-	if case let .refresh(result) = delivery, let balance = result.balance, balance.currency == account.currency {
+	if case let .refresh(result) = delivery {
 		var a = account
-		a.bankBalanceMinor = balance.minorUnits
-		a.bankBalanceDate = result.balanceDate ?? now
-		if result.isPortfolio { a.kind = .portfolio }
-		// A balance whose transactions failed would set the value without the rows that the next refresh brings.
-		if a.derivesInitialBalance, result.transactionFailure == nil {
-			// Dropped and marked rows are pending and do not count.
-			let changed = Dictionary(uniqueKeysWithValues: (r.booked + r.updated).map { ($0.id, $0) })
-			a.deriveInitialBalance(from: stored.map { changed[$0.id] ?? $0 } + r.added)
+		// The mark goes into the same write as the rows, so a failed merge changes neither.
+		a.missesOlderTransactions = result.missesOlder(after: account.missesOlderTransactions)
+		if let balance = result.balance, balance.currency == account.currency {
+			a.bankBalanceMinor = balance.minorUnits
+			a.bankBalanceDate = result.balanceDate ?? now
+			if result.isPortfolio { a.kind = .portfolio }
+			// A balance whose transactions failed would set the value without the rows that the next refresh brings.
+			if a.derivesInitialBalance, result.transactionFailure == nil {
+				// Dropped and marked rows are pending and do not count.
+				let changed = Dictionary(uniqueKeysWithValues: (r.booked + r.updated).map { ($0.id, $0) })
+				a.deriveInitialBalance(from: stored.map { changed[$0.id] ?? $0 } + r.added)
+			}
+			r.account = a
+		} else if a != account {
+			r.account = a
 		}
-		r.account = a
 	}
 	if case let .refresh(result) = delivery, let delivered = result.holdings {
 		r.holdings = Reconciliation.Holdings(accountID: account.id, holdings: Holding.identify(delivered, stored: holdings))
@@ -311,7 +321,7 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 			if case let .deleted(k) = slot { deleted[k].isPending } else { false }
 		}
 		for (i, t) in rows.enumerated() {
-		try checkpoint()
+			try checkpoint()
 			guard let id = t.sourceID, let slots = byID[id] else { continue }
 			let free = try slots.filter { try checkpoint(); return !taken.contains($0) }
 			if let slot = free.first(where: { t.isPending || !isDeletedPending($0) }) {
@@ -326,7 +336,7 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 	}
 	let days = Set(rows.map(\.bookingDate))
 	var candidates: [Identity.Key: [(slot: Slot, identity: Identity)]] = [:]
-	for (j, t) in stored.enumerated() where days.contains(t.bookingDate) && !taken.contains(.live(j)) {
+	for (j, t) in stored.enumerated() where days.contains(t.sourceBookingDate) && !taken.contains(.live(j)) {
 		try checkpoint()
 		let identity = Identity(t)
 		candidates[identity.key, default: []].append((.live(j), identity))
@@ -364,7 +374,8 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 			|| fileIdentity.map { fileIDs.contains($0) } == true
 			|| reference.map { references.contains($0) } == true
 	}
-	let live = try stored.indices.filter { try checkpoint(); return relevant(day: stored[$0].bookingDate, amount: stored[$0].amountMinor, sourceID: stored[$0].sourceID, fileIdentity: stored[$0].fileIdentity, reference: stored[$0].endToEndReference) }
+	// An edited row is found by the values of its source.
+	let live = try stored.indices.filter { try checkpoint(); return relevant(day: stored[$0].sourceBookingDate, amount: stored[$0].sourceAmountMinor, sourceID: stored[$0].sourceID, fileIdentity: stored[$0].fileIdentity, reference: stored[$0].endToEndReference) }
 	let dead = try deleted.indices.filter { try checkpoint(); return relevant(day: deleted[$0].bookingDate, amount: deleted[$0].amountMinor, sourceID: deleted[$0].sourceID, fileIdentity: deleted[$0].fileIdentity, reference: deleted[$0].endToEndReference) }
 	if rows.allSatisfy({ !$0.isPending }), stored.allSatisfy({ !$0.isPending }), deleted.allSatisfy({ !$0.isPending }),
 		live.allSatisfy({ stored[$0].fileIdentity == nil }), dead.allSatisfy({ deleted[$0].fileIdentity == nil }) {
@@ -439,7 +450,8 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 				identity = liveMatches[j]!.identity
 				match = liveMatches[j]!
 				fetched = stored[j].isFetched
-				future = !stored[j].isFetched && stored[j].review == nil && stored[j].bookingDate >= today && delivery.covers(stored[j].bookingDate)
+				let day = stored[j].sourceBookingDate
+				future = !stored[j].isFetched && stored[j].review == nil && day >= today && delivery.covers(day)
 			case let .deleted(k):
 				identity = deadMatches[k]!.identity
 				match = deadMatches[k]!
@@ -536,12 +548,13 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 	func positions(_ ts: [Transaction], indices: Set<Int>, checkpoint: () throws -> Void) rethrows -> [Int: Int] {
 		let keys = Dictionary(uniqueKeysWithValues: try indices.map { i in
 			try checkpoint()
-			return (i, (ts[i].bookingDate, ts[i].createdAt, ts[i].id.uuidString))
+			return (i, (ts[i].sourceBookingDate, ts[i].createdAt, ts[i].id.uuidString))
 		})
 		let sorted = try indices.sorted { try checkpoint(); return keys[$0]! < keys[$1]! }
 		return try ranks(sorted, count: ts.count, checkpoint: checkpoint) { i, j in
 			let key = keys[j]!
-			if ts[i].bookingDate != key.0 { return ts[i].bookingDate < key.0 }
+			let day = ts[i].sourceBookingDate
+			if day != key.0 { return day < key.0 }
 			if ts[i].createdAt != key.1 { return ts[i].createdAt < key.1 }
 			return ts[i].id.uuidString < key.2
 		}
@@ -665,8 +678,10 @@ struct Identity {
 		self.endToEnd = endToEnd.flatMap { $0.isEmpty || $0 == "NOTPROVIDED" ? nil : $0 }
 	}
 
+	/// An edited row is found by the values of its source.
 	init(_ t: Transaction) {
-		self.init(fileIdentity: t.fileIdentity, sourceID: t.sourceID, day: t.bookingDate, amount: t.amountMinor, isPending: t.isPending, purpose: t.purpose,
+		let delivered = t.sourceValues
+		self.init(fileIdentity: t.fileIdentity, sourceID: t.sourceID, day: delivered.bookingDate, amount: delivered.amountMinor, isPending: t.isPending, purpose: delivered.purpose,
 			counterparty: t.counterpartyIBAN, endToEnd: t.endToEndReference)
 	}
 
@@ -774,11 +789,12 @@ struct PendingMatch {
 	let identity: Identity
 
 	init(_ t: Transaction) {
+		let delivered = t.sourceValues
 		identity = Identity(t)
-		amount = t.amount
-		day = t.bookingDate.daysSince1970
+		amount = Money(minorUnits: delivered.amountMinor, currency: t.currency)
+		day = delivered.bookingDate.daysSince1970
 		iban = t.counterpartyIBAN.map(TextFolding.accountKey).flatMap { $0.isEmpty ? nil : $0 }
-		words = TextFolding.fold(t.name).split { !$0.isLetter && !$0.isNumber }
+		words = TextFolding.fold(delivered.name).split { !$0.isLetter && !$0.isNumber }
 	}
 
 	init(_ d: DeletedTransaction) {
@@ -863,6 +879,19 @@ extension Transaction {
 		// A migration ID never replaces the ID of a source that took the row over.
 		if Identity.remote(delivered.sourceID) != nil || Identity.remote(sourceID) == nil {
 			t.sourceID = delivered.sourceID ?? sourceID
+		}
+		// An edited field keeps what the user wrote, and `original` follows the source.
+		if let original {
+			let source = OriginalValues(bookingDate: delivered.bookingDate, valueDate: delivered.valueDate ?? original.valueDate,
+				amountMinor: delivered.amountMinor, name: delivered.name, purpose: delivered.purpose)
+			var kept = source
+			if bookingDate != original.bookingDate { kept.bookingDate = bookingDate }
+			if valueDate != original.valueDate { kept.valueDate = valueDate }
+			if amountMinor != original.amountMinor { kept.amountMinor = amountMinor }
+			if name != original.name { kept.name = name }
+			if purpose != original.purpose { kept.purpose = purpose }
+			t.original = source
+			t.edit(kept)
 		}
 		return t
 	}

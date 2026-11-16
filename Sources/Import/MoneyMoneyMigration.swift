@@ -106,7 +106,7 @@ public struct MoneyMoneyMigration: Sendable {
 			guard let accountSource = raw["accountUuid"] as? String, let accountID = accountMap[accountSource] else { continue }
 			let id = (raw["id"] as? Int).map { "\(Transaction.migrationIDPrefix)\($0)" }
 			let currency = (raw["currency"] as? String) ?? "EUR"
-			let amount = Money(Decimal((raw["amount"] as? Double) ?? 0), currency: currency)
+			guard let amount = Money(fitting: Decimal((raw["amount"] as? Double) ?? 0), currency: currency) else { throw Failure.unreadable("transactions") }
 			let booking = (raw["bookingDate"] as? Date).map { Day($0, calendar: calendar) } ?? Day.today(calendar: calendar)
 			let pending = !((raw["booked"] as? Bool) ?? true)
 			var categoryID: UUID?

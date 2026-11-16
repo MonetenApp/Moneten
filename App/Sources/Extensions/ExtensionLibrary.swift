@@ -117,8 +117,8 @@ final class ExtensionLibrary {
 	@ObservationIgnored private var checking: Store?
 	@ObservationIgnored private var daily: Task<Void, Never>?
 
-	private var folder: URL { DataFolder.standard().extensionsFolder }
-	private var staging: URL { DataFolder.standard().root.appending(path: "Downloads") }
+	private var folder: URL { DataFolder.current.extensionsFolder }
+	private var staging: URL { DataFolder.current.root.appending(path: "Downloads") }
 	private var installer: Installer {
 		let source = configuration.source
 		return Installer(folder: folder, staging: staging) { path, limit in try await source.fetch(path, limit: limit) }
