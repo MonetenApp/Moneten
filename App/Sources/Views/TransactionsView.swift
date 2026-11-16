@@ -464,7 +464,7 @@ struct TransactionTable: View {
 			// A group or category view names the account of a selected row.
 			TableColumn("Name / Purpose") { (t: Transaction) in
 				let account = showsAccount && !groupedByAccount && model.selectedTransactions.contains(t.id) ? model.ledger.account(t.accountID)?.name : nil
-				TransactionCell(transaction: t, account: account).padding(.trailing, 12).rowChrome(t).draggable(draggedIDs(for: t))
+				TransactionCell(transaction: t, model: model, account: account).padding(.trailing, 12).rowChrome(t).draggable(draggedIDs(for: t))
 			}
 			.width(min: 240, ideal: 520)
 			.customizationID("name")
@@ -521,6 +521,7 @@ struct TransactionTable: View {
 
 struct TransactionCell: View {
 	let transaction: Transaction
+	let model: AppModel
 	/// The account of the transaction, shown at the end of the first line.
 	var account: String?
 
@@ -547,6 +548,14 @@ struct TransactionCell: View {
 						.frame(maxWidth: 140, alignment: .trailing)
 						.layoutPriority(1)
 				}
+			}
+			if let part = model.ledger.part(transaction.id), let original = model.ledger.transaction(part.transactionID) {
+				HStack(spacing: 4) {
+					Label("Part of \(Format.money(original.amount))", systemImage: "arrow.triangle.branch")
+					if let vat = part.vat { Text(vat.role == .net ? "(net)" : "(\(vat.rate.text) VAT)") }
+				}
+				.font(.system(size: 11)).foregroundStyle(Palette.detail)
+				.accessibilityElement(children: .combine)
 			}
 			// A row without a purpose keeps the empty line, so that every row is the same height.
 			// As in MoneyMoney, the purpose takes one line, its lines joined with spaces. The whole text
@@ -901,6 +910,7 @@ struct TransactionMenu: View {
 			Divider()
 			if ids.count == 1 {
 				Button("Edit Transaction...") { model.sheet = .transaction(first.id) }
+				Menu("Split Transaction") { SplitCommands(row: first) }
 			}
 			// As in MoneyMoney: a group or category view mixes accounts, so it offers no delete.
 			if case .account = model.selection {
@@ -910,6 +920,7 @@ struct TransactionMenu: View {
 	}
 
 	private func confirmDelete(_ ids: Set<UUID>) {
+		guard !model.refusePartDeletion(in: ids) else { return }
 		let alert = NSAlert()
 		alert.messageText = ids.count == 1 ? "Delete selected transaction?" : "Delete \(ids.count) selected transactions?"
 		alert.informativeText = "Deleted transactions CANNOT be restored!"

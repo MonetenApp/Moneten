@@ -23,14 +23,15 @@ A test on 16 November 2026 on macOS 26 signed the java of the helper with the ap
 - The java of the FinTS helper has exactly three entitlements: `com.apple.security.app-sandbox`, `com.apple.security.network.client`, and `com.apple.security.cs.allow-jit`. It has no temporary exceptions.
 - The java sits at the top of the helper folder, `Contents/Resources/FinTSHelper/java`, next to `runtime` and `lib`. `scripts/build-fints-helper.sh` moves it there and changes its search path for `libjli.dylib` to `runtime/lib`.
 - `scripts/build-app.sh` signs it with the identifier of the app followed by `.FinTSHelper`, so its container is `~/Library/Containers/<app identifier>.FinTSHelper`. The helper keeps no data of its own (ADR 0014), so the container holds only the temporary files of the JVM.
-- `scripts/build-app.sh` fails when the java has other entitlements, and when it cannot fetch the bank directory in its sandbox.
+- `scripts/build-app.sh` fails when the java has other entitlements or another identifier, and when it cannot finish one login over TLS in its sandbox. `scripts/fints-helper-smoke.py` runs that login against a made-up bank on 127.0.0.1. The helper gets the script as its HTTPS proxy, and the script answers the CONNECT itself and trusts only its own certificate, so no request reaches a bank.
 
 ## Consequences
 
 - A flaw in hbci4java, JAXB, or the JVM reaches the network and the files of the helper, but not the home folder, the database file, or the "Extensions" folder.
 - The helper still reaches any host, as the extension host does. It sends the PIN only to the FinTS address that the bank directory names for the bank code, and macOS judges the certificate of that server.
-- What the sandbox lets the helper read depends on how macOS sets up the sandbox of a program without a bundle of its own. A change in a later macOS fails the check of `scripts/build-app.sh` on that macOS, not a refresh of a user who built on another one. The check runs on every build.
+- What the sandbox lets the helper read depends on how macOS sets up the sandbox of a program without a bundle of its own. The check of `scripts/build-app.sh` covers only the macOS of the Mac that builds. A user who upgrades to a later macOS, such as macOS 27, runs the same build, and no check runs then. If that macOS changes the rule, FinTS fails on that Mac until a new build is tested on it. A build on a beta of each new macOS catches such a change before users upgrade.
 - Each user gets one more folder in `~/Library/Containers`.
+- macOS records the signature that created the container. A test on 16 November 2026 signed the java ad hoc first and then with an Apple Development certificate on the same Mac. The second java stopped at start, and macOS asked the user whether it may use the data of the first. Until the user answers, the helper waits, and the refresh fails after 30 seconds of silence. The ad hoc java still started without a question. A user who only installs releases keeps one signature and never sees the question. A contributor who switches between a build signed to run locally and one signed with a team sees it once and answers it.
 - The helper gets absolute paths only. The sandbox hides the working folder, so a relative class path fails.
 
 ## Alternatives

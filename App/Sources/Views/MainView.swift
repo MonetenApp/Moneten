@@ -103,6 +103,8 @@ struct SheetView: View {
 		case let .groupSettings(id): GroupSettingsSheet(groupID: id)
 		case let .categorySettings(id): CategorySettingsSheet(categoryID: id)
 		case let .transaction(id): TransactionSheet(transactionID: id)
+		case let .split(row): SplitSheet(row: row)
+		case let .undoSplit(id): UndoSplitSheet(rowID: id)
 		case let .comment(ids): CommentSheet(ids: ids)
 		case .migration: MigrationSheet()
 		case .exportAllData: ExportAllDataSheet()

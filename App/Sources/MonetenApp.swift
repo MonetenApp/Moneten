@@ -26,6 +26,15 @@ struct MonetenApp: App {
 		.defaultSize(width: 900, height: 600)
 		.commandsRemoved()
 
+		Window("Supported Banks", id: "supportedBanks") {
+			SupportedBanksWindow()
+				.environment(model)
+		}
+		.defaultSize(width: 560, height: 640)
+		.commandsRemoved()
+		// The list is help for the moment, so it does not open again at the next launch.
+		.restorationBehavior(.disabled)
+
 		Window("Notice", id: "notice") {
 			BankNoticeWindow()
 				.environment(model)
@@ -50,11 +59,15 @@ struct MonetenApp: App {
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
+	func applicationWillFinishLaunching(_ notification: Notification) {
+		// A run of the debug harness opens behind the app the developer works in, so that it does not take the focus.
+		DebugHarness.keepBehindIfRequested()
+	}
+
 	func applicationDidFinishLaunching(_ notification: Notification) {
 		// A build that runs straight from `swift run` has no bundle and starts in the background.
 		NSApp.setActivationPolicy(.regular)
-		// A run of the debug harness opens behind the app the developer works in, so that it does not take the focus.
-		if !DebugHarness.isRequested { NSApp.activate(ignoringOtherApps: true) }
+		NSApp.activate(ignoringOtherApps: true)
 	}
 
 	func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
@@ -160,6 +173,7 @@ struct AppCommands: Commands {
 		}
 		CommandGroup(replacing: .help) {
 			Button("Show Database in Finder...") { NSWorkspace.shared.activateFileViewerSelecting([model.vault.folder.root]) }
+			Button("Supported Banks...") { openWindow(id: "supportedBanks") }
 			Button("Moneten on GitHub...") { NSWorkspace.shared.open(URL(string: "https://github.com/MonetenApp/Moneten")!) }
 			Button("Report an Issue...") { NSWorkspace.shared.open(bugReportURL(version: CrashReportController.appVersion, macOS: CrashReports.macOSVersion())) }
 		}

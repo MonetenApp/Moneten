@@ -294,7 +294,9 @@ public final class Store: SavedPINStore {
 	/// The read transaction keeps writers out while the file is copied.
 	/// An existing file at the target is replaced only after the copy is complete.
 	public func backup(to url: URL) throws {
-		let source = URL(fileURLWithPath: queue.path)
+		// The vault opens the file as an SQLite URI, so the path comes from SQLite and not from the queue.
+		let file = try queue.read { db in try String.fetchOne(db, sql: "SELECT file FROM pragma_database_list WHERE name = 'main'") }
+		let source = URL(fileURLWithPath: file ?? queue.path)
 		guard url.resolvingSymlinksInPath().standardizedFileURL != source.resolvingSymlinksInPath().standardizedFileURL else {
 			throw CocoaError(.fileWriteFileExists, userInfo: [NSLocalizedDescriptionKey: "A backup cannot replace the open database. Choose another location."])
 		}

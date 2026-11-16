@@ -3,13 +3,17 @@
 #   scripts/build-app.sh                 release build, signed with the team in App/Local.xcconfig
 #   scripts/build-app.sh debug           debug build
 #   scripts/build-app.sh developer-id    release build, archived and signed with the Developer ID
-#                                        of the team, for other Macs; not notarized yet
+#                                        Application certificate in the Keychain, with the hardened
+#                                        runtime and a secure timestamp, for notarization (ADR 0016)
 # Without a team in App/Local.xcconfig, Xcode signs to run locally. App/Signing.xcconfig explains it.
-# The Developer ID certificate is managed by Xcode in the team account. The Developer ID build
-# needs an Xcode account of the team with the Admin or Account Holder role.
-# Every build except developer-id adds the FinTS helper (ADR 0014) and needs a JDK 17 or later. It takes the FinTS
-# product ID from the login Keychain, item "Moneten FinTS product ID", into Info.plist. Without it
-# the app builds, and FinTS refuses to connect.
+# The Developer ID build takes the team from MONETEN_TEAM_ID or else from App/Local.xcconfig, and
+# needs the certificate with its private key in the Keychain. docs/releasing.md explains both.
+# MONETEN_VERSION, for example 0.2.0-beta.1, sets the version: 0.2.0 as the marketing version and
+# beta.1 as MonetenPreRelease in Info.plist. Without it the build has the version of App/project.yml.
+# Every build adds the FinTS helper (ADR 0014) and needs a JDK 17 or later. It takes the FinTS
+# product ID from the file that MONETEN_FINTS_PRODUCT_ID_FILE names, or else from the login
+# Keychain, item "Moneten FinTS product ID", into Info.plist. Without it the app builds, and FinTS
+# refuses to connect.
 set -e
 cd "$(dirname "$0")/.."
 CONFIG=Release
@@ -20,10 +24,15 @@ case "$1" in
 	*) echo "usage: scripts/build-app.sh [debug | developer-id]" >&2; exit 2 ;;
 esac
 BUILD="$(git rev-list --count HEAD 2>/dev/null || echo 1)"
+VERSION_SETTINGS=""
+if [ -n "$MONETEN_VERSION" ]; then
+	echo "$MONETEN_VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-beta\.[0-9]+)?$' \
+		|| { echo "MONETEN_VERSION must look like 1.2.3 or 1.2.3-beta.4, not $MONETEN_VERSION." >&2; exit 2; }
+	VERSION_SETTINGS="MARKETING_VERSION=${MONETEN_VERSION%%-*} MONETEN_PRE_RELEASE=$(echo "$MONETEN_VERSION" | sed -n 's/^[^-]*-//p')"
+fi
 
 # Adds the FinTS helper to the app $1 after the build and signs both again with the certificate of
-# the app. A Developer ID build leaves the helper out until task 3.2 of add-fints-banking lets the
-# export sign it, see the end of this script. The helper lives in Contents/Resources, because codesign
+# the app, which must be in the Keychain with its private key. The helper lives in Contents/Resources, because codesign
 # takes every file in Contents/Helpers for code, and the Java runtime needs its data files next to
 # its libraries. The helper gets the hardened
 # runtime when the app has it: an ad hoc signature has no team, and library validation would refuse
@@ -44,6 +53,7 @@ embed_fints_helper() {
 	codesign -dv "$1" 2>&1 | grep -q '^CodeDirectory.*flags=.*runtime' && RUNTIME="--options runtime"
 	# A file list instead of a pipe, so that a failed signature stops the build. codesign needs the
 	# private key of the identity in the Keychain; a certificate that only Xcode manages fails here.
+	# A Developer ID build signs with the imported certificate of ADR 0016, so it never fails here.
 	CODE=$(mktemp)
 	find "$HELPER/runtime" -type f > "$CODE.all"
 	while read -r f; do file -b "$f" | grep -q Mach-O && echo "$f"; done < "$CODE.all" > "$CODE"
@@ -55,7 +65,11 @@ embed_fints_helper() {
 		--identifier "$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$1/Contents/Info.plist").FinTSHelper" --sign "$IDENTITY" "$HELPER/java" \
 		|| { echo "Could not sign the java of the FinTS helper." >&2; exit 1; }
 	# The product ID goes through a pipe, never through an argument, a variable, or a log.
-	security find-generic-password -s 'Moneten FinTS product ID' -w 2>/dev/null | python3 -c '
+	if [ -n "$MONETEN_FINTS_PRODUCT_ID_FILE" ]; then
+		cat "$MONETEN_FINTS_PRODUCT_ID_FILE"
+	else
+		security find-generic-password -s 'Moneten FinTS product ID' -w 2>/dev/null
+	fi | python3 -c '
 import plistlib, sys
 product = sys.stdin.read().strip()
 if product:
@@ -91,56 +105,60 @@ if entitlements != {"com.apple.security.app-sandbox": True, "com.apple.security.
 }
 
 # The java of the FinTS helper holds the PIN and parses the answers of the bank (ADR 0018). This check
-# stops a build whose java could do more than reach the network, and fetches the bank directory in the
-# sandbox, so that a file the sandbox hides from the helper fails the build and not a refresh.
+# stops a build whose java could do more than reach the network or has another container, and runs one
+# login over TLS in the sandbox against a made-up bank on 127.0.0.1, so that a file or a connection the
+# sandbox refuses fails the build on this Mac and not a refresh.
 check_fints_helper() {
-	# Absolute, as the app passes it: the sandbox hides the working folder, so a relative class path fails.
-	HELPER="$(cd "$1/Contents/Resources/FinTSHelper" && pwd)"
-	JAVA="$HELPER/java"
-	codesign -d --entitlements - --xml "$JAVA" 2>/dev/null | python3 -c '
+	HELPER="$1/Contents/Resources/FinTSHelper"
+	ID="$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$1/Contents/Info.plist").FinTSHelper"
+	[ "$(codesign -dv "$HELPER/java" 2>&1 | sed -n 's/^Identifier=//p')" = "$ID" ] \
+		|| { echo "The java of the FinTS helper is not signed with the identifier $ID, which names its container." >&2; exit 1; }
+	codesign -d --entitlements - --xml "$HELPER/java" 2>/dev/null | python3 -c '
 import plistlib, sys
 entitlements = plistlib.loads(sys.stdin.buffer.read())
 if entitlements != {"com.apple.security.app-sandbox": True, "com.apple.security.network.client": True, "com.apple.security.cs.allow-jit": True}:
 	sys.exit("The java of the FinTS helper has the entitlements %s instead of the app sandbox, the network client, and JIT." % sorted(entitlements))
 ' || exit 1
-	printf '{"type":"banks"}\n' | env -i "$JAVA" -Djava.awt.headless=true -XX:ErrorFile=/dev/null -XX:+DisableAttachMechanism -Xrs \
-		-cp "$HELPER/lib/*" FinTSHelper 2>/dev/null | grep -q '^{"type":"banks"' \
-		|| { echo "The FinTS helper does not start in its sandbox." >&2; exit 1; }
+	python3 scripts/fints-helper-smoke.py "$HELPER" || exit 1
 }
 
 scripts/generate-project.sh
 XCODEBUILD="xcodebuild -project App/Moneten.xcodeproj -scheme Moneten -configuration $CONFIG -derivedDataPath .build/xcode -disableAutomaticPackageResolution -quiet"
 if [ -z "$ARCHIVE" ]; then
-	$XCODEBUILD CURRENT_PROJECT_VERSION="$BUILD" build
+	$XCODEBUILD CURRENT_PROJECT_VERSION="$BUILD" $VERSION_SETTINGS build
 	PRODUCT=".build/xcode/Build/Products/$CONFIG/Moneten.app"
 else
+	TEAM="$MONETEN_TEAM_ID"
+	[ -n "$TEAM" ] || TEAM=$(sed -n 's/^DEVELOPMENT_TEAM *= *\([A-Z0-9]*\).*/\1/p' App/Local.xcconfig 2>/dev/null | tail -1)
+	[ -n "$TEAM" ] || { echo "The Developer ID build needs a team in MONETEN_TEAM_ID or App/Local.xcconfig." >&2; exit 2; }
+	security find-identity -v -p codesigning | grep -q "Developer ID Application: .*($TEAM)" \
+		|| { echo "No Developer ID Application certificate of team $TEAM with its private key in the Keychain. See docs/releasing.md." >&2; exit 1; }
+	# Manual signing with the certificate in the Keychain, so that codesign can sign the FinTS helper
+	# with the same identity after the export (ADR 0016). No entitlement of the app needs a profile.
+	SIGNING="CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=$TEAM MONETEN_HARDENED_RUNTIME=YES OTHER_CODE_SIGN_FLAGS=--timestamp"
 	rm -rf "$ARCHIVE" .build/xcode/export
-	$XCODEBUILD -archivePath "$ARCHIVE" -allowProvisioningUpdates CURRENT_PROJECT_VERSION="$BUILD" archive
+	$XCODEBUILD -archivePath "$ARCHIVE" $SIGNING CODE_SIGN_IDENTITY="Developer ID Application" \
+		CURRENT_PROJECT_VERSION="$BUILD" $VERSION_SETTINGS archive
 	cat > .build/xcode/ExportOptions.plist <<-EOF
 	<?xml version="1.0" encoding="UTF-8"?>
 	<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 	<plist version="1.0"><dict>
 	<key>method</key><string>developer-id</string>
-	<key>signingStyle</key><string>automatic</string>
+	<key>signingStyle</key><string>manual</string>
+	<key>signingCertificate</key><string>Developer ID Application</string>
+	<key>teamID</key><string>$TEAM</string>
 	</dict></plist>
 	EOF
 	xcodebuild -exportArchive -archivePath "$ARCHIVE" -exportOptionsPlist .build/xcode/ExportOptions.plist \
-		-exportPath .build/xcode/export -allowProvisioningUpdates >/dev/null
+		-exportPath .build/xcode/export >/dev/null
 	PRODUCT=.build/xcode/export/Moneten.app
 fi
 
 rm -rf dist/Moneten.app
 mkdir -p dist
 cp -R "$PRODUCT" dist/
-# The export of a Developer ID build signs with a certificate that Xcode may keep in the cloud, and
-# codesign cannot sign the helper with it. Until task 3.2 of add-fints-banking lets the export sign
-# the helper, a Developer ID build leaves it out. The app does not use FinTS yet.
-if [ -z "$ARCHIVE" ]; then
-	embed_fints_helper dist/Moneten.app
-	check_fints_helper dist/Moneten.app
-else
-	echo "The Developer ID build leaves out the FinTS helper until task 3.2 of add-fints-banking." >&2
-fi
+embed_fints_helper dist/Moneten.app
+check_fints_helper dist/Moneten.app
 check_extension_host dist/Moneten.app
 codesign --verify --strict --deep dist/Moneten.app
 echo "Built dist/Moneten.app ($CONFIG, build $BUILD), $(codesign -dv --verbose=2 dist/Moneten.app 2>&1 | grep -m1 -E '^(Authority|Signature)=')"
