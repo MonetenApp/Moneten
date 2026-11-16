@@ -345,7 +345,7 @@ The app SHALL make every control of the main window reachable with the keyboard,
 
 ### Requirement: About and help commands
 
-The app SHALL offer "About Moneten" in the application menu, with the version, the license, and a link to the source code. The Help menu offers "Help and FAQ..." (⌘?), which opens the help page of the project in the browser, and "Supported Banks...", which lists the banks that the app reaches.
+The app SHALL offer "About Moneten" in the application menu, with the version, the license, and a link to the source code. The Help menu offers "Help and FAQ..." (⌘?) and "Supported Banks...", and each opens the matching page of the project in the browser.
 
 #### Scenario: About
 
