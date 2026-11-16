@@ -9792,6 +9792,17 @@
       },
       "extractionState" : "manual"
     },
+    "The FinTS helper sent a message larger than %lld MiB, which Moneten does not read." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der FinTS-Helfer hat eine Nachricht größer als %lld MiB gesendet, die Moneten nicht liest."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "The FinTS helper stopped unexpectedly (signal %d)." : {
       "localizations" : {
         "de" : {
