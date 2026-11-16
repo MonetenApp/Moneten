@@ -449,8 +449,10 @@ struct CategorizerTests {
 		let phone = Domain.Category(position: 0, name: "Phone", rule: "/^+?49/")
 		let other = Domain.Category(position: 1, name: "Other", rule: #""Telefon""#)
 		let c = Categorizer(ledger: ledger([phone, other]))
-		var rows = (0..<1_000).map { i in
-			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 2), amountMinor: -1_000 - Int64(i), name: "Mobilfunk", purpose: "Telefon +49 170 1234567")
+		var rows: [Transaction] = []
+		for i in 0..<1_000 {
+			let amount: Int64 = -1_000 - Int64(i)
+			rows.append(Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 2), amountMinor: amount, name: "Mobilfunk", purpose: "Telefon +49 170 1234567"))
 		}
 		let start = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)
 		for i in rows.indices { c.categorize(&rows[i]) }
@@ -547,20 +549,35 @@ struct CategorizerTests {
 
 	/// Six rules that hang on every text, and six that are slow on texts of 18 "a", above a normal rule and a catch-all.
 	static func stoppingRules() -> [String] {
-		(0..<6).map { "purpose:/^+?4\($0)/" } + (1...6).map { "purpose:/(a+)+$|^z\($0)$/" }
+		var rules: [String] = []
+		for k in 0..<6 { rules.append("purpose:/^+?4\(k)/") }
+		for k in 1...6 { rules.append("purpose:/(a+)+$|^z\(k)$/") }
+		return rules
 	}
 
 	@Test("Twelve rules that stop leave a normal regular expression its rows, which it tests once, and the batch stays bounded", .timeLimit(.minutes(1)))
 	func stoppingRulesKeepNormalRule() {
-		let slow = Self.stoppingRules().enumerated().map { Domain.Category(position: $0.offset, name: "Slow \($0.offset)", rule: $0.element) }
+		var slow: [Domain.Category] = []
+		for (k, rule) in Self.stoppingRules().enumerated() { slow.append(Domain.Category(position: k, name: "Slow \(k)", rule: rule)) }
 		let traders = Domain.Category(position: 20, name: "Haendler", rule: "/Haendler1/")
 		let rest = Domain.Category(position: 21, name: "Rest", rule: "true")
 		let day = Day(year: 2026, month: 11, day: 3)
 		// Long purposes, so the normal rule spends enough time to compare.
 		let filler = String(repeating: "Kundennummer 4711 Vertrag 0815 ", count: 20)
-		let rows = (0..<2_000).map { i in Transaction(accountID: giro.id, bookingDate: day, amountMinor: -Int64(i), name: "Haendler\(i % 70) Musterstadt", purpose: "Rechnung \(i) " + filler) }
-			// Different amounts, so each row is a text of its own, which the results of the batch do not repeat.
-			+ (0..<4).map { i in Transaction(accountID: giro.id, bookingDate: day, amountMinor: -10_000 - Int64(i), name: "Kiosk", purpose: String(repeating: "a", count: 18) + "!") }
+		// Loops with typed values, because the type checker of the CI compiler gives up on such closures.
+		var rows: [Transaction] = []
+		for i in 0..<2_000 {
+			let amount: Int64 = -Int64(i)
+			let name: String = "Haendler\(i % 70) Musterstadt"
+			let purpose: String = "Rechnung \(i) " + filler
+			rows.append(Transaction(accountID: giro.id, bookingDate: day, amountMinor: amount, name: name, purpose: purpose))
+		}
+		// Different amounts, so each row is a text of its own, which the results of the batch do not repeat.
+		let slowPurpose: String = String(repeating: "a", count: 18) + "!"
+		for i in 0..<4 {
+			let amount: Int64 = -10_000 - Int64(i)
+			rows.append(Transaction(accountID: giro.id, bookingDate: day, amountMinor: amount, name: "Kiosk", purpose: slowPurpose))
+		}
 		func run(_ categories: [Domain.Category]) -> (rows: [Transaction], rules: Categorizer) {
 			let rules = Categorizer(ledger: ledger(categories))
 			return (rules.allOrNothing { rows.map { var t = $0; rules.categorize(&t); return t } }, rules)
@@ -603,7 +620,8 @@ struct CategorizerTests {
 	@Test("The rules of one batch stop together when they spend 3 seconds in all", .timeLimit(.minutes(1)))
 	func batchLimit() {
 		// Forty rules that each hang for about 100 ms before they stop.
-		let slow = (0..<40).map { Domain.Category(position: $0, name: "Slow \($0)", rule: "purpose:/^+?\($0 % 10)\($0 / 10)/") }
+		var slow: [Domain.Category] = []
+		for k in 0..<40 { slow.append(Domain.Category(position: k, name: "Slow \(k)", rule: "purpose:/^+?\(k % 10)\(k / 10)/")) }
 		let traders = Domain.Category(position: 50, name: "Haendler", rule: "/Haendler1/")
 		let rules = Categorizer(ledger: ledger(slow + [traders]))
 		let row = Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 3), amountMinor: -1, name: "Haendler1", purpose: "Rechnung 1")

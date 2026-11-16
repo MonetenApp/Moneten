@@ -187,9 +187,16 @@ struct PerformanceTests {
 	@Test("A regular expression in a rule categorizes and counts 50,000 rows within budget, and never reaches its limit")
 	func regexRuleBudgets() throws {
 		let account = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
-		let ts = (0..<50_000).map { i in
-			Transaction(accountID: account.id, bookingDate: Day(year: 2014 + i % 12, month: 1 + i % 12, day: 1 + i % 28), amountMinor: -Int64(i % 9_000),
-				name: "Haendler\(i % 70) Musterstadt", purpose: "Rechnung \(i) Kundennummer \(i * 7)", bookingText: "LASTSCHRIFT", endToEndReference: "E2E-\(i)")
+		// A loop with typed values, because the type checker of the CI compiler gives up on this as one closure.
+		var ts: [Transaction] = []
+		ts.reserveCapacity(50_000)
+		for i in 0..<50_000 {
+			let day: Day = Day(year: 2014 + i % 12, month: 1 + i % 12, day: 1 + i % 28)
+			let amount: Int64 = -Int64(i % 9_000)
+			let name: String = "Haendler\(i % 70) Musterstadt"
+			let purpose: String = "Rechnung \(i) Kundennummer \(i * 7)"
+			ts.append(Transaction(accountID: account.id, bookingDate: day, amountMinor: amount, name: name, purpose: purpose,
+				bookingText: "LASTSCHRIFT", endToEndReference: "E2E-\(i)"))
 		}
 		let traders = Domain.Category(position: 0, name: "Haendler", rule: "/Haendler1/")
 		let rest = Domain.Category(position: 1, name: "Rest", rule: #""Rechnung""#)
@@ -204,19 +211,43 @@ struct PerformanceTests {
 		var sorted = 0
 		let categorizing = fastest {
 			let rules = Categorizer(ledger: ledger)
-			sorted = rules.allOrNothing { ts.reduce(0) { $0 + (rules.category(for: $1) == traders.id ? 1 : 0) } }
+			sorted = rules.allOrNothing { () -> Int in
+				var count = 0
+				for t in ts where rules.category(for: t) == traders.id { count += 1 }
+				return count
+			}
 		}
 		// Twelve rules above it that stop, six at once and six on texts of 18 "a", leave it its rows, and the batch ends soon.
-		let stopping = (0..<6).map { "purpose:/^+?4\($0)/" } + (1...6).map { "purpose:/(a+)+$|^z\($0)$/" }
-		let slow = stopping.enumerated().map { Domain.Category(position: $0.offset, name: "Slow \($0.offset)", rule: $0.element) }
-		let mixedRows = ts + (0..<4).map { i in
-			Transaction(accountID: account.id, bookingDate: Day(year: 2026, month: 11, day: 3), amountMinor: -10_000 - Int64(i), name: "Kiosk", purpose: String(repeating: "a", count: 18) + "!")
+		var slow: [Domain.Category] = []
+		for k in 0..<6 { slow.append(Domain.Category(position: k, name: "Slow \(k)", rule: "purpose:/^+?4\(k)/")) }
+		for k in 1...6 { slow.append(Domain.Category(position: 5 + k, name: "Slow \(5 + k)", rule: "purpose:/(a+)+$|^z\(k)$/")) }
+		var mixedRows: [Transaction] = ts
+		let slowPurpose: String = String(repeating: "a", count: 18) + "!"
+		for i in 0..<4 {
+			let amount: Int64 = -10_000 - Int64(i)
+			mixedRows.append(Transaction(accountID: account.id, bookingDate: Day(year: 2026, month: 11, day: 3), amountMinor: amount, name: "Kiosk", purpose: slowPurpose))
 		}
-		let mixed = Ledger(accounts: [account], categories: slow.map { var c = $0; c.position -= 20; return c } + [traders, rest], transactions: mixedRows)
+		// The rules that stop come first in the sidebar.
+		var ordered: [Domain.Category] = []
+		for category in slow {
+			var above: Domain.Category = category
+			above.position -= 20
+			ordered.append(above)
+		}
+		ordered += [traders, rest]
+		let mixed = Ledger(accounts: [account], categories: ordered, transactions: mixedRows)
 		var kept = 0
 		let withStops = fastest {
 			let rules = Categorizer(ledger: mixed)
-			kept = rules.allOrNothing { mixedRows.reduce(0) { var t = $1; rules.categorize(&t); return $0 + (t.categoryID == traders.id ? 1 : 0) } }
+			kept = rules.allOrNothing { () -> Int in
+				var count = 0
+				for row in mixedRows {
+					var t: Transaction = row
+					rules.categorize(&t)
+					if t.categoryID == traders.id { count += 1 }
+				}
+				return count
+			}
 		}
 		print("regex rule over 50,000 rows: count \(counting) (\(count) rows), categorization \(categorizing) (\(sorted) rows), with twelve rules that stop \(withStops) (\(kept) rows)")
 		#expect(kept == 7_865)
