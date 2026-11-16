@@ -166,9 +166,13 @@ final class AccountSetup {
 		guard !isLoggingIn, let code = lookup.bank?.code, let bank, let url = bank.url else { return }
 		let userIDHelp = loginHint?.help
 		let access = Access(source: .fints(bankCode: code, url: url), bankName: bank.name, loginName: loginName.trimmingCharacters(in: .whitespaces))
-		let known = model.accesses.values.first { $0.isSameLogin(as: access) }?.id ?? access.id
+		let knownAccess = model.accesses.values.first { $0.isSameLogin(as: access) }
+		let known = knownAccess?.id ?? access.id
+		// A refresh of the access that the app has names its notices with the bank name of that access.
+		let bankName = knownAccess?.bankName ?? bank.name
 		let session = SetupSession(broker: model.sync.broker, access: access, pin: Secret(pin), replacing: known)
 		loginError = nil
+		notices = []
 		isLoggingIn = true
 		task = Task {
 			do {
@@ -179,13 +183,14 @@ final class AccountSetup {
 				}
 				guard !Task.isCancelled else { return }
 				isLoggingIn = false
+				notices = list.notices
+				model.bankNotices.markShown(list.notices, from: bankName)
 				guard !list.accounts.isEmpty else {
 					loginError = "The bank reported no accounts for this login. Enter your user ID in place of an alias, or ask the bank to activate the FinTS access."
 					return
 				}
 				self.access = access
 				state = list.state
-				notices = list.notices
 				let listed = list.accounts.map { $0.account(access: access, bank: bank, group: groupID) }
 				candidates = listed.map { Candidate(account: $0, match: model.ledger.setupMatch(for: $0, listed: listed)) }
 				selected = Set(candidates.filter { !$0.isPresent }.map(\.id))
@@ -193,9 +198,13 @@ final class AccountSetup {
 			} catch {
 				guard !Task.isCancelled else { return }
 				isLoggingIn = false
-				// The user canceled the TAN dialog: the login step stays as it was.
+				// The notices of the bank before the error, such as a maintenance that makes the login fail.
+				let (error, shown) = model.bankNotices.setupFailed(error, from: bankName)
+				// The user canceled the TAN dialog: the login step stays as it was. Its notices are dropped on
+				// purpose, so the next refresh shows them in the window "Notice".
 				if error is CancellationError { return }
 				pin = ""
+				notices = shown
 				loginError = (error as? SyncFailure)?.messageAtFirstLogin(userIDHelp: userIDHelp) ?? error.localizedDescription
 			}
 		}
@@ -432,6 +441,7 @@ struct AccountSetupSheet: View {
 					.foregroundStyle(.orange)
 					.fixedSize(horizontal: false, vertical: true)
 			}
+			noticesSection
 		}
 		if setup.isLoggingIn {
 			Section {
@@ -470,6 +480,10 @@ struct AccountSetupSheet: View {
 					.fixedSize(horizontal: false, vertical: true)
 			}
 		}
+		noticesSection
+	}
+
+	@ViewBuilder private var noticesSection: some View {
 		if !setup.notices.isEmpty {
 			Section("Notices of the bank") {
 				ForEach(setup.notices, id: \.text) { Text($0.text).fixedSize(horizontal: false, vertical: true) }

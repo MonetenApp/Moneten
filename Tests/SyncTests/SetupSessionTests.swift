@@ -163,6 +163,18 @@ struct SetupSessionTests {
 		}
 	}
 
+	@Test("A block after a notice of the bank in the setup of a login that the app has deletes the saved PIN of that login")
+	func blockWithNoticesForKnownLogin() async throws {
+		let store = try knownLogin()
+		let session = SetupSession(broker: broker, access: Self.access, pin: Secret("12345"), replacing: Self.known.id)
+		let blocked = SyncFailure.accessBlocked(BankMessage(code: "9930", text: "Zugang gesperrt"))
+		let error = await #expect(throws: FailureWithNotices.self) {
+			try await session.logIn { _ -> Int in throw FailureWithNotices(blocked, notices: [BankMessage(text: "Wartungsarbeiten bis 5 Uhr")]) }
+		}
+		#expect(error?.failure as? SyncFailure == blocked)
+		#expect(store.pins.isEmpty)
+	}
+
 	@Test("A block that the connector reports in the setup of a login that the app has deletes its saved PIN at once, also when the login is canceled then")
 	func blockReportedForKnownLogin() async throws {
 		let store = try knownLogin()
