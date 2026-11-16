@@ -1501,6 +1501,16 @@
         }
       }
     },
+    "Add" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hinzufügen"
+          }
+        }
+      }
+    },
     "Add Account" : {
       "localizations" : {
         "de" : {
@@ -2578,6 +2588,16 @@
         }
       }
     },
+    "Change" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ändern"
+          }
+        }
+      }
+    },
     "Change Database Password" : {
       "localizations" : {
         "de" : {
@@ -2594,6 +2614,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Datenbankpasswort ändern..."
+          }
+        }
+      }
+    },
+    "Change VAT rate at position %lld" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MwSt.-Satz an Position %lld ändern"
           }
         }
       }
@@ -3979,6 +4009,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Geben Sie einen Betrag ungleich null ein, der einen Rest ungleich null übrig lässt."
+          }
+        }
+      }
+    },
+    "Enter a rate above zero with up to two decimal places." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Geben Sie einen Satz über null mit höchstens zwei Nachkommastellen ein."
           }
         }
       }
@@ -7364,6 +7404,16 @@
         }
       }
     },
+    "Remove VAT rate at position %lld" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MwSt.-Satz an Position %lld entfernen"
+          }
+        }
+      }
+    },
     "Remove..." : {
       "localizations" : {
         "de" : {
@@ -7571,6 +7621,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Regeln für die automatische Kategorisierung"
+          }
+        }
+      }
+    },
+    "Save" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Speichern"
           }
         }
       }
@@ -11564,6 +11624,26 @@
         }
       },
       "extractionState" : "manual"
+    },
+    "VAT rate (%)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MwSt.-Satz (%)"
+          }
+        }
+      }
+    },
+    "VAT rates" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MwSt.-Sätze"
+          }
+        }
+      }
     },
     "Version" : {
       "localizations" : {

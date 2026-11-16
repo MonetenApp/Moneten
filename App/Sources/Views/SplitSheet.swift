@@ -82,17 +82,24 @@ struct UndoSplitSheet: View {
 }
 
 struct SplitCommands: View {
+	@State private var rates = Preference.rates
 	@Environment(AppModel.self) private var model
 	let row: Transaction
 
 	var body: some View {
-		Button("Split Amount...") { model.openSplit(row: row.id) }
-		ForEach(VATRate.standard, id: \.self) { rate in
-			Button("Split \(rate.text) VAT") { Task { await model.splitVAT(row: row.id, rate: rate) } }
+		Group {
+			Button("Split Amount...") { model.openSplit(row: row.id) }
+			ForEach(rates.indices, id: \.self) { index in
+				let rate = rates[index]
+				Button("Split \(rate.text) VAT") { Task { await model.splitVAT(row: row.id, rate: rate) } }
+			}
+			Button("Split from Batch Payment") {}.disabled(true)
+			Divider()
+			Button("Undo Split Transaction...") { model.askUndoSplit(row: row.id) }
+				.disabled(model.ledger.part(row.id) == nil)
 		}
-		Button("Split from Batch Payment") {}.disabled(true)
-		Divider()
-		Button("Undo Split Transaction...") { model.askUndoSplit(row: row.id) }
-			.disabled(model.ledger.part(row.id) == nil)
+		.onReceive(NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)) { _ in
+			rates = Preference.rates
+		}
 	}
 }
