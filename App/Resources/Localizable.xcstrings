@@ -2638,6 +2638,16 @@
         }
       }
     },
+    "Changing a security setting needs the database password." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Ändern einer Sicherheitseinstellung erfordert das Datenbankpasswort."
+          }
+        }
+      }
+    },
     "Check again" : {
       "localizations" : {
         "de" : {
@@ -9516,6 +9526,16 @@
         }
       }
     },
+    "The database password could not be deleted from the Keychain, so the setting stays on. %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Datenbankpasswort konnte nicht aus dem Schlüsselbund gelöscht werden, daher bleibt die Einstellung an. %@"
+          }
+        }
+      }
+    },
     "The database password could not be stored in the Keychain." : {
       "localizations" : {
         "de" : {
@@ -10815,16 +10835,6 @@
         }
       }
     },
-    "The setting is off, but the database password could not be removed from the Keychain. %@" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Die Einstellung ist aus, aber das Datenbankpasswort konnte nicht aus dem Schlüsselbund entfernt werden. %@"
-          }
-        }
-      }
-    },
     "The split transactions cannot be restored." : {
       "localizations" : {
         "de" : {
@@ -11538,6 +11548,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Beim Programmstart automatisch entsperren"
+          }
+        }
+      }
+    },
+    "Unlock Moneten to change this setting." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Entsperren Sie Moneten, um diese Einstellung zu ändern."
           }
         }
       }
