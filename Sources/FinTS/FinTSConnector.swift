@@ -10,6 +10,12 @@ public struct FinTSBank: Sendable, Equatable {
 	/// The PIN/TAN address. Nil when the bank has none. The connector refuses any address that is
 	/// not https.
 	public let url: URL?
+
+	public init(name: String, bic: String?, url: URL?) {
+		self.name = name
+		self.bic = bic
+		self.url = url
+	}
 }
 
 /// An account of a login, as the bank lists it.

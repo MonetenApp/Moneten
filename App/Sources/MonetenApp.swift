@@ -32,6 +32,15 @@ struct MonetenApp: App {
 		.defaultSize(width: 900, height: 600)
 		.commandsRemoved()
 
+		Window("Supported Banks", id: "supportedBanks") {
+			SupportedBanksWindow()
+				.environment(model)
+		}
+		.defaultSize(width: 560, height: 640)
+		.commandsRemoved()
+		// The list is help for the moment, so it does not open again at the next launch.
+		.restorationBehavior(.disabled)
+
 		Window("Notice", id: "notice") {
 			BankNoticeWindow()
 				.environment(model)
@@ -166,6 +175,7 @@ struct AppCommands: Commands {
 		}
 		CommandGroup(replacing: .help) {
 			Button("Show Database in Finder...") { NSWorkspace.shared.activateFileViewerSelecting([model.vault.folder.root]) }
+			Button("Supported Banks...") { openWindow(id: "supportedBanks") }
 			Button("Moneten on GitHub...") { NSWorkspace.shared.open(URL(string: "https://github.com/MonetenApp/Moneten")!) }
 			Button("Report an Issue...") { NSWorkspace.shared.open(bugReportURL(version: CrashReportController.appVersion, macOS: CrashReports.macOSVersion())) }
 		}

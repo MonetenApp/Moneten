@@ -112,7 +112,12 @@ struct SecuritySettings: View {
 				askPasswordFor = key
 			} else {
 				value.wrappedValue = false
-				if !unlockAutomatically && !unlockWithTouchID && !unlockWithAppleWatch { try? model.vault.removeStoredPassword() }
+				guard !unlockAutomatically && !unlockWithTouchID && !unlockWithAppleWatch else { return }
+				do {
+					try model.vault.removeStoredPassword()
+				} catch {
+					message = String(localized: "The setting is off, but the database password could not be removed from the Keychain. \(String(describing: error))")
+				}
 			}
 		})
 	}

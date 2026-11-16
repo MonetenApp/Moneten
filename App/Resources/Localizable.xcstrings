@@ -1097,6 +1097,17 @@
         }
       }
     },
+    "A database already exists. Moneten does not create a new one in its place.\n\n%@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Es gibt bereits eine Datenbank. Moneten legt an ihrer Stelle keine neue an.\n\n%@"
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "A file without a header row cannot be saved as a profile." : {
       "localizations" : {
         "de" : {
@@ -1126,6 +1137,17 @@
           }
         }
       }
+    },
+    "A newer version of Moneten has upgraded this database. Moneten %@ is running and cannot open it. The database file has not been changed." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eine neuere Version von Moneten hat diese Datenbank aktualisiert. Es läuft Moneten %@, das sie nicht öffnen kann. Die Datenbankdatei wurde nicht verändert."
+          }
+        }
+      },
+      "extractionState" : "manual"
     },
     "A phrase: the words next to each other, in this order" : {
       "localizations" : {
@@ -1826,6 +1848,28 @@
       },
       "extractionState" : "manual"
     },
+    "Another program has the database open." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein anderes Programm hat die Datenbank geöffnet."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "Another program is using the database." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein anderes Programm verwendet die Datenbank."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "Anyone who can open the file can read them." : {
       "localizations" : {
         "de" : {
@@ -2115,6 +2159,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Bank, IBAN oder Bankleitzahl"
+          }
+        }
+      }
+    },
+    "Banks" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Banken"
+          }
+        }
+      }
+    },
+    "Banks (%lld, type more to narrow the list)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Banken (%lld, geben Sie mehr ein, um die Liste einzugrenzen)"
           }
         }
       }
@@ -2825,12 +2889,33 @@
         }
       }
     },
+    "Could not create %@." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ konnte nicht erstellt werden."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "Could not create backup of database file." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Die Sicherung der Datenbankdatei konnte nicht erstellt werden."
+          }
+        }
+      }
+    },
+    "Could not create the offsetting entries." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Gegenbuchungen konnten nicht erstellt werden."
           }
         }
       }
@@ -2871,6 +2956,36 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Die Daten konnten nicht importiert werden."
+          }
+        }
+      }
+    },
+    "Could not load the bank directory" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Bankverzeichnis konnte nicht geladen werden"
+          }
+        }
+      }
+    },
+    "Could not load the bank directory. %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Bankverzeichnis konnte nicht geladen werden. %@"
+          }
+        }
+      }
+    },
+    "Could not move the account." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Konto konnte nicht verschoben werden."
           }
         }
       }
@@ -3107,6 +3222,17 @@
         }
       }
     },
+    "Could not upgrade the database. The database is unchanged and still opens with the earlier version of Moneten.\n\n%@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Datenbank konnte nicht aktualisiert werden. Die Datenbank ist unverändert und lässt sich weiterhin mit der früheren Version von Moneten öffnen.\n\n%@"
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "Create offline account" : {
       "localizations" : {
         "de" : {
@@ -3290,28 +3416,6 @@
           }
         }
       }
-    },
-    "Database integrity check failed." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Die Integritätsprüfung der Datenbank ist fehlgeschlagen."
-          }
-        }
-      },
-      "extractionState" : "manual"
-    },
-    "Database integrity check failed: %@" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Die Integritätsprüfung der Datenbank ist fehlgeschlagen: %@"
-          }
-        }
-      },
-      "extractionState" : "manual"
     },
     "Database password" : {
       "localizations" : {
@@ -4031,6 +4135,17 @@
           }
         }
       }
+    },
+    "FinTS/HBCI with TAN method" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "FinTS/HBCI mit TAN-Verfahren"
+          }
+        }
+      },
+      "extractionState" : "manual"
     },
     "Fit the flicker code to the TAN generator" : {
       "localizations" : {
@@ -4831,6 +4946,17 @@
       },
       "extractionState" : "manual"
     },
+    "Keychain: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schlüsselbund: %@"
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "Language" : {
       "localizations" : {
         "de" : {
@@ -4966,6 +5092,16 @@
         }
       },
       "extractionState" : "manual"
+    },
+    "Loading the bank directory..." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bankverzeichnis wird geladen..."
+          }
+        }
+      }
     },
     "Loan account" : {
       "localizations" : {
@@ -5303,6 +5439,17 @@
         }
       }
     },
+    "Moneten %@ has upgraded this database. Moneten %@ or newer is needed to open it, and Moneten %@ is running. The database file has not been changed." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Moneten %1$@ hat diese Datenbank aktualisiert. Zum Öffnen ist Moneten %2$@ oder neuer nötig, und es läuft Moneten %3$@. Die Datenbankdatei wurde nicht verändert."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "Moneten cannot read the record of %@. Remove it and install it again from the catalog." : {
       "localizations" : {
         "de" : {
@@ -5322,6 +5469,28 @@
           }
         }
       }
+    },
+    "Moneten could not read these copies of the database, so the password has not been changed. Close the program that uses them, or move them to the Trash, and try again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Moneten konnte diese Kopien der Datenbank nicht lesen, daher wurde das Passwort nicht geändert. Schließen Sie das Programm, das sie verwendet, oder legen Sie sie in den Papierkorb, und versuchen Sie es erneut."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "Moneten could not remove these work files of an interrupted upgrade or repair, so the password has not been changed. They still open with the current password. Move them to the Trash and try again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Moneten konnte diese Arbeitsdateien einer abgebrochenen Aktualisierung oder Reparatur nicht entfernen, daher wurde das Passwort nicht geändert. Sie lassen sich weiterhin mit dem aktuellen Passwort öffnen. Legen Sie sie in den Papierkorb und versuchen Sie es erneut."
+          }
+        }
+      },
+      "extractionState" : "manual"
     },
     "Moneten does not send it again and removes it at the next unlock. %@" : {
       "localizations" : {
@@ -5504,6 +5673,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Moneten verwendet die neue Sprache nach einem Neustart."
+          }
+        }
+      }
+    },
+    "Moneten was already opening the database. Press Return to try the password." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Moneten war bereits dabei, die Datenbank zu öffnen. Drücken Sie den Zeilenschalter, um das Passwort zu versuchen."
           }
         }
       }
@@ -5692,6 +5871,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Name, IBAN oder Bankleitzahl"
+          }
+        }
+      }
+    },
+    "Name, place, or Bankleitzahl" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Name, Ort oder Bankleitzahl"
           }
         }
       }
@@ -7253,6 +7442,16 @@
         }
       }
     },
+    "Search Banks" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Banken durchsuchen"
+          }
+        }
+      }
+    },
     "Search Extensions" : {
       "localizations" : {
         "de" : {
@@ -7878,6 +8077,26 @@
         }
       }
     },
+    "Supported Banks" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unterstützte Banken"
+          }
+        }
+      }
+    },
+    "Supported Banks..." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unterstützte Banken..."
+          }
+        }
+      }
+    },
     "System" : {
       "localizations" : {
         "de" : {
@@ -8286,6 +8505,16 @@
         }
       },
       "extractionState" : "manual"
+    },
+    "The amount of a selected transaction has no opposite amount that the app can store." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Betrag eines ausgewählten Umsatzes hat keinen Gegenbetrag, den die App speichern kann."
+          }
+        }
+      }
     },
     "The amount of the entry cannot be read." : {
       "localizations" : {
@@ -8715,45 +8944,67 @@
       },
       "extractionState" : "manual"
     },
-    "The database file is missing or empty. Please replace the database file with a backup copy.\n\n%@" : {
+    "The database file is damaged and could not be repaired. Please replace the database file with a backup copy.\n\n%@" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Die Datenbankdatei fehlt oder ist leer. Bitte ersetzen Sie die Datenbankdatei durch eine Sicherungskopie.\n\n%@"
+            "value" : "Die Datenbankdatei ist beschädigt und konnte nicht repariert werden. Bitte ersetzen Sie die Datenbankdatei durch eine Sicherungskopie.\n\n%@"
           }
         }
       },
       "extractionState" : "manual"
     },
-    "The database file is write-protected.\n\n%@" : {
+    "The database file is damaged. Moneten keeps the file and tries to repair it at the next start. Quit Moneten and start it again.\n\n%@" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Die Datenbankdatei ist schreibgeschützt.\n\n%@"
+            "value" : "Die Datenbankdatei ist beschädigt. Moneten behält die Datei und versucht beim nächsten Start, sie zu reparieren. Beenden Sie Moneten und starten Sie es erneut.\n\n%@"
           }
         }
       },
       "extractionState" : "manual"
     },
-    "The database file should be a file and not a directory.\n\n%@" : {
+    "The database file is empty. Please replace the database file with a backup copy.\n\n%@" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Die Datenbankdatei sollte eine Datei und kein Ordner sein.\n\n%@"
+            "value" : "Die Datenbankdatei ist leer. Bitte ersetzen Sie die Datenbankdatei durch eine Sicherungskopie.\n\n%@"
           }
         }
       },
       "extractionState" : "manual"
     },
-    "The database has a more recent version than this application is able to support." : {
+    "The database file is missing. Moneten does not start a new database in its place. Please put the database file back or replace it with a backup copy.\n\n%@" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Die Datenbank hat eine neuere Version, als diese Anwendung unterstützt."
+            "value" : "Die Datenbankdatei fehlt. Moneten legt an ihrer Stelle keine neue Datenbank an. Bitte legen Sie die Datenbankdatei zurück oder ersetzen Sie sie durch eine Sicherungskopie.\n\n%@"
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The database file is write-protected. Remove the write protection in the Finder with File, Get Info, and try again.\n\n%@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Datenbankdatei ist schreibgeschützt. Heben Sie den Schreibschutz im Finder mit „Ablage“ > „Informationen“ auf und versuchen Sie es erneut.\n\n%@"
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The database file should be a file and not a directory. Move the folder away and put the database file in its place.\n\n%@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Datenbankdatei sollte eine Datei und kein Ordner sein. Verschieben Sie den Ordner und legen Sie die Datenbankdatei an seine Stelle.\n\n%@"
           }
         }
       },
@@ -8765,6 +9016,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Die Datenbank ist gesperrt."
+          }
+        }
+      }
+    },
+    "The database password could not be stored in the Keychain." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Datenbankpasswort konnte nicht im Schlüsselbund gespeichert werden."
           }
         }
       }
@@ -8788,6 +9049,50 @@
           }
         }
       }
+    },
+    "The database password has been changed, but Moneten could not update the copies of the database at these paths. They may still open with the earlier password. Please move them to the Trash." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Datenbankpasswort wurde geändert, aber Moneten konnte die Kopien der Datenbank unter diesen Pfaden nicht aktualisieren. Sie lassen sich möglicherweise noch mit dem früheren Passwort öffnen. Bitte legen Sie sie in den Papierkorb."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The database password has been changed, but the Keychain did not accept the new password: %@\n\nEnter the database password at the next start. Moneten then stores the new password in the Keychain." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Datenbankpasswort wurde geändert, aber der Schlüsselbund hat das neue Passwort nicht angenommen: %@\n\nGeben Sie beim nächsten Start das Datenbankpasswort ein. Moneten speichert das neue Passwort dann im Schlüsselbund."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The database password has been set, but Moneten could not encrypt the copies of the database at these paths with it. They still open with the random key, which stays in the Keychain. Moneten tries again at the next start." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Datenbankpasswort wurde gesetzt, aber Moneten konnte die Kopien der Datenbank unter diesen Pfaden nicht damit verschlüsseln. Sie lassen sich weiterhin mit dem zufälligen Schlüssel öffnen, der im Schlüsselbund bleibt. Moneten versucht es beim nächsten Start erneut."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The database password has been set, but Moneten could not remove the random key of the database: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Datenbankpasswort wurde gesetzt, aber Moneten konnte den zufälligen Schlüssel der Datenbank nicht entfernen: %@"
+          }
+        }
+      },
+      "extractionState" : "manual"
     },
     "The date %@ cannot be read." : {
       "localizations" : {
@@ -9419,6 +9724,17 @@
       },
       "extractionState" : "manual"
     },
+    "The Keychain reported an error: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Schlüsselbund hat einen Fehler gemeldet: %@"
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "The last refresh failed" : {
       "localizations" : {
         "de" : {
@@ -9695,6 +10011,16 @@
         }
       }
     },
+    "The password in the Keychain does not open this database, for example after a backup was put in its place. Enter the database password. Moneten then stores it in the Keychain again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Passwort im Schlüsselbund öffnet diese Datenbank nicht, etwa weil eine Sicherungskopie an ihre Stelle gelegt wurde. Geben Sie das Datenbankpasswort ein. Moneten speichert es dann wieder im Schlüsselbund."
+          }
+        }
+      }
+    },
     "The password is stored in the Keychain of this Mac." : {
       "localizations" : {
         "de" : {
@@ -9757,6 +10083,17 @@
           }
         }
       }
+    },
+    "The repaired copy failed the integrity check." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die reparierte Kopie hat die Integritätsprüfung nicht bestanden."
+          }
+        }
+      },
+      "extractionState" : "manual"
     },
     "The report contains account names, balances, and account numbers and IBANs from rules." : {
       "localizations" : {
@@ -9960,6 +10297,16 @@
         }
       }
     },
+    "The setting is off, but the database password could not be removed from the Keychain. %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Einstellung ist aus, aber das Datenbankpasswort konnte nicht aus dem Schlüsselbund entfernt werden. %@"
+          }
+        }
+      }
+    },
     "The TAN method %@ has a length that is not valid." : {
       "localizations" : {
         "de" : {
@@ -10031,6 +10378,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Die Zwei-Faktor-Authentifizierung hat zu lange gedauert."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The upgraded copy failed the integrity check." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die aktualisierte Kopie hat die Integritätsprüfung nicht bestanden."
           }
         }
       },
@@ -10171,6 +10529,17 @@
           }
         }
       }
+    },
+    "This Bankleitzahl belongs to a bank that merged. If the login fails, ask your bank which Bankleitzahl it uses for online banking now." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese Bankleitzahl gehört zu einer Bank, die fusioniert hat. Wenn die Anmeldung fehlschlägt, fragen Sie Ihre Bank, welche Bankleitzahl sie jetzt für das Online-Banking verwendet."
+          }
+        }
+      },
+      "extractionState" : "manual"
     },
     "This build of Moneten has no catalog keys, so it cannot show the catalog." : {
       "localizations" : {
@@ -10682,6 +11051,16 @@
         }
       }
     },
+    "Upgrading database..." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Datenbank wird aktualisiert..."
+          }
+        }
+      }
+    },
     "User ID" : {
       "localizations" : {
         "de" : {
@@ -11015,6 +11394,17 @@
           }
         }
       }
+    },
+    "Your user account has no write permission for the database folder. Give your account read and write access in the Finder with File, Get Info, and try again.\n\n%@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ihr Benutzerkonto hat keine Schreibrechte für den Datenbankordner. Geben Sie Ihrem Konto im Finder mit „Ablage“ > „Informationen“ Lese- und Schreibzugriff und versuchen Sie es erneut.\n\n%@"
+          }
+        }
+      },
+      "extractionState" : "manual"
     },
     "“%@”" : {
       "localizations" : {
