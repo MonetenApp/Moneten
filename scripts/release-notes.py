@@ -12,6 +12,11 @@
                                              of every item from CHANGELOG.md
   release-notes.py remove <version> --feed FILE --out FILE
                                              take the item of a version out of the feed
+  release-notes.py stale-releases            read the releases of GitHub as JSON lines {"tag", "body"} and
+                                             print the tag of each one whose text differs from its section
+  release-notes.py check-feed --feed FILE --public-key KEY
+                                             fail unless the update key KEY signed the feed and every
+                                             disk image in it lies in a release of the repository
 
 The format is in the design of the change add-software-update. A version is 1.2.3 or 1.2.3-beta.4.
 The feed this script writes is not signed. sign_update of Sparkle signs it afterwards, and this
@@ -19,10 +24,15 @@ script drops that signature when it reads the feed, because every change needs a
 """
 
 import argparse
+import base64
 import datetime
 import email.utils
+import json
+import os
 import re
+import subprocess
 import sys
+import tempfile
 import xml.etree.ElementTree as ET
 
 CHANGELOG = "CHANGELOG.md"
@@ -33,6 +43,11 @@ ENTRY = re.compile(r"- \S.*$")
 LINK = re.compile(r"\]\(([^)]*)\)")
 HTML = re.compile(r"<[A-Za-z/!]")
 VERSION_ONLY = re.compile(VERSION + "$")
+DOWNLOADS = "https://github.com/MonetenApp/Moneten/releases/download/"
+# The block that sign_update of Sparkle appends to a feed. It signs the first "length" bytes.
+SIGNATURE_BLOCK = re.compile(rb"<!-- sparkle-signatures:\nedSignature: ([A-Za-z0-9+/=]+)\nlength: (\d+)\n-->\s*\Z")
+# An Ed25519 public key in DER is this prefix and the 32 bytes of the key.
+ED25519_PUBLIC_PREFIX = bytes.fromhex("302a300506032b6570032100")
 
 
 class Failure(Exception):
@@ -241,6 +256,58 @@ def check_release(sections, version, build, items):
 			raise Failure("version %s is not above version %s in the feed." % (version, item["version"]))
 
 
+def stale_releases(sections, lines):
+	"""The tags whose release text differs from their section, so publish edits only those."""
+	versions = {s.version: "\n".join(s.entries) for s in sections if s.version}
+	stale = []
+	for line in lines:
+		if not line.strip():
+			continue
+		release = json.loads(line)
+		tag = release["tag"]
+		text = versions.get(tag[1:] if tag.startswith("v") else None)
+		# GitHub may store a text with CRLF line ends, and gh release edit adds no final newline.
+		if text is not None and release["body"].replace("\r\n", "\n").strip() != text.strip():
+			stale.append(tag)
+	return stale
+
+
+def check_feed(path, public_key):
+	"""Fails unless the update key signed the feed as Sparkle checks it, and every disk image lies in
+	a release of the repository. The release script signs a new feed that keeps the items of the
+	current one, so an unchecked current feed could carry a forged item into a signed feed."""
+	try:
+		with open(path, "rb") as f:
+			text = f.read()
+	except OSError as error:
+		raise Failure("cannot read the feed %s: %s" % (path, error))
+	match = SIGNATURE_BLOCK.search(text)
+	if not match:
+		raise Failure("the feed %s has no signature of Sparkle at its end." % path)
+	signature, length = base64.b64decode(match.group(1)), int(match.group(2))
+	# The signature covers exactly the text before its block, so nothing unsigned hides in the file.
+	if length != match.start():
+		raise Failure("the signature of the feed %s does not cover the whole feed." % path)
+	try:
+		key = base64.b64decode(public_key, validate=True)
+	except ValueError:
+		key = b""
+	if len(key) != 32:
+		raise Failure("the public update key is not 32 bytes in Base64.")
+	with tempfile.TemporaryDirectory() as folder:
+		files = {name: os.path.join(folder, name) for name in ("key.der", "feed", "signature")}
+		for name, data in (("key.der", ED25519_PUBLIC_PREFIX + key), ("feed", text[:length]), ("signature", signature)):
+			with open(files[name], "wb") as f:
+				f.write(data)
+		result = subprocess.run(["openssl", "pkeyutl", "-verify", "-pubin", "-keyform", "DER", "-inkey", files["key.der"],
+			"-rawin", "-in", files["feed"], "-sigfile", files["signature"]], capture_output=True)
+	if result.returncode != 0:
+		raise Failure("the update key did not sign the feed %s." % path)
+	for item in read_feed(path):
+		if not (item["url"] or "").startswith(DOWNLOADS):
+			raise Failure("version %s in the feed %s has a disk image outside %s: %s" % (item["version"], path, DOWNLOADS, item["url"]))
+
+
 def main():
 	parser = argparse.ArgumentParser(description="Reads CHANGELOG.md and writes the update feed.")
 	parser.add_argument("--changelog", default=CHANGELOG, help=argparse.SUPPRESS)
@@ -267,6 +334,10 @@ def main():
 	command.add_argument("version")
 	command.add_argument("--feed", required=True)
 	command.add_argument("--out", required=True)
+	commands.add_parser("stale-releases")
+	command = commands.add_parser("check-feed")
+	command.add_argument("--feed", required=True)
+	command.add_argument("--public-key", required=True)
 	args = parser.parse_args()
 
 	try:
@@ -296,6 +367,11 @@ def main():
 			if len(left) == len(items):
 				raise Failure("the feed has no item for version %s." % args.version)
 			write_feed(args.out, left, load(args.changelog))
+		elif args.command == "stale-releases":
+			for tag in stale_releases(load(args.changelog), sys.stdin):
+				print(tag)
+		elif args.command == "check-feed":
+			check_feed(args.feed, args.public_key)
 	except Failure as error:
 		sys.exit("%s: %s" % (args.changelog if args.command in ("check", "cut") else "release-notes.py", error))
 

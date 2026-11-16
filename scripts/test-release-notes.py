@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Tests of scripts/release-notes.py, run by scripts/check.sh and by the specs job of CI."""
 
+import base64
+import json
 import subprocess
 import sys
 import tempfile
@@ -199,6 +201,82 @@ class ReleaseNotesTests(unittest.TestCase):
 		self.assertEqual(ok.returncode, 0, ok.stderr)
 		missing = self.run_script("check-release", "0.3.0", "--build", "400", "--feed", str(feed))
 		self.assertIn("no section for version 0.3.0", missing.stderr)
+
+	# stale-releases
+
+	def test_stale_releases_lists_only_changed_texts(self):
+		releases = [
+			{"tag": "v0.1.3", "body": "- Larger display of photoTAN images.\r\n- Fixed the sum of a split transaction."},
+			{"tag": "v0.2.0-beta.1", "body": "- An old text."},
+			{"tag": "v0.2.0-beta.2", "body": "- Faster search.\n- [Creating transfers](https://github.com/MonetenApp/Moneten/wiki/Transfers) from a QR code.\n"},
+			{"tag": "bank-data", "body": "Bank data files."},
+			{"tag": "v0.0.9", "body": "No section in the changelog."},
+		]
+		result = subprocess.run([sys.executable, str(SCRIPT), "--changelog", str(self.changelog), "stale-releases"],
+			input="\n".join(json.dumps(r) for r in releases) + "\n", capture_output=True, text=True)
+		self.assertEqual(result.returncode, 0, result.stderr)
+		self.assertEqual(result.stdout.split(), ["v0.2.0-beta.1"])
+
+	# check-feed
+
+	def key_pair(self, name):
+		"""An Ed25519 key as a PEM file for openssl, and its public key in Base64 as the app has it."""
+		private = self.dir / ("%s.pem" % name)
+		subprocess.run(["openssl", "genpkey", "-algorithm", "ed25519", "-out", str(private)], check=True, capture_output=True)
+		public = subprocess.run(["openssl", "pkey", "-in", str(private), "-pubout", "-outform", "DER"], check=True, capture_output=True).stdout
+		return private, base64.b64encode(public[-32:]).decode()
+
+	def signed_feed(self, private, url=None, signed_length=None):
+		"""Writes a feed and appends the signature block of sign_update, as Sparkle does."""
+		feed = self.dir / "feed.xml"
+		self.assertEqual(self.appcast("0.1.3", 100, feed).returncode, 0)
+		data = feed.read_bytes()
+		if url:
+			# appcast refuses such a URL, so the test puts it in afterwards.
+			data = data.replace(b"https://github.com/MonetenApp/Moneten/releases/download/v0.1.3/Moneten-0.1.3.dmg", url.encode())
+		signed = data[:signed_length] if signed_length is not None else data
+		(self.dir / "data").write_bytes(signed)
+		signature = subprocess.run(["openssl", "pkeyutl", "-sign", "-rawin", "-inkey", str(private), "-in", str(self.dir / "data")],
+			check=True, capture_output=True).stdout
+		feed.write_bytes(data + b"<!-- sparkle-signatures:\nedSignature: %s\nlength: %d\n-->\n" % (base64.b64encode(signature), len(signed)))
+		return feed
+
+	def check_feed(self, feed, public):
+		return self.run_script("check-feed", "--feed", str(feed), "--public-key", public)
+
+	def test_check_feed_accepts_a_feed_of_the_update_key(self):
+		private, public = self.key_pair("update")
+		result = self.check_feed(self.signed_feed(private), public)
+		self.assertEqual(result.returncode, 0, result.stderr)
+
+	def test_check_feed_refuses_a_changed_byte(self):
+		private, public = self.key_pair("update")
+		feed = self.signed_feed(private)
+		feed.write_bytes(feed.read_bytes().replace(b"Fixed the sum", b"Fixed the sun", 1))
+		self.assertIn("did not sign the feed", self.check_feed(feed, public).stderr)
+
+	def test_check_feed_refuses_another_key(self):
+		private, _ = self.key_pair("update")
+		_, other = self.key_pair("other")
+		self.assertIn("did not sign the feed", self.check_feed(self.signed_feed(private), other).stderr)
+
+	def test_check_feed_refuses_a_feed_without_signature(self):
+		_, public = self.key_pair("update")
+		feed = self.dir / "feed.xml"
+		self.appcast("0.1.3", 100, feed)
+		self.assertIn("has no signature", self.check_feed(feed, public).stderr)
+
+	def test_check_feed_refuses_text_the_signature_does_not_cover(self):
+		private, public = self.key_pair("update")
+		feed = self.signed_feed(private, signed_length=200)
+		self.assertIn("does not cover the whole feed", self.check_feed(feed, public).stderr)
+
+	def test_check_feed_refuses_a_signed_http_or_foreign_disk_image(self):
+		private, public = self.key_pair("update")
+		for url in ("http://github.com/MonetenApp/Moneten/releases/download/v0.1.3/Moneten-0.1.3.dmg",
+				"https://example.com/MonetenApp/Moneten/releases/download/v0.1.3/Moneten-0.1.3.dmg"):
+			result = self.check_feed(self.signed_feed(private, url=url), public)
+			self.assertIn("has a disk image outside", result.stderr, url)
 
 
 if __name__ == "__main__":
