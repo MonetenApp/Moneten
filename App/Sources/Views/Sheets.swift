@@ -396,7 +396,7 @@ struct TransactionSheet: View {
 		name = t.name
 		purpose = t.purpose
 		isDeposit = t.amountMinor > 0
-		amount = Format.editableAmount(abs(t.amountMinor), t.currency)
+		if editable { amount = Format.editableAmount(abs(t.amountMinor), t.currency) }
 		categoryID = t.categoryID
 		comment = t.comment ?? ""
 	}
@@ -417,7 +417,7 @@ struct TransactionSheet: View {
 			t.categorizedBy = categoryID == nil ? .none : .manual
 		}
 		t.comment = comment.isEmpty ? nil : comment
-		model.save(transaction: t)
+		model.save(transaction: t, adding: transactionID == nil)
 		return true
 	}
 }
