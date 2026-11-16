@@ -206,7 +206,7 @@ struct AllDataTests {
 		let giro = Account(groupID: privat.id, position: 2, name: "Girokonto", kind: .giro, source: .bank, iban: "DE02120300000000202051", bankBalanceMinor: 250_000,
 			refreshedAt: Date(timeIntervalSince1970: 1_794_650_000.5),
 			refreshError: RefreshError(message: "Die PIN ist falsch.", code: "9931", date: Date(timeIntervalSince1970: 1_794_660_000), notices: ["Wartung am Sonntag"]),
-			refreshInterval: .onceADay, missesOlderTransactions: true)
+			refreshInterval: .onceADay, missesOlderTransactions: true, otherBankBalances: [Money(minorUnits: 3_500, currency: "USD")], bonusPoints: 12_400)
 		let linked = try store.add(access, state: AccessState(Data("bank parameters".utf8)), accounts: [giro])
 		try store.savePIN(Secret("24680"), for: linked.access.id)
 		let bank = try #require(linked.accounts.first)

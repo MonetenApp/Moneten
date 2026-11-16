@@ -72,6 +72,8 @@ A version-1 payload contains `name`, `header`, `delimiter`, and `layout`. The he
 | `owner` | Owner of the account |
 | `bankBalance` | The last balance that the bank or the source app reported, an amount in the currency of the account |
 | `bankBalanceDate` | The time of that balance |
+| `otherBankBalances` | Optional list of the balances in other currencies that the bank reported with `bankBalance`, each with `amount` and `currency` |
+| `bonusPoints` | Optional whole number of bonus points that the bank reported with `bankBalance` |
 | `initialBalance` | The balance before the first transaction, an amount in the currency of the account |
 | `initialBalanceIsSet` | Whether the initial balance is set, by the user or by the first refresh |
 | `isClosed` | Whether the account is closed |

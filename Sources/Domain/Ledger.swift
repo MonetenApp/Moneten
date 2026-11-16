@@ -371,6 +371,13 @@ public struct Ledger: Sendable {
 		account.reportedBalance ?? computedBalance(of: account)
 	}
 
+	/// The balances that the sidebar row and the header show: `balance(of:)` first, then the balances in other
+	/// currencies that the source reported with it.
+	public func balances(of account: Account) -> [Money] {
+		let reported = account.reportedBalances
+		return reported.isEmpty ? [computedBalance(of: account)] : reported
+	}
+
 	/// The initial balance plus the transactions in the currency of the account that a balance counts.
 	public func computedBalance(of account: Account, through day: Day? = nil) -> Money {
 		var sum = account.initialBalanceMinor
@@ -409,7 +416,7 @@ public struct Ledger: Sendable {
 	public func sum(ofGroup group: UUID) -> MoneySums {
 		var sums = MoneySums()
 		for id in accountIDs(inGroupTree: group) {
-			if let a = account(id), !a.isClosed { sums.add(balance(of: a)) }
+			if let a = account(id), !a.isClosed { balances(of: a).forEach { sums.add($0) } }
 		}
 		return sums
 	}

@@ -102,7 +102,11 @@ struct HeaderView: View {
 				switch model.selection {
 				case let .account(id):
 					if let a = model.ledger.account(id) {
-						AmountText(money: model.ledger.balance(of: a)).font(.title2)
+						BalancesText(amounts: model.ledger.balances(of: a)).font(.title2)
+						// A portfolio never stores bonus points, so the line shows only for an account with a bonus program.
+						if let points = a.bonusPoints {
+							Text("Bonus points: \(points.formatted())").font(.subheadline).monospacedDigit().foregroundStyle(Palette.detail)
+						}
 					}
 				case let .group(id):
 					Text(Format.sums(model.ledger.sum(ofGroup: id))).font(.title2).monospacedDigit()

@@ -332,6 +332,8 @@ private struct AccountEntry: Codable {
 	var owner: String?
 	var bankBalance: String?
 	var bankBalanceDate: Date?
+	var otherBankBalances: [BalanceEntry]?
+	var bonusPoints: Int64?
 	var initialBalance: String
 	var initialBalanceIsSet: Bool
 	var isClosed: Bool
@@ -362,6 +364,8 @@ private struct AccountEntry: Codable {
 		owner = a.owner
 		bankBalance = a.bankBalanceMinor.map { AmountText.text($0, a.currency) }
 		bankBalanceDate = a.bankBalanceDate
+		otherBankBalances = a.otherBankBalances.isEmpty ? nil : a.otherBankBalances.map(BalanceEntry.init)
+		bonusPoints = a.bonusPoints
 		initialBalance = AmountText.text(a.initialBalanceMinor, a.currency)
 		initialBalanceIsSet = a.initialBalanceIsSet
 		isClosed = a.isClosed
@@ -383,7 +387,24 @@ private struct AccountEntry: Codable {
 			bankBalanceMinor: try bankBalance.map { try AmountText.minorUnits($0, currency) }, bankBalanceDate: bankBalanceDate,
 			initialBalanceMinor: try AmountText.minorUnits(initialBalance, currency), initialBalanceIsSet: initialBalanceIsSet, isClosed: isClosed,
 			comment: comment, sourceID: sourceID, color: color, accessID: accessID, remoteID: remoteID, refreshedAt: refreshedAt,
-			refreshError: refreshError, refreshInterval: refreshInterval, missesOlderTransactions: missesOlderTransactions ?? false)
+			refreshError: refreshError, refreshInterval: refreshInterval, missesOlderTransactions: missesOlderTransactions ?? false,
+			otherBankBalances: try (otherBankBalances ?? []).map { try $0.money() }, bonusPoints: bonusPoints)
+	}
+}
+
+/// A balance in another currency than the account, as an amount and its currency.
+private struct BalanceEntry: Codable {
+	var amount: String
+	var currency: String
+
+	init(_ m: Money) {
+		amount = AmountText.text(m.minorUnits, m.currency)
+		currency = m.currency
+	}
+
+	func money() throws -> Money {
+		try currencyCode(currency)
+		return Money(minorUnits: try AmountText.minorUnits(amount, currency), currency: currency)
 	}
 }
 

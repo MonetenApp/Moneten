@@ -5,7 +5,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 ## 1. Requirements
 
 - [x] 1.1 Account types. Verified by account settings.
-- [ ] 1.2 Derive a missing account type. Build it and verify it with a test or in the app.
+- [x] 1.2 Derive a missing account type. Verified by ResultMappingTests "typeFromTheNumberAndTheName", 25 cases of number and name in the order of the requirement, and "givenTypeWins". In a debug build, an extension that lists "Wallet" (K-2231), "Visa Gold" (4111 xxxx xxxx 1111), and "Tagesgeld Plus" without a type adds them as "Other", "Credit card", and "Savings account". A FinTS account without a type keeps "Other".
 - [x] 1.3 Change the account type. Verified by BankAccessTests "accountTypeChoices": the menu "Account type" offers every type but "Portfolio", and a portfolio has none. "settingsAfterPortfolioRefresh" and "settingsNeverChoosePortfolio": saving the settings neither leaves nor chooses "Portfolio". In the app, the settings of a portfolio show "Portfolio" as text.
 - [x] 1.4 Account settings window. Verified by sheet with ⌘I.
 - [x] 1.5 Account name. Verified by account settings.
@@ -13,7 +13,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [x] 1.7 Account currency. Verified by shown in the settings.
 - [x] 1.8 Account owner. Verified by shown in the settings.
 - [x] 1.9 Balance comes from the bank. Verified by LedgerTests "balanceSource": an account of a bank access and a portfolio show the reported balance, a migrated and an offline account follow their transactions.
-- [ ] 1.10 Several balances and bonus points. Build it and verify it with a test or in the app.
+- [x] 1.10 Several balances and bonus points. Verified by ResultMappingTests (pairs add up, a missing account currency is 0, a zero in another currency is left out, the whole part of `bonusPoints`), SeveralBalancesTests (a refresh stores and replaces them, a portfolio has neither, the sidebar, the header, and the group sum show every balance), SchemaTests "v26", and AllDataTests. In a debug build, an extension wallet with 120,00 € and 35,00 US$ shows both in the sidebar row, the header, and the sum of its group, and a card shows "Bonus points: 12.400" in the header. A second refresh with only 80,00 € and no points shows 80,00 € alone and no bonus line.
 - [x] 1.11 Initial balance. The field in the account settings is built and editable. At setup, `Account.deriveInitialBalance` subtracts `Account.bookedSum(of:through:)` from the bank balance, which leaves out pending rows, rows after the day of the bank balance, and booked rows in another currency than the account. Verified by LedgerTests "The initial balance that meets the bank balance subtracts the booked rows up to the day of that balance", whose row in USD stays out, and by OpeningBalanceTests (task 3.3 of the change `add-charts`).
 - [x] 1.12 Mark an account as closed. Verified by "The account has been closed".
 - [ ] 1.13 Clearing entry for a closed account. Build it and verify it with a test or in the app.

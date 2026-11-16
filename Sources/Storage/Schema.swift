@@ -361,6 +361,14 @@ enum Schema {
 				try db.execute(sql: "UPDATE access SET state = ? WHERE id = ?", arguments: [marked.passport, access])
 			}
 		}
+		// The balances in other currencies and the bonus points that a source reports with the balance of an account
+		// (add-account-management, task 1.10). An existing account has neither until its next refresh.
+		m.registerMigration("v26") { db in
+			try db.alter(table: "account") { t in
+				t.add(column: "otherBankBalances", .text).notNull().defaults(to: "[]")
+				t.add(column: "bonusPoints", .integer)
+			}
+		}
 		return m
 	}
 

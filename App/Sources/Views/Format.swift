@@ -108,6 +108,17 @@ struct AmountText: View {
 	}
 }
 
+/// The balances of an account in a row: the one in the account currency first, then each other currency the source reported.
+struct BalancesText: View {
+	let amounts: [Money]
+
+	var body: some View {
+		HStack(spacing: 8) {
+			ForEach(amounts, id: \.currency) { AmountText(money: $0) }
+		}
+	}
+}
+
 extension EnvironmentValues {
 	/// The red of negative amounts. The band sets a red that is clear on its slate.
 	@Entry var negativeRed = Palette.red

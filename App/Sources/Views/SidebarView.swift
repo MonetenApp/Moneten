@@ -181,7 +181,6 @@ struct AccountRow: View {
 	let account: Account
 
 	var body: some View {
-		let balance = model.ledger.balance(of: account)
 		let newCount = model.ledger.newTransactionCounts[account.id] ?? 0
 		HStack {
 			Label {
@@ -205,7 +204,7 @@ struct AccountRow: View {
 				RefreshErrorButton(accounts: [account])
 			} else if !account.isClosed {
 				// A closed account stays in the sidebar without its balance, as in MoneyMoney.
-				AmountText(money: balance).fontWeight(.medium)
+				BalancesText(amounts: model.ledger.balances(of: account)).fontWeight(.medium)
 			}
 		}
 		.contextMenu {

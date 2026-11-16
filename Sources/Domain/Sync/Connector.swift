@@ -182,6 +182,10 @@ public struct RefreshResult: Sendable {
 	/// normal refresh asks for no more than 90 days, or because the user canceled the second factor for older
 	/// transactions. The merge turns it into `Account.missesOlderTransactions`, which stays until a full history.
 	public let missesOlder: Bool
+	/// The balances in other currencies than `balance`, without a zero, such as the dollars of a wallet in euros.
+	public let otherBalances: [Money]
+	/// The bonus points of the account, or nil when the source reported none.
+	public let bonusPoints: Int64?
 
 	/// The bank sent the balance without a transaction list, because it provides none for the account. A
 	/// portfolio has positions in place of transactions, and a failed request is an error of its own.
@@ -211,7 +215,8 @@ public struct RefreshResult: Sendable {
 	}
 
 	public init(balance: Money?, balanceDate: Date? = nil, transactions: FetchedTransactions?, isComplete: Bool = false,
-		transactionFailure: SyncFailure? = nil, isPortfolio: Bool = false, holdings: [Holding]? = nil, missesOlder: Bool = false) {
+		transactionFailure: SyncFailure? = nil, isPortfolio: Bool = false, holdings: [Holding]? = nil, missesOlder: Bool = false,
+		otherBalances: [Money] = [], bonusPoints: Int64? = nil) {
 		self.missesOlder = missesOlder
 		self.balance = balance
 		self.balanceDate = balanceDate
@@ -220,6 +225,8 @@ public struct RefreshResult: Sendable {
 		self.transactionFailure = transactionFailure
 		self.isPortfolio = isPortfolio
 		self.holdings = holdings
+		self.otherBalances = otherBalances
+		self.bonusPoints = bonusPoints
 	}
 }
 

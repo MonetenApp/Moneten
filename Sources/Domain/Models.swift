@@ -73,6 +73,11 @@ public struct Account: Identifiable, Hashable, Sendable, Codable {
 	/// The balance that the bank or the migration source reported. `reportedBalance` says which accounts show it.
 	public var bankBalanceMinor: Int64?
 	public var bankBalanceDate: Date?
+	/// The balances in other currencies that the source reported with `bankBalanceMinor`, in its order and
+	/// without a zero, such as the dollars of a wallet in euros. Each refresh that stores a balance replaces them.
+	public var otherBankBalances: [Money]
+	/// The bonus points that the source reported with the balance, or nil. Each refresh that stores a balance replaces them.
+	public var bonusPoints: Int64?
 	/// The balance before the oldest transaction. Charts start from it.
 	public var initialBalanceMinor: Int64
 	/// The first refresh with a bank balance or the user set the initial balance, so the app never
@@ -105,7 +110,7 @@ public struct Account: Identifiable, Hashable, Sendable, Codable {
 		iban: String? = nil, bic: String? = nil, accountNumber: String? = nil, bankCode: String? = nil, bankName: String? = nil, owner: String? = nil,
 		bankBalanceMinor: Int64? = nil, bankBalanceDate: Date? = nil, initialBalanceMinor: Int64 = 0, initialBalanceIsSet: Bool = false, isClosed: Bool = false, comment: String? = nil, sourceID: String? = nil,
 		color: String? = nil, accessID: UUID? = nil, remoteID: String? = nil, refreshedAt: Date? = nil, refreshError: RefreshError? = nil,
-		refreshInterval: RefreshInterval = .everyTwoHours, missesOlderTransactions: Bool = false) {
+		refreshInterval: RefreshInterval = .everyTwoHours, missesOlderTransactions: Bool = false, otherBankBalances: [Money] = [], bonusPoints: Int64? = nil) {
 		self.id = id
 		self.groupID = groupID
 		self.position = position
@@ -121,6 +126,8 @@ public struct Account: Identifiable, Hashable, Sendable, Codable {
 		self.owner = owner
 		self.bankBalanceMinor = bankBalanceMinor
 		self.bankBalanceDate = bankBalanceDate
+		self.otherBankBalances = otherBankBalances
+		self.bonusPoints = bonusPoints
 		self.initialBalanceMinor = initialBalanceMinor
 		self.initialBalanceIsSet = initialBalanceIsSet
 		self.isClosed = isClosed
@@ -143,6 +150,11 @@ public struct Account: Identifiable, Hashable, Sendable, Codable {
 	public var reportedBalance: Money? {
 		guard kind == .portfolio || source == .bank, let bankBalanceMinor else { return nil }
 		return Money(minorUnits: bankBalanceMinor, currency: currency)
+	}
+
+	/// The reported balance and then the balances in other currencies, or nothing for an account that computes its balance.
+	public var reportedBalances: [Money] {
+		reportedBalance.map { [$0] + otherBankBalances } ?? []
 	}
 
 	/// The record of a portfolio with a bank balance: that balance on the day the bank reported it,

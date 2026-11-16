@@ -60,7 +60,7 @@ struct ListedAccount: Equatable {
 		} else if let type = fields.text("type").flatMap(AccountType.init(rawValue:)) {
 			kind = type.kind
 		} else {
-			kind = Self.derivedKind(of: number)
+			kind = Self.derivedKind(number: number, name: name)
 		}
 	}
 
@@ -77,11 +77,29 @@ struct ListedAccount: Equatable {
 		return ListedAccount(.object(fields)) ?? self
 	}
 
-	/// The type of an account whose table has none: 16 characters or masked digits make a credit card.
-	static func derivedKind(of accountNumber: String) -> AccountKind {
-		let compact = accountNumber.filter { !$0.isWhitespace }
-		let masked = compact.contains { "xX*•".contains($0) } && compact.contains(where: \.isNumber)
-		return compact.count == 16 || masked ? .creditCard : .giro
+	/// The type of an account whose table has none, by the requirement "Derive a missing account type": the number
+	/// first, then words in the name, in a fixed order, and "Other" when nothing matches. Scripts name their accounts
+	/// in the words of their bank, so the words are mostly German.
+	static func derivedKind(number: String, name: String) -> AccountKind {
+		// The length counts every character as sent, so a card number with spaces needs another hint.
+		if number.count == 16 || number.contains(where: { "xX*".contains($0) }) { return .creditCard }
+		let name = name.lowercased()
+		func any(_ words: String...) -> Bool { words.contains { name.contains($0) } }
+		// "spar" names a savings account, but also the banks Sparkasse and Sparda.
+		let savingsWord = name.replacing("sparkasse", with: "").replacing("sparda", with: "").contains("spar")
+		if any("giro", "kontokorrent", "sichteinlage", "gehalt") { return .giro }
+		if any("karte", "card", "visa"), !savingsWord, !name.replacing("kartenkonto", with: "").contains("konto"), !any("zins", " mit ") {
+			return .creditCard
+		}
+		if any("festgeld", "festzins", "termingeld", "termineinlage", "sparbrief", "schatzbrief", "sparkassenbrief") || name.hasSuffix("brief") {
+			return .fixedTermDeposit
+		}
+		if any("darlehen", "darlehn", "konsumentenkredit", "privatkredit", "gewerbekredit", "baufinanzierung") || name.hasSuffix("kredit") {
+			return .loan
+		}
+		if savingsWord || any("sparkassenbuch", "geld", "cash", "zins", "anlage", "verrechnung", "anteil") { return .savings }
+		if any("geschäfts", "geschaefts", "firmen", "verein", "privat", "direkt"), name.contains("konto") { return .giro }
+		return .other
 	}
 }
 
@@ -121,13 +139,16 @@ enum ResultMapping {
 			}
 			return RefreshResult(balance: total, transactions: nil)
 		}
-		guard let balance = try self.balance(fields, currency: account.currency) else { throw MappingError("The balance could not be fetched.") }
+		guard let (balance, otherBalances) = try self.balances(fields, currency: account.currency) else {
+			throw MappingError("The balance could not be fetched.")
+		}
 		guard case let .array(rows)? = fields["transactions"] else { throw MappingError("The transactions could not be fetched.") }
 		let calendar = { var c = Calendar(identifier: .gregorian); c.timeZone = timeZone; return c }()
 		let mapped = try rows.enumerated().map { index, row throws(MappingError) in
 			try transaction(row, number: index + 1, currency: account.currency, calendar: calendar)
 		}
-		return RefreshResult(balance: balance, transactions: FetchedTransactions(rows: mapped, from: since))
+		return RefreshResult(balance: balance, transactions: FetchedTransactions(rows: mapped, from: since), otherBalances: otherBalances,
+			bonusPoints: try bonusPoints(fields["bonusPoints"]))
 	}
 
 	/// The largest amount in minor units that the app takes from a script: 10 trillion euros. Sums of
@@ -141,20 +162,39 @@ enum ResultMapping {
 		return Money(decimal, currency: currency)
 	}
 
-	/// `balance`, or the amount of the account's currency in `balances`, a list of pairs of amount and currency.
-	private static func balance(_ fields: [String: LuaValue], currency: String) throws(MappingError) -> Money? {
-		if let amount = fields["balance"] {
+	/// The balance in the account currency and the balances in other currencies. `balances`, a list of pairs of amount
+	/// and currency, takes the place of `balance` when it holds a pair. Pairs in one currency add up, a missing account
+	/// currency has the balance 0, and a zero in another currency is left out.
+	private static func balances(_ fields: [String: LuaValue], currency: String) throws(MappingError) -> (Money, [Money])? {
+		guard case let .array(pairs)? = fields["balances"], !pairs.isEmpty else {
+			guard let amount = fields["balance"] else { return nil }
 			guard let decimal = amount.decimal else { throw MappingError("The balance is not a number.") }
-			return try money(decimal, currency, "The balance")
+			return (try money(decimal, currency, "The balance"), [])
 		}
-		guard case let .array(pairs)? = fields["balances"] else { return nil }
+		var sums: [Money] = [Money(minorUnits: 0, currency: currency)]
 		for pair in pairs {
-			guard case let .array(parts) = pair, parts.count == 2, let decimal = parts[0].decimal, case let .string(code) = parts[1] else {
+			guard case let .array(parts) = pair, parts.count == 2, let decimal = parts[0].decimal, case let .string(code) = parts[1],
+				!code.isEmpty else {
 				throw MappingError("An entry of balances is not a pair of amount and currency.")
 			}
-			if code.uppercased() == currency { return try money(decimal, currency, "The balance") }
+			let value = try money(decimal, code.uppercased(), "The balance in \(code.uppercased())")
+			let index = sums.firstIndex { $0.currency == value.currency } ?? { sums.append(Money(minorUnits: 0, currency: value.currency)); return sums.count - 1 }()
+			let (sum, overflow) = sums[index].minorUnits.addingReportingOverflow(value.minorUnits)
+			guard !overflow, abs(sum) <= maxMinorUnits else { throw MappingError("The balances add up to more than Moneten can hold.") }
+			sums[index].minorUnits = sum
 		}
-		return nil
+		return (sums[0], sums.dropFirst().filter { $0.minorUnits != 0 })
+	}
+
+	/// The whole part of `bonusPoints`, or nil for a missing value, an empty text, or 0.
+	private static func bonusPoints(_ value: LuaValue?) throws(MappingError) -> Int64? {
+		guard let value, value != .null, value != .string("") else { return nil }
+		// A whole number of points fits a double exactly up to 2^53, far beyond any bonus program.
+		guard let number = value.decimal.map({ NSDecimalNumber(decimal: $0).doubleValue }), abs(number) < 0x1p53 else {
+			throw MappingError("The bonus points are not a number.")
+		}
+		let points = Int64(number.rounded(.towardZero))
+		return points == 0 ? nil : points
 	}
 
 	/// One transaction table. Dates are POSIX time stamps, read as days in the user's time zone.

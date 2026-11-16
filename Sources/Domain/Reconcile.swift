@@ -229,6 +229,10 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored: [Tran
 			a.bankBalanceMinor = balance.minorUnits
 			a.bankBalanceDate = result.balanceDate ?? now
 			if result.isPortfolio { a.kind = .portfolio }
+			// A portfolio shows only its value. Every other account takes what this refresh reports, so a currency or
+			// bonus points that the source no longer reports disappear.
+			a.otherBankBalances = a.kind == .portfolio ? [] : result.otherBalances
+			a.bonusPoints = a.kind == .portfolio ? nil : result.bonusPoints
 			// A balance whose transactions failed would set the value without the rows that the next refresh brings.
 			if a.derivesInitialBalance, result.transactionFailure == nil {
 				// Dropped and marked rows are pending and do not count.
