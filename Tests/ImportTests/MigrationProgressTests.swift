@@ -10,6 +10,7 @@ struct MigrationProgressTests {
 		let next = MoneyMoneyMigration.Progress(step: .transactions, completed: 1234, total: 5000, account: "Giro")
 		#expect(!next.shouldPublish(after: previous, elapsed: 0.5))
 		#expect(next.shouldPublish(after: previous, elapsed: 1))
+		#expect(MoneyMoneyMigration.Progress(step: .transactions, completed: 1234, total: 5000, account: "Savings").shouldPublish(after: next, elapsed: 0))
 		#expect(!previous.shouldPublish(after: next, elapsed: 2))
 		#expect(next.text(locale: Locale(identifier: "en_US")) == "Transactions: 1,234 of 5,000")
 		#expect(MoneyMoneyMigration.Progress(step: .transactions, completed: 5000, total: 5000).shouldPublish(after: next, elapsed: 0.1))

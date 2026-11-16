@@ -47,7 +47,7 @@ struct ReconcileTests {
 	func comparisonCheckpoints() throws {
 		let rows = [row(1, 100, "One"), row(2, 200, "Two"), row(3, 300, "Three")]
 		var counts = Set<Int>()
-		let result = try reconcile(.migration(rows), into: giro, stored: [], deleted: [], rules: Categorizer(ledger: Ledger()), now: now,
+		let result = reconcile(.migration(rows), into: giro, stored: [], deleted: [], rules: Categorizer(ledger: Ledger()), now: now,
 			checkpoint: { counts.insert($0) })
 		#expect(counts == [0, 1, 2, 3])
 		#expect(result.added.map(\.amountMinor) == [100, 200, 300])

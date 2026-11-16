@@ -36,7 +36,7 @@ extension MoneyMoneyMigration {
 			guard let previous else { return true }
 			guard step == previous.step else { return step.rawValue > previous.step.rawValue }
 			guard completed >= previous.completed else { return false }
-			return elapsed >= 1 || (completed == total && self != previous)
+			return account != previous.account || elapsed >= 1 || (completed == total && self != previous)
 		}
 	}
 }

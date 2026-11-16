@@ -28,7 +28,7 @@ The app keeps all accounts, categories, and transactions of the open database in
 
 ## Refreshes during migration
 
-`Sync` pauses new refreshes and waits for the running refreshes, including their final state and account writes, before the migration transaction starts. The app skips new automatic or manual refresh starts while storage and ledger loading run. The coordinator awaits its final account callback before releasing an access. Queued refreshes resume after the pause. This keeps synchronous bank writes from waiting behind the migration writer on the main actor.
+`Sync` pauses new refreshes and waits for the running refreshes, including their final state and account writes, before the migration transaction starts. The app defers new automatic or manual refresh starts asynchronously until the migration task ends. The coordinator awaits its final account callback before releasing an access. Queued refreshes resume after the pause. This keeps synchronous bank writes from waiting behind the migration writer on the main actor.
 
 The shared `Domain` reconciliation keeps its full-account matching scope and accepts a throwing checkpoint. Matching index construction publishes a zero completed count and checks cancellation. Row reconciliation then publishes completed counts. Existing callers use its nonthrowing entry point.
 

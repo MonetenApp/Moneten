@@ -1135,7 +1135,14 @@ final class AppModel {
 	/// Starts one refresh per access, with the state its connector returned last. Only a refresh that the
 	/// user started shows an alert.
 	func refresh(_ plan: [UUID: [AccountRequest]], attended: Bool = true, enforced: Bool = false) {
-		guard !migrationStoring, let store else { return }
+		if migrationStoring, let migrationTask {
+			Task {
+				await migrationTask.value
+				refresh(plan, attended: attended, enforced: enforced)
+			}
+			return
+		}
+		guard let store else { return }
 		let requests = plan.compactMap { id, accounts in accesses[id].map { ($0, accounts) } }.sorted { $0.0.bankName < $1.0.bankName }
 		for (access, accounts) in requests {
 			guard let connector = connector(for: access.source) else {
