@@ -169,7 +169,7 @@ struct AppCommands: Commands {
 			Button("Show Database in Finder...") { NSWorkspace.shared.activateFileViewerSelecting([model.vault.folder.root]) }
 			Button("Supported Banks...") { openWindow(id: "supportedBanks") }
 			Button("Moneten on GitHub...") { NSWorkspace.shared.open(URL(string: "https://github.com/MonetenApp/Moneten")!) }
-			Button("Report an Issue...") { NSWorkspace.shared.open(URL(string: "https://github.com/MonetenApp/Moneten/issues/new/choose")!) }
+			Button("Report an Issue...") { NSWorkspace.shared.open(bugReportURL(version: CrashReportController.appVersion, macOS: CrashReports.macOSVersion())) }
 		}
 	}
 }

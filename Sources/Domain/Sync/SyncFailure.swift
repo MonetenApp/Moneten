@@ -36,6 +36,9 @@ public enum SyncFailure: Error, Sendable, Equatable {
 	case invalidChallenge
 	/// FinTS 9078: the bank does not know the product number of Moneten yet.
 	case notRegistered
+	/// The bank allows the user no TAN method for its FinTS server, so no login can succeed until the user
+	/// sets one up on the website of the bank. The message is the answer of the bank that showed it.
+	case noTANMethod(BankMessage?)
 	/// The account was not fetched, because an earlier request of the same session failed.
 	case notFetched
 	/// Any other answer of the bank.
@@ -62,7 +65,7 @@ public enum SyncFailure: Error, Sendable, Equatable {
 	/// manual refresh ends without it ("An automatic refresh never asks the user").
 	public var waitsForUser: Bool {
 		switch self {
-		case .needsUser, .pinRejected, .loginRejected, .accessBlocked: true
+		case .needsUser, .pinRejected, .loginRejected, .accessBlocked, .noTANMethod: true
 		default: false
 		}
 	}
@@ -80,11 +83,20 @@ public enum SyncFailure: Error, Sendable, Equatable {
 		}
 	}
 
+	/// No answer in a dialog resolves the failure: the bank blocked the access, or the user has no TAN
+	/// method. So a command after an automatic refresh that failed with it does not run again with dialogs.
+	public var dialogResolves: Bool {
+		switch self {
+		case .accessBlocked, .noTANMethod: false
+		default: waitsForUser
+		}
+	}
+
 	/// The answer of the bank in this failure, for its code in the error popover.
 	public var bankMessage: BankMessage? {
 		switch self {
 		case let .pinRejected(m), let .accessBlocked(m), let .tanRejected(m), let .bank(m): m
-		case let .approvalDeclined(m): m
+		case let .approvalDeclined(m), let .noTANMethod(m): m
 		case .needsUser, .loginRejected, .challengeExpired, .invalidChallenge, .notRegistered, .notFetched, .offline, .network, .unsupported, .notSaved: nil
 		}
 	}
@@ -114,7 +126,7 @@ public enum SyncFailure: Error, Sendable, Equatable {
 		case let .pinRejected(m):
 			"The bank did not accept the PIN: \(m.text)\nMore wrong attempts can block the access."
 		case let .accessBlocked(m):
-			"The bank blocked the access: \(m.text)"
+			"The bank blocked the access: \(m.text)\nAsk the bank to unblock it."
 		case let .tanRejected(m):
 			"The bank did not accept the entered TAN: \(m.text)"
 		case let .approvalDeclined(m):
@@ -125,6 +137,9 @@ public enum SyncFailure: Error, Sendable, Equatable {
 			"The bank responded with an invalid challenge."
 		case .notRegistered:
 			"The bank does not know Moneten yet. Banks take some weeks to accept a new app. Try again later."
+		case let .noTANMethod(m):
+			"There are no available TAN methods" + (m.map { ": \($0.text)" } ?? ".")
+				+ "\nSet up a TAN method on the website of the bank, then choose “Edit Login Data...”."
 		case .notFetched:
 			"Canceled because of the previous error."
 		case let .bank(m):
