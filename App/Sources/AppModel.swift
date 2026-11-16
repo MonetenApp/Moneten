@@ -1264,10 +1264,15 @@ final class AppModel {
 
 	func runMigration(plan: MoneyMoneyMigration.Plan, progress: @escaping @Sendable (MoneyMoneyMigration.Progress) -> Void) async throws -> MoneyMoneyMigration.Plan {
 		guard let store else { throw CancellationError() }
-		guard !isTransferringTransactions else { throw CancellationError() }
+		guard !isTransferringTransactions, !isApplyingRule else { throw CancellationError() }
 		migrationStoring = true
-		defer { migrationStoring = false }
+		defer {
+			migrationStoring = false
+			Task { await extensions.applyUpdates() }
+		}
 		return try await sync.withRefreshesPaused {
+			while !self.extensions.working.isEmpty { try await Task.sleep(for: .milliseconds(50)) }
+			try Task.checkCancellation()
 			guard self.store === store else { throw CancellationError() }
 			let starters = replaceableStarterCategories.map(\.id)
 			let canceled = Mutex(false)

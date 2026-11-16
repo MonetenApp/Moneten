@@ -251,8 +251,8 @@ public final class Store: SavedPINStore {
 		}
 	}
 
-	public func saveCatalog(_ catalog: StoredCatalog) throws {
-		try queue.write { db in
+	public func saveCatalog(_ catalog: StoredCatalog) async throws {
+		try await queue.write { db in
 			try db.execute(sql: "INSERT OR REPLACE INTO extensionCatalog (id, \"index\", signature, floors) VALUES (1, ?, ?, ?)",
 				arguments: [catalog.index, catalog.signature, catalog.floors])
 		}

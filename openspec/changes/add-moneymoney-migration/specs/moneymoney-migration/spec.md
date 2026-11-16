@@ -365,6 +365,21 @@ The app SHALL show the current step, the current account when known, and complet
 - **AND** progress and Cancel remain responsive
 - **AND** refreshes already queued resume after storage and ledger loading finish
 
+#### Scenario: Other database commands during storage
+
+- **GIVEN** the assistant is storing 150,000 transactions
+- **WHEN** the user opens the menus or the Extensions window
+- **THEN** commands that read or change the database are disabled
+- **AND** Cancel, Cancel Refresh, and Lock remain available
+
+#### Scenario: A catalog download finishes during storage
+
+- **GIVEN** an extension catalog download started before migration storage
+- **WHEN** the download finishes while the migration holds the database writer
+- **THEN** saving the catalog waits without blocking progress, Cancel, or Lock
+- **AND** an extension installation already in progress finishes before migration storage starts
+- **AND** no new extension installation starts during storage
+
 #### Scenario: Cancel a bank refresh while migration waits
 
 - **GIVEN** migration waits for a bank refresh to finish

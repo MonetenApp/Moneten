@@ -114,6 +114,7 @@ final class ExtensionLibrary {
 	@ObservationIgnored private var savedUpdates: [String: UpdateState.Saved] = [:]
 	/// The downloads that run, so that a removal can stop them.
 	@ObservationIgnored private var downloads: [String: InstallCancellation] = [:]
+	@ObservationIgnored private var checking: Store?
 	@ObservationIgnored private var daily: Task<Void, Never>?
 
 	private var folder: URL { DataFolder.standard().extensionsFolder }
@@ -185,7 +186,9 @@ final class ExtensionLibrary {
 
 	/// Downloads the index and its signature, and uses the index only when it passes every check.
 	func checkNow() async {
-		guard let store = model?.store else { return }
+		guard let store = model?.store, checking !== store else { return }
+		checking = store
+		defer { if checking === store { checking = nil } }
 		guard let keys = configuration.keys else {
 			problem = "This build of Moneten has no catalog keys, so it cannot show the catalog."
 			return reload()
@@ -200,15 +203,18 @@ final class ExtensionLibrary {
 			data = try await source.fetch("index.json", limit: CatalogSource.indexLimit)
 			signature = try await source.fetch("index.json.sig", limit: CatalogSource.signatureSize)
 		} catch {
+			guard model?.store === store else { return }
 			reachable = false
 			problem = (error as? CatalogError)?.description ?? "The catalog cannot be reached."
 			log(LogLine("ext catalog unreachable", ("error", .type(of: error))))
 			return reload()
 		}
+		guard model?.store === store else { return }
 		reachable = true
 		do {
 			if let accepted = try IndexVerifier.check(index: data, signature: signature, keys: keys, floors: floors, accepted: indexData) {
-				try store.saveCatalog(StoredCatalog(index: data, signature: signature, floors: try JSONEncoder().encode(accepted.floors)))
+				try await store.saveCatalog(StoredCatalog(index: data, signature: signature, floors: try JSONEncoder().encode(accepted.floors)))
+				guard model?.store === store else { return }
 				indexData = data
 				index = accepted.index
 				self.floors = accepted.floors
@@ -219,9 +225,11 @@ final class ExtensionLibrary {
 			}
 			problem = nil
 		} catch let error as CatalogError {
+			guard model?.store === store else { return }
 			problem = error.description
 			log(LogLine("ext catalog rejected", ("error", .type(of: error)), ("kept", .count(index?.version ?? 0))))
 		} catch {
+			guard model?.store === store else { return }
 			problem = "The list of extensions could not be saved. \(error)"
 		}
 		reload()
@@ -304,7 +312,7 @@ final class ExtensionLibrary {
 	}
 
 	private func download(_ entry: CatalogIndex.Entry) async {
-		guard let store = model?.store else { return }
+		guard let model, !model.isTransferringTransactions, let store = model.store else { return }
 		let id = entry.id
 		let canceled = InstallCancellation()
 		downloads[id] = canceled
@@ -367,6 +375,7 @@ final class ExtensionLibrary {
 	/// Copies the extension into the folder after the user agreed to the warning, and marks it "Unverified".
 	/// An installed file of the same name stays until every file of the new one is in place.
 	func installFile(_ url: URL, name: String, shown: ExtensionPackage) {
+		guard model?.isTransferringTransactions != true else { return }
 		guard !isCatalog(name) else {
 			failure = "A catalog extension with the name \(name) is installed. Remove it first."
 			return
@@ -383,7 +392,7 @@ final class ExtensionLibrary {
 	/// Records the bytes of the files that the user saw in the warning. A session runs only those bytes,
 	/// and a later change asks again.
 	func allow(_ name: String, shown: ExtensionPackage) {
-		guard let store = model?.store else { return }
+		guard model?.isTransferringTransactions != true, let store = model?.store else { return }
 		guard !isCatalog(name) else {
 			failure = "\(name) is a catalog extension. It runs only with the files of the catalog."
 			return reload()
@@ -461,7 +470,7 @@ final class ExtensionLibrary {
 	/// Removes an extension. It waits for no install: an extension that is being installed or updated
 	/// cannot be removed until the install ends, also when the dialog opened before the install started.
 	func remove(_ id: String) {
-		guard let store = model?.store else { return }
+		guard model?.isTransferringTransactions != true, let store = model?.store else { return }
 		guard !working.contains(id) else {
 			failure = "\(id) is being installed. Remove it after the install."
 			return reload()

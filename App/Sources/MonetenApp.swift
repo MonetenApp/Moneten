@@ -22,6 +22,7 @@ struct MonetenApp: App {
 		Window("Extensions", id: "extensions") {
 			ExtensionsWindow()
 				.environment(model)
+				.disabled(model.isTransferringTransactions)
 		}
 		.defaultSize(width: 900, height: 600)
 		.commandsRemoved()
@@ -37,6 +38,7 @@ struct MonetenApp: App {
 		Settings {
 			SettingsView()
 				.environment(model)
+				.disabled(model.isTransferringTransactions)
 		}
 
 		MenuBarExtra(isInserted: $showMenuBarIcon) {
@@ -65,7 +67,7 @@ struct AppCommands: Commands {
 	@Environment(\.openWindow) private var openWindow
 
 	/// A rule run keeps the category settings open, so no command may open another sheet in its place.
-	var unlocked: Bool { model.phase == .unlocked && !model.isApplyingRule }
+	var unlocked: Bool { model.phase == .unlocked && !model.isApplyingRule && !model.isTransferringTransactions }
 
 	var body: some Commands {
 		CommandGroup(after: .appSettings) {
