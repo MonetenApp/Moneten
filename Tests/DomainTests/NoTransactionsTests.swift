@@ -58,7 +58,8 @@ struct BankHistoryTests {
 		let short = RefreshResult(balance: Self.balance, transactions: FetchedTransactions(rows: [], from: Day(year: 2026, month: 8, day: 17)), missesOlder: true)
 		#expect(short.bankHistory(after: nil, of: .giro) == .olderMayBeMissing)
 		#expect(short.bankHistory(after: .startsAt(start), of: .giro) == .olderMayBeMissing)
-		#expect(Self.dated.bankHistory(after: .olderMayBeMissing, of: .giro) == .olderMayBeMissing)
+		// The connector keeps the mark until a full history, so a refresh without it has no gap left.
+		#expect(Self.dated.bankHistory(after: .olderMayBeMissing, of: .giro) == nil)
 		#expect(Self.full.bankHistory(after: .olderMayBeMissing, of: .giro) == .startsAt(start))
 		let empty = RefreshResult(balance: Self.balance, transactions: FetchedTransactions(rows: [], from: nil), isComplete: true)
 		#expect(empty.bankHistory(after: .olderMayBeMissing, of: .giro) == nil)

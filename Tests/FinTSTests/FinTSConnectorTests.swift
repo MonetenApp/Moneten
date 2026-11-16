@@ -543,22 +543,89 @@ struct FinTSConnectorTests {
 		#expect(result.bankHistory(after: nil, of: .giro) == .olderMayBeMissing)
 	}
 
-	@Test("A refresh after a long pause asks for 90 days and says that older transactions may be missing, and a recent one does not")
+	@Test("A refresh says that older transactions may be missing only when its answer starts after the last successful fetch")
 	func longPause() async throws {
 		let today = Day.today()
-		let old = AccountRequest(accountID: UUID(), name: "Giro", remoteID: "A", since: today.adding(days: -200), currency: "EUR")
-		let recent = AccountRequest(accountID: UUID(), name: "Savings", remoteID: "B", since: today.adding(days: -10), currency: "EUR")
+		// 200 days of pause: the 90 days leave a gap.
+		let old = AccountRequest(accountID: UUID(), name: "Giro", remoteID: "A", since: today.adding(days: -214), lastFetched: today.adding(days: -200), currency: "EUR")
+		// 80 days of pause: the 14 days of overlap reach back 94 days, but the 90 days cover everything since the last fetch.
+		let pause = AccountRequest(accountID: UUID(), name: "Savings", remoteID: "B", since: today.adding(days: -94), lastFetched: today.adding(days: -80), currency: "EUR")
+		// A pending row from 120 days ago, fetched yesterday.
+		let pending = AccountRequest(accountID: UUID(), name: "Card", remoteID: "C", since: today.adding(days: -120), lastFetched: today.adding(days: -1), currency: "EUR")
+		let recent = AccountRequest(accountID: UUID(), name: "Daily", remoteID: "D", since: today.adding(days: -10), lastFetched: today.adding(days: 4 - 14), currency: "EUR")
 		let report = try await refresh("""
 			read cmd
 			echo '{"type":"result","account":"A","transactions":{"from":"\(today.adding(days: -90))","rows":[]},"errors":[]}'
-			echo '{"type":"result","account":"B","transactions":{"from":"\(today.adding(days: -10))","rows":[]},"errors":[]}'
-			""", accounts: [old, recent])
-		guard case let .fetched(giro) = report.outcomes[old.accountID], case let .fetched(savings) = report.outcomes[recent.accountID] else {
-			Issue.record("not fetched")
+			echo '{"type":"result","account":"B","transactions":{"from":"\(today.adding(days: -90))","rows":[]},"errors":[]}'
+			echo '{"type":"result","account":"C","transactions":{"from":"\(today.adding(days: -90))","rows":[]},"errors":[]}'
+			echo '{"type":"result","account":"D","transactions":{"from":"\(today.adding(days: -10))","rows":[]},"errors":[]}'
+			""", accounts: [old, pause, pending, recent])
+		let missing = [old, pause, pending, recent].map { request -> Bool? in
+			if case let .fetched(result) = report.outcomes[request.accountID] { result.missesOlder } else { nil }
+		}
+		#expect(missing == [true, false, false, false])
+		#expect(FinTSConnector.accountsMissingOlder(in: report.state) == ["A"])
+	}
+
+	@Test("The state of the access keeps the mark of missing older transactions through normal refreshes, and a full history ends it")
+	func markInState() async throws {
+		let today = Day.today()
+		let passport = Data([0xAC, 0xED, 0x00, 0x05, 0x01])
+		let next = Data([0xAC, 0xED, 0x00, 0x05, 0x02])
+		func refresh(_ state: AccessState?, from: String, sendsState: Bool, enforced: Bool = false, first: Bool = false) async throws -> (RefreshResult?, AccessState?) {
+			let giro = AccountRequest(accountID: Self.giro.accountID, name: "Giro", remoteID: Self.giro.remoteID, since: first ? nil : today.adding(days: -15),
+				lastFetched: first ? nil : today.adding(days: -1), currency: "EUR")
+			let report = try await connector("""
+				read cmd; printf '%s\\n' "$cmd" >> "$R"
+				echo '{"type":"result","account":"DE02120300000000202051","transactions":{"from":\(from),"rows":[]},"errors":[]}'
+				\(sendsState ? "echo '{\"type\":\"state\",\"data\":\"\(next.base64EncodedString())\"}'" : "")
+				""").refresh(RefreshRequest(access: Self.access, state: state, accounts: [giro], enforced: enforced), Session())
+			guard case let .fetched(result) = report.outcomes[giro.accountID] else { return (nil, report.state) }
+			return (result, report.state)
+		}
+		// The user canceled the TAN for older transactions in the first refresh of the account.
+		let (first, marked) = try await refresh(AccessState(passport), from: "\"\(today.adding(days: -90))\"", sendsState: true, first: true)
+		#expect(first?.missesOlder == true)
+		#expect(FinTSConnector.accountsMissingOlder(in: marked) == [Self.giro.remoteID])
+		// A normal refresh covers the days since the last fetch, and the mark stays. The helper gets the passport alone.
+		let (normal, unchanged) = try await refresh(marked, from: "\"\(today.adding(days: -15))\"", sendsState: false)
+		#expect(normal?.missesOlder == true)
+		#expect(normal?.bankHistory(after: nil, of: .giro) == .olderMayBeMissing)
+		#expect(unchanged == nil)
+		#expect(recorded.map { $0["state"] } == [passport.base64EncodedString(), next.base64EncodedString()])
+		// The full history ends the mark, and the state is the passport alone again.
+		let (full, cleared) = try await refresh(marked, from: "null", sendsState: true, enforced: true)
+		#expect(full?.missesOlder == false)
+		#expect(cleared == AccessState(next))
+		#expect(FinTSConnector.accountsMissingOlder(in: cleared).isEmpty)
+	}
+
+	@Test("A state of an earlier build is the passport alone, and a new login keeps the marks of the access")
+	func earlierState() {
+		let passport = AccessState(Data([0xAC, 0xED, 0x00, 0x05]))
+		#expect(FinTSState(passport) == FinTSState(passport: passport.data, olderMayBeMissing: []))
+		#expect(FinTSState(nil).accessState == nil)
+		let marked = FinTSState(passport: passport.data, olderMayBeMissing: ["DE02120300000000202051"]).accessState
+		#expect(FinTSConnector.accountsMissingOlder(in: marked) == ["DE02120300000000202051"])
+		let login = AccessState(Data([0xAC, 0xED, 0x00, 0x05, 0x07]))
+		let edited = FinTSConnector.state(login, keepingMarksOf: marked)
+		#expect(FinTSState(edited) == FinTSState(passport: login.data, olderMayBeMissing: ["DE02120300000000202051"]))
+		#expect(FinTSConnector.state(login, keepingMarksOf: passport) == login)
+	}
+
+	@Test("A challenge with \"history\" may be for older transactions, and one without is not")
+	func historyOfAsk() throws {
+		func request(_ history: String) throws -> UserRequest {
+			let line = #"{"type":"ask","id":1,"kind":"tan","purpose":"download","prompt":"Bitte TAN eingeben"\#(history)}"#
+			guard case let .ask(_, ask) = try JSONDecoder().decode(HelperMessage.self, from: Data(line.utf8)) else { throw HelperFailure.unreadable }
+			return try ask.request()
+		}
+		guard case let .secondFactor(older) = try request(#","history":true"#), case let .secondFactor(plain) = try request("") else {
+			Issue.record("no second factor")
 			return
 		}
-		#expect(giro.missesOlder)
-		#expect(!savings.missesOlder)
+		#expect(older.olderTransactions)
+		#expect(!plain.olderTransactions)
 	}
 
 	@Test("Reads the lines that the helper writes for an MT940 statement, a camt.052 report, securities accounts, and accounts that fail")
@@ -715,7 +782,9 @@ struct FinTSConnectorTests {
 		guard case let .failed(loanFailure) = report.outcomes[loan.accountID] else { Issue.record("loan not failed"); return }
 		#expect(loanFailure == .unsupported("The FinTS server of the bank offers neither the balance nor the transactions of this account."))
 
-		#expect(report.state == AccessState(Data([1, 2, 3])))
+		// A first refresh whose answer starts 90 days ago marks the account in the state, beside the passport.
+		#expect(FinTSState(report.state).passport == Data([1, 2, 3]))
+		#expect(FinTSConnector.accountsMissingOlder(in: report.state).contains(Self.giro.remoteID))
 		#expect(report.notices == [BankMessage(text: "Neue Bedingungen ab 1.12."), BankMessage(code: "9210", text: "Saldo nicht verfügbar", accountName: "Card")])
 		#expect(session.events == [.progress(.fetching(done: 0, of: 3)), .progress(.fetching(done: 1, of: 3))])
 	}

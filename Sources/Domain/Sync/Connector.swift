@@ -96,7 +96,7 @@ public struct RefreshRequest: Sendable {
 		self.access = access
 		self.state = state
 		self.accounts = enforced
-			? accounts.map { AccountRequest(accountID: $0.accountID, name: $0.name, remoteID: $0.remoteID, currency: $0.currency) }
+			? accounts.map { AccountRequest(accountID: $0.accountID, name: $0.name, remoteID: $0.remoteID, lastFetched: $0.lastFetched, currency: $0.currency) }
 			: accounts
 	}
 }
@@ -110,14 +110,18 @@ public struct AccountRequest: Sendable, Equatable {
 	public let remoteID: String
 	/// The first day to fetch. Nil asks for everything the bank has.
 	public let since: Day?
+	/// The day of the last successful fetch, nil before the first. An answer that starts after it may miss
+	/// older transactions. `since` is no measure for that, because it reaches 14 days or a pending row back.
+	public let lastFetched: Day?
 	/// The currency of the account in the app, for a row that the source sends without one.
 	public let currency: String
 
-	public init(accountID: UUID, name: String, remoteID: String, since: Day? = nil, currency: String) {
+	public init(accountID: UUID, name: String, remoteID: String, since: Day? = nil, lastFetched: Day? = nil, currency: String) {
 		self.accountID = accountID
 		self.name = name
 		self.remoteID = remoteID
 		self.since = since
+		self.lastFetched = lastFetched
 		self.currency = currency
 	}
 }
@@ -164,9 +168,10 @@ public struct RefreshResult: Sendable {
 	/// The positions of a portfolio, which replace the stored ones. Nil when the source sent none, as an
 	/// extension today, so the stored positions stay.
 	public let holdings: [Holding]?
-	/// The transactions start later than the account asked for: a normal refresh asks for no more than
-	/// 90 days, and the user may cancel the second factor for older transactions. So older transactions
-	/// may be missing until an enforced refresh.
+	/// Older transactions of the account may be missing after this refresh. An answer that starts after the last
+	/// successful fetch sets it: a normal refresh asks for no more than 90 days, and the user may cancel the second
+	/// factor for older transactions. It stays set until a refresh brings the full history, and until then the
+	/// initial balance of the account follows the bank balance. The connector keeps it in the state of the access.
 	public let missesOlder: Bool
 
 	/// The bank sent the balance without a transaction list, because it provides none for the account. A
@@ -182,15 +187,15 @@ public struct RefreshResult: Sendable {
 	}
 
 	/// What the account view says about the history at the bank after this refresh, given what it said
-	/// before. A refresh that is neither balance-only nor a full history nor shorter than asked keeps what
-	/// the view said, so the note about missing older transactions stays until an enforced refresh.
+	/// before. A refresh that is neither balance-only nor a full history keeps the start of the history.
+	/// `missesOlder` alone decides about the note on missing older transactions.
 	public func bankHistory(after previous: BankHistory?, of kind: AccountKind) -> BankHistory? {
 		if providesNoTransactions(for: kind) { return .noTransactions }
 		if let historyStart { return .startsAt(historyStart) }
 		if missesOlder { return .olderMayBeMissing }
 		// A full history without rows ends a note about missing older transactions too.
 		if isComplete { return nil }
-		return previous == .noTransactions ? nil : previous
+		return previous == .noTransactions || previous == .olderMayBeMissing ? nil : previous
 	}
 
 	public init(balance: Money?, balanceDate: Date? = nil, transactions: FetchedTransactions?, isComplete: Bool = false,
@@ -212,8 +217,8 @@ public enum BankHistory: Equatable, Sendable {
 	case noTransactions
 	/// "The bank provides no transactions before" this day.
 	case startsAt(Day)
-	/// "Older transactions may be missing." A refresh fetched less than the account asked for, and only an
-	/// enforced refresh closes the gap.
+	/// "Older transactions may be missing." An answer started after the last successful fetch, and only a
+	/// refresh of the full history closes the gap.
 	case olderMayBeMissing
 }
 

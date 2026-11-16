@@ -168,11 +168,13 @@ public struct Account: Identifiable, Hashable, Sendable, Codable {
 		bankBalanceMinor.map { $0 - bookedSum(of: rows, through: Day(bankBalanceDate ?? Date(), calendar: calendar)) }
 	}
 
-	/// Sets the initial balance once, so that the computed balance meets the bank balance.
-	mutating func deriveInitialBalance(from rows: [Transaction], calendar: Calendar = .current) {
+	/// Sets the initial balance, so that the computed balance meets the bank balance. It is set for good unless
+	/// `missesOlder`: older transactions may be missing, so the next refresh derives it again, and the one that
+	/// brings the full history sets it.
+	mutating func deriveInitialBalance(from rows: [Transaction], missesOlder: Bool, calendar: Calendar = .current) {
 		guard derivesInitialBalance, let value = initialBalanceMeetingBankBalance(of: rows, calendar: calendar) else { return }
 		initialBalanceMinor = value
-		initialBalanceIsSet = true
+		initialBalanceIsSet = !missesOlder
 	}
 }
 

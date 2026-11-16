@@ -54,7 +54,8 @@ public struct FinTSAccount: Sendable, Equatable {
 /// Fetches accounts, balances, and transactions through FinTS. It runs hbci4java in a helper
 /// process (ADR 0014) and asks the user through the session. The PIN and the TANs go only through
 /// the pipe of the helper. `AccessState` holds the passport of hbci4java: bank parameters, user
-/// parameters, system ID, and the chosen TAN method.
+/// parameters, system ID, and the chosen TAN method, and the accounts whose older transactions may be
+/// missing (`FinTSState`).
 public struct FinTSConnector: BankConnector {
 	/// How to start the helper.
 	struct Helper: Sendable {
@@ -127,7 +128,8 @@ public struct FinTSConnector: BankConnector {
 
 	/// The accounts of the login of `access`, the new state of the access, and the notices of the bank.
 	/// A login that fails after notices throws `FailureWithNotices`, as a refresh does, so that the assistant
-	/// "Add Account" shows the notice of a maintenance next to the error that the maintenance causes.
+	/// "Add Account" shows the notice of a maintenance next to the error that the maintenance causes. The new
+	/// state keeps the marks of `state` about missing older transactions.
 	public func listAccounts(of access: Access, state: AccessState?, session: SyncSession) async throws
 		-> (accounts: [FinTSAccount], state: AccessState?, notices: [BankMessage]) {
 		var accounts: [FinTSAccount]?
@@ -137,7 +139,8 @@ public struct FinTSConnector: BankConnector {
 			try await run(try command("accounts", access, state), session: session) { message in
 				switch message {
 				case let .accounts(list): accounts = list
-				case let .state(data): newState = AccessState(data)
+				case let .state(data):
+					newState = FinTSState(passport: data, olderMayBeMissing: FinTSState(state).olderMayBeMissing).accessState
 				case let .notice(text): notices.append(BankMessage(text: text))
 				case let .failed(error): throw error.failure
 				default: throw HelperFailure.unreadable
@@ -150,9 +153,12 @@ public struct FinTSConnector: BankConnector {
 		}
 	}
 
-	/// Fetches all requested accounts in one dialog with the bank.
+	/// Fetches all requested accounts in one dialog with the bank. The state of the access marks each account whose
+	/// older transactions may be missing after it, until a refresh brings its full history.
 	public func refresh(_ request: RefreshRequest, _ session: SyncSession) async throws -> ConnectorReport {
 		let today = Day.today()
+		let stored = FinTSState(request.state)
+		var marked = Set(stored.olderMayBeMissing)
 		var command = try command("refresh", request.access, request.state)
 		var outcomes: [UUID: AccountOutcome] = [:]
 		let shared = Dictionary(grouping: request.accounts, by: \.remoteID).filter { $0.value.count > 1 }
@@ -160,7 +166,7 @@ public struct FinTSConnector: BankConnector {
 		let accounts = request.accounts.filter { shared[$0.remoteID] == nil }
 		command.accounts = accounts.map { Command.Period(id: $0.remoteID, from: Self.firstDay($0.since, today: today)?.description) }
 		let byRemoteID = Dictionary(uniqueKeysWithValues: accounts.map { ($0.remoteID, $0) })
-		var state: AccessState?
+		var passport: Data?
 		var notices: [BankMessage] = []
 		func handle(_ message: HelperMessage) async throws {
 			switch message {
@@ -169,16 +175,19 @@ public struct FinTSConnector: BankConnector {
 			case let .result(remoteID, result):
 				guard let account = byRemoteID[remoteID] else { throw HelperFailure.unreadable }
 				do {
-					let (outcome, errors) = try result.get().outcome(of: account)
+					let (outcome, errors) = try result.get().outcome(of: account, missedOlder: marked.contains(remoteID))
 					outcomes[account.accountID] = outcome
 					notices += errors
+					if case let .fetched(fetched) = outcome {
+						if fetched.missesOlder { marked.insert(remoteID) } else { marked.remove(remoteID) }
+					}
 				} catch {
 					outcomes[account.accountID] = .failed(error as? SyncFailure ?? HelperFailure.unreadable)
 				}
 			case let .accountFailed(remoteID, error):
 				guard let account = byRemoteID[remoteID] else { throw HelperFailure.unreadable }
 				outcomes[account.accountID] = .failed(error.failure)
-			case let .state(data): state = AccessState(data)
+			case let .state(data): passport = data
 			case let .failed(error): throw error.failure
 			default: throw HelperFailure.unreadable
 			}
@@ -188,6 +197,9 @@ public struct FinTSConnector: BankConnector {
 		} catch where !notices.isEmpty {
 			throw FailureWithNotices(error, notices: notices)
 		}
+		// Without a new passport the stored one stays, and so do the marks unless they changed.
+		let changed = marked != Set(stored.olderMayBeMissing)
+		let state = passport != nil || changed ? FinTSState(passport: passport ?? stored.passport, olderMayBeMissing: marked).accessState : nil
 		return ConnectorReport(outcomes: outcomes, state: state, notices: notices)
 	}
 
@@ -203,7 +215,7 @@ public struct FinTSConnector: BankConnector {
 		guard url.scheme?.lowercased() == "https", url.host() != nil else { throw HelperFailure.insecure }
 		guard let productID, !productID.isEmpty else { throw HelperFailure.noProductID }
 		return Command(type: type, bankCode: bankCode, url: url.absoluteString, user: access.loginName, product: productID, version: version,
-			state: state?.data.base64EncodedString())
+			state: FinTSState(state).passport?.base64EncodedString())
 	}
 
 	/// Runs one command. Requests of the helper go to the session, and every other message to `handle`.

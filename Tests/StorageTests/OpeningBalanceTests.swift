@@ -49,6 +49,38 @@ struct OpeningBalanceTests {
 		#expect(bars(ledger) == bars(stored))
 	}
 
+	@Test("While older transactions may be missing, the opening balance follows the bank balance, and the full history sets it, so 10.000,00 € never shows as 9.500,00 €")
+	func olderTransactionsMissing() throws {
+		let store = try makeStore([giro])
+		var ledger = try store.loadLedger()
+		func merge(_ rows: [Transaction], balance: Int64, from: Day?, missesOlder: Bool) throws {
+			let result = RefreshResult(balance: Money(minorUnits: balance, currency: "EUR"), balanceDate: Date(),
+				transactions: FetchedTransactions(rows: rows, from: from), isComplete: from == nil, missesOlder: missesOlder)
+			ledger.apply(try store.merge(.refresh(result), into: giro.id))
+		}
+		func computed() throws -> Int64 {
+			let stored = try store.loadLedger()
+			return stored.computedBalance(of: try #require(stored.account(giro.id))).minorUnits
+		}
+		// The user canceled the TAN for older transactions, so the first refresh brought 90 days.
+		try merge(quarter, balance: 1_000_000, from: today.adding(days: -90), missesOlder: true)
+		#expect(try computed() == 1_000_000)
+		#expect(try store.loadLedger().account(giro.id)?.initialBalanceIsSet == false)
+		// A normal refresh while the mark stays leaves the opening balance open.
+		try merge([], balance: 1_000_000, from: today.adding(days: -14), missesOlder: true)
+		#expect(try store.loadLedger().account(giro.id)?.initialBalanceIsSet == false)
+		// "Refresh Account (enforced)" brings older rows of -500,00 €. Before, the computed balance showed 9.500,00 €.
+		let older = [row(200, -30_000, "Insurance"), row(150, -20_000, "Card")]
+		try merge(older + quarter, balance: 1_000_000, from: nil, missesOlder: false)
+		#expect(try computed() == 1_000_000)
+		#expect(try store.loadLedger().account(giro.id)?.initialBalanceIsSet == true)
+		#expect(ledger.computedBalance(of: try #require(ledger.account(giro.id))).minorUnits == 1_000_000)
+		// From then on the opening balance stays, and a later difference is for the calibration.
+		let set = try #require(try store.loadLedger().account(giro.id)?.initialBalanceMinor)
+		try merge([row(300, -7_000, "Card")], balance: 1_000_000, from: today.adding(days: -14), missesOlder: false)
+		#expect(try store.loadLedger().account(giro.id)?.initialBalanceMinor == set)
+	}
+
 	@Test("A balance whose transactions failed does not set the opening balance, so the next full refresh still does")
 	func failedTransactions() throws {
 		let store = try makeStore([giro])

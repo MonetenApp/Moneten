@@ -254,7 +254,8 @@ extension Ledger {
 				let overlap = Day(refreshed, calendar: calendar).adding(days: -14, calendar: calendar)
 				return oldestPending[a.id].map { min($0, overlap) } ?? overlap
 			}
-			plan[accessID, default: []].append(AccountRequest(accountID: a.id, name: a.name, remoteID: remoteID, since: since, currency: a.currency))
+			plan[accessID, default: []].append(AccountRequest(accountID: a.id, name: a.name, remoteID: remoteID, since: since,
+				lastFetched: a.refreshedAt.map { Day($0, calendar: calendar) }, currency: a.currency))
 		}
 		return plan
 	}

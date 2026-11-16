@@ -226,7 +226,7 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored: [Tran
 		if a.derivesInitialBalance, result.transactionFailure == nil {
 			// Dropped and marked rows are pending and do not count.
 			let changed = Dictionary(uniqueKeysWithValues: (r.booked + r.updated).map { ($0.id, $0) })
-			a.deriveInitialBalance(from: stored.map { changed[$0.id] ?? $0 } + r.added)
+			a.deriveInitialBalance(from: stored.map { changed[$0.id] ?? $0 } + r.added, missesOlder: result.missesOlder)
 		}
 		r.account = a
 	}
