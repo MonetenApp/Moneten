@@ -515,7 +515,7 @@ public struct Vault: Sendable {
 	/// The settings among `switchedOn` that can unlock: the ones with an entry. A setting that a program
 	/// wrote into the settings file has no entry and turns nothing on.
 	public func usableMethods(switchedOn: Set<PasswordEntry>) throws -> [PasswordEntry] {
-		try PasswordEntry.allCases.filter { switchedOn.contains($0) && storedPassword(for: $0) != nil }
+		try PasswordEntry.allCases.filter { try switchedOn.contains($0) && storedPassword(for: $0) != nil }
 	}
 
 	/// The password after macOS confirmed the user for a request that offered `offered`. A request that offers
