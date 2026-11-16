@@ -94,3 +94,5 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [x] Filter booking candidates to dates on or before the booked date and the nearest day before the unique fetched preference. `gate5LaterFetchedBooking` asserts the 7 December booking and retained 14 December pending row in every file delivery and storage order.
 - [x] Rank an equal IBAN with conflicting known names below compatible pending candidates. `gate5ConflictingNameRank` preserves the comment through a repeated refresh.
 - [x] Preserve pending order independence with `gate5SeededOrderIndependence`, 3,000 seeds, and legacy pairing with `gate5LegacyComparisons`, 6,144 comparisons.
+
+- [x] Cover mixed legacy/file booked positions in every stored/delivered order and preserve absolute candidate ranks without sorting the full history. Add a literal later recurring rent test over live rows and tombstones; a shared reference cannot hide a later pending occurrence. Both tests fail before these review fixes.

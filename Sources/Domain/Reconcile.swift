@@ -328,7 +328,7 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 	})
 	let ids = Set(rows.compactMap(\.sourceID))
 	let fileIDs = Set(rows.compactMap(\.fileIdentity))
-	let references = Set(rows.filter(\.isPending).compactMap(\.endToEndReference))
+	let references = Set(rows.filter(\.isPending).compactMap(\.endToEndReference).filter { !$0.isEmpty && $0 != "NOTPROVIDED" })
 	func relevant(day: Day, sourceID: String?, fileIdentity: String?, reference: String?) -> Bool {
 		days.contains(day) || sourceID.map { ids.contains(Transaction.matchingID($0)) } == true
 			|| fileIdentity.map { fileIDs.contains($0) } == true
@@ -447,6 +447,7 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 					evidence: (!fileAgrees && sourceAgrees) || (!t.isPending && identity.isPending) ? .sourceID : .fingerprint))
 				continue
 			}
+			if t.isPending && !identity.isPending && t.bookingDate > identity.key.day { continue }
 			guard matches[i].amount == match.amount else { continue }
 			let sameReference = incoming[i].endToEnd != nil && incoming[i].endToEnd == identity.endToEnd
 			let step: Int? = Identity.steps.firstIndex { (step: Identity.Step) -> Bool in step.accepts(incoming[i], identity) }
@@ -476,15 +477,38 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 				identityTombstone: 0, fit: rankedFit, distance: distance, evidence: evidence))
 		}
 	}
+	let hasLegacy = candidates.contains(where: \.legacy)
+	func ranks(_ sorted: [Int], count: Int, precedes: (Int, Int) -> Bool) -> [Int: Int] {
+		guard !sorted.isEmpty else { return [:] }
+		if !hasLegacy { return Dictionary(uniqueKeysWithValues: sorted.enumerated().map { ($0.element, $0.offset) }) }
+		// Legacy edges use raw indices, so scoped candidates keep their full-history rank in a mixed pool.
+		var buckets = [Int](repeating: 0, count: sorted.count)
+		for i in 0..<count {
+			var low = 0
+			var high = sorted.count
+			while low < high {
+				let middle = (low + high) / 2
+				if precedes(i, sorted[middle]) { high = middle } else { low = middle + 1 }
+			}
+			if low < sorted.count { buckets[low] += 1 }
+		}
+		var rank = 0
+		return Dictionary(uniqueKeysWithValues: sorted.enumerated().map { entry in
+			rank += buckets[entry.offset]
+			return (entry.element, rank)
+		})
+	}
 	func positions(_ ts: [Transaction], indices: Set<Int>) -> [Int: Int] {
 		let keys = Dictionary(uniqueKeysWithValues: indices.map { i in
 			(i, (ts[i].bookingDate, ts[i].createdAt, ts[i].id.uuidString))
 		})
-		let sorted: [Int] = indices.sorted { (left: Int, right: Int) -> Bool in keys[left]! < keys[right]! }
-		let pairs: [(Int, Int)] = sorted.enumerated().map { (entry: (offset: Int, element: Int)) -> (Int, Int) in
-			(entry.element, entry.offset)
+		let sorted = indices.sorted { keys[$0]! < keys[$1]! }
+		return ranks(sorted, count: ts.count) { i, j in
+			let key = keys[j]!
+			if ts[i].bookingDate != key.0 { return ts[i].bookingDate < key.0 }
+			if ts[i].createdAt != key.1 { return ts[i].createdAt < key.1 }
+			return ts[i].id.uuidString < key.2
 		}
-		return Dictionary(uniqueKeysWithValues: pairs)
 	}
 	let deliveredPositions: [Int: Int] = positions(rows, indices: Set(candidates.filter { !$0.legacy }.map(\.delivered)))
 	let livePositions: [Int: Int] = positions(stored, indices: Set(candidates.compactMap { c in
@@ -496,8 +520,7 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 	let deadCandidates = Set(candidates.compactMap { c -> Int? in
 		if !c.legacy, case let .deleted(k) = c.slot { k } else { nil }
 	})
-	let deadKeys: [Int: DeadKey] = Dictionary(uniqueKeysWithValues: deadCandidates.map { k in
-		let d = deleted[k]
+	func deadKey(_ d: DeletedTransaction) -> DeadKey {
 		let fileIdentity: String = d.fileIdentity.map { "1" + $0 } ?? "0"
 		let sourceID: String = d.sourceID.map { "1" + $0 } ?? "0"
 		let reference: String = d.endToEndReference.map { "1" + $0 } ?? "0"
@@ -506,17 +529,20 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 		let fetched: Int = d.wasFetched ? 1 : 0
 		let identity: DeadIdentityKey = (d.bookingDate, fileIdentity, sourceID, reference, d.currency, d.amountMinor)
 		let fields: DeadFieldsKey = (d.purpose, iban, pending, fetched, d.deletedAt)
-		return (k, (identity, fields))
-	})
+		return (identity, fields)
+	}
+	let deadKeys = Dictionary(uniqueKeysWithValues: deadCandidates.map { ($0, deadKey(deleted[$0])) })
 	let deadOrder: [Int] = deadCandidates.sorted { (left: Int, right: Int) -> Bool in
 		let lhs: DeadKey = deadKeys[left]!
 		let rhs: DeadKey = deadKeys[right]!
 		return lhs.0 == rhs.0 ? lhs.1 < rhs.1 : lhs.0 < rhs.0
 	}
-	let deadPairs: [(Int, Int)] = deadOrder.enumerated().map { (entry: (offset: Int, element: Int)) -> (Int, Int) in
-		(entry.element, entry.offset + stored.count)
-	}
-	let deadPositions: [Int: Int] = Dictionary(uniqueKeysWithValues: deadPairs)
+	let deadPositions = ranks(deadOrder, count: deleted.count) { i, j in
+		if deleted[i].bookingDate != deleted[j].bookingDate { return deleted[i].bookingDate < deleted[j].bookingDate }
+		let lhs = deadKeys[i] ?? deadKey(deleted[i])
+		let rhs = deadKeys[j]!
+		return lhs.0 == rhs.0 ? lhs.1 < rhs.1 : lhs.0 < rhs.0
+	}.mapValues { $0 + stored.count }
 	func position(_ slot: Slot, legacy: Bool = false) -> Int {
 		switch slot {
 		case let .live(j): legacy ? j : livePositions[j]!
