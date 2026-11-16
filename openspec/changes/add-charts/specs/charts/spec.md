@@ -151,7 +151,7 @@ The app SHALL set the initial balance of an account that a bank refreshes to the
 
 ### Requirement: The initial balance stays
 
-The app SHALL set the initial balance of a refreshed account only once, at the first refresh that brings a bank balance. A refresh whose transactions failed does not set it. Later refreshes, imports, and deletions do not change it, and neither does a later bank balance. Only a manual transaction changes a derived value. A value that the user enters stays. A difference between the computed balance and the bank balance that appears later is for the calibration to resolve.
+The app SHALL set the initial balance of a refreshed account only once, at the first refresh that brings a bank balance and the full history. A refresh whose transactions failed does not set it. A later refresh changes a derived value only when it passes a manual transaction, and imports and deletions only through a manual transaction. A value that the user enters stays. A difference between the computed balance and the bank balance that appears later is for the calibration to resolve.
 
 #### Scenario: Later refresh with an older transaction
 
@@ -230,6 +230,30 @@ The app SHALL set an initial balance that a refresh derived to the new bank bala
 - **GIVEN** a credit card with an initial balance of 3.000,00 € that the user entered, a bank balance of 100,00 € on 01.11.2026, and a manual transaction of -50,00 € on 05.11.2026
 - **WHEN** a refresh on 10.11.2026 reports the balance 50,00 € and no transactions
 - **THEN** the initial balance stays 3.000,00 €
+
+### Requirement: The initial balance follows the bank balance while older transactions may be missing
+
+The app SHALL derive the initial balance of a refreshed account again at each refresh that brings a bank balance, while older transactions of the account may be missing because the user canceled the TAN for them. The computed balance then meets the bank balance. The first refresh that brings the full history of the account sets the initial balance.
+
+#### Scenario: Older transactions after a canceled TAN
+
+- **GIVEN** the first refresh of "Giro" brought a bank balance of 10.000,00 € and the booked transactions of the last 90 days, because the user canceled the TAN for older transactions
+- **WHEN** a later refresh brings the full history with older booked transactions that add up to -500,00 € and a bank balance of 10.000,00 €
+- **THEN** the initial balance rises by 500,00 €, and the last bar shows 10.000,00 €, not 9.500,00 €
+- **AND** a refresh after it brings booked transactions of -70,00 € from before the first refresh and a bank balance of 9.930,00 €, and the initial balance stays
+
+#### Scenario: Export and import before the full history
+
+- **GIVEN** the first refresh of "Giro" brought a bank balance of 10.000,00 € and the booked transactions of the last 90 days, because the user canceled the TAN for older transactions
+- **WHEN** the user exports all data, imports the file into an empty database, a normal refresh brings no new transactions, and a later refresh brings the full history with older booked transactions that add up to -500,00 € and a bank balance of 10.000,00 €
+- **THEN** the last bar shows 10.000,00 €, not 9.500,00 €
+
+#### Scenario: A failed write keeps the transactions, the initial balance, and the note together
+
+- **GIVEN** older transactions of "Giro" may be missing, and its initial balance follows the bank balance
+- **WHEN** a refresh brings the full history, and the app cannot write it to the database
+- **THEN** "Giro" keeps its transactions and its initial balance, and the account view still says that older transactions may be missing
+- **AND** the next refresh that brings the full history and is written sets the initial balance, and the last bar shows the bank balance
 
 ### Requirement: Initial balance of an account from before
 

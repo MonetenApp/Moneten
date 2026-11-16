@@ -83,6 +83,8 @@ public struct FinTSConnector: BankConnector {
 	let inactivity: TimeInterval
 	/// How long the helper may take to end after a cancel before it is terminated.
 	let grace: TimeInterval
+	/// How long a terminated helper may take to end before it is killed.
+	let killAfter: TimeInterval
 	/// Judges the certificate chain of the bank's server: `verdict`, unless a test holds the check.
 	let trust: @Sendable (_ host: String, _ chain: [Data]) -> String
 
@@ -101,13 +103,14 @@ public struct FinTSConnector: BankConnector {
 	}
 	#endif
 
-	init(helper: Helper, productID: String?, version: String, inactivity: TimeInterval = 30, grace: TimeInterval = 5,
+	init(helper: Helper, productID: String?, version: String, inactivity: TimeInterval = 30, grace: TimeInterval = 5, killAfter: TimeInterval = 2,
 		trust: @escaping @Sendable (_ host: String, _ chain: [Data]) -> String = FinTSConnector.verdict) {
 		self.helper = helper
 		self.productID = productID
 		self.version = version
 		self.inactivity = inactivity
 		self.grace = grace
+		self.killAfter = killAfter
 		self.trust = trust
 	}
 
@@ -150,7 +153,8 @@ public struct FinTSConnector: BankConnector {
 		}
 	}
 
-	/// Fetches all requested accounts in one dialog with the bank.
+	/// Fetches all requested accounts in one dialog with the bank. Each result says whether its transactions may
+	/// miss older ones, and the merge keeps that mark with the account.
 	public func refresh(_ request: RefreshRequest, _ session: SyncSession) async throws -> ConnectorReport {
 		let today = Day.today()
 		var command = try command("refresh", request.access, request.state)
@@ -192,7 +196,8 @@ public struct FinTSConnector: BankConnector {
 	}
 
 	/// The first day to ask the bank for. A first and an enforced refresh ask for the full history.
-	/// Any other asks for no more than 90 days, so that the bank needs no TAN for older transactions.
+	/// Any other asks for no more than 90 days, so that the bank needs no TAN for older transactions. The
+	/// helper asks for the same 90 days when the user cancels a challenge for older transactions.
 	static func firstDay(_ since: Day?, today: Day) -> Day? {
 		since.map { max($0, today.adding(days: -90)) }
 	}
@@ -215,7 +220,7 @@ public struct FinTSConnector: BankConnector {
 		let watchdog = Watchdog(after: inactivity)
 		let asks = OpenAsks(watchdog: watchdog)
 		let rejections = Rejections(session: session)
-		let process = try HelperProcess(executable: helper.executable, arguments: helper.arguments, grace: grace, onLine: { line in
+		let process = try HelperProcess(executable: helper.executable, arguments: helper.arguments, grace: grace, killAfter: killAfter, onLine: { line in
 			watchdog.received()
 			rejections.read(line)
 		},
@@ -225,8 +230,7 @@ public struct FinTSConnector: BankConnector {
 		var helperLeft = false
 		// A certificate check can wait for the network, for example to fetch an intermediate certificate
 		// that the server left out. A serial queue of its own runs on the overcommitting root queue of
-		// Dispatch, so the wait holds no thread of Swift concurrency, where the timers and the other
-		// refreshes run.
+		// Dispatch, so the wait holds no thread of Swift concurrency, where the other refreshes run.
 		let checks = DispatchQueue(label: "io.github.moneten.fints.trust")
 		// The timer runs from the first write, so a helper that never reads its command times out. The
 		// command goes out before the cancellation handler, so a cancel always follows it.
@@ -248,6 +252,8 @@ public struct FinTSConnector: BankConnector {
 								do {
 									// The user changed the TAN method while the dialog waited for the approval.
 									if case let .tanMethod(method) = try await task.value { process.send(Answer(id: id, method: method)) }
+								} catch is OlderTransactionsSkipped {
+									process.send(Answer(id: id, skip: true))
 								} catch where !task.isCancelled { process.fail(error) } catch {}
 							}
 							continue
@@ -258,6 +264,9 @@ public struct FinTSConnector: BankConnector {
 						} catch is CancellationError where asks.closed && !Task.isCancelled {
 							helperLeft = true
 							break reading
+						} catch is OlderTransactionsSkipped {
+							process.send(Answer(id: id, skip: true))
+							continue
 						}
 						if ask.kind != "tanMethod", case let .tanMethod(method) = answer {
 							process.send(Answer(id: id, method: method))
@@ -399,7 +408,7 @@ private final class Watchdog: Sendable {
 
 	private func arm(_ generation: Int?) {
 		guard let generation else { return }
-		DispatchQueue.global().asyncAfter(deadline: .now() + seconds) { [self] in
+		HelperProcess.timers.asyncAfter(deadline: .now() + seconds) { [self] in
 			state.withLock { $0.generation == generation && $0.unread == 0 ? $0.expiry : nil }?()
 		}
 	}

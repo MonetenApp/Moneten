@@ -54,6 +54,131 @@ struct OpeningBalanceTests {
 		#expect(bars(ledger) == bars(stored))
 	}
 
+	@Test("While older transactions may be missing, the opening balance follows the bank balance, and the full history sets it, so 10.000,00 € never shows as 9.500,00 €")
+	func olderTransactionsMissing() throws {
+		let store = try makeStore([giro])
+		var ledger = try store.loadLedger()
+		func merge(_ rows: [Transaction], balance: Int64, from: Day?, missesOlder: Bool) throws {
+			let result = RefreshResult(balance: Money(minorUnits: balance, currency: "EUR"), balanceDate: Date(),
+				transactions: FetchedTransactions(rows: rows, from: from), isComplete: from == nil, missesOlder: missesOlder)
+			ledger.apply(try store.merge(.refresh(result), into: giro.id))
+		}
+		func computed() throws -> Int64 {
+			let stored = try store.loadLedger()
+			return stored.computedBalance(of: try #require(stored.account(giro.id))).minorUnits
+		}
+		// The user canceled the TAN for older transactions, so the first refresh brought 90 days.
+		try merge(quarter, balance: 1_000_000, from: today.adding(days: -90), missesOlder: true)
+		#expect(try computed() == 1_000_000)
+		#expect(try store.loadLedger().account(giro.id)?.initialBalanceIsSet == false)
+		// A normal refresh while the mark stays leaves the opening balance open.
+		try merge([], balance: 1_000_000, from: today.adding(days: -14), missesOlder: true)
+		#expect(try store.loadLedger().account(giro.id)?.initialBalanceIsSet == false)
+		// "Refresh Account (enforced)" brings older rows of -500,00 €. Before, the computed balance showed 9.500,00 €.
+		let older = [row(200, -30_000, "Insurance"), row(150, -20_000, "Card")]
+		try merge(older + quarter, balance: 1_000_000, from: nil, missesOlder: false)
+		#expect(try computed() == 1_000_000)
+		#expect(try store.loadLedger().account(giro.id)?.initialBalanceIsSet == true)
+		#expect(ledger.computedBalance(of: try #require(ledger.account(giro.id))).minorUnits == 1_000_000)
+		// From then on the opening balance stays, and a later difference is for the calibration.
+		let set = try #require(try store.loadLedger().account(giro.id)?.initialBalanceMinor)
+		try merge([row(300, -7_000, "Card")], balance: 1_000_000, from: today.adding(days: -14), missesOlder: false)
+		#expect(try store.loadLedger().account(giro.id)?.initialBalanceMinor == set)
+	}
+
+	@Test("The mark of missing older transactions goes through an export and an import, so the full history after it still meets 10.000,00 €")
+	func olderTransactionsMissingAfterImport() throws {
+		let source = try makeStore([giro])
+		// The user canceled the TAN for older transactions, so the first refresh brought 90 days.
+		_ = try source.merge(.refresh(RefreshResult(balance: Money(minorUnits: 1_000_000, currency: "EUR"), balanceDate: Date(),
+			transactions: FetchedTransactions(rows: quarter, from: today.adding(days: -90)), missesOlder: true)), into: giro.id)
+		let file = try source.exportAllData().json()
+		let target = try Vault(folder: DataFolder(root: folder.root.appendingPathComponent("target")))
+			.create(password: "korrekt-pferd-batterie-heftklammer", starterCategories: [])
+		try target.importAllData(try AllData(json: file))
+		// A normal refresh after the import starts before the last fetch, so it misses nothing of its own.
+		_ = try target.merge(.refresh(RefreshResult(balance: Money(minorUnits: 1_000_000, currency: "EUR"), balanceDate: Date(),
+			transactions: FetchedTransactions(rows: [], from: today.adding(days: -14)))), into: giro.id)
+		#expect(try target.loadLedger().account(giro.id)?.initialBalanceIsSet == false)
+		// "Refresh Account (enforced)" brings older rows of -500,00 €. Before, the computed balance showed 9.500,00 €.
+		let older = [row(200, -30_000, "Insurance"), row(150, -20_000, "Card")]
+		_ = try target.merge(.refresh(RefreshResult(balance: Money(minorUnits: 1_000_000, currency: "EUR"), balanceDate: Date(),
+			transactions: FetchedTransactions(rows: older + quarter, from: nil), isComplete: true)), into: giro.id)
+		let stored = try target.loadLedger()
+		#expect(stored.computedBalance(of: try #require(stored.account(giro.id))).minorUnits == 1_000_000)
+	}
+
+	@Test("A failed write keeps the rows, the opening balance, and the mark together, and the written full history clears the mark once",
+		arguments: ["INSERT ON bankTransaction", "UPDATE ON account"])
+	func failedWriteKeepsMark(refused: String) throws {
+		let store = try makeStore([giro])
+		var ledger = try store.loadLedger()
+		func refresh(_ rows: [Transaction], from: Day?, missesOlder: Bool = false) -> Delivery {
+			.refresh(RefreshResult(balance: Money(minorUnits: 1_000_000, currency: "EUR"), balanceDate: Date(),
+				transactions: FetchedTransactions(rows: rows, from: from), isComplete: from == nil, missesOlder: missesOlder))
+		}
+		ledger.apply(try store.merge(refresh(quarter, from: today.adding(days: -90), missesOlder: true), into: giro.id))
+		let before = try store.loadLedger()
+		let marked = try #require(before.account(giro.id))
+		#expect(marked.missesOlderTransactions)
+		#expect(!marked.initialBalanceIsSet)
+		try store.queue.write { db in
+			try db.execute(sql: "CREATE TRIGGER refuse BEFORE \(refused) BEGIN SELECT RAISE(ABORT, 'synthetic failure'); END")
+		}
+		let older = [row(200, -30_000, "Insurance"), row(150, -20_000, "Card")]
+		#expect(throws: DatabaseError.self) { try store.merge(refresh(older + quarter, from: nil), into: giro.id) }
+		let failed = try store.loadLedger()
+		#expect(failed.account(giro.id) == marked)
+		#expect(failed.transactions(ofAccount: giro.id).count == before.transactions(ofAccount: giro.id).count)
+		try store.queue.write { db in try db.execute(sql: "DROP TRIGGER refuse") }
+		ledger.apply(try store.merge(refresh(older + quarter, from: nil), into: giro.id))
+		let stored = try store.loadLedger()
+		let full = try #require(stored.account(giro.id))
+		#expect(!full.missesOlderTransactions)
+		#expect(full.initialBalanceIsSet)
+		#expect(stored.computedBalance(of: full).minorUnits == 1_000_000)
+		#expect(ledger.account(giro.id)?.missesOlderTransactions == false)
+		#expect(ledger.account(giro.id)?.initialBalanceMinor == full.initialBalanceMinor)
+		// A pause of more than 90 days later leaves a gap between rows. The note comes back, but the opening balance
+		// stays, and the calibration resolves the gap.
+		ledger.apply(try store.merge(refresh([row(5, -7_000, "Card")], from: today.adding(days: -90), missesOlder: true), into: giro.id))
+		let paused = try #require(try store.loadLedger().account(giro.id))
+		#expect(paused.missesOlderTransactions)
+		#expect(paused.initialBalanceMinor == full.initialBalanceMinor)
+		#expect(paused.initialBalanceIsSet)
+	}
+
+	@Test("v21 moves a mark that a debug build kept in the state of a FinTS access into the account, once")
+	func markMovesFromState() throws {
+		let queue = try DatabaseQueue()
+		try Schema.migrator.migrate(queue, upTo: "v20")
+		let fints = AccessRecord(id: UUID(), source: .fints(bankCode: "12030000", url: URL(string: "https://fints.example.com/fints")!),
+			bankName: "Musterbank", loginName: "erika77",
+			state: Data(#"{"passport":"rO0ABQE=","olderMayBeMissing":["DE02120300000000202051"]}"#.utf8))
+		let plain = AccessRecord(id: UUID(), source: .fints(bankCode: "12030000", url: URL(string: "https://fints.example.com/fints")!),
+			bankName: "Musterbank", loginName: "max55", state: Data([0xAC, 0xED, 0x00, 0x05, 0x02]))
+		let marked = UUID()
+		let savings = UUID()
+		let other = UUID()
+		try queue.write { db in
+			try fints.insert(db)
+			try plain.insert(db)
+			// The columns of v20: v21 adds the mark, which the record type would write.
+			for (id, access, remoteID) in [(marked, fints.id, "DE02120300000000202051"), (savings, fints.id, "1234567890"), (other, plain.id, "DE02120300000000202051")] {
+				try db.execute(sql: """
+					INSERT INTO account (id, position, name, kind, source, currency, initialBalanceMinor, isClosed, accessID, remoteID)
+					VALUES (?, 0, 'Giro', 'giro', 'bank', 'EUR', 0, 0, ?, ?)
+					""", arguments: [id, access, remoteID])
+			}
+		}
+		try Schema.migrator.migrate(queue)
+		let store = Store(queue: queue)
+		let ledger = try store.loadLedger()
+		#expect([marked, savings, other].map { ledger.account($0)?.missesOlderTransactions } == [true, false, false])
+		#expect(try store.state(of: fints.id) == AccessState(Data([0xAC, 0xED, 0x00, 0x05, 0x01])))
+		#expect(try store.state(of: plain.id) == AccessState(Data([0xAC, 0xED, 0x00, 0x05, 0x02])))
+	}
+
 	@Test("A balance whose transactions failed does not set the opening balance, so the next full refresh still does")
 	func failedTransactions() throws {
 		let store = try makeStore([giro])
@@ -276,8 +401,8 @@ struct OpeningBalanceTests {
 		let cash = Account(position: 3, name: "Cash", kind: .cash, source: .offline, initialBalanceMinor: 7_000)
 		let fetched = Account(position: 4, name: "Giro", kind: .giro, source: .bank, bankBalanceMinor: 30_000, initialBalanceMinor: 25_000)
 		let depot = Account(position: 5, name: "Depot", kind: .portfolio, source: .migrated, bankBalanceMinor: 1_000_000, initialBalanceMinor: 900_000)
-		try insertOldAccounts(queue, [travel, wallet, household, cash, fetched, depot])
-		try insertOldRows(queue, [
+		try insertOld(queue, [travel, wallet, household, cash, fetched, depot])
+		try insertOld(queue, [
 			Transaction(accountID: travel.id, bookingDate: day, amountMinor: -2_000, currency: "USD", name: "Diner New York", sourceID: "moneymoney:1"),
 			Transaction(accountID: household.id, bookingDate: day, amountMinor: -480, name: "Bäckerei Gutbrot"),
 			Transaction(accountID: household.id, bookingDate: day, amountMinor: -300, name: "Kiosk", isPending: true, sourceID: "moneymoney:4"),
@@ -301,9 +426,9 @@ struct OpeningBalanceTests {
 		let store = Store(queue: queue)
 		let day = Day(year: 2026, month: 11, day: 2)
 		let wallet = Account(position: 0, name: "Wallet", kind: .cash, source: .migrated, bankBalanceMinor: 50_000, initialBalanceMinor: 50_000)
-		try insertOldAccounts(queue, [wallet])
+		try insertOld(queue, [wallet])
 		// The migrated pending row "moneymoney:9" as a file import leaves it when it books the row.
-		try insertOldRows(queue, [Transaction(accountID: wallet.id, bookingDate: day, amountMinor: -300, name: "Kiosk", sourceID: "moneymoney-booked:9")])
+		try insertOld(queue, [Transaction(accountID: wallet.id, bookingDate: day, amountMinor: -300, name: "Kiosk", sourceID: "moneymoney-booked:9")])
 		try Schema.migrator.migrate(queue)
 
 		let ledger = try store.loadLedger()
@@ -326,22 +451,16 @@ struct OpeningBalanceTests {
 		try Schema.migrator.migrate(queue, upTo: "v14")
 		let store = Store(queue: queue)
 		let travel = Account(position: 0, name: "Travel", kind: .creditCard, source: .migrated, currency: "CHF")
-		try insertOldAccounts(queue, [travel])
+		try insertOld(queue, [travel])
 		try insertDeletedRow(queue, accountID: travel.id, sourceID: "moneymoney:1", amountMinor: -2_000)
 		try Schema.migrator.migrate(queue)
 		#expect(try store.deletedTransactions().map(\.currency) == ["CHF"])
 	}
 
-	/// Rows as a database at an older version stores them, with only the columns that its table has.
-	func insertOldRows(_ queue: DatabaseQueue, _ rows: [Transaction]) throws {
+	/// Records as a database of an older version stores them, with only the columns that its table has then.
+	func insertOld(_ queue: DatabaseQueue, _ records: [some EncodableRecord & TableRecord]) throws {
 		try queue.write { db in
-			for row in rows { try row.insertAtOlderVersion(db) }
-		}
-	}
-
-	func insertOldAccounts(_ queue: DatabaseQueue, _ accounts: [Account]) throws {
-		try queue.write { db in
-			for a in accounts { try a.insertAtOlderVersion(db) }
+			for record in records { try record.insertOld(db) }
 		}
 	}
 

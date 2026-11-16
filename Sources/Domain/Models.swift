@@ -97,12 +97,18 @@ public struct Account: Identifiable, Hashable, Sendable, Codable {
 	public var refreshError: RefreshError?
 	/// "Refresh" in the account settings: how often the automatic refresh fetches the account.
 	public var refreshInterval: RefreshInterval
+	/// Older transactions of the account may be missing in the app, because a refresh fetched
+	/// less than the time since its last successful fetch, such as after a canceled TAN for older transactions.
+	/// It goes with the account, so a lock, a restart, and an export and import keep it, and `Store.merge` writes it
+	/// in the same transaction as the rows of the refresh. While it is set, each refresh derives the initial balance
+	/// again, and the refresh that brings the full history clears it.
+	public var missesOlderTransactions: Bool
 
 	public init(id: UUID = UUID(), groupID: UUID? = nil, position: Int, name: String, kind: AccountKind, source: AccountSource, currency: String = "EUR",
 		iban: String? = nil, bic: String? = nil, accountNumber: String? = nil, bankCode: String? = nil, bankName: String? = nil, owner: String? = nil,
 		bankBalanceMinor: Int64? = nil, bankBalanceDate: Date? = nil, initialBalanceMinor: Int64 = 0, initialBalanceIsSet: Bool = false, initialBalanceIsDerived: Bool = false, isClosed: Bool = false, comment: String? = nil, sourceID: String? = nil,
 		color: String? = nil, accessID: UUID? = nil, remoteID: String? = nil, refreshedAt: Date? = nil, refreshError: RefreshError? = nil,
-		refreshInterval: RefreshInterval = .everyTwoHours) {
+		refreshInterval: RefreshInterval = .everyTwoHours, missesOlderTransactions: Bool = false) {
 		self.id = id
 		self.groupID = groupID
 		self.position = position
@@ -130,6 +136,7 @@ public struct Account: Identifiable, Hashable, Sendable, Codable {
 		self.refreshedAt = refreshedAt
 		self.refreshError = refreshError
 		self.refreshInterval = refreshInterval
+		self.missesOlderTransactions = missesOlderTransactions
 	}
 
 	public var isOffline: Bool { source == .offline }
@@ -205,11 +212,13 @@ public struct Account: Identifiable, Hashable, Sendable, Codable {
 	}
 
 	/// Sets the initial balance, so that the computed balance meets the bank balance: at the first refresh with a
-	/// bank balance, and again when a refresh passes a manual row of a derived value. `rows` are all live rows of the account.
+	/// bank balance, and again when a refresh passes a manual row of a derived value. `rows` are all live rows of the
+	/// account. It is set for good unless `missesOlderTransactions`: then the next refresh derives it again, and the
+	/// one that brings the full history sets it.
 	mutating func deriveInitialBalance(from rows: some Sequence<Transaction>, calendar: Calendar = .current) {
 		guard derivesInitialBalance || followsBankBalance, let value = initialBalanceMeetingBankBalance(of: rows, calendar: calendar) else { return }
 		initialBalanceMinor = value
-		initialBalanceIsSet = true
+		initialBalanceIsSet = !missesOlderTransactions
 		initialBalanceIsDerived = true
 	}
 }

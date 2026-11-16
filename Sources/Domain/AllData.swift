@@ -345,6 +345,8 @@ private struct AccountEntry: Codable {
 	var refreshedAt: Date?
 	var refreshError: RefreshError?
 	var refreshInterval: RefreshInterval
+	/// Optional, so that a file from before reads as false.
+	var missesOlderTransactions: Bool?
 
 	init(_ a: Account) {
 		id = a.id
@@ -374,6 +376,7 @@ private struct AccountEntry: Codable {
 		refreshedAt = a.refreshedAt
 		refreshError = a.refreshError
 		refreshInterval = a.refreshInterval
+		missesOlderTransactions = a.missesOlderTransactions
 	}
 
 	func account() throws -> Account {
@@ -384,7 +387,7 @@ private struct AccountEntry: Codable {
 			initialBalanceMinor: try AmountText.minorUnits(initialBalance, currency), initialBalanceIsSet: initialBalanceIsSet,
 			initialBalanceIsDerived: initialBalanceIsDerived == true, isClosed: isClosed,
 			comment: comment, sourceID: sourceID, color: color, accessID: accessID, remoteID: remoteID, refreshedAt: refreshedAt,
-			refreshError: refreshError, refreshInterval: refreshInterval)
+			refreshError: refreshError, refreshInterval: refreshInterval, missesOlderTransactions: missesOlderTransactions ?? false)
 	}
 }
 

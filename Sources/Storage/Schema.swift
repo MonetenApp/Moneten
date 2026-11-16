@@ -344,13 +344,38 @@ enum Schema {
 				t.add(column: "original", .text)
 			}
 		}
-		// The mark of a row that the user added with "Add Transaction..." (add-offline-accounts). It comes after v24
-		// in the list, because GRDB applies the migrations in the order of registration and v24 shipped first.
+		// Registered after v24, which landed first. The mark of missing older transactions goes with the account (#264),
+		// so an export keeps it and the merge writes it with the rows. A debug build before it kept the mark in the state
+		// of a FinTS access, which this moves once.
+		m.registerMigration("v21") { db in
+			try db.alter(table: "account") { t in
+				t.add(column: "missesOlderTransactions", .boolean).notNull().defaults(to: false)
+			}
+			for row in try Row.fetchAll(db, sql: "SELECT id, source, state FROM access WHERE state IS NOT NULL") {
+				guard let source = try? JSONDecoder().decode(AccessSource.self, from: Data((row["source"] as String).utf8)), case .fints = source,
+					let marked = try? JSONDecoder().decode(MarkedFinTSState.self, from: row["state"] as Data) else { continue }
+				let access: UUID = row["id"]
+				for remoteID in marked.olderMayBeMissing {
+					try db.execute(sql: "UPDATE account SET missesOlderTransactions = 1 WHERE accessID = ? AND remoteID = ?", arguments: [access, remoteID])
+				}
+				try db.execute(sql: "UPDATE access SET state = ? WHERE id = ?", arguments: [marked.passport, access])
+			}
+		}
+		// The mark of a row that the user added with "Add Transaction..." (add-offline-accounts). It comes after v24 and
+		// v21 in the list, because GRDB applies the migrations in the order of registration and both shipped first.
 		m.registerMigration("v23") { db in
 			try db.alter(table: "bankTransaction") { t in t.add(column: "isManual", .boolean).notNull().defaults(to: false) }
 			// The database does not tell a derived value from one that the user entered, so every stored value stays as it is.
 			try db.alter(table: "account") { t in t.add(column: "initialBalanceIsDerived", .boolean).notNull().defaults(to: false) }
 		}
 		return m
+	}
+
+	/// The state of a FinTS access with marks, as a debug build before v21 wrote it: JSON with the passport of the
+	/// helper and the account numbers or IBANs whose older transactions may be missing. A state without marks is
+	/// the passport alone, a Java object stream that starts with the bytes AC ED and never reads as JSON.
+	private struct MarkedFinTSState: Decodable {
+		var passport: Data?
+		var olderMayBeMissing: [String]
 	}
 }

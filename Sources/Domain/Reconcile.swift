@@ -85,9 +85,10 @@ public struct Reconciliation: Sendable, Equatable {
 	/// Deleted rows that keep out a row of a migration and take its source ID, so the balance of a migrated account
 	/// counts them as rows of the source while the source has them. Only a migration fills it.
 	public internal(set) var relinked: [DeletedTransaction.Relink] = []
-	/// The account with the balance and the date of this refresh, and the initial balance that follows from them on
-	/// its first refresh with a balance, or when the day of the balance passes a manual row of a derived value. A file
-	/// gives it only when a manual row that it matches moves a derived initial balance.
+	/// The account with the balance and the date of this refresh, and the mark of missing older transactions. On its
+	/// first refresh with a balance, or when the day of the balance passes a manual row of a derived value, it also
+	/// has the initial balance that follows from them. A file gives it only when a manual row that it matches moves a
+	/// derived initial balance. Nil when nothing of the account changed.
 	public internal(set) var account: Account?
 	/// The positions that replace those of the account, with the IDs of the stored positions of the same
 	/// securities. Nil when the delivery brought none.
@@ -229,17 +230,21 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored all: [
 	}
 	// A balance whose transactions failed would set the value without the rows that the next refresh brings.
 	var rowsFailed = false
+	var balanceArrived = false
 	var a = account
 	if case let .refresh(result) = delivery {
 		rowsFailed = result.transactionFailure != nil
+		// The mark goes into the same write as the rows, so a failed merge changes neither.
+		a.missesOlderTransactions = result.missesOlder(after: account.missesOlderTransactions)
 		if let balance = result.balance, balance.currency == account.currency {
 			a.bankBalanceMinor = balance.minorUnits
 			a.bankBalanceDate = result.balanceDate ?? now
 			if result.isPortfolio { a.kind = .portfolio }
-			r.account = a
+			balanceArrived = true
 		}
+		if balanceArrived || a != account { r.account = a }
 	}
-	if !rowsFailed, (a.derivesInitialBalance && r.account != nil) || a.followsBankBalance && passesManualRow(of: all, from: account, to: a) {
+	if !rowsFailed, (a.derivesInitialBalance && balanceArrived) || a.followsBankBalance && passesManualRow(of: all, from: account, to: a) {
 		// The first refresh with a balance derives the initial balance. A new day of the bank balance that passes a
 		// manual row sets a derived one by the same rule, whether the bank booked the row or not: the fresh bank
 		// balance is the truth, so this also takes in a difference that an older bank row left. A row of the bank

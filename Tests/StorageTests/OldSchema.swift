@@ -1,9 +1,9 @@
 import GRDB
 
 extension EncodableRecord where Self: TableRecord {
-	/// Inserts the record as a database at an older version stores it, with only the columns that its table has
-	/// there. A record of today also has the columns that later migrations add.
-	func insertAtOlderVersion(_ db: Database) throws {
+	/// Inserts the record as a database of an older version stores it, with only the columns that its table has
+	/// then. The record type of today writes every column, also one that a later migration adds.
+	func insertOld(_ db: Database) throws {
 		let columns = Set(try db.columns(in: Self.databaseTableName).map(\.name))
 		let values = try databaseDictionary.filter { columns.contains($0.key) }
 		let names = values.keys.map { "\"\($0)\"" }.joined(separator: ", ")

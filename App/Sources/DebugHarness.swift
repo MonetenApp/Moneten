@@ -238,7 +238,8 @@ final class DebugHarness {
 					("interval", .state(a.refreshInterval)), ("balance", .presence(a.bankBalanceMinor != nil)), ("rows", .count(model.ledger.transactions(ofAccount: a.id).count)),
 					("new", .count(model.ledger.newTransactionCounts[a.id] ?? 0)),
 					("historyStart", .day(model.bankHistories[a.id].flatMap { if case let .startsAt(day) = $0 { day } else { nil } })),
-					("noTransactions", .flag(model.bankHistories[a.id] == .noTransactions)))
+					("noTransactions", .flag(model.bankHistories[a.id] == .noTransactions)),
+					("olderMayBeMissing", .flag(a.missesOlderTransactions)))
 			}
 			// Whether the status line shows a text, without the text, which names the bank of an access.
 			log("status", ("line", .presence(model.refreshStatus != nil)), ("accesses", .count(model.accesses.count)), ("bankNotices", .count(model.bankNotices.waiting.count)))
