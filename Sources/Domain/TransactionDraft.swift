@@ -73,11 +73,11 @@ public enum AmountProblem: Error, Hashable, Sendable {
 
 	public var message: String {
 		switch self {
-		case .missing: "Enter an amount."
-		case .notANumber: "The amount is not a number."
-		case .tooManyDecimals: "The amount has more decimal places than its currency."
-		case .zero: "The amount should not be zero."
-		case .tooLarge: "The amount is too large."
+		case .missing: String(localized: "Enter an amount.")
+		case .notANumber: String(localized: "The amount is not a number.")
+		case .tooManyDecimals: String(localized: "The amount has more decimal places than its currency.")
+		case .zero: String(localized: "The amount should not be zero.")
+		case .tooLarge: String(localized: "The amount is too large.")
 		}
 	}
 }
