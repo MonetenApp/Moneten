@@ -381,15 +381,28 @@ final class AppModel {
 
 	// MARK: Opening and locking
 
+	/// What the window shows while the database opens: "Opening database..." or "Upgrading database...".
+	/// Nil while nothing opens.
+	private(set) var opening: String?
+	/// Why the lock screen asks for the password although an unlock setting is on, such as a Keychain error
+	/// or a password in the Keychain that does not open a database restored from a backup.
+	private(set) var lockNotice: String?
+
 	func start() {
+		Task { await startOpening() }
+	}
+
+	private func startOpening() async {
+		guard opening == nil else { return }
+		phase = .starting
 		do {
 			switch try vault.state() {
 			case .empty:
 				phase = .firstLaunch
 			case .randomKey:
+				hasPassword = false
 				do {
-					hasPassword = false
-					try open(try vault.openWithRandomKey())
+					try await openAway { vault, upgrading in try vault.openWithRandomKey(upgrading: upgrading) }
 				} catch Vault.Failure.incorrectPassword {
 					// Setting the first password stopped after the key had changed. The password opens it.
 					hasPassword = true
@@ -397,52 +410,133 @@ final class AppModel {
 				}
 			case .password:
 				hasPassword = true
-				if UserDefaults.standard.bool(forKey: Preference.unlockAutomatically), let pw = vault.storedPassword(), let s = try? vault.open(password: pw) {
-					try open(s)
-				} else {
+				guard UserDefaults.standard.bool(forKey: Preference.unlockAutomatically) else {
+					phase = .locked
+					return
+				}
+				let stored: String?
+				do { stored = try vault.storedPassword() } catch {
+					lockNotice = String(describing: error)
+					phase = .locked
+					return
+				}
+				guard let stored else {
+					phase = .locked
+					return
+				}
+				do {
+					try await openAway { vault, upgrading in try vault.open(password: stored, upgrading: upgrading) }
+				} catch Vault.Failure.incorrectPassword {
+					lockNotice = Self.staleKeychainNotice
 					phase = .locked
 				}
 			}
+		} catch is OpenOvertaken {
+			// Another step, such as an unlock with the password, decided what the window shows.
 		} catch {
-			phase = .failed(String(describing: error))
+			phase = .failed(vault.explanation(of: error))
 		}
+	}
+
+	/// An opening whose result arrived after the app had moved on, for example to a new database.
+	private struct OpenOvertaken: Error {}
+
+	enum UnlockResult {
+		case unlocked
+		case incorrectPassword
+		/// Another unlock is still opening the database, or finished first. The password was not tried.
+		case busy
+		/// The password opened nothing because the database could not be opened. The window shows why.
+		case failed
+	}
+
+	private static let staleKeychainNotice =
+		"The password in the Keychain does not open this database, for example after a backup was put in its place. Enter the database password. Moneten then stores it in the Keychain again."
+
+	/// Opens the database away from the main thread, so that the window can show what happens.
+	/// When the app moved on while the database opened, the new store is closed and nothing is unlocked.
+	private func openAway(_ opener: @escaping @Sendable (Vault, @escaping @Sendable () -> Void) throws -> Store) async throws {
+		let phaseBefore = phase
+		opening = "Opening database..."
+		defer { opening = nil }
+		let vault = vault
+		let store = try await Task.detached {
+			try opener(vault) {
+				Task { @MainActor [weak self] in
+					if self?.opening != nil { self?.opening = "Upgrading database..." }
+				}
+			}
+		}.value
+		guard phase == phaseBefore, self.store == nil else {
+			try? store.close()
+			throw OpenOvertaken()
+		}
+		try open(store)
 	}
 
 	func createDatabase(password: String?) {
 		do {
 			let store = try vault.create(password: password, starterCategories: StarterCategories.make(language: starterLanguage))
+			// A new database starts without the unlock settings of the database that was here before.
+			for key in [Preference.unlockAutomatically, Preference.unlockWithTouchID, Preference.unlockWithAppleWatch] {
+				UserDefaults.standard.removeObject(forKey: key)
+			}
 			hasPassword = password != nil
 			try open(store)
 		} catch {
-			phase = .failed(String(describing: error))
+			phase = .failed(vault.explanation(of: error))
 		}
 	}
 
-	/// Returns false for a wrong password.
+	/// A different password in the Keychain, such as the newer one of a database that the user replaced with
+	/// a backup, is replaced after the unlock. A second unlock while one runs returns `.busy`, so the lock
+	/// screen keeps the typed password.
 	@discardableResult
-	func unlock(password: String) -> Bool {
+	func unlock(password: String) async -> UnlockResult {
+		guard opening == nil, phase == .locked else { return phase == .unlocked ? .unlocked : .busy }
 		do {
-			try open(try vault.open(password: password))
-			return true
+			try await openAway { vault, upgrading in try vault.open(password: password, upgrading: upgrading) }
 		} catch Vault.Failure.incorrectPassword {
-			return false
+			return .incorrectPassword
+		} catch is OpenOvertaken {
+			return phase == .unlocked ? .unlocked : .busy
 		} catch {
-			phase = .failed(String(describing: error))
-			return true
+			phase = .failed(vault.explanation(of: error))
+			return .failed
 		}
+		lockNotice = nil
+		do {
+			try vault.refreshStoredPassword(password)
+		} catch {
+			alert = AlertMessage(title: "The database password could not be stored in the Keychain.", message: String(describing: error))
+		}
+		return .unlocked
 	}
 
 	/// The unlock methods whose setting is on. They need the database password in the Keychain.
-	var unlockMethods: [UnlockMethod] {
-		guard hasPassword, vault.storedPassword() != nil else { return [] }
-		return UnlockMethod.allCases.filter { UserDefaults.standard.bool(forKey: $0.preference) }
+	func unlockMethods() -> [UnlockMethod] {
+		guard hasPassword else { return [] }
+		let on = UnlockMethod.allCases.filter { UserDefaults.standard.bool(forKey: $0.preference) }
+		guard !on.isEmpty else { return [] }
+		do {
+			guard try vault.storedPassword() != nil else { return [] }
+		} catch {
+			lockNotice = String(describing: error)
+			return []
+		}
+		return on
 	}
 
 	func unlock(with methods: [UnlockMethod]) {
 		UnlockMethod.authenticate(methods) { ok in
 			Task { @MainActor in
-				guard ok, let pw = self.vault.storedPassword() else { return }
-				self.unlock(password: pw)
+				guard ok else { return }
+				do {
+					guard let pw = try self.vault.storedPassword() else { return }
+					if await self.unlock(password: pw) == .incorrectPassword { self.lockNotice = Self.staleKeychainNotice }
+				} catch {
+					self.lockNotice = String(describing: error)
+				}
 			}
 		}
 	}
@@ -518,18 +612,26 @@ final class AppModel {
 			try vault.setPassword(password, on: store)
 			hasPassword = true
 			alert = AlertMessage(title: "The password has been changed.", message: "From now on, the database password opens Moneten.")
+		} catch let failure as Vault.Failure where failure.passwordChanged {
+			hasPassword = true
+			alert = AlertMessage(title: "The password has been changed.", message: String(describing: failure))
 		} catch {
 			alert = AlertMessage(title: "Could not change password of database.", message: String(describing: error))
 		}
 	}
 
+	/// Returns the error for the sheet, or nil when the password has been changed.
 	func changePassword(current: String, new: String) -> String? {
 		guard let store else { return nil }
 		do {
 			try vault.changePassword(current: current, new: new, on: store)
+			alert = AlertMessage(title: "The password has been changed.", message: "")
 			return nil
 		} catch Vault.Failure.incorrectPassword {
 			return "Incorrect password!"
+		} catch let failure as Vault.Failure where failure.passwordChanged {
+			alert = AlertMessage(title: "The password has been changed.", message: String(describing: failure))
+			return nil
 		} catch {
 			return "Could not change password of database. \(error)"
 		}

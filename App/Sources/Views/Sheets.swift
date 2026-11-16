@@ -460,7 +460,6 @@ struct ChangePasswordSheet: View {
 				return false
 			}
 			error = model.changePassword(current: current, new: new)
-			if error == nil { model.alert = AlertMessage(title: "The password has been changed.", message: "") }
 			return error == nil
 		}) {
 			Section {
