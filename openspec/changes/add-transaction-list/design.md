@@ -14,7 +14,11 @@ The first build follows the spec where the task list marks a task as checked. Op
 
 "Edit Transaction..." changes the booking date, the value date, the name, the purpose, and the amount. The first change copies the delivered values of these five fields into `Transaction.original`, and migration `v24` adds its column. A merge finds a row by `sourceValues`, which is `original` for an edited row, so a refresh does not add the transaction again. When a source with IDs delivers changed values, `original` takes them, a field that the user left alone takes them too, and an edited field keeps what the user wrote. A deleted edited row records the delivered values in `DeletedTransaction`. An edit back to the delivered values clears `original`.
 
-A part of a split transaction offers only its category and its comment, so the parts always add up to the amount of the split transaction. A split undoes itself when the delivered amount differs from `original`, also when the user edited the amount. The amount field shows the magnitude next to the type. The one amount without a magnitude in `Int64`, which a complete import accepts, shows without a field and stays as it is.
+A part of a split transaction offers only its category and its comment, so the parts always add up to the amount of the split transaction. A split undoes itself when the delivered amount differs from `original`, also when the user edited the amount. The amount field shows the magnitude next to the type. Every import refuses an amount whose minor units do not fit into `Int64` with room for the opposite sign (`Money(fitting:currency:)`), so every stored transaction amount has a magnitude. The plain `Money(_:currency:)` wraps such an amount around into another one, which the CSV, CAMT, MT940, and FinTS paths passed on before.
+
+A row that the user typed in has no source: it is not fetched and has no source ID and no file identity. `Transaction.edit` writes its values directly and records no `original`, so a file finds the row by the corrected values, and a deleted row records them.
+
+Every gate of `reconcile` that reads the day of a stored row reads `sourceValues`: the pairing, the drop of a pending row, and the protection of a future pending row from a file. An edit that moves such a row into the past therefore keeps it until the booking date of its source.
 
 Only an edited row carries the copy, so the migration rewrites no row. An edited amount counts in every sum, so the computed balance can then differ from the bank balance, which the calibration notice shows.
 

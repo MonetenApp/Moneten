@@ -377,13 +377,18 @@ struct AllDataTests {
 		#expect(throws: AllData.ReadError.notAnExport) { try AllData(json: Data(#"{"format": 5}"#.utf8)) }
 	}
 
-	@Test("An amount at the bounds of the minor units reads exactly, and one beyond them is refused")
+	@Test("A transaction amount at the bounds of the minor units reads exactly, and one without a magnitude or beyond them is refused")
 	func amountBounds() throws {
 		var json = try JSONSerialization.jsonObject(with: try filledStore().exportAllData(at: exportedAt).json()) as! [String: Any]
 		var rows = json["transactions"] as! [[String: Any]]
+		rows[1]["amount"] = "-92233720368547758.07"
+		json["transactions"] = rows
+		#expect(try AllData(json: try JSONSerialization.data(withJSONObject: json)).transactions[1].amountMinor == -Int64.max)
 		rows[1]["amount"] = "-92233720368547758.08"
 		json["transactions"] = rows
-		#expect(try AllData(json: try JSONSerialization.data(withJSONObject: json)).transactions[1].amountMinor == Int64.min)
+		#expect(throws: AllData.ReadError.damaged("at transactions[1], the amount \"-92233720368547758.08\" is too large for a transaction")) {
+			try AllData(json: try JSONSerialization.data(withJSONObject: json))
+		}
 		rows[1]["amount"] = "92233720368547758.08"
 		json["transactions"] = rows
 		#expect(throws: AllData.ReadError.self) { try AllData(json: try JSONSerialization.data(withJSONObject: json)) }

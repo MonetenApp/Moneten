@@ -276,6 +276,14 @@ enum AmountText {
 		return Money(d, currency: currency).minorUnits
 	}
 
+	/// The amount of a transaction, which every import refuses at `Int64.min`, because that amount has no magnitude
+	/// for the amount field of the transaction.
+	static func transactionMinorUnits(_ text: String, _ currency: String) throws -> Int64 {
+		let minorUnits = try minorUnits(text, currency)
+		guard minorUnits != .min else { throw AllData.ReadError.damaged("the amount \"\(text)\" is too large for a transaction") }
+		return minorUnits
+	}
+
 	/// Only the plain form `-1234.56`: `Decimal(string:)` alone reads "1-2" as 1.
 	static func decimal(_ text: String) throws -> Decimal {
 		guard text.wholeMatch(of: /-?[0-9]+(\.[0-9]+)?/) != nil, let d = Decimal(string: text, locale: Locale(identifier: "en_US_POSIX")) else {
@@ -457,7 +465,7 @@ private struct TransactionEntry: Codable {
 		try currencyCode(currency)
 		if version == 1 && needsReview == nil { throw AllData.ReadError.damaged("the key \"needsReview\" is missing") }
 		var t = Transaction(id: id, accountID: accountID, bookingDate: try day(bookingDate), valueDate: try valueDate.map(day),
-			amountMinor: try AmountText.minorUnits(amount, currency), currency: currency, name: name, purpose: purpose,
+			amountMinor: try AmountText.transactionMinorUnits(amount, currency), currency: currency, name: name, purpose: purpose,
 			counterpartyIBAN: counterpartyIBAN, counterpartyBIC: counterpartyBIC, bookingText: bookingText, endToEndReference: endToEndReference,
 			mandateReference: mandateReference, creditorID: creditorID, comment: comment, isChecked: isChecked, isPending: isPending,
 			categoryID: categoryID, categorizedBy: categorizedBy, isNew: isNew, review: version == 1 ? (needsReview == true ? .unclearBooking : nil) : review, isFetched: isFetched, sourceID: sourceID,
@@ -484,7 +492,7 @@ private struct OriginalEntry: Codable {
 	}
 
 	func values(currency: String) throws -> OriginalValues {
-		OriginalValues(bookingDate: try day(bookingDate), valueDate: try valueDate.map(day), amountMinor: try AmountText.minorUnits(amount, currency),
+		OriginalValues(bookingDate: try day(bookingDate), valueDate: try valueDate.map(day), amountMinor: try AmountText.transactionMinorUnits(amount, currency),
 			name: name, purpose: purpose)
 	}
 }

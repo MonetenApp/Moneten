@@ -339,8 +339,10 @@ public struct Transaction: Identifiable, Hashable, Sendable, Codable {
 	/// The editable fields as the source delivered them: `original` after an edit, otherwise the fields themselves.
 	public var sourceValues: OriginalValues { original ?? OriginalValues(self) }
 
-	/// What "Edit Transaction..." writes. The first change keeps the delivered values in `original`, so that a
-	/// later refresh still finds the row and does not add it again. Values equal to the delivered ones clear it.
+	/// What "Edit Transaction..." writes. The first change of a row from a source keeps the delivered values in
+	/// `original`, so that a later refresh still finds the row and does not add it again. Values equal to the
+	/// delivered ones clear it. A row that the user typed in has no source, so a correction replaces its values,
+	/// and a file finds the row by the corrected ones.
 	public mutating func edit(_ values: OriginalValues) {
 		let delivered = sourceValues
 		bookingDate = values.bookingDate
@@ -348,8 +350,11 @@ public struct Transaction: Identifiable, Hashable, Sendable, Codable {
 		amountMinor = values.amountMinor
 		name = values.name
 		purpose = values.purpose
-		original = values == delivered ? nil : delivered
+		original = !hasSource || values == delivered ? nil : delivered
 	}
+
+	/// Whether a bank, a file, or a migration delivered the row. A row that the user typed in has none.
+	var hasSource: Bool { isFetched || sourceID != nil || fileIdentity != nil }
 
 	/// The rule for every sum, such as a balance, a bar of a chart, or the amount of a category. A pending row
 	/// counts like a booked one, except while it waits for review: then the booked row stands for the money.

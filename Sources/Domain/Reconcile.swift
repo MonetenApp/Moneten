@@ -121,7 +121,8 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored: [Tran
 	let released = stored.indices.filter { stored[$0].isPending && !taken.contains($0) }
 	let fresh = rows.indices.filter { partners[$0] == nil && !rows[$0].isPending }
 	let bookings = Bookings(pending: released.map { ($0, stored[$0]) }, booked: fresh.map { ($0, rows[$0]) })
-	let future = Set(released.filter { !stored[$0].isFetched && stored[$0].bookingDate >= today && stored[$0].review == nil })
+	// An edited row counts by the day of its source, as the pairing and the drop below read it.
+	let future = Set(released.filter { !stored[$0].isFetched && stored[$0].sourceValues.bookingDate >= today && stored[$0].review == nil })
 
 	var r = Reconciliation()
 	for (i, delivered) in rows.enumerated() {
@@ -419,7 +420,8 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 				identity = liveMatches[j]!.identity
 				match = liveMatches[j]!
 				fetched = stored[j].isFetched
-				future = !stored[j].isFetched && stored[j].review == nil && stored[j].bookingDate >= today && delivery.covers(stored[j].bookingDate)
+				let day = stored[j].sourceValues.bookingDate
+				future = !stored[j].isFetched && stored[j].review == nil && day >= today && delivery.covers(day)
 			case let .deleted(k):
 				identity = deadMatches[k]!.identity
 				match = deadMatches[k]!
@@ -514,12 +516,13 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 	}
 	func positions(_ ts: [Transaction], indices: Set<Int>) -> [Int: Int] {
 		let keys = Dictionary(uniqueKeysWithValues: indices.map { i in
-			(i, (ts[i].bookingDate, ts[i].createdAt, ts[i].id.uuidString))
+			(i, (ts[i].sourceValues.bookingDate, ts[i].createdAt, ts[i].id.uuidString))
 		})
 		let sorted = indices.sorted { keys[$0]! < keys[$1]! }
 		return ranks(sorted, count: ts.count) { i, j in
 			let key = keys[j]!
-			if ts[i].bookingDate != key.0 { return ts[i].bookingDate < key.0 }
+			let day = ts[i].sourceValues.bookingDate
+			if day != key.0 { return day < key.0 }
 			if ts[i].createdAt != key.1 { return ts[i].createdAt < key.1 }
 			return ts[i].id.uuidString < key.2
 		}

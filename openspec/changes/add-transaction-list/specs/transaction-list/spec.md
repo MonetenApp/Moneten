@@ -288,7 +288,7 @@ The app SHALL offer "Go to" in the context menu of a transaction. The submenu li
 
 ### Requirement: Edit a transaction
 
-The app SHALL let the user change the booking date, the value date, the counterparty name, the purpose, and the amount of a transaction with "Edit Transaction...". A later refresh keeps the changed values and does not add the original again.
+The app SHALL let the user change the booking date, the value date, the counterparty name, the purpose, and the amount of a transaction with "Edit Transaction...". A later refresh or file keeps the changed values and does not add the original again, because the app finds a transaction from a bank, a file, or a migration by the values of that source. A transaction that the user typed in has no source, so the app finds it by the values the user wrote last.
 
 #### Scenario: Correct a purpose
 
@@ -318,11 +318,21 @@ The app SHALL let the user change the booking date, the value date, the counterp
 - **THEN** the window offers the category and the comment of the part, and no date, name, purpose, or amount
 - **AND** the parts still add up to -80,00 €
 
-#### Scenario: An amount the field cannot show
+#### Scenario: Correct a transaction typed in by hand
 
-- **GIVEN** an imported transaction whose amount is the smallest amount the app stores
-- **WHEN** the user chooses "Edit Transaction..."
-- **THEN** the window shows the amount without a field and keeps it when the user confirms
+- **GIVEN** a transaction of -50,00 € to "Bäckerei" on 03.11.2026 that the user typed into the offline account "Kasse"
+- **WHEN** the user changes the amount to -49,90 €
+- **THEN** a CSV file with -49,90 € to "Bäckerei" on 03.11.2026 adds no second row
+- **AND** a CSV file with -50,00 € to "Bäckerei" on 03.11.2026 adds a row
+
+#### Scenario: Move a future transaction from a file into the past
+
+- **GIVEN** a pending transaction of -80,00 € to "Vermieter A" on 20.11.2026 from a file that no refresh has delivered
+- **AND** the user changed it to -70,00 € on 03.11.2026
+- **WHEN** a successful refresh on 16.11.2026 delivers the bank's pending transaction of -80,00 € to "Vermieter A" on 20.11.2026
+- **THEN** the row takes the bank's purpose and still shows -70,00 € on 03.11.2026
+- **AND** the account has one row for the transaction
+- **AND** a successful refresh on 16.11.2026 that does not deliver the transaction keeps the row
 
 #### Scenario: Cancel
 

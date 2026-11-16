@@ -25,10 +25,23 @@ struct EditTransactionTests {
 		return t
 	}
 
-	func merge(_ rows: [Transaction], stored: [Transaction], deleted: [DeletedTransaction] = []) -> Reconciliation {
+	func merge(_ rows: [Transaction], stored: [Transaction], deleted: [DeletedTransaction] = [], at date: Date? = nil) -> Reconciliation {
 		let result = RefreshResult(balance: nil, transactions: FetchedTransactions(rows: rows, from: day(1)))
-		return reconcile(.refresh(result), into: giro, stored: stored, deleted: deleted, rules: Categorizer(ledger: Ledger(accounts: [giro])), now: now)
+		return reconcile(.refresh(result), into: giro, stored: stored, deleted: deleted, rules: Categorizer(ledger: Ledger(accounts: [giro])), now: date ?? now)
 	}
+
+	/// A payment for 20 November, as the bank or a file delivers it.
+	func plannedRent(purpose: String = "Miete November") -> Transaction {
+		Transaction(accountID: giro.id, bookingDate: day(20), amountMinor: -8_000, name: "Vermieter A", purpose: purpose,
+			counterpartyIBAN: "DE02120300000000202051", isPending: true)
+	}
+
+	/// The payment as a file announced it on 12 November, before the bank knows it.
+	func importedRent() throws -> Transaction {
+		try #require(reconcile(.file([plannedRent()]), into: giro, stored: [], deleted: [], rules: Categorizer(ledger: Ledger(accounts: [giro])), now: now).added.first)
+	}
+
+	var sixteenth: Date { Calendar.current.date(from: DateComponents(year: 2026, month: 11, day: 16, hour: 12))! }
 
 	@Test("A corrected purpose stays after a refresh, and the refresh adds no second row")
 	func correctPurpose() {
@@ -131,6 +144,24 @@ struct EditTransactionTests {
 		#expect(r.skipped == 1)
 	}
 
+	@Test("A future file row keeps its edit and its identity when the bank reports the payment, although the edit moved it into the past")
+	func futureFileRowEditedIntoThePast() throws {
+		let mine = edited(try importedRent(), amount: -7_000, on: 3)
+		let r = merge([plannedRent(purpose: "MIETE NOVEMBER DAUERAUFTRAG")], stored: [mine], at: sixteenth)
+		let row = try #require(r.updated.first)
+		#expect(r.added == [])
+		#expect(r.dropped == [])
+		#expect(row.id == mine.id)
+		#expect(row.amountMinor == -7_000 && row.bookingDate == day(3))
+		#expect(row.purpose == "MIETE NOVEMBER DAUERAUFTRAG")
+	}
+
+	@Test("A refresh without the payment keeps a future file row that the edit moved into the past")
+	func emptyRefreshKeepsEditedFutureFileRow() throws {
+		let mine = edited(try importedRent(), amount: -7_000, on: 3)
+		#expect(merge([], stored: [mine], at: sixteenth).dropped == [])
+	}
+
 	@Test("A bank amount change undoes the split of a row whose amount the user edited")
 	func bankChangesEditedSplit() throws {
 		let bank = fetched("LASTSCHRIFT 8837271", sourceID: "bank-1")
@@ -159,19 +190,31 @@ struct EditTransactionTests {
 		#expect(ledger.editsFields(of: other.id))
 		#expect(!ledger.editsFields(of: parts[0].id))
 		#expect(!ledger.editsFields(of: bank.id))
-		let row = try #require(ledger.row(parts[0].id))
-		for changed in [edited(row, purpose: "Detergent", amount: -7_000), edited(bank, amount: -7_000)] {
-			let changes = ledger.changes(from: [changed])
-			ledger.update(changes.transactions, parts: changes.parts)
-		}
-		#expect(ledger.transaction(bank.id)?.amountMinor == -8_000)
-		#expect(ledger.parts(of: bank.id).map(\.amountMinor) == [-2_500, -5_500])
 	}
 
-	@Test("The amount field shows the magnitude, and an amount without one stays as it is")
-	func magnitude() {
-		#expect(Money(minorUnits: -4_990, currency: "EUR").magnitude == Money(minorUnits: 4_990, currency: "EUR"))
-		#expect(Money(minorUnits: 4_990, currency: "EUR").magnitude == Money(minorUnits: 4_990, currency: "EUR"))
-		#expect(Money(minorUnits: .min, currency: "EUR").magnitude == nil)
+	@Test("A row typed in by hand takes the corrected values as its own, so a file finds it by them")
+	func correctManualRow() {
+		let cash = Account(position: 1, name: "Kasse", kind: .cash, source: .offline)
+		func typed(_ amount: Int64) -> Transaction { Transaction(accountID: cash.id, bookingDate: day(3), amountMinor: amount, name: "Bäckerei") }
+		var mine = typed(-5_000)
+		mine.edit(OriginalValues(bookingDate: day(3), valueDate: nil, amountMinor: -4_990, name: "Bäckerei", purpose: ""))
+		#expect(mine.amountMinor == -4_990)
+		#expect(mine.original == nil)
+		func importing(_ row: Transaction) -> Reconciliation {
+			reconcile(.file([row]), into: cash, stored: [mine], deleted: [], rules: Categorizer(ledger: Ledger(accounts: [cash])), now: now)
+		}
+		let corrected = importing(typed(-4_990))
+		#expect(corrected.skipped == 1 && corrected.added == [])
+		#expect(importing(typed(-5_000)).added.count == 1)
+		#expect(DeletedTransaction(mine, deletedAt: now).amountMinor == -4_990)
+	}
+
+	@Test("An amount whose minor units do not fit, or that has no magnitude, is refused instead of turning into another amount")
+	func amountThatDoesNotFit() {
+		#expect(Money(fitting: Decimal(string: "-49.90")!, currency: "EUR") == Money(minorUnits: -4_990, currency: "EUR"))
+		#expect(Money(fitting: Decimal(string: "-92233720368547758.07")!, currency: "EUR")?.minorUnits == -Int64.max)
+		#expect(Money(fitting: Decimal(string: "-92233720368547758.08")!, currency: "EUR") == nil)
+		#expect(Money(fitting: Decimal(string: "92233720368547758.08")!, currency: "EUR") == nil)
+		#expect(Money(fitting: Decimal(string: "1e30")!, currency: "EUR") == nil)
 	}
 }

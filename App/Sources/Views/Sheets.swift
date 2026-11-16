@@ -335,8 +335,6 @@ struct TransactionSheet: View {
 	@State private var purpose = ""
 	@State private var amount = ""
 	@State private var isDeposit = false
-	/// False for the one amount without a magnitude, which the sheet shows without a field and keeps.
-	@State private var editsAmount = true
 	@State private var categoryID: UUID?
 	@State private var comment = ""
 
@@ -345,9 +343,14 @@ struct TransactionSheet: View {
 	/// A new row only goes into an offline account. "Edit Transaction..." changes every row but a part of a split
 	/// (add-transaction-list, task 1.16).
 	private var editable: Bool { transactionID.map(model.ledger.editsFields) ?? (account?.isOffline == true) }
+	/// The typed amount with the sign of the type, nil while it cannot be read or does not fit.
+	private var amountMinor: Int64? {
+		guard let currency = existing?.currency ?? account?.currency, let value = AmountParser.decimal(from: amount) else { return nil }
+		return Money(fitting: isDeposit ? abs(value) : -abs(value), currency: currency)?.minorUnits
+	}
 
 	var body: some View {
-		SheetFrame(title: transactionID == nil ? "New Transaction" : "Edit Transaction", canConfirm: !editable || !editsAmount || AmountParser.decimal(from: amount) != nil, width: 500, onConfirm: save) {
+		SheetFrame(title: transactionID == nil ? "New Transaction" : "Edit Transaction", canConfirm: !editable || amountMinor != nil, width: 500, onConfirm: save) {
 			if let review = existing?.review {
 				Section { Label(review.note, systemImage: "exclamationmark.circle").foregroundStyle(.orange) }
 			}
@@ -367,19 +370,15 @@ struct TransactionSheet: View {
 						}
 					}
 					TextField("Name", text: $name)
-					if editsAmount {
-						Picker("Type", selection: $isDeposit) {
-							Text("Withdrawal").tag(false)
-							Text("Deposit").tag(true)
-						}
-						.pickerStyle(.segmented)
-						TextField("Amount", text: $amount, prompt: Text("0,00"))
-							.multilineTextAlignment(.trailing)
-							.marksUnreadableAmount(amount)
-							.monospacedDigit()
-					} else if let t = existing {
-						LabeledContent("Amount") { AmountText(money: t.amount) }
+					Picker("Type", selection: $isDeposit) {
+						Text("Withdrawal").tag(false)
+						Text("Deposit").tag(true)
 					}
+					.pickerStyle(.segmented)
+					TextField("Amount", text: $amount, prompt: Text("0,00"))
+						.multilineTextAlignment(.trailing)
+						.marksUnreadableAmount(amount)
+						.monospacedDigit()
 					TextField("Purpose", text: $purpose, prompt: Text("Optional"), axis: .vertical).lineLimit(1...4)
 				}
 			}
@@ -413,9 +412,8 @@ struct TransactionSheet: View {
 		name = t.name
 		purpose = t.purpose
 		isDeposit = t.amountMinor > 0
-		if editable {
-			if let magnitude = t.amount.magnitude { amount = Format.editableAmount(magnitude.minorUnits, t.currency) } else { editsAmount = false }
-		}
+		// Every import refuses `Int64.min`, and clamping keeps a row stored before that from stopping the app.
+		if editable { amount = Format.editableAmount(Int64(clamping: t.amountMinor.magnitude), t.currency) }
 		categoryID = t.categoryID
 		comment = t.comment ?? ""
 	}
@@ -425,22 +423,9 @@ struct TransactionSheet: View {
 		guard let account else { return true }
 		var t = existing ?? Transaction(accountID: account.id, bookingDate: Day(date), amountMinor: 0, currency: account.currency, name: "")
 		if editable {
-			let minor: Int64
-			if editsAmount {
-				guard let value = AmountParser.decimal(from: amount) else { return false }
-				minor = Money(abs(value), currency: t.currency).minorUnits * (isDeposit ? 1 : -1)
-			} else {
-				minor = t.amountMinor
-			}
-			if existing != nil {
-				// The first change keeps the values of the source, so that a refresh does not add the row again.
-				t.edit(OriginalValues(bookingDate: Day(date), valueDate: valueDate.map { Day($0) }, amountMinor: minor, name: name, purpose: purpose))
-			} else {
-				t.bookingDate = Day(date)
-				t.name = name
-				t.purpose = purpose
-				t.amountMinor = minor
-			}
+			guard let minor = amountMinor else { return false }
+			// `edit` keeps the values of a source, so that a refresh or a file does not add the row again.
+			t.edit(OriginalValues(bookingDate: Day(date), valueDate: valueDate.map { Day($0) }, amountMinor: minor, name: name, purpose: purpose))
 		}
 		if categoryID != t.categoryID {
 			t.categoryID = categoryID
