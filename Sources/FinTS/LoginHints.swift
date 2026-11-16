@@ -53,6 +53,6 @@ extension BankDirectory.Entry {
 		guard let host = bank.url?.host()?.lowercased() else { return nil }
 		let name = TextFolding.fold(bank.name)
 		let savingsServer = host.contains(".s-fints-pt-") || host.hasSuffix(".s-hbci.de")
-		return savingsServer && !isObsolete && name.contains("sparkasse") && !name.contains("bausparkasse") ? .savingsBank : nil
+		return savingsServer && !isOfMergedBank && name.contains("sparkasse") && !name.contains("bausparkasse") ? .savingsBank : nil
 	}
 }

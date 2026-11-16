@@ -128,16 +128,34 @@ The app SHALL reject a Bankleitzahl that is not in the bank directory, and it SH
 
 #### Scenario: Outdated Bankleitzahl after a bank merger
 
-- **GIVEN** the bank directory marks the Bankleitzahl 10010010 as replaced
-- **WHEN** the user enters an IBAN that contains 10010010
+- **GIVEN** the bank directory marks the Bankleitzahl 21099999 as replaced
+- **WHEN** the user enters an IBAN that contains 21099999
 - **THEN** the app says that the IBAN contains an outdated Bankleitzahl and asks for the current IBAN
 
-#### Scenario: Outdated Bankleitzahl entered or chosen
+### Requirement: Note for the Bankleitzahl of a merged bank
 
-- **GIVEN** the bank directory marks the Bankleitzahl 10010010 as replaced
-- **WHEN** the user enters "10010010", or chooses the bank with 10010010 in the list of matches
-- **THEN** the app says that the Bankleitzahl 10010010 is outdated and asks for the current Bankleitzahl
-- **AND** "Next" stays on the first step
+The app SHALL accept a Bankleitzahl that the bank directory lists for a bank that merged, as it accepts any Bankleitzahl with a FinTS address, and SHALL show a note in the first step that the bank merged and the login may need another Bankleitzahl.
+
+#### Scenario: IBAN of a merged bank
+
+- **GIVEN** the bank directory lists 21099999 as "Sparkasse Altstadt -alt-" with a FinTS address
+- **WHEN** the user enters "DE07 2109 9999 0000 2020 51"
+- **THEN** the app shows "Sparkasse Altstadt -alt-" and the note "This Bankleitzahl belongs to a bank that merged. If the login fails, ask your bank which Bankleitzahl it uses for online banking now."
+- **AND** "Next" leads to the login data
+
+#### Scenario: Merged bank entered or chosen
+
+- **GIVEN** the bank directory lists 21099999 as "Sparkasse Altstadt -alt-" and 21099990 as "Raiffeisenbank Altdorf -alt", both with a FinTS address
+- **WHEN** the user enters "21099990", or chooses "Sparkasse Altstadt -alt-" among the matches for "Altstadt"
+- **THEN** the app shows the bank with the same note
+- **AND** "Next" leads to the login data
+
+#### Scenario: Merged bank without a FinTS server
+
+- **GIVEN** the bank directory lists 21099999 as "Sparkasse Altstadt -alt-" without a FinTS address
+- **WHEN** the user enters "21099999"
+- **THEN** the app says that this bank does not provide a FinTS/HBCI server and shows no note
+- **AND** the assistant stays on the first step
 
 ### Requirement: Country menu
 
@@ -487,6 +505,18 @@ The app SHALL show a list of the banks and services it can reach, with a search 
 
 #### Scenario: Bank that the app cannot reach
 
-- **GIVEN** the bank directory lists "Neobank Muster" without a FinTS address, and "Sparkasse Altstadt -alt-" as the old entry of a merged bank
-- **WHEN** the user opens the list and types "Muster" or "Altstadt"
-- **THEN** the list shows neither bank
+- **GIVEN** the bank directory lists "Neobank Muster" without a FinTS address
+- **WHEN** the user opens the list and types "Muster"
+- **THEN** the list does not show "Neobank Muster"
+
+#### Scenario: Merged bank in the list
+
+- **GIVEN** the bank directory lists 21099999 as "Sparkasse Altstadt -alt-" with a FinTS address
+- **WHEN** the user opens the list and types "Altstadt"
+- **THEN** the list shows "Sparkasse Altstadt -alt-" with "FinTS/HBCI with TAN method" and the note of a merged bank
+
+#### Scenario: Bank directory that does not load
+
+- **GIVEN** an installed extension declares the service "Musterbroker", and the bank directory fails to load
+- **WHEN** the user opens the list
+- **THEN** the list says that the bank directory could not be loaded and still shows "Musterbroker"

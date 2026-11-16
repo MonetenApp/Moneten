@@ -75,6 +75,7 @@ struct BankDirectoryTests {
 	func bankCode() {
 		#expect(codes("7015") == ["70150000"])
 		#expect(codes("701") == ["70120400", "70150000"])
+		#expect(codes("701 50") == ["70150000"])
 		#expect(Self.directory.bank(code: "50010517")?.bank.name == "ING-DiBa")
 		#expect(Self.directory.bank(code: "99999999") == nil)
 	}

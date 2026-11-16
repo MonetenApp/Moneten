@@ -13,7 +13,7 @@ struct SupportedBanksTests {
 	static let list = SupportedBanks(directory: BankDirectory([
 		bank("12030000", "Musterbank", "Musterstadt"),
 		bank("99999999", "Neobank Muster", "Musterstadt", fints: false),
-		bank("50050000", "Sparkasse Altstadt -alt-", "Altstadt"),
+		bank("21099999", "Sparkasse Altstadt -alt-", "Altstadt"),
 		bank("70150000", "Stadtsparkasse München", "München"),
 	]), services: [
 		.init(name: "Zahlbank", extensionName: "Zahlbank Extension"),
@@ -31,7 +31,7 @@ struct SupportedBanksTests {
 	@Test("Without a search the list has every bank that the app reaches, by name, and every service, by name")
 	func all() {
 		let found = Self.list.matching("  ")
-		#expect(found.banks.map(\.code) == ["12030000", "70150000"])
+		#expect(found.banks.map(\.code) == ["12030000", "21099999", "70150000"])
 		#expect(found.services.map(\.name) == ["Musterbroker", "Zahlbank"])
 	}
 
@@ -42,5 +42,20 @@ struct SupportedBanksTests {
 		#expect(Self.list.matching("120 30").banks.map(\.code) == ["12030000"])
 		#expect(Self.list.matching("keine bank").services.isEmpty)
 		#expect(Self.list.matching("keine bank").banks.isEmpty)
+	}
+
+	@Test("A merged bank with a FinTS address is in the list with its note, a bank without a FinTS address is not")
+	func mergedBank() throws {
+		let found = Self.list.matching("Altstadt")
+		#expect(found.banks.map(\.code) == ["21099999"])
+		#expect(try #require(found.banks.first).mergerNote != nil)
+		#expect(Self.list.matching("Neobank").banks.isEmpty)
+	}
+
+	@Test("Without the bank directory the list still has every service")
+	func withoutDirectory() {
+		let list = SupportedBanks(directory: nil, services: [.init(name: "Musterbroker", extensionName: "Broker Extension")])
+		#expect(list.matching("").services.map(\.name) == ["Musterbroker"])
+		#expect(list.matching("muster").banks.isEmpty)
 	}
 }

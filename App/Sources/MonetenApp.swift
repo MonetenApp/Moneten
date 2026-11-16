@@ -32,6 +32,8 @@ struct MonetenApp: App {
 		}
 		.defaultSize(width: 560, height: 640)
 		.commandsRemoved()
+		// The list is help for the moment, so it does not open again at the next launch.
+		.restorationBehavior(.disabled)
 
 		Window("Notice", id: "notice") {
 			BankNoticeWindow()

@@ -39,7 +39,7 @@ public final class BankLookup {
 	/// Takes a bank of the matches. The entry becomes its Bankleitzahl, so it names the bank on its own.
 	public func choose(_ bank: BankDirectory.Entry) {
 		entry = bank.code
-		state = Self.usable(bank, inIBAN: false)
+		state = Self.usable(bank)
 	}
 
 	/// Looks up the bank of the entry. While the user types, `showingErrors` is false, so that half an
@@ -49,7 +49,6 @@ public final class BankLookup {
 		let text = entry.filter { !$0.isWhitespace }
 		let isSearch = text.allSatisfy(\.isNumber) ? !text.isEmpty && text.count < 8 : !Self.startsLikeIBAN(text)
 		var code: String?
-		let isIBAN = !isSearch && !text.allSatisfy(\.isNumber)
 		if !isSearch {
 			do {
 				code = try BankEntry.bankCode(of: entry)
@@ -62,12 +61,10 @@ public final class BankLookup {
 		do {
 			let directory = try await directory()
 			if let code {
-				result = directory.bank(code: code).map { Self.usable($0, inIBAN: isIBAN) } ?? .failed("The Bankleitzahl is invalid.")
+				result = directory.bank(code: code).map(Self.usable) ?? .failed("The Bankleitzahl is invalid.")
 			} else {
-				// A search of the whole directory takes about 10 ms, too long for the main thread. The start of
-				// a Bankleitzahl is one word also when it is typed in groups, such as "760 30".
-				let query = text.allSatisfy(\.isNumber) ? text : entry
-				let matches = await Task.detached(priority: .userInitiated) { directory.search(query) }.value
+				// A search of the whole directory takes about 10 ms, too long for the main thread.
+				let matches = await Task.detached(priority: .userInitiated) { directory.search(entry) }.value
 				result = matches.isEmpty ? .failed("No bank matches “\(entry.trimmingCharacters(in: .whitespaces))”.") : .matches(matches)
 			}
 		} catch {
@@ -94,13 +91,9 @@ public final class BankLookup {
 		return start.count == 3 && start[0].isLetter && start[1].isLetter && start[2].isNumber
 	}
 
-	/// A bank that the login can go to. The directory keeps the Bankleitzahl of a merged bank, but the bank
-	/// gave its customers a new one, so the app asks for that ("Check the Bankleitzahl").
-	private static func usable(_ bank: BankDirectory.Entry, inIBAN: Bool) -> State {
-		if bank.isObsolete {
-			return .failed(inIBAN ? "This IBAN contains an outdated Bankleitzahl. Enter your current IBAN."
-				: "The Bankleitzahl \(bank.code) is outdated. Enter your current Bankleitzahl.")
-		}
-		return bank.bank.url == nil ? .failed("\(bank.bank.name) does not provide a FinTS/HBCI server. An extension can add support for the bank.") : .found(bank)
+	/// A bank that the login can go to. The entry of a merged bank is one too: its Bankleitzahl may still be
+	/// the one the bank uses, so the first step shows `BankDirectory.Entry.mergerNote` and goes on.
+	private static func usable(_ bank: BankDirectory.Entry) -> State {
+		bank.bank.url == nil ? .failed("\(bank.bank.name) does not provide a FinTS/HBCI server. An extension can add support for the bank.") : .found(bank)
 	}
 }

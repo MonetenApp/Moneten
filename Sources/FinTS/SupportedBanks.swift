@@ -19,11 +19,12 @@ public struct SupportedBanks: Sendable {
 		}
 	}
 
-	let directory: BankDirectory
+	let directory: BankDirectory?
 	let services: [Service]
 
 	/// `services` holds the services of the extensions that may run, as "Other" in "Add Account" lists them.
-	public init(directory: BankDirectory, services: [Service]) {
+	/// `directory` is nil when the bank directory did not load, and the list then has only the services.
+	public init(directory: BankDirectory?, services: [Service]) {
 		self.directory = directory
 		self.services = services.sorted { a, b in
 			let order = a.name.localizedStandardCompare(b.name)
@@ -39,8 +40,6 @@ public struct SupportedBanks: Sendable {
 			let text = [service.name, service.extensionName].flatMap { BankDirectory.spellings($0) }
 			return terms.allSatisfy { spellings in spellings.contains { term in text.contains { $0.contains(term) } } }
 		}
-		// The start of a Bankleitzahl is one word also when it is typed in groups, such as "760 30".
-		let digits = query.filter { !$0.isWhitespace }
-		return (services, directory.reachable(!digits.isEmpty && digits.allSatisfy(\.isNumber) ? digits : query))
+		return (services, directory?.reachable(query) ?? [])
 	}
 }
