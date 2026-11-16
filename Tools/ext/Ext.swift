@@ -4,6 +4,8 @@ import Foundation
 /// The command line of `ext`: which command, which files, and which options.
 enum Ext {
 	static let version = "0.1.0"
+	/// The key of the commit in the Info.plist that `scripts/release-ext.sh` links into a release binary.
+	static let commitKey = "MonetenCommit"
 	/// Starts this binary as the host process of a session, as the app starts `MonetenExtensionHost`.
 	static let hostArgument = "_host"
 
@@ -136,6 +138,17 @@ enum Ext {
 		return certificates
 	}
 
+	/// The full commit of a release build, so that the catalog repository can check the binary it pins.
+	/// A build from source has no Info.plist and so no commit.
+	static func commit(in info: [String: Any]?) -> String? {
+		guard let commit = info?[commitKey] as? String, commit.wholeMatch(of: /[0-9a-f]{40}/) != nil else { return nil }
+		return commit
+	}
+
+	static func versionLine(commit: String?) -> String {
+		"ext \(version)\(commit.map { " (commit \($0))" } ?? ""), API version \(extensionAPIVersion)"
+	}
+
 	static func main(_ arguments: [String]) async -> Int32 {
 		do {
 			let invocation = try parse(arguments)
@@ -143,7 +156,7 @@ enum Ext {
 			case .help:
 				print(help, terminator: "")
 			case .version:
-				print("ext \(version), API version \(extensionAPIVersion)")
+				print(versionLine(commit: commit(in: Bundle.main.infoDictionary)))
 			case let .run(script, storage, fresh, trust):
 				try await RunCommand(script: script, service: invocation.service, storage: storage, fresh: fresh, trust: trust).execute()
 			case let .record(script, fixture, trust, keepRandom):

@@ -36,5 +36,5 @@ public struct InitialBalanceTooLarge: Error, Equatable, Sendable, CustomStringCo
 		self.accountName = accountName
 	}
 
-	public var description: String { "The initial balance of the account \"\(accountName)\" is too large." }
+	public var description: String { String(localized: "The initial balance of the account \"\(accountName)\" is too large.") }
 }

@@ -248,6 +248,16 @@ struct AllDataTests {
 				marketValue: Money(minorUnits: 100_241, currency: "EUR"), purchasePrice: Quote(amount: 70, currency: "EUR"),
 				exchangeRate: ExchangeRate(base: "EUR", quoted: "USD", rate: Decimal(string: "1.0832")!))).insert(db)
 		}
+		var power = TransactionFilter()
+		power.searchText = "name:Stadtwerke"
+		power.status = .checked
+		power.amount = .range(min: -2_000, max: Decimal(string: "-0.5"))
+		power.categoryID = pets.id
+		power.accountID = migrated.id
+		_ = try store.appendSavedSearch(name: "Strom", period: .custom(Day(year: 2026, month: 10, day: 1), Day(year: 2026, month: 11, day: 30)), filter: power)
+		var recent = TransactionFilter()
+		recent.amount = .withdrawals
+		_ = try store.appendSavedSearch(name: "Last 30 days", period: .days30, filter: recent)
 		return store
 	}
 
@@ -280,6 +290,44 @@ struct AllDataTests {
 		let depot = try #require(before.accounts.first { $0.name == "Depot" })
 		#expect(after.portfolioValues(of: depot.id) == before.portfolioValues(of: depot.id))
 		#expect(Set(try target.deletedTransactions()) == Set(try source.deletedTransactions()))
+		#expect(try target.savedSearches() == source.savedSearches())
+		#expect(try target.savedSearches().map(\.name) == ["Strom", "Last 30 days"])
+	}
+
+	@Test("A saved search keeps its period, its filters, and the ends of its amount range as decimal text")
+	func savedSearchFields() throws {
+		let text = String(decoding: try filledStore().exportAllData(at: exportedAt).json(), as: UTF8.self)
+		#expect(text.contains(#""searchText" : "name:Stadtwerke""#))
+		#expect(text.contains(#""start" : "2026-10-01""#) && text.contains(#""end" : "2026-11-30""#) && text.contains(#""kind" : "days30""#))
+		#expect(text.contains(#""min" : "-2000""#) && text.contains(#""max" : "-0.5""#) && text.contains(#""status" : "checked""#))
+	}
+
+	@Test("The complete import numbers the saved searches from 0 in their order, so the next saved search goes last")
+	func savedSearchPositions() throws {
+		var json = try JSONSerialization.jsonObject(with: try filledStore().exportAllData(at: exportedAt).json()) as! [String: Any]
+		var searches = json["savedSearches"] as! [[String: Any]]
+		searches[0]["position"] = Int.max
+		searches[1]["position"] = 5
+		json["savedSearches"] = searches
+		let target = try emptyStore("target")
+		try target.importAllData(try AllData(json: try JSONSerialization.data(withJSONObject: json)))
+		try #require(try target.savedSearches().map(\.position) == [0, 1])
+		#expect(try target.savedSearches().map(\.name) == ["Last 30 days", "Strom"])
+		var f = TransactionFilter()
+		f.searchText = "Miete"
+		let rent = try target.appendSavedSearch(name: "Rent", period: .all, filter: f)
+		#expect(rent.position == 2)
+		#expect(try target.savedSearches().map(\.name) == ["Last 30 days", "Strom", "Rent"])
+	}
+
+	@Test("A saved search with an unknown period or an empty amount range is refused with its place", arguments: ["period", "amount"])
+	func damagedSavedSearch(_ field: String) throws {
+		var json = try JSONSerialization.jsonObject(with: try filledStore().exportAllData(at: exportedAt).json()) as! [String: Any]
+		var searches = json["savedSearches"] as! [[String: Any]]
+		searches[1][field] = field == "period" ? ["kind": "decade"] : ["kind": "range"]
+		json["savedSearches"] = searches
+		let expected = field == "period" ? "at savedSearches[1], \"decade\" is not a period" : "at savedSearches[1], the amount range has no end or its minimum lies above its maximum"
+		#expect(throws: AllData.ReadError.damaged(expected)) { try AllData(json: try JSONSerialization.data(withJSONObject: json)) }
 	}
 
 	@Test("An export without returnReason imports its transactions with no return reason")
@@ -353,6 +401,13 @@ struct AllDataTests {
 		try used.save(Account(position: 0, name: "Giro", kind: .giro, source: .offline))
 		#expect(throws: Store.ImportRefusal.notEmpty) { try used.importAllData(data) }
 		#expect(try used.loadLedger().accounts.map(\.name) == ["Giro"])
+
+		let searched = try emptyStore("searched")
+		var f = TransactionFilter()
+		f.searchText = "Miete"
+		_ = try searched.appendSavedSearch(name: "Rent", period: .all, filter: f)
+		#expect(throws: Store.ImportRefusal.notEmpty) { try searched.importAllData(data) }
+		#expect(try searched.savedSearches().map(\.name) == ["Rent"])
 
 		let starter = Domain.Category(position: 0, name: "Groceries")
 		let fresh = try emptyStore("fresh")

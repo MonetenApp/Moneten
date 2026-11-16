@@ -61,7 +61,7 @@ public actor ExtensionHostClient {
 			ask: ask, log: log, trace: trace)
 		do {
 			guard case let .loaded(registration, entryPoints, milliseconds) = try await client.send(.start(setup)) else {
-				throw ScriptError("The extension host answered out of order.")
+				throw ScriptError(String(localized: "The extension host answered out of order."))
 			}
 			await client.setEntryPoints(entryPoints)
 			return (client, registration, milliseconds)
@@ -117,14 +117,14 @@ public actor ExtensionHostClient {
 
 	/// Calls an entry point and returns its first result.
 	public func call(_ entry: EntryCall) async throws -> LuaValue {
-		guard case let .result(value) = try await send(.call(entry)) else { throw ScriptError("The extension host answered out of order.") }
+		guard case let .result(value) = try await send(.call(entry)) else { throw ScriptError(String(localized: "The extension host answered out of order.")) }
 		trace(.result(entry, value))
 		return value
 	}
 
 	/// Ends the run of the script and returns the content of `LocalStorage` for the next run.
 	public func finish() async throws -> Data {
-		guard case let .finished(storage) = try await send(.finish) else { throw ScriptError("The extension host answered out of order.") }
+		guard case let .finished(storage) = try await send(.finish) else { throw ScriptError(String(localized: "The extension host answered out of order.")) }
 		trace(.storage(storage))
 		return storage
 	}
@@ -141,7 +141,7 @@ public actor ExtensionHostClient {
 	/// Sends a command and handles the questions and log lines until its answer arrives. The watchdog
 	/// runs while the app waits for the host, and pauses while the user answers a question.
 	private func send(_ command: HostCommand) async throws -> HostEvent {
-		guard !busy else { throw ScriptError("Another call of this extension session is still running.") }
+		guard !busy else { throw ScriptError(String(localized: "Another call of this extension session is still running.")) }
 		busy = true
 		defer {
 			busy = false
@@ -158,7 +158,8 @@ public actor ExtensionHostClient {
 			guard case let .success(event)? = item else {
 				process.terminate()
 				if case let .failure(error)? = item { throw error }
-				throw ScriptError(silenced ? "The extension did not respond for \(silence.components.seconds) seconds, so Moneten stopped it." : "The extension host ended unexpectedly.")
+				throw ScriptError(silenced ? String(localized: "The extension did not respond for \(silence.components.seconds) seconds, so Moneten stopped it.")
+					: String(localized: "The extension host ended unexpectedly."))
 			}
 			if case let .print(line) = event {
 				log(.print(line))
@@ -169,7 +170,7 @@ public actor ExtensionHostClient {
 			case let .askHost(host):
 				do {
 					// The host process runs the script, so the app checks the name before the user sees it.
-					guard HostName(exactly: host) != nil || testHosts.contains(host) else { throw ScriptError("The extension host asked about \(host), which is not an exact host name.") }
+					guard HostName(exactly: host) != nil || testHosts.contains(host) else { throw ScriptError(String(localized: "The extension host asked about \(host), which is not an exact host name.")) }
 					write(.answer(try await ask(host)))
 				} catch {
 					process.terminate()
@@ -180,6 +181,7 @@ public actor ExtensionHostClient {
 			case let .trace(event): trace(event)
 			case .alive, .print: continue
 			case let .failed(message): throw ScriptError(message)
+			case let .stopped(reason): throw ScriptError(reason.message)
 			case .loaded, .result, .finished: return event
 			}
 		}
@@ -212,7 +214,7 @@ public actor ExtensionHostClient {
 
 		func take(_ data: Data) -> [Result<HostEvent, ScriptError>] {
 			state.withLock { state in
-				let tooLarge = ScriptError("The extension sent an answer larger than \(ExtensionHostClient.maxLine / 1_048_576) MB.")
+				let tooLarge = ScriptError(String(localized: "The extension sent an answer larger than \(ExtensionHostClient.maxLine / 1_048_576) MB."))
 				state.partial.append(data)
 				guard data.contains(0x0A) else { return state.partial.count > ExtensionHostClient.maxLine ? [.failure(tooLarge)] : [] }
 				var lines = state.partial.split(separator: 0x0A, omittingEmptySubsequences: false)
@@ -221,7 +223,7 @@ public actor ExtensionHostClient {
 				var events: [Result<HostEvent, ScriptError>] = []
 				for line in lines {
 					guard let event = try? JSONDecoder().decode(HostEvent.self, from: line) else {
-						return events + [.failure(ScriptError("The extension host sent a line that the app cannot read."))]
+						return events + [.failure(ScriptError(String(localized: "The extension host sent a line that the app cannot read.")))]
 					}
 					if case let .print(text) = event {
 						let before = state.printed
@@ -235,7 +237,7 @@ public actor ExtensionHostClient {
 						continue
 					}
 					state.pending += 1
-					guard state.pending <= ExtensionHostClient.maxPending else { return events + [.failure(ScriptError("The extension host sent more than the app can read."))] }
+					guard state.pending <= ExtensionHostClient.maxPending else { return events + [.failure(ScriptError(String(localized: "The extension host sent more than the app can read.")))] }
 					events.append(.success(event))
 				}
 				return events

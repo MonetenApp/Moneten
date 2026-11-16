@@ -22,7 +22,7 @@ Only the owner of the repository creates and sets them, under Settings, Environm
 
 ### Environment `build`
 
-Allow the branch `main` and the tags `v*` under "Deployment branches and tags".
+Allow the branch `main`, the tags `v*`, and the tags `ext-v*` of the [ext release](releasing-ext.md) under "Deployment branches and tags" ([ADR 0019](decisions/0019-ext-releases-in-the-build-environment.md)).
 
 | Name | Kind | Content |
 |---|---|---|
@@ -72,7 +72,7 @@ The owner keeps the `.p12` file with its password and the private update key in 
 
 ### Protected tags
 
-Add a ruleset under Settings, Rules, for the tags `v*` that allows only the owner to create, update, or delete them. A tag starts a release, so nobody else may push one.
+Add a ruleset under Settings, Rules, for the tags `v*` and `ext-v*` that allows only the owner to create, update, or delete them. A tag starts a release, so nobody else may push one.
 
 ## Release a version
 

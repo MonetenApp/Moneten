@@ -6,7 +6,7 @@ import SwiftUI
 struct RefreshErrorButton: View {
 	@Environment(AppModel.self) private var model
 	let accounts: [Account]
-	var help = "The last refresh failed"
+	var help = String(localized: "The last refresh failed")
 	@State private var shown = false
 
 	var body: some View {
@@ -47,7 +47,7 @@ struct RefreshErrorPopover: View {
 				.foregroundStyle(.secondary)
 			Text("The last refresh was aborted with the following error:")
 				.font(.headline)
-			Text("“\(error.message)”" + (error.code.map { " (\($0))" } ?? ""))
+			Text(String(localized: "“\(error.message)”") + (error.code.map { " (\($0))" } ?? ""))
 				.textSelection(.enabled)
 			Text(error.date.formatted(date: .numeric, time: .shortened))
 				.foregroundStyle(.secondary)
@@ -79,7 +79,7 @@ struct AccountRefreshLine: View {
 		let refreshing = model.sync.refreshingAccounts.contains(account.id)
 		HStack(spacing: 6) {
 			// An account that never refreshed says why, in place of "Not refreshed yet".
-			Text(account.refreshedAt.map { "Last updated: \(Format.dayAndTime($0))" } ?? account.refreshError?.message ?? "Not refreshed yet")
+			Text(account.refreshedAt.map { String(localized: "Last updated: \(Format.dayAndTime($0))") } ?? account.refreshError?.message ?? String(localized: "Not refreshed yet"))
 				.lineLimit(1)
 			if refreshing {
 				ProgressView().controlSize(.mini)

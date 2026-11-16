@@ -39,7 +39,7 @@ public enum FileAccount: Hashable, Sendable {
 			account.bankCode = bankCode
 			account.bic = bic
 			account.accountNumber = number
-			account.name = "Account \(number)"
+			account.name = String(localized: "Account \(number)")
 		}
 		return account
 	}

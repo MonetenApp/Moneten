@@ -278,6 +278,30 @@ final class DebugHarness {
 		case "present": model.autoRefresh.isUserPresent = argument != "off"
 		// The popover of the menu bar icon, drawn offscreen.
 		case "menubarsnapshot": offscreenSnapshot(MenuBarPopover().environment(model), width: 340, name: argument, kind: "menubar")
+		#if DEBUG || PERF_HARNESS
+		// "click" clicks the menu bar icon, and "press <n>" clicks control number n of the popover, counted from 0: the account
+		// rows, then "Refresh All Accounts" and "Open Moneten", or "Unlock..." while locked. Each logs the icon, its symbol,
+		// the popover, and the main window, after the app has drawn the change.
+		case "menubar": menuBar(argument)
+		// "<key> on" or "<key> off" writes the default of a switch directly, for example "showMenuBarIcon on". It skips what
+		// the toggle does besides, such as asking macOS for the notification permission. Only the switches of the checks of
+		// the notifications and the menu bar are allowed. The security settings stay out, because their toggles check the
+		// password and store it in the Keychain first. The line logs the position of the key in the list and the new value.
+		case "setting":
+			let keys = [Preference.showMenuBarIcon, RefreshSettings.automaticRefreshKey, RefreshSettings.showsBannerKey,
+				RefreshSettings.playsSoundKey, Preference.lockOnClose]
+			let parts = argument.split(separator: " ").map(String.init)
+			guard parts.count == 2, let key = keys.firstIndex(of: parts[0]), ["on", "off"].contains(parts[1]) else { return log("setting rejected") }
+			UserDefaults.standard.set(parts[1] == "on", forKey: keys[key])
+			log("setting", ("key", .position(key)), ("value", .flag(UserDefaults.standard.bool(forKey: keys[key]))))
+		// Clicks the first notification of the app that the Notification Center lists: the app does what it does when macOS reports a click.
+		case "noticeclick":
+			Task {
+				guard let notice = await Notices.delivered().first else { return self.log("noticeclick none") }
+				model.notices.onOpen(notice.accounts)
+				self.log("noticeclick", ("accounts", .count(notice.accounts.count)), ("phase", .state(model.phase)))
+			}
+		#endif
 		// The delivered notifications of this app in the Notification Center, with their titles and the number of their accounts.
 		case "notices": logNotices()
 		// What the button "OK" of the window "Notice" does.
@@ -633,8 +657,7 @@ final class DebugHarness {
 		// "<path>": writes the complete export to that file without the warning and the save panel.
 		case "exportall":
 			Task {
-				await model.saveAllData(to: URL(filePath: argument))
-				log("exportall", ("", .word(model.alert?.title == "All data has been exported." ? "done" : "error=set")))
+				log("exportall", ("", .word(await model.saveAllData(to: URL(filePath: argument)) ? "done" : "error=set")))
 			}
 		// "<path>": imports that complete export without the open panel. The reason of a refusal can quote the file.
 		case "importall": Task { log("importall", ("", .word(await model.readAllData(from: URL(filePath: argument)) == "done" ? "done" : "refused"))) }
@@ -789,6 +812,9 @@ final class DebugHarness {
 		// What the menus and the pin of the filter bar do: "status unchecked", "amount withdrawals", "category <name>",
 		// "account <name>", "custom <yyyymmdd> <yyyymmdd>", or "pin on" and "pin off".
 		case "filterbar": filterBar(argument)
+		// The sidebar section "Searches": "save <name>", "open <name>", "rename <old>|<new>", "remove <name>", "sheet"
+		// for the sheet of "Save Search...", or "back" and "forward" as the toolbar buttons.
+		case "savedsearch": savedSearch(argument)
 		case "state":
 			let savedFilter = UserDefaults.standard.data(forKey: Preference.savedFilterBar).flatMap(SavedFilterBar.init(data:))
 			log("", ("phase", .state(model.phase)), ("accounts", .count(model.ledger.accounts.count)), ("transactions", .count(model.ledger.transactions.count)),
@@ -978,10 +1004,12 @@ final class DebugHarness {
 	}
 
 	/// The tables of transactions in all windows, told apart from the sidebar by their amount column.
-	func transactionTables() -> [NSTableView] { tables(withColumn: "Amount") }
+	/// SwiftUI gives a column a new random identifier in each run, so the harness finds a table by the title of a column,
+	/// in the language of this run.
+	func transactionTables() -> [NSTableView] { tables(withColumn: String(localized: "Amount")) }
 
 	/// The tables of positions in all windows.
-	func holdingsTables() -> [NSTableView] { tables(withColumn: "Quantity") }
+	func holdingsTables() -> [NSTableView] { tables(withColumn: String(localized: "Quantity")) }
 
 	private func tables(withColumn title: String) -> [NSTableView] {
 		func tables(in view: NSView) -> [NSTableView] {
@@ -1051,6 +1079,57 @@ final class DebugHarness {
 		}
 	}
 
+	#if DEBUG || PERF_HARNESS
+	private func menuBar(_ argument: String) {
+		guard let model else { return }
+		let parts = argument.split(separator: " ", maxSplits: 1).map(String.init)
+		let number = parts.count > 1 ? Int(parts[1]) : nil
+		// The button of the icon in the menu bar of one of the displays. A removed icon keeps its window, which macOS no longer shows.
+		func button(in view: NSView) -> NSButton? { view as? NSButton ?? view.subviews.lazy.compactMap(button).first }
+		let icon = {
+			NSApp.windows.lazy.filter { $0.className == "NSStatusBarWindow" && $0.occlusionState.contains(.visible) }.compactMap { $0.contentView.flatMap(button) }.first
+		}
+		let popover = { NSApp.windows.first { $0.isVisible && $0.className.contains("MenuBarExtra") } }
+		let report: @MainActor () -> Void = { [weak self] in
+			self?.log("menubar", ("icon", .flag(icon() != nil)), ("symbol", .word(MenuBarIcon.symbol(of: model))), ("popover", .flag(popover() != nil)),
+				("main", .flag(NSApp.windows.contains { $0.isVisible && $0.identifier?.rawValue.hasPrefix("main") == true })), ("selected", .state(model.selectedAccount?.kind)))
+		}
+		switch parts.first ?? "" {
+		case "click":
+			guard let icon = icon() else { return log("menubar no icon") }
+			icon.performClick(nil)
+		case "press":
+			// The popover closes while another app is in front, so the press opens it first when it is closed.
+			if popover() == nil {
+				guard let icon = icon() else { return log("menubar no icon") }
+				icon.performClick(nil)
+			}
+			Task { @MainActor [weak self] in
+				try? await Task.sleep(for: .milliseconds(500))
+				// SwiftUI gives the controls of the popover no accessibility elements until an assistive app asks, but a
+				// focus ring view for each, in the order of the view. The press is a click in the middle of control number n.
+				@MainActor func controls(in view: NSView) -> [NSView] {
+					String(describing: type(of: view)) == "_FocusRingView" ? [view] : view.subviews.flatMap(controls)
+				}
+				guard let window = popover(), let view = window.contentView else { self?.log("menubar no popover"); return }
+				let all = controls(in: view)
+				guard let n = number, all.indices.contains(n) else { self?.log("menubar", ("controls", .count(all.count))); return }
+				let point = all[n].convert(NSPoint(x: all[n].bounds.midX, y: all[n].bounds.midY), to: nil)
+				for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+					if let event = NSEvent.mouseEvent(with: type, location: point, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+						windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1) { window.sendEvent(event) }
+				}
+				self?.log("menubar pressed", ("control", .position(n)), ("controls", .count(all.count)))
+				try? await Task.sleep(for: .milliseconds(500))
+				report()
+			}
+			return
+		default: break
+		}
+		DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { report() }
+	}
+	#endif
+
 	private func answer(_ make: () -> UserAnswer) {
 		guard let model, let prompt = model.sync.broker.current else { return log("ext no dialog") }
 		model.sync.broker.answer(make(), to: prompt.id)
@@ -1106,13 +1185,22 @@ final class DebugHarness {
 		}
 	}
 
-	/// Chooses "Extensions" in the Window menu, as the user does.
+	/// Chooses "Extensions" in the Window menu, as the user does. SwiftUI gives a menu item no identifier,
+	/// and its title follows the language, so the harness finds the item by its place: right after
+	/// "Main Window", the only item with the key equivalent Command-0.
 	func openExtensionsWindow() {
-		openMenuItem("Extensions")
+		let isMainWindow = { (item: NSMenuItem) in item.keyEquivalent == "0" && item.keyEquivalentModifierMask == .command }
+		let menu = NSApp.mainMenu?.items.compactMap(\.submenu).first { $0.items.contains(where: isMainWindow) }
+		guard let menu, let main = menu.items.firstIndex(where: isMainWindow), menu.items.indices.contains(main + 1) else {
+			return log("extensions no menu item")
+		}
+		menu.performActionForItem(at: main + 1)
+		log("extensions opened")
 	}
 
 	private func supportedBanksKey(_ name: String) {
-		guard let window = NSApp.windows.first(where: { $0.title == "Supported Banks" && $0.isVisible }) else { return log("supportedkey no window") }
+		// The title follows the language, so the harness finds the window by the identifier of its scene.
+		guard let window = NSApp.windows.first(where: { $0.identifier?.rawValue.hasPrefix("supportedBanks") == true && $0.isVisible }) else { return log("supportedkey no window") }
 		let keys: [String: (Int, UInt16)] = ["down": (NSDownArrowFunctionKey, 125), "up": (NSUpArrowFunctionKey, 126), "pagedown": (NSPageDownFunctionKey, 121),
 			"pageup": (NSPageUpFunctionKey, 116), "home": (NSHomeFunctionKey, 115), "end": (NSEndFunctionKey, 119), "tab": (9, 48)]
 		// "command-down" and the like send the key with Command, which the window leaves to the system.
@@ -1138,8 +1226,11 @@ final class DebugHarness {
 		}
 	}
 
+	/// Chooses the menu item with this English title. The title of an item follows the language, so the harness
+	/// compares it with the text in the language of this run.
 	private func openMenuItem(_ title: StaticString) {
-		let item = NSApp.mainMenu?.items.compactMap(\.submenu).flatMap(\.items).first { $0.title == "\(title)" }
+		let localized = String(localized: String.LocalizationValue(title.description))
+		let item = NSApp.mainMenu?.items.compactMap(\.submenu).flatMap(\.items).first { $0.title == localized }
 		guard let item, let menu = item.menu else { return log("menu no item", ("title", .word(title))) }
 		menu.performActionForItem(at: menu.index(of: item))
 		log("menu opened", ("title", .word(title)))
@@ -1161,6 +1252,34 @@ final class DebugHarness {
 		default: return log("filterbar rejected")
 		}
 		log(LogLine("filterbar", values: [("", .choice(parts.first ?? "", of: ["status", "amount", "category", "account", "custom", "pin"]))] + Self.filterTargets(model)))
+	}
+
+	private func savedSearch(_ argument: String) {
+		guard let model else { return }
+		let parts = argument.split(separator: " ", maxSplits: 1).map(String.init)
+		let value = parts.count == 2 ? parts[1] : ""
+		func named(_ name: String) -> UUID? { model.savedSearches.first { $0.name == name }?.id }
+		switch parts.first {
+		case "save": model.saveSearch(name: value)
+		case "open": if let id = named(value) { model.navigate(to: .search(id)) }
+		case "rename":
+			let names = value.split(separator: "|", maxSplits: 1).map(String.init)
+			if names.count == 2, let id = named(names[0]) { model.rename(search: id, to: names[1]) }
+		case "remove": if let id = named(value) { model.remove(search: id) }
+		case "sheet": model.sheet = .saveSearch
+		case "back": model.goBack()
+		case "forward": model.goForward()
+		default: return log("savedsearch rejected")
+		}
+		let selected: Int? = if case let .search(id) = model.selection { model.savedSearches.firstIndex { $0.id == id } } else { nil }
+		// In parts, so the compiler of the CI runner type-checks it in time.
+		let command: LogValue = .choice(parts.first ?? "", of: ["save", "open", "rename", "remove", "sheet", "back", "forward"])
+		let view: LogValue = .choice(model.selection?.trailName ?? "none", of: ["account", "group", "category", "search", "none"])
+		let filters: LogValue = .list(model.filter.activeKinds.map { LogValue.word($0) })
+		var values: [(StaticString, LogValue)] = [("", command), ("searches", .count(model.savedSearches.count)), ("selected", .position(selected)), ("view", view)]
+		values += [("canBack", .flag(model.canGoBack)), ("canForward", .flag(model.canGoForward)), ("visible", .count(model.visibleTransactions.count))]
+		values += [("filters", filters), ("period", .state(model.period))]
+		log(LogLine("savedsearch", values: values + Self.filterTargets(model)))
 	}
 
 	private func csvPreview(_ argument: String) {
@@ -1226,7 +1345,8 @@ final class DebugHarness {
 			// Each item by the hash of its title, because an item can name an account, a group, or a category.
 			log("contextmenu row", ("", .position(index)), ("items", .list((menu?.items ?? []).map { .hash(($0.isAlternate ? "alt:" : "") + $0.title) })))
 			if choice.count == 2, choice[0] == index,
-				let submenu = menu?.items.first(where: { $0.title == "Move to Group" })?.submenu {
+				// "Move to Group" is the only submenu of a row, and its title follows the language.
+				let submenu = menu?.items.first(where: \.hasSubmenu)?.submenu {
 				submenu.update()
 				guard submenu.items.indices.contains(choice[1]), submenu.items[choice[1]].isEnabled else {
 					return log("contextmenu move refused")
@@ -1253,7 +1373,8 @@ final class DebugHarness {
 		}
 		let place = parts[0].split(separator: " ")
 		let menu: NSMenu? = switch place.first {
-		case "account": NSApp.mainMenu?.item(withTitle: "Account")?.submenu
+		// The Account menu holds "Assign Category...", the only item with Command-K. Its title follows the language.
+		case "account": NSApp.mainMenu?.items.compactMap(\.submenu).first { $0.items.contains { $0.keyEquivalent == "k" && $0.keyEquivalentModifierMask == .command } }
 		case "sidebar": place.count == 2 ? Int(place[1]).flatMap { contextMenu(row: $0, sidebar: true) } : nil
 		case "row":
 			// "row <n> <count>" selects the first <count> rows before the right click.
@@ -1266,7 +1387,10 @@ final class DebugHarness {
 		default: nil
 		}
 		menu?.update()
-		guard let menu, let index = menu.items.firstIndex(where: { $0.title.hasPrefix("Export Transaction") }) else { return log("menuexport no item") }
+		// The export item has another place in each menu and SwiftUI gives it no identifier, so the harness finds it by
+		// the text that the user reads, in the language of this run.
+		let titles = [String(localized: "Export Transactions..."), String(localized: "Export Transaction...")]
+		guard let menu, let index = menu.items.firstIndex(where: { titles.contains($0.title) }) else { return log("menuexport no item") }
 		guard menu.items[index].isEnabled else {
 			// SwiftUI enables the commands of the Account menu only while the app is active, which a locked Mac does
 			// not allow. When the conditions of the item hold, the check runs its action, `exportTransactions()`.
@@ -1346,7 +1470,7 @@ final class DebugHarness {
 	/// window uses a material that only the window server draws.
 	private func sidebarSnapshot(_ name: String) {
 		guard let model else { return }
-		offscreenSnapshot(SidebarView().environment(model).frame(height: 900), width: 340, name: name, kind: "sidebar")
+		offscreenSnapshot(SidebarView().environment(model).frame(height: 1200), width: 340, name: name, kind: "sidebar")
 	}
 
 	/// Draws a view in a window outside the screen, as tall as the view wants to be, into the file

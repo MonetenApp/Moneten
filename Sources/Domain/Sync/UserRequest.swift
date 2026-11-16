@@ -76,7 +76,7 @@ public struct LoginRequest: Sendable, Equatable {
 	}
 
 	/// The fields without a manifest.
-	public static let defaultFields = [Field(label: "Username", isSecret: false), Field(label: "Password", isSecret: true)]
+	public static let defaultFields = [Field(label: String(localized: "Username"), isSecret: false), Field(label: String(localized: "Password"), isSecret: true)]
 
 	public init(service: String, fields: [Field] = defaultFields, rejected: Bool = false) {
 		self.service = service
@@ -134,10 +134,15 @@ public struct PINRules: Sendable, Equatable {
 
 	/// The text that names the first rule that `pin` breaks, or nil when it breaks none.
 	public func check(_ pin: String, secretName: String = "PIN") -> String? {
-		let unit = digitsOnly ? "digits" : "characters"
-		if digitsOnly, !pin.allSatisfy({ $0.isASCII && $0.isNumber }) { return "The \(secretName) must be numeric." }
-		if let minLength, pin.count < minLength { return "The \(secretName) is too short. The minimum is \(minLength) \(unit)." }
-		if let maxLength, pin.count > maxLength { return "The \(secretName) is too long. The maximum is \(maxLength) \(unit)." }
+		if digitsOnly, !pin.allSatisfy({ $0.isASCII && $0.isNumber }) { return String(localized: "The \(secretName) must be numeric.") }
+		if let minLength, pin.count < minLength {
+			return digitsOnly ? String(localized: "The \(secretName) is too short. The minimum is \(minLength) digits.")
+				: String(localized: "The \(secretName) is too short. The minimum is \(minLength) characters.")
+		}
+		if let maxLength, pin.count > maxLength {
+			return digitsOnly ? String(localized: "The \(secretName) is too long. The maximum is \(maxLength) digits.")
+				: String(localized: "The \(secretName) is too long. The maximum is \(maxLength) characters.")
+		}
 		return nil
 	}
 }
@@ -171,7 +176,7 @@ public struct SecondFactorRequest: Sendable, Equatable {
 	public let olderTransactions: Bool
 
 	public init(purpose: Purpose, system: System, loginOnly: Bool = false, challenge: Challenge, validity: Duration = .seconds(300),
-		methods: [TANMethod] = [], method: TANMethod.ID? = nil, field: TANField = TANField(), confirmTitle: String = "Continue",
+		methods: [TANMethod] = [], method: TANMethod.ID? = nil, field: TANField = TANField(), confirmTitle: String = String(localized: "Continue"),
 		olderTransactions: Bool = false) {
 		self.purpose = purpose
 		self.system = system
@@ -359,21 +364,21 @@ public struct BrowserApproval: Sendable, Equatable {
 		default: false
 		}
 		if isFinal {
-			guard isMainFrame else { return .refuse("Only the page of the login may end it.") }
+			guard isMainFrame else { return .refuse(String(localized: "Only the page of the login may end it.")) }
 			var parameters: [String: String] = [:]
 			for part in [target.query, target.fragment].compactMap({ $0 }) {
 				for item in URLComponents(string: "?" + part)?.queryItems ?? [] where parameters[item.name] == nil {
 					parameters[item.name] = item.value
 				}
 			}
-			guard parameters["state"] == state else { return .fail("The login returned another state than the app sent. The login was not accepted.") }
+			guard parameters["state"] == state else { return .fail(String(localized: "The login returned another state than the app sent. The login was not accepted.")) }
 			let code = Self.codeParameters.lazy.compactMap { parameters[$0] }.first
 				?? parameters.first { $0.key.lowercased().hasSuffix("code") || $0.key.lowercased().hasSuffix("token") }?.value
-			guard let code, !code.isEmpty else { return .fail("The login ended without a code.") }
+			guard let code, !code.isEmpty else { return .fail(String(localized: "The login ended without a code.")) }
 			return .finish(code: code)
 		}
 		guard scheme == "https", target.port == nil, hosts.contains(host) else {
-			return .refuse("The login window may not open \(host.isEmpty || scheme != "https" && scheme != "http" ? "\(scheme)://\(host)" : host).")
+			return .refuse(String(localized: "The login window may not open \(host.isEmpty || scheme != "https" && scheme != "http" ? "\(scheme)://\(host)" : host)."))
 		}
 		return .load
 	}
