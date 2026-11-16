@@ -256,15 +256,15 @@ struct SetupSessionTests {
 
 	@Test("Canceling Look for New Accounts while it waits for a refresh of the access keeps the TAN progress of the refresh")
 	func canceledWaitKeepsProgress() async throws {
-		// The refresh holds the access until `cancelAll`. A wait of a fixed time ran out on a loaded runner of
-		// CI before the test looked, and the end of the refresh closed the progress.
+		// The refresh holds the access until `cancelAll`, also when an expectation fails first. A wait of a fixed
+		// time ran out on a loaded runner of CI before the test looked, and the end of the refresh closed the progress.
+		defer { coordinator.cancelAll() }
 		try await cancelWaitingLogin(behind: [.ask(Self.chooseMethod), .wait(.seconds(600))]) {
 			for _ in 0..<200 where broker.current == nil { try await Task.sleep(for: .milliseconds(10)) }
 			broker.answer(.tanMethod("922"), to: try #require(broker.current).id)
 			#expect(broker.requesting?.access == Self.access)
 		}
 		#expect(broker.requesting?.access == Self.access)
-		coordinator.cancelAll()
 	}
 
 	@Test("Canceling Look for New Accounts while it waits for a refresh of the access keeps the PIN that the bank accepted")
