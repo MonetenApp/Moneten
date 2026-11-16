@@ -186,7 +186,7 @@ A position of a portfolio, as its bank reported it last.
 
 ## Planned format version 2 for split transactions
 
-Version 1 above is the format the app currently writes and reads. The [split design](../openspec/changes/add-split-transactions/design.md) and tasks 5.1a and 5.2a of its [task list](../openspec/changes/add-split-transactions/tasks.md) define version 2. The implementation updates this page to describe v2 as active before enabling split commands. Database migrations remain v17 for the split table and v18 for review reasons. The file format version is separate from those migration numbers.
+Version 1 above is the format the app currently writes and reads. The [split design](../openspec/changes/add-split-transactions/design.md) and tasks 5.1a and 5.2a of its [task list](../openspec/changes/add-split-transactions/tasks.md) define version 2. The implementation updates this page to describe v2 as active before enabling split commands. Database migrations are v17 for the split table and v20 for review reasons; v18 is the file identity of #203. The file format version is separate from those migration numbers.
 
 Version 2 keeps the version-1 objects, with the following changes.
 
