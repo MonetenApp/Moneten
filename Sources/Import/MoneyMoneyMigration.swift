@@ -126,8 +126,11 @@ public struct MoneyMoneyMigration: Sendable {
 		for account in ledger.accounts + plan.accounts {
 			try Task.checkCancellation()
 			guard let rows = delivered[account.id] else { continue }
-			let r = reconcile(.migration(rows), into: account, stored: stored[account.id] ?? [], deleted: tombstones[account.id] ?? [],
-				rules: rules, now: Date())
+			let r = try reconcile(.migration(rows), into: account, stored: stored[account.id] ?? [], deleted: tombstones[account.id] ?? [],
+				rules: rules, now: Date(), checkpoint: { completed in
+					try Task.checkCancellation()
+					reporter.send(.init(step: .reconciling, completed: compared + completed, total: totalTransactions, account: account.name))
+				})
 			for t in r.added { added.updateValue(t.review, forKey: t.id) }
 			plan.updatedTransactions += r.booked + r.updated + r.marked
 			plan.skippedTransactions += r.skipped

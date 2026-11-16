@@ -43,7 +43,7 @@ extension ReconcileTests {
 			let tombstones = [DeletedTransaction(stored[3], deletedAt: now)]
 			let unrelated = row(1, -99, "Other", month: 11, pending: true)
 			let expected = partners(of: rows, stored: stored + [unrelated], deleted: tombstones)
-			let actual = partners(of: rows, stored: stored + [unrelated], deleted: tombstones, delivery: refresh(rows), today: day(20))
+			let actual = partners(of: rows, stored: stored + [unrelated], deleted: tombstones, delivery: refresh(rows), today: day(20), checkpoint: {})
 			#expect(actual.map { $0?.slot } == expected.map { $0?.slot }, "legacy seed \(seed)")
 			if (seed + 1) % 200 == 0 { await Task.yield() }
 		}

@@ -340,6 +340,22 @@ The app SHALL show the current step, the current account when known, and complet
 - **AND** a later update with 1,200 does not replace that count
 - **AND** completion shows 5,000 of 5,000 even before the next second
 
+#### Scenario: Comparing one large account
+
+- **GIVEN** one account has 150,000 transactions
+- **WHEN** the assistant compares its history
+- **THEN** it publishes the current count at least once per second, including a count of zero while it builds the matching index
+- **AND** Cancel stops at a comparison checkpoint without returning a partial plan
+
+#### Scenario: Bank refreshes during storage
+
+- **GIVEN** a bank refresh is already running and another refresh becomes due
+- **WHEN** the user imports the migration plan
+- **THEN** storage waits for the running refresh and its final state and account writes
+- **AND** no new refresh starts during migration storage
+- **AND** progress and Cancel remain responsive
+- **AND** queued refreshes resume after storage and ledger loading finish
+
 #### Scenario: Waiting for the source
 
 - **WHEN** the assistant waits for the transaction export

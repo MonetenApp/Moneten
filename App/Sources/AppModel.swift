@@ -141,8 +141,9 @@ final class AppModel {
 	@ObservationIgnored var ledgerChange = "edit"
 	@ObservationIgnored private var ledgerRevision = 0
 	@ObservationIgnored var migrationTask: Task<Void, Never>?
+	private var migrationStoring = false
 	var exportTask: Task<Void, Never>?
-	var isTransferringTransactions: Bool { fileImport != nil || exportTask != nil }
+	var isTransferringTransactions: Bool { fileImport != nil || exportTask != nil || migrationStoring }
 	@ObservationIgnored private var trailRows = 0
 	/// "Automatically refresh accounts" and the notification settings of the "General" tab.
 	let refreshSettings = RefreshSettings(defaults: .standard)
@@ -341,14 +342,8 @@ final class AppModel {
 			guard let self else { return }
 			Trail.log("refresh end access=\(self.trailNumber(of: access)) accounts=\(accounts.count) failed=\(failed)")
 			// The times and errors change the accounts in the ledger, which must not meet a new view in one drawing.
-			if self.tableUndrawn {
-				Task {
-					while self.tableUndrawn { await self.drawn() }
-					self.recordRefresh(of: access, state: nil, accounts: accounts, attended: attended)
-				}
-			} else {
-				self.recordRefresh(of: access, state: nil, accounts: accounts, attended: attended)
-			}
+			while self.tableUndrawn { await self.drawn() }
+			self.recordRefresh(of: access, state: nil, accounts: accounts, attended: attended)
 			self.extensions.sessionEnded()
 			if attended { self.showNotices() }
 		}
@@ -610,6 +605,7 @@ final class AppModel {
 
 	/// New transactions count as seen when the user opens their account.
 	private func markSeen() {
+		guard !migrationStoring else { return }
 		// The rows wait until SwiftUI drew a new table.
 		if tableUndrawn {
 			afterDraw { [weak self] in Task { @MainActor in self?.markSeen() } }
@@ -1139,7 +1135,7 @@ final class AppModel {
 	/// Starts one refresh per access, with the state its connector returned last. Only a refresh that the
 	/// user started shows an alert.
 	func refresh(_ plan: [UUID: [AccountRequest]], attended: Bool = true, enforced: Bool = false) {
-		guard let store else { return }
+		guard !migrationStoring, let store else { return }
 		let requests = plan.compactMap { id, accounts in accesses[id].map { ($0, accounts) } }.sorted { $0.0.bankName < $1.0.bankName }
 		for (access, accounts) in requests {
 			guard let connector = connector(for: access.source) else {
@@ -1264,14 +1260,20 @@ final class AppModel {
 
 	func runMigration(plan: MoneyMoneyMigration.Plan, progress: @escaping @Sendable (MoneyMoneyMigration.Progress) -> Void) async throws {
 		guard let store else { throw CancellationError() }
-		let starters = replaceableStarterCategories.map(\.id)
-		let canceled = Mutex(false)
-		try await withTaskCancellationHandler {
-			try Task.checkCancellation()
-			try await store.importMigration(plan, replacing: starters, isCanceled: { canceled.withLock { $0 } }, progress: progress)
-		} onCancel: { canceled.withLock { $0 = true } }
-		progress(.init(step: .finishing))
-		try await reloadAfterImport()
+		guard !isTransferringTransactions else { throw CancellationError() }
+		migrationStoring = true
+		defer { migrationStoring = false }
+		try await sync.withRefreshesPaused {
+			guard self.store === store else { throw CancellationError() }
+			let starters = replaceableStarterCategories.map(\.id)
+			let canceled = Mutex(false)
+			try await withTaskCancellationHandler {
+				try Task.checkCancellation()
+				try await store.importMigration(plan, replacing: starters, isCanceled: { canceled.withLock { $0 } }, progress: progress)
+			} onCancel: { canceled.withLock { $0 = true } }
+			progress(.init(step: .finishing))
+			try await reloadAfterImport()
+		}
 	}
 
 	/// Loads the ledger and the bank accesses again after a migration or a complete import replaced the table, and

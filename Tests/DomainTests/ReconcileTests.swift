@@ -43,6 +43,20 @@ struct ReconcileTests {
 		return ledger.transactions(ofAccount: giro.id)
 	}
 
+	@Test("Comparison checkpoints expose intermediate counts and can stop the whole result")
+	func comparisonCheckpoints() throws {
+		let rows = [row(1, 100, "One"), row(2, 200, "Two"), row(3, 300, "Three")]
+		var counts = Set<Int>()
+		let result = try reconcile(.migration(rows), into: giro, stored: [], deleted: [], rules: Categorizer(ledger: Ledger()), now: now,
+			checkpoint: { counts.insert($0) })
+		#expect(counts == [0, 1, 2, 3])
+		#expect(result.added.map(\.amountMinor) == [100, 200, 300])
+		#expect(throws: CancellationError.self) {
+			_ = try reconcile(.migration(rows), into: giro, stored: [], deleted: [], rules: Categorizer(ledger: Ledger()), now: now,
+				checkpoint: { if $0 == 1 { throw CancellationError() } })
+		}
+	}
+
 	@Test("A refresh keeps the booked rows that the bank no longer delivers")
 	func keepsHistory() {
 		let threeYearsAgo = stored(Transaction(accountID: giro.id, bookingDate: Day(year: 2023, month: 11, day: 15), amountMinor: -5_000, name: "Stadtwerke", purpose: "Abschlag"))

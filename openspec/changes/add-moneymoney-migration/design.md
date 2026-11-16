@@ -26,6 +26,12 @@ The app keeps all accounts, categories, and transactions of the open database in
 - Migrated categories count as assigned by hand.
 - When the database has no transactions yet, the plan leaves out the starter categories, and they are removed after the user confirms the import. Categories the user made stay.
 
+## Refreshes during migration
+
+`Sync` pauses new refreshes and waits for the running refreshes, including their final state and account writes, before the migration transaction starts. The app skips new automatic or manual refresh starts while storage and ledger loading run. The coordinator awaits its final account callback before releasing an access. Queued refreshes resume after the pause. This keeps synchronous bank writes from waiting behind the migration writer on the main actor.
+
+The shared `Domain` reconciliation keeps its full-account matching scope and accepts a throwing checkpoint. Matching index construction publishes a zero completed count and checks cancellation. Row reconciliation then publishes completed counts. Existing callers use its nonthrowing entry point.
+
 ## Progress and portfolio exports
 
 `Import` owns a typed progress value with a step, completed count, optional total, and optional account name. Its publication decision is a pure function of the previous value and elapsed time. Row loops check cancellation and report at least once per second, on a step change, and on completion. The app consumes these updates on the main actor. Parsing, reconciliation, saving, ledger loading, and report building run in background work. Cancellation propagates to that work. The storage transaction checks cancellation between writes and before commit and includes starter category replacement.

@@ -56,6 +56,54 @@ struct SyncCoordinatorTests {
 		if case let .finished(summary) = state(access) { summary } else { nil }
 	}
 
+	@Test("Cancel while waiting for a refresh never starts migration work")
+	func cancelPausedRefreshes() async throws {
+		_ = refresh(Self.access("First"), [.ask(Self.pin), .fetched(Self.giro.accountID)])
+		await until { broker.current != nil }
+		var imported = false
+		let pause = Task { try await coordinator.withRefreshesPaused { imported = true } }
+		await Task.yield()
+		pause.cancel()
+		do { try await pause.value; Issue.record("A canceled pause succeeded") } catch is CancellationError {}
+		#expect(!imported)
+		#expect(broker.current != nil)
+		answer(.pin(Secret("12345")))
+		await until { !coordinator.isRefreshing }
+	}
+
+	@Test("Paused refreshes drain final writes and keep queued work until the pause ends")
+	func pausedRefreshes() async throws {
+		let events = Events()
+		var finishWrites = false
+		var entered = false
+		var release = false
+		coordinator.ended = { _, _, _ in
+			while !finishWrites { try? await Task.sleep(for: .milliseconds(10)) }
+			events.all.append("stored")
+		}
+		_ = refresh(Self.access("First"), [.fetched(Self.giro.accountID)])
+		let pause = Task {
+			try await coordinator.withRefreshesPaused {
+				entered = true
+				events.all.append("import")
+				while !release { try await Task.sleep(for: .milliseconds(10)) }
+			}
+		}
+		try await Task.sleep(for: .milliseconds(30))
+		_ = refresh(Self.access("Second"), [.fetched(Self.savings.accountID)], accounts: [Self.savings])
+		#expect(!entered)
+		#expect(events.all.isEmpty)
+		finishWrites = true
+		await until { entered }
+		#expect(events.all == ["stored", "import"])
+		try await Task.sleep(for: .milliseconds(30))
+		#expect(events.all == ["stored", "import"])
+		release = true
+		try await pause.value
+		await until { !coordinator.isRefreshing }
+		#expect(events.all == ["stored", "import", "stored"])
+	}
+
 	@Test("A manual refresh asks for the PIN, fetches, and finishes")
 	func pinAndFetch() async {
 		let bank = Self.access("Musterbank")
