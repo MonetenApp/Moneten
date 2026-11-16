@@ -2,7 +2,9 @@
 import AppKit
 import Domain
 import ExtensionCatalog
+import FinTS
 import Foundation
+import SwiftUI
 import Synchronization
 
 /// The UI performance check of `scripts/perf-check.sh`. Each scenario drives the real app on
@@ -12,7 +14,7 @@ import Synchronization
 /// over `hangLimit`, a view that never settles, or a table that misses rows is "fail".
 @MainActor
 struct PerfScenario {
-	let name: String
+	let name: StaticString
 	let budget: Duration
 	/// Brings the app into the state the scenario starts from. It is not measured.
 	var setUp: @MainActor (PerfContext) async -> Void = { _ in }
@@ -263,7 +265,7 @@ struct PerfScenario {
 			run: { c in
 				guard let depot = c.model.ledger.accounts.first(where: { $0.name == "Perf Depot" }) else { return c.fail("no portfolio") }
 				let selected = c.model.selectedTransactions
-				if selected.count != 3 { c.fail("the table reported \(selected.count) selected rows instead of 3") }
+				if selected.count != 3 { c.fail("the table reported the wrong number of selected rows", ("selected", .count(selected.count)), ("expected", .count(3))) }
 				let old = c.model.tableKey
 				c.harness.select("Perf Depot")
 				if c.model.tableKey != old { c.fail("the table changed in the drawing that clears its selection") }
@@ -274,7 +276,7 @@ struct PerfScenario {
 				if !c.model.selectedTransactions.isEmpty { c.fail("a table that went changed the selection") }
 				c.harness.holdingsTables().first?.selectRowIndexes(IndexSet(0..<2), byExtendingSelection: false)
 				await c.settle()
-				if c.model.selectedPositions != 2 { c.fail("the trail counts \(c.model.selectedPositions) selected positions instead of 2") }
+				if c.model.selectedPositions != 2 { c.fail("the trail counts the wrong number of selected positions", ("selected", .count(c.model.selectedPositions)), ("expected", .count(2))) }
 				await c.select("Account 1")
 				if c.model.tableKey.portfolios != nil || c.harness.transactionTables().isEmpty { c.fail("the view did not change back to the transactions") }
 			}),
@@ -343,7 +345,7 @@ struct PerfScenario {
 				await c.model.importFiles([importFile], into: account, alwaysPreview: false)
 				c.harness.run("alert", "")
 				let stored = c.model.ledger.transactions(ofAccount: account.id).count - before
-				if stored != importedRows { c.fail("the import stored \(stored) of \(importedRows) rows") }
+				if stored != importedRows { c.fail("the import stored the wrong number of rows", ("stored", .count(stored)), ("expected", .count(importedRows))) }
 			}),
 		PerfScenario(name: "import-csv-category-limit", budget: halfSecond,
 			setUp: { c in
@@ -385,6 +387,41 @@ struct PerfScenario {
 				} catch { c.fail("booked file refresh failed") }
 				if c.model.ledger.transactions(ofAccount: account.id).count != stored.count { c.fail("booked file refresh changed row count") }
 			}),
+		// "Supported Banks..." on a directory of 2,700 banks, as many as the bank directory of the helper has with a
+		// FinTS address. The window used a `List`, and its rows are now a lazy stack (add-account-setup, task 1.21).
+		PerfScenario(name: "open-supported-banks", budget: halfSecond,
+			setUp: { _ in
+				SupportedBanksPerf.directory = SupportedBanksPerf.load()
+				SupportedBanksList.lastShown = nil
+			},
+			run: { c in
+				guard let directory = SupportedBanksPerf.directory else { return }
+				let window = NSWindow(contentViewController: NSHostingController(rootView: SupportedBanksList(directory: .success(directory)).environment(c.model)))
+				window.title = "Supported Banks Perf"
+				window.setContentSize(NSSize(width: 560, height: 640))
+				window.isReleasedWhenClosed = false
+				window.makeKeyAndOrderFront(nil)
+				SupportedBanksPerf.window = window
+				await SupportedBanksPerf.expect(c, "open", banks: 2_700, first: "Musterbank Altstadt 1028")
+			}),
+		PerfScenario(name: "search-supported-banks", budget: halfSecond,
+			run: { c in
+				guard let field = SupportedBanksPerf.field else { return c.fail("the search field has no focus") }
+				SupportedBanksList.lastShown = nil
+				field.insertText("Sparkasse", replacementRange: NSRange(location: NSNotFound, length: 0))
+				await SupportedBanksPerf.expect(c, "search", banks: 540, first: "Sparkasse Beispielstadt 1015")
+			}),
+		PerfScenario(name: "clear-supported-banks-search", budget: halfSecond,
+			run: { c in
+				guard let field = SupportedBanksPerf.field else { return c.fail("the search field has no focus") }
+				SupportedBanksList.lastShown = nil
+				field.selectAll(nil)
+				field.deleteBackward(nil)
+				await SupportedBanksPerf.expect(c, "clear", banks: 2_700, first: "Musterbank Altstadt 1028")
+				await c.settle()
+				SupportedBanksPerf.window?.close()
+				SupportedBanksPerf.window = nil
+			}),
 	]
 
 	/// A CSV file waits in the preview, which reads it away from the main actor, until "Import".
@@ -421,9 +458,45 @@ struct PerfScenario {
 	}
 }
 
+/// The window and the made-up bank directory of the scenarios of "Supported Banks".
+@MainActor
+enum SupportedBanksPerf {
+	static var directory: BankDirectory?
+	static var window: NSWindow?
+
+	static var field: NSTextView? { window?.firstResponder as? NSTextView }
+
+	/// Waits up to five seconds for the rows that `step` expects: `banks` banks match, the list shows at most
+	/// 500 of them, and `first` is the first bank. A search that the list starts again for other reasons can
+	/// end first, so this waits for the expected rows and reports the last rows only when they never come.
+	static func expect(_ c: PerfContext, _ step: StaticString, banks: Int, first: String) async {
+		for _ in 0..<100 {
+			if let shown = SupportedBanksList.lastShown, shown.bankCount == banks, shown.banks.count == min(banks, 500),
+				shown.banks.first?.name == first { return }
+			try? await Task.sleep(for: .milliseconds(50))
+		}
+		// The log holds the counts and the hash of the first name, never a name.
+		let shown = SupportedBanksList.lastShown
+		c.fail("supported banks rows", ("step", .word(step)), ("rows", .presence(shown != nil)), ("banks", .count(shown?.bankCount ?? 0)),
+			("shown", .count(shown?.banks.count ?? 0)), ("first", .hash(shown?.banks.first?.name ?? "")))
+	}
+
+	/// 2,700 made-up banks, as many as the bank directory of the FinTS helper has with a FinTS address, one in
+	/// ten of a merged bank.
+	static func load() -> BankDirectory {
+		let places = ["Musterstadt", "Beispielstadt", "Altstadt", "Neustadt", "Bergdorf", "Talheim"]
+		let kinds = ["Sparkasse", "Volksbank", "Raiffeisenbank", "Musterbank", "Privatbank"]
+		return BankDirectory((0..<2_700).map { i in
+			let place = places[i % places.count]
+			return BankDirectory.Entry(code: String(10_000_000 + i * 3_217), city: place,
+				bank: FinTSBank(name: "\(kinds[i % kinds.count]) \(place) \(i)\(i % 10 == 0 ? " -alt-" : "")", bic: nil, url: URL(string: "https://fints.bank\(i).example/fints")))
+		})
+	}
+}
+
 @MainActor
 final class PerfProblems {
-	var list: [String] = []
+	var list: [(problem: StaticString, values: [(StaticString, LogValue)])] = []
 }
 
 @MainActor
@@ -434,7 +507,7 @@ struct PerfContext {
 	/// What a scenario found wrong itself. The run counts the scenario as failed.
 	let problems = PerfProblems()
 
-	func fail(_ problem: String) { problems.list.append(problem) }
+	func fail(_ problem: StaticString, _ values: (StaticString, LogValue)...) { problems.list.append((problem, values)) }
 
 	func select(_ name: String) async {
 		harness.select(name)
@@ -479,16 +552,18 @@ extension DebugHarness {
 			let shown = transactionTables().first?.numberOfRows ?? 0
 			let expected = model.visibleTransactions.count + sectionCount(model)
 			let current = shown == expected
-			if !current { log("perf \(scenario.name) the table shows \(shown) rows instead of \(expected)") }
+			if !current { log("perf", ("", .word(scenario.name)), ("", .word("the table shows the wrong number of rows")), ("shown", .count(shown)), ("expected", .count(expected))) }
 			let problems = context.problems.list
 			context.problems.list = []
-			for problem in problems { log("perf \(scenario.name) \(problem)") }
-			let result = !settled || !current || !problems.isEmpty || stall > PerfScenario.hangLimit ? "fail" : stall > scenario.budget ? "slow" : "pass"
-			if result == "fail" { failures += 1 }
-			if result == "slow" { slow += 1 }
-			log("perf \(scenario.name) stall_ms=\(Self.milliseconds(stall)) budget_ms=\(Self.milliseconds(scenario.budget)) footprint_mb=\(MainThreadWatchdog.footprint() / 1_048_576) result=\(result)")
+			for problem in problems { log(LogLine("perf", values: [("", .word(scenario.name)), ("", .word(problem.problem))] + problem.values)) }
+			let failed = !settled || !current || !problems.isEmpty || stall > PerfScenario.hangLimit
+			let isSlow = !failed && stall > scenario.budget
+			if failed { failures += 1 }
+			if isSlow { slow += 1 }
+			log("perf", ("", .word(scenario.name)), ("stall_ms", .count(Self.milliseconds(stall))), ("budget_ms", .count(Self.milliseconds(scenario.budget))),
+				("footprint_mb", .count(Int(MainThreadWatchdog.footprint() / 1_048_576))), ("result", .word(failed ? "fail" : isSlow ? "slow" : "pass")))
 		}
-		log("perf done failures=\(failures) slow=\(slow)")
+		log("perf done", ("failures", .count(failures)), ("slow", .count(slow)))
 	}
 
 	private static func milliseconds(_ d: Duration) -> Int { Int((d / .milliseconds(1)).rounded()) }

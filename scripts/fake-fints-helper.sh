@@ -8,6 +8,8 @@
 # and then for the SMS code. The login lists
 # "Girokonto" with the test IBAN, "Tagesgeld", and "Kreditkarte". The state of the access counts the
 # refreshes: the second refresh fails "Tagesgeld" with an error of the bank, and the others succeed.
+# A refresh of "Kreditkarte" alone fails the access with a return code that is a name and not a number, as a
+# broken helper could send it.
 # The login and every refresh send the notice of the bank about maintenance.
 # A refresh of the full history, the first one and an enforced one, brings one more "Girokonto" row from 30 days ago.
 # The login "neu" brings one more "Girokonto" row with each refresh, a deposit on even runs and a withdrawal on odd ones.
@@ -23,9 +25,11 @@
 # with no TAN method, of "falschetan" with the wrong TAN 9941 after a TAN request, and of "abgelehnt" with an approval
 # in the app that the bank reports as declined after 3 seconds, or after the seconds in MONETEN_FAKE_APPROVAL_SECONDS,
 # which the tests set to 0.
+# The first refresh of the login "historie" asks for a TAN for the full history of "Girokonto". Canceling it brings
+# the last 90 days, and the account says that older transactions may be missing.
 # The bank directory has two branches of Musterbank, the bank without a FinTS server Neobank Muster
-# (99999999), a made-up Sparkasse, and Consorsbank (76030080) and DAB BNP Paribas (70120400) with
-# their real FinTS address, so the setup shows the login hint of Consorsbank and none for DAB.
+# (99999999), a made-up Sparkasse, the entry of a merged Sparkasse (21099999), and Consorsbank
+# (76030080) and DAB BNP Paribas (70120400) with their real FinTS address, so the setup shows the login hint of Consorsbank and none for DAB.
 # Musterbank 12030000 has the Bankleitzahl of DKB and shows the hint of DKB. The login of every
 # bank goes to this script.
 # The app starts the helper with an empty environment.
@@ -50,6 +54,7 @@ case "$cmd" in
 '{"code":"12030001","name":"Musterbank","city":"Beispielstadt","url":"https://fints.musterbank.example/fints"},'\
 '{"code":"99999999","name":"Neobank Muster","city":"Musterstadt","bic":"NEOMDEM1XXX"},'\
 '{"code":"40099999","name":"Sparkasse Münsterland Muster","city":"Münster","url":"https://banking.s-fints-pt-muster.example/fints30"},'\
+'{"code":"21099999","name":"Sparkasse Altstadt -alt-","city":"Altstadt","url":"https://banking.s-fints-pt-muster.example/fints30"},'\
 '{"code":"70120400","name":"BNP Paribas S.A. Niederlassung Deutschland-Consorsbank","city":"München","bic":"DABBDEMMXXX","url":"https://brokerage-hbci.consorsbank.de/hbci"},'\
 '{"code":"76030080","name":"Bnp Paribas S.A. Niederlassung Deutschland - Consorsbank","city":"Nürnberg, Mittelfr","bic":"CSDBDE71XXX","url":"https://brokerage-hbci.consorsbank.de/hbci"}]}'
 	;;
@@ -129,11 +134,34 @@ case "$cmd" in
 		echo '{"type":"failed","kind":"approvalDeclined","code":"9941","text":"Freigabe abgelehnt"}'
 		exit 0
 	;;
+	*'"user":"historie"'*)
+		# The full history of "Girokonto" needs a TAN for older transactions. A canceled TAN brings the last 90 days.
+		giro=$(printf '%s\n' "$cmd" | grep -o '{[^{}]*"id":"DE02120300000000202051"[^{}]*}')
+		case "$giro" in
+		*'"from":"'*) from="\"$(day 90)\"" ;;
+		*)
+			echo '{"type":"ask","id":2,"kind":"tan","purpose":"download","prompt":"Bitte geben Sie die TAN für den Abruf der Umsätze ein.","history":true}'
+			read -r line || exit 0
+			case "$line" in
+			*'"type":"cancel"'*) exit 0 ;;
+			*'"skip":true'*) from="\"$(day 90)\"" ;;
+			*) from=null ;;
+			esac
+		;;
+		esac
+		echo "{\"type\":\"result\",\"account\":\"DE02120300000000202051\",\"balance\":{\"amount\":\"2340.15\",\"currency\":\"EUR\",\"date\":\"$(day 0)\"},\"transactions\":{\"from\":$from,\"rows\":[{\"booked\":\"$(day 9)\",\"value\":\"$(day 9)\",\"amount\":\"3200.00\",\"currency\":\"EUR\",\"name\":\"Beispiel GmbH\",\"purpose\":\"Gehalt November\",\"pending\":false}]},\"errors\":[]}"
+		echo '{"type":"state","data":"MA=="}'
+		exit 0
+	;;
 	*'"user":"langtext"'*)
 		notice=$(i=1; while [ $i -le 100 ]; do printf 'Zeile %s: Neue Bedingungen für das Online-Banking ab 01.01.2027.\\n' $i; i=$((i + 1)); done)
 		echo "{\"type\":\"result\",\"account\":\"1234567890\",\"transactions\":{\"from\":\"$(day 90)\",\"rows\":[{\"booked\":\"$(day 6)\",\"value\":\"$(day 6)\",\"amount\":\"500.00\",\"currency\":\"EUR\",\"name\":\"Erika Mustermann\",\"purpose\":\"Sparen\",\"pending\":false}]},\"errors\":[{\"code\":\"9210\",\"text\":\"Saldo nicht verfügbar\"}]}"
 		printf '%s\n' "{\"type\":\"notice\",\"text\":\"$notice\"}"
 		echo '{"type":"state","data":"MA=="}'
+		exit 0
+	;; esac
+	case "$cmd" in *'"id":"DE02120300000000202051"'* | *'"id":"1234567890"'*) ;; *'"id":"4711"'*)
+		echo '{"type":"failed","code":"Erika Mustermann","text":"Dialog abgebrochen"}'
 		exit 0
 	;; esac
 	echo '{"type":"notice","text":"Wartungsarbeiten am 14.11.2026 von 1 bis 5 Uhr."}'
