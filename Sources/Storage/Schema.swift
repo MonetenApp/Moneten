@@ -337,9 +337,16 @@ enum Schema {
 			try db.execute(sql: "UPDATE bankTransaction SET review = 'unclearBooking' WHERE needsReview = 1")
 			try db.alter(table: "bankTransaction") { t in t.drop(column: "needsReview") }
 		}
+		// The values that the source delivered for the fields that the user edited, as JSON (add-transaction-list,
+		// task 1.16). Empty for every existing row, because no row could be edited before.
+		m.registerMigration("v24") { db in
+			try db.alter(table: "bankTransaction") { t in
+				t.add(column: "original", .text)
+			}
+		}
 		// The lock settings (add-app-lock): one row in the encrypted database, so a program that writes the settings
-		// file of the app cannot weaken the lock. Without the row the defaults apply. "v21" belongs to a change that
-		// comes before this one.
+		// file of the app cannot weaken the lock. Without the row the defaults apply. It is registered after the
+		// migrations that landed before it.
 		m.registerMigration("v22") { db in
 			try db.create(table: "lockSetting") { t in
 				t.column("id", .integer).primaryKey().check { $0 == 1 }
