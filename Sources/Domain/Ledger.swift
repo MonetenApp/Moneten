@@ -1,7 +1,9 @@
 import Foundation
 
-/// What the content view shows: everything, one account, one account group, or one category.
+/// What the content view shows: the transactions of every account, one account, one account group, or one category.
 public enum LedgerScope: Hashable, Sendable {
+	/// Every account, the scope of a saved search.
+	case all
 	case account(UUID)
 	case accountGroup(UUID)
 	case category(UUID)
@@ -180,7 +182,7 @@ public struct Ledger: Sendable {
 		switch scope {
 		case let .account(id): ids = [id]
 		case let .accountGroup(id): ids = accountIDs(inGroupTree: id)
-		case .category: return nil
+		case .all, .category: return nil
 		}
 		let found = ids.compactMap(account).sorted { $0.position < $1.position }
 		guard !found.isEmpty, found.allSatisfy({ $0.kind == .portfolio && !accountsWithTransactions.contains($0.id) }) else { return nil }
@@ -470,6 +472,8 @@ public struct Ledger: Sendable {
 		// One pass over the rows, because copying 50,000 rows into a list of the view first cost as much as the search.
 		let inScope: (Transaction) -> Bool
 		switch scope {
+		case .all:
+			inScope = { _ in true }
 		case let .account(id):
 			inScope = { $0.accountID == id }
 		case let .accountGroup(id):
@@ -614,6 +618,35 @@ public struct Ledger: Sendable {
 		countNew()
 	}
 
+	public func splitting(row rowID: UUID, off amounts: [Money]) throws -> [SplitPart] {
+		guard let row = row(rowID) else { throw SplitError.unbalanced }
+		guard !row.isPending else { throw SplitError.pending }
+		return try splitting(row: row, amounts: Split.amounts(of: row.amount, off: amounts))
+	}
+
+	public func splittingVAT(row rowID: UUID, rate: VATRate) throws -> [SplitPart] {
+		guard let row = row(rowID) else { throw SplitError.unbalanced }
+		guard !row.isPending else { throw SplitError.pending }
+		return try splitting(row: row, amounts: rate.split(row.amount), rate: rate)
+	}
+
+	private func splitting(row: Transaction, amounts: [Money], rate: VATRate? = nil) throws -> [SplitPart] {
+		let originalID = part(row.id)?.transactionID ?? row.id
+		let new = amounts.enumerated().map { index, amount in
+			SplitPart(transactionID: originalID, position: index, amountMinor: amount.minorUnits,
+				categoryID: row.categoryID, comment: row.comment,
+				vat: rate.map { VATShare(role: index == 0 ? .net : .tax, rate: $0) })
+		}
+		var result = parts(of: originalID)
+		if let index = result.firstIndex(where: { $0.id == row.id }) {
+			result.replaceSubrange(index...index, with: new)
+		} else {
+			result = new
+		}
+		for i in result.indices { result[i].position = i }
+		return result
+	}
+
 	public mutating func replaceParts(of transactionID: UUID, with parts: [SplitPart]) {
 		guard let original = transaction(transactionID) else { return }
 		partsByTransaction[transactionID] = parts.isEmpty ? nil : parts.map { part in
@@ -736,9 +769,10 @@ public struct TransactionFilter: Hashable, Sendable {
 
 	/// Sets the filter that the filter bar of `scope` has no menu for to "Show All": the account filter in an
 	/// account or a group, the category filter in a category. The list applies both filters in every view, so a
-	/// kept filter without its menu would hide rows with no control to clear it.
+	/// kept filter without its menu would hide rows with no control to clear it. A saved search shows both menus.
 	public mutating func resetHidden(in scope: LedgerScope) {
 		switch scope {
+		case .all: break
 		case .account, .accountGroup: accountID = nil
 		case .category: categoryID = nil
 		}
