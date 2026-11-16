@@ -84,4 +84,4 @@ The accounts of the partners, such as a building savings contract of Bausparkass
 
 ## Open Questions
 
-- A building savings contract of Bausparkasse Schwäbisch Hall may deliver a booked transaction again with another date or purpose, so that the contract would show it twice (issue #230, rule 9). Option A keeps every booked transaction, as "Keep the history for good" in add-account-refresh requires, and accepts the duplicate. Option B replaces the booked transactions of such a contract from the first delivered day on by the delivered ones, and keeps the category, the comment, and the checkmark of each row it can match. The decision waits for the product owner and for the partner accounts, because no contract reaches the app before they exist.
+None. Decided for issue #230, rule 9: a building savings contract of Bausparkasse Schwäbisch Hall keeps every booked transaction, as "Keep the history for good" in add-account-refresh requires, until a bank test shows real duplicates.
