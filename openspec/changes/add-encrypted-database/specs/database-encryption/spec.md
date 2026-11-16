@@ -181,6 +181,17 @@ The app SHALL encrypt the copies that it keeps in the database folder, the autom
 - **THEN** the app names the path of the copy that it could not read
 - **AND** "alt-und-lang-genug" still opens the database and the copy
 
+### Requirement: A copy in use stops the first password
+
+The app SHALL set no first password while it cannot read a copy that it keeps in the database folder. It names the copy, and the random key still opens the database and every copy.
+
+#### Scenario: A copy is in use
+
+- **GIVEN** a database without a password and an automatic backup copy that another program has locked
+- **WHEN** the user sets the password "korrekt-pferd-batterie"
+- **THEN** the app names the path of the backup copy
+- **AND** the database and the backup copy still open without a password
+
 ### Requirement: Work files go before a password change
 
 The app SHALL remove the work files that an interrupted upgrade or repair left in the database folder before it sets or changes the database password. When it cannot remove one, it names the file and changes no key.

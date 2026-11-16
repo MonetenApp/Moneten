@@ -417,6 +417,21 @@ struct OpeningTests {
 		#expect(try !files().contains("RekeyCopies"))
 	}
 
+	@Test("A password change removes the journal of a work file whose work file is already gone")
+	func orphanSideFileGoes() throws {
+		let vault = Vault(folder: folder)
+		let store = try databaseWithCopies(vault)
+		let sides = ["Moneten-Upgrade.sqlite-journal", ".Moneten-Backup.sqlite.partial-wal", "Moneten-Repair.sqlite-shm"]
+		for name in sides { try Data("old pages".utf8).write(to: folder.databaseFolder.appendingPathComponent(name)) }
+		let own = folder.databaseFolder.appendingPathComponent("Moneten-Notes.sqlite-journal")
+		try Data("notes".utf8).write(to: own)
+
+		try vault.changePassword(current: "alt-und-lang-genug", new: "neu-und-noch-laenger", on: store)
+		try store.close()
+		for name in sides { #expect(try !files().contains(name), "\(name)") }
+		#expect(try files().contains(own.lastPathComponent))
+	}
+
 	@Test("A password change that stopped after the database took the new password is finished at the next start")
 	func interruptedChangeAfterDatabase() throws {
 		let vault = Vault(folder: folder)
@@ -711,6 +726,27 @@ struct OpeningTests {
 		#expect(try !files().contains("RekeyCopies"))
 	}
 
+	@Test("A copy that another program has locked stops the first password, and the random key still opens everything", .enabled(if: hasKeychain))
+	func lockedCopyStopsFirstPassword() throws {
+		let vault = Vault(folder: folder)
+		defer { try? vault.keyKeychain.delete(account: folder.keychainAccount) }
+		let store = try vault.create(password: nil, starterCategories: [])
+		_ = try sampleData(store)
+		try store.backup(to: vault.automaticBackup)
+		let key = try #require(try vault.keyKeychain.read(account: folder.keychainAccount))
+		let locker = try DatabaseQueue(path: vault.automaticBackup.path, configuration: Self.keyed(key))
+		try locker.writeWithoutTransaction { db in
+			try db.execute(sql: "BEGIN EXCLUSIVE")
+			#expect(throws: Vault.Failure.copiesUnreadable([vault.automaticBackup.path])) { try vault.setPassword(Self.password, on: store) }
+			try db.execute(sql: "ROLLBACK")
+		}
+		try locker.close()
+		try store.close()
+		#expect(try vault.state() == .randomKey)
+		for name in try files() where name.hasSuffix(".sqlite") { #expect(opens(name, with: key), "\(name)") }
+		#expect(try !files().contains("RekeyCopies"))
+	}
+
 	@Test("A restored backup with an older password replaces the newer password in the Keychain after the unlock", .enabled(if: hasKeychain))
 	func restoreReplacesKeychainEntry() throws {
 		let vault = Vault(folder: folder)
@@ -758,6 +794,27 @@ struct OpeningTests {
 		let renamed = folder.root.appendingPathComponent("Database_OLD")
 		try fm.moveItem(at: folder.databaseFolder, to: renamed)
 		try vault.create(password: Self.password, starterCategories: []).close()
+		try vault.open(password: Self.password).close()
+
+		try fm.removeItem(at: folder.databaseFolder)
+		try fm.moveItem(at: renamed, to: folder.databaseFolder)
+		let store = try vault.openWithRandomKey()
+		defer { try? store.close() }
+		#expect(try store.loadLedger().accounts.map(\.name) == ["Giro"])
+	}
+
+	@Test("A backup of a renamed database that the user put into the new folder keeps the random key of the renamed one", .enabled(if: hasKeychain))
+	func copiedBackupKeepsRenamedKey() throws {
+		let fm = FileManager.default
+		let vault = Vault(folder: folder)
+		defer { try? vault.keyKeychain.delete(account: folder.keychainAccount) }
+		let old = try vault.create(password: nil, starterCategories: [])
+		_ = try sampleData(old)
+		try old.close()
+		let renamed = folder.root.appendingPathComponent("Database_OLD")
+		try fm.moveItem(at: folder.databaseFolder, to: renamed)
+		try vault.create(password: Self.password, starterCategories: []).close()
+		try fm.copyItem(at: renamed.appendingPathComponent("Moneten.sqlite"), to: vault.automaticBackup)
 		try vault.open(password: Self.password).close()
 
 		try fm.removeItem(at: folder.databaseFolder)

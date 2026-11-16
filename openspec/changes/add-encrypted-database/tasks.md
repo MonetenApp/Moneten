@@ -25,7 +25,8 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [x] 1.19 Mention the automatic backup copy when the database cannot be opened. Verified by OpeningTests "A failure to open names the automatic backup copy and how to restore it" (#266).
 - [ ] 1.20 Do not open a database file from the Finder. Build it and verify it with a test or in the app.
 - [x] 1.21 Copies in the database folder follow a password change. Verified by OpeningTests "A password change encrypts the copies in the database folder again, so the earlier password opens none of them", "A copy that another program has locked stops the change, and the old password still opens everything", "A password change that stopped after the database took the new password is finished at the next start", and "A password change that stopped before the database changed keeps the copies with the old password" (#266).
-- [x] 1.22 Work files go before a password change. Verified by OpeningTests "A work file that cannot be removed stops the password change before the database changes" and "A work file that cannot be removed stops the first password before the database changes" (#266).
+- [x] 1.22 A copy in use stops the first password. Verified by OpeningTests "A copy that another program has locked stops the first password, and the random key still opens everything" (#266).
+- [x] 1.23 Work files go before a password change. Verified by OpeningTests "A work file that cannot be removed stops the password change before the database changes", "A work file that cannot be removed stops the first password before the database changes", and "A password change removes the journal of a work file whose work file is already gone" (#266).
 
 ## 2. Integration
 
