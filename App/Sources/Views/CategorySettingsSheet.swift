@@ -142,6 +142,8 @@ struct CategorySettingsSheet: View {
 	/// What the count of matches depends on.
 	private struct MatchKey: Hashable {
 		let rule: String
+		// The synthesized Hashable conformance reads it, which Periphery cannot see.
+		// periphery:ignore
 		let restriction: UUID?
 	}
 

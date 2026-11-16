@@ -1261,3 +1261,14 @@ struct MoneyMoneyMigrationTests {
 		#expect(!MoneyMoneyMigration.isBIC("12030000"))
 	}
 }
+
+extension Categorizer {
+	/// The category that `categorize` gives a row without a category of its own.
+	func category(for t: Transaction) -> UUID? {
+		var row = t
+		row.categoryID = nil
+		row.categorizedBy = .none
+		categorize(&row)
+		return row.categoryID
+	}
+}

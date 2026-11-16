@@ -22,11 +22,6 @@ public struct Categorizer: Sendable {
 		}
 	}
 
-	/// The category whose rule matches first, or nil. A rule whose regular expression stopped matches nothing.
-	public func category(for t: Transaction) -> UUID? {
-		decision(for: t).category
-	}
-
 	/// The first category whose rule matches, and whether a stopped rule stood before it, which could have matched first.
 	private func decision(for t: Transaction) -> (category: UUID?, passedStop: Bool) {
 		let subject = RuleSubject(t, account: accountsByID[t.accountID])
