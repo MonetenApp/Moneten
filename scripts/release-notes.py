@@ -249,6 +249,9 @@ def check_release(sections, version, build, items):
 	find(sections, version)
 	for item in items:
 		if item["version"] == version:
+			# A tag that was moved to an older commit must not replace the item with a lower build.
+			if build < item["build"]:
+				raise Failure("build %d is below build %d of version %s in the feed." % (build, item["build"], version))
 			continue
 		if build <= item["build"]:
 			raise Failure("build %d is not above build %d of version %s in the feed." % (build, item["build"], item["version"]))

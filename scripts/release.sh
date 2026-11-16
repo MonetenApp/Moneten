@@ -12,7 +12,8 @@
 #   scripts/release.sh feed <version>       step 5: the update signature of the disk image and the new
 #                                           signed feed dist/release/appcast.xml
 #   scripts/release.sh draft <version>      step 6: the GitHub release as a draft with both files
-#   scripts/release.sh publish <version>    step 7, run by the owner: publishes the draft, moves the feed
+#   scripts/release.sh publish <version>    step 7, run by the owner with the update key in the login
+#                                           Keychain: checks the feeds with it, publishes the draft, moves the feed
 #                                           of a pre-release to the newest stable release, and updates
 #                                           the text of earlier releases from CHANGELOG.md
 # Signing needs the Developer ID certificate in the Keychain and MONETEN_TEAM_ID. Notarization needs
@@ -59,8 +60,8 @@ check_feed() { notes check-feed --feed "$1" --public-key "$2"; }
 # Writes the current feed to $WORK/current.xml and sets FEED_ARGS. Only an answer of GitHub that
 # no stable release exists makes this the first release, so a network error never starts an empty feed.
 # With the public update key $1, the feed must carry its signature, because a new feed keeps its items
-# and gets a new signature. preflight reads it without a key: the job draft checks the versions again
-# on the checked feed before it signs anything.
+# and gets a new signature. preflight reads it without a key, because the job package has none: the
+# job draft checks the versions again on the checked feed before it signs anything.
 current_feed() {
 	set -- -sS -o /dev/null -w '%{http_code}'
 	[ -z "$GH_TOKEN" ] || set -- "$@" -H "Authorization: Bearer $GH_TOKEN"
@@ -213,7 +214,11 @@ publish() {
 	[ "$(head -1 "$WORK/draft")" = true ] || fail "v$1 is not a draft."
 	grep -qx "Moneten-$1.dmg" "$WORK/draft" && grep -qx appcast.xml "$WORK/draft" || fail "The draft of v$1 lacks its disk image or appcast.xml."
 	gh release download "v$1" --repo "$REPO" -p appcast.xml -D "$WORK/draft-feed"
-	current_feed
+	# The owner's Mac holds the update key in the login Keychain (docs/releasing.md). Every copy of the
+	# app refuses a feed that this key did not sign, so no other feed may go out.
+	KEY=$("$(scripts/sparkle-tools.sh)/generate_keys" -p) || fail "No update key in the login Keychain. docs/releasing.md explains it."
+	check_feed "$WORK/draft-feed/appcast.xml" "$KEY" || fail "The feed of the draft of v$1 failed its check. Delete the draft and run the release again."
+	current_feed "$KEY"
 	# A release that was published after this draft was made must be in the draft's feed too.
 	if [ "$FEED_ARGS" != --first-release ]; then
 		python3 - "$WORK/current.xml" "$WORK/draft-feed/appcast.xml" <<-'EOF' || fail "The feed of the draft misses a published version. Delete the draft and run the release again."
@@ -244,9 +249,11 @@ publish() {
 		notes section "${TAG#v}" > "$WORK/section.md"
 		gh release edit "$TAG" --repo "$REPO" --notes-file "$WORK/section.md"
 	done < "$WORK/stale"
-	curl -fsSL "$FEED_URL" | grep -q "<sparkle:shortVersionString>$1</sparkle:shortVersionString>" \
+	curl -fsSL -o "$WORK/published.xml" "$FEED_URL" || fail "The feed at $FEED_URL cannot be read."
+	check_feed "$WORK/published.xml" "$KEY" || fail "The feed at $FEED_URL failed its check."
+	grep -q "<sparkle:shortVersionString>$1</sparkle:shortVersionString>" "$WORK/published.xml" \
 		|| fail "The feed at $FEED_URL does not list $1 yet."
-	echo "Published v$1. The feed at $FEED_URL lists it."
+	echo "Published v$1. The feed at $FEED_URL lists it, signed with the update key."
 }
 
 # The checks that guard the current feed, run on the new feed $OUT/appcast.xml that the private
