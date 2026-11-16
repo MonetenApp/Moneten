@@ -10,12 +10,19 @@ import Testing
 struct BankLookupTests {
 	nonisolated static let musterbank = BankDirectory.Entry(code: "12030000", city: "Musterstadt",
 		bank: FinTSBank(name: "Musterbank", bic: "MUSTDEXXXXX", url: URL(string: "https://fints.musterbank.example/fints")))
-	nonisolated static let beispielbank = BankDirectory.Entry(code: "10010010", city: "Beispielstadt",
+	nonisolated static let beispielbank = BankDirectory.Entry(code: "10099999", city: "Beispielstadt",
 		bank: FinTSBank(name: "Beispielbank", bic: nil, url: URL(string: "https://fints.beispielbank.example/")))
 	nonisolated static let musterbankNord = BankDirectory.Entry(code: "20030000", city: "Nordstadt",
 		bank: FinTSBank(name: "Musterbank", bic: nil, url: URL(string: "https://fints.musterbank.example/fints")))
 	nonisolated static let ohnebank = BankDirectory.Entry(code: "37040044", city: "Köln", bank: FinTSBank(name: "Ohnebank", bic: nil, url: nil))
-	nonisolated static let directory = BankDirectory([musterbank, beispielbank, musterbankNord, ohnebank])
+	/// The directory marks the entry of a merged bank with "-alt-" or "-alt" at the end of its name. Such a
+	/// Bankleitzahl may still be the one the bank uses, so the setup goes on with a note.
+	nonisolated static let altbank = BankDirectory.Entry(code: "21099999", city: "Altstadt",
+		bank: FinTSBank(name: "Sparkasse Altstadt -alt-", bic: nil, url: URL(string: "https://banking.s-fints-pt-muster.example/fints30")))
+	nonisolated static let altdorf = BankDirectory.Entry(code: "21099990", city: "Altdorf",
+		bank: FinTSBank(name: "Raiffeisenbank Altdorf -alt", bic: nil, url: URL(string: "https://fints.altdorf.example/")))
+	nonisolated static let directory = BankDirectory([musterbank, beispielbank, musterbankNord, ohnebank, altbank, altdorf])
+	nonisolated static let mergerNote = "This Bankleitzahl belongs to a bank that merged. If the login fails, ask your bank which Bankleitzahl it uses for online banking now."
 
 	@Test("A new entry drops the bank of the entry before")
 	func newEntryDropsBank() async {
@@ -24,7 +31,7 @@ struct BankLookupTests {
 		await lookup.lookUp(showingErrors: true)
 		#expect(lookup.bank == Self.musterbank)
 
-		lookup.entry = "10010010"
+		lookup.entry = "10099999"
 		#expect(lookup.bank == nil)
 		await lookup.lookUp(showingErrors: true)
 		#expect(lookup.bank == Self.beispielbank)
@@ -40,7 +47,7 @@ struct BankLookupTests {
 		let late = Task { await lookup.lookUp(showingErrors: true) }
 		for _ in 0..<100 where lookup.state != .searching { await Task.yield() }
 		#expect(lookup.state == .searching)
-		lookup.entry = "10010010"
+		lookup.entry = "10099999"
 		await late.value
 		#expect(lookup.state == .none)
 		#expect(lookup.bank == nil)
@@ -67,6 +74,36 @@ struct BankLookupTests {
 		lookup.entry = "123456789012"
 		await lookup.lookUp(showingErrors: true)
 		#expect(lookup.state == .failed("A Bankleitzahl has 8 digits."))
+	}
+
+	@Test("A Bankleitzahl of a merged bank goes on with a note, in an IBAN, entered, or chosen, also with \"-alt\" at the end")
+	func mergedBank() async {
+		let lookup = BankLookup { Self.directory }
+		lookup.entry = "DE07 2109 9999 0000 2020 51"
+		await lookup.lookUp(showingErrors: true)
+		#expect(lookup.bank == Self.altbank)
+		#expect(lookup.bank?.mergerNote == Self.mergerNote)
+
+		lookup.entry = "21099990"
+		await lookup.lookUp(showingErrors: true)
+		#expect(lookup.bank == Self.altdorf)
+		#expect(lookup.bank?.mergerNote == Self.mergerNote)
+
+		lookup.entry = "Altstadt"
+		await lookup.lookUp(showingErrors: false)
+		#expect(lookup.state == .matches([Self.altbank]))
+		lookup.choose(Self.altbank)
+		#expect(lookup.bank == Self.altbank)
+		#expect(Self.musterbank.mergerNote == nil)
+	}
+
+	@Test("A merged bank without a FinTS address gets the message of any bank without one, and no note")
+	func mergedBankWithoutFinTS() async {
+		let lookup = BankLookup { BankDirectory([BankDirectory.Entry(code: "21099999", city: "Altstadt", bank: FinTSBank(name: "Sparkasse Altstadt -alt-", bic: nil, url: nil))]) }
+		lookup.entry = "DE07 2109 9999 0000 2020 51"
+		await lookup.lookUp(showingErrors: true)
+		#expect(lookup.state == .failed("Sparkasse Altstadt -alt- does not provide a FinTS/HBCI server. An extension can add support for the bank."))
+		#expect(lookup.bank == nil)
 	}
 
 	@Test("A name lists the banks that match, and the chosen bank takes the place of the entry")
