@@ -138,8 +138,8 @@ struct FileImportSheet: View {
 	}
 
 	private var status: String {
-		if let n = run.storing { return n == 1 ? "Storing one transaction..." : "Storing \(n.formatted()) transactions..." }
-		return run.names.count == 1 ? "Reading \(run.names[0])..." : "Reading file \(run.index + 1) of \(run.names.count): \(run.names[run.index])..."
+		if let n = run.storing { return n == 1 ? String(localized: "Storing one transaction...") : String(localized: "Storing \(n.formatted()) transactions...") }
+		return run.names.count == 1 ? String(localized: "Reading \(run.names[0])...") : String(localized: "Reading file \(run.index + 1) of \(run.names.count): \(run.names[run.index])...")
 	}
 }
 
@@ -179,12 +179,12 @@ struct AccountQuestionView: View {
 
 	private var message: String {
 		let named = switch question.named {
-		case let .iban(iban): "the IBAN \(Format.iban(iban))"
-		case let .number(bankCode, number, _): bankCode.map { "the account number \(number) at the bank code \($0)" } ?? "the account number \(number)"
+		case let .iban(iban): String(localized: "the IBAN \(Format.iban(iban))")
+		case let .number(bankCode, number, _): bankCode.map { String(localized: "the account number \(number) at the bank code \($0)") } ?? String(localized: "the account number \(number)")
 		}
 		if let other = question.other {
-			return "The file names \(named), which belongs to the account \"\(other.name)\". Do you want to import it into \"\(other.name)\" instead of \"\(question.selected.name)\"?"
+			return String(localized: "The file names \(named), which belongs to the account \"\(other.name)\". Do you want to import it into \"\(other.name)\" instead of \"\(question.selected.name)\"?")
 		}
-		return "The file names \(named), which no account has. Import it into the selected account \"\(question.selected.name)\", or into a new offline account?"
+		return String(localized: "The file names \(named), which no account has. Import it into the selected account \"\(question.selected.name)\", or into a new offline account?")
 	}
 }

@@ -16,7 +16,9 @@ The pin saves the filter bar, as its tooltip says. Turning it on writes the peri
 
 Turning the pin off goes through `AppModel.choose(period: .all)`, so the period menu, the list, and the charts all show "Show All". It then sets the other filters to "Show All" and clears the search text. The filter bar then shows nothing hidden, and one control clears it.
 
-Selecting a saved search puts its search text and filters into the search field and the filter bar, like a choice by hand. Leaving it keeps them by the rule for every view. While the pin is on, this change is saved like any other.
+Selecting a saved search puts its search text and filters into the search field and the filter bar, like a choice by hand. Leaving it keeps them by the rule for every view. While the pin is on, this change is saved like any other. A change of the filter bar while the saved search is open does not change the saved search. "Save Search..." at the end of the filter bar saves the search field and the filter bar under a new name.
+
+A saved search is a `SavedSearch` with the search text and a `SavedFilterBar`, the type that the pin uses. It keeps the period choice, so "30 Days" counts from the day the user selects it. It holds no rows, so a new matching transaction shows the next time. The list of a saved search reads `LedgerScope.all`, the rows of every account, and `resetHidden(in:)` keeps both filters there. Saved searches live in the table `savedSearch` of the encrypted database and not in `UserDefaults`, because a search text can name a person or a contract. They are user data, so the complete export holds them under `savedSearches`, and the complete import refuses a database that has one.
 
 The custom amount range compares the signed `amountMinor` with the signed ends, both ends included. This keeps a range in one direction, so the sum of the filtered list does not mix deposits and withdrawals.
 

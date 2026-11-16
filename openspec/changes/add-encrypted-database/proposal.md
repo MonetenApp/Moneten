@@ -60,3 +60,4 @@ None.
 - When the database was changed on disk, the app stops writing and offers to load the database again. MoneyMoney shows the message. What it does next was not observed.
 - The app keeps the damaged file when a repair runs, and it keeps the old file until an upgrade has passed all checks. The strings of MoneyMoney suggest the same order. The exact steps were not observed.
 - An empty database folder starts a new database. A folder that holds a database file with no content is an error.
+- The app overwrites deleted data with zeros, so that a removed saved PIN does not stay in the file or in a copy of it. SQLCipher does this for every connection with a key, and the app also sets `PRAGMA secure_delete = ON` (issues #327 and #335). How MoneyMoney treats deleted data was not observed.

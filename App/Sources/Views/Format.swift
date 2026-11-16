@@ -17,10 +17,6 @@ extension Format {
 		text.replacingOccurrences(of: "-", with: "\u{2212}")
 	}
 
-	static func money(_ minor: Int64, _ currency: String) -> String {
-		money(Money(minorUnits: minor, currency: currency))
-	}
-
 	/// An amount in major units for a chart, with the decimal places of its currency.
 	static func chartValue(_ minor: Int64, _ currency: String) -> Double {
 		NSDecimalNumber(decimal: Money(minorUnits: minor, currency: currency).decimal).doubleValue
@@ -51,8 +47,8 @@ extension Format {
 	/// "Today, 09:41", "Yesterday, 21:19", or the date and the time.
 	static func dayAndTime(_ date: Date, calendar: Calendar = .current) -> String {
 		let time = date.formatted(date: .omitted, time: .shortened)
-		if calendar.isDateInToday(date) { return "Today, \(time)" }
-		if calendar.isDateInYesterday(date) { return "Yesterday, \(time)" }
+		if calendar.isDateInToday(date) { return String(localized: "Today, \(time)") }
+		if calendar.isDateInYesterday(date) { return String(localized: "Yesterday, \(time)") }
 		return date.formatted(date: .abbreviated, time: .shortened)
 	}
 
@@ -250,32 +246,32 @@ enum CategorySymbols {
 	/// "receipt" of macOS 15.2, would show nothing there. Check a new one in the "name_availability"
 	/// list of SF Symbols.
 	static let choices: [(symbol: String, name: String)] = [
-		("house.fill", "House"), ("building.2.fill", "Building"), ("bolt.fill", "Electricity"), ("drop.fill", "Water"),
-		("flame.fill", "Heating"), ("wifi", "Internet"), ("phone.fill", "Phone"), ("tv.fill", "Television"),
-		("sofa.fill", "Furniture"), ("wrench.and.screwdriver.fill", "Repairs"),
-		("cart.fill", "Shopping cart"), ("basket.fill", "Basket"), ("fork.knife", "Restaurant"), ("cup.and.saucer.fill", "Café"),
-		("wineglass.fill", "Drinks"), ("birthday.cake.fill", "Cake"),
-		("car.fill", "Car"), ("fuelpump.fill", "Fuel"), ("parkingsign.circle.fill", "Parking"), ("bus.fill", "Bus"),
-		("tram.fill", "Train"), ("bicycle", "Bicycle"), ("airplane", "Airplane"), ("suitcase.fill", "Suitcase"),
-		("beach.umbrella.fill", "Holiday"),
-		("bag.fill", "Shopping bag"), ("tshirt.fill", "Clothing"), ("gift.fill", "Gift"), ("shippingbox.fill", "Parcel"),
-		("desktopcomputer", "Computer"), ("scissors", "Hairdresser"), ("hammer.fill", "Tools"),
-		("cross.case.fill", "Medical"), ("pills.fill", "Pharmacy"), ("stethoscope", "Doctor"), ("heart.fill", "Heart"),
-		("figure.run", "Sport"), ("dumbbell.fill", "Fitness"),
-		("gamecontroller.fill", "Games"), ("film.fill", "Film"), ("music.note", "Music"), ("book.fill", "Books"),
-		("theatermasks.fill", "Theater"), ("pawprint.fill", "Pets"), ("leaf.fill", "Garden"), ("star.fill", "Star"),
-		("person.fill", "Person"), ("person.2.fill", "People"), ("figure.2.and.child.holdinghands", "Family"),
-		("graduationcap.fill", "Education"), ("briefcase.fill", "Work"),
-		("banknote.fill", "Cash"), ("eurosign.circle.fill", "Euro"), ("dollarsign.circle.fill", "Dollar"),
-		("creditcard.fill", "Credit card"), ("wallet.pass.fill", "Wallet"), ("building.columns.fill", "Bank"),
-		("chart.line.uptrend.xyaxis", "Investments"), ("chart.pie.fill", "Shares"), ("percent", "Interest"),
-		("arrow.left.arrow.right", "Transfer"), ("umbrella.fill", "Insurance"), ("shield.lefthalf.filled", "Protection"),
-		("doc.text.fill", "Document"), ("list.bullet.rectangle.portrait.fill", "Bill"), ("tag.fill", "Tag"),
+		("house.fill", String(localized: "House")), ("building.2.fill", String(localized: "Building")), ("bolt.fill", String(localized: "Electricity")), ("drop.fill", String(localized: "Water")),
+		("flame.fill", String(localized: "Heating")), ("wifi", String(localized: "Internet")), ("phone.fill", String(localized: "Phone")), ("tv.fill", String(localized: "Television")),
+		("sofa.fill", String(localized: "Furniture")), ("wrench.and.screwdriver.fill", String(localized: "Repairs")),
+		("cart.fill", String(localized: "Shopping cart")), ("basket.fill", String(localized: "Basket")), ("fork.knife", String(localized: "Restaurant")), ("cup.and.saucer.fill", String(localized: "Café")),
+		("wineglass.fill", String(localized: "Drinks")), ("birthday.cake.fill", String(localized: "Cake")),
+		("car.fill", String(localized: "Car")), ("fuelpump.fill", String(localized: "Fuel")), ("parkingsign.circle.fill", String(localized: "Parking")), ("bus.fill", String(localized: "Bus")),
+		("tram.fill", String(localized: "Train")), ("bicycle", String(localized: "Bicycle")), ("airplane", String(localized: "Airplane")), ("suitcase.fill", String(localized: "Suitcase")),
+		("beach.umbrella.fill", String(localized: "Holiday")),
+		("bag.fill", String(localized: "Shopping bag")), ("tshirt.fill", String(localized: "Clothing")), ("gift.fill", String(localized: "Gift")), ("shippingbox.fill", String(localized: "Parcel")),
+		("desktopcomputer", String(localized: "Computer")), ("scissors", String(localized: "Hairdresser")), ("hammer.fill", String(localized: "Tools")),
+		("cross.case.fill", String(localized: "Medical")), ("pills.fill", String(localized: "Pharmacy")), ("stethoscope", String(localized: "Doctor")), ("heart.fill", String(localized: "Heart")),
+		("figure.run", String(localized: "Sport")), ("dumbbell.fill", String(localized: "Fitness")),
+		("gamecontroller.fill", String(localized: "Games")), ("film.fill", String(localized: "Film")), ("music.note", String(localized: "Music")), ("book.fill", String(localized: "Books")),
+		("theatermasks.fill", String(localized: "Theater")), ("pawprint.fill", String(localized: "Pets")), ("leaf.fill", String(localized: "Garden")), ("star.fill", String(localized: "Star")),
+		("person.fill", String(localized: "Person")), ("person.2.fill", String(localized: "People")), ("figure.2.and.child.holdinghands", String(localized: "Family")),
+		("graduationcap.fill", String(localized: "Education")), ("briefcase.fill", String(localized: "Work")),
+		("banknote.fill", String(localized: "Cash")), ("eurosign.circle.fill", String(localized: "Euro")), ("dollarsign.circle.fill", String(localized: "Dollar")),
+		("creditcard.fill", String(localized: "Credit card")), ("wallet.pass.fill", String(localized: "Wallet")), ("building.columns.fill", String(localized: "Bank")),
+		("chart.line.uptrend.xyaxis", String(localized: "Investments")), ("chart.pie.fill", String(localized: "Shares")), ("percent", String(localized: "Interest")),
+		("arrow.left.arrow.right", String(localized: "Transfer")), ("umbrella.fill", String(localized: "Insurance")), ("shield.lefthalf.filled", String(localized: "Protection")),
+		("doc.text.fill", String(localized: "Document")), ("list.bullet.rectangle.portrait.fill", String(localized: "Bill")), ("tag.fill", String(localized: "Tag")),
 	]
 
 	/// The name of a symbol for the tooltip and VoiceOver, or "Bookmark" and "Folder" for none.
 	static func label(_ symbol: String?, isGroup: Bool) -> String {
-		guard let symbol else { return isGroup ? "Folder" : "Bookmark" }
+		guard let symbol else { return isGroup ? String(localized: "Folder") : String(localized: "Bookmark") }
 		return choices.first { $0.symbol == symbol }?.name ?? symbol
 	}
 

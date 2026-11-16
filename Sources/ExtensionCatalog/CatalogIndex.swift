@@ -38,18 +38,18 @@ public struct CatalogIndex: Sendable, Equatable {
 	/// Parses the bytes of `index.json`. An index that breaks the schema is not used at all. A manifest
 	/// that the app refuses makes only its package not installable.
 	public static func parse(_ data: Data) throws(CatalogError) -> CatalogIndex {
-		guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw .unreadable("The index is not a JSON object.") }
+		guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw .unreadable(String(localized: "The index is not a JSON object.")) }
 		guard object["formatVersion"] as? Int == 1, Set(object.keys) == ["formatVersion", "version", "published", "extensions"] else {
-			throw .unreadable("The index has another format than version 1.")
+			throw .unreadable(String(localized: "The index has another format than version 1."))
 		}
-		guard let version = integer(object["version"]), version >= 1 else { throw .unreadable("The index has no version.") }
-		guard let text = object["published"] as? String, let published = try? Date(text, strategy: .iso8601) else { throw .unreadable("The index has no time of publication.") }
-		guard let items = object["extensions"] as? [[String: Any]] else { throw .unreadable("The index lists no extensions.") }
+		guard let version = integer(object["version"]), version >= 1 else { throw .unreadable(String(localized: "The index has no version.")) }
+		guard let text = object["published"] as? String, let published = try? Date(text, strategy: .iso8601) else { throw .unreadable(String(localized: "The index has no time of publication.")) }
+		guard let items = object["extensions"] as? [[String: Any]] else { throw .unreadable(String(localized: "The index lists no extensions.")) }
 		var entries: [Entry] = []
 		var ids: Set<String> = []
 		for item in items {
 			let entry = try Entry(item)
-			guard ids.insert(entry.id).inserted else { throw .unreadable("The index lists \(entry.id) twice.") }
+			guard ids.insert(entry.id).inserted else { throw .unreadable(String(localized: "The index lists \(entry.id) twice.")) }
 			entries.append(entry)
 		}
 		return CatalogIndex(version: version, published: published, entries: entries)
@@ -94,20 +94,20 @@ public enum CatalogError: Error, Equatable, Sendable, CustomStringConvertible {
 
 	public var description: String {
 		switch self {
-		case let .unreadable(reason): "The list of extensions cannot be read. \(reason)"
-		case .unverified: "The new list of extensions could not be verified."
-		case .retiredKey: "The new list of extensions is signed with a key that Moneten no longer accepts."
-		case let .replayed(version, floor): "The new list of extensions has version \(version), which is older than version \(floor) that Moneten has."
-		case let .otherContent(version): "The new list of extensions has version \(version) with other content than the list Moneten has."
-		case let .belowLowest(version, lowest): "The new list of extensions has version \(version), which is older than version \(lowest) that this version of Moneten needs."
-		case let .download(name): "\(name) could not be downloaded."
-		case let .damaged(file): "\(file) is damaged or was altered."
-		case let .changed(name): "\(name) was changed and does not match the catalog."
+		case let .unreadable(reason): String(localized: "The list of extensions cannot be read. \(reason)")
+		case .unverified: String(localized: "The new list of extensions could not be verified.")
+		case .retiredKey: String(localized: "The new list of extensions is signed with a key that Moneten no longer accepts.")
+		case let .replayed(version, floor): String(localized: "The new list of extensions has version \(version), which is older than version \(floor) that Moneten has.")
+		case let .otherContent(version): String(localized: "The new list of extensions has version \(version) with other content than the list Moneten has.")
+		case let .belowLowest(version, lowest): String(localized: "The new list of extensions has version \(version), which is older than version \(lowest) that this version of Moneten needs.")
+		case let .download(name): String(localized: "\(name) could not be downloaded.")
+		case let .damaged(file): String(localized: "\(file) is damaged or was altered.")
+		case let .changed(name): String(localized: "\(name) was changed and does not match the catalog.")
 		case let .notInstallable(reason): reason
-		case let .tooLarge(file): "\(file) is larger than Moneten accepts from the catalog."
-		case let .removed(name): "\(name) was removed during its download."
-		case let .notAllowed(name): "\(name) changed since you allowed it. Allow it again in the Extensions window."
-		case let .notRestored(name): "\(name) could not be installed, and Moneten could not restore its record. Remove it and install it again."
+		case let .tooLarge(file): String(localized: "\(file) is larger than Moneten accepts from the catalog.")
+		case let .removed(name): String(localized: "\(name) was removed during its download.")
+		case let .notAllowed(name): String(localized: "\(name) changed since you allowed it. Allow it again in the Extensions window.")
+		case let .notRestored(name): String(localized: "\(name) could not be installed, and Moneten could not restore its record. Remove it and install it again.")
 		}
 	}
 }
@@ -116,21 +116,21 @@ extension CatalogIndex.Entry {
 	init(_ item: [String: Any]) throws(CatalogError) {
 		let allowed: Set = ["id", "status", "note", "manifest", "files"]
 		guard let id = item["id"] as? String, Pattern.isPackageID(id), Set(item.keys).isSubset(of: allowed) else {
-			throw .unreadable("An entry has no valid id.")
+			throw .unreadable(String(localized: "An entry has no valid id."))
 		}
-		guard let raw = item["status"] as? String, let status = CatalogIndex.Status(rawValue: raw) else { throw .unreadable("\(id) has no valid status.") }
+		guard let raw = item["status"] as? String, let status = CatalogIndex.Status(rawValue: raw) else { throw .unreadable(String(localized: "\(id) has no valid status.")) }
 		let note = item["note"] as? String
-		guard let fileItems = item["files"] as? [[String: Any]] else { throw .unreadable("\(id) lists no files.") }
+		guard let fileItems = item["files"] as? [[String: Any]] else { throw .unreadable(String(localized: "\(id) lists no files.")) }
 		var files: [PackageFile] = []
 		for file in fileItems {
 			guard let path = file["path"] as? String, !path.isEmpty, path.utf8.allSatisfy(Self.pathBytes.contains), path != ".", path != "..",
 				let size = CatalogIndex.integer(file["size"]), size >= 0,
 				let sha = file["sha256"] as? String, sha.utf8.count == 64, sha.utf8.allSatisfy(Self.hexBytes.contains) else {
-				throw .unreadable("\(id) lists a file that is not valid.")
+				throw .unreadable(String(localized: "\(id) lists a file that is not valid."))
 			}
 			files.append(PackageFile(path: path, size: size, sha256: sha))
 		}
-		guard Set(files.map(\.path)).count == files.count else { throw .unreadable("\(id) lists a file twice.") }
+		guard Set(files.map(\.path)).count == files.count else { throw .unreadable(String(localized: "\(id) lists a file twice.")) }
 		self.id = id
 		self.status = status
 		self.note = note
@@ -146,9 +146,9 @@ extension CatalogIndex.Entry {
 		guard let value, let data = try? JSONSerialization.data(withJSONObject: value) else { return .failure(.missingManifest) }
 		do {
 			let manifest = try Manifest.parse(data, mode: .catalog)
-			guard manifest.id == id else { return .failure(.invalidManifest("The manifest has another id than \(id).")) }
+			guard manifest.id == id else { return .failure(.invalidManifest(String(localized: "The manifest has another id than \(id)."))) }
 			guard files.contains("manifest.json"), let lua = manifest.files, files.isSuperset(of: lua) else {
-				return .failure(.invalidManifest("The index does not list every file of the manifest."))
+				return .failure(.invalidManifest(String(localized: "The index does not list every file of the manifest.")))
 			}
 			return .success(manifest)
 		} catch {

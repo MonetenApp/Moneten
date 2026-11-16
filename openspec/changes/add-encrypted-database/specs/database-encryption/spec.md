@@ -292,6 +292,22 @@ The app SHALL, when an update of the app needs a new database layout, first save
 - **THEN** the app shows that it could not upgrade the database
 - **AND** the database of version 0.1 is unchanged
 
+### Requirement: Deleted data leaves no trace in the database file
+
+The app SHALL overwrite deleted data in the database file with zeros, also in pages that become free. A copy of the database, such as the automatic backup copy or a "Back Up", then holds no deleted data either.
+
+#### Scenario: Remove a saved PIN
+
+- **GIVEN** an access with the saved PIN "48151"
+- **WHEN** the user clicks "Remove saved PIN" and clicks "OK"
+- **THEN** no page of the database file holds "48151", also when a person decrypts every page with the database password
+
+#### Scenario: PIN removed before an update
+
+- **GIVEN** a database from version 0.1 in which the user removed the saved PIN "48151"
+- **WHEN** the user starts version 0.2, which upgrades the database, and then chooses "Back Up"
+- **THEN** no decrypted page of the database file, of the automatic backup copy, or of the backup holds "48151"
+
 ### Requirement: Refuse a database from a newer version
 
 The app SHALL refuse to open a database that a newer version of the app has upgraded. The message names the lowest version that can open the database and the version that is running. The app does not change the file.

@@ -41,11 +41,18 @@ public struct MoneyMoneyMigration: Sendable {
 	}
 
 	public enum Failure: Error, CustomStringConvertible {
-		case unreadable(String)
+		/// The export of one kind of object is not the property list that the plan reads.
+		public enum Export: Sendable {
+			case accounts, categories, transactions
+		}
+
+		case unreadable(Export)
 
 		public var description: String {
 			switch self {
-			case let .unreadable(what): "The export of \(what) could not be read."
+			case .unreadable(.accounts): String(localized: "The export of the accounts could not be read.")
+			case .unreadable(.categories): String(localized: "The export of the categories could not be read.")
+			case .unreadable(.transactions): String(localized: "The export of the transactions could not be read.")
 			}
 		}
 	}
@@ -63,14 +70,14 @@ public struct MoneyMoneyMigration: Sendable {
 	public func plan(accounts accountsData: Data, categories categoriesData: Data, transactions transactionsData: Data, into ledger: Ledger,
 		deleted: [DeletedTransaction] = []) throws -> Plan {
 		guard let rawAccounts = try PropertyListSerialization.propertyList(from: accountsData, format: nil) as? [[String: Any]] else {
-			throw Failure.unreadable("accounts")
+			throw Failure.unreadable(.accounts)
 		}
 		guard let rawCategories = try PropertyListSerialization.propertyList(from: categoriesData, format: nil) as? [[String: Any]] else {
-			throw Failure.unreadable("categories")
+			throw Failure.unreadable(.categories)
 		}
 		guard let rawTransactionsRoot = try PropertyListSerialization.propertyList(from: transactionsData, format: nil) as? [String: Any],
 			let rawTransactions = rawTransactionsRoot["transactions"] as? [[String: Any]] else {
-			throw Failure.unreadable("transactions")
+			throw Failure.unreadable(.transactions)
 		}
 
 		var plan = Plan()
@@ -85,7 +92,7 @@ public struct MoneyMoneyMigration: Sendable {
 			guard let accountSource = raw["accountUuid"] as? String, let accountID = accountMap[accountSource] else { continue }
 			let id = (raw["id"] as? Int).map { "\(Transaction.migrationIDPrefix)\($0)" }
 			let currency = (raw["currency"] as? String) ?? "EUR"
-			guard let amount = Money(fitting: Decimal((raw["amount"] as? Double) ?? 0), currency: currency) else { throw Failure.unreadable("transactions") }
+			guard let amount = Money(fitting: Decimal((raw["amount"] as? Double) ?? 0), currency: currency) else { throw Failure.unreadable(.transactions) }
 			let booking = (raw["bookingDate"] as? Date).map { Day($0, calendar: calendar) } ?? Day.today(calendar: calendar)
 			let pending = !((raw["booked"] as? Bool) ?? true)
 			var categoryID: UUID?
@@ -130,7 +137,7 @@ public struct MoneyMoneyMigration: Sendable {
 		Self.setInitialBalances(of: &plan, ledger: ledger, stored: stored, deleted: tombstones, relinked: relinked, exported: Set(accountMap.values),
 			delivered: delivered.mapValues { Set($0.compactMap(\.sourceID)) })
 		if !rawCategories.contains(where: { ($0["default"] as? Bool) != true && Self.string($0["rules"]) != nil }) {
-			plan.notes.append("The export contains no categorization rules. Copy them from the category settings of MoneyMoney into the category settings of Moneten.")
+			plan.notes.append(String(localized: "The export contains no categorization rules. Copy them from the category settings of MoneyMoney into the category settings of Moneten."))
 		}
 		let accountNumbers = Set(rawAccounts.filter { ($0["uuid"] as? String).flatMap { accountMap[$0] } != nil }
 			.flatMap { [Self.string($0["accountNumber"]), Self.string($0["iban"])] }.compactMap { $0 }.map(TextFolding.accountKey)
@@ -144,23 +151,23 @@ public struct MoneyMoneyMigration: Sendable {
 		}
 		for c in plan.categories + unchangedCategories {
 			if let error = c.ruleError {
-				plan.notes.append("The rule of \"\(c.name)\" cannot be read at position \(error.position + 1): \(error.message) \"\(c.name)\" receives no transaction through its rule until you correct the rule in its settings.")
+				plan.notes.append(String(localized: "The rule of \"\(c.name)\" cannot be read at position \(error.position + 1): \(error.message) \"\(c.name)\" receives no transaction through its rule until you correct the rule in its settings."))
 			}
 			plan.notes += Self.ruleNotes(c, accountNumbers: accountNumbers)
 		}
 		plan.notes += Self.groupSumNotes(rawAccounts)
 		if !plan.portfolioAccounts.isEmpty {
-			plan.notes.append("Portfolio accounts were taken over with their balance. Their positions follow when securities accounts are supported.")
+			plan.notes.append(String(localized: "Portfolio accounts were taken over with their balance. Their positions follow when securities accounts are supported."))
 		}
 		plan.notes += Self.notMigratedNotes
 		let budgets = rawCategories.filter(Self.hasBudget).count
 		if budgets == 1 {
-			plan.notes.append("1 category has a budget in MoneyMoney. Moneten did not take the budget over.")
+			plan.notes.append(String(localized: "1 category has a budget in MoneyMoney. Moneten did not take the budget over."))
 		} else if budgets > 1 {
-			plan.notes.append("\(budgets) categories have a budget in MoneyMoney. Moneten did not take the budgets over.")
+			plan.notes.append(String(localized: "\(budgets) categories have a budget in MoneyMoney. Moneten did not take the budgets over."))
 		}
 		if (rawAccounts + rawCategories).contains(where: { $0["icon"] is Data }) {
-			plan.notes.append("Moneten takes the color of each icon of MoneyMoney and shows its own icons instead of the pictures.")
+			plan.notes.append(String(localized: "Moneten takes the color of each icon of MoneyMoney and shows its own icons instead of the pictures."))
 		}
 		return plan
 	}
@@ -186,10 +193,10 @@ public struct MoneyMoneyMigration: Sendable {
 	private static func ruleNotes(_ category: Domain.Category, accountNumbers: Set<String>) -> [String] {
 		guard !category.isGroup, !category.isDefault, let tokens = try? RuleToken.positioned(in: category.rule) else { return [] }
 		let chars = Array(category.rule)
+		let name = category.name
 		var notes: [String] = []
 		for (i, entry) in tokens.enumerated() {
 			if i > 0, case .field = tokens[i - 1].token { continue }
-			let prefix = "The rule of \"\(category.name)\""
 			switch entry.token {
 			case let .word(term), let .quoted(term):
 				let number = TextFolding.accountKey(term)
@@ -199,17 +206,19 @@ public struct MoneyMoneyMigration: Sendable {
 					&& Self.ruleIBANLengths[String(number.prefix(2))] == number.count && Self.isIBAN(number)
 				let knownNumber = !number.isEmpty && number.allSatisfy { $0.isASCII && $0.isNumber } && accountNumbers.contains(number)
 				if iban || knownNumber {
-					notes.append("\(prefix) has an account term at position \(entry.position + 1) that does not search account fields. Use remote_account:\(number) to search the account of the counterparty.")
+					notes.append(String(localized: "The rule of \"\(name)\" has an account term at position \(entry.position + 1) that does not search account fields. Use remote_account:\(number) to search the account of the counterparty."))
 				}
 			case .and, .or, .not:
 				let length = entry.token == .or ? 2 : 3
 				let word = String(chars[entry.position...].prefix(length))
 				if ["and", "or", "not"].contains(word.lowercased()), word != word.uppercased() {
-					notes.append("\(prefix) reads \"\(word)\" at position \(entry.position + 1) as an operator. Write \"\(word)\" in quotation marks to search the word itself.")
+					notes.append(String(localized: "The rule of \"\(name)\" reads \"\(word)\" at position \(entry.position + 1) as an operator. Write \"\(word)\" in quotation marks to search the word itself."))
 				}
 			case let .constant(value):
 				let word = String(chars[entry.position...].prefix(value ? 4 : 5))
-				notes.append("\(prefix) reads \"\(word)\" at position \(entry.position + 1) as a constant that matches \(value ? "every transaction" : "no transaction"). Write \"\(word)\" in quotation marks to search the word itself.")
+				notes.append(value
+					? String(localized: "The rule of \"\(name)\" reads \"\(word)\" at position \(entry.position + 1) as a constant that matches every transaction. Write \"\(word)\" in quotation marks to search the word itself.")
+					: String(localized: "The rule of \"\(name)\" reads \"\(word)\" at position \(entry.position + 1) as a constant that matches no transaction. Write \"\(word)\" in quotation marks to search the word itself."))
 			default: break
 			}
 		}
@@ -368,7 +377,7 @@ public struct MoneyMoneyMigration: Sendable {
 			positions[parent] = position + 1
 			let isGroup = (item["group"] as? Bool) == true
 			if isGroup, Self.string(item["rules"]) != nil {
-				plan.notes.append("The rule of the group \"\(name)\" was not taken over, because a group holds no transactions. Move it to a category below the group.")
+				plan.notes.append(String(localized: "The rule of the group \"\(name)\" was not taken over, because a group holds no transactions. Move it to a category below the group."))
 			}
 			let color = (item["icon"] as? Data).flatMap(Self.iconColor)
 			if let existing = known.first(where: { $0.sourceID == source || ($0.name == name && $0.parentID == parent && !$0.isDefault) }) {
@@ -426,10 +435,10 @@ public struct MoneyMoneyMigration: Sendable {
 
 	/// The scripting dictionary of MoneyMoney has no command that exports these.
 	static let notMigratedNotes = [
-		"Login data was not migrated, because the AppleScript export of MoneyMoney does not contain it. Connect a migrated account to its bank with \"Add Account...\" and enter the login data there.",
-		"Transfer templates were not migrated, because the AppleScript export of MoneyMoney does not contain them. Use \"Export Transfer Templates...\" in MoneyMoney to keep them.",
-		"Standing orders were not migrated, because the AppleScript export of MoneyMoney does not contain them. Your bank keeps them, so they continue as before.",
-		"Statements were not migrated, because the AppleScript export of MoneyMoney does not contain them. Use \"Show in Finder...\" on \"Statements\" in MoneyMoney to find the statement files and copy them to keep them.",
+		String(localized: "Login data was not migrated, because the AppleScript export of MoneyMoney does not contain it. Connect a migrated account to its bank with \"Add Account...\" and enter the login data there."),
+		String(localized: "Transfer templates were not migrated, because the AppleScript export of MoneyMoney does not contain them. Use \"Export Transfer Templates...\" in MoneyMoney to keep them."),
+		String(localized: "Standing orders were not migrated, because the AppleScript export of MoneyMoney does not contain them. Your bank keeps them, so they continue as before."),
+		String(localized: "Statements were not migrated, because the AppleScript export of MoneyMoney does not contain them. Use \"Show in Finder...\" on \"Statements\" in MoneyMoney to find the statement files and copy them to keep them."),
 	]
 
 	/// The key layout of a budget in `export categories` was not recorded with the real export. A
@@ -476,7 +485,7 @@ public struct MoneyMoneyMigration: Sendable {
 			let shown = balances(item)
 			let currencies = Set(shown.keys).union(sum.keys)
 			if currencies.contains(where: { shown[$0, default: 0] != sum[$0, default: 0] }) {
-				notes.append("The group \"\(item["name"] as? String ?? "")\" has a different balance in MoneyMoney than the sum of its accounts. MoneyMoney leaves closed accounts out of the sum, and its export does not say which accounts are closed. Turn on \"The account has been closed\" in the settings of each closed account of this group.")
+				notes.append(String(localized: "The group \"\(item["name"] as? String ?? "")\" has a different balance in MoneyMoney than the sum of its accounts. MoneyMoney leaves closed accounts out of the sum, and its export does not say which accounts are closed. Turn on \"The account has been closed\" in the settings of each closed account of this group."))
 			}
 		}
 		return notes
@@ -532,15 +541,15 @@ public enum MoneyMoneyExporter {
 		public var description: String {
 			switch self {
 			case .notInstalled:
-				"MoneyMoney is not installed on this Mac. You can import transactions from CSV, CAMT, or MT940 files into an account instead."
+				String(localized: "MoneyMoney is not installed on this Mac. You can import transactions from CSV, CAMT, or MT940 files into an account instead.")
 			case .notRunning:
-				"MoneyMoney is not running. Open MoneyMoney and unlock it, then choose \"Check again\"."
+				String(localized: "MoneyMoney is not running. Open MoneyMoney and unlock it, then choose \"Check again\".")
 			case .locked:
-				"MoneyMoney is locked. Unlock MoneyMoney with its database password, then choose \"Check again\"."
+				String(localized: "MoneyMoney is locked. Unlock MoneyMoney with its database password, then choose \"Check again\".")
 			case .notAllowed:
-				"macOS does not allow Moneten to read data from MoneyMoney. Allow it in System Settings → Privacy & Security → Automation → Moneten, then choose \"Check again\"."
+				String(localized: "macOS does not allow Moneten to read data from MoneyMoney. Allow it in System Settings → Privacy & Security → Automation → Moneten, then choose \"Check again\".")
 			case let .failed(message):
-				"MoneyMoney did not answer: \(message)"
+				String(localized: "MoneyMoney did not answer: \(message)")
 			}
 		}
 
@@ -584,7 +593,7 @@ public enum MoneyMoneyExporter {
 					if let code = reply.paramDescriptor(forKeyword: 0x6572726e)?.int32Value, code != 0 {
 						throw Failure.of(code: Int(code), message: reply.paramDescriptor(forKeyword: 0x65727273)?.stringValue ?? "Error \(code)")
 					}
-					guard let text = reply.paramDescriptor(forKeyword: 0x2d2d2d2d)?.stringValue else { throw Failure.failed("The export returned no property list.") }
+					guard let text = reply.paramDescriptor(forKeyword: 0x2d2d2d2d)?.stringValue else { throw Failure.failed(String(localized: "The export returned no property list.")) }
 					continuation.resume(returning: Data(text.utf8))
 				} catch let failure as Failure {
 					continuation.resume(throwing: failure)

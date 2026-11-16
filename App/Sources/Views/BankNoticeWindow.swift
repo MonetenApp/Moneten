@@ -14,7 +14,7 @@ struct BankNoticeWindow: View {
 					ForEach(model.bankNotices.waiting, id: \.self) { notice in
 						VStack(alignment: .leading, spacing: 4) {
 							Text(notice.accountName.map { "\(notice.bankName) · \($0)" } ?? notice.bankName).font(.headline)
-							Text(notice.code.map { "“\(notice.text)” (\($0))" } ?? notice.text)
+							Text(notice.code.map { String(localized: "“\(notice.text)” (\($0))") } ?? notice.text)
 								.textSelection(.enabled)
 								.fixedSize(horizontal: false, vertical: true)
 						}
