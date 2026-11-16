@@ -390,7 +390,8 @@ struct FinTSConnectorTests {
 		#expect(recorded.map { $0["type"] } == ["cancel", "terminated"])
 	}
 
-	@Test("A helper that sends a line and then stays silent fails with a timeout")
+	// The limit only ends a run that hangs because the watchdog never fired: the helper waits in `read` before its `sleep 60`.
+	@Test("A helper that sends a line and then stays silent fails with a timeout", .timeLimit(.minutes(3)))
 	func timeoutAfterLine() async throws {
 		// The line counts until the run has handled it. Afterwards the silence must time out, as when
 		// the helper reported that it sent a message and the bank never answers.
