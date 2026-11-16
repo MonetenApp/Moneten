@@ -430,16 +430,42 @@ public class FinTSHelper {
 			setBLZ(d.blz);
 			setHost(d.host);
 			setPort(d.port);
+			// A passport that a self-test builds without a command keeps the user ID of its state.
 			boolean replaced = present(user);
 			setUserId(replaced ? user : d.userId);
 			setSysId(d.sysId);
 			setBPD(d.bpd);
 			setUPD(d.upd);
 			setHBCIVersion(d.hbciVersion);
-			setCustomerId(replaced && (d.customerId == null || d.customerId.equalsIgnoreCase(d.userId)) ? user : d.customerId);
+			setCustomerId(replaced && sameLogin(d.customerId, d.userId, d.host) ? user : d.customerId);
 			setFilterType(d.filter);
 			setAllowedTwostepMechanisms(d.twostepMechs);
 			setCurrentTANMethod(d.tanMethod);
+		}
+
+		/// Whether the customer ID of a state names the login of its user ID: the same text, or on a server of
+		/// the cooperative banks the same VR-Kennung, which FinTSServer.loginName of the app sends in capitals.
+		/// A customer ID that differs in case only is one of its own, because a bank may tell them apart.
+		static boolean sameLogin(String customerId, String userId, String host) {
+			if (customerId == null || userId == null) return false;
+			if (customerId.equals(userId)) return true;
+			String vrk = vrKennung(customerId);
+			return cooperative(host) && vrk != null && vrk.equals(vrKennung(userId));
+		}
+
+		/// A VR-Kennung, "VRK" and digits, in capitals and without spaces, or null for any other login name.
+		static String vrKennung(String name) {
+			String joined = name.replaceAll("\\s", "").toUpperCase(java.util.Locale.ROOT);
+			return joined.matches("VRK[0-9]+") ? joined : null;
+		}
+
+		/// The FinTS servers of Atruvia and of apoBank, by the host of the address that hbci4java keeps with its path.
+		static boolean cooperative(String address) {
+			if (address == null) return false;
+			String host = address.trim().toLowerCase(java.util.Locale.ROOT);
+			int end = host.indexOf('/');
+			if (end >= 0) host = host.substring(0, end);
+			return host.endsWith(".atruvia.de") || host.endsWith(".bankenit.de") || host.equals("fints.apobank.de");
 		}
 
 		/// The challenge data of the last challenge, which hbci4java removes before the callback. A

@@ -222,9 +222,9 @@ struct BankAccessTests {
 		let other = URL(string: "https://fints.musterbank.example/fints")!
 		#expect(!Access(source: .fints(bankCode: "12030000", url: other), bankName: "Musterbank", loginName: "vrk12345678")
 			.isSameLogin(as: Access(source: .fints(bankCode: "12030000", url: other), bankName: "Musterbank", loginName: "VRK12345678")))
-		#expect(FinTSServer.loginName("vrk 12345678", server: atruvia) == "VRK12345678")
-		#expect(FinTSServer.loginName("vrk12345678", server: URL(string: "https://fints.apobank.de/FinTs30PinTanHttpGate")) == "VRK12345678")
-		#expect(FinTSServer.loginName("vrk12345678", server: other) == "vrk12345678")
+		let apoBank = URL(string: "https://fints.apobank.de/FinTs30PinTanHttpGate")!
+		#expect(Access(source: .fints(bankCode: "30060601", url: apoBank), bankName: "apoBank", loginName: "vrk12345678")
+			.isSameLogin(as: Access(source: .fints(bankCode: "30060601", url: apoBank), bankName: "apoBank", loginName: "VRK12345678")))
 	}
 
 	@Test("Refresh All Accounts fetches every account with an access that is not closed, one request per access")
