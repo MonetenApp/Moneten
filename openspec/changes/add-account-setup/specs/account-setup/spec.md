@@ -119,18 +119,19 @@ The app SHALL check an IBAN for its country code, its length for that country, a
 
 ### Requirement: Check the Bankleitzahl
 
-The app SHALL reject a Bankleitzahl that is not in the bank directory, and it SHALL tell the user when a Bankleitzahl is outdated, also when it is part of an IBAN.
+The app SHALL reject a Bankleitzahl that is not in the bank directory, also when it is part of an IBAN, and SHALL never say that a Bankleitzahl in the bank directory is outdated.
 
 #### Scenario: Unknown Bankleitzahl
 
 - **WHEN** the user enters "00000000"
 - **THEN** the app says that the Bankleitzahl is invalid
 
-#### Scenario: Outdated Bankleitzahl after a bank merger
+#### Scenario: Bankleitzahl of a merged bank is not called outdated
 
-- **GIVEN** the bank directory marks the Bankleitzahl 21099999 as replaced
+- **GIVEN** the bank directory lists 21099999 as "Sparkasse Altstadt -alt-" with a FinTS address
 - **WHEN** the user enters an IBAN that contains 21099999
-- **THEN** the app says that the IBAN contains an outdated Bankleitzahl and asks for the current IBAN
+- **THEN** the app does not say that the IBAN or the Bankleitzahl is outdated
+- **AND** the app does not ask for another IBAN
 
 ### Requirement: Note for the Bankleitzahl of a merged bank
 
@@ -520,3 +521,15 @@ The app SHALL show a list of the banks and services it can reach, with a search 
 - **GIVEN** an installed extension declares the service "Musterbroker", and the bank directory fails to load
 - **WHEN** the user opens the list
 - **THEN** the list says that the bank directory could not be loaded and still shows "Musterbroker"
+
+#### Scenario: Move through the list with the keyboard
+
+- **GIVEN** the list shows 500 banks
+- **WHEN** the user types in the search field and presses Down Arrow
+- **THEN** the first entry of the list is selected and the search field keeps its text
+- **AND** Down Arrow, Up Arrow, Page Down, Page Up, Home, and End move the selection and scroll the list so that the selected entry is visible
+
+#### Scenario: Each entry is one element for assistive technologies
+
+- **WHEN** VoiceOver reads the list
+- **THEN** each bank is one element with its name, its place and Bankleitzahl, its access method, and its whole note

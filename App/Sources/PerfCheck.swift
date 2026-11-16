@@ -2,7 +2,9 @@
 import AppKit
 import Domain
 import ExtensionCatalog
+import FinTS
 import Foundation
+import SwiftUI
 import Synchronization
 
 /// The UI performance check of `scripts/perf-check.sh`. Each scenario drives the real app on
@@ -385,6 +387,33 @@ struct PerfScenario {
 				} catch { c.fail("booked file refresh failed") }
 				if c.model.ledger.transactions(ofAccount: account.id).count != stored.count { c.fail("booked file refresh changed row count") }
 			}),
+		// "Supported Banks..." on a directory of 2,700 banks, as many as the bank directory of the helper has with a
+		// FinTS address. The window used a `List`, and its rows are now a lazy stack (add-account-setup, task 1.21).
+		PerfScenario(name: "open-supported-banks", budget: halfSecond,
+			setUp: { _ in SupportedBanksPerf.directory = SupportedBanksPerf.load() },
+			run: { c in
+				guard let directory = SupportedBanksPerf.directory else { return }
+				let window = NSWindow(contentViewController: NSHostingController(rootView: SupportedBanksList(directory: .success(directory)).environment(c.model)))
+				window.title = "Supported Banks Perf"
+				window.setContentSize(NSSize(width: 560, height: 640))
+				window.isReleasedWhenClosed = false
+				window.makeKeyAndOrderFront(nil)
+				SupportedBanksPerf.window = window
+			}),
+		PerfScenario(name: "search-supported-banks", budget: halfSecond,
+			run: { c in
+				guard let field = SupportedBanksPerf.field else { return c.fail("the search field has no focus") }
+				field.insertText("Sparkasse", replacementRange: NSRange(location: NSNotFound, length: 0))
+			}),
+		PerfScenario(name: "clear-supported-banks-search", budget: halfSecond,
+			run: { c in
+				guard let field = SupportedBanksPerf.field else { return c.fail("the search field has no focus") }
+				field.selectAll(nil)
+				field.deleteBackward(nil)
+				await c.settle()
+				SupportedBanksPerf.window?.close()
+				SupportedBanksPerf.window = nil
+			}),
 	]
 
 	/// A CSV file waits in the preview, which reads it away from the main actor, until "Import".
@@ -418,6 +447,27 @@ struct PerfScenario {
 		}
 		let index: [String: Any] = ["formatVersion": 1, "version": 1, "published": "2026-11-13T08:00:00Z", "extensions": packages]
 		return (try? JSONSerialization.data(withJSONObject: index)) ?? Data()
+	}
+}
+
+/// The window and the made-up bank directory of the scenarios of "Supported Banks".
+@MainActor
+enum SupportedBanksPerf {
+	static var directory: BankDirectory?
+	static var window: NSWindow?
+
+	static var field: NSTextView? { window?.firstResponder as? NSTextView }
+
+	/// 2,700 made-up banks, as many as the bank directory of the FinTS helper has with a FinTS address, one in
+	/// ten of a merged bank.
+	static func load() -> BankDirectory {
+		let places = ["Musterstadt", "Beispielstadt", "Altstadt", "Neustadt", "Bergdorf", "Talheim"]
+		let kinds = ["Sparkasse", "Volksbank", "Raiffeisenbank", "Musterbank", "Privatbank"]
+		return BankDirectory((0..<2_700).map { i in
+			let place = places[i % places.count]
+			return BankDirectory.Entry(code: String(10_000_000 + i * 3_217), city: place,
+				bank: FinTSBank(name: "\(kinds[i % kinds.count]) \(place) \(i)\(i % 10 == 0 ? " -alt-" : "")", bic: nil, url: URL(string: "https://fints.bank\(i).example/fints")))
+		})
 	}
 }
 

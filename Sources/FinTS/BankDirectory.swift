@@ -11,6 +11,12 @@ public struct BankDirectory: Sendable {
 
 		public var id: String { code }
 
+		public init(code: String, city: String, bank: FinTSBank) {
+			self.code = code
+			self.city = city
+			self.bank = bank
+		}
+
 		/// The directory marks the entry of a merged bank as "Sparkasse Bonn -alt-", and once as "-alt". The
 		/// mark does not say that the Bankleitzahl is outdated: during a merger a bank may keep two in one
 		/// place, and the mark only tells them apart.

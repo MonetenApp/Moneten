@@ -35,6 +35,23 @@ struct SupportedBanksTests {
 		#expect(found.services.map(\.name) == ["Musterbroker", "Zahlbank"])
 	}
 
+	@Test("Without a search the banks come by name, then place, whatever the order of the bank directory")
+	func sortedByName() {
+		let banks = [
+			Self.bank("70150000", "Stadtsparkasse München", "München"),
+			Self.bank("12030000", "Musterbank", "Musterstadt"),
+			Self.bank("21099999", "Sparkasse Altstadt -alt-", "Altstadt"),
+			Self.bank("10010010", "Aachener Bank", "Aachen"),
+			Self.bank("12030001", "Musterbank", "Altdorf"),
+		]
+		let expected = ["10010010", "12030001", "12030000", "21099999", "70150000"]
+		var generator = SystemRandomNumberGenerator()
+		for order in [banks, banks.reversed()] + (0..<8).map({ _ in banks.shuffled(using: &generator) }) {
+			let list = SupportedBanks(directory: BankDirectory(order), services: [])
+			#expect(list.matching("").banks.map(\.code) == expected, "for the order \(order.map(\.code))")
+		}
+	}
+
 	@Test("A service is found by the name of its extension, with or without umlauts")
 	func serviceByExtension() {
 		#expect(Self.list.matching("broker ext").services.map(\.name) == ["Musterbroker"])
