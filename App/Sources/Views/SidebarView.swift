@@ -151,7 +151,7 @@ struct GroupRow: View {
 			}
 			Spacer()
 			if let markers, !markers.failedAccounts.isEmpty {
-				RefreshErrorButton(accounts: markers.failedAccounts, help: "The last refresh of an account in this group failed")
+				RefreshErrorButton(accounts: markers.failedAccounts, help: String(localized: "The last refresh of an account in this group failed"))
 			}
 			if group.showSum {
 				let sums = model.ledger.sum(ofGroup: group.id)
@@ -297,7 +297,7 @@ struct CategoryRow: View {
 			if let error = category.ruleError {
 				Image(systemName: "exclamationmark.triangle.fill")
 					.foregroundStyle(.yellow)
-					.help("The rule cannot be read. New transactions do not get this category. \(error)")
+					.help("The rule cannot be read. New transactions do not get this category. \(String(describing: error))")
 					.accessibilityLabel("The rule cannot be read.")
 			}
 			if let amount {

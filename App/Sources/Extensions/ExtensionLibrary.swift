@@ -139,7 +139,7 @@ final class ExtensionLibrary {
 				records[installed.id] = InstalledOrigin(catalog: installed.origin == .catalog, record: installed.record)
 			}
 		} catch {
-			failure = "The extensions could not be loaded. \(error)"
+			failure = String(localized: "The extensions could not be loaded. \(String(describing: error))")
 		}
 		reload()
 		daily = Task { [weak self] in
@@ -187,11 +187,11 @@ final class ExtensionLibrary {
 	func checkNow() async {
 		guard let store = model?.store else { return }
 		guard let keys = configuration.keys else {
-			problem = "This build of Moneten has no catalog keys, so it cannot show the catalog."
+			problem = String(localized: "This build of Moneten has no catalog keys, so it cannot show the catalog.")
 			return reload()
 		}
 		guard let floors else {
-			problem = "Moneten cannot read the versions of the catalog that it accepted before, so it accepts no new list of extensions."
+			problem = String(localized: "Moneten cannot read the versions of the catalog that it accepted before, so it accepts no new list of extensions.")
 			return reload()
 		}
 		let source = configuration.source
@@ -201,7 +201,7 @@ final class ExtensionLibrary {
 			signature = try await source.fetch("index.json.sig", limit: CatalogSource.signatureSize)
 		} catch {
 			reachable = false
-			problem = (error as? CatalogError)?.description ?? "The catalog cannot be reached."
+			problem = (error as? CatalogError)?.description ?? String(localized: "The catalog cannot be reached.")
 			log(LogLine("ext catalog unreachable", ("error", .type(of: error))))
 			return reload()
 		}
@@ -222,7 +222,7 @@ final class ExtensionLibrary {
 			problem = error.description
 			log(LogLine("ext catalog rejected", ("error", .type(of: error)), ("kept", .count(index?.version ?? 0))))
 		} catch {
-			problem = "The list of extensions could not be saved. \(error)"
+			problem = String(localized: "The list of extensions could not be saved. \(String(describing: error))")
 		}
 		reload()
 		await applyUpdates()
@@ -241,7 +241,7 @@ final class ExtensionLibrary {
 	func install(_ id: String) async {
 		guard reachable, let entry = index?.entry(id), entry.status == .active || entry.status == .unmaintained else { return }
 		if records[id] == nil, FileInstall.url(of: id, in: folder) != nil {
-			failure = "The Extensions folder holds a file install named \(id). Remove it before you install \(entry.name) from the catalog."
+			failure = String(localized: "The Extensions folder holds a file install named \(id). Remove it before you install \(entry.name) from the catalog.")
 			return
 		}
 		await download(entry)
@@ -271,7 +271,7 @@ final class ExtensionLibrary {
 	/// While the package installs, it installs nothing and says so.
 	func update(_ id: String, approving approval: UpdatePlan.Approval) async {
 		guard !working.contains(id) else {
-			failure = "\(index?.entry(id)?.name ?? id) is being installed. Try again when the install ends."
+			failure = String(localized: "\(index?.entry(id)?.name ?? id) is being installed. Try again when the install ends.")
 			return
 		}
 		guard let entry = index?.entry(id), let available = try? entry.manifest.get(), case let .catalog(installed)? = records[id],
@@ -286,11 +286,11 @@ final class ExtensionLibrary {
 			updateState.confirmed[id] = approval
 			reload()
 		case .needsConfirmation:
-			failure = "Version \(entry.version ?? "") of \(entry.name) is not what you chose. Review it again."
+			failure = String(localized: "Version \(entry.version ?? "") of \(entry.name) is not what you chose. Review it again.")
 			reload()
 			review(id)
 		case .waitsForUser:
-			failure = "Version \(entry.version ?? "") of \(entry.name) is not what you chose. Choose \"Update\" to install it."
+			failure = String(localized: "Version \(entry.version ?? "") of \(entry.name) is not what you chose. Choose \"Update\" to install it.")
 			reload()
 		case .upToDate:
 			reload()
@@ -320,7 +320,7 @@ final class ExtensionLibrary {
 		do {
 			previous = try records.row(of: id)
 		} catch {
-			failure = "\(entry.name) could not be installed, because Moneten cannot read its record. \(error)"
+			failure = String(localized: "\(entry.name) could not be installed, because Moneten cannot read its record. \(String(describing: error))")
 			return
 		}
 		do {
@@ -355,12 +355,12 @@ final class ExtensionLibrary {
 		do {
 			let package = try FileInstall.load(url).package
 			guard !isCatalog(package.name) else {
-				failure = "A catalog extension with the name \(package.name) is installed. Remove it first."
+				failure = String(localized: "A catalog extension with the name \(package.name) is installed. Remove it first.")
 				return
 			}
 			question = .fileWarning(url: url, package: package, name: package.name)
 		} catch {
-			failure = "\(url.lastPathComponent) is not an extension. \(error)"
+			failure = String(localized: "\(url.lastPathComponent) is not an extension. \(String(describing: error))")
 		}
 	}
 
@@ -368,13 +368,13 @@ final class ExtensionLibrary {
 	/// An installed file of the same name stays until every file of the new one is in place.
 	func installFile(_ url: URL, name: String, shown: ExtensionPackage) {
 		guard !isCatalog(name) else {
-			failure = "A catalog extension with the name \(name) is installed. Remove it first."
+			failure = String(localized: "A catalog extension with the name \(name) is installed. Remove it first.")
 			return
 		}
 		do {
 			_ = try FileInstall.install(url, into: folder, staging: staging)
 		} catch {
-			failure = "\(name) could not be installed. \(error)"
+			failure = String(localized: "\(name) could not be installed. \(String(describing: error))")
 			return reload()
 		}
 		allow(name, shown: shown)
@@ -385,7 +385,7 @@ final class ExtensionLibrary {
 	func allow(_ name: String, shown: ExtensionPackage) {
 		guard let store = model?.store else { return }
 		guard !isCatalog(name) else {
-			failure = "\(name) is a catalog extension. It runs only with the files of the catalog."
+			failure = String(localized: "\(name) is a catalog extension. It runs only with the files of the catalog.")
 			return reload()
 		}
 		guard let url = FileInstall.url(of: name, in: folder) else { return reload() }
@@ -393,11 +393,11 @@ final class ExtensionLibrary {
 		do {
 			loaded = try FileInstall.load(url)
 		} catch {
-			failure = "\(name) cannot be allowed. \(error)"
+			failure = String(localized: "\(name) cannot be allowed. \(String(describing: error))")
 			return reload()
 		}
 		guard loaded.package == shown else {
-			failure = "\(name) changed after the warning. Allow it again."
+			failure = String(localized: "\(name) changed after the warning. Allow it again.")
 			return reload()
 		}
 		do {
@@ -405,7 +405,7 @@ final class ExtensionLibrary {
 			records[name] = .file(allowed: loaded.digests)
 			log(LogLine("ext allowed unverified", ("extension", .hash(name))))
 		} catch {
-			failure = "\(name) could not be allowed. \(error)"
+			failure = String(localized: "\(name) could not be allowed. \(String(describing: error))")
 		}
 		reload()
 	}
@@ -437,7 +437,7 @@ final class ExtensionLibrary {
 		do {
 			question = .allow(name: name, package: try FileInstall.load(url).package)
 		} catch {
-			failure = "\(name) is not usable. \(error)"
+			failure = String(localized: "\(name) is not usable. \(String(describing: error))")
 		}
 	}
 
@@ -463,7 +463,7 @@ final class ExtensionLibrary {
 	func remove(_ id: String) {
 		guard let store = model?.store else { return }
 		guard !working.contains(id) else {
-			failure = "\(id) is being installed. Remove it after the install."
+			failure = String(localized: "\(id) is being installed. Remove it after the install.")
 			return reload()
 		}
 		downloads[id]?.cancel()
@@ -484,7 +484,7 @@ final class ExtensionLibrary {
 			_ = updateState.clear(id)
 			log(LogLine("ext removed", ("extension", .hash(id))))
 		} catch {
-			failure = "\(id) could not be removed. \(error)"
+			failure = String(localized: "\(id) could not be removed. \(String(describing: error))")
 		}
 		reload()
 	}
@@ -534,9 +534,9 @@ final class ExtensionLibrary {
 				throw .unsupported(error.description)
 			}
 		case .unreadableCatalog?:
-			throw .unsupported("Moneten cannot read the record of \(id). Remove it and install it again from the catalog.")
+			throw .unsupported(String(localized: "Moneten cannot read the record of \(id). Remove it and install it again from the catalog."))
 		case let .file(allowed)?:
-			guard let url = FileInstall.url(of: id, in: folder) else { throw .unsupported("The extension \(id) is not installed.") }
+			guard let url = FileInstall.url(of: id, in: folder) else { throw .unsupported(String(localized: "The extension \(id) is not installed.")) }
 			do {
 				let package = try FileInstall.load(url, allowed: allowed)
 				log(LogLine("ext run unverified", ("extension", .hash(id))))
@@ -546,7 +546,7 @@ final class ExtensionLibrary {
 				throw .unsupported(error.description)
 			}
 		case nil:
-			guard FileInstall.url(of: id, in: folder) != nil else { throw .unsupported("The extension \(id) is not installed.") }
+			guard FileInstall.url(of: id, in: folder) != nil else { throw .unsupported(String(localized: "The extension \(id) is not installed.")) }
 			throw .unsupported(CatalogError.notAllowed(id).description)
 		}
 	}
@@ -615,19 +615,19 @@ final class ExtensionLibrary {
 		let standing = index.map { Standing(of: record, in: $0) } ?? .runs(note: nil)
 		var note: String?
 		var action: Item.Action?
-		var badge = "Installed \(record.version)"
+		var badge = String(localized: "Installed \(record.version)")
 		if working.contains(record.id) {
-			badge = "Installing..."
+			badge = String(localized: "Installing...")
 		} else if updateState.changed.contains(record.id) || manifest == nil {
-			badge = "Changed"
+			badge = String(localized: "Changed")
 			note = CatalogError.changed(record.name).description
 		} else if case let .stopped(reason) = standing {
-			badge = entry?.status == .blocked ? "Blocked" : entry?.status == .withdrawn ? "Withdrawn" : "Stopped"
+			badge = entry?.status == .blocked ? String(localized: "Blocked") : entry?.status == .withdrawn ? String(localized: "Withdrawn") : String(localized: "Stopped")
 			note = reason
 		} else {
 			if case let .runs(unmaintained?) = standing { note = unmaintained }
 			if case let .outdated(reason) = standing {
-				badge = "Update Needed"
+				badge = String(localized: "Update Needed")
 				note = reason
 			}
 			let version = entry?.version ?? ""
@@ -636,10 +636,10 @@ final class ExtensionLibrary {
 				note = [note, Self.newRights(version: version, hosts: hosts, fields: fields.map(\.label))].compactMap { $0 }.joined(separator: " ")
 				action = .reviewUpdate
 			case .waitsForUser?:
-				note = [note, "Version \(version) is available."].compactMap { $0 }.joined(separator: " ")
+				note = [note, String(localized: "Version \(version) is available.")].compactMap { $0 }.joined(separator: " ")
 				action = .update
 			case .afterSession?:
-				note = [note, "Version \(version) installs when the running refresh ends."].compactMap { $0 }.joined(separator: " ")
+				note = [note, String(localized: "Version \(version) installs when the running refresh ends.")].compactMap { $0 }.joined(separator: " ")
 			default: break
 			}
 		}
@@ -648,8 +648,8 @@ final class ExtensionLibrary {
 	}
 
 	private func unreadableItem(_ name: String) -> Item {
-		Item(id: name, section: .installed, name: name, description: "", version: nil, available: nil, kinds: [], badge: "Changed",
-			note: "Moneten cannot read the record of \(name). Remove it and install it again from the catalog.", action: nil, manifest: nil, isCatalog: true)
+		Item(id: name, section: .installed, name: name, description: "", version: nil, available: nil, kinds: [], badge: String(localized: "Changed"),
+			note: String(localized: "Moneten cannot read the record of \(name). Remove it and install it again from the catalog."), action: nil, manifest: nil, isCatalog: true)
 	}
 
 	private func fileItem(_ name: String) -> Item {
@@ -658,28 +658,41 @@ final class ExtensionLibrary {
 		var allowed = false
 		if case let .file(digests)? = records[name], let loaded, !digests.isEmpty, loaded.digests == digests { allowed = true }
 		let manifest = loaded?.package.manifest
-		let note = loaded == nil ? "\(name) cannot be read as an extension." : allowed ? nil : "Moneten runs \(name) only after you allow it."
+		let note = loaded == nil ? String(localized: "\(name) cannot be read as an extension.") : allowed ? nil : String(localized: "Moneten runs \(name) only after you allow it.")
 		return Item(id: name, section: .installed, name: manifest?.name ?? name, description: manifest?.description ?? "", version: manifest?.version, available: nil,
-			kinds: manifest?.kinds?.map(\.rawValue) ?? [], badge: "Unverified", note: note, action: allowed || loaded == nil ? nil : .allow, manifest: manifest, isCatalog: false)
+			kinds: manifest?.kinds?.map(\.rawValue) ?? [], badge: String(localized: "Unverified"), note: note, action: allowed || loaded == nil ? nil : .allow, manifest: manifest, isCatalog: false)
 	}
 
 	private func availableItem(_ entry: CatalogIndex.Entry) -> Item {
 		let manifest = try? entry.manifest.get()
 		var note: String?
 		switch entry.manifest {
-		case let .failure(problem): note = "Not installable, because its manifest is incomplete. \(problem.message)"
+		case let .failure(problem): note = String(localized: "Not installable, because its manifest is incomplete. \(problem.message)")
 		case .success: if let text = entry.note { note = text }
 		}
 		let installable = manifest != nil && (entry.status == .active || entry.status == .unmaintained)
 		return Item(id: entry.id, section: .available, name: entry.name, description: manifest?.description ?? "", version: entry.version, available: entry.version,
-			kinds: manifest?.kinds?.map(\.rawValue) ?? [], badge: working.contains(entry.id) ? "Installing..." : entry.status == .active ? nil : entry.status.rawValue.capitalized,
+			kinds: manifest?.kinds?.map(\.rawValue) ?? [], badge: working.contains(entry.id) ? String(localized: "Installing...") : entry.status == .active ? nil : Self.badge(of: entry.status),
 			note: note, action: installable ? .install : nil, manifest: manifest, isCatalog: true)
 	}
 
 	static func newRights(version: String, hosts: [String], fields: [String]) -> String {
-		var parts: [String] = []
-		if !hosts.isEmpty { parts.append("also contacts \(hosts.formatted(.list(type: .and)))") }
-		if !fields.isEmpty { parts.append("asks also for \(fields.formatted(.list(type: .and)))") }
-		return "Version \(version) \(parts.joined(separator: " and "))"
+		let hosts = hosts.formatted(.list(type: .and)), fields = fields.formatted(.list(type: .and))
+		switch (hosts.isEmpty, fields.isEmpty) {
+		case (false, false): return String(localized: "Version \(version) also contacts \(hosts) and asks also for \(fields)")
+		case (false, true): return String(localized: "Version \(version) also contacts \(hosts)")
+		case (true, false): return String(localized: "Version \(version) asks also for \(fields)")
+		case (true, true): return String(localized: "Version \(version)")
+		}
+	}
+
+	/// The badge of an extension of the catalog that is not active.
+	private static func badge(of status: CatalogIndex.Status) -> String {
+		switch status {
+		case .active: String(localized: "Active")
+		case .unmaintained: String(localized: "Unmaintained")
+		case .blocked: String(localized: "Blocked")
+		case .withdrawn: String(localized: "Withdrawn")
+		}
 	}
 }

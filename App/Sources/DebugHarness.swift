@@ -659,8 +659,7 @@ final class DebugHarness {
 		// "<path>": writes the complete export to that file without the warning and the save panel.
 		case "exportall":
 			Task {
-				await model.saveAllData(to: URL(filePath: argument))
-				log("exportall", ("", .word(model.alert?.title == "All data has been exported." ? "done" : "error=set")))
+				log("exportall", ("", .word(await model.saveAllData(to: URL(filePath: argument)) ? "done" : "error=set")))
 			}
 		// "<path>": imports that complete export without the open panel. The reason of a refusal can quote the file.
 		case "importall": Task { log("importall", ("", .word(await model.readAllData(from: URL(filePath: argument)) == "done" ? "done" : "refused"))) }
@@ -1007,10 +1006,12 @@ final class DebugHarness {
 	}
 
 	/// The tables of transactions in all windows, told apart from the sidebar by their amount column.
-	func transactionTables() -> [NSTableView] { tables(withColumn: "Amount") }
+	/// SwiftUI gives a column a new random identifier in each run, so the harness finds a table by the title of a column,
+	/// in the language of this run.
+	func transactionTables() -> [NSTableView] { tables(withColumn: String(localized: "Amount")) }
 
 	/// The tables of positions in all windows.
-	func holdingsTables() -> [NSTableView] { tables(withColumn: "Quantity") }
+	func holdingsTables() -> [NSTableView] { tables(withColumn: String(localized: "Quantity")) }
 
 	private func tables(withColumn title: String) -> [NSTableView] {
 		func tables(in view: NSView) -> [NSTableView] {
@@ -1186,13 +1187,22 @@ final class DebugHarness {
 		}
 	}
 
-	/// Chooses "Extensions" in the Window menu, as the user does.
+	/// Chooses "Extensions" in the Window menu, as the user does. SwiftUI gives a menu item no identifier,
+	/// and its title follows the language, so the harness finds the item by its place: right after
+	/// "Main Window", the only item with the key equivalent Command-0.
 	func openExtensionsWindow() {
-		openMenuItem("Extensions")
+		let isMainWindow = { (item: NSMenuItem) in item.keyEquivalent == "0" && item.keyEquivalentModifierMask == .command }
+		let menu = NSApp.mainMenu?.items.compactMap(\.submenu).first { $0.items.contains(where: isMainWindow) }
+		guard let menu, let main = menu.items.firstIndex(where: isMainWindow), menu.items.indices.contains(main + 1) else {
+			return log("extensions no menu item")
+		}
+		menu.performActionForItem(at: main + 1)
+		log("extensions opened")
 	}
 
 	private func supportedBanksKey(_ name: String) {
-		guard let window = NSApp.windows.first(where: { $0.title == "Supported Banks" && $0.isVisible }) else { return log("supportedkey no window") }
+		// The title follows the language, so the harness finds the window by the identifier of its scene.
+		guard let window = NSApp.windows.first(where: { $0.identifier?.rawValue.hasPrefix("supportedBanks") == true && $0.isVisible }) else { return log("supportedkey no window") }
 		let keys: [String: (Int, UInt16)] = ["down": (NSDownArrowFunctionKey, 125), "up": (NSUpArrowFunctionKey, 126), "pagedown": (NSPageDownFunctionKey, 121),
 			"pageup": (NSPageUpFunctionKey, 116), "home": (NSHomeFunctionKey, 115), "end": (NSEndFunctionKey, 119), "tab": (9, 48)]
 		// "command-down" and the like send the key with Command, which the window leaves to the system.
@@ -1218,8 +1228,11 @@ final class DebugHarness {
 		}
 	}
 
+	/// Chooses the menu item with this English title. The title of an item follows the language, so the harness
+	/// compares it with the text in the language of this run.
 	private func openMenuItem(_ title: StaticString) {
-		let item = NSApp.mainMenu?.items.compactMap(\.submenu).flatMap(\.items).first { $0.title == "\(title)" }
+		let localized = String(localized: String.LocalizationValue(title.description))
+		let item = NSApp.mainMenu?.items.compactMap(\.submenu).flatMap(\.items).first { $0.title == localized }
 		guard let item, let menu = item.menu else { return log("menu no item", ("title", .word(title))) }
 		menu.performActionForItem(at: menu.index(of: item))
 		log("menu opened", ("title", .word(title)))
@@ -1334,7 +1347,8 @@ final class DebugHarness {
 			// Each item by the hash of its title, because an item can name an account, a group, or a category.
 			log("contextmenu row", ("", .position(index)), ("items", .list((menu?.items ?? []).map { .hash(($0.isAlternate ? "alt:" : "") + $0.title) })))
 			if choice.count == 2, choice[0] == index,
-				let submenu = menu?.items.first(where: { $0.title == "Move to Group" })?.submenu {
+				// "Move to Group" is the only submenu of a row, and its title follows the language.
+				let submenu = menu?.items.first(where: \.hasSubmenu)?.submenu {
 				submenu.update()
 				guard submenu.items.indices.contains(choice[1]), submenu.items[choice[1]].isEnabled else {
 					return log("contextmenu move refused")
@@ -1361,7 +1375,8 @@ final class DebugHarness {
 		}
 		let place = parts[0].split(separator: " ")
 		let menu: NSMenu? = switch place.first {
-		case "account": NSApp.mainMenu?.item(withTitle: "Account")?.submenu
+		// The Account menu holds "Assign Category...", the only item with Command-K. Its title follows the language.
+		case "account": NSApp.mainMenu?.items.compactMap(\.submenu).first { $0.items.contains { $0.keyEquivalent == "k" && $0.keyEquivalentModifierMask == .command } }
 		case "sidebar": place.count == 2 ? Int(place[1]).flatMap { contextMenu(row: $0, sidebar: true) } : nil
 		case "row":
 			// "row <n> <count>" selects the first <count> rows before the right click.
@@ -1374,7 +1389,10 @@ final class DebugHarness {
 		default: nil
 		}
 		menu?.update()
-		guard let menu, let index = menu.items.firstIndex(where: { $0.title.hasPrefix("Export Transaction") }) else { return log("menuexport no item") }
+		// The export item has another place in each menu and SwiftUI gives it no identifier, so the harness finds it by
+		// the text that the user reads, in the language of this run.
+		let titles = [String(localized: "Export Transactions..."), String(localized: "Export Transaction...")]
+		guard let menu, let index = menu.items.firstIndex(where: { titles.contains($0.title) }) else { return log("menuexport no item") }
 		guard menu.items[index].isEnabled else {
 			// SwiftUI enables the commands of the Account menu only while the app is active, which a locked Mac does
 			// not allow. When the conditions of the item hold, the check runs its action, `exportTransactions()`.

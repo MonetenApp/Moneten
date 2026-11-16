@@ -13,7 +13,7 @@ extension AppModel {
 		do {
 			savedSearches.append(try store.appendSavedSearch(name: name, period: period, filter: filter))
 		} catch {
-			alert = AlertMessage(title: "Could not save the search.", message: String(describing: error))
+			alert = AlertMessage(title: String(localized: "Could not save the search."), message: String(describing: error))
 		}
 	}
 
@@ -23,7 +23,7 @@ extension AppModel {
 			try store.renameSavedSearch(id, to: name)
 			savedSearches[index].name = name
 		} catch {
-			alert = AlertMessage(title: "Could not rename the search.", message: String(describing: error))
+			alert = AlertMessage(title: String(localized: "Could not rename the search."), message: String(describing: error))
 		}
 	}
 
@@ -37,7 +37,7 @@ extension AppModel {
 			if selection == .search(id) { select(nil) }
 			forgetInHistory(.search(id))
 		} catch {
-			alert = AlertMessage(title: "Could not remove the search.", message: String(describing: error))
+			alert = AlertMessage(title: String(localized: "Could not remove the search."), message: String(describing: error))
 		}
 	}
 

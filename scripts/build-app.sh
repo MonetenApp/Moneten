@@ -121,7 +121,8 @@ check_hardened() {
 }
 
 scripts/generate-project.sh
-XCODEBUILD="xcodebuild -project App/Moneten.xcodeproj -scheme Moneten -configuration $CONFIG -derivedDataPath .build/xcode -disableAutomaticPackageResolution -quiet"
+# SWIFT_EMIT_LOC_STRINGS also for the libraries, so that scripts/check-localization.py can read their texts.
+XCODEBUILD="xcodebuild -project App/Moneten.xcodeproj -scheme Moneten -configuration $CONFIG -derivedDataPath .build/xcode -disableAutomaticPackageResolution -quiet SWIFT_EMIT_LOC_STRINGS=YES"
 if [ -z "$ARCHIVE" ]; then
 	$XCODEBUILD CURRENT_PROJECT_VERSION="$BUILD" $VERSION_SETTINGS build
 	PRODUCT=".build/xcode/Build/Products/$CONFIG/Moneten.app"

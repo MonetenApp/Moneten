@@ -5,8 +5,14 @@ import SwiftUI
 @main
 struct MonetenApp: App {
 	@NSApplicationDelegateAdaptor(AppDelegate.self) var delegate
-	@State private var model = AppModel()
+	@State private var model: AppModel
 	@AppStorage(Preference.showMenuBarIcon) private var showMenuBarIcon = false
+
+	init() {
+		// Before the model exists, so that every text of the app is in the language of this run.
+		AppLanguage.applyAtLaunch()
+		_model = State(initialValue: AppModel())
+	}
 
 	var body: some Scene {
 		Window("Moneten", id: "main") {

@@ -27,7 +27,7 @@ public struct BankDirectory: Sendable {
 
 		/// The note of the first step of "Add Account" and of "Supported Banks" for the entry of a merged bank.
 		public var mergerNote: String? {
-			isOfMergedBank ? "This Bankleitzahl belongs to a bank that merged. If the login fails, ask your bank which Bankleitzahl it uses for online banking now." : nil
+			isOfMergedBank ? String(localized: "This Bankleitzahl belongs to a bank that merged. If the login fails, ask your bank which Bankleitzahl it uses for online banking now.") : nil
 		}
 	}
 
