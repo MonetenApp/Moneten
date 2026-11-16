@@ -1,0 +1,150 @@
+name: Release ext
+
+# A pushed tag ext-v1.2.3 builds the ext tool as a universal binary, signs it with the Developer ID,
+# notarizes it, and publishes it with its SHA-256 as the GitHub release ext-v1.2.3.
+# docs/releasing-ext.md lists the secrets and the steps. The secrets are those of the app release.
+# A pull request that changes the tool or its packaging makes a dry run that needs no secret and
+# publishes nothing.
+
+on:
+  push:
+    tags: ["ext-v*"]
+  pull_request:
+    paths:
+      - .github/workflows/release-ext.yml
+      - scripts/release-ext.sh
+      - Package.swift
+      - Package.resolved
+      - Tools/ext/**
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-ext-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  dry-run:
+    if: github.event_name == 'pull_request'
+    runs-on: macos-15
+    steps:
+      # Pinned by commit: actions/checkout v4.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Dry run
+        run: scripts/release-ext.sh dry-run
+
+  package:
+    if: github.event_name == 'push'
+    runs-on: macos-15
+    # The Developer ID certificate and the notary key live only in the environment build, which must
+    # allow the tags ext-v* as well as the tags v* of the app release.
+    environment: build
+    steps:
+      - name: Check the secrets
+        env:
+          DEVELOPER_ID_CERTIFICATE_P12: ${{ secrets.DEVELOPER_ID_CERTIFICATE_P12 }}
+          DEVELOPER_ID_CERTIFICATE_PASSWORD: ${{ secrets.DEVELOPER_ID_CERTIFICATE_PASSWORD }}
+          NOTARY_API_KEY_P8: ${{ secrets.NOTARY_API_KEY_P8 }}
+          NOTARY_API_KEY_ID: ${{ secrets.NOTARY_API_KEY_ID }}
+          NOTARY_API_ISSUER_ID: ${{ secrets.NOTARY_API_ISSUER_ID }}
+          APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+        run: |
+          missing=""
+          for name in DEVELOPER_ID_CERTIFICATE_P12 DEVELOPER_ID_CERTIFICATE_PASSWORD NOTARY_API_KEY_P8 NOTARY_API_KEY_ID NOTARY_API_ISSUER_ID APPLE_TEAM_ID; do
+            [ -n "$(printenv "$name")" ] || missing="$missing $name"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::The environment build lacks:$missing. docs/releasing-ext.md lists each secret and how to create it."
+            exit 1
+          fi
+      # Pinned by commit: actions/checkout v4.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          # The check of the tag needs main.
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check the tag
+        run: scripts/release-ext.sh check-tag "${GITHUB_REF_NAME#ext-v}"
+      # The same import as the app release of PR #273, without the FinTS product ID. It can move to a
+      # shared script once both are merged.
+      - name: Import the Developer ID certificate
+        env:
+          CERTIFICATE: ${{ secrets.DEVELOPER_ID_CERTIFICATE_P12 }}
+          PASSWORD: ${{ secrets.DEVELOPER_ID_CERTIFICATE_PASSWORD }}
+          NOTARY_KEY: ${{ secrets.NOTARY_API_KEY_P8 }}
+        run: |
+          umask 077
+          KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
+          KEYCHAIN_PASSWORD=$(openssl rand -hex 24)
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          # The intermediate certificate of Developer ID, checked against its hash.
+          curl -fsSL -o "$RUNNER_TEMP/DeveloperIDG2CA.cer" https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer
+          echo "f16cd3c54c7f83cea4bf1a3e6a0819c8aaa8e4a1528fd144715f350643d2df3a  $RUNNER_TEMP/DeveloperIDG2CA.cer" | shasum -a 256 -c
+          security import "$RUNNER_TEMP/DeveloperIDG2CA.cer" -k "$KEYCHAIN"
+          printf '%s' "$CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          # security import takes a password only as an argument, which other processes can read.
+          # So the system openssl reads the password of the secret from the environment and wraps
+          # the key again under a password that exists only for this import.
+          IMPORT_PASSWORD=$(openssl rand -hex 24)
+          export PASSWORD IMPORT_PASSWORD
+          /usr/bin/openssl pkcs12 -in "$RUNNER_TEMP/certificate.p12" -passin env:PASSWORD -nocerts -passout env:IMPORT_PASSWORD -out "$RUNNER_TEMP/key.pem"
+          /usr/bin/openssl pkcs12 -in "$RUNNER_TEMP/certificate.p12" -passin env:PASSWORD -nokeys -out "$RUNNER_TEMP/certificates.pem"
+          /usr/bin/openssl pkcs12 -export -inkey "$RUNNER_TEMP/key.pem" -passin env:IMPORT_PASSWORD -in "$RUNNER_TEMP/certificates.pem" \
+            -passout env:IMPORT_PASSWORD -out "$RUNNER_TEMP/import.p12"
+          rm "$RUNNER_TEMP/certificate.p12" "$RUNNER_TEMP/key.pem" "$RUNNER_TEMP/certificates.pem"
+          unset PASSWORD
+          security import "$RUNNER_TEMP/import.p12" -k "$KEYCHAIN" -P "$IMPORT_PASSWORD" -T /usr/bin/codesign
+          rm "$RUNNER_TEMP/import.p12"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" >/dev/null
+          # Each keychain of the list is its own argument.
+          # shellcheck disable=SC2046
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+          printf '%s\n' "$NOTARY_KEY" > "$RUNNER_TEMP/notary.p8"
+      - name: Build, sign, notarize, and check
+        env:
+          MONETEN_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+          MONETEN_NOTARY_KEY_ID: ${{ secrets.NOTARY_API_KEY_ID }}
+          MONETEN_NOTARY_ISSUER: ${{ secrets.NOTARY_API_ISSUER_ID }}
+        run: MONETEN_NOTARY_KEY="$RUNNER_TEMP/notary.p8" scripts/release-ext.sh package "${GITHUB_REF_NAME#ext-v}"
+      - name: Remove the signing keychain
+        if: always()
+        run: |
+          security delete-keychain "$RUNNER_TEMP/signing.keychain-db" || true
+          rm -f "$RUNNER_TEMP/notary.p8" "$RUNNER_TEMP/certificate.p12" "$RUNNER_TEMP/key.pem" \
+            "$RUNNER_TEMP/certificates.pem" "$RUNNER_TEMP/import.p12"
+      # Pinned by commit: actions/upload-artifact v4.
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ext
+          path: dist/ext
+          retention-days: 1
+
+  # A job without secrets writes the release, so the job that holds the certificate never holds a
+  # token that can write to the repository.
+  publish:
+    needs: package
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      # Pinned by commit: actions/download-artifact v4.
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: ext
+          path: dist/ext
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#ext-v}"
+          cd dist/ext
+          sha256sum -c "ext-$VERSION-macos.zip.sha256"
+          # Never the latest release: the update feed of the app lives on the latest release.
+          gh release create "$GITHUB_REF_NAME" "ext-$VERSION-macos.zip" "ext-$VERSION-macos.zip.sha256" \
+            --repo "$GITHUB_REPOSITORY" --verify-tag --latest=false --title "ext $VERSION" --notes-file notes.md
