@@ -436,7 +436,7 @@ The app SHALL stop the dialog when the bank reports that the PIN must be changed
 
 ### Requirement: Handle a blocked access
 
-The app SHALL stop when the bank reports that the PIN or the access is blocked, show the message of the bank, tell the user to ask the bank to unblock it, and not log in again for that access until the user starts a refresh by hand. A text that only warns of a block to come reports no block, so the app treats it as a wrong PIN.
+The app SHALL stop when the bank reports that the PIN or the access is blocked, show the message of the bank, tell the user to ask the bank to unblock it, and not log in again for that access until the user starts a refresh by hand. When the bank sends one code for a wrong PIN and for a block, the app treats the answer as a block only when its text reports a block that happened, and as a wrong PIN otherwise, also when the text only warns of a block to come.
 
 #### Scenario: PIN blocked after wrong attempts
 

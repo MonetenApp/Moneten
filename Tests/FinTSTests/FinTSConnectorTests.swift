@@ -711,6 +711,7 @@ struct FinTSConnectorTests {
 			.pinRejected(BankMessage(code: "9931", text: "PIN falsch. Weitere Fehlversuche führen zur Sperrung."))),
 		(#"{"type":"failed","code":"9931","text":"PIN falsch, Zugang nicht gesperrt"}"#, .pinRejected(BankMessage(code: "9931", text: "PIN falsch, Zugang nicht gesperrt"))),
 		(#"{"type":"failed","code":"9931","text":"PIN ungültig - Zugang ist blockiert"}"#, .accessBlocked(BankMessage(code: "9931", text: "PIN ungültig - Zugang ist blockiert"))),
+		(#"{"type":"failed","code":"9931","text":"Anmeldung fehlgeschlagen"}"#, .pinRejected(BankMessage(code: "9931", text: "Anmeldung fehlgeschlagen"))),
 		(#"{"type":"failed","code":"9010","text":"Verarbeitung nicht möglich"}"#, .bank(BankMessage(code: "9010", text: "Verarbeitung nicht möglich"))),
 		(#"{"type":"failed","text":"Dialog abgebrochen"}"#, .bank(BankMessage(text: "Dialog abgebrochen"))),
 		(#"{"type":"failed","kind":"network","text":"Connection refused"}"#, .network("Connection refused")),
@@ -742,8 +743,8 @@ struct FinTSConnectorTests {
 		#expect(session.events == (expected.rejectsPIN ? [.rejected(expected)] : []))
 	}
 
-	/// 9931 is a block only when its text reports one that happened. A text that warns of a block to come, or that says
-	/// that the PIN is wrong, is a wrong PIN, and a text that says neither keeps the meaning of the code.
+	/// 9931 is a block only when its text reports one that happened. Every other text is a wrong PIN, also one that warns
+	/// of a block to come or names no cause.
 	@Test("Reads a 9931 as a block only when its text reports a block that happened", arguments: [
 		("Anmeldename oder PIN ist falsch", false),
 		("PIN falsch. Weitere Fehlversuche führen zur Sperrung.", false),
@@ -759,8 +760,8 @@ struct FinTSConnectorTests {
 		("PIN ungültig - Zugang ist blockiert", true),
 		("PIN falsch. Ihr Zugang wurde gesperrt.", true),
 		("Ihr Zugang ist vorläufig gesperrt - Bitte PIN-Sperre aufheben.", true),
-		("Anmeldung fehlgeschlagen", true),
-		("", true),
+		("Anmeldung fehlgeschlagen", false),
+		("", false),
 	])
 	func reads9931(text: String, blocked: Bool) {
 		#expect(HelperError.reportsBlock(text) == blocked)
