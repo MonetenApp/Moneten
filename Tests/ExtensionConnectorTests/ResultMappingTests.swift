@@ -62,9 +62,43 @@ import Testing
 		#expect(ListedAccount(.object(["accountNumber": .string("1234"), "subAccount": .string("01")]))?.remoteID == "1234/01 EUR")
 	}
 
-	@Test(arguments: [("5232 xxxx xxxx 1234", AccountKind.creditCard), ("5232123412341234", .creditCard), ("DE02120300000000202051", .giro)])
-	func typeFromTheNumber(number: String, kind: AccountKind) {
-		#expect(ListedAccount(.object(["accountNumber": .string(number)]))?.kind == kind)
+	/// The number decides first: 16 characters as sent, spaces included, or an x or an asterisk. Then the name in lowercase, and
+	/// "Other" when nothing matches.
+	@Test(arguments: [
+		("5232 xxxx xxxx 1234", "Konto", AccountKind.creditCard),
+		("4111 XXXX XXXX 1111", "Konto", .creditCard),
+		("4111****1111", "Konto", .creditCard),
+		("5232123412341234", "Tagesgeld", .creditCard),
+		("1234 5678 9012 3456", "Wallet", .other),
+		("4111 •••• 1111", "Wallet", .other),
+		("K-2231", "Wallet", .other),
+		("DE02120300000000202051", "Wallet", .other),
+		("DE02120300000000202051", "Gehaltskonto", .giro),
+		("DE02120300000000202051", "Visa", .creditCard),
+		("DE02120300000000202051", "Girocard mit Bonus", .giro),
+		("DE02120300000000202051", "Kreditkarte mit Bonus", .other),
+		("DE02120300000000202051", "Kreditkartenkonto", .creditCard),
+		("DE02120300000000202051", "Sparkasse Card", .creditCard),
+		("DE02120300000000202051", "Sparcard", .savings),
+		("DE02120300000000202051", "Festgeld 12 Monate", .fixedTermDeposit),
+		("DE02120300000000202051", "Sparkassenbrief", .fixedTermDeposit),
+		("DE02120300000000202051", "Baufinanzierung", .loan),
+		("DE02120300000000202051", "Ratenkredit", .loan),
+		("DE02120300000000202051", "Kredit Plus", .other),
+		("DE02120300000000202051", "Tagesgeld Plus", .savings),
+		("DE02120300000000202051", "CASH Reserve", .savings),
+		("DE02120300000000202051", "Sparkasse Musterstadt", .other),
+		("DE02120300000000202051", "Geschäftskonto", .giro),
+		("DE02120300000000202051", "Geschäftsbereich", .other),
+	])
+	func typeFromTheNumberAndTheName(number: String, name: String, kind: AccountKind) {
+		#expect(ListedAccount(.object(["accountNumber": .string(number), "name": .string(name)]))?.kind == kind)
+	}
+
+	/// A given type wins over any hint in the number or the name.
+	@Test func givenTypeWins() {
+		#expect(ListedAccount(.object(["accountNumber": .string("5232123412341234"), "name": .string("Visa"),
+			"type": .string("AccountTypeSavings")]))?.kind == .savings)
 	}
 
 	@Test func balanceAndTransactions() throws {
@@ -104,9 +138,108 @@ import Testing
 		#expect(throws: MappingError("The balance could not be fetched.")) { try result(["transactions": .array([])]) }
 	}
 
+	func pair(_ amount: Double, _ currency: String) -> LuaValue { .array([.number(amount), .string(currency)]) }
+
 	@Test func balanceOfTheAccountCurrencyFromSeveral() throws {
-		#expect(try result(["balances": .array([.array([.number(100.00), .string("USD")]), .array([.number(25.50), .string("EUR")])]),
-			"transactions": .array([])]).balance == Money(minorUnits: 2550, currency: "EUR"))
+		let result = try result(["balances": .array([pair(100.00, "USD"), pair(25.50, "EUR")]), "transactions": .array([])])
+		#expect(result.balance == Money(minorUnits: 2550, currency: "EUR"))
+		#expect(result.otherBalances == [Money(minorUnits: 10000, currency: "USD")])
+	}
+
+	/// `balances` takes the place of `balance`, and two pairs in one currency add up.
+	@Test func pairsInOneCurrencyAddUp() throws {
+		let result = try result(["balance": .number(99.00), "balances": .array([pair(10.00, "EUR"), pair(5.00, "usd"), pair(2.50, "EUR"), pair(1.25, "USD")]),
+			"transactions": .array([])])
+		#expect(result.balance == Money(minorUnits: 1250, currency: "EUR"))
+		#expect(result.otherBalances == [Money(minorUnits: 625, currency: "USD")])
+	}
+
+	/// Pairs without the account currency give it the balance 0. A zero in another currency is left out.
+	@Test func missingAccountCurrencyIsZero() throws {
+		let result = try result(["balances": .array([pair(35.00, "USD"), pair(0, "GBP")]), "transactions": .array([])])
+		#expect(result.balance == Money(minorUnits: 0, currency: "EUR"))
+		#expect(result.otherBalances == [Money(minorUnits: 3500, currency: "USD")])
+	}
+
+	/// An empty array counts as a missing one, so `balance` is read.
+	@Test func emptyBalancesReadsBalance() throws {
+		let result = try result(["balance": .number(42.00), "balances": .array([]), "transactions": .array([])])
+		#expect(result.balance == Money(minorUnits: 4200, currency: "EUR"))
+		#expect(result.otherBalances.isEmpty)
+	}
+
+	@Test func balancesWithABrokenPair() {
+		#expect(throws: MappingError("An entry of balances is not a pair of amount and currency.")) {
+			try result(["balances": .array([.array([.number(1)])]), "transactions": .array([])])
+		}
+	}
+
+	/// A currency is three letters after trimming and uppercasing. Anything else would be stored and then refused by the
+	/// import of the complete export.
+	@Test(arguments: ["US$", "EU", "EURO", "", "  ", "U5D", "€"])
+	func balancesWithoutACurrencyCode(code: String) {
+		#expect(throws: MappingError("An entry of balances is not a pair of amount and currency.")) {
+			try result(["balances": .array([pair(120.00, "EUR"), pair(35.00, code)]), "transactions": .array([])])
+		}
+	}
+
+	/// Spaces around a code and lowercase letters name the same currency, so the amount adds to that currency.
+	@Test func currencyCodesAreTrimmed() throws {
+		let dollars = ListedAccount(.object(["accountNumber": .string("W-1"), "currency": .string("USD")]))!
+		let own = try result(["balances": .array([pair(35.00, " USD")]), "transactions": .array([])], of: dollars)
+		#expect(own.balance == Money(minorUnits: 3500, currency: "USD"))
+		#expect(own.otherBalances.isEmpty)
+		let other = try result(["balances": .array([pair(120.00, "EUR"), pair(35.00, "usd "), pair(1.00, "USD")]), "transactions": .array([])])
+		#expect(other.otherBalances == [Money(minorUnits: 3600, currency: "USD")])
+	}
+
+	/// `balances` that is not a list fails, so a broken script never clears the stored balances in other currencies.
+	/// Only a missing or empty list falls back to `balance`.
+	@Test(arguments: [LuaValue.string("broken"), .integer(3), .object(["EUR": .number(80)])])
+	func balancesThatAreNoList(value: LuaValue) {
+		#expect(throws: MappingError("The balances are not a list of pairs of amount and currency.")) {
+			try result(["balance": .number(80.00), "balances": value, "transactions": .array([])])
+		}
+	}
+
+	/// Pairs in one currency add up exactly and must end within the amount limit, as the securities do.
+	@Test func balancesThatAddUpBeyondTheLimit() {
+		#expect(throws: MappingError("The balances add up to more than Moneten can hold.")) {
+			try result(["balances": .array([pair(6e12, "USD"), pair(6e12, "USD")]), "transactions": .array([])])
+		}
+		#expect(throws: MappingError("The balances add up to more than Moneten can hold.")) {
+			try result(["balances": .array([pair(-6e12, "EUR"), pair(-6e12, "EUR")]), "transactions": .array([])])
+		}
+	}
+
+	/// Only the sum of a currency counts against the limit, not a step on the way to it.
+	@Test func balancesThatPassTheLimitOnTheWay() throws {
+		let result = try result(["balances": .array([pair(6e12, "USD"), pair(6e12, "USD"), pair(-6e12, "USD"), pair(1.00, "EUR")]),
+			"transactions": .array([])])
+		#expect(result.balance == Money(minorUnits: 100, currency: "EUR"))
+		#expect(result.otherBalances == [Money(minorUnits: 600_000_000_000_000, currency: "USD")])
+	}
+
+	@Test func nullBalancesReadsBalance() throws {
+		#expect(try result(["balance": .number(80.00), "balances": .null, "transactions": .array([])]).balance == Money(minorUnits: 8000, currency: "EUR"))
+	}
+
+	/// The whole part of `bonusPoints`. A missing value, an empty text, and 0 mean no points.
+	@Test(arguments: [(LuaValue?.some(.integer(12400)), Int64?.some(12400)), (.some(.number(1200.75)), 1200), (.some(.number(-3.9)), -3),
+		(.some(.string("500")), 500), (.some(.string("")), nil), (.some(.integer(0)), nil), (nil, nil),
+		(.some(.string("12400.9999999999999999")), 12400), (.some(.string("-12400.9999999999999999")), -12400),
+		(.some(.string("9007199254740993")), 9_007_199_254_740_993), (.some(.integer(.max)), .max), (.some(.integer(.min)), .min)])
+	func bonusPoints(value: LuaValue?, points: Int64?) throws {
+		var fields: [String: LuaValue] = ["balance": .number(1), "transactions": .array([])]
+		fields["bonusPoints"] = value
+		#expect(try result(fields).bonusPoints == points)
+	}
+
+	@Test(arguments: [LuaValue.string("many"), .boolean(true), .number(1e30), .string("9223372036854775808"), .string("-9223372036854775809")])
+	func bonusPointsThatAreNoWholeNumber(value: LuaValue) {
+		#expect(throws: MappingError("The bonus points are not a number.")) {
+			try result(["balance": .number(1), "transactions": .array([]), "bonusPoints": value])
+		}
 	}
 
 	@Test func cardAuthorizationIsPendingWithoutItsIdentifier() throws {
