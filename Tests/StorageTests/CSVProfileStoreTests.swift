@@ -106,6 +106,36 @@ struct CSVProfileStoreTests {
 		#expect(try store.queue.read { db in try Data.fetchOne(db, sql: "SELECT payload FROM csvProfile WHERE name = 'Future' AND version = 7") } == raw)
 	}
 
+	@Test("Saving or renaming a profile to the name of an unreadable record is refused and keeps that record", arguments: [false, true])
+	func unreadableName(rename: Bool) throws {
+		let store = try SchemaTests.emptyStore()
+		defer { try? store.close() }
+		let future = Data("unreadable future payload".utf8)
+		let negative = Data("""
+		{"name":"Unsafe CSV","header":["Datum","Name","Betrag"],"delimiter":";",
+		"layout":{"encoding":"utf8","columns":{"bookingDate":-1,"name":1,"amount":2},"dateOrder":"dayMonthYear","createsCategories":false}}
+		""".utf8)
+		try store.queue.write { db in
+			try db.execute(sql: "INSERT INTO csvProfile VALUES ('Future CSV', 2, ?)", arguments: [future])
+			try db.execute(sql: "INSERT INTO csvProfile VALUES ('Unsafe CSV', 1, ?)", arguments: [negative])
+		}
+		if rename { try store.saveCSVProfile(profile("Broker CSV"), replacing: nil) }
+		#expect(try store.unreadableCSVProfileNames() == ["Future CSV", "Unsafe CSV"])
+		for name in ["Future CSV", "Unsafe CSV"] {
+			#expect(throws: Store.CSVProfileNameTaken(name: name)) {
+				try store.saveCSVProfile(profile(name), replacing: rename ? "Broker CSV" : nil)
+			}
+		}
+		#expect(Store.CSVProfileNameTaken(name: "Future CSV").description
+			== "A saved profile named “Future CSV” cannot be read by this version of Moneten. Choose another name.")
+		let rows = try store.queue.read { db in
+			try Row.fetchAll(db, sql: "SELECT name, version, payload FROM csvProfile ORDER BY name").map { [$0["name"] as String, "\($0["version"] as Int)", String(decoding: $0["payload"] as Data, as: UTF8.self)] }
+		}
+		let kept = [["Future CSV", "2", String(decoding: future, as: UTF8.self)], ["Unsafe CSV", "1", String(decoding: negative, as: UTF8.self)]]
+		#expect(rows.filter { $0[0] != "Broker CSV" } == kept)
+		#expect(try store.csvProfiles().map(\.name) == (rename ? ["Broker CSV"] : []))
+	}
+
 	@Test("Complete import refuses a database with saved profiles")
 	func profileIsUserData() throws {
 		let store = try SchemaTests.emptyStore()

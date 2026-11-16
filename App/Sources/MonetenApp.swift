@@ -53,6 +53,8 @@ struct MonetenApp: App {
 			SettingsView()
 				.environment(model)
 		}
+		// The settings open only while the app is unlocked, so they never come back with the launch.
+		.restorationBehavior(.disabled)
 
 		MenuBarExtra(isInserted: $showMenuBarIcon) {
 			MenuBarPopover()
@@ -89,6 +91,12 @@ struct AppCommands: Commands {
 	var body: some Commands {
 		CommandGroup(replacing: .appInfo) {
 			Button("About Moneten") { Self.showAbout() }
+		}
+		// The settings need the open database, so the item waits for the unlock.
+		CommandGroup(replacing: .appSettings) {
+			SettingsLink { Text("Settings...") }
+				.keyboardShortcut(",")
+				.disabled(model.phase != .unlocked)
 		}
 		CommandGroup(after: .appSettings) {
 			Divider()

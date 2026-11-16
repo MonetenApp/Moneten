@@ -125,16 +125,24 @@ public struct PINRules: Sendable, Equatable {
 	public let digitsOnly: Bool
 	public let minLength: Int?
 	public let maxLength: Int?
+	/// A length that the server of the bank accepted once and refuses since it raised the minimum, such
+	/// as 6 on the servers of the cooperative banks. A PIN of this length still works on the website of
+	/// the bank, so its message asks for a longer PIN there instead of naming the minimum.
+	public let refusedLength: Int?
 
-	public init(digitsOnly: Bool = false, minLength: Int? = nil, maxLength: Int? = nil) {
+	public init(digitsOnly: Bool = false, minLength: Int? = nil, maxLength: Int? = nil, refusedLength: Int? = nil) {
 		self.digitsOnly = digitsOnly
 		self.minLength = minLength
 		self.maxLength = maxLength
+		self.refusedLength = refusedLength
 	}
 
 	/// The text that names the first rule that `pin` breaks, or nil when it breaks none.
 	public func check(_ pin: String, secretName: String = "PIN") -> String? {
 		if digitsOnly, !pin.allSatisfy({ $0.isASCII && $0.isNumber }) { return String(localized: "The \(secretName) must be numeric.") }
+		if let refusedLength, let minLength, refusedLength < minLength, pin.count == refusedLength {
+			return String(localized: "The FinTS server of the bank no longer accepts a \(secretName) of \(refusedLength) characters. Set a longer \(secretName) in the online banking of the bank first.")
+		}
 		if let minLength, pin.count < minLength {
 			return digitsOnly ? String(localized: "The \(secretName) is too short. The minimum is \(minLength) digits.")
 				: String(localized: "The \(secretName) is too short. The minimum is \(minLength) characters.")
@@ -206,6 +214,9 @@ public enum Challenge: Sendable, Equatable {
 	case chooseTANMethod([TANMethod], current: TANMethod.ID?)
 	/// An empty list means that the bank did not deliver it, and the user types the name of the medium.
 	case chooseTANMedium([String])
+	/// The bank lists no TAN media and takes the name of a device that the user may leave empty, as
+	/// apoBank does for apoTAN.
+	case nameTANMedium(TANMediumName)
 	/// A typed TAN: manual, with a photoTAN image, or with a QR code.
 	case enterTAN(prompt: String, image: ChallengeImage?)
 	/// The optical chipTAN.
@@ -266,6 +277,17 @@ public enum ChallengeProgress: Sendable, Equatable {
 	/// "Getting list of TAN media..."
 	case tanMedia
 	case challenge(TANMethod.Delivery)
+}
+
+/// The field for the name of a TAN medium that may stay empty, with the hint of the bank when to fill it in.
+public struct TANMediumName: Sendable, Equatable {
+	public let label: String
+	public let help: String
+
+	public init(label: String, help: String) {
+		self.label = label
+		self.help = help
+	}
 }
 
 /// What the entry field of a TAN or code accepts.
