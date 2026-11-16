@@ -16,7 +16,7 @@ struct DayEndBalanceTests {
 		let last = Transaction(accountID: giro.id, bookingDate: day(3), amountMinor: -2_500, name: "Kiosk")
 		let interest = Transaction(accountID: savings.id, bookingDate: day(3), amountMinor: 900, name: "Zinsen")
 		let ledger = Ledger(accounts: [giro, savings], transactions: [rent, first, last, interest])
-		let rows = ledger.transactions(in: .account(giro.id)).rows
+		let rows = ledger.rows(in: .account(giro.id)).rows
 		#expect(rows.map(\.id) == [last.id, first.id, rent.id])
 		let balances = ledger.dayEndBalances(of: giro, rows: rows)
 		#expect(balances == [last.id: Money(minorUnits: 112_500, currency: "EUR"), rent.id: Money(minorUnits: 120_000, currency: "EUR")])
@@ -29,7 +29,7 @@ struct DayEndBalanceTests {
 		let ledger = Ledger(accounts: [giro], transactions: [first, last])
 		var filter = TransactionFilter()
 		filter.searchText = "Bäckerei"
-		let rows = ledger.transactions(in: .account(giro.id), filter: filter).rows
+		let rows = ledger.rows(in: .account(giro.id), filter: filter).rows
 		#expect(rows.map(\.id) == [first.id])
 		#expect(ledger.dayEndBalances(of: giro, rows: rows) == [first.id: Money(minorUnits: 117_500, currency: "EUR")])
 	}

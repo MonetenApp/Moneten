@@ -317,7 +317,7 @@ struct PerfScenario {
 					guard let table = c.harness.transactionTables().first else { return c.fail("no transaction table") }
 					let visible = table.rows(in: table.visibleRect)
 					let blank = (visible.location..<visible.location + visible.length).filter { table.rowView(atRow: $0, makeIfNecessary: false) == nil }
-					if !blank.isEmpty { c.fail("step \(step) shows \(blank.count) blank rows") }
+					if !blank.isEmpty { c.fail("blank rows", ("step", .count(step)), ("rows", .count(blank.count))) }
 				}
 			}),
 		PerfScenario(name: "select-all-in-large-group", budget: halfSecond,
@@ -326,7 +326,7 @@ struct PerfScenario {
 				c.harness.transactionTables().first?.selectAll(nil)
 				await c.settle()
 				if c.model.selectedTransactions.count != c.model.visibleTransactions.count {
-					c.fail("\(c.model.selectedTransactions.count) of \(c.model.visibleTransactions.count) rows are selected")
+					c.fail("rows not all selected", ("selected", .count(c.model.selectedTransactions.count)), ("shown", .count(c.model.visibleTransactions.count)))
 				}
 				c.harness.transactionTables().first?.deselectAll(nil)
 			}),
