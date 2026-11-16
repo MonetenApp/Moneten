@@ -217,8 +217,13 @@ struct AllDataTests {
 				isChecked: true, categoryID: pets.id, categorizedBy: .manual, sourceID: "moneymoney:1", createdAt: Date(timeIntervalSince1970: 1_794_600_001.123), returnReason: "AC04"),
 			Transaction(accountID: migrated.id, bookingDate: Day(year: 2026, month: 11, day: 4), amountMinor: -1_000, name: "Kiosk", isPending: true,
 				categoryID: food.id, categorizedBy: .rule, isNew: true, review: .unclearBooking, sourceID: "moneymoney:2"),
-			Transaction(accountID: bank.id, bookingDate: Day(year: 2026, month: 11, day: 5), amountMinor: -2_000, currency: "USD", name: "Diner New York",
-				isFetched: true, sourceID: "bank-4711"),
+			{
+				var t = Transaction(accountID: bank.id, bookingDate: Day(year: 2026, month: 11, day: 5), amountMinor: -2_000, currency: "USD", name: "Diner New York",
+					isFetched: true, sourceID: "bank-4711")
+				t.edit(OriginalValues(bookingDate: Day(year: 2026, month: 11, day: 4), valueDate: Day(year: 2026, month: 11, day: 6), amountMinor: -2_050,
+					name: "Diner", purpose: "Dinner with a client"))
+				return t
+			}(),
 			Transaction(accountID: offline.id, bookingDate: Day(year: 2026, month: 11, day: 6), amountMinor: -480, name: "Bäckerei Gutbrot"),
 		]
 		try store.save(rows)
@@ -251,6 +256,8 @@ struct AllDataTests {
 		let before = try source.loadLedger()
 		let after = try target.loadLedger()
 		#expect(after.transactions.first { $0.sourceID == "moneymoney:1" }?.returnReason == "AC04")
+		#expect(after.transactions.first { $0.sourceID == "bank-4711" }?.original == OriginalValues(bookingDate: Day(year: 2026, month: 11, day: 5),
+			valueDate: nil, amountMinor: -2_000, name: "Diner New York", purpose: ""))
 		#expect(Set(after.accounts) == Set(before.accounts))
 		#expect(Set(after.groups) == Set(before.groups))
 		#expect(Set(after.categories) == Set(before.categories))
@@ -370,13 +377,18 @@ struct AllDataTests {
 		#expect(throws: AllData.ReadError.notAnExport) { try AllData(json: Data(#"{"format": 5}"#.utf8)) }
 	}
 
-	@Test("An amount at the bounds of the minor units reads exactly, and one beyond them is refused")
+	@Test("A transaction amount at the bounds of the minor units reads exactly, and one without a magnitude or beyond them is refused")
 	func amountBounds() throws {
 		var json = try JSONSerialization.jsonObject(with: try filledStore().exportAllData(at: exportedAt).json()) as! [String: Any]
 		var rows = json["transactions"] as! [[String: Any]]
+		rows[1]["amount"] = "-92233720368547758.07"
+		json["transactions"] = rows
+		#expect(try AllData(json: try JSONSerialization.data(withJSONObject: json)).transactions[1].amountMinor == -Int64.max)
 		rows[1]["amount"] = "-92233720368547758.08"
 		json["transactions"] = rows
-		#expect(try AllData(json: try JSONSerialization.data(withJSONObject: json)).transactions[1].amountMinor == Int64.min)
+		#expect(throws: AllData.ReadError.damaged("at transactions[1], the amount \"-92233720368547758.08\" is too large for a transaction")) {
+			try AllData(json: try JSONSerialization.data(withJSONObject: json))
+		}
 		rows[1]["amount"] = "92233720368547758.08"
 		json["transactions"] = rows
 		#expect(throws: AllData.ReadError.self) { try AllData(json: try JSONSerialization.data(withJSONObject: json)) }

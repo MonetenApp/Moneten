@@ -244,7 +244,7 @@ struct CategoryPie: View {
 		let totals = model.ledger.categoryTotals(of: rows, below: parent)
 		let currency = rows.first?.currency ?? "EUR"
 		func slice(_ category: Domain.Category, _ minorUnits: Int64) -> PieSlice {
-			PieSlice(id: category.id, name: category.name, money: Money(minorUnits: abs(minorUnits), currency: currency),
+			PieSlice(id: category.id, name: category.name, money: Money(minorUnits: Int64(clamping: minorUnits.magnitude), currency: currency),
 				color: CategoryColors.color(of: category, in: model.ledger))
 		}
 		return (totals.filter { $0.minorUnits < 0 }.map { slice($0.category, $0.minorUnits) },

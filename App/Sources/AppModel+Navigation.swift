@@ -85,6 +85,51 @@ extension AppModel {
 		if case .group = selection { String(localized: "Refresh Accounts") } else { String(localized: "Refresh Account") }
 	}
 
+	/// "Remove Account...", "Remove Account Group...", or "Remove Category..." for the selected row, or nil when
+	/// the row cannot be removed.
+	var removeTitle: String? {
+		switch selection {
+		case .account: "Remove Account..."
+		case .group: "Remove Account Group..."
+		case let .category(id): ledger.category(id)?.isDefault == false ? "Remove Category..." : nil
+		case nil: nil
+		}
+	}
+
+	/// "Remove..." of the Account menu, of the context menus, and of the settings sheets. It asks first, and
+	/// returns whether the user confirmed. "Uncategorized" cannot be removed.
+	@discardableResult
+	func confirmRemove(_ row: SidebarSelection) -> Bool {
+		let question = NSAlert()
+		switch row {
+		case let .account(id):
+			guard let a = ledger.account(id) else { return false }
+			question.messageText = "Are you sure you want to remove the account \(a.name)?"
+			question.informativeText = a.kind == .portfolio
+				? "All transactions and the recorded value history of this portfolio will be removed as well. You could alternatively mark the account as closed in the account settings."
+				: "All transactions of this account will be removed as well. You could alternatively mark the account as closed in the account settings."
+		case let .group(id):
+			guard let g = ledger.group(id) else { return false }
+			question.messageText = "Are you sure you want to remove the account group \(g.name)?"
+			question.informativeText = "The accounts and groups in it are kept and move to the top level."
+		case let .category(id):
+			guard let c = ledger.category(id), !c.isDefault else { return false }
+			question.messageText = "Are you sure you want to remove the category \(c.name)?"
+			question.informativeText = "The transactions will be retained and become uncategorized."
+		}
+		question.addButton(withTitle: "Remove").hasDestructiveAction = true
+		question.addButton(withTitle: "Cancel")
+		guard question.runModal() == .alertFirstButtonReturn else { return false }
+		Task {
+			switch row {
+			case let .account(id): await remove(account: id)
+			case let .group(id): await remove(group: id)
+			case let .category(id): await remove(category: id)
+			}
+		}
+		return true
+	}
+
 	func openSettingsOfSelection() {
 		switch selection {
 		case let .account(id): sheet = .accountSettings(id)
