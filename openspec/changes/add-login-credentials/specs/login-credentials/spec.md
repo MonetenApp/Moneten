@@ -155,7 +155,20 @@ The app SHALL, when a bank rejects a PIN, stop the login, delete the saved PIN o
 - **WHEN** the automatic refresh logs in and the bank rejects the PIN
 - **THEN** the app sends no second login with that PIN
 - **AND** the account shows an error with the message of the bank
-- **AND** the next manual refresh asks for the PIN
+- **AND** the next manual refresh asks for the PIN and shows the message of the bank
+
+#### Scenario: Message of the bank after a lock
+
+- **GIVEN** the bank rejected the PIN of "Giro" with "PIN falsch. Noch 1 Fehlversuch bis zur Sperrung."
+- **WHEN** the app locks, the user unlocks it, and refreshes "Giro"
+- **THEN** the PIN sheet asks for the PIN without the message of the bank
+
+#### Scenario: Message of the bank after a new PIN
+
+- **GIVEN** the bank rejected the PIN of "Giro" with "PIN falsch. Noch 1 Fehlversuch bis zur Sperrung."
+- **AND** the user entered a new PIN in "Edit Login Data..."
+- **WHEN** the refresh with the new PIN fails because the Mac is offline, and the user refreshes "Giro" again
+- **THEN** the PIN sheet asks for the PIN without the message of the bank
 
 #### Scenario: Typing error
 

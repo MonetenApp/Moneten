@@ -165,6 +165,23 @@ struct BankAccessTests {
 		#expect(ledger.accountsToAdd([first, second], listed: [first, second], connecting: [second.id: migrated.id]).map(\.id) == [first.id, migrated.id])
 	}
 
+	@Test("Look for New Accounts shows only the new subaccount, and matches it against every subaccount that the bank listed")
+	func newSubaccountBesideMigrated() {
+		let linked = Account(position: 0, name: "Sparkonto 01", kind: .savings, source: .bank, accountNumber: "9", bankCode: "12030000",
+			accessID: Self.accessID, remoteID: "9/01")
+		let migrated = Account(position: 1, name: "Sparen", kind: .savings, source: .migrated, accountNumber: "9", bankCode: "12030000")
+		let ledger = Ledger(accounts: [linked, migrated])
+		let first = Self.candidate("Sparkonto 01", number: "9", remoteID: "9/01")
+		let second = Self.candidate("Sparkonto 02", number: "9", remoteID: "9/02")
+		let listing = SetupListing([first, second], in: ledger, onlyNew: true)
+		#expect(listing.candidates.map(\.id) == ["9/02"])
+		#expect(listing.candidates.map(\.match) == [.choice([migrated])])
+		// "New account" stays chosen, so the old history of "Sparen" is not attached to 9/02.
+		#expect(ledger.accountsToAdd([second], listed: listing.listed).map(\.id) == [second.id])
+		#expect(ledger.accountsToAdd([second], listed: listing.listed, connecting: [second.id: migrated.id]).map(\.id) == [migrated.id])
+		#expect(SetupListing([first, second], in: ledger).candidates.map(\.isPresent) == [true, false])
+	}
+
 	@Test("An account with another IBAN is new, also with the same account number")
 	func otherIBAN() {
 		let migrated = Account(position: 0, name: "Giro", kind: .giro, source: .migrated, iban: "DE02120300000000202051", accountNumber: "202051",
@@ -346,6 +363,28 @@ struct BankAccessTests {
 		var current = opened
 		current.takeSettings(from: edited, opened: opened)
 		#expect(current.kind == .giro)
+	}
+
+	@Test("A login that the bank ends with its own message or an authentication that did not finish names Edit Login Data, a failure of one account does not")
+	func editLoginDataAfterFailedLogin() {
+		let giro = UUID(), savings = UUID()
+		let at = Self.noon
+		let tanMethod = BankMessage(code: "9955", text: "Das gewählte TAN-Verfahren ist nicht mehr zugelassen.")
+		for failure in [SyncFailure.bank(tanMethod), .approvalDeclined(nil), .challengeExpired, .invalidChallenge] {
+			#expect(SyncState.failed(failure).accountRefreshes(of: [giro], notices: [], at: at)[giro]
+				== .failed(RefreshError(message: failure.message, code: failure.bankMessage?.code, date: at, suggestsEditLoginData: true)))
+		}
+		for failure in [SyncFailure.network("timeout"), .offline, .pinRejected(BankMessage(code: "9942", text: "PIN falsch")), .tanRejected(tanMethod),
+			.needsUser(.pin), .notRegistered] {
+			guard case let .failed(error)? = SyncState.failed(failure).accountRefreshes(of: [giro], notices: [], at: at)[giro] else {
+				Issue.record("no error")
+				continue
+			}
+			#expect(!error.suggestsEditLoginData)
+		}
+		let finished = SyncState.finished(SyncSummary(finishedAt: at, fetched: [giro], failures: [savings: .bank(tanMethod)]))
+		#expect(finished.accountRefreshes(of: [giro, savings], notices: [], at: at)[savings]
+			== .failed(RefreshError(message: tanMethod.text, code: "9955", date: at)))
 	}
 
 	@Test("The end of a refresh gives each requested account its outcome, and a cancel gives none")
