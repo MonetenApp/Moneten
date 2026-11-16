@@ -18,9 +18,16 @@ public struct PendingCrashReport: Codable, Equatable, Sendable {
 	}
 }
 
+protocol CrashReportKeychain: Sendable {
+	func read(account: String) throws -> String?
+	func write(_ value: String, account: String) throws
+}
+
+extension Keychain: CrashReportKeychain {}
+
 public struct CrashReportStore {
 	private let folder: DataFolder
-	private let keychain = Keychain(service: "Moneten crash report key")
+	private let keychain: any CrashReportKeychain
 	private var file: URL { folder.root.appendingPathComponent("CrashReport.encrypted") }
 
 	struct State: Codable {
@@ -70,7 +77,14 @@ public struct CrashReportStore {
 		}
 	}
 
-	public init(folder: DataFolder) { self.folder = folder }
+	public init(folder: DataFolder) {
+		self.init(folder: folder, keychain: Keychain(service: "Moneten crash report key"))
+	}
+
+	init(folder: DataFolder, keychain: any CrashReportKeychain) {
+		self.folder = folder
+		self.keychain = keychain
+	}
 
 	@discardableResult
 	public func startLaunch(at date: Date, appVersion: String, macOSVersion: String, files: [(name: String, date: Date)]) throws -> PendingCrashReport? {

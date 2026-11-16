@@ -39,9 +39,24 @@ The app SHALL offer the newest available crash report in a sheet after an unexpe
 #### Scenario: Delayed details
 
 - **GIVEN** a short report for the crash at 10:05 awaits a decision
-- **WHEN** a diagnostic covering 10:00 through 10:05 arrives later
+- **WHEN** a diagnostic starting after the previous launch at 10:00 and no later than 10:06 arrives later
 - **THEN** the full report replaces the short report
 - **AND** if the user already declined the short report, the diagnostic does not prompt again
+
+#### Scenario: Details precede the crash file
+
+- **GIVEN** the previous launch started at second 1000 and a crash occurred at second 1100
+- **AND** the crash file was written at second 1103 and its short report awaits a decision
+- **WHEN** a diagnostic beginning and ending at second 1100 arrives
+- **THEN** its details replace the short report even though the file date is later
+- **AND** a replay preserves those details and does not prompt again after a decision
+
+#### Scenario: Bound the fallback match
+
+- **GIVEN** the previous launch started at second 1000 and a crash file dated second 1103 supplies the pending short report
+- **WHEN** a diagnostic arrives after another launch
+- **THEN** a start at second 1162 or 1163 replaces the short report
+- **AND** a start at second 1164, 1000, or 999 leaves the short report unchanged
 
 #### Scenario: Main window closed
 
@@ -61,10 +76,17 @@ The app SHALL keep the newest pending report encrypted in its data folder until 
 
 #### Scenario: The encryption key is lost
 
-- **GIVEN** a saved report from November 15 has no readable key, or its ciphertext cannot be decrypted
+- **GIVEN** a saved report from November 15 has a missing or invalid-length key, a malformed encrypted box, an authentication failure, or JSON that cannot decode
 - **WHEN** the app reads it
 - **THEN** it deletes that file and continues without saved state
 - **AND** a new crash on November 16 can be saved and offered
+
+#### Scenario: Key access is unavailable for now
+
+- **GIVEN** a crash report awaits a decision
+- **WHEN** the Keychain denies interaction, the user cancels, an item has another signature, or an unclassified read error occurs
+- **THEN** that launch offers no saved report and preserves the encrypted file and launch baseline
+- **AND** the next launch with working key access offers the same pending report
 
 #### Scenario: Decline once
 
