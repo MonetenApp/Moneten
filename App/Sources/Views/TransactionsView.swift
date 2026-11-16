@@ -879,6 +879,15 @@ struct TransactionMenu: View {
 			if case let .category(id) = model.selection, model.ledger.defaultCategory?.id != id {
 				Button("Remove Transaction from Category") { model.assign(category: nil, to: ids) }
 			}
+			Menu("Create Offsetting Entry") {
+				let targets = model.ledger.offsettingTargets(for: transactions)
+				ForEach(targets, id: \.account.id) { target in
+					Button(target.account.name) { model.createOffsettingEntries(of: ids, in: target.account.id) }.disabled(!target.isEnabled)
+				}
+				if targets.isEmpty {
+					Text(model.ledger.accounts.contains(where: { $0.isOffline && !$0.isClosed }) ? "No other offline account available" : "No offline accounts available")
+				}
+			}
 			Button(first.comment == nil ? "Add Comment..." : "Edit Comment...") { model.sheet = .comment(ids) }
 			Divider()
 			Button(transactions.allSatisfy(\.isChecked) ? "Mark as Unchecked" : "Mark as Checked") {
