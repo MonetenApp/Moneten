@@ -285,7 +285,7 @@ extension ReconcileTests {
 			for delivered in permutations([rent(7, purpose: "BOOKED RENT", pending: false), other]) {
 				let r = merge(refresh(delivered), stored: stored, at: noon(7, month: 12))
 				let after = history(stored, after: r)
-				#expect(after.first { $0.id == originals[1].id }?.needsReview == false)
+				#expect(after.first { $0.id == originals[1].id }?.review == nil)
 				#expect(!r.marked.contains { $0.id == originals[1].id })
 				#expect(r.booked.count == (ambiguous ? 0 : 1))
 				#expect(r.marked.count == (ambiguous ? 2 : 0))
@@ -425,7 +425,7 @@ extension ReconcileTests {
 				#expect(r.added.count == (copies == 1 ? 0 : 1))
 				#expect(after.count == (copies == 1 ? 2 : 4))
 				#expect(after.reduce(0) { $0 + $1.amountMinor } == (copies == 1 ? -81_200 : -241_200))
-				#expect(after.filter(\.needsReview).count == (copies == 1 ? 0 : 3))
+				#expect(after.filter { $0.review != nil }.count == (copies == 1 ? 0 : 3))
 				if copies == 1 { #expect(r.booked.map(\.comment) == ["FIRST"]) }
 				else { #expect(after.filter(\.isPending).compactMap(\.comment).sorted() == ["FIRST", "SECOND"]) }
 			}
@@ -442,7 +442,7 @@ extension ReconcileTests {
 	}
 
 	func pendingSummary(_ rows: [Transaction]) -> [String] {
-		rows.map { "\($0.bookingDate.rawValue) \($0.amountMinor) \($0.isPending) \($0.isFetched) \($0.needsReview) \($0.purpose)" }.sorted()
+		rows.map { "\($0.bookingDate.rawValue) \($0.amountMinor) \($0.isPending) \($0.isFetched) \($0.review != nil) \($0.purpose)" }.sorted()
 	}
 
 	@Test("Gate 3 item 1: global nearest pairs do not follow delivery order")

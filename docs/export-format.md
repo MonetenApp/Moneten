@@ -80,7 +80,7 @@ A version-1 payload contains `name`, `header`, `delimiter`, and `layout`. The he
 | `accessID` | The bank access that refreshes the account |
 | `remoteID` | Identifier of the account at its bank |
 | `refreshedAt` | Time of the last successful refresh |
-| `refreshError` | The error of the last refresh, with `message`, `code` (the return code of the bank), `date`, `notices` (the notices of the bank), and `waitsForUser` (whether only a refresh command of the user can resolve it) |
+| `refreshError` | The error of the last refresh, with `message`, `code` (the return code of the bank), `date`, `notices` (the notices of the bank), `waitsForUser` (whether only a refresh command of the user can resolve it), and `suggestsEditLoginData` (whether the refresh of the whole access failed, at the login or after it, in a way that can mean that the bank wants it set up again, so the error names "Edit Login Data..."). A reader takes a missing `waitsForUser` or `suggestsEditLoginData` as false. |
 | `refreshInterval` | `everyTwoHours`, `fourTimesADay`, `onceADay`, `onceAWeek`, `onlyManually`, or `never` |
 
 ## Access
@@ -135,7 +135,7 @@ An access is a login at a bank. The file never holds its PIN or the data that it
 | `categoryID` | The category, missing for "Uncategorized" |
 | `categorizedBy` | `none`, `rule` for a category from a rule, or `manual` for a category the user chose |
 | `isNew` | Whether the transaction is marked as new |
-| `needsReview` | Whether the transaction is marked for review, because the app could not tell which pending transaction it books |
+| `needsReview` | Whether `review` is non-nil. Import maps true to `unclearBooking` and false to nil. Until format v2, an undone split loses its specific review reason in this format. |
 | `isFetched` | Whether a refresh delivered the transaction |
 | `fileIdentity` | Original file fingerprint, if a file import recorded one; absent or null means no file identity |
 | `sourceID` | Identifier of the transaction at its bank or source, such as `moneymoney:<id>` |
@@ -186,7 +186,7 @@ A position of a portfolio, as its bank reported it last.
 
 ## Planned format version 2 for split transactions
 
-Version 1 above is the format the app currently writes and reads. The [split design](../openspec/changes/add-split-transactions/design.md) and tasks 5.1a and 5.2a of its [task list](../openspec/changes/add-split-transactions/tasks.md) define version 2. The implementation updates this page to describe v2 as active before enabling split commands. Database migrations remain v17 for the split table and v18 for review reasons. The file format version is separate from those migration numbers.
+Version 1 above is the format the app currently writes and reads. The [split design](../openspec/changes/add-split-transactions/design.md) and tasks 5.1a and 5.2a of its [task list](../openspec/changes/add-split-transactions/tasks.md) define version 2. The implementation updates this page to describe v2 as active before enabling split commands. Database migrations are v17 for the split table and v20 for review reasons; v18 is the file identity of #203. The file format version is separate from those migration numbers.
 
 Version 2 keeps the version-1 objects, with the following changes.
 

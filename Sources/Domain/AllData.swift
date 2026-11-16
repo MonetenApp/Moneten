@@ -405,7 +405,8 @@ private struct TransactionEntry: Codable {
 		categoryID = t.categoryID
 		categorizedBy = t.categorizedBy
 		isNew = t.isNew
-		needsReview = t.needsReview
+		// shortcut: format v1 keeps only the review mark, preserve reasons with format v2 in task 5.2a.
+		needsReview = t.review != nil
 		isFetched = t.isFetched
 		sourceID = t.sourceID
 		fileIdentity = t.fileIdentity
@@ -418,7 +419,7 @@ private struct TransactionEntry: Codable {
 			amountMinor: try AmountText.minorUnits(amount, currency), currency: currency, name: name, purpose: purpose,
 			counterpartyIBAN: counterpartyIBAN, counterpartyBIC: counterpartyBIC, bookingText: bookingText, endToEndReference: endToEndReference,
 			mandateReference: mandateReference, creditorID: creditorID, comment: comment, isChecked: isChecked, isPending: isPending,
-			categoryID: categoryID, categorizedBy: categorizedBy, isNew: isNew, needsReview: needsReview, isFetched: isFetched, sourceID: sourceID,
+			categoryID: categoryID, categorizedBy: categorizedBy, isNew: isNew, review: needsReview ? .unclearBooking : nil, isFetched: isFetched, sourceID: sourceID,
 			createdAt: createdAt, returnReason: returnReason, fileIdentity: fileIdentity)
 	}
 }

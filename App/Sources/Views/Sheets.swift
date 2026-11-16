@@ -342,6 +342,9 @@ struct TransactionSheet: View {
 
 	var body: some View {
 		SheetFrame(title: transactionID == nil ? "New Transaction" : "Edit Transaction", canConfirm: !editable || AmountParser.decimal(from: amount) != nil, width: 500, onConfirm: save) {
+			if let review = existing?.review {
+				Section { Label(review.note, systemImage: "exclamationmark.circle").foregroundStyle(.orange) }
+			}
 			if editable {
 				Section {
 					DatePicker("Date", selection: $date, displayedComponents: .date)

@@ -330,7 +330,11 @@ final class AppModel {
 				self.bankHistories[accountID] = result.bankHistory(after: self.bankHistories[accountID], of: kind)
 			}
 		}
-		sync.ended = { [weak self] access, state, accounts, attended in
+		// The coordinator asks for the state before it lets the next work of the access go, so it is stored at once.
+		sync.storeState = { [weak self] access, state, attended in
+			self?.recordRefresh(of: access, state: state, accounts: [:], attended: attended)
+		}
+		sync.ended = { [weak self] access, accounts, attended in
 			let failed = accounts.values.filter { if case .failed = $0 { true } else { false } }.count
 			guard let self else { return }
 			Trail.log("refresh end access=\(self.trailNumber(of: access)) accounts=\(accounts.count) failed=\(failed)")
@@ -338,10 +342,10 @@ final class AppModel {
 			if self.tableUndrawn {
 				Task {
 					while self.tableUndrawn { await self.drawn() }
-					self.recordRefresh(of: access, state: state, accounts: accounts, attended: attended)
+					self.recordRefresh(of: access, state: nil, accounts: accounts, attended: attended)
 				}
 			} else {
-				self.recordRefresh(of: access, state: state, accounts: accounts, attended: attended)
+				self.recordRefresh(of: access, state: nil, accounts: accounts, attended: attended)
 			}
 			self.extensions.sessionEnded()
 			if attended { self.showNotices() }
@@ -831,10 +835,11 @@ final class AppModel {
 		}
 	}
 
-	/// Opens the "Add Account" assistant. The new accounts go into `group`.
-	func addAccount(group: UUID? = nil) {
+	/// Opens the "Add Account" assistant, or with `purpose` "Look for New Accounts..." or "Edit Login
+	/// Data...". The new accounts go into `group`.
+	func addAccount(group: UUID? = nil, purpose: AccountSetup.Purpose = .add) {
 		setup?.cancel()
-		setup = AccountSetup(model: self, groupID: group)
+		setup = AccountSetup(model: self, groupID: group, purpose: purpose)
 		sheet = .newAccount
 	}
 
@@ -852,16 +857,19 @@ final class AppModel {
 	/// of the bank that the assistant showed, which the window "Notice" then leaves out. Throws the error of
 	/// the database, which the assistant shows.
 	func add(_ new: Access, state: AccessState?, accounts candidates: [Account], listed: [Account], connecting: [UUID: UUID], notices: [BankMessage],
-		pin: Secret, savePIN: Bool) throws {
+		pin: Secret?, savePIN: Bool) throws {
 		guard let store else { return }
 		let (access, accounts) = try store.add(new, state: state, accounts: ledger.accountsToAdd(candidates, listed: listed, connecting: connecting))
 		bankNotices.markShown(notices, from: access.bankName)
 		let first = accounts.first { ledger.account($0.id) == nil } ?? accounts.first
-		// The bank accepted the PIN at the login of the setup.
-		do {
-			try sync.broker.remember(pin, for: access.id, save: savePIN)
-		} catch {
-			alert = AlertMessage(title: "Could not save the PIN.", message: String(describing: error))
+		// The bank accepted the PIN at the login of the setup. "Look for New Accounts..." logged in with the
+		// PIN of the access, which the broker keeps already.
+		if let pin {
+			do {
+				try sync.broker.remember(pin, for: access.id, save: savePIN)
+			} catch {
+				alert = AlertMessage(title: "Could not save the PIN.", message: String(describing: error))
+			}
 		}
 		accesses[access.id] = access
 		// The new accounts and the view of the first one come with a new transaction table.
@@ -873,6 +881,19 @@ final class AppModel {
 			}
 			refresh(ledger.refreshAccounts(.all).filter { $0.key == access.id })
 		}
+	}
+
+	/// "Edit Login Data...": stores the login name and the state of the login that the bank just accepted,
+	/// for all accounts of the access, with the PIN of that login as the saved PIN when "Save PIN" is on and
+	/// no saved PIN when it is off, in one transaction. The broker takes the PIN into memory and follows the
+	/// database, and each refresh of the access that waits runs with the new login. Throws the error of the database, which the assistant shows, and
+	/// then nothing changed.
+	func updateLogin(_ access: Access, state: AccessState?, pin: Secret, savePIN: Bool) throws {
+		guard let store else { throw CancellationError() }
+		try store.updateLogin(of: access.id, loginName: access.loginName, state: state, savedPIN: savePIN ? pin : nil)
+		accesses[access.id] = access
+		sync.update(access, state: state)
+		sync.broker.adopt(pin, for: access.id, saved: savePIN)
 	}
 
 	/// Stores the access of an extension setup with the listed accounts that the app does not have yet.
@@ -1329,7 +1350,7 @@ final class AppModel {
 		return try await replacingTable { try merge(.refresh(result), into: accountID) }
 	}
 
-	/// The open table shows pending rows of the account, which the bank can drop or book, or a position of
+	/// The open table shows pending rows or split parts that a correction can remove, or a position of
 	/// the account that the delivered positions no longer hold.
 	private func removesShownRows(_ result: RefreshResult, of accountID: UUID) -> Bool {
 		if let portfolios = tableKey.portfolios {
@@ -1338,7 +1359,7 @@ final class AppModel {
 			let kept = Set(Holding.identify(delivered, stored: shown).map(\.id))
 			return shown.contains { !kept.contains($0.id) }
 		}
-		return visibleTransactions.contains { $0.accountID == accountID && $0.isPending }
+		return visibleTransactions.contains { $0.accountID == accountID && ($0.isPending || ledger.part($0.id) != nil) }
 	}
 
 	/// Applies a change of the rows that comes with a new transaction table: an import, a migration, a

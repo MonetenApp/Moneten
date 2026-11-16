@@ -253,6 +253,17 @@ public enum Categorization: String, Codable, Sendable {
 	case none, rule, manual
 }
 
+public enum ReviewReason: String, Codable, Sendable {
+	case unclearBooking, splitUndone
+
+	public var note: String {
+		switch self {
+		case .unclearBooking: "Several transactions could belong together. Check the rows and delete the ones you don't need."
+		case .splitUndone: "The bank changed the amount; the split was undone."
+		}
+	}
+}
+
 public struct Transaction: Identifiable, Hashable, Sendable, Codable {
 	public var id: UUID
 	public var accountID: UUID
@@ -278,10 +289,10 @@ public struct Transaction: Identifiable, Hashable, Sendable, Codable {
 	public var categorizedBy: Categorization
 	/// True from the moment the transaction arrives until the user has seen it.
 	public var isNew: Bool
-	/// Set by a merge when more than one row could be the booked version of a pending row. The list shows a
+	/// Why a merge marked this row for review. The list shows a
 	/// mark until the user checks a booked row or deletes the row. A merge drops a pending row that has it only
 	/// after the user checked it, and a new review clears that checkmark.
-	public var needsReview: Bool
+	public var review: ReviewReason?
 	/// A refresh delivered this row. Once the user deletes it, a file import does not add it again.
 	public var isFetched: Bool
 	public var sourceID: String?
@@ -291,7 +302,7 @@ public struct Transaction: Identifiable, Hashable, Sendable, Codable {
 	public init(id: UUID = UUID(), accountID: UUID, bookingDate: Day, valueDate: Day? = nil, amountMinor: Int64, currency: String = "EUR", name: String, purpose: String = "",
 		counterpartyIBAN: String? = nil, counterpartyBIC: String? = nil, bookingText: String? = nil, endToEndReference: String? = nil, mandateReference: String? = nil,
 		creditorID: String? = nil, comment: String? = nil, isChecked: Bool = false, isPending: Bool = false, categoryID: UUID? = nil, categorizedBy: Categorization = .none,
-		isNew: Bool = false, needsReview: Bool = false, isFetched: Bool = false, sourceID: String? = nil, createdAt: Date = Date(), returnReason: String? = nil, fileIdentity: String? = nil) {
+		isNew: Bool = false, review: ReviewReason? = nil, isFetched: Bool = false, sourceID: String? = nil, createdAt: Date = Date(), returnReason: String? = nil, fileIdentity: String? = nil) {
 		self.id = id
 		self.accountID = accountID
 		self.bookingDate = bookingDate
@@ -313,7 +324,7 @@ public struct Transaction: Identifiable, Hashable, Sendable, Codable {
 		self.categoryID = categoryID
 		self.categorizedBy = categorizedBy
 		self.isNew = isNew
-		self.needsReview = needsReview
+		self.review = review
 		self.isFetched = isFetched
 		self.sourceID = sourceID
 		self.fileIdentity = fileIdentity
@@ -324,7 +335,7 @@ public struct Transaction: Identifiable, Hashable, Sendable, Codable {
 
 	/// The rule for every sum, such as a balance, a bar of a chart, or the amount of a category. A pending row
 	/// counts like a booked one, except while it waits for review: then the booked row stands for the money.
-	var countsInSums: Bool { !isPending || !needsReview }
+	var countsInSums: Bool { !isPending || review == nil }
 
 	/// The rule for every sum in one currency. The minor units of another currency are not those of the sum,
 	/// and a sum never converts.
@@ -341,9 +352,9 @@ public struct Transaction: Identifiable, Hashable, Sendable, Codable {
 	public mutating func markChecked() {
 		isChecked = true
 		isNew = false
-		if !isPending { needsReview = false }
+		if !isPending { review = nil }
 	}
 
 	/// Checking the row changes it, so "Mark All Transactions as Checked" counts it.
-	public var changesWhenChecked: Bool { !isChecked || isNew || (needsReview && !isPending) }
+	public var changesWhenChecked: Bool { !isChecked || isNew || (review != nil && !isPending) }
 }

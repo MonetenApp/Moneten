@@ -72,6 +72,15 @@ public struct MoneySums: Hashable, Sendable {
 	}
 
 	public var isEmpty: Bool { byCurrency.isEmpty }
+
+	/// The amounts that the status line of a list shows: one per currency, or 0 when no row counts.
+	///
+	/// The 0 takes the currency of the view, that of its account or category, before that of its first row,
+	/// because a row that counts in no sum, such as a pending row under review, must not decide the currency.
+	/// A view without a currency of its own, such as an account group, takes the currency of its first row, then the euro.
+	public func shownAmounts(viewCurrency: String?, rows: [Transaction]) -> [Money] {
+		isEmpty ? [Money(minorUnits: 0, currency: viewCurrency ?? rows.first?.currency ?? "EUR")] : amounts
+	}
 }
 
 /// The character that separates the whole units of an amount from its fraction.

@@ -772,7 +772,7 @@ struct LedgerTests {
 		let groceries = Domain.Category(position: 0, name: "Groceries")
 		func row(_ day: Int, pending: Bool) -> Transaction {
 			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: day), amountMinor: -320, name: "Bäckerei Gutbrot",
-				isPending: pending, categoryID: groceries.id, categorizedBy: .manual, needsReview: true)
+				isPending: pending, categoryID: groceries.id, categorizedBy: .manual, review: .unclearBooking)
 		}
 		let l = Ledger(accounts: [giro], categories: [groceries], transactions: [row(12, pending: true), row(12, pending: true), row(13, pending: false)])
 		let range = DayRange(start: Day(year: 2026, month: 11, day: 12), end: Day(year: 2026, month: 11, day: 13))
@@ -788,12 +788,32 @@ struct LedgerTests {
 		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
 		func row(_ minor: Int64, pending: Bool, review: Bool) -> Transaction {
 			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 12), amountMinor: minor, name: "Café Beispiel",
-				isPending: pending, needsReview: review)
+				isPending: pending, review: review ? .unclearBooking : nil)
 		}
 		let rows = [row(-320, pending: true, review: true), row(-320, pending: true, review: true), row(-320, pending: false, review: true),
 			row(-1_000, pending: true, review: false)]
 		#expect(MoneySums(of: rows).amounts == [Money(minorUnits: -1_320, currency: "EUR")])
 		#expect(MoneySums(of: rows.filter(\.isPending)).amounts == [Money(minorUnits: -1_000, currency: "EUR")])
+	}
+
+	@Test("A sum of zero has the currency of the view, also when every row is under review or the list is empty")
+	func zeroSumInViewCurrency() {
+		let travel = Account(position: 0, name: "Travel", kind: .giro, source: .offline, currency: "USD")
+		func row(_ minor: Int64, _ currency: String) -> Transaction {
+			Transaction(accountID: travel.id, bookingDate: Day(year: 2026, month: 11, day: 12), amountMinor: minor, currency: currency,
+				name: "Diner Example", isPending: true, review: .unclearBooking)
+		}
+		let usd = [row(-1_250, "USD"), row(-1_250, "USD")]
+		let eur = [row(-320, "EUR")]
+		#expect(MoneySums(of: usd).shownAmounts(viewCurrency: "USD", rows: usd) == [Money(minorUnits: 0, currency: "USD")])
+		#expect(MoneySums(of: []).shownAmounts(viewCurrency: "USD", rows: []) == [Money(minorUnits: 0, currency: "USD")])
+		// A category in USD whose only rows are euro rows under review.
+		#expect(MoneySums(of: eur).shownAmounts(viewCurrency: "USD", rows: eur) == [Money(minorUnits: 0, currency: "USD")])
+		// A group has no currency of its own.
+		#expect(MoneySums(of: usd).shownAmounts(viewCurrency: nil, rows: usd) == [Money(minorUnits: 0, currency: "USD")])
+		#expect(MoneySums(of: []).shownAmounts(viewCurrency: nil, rows: []) == [Money(minorUnits: 0, currency: "EUR")])
+		let counted = [Transaction(accountID: travel.id, bookingDate: Day(year: 2026, month: 11, day: 12), amountMinor: -500, currency: "USD", name: "Taxi")]
+		#expect(MoneySums(of: counted).shownAmounts(viewCurrency: "USD", rows: counted) == [Money(minorUnits: -500, currency: "USD")])
 	}
 
 	@Test("A balance counts only the rows in the currency of the account")
@@ -852,7 +872,7 @@ struct LedgerTests {
 		let groceries = Domain.Category(position: 0, name: "Groceries", sidebarAmount: .currentMonth)
 		func row(_ day: Int, _ minor: Int64, pending: Bool, review: Bool = false) -> Transaction {
 			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: day), amountMinor: minor, name: "Supermarkt",
-				isPending: pending, categoryID: groceries.id, categorizedBy: .manual, needsReview: review)
+				isPending: pending, categoryID: groceries.id, categorizedBy: .manual, review: review ? .unclearBooking : nil)
 		}
 		let l = Ledger(accounts: [giro], categories: [groceries], transactions: [
 			row(3, -8_000, pending: false), row(7, -4_000, pending: true), row(8, -500, pending: true, review: true),
@@ -935,7 +955,7 @@ struct LedgerTests {
 		func row(_ category: UUID?, _ year: Int, _ month: Int, _ day: Int, _ minor: Int64, _ currency: String = "EUR", pending: Bool = false,
 			review: Bool = false) -> Transaction {
 			Transaction(accountID: currency == "USD" ? card.id : giro.id, bookingDate: Day(year: year, month: month, day: day), amountMinor: minor,
-				currency: currency, name: "Row", isPending: pending, categoryID: category, needsReview: review)
+				currency: currency, name: "Row", isPending: pending, categoryID: category, review: review ? .unclearBooking : nil)
 		}
 		let l = Ledger(accounts: [giro, card], categories: [living, rent, travel, fuel, hidden, refunds, uncategorized], transactions: [
 			row(rent.id, 2026, 11, 3, -80_000), row(rent.id, 2026, 10, 3, -80_000), row(rent.id, 2026, 11, 5, -1_000, pending: true),
