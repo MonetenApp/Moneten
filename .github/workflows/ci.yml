@@ -6,13 +6,45 @@ on:
     branches: [main]
   workflow_dispatch:
 
-# A new push to a pull request makes its older run worthless. Cancel that run, so the few macOS
-# runners work on the newest head of each pull request. Runs on main and manual runs are never cancelled.
 concurrency:
   group: ci-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+permissions:
+  contents: read
+
+# Event / changed paths                         | Specs | Units, release, tools, build | UI, debug log | Periphery
+# PR only docs/, openspec/, *.md, issue templates | yes   | no                           | no            | no
+# Other PR                                      | yes   | yes                          | App/, Sources/, scripts/, workflows/actions | *.swift
+# Push to main or workflow_dispatch             | yes   | yes                          | yes           | yes
+# App bundles are artifacts of this run, never a cross-run build cache. At most four build jobs
+# start together; the two UI runners start after the app build. Every measurement owns its runner.
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      macos: ${{ steps.plan.outputs.macos }}
+      app: ${{ steps.plan.outputs.app }}
+      periphery: ${{ steps.plan.outputs.periphery }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: python3 scripts/test-ci.py
+      - id: plan
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [[ "$EVENT" == pull_request ]]; then
+            git diff --no-renames --name-only -z "$BASE...$HEAD" > "$RUNNER_TEMP/paths"
+          else
+            : > "$RUNNER_TEMP/paths"
+          fi
+          python3 scripts/ci-plan.py "$EVENT" < "$RUNNER_TEMP/paths" |
+            python3 -c 'import json,sys; [print(f"{k}={str(v).lower()}") for k,v in json.load(sys.stdin).items()]' >> "$GITHUB_OUTPUT"
+
   specs:
     runs-on: ubuntu-latest
     steps:
@@ -22,63 +54,121 @@ jobs:
           node-version: 22
       - run: python3 scripts/check-docs.py
       - run: python3 scripts/check-ui.py
-      # The catalog keys of the app are the keys/*.pub of MonetenApp/moneten-extensions.
       - run: scripts/check-catalog-keys.sh
       - run: npm install -g @fission-ai/openspec
       - run: openspec validate --all --strict --no-interactive
-      # Offline: lua.org resets connections from CI runners.
       - run: scripts/vendor-lua.sh --check
       - run: scripts/vendor-lua.sh --self-test
 
-  test:
+  unit:
+    needs: changes
+    if: needs.changes.outputs.macos == 'true'
+    runs-on: macos-15
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [core, connectors]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/ci-setup
+        with:
+          java: ${{ matrix.shard == 'core' }}
+      - run: echo "127.0.0.1 bank.localhost" | sudo tee -a /etc/hosts
+      - name: Unit tests
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          if [[ "$SHARD" == core ]]; then
+            scripts/ci-run.sh scripts/test.sh --filter '^(DomainTests|StorageTests|ImportTests|SyncTests)\.' --skip PerformanceTests
+          else
+            scripts/ci-run.sh scripts/test.sh --skip '^(DomainTests|StorageTests|ImportTests|SyncTests|FinTSTests)\.|PerformanceTests|SessionTests/testHosts|LimitTests'
+            scripts/ci-run.sh scripts/test.sh --skip-build --filter '^FinTSTests\.'
+          fi
+      - if: matrix.shard == 'core'
+        name: Export durability
+        run: scripts/ci-run.sh scripts/check-export-sync.sh
+      - if: matrix.shard == 'core'
+        name: FinTS helper and probe
+        run: |
+          scripts/ci-run.sh scripts/build-fints-helper.sh
+          scripts/ci-run.sh scripts/fints-probe-java.sh --build-only
+      - if: matrix.shard == 'connectors'
+        name: Extension replays
+        run: |
+          scripts/ci-run.sh swift run --disable-keychain ext test Extensions/Example Fixtures/example/fixture.json Fixtures/example/expected.json
+          for extension in "permanent-tsb-business/Permanent TSB Business.lua" monzo/Monzo.lua amazon-bestellungen/amazon-bestellungen.lua; do
+            folder="Fixtures/extensions/${extension%%/*}"
+            scripts/ci-run.sh swift run --disable-keychain ext test "Fixtures/extensions/$extension" "$folder/fixture.json" "$folder/expected.json"
+          done
+
+  performance:
+    needs: changes
+    if: needs.changes.outputs.macos == 'true'
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
-      - run: swift --version
-      - run: brew install xcodegen
-      # The made-up bank of the ext record tests. macOS 15 does not resolve names under localhost.
-      - run: echo "127.0.0.1 bank.localhost" | sudo tee -a /etc/hosts
-      - name: Tests
-        # The performance tests run below, alone and in a release build. Here they would keep the three
-        # cores of the runner busy while the FinTS tests measure how fast a helper ends.
-        run: scripts/test.sh --skip PerformanceTests
-      - name: Export durability
-        run: scripts/check-export-sync.sh
-      - name: Example extension
-        # The replay that the checks of the catalog repository run for each package.
-        run: swift run --disable-keychain ext test Extensions/Example Fixtures/example/fixture.json Fixtures/example/expected.json
-      - name: Published extensions
-        # Three published extensions, unchanged, against their hand-made fixtures. CompatibilityTests checks their digests.
-        run: |
-          for extension in "permanent-tsb-business/Permanent TSB Business.lua" monzo/Monzo.lua amazon-bestellungen/amazon-bestellungen.lua; do
-            folder="Fixtures/extensions/${extension%%/*}"
-            swift run --disable-keychain ext test "Fixtures/extensions/$extension" "$folder/fixture.json" "$folder/expected.json"
-          done
-      - name: Performance
-        # The budgets of the performance tests hold for a release build only. See CONTRIBUTING.md.
-        # The tests run one after another, so that no test measures the load of another one.
-        run: scripts/test.sh -c release -Xswiftc -enable-testing --filter 'PerformanceTests|SessionTests/testHosts' --no-parallel
-      - uses: actions/setup-java@v4
+      - uses: ./.github/actions/ci-setup
+      - name: Release performance
+        run: scripts/ci-run.sh scripts/test.sh -c release -Xswiftc -enable-testing --filter 'PerformanceTests|SessionTests/testHosts|LimitTests' --no-parallel
+
+  app:
+    needs: changes
+    if: needs.changes.outputs.macos == 'true'
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/ci-setup
         with:
-          distribution: temurin
-          java-version: "17"
-      - name: FinTS helper
-        # Compiles Tools/FinTSHelper against the jars of dependencies.lock and runs its self-test.
-        run: scripts/build-fints-helper.sh
-      # Adds the FinTS helper with a jlink runtime to the app.
-      - run: scripts/build-app.sh debug
-      - name: No personal data in the debug log
-        run: scripts/check-debug-log.sh
-      - name: UI performance
-        run: scripts/perf-check.sh
-      - name: FinTS probe with hbci4java
-        # Downloads the jars of Tools/FinTSProbeJava/dependencies.lock, checks their SHA-256, and compiles the probe.
-        run: scripts/fints-probe-java.sh --build-only
-      - name: Unused code
-        # The Periphery repository is archived, and Homebrew drops its formula in August 2027.
-        # CI uses the last release, checked against its hash.
+          xcodegen: 'true'
+          java: 'true'
+      - name: Build debug app
+        run: scripts/ci-run.sh scripts/build-app.sh debug
+      - if: needs.changes.outputs.app == 'true'
+        name: No personal data in the debug log
+        run: scripts/ci-run.sh scripts/check-debug-log.sh
+      - if: needs.changes.outputs.periphery == 'true'
+        uses: actions/cache@v4
+        with:
+          path: .build/periphery.zip
+          key: periphery-3.8.0-07d4e286e31dd79164df39097e0b59f533c94badbe18158464a455ea88a166d7
+      - if: needs.changes.outputs.periphery == 'true'
+        name: Unused code
         run: |
-          curl -sSL -o periphery.zip https://github.com/peripheryapp/periphery/releases/download/3.8.0/periphery-3.8.0.zip
-          echo "07d4e286e31dd79164df39097e0b59f533c94badbe18158464a455ea88a166d7  periphery.zip" | shasum -a 256 -c
-          unzip -q periphery.zip -d .build/periphery-tool
-          .build/periphery-tool/periphery scan
+          test -f .build/periphery.zip || curl -fsSL -o .build/periphery.zip https://github.com/peripheryapp/periphery/releases/download/3.8.0/periphery-3.8.0.zip
+          echo "07d4e286e31dd79164df39097e0b59f533c94badbe18158464a455ea88a166d7  .build/periphery.zip" | shasum -a 256 -c
+          unzip -q .build/periphery.zip -d .build/periphery-tool
+          scripts/ci-run.sh xcodebuild -project App/Moneten.xcodeproj -scheme ext -destination 'platform=macOS,arch=arm64' -derivedDataPath .build/xcode -quiet build-for-testing CODE_SIGNING_ALLOWED=NO
+          scripts/ci-run.sh .build/periphery-tool/periphery scan --skip-build --index-store-path .build/xcode/Index.noindex/DataStore
+      - if: needs.changes.outputs.app == 'true'
+        name: Build UI performance app
+        run: |
+          scripts/ci-run.sh scripts/perf-check.sh --build-only
+          tar -cf "$RUNNER_TEMP/perf-app.tar" -C .build/xcode/Build/Products/Perf Moneten.app
+      - if: needs.changes.outputs.app == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-app
+          path: ${{ runner.temp }}/perf-app.tar
+          retention-days: 1
+
+  ui:
+    needs: [changes, app]
+    if: needs.changes.outputs.app == 'true'
+    runs-on: macos-15
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ['1/2', '2/2']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: perf-app
+          path: ${{ runner.temp }}
+      - name: UI performance
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          mkdir -p .build/xcode/Build/Products/Perf
+          tar -xf "$RUNNER_TEMP/perf-app.tar" -C .build/xcode/Build/Products/Perf
+          scripts/ci-run.sh scripts/perf-check.sh --skip-build --shard "$SHARD"

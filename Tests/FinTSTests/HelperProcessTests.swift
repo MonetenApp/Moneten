@@ -38,7 +38,7 @@ struct HelperProcessTests {
 		let runs = (0..<ProcessInfo.processInfo.activeProcessorCount + 2).map { _ in
 			Task { () -> (any Error)? in
 				do {
-					_ = try await connector("exec sleep 60", inactivity: 1, grace: 10).listAccounts(of: Self.access, state: state, session: Session())
+					_ = try await connector("exec sleep 60", inactivity: 0.5, grace: 0.5).listAccounts(of: Self.access, state: state, session: Session())
 					return nil
 				} catch {
 					return error
@@ -46,7 +46,7 @@ struct HelperProcessTests {
 			}
 		}
 		// A starved pool would run this task only after the helpers end on their own, 60 seconds after
-		// their start. The bound lies between that and the timeout of the helpers (11 seconds), because
+		// their start. The bound lies between that and the timeout of the helpers (1 second), because
 		// a loaded runner of CI ran this task only after 12 seconds.
 		try await Task.sleep(for: .milliseconds(500))
 		await Task.detached { }.value

@@ -27,6 +27,26 @@ Run `scripts/check.sh` before you open a pull request. It checks the links and p
 
 CI also runs `scripts/perf-check.sh`. It starts the optimized `Perf` build, which contains the debug harness, with a temporary data folder and 50,000 made-up transactions in 10 accounts, and runs the scenarios in [App/Sources/PerfCheck.swift](App/Sources/PerfCheck.swift), such as switching from a scrolled account to its group. It prints the longest main-thread stall and the memory of each scenario. A stall over the half second of the spec is reported as slow. The check fails when a stall exceeds 10 seconds, when the table misses rows of the view, or when the app crashes. Find the cause with `sample` while the scenario runs. Keep modifiers off the rows of a `Table`: a modifier on a row, such as `.draggable`, makes SwiftUI build a view graph for every row on each change of the view, while a modifier in a cell costs only for the visible rows. Add a scenario for every slow path you fix. The app window appears on the screen while the check runs. The check runs a copy of the app under its own bundle ID, so it leaves the settings and window frames of an installed Moneten alone.
 
+## CI checks and runner use
+
+The Ubuntu `changes` job selects checks from every changed path, including deletions and both sides of a rename. The `specs` job runs on every pull request. Main pushes and manual runs always select all checks.
+
+| Event or changed paths | Specs | Units, release, tools, app build | UI performance and debug log | Periphery |
+|---|---|---|---|---|
+| PR only in docs/, openspec/, Markdown files, or issue templates | Yes | No | No | No |
+| Other PR | Yes | Yes | App/, Sources/, scripts/, or workflow and action files | Swift files |
+| Push to main or manual run | Yes | Yes | Yes | Yes |
+
+Two unit shards separate Domain, Storage, Import, and Sync from the connectors and extension tools. New test targets join the connector shard unless added to the core filter. FinTS runs after the other connector tests, so their CPU work cannot delay its helper timers. Its second invocation uses only the test bundle built earlier in the same job. Performance suites, the host-start benchmark, and the Lua memory-limit suite run once, serially in release. The memory-limit suite keeps all its cases and iteration counts; optimized Lua avoids the long debug allocator and garbage-collector loops. The full 3,000-seed pairing check stays in every unit run. The FinTS timeout tests use existing inactivity and grace parameters; the default five-second grace still has its own test.
+
+The app job builds Debug, checks the debug log when selected, and runs Periphery against the current build's index. It builds Perf once and uploads its app bundle. Two downstream runners run the UI halves with `scripts/perf-check.sh --skip-build --shard 1/2` and `scripts/perf-check.sh --skip-build --shard 2/2`. The portfolio scenarios stay together because they share setup. Run `scripts/perf-check.sh --build-only` to build without starting an app. The default command still builds and runs every scenario.
+
+Four macOS build jobs can start together. The UI jobs start after the app build and each measure on a separate runner. This uses at most five concurrent macOS runners in one run. The goals are at most ten minutes elapsed and twenty macOS job minutes. Queue time depends on other pull requests in the organization.
+
+Caches use exact keys for the Swift and Xcode versions and Package.resolved, Periphery's version and SHA-256, hbci4java's dependencies.lock, and Homebrew's XcodeGen formula. Downloads keep their checksum checks. The SwiftPM cache contains source checkouts, repositories, and binary dependencies, with no object files, index stores, or test results. Built app artifacts come only from the same run. No compiled build cache can supply a stale pass.
+
+`scripts/ci-run.sh` preserves command failures and rejects compiler warnings whose source location is under App/, Sources/, Tests/, or Tools/. Downloaded dependencies and expected error text from Lua tests do not match that rule. Run `python3 scripts/test-ci.py` for the path and warning-gate checks.
+
 The app writes a trail of the events that can replace the transaction table or change its rows to stderr, one line per event: the view, the filter kinds, changes of the ledger with their row counts, refreshes, sheets, dialogs, the lock, and the unlock. The lines hold kinds and counts only, no names, IBANs, amounts, purposes, or account numbers. When SwiftUI stops the app in a table update, the crash report has no frame of the app, and the last lines of the trail show what changed before. Start the app with stderr in a file to keep them, for example `open --stderr app.log /Applications/Moneten.app`.
 
 ## Propose a change

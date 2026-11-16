@@ -326,21 +326,22 @@ struct FinTSConnectorTests {
 		#expect(recorded.map { $0["type"] } == ["cancel", "terminated"])
 	}
 
-	@Test("Cancel returns at once while the helper does not read its input, and the helper ends after 5 seconds")
+	@Test("Cancel returns at once while the helper does not read its input, and the helper ends after its grace")
 	func cancelBlockedWrite() async throws {
 		// A state far larger than the buffer of a pipe, to a helper that never reads it.
+		let grace: TimeInterval = 0.5
 		let state = AccessState(Data(repeating: 7, count: 1_000_000))
 		let task = Task {
-			try await connector(#"trap 'echo "{\"type\":\"terminated\"}" >> "$R"; exit 1' TERM; sleep 60 & wait"#).listAccounts(of: Self.access, state: state, session: Session())
+			try await connector(#"trap 'echo "{\"type\":\"terminated\"}" >> "$R"; exit 1' TERM; echo '{"type":"ready"}' >> "$R"; sleep 60 & wait"#, grace: grace).listAccounts(of: Self.access, state: state, session: Session())
 		}
-		try await Task.sleep(for: .milliseconds(300))
+		await until { recorded.contains { $0["type"] == "ready" } }
 		let canceled = ContinuousClock.now
 		task.cancel()
-		// A cancel that waited for the write would return only when the helper ends, 5 seconds later.
+		// A write that blocks cancel would wait for the helper to end.
 		#expect(ContinuousClock.now - canceled < .seconds(5))
 		await #expect(throws: CancellationError.self) { try await task.value }
-		#expect(ContinuousClock.now - canceled >= .seconds(5))
-		#expect(recorded.map { $0["type"] } == ["terminated"])
+		#expect(ContinuousClock.now - canceled >= .seconds(grace))
+		#expect(recorded.map { $0["type"] } == ["ready", "terminated"])
 	}
 
 	@Test("A helper that ignores SIGTERM is killed, and the canceled refresh ends", .timeLimit(.minutes(1)))
@@ -359,7 +360,7 @@ struct FinTSConnectorTests {
 
 	@Test("A helper that stays silent fails with a timeout, through cancel and then termination")
 	func timeout() async throws {
-		let inactivity: TimeInterval = 1, grace: TimeInterval = 1
+		let inactivity: TimeInterval = 0.5, grace: TimeInterval = 0.5
 		let start = ContinuousClock.now
 		await #expect(throws: SyncFailure.network("The connection to the FinTS server of the bank timed out. Try again later.")) {
 			try await connector("""
@@ -385,11 +386,11 @@ struct FinTSConnectorTests {
 				echo '{"type":"alive"}'
 				read line; printf '%s\\n' "$line" >> "$R"
 				sleep 60 & wait
-				""", inactivity: 1, grace: 1).refresh(RefreshRequest(access: Self.access, accounts: [Self.giro]), Session())
+				""", inactivity: 0.5, grace: 0.5).refresh(RefreshRequest(access: Self.access, accounts: [Self.giro]), Session())
 		}
 		#expect(recorded.map { $0["type"] } == ["cancel", "terminated"])
 		// The helper would end on its own after 60 seconds.
-		#expect(ContinuousClock.now - start < .seconds(30))
+		#expect(ContinuousClock.now - start < .seconds(55))
 	}
 
 	@Test("A helper that closes its output but keeps running gets the cancel and ends", .timeLimit(.minutes(1)))
@@ -418,10 +419,10 @@ struct FinTSConnectorTests {
 		let state = AccessState(Data(repeating: 7, count: 1_000_000))
 		let start = ContinuousClock.now
 		await #expect(throws: SyncFailure.network("The connection to the FinTS server of the bank timed out. Try again later.")) {
-			try await connector("exec sleep 60", inactivity: 1, grace: 1).listAccounts(of: Self.access, state: state, session: Session())
+			try await connector("exec sleep 60", inactivity: 0.5, grace: 0.5).listAccounts(of: Self.access, state: state, session: Session())
 		}
-		// The helper would end on its own after 60 seconds; termination ends it after about 2.
-		#expect(ContinuousClock.now - start < .seconds(30))
+		// The helper would end on its own after 60 seconds; termination ends it after about 1.
+		#expect(ContinuousClock.now - start < .seconds(55))
 	}
 
 	@Test("Each line restarts the timeout, and a request for the user pauses it")

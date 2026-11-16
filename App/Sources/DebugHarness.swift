@@ -435,7 +435,7 @@ final class DebugHarness {
 		case "select": if argument.isEmpty { model.selection = nil } else { select(argument) }
 		case "contextmenus": logContextMenus(argument)
 		#if DEBUG || PERF_HARNESS
-		case "perf": Task { await runPerf() }
+		case "perf": Task { await runPerf(argument) }
 		#endif
 		case "view": model.viewMode = ViewMode(rawValue: argument) ?? .list
 		case "balance": model.balanceMode = BalanceMode(rawValue: argument) ?? .daily

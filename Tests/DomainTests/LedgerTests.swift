@@ -1044,7 +1044,7 @@ struct LedgerTests {
 	func savedAmountRange() throws {
 		var f = TransactionFilter()
 		f.status = .unchecked
-		f.amount = .range(min: -500, max: try #require(Decimal(string: "-99.99")))
+		f.amount = .range(min: -500, max: Decimal(string: "-99.99"))
 		let stored = try JSONSerialization.jsonObject(with: SavedFilterBar(period: .all, filter: f).data) as? NSDictionary
 		#expect(stored == ["period": ["all": [:]], "status": ["unchecked": [:]], "amount": ["range": ["min": -500, "max": -99.99]]])
 		let written = #"{"period":{"all":{}},"status":{"unchecked":{}},"amount":{"range":{"min":-500,"max":-99.99}}}"#

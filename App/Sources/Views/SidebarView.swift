@@ -280,7 +280,7 @@ struct CategoryRow: View {
 			if let error = category.ruleError {
 				Image(systemName: "exclamationmark.triangle.fill")
 					.foregroundStyle(.yellow)
-					.help("The rule cannot be read. New transactions do not get this category. \(error)")
+					.help("The rule cannot be read. New transactions do not get this category. \(error.description)")
 					.accessibilityLabel("The rule cannot be read.")
 			}
 			if let amount {
