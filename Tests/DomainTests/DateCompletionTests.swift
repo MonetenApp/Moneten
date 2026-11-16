@@ -60,6 +60,12 @@ struct DateCompletionTests {
 		#expect(complete(text, today: today) == expected)
 	}
 
+	@Test("A region that writes the year first takes no day and month")
+	func yearFirst() {
+		#expect(complete("12.20", today: Self.day(2026, 11, 9), order: .yearMonthDay) == nil)
+		#expect(complete("20", today: Self.day(2026, 11, 9), order: .yearMonthDay) == Self.day(2026, 10, 20))
+	}
+
 	@Test("The United States type the month before the day", arguments: [
 		("12/20", day(2026, 11, 9), day(2026, 12, 20)),
 		("12/20", day(2027, 2, 15), day(2026, 12, 20)),
@@ -80,10 +86,35 @@ struct DateCompletionTests {
 		("1.1.2030", .dayMonthYear, day(2030, 1, 1)),
 		("20,10,2026", .dayMonthYear, day(2026, 10, 20)),
 		("20 10 2026", .dayMonthYear, day(2026, 10, 20)),
+		("20. 10. 2026", .dayMonthYear, day(2026, 10, 20)),
+		("20..10..2026", .dayMonthYear, day(2026, 10, 20)),
+		// A two-digit year below 80 lies in the 2000s, from 80 on in the 1900s.
+		("20.12.79", .dayMonthYear, day(2079, 12, 20)),
+		("20.12.80", .dayMonthYear, day(1980, 12, 20)),
+		("20.12.00", .dayMonthYear, day(2000, 12, 20)),
 	])
 	func fullDate(text: String, order: DateOrder, expected: Day) {
 		#expect(complete(text, today: Self.day(2026, 11, 9), order: order) == expected)
 		#expect(complete(text, today: Self.day(2026, 11, 9), order: order, expectsFuture: true) == expected)
+	}
+
+	@Test("Four to eight digits without a separator are a full date", arguments: [
+		("201226", DateOrder.dayMonthYear, day(2026, 12, 20)),
+		("20122026", .dayMonthYear, day(2026, 12, 20)),
+		// Three digits for the day and the month take a two-digit month when it can be one.
+		("11226", .dayMonthYear, day(2026, 12, 1)),
+		("1122026", .dayMonthYear, day(2026, 12, 1)),
+		("11326", .dayMonthYear, day(2026, 3, 11)),
+		// Two digits are a one-digit day and a one-digit month.
+		("1226", .dayMonthYear, day(2026, 2, 1)),
+		("122026", .monthDayYear, day(2026, 12, 20)),
+		("11226", .monthDayYear, day(2026, 11, 2)),
+		("1312026", .monthDayYear, day(2026, 1, 31)),
+		("261220", .yearMonthDay, day(2026, 12, 20)),
+		("20261220", .yearMonthDay, day(2026, 12, 20)),
+	])
+	func digitsOnly(text: String, order: DateOrder, expected: Day) {
+		#expect(complete(text, today: Self.day(2026, 11, 9), order: order) == expected)
 	}
 
 	@Test("A typed day in a field that expects a future date moves forward when it lies before today", arguments: [
@@ -133,6 +164,8 @@ struct DateCompletionTests {
 
 	@Test("A text that is not a date is refused", arguments: [
 		"", " ", "0", "32", "123", "0.5", "20.0", "20.13", "20..12", ".20", "20.12.2026.1", "20.12.202", "20.12.0", "20:12", "heute", "20a", "-20", "2026-10", "99999999999999999999999", "1.99999999999999999999999",
+		// Only "." and "/" separate a day and a month, and four digits that are no date are not a day either.
+		"20,12", "20 12", "20-12", "2012", "999999999",
 	])
 	func unreadable(text: String) {
 		#expect(complete(text, today: Self.day(2026, 11, 9)) == nil)

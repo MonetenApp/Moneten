@@ -89,9 +89,13 @@ Each of them is an order that the bank carries out later, and a bank refuses an 
 
 ### Reading the typed text
 
-The completion reads the text in the order of the numeric date of the region, which `Format.day` shows: day, month, and year in Germany, and month, day, and year in the United States. A day and a month without a year keep that order, so "12/20" is 20 December in the United States. A first part of four digits is always the year of an ISO date, such as 2026-11-09.
+The completion reads the text in the order of the numeric date of the region, which `Format.day` shows: day, month, and year in Germany, and month, day, and year in the United States. It tries a full date first and a partial date second.
 
-The parts are separated by ".", "/", "-", ",", or a space, and a separator at the end is ignored, so "20.12." reads as "20.12". A day and a month have one or two digits. A year has two or four digits, and a two-digit year reads as `Day(string:)` reads it in a file: below 70 in the 2000s, else in the 1900s. A text of digits only reads as a day, so "2012" is not a date. Letters, an empty part, more than three parts, and a day or a month out of range make the text unreadable.
+A full date has three numbers. They are separated by ".", "/", "-", ",", or spaces, and a run of separators counts as one, so "20. 10. 2026" reads. A first number of four digits is always the year of an ISO date, such as 2026-11-09. Four to eight digits without a separator are also a full date: four to six digits hold a two-digit year, and seven or eight digits a four-digit year, at the end, or at the start in a region that writes the year first. So "201226" is 20.12.2026. The digits left for the day and the month follow the order of the region. Two digits are a one-digit day and month, and of three digits the month takes two when they lie from 01 to 12, so "11226" is 01.12.2026. A year has two or four digits. A two-digit year below 80 lies in the 2000s, from 80 on in the 1900s.
+
+A partial date is a day, or a day and a month, separated by "." or "/". A separator at the end is ignored, so "20.12." reads as "20.12". A day and a month have one or two digits and keep the order of the region, so "12/20" is 20 December in the United States. A region that writes the year first takes a day alone but no day and month. Letters, an empty part, and a day or a month out of range make the text unreadable, and so does a day and month with "-", ",", or a space, such as "20,12".
+
+A typed year is not limited, and a date before 1970 stays as typed.
 
 ### The date field of the app
 
