@@ -96,8 +96,8 @@ public struct RefreshRequest: Sendable {
 		self.access = access
 		self.state = state
 		self.accounts = enforced
-			? accounts.map { AccountRequest(accountID: $0.accountID, name: $0.name, remoteID: $0.remoteID, currency: $0.currency, balance: $0.balance,
-				refreshedAt: $0.refreshedAt, comment: $0.comment) }
+			? accounts.map { AccountRequest(accountID: $0.accountID, name: $0.name, remoteID: $0.remoteID, lastFetched: $0.lastFetched, currency: $0.currency,
+				balance: $0.balance, refreshedAt: $0.refreshedAt, comment: $0.comment) }
 			: accounts
 	}
 }
@@ -111,6 +111,9 @@ public struct AccountRequest: Sendable, Equatable {
 	public let remoteID: String
 	/// The first day to fetch. Nil asks for everything the bank has.
 	public let since: Day?
+	/// The day of the last successful fetch, nil before the first. An answer that starts after it may miss
+	/// older transactions. `since` is no measure for that, because it reaches 14 days or a pending row back.
+	public let lastFetched: Day?
 	/// The currency of the account in the app, for a row that the source sends without one.
 	public let currency: String
 	/// The stored balance and the end of the last successful refresh, which an extension reads in its account table.
@@ -119,12 +122,13 @@ public struct AccountRequest: Sendable, Equatable {
 	/// The notes of the account, which an extension reads in its account table.
 	public let comment: String?
 
-	public init(accountID: UUID, name: String, remoteID: String, since: Day? = nil, currency: String, balance: Money? = nil, refreshedAt: Date? = nil,
-		comment: String? = nil) {
+	public init(accountID: UUID, name: String, remoteID: String, since: Day? = nil, lastFetched: Day? = nil, currency: String, balance: Money? = nil,
+		refreshedAt: Date? = nil, comment: String? = nil) {
 		self.accountID = accountID
 		self.name = name
 		self.remoteID = remoteID
 		self.since = since
+		self.lastFetched = lastFetched
 		self.currency = currency
 		self.balance = balance
 		self.refreshedAt = refreshedAt
@@ -174,6 +178,10 @@ public struct RefreshResult: Sendable {
 	/// The positions of a portfolio, which replace the stored ones. Nil when the source sent none, as an
 	/// extension today, so the stored positions stay.
 	public let holdings: [Holding]?
+	/// This answer may miss older transactions of the account: it starts after the last successful fetch, because a
+	/// normal refresh asks for no more than 90 days, or because the user canceled the second factor for older
+	/// transactions. The merge turns it into `Account.missesOlderTransactions`, which stays until a full history.
+	public let missesOlder: Bool
 
 	/// The bank sent the balance without a transaction list, because it provides none for the account. A
 	/// portfolio has positions in place of transactions, and a failed request is an error of its own.
@@ -195,8 +203,16 @@ public struct RefreshResult: Sendable {
 		return previous == .noTransactions ? nil : previous
 	}
 
+	/// Whether older transactions of the account may be missing after this refresh, given `previous`, the mark
+	/// before it. Only a full history ends the mark, and an answer without transactions keeps it.
+	public func missesOlder(after previous: Bool) -> Bool {
+		guard transactions != nil else { return previous }
+		return isComplete ? false : previous || missesOlder
+	}
+
 	public init(balance: Money?, balanceDate: Date? = nil, transactions: FetchedTransactions?, isComplete: Bool = false,
-		transactionFailure: SyncFailure? = nil, isPortfolio: Bool = false, holdings: [Holding]? = nil) {
+		transactionFailure: SyncFailure? = nil, isPortfolio: Bool = false, holdings: [Holding]? = nil, missesOlder: Bool = false) {
+		self.missesOlder = missesOlder
 		self.balance = balance
 		self.balanceDate = balanceDate
 		self.transactions = transactions

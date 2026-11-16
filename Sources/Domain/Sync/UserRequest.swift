@@ -142,6 +142,12 @@ public struct PINRules: Sendable, Equatable {
 	}
 }
 
+/// The user canceled a second factor that the bank asked for transactions older than 90 days. The refresh
+/// goes on with the last 90 days in place of the full history.
+public struct OlderTransactionsSkipped: Error, Equatable {
+	public init() {}
+}
+
 public struct SecondFactorRequest: Sendable, Equatable {
 	public let purpose: Purpose
 	public let system: System
@@ -159,12 +165,18 @@ public struct SecondFactorRequest: Sendable, Equatable {
 	public let field: TANField
 	/// The title of the confirm button, "Continue" or, when an extension asks for it, "Next".
 	public let confirmTitle: String
+	/// The bank may ask because the refresh requests transactions older than 90 days. "Cancel" then ends
+	/// only this request with `OlderTransactionsSkipped`, and the refresh fetches the last 90 days ("The
+	/// first refresh asks for the full history").
+	public let olderTransactions: Bool
 
 	public init(purpose: Purpose, system: System, loginOnly: Bool = false, challenge: Challenge, validity: Duration = .seconds(300),
-		methods: [TANMethod] = [], method: TANMethod.ID? = nil, field: TANField = TANField(), confirmTitle: String = "Continue") {
+		methods: [TANMethod] = [], method: TANMethod.ID? = nil, field: TANField = TANField(), confirmTitle: String = "Continue",
+		olderTransactions: Bool = false) {
 		self.purpose = purpose
 		self.system = system
 		self.loginOnly = loginOnly
+		self.olderTransactions = olderTransactions
 		self.challenge = challenge
 		self.validity = validity
 		self.methods = methods
