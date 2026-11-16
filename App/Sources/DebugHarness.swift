@@ -580,6 +580,13 @@ final class DebugHarness {
 				a.bankBalanceMinor = euros * 100
 				model.save(account: a)
 			}
+		case "wallet":
+			// "<group> <euros> <US dollars>" adds a wallet of a bank that reports a balance in euros and one in US dollars.
+			let parts = argument.split(separator: " ")
+			if parts.count == 3, let euros = Int64(parts[1]), let dollars = Int64(parts[2]), let group = model.ledger.groups.first(where: { $0.name == String(parts[0]) }) {
+				model.save(account: Account(groupID: group.id, position: model.ledger.nextTreePosition(in: group.id), name: "Reisekasse", kind: .other,
+					source: .bank, bankBalanceMinor: euros * 100, otherBankBalances: [Money(minorUnits: dollars * 100, currency: "USD")]))
+			}
 		case "portfoliovalue":
 			// "<account> <days ago> <euros>" records the value of a portfolio on a past day.
 			let parts = argument.split(separator: " ")
