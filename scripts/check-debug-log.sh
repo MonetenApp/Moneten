@@ -161,6 +161,16 @@ poll "phase=unlocked" state
 poll "^settings window=true sheet=false visible=true tab=security " settings open
 send settings "tab general"
 poll "^settings window=true .* tab=general " settings state
+# The window that macOS keeps after a close closes again when something puts it on screen while the app is locked. The
+# lock also closes the settings, so the checks below run without them.
+send lock
+poll "^settings window=false sheet=false visible=false " settings state
+send settings force
+sleep 2
+poll "^settings window=false sheet=false visible=false " settings state
+if grep -q "^settings force found=false" "$LOG"; then echo "\"settings force\" found no settings window to show." >&2; exit 1; fi
+send unlock check-debug-log
+poll "phase=unlocked" state
 cat >"$DATA/export.json" <<-'EOF'
 	{"format": "moneten-export", "version": 1, "exportedAt": "2026-11-14T23:46:40.000Z", "accountGroups": [], "accounts": [],
 	"accesses": [], "categories": [], "transactions": [], "deletedTransactions": [], "holdings": [],

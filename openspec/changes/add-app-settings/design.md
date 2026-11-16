@@ -22,7 +22,7 @@ The unlock settings write to the Keychain. Turning on the first one stores the p
 
 ### Settings need an unlocked app
 
-The item "Settings..." replaces the item of the system and is off while the app is not unlocked, so ⌘, does nothing then. The settings window closes when the app leaves the state "unlocked", for example on a lock with ⌃⌘L or after inactivity, and when it appears while the app is locked. A password prompt on the "Security" tab closes with it and does not come back after the unlock. macOS does not restore the window at the launch.
+The item "Settings..." replaces the item of the system and is off while the app is not unlocked, so ⌘, does nothing then. The settings window closes when the app leaves the state "unlocked", for example on a lock with ⌃⌘L or after inactivity, and when it comes on screen while the app is locked: one turn after it appears, because SwiftUI shows the window after `onAppear`, and whenever a window that macOS kept comes back. A password prompt on the "Security" tab closes with it and does not come back after the unlock. macOS does not restore the window at the launch.
 
 ## Risks / Trade-offs
 

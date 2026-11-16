@@ -25,13 +25,22 @@ struct SettingsView: View {
 		.frame(width: 500)
 		.background(HostingWindow(reference: window))
 		// The settings change the open database and the Keychain entry of its password, so a lock closes them. The
-		// window also closes when it appears while the app is locked.
+		// window also closes when it comes on screen while the app is locked.
 		.onChange(of: model.phase) { _, phase in
 			if phase != .unlocked { close() }
 		}
+		// SwiftUI shows the window after `onAppear`, and a close before that has no effect, so the check waits one turn.
 		.onAppear {
-			if model.phase != .unlocked { close() }
+			DispatchQueue.main.async { closeIfLocked() }
 		}
+		// A window that macOS kept from an earlier opening comes back on screen without a new `onAppear`.
+		.onReceive(NotificationCenter.default.publisher(for: NSWindow.didChangeOcclusionStateNotification)) { note in
+			if let shown = note.object as? NSWindow, shown === window.window, shown.isVisible { closeIfLocked() }
+		}
+	}
+
+	private func closeIfLocked() {
+		if model.phase != .unlocked { close() }
 	}
 
 	/// `dismiss` leaves the window open while a sheet is attached to it, so the window ends its sheet and closes itself.

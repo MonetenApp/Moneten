@@ -370,10 +370,10 @@ final class DebugHarness {
 			log("menu", ("", .choice(argument, of: names)), ("items", .list(items.map { .hash($0.title) })),
 				("enabled", .list(items.map { .flag($0.isEnabled) })))
 		case "menucommands": log("menucommands", ("enabled", .flag(AppCommands(model: model).unlocked)))
-		// The settings window. "open" presses ⌘, as the keyboard does, "tab <general|security>" selects a tab, and "press <n>" clicks
-		// switch number n of the open tab, counted from 0. Each logs whether the window is open, whether a sheet is attached to it,
-		// whether any window of the settings or of their sheet is visible, its tab, the switches that are on, the stored values of
-		// the switches of "General", and the stored language.
+		// The settings window. "open" presses ⌘, as the keyboard does, "force" shows the window of an earlier "open" past the
+		// menu item, "tab <general|security>" selects a tab, and "press <n>" clicks switch number n of the open tab, counted from 0.
+		// Each logs whether the window is open, whether a sheet is attached to it, whether any window of the settings or of their
+		// sheet is visible, its tab, the switches that are on, the stored values of the switches of "General", and the stored language.
 		case "settings": settings(argument)
 		#if DEBUG
 		case "extcatalog":
@@ -1015,6 +1015,12 @@ final class DebugHarness {
 				characters: ",", charactersIgnoringModifiers: ",", isARepeat: false, keyCode: 43) else { return }
 			// The menu claims the key also while the item is disabled, so only the window in the log shows what happened.
 			_ = NSApp.mainMenu?.performKeyEquivalent(with: event)
+		case "force":
+			// The window that an earlier "open" left behind, put on screen past the menu item, as a stale or restored window would be.
+			guard let hidden = NSApp.windows.first(where: { $0.identifier?.rawValue == "com_apple_SwiftUI_Settings_window" }) else {
+				return log("settings force", ("found", .flag(false)))
+			}
+			hidden.orderFrontRegardless()
 		case "tab": model.settingsTab = parts.count > 1 && parts[1] == "security" ? .security : .general
 		case "press":
 			guard let number, switches().indices.contains(number) else { return log("settings press", ("count", .count(switches().count))) }
