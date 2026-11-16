@@ -40,9 +40,26 @@ final class DebugHarness {
 		#endif
 	}
 
-	/// Whether the harness drives this run. Such a run does not bring the app to the front, because the
-	/// developer keeps working in another app. Only "mainkey table" and "securefield" ask for the focus.
-	static var isRequested: Bool { requestedPath != nil }
+	/// Called before the app finishes launching. A run of the harness does not bring the app to the front,
+	/// because the developer keeps working in another app. The app then drops every request to become the
+	/// active app, also for a bank dialog, an alert, and the offer of a crash report, and only "mainkey table"
+	/// and "securefield" ask for the focus. A check at each call in the app would not be enough, because
+	/// AppKit itself activates the app when an alert sheet opens. Windows still open, and macOS can show them
+	/// above the app in front.
+	static func keepBehindIfRequested() {
+		#if DEBUG || PERF_HARNESS
+		if requestedPath != nil { NSApplication.dropActivationRequests() }
+		#endif
+	}
+
+	/// The focus that "mainkey table" and "securefield" need. Only the active app has a key window and AutoFill.
+	private func activateForFocus() {
+		#if DEBUG || PERF_HARNESS
+		NSApplication.allowsActivation = true
+		defer { NSApplication.allowsActivation = false }
+		#endif
+		NSApp.activate()
+	}
 
 	static func installIfRequested(model: AppModel) {
 		#if DEBUG || PERF_HARNESS
@@ -213,7 +230,7 @@ final class DebugHarness {
 			guard let sheet = topSheet, let view = sheet.contentView, let position = Int(argument) else { return }
 			let editable = fields(in: view)
 			guard editable.indices.contains(position) else { return log("focusfield", ("count", .count(editable.count))) }
-			NSApp.activate()
+			// The field editor of the sheet takes the text of "type" while the app stays behind.
 			sheet.makeKeyAndOrderFront(nil)
 			sheet.makeFirstResponder(editable[position])
 			editable[position].selectText(nil)
@@ -779,7 +796,7 @@ final class DebugHarness {
 		}
 		guard let sheet = topSheet, let field = sheet.contentView.flatMap(fields)?.first else { return log("securefield none") }
 		// AutoFill offers itself only in the active app. macOS grants this only when the app in front gives up the focus, which the log shows.
-		NSApp.activate()
+		activateForFocus()
 		sheet.makeFirstResponder(field)
 		DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
 			let editor = sheet.firstResponder as? NSTextView
@@ -822,7 +839,7 @@ final class DebugHarness {
 		var handledBy: StaticString = "-"
 		if name == "table" {
 			// Only the active app has a key window. macOS grants this only when the app in front gives up the focus, which "key=" shows.
-			NSApp.activate()
+			activateForFocus()
 			main.makeKeyAndOrderFront(nil)
 			main.makeFirstResponder(table)
 		} else if let key = keys[name], let event = NSEvent.keyEvent(with: .keyDown, location: .zero,
@@ -1434,3 +1451,29 @@ extension HostLog {
 		}
 	}
 }
+
+#if DEBUG || PERF_HARNESS
+extension NSApplication {
+	/// True only while the harness asks for the focus itself.
+	fileprivate static var allowsActivation = false
+
+	/// Exchanges the two ways to activate the app, `activate()` and `activate(ignoringOtherApps:)`, for
+	/// methods that pass a request on only while `allowsActivation` is true.
+	fileprivate static func dropActivationRequests() {
+		for (name, guarded) in [("activate", #selector(harnessActivate as (NSApplication) -> () -> Void)), ("activateIgnoringOtherApps:", #selector(harnessActivate(ignoringOtherApps:)))] {
+			guard let original = class_getInstanceMethod(NSApplication.self, NSSelectorFromString(name)),
+				let replacement = class_getInstanceMethod(NSApplication.self, guarded) else { continue }
+			method_exchangeImplementations(original, replacement)
+		}
+	}
+
+	// After the exchange, each method calls itself to reach the original of AppKit.
+	@objc private func harnessActivate() {
+		if Self.allowsActivation { harnessActivate() } else { Trail.log("activation dropped") }
+	}
+
+	@objc private func harnessActivate(ignoringOtherApps flag: Bool) {
+		if Self.allowsActivation { harnessActivate(ignoringOtherApps: flag) } else { Trail.log("activation dropped") }
+	}
+}
+#endif
