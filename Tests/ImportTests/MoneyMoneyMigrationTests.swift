@@ -773,6 +773,10 @@ struct MoneyMoneyMigrationTests {
 		("\"Miete\" AND DE02120300000000202051", 13, "DE02120300000000202051"),
 		("\"de02 1203 0000 0000 2020 51\"", 1, "DE02120300000000202051"),
 		("\"DE02120300000000202051\"", 1, "DE02120300000000202051"),
+		("AT180000000000000000", 1, "AT180000000000000000"),
+		("\"at18 0000 0000 0000 0000\"", 1, "AT180000000000000000"),
+		("NL96TEST0000000000", 1, "NL96TEST0000000000"),
+		("\"nl96 test 0000 0000 00\"", 1, "NL96TEST0000000000"),
 	])
 	func accountRuleNotes(rule: String, position: Int, number: String) throws {
 		let p = try plan(rules: ["Rent": rule])
@@ -811,12 +815,37 @@ struct MoneyMoneyMigrationTests {
 		"name:true OR purpose:false OR comment:and", "name:or purpose:not", "/true or DE02120300000000202051/",
 		"\"Lohn\" +\"Gehalt\" -\"Erstattung\"", "!\"Gehalt\"", "„true“ „or“",
 		"DE98ZZZ09999999999", "RF18539007547034", "\"Ab 01 Januar Miete\"", "\"EG 12 Hausverwaltung\"",
+		"\"EG 16 Hausverwaltung\"", "\"AB 50 Januar Miete\"", "\"Ab 30 November Miete\"", "DE9800009999999999",
+		"DE0212030000000020205", "DE021203000000002020510", "DE4512030000000020205", "DE841203000000002020510",
+		"AB38120300000000202051", "DE03120300000000202051",
 	])
 	func unchangedRuleWithoutNote(rule: String) throws {
 		let p = try plan(rules: ["Plain": rule])
 		#expect(p.categories.first { $0.name == "Plain" }?.rule == rule)
 		#expect(!p.notes.contains { $0.hasPrefix("The rule of \"Plain\"") })
 		_ = try Rule(parsing: rule)
+	}
+
+	@Test("Quoted rent phrases are not IBANs for any two-digit number", arguments: 0...99)
+	func nonIBANPhraseNumbers(number: Int) throws {
+		let digits = String(format: "%02d", number)
+		for rule in ["\"EG \(digits) Hausverwaltung\"", "\"AB \(digits) Januar Miete\""] {
+			try unchangedRuleWithoutNote(rule: rule)
+		}
+	}
+
+	@Test("An IBAN note requires single spaces between complete groups of four")
+	func invalidIBANSpacing() throws {
+		let iban = "DE02120300000000202051"
+		for offset in 0...iban.count {
+			var term = iban
+			term.insert(" ", at: term.index(term.startIndex, offsetBy: offset))
+			try unchangedRuleWithoutNote(rule: "\"\(term)\"")
+		}
+		for term in ["DE02  1203 0000 0000 2020 51", " DE02 1203 0000 0000 2020 51", "DE02 1203 0000 0000 2020 51 ",
+			"DE0 2120 3000 0000 0202 051", "DE02 1203 0000 0000 202 051", "DE02\t1203 0000 0000 2020 51"] {
+			try unchangedRuleWithoutNote(rule: "\"\(term)\"")
+		}
 	}
 
 	@Test("Lower case and mixed case operators are named without changing the rule", arguments: [
