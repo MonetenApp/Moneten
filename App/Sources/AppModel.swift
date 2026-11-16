@@ -425,6 +425,8 @@ final class AppModel {
 		case incorrectPassword
 		/// Another unlock is still opening the database, or finished first. The password was not tried.
 		case busy
+		/// The password opened nothing because the database could not be opened. The window shows why.
+		case failed
 	}
 
 	private static let staleKeychainNotice =
@@ -479,7 +481,7 @@ final class AppModel {
 			return phase == .unlocked ? .unlocked : .busy
 		} catch {
 			phase = .failed(vault.explanation(of: error))
-			return .unlocked
+			return .failed
 		}
 		lockNotice = nil
 		do {

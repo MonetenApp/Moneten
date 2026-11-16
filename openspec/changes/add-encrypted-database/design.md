@@ -16,7 +16,6 @@ The app keeps all accounts, categories, and transactions of the open database in
 - An upgrade records the version of the app in `PRAGMA user_version` as major × 1,000,000 + minor × 1,000 + patch. An older version that finds a step of the layout it does not know names that version as the lowest one that opens the database.
 - The vault starts a new database only when the database folder holds no files other than `.DS_Store`. It checks write permission for the file and for the folder before it opens anything.
 - Every Keychain and file failure is thrown as a `Vault.Failure` with a message for the user. A password change that worked but left the random key, or a Keychain entry that did not follow, is reported with the note that the password is changed.
-- A new database removes the Keychain entries that a database at the same path left, such as one the user renamed after a lost password.
 - A password change runs `PRAGMA rekey` through GRDB after the current password opened a second connection.
 
 ## Open, repair, upgrade, and re-key
@@ -49,7 +48,7 @@ SQLite keeps the side files `-journal`, `-wal`, and `-shm` next to a file. Befor
    1. A file that passes `PRAGMA quick_check` now, such as a backup that the user put in place, needs no repair. The vault removes the marker. A marker that stays only adds one check at the next start.
    2. The vault closes the connection and copies the bytes of the damaged file to `.Moneten-Damaged-<time>.sqlite.partial`, then renames it to `Moneten-Damaged-<time>.sqlite`. A stop leaves the partial file, which the next copy removes.
    3. It writes the schema and the rows of every table into `Moneten-Repair.sqlite` and checks that file. It reads each table `NOT INDEXED`, because SQLite can scan an index that covers every column instead of the table.
-   4. It renames `Moneten-Repair.sqlite` to `Moneten.sqlite`. Before the rename the database is still the damaged file and the marker is still there, so the next start repairs again. After the rename the next start finds an intact file and removes the marker.
+   4. It renames `Moneten-Repair.sqlite` to `Moneten.sqlite`, after `F_FULLFSYNC` on the file, and syncs the folder after the rename. Every rename of the vault does this, so a power loss cannot leave a renamed file without its data. Before the rename the database is still the damaged file and the marker is still there, so the next start repairs again. After the rename the next start finds an intact file and removes the marker.
    5. It removes the marker. This comes after the failure handling of steps 2 to 4, so a repair that worked is never reported as failed.
 
    A failure in steps 2 to 4 removes the repair file and the copy of the damaged file, which is still in place, and throws `repairFailed`.
@@ -57,7 +56,7 @@ SQLite keeps the side files `-journal`, `-wal`, and `-shm` next to a file. Befor
 7. **Lay out a new database.** A database without tables, which only `create` makes, gets every step of the layout in place. There is nothing to lose.
 8. **Upgrade** when a step of the layout is missing.
    1. The vault announces "Upgrading database...".
-   2. It sets `PRAGMA journal_mode = DELETE` on the open connection. SQLite then writes the committed rows of a `Moneten.sqlite-wal` into the database and removes the WAL. When another program has the database open, SQLite refuses, and the vault throws `upgradeFailed` with the database unchanged.
+   2. It sets `PRAGMA journal_mode = DELETE` on the open connection. SQLite then writes the committed rows of a `Moneten.sqlite-wal` into the database and removes the WAL. When another program has the database open in WAL mode, SQLite refuses. The vault then sets `PRAGMA locking_mode = EXCLUSIVE` and takes the exclusive lock, which it keeps until step 6, so no other connection writes between the copy and the rename. When another program is reading or writing at that moment, SQLite refuses. Either refusal throws `upgradeFailed` with the database unchanged. A program that holds the database open without a transaction cannot be seen in this mode, and its later writes would go to the replaced file. Task 1.16, one running copy, closes that gap.
    3. It makes the backup copy with the online backup API of SQLite from the open connection into `.Moneten-Backup.sqlite.partial`, and renames that to `Moneten-Backup.sqlite`. The backup API reads through the connection, so the copy holds every committed row. A stop leaves at most the partial file.
    4. It makes `Moneten-Upgrade.sqlite` the same way.
    5. It runs the missing steps of the layout on `Moneten-Upgrade.sqlite`, runs `PRAGMA quick_check`, records the version in `user_version`, and closes it. GRDB checks the foreign keys at the end of each step, because the connection has them on. A failure removes the work file and its side files and throws `upgradeFailed`. A stop leaves the work file, which the next upgrade removes in step 4.
@@ -65,7 +64,7 @@ SQLite keeps the side files `-journal`, `-wal`, and `-shm` next to a file. Befor
 
 ### Create
 
-`create` runs only when the database folder holds no files. When a step after the first write fails, it closes its connection first and then removes the new file and the `NoPassword` marker.
+`create` runs only when the database folder holds no files. It keeps the Keychain entries of a database that was at this path before, such as one the user renamed: a new database without a password takes the random key that is already there, so the renamed database still opens with it, and a stored password stays as the last copy of a password the user may have forgotten. The app turns the unlock settings off. When a step after the first write fails, `create` closes its connection first and then removes the new file and the `NoPassword` marker.
 
 ### Set the first password
 
@@ -86,10 +85,10 @@ A stop before step 3: the next start opens with the random key, and step 4 of "O
 `changePassword`:
 
 1. Check the current password on a second connection.
-2. List the copies. Each copy that the current password opens is to be re-keyed. A copy that it does not open, such as one with an even older password, stays as it is. A copy with another error, such as `SQLITE_BUSY`, is reported as not updated.
+2. List the copies. Each copy that the current password opens is to be re-keyed. A copy that it does not open, such as one with an even older password, stays as it is. A copy with another error, such as `SQLITE_BUSY`, stops the change with `copiesUnreadable`, before anything changed, because nobody could tell later whether it still opens with the current password.
 3. Write `RekeyCopies` with the names to re-key, together with the names that an earlier change left. A failure throws before anything changed.
 4. Re-key the database. A failure throws, and the current password still opens it.
-5. Re-key each listed copy and check that the new password opens it. A copy that the current password opened and that could not be re-keyed is removed. A copy with any other error is reported as not updated.
+5. Re-key each listed copy and check that the new password opens it. A copy that the current password opened and that could not be re-keyed is removed. A copy with any other error is reported as not updated and stays listed, so step 4 of "Open" removes it at the next start when the new password does not open it.
 6. Write the copies that are still not done back into `RekeyCopies`, or remove the marker.
 7. Remove the work files, which hold the current key.
 8. Store the new password in the Keychain when the Keychain held the old one. A failure reports the Keychain error and the copies that were not updated.
