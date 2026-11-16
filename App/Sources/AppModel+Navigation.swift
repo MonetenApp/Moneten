@@ -241,7 +241,7 @@ extension AppModel {
 								return (read, problems, canceledAt: i)
 							}
 							sheet = .fileImport(run)
-							let preview = CSVPreviewModel(name: url.lastPathComponent, file: file, layout: start, currency: account.currency, profiles: profiles, profile: name, matched: matched, store: store)
+							let preview = CSVPreviewModel(name: url.lastPathComponent, file: file, layout: start, currency: account.currency, profiles: profiles, unreadable: try store.unreadableCSVProfileNames(), profile: name, matched: matched, store: store)
 							guard let chosen = await run.choose(preview) else {
 								if run.isCanceled { return (read, problems, canceledAt: i) }
 								problems.append("\(url.lastPathComponent): \(preview.reason)")

@@ -153,6 +153,28 @@ struct FileImportTests {
 		}
 	}
 
+	@Test("A CSV quotation mark that is never closed fails the file with the line where it opened, instead of swallowing the later rows", arguments: [
+		("Datum;Name;Betrag\n01.11.2026;Kiosk;-1,50\n02.11.2026;\"Shop;-2,00\n03.11.2026;Bakery;-3,00\n", 3),
+		("Datum;Name;Betrag\r\n01.11.2026;Kiosk;-1,50\r\n02.11.2026;\"Shop;-2,00\r\n03.11.2026;Bakery;-3,00\r\n", 3),
+		("Datum;Name;Betrag\n01.11.2026;\"Bäckerei\nGutbrot\";-2,00\n02.11.2026;Kiosk;-1,50;\"", 4),
+	])
+	func csvUnclosedQuote(text: String, line: Int) throws {
+		let failure = TransactionFileImporter.Failure.line(line, "A closing quotation mark is missing.")
+		#expect(failure.description == "Line \(line): A closing quotation mark is missing.")
+		#expect(throws: failure) { try TransactionFileImporter.parse(Data(text.utf8), currency: "EUR") }
+		// The import and the preview read the file through CSVFile, also when the user picks another encoding.
+		#expect(throws: failure) { try CSVFile.detect(Data(text.utf8)) }
+		#expect(throws: failure) { try CSVFile(data: Data(text.utf8), encoding: .isoLatin1) }
+	}
+
+	@Test("A quoted CSV field that holds a line break and closes in a later line reads as one field")
+	func csvQuotedLineBreak() throws {
+		let text = "Datum;Name;Verwendungszweck;Betrag\n01.11.2026;Vermieter;\"Miete\nNovember\";-800,00\n02.11.2026;Kiosk;Zeitung;-1,50\n"
+		let parsed = try TransactionFileImporter.parse(Data(text.utf8), currency: "EUR")
+		#expect(parsed.transactions.map(\.purpose) == ["Miete\nNovember", "Zeitung"])
+		#expect(parsed.transactions.map(\.amountMinor) == [-80_000, -150])
+	}
+
 	@Test("A CAMT value date with a time is read, and one that cannot be read is imported with a warning")
 	func camtValueDateTime() throws {
 		let xml = """

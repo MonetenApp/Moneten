@@ -419,6 +419,11 @@ final class DebugHarness {
 			log("menu", ("", .choice(argument, of: names)), ("items", .list(items.map { .hash($0.title) })),
 				("enabled", .list(items.map { .flag($0.isEnabled) })))
 		case "menucommands": log("menucommands", ("enabled", .flag(AppCommands(model: model).unlocked)))
+		// The settings window. "open" presses ⌘, as the keyboard does, "force" shows the window of an earlier "open" past the
+		// menu item, "tab <general|security>" selects a tab, and "press <n>" clicks switch number n of the open tab, counted from 0.
+		// Each logs whether the window is open, whether a sheet is attached to it, whether any window of the settings or of their
+		// sheet is visible, its tab, the switches that are on, the stored values of the switches of "General", and the stored language.
+		case "settings": settings(argument)
 		#if DEBUG
 		case "extcatalog":
 			guard let url = URL(string: argument) else { return log("ext error=extcatalog needs a URL") }
@@ -1048,7 +1053,55 @@ final class DebugHarness {
 		}
 	}
 
-	private func sheetAccessibility() -> [NSObject] {
+	private func settings(_ argument: String) {
+		guard let model else { return }
+		let parts = argument.split(separator: " ", maxSplits: 1).map(String.init)
+		let number = parts.count > 1 ? Int(parts[1]) : nil
+		let window = { NSApp.windows.first { $0.isVisible && $0.identifier?.rawValue == "com_apple_SwiftUI_Settings_window" } }
+		let elements = { window().map(self.accessibility) ?? [] }
+		func role(_ element: NSObject) -> NSAccessibility.Role? { (element as AnyObject).accessibilityRole?() }
+		let switches = { elements().filter { role($0) == .checkBox } }
+		switch parts.first ?? "" {
+		case "open":
+			// An app in the background updates its menus only when they open, so the item may still show the lock.
+			if let menu = NSApp.mainMenu?.items.first?.submenu {
+				menu.delegate?.menuNeedsUpdate?(menu)
+				menu.update()
+			}
+			guard let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: .command, timestamp: 0, windowNumber: 0, context: nil,
+				characters: ",", charactersIgnoringModifiers: ",", isARepeat: false, keyCode: 43) else { return }
+			// The menu claims the key also while the item is disabled, so only the window in the log shows what happened.
+			_ = NSApp.mainMenu?.performKeyEquivalent(with: event)
+		case "force":
+			// The window that an earlier "open" left behind, put on screen past the menu item, as a stale or restored window would be.
+			guard let hidden = NSApp.windows.first(where: { $0.identifier?.rawValue == "com_apple_SwiftUI_Settings_window" }) else {
+				return log("settings force", ("found", .flag(false)))
+			}
+			hidden.orderFrontRegardless()
+		case "tab": model.settingsTab = parts.count > 1 && parts[1] == "security" ? .security : .general
+		case "press":
+			guard let number, switches().indices.contains(number) else { return log("settings press", ("count", .count(switches().count))) }
+			_ = (switches()[number] as AnyObject).accessibilityPerformPress?()
+		default: break
+		}
+		DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
+			guard let self else { return }
+			// The switches of the "General" tab in their order, as the defaults of the app store them, or "-" for none. A switch that
+			// differs from its stored value shows a value that macOS does not use, such as one that a launch argument overrides.
+			let stored = [Preference.showMenuBarIcon, RefreshSettings.automaticRefreshKey, RefreshSettings.showsBannerKey, RefreshSettings.playsSoundKey]
+			let id = Bundle.main.bundleIdentifier ?? ""
+			let on = switches().map { ($0.accessibilityAttributeValue(.value) as? NSNumber)?.boolValue ?? false }
+			// Any window of the settings or of their password prompt that macOS shows, also one left over from a lock.
+			let leftOver = NSApp.windows.contains { $0.isVisible && ($0.identifier?.rawValue == "com_apple_SwiftUI_Settings_window" || $0.sheetParent?.identifier?.rawValue == "com_apple_SwiftUI_Settings_window") }
+			self.log("settings", ("window", .flag(window() != nil)), ("sheet", .flag(window()?.attachedSheet != nil)), ("visible", .flag(leftOver)),
+				("tab", .word(model.settingsTab == .general ? "general" : "security")),
+				("switches", .list(on.map { .flag($0) })), ("stored", .list(stored.map { key in
+					(UserDefaults.standard.persistentDomain(forName: id)?[key] as? Bool).map { .word($0 ? "on" : "off") } ?? .word("-") })),
+				("language", .word(AppLanguage.stored.map { $0 == .german ? "de" : "en" } ?? "system")))
+		}
+	}
+
+	private func accessibility(in window: NSWindow) -> [NSObject] {
 		// SwiftUI builds its accessibility nodes only after a client requests the enhanced interface.
 		NSApp.accessibilitySetValue(true, forAttribute: NSAccessibility.Attribute(rawValue: "AXEnhancedUserInterface"))
 		var seen: Set<ObjectIdentifier> = []
@@ -1057,7 +1110,11 @@ final class DebugHarness {
 			let children = (element as AnyObject).accessibilityChildren?() ?? []
 			return [element] + (children + ((element as? NSView)?.subviews ?? [])).flatMap(descendants)
 		}
-		return topSheet?.contentView.map(descendants) ?? []
+		return window.contentView.map(descendants) ?? []
+	}
+
+	private func sheetAccessibility() -> [NSObject] {
+		topSheet.map(accessibility) ?? []
 	}
 
 	/// The tables of transactions in all windows, told apart from the sidebar by their amount column.
@@ -1219,7 +1276,7 @@ final class DebugHarness {
 					("current", .position(current.flatMap { id in methods.firstIndex { $0.id == id } })))
 			case let .openBrowser(approval): log("ext prompt browser", ("host", .hash(approval.url.host() ?? "")))
 			case let .captcha(captcha): log("ext prompt captcha", ("provider", .state(captcha.provider)), ("page", captcha.page?.host().map { .hash($0) } ?? .presence(false)))
-			case .chooseTANMedium, .flickerCode: log("ext prompt other")
+			case .chooseTANMedium, .nameTANMedium, .flickerCode: log("ext prompt other")
 			}
 		}
 	}
@@ -1378,7 +1435,7 @@ final class DebugHarness {
 				("encoding", .state(preview.layout.encoding)), ("missing", .list(preview.layout.missing.map { .state($0) })),
 				("count", preview.preview.map { .count($0.transactions.count) } ?? .word("-")), ("canImport", .flag(preview.chosen != nil)), ("problem", .word(problem)),
 				("line", line.map { .count($0) } ?? .word("-")), ("profile", .word(preview.profile == nil ? "none" : "applied")),
-				("name", .word(preview.profileName.isEmpty ? "empty" : "typed")), ("createsCategories", .flag(preview.layout.createsCategories)),
+				("name", .word(preview.profileName.isEmpty ? "empty" : "typed")), ("nameTaken", .flag(preview.nameProblem != nil)), ("createsCategories", .flag(preview.layout.createsCategories)),
 				("profiles", .count(preview.profiles.count)))
 		}
 	}

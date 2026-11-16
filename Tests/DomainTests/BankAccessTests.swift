@@ -210,6 +210,23 @@ struct BankAccessTests {
 		#expect(!broker.isSameLogin(as: Access(source: .extension(id: "demo-json-oauth"), bankName: "Demo Broker", loginName: "")))
 	}
 
+	@Test("A VR-Kennung in another case or with spaces is the same login on a server of a cooperative bank, and on another server it is not")
+	func sameVRKennung() {
+		let atruvia = URL(string: "https://fints2.atruvia.de/cgi-bin/hbciservlet")!
+		let stored = Access(source: .fints(bankCode: "51090000", url: atruvia), bankName: "Wiesbadener Volksbank", loginName: "vrk12345678")
+		#expect(stored.isSameLogin(as: Access(source: .fints(bankCode: "51090000", url: atruvia), bankName: "Wiesbadener Volksbank", loginName: "VRK12345678")))
+		#expect(stored.isSameLogin(as: Access(source: .fints(bankCode: "51090000", url: atruvia), bankName: "Wiesbadener Volksbank", loginName: "VRK 1234 5678")))
+		#expect(!stored.isSameLogin(as: Access(source: .fints(bankCode: "51090000", url: atruvia), bankName: "Wiesbadener Volksbank", loginName: "VRK12345679")))
+		let alias = Access(source: .fints(bankCode: "51090000", url: atruvia), bankName: "Wiesbadener Volksbank", loginName: "vrkonto1")
+		#expect(!alias.isSameLogin(as: Access(source: .fints(bankCode: "51090000", url: atruvia), bankName: "Wiesbadener Volksbank", loginName: "VRKONTO1")))
+		let other = URL(string: "https://fints.musterbank.example/fints")!
+		#expect(!Access(source: .fints(bankCode: "12030000", url: other), bankName: "Musterbank", loginName: "vrk12345678")
+			.isSameLogin(as: Access(source: .fints(bankCode: "12030000", url: other), bankName: "Musterbank", loginName: "VRK12345678")))
+		let apoBank = URL(string: "https://fints.apobank.de/FinTs30PinTanHttpGate")!
+		#expect(Access(source: .fints(bankCode: "30060601", url: apoBank), bankName: "apoBank", loginName: "vrk12345678")
+			.isSameLogin(as: Access(source: .fints(bankCode: "30060601", url: apoBank), bankName: "apoBank", loginName: "VRK12345678")))
+	}
+
 	@Test("Refresh All Accounts fetches every account with an access that is not closed, one request per access")
 	func refreshAll() {
 		let offline = Account(position: 0, name: "Cash", kind: .cash, source: .offline)
