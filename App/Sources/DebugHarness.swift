@@ -156,6 +156,12 @@ final class DebugHarness {
 		case "create": model.createDatabase(password: argument.isEmpty ? nil : argument)
 		case "unlock": Task { log("unlock", ("", .flag(await model.unlock(password: argument) == .unlocked))) }
 		case "lock": model.lock()
+		// "Load Database Again" of the window that a change of the database file on disk shows.
+		case "loadagain":
+			log("loadagain", ("phase", .state(model.phase)))
+			model.loadDatabaseAgain()
+		// Whether the window says that a database file from the Finder is not opened, and the open store.
+		case "openedfile": log("openedfile", ("alert", .flag(model.openedDatabaseFile)), ("phase", .state(model.phase)))
 		case "appearance": NSApp.appearance = NSAppearance(named: argument == "dark" ? .darkAqua : .aqua)
 		// Sets the width of the sidebar to a number of points, as a drag of the divider does, and logs the width and
 		// the frame of the main window.

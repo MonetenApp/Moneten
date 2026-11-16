@@ -1898,6 +1898,16 @@
         }
       }
     },
+    "Another application changed or replaced the database file while Moneten was running, for example when a backup was put in its place. Moneten has written nothing to it since then. Load the database again to continue with the file as it is now." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein anderes Programm hat die Datenbankdatei geändert oder ersetzt, während Moneten lief, zum Beispiel durch eine Sicherungskopie an ihrer Stelle. Moneten hat seitdem nichts in sie geschrieben. Laden Sie die Datenbank erneut, um mit der Datei in ihrem jetzigen Stand weiterzuarbeiten."
+          }
+        }
+      }
+    },
     "Another bank access in Moneten uses this login already." : {
       "localizations" : {
         "de" : {
@@ -3010,6 +3020,17 @@
         }
       }
     },
+    "Could not change the database password, for example because the disk is full. The database is unchanged and opens as before.\n\n%@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Datenbankpasswort konnte nicht geändert werden, zum Beispiel weil das Volume voll ist. Die Datenbank ist unverändert und öffnet sich wie bisher.\n\n%@"
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "Could not copy the report. Try again." : {
       "localizations" : {
         "de" : {
@@ -3584,6 +3605,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Datenordner"
+          }
+        }
+      }
+    },
+    "Database file" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Datenbankdatei"
+          }
+        }
+      }
+    },
+    "Database file: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Datenbankdatei: %@"
           }
         }
       }
@@ -5315,6 +5356,16 @@
       },
       "extractionState" : "manual"
     },
+    "Load Database Again" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Datenbank erneut laden"
+          }
+        }
+      }
+    },
     "Loading the bank directory..." : {
       "localizations" : {
         "de" : {
@@ -7035,6 +7086,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ton bei neuen Umsätzen abspielen"
+          }
+        }
+      }
+    },
+    "Please don’t open the database file directly. Launch Moneten instead." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bitte öffnen Sie die Datenbankdatei nicht direkt. Starten Sie stattdessen Moneten."
           }
         }
       }
@@ -9520,6 +9581,17 @@
       },
       "extractionState" : "manual"
     },
+    "The database did not take the new password." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Datenbank hat das neue Passwort nicht übernommen."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "The database file is damaged and could not be repaired. Please replace the database file with a backup copy.\n\n%@" : {
       "localizations" : {
         "de" : {
@@ -9581,6 +9653,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Die Datenbankdatei sollte eine Datei und kein Ordner sein. Verschieben Sie den Ordner und legen Sie die Datenbankdatei an seine Stelle.\n\n%@"
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The database has been changed on disk, outside of Moneten." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Datenbank wurde außerhalb von Moneten auf dem Volume geändert."
+          }
+        }
+      }
+    },
+    "The database has been changed on disk, outside of Moneten. Moneten writes nothing to it until the database has been loaded again.\n\nDatabase file: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Datenbank wurde außerhalb von Moneten auf dem Volume geändert. Moneten schreibt nichts in sie, bis die Datenbank erneut geladen wurde.\n\nDatenbankdatei: %@"
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The database is in use by another application. Quit the other copy of Moneten and start Moneten again.\n\n%@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Datenbank wird von einem anderen Programm verwendet. Beenden Sie die andere Kopie von Moneten und starten Sie Moneten erneut.\n\n%@"
           }
         }
       },

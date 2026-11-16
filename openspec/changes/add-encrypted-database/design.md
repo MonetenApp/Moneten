@@ -56,7 +56,7 @@ SQLite keeps the side files `-journal`, `-wal`, and `-shm` next to a file. Befor
 7. **Lay out a new database.** A database without tables, which only `create` makes, gets every step of the layout in place. There is nothing to lose.
 8. **Upgrade** when a step of the layout is missing.
    1. The vault announces "Upgrading database...".
-   2. It sets `PRAGMA journal_mode = DELETE` on the open connection. SQLite then writes the committed rows of a `Moneten.sqlite-wal` into the database and removes the WAL. When another program has the database open in WAL mode, SQLite refuses. The vault then sets `PRAGMA locking_mode = EXCLUSIVE` and takes the exclusive lock, which it keeps until step 6, so no other connection writes between the copy and the rename. When another program is reading or writing at that moment, SQLite refuses. Either refusal throws `upgradeFailed` with the database unchanged. A program that holds the database open without a transaction cannot be seen in this mode, and its later writes would go to the replaced file. Task 1.16, one running copy, closes that gap.
+   2. It sets `PRAGMA journal_mode = DELETE` on the open connection. SQLite then writes the committed rows of a `Moneten.sqlite-wal` into the database and removes the WAL. When another program has the database open in WAL mode, SQLite refuses. The vault then sets `PRAGMA locking_mode = EXCLUSIVE` and takes the exclusive lock, which it keeps until step 6, so no other connection writes between the copy and the rename. When another program is reading or writing at that moment, SQLite refuses. Either refusal throws `upgradeFailed` with the database unchanged. A program that holds the database open without a transaction cannot be seen in this mode, and its later writes would go to the replaced file. The lock of "One running copy" keeps a second copy of the app away, and the watch of "Change on disk" stops a copy whose file was replaced.
    3. It makes the backup copy with the online backup API of SQLite from the open connection into `.Moneten-Backup.sqlite.partial`, and renames that to `Moneten-Backup.sqlite`. The backup API reads through the connection, so the copy holds every committed row. A stop leaves at most the partial file.
    4. It makes `Moneten-Upgrade.sqlite` the same way.
    5. It runs the missing steps of the layout on `Moneten-Upgrade.sqlite`, runs `PRAGMA quick_check`, records the version in `user_version`, and closes it. GRDB checks the foreign keys at the end of each step, because the connection has them on. A failure removes the work file and its side files and throws `upgradeFailed`. A stop leaves the work file, which the next upgrade removes in step 4.
@@ -73,7 +73,7 @@ SQLite keeps the side files `-journal`, `-wal`, and `-shm` next to a file. Befor
 1. Remove the work files and their side files, also a side file whose work file is gone. They hold the random key, and `RekeyCopies` does not list them. A file that cannot be removed throws `workFilesNotRemoved` before anything changed.
 2. List the copies. Each copy that the random key opens is to be re-keyed. A copy that the random key does not open stays as it is. A copy with another error, such as `SQLITE_BUSY`, stops the change with `copiesUnreadable` before anything changed, so that `RekeyCopies` lists every copy that still needs the random key.
 3. Write `RekeyCopies` with the names to re-key. A failure throws before anything changed.
-4. Re-key the database. A failure throws, and the database keeps the random key.
+4. Re-key the database as "Re-key the database" below describes. A failure throws `passwordNotChanged`, and the database keeps the random key.
 5. Re-key each listed copy and check that the password opens it.
 6. Write the copies that failed back into `RekeyCopies`, or remove the marker when none failed.
 7. Remove `NoPassword`.
@@ -91,12 +91,50 @@ The unlock with the password removes the random key only when the folder shows a
 2. Remove the work files and their side files, as step 1 of "Set the first password" does. They hold the current key.
 3. List the copies. Each copy that the current password opens is to be re-keyed. A copy that it does not open, such as one with an even older password, stays as it is. A copy with another error, such as `SQLITE_BUSY`, stops the change with `copiesUnreadable`, before anything changed, because nobody could tell later whether it still opens with the current password.
 4. Write `RekeyCopies` with the names to re-key, together with the names that an earlier change left. A failure throws before anything changed.
-5. Re-key the database. A failure throws, and the current password still opens it.
+5. Re-key the database as "Re-key the database" below describes. A failure throws `passwordNotChanged`, the current password still opens it, and the Keychain entries keep the current password.
 6. Re-key each listed copy and check that the new password opens it. A copy that the current password opened and that could not be re-keyed is removed. A copy with any other error is reported as not updated and stays listed, so step 4 of "Open" removes it at the next start when the new password does not open it.
 7. Write the copies that are still not done back into `RekeyCopies`, or remove the marker.
 8. Store the new password in the Keychain when the Keychain held the old one. A failure reports the Keychain error and the copies that were not updated.
 
 A stop before step 5: the next start opens with the current password and finds every listed copy done. A stop after step 5: only the new password opens the database, and step 4 of "Open" removes each listed copy that the new password does not open. So no copy stays readable with the earlier password once the database has the new one.
+
+### Re-key the database
+
+SQLCipher re-keys the open connection in one write transaction. A failure before the commit, such as a full disk that takes no journal, rolls the file back, but the connection keeps writing with the new key and reading with the old one. The next save then puts pages with the new key into a file with the old key, and neither password opens it. A failed commit leaves the connection reading with the new key too, and SQLCipher offers no way back: a second `PRAGMA key` on a connection that has read is ignored.
+
+So `rekeyDatabase` does this:
+
+1. Refuse when the store saw a change on disk, so the app loads the file again first.
+2. Re-key inside an exclusive transaction. Another program that reads the database stops the change at `BEGIN EXCLUSIVE`, before SQLCipher changes a key, so only a failure of the disk itself reaches the commit.
+3. Ask a fresh connection which key opens the file. The new key: the change is done.
+4. The old key: re-key the open connection to the old key. That sets its writing key back to the key that it reads with and that the file has, even when the re-key itself fails again. A failed commit of the disk in step 2 can still have left the connection reading with the new key. Then it reads nothing, and the store refuses every write, so the app has to open the database again. Then restore `RekeyCopies` and throw `passwordNotChanged`.
+5. Neither key: throw `unreadable` and change nothing more.
+
+Steps 2 to 5 run in one access to the queue of the store, so no other write of the store, such as a refresh that waits, runs while the connection reads with one key and writes with the other. The store's change watch pauses for them, because a failed re-key makes SQLite drop its cache.
+
+A stop of the Mac during the re-key leaves the journal of the transaction, which holds the pages with the old key. The next open plays it back, so the old password opens the database.
+
+## One running copy
+
+`DataFolderLock` takes `flock(LOCK_EX | LOCK_NB)` on the data folder itself, before the app reads anything in it. The lock adds no file, so the rules of the database folder stay as they are. The system releases the lock when the process ends in any way, also after a crash. A lock belongs to its open file, so two locks in one process exclude each other, which the tests use. A second copy of the app gets `inUse` and shows "The database is in use by another application." with "Try Again". It opens, creates, and writes nothing. The lock does not wait.
+
+Each data folder has its own lock, so a debug build with `MONETEN_DATA_DIR` never blocks the real database.
+
+## Change on disk
+
+`DiskWatch` belongs to each `Store`. It records two things when the store opens: the device and inode of the database file, and `PRAGMA data_version`. SQLite moves that version only for a commit of another connection, also one in another process, and it also moves when an older copy is written over the file in place, because the bytes of the first page differ. Commits and rollbacks of the store itself leave it as it is. Another inode at the path, or another version, is a change on disk.
+
+- `Store.write` is the only write path of the store. It checks at the start of each transaction, after SQLite took the write lock, so no other program can commit between the check and the commit. A change throws `DatabaseChangedOnDisk`, and nothing of the transaction is written.
+- The commit hook checks the inode once more, for a write that bypassed `Store.write`. It reads no SQL, because SQLite forbids it there. A write to a file that was renamed away also fails in SQLite itself with `SQLITE_READONLY_DBMOVED`.
+- Once a change was seen, the store refuses every write until it closes. Only a new store, which loads the file again, writes.
+- `Store.isChangedOnDisk()` runs the same check outside a write.
+- The watch pauses while the vault re-keys the open connection, because a failed re-key makes SQLite drop its cache, which moves the version too.
+
+The app checks when an entry of the database folder changes, which a replacement causes at once, every 20 seconds, and when the app becomes active. The check runs away from the main thread, because a long write holds the queue. On a change the app closes the database as the lock does and shows "The database has been changed on disk, outside of Moneten." with "Load Database Again", which opens the database as at the start, with the password when one is set.
+
+## Opened from the Finder
+
+The app declares no document type for the database file, so a double click on it opens the app that the Finder chose for `.sqlite` files. When the user opens such a file with the app anyway, through "Open With" or a drop on the app, macOS hands it to `application(_:open:)` of the app delegate. `DataFolder.isDatabaseFile` treats every file with the extension `sqlite`, in any case, as a database file. The app loads none of them. It opens the main window, shows the alert "Database file" with "Please don’t open the database file directly. Launch Moneten instead.", and keeps its own database in every phase. Other files are left alone. Files that arrive before the main window exists wait for it.
 
 ## Risks / Trade-offs
 

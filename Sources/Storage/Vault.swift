@@ -44,6 +44,8 @@ public struct Vault: Sendable {
 		/// The database has the new password, but the Keychain still holds the earlier one. `copies` are the
 		/// paths of the copies that could not be updated either.
 		case keychainNotUpdated(String, copies: [String])
+		/// The database did not take the new key, for example because the disk is full. It still opens as before.
+		case passwordNotChanged(String)
 		/// The database has the new password, but the copies at these paths could not be updated or removed.
 		case copiesNotUpdated([String])
 		/// The database has the new password, but the copies at these paths still open with the random key, which stays in the Keychain.
@@ -94,6 +96,8 @@ public struct Vault: Sendable {
 			case let .keychainNotUpdated(detail, copies):
 				String(localized: "The database password has been changed, but the Keychain did not accept the new password: \(detail)\n\nEnter the database password at the next start. Moneten then stores the new password in the Keychain.")
 					+ (copies.isEmpty ? "" : "\n\n" + Failure.copiesNotUpdated(copies).description)
+			case let .passwordNotChanged(detail):
+				String(localized: "Could not change the database password, for example because the disk is full. The database is unchanged and opens as before.\n\n\(detail)")
 			case let .copiesNotUpdated(paths):
 				String(localized: "The database password has been changed, but Moneten could not update the copies of the database at these paths. They may still open with the earlier password. Please move them to the Trash.") + "\n\n" + paths.joined(separator: "\n")
 			case let .copiesUnreadable(paths):
@@ -271,11 +275,13 @@ public struct Vault: Sendable {
 			let plan = try planRekey(from: randomKey)
 			// A copy that is not listed could later not be told apart from a backup of a renamed database.
 			guard plan.unreadable.isEmpty else { throw Failure.copiesUnreadable(plan.unreadable) }
-			try writeRekeyList(plan.toRekey + (try rekeyList()))
-			try store.queue.write { db in try db.changePassphrase(password) }
+			let earlier = try rekeyList()
+			try writeRekeyList(plan.toRekey + earlier)
+			try rekeyDatabase(store, from: randomKey, to: password, restoringList: earlier)
 			kept = rekeyCopies(plan.toRekey, from: randomKey, to: password, removingFailures: false)
 		} else {
-			try store.queue.write { db in try db.changePassphrase(password) }
+			// Without the random key the vault cannot check the file afterwards, so the re-key only stays out of the watch.
+			try store.diskWatch.paused(store.queue) { try store.queue.write { db in try db.changePassphrase(password) } }
 		}
 		do {
 			if FileManager.default.fileExists(atPath: noPasswordMarker.path) { try FileManager.default.removeItem(at: noPasswordMarker) }
@@ -296,8 +302,9 @@ public struct Vault: Sendable {
 		let plan = try planRekey(from: current)
 		// Nobody could tell later whether a copy that cannot be read now still opens with the current password.
 		guard plan.unreadable.isEmpty else { throw Failure.copiesUnreadable(plan.unreadable) }
-		try writeRekeyList(plan.toRekey + (try rekeyList()))
-		try store.queue.write { db in try db.changePassphrase(new) }
+		let earlier = try rekeyList()
+		try writeRekeyList(plan.toRekey + earlier)
+		try rekeyDatabase(store, from: current, to: new, restoringList: earlier)
 		let notUpdated = rekeyCopies(plan.toRekey, from: current, to: new, removingFailures: true)
 		do {
 			for entry in keptEntries { try entry.keychain.write(new, account: folder.keychainAccount) }
@@ -305,6 +312,48 @@ public struct Vault: Sendable {
 			throw Failure.keychainNotUpdated(String(describing: error), copies: notUpdated)
 		}
 		if !notUpdated.isEmpty { throw Failure.copiesNotUpdated(notUpdated) }
+	}
+
+	/// Gives the database the new key, or leaves it with the old one. SQLCipher keeps writing with the new key
+	/// when a re-key fails before its commit, for example on a full disk, while the file keeps the old key. The
+	/// next save would then mix both keys in one file, which neither opens. So a fresh connection checks which
+	/// key the file has, and the open connection goes back to the old key when the change did not happen.
+	/// When the commit itself fails, SQLCipher also reads with the new key, and nothing brings the connection
+	/// back. The exclusive lock keeps other programs from failing the commit: one that reads the database stops
+	/// the change before SQLCipher touches a key.
+	private func rekeyDatabase(_ store: Store, from old: String, to new: String, restoringList earlier: [String]) throws {
+		// A file that changed outside the app is not re-keyed, so the app loads it again first.
+		if store.isChangedOnDisk() { throw DatabaseChangedOnDisk(path: folder.databaseFile.path) }
+		// One access to the queue for the re-key and its recovery, so that no other write of the store, such as a
+		// refresh that waits, runs while the connection reads with one key and writes with the other.
+		let detail: String? = try store.diskWatch.paused(store.queue) {
+			try store.queue.inDatabase { db in
+				var failure: (any Error)?
+				do {
+					try db.inTransaction(.exclusive) {
+						try db.changePassphrase(new)
+						return .commit
+					}
+				} catch {
+					failure = error
+				}
+				if verify(password: new) { return nil }
+				// Only a file that still has the old key gets the connection back to it. A re-key to the key that the
+				// file has rewrites every page with it, and even when that fails, both keys of the connection are the old one.
+				guard verify(password: old) else { throw Failure.unreadable(failure.map { String(describing: $0) } ?? "") }
+				try? db.inTransaction {
+					try db.changePassphrase(old)
+					return .commit
+				}
+				// After a failed commit SQLCipher reads with the new key, and nothing brings the connection back. It then
+				// reads nothing, and the store refuses every write until the app opens the database again.
+				if (try? Int.fetchOne(db, sql: "SELECT count(*) FROM sqlite_master")) == nil { store.diskWatch.refuseWrites() }
+				return failure.map { String(describing: $0) } ?? String(localized: "The database did not take the new password.")
+			}
+		}
+		guard let detail else { return }
+		try? writeRekeyList(earlier)
+		throw Failure.passwordNotChanged(detail)
 	}
 
 	/// Checks a password without keeping the database open.

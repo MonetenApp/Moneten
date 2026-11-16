@@ -18,7 +18,10 @@ struct MonetenApp: App {
 		Window("Moneten", id: "main") {
 			RootView()
 				.environment(model)
-				.onAppear { DebugHarness.installIfRequested(model: model) }
+				.onAppear {
+					DebugHarness.installIfRequested(model: model)
+					delegate.model = model
+				}
 				.frame(minWidth: 900, minHeight: 560)
 		}
 		.defaultSize(width: 1280, height: 820)
@@ -65,6 +68,22 @@ struct MonetenApp: App {
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
+	/// Set when the main window first appears. Files that the Finder hands over before that wait for it.
+	@MainActor weak var model: AppModel? {
+		didSet {
+			guard let model, !pendingFiles.isEmpty else { return }
+			model.opened(pendingFiles)
+			pendingFiles = []
+		}
+	}
+	@MainActor private var pendingFiles: [URL] = []
+
+	/// The Finder hands over a file that the user opened with the app or dropped on it. The app loads none of
+	/// them as its database.
+	@MainActor func application(_ application: NSApplication, open urls: [URL]) {
+		if let model { model.opened(urls) } else { pendingFiles += urls }
+	}
+
 	func applicationWillFinishLaunching(_ notification: Notification) {
 		// A run of the debug harness opens behind the app the developer works in, so that it does not take the focus.
 		DebugHarness.keepBehindIfRequested()

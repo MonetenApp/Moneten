@@ -221,6 +221,20 @@ The app SHALL keep the database readable with the earlier password when a passwo
 - **THEN** the app shows that it could not change the password
 - **AND** "alt-und-lang-genug" still opens the database with all data
 
+#### Scenario: Saving after a failed change
+
+- **GIVEN** a database with the password "alt-und-lang-genug" and a change to "neu-und-noch-laenger" that failed because the disk is full
+- **WHEN** the user adds the account "Tagesgeld"
+- **THEN** "alt-und-lang-genug" opens the database with the account "Tagesgeld"
+- **AND** "neu-und-noch-laenger" does not open the database
+
+#### Scenario: Another program reads during the change
+
+- **GIVEN** a database with the password "alt-und-lang-genug", "Unlock automatically at application start" on, and another program that reads the database
+- **WHEN** the user changes the password to "neu-und-noch-laenger"
+- **THEN** the app shows that it could not change the password
+- **AND** the Keychain still holds "alt-und-lang-genug", which opens the database
+
 ### Requirement: No way around the password
 
 The app SHALL NOT offer any way to open a database without its password. It has no password hint, no recovery key, and no reset that keeps the data. Wrong attempts neither erase data nor block later attempts.
@@ -336,6 +350,12 @@ The app SHALL refuse to open a database that another running copy of the app has
 - **WHEN** the user starts a second copy of the app from another folder
 - **THEN** the second copy shows that the database is in use by another application
 - **AND** the second copy writes nothing to the database
+
+#### Scenario: A copy that crashed
+
+- **GIVEN** a copy of the app that had the database open and then crashed
+- **WHEN** the user starts the app
+- **THEN** the app opens the database
 
 ### Requirement: Detect a change of the database on disk
 

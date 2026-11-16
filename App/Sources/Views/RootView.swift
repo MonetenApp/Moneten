@@ -18,6 +18,8 @@ struct RootView: View {
 				MainView()
 			case let .failed(message):
 				FailureView(message: message)
+			case .changedOnDisk:
+				ChangedOnDiskView()
 			}
 		}
 		.onAppear {
@@ -29,6 +31,11 @@ struct RootView: View {
 			if active { model.showNotices() }
 		}
 		.onDisappear { model.mainWindowClosed() }
+		.alert("Database file", isPresented: Binding(get: { model.openedDatabaseFile }, set: { model.openedDatabaseFile = $0 })) {
+			Button("OK") {}
+		} message: {
+			Text("Please don’t open the database file directly. Launch Moneten instead.")
+		}
 		.sheet(isPresented: Binding(get: { model.crashes.pending != nil }, set: { _ in })) {
 			CrashReportSheet(reports: model.crashes)
 		}
@@ -38,6 +45,27 @@ struct RootView: View {
 			SyncDialog(broker: model.sync.broker, sheet: sheet)
 				.interactiveDismissDisabled()
 		}
+	}
+}
+
+/// The database file changed outside the app. Moneten wrote nothing since then and loads the file again on request.
+struct ChangedOnDiskView: View {
+	@Environment(AppModel.self) private var model
+
+	var body: some View {
+		VStack(spacing: 16) {
+			Image(systemName: "exclamationmark.triangle").font(.system(size: 40)).foregroundStyle(.orange)
+			Text("The database has been changed on disk, outside of Moneten.").font(.title2)
+			Text("Another application changed or replaced the database file while Moneten was running, for example when a backup was put in its place. Moneten has written nothing to it since then. Load the database again to continue with the file as it is now.")
+				.multilineTextAlignment(.center).frame(maxWidth: 520)
+			Text("Database file: \(model.vault.folder.databaseFile.path)").font(.callout).foregroundStyle(.secondary)
+				.multilineTextAlignment(.center).textSelection(.enabled).frame(maxWidth: 520)
+			HStack {
+				Button("Show Database in Finder") { NSWorkspace.shared.activateFileViewerSelecting([model.vault.folder.databaseFolder]) }
+				Button("Load Database Again") { model.loadDatabaseAgain() }.keyboardShortcut(.defaultAction)
+			}
+		}
+		.padding(40)
 	}
 }
 

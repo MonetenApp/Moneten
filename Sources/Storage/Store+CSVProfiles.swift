@@ -13,7 +13,7 @@ extension Store {
 
 	public func saveCSVProfile(_ profile: CSVProfile, replacing old: String?) throws {
 		let encoded = try JSONEncoder().encode(profile)
-		try queue.write { db in
+		try write { db in
 			let previous = try Data.fetchOne(db, sql: "SELECT payload FROM csvProfile WHERE name = ? AND version = 1", arguments: [old ?? profile.name])
 			let payload = try Self.profilePayload(encoded, preserving: previous)
 			try db.execute(sql: "DELETE FROM csvProfile WHERE name = ? OR name = ?", arguments: [profile.name, old])
@@ -39,6 +39,6 @@ extension Store {
 	}
 
 	public func deleteCSVProfile(named name: String) throws {
-		_ = try queue.write { db in try db.execute(sql: "DELETE FROM csvProfile WHERE name = ?", arguments: [name]) }
+		_ = try write { db in try db.execute(sql: "DELETE FROM csvProfile WHERE name = ?", arguments: [name]) }
 	}
 }

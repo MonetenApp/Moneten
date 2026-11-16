@@ -417,6 +417,69 @@ struct OpeningTests {
 		#expect(try !files().contains("RekeyCopies"))
 	}
 
+	/// Makes the next write transaction of the database fail, as on a full disk: SQLite cannot create its journal
+	/// in a folder without write permission. `body` runs while the folder is write-protected.
+	func withoutDiskSpace(_ body: () throws -> Void) throws {
+		let fm = FileManager.default
+		try fm.setAttributes([.posixPermissions: 0o500], ofItemAtPath: folder.databaseFolder.path)
+		defer { try? fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: folder.databaseFolder.path) }
+		try body()
+	}
+
+	@Test("A password change that fails on the disk keeps the current password, and later saves still open with it")
+	func failedChangeKeepsPassword() throws {
+		let vault = Vault(folder: folder)
+		let store = try vault.create(password: "alt-und-lang-genug", starterCategories: [])
+		let t = try sampleData(store)
+		try withoutDiskSpace {
+			#expect {
+				try vault.changePassword(current: "alt-und-lang-genug", new: "neu-und-noch-laenger", on: store)
+			} throws: { error in
+				guard case .passwordNotChanged? = error as? Vault.Failure else { return false }
+				return true
+			}
+		}
+		// Before the fix, this save wrote pages with the new key into a file with the old key, and then neither opened it.
+		let later = Account(position: 1, name: "Tagesgeld", kind: .savings, source: .offline)
+		try store.save(accounts: [later], transactions: [])
+		try store.close()
+
+		#expect(throws: Vault.Failure.incorrectPassword) { try vault.open(password: "neu-und-noch-laenger") }
+		let ledger = try vault.open(password: "alt-und-lang-genug").loadLedger()
+		#expect(ledger.transaction(t.id) != nil)
+		#expect(ledger.account(later.id)?.name == "Tagesgeld")
+		#expect(try files() == ["Moneten.sqlite"])
+	}
+
+	@Test("A password change that a reader of another program stops leaves the copies and the Keychain with the current password", .enabled(if: hasKeychain))
+	func failedChangeKeepsCopiesAndKeychain() throws {
+		let vault = Vault(folder: folder)
+		defer { for entry in Vault.PasswordEntry.allCases { try? vault.removeStoredPassword(for: entry) } }
+		let store = try databaseWithCopies(vault)
+		try vault.storePassword("alt-und-lang-genug", for: .automaticUnlock)
+		// A reader of another program stops the re-key of the database after `RekeyCopies` is written.
+		let reader = try DatabaseQueue(path: folder.databaseFile.path, configuration: Self.keyed("alt-und-lang-genug"))
+		try reader.writeWithoutTransaction { db in
+			try db.execute(sql: "BEGIN")
+			_ = try Int.fetchOne(db, sql: "SELECT count(*) FROM account")
+			#expect {
+				try vault.changePassword(current: "alt-und-lang-genug", new: "neu-und-noch-laenger", on: store)
+			} throws: { error in
+				guard case .passwordNotChanged? = error as? Vault.Failure else { return false }
+				return true
+			}
+			try db.execute(sql: "COMMIT")
+		}
+		try reader.close()
+		try store.save(accounts: [Account(position: 1, name: "Tagesgeld", kind: .savings, source: .offline)], transactions: [])
+		try store.close()
+
+		#expect(try vault.storedPassword(for: .automaticUnlock) == "alt-und-lang-genug")
+		#expect(try !files().contains("RekeyCopies"))
+		for name in try files() { #expect(opens(name, with: "alt-und-lang-genug"), "\(name)") }
+		#expect(try vault.open(password: "alt-und-lang-genug").loadLedger().accounts.count == 2)
+	}
+
 	@Test("A password change removes the journal of a work file whose work file is already gone")
 	func orphanSideFileGoes() throws {
 		let vault = Vault(folder: folder)
@@ -438,7 +501,7 @@ struct OpeningTests {
 		let store = try databaseWithCopies(vault)
 		// The state of a change that stopped between the database and its copies.
 		try Data("Moneten-Backup.sqlite\nMoneten-Damaged-2026-01-01T000000.sqlite\n".utf8).write(to: folder.databaseFolder.appendingPathComponent("RekeyCopies"))
-		try store.queue.write { db in try db.changePassphrase("neu-und-noch-laenger") }
+		try store.diskWatch.paused(store.queue) { try store.queue.write { db in try db.changePassphrase("neu-und-noch-laenger") } }
 		try store.close()
 
 		try vault.open(password: "neu-und-noch-laenger").close()
@@ -664,7 +727,7 @@ struct OpeningTests {
 		let key = try #require(try vault.keyKeychain.read(account: folder.keychainAccount))
 		// The state of a first password that stopped between the database and its copies.
 		try Data("Moneten-Backup.sqlite\n".utf8).write(to: folder.databaseFolder.appendingPathComponent("RekeyCopies"))
-		try store.queue.write { db in try db.changePassphrase(Self.password) }
+		try store.diskWatch.paused(store.queue) { try store.queue.write { db in try db.changePassphrase(Self.password) } }
 		try store.close()
 
 		#expect(try vault.state() == .randomKey)
@@ -745,6 +808,32 @@ struct OpeningTests {
 		#expect(try vault.state() == .randomKey)
 		for name in try files() where name.hasSuffix(".sqlite") { #expect(opens(name, with: key), "\(name)") }
 		#expect(try !files().contains("RekeyCopies"))
+	}
+
+	@Test("A first password that fails on the disk keeps the random key, and later saves still open with it", .enabled(if: hasKeychain))
+	func failedFirstPasswordKeepsRandomKey() throws {
+		let vault = Vault(folder: folder)
+		defer { try? vault.keyKeychain.delete(account: folder.keychainAccount) }
+		let store = try vault.create(password: nil, starterCategories: [])
+		let t = try sampleData(store)
+		let key = try #require(try vault.keyKeychain.read(account: folder.keychainAccount))
+		try withoutDiskSpace {
+			#expect {
+				try vault.setPassword(Self.password, on: store)
+			} throws: { error in
+				guard case .passwordNotChanged? = error as? Vault.Failure else { return false }
+				return true
+			}
+		}
+		try store.save(accounts: [Account(position: 1, name: "Tagesgeld", kind: .savings, source: .offline)], transactions: [])
+		try store.close()
+
+		#expect(try vault.state() == .randomKey)
+		#expect(try vault.keyKeychain.read(account: folder.keychainAccount) == key)
+		#expect(throws: Vault.Failure.incorrectPassword) { try vault.open(password: Self.password) }
+		let ledger = try vault.openWithRandomKey().loadLedger()
+		#expect(ledger.transaction(t.id) != nil)
+		#expect(ledger.accounts.count == 2)
 	}
 
 	@Test("A restored backup with an older password replaces the newer password in the Keychain after the unlock", .enabled(if: hasKeychain))
