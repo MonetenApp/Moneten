@@ -2,9 +2,9 @@ import Domain
 import Foundation
 
 /// What became of a split. The split window stays open on `changed`, so that the user can try again with the
-/// current values, and closes otherwise.
+/// current values, and closes otherwise. `cancelled` means the window closed during the drawing wait.
 enum SplitOutcome {
-	case done, changed, missing, failed
+	case done, changed, missing, failed, cancelled
 }
 
 extension AppModel {

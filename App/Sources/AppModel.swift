@@ -953,6 +953,8 @@ final class AppModel {
 	func replacingParts(of transactionID: UUID, with parts: [SplitPart]) async -> SplitOutcome {
 		guard let store, let base = ledger.splitBase(of: transactionID) else { return .missing }
 		return await replacingTable {
+			// The split window cancels its split when it closes, for example on a lock during the wait.
+			guard !Task.isCancelled else { return .cancelled }
 			guard self.store === store, let now = ledger.splitBase(of: transactionID) else { return .missing }
 			guard now == base else { return .changed }
 			do {

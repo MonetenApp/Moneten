@@ -644,6 +644,21 @@ struct PerfContext {
 		} catch { return fail("the category race could not be read") }
 		model.assign(category: row.categoryID, to: [row.id])
 		await settle()
+		// A VAT entry has no window to stay open, so the same race shows a message.
+		let vat = Task { await model.splitVAT(row: row.id, rate: VATRate(hundredths: 1900)) }
+		for _ in 0..<1000 where model.tableHolds == 0 { await Task.yield() }
+		guard model.tableHolds > 0 else {
+			_ = await vat.value
+			return fail("the VAT category race missed the drawing wait")
+		}
+		model.assign(category: category.id, to: [row.id])
+		if await vat.value || !model.ledger.parts(of: row.id).isEmpty
+			|| model.alert?.message != String(localized: "The transaction changed. Try again.") {
+			fail("a waiting VAT split did not report the change")
+		}
+		model.alert = nil
+		model.assign(category: row.categoryID, to: [row.id])
+		await settle()
 	}
 
 	func select(_ name: String) async {

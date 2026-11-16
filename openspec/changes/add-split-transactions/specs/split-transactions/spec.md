@@ -46,6 +46,25 @@ The app SHALL split only the amount, the category, and the comment that the user
 - **WHEN** a refresh removes the part and the user confirms
 - **THEN** the window closes without a split
 
+### Requirement: The split window waits for the split
+
+The app SHALL disable "Cancel", the amount field, and "Next Split" of the split window while the split is being stored. A window that closes before the split is stored stores nothing. When the currency of the transaction changed, the window removes the kept splits and says so.
+
+#### Scenario: The currency changes after a kept split
+
+- **GIVEN** the split window is open for a booked transaction of -80,00 €, and the user entered 25,00 and clicked "Next Split"
+- **WHEN** a refresh corrects the currency of the transaction to USD, and the user confirms
+- **THEN** the window stays open with the amount -80,00 USD and no kept split
+- **AND** it says "The currency of the transaction changed, so the kept splits were removed. Enter them again."
+- **WHEN** the user enters 25,00 and confirms
+- **THEN** the list shows parts of -25,00 USD and -55,00 USD
+
+#### Scenario: Cancel right after the confirm
+
+- **GIVEN** the split window is open for a booked transaction of -80,00 € with the amount 10,00
+- **WHEN** the user confirms and cancels before the split is stored
+- **THEN** the window closes, and the list shows one transaction of -80,00 €
+
 ### Requirement: The parts add up to the original amount
 
 The app SHALL compute the remainder so that all parts of a split add up to the amount of the original transaction. The split window shows the resulting remainder before the user confirms. The app refuses an amount of zero, text that is not a number, and an amount of more than 10.000.000.000.000,00 € or the same digits in another currency.
@@ -258,16 +277,21 @@ The app SHALL start with the rates 19 and 7 percent and let the user add, change
 
 - **GIVEN** the list contains 19 and 7 percent
 - **WHEN** the user enters "7,125" and saves the rate
-- **THEN** the settings say "Enter a rate above zero with up to two decimal places."
+- **THEN** the settings say "Enter a rate from 0.01 to 100 with up to two decimal places."
 - **AND** the list stays at 19 and 7 percent
 
 #### Scenario: Refuse a rate above 100 percent
 
 - **GIVEN** the list contains 19 and 7 percent
 - **WHEN** the user enters "190" and saves the rate
-- **THEN** the settings say "Enter a rate above zero with up to two decimal places."
+- **THEN** the settings say "Enter a rate from 0.01 to 100 with up to two decimal places."
 - **AND** the list stays at 19 and 7 percent
-- **AND** the rate "100" is accepted
+
+#### Scenario: Accept a rate of 100 percent
+
+- **GIVEN** the list contains 19 and 7 percent
+- **WHEN** the user enters "100" and saves the rate
+- **THEN** the list contains 19, 7, and 100 percent
 
 #### Scenario: Add a rate that is in the list
 

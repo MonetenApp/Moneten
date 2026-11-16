@@ -9,9 +9,17 @@ struct SplitSheet: View {
 	@State var row: Transaction
 	@State private var text = ""
 	@State private var kept: [Money] = []
-	@State private var changed = false
-	@State private var saving = false
+	@State private var notice: Notice?
+	/// The split in progress. The window cannot be cancelled or edited while it runs. A cancel that comes before the
+	/// window shows that, or a close in another way, cancels the split, so that it stores nothing after the drawing wait.
+	@State private var saving: Task<Void, Never>?
 	@FocusState private var amountFocused: Bool
+
+	private enum Notice {
+		case changed
+		/// The kept amounts have the old currency and can never add up to the row, so the window drops them.
+		case currencyChanged
+	}
 
 	private var empty: Bool { text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 	private var remaining: Money { (try? Split.amounts(of: row.amount, off: kept))?.last ?? row.amount }
@@ -25,9 +33,10 @@ struct SplitSheet: View {
 	}
 
 	var body: some View {
-		SheetFrame(title: "Split Amount", confirmTitle: "Split", canConfirm: amounts != nil && !saving, onConfirm: confirm) {
+		SheetFrame(title: "Split Amount", confirmTitle: "Split", canConfirm: amounts != nil && saving == nil, canCancel: saving == nil,
+			onCancel: { saving?.cancel() }, onConfirm: confirm) {
 			Button("Next Split", action: next)
-				.disabled(empty || amounts == nil)
+				.disabled(empty || amounts == nil || saving != nil)
 				.accessibilityIdentifier("next-split")
 		} content: {
 			Section {
@@ -39,6 +48,7 @@ struct SplitSheet: View {
 					.monospacedDigit()
 					.multilineTextAlignment(.trailing)
 					.focused($amountFocused)
+					.disabled(saving != nil)
 					.foregroundStyle(!empty && amounts == nil ? Palette.red : Color.primary)
 					.accessibilityLabel("Amount to split off")
 					.accessibilityValue(!empty && amounts == nil ? "Invalid amount. \(text)" : text)
@@ -49,15 +59,22 @@ struct SplitSheet: View {
 				}
 				LabeledContent("Remainder", value: amounts?.last.map(Format.money) ?? Format.money(remaining))
 				if !kept.isEmpty { LabeledContent("Kept splits", value: "\(kept.count)") }
-				if changed {
+				switch notice {
+				case .changed:
 					Text("The transaction changed. Try again.")
 						.font(.callout).foregroundStyle(Palette.red)
 						.accessibilityIdentifier("split-changed")
+				case .currencyChanged:
+					Text("The currency of the transaction changed, so the kept splits were removed. Enter them again.")
+						.font(.callout).foregroundStyle(Palette.red)
+						.accessibilityIdentifier("split-currency-changed")
+				case nil: EmptyView()
 				}
 			}
 		}
 		.onAppear { amountFocused = true }
-		.onChange(of: text) { changed = false }
+		.onDisappear { saving?.cancel() }
+		.onChange(of: text) { if notice == .changed { notice = nil } }
 	}
 
 	private func next() {
@@ -71,17 +88,23 @@ struct SplitSheet: View {
 	/// open or while the split waits for the table to be drawn. A changed row keeps the window open, and a removed
 	/// row closes it without a split.
 	private func confirm() -> Bool {
-		guard let amounts, !saving else { return false }
-		saving = true
-		Task {
+		guard let amounts, saving == nil else { return false }
+		saving = Task {
 			let outcome = await model.split(row: row.id, off: Array(amounts.dropLast()), seen: row)
-			saving = false
-			if outcome == .changed, let current = model.ledger.row(row.id) {
+			saving = nil
+			switch outcome {
+			case .cancelled: return
+			case .changed:
+				guard let current = model.ledger.row(row.id) else { return dismiss() }
+				if current.currency != row.currency && !kept.isEmpty {
+					kept = []
+					notice = .currencyChanged
+				} else {
+					notice = .changed
+				}
 				row = current
-				changed = true
 				amountFocused = true
-			} else {
-				dismiss()
+			case .done, .missing, .failed: dismiss()
 			}
 		}
 		return false

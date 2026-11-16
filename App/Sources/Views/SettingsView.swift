@@ -287,7 +287,7 @@ struct VATRateSettings: View {
 			}
 		}
 		if invalid {
-			Text("Enter a rate above zero with up to two decimal places.")
+			Text("Enter a rate from 0.01 to 100 with up to two decimal places.")
 				.foregroundStyle(Palette.red)
 				.accessibilityIdentifier("vat-error")
 		}

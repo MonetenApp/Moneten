@@ -110,6 +110,7 @@ public struct SplitBase: Equatable, Sendable {
 	let comment: String?
 	let parts: [SplitPart]
 
+	/// Written out, because Periphery counts fields that only a synthesized `==` reads as assigned but never used.
 	public static func == (a: SplitBase, b: SplitBase) -> Bool {
 		a.amount == b.amount && a.categoryID == b.categoryID && a.comment == b.comment && a.parts == b.parts
 	}
