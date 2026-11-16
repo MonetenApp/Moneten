@@ -9,7 +9,7 @@ struct ChartArea: View {
 		switch (model.viewMode, model.selection) {
 		case (.pieChart, _):
 			CategoryPie(rows: rows)
-		case (.barChart, .category?):
+		case (.barChart, .category?), (.barChart, .search?):
 			// After a click on a bar, the list shows that bar and the chart keeps all of them.
 			CategoryBars(rows: model.filter.period == model.chartRange ? rows : model.chartTransactions)
 		case let (.barChart, .account(id)?):

@@ -110,6 +110,11 @@ struct SheetView: View {
 		case .exporting: ExportProgressSheet()
 		case .setPassword: SetPasswordSheet()
 		case .changePassword: ChangePasswordSheet()
+		case .saveSearch: NameSheet(title: "Save Search", placeholder: "Name") { name in model.saveSearch(name: name) }
+		case let .renameSearch(id):
+			NameSheet(title: "Rename Search", placeholder: "Name", name: model.savedSearches.first { $0.id == id }?.name ?? "") { name in
+				model.rename(search: id, to: name)
+			}
 		}
 	}
 }

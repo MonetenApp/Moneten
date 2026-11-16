@@ -337,6 +337,17 @@ enum Schema {
 			try db.execute(sql: "UPDATE bankTransaction SET review = 'unclearBooking' WHERE needsReview = 1")
 			try db.alter(table: "bankTransaction") { t in t.drop(column: "needsReview") }
 		}
+		// Saved searches (add-transaction-search-and-filters, task 1.20). The filter bar is the JSON of
+		// `SavedFilterBar`, as the pin keeps it. The number is a placeholder until the open PRs with v21 to v25 land.
+		m.registerMigration("v26") { db in
+			try db.create(table: "savedSearch") { t in
+				t.column("id", .blob).primaryKey()
+				t.column("name", .text).notNull()
+				t.column("position", .integer).notNull()
+				t.column("searchText", .text).notNull()
+				t.column("filterBar", .blob).notNull()
+			}
+		}
 		return m
 	}
 }

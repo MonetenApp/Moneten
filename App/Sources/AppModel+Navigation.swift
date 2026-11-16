@@ -68,6 +68,7 @@ extension AppModel {
 		case .account: "Account Settings..."
 		case .group: "Account Group Settings..."
 		case .category: "Category Settings..."
+		case .search: "Rename Search..."
 		case nil: "Settings..."
 		}
 	}
@@ -77,7 +78,7 @@ extension AppModel {
 		switch selection {
 		case let .account(id): .account(id)
 		case let .group(id): .group(id)
-		case .category, nil: nil
+		case .category, .search, nil: nil
 		}
 	}
 
@@ -90,6 +91,7 @@ extension AppModel {
 		case let .account(id): sheet = .accountSettings(id)
 		case let .group(id): sheet = .groupSettings(id)
 		case let .category(id): sheet = .categorySettings(id)
+		case let .search(id): sheet = .renameSearch(id)
 		case nil: break
 		}
 	}
