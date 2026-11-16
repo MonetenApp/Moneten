@@ -29,6 +29,7 @@ scripts/fints-probe-java.sh --build-only           # compiles the hbci4java prob
 
 python3 scripts/check-docs.py                      # links, paths, data-model names, ADR index
 python3 scripts/check-ui.py                        # window chrome rule (ADR 0012)
+python3 scripts/check-localization.py .build/xcode # German value for every text, after scripts/build-app.sh debug; --update adds and removes keys
 openspec validate --all --strict --no-interactive
 python3 scripts/roadmap.py                         # regenerates docs/roadmap.md, needs gh
 python3 scripts/make-sounds.py                     # writes the three notification sounds into App/Resources/Sounds
@@ -65,6 +66,7 @@ How the parts work together:
 
 - **Ledger and store.** After unlocking, `AppModel` loads everything once with `Store.loadLedger()` into a `Ledger` value. Views read only the ledger. A change must write through `Store` first and change the ledger only after the write succeeds, as `commit` in `App/Sources/AppModel.swift` does. Keep both in step, and never query the database from a view.
 - **Money and days.** An amount is an `Int64` in minor units (`amountMinor`, `Money.minorUnits`) with an ISO 4217 currency. No `Double` stores an amount. A sum across currencies is a `MoneySums` and never converts. A booking date is a `Day` (yyyymmdd as `Int`) without a time zone.
+- **Localized text.** The libraries, `Domain` included, may call `String(localized:)`, but only to build a text that the user reads. A localized text is never data, never a key, and never compared to decide behavior. The app holds the one catalog, `App/Resources/Localizable.xcstrings`; the tests run without it and read English.
 - **Parse at the edge.** Each parser, and later each connector, turns raw data into `Domain` types. Code inside `Domain`, `Storage`, and the app trusts those types and does not check them again. An entry that cannot be read fails the whole file with its line, so nothing from the file is imported. Only the CSV parser skips a row without a date.
 - **Schema changes.** Add a new `registerMigration("vN")` at the end of `Sources/Storage/Schema.swift`. Never change a migration that has shipped. `Transaction` is stored in the table `bankTransaction`. The models are Codable GRDB records.
 - **Sync.** FinTS, extensions, and finAPI will each implement `BankConnector.refresh(_:_:)` and ask the user only through `SyncSession.ask(_:)`. `SyncState` is a pure state machine. Views read it and keep no flags of their own. The `deliver` closure of `SyncCoordinator` merges fetched data, `storeState` stores the new `AccessState` before the next work of the access starts, and `ended` stores the status of each account. The [design of add-account-refresh](openspec/changes/add-account-refresh/design.md) has the complete types and the dialog queue.

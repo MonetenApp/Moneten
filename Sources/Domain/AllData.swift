@@ -45,11 +45,11 @@ public struct AllData: Sendable, Equatable {
 
 		public var description: String {
 			switch self {
-			case .notAnExport: "The file is not a complete export of Moneten."
+			case .notAnExport: String(localized: "The file is not a complete export of Moneten.")
 			case let .newerVersion(v):
-				"The file has format version \(v), and this version of Moneten reads up to version \(AllData.formatVersion). Install a newer version of Moneten to import it."
-			case let .damaged(place): "The file is damaged or incomplete: \(place)."
-			case let .unreadableDatabase(place): "The database contains unreadable data: \(place)."
+				String(localized: "The file has format version \(v), and this version of Moneten reads up to version \(AllData.formatVersion). Install a newer version of Moneten to import it.")
+			case let .damaged(place): String(localized: "The file is damaged or incomplete: \(place).")
+			case let .unreadableDatabase(place): String(localized: "The database contains unreadable data: \(place).")
 			}
 		}
 	}

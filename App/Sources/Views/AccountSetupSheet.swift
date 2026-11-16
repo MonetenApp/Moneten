@@ -228,7 +228,7 @@ final class AccountSetup {
 				notices = list.notices
 				model.bankNotices.markShown(list.notices, from: bankName)
 				guard !list.accounts.isEmpty else {
-					loginError = "The bank reported no accounts for this login. Enter your user ID in place of an alias, or ask the bank to activate the FinTS access."
+					loginError = String(localized: "The bank reported no accounts for this login. Enter your user ID in place of an alias, or ask the bank to activate the FinTS access.")
 					return
 				}
 				self.access = access
@@ -266,7 +266,7 @@ final class AccountSetup {
 		let userIDHelp = loginHint?.help
 		let access = Access(id: old.id, source: old.source, bankName: old.bankName, loginName: loginName.trimmingCharacters(in: .whitespaces))
 		guard !model.accesses.values.contains(where: { $0.id != old.id && $0.isSameLogin(as: access) }) else {
-			loginError = "Another bank access in Moneten uses this login already."
+			loginError = String(localized: "Another bank access in Moneten uses this login already.")
 			return
 		}
 		let session = SetupSession(broker: model.sync.broker, access: access, pin: Secret(pin))
@@ -293,7 +293,7 @@ final class AccountSetup {
 				model.closeAccountSetup()
 			} catch let failure as LoginNotSaved {
 				isLoggingIn = false
-				saveError = "Could not save the login data. \(String(describing: failure.error))"
+				saveError = String(localized: "Could not save the login data. \(String(describing: failure.error))")
 			} catch {
 				loginFailed(error, userIDHelp: userIDHelp, bankName: access.bankName)
 			}
@@ -334,7 +334,7 @@ final class AccountSetup {
 				// The sheet shows only the new accounts, but each matches against all that the bank listed.
 				listing = SetupListing(list.accounts.map { $0.account(access: access, bank: bank, group: groupID) }, in: model.ledger, onlyNew: true)
 				selected = Set(candidates.map(\.id))
-				if candidates.isEmpty { listingMessage = "There are no new accounts." }
+				if candidates.isEmpty { listingMessage = String(localized: "There are no new accounts.") }
 			} catch {
 				guard !Task.isCancelled else { return }
 				isListing = false
@@ -370,7 +370,7 @@ final class AccountSetup {
 			try model.add(access, state: state, accounts: chosen, listed: listing.listed, connecting: connecting, notices: notices,
 				pin: isNewLogin ? Secret(pin) : nil, savePIN: savePIN)
 		} catch {
-			saveError = "Could not add the accounts. \(String(describing: error))"
+			saveError = String(localized: "Could not add the accounts. \(String(describing: error))")
 			return
 		}
 		model.closeAccountSetup()
@@ -446,9 +446,9 @@ struct AccountSetupSheet: View {
 
 	private var title: String {
 		switch setup.purpose {
-		case .add: "Add Account"
-		case .newAccounts: "Look for New Accounts"
-		case .editLogin: "Edit Login Data"
+		case .add: String(localized: "Add Account")
+		case .newAccounts: String(localized: "Look for New Accounts")
+		case .editLogin: String(localized: "Edit Login Data")
 		}
 	}
 
@@ -460,10 +460,10 @@ struct AccountSetupSheet: View {
 		case .add: break
 		}
 		return switch setup.step {
-		case .bank: "Step 1 of 3: Bank"
-		case .login: "Step 2 of 3: Login data"
-		case .accounts: "Step 3 of 3: Accounts"
-		case .offline: "Step 2 of 2: Offline account"
+		case .bank: String(localized: "Step 1 of 3: Bank")
+		case .login: String(localized: "Step 2 of 3: Login data")
+		case .accounts: String(localized: "Step 3 of 3: Accounts")
+		case .offline: String(localized: "Step 2 of 2: Offline account")
 		}
 	}
 
@@ -566,7 +566,7 @@ struct AccountSetupSheet: View {
 
 	/// "Nürnberg · 76030080", and a note when the bank has no FinTS address.
 	private static func place(of bank: BankDirectory.Entry) -> String {
-		([bank.city, bank.code] + (bank.bank.url == nil ? ["No FinTS"] : [])).filter { !$0.isEmpty }.joined(separator: " · ")
+		([bank.city, bank.code] + (bank.bank.url == nil ? [String(localized: "No FinTS")] : [])).filter { !$0.isEmpty }.joined(separator: " · ")
 	}
 
 	@ViewBuilder private var loginStep: some View {
@@ -581,7 +581,7 @@ struct AccountSetupSheet: View {
 			}
 		}
 		Section {
-			TextField(setup.loginHint?.label ?? "User ID", text: $setup.loginName, prompt: Text("Required"))
+			TextField(setup.loginHint?.label ?? String(localized: "User ID"), text: $setup.loginName, prompt: Text("Required"))
 				.focused($focus, equals: .loginName)
 			if let hint = setup.loginHint {
 				VStack(alignment: .leading, spacing: 4) {
@@ -653,7 +653,7 @@ struct AccountSetupSheet: View {
 	}
 
 	@ViewBuilder private var accountRows: some View {
-		Section("Accounts of \(setup.bank?.name ?? "the bank")") {
+		Section("Accounts of \(setup.bank?.name ?? String(localized: "the bank"))") {
 			ForEach(setup.candidates) { candidate in
 				Toggle(isOn: Binding(get: { setup.selected.contains(candidate.id) },
 					set: { if $0 { setup.selected.insert(candidate.id) } else { setup.selected.remove(candidate.id) } })) {

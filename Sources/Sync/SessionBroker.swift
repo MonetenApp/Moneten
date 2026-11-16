@@ -376,15 +376,15 @@ public struct SavedPINFailure: Error {
 
 	public var title: String {
 		switch kind {
-		case .notSaved: "Could not save the PIN."
-		case .rejectedNotRemoved: "Could not remove the rejected PIN."
+		case .notSaved: String(localized: "Could not save the PIN.")
+		case .rejectedNotRemoved: String(localized: "Could not remove the rejected PIN.")
 		}
 	}
 
 	public var message: String {
 		switch kind {
 		case .notSaved: reason
-		case .rejectedNotRemoved: "Moneten does not send it again and removes it at the next unlock. \(reason)"
+		case .rejectedNotRemoved: String(localized: "Moneten does not send it again and removes it at the next unlock. \(reason)")
 		}
 	}
 }
