@@ -8902,12 +8902,56 @@
         }
       }
     },
+    "The amount of a transaction cannot be read." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Betrag eines Umsatzes kann nicht gelesen werden."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The amount of a transaction is too large." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Betrag eines Umsatzes ist zu groß."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "The amount of the entry cannot be read." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Der Betrag des Eintrags kann nicht gelesen werden."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The amount of transaction %@ cannot be read." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Betrag von Umsatz %@ kann nicht gelesen werden."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The amount of transaction %@ is too large." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Betrag von Umsatz %@ ist zu groß."
           }
         }
       },
@@ -8984,6 +9028,50 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Der Saldo enthält %1$@ nicht, weil der Kurs in %2$@ angegeben ist und die Erweiterung keinen Wechselkurs liefert."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The balance of the account \"%@\" cannot be read." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Saldo des Kontos „%@“ kann nicht gelesen werden."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The balance of the account \"%@\" is too large." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Saldo des Kontos „%@“ ist zu groß."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The balance of the group \"%@\" cannot be read." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Saldo der Gruppe „%@“ kann nicht gelesen werden."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The balance of the group \"%@\" is too large." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Saldo der Gruppe „%@“ ist zu groß."
           }
         }
       },
@@ -9134,6 +9222,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Die Bank hat einen Umsatz ohne Buchungsdatum gesendet, daher wurde für dieses Konto nichts gespeichert."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The bank sent an amount that is too large, so nothing of this account was stored." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Bank hat einen zu großen Betrag gesendet, daher wurde für dieses Konto nichts gespeichert."
           }
         }
       },
@@ -10127,6 +10226,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Der Index nennt keine Erweiterungen."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The initial balance of the account \"%@\" is too large." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Anfangssaldo des Kontos „%@“ ist zu groß."
           }
         }
       },

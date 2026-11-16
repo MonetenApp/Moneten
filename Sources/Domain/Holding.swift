@@ -97,9 +97,10 @@ public struct Holding: Identifiable, Hashable, Sendable {
 	/// What the position adds to its account: the market value plus the accrued interest, converted with the
 	/// exchange rate into the currency of the market value when it differs. Without a
 	/// market value from the source, the quantity times the quote, in `currency` when the exchange rate
-	/// links the currencies. Nil without a market value and without a quote.
+	/// links the currencies. Nil without a market value and without a quote, and when the value is above
+	/// `Money.maxMinorUnits`, because the plain initializer would wrap it around.
 	public func value(in currency: String) -> Money? {
-		exactValue(in: currency).map { Money($0.amount, currency: $0.currency) }
+		exactValue(in: currency).flatMap { Money(fitting: $0.amount, currency: $0.currency) }
 	}
 
 	/// The value before it is rounded to the currency, so that a source of untrusted numbers can check its range first.
@@ -110,12 +111,22 @@ public struct Holding: Identifiable, Hashable, Sendable {
 		return (total, market.currency)
 	}
 
-	/// The value less the purchase value, without the accrued interest. Nil without a purchase price, and
-	/// when the purchase value cannot be converted into the currency of the value.
+	/// The value less the purchase value, without the accrued interest. Nil without a purchase price, when the
+	/// purchase value cannot be converted into the currency of the value, and when the value, the purchase value,
+	/// or the gain is above `Money.maxMinorUnits`.
 	public func gain(in currency: String) -> Gain? {
-		guard let market = marketDecimal(in: currency), let purchase = purchaseValue(in: market.currency) else { return nil }
-		let difference = market.amount - purchase
-		return Gain(amount: Money(difference, currency: market.currency), percent: purchase == 0 ? nil : difference / abs(purchase) * 100)
+		guard let market = marketDecimal(in: currency), let purchase = purchaseValue(in: market.currency),
+			Money(fitting: market.amount, currency: market.currency) != nil, Money(fitting: purchase, currency: market.currency) != nil,
+			case let difference = market.amount - purchase, let amount = Money(fitting: difference, currency: market.currency) else { return nil }
+		return Gain(amount: amount, percent: purchase == 0 ? nil : difference / abs(purchase) * 100)
+	}
+
+	/// Whether every amount that the position gives in `currency` is within `Money.maxMinorUnits`: its value and,
+	/// with a purchase price, its gain. A source whose quantity times its quote is beyond the limit fails at the edge,
+	/// so that no amount of the position is lost later. Decimal multiplication cannot wrap; it gives no finite number instead.
+	public func amountsFit(in currency: String) -> Bool {
+		guard let market = marketDecimal(in: currency) else { return true }
+		return value(in: currency) != nil && (purchaseValue(in: market.currency) == nil || gain(in: currency) != nil)
 	}
 
 	/// The purchase value in `currency`, unrounded, so the gain rounds only once.
