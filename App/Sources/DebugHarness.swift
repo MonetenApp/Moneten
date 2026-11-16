@@ -1128,10 +1128,14 @@ final class DebugHarness {
 		default: return log("savedsearch rejected")
 		}
 		let selected: Int? = if case let .search(id) = model.selection { model.savedSearches.firstIndex { $0.id == id } } else { nil }
-		log(LogLine("savedsearch", values: [("", .choice(parts.first ?? "", of: ["save", "open", "rename", "remove", "sheet", "back", "forward"])),
-			("searches", .count(model.savedSearches.count)), ("selected", .position(selected)), ("view", .choice(model.selection?.trailName ?? "none", of: ["account", "group", "category", "search", "none"])),
-			("canBack", .flag(model.canGoBack)), ("canForward", .flag(model.canGoForward)), ("visible", .count(model.visibleTransactions.count)),
-			("filters", .list(model.filter.activeKinds.map { .word($0) })), ("period", .state(model.period))] + Self.filterTargets(model)))
+		// In parts, so the compiler of the CI runner type-checks it in time.
+		let command: LogValue = .choice(parts.first ?? "", of: ["save", "open", "rename", "remove", "sheet", "back", "forward"])
+		let view: LogValue = .choice(model.selection?.trailName ?? "none", of: ["account", "group", "category", "search", "none"])
+		let filters: LogValue = .list(model.filter.activeKinds.map { LogValue.word($0) })
+		var values: [(StaticString, LogValue)] = [("", command), ("searches", .count(model.savedSearches.count)), ("selected", .position(selected)), ("view", view)]
+		values += [("canBack", .flag(model.canGoBack)), ("canForward", .flag(model.canGoForward)), ("visible", .count(model.visibleTransactions.count))]
+		values += [("filters", filters), ("period", .state(model.period))]
+		log(LogLine("savedsearch", values: values + Self.filterTargets(model)))
 	}
 
 	private func csvPreview(_ argument: String) {
