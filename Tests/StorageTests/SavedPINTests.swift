@@ -1,3 +1,4 @@
+import CommonCrypto
 import Domain
 import Foundation
 import GRDB
@@ -87,5 +88,52 @@ struct SavedPINTests {
 
 		let restored = try Vault(folder: other).open(password: Self.password)
 		#expect(try restored.savedPINs() == [Self.access.id: Secret("48151")])
+	}
+
+	@Test("A removed PIN leaves no byte in the decrypted pages, also after the password changes")
+	func removedLeavesNoTrace() throws {
+		let vault = Vault(folder: folder)
+		let store = try vault.create(password: Self.password, starterCategories: [])
+		try store.add(Self.access, state: nil, accounts: [Self.giro])
+		try store.savePIN(Secret("48151"), for: Self.access.id)
+		#expect(try decryptedPages(password: Self.password).range(of: Data("48151".utf8)) != nil)
+		try store.removeSavedPIN(of: Self.access.id)
+		#expect(try decryptedPages(password: Self.password).range(of: Data("48151".utf8)) == nil)
+
+		let newPassword = "neues-pferd-batterie-heftklammer"
+		try vault.changePassword(current: Self.password, new: newPassword, on: store)
+		try store.savePIN(Secret("16234"), for: Self.access.id)
+		try store.removeSavedPIN(of: Self.access.id)
+		try store.close()
+		#expect(try decryptedPages(password: newPassword).range(of: Data("16234".utf8)) == nil)
+		#expect(try vault.open(password: newPassword).queue.read { db in try Int.fetchOne(db, sql: "PRAGMA secure_delete") } == 1)
+	}
+
+	/// The database file with every page decrypted, free pages and free space included. It follows the
+	/// default layout of SQLCipher 4: a salt in the first 16 bytes, PBKDF2-HMAC-SHA512 with 256,000
+	/// rounds, and pages of 4096 bytes that end in 80 reserved bytes, an IV of 16 bytes and the HMAC.
+	private func decryptedPages(password: String) throws -> Data {
+		let file = try Data(contentsOf: folder.databaseFile)
+		let salt = [UInt8](file.prefix(16))
+		var key = [UInt8](repeating: 0, count: 32)
+		let derived = CCKeyDerivationPBKDF(CCPBKDFAlgorithm(kCCPBKDF2), password, password.utf8.count, salt, salt.count,
+			CCPseudoRandomAlgorithm(kCCPRFHmacAlgSHA512), 256_000, &key, key.count)
+		try #require(derived == kCCSuccess)
+		let pageSize = 4096, reserve = 80
+		var plain = Data()
+		for offset in stride(from: 0, to: file.count, by: pageSize) {
+			let page = [UInt8](file[offset..<min(offset + pageSize, file.count)])
+			try #require(page.count == pageSize)
+			let start = offset == 0 ? 16 : 0
+			let cipher = Array(page[start..<(pageSize - reserve)])
+			let iv = Array(page[(pageSize - reserve)..<(pageSize - reserve + 16)])
+			var out = [UInt8](repeating: 0, count: cipher.count)
+			var moved = 0
+			let status = CCCrypt(CCOperation(kCCDecrypt), CCAlgorithm(kCCAlgorithmAES), 0, key, key.count, iv, cipher, cipher.count,
+				&out, out.count, &moved)
+			try #require(status == kCCSuccess && moved == cipher.count)
+			plain.append(contentsOf: out)
+		}
+		return plain
 	}
 }
