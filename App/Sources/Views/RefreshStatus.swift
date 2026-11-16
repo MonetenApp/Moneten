@@ -3,6 +3,7 @@ import SwiftUI
 
 /// The error indicator of an account whose last refresh failed. It opens the error popover.
 struct RefreshErrorButton: View {
+	@Environment(AppModel.self) private var model
 	let account: Account
 	let error: RefreshError
 	@State private var shown = false
@@ -15,7 +16,10 @@ struct RefreshErrorButton: View {
 		.buttonStyle(.plain)
 		.help("The last refresh failed")
 		.popover(isPresented: $shown, arrowEdge: .trailing) {
-			RefreshErrorPopover(account: account, error: error)
+			RefreshErrorPopover(account: account, error: error, editLoginData: error.suggestsEditLoginData && model.fintsAccess(of: account.id) != nil ? {
+				shown = false
+				model.editLoginData(account: account.id)
+			} : nil)
 		}
 	}
 }
@@ -25,6 +29,8 @@ struct RefreshErrorButton: View {
 struct RefreshErrorPopover: View {
 	let account: Account
 	let error: RefreshError
+	/// Opens "Edit Login Data..." when the failure can mean that the bank wants the access set up again.
+	var editLoginData: (() -> Void)?
 
 	var body: some View {
 		VStack(alignment: .leading, spacing: 8) {
@@ -36,6 +42,12 @@ struct RefreshErrorPopover: View {
 				.textSelection(.enabled)
 			Text(error.date.formatted(date: .numeric, time: .shortened))
 				.foregroundStyle(.secondary)
+			if let editLoginData {
+				Divider()
+				Text("If the bank asks to set up the access again, for example after a new TAN method or an aborted authentication, choose “Edit Login Data...” and confirm the login data.")
+					.fixedSize(horizontal: false, vertical: true)
+				Button("Edit Login Data...", action: editLoginData)
+			}
 			if !error.notices.isEmpty {
 				Divider()
 				Text("Notice of the bank").font(.subheadline.weight(.semibold))

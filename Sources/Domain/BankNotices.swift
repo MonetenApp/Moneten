@@ -34,9 +34,19 @@ public struct BankNotices: Sendable {
 		}
 	}
 
-	/// The notices that the assistant "Add Account" showed after the login. They never wait.
+	/// The notices that the assistant "Add Account" showed after its login. They never wait.
 	public mutating func markShown(_ messages: [BankMessage], from bankName: String) {
 		known.formUnion(Self.notices(messages, from: bankName))
+	}
+
+	/// A login of the assistant "Add Account" failed with `error`. Returns the failure that the assistant
+	/// shows and the notices of the bank before it, which the assistant shows under the failure, so they
+	/// never wait. A canceled login shows no notices, and the next refresh brings them to the window "Notice".
+	public mutating func setupFailed(_ error: any Error, from bankName: String) -> (failure: any Error, notices: [BankMessage]) {
+		let (failure, messages) = FailureWithNotices.split(error)
+		if failure is CancellationError { return (failure, []) }
+		markShown(messages, from: bankName)
+		return (failure, messages)
 	}
 
 	/// The user is there: a refresh that the user started ended, or the main window came forward. Returns
