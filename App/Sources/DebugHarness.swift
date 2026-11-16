@@ -675,8 +675,8 @@ final class DebugHarness {
 		// What the menus and the pin of the filter bar do: "status unchecked", "amount withdrawals", "category <name>",
 		// "account <name>", "custom <yyyymmdd> <yyyymmdd>", or "pin on" and "pin off".
 		case "filterbar": filterBar(argument)
-		// The sidebar section "Searches": "save <name>", "open <name>", "rename <old>|<new>", "remove <name>", or "sheet"
-		// for the sheet of "Save Search...".
+		// The sidebar section "Searches": "save <name>", "open <name>", "rename <old>|<new>", "remove <name>", "sheet"
+		// for the sheet of "Save Search...", or "back" and "forward" as the toolbar buttons.
 		case "savedsearch": savedSearch(argument)
 		case "state":
 			let savedFilter = UserDefaults.standard.data(forKey: Preference.savedFilterBar).flatMap(SavedFilterBar.init(data:))
@@ -1022,11 +1022,14 @@ final class DebugHarness {
 			if names.count == 2, let id = named(names[0]) { model.rename(search: id, to: names[1]) }
 		case "remove": if let id = named(value) { model.remove(search: id) }
 		case "sheet": model.sheet = .saveSearch
+		case "back": model.goBack()
+		case "forward": model.goForward()
 		default: return log("savedsearch rejected")
 		}
 		let selected: Int? = if case let .search(id) = model.selection { model.savedSearches.firstIndex { $0.id == id } } else { nil }
-		log(LogLine("savedsearch", values: [("", .choice(parts.first ?? "", of: ["save", "open", "rename", "remove", "sheet"])),
-			("searches", .count(model.savedSearches.count)), ("selected", .position(selected)), ("visible", .count(model.visibleTransactions.count)),
+		log(LogLine("savedsearch", values: [("", .choice(parts.first ?? "", of: ["save", "open", "rename", "remove", "sheet", "back", "forward"])),
+			("searches", .count(model.savedSearches.count)), ("selected", .position(selected)), ("view", .choice(model.selection?.trailName ?? "none", of: ["account", "group", "category", "search", "none"])),
+			("canBack", .flag(model.canGoBack)), ("canForward", .flag(model.canGoForward)), ("visible", .count(model.visibleTransactions.count)),
 			("filters", .list(model.filter.activeKinds.map { .word($0) })), ("period", .state(model.period))] + Self.filterTargets(model)))
 	}
 

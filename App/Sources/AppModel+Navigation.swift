@@ -8,8 +8,7 @@ import UniformTypeIdentifiers
 /// toolbar enable "Back" and "Forward" when the history changes.
 @MainActor @Observable
 final class NavigationHistory {
-	var back: [SidebarSelection] = []
-	var forward: [SidebarSelection] = []
+	var steps = BrowseHistory<SidebarSelection>()
 }
 
 @MainActor
@@ -17,27 +16,27 @@ extension AppModel {
 	private static let history = NavigationHistory()
 
 	func navigate(to s: SidebarSelection?) {
-		if let current = selection, current != s {
-			Self.history.back.append(current)
-			Self.history.forward.removeAll()
-		}
+		Self.history.steps.leave(selection, for: s)
 		select(s)
 	}
 
 	func goBack() {
-		guard let previous = Self.history.back.popLast() else { return }
-		if let current = selection { Self.history.forward.append(current) }
+		guard let previous = Self.history.steps.goBack(from: selection) else { return }
 		select(previous)
 	}
 
 	func goForward() {
-		guard let next = Self.history.forward.popLast() else { return }
-		if let current = selection { Self.history.back.append(current) }
+		guard let next = Self.history.steps.goForward(from: selection) else { return }
 		select(next)
 	}
 
-	var canGoBack: Bool { !Self.history.back.isEmpty }
-	var canGoForward: Bool { !Self.history.forward.isEmpty }
+	/// Takes a view that no longer exists out of Back and Forward.
+	func forgetInHistory(_ s: SidebarSelection) {
+		Self.history.steps.forget(s, current: selection)
+	}
+
+	var canGoBack: Bool { !Self.history.steps.back.isEmpty }
+	var canGoForward: Bool { !Self.history.steps.forward.isEmpty }
 
 	var selectedAccount: Account? {
 		if case let .account(id) = selection { return ledger.account(id) }
