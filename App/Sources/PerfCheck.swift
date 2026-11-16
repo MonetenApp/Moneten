@@ -320,6 +320,7 @@ struct PerfScenario {
 		// The seal check of the whole app, which the launch runs before it opens the database. It reads
 		// more than 100 MB with the Java runtime, so it must run away from the main thread.
 		PerfScenario(name: "seal-check-at-launch", budget: halfSecond,
+			setUp: { await $0.settle() },
 			run: { c in
 				let start = ContinuousClock.now
 				if await !AppSeal.check() { c.fail("the seal check of the app failed") }
