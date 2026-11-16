@@ -3,7 +3,7 @@ import Foundation
 extension MoneyMoneyMigration {
 	public struct Progress: Sendable, Equatable {
 		public enum Step: Int, Sendable {
-			case accounts, categories, waitingTransactions, transactions, reconciling, importing, finishing
+			case accounts, categories, waitingTransactions, preparing, transactions, reconciling, importing, finishing
 		}
 
 		public var step: Step
@@ -23,6 +23,7 @@ extension MoneyMoneyMigration {
 			case .accounts: "Reading accounts..."
 			case .categories: "Reading categories..."
 			case .waitingTransactions: "Waiting for transactions..."
+			case .preparing: "Preparing import..."
 			case .transactions: "Transactions"
 			case .reconciling: "Comparing transactions"
 			case .importing: "Importing transactions"
@@ -32,11 +33,11 @@ extension MoneyMoneyMigration {
 			return "\(label): \(completed.formatted(.number.locale(locale))) of \(total.formatted(.number.locale(locale)))"
 		}
 
-		public func shouldPublish(after previous: Self?, elapsed: TimeInterval) -> Bool {
+		public func shouldPublish(after previous: Self?, elapsed: Duration) -> Bool {
 			guard let previous else { return true }
 			guard step == previous.step else { return step.rawValue > previous.step.rawValue }
 			guard completed >= previous.completed else { return false }
-			return account != previous.account || elapsed >= 1 || (completed == total && self != previous)
+			return account != previous.account || elapsed >= .seconds(1) || (completed == total && self != previous)
 		}
 	}
 }
@@ -50,7 +51,7 @@ package struct MigrationProgressReporter {
 
 	package mutating func send(_ update: MoneyMoneyMigration.Progress) {
 		let now = ContinuousClock.now
-		guard update.shouldPublish(after: previous, elapsed: publishedAt.duration(to: now) >= .seconds(1) ? 1 : 0) else { return }
+		guard update.shouldPublish(after: previous, elapsed: publishedAt.duration(to: now)) else { return }
 		previous = update
 		publishedAt = now
 		publish(update)

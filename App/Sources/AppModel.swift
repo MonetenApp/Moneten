@@ -1410,7 +1410,8 @@ final class AppModel {
 
 	// MARK: Migration
 
-	func runMigration(plan: MoneyMoneyMigration.Plan, progress: @escaping @Sendable (MoneyMoneyMigration.Progress) -> Void) async throws -> MoneyMoneyMigration.Plan {
+	func runMigration(plan: MoneyMoneyMigration.Plan, cancel: MigrationCancel,
+		progress: @escaping @Sendable (MoneyMoneyMigration.Progress) -> Void) async throws -> MoneyMoneyMigration.Plan {
 		guard let store else { throw CancellationError() }
 		guard !isTransferringTransactions, !isApplyingRule else { throw CancellationError() }
 		migrationStoring = true
@@ -1423,11 +1424,10 @@ final class AppModel {
 			try Task.checkCancellation()
 			guard self.store === store else { throw CancellationError() }
 			let starters = replaceableStarterCategories.map(\.id)
-			let canceled = Mutex(false)
 			let imported = try await withTaskCancellationHandler {
 				try Task.checkCancellation()
-				return try await store.importMigration(plan, replacing: starters, isCanceled: { canceled.withLock { $0 } }, progress: progress)
-			} onCancel: { canceled.withLock { $0 = true } }
+				return try await store.importMigration(plan, replacing: starters, cancel: cancel, progress: progress)
+			} onCancel: { cancel.cancel() }
 			progress(.init(step: .finishing))
 			try await reloadAfterImport()
 			return imported

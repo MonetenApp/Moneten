@@ -343,8 +343,8 @@ send setup cancel
 poll "^alert " alert
 send migrationfixture "$PWD/Fixtures/moneymoney"
 sleep 0.5
-poll "^migration step=4 completed=5 total=5$" key return
 poll "^migration step=5 completed=5 total=5$" key return
+poll "^migration step=6 completed=5 total=5$" key return
 send key return
 poll "^crash inject frames=1 pending=true" crashinject private
 poll "^crash url characters=" crashurl

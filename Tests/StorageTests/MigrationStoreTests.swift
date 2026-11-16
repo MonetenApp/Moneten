@@ -70,16 +70,37 @@ struct MigrationStoreTests {
 		let store = try Vault(folder: folder).create(password: "synthetic-migration", starterCategories: [])
 		defer { try? store.close() }
 		let plan = try sourcePlan(amounts: [1.0, 2.0])
-		let canceled = Mutex(false)
+		let cancel = MigrationCancel()
 		do {
-			_ = try await store.importMigration(plan, isCanceled: { canceled.withLock { $0 } }, progress: {
-				if $0.step == .transactions && $0.completed == 0 { canceled.withLock { $0 = true } }
+			_ = try await store.importMigration(plan, cancel: cancel, progress: {
+				if $0.step == .transactions && $0.completed == 0 { cancel.cancel() }
 			})
 			Issue.record("Canceled rebuilding committed")
 		} catch is CancellationError {}
-		#expect(canceled.withLock { $0 })
+		#expect(cancel.cancel())
 		#expect(try store.loadLedger().accounts.isEmpty)
 		#expect(try store.loadLedger().transactions.isEmpty)
+	}
+
+	@Test("A cancel after the last write check is refused and keeps the stored migration")
+	func cancelAfterStoring() async throws {
+		let sealed = MigrationCancel()
+		try sealed.seal()
+		#expect(!sealed.cancel())
+		#expect(!sealed.isCanceled)
+		let canceled = MigrationCancel()
+		#expect(canceled.cancel())
+		#expect(throws: CancellationError.self) { try canceled.seal() }
+		#expect(canceled.cancel())
+
+		let folder = DataFolder(root: FileManager.default.temporaryDirectory.appendingPathComponent("MigrationStored-\(UUID())"))
+		defer { try? FileManager.default.removeItem(at: folder.root) }
+		let store = try Vault(folder: folder).create(password: "synthetic-migration", starterCategories: [])
+		defer { try? store.close() }
+		let cancel = MigrationCancel()
+		_ = try await store.importMigration(try sourcePlan(amounts: [0.01, 0.02]), cancel: cancel)
+		#expect(!cancel.cancel())
+		#expect(try store.loadLedger().transactions.count == 2)
 	}
 
 	@Test("Cancel at any write count rolls back the whole migration and starter replacement", arguments: [0, 1, 2])
@@ -91,10 +112,10 @@ struct MigrationStoreTests {
 		defer { try? store.close() }
 		let before = try store.loadLedger()
 		let plan = try sourcePlan(amounts: [0.01, 0.02])
-		let canceled = Mutex(false)
+		let cancel = MigrationCancel()
 		do {
-			_ = try await store.importMigration(plan, replacing: [starter.id], isCanceled: { canceled.withLock { $0 } }, progress: {
-				if $0.step == .importing && $0.completed == cancelAt { canceled.withLock { $0 = true } }
+			_ = try await store.importMigration(plan, replacing: [starter.id], cancel: cancel, progress: {
+				if $0.step == .importing && $0.completed == cancelAt { cancel.cancel() }
 				if $0.step == .importing && $0.completed == 0 && cancelAt == 1 { Thread.sleep(forTimeInterval: 1.01) }
 			})
 			Issue.record("Canceled migration committed")

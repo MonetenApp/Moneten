@@ -1,5 +1,6 @@
 import Domain
 import Import
+import Storage
 import SwiftUI
 
 struct MigrationSheet: View {
@@ -27,12 +28,13 @@ struct MigrationSheet: View {
 	@State private var savingReport = false
 	@State private var reportText = ""
 	@State private var fileAccountID: UUID?
+	@State private var storing: MigrationCancel?
 	/// Shown on this sheet: an alert of the main window would wait until the sheet closes.
 	@State private var saveError: String?
 
 	var body: some View {
 		SheetFrame(title: "Import from MoneyMoney", confirmTitle: confirmTitle, cancelTitle: cancelTitle, canConfirm: canConfirm, width: 500,
-			onCancel: { model.migrationTask?.cancel() }, onConfirm: confirm) {
+			onCancel: cancel, onConfirm: confirm) {
 			if case .done = step {
 				Button("Save Report...") { confirmSave = true }.keyboardShortcut("s")
 			}
@@ -190,6 +192,16 @@ struct MigrationSheet: View {
 		}
 	}
 
+	/// Returns true when the sheet closes. A refused cancel keeps the sheet for the report of the stored migration.
+	private func cancel() -> Bool {
+		if let storing, !storing.cancel() {
+			step = .working(.init(step: .finishing))
+			return false
+		}
+		model.migrationTask?.cancel()
+		return true
+	}
+
 	/// Returns true when the sheet closes.
 	private func confirm() -> Bool {
 		switch step {
@@ -274,6 +286,8 @@ struct MigrationSheet: View {
 		let updates = Task {
 			for await progress in stream {
 				guard !Task.isCancelled else { return }
+				// A refused cancel shows "Finishing..." while the last import count may still be queued.
+				if case let .working(current) = step, current.step == .finishing { continue }
 				step = .working(progress)
 				#if DEBUG || PERF_HARNESS
 				DebugHarness.shared?.logMigration(progress)
@@ -288,14 +302,16 @@ struct MigrationSheet: View {
 	}
 
 	private func commit(_ plan: MoneyMoneyMigration.Plan) {
-		step = .working(.init(step: .accounts))
+		let cancel = MigrationCancel()
+		storing = cancel
+		step = .working(.init(step: .preparing))
 		model.migrationTask = Task {
+			defer { storing = nil }
 			do {
-				let imported = try await withProgress { publish in try await model.runMigration(plan: plan, progress: publish) }
+				let imported = try await withProgress { publish in try await model.runMigration(plan: plan, cancel: cancel, progress: publish) }
 				step = .working(.init(step: .finishing))
 				let ledger = model.ledger
 				let report = await Task.detached { imported.report(after: ledger) }.value
-				try Task.checkCancellation()
 				step = .done(imported, report)
 			} catch is CancellationError {
 			} catch {

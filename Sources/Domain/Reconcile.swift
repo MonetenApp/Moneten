@@ -299,10 +299,6 @@ struct Partner {
 
 /// Each step takes rows out of the pool, so a weaker rule never takes a row that a stronger one claimed.
 /// At each step a stored row comes before a deleted one.
-func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTransaction]) -> [Partner?] {
-	partners(of: rows, stored: stored, deleted: deleted, checkpoint: {})
-}
-
 func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTransaction], checkpoint: () throws -> Void) rethrows -> [Partner?] {
 	var result = [Partner?](repeating: nil, count: rows.count)
 	var taken = Set<Slot>()
@@ -461,8 +457,8 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 			let distance = abs(matches[i].day - match.day)
 			if !t.isPending && !identity.isPending && identity.fileIdentity == nil {
 				let legacy: Partner? = switch slot {
-				case let .live(j): partners(of: [t], stored: [stored[j]], deleted: [])[0]
-				case let .deleted(k): partners(of: [t], stored: [], deleted: [deleted[k]])[0]
+				case let .live(j): partners(of: [t], stored: [stored[j]], deleted: [], checkpoint: {})[0]
+				case let .deleted(k): partners(of: [t], stored: [], deleted: [deleted[k]], checkpoint: {})[0]
 				}
 				guard let legacy else { continue }
 				let source = legacy.evidence == .sourceID

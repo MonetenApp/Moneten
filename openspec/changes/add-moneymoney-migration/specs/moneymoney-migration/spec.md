@@ -401,6 +401,13 @@ The app SHALL show the current step, the current account when known, and complet
 - **THEN** the transaction rolls back, including new accounts, categories, and replaced starter categories
 - **AND** no background result reopens the assistant
 
+#### Scenario: Cancel after the last write check
+
+- **GIVEN** the assistant has written all 5,000 transactions and passed its last cancellation check
+- **WHEN** the user chooses "Cancel" before the progress shows "Finishing..."
+- **THEN** the transaction commits
+- **AND** the assistant stays open, shows "Finishing...", and then shows the report of the stored migration
+
 ### Requirement: Repeated runs add only what is new
 
 The app SHALL recognize accounts, categories, and transactions from an earlier run. A later run adds only new objects and creates no duplicate. Changes that the user made in the app since the earlier run stay. The report keeps notes for earlier migrated rules whose text is unchanged in both apps.

@@ -11,13 +11,14 @@ struct SheetFrame<Content: View, Leading: View>: View {
 	var canConfirm: Bool
 	var canCancel: Bool
 	var width: CGFloat
-	var onCancel: () -> Void
+	/// Returns true when the sheet closes.
+	var onCancel: () -> Bool
 	var onConfirm: () -> Bool
 	var leading: Leading
 	var content: Content
 
 	init(title: String, confirmTitle: String? = "OK", cancelTitle: String? = "Cancel", canConfirm: Bool = true, canCancel: Bool = true,
-		width: CGFloat = 460, onCancel: @escaping () -> Void = {}, onConfirm: @escaping () -> Bool,
+		width: CGFloat = 460, onCancel: @escaping () -> Bool = { true }, onConfirm: @escaping () -> Bool,
 		@ViewBuilder leading: () -> Leading, @ViewBuilder content: () -> Content) {
 		self.title = title
 		self.confirmTitle = confirmTitle
@@ -42,7 +43,7 @@ struct SheetFrame<Content: View, Leading: View>: View {
 				leading
 				Spacer(minLength: 16)
 				if let cancelTitle {
-					Button(cancelTitle, role: .cancel) { onCancel(); dismiss() }.keyboardShortcut(.cancelAction).disabled(!canCancel)
+					Button(cancelTitle, role: .cancel) { if onCancel() { dismiss() } }.keyboardShortcut(.cancelAction).disabled(!canCancel)
 				}
 				if let confirmTitle {
 					Button(confirmTitle) { if onConfirm() { dismiss() } }
@@ -59,7 +60,7 @@ extension SheetFrame where Leading == EmptyView {
 	init(title: String, confirmTitle: String? = "OK", cancelTitle: String? = "Cancel", canConfirm: Bool = true, width: CGFloat = 460,
 		onCancel: @escaping () -> Void = {}, onConfirm: @escaping () -> Bool, @ViewBuilder content: () -> Content) {
 		self.init(title: title, confirmTitle: confirmTitle, cancelTitle: cancelTitle, canConfirm: canConfirm, width: width,
-			onCancel: onCancel, onConfirm: onConfirm, leading: { EmptyView() }, content: content)
+			onCancel: { onCancel(); return true }, onConfirm: onConfirm, leading: { EmptyView() }, content: content)
 	}
 }
 

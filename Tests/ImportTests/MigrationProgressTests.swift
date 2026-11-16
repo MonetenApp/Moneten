@@ -8,15 +8,16 @@ struct MigrationProgressTests {
 	func publication() {
 		let previous = MoneyMoneyMigration.Progress(step: .transactions, completed: 1200, total: 5000, account: "Giro")
 		let next = MoneyMoneyMigration.Progress(step: .transactions, completed: 1234, total: 5000, account: "Giro")
-		#expect(!next.shouldPublish(after: previous, elapsed: 0.5))
-		#expect(next.shouldPublish(after: previous, elapsed: 1))
-		#expect(MoneyMoneyMigration.Progress(step: .transactions, completed: 1234, total: 5000, account: "Savings").shouldPublish(after: next, elapsed: 0))
-		#expect(!previous.shouldPublish(after: next, elapsed: 2))
+		#expect(!next.shouldPublish(after: previous, elapsed: .milliseconds(500)))
+		#expect(next.shouldPublish(after: previous, elapsed: .seconds(1)))
+		#expect(MoneyMoneyMigration.Progress(step: .transactions, completed: 1234, total: 5000, account: "Savings").shouldPublish(after: next, elapsed: .zero))
+		#expect(!previous.shouldPublish(after: next, elapsed: .seconds(2)))
 		#expect(next.text(locale: Locale(identifier: "en_US")) == "Transactions: 1,234 of 5,000")
-		#expect(MoneyMoneyMigration.Progress(step: .transactions, completed: 5000, total: 5000).shouldPublish(after: next, elapsed: 0.1))
-		#expect(MoneyMoneyMigration.Progress(step: .importing, completed: 0, total: 5000).shouldPublish(after: next, elapsed: 0))
-		#expect(MoneyMoneyMigration.Progress(step: .transactions, completed: 0, total: 0).shouldPublish(after: nil, elapsed: 0))
+		#expect(MoneyMoneyMigration.Progress(step: .transactions, completed: 5000, total: 5000).shouldPublish(after: next, elapsed: .milliseconds(100)))
+		#expect(MoneyMoneyMigration.Progress(step: .importing, completed: 0, total: 5000).shouldPublish(after: next, elapsed: .zero))
+		#expect(MoneyMoneyMigration.Progress(step: .transactions, completed: 0, total: 0).shouldPublish(after: nil, elapsed: .zero))
 		#expect(MoneyMoneyMigration.Progress(step: .waitingTransactions).text() == "Waiting for transactions...")
+		#expect(MoneyMoneyMigration.Progress(step: .preparing).text() == "Preparing import...")
 	}
 
 	@Test("The planner publishes exact source counts, including skipped rows")
