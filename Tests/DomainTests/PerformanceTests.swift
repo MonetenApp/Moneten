@@ -86,26 +86,25 @@ struct PerformanceTests {
 		// A debug build runs several times slower than the app and depends on the load of the machine,
 		// so the budgets hold for a release build only: `scripts/test.sh -c release -Xswiftc -enable-testing
 		// --filter PerformanceTests`, which CI runs as its own step.
-		// The sidebar amounts take a few milliseconds, so `budget(_:)` gives a runner that GitHub hosts more time for them.
 		#if !DEBUG
-		#expect(search < .milliseconds(150))
-		#expect(wildcard < .milliseconds(150))
-		#expect(field < .milliseconds(150))
-		#expect(fieldOverAll < .milliseconds(150))
-		#expect(rareFieldOverAll < .milliseconds(150))
-		#expect(prefixOverAll < .milliseconds(150))
-		#expect(purposeOverAll < .milliseconds(150))
-		#expect(regexOverAll < .milliseconds(200))
-		#expect(slowRegexOverAll < .milliseconds(600))
-		#expect(plainOverAll < .milliseconds(150))
-		#expect(amount < .milliseconds(150))
+		#expect(search < budget(.milliseconds(150)))
+		#expect(wildcard < budget(.milliseconds(150)))
+		#expect(field < budget(.milliseconds(150)))
+		#expect(fieldOverAll < budget(.milliseconds(150)))
+		#expect(rareFieldOverAll < budget(.milliseconds(150)))
+		#expect(prefixOverAll < budget(.milliseconds(150)))
+		#expect(purposeOverAll < budget(.milliseconds(150)))
+		#expect(regexOverAll < budget(.milliseconds(200)))
+		#expect(slowRegexOverAll < budget(.milliseconds(600)))
+		#expect(plainOverAll < budget(.milliseconds(150)))
+		#expect(amount < budget(.milliseconds(150)))
 		// A regular expression reads the fields as they are, so the search text rules out only the rows without its plain text.
-		#expect(regex < .milliseconds(200))
-		#expect(category < .milliseconds(100))
-		#expect(amountRange < .milliseconds(100))
+		#expect(regex < budget(.milliseconds(200)))
+		#expect(category < budget(.milliseconds(100)))
+		#expect(amountRange < budget(.milliseconds(100)))
 		#expect(sidebar < budget(.milliseconds(20)))
-		#expect(build < .seconds(1))
-		#expect(update < .milliseconds(300))
+		#expect(build < budget(.seconds(1)))
+		#expect(update < budget(.milliseconds(300)))
 		#endif
 	}
 
@@ -131,8 +130,8 @@ struct PerformanceTests {
 		print("picker for 50,000 selected rows: open \(open), keystroke \(keystroke) (\(listed) categories)")
 		#expect(listed == 60)
 		#if !DEBUG
-		#expect(keystroke < .milliseconds(2))
-		#expect(open < .milliseconds(100))
+		#expect(keystroke < budget(.milliseconds(2)))
+		#expect(open < budget(.milliseconds(100)))
 		#endif
 	}
 
@@ -159,11 +158,11 @@ struct PerformanceTests {
 		#expect(assigned.dropFirst(1_000).allSatisfy { $0.categoryID == nil && $0.categorizedBy == .none })
 		#expect(assigned.reduce(Int64(0)) { $0 + $1.amountMinor } == -21_000_000)
 		#if !DEBUG
-		#expect(duration < .milliseconds(500))
+		#expect(duration < budget(.milliseconds(500)))
 		#endif
 	}
 
-	@Test("Refreshing 300 booked rows in 50,000 file rows stays under 20 ms")
+	@Test("Refreshing 300 booked rows in 50,000 file rows meets its budget")
 	func bookedFileRefresh() {
 		let account = Account(position: 0, name: "File history", kind: .giro, source: .bank)
 		let today = Day(year: 2026, month: 12, day: 1)
@@ -193,12 +192,10 @@ struct PerformanceTests {
 		return (0..<runs).map { _ in clock.measure(work) }.min()!
 	}
 
-	/// The budget of a step of a few milliseconds on a Mac, or one and a half times as much on a runner
-	/// that GitHub hosts. Such a runner shares its host and takes nine to ten times as long as a current Mac
-	/// for the sidebar amounts and the booked refresh. Their usual time there is 18 to 20 ms, so a budget of
-	/// 20 ms failed one run in four. With 30 ms, twice the usual time still fails. GitHub sets
-	/// `RUNNER_ENVIRONMENT` to `github-hosted` on its own runners only, so a developer Mac and a
-	/// self-hosted runner keep the budget of a Mac. The longer steps keep their budget everywhere.
+	/// The budget on a Mac, or 1.5 times as much on a runner that GitHub hosts, which takes about nine times
+	/// as long as a current Mac and stalls at random. There the sidebar amounts and the booked refresh usually
+	/// take 18 to 20 ms, so twice that fails, but the fastest runners pass up to 2.2 times. GitHub sets
+	/// `RUNNER_ENVIRONMENT` to `github-hosted` only on its own runners, so a developer Mac keeps the budget of a Mac.
 	private func budget(_ onAMac: Duration) -> Duration {
 		ProcessInfo.processInfo.environment["RUNNER_ENVIRONMENT"] == "github-hosted" ? onAMac * 1.5 : onAMac
 	}
