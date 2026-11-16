@@ -118,20 +118,20 @@ public struct MoneyMoneyMigration: Sendable {
 		let stored = Dictionary(grouping: ledger.transactions, by: \.accountID)
 		let tombstones = Dictionary(grouping: deleted, by: \.accountID)
 		let rules = Categorizer(ledger: ledger)
-		var added: [UUID: Bool] = [:]
+		var added: [UUID: ReviewReason?] = [:]
 		var relinked: [UUID: [DeletedTransaction.Relink]] = [:]
 		for account in ledger.accounts + plan.accounts {
 			guard let rows = delivered[account.id] else { continue }
 			let r = reconcile(.migration(rows), into: account, stored: stored[account.id] ?? [], deleted: tombstones[account.id] ?? [],
 				rules: rules, now: Date())
-			for t in r.added { added[t.id] = t.needsReview }
+			for t in r.added { added.updateValue(t.review, forKey: t.id) }
 			plan.updatedTransactions += r.booked + r.updated + r.marked
 			plan.skippedTransactions += r.skipped
 			relinked[account.id] = r.relinked
 		}
 		for var t in rows {
-			guard let needsReview = added[t.id] else { continue }
-			t.needsReview = needsReview
+			guard let review = added[t.id] else { continue }
+			t.review = review
 			plan.transactions.append(t)
 		}
 		Self.setInitialBalances(of: &plan, ledger: ledger, stored: stored, deleted: tombstones, relinked: relinked, exported: Set(accountMap.values),
@@ -139,9 +139,21 @@ public struct MoneyMoneyMigration: Sendable {
 		if !rawCategories.contains(where: { ($0["default"] as? Bool) != true && Self.string($0["rules"]) != nil }) {
 			plan.notes.append(String(localized: "The export contains no categorization rules. Copy them from the category settings of MoneyMoney into the category settings of Moneten."))
 		}
-		for c in plan.categories {
-			guard let error = c.ruleError else { continue }
-			plan.notes.append(String(localized: "The rule of \"\(c.name)\" cannot be read at position \(error.position + 1): \(error.message) \"\(c.name)\" receives no transaction through its rule until you correct the rule in its settings."))
+		let accountNumbers = Set(rawAccounts.filter { ($0["uuid"] as? String).flatMap { accountMap[$0] } != nil }
+			.flatMap { [Self.string($0["accountNumber"]), Self.string($0["iban"])] }.compactMap { $0 }.map(TextFolding.accountKey)
+			+ rows.compactMap(\.counterpartyIBAN).map(TextFolding.accountKey))
+		let exportedRules = rawCategories.reduce(into: [String: String]()) { rules, item in
+			if let source = item["uuid"] as? String { rules[source] = Self.string(item["rules"]) ?? "" }
+		}
+		let unchangedCategories = ledger.categories.filter { c in
+			guard let source = c.sourceID else { return false }
+			return exportedRules[source] == c.rule
+		}
+		for c in plan.categories + unchangedCategories {
+			if let error = c.ruleError {
+				plan.notes.append(String(localized: "The rule of \"\(c.name)\" cannot be read at position \(error.position + 1): \(error.message) \"\(c.name)\" receives no transaction through its rule until you correct the rule in its settings."))
+			}
+			plan.notes += Self.ruleNotes(c, accountNumbers: accountNumbers)
 		}
 		plan.notes += Self.groupSumNotes(rawAccounts)
 		if !plan.portfolioAccounts.isEmpty {
@@ -158,6 +170,59 @@ public struct MoneyMoneyMigration: Sendable {
 			plan.notes.append(String(localized: "Moneten takes the color of each icon of MoneyMoney and shows its own icons instead of the pictures."))
 		}
 		return plan
+	}
+
+	// ISO 13616, SWIFT IBAN Registry release 103 (September 2026).
+	// https://www.swift.com/sites/default/files/files/iban-registry_4.pdf
+	private static let ruleIBANLengths = [
+		"AD": 24, "AE": 23, "AL": 28, "AT": 20, "AZ": 28, "BA": 20, "BE": 16,
+		"BG": 22, "BH": 22, "BI": 27, "BR": 29, "BY": 28, "CH": 21, "CR": 22,
+		"CY": 28, "CZ": 24, "DE": 22, "DJ": 27, "DK": 18, "DO": 28, "EE": 20,
+		"EG": 29, "ES": 24, "FI": 18, "FK": 18, "FO": 18, "FR": 27, "GB": 22,
+		"GE": 22, "GI": 23, "GL": 18, "GR": 27, "GT": 28, "HN": 28, "HR": 21,
+		"HU": 28, "IE": 22, "IL": 23, "IQ": 23, "IS": 26, "IT": 27, "JO": 30,
+		"KW": 30, "KZ": 20, "LB": 28, "LC": 32, "LI": 21, "LT": 20, "LU": 20,
+		"LV": 21, "LY": 25, "MC": 27, "MD": 24, "ME": 22, "MK": 19, "MN": 20,
+		"MR": 27, "MT": 31, "MU": 30, "NI": 28, "NL": 18, "NO": 15, "OM": 23,
+		"PK": 24, "PL": 28, "PS": 29, "PT": 25, "QA": 29, "RO": 24, "RS": 22,
+		"RU": 33, "SA": 24, "SC": 31, "SD": 18, "SE": 24, "SI": 19, "SK": 24,
+		"SM": 27, "SO": 23, "ST": 25, "SV": 28, "TL": 23, "TN": 24, "TR": 26,
+		"UA": 29, "VA": 22, "VG": 24, "XK": 20, "YE": 30,
+	]
+
+	private static func ruleNotes(_ category: Domain.Category, accountNumbers: Set<String>) -> [String] {
+		guard !category.isGroup, !category.isDefault, let tokens = try? RuleToken.positioned(in: category.rule) else { return [] }
+		let chars = Array(category.rule)
+		let name = category.name
+		var notes: [String] = []
+		for (i, entry) in tokens.enumerated() {
+			if i > 0, case .field = tokens[i - 1].token { continue }
+			switch entry.token {
+			case let .word(term), let .quoted(term):
+				let number = TextFolding.accountKey(term)
+				let groups = term.split(separator: " ", omittingEmptySubsequences: false)
+				let grouped = groups.count == 1 || (groups.dropLast().allSatisfy { $0.count == 4 } && (1...4).contains(groups.last!.count))
+				let iban = term.utf8.allSatisfy { $0 < 128 } && grouped
+					&& Self.ruleIBANLengths[String(number.prefix(2))] == number.count && Self.isIBAN(number)
+				let knownNumber = !number.isEmpty && number.allSatisfy { $0.isASCII && $0.isNumber } && accountNumbers.contains(number)
+				if iban || knownNumber {
+					notes.append(String(localized: "The rule of \"\(name)\" has an account term at position \(entry.position + 1) that does not search account fields. Use remote_account:\(number) to search the account of the counterparty."))
+				}
+			case .and, .or, .not:
+				let length = entry.token == .or ? 2 : 3
+				let word = String(chars[entry.position...].prefix(length))
+				if ["and", "or", "not"].contains(word.lowercased()), word != word.uppercased() {
+					notes.append(String(localized: "The rule of \"\(name)\" reads \"\(word)\" at position \(entry.position + 1) as an operator. Write \"\(word)\" in quotation marks to search the word itself."))
+				}
+			case let .constant(value):
+				let word = String(chars[entry.position...].prefix(value ? 4 : 5))
+				notes.append(value
+					? String(localized: "The rule of \"\(name)\" reads \"\(word)\" at position \(entry.position + 1) as a constant that matches every transaction. Write \"\(word)\" in quotation marks to search the word itself.")
+					: String(localized: "The rule of \"\(name)\" reads \"\(word)\" at position \(entry.position + 1) as a constant that matches no transaction. Write \"\(word)\" in quotation marks to search the word itself."))
+			default: break
+			}
+		}
+		return notes
 	}
 
 	/// The initial balance makes the booked rows of the source end at the balance of the source. A later run

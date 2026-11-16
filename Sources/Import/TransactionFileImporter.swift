@@ -13,6 +13,7 @@ public enum TransactionFileImporter {
 		case empty
 		case unsupported
 		case noHeader
+		case encoding(String)
 		case line(Int, String)
 		case severalAccounts
 
@@ -21,21 +22,24 @@ public enum TransactionFileImporter {
 			case .empty: String(localized: "The file is empty and does not contain any transactions.")
 			case .unsupported: String(localized: "Files in this format cannot be imported. The following file formats are supported when importing transactions: CSV, MT940, and SEPA camt.052/.053.")
 			case .noHeader: String(localized: "No column with a date and no column with an amount was found. The columns should be headed with common keywords like Date, Amount, Name, and Purpose.")
+			case let .encoding(name): String(localized: "The file cannot be read as \(name).")
 			case let .line(n, problem): String(localized: "Line \(n): \(problem)")
 			case .severalAccounts: String(localized: "The file holds the statements of several accounts. Import the statements of each account from a file of its own.")
 			}
 		}
 	}
 
-	/// A value of a file that the import could not use and replaced. The file is imported anyway.
+	/// A value or row that the import replaced or skipped. The file is imported anyway.
 	public enum Warning: Sendable, Equatable, CustomStringConvertible {
 		case unknownCurrency(line: Int, cell: String, replacement: String)
 		case unreadableValueDate(line: Int, cell: String)
 		case mixedDateForms(line: Int)
+		case skippedCSVRow(line: Int)
 
 		public var description: String {
 			switch self {
 			case let .unknownCurrency(n, cell, replacement): String(localized: "Line \(n): The currency \(cell) is unknown. The transaction is in \(replacement), the currency of the account.")
+			case let .skippedCSVRow(n): String(localized: "Line \(n): The row was skipped while locating the CSV transactions. Check the header row.")
 			case let .mixedDateForms(n): String(localized: "Line \(n): The file mixes month-first dates and dotted dates. Dates with dots read day first.")
 			case let .unreadableValueDate(n, cell): String(localized: "Line \(n): The value date \(cell) cannot be read. The transaction has no value date.")
 			}
@@ -46,13 +50,11 @@ public enum TransactionFileImporter {
 		let head = text.prefix(4096)
 		if head.contains("<Document") || head.contains("camt.05") { return .camt }
 		if head.contains(":20:") && text.contains(":61:") { return .mt940 }
-		if head.contains(";") || head.contains(",") || head.contains("\t") { return .csv }
+		// A PDF or an Excel file has delimiters too, but also control characters, which no CSV file has.
+		// Only C0 controls count, because ISO-8859-1 turns a byte such as 0x81 into the C1 control U+0081.
+		let isText = !head.unicodeScalars.contains { $0.value < 0x20 && !"\t\r\n".unicodeScalars.contains($0) }
+		if isText, head.contains(";") || head.contains(",") || head.contains("\t") { return .csv }
 		return nil
-	}
-
-	public static func decode(_ data: Data) -> String {
-		if let s = String(data: data, encoding: .utf8) { return s.hasPrefix("\u{FEFF}") ? String(s.dropFirst()) : s }
-		return String(data: data, encoding: .windowsCP1252) ?? String(decoding: data, as: UTF8.self)
 	}
 
 	/// The transactions of a file and the values that the import replaced in them.
@@ -63,6 +65,8 @@ public enum TransactionFileImporter {
 		public var account: FileAccount?
 		/// The first transaction currency written in the file, or nil when the account supplies it.
 		public var declaredCurrency: String?
+		/// The text of the category cell of each transaction of a CSV file that has one.
+		public var categories: [UUID: String] = [:]
 	}
 
 	public static func accountDecision(_ names: [FileAccount?], selected: Account? = nil, accounts: [Account] = [], currency: String = "") throws
@@ -86,330 +90,26 @@ public enum TransactionFileImporter {
 		return (account, destination, keys.first)
 	}
 
-	public static func parse(_ data: Data, currency: String) throws -> Parsed {
+	public static func parse(_ data: Data, currency: String, csv: (file: CSVFile, layout: CSVLayout)? = nil) throws -> Parsed {
+		if let csv {
+			let result = try csv.file.read(csv.layout, currency: currency)
+			guard !result.transactions.isEmpty else { throw Failure.empty }
+			return result
+		}
 		guard !data.isEmpty else { throw Failure.empty }
-		let text = decode(data)
+		let (encoding, text) = try CSVEncoding.read(data)
 		guard let format = detect(text) else { throw Failure.unsupported }
 		let result: Parsed
 		switch format {
 		case .camt: result = try CAMTParser.parse(data, currency: currency)
 		case .mt940: result = try MT940Parser.parse(text, currency: currency)
-		case .csv: result = try CSVParser.parse(text, currency: currency)
+		case .csv:
+			let file = try CSVFile(data: data, encoding: encoding, text: text)
+			guard file.headerIndex != nil else { throw Failure.noHeader }
+			result = try file.read(file.detectedLayout(), currency: currency)
 		}
 		guard !result.transactions.isEmpty else { throw Failure.empty }
 		return result
-	}
-}
-
-// MARK: - CSV
-
-enum CSVParser {
-	static let dateKeys = ["buchungstag", "buchungsdatum", "datum", "date", "booking date", "bookingdate", "transaction date", "belegdatum"]
-	static let valueDateKeys = ["valuta", "wertstellung", "valutadatum", "value date", "wertstellungsdatum"]
-	static let amountKeys = ["betrag", "amount", "umsatz", "betrag (eur)", "betrag (€)", "betrag eur", "value"]
-	static let debitKeys = ["soll", "debit", "ausgang", "belastung"]
-	static let creditKeys = ["haben", "credit", "eingang", "gutschrift"]
-	static let markerKeys = ["s/h", "soll/haben", "soll / haben", "haben/soll", "d/c", "debit/credit", "cr/dr", "dr/cr"]
-	static let nameKeys = ["empfänger", "auftraggeber", "name", "zahlungsempfänger", "zahlungspflichtiger", "beguenstigter/zahlungspflichtiger", "auftraggeber / begünstigter",
-		"zahlungsempfänger*in", "zahlungspflichtige*r", "payee", "counterparty", "gegenkonto name", "name zahlungsbeteiligter", "empfänger/auftraggeber", "partner"]
-	static let purposeKeys = ["verwendungszweck", "purpose", "beschreibung", "description", "memo", "buchungsdetails", "vorgang/verwendungszweck", "reference"]
-	static let bookingTextKeys = ["buchungstext", "umsatzart", "transaktionstyp", "booking text", "type", "art"]
-	static let ibanKeys = ["iban", "kontonummer/iban", "iban zahlungsbeteiligter", "gegenkonto", "kontonummer", "iban auftraggeber"]
-	static let bicKeys = ["bic", "bic (swift-code)", "bic zahlungsbeteiligter", "blz"]
-	static let currencyKeys = ["währung", "waehrung", "currency", "wahrung"]
-	static let commentKeys = ["notiz", "comment", "kommentar", "note"]
-	static let e2eKeys = ["kundenreferenz", "end-to-end-referenz", "end-to-end reference", "e2e"]
-	static let mandateKeys = ["mandatsreferenz", "mandate reference"]
-	static let creditorKeys = ["gläubiger-id", "gläubiger id", "glaeubiger-id", "creditor id"]
-
-	/// A file of 100 MB takes seconds to read, so each pass over its rows stops with `CancellationError`
-	/// at the next row once the task is canceled.
-	static func parse(_ text: String, currency: String) throws -> TransactionFileImporter.Parsed {
-		try Task.checkCancellation()
-		let delimiter = detectDelimiter(text)
-		try Task.checkCancellation()
-		let rows = try split(text, delimiter: delimiter)
-		try Task.checkCancellation()
-		guard let headerIndex = rows.firstIndex(where: { row in
-			let lower = row.cells.map { normalize($0) }
-			return lower.contains(where: { dateKeys.contains($0) }) && lower.contains(where: { (amountKeys + debitKeys + creditKeys).contains($0) })
-		}) else { throw TransactionFileImporter.Failure.noHeader }
-		let header = rows[headerIndex].cells.map { normalize($0) }
-		func column(_ keys: [String]) -> Int? {
-			for k in keys { if let i = header.firstIndex(of: k) { return i } }
-			return nil
-		}
-		let dateCol = column(dateKeys)!
-		let valueCol = column(valueDateKeys)
-		let amountCol = column(amountKeys)
-		let debitCol = column(debitKeys)
-		let creditCol = column(creditKeys)
-		let markerCol = column(markerKeys)
-		let nameCol = column(nameKeys)
-		let purposeCol = column(purposeKeys)
-		let textCol = column(bookingTextKeys)
-		let ibanCol = column(ibanKeys)
-		let bicCol = column(bicKeys)
-		let currencyCol = column(currencyKeys)
-		let commentCol = column(commentKeys)
-		let e2eCol = column(e2eKeys)
-		let mandateCol = column(mandateKeys)
-		let creditorCol = column(creditorKeys)
-		func cell(_ row: [String], _ c: Int?) -> String? {
-			guard let c, c < row.count else { return nil }
-			let v = row[c].trimmingCharacters(in: .whitespacesAndNewlines)
-			return v.isEmpty ? nil : v
-		}
-		// A row without a date is a total or a note, which the import skips.
-		let dataRows = rows.dropFirst(headerIndex + 1).compactMap { row in cell(row.cells, dateCol).map { (row.line, row.cells, $0) } }
-		// The amount column, or the debit and credit columns when the amount cell is empty.
-		func amountCells(_ row: [String]) -> [String] {
-			(cell(row, amountCol).map { [$0] } ?? [debitCol, creditCol].compactMap { cell(row, $0) }).compactMap { amountParts($0, account: currency)?.number }
-		}
-		// An amount such as "1,234" reads by the decimal mark that the other amounts of the file show.
-		// Most files have no such amount, so the marks are collected once, at the first such amount.
-		var collectedMark: DecimalMark??
-		func fileMark() throws -> DecimalMark? {
-			if let collectedMark { return collectedMark }
-			var marks = Set<DecimalMark>()
-			for row in dataRows {
-				try Task.checkCancellation()
-				marks.formUnion(amountCells(row.1).compactMap(AmountParser.decimalMark(of:)))
-			}
-			let mark = marks.count == 1 ? marks.first : nil
-			collectedMark = .some(mark)
-			return mark
-		}
-		// The currency that an amount cell names, such as USD in "-12.00 USD", is the currency of the row
-		// when the file has no currency column. A debit cell and a credit cell add up only in one currency.
-		// A cell without a currency is in the account currency, and a zero, such as "0,00" in the unused
-		// column, counts in any.
-		var amountCurrency: String?
-		var zeroCurrency: String?
-		func readAmount(_ text: String) throws -> Decimal? {
-			guard let parts = amountParts(text, account: currency),
-				let value = try AmountParser.decimal(from: parts.number) ?? fileMark().flatMap({ AmountParser.decimal(from: parts.number, decimalMark: $0) }) else { return nil }
-			if value == 0 {
-				zeroCurrency = zeroCurrency ?? parts.currency
-			} else {
-				let code = parts.currency ?? currency
-				guard amountCurrency == nil || amountCurrency == code else { return nil }
-				amountCurrency = code
-			}
-			return value
-		}
-		let bookingDates = dataRows.map(\.2)
-		let valueDates = dataRows.compactMap { cell($0.1, valueCol) }
-		let (dateOrder, valueDateOrder) = try DateOrder.of(bookingDates, valueDates)
-		let placeholder = UUID()
-		var result = TransactionFileImporter.Parsed(transactions: [])
-		for (line, row, dateText) in dataRows {
-			if (dateOrder == .monthDayYear || valueDateOrder == .monthDayYear)
-				&& (dateText.contains(".") || cell(row, valueCol)?.contains(".") == true) {
-				result.warnings.append(.mixedDateForms(line: line))
-			}
-			try Task.checkCancellation()
-			func value(_ c: Int?) -> String? { cell(row, c) }
-			guard let day = dateOrder.day(dateText) else {
-				throw TransactionFileImporter.Failure.line(line, String(localized: "The date \(dateText) cannot be read."))
-			}
-			var amount: Decimal?
-			amountCurrency = nil
-			zeroCurrency = nil
-			if let a = value(amountCol) {
-				amount = try readAmount(a)
-				// A marker column says whether an unsigned amount is a debit (S, D, DR) or a credit (H, C, CR).
-				if let marker = value(markerCol)?.uppercased(), let a = amount {
-					if ["S", "D", "DR", "SOLL", "DEBIT"].contains(marker) { amount = -abs(a) }
-					else if ["H", "C", "CR", "HABEN", "CREDIT"].contains(marker) { amount = abs(a) }
-					else { amount = nil }
-				}
-			} else {
-				// An empty debit or credit cell counts as zero. A cell that cannot be read is an error.
-				let d = try value(debitCol).map { try readAmount($0).map { -abs($0) } } ?? 0
-				let c = try value(creditCol).map { try readAmount($0).map { abs($0) } } ?? 0
-				if let d, let c { amount = d + c }
-			}
-			guard let amount else { throw TransactionFileImporter.Failure.line(line, String(localized: "The amount cannot be read.")) }
-			var cur = amountCurrency ?? zeroCurrency ?? currency
-			if let cell = value(currencyCol) {
-				if let code = currencyCode(cell, account: currency) {
-					cur = code
-				} else {
-					cur = currency
-					result.warnings.append(.unknownCurrency(line: line, cell: cell, replacement: currency))
-				}
-			}
-			let valueDate = value(valueCol).flatMap { cell in
-				let day = valueDateOrder.day(cell)
-				if day == nil { result.warnings.append(.unreadableValueDate(line: line, cell: cell)) }
-				return day
-			}
-			var t = Transaction(accountID: placeholder, bookingDate: day, valueDate: valueDate,
-				amountMinor: Money(amount, currency: cur).minorUnits, currency: cur,
-				name: value(nameCol) ?? "", purpose: value(purposeCol) ?? "", counterpartyIBAN: value(ibanCol), counterpartyBIC: value(bicCol),
-				bookingText: textCol == purposeCol ? nil : value(textCol), endToEndReference: value(e2eCol), mandateReference: value(mandateCol),
-				creditorID: value(creditorCol), comment: value(commentCol))
-			if t.name.isEmpty, t.purpose.isEmpty, let text = t.bookingText { t.name = text }
-			result.transactions.append(t)
-		}
-		return result
-	}
-
-	/// Symbols and names that banks write instead of a code.
-	private static let currencyNames = ["€": "EUR", "EURO": "EUR", "US$": "USD", "£": "GBP", "FR.": "CHF", "SFR.": "CHF", "SFR": "CHF"]
-	/// A bank writes a bare "$" for the dollar of its own country, so "$" means the account currency
-	/// when that is one of these, and the US dollar otherwise.
-	private static let dollars: Set = ["USD", "CAD", "AUD", "NZD", "SGD", "HKD", "MXN"]
-	private static let isoCurrencies = Set(Locale.Currency.isoCurrencies.map(\.identifier))
-
-	/// The ISO 4217 code that a currency cell names, or nil when the cell names none.
-	static func currencyCode(_ cell: String, account: String) -> String? {
-		let s = cell.uppercased()
-		if s == "$" { return dollars.contains(account) ? account : "USD" }
-		if let code = currencyNames[s] { return code }
-		return isoCurrencies.contains(s) ? s : nil
-	}
-
-	/// The number of an amount cell and the currency that the cell names: "89,00-" gives "-89,00", and
-	/// "-$12.50" gives "-12.50" in USD. A word that names no currency, as in "12,00 XYZ", gives nil, and so
-	/// does "5,-", where the dash stands for no cents.
-	static func amountParts(_ cell: String, account: String) -> (number: String, currency: String?)? {
-		let signs = Set("+-\u{2212}")
-		let digits = Set("0123456789")
-		guard var start = cell.firstIndex(where: digits.contains), let last = cell.lastIndex(where: digits.contains) else { return nil }
-		var end = cell.index(after: last)
-		// The mark of ",50" belongs to the number, the dot of "SFr.50" to the currency.
-		if start > cell.startIndex, ",.".contains(cell[cell.index(before: start)]),
-			cell[..<cell.index(before: start)].last?.isLetter != true { start = cell.index(before: start) }
-		if end < cell.endIndex, ",.".contains(cell[end]) { end = cell.index(after: end) }
-		var prefix = cell[..<start].trimmingCharacters(in: .whitespaces)
-		var suffix = cell[end...].trimmingCharacters(in: .whitespaces)
-		var sign = ""
-		if let c = prefix.first, signs.contains(c) {
-			sign = String(prefix.removeFirst())
-		} else if let c = prefix.last, signs.contains(c) {
-			sign = String(prefix.removeLast())
-		} else if cell.index(after: last) == end, let c = suffix.first, signs.contains(c) {
-			sign = String(suffix.removeFirst())
-		} else if cell.index(after: last) == end, suffix.count > 1, let c = suffix.last, signs.contains(c) {
-			sign = String(suffix.removeLast())
-		}
-		let symbol = (prefix + suffix).trimmingCharacters(in: .whitespaces)
-		var currency: String?
-		if !symbol.isEmpty {
-			guard let code = currencyCode(symbol, account: account) else { return nil }
-			currency = code
-		}
-		return (sign + cell[start..<end], currency)
-	}
-
-	static func normalize(_ s: String) -> String {
-		s.trimmingCharacters(in: CharacterSet(charactersIn: "\" \u{FEFF}")).lowercased()
-	}
-
-	static func detectDelimiter(_ text: String) -> Character {
-		let sample = text.split(maxSplits: 20, whereSeparator: { $0 == "\n" || $0 == "\r\n" || $0 == "\r" }).prefix(20).joined(separator: "\n")
-		let candidates: [Character] = [";", "\t", ","]
-		return candidates.max { a, b in sample.filter { $0 == a }.count < sample.filter { $0 == b }.count } ?? ";"
-	}
-
-	/// Splits CSV text into rows and fields, each row with the line of the file where it starts.
-	/// Quoted fields can contain the delimiter and line breaks.
-	static func split(_ text: String, delimiter: Character) throws -> [(line: Int, cells: [String])] {
-		var rows: [(line: Int, cells: [String])] = []
-		var line = 1
-		var start = 1
-		var row: [String] = []
-		var field = ""
-		var quoted = false
-		var iterator = text.makeIterator()
-		var pending: Character?
-		while let c = pending ?? iterator.next() {
-			pending = nil
-			let isBreak = c == "\n" || c == "\r\n" || c == "\r"
-			if isBreak { line += 1 }
-			if quoted {
-				if c == "\"" {
-					if let next = iterator.next() {
-						if next == "\"" { field.append("\"") } else { quoted = false; pending = next }
-					} else {
-						quoted = false
-					}
-				} else {
-					field.append(c)
-				}
-			} else if c == "\"" {
-				quoted = true
-			} else if c == delimiter {
-				row.append(field)
-				field = ""
-			} else if isBreak {
-				try Task.checkCancellation()
-				row.append(field)
-				rows.append((start, row))
-				start = line
-				row = []
-				field = ""
-			} else {
-				field.append(c)
-			}
-		}
-		if !field.isEmpty || !row.isEmpty {
-			row.append(field)
-			rows.append((start, row))
-		}
-		return rows
-	}
-}
-
-/// The order of day and month in the dates of a CSV column. An ISO date such as "2026-10-31" reads the
-/// same in both.
-enum DateOrder: CaseIterable {
-	case dayMonthYear
-	case monthDayYear
-
-	/// The orders of the booking date column and the value date column. Each takes the first order that
-	/// every value of both columns fits, else the first that every value of its own column fits, else the
-	/// one that most of its values fit. So a value date column of "11/01/2026" takes month first from a
-	/// booking date column of "10/30/2026". Day first comes before month first, so "03/04/2026" is
-	/// 3 April when no value decides.
-	static func of(_ booking: [String], _ value: [String]) throws -> (booking: DateOrder, value: DateOrder) {
-		let b = try fits(booking), v = try fits(value)
-		func pick(_ mine: (counts: [DateOrder: Int], readable: Int), _ theirs: (counts: [DateOrder: Int], readable: Int)) -> DateOrder {
-			let fitting = allCases.filter { mine.counts[$0] == mine.readable }
-			return fitting.first { theirs.counts[$0] == theirs.readable } ?? fitting.first ?? allCases.max { mine.counts[$0]! < mine.counts[$1]! }!
-		}
-		return (pick(b, v), pick(v, b))
-	}
-
-	/// How many of the values each order fits, and how many fit any order. A value that fits none, such as
-	/// "pending" as a value date, decides nothing.
-	private static func fits(_ values: [String]) throws -> (counts: [DateOrder: Int], readable: Int) {
-		var counts = Dictionary(uniqueKeysWithValues: allCases.map { ($0, 0) })
-		var readable = 0
-		for value in values {
-			try Task.checkCancellation()
-			let orders = allCases.filter { $0.day(value) != nil }
-			for order in orders { counts[order]! += 1 }
-			if !orders.isEmpty { readable += 1 }
-		}
-		return (counts, readable)
-	}
-
-	/// The day of "10/31/26" in this order, or of "2026-10-31". A two-digit year below 70 is in the 2000s, and
-	/// from 70 on in the 1900s. A date with dots, such as "31.10.2026", reads day first in any order, because
-	/// no bank writes month first with dots, and one typo in a value date must not turn every booking date.
-	func day(_ text: String) -> Day? {
-		let parts = text.split(whereSeparator: { $0 == "-" || $0 == "." || $0 == "/" })
-		guard parts.count == 3, let a = Int(parts[0]), let b = Int(parts[1]), var c = Int(parts[2]) else { return nil }
-		if parts[0].count == 4 { return Day.valid(year: a, month: b, day: c) }
-		guard parts[2].count == 2 || parts[2].count == 4 else { return nil }
-		if parts[2].count == 2 { c += c < 70 ? 2000 : 1900 }
-		switch text.contains(".") ? .dayMonthYear : self {
-		case .dayMonthYear: return Day.valid(year: c, month: b, day: a)
-		case .monthDayYear: return Day.valid(year: c, month: a, day: b)
-		}
 	}
 }
 
@@ -721,7 +421,7 @@ final class CAMTParser: NSObject, XMLParserDelegate {
 			bookingText: entry["bookingText"],
 			endToEndReference: ofOneParty("e2e").flatMap { $0 == "NOTPROVIDED" ? nil : $0 },
 			mandateReference: ofOneParty("mandate"), creditorID: ofOneParty("creditor"),
-			isPending: entry["status"] == "PDNG", returnReason: common("returnReason"))
+			isPending: entry["status"] == "PDNG" || entry["status"] == "FUTR", returnReason: common("returnReason"))
 		if result.transactions.isEmpty { result.declaredCurrency = entry["currency"] }
 		result.transactions.append(t)
 	}

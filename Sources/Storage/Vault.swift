@@ -168,7 +168,8 @@ public struct Vault: Sendable {
 		guard migrate else { return Store(queue: queue) }
 		let migrator = Schema.migrator
 		try queue.read { db in
-			if try migrator.hasBeenSuperseded(db) { throw Failure.newerVersion }
+			let unknown = try migrator.appliedIdentifiers(db).subtracting(migrator.appliedMigrations(db))
+			if !unknown.isEmpty { throw Failure.newerVersion }
 		}
 		let needsUpgrade = try queue.read { db in try !migrator.hasCompletedMigrations(db) }
 		let isNew = try queue.read { db in try !db.tableExists("account") }

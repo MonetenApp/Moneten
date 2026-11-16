@@ -11,6 +11,7 @@
 # the password, a text of the bank, or a text of the extension.
 # It also imports a CSV file whose name, rows, and value date hold made-up personal data and a text
 # of the bank.
+# The check also opens a failing CSV preview and reads its rows.
 # The app runs with a temporary data folder and a password, so it never opens the real database and
 # leaves no Keychain item, and as a copy under its own bundle ID, so it leaves an installed Moneten alone.
 set -e
@@ -37,6 +38,7 @@ fi
 WORK="$(mktemp -d "$PWD/.build/check-debug-log.XXXXXX")"
 finish() {
 	if [ -n "$PID" ]; then kill "$PID" 2>/dev/null || true; fi
+	security delete-generic-password -s "Moneten crash report key" -a "$DATA/Database/Moneten.sqlite" >/dev/null 2>&1 || true
 	[ -n "$KEEP" ] && echo "The log stays in $WORK/debug." || rm -rf "$WORK"
 }
 trap finish EXIT
@@ -112,6 +114,7 @@ cat >"$DATA/export.json" <<-'EOF'
 EOF
 poll "^importall " importall "$DATA/export.json"
 poll "^exportall " exportall "$DATA/missing/export.json"
+poll "^alert " alert
 send sheet newAccount
 send setup "entry 12030000"
 send setup next
@@ -141,6 +144,11 @@ send select Girokonto
 poll "^filterbar account .*account=[0-9A-F]" filterbar "account Tagesgeld"
 poll "^filterbar account .*account=all" filterbar account
 poll "^phase=" state
+send search Miete
+poll "^phase=.*visible=1 " state
+poll "^split saved=true parts=2" split 25,00
+send search ""
+poll "^phase=" state
 send selectRows 1
 poll "^exportcontextcsv rows=" exportcontextcsv "$DATA/context.csv"
 poll "^exportstatus running=false" exportstatus
@@ -150,9 +158,41 @@ poll "^exportstatus running=false" exportstatus
 poll "^snapshot " snapshot check
 printf '%s\n' "Buchungstag;Valuta;Empfänger;Verwendungszweck;Betrag" "09.11.2026;Wartungsarbeiten;Erika Mustermann;Gehalt November;1.250,00" \
 	"10.11.2026;10.11.2026;Wohnbau Musterstadt eG;Miete;-950,00" >"$WORK/Erika Mustermann.csv"
+send filterbar "pin on"
+send filterbar "amount withdrawals"
+poll "^pin=true period=all status=all amount=withdrawals filter=amount category=all account=all saved=true$" state
+poll "^csvhandoff prepared$" csvhandoff prepare
+for header in "" "Date;Name;Amount"; do
+	printf '%s\n' "$header" '03/04/2026;Kiosk;1,234' '05/06/2026;Kiosk;2,345' >"$WORK/handoff.csv"
+	send importfile "$WORK/handoff.csv"
+	poll "^csv state " csv state
+	send csv "column 0=bookingDate"
+	send csv "column 1=name"
+	send csv "column 2=amount"
+	send csv "date monthDayYear"
+	send csv "decimal point"
+	poll "^csv state .*date=monthDayYear .*count=2 canImport=true" csv state
+	send csvhandoff confirm
+	poll "^importanswer .*otherPosition=[0-9]" importanswer
+	send importanswer named
+	poll "^importfile done" state
+	poll "^alert " alert
+	poll "^csvhandoff accounts=1 count=2 amountSum=3579 dateSum=40520810$" csvhandoff state
+done
 send importfile "$WORK/Erika Mustermann.csv"
+poll "^csv state .*canImport=true" csv state
+poll "^csv rows" csv rows
+poll "^pin=true period=all status=all amount=withdrawals filter=amount category=all account=all saved=true$" state
+send key return
 poll "^importfile done" state
 poll "^alert " alert
+send importfile "$WORK/Erika Mustermann.csv"
+poll "^csv state .*canImport=true" csv state
+send key return
+poll "^importfile done" state
+poll "^alert " alert
+poll "^pin=true period=all status=all amount=withdrawals filter=amount category=all account=all saved=true$" state
+send filterbar "pin off"
 poll "^rows " rows Girokonto
 poll "^gave up$" search "currency:/^+?49/"
 send search ""
@@ -195,6 +235,15 @@ poll "^importanswer .*fileIndex=3 " importanswer
 send importanswer selected
 poll "^importfile done" state
 poll "^alert " alert
+# A preview whose rows hold names and purposes, and whose problem names a cell of the file.
+printf '%s\n' "Buchungstag;Empfänger;Verwendungszweck;Betrag" "11.11.2026;Tankstelle Beispiel;Kartenzahlung;-42,50" \
+	"Miete 12;Beispiel GmbH;Sparen;-1,00" >"$WORK/Kontoauszug.csv"
+send importfile "$WORK/Kontoauszug.csv"
+poll "^csv state .*problem=line 3" csv state
+poll "^csv rows" csv rows
+send key escape
+poll "^importfile done" state
+poll "^alert " alert
 send selectRows 1
 send newcategory Haushaltskasse
 poll "selection=.*SidebarSelection.category" state
@@ -217,11 +266,24 @@ poll "^ext access Check Bank state=failed" extstate
 send extrun "$WORK/Check.lua|Result|"
 poll "^ext result" state
 poll "^migrationfailure: unknown failure$" migrationfailure "$MIGRATION_UNKNOWN"
+poll "^crash inject frames=1 pending=true" crashinject private
+poll "^crash url characters=" crashurl
+for value in DE02120300000000202051 "Erika Mustermann" /Users/erika; do
+	if grep -F -- "$value" "$WORK/debug/crash-report.txt" "$WORK/debug/crash-url.txt"; then
+		echo "The crash report contains personal data." >&2
+		exit 1
+	fi
+done
+poll "^crash decision pending=false copied=true" crashdecision copy
+poll "^crash inject frames=3 pending=true" crashinject
+poll "^crash decision pending=false copied=false" crashdecision decline
+poll "^crash inject frames=500 pending=true timeMatches=true" crashinject "long|1800000000"
+poll "^crash decision pending=false copied=true" crashdecision copy
 send quit
 
 found=0
-for value in DE02120300000000202051 "DE02 1203" 202051 1234567890 0099887766 "99 88 77 66" 4711 5550001 "$LOGIN" "$PIN" "$MIGRATION_UNKNOWN" 123456 check-debug-log \
-	Girokonto Tagesgeld Kreditkarte Extrakonto "Erika Mustermann" "Beispiel GmbH" "Wohnbau Musterstadt" "Tankstelle Beispiel" \
+for value in "25,00" "20,00" "30,00" "Synthetic extra" DE02120300000000202051 "DE02 1203" 202051 1234567890 0099887766 "99 88 77 66" 4711 5550001 "$LOGIN" "$PIN" "$MIGRATION_UNKNOWN" 123456 1800000000 check-debug-log \
+	"Baumarkt Beispiel" "Weekly shop" "REWE SAGT DANKE" "REWE receipt" "Receipt" "demo-split" "Handoff Synthetic" 88776655 Kiosk Girokonto Tagesgeld Kreditkarte Extrakonto "Erika Mustermann" /Users/erika "Beispiel GmbH" "Wohnbau Musterstadt" "Tankstelle Beispiel" \
 	"Gehalt November" Miete Kartenzahlung Sparen Haushaltskasse MIETE-2026-11 GUTSCHRIFT DAUERAUFTRAG \
 	"Zugang vorübergehend gesperrt" "PIN falsch" Wartungsarbeiten pushTAN-App "currency:/^+?49/"; do
 	if grep -n -w -F -- "$value" "$LOG" >&2; then

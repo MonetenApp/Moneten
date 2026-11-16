@@ -8,7 +8,7 @@ extension Store {
 		case notEmpty
 
 		public var description: String {
-			String(localized: "The import of all data works only in an empty database. This database already holds accounts, categories, or transactions.")
+			String(localized: "The import of all data works only in an empty database. This database already holds accounts, categories, transactions, or CSV profiles.")
 		}
 	}
 
@@ -27,6 +27,9 @@ extension Store {
 				holdings: try HoldingRecord.order(Column.rowID).fetchAll(db).enumerated().map { index, record in
 					guard let holding = record.holding else { throw AllData.ReadError.unreadableDatabase("at holdings[\(index)], the stored holding cannot be read") }
 					return holding
+				},
+				csvProfiles: try Row.fetchAll(db, sql: "SELECT name, version, payload FROM csvProfile ORDER BY rowid").map {
+					CSVProfileData(name: $0["name"], version: $0["version"], payload: $0["payload"])
 				})
 		}
 	}
@@ -73,7 +76,8 @@ extension Store {
 	private func write(_ data: AllData, replacing starters: [UUID]) throws {
 		try queue.write { db in
 			let others = try Domain.Category.filter(!starters.contains(Column("id"))).fetchCount(db)
-			guard try Account.fetchCount(db) == 0, try Transaction.fetchCount(db) == 0, others == 0 else { throw ImportRefusal.notEmpty }
+			guard try Account.fetchCount(db) == 0, try Transaction.fetchCount(db) == 0, others == 0,
+				try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM csvProfile") == 0 else { throw ImportRefusal.notEmpty }
 			// A group or category can come before its parent in the order of the database.
 			try db.execute(sql: "PRAGMA defer_foreign_keys = ON")
 			_ = try Domain.Category.deleteAll(db)
@@ -88,6 +92,9 @@ extension Store {
 			for d in data.deletedTransactions { try d.insert(db) }
 			for v in data.portfolioValues { try v.insert(db) }
 			for h in data.holdings { try HoldingRecord(h).insert(db) }
+			for profile in data.csvProfiles {
+				try db.execute(sql: "INSERT INTO csvProfile(name, version, payload) VALUES (?, ?, ?)", arguments: [profile.name, profile.version, profile.payload])
+			}
 		}
 	}
 }

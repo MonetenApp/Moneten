@@ -18,8 +18,8 @@ extension AppModel {
 
 	func rowsToExport(of target: SidebarSelection) -> [Transaction] {
 		navigate(to: target)
-		if case .account = target { return ledger.transactions(in: target.scope).rows }
-		return transactions(for: TableKey(selection: target, filter: filter, portfolios: selectedPortfolios)).rows
+		if case .account = target { return ledger.rows(in: target.scope).rows }
+		return rows(for: TableKey(selection: target, filter: filter, portfolios: selectedPortfolios)).rows
 	}
 
 	func exportTransactions(ids: Set<UUID>) {

@@ -21,6 +21,8 @@ public struct Ledger: Sendable {
 	private var holdingsByAccount: [UUID: [Holding]] = [:]
 
 	private var partsByTransaction: [UUID: [SplitPart]] = [:]
+	private var partRows: [UUID: [Transaction]] = [:]
+	private var transactionByPart: [UUID: UUID] = [:]
 
 	private var transactionIndex: [UUID: Int] = [:]
 	private var searchText: [UUID: String] = [:]
@@ -45,7 +47,11 @@ public struct Ledger: Sendable {
 		sortAndIndex()
 		let accountsByID = Dictionary(uniqueKeysWithValues: accounts.map { ($0.id, $0) })
 		let names = categoryNames
-		searchText = Dictionary(uniqueKeysWithValues: transactions.map { ($0.id, searchText(of: $0, account: accountsByID[$0.accountID], categoryNames: names)) })
+		partsByTransaction = partsByTransaction.filter { transactionIndex[$0.key] != nil }
+		searchText = [:]
+		partRows = [:]
+		transactionByPart = [:]
+		for t in transactions { rebuildRows(of: t, account: accountsByID[t.accountID], categoryNames: names) }
 		countNew()
 	}
 
@@ -74,15 +80,33 @@ public struct Ledger: Sendable {
 		return names
 	}
 
-	private func searchText(of t: Transaction, account: Account?, categoryNames: [UUID?: String]) -> String {
-		SearchText.of(t, account: account, categoryName: categoryNames[t.categoryID])
+	private mutating func rebuildRows(of t: Transaction, account: Account?, categoryNames: [UUID?: String]) {
+		if let old = partRows.removeValue(forKey: t.id) {
+			for row in old { searchText[row.id] = nil; transactionByPart[row.id] = nil }
+		}
+		searchText[t.id] = SearchText.of(t, account: account, categoryName: categoryNames[t.categoryID])
+		guard let parts = partsByTransaction[t.id] else { return }
+		let originalAmounts = Self.amountTexts(t.amountMinor, decimals: t.amount.decimalPlaces).joined(separator: "\u{1}")
+		partRows[t.id] = parts.map { part in
+			var row = t
+			row.id = part.id
+			row.amountMinor = part.amountMinor
+			row.categoryID = part.categoryID
+			row.comment = part.comment
+			row.categorizedBy = .manual
+			transactionByPart[part.id] = t.id
+			searchText[part.id] = SearchText.of(row, account: account, categoryName: categoryNames[row.categoryID]) + "\u{1}" + originalAmounts
+			return row
+		}
 	}
 
 	/// Builds the search texts of the rows that `isAffected` picks again, after a change of a name or a number they hold.
 	private mutating func refreshSearchText(where isAffected: (Transaction) -> Bool) {
 		let accountsByID = Dictionary(uniqueKeysWithValues: accounts.map { ($0.id, $0) })
 		let names = categoryNames
-		for t in transactions where isAffected(t) { searchText[t.id] = searchText(of: t, account: accountsByID[t.accountID], categoryNames: names) }
+		for t in transactions where isAffected(t) || (partRows[t.id]?.contains(where: isAffected) ?? false) {
+			rebuildRows(of: t, account: accountsByID[t.accountID], categoryNames: names)
+		}
 	}
 
 	/// An amount as a user types it into the search: without trailing zeros ("-23.4", "-23,4") and
@@ -121,8 +145,17 @@ public struct Ledger: Sendable {
 	public func group(_ id: UUID) -> AccountGroup? { groups.first { $0.id == id } }
 	public func category(_ id: UUID) -> Category? { categories.first { $0.id == id } }
 	public func transaction(_ id: UUID) -> Transaction? { transactionIndex[id].map { transactions[$0] } }
-	// periphery:ignore - task 6.8
+	public func row(_ id: UUID) -> Transaction? {
+		if let original = transactionByPart[id] { return partRows[original]?.first { $0.id == id } }
+		return partsByTransaction[id] == nil ? transaction(id) : nil
+	}
+
 	public func parts(of transactionID: UUID) -> [SplitPart] { partsByTransaction[transactionID] ?? [] }
+
+	public func part(_ rowID: UUID) -> SplitPart? {
+		guard let id = transactionByPart[rowID] else { return nil }
+		return partsByTransaction[id]?.first { $0.id == rowID }
+	}
 
 	/// The recorded values of a portfolio, the oldest first.
 	public func portfolioValues(of accountID: UUID) -> [PortfolioValue] { portfolioHistory[accountID] ?? [] }
@@ -276,7 +309,9 @@ public struct Ledger: Sendable {
 		}
 		guard crossesRoot else { return false }
 		let moved = categoryIDs(inTree: id)
-		return transactions.contains { $0.categoryID.map(moved.contains) ?? false }
+		return transactions.contains { t in
+			(partRows[t.id] ?? [t]).contains { $0.categoryID.map(moved.contains) ?? false }
+		}
 	}
 
 	/// The categories that the category picker offers for a search, in sidebar order and without groups.
@@ -287,7 +322,7 @@ public struct Ledger: Sendable {
 
 	/// The accounts that hold these transactions, for `categories(matching:assignableTo:)`.
 	public func accountIDs(ofTransactions ids: Set<UUID>) -> Set<UUID> {
-		Set(ids.compactMap { transaction($0)?.accountID })
+		Set(ids.compactMap { row($0)?.accountID })
 	}
 
 	/// The same categories without those that the transactions of `accounts` cannot take. The picker passes
@@ -397,12 +432,15 @@ public struct Ledger: Sendable {
 		}
 		var sums = [Int64](repeating: 0, count: categories.count)
 		let defaultID = defaultCategory?.id
-		for t in transactions {
-			guard let id = t.categoryID ?? defaultID, let i = index.position(of: id) else { continue }
+		func add(_ t: Transaction) {
+			guard let id = t.categoryID ?? defaultID, let i = index.position(of: id) else { return }
 			let day = t.bookingDate.rawValue
 			for target in targets[chains[i]] where target.from <= day && day <= target.through && t.isInSum(of: target.currency) {
 				sums[target.category] += t.amountMinor
 			}
+		}
+		for t in transactions {
+			if let rows = partRows[t.id] { for row in rows { add(row) } } else { add(t) }
 		}
 		var amounts: [UUID: Money] = [:]
 		for (i, c) in categories.enumerated() where sums[i] != 0 {
@@ -423,7 +461,7 @@ public struct Ledger: Sendable {
 
 	// MARK: Filtering
 
-	public func transactions(in scope: LedgerScope, filter: TransactionFilter = TransactionFilter()) -> TransactionSearchResult {
+	public func rows(in scope: LedgerScope, filter: TransactionFilter = TransactionFilter()) -> TransactionSearchResult {
 		// One pass over the rows, because copying 50,000 rows into a list of the view first cost as much as the search.
 		let inScope: (Transaction) -> Bool
 		switch scope {
@@ -443,8 +481,8 @@ public struct Ledger: Sendable {
 		let categoryFilter = filter.categoryID.map { categoryIDs(inTree: $0) }
 		let defaultID = defaultCategory?.id ?? UUID()
 		var amountBounds: [Int: MinorBounds] = [:]
-		let rows = Array(transactions.lazy.filter(inScope).prefix { _ in !query.gaveUp }.filter { t in
-			guard filter.period.contains(t.bookingDate) else { return false }
+		func matches(_ t: Transaction) -> Bool {
+			guard inScope(t), filter.period.contains(t.bookingDate) else { return false }
 			switch filter.status {
 			case .all: break
 			case .checked: if !t.isChecked { return false }
@@ -464,7 +502,17 @@ public struct Ledger: Sendable {
 			if let a = filter.accountID, t.accountID != a { return false }
 			if query.isEmpty { return true }
 			return query.matches(t, searchText: searchText[t.id] ?? "", account: { accountsByID[t.accountID] }, categoryName: { names[t.categoryID] })
-		})
+		}
+		var rows: [Transaction] = []
+		for t in transactions {
+			if query.gaveUp { break }
+			if let parts = partRows[t.id] {
+				for row in parts {
+					if query.gaveUp { break }
+					if matches(row) { rows.append(row) }
+				}
+			} else if matches(t) { rows.append(t) }
+		}
 		return TransactionSearchResult(rows: rows, gaveUp: query.gaveUp)
 	}
 
@@ -485,8 +533,30 @@ public struct Ledger: Sendable {
 		if accounts != nil || categories != nil || transactions != nil { rebuildIndexes() } else { countNew() }
 	}
 
+	public func changes(from rows: [Transaction]) -> (transactions: [Transaction], parts: [SplitPart]) {
+		var changed: [UUID: Transaction] = [:]
+		var parts: [SplitPart] = []
+		for row in rows {
+			if var part = part(row.id), let original = transaction(part.transactionID) {
+				if part.categoryID != row.categoryID || part.comment != row.comment {
+					part.categoryID = row.categoryID
+					part.comment = row.comment
+					parts.append(part)
+				}
+				var t = changed[original.id] ?? original
+				if row.isChecked != original.isChecked { t.isChecked = row.isChecked }
+				if row.isNew != original.isNew { t.isNew = row.isNew }
+				if row.review != original.review { t.review = row.review }
+				if t != original { changed[t.id] = t }
+			} else if partsByTransaction[row.id] == nil, row != transaction(row.id) {
+				changed[row.id] = row
+			}
+		}
+		return (Array(changed.values), parts)
+	}
+
 	/// Replaces transactions with the same identifier. Faster than `replace` for a handful of rows.
-	public mutating func update(_ changed: [Transaction]) {
+	public mutating func update(_ changed: [Transaction], parts: [SplitPart] = []) {
 		var needsSort = false
 		let accountsByID = Dictionary(uniqueKeysWithValues: accounts.map { ($0.id, $0) })
 		let names = categoryNames
@@ -498,7 +568,17 @@ public struct Ledger: Sendable {
 				transactions.append(t)
 				needsSort = true
 			}
-			searchText[t.id] = searchText(of: t, account: accountsByID[t.accountID], categoryNames: names)
+			rebuildRows(of: t, account: accountsByID[t.accountID], categoryNames: names)
+		}
+		var affected: Set<UUID> = []
+		for part in parts {
+			guard let id = transactionByPart[part.id], let i = partsByTransaction[id]?.firstIndex(where: { $0.id == part.id }) else { continue }
+			partsByTransaction[id]?[i].categoryID = part.categoryID
+			partsByTransaction[id]?[i].comment = part.comment
+			affected.insert(id)
+		}
+		for id in affected {
+			if let t = transaction(id) { rebuildRows(of: t, account: accountsByID[t.accountID], categoryNames: names) }
 		}
 		// An import of 2,000 rows into 50,000 sorts again but builds the search text of the new rows only.
 		if needsSort { sortAndIndex() }
@@ -514,14 +594,46 @@ public struct Ledger: Sendable {
 		}
 		if let h = r.holdings { holdingsByAccount[h.accountID] = h.holdings.sorted(by: Holding.isOrdered) }
 		if !r.dropped.isEmpty { remove(transactionIDs: Set(r.dropped)) }
+		for id in r.unsplit { replaceParts(of: id, with: []) }
 		update(r.added + r.booked + r.updated + r.marked)
 	}
 
 	public mutating func remove(transactionIDs ids: Set<UUID>) {
 		transactions.removeAll { ids.contains($0.id) }
-		for id in ids { searchText[id] = nil }
+		for id in ids {
+			partsByTransaction[id] = nil
+			for row in partRows.removeValue(forKey: id) ?? [] { searchText[row.id] = nil; transactionByPart[row.id] = nil }
+			searchText[id] = nil
+		}
 		sortAndIndex()
 		countNew()
+	}
+
+	public mutating func replaceParts(of transactionID: UUID, with parts: [SplitPart]) {
+		guard let original = transaction(transactionID) else { return }
+		partsByTransaction[transactionID] = parts.isEmpty ? nil : parts.map { part in
+			var part = part
+			part.transactionID = transactionID
+			return part
+		}.sorted { $0.position < $1.position }
+		rebuildRows(of: original, account: account(original.accountID), categoryNames: categoryNames)
+	}
+
+	public mutating func remove(category id: UUID) {
+		let removed = categoryIDs(inTree: id)
+		categories.removeAll { removed.contains($0.id) }
+		for i in transactions.indices where transactions[i].categoryID.map(removed.contains) ?? false {
+			transactions[i].categoryID = nil
+			transactions[i].categorizedBy = .none
+		}
+		for id in Array(partsByTransaction.keys) {
+			partsByTransaction[id] = partsByTransaction[id]?.map { part in
+				var part = part
+				if part.categoryID.map(removed.contains) ?? false { part.categoryID = nil }
+				return part
+			}
+		}
+		rebuildIndexes()
 	}
 
 	public mutating func upsert(_ account: Account) {
