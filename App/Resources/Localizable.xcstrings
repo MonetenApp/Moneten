@@ -910,6 +910,26 @@
         }
       }
     },
+    "(%@ VAT)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "(%@ MwSt.)"
+          }
+        }
+      }
+    },
+    "(net)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "(netto)"
+          }
+        }
+      }
+    },
     "0,00" : {
       "localizations" : {
         "de" : {
@@ -1717,6 +1737,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Betrag"
+          }
+        }
+      }
+    },
+    "Amount to split off" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abzuspaltender Betrag"
           }
         }
       }
@@ -3892,6 +3922,16 @@
         }
       }
     },
+    "Enter a nonzero amount that leaves a nonzero remainder." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Geben Sie einen Betrag ungleich null ein, der einen Rest ungleich null übrig lässt."
+          }
+        }
+      }
+    },
     "Enter Database Password" : {
       "localizations" : {
         "de" : {
@@ -4931,6 +4971,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Sie darf diese Hosts ohne Rückfrage kontaktieren:"
+          }
+        }
+      }
+    },
+    "Kept splits" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Behaltene Teile"
           }
         }
       }
@@ -5986,6 +6036,16 @@
         }
       }
     },
+    "Next Split" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nächster Teil"
+          }
+        }
+      }
+    },
     "Next view" : {
       "localizations" : {
         "de" : {
@@ -6666,6 +6726,16 @@
         }
       }
     },
+    "Part of %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Teil von %@"
+          }
+        }
+      }
+    },
     "Password" : {
       "localizations" : {
         "de" : {
@@ -7109,6 +7179,16 @@
         }
       }
     },
+    "Remainder" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rest"
+          }
+        }
+      }
+    },
     "Remove" : {
       "localizations" : {
         "de" : {
@@ -7205,6 +7285,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Neues Passwort wiederholen"
+          }
+        }
+      }
+    },
+    "Replace the split transactions with the original transaction?" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die aufgeteilten Umsätze durch den ursprünglichen Umsatz ersetzen?"
           }
         }
       }
@@ -7880,6 +7970,66 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Quellcode"
+          }
+        }
+      }
+    },
+    "Split" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aufteilen"
+          }
+        }
+      }
+    },
+    "Split %@ VAT" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ MwSt. abspalten"
+          }
+        }
+      }
+    },
+    "Split Amount" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Betrag abspalten"
+          }
+        }
+      }
+    },
+    "Split Amount..." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Betrag abspalten..."
+          }
+        }
+      }
+    },
+    "Split from Batch Payment" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aus Sammelbuchung aufteilen"
+          }
+        }
+      }
+    },
+    "Split Transaction" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Umsatz aufteilen"
           }
         }
       }
@@ -10307,6 +10457,16 @@
         }
       }
     },
+    "The split transactions cannot be restored." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die aufgeteilten Umsätze können nicht wiederhergestellt werden."
+          }
+        }
+      }
+    },
     "The TAN method %@ has a length that is not valid." : {
       "localizations" : {
         "de" : {
@@ -10724,6 +10884,16 @@
         }
       }
     },
+    "Transaction" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Umsatz"
+          }
+        }
+      }
+    },
     "Transaction %lld has no amount." : {
       "localizations" : {
         "de" : {
@@ -10895,6 +11065,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ungeprüft"
+          }
+        }
+      }
+    },
+    "Undo Split Transaction" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aufteilung rückgängig machen"
+          }
+        }
+      }
+    },
+    "Undo Split Transaction..." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aufteilung rückgängig machen..."
           }
         }
       }
