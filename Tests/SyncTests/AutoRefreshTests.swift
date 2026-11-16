@@ -220,7 +220,7 @@ final class AutoRefreshTests {
 				ledger.apply(merged)
 				announcer.stored(merged.added)
 			}
-			coordinator.ended = { [unowned self] _, _, results, _ in
+			coordinator.ended = { [unowned self] _, results, _ in
 				for (id, result) in results {
 					guard var a = ledger.account(id) else { continue }
 					a.record(result)
@@ -401,7 +401,7 @@ final class AutoRefreshTests {
 		let bank = Self.access("Musterbank")
 		let gate = FailureWithStateTests.Gate()
 		var reported: Set<UUID> = []
-		coordinator.ended = { _, _, results, _ in reported.formUnion(results.keys) }
+		coordinator.ended = { _, results, _ in reported.formUnion(results.keys) }
 		let connector = HeldFailure(request: Self.tan, account: Self.giro.accountID, gate: gate, holdsCancel: false)
 		coordinator.refresh(RefreshRequest(access: bank, accounts: [Self.giro]), with: connector, attended: false)
 		await until { gate.isWaiting }
@@ -507,7 +507,7 @@ final class AutoRefreshTests {
 		let coordinator = SyncCoordinator()
 		let bank = Self.access("Musterbank")
 		var ends: [Bool] = []
-		coordinator.ended = { _, _, _, attended in ends.append(attended) }
+		coordinator.ended = { _, _, attended in ends.append(attended) }
 		coordinator.refresh(RefreshRequest(access: bank, accounts: [Self.giro]),
 			with: ScriptedConnector([.wait(.milliseconds(50)), .fetched(Self.giro.accountID)]), attended: attended)
 		#expect(coordinator.runsUnattended(bank.id) == !attended)

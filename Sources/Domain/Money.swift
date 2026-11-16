@@ -73,22 +73,43 @@ public struct MoneySums: Hashable, Sendable {
 
 	public var isEmpty: Bool { byCurrency.isEmpty }
 
-	/// The text that "Copy Sum" of the status line puts on the pasteboard: the amount with the decimal mark of
-	/// `locale`, a plain minus, and no thousands separators or currency symbol, so that a spreadsheet reads it
-	/// as a number. Sums in several currencies give one line each, with the currency code. An empty sum is
-	/// zero in `currency`, as the status line shows it.
-	public func copyText(currency: String, locale: Locale) -> String {
+	/// The amounts that the status line of a list shows: one per currency, or 0 when no row counts.
+	///
+	/// The 0 takes the currency of the view, that of its account or category, before that of its first row,
+	/// because a row that counts in no sum, such as a pending row under review, must not decide the currency.
+	/// A view without a currency of its own, such as an account group, takes the currency of its first row, then the euro.
+	public func shownAmounts(viewCurrency: String?, rows: [Transaction]) -> [Money] {
+		isEmpty ? [Money(minorUnits: 0, currency: viewCurrency ?? rows.first?.currency ?? "EUR")] : amounts
+	}
+
+	/// The text that "Copy Sum" of the status line puts on the pasteboard for the `amounts` that the status line
+	/// shows (`shownAmounts`): the amount with the decimal mark of `locale`, a plain minus, and no thousands
+	/// separators or currency symbol, so that a spreadsheet reads it as a number. Several currencies give one
+	/// line each, with the currency code.
+	public static func copyText(_ amounts: [Money], locale: Locale) -> String {
 		let mark = locale.decimalSeparator ?? "."
 		func number(_ m: Money) -> String { AmountText.text(m.minorUnits, m.currency).replacingOccurrences(of: ".", with: mark) }
-		let all = isEmpty ? [Money(minorUnits: 0, currency: currency)] : amounts
-		return all.count == 1 ? number(all[0]) : all.map { "\(number($0)) \($0.currency)" }.joined(separator: "\n")
+		return amounts.count == 1 ? number(amounts[0]) : amounts.map { "\(number($0)) \($0.currency)" }.joined(separator: "\n")
 	}
 }
 
 /// The character that separates the whole units of an amount from its fraction.
-public enum DecimalMark: Character, Sendable, CaseIterable {
+public enum DecimalMark: Character, Sendable, CaseIterable, Codable {
 	case comma = ","
 	case point = "."
+
+	public init(from decoder: Decoder) throws {
+		let text = try decoder.singleValueContainer().decode(String.self)
+		guard let mark = text.first.flatMap(DecimalMark.init(rawValue:)), text.count == 1 else {
+			throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "No decimal mark: \(text)"))
+		}
+		self = mark
+	}
+
+	public func encode(to encoder: Encoder) throws {
+		var container = encoder.singleValueContainer()
+		try container.encode(String(rawValue))
+	}
 
 	/// The other character, which may only separate groups of three digits.
 	var grouping: Character { self == .comma ? "." : "," }

@@ -65,6 +65,7 @@ public enum RuleApplier {
 		for (i, var t) in transactions.enumerated() {
 			guard !Task.isCancelled else { return [] }
 			defer { if (i + 1) % 1_000 == 0 || i + 1 == transactions.count { progress(i + 1) } }
+			guard ledger.parts(of: t.id).isEmpty else { continue }
 			let inScope = restriction.map { $0.contains(t.accountID) } ?? true
 			let matches = inScope && rule.matches(RuleSubject(t, account: ledger.account(t.accountID)))
 			switch mode {
@@ -89,15 +90,25 @@ public enum RuleApplier {
 		return changed
 	}
 
+	public static func matchCount(category: Category, rule: Rule, ledger: Ledger) -> Int {
+		let restriction = ledger.allowedAccounts(of: category)
+		return ledger.transactions.reduce(0) { count, transaction in
+			guard ledger.parts(of: transaction.id).isEmpty,
+				restriction.map({ $0.contains(transaction.accountID) }) ?? true else { return count }
+			return count + (rule.matches(RuleSubject(transaction, account: ledger.account(transaction.accountID))) ? 1 : 0)
+		}
+	}
+
 	/// The rows to save for a run of `apply` on `snapshot` when the ledger is now `current`. A row that is the
 	/// same as in the snapshot takes the result of the run, a row that changed or arrived since is checked again
 	/// against `current`, and a row that `current` no longer holds drops out.
 	public static func rebase(_ results: [Transaction], from snapshot: Ledger, onto current: Ledger,
 		category: Category, rule: Rule, mode: RuleApplication) -> [Transaction] {
-		if current.transactions == snapshot.transactions { return results }
-		let changedSince = current.transactions.filter { snapshot.transaction($0.id) != $0 }
+		let changedSince = current.transactions.filter {
+			snapshot.transaction($0.id) != $0 || snapshot.parts(of: $0.id).isEmpty != current.parts(of: $0.id).isEmpty
+		}
 		let rechecked = Set(changedSince.map(\.id))
-		let kept = results.filter { !rechecked.contains($0.id) && current.transaction($0.id) != nil }
+		let kept = results.filter { !rechecked.contains($0.id) && current.transaction($0.id) != nil && current.parts(of: $0.id).isEmpty }
 		return kept + apply(category: category, rule: rule, to: changedSince, ledger: current, mode: mode)
 	}
 }
