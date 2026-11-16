@@ -175,8 +175,7 @@ public struct CrashReportStore {
 	private func write(_ state: State) throws {
 		try folder.createFolders()
 		let data = try AES.GCM.seal(JSONEncoder().encode(state), using: key()).combined!
-		try data.write(to: file, options: .atomic)
-		try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
+		try PrivateFile.write(data, to: file)
 	}
 
 	private func key() throws -> SymmetricKey {

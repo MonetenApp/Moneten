@@ -86,7 +86,7 @@ struct PerfScenario {
 					return c.fail("the split did not start in a drawn view of 50000 rows")
 				}
 				let balance = c.model.ledger.computedBalance(of: account)
-				guard await c.model.split(row: row.id, off: [Money(minorUnits: -2500, currency: row.currency)]) else {
+				guard await c.model.split(row: row.id, off: [Money(minorUnits: -2500, currency: row.currency)]) == .done else {
 					return c.fail("split failed")
 				}
 				await c.settle()
@@ -542,7 +542,7 @@ struct PerfContext {
 
 	func checkStaleSplitWrites(_ original: Transaction) async {
 		var row = original
-		let currencySplit = Task { await model.split(row: row.id, off: [Money(minorUnits: -2500, currency: "EUR")]) }
+		let currencySplit = Task { await model.split(row: row.id, off: [Money(minorUnits: -2500, currency: "EUR")]) == .done }
 		for _ in 0..<1000 where model.tableHolds == 0 { await Task.yield() }
 		guard model.tableHolds > 0 else {
 			_ = await currencySplit.value
@@ -564,7 +564,7 @@ struct PerfContext {
 		guard let parts = try? model.ledger.splitting(row: row.id, off: [Money(minorUnits: -3000, currency: "EUR")]),
 			await model.replaceParts(of: row.id, with: parts) else { return fail("no parts for the edit race") }
 		await settle()
-		let editedSplit = Task { await model.split(row: parts[0].id, off: [Money(minorUnits: -1000, currency: "EUR")]) }
+		let editedSplit = Task { await model.split(row: parts[0].id, off: [Money(minorUnits: -1000, currency: "EUR")]) == .done }
 		for _ in 0..<1000 where model.tableHolds == 0 { await Task.yield() }
 		guard model.tableHolds > 0 else {
 			_ = await editedSplit.value
@@ -585,6 +585,32 @@ struct PerfContext {
 			}
 		} catch { return fail("the part edit race could not be read") }
 		guard await model.replaceParts(of: row.id, with: []) else { return fail("the part edit race did not reset") }
+		await settle()
+		await checkStaleSplitOfCategory(row)
+	}
+
+	/// ⌘K or a rule run during the drawing wait moves the row to another category. The waiting split would store
+	/// its parts in the old category, so it reports a change and stores nothing.
+	func checkStaleSplitOfCategory(_ row: Transaction) async {
+		guard let category = model.ledger.categories.first(where: { !$0.isGroup && !$0.isDefault && $0.id != row.categoryID }) else {
+			return fail("no category for the category race")
+		}
+		let split = Task { await model.split(row: row.id, off: [Money(minorUnits: -1000, currency: "EUR")]) }
+		for _ in 0..<1000 where model.tableHolds == 0 { await Task.yield() }
+		guard model.tableHolds > 0 else {
+			_ = await split.value
+			return fail("the category race missed the drawing wait")
+		}
+		model.assign(category: category.id, to: [row.id])
+		let outcome = await split.value
+		do {
+			guard let stored = try model.store?.loadLedger() else { return fail("no stored category race") }
+			if outcome != .changed || !model.ledger.parts(of: row.id).isEmpty || !stored.parts(of: row.id).isEmpty
+				|| stored.transaction(row.id)?.categoryID != category.id {
+				fail("a waiting split stored its parts in the old category")
+			}
+		} catch { return fail("the category race could not be read") }
+		model.assign(category: row.categoryID, to: [row.id])
 		await settle()
 	}
 

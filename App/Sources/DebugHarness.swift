@@ -750,10 +750,11 @@ final class DebugHarness {
 				if let rate = Preference.rates.first(where: { $0.text == argument }) {
 					saved = await model.splitVAT(row: row.id, rate: rate)
 				} else if let amount = Split.amount(from: argument, on: row.amount, decimalMark: .comma) {
-					saved = await model.split(row: row.id, off: [amount])
+					saved = await model.split(row: row.id, off: [amount]) == .done
 				} else { return log("split refused") }
 				let count = saved ? model.ledger.parts(of: originalID).count : 0
-				log("split", ("saved", .flag(saved)), ("parts", .count(count)), ("transactions", .count(model.ledger.transactions.count)))			}
+				log("split", ("saved", .flag(saved)), ("parts", .count(count)), ("transactions", .count(model.ledger.transactions.count)))
+			}
 		case "undosplit":
 			if let row = model.visibleTransactions.first { model.askUndoSplit(row: row.id) }
 			log("undosplit", ("sheet", model.sheet.map { .state($0) } ?? .word("none")))

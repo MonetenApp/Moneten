@@ -318,7 +318,7 @@ struct VATRateSettings: View {
 
 	private func save() {
 		guard let rate = VATRate(text: text) else { invalid = true; return }
-		if let editing { rates[editing] = rate } else { rates.append(rate) }
+		rates = VATRate.setting(rate, at: editing, in: rates)
 		persist()
 		reset()
 	}

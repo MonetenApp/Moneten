@@ -60,9 +60,7 @@ enum Preference {
 	static let vatRates = "vatRates"
 
 	static var rates: [VATRate] {
-		(UserDefaults.standard.array(forKey: vatRates) as? [Int64] ?? []).compactMap {
-			$0 > 0 ? VATRate(hundredths: $0) : nil
-		}
+		VATRate.list(hundredths: UserDefaults.standard.array(forKey: vatRates) as? [Int64] ?? [])
 	}
 
 	/// The app locks after 10 minutes without activity unless the user turns it off. MoneyMoney has
@@ -940,20 +938,26 @@ final class AppModel {
 
 	@discardableResult
 	func replaceParts(of transactionID: UUID, with parts: [SplitPart]) async -> Bool {
-		guard let store, let original = ledger.transaction(transactionID) else { return false }
-		let previous = ledger.parts(of: transactionID)
+		await replacingParts(of: transactionID, with: parts) == .done
+	}
+
+	/// The parts were computed from the ledger before the drawing wait. A rule run, ⌘K, or a refresh can change
+	/// the transaction or its parts during the wait, so the parts are stored only when `Ledger.splitBase(of:)`
+	/// is the same after it.
+	func replacingParts(of transactionID: UUID, with parts: [SplitPart]) async -> SplitOutcome {
+		guard let store, let base = ledger.splitBase(of: transactionID) else { return .missing }
 		return await replacingTable {
-			guard self.store === store, ledger.transaction(transactionID)?.amount == original.amount,
-				ledger.parts(of: transactionID) == previous else { return false }
+			guard self.store === store, let now = ledger.splitBase(of: transactionID) else { return .missing }
+			guard now == base else { return .changed }
 			do {
 				try store.replaceParts(of: transactionID, with: parts)
 				ledgerChange = "split parts=\(parts.count)"
 				ledger.replaceParts(of: transactionID, with: parts)
 				selectedTransactions = parts.isEmpty ? [transactionID] : Set(parts.map(\.id))
-				return true
+				return .done
 			} catch {
 				alert = AlertMessage(title: String(localized: "Could not split the transaction."), message: String(describing: error))
-				return false
+				return .failed
 			}
 		}
 	}

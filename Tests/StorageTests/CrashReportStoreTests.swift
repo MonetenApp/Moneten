@@ -27,6 +27,7 @@ struct CrashReportStoreTests {
 		#expect(try reopened.receive(first, at: date)?.diagnostic == second)
 		let file = folder.root.appendingPathComponent("CrashReport.encrypted")
 		let bytes = try Data(contentsOf: file)
+		#expect(try FileManager.default.attributesOfItem(atPath: file.path)[.posixPermissions] as? Int == 0o600)
 		#expect(bytes.range(of: Data("0.1.1".utf8)) == nil)
 		#expect(bytes.range(of: Data("appVersion".utf8)) == nil)
 		#expect(try keychain.read(account: folder.keychainAccount) != nil)

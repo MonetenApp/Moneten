@@ -10758,6 +10758,16 @@
       },
       "extractionState" : "manual"
     },
+    "The transaction changed. Try again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Umsatz hat sich geändert. Versuchen Sie es erneut."
+          }
+        }
+      }
+    },
     "The transaction has no debit or credit mark." : {
       "localizations" : {
         "de" : {

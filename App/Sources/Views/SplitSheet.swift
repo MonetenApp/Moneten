@@ -3,9 +3,14 @@ import SwiftUI
 
 struct SplitSheet: View {
 	@Environment(AppModel.self) private var model
-	let row: Transaction
+	@Environment(\.dismiss) private var dismiss
+	/// The row as the window shows it. After a refused stale split it takes the current row, so that the next
+	/// confirm splits the current amount, category, and comment.
+	@State var row: Transaction
 	@State private var text = ""
 	@State private var kept: [Money] = []
+	@State private var changed = false
+	@State private var saving = false
 	@FocusState private var amountFocused: Bool
 
 	private var empty: Bool { text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
@@ -20,7 +25,7 @@ struct SplitSheet: View {
 	}
 
 	var body: some View {
-		SheetFrame(title: "Split Amount", confirmTitle: "Split", canConfirm: amounts != nil, onConfirm: confirm) {
+		SheetFrame(title: "Split Amount", confirmTitle: "Split", canConfirm: amounts != nil && !saving, onConfirm: confirm) {
 			Button("Next Split", action: next)
 				.disabled(empty || amounts == nil)
 				.accessibilityIdentifier("next-split")
@@ -44,9 +49,15 @@ struct SplitSheet: View {
 				}
 				LabeledContent("Remainder", value: amounts?.last.map(Format.money) ?? Format.money(remaining))
 				if !kept.isEmpty { LabeledContent("Kept splits", value: "\(kept.count)") }
+				if changed {
+					Text("The transaction changed. Try again.")
+						.font(.callout).foregroundStyle(Palette.red)
+						.accessibilityIdentifier("split-changed")
+				}
 			}
 		}
 		.onAppear { amountFocused = true }
+		.onChange(of: text) { changed = false }
 	}
 
 	private func next() {
@@ -56,12 +67,24 @@ struct SplitSheet: View {
 		amountFocused = true
 	}
 
+	/// The window waits for the split, because a refresh, a rule run, or ⌘K can change the row while the window is
+	/// open or while the split waits for the table to be drawn. A changed row keeps the window open, and a removed
+	/// row closes it without a split.
 	private func confirm() -> Bool {
-		guard let amounts else { return false }
-		// A refresh can remove this part or change the amount while the sheet is open.
-		guard model.ledger.row(row.id)?.amount == row.amount else { return true }
-		Task { await model.split(row: row.id, off: Array(amounts.dropLast())) }
-		return true
+		guard let amounts, !saving else { return false }
+		saving = true
+		Task {
+			let outcome = await model.split(row: row.id, off: Array(amounts.dropLast()), seen: row)
+			saving = false
+			if outcome == .changed, let current = model.ledger.row(row.id) {
+				row = current
+				changed = true
+				amountFocused = true
+			} else {
+				dismiss()
+			}
+		}
+		return false
 	}
 }
 
