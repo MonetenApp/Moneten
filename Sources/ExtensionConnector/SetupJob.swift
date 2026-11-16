@@ -74,7 +74,7 @@ public struct ExtensionSetupJob: BankConnector {
 		}
 		try await finish(setup, key: key(setup.loginName))
 		// The add stored the state, unless the login joined an access that keeps its own.
-		return ConnectorReport(outcomes: [:])
+		return ConnectorReport(outcomes: [:], notices: setup.notices)
 	}
 
 	@MainActor

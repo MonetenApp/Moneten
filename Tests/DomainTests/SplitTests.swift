@@ -4,6 +4,26 @@ import Testing
 
 @Suite("Split arithmetic")
 struct SplitTests {
+	@Test("A rate reads with up to two decimals and must be above zero")
+	func rateInput() {
+		#expect(VATRate(text: "19")?.hundredths == 1900)
+		#expect(VATRate(text: "8,1")?.hundredths == 810)
+		#expect(VATRate(text: "7.5")?.hundredths == 750)
+		for text in ["0", "-5", "7,125", "abc"] {
+			#expect(VATRate(text: text) == nil)
+		}
+	}
+
+	@Test("Rate input refuses malformed and overflowing values without rounding")
+	func rateInputBoundaries() {
+		#expect(VATRate(text: "0.01")?.hundredths == 1)
+		#expect(VATRate(text: " 7,50 ")?.hundredths == 750)
+		#expect(VATRate(text: "92233720368547758.07")?.hundredths == 9223372036854775807)
+		for text in ["", " ", "0.00", "+5", "−5", "1,000", "7.125", "1.2.3", "1,2.3", "19%", "1e2", "1 000", ".5", "7.", "７", "92233720368547758.08"] {
+			#expect(VATRate(text: text) == nil)
+		}
+	}
+
 	func money(_ minor: Int64, _ currency: String = "EUR") -> Money { Money(minorUnits: minor, currency: currency) }
 
 	@Test("An amount without a sign takes the sign of the row, and a sign stays")

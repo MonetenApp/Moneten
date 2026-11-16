@@ -222,6 +222,20 @@ The app SHALL start with the rates 19 and 7 percent and let the user add, change
 - **WHEN** the user removes all rates
 - **THEN** the submenu contains no tax entries and still contains "Split Amount..."
 
+#### Scenario: Change a rate without changing the order
+
+- **GIVEN** the list contains 19, 7, and 20 percent in that order
+- **WHEN** the user changes 7 to 8,1
+- **THEN** the settings show 19%, 8.1%, and 20% in that order
+- **AND** the submenu shows the same order after the app restarts
+
+#### Scenario: Refuse an unreadable rate
+
+- **GIVEN** the list contains 19 and 7 percent
+- **WHEN** the user enters "7,125" and saves the rate
+- **THEN** the settings say "Enter a rate above zero with up to two decimal places."
+- **AND** the list stays at 19 and 7 percent
+
 ### Requirement: Only booked transactions can be split
 
 The app SHALL refuse to split a pending transaction. It tells the user to wait until the bank has booked the transaction.

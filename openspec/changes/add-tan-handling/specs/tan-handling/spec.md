@@ -224,6 +224,23 @@ The app SHALL show a photoTAN image or a QR code that the bank sends in the dial
 - **WHEN** the user clicks the control that enlarges the code
 - **THEN** the code is shown larger and the dialog grows with it
 
+### Requirement: Checked challenge images
+
+The app SHALL decode a challenge image only when its bytes start with the signature of PNG or JPEG, it has at most 1 MB, and its header states at most 2048 by 2048 pixels. For any other image, the dialog shows the text of the bank, the TAN field, and a note that the image cannot be shown.
+
+#### Scenario: Image in another format
+
+- **GIVEN** the method is "photoTAN"
+- **WHEN** the bank sends a TIFF image with the text "Bitte scannen Sie die Grafik."
+- **THEN** the dialog shows "Bitte scannen Sie die Grafik.", the TAN field, and "The bank sent an image that cannot be shown."
+- **AND** the app decodes no part of the image
+
+#### Scenario: Image with huge dimensions
+
+- **WHEN** the bank sends a PNG image of 900 bytes whose header states 50000 by 50000 pixels
+- **THEN** the dialog shows the text of the bank, the TAN field, and "The bank sent an image that cannot be shown."
+- **AND** the app decodes no part of the image
+
 ### Requirement: QR code that is confirmed in an app
 
 The app SHALL show a QR code without a TAN field when the bank expects the user to scan the code with its app and to approve there. The dialog names the app, and the app checks the result like for any approval in an app. When the bank sends two codes one after the other, the dialog numbers them.

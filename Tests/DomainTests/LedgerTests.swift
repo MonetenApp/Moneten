@@ -816,6 +816,18 @@ struct LedgerTests {
 		#expect(MoneySums(of: counted).shownAmounts(viewCurrency: "USD", rows: counted) == [Money(minorUnits: -500, currency: "USD")])
 	}
 
+	@Test("A sum of zero of positions has the currency of the portfolio, then that of the first position, then the euro")
+	func zeroSumOfPositions() {
+		// A portfolio in USD without positions.
+		#expect(MoneySums().shownAmounts(viewCurrency: "USD", firstRowCurrency: nil) == [Money(minorUnits: 0, currency: "USD")])
+		// A group of portfolios, whose first position belongs to a portfolio in CHF and has no value.
+		#expect(MoneySums().shownAmounts(viewCurrency: nil, firstRowCurrency: "CHF") == [Money(minorUnits: 0, currency: "CHF")])
+		#expect(MoneySums().shownAmounts(viewCurrency: nil, firstRowCurrency: nil) == [Money(minorUnits: 0, currency: "EUR")])
+		var sums = MoneySums()
+		sums.add(Money(minorUnits: 123_450, currency: "USD"))
+		#expect(sums.shownAmounts(viewCurrency: "EUR", firstRowCurrency: nil) == [Money(minorUnits: 123_450, currency: "USD")])
+	}
+
 	@Test("A balance counts only the rows in the currency of the account")
 	func balanceInAccountCurrency() {
 		let wallet = Account(position: 0, name: "Wallet", kind: .giro, source: .offline)
