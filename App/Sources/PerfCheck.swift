@@ -12,7 +12,7 @@ import Synchronization
 /// over `hangLimit`, a view that never settles, or a table that misses rows is "fail".
 @MainActor
 struct PerfScenario {
-	let name: String
+	let name: StaticString
 	let budget: Duration
 	/// Brings the app into the state the scenario starts from. It is not measured.
 	var setUp: @MainActor (PerfContext) async -> Void = { _ in }
@@ -108,7 +108,7 @@ struct PerfScenario {
 				await c.select("Account 1")
 				guard let account = c.model.ledger.accounts.first(where: { $0.name == "Account 1" }) else { return }
 				let pending = (0..<20).map { i in
-					Transaction(accountID: account.id, bookingDate: Day.today(), amountMinor: -Int64(500 + i), name: "Card Payment", purpose: "Pending \(i)", isPending: true)
+					Transaction(accountID: account.id, bookingDate: Day.today().adding(days: -1), amountMinor: -Int64(500 + i), name: "Card Payment", purpose: "Pending \(i)", isPending: true)
 				}
 				await c.model.replacingTable { _ = try? c.model.merge(.file(pending), into: account.id) }
 				await c.settle()
@@ -116,13 +116,51 @@ struct PerfScenario {
 			run: { c in
 				guard let account = c.model.ledger.accounts.first(where: { $0.name == "Account 1" }) else { return }
 				let table = c.harness.transactionTables().first
-				let result = RefreshResult(balance: nil, transactions: FetchedTransactions(rows: [], from: Day.today().adding(days: -1)))
+				let result = RefreshResult(balance: nil, transactions: FetchedTransactions(rows: [], from: Day.today().adding(days: -2)))
 				try? await c.model.sync.deliver(account.id, result)
 				await c.settle()
 				if c.model.ledger.transactions(ofAccount: account.id).contains(where: \.isPending) { c.fail("the refresh dropped no pending row") }
 				if c.harness.transactionTables().first.map(ObjectIdentifier.init) == table.map(ObjectIdentifier.init) {
 					c.fail("the refresh removed shown rows in place")
 				}
+			}),
+		PerfScenario(name: "refresh-undoes-shown-split", budget: halfSecond,
+			setUp: { c in
+				guard let account = c.model.ledger.accounts.first(where: { $0.name == "Account 1" }) else { return c.fail("no account for split") }
+				let original = Transaction(accountID: account.id, bookingDate: .today(), amountMinor: -8000,
+					name: "Split refresh", sourceID: "TX-1")
+				do {
+					try await c.model.sync.deliver(account.id, RefreshResult(balance: nil, transactions: FetchedTransactions(rows: [original], from: .today())))
+				} catch { return c.fail("split setup refresh failed") }
+				let parts = [-2500, -5500].enumerated().map { SplitPart(transactionID: original.id, position: $0.offset, amountMinor: Int64($0.element)) }
+				guard await c.model.replaceParts(of: original.id, with: parts) else { return c.fail("split setup failed") }
+				c.model.filter.searchText = "Split refresh"
+				await c.select("Account 1")
+				c.model.selectedTransactions = Set(parts.map(\.id))
+				await c.settle()
+			},
+			run: { c in
+				let rows = c.model.visibleTransactions
+				guard rows.map(\.amountMinor) == [-2500, -5500], !rows.contains(where: \.isPending),
+					let part = rows.first.flatMap({ c.model.ledger.part($0.id) }),
+					let original = c.model.ledger.transaction(part.transactionID),
+					let table = c.harness.transactionTables().first, table.numberOfRows == 2,
+					c.model.visibleSelection == Set(rows.map(\.id)) else { return c.fail("split parts were not drawn and selected") }
+				var corrected = original; corrected.amountMinor = -8500
+				do {
+					try await c.model.sync.deliver(original.accountID, RefreshResult(balance: nil,
+						transactions: FetchedTransactions(rows: [corrected], from: .today())))
+				} catch { return c.fail("split correction refresh failed") }
+				await c.settle()
+				if c.harness.transactionTables().first === table { c.fail("the correction removed shown parts in place") }
+				let shown = c.model.visibleTransactions
+				if shown.map(\.id) != [original.id] || shown.first?.amountMinor != -8500 || shown.first?.review != .splitUndone {
+					c.fail("the correction did not show the reviewed original")
+				}
+				if rows.contains(where: { c.model.ledger.row($0.id) != nil }) || !c.model.ledger.parts(of: original.id).isEmpty {
+					c.fail("the correction kept old parts")
+				}
+				c.model.filter.searchText = ""
 			}),
 		// An import replaces the table while a refresh of another account of the open group lands in the same
 		// pass. The refresh changes the rows in place only after the placeholder is drawn (issue #151).
@@ -225,7 +263,7 @@ struct PerfScenario {
 			run: { c in
 				guard let depot = c.model.ledger.accounts.first(where: { $0.name == "Perf Depot" }) else { return c.fail("no portfolio") }
 				let selected = c.model.selectedTransactions
-				if selected.count != 3 { c.fail("the table reported \(selected.count) selected rows instead of 3") }
+				if selected.count != 3 { c.fail("the table reported the wrong number of selected rows", ("selected", .count(selected.count)), ("expected", .count(3))) }
 				let old = c.model.tableKey
 				c.harness.select("Perf Depot")
 				if c.model.tableKey != old { c.fail("the table changed in the drawing that clears its selection") }
@@ -236,7 +274,7 @@ struct PerfScenario {
 				if !c.model.selectedTransactions.isEmpty { c.fail("a table that went changed the selection") }
 				c.harness.holdingsTables().first?.selectRowIndexes(IndexSet(0..<2), byExtendingSelection: false)
 				await c.settle()
-				if c.model.selectedPositions != 2 { c.fail("the trail counts \(c.model.selectedPositions) selected positions instead of 2") }
+				if c.model.selectedPositions != 2 { c.fail("the trail counts the wrong number of selected positions", ("selected", .count(c.model.selectedPositions)), ("expected", .count(2))) }
 				await c.select("Account 1")
 				if c.model.tableKey.portfolios != nil || c.harness.transactionTables().isEmpty { c.fail("the view did not change back to the transactions") }
 			}),
@@ -317,8 +355,8 @@ struct PerfScenario {
 				await c.settle()
 			},
 			run: { $0.harness.openExtensionsWindow() }),
-		// A CSV file into the open account. The rows are read away from the main actor, so the stall is the
-		// time of storing them, while the import sheet says "Storing...".
+		// A CSV file into the open account, confirmed in its preview. The rows are read away from the main actor,
+		// so the stall is the time of storing them, while the import sheet says "Storing...".
 		PerfScenario(name: "import-large-csv", budget: halfSecond,
 			setUp: { c in
 				await c.select("Account 7")
@@ -332,12 +370,61 @@ struct PerfScenario {
 			run: { c in
 				guard let account = c.model.ledger.accounts.first(where: { $0.name == "Account 7" }) else { return }
 				let before = c.model.ledger.transactions(ofAccount: account.id).count
-				await c.model.importFiles([importFile], into: account)
-				c.model.alert = nil
+				let model = c.model
+				Task { await confirmPreview(model) }
+				await c.model.importFiles([importFile], into: account, alwaysPreview: false)
+				c.harness.run("alert", "")
 				let stored = c.model.ledger.transactions(ofAccount: account.id).count - before
-				if stored != importedRows { c.fail("the import stored \(stored) of \(importedRows) rows") }
+				if stored != importedRows { c.fail("the import stored the wrong number of rows", ("stored", .count(stored)), ("expected", .count(importedRows))) }
+			}),
+		PerfScenario(name: "import-csv-category-limit", budget: halfSecond,
+			setUp: { c in
+				await c.select("Account 8")
+				let rows = (0..<importedRows).map { "03.11.2026;Online Shop;Purpose \($0);-4,20" }
+				try? (["Buchungstag;Name;Kategorie;Betrag"] + rows).joined(separator: "\n").write(to: importFile, atomically: true, encoding: .utf8)
+			},
+			run: { c in
+				guard let account = c.model.selectedAccount else { return c.fail("no target account") }
+				let before = c.model.ledger.transactions.count
+				let categories = c.model.ledger.categories.count
+				let model = c.model
+				Task { await confirmPreview(model, creatingCategories: true) }
+				await model.importFiles([importFile], into: account, alwaysPreview: true)
+				c.harness.run("alert", "")
+				if model.ledger.transactions.count - before != importedRows { c.fail("the category import did not store every row") }
+				if model.ledger.categories.count - categories != 1_000 { c.fail("the category creation limit did not hold") }
+			}),
+		PerfScenario(name: "refresh-booked-file-history", budget: halfSecond,
+			setUp: { c in
+				let account = Account(position: c.model.ledger.accounts.count, name: "Booked file history", kind: .giro, source: .offline)
+				c.model.save(account: account)
+				let rows = (0..<50_000).map { i in
+					Transaction(accountID: account.id, bookingDate: Day.today().adding(days: -(i % 2_000)), amountMinor: -Int64(i + 1),
+						name: "Shop", purpose: "File history \(i)")
+				}
+				do { _ = try c.model.merge(.file(rows), into: account.id) }
+				catch { c.fail("file history setup failed") }
+				await c.select("Booked file history")
+			},
+			run: { c in
+				guard let account = c.model.ledger.accounts.first(where: { $0.name == "Booked file history" }) else { return c.fail("no history account") }
+				let stored = c.model.ledger.transactions(ofAccount: account.id)
+				let rows = Array(stored.filter { $0.fileIdentity != nil }.prefix(300))
+				if stored.filter({ $0.fileIdentity != nil }).count != 50_000 || rows.count != 300 { c.fail("file history has wrong row count") }
+				do {
+					let result = try c.model.merge(.refresh(RefreshResult(balance: nil, transactions: FetchedTransactions(rows: rows, from: Day.today().adding(days: -2_000)))), into: account.id)
+					if result.skipped != 300 || !result.added.isEmpty || !result.dropped.isEmpty { c.fail("booked refresh changed history") }
+				} catch { c.fail("booked file refresh failed") }
+				if c.model.ledger.transactions(ofAccount: account.id).count != stored.count { c.fail("booked file refresh changed row count") }
 			}),
 	]
+
+	/// A CSV file waits in the preview, which reads it away from the main actor, until "Import".
+	@MainActor static func confirmPreview(_ model: AppModel, creatingCategories: Bool = false) async {
+		for _ in 0..<1_200 where model.fileImport?.preview?.chosen == nil { try? await Task.sleep(for: .milliseconds(50)) }
+		model.fileImport?.preview?.layout.createsCategories = creatingCategories
+		model.fileImport?.confirm()
+	}
 
 	static let importedRows = 50_000
 	static let importFile = FileManager.default.temporaryDirectory.appending(path: "perf-import.csv")
@@ -368,7 +455,7 @@ struct PerfScenario {
 
 @MainActor
 final class PerfProblems {
-	var list: [String] = []
+	var list: [(problem: StaticString, values: [(StaticString, LogValue)])] = []
 }
 
 @MainActor
@@ -379,7 +466,7 @@ struct PerfContext {
 	/// What a scenario found wrong itself. The run counts the scenario as failed.
 	let problems = PerfProblems()
 
-	func fail(_ problem: String) { problems.list.append(problem) }
+	func fail(_ problem: StaticString, _ values: (StaticString, LogValue)...) { problems.list.append((problem, values)) }
 
 	func select(_ name: String) async {
 		harness.select(name)
@@ -424,16 +511,18 @@ extension DebugHarness {
 			let shown = transactionTables().first?.numberOfRows ?? 0
 			let expected = model.visibleTransactions.count + sectionCount(model)
 			let current = shown == expected
-			if !current { log("perf \(scenario.name) the table shows \(shown) rows instead of \(expected)") }
+			if !current { log("perf", ("", .word(scenario.name)), ("", .word("the table shows the wrong number of rows")), ("shown", .count(shown)), ("expected", .count(expected))) }
 			let problems = context.problems.list
 			context.problems.list = []
-			for problem in problems { log("perf \(scenario.name) \(problem)") }
-			let result = !settled || !current || !problems.isEmpty || stall > PerfScenario.hangLimit ? "fail" : stall > scenario.budget ? "slow" : "pass"
-			if result == "fail" { failures += 1 }
-			if result == "slow" { slow += 1 }
-			log("perf \(scenario.name) stall_ms=\(Self.milliseconds(stall)) budget_ms=\(Self.milliseconds(scenario.budget)) footprint_mb=\(MainThreadWatchdog.footprint() / 1_048_576) result=\(result)")
+			for problem in problems { log(LogLine("perf", values: [("", .word(scenario.name)), ("", .word(problem.problem))] + problem.values)) }
+			let failed = !settled || !current || !problems.isEmpty || stall > PerfScenario.hangLimit
+			let isSlow = !failed && stall > scenario.budget
+			if failed { failures += 1 }
+			if isSlow { slow += 1 }
+			log("perf", ("", .word(scenario.name)), ("stall_ms", .count(Self.milliseconds(stall))), ("budget_ms", .count(Self.milliseconds(scenario.budget))),
+				("footprint_mb", .count(Int(MainThreadWatchdog.footprint() / 1_048_576))), ("result", .word(failed ? "fail" : isSlow ? "slow" : "pass")))
 		}
-		log("perf done failures=\(failures) slow=\(slow)")
+		log("perf done", ("failures", .count(failures)), ("slow", .count(slow)))
 	}
 
 	private static func milliseconds(_ d: Duration) -> Int { Int((d / .milliseconds(1)).rounded()) }

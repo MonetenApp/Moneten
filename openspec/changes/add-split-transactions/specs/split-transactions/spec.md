@@ -42,6 +42,25 @@ The app SHALL compute the remainder so that all parts of a split add up to the a
 - **WHEN** the user enters 80,00 and confirms
 - **THEN** the app does not split and marks the amount field
 
+#### Scenario: A zero transaction has opposite parts
+
+- **GIVEN** a booked transaction of 0,00 €
+- **WHEN** the user splits off +5,00
+- **THEN** the list shows parts of 5,00 € and -5,00 €
+
+#### Scenario: A part in another currency is unbalanced
+
+- **GIVEN** a transaction of -80,00 €
+- **WHEN** a split contains a part of -25,00 USD
+- **THEN** the app refuses the split as unbalanced and changes nothing
+
+#### Scenario: Amount text has at most 38 digits
+
+- **GIVEN** a transaction of -80,00 €
+- **WHEN** the amount text is "1," followed by 37 zeros
+- **THEN** the entered part is -1,00 €
+- **AND** adding one more zero makes the text unreadable
+
 ### Requirement: Several parts in one pass
 
 The app SHALL split the remainder again when the user clicks "Next Split" in the split window, so that one pass can create any number of parts.
@@ -92,6 +111,12 @@ The app SHALL let the user assign a category and write a comment for each part, 
 - **WHEN** a refresh delivers a booked "TX-1" of -85,00 € and the user confirms the old edit window
 - **THEN** the window closes without saving the edit or adding a transaction
 - **AND** the list still shows only the corrected original of -85,00 €
+
+#### Scenario: An unchanged editor runs no rule
+
+- **GIVEN** an uncategorized -30,00 € transaction whose purpose matches the rule of "Groceries"
+- **WHEN** the user opens "Edit Transaction..." and confirms without changing a field
+- **THEN** the transaction stays uncategorized and no data changes
 
 ### Requirement: The checkmark belongs to the whole transaction
 
@@ -208,6 +233,13 @@ The app SHALL count each part with its own amount and category in search results
 - **WHEN** the user searches for "-80,00"
 - **THEN** the list shows both parts
 
+#### Scenario: CSV exports the parts
+
+- **GIVEN** a transaction of -80,00 € split into -25,00 € in "Household" with comment "Detergent" and -55,00 € in "Groceries"
+- **WHEN** the user exports the account as CSV
+- **THEN** the CSV contains the two parts with their amounts, categories, and comments
+- **AND** it contains no extra row of -80,00 €
+
 ### Requirement: A complete export preserves splits and review reasons
 
 The app SHALL preserve the original transactions, their split parts, and their review reasons through "Export All Data..." and "Import All Data..." in format version 2. Each part keeps its identifier, order, amount, category, comment, and VAT data. Import still accepts version 1, with `needsReview` true read as the review reason for an unclear booking and false read as no review.
@@ -292,15 +324,29 @@ The app SHALL undo the split when a source that gives IDs delivers the booked or
 - **WHEN** the user marks "TX-1" as checked
 - **THEN** the checkmark stays and the review mark and its note disappear
 
+#### Scenario: A correction replaces an earlier review reason
+
+- **GIVEN** a booked -80,00 € transaction with the review reason for an unclear booking and parts of -25,00 € and -55,00 €
+- **WHEN** the bank delivers its source ID with the booked amount -85,00 €
+- **THEN** the split is undone and the review reason is replaced by the reason for an undone split
+
 ### Requirement: Rules leave parts alone
 
-The app SHALL keep the category of each part when categorization rules run or when a changed rule is applied to all transactions.
+The app SHALL leave split originals and their parts unchanged when a changed rule is applied to existing transactions. The number of matching transactions excludes split originals and parts.
 
 #### Scenario: Apply to all
 
-- **GIVEN** a part in "Household" whose purpose matches the rule of "Groceries"
-- **WHEN** the user applies the rule of "Groceries" to all transactions
-- **THEN** the part stays in "Household"
+- **GIVEN** a -80,00 € transaction in "Groceries" split into -25,00 € in "Household" and -55,00 € in "Groceries"
+- **AND** its purpose matches the rule of "Drinks"
+- **WHEN** the user applies the rule of "Drinks" to all transactions
+- **THEN** the original stays in "Groceries" and the parts stay in "Household" and "Groceries"
+- **AND** the count of matching transactions excludes the split
+
+#### Scenario: Apply only to uncategorized transactions
+
+- **GIVEN** an uncategorized -80,00 € transaction with two parts whose purpose matches the rule of "Drinks"
+- **WHEN** the user applies that rule only to not yet categorized transactions
+- **THEN** the original and parts stay unchanged
 
 ### Requirement: Undo a split
 

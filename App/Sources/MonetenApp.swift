@@ -53,7 +53,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 	func applicationDidFinishLaunching(_ notification: Notification) {
 		// A build that runs straight from `swift run` has no bundle and starts in the background.
 		NSApp.setActivationPolicy(.regular)
-		NSApp.activate(ignoringOtherApps: true)
+		// A run of the debug harness opens behind the app the developer works in, so that it does not take the focus.
+		if !DebugHarness.isRequested { NSApp.activate(ignoringOtherApps: true) }
 	}
 
 	func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
@@ -137,13 +138,17 @@ struct AppCommands: Commands {
 				.disabled(!unlocked || model.selectedTransactions.isEmpty)
 			Divider()
 			Button("Import Transactions...") { Task { await model.importFile() } }
-				.disabled(!unlocked || model.selectedAccount == nil || model.isTransferringTransactions)
+				.disabled(!unlocked || model.selectedAccount == nil || model.isTransferringTransactions || model.sheet != nil)
 			Button("Export Transactions...") { model.exportTransactions() }
 				.disabled(!unlocked || model.selection == nil || model.isTransferringTransactions)
 			Divider()
 			Button(model.refreshTitle) { if let scope = model.refreshScopeOfSelection { model.refresh(scope) } }
 				.keyboardShortcut("r", modifiers: [.command, .shift])
 				.disabled(!(model.refreshScopeOfSelection.map(model.canRefresh) ?? false))
+			Button("Edit Login Data...") { if let id = model.selectedAccount?.id { model.editLoginData(account: id) } }
+				.disabled(!unlocked || !(model.selectedAccount.map { model.fintsAccess(of: $0.id) != nil } ?? false))
+			Button("Look for New Accounts...") { if let id = model.selectedAccount?.id { model.lookForNewAccounts(account: id) } }
+				.disabled(!unlocked || !(model.selectedAccount.map { model.fintsAccess(of: $0.id) != nil } ?? false))
 			Divider()
 			Button(model.settingsTitle) { model.openSettingsOfSelection() }
 				.keyboardShortcut("i")
@@ -159,7 +164,7 @@ struct AppCommands: Commands {
 		CommandGroup(replacing: .help) {
 			Button("Show Database in Finder...") { NSWorkspace.shared.activateFileViewerSelecting([model.vault.folder.root]) }
 			Button("Moneten on GitHub...") { NSWorkspace.shared.open(URL(string: "https://github.com/MonetenApp/Moneten")!) }
-			Button("Report an Issue...") { NSWorkspace.shared.open(URL(string: "https://github.com/MonetenApp/Moneten/issues/new/choose")!) }
+			Button("Report an Issue...") { NSWorkspace.shared.open(bugReportURL(version: CrashReportController.appVersion, macOS: CrashReports.macOSVersion())) }
 		}
 	}
 }

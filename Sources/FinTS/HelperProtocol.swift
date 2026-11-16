@@ -148,14 +148,14 @@ struct Ask: Decodable {
 	}
 
 	/// The request for the session. A PIN request after a rejection carries the answer of the bank, so
-	/// the broker never answers it from memory and shows the sheet again. 9930 means a blocked access,
-	/// and the app never asks for its PIN again (task 1.24). A flicker code that does not read fails the
-	/// access, because the user cannot produce a TAN without it.
+	/// the broker never answers it from memory and shows the sheet again. A code of a blocked access
+	/// stops the run, and the app never asks for its PIN again (task 1.24). A flicker code that does not
+	/// read fails the access, because the user cannot produce a TAN without it.
 	func request() throws -> UserRequest {
 		if kind == "pin" {
 			let rules = PINRules(minLength: rules?.minLength, maxLength: rules?.maxLength)
 			guard let rejected else { return .pin(PINRequest(rules: rules)) }
-			if rejected.code == "9930" { throw SyncFailure.accessBlocked(rejected.message) }
+			if case let .accessBlocked(message) = rejected.failure { throw SyncFailure.accessBlocked(message) }
 			return .pin(PINRequest(rejected: rejected.message, rules: rules))
 		}
 		let offered = (methods ?? []).map(\.method)
@@ -182,7 +182,20 @@ struct Ask: Decodable {
 	}
 }
 
-/// An error of the bank, or of the helper with `kind` "network", "certificate", or "unsupported".
+/// An error of the bank, or of the helper with `kind` "network", "certificate", "unsupported", "invalidChallenge",
+/// "noTANMethod", or "approvalDeclined".
+///
+/// The codes are those of the FinTS return codes of the Deutsche Kreditwirtschaft
+/// (FinTS_Rueckmeldungscodes_2019-07-22): 9942 and 9340 a wrong PIN, 9930 a blocked PIN, 9933 a blocked
+/// access, 3938 an access that is blocked until the PIN block is lifted, 9941 and 9948 an invalid
+/// TAN, and 9943 a TAN that was used before. 9931 means "Sperrung des Kontos nach Fehlversuchen", a block, but
+/// Sparkassen send it also for a wrong login name or PIN, "Anmeldename oder PIN ist falsch". So 9931 counts as a
+/// block only when its text reports a block that happened (`reportsBlock`), and as a wrong PIN otherwise, also when
+/// the text only warns of a block to come: the app forgets the PIN and sends it never again on its own, and the next
+/// PIN sheet shows the warning.
+/// 3931 names a blocked PIN or a TAN generator that needs a synchronization, so it keeps the text of the bank.
+/// 9951, a two-step dialog that timed out, and 9955, "Ein-Schritt-TAN-Verfahren nicht zugelassen", mean a
+/// declined approval or a missing TAN method only with the evidence of the helper, which then sends the kind.
 struct HelperError: Decodable, Equatable {
 	let kind: String?
 	let code: String?
@@ -190,15 +203,50 @@ struct HelperError: Decodable, Equatable {
 
 	var message: BankMessage { BankMessage(code: code, text: text) }
 
+	/// Whether the text of a 9931 reports a block that happened: it has a phrase of a finished block and no phrase of
+	/// attempts that remain, of a block to come, or of a denial. Every other text is a wrong PIN, which the project owner
+	/// chose as the safe side: at worst a blocked access gets one more PIN sheet, and the app never sends a PIN on its own.
+	static func reportsBlock(_ text: String) -> Bool {
+		func has(_ patterns: [String]) -> Bool {
+			patterns.contains { text.range(of: $0, options: [.regularExpression, .caseInsensitive]) != nil }
+		}
+		return has(finishedBlocks) && !has(noFinishedBlock)
+	}
+
+	/// The phrases of a block that happened: the block itself, or the access, the PIN, or the account with at most four
+	/// words before "gesperrt" or "blockiert", as in "Zugang wegen ungültiger PIN gesperrt" or "Ihr Zugang wurde gesperrt".
+	private static let finishedBlocks = [
+		#"teilnehmersperre"#,
+		#"sperre (wurde )?durchgeführt"#,
+		#"sperrung (ist|wurde) (erfolgt|durchgeführt)"#,
+		#"sperrung (des|der) (kontos|zugangs|pin|teilnehmers)"#,
+		#"\b(zugang|pin|konto|kennung|teilnehmer)(\s+[\p{L}\d]+){0,4}\s+(gesperrt|blockiert)\b"#,
+	]
+
+	/// The phrases of attempts that remain, of a block to come, or of a denial, which make any text a wrong PIN.
+	private static let noFinishedBlock = [
+		#"noch (\d+|ein|einen|zwei|drei) (fehl)?versuch"#,
+		#"verbleibend"#,
+		#"\b(weitere[nr]?|nächste[nrm]?|erneute[nrm]?) (falsche[nrm]? )?(fehl|eingabe|versuch)"#,
+		#"bis zur sperr"#,
+		#"(führt|führen) zur sperr"#,
+		#"\b(wird|werden|droht|drohen)\b[^.!?]*(gesperrt|blockiert|\bsperr)"#,
+		#"nicht (gesperrt|blockiert)"#,
+		#"\bkein\p{L}* (gesperrt|sperr)"#,
+	]
+
 	var failure: SyncFailure {
 		switch (kind, code) {
 		case ("network", _), ("certificate", _): .network(text)
 		case ("unsupported", _): .unsupported(text)
 		case ("invalidChallenge", _): .invalidChallenge
+		case ("noTANMethod", _): .noTANMethod(message)
+		case ("approvalDeclined", _): .approvalDeclined(message)
 		case (_, "9078"): .notRegistered
-		// Sparkassen send 9931 for a wrong login name or PIN, so only 9930 counts as blocked.
-		case (_, "9942"), (_, "9340"), (_, "9931"): .pinRejected(message)
-		case (_, "9930"): .accessBlocked(message)
+		case (_, "9931"): Self.reportsBlock(text) ? .accessBlocked(message) : .pinRejected(message)
+		case (_, "9942"), (_, "9340"): .pinRejected(message)
+		case (_, "9930"), (_, "9933"), (_, "3938"): .accessBlocked(message)
+		case (_, "9941"), (_, "9943"), (_, "9948"): .tanRejected(message)
 		default: .bank(message)
 		}
 	}

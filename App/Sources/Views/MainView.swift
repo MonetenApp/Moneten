@@ -3,6 +3,7 @@ import SwiftUI
 
 struct MainView: View {
 	@Environment(AppModel.self) private var model
+	@State private var presentedImport: FileImport?
 
 	var body: some View {
 		@Bindable var model = model
@@ -45,9 +46,17 @@ struct MainView: View {
 					.disabled(!model.hasPassword)
 			}
 		}
-		.sheet(item: $model.sheet, onDismiss: { model.fileImport?.sheetDismissed() }) { kind in
+		.sheet(item: $model.sheet, onDismiss: {
+			presentedImport?.sheetDismissed()
+			presentedImport = nil
+		}) { kind in
 			SheetView(kind: kind).environment(model)
-				.onAppear { if case let .fileImport(run) = kind { run.isPresented = true } }
+				.onAppear {
+					if case let .fileImport(run) = kind {
+						presentedImport = run
+						run.isPresented = true
+					}
+				}
 				// A TAN dialog opens on top of the open sheet, for example during the login of "Add Account".
 				.sheet(item: Binding(get: { model.sync.broker.sheet }, set: { _ in })) { sheet in
 					SyncDialog(broker: model.sync.broker, sheet: sheet)

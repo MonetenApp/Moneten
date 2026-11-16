@@ -25,6 +25,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [x] 1.19 Empty states. Verified by the debug harness snapshot in the first build.
 - [ ] 1.20 The list stays fluid with a large history. Built in part: the perf scenarios "scroll-large-group" (50,000 rows from top to bottom in 20 steps, 50 ms, every visible row has its view after each step) and "daily-balance-in-account" (74 ms) pass. "select-all-in-large-group" takes 946 ms, over the half second of the budget: a sample shows that `NSTableView selectAll:` asks the SwiftUI table coordinator `shouldSelectItem` for each of the 50,000 rows, and the code of the app takes a few milliseconds of it. The other scenarios that are slow on this branch are slow on main as well (issue #51).
 - [x] 1.21 Row layout. Verified by the snapshots of the debug harness commands `seed` and `history` in light and dark mode, with two rows selected.
+- [x] 1.22 A sum of zero has the currency of the view. Verified by `MoneySums.shownAmounts` and the LedgerTests test "A sum of zero has the currency of the view, also when every row is under review or the list is empty" (issue #213).
 
 ## 2. Integration
 

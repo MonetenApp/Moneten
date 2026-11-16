@@ -1,5 +1,6 @@
 import Domain
 import Foundation
+import Synchronization
 import Testing
 @testable import FinTS
 
@@ -13,6 +14,19 @@ struct HelperProcessTests {
 		trust: @escaping @Sendable (String, [Data]) -> String = FinTSConnector.verdict) -> FinTSConnector {
 		FinTSConnector(helper: .init(executable: URL(filePath: "/bin/sh"), arguments: ["-c", script]), productID: "TESTPRODUCT", version: "0.0.1",
 			inactivity: inactivity, grace: grace, trust: trust)
+	}
+
+	@Test("The end of a helper waits until every line that it wrote has reached the reader of its lines")
+	func endWaitsForLastLine() async throws {
+		// The reader is slow on purpose, so the helper has ended while its last line is still on the way,
+		// as with a rejection that the helper writes just before it ends after a cancel.
+		let read = Mutex<[String]>([])
+		let process = try HelperProcess(executable: URL(filePath: "/bin/sh"), arguments: ["-c", "echo last"], grace: 5, onLine: { line in
+			Thread.sleep(forTimeInterval: 0.5)
+			read.withLock { $0.append(line) }
+		})
+		try await process.ended()
+		#expect(read.withLock { $0 } == ["last"])
 	}
 
 	@Test("More helpers that do not read a large state than the Mac has cores all time out, and other tasks run meanwhile")
