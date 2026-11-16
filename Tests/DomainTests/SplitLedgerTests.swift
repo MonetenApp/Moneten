@@ -377,4 +377,62 @@ struct SplitLedgerTests {
 		#expect(l.categories(matching: "", assignableTo: accounts).map(\.name) == ["Groceries"])
 	}
 
+	@Test("Split Amount makes two parts in the category of the row, with its comment")
+	func splitAmount() throws {
+		let t = original()
+		let l = ledger([t])
+		let ps = try l.splitting(row: t.id, off: [Money(minorUnits: -2500, currency: "EUR")])
+		#expect(ps.map(\.amountMinor) == [-2500, -5500])
+		#expect(ps.map(\.categoryID) == [groceries.id, groceries.id])
+		#expect(ps.map(\.comment) == ["Weekly shop", "Weekly shop"])
+		#expect(ps.map(\.position) == [0, 1])
+		#expect(ps.allSatisfy { $0.transactionID == t.id && $0.vat == nil })
+	}
+
+	@Test("Splitting a part replaces it in place")
+	func splitPart() throws {
+		let t = original(), ps = parts(t)
+		var l = ledger([t]); l.replaceParts(of: t.id, with: ps)
+		let result = try l.splitting(row: ps[1].id, off: [Money(minorUnits: -1500, currency: "EUR")])
+		#expect(result.map(\.amountMinor) == [-2500, -1500, -4000])
+		#expect(result.map(\.position) == [0, 1, 2])
+		#expect(result.allSatisfy { $0.transactionID == t.id })
+		#expect(result[0] == ps[0])
+		#expect(!result.map(\.id).contains(ps[1].id))
+		l.replaceParts(of: t.id, with: result)
+		l.replaceParts(of: t.id, with: [])
+		#expect(l.rows(in: .account(account.id)).rows == [t])
+	}
+
+	@Test("Splitting a VAT part drops its label")
+	func splitVATPart() throws {
+		let t = original(-11900), rate = VATRate(hundredths: 1900)
+		var l = ledger([t])
+		let ps = try l.splittingVAT(row: t.id, rate: rate)
+		l.replaceParts(of: t.id, with: ps)
+		let result = try l.splitting(row: ps[0].id, off: [Money(minorUnits: -5000, currency: "EUR")])
+		#expect(result.map(\.amountMinor) == [-5000, -5000, -1900])
+		#expect(result.map(\.vat) == [nil, nil, VATShare(role: .tax, rate: rate)])
+		#expect(result[2].id == ps[1].id)
+	}
+
+	@Test("A pending row cannot be split")
+	func splitPending() {
+		var t = original(); t.isPending = true
+		let l = ledger([t])
+		#expect(throws: SplitError.pending) { try l.splitting(row: t.id, off: [Money(minorUnits: -2500, currency: "EUR")]) }
+		#expect(throws: SplitError.pending) { try l.splittingVAT(row: t.id, rate: VATRate(hundredths: 1900)) }
+	}
+
+	@Test("A VAT split labels its parts")
+	func splitVAT() throws {
+		let t = original(-11900), rate = VATRate(hundredths: 1900)
+		let ps = try ledger([t]).splittingVAT(row: t.id, rate: rate)
+		#expect(ps.map(\.amountMinor) == [-10000, -1900])
+		#expect(ps.map(\.vat) == [VATShare(role: .net, rate: rate), VATShare(role: .tax, rate: rate)])
+		#expect(ps.map(\.categoryID) == [groceries.id, groceries.id])
+		#expect(ps.map(\.comment) == ["Weekly shop", "Weekly shop"])
+		#expect(ps.map(\.position) == [0, 1])
+	}
+
 }
