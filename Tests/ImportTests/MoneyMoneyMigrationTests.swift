@@ -105,6 +105,15 @@ struct MoneyMoneyMigrationTests {
 		#expect(Ledger(accounts: p.accounts, transactions: p.transactions).computedBalance(of: giro).minorUnits == 97_000)
 	}
 
+	@Test("An amount whose minor units do not fit stops the migration instead of turning into another amount")
+	func amountTooLarge() throws {
+		let rows: [Any] = [["id": 1, "accountUuid": "A1", "bookingDate": date(2026, 11, 2), "amount": -1e20, "currency": "EUR", "name": "Vermieter A", "purpose": "", "booked": true]]
+		#expect(throws: MoneyMoneyMigration.Failure.self) {
+			try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(accounts), categories: try plist(categories),
+				transactions: try plist(["transactions": rows]), into: Ledger())
+		}
+	}
+
 	@Test("Rows in another currency do not count toward the initial balance")
 	func initialBalanceInAccountCurrency() throws {
 		var rows = transactions["transactions"] as! [[String: Any]]
