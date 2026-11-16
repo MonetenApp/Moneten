@@ -164,6 +164,8 @@ struct HeaderIcon: View {
 					Image(systemName: CategorySymbols.name(of: c, filledGroup: true))
 						.foregroundStyle(CategoryColors.color(of: c, in: model.ledger))
 				}
+			case .search:
+				Image(systemName: "magnifyingglass")
 			case nil:
 				EmptyView()
 			}
@@ -237,20 +239,37 @@ struct FilterBar: View {
 			}
 			.popover(isPresented: $customAmount) { CustomAmountView() }
 			separator
-			if case .category = model.selection {
-				filterMenu("Account:", title: model.filter.accountID.flatMap { model.ledger.account($0)?.name } ?? "Show All") {
-					Button("Show All") { model.filter.accountID = nil }
-					Divider()
-					ForEach(model.ledger.accounts.sorted { $0.name < $1.name }) { a in Button(a.name) { model.filter.accountID = a.id } }
-				}
-			} else {
+			// A saved search shows both menus, so selecting it resets no filter.
+			if case .category = model.selection {} else {
 				filterMenu("Category:", title: model.filter.categoryID.map { model.ledger.categoryPath($0) } ?? "Show All") {
 					Button("Show All") { model.filter.categoryID = nil }
 					Divider()
 					ForEach(model.ledger.categoriesInSidebarOrder) { c in Button(model.ledger.categoryPath(c.id)) { model.filter.categoryID = c.id } }
 				}
 			}
+			if case .search = model.selection { separator }
+			switch model.selection {
+			case .category, .search:
+				filterMenu("Account:", title: model.filter.accountID.flatMap { model.ledger.account($0)?.name } ?? "Show All") {
+					Button("Show All") { model.filter.accountID = nil }
+					Divider()
+					ForEach(model.ledger.accounts.sorted { $0.name < $1.name }) { a in Button(a.name) { model.filter.accountID = a.id } }
+				}
+			default:
+				EmptyView()
+			}
 			Spacer()
+			// An icon like the pin, because a saved search already fills the bar with five menus.
+			Button { model.sheet = .saveSearch } label: {
+				Image(systemName: "plus.magnifyingglass")
+					.frame(width: 22, height: 22)
+					.contentShape(.rect)
+			}
+			.buttonStyle(.borderless)
+			.hoverHighlight()
+			.disabled(!model.canSaveSearch)
+			.help("Save Search...")
+			.accessibilityLabel("Save Search")
 		}
 		.font(.callout)
 		// The highlight of each control adds 6 points, so the bar keeps its text 16 points from the edge.
@@ -265,7 +284,7 @@ struct FilterBar: View {
 
 	private func filterMenu<Content: View>(_ label: String, title: String, @ViewBuilder content: () -> Content) -> some View {
 		HStack(spacing: 4) {
-			Text(label).foregroundStyle(Palette.detail)
+			Text(label).foregroundStyle(Palette.detail).fixedSize()
 			Menu(title, content: content)
 				.menuStyle(.borderlessButton)
 				.fixedSize()
@@ -464,7 +483,7 @@ struct TransactionTable: View {
 			// A group or category view names the account of a selected row.
 			TableColumn("Name / Purpose") { (t: Transaction) in
 				let account = showsAccount && !groupedByAccount && model.selectedTransactions.contains(t.id) ? model.ledger.account(t.accountID)?.name : nil
-				TransactionCell(transaction: t, account: account).padding(.trailing, 12).rowChrome(t).draggable(draggedIDs(for: t))
+				TransactionCell(transaction: t, model: model, account: account).padding(.trailing, 12).rowChrome(t).draggable(draggedIDs(for: t))
 			}
 			.width(min: 240, ideal: 520)
 			.customizationID("name")
@@ -521,6 +540,7 @@ struct TransactionTable: View {
 
 struct TransactionCell: View {
 	let transaction: Transaction
+	let model: AppModel
 	/// The account of the transaction, shown at the end of the first line.
 	var account: String?
 
@@ -547,6 +567,14 @@ struct TransactionCell: View {
 						.frame(maxWidth: 140, alignment: .trailing)
 						.layoutPriority(1)
 				}
+			}
+			if let part = model.ledger.part(transaction.id), let original = model.ledger.transaction(part.transactionID) {
+				HStack(spacing: 4) {
+					Label("Part of \(Format.money(original.amount))", systemImage: "arrow.triangle.branch")
+					if let vat = part.vat { Text(vat.role == .net ? "(net)" : "(\(vat.rate.text) VAT)") }
+				}
+				.font(.system(size: 11)).foregroundStyle(Palette.detail)
+				.accessibilityElement(children: .combine)
 			}
 			// A row without a purpose keeps the empty line, so that every row is the same height.
 			// As in MoneyMoney, the purpose takes one line, its lines joined with spaces. The whole text
@@ -901,6 +929,7 @@ struct TransactionMenu: View {
 			Divider()
 			if ids.count == 1 {
 				Button("Edit Transaction...") { model.sheet = .transaction(first.id) }
+				Menu("Split Transaction") { SplitCommands(row: first) }
 			}
 			// As in MoneyMoney: a group or category view mixes accounts, so it offers no delete.
 			if case .account = model.selection {
@@ -910,6 +939,7 @@ struct TransactionMenu: View {
 	}
 
 	private func confirmDelete(_ ids: Set<UUID>) {
+		guard !model.refusePartDeletion(in: ids) else { return }
 		let alert = NSAlert()
 		alert.messageText = ids.count == 1 ? "Delete selected transaction?" : "Delete \(ids.count) selected transactions?"
 		alert.informativeText = "Deleted transactions CANNOT be restored!"

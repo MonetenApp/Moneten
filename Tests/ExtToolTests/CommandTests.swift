@@ -14,6 +14,15 @@ extension ExtTool {
 			#expect(version.output == "ext 0.1.0, API version 1\n")
 		}
 
+		@Test func versionOfARelease() {
+			let commit = "0123456789abcdef0123456789abcdef01234567"
+			#expect(Ext.versionLine(commit: Ext.commit(in: ["MonetenCommit": commit])) == "ext 0.1.0 (commit \(commit)), API version 1")
+			#expect(Ext.versionLine(commit: Ext.commit(in: nil)) == "ext 0.1.0, API version 1")
+			for broken: Any in ["0123456", commit.uppercased(), commit + "0", 42] {
+				#expect(Ext.commit(in: ["MonetenCommit": broken]) == nil)
+			}
+		}
+
 		@Test(arguments: [["bogus"], [], ["run"], ["test", "A.lua", "f.json"], ["run", "A.lua", "--update"], ["run", "--service"], ["record", "A.lua", "f.json", "--loud"], ["run", "--service=", "A.lua"]])
 		func wrongArguments(_ arguments: [String]) throws {
 			let run = try ext(arguments)
