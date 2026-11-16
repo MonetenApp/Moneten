@@ -178,7 +178,8 @@ extension Format {
 
 	/// "25,00 €", "12,3456 €", or "98,50 %": at least two decimal places, and every one of the source.
 	static func price(_ q: Quote) -> String {
-		let precision = NumberFormatStyleConfiguration.Precision.fractionLength(2...max(2, decimalPlaces(of: q.amount)))
+		// A price converted from another currency can have 38 decimal places; six keep a price of a coin readable.
+		let precision = NumberFormatStyleConfiguration.Precision.fractionLength(2...min(6, max(2, decimalPlaces(of: q.amount))))
 		guard let currency = q.currency else { return signed(q.amount.formatted(.number.precision(precision))) + " %" }
 		return signed(q.amount.formatted(.currency(code: currency).precision(precision)))
 	}
