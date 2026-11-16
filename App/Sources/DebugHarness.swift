@@ -40,9 +40,26 @@ final class DebugHarness {
 		#endif
 	}
 
-	/// Whether the harness drives this run. Such a run does not bring the app to the front, because the
-	/// developer keeps working in another app. Only "mainkey table" and "securefield" ask for the focus.
-	static var isRequested: Bool { requestedPath != nil }
+	/// Called before the app finishes launching. A run of the harness does not bring the app to the front,
+	/// because the developer keeps working in another app. The app then drops every request to become the
+	/// active app, also for a bank dialog, an alert, and the offer of a crash report, and only "mainkey table"
+	/// and "securefield" ask for the focus. A check at each call in the app would not be enough, because
+	/// AppKit itself activates the app when an alert sheet opens. Windows still open, and macOS can show them
+	/// above the app in front.
+	static func keepBehindIfRequested() {
+		#if DEBUG || PERF_HARNESS
+		if requestedPath != nil { NSApplication.dropActivationRequests() }
+		#endif
+	}
+
+	/// The focus that "mainkey table" and "securefield" need. Only the active app has a key window and AutoFill.
+	private func activateForFocus() {
+		#if DEBUG || PERF_HARNESS
+		NSApplication.allowsActivation = true
+		defer { NSApplication.allowsActivation = false }
+		#endif
+		NSApp.activate()
+	}
 
 	static func installIfRequested(model: AppModel) {
 		#if DEBUG || PERF_HARNESS
@@ -196,16 +213,18 @@ final class DebugHarness {
 				sheet.sendEvent(event)
 				log("key", ("", .choice(argument, of: ["down", "up"])), ("highlighted", .position(model.setup?.highlighted)))
 			}
-		// "return", "escape", "cmd+", or "cmd-" sends that key to the sheet on top, as the keyboard does. The log rejects any other key.
+		// "return", "escape", "tab", "cmd+", or "cmd-" sends that key to the sheet on top, as the keyboard does. The log rejects any other key.
 		case "key":
-			let keys: [StaticString] = ["return", "escape", "cmd+", "cmd-"]
+			let keys: [StaticString] = ["return", "escape", "tab", "cmd+", "cmd-"]
 			guard keys.contains(where: { "\($0)" == argument }) else { return log("key rejected") }
 			let command = argument.hasPrefix("cmd")
-			let characters = switch argument { case "escape": "\u{1b}"; case "return": "\r"; default: String(argument.dropFirst(3)) }
+			let characters = switch argument { case "escape": "\u{1b}"; case "return": "\r"; case "tab": "\t"; default: String(argument.dropFirst(3)) }
 			if let sheet = topSheet, let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: command ? .command : [], timestamp: 0,
 				windowNumber: sheet.windowNumber, context: nil, characters: characters, charactersIgnoringModifiers: characters, isARepeat: false,
-				keyCode: argument == "escape" ? 53 : argument == "return" ? 36 : 24) {
-				log("key", ("", .choice(argument, of: keys)), ("handled", .flag(sheet.performKeyEquivalent(with: event))))
+				keyCode: argument == "escape" ? 53 : argument == "return" ? 36 : argument == "tab" ? 48 : 24) {
+				let handled = sheet.performKeyEquivalent(with: event)
+				if !handled, argument == "tab" { sheet.sendEvent(event) }
+				log("key", ("", .choice(argument, of: keys)), ("handled", .flag(handled || argument == "tab")))
 			}
 		case "focusfield":
 			func fields(in view: NSView) -> [NSTextField] {
@@ -215,7 +234,7 @@ final class DebugHarness {
 			guard let sheet = topSheet, let view = sheet.contentView, let position = Int(argument) else { return }
 			let editable = fields(in: view)
 			guard editable.indices.contains(position) else { return log("focusfield", ("count", .count(editable.count))) }
-			NSApp.activate()
+			// The field editor of the sheet takes the text of "type" while the app stays behind.
 			sheet.makeKeyAndOrderFront(nil)
 			sheet.makeFirstResponder(editable[position])
 			editable[position].selectText(nil)
@@ -650,6 +669,7 @@ final class DebugHarness {
 			case "calibration": if case let .account(id) = model.selection { model.sheet = .calibration(id) }
 			case "newTransaction": model.sheet = .transaction(nil)
 			case "transaction": model.sheet = .transaction(model.visibleTransactions.first?.id)
+			case "split": if let row = model.visibleTransactions.first { model.openSplit(row: row.id) }
 			// What ⌘K does, for a run without a key window, where SwiftUI disables the menu commands.
 			case "assignCategory": model.openCategoryPicker()
 			// The real sheet, as a click on "Add category" in "Assign Category" opens it. "newcategory" skips the sheet.
@@ -680,16 +700,40 @@ final class DebugHarness {
 			log("offsetting", ("menu", .list(targets.map { .word($0.isEnabled ? "on" : "off") })))
 			if let t = targets.first(where: { $0.account.name == argument && $0.isEnabled }) { model.createOffsettingEntries(of: model.visibleSelection, in: t.account.id) }
 		case "split":
-			guard let row = model.visibleTransactions.first, model.ledger.part(row.id) == nil,
-				let amount = Split.amount(from: argument, on: row.amount, decimalMark: .comma),
-				let amounts = try? Split.amounts(of: row.amount, off: [amount]) else { return log("split refused") }
-			let parts = amounts.enumerated().map {
-				SplitPart(transactionID: row.id, position: $0.offset, amountMinor: $0.element.minorUnits, categoryID: row.categoryID, comment: row.comment)
-			}
+			guard let row = model.visibleTransactions.first else { return log("split refused") }
+			let originalID = model.ledger.part(row.id)?.transactionID ?? row.id
 			Task {
-				let saved = await model.replaceParts(of: row.id, with: parts)
-				log("split", ("saved", .flag(saved)), ("parts", .count(saved ? parts.count : 0)), ("transactions", .count(model.ledger.transactions.count)))
-			}
+				let saved: Bool
+				if let rate = VATRate.standard.first(where: { $0.text == argument }) {
+					saved = await model.splitVAT(row: row.id, rate: rate)
+				} else if let amount = Split.amount(from: argument, on: row.amount, decimalMark: .comma) {
+					saved = await model.split(row: row.id, off: [amount])
+				} else { return log("split refused") }
+				let count = saved ? model.ledger.parts(of: originalID).count : 0
+				log("split", ("saved", .flag(saved)), ("parts", .count(count)), ("transactions", .count(model.ledger.transactions.count)))			}
+		case "undosplit":
+			if let row = model.visibleTransactions.first { model.askUndoSplit(row: row.id) }
+			log("undosplit", ("sheet", model.sheet.map { .state($0) } ?? .word("none")))
+		case "deleteparts":
+			model.delete(transactions: model.visibleSelection)
+			log("deleteparts", ("refused", .flag(model.alert != nil)), ("selected", .count(model.visibleSelection.count)))
+		case "splitnext":
+			let control = sheetAccessibility().first { ($0 as AnyObject).accessibilityIdentifier?() == "next-split" }
+			log("splitnext", ("handled", .flag(control.map { ($0 as AnyObject).accessibilityPerformPress?() ?? false } ?? false)))
+		case "splitui":
+			let controls = sheetAccessibility()
+			let amount = controls.first { ($0 as AnyObject).accessibilityIdentifier?() == "split-amount" }
+			let next = controls.first { ($0 as AnyObject).accessibilityIdentifier?() == "next-split" }
+			log("splitui", ("amountLabel", .flag(amount.map { !(($0 as AnyObject).accessibilityLabel?() ?? "").isEmpty } ?? false)),
+				("nextLabel", .flag(next.map { !(($0 as AnyObject).accessibilityLabel?() ?? "").isEmpty } ?? false)),
+				("nextEnabled", .flag(next.map { ($0 as AnyObject).isAccessibilityEnabled?() ?? false } ?? false)),
+				("sheet", model.sheet.map { .state($0) } ?? .word("none")))
+		case "splitmenusnapshot":
+			guard let row = model.visibleTransactions.first else { return }
+			offscreenSnapshot(VStack(alignment: .leading, spacing: 8) {
+				Text("Split Transaction").fontWeight(.semibold)
+				SplitCommands(row: row)
+			}.buttonStyle(.plain).padding(12).environment(model), width: 260, name: NSApp.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? "dark" : "light", kind: "split-menu")
 		case "checkrows": model.setChecked(true, for: model.visibleSelection)
 		case "splitstate":
 			let rows = model.visibleTransactions
@@ -848,7 +892,7 @@ final class DebugHarness {
 		}
 		guard let sheet = topSheet, let field = sheet.contentView.flatMap(fields)?.first else { return log("securefield none") }
 		// AutoFill offers itself only in the active app. macOS grants this only when the app in front gives up the focus, which the log shows.
-		NSApp.activate()
+		activateForFocus()
 		sheet.makeFirstResponder(field)
 		DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
 			let editor = sheet.firstResponder as? NSTextView
@@ -891,7 +935,7 @@ final class DebugHarness {
 		var handledBy: StaticString = "-"
 		if name == "table" {
 			// Only the active app has a key window. macOS grants this only when the app in front gives up the focus, which "key=" shows.
-			NSApp.activate()
+			activateForFocus()
 			main.makeKeyAndOrderFront(nil)
 			main.makeFirstResponder(table)
 		} else if let key = keys[name], let event = NSEvent.keyEvent(with: .keyDown, location: .zero,
@@ -918,6 +962,18 @@ final class DebugHarness {
 				("tablefocus", .flag(table.window?.firstResponder === table)), ("key", .flag(NSApp.keyWindow === table.window)), ("row", .position(table.selectedRow)),
 				("category", .list(categories)))
 		}
+	}
+
+	private func sheetAccessibility() -> [NSObject] {
+		// SwiftUI builds its accessibility nodes only after a client requests the enhanced interface.
+		NSApp.accessibilitySetValue(true, forAttribute: NSAccessibility.Attribute(rawValue: "AXEnhancedUserInterface"))
+		var seen: Set<ObjectIdentifier> = []
+		func descendants(_ value: Any) -> [NSObject] {
+			guard let element = value as? NSObject, seen.insert(ObjectIdentifier(element)).inserted else { return [] }
+			let children = (element as AnyObject).accessibilityChildren?() ?? []
+			return [element] + (children + ((element as? NSView)?.subviews ?? [])).flatMap(descendants)
+		}
+		return topSheet?.contentView.map(descendants) ?? []
 	}
 
 	/// The tables of transactions in all windows, told apart from the sidebar by their amount column.
@@ -1563,3 +1619,29 @@ extension HostLog {
 		}
 	}
 }
+
+#if DEBUG || PERF_HARNESS
+extension NSApplication {
+	/// True only while the harness asks for the focus itself.
+	fileprivate static var allowsActivation = false
+
+	/// Exchanges the two ways to activate the app, `activate()` and `activate(ignoringOtherApps:)`, for
+	/// methods that pass a request on only while `allowsActivation` is true.
+	fileprivate static func dropActivationRequests() {
+		for (name, guarded) in [("activate", #selector(harnessActivate as (NSApplication) -> () -> Void)), ("activateIgnoringOtherApps:", #selector(harnessActivate(ignoringOtherApps:)))] {
+			guard let original = class_getInstanceMethod(NSApplication.self, NSSelectorFromString(name)),
+				let replacement = class_getInstanceMethod(NSApplication.self, guarded) else { continue }
+			method_exchangeImplementations(original, replacement)
+		}
+	}
+
+	// After the exchange, each method calls itself to reach the original of AppKit.
+	@objc private func harnessActivate() {
+		if Self.allowsActivation { harnessActivate() } else { Trail.log("activation dropped") }
+	}
+
+	@objc private func harnessActivate(ignoringOtherApps flag: Bool) {
+		if Self.allowsActivation { harnessActivate(ignoringOtherApps: flag) } else { Trail.log("activation dropped") }
+	}
+}
+#endif

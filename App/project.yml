@@ -72,6 +72,8 @@ targets:
       base:
         MARKETING_VERSION: 0.0.1
         CURRENT_PROJECT_VERSION: 1
+        # The part of the version after the hyphen, such as beta.1. scripts/build-app.sh sets it from MONETEN_VERSION.
+        MONETEN_PRE_RELEASE: ""
         PRODUCT_BUNDLE_IDENTIFIER: io.github.alexander-schneider.Moneten
         PRODUCT_NAME: Moneten
         GENERATE_INFOPLIST_FILE: NO

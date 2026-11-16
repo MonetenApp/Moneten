@@ -51,6 +51,9 @@ For a bug fix that restores specified behavior, open a pull request. For new or 
 2. A green CI run.
 3. Screenshots in light and dark mode for any change to the interface. Use made-up names, IBANs, and amounts, never your own data.
 4. No personal data. Remove names, IBANs, account numbers, and amounts from fixtures and logs before you commit them.
+5. An entry in [CHANGELOG.md](CHANGELOG.md) for a change that users notice. Add one line under "Unreleased", written for users and not for developers, for example "- Larger display of photoTAN images." An entry is one line with inline Markdown: bold, code, and links that start with `https://`. No nested lists, no headings, and no HTML. The release page and the update window of the app show these lines, so write them as a user reads them. `python3 scripts/release-notes.py check` checks the format.
+
+The pull request template asks for each point.
 
 ## Licensing
 
