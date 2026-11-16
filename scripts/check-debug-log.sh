@@ -46,6 +46,7 @@ fi
 WORK="$(mktemp -d "$PWD/.build/check-debug-log.XXXXXX")"
 finish() {
 	if [ -n "$PID" ]; then kill "$PID" 2>/dev/null || true; fi
+	security delete-generic-password -s "Moneten crash report key" -a "$DATA/Database/Moneten.sqlite" >/dev/null 2>&1 || true
 	[ -n "$KEEP" ] && echo "The log stays in $WORK/debug." || rm -rf "$WORK"
 }
 trap finish EXIT
@@ -339,14 +340,27 @@ poll "^migrationfailure: unknown failure$" migrationfailure "$MIGRATION_UNKNOWN"
 poll "^lookfornew setup=true$" lookfornew Girokonto
 poll "^setup purpose=newAccounts " setup ""
 send setup cancel
+poll "^crash inject frames=1 pending=true" crashinject private
+poll "^crash url characters=" crashurl
+for value in DE02120300000000202051 "Erika Mustermann" /Users/erika; do
+	if grep -F -- "$value" "$WORK/debug/crash-report.txt" "$WORK/debug/crash-url.txt"; then
+		echo "The crash report contains personal data." >&2
+		exit 1
+	fi
+done
+poll "^crash decision pending=false copied=true" crashdecision copy
+poll "^crash inject frames=3 pending=true" crashinject
+poll "^crash decision pending=false copied=false" crashdecision decline
+poll "^crash inject frames=500 pending=true timeMatches=true" crashinject "long|1800000000"
+poll "^crash decision pending=false copied=true" crashdecision copy
 send quit
 
 found=0
-for value in "25,00" "20,00" "30,00" "Synthetic extra" DE02120300000000202051 "DE02 1203" 202051 1234567890 0099887766 "99 88 77 66" 4711 5550001 "$LOGIN" "$PIN" "$MIGRATION_UNKNOWN" 123456 check-debug-log \
+for value in "25,00" "20,00" "30,00" "Synthetic extra" DE02120300000000202051 "DE02 1203" 202051 1234567890 0099887766 "99 88 77 66" 4711 5550001 "$LOGIN" "$PIN" "$MIGRATION_UNKNOWN" 123456 1800000000 check-debug-log \
 	234015 501240 12000 12500 320000 95000 4250 229765 471123 "4711,23" 81547 815.47 1234 2345 3579 2500 92500 \
 	"Baumarkt Beispiel" "Weekly shop" "REWE SAGT DANKE" "REWE receipt" "Receipt" "demo-split" "Handoff Synthetic" 88776655 Kiosk \
 	Girokonto Tagesgeld Kreditkarte Extrakonto "Erika Mustermann" Erika Mustermann erika-mustermann "Private Access" Musterbank "Check Bank" \
-	"Beispiel GmbH" "Wohnbau Musterstadt" "Tankstelle Beispiel" \
+	"Beispiel GmbH" "Wohnbau Musterstadt" "Tankstelle Beispiel" /Users/erika \
 	"Gehalt November" Miete Kartenzahlung Sparen Haushaltskasse MIETE-2026-11 GUTSCHRIFT DAUERAUFTRAG \
 	"Zugang vorübergehend gesperrt" "PIN falsch" Wartungsarbeiten pushTAN-App "currency:/^+?49/"; do
 	if grep -n -w -F -- "$value" "$LOG" >&2; then

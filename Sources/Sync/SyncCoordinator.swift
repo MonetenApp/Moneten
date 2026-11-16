@@ -320,7 +320,7 @@ public final class SyncCoordinator {
 			runningSources[access.id] = nil
 			self.attendance[access.id] = nil
 			// A command came after the refresh had failed for want of the user: run it again with dialogs.
-			if !job.attended, attendance.isOn, !attendance.asked, case let .fail(failure) = event, Self.asksAgain(after: failure) {
+			if !job.attended, attendance.isOn, !attendance.asked, case let .fail(failure) = event, failure.dialogResolves {
 				let again = Job(request: job.request, connector: job.connector, attended: true)
 				// An automatic request that waits after this run stays out of the attended run. Its accounts stay due.
 				afterRun[access.id] = afterRun[access.id].map { $0.attended ? again.adding($0) : again } ?? again
@@ -351,13 +351,6 @@ public final class SyncCoordinator {
 		// progress before the first account comes before the bank requests the challenge.
 		if case let .progress(.fetching(done, _)) = event, done > 0 { broker.endRequest(of: access) }
 		if let next = (states[access] ?? .idle).next(event) { states[access] = next }
-	}
-
-	/// A failure that the user resolves in a dialog: a PIN, a TAN, or login data that was needed or rejected.
-	/// A blocked access stays blocked, whatever the user enters.
-	private static func asksAgain(after failure: SyncFailure) -> Bool {
-		if case .accessBlocked = failure { return false }
-		return failure.waitsForUser
 	}
 
 	private static func failure(_ error: Error) -> SyncFailure {
