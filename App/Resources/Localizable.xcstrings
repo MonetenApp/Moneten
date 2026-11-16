@@ -3020,6 +3020,16 @@
         }
       }
     },
+    "Copy Sum" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Summe kopieren"
+          }
+        }
+      }
+    },
     "Could not add the accounts. %@" : {
       "localizations" : {
         "de" : {
@@ -4698,6 +4708,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Hilfe"
+          }
+        }
+      }
+    },
+    "Help and FAQ..." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hilfe und FAQ..."
           }
         }
       }
@@ -8505,6 +8525,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Quellcode"
+          }
+        }
+      }
+    },
+    "Source code:" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quellcode:"
           }
         }
       }

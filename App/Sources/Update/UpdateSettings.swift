@@ -31,9 +31,16 @@ enum AboutPanel {
 
 	@MainActor static func show() {
 		let version = AppVersion.current
+		let small = NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)
+		let credits = NSMutableAttributedString(string: String(localized: "Source code:") + " ",
+			attributes: [.font: small, .foregroundColor: NSColor.labelColor])
+		credits.append(NSAttributedString(string: "github.com/MonetenApp/Moneten",
+			attributes: [.font: small, .link: URL(string: "https://github.com/MonetenApp/Moneten")!]))
+		credits.setAlignment(.center, range: NSRange(location: 0, length: credits.length))
 		NSApp.orderFrontStandardAboutPanel(options: [
 			.applicationVersion: version.display,
 			.version: version.isPreRelease ? String(localized: "\(version.build), Pre-release") : version.build,
+			.credits: credits,
 		])
 		NSApp.activate()
 	}

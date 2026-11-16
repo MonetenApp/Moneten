@@ -58,7 +58,7 @@
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSHumanReadableCopyright</key>
-	<string>Moneten is free software under the GNU GPL v3.0 or later.</string>
+	<string>Moneten is free software under the GNU General Public License, version 3 or later.</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 	<key>NSSupportsAutomaticTermination</key>

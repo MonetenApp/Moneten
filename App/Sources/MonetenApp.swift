@@ -189,11 +189,18 @@ struct AppCommands: Commands {
 		}
 		CommandGroup(replacing: .help) {
 			Button("Show Database in Finder...") { NSWorkspace.shared.activateFileViewerSelecting([model.vault.folder.root]) }
+			Button("Help and FAQ...") { NSWorkspace.shared.open(Self.helpPage) }
+				.keyboardShortcut("?")
 			Button("Supported Banks...") { openWindow(id: "supportedBanks") }
 			Button("Moneten on GitHub...") { NSWorkspace.shared.open(URL(string: "https://github.com/MonetenApp/Moneten")!) }
 			Button("Report an Issue...") { NSWorkspace.shared.open(bugReportURL(version: CrashReportController.appVersion, macOS: CrashReports.macOSVersion())) }
 		}
 	}
+}
+
+extension AppCommands {
+	/// The page of "Help and FAQ...". The project has no help pages of its own yet, so it is the README.
+	static let helpPage = URL(string: "https://github.com/MonetenApp/Moneten#readme")!
 }
 
 extension Notification.Name {

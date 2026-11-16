@@ -243,7 +243,7 @@ The app SHALL let the user copy the sum in the status line to the pasteboard.
 #### Scenario: Copy
 
 - **GIVEN** the status line shows the sum 74,50 €
-- **WHEN** the user copies the sum and pastes it into a text document
+- **WHEN** the user chooses "Copy Sum" in the context menu of the sum and pastes it into a text document
 - **THEN** the text document shows 74,50
 
 ### Requirement: The Account menu follows the selection
