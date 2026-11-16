@@ -595,6 +595,8 @@ public struct Vault: Sendable {
 		config.label = "Moneten"
 		config.prepareDatabase { db in
 			try db.usePassphrase(key)
+			// Overwrites deleted rows with zeros, so a removed saved PIN does not stay in a free page (issue #327).
+			try db.execute(sql: "PRAGMA secure_delete = ON")
 		}
 		return config
 	}

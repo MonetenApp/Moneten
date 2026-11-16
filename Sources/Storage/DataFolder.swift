@@ -4,11 +4,12 @@ import Foundation
 public struct DataFolder: Sendable {
 	public let root: URL
 
-	/// `~/Library/Application Support/Moneten`, or the folder in the environment
-	/// variable `MONETEN_DATA_DIR`. Tests and development builds use the variable.
+	/// `~/Library/Application Support/Moneten`, or the folder at `path` when the caller gives one.
+	/// Only debug and Perf builds of the app pass the folder of `MONETEN_DATA_DIR` (issue #327). The app
+	/// decides, because Xcode builds this package without the compilation conditions of the app.
 	/// The first call after the rename to Moneten (ADR 0013) moves the data of the old name.
-	public static func standard() -> DataFolder {
-		if let path = ProcessInfo.processInfo.environment["MONETEN_DATA_DIR"], !path.isEmpty {
+	public static func standard(override path: String?) -> DataFolder {
+		if let path, !path.isEmpty {
 			let folder = DataFolder(root: URL(fileURLWithPath: path, isDirectory: true))
 			try? folder.adoptLegacyNames()
 			return folder

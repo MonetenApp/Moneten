@@ -51,7 +51,7 @@ enum Preference {
 	/// Copies the settings of the bundle identifier before the rename to Moneten (ADR 0013) once.
 	/// Runs with their own data folder skip it, so tests never write the real settings.
 	static func adoptLegacyDomain() {
-		guard ProcessInfo.processInfo.environment["MONETEN_DATA_DIR"] == nil else { return }
+		guard DataFolder.requestedPath == nil else { return }
 		let d = UserDefaults.standard, done = "adoptedSettingsOfMonetenMoneten"
 		guard !d.bool(forKey: done) else { return }
 		for (key, value) in d.persistentDomain(forName: "io.github.alexander-schneider.MonetenMoneten") ?? [:] where d.object(forKey: key) == nil {
@@ -72,10 +72,10 @@ final class AppModel {
 		case failed(String)
 	}
 
-	let vault = Vault(folder: .standard())
-	let crashes = CrashReportController(folder: .standard())
+	let vault = Vault(folder: .current)
+	let crashes = CrashReportController(folder: .current)
 	/// The refreshes of the bank accesses and their dialogs.
-	let sync = SyncCoordinator(broker: SessionBroker(defaults: .standard, scope: DataFolder.standard().databaseFile.path))
+	let sync = SyncCoordinator(broker: SessionBroker(defaults: .standard, scope: DataFolder.current.databaseFile.path))
 	/// The FinTS connector of the setup and of every refresh.
 	let fints = AppModel.makeFinTSConnector()
 	/// The installed extensions and the catalog.
