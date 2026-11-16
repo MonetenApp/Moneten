@@ -88,7 +88,7 @@ struct MigrationSheet: View {
 					LabeledContent("Categories", value: plan.categories.count.formatted())
 					LabeledContent("Transactions", value: plan.transactions.count.formatted())
 					if !plan.updatedAccounts.isEmpty || !plan.updatedTransactions.isEmpty || !plan.updatedCategories.isEmpty {
-						LabeledContent("Updated", value: "\(plan.updatedAccounts.count) accounts, \(plan.updatedTransactions.count.formatted()) transactions, \(plan.updatedCategories.count) category colors")
+						LabeledContent("Updated", value: String(localized: "\(plan.updatedAccounts.count) accounts, \(plan.updatedTransactions.count) transactions, \(plan.updatedCategories.count) category colors"))
 					}
 				}
 				Section {
@@ -146,7 +146,7 @@ struct MigrationSheet: View {
 			Text(saveError ?? "")
 		}
 		.fileExporter(isPresented: $savingReport, item: reportText, contentTypes: [.plainText],
-			defaultFilename: "MoneyMoney migration \(Day.today()).txt") { result in
+			defaultFilename: String(localized: "MoneyMoney migration \(String(describing: Day.today())).txt")) { result in
 			if case let .failure(error) = result { saveError = error.localizedDescription }
 		}
 	}
@@ -167,7 +167,7 @@ struct MigrationSheet: View {
 		}
 	}
 
-	private var confirmTitle: String? {
+	private var confirmTitle: LocalizedStringKey? {
 		switch step {
 		case .intro: "Start"
 		case .fileAccount: model.ledger.accounts.isEmpty ? nil : "Import File..."
@@ -184,7 +184,7 @@ struct MigrationSheet: View {
 		return true
 	}
 
-	private var cancelTitle: String? {
+	private var cancelTitle: LocalizedStringKey? {
 		switch step {
 		case .done, .importing: nil
 		default: "Cancel"
@@ -215,7 +215,7 @@ struct MigrationSheet: View {
 			LabeledContent("Rules", value: plan.categories.filter { !$0.rule.isEmpty }.count.formatted())
 			LabeledContent("Transactions", value: plan.transactions.count.formatted())
 			if !plan.updatedAccounts.isEmpty || !plan.updatedTransactions.isEmpty || !plan.updatedCategories.isEmpty {
-				LabeledContent("Updated", value: "\(plan.updatedAccounts.count) accounts, \(plan.updatedTransactions.count.formatted()) transactions, \(plan.updatedCategories.count) category colors")
+				LabeledContent("Updated", value: String(localized: "\(plan.updatedAccounts.count) accounts, \(plan.updatedTransactions.count) transactions, \(plan.updatedCategories.count) category colors"))
 			}
 		} header: {
 			Text("This will be imported")
@@ -230,11 +230,11 @@ struct MigrationSheet: View {
 	private func start() {
 		task = Task {
 			do {
-				step = .reading("Reading accounts...")
+				step = .reading(String(localized: "Reading accounts..."))
 				let accounts = try await export("accounts", MoneyMoneyExporter.exportAccounts)
-				step = .reading("Reading categories...")
+				step = .reading(String(localized: "Reading categories..."))
 				let categories = try await export("categories", MoneyMoneyExporter.exportCategories)
-				step = .reading("Reading transactions... This can take a minute for a long history.")
+				step = .reading(String(localized: "Reading transactions... This can take a minute for a long history."))
 				let transactions = try await export("transactions", MoneyMoneyExporter.exportTransactions)
 				try Task.checkCancellation()
 				let ledger = model.ledgerForMigration
@@ -269,7 +269,7 @@ struct MigrationSheet: View {
 				try await model.runMigration(plan: plan)
 				step = .done(plan, plan.report(after: model.ledger))
 			} catch {
-				step = .failed("Nothing was imported. \(error)")
+				step = .failed(String(localized: "Nothing was imported. \(String(describing: error))"))
 			}
 		}
 	}
