@@ -17,6 +17,9 @@ struct DateField: View {
 	var identifier = "date"
 
 	@State private var text = ""
+	/// The text that the field wrote for the bound day. It keeps that day even where `Day(typed:)` cannot read the
+	/// format of the region back, such as a year of the Buddhist calendar.
+	@State private var shown = ""
 	@State private var isMarked = false
 	@State private var showsCalendar = false
 	@FocusState private var hasFocus: Bool
@@ -54,23 +57,31 @@ struct DateField: View {
 				}
 			}
 		}
-		.onAppear { text = day.map(Format.day) ?? "" }
+		.onAppear { show(day) }
 		.onChange(of: text) {
+			guard text != shown else { return }
 			day = completed(text)
 			if day != nil { isMarked = false }
 		}
 		.onChange(of: day) {
-			// A date from outside the text, such as the calendar, replaces the text.
-			if day != completed(text) { text = day.map(Format.day) ?? "" }
+			// A date from outside the text replaces the text.
+			if day.map(Format.day) != text, day != completed(text) { show(day) }
 		}
 		.onChange(of: hasFocus) { if !hasFocus { leave() } }
 	}
 
 	/// Shows the full date, or marks the field and keeps it in editing ("Reject an impossible date").
+	private func show(_ day: Day?) {
+		shown = day.map(Format.day) ?? ""
+		text = shown
+	}
+
 	private func leave() {
-		if let day = completed(text) {
+		if text == shown, day != nil {
 			isMarked = false
-			text = Format.day(day)
+		} else if let day = completed(text) {
+			isMarked = false
+			show(day)
 		} else {
 			isMarked = true
 			// The calendar takes the focus while it is open, and a date picked there ends the mark.
@@ -83,7 +94,7 @@ struct DateField: View {
 	/// to another month leaves it open.
 	private func pick(_ picked: Day, closes: Bool) {
 		isMarked = false
-		text = Format.day(picked)
+		show(picked)
 		day = picked
 		if closes { showsCalendar = false }
 	}

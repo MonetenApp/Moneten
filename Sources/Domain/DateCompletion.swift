@@ -28,7 +28,15 @@ extension Day {
 	/// and month before today into the next year. The date is checked only after the move, and a date that does not
 	/// exist is refused and never moved again, because a second move would pick a date that the user did not type.
 	public init?(typed text: String, today: Day, order: DateOrder, expectsFuture: Bool = false) {
-		let text = text.trimmingCharacters(in: .whitespaces)
+		// Digits of another script, such as the Arabic-Indic digits of Egypt, read as ASCII digits, and the marks of
+		// the writing direction around a separator are left out.
+		let text = String(String.UnicodeScalarView(text.unicodeScalars.compactMap { scalar -> Unicode.Scalar? in
+			if [0x200E, 0x200F, 0x061C].contains(scalar.value) { return nil }
+			if scalar.properties.generalCategory == .decimalNumber, let value = scalar.properties.numericValue {
+				return Unicode.Scalar(UInt8(48 + Int(value)))
+			}
+			return scalar
+		})).trimmingCharacters(in: .whitespaces)
 		if let full = Self.fullDate(text, order: order) {
 			self = full
 			return

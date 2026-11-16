@@ -60,6 +60,13 @@ struct DateCompletionTests {
 		#expect(complete(text, today: today) == expected)
 	}
 
+	@Test("Digits of another script and marks of the writing direction read")
+	func otherScripts() {
+		// "20/12/2026" as Egypt writes it, with a right-to-left mark after each slash.
+		#expect(complete("\u{0662}\u{0660}\u{200F}/\u{0661}\u{0662}\u{200F}/\u{0662}\u{0660}\u{0662}\u{0666}", today: Self.day(2026, 11, 9)) == Self.day(2026, 12, 20))
+		#expect(complete("\u{0662}\u{0660}", today: Self.day(2026, 11, 9)) == Self.day(2026, 10, 20))
+	}
+
 	@Test("A region that writes the year first takes no day and month")
 	func yearFirst() {
 		#expect(complete("12.20", today: Self.day(2026, 11, 9), order: .yearMonthDay) == nil)
