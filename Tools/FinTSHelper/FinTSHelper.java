@@ -96,6 +96,7 @@ import org.kapott.hbci.passport.HBCIPassportPinTan;
 import org.kapott.hbci.passport.storage.PassportData;
 import org.kapott.hbci.status.HBCIDialogStatus;
 import org.kapott.hbci.status.HBCIExecStatus;
+import org.kapott.hbci.status.HBCIMsgStatus;
 import org.kapott.hbci.status.HBCIRetVal;
 import org.kapott.hbci.status.HBCIStatus;
 import org.kapott.hbci.structures.BigDecimalValue;
@@ -103,7 +104,8 @@ import org.kapott.hbci.structures.Konto;
 import org.kapott.hbci.structures.Value;
 
 public class FinTSHelper {
-	static final PrintStream out = new PrintStream(new FileOutputStream(FileDescriptor.out), true, StandardCharsets.UTF_8);
+	/// The lines to the app. The self-test reads them here in place of the pipe.
+	static PrintStream out = new PrintStream(new FileOutputStream(FileDescriptor.out), true, StandardCharsets.UTF_8);
 	static final PrintStream err = new PrintStream(new FileOutputStream(FileDescriptor.err), true, StandardCharsets.UTF_8);
 
 	/// A failure that the helper reports as it is: kind "network", "unsupported", or null for the bank.
@@ -429,11 +431,26 @@ public class FinTSHelper {
 		/// method hbci4java leaves it open at the bank, where a challenge of the login may still wait.
 		DialogContext open;
 
+		/// The warning 3938 of a dialog initialization. hbci4java counts such an answer as a successful login and
+		/// would send the orders and further dialogs, so every later message and order fails with it.
+		Failure block;
+
 		@Override
 		public void onDialogEvent(DialogEvent event, DialogContext ctx) {
 			// Recorded before hbci4java handles the answer, because a change of the method throws there.
 			if (event == DialogEvent.MSG_SENT && present(ctx.getDialogId()) && !"0".equals(ctx.getDialogId())) open = ctx;
+			if (event == DialogEvent.MSG_SENT && block == null) {
+				HBCIRetVal w = blocking(ctx.getMsgStatus());
+				if (w != null) block = new Failure(null, w.code, Out.withoutSecrets(w.text));
+			}
+			if (block != null) throw block;
 			super.onDialogEvent(event, ctx);
+		}
+
+		/// Fails the setup login when a dialog of it carried the warning 3938, also when hbci4java kept the failure
+		/// to itself, as it does for the request of the TAN media.
+		void requireUnblocked() {
+			if (block != null) throw block;
 		}
 
 		/// Ends the open dialog at the bank after a change of the TAN method, so that its challenge does
@@ -525,6 +542,9 @@ public class FinTSHelper {
 		String pin;
 		/// The method that the user changed to. Every request after it ends the dialog.
 		String switchTo;
+		/// The last challenge of the run was an approval in the app, so a refused TAN means that the approval
+		/// did not happen. One helper runs one command, so the field can be static for `failure`.
+		static volatile boolean approvalAsked;
 		/// The TAN medium of the state, or the one the user chose in this run. hbci4java asks for it
 		/// before every order that needs a TAN.
 		String tanMedium;
@@ -569,6 +589,7 @@ public class FinTSHelper {
 		/// Prepares the next dialog after a change of the TAN method.
 		void restart() {
 			switchTo = null;
+			approvalAsked = false;
 			login = true;
 			jobs.clear();
 			jobCount = 0;
@@ -636,6 +657,7 @@ public class FinTSHelper {
 					set(retData, tanMedium);
 				}
 				case NEED_PT_TAN, NEED_PT_PHOTOTAN, NEED_PT_QRTAN -> {
+					approvalAsked = false;
 					String image = null, flicker = null;
 					String hhduc = passport instanceof Passport p ? p.takeHHDuc() : null;
 					try {
@@ -656,6 +678,7 @@ public class FinTSHelper {
 				}
 				case NEED_PT_DECOUPLED -> {
 					if (passport instanceof Passport p) p.takeHHDuc();
+					approvalAsked = true;
 					approval = ++lastID;
 					send(choices(passport, message("ask", "id", approval, "kind", "approve", "purpose", purpose(), "prompt", challenge(msg), "method", firstLine(msg))));
 				}
@@ -874,9 +897,18 @@ public class FinTSHelper {
 			"bookingText", text(l.text), "pending", pending);
 	}
 
-	/// The errors that the user must act on: a wrong PIN, a blocked access, and an app that the
-	/// bank does not know. They come first, whatever their place in the answer.
-	static final List<String> URGENT = List.of("9930", "9931", "9942", "9340", "9078");
+	/// The errors that the user must act on, in this order: a blocked access, a wrong PIN, an app that
+	/// the bank does not know, no TAN method, and a TAN that the bank refused. They come first, whatever
+	/// their place in the answer. HelperError in Sources/FinTS/HelperProtocol.swift names the meaning of each code.
+	static final List<String> URGENT = List.of("9930", "9933", "3938", "9931", "9942", "9340", "9078", "9955", "9941", "9943", "9948", "9951");
+
+	/// The warning that blocks the access until the PIN block is lifted, which the helper treats as an error.
+	/// 3931 stays a warning, because it also names a TAN generator that needs a synchronization.
+	static final Set<String> BLOCKING_WARNINGS = Set.of("3938");
+
+	/// The codes of a TAN that the bank refused. After an approval in the app they mean that the approval
+	/// did not happen.
+	static final Set<String> TAN_REFUSED = Set.of("9941", "9943", "9948", "9951");
 
 	/// The error of the bank that the app shows: the first urgent one, or else the first one.
 	static HBCIRetVal relevant(List<HBCIRetVal> errors) {
@@ -886,16 +918,21 @@ public class FinTSHelper {
 		return errors.isEmpty() ? null : errors.get(0);
 	}
 
+	/// The errors of the statuses, and the warnings among them that block the access.
 	static List<HBCIRetVal> errors(HBCIStatus... statuses) {
 		List<HBCIRetVal> all = new ArrayList<>();
-		for (HBCIStatus status : statuses) all.addAll(List.of(status.getErrors()));
+		for (HBCIStatus status : statuses) {
+			all.addAll(List.of(status.getErrors()));
+			for (HBCIRetVal w : status.getWarnings()) if (BLOCKING_WARNINGS.contains(w.code)) all.add(w);
+		}
 		return all;
 	}
 
 	/// The error of a job, or of the message when the job has none.
 	static Map<String, Object> problem(HBCIJobResult result) {
 		HBCIRetVal r = relevant(errors(result.getJobStatus(), result.getGlobStatus()));
-		if (r != null) return message("error", "code", r.code, "text", Out.withoutSecrets(r.text));
+		if (r != null) return message("error", "kind", Callback.approvalAsked && TAN_REFUSED.contains(r.code) ? "approvalDeclined" : null,
+			"code", r.code, "text", Out.withoutSecrets(r.text));
 		return message("error", "text", "The bank did not answer the request.");
 	}
 
@@ -904,10 +941,27 @@ public class FinTSHelper {
 	static void requireLogin(HBCIExecStatus status) {
 		for (String customer : status.getCustomerIds()) {
 			HBCIDialogStatus dialog = status.getDialogStatus(customer);
-			if (dialog != null && dialog.initStatus != null && !dialog.initStatus.isOK()) throw new ProcessException("dialog start failed", dialog.initStatus);
+			if (dialog != null && dialog.initStatus != null && (!dialog.initStatus.isOK() || blocking(dialog.initStatus) != null)) {
+				throw new ProcessException("dialog start failed", dialog.initStatus);
+			}
 			List<Exception> exceptions = status.getExceptions(customer);
 			if (dialog == null && exceptions != null && !exceptions.isEmpty()) throw new HBCI_Exception("dialog failed", exceptions.get(0));
 		}
+	}
+
+	/// The warning 3938 "Zugang vorläufig gesperrt" of an answer, after which no order succeeds, or null.
+	static HBCIRetVal blocking(HBCIMsgStatus status) {
+		if (status == null) return null;
+		for (HBCIRetVal r : errors(status.globStatus, status.segStatus)) if (BLOCKING_WARNINGS.contains(r.code)) return r;
+		return null;
+	}
+
+	/// The user has no TAN method for the FinTS server: the bank allowed only the one-step method 999
+	/// (code 3920), which no bank accepts for a login since PSD2.
+	static boolean withoutTanMethod(HBCIPassport passport) {
+		if (!(passport instanceof AbstractPinTanPassport p)) return false;
+		List<String> allowed = p.getAllowedTwostepMechanisms();
+		return allowed != null && !allowed.isEmpty() && allowed.stream().allMatch("999"::equals);
 	}
 
 	/// Whether an order goes with HKTAN ("J") or without ("N"), by bank code, for banks whose bank
@@ -1197,24 +1251,13 @@ public class FinTSHelper {
 			passport.setHost(callback.host);
 			passport.setPort(callback.port);
 			handle = new HBCIHandler(HBCIVersion.HBCI_300.getId(), passport);
-			callback.withdrawApproval();
-			callback.checkSwitch();
-			Konto[] accounts = passport.getAccounts() == null ? new Konto[0] : passport.getAccounts();
-			BankInfo bank = HBCIUtils.getBankInfo(passport.getBLZ());
-			for (Konto k : accounts) {
-				if (!present(k.bic) && bank != null && present(bank.getBic())) k.bic = bank.getBic();
-			}
-			if ("accounts".equals(type)) {
-				List<Object> list = new ArrayList<>();
-				for (Konto k : accounts) list.add(account(k));
-				send(message("accounts", "accounts", list));
-			} else {
-				refresh(handle, passport, accounts, (List<?>) command.get("accounts"), callback);
-			}
-			send(message("state", "data", Base64.getEncoder().encodeToString(passport.state(callback.tanMedium))));
+			loggedIn(type, command, callback, handle, passport);
 			return true;
 		} catch (RuntimeException e) {
-			if (callback.switchTo == null) throw e;
+			if (callback.switchTo == null) {
+				HBCIRetVal refusal = oneStepRefusal(passport, e);
+				throw refusal != null ? noTanMethod(refusal, e) : e;
+			}
 			passport.endOpenDialog();
 			Passport.loaded = passport.data();
 			Passport.loaded.tanMethod = callback.switchTo;
@@ -1229,6 +1272,55 @@ public class FinTSHelper {
 		}
 	}
 
+	/// The rest of a dialog after `HBCIHandler` logged in: the accounts of the setup, or the refresh, and then
+	/// the state. It fails at once when a dialog of the login carried the warning 3938, which hbci4java keeps to
+	/// itself for the request of the TAN media, so that the setup lists no accounts of a blocked access.
+	static void loggedIn(String type, Map<?, ?> command, Callback callback, HBCIHandler handle, Passport passport) throws IOException {
+		passport.requireUnblocked();
+		callback.withdrawApproval();
+		callback.checkSwitch();
+		Konto[] accounts = passport.getAccounts() == null ? new Konto[0] : passport.getAccounts();
+		BankInfo bank = HBCIUtils.getBankInfo(passport.getBLZ());
+		for (Konto k : accounts) {
+			if (!present(k.bic) && bank != null && present(bank.getBic())) k.bic = bank.getBic();
+		}
+		if ("accounts".equals(type)) {
+			List<Object> list = new ArrayList<>();
+			for (Konto k : accounts) list.add(account(k));
+			send(message("accounts", "accounts", list));
+		} else {
+			refresh(handle, passport, accounts, (List<?>) command.get("accounts"), callback);
+		}
+		send(message("state", "data", Base64.getEncoder().encodeToString(passport.state(callback.tanMedium))));
+	}
+
+	/// The codes with which a bank refuses the one-step method 999 for a login: 9075 "Starke Kundenauthentifizierung
+	/// notwendig" and 9955 "Ein-Schritt-TAN-Verfahren nicht zugelassen".
+	static final Set<String> ONE_STEP_REFUSED = Set.of("9075", "9955");
+
+	/// The answer with which the bank refused the one-step method for the login of a user whom it allows no other
+	/// method, or null. Only such an answer means a missing TAN method: an error of another cause, such as a wrong
+	/// PIN, a block, or a server that is not available, keeps its own code and text.
+	static HBCIRetVal oneStepRefusal(HBCIPassport passport, Throwable e) {
+		if (!withoutTanMethod(passport)) return null;
+		Map<String, Object> failed = failure(e);
+		String code = string(failed, "code");
+		if (failed.get("kind") != null || code == null || URGENT.contains(code) && !"9955".equals(code)) return null;
+		for (Throwable t : causes(e)) {
+			if (!(t instanceof ProcessException p) || p.getMsgStatus() == null) continue;
+			for (HBCIRetVal r : errors(p.getMsgStatus().globStatus, p.getMsgStatus().segStatus)) if (r.code != null && ONE_STEP_REFUSED.contains(r.code)) return r;
+		}
+		return null;
+	}
+
+	/// The failure of a run that the bank refused because the user has no TAN method, with the code and the text of
+	/// the refusal, also when another error such as 9800 "Dialog abgebrochen" came first in the answer.
+	static Failure noTanMethod(HBCIRetVal refusal, RuntimeException e) {
+		Failure f = new Failure("noTANMethod", refusal.code, Out.withoutSecrets(refusal.text));
+		f.initCause(e);
+		return f;
+	}
+
 	/// The failed message for an error of the whole run: the first error code of the bank, a
 	/// network error, or the message of the exception.
 	static Map<String, Object> failure(Throwable e) {
@@ -1239,7 +1331,8 @@ public class FinTSHelper {
 		for (Throwable t : all) {
 			if (!(t instanceof ProcessException p) || p.getMsgStatus() == null) continue;
 			HBCIRetVal r = relevant(errors(p.getMsgStatus().globStatus, p.getMsgStatus().segStatus));
-			if (r != null) return message("failed", "code", r.code, "text", Out.withoutSecrets(r.text));
+			if (r != null) return message("failed", "kind", Callback.approvalAsked && TAN_REFUSED.contains(r.code) ? "approvalDeclined" : null,
+				"code", r.code, "text", Out.withoutSecrets(r.text));
 		}
 		for (Throwable t : all) {
 			if (t instanceof CertificateException c) return message("failed", "kind", "certificate", "text", Out.withoutSecrets(String.valueOf(c.getMessage())));

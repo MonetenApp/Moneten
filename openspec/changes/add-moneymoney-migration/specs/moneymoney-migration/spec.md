@@ -178,7 +178,7 @@ The app SHALL store a migrated rule that it cannot parse with its text unchanged
 
 ### Requirement: Migrated rules that search account numbers
 
-The app SHALL list in the report every migrated rule with a term without a field operator that is an IBAN or an account number, and keep the rule unchanged. A term of digits counts as an account number only when a migrated account or counterparty has that account number. The report entry names the category and says that `remote_account:` before the number searches the account of the counterparty.
+The app SHALL report unqualified IBAN or account-number terms and keep rules unchanged. Digit terms count only for a migrated account or counterparty. An IBAN needs a SWIFT registry country, its exact registry length, and mod-97. A quoted term counts only if it is an IBAN, also with spaces between groups of four. Creditor IDs and RF references are no IBANs. Notes name the category and position and suggest `remote_account:`.
 
 #### Scenario: Rule with an IBAN only
 
@@ -212,9 +212,29 @@ The app SHALL list in the report every migrated rule with a term without a field
 - **WHEN** the migration finishes
 - **THEN** the report does not list the rule of "Payroll", because `KW45` is too short for an IBAN
 
+#### Scenario: Other identifiers and quoted phrases
+
+- **GIVEN** categories with the rules `DE98ZZZ09999999999`, `RF18539007547034`, `"Ab 01 Januar Miete"`, `"EG 12 Hausverwaltung"`, `"EG 16 Hausverwaltung"`, `"AB 50 Januar Miete"`, `"Ab 30 November Miete"`, and `DE9800009999999999`
+- **WHEN** the migration finishes
+- **THEN** none of these rules gets an account-term note
+
+#### Scenario: All two-digit phrase numbers
+
+- **GIVEN** rules `"EG NN Hausverwaltung"` and `"AB NN Januar Miete"` for every two-digit value NN from 00 to 99
+- **WHEN** the migration finishes
+- **THEN** none gets an account-term note, even if its letters and digits pass mod-97
+
+#### Scenario: Registry lengths and spacing
+
+- **GIVEN** valid IBAN terms from Germany with 22 characters, Austria with 20, and the Netherlands with 18
+- **WHEN** the migration finishes
+- **THEN** each gets an account-term note, also in quotation marks with single spaces between groups of four
+- **AND** an otherwise valid German term with one character added or removed gets no note, even with a recalculated mod-97 checksum
+- **AND** other spacing gets no IBAN note
+
 ### Requirement: Migrated rules with operators in lower case
 
-The app SHALL list in the report every migrated rule that contains the word and, or, or not without quotation marks and not in capitals. The app reads such a word as an operator, so the rule changes its meaning. The report entry names the category, quotes the word, and says that the word in quotation marks searches the word itself. The rule stays unchanged.
+The app SHALL list in the report every migrated rule that contains and, or, or not as an operator not in capitals. The app reads such a word as an operator, so the rule changes its meaning. The report entry names the category and position, quotes the word, and says that the word in quotation marks searches the word itself. The rule stays unchanged.
 
 #### Scenario: Rule with a lower case or
 
@@ -231,7 +251,7 @@ The app SHALL list in the report every migrated rule that contains the word and,
 
 ### Requirement: Migrated rules with the words true and false
 
-The app SHALL list in the report every migrated rule that contains the word true or false without quotation marks, in any letter case. The app reads `true` as a rule that matches every transaction and `false` as one that matches none, so the rule changes its meaning. The report entry names the category, quotes the word, and says that the word in quotation marks searches the word itself. The rule stays unchanged.
+The app SHALL list in the report every migrated rule that contains true or false as a constant, in any letter case. The app reads `true` as a rule that matches every transaction and `false` as one that matches none, so the rule changes its meaning. The report entry names the category and position, quotes the word, and says that the word in quotation marks searches the word itself. The rule stays unchanged.
 
 #### Scenario: Rule with the word true
 
@@ -245,6 +265,19 @@ The app SHALL list in the report every migrated rule that contains the word true
 - **GIVEN** the category "Drinks" has the rule `"true" "fruits"` in the source
 - **WHEN** the migration finishes
 - **THEN** the report does not list the rule of "Drinks"
+
+#### Scenario: False in capitals
+
+- **GIVEN** the category "Drinks" has the rule `FALSE` in the source
+- **WHEN** the migration finishes
+- **THEN** the report names "Drinks", position 1, and `FALSE`, and says that `"FALSE"` searches the word
+- **AND** the category "Drinks" keeps the rule `FALSE`
+
+#### Scenario: Words after a field operator
+
+- **GIVEN** the category "Drinks" has the rule `name:true OR purpose:false OR comment:and` in the source
+- **WHEN** the migration finishes
+- **THEN** the report does not list the rule, because each word searches its field
 
 ### Requirement: Transactions
 
@@ -299,7 +332,7 @@ The app SHALL show progress during reading and importing with the current accoun
 
 ### Requirement: Repeated runs add only what is new
 
-The app SHALL recognize accounts, categories, and transactions from an earlier run. A later run adds only new objects and creates no duplicate. Changes that the user made in the app since the earlier run stay.
+The app SHALL recognize accounts, categories, and transactions from an earlier run. A later run adds only new objects and creates no duplicate. Changes that the user made in the app since the earlier run stay. The report keeps notes for earlier migrated rules whose text is unchanged in both apps.
 
 #### Scenario: Second run a week later
 
@@ -331,6 +364,15 @@ The app SHALL recognize accounts, categories, and transactions from an earlier r
 - **GIVEN** a migrated pending transaction of 10.00 EUR to "Kiosk" was booked in the app by a file import, and the source still shows it as pending
 - **WHEN** the migration runs again
 - **THEN** the transaction stays booked
+
+#### Scenario: Unchanged migrated rules keep their notes
+
+- **GIVEN** an earlier run migrated "Drinks" with `true OR "Smoothie"`, "Salary" with `"Lohn" or "Gehalt"`, and "Rent" with `DE02120300000000202051`
+- **AND** the source export and the stored rules are unchanged
+- **WHEN** the user runs the migration again with nothing new to import
+- **THEN** the sheet shows the report with the constant, operator, and account-term notes for these rules
+- **AND** "Save Report..." includes all three notes in the saved text
+- **AND** the app keeps the stored rules and imports nothing
 
 ### Requirement: Migration into a database with accounts
 
@@ -451,12 +493,14 @@ The app SHALL show a report after the import. The report lists for each account 
 
 ### Requirement: The report contains no secrets
 
-The app SHALL write account names, counts, and balances to the report and no login data. The report says that it contains financial data before the user saves it.
+The app SHALL write account names, counts, balances, and rule notes to the report and no login data. Before saving, the report warns that it contains account names, balances, and account numbers and IBANs from rules.
 
 #### Scenario: Save the report
 
 - **WHEN** the user chooses "Save Report..."
-- **THEN** the app says that the file contains account names and balances and saves it after the user confirms
+- **THEN** the app says "The report contains account names, balances, and account numbers and IBANs from rules."
+- **AND** the message says "Anyone who can open the file can read them."
+- **AND** the app saves it only after the user confirms
 
 ### Requirement: Category colors
 

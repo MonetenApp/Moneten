@@ -110,6 +110,9 @@ enum Interaction: Equatable {
 	/// The choice of a TAN method, which stays open while the app polls the method at `polled`, whose
 	/// approval the script started already.
 	case chooseWhilePolling(SecondFactorRequest, methods: [MethodTable], polled: Int)
+	/// The host question for the login page of an extension without a list of hosts. After "Allow" the
+	/// same table maps to the browser window.
+	case allowHost(String)
 }
 
 /// Turns a challenge table into the request to the user.
@@ -119,6 +122,10 @@ struct ChallengeMapping {
 	let qrCodeName: String
 	/// The hosts that a browser window may load.
 	let hosts: Set<String>
+	/// The extension has no list of hosts, so the user may allow the host of a login page.
+	var asksForHosts = false
+	/// The hosts the user refused for this extension; their login page fails without a question.
+	var deniedHosts: Set<String> = []
 	/// The `hbciMethod` that the user chose at the last login of the access.
 	let rememberedMethod: String?
 	/// How long a challenge stays valid after its dialog opens.
@@ -161,7 +168,9 @@ struct ChallengeMapping {
 			}
 			return .answer(request(.enterTAN(prompt: notice, image: image), table), stepIncrement: increment)
 		case let .url(url) where table.label == nil:
-			guard let host = url.host()?.lowercased(), hosts.contains(host) else {
+			let host = url.host()?.lowercased()
+			guard let host, hosts.contains(host) else {
+				if asksForHosts, let host, !deniedHosts.contains(host), url.scheme == "https", url.port == nil, HostName(exactly: host) != nil { return .allowHost(host) }
 				throw MappingError("The login page \(url.host() ?? url.absoluteString) is not a host that the extension may contact.")
 			}
 			return .answer(request(.openBrowser(browserApproval(url, state: table.state)), table), stepIncrement: increment)

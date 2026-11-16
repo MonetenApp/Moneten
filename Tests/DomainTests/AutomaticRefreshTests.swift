@@ -88,18 +88,35 @@ struct AutomaticRefreshTests {
 		#expect(ledger.refreshAccounts(.account(giro.id)).mapValues { $0.map(\.name) } == [Self.access: ["Giro"]])
 	}
 
+	@Test("An access without a TAN method stays out of the automatic refresh until a refresh that the user started succeeds")
+	func noTANMethod() throws {
+		let failure = SyncFailure.noTANMethod(BankMessage(code: "9955", text: "Ein-Schritt-TAN-Verfahren nicht zugelassen"))
+		var giro = Self.account("Giro")
+		let failed = SyncState.failed(failure).accountRefreshes(of: [giro.id], notices: [], at: Self.hours(2))
+		giro.record(try #require(failed[giro.id]))
+		#expect(Self.due([giro], at: Self.hours(100)).isEmpty)
+		#expect(Ledger(accounts: [giro]).refreshAccounts(.all).mapValues { $0.map(\.name) } == [Self.access: ["Giro"]])
+		giro.record(.refreshed(Self.hours(101)))
+		#expect(Self.due([giro], at: Self.hours(102)).isEmpty)
+		#expect(Self.due([giro], at: Self.hours(103)) == [Self.access: ["Giro"]])
+	}
+
+	/// A failure, whether it waits for a manual refresh, and whether its error names "Edit Login Data...".
 	@Test("Only failures that the user must resolve wait for a manual refresh", arguments: [
-		(SyncFailure.needsUser(.pin), true), (.needsUser(.secondFactor), true), (.needsUser(.login), true), (.needsUser(.allowHost), true),
-		(.pinRejected(BankMessage(code: "9942", text: "PIN falsch")), true), (.loginRejected, true),
-		(.accessBlocked(BankMessage(code: "9931", text: "Zugang gesperrt")), true),
-		(.network("timeout"), false), (.bank(BankMessage(code: "9010", text: "Zugang vorübergehend gesperrt")), false), (.notFetched, false),
-		(.tanRejected(BankMessage(text: "TAN falsch")), false), (.challengeExpired, false), (.offline, false),
+		(SyncFailure.needsUser(.pin), true, false), (.needsUser(.secondFactor), true, false), (.needsUser(.login), true, false),
+		(.needsUser(.allowHost), true, false), (.pinRejected(BankMessage(code: "9942", text: "PIN falsch")), true, false), (.loginRejected, true, false),
+		(.accessBlocked(BankMessage(code: "9931", text: "Zugang gesperrt")), true, false),
+		(.noTANMethod(BankMessage(code: "9955", text: "Ein-Schritt-TAN-Verfahren nicht zugelassen")), true, false),
+		(.approvalDeclined(BankMessage(code: "9951", text: "Zeitüberschreitung")), false, true),
+		(.network("timeout"), false, false), (.bank(BankMessage(code: "9010", text: "Zugang vorübergehend gesperrt")), false, true), (.notFetched, false, false),
+		(.tanRejected(BankMessage(text: "TAN falsch")), false, false), (.challengeExpired, false, true), (.offline, false, false),
 	])
-	func failureWaitsForUser(failure: SyncFailure, waits: Bool) {
+	func failureWaitsForUser(failure: SyncFailure, waits: Bool, suggestsEditLoginData: Bool) {
 		let at = Self.eight
 		let id = UUID()
 		let refreshes = SyncState.failed(failure).accountRefreshes(of: [id], notices: [], at: at)
-		#expect(refreshes == [id: .failed(RefreshError(message: failure.message, code: failure.bankMessage?.code, date: at, waitsForUser: waits))])
+		#expect(refreshes == [id: .failed(RefreshError(message: failure.message, code: failure.bankMessage?.code, date: at, waitsForUser: waits,
+			suggestsEditLoginData: suggestsEditLoginData))])
 	}
 
 	@Test("An error stored before the mark existed does not wait for the user")

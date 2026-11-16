@@ -228,6 +228,13 @@ The app SHALL offer "Export All Data..." in the File menu. The command writes on
 - **WHEN** the user chooses "Export All Data..." and saves the file
 - **THEN** the file contains all of these objects
 
+#### Scenario: Saved CSV profiles
+
+- **GIVEN** the database holds the profiles "Broker CSV" and "Bank CSV"
+- **WHEN** the user exports all data and imports the file into an empty database
+- **THEN** both profiles keep their settings, stored versions and unknown fields
+- **AND** a file without the optional "csvProfiles" key imports with no profiles
+
 #### Scenario: Later capability
 
 - **GIVEN** a version of the app that also stores transfer templates
@@ -285,7 +292,7 @@ The app SHALL offer "Import All Data..." in the File menu, which reads a complet
 
 ### Requirement: Complete import needs an empty database
 
-The app SHALL refuse "Import All Data..." when the database holds an account, a category that the user created, or a transaction, and say that the import works only in an empty database.
+The app SHALL refuse "Import All Data..." when the database holds an account, a category that the user created, a transaction, or a saved CSV profile, and say that the import works only in an empty database.
 
 #### Scenario: Database in use
 

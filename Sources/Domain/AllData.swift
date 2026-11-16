@@ -4,7 +4,7 @@ import Foundation
 /// file of docs/export-format.md, and `init(json:)` reads it again without loss. Saved PINs, the state of each
 /// access, and everything about extensions stay out.
 public struct AllData: Sendable, Equatable {
-	public static let formatVersion = 1
+	public static let formatVersion = 2
 
 	public var exportedAt: Date
 	public var groups: [AccountGroup]
@@ -12,21 +12,25 @@ public struct AllData: Sendable, Equatable {
 	public var accesses: [Access]
 	public var categories: [Category]
 	public var transactions: [Transaction]
+	public var splitParts: [SplitPart]
 	public var deletedTransactions: [DeletedTransaction]
 	public var portfolioValues: [PortfolioValue]
 	public var holdings: [Holding]
+	public var csvProfiles: [CSVProfileData]
 
 	public init(exportedAt: Date = Date(), groups: [AccountGroup] = [], accounts: [Account] = [], accesses: [Access] = [], categories: [Category] = [],
-		transactions: [Transaction] = [], deletedTransactions: [DeletedTransaction] = [], portfolioValues: [PortfolioValue] = [], holdings: [Holding] = []) {
+		transactions: [Transaction] = [], deletedTransactions: [DeletedTransaction] = [], portfolioValues: [PortfolioValue] = [], holdings: [Holding] = [], csvProfiles: [CSVProfileData] = [], splitParts: [SplitPart] = []) {
 		self.exportedAt = exportedAt
 		self.groups = groups
 		self.accounts = accounts
 		self.accesses = accesses
 		self.categories = categories
 		self.transactions = transactions
+		self.splitParts = splitParts
 		self.deletedTransactions = deletedTransactions
 		self.portfolioValues = portfolioValues
 		self.holdings = holdings
+		self.csvProfiles = csvProfiles
 	}
 
 	public enum ReadError: Error, Equatable, CustomStringConvertible {
@@ -48,6 +52,7 @@ public struct AllData: Sendable, Equatable {
 	}
 
 	public func json() throws -> Data {
+		try validateSplitParts()
 		let encoder = JSONEncoder()
 		encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
 		encoder.dateEncodingStrategy = .custom { date, encoder in
@@ -76,12 +81,36 @@ public struct AllData: Sendable, Equatable {
 		do {
 			self = try decoder.decode(File.self, from: data).allData()
 			try validateParentLinks()
+			try validateSplitParts()
 		} catch let error as ReadError { throw error } catch { throw Self.readError(error, in: data) }
 	}
 
 	public func validateParentLinks() throws {
 		try Self.checkParents(categories.map { ($0.id, $0.parentID) }, key: "categories", kind: "category")
 		try Self.checkParents(groups.map { ($0.id, $0.parentID) }, key: "accountGroups", kind: "account group")
+	}
+
+	public func validateSplitParts() throws {
+		let originals = Dictionary(transactions.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+		let categoryIDs = Set(categories.map(\.id))
+		var ids = Set<UUID>()
+		for (index, part) in splitParts.enumerated() {
+			guard originals[part.transactionID] != nil,
+				part.categoryID.map(categoryIDs.contains) ?? true else {
+				throw ReadError.damaged("at splitParts[\(index)], the original or category is missing")
+			}
+			guard ids.insert(part.id).inserted, originals[part.id] == nil else {
+				throw ReadError.damaged("at splitParts[\(index)], the row identifier is used twice")
+			}
+		}
+		for (id, parts) in Dictionary(grouping: splitParts, by: \.transactionID) {
+			guard let original = originals[id], !original.isPending, parts.count > 1,
+				parts.allSatisfy({ $0.amountMinor != 0 && $0.position >= 0 }),
+				Set(parts.map(\.position)).count == parts.count,
+				parts.reduce(Int128(0), { $0 + Int128($1.amountMinor) }) == Int128(original.amountMinor) else {
+				throw ReadError.damaged("at splitParts, the parts do not form a valid split")
+			}
+		}
 	}
 
 	private static func checkParents(_ links: [(UUID, UUID?)], key: String, kind: String) throws {
@@ -140,6 +169,19 @@ public struct AllData: Sendable, Equatable {
 	}
 }
 
+/// Keeps future profile versions and fields intact without a dependency on the CSV reader.
+public struct CSVProfileData: Sendable, Equatable, Codable {
+	public var name: String
+	public var version: Int
+	public var payload: Data
+
+	public init(name: String, version: Int, payload: Data) {
+		self.name = name
+		self.version = version
+		self.payload = payload
+	}
+}
+
 /// Optional, so that another JSON file counts as no export rather than as a damaged one.
 private struct Header: Decodable {
 	var format: String?
@@ -158,9 +200,11 @@ private struct File: Codable {
 	var accesses: [AccessEntry]
 	var categories: [Category]
 	var transactions: [TransactionEntry]
+	var splitParts: [SplitPartEntry]?
 	var deletedTransactions: [DeletedEntry]
 	var portfolioValues: [PortfolioValueEntry]
 	var holdings: [HoldingEntry]
+	var csvProfiles: [CSVProfileData]?
 
 	init(_ d: AllData) {
 		exportedAt = d.exportedAt
@@ -169,16 +213,22 @@ private struct File: Codable {
 		accesses = d.accesses.map(AccessEntry.init)
 		categories = d.categories
 		transactions = d.transactions.map(TransactionEntry.init)
+		let originals = Dictionary(d.transactions.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+		splitParts = d.splitParts.map { SplitPartEntry($0, currency: originals[$0.transactionID]!.currency) }
 		deletedTransactions = d.deletedTransactions.map(DeletedEntry.init)
 		let currencies = Dictionary(d.accounts.map { ($0.id, $0.currency) }, uniquingKeysWith: { a, _ in a })
 		portfolioValues = d.portfolioValues.map { PortfolioValueEntry($0, currency: currencies[$0.accountID] ?? "") }
 		holdings = d.holdings.map(HoldingEntry.init)
+		csvProfiles = d.csvProfiles.isEmpty ? nil : d.csvProfiles
 	}
 
 	func allData() throws -> AllData {
 		let currencies = Dictionary(accounts.map { ($0.id, $0.currency) }, uniquingKeysWith: { first, _ in first })
+		guard version == 1 || splitParts != nil else { throw AllData.ReadError.damaged("at splitParts, the required list is missing") }
+		let stored = try each("transactions", transactions) { try $0.transaction(version: version) }
+		let originals = Dictionary(stored.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
 		return AllData(exportedAt: exportedAt, groups: accountGroups, accounts: try each("accounts", accounts) { try $0.account() }, accesses: accesses.map(\.access),
-			categories: try each("categories", categories) { try currencyCode($0.currency); return $0 }, transactions: try each("transactions", transactions) { try $0.transaction() },
+			categories: try each("categories", categories) { try currencyCode($0.currency); return $0 }, transactions: stored,
 			deletedTransactions: try each("deletedTransactions", deletedTransactions) { try $0.deleted() },
 			portfolioValues: try each("portfolioValues", portfolioValues) { entry in
 				let value = try entry.portfolioValue()
@@ -187,7 +237,11 @@ private struct File: Codable {
 				}
 				return value
 			},
-			holdings: try each("holdings", holdings) { try $0.holding() })
+			holdings: try each("holdings", holdings) { try $0.holding() }, csvProfiles: csvProfiles ?? [],
+			splitParts: version == 1 ? [] : try each("splitParts", splitParts ?? []) { entry in
+				guard let original = originals[entry.transactionID] else { throw AllData.ReadError.damaged("the original is missing") }
+				return try entry.part(currency: original.currency)
+			})
 	}
 
 	/// Converts the entries of one list and names the entry of the first value that cannot be read.
@@ -360,9 +414,11 @@ private struct TransactionEntry: Codable {
 	var categoryID: UUID?
 	var categorizedBy: Categorization
 	var isNew: Bool
-	var needsReview: Bool
+	var needsReview: Bool?
+	var review: ReviewReason?
 	var isFetched: Bool
 	var sourceID: String?
+	var fileIdentity: String?
 	var createdAt: Date
 
 	init(_ t: Transaction) {
@@ -387,24 +443,59 @@ private struct TransactionEntry: Codable {
 		categoryID = t.categoryID
 		categorizedBy = t.categorizedBy
 		isNew = t.isNew
-		needsReview = t.needsReview
+		needsReview = nil
+		review = t.review
 		isFetched = t.isFetched
 		sourceID = t.sourceID
+		fileIdentity = t.fileIdentity
 		createdAt = t.createdAt
 	}
 
-	func transaction() throws -> Transaction {
+	func transaction(version: Int) throws -> Transaction {
 		try currencyCode(currency)
+		if version == 1 && needsReview == nil { throw AllData.ReadError.damaged("the key \"needsReview\" is missing") }
 		return Transaction(id: id, accountID: accountID, bookingDate: try day(bookingDate), valueDate: try valueDate.map(day),
 			amountMinor: try AmountText.minorUnits(amount, currency), currency: currency, name: name, purpose: purpose,
 			counterpartyIBAN: counterpartyIBAN, counterpartyBIC: counterpartyBIC, bookingText: bookingText, endToEndReference: endToEndReference,
 			mandateReference: mandateReference, creditorID: creditorID, comment: comment, isChecked: isChecked, isPending: isPending,
-			categoryID: categoryID, categorizedBy: categorizedBy, isNew: isNew, needsReview: needsReview, isFetched: isFetched, sourceID: sourceID,
-			createdAt: createdAt, returnReason: returnReason)
+			categoryID: categoryID, categorizedBy: categorizedBy, isNew: isNew, review: version == 1 ? (needsReview == true ? .unclearBooking : nil) : review, isFetched: isFetched, sourceID: sourceID,
+			createdAt: createdAt, returnReason: returnReason, fileIdentity: fileIdentity)
 	}
 }
 
+private struct SplitPartEntry: Codable {
+	var id: UUID
+	var transactionID: UUID
+	var position: Int
+	var amount: String
+	var categoryID: UUID?
+	var comment: String?
+	var vat: VATEntry?
+
+	init(_ part: SplitPart, currency: String) {
+		id = part.id
+		transactionID = part.transactionID
+		position = part.position
+		amount = AmountText.text(part.amountMinor, currency)
+		categoryID = part.categoryID
+		comment = part.comment
+		vat = part.vat.map { VATEntry(role: $0.role, rate: $0.rate.hundredths) }
+	}
+
+	func part(currency: String) throws -> SplitPart {
+		if let vat, vat.rate <= 0 { throw AllData.ReadError.damaged("the VAT rate must be above zero") }
+		return SplitPart(id: id, transactionID: transactionID, position: position, amountMinor: try AmountText.minorUnits(amount, currency),
+			categoryID: categoryID, comment: comment, vat: vat.map { VATShare(role: $0.role, rate: VATRate(hundredths: $0.rate)) })
+	}
+}
+
+private struct VATEntry: Codable {
+	var role: VATShare.Role
+	var rate: Int64
+}
+
 private struct DeletedEntry: Codable {
+	var fileIdentity: String?
 	var accountID: UUID
 	var sourceID: String?
 	var bookingDate: String
@@ -418,6 +509,7 @@ private struct DeletedEntry: Codable {
 	var deletedAt: Date
 
 	init(_ d: DeletedTransaction) {
+		fileIdentity = d.fileIdentity
 		accountID = d.accountID
 		sourceID = d.sourceID
 		bookingDate = d.bookingDate.description
@@ -435,7 +527,7 @@ private struct DeletedEntry: Codable {
 		try currencyCode(currency)
 		let row = Transaction(accountID: accountID, bookingDate: try day(bookingDate), amountMinor: try AmountText.minorUnits(amount, currency),
 			currency: currency, name: "", purpose: purpose, counterpartyIBAN: counterpartyIBAN, endToEndReference: endToEndReference, isPending: isPending,
-			isFetched: wasFetched, sourceID: sourceID)
+			isFetched: wasFetched, sourceID: sourceID, fileIdentity: fileIdentity)
 		return DeletedTransaction(row, deletedAt: deletedAt)
 	}
 }
