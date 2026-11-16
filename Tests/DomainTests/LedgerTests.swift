@@ -898,6 +898,31 @@ struct LedgerTests {
 		#expect(ledger.followingBankBalance(saving: [], deleting: [deposit.id], calendar: calendar) == [])
 	}
 
+	@Test("A calibration difference that an older bank row left stays when the user adds, edits, and deletes a manual row")
+	func manualRowsKeepCalibrationDifference() throws {
+		let calendar = Calendar(identifier: .gregorian)
+		let balanceDay = Day(year: 2026, month: 10, day: 10)
+		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .bank)
+		var ledger = afterFirstRefresh(giro, balanceMinor: 100_000, on: balanceDay, calendar: calendar)
+		// A later refresh brought a bank row of -7,00 € from before the first one, and the derived value stayed.
+		ledger.update([Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 9, day: 1), amountMinor: -700, name: "Fee", isFetched: true, sourceID: "TX-1")])
+		func difference() throws -> Money? {
+			ledger.proposedCalibration(of: try #require(ledger.account(giro.id)), today: balanceDay, refresh: .idle, calendar: calendar)?.difference
+		}
+		#expect(try difference() == Money(minorUnits: 700, currency: "EUR"))
+		var kiosk = Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 10, day: 3), amountMinor: -1_200, name: "Kiosk", isManual: true)
+		commit([kiosk], in: &ledger, calendar: calendar)
+		#expect(ledger.account(giro.id)?.initialBalanceMinor == 101_200)
+		#expect(try difference() == Money(minorUnits: 700, currency: "EUR"))
+		kiosk.amountMinor = -2_000
+		commit([kiosk], in: &ledger, calendar: calendar)
+		#expect(ledger.account(giro.id)?.initialBalanceMinor == 102_000)
+		#expect(try difference() == Money(minorUnits: 700, currency: "EUR"))
+		commit([], deleting: [kiosk.id], in: &ledger, calendar: calendar)
+		#expect(ledger.account(giro.id)?.initialBalanceMinor == 100_000)
+		#expect(try difference() == Money(minorUnits: 700, currency: "EUR"))
+	}
+
 	@Test("A manual row that a file matched after it changed a derived initial balance gives the change back when the user deletes it")
 	func matchedManualRowDeleted() throws {
 		let calendar = Calendar(identifier: .gregorian)
@@ -917,7 +942,7 @@ struct LedgerTests {
 		#expect(ledger.computedBalance(of: account, through: balanceDay) == Money(minorUnits: 100_000, currency: "EUR"))
 	}
 
-	@Test("Only a manual row in the bank balance sets a derived initial balance to the bank balance less every booked row up to its day")
+	@Test("Only a manual row in the bank balance moves a derived initial balance, by its own booked amount")
 	func rowsThatADerivedInitialBalanceCounts() {
 		let calendar = Calendar(identifier: .gregorian)
 		let balanceDay = Day(year: 2026, month: 11, day: 1)

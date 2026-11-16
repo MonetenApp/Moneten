@@ -400,26 +400,24 @@ public struct Ledger: Sendable {
 			balanceToday: Money(minorUnits: computedBalance(of: account, through: today).minorUnits + difference, currency: account.currency))
 	}
 
-	/// The accounts whose derived initial balance changes when the app saves the rows `saved` and deletes the rows
+	/// The accounts whose derived initial balance moves when the app saves the rows `saved` and deletes the rows
 	/// `deleted`. The caller stores them in the same write as the rows. While a refresh derived the initial balance
-	/// (`Account.followsBankBalance`), a manual row that the bank balance holds before or after the change sets it to
-	/// the bank balance less the booked rows of the account up to the day of that balance, so the computed balance
-	/// keeps ending at the bank balance and the row only shapes the history before it. A row of the bank or of a file
-	/// leaves the value, and the calibration proposal shows what it changed. A value that the user entered stays.
+	/// (`Account.followsBankBalance`), a manual row that the bank balance holds before or after the change moves it by
+	/// its own change, so the computed balance keeps ending at the bank balance and the row only shapes the history
+	/// before it. A row of the bank or of a file moves nothing, and a difference that it left stays for the
+	/// calibration proposal. A value that the user entered stays.
 	public func followingBankBalance(saving saved: [Transaction], deleting deleted: Set<UUID> = [], calendar: Calendar = .current) -> [Account] {
 		// Marking 50,000 rows as checked commits them all, so a ledger without a derived value skips the lookups.
 		guard accounts.contains(where: \.followsBankBalance) else { return [] }
-		let replaced = Set(saved.map(\.id)).union(deleted)
-		// A manual row keeps its mark when a file matches it, so deleting it later still counts as a manual change.
-		let manual = (saved + replaced.compactMap { transaction($0) }).filter(\.isManual)
-		return Set(manual.map(\.accountID)).sorted { $0.uuidString < $1.uuidString }.compactMap { id -> Account? in
+		let changes: [(old: Transaction?, new: Transaction?)] = saved.map { (transaction($0.id), $0) }
+			+ deleted.compactMap { transaction($0) }.map { ($0, nil) }
+		let ids = Set(changes.flatMap { [$0.old, $0.new] }.compactMap { $0 }.filter(\.isManual).map(\.accountID))
+		return ids.sorted { $0.uuidString < $1.uuidString }.compactMap { id -> Account? in
 			guard var a = account(id), a.followsBankBalance, let date = a.bankBalanceDate else { return nil }
-			let day = Day(date, calendar: calendar)
-			guard manual.contains(where: { $0.accountID == id && a.bankBalance(through: day, holds: $0) }) else { return nil }
-			let before = a.initialBalanceMinor
-			let kept = transactions.lazy.filter { $0.accountID == id && !replaced.contains($0.id) }
-			a.deriveInitialBalance(from: [AnySequence(kept), AnySequence(saved.lazy.filter { $0.accountID == id })].joined(), calendar: calendar)
-			return a.initialBalanceMinor == before ? nil : a
+			let move = a.moveForManualRows(changes, through: Day(date, calendar: calendar))
+			guard move != 0 else { return nil }
+			a.initialBalanceMinor += move
+			return a
 		}
 	}
 

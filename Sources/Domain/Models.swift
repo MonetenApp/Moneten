@@ -78,8 +78,8 @@ public struct Account: Identifiable, Hashable, Sendable, Codable {
 	/// The first refresh with a bank balance or the user set the initial balance, so the app never
 	/// derives it again. The user changes it from then on, with "Calibrate" or by hand.
 	public var initialBalanceIsSet: Bool
-	/// A refresh derived the initial balance, and the user has not entered one since. Only then does a manual row set it
-	/// again to the bank balance less the booked rows up to its day. A value that the user enters stays as the user entered it.
+	/// A refresh derived the initial balance, and the user has not entered one since. Only then does a manual row in the
+	/// bank balance move it. A value that the user enters stays as the user entered it.
 	public var initialBalanceIsDerived: Bool
 	public var isClosed: Bool
 	public var comment: String?
@@ -162,9 +162,8 @@ public struct Account: Identifiable, Hashable, Sendable, Codable {
 	/// history from its recorded values instead.
 	var derivesInitialBalance: Bool { source == .bank && kind != .portfolio && !initialBalanceIsSet }
 
-	/// A refresh derived the initial balance and the user entered none since, so a manual row in the bank balance sets
-	/// it again by the rule of the first refresh. The rule replaced moves by the changed manual row: a move needs the
-	/// history of each row, and a matched row or a refresh without a booking moved it wrongly.
+	/// A refresh derived the initial balance and the user entered none since, so a manual row in the bank balance
+	/// moves it by its own change, and a refresh whose new day passes a manual row sets it by the rule of the first refresh.
 	public var followsBankBalance: Bool { source == .bank && kind != .portfolio && initialBalanceIsDerived }
 
 	/// The rows that a bank balance for the end of `day` holds: booked rows in the account currency up to that
@@ -176,6 +175,19 @@ public struct Account: Identifiable, Hashable, Sendable, Codable {
 	/// The row is in a bank balance for the end of `day`, as `bookedSum(of:through:)` counts it.
 	func bankBalance(through day: Day, holds t: Transaction) -> Bool {
 		!t.isPending && t.currency == currency && t.bookingDate <= day
+	}
+
+	/// How far a derived initial balance moves when manual rows change from `old` to `new`, so the computed balance
+	/// keeps ending at a bank balance for the end of `day`: by the booked amount that each manual row of the account
+	/// had in that balance before, less what it has after. Only the row's own change counts, so a difference that a
+	/// bank row left stays for the calibration proposal. A row keeps `isManual` when a file matches it, so its later
+	/// deletion still moves the value back. A nil side is a row that is added or deleted.
+	func moveForManualRows(_ changes: some Sequence<(old: Transaction?, new: Transaction?)>, through day: Day) -> Int64 {
+		func share(_ t: Transaction?) -> Int64 {
+			guard let t, t.isManual, t.accountID == id, bankBalance(through: day, holds: t) else { return 0 }
+			return t.amountMinor
+		}
+		return changes.reduce(0) { $0 + share($1.old) - share($1.new) }
 	}
 
 	/// The initial balance at which the booked rows up to the end of the day of the bank balance add up to
@@ -193,7 +205,7 @@ public struct Account: Identifiable, Hashable, Sendable, Codable {
 	}
 
 	/// Sets the initial balance, so that the computed balance meets the bank balance: at the first refresh with a
-	/// bank balance, and again when a manual row changes a derived value. `rows` are all live rows of the account.
+	/// bank balance, and again when a refresh passes a manual row of a derived value. `rows` are all live rows of the account.
 	mutating func deriveInitialBalance(from rows: some Sequence<Transaction>, calendar: Calendar = .current) {
 		guard derivesInitialBalance || followsBankBalance, let value = initialBalanceMeetingBankBalance(of: rows, calendar: calendar) else { return }
 		initialBalanceMinor = value

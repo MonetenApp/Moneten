@@ -367,7 +367,7 @@ The app SHALL mark every transaction that the user adds with "Add Transaction...
 
 ### Requirement: A manual transaction is part of the bank balance
 
-The app SHALL count a manual transaction in an account with bank access as part of the bank balance when its booking date is not after the day of that balance. While a refresh derived the initial balance, the app computes it again by the rule of the capability `charts` when the user adds, changes, or deletes a manual transaction, so the computed balance keeps ending at the bank balance. An initial balance that the user entered stays.
+The app SHALL count a manual transaction in an account with bank access as part of the bank balance when its booking date is not after the day of that balance. While a refresh derived the initial balance, the app moves it by the change of a manual transaction that the user adds, changes, or deletes, as the capability `charts` states, so the computed balance keeps ending at the bank balance. An initial balance that the user entered stays.
 
 #### Scenario: Deposit after the first refresh
 

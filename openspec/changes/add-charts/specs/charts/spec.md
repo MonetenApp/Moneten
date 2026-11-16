@@ -182,7 +182,30 @@ The app SHALL set the initial balance of a refreshed account only once, at the f
 
 ### Requirement: Manual transactions and the initial balance
 
-The app SHALL count manual transactions when it derives the initial balance of a refreshed account. While the initial balance is derived, the app sets it to the last bank balance less the booked transactions in the account currency up to the end of the day of that balance when a manual transaction booked up to that day is added, changed, deleted, or matched by a file, and when a refresh reports a balance whose day passes a manual transaction. A value that the user enters stays.
+The app SHALL count manual transactions when it derives the initial balance of a refreshed account. While the initial balance is derived, a manual transaction booked up to the day of the bank balance that the user adds, changes, or deletes, or that a file matches, moves it by the booked amount of that transaction up to that day, before and after the change. A difference that a bank transaction left stays for the calibration. A value that the user enters stays.
+
+#### Scenario: Deposit before the day of the bank balance
+
+- **GIVEN** a fixed term deposit whose first refresh on 01.11.2026 derived the initial balance from the bank balance of 10.000,00 € and no transactions
+- **WHEN** the user adds a manual transaction of 4.000,00 € on 01.03.2026
+- **THEN** the initial balance is 6.000,00 € and the computed balance on 01.11.2026 is 10.000,00 €
+
+#### Scenario: Manual transaction that a file matched, then deleted
+
+- **GIVEN** a giro account whose first refresh derived the initial balance from the bank balance of 1.000,00 € on 10.10.2026 and no transactions, and a manual transaction of -12,00 € "Kiosk" on 03.10.2026 that a CSV file with -12,00 € "KIOSK" on 03.10.2026 matched
+- **WHEN** the user deletes the manual transaction
+- **THEN** the initial balance is 1.000,00 € and the computed balance on 10.10.2026 is 1.000,00 €
+
+#### Scenario: A manual change keeps the calibration proposal
+
+- **GIVEN** a giro account whose first refresh derived an initial balance of 1.000,00 € with the bank balance of 1.000,00 € on 10.10.2026, and a later refresh that brought a bank transaction of -7,00 € on 01.09.2026, so the app proposes a calibration of 7,00 €
+- **WHEN** the user adds a manual transaction of -12,00 € on 03.10.2026, changes it to -20,00 €, and deletes it
+- **THEN** the initial balance is 1.012,00 €, then 1.020,00 €, then 1.000,00 €
+- **AND** the app proposes a calibration of 7,00 € after each step
+
+### Requirement: A refresh past a manual transaction sets the initial balance
+
+The app SHALL set an initial balance that a refresh derived to the new bank balance less the booked transactions in the account currency up to the end of its day when a refresh reports a balance whose day passes a manual transaction, whether the bank delivered a booking for it or not. This also takes in a difference that an older bank transaction left. A value that the user enters stays.
 
 #### Scenario: Bank that reports only a balance
 
@@ -196,17 +219,11 @@ The app SHALL count manual transactions when it derives the initial balance of a
 - **WHEN** a refresh on 10.11.2026 brings the booking of -50,00 € on 05.11.2026 and the balance 50,00 €
 - **THEN** the initial balance is 150,00 € and the computed balance on 10.11.2026 is 50,00 €
 
-#### Scenario: Manual transaction that a file matched, then deleted
+#### Scenario: A refresh past a manual transaction takes in an older difference
 
-- **GIVEN** a giro account whose first refresh derived the initial balance from the bank balance of 1.000,00 € on 10.10.2026 and no transactions, and a manual transaction of -12,00 € "Kiosk" on 03.10.2026 that a CSV file with -12,00 € "KIOSK" on 03.10.2026 matched
-- **WHEN** the user deletes the manual transaction
-- **THEN** the initial balance is 1.000,00 € and the computed balance on 10.10.2026 is 1.000,00 €
-
-#### Scenario: Deposit before the day of the bank balance
-
-- **GIVEN** a fixed term deposit whose first refresh on 01.11.2026 derived the initial balance from the bank balance of 10.000,00 € and no transactions
-- **WHEN** the user adds a manual transaction of 4.000,00 € on 01.03.2026
-- **THEN** the initial balance is 6.000,00 € and the computed balance on 01.11.2026 is 10.000,00 €
+- **GIVEN** a credit card whose first refresh derived an initial balance of 100,00 € with the bank balance of 100,00 € on 01.11.2026, a bank transaction of -7,00 € on 20.10.2026 that a later refresh brought, so the app proposes a calibration of 7,00 €, and a manual transaction of -50,00 € on 05.11.2026
+- **WHEN** a refresh on 10.11.2026 reports the balance 50,00 € and no transactions
+- **THEN** the initial balance is 107,00 €, the computed balance on 10.11.2026 is 50,00 €, and the app proposes no calibration
 
 #### Scenario: Entered value and a planned manual transaction
 

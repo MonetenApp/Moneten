@@ -87,7 +87,7 @@ public struct Reconciliation: Sendable, Equatable {
 	public internal(set) var relinked: [DeletedTransaction.Relink] = []
 	/// The account with the balance and the date of this refresh, and the initial balance that follows from them on
 	/// its first refresh with a balance, or when the day of the balance passes a manual row of a derived value. A file
-	/// gives it only when it matches a manual row and that changes a derived initial balance.
+	/// gives it only when a manual row that it matches moves a derived initial balance.
 	public internal(set) var account: Account?
 	/// The positions that replace those of the account, with the IDs of the stored positions of the same
 	/// securities. Nil when the delivery brought none.
@@ -239,14 +239,22 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored all: [
 			r.account = a
 		}
 	}
-	if !rowsFailed, (a.derivesInitialBalance && r.account != nil) || a.followsBankBalance && passesManualRow(of: all, from: account, to: a, in: delivery, r) {
-		// The first refresh with a balance derives the initial balance. A derived one follows a manual row: a new
-		// day of the bank balance that passes one, whether the bank booked it or not, or a file that matched one.
-		// A row of the bank or of a file alone leaves it for the calibration proposal.
-		// Dropped and marked rows are pending and do not count.
+	if !rowsFailed, (a.derivesInitialBalance && r.account != nil) || a.followsBankBalance && passesManualRow(of: all, from: account, to: a) {
+		// The first refresh with a balance derives the initial balance. A new day of the bank balance that passes a
+		// manual row sets a derived one by the same rule, whether the bank booked the row or not: the fresh bank
+		// balance is the truth, so this also takes in a difference that an older bank row left. A row of the bank
+		// alone leaves the value for the calibration proposal. Dropped and marked rows are pending and do not count.
 		let changed = Dictionary(uniqueKeysWithValues: (r.booked + r.updated).map { ($0.id, $0) })
 		a.deriveInitialBalance(from: all.map { changed[$0.id] ?? $0 } + r.added)
-		if r.account != nil || a.initialBalanceMinor != account.initialBalanceMinor { r.account = a }
+		r.account = a
+	} else if case .file = delivery, a.followsBankBalance, let date = a.bankBalanceDate {
+		// A manual row that the file matched moves the value only by its own change, as an edit does.
+		let manual = Dictionary(uniqueKeysWithValues: all.lazy.filter(\.isManual).map { ($0.id, $0) })
+		let move = a.moveForManualRows((r.updated + r.booked).compactMap { new in manual[new.id].map { (old: $0, new: new) } }, through: Day(date))
+		if move != 0 {
+			a.initialBalanceMinor += move
+			r.account = a
+		}
 	}
 	if case let .refresh(result) = delivery, let delivered = result.holdings {
 		r.holdings = Reconciliation.Holdings(accountID: account.id, holdings: Holding.identify(delivered, stored: holdings))
@@ -874,21 +882,11 @@ extension Transaction {
 	}
 }
 
-/// A refresh whose bank balance moved to a later day that passes a manual row, or a file that matched a manual row
-/// that the bank balance holds. `before` is the account before the delivery and `after` the account with its new
-/// bank balance.
-private func passesManualRow(of rows: [Transaction], from before: Account, to after: Account, in delivery: Delivery, _ r: Reconciliation) -> Bool {
-	guard let date = before.bankBalanceDate else { return false }
+/// A refresh moved the day of the bank balance past a manual row. `before` is the account before the refresh and
+/// `after` the account with its new bank balance.
+private func passesManualRow(of rows: [Transaction], from before: Account, to after: Account) -> Bool {
+	guard let date = before.bankBalanceDate, let newDate = after.bankBalanceDate, newDate != date else { return false }
 	let day = Day(date)
-	switch delivery {
-	case .refresh:
-		guard let newDate = after.bankBalanceDate, newDate != date else { return false }
-		let newDay = Day(newDate)
-		return rows.contains { $0.isManual && after.bankBalance(through: newDay, holds: $0) && !before.bankBalance(through: day, holds: $0) }
-	case .file:
-		let unmatched = Set(rows.lazy.filter(\.isOnlyManual).map(\.id))
-		return (r.updated + r.booked).contains { unmatched.contains($0.id) && !$0.isOnlyManual && before.bankBalance(through: day, holds: $0) }
-	case .migration:
-		return false
-	}
+	let newDay = Day(newDate)
+	return rows.contains { $0.isManual && after.bankBalance(through: newDay, holds: $0) && !before.bankBalance(through: day, holds: $0) }
 }

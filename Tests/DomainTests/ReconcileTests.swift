@@ -378,17 +378,36 @@ struct ReconcileTests {
 		#expect(merge(.file([fee]), into: derivedCard).account == nil)
 	}
 
-	@Test("A file that matches a manual row in the bank balance sets a derived initial balance by the rule, and leaves one that the user entered")
-	func fileMatchingManualRowSetsDerivedValue() throws {
-		var card = derivedCard
-		// The value from before the fix: the manual row of -12,00 € on 01.10 never moved it.
+	@Test("A file that matches a manual row moves a derived initial balance only by the row's own change, so an older difference stays")
+	func fileMatchingManualRowKeepsDifference() throws {
+		let card = derivedCard
+		// The initial balance of 100,00 € misses the manual row of -12,00 € on 01.10, so the header proposes a calibration.
 		let kiosk = Transaction(accountID: card.id, bookingDate: day(1, month: 10), amountMinor: -1_200, name: "Kiosk", purpose: "Kartenzahlung", isManual: true)
 		let file = Transaction(accountID: card.id, bookingDate: kiosk.bookingDate, amountMinor: -1_200, name: "KIOSK", purpose: "Kartenzahlung", fileIdentity: "csv:1")
 		let r = merge(.file([file]), into: card, stored: [kiosk])
-		#expect(r.updated.map(\.id) == [kiosk.id])
-		#expect(try #require(r.account).initialBalanceMinor == 11_200)
-		card.enterInitialBalance(300_000)
-		#expect(merge(.file([file]), into: card, stored: [kiosk]).account == nil)
+		let matched = try #require(r.updated.first)
+		#expect(matched.id == kiosk.id && matched.isManual && !matched.isOnlyManual)
+		#expect(r.account == nil)
+		var ledger = Ledger(accounts: [card], transactions: [kiosk])
+		ledger.apply(r)
+		#expect(ledger.proposedCalibration(of: card, today: day(10), refresh: .idle)?.difference == Money(minorUnits: 1_200, currency: "EUR"))
+	}
+
+	@Test("A refresh whose new day passes a manual row sets a derived initial balance by the rule, which takes in an older difference")
+	func refreshPassingManualRowTakesInOlderDifference() throws {
+		let card = derivedCard
+		// An older bank row of -7,00 € that a later refresh brought left a calibration difference of 7,00 €.
+		let older = Transaction(accountID: card.id, bookingDate: day(20, month: 10), amountMinor: -700, name: "Fee", isFetched: true, sourceID: "TX-3")
+		let planned = Transaction(accountID: card.id, bookingDate: day(5), amountMinor: -5_000, name: "Hotel Beispiel", isManual: true)
+		var ledger = Ledger(accounts: [card], transactions: [older, planned])
+		#expect(ledger.proposedCalibration(of: card, today: day(1), refresh: .idle)?.difference == Money(minorUnits: 700, currency: "EUR"))
+		let r = merge(refresh([], balance: Money(minorUnits: 5_000, currency: "EUR"), balanceDate: day(10).date(in: .current)),
+			into: card, stored: [older, planned], at: day(10).date(in: .current))
+		let account = try #require(r.account)
+		#expect(account.initialBalanceMinor == 10_700)
+		ledger.apply(r)
+		#expect(ledger.computedBalance(of: account, through: day(10)) == Money(minorUnits: 5_000, currency: "EUR"))
+		#expect(ledger.proposedCalibration(of: account, today: day(10), refresh: .idle) == nil)
 	}
 
 	@Test("A refresh that moves the day of the bank balance past a manual row leaves an initial balance that the user entered")
