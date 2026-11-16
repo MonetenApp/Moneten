@@ -113,21 +113,22 @@ struct SetupSessionTests {
 	func cancelProgressCancelsLogin() async throws {
 		let chooseMethod = Self.chooseMethod
 		let session = session
+		// A login that Cancel does not reach returns after the minute. The test checks that result and not
+		// the time until the end: on a runner of CI the login waits for a thread of Swift concurrency for
+		// more than 40 seconds after the cancel.
 		let login = Task {
 			try await session.logIn(holding: coordinator) { session -> Int in
 				_ = try await session.ask(chooseMethod)
-				try await Task.sleep(for: .seconds(5))
+				try await Task.sleep(for: .seconds(60))
 				return 1
 			}
 		}
 		for _ in 0..<200 where broker.current == nil { try await Task.sleep(for: .milliseconds(10)) }
 		broker.answer(.tanMethod("922"), to: try #require(broker.current).id)
 		#expect(broker.requesting != nil)
-		let canceled = ContinuousClock.now
 		broker.cancelRequest()
 		#expect(broker.requesting == nil)
 		await #expect(throws: CancellationError.self) { try await login.value }
-		#expect(ContinuousClock.now - canceled < .seconds(2))
 	}
 
 	static let known = Access(source: .fints(bankCode: "12030000", url: URL(string: "https://fints.example.com/")!), bankName: "Musterbank", loginName: "erika77")
@@ -255,7 +256,9 @@ struct SetupSessionTests {
 
 	@Test("Canceling Look for New Accounts while it waits for a refresh of the access keeps the TAN progress of the refresh")
 	func canceledWaitKeepsProgress() async throws {
-		try await cancelWaitingLogin(behind: [.ask(Self.chooseMethod), .wait(.seconds(1))]) {
+		// The refresh holds the access until `cancelAll`. A wait of a fixed time ran out on a loaded runner of
+		// CI before the test looked, and the end of the refresh closed the progress.
+		try await cancelWaitingLogin(behind: [.ask(Self.chooseMethod), .wait(.seconds(600))]) {
 			for _ in 0..<200 where broker.current == nil { try await Task.sleep(for: .milliseconds(10)) }
 			broker.answer(.tanMethod("922"), to: try #require(broker.current).id)
 			#expect(broker.requesting?.access == Self.access)
