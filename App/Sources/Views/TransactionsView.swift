@@ -1023,9 +1023,16 @@ struct StatusLine: View {
 				HStack(spacing: 12) {
 					Text(selected.count > 1 ? "\(selected.count) of \(rows.count) transactions" : (rows.count == 1 ? "1 transaction" : "\(rows.count.formatted()) transactions"))
 						.foregroundStyle(Palette.detail)
-					Text("Sum: \(Format.sums(sums.shownAmounts(viewCurrency: model.selectedCurrency, rows: shown)))")
+					let amounts = sums.shownAmounts(viewCurrency: model.selectedCurrency, rows: shown)
+					Text("Sum: \(Format.sums(amounts))")
 						.monospacedDigit()
-						.textSelection(.enabled)
+						// The number alone, which a spreadsheet or a text field takes as it is.
+						.contextMenu {
+							Button("Copy Sum") {
+								NSPasteboard.general.clearContents()
+								NSPasteboard.general.setString(MoneySums.copyText(amounts, locale: .current), forType: .string)
+							}
+						}
 				}
 				.fixedSize()
 				// As wide as the note, so that the count stays in the middle and the note truncates first.
