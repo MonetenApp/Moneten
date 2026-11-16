@@ -10,19 +10,16 @@ struct CrashReportStoreTests {
 	@Test("Newest report survives a restart, is encrypted, and a decision prevents replay")
 	func pendingReport() throws {
 		let folder = DataFolder(root: FileManager.default.temporaryDirectory.appendingPathComponent("MonetenCrashTests-\(UUID())"))
-		let keychain = Keychain(service: "Moneten crash report key")
-		defer {
-			try? keychain.delete(account: folder.keychainAccount)
-			try? FileManager.default.removeItem(at: folder.root)
-		}
-		let store = CrashReportStore(folder: folder)
+		let keychain = CrashReportKeyFile(file: folder.root.appendingPathComponent("CrashReport.key"))
+		defer { try? FileManager.default.removeItem(at: folder.root) }
+		let store = CrashReportStore(folder: folder, keyInFolder: true)
 		#expect(try store.load()?.pending == nil)
 		let first = CrashDiagnostic(appVersion: "0.1.0", macOSVersion: "15.2", exceptionType: 1, signal: 11, frames: [])
 		let second = CrashDiagnostic(appVersion: "0.1.1", macOSVersion: "15.2", exceptionType: 6, signal: 6, frames: [])
 		let date = Date(timeIntervalSince1970: 1_800_000_000)
 		#expect(try store.receive(first, at: date)?.diagnostic == first)
 		#expect(try store.receive(second, at: date.addingTimeInterval(1))?.diagnostic == second)
-		let reopened = CrashReportStore(folder: folder)
+		let reopened = CrashReportStore(folder: folder, keyInFolder: true)
 		#expect(try reopened.load()?.pending?.diagnostic == second)
 		#expect(try reopened.receive(first, at: date)?.diagnostic == second)
 		let file = folder.root.appendingPathComponent("CrashReport.encrypted")
@@ -31,8 +28,9 @@ struct CrashReportStoreTests {
 		#expect(bytes.range(of: Data("0.1.1".utf8)) == nil)
 		#expect(bytes.range(of: Data("appVersion".utf8)) == nil)
 		#expect(try keychain.read(account: folder.keychainAccount) != nil)
+		#expect(try FileManager.default.attributesOfItem(atPath: keychain.file.path)[.posixPermissions] as? Int == 0o600)
 		_ = try reopened.decide(.decline)
-		#expect(try CrashReportStore(folder: folder).load()?.pending == nil)
+		#expect(try CrashReportStore(folder: folder, keyInFolder: true).load()?.pending == nil)
 		#expect(try reopened.receive(second, at: date.addingTimeInterval(1)) == nil)
 		#expect(try reopened.receive(first, at: date) == nil)
 		#expect(try reopened.receive(first, at: date.addingTimeInterval(2))?.diagnostic == first)
@@ -47,19 +45,16 @@ struct CrashReportStoreTests {
 	@Test("Losing the key deletes unreadable state and permits a new crash")
 	func lostKey() throws {
 		let folder = DataFolder(root: FileManager.default.temporaryDirectory.appendingPathComponent("MonetenCrashTests-\(UUID())"))
-		let keychain = Keychain(service: "Moneten crash report key")
-		defer {
-			try? keychain.delete(account: folder.keychainAccount)
-			try? FileManager.default.removeItem(at: folder.root)
-		}
-		let store = CrashReportStore(folder: folder)
+		let keychain = CrashReportKeyFile(file: folder.root.appendingPathComponent("CrashReport.key"))
+		defer { try? FileManager.default.removeItem(at: folder.root) }
+		let store = CrashReportStore(folder: folder, keyInFolder: true)
 		let diagnostic = CrashDiagnostic(appVersion: "0.1.0", macOSVersion: "15.2", exceptionType: 6, signal: 6, frames: [])
 		_ = try store.receive(diagnostic, at: Date(timeIntervalSince1970: 1_800_000_000))
-		try keychain.delete(account: folder.keychainAccount)
+		try FileManager.default.removeItem(at: keychain.file)
 		#expect(try store.load()?.pending == nil)
 		#expect(!FileManager.default.fileExists(atPath: folder.root.appendingPathComponent("CrashReport.encrypted").path))
 		#expect(try store.receive(diagnostic, at: Date(timeIntervalSince1970: 1_800_000_100))?.date == Date(timeIntervalSince1970: 1_800_000_100))
-		#expect(try CrashReportStore(folder: folder).load()?.pending?.diagnostic == diagnostic)
+		#expect(try CrashReportStore(folder: folder, keyInFolder: true).load()?.pending?.diagnostic == diagnostic)
 	}
 	@Test("Only a Moneten crash file after the saved launch offers a short report")
 	func fallbackFiles() {
@@ -104,11 +99,8 @@ struct CrashReportStoreTests {
 	@Test("Opening GitHub retains all 500 frames until Copy or Don't Report")
 	func githubRetainsLongReport() throws {
 		let folder = DataFolder(root: FileManager.default.temporaryDirectory.appendingPathComponent("MonetenCrashTests-\(UUID())"))
-		defer {
-			try? Keychain(service: "Moneten crash report key").delete(account: folder.keychainAccount)
-			try? FileManager.default.removeItem(at: folder.root)
-		}
-		let store = CrashReportStore(folder: folder)
+		defer { try? FileManager.default.removeItem(at: folder.root) }
+		let store = CrashReportStore(folder: folder, keyInFolder: true)
 		let diagnostic = CrashDiagnostic(appVersion: "0.1.0", macOSVersion: "15.2", exceptionType: 6, signal: 6,
 			frames: (0..<500).map { .init(binaryName: "Moneten", binaryUUID: "70B89F27-1634-3580-A695-57CDB41D7743", offset: UInt64($0)) })
 		_ = try store.receive(diagnostic, at: Date(timeIntervalSince1970: 1_800_000_000))
@@ -126,19 +118,16 @@ struct CrashReportStoreTests {
 	@Test("Saved launch survives an upgrade and a declined fallback suppresses late details")
 	func persistedLaunch() throws {
 		let folder = DataFolder(root: FileManager.default.temporaryDirectory.appendingPathComponent("MonetenCrashTests-\(UUID())"))
-		defer {
-			try? Keychain(service: "Moneten crash report key").delete(account: folder.keychainAccount)
-			try? FileManager.default.removeItem(at: folder.root)
-		}
-		let store = CrashReportStore(folder: folder)
+		defer { try? FileManager.default.removeItem(at: folder.root) }
+		let store = CrashReportStore(folder: folder, keyInFolder: true)
 		#expect(try store.startLaunch(at: Date(timeIntervalSince1970: 1_000), appVersion: "0.1.0", macOSVersion: "15.2", files: []) == nil)
-		let upgraded = CrashReportStore(folder: folder)
+		let upgraded = CrashReportStore(folder: folder, keyInFolder: true)
 		let pending = try upgraded.startLaunch(at: Date(timeIntervalSince1970: 1_200), appVersion: "0.1.1", macOSVersion: "15.3",
 			files: [("Moneten-new.ips", Date(timeIntervalSince1970: 1_100))])
 		#expect(pending?.report == "Moneten crash report\nApp version: 0.1.0\nmacOS: 15.2\nCrash time: 1970-01-01T00:18:20Z\nNo details were available.")
 		#expect(try upgraded.decide(.decline) == nil)
 		let diagnostic = CrashDiagnostic(appVersion: "0.1.0", macOSVersion: "15.2", exceptionType: 6, signal: 6, frames: [])
-		#expect(try CrashReportStore(folder: folder).receive(diagnostic, at: Date(timeIntervalSince1970: 1_150), since: Date(timeIntervalSince1970: 1_001)) == nil)
+		#expect(try CrashReportStore(folder: folder, keyInFolder: true).receive(diagnostic, at: Date(timeIntervalSince1970: 1_150), since: Date(timeIntervalSince1970: 1_001)) == nil)
 	}
 
 	@Test("A decision for an older crash does not suppress details for a newer pending crash")
@@ -180,11 +169,8 @@ struct CrashReportStoreTests {
 	@Test("A crash at 1100 replaces the short report from the file written at 1103")
 	func lateDiagnostic() throws {
 		let folder = DataFolder(root: FileManager.default.temporaryDirectory.appendingPathComponent("MonetenCrashTests-\(UUID())"))
-		defer {
-			try? Keychain(service: "Moneten crash report key").delete(account: folder.keychainAccount)
-			try? FileManager.default.removeItem(at: folder.root)
-		}
-		let store = CrashReportStore(folder: folder)
+		defer { try? FileManager.default.removeItem(at: folder.root) }
+		let store = CrashReportStore(folder: folder, keyInFolder: true)
 		_ = try store.startLaunch(at: Date(timeIntervalSince1970: 1_000), appVersion: "0.1.0", macOSVersion: "15.2", files: [])
 		let fallback = try store.startLaunch(at: Date(timeIntervalSince1970: 1_200), appVersion: "0.1.1", macOSVersion: "15.3",
 			files: [("Moneten-a.ips", Date(timeIntervalSince1970: 1_103))])
@@ -192,7 +178,7 @@ struct CrashReportStoreTests {
 		#expect(fallback?.report == "Moneten crash report\nApp version: 0.1.0\nmacOS: 15.2\nCrash time: 1970-01-01T00:18:23Z\nNo details were available.")
 		let diagnostic = CrashDiagnostic(appVersion: "0.1.0", macOSVersion: "15.2", exceptionType: 6, signal: 6, frames: [])
 		for _ in 0..<2 {
-			let pending = try CrashReportStore(folder: folder).receive(diagnostic, at: Date(timeIntervalSince1970: 1_100), since: Date(timeIntervalSince1970: 1_100))
+			let pending = try CrashReportStore(folder: folder, keyInFolder: true).receive(diagnostic, at: Date(timeIntervalSince1970: 1_100), since: Date(timeIntervalSince1970: 1_100))
 			#expect(pending?.date == Date(timeIntervalSince1970: 1_100))
 			#expect(pending?.diagnostic.signal == 6)
 			#expect(pending?.fallback?.date == nil)
@@ -205,17 +191,14 @@ struct CrashReportStoreTests {
 		arguments: [999.0, 1_000, 1_001, 1_100, 1_162, 1_163, 1_164])
 	func fallbackTiming(start: TimeInterval) throws {
 		let folder = DataFolder(root: FileManager.default.temporaryDirectory.appendingPathComponent("MonetenCrashTests-\(UUID())"))
-		defer {
-			try? Keychain(service: "Moneten crash report key").delete(account: folder.keychainAccount)
-			try? FileManager.default.removeItem(at: folder.root)
-		}
-		let store = CrashReportStore(folder: folder)
+		defer { try? FileManager.default.removeItem(at: folder.root) }
+		let store = CrashReportStore(folder: folder, keyInFolder: true)
 		_ = try store.startLaunch(at: Date(timeIntervalSince1970: 1_000), appVersion: "0.1.0", macOSVersion: "15.2", files: [])
 		_ = try store.startLaunch(at: Date(timeIntervalSince1970: 1_200), appVersion: "0.1.1", macOSVersion: "15.3",
 			files: [("Moneten-a.ips", Date(timeIntervalSince1970: 1_103))])
 		_ = try store.startLaunch(at: Date(timeIntervalSince1970: 1_400), appVersion: "0.1.1", macOSVersion: "15.3", files: [])
 		let diagnostic = CrashDiagnostic(appVersion: "0.1.0", macOSVersion: "15.2", exceptionType: 6, signal: 6, frames: [])
-		let pending = try CrashReportStore(folder: folder).receive(diagnostic, at: Date(timeIntervalSince1970: 1_300), since: Date(timeIntervalSince1970: start))
+		let pending = try CrashReportStore(folder: folder, keyInFolder: true).receive(diagnostic, at: Date(timeIntervalSince1970: 1_300), since: Date(timeIntervalSince1970: start))
 		if start > 1_000 && start <= 1_163 {
 			#expect(pending?.diagnostic.signal == 6)
 			#expect(pending?.fallback?.date == nil)
@@ -241,11 +224,8 @@ struct CrashReportStoreTests {
 
 	private func retryAfterAccessFailure(_ error: any Error) throws {
 		let folder = DataFolder(root: FileManager.default.temporaryDirectory.appendingPathComponent("MonetenCrashTests-\(UUID())"))
-		defer {
-			try? Keychain(service: "Moneten crash report key").delete(account: folder.keychainAccount)
-			try? FileManager.default.removeItem(at: folder.root)
-		}
-		let store = CrashReportStore(folder: folder)
+		defer { try? FileManager.default.removeItem(at: folder.root) }
+		let store = CrashReportStore(folder: folder, keyInFolder: true)
 		_ = try store.startLaunch(at: Date(timeIntervalSince1970: 1_000), appVersion: "0.1.0", macOSVersion: "15.2", files: [])
 		_ = try store.startLaunch(at: Date(timeIntervalSince1970: 1_200), appVersion: "0.1.1", macOSVersion: "15.3",
 			files: [("Moneten-a.ips", Date(timeIntervalSince1970: 1_103))])
@@ -257,7 +237,7 @@ struct CrashReportStoreTests {
 		}
 		#expect(FileManager.default.fileExists(atPath: file.path))
 		#expect(try Data(contentsOf: file) == before)
-		let recovered = try CrashReportStore(folder: folder).startLaunch(at: Date(timeIntervalSince1970: 1_600), appVersion: "0.1.1", macOSVersion: "15.3", files: [])
+		let recovered = try CrashReportStore(folder: folder, keyInFolder: true).startLaunch(at: Date(timeIntervalSince1970: 1_600), appVersion: "0.1.1", macOSVersion: "15.3", files: [])
 		#expect(recovered?.date == Date(timeIntervalSince1970: 1_103))
 		#expect(recovered?.diagnostic.appVersion == "0.1.0")
 	}
@@ -272,18 +252,15 @@ struct CrashReportStoreTests {
 		arguments: ["missing", "short-key", "long-key", "invalid-key", "box", "authentication", "json", "schema"])
 	func permanentlyUnreadable(kind: String) throws {
 		let folder = DataFolder(root: FileManager.default.temporaryDirectory.appendingPathComponent("MonetenCrashTests-\(UUID())"))
-		let keychain = Keychain(service: "Moneten crash report key")
-		defer {
-			try? keychain.delete(account: folder.keychainAccount)
-			try? FileManager.default.removeItem(at: folder.root)
-		}
-		let store = CrashReportStore(folder: folder)
+		let keychain = CrashReportKeyFile(file: folder.root.appendingPathComponent("CrashReport.key"))
+		defer { try? FileManager.default.removeItem(at: folder.root) }
+		let store = CrashReportStore(folder: folder, keyInFolder: true)
 		#expect(try store.load() == nil)
 		let diagnostic = CrashDiagnostic(appVersion: "0.1.0", macOSVersion: "15.2", exceptionType: 6, signal: 6, frames: [])
 		_ = try store.receive(diagnostic, at: Date(timeIntervalSince1970: 1_100))
 		let file = folder.root.appendingPathComponent("CrashReport.encrypted")
 		switch kind {
-		case "missing": try keychain.delete(account: folder.keychainAccount)
+		case "missing": try FileManager.default.removeItem(at: keychain.file)
 		case "short-key": try keychain.write(Data(repeating: 0, count: 31).base64EncodedString(), account: folder.keychainAccount)
 		case "long-key": try keychain.write(Data(repeating: 0, count: 33).base64EncodedString(), account: folder.keychainAccount)
 		case "invalid-key": try keychain.write("not base64", account: folder.keychainAccount)
@@ -301,7 +278,7 @@ struct CrashReportStoreTests {
 		#expect(try store.load() == nil)
 		#expect(!FileManager.default.fileExists(atPath: file.path))
 		#expect(try store.receive(diagnostic, at: Date(timeIntervalSince1970: 1_300))?.date == Date(timeIntervalSince1970: 1_300))
-		#expect(try CrashReportStore(folder: folder).load()?.pending?.diagnostic.signal == 6)
+		#expect(try CrashReportStore(folder: folder, keyInFolder: true).load()?.pending?.diagnostic.signal == 6)
 	}
 
 

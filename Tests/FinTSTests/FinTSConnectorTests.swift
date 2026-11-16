@@ -644,7 +644,8 @@ struct FinTSConnectorTests {
 		let lines = URL(filePath: #filePath).deletingLastPathComponent().appending(path: "helper-lines.jsonl")
 		let card = AccountRequest(accountID: UUID(), name: "Card", remoteID: "4711", currency: "EUR")
 		let depots = ["7654321", "7654322", "7654323", "7654324", "7654325", "7654326"].map { AccountRequest(accountID: UUID(), name: "Depot", remoteID: $0, currency: "EUR") }
-		let report = try await refresh("read cmd; cat '\(lines.path)'", accounts: [Self.giro, Self.savings, card] + depots)
+		let creditCard = AccountRequest(accountID: UUID(), name: "Visa", remoteID: "1234567890123456", since: Day(year: 2026, month: 10, day: 1), currency: "EUR")
+		let report = try await refresh("read cmd; cat '\(lines.path)'", accounts: [Self.giro, Self.savings, card, creditCard] + depots)
 
 		guard case let .fetched(depot) = report.outcomes[depots[0].accountID] else { Issue.record("depot not fetched"); return }
 		#expect(depot.balance == Money(minorUnits: 2_451_837, currency: "EUR"))
@@ -713,6 +714,18 @@ struct FinTSConnectorTests {
 
 		guard case let .failed(failure) = report.outcomes[card.accountID] else { Issue.record("card not failed"); return }
 		#expect(failure == HelperFailure.noBookingDate)
+
+		// The card statement of a credit card brings its balance and its transactions in one answer.
+		guard case let .fetched(statement) = report.outcomes[creditCard.accountID] else { Issue.record("credit card not fetched"); return }
+		#expect(statement.balance == Money(minorUnits: -123_456, currency: "EUR"))
+		#expect(statement.balanceDate.map { Day($0) } == Day(year: 2026, month: 11, day: 12))
+		#expect(statement.transactions?.from == Day(year: 2026, month: 10, day: 1))
+		#expect(statement.transactions?.rows.map { [$0.amountMinor.description, $0.name, $0.purpose, $0.bookingText ?? "", "\($0.isPending)"] }
+			== [["-1990", "Streaming Beispiel", "Streaming Beispiel / Musterstadt", "Kreditkartenzahlung", "false"],
+				["-15000", "Hotel Beispiel", "Hotel Beispiel / Musterstadt", "Kreditkartenzahlung", "true"]])
+		#expect(statement.transactions?.rows.map { [$0.bookingDate, $0.valueDate] }
+			== [[Day(year: 2026, month: 11, day: 9), Day(year: 2026, month: 11, day: 8)], [Day(year: 2026, month: 11, day: 10), Day(year: 2026, month: 11, day: 10)]])
+		#expect(statement.transactionFailure == nil)
 	}
 
 	@Test("A row without a currency gets the currency of the account")
@@ -805,13 +818,24 @@ struct FinTSConnectorTests {
 		(#"{"type":"result","account":"DE02120300000000202051","balance":{"currency":"EUR"},"errors":[]}"#, HelperFailure.unreadable),
 		// An amount whose minor units do not fit would otherwise turn into another amount.
 		(#"{"type":"result","account":"DE02120300000000202051","transactions":{"rows":[{"booked":"2026-11-02","amount":"-92233720368547758.08","pending":false}]},"errors":[]}"#,
-			HelperFailure.unreadable),
+			HelperFailure.tooLarge),
 		(#"{"type":"result","account":"DE02120300000000202051","transactions":{"rows":[{"amount":"-1","pending":true}]},"errors":[]}"#,
 			SyncFailure.unsupported("The bank sent a transaction without a booking date, so nothing of this account was stored.")),
 		(#"{"type":"result","account":"DE02120300000000202051","balance":{"amount":"1","currency":"EUR"},"errors":[],"securities":true,"holdings":[{"name":"Gold","quantity":"12abc"}]}"#,
 			HelperFailure.unreadable),
 		(#"{"type":"result","account":"DE02120300000000202051","balance":{"amount":"1","currency":"EUR"},"errors":[],"securities":true,"holdings":[{"name":"Gold"}]}"#,
 			HelperFailure.unreadable),
+		// A quantity times a price beyond the limit fails its account, also without a market value from the bank.
+		(#"{"type":"result","account":"DE02120300000000202051","balance":{"amount":"1","currency":"EUR"},"errors":[],"securities":true,"holdings":[{"name":"Gold","quantity":"10000000000","price":{"amount":"10000000000","currency":"EUR"}}]}"#,
+			HelperFailure.tooLarge),
+		// An amount above 10.000.000.000.000,00 € fails its account, so no sum of stored amounts can overflow (issue #324).
+		(#"{"type":"result","account":"DE02120300000000202051","balance":{"amount":"50000000000000000.00","currency":"EUR"},"errors":[]}"#, HelperFailure.tooLarge),
+		(#"{"type":"result","account":"DE02120300000000202051","transactions":{"rows":[{"booked":"2026-11-02","amount":"-10000000000000.01","pending":false}]},"errors":[]}"#,
+			HelperFailure.tooLarge),
+		(#"{"type":"result","account":"DE02120300000000202051","balance":{"amount":"1","currency":"EUR"},"errors":[],"securities":true,"holdings":[{"name":"Gold","quantity":"1","value":{"amount":"1e20","currency":"EUR"}}]}"#,
+			HelperFailure.unreadable),
+		(#"{"type":"result","account":"DE02120300000000202051","balance":{"amount":"1","currency":"EUR"},"errors":[],"securities":true,"holdings":[{"name":"Gold","quantity":"1","value":{"amount":"20000000000000","currency":"EUR"}}]}"#,
+			HelperFailure.tooLarge),
 	] + ["12.3.4", "1-2", "-", ".", "--5", "1.", ".5", "-0.5.1"].flatMap { number in [
 		// A number that reads only in part fails its account, in a quantity, a price, and a balance alike.
 		(#"{"type":"result","account":"DE02120300000000202051","balance":{"amount":"1","currency":"EUR"},"errors":[],"securities":true,"holdings":[{"name":"Gold","quantity":"\#(number)"}]}"#,

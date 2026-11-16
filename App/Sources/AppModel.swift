@@ -39,15 +39,8 @@ enum BalanceMode: String {
 /// Settings that the app needs before the database is open. Only `savedFilterBar` holds data of the user: the
 /// dates of a custom period, the ends of an amount range, and the IDs of a category and an account.
 enum Preference {
-	static let lockOnClose = "lockWhenMainWindowIsClosed"
-	/// Version 1 stored "lockAfterMinutes" also while the lock was off, as the suggestion of the
-	/// old number field. The new key starts at the default of 10 minutes; `registerDefaults` keeps
-	/// the old value only where the lock was on.
-	static let lockAfterMinutes = "lockAfterInactivityMinutes"
-	static let lockAfterEnabled = "lockAfterInactivity"
-	static let unlockAutomatically = "unlockAutomatically"
-	static let unlockWithTouchID = "unlockWithTouchID"
-	static let unlockWithAppleWatch = "unlockWithAppleWatch"
+	// The unlock settings are their Keychain entries (`Vault.PasswordEntry`), and the lock settings live in the
+	// database (`LockSettings`): any program of the user can write the settings file, and every data folder shares it.
 	static let viewMode = "viewMode"
 	static let balanceMode = "balanceMode"
 	/// "Update extensions automatically" in the Extensions window, on unless the user turns it off.
@@ -57,28 +50,19 @@ enum Preference {
 	/// The pin of the filter bar, and the `SavedFilterBar` it keeps for the next launch.
 	static let pinFilterBar = "pinFilterBar"
 	static let savedFilterBar = "savedFilterBar"
+	/// "Checkmarks" and "Daily Balance" in the View menu.
+	static let showsCheckmarks = "showsCheckmarks"
+	static let showsDailyBalance = "showsDailyBalance"
 	static let vatRates = "vatRates"
 
 	static var rates: [VATRate] {
 		VATRate.list(hundredths: UserDefaults.standard.array(forKey: vatRates) as? [Int64] ?? [])
 	}
 
-	/// The app locks after 10 minutes without activity unless the user turns it off. MoneyMoney has
-	/// this off and suggests 5 minutes; the owner chose on with 10 minutes.
-	static let defaultLockAfterMinutes = 10
-
-	/// The values of settings the user has not changed. A user who turned the inactivity lock on in
-	/// version 1 keeps the minutes chosen there.
+	/// The values of settings the user has not changed.
 	static func registerDefaults() {
 		adoptLegacyDomain()
-		let d = UserDefaults.standard
-		let oldMinutes = "lockAfterMinutes"
-		if d.object(forKey: lockAfterMinutes) == nil, d.object(forKey: lockAfterEnabled) as? Bool == true,
-			d.integer(forKey: oldMinutes) > 0 {
-			d.set(d.integer(forKey: oldMinutes), forKey: lockAfterMinutes)
-		}
-		d.removeObject(forKey: oldMinutes)
-		d.register(defaults: [lockAfterEnabled: true, lockAfterMinutes: defaultLockAfterMinutes, vatRates: VATRate.standard.map(\.hundredths)])
+		UserDefaults.standard.register(defaults: [vatRates: VATRate.standard.map(\.hundredths)])
 	}
 
 	/// Copies the settings of the bundle identifier before the rename to Moneten (ADR 0013) once.
@@ -285,6 +269,14 @@ final class AppModel {
 		didSet { UserDefaults.standard.set(balanceMode.rawValue, forKey: Preference.balanceMode) }
 	}
 	var chartPeriod: ChartPeriod = .month
+	/// The checkmark controls of the list. Hiding them keeps the stored checkmarks.
+	var showsCheckmarks = UserDefaults.standard.object(forKey: Preference.showsCheckmarks) as? Bool ?? true {
+		didSet { UserDefaults.standard.set(showsCheckmarks, forKey: Preference.showsCheckmarks) }
+	}
+	/// The balance at the end of each day in the list of a single account.
+	var showsDailyBalance = UserDefaults.standard.bool(forKey: Preference.showsDailyBalance) {
+		didSet { UserDefaults.standard.set(showsDailyBalance, forKey: Preference.showsDailyBalance) }
+	}
 	/// The cells of the transaction table read the selection, so a change of it waits for a drawing before the
 	/// table goes, like a change of the ledger (issue #135).
 	var selectedTransactions = Set<UUID>() {
@@ -325,6 +317,11 @@ final class AppModel {
 	/// Column widths and order of the transaction table. They live here, so a new table keeps them.
 	var transactionColumns = TableColumnCustomization<Transaction>()
 
+	/// The lock settings of the open database. The database holds them, so they come with each unlock.
+	private(set) var lockSettings = LockSettings()
+	/// The unlock settings of this database that are on: the ones whose Keychain entry exists. The launch reads
+	/// them, and a change on the "Security" tab updates them after it wrote or deleted the entry.
+	var unlockSettings: Set<Vault.PasswordEntry> = []
 	private var lastActivity = Date()
 	private var eventMonitor: Any?
 	private var idleTimer: Timer?
@@ -416,12 +413,14 @@ final class AppModel {
 				}
 			case .password:
 				hasPassword = true
-				guard UserDefaults.standard.bool(forKey: Preference.unlockAutomatically) else {
-					phase = .locked
-					return
-				}
+				// Only the entry of the automatic unlock opens the database at launch, never one of Touch ID or Apple Watch.
 				let stored: String?
-				do { stored = try vault.storedPassword() } catch {
+				do {
+					// The settings first, so a failed cleanup of the old shared entry still shows the entries that exist.
+					try loadUnlockSettings()
+					try vault.removeSharedEntry()
+					stored = try vault.storedPassword(for: .automaticUnlock)
+				} catch {
 					lockNotice = String(describing: error)
 					phase = .locked
 					return
@@ -484,10 +483,8 @@ final class AppModel {
 	func createDatabase(password: String?) {
 		do {
 			let store = try vault.create(password: password, starterCategories: StarterCategories.make(language: starterLanguage))
-			// A new database starts without the unlock settings of the database that was here before.
-			for key in [Preference.unlockAutomatically, Preference.unlockWithTouchID, Preference.unlockWithAppleWatch] {
-				UserDefaults.standard.removeObject(forKey: key)
-			}
+			// `create` removed the entries of a database that was here before, so every unlock setting is off.
+			unlockSettings = []
 			hasPassword = password != nil
 			try open(store)
 		} catch {
@@ -514,24 +511,24 @@ final class AppModel {
 		lockNotice = nil
 		do {
 			try vault.refreshStoredPassword(password)
+			// A Keychain that failed at launch left the settings empty; with the Keychain back they show its entries again.
+			try loadUnlockSettings()
 		} catch {
 			alert = AlertMessage(title: String(localized: "The database password could not be stored in the Keychain."), message: String(describing: error))
 		}
 		return .unlocked
 	}
 
-	/// The unlock methods whose setting is on. They need the database password in the Keychain.
+	/// The unlock methods whose setting is on, which means that their own entry is in the Keychain.
 	func unlockMethods() -> [UnlockMethod] {
 		guard hasPassword else { return [] }
-		let on = UnlockMethod.allCases.filter { UserDefaults.standard.bool(forKey: $0.preference) }
-		guard !on.isEmpty else { return [] }
-		do {
-			guard try vault.storedPassword() != nil else { return [] }
-		} catch {
-			lockNotice = String(describing: error)
-			return []
-		}
-		return on
+		return UnlockMethod.allCases.filter { unlockSettings.contains($0.entry) }
+	}
+
+	/// Reads which unlock settings of this database are on. The launch calls it once, and so does the debug
+	/// harness after it removed entries.
+	func loadUnlockSettings() throws {
+		unlockSettings = try vault.unlockSettings()
 	}
 
 	func unlock(with methods: [UnlockMethod]) {
@@ -539,7 +536,7 @@ final class AppModel {
 			Task { @MainActor in
 				guard ok else { return }
 				do {
-					guard let pw = try self.vault.storedPassword() else { return }
+					guard let pw = try self.vault.unlockPassword(offered: methods.map(\.entry)) else { return }
 					if await self.unlock(password: pw) == .incorrectPassword { self.lockNotice = Self.staleKeychainNotice }
 				} catch {
 					self.lockNotice = String(describing: error)
@@ -550,6 +547,7 @@ final class AppModel {
 
 	private func open(_ store: Store) throws {
 		self.store = store
+		lockSettings = try store.lockSettings()
 		let loaded = try store.loadLedger()
 		ledgerChange = "load"
 		ledger = loaded
@@ -660,15 +658,23 @@ final class AppModel {
 	}
 
 	private func checkIdle() {
-		let d = UserDefaults.standard
-		guard phase == .unlocked, d.bool(forKey: Preference.lockAfterEnabled) else { return }
-		let stored = d.integer(forKey: Preference.lockAfterMinutes)
-		let minutes = max(1, stored == 0 ? Preference.defaultLockAfterMinutes : stored)
-		if Date().timeIntervalSince(lastActivity) >= Double(minutes) * 60 { lock() }
+		guard phase == .unlocked, lockSettings.lockAfterMinutes > 0 else { return }
+		#if DEBUG || PERF_HARNESS
+		// The scripts of the debug harness run longer than the shortest lock time.
+		if ProcessInfo.processInfo.environment["MONETEN_DEBUG_NO_IDLE_LOCK"] == "1" { return }
+		#endif
+		if Date().timeIntervalSince(lastActivity) >= Double(lockSettings.lockAfterMinutes) * 60 { lock() }
 	}
 
 	func mainWindowClosed() {
-		if UserDefaults.standard.bool(forKey: Preference.lockOnClose) { lock() }
+		if lockSettings.lockOnClose { lock() }
+	}
+
+	/// Writes the lock settings to the database first, as every change does.
+	func saveLockSettings(_ settings: LockSettings) throws {
+		guard let store else { throw SecurityChangeFailure(description: String(localized: "Unlock Moneten to change this setting.")) }
+		try store.saveLockSettings(settings)
+		lockSettings = settings
 	}
 
 	/// Brings the window "Notice" forward when a notice came since it last did. The app calls it only when

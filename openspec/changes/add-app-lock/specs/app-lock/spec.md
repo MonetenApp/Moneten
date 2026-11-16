@@ -120,6 +120,12 @@ The app SHALL open the database at launch without a prompt when "Unlock automati
 - **WHEN** the user locks the app with ⌃⌘L
 - **THEN** the lock screen asks for the database password
 
+#### Scenario: Settings file changed outside the app
+
+- **GIVEN** only "Unlock with Touch ID" is on
+- **WHEN** a program changes the settings file of the app outside the app to turn on "Unlock automatically at application start", and the user starts the app
+- **THEN** the lock screen asks for the database password
+
 ### Requirement: Unlock with Touch ID
 
 The app SHALL offer Touch ID on the lock screen when "Unlock with Touch ID" is on. A recognized finger unlocks the app. When the user cancels the Touch ID request, the lock screen offers the password field.
@@ -164,7 +170,7 @@ The app SHALL accept the database password on the lock screen in every state, al
 
 ### Requirement: Unlock settings keep the password in the Keychain
 
-The app SHALL store the database password in the Keychain of the user when the first of the three unlock settings is turned on, and it SHALL delete the password from the Keychain when the last of them is turned off. The entry stays on this Mac and is not synced to other devices.
+The app SHALL store the database password in a Keychain entry of its own for each unlock setting that is turned on, and it SHALL delete exactly that entry when the setting is turned off. A setting is on exactly while its own entry for this database exists, and only the launch reads the entry of "Unlock automatically at application start". The entries stay on this Mac and are not synced to other devices.
 
 #### Scenario: Turn on the first setting
 
@@ -178,6 +184,28 @@ The app SHALL store the database password in the Keychain of the user when the f
 - **WHEN** the user turns it off
 - **THEN** the Keychain holds no database password
 - **AND** the next launch asks for the password
+
+#### Scenario: Turn off the automatic unlock
+
+- **GIVEN** "Unlock automatically at application start" and "Unlock with Touch ID" are on
+- **WHEN** the user turns off "Unlock automatically at application start"
+- **THEN** the next launch asks for the password or Touch ID
+- **AND** Touch ID still unlocks the app
+
+#### Scenario: Settings file changed after a setting was turned off
+
+- **GIVEN** "Unlock with Apple Watch" is on and the user turned off "Unlock with Touch ID"
+- **WHEN** a program changes the settings file of the app outside the app to turn on "Unlock with Touch ID"
+- **THEN** the lock screen offers only the Apple Watch
+- **AND** the confirmation on the watch unlocks the app with the entry of the Apple Watch
+
+#### Scenario: Another data folder leaves the settings alone
+
+- **GIVEN** "Unlock automatically at application start" and "Unlock with Touch ID" are on for the database in the data folder "Moneten"
+- **WHEN** the user starts the app once with the data folder "Moneten-Test", creates a new database there, and quits
+- **AND** the user starts the app with the data folder "Moneten"
+- **THEN** the main window shows the accounts without a prompt
+- **AND** "Unlock with Touch ID" is still on
 
 ### Requirement: Report a Keychain failure
 
@@ -247,7 +275,7 @@ The app SHALL remove a database password that the user typed and did not submit 
 
 ### Requirement: Security settings need the password
 
-The app SHALL ask for the database password before it changes one of the settings on the "Security" tab. A wrong password leaves the setting unchanged.
+The app SHALL ask for the database password before it changes one of the settings on the "Security" tab. A wrong password leaves the setting unchanged. The app keeps "Lock when main window is closed" and "Lock after inactivity" in the encrypted database, so a change of the settings file of the app outside the app neither opens the database nor weakens the lock.
 
 #### Scenario: Turn off the inactivity lock
 
@@ -259,6 +287,13 @@ The app SHALL ask for the database password before it changes one of the setting
 
 - **WHEN** the user turns on "Lock when main window is closed" and enters the database password
 - **THEN** the setting is on
+
+#### Scenario: Settings file changed outside the app
+
+- **GIVEN** "Lock after 10 minutes of inactivity" and "Lock when main window is closed" are on
+- **WHEN** a program changes the settings file of the app outside the app to turn both settings off
+- **THEN** the app still locks after 10 minutes without activity
+- **AND** the app still locks when the user closes the main window
 
 ### Requirement: A locked app does no work with the data
 

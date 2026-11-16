@@ -373,6 +373,15 @@ enum Schema {
 				t.column("filterBar", .blob).notNull()
 			}
 		}
+		// The lock settings (add-app-lock): one row in the encrypted database, so a program that writes the settings
+		// file of the app cannot weaken the lock. Without the row the defaults apply. It is registered after v25.
+		m.registerMigration("v22") { db in
+			try db.create(table: "lockSetting") { t in
+				t.column("id", .integer).primaryKey().check { $0 == 1 }
+				t.column("lockOnClose", .boolean).notNull()
+				t.column("lockAfterMinutes", .integer).notNull()
+			}
+		}
 		return m
 	}
 

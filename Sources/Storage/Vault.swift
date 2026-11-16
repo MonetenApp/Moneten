@@ -110,10 +110,31 @@ public struct Vault: Sendable {
 	/// The version of the running app. An upgrade records it in the database, so that an older version can name it.
 	public let version: String
 	let keyKeychain = Keychain(service: "Moneten database key")
-	let passwordKeychain = Keychain(service: "Moneten database password")
-	/// The entries of the old name (ADR 0013). A read moves them to the new name.
+	/// The entry of the old name (ADR 0013). A read moves it to the new name.
 	let legacyKeyKeychain = Keychain(service: "MonetenMoneten database key")
-	let legacyPasswordKeychain = Keychain(service: "MonetenMoneten database password")
+	/// The entry that builds before the per-setting entries shared between all three unlock settings, under
+	/// the new and the old app name. It unlocks nothing now and is removed.
+	let sharedPasswordKeychain = Keychain(service: "Moneten database password")
+	let legacySharedPasswordKeychain = Keychain(service: "MonetenMoneten database password")
+
+	/// The unlock settings. Each keeps the database password in a Keychain entry of its own, which only
+	/// `setUnlockMethod(_:on:password:)` writes after the password check and which turning the setting off
+	/// deletes. The entry is the setting: a setting is on exactly while its entry exists. Nothing of it is in the
+	/// user defaults, because any program of the user can write the settings file, and because all data folders
+	/// share that file while each database has its own entries. The raw value names the setting in the debug harness.
+	public enum PasswordEntry: String, Sendable, CaseIterable {
+		case automaticUnlock = "unlockAutomatically"
+		case touchID = "unlockWithTouchID"
+		case appleWatch = "unlockWithAppleWatch"
+
+		var keychain: Keychain {
+			switch self {
+			case .automaticUnlock: Keychain(service: "Moneten database password for automatic unlock")
+			case .touchID: Keychain(service: "Moneten database password for Touch ID")
+			case .appleWatch: Keychain(service: "Moneten database password for Apple Watch")
+			}
+		}
+	}
 
 	public init(folder: DataFolder, version: String = Vault.runningVersion) {
 		self.folder = folder
@@ -167,13 +188,17 @@ public struct Vault: Sendable {
 	var rekeyMarker: URL { folder.databaseFolder.appendingPathComponent("RekeyCopies") }
 
 	/// Creates a new database. Without a password, a random key in the Keychain protects it.
-	/// The Keychain entries of a database that was in this folder before, such as one the user renamed,
-	/// stay: a random key that is already there protects the new database too, so the renamed one still
-	/// opens, and a stored password may be the last copy of a password the user forgot.
+	/// A random key of a database that was in this folder before, such as one the user renamed, stays and
+	/// protects the new database too, so the renamed one still opens. The entries of the unlock settings go,
+	/// because the settings of a new database start off.
 	/// A database folder that holds files is never touched, so a stale call cannot replace a database.
 	public func create(password: String?, starterCategories: [Domain.Category]) throws -> Store {
 		guard try state() == .empty else { throw Failure.databaseExists(folder.databaseFile.path) }
 		try folder.createFolders()
+		// An entry is what turns an unlock setting on, and a new database starts with the settings off, so the
+		// entries of a database that was here before go. Its random key stays: it still opens that database.
+		for entry in PasswordEntry.allCases { try removeStoredPassword(for: entry) }
+		try removeSharedEntry()
 		let key: String
 		if let password {
 			key = password
@@ -266,7 +291,7 @@ public struct Vault: Sendable {
 	/// "Change the password" in the design of add-encrypted-database.
 	public func changePassword(current: String, new: String, on store: Store) throws {
 		try connect(folder.databaseFile, key: current).close()
-		let keepsPassword = try storedPassword() != nil
+		let keptEntries = try PasswordEntry.allCases.filter { try storedPassword(for: $0) != nil }
 		try removeWorkFilesFirst()
 		let plan = try planRekey(from: current)
 		// Nobody could tell later whether a copy that cannot be read now still opens with the current password.
@@ -274,10 +299,10 @@ public struct Vault: Sendable {
 		try writeRekeyList(plan.toRekey + (try rekeyList()))
 		try store.queue.write { db in try db.changePassphrase(new) }
 		let notUpdated = rekeyCopies(plan.toRekey, from: current, to: new, removingFailures: true)
-		if keepsPassword {
-			do { try passwordKeychain.write(new, account: folder.keychainAccount) } catch {
-				throw Failure.keychainNotUpdated(String(describing: error), copies: notUpdated)
-			}
+		do {
+			for entry in keptEntries { try entry.keychain.write(new, account: folder.keychainAccount) }
+		} catch {
+			throw Failure.keychainNotUpdated(String(describing: error), copies: notUpdated)
 		}
 		if !notUpdated.isEmpty { throw Failure.copiesNotUpdated(notUpdated) }
 	}
@@ -478,26 +503,61 @@ public struct Vault: Sendable {
 		try legacyKeyKeychain.delete(account: folder.legacyKeychainAccount)
 	}
 
-	// MARK: Password in the Keychain for automatic unlocking
+	// MARK: Password in the Keychain for an unlock without typing it
 
-	public func storedPassword() throws -> String? {
-		try keychain { try read(passwordKeychain, legacy: legacyPasswordKeychain) }
+	public func storedPassword(for entry: PasswordEntry) throws -> String? {
+		try keychain { try entry.keychain.read(account: folder.keychainAccount) }
 	}
 
-	public func storePassword(_ password: String) throws {
-		try keychain { try passwordKeychain.write(password, account: folder.keychainAccount) }
+	func storePassword(_ password: String, for entry: PasswordEntry) throws {
+		try keychain { try entry.keychain.write(password, account: folder.keychainAccount) }
 	}
 
-	/// Replaces a password in the Keychain that differs from the one that just opened the database, such as
-	/// the newer password of a database that the user replaced with a backup. The next automatic unlock then
-	/// works again. Without a stored password nothing is stored.
+	public func removeStoredPassword(for entry: PasswordEntry) throws {
+		try keychain { try entry.keychain.delete(account: folder.keychainAccount) }
+	}
+
+	/// Turns an unlock setting on or off after checking the database password. Returns false for a wrong
+	/// password, which changes nothing. On stores the password in the entry of this setting; off deletes
+	/// exactly that entry, so the other settings keep theirs and this one cannot come back without the password.
+	public func setUnlockMethod(_ entry: PasswordEntry, on: Bool, password: String) throws -> Bool {
+		guard verify(password: password) else { return false }
+		if on {
+			try storePassword(password, for: entry)
+		} else {
+			try removeStoredPassword(for: entry)
+		}
+		return true
+	}
+
+	/// The unlock settings of this database that are on: the ones whose entry exists.
+	public func unlockSettings() throws -> Set<PasswordEntry> {
+		try Set(PasswordEntry.allCases.filter { try storedPassword(for: $0) != nil })
+	}
+
+	/// The password after macOS confirmed the user for a request that offered `offered`. A request that offers
+	/// Touch ID and the Apple Watch does not say which one the user used, so the entry of the first offered
+	/// setting that has one counts. The entry of the automatic unlock is never read here.
+	public func unlockPassword(offered: [PasswordEntry]) throws -> String? {
+		for entry in offered where entry != .automaticUnlock {
+			if let password = try storedPassword(for: entry) { return password }
+		}
+		return nil
+	}
+
+	/// Replaces each password in the Keychain that differs from the one that just opened the database, such as
+	/// the newer password of a database that the user replaced with a backup. The next unlock without the
+	/// password then works again. It never creates an entry: only `setUnlockMethod(_:on:password:)` does.
 	public func refreshStoredPassword(_ password: String) throws {
-		if let stored = try storedPassword(), stored != password { try storePassword(password) }
+		for entry in PasswordEntry.allCases {
+			if let stored = try storedPassword(for: entry), stored != password { try storePassword(password, for: entry) }
+		}
 	}
 
-	public func removeStoredPassword() throws {
-		try keychain { try passwordKeychain.delete(account: folder.keychainAccount) }
-		try keychain { try legacyPasswordKeychain.delete(account: folder.legacyKeychainAccount) }
+	/// Removes the entry that earlier builds shared between the three unlock settings.
+	public func removeSharedEntry() throws {
+		try keychain { try sharedPasswordKeychain.delete(account: folder.keychainAccount) }
+		try keychain { try legacySharedPasswordKeychain.delete(account: folder.legacyKeychainAccount) }
 	}
 
 	/// Reads an entry. An entry that only exists under the old name moves to the new name.

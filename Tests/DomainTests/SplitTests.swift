@@ -120,11 +120,13 @@ struct SplitTests {
 		#expect(VATRate(hundredths: 805).text == "8.05%")
 		#expect(VATRate.standard.map(\.hundredths) == [1900, 700])
 	}
-	@Test("Amounts outside Int64 and fractional minor units are refused")
+	@Test("Amounts above the limit of one amount and fractional minor units are refused")
 	func amountBounds() {
-		#expect(Split.amount(from: "92233720368547758,07", on: money(1), decimalMark: .comma) == money(.max))
-		#expect(Split.amount(from: "-92233720368547758,08", on: money(1), decimalMark: .comma) == money(.min))
-		#expect(Split.amount(from: "92233720368547758,08", on: money(1), decimalMark: .comma) == nil)
+		#expect(Split.amount(from: "10000000000000,00", on: money(1), decimalMark: .comma) == money(Money.maxMinorUnits))
+		#expect(Split.amount(from: "-10000000000000,00", on: money(1), decimalMark: .comma) == money(-Money.maxMinorUnits))
+		#expect(Split.amount(from: "10000000000000,01", on: money(1), decimalMark: .comma) == nil)
+		#expect(Split.amount(from: "92233720368547758,07", on: money(1), decimalMark: .comma) == nil)
+		#expect(Split.amount(from: "-92233720368547758,08", on: money(1), decimalMark: .comma) == nil)
 		#expect(Split.amount(from: "1,001", on: money(1), decimalMark: .comma) == nil)
 	}
 

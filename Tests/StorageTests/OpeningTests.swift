@@ -750,38 +750,33 @@ struct OpeningTests {
 	@Test("A restored backup with an older password replaces the newer password in the Keychain after the unlock", .enabled(if: hasKeychain))
 	func restoreReplacesKeychainEntry() throws {
 		let vault = Vault(folder: folder)
-		defer { try? vault.removeStoredPassword() }
+		defer { try? vault.removeStoredPassword(for: .automaticUnlock) }
 		let store = try vault.create(password: "alt-und-lang-genug", starterCategories: [])
 		let backup = root.appendingPathComponent("Moneten-2026-11-09.sqlite")
 		try store.backup(to: backup)
-		try vault.storePassword("alt-und-lang-genug")
+		try vault.storePassword("alt-und-lang-genug", for: .automaticUnlock)
 		try vault.changePassword(current: "alt-und-lang-genug", new: "neu-und-noch-laenger", on: store)
-		#expect(try vault.storedPassword() == "neu-und-noch-laenger")
+		#expect(try vault.storedPassword(for: .automaticUnlock) == "neu-und-noch-laenger")
 		try store.close()
 
 		_ = try FileManager.default.replaceItemAt(folder.databaseFile, withItemAt: backup)
-		#expect(throws: Vault.Failure.incorrectPassword) { try vault.open(password: try #require(try vault.storedPassword())) }
+		#expect(throws: Vault.Failure.incorrectPassword) { try vault.open(password: try #require(try vault.storedPassword(for: .automaticUnlock))) }
 		try vault.open(password: "alt-und-lang-genug").close()
 		try vault.refreshStoredPassword("alt-und-lang-genug")
-		#expect(try vault.storedPassword() == "alt-und-lang-genug")
+		#expect(try vault.storedPassword(for: .automaticUnlock) == "alt-und-lang-genug")
 	}
 
-	@Test("A new database keeps the Keychain entries that a renamed database still needs", .enabled(if: hasKeychain))
-	func newDatabaseKeepsKeychain() throws {
+	@Test("A new database keeps the random key that a renamed database still needs", .enabled(if: hasKeychain))
+	func newDatabaseKeepsRandomKey() throws {
 		let fm = FileManager.default
 		let vault = Vault(folder: folder)
-		defer {
-			try? vault.removeStoredPassword()
-			try? vault.keyKeychain.delete(account: folder.keychainAccount)
-		}
+		defer { try? vault.keyKeychain.delete(account: folder.keychainAccount) }
 		let old = try vault.create(password: nil, starterCategories: [])
 		_ = try sampleData(old)
 		try old.close()
-		try vault.storePassword(Self.password)
 		let renamed = folder.root.appendingPathComponent("Database_OLD")
 		try fm.moveItem(at: folder.databaseFolder, to: renamed)
 		try vault.create(password: nil, starterCategories: []).close()
-		#expect(try vault.storedPassword() == Self.password)
 
 		try fm.removeItem(at: folder.databaseFolder)
 		try fm.moveItem(at: renamed, to: folder.databaseFolder)
