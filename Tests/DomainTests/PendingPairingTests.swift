@@ -3,6 +3,28 @@ import Foundation
 import Testing
 
 extension ReconcileTests {
+	@Test("Identity lookups keep corrections and file repeats outside the day and amount window", arguments: [false, true], [false, true])
+	func identityOutsideCandidateWindow(file: Bool, tombstone: Bool) {
+		let original = row(3, -10_000, "Shop", "Original payment")
+		var known = stored(merge(.file([original])).added[0])
+		known.bookingDate = day(20, month: 12)
+		known.amountMinor = -10_050
+		known.sourceID = "bank-1"
+		known.comment = "Keep this comment"
+		let corrected = row(3, -10_100, "Shop", "Corrected payment", sourceID: "bank-1")
+		let delivery = file ? Delivery.file([original]) : refresh([corrected])
+		let r = merge(delivery, stored: tombstone ? [] : [known], deleted: tombstone ? [DeletedTransaction(known, deletedAt: now)] : [])
+		#expect(r.skipped == 1 && r.added.isEmpty && r.booked.isEmpty && r.marked.isEmpty && r.dropped.isEmpty)
+		if file || tombstone {
+			#expect(r.updated.isEmpty)
+		} else {
+			#expect(r.updated.map(\.id) == [known.id])
+			#expect(r.updated.map(\.bookingDate) == [day(3)])
+			#expect(r.updated.map(\.amountMinor) == [-10_100])
+			#expect(r.updated.map(\.comment) == ["Keep this comment"])
+		}
+	}
+
 	@Test("A recurring reference cannot hide a later pending file rent", arguments: [false, true], [false, true])
 	func gate5LaterRecurringRent(tombstone: Bool, nextMonth: Bool) {
 		var booked = stored(rent(7, purpose: "BOOKED RENT", pending: false))
