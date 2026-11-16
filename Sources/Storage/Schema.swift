@@ -386,7 +386,7 @@ enum Schema {
 		// earlier version stored the code of a CAMT or MT940 file or of the FinTS helper as it came, such as "eur", which
 		// would no longer find its copy from a new import, and a deleted row would come back. ISO 4217 codes are ASCII,
 		// so upper() of SQLite is enough. Registered after v22.
-		m.registerMigration("v26") { db in
+		m.registerMigration("v27") { db in
 			for table in ["account", "bankTransaction", "deletedTransaction"] {
 				try db.execute(sql: "UPDATE \(table) SET currency = upper(currency) WHERE currency <> upper(currency)")
 			}

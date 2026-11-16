@@ -6,7 +6,7 @@ import Import
 @testable import Storage
 
 extension SchemaTests {
-	@Test("v26 writes the currency codes of accounts, transactions, and deleted rows in upper case, so a file row in EUR finds them")
+	@Test("v27 writes the currency codes of accounts, transactions, and deleted rows in upper case, so a file row in EUR finds them")
 	func currencyCodesInUpperCase() throws {
 		let queue = try DatabaseQueue()
 		defer { try? queue.close() }
@@ -41,7 +41,7 @@ extension SchemaTests {
 		#expect(r.added == [] && r.skipped == 2)
 	}
 
-	@Test("v26 also writes the currency inside the file identity of a pending row in upper case, so the same CAMT file finds it again")
+	@Test("v27 also writes the currency inside the file identity of a pending row in upper case, so the same CAMT file finds it again")
 	func currencyInsideFileIdentity() throws {
 		let camt = """
 			<?xml version="1.0" encoding="UTF-8"?>
