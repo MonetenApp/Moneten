@@ -97,12 +97,19 @@ notarize() {
 	echo "Notarized $FILE."
 }
 
+# Unmounts $1. A scan of the system can keep a fresh volume busy for a few seconds, so it tries
+# five times and then forces it.
+detach() {
+	for _ in 1 2 3 4 5; do hdiutil detach -quiet "$1" 2>/dev/null && return 0; sleep 2; done
+	hdiutil detach -quiet -force "$1"
+}
+
 # Mounts the disk image $1 read-only and checks the app on it as a user would get it.
 check_dmg() {
 	hdiutil verify -quiet "$1"
 	hdiutil attach -quiet -nobrowse -readonly -mountpoint "$WORK/volume" "$1"
 	MOUNTED="$WORK/volume/Moneten.app"
-	unmount_and_fail() { hdiutil detach -quiet "$WORK/volume"; fail "$@"; }
+	unmount_and_fail() { detach "$WORK/volume"; fail "$@"; }
 	[ -L "$WORK/volume/Applications" ] || unmount_and_fail "The disk image has no link to the Applications folder."
 	codesign --verify --strict --deep "$MOUNTED" || unmount_and_fail "The app on the disk image fails its code signature check."
 	[ "$(plist "$MOUNTED" CFBundleShortVersionString)" = "${2%%-*}" ] || unmount_and_fail "The app on the disk image has another version."
@@ -114,7 +121,7 @@ check_dmg() {
 			|| unmount_and_fail "Gatekeeper does not accept the app on the disk image as notarized."
 		xcrun stapler validate -q "$MOUNTED" || unmount_and_fail "The app on the disk image has no stapled ticket."
 	fi
-	hdiutil detach -quiet "$WORK/volume"
+	detach "$WORK/volume"
 }
 
 # Steps 2 to 4. $2 is "unsigned" for a dry run without the Developer ID.
