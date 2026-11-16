@@ -9,11 +9,14 @@ import Testing
 	let giro = ListedAccount(.object(["name": .string("Premium Account"), "accountNumber": .string("111222333444"), "currency": .string("EUR"),
 		"type": .string("AccountTypeGiro")]))!
 	let depot = ListedAccount(.object(["accountNumber": .string("D-1"), "portfolio": .boolean(true)]))!
-	let depotID = UUID()
 	let berlinZone = TimeZone(identifier: "Europe/Berlin")!
 
 	func result(_ fields: [String: LuaValue], of account: ListedAccount? = nil) throws -> RefreshResult {
-		try ResultMapping.refreshResult(.object(fields), of: account ?? giro, accountID: depotID, since: nil, timeZone: berlinZone)
+		try mapped(fields, of: account).result
+	}
+
+	func mapped(_ fields: [String: LuaValue], of account: ListedAccount? = nil) throws -> (result: RefreshResult, notices: [String]) {
+		try ResultMapping.refreshResult(.object(fields), of: account ?? giro, since: nil, timeZone: berlinZone)
 	}
 
 	@Test func oneAccount() {
@@ -101,7 +104,8 @@ import Testing
 			"tradeTimestamp": .integer(1794182400)])])], of: depot)
 		#expect(shares.balance == Money(minorUnits: 12500, currency: "EUR"))
 		#expect(shares.isPortfolio)
-		#expect(shares.holdings == [Holding(id: try #require(shares.holdings?.first?.id), accountID: depotID,
+		let first = try #require(shares.holdings?.first)
+		#expect(shares.holdings == [Holding(id: first.id, accountID: first.accountID,
 			security: Security(name: "Muster AG", isin: "DE0001234567", securityNumber: "123456"), quantity: 10,
 			quote: Quote(amount: 12.5, currency: "EUR", day: Day(year: 2026, month: 11, day: 9)), marketValue: Money(minorUnits: 12500, currency: "EUR"),
 			purchasePrice: Quote(amount: 10, currency: "EUR"))])
@@ -123,12 +127,14 @@ import Testing
 	}
 
 	/// A script that knows no rate leaves out `amount`; the position keeps its value in the currency of its price.
+	/// The account still refreshed, so the message is a notice and no failure.
 	@Test func priceInAnotherCurrencyWithoutARateAddsNothingToTheBalance() throws {
-		let tokens = try result(["securities": .array([.object(["name": .string("Token A"), "quantity": .integer(10), "price": .number(2), "amount": .integer(20)]),
+		let (tokens, notices) = try mapped(["securities": .array([.object(["name": .string("Token A"), "quantity": .integer(10), "price": .number(2), "amount": .integer(20)]),
 			.object(["name": .string("Token B"), "quantity": .integer(10), "price": .number(110), "currencyOfPrice": .string("USDC")])])], of: depot)
 		#expect(tokens.balance == Money(minorUnits: 2000, currency: "EUR"))
 		#expect(tokens.holdings?.last?.value(in: "EUR") == Money(minorUnits: 110_000, currency: "USDC"))
-		#expect(tokens.transactionFailure?.message == "The balance leaves out Token B, because its price is in USDC and the extension gives no exchange rate.")
+		#expect(tokens.transactionFailure == nil)
+		#expect(notices == ["The balance leaves out Token B, because its price is in USDC and the extension gives no exchange rate."])
 	}
 
 	/// The gain compares the value at today's rate with the cost at the rate of the day of the purchase.
@@ -153,6 +159,24 @@ import Testing
 		#expect(bond.balance == Money(minorUnits: 492_500, currency: "EUR"))
 		#expect(bond.holdings?.first?.isNominal == true)
 		#expect(bond.holdings?.first?.quote == Quote(amount: 98.5, currency: nil))
+	}
+
+	/// The rate of a nominal amount links the account currency with `currencyOfQuantity`, as the price is a percentage.
+	@Test func nominalAmountInAnotherCurrencyConvertsWithTheCurrentRate() throws {
+		let bond = try result(["securities": .array([.object(["name": .string("Anleihe Musterstaat"), "quantity": .integer(5000),
+			"currencyOfQuantity": .string("USD"), "price": .number(98.5), "exchangeRateOfPrice": .number(1.25)])])], of: depot)
+		#expect(bond.balance == Money(minorUnits: 394_000, currency: "EUR"))
+		#expect(bond.holdings?.first?.exchangeRate == ExchangeRate(base: "EUR", quoted: "USD", rate: 1.25))
+	}
+
+	/// A bond bought at 100 % when 1 USD cost 1 EUR is worth less at 100 % when 1 EUR costs 1.25 USD.
+	@Test func nominalPurchaseConvertsWithTheRateOfThePurchase() throws {
+		let bond = try result(["securities": .array([.object(["name": .string("Anleihe Musterstaat"), "quantity": .integer(5000),
+			"currencyOfQuantity": .string("USD"), "price": .integer(100), "exchangeRateOfPrice": .number(1.25), "purchasePrice": .integer(100),
+			"exchangeRateOfPurchasePrice": .integer(1)])])], of: depot)
+		let holding = try #require(bond.holdings?.first)
+		#expect(holding.value(in: "EUR") == Money(minorUnits: 400_000, currency: "EUR"))
+		#expect(holding.gain(in: "EUR")?.amount == Money(minorUnits: -100_000, currency: "EUR"))
 	}
 
 	/// Older scripts set `currency = nil` or the account currency on a security, a field that the API no longer

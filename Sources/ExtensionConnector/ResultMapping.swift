@@ -84,10 +84,10 @@ extension AccountType {
 /// What `RefreshAccount` returned for one account.
 enum ResultMapping {
 	/// Reads the result table. A portfolio needs `securities`, every other account a balance and
-	/// `transactions`; a missing part fails the account with a message that names it. `accountID` is the
-	/// account that the positions belong to.
-	static func refreshResult(_ value: LuaValue, of account: ListedAccount, accountID: UUID, since: Day?, timeZone: TimeZone) throws(MappingError)
-		-> RefreshResult {
+	/// `transactions`; a missing part fails the account with a message that names it. The merge gives the rows
+	/// and the positions their account. The notices tell the user about positions that the balance leaves out.
+	static func refreshResult(_ value: LuaValue, of account: ListedAccount, since: Day?, timeZone: TimeZone) throws(MappingError)
+		-> (result: RefreshResult, notices: [String]) {
 		guard case let .object(fields) = value else { throw MappingError("The extension returned no result table.") }
 		let calendar = { var c = Calendar(identifier: .gregorian); c.timeZone = timeZone; return c }()
 		if account.kind == .portfolio {
@@ -96,30 +96,31 @@ enum ResultMapping {
 			}
 			var total = Money(minorUnits: 0, currency: account.currency)
 			var holdings: [Holding] = []
-			var leftOut: String?
+			var notices: [String] = []
 			for (index, security) in securities.enumerated() {
-				let holding = try self.holding(security, number: index + 1, accountID: accountID, currency: account.currency, calendar: calendar)
+				let holding = try self.holding(security, number: index + 1, currency: account.currency, calendar: calendar)
 				holdings.append(holding)
 				guard let value = holding.exactValue(in: account.currency) else { continue }
 				let money = try money(value.amount, value.currency, "The value of security \(index + 1)")
 				// A position priced in another currency without a rate shows its value in that currency, as a script
-				// that leaves out `amount` for such a price expects. The balance leaves it out, and the account says so.
+				// that leaves out `amount` for such a price expects. The balance leaves it out, and a notice says so.
+				// The account still refreshed, because its balance and its other positions arrived.
 				guard money.currency == account.currency else {
-					leftOut = leftOut ?? "The balance leaves out \(holding.security.name), because its price is in \(money.currency) and the extension gives no exchange rate."
+					notices.append("The balance leaves out \(holding.security.name), because its price is in \(money.currency) and the extension gives no exchange rate.")
 					continue
 				}
 				let (sum, overflow) = total.minorUnits.addingReportingOverflow(money.minorUnits)
 				guard !overflow, abs(sum) <= maxMinorUnits else { throw MappingError("The securities add up to more than Moneten can hold.") }
 				total.minorUnits = sum
 			}
-			return RefreshResult(balance: total, transactions: nil, transactionFailure: leftOut.map { .unsupported($0) }, isPortfolio: true, holdings: holdings)
+			return (RefreshResult(balance: total, transactions: nil, isPortfolio: true, holdings: holdings), notices)
 		}
 		guard let balance = try self.balance(fields, currency: account.currency) else { throw MappingError("The balance could not be fetched.") }
 		guard case let .array(rows)? = fields["transactions"] else { throw MappingError("The transactions could not be fetched.") }
 		let mapped = try rows.enumerated().map { index, row throws(MappingError) in
 			try transaction(row, number: index + 1, currency: account.currency, calendar: calendar)
 		}
-		return RefreshResult(balance: balance, transactions: FetchedTransactions(rows: mapped, from: since))
+		return (RefreshResult(balance: balance, transactions: FetchedTransactions(rows: mapped, from: since)), [])
 	}
 
 	/// The largest amount in minor units that the app takes from a script: 10 trillion euros. Sums of
@@ -137,9 +138,9 @@ enum ResultMapping {
 	/// the quantity times `price`, converted with `exchangeRateOfPrice`, units of `currencyOfPrice` for one unit of
 	/// the account currency, and without a price the position has no value. A purchase price in another currency
 	/// converts into the account currency with `exchangeRateOfPurchasePrice`, the rate of the day of the purchase.
-	/// A quantity with `currencyOfQuantity` is a nominal amount, and its prices are percentages. The older field
-	/// `currency`, which some scripts still set on a security, is not read.
-	private static func holding(_ value: LuaValue, number: Int, accountID: UUID, currency: String, calendar: Calendar) throws(MappingError) -> Holding {
+	/// A quantity with `currencyOfQuantity` is a nominal amount, its prices are percentages, and both of its rates
+	/// read `currencyOfQuantity`. The older field `currency`, which some scripts still set on a security, is not read.
+	private static func holding(_ value: LuaValue, number: Int, currency: String, calendar: Calendar) throws(MappingError) -> Holding {
 		guard case let .object(fields) = value else { throw MappingError("Security \(number) is not a table.") }
 		func decimal(_ key: String, _ what: String) throws(MappingError) -> Decimal? {
 			guard let raw = fields[key] else { return nil }
@@ -165,13 +166,17 @@ enum ResultMapping {
 			return Day(Date(timeIntervalSince1970: NSDecimalNumber(decimal: seconds).doubleValue), calendar: calendar)
 		}
 		var purchase = try quote("purchasePrice", "currencyOfPurchasePrice")
-		if let price = purchase, let rate = try rate("exchangeRateOfPurchasePrice", "currencyOfPurchasePrice"), price.currency == rate.quoted,
-			let converted = rate.convert(price.amount, from: rate.quoted, to: currency) {
-			purchase = Quote(amount: converted, currency: currency)
-			_ = try money(quantity * converted, currency, "The value of security \(number) at its purchase price")
+		if let price = purchase, let rate = try rate("exchangeRateOfPurchasePrice", nominalCurrency == nil ? "currencyOfPurchasePrice" : "currencyOfQuantity") {
+			// A position keeps one rate, today's. So the purchase price becomes the price of one unit in the account currency,
+			// and a percentage of a nominal amount becomes the price of one unit of that amount.
+			let (amount, unitCurrency) = nominalCurrency.map { (price.amount / 100, $0) } ?? (price.amount, price.currency ?? currency)
+			if unitCurrency == rate.quoted, let converted = rate.convert(amount, from: rate.quoted, to: currency) {
+				purchase = Quote(amount: converted, currency: currency)
+				_ = try money(quantity * converted, currency, "The value of security \(number) at its purchase price")
+			}
 		}
 		let name = fields.text("name") ?? fields.text("isin") ?? fields.text("securityNumber") ?? ""
-		return Holding(accountID: accountID, security: Security(name: name, isin: fields.text("isin"), securityNumber: fields.text("securityNumber")),
+		return Holding(accountID: UUID(), security: Security(name: name, isin: fields.text("isin"), securityNumber: fields.text("securityNumber")),
 			quantity: quantity, isNominal: nominalCurrency != nil, nominalCurrency: nominalCurrency, quote: try quote("price", "currencyOfPrice", day: day),
 			marketValue: try decimal("amount", "amount").map { amount throws(MappingError) in try money(amount, currency, "The value of security \(number)") },
 			purchasePrice: purchase, exchangeRate: try rate("exchangeRateOfPrice", nominalCurrency == nil ? "currencyOfPrice" : "currencyOfQuantity"))
