@@ -53,7 +53,7 @@ struct SupportedBanksList: View {
 
 	/// The list shows this many banks, so that the window stays quick. A longer list asks for more of the name.
 	private static let shownBanks = 500
-	private static let rowHeight: CGFloat = 40
+	nonisolated private static let rowHeight: CGFloat = 40
 
 	/// One row: a service of an extension or a bank of the directory.
 	struct Row: Identifiable, Sendable {
