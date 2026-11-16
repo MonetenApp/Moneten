@@ -179,6 +179,12 @@ send select Girokonto
 poll "^filterbar account .*account=[0-9]" filterbar "account Tagesgeld"
 poll "^filterbar account .*account=all" filterbar account
 poll "^phase=" state
+send search Miete
+poll "^phase=.*visible=1 " state
+send split 25,00
+poll "^split saved=true parts=2" state
+send search ""
+poll "^phase=" state
 send selectRows 1
 poll "^exportcontextcsv rows=" exportcontextcsv "$DATA/context.csv"
 poll "^exportstatus running=false" exportstatus
@@ -332,8 +338,8 @@ poll "^migrationfailure: unknown failure$" migrationfailure "$MIGRATION_UNKNOWN"
 send quit
 
 found=0
-for value in DE02120300000000202051 "DE02 1203" 202051 1234567890 0099887766 "99 88 77 66" 4711 5550001 "$LOGIN" "$PIN" "$MIGRATION_UNKNOWN" 123456 check-debug-log \
-	234015 501240 12000 320000 95000 4250 229765 471123 "4711,23" 81547 815.47 1234 2345 3579 \
+for value in "25,00" DE02120300000000202051 "DE02 1203" 202051 1234567890 0099887766 "99 88 77 66" 4711 5550001 "$LOGIN" "$PIN" "$MIGRATION_UNKNOWN" 123456 check-debug-log \
+	234015 501240 12000 320000 95000 4250 229765 471123 "4711,23" 81547 815.47 1234 2345 3579 2500 92500 \
 	"Handoff Synthetic" 88776655 Kiosk \
 	Girokonto Tagesgeld Kreditkarte Extrakonto "Erika Mustermann" Erika Mustermann erika-mustermann "Private Access" Musterbank "Check Bank" \
 	"Beispiel GmbH" "Wohnbau Musterstadt" "Tankstelle Beispiel" \

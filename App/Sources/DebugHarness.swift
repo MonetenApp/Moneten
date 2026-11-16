@@ -28,6 +28,19 @@ final class DebugHarness {
 	private let tableNumbers = NSMapTable<NSTableView, NSNumber>.weakToStrongObjects()
 	private var nextTableNumber = 1
 
+	/// The debug folder of this run, or nil in a release build and in a run without `MONETEN_DEBUG_DIR`.
+	private static var requestedPath: String? {
+		#if DEBUG || PERF_HARNESS
+		ProcessInfo.processInfo.environment["MONETEN_DEBUG_DIR"].flatMap { $0.isEmpty ? nil : $0 }
+		#else
+		nil
+		#endif
+	}
+
+	/// Whether the harness drives this run. Such a run does not bring the app to the front, because the
+	/// developer keeps working in another app. Only "mainkey table" and "securefield" ask for the focus.
+	static var isRequested: Bool { requestedPath != nil }
+
 	static func installIfRequested(model: AppModel) {
 		#if DEBUG || PERF_HARNESS
 		install(model: model)
@@ -35,7 +48,7 @@ final class DebugHarness {
 	}
 
 	private static func install(model: AppModel) {
-		guard shared == nil, let path = ProcessInfo.processInfo.environment["MONETEN_DEBUG_DIR"], !path.isEmpty else { return }
+		guard shared == nil, let path = requestedPath else { return }
 		let harness = DebugHarness(folder: URL(fileURLWithPath: path), model: model)
 		shared = harness
 		model.extensions.log = { [weak harness] line in harness?.log(line) }
@@ -526,6 +539,17 @@ final class DebugHarness {
 			}
 		// What "Add category" in "Assign Category" does with the selected rows.
 		case "newcategory": Task { await model.addCategory(name: argument, isGroup: false, parentID: nil, assigning: model.visibleSelection) }
+		case "split":
+			guard let row = model.visibleTransactions.first, model.ledger.part(row.id) == nil,
+				let amount = Split.amount(from: argument, on: row.amount, decimalMark: .comma),
+				let amounts = try? Split.amounts(of: row.amount, off: [amount]) else { return log("split refused") }
+			let parts = amounts.enumerated().map {
+				SplitPart(transactionID: row.id, position: $0.offset, amountMinor: $0.element.minorUnits, categoryID: row.categoryID, comment: row.comment)
+			}
+			Task {
+				let saved = await model.replaceParts(of: row.id, with: parts)
+				log("split", ("saved", .flag(saved)), ("parts", .count(saved ? parts.count : 0)), ("transactions", .count(model.ledger.transactions.count)))
+			}
 		case "selectRows": model.selectedTransactions = Set(model.visibleTransactions.prefix(Int(argument) ?? 1).map(\.id))
 		// What a drop of the selected rows on the category "Name" in the sidebar does, with the payload sent
 		// through an item provider as a drag sends it. The harness cannot drag.
@@ -675,6 +699,7 @@ final class DebugHarness {
 			(view as? NSSecureTextField).map { [$0] } ?? view.subviews.flatMap(fields)
 		}
 		guard let sheet = topSheet, let field = sheet.contentView.flatMap(fields)?.first else { return log("securefield none") }
+		// AutoFill offers itself only in the active app. macOS grants this only when the app in front gives up the focus, which the log shows.
 		NSApp.activate()
 		sheet.makeFirstResponder(field)
 		DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
@@ -717,6 +742,7 @@ final class DebugHarness {
 		guard names.contains(where: { "\($0)" == name }) else { return log("mainkey rejected") }
 		var handledBy: StaticString = "-"
 		if name == "table" {
+			// Only the active app has a key window. macOS grants this only when the app in front gives up the focus, which "key=" shows.
 			NSApp.activate()
 			main.makeKeyAndOrderFront(nil)
 			main.makeFirstResponder(table)
@@ -738,7 +764,7 @@ final class DebugHarness {
 			let ledger = model.ledger
 			let order = ledger.categoriesInSidebarOrder.filter { !$0.isDefault }.map(\.id)
 			// Category names are typed by the user, so the log names a category by its place in the sidebar.
-			let categories = model.selectedTransactions.compactMap { ledger.transaction($0) }
+			let categories = model.selectedTransactions.compactMap { ledger.row($0) }
 				.map { ledger.effectiveCategoryID(of: $0).flatMap(order.firstIndex).map { LogValue.position($0) } ?? .word("default") }
 			self.log("mainkey", ("", .choice(name, of: names)), ("handled", .word(handledBy)), ("sheet", .state(model.sheet)),
 				("tablefocus", .flag(table.window?.firstResponder === table)), ("key", .flag(NSApp.keyWindow === table.window)), ("row", .position(table.selectedRow)),
