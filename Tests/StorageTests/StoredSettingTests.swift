@@ -2,12 +2,13 @@ import Foundation
 import Testing
 import Storage
 
-@Suite("A setting reports a write that macOS does not keep")
+/// Serialized, because two tests change the launch arguments, which the whole process shares.
+@Suite("A setting reports a write that macOS does not keep", .serialized)
 struct StoredSettingTests {
 	let suite = "MonetenTests-\(UUID().uuidString)"
 	var defaults: UserDefaults { UserDefaults(suiteName: suite)! }
 
-	/// Defaults that ignore every write, as a preferences daemon that cannot write its file does.
+	/// Defaults whose writes do not read back, the case that the check can see.
 	final class IgnoringDefaults: UserDefaults {
 		override func set(_ value: Any?, forKey defaultName: String) {}
 		override func removeObject(forKey defaultName: String) {}

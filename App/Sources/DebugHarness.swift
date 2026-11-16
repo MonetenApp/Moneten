@@ -371,8 +371,9 @@ final class DebugHarness {
 				("enabled", .list(items.map { .flag($0.isEnabled) })))
 		case "menucommands": log("menucommands", ("enabled", .flag(AppCommands(model: model).unlocked)))
 		// The settings window. "open" presses ⌘, as the keyboard does, "tab <general|security>" selects a tab, and "press <n>" clicks
-		// switch number n of the open tab, counted from 0. Each logs whether the window is open, its tab, the switches that are on,
-		// the stored values of the switches of "General", and the stored language.
+		// switch number n of the open tab, counted from 0. Each logs whether the window is open, whether a sheet is attached to it,
+		// whether any window of the settings or of their sheet is visible, its tab, the switches that are on, the stored values of
+		// the switches of "General", and the stored language.
 		case "settings": settings(argument)
 		#if DEBUG
 		case "extcatalog":
@@ -1027,7 +1028,10 @@ final class DebugHarness {
 			let stored = [Preference.showMenuBarIcon, RefreshSettings.automaticRefreshKey, RefreshSettings.showsBannerKey, RefreshSettings.playsSoundKey]
 			let id = Bundle.main.bundleIdentifier ?? ""
 			let on = switches().map { ($0.accessibilityAttributeValue(.value) as? NSNumber)?.boolValue ?? false }
-			self.log("settings", ("window", .flag(window() != nil)), ("tab", .word(model.settingsTab == .general ? "general" : "security")),
+			// Any window of the settings or of their password prompt that macOS shows, also one left over from a lock.
+			let leftOver = NSApp.windows.contains { $0.isVisible && ($0.identifier?.rawValue == "com_apple_SwiftUI_Settings_window" || $0.sheetParent?.identifier?.rawValue == "com_apple_SwiftUI_Settings_window") }
+			self.log("settings", ("window", .flag(window() != nil)), ("sheet", .flag(window()?.attachedSheet != nil)), ("visible", .flag(leftOver)),
+				("tab", .word(model.settingsTab == .general ? "general" : "security")),
 				("switches", .list(on.map { .flag($0) })), ("stored", .list(stored.map { key in
 					(UserDefaults.standard.persistentDomain(forName: id)?[key] as? Bool).map { .word($0 ? "on" : "off") } ?? .word("-") })),
 				("language", .word(AppLanguage.stored.map { $0 == .german ? "de" : "en" } ?? "system")))

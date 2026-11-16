@@ -16,13 +16,13 @@ Version 0.1 has the tabs "General" and "Security", in this order. It has no paym
 
 ### A setting that macOS does not keep
 
-`UserDefaults.set` never fails. macOS keeps another value when a configuration profile forces the key, when a launch argument overrides it, or when the preferences daemon cannot write. `UserDefaults.storeSetting(_:forKey:inDomain:)` in `Storage` writes a value and reads it back, and the window reports a value that does not read back. A switch reads the value in effect now. "Language" reads the defaults of the app, because macOS takes `AppleLanguages` from there at the next start, and the arguments of the run can hold another language. The message appears below the setting, and the control shows the stored value.
+`UserDefaults.set` never fails. macOS keeps another value when a configuration profile forces the key or a launch argument overrides it. The check sees what the defaults of the process read back, not whether the value reaches the disk. `UserDefaults.storeSetting(_:forKey:inDomain:)` in `Storage` writes a value and reads it back, and the window reports a value that does not read back. A switch reads the value in effect now. "Language" reads the defaults of the app, because macOS takes `AppleLanguages` from there at the next start, and the arguments of the run can hold another language. The message appears below the setting, and the control shows the value that applies.
 
 The unlock settings write to the Keychain. Turning on the first one stores the password before the switch turns on. Turning off the last one deletes the password before the switch turns off, so a Keychain error leaves the switch on with the error below it. "Lock when main window is closed" and "Lock after inactivity" still write to the user defaults without the check. Pull request #269 of `add-app-lock` moves them into the database with a check of its own, so this change leaves them alone.
 
 ### Settings need an unlocked app
 
-The item "Settings..." replaces the item of the system and is off while the app is not unlocked, so ⌘, does nothing then. The settings window closes when the app leaves the state "unlocked", for example on a lock with ⌃⌘L or after inactivity.
+The item "Settings..." replaces the item of the system and is off while the app is not unlocked, so ⌘, does nothing then. The settings window closes when the app leaves the state "unlocked", for example on a lock with ⌃⌘L or after inactivity, and when it appears while the app is locked. A password prompt on the "Security" tab closes with it and does not come back after the unlock. macOS does not restore the window at the launch.
 
 ## Risks / Trade-offs
 

@@ -53,6 +53,8 @@ struct MonetenApp: App {
 			SettingsView()
 				.environment(model)
 		}
+		// The settings open only while the app is unlocked, so they never come back with the launch.
+		.restorationBehavior(.disabled)
 
 		MenuBarExtra(isInserted: $showMenuBarIcon) {
 			MenuBarPopover()

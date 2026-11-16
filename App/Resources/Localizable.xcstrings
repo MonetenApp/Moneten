@@ -5377,12 +5377,12 @@
         }
       }
     },
-    "macOS did not store this setting. It keeps its earlier value." : {
+    "macOS did not keep this change. The setting shows the value that applies." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "macOS hat diese Einstellung nicht gespeichert. Sie behält ihren bisherigen Wert."
+            "value" : "macOS hat diese Änderung nicht übernommen. Die Einstellung zeigt den Wert, der gilt."
           }
         }
       }

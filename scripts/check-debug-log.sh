@@ -140,14 +140,27 @@ rmdir "$DATA/Database/Moneten.sqlite"
 send create check-debug-log
 poll "phase=unlocked" state
 # ⌘, opens the settings while the app is unlocked, and a lock closes them. While the app is locked, ⌘, opens nothing.
-poll "^settings window=true tab=general " settings open
+poll "^settings window=true .* tab=general " settings open
 send lock
-poll "^settings window=false " settings state
+poll "^settings window=false sheet=false visible=false " settings state
 send settings open
 sleep 2
-poll "^settings window=false " settings state
+poll "^settings window=false sheet=false visible=false " settings state
 send unlock check-debug-log
 poll "phase=unlocked" state
+# A lock also closes the settings while the password prompt of an unlock setting waits on the "Security" tab, and the
+# prompt does not come back with the next unlock.
+poll "^settings window=true .* tab=general " settings open
+send settings "tab security"
+poll "^settings window=true sheet=true " settings "press 1"
+send lock
+poll "^settings window=false sheet=false visible=false " settings state
+poll "^windows scenes=main$" windows
+send unlock check-debug-log
+poll "phase=unlocked" state
+poll "^settings window=true sheet=false visible=true tab=security " settings open
+send settings "tab general"
+poll "^settings window=true .* tab=general " settings state
 cat >"$DATA/export.json" <<-'EOF'
 	{"format": "moneten-export", "version": 1, "exportedAt": "2026-11-14T23:46:40.000Z", "accountGroups": [], "accounts": [],
 	"accesses": [], "categories": [], "transactions": [], "deletedTransactions": [], "holdings": [],

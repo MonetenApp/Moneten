@@ -3,7 +3,8 @@ import Foundation
 public extension UserDefaults {
 	/// Writes a setting and reads it back, so the settings window can report a value that macOS does not keep.
 	/// `set` never fails: a value that a configuration profile forces, or that a launch argument overrides, stays in
-	/// effect, and a preferences daemon that cannot write drops the value. Nil removes the setting.
+	/// effect. The check sees only what the defaults of this process read back, not whether the value reaches the disk.
+	/// Nil removes the setting.
 	///
 	/// Without a domain, the value must be in effect now. With the persistent domain of the app, it must be stored
 	/// there for the next start, which is what counts for a value that macOS reads at the start, such as `AppleLanguages`.

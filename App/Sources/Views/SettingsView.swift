@@ -11,6 +11,7 @@ enum SettingsTab: Hashable {
 struct SettingsView: View {
 	@Environment(AppModel.self) private var model
 	@Environment(\.dismiss) private var dismiss
+	@State private var window = HostingWindow.Reference()
 
 	var body: some View {
 		@Bindable var model = model
@@ -18,10 +19,50 @@ struct SettingsView: View {
 			Tab("General", systemImage: "gearshape", value: SettingsTab.general) { GeneralSettings() }
 			Tab("Security", systemImage: "lock", value: SettingsTab.security) { SecuritySettings() }
 		}
+		// A lock builds the tabs anew, which drops a password prompt that waits on the "Security" tab, so it does not
+		// come back with the next unlock.
+		.id(model.phase == .unlocked)
 		.frame(width: 500)
-		// The settings change the open database and the Keychain entry of its password, so a lock closes them.
+		.background(HostingWindow(reference: window))
+		// The settings change the open database and the Keychain entry of its password, so a lock closes them. The
+		// window also closes when it appears while the app is locked.
 		.onChange(of: model.phase) { _, phase in
-			if phase != .unlocked { dismiss() }
+			if phase != .unlocked { close() }
+		}
+		.onAppear {
+			if model.phase != .unlocked { close() }
+		}
+	}
+
+	/// `dismiss` leaves the window open while a sheet is attached to it, so the window ends its sheet and closes itself.
+	private func close() {
+		guard let window = window.window else { return dismiss() }
+		if let sheet = window.attachedSheet { window.endSheet(sheet) }
+		window.close()
+	}
+}
+
+/// Finds the window of the settings, which SwiftUI does not hand to its views.
+private struct HostingWindow: NSViewRepresentable {
+	@MainActor final class Reference {
+		weak var window: NSWindow?
+	}
+
+	let reference: Reference
+
+	func makeNSView(context: Context) -> NSView { Probe(reference: reference) }
+	func updateNSView(_ view: NSView, context: Context) {}
+
+	private final class Probe: NSView {
+		let reference: Reference
+		init(reference: Reference) {
+			self.reference = reference
+			super.init(frame: .zero)
+		}
+		required init?(coder: NSCoder) { nil }
+		override func viewDidMoveToWindow() {
+			super.viewDidMoveToWindow()
+			if let window { reference.window = window }
 		}
 	}
 }
@@ -274,11 +315,12 @@ struct GeneralSettings: View {
 	private static let languageKey = "AppleLanguages"
 
 	/// A switch writes its setting and reads it back. When macOS keeps another value, the switch shows that value
-	/// and the message below it, and the change has no effect. Returns whether the value is in effect.
+	/// and the message below it, and the change has no effect.
 	private func stored(_ key: String, _ value: Binding<Bool>) -> Binding<Bool> {
 		Binding(get: { value.wrappedValue }, set: { on in store(on, forKey: key) })
 	}
 
+	/// Returns whether the value is in effect.
 	@discardableResult
 	private func store(_ value: Any?, forKey key: String) -> Bool {
 		let kept = Preference.store(value, forKey: key)
@@ -298,7 +340,7 @@ struct GeneralSettings: View {
 	@ViewBuilder
 	private func refusal(of key: String) -> some View {
 		if refused == key {
-			Text("macOS did not store this setting. It keeps its earlier value.").foregroundStyle(Palette.red)
+			Text("macOS did not keep this change. The setting shows the value that applies.").foregroundStyle(Palette.red)
 		}
 	}
 
