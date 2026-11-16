@@ -237,6 +237,37 @@ public struct Ledger: Sendable {
 		return ids
 	}
 
+	/// The accounts whose rows the account filter shows: the account, or the accounts of the group tree, as the
+	/// sum of the group in the sidebar counts them.
+	public func accountIDs(of filter: TransactionFilter.AccountFilter) -> Set<UUID> {
+		switch filter {
+		case let .account(id): [id]
+		case let .group(id): accountIDs(inGroupTree: id)
+		}
+	}
+
+	/// The name of the account or the account group that the "Account" menu shows, or nil when the ledger no longer has it.
+	public func name(of filter: TransactionFilter.AccountFilter) -> String? {
+		switch filter {
+		case let .account(id): account(id)?.name
+		case let .group(id): group(id)?.name
+		}
+	}
+
+	/// The groups and accounts of the "Account" menu of the filter bar, in the order of the sidebar, each with
+	/// the number of groups above it, so the menu indents the rows of a group as the sidebar does.
+	public var accountTreeInSidebarOrder: [(item: AccountTreeItem, depth: Int)] {
+		var result: [(item: AccountTreeItem, depth: Int)] = []
+		func walk(_ parent: UUID?, depth: Int) {
+			for item in accountTree(in: parent) {
+				result.append((item, depth))
+				if case let .group(g) = item { walk(g.id, depth: depth + 1) }
+			}
+		}
+		walk(nil, depth: 0)
+		return result
+	}
+
 	public func childCategories(of parent: UUID?) -> [Category] {
 		categories.filter { $0.parentID == parent && !$0.isDefault }.sorted { $0.position < $1.position }
 	}
@@ -488,6 +519,7 @@ public struct Ledger: Sendable {
 		let accountsByID = query.readsFields ? Dictionary(uniqueKeysWithValues: accounts.map { ($0.id, $0) }) : [:]
 		let names = query.readsFields ? categoryNames : [:]
 		let categoryFilter = filter.categoryID.map { categoryIDs(inTree: $0) }
+		let accountFilter = filter.account.map(accountIDs(of:))
 		let defaultID = defaultCategory?.id ?? UUID()
 		var amountBounds: [Int: MinorBounds] = [:]
 		func matches(_ t: Transaction) -> Bool {
@@ -508,7 +540,7 @@ public struct Ledger: Sendable {
 				if t.amountMinor < bounds.min || t.amountMinor > bounds.max { return false }
 			}
 			if let categoryFilter, !categoryFilter.contains(t.categoryID ?? defaultID) { return false }
-			if let a = filter.accountID, t.accountID != a { return false }
+			if let accountFilter, !accountFilter.contains(t.accountID) { return false }
 			if query.isEmpty { return true }
 			return query.matches(t, searchText: searchText[t.id] ?? "", account: { accountsByID[t.accountID] }, categoryName: { names[t.categoryID] })
 		}
@@ -754,17 +786,24 @@ public struct TransactionFilter: Hashable, Sendable {
 		}
 	}
 
+	/// An entry of the "Account" menu: one account, or an account group with the accounts of its subgroups.
+	public enum AccountFilter: Hashable, Sendable {
+		case account(UUID)
+		case group(UUID)
+	}
+
 	public var searchText = ""
 	public var period = DayRange.all
 	public var status = Status.all
 	public var amount = AmountFilter.all
 	public var categoryID: UUID?
-	public var accountID: UUID?
+	/// Nil for "Show All".
+	public var account: AccountFilter?
 
 	public init() {}
 
 	public var isActive: Bool {
-		period != .all || status != .all || amount != .all || categoryID != nil || accountID != nil
+		period != .all || status != .all || amount != .all || categoryID != nil || account != nil
 	}
 
 	/// Sets the filter that the filter bar of `scope` has no menu for to "Show All": the account filter in an
@@ -773,16 +812,20 @@ public struct TransactionFilter: Hashable, Sendable {
 	public mutating func resetHidden(in scope: LedgerScope) {
 		switch scope {
 		case .all: break
-		case .account, .accountGroup: accountID = nil
+		case .account, .accountGroup: account = nil
 		case .category: categoryID = nil
 		}
 	}
 
-	/// A filter on a category or an account that `ledger` no longer has goes back to "Show All", so the list does
-	/// not stay empty after a removal.
+	/// A filter on a category, an account, or an account group that `ledger` no longer has goes back to "Show All",
+	/// so the list does not stay empty after a removal.
 	public mutating func dropMissing(in ledger: Ledger) {
 		categoryID = categoryID.flatMap { ledger.category($0)?.id }
-		accountID = accountID.flatMap { ledger.account($0)?.id }
+		switch account {
+		case let .account(id) where ledger.account(id) == nil: account = nil
+		case let .group(id) where ledger.group(id) == nil: account = nil
+		default: break
+		}
 	}
 }
 

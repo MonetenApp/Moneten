@@ -317,6 +317,9 @@ public struct FinTSConnector: BankConnector {
 		do { try await process.ended() } catch { stopped = error }
 		await rejections.reported()
 		try Task.checkCancellation()
+		// A helper that ends in the middle of a line, killed or crashed, leaves a cut-off line that does
+		// not read. How it stopped says more, unless the app ended it.
+		if let stopped, process.firstFailure as? SyncFailure == HelperFailure.unreadable, !process.wasSignaled { throw stopped }
 		if let error = process.firstFailure ?? stopped ?? (helperLeft ? HelperFailure.noAnswer : nil) { throw error }
 	}
 }

@@ -239,10 +239,11 @@ struct AllDataTests {
 		power.status = .checked
 		power.amount = .range(min: -2_000, max: Decimal(string: "-0.5"))
 		power.categoryID = pets.id
-		power.accountID = migrated.id
+		power.account = .account(migrated.id)
 		_ = try store.appendSavedSearch(name: "Strom", period: .custom(Day(year: 2026, month: 10, day: 1), Day(year: 2026, month: 11, day: 30)), filter: power)
 		var recent = TransactionFilter()
 		recent.amount = .withdrawals
+		recent.account = .group(household.id)
 		_ = try store.appendSavedSearch(name: "Last 30 days", period: .days30, filter: recent)
 		return store
 	}
@@ -286,6 +287,21 @@ struct AllDataTests {
 		#expect(text.contains(#""searchText" : "name:Stadtwerke""#))
 		#expect(text.contains(#""start" : "2026-10-01""#) && text.contains(#""end" : "2026-11-30""#) && text.contains(#""kind" : "days30""#))
 		#expect(text.contains(#""min" : "-2000""#) && text.contains(#""max" : "-0.5""#) && text.contains(#""status" : "checked""#))
+		let json = try JSONSerialization.jsonObject(with: Data(text.utf8)) as! [String: Any]
+		let searches = json["savedSearches"] as! [[String: Any]]
+		#expect(searches[0]["accountID"] is String && searches[0]["accountGroupID"] == nil)
+		#expect(searches[1]["accountGroupID"] is String && searches[1]["accountID"] == nil)
+	}
+
+	@Test("A saved search with both an account and an account group is refused with its place")
+	func savedSearchWithAccountAndGroup() throws {
+		var json = try JSONSerialization.jsonObject(with: try filledStore().exportAllData(at: exportedAt).json()) as! [String: Any]
+		var searches = json["savedSearches"] as! [[String: Any]]
+		searches[1]["accountID"] = UUID().uuidString
+		json["savedSearches"] = searches
+		#expect(throws: AllData.ReadError.damaged("at savedSearches[1], the saved search has both an account and an account group")) {
+			try AllData(json: try JSONSerialization.data(withJSONObject: json))
+		}
 	}
 
 	@Test("The complete import numbers the saved searches from 0 in their order, so the next saved search goes last")

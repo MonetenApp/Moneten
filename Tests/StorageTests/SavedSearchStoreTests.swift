@@ -49,6 +49,34 @@ struct SavedSearchStoreTests {
 		#expect(loaded.bar == SavedFilterBar(period: .all, filter: TransactionFilter()))
 	}
 
+	@Test("A saved search stored with an account keeps it, and one with an account group keeps the group after a restart")
+	func accountAndGroup() throws {
+		let folder = DataFolder(root: FileManager.default.temporaryDirectory.appendingPathComponent("MonetenTests-\(UUID().uuidString)"))
+		let vault = Vault(folder: folder)
+		let store = try vault.create(password: "korrekt-pferd-batterie-heftklammer", starterCategories: [])
+		let account = UUID(), group = UUID()
+		// A filter bar as the first version of saved searches wrote it, before the account filter took groups.
+		let before = #"{"period":{"days90":{}},"status":{"all":{}},"amount":{"withdrawals":{}},"accountID":"\#(account.uuidString)"}"#
+		try store.write { db in
+			try db.execute(sql: "INSERT INTO savedSearch(id, name, position, searchText, filterBar) VALUES (?, 'Card', 0, 'REWE', ?)", arguments: [UUID(), Data(before.utf8)])
+		}
+		var f = TransactionFilter()
+		f.searchText = "Miete"
+		f.account = .group(group)
+		let rent = try store.appendSavedSearch(name: "Rent", period: .all, filter: f)
+		try store.close()
+		let reopened = try vault.open(password: "korrekt-pferd-batterie-heftklammer")
+		defer { try? reopened.close() }
+		let loaded = try reopened.savedSearches()
+		try #require(loaded.count == 2)
+		var card = TransactionFilter()
+		card.amount = .withdrawals
+		card.account = .account(account)
+		#expect(loaded[0].bar == SavedFilterBar(period: .days90, filter: card))
+		#expect(loaded[1] == rent)
+		#expect(loaded[1].bar == SavedFilterBar(period: .all, filter: f))
+	}
+
 	@Test("A rename keeps a filter bar that this version cannot read byte for byte")
 	func renameKeepsUnreadableFilterBar() throws {
 		let store = try SchemaTests.emptyStore()

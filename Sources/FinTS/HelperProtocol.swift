@@ -432,6 +432,7 @@ enum HelperFailure {
 	static let clash = SyncFailure.unsupported(String(localized: "Two accounts of this access are the same account at the bank."))
 	static let damaged = SyncFailure.unsupported(String(localized: "The files of the FinTS helper do not match the signature of Moneten. Download Moneten again and replace this copy."))
 	static let timeout = SyncFailure.network(String(localized: "The connection to the FinTS server of the bank timed out. Try again later."))
+	static let lineTooLong = SyncFailure.network(String(localized: "The FinTS helper sent a message larger than \(HelperProcess.lineLimit >> 20) MiB, which Moneten does not read."))
 
 	static func stopped(_ status: Int32, signal: Bool) -> SyncFailure {
 		.network(signal ? String(localized: "The FinTS helper stopped unexpectedly (signal \(status)).")

@@ -118,6 +118,8 @@ struct HoldingsStatusLine: View {
 		let sums = shown.reduce(into: MoneySums()) { sums, h in
 			if let value = h.value(in: model.ledger.account(h.accountID)?.currency ?? "EUR") { sums.add(value) }
 		}
+		// An empty sum takes the currency of the portfolio, as the status line of the transactions does.
+		let firstRowCurrency = shown.first.flatMap { model.ledger.account($0.accountID)?.currency }
 		HStack(spacing: 12) {
 			Group {
 				if let status = model.refreshStatus {
@@ -134,7 +136,7 @@ struct HoldingsStatusLine: View {
 			HStack(spacing: 12) {
 				Text(selected.count > 1 ? "\(selected.count) of \(rows.count) Portfolio Items" : (rows.count == 1 ? "1 Portfolio Item" : "\(rows.count) Portfolio Items"))
 					.foregroundStyle(Palette.detail)
-				Text("Sum: \(sums.isEmpty ? Format.money(0, "EUR") : Format.sums(sums))")
+				Text("Sum: \(Format.sums(sums.shownAmounts(viewCurrency: model.selectedCurrency, firstRowCurrency: firstRowCurrency)))")
 					.monospacedDigit()
 					.textSelection(.enabled)
 			}
@@ -176,9 +178,10 @@ extension Format {
 		return h.quantity == 1 ? String(localized: "\(number) share") : String(localized: "\(number) shares")
 	}
 
-	/// "25,00 €", "12,3456 €", or "98,50 %": at least two decimal places, and every one of the source.
+	/// "25,00 €", "12,3456 €", "0,00000123 $", or "98,50 %": at least two decimal places, and those of the source
+	/// up to six digits after the leading zeros. A price converted from another currency can have 38 decimal places.
 	static func price(_ q: Quote) -> String {
-		let precision = NumberFormatStyleConfiguration.Precision.fractionLength(2...max(2, decimalPlaces(of: q.amount)))
+		let precision = NumberFormatStyleConfiguration.Precision.fractionLength(2...max(2, min(decimalPlaces(of: q.amount), leadingZeros(of: q.amount) + 6)))
 		guard let currency = q.currency else { return signed(q.amount.formatted(.number.precision(precision))) + " %" }
 		return signed(q.amount.formatted(.currency(code: currency).precision(precision)))
 	}
@@ -189,6 +192,12 @@ extension Format {
 	}
 
 	private static func decimalPlaces(of value: Decimal) -> Int { max(0, -value.exponent) }
+
+	/// The zeros after the decimal point before the first digit that is not zero: 5 for 0.00000123, 0 for 18.18.
+	private static func leadingZeros(of value: Decimal) -> Int {
+		let digits = "\(value.significand.magnitude)".count
+		return max(0, -(value.exponent + digits))
+	}
 
 	private static func signed(_ text: String) -> String {
 		text.replacingOccurrences(of: "-", with: "\u{2212}")

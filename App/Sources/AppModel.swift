@@ -57,6 +57,13 @@ enum Preference {
 	/// The pin of the filter bar, and the `SavedFilterBar` it keeps for the next launch.
 	static let pinFilterBar = "pinFilterBar"
 	static let savedFilterBar = "savedFilterBar"
+	static let vatRates = "vatRates"
+
+	static var rates: [VATRate] {
+		(UserDefaults.standard.array(forKey: vatRates) as? [Int64] ?? []).compactMap {
+			$0 > 0 ? VATRate(hundredths: $0) : nil
+		}
+	}
 
 	/// The app locks after 10 minutes without activity unless the user turns it off. MoneyMoney has
 	/// this off and suggests 5 minutes; the owner chose on with 10 minutes.
@@ -73,7 +80,7 @@ enum Preference {
 			d.set(d.integer(forKey: oldMinutes), forKey: lockAfterMinutes)
 		}
 		d.removeObject(forKey: oldMinutes)
-		d.register(defaults: [lockAfterEnabled: true, lockAfterMinutes: defaultLockAfterMinutes])
+		d.register(defaults: [lockAfterEnabled: true, lockAfterMinutes: defaultLockAfterMinutes, vatRates: VATRate.standard.map(\.hundredths)])
 	}
 
 	/// Copies the settings of the bundle identifier before the rename to Moneten (ADR 0013) once.
@@ -359,8 +366,9 @@ final class AppModel {
 			if attended { self.showNotices() }
 		}
 		sync.noticed = { [weak self] access, messages in
-			guard let self, let bank = self.accesses[access]?.bankName else { return }
-			self.bankNotices.add(messages, from: bank)
+			// A setup access is not stored, so its service names the bank.
+			guard let self else { return }
+			self.bankNotices.add(messages, from: self.accesses[access.id]?.bankName ?? access.bankName)
 		}
 		sync.runEnded = { [weak self] in
 			guard let self else { return }
@@ -1189,6 +1197,7 @@ final class AppModel {
 				let groups = ledger.groups.filter { $0.id != id }.map { g -> AccountGroup in var g = g; if g.parentID == id { g.parentID = nil }; return g }
 				let accounts = ledger.accounts.map { a -> Account in var a = a; if a.groupID == id { a.groupID = nil }; return a }
 				ledger.replace(groups: groups, accounts: accounts)
+				filter.dropMissing(in: ledger)
 				if selection == .group(id) { selection = nil }
 			}
 		} catch {

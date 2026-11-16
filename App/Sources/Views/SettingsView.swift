@@ -1,3 +1,4 @@
+import Domain
 import Sync
 import SwiftUI
 
@@ -193,6 +194,9 @@ struct GeneralSettings: View {
 					Button("Open Notification Settings...") { NSWorkspace.shared.open(Self.notificationSettings) }
 				}
 			}
+			Section("VAT rates") {
+				VATRateSettings()
+			}
 			Section {
 				Picker("Language", selection: $language) {
 					Text("System").tag(AppLanguage?.none)
@@ -234,6 +238,7 @@ struct GeneralSettings: View {
 					.foregroundStyle(.secondary)
 			}
 		}
+		.environment(\.sheetHasScrollAreas, true)
 		.task { await checkPermission() }
 		// The user may have allowed the notifications in the System Settings meanwhile.
 		.onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
@@ -257,5 +262,74 @@ struct GeneralSettings: View {
 
 	private func checkPermission() async {
 		notificationsDenied = await model.notices.isDenied()
+	}
+}
+
+struct VATRateSettings: View {
+	@State private var rates = Preference.rates
+	@State private var text = ""
+	@State private var editing: Int?
+	@State private var invalid = false
+
+	var body: some View {
+		if !rates.isEmpty {
+			ScrollView {
+				VStack(spacing: 8) {
+					ForEach(rates.indices, id: \.self) { index in
+						HStack {
+							Text(rates[index].text).monospacedDigit()
+							Spacer()
+							Button("Change") {
+								editing = index
+								text = String(rates[index].text.dropLast())
+								invalid = false
+							}
+							.accessibilityLabel("Change VAT rate at position \(index + 1)")
+							.accessibilityIdentifier("vat-change-\(index)")
+							Button(role: .destructive) {
+								rates.remove(at: index)
+								persist()
+								reset()
+							} label: { Image(systemName: "minus.circle") }
+							.accessibilityLabel("Remove VAT rate at position \(index + 1)")
+							.accessibilityIdentifier("vat-remove-\(index)")
+						}
+					}
+				}
+			}
+			.frame(height: min(CGFloat(rates.count) * 32, 128))
+		}
+		HStack {
+			TextField("VAT rate (%)", text: $text)
+				.accessibilityIdentifier("vat-input")
+				.onSubmit(save)
+			Button(editing == nil ? "Add" : "Save", action: save)
+				.accessibilityIdentifier("vat-save")
+			if editing != nil {
+				Button("Cancel", action: reset).accessibilityIdentifier("vat-cancel")
+			}
+		}
+		if invalid {
+			Text("Enter a rate above zero with up to two decimal places.")
+				.foregroundStyle(Palette.red)
+				.accessibilityIdentifier("vat-error")
+		}
+	}
+
+	private func save() {
+		guard let rate = VATRate(text: text) else { invalid = true; return }
+		if let editing { rates[editing] = rate } else { rates.append(rate) }
+		persist()
+		reset()
+	}
+
+	private func persist() {
+		UserDefaults.standard.set(rates.map(\.hundredths), forKey: Preference.vatRates)
+	}
+
+	private func reset() {
+		text = ""
+		editing = nil
+		invalid = false
 	}
 }

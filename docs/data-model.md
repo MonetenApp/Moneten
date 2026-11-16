@@ -115,7 +115,7 @@ Lists and sums by category read `Ledger.rows(in:filter:)`, which returns `Transa
 
 | Type | Fields | Rules |
 |---|---|---|
-| `SavedFilterBar` | `period`, `status`, `amount`, `categoryID?`, `accountID?` | The filter bar without the search text. The pin keeps one in `UserDefaults`. `period` is a `PeriodChoice`, so "30 Days" counts from the day it is read. A category or an account that the ledger no longer has comes back as "Show All". |
+| `SavedFilterBar` | `period`, `status`, `amount`, `categoryID?`, `accountID?`, `accountGroupID?` | The filter bar without the search text. The pin keeps one in `UserDefaults`. `period` is a `PeriodChoice`, so "30 Days" counts from the day it is read. The account filter, a `TransactionFilter.AccountFilter`, is an account in `accountID` or an account group in `accountGroupID`, so a filter bar saved before groups reads as before. A category, an account, or an account group that the ledger no longer has comes back as "Show All". |
 | `SavedSearch` | `id`, `name`, `position`, `searchText`, `bar` | An entry of the sidebar section "Searches". It holds no rows. Selecting it puts its search text and its `SavedFilterBar` into the search field and the filter bar, and the list shows `LedgerScope.all`, the rows of every account. |
 
 ## Tables

@@ -91,7 +91,13 @@ public struct MoneySums: Hashable, Sendable {
 	/// because a row that counts in no sum, such as a pending row under review, must not decide the currency.
 	/// A view without a currency of its own, such as an account group, takes the currency of its first row, then the euro.
 	public func shownAmounts(viewCurrency: String?, rows: [Transaction]) -> [Money] {
-		isEmpty ? [Money(minorUnits: 0, currency: viewCurrency ?? rows.first?.currency ?? "EUR")] : amounts
+		shownAmounts(viewCurrency: viewCurrency, firstRowCurrency: rows.first?.currency)
+	}
+
+	/// The same rule for rows that are not transactions, such as the positions of a portfolio, whose currency
+	/// is that of their portfolio.
+	public func shownAmounts(viewCurrency: String?, firstRowCurrency: String?) -> [Money] {
+		isEmpty ? [Money(minorUnits: 0, currency: viewCurrency ?? firstRowCurrency ?? "EUR")] : amounts
 	}
 }
 

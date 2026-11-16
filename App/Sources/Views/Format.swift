@@ -17,10 +17,6 @@ extension Format {
 		text.replacingOccurrences(of: "-", with: "\u{2212}")
 	}
 
-	static func money(_ minor: Int64, _ currency: String) -> String {
-		money(Money(minorUnits: minor, currency: currency))
-	}
-
 	/// An amount in major units for a chart, with the decimal places of its currency.
 	static func chartValue(_ minor: Int64, _ currency: String) -> Double {
 		NSDecimalNumber(decimal: Money(minorUnits: minor, currency: currency).decimal).doubleValue
