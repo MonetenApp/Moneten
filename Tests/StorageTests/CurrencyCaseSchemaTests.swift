@@ -71,3 +71,31 @@ extension SchemaTests {
 		#expect(try store.loadLedger().transactions.count == 1)
 	}
 }
+
+extension SchemaTests {
+	@Test("v27 leaves a file identity that does not read as it is, also one with a hostile length", arguments: [
+		"file:1:99999999999999999999999999999999:x",
+		"file:1:8:20261103:5:-8900:9223372036854775807:eur",
+		"file:1:8:20261103:5:-8900:4:eur",
+		"file:1:8:2026",
+		"file:2:8:20261103:5:-8900:3:eur",
+		"file:1:",
+	])
+	func hostileFileIdentity(_ identity: String) throws {
+		let queue = try DatabaseQueue()
+		defer { try? queue.close() }
+		try Schema.migrator.migrate(queue, upTo: "v26")
+		let account = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
+		try queue.write { db in
+			try account.insert(db)
+			try db.execute(sql: """
+				INSERT INTO deletedTransaction (accountID, bookingDate, amountMinor, currency, isPending, purpose, wasFetched, deletedAt, fileIdentity)
+				VALUES (?, 20261103, -8900, 'eur', 1, 'Miete', 0, '2026-11-04 12:00:00.000', ?)
+				""", arguments: [account.id, identity])
+		}
+		try Schema.migrator.migrate(queue)
+		let deleted = try Store(queue: queue).deletedTransactions()
+		#expect(deleted.map(\.fileIdentity) == [identity])
+		#expect(deleted.map(\.currency) == ["EUR"])
+	}
+}

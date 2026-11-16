@@ -91,6 +91,27 @@ struct MoneyMoneyMigrationTests {
 		}
 	}
 
+	@Test("A transaction without a currency takes the currency of its account in the source, also when that account goes into one of another currency")
+	func currencyOfSourceAccount() throws {
+		let usd: [[String: Any]] = [
+			["uuid": "U1", "name": "Dollar", "group": false, "indentation": 0, "type": "Giro account", "accountNumber": "DE02120300000000202051",
+				"attributes": [String: String](), "currency": "USD", "portfolio": false, "balance": [[-89.0, "USD"]]],
+		]
+		let rows: [String: Any] = ["creator": "MoneyMoney", "transactions": [
+			["id": 7, "accountUuid": "U1", "bookingDate": date(2026, 11, 3), "amount": -89.0, "name": "Stadtwerke Musterstadt", "purpose": "Abschlag November",
+				"booked": true, "checkmark": false],
+		] as [Any]]
+		// The account here is in EUR and holds the booking in USD, which its bank delivered.
+		let bank = Account(position: 0, name: "Giro", kind: .giro, source: .bank, currency: "EUR", iban: "DE02120300000000202051")
+		let stored = Transaction(accountID: bank.id, bookingDate: Day(year: 2026, month: 11, day: 3), amountMinor: -8_900, currency: "USD",
+			name: "Stadtwerke Musterstadt", purpose: "Abschlag November", isFetched: true)
+		let p = try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(usd), categories: try plist(categories), transactions: try plist(rows),
+			into: Ledger(accounts: [bank], transactions: [stored]))
+		#expect(p.accounts == [])
+		#expect(p.transactions == [])
+		#expect(p.skippedTransactions == 1)
+	}
+
 	@Test("Group tree with order and balances")
 	func groups() throws {
 		let p = try plan()

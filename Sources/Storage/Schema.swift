@@ -412,7 +412,7 @@ enum Schema {
 		return m
 	}
 
-	/// The file identity with its currency in upper case, or nil when it does not read. A file identity is "file:1:"
+	/// The file identity with its currency in upper case, or nil when it does not read, which leaves it as it is. A file identity is "file:1:"
 	/// and then booking day, amount, currency, and further fields, each as its length in UTF-8 bytes, a colon, and the
 	/// value. A currency code is ASCII, so changing only a to z keeps every length.
 	private static func upperCasingCurrency(inFileIdentity identity: String) -> String? {
@@ -421,12 +421,15 @@ enum Schema {
 		guard bytes.starts(with: prefix) else { return nil }
 		var i = prefix.count
 		for field in 0..<3 {
+			// A length beyond the rest of the identity cannot be right, so the parse ends there, before the number can
+			// overflow. An identity from a complete export can hold anything, and a migration must never trap.
 			var length = 0
 			while i < bytes.count, (0x30...0x39).contains(bytes[i]) {
 				length = length * 10 + Int(bytes[i] - 0x30)
+				guard length <= bytes.count else { return nil }
 				i += 1
 			}
-			guard i < bytes.count, bytes[i] == 0x3A, i + 1 + length <= bytes.count else { return nil }
+			guard i < bytes.count, bytes[i] == 0x3A, length <= bytes.count - i - 1 else { return nil }
 			i += 1
 			if field == 2 {
 				for j in i..<(i + length) where (0x61...0x7A).contains(bytes[j]) { bytes[j] -= 0x20 }
