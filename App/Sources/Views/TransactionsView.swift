@@ -12,7 +12,7 @@ struct TransactionsView: View {
 
 	var body: some View {
 		@Bindable var model = model
-		let result = model.transactions(for: key)
+		let result = model.rows(for: key)
 		let rows = result.rows
 		VStack(spacing: 0) {
 			// As in MoneyMoney: one slate band behind the title and the chart.

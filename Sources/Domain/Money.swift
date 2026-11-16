@@ -75,9 +75,22 @@ public struct MoneySums: Hashable, Sendable {
 }
 
 /// The character that separates the whole units of an amount from its fraction.
-public enum DecimalMark: Character, Sendable, CaseIterable {
+public enum DecimalMark: Character, Sendable, CaseIterable, Codable {
 	case comma = ","
 	case point = "."
+
+	public init(from decoder: Decoder) throws {
+		let text = try decoder.singleValueContainer().decode(String.self)
+		guard let mark = text.first.flatMap(DecimalMark.init(rawValue:)), text.count == 1 else {
+			throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "No decimal mark: \(text)"))
+		}
+		self = mark
+	}
+
+	public func encode(to encoder: Encoder) throws {
+		var container = encoder.singleValueContainer()
+		try container.encode(String(rawValue))
+	}
 
 	/// The other character, which may only separate groups of three digits.
 	var grouping: Character { self == .comma ? "." : "," }
