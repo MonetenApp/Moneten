@@ -361,8 +361,21 @@ enum Schema {
 				try db.execute(sql: "UPDATE access SET state = ? WHERE id = ?", arguments: [marked.passport, access])
 			}
 		}
+		// Saved searches (add-transaction-search-and-filters, task 1.20). The filter bar is the JSON of
+		// `SavedFilterBar`, as the pin keeps it. Registered after the migrations
+		// that landed before it.
+		m.registerMigration("v25") { db in
+			try db.create(table: "savedSearch") { t in
+				t.column("id", .blob).primaryKey()
+				t.column("name", .text).notNull()
+				t.column("position", .integer).notNull()
+				t.column("searchText", .text).notNull()
+				t.column("filterBar", .blob).notNull()
+			}
+		}
 		// The balances in other currencies and the bonus points that a source reports with the balance of an account
 		// (add-account-management, task 1.10). An existing account has neither until its next refresh.
+		// It is registered after v25.
 		m.registerMigration("v26") { db in
 			try db.alter(table: "account") { t in
 				t.add(column: "otherBankBalances", .text).notNull().defaults(to: "[]")

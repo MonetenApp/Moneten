@@ -8,23 +8,27 @@ extension AppModel {
 	/// After the warning: asks where to save the complete export and writes it.
 	func saveAllData() {
 		let panel = NSSavePanel()
-		panel.title = "Export All Data"
+		panel.title = String(localized: "Export All Data")
 		panel.allowedContentTypes = [.json]
 		panel.nameFieldStringValue = "Moneten \(Day.today()).json"
 		guard panel.runModal() == .OK, let url = panel.url else { return }
 		Task { await saveAllData(to: url) }
 	}
 
-	func saveAllData(to url: URL) async {
+	/// Returns whether the file was written, so that the debug harness need not read the alert, whose title is localized.
+	@discardableResult
+	func saveAllData(to url: URL) async -> Bool {
 		do {
 			try await writeAllData(to: url)
-			alert = AlertMessage(title: "All data has been exported.",
-				message: "The file leaves out saved PINs, the data that bank accesses and extensions keep, and statement files.")
+			alert = AlertMessage(title: String(localized: "All data has been exported."),
+				message: String(localized: "The file leaves out saved PINs, the data that bank accesses and extensions keep, and statement files."))
+			return true
 		} catch let error as AllData.ReadError {
-			alert = AlertMessage(title: "Could not export to file.", message: error.description)
+			alert = AlertMessage(title: String(localized: "Could not export to file."), message: error.description)
 		} catch {
-			alert = AlertMessage(title: "Could not export to file.", message: error.localizedDescription)
+			alert = AlertMessage(title: String(localized: "Could not export to file."), message: error.localizedDescription)
 		}
+		return false
 	}
 
 	/// Writes to a temporary file first, so a failed export leaves no partly written file.
@@ -37,22 +41,22 @@ extension AppModel {
 	func importAllData() async {
 		guard store != nil else { return }
 		guard importRefusal == nil else {
-			alert = AlertMessage(title: "Could not import the data.", message: Store.ImportRefusal.notEmpty.description)
+			alert = AlertMessage(title: String(localized: "Could not import the data."), message: Store.ImportRefusal.notEmpty.description)
 			return
 		}
 		let panel = NSOpenPanel()
-		panel.title = "Import All Data"
-		panel.message = "Choose a file that \"Export All Data...\" wrote."
+		panel.title = String(localized: "Import All Data")
+		panel.message = String(localized: "Choose a file that \"Export All Data...\" wrote.")
 		panel.allowedContentTypes = [.json]
 		guard panel.runModal() == .OK, let url = panel.url else { return }
 		let outcome = await readAllData(from: url)
-		alert = outcome == "done" ? AlertMessage(title: "All data has been imported.", message: "Refresh a bank account to enter its PIN again.")
-			: AlertMessage(title: "Could not import the data.", message: outcome)
+		alert = outcome == "done" ? AlertMessage(title: String(localized: "All data has been imported."), message: String(localized: "Refresh a bank account to enter its PIN again."))
+			: AlertMessage(title: String(localized: "Could not import the data."), message: outcome)
 	}
 
 	/// Imports a complete export and returns "done", or the reason why the database stays as it was.
 	func readAllData(from url: URL) async -> String {
-		guard let store else { return "The database is locked." }
+		guard let store else { return String(localized: "The database is locked.") }
 		if let refusal = importRefusal { return refusal }
 		do {
 			let starters = replaceableStarterCategories.flatMap { ledger.categoryIDs(inTree: $0.id) } + ledger.categories.filter(\.isDefault).map(\.id)

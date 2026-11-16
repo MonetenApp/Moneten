@@ -76,3 +76,41 @@ public struct SavedFilterBar: Hashable, Sendable, Codable {
 		return f
 	}
 }
+
+/// A search text and a filter bar under a name, an entry of the sidebar section "Searches". It keeps the period
+/// choice, so "30 Days" counts from the day the user selects it, and it holds no rows: a refresh that brings a
+/// matching transaction shows it the next time.
+public struct SavedSearch: Identifiable, Hashable, Sendable {
+	public let id: UUID
+	public var name: String
+	/// The order in the sidebar section "Searches".
+	public var position: Int
+	public let searchText: String
+	public let bar: SavedFilterBar
+
+	public init(id: UUID = UUID(), name: String, position: Int, searchText: String, bar: SavedFilterBar) {
+		self.id = id
+		self.name = name
+		self.position = position
+		self.searchText = searchText
+		self.bar = bar
+	}
+
+	/// The search text and the filters of the filter bar, with the period choice that `filter` shows.
+	public init(id: UUID = UUID(), name: String, position: Int, period: PeriodChoice, filter: TransactionFilter) {
+		self.init(id: id, name: name, position: position, searchText: filter.searchText, bar: SavedFilterBar(period: period, filter: filter))
+	}
+
+	/// The search field and the filter bar on `today`. A category or an account that `ledger` no longer has
+	/// comes back as "Show All".
+	public func filter(in ledger: Ledger, today: Day = .today()) -> TransactionFilter {
+		var f = bar.filter(in: ledger, today: today)
+		f.searchText = searchText
+		return f
+	}
+
+	/// Whether saving the search field and the filter bar finds anything that "Show All" does not.
+	public static func canSave(period: PeriodChoice, filter: TransactionFilter) -> Bool {
+		period != .all || filter.isActive || !filter.searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+	}
+}
