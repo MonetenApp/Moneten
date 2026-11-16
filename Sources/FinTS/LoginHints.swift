@@ -47,12 +47,13 @@ extension BankDirectory.Entry {
 	/// The hint for the login name of this bank, by its Bankleitzahl. The savings banks are too many
 	/// for a list: each has a host of its own on the FinTS servers of the savings banks, so a savings
 	/// bank is a bank with "Sparkasse" in its name on these servers. A Bausparkasse is not one, nor is
-	/// a bank of another group with "Sparkasse" in its name, nor an old entry of a merged savings bank.
+	/// a bank of another group with "Sparkasse" in its name. The entry of a merged savings bank is one,
+	/// because the setup goes on with it.
 	public var loginHint: LoginHint? {
 		if let hint = LoginHint.byCode[code] { return hint }
 		guard let host = bank.url?.host()?.lowercased() else { return nil }
 		let name = TextFolding.fold(bank.name)
 		let savingsServer = host.contains(".s-fints-pt-") || host.hasSuffix(".s-hbci.de")
-		return savingsServer && !isOfMergedBank && name.contains("sparkasse") && !name.contains("bausparkasse") ? .savingsBank : nil
+		return savingsServer && name.contains("sparkasse") && !name.contains("bausparkasse") ? .savingsBank : nil
 	}
 }

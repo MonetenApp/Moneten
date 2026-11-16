@@ -144,7 +144,8 @@ struct LoginHintTests {
 		#expect(Self.bank("60010111", "Bausparkasse Schwäbisch Hall", "https://banking-bw1.s-fints-pt-bw.de/fints30").loginHint == nil)
 		#expect(Self.bank("40099999", "Sparkasse Musterstadt", "https://hbci.musterstadt.s-hbci.de/").loginHint?.label == "Login name or Legitimations-ID")
 		#expect(Self.bank("70012600", "Südtiroler Sparkasse AG", "https://fints2.atruvia.de/cgi-bin/hbciservlet").loginHint == nil)
-		#expect(Self.bank("38050000", "Sparkasse Bonn -alt-", "https://banking-rl5.s-fints-pt-rl.de/fints30").loginHint == nil)
+		// The entry of a merged savings bank goes on to the login, so it asks for the login of a savings bank too.
+		#expect(Self.bank("21099999", "Sparkasse Altstadt -alt-", "https://banking-rl5.s-fints-pt-rl.de/fints30").loginHint?.label == "Login name or Legitimations-ID")
 	}
 
 	@Test("The hint follows the Bankleitzahl, not the name, and a bank without a known rule has none")
