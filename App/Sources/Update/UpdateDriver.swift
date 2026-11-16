@@ -100,7 +100,7 @@ final class UpdateDriver: NSObject {
 
 	private func makeWindow() -> NSWindow {
 		let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 560, height: 200), styleMask: [.titled, .closable], backing: .buffered, defer: true)
-		window.title = "Software Update"
+		window.title = String(localized: "Software Update")
 		window.identifier = NSUserInterfaceItemIdentifier("update")
 		window.isReleasedWhenClosed = false
 		window.contentViewController = NSHostingController(rootView: UpdateWindow(driver: self))

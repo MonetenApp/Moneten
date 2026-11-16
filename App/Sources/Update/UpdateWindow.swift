@@ -81,7 +81,7 @@ struct UpdateStageView: View {
 		case let .failed(failure):
 			failed(failure)
 		case let .notice(title, message):
-			self.title(title)
+			self.title(Text(title))
 			Text(message).textSelection(.enabled)
 			okButton
 		}
@@ -106,8 +106,13 @@ struct UpdateStageView: View {
 		}
 	}
 
-	private func title(_ text: String) -> some View {
-		Text(text).font(.headline).fixedSize(horizontal: false, vertical: true)
+	private func title(_ key: LocalizedStringKey) -> some View {
+		title(Text(key))
+	}
+
+	/// A title that is already in the language of the user, such as a message of the launch checks.
+	private func title(_ text: Text) -> some View {
+		text.font(.headline).fixedSize(horizontal: false, vertical: true)
 	}
 
 	private var okButton: some View {
@@ -152,12 +157,12 @@ struct ReleaseNotesList: View {
 					ForEach(notes, id: \.build) { item in
 						VStack(alignment: .leading, spacing: 6) {
 							HStack(spacing: 6) {
-								Text("\(item.version) (\(Format.day(item.date)))").font(.headline)
+								Text(verbatim: "\(item.version) (\(Format.day(item.date)))").font(.headline)
 								if item.isPreRelease { PreReleaseMark() }
 							}
 							ForEach(Array(item.entries.enumerated()), id: \.offset) { _, entry in
 								HStack(alignment: .firstTextBaseline, spacing: 6) {
-									Text("•")
+									Text(verbatim: "•")
 									Text(Self.inline(entry)).fixedSize(horizontal: false, vertical: true)
 								}
 							}

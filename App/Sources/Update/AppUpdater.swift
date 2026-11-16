@@ -174,8 +174,8 @@ extension AppUpdater: SPUUpdaterDelegate {
 	/// failed check, which the window shows only for a check that the user started.
 	func updater(_ updater: SPUUpdater, shouldProceedWithUpdate updateItem: SUAppcastItem, updateCheck: SPUUpdateCheck) throws {
 		guard let refused = refusedFeed else { return }
-		let reason = refused.revision.map { "The update feed is revision \($0), but Moneten already read revision \(refused.floor ?? $0)." }
-			?? "The update feed has no revision."
+		let reason = refused.revision.map { String(localized: "The update feed is revision \($0), but Moneten already read revision \(refused.floor ?? $0).") }
+			?? String(localized: "The update feed has no revision.")
 		throw NSError(domain: "io.github.moneten.update", code: 1, userInfo: [NSLocalizedDescriptionKey: reason])
 	}
 

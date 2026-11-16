@@ -54,8 +54,11 @@ extension DebugHarness {
 		case "failedcheck": driver.show(.failed(.check(reason: "The Internet connection appears to be offline.")))
 		case "failedinstall": driver.show(.failed(.install(reason: "You do not have permission to write to the Applications folder.")))
 		case "move": driver.show(.failed(.moveToApplications))
-		case "notice": driver.show(.notice(title: "Several copies of Moneten are installed.",
-			message: "Moneten is in these folders:\n/Applications\n/Users/erika/Downloads\n\nDelete the copies that you do not use, so that you always start the newest version."))
+		case "notice":
+			// The texts of LaunchChecks.run, so a screenshot shows the language of the app.
+			let list = "/Applications\n/Users/erika/Downloads"
+			driver.show(.notice(title: String(localized: "Several copies of Moneten are installed."),
+				message: String(localized: "Moneten is in these folders:\n\(list)\n\nDelete the copies that you do not use, so that you always start the newest version.")))
 		default: log("update unknown stage")
 		}
 	}

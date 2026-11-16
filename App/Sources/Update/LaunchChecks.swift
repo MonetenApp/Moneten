@@ -7,7 +7,7 @@ import FinTS
 enum LaunchChecks {
 	/// The message instead of the database when the own code signature fails its check.
 	static var damagedApp: String? {
-		get async { await AppSeal.isIntact ? nil : "The application file of Moneten is damaged. Move Moneten to the Trash, then download and install it again. Your accounts stay, because Moneten keeps its data in another place." }
+		get async { await AppSeal.isIntact ? nil : String(localized: "The application file of Moneten is damaged. Move Moneten to the Trash, then download and install it again. Your accounts stay, because Moneten keeps its data in another place.") }
 	}
 
 	#if DEBUG || PERF_HARNESS
@@ -21,13 +21,15 @@ enum LaunchChecks {
 		#if !(DEBUG || PERF_HARNESS)
 		// A developer has many builds on the Mac, so only a release build warns about copies.
 		if let folders = otherCopies() {
-			updater.driver.show(.notice(title: "Several copies of Moneten are installed.",
-				message: "Moneten is in these folders:\n\(folders.joined(separator: "\n"))\n\nDelete the copies that you do not use, so that you always start the newest version."))
+			let list = folders.joined(separator: "\n")
+			updater.driver.show(.notice(title: String(localized: "Several copies of Moneten are installed."),
+				message: String(localized: "Moneten is in these folders:\n\(list)\n\nDelete the copies that you do not use, so that you always start the newest version.")))
 		}
 		#endif
 		if let untested {
-			updater.driver.show(.notice(title: "Moneten \(AppVersion.current.display) has not been checked with macOS \(untested).",
-				message: "This version of Moneten was released before macOS \(untested). Some functions may not work as expected. Moneten looks for a newer version now."))
+			let version = AppVersion.current.display
+			updater.driver.show(.notice(title: String(localized: "Moneten \(version) has not been checked with macOS \(untested)."),
+				message: String(localized: "This version of Moneten was released before macOS \(untested). Some functions may not work as expected. Moneten looks for a newer version now.")))
 		}
 		updater.start(untestedMacOS: untested != nil)
 	}

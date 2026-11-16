@@ -33,7 +33,7 @@ enum AboutPanel {
 		let version = AppVersion.current
 		NSApp.orderFrontStandardAboutPanel(options: [
 			.applicationVersion: version.display,
-			.version: version.isPreRelease ? "\(version.build), Pre-release" : version.build,
+			.version: version.isPreRelease ? String(localized: "\(version.build), Pre-release") : version.build,
 		])
 		NSApp.activate()
 	}
