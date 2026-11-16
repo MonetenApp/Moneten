@@ -646,7 +646,8 @@ struct FinTSConnectorTests {
 		let lines = URL(filePath: #filePath).deletingLastPathComponent().appending(path: "helper-lines.jsonl")
 		let card = AccountRequest(accountID: UUID(), name: "Card", remoteID: "4711", currency: "EUR")
 		let depots = ["7654321", "7654322", "7654323", "7654324", "7654325", "7654326"].map { AccountRequest(accountID: UUID(), name: "Depot", remoteID: $0, currency: "EUR") }
-		let report = try await refresh("read cmd; cat '\(lines.path)'", accounts: [Self.giro, Self.savings, card] + depots)
+		let creditCard = AccountRequest(accountID: UUID(), name: "Visa", remoteID: "1234567890123456", since: Day(year: 2026, month: 10, day: 1), currency: "EUR")
+		let report = try await refresh("read cmd; cat '\(lines.path)'", accounts: [Self.giro, Self.savings, card, creditCard] + depots)
 
 		guard case let .fetched(depot) = report.outcomes[depots[0].accountID] else { Issue.record("depot not fetched"); return }
 		#expect(depot.balance == Money(minorUnits: 2_451_837, currency: "EUR"))
@@ -715,6 +716,18 @@ struct FinTSConnectorTests {
 
 		guard case let .failed(failure) = report.outcomes[card.accountID] else { Issue.record("card not failed"); return }
 		#expect(failure == HelperFailure.noBookingDate)
+
+		// The card statement of a credit card brings its balance and its transactions in one answer.
+		guard case let .fetched(statement) = report.outcomes[creditCard.accountID] else { Issue.record("credit card not fetched"); return }
+		#expect(statement.balance == Money(minorUnits: -123_456, currency: "EUR"))
+		#expect(statement.balanceDate.map { Day($0) } == Day(year: 2026, month: 11, day: 12))
+		#expect(statement.transactions?.from == Day(year: 2026, month: 10, day: 1))
+		#expect(statement.transactions?.rows.map { [$0.amountMinor.description, $0.name, $0.purpose, $0.bookingText ?? "", "\($0.isPending)"] }
+			== [["-1990", "Streaming Beispiel", "Streaming Beispiel / Musterstadt", "Kreditkartenzahlung", "false"],
+				["-15000", "Hotel Beispiel", "Hotel Beispiel / Musterstadt", "Kreditkartenzahlung", "true"]])
+		#expect(statement.transactions?.rows.map { [$0.bookingDate, $0.valueDate] }
+			== [[Day(year: 2026, month: 11, day: 9), Day(year: 2026, month: 11, day: 8)], [Day(year: 2026, month: 11, day: 10), Day(year: 2026, month: 11, day: 10)]])
+		#expect(statement.transactionFailure == nil)
 	}
 
 	@Test("A row without a currency gets the currency of the account")

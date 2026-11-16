@@ -13,6 +13,8 @@
 # The login and every refresh send the notice of the bank about maintenance.
 # A refresh of the full history, the first one and an enforced one, brings one more "Girokonto" row from 30 days ago.
 # The login "neu" brings one more "Girokonto" row with each refresh, a deposit on even runs and a withdrawal on odd ones.
+# The login "kreditkarte" lists "Girokonto" and the credit card "Visa Card" with a 16 digit card number, whose refresh
+# brings its balance and one transaction from the card statement, as the card job DKKKU of DKB does.
 # The login "unterkonten" lists two subaccounts of the account number 9 in place of these accounts.
 # The login "depot" lists "Girokonto" and three securities accounts: "Depot", whose refresh brings its value
 # and four positions (a share with a purchase price, a fund without one, a share in US dollars with an
@@ -98,6 +100,11 @@ case "$cmd" in
 	echo '{"type":"notice","text":"Wartungsarbeiten am 14.11.2026 von 1 bis 5 Uhr."}'
 	case "$cmd" in *'"user":"langtext"'*)
 		echo '{"type":"accounts","accounts":[{"number":"1234567890","product":"Tagesgeld","kind":"10","owner":"Erika Mustermann","currency":"EUR"}]}'
+		echo '{"type":"state","data":"MA=="}'
+		exit 0
+	;;
+	*'"user":"kreditkarte"'*)
+		echo '{"type":"accounts","accounts":[{"number":"202051","iban":"DE02120300000000202051","bic":"BYLADEM1001","product":"Girokonto","kind":"1","owner":"Erika Mustermann","currency":"EUR"},{"number":"1234567890123456","product":"Visa Card","kind":"50","owner":"Erika Mustermann","currency":"EUR"}]}'
 		echo '{"type":"state","data":"MA=="}'
 		exit 0
 	;;
@@ -204,6 +211,9 @@ case "$cmd" in
 		fi
 	;; esac
 	echo '{"type":"progress","done":2,"of":3}'
+	case "$cmd" in *'"id":"1234567890123456"'*)
+		echo "{\"type\":\"result\",\"account\":\"1234567890123456\",\"balance\":{\"amount\":\"-1234.56\",\"currency\":\"EUR\",\"date\":\"$(day 1)\"},\"transactions\":{\"from\":\"$(day 90)\",\"rows\":[{\"booked\":\"$(day 3)\",\"value\":\"$(day 4)\",\"amount\":\"-19.90\",\"currency\":\"EUR\",\"name\":\"Streaming Beispiel\",\"purpose\":\"Streaming Beispiel / Musterstadt\",\"bookingText\":\"Kreditkartenzahlung\",\"pending\":false}]},\"errors\":[]}"
+	;; esac
 	case "$cmd" in *'"id":"4711"'*)
 		echo "{\"type\":\"result\",\"account\":\"4711\",\"balance\":{\"amount\":\"-120.00\",\"currency\":\"EUR\",\"date\":\"$(day 0)\"},\"errors\":[]}"
 	;; esac

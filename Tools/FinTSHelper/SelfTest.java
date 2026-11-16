@@ -23,12 +23,14 @@ import java.util.TimeZone;
 
 import javax.net.ssl.SSLHandshakeException;
 
+import org.kapott.hbci.GV.HBCIJob;
 import org.kapott.hbci.GV.parsers.ISEPAParser;
 import org.kapott.hbci.GV.parsers.SEPAParserFactory;
 import org.kapott.hbci.GV_Result.GVRKUms;
 import org.kapott.hbci.GV_Result.GVRSaldoReq;
 import org.kapott.hbci.GV_Result.GVRWPDepotList;
 import org.kapott.hbci.GV_Result.GVRKUms.UmsLine;
+import org.kapott.hbci.GV_Result.GVRKreditkartenUmsatz;
 import org.kapott.hbci.dialog.DialogContext;
 import org.kapott.hbci.dialog.DialogEvent;
 import org.kapott.hbci.exceptions.HBCI_Exception;
@@ -245,6 +247,7 @@ final class SelfTest {
 				"{\"type\":\"accountFailed\",\"code\":\"3040\",\"text\":\"The bank sent only part of the transactions, so nothing of this account was stored.\",\"account\":\"DE02120300000000202051\"}");
 
 			securities();
+			cards();
 
 			expect("network error", FinTSHelper.Json.write(FinTSHelper.failure(new HBCI_Exception("can not create HBCI handle", new java.net.ConnectException("Connection refused")))),
 				"{\"type\":\"failed\",\"kind\":\"network\",\"text\":\"Connection refused\"}");
@@ -527,11 +530,208 @@ final class SelfTest {
 			bpd.setProperty("Params_" + (i + 1) + ".PinTanPar1.ParPinTan.PinTanGV_" + (i + 1) + ".segcode", orders[i]);
 			bpd.setProperty("Params_" + (i + 1) + ".PinTanPar1.ParPinTan.PinTanGV_" + (i + 1) + ".needtan", orders[i].equals("HKWPD") ? "J" : "N");
 		}
-		Properties other = (Properties) bpd.clone();
-		FinTSHelper.applyTanRules("76030080", bpd);
-		FinTSHelper.applyTanRules("12030000", other);
+		Properties other = (Properties) bpd.clone(), dab = (Properties) bpd.clone();
+		FinTSHelper.applyTanRules("brokerage-hbci.consorsbank.de/hbci", bpd);
+		FinTSHelper.applyTanRules("fints.musterbank.example/fints", other);
+		// DAB BNP Paribas (70120400) shares the server of Consorsbank. hbci4java keeps the host with its path.
+		FinTSHelper.applyTanRules("Brokerage-HBCI.consorsbank.de/hbci?x=1", dab);
 		expect("Consorsbank: HKSAL and HKKAZ with HKTAN, HKWPD without", needtan(bpd, orders), "HKSAL=J HKKAZ=J HKCAZ=J HKWPD=N HKTAN=N");
-		expect("other banks: HKTAN as their parameters say", needtan(other, orders), "HKSAL=N HKKAZ=N HKCAZ=N HKWPD=J HKTAN=N");
+		expect("DAB BNP Paribas on the server of Consorsbank: the same rules", needtan(dab, orders), "HKSAL=J HKKAZ=J HKCAZ=J HKWPD=N HKTAN=N");
+		List<String> others = new ArrayList<>(List.of(needtan(other, orders)));
+		for (String host : new String[] { "brokerage-hbci.consorsbank.de.example/hbci", "brokerage-hbci-other.consorsbank.de/hbci", "brokerage-hbci.other.consorsbank.de/hbci" }) {
+			Properties lookalike = (Properties) other.clone();
+			FinTSHelper.applyTanRules(host, lookalike);
+			others.add(needtan(lookalike, orders));
+		}
+		expect("other banks and other servers of the domain: HKTAN as their parameters say", String.join(" | ", others),
+			String.join(" | ", java.util.Collections.nCopies(4, "HKSAL=N HKKAZ=N HKCAZ=N HKWPD=J HKTAN=N")));
+	}
+
+	/// The card statement DKKKU of a credit card, with made-up data as hbci4java keeps it from DIKKU (task 1.19).
+	static void cards() {
+		expect("jobs of a credit card with only the card statement", FinTSHelper.jobs(null, allowing("50", "DKKKU", "HKTAN")), "[KreditkartenUmsatz]");
+		expect("jobs of a credit card with the balance and the card statement", FinTSHelper.jobs(null, allowing("50", "HKSAL", "DKKKU")), "[KreditkartenUmsatz]");
+		expect("jobs of a credit card with the balance and the transactions", FinTSHelper.jobs(null, allowing("50", "HKSAL", "HKKAZ", "DKKKU")), "[SaldoReq, KUmsAll]");
+		Konto visa = allowing("50", "DKKKU");
+		visa.number = "1234567890123456";
+		expect("parameters of the card statement", params("KreditkartenUmsatz", visa, "2026-10-01") + " | " + params("KreditkartenUmsatz", visa, null),
+			"my=1234567890123456 cardnumber=1234567890123456 startdate=2026-10-01 | my=1234567890123456 cardnumber=1234567890123456");
+		expect("parameters of the transactions and the balance", params("KUmsAllCamt", visa, "2026-10-01") + " | " + params("KUmsAll", visa, "2026-10-01")
+			+ " | " + params("SaldoReq", visa, "2026-10-01"),
+			"my=1234567890123456 startdate=2026-10-01 | my=1234567890123456 startdate=2026-10-01 | my=1234567890123456");
+
+		String id = "1234567890123456";
+		GVRKreditkartenUmsatz statement = cardStatement();
+		statement.storeResult("content.balance.CreditDebit", "D");
+		statement.storeResult("content.balance.value", "1.234,56");
+		statement.storeResult("content.balance.curr", "EUR");
+		statement.storeResult("content.balance.date", "2026-11-12");
+		statement.storeResult("content.transactions.finalized", "J");
+		cardRow(statement, "content.transactions_2", "Hotel Beispiel", "150,00", "D");
+		statement.storeResult("content.transactions_2.finalized", "N");
+		String line = FinTSHelper.Json.write(FinTSHelper.alone(id, () -> FinTSHelper.card(id, "2026-10-01", statement, false, "EUR")));
+		fixture.add(line);
+		expect("card statement with its balance and transactions, and a row that is not final as pending", line,
+			"{\"type\":\"result\",\"account\":\"1234567890123456\",\"balance\":{\"type\":\"balance\",\"amount\":\"-1234.56\",\"currency\":\"EUR\",\"date\":\"2026-11-12\"},"
+				+ "\"transactions\":{\"type\":\"transactions\",\"from\":\"2026-10-01\",\"rows\":[{\"type\":\"row\",\"booked\":\"2026-11-09\",\"value\":\"2026-11-08\","
+				+ "\"amount\":\"-19.90\",\"currency\":\"EUR\",\"name\":\"Streaming Beispiel\",\"purpose\":\"Streaming Beispiel / Musterstadt\",\"bookingText\":\"Kreditkartenzahlung\",\"pending\":false},"
+				+ "{\"type\":\"row\",\"booked\":\"2026-11-10\",\"value\":\"2026-11-10\",\"amount\":\"-150.00\",\"currency\":\"EUR\",\"name\":\"Hotel Beispiel\",\"purpose\":\"Hotel Beispiel / Musterstadt\","
+				+ "\"bookingText\":\"Kreditkartenzahlung\",\"pending\":true}]},\"errors\":[]}");
+
+		statement.storeResult("content.transactions.reference", "R-1");
+		statement.storeResult("content.transactions_2.reference", "R-1");
+		expect("summary of the card statement for the bank test, without data of a row", Out.bank(FinTSHelper.cardSummary(statement.getResultData())),
+			"FinTSHelper: card statement finalized {J=1, N=1} references=2 distinct=1");
+
+		GVRKreditkartenUmsatz parts = cardStatement();
+		cardRow(parts, "content_10.transactions", "Kino Beispiel", "12,00", "D");
+		cardRow(parts, "content_2.transactions", "Erstattung Beispiel", "25,00", "C");
+		cardRow(parts, "content_2.transactions_2", "Gebühr Beispiel", "-1,50", null);
+		expect("summary of a card statement without finalized and references", FinTSHelper.cardSummary(parts.getResultData()),
+			"FinTSHelper: card statement finalized {none=4} references=0 distinct=0");
+		expect("card statement in parts: the rows in the order of the parts, with the sign of C or D, or of the amount",
+			rows(FinTSHelper.card(id, null, parts, false, "EUR")), "-19.90 Streaming Beispiel / Musterstadt | 25.00 Erstattung Beispiel / Musterstadt"
+				+ " | -1.50 Gebühr Beispiel / Musterstadt | -12.00 Kino Beispiel / Musterstadt");
+
+		// 3,69 EUR for 1,234 Kuwaiti dinar. hbci4java 4.1.17 reads the original amount into a Value of two decimals and
+		// throws, which fails the whole dialog, so CardJob leaves the rows to the helper.
+		GVRKreditkartenUmsatz abroad = cardStatement();
+		abroad.storeResult("content.transactions.value", "3,69");
+		abroad.storeResult("content.transactions.originalvalue", "1,234");
+		abroad.storeResult("content.transactions.originalcurrency", "KWD");
+		abroad.storeResult("content.transactions.originalcreditdebit", "D");
+		expect("card row with an original amount of three decimals", rows(FinTSHelper.card(id, null, abroad, false, "EUR")), "-3.69 Streaming Beispiel / Musterstadt");
+		String thrown;
+		try {
+			new GVRKreditkartenUmsatz().addTransaction(abroad.getResultData(), "content.transactions");
+			thrown = "nothing";
+		} catch (RuntimeException e) {
+			thrown = e.getClass().getSimpleName();
+		}
+		expect("hbci4java fails on that row", thrown, "ArithmeticException");
+		expect("one message with that row for the card and the balance of another account: the card job fills its raw data, and the dialog goes on",
+			cardAndBalance(abroad), "exceptions [] | card -3.69 Streaming Beispiel / Musterstadt | other account 2500.25 EUR");
+
+		for (String[] broken : new String[][] { { "value", null }, { "value", "1x" }, { "bookingdate", "2026-13-45" } }) {
+			GVRKreditkartenUmsatz unreadable = cardStatement();
+			if (broken[1] == null) unreadable.getResultData().remove("content.transactions." + broken[0]);
+			else unreadable.storeResult("content.transactions." + broken[0], broken[1]);
+			expect("card row with " + broken[0] + " " + broken[1] + " fails only the card", FinTSHelper.Json.write(FinTSHelper.alone(id, () -> FinTSHelper.card(id, null, unreadable, false, "EUR"))),
+				"{\"type\":\"accountFailed\",\"kind\":\"unsupported\",\"text\":\"" + FinTSHelper.CARD_ROW_UNREADABLE + "\",\"account\":\"1234567890123456\"}");
+		}
+
+		GVRKreditkartenUmsatz withoutBalance = cardStatement();
+		withoutBalance.storeResult("content.balance.value", "x");
+		Map<String, Object> kept = FinTSHelper.card(id, null, withoutBalance, false, "EUR");
+		expect("card statement without a balance that reads keeps its transactions", kept.get("balance") + " " + rows(kept), "null -19.90 Streaming Beispiel / Musterstadt");
+		GVRKreditkartenUmsatz signed = cardStatement();
+		signed.storeResult("content_2.balance.value", "-80.10");
+		signed.storeResult("content_2.balance.date", "2026-13-45");
+		expect("card statement with a signed balance in its second part, without currency and with a date that does not read",
+			String.valueOf(FinTSHelper.card(id, null, signed, false, "USD").get("balance")), "{type=balance, amount=-80.10, currency=USD, date=null}");
+		GVRKreditkartenUmsatz first = cardStatement();
+		first.storeResult("content_10.balance.value", "-95.00");
+		first.storeResult("content_2.balance.value", "80,10");
+		first.storeResult("content_2.balance.CreditDebit", "D");
+		first.storeResult("content_2.balance.date", "20261112");
+		expect("card statement with a balance in two parts: the first part wins", String.valueOf(FinTSHelper.card(id, null, first, false, "EUR").get("balance")),
+			"{type=balance, amount=-80.10, currency=EUR, date=2026-11-12}");
+		first.storeResult("content.balance.value", "70,00");
+		expect("card statement with a balance in its first part", ((Map<?, ?>) FinTSHelper.card(id, null, first, false, "EUR").get("balance")).get("amount"), "70.00");
+
+		GVRKreditkartenUmsatz partial = cardStatement();
+		expect("card statement in part fails", FinTSHelper.alone(id, () -> FinTSHelper.card(id, null, partial, true, "EUR")).get("code"), "3040");
+		GVRKreditkartenUmsatz refused = new GVRKreditkartenUmsatz();
+		refused.jobStatus.addRetVal(new HBCIRetVal(null, null, null, "9010", "Verarbeitung nicht möglich", null));
+		expect("card statement that the bank refuses", FinTSHelper.Json.write(FinTSHelper.card(id, null, refused, false, "EUR")),
+			"{\"type\":\"result\",\"account\":\"1234567890123456\",\"errors\":[{\"type\":\"error\",\"code\":\"9010\",\"text\":\"Verarbeitung nicht möglich\"}]}");
+	}
+
+	/// A card statement with one debit of 19,90 EUR, in the raw data that hbci4java keeps of the answer DIKKU.
+	static GVRKreditkartenUmsatz cardStatement() {
+		GVRKreditkartenUmsatz statement = new GVRKreditkartenUmsatz();
+		statement.jobStatus.addRetVal(new HBCIRetVal(null, null, null, "0020", "ok", null));
+		statement.storeResult("content.cardnumber", "1234567890123456");
+		cardRow(statement, "content.transactions", "Streaming Beispiel", "19,90", "D");
+		statement.storeResult("content.transactions.bookingdate", "2026-11-09");
+		statement.storeResult("content.transactions.valuedate", "20261108");
+		return statement;
+	}
+
+	static void cardRow(GVRKreditkartenUmsatz statement, String row, String purpose, String value, String creditDebit) {
+		statement.storeResult(row + ".cardnumber", "1234567890123456");
+		statement.storeResult(row + ".bookingdate", "2026-11-10");
+		statement.storeResult(row + ".valuedate", "2026-11-10");
+		statement.storeResult(row + ".value", value);
+		statement.storeResult(row + ".currency", "EUR");
+		statement.storeResult(row + ".creditdebit", creditDebit);
+		statement.storeResult(row + ".purpose", purpose);
+		statement.storeResult(row + ".location", "Musterstadt");
+	}
+
+	/// The amount and the purpose of each row of a result.
+	static String rows(Map<String, Object> result) {
+		List<String> all = new ArrayList<>();
+		for (Object o : (List<?>) ((Map<?, ?>) result.get("transactions")).get("rows")) all.add(((Map<?, ?>) o).get("amount") + " " + ((Map<?, ?>) o).get("purpose"));
+		return String.join(" | ", all);
+	}
+
+	/// One message with the card statement of a card and the balance of a giro account of the same login, with the
+	/// rows of `card` as the answer DIKKU. hbci4java fills the result of each job of the message from the answer, keeps
+	/// what a job throws, and then ends the dialog when a job threw, so the other accounts of the login get nothing.
+	/// This check fills the jobs as HBCIDialog does, through `fillJobResult` of the real jobs.
+	static String cardAndBalance(GVRKreditkartenUmsatz card) {
+		FinTSHelper.Passport passport = passport();
+		passport.getBPD().setProperty("Params_3.KreditkartenUmsatzPar2.SegHead.code", "DKKKU");
+		passport.getBPD().setProperty("Params_4.SaldoPar7.SegHead.code", "HKSAL");
+		org.kapott.hbci.manager.HBCIHandler handle = new org.kapott.hbci.manager.HBCIHandler("300", passport, true);
+		org.kapott.hbci.GV.HBCIJobImpl<?> cardJob = new FinTSHelper.CardJob(handle), balanceJob = (org.kapott.hbci.GV.HBCIJobImpl<?>) handle.newJob("SaldoReq");
+		cardJob.setIdx(3);
+		balanceJob.setIdx(4);
+		HBCIMsgStatus answer = new HBCIMsgStatus();
+		answer.globStatus.addRetVal(new HBCIRetVal(null, null, null, "0010", "Nachricht entgegengenommen", null));
+		answer.segStatus.addRetVal(new HBCIRetVal("3", null, null, "0020", "Auftrag ausgeführt", null));
+		answer.segStatus.addRetVal(new HBCIRetVal("4", null, null, "0020", "Auftrag ausgeführt", null));
+		Properties data = answer.getData();
+		data.setProperty("GVRes_1.KreditkartenUmsatzRes2.SegHead.ref", "3");
+		card.getResultData().forEach((key, value) -> {
+			if (key.toString().startsWith("content.")) data.setProperty("GVRes_1.KreditkartenUmsatzRes2." + key.toString().substring(8), value.toString());
+		});
+		String saldo = "GVRes_2.SaldoRes7.";
+		data.setProperty(saldo + "SegHead.ref", "4");
+		data.setProperty(saldo + "KTV.number", "0000202051");
+		data.setProperty(saldo + "KTV.KIK.country", "DE");
+		data.setProperty(saldo + "KTV.KIK.blz", "12030000");
+		data.setProperty(saldo + "kontobez", "Girokonto");
+		data.setProperty(saldo + "curr", "EUR");
+		data.setProperty(saldo + "booked.CreditDebit", "C");
+		data.setProperty(saldo + "booked.BTG.value", "2500.25");
+		data.setProperty(saldo + "booked.BTG.curr", "EUR");
+		data.setProperty(saldo + "booked.date", "2026-11-12");
+		List<String> exceptions = new ArrayList<>();
+		for (org.kapott.hbci.GV.HBCIJobImpl<?> job : List.of(cardJob, balanceJob)) {
+			try {
+				job.fillJobResult(answer, 0);
+			} catch (RuntimeException e) {
+				exceptions.add(e.getClass().getSimpleName());
+			}
+		}
+		String id = "1234567890123456", other = "DE02120300000000202051";
+		Map<String, Object> cardResult = FinTSHelper.alone(id, () -> FinTSHelper.card(id, null, (GVRKreditkartenUmsatz) cardJob.getJobResult(), false, "EUR"));
+		Map<?, ?> balance = (Map<?, ?>) FinTSHelper.result(other, null, (GVRSaldoReq) balanceJob.getJobResult(), null, false).get("balance");
+		return "exceptions " + exceptions + " | card " + (cardResult.containsKey("transactions") ? rows(cardResult) : FinTSHelper.Json.write(cardResult))
+			+ " | other account " + (balance == null ? "nothing" : balance.get("amount") + " " + balance.get("currency"));
+	}
+
+	/// The parameters that the helper sets on the job `name`, with an account as its number and a date as its day.
+	static String params(String name, Konto k, String from) {
+		List<String> set = new ArrayList<>();
+		HBCIJob<?> job = (HBCIJob<?>) java.lang.reflect.Proxy.newProxyInstance(HBCIJob.class.getClassLoader(), new Class<?>[] { HBCIJob.class }, (proxy, method, args) -> {
+			if (method.getName().equals("setParam")) set.add(args[0] + "=" + (args[1] instanceof Konto a ? a.number : args[1] instanceof java.util.Date d ? FinTSHelper.day(d) : args[1]));
+			return null;
+		});
+		FinTSHelper.prepare(job, name, k, from);
+		return String.join(" ", set);
 	}
 
 	/// The errors that decide what the user must do (tasks 1.22 and 1.24 of add-fints-banking, and 1.7, 1.14, and 1.22
