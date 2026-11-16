@@ -6,7 +6,7 @@ import SwiftUI
 struct RefreshErrorButton: View {
 	@Environment(AppModel.self) private var model
 	let accounts: [Account]
-	var help = "The last refresh failed"
+	var help = String(localized: "The last refresh failed")
 	@State private var shown = false
 
 	var body: some View {

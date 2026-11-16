@@ -104,21 +104,21 @@ extension AppModel {
 		switch row {
 		case let .account(id):
 			guard let a = ledger.account(id) else { return false }
-			question.messageText = "Are you sure you want to remove the account \(a.name)?"
+			question.messageText = String(localized: "Are you sure you want to remove the account \(a.name)?")
 			question.informativeText = a.kind == .portfolio
-				? "All transactions and the recorded value history of this portfolio will be removed as well. You could alternatively mark the account as closed in the account settings."
-				: "All transactions of this account will be removed as well. You could alternatively mark the account as closed in the account settings."
+				? String(localized: "All transactions and the recorded value history of this portfolio will be removed as well. You could alternatively mark the account as closed in the account settings.")
+				: String(localized: "All transactions of this account will be removed as well. You could alternatively mark the account as closed in the account settings.")
 		case let .group(id):
 			guard let g = ledger.group(id) else { return false }
-			question.messageText = "Are you sure you want to remove the account group \(g.name)?"
-			question.informativeText = "The accounts and groups in it are kept and move to the top level."
+			question.messageText = String(localized: "Are you sure you want to remove the account group \(g.name)?")
+			question.informativeText = String(localized: "The accounts and groups in it are kept and move to the top level.")
 		case let .category(id):
 			guard let c = ledger.category(id), !c.isDefault else { return false }
-			question.messageText = "Are you sure you want to remove the category \(c.name)?"
-			question.informativeText = "The transactions will be retained and become uncategorized."
+			question.messageText = String(localized: "Are you sure you want to remove the category \(c.name)?")
+			question.informativeText = String(localized: "The transactions will be retained and become uncategorized.")
 		}
-		question.addButton(withTitle: "Remove").hasDestructiveAction = true
-		question.addButton(withTitle: "Cancel")
+		question.addButton(withTitle: String(localized: "Remove")).hasDestructiveAction = true
+		question.addButton(withTitle: String(localized: "Cancel"))
 		guard question.runModal() == .alertFirstButtonReturn else { return false }
 		Task {
 			switch row {

@@ -146,7 +146,7 @@ struct GroupRow: View {
 			}
 			Spacer()
 			if let markers, !markers.failedAccounts.isEmpty {
-				RefreshErrorButton(accounts: markers.failedAccounts, help: "The last refresh of an account in this group failed")
+				RefreshErrorButton(accounts: markers.failedAccounts, help: String(localized: "The last refresh of an account in this group failed"))
 			}
 			if group.showSum {
 				let sums = model.ledger.sum(ofGroup: group.id)

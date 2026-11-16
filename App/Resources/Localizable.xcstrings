@@ -1886,6 +1886,16 @@
         }
       }
     },
+    "Are you sure you want to remove the account group %@?" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Möchten Sie die Kontengruppe %@ wirklich entfernen?"
+          }
+        }
+      }
+    },
     "Are you sure you want to remove the category %@?" : {
       "localizations" : {
         "de" : {
@@ -3103,6 +3113,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Offline-Konto anlegen"
+          }
+        }
+      }
+    },
+    "Create Offsetting Entry" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gegenbuchung erstellen"
           }
         }
       }
@@ -5991,6 +6011,26 @@
         }
       }
     },
+    "No offline accounts available" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Offline-Konten vorhanden"
+          }
+        }
+      }
+    },
+    "No other offline account available" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kein anderes Offline-Konto vorhanden"
+          }
+        }
+      }
+    },
     "No portfolio items found." : {
       "localizations" : {
         "de" : {
@@ -6856,6 +6896,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Alle Konten aktualisieren"
+          }
+        }
+      }
+    },
+    "Refreshing accounts" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Konten werden aktualisiert"
           }
         }
       }
@@ -8195,6 +8245,16 @@
         }
       }
     },
+    "The accounts and groups in it are kept and move to the top level." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Konten und Gruppen darin bleiben erhalten und rücken auf die oberste Ebene."
+          }
+        }
+      }
+    },
     "The amount %@ is not a number." : {
       "localizations" : {
         "de" : {
@@ -9355,6 +9415,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Die letzte Aktualisierung ist fehlgeschlagen"
+          }
+        }
+      }
+    },
+    "The last refresh of an account in this group failed" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die letzte Aktualisierung eines Kontos in dieser Gruppe ist fehlgeschlagen"
           }
         }
       }
