@@ -73,6 +73,20 @@ struct ManualMarkTests {
 		#expect(try store.loadLedger().transactions(ofAccount: giro.id).isEmpty)
 	}
 
+	@Test("A manual row that a file matched pairs with the booking of the next refresh, so the account has it once")
+	func fileMatchedManualRowRefreshed() throws {
+		defer { try? FileManager.default.removeItem(at: folder.root) }
+		let store = try makeStore()
+		let manual = kiosk
+		try store.save([manual])
+		_ = try store.merge(.file([csvRow]), into: giro.id)
+		let refreshed = try store.merge(delivered(), into: giro.id)
+		#expect(refreshed.added.isEmpty)
+		let rows = try store.loadLedger().transactions(ofAccount: giro.id)
+		#expect(rows.map(\.id) == [manual.id])
+		#expect(rows.map(\.sourceID) == ["TX-7"] && rows.allSatisfy(\.isFetched))
+	}
+
 	@Test("A file brings back a deleted manual row that it matched, as it brings back any deleted file row that no refresh delivered")
 	func fileMatchedManualRowImportedAgain() throws {
 		defer { try? FileManager.default.removeItem(at: folder.root) }

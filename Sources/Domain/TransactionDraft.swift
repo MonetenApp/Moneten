@@ -99,14 +99,15 @@ extension DecimalMark {
 
 extension Ledger {
 	/// What the window can change in the row `rowID`, or in a new row for nil. A row of an offline account and a
-	/// manual row change in every field. A part of a split changes its category and its comment. In an account
+	/// manual row that no source matched change in every field. A manual row that a file or a migration matched is a
+	/// row of that source, because the next refresh pairs it by its date, amount, and purpose. A part of a split changes its category and its comment. In an account
 	/// with bank access, a row from a file keeps its date, amount, and purpose, because a change of them makes the
 	/// next refresh add the booking a second time. A row that a refresh or a migration brought, and an older row
 	/// without the manual mark, changes only its category and its comment.
 	public func editing(_ rowID: UUID?) -> TransactionEditing {
 		guard let rowID else { return .allFields }
 		guard part(rowID) == nil, let t = row(rowID), let account = account(t.accountID) else { return .categoryAndComment }
-		if account.isOffline || t.isManual { return .allFields }
+		if account.isOffline || t.isOnlyManual { return .allFields }
 		return t.fileIdentity != nil && !t.isFetched ? .nameCategoryAndComment : .categoryAndComment
 	}
 

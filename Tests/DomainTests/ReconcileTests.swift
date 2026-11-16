@@ -291,6 +291,27 @@ struct ReconcileTests {
 		#expect(ledger.computedBalance(of: moved, through: day(10)) == Money(minorUnits: 5_000, currency: "EUR"))
 	}
 
+	@Test("A manual row that a file matched is a booking of the file: the refresh pairs it, and neither the refresh nor a delete moves the initial balance")
+	func fileMatchedManualRowKeepsBankBalance() throws {
+		let calendar = Calendar.current
+		let bank = Account(position: 0, name: "Kreditkarte", kind: .creditCard, source: .bank, bankBalanceMinor: 10_000,
+			bankBalanceDate: day(1).date(in: calendar), initialBalanceMinor: 10_000, initialBalanceIsSet: true, initialBalanceIsDerived: true)
+		let planned = Transaction(accountID: bank.id, bookingDate: day(5), amountMinor: -5_000, name: "Hotel Beispiel", purpose: "Kartenzahlung", isManual: true)
+		let file = merge(.file([row(5, -5_000, "HOTEL BEISPIEL", "Kartenzahlung")]), into: bank, stored: [planned])
+		let matched = try #require(file.updated.first)
+		#expect(file.added.isEmpty && matched.id == planned.id && matched.fileIdentity != nil && !matched.isOnlyManual)
+		var ledger = Ledger(accounts: [bank], transactions: [matched])
+		let booked = row(5, -5_000, "HOTEL BEISPIEL", "Kartenzahlung", sourceID: "TX-9")
+		let r = merge(refresh([booked], balance: Money(minorUnits: 5_000, currency: "EUR"), balanceDate: day(10).date(in: calendar)),
+			into: bank, stored: [matched], at: day(10).date(in: calendar))
+		#expect(r.added.isEmpty)
+		let account = try #require(r.account)
+		#expect(account.initialBalanceMinor == 10_000)
+		ledger.apply(r)
+		#expect(ledger.computedBalance(of: account, through: day(10)) == Money(minorUnits: 5_000, currency: "EUR"))
+		#expect(ledger.keepingBankBalance(replacing: [matched], with: [], calendar: calendar) == [])
+	}
+
 	@Test("A refresh that moves the day of the bank balance past a manual row leaves an initial balance that the user entered")
 	func refreshPassesManualRowWithEnteredValue() throws {
 		let calendar = Calendar.current

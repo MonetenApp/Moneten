@@ -315,9 +315,12 @@ public struct Transaction: Identifiable, Hashable, Sendable, Codable {
 	public var sourceID: String?
 	public var fileIdentity: String?
 	public var createdAt: Date
-	/// The user added the row with "Add Transaction...". No source delivers it, so a refresh never pairs a
-	/// delivered row with it, and deleting it keeps no record unless a file or a migration matched it.
+	/// The user added the row with "Add Transaction...". It keeps the mark when a file or a migration matches it.
 	public var isManual: Bool
+
+	/// A manual row that no file and no migration matched. No source has it, so a refresh never pairs a delivered
+	/// row with it, and deleting it keeps no record. A manual row that a source matched is a row of that source.
+	public var isOnlyManual: Bool { isManual && sourceID == nil && fileIdentity == nil }
 
 	public init(id: UUID = UUID(), accountID: UUID, bookingDate: Day, valueDate: Day? = nil, amountMinor: Int64, currency: String = "EUR", name: String, purpose: String = "",
 		counterpartyIBAN: String? = nil, counterpartyBIC: String? = nil, bookingText: String? = nil, endToEndReference: String? = nil, mandateReference: String? = nil,

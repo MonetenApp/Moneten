@@ -396,19 +396,20 @@ public struct Ledger: Sendable {
 	}
 
 	/// The accounts whose initial balance moves when the manual rows `old` become `new`, as an addition, a change, or
-	/// a deletion does. In an account with bank access, a manual row booked by the day of the bank balance is part of
-	/// that balance. While the initial balance is the value that a refresh derived, it moves against such a row, so the
+	/// a deletion does. In an account with bank access, a manual row that no source matched and that is booked by the
+	/// day of the bank balance is part of that balance. A manual row that a file or a migration matched is a row of
+	/// that source, so it moves nothing, as no other row of a source does. While the initial balance is the value that a refresh derived, it moves against such a row, so the
 	/// computed balance keeps ending at the bank balance and the row only shapes the history before it. Before that, the
 	/// first refresh derives the initial balance with the manual rows. A value that the user entered stays. A manual row
 	/// after the day of the bank balance counts on top of it.
 	public func keepingBankBalance(replacing old: [Transaction], with new: [Transaction], calendar: Calendar = .current) -> [Account] {
-		let ids = Set((old + new).filter(\.isManual).map(\.accountID))
+		let ids = Set((old + new).filter(\.isOnlyManual).map(\.accountID))
 		return ids.sorted { $0.uuidString < $1.uuidString }.compactMap { id -> Account? in
 			guard var a = account(id), a.source == .bank, a.kind != .portfolio, a.initialBalanceIsDerived, a.bankBalanceMinor != nil,
 				let date = a.bankBalanceDate else { return nil }
 			let day = Day(date, calendar: calendar)
-			let shift = a.bookedSum(of: old.lazy.filter { $0.isManual && $0.accountID == id }, through: day)
-				- a.bookedSum(of: new.lazy.filter { $0.isManual && $0.accountID == id }, through: day)
+			let shift = a.bookedSum(of: old.lazy.filter { $0.isOnlyManual && $0.accountID == id }, through: day)
+				- a.bookedSum(of: new.lazy.filter { $0.isOnlyManual && $0.accountID == id }, through: day)
 			guard shift != 0 else { return nil }
 			a.initialBalanceMinor += shift
 			return a

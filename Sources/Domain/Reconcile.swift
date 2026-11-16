@@ -109,9 +109,10 @@ public struct Reconciliation: Sendable, Equatable {
 public func reconcile(_ delivery: Delivery, into account: Account, stored all: [Transaction], deleted: [DeletedTransaction],
 	holdings: [Holding] = [], split: Set<UUID> = [], rules: Categorizer, now: Date) -> Reconciliation {
 	// No bank delivers a row that the user added by hand, so a refresh never pairs one: a delivered row with its
-	// day, amount, and purpose is another booking. A file still pairs it, so the same cash rows from a file add no copies.
+	// day, amount, and purpose is another booking. A file still pairs it, so the same cash rows from a file add no copies,
+	// and from then on the row is a booking of that file, which the refresh pairs.
 	// The scan comes first, because a copy of 50,000 rows on each refresh costs more than it.
-	let stored = delivery.isFetched && all.contains(where: \.isManual) ? all.filter { !$0.isManual } : all
+	let stored = delivery.isFetched && all.contains(where: \.isOnlyManual) ? all.filter { !$0.isOnlyManual } : all
 	let rows = delivery.rows
 	let fetched = delivery.isFetched
 	let honored = deleted.filter(delivery.honors)
@@ -236,8 +237,9 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored all: [
 		} else if a.initialBalanceIsDerived, let before = account.bankBalanceDate.map({ Day($0) }) {
 			// A derived initial balance holds the manual rows up to the day of the bank balance. A new day moves the rows
 			// that it passes into the bank balance, so a later change of such a row moves the initial balance back.
-			// A value that the user entered stays.
-			let manual = all.filter(\.isManual)
+			// A value that the user entered stays. A manual row that a file matched is a booking of the file, which the
+			// bank balance holds like any other row, so it does not move the value.
+			let manual = all.filter(\.isOnlyManual)
 			a.initialBalanceMinor += a.bookedSum(of: manual, through: before) - a.bookedSum(of: manual, through: Day(balanceDate))
 		}
 		r.account = a

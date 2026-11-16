@@ -180,7 +180,7 @@ The app SHALL set the initial balance of a refreshed account only once, at the f
 
 ### Requirement: Manual transactions and the initial balance
 
-The app SHALL count manual transactions when it derives the initial balance of a refreshed account. While the initial balance is the value that a refresh derived, a manual transaction booked by the day of the bank balance moves it, as the capability `offline-accounts` states, so the computed balance keeps ending at the bank balance. A value that the user enters, in the account settings or with "Calibrate", stays.
+The app SHALL count manual transactions when it derives the initial balance of a refreshed account. While the initial balance is the value that a refresh derived, a manual transaction that no file matched and that is booked by the day of the bank balance moves it, as the capability `offline-accounts` states, so the computed balance keeps ending at the bank balance. A value that the user enters, in the account settings or with "Calibrate", stays.
 
 #### Scenario: Derived value and a planned manual transaction
 

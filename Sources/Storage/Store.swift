@@ -212,7 +212,7 @@ public final class Store: SavedPINStore {
 			for a in accounts { try a.save(db) }
 			// No source delivers a manual row, so its record could only keep out another booking. A manual row that
 			// a file or a migration matched carries what the source gave it, and keeps its record.
-			for t in try Transaction.fetchAll(db, keys: ids) where !t.isManual || t.sourceID != nil || t.fileIdentity != nil {
+			for t in try Transaction.fetchAll(db, keys: ids) where !t.isOnlyManual {
 				try DeletedTransaction(t, deletedAt: now).insert(db)
 			}
 			_ = try Transaction.deleteAll(db, keys: ids)

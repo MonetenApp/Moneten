@@ -113,6 +113,8 @@ struct TransactionDraftTests {
 			row(wallet), row(wallet, file: true), row(wallet, source: "moneymoney:1"),
 			row(bank, manual: true), row(bank, file: true), row(bank, file: true, fetched: true), row(bank, fetched: true, source: "TX-1"),
 			row(bank, source: "moneymoney:2"), row(bank),
+			// A manual row that a file or a migration matched is a row of that source from then on.
+			row(bank, manual: true, file: true), row(bank, manual: true, source: "moneymoney:3"), row(wallet, manual: true, file: true),
 		]
 		let split = row(bank, manual: true)
 		let part = SplitPart(transactionID: split.id, position: 0, amountMinor: -200)
@@ -122,6 +124,7 @@ struct TransactionDraftTests {
 			.allFields, .allFields, .allFields,
 			.allFields, .nameCategoryAndComment, .categoryAndComment, .categoryAndComment,
 			.categoryAndComment, .categoryAndComment,
+			.nameCategoryAndComment, .categoryAndComment, .allFields,
 		])
 		#expect(l.editing(part.id) == .categoryAndComment)
 	}

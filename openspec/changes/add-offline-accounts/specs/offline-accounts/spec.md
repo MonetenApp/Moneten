@@ -312,7 +312,7 @@ The app SHALL also offer "Add Transaction..." in the view of a single account wi
 
 ### Requirement: A refresh never takes a manual transaction
 
-The app SHALL mark every transaction that the user adds with "Add Transaction..." as manual and SHALL keep the mark in the database and in a complete export. A refresh never pairs a delivered transaction with a manual one, and deleting a manual transaction keeps out no delivered one. A manual transaction that a file import or a migration matched counts as a transaction of that source: deleting it keeps out the same booking from a refresh, as for any deleted transaction of a file or a migration.
+The app SHALL mark every transaction that the user adds with "Add Transaction..." as manual and SHALL keep the mark in the database and in a complete export. A refresh never pairs a delivered transaction with a manual one, and deleting a manual transaction keeps out no delivered one. A manual transaction that a file import or a migration matched is a transaction of that source from then on: a refresh pairs it, and deleting it keeps out the same booking.
 
 #### Scenario: Same day and amount
 
@@ -334,9 +334,15 @@ The app SHALL mark every transaction that the user adds with "Add Transaction...
 - **THEN** the account has no transaction on 03.11.2026
 - **AND** importing the CSV file again adds "KIOSK" once, as it adds any deleted transaction of a file that no refresh delivered
 
+#### Scenario: Manual transaction that a file matched, then a refresh
+
+- **GIVEN** an account with bank access and a manual transaction of -12,00 € "Kiosk" on 03.11.2026 that a CSV file with -12,00 € "KIOSK" on 03.11.2026 matched
+- **WHEN** a refresh delivers a transaction of -12,00 € "KIOSK" on 03.11.2026
+- **THEN** the account has one transaction on 03.11.2026
+
 ### Requirement: A manual transaction is part of the bank balance
 
-The app SHALL count a manual transaction in an account with bank access as part of the balance that the bank reports when its booking date is not after the day of that balance. While the initial balance is the value that a refresh derived, the app moves it against each such manual transaction that the user adds, changes, or deletes, so the computed balance keeps ending at the bank balance. An initial balance that the user entered, in the account settings or with "Calibrate", stays.
+The app SHALL count a manual transaction that no file and no migration matched in an account with bank access as part of the bank balance when its booking date is not after the day of that balance. While the initial balance is the value that a refresh derived, the app moves it against each such manual transaction that the user adds, changes, or deletes, so the computed balance keeps ending at the bank balance. An initial balance that the user entered stays.
 
 #### Scenario: Deposit after the first refresh
 
@@ -350,6 +356,12 @@ The app SHALL count a manual transaction in an account with bank access as part 
 - **GIVEN** the fixed term deposit of the scenario above with its manual transaction of 4.000,00 €
 - **WHEN** the user deletes the manual transaction
 - **THEN** the computed balance on 01.11.2026 is 10.000,00 €
+
+#### Scenario: Manual transaction that a file matched
+
+- **GIVEN** a giro account whose first refresh derived the initial balance, and a manual transaction of -12,00 € "Kiosk" on 03.10.2026 that a CSV file with -12,00 € "KIOSK" on 03.10.2026 matched
+- **WHEN** the user deletes the manual transaction
+- **THEN** the initial balance stays, as for any deleted transaction of a file
 
 #### Scenario: Entered initial balance
 
@@ -383,7 +395,7 @@ The app SHALL count a manual transaction after the day of the bank balance on to
 
 ### Requirement: What a transaction in an account with bank access can change
 
-The app SHALL let the user change every field of a manual transaction in an account with bank access. A transaction from a file import keeps its date, its amount, and its purpose, and the user can change its name, its category, and its comment. A transaction that a refresh or a migration brought, and any other transaction without the manual mark, keeps every field except its category and its comment.
+The app SHALL let the user change every field of a manual transaction in an account with bank access that no file and no migration matched. A transaction from a file import, also a manual one that a file matched, keeps its date, its amount, and its purpose, and the user can change its name, its category, and its comment. A transaction that a refresh or a migration brought, and any other transaction without the manual mark, keeps every field except its category and its comment.
 
 #### Scenario: Manual transaction
 
