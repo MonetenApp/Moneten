@@ -22,9 +22,6 @@ struct SettingsView: View {
 
 struct SecuritySettings: View {
 	@Environment(AppModel.self) private var model
-	@AppStorage(Preference.unlockAutomatically) private var unlockAutomatically = false
-	@AppStorage(Preference.unlockWithTouchID) private var unlockWithTouchID = false
-	@AppStorage(Preference.unlockWithAppleWatch) private var unlockWithAppleWatch = false
 	/// The change that waits for the database password, and why the last change failed.
 	@State private var pending: SecurityChange?
 	@State private var message: String?
@@ -58,9 +55,9 @@ struct SecuritySettings: View {
 			// The lock settings live in the database, so they change only while it is open.
 			.disabled(!model.hasPassword || model.phase != .unlocked)
 			Section {
-				Toggle("Unlock automatically at application start", isOn: unlockToggle(.automaticUnlock, unlockAutomatically))
-				Toggle("Unlock with Touch ID", isOn: unlockToggle(.touchID, unlockWithTouchID))
-				Toggle("Unlock with Apple Watch", isOn: unlockToggle(.appleWatch, unlockWithAppleWatch))
+				Toggle("Unlock automatically at application start", isOn: unlockToggle(.automaticUnlock))
+				Toggle("Unlock with Touch ID", isOn: unlockToggle(.touchID))
+				Toggle("Unlock with Apple Watch", isOn: unlockToggle(.appleWatch))
 			} header: {
 				Text("Unlock")
 			} footer: {
@@ -91,8 +88,9 @@ struct SecuritySettings: View {
 		Binding(get: { model.lockSettings.lockAfterMinutes }, set: { ask(.lockAfter($0)) })
 	}
 
-	private func unlockToggle(_ entry: Vault.PasswordEntry, _ value: Bool) -> Binding<Bool> {
-		Binding(get: { value }, set: { ask(.unlock(entry, $0)) })
+	/// A toggle shows whether the entry of its setting exists for this database.
+	private func unlockToggle(_ entry: Vault.PasswordEntry) -> Binding<Bool> {
+		Binding(get: { model.unlockSettings.contains(entry) }, set: { ask(.unlock(entry, $0)) })
 	}
 
 	/// Every change on this tab waits for the database password. A method that macOS cannot use is refused first.

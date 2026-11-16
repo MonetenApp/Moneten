@@ -170,7 +170,7 @@ The app SHALL accept the database password on the lock screen in every state, al
 
 ### Requirement: Unlock settings keep the password in the Keychain
 
-The app SHALL store the database password in a Keychain entry of its own for each unlock setting that is turned on, and it SHALL delete exactly that entry when the setting is turned off. A setting unlocks only with its own entry, and only the launch reads the entry of "Unlock automatically at application start". The entries stay on this Mac and are not synced to other devices.
+The app SHALL store the database password in a Keychain entry of its own for each unlock setting that is turned on, and it SHALL delete exactly that entry when the setting is turned off. A setting is on exactly while its own entry for this database exists, and only the launch reads the entry of "Unlock automatically at application start". The entries stay on this Mac and are not synced to other devices.
 
 #### Scenario: Turn on the first setting
 
@@ -199,12 +199,13 @@ The app SHALL store the database password in a Keychain entry of its own for eac
 - **THEN** the lock screen offers only the Apple Watch
 - **AND** the confirmation on the watch unlocks the app with the entry of the Apple Watch
 
-#### Scenario: Settings file turns a setting off
+#### Scenario: Another data folder leaves the settings alone
 
-- **GIVEN** "Unlock automatically at application start" is on
-- **WHEN** a program changes the settings file of the app outside the app to turn it off, and the user starts the app
-- **THEN** the lock screen asks for the database password
-- **AND** the Keychain no longer holds the entry of the automatic unlock, so turning the setting on in the settings file again unlocks nothing
+- **GIVEN** "Unlock automatically at application start" and "Unlock with Touch ID" are on for the database in the data folder "Moneten"
+- **WHEN** the user starts the app once with the data folder "Moneten-Test", creates a new database there, and quits
+- **AND** the user starts the app with the data folder "Moneten"
+- **THEN** the main window shows the accounts without a prompt
+- **AND** "Unlock with Touch ID" is still on
 
 ### Requirement: Report a Keychain failure
 

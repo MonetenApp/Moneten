@@ -27,7 +27,7 @@ struct AppLockStorageTests {
 		try Vault.PasswordEntry.allCases.filter { try vault.storedPassword(for: $0) != nil }
 	}
 
-	@Test("Each unlock setting has its own entry, and the user defaults use the raw values as keys")
+	@Test("Each unlock setting has its own entry")
 	func entryNames() {
 		#expect(Vault.PasswordEntry.allCases.map(\.rawValue) == ["unlockAutomatically", "unlockWithTouchID", "unlockWithAppleWatch"])
 		#expect(Set(Vault.PasswordEntry.allCases.map(\.keychain.service)).count == 3)
@@ -41,23 +41,42 @@ struct AppLockStorageTests {
 		try store.close()
 		#expect(try vault.setUnlockMethod(.touchID, on: true, password: Self.password))
 		#expect(try vault.storedPassword(for: .touchID) == Self.password)
-		#expect(try vault.launchPassword() == nil)
+		#expect(try vault.unlockSettings() == [.touchID])
+		#expect(try vault.storedPassword(for: .automaticUnlock) == nil)
 	}
 
-	@Test("A forged setting turns nothing on: only a method with its own entry can unlock", .enabled(if: hasKeychain))
-	func forgedSettingTurnsNothingOn() throws {
+	@Test("The settings are the entries: turning a setting on or off shows in the toggles, and only an entry unlocks", .enabled(if: hasKeychain))
+	func settingsFollowEntries() throws {
 		let (vault, store) = try vaultWithDatabase()
 		defer { removeEntries(vault) }
 		try store.close()
+		#expect(try vault.unlockSettings().isEmpty)
 		#expect(try vault.setUnlockMethod(.touchID, on: true, password: Self.password))
 		#expect(try vault.setUnlockMethod(.appleWatch, on: true, password: Self.password))
+		#expect(try vault.unlockSettings() == [.touchID, .appleWatch])
 		#expect(try vault.setUnlockMethod(.touchID, on: false, password: Self.password))
-		// A program writes every unlock setting into the settings file.
-		let forged: Set<Vault.PasswordEntry> = [.automaticUnlock, .touchID, .appleWatch]
-		#expect(try vault.usableMethods(switchedOn: forged) == [.appleWatch])
-		#expect(try vault.launchPassword() == nil)
+		#expect(try vault.unlockSettings() == [.appleWatch])
 		#expect(try vault.unlockPassword(offered: [.touchID]) == nil)
 		#expect(try vault.unlockPassword(offered: [.touchID, .appleWatch]) == Self.password)
+	}
+
+	@Test("A database in another data folder without entries leaves the entries of this database alone", .enabled(if: hasKeychain))
+	func otherDatabaseKeepsEntries() throws {
+		let (vault, store) = try vaultWithDatabase()
+		defer { removeEntries(vault) }
+		try store.close()
+		for entry in Vault.PasswordEntry.allCases { #expect(try vault.setUnlockMethod(entry, on: true, password: Self.password)) }
+		// A throwaway data folder, as the debug harness and a test launch use, gets a new database and starts.
+		let other = Vault(folder: DataFolder(root: root.appendingPathComponent("Throwaway", isDirectory: true)))
+		defer { removeEntries(other) }
+		try other.create(password: "ein-anderes-passwort", starterCategories: []).close()
+		try other.removeSharedEntry()
+		#expect(try other.unlockSettings().isEmpty)
+
+		// This database starts again with every setting on.
+		try vault.removeSharedEntry()
+		#expect(try vault.unlockSettings() == Set(Vault.PasswordEntry.allCases))
+		#expect(try vault.storedPassword(for: .automaticUnlock) == Self.password)
 	}
 
 	@Test("A wrong password changes no entry", .enabled(if: hasKeychain))
@@ -82,21 +101,6 @@ struct AppLockStorageTests {
 		#expect(try stored(vault) == [.automaticUnlock, .appleWatch])
 		#expect(try vault.setUnlockMethod(.automaticUnlock, on: false, password: Self.password))
 		#expect(try stored(vault) == [.appleWatch])
-		#expect(try vault.launchPassword() == nil)
-	}
-
-	@Test("A setting that is off loses its entry, so turning it on in the settings file later unlocks nothing", .enabled(if: hasKeychain))
-	func offSettingLosesEntry() throws {
-		let (vault, store) = try vaultWithDatabase()
-		defer { removeEntries(vault) }
-		try store.close()
-		for entry in Vault.PasswordEntry.allCases { #expect(try vault.setUnlockMethod(entry, on: true, password: Self.password)) }
-		// A program turns the automatic unlock off in the settings file, and the app starts.
-		#expect(try vault.alignEntries(switchedOn: [.touchID, .appleWatch]) == [.touchID, .appleWatch])
-		#expect(try stored(vault) == [.touchID, .appleWatch])
-		// Later it turns the setting on again.
-		#expect(try vault.alignEntries(switchedOn: Set(Vault.PasswordEntry.allCases)) == [.touchID, .appleWatch])
-		#expect(try vault.launchPassword() == nil)
 	}
 
 	@Test("The shared entry of earlier builds is removed, so it unlocks nothing", .enabled(if: hasKeychain))
@@ -105,7 +109,7 @@ struct AppLockStorageTests {
 		defer { removeEntries(vault) }
 		try store.close()
 		try vault.sharedPasswordKeychain.write(Self.password, account: folder.keychainAccount)
-		#expect(try vault.usableMethods(switchedOn: Set(Vault.PasswordEntry.allCases)).isEmpty)
+		#expect(try vault.unlockSettings().isEmpty)
 		try vault.removeSharedEntry()
 		#expect(try vault.sharedPasswordKeychain.read(account: folder.keychainAccount) == nil)
 	}

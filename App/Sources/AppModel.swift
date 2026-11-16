@@ -36,13 +36,8 @@ enum BalanceMode: String {
 /// Settings that the app needs before the database is open. Only `savedFilterBar` holds data of the user: the
 /// dates of a custom period, the ends of an amount range, and the IDs of a category and an account.
 enum Preference {
-	/// The three unlock settings only show the state of their toggles. An unlock also needs the Keychain entry
-	/// of that setting, which the change on the "Security" tab writes after the password check, because any
-	/// program of the user can write the settings file (`Vault.PasswordEntry`). The lock settings live in the
-	/// database (`LockSettings`) for the same reason.
-	static let unlockAutomatically = Vault.PasswordEntry.automaticUnlock.rawValue
-	static let unlockWithTouchID = Vault.PasswordEntry.touchID.rawValue
-	static let unlockWithAppleWatch = Vault.PasswordEntry.appleWatch.rawValue
+	// The unlock settings are their Keychain entries (`Vault.PasswordEntry`), and the lock settings live in the
+	// database (`LockSettings`): any program of the user can write the settings file, and every data folder shares it.
 	static let viewMode = "viewMode"
 	static let balanceMode = "balanceMode"
 	/// "Update extensions automatically" in the Extensions window, on unless the user turns it off.
@@ -296,6 +291,9 @@ final class AppModel {
 
 	/// The lock settings of the open database. The database holds them, so they come with each unlock.
 	private(set) var lockSettings = LockSettings()
+	/// The unlock settings of this database that are on: the ones whose Keychain entry exists. The launch reads
+	/// them, and a change on the "Security" tab updates them after it wrote or deleted the entry.
+	var unlockSettings: Set<Vault.PasswordEntry> = []
 	private var lastActivity = Date()
 	private var eventMonitor: Any?
 	private var idleTimer: Timer?
@@ -386,24 +384,13 @@ final class AppModel {
 				}
 			case .password:
 				hasPassword = true
-				let d = UserDefaults.standard
-				let usable: [Vault.PasswordEntry]
+				// Only the entry of the automatic unlock opens the database at launch, never one of Touch ID or Apple Watch.
+				let stored: String?
 				do {
 					try vault.removeSharedEntry()
-					// A setting that is off loses its entry, and a setting without an entry goes off: the entries decide.
-					usable = try vault.alignEntries(switchedOn: Set(Vault.PasswordEntry.allCases.filter { d.bool(forKey: $0.rawValue) }))
-					for entry in Vault.PasswordEntry.allCases where !usable.contains(entry) { d.set(false, forKey: entry.rawValue) }
+					try loadUnlockSettings()
+					stored = try vault.storedPassword(for: .automaticUnlock)
 				} catch {
-					lockNotice = String(describing: error)
-					phase = .locked
-					return
-				}
-				guard usable.contains(.automaticUnlock) else {
-					phase = .locked
-					return
-				}
-				let stored: String?
-				do { stored = try vault.launchPassword() } catch {
 					lockNotice = String(describing: error)
 					phase = .locked
 					return
@@ -465,8 +452,8 @@ final class AppModel {
 	func createDatabase(password: String?) {
 		do {
 			let store = try vault.create(password: password, starterCategories: StarterCategories.make(language: starterLanguage))
-			// A new database starts without the unlock settings of the database that was here before.
-			for entry in Vault.PasswordEntry.allCases { UserDefaults.standard.removeObject(forKey: entry.rawValue) }
+			// `create` removed the entries of a database that was here before, so every unlock setting is off.
+			unlockSettings = []
 			hasPassword = password != nil
 			try open(store)
 		} catch {
@@ -499,18 +486,16 @@ final class AppModel {
 		return .unlocked
 	}
 
-	/// The unlock methods whose setting is on and whose own entry is in the Keychain.
+	/// The unlock methods whose setting is on, which means that their own entry is in the Keychain.
 	func unlockMethods() -> [UnlockMethod] {
 		guard hasPassword else { return [] }
-		let on = Set(UnlockMethod.allCases.filter { UserDefaults.standard.bool(forKey: $0.preference) }.map(\.entry))
-		guard !on.isEmpty else { return [] }
-		do {
-			let usable = try vault.usableMethods(switchedOn: on)
-			return UnlockMethod.allCases.filter { usable.contains($0.entry) }
-		} catch {
-			lockNotice = String(describing: error)
-			return []
-		}
+		return UnlockMethod.allCases.filter { unlockSettings.contains($0.entry) }
+	}
+
+	/// Reads which unlock settings of this database are on. The launch calls it once, and so does the debug
+	/// harness after it removed entries.
+	func loadUnlockSettings() throws {
+		unlockSettings = try vault.unlockSettings()
 	}
 
 	func unlock(with methods: [UnlockMethod]) {

@@ -30,7 +30,7 @@ struct SecurityChangeFailure: Error, CustomStringConvertible {
 extension AppModel {
 	/// Applies a change of the "Security" tab after the database password. Returns false for a wrong password,
 	/// which changes nothing. The lock settings go to the database. An unlock setting writes or deletes its own
-	/// Keychain entry through `Vault.setUnlockMethod(_:on:password:)`, and the user default then mirrors it.
+	/// Keychain entry through `Vault.setUnlockMethod(_:on:password:)`, and `unlockSettings` then follows it.
 	/// A failure is thrown and leaves the setting as it was.
 	func changeSecurity(_ change: SecurityChange, password: String) throws -> Bool {
 		switch change {
@@ -52,7 +52,7 @@ extension AppModel {
 					? "The database password could not be stored in the Keychain. \(error)"
 					: "The database password could not be deleted from the Keychain, so the setting stays on. \(error)")
 			}
-			UserDefaults.standard.set(on, forKey: entry.rawValue)
+			if on { unlockSettings.insert(entry) } else { unlockSettings.remove(entry) }
 		}
 		return true
 	}

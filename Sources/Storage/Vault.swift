@@ -119,8 +119,9 @@ public struct Vault: Sendable {
 
 	/// The unlock settings. Each keeps the database password in a Keychain entry of its own, which only
 	/// `setUnlockMethod(_:on:password:)` writes after the password check and which turning the setting off
-	/// deletes. The raw value is the key of the setting in the user defaults, which only mirrors the toggle:
-	/// any program of the user can write the settings file, so a setting unlocks only with its entry.
+	/// deletes. The entry is the setting: a setting is on exactly while its entry exists. Nothing of it is in the
+	/// user defaults, because any program of the user can write the settings file, and because all data folders
+	/// share that file while each database has its own entries. The raw value names the setting in the debug harness.
 	public enum PasswordEntry: String, Sendable, CaseIterable {
 		case automaticUnlock = "unlockAutomatically"
 		case touchID = "unlockWithTouchID"
@@ -521,24 +522,9 @@ public struct Vault: Sendable {
 		return true
 	}
 
-	/// The password for the launch. Only the entry of the automatic unlock opens the database at launch,
-	/// never an entry of Touch ID or Apple Watch.
-	public func launchPassword() throws -> String? {
-		try storedPassword(for: .automaticUnlock)
-	}
-
-	/// The settings among `switchedOn` that can unlock: the ones with an entry. A setting that a program
-	/// wrote into the settings file has no entry and turns nothing on.
-	public func usableMethods(switchedOn: Set<PasswordEntry>) throws -> [PasswordEntry] {
-		try PasswordEntry.allCases.filter { try switchedOn.contains($0) && storedPassword(for: $0) != nil }
-	}
-
-	/// Makes the entries match the settings at launch: the entry of every setting that is off goes, so a setting
-	/// that a program turned off cannot come back by a later write of the settings file. Returns the settings that
-	/// are on and have an entry; the app turns the others off, so the toggles show what unlocks.
-	public func alignEntries(switchedOn: Set<PasswordEntry>) throws -> [PasswordEntry] {
-		for entry in PasswordEntry.allCases where !switchedOn.contains(entry) { try removeStoredPassword(for: entry) }
-		return try usableMethods(switchedOn: switchedOn)
+	/// The unlock settings of this database that are on: the ones whose entry exists.
+	public func unlockSettings() throws -> Set<PasswordEntry> {
+		try Set(PasswordEntry.allCases.filter { try storedPassword(for: $0) != nil })
 	}
 
 	/// The password after macOS confirmed the user for a request that offered `offered`. A request that offers

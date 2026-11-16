@@ -168,6 +168,7 @@ final class DebugHarness {
 				do { try model.vault.removeStoredPassword(for: entry) } catch { log("removepassword", ("failed", .type(of: error))) }
 			}
 			do { try model.vault.removeSharedEntry() } catch { log("removepassword", ("failed", .type(of: error))) }
+			do { try model.loadUnlockSettings() } catch { log("removepassword", ("failed", .type(of: error))) }
 		case "seed": Task { await DemoData.seed(model); log("seed done") }
 		// "<name>" starts a made-up refresh that shows one dialog of SyncDemo.requests.
 		case "syncdemo": SyncDemo.start(argument, in: model.sync)
@@ -1175,14 +1176,13 @@ final class DebugHarness {
 		}
 		let result: LogValue
 		do { result = try model.changeSecurity(change, password: parts[2]) ? .word("changed") : .word("incorrectPassword") } catch { result = .word("failed") }
-		let d = UserDefaults.standard
+		let on = model.unlockSettings
 		func stored(_ entry: Vault.PasswordEntry) -> LogValue { .flag((try? model.vault.storedPassword(for: entry)).map { $0 != nil } ?? false) }
 		log("security",
 			("setting", .choice(parts[0], of: ["lockOnClose", "lockAfter", "unlockAutomatically", "unlockWithTouchID", "unlockWithAppleWatch"])),
 			("result", result),
 			("lockOnClose", .flag(model.lockSettings.lockOnClose)), ("lockAfter", .count(model.lockSettings.lockAfterMinutes)),
-			("automatic", .flag(d.bool(forKey: Preference.unlockAutomatically))), ("touchID", .flag(d.bool(forKey: Preference.unlockWithTouchID))),
-			("watch", .flag(d.bool(forKey: Preference.unlockWithAppleWatch))),
+			("automatic", .flag(on.contains(.automaticUnlock))), ("touchID", .flag(on.contains(.touchID))), ("watch", .flag(on.contains(.appleWatch))),
 			("keychainAutomatic", stored(.automaticUnlock)), ("keychainTouchID", stored(.touchID)), ("keychainWatch", stored(.appleWatch)))
 	}
 

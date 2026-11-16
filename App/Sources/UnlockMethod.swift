@@ -7,15 +7,13 @@ enum UnlockMethod: CaseIterable {
 	case touchID
 	case appleWatch
 
-	/// The Keychain entry of the method. Its raw value is the key of the setting.
+	/// The Keychain entry of the method, which is its setting.
 	var entry: Vault.PasswordEntry {
 		switch self {
 		case .touchID: .touchID
 		case .appleWatch: .appleWatch
 		}
 	}
-
-	var preference: String { entry.rawValue }
 
 	private var policy: LAPolicy {
 		switch self {
