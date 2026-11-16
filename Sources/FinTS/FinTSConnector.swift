@@ -209,7 +209,7 @@ public struct FinTSConnector: BankConnector {
 	}
 
 	private func command(_ type: String, _ access: Access, _ state: AccessState?) throws -> Command {
-		guard case let .fints(bankCode, url) = access.source else { throw SyncFailure.unsupported("The access does not use FinTS.") }
+		guard case let .fints(bankCode, url) = access.source else { throw SyncFailure.unsupported(String(localized: "The access does not use FinTS.")) }
 		guard url.scheme?.lowercased() == "https", url.host() != nil else { throw HelperFailure.insecure }
 		guard let productID, !productID.isEmpty else { throw HelperFailure.noProductID }
 		return Command(type: type, bankCode: bankCode, url: url.absoluteString, user: access.loginName, product: productID, version: version,
@@ -333,8 +333,8 @@ extension FinTSConnector {
 			let trust, SecTrustEvaluateWithError(trust, &error) {
 			return "trusted"
 		}
-		let reason = error.map { CFErrorCopyDescription($0) as String } ?? "The server sent a certificate that does not read."
-		return "The certificate of the bank's server \(host) is not valid: \(reason)"
+		let reason = error.map { CFErrorCopyDescription($0) as String } ?? String(localized: "The server sent a certificate that does not read.")
+		return String(localized: "The certificate of the bank's server \(host) is not valid: \(reason)")
 	}
 }
 

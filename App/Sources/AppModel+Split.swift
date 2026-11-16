@@ -9,7 +9,7 @@ extension AppModel {
 	}
 
 	func refusePendingSplit() {
-		alert = AlertMessage(title: "Only booked transactions can be split.", message: "Wait until the bank has booked the transaction.")
+		alert = AlertMessage(title: String(localized: "Only booked transactions can be split."), message: String(localized: "Wait until the bank has booked the transaction."))
 	}
 
 	@discardableResult
@@ -20,7 +20,7 @@ extension AppModel {
 			return await replaceParts(of: original, with: parts)
 		} catch {
 			if error as? SplitError == .pending { refusePendingSplit() }
-			else { alert = AlertMessage(title: "Could not split the transaction.", message: "Enter a nonzero amount that leaves a nonzero remainder.") }
+			else { alert = AlertMessage(title: String(localized: "Could not split the transaction."), message: String(localized: "Enter a nonzero amount that leaves a nonzero remainder.")) }
 			return false
 		}
 	}
@@ -33,7 +33,7 @@ extension AppModel {
 			return await replaceParts(of: original, with: parts)
 		} catch {
 			if error as? SplitError == .pending { refusePendingSplit() }
-			else { alert = AlertMessage(title: "Could not split the transaction.", message: "The VAT split would leave a part of zero.") }
+			else { alert = AlertMessage(title: String(localized: "Could not split the transaction."), message: String(localized: "The VAT split would leave a part of zero.")) }
 			return false
 		}
 	}
@@ -45,8 +45,8 @@ extension AppModel {
 
 	func refusePartDeletion(in ids: Set<UUID>) -> Bool {
 		guard ids.contains(where: { ledger.part($0) != nil }) else { return false }
-		alert = AlertMessage(title: "A part of a split cannot be deleted alone.",
-			message: "Use “Undo Split Transaction...” first.")
+		alert = AlertMessage(title: String(localized: "A part of a split cannot be deleted alone."),
+			message: String(localized: "Use “Undo Split Transaction...” first."))
 		return true
 	}
 }
