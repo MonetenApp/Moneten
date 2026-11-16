@@ -131,7 +131,7 @@ struct MigrationSheet: View {
 		}
 		.environment(\.sheetHasScrollAreas, true)
 		.onDisappear { task?.cancel() }
-		.alert("The report contains account names, balances, and counterparty IBANs from rules.", isPresented: $confirmSave) {
+		.alert("The report contains account names, balances, and account numbers and IBANs from rules.", isPresented: $confirmSave) {
 			Button("Save Report...") {
 				if case let .done(_, report) = step { reportText = report.text() }
 				savingReport = true
