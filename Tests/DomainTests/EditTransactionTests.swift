@@ -212,9 +212,9 @@ struct EditTransactionTests {
 	@Test("An amount whose minor units do not fit, or that has no magnitude, is refused instead of turning into another amount")
 	func amountThatDoesNotFit() {
 		#expect(Money(fitting: Decimal(string: "-49.90")!, currency: "EUR") == Money(minorUnits: -4_990, currency: "EUR"))
-		#expect(Money(fitting: Decimal(string: "-92233720368547758.07")!, currency: "EUR")?.minorUnits == -Int64.max)
-		#expect(Money(fitting: Decimal(string: "-92233720368547758.08")!, currency: "EUR") == nil)
-		#expect(Money(fitting: Decimal(string: "92233720368547758.08")!, currency: "EUR") == nil)
+		#expect(Money(fitting: Decimal(string: "-10000000000000.00")!, currency: "EUR")?.minorUnits == -Money.maxMinorUnits)
+		#expect(Money(fitting: Decimal(string: "-92233720368547758.07")!, currency: "EUR") == nil)
+		#expect(Money(fitting: Decimal(string: "92233720368547758.07")!, currency: "EUR") == nil)
 		#expect(Money(fitting: Decimal(string: "1e30")!, currency: "EUR") == nil)
 	}
 }

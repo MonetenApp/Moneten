@@ -6,6 +6,12 @@ public struct BalancePoint: Hashable, Sendable, Identifiable {
 	public var id: Int { day.rawValue }
 }
 
+/// The exact balance at the end of a day, before it holds at the bounds of `Int64`.
+struct DayBalance: Hashable, Sendable {
+	let day: Day
+	let balance: Int128
+}
+
 /// One bar of the balance chart: the average end-of-day balance from `start` up to `end`, which is
 /// the first day after the bar.
 public struct BalanceBar: Hashable, Sendable, Identifiable {
@@ -23,10 +29,11 @@ public struct BalanceBar: Hashable, Sendable, Identifiable {
 
 public struct PeriodSum: Hashable, Sendable, Identifiable {
 	public var start: Day
-	public var deposits: Int64
-	public var withdrawals: Int64
+	/// The exact sums of the deposits and the withdrawals, so that the total adds them before it holds at the bounds of `Int64`.
+	var deposits: Int128
+	var withdrawals: Int128
 	public var id: Int { start.rawValue }
-	public var total: Int64 { deposits + withdrawals }
+	public var total: Int64 { Int64(clampingSum: deposits + withdrawals) }
 
 	/// Every period from the first sum through the period of `last`, with zero for a period without
 	/// transactions, as MoneyMoney draws a line at zero for it. A sum after `last` stays.
@@ -72,28 +79,44 @@ extension Ledger {
 	/// row in another currency adds nothing but keeps its day, so the chart still starts there. A
 	/// portfolio gets its value from the bank and not from transactions, so it counts with its last
 	/// recorded value and with nothing before its first record.
-	public func dailyBalances(accountIDs: Set<UUID>, range: DayRange = .all) -> [BalancePoint] {
+	///
+	/// The balances add up exactly in Int128, so that rows that cancel out give the same balance in every order, and a
+	/// monthly average adds the exact balances of its days. A bar or a point holds at the bounds of `Int64` only when shown.
+	func dailyBalances(accountIDs: Set<UUID>) -> [DayBalance] {
 		let portfolios = Set(accountIDs.filter { account($0)?.kind == .portfolio })
 		let others = Dictionary(uniqueKeysWithValues: accountIDs.subtracting(portfolios).compactMap { account($0) }.map { ($0.id, $0) })
 		var balance = initialBalance(of: accountIDs)
-		var byDay: [Day: Int64] = [:]
+		var byDay: [Day: Int128] = [:]
 		for t in transactions {
 			guard let a = others[t.accountID] else { continue }
-			byDay[t.bookingDate, default: 0] += a.isInBalance(t) ? t.amountMinor : 0
+			byDay[t.bookingDate, default: 0] += a.isInBalance(t) ? Int128(t.amountMinor) : 0
 		}
 		for id in portfolios {
-			var previous: Int64 = 0
+			var previous: Int128 = 0
 			for v in portfolioValues(of: id) {
-				byDay[v.day, default: 0] += v.minorUnits - previous
-				previous = v.minorUnits
+				byDay[v.day, default: 0] += Int128(v.minorUnits) - previous
+				previous = Int128(v.minorUnits)
 			}
 		}
-		var points: [BalancePoint] = []
+		var points: [DayBalance] = []
 		for day in byDay.keys.sorted() {
 			balance += byDay[day]!
-			if range.contains(day) { points.append(BalancePoint(day: day, minorUnits: balance)) }
+			points.append(DayBalance(day: day, balance: balance))
 		}
 		return points
+	}
+
+	/// The balance at the end of each day of `account` for "Daily balance" in the list, keyed by the first of `rows`
+	/// on that day: the row at the top of the day, because the list shows the newest first. A day counts all rows
+	/// of the account, also those that a search or a filter hides.
+	public func dayEndBalances(of account: Account, rows: [Transaction]) -> [UUID: Money] {
+		let byDay = Dictionary(uniqueKeysWithValues: dailyBalances(accountIDs: [account.id]).map { ($0.day, Int64(clampingSum: $0.balance)) })
+		var seen = Set<Day>()
+		var result: [UUID: Money] = [:]
+		for t in rows where t.accountID == account.id && seen.insert(t.bookingDate).inserted {
+			if let balance = byDay[t.bookingDate] { result[t.id] = Money(minorUnits: balance, currency: account.currency) }
+		}
+		return result
 	}
 
 	/// One bar for each day of the range, never past today. "Show All" starts at the oldest
@@ -105,7 +128,7 @@ extension Ledger {
 		let today = Day.today(calendar: calendar)
 		let start = chartStart(range.start ?? first, first: first, accountIDs: accountIDs)
 		return endOfDayBalances(daily, accountIDs: accountIDs, from: start, through: min(range.end ?? today, today), calendar: calendar)
-			.map { BalanceBar(start: $0.day, end: $0.day.adding(days: 1, calendar: calendar), minorUnits: $0.minorUnits) }
+			.map { BalanceBar(start: $0.day, end: $0.day.adding(days: 1, calendar: calendar), minorUnits: Int64(clampingSum: $0.balance)) }
 	}
 
 	/// The mean of the end-of-day balances of each calendar month of the range, never past today.
@@ -118,17 +141,14 @@ extension Ledger {
 		let lastDay = range.end.map { $0.firstOfMonth.adding(months: 1, calendar: calendar).adding(days: -1, calendar: calendar) } ?? today
 		let start = chartStart((range.start ?? first).firstOfMonth, first: first, accountIDs: accountIDs)
 		let series = endOfDayBalances(daily, accountIDs: accountIDs, from: start, through: min(lastDay, today), calendar: calendar)
-		var months: [BalancePoint] = []
-		var days: [Int64] = []
+		// A month adds the exact balances of its days and holds at the bounds of Int64 only in its average.
+		var months: [(day: Day, sum: Int128, days: Int128)] = []
 		for point in series {
-			if months.last?.day != point.day.firstOfMonth {
-				months.append(BalancePoint(day: point.day.firstOfMonth, minorUnits: 0))
-				days.append(0)
-			}
-			months[months.count - 1].minorUnits += point.minorUnits
-			days[days.count - 1] += 1
+			if months.last?.day != point.day.firstOfMonth { months.append((point.day.firstOfMonth, 0, 0)) }
+			months[months.count - 1].sum += point.balance
+			months[months.count - 1].days += 1
 		}
-		return zip(months, days).map { BalancePoint(day: $0.day, minorUnits: $0.minorUnits / $1) }
+		return months.map { BalancePoint(day: $0.day, minorUnits: Int64(clampingSum: $0.sum / $0.days)) }
 	}
 
 	/// Portfolios have nothing to show before their first record, so a chart of portfolios alone
@@ -138,23 +158,23 @@ extension Ledger {
 	}
 
 	/// The initial balances of the accounts other than portfolios.
-	private func initialBalance(of accountIDs: Set<UUID>) -> Int64 {
-		accountIDs.compactMap { account($0) }.filter { $0.kind != .portfolio }.reduce(0) { $0 + $1.initialBalanceMinor }
+	private func initialBalance(of accountIDs: Set<UUID>) -> Int128 {
+		accountIDs.compactMap { account($0) }.filter { $0.kind != .portfolio }.reduce(0) { $0 + Int128($1.initialBalanceMinor) }
 	}
 
 	/// The balance at the end of each day from `start` through `end`. Days before the first
 	/// transaction carry the initial balances of the accounts.
-	private func endOfDayBalances(_ daily: [BalancePoint], accountIDs: Set<UUID>, from start: Day, through end: Day, calendar: Calendar) -> [BalancePoint] {
-		var result: [BalancePoint] = []
+	private func endOfDayBalances(_ daily: [DayBalance], accountIDs: Set<UUID>, from start: Day, through end: Day, calendar: Calendar) -> [DayBalance] {
+		var result: [DayBalance] = []
 		var index = 0
 		var current = initialBalance(of: accountIDs)
 		var day = start
 		while day <= end {
 			while index < daily.count, daily[index].day <= day {
-				current = daily[index].minorUnits
+				current = daily[index].balance
 				index += 1
 			}
-			result.append(BalancePoint(day: day, minorUnits: current))
+			result.append(DayBalance(day: day, balance: current))
 			day = day.adding(days: 1, calendar: calendar)
 		}
 		return result
@@ -164,15 +184,13 @@ extension Ledger {
 	/// Transactions in categories that are left out of charts do not count.
 	public func periodSums(of transactions: [Transaction], period: ChartPeriod) -> [PeriodSum] {
 		let hidden = Set(categories.filter { !$0.showInDiagrams }.flatMap { categoryIDs(inTree: $0.id) })
-		var sums: [Day: PeriodSum] = [:]
+		var sums: [Day: (deposits: Int128, withdrawals: Int128)] = [:]
 		for t in transactions where t.countsInSums {
 			if let c = effectiveCategoryID(of: t), hidden.contains(c) { continue }
 			let start = period.start(of: t.bookingDate)
-			var s = sums[start] ?? PeriodSum(start: start, deposits: 0, withdrawals: 0)
-			if t.amountMinor >= 0 { s.deposits += t.amountMinor } else { s.withdrawals += t.amountMinor }
-			sums[start] = s
+			if t.amountMinor >= 0 { sums[start, default: (0, 0)].deposits += Int128(t.amountMinor) } else { sums[start, default: (0, 0)].withdrawals += Int128(t.amountMinor) }
 		}
-		return sums.values.sorted { $0.start < $1.start }
+		return sums.map { PeriodSum(start: $0.key, deposits: $0.value.deposits, withdrawals: $0.value.withdrawals) }.sorted { $0.start < $1.start }
 	}
 
 	/// The sum of a list of transactions per top-level category below a parent, for a pie chart.
@@ -180,11 +198,11 @@ extension Ledger {
 		let roots = parent.map { childCategories(of: $0) } ?? (childCategories(of: nil) + [defaultCategory].compactMap { $0 })
 		var rootOf: [UUID: UUID] = [:]
 		for r in roots { for id in categoryIDs(inTree: r.id) { rootOf[id] = r.id } }
-		var totals: [UUID: Int64] = [:]
+		var totals: [UUID: Int128] = [:]
 		for t in transactions where t.countsInSums {
 			guard let c = effectiveCategoryID(of: t), let r = rootOf[c] else { continue }
-			totals[r, default: 0] += t.amountMinor
+			totals[r, default: 0] += Int128(t.amountMinor)
 		}
-		return roots.filter { $0.showInDiagrams }.compactMap { r in totals[r.id].map { (r, $0) } }
+		return roots.filter { $0.showInDiagrams }.compactMap { r in totals[r.id].map { (r, Int64(clampingSum: $0)) } }
 	}
 }

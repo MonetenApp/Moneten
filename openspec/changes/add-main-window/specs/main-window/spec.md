@@ -63,6 +63,17 @@ The app SHALL let the user collapse and expand each sidebar section and each gro
 - **WHEN** the user collapses the section "Categories" and restarts the app
 - **THEN** the section "Categories" is still collapsed
 
+### Requirement: Sums beyond the range of amounts
+
+The app SHALL keep running when a balance or a sum of stored amounts exceeds the largest amount it can hold. Such a sum shows that largest amount, 92.233.720.368.547.758,07 € for the euro, with its sign.
+
+#### Scenario: Database with absurd amounts
+
+- **GIVEN** a database holds two transactions of 50.000.000.000.000.000,00 € in the CSV account "Giro"
+- **WHEN** the user unlocks the database
+- **THEN** the main window opens and the account "Giro" shows 92.233.720.368.547.758,07 €
+- **AND** the user can delete the two transactions
+
 ### Requirement: Account rows show name, balance, and currency
 
 The app SHALL show for each account in the sidebar its name and its balance with the currency. A negative balance is marked. The row shows no balance when the settings of the account hide it.

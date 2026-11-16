@@ -1,4 +1,5 @@
 import LocalAuthentication
+import Storage
 
 /// Touch ID and the Apple Watch unlock the app with the database password from the Keychain.
 /// Each method has its own setting. With both on, one request of macOS offers both.
@@ -6,10 +7,11 @@ enum UnlockMethod: CaseIterable {
 	case touchID
 	case appleWatch
 
-	var preference: String {
+	/// The Keychain entry of the method, which is its setting.
+	var entry: Vault.PasswordEntry {
 		switch self {
-		case .touchID: Preference.unlockWithTouchID
-		case .appleWatch: Preference.unlockWithAppleWatch
+		case .touchID: .touchID
+		case .appleWatch: .appleWatch
 		}
 	}
 

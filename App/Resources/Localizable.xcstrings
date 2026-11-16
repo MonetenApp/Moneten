@@ -2163,6 +2163,16 @@
         }
       }
     },
+    "Balance at the end of %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saldo am Ende des %@"
+          }
+        }
+      }
+    },
     "Balance at the end of today" : {
       "localizations" : {
         "de" : {
@@ -2649,6 +2659,16 @@
         }
       }
     },
+    "Changing a security setting needs the database password." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Ändern einer Sicherheitseinstellung erfordert das Datenbankpasswort."
+          }
+        }
+      }
+    },
     "Check again" : {
       "localizations" : {
         "de" : {
@@ -2690,6 +2710,16 @@
       }
     },
     "Checkmark" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Häkchen"
+          }
+        }
+      }
+    },
+    "Checkmarks" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -3520,6 +3550,16 @@
       }
     },
     "Daily balance" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tagessaldo"
+          }
+        }
+      }
+    },
+    "Daily Balance" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -8935,12 +8975,56 @@
         }
       }
     },
+    "The amount of a transaction cannot be read." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Betrag eines Umsatzes kann nicht gelesen werden."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The amount of a transaction is too large." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Betrag eines Umsatzes ist zu groß."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "The amount of the entry cannot be read." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Der Betrag des Eintrags kann nicht gelesen werden."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The amount of transaction %@ cannot be read." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Betrag von Umsatz %@ kann nicht gelesen werden."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The amount of transaction %@ is too large." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Betrag von Umsatz %@ ist zu groß."
           }
         }
       },
@@ -9017,6 +9101,50 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Der Saldo enthält %1$@ nicht, weil der Kurs in %2$@ angegeben ist und die Erweiterung keinen Wechselkurs liefert."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The balance of the account \"%@\" cannot be read." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Saldo des Kontos „%@“ kann nicht gelesen werden."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The balance of the account \"%@\" is too large." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Saldo des Kontos „%@“ ist zu groß."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The balance of the group \"%@\" cannot be read." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Saldo der Gruppe „%@“ kann nicht gelesen werden."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The balance of the group \"%@\" is too large." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Saldo der Gruppe „%@“ ist zu groß."
           }
         }
       },
@@ -9167,6 +9295,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Die Bank hat einen Umsatz ohne Buchungsdatum gesendet, daher wurde für dieses Konto nichts gespeichert."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The bank sent an amount that is too large, so nothing of this account was stored." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Bank hat einen zu großen Betrag gesendet, daher wurde für dieses Konto nichts gespeichert."
           }
         }
       },
@@ -9446,6 +9585,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Die Datenbank ist gesperrt."
+          }
+        }
+      }
+    },
+    "The database password could not be deleted from the Keychain, so the setting stays on. %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Datenbankpasswort konnte nicht aus dem Schlüsselbund gelöscht werden, daher bleibt die Einstellung an. %@"
           }
         }
       }
@@ -10165,6 +10314,17 @@
       },
       "extractionState" : "manual"
     },
+    "The initial balance of the account \"%@\" is too large." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Anfangssaldo des Kontos „%@“ ist zu groß."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "The Keychain reported an error: %@" : {
       "localizations" : {
         "de" : {
@@ -10734,16 +10894,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Der Dienst hat die letzten Zugangsdaten nicht angenommen. Prüfen Sie sie und geben Sie sie erneut ein."
-          }
-        }
-      }
-    },
-    "The setting is off, but the database password could not be removed from the Keychain. %@" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Die Einstellung ist aus, aber das Datenbankpasswort konnte nicht aus dem Schlüsselbund entfernt werden. %@"
           }
         }
       }
@@ -11461,6 +11611,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Beim Programmstart automatisch entsperren"
+          }
+        }
+      }
+    },
+    "Unlock Moneten to change this setting." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Entsperren Sie Moneten, um diese Einstellung zu ändern."
           }
         }
       }
