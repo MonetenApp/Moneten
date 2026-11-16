@@ -377,10 +377,14 @@ enum MMLibrary {
 		data.map { String(format: "%02X", $0) }.joined()
 	}
 
-	/// `MM.hexToBin(hex)` ignores case and colons and gives `nil` for any other character or an odd length.
+	/// `MM.hexToBin(hex)` ignores case and colons, reads an odd length with a leading 0, so that "10001" gives
+	/// 01 00 01 as web pages write the RSA exponent 65537, and gives `nil` for any other character.
 	private static let hexToBin: clua_Function = { L in
 		let stack = LuaStack(L!)
-		return stack.returning(stack.data(at: 1).flatMap { bytes(hex: $0.filter { $0 != UInt8(ascii: ":") }) })
+		return stack.returning(stack.data(at: 1).flatMap { data in
+			let digits = data.filter { $0 != UInt8(ascii: ":") }
+			return bytes(hex: digits.count.isMultiple(of: 2) ? digits : [UInt8(ascii: "0")] + digits)
+		})
 	}
 
 	/// The bytes of pairs of hexadecimal digits, or nil for an odd count or another character.

@@ -173,7 +173,9 @@ let german = HostEnvironment(productVersion: "2.0", productBuild: 42, variant: .
 	@Test func hexadecimal() {
 		#expect(mm(#"{MM.binToHex("\x00\xab"), MM.binToHex(MM.hexToBin("4d:FC")), MM.hexToBin("")}"#) == .array([.string("00AB"), .string("4DFC"), .string("")]))
 		#expect(mm(#"MM.hexToBin("XY")"#) == .null)
-		#expect(mm(#"MM.hexToBin("ABC")"#) == .null)
+		#expect(mm(#"{MM.binToHex(MM.hexToBin("ABC")), MM.binToHex(MM.hexToBin("10001")), MM.binToHex(MM.hexToBin("1:00:01"))}"#)
+			== .array([.string("0ABC"), .string("010001"), .string("010001")]))
+		#expect(mm(#"MM.hexToBin("ABG")"#) == .null)
 		#expect(mm(#"MM.hexToBin("+F")"#) == .null)
 	}
 
