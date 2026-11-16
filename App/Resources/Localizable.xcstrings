@@ -1317,6 +1317,17 @@
         }
       }
     },
+    "A Volksbank or Raiffeisenbank expects the VR-NetKey or the alias of its online banking." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eine Volksbank oder Raiffeisenbank erwartet den VR-NetKey oder den Alias des Online-Bankings."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "A word without a field does not search account numbers or IBANs. local_account: and remote_account: do." : {
       "localizations" : {
         "de" : {
@@ -1960,6 +1971,17 @@
           }
         }
       }
+    },
+    "apoTAN device name" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "apoTAN-Gerätename"
+          }
+        }
+      },
+      "extractionState" : "manual"
     },
     "Apply" : {
       "localizations" : {
@@ -4726,6 +4748,17 @@
       },
       "extractionState" : "manual"
     },
+    "Help page of the Volksbanken Raiffeisenbanken" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hilfeseite der Volksbanken Raiffeisenbanken"
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "Holiday" : {
       "localizations" : {
         "de" : {
@@ -5238,6 +5271,17 @@
           }
         }
       }
+    },
+    "Leave the field empty, unless the bank reports an error in the next step. Then enter the name exactly as the website of apoBank shows it under Benutzereinstellungen > apoTAN verwalten. When a later refresh reports that error, enter the name with “Edit Login Data...”." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lassen Sie das Feld leer, außer die Bank meldet im nächsten Schritt einen Fehler. Geben Sie dann den Namen genau so ein, wie ihn die Website der apoBank unter Benutzereinstellungen > apoTAN verwalten zeigt. Meldet eine spätere Aktualisierung diesen Fehler, geben Sie den Namen mit „Zugangsdaten bearbeiten...“ ein."
+          }
+        }
+      },
+      "extractionState" : "manual"
     },
     "License" : {
       "localizations" : {
@@ -10225,6 +10269,28 @@
         }
       }
     },
+    "The FinTS server of the bank accepts no alias longer than %lld characters. Change the alias in the online banking of the bank first." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der FinTS-Server der Bank akzeptiert keinen Alias mit mehr als %lld Zeichen. Ändern Sie zuerst den Alias im Online-Banking der Bank."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The FinTS server of the bank no longer accepts a %@ of %lld characters. Set a longer %@ in the online banking of the bank first." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der FinTS-Server der Bank akzeptiert keine %1$@ mit %2$lld Zeichen mehr. Legen Sie zuerst im Online-Banking der Bank eine längere %3$@ fest."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "The group \"%@\" has a different balance in MoneyMoney than the sum of its accounts. MoneyMoney leaves closed accounts out of the sum, and its export does not say which accounts are closed. Turn on \"The account has been closed\" in the settings of each closed account of this group." : {
       "localizations" : {
         "de" : {
@@ -12019,6 +12085,17 @@
           }
         }
       }
+    },
+    "VR-NetKey or alias" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "VR-NetKey oder Alias"
+          }
+        }
+      },
+      "extractionState" : "manual"
     },
     "Wait until the bank has booked the transaction." : {
       "localizations" : {
