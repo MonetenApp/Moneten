@@ -170,6 +170,8 @@ struct HeaderIcon: View {
 		}
 		.font(.title2)
 		.frame(width: 28, height: 28)
+		// The title beside it names the view.
+		.accessibilityHidden(true)
 	}
 }
 
@@ -190,6 +192,7 @@ struct FilterBar: View {
 			.buttonStyle(.borderless)
 			.hoverHighlight()
 			.help("Save filter bar")
+			.accessibilityLabel("Save filter bar")
 			separator
 			filterMenu("Period:", title: periodTitle) {
 				Button("Show All") { model.choose(period: .all) }
@@ -526,11 +529,12 @@ struct TransactionCell: View {
 			HStack(spacing: 4) {
 				Text(transaction.name.isEmpty ? (transaction.bookingText ?? "") : transaction.name).fontWeight(.bold).lineLimit(1)
 				if let comment = transaction.comment {
-					Image(systemName: "note.text").foregroundStyle(.yellow).help(comment)
+					Image(systemName: "note.text").foregroundStyle(.yellow).help(comment).accessibilityLabel("Comment: \(comment)")
 				}
 				if let review = transaction.review {
 					Image(systemName: "exclamationmark.circle").foregroundStyle(.orange)
 						.help(review.note)
+						.accessibilityLabel(review.note)
 				}
 				// MoneyMoney adds a third line, which made the selected row taller and moved the rows
 				// below it. At the end of the first line the row keeps its height.
@@ -574,7 +578,7 @@ struct DateCell: View {
 				.padding(.top, 1)
 				.overlay(alignment: .leading) {
 					if transaction.isNew {
-						Circle().fill(.tint).frame(width: 6, height: 6).help("New transaction")
+						Circle().fill(.tint).frame(width: 6, height: 6).help("New transaction").accessibilityLabel("New transaction")
 					}
 				}
 			// The ribbon is wider than the column and reaches into the gap before the name. As an
@@ -628,6 +632,9 @@ struct CategoryRibbon: View {
 		.onHover { hovered = $0 }
 		.animation(.easeOut(duration: 0.15), value: hovered)
 		.help(category.map { ledger.categoryPath($0.id) } ?? "Assign Category")
+		// VoiceOver reads the category of the row, also where an uncategorized row shows no ribbon.
+		.accessibilityLabel(category.map { ledger.categoryPath($0.id) } ?? ledger.defaultCategory?.name ?? "Uncategorized")
+		.accessibilityHint("Assign Category")
 	}
 }
 
