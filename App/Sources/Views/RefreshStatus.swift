@@ -78,6 +78,7 @@ struct AccountRefreshLine: View {
 				Button { model.refresh(.account(account.id)) } label: { Image(systemName: "arrow.clockwise") }
 					.buttonStyle(.plain)
 					.help("Refresh Account")
+					.accessibilityLabel("Refresh Account")
 					.disabled(!model.canRefresh(.account(account.id)))
 			}
 			if let error = account.refreshError {
