@@ -589,8 +589,9 @@ struct FinTSConnectorTests {
 		#expect(statement.balance == Money(minorUnits: -123_456, currency: "EUR"))
 		#expect(statement.balanceDate.map { Day($0) } == Day(year: 2026, month: 11, day: 12))
 		#expect(statement.transactions?.from == Day(year: 2026, month: 10, day: 1))
-		#expect(statement.transactions?.rows.map { [$0.amountMinor.description, $0.purpose, $0.bookingText ?? "", "\($0.isPending)"] }
-			== [["-1990", "Streaming Beispiel / Musterstadt", "Kreditkartenzahlung", "false"], ["-15000", "Hotel Beispiel / Musterstadt", "Kreditkartenzahlung", "true"]])
+		#expect(statement.transactions?.rows.map { [$0.amountMinor.description, $0.name, $0.purpose, $0.bookingText ?? "", "\($0.isPending)"] }
+			== [["-1990", "Streaming Beispiel", "Streaming Beispiel / Musterstadt", "Kreditkartenzahlung", "false"],
+				["-15000", "Hotel Beispiel", "Hotel Beispiel / Musterstadt", "Kreditkartenzahlung", "true"]])
 		#expect(statement.transactions?.rows.map { [$0.bookingDate, $0.valueDate] }
 			== [[Day(year: 2026, month: 11, day: 9), Day(year: 2026, month: 11, day: 8)], [Day(year: 2026, month: 11, day: 10), Day(year: 2026, month: 11, day: 10)]])
 		#expect(statement.transactionFailure == nil)

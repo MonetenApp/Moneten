@@ -1288,7 +1288,9 @@ public class FinTSHelper {
 
 	static final Pattern CARD_PART = Pattern.compile("content(?:_([0-9]+))?\\..*");
 
-	/// The rows of all parts, in the order of the answer. A row that the bank marks with "finalized" N is not final,
+	/// The rows of all parts, in the order of the answer. The merchant text of a row is also its name, because the
+	/// card statement has no other field for the other party, and a pending row pairs with its booked version only
+	/// by a name or an IBAN. A row that the bank marks with "finalized" N is not final,
 	/// such as the reservation of a hotel, so it is pending. The original amount of a converted row stays out until
 	/// the app stores it (task 1.18), so its precision cannot fail the row.
 	static List<Object> cardRows(Properties data) {
@@ -1311,16 +1313,15 @@ public class FinTSHelper {
 		BigDecimal amount = signed(data.getProperty(row + ".value"), data.getProperty(row + ".creditdebit"));
 		if (amount == null || (booked == null && value == null)) throw new Failure("unsupported", null, CARD_ROW_UNREADABLE);
 		return message("row", "booked", booked != null ? booked : value, "value", value, "amount", amount.toPlainString(),
-			"currency", StringUtil.normalize(data.getProperty(row + ".currency")),
+			"currency", StringUtil.normalize(data.getProperty(row + ".currency")), "name", StringUtil.normalize(data.getProperty(row + ".purpose")),
 			"purpose", StringUtil.joinDescription(data.getProperty(row + ".purpose"), data.getProperty(row + ".location")),
 			"bookingText", "Kreditkartenzahlung", "pending", "N".equalsIgnoreCase(StringUtil.normalize(data.getProperty(row + ".finalized"))));
 	}
 
 	/// A day of a row, null when the bank sent none. A day that does not read fails the row.
 	static String cardDay(String text) {
-		if (StringUtil.normalize(text) == null) return null;
 		String day = day(text);
-		if (day == null) throw new Failure("unsupported", null, CARD_ROW_UNREADABLE);
+		if (day == null && StringUtil.normalize(text) != null) throw new Failure("unsupported", null, CARD_ROW_UNREADABLE);
 		return day;
 	}
 

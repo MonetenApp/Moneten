@@ -268,7 +268,7 @@ The app SHALL fetch the transactions and the balance of a credit card from its c
 - **AND** the card statement reports the debit 19,90 with the mark "D", booked on 09.11.2026 with the value date 08.11.2026, for "Streaming Beispiel" in "Musterstadt"
 - **WHEN** the user refreshes "Visa" from 01.10.2026
 - **THEN** the app asks the bank for the card statement of the card number 1234567890123456 from 01.10.2026
-- **AND** the list shows -19,90 € "Streaming Beispiel / Musterstadt", booked on 09.11.2026 with the value date 08.11.2026
+- **AND** the list shows -19,90 € with the name "Streaming Beispiel" and the purpose "Streaming Beispiel / Musterstadt", booked on 09.11.2026 with the value date 08.11.2026
 
 #### Scenario: Card with the balance and the card statement
 
@@ -304,6 +304,13 @@ The app SHALL fetch the transactions and the balance of a credit card from its c
 - **WHEN** the refresh ends
 - **THEN** the list shows the reservation as a pending transaction
 - **AND** when a later refresh no longer reports the reservation, the list no longer shows it
+
+#### Scenario: Reservation that gets booked
+
+- **GIVEN** "Visa" shows the pending reservation of -150,00 € for "Hotel Beispiel" from 10.11.2026, with the comment "Trip", the category "Travel", and a checkmark
+- **WHEN** the next refresh reports the same payment as final, booked on 12.11.2026
+- **THEN** the list shows one transaction of -150,00 € for "Hotel Beispiel", booked on 12.11.2026 and no longer pending
+- **AND** the transaction keeps the comment "Trip", the category "Travel", and the checkmark
 
 #### Scenario: Original amount with three decimals
 

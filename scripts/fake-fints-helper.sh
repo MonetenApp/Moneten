@@ -170,7 +170,7 @@ case "$cmd" in
 	;; esac
 	echo '{"type":"progress","done":2,"of":3}'
 	case "$cmd" in *'"id":"1234567890123456"'*)
-		echo "{\"type\":\"result\",\"account\":\"1234567890123456\",\"balance\":{\"amount\":\"-1234.56\",\"currency\":\"EUR\",\"date\":\"$(day 1)\"},\"transactions\":{\"from\":\"$(day 90)\",\"rows\":[{\"booked\":\"$(day 3)\",\"value\":\"$(day 4)\",\"amount\":\"-19.90\",\"currency\":\"EUR\",\"purpose\":\"Streaming Beispiel / Musterstadt\",\"bookingText\":\"Kreditkartenzahlung\",\"pending\":false}]},\"errors\":[]}"
+		echo "{\"type\":\"result\",\"account\":\"1234567890123456\",\"balance\":{\"amount\":\"-1234.56\",\"currency\":\"EUR\",\"date\":\"$(day 1)\"},\"transactions\":{\"from\":\"$(day 90)\",\"rows\":[{\"booked\":\"$(day 3)\",\"value\":\"$(day 4)\",\"amount\":\"-19.90\",\"currency\":\"EUR\",\"name\":\"Streaming Beispiel\",\"purpose\":\"Streaming Beispiel / Musterstadt\",\"bookingText\":\"Kreditkartenzahlung\",\"pending\":false}]},\"errors\":[]}"
 	;; esac
 	case "$cmd" in *'"id":"4711"'*)
 		echo "{\"type\":\"result\",\"account\":\"4711\",\"balance\":{\"amount\":\"-120.00\",\"currency\":\"EUR\",\"date\":\"$(day 0)\"},\"errors\":[]}"
