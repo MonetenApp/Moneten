@@ -80,7 +80,12 @@ public struct MoneySums: Hashable, Sendable {
 	}
 
 	public mutating func add(_ money: Money) {
-		exact[money.currency, default: 0] += Int128(money.minorUnits)
+		add(exact: Int128(money.minorUnits), currency: money.currency)
+	}
+
+	/// Adds a sum that is still exact, such as the computed balance of an account before it holds at the bounds.
+	mutating func add(exact amount: Int128, currency: String) {
+		exact[currency, default: 0] += amount
 	}
 
 	public var amounts: [Money] {

@@ -414,7 +414,10 @@ public struct Ledger: Sendable {
 	public func sum(ofGroup group: UUID) -> MoneySums {
 		var sums = MoneySums()
 		for id in accountIDs(inGroupTree: group) {
-			if let a = account(id), !a.isClosed { sums.add(balance(of: a)) }
+			// The exact balance, so that balances beyond the bounds of Int64 cancel out across the accounts.
+			if let a = account(id), !a.isClosed {
+				sums.add(exact: a.reportedBalance.map { Int128($0.minorUnits) } ?? exactBalance(of: a, through: nil), currency: a.currency)
+			}
 		}
 		return sums
 	}

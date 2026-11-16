@@ -54,6 +54,21 @@ struct AmountOverflowTests {
 		#expect(sums.amounts == euros)
 	}
 
+	@Test("The sum of a group adds the exact balances of its accounts, so balances beyond the range cancel out")
+	func groupSumOfExactBalances() {
+		let savings = Account(groupID: group.id, position: 1, name: "Tagesgeld", kind: .savings, source: .offline, initialBalanceMinor: -Self.huge)
+		let l = Ledger(groups: [group], accounts: [giro, savings], categories: [food], transactions: rows([Self.huge, Self.huge]))
+		#expect(l.balance(of: giro).minorUnits == .max)
+		#expect(l.sum(ofGroup: group.id).amounts == [Money(minorUnits: Self.huge, currency: "EUR")])
+	}
+
+	@Test("The total of a period adds its exact deposits and withdrawals")
+	func periodTotal() {
+		let h = Self.huge
+		let l = ledger([h, h, -h])
+		#expect(l.periodSums(of: l.transactions, period: .month).map(\.total) == [h])
+	}
+
 	@Test("A stored amount of Int64.min sums to the negative bound, so its absolute value does not trap")
 	func smallestInt64() {
 		#expect(ledger([.min]).balance(of: giro).minorUnits == -.max)
@@ -76,7 +91,7 @@ struct AmountOverflowTests {
 		#expect(l.balanceBars(accountIDs: [giro.id], range: range).map(\.minorUnits) == [h, .max, h, 0, -h, -.max])
 		#expect(l.monthlyAverageBalances(accountIDs: [giro.id], range: range).count == 1)
 		let sums = l.periodSums(of: l.transactions, period: .month)
-		#expect(sums.map(\.deposits) == [.max] && sums.map(\.withdrawals) == [-.max])
+		#expect(sums.map(\.deposits) == [Int128(h) * 2] && sums.map(\.withdrawals) == [Int128(h) * -4] && sums.map(\.total) == [-.max])
 		#expect(l.categoryTotals(of: ledger([Self.huge, Self.huge]).transactions).map(\.minorUnits) == [.max])
 	}
 

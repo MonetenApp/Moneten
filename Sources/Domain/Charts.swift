@@ -23,12 +23,11 @@ public struct BalanceBar: Hashable, Sendable, Identifiable {
 
 public struct PeriodSum: Hashable, Sendable, Identifiable {
 	public var start: Day
-	/// The exact sum of the deposits, held at `Int64.max`. The withdrawals are held at `-Int64.max`, so the total of
-	/// both never traps.
-	public var deposits: Int64
-	public var withdrawals: Int64
+	/// The exact sums of the deposits and the withdrawals, so that the total adds them before it holds at the bounds of `Int64`.
+	public var deposits: Int128
+	public var withdrawals: Int128
 	public var id: Int { start.rawValue }
-	public var total: Int64 { deposits + withdrawals }
+	public var total: Int64 { Int64(clampingSum: deposits + withdrawals) }
 
 	/// Every period from the first sum through the period of `last`, with zero for a period without
 	/// transactions, as MoneyMoney draws a line at zero for it. A sum after `last` stays.
@@ -171,7 +170,7 @@ extension Ledger {
 			let start = period.start(of: t.bookingDate)
 			if t.amountMinor >= 0 { sums[start, default: (0, 0)].deposits += Int128(t.amountMinor) } else { sums[start, default: (0, 0)].withdrawals += Int128(t.amountMinor) }
 		}
-		return sums.map { PeriodSum(start: $0.key, deposits: Int64(clampingSum: $0.value.deposits), withdrawals: Int64(clampingSum: $0.value.withdrawals)) }.sorted { $0.start < $1.start }
+		return sums.map { PeriodSum(start: $0.key, deposits: $0.value.deposits, withdrawals: $0.value.withdrawals) }.sorted { $0.start < $1.start }
 	}
 
 	/// The sum of a list of transactions per top-level category below a parent, for a pie chart.
