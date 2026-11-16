@@ -61,8 +61,8 @@ extension Day {
 	/// `digits`. The length is checked first, so a pasted long number never reaches `Int`.
 	private static func numbers(_ parts: [String], digits: ClosedRange<Int>) -> [Int]? {
 		guard parts.allSatisfy({ digits.contains($0.count) && $0.allSatisfy { $0.isASCII && $0.isNumber } }) else { return nil }
-		let numbers = parts.compactMap { Int($0) }
-		return numbers.count == parts.count ? numbers : nil
+		// At most eight ASCII digits always fit an `Int`.
+		return parts.map { Int($0)! }
 	}
 
 	/// A date with its year: three numbers separated by ".", "/", "-", ",", or spaces, where a run of separators
@@ -78,7 +78,7 @@ extension Day {
 			case .monthDayYear: (year, dayAndMonth) = (parts[2], [parts[1], parts[0]])
 			case .yearMonthDay: (year, dayAndMonth) = (parts[0], [parts[2], parts[1]])
 			}
-		} else if parts.count == 1, (4...8).contains(text.count), numbers([text], digits: 4...8) != nil {
+		} else if parts.count == 1, numbers([text], digits: 4...8) != nil {
 			// Four to six digits end or start with a two-digit year, seven or eight with a four-digit year.
 			let yearLength = text.count <= 6 ? 2 : 4
 			let rest: String
@@ -94,8 +94,11 @@ extension Day {
 		}
 		guard [2, 4].contains(year.count), let y = numbers([year], digits: 2...4)?.first,
 			let dm = numbers(dayAndMonth, digits: 1...2) else { return nil }
-		// A two-digit year below 80 lies in the 2000s, from 80 on in the 1900s.
+		// A typed two-digit year below 80 lies in the 2000s, from 80 on in the 1900s, as in the behavior target.
+		// `Day(string:)` reads the two-digit years of bank files and keeps its own limit of 70, so an import reads a
+		// file as it did before.
 		let fullYear = year.count == 4 ? y : y + (y < 80 ? 2000 : 1900)
+		// The calendar has no year 0, which "0000" would be.
 		guard fullYear > 0 else { return nil }
 		return Day.valid(year: fullYear, month: dm[1], day: dm[0])
 	}

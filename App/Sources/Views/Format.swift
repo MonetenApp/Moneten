@@ -40,8 +40,13 @@ extension Format {
 		amounts.map(money).joined(separator: "  ")
 	}
 
+	/// The day in the date format of the region, read from noon GMT, so a day that has no local midnight, such as
+	/// 30 December 2011 in Samoa, still shows as itself. `DateField` reads this text back.
 	static func day(_ d: Day) -> String {
-		d.date().formatted(.dateTime.day(.twoDigits).month(.twoDigits).year(.defaultDigits))
+		var style = Date.FormatStyle.dateTime.day(.twoDigits).month(.twoDigits).year(.defaultDigits)
+		style.calendar = Day.calendar(like: .current)
+		style.timeZone = style.calendar.timeZone
+		return d.noon.formatted(style)
 	}
 
 	/// "Today, 09:41", "Yesterday, 21:19", or the date and the time.

@@ -103,6 +103,8 @@ A typed year is not limited, and a date before 1970 stays as typed.
 
 The calendar is the graphical date picker of the system in a popover. It starts at the date of the field, or at today while the field holds no date. Every date that the picker sets goes into the field and ends the mark. The picker also sets its date when the user moves to another month, and whether its arrows do so is not documented. So a date in the month on show, which is a click on a day, also closes the popover, and a date in another month leaves the popover open.
 
+A day reaches the formatter of `Format.day` and the calendar as noon GMT (`Day.noon`), and both read it in a calendar of the user that is set to GMT (`Day.calendar(like:)`). A date from the calendar returns as the day of its noon GMT (`Day(noon:)`). Local midnight does not exist on every day: Samoa skipped 30 December 2011, and its midnight turned into the 31st. Noon GMT exists on every day in every time zone, so the field shows and picks the day that it holds.
+
 The custom period of the transaction list uses the field. The sheet for a transaction keeps the date picker of the system until the open change for manual transactions, which rewrites that sheet, is merged. Its booking date and value date then move to the field.
 
 ### The rule for an ordinary field

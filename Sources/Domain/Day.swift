@@ -85,6 +85,34 @@ public struct Day: Hashable, Comparable, Sendable, Codable, CustomStringConverti
 	}
 }
 
+extension Day {
+	private static let gmt = TimeZone(identifier: "GMT")!
+	private static let bridge: Calendar = {
+		var calendar = Calendar(identifier: .gregorian)
+		calendar.timeZone = gmt
+		return calendar
+	}()
+
+	/// Noon GMT of the day, the date that a formatter or a calendar of the interface gets for a day. Local midnight
+	/// does not exist on every day: Samoa skipped 30 December 2011, and its midnight turned into the 31st. Noon GMT
+	/// exists on every day, and `calendar(like:)` reads it back as the same day.
+	public var noon: Date {
+		Self.bridge.date(from: DateComponents(year: year, month: month, day: day, hour: 12))!
+	}
+
+	/// The day of a date from `noon`, or the day in GMT of a date that a calendar of the interface set.
+	public init(noon date: Date) {
+		self.init(date, calendar: Self.bridge)
+	}
+
+	/// A calendar like the one of the user, with its kind and its first weekday, in GMT, which shows `noon` on its day.
+	public static func calendar(like calendar: Calendar) -> Calendar {
+		var shown = calendar
+		shown.timeZone = gmt
+		return shown
+	}
+}
+
 /// A range of days, both ends included. A missing end means open.
 public struct DayRange: Hashable, Sendable {
 	public var start: Day?

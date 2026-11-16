@@ -99,22 +99,23 @@ struct DateField: View {
 	/// A date of the calendar goes into the field. A day of the month on show closes the calendar too, while a move
 	/// to another month leaves it open.
 	private func pick(_ picked: Day, closes: Bool) {
-		isMarked = false
+		// The new text sets the day and ends the mark.
 		show(picked)
-		day = picked
 		if closes { showsCalendar = false }
 	}
 }
 
-/// The calendar of a date field. It starts at the date of the field, or at today while the field holds no date.
+/// The calendar of a date field. It starts at the date of the field, or at today while the field holds no date. It
+/// shows the days of the calendar of the user in GMT and gets each day as its noon GMT, so a day that has no local
+/// midnight, such as 30 December 2011 in Samoa, still shows and picks as itself.
 struct DateFieldCalendar: View {
 	var title: LocalizedStringKey
 	@State var shown: Day
 	var pick: (Day, _ closes: Bool) -> Void
 
 	var body: some View {
-		DatePicker(title, selection: Binding(get: { shown.date() }, set: { date in
-			let picked = Day(date)
+		DatePicker(title, selection: Binding(get: { shown.noon }, set: { date in
+			let picked = Day(noon: date)
 			// The calendar of the system also sets its date when the user moves to another month, and whether
 			// its arrows do so is not documented. So every date goes into the field, and only a day of the
 			// month on show, which is a click on a day, closes the calendar.
@@ -124,6 +125,8 @@ struct DateFieldCalendar: View {
 		}), displayedComponents: .date)
 		.datePickerStyle(.graphical)
 		.labelsHidden()
+		.environment(\.calendar, Day.calendar(like: .current))
+		.environment(\.timeZone, Day.calendar(like: .current).timeZone)
 		.padding(8)
 	}
 }

@@ -172,7 +172,7 @@ struct DateCompletionTests {
 	@Test("A text that is not a date is refused", arguments: [
 		"", " ", "0", "32", "123", "0.5", "20.0", "20.13", "20..12", ".20", "20.12.2026.1", "20.12.202", "20.12.0", "20:12", "heute", "20a", "-20", "2026-10", "99999999999999999999999", "1.99999999999999999999999",
 		// Only "." and "/" separate a day and a month, and four digits that are no date are not a day either.
-		"20,12", "20 12", "20-12", "2012", "999999999",
+		"20,12", "20 12", "20-12", "2012", "999999999", "01.01.0000",
 	])
 	func unreadable(text: String) {
 		#expect(complete(text, today: Self.day(2026, 11, 9)) == nil)
