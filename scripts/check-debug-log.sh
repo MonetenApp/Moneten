@@ -145,8 +145,7 @@ poll "^filterbar account .*account=all" filterbar account
 poll "^phase=" state
 send search Miete
 poll "^phase=.*visible=1 " state
-send split 25,00
-poll "^split saved=true parts=2" state
+poll "^split saved=true parts=2" split 25,00
 send search ""
 poll "^phase=" state
 send selectRows 1
