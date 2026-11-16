@@ -34,7 +34,7 @@ python3 scripts/make-sounds.py                     # writes the three notificati
 
 Use `scripts/test.sh` instead of plain `swift test`. It adds `--disable-keychain`, without which the package manager waits for a Keychain prompt, and the Swift Testing paths for a Mac with only the Command Line Tools.
 
-Start the app with a throwaway data folder: quit every running Moneten first, then `open -n --env MONETEN_DATA_DIR=/path/to/folder dist/Moneten.app`. Without `-n`, `open` brings an instance that already runs to the front, and that instance keeps its own data folder. Without the variable, the app opens the real database in `~/Library/Application Support/Moneten`.
+Start a debug build with a throwaway data folder: `scripts/build-app.sh debug`, quit every running Moneten, then `open -n --env MONETEN_DATA_DIR=/path/to/folder dist/Moneten.app`. Without `-n`, `open` brings an instance that already runs to the front, and that instance keeps its own data folder. Without the variable, the app opens the real database in `~/Library/Application Support/Moneten`. Only Debug and Perf builds read `MONETEN_DATA_DIR`. A Release build ignores it and always opens the real database.
 
 A build without a team in `App/Local.xcconfig` is signed to run locally and gets a new signature each time. The Keychain then refuses the random database key of an older build (`Vault.Failure.keyNotInKeychain`). Set a database password in a test database, or sign with a team as `App/Signing.xcconfig` describes.
 

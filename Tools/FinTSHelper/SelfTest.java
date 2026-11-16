@@ -15,6 +15,7 @@ import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -152,6 +153,23 @@ final class SelfTest {
 				o.writeObject(new java.util.Date(0));
 			}
 			expect("foreign class in the state refused", FinTSHelper.Passport.deserialize(bytes.toByteArray()), null);
+
+			// More parameters than a bank sends, under the limits of the filter.
+			PassportData large = new PassportData();
+			large.bpd = new Properties();
+			large.upd = new Properties();
+			for (int i = 0; i < 20_000; i++) large.bpd.setProperty("Params_" + i + ".SegHead.code", "HIKAZS" + i);
+			for (int i = 0; i < 5_000; i++) large.upd.setProperty("KInfo_" + i + ".KTV.number", String.valueOf(1_000_000 + i));
+			FinTSHelper.Passport.State largeBack = FinTSHelper.Passport.deserialize(FinTSHelper.Passport.serialize(large, null));
+			expect("large state read", largeBack == null ? null : largeBack.data().bpd.size() + " " + largeBack.data().upd.size(), "20000 5000");
+			List<Object> deep = new ArrayList<>();
+			for (int i = 0; i < 30; i++) deep = new ArrayList<>(List.of(deep));
+			@SuppressWarnings("unchecked")
+			List<String> deepMechs = (List<String>) (Object) deep;
+			data.twostepMechs = deepMechs;
+			expect("state nested too deep refused", FinTSHelper.Passport.deserialize(FinTSHelper.Passport.serialize(data, null)), null);
+			data.twostepMechs = new ArrayList<>(Collections.nCopies(200_000, "921"));
+			expect("state with a too long list refused", FinTSHelper.Passport.deserialize(FinTSHelper.Passport.serialize(data, null)), null);
 		} catch (Exception e) {
 			failures.add("passport: " + e);
 		}
