@@ -387,8 +387,9 @@ final class AppModel {
 				// Only the entry of the automatic unlock opens the database at launch, never one of Touch ID or Apple Watch.
 				let stored: String?
 				do {
-					try vault.removeSharedEntry()
+					// The settings first, so a failed cleanup of the old shared entry still shows the entries that exist.
 					try loadUnlockSettings()
+					try vault.removeSharedEntry()
 					stored = try vault.storedPassword(for: .automaticUnlock)
 				} catch {
 					lockNotice = String(describing: error)
@@ -480,6 +481,8 @@ final class AppModel {
 		lockNotice = nil
 		do {
 			try vault.refreshStoredPassword(password)
+			// A Keychain that failed at launch left the settings empty; with the Keychain back they show its entries again.
+			try loadUnlockSettings()
 		} catch {
 			alert = AlertMessage(title: "The database password could not be stored in the Keychain.", message: String(describing: error))
 		}
