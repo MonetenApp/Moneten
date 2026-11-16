@@ -337,6 +337,13 @@ enum Schema {
 			try db.execute(sql: "UPDATE bankTransaction SET review = 'unclearBooking' WHERE needsReview = 1")
 			try db.alter(table: "bankTransaction") { t in t.drop(column: "needsReview") }
 		}
+		// The values that the source delivered for the fields that the user edited, as JSON (add-transaction-list,
+		// task 1.16). Empty for every existing row, because no row could be edited before.
+		m.registerMigration("v24") { db in
+			try db.alter(table: "bankTransaction") { t in
+				t.add(column: "original", .text)
+			}
+		}
 		return m
 	}
 }
