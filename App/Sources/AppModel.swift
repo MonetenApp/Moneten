@@ -1067,7 +1067,7 @@ final class AppModel {
 	private func refreshDue(at now: Date) {
 		let plan = ledger.dueAccounts(at: now, canceled: canceledRefreshes)
 		guard !plan.isEmpty else { return }
-		DebugHarness.shared?.log("autorefresh accesses=\(plan.count) accounts=\(plan.values.map(\.count).reduce(0, +))")
+		DebugHarness.shared?.log("autorefresh", ("accesses", .count(plan.count)), ("accounts", .count(plan.values.map(\.count).reduce(0, +))))
 		refresh(plan, attended: false)
 	}
 
