@@ -185,6 +185,8 @@ final class SelfTest {
 			restoredLogin("fints2.atruvia.de/cgi-bin/hbciservlet", "vrk12345678", "VRK 12345678", "VRK12345678"), "VRK12345678 VRK12345678");
 		expect("customer ID that is the same VR-Kennung of apoBank follows",
 			restoredLogin("fints.apobank.de/FinTs30PinTanHttpGate", "vrk12345678", "Vrk12345678", "VRK12345678"), "VRK12345678 VRK12345678");
+		expect("customer ID with a no-break space and an em space is the same VR-Kennung",
+			restoredLogin("fints2.atruvia.de/cgi-bin/hbciservlet", "vrk12345678", "VRK\u00A0123\u20034\u00A05678", "VRK12345678"), "VRK12345678 VRK12345678");
 		expect("customer ID in another case on another server stays", restoredLogin("VRK12345678", "vrk12345678", "VRK12345678"), "VRK12345678 vrk12345678");
 		expect("alias in another case on a server of Atruvia stays",
 			restoredLogin("fints2.atruvia.de/cgi-bin/hbciservlet", "vrkonto1", "VRKONTO1", "vrkonto1"), "vrkonto1 VRKONTO1");

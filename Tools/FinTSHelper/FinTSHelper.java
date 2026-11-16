@@ -453,9 +453,10 @@ public class FinTSHelper {
 			return cooperative(host) && vrk != null && vrk.equals(vrKennung(userId));
 		}
 
-		/// A VR-Kennung, "VRK" and digits, in capitals and without spaces, or null for any other login name.
+		/// A VR-Kennung, "VRK" and digits, in capitals and without spaces, or null for any other login name. It removes
+		/// every Unicode white space, as Character.isWhitespace in FinTSServer.loginName of the app does.
 		static String vrKennung(String name) {
-			String joined = name.replaceAll("\\s", "").toUpperCase(java.util.Locale.ROOT);
+			String joined = name.replaceAll("(?U)\\s", "").toUpperCase(java.util.Locale.ROOT);
 			return joined.matches("VRK[0-9]+") ? joined : null;
 		}
 
