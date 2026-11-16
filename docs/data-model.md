@@ -91,7 +91,7 @@ When the rules of several categories match a transaction, the first category in 
 | `sourceID` | `String?` | The identifier that the source gave, for example `moneymoney:<id>` or the ID of an extension. A second migration skips known identifiers, and a merge matches a row by it first. A source with IDs of its own replaces a `moneymoney:` identifier when it links the row by its fingerprint. |
 | `fileIdentity` | `String?` | Original file fingerprint, set only by file import. Bank takeover, booking, and deletion preserve it. NULL means no file identity. Different file fingerprints can pair for a verified pending-to-booked transition. Conflicting real source IDs or references never pair. |
 | `createdAt` | `Date` | |
-| `isManual` | `Bool` | The user added the row with "Add Transaction...". A refresh never pairs a delivered row with it, deleting it keeps no `DeletedTransaction`, and in an account with bank access it moves the initial balance once a refresh set it. |
+| `isManual` | `Bool` | The user added the row with "Add Transaction...". A refresh never pairs a delivered row with it, deleting it keeps no `DeletedTransaction` unless a file or a migration matched it, and in an account with bank access it moves the initial balance once a refresh set it. |
 
 Refreshes and file imports go through `reconcile`, which recognizes a stored row by its source ID or by a fingerprint of booking day, amount and currency, counterparty IBAN, end-to-end reference, and purpose. [Architecture](architecture.md#transactions-need-an-identity-the-bank-does-not-give) has the rules.
 

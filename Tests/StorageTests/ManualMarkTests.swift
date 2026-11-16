@@ -51,6 +51,21 @@ struct ManualMarkTests {
 		#expect(r.added.map(\.sourceID) == ["TX-7"])
 	}
 
+	@Test("A manual row that a file or a migration matched keeps its record when the user deletes it")
+	func matchedManualRowKeepsRecord() throws {
+		defer { try? FileManager.default.removeItem(at: folder.root) }
+		let store = try makeStore()
+		var migrated = kiosk
+		migrated.sourceID = "moneymoney:42"
+		var filed = kiosk
+		filed.id = UUID()
+		filed.fileIdentity = "file:1:kiosk"
+		try store.save([migrated, filed])
+		try store.deleteTransactions([migrated.id, filed.id])
+		#expect(Set(try store.deletedTransactions().map(\.sourceID)) == ["moneymoney:42", nil])
+		#expect(try store.deletedTransactions().count == 2)
+	}
+
 	@Test("A row and the account whose initial balance it moves are stored in one write, also on delete")
 	func rowWithAccount() throws {
 		defer { try? FileManager.default.removeItem(at: folder.root) }

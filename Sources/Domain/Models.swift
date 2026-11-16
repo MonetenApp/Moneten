@@ -303,7 +303,7 @@ public struct Transaction: Identifiable, Hashable, Sendable, Codable {
 	public var fileIdentity: String?
 	public var createdAt: Date
 	/// The user added the row with "Add Transaction...". No source delivers it, so a refresh never pairs a
-	/// delivered row with it, and deleting it keeps no record.
+	/// delivered row with it, and deleting it keeps no record unless a file or a migration matched it.
 	public var isManual: Bool
 
 	public init(id: UUID = UUID(), accountID: UUID, bookingDate: Day, valueDate: Day? = nil, amountMinor: Int64, currency: String = "EUR", name: String, purpose: String = "",

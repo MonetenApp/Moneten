@@ -145,7 +145,7 @@ An access is a login at a bank. The file never holds its PIN or the data that it
 
 ## Deleted transaction
 
-What the app keeps of a transaction that the user deleted, so that no refresh, file, or migration adds it again. A manual transaction leaves no record, because no source delivers it.
+What the app keeps of a transaction that the user deleted, so that no refresh, file, or migration adds it again. A manual transaction that no file and no migration matched leaves no record, because no source delivers it.
 
 | Key | Content |
 |---|---|

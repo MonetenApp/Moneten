@@ -210,8 +210,11 @@ public final class Store: SavedPINStore {
 		try queue.write { db in
 			let now = Date()
 			for a in accounts { try a.save(db) }
-			// No source delivers a manual row, so its record could only keep out another booking.
-			for t in try Transaction.fetchAll(db, keys: ids) where !t.isManual { try DeletedTransaction(t, deletedAt: now).insert(db) }
+			// No source delivers a manual row, so its record could only keep out another booking. A manual row that
+			// a file or a migration matched carries what the source gave it, and keeps its record.
+			for t in try Transaction.fetchAll(db, keys: ids) where !t.isManual || t.sourceID != nil || t.fileIdentity != nil {
+				try DeletedTransaction(t, deletedAt: now).insert(db)
+			}
 			_ = try Transaction.deleteAll(db, keys: ids)
 		}
 	}
