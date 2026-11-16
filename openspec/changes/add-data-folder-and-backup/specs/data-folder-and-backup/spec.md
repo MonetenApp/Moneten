@@ -191,6 +191,13 @@ The app SHALL start with a new and empty database when the user has renamed or r
 - **AND** the user quits the app, removes the new "Database" folder, renames "Database_OLD" back to "Database", and starts the app
 - **THEN** the old data opens without a password
 
+#### Scenario: Backup of the renamed database in the new folder
+
+- **GIVEN** a database without a password, renamed to "Database_OLD", and a new database with the password "ein-neues-passwort"
+- **WHEN** the user copies "Moneten-Backup.sqlite" from "Database_OLD" into the new "Database" folder and unlocks the new database
+- **AND** the user later renames "Database_OLD" back to "Database"
+- **THEN** the old data opens without a password
+
 ### Requirement: Take over the data of the old app name
 
 The app SHALL, on its first start after the rename from MonetenMoneten (ADR 0013), move the data folder, the database files, the Keychain entries, and the settings of the old name to the new name. It SHALL replace nothing that already exists under the new name, and it SHALL keep using the old folder when the move fails.

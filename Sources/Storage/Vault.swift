@@ -216,10 +216,11 @@ public struct Vault: Sendable {
 		if hadMarker { try? FileManager.default.removeItem(at: noPasswordMarker) }
 		// Next to a password, a random key stays for an interrupted first password and for copies that could not
 		// take it. It may also be the key of a database that the user renamed, which shares the Keychain entry of
-		// this path. So the key goes only when this folder shows a first password that is not finished: the
-		// marker, a copy that step 4 of "Open" found with the key, or a copy that the key opens.
-		if let randomKey = (try? read(keyKeychain, legacy: legacyKeyKeychain)) ?? nil, let plan = try? planRekey(from: randomKey),
-		   hadMarker || opened.tookRandomKeyCopy || !plan.toRekey.isEmpty {
+		// this path, and a copy that the key opens may be a backup of that database. So the key goes only when
+		// this folder shows a first password that is not finished: the marker, or a copy in `RekeyCopies` that
+		// step 4 of "Open" found with the key. `setPassword` lists every copy that the key opens.
+		if hadMarker || opened.tookRandomKeyCopy, let randomKey = (try? read(keyKeychain, legacy: legacyKeyKeychain)) ?? nil,
+		   let plan = try? planRekey(from: randomKey) {
 			let kept = plan.unreadable + rekeyCopies(plan.toRekey, from: randomKey, to: password, removingFailures: false)
 			if kept.isEmpty { try? deleteRandomKey() }
 		}
@@ -243,9 +244,11 @@ public struct Vault: Sendable {
 		var kept: [String] = []
 		if let randomKey {
 			let plan = try planRekey(from: randomKey)
+			// A copy that is not listed could later not be told apart from a backup of a renamed database.
+			guard plan.unreadable.isEmpty else { throw Failure.copiesUnreadable(plan.unreadable) }
 			try writeRekeyList(plan.toRekey + (try rekeyList()))
 			try store.queue.write { db in try db.changePassphrase(password) }
-			kept = plan.unreadable + rekeyCopies(plan.toRekey, from: randomKey, to: password, removingFailures: false)
+			kept = rekeyCopies(plan.toRekey, from: randomKey, to: password, removingFailures: false)
 		} else {
 			try store.queue.write { db in try db.changePassphrase(password) }
 		}
@@ -449,16 +452,21 @@ public struct Vault: Sendable {
 		}
 	}
 
-	/// Removes the work files of an interrupted upgrade or repair and the partial copies before a password change.
-	/// They hold the current key, and `RekeyCopies` does not list them, so a stop after the change would leave
-	/// them readable with the earlier key. A work file that stays stops the change before anything changed.
+	/// Removes the work files of an interrupted upgrade or repair and the partial copies before a password change,
+	/// together with their side files, also a side file whose work file is gone. They hold the current key, and
+	/// `RekeyCopies` does not list them, so a stop after the change would leave them readable with the earlier key.
+	/// A work file that stays stops the change before anything changed.
 	private func removeWorkFilesFirst() throws {
 		let names: [String]
 		do { names = try FileManager.default.contentsOfDirectory(atPath: folder.databaseFolder.path) } catch { throw Failure.unreadable(String(describing: error)) }
-		var failed: [String] = []
+		var workFiles: Set<String> = []
 		for name in names {
-			let isPartial = name.hasPrefix(".") && name.hasSuffix(".partial") && Self.isCopy(String(name.dropFirst().dropLast(".partial".count)))
-			guard isPartial || name == upgradeCopyFile.lastPathComponent || name == repairCopyFile.lastPathComponent else { continue }
+			let base = Self.sideFileSuffixes.first(where: name.hasSuffix).map { String(name.dropLast($0.count)) } ?? name
+			let isPartial = base.hasPrefix(".") && base.hasSuffix(".partial") && Self.isCopy(String(base.dropFirst().dropLast(".partial".count)))
+			if isPartial || base == upgradeCopyFile.lastPathComponent || base == repairCopyFile.lastPathComponent { workFiles.insert(base) }
+		}
+		var failed: [String] = []
+		for name in workFiles.sorted() {
 			let url = folder.databaseFolder.appendingPathComponent(name)
 			do { try removeWithSideFiles(url) } catch { failed.append(url.path) }
 		}

@@ -70,8 +70,8 @@ SQLite keeps the side files `-journal`, `-wal`, and `-shm` next to a file. Befor
 
 `setPassword` changes the random key to a password:
 
-1. Remove the work files, which hold the random key and which `RekeyCopies` does not list. A work file that cannot be removed throws `workFilesNotRemoved` before anything changed.
-2. List the copies. Each copy that the random key opens is to be re-keyed. A copy that the random key does not open stays as it is. A copy with another error is reported.
+1. Remove the work files and their side files, also a side file whose work file is gone. They hold the random key, and `RekeyCopies` does not list them. A file that cannot be removed throws `workFilesNotRemoved` before anything changed.
+2. List the copies. Each copy that the random key opens is to be re-keyed. A copy that the random key does not open stays as it is. A copy with another error, such as `SQLITE_BUSY`, stops the change with `copiesUnreadable` before anything changed, so that `RekeyCopies` lists every copy that still needs the random key.
 3. Write `RekeyCopies` with the names to re-key. A failure throws before anything changed.
 4. Re-key the database. A failure throws, and the database keeps the random key.
 5. Re-key each listed copy and check that the password opens it.
@@ -81,14 +81,14 @@ SQLite keeps the side files `-journal`, `-wal`, and `-shm` next to a file. Befor
 
 A stop before step 4: the next start opens with the random key, and step 4 of "Open" finds every listed copy done. A stop after step 4: `NoPassword` may still exist, the random key does not open the database, and the lock screen asks for the password. Step 4 of "Open" then re-keys each copy with the random key, and the vault removes the key once no copy needs it.
 
-The unlock with the password removes the random key only when the folder shows a first password that is not finished: `NoPassword` existed, step 4 of "Open" found a listed copy that the random key opens, or a copy in the folder opens with the random key. Otherwise the key may belong to a renamed database at the same path, and it stays. A stop between step 7 and step 8 leaves no such sign, so the key stays in the Keychain. It opens no file of this folder.
+The unlock with the password removes the random key only when the folder shows a first password that is not finished: `NoPassword` existed, or step 4 of "Open" found a copy in `RekeyCopies` that the random key opens. Then it re-keys each copy that the key opens and removes the key once no copy needs it. Otherwise the key may belong to a renamed database at the same path, and it stays. A copy that the key opens is no such sign, because it may be a backup of the renamed database that the user put into the new folder. A stop between step 7 and step 8 leaves no such sign, so the key stays in the Keychain. It opens no file of this folder.
 
 ### Change the password
 
 `changePassword`:
 
 1. Check the current password on a second connection.
-2. Remove the work files, which hold the current key and which `RekeyCopies` does not list. A work file that cannot be removed throws `workFilesNotRemoved` before anything changed.
+2. Remove the work files and their side files, as step 1 of "Set the first password" does. They hold the current key.
 3. List the copies. Each copy that the current password opens is to be re-keyed. A copy that it does not open, such as one with an even older password, stays as it is. A copy with another error, such as `SQLITE_BUSY`, stops the change with `copiesUnreadable`, before anything changed, because nobody could tell later whether it still opens with the current password.
 4. Write `RekeyCopies` with the names to re-key, together with the names that an earlier change left. A failure throws before anything changed.
 5. Re-key the database. A failure throws, and the current password still opens it.
