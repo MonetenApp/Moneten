@@ -196,6 +196,22 @@ The app SHALL read amounts with a decimal comma or a decimal point, with or with
 - **WHEN** the user imports the file
 - **THEN** the app imports nothing and says that the amount in line 2 cannot be read
 
+### Requirement: Amounts beyond the range of the app
+
+The app SHALL import nothing from a CSV, CAMT, or MT940 file with an amount below -92.233.720.368.547.758,07 € or above 92.233.720.368.547.758,07 €, and SHALL name the line of that amount. The limits in another currency have the same digits with the decimal places of that currency.
+
+#### Scenario: Too large amount in a CSV file
+
+- **GIVEN** a CSV file with the amount "-89,00" in line 2 and "-92233720368547758,08" in line 3
+- **WHEN** the user imports the file
+- **THEN** the app imports nothing and says that the amount in line 3 is too large
+
+#### Scenario: Too large amount in a CAMT file
+
+- **GIVEN** a CAMT file with an entry of 92233720368547758.08 EUR
+- **WHEN** the user imports the file
+- **THEN** the app imports nothing and says that the amount of the entry in its line is too large
+
 ### Requirement: CSV columns by header keywords
 
 The app SHALL assign CSV columns to transaction fields by common header keywords in German and English, without regard to case, spaces, and umlauts. The fields are booking date, value date, amount, currency, counterparty name, counterparty account or IBAN, counterparty bank code or BIC, purpose, booking text, category, and comment.

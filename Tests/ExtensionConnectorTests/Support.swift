@@ -81,13 +81,14 @@ final class TestSession: SyncSession, Sendable {
 	}
 
 	func connector(_ package: ExtensionPackage, fixture: Fixture = network([]), known: [Transaction] = [], decisions: [String: HostDecision] = [:],
-		save: @escaping @Sendable (HostDecision, String) -> Void = { _, _ in }) -> ExtensionConnector {
+		save: @escaping @Sendable (HostDecision, String) -> Void = { _, _ in }, developer: DeveloperOptions? = nil) -> ExtensionConnector {
 		let services = ExtensionConnector.Services(hostDecisions: { decisions }, saveDecision: { save($0, $1) }, transactions: { _ in known },
 			log: { line in
 				self.log.withLock { $0.append(line) }
 				if case let .print(text) = line, text == self.attendsAt { self.attended.withLock { $0 = true } }
 			})
-		var connector = ExtensionConnector(package: package, environment: .standard, fixture: fixture, executable: hostExecutable, services: services)
+		var connector = ExtensionConnector(package: package, environment: .standard, fixture: fixture, executable: hostExecutable, developer: developer,
+			services: services)
 		connector.pollInterval = .milliseconds(1)
 		connector.timeZone = TimeZone(identifier: "Europe/Berlin")!
 		return connector
