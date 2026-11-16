@@ -37,6 +37,19 @@ import Testing
 
 		"""
 
+	/// A replay runs on the clock of its recording, so a new account gets that time as `balanceDate`.
+	@Test func newAccountTakesTheBalanceDateFromTheReplayClock() async throws {
+		let session = TestSession()
+		_ = try await session.connector(demo(Self.calls + """
+			function RefreshAccount(account)
+				print("date " .. account.balanceDate .. " " .. MM.time())
+				return {balance = 0, transactions = {}}
+			end
+			function ListAccounts() return {{accountNumber = "N", name = "New"}} end
+			"""), developer: DeveloperOptions(capture: .replay(start: 1_794_225_600, random: []))).setUp(Self.access, session)
+		#expect(session.printed.contains("date 1794225600 1794225600.0"))
+	}
+
 	/// Published scripts read `account.balance` and `account.attributes.Name` without a check for nil.
 	@Test func accountTableAtRefreshHasTheStoredBalance() async throws {
 		let session = TestSession()
