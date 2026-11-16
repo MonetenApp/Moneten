@@ -190,6 +190,12 @@ The app SHALL keep an "Initial balance" for each account. The first refresh that
 - **WHEN** the second refresh brings a balance of 1.000,00 € and booked transactions with a sum of 250,00 €
 - **THEN** "Initial balance" shows 750,00 €
 
+#### Scenario: Older transactions missing
+
+- **GIVEN** the first refresh brings a balance of 1.000,00 € and booked transactions of the last 90 days with a sum of 250,00 €, because the user canceled the TAN for older transactions
+- **WHEN** an enforced refresh brings a balance of 1.000,00 € and older booked transactions with a sum of -100,00 €
+- **THEN** "Initial balance" shows 850,00 €
+
 #### Scenario: Changed by hand
 
 - **WHEN** the user enters 800,00 under "Initial balance" and clicks "OK"

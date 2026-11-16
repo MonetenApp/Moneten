@@ -136,7 +136,7 @@ final class DebugHarness {
 		case "sidebarsnapshot": sidebarSnapshot(argument)
 		case "setpassword": model.setPassword(argument)
 		case "create": model.createDatabase(password: argument.isEmpty ? nil : argument)
-		case "unlock": log("unlock", ("", .flag(model.unlock(password: argument))))
+		case "unlock": Task { log("unlock", ("", .flag(await model.unlock(password: argument) == .unlocked))) }
 		case "lock": model.lock()
 		case "appearance": NSApp.appearance = NSAppearance(named: argument == "dark" ? .darkAqua : .aqua)
 		// "<name>": the import sheet while it reads the second of two made-up files, and while it stores their rows.
@@ -150,8 +150,10 @@ final class DebugHarness {
 		case "settingssnapshot":
 			offscreenSnapshot(SecuritySettings().environment(model), width: 500, name: argument, kind: "security")
 			offscreenSnapshot(GeneralSettings().environment(model), width: 500, name: argument, kind: "general")
-		case "storepassword": log("storepassword", ("", .flag((try? model.vault.storePassword(argument)) != nil)))
-		case "removepassword": try? model.vault.removeStoredPassword()
+		case "storepassword":
+			do { try model.vault.storePassword(argument); log("storepassword", ("", .flag(true))) } catch { log("storepassword", ("failed", .type(of: error))) }
+		case "removepassword":
+			do { try model.vault.removeStoredPassword() } catch { log("removepassword", ("failed", .type(of: error))) }
 		case "seed": Task { await DemoData.seed(model); log("seed done") }
 		// "<name>" starts a made-up refresh that shows one dialog of SyncDemo.requests.
 		case "syncdemo": SyncDemo.start(argument, in: model.sync)
@@ -218,8 +220,10 @@ final class DebugHarness {
 			sheet.makeFirstResponder(editable[position])
 			editable[position].selectText(nil)
 			log("focusfield", ("count", .count(editable.count)), ("position", .position(position)), ("editor", .flag(sheet.firstResponder is NSTextView)))
-		// Inserts text into the focused editor of this app's sheet without global key events.
-		case "type": (topSheet?.firstResponder as? NSTextView)?.insertText(argument, replacementRange: NSRange(location: NSNotFound, length: 0))
+		// "<text>" types into the field that has the focus: in the sheet on screen, or else in the key window. A harness
+		// run keeps the app in the background, where no window is key, so then in the frontmost window with a focused field.
+		case "type": ((topSheet ?? NSApp.keyWindow ?? NSApp.orderedWindows.first { $0.firstResponder is NSTextView })?.firstResponder as? NSTextView)?
+			.insertText(argument, replacementRange: NSRange(location: NSNotFound, length: 0))
 		// Focuses the first secure field of the sheet on screen and logs what macOS sees of it, for the check that the password manager does not offer it.
 		case "securefield": secureField()
 		// "all", or the name of an account or a group. "refreshenforced" is the command with the Option key.
@@ -236,7 +240,8 @@ final class DebugHarness {
 					("interval", .state(a.refreshInterval)), ("balance", .presence(a.bankBalanceMinor != nil)), ("rows", .count(model.ledger.transactions(ofAccount: a.id).count)),
 					("new", .count(model.ledger.newTransactionCounts[a.id] ?? 0)),
 					("historyStart", .day(model.bankHistories[a.id].flatMap { if case let .startsAt(day) = $0 { day } else { nil } })),
-					("noTransactions", .flag(model.bankHistories[a.id] == .noTransactions)))
+					("noTransactions", .flag(model.bankHistories[a.id] == .noTransactions)),
+					("olderMayBeMissing", .flag(a.missesOlderTransactions)))
 			}
 			// Whether the status line shows a text, without the text, which names the bank of an access.
 			log("status", ("line", .presence(model.refreshStatus != nil)), ("accesses", .count(model.accesses.count)), ("bankNotices", .count(model.bankNotices.waiting.count)))
@@ -305,6 +310,11 @@ final class DebugHarness {
 		case "extstate": logExtensionState(expecting: argument)
 		// The Extensions window and the catalog (ADR 0015). "extcatalog <url>" points the catalog at a test index and checks it.
 		case "extensions": openExtensionsWindow()
+		// Opens "Supported Banks..." of the Help menu. "type" then types into its search field.
+		case "supportedbanks": openMenuItem("Supported Banks...")
+		// "down", "up", "pagedown", "pageup", "home", "end", or "tab" to the window "Supported Banks", as the keyboard sends it,
+		// also with "command-" in front, such as "command-down". It never activates the app. Then it logs which view has the focus.
+		case "supportedkey": supportedBanksKey(argument)
 		// An app in the background shows every item of the menu bar disabled, so this reads the condition of the commands.
 		// The items of a menu of the menu bar, as the menu shows them after an update: each title by its hash, because
 		// a title can name an account, a group, or a category, and whether it is enabled.
@@ -1045,10 +1055,41 @@ final class DebugHarness {
 
 	/// Chooses "Extensions" in the Window menu, as the user does.
 	func openExtensionsWindow() {
-		let item = NSApp.mainMenu?.items.compactMap(\.submenu).flatMap(\.items).first { $0.title == "Extensions" }
-		guard let item, let menu = item.menu else { return log("extensions no menu item") }
+		openMenuItem("Extensions")
+	}
+
+	private func supportedBanksKey(_ name: String) {
+		guard let window = NSApp.windows.first(where: { $0.title == "Supported Banks" && $0.isVisible }) else { return log("supportedkey no window") }
+		let keys: [String: (Int, UInt16)] = ["down": (NSDownArrowFunctionKey, 125), "up": (NSUpArrowFunctionKey, 126), "pagedown": (NSPageDownFunctionKey, 121),
+			"pageup": (NSPageUpFunctionKey, 116), "home": (NSHomeFunctionKey, 115), "end": (NSEndFunctionKey, 119), "tab": (9, 48)]
+		// "command-down" and the like send the key with Command, which the window leaves to the system.
+		let withCommand = name.hasPrefix("command-")
+		let base = withCommand ? String(name.dropFirst("command-".count)) : name
+		guard let key = keys[base], let scalar = UnicodeScalar(key.0) else { return log("supportedkey unknown") }
+		// A harness run stays in the background (#291), so this never activates the app. The window becomes the
+		// key window of the app, which it is once the app is active, and gets the key as the keyboard sends it.
+		window.makeKeyAndOrderFront(nil)
+		let characters = String(Character(scalar))
+		var modifiers: NSEvent.ModifierFlags = base == "tab" ? [] : [.numericPad, .function]
+		if withCommand { modifiers.insert(.command) }
+		if let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: modifiers, timestamp: 0,
+			windowNumber: window.windowNumber, context: nil, characters: characters, charactersIgnoringModifiers: characters, isARepeat: false, keyCode: key.1) {
+			window.sendEvent(event)
+		}
+		DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+			let key = LogValue.choice(name, of: ["down", "up", "pagedown", "pageup", "home", "end", "tab", "command-down", "command-up",
+				"command-pagedown", "command-pageup", "command-home", "command-end", "command-tab"])
+			self?.log("supportedkey", ("", key), ("key", .flag(NSApp.keyWindow === window)),
+				("responder", window.firstResponder.map { .type(of: $0) } ?? .position(nil)),
+				("cursor", .position((window.firstResponder as? NSTextView)?.selectedRange().location)))
+		}
+	}
+
+	private func openMenuItem(_ title: StaticString) {
+		let item = NSApp.mainMenu?.items.compactMap(\.submenu).flatMap(\.items).first { $0.title == "\(title)" }
+		guard let item, let menu = item.menu else { return log("menu no item", ("title", .word(title))) }
 		menu.performActionForItem(at: menu.index(of: item))
-		log("extensions opened")
+		log("menu opened", ("title", .word(title)))
 	}
 
 	private func filterBar(_ argument: String) {
