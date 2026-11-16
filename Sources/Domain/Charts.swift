@@ -74,10 +74,15 @@ extension Ledger {
 	/// portfolio gets its value from the bank and not from transactions, so it counts with its last
 	/// recorded value and with nothing before its first record.
 	public func dailyBalances(accountIDs: Set<UUID>, range: DayRange = .all) -> [BalancePoint] {
+		exactDailyBalances(accountIDs: accountIDs).filter { range.contains($0.day) }.map { BalancePoint(day: $0.day, minorUnits: Int64(clampingSum: $0.balance)) }
+	}
+
+	/// The balance at the end of each day with a transaction or a portfolio record, before it holds at the bounds of
+	/// `Int64`. The balances add up in Int128, so that rows that cancel out give the same balance in every order, and
+	/// a monthly average adds the exact balances of its days.
+	private func exactDailyBalances(accountIDs: Set<UUID>) -> [(day: Day, balance: Int128)] {
 		let portfolios = Set(accountIDs.filter { account($0)?.kind == .portfolio })
 		let others = Dictionary(uniqueKeysWithValues: accountIDs.subtracting(portfolios).compactMap { account($0) }.map { ($0.id, $0) })
-		// The balances add up in Int128 and hold at the bounds of Int64 only in each point, so rows that cancel out
-		// give the same balance in every order.
 		var balance = initialBalance(of: accountIDs)
 		var byDay: [Day: Int128] = [:]
 		for t in transactions {
@@ -91,10 +96,10 @@ extension Ledger {
 				previous = Int128(v.minorUnits)
 			}
 		}
-		var points: [BalancePoint] = []
+		var points: [(day: Day, balance: Int128)] = []
 		for day in byDay.keys.sorted() {
 			balance += byDay[day]!
-			if range.contains(day) { points.append(BalancePoint(day: day, minorUnits: Int64(clampingSum: balance))) }
+			points.append((day, balance))
 		}
 		return points
 	}
@@ -103,32 +108,32 @@ extension Ledger {
 	/// transaction or portfolio record. Days before the first transaction show the initial balance.
 	/// Every day keeps its own bar, as in MoneyMoney: a long history scrolls instead of sharing bars.
 	public func balanceBars(accountIDs: Set<UUID>, range: DayRange = .all, calendar: Calendar = .current) -> [BalanceBar] {
-		let daily = dailyBalances(accountIDs: accountIDs)
+		let daily = exactDailyBalances(accountIDs: accountIDs)
 		guard let first = daily.first?.day else { return [] }
 		let today = Day.today(calendar: calendar)
 		let start = chartStart(range.start ?? first, first: first, accountIDs: accountIDs)
 		return endOfDayBalances(daily, accountIDs: accountIDs, from: start, through: min(range.end ?? today, today), calendar: calendar)
-			.map { BalanceBar(start: $0.day, end: $0.day.adding(days: 1, calendar: calendar), minorUnits: $0.minorUnits) }
+			.map { BalanceBar(start: $0.day, end: $0.day.adding(days: 1, calendar: calendar), minorUnits: Int64(clampingSum: $0.balance)) }
 	}
 
 	/// The mean of the end-of-day balances of each calendar month of the range, never past today.
 	/// "Show All" starts with the month of the oldest transaction or portfolio record. Days before
 	/// the first transaction count with the initial balance, as in `balanceBars`.
 	public func monthlyAverageBalances(accountIDs: Set<UUID>, range: DayRange = .all, calendar: Calendar = .current) -> [BalancePoint] {
-		let daily = dailyBalances(accountIDs: accountIDs)
+		let daily = exactDailyBalances(accountIDs: accountIDs)
 		guard let first = daily.first?.day else { return [] }
 		let today = Day.today(calendar: calendar)
 		let lastDay = range.end.map { $0.firstOfMonth.adding(months: 1, calendar: calendar).adding(days: -1, calendar: calendar) } ?? today
 		let start = chartStart((range.start ?? first).firstOfMonth, first: first, accountIDs: accountIDs)
 		let series = endOfDayBalances(daily, accountIDs: accountIDs, from: start, through: min(lastDay, today), calendar: calendar)
-		// A month adds up in Int128, because the balances of its days can each be near the bound of Int64.
+		// A month adds the exact balances of its days and holds at the bounds of Int64 only in its average.
 		var months: [(day: Day, sum: Int128, days: Int128)] = []
 		for point in series {
 			if months.last?.day != point.day.firstOfMonth { months.append((point.day.firstOfMonth, 0, 0)) }
-			months[months.count - 1].sum += Int128(point.minorUnits)
+			months[months.count - 1].sum += point.balance
 			months[months.count - 1].days += 1
 		}
-		return months.map { BalancePoint(day: $0.day, minorUnits: Int64($0.sum / $0.days)) }
+		return months.map { BalancePoint(day: $0.day, minorUnits: Int64(clampingSum: $0.sum / $0.days)) }
 	}
 
 	/// Portfolios have nothing to show before their first record, so a chart of portfolios alone
@@ -144,17 +149,18 @@ extension Ledger {
 
 	/// The balance at the end of each day from `start` through `end`. Days before the first
 	/// transaction carry the initial balances of the accounts.
-	private func endOfDayBalances(_ daily: [BalancePoint], accountIDs: Set<UUID>, from start: Day, through end: Day, calendar: Calendar) -> [BalancePoint] {
-		var result: [BalancePoint] = []
+	private func endOfDayBalances(_ daily: [(day: Day, balance: Int128)], accountIDs: Set<UUID>, from start: Day, through end: Day,
+		calendar: Calendar) -> [(day: Day, balance: Int128)] {
+		var result: [(day: Day, balance: Int128)] = []
 		var index = 0
-		var current = Int64(clampingSum: initialBalance(of: accountIDs))
+		var current = initialBalance(of: accountIDs)
 		var day = start
 		while day <= end {
 			while index < daily.count, daily[index].day <= day {
-				current = daily[index].minorUnits
+				current = daily[index].balance
 				index += 1
 			}
-			result.append(BalancePoint(day: day, minorUnits: current))
+			result.append((day, current))
 			day = day.adding(days: 1, calendar: calendar)
 		}
 		return result

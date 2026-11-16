@@ -105,6 +105,18 @@ struct AmountOverflowTests {
 		#expect(averages.map(\.minorUnits) == [Int64(Int128(Self.huge) * 30 / 31)])
 	}
 
+	@Test("The monthly average adds the exact balances of the days, also where a balance is beyond the range")
+	func monthlyAverageOfExactBalances() {
+		// 15 days at 100.000.000.000.000.000,00 € and 16 days at 0 average to less than the largest amount.
+		let october = DayRange(start: Day(year: 2026, month: 10, day: 1), end: Day(year: 2026, month: 10, day: 31))
+		let rows = [(1, Self.huge), (1, Self.huge), (16, -Self.huge), (16, -Self.huge)].map { day, amount in
+			Transaction(accountID: Self.giroID, bookingDate: Day(year: 2026, month: 10, day: day), amountMinor: amount, name: "Musterfirma GmbH")
+		}
+		let l = Ledger(groups: [group], accounts: [giro], transactions: rows)
+		let averages = l.monthlyAverageBalances(accountIDs: [giro.id], range: october, calendar: Calendar(identifier: .gregorian))
+		#expect(averages.map(\.minorUnits) == [Int64(Int128(Self.huge) * 2 * 15 / 31)])
+	}
+
 	@Test("The notice of new transactions keeps the sign of a sum beyond the range")
 	func notice() throws {
 		let stored = rows([Self.huge, Self.huge], isNew: true)
