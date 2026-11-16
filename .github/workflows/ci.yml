@@ -23,6 +23,9 @@ jobs:
       - run: python3 scripts/check-docs.py
       - run: python3 scripts/check-ui.py
       - run: scripts/test-forget-bundle.sh
+      # The format of CHANGELOG.md, the only source of the release notes, and the tests of its script.
+      - run: python3 scripts/release-notes.py check
+      - run: python3 scripts/test-release-notes.py
       # The catalog keys of the app are the keys/*.pub of MonetenApp/moneten-extensions.
       - run: scripts/check-catalog-keys.sh
       - run: npm install -g @fission-ai/openspec
