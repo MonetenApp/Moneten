@@ -669,7 +669,7 @@ Booked rows without file identity keep the existing booked-only rule.
 - **AND** a pending tombstone cannot block a booking. A source arriving booked reserves its pending tombstone against unrelated look-alikes.
 
 - **AND** an original file fingerprint does not select a unique occurrence. A fingerprint-only pending-to-booked transition uses the booking ambiguity rule.
-- **AND** booking considers only pending rows on or before the booked day, first prefers agreeing identities, then narrows to the nearest day before preferring a unique fetched pending row. An unresolved tie marks those rows and the delivery for review.
+- **AND** booking considers pending rows on or before the booked day, and a fetched pending row of a later day only when none of those fits, first prefers agreeing identities, then narrows to the nearest day before preferring a unique fetched pending row. An unresolved tie marks those rows and the delivery for review.
 
 #### Scenario: Global nearest choice
 

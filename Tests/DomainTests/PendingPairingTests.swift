@@ -60,6 +60,17 @@ extension ReconcileTests {
 		}
 	}
 
+	@Test("Gate 6: a refresh books the bank's own pending row on an earlier day and keeps its comment")
+	func gate6EarlierBookingOfFetchedPending() {
+		var salary = stored(row(30, 250_000, "Arbeitgeber", "Gehalt", month: 11, pending: true))
+		salary.comment = "my note"
+		let booked = row(28, 250_000, "Arbeitgeber", "Gehalt", month: 11, pending: false)
+		let r = merge(refresh([booked]), stored: [salary], at: noon(28, month: 11))
+		#expect(r.booked.map(\.id) == [salary.id])
+		#expect(r.booked.map(\.comment) == ["my note"])
+		#expect(r.added.isEmpty && r.dropped.isEmpty && r.marked.isEmpty)
+	}
+
 	@Test("Gate 5 seed 1948: a compatible name ranks before an equal IBAN with a conflicting name")
 	func gate5ConflictingNameRank() {
 		var a = stored(rent(1, purpose: "RENT"))

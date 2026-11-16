@@ -680,9 +680,13 @@ struct Bookings {
 		for (x, m) in p.enumerated() { pendingByAmount[m.amount, default: []].append(x) }
 		for (y, m) in b.enumerated() {
 			let sameAmount: [Int] = pendingByAmount[m.amount] ?? []
+			// The bank's own pending row may be booked on an earlier day, such as a salary shown for a Sunday and booked on the
+			// Friday before. A file row only books on or after its own day. Rows on or before the booked day still come first.
 			var fits: [Int] = sameAmount.filter { (i: Int) -> Bool in
-				p[i].fits(m) && p[i].day <= m.day
+				p[i].fits(m) && (pending[i].1.isFetched || p[i].day <= m.day)
 			}
+			let onOrBefore: [Int] = fits.filter { (i: Int) -> Bool in p[i].day <= m.day }
+			if !onOrBefore.isEmpty { fits = onOrBefore }
 			let explicit: [Int] = fits.filter { (i: Int) -> Bool in p[i].identity.sharesIdentity(with: m.identity) }
 			if !explicit.isEmpty { fits = explicit }
 			if let nearest = fits.map({ abs(p[$0].day - m.day) }).min() {
