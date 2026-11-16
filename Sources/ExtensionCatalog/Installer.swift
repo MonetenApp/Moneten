@@ -61,7 +61,7 @@ public struct Installer: Sendable {
 		restore: @escaping @MainActor @Sendable () throws -> Void = {}) async throws(CatalogError) -> InstalledPackage {
 		let manifest: Manifest
 		do { manifest = try entry.manifest.get() } catch { throw .notInstallable(error.message) }
-		guard let version = manifest.version else { throw .notInstallable("The manifest needs version.") }
+		guard let version = manifest.version else { throw .notInstallable(String(localized: "The manifest needs version.")) }
 		let fm = FileManager.default
 		let download = staging.appending(path: UUID().uuidString)
 		defer { try? fm.removeItem(at: download) }

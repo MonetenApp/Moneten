@@ -71,6 +71,9 @@ jobs:
         run: scripts/build-fints-helper.sh
       # Adds the FinTS helper with a jlink runtime to the app.
       - run: scripts/build-app.sh debug
+      - name: German translation
+        # Every text that the build extracts has a German value in App/Resources/Localizable.xcstrings.
+        run: python3 scripts/check-localization.py .build/xcode
       - name: No personal data in the debug log
         run: scripts/check-debug-log.sh
       - name: UI performance

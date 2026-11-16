@@ -241,7 +241,7 @@ struct FilterBar: View {
 			separator
 			// A saved search shows both menus, so selecting it resets no filter.
 			if case .category = model.selection {} else {
-				filterMenu("Category:", title: model.filter.categoryID.map { model.ledger.categoryPath($0) } ?? "Show All") {
+				filterMenu("Category:", title: model.filter.categoryID.map { model.ledger.categoryPath($0) } ?? String(localized: "Show All")) {
 					Button("Show All") { model.filter.categoryID = nil }
 					Divider()
 					ForEach(model.ledger.categoriesInSidebarOrder) { c in Button(model.ledger.categoryPath(c.id)) { model.filter.categoryID = c.id } }
@@ -250,7 +250,7 @@ struct FilterBar: View {
 			if case .search = model.selection { separator }
 			switch model.selection {
 			case .category, .search:
-				filterMenu("Account:", title: model.filter.accountID.flatMap { model.ledger.account($0)?.name } ?? "Show All") {
+				filterMenu("Account:", title: model.filter.accountID.flatMap { model.ledger.account($0)?.name } ?? String(localized: "Show All")) {
 					Button("Show All") { model.filter.accountID = nil }
 					Divider()
 					ForEach(model.ledger.accounts.sorted { $0.name < $1.name }) { a in Button(a.name) { model.filter.accountID = a.id } }
@@ -282,7 +282,7 @@ struct FilterBar: View {
 		Rectangle().fill(Palette.filterSeparator).frame(width: 1, height: 16)
 	}
 
-	private func filterMenu<Content: View>(_ label: String, title: String, @ViewBuilder content: () -> Content) -> some View {
+	private func filterMenu<Content: View>(_ label: LocalizedStringKey, title: String, @ViewBuilder content: () -> Content) -> some View {
 		HStack(spacing: 4) {
 			Text(label).foregroundStyle(Palette.detail).fixedSize()
 			Menu(title, content: content)
@@ -294,10 +294,10 @@ struct FilterBar: View {
 
 	private var periodTitle: String {
 		switch model.period {
-		case .all: "Show All"
-		case .days30: "30 Days"
-		case .days90: "90 Days"
-		case .months12: "12 Months"
+		case .all: String(localized: "Show All")
+		case .days30: String(localized: "30 Days")
+		case .days90: String(localized: "90 Days")
+		case .months12: String(localized: "12 Months")
 		case let .month(d): Format.monthTitle(d)
 		case let .quarter(d): "Q\((d.month - 1) / 3 + 1) \(String(d.year))"
 		case let .year(d): String(d.year)
@@ -307,18 +307,18 @@ struct FilterBar: View {
 
 	private var statusTitle: String {
 		switch model.filter.status {
-		case .all: "Show All"
-		case .checked: "Checked"
-		case .unchecked: "Unchecked"
+		case .all: String(localized: "Show All")
+		case .checked: String(localized: "Checked")
+		case .unchecked: String(localized: "Unchecked")
 		}
 	}
 
 	private var amountTitle: String {
 		switch model.filter.amount {
-		case .all: "Show All"
-		case .deposits: "Deposits"
-		case .withdrawals: "Withdrawals"
-		case .range: "Custom"
+		case .all: String(localized: "Show All")
+		case .deposits: String(localized: "Deposits")
+		case .withdrawals: String(localized: "Withdrawals")
+		case .range: String(localized: "Custom")
 		}
 	}
 }
@@ -649,7 +649,7 @@ struct CategoryRibbon: View {
 						.overlay { RibbonShape().fill(.white.opacity(hovered ? 0.18 : 0)) }
 				} else {
 					// An uncategorized row shows a gray ribbon only under the pointer.
-					ribbon("Category".uppercased(), Color(white: 0.55))
+					ribbon(String(localized: "Category").uppercased(), Color(white: 0.55))
 						.opacity(hovered ? 0.6 : 0)
 				}
 			}
@@ -659,9 +659,9 @@ struct CategoryRibbon: View {
 		.fixedSize()
 		.onHover { hovered = $0 }
 		.animation(.easeOut(duration: 0.15), value: hovered)
-		.help(category.map { ledger.categoryPath($0.id) } ?? "Assign Category")
+		.help(category.map { ledger.categoryPath($0.id) } ?? String(localized: "Assign Category"))
 		// VoiceOver reads the category of the row, also where an uncategorized row shows no ribbon.
-		.accessibilityLabel(category.map { ledger.categoryPath($0.id) } ?? ledger.defaultCategory?.name ?? "Uncategorized")
+		.accessibilityLabel(category.map { ledger.categoryPath($0.id) } ?? ledger.defaultCategory?.name ?? String(localized: "Uncategorized"))
 		.accessibilityHint("Assign Category")
 	}
 }
@@ -861,7 +861,7 @@ struct CategoryChoices: View {
 			menu.addItem(item)
 		}
 		menu.addItem(.separator())
-		menu.addItem(ActionMenuItem(title: "Add category") { model.sheet = .newCategory(isGroup: false, assigning: ids) })
+		menu.addItem(ActionMenuItem(title: String(localized: "Add category")) { model.sheet = .newCategory(isGroup: false, assigning: ids) })
 		menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
 	}
 
@@ -941,11 +941,11 @@ struct TransactionMenu: View {
 	private func confirmDelete(_ ids: Set<UUID>) {
 		guard !model.refusePartDeletion(in: ids) else { return }
 		let alert = NSAlert()
-		alert.messageText = ids.count == 1 ? "Delete selected transaction?" : "Delete \(ids.count) selected transactions?"
-		alert.informativeText = "Deleted transactions CANNOT be restored!"
+		alert.messageText = ids.count == 1 ? String(localized: "Delete selected transaction?") : String(localized: "Delete \(ids.count) selected transactions?")
+		alert.informativeText = String(localized: "Deleted transactions CANNOT be restored!")
 		alert.alertStyle = .warning
-		alert.addButton(withTitle: "Delete")
-		alert.addButton(withTitle: "Cancel")
+		alert.addButton(withTitle: String(localized: "Delete"))
+		alert.addButton(withTitle: String(localized: "Cancel"))
 		if alert.runModal() == .alertFirstButtonReturn { model.delete(transactions: ids) }
 	}
 }

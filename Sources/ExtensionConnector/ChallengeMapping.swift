@@ -35,14 +35,14 @@ struct ChallengeTable: Equatable {
 		case let .bytes(data)?: content = .image(data)
 		case let .string(text)? where text.hasPrefix("https://"): content = URL(string: text).map(Content.url) ?? .text(text)
 		case let .string(text)?: content = .text(text)
-		default: throw MappingError("The challenge is neither text nor an image.")
+		default: throw MappingError(String(localized: "The challenge is neither text nor an image."))
 		}
 		label = fields.text("label")
 		title = fields.text("title")
 		poll = fields["poll"] == .boolean(true)
 		tanMethod = try fields["tanMethod"].map { value throws(MappingError) in try MethodTable(value) }
 		if case let .array(items)? = fields["tanMethods"] {
-			guard !items.isEmpty else { throw MappingError("The challenge lists no TAN method.") }
+			guard !items.isEmpty else { throw MappingError(String(localized: "The challenge lists no TAN method.")) }
 			tanMethods = try items.map { value throws(MappingError) in try MethodTable(value) }
 		} else {
 			tanMethods = nil
@@ -66,10 +66,10 @@ struct MethodTable: Equatable {
 	static let maxLength = 64
 
 	init(_ value: LuaValue) throws(MappingError) {
-		guard case let .object(fields) = value, let name = fields.text("name") else { throw MappingError("A TAN method has no name.") }
+		guard case let .object(fields) = value, let name = fields.text("name") else { throw MappingError(String(localized: "A TAN method has no name.")) }
 		self.fields = fields
 		self.name = name
-		let invalid = MappingError("The TAN method \(name) has a length that is not valid.")
+		let invalid = MappingError(String(localized: "The TAN method \(name) has a length that is not valid."))
 		func number(_ key: String) throws(MappingError) -> Int? {
 			guard let value = fields[key] else { return nil }
 			guard let number = value.int, (1...Self.maxLength).contains(number) else { throw invalid }
@@ -162,7 +162,7 @@ struct ChallengeMapping {
 		case let .url(url) where table.appToApp != nil || table.tanMethod?.name == qrCodeName:
 			let image = Self.qrCode(url.absoluteString).map(ChallengeImage.init)
 			let app = table.appToApp
-			let notice = table.title ?? app.map { "Scan the QR code with the camera of your phone to open “\($0)” and approve there." } ?? text
+			let notice = table.title ?? app.map { String(localized: "Scan the QR code with the camera of your phone to open “\($0)” and approve there.") } ?? text
 			if table.label == nil {
 				return .poll(request(.approveInApp(prompt: notice, app: app, image: image, step: nil), table))
 			}
@@ -171,7 +171,7 @@ struct ChallengeMapping {
 			let host = url.host()?.lowercased()
 			guard let host, hosts.contains(host) else {
 				if asksForHosts, let host, !deniedHosts.contains(host), url.scheme == "https", url.port == nil, HostName(exactly: host) != nil { return .allowHost(host) }
-				throw MappingError("The login page \(url.host() ?? url.absoluteString) is not a host that the extension may contact.")
+				throw MappingError(String(localized: "The login page \(url.host() ?? url.absoluteString) is not a host that the extension may contact."))
 			}
 			return .answer(request(.openBrowser(browserApproval(url, state: table.state)), table), stepIncrement: increment)
 		case let .image(data):
@@ -193,7 +193,7 @@ struct ChallengeMapping {
 			return TANField(label: table.label ?? field.label, length: field.length, isNumeric: field.isNumeric, isUppercase: field.isUppercase)
 		} ?? TANField(label: table.label ?? "TAN")
 		return SecondFactorRequest(purpose: purpose, system: .website, challenge: challenge, validity: validity, field: field,
-			confirmTitle: table.button?.lowercased() == "next" ? "Next" : "Continue")
+			confirmTitle: table.button?.lowercased() == "next" ? String(localized: "Next") : String(localized: "Continue"))
 	}
 
 	/// The instruction text: the title and the text of the challenge without HTML tags, the app's own
@@ -207,10 +207,10 @@ struct ChallengeMapping {
 		case .none, .image: break
 		}
 		if table.title == nil, let method = table.tanMethod?.name, Self.appMethods.contains(method) {
-			parts.insert("Open the app for “\(method)” on your phone and approve the request there.", at: 0)
+			parts.insert(String(localized: "Open the app for “\(method)” on your phone and approve the request there."), at: 0)
 		}
 		if let startCode = table.startCode {
-			parts.append("Start code: \(startCode)")
+			parts.append(String(localized: "Start code: \(startCode)"))
 		}
 		return parts.filter { !$0.isEmpty }.joined(separator: "\n")
 	}
@@ -246,7 +246,7 @@ struct ChallengeMapping {
 		}
 		if let page {
 			guard page.scheme == "https", let pageHost = page.host()?.lowercased(), hosts.contains(pageHost) else {
-				throw MappingError("The captcha page \(page.host() ?? page.absoluteString) is not a host that the extension may contact.")
+				throw MappingError(String(localized: "The captcha page \(page.host() ?? page.absoluteString) is not a host that the extension may contact."))
 			}
 		}
 		return CaptchaRequest(provider: provider, script: url, siteKey: siteKey, page: page, isCheckbox: value("type") == "checkbox")

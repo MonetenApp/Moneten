@@ -1,6 +1,6 @@
 #!/bin/sh
 # Runs every repository check: documentation links and paths, the window chrome rule, the changelog, OpenSpec,
-# unused code, the tests, and the replays of the example extension and of three published extensions.
+# unused code, the German translation, the tests, and the replays of the example extension and of three published extensions.
 set -e
 cd "$(dirname "$0")/.."
 python3 scripts/check-docs.py
@@ -11,11 +11,13 @@ openspec validate --all --strict --no-interactive
 scripts/generate-project.sh
 # Periphery's own build folder is named after the project, not the checkout, so all worktrees would
 # share one index store and report each other's unused code. The schemes are those of .periphery.yml.
+# SWIFT_EMIT_LOC_STRINGS makes the compiler write the texts of the app and the libraries for check-localization.py.
 for scheme in Moneten ext; do
 	log=$(xcodebuild -project App/Moneten.xcodeproj -scheme "$scheme" -derivedDataPath .build/periphery -parallelizeTargets -quiet build-for-testing \
-		CODE_SIGNING_ALLOWED=NO DEBUG_INFORMATION_FORMAT=dwarf COMPILER_INDEX_STORE_ENABLE=YES INDEX_ENABLE_DATA_STORE=YES 2>&1) || { printf '%s\n' "$log"; exit 1; }
+		CODE_SIGNING_ALLOWED=NO DEBUG_INFORMATION_FORMAT=dwarf COMPILER_INDEX_STORE_ENABLE=YES INDEX_ENABLE_DATA_STORE=YES SWIFT_EMIT_LOC_STRINGS=YES 2>&1) || { printf '%s\n' "$log"; exit 1; }
 done
 periphery scan --skip-build --index-store-path .build/periphery/Index.noindex/DataStore
+python3 scripts/check-localization.py .build/periphery
 scripts/test.sh
 python3 scripts/test-symbolicate-crash.py
 scripts/test-forget-bundle.sh
