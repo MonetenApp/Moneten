@@ -92,6 +92,7 @@ extension AppModel {
 		case let .account(id): ledger.account(id)?.name ?? "Transactions"
 		case let .group(id): ledger.groups.first { $0.id == id }?.name ?? "Transactions"
 		case let .category(id): ledger.category(id)?.name ?? "Transactions"
+		case let .search(id): savedSearches.first { $0.id == id }?.name ?? "Transactions"
 		case nil: "Transactions"
 		}
 	}
