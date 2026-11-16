@@ -92,7 +92,8 @@ extension AppModel {
 		case .account: "Remove Account..."
 		case .group: "Remove Account Group..."
 		case let .category(id): ledger.category(id)?.isDefault == false ? "Remove Category..." : nil
-		case nil: nil
+		// A saved search has "Remove" in its own context menu.
+		case .search, nil: nil
 		}
 	}
 
@@ -116,6 +117,8 @@ extension AppModel {
 			guard let c = ledger.category(id), !c.isDefault else { return false }
 			question.messageText = "Are you sure you want to remove the category \(c.name)?"
 			question.informativeText = "The transactions will be retained and become uncategorized."
+		case .search:
+			return false
 		}
 		question.addButton(withTitle: "Remove").hasDestructiveAction = true
 		question.addButton(withTitle: "Cancel")
@@ -125,6 +128,7 @@ extension AppModel {
 			case let .account(id): await remove(account: id)
 			case let .group(id): await remove(group: id)
 			case let .category(id): await remove(category: id)
+			case .search: break
 			}
 		}
 		return true
