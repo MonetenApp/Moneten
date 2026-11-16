@@ -110,7 +110,7 @@ extension Ledger {
 	/// on that day: the row at the top of the day, because the list shows the newest first. A day counts all rows
 	/// of the account, also those that a search or a filter hides.
 	public func dayEndBalances(of account: Account, rows: [Transaction]) -> [UUID: Money] {
-		let byDay = Dictionary(uniqueKeysWithValues: dailyBalances(accountIDs: [account.id]).map { ($0.day, $0.minorUnits) })
+		let byDay = Dictionary(uniqueKeysWithValues: dailyBalances(accountIDs: [account.id]).map { ($0.day, Int64(clampingSum: $0.balance)) })
 		var seen = Set<Day>()
 		var result: [UUID: Money] = [:]
 		for t in rows where t.accountID == account.id && seen.insert(t.bookingDate).inserted {
