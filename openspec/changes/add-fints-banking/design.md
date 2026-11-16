@@ -76,7 +76,7 @@ An automatic refresh opens no dialog ("An automatic refresh never asks the user"
 
 ### Signing
 
-`scripts/build-app.sh` builds a runtime with jlink, puts the helper into `Contents/Resources/FinTSHelper`, and signs every Mach-O file of it with the identity of the app. Only the java of the helper gets the JIT entitlement. The build fails when a file cannot be signed or is not signed like the app. A Developer ID build leaves the helper out until task 3.2, see the risks.
+`scripts/build-app.sh` builds a runtime with jlink, puts the helper into `Contents/Resources/FinTSHelper`, and signs every Mach-O file of it with the identity of the app. Only the java of the helper gets the JIT entitlement. The java also runs in the app sandbox with the network client entitlement, and sits at the top of the helper folder, because the sandbox lets it read only that folder ([ADR 0018](../../../docs/decisions/0018-sandbox-the-fints-helper.md)). The build fails when the java has other entitlements or cannot fetch the bank directory in its sandbox. The build fails when a file cannot be signed or is not signed like the app. A Developer ID build leaves the helper out until task 3.2, see the risks.
 
 ## Risks / Trade-offs
 

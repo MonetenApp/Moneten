@@ -27,7 +27,8 @@ BUILD="$(git rev-list --count HEAD 2>/dev/null || echo 1)"
 # takes every file in Contents/Helpers for code, and the Java runtime needs its data files next to
 # its libraries. The helper gets the hardened
 # runtime when the app has it: an ad hoc signature has no team, and library validation would refuse
-# the libraries of the Java runtime. Only the helper gets allow-jit.
+# the libraries of the Java runtime. Only the helper gets allow-jit. Its java runs in the app sandbox
+# with the signing identifier <app>.FinTSHelper, which names its container (ADR 0018).
 embed_fints_helper() {
 	HELPER="$1/Contents/Resources/FinTSHelper"
 	scripts/build-fints-helper.sh --bundle "$HELPER" >/dev/null
@@ -44,13 +45,14 @@ embed_fints_helper() {
 	# A file list instead of a pipe, so that a failed signature stops the build. codesign needs the
 	# private key of the identity in the Keychain; a certificate that only Xcode manages fails here.
 	CODE=$(mktemp)
-	find "$HELPER/runtime" -type f ! -path '*/bin/java' > "$CODE.all"
+	find "$HELPER/runtime" -type f > "$CODE.all"
 	while read -r f; do file -b "$f" | grep -q Mach-O && echo "$f"; done < "$CODE.all" > "$CODE"
 	rm "$CODE.all"
 	while read -r f; do
 		codesign --force $RUNTIME $TIMESTAMP --sign "$IDENTITY" "$f" || { echo "Could not sign $f of the FinTS helper." >&2; exit 1; }
 	done < "$CODE"
-	codesign --force $RUNTIME $TIMESTAMP --entitlements App/FinTSHelper.entitlements --sign "$IDENTITY" "$HELPER/runtime/bin/java" \
+	codesign --force $RUNTIME $TIMESTAMP --entitlements App/FinTSHelper.entitlements \
+		--identifier "$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$1/Contents/Info.plist").FinTSHelper" --sign "$IDENTITY" "$HELPER/java" \
 		|| { echo "Could not sign the java of the FinTS helper." >&2; exit 1; }
 	# The product ID goes through a pipe, never through an argument, a variable, or a log.
 	security find-generic-password -s 'Moneten FinTS product ID' -w 2>/dev/null | python3 -c '
@@ -66,7 +68,7 @@ else:
 	codesign --force --preserve-metadata=identifier,entitlements,requirements,flags,runtime $TIMESTAMP --sign "$IDENTITY" "$1" || { echo "Could not sign the app again after adding the FinTS helper." >&2; exit 1; }
 	signer() { codesign -dvv "$1" 2>&1 | grep -E '^(Authority|Signature|TeamIdentifier)='; }
 	APP_SIGNER=$(signer "$1")
-	echo "$HELPER/runtime/bin/java" >> "$CODE"
+	echo "$HELPER/java" >> "$CODE"
 	while read -r f; do
 		[ "$(signer "$f")" = "$APP_SIGNER" ] || { echo "$f of the FinTS helper is not signed like the app." >&2; exit 1; }
 	done < "$CODE"
@@ -86,6 +88,24 @@ if entitlements != {"com.apple.security.app-sandbox": True, "com.apple.security.
 ' || exit 1
 	signer() { codesign -dvv "$1" 2>&1 | grep -E '^(Authority|Signature|TeamIdentifier)='; }
 	[ "$(signer "$HOST")" = "$(signer "$1")" ] || { echo "The extension host is not signed like the app." >&2; exit 1; }
+}
+
+# The java of the FinTS helper holds the PIN and parses the answers of the bank (ADR 0018). This check
+# stops a build whose java could do more than reach the network, and fetches the bank directory in the
+# sandbox, so that a file the sandbox hides from the helper fails the build and not a refresh.
+check_fints_helper() {
+	# Absolute, as the app passes it: the sandbox hides the working folder, so a relative class path fails.
+	HELPER="$(cd "$1/Contents/Resources/FinTSHelper" && pwd)"
+	JAVA="$HELPER/java"
+	codesign -d --entitlements - --xml "$JAVA" 2>/dev/null | python3 -c '
+import plistlib, sys
+entitlements = plistlib.loads(sys.stdin.buffer.read())
+if entitlements != {"com.apple.security.app-sandbox": True, "com.apple.security.network.client": True, "com.apple.security.cs.allow-jit": True}:
+	sys.exit("The java of the FinTS helper has the entitlements %s instead of the app sandbox, the network client, and JIT." % sorted(entitlements))
+' || exit 1
+	printf '{"type":"banks"}\n' | env -i "$JAVA" -Djava.awt.headless=true -XX:ErrorFile=/dev/null -XX:+DisableAttachMechanism -Xrs \
+		-cp "$HELPER/lib/*" FinTSHelper 2>/dev/null | grep -q '^{"type":"banks"' \
+		|| { echo "The FinTS helper does not start in its sandbox." >&2; exit 1; }
 }
 
 scripts/generate-project.sh
@@ -117,6 +137,7 @@ cp -R "$PRODUCT" dist/
 # the helper, a Developer ID build leaves it out. The app does not use FinTS yet.
 if [ -z "$ARCHIVE" ]; then
 	embed_fints_helper dist/Moneten.app
+	check_fints_helper dist/Moneten.app
 else
 	echo "The Developer ID build leaves out the FinTS helper until task 3.2 of add-fints-banking." >&2
 fi
