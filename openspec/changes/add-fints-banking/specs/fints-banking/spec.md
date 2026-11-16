@@ -214,6 +214,21 @@ The app SHALL request the next part when a bank delivers a transaction list in s
 - **WHEN** the fetch ends
 - **THEN** the account has all 1,400 transactions
 
+### Requirement: Amount limit of a bank answer
+
+The app SHALL fail an account when the bank sends a balance, a value, or a transaction, or a position whose quantity times its price gives an amount, of more than 1,000,000,000,000,000 in the smallest unit of its currency, which is 10.000.000.000.000,00 € for the euro. The app stores nothing of that account from this refresh, and the other accounts of the login refresh as usual.
+
+#### Scenario: Absurd balance
+
+- **WHEN** the bank sends a balance of 50.000.000.000.000.000,00 € for the account "Giro"
+- **THEN** the account "Giro" shows that the bank sent an amount that is too large
+- **AND** the account "Tagesgeld" of the same login shows its new balance
+
+#### Scenario: Absurd position
+
+- **WHEN** the bank sends a position of 10.000.000.000 units at a price of 10.000.000.000,00 € without a market value for the portfolio "Depot"
+- **THEN** the portfolio "Depot" shows that the bank sent an amount that is too large
+
 ### Requirement: Mark pending transactions
 
 The app SHALL take over the transactions that a bank reports as not yet booked and mark each of them as pending.
@@ -299,6 +314,72 @@ The app SHALL list a credit card as an account of the type "Credit card" when th
 - **WHEN** the user adds the card in the account selection
 - **THEN** the card appears as its own account with its transactions
 
+### Requirement: Fetch a credit card through its card statement
+
+The app SHALL fetch the transactions and the balance of a credit card from its card statement when the bank allows the card statement for the card and no transaction list.
+
+#### Scenario: Card with only the card statement
+
+- **GIVEN** the bank allows only the card statement for the credit card "Visa" with the card number 1234567890123456
+- **AND** the card statement reports the debit 19,90 with the mark "D", booked on 09.11.2026 with the value date 08.11.2026, for "Streaming Beispiel" in "Musterstadt"
+- **WHEN** the user refreshes "Visa" from 01.10.2026
+- **THEN** the app asks the bank for the card statement of the card number 1234567890123456 from 01.10.2026
+- **AND** the list shows -19,90 € with the name "Streaming Beispiel" and the purpose "Streaming Beispiel / Musterstadt", booked on 09.11.2026 with the value date 08.11.2026
+
+#### Scenario: Card with the balance and the card statement
+
+- **GIVEN** the bank allows the balance and the card statement for "Visa", and no transaction list
+- **WHEN** the user refreshes "Visa"
+- **THEN** the app fetches the card statement, which brings the balance and the transactions of "Visa"
+- **AND** the account view does not say that the bank provides no transactions for this account
+
+#### Scenario: Sign of a credit
+
+- **WHEN** the card statement reports the amount 25,00 with the mark "C"
+- **THEN** the list shows +25,00 €
+
+#### Scenario: Balance of the card
+
+- **WHEN** the card statement reports the balance 1.234,56 with the mark "D" on 12.11.2026
+- **THEN** "Visa" shows the balance -1.234,56 € on 12.11.2026, the amount that the user owes on the card
+
+#### Scenario: Balance in two parts of the answer
+
+- **WHEN** the first part of the card statement reports the balance -80,10 € and the second part -95,00 €
+- **THEN** "Visa" shows the balance -80,10 €
+
+#### Scenario: Repeated fetch
+
+- **GIVEN** "Visa" has the payment of -19,90 € from 09.11.2026 from the last refresh
+- **WHEN** the next refresh brings the same payment again
+- **THEN** the list shows the payment once
+
+#### Scenario: Payment that is not final
+
+- **GIVEN** the card statement reports a hotel reservation of -150,00 € as not final
+- **WHEN** the refresh ends
+- **THEN** the list shows the reservation as a pending transaction
+- **AND** when a later refresh no longer reports the reservation, the list no longer shows it
+
+#### Scenario: Reservation that gets booked
+
+- **GIVEN** "Visa" shows the pending reservation of -150,00 € for "Hotel Beispiel" from 10.11.2026, with the comment "Trip", the category "Travel", and a checkmark
+- **WHEN** the next refresh reports the same payment as final, booked on 12.11.2026
+- **THEN** the list shows one transaction of -150,00 € for "Hotel Beispiel", booked on 12.11.2026 and no longer pending
+- **AND** the transaction keeps the comment "Trip", the category "Travel", and the checkmark
+
+#### Scenario: Original amount with three decimals
+
+- **WHEN** the card statement reports a payment of -3,69 € with the original amount 1,234 Kuwaiti dinar
+- **THEN** the list shows the payment with -3,69 €
+
+#### Scenario: A row that does not read
+
+- **GIVEN** the login "erika77" has the giro account "Giro" and the credit card "Visa"
+- **WHEN** the card statement of "Visa" has a row without an amount
+- **THEN** "Visa" fails with "The bank sent a card transaction that does not read, so nothing of this card was stored." and keeps its transactions
+- **AND** "Giro" gets its balance and its transactions
+
 ### Requirement: Read the value of a securities account
 
 The app SHALL fetch the value of a securities account through the custody account balance (HKWPD) in place of its balance and transactions when the bank allows it, and store it with the date of the statement as the value of the portfolio on that day. The value sums the totals of all pages of the statement, or the values and accrued interest of the holdings of a page without a total. When the app cannot read a value, the account says why.
@@ -353,6 +434,18 @@ The app SHALL fetch the value of a securities account through the custody accoun
 - **GIVEN** a login at Consorsbank, whose bank parameters say that no order needs a TAN
 - **WHEN** the app refreshes a giro account and a securities account of the login
 - **THEN** the balance and the transactions go with HKTAN, and the custody account balance goes without HKTAN
+
+#### Scenario: DAB BNP Paribas on the server of Consorsbank
+
+- **GIVEN** a login at DAB BNP Paribas, whose FinTS server is brokerage-hbci.consorsbank.de
+- **WHEN** the app refreshes a giro account and a securities account of the login
+- **THEN** the balance and the transactions go with HKTAN, and the custody account balance goes without HKTAN
+
+#### Scenario: Another server with a similar name
+
+- **GIVEN** a login whose FinTS server is brokerage-hbci-other.consorsbank.de or brokerage-hbci.other.consorsbank.de
+- **WHEN** the app refreshes a giro account and a securities account of the login
+- **THEN** every order goes with or without HKTAN as the bank parameters say
 
 ### Requirement: Recognize a securities account by its jobs
 

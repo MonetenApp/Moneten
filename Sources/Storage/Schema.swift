@@ -373,9 +373,18 @@ enum Schema {
 				t.column("filterBar", .blob).notNull()
 			}
 		}
+		// The lock settings (add-app-lock): one row in the encrypted database, so a program that writes the settings
+		// file of the app cannot weaken the lock. Without the row the defaults apply. It is registered after v25.
+		m.registerMigration("v22") { db in
+			try db.create(table: "lockSetting") { t in
+				t.column("id", .integer).primaryKey().check { $0 == 1 }
+				t.column("lockOnClose", .boolean).notNull()
+				t.column("lockAfterMinutes", .integer).notNull()
+			}
+		}
 		// The balances in other currencies and the bonus points that a source reports with the balance of an account
 		// (add-account-management, task 1.10). An existing account has neither until its next refresh.
-		// It is registered after v25.
+		// It is registered after v22.
 		m.registerMigration("v26") { db in
 			try db.alter(table: "account") { t in
 				t.add(column: "otherBankBalances", .text).notNull().defaults(to: "[]")

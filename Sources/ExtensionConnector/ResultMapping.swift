@@ -130,7 +130,8 @@ enum ResultMapping {
 			guard let securities = fields["securities"].flatMap(\.sequence) else {
 				throw MappingError(String(localized: "The securities could not be fetched."))
 			}
-			var total = Money(minorUnits: 0, currency: account.currency)
+			// The values add up exactly, and only their total must fit, so their order does not matter.
+			var total: Int128 = 0
 			var holdings: [Holding] = []
 			var notices: [String] = []
 			for (index, security) in securities.enumerated() {
@@ -138,6 +139,11 @@ enum ResultMapping {
 				holdings.append(holding)
 				guard let value = holding.exactValue(in: account.currency) else { continue }
 				let money = try money(value.amount, value.currency, String(localized: "The value of security \(index + 1)"))
+				// The value and the purchase value each fit, but their difference can still be beyond the limit.
+				guard holding.amountsFit(in: account.currency) else {
+					let what = String(localized: "The value of security \(index + 1) at its purchase price")
+					throw MappingError(String(localized: "\(what) is out of range."))
+				}
 				// A position priced in another currency without a rate shows its value in that currency, as a script
 				// that leaves out `amount` for such a price expects. The balance leaves it out, and a notice says so.
 				// The account still refreshed, because its balance and its other positions arrived.
@@ -145,11 +151,10 @@ enum ResultMapping {
 					notices.append(String(localized: "The balance leaves out \(holding.security.name), because its price is in \(money.currency) and the extension gives no exchange rate."))
 					continue
 				}
-				let (sum, overflow) = total.minorUnits.addingReportingOverflow(money.minorUnits)
-				guard !overflow, abs(sum) <= maxMinorUnits else { throw MappingError(String(localized: "The securities add up to more than Moneten can hold.")) }
-				total.minorUnits = sum
+				total += Int128(money.minorUnits)
 			}
-			return (RefreshResult(balance: total, transactions: nil, isPortfolio: true, holdings: holdings), notices)
+			guard let minor = Int64(limitedAmount: total) else { throw MappingError(String(localized: "The securities add up to more than Moneten can hold.")) }
+			return (RefreshResult(balance: Money(minorUnits: minor, currency: account.currency), transactions: nil, isPortfolio: true, holdings: holdings), notices)
 		}
 		guard let (balance, otherBalances) = try self.balances(fields, currency: account.currency) else {
 			throw MappingError(String(localized: "The balance could not be fetched."))
@@ -162,15 +167,10 @@ enum ResultMapping {
 			bonusPoints: try bonusPoints(fields["bonusPoints"])), [])
 	}
 
-	/// The largest amount in minor units that the app takes from a script: 10 trillion euros. Sums of
-	/// many such amounts still fit an `Int64`.
-	static let maxMinorUnits: Int64 = 1_000_000_000_000_000
-
-	/// An amount in the minor units of `currency`, or an error that names `what` when it is out of range.
+	/// An amount in the minor units of `currency`, or an error that names `what` when it is above `Money.maxMinorUnits`.
 	private static func money(_ decimal: Decimal, _ currency: String, _ what: String) throws(MappingError) -> Money {
-		let limit = Money(minorUnits: maxMinorUnits, currency: currency).decimal
-		guard decimal.isFinite, decimal <= limit, decimal >= -limit else { throw MappingError(String(localized: "\(what) is out of range.")) }
-		return Money(decimal, currency: currency)
+		guard let money = Money(fitting: decimal, currency: currency) else { throw MappingError(String(localized: "\(what) is out of range.")) }
+		return money
 	}
 
 	/// One security table as a position. `amount` is the value in the account currency. Without it the value is
@@ -239,19 +239,22 @@ enum ResultMapping {
 			guard let decimal = amount.decimal else { throw MappingError(String(localized: "The balance is not a number.")) }
 			return (try money(decimal, currency, String(localized: "The balance")), [])
 		}
-		var sums: [Money] = [Money(minorUnits: 0, currency: currency)]
+		// The sums add up exactly, and only the sum of each currency has to be within the limit, as with the securities.
+		var sums: [(currency: String, total: Int128)] = [(currency, 0)]
 		for pair in pairs {
 			guard case let .array(parts) = pair, parts.count == 2, let decimal = parts[0].decimal, case let .string(text) = parts[1],
 				let code = currencyCode(text) else {
 				throw MappingError(String(localized: "An entry of balances is not a pair of amount and currency."))
 			}
 			let value = try money(decimal, code, String(localized: "The balance in \(code)"))
-			let index = sums.firstIndex { $0.currency == value.currency } ?? { sums.append(Money(minorUnits: 0, currency: value.currency)); return sums.count - 1 }()
-			let (sum, overflow) = sums[index].minorUnits.addingReportingOverflow(value.minorUnits)
-			guard !overflow, abs(sum) <= maxMinorUnits else { throw MappingError(String(localized: "The balances add up to more than Moneten can hold.")) }
-			sums[index].minorUnits = sum
+			let index = sums.firstIndex { $0.currency == value.currency } ?? { sums.append((value.currency, 0)); return sums.count - 1 }()
+			sums[index].total += Int128(value.minorUnits)
 		}
-		return (sums[0], sums.dropFirst().filter { $0.minorUnits != 0 })
+		let balances = try sums.map { sum throws(MappingError) in
+			guard let minor = Int64(limitedAmount: sum.total) else { throw MappingError(String(localized: "The balances add up to more than Moneten can hold.")) }
+			return Money(minorUnits: minor, currency: sum.currency)
+		}
+		return (balances[0], balances.dropFirst().filter { $0.minorUnits != 0 })
 	}
 
 	/// An ISO 4217 code, three letters A to Z after trimming and uppercasing, or nil. A code such as "US$" would reach the

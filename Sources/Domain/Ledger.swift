@@ -237,6 +237,37 @@ public struct Ledger: Sendable {
 		return ids
 	}
 
+	/// The accounts whose rows the account filter shows: the account, or the accounts of the group tree, as the
+	/// sum of the group in the sidebar counts them.
+	public func accountIDs(of filter: TransactionFilter.AccountFilter) -> Set<UUID> {
+		switch filter {
+		case let .account(id): [id]
+		case let .group(id): accountIDs(inGroupTree: id)
+		}
+	}
+
+	/// The name of the account or the account group that the "Account" menu shows, or nil when the ledger no longer has it.
+	public func name(of filter: TransactionFilter.AccountFilter) -> String? {
+		switch filter {
+		case let .account(id): account(id)?.name
+		case let .group(id): group(id)?.name
+		}
+	}
+
+	/// The groups and accounts of the "Account" menu of the filter bar, in the order of the sidebar, each with
+	/// the number of groups above it, so the menu indents the rows of a group as the sidebar does.
+	public var accountTreeInSidebarOrder: [(item: AccountTreeItem, depth: Int)] {
+		var result: [(item: AccountTreeItem, depth: Int)] = []
+		func walk(_ parent: UUID?, depth: Int) {
+			for item in accountTree(in: parent) {
+				result.append((item, depth))
+				if case let .group(g) = item { walk(g.id, depth: depth + 1) }
+			}
+		}
+		walk(nil, depth: 0)
+		return result
+	}
+
 	public func childCategories(of parent: UUID?) -> [Category] {
 		categories.filter { $0.parentID == parent && !$0.isDefault }.sorted { $0.position < $1.position }
 	}
@@ -382,12 +413,17 @@ public struct Ledger: Sendable {
 
 	/// The initial balance plus the transactions in the currency of the account that a balance counts.
 	public func computedBalance(of account: Account, through day: Day? = nil) -> Money {
-		var sum = account.initialBalanceMinor
+		Money(minorUnits: Int64(clampingSum: exactBalance(of: account, through: day)), currency: account.currency)
+	}
+
+	/// The computed balance before it holds at the bounds of `Int64`, so that a calibration adds up exactly.
+	private func exactBalance(of account: Account, through day: Day?) -> Int128 {
+		var sum = Int128(account.initialBalanceMinor)
 		for t in transactions where t.accountID == account.id && account.isInBalance(t) {
 			if let day, t.bookingDate > day { continue }
-			sum += t.amountMinor
+			sum += Int128(t.amountMinor)
 		}
-		return Money(minorUnits: sum, currency: account.currency)
+		return sum
 	}
 
 	/// The calibration that an account of a bank access needs when its booked rows up to the day of the bank
@@ -402,23 +438,31 @@ public struct Ledger: Sendable {
 		// frame with 50,000 rows.
 		guard account.source == .bank, account.kind != .portfolio, account.initialBalanceIsSet, account.refreshError == nil,
 			!refresh.mayLackRows(of: account.id),
-			let meeting = account.initialBalanceMeetingBankBalance(of: transactions.lazy.filter { $0.accountID == account.id }, calendar: calendar),
-			meeting != account.initialBalanceMinor else { return nil }
-		let difference = meeting - account.initialBalanceMinor
-		return CalibrationProposal(difference: Money(minorUnits: difference, currency: account.currency),
-			balanceToday: Money(minorUnits: computedBalance(of: account, through: today).minorUnits + difference, currency: account.currency))
+			let meeting = account.exactInitialBalanceMeetingBankBalance(of: transactions.lazy.filter { $0.accountID == account.id }, calendar: calendar),
+			meeting != Int128(account.initialBalanceMinor) else { return nil }
+		let difference = meeting - Int128(account.initialBalanceMinor)
+		return CalibrationProposal(difference: Money(minorUnits: Int64(clampingSum: difference), currency: account.currency),
+			balanceToday: Money(minorUnits: Int64(clampingSum: exactBalance(of: account, through: today) + difference), currency: account.currency))
 	}
 
 	/// The initial balance at which the computed balance at the end of `today` is `balanceToday`. Every computed
 	/// balance moves by the same difference.
-	public func calibratedInitialBalance(of account: Account, balanceToday: Int64, today: Day) -> Int64 {
-		account.initialBalanceMinor + balanceToday - computedBalance(of: account, through: today).minorUnits
+	/// Nil when it would be above `Money.maxMinorUnits`, because a stored value is never clamped.
+	public func calibratedInitialBalance(of account: Account, balanceToday: Int64, today: Day) -> Int64? {
+		Int64(limitedAmount: Int128(account.initialBalanceMinor) + Int128(balanceToday) - exactBalance(of: account, through: today))
 	}
 
 	public func sum(ofGroup group: UUID) -> MoneySums {
 		var sums = MoneySums()
 		for id in accountIDs(inGroupTree: group) {
-			if let a = account(id), !a.isClosed { balances(of: a).forEach { sums.add($0) } }
+			// The exact balance, so that balances beyond the bounds of Int64 cancel out across the accounts.
+			guard let a = account(id), !a.isClosed else { continue }
+			let reported = a.reportedBalances
+			if reported.isEmpty {
+				sums.add(exact: exactBalance(of: a, through: nil), currency: a.currency)
+			} else {
+				reported.forEach { sums.add($0) }
+			}
 		}
 		return sums
 	}
@@ -444,13 +488,13 @@ public struct Ledger: Sendable {
 			}
 			chains.append(first..<targets.count)
 		}
-		var sums = [Int64](repeating: 0, count: categories.count)
+		var sums = [Int128](repeating: 0, count: categories.count)
 		let defaultID = defaultCategory?.id
 		func add(_ t: Transaction) {
 			guard let id = t.categoryID ?? defaultID, let i = index.position(of: id) else { return }
 			let day = t.bookingDate.rawValue
 			for target in targets[chains[i]] where target.from <= day && day <= target.through && t.isInSum(of: target.currency) {
-				sums[target.category] += t.amountMinor
+				sums[target.category] += Int128(t.amountMinor)
 			}
 		}
 		for t in transactions {
@@ -458,7 +502,7 @@ public struct Ledger: Sendable {
 		}
 		var amounts: [UUID: Money] = [:]
 		for (i, c) in categories.enumerated() where sums[i] != 0 {
-			amounts[c.id] = Money(minorUnits: sums[i], currency: c.currency)
+			amounts[c.id] = Money(minorUnits: Int64(clampingSum: sums[i]), currency: c.currency)
 		}
 		return amounts
 	}
@@ -495,6 +539,7 @@ public struct Ledger: Sendable {
 		let accountsByID = query.readsFields ? Dictionary(uniqueKeysWithValues: accounts.map { ($0.id, $0) }) : [:]
 		let names = query.readsFields ? categoryNames : [:]
 		let categoryFilter = filter.categoryID.map { categoryIDs(inTree: $0) }
+		let accountFilter = filter.account.map(accountIDs(of:))
 		let defaultID = defaultCategory?.id ?? UUID()
 		var amountBounds: [Int: MinorBounds] = [:]
 		func matches(_ t: Transaction) -> Bool {
@@ -515,7 +560,7 @@ public struct Ledger: Sendable {
 				if t.amountMinor < bounds.min || t.amountMinor > bounds.max { return false }
 			}
 			if let categoryFilter, !categoryFilter.contains(t.categoryID ?? defaultID) { return false }
-			if let a = filter.accountID, t.accountID != a { return false }
+			if let accountFilter, !accountFilter.contains(t.accountID) { return false }
 			if query.isEmpty { return true }
 			return query.matches(t, searchText: searchText[t.id] ?? "", account: { accountsByID[t.accountID] }, categoryName: { names[t.categoryID] })
 		}
@@ -761,17 +806,24 @@ public struct TransactionFilter: Hashable, Sendable {
 		}
 	}
 
+	/// An entry of the "Account" menu: one account, or an account group with the accounts of its subgroups.
+	public enum AccountFilter: Hashable, Sendable {
+		case account(UUID)
+		case group(UUID)
+	}
+
 	public var searchText = ""
 	public var period = DayRange.all
 	public var status = Status.all
 	public var amount = AmountFilter.all
 	public var categoryID: UUID?
-	public var accountID: UUID?
+	/// Nil for "Show All".
+	public var account: AccountFilter?
 
 	public init() {}
 
 	public var isActive: Bool {
-		period != .all || status != .all || amount != .all || categoryID != nil || accountID != nil
+		period != .all || status != .all || amount != .all || categoryID != nil || account != nil
 	}
 
 	/// Sets the filter that the filter bar of `scope` has no menu for to "Show All": the account filter in an
@@ -780,16 +832,20 @@ public struct TransactionFilter: Hashable, Sendable {
 	public mutating func resetHidden(in scope: LedgerScope) {
 		switch scope {
 		case .all: break
-		case .account, .accountGroup: accountID = nil
+		case .account, .accountGroup: account = nil
 		case .category: categoryID = nil
 		}
 	}
 
-	/// A filter on a category or an account that `ledger` no longer has goes back to "Show All", so the list does
-	/// not stay empty after a removal.
+	/// A filter on a category, an account, or an account group that `ledger` no longer has goes back to "Show All",
+	/// so the list does not stay empty after a removal.
 	public mutating func dropMissing(in ledger: Ledger) {
 		categoryID = categoryID.flatMap { ledger.category($0)?.id }
-		accountID = accountID.flatMap { ledger.account($0)?.id }
+		switch account {
+		case let .account(id) where ledger.account(id) == nil: account = nil
+		case let .group(id) where ledger.group(id) == nil: account = nil
+		default: break
+		}
 	}
 }
 

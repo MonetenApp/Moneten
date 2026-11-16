@@ -1,4 +1,4 @@
-import Domain
+@testable import Domain
 import Foundation
 import GRDB
 import Testing
@@ -87,7 +87,7 @@ extension MergeTests {
 		#expect(l.computedBalance(of: saved).minorUnits == 91500)
 		let daily = l.dailyBalances(accountIDs: [a.id])
 		#expect(daily.map(\.day) == [Day(year: 2026, month: 11, day: 3)])
-		#expect(daily.map(\.minorUnits) == [91500])
+		#expect(daily.map(\.balance) == [91500])
 		let points = l.balanceBars(accountIDs: [a.id], range: DayRange(start: Day(year: 2026, month: 11, day: 2), end: Day(year: 2026, month: 11, day: 3)))
 		#expect(points.map(\.minorUnits) == [100000, 91500])
 		#expect(l.transaction(t.id)?.amountMinor == -8500)
@@ -181,6 +181,6 @@ extension SchemaTests {
 		#expect(rows.map(\.amountMinor).sorted() == [-3000, -2000])
 		#expect(rows.map(\.fileIdentity) == ["file:original", "file:original"])
 		#expect(try queue.read { try $0.columns(in: "bankTransaction").contains { $0.name == "needsReview" } } == false)
-		#expect(try queue.read { try String.fetchAll($0, sql: "SELECT identifier FROM grdb_migrations ORDER BY rowid") } == (1...17).map { "v\($0)" } + ["v19", "v18", "v20", "v24", "v21", "v25", "v26"])
+		#expect(try queue.read { try String.fetchAll($0, sql: "SELECT identifier FROM grdb_migrations ORDER BY rowid") } == (1...17).map { "v\($0)" } + ["v19", "v18", "v20", "v24", "v21", "v25", "v22", "v26"])
 	}
 }

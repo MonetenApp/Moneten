@@ -26,6 +26,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [x] 1.20 Remove an account. Verified by confirmation names the removed transactions.
 - [x] 1.21 Remove an account group. Verified by accounts move to the top level.
 - [x] 1.22 Account color: a square in the color of the user, the bank, or the type, in the sidebar and the header; a color row in the account settings; the migration takes the color of the MoneyMoney icon. Verified by MoneyMoneyMigrationTests "Accounts take the color of their MoneyMoney icon", SchemaTests "v5", and sidebar snapshots of the debug harness.
+- [x] 1.23 Derived initial balance beyond the limit (issue #324). `AmountOverflowTests` "A refresh whose balance gives an initial balance beyond the limit keeps the old one and is refused" and `InitialBalanceLimitTests` "The merge fails with the name of the account and writes nothing" failed while the refresh clamped the derived initial balance, and pass since `Store.merge` throws `InitialBalanceTooLarge`.
 
 ## 2. Integration
 

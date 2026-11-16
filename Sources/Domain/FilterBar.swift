@@ -43,14 +43,22 @@ public struct SavedFilterBar: Hashable, Sendable, Codable {
 	let status: TransactionFilter.Status
 	let amount: TransactionFilter.AmountFilter
 	let categoryID: UUID?
+	/// The account of the "Account" menu. A filter bar saved before the menu listed groups has only this key.
 	let accountID: UUID?
+	/// The account group of the "Account" menu, in its own key, so a version that knows only `accountID` reads
+	/// "Show All" instead of a group it would take for an account.
+	let accountGroupID: UUID?
 
 	public init(period: PeriodChoice, filter: TransactionFilter) {
 		self.period = period
 		status = filter.status
 		amount = filter.amount
 		categoryID = filter.categoryID
-		accountID = filter.accountID
+		switch filter.account {
+		case let .account(id): (accountID, accountGroupID) = (id, nil)
+		case let .group(id): (accountID, accountGroupID) = (nil, id)
+		case nil: (accountID, accountGroupID) = (nil, nil)
+		}
 	}
 
 	/// Nil for data that is not a saved filter bar, which then restores nothing.
@@ -64,14 +72,15 @@ public struct SavedFilterBar: Hashable, Sendable, Codable {
 		(try? JSONEncoder().encode(self)) ?? Data()
 	}
 
-	/// The filter bar on `today`. A category or an account that `ledger` no longer has comes back as "Show All".
+	/// The filter bar on `today`. A category, an account, or an account group that `ledger` no longer has comes
+	/// back as "Show All".
 	public func filter(in ledger: Ledger, today: Day = .today()) -> TransactionFilter {
 		var f = TransactionFilter()
 		f.period = period.range(today: today)
 		f.status = status
 		f.amount = amount
 		f.categoryID = categoryID
-		f.accountID = accountID
+		f.account = accountID.map { .account($0) } ?? accountGroupID.map { .group($0) }
 		f.dropMissing(in: ledger)
 		return f
 	}
@@ -101,8 +110,8 @@ public struct SavedSearch: Identifiable, Hashable, Sendable {
 		self.init(id: id, name: name, position: position, searchText: filter.searchText, bar: SavedFilterBar(period: period, filter: filter))
 	}
 
-	/// The search field and the filter bar on `today`. A category or an account that `ledger` no longer has
-	/// comes back as "Show All".
+	/// The search field and the filter bar on `today`. A category, an account, or an account group that `ledger`
+	/// no longer has comes back as "Show All".
 	public func filter(in ledger: Ledger, today: Day = .today()) -> TransactionFilter {
 		var f = bar.filter(in: ledger, today: today)
 		f.searchText = searchText

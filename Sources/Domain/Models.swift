@@ -175,24 +175,33 @@ public struct Account: Identifiable, Hashable, Sendable, Codable {
 
 	/// The rows that a bank balance for the end of `day` holds: booked rows in the account currency up to that
 	/// day. Pending rows are not in it, with or without review, because a bank reports its booked balance.
-	func bookedSum(of rows: some Sequence<Transaction>, through day: Day) -> Int64 {
+	func bookedSum(of rows: some Sequence<Transaction>, through day: Day) -> Int128 {
 		rows.reduce(0) { sum, t in
-			!t.isPending && t.currency == currency && t.bookingDate <= day ? sum + t.amountMinor : sum
+			!t.isPending && t.currency == currency && t.bookingDate <= day ? sum + Int128(t.amountMinor) : sum
 		}
 	}
 
 	/// The initial balance at which the booked rows up to the end of the day of the bank balance add up to
-	/// the bank balance. `rows` are all live rows of the account. The pending rows then count on top.
+	/// the bank balance. `rows` are all live rows of the account. The pending rows then count on top. Nil without a bank
+	/// balance, and when the initial balance would be above `Money.maxMinorUnits`, because a stored value is never clamped.
 	public func initialBalanceMeetingBankBalance(of rows: some Sequence<Transaction>, calendar: Calendar = .current) -> Int64? {
-		bankBalanceMinor.map { $0 - bookedSum(of: rows, through: Day(bankBalanceDate ?? Date(), calendar: calendar)) }
+		exactInitialBalanceMeetingBankBalance(of: rows, calendar: calendar).flatMap(Int64.init(limitedAmount:))
+	}
+
+	/// The initial balance that meets the bank balance before it holds at the bounds of `Int64`, so that a calibration adds up exactly.
+	func exactInitialBalanceMeetingBankBalance(of rows: some Sequence<Transaction>, calendar: Calendar = .current) -> Int128? {
+		bankBalanceMinor.map { Int128($0) - bookedSum(of: rows, through: Day(bankBalanceDate ?? Date(), calendar: calendar)) }
 	}
 
 	/// Sets the initial balance, so that the computed balance meets the bank balance. It is set for good unless
 	/// `missesOlderTransactions`: then the next refresh derives it again, and the one that brings the full history sets it.
-	mutating func deriveInitialBalance(from rows: [Transaction], calendar: Calendar = .current) {
-		guard derivesInitialBalance, let value = initialBalanceMeetingBankBalance(of: rows, calendar: calendar) else { return }
+	/// False, with the account unchanged, when the initial balance would be above `Money.maxMinorUnits`.
+	mutating func deriveInitialBalance(from rows: [Transaction], calendar: Calendar = .current) -> Bool {
+		guard derivesInitialBalance, let exact = exactInitialBalanceMeetingBankBalance(of: rows, calendar: calendar) else { return true }
+		guard let value = Int64(limitedAmount: exact) else { return false }
 		initialBalanceMinor = value
 		initialBalanceIsSet = !missesOlderTransactions
+		return true
 	}
 }
 

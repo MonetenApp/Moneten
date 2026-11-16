@@ -56,9 +56,10 @@ A version-1 payload contains `name`, `header`, `delimiter`, and `layout`. The he
 | `status` | `all`, `checked`, or `unchecked` |
 | `amount` | The amount filter, see below |
 | `categoryID` | The category of the "Category" menu. Left out for "Show All". |
-| `accountID` | The account of the "Account" menu. Left out for "Show All". |
+| `accountID` | The account of the "Account" menu. Left out for "Show All" and for an account group. |
+| `accountGroupID` | The account group of the "Account" menu, which shows the accounts of the group and of its subgroups. Left out for "Show All" and for an account. |
 
-The period has a `kind` and, for some kinds, days. `all`, `days30`, `days90`, and `months12` have no days, and the last three count back from the day the user selects the search. `month`, `quarter`, and `year` have the first day of that month, quarter, or year in `start`. `custom` has `start` and `end`, both included. The amount filter has a `kind` of `all`, `deposits`, `withdrawals`, or `range`. A range has at least one of `min` and `max` as decimal text without a currency, such as `"-500"` and `"-99.99"`, because each row compares them in its own currency. A missing end leaves the range open. The reader refuses an unknown kind, a missing day, and a range without an end or with its minimum above its maximum. A category or an account that the file does not contain comes back as "Show All" when the user selects the search.
+The period has a `kind` and, for some kinds, days. `all`, `days30`, `days90`, and `months12` have no days, and the last three count back from the day the user selects the search. `month`, `quarter`, and `year` have the first day of that month, quarter, or year in `start`. `custom` has `start` and `end`, both included. The amount filter has a `kind` of `all`, `deposits`, `withdrawals`, or `range`. A range has at least one of `min` and `max` as decimal text without a currency, such as `"-500"` and `"-99.99"`, because each row compares them in its own currency. A missing end leaves the range open. The reader refuses an unknown kind, a missing day, a range without an end or with its minimum above its maximum, and a saved search with both `accountID` and `accountGroupID`. A category, an account, or an account group that the file does not contain comes back as "Show All" when the user selects the search.
 
 ## Account group
 
