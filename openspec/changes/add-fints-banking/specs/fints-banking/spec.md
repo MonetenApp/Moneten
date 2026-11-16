@@ -100,7 +100,7 @@ The app SHALL fetch transactions in the CAMT format when the bank offers it for 
 
 ### Requirement: Read statement tags of 1822direkt that start inside a line
 
-The app SHALL read a booking tag (":61:" with its day and C or D) or a closing balance tag (":62F:") that follows other text on a line of an MT940 statement from a host "1822direkt.com" or "*.1822direkt.com" as the start of a new line, but only where the statement then adds up: opening balance and bookings give the closing balance. A statement that adds up as sent, or with no or more than one such set of places, stays as sent.
+The app SHALL read a booking tag (":61:" with its day and C or D) or a closing balance tag (":62F:") inside a line of an MT940 statement from a host "1822direkt.com" or "*.1822direkt.com" as the start of a new line, only where the statement then adds up in one currency: opening balance and bookings give the closing balance. A statement that adds up as sent, or not at all, or in more than one way, stays as sent.
 
 #### Scenario: Booking that starts inside a line
 
@@ -117,6 +117,20 @@ The app SHALL read a booking tag (":61:" with its day and C or D) or a closing b
 - **WHEN** the app reads the statement
 - **THEN** it stores one booking of 120.00 EUR with the purpose "Ref :61:2611151115D12,50NTRFNONREF"
 - **AND** it stores no booking of -12.50 EUR
+
+#### Scenario: Closing balance in another currency
+
+- **GIVEN** an account at 1822direkt with the FinTS address "https://fints.1822direkt.com/fints/hbci"
+- **AND** a statement with the opening balance 1,000.00 EUR, one booking of 120.00 EUR with the purpose "Miete November:61:2611151115D12,50NTRFNONREF", and the closing balance 1,107.50 USD
+- **WHEN** the app reads the statement
+- **THEN** it stores one booking of 120.00 EUR and no booking of -12.50 EUR
+
+#### Scenario: Statement without any line break
+
+- **GIVEN** an account at 1822direkt with the FinTS address "https://fints.1822direkt.com/fints/hbci"
+- **AND** a statement in which 11 bookings of -1.00 EUR and the closing balance each follow the purpose before them on the same line, and the balances add up with all of them
+- **WHEN** the app reads the statement
+- **THEN** it stores all 11 bookings
 
 #### Scenario: Purpose with a tag name only
 

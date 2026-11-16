@@ -26,6 +26,8 @@ struct SavingsBankTests {
 			("https://BANKING-HH7.S-FINTS-PT-HH.DE/fints30", true),
 			("https://banking-hs6.s-fints-pt-hs.de./fints30", true),
 			("https://BANKING-HS6.S-FINTS-PT-HS.DE.:443/fints30", true),
+			// An empty port is no port, here and in the helper.
+			("https://banking-hs6.s-fints-pt-hs.de:/fints30", true),
 			("https://banking.s-fints-pt-hs.de.evil.example./fints30", false),
 			("https://banking.s-fints-pt-hs.de../fints30", false),
 			("https://fints.1822direkt.com/fints/hbci", false),
