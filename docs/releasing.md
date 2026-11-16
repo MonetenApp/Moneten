@@ -111,11 +111,11 @@ To start over after a failed run, delete the draft and run the workflow again on
 
 ## Withdraw a version
 
-Sparkle never offers an older build, so a withdrawn version needs a fixed version with a higher build number.
+Sparkle never offers an older build, so a withdrawn version needs a fixed version with a higher build number. Every feed carries a revision, and every write raises it, so an installed copy refuses a replay of the feed from before the withdrawal.
 
-1. Run `scripts/release.sh withdraw 0.1.3` on the Mac that holds the update key in its login Keychain, with the GitHub CLI logged in as the owner and OpenSSL 3 or later installed. It downloads `appcast.xml` of the newest stable release and stops unless the update key signed it and every disk image in it lies in a release of the repository, because the new signature would also cover a forged item. Then it takes the item out, signs the feed with `sign_update`, checks the result in the same way, replaces `appcast.xml` on the newest stable release, and checks that the feed URL no longer lists the version. Never sign or upload a feed by hand: `scripts/release-notes.py remove` also refuses a feed that fails the check, but only the script checks the signed result before the upload.
+1. Run `scripts/release.sh withdraw 0.1.3` on the Mac that holds the update key in its login Keychain, with the GitHub CLI logged in as the owner and OpenSSL 3 or later installed. It downloads `appcast.xml` of the newest stable release and stops unless the update key committed in `App/project.yml` signed it and every disk image in it lies in a release of the repository, because the new signature would also cover a forged item. Then it takes the item out and raises the revision, signs the feed with `sign_update`, checks the result with the committed key, replaces `appcast.xml` on the newest stable release, and checks that the feed URL no longer lists the version. The check with the committed key matters: `SUSignedFeedFailureExpirationInterval` is 0, so a feed signed with another key in the login Keychain would stop the updates on every Mac. Never sign or upload a feed by hand: `scripts/release-notes.py remove` also refuses a feed that fails the check, but only the script checks the signed result before the upload. The command refuses to take out the last version of the feed, because a feed without items carries no revision: release the fixed version first, then withdraw the old one.
 2. Mark the release page as withdrawn in its text.
-3. Release the fixed version as usual, and soon. An installed copy that saw the withdrawn version refuses every feed whose newest build is lower than the one it saw, so it offers no update until the fixed version is in the feed.
+3. Release the fixed version as usual.
 
 ## Replace a leaked update key
 
@@ -126,7 +126,7 @@ Follow the risk "The EdDSA private key leaks" in the [design](../openspec/change
 3. The old `appcast.xml` is then frozen: it stays signed with the old key and offers only the recovery release. Every later stable release carries this frozen `appcast.xml` next to `appcast-2.xml`, so a copy that was offline during the change still reaches the recovery release. A pre-release replaces only `appcast-2.xml`, never the frozen `appcast.xml`.
 4. Replace `SPARKLE_ED_PRIVATE_KEY` and the offline backups, and announce the change.
 
-The workflow does not automate this yet, because it has never been needed. The steps above must be done by hand with `scripts/release-notes.py` and `sign_update`.
+The workflow does not automate this yet, because it has never been needed. The steps above must be done by hand with `scripts/release-notes.py` and `sign_update`. Before each upload, run `python3 scripts/release-notes.py check-feed --feed <file> --public-key <key>` on the signed file, with the old public key for `appcast.xml` and the new one for `appcast-2.xml`. A feed that the installed copies cannot check stops their updates, because `SUSignedFeedFailureExpirationInterval` is 0. Both feeds get a revision above the last one of the old feed, because every installed copy keeps the highest revision that it read.
 
 ## Replace a leaked Developer ID certificate
 

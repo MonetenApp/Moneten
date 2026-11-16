@@ -145,7 +145,7 @@ The app SHALL install an update only when the download carries a signature made 
 
 ### Requirement: Check the update feed
 
-The app SHALL read an update feed only when the update key of the project signed it and its newest build is not lower than the newest build of any feed that the app read before.
+The app SHALL read an update feed only when the update key of the project signed it and its revision is not lower than the revision of any feed that the app read before. Every new feed, also one that takes a version out, has a higher revision than the feed before it.
 
 #### Scenario: Feed with a broken signature
 
@@ -156,17 +156,25 @@ The app SHALL read an update feed only when the update key of the project signed
 
 #### Scenario: Replayed older feed
 
-- **GIVEN** build 100 is installed, and the app read a feed whose newest build is 120
-- **AND** build 110 was taken out of the feed after its release
-- **WHEN** a check receives an older feed with build 110 as its newest build, signed with the update key
+- **GIVEN** build 100 is installed, and pre-release versions are off
+- **AND** revision 5 of the feed lists the stable build 110 and the pre-release build 120
+- **AND** revision 6 took build 110 out and lists only build 120, and the app read revision 6
+- **WHEN** a check receives revision 5 again, signed with the update key
 - **THEN** the app does not offer build 110
 - **AND** a check that the user started says that the check failed
 
 #### Scenario: Newer feed
 
-- **GIVEN** build 100 is installed, and the app read a feed whose newest build is 120
-- **WHEN** a check receives a feed whose newest build is 130
+- **GIVEN** build 100 is installed, and the app read revision 6 of the feed
+- **WHEN** a check receives revision 7, which lists build 130
 - **THEN** the app offers build 130
+
+#### Scenario: Feed without a revision
+
+- **GIVEN** build 100 is installed
+- **WHEN** a check receives a feed signed with the update key whose item of build 130 has no revision
+- **THEN** the app does not offer build 130
+- **AND** a check that the user started says that the check failed
 
 ### Requirement: No update during a bank dialog
 

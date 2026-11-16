@@ -23,8 +23,8 @@ settings:
 packages:
   MonetenKit:
     path: ..
-  # Only the app uses Sparkle (design of add-software-update). scripts/generate-project.sh pins its
-  # revision, and scripts/sparkle-tools.sh downloads the command line tools of the same version.
+  # Only the app uses Sparkle (design of add-software-update). scripts/sparkle-tools.sh holds the pin
+  # of this version, its commit for scripts/generate-project.sh, and its command line tools.
   Sparkle:
     url: https://github.com/sparkle-project/Sparkle
     exactVersion: 2.10.1

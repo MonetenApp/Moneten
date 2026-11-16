@@ -23,8 +23,8 @@ final class AppUpdater: NSObject {
 	@ObservationIgnored private var observation: NSKeyValueObservation?
 	/// The feed that Sparkle loaded last is older than one the app read before (spec: "Check the
 	/// update feed"), so no update from it may proceed.
-	@ObservationIgnored private var refusedFeed: (newest: Int, floor: Int)?
-	/// The floor of a Debug build, which reads test feeds with any builds and so keeps it only until it quits.
+	@ObservationIgnored private var refusedFeed: (revision: Int?, floor: Int?)?
+	/// The floor of a Debug build, which reads test feeds of any revision and so keeps it only until it quits.
 	@ObservationIgnored private var debugFloor: Int?
 	/// Mirrors `canCheckForUpdates` of Sparkle for the menu command.
 	private(set) var canCheck = false
@@ -57,10 +57,13 @@ final class AppUpdater: NSObject {
 	}
 
 	private static let betaKey = "offerPreReleaseVersions"
-	/// The newest build of the feeds that the app read, the floor of `FeedFloor`.
-	private static let feedFloorKey = "newestFeedBuild"
+	/// The highest revision of the feeds that the app read, the floor of `FeedRevision`.
+	private static let feedFloorKey = "highestFeedRevision"
+	/// The element in each item of the feed that holds the revision of the feed (`scripts/release-notes.py`).
+	/// Sparkle keeps an element outside its own namespace under its qualified name.
+	private static let revisionElement = "moneten:revision"
 
-	/// The floor of `FeedFloor`: in the user defaults for the feed of a release, in memory for a test feed.
+	/// The floor of `FeedRevision`: in the user defaults for the feed of a release, in memory for a test feed.
 	private var feedFloor: Int? {
 		get { Self.debugFeed == nil ? UserDefaults.standard.object(forKey: Self.feedFloorKey) as? Int : debugFloor }
 		set {
@@ -153,16 +156,17 @@ extension AppUpdater: SPUUpdaterDelegate {
 	/// Sparkle calls this only for a feed whose signature it checked, with every item of every channel.
 	func updater(_ updater: SPUUpdater, didFinishLoading appcast: SUAppcast) {
 		let floor = feedFloor
-		switch FeedFloor.check(builds: appcast.items.compactMap { Int($0.versionString) }, floor: floor) {
+		let revisions = appcast.items.map { ($0.propertiesDictionary[Self.revisionElement] as? String).flatMap { Int($0) } }
+		switch FeedRevision.check(revisions: revisions, floor: floor) {
 		case let .accepted(newFloor):
 			refusedFeed = nil
 			if newFloor != floor { feedFloor = newFloor }
 			feed = appcast.items.compactMap(ReleaseNoteItem.init)
 			UpdateLog.write("update feed loaded", ("items", .count(feed.count)))
-		case let .refused(newest, floor):
-			refusedFeed = (newest, floor)
+		case let .refused(revision, floor):
+			refusedFeed = (revision, floor)
 			feed = []
-			UpdateLog.write("update feed refused", ("newest", .count(newest)), ("floor", .count(floor)))
+			UpdateLog.write("update feed refused", ("revision", .position(revision)), ("floor", .position(floor)))
 		}
 	}
 
@@ -170,8 +174,9 @@ extension AppUpdater: SPUUpdaterDelegate {
 	/// failed check, which the window shows only for a check that the user started.
 	func updater(_ updater: SPUUpdater, shouldProceedWithUpdate updateItem: SUAppcastItem, updateCheck: SPUUpdateCheck) throws {
 		guard let refused = refusedFeed else { return }
-		throw NSError(domain: "io.github.moneten.update", code: 1, userInfo: [NSLocalizedDescriptionKey:
-			"The update feed lists build \(refused.newest) as its newest version, but Moneten already read a feed with build \(refused.floor)."])
+		let reason = refused.revision.map { "The update feed is revision \($0), but Moneten already read revision \(refused.floor ?? $0)." }
+			?? "The update feed has no revision."
+		throw NSError(domain: "io.github.moneten.update", code: 1, userInfo: [NSLocalizedDescriptionKey: reason])
 	}
 
 	func updater(_ updater: SPUUpdater, shouldPostponeRelaunchForUpdate item: SUAppcastItem, untilInvokingBlock installHandler: @escaping () -> Void) -> Bool {

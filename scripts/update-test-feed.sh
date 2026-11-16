@@ -1,24 +1,29 @@
 #!/bin/sh
 # Writes a test feed for a Debug build into a folder, signed with the test update key of
 # Fixtures/update, through the same release-notes.py appcast and sign_update as a release.
-#   scripts/update-test-feed.sh DIR [--port N] [--no-notes VERSION] ITEM...
+#   scripts/update-test-feed.sh DIR [--port N] [--no-notes VERSION] [--withdraw VERSION] ITEM...
 # ITEM is VERSION:BUILD, VERSION:BUILD:MIN_MACOS, or VERSION:BUILD:MIN_MACOS:DMG. Without a DMG the
 # enclosure is a made-up file, enough for every window before "Install". Each version gets two
 # made-up entries, one with a link. --no-notes leaves the description of that version empty.
+# Each item raises the revision of the feed by one, as a release does. --withdraw then takes a version
+# out as scripts/release.sh withdraw does, which raises the revision once more. So the same items
+# with and without --withdraw give a feed and its replay from before the withdrawal.
 # Then serve the folder and start a Debug build with it:
 #   python3 -m http.server --directory DIR 8765
 #   open --env MONETEN_FEED_URL=http://127.0.0.1:8765/appcast.xml --env MONETEN_DATA_DIR=... dist/Moneten.app
 set -e
 cd "$(dirname "$0")/.."
-[ -n "$1" ] || { echo "usage: scripts/update-test-feed.sh DIR [--port N] [--no-notes VERSION] VERSION:BUILD[:MIN_MACOS[:DMG]]..." >&2; exit 2; }
+[ -n "$1" ] || { echo "usage: scripts/update-test-feed.sh DIR [--port N] [--no-notes VERSION] [--withdraw VERSION] VERSION:BUILD[:MIN_MACOS[:DMG]]..." >&2; exit 2; }
 DIR=$1
 shift
 PORT=8765
 NO_NOTES=""
+WITHDRAW=""
 while [ $# -gt 0 ]; do
 	case "$1" in
 		--port) PORT=$2; shift 2 ;;
 		--no-notes) NO_NOTES=$2; shift 2 ;;
+		--withdraw) WITHDRAW=$2; shift 2 ;;
 		*) break ;;
 	esac
 done
@@ -55,6 +60,13 @@ for ITEM in "$@"; do
 		$FEED --out "$DIR/appcast.xml"
 	FEED="--feed $DIR/appcast.xml"
 done
+if [ -n "$WITHDRAW" ]; then
+	# remove takes only a feed that the key signed.
+	"$SPARKLE/sign_update" --ed-key-file "$KEY" "$DIR/appcast.xml" >/dev/null
+	python3 scripts/release-notes.py --changelog "$DIR/CHANGELOG.md" remove "$WITHDRAW" --feed "$DIR/appcast.xml" \
+		--public-key "$(python3 scripts/release-notes.py public-key "$KEY")" --out "$DIR/withdrawn.xml"
+	mv "$DIR/withdrawn.xml" "$DIR/appcast.xml"
+fi
 # The disk images come from the local server, and --no-notes empties one description.
 python3 - "$DIR/appcast.xml" "$PORT" "$NO_NOTES" <<'EOF'
 import re, sys

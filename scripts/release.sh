@@ -17,8 +17,9 @@
 #                                           of a pre-release to the newest stable release, and updates
 #                                           the text of earlier releases from CHANGELOG.md
 #   scripts/release.sh withdraw <version>   run by the owner with the update key in the login Keychain:
-#                                           checks the current feed, takes the version out of it, signs
-#                                           and checks the result, and replaces the feed with it
+#                                           checks the current feed with the committed update key, takes
+#                                           the version out of it, signs and checks the result, and
+#                                           replaces the feed with it
 # Signing needs the Developer ID certificate in the Keychain and MONETEN_TEAM_ID. Notarization needs
 # MONETEN_NOTARY_KEY (the path of the .p8 file), MONETEN_NOTARY_KEY_ID, and MONETEN_NOTARY_ISSUER.
 # The feed needs MONETEN_UPDATE_KEY_FILE, the file with the private EdDSA key. A release needs the
@@ -38,45 +39,22 @@ plist() { /usr/libexec/PlistBuddy -c "Print $2" "$1/Contents/Info.plist"; }
 dmg_url() { echo "https://github.com/$REPO/releases/download/v$1/Moneten-$1.dmg"; }
 TEST_KEY_FILE=Fixtures/update/test-update.key
 
-# The public key of the private EdDSA key in the file $1: Sparkle keeps the 32 byte seed, which
-# becomes an Ed25519 key in PKCS#8 for openssl. The key never appears in an argument or a log.
-public_key() {
-	OPENSSL=$(notes openssl) || exit 1
-	{ printf '\060\056\002\001\000\060\005\006\003\053\145\160\004\042\004\040'; base64 -d < "$1" | head -c 32; } \
-		| "$OPENSSL" pkey -inform DER -pubout -outform DER | tail -c 32 | base64
-}
+# The public key of the private key in the file $1. Only for the test key and the throwaway keys of
+# the dry run: the production key is checked by the signatures it makes, so it never reaches openssl.
+public_key() { notes public-key "$1"; }
 
-# The value of the build setting $2 under the path $1 of App/project.yml, such as
-# targets.Moneten.settings.base. It follows the indentation, so the order of the lines does not matter.
-project_setting() {
-	python3 - "$1" "$2" App/project.yml <<-'EOF'
-	import sys
-	path, key, stack = sys.argv[1].split("."), sys.argv[2], []
-	for line in open(sys.argv[3], encoding="utf-8"):
-	    text = line.rstrip()
-	    if not text.strip() or text.lstrip().startswith("#"):
-	        continue
-	    indent = len(text) - len(text.lstrip())
-	    name, _, value = text.strip().partition(":")
-	    while stack and stack[-1][0] >= indent:
-	        stack.pop()
-	    if [s[1] for s in stack] == path and name == key:
-	        print(value.strip())
-	        sys.exit(0)
-	    stack.append((indent, name))
-	sys.exit("App/project.yml has no %s under %s." % (key, sys.argv[1]))
-	EOF
-}
+# MONETEN_UPDATE_PUBLIC_KEY of the target Moneten in App/project.yml: in its base settings, indented by
+# 8 spaces, and in its Debug settings, by 10. check_production_key fails when this finds no line or two.
+project_key() { sed -n "s/^ \{$1\}MONETEN_UPDATE_PUBLIC_KEY: *//p" App/project.yml; }
+committed_key() { project_key 8; }
+debug_key() { project_key 10; }
 
-# The public update key that App/project.yml gives a Release build, and the test key of a Debug build.
-committed_key() { project_setting targets.Moneten.settings.base MONETEN_UPDATE_PUBLIC_KEY; }
-debug_key() { project_setting targets.Moneten.settings.configs.Debug MONETEN_UPDATE_PUBLIC_KEY; }
-
-# A release must carry the production update key: not the placeholder, and not the public test key.
+# A release must carry one production update key: not the placeholder, and not the public test key.
 check_production_key() {
 	case "$1" in
 		none|"") fail "App/project.yml has no production update key yet. docs/releasing.md explains how the owner adds it." ;;
-		"$(public_key "$TEST_KEY_FILE")") fail "The update key is the test key of Fixtures/update, which only Debug builds may trust." ;;
+		"$(debug_key)") fail "The update key is the test key of Fixtures/update, which only Debug builds may trust." ;;
+		*[!A-Za-z0-9+/=]*) fail "The update key of App/project.yml is not one key in Base64." ;;
 	esac
 }
 
@@ -217,10 +195,6 @@ feed() {
 	[ -f "$MONETEN_UPDATE_KEY_FILE" ] || fail "The feed needs MONETEN_UPDATE_KEY_FILE, the private update key."
 	. "./$OUT/build.env"
 	[ "$VERSION" = "$1" ] || fail "dist/release holds version $VERSION, not $1."
-	# A feed that the installed apps cannot check would stop every update. A dry run builds without
-	# the production key and signs with the test key.
-	[ "$2" = first ] || [ "$(public_key "$MONETEN_UPDATE_KEY_FILE")" = "$UPDATE_KEY" ] \
-		|| fail "MONETEN_UPDATE_KEY_FILE is not the private half of the update key in the app."
 	SPARKLE=$(scripts/sparkle-tools.sh)
 	DMG="$OUT/Moneten-$1.dmg"
 	SIGNATURE=$("$SPARKLE/sign_update" --ed-key-file "$MONETEN_UPDATE_KEY_FILE" -p "$DMG")
@@ -230,6 +204,11 @@ feed() {
 		--length "$(stat -f%z "$DMG")" --signature "$SIGNATURE" $FEED_ARGS --out "$OUT/appcast.xml"
 	"$SPARKLE/sign_update" --ed-key-file "$MONETEN_UPDATE_KEY_FILE" "$OUT/appcast.xml" >/dev/null
 	"$SPARKLE/sign_update" --verify --ed-key-file "$MONETEN_UPDATE_KEY_FILE" "$OUT/appcast.xml"
+	# A feed that the installed apps cannot check would stop every update. A dry run builds without
+	# the production key, signs with the test key, and checks its feed in check_feeds.
+	if [ "$2" != first ]; then
+		check_feed "$OUT/appcast.xml" "$UPDATE_KEY" || fail "MONETEN_UPDATE_KEY_FILE is not the private half of the update key in the app."
+	fi
 	echo "Wrote the signed feed $OUT/appcast.xml."
 }
 
@@ -247,8 +226,11 @@ withdrawn_feed() {
 	check_feed "$WORK/withdrawn/appcast.xml" "$2" || fail "The feed without $1 failed its check, so nothing was uploaded."
 }
 
+# The check of the signed result with the committed key stops a wrong key in the login Keychain: a
+# feed that no installed app can check would stop every update.
 withdraw() {
-	KEY=$("$(scripts/sparkle-tools.sh)/generate_keys" -p) || fail "No update key in the login Keychain. docs/releasing.md explains it."
+	KEY=$(committed_key)
+	check_production_key "$KEY"
 	withdrawn_feed "$1" "$KEY"
 	STABLE=$(gh api "repos/$REPO/releases/latest" -q .tag_name)
 	gh release upload "$STABLE" --repo "$REPO" --clobber "$WORK/withdrawn/appcast.xml"
@@ -282,14 +264,11 @@ publish() {
 	check_production_key "$KEY"
 	check_feed "$WORK/draft-feed/appcast.xml" "$KEY" || fail "The feed of the draft of v$1 failed its check. Delete the draft and run the release again."
 	checked_current_feed "$KEY"
-	# A release that was published after this draft was made must be in the draft's feed too.
+	# A release or a withdrawal after this draft was made changed the current feed. An app that read
+	# it refuses the draft's feed, and the draft's feed would bring a withdrawn version back.
 	if [ "$FEED_ARGS" != --first-release ]; then
-		python3 - "$WORK/current.xml" "$WORK/draft-feed/appcast.xml" <<-'EOF' || fail "The feed of the draft misses a published version. Delete the draft and run the release again."
-		import sys, xml.etree.ElementTree as ET
-		key = "{http://www.andymatuschak.org/xml-namespaces/sparkle}shortVersionString"
-		versions = lambda path: {i.findtext(key) for i in ET.parse(path).getroot().iter("item")}
-		sys.exit(0 if versions(sys.argv[1]) <= versions(sys.argv[2]) else 1)
-		EOF
+		notes check-newer --feed "$WORK/draft-feed/appcast.xml" --current "$WORK/current.xml" \
+			|| fail "The feed of the draft is older than the current feed. Delete the draft and run the release again."
 	fi
 	case "$1" in
 	*-*)
@@ -343,14 +322,27 @@ check_feeds() {
 	current_feed() { cp "$CURRENT" "$WORK/current.xml"; FEED_ARGS="--feed $WORK/current.xml"; }
 	checked_current_feed "$KEY"
 	(checked_current_feed "$(public_key "$WORK/other.key")") 2>/dev/null && fail "A release accepted a current feed of another key."
-	withdrawn_feed "$2" "$KEY" "$1"
-	! grep -q "<sparkle:shortVersionString>$2<" "$WORK/withdrawn/appcast.xml" || fail "The withdrawn feed still lists $2."
-	for CURRENT in "$WORK/unsigned.xml" "$WORK/http.xml"; do
-		rm -rf "$WORK/withdrawn"
-		(withdrawn_feed "$2" "$KEY" "$1") 2>/dev/null && fail "A withdrawal accepted the current feed $(basename "$CURRENT")."
-		[ ! -e "$WORK/withdrawn/appcast.xml" ] || fail "A withdrawal wrote a feed from the current feed $(basename "$CURRENT")."
+	# remove keeps the last version, so the withdrawal takes 0.0.2 out of a feed with two versions.
+	mkdir "$WORK/two"
+	printf '# Changelog\n\n## Unreleased\n\n## 0.0.2 (2026-01-02)\n\n- Two.\n\n## 0.0.1 (2026-01-01)\n\n- One.\n' > "$WORK/two/CHANGELOG.md"
+	for BUILD in 1 2; do
+		[ "$BUILD" = 1 ] && FEED_ARGS=--first-release || FEED_ARGS="--feed $WORK/two/appcast.xml"
+		python3 scripts/release-notes.py --changelog "$WORK/two/CHANGELOG.md" appcast "0.0.$BUILD" --build "$BUILD" --min-macos 15.0 \
+			--url "$(dmg_url "0.0.$BUILD")" --length 1 --signature "c2lnbmF0dXJl" $FEED_ARGS --out "$WORK/two/appcast.xml"
 	done
-	echo "A release refuses a current feed of another key, and a withdrawal refuses an unsigned feed and a forged disk image."
+	"$SPARKLE/sign_update" --ed-key-file "$1" "$WORK/two/appcast.xml" >/dev/null
+	CURRENT="$WORK/two/appcast.xml"
+	(CHANGELOG="$WORK/two/CHANGELOG.md"; withdrawn_feed 0.0.2 "$KEY" "$1")
+	grep -q '<moneten:revision>3</moneten:revision>' "$WORK/withdrawn/appcast.xml" && ! grep -q '>0\.0\.2<' "$WORK/withdrawn/appcast.xml" \
+		|| fail "The withdrawal did not take 0.0.2 out of the feed with a revision one above the current one."
+	for CASE in "unsigned.xml:has no signature" "http.xml:has a disk image outside"; do
+		CURRENT="$WORK/${CASE%%:*}"
+		rm -rf "$WORK/withdrawn"
+		(withdrawn_feed "$2" "$KEY" "$1") 2>"$WORK/error" && fail "A withdrawal accepted the current feed ${CASE%%:*}."
+		grep -qF "${CASE#*:}" "$WORK/error" || fail "A withdrawal refused the current feed ${CASE%%:*} for another reason: $(cat "$WORK/error")"
+		[ ! -e "$WORK/withdrawn/appcast.xml" ] || fail "A withdrawal wrote a feed from the current feed ${CASE%%:*}."
+	done
+	echo "A release refuses a current feed of another key, and a withdrawal raises the revision and refuses an unsigned feed and a forged disk image."
 }
 
 # The update keys of App/project.yml: a Debug build trusts the test key of Fixtures/update, and the

@@ -3,6 +3,7 @@
 
 import base64
 import json
+import re
 import subprocess
 import sys
 import tempfile
@@ -10,6 +11,7 @@ import unittest
 from pathlib import Path
 
 SCRIPT = Path(__file__).resolve().parent / "release-notes.py"
+MONETEN = "https://github.com/MonetenApp/Moneten/xml-namespaces/feed"
 
 GOOD = """# Changelog
 
@@ -139,9 +141,11 @@ class ReleaseNotesTests(unittest.TestCase):
 	def test_appcast_is_idempotent_and_keeps_older_items(self):
 		first = self.dir / "first.xml"
 		self.assertEqual(self.appcast("0.1.3", 100, first).returncode, 0)
-		again = self.dir / "again.xml"
+		again, other = self.dir / "again.xml", self.dir / "other.xml"
 		self.assertEqual(self.appcast("0.1.3", 100, again, feed=first).returncode, 0)
-		self.assertEqual(first.read_bytes(), again.read_bytes())
+		self.assertEqual(self.appcast("0.1.3", 100, other, feed=first).returncode, 0)
+		self.assertEqual(again.read_bytes(), other.read_bytes())
+		self.assertEqual(first.read_bytes().replace(b">1</moneten:revision>", b">2</moneten:revision>"), again.read_bytes())
 
 		self.changelog.write_text(GOOD.replace("## Unreleased\n\n- **Moneten now needs macOS 15 or later.**\n",
 			"## Unreleased\n\n## 0.1.4 (2026-11-27)\n\n- Fixed the balance of a credit card.\n"))
@@ -172,6 +176,22 @@ class ReleaseNotesTests(unittest.TestCase):
 		self.assertIn("<sparkle:version>100</sparkle:version>", text)
 		self.assertIn('<description sparkle:format="markdown">', text)
 		self.assertIn("<pubDate>Tue, 01 Dec 2026 00:00:00 +0000</pubDate>", text)
+
+	def revisions(self, feed):
+		return re.findall(r"<moneten:revision>(\d+)</moneten:revision>", feed.read_text())
+
+	def test_every_write_raises_the_revision_in_every_item(self):
+		"""Sparkle hands the app only the items, so each one carries the revision of the feed."""
+		first, second = self.two_versions()
+		self.assertEqual(self.revisions(first), ["1"])
+		self.assertEqual(self.revisions(second), ["2", "2"])
+		self.assertIn('xmlns:moneten="%s"' % MONETEN, second.read_text())
+
+	def test_a_feed_without_revision_fails(self):
+		first, _ = self.two_versions()
+		first.write_text(re.sub(r"\s*<moneten:revision>\d+</moneten:revision>", "", first.read_text()))
+		result = self.run_script("check-release", "0.1.4", "--build", "105", "--feed", str(first))
+		self.assertIn("has no revision", result.stderr)
 
 	def test_appcast_without_readable_feed_fails(self):
 		result = self.appcast("0.1.3", 100, self.dir / "out.xml", feed=self.dir / "missing.xml")
@@ -259,6 +279,14 @@ class ReleaseNotesTests(unittest.TestCase):
 	def check_feed(self, feed, public):
 		return self.run_script("check-feed", "--feed", str(feed), "--public-key", public)
 
+	def test_public_key_of_a_private_key_file_of_sparkle(self):
+		private, public = self.key_pair("update")
+		der = subprocess.run([self.openssl(), "pkey", "-in", str(private), "-outform", "DER"], check=True, capture_output=True).stdout
+		seed = self.dir / "update.key"
+		seed.write_text(base64.b64encode(der[-32:]).decode())
+		result = self.run_script("public-key", str(seed))
+		self.assertEqual(result.stdout.strip(), public, result.stderr)
+
 	def test_openssl_is_not_the_libressl_of_macos(self):
 		version = subprocess.run([self.openssl(), "version"], capture_output=True, text=True).stdout
 		self.assertTrue(version.startswith("OpenSSL "), version)
@@ -311,12 +339,22 @@ class ReleaseNotesTests(unittest.TestCase):
 	def remove(self, feed, public, version="0.1.4"):
 		return self.run_script("remove", version, "--feed", str(feed), "--public-key", public, "--out", str(self.dir / "removed.xml"))
 
-	def test_remove_takes_a_version_out_of_a_checked_feed(self):
+	def test_remove_takes_a_version_out_of_a_checked_feed_and_raises_the_revision(self):
 		private, public = self.key_pair("update")
 		first, second = self.two_versions()
 		result = self.remove(self.sign(second, private), public)
 		self.assertEqual(result.returncode, 0, result.stderr)
-		self.assertEqual((self.dir / "removed.xml").read_bytes(), first.read_bytes())
+		removed = self.dir / "removed.xml"
+		self.assertEqual(self.revisions(removed), ["3"])
+		self.assertEqual(removed.read_bytes(), first.read_bytes().replace(b">1</moneten:revision>", b">3</moneten:revision>"))
+
+	def test_remove_refuses_to_take_out_the_last_version(self):
+		"""A feed without items carries no revision, so the app could not tell it from a replay."""
+		private, public = self.key_pair("update")
+		first, _ = self.two_versions()
+		result = self.remove(self.sign(first, private), public, version="0.1.3")
+		self.assertIn("last version", result.stderr)
+		self.assertFalse((self.dir / "removed.xml").exists())
 
 	def test_remove_refuses_an_unsigned_feed(self):
 		_, public = self.key_pair("update")
@@ -342,6 +380,21 @@ class ReleaseNotesTests(unittest.TestCase):
 			self.assertNotEqual(result.returncode, 0)
 			self.assertFalse((self.dir / "removed.xml").exists())
 		self.assertIn("has a disk image outside", result.stderr)
+
+	# check-newer
+
+	def check_newer(self, feed, current):
+		return self.run_script("check-newer", "--feed", str(feed), "--current", str(current))
+
+	def test_check_newer_needs_a_higher_revision_and_every_version(self):
+		first, second = self.two_versions()
+		self.assertEqual(self.check_newer(second, first).returncode, 0)
+		# A feed that was written while another write replaced the current feed has the same revision.
+		self.assertIn("is not above revision 2 of the current feed", self.check_newer(second, second).stderr)
+		# A pre-release whose draft was written before 0.1.4 was published would drop it.
+		private, public = self.key_pair("update")
+		self.assertEqual(self.remove(self.sign(second, private), public).returncode, 0)
+		self.assertIn("misses version 0.1.4", self.check_newer(self.dir / "removed.xml", second).stderr)
 
 
 if __name__ == "__main__":
