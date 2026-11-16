@@ -258,6 +258,12 @@ struct BankAccessTests {
 		let known = Self.bankAccount("Savings", refreshedAt: Self.noon)
 		let plan = Ledger(accounts: [fresh, known]).refreshAccounts(.all, calendar: Self.utc)[Self.accessID]
 		#expect(plan?.map(\.since) == [nil, Day(year: 2026, month: 10, day: 18)])
+		// The day of the last success itself, so an answer that starts after it may miss older transactions.
+		#expect(plan?.map(\.lastFetched) == [nil, Day(year: 2026, month: 11, day: 1)])
+		let enforced = RefreshRequest(access: Access(source: .fints(bankCode: "12030000", url: URL(string: "https://fints.example.com/fints")!),
+			bankName: "Musterbank", loginName: "erika77"), accounts: plan ?? [], enforced: true)
+		#expect(enforced.accounts.map(\.since) == [nil, nil])
+		#expect(enforced.accounts.map(\.lastFetched) == [nil, Day(year: 2026, month: 11, day: 1)])
 	}
 
 	@Test("A refresh asks from the oldest pending row, so it removes a deposit older than the overlap that the bank dropped")
