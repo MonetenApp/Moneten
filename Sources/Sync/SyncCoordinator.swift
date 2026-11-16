@@ -36,12 +36,18 @@ public final class SyncCoordinator {
 	/// one. When it throws, the account fails with `SyncFailure.notSaved` and keeps its last state. It may
 	/// wait, for example for a new transaction table (issue #151); the next account and `ended` wait for it.
 	@ObservationIgnored public var deliver: @MainActor (UUID, RefreshResult) async throws -> Void = { _, _ in }
-	/// Runs on the main actor when the refresh of an access ended, after `deliver`: with the ID of the
-	/// access, the new state that its connector returned, and how each requested account ended. A canceled
-	/// refresh brings no account, so its accounts keep their last state. It brings a state only when its
-	/// connector changed one before the cancel (`FailureWithState`).
+	/// Runs on the main actor when the refresh of an access ended with a new state of the access, after
+	/// `deliver` and before `ended`: with the ID of the access and the state. A canceled or failed refresh
+	/// brings a state only when its connector changed one before the end (`FailureWithState`). It runs
+	/// before the coordinator lets the next work of the access go, such as "Look for New Accounts...", so the
+	/// state that the work stores comes after this one. So it must store the state at once and never wait.
 	/// The last value says whether the refresh could ask the user, so that the app shows no alert for an automatic one.
-	@ObservationIgnored public var ended: @MainActor (UUID, AccessState?, [UUID: AccountRefresh], Bool) -> Void = { _, _, _, _ in }
+	@ObservationIgnored public var storeState: @MainActor (UUID, AccessState, Bool) -> Void = { _, _, _ in }
+	/// Runs on the main actor when the refresh of an access ended, after `storeState`: with the ID of the
+	/// access and how each requested account ended. A canceled refresh brings no account, so its accounts keep
+	/// their last state. It may store the accounts later, for example after the transaction table is drawn.
+	/// The last value says whether the refresh could ask the user, so that the app shows no alert for an automatic one.
+	@ObservationIgnored public var ended: @MainActor (UUID, [UUID: AccountRefresh], Bool) -> Void = { _, _, _ in }
 	/// Runs on the main actor when the refresh of an access ended, before `ended`, with the notices that its
 	/// bank sent, such as planned maintenance, also when the access failed after them (`FailureWithNotices`).
 	/// A canceled refresh brings none.
@@ -124,6 +130,19 @@ public final class SyncCoordinator {
 		startProgress(of: job)
 		startNext()
 		endRunIfIdle()
+	}
+
+	/// The login or the state of an access changed while work of `exclusively(for:_:)` held it, such as "Edit
+	/// Login Data..." or "Look for New Accounts...": each refresh of the access that waits runs with the new
+	/// login and state, not with those of the moment it was asked for.
+	public func update(_ access: Access, state: AccessState?) {
+		func updated(_ job: Job) -> Job {
+			var job = job
+			job.request = RefreshRequest(access: access, state: state, accounts: job.request.accounts)
+			return job
+		}
+		queue = queue.map { $0.request.access.id == access.id ? updated($0) : $0 }
+		afterRun[access.id] = afterRun[access.id].map(updated)
 	}
 
 	/// True while the access runs a refresh that may not ask the user.
@@ -281,10 +300,10 @@ public final class SyncCoordinator {
 				event = .finish(Self.summary(of: fetched, for: job.request, notSaved: notSaved))
 			} catch {
 				let withState = error as? FailureWithState
-				let withNotices = error as? FailureWithNotices
-				let error = withState?.failure ?? withNotices?.failure ?? error
+				let split = FailureWithNotices.split(error)
+				let error = withState?.failure ?? split.failure
 				if let withState { failedState = withState.state }
-				notices = withNotices?.notices ?? []
+				notices = split.notices
 				// A rejection or a block forgets the PIN also when the refresh was canceled meanwhile.
 				if (error as? SyncFailure)?.rejectsPIN == true { broker.forgetRejectedPIN(of: access.id) }
 				event = Task.isCancelled || error is CancellationError ? .cancel : .fail(Self.failure(error))
@@ -308,7 +327,8 @@ public final class SyncCoordinator {
 			}
 			// The cancel can also come while `deliver` waits, after the connector returned its report.
 			if !Task.isCancelled, !notices.isEmpty { noticed(access.id, notices) }
-			ended(access.id, state, end.accountRefreshes(of: accountIDs, notices: notices, at: Date()), attendance.isOn)
+			if let state { storeState(access.id, state, attendance.isOn) }
+			ended(access.id, end.accountRefreshes(of: accountIDs, notices: notices, at: Date()), attendance.isOn)
 			if var next = afterRun.removeValue(forKey: access.id) {
 				// The state that this run returned replaces the one that the command read before.
 				if let state {

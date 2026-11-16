@@ -111,20 +111,20 @@ public struct MoneyMoneyMigration: Sendable {
 		let stored = Dictionary(grouping: ledger.transactions, by: \.accountID)
 		let tombstones = Dictionary(grouping: deleted, by: \.accountID)
 		let rules = Categorizer(ledger: ledger)
-		var added: [UUID: Bool] = [:]
+		var added: [UUID: ReviewReason?] = [:]
 		var relinked: [UUID: [DeletedTransaction.Relink]] = [:]
 		for account in ledger.accounts + plan.accounts {
 			guard let rows = delivered[account.id] else { continue }
 			let r = reconcile(.migration(rows), into: account, stored: stored[account.id] ?? [], deleted: tombstones[account.id] ?? [],
 				rules: rules, now: Date())
-			for t in r.added { added[t.id] = t.needsReview }
+			for t in r.added { added.updateValue(t.review, forKey: t.id) }
 			plan.updatedTransactions += r.booked + r.updated + r.marked
 			plan.skippedTransactions += r.skipped
 			relinked[account.id] = r.relinked
 		}
 		for var t in rows {
-			guard let needsReview = added[t.id] else { continue }
-			t.needsReview = needsReview
+			guard let review = added[t.id] else { continue }
+			t.review = review
 			plan.transactions.append(t)
 		}
 		Self.setInitialBalances(of: &plan, ledger: ledger, stored: stored, deleted: tombstones, relinked: relinked, exported: Set(accountMap.values),

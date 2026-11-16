@@ -7,6 +7,28 @@ import Testing
 /// A database with every kind of object that the complete export holds. All names and numbers are made up.
 @Suite("Complete export and import")
 struct AllDataTests {
+	@Test("Complete export preserves original file identities and tombstones")
+	func fileIdentitiesRoundTrip() throws {
+		defer { try? FileManager.default.removeItem(at: root) }
+		let source = try emptyStore("file-source")
+		let account = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
+		try source.save(accounts: [account])
+		let file = Transaction(accountID: account.id, bookingDate: Day(year: 2026, month: 12, day: 1), amountMinor: -80_000,
+			name: "Vermieter A", purpose: "Rent", isPending: true)
+		var second = file
+		second.id = UUID()
+		second.bookingDate = second.bookingDate.adding(days: 7)
+		_ = try source.merge(.file([file, second]), into: account.id, now: exportedAt)
+		try source.deleteTransactions([second.id])
+		let exported = try source.exportAllData(at: exportedAt)
+		let target = try emptyStore("file-target")
+		try target.importAllData(try AllData(json: exported.json()))
+		let imported = try target.exportAllData(at: exportedAt)
+		#expect(imported == exported)
+		#expect(imported.transactions.map(\.fileIdentity) == ["file:1:8:202612016:-800003:EUR4:rent16:name:vermieter a0:0:"])
+		#expect(imported.deletedTransactions.map(\.fileIdentity) == ["file:1:8:202612086:-800003:EUR4:rent16:name:vermieter a0:0:"])
+	}
+
 	let root = FileManager.default.temporaryDirectory.appendingPathComponent("MonetenTests-\(UUID().uuidString)")
 	let exportedAt = Date(timeIntervalSince1970: 1_794_700_000)
 
@@ -42,7 +64,7 @@ struct AllDataTests {
 				bookingText: "Lastschrift", endToEndReference: "E2E-1", mandateReference: "M-1", creditorID: "DE98ZZZ09999999999", comment: "Strom",
 				isChecked: true, categoryID: pets.id, categorizedBy: .manual, sourceID: "moneymoney:1", createdAt: Date(timeIntervalSince1970: 1_794_600_001.123), returnReason: "AC04"),
 			Transaction(accountID: migrated.id, bookingDate: Day(year: 2026, month: 11, day: 4), amountMinor: -1_000, name: "Kiosk", isPending: true,
-				categoryID: food.id, categorizedBy: .rule, isNew: true, needsReview: true, sourceID: "moneymoney:2"),
+				categoryID: food.id, categorizedBy: .rule, isNew: true, review: .unclearBooking, sourceID: "moneymoney:2"),
 			Transaction(accountID: bank.id, bookingDate: Day(year: 2026, month: 11, day: 5), amountMinor: -2_000, currency: "USD", name: "Diner New York",
 				isFetched: true, sourceID: "bank-4711"),
 			Transaction(accountID: offline.id, bookingDate: Day(year: 2026, month: 11, day: 6), amountMinor: -480, name: "Bäckerei Gutbrot"),

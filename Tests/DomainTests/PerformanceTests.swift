@@ -4,32 +4,38 @@ import Testing
 
 @Suite("Performance with a long history")
 struct PerformanceTests {
-	@Test("Search, filters, sums, and the amounts of the sidebar over 50,000 transactions stay well under a frame budget per keystroke")
-	func largeLedger() {
+	@Test("Build, update, search, category filtering, and sidebar amounts meet budgets with 1,000 split transactions")
+	func splitHistoryBudgets() {
 		let everything = AccountGroup(name: "Alle", position: 0)
 		let accounts = (0..<20).map { Account(groupID: everything.id, position: $0, name: "Konto \($0)", kind: .giro, source: .offline) }
 		let categories = (0..<60).map {
 			Domain.Category(position: $0, name: "Kategorie \($0)", sidebarAmount: SidebarAmount.allCases[$0 % 5], rule: $0 % 3 == 0 ? "\"Haendler\($0)\"" : "")
 		}
-			+ [Domain.Category(position: 99, name: "Uncategorized", isDefault: true)]
+			+ [Domain.Category(position: 99, name: "Uncategorized", isDefault: true),
+				Domain.Category(position: 100, name: "Split first", sidebarAmount: .totalSum),
+				Domain.Category(position: 101, name: "Split remainder", sidebarAmount: .totalSum)]
 		var ts: [Transaction] = []
 		for i in 0..<50_000 {
 			let a = accounts[i % accounts.count]
 			ts.append(Transaction(accountID: a.id, bookingDate: Day(year: 2014 + i % 12, month: 1 + i % 12, day: 1 + i % 28), amountMinor: Int64(i % 2 == 0 ? -(i % 9_000) : i % 50_000), currency: ["EUR", "JPY", "KWD"][i % 3],
 				name: "Haendler\(i % 70) Musterstadt", purpose: "Rechnung \(i) Kundennummer \(i * 7)", categoryID: i % 4 == 0 ? categories[i % 60].id : nil))
 		}
+		let parts = ts.prefix(1_000).flatMap { t in
+			[SplitPart(transactionID: t.id, position: 0, amountMinor: 500, categoryID: categories[61].id),
+			 SplitPart(transactionID: t.id, position: 1, amountMinor: t.amountMinor - 500, categoryID: categories[62].id)]
+		}
 		var ledger = Ledger()
-		let build = fastest { ledger = Ledger(groups: [everything], accounts: accounts, categories: categories, transactions: ts) }
+		let build = fastest { ledger = Ledger(groups: [everything], accounts: accounts, categories: categories, transactions: ts, parts: parts) }
 		var f = TransactionFilter()
 		f.searchText = "kundennummer 7"
 		var count = 0
-		let search = fastest { count = ledger.transactions(in: .accountGroup(UUID()), filter: f).rows.count + ledger.transactions(in: .account(accounts[0].id), filter: f).rows.count }
+		let search = fastest { count = ledger.rows(in: .accountGroup(UUID()), filter: f).rows.count + ledger.rows(in: .account(accounts[0].id), filter: f).rows.count }
 		// "Uncategorized" holds three quarters of the rows.
 		func ruleSearch(_ text: String) -> (Duration, Int) {
 			var rule = TransactionFilter()
 			rule.searchText = text
 			var count = 0
-			return (fastest { count = ledger.transactions(in: .category(categories[60].id), filter: rule).rows.count }, count)
+			return (fastest { count = ledger.rows(in: .category(categories[60].id), filter: rule).rows.count }, count)
 		}
 		let (wildcard, wildcardCount) = ruleSearch("Haendler1*")
 		let (field, fieldCount) = ruleSearch(#"name:"Haendler1*""#)
@@ -40,7 +46,7 @@ struct PerformanceTests {
 			var filter = TransactionFilter()
 			filter.searchText = text
 			var count = 0
-			return (fastest { count = ledger.transactions(in: .accountGroup(everything.id), filter: filter).rows.count }, count)
+			return (fastest { count = ledger.rows(in: .accountGroup(everything.id), filter: filter).rows.count }, count)
 		}
 		let (fieldOverAll, fullScanCount) = overAll("name:Haendler*")
 		let (rareFieldOverAll, rareFieldCount) = overAll("name:Haendler1*")
@@ -51,26 +57,32 @@ struct PerformanceTests {
 		let (slowRegexOverAll, slowRegexCount) = overAll(#"/\d{5} Kunden/"#)
 		let (plainOverAll, plainOverAllCount) = overAll("kundennummer 7")
 		let (noSearch, noSearchCount) = overAll("")
-		let category = fastest { _ = ledger.transactions(in: .category(categories[3].id)).rows }
+		let category = fastest { _ = ledger.rows(in: .category(categories[3].id)).rows }
 		var range = TransactionFilter()
 		range.amount = .range(min: -50, max: 50)
 		var rangeCount = 0
-		let amountRange = fastest { rangeCount = ledger.transactions(in: .category(categories[60].id), filter: range).rows.count }
+		let amountRange = fastest { rangeCount = ledger.rows(in: .category(categories[60].id), filter: range).rows.count }
 		var amounts: [UUID: Money] = [:]
 		let sidebar = fastest { amounts = ledger.sidebarAmounts(today: Day(year: 2022, month: 9, day: 15)) }
 		let imported = (0..<2_000).map { i in
 			Transaction(accountID: accounts[i % accounts.count].id, bookingDate: Day(year: 2026, month: 11, day: 1 + i % 28), amountMinor: -Int64(i),
 				name: "Neu \(i)", purpose: "Import \(i)")
 		}
-		let update = fastest { var copy = ledger; copy.update(imported) }
+		let checked = ts.prefix(100).map { t in var t = t; t.isChecked = true; return t }
+		var updated = Ledger()
+		let update = fastest { var copy = ledger; copy.update(imported + checked); updated = copy }
+		#expect(updated.transactions.count == 52_000)
+		#expect(updated.rows(in: .accountGroup(everything.id)).rows.filter(\.isChecked).count == 200)
 		let categorizer = Categorizer(ledger: ledger)
 		let rules = fastest { for t in ts.prefix(5_000) { _ = categorizer.category(for: t) } }
-		print("build \(build), import of 2,000 \(update), search \(search) (\(count) rows), wildcard \(wildcard) (\(wildcardCount) rows), field \(field) (\(fieldCount) rows), amount \(amount) (\(amountCount) rows), regex \(regex) (\(regexCount) rows), over 50,000: name:Haendler* \(fieldOverAll) (\(fullScanCount) rows), name:Haendler1* \(rareFieldOverAll) (\(rareFieldCount) rows), Kunden* \(prefixOverAll) (\(prefixCount) rows), purpose:Rech* \(purposeOverAll) (\(purposeCount) rows), regex \(regexOverAll) (\(regexOverAllCount) rows), regex every row reads \(slowRegexOverAll) (\(slowRegexCount) rows), plain \(plainOverAll) (\(plainOverAllCount) rows), no search \(noSearch) (\(noSearchCount) rows), category \(category), amount range \(amountRange) (\(rangeCount) rows), sidebar \(sidebar) (\(amounts.count) amounts), 5,000 categorizations \(rules)")
+		print("build \(build), import of 2,000 and check of 100 \(update), search \(search) (\(count) rows), wildcard \(wildcard) (\(wildcardCount) rows), field \(field) (\(fieldCount) rows), amount \(amount) (\(amountCount) rows), regex \(regex) (\(regexCount) rows), over 50,000: name:Haendler* \(fieldOverAll) (\(fullScanCount) rows), name:Haendler1* \(rareFieldOverAll) (\(rareFieldCount) rows), Kunden* \(prefixOverAll) (\(prefixCount) rows), purpose:Rech* \(purposeOverAll) (\(purposeCount) rows), regex \(regexOverAll) (\(regexOverAllCount) rows), regex every row reads \(slowRegexOverAll) (\(slowRegexCount) rows), plain \(plainOverAll) (\(plainOverAllCount) rows), no search \(noSearch) (\(noSearchCount) rows), category \(category), amount range \(amountRange) (\(rangeCount) rows), sidebar \(sidebar) (\(amounts.count) amounts), 5,000 categorizations \(rules)")
 		#expect(count > 0)
-		#expect(rangeCount == 15_868)
+		#expect(rangeCount == 15_355)
 		#expect([wildcardCount, fieldCount, amountCount, regexCount, fullScanCount, prefixCount, purposeCount, regexOverAllCount, slowRegexCount, plainOverAllCount, rareFieldCount].allSatisfy { $0 > 0 })
 		#expect(slowRegexCount == 40_000)
-		#expect(amounts.count > 0)
+		#expect(noSearchCount == 51_000)
+		#expect(amounts[categories[61].id]?.minorUnits == 167_000)
+		#expect(amounts[categories[62].id]?.minorUnits == -166_499)
 		// A debug build runs several times slower than the app and depends on the load of the machine,
 		// so the budgets hold for a release build only: `scripts/test.sh -c release -Xswiftc -enable-testing
 		// --filter PerformanceTests`, which CI runs as its own step.
@@ -120,6 +132,55 @@ struct PerformanceTests {
 		#if !DEBUG
 		#expect(keystroke < .milliseconds(2))
 		#expect(open < .milliseconds(100))
+		#endif
+	}
+
+	@Test("50,000 file rows create and assign at most 1,000 categories within the import budget")
+	func fileCategoryLimit() {
+		let account = Account(position: 0, name: "Import", kind: .giro, source: .offline)
+		let rows = (0..<50_000).map { i in
+			Transaction(accountID: account.id, bookingDate: Day(year: 2026, month: 11, day: 3), amountMinor: -420, name: "Shop", purpose: "Purpose \(i)")
+		}
+		let names = Dictionary(uniqueKeysWithValues: rows.map { ($0.id, $0.purpose) })
+		var found = FileCategories([], in: [], creating: false)
+		var assigned: [Transaction] = []
+		let duration = fastest {
+			found = FileCategories(rows.map(\.purpose), in: [], creating: true)
+			let ledger = Ledger(accounts: [account], categories: found.created)
+			assigned = found.assign(to: rows, names: names, for: account.id, in: ledger)
+		}
+		print("file categories for 50,000 rows: \(duration), \(found.created.count) created, \(assigned.count) assigned rows")
+		#expect(found.created.count == 1_000)
+		#expect(found.limitReached)
+		#expect(assigned.count == 50_000)
+		let categoryNames = Dictionary(uniqueKeysWithValues: found.created.map { ($0.id, $0.name) })
+		#expect(assigned.prefix(1_000).allSatisfy { $0.categorizedBy == .manual && $0.categoryID.flatMap { categoryNames[$0] } == $0.purpose })
+		#expect(assigned.dropFirst(1_000).allSatisfy { $0.categoryID == nil && $0.categorizedBy == .none })
+		#expect(assigned.reduce(Int64(0)) { $0 + $1.amountMinor } == -21_000_000)
+		#if !DEBUG
+		#expect(duration < .milliseconds(500))
+		#endif
+	}
+
+	@Test("Refreshing 300 booked rows in 50,000 file rows stays under 20 ms")
+	func bookedFileRefresh() {
+		let account = Account(position: 0, name: "File history", kind: .giro, source: .bank)
+		let today = Day(year: 2026, month: 12, day: 1)
+		let stored = (0..<50_000).map { i in
+			Transaction(accountID: account.id, bookingDate: today.adding(days: -(i % 2_000)), amountMinor: -Int64(i + 1),
+				name: "Shop", purpose: "Payment \(i)", fileIdentity: "file:fixture:\(i)")
+		}
+		var rows = Array(stored.prefix(300))
+		for i in rows.indices { rows[i].fileIdentity = nil }
+		let delivery = Delivery.refresh(RefreshResult(balance: nil, transactions: FetchedTransactions(rows: rows, from: today.adding(days: -299))))
+		let rules = Categorizer(ledger: Ledger(accounts: [account]))
+		var result = Reconciliation()
+		let elapsed = fastest { result = reconcile(delivery, into: account, stored: stored, deleted: [], rules: rules, now: Date()) }
+		#expect(result.skipped == 300 && result.updated.count == 300)
+		#expect(result.added.isEmpty && result.booked.isEmpty && result.dropped.isEmpty && result.marked.isEmpty)
+		print("booked file refresh 50,000/300 \(elapsed), skipped=\(result.skipped), updated=\(result.updated.count)")
+		#if !DEBUG
+		#expect(elapsed < .milliseconds(20))
 		#endif
 	}
 

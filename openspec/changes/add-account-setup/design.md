@@ -29,7 +29,7 @@ The helper sends the whole bank directory of hbci4java once per assistant, with 
 
 A search compares each word of the entry with the words of the name and the place, in both spellings of umlauts ("muenchen" and "munchen" for "München") and without accents, and with the start of the Bankleitzahl. Every word must match. The order is:
 
-1. Banks with a FinTS address before the others. An old entry of a merged bank, such as "Sparkasse Bonn -alt-", counts as a bank without one.
+1. Banks with a FinTS address before the others. The entry of a merged bank, such as "Sparkasse Bonn -alt-", comes after them too, because the bank may use another Bankleitzahl for online banking now.
 2. A bank whose name starts with the entry, such as "ING-DiBa" for "ing" before a bank in Ingolstadt.
 3. A bank where each word starts a word of the name or the place.
 4. A bank where a word only appears inside a word, such as "sparkasse" in "Stadtsparkasse".
@@ -38,13 +38,13 @@ A search compares each word of the entry with the words of the name and the plac
 
 The directory names some banks differently from their customers, such as "Deutsche Kreditbank Berlin" for DKB, so the short name of each bank with a login hint is a search word too. A search takes 4 to 12 ms in a release build and runs off the main thread. The step shows the first 50 matches. Each row has the place and the Bankleitzahl, and the step says that the Bankleitzahl is digits 5 to 12 of the IBAN, because the login sends the Bankleitzahl that the user chooses, and Consorsbank, for example, has two.
 
-### An outdated Bankleitzahl
+### A Bankleitzahl of a merged bank
 
-The bank directory of hbci4java has no field for a replaced Bankleitzahl. It keeps the Bankleitzahl of a merged bank with "-alt-" at the end of the name, such as "Sparkasse Bonn -alt-", 280 of its 4,063 entries. Such an entry is outdated: the bank gave its customers a new IBAN, so the first step asks for the current IBAN or Bankleitzahl and does not go on, also when the entry still has a FinTS address. The search still lists it last, so a user who searches by name sees why the bank of an old letter does not work.
+The bank directory of hbci4java has no field for a replaced Bankleitzahl. It marks the entry of a merged bank with "-alt-" at the end of the name, such as "Sparkasse Bonn -alt-": 279 of its 4,063 entries, and one more with "-alt" without the last hyphen. The mark does not say that the Bankleitzahl is outdated. During a merger the Bundesbank lets a bank keep two Bankleitzahlen in one place, and "-alt-" only tells them apart: 77 of the 280 are still active in the Bankleitzahlen file of the Bundesbank, and 48 of those have a FinTS address. So the app never refuses such an entry and never says that it is outdated. `BankLookup` accepts it like any bank with a FinTS address, and the first step shows `BankDirectory.Entry.mergerNote`: "This Bankleitzahl belongs to a bank that merged. If the login fails, ask your bank which Bankleitzahl it uses for online banking now." An entry of a merged bank without a FinTS address gets the message of any bank without one.
 
 ### Supported banks
 
-"Supported Banks..." in the Help menu opens a window of its own. `SupportedBanks` holds the bank directory and the services of the extensions that may run, the same services that "Other" lists. A search uses the words of the first step: the banks in the order of `BankDirectory.search(_:)`, and a service when every word is in its name or in the name of its extension. The list shows only what the app reaches: a bank with a FinTS address that is not outdated, with "FinTS/HBCI with TAN method" and the help of its login hint as its note, and each service with the name of its extension. It shows at most 500 banks, and says how many match when there are more, so that the window stays quick. Without a search the banks come by name.
+"Supported Banks..." in the Help menu opens a window of its own. `SupportedBanks` holds the bank directory and the services of the extensions that may run, the same services that "Other" lists. A search uses the words of the first step: the banks in the order of `BankDirectory.search(_:)`, and a service when every word is in its name or in the name of its extension. The list shows only what the app reaches: a bank with a FinTS address, with "FinTS/HBCI with TAN method" and its note, which is the help of its login hint or the note of a merged bank, and each service with the name of its extension. When the bank directory does not load, the window says so above the services. It shows at most 500 banks, and says how many match when there are more, so that the window stays quick. The rows are a lazy stack in a scroll view, not a SwiftUI list: the table behind a list reported a reentrant operation of its delegate when a search changed a whole section and hundreds of rows. Each row has the same height, with lines that are cut at the end and the whole note in its tooltip. Without a search the banks come by name.
 
 ### Login hints
 
@@ -64,7 +64,7 @@ The moneymoney-migration spec ("Connect a migrated account to its bank") lets th
 
 ### A second setup of a login
 
-`Store.add(_:state:accounts:)` looks for an access with the same Bankleitzahl and login name. When it finds one, the new accounts join it, so one login keeps one session and one TAN for each refresh. The login of such a setup runs in `SyncCoordinator.exclusively(for:_:)`: it waits for a running refresh of the access, and a refresh that a command asks for meanwhile waits for the login. So the bank never gets two dialogs for one login.
+`Store.add(_:state:accounts:)` looks for an access with the same Bankleitzahl and login name. When it finds one, the new accounts join it, so one login keeps one session and one TAN for each refresh. `SetupSession.logIn(holding:_:)` runs the login of such a setup in `SyncCoordinator.exclusively(for:_:)`: it waits for a running refresh of the access, and a refresh that a command asks for meanwhile waits for the login. So the bank never gets two dialogs for one login. The session starts only after the login got the access, so a login that is canceled while it waits leaves the TAN progress and the PIN of the running refresh alone.
 
 The access keeps its stored state, and `Store.add(_:state:accounts:)` ignores the state of the setup. The refresh that waited for the login starts from the stored state and can end before or after "Done". With the state of the setup, "Done" would roll back the state of that refresh, or the refresh would roll back the state of "Done".
 
@@ -72,13 +72,25 @@ The access keeps its stored state, and `Store.add(_:state:accounts:)` ignores th
 
 A second "Next" during the login sends nothing, so the bank gets the PIN once. When "Done" cannot store the accounts, the assistant stays at the third step and shows the error of the database, so the login and its TAN are not lost.
 
+### Look for new accounts
+
+"Look for New Accounts..." on an account of a FinTS access logs in like the setup, with `SetupSession.logIn(holding:_:)`, so it waits for a refresh of the access and a refresh asked for meanwhile waits for it. It uses the stored state, and `SetupSession` without a PIN of its own takes the PIN of the access: the PIN in memory, the saved PIN, or the PIN sheet, as an attended refresh does. A PIN that the user typed is kept, and saved on request, only after the login succeeded. The login stores the new state of the access, and hands it to a waiting refresh with `SyncCoordinator.update(_:state:)`, before it lets the refresh go. The bank and its BIC for the new accounts come from the bank directory, which loads while the login runs, with `BankDirectory.bank(of:)`. The assistant opens at its account step with the notices of the bank and the accounts whose `Ledger.setupMatch(for:listed:)` is not "present", all selected, or says that there are no new accounts. `SetupListing` keeps every account that the bank listed, also those that the step does not show, and "Done" matches the chosen ones against all of them. So a migrated account without a subnumber stays a choice for a new subaccount when the app has the other subaccount of its number already. "Done" without new accounts marks the notices of the bank as shown, as "Done" of the setup does. A login that fails shows the message of the bank with the notices before it, which `BankNotices.setupFailed(_:from:)` marks as shown, as a failed login of the setup does. "Edit Login Data..." shows them in the same way under the error of its login step. "Done" adds them with `Store.add(_:state:accounts:)`, which joins them to the access and keeps its state. The command does not apply to the service of an extension: "Add Account..." with the service runs its setup, which adds only the accounts that the app does not have.
+
+### Edit login data
+
+"Edit Login Data..." opens the login step of the assistant with the login name of the access, an empty PIN, and "Save PIN" on when a PIN is saved. "Done" logs in like the setup, with `SetupSession.logIn(holding:_:)`, but with the ID of the access and without its stored state. Only after the bank accepted the login, and while the login still holds the access, does `Store.updateLogin(of:loginName:state:savedPIN:)` store the login name, the new state, and the saved PIN in one transaction: the PIN of the login when "Save PIN" is on, and none when it is off. `SessionBroker.adopt(_:for:saved:)` takes the same into memory, and `SyncCoordinator.update(_:state:)` hands the new login to a refresh that waits. The coordinator hands the state of a refresh to `SyncCoordinator.storeState`, which stores it at once, before it lets the next work of the access go, so the state of the edit always comes after it. A rejected PIN ends the login with the message of the bank and removes the saved PIN of the access, as any rejection does, so no refresh sends it again.
+
+The login without the state is what sets an access up again after an aborted authentication or a new TAN method: the bank sends its parameters, a new system ID, and its TAN methods. The codes of the banks for an access that must be set up again differ, so `SyncFailure.mayAskForNewSetup` holds for every message of the bank and every unfinished authentication that ends the refresh of the whole access. The helper sends such a message as the failure of the whole access also when the bank ends the dialog after the login, and the app cannot tell the two apart, so the command is offered then too. `RefreshError.suggestsEditLoginData` keeps it with the error of each account, and the error popover then offers "Edit Login Data...". A failure of one account means that the login worked, so it does not.
+
 ## Deviations from the spec
 
 - The bank directory of hbci4java holds no field names, formats, or notes. The login step asks for "User ID" and "PIN", except for the five banks of `LoginHint`, and has no customer ID and no format checks. The five banks ask to leave the customer ID empty.
-- The country menu is not built. A valid IBAN of another country gets the message that the app finds banks only by a German IBAN or Bankleitzahl so far, and the search covers only the German bank directory.
+- The country menu is not built. A valid IBAN of another country gets the message that the app finds banks only by a German IBAN or Bankleitzahl so far, and the search covers only the German bank directory. In v0.1 the menu would change nothing: the bank directory has only German banks, and the extensions declare no country for their services.
+- The bank directory marks no outdated Bankleitzahl, so the app cannot say that one is outdated. For the entry of a merged bank it shows a note and goes on, as "A Bankleitzahl of a merged bank" describes.
 - "Access with" is not shown, because FinTS is the only method until E6.
 - The progress text is "Setting up Accounts..." without the current step, because the helper reports no progress while it lists accounts.
-- "Look for New Accounts...", "Edit Login Data...", and the switch of the access method are not built.
+- The switch of the access method is not built. It needs a second access method for one bank, which comes with "Access with".
+- The bank directory holds no notes, so the login step shows no note of the bank before the first login. The help of the first step says how a credit card is added.
 
 ## Risks / Trade-offs
 

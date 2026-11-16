@@ -28,6 +28,18 @@ struct SplitTests {
 		#expect(Split.amount(from: "92233720368547758,07000000000000000000001", on: money(8000), decimalMark: .comma) == nil)
 	}
 
+	@Test("The amount text boundary is 38 digits")
+	func digitBoundary() {
+		#expect(Split.amount(from: "1," + String(repeating: "0", count: 37), on: money(-8000), decimalMark: .comma) == money(-100))
+		#expect(Split.amount(from: "1," + String(repeating: "0", count: 38), on: money(-8000), decimalMark: .comma) == nil)
+	}
+
+	@Test("A zero original can have opposite parts, and another currency is unbalanced")
+	func zeroOriginalAndWrongCurrency() throws {
+		#expect(try Split.amounts(of: money(0), off: [money(500)]) == [money(500), money(-500)])
+		#expect(throws: SplitError.unbalanced) { try Split.amounts(of: money(-8000), off: [money(-2500, "USD")]) }
+	}
+
 	@Test("The remainder makes the parts add up")
 	func remainder() throws {
 		#expect(try Split.amounts(of: money(-8000), off: [money(-2500)]) == [money(-2500), money(-5500)])

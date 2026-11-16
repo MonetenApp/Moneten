@@ -28,6 +28,19 @@ final class DebugHarness {
 	private let tableNumbers = NSMapTable<NSTableView, NSNumber>.weakToStrongObjects()
 	private var nextTableNumber = 1
 
+	/// The debug folder of this run, or nil in a release build and in a run without `MONETEN_DEBUG_DIR`.
+	private static var requestedPath: String? {
+		#if DEBUG || PERF_HARNESS
+		ProcessInfo.processInfo.environment["MONETEN_DEBUG_DIR"].flatMap { $0.isEmpty ? nil : $0 }
+		#else
+		nil
+		#endif
+	}
+
+	/// Whether the harness drives this run. Such a run does not bring the app to the front, because the
+	/// developer keeps working in another app. Only "mainkey table" and "securefield" ask for the focus.
+	static var isRequested: Bool { requestedPath != nil }
+
 	static func installIfRequested(model: AppModel) {
 		#if DEBUG || PERF_HARNESS
 		install(model: model)
@@ -35,7 +48,7 @@ final class DebugHarness {
 	}
 
 	private static func install(model: AppModel) {
-		guard shared == nil, let path = ProcessInfo.processInfo.environment["MONETEN_DEBUG_DIR"], !path.isEmpty else { return }
+		guard shared == nil, let path = requestedPath else { return }
 		let harness = DebugHarness(folder: URL(fileURLWithPath: path), model: model)
 		shared = harness
 		model.extensions.log = { [weak harness] in harness?.log($0) }
@@ -94,6 +107,11 @@ final class DebugHarness {
 		case "synccancel": model.sync.cancelAll()
 		// "<field> <value>" drives the "Add Account" assistant: entry, choose, login, pin, save, other, group, next, back, toggle, connect, cancel.
 		case "setup": setup(argument)
+		// "<account name>": "Look for New Accounts..." and "Edit Login Data..." on the account with a bank access, which "setup" then drives.
+		case "lookfornew", "editlogin":
+			guard let account = model.ledger.accounts.first(where: { $0.name == argument && $0.accessID != nil }) else { return log("\(command) no account") }
+			if command == "lookfornew" { model.lookForNewAccounts(account: account.id) } else { model.editLoginData(account: account.id) }
+			log("\(command) setup=\(model.setup != nil)")
 		// "<name>": a migrated giro account without an access, with the test IBAN of the made-up bank.
 		case "migrated":
 			model.save(account: Account(position: model.ledger.nextTreePosition(in: nil), name: argument, kind: .giro, source: .migrated,
@@ -134,8 +152,23 @@ final class DebugHarness {
 				keyCode: argument == "escape" ? 53 : argument == "return" ? 36 : 24) {
 				log("key \(argument) handled=\(sheet.performKeyEquivalent(with: event))")
 			}
-		// "<text>" types into the field that has the focus.
-		case "type": ((topSheet ?? NSApp.windows.first { $0.isVisible && $0.firstResponder is NSTextView })?.firstResponder as? NSTextView)?.insertText(argument, replacementRange: NSRange(location: NSNotFound, length: 0))
+		case "focusfield":
+			func fields(in view: NSView) -> [NSTextField] {
+				if let field = view as? NSTextField, field.isEditable { return [field] }
+				return view.subviews.flatMap(fields)
+			}
+			guard let sheet = topSheet, let view = sheet.contentView, let position = Int(argument) else { return }
+			let editable = fields(in: view)
+			guard editable.indices.contains(position) else { return log("focusfield count=\(editable.count)") }
+			NSApp.activate()
+			sheet.makeKeyAndOrderFront(nil)
+			sheet.makeFirstResponder(editable[position])
+			editable[position].selectText(nil)
+			log("focusfield count=\(editable.count) position=\(position) editor=\(sheet.firstResponder is NSTextView)")
+		// "<text>" types into the field that has the focus: in the sheet on screen, or else in the key window. A harness
+		// run keeps the app in the background, where no window is key, so then in the frontmost window with a focused field.
+		case "type": ((topSheet ?? NSApp.keyWindow ?? NSApp.orderedWindows.first { $0.firstResponder is NSTextView })?.firstResponder as? NSTextView)?
+			.insertText(argument, replacementRange: NSRange(location: NSNotFound, length: 0))
 		// Focuses the first secure field of the sheet on screen and logs what macOS sees of it, for the check that the password manager does not offer it.
 		case "securefield": secureField()
 		// "all", or the name of an account or a group. "refreshenforced" is the command with the Option key.
@@ -172,7 +205,9 @@ final class DebugHarness {
 			// By the position and the kind of the account, as in "status", never by its name.
 			let accounts = model.ledger.accounts.filter { $0.accessID != nil }
 			if let position = accounts.firstIndex(where: { $0.name == argument }), let error = accounts[position].refreshError {
-				offscreenSnapshot(RefreshErrorPopover(account: accounts[position], error: error), width: 352, name: "error-\(position)-\(accounts[position].kind)")
+				let edit: (() -> Void)? = error.suggestsEditLoginData && model.fintsAccess(of: accounts[position].id) != nil ? {} : nil
+				offscreenSnapshot(RefreshErrorPopover(account: accounts[position], error: error, editLoginData: edit), width: 352,
+					name: "error-\(position)-\(accounts[position].kind)")
 			}
 		case "extrun": runExtension(argument)
 		case "escape":
@@ -254,11 +289,18 @@ final class DebugHarness {
 				model.save(group: g)
 			}
 		// Imports the files at the paths, separated by "|", into the selected account, as "Import Transactions..." does after the open panel.
+		// A leading "preview:" turns on "Show the preview also for CSV files with a profile".
 		case "importfile":
 			guard let account = model.selectedAccount else { return log("importfile no account") }
-			let urls = argument.split(separator: "|").map { URL(filePath: String($0)) }
-			Task { await model.importFiles(urls, into: account); log("importfile done") }
+			let alwaysPreview = argument.hasPrefix("preview:")
+			let urls = argument.dropFirst(alwaysPreview ? 8 : 0).split(separator: "|").map { URL(filePath: String($0)) }
+			Task { await model.importFiles(urls, into: account, alwaysPreview: alwaysPreview); log("importfile done") }
 		// "selected" or "named" answers the question about the account of a file, an empty argument logs it.
+		case "cancelimport": model.fileImport?.cancel()
+		case "importstate":
+			let run = model.fileImport
+			log("importstate phase=\(run == nil ? "none" : run?.storing == nil ? "reading" : "storing") canceled=\(run?.isCanceled ?? false)")
+
 		case "importanswer":
 			guard let question = model.fileImport?.question else { return log("importanswer no question") }
 			switch argument {
@@ -268,6 +310,31 @@ final class DebugHarness {
 				let kind = switch question.named { case .iban: "iban"; case .number: "number" }
 				log("importanswer kind=\(kind) fileIndex=\(model.fileImport?.index ?? -1) selectedPosition=\(question.selected.position) otherPosition=\(question.other?.position ?? -1)")
 			}
+		case "csvhandoff":
+			switch argument {
+			case "prepare":
+				guard !model.ledger.accounts.contains(where: { $0.accountNumber == "88776655" }) else { return log("csvhandoff prepared") }
+				var account = Account(position: model.ledger.nextTreePosition(in: nil), name: "Handoff Synthetic", kind: .giro, source: .offline, currency: "JPY")
+				account.accountNumber = "88776655"
+				model.save(account: account)
+				log("csvhandoff prepared")
+#if DEBUG
+			case "confirm": model.fileImport?.confirm(named: .number(bankCode: nil, account: "88776655"))
+#endif
+			default:
+				do {
+					guard let store = model.store else { return log("csvhandoff error=locked") }
+					let stored = try store.loadLedger()
+					let accounts = stored.accounts.filter { $0.accountNumber == "88776655" && $0.currency == "JPY" }
+					let rows = accounts.flatMap { stored.transactions(ofAccount: $0.id) }
+					log("csvhandoff accounts=\(accounts.count) count=\(rows.count) amountSum=\(rows.reduce(Int64(0)) { $0 + $1.amountMinor }) dateSum=\(rows.reduce(0) { $0 + $1.bookingDate.rawValue })")
+				} catch { log("csvhandoff error=store") }
+			}
+		// Changes the CSV preview on screen: "column <n>=<field or none>", "date <order>", "encoding <name>",
+		// "decimal comma|point|detect", "skip", "profile <name>" to apply a saved profile, "name <name>" to
+		// save the settings under that name, "delete" to delete the applied profile, "state", which logs the settings and
+		// counts of the preview, or "rows", which logs its first rows.
+		case "csv": csvPreview(argument)
 		// "[<currency>]": the credit card in US dollars, or in another currency such as JPY.
 		case "usd": Task { await DemoData.usdAccount(model, currency: argument.isEmpty ? "USD" : argument); log("usd done") }
 		case "review": Task { await DemoData.review(model); log("review done") }
@@ -278,9 +345,9 @@ final class DebugHarness {
 			}
 		case "rows":
 			if let account = model.ledger.accounts.first(where: { $0.name == argument }) {
-				let rows = model.ledger.transactions(ofAccount: account.id).filter { $0.isFetched || $0.needsReview }
+				let rows = model.ledger.transactions(ofAccount: account.id).filter { $0.isFetched || $0.review != nil }
 				for t in rows {
-					log("row \(t.bookingDate) \(t.amountMinor)\(t.isPending ? " pending" : "")\(t.isNew ? " new" : "")\(t.needsReview ? " review" : "")")
+					log("row \(t.bookingDate) \(t.amountMinor)\(t.isPending ? " pending" : "")\(t.isNew ? " new" : "")\(t.review.map { " review " + $0.rawValue } ?? "")")
 				}
 				log("rows \(rows.count) new=\(model.ledger.newTransactionCounts[account.id] ?? 0) balance=\(account.bankBalanceMinor.map(String.init) ?? "-")")
 			}
@@ -300,6 +367,8 @@ final class DebugHarness {
 			}
 		case "symbolsnapshot":
 			offscreenSnapshot(SymbolGrid(selection: "cart.fill", color: .green, isGroup: false) { _ in }, width: 360, name: "\(argument)-symbols")
+		// "<name>": the help of the bank step of "Add Account", drawn offscreen.
+		case "bankstephelpsnapshot": offscreenSnapshot(BankStepHelp(), width: 332, name: argument)
 		case "rulehelpsnapshot":
 			offscreenSnapshot(RuleHelp(), width: 420, name: "\(argument)-rulehelp")
 			offscreenSnapshot(RuleHelp().defaultScrollAnchor(.bottom), width: 420, name: "\(argument)-rulehelp-end")
@@ -377,7 +446,7 @@ final class DebugHarness {
 		case "balance": model.balanceMode = BalanceMode(rawValue: argument) ?? .daily
 		case "search":
 			model.filter.searchText = argument
-			if model.transactions(for: model.tableKey).gaveUp { log("gave up") }
+			if model.rows(for: model.tableKey).gaveUp { log("gave up") }
 		// "<min> <max>" as typed into "Custom..." of the amount filter, with "-" for an empty field.
 		case "amount", "amountsnapshot":
 			let ends = argument.split(separator: " ").map { $0 == "-" ? "" : String($0) } + ["", ""]
@@ -445,6 +514,7 @@ final class DebugHarness {
 			case "accountSettings": if case let .account(id) = model.selection { model.sheet = .accountSettings(id) }
 			// What "Calibrate..." in the account header does.
 			case "calibration": if case let .account(id) = model.selection { model.sheet = .calibration(id) }
+			case "newTransaction": model.sheet = .transaction(nil)
 			case "transaction": model.sheet = .transaction(model.visibleTransactions.first?.id)
 			// What ⌘K does, for a run without a key window, where SwiftUI disables the menu commands.
 			case "assignCategory": model.openCategoryPicker()
@@ -469,6 +539,22 @@ final class DebugHarness {
 			}
 		// What "Add category" in "Assign Category" does with the selected rows.
 		case "newcategory": Task { await model.addCategory(name: argument, isGroup: false, parentID: nil, assigning: model.visibleSelection) }
+		case "split":
+			guard let row = model.visibleTransactions.first, model.ledger.part(row.id) == nil,
+				let amount = Split.amount(from: argument, on: row.amount, decimalMark: .comma),
+				let amounts = try? Split.amounts(of: row.amount, off: [amount]) else { return log("split refused") }
+			let parts = amounts.enumerated().map {
+				SplitPart(transactionID: row.id, position: $0.offset, amountMinor: $0.element.minorUnits, categoryID: row.categoryID, comment: row.comment)
+			}
+			Task {
+				let saved = await model.replaceParts(of: row.id, with: parts)
+				log("split saved=\(saved) parts=\(saved ? parts.count : 0) transactions=\(model.ledger.transactions.count)")
+			}
+		case "checkrows": model.setChecked(true, for: model.visibleSelection)
+		case "splitstate":
+			let rows = model.visibleTransactions
+			let originals = Set(rows.map { model.ledger.part($0.id)?.transactionID ?? $0.id }).compactMap { model.ledger.transaction($0) }
+			log("splitstate parts=\(rows.filter { model.ledger.part($0.id) != nil }.count) pending=\(rows.filter(\.isPending).count) selected=\(model.visibleSelection.count) checked=\(originals.filter(\.isChecked).count) review=\(originals.first?.review?.rawValue ?? "none") sheet=\(model.sheet?.trailName ?? "none")")
 		case "selectRows": model.selectedTransactions = Set(model.visibleTransactions.prefix(Int(argument) ?? 1).map(\.id))
 		// What a drop of the selected rows on the category "Name" in the sidebar does, with the payload sent
 		// through an item provider as a drag sends it. The harness cannot drag.
@@ -516,8 +602,9 @@ final class DebugHarness {
 		// "account <name>", "custom <yyyymmdd> <yyyymmdd>", or "pin on" and "pin off".
 		case "filterbar": filterBar(argument)
 		case "state":
+			let savedFilter = UserDefaults.standard.data(forKey: Preference.savedFilterBar).flatMap(SavedFilterBar.init(data:))
 			log("phase=\(model.phase.trailName) accounts=\(model.ledger.accounts.count) transactions=\(model.ledger.transactions.count) visible=\(model.visibleTransactions.count) selection=\(String(describing: model.selection)) selected=\(model.selectedAccount.map { "\($0.kind)" } ?? "-")")
-			log("pin=\(model.isFilterBarPinned) period=\(model.period.trailName) status=\(model.filter.status) filter=\(model.filter.trailName) category=\(model.filter.categoryID?.uuidString ?? "all") account=\(model.filter.accountID?.uuidString ?? "all")")
+			log("pin=\(model.isFilterBarPinned) period=\(model.period.trailName) status=\(model.filter.status) amount=\(model.filter.amount) filter=\(model.filter.trailName) category=\(model.filter.categoryID?.uuidString ?? "all") account=\(model.filter.accountID?.uuidString ?? "all") saved=\(savedFilter == SavedFilterBar(period: model.period, filter: model.filter))")
 			logChart()
 		// Whether the selected account proposes a calibration, without amounts.
 		case "calibration":
@@ -596,6 +683,7 @@ final class DebugHarness {
 		default: break
 		}
 		log("setup service=\(setup.service?.title ?? "-") other=\(setup.otherServices.map(\.title)) error=\(Self.isSet(setup.serviceError))")
+		log("setup purpose=\(Self.caseName(setup.purpose)) listing=\(setup.isListing) message=\(Self.isSet(setup.listingMessage))")
 		log("setup step=\(setup.step) entry=\(!setup.entry.isEmpty) login=\(!setup.loginName.isEmpty) highlighted=\(setup.highlighted) lookup=\(Self.label(setup.lookup.state)) error=\(Self.isSet(setup.loginError)) saveError=\(Self.isSet(setup.saveError)) dialog=\(model.sync.broker.current != nil) candidates=\(setup.candidates.count) [\(setup.candidates.map { "\($0.account.kind):\(Self.label($0.match))" }.joined(separator: ", "))] selected=\(setup.candidates.indices.filter { setup.selected.contains(setup.candidates[$0].id) })")
 	}
 
@@ -612,6 +700,7 @@ final class DebugHarness {
 			(view as? NSSecureTextField).map { [$0] } ?? view.subviews.flatMap(fields)
 		}
 		guard let sheet = topSheet, let field = sheet.contentView.flatMap(fields)?.first else { return log("securefield none") }
+		// AutoFill offers itself only in the active app. macOS grants this only when the app in front gives up the focus, which the log shows.
 		NSApp.activate()
 		sheet.makeFirstResponder(field)
 		DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
@@ -649,6 +738,7 @@ final class DebugHarness {
 			"return": ("\r", 36), "escape": ("\u{1b}", 53), "cmd+k": ("k", 40)]
 		var handledBy = "-"
 		if name == "table" {
+			// Only the active app has a key window. macOS grants this only when the app in front gives up the focus, which "key=" shows.
 			NSApp.activate()
 			main.makeKeyAndOrderFront(nil)
 			main.makeFirstResponder(table)
@@ -670,7 +760,7 @@ final class DebugHarness {
 			let ledger = model.ledger
 			let order = ledger.categoriesInSidebarOrder.filter { !$0.isDefault }.map(\.id)
 			// Category names are typed by the user, so the log names a category by its place in the sidebar.
-			let categories = model.selectedTransactions.compactMap { ledger.transaction($0) }
+			let categories = model.selectedTransactions.compactMap { ledger.row($0) }
 				.map { ledger.effectiveCategoryID(of: $0).flatMap(order.firstIndex).map(String.init) ?? "default" }
 			self.log("mainkey \(name) handled=\(handledBy) sheet=\(model.sheet?.trailName ?? "none") tablefocus=\(table.window?.firstResponder === table) key=\(NSApp.keyWindow === table.window) row=\(table.selectedRow) "
 				+ "category=\(categories.joined(separator: ","))")
@@ -830,6 +920,45 @@ final class DebugHarness {
 		log("filterbar \(parts.first ?? "") category=\(model.filter.categoryID?.uuidString ?? "all") account=\(model.filter.accountID?.uuidString ?? "all")")
 	}
 
+	private func csvPreview(_ argument: String) {
+		guard let preview = model?.fileImport?.preview else { return log("csv no preview") }
+		let parts = argument.split(separator: " ", maxSplits: 1).map(String.init)
+		let value = parts.count == 2 ? parts[1] : ""
+		switch parts.first {
+		case "column":
+			let assignment = value.split(separator: "=").map(String.init)
+			guard assignment.count == 2, let column = Int(assignment[0]) else { return log("csv error=column needs <n>=<field>") }
+			preview.layout.assign(column, to: CSVField(rawValue: assignment[1]))
+		case "date": preview.layout.dateOrder = DateOrder(rawValue: value) ?? preview.layout.dateOrder
+		case "encoding": preview.layout.encoding = CSVEncoding(rawValue: value) ?? preview.layout.encoding
+		case "decimal": preview.layout.decimalMark = value == "comma" ? .comma : value == "point" ? .point : nil
+		case "skip": model?.fileImport?.skip()
+		case "profile": preview.apply(value.isEmpty ? nil : value)
+		case "name": preview.profileName = value
+		case "delete": preview.deleteProfile()
+		case "createcategories": preview.layout.createsCategories = value == "on"
+		// The log holds kinds, counts, and positions, never a name or a purpose (#159), so a row is its day and amount.
+		case "rows":
+			let rows = preview.preview?.transactions.prefix(10).map { "\($0.bookingDate) \($0.amountMinor)" }.joined(separator: ";") ?? "-"
+			log("csv rows \(rows)")
+		default:
+			let columns = preview.layout.columns.sorted { $0.value < $1.value }.map { "\($0.value)=\($0.key.rawValue)" }.joined(separator: ",")
+			let problem: String = switch preview.preview?.problem {
+			case let .line(n, _): "line \(n)"
+			case .empty: "empty"
+			case .unsupported: "unsupported"
+			case .noHeader: "noHeader"
+			case .severalAccounts: "severalAccounts"
+			case .encoding: "encoding"
+			case nil: preview.problem == nil ? "-" : "encoding"
+			}
+			log("csv state columns=\(columns) date=\(preview.layout.dateOrder.rawValue) uncertain=\(preview.isDateOrderUncertain) encoding=\(preview.layout.encoding.rawValue)"
+				+ " missing=\(preview.layout.missing.map(\.rawValue)) count=\(preview.preview?.transactions.count ?? -1) canImport=\(preview.chosen != nil) problem=\(problem)"
+				+ " profile=\(preview.profile == nil ? "none" : "applied") name=\(preview.profileName.isEmpty ? "empty" : "typed")"
+				+ " createsCategories=\(preview.layout.createsCategories) profiles=\(preview.profiles.count)")
+		}
+	}
+
 	/// Selects the account, group, or category with this name.
 	func select(_ name: String) {
 		guard let model else { return }
@@ -887,7 +1016,7 @@ final class DebugHarness {
 		guard let c = ledger.category(id) else { return "not found" }
 		let index = ledger.childCategories(of: c.parentID).firstIndex { $0.id == id } ?? -1
 		return "position=\(sidebarPosition(id, in: ledger)) parent=\(c.parentID.map { sidebarPosition($0, in: ledger) } ?? "top") index=\(index) "
-			+ "rows=\(ledger.transactions(in: .category(id)).rows.count) visible=\(model.visibleTransactions.count)"
+			+ "rows=\(ledger.rows(in: .category(id)).rows.count) visible=\(model.visibleTransactions.count)"
 	}
 
 	/// Sends a drag payload through an item provider and back, as the system hands it from a drag to a drop.
@@ -1040,8 +1169,31 @@ enum DemoData {
 		func row(_ daysAgo: Int, _ minor: Int64, _ name: String, _ purpose: String, pending: Bool = false) -> Transaction {
 			Transaction(accountID: giro.id, bookingDate: today.adding(days: -daysAgo), amountMinor: minor, name: name, purpose: purpose, isPending: pending)
 		}
+		if scenario.hasSuffix("rule") {
+			var drinks = model.ledger.categories.first(where: { $0.name == "Drinks" }) ?? Domain.Category(position: -1, name: "Drinks")
+			drinks.rule = "DANKE"
+			drinks.position = -1
+			model.save(category: drinks)
+		}
+		func splitRow(corrected: Bool, currency: Bool = false, rule: Bool = false) -> Transaction {
+			var t = row(0, corrected && !currency ? -12500 : -12000, "Baumarkt Beispiel", rule ? (corrected ? "REWE SAGT DANKE" : "REWE receipt") : "Receipt")
+			t.sourceID = "demo-split"
+			t.currency = corrected && currency ? "USD" : "EUR"
+			if !rule {
+				t.categoryID = model.ledger.categories.first { $0.name == "Groceries" }?.id
+				t.categorizedBy = .manual
+				t.comment = "Weekly shop"
+			}
+			return t
+		}
 		let known = [row(4, -61_000, "Hausverwaltung Beispiel", "Nebenkosten Abruf"), row(3, -320, "Café Beispiel", "Kartenzahlung")]
 		let rows: [Transaction] = switch scenario {
+		case "sourced": [splitRow(corrected: false)]
+		case "corrected": [splitRow(corrected: true)]
+		case "sourcedcurrency": [splitRow(corrected: false, currency: true)]
+		case "correctedcurrency": [splitRow(corrected: true, currency: true)]
+		case "sourcedrule": [splitRow(corrected: false, rule: true)]
+		case "correctedrule": [splitRow(corrected: true, rule: true)]
 		case "first": known + [row(2, -20_000, "Hotel Beispiel", "Kaution", pending: true)]
 		case "booked": known + [row(0, -20_000, "Hotel Beispiel GmbH", "Kaution Zimmer 12")]
 		case "parking": known + [row(1, -1_500, "Parkhaus Beispiel", "Reservierung", pending: true)]
