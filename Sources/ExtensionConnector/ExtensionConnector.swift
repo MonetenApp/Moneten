@@ -214,6 +214,8 @@ private final class ScriptRun {
 	let session: SyncSession
 	let access: Access
 	let mapping: (SecondFactorRequest.Purpose) -> ChallengeMapping
+	/// The hosts that a browser login of this run may load.
+	private let hosts: AllowedHosts
 	private(set) var tanMethod: String?
 	private var loggedIn = false
 	let loginName: String
@@ -230,9 +232,11 @@ private final class ScriptRun {
 		self.session = session
 		self.access = access
 		tanMethod = remembered
+		self.hosts = hosts
 		mapping = { purpose in
 			ChallengeMapping(purpose: purpose, qrCodeName: connector.environment.language == "de" ? "QR-Code" : "QR Code", hosts: hosts.current,
-				rememberedMethod: remembered, validity: connector.challengeValidity, newState: { UUID().uuidString.lowercased() })
+				asksForHosts: connector.package.manifest?.hosts == nil, deniedHosts: hosts.denied, rememberedMethod: remembered, validity: connector.challengeValidity,
+				newState: { UUID().uuidString.lowercased() })
 		}
 	}
 
@@ -251,19 +255,22 @@ private final class ScriptRun {
 		let decisions = try await connector.services.hostDecisions()
 		let package = connector.package
 		// A stored answer can name a host that the host process now refuses, such as one under `local`.
-		let hosts = AllowedHosts(package.manifest?.hosts?.map(\.value) ?? decisions.filter { $0.value == .allowed && HostName(exactly: $0.key) != nil }.map(\.key))
+		let hosts = AllowedHosts(package.manifest?.hosts?.map(\.value) ?? decisions.filter { $0.value == .allowed && HostName(exactly: $0.key) != nil }.map(\.key),
+			denied: decisions.filter { $0.value == .denied }.map(\.key))
 		let setup = HostSetup(package: connector.package, decisions: decisions, fixture: connector.fixture, environment: connector.environment, storage: state.storage,
 			developer: connector.developer)
 		let services = connector.services
 		let client: ExtensionHostClient
 		do {
 			client = try await ExtensionHostClient.start(setup, executable: connector.executable, arguments: connector.arguments, ask: { host in
+				// The user allowed the host for its login page earlier in this run.
+				if hosts.current.contains(host) { return .allowed }
 				guard case let .host(decision) = try await session.ask(.allowHost(HostPermissionRequest(extensionName: package.name, host: host))) else {
 					throw CancellationError()
 				}
 				try await services.saveDecision(decision, host)
 				// A browser login or a captcha on this host may follow in the same run.
-				if decision == .allowed { hosts.insert(host) }
+				decision == .allowed ? hosts.insert(host) : hosts.deny(host)
 				return decision
 			}, log: services.log, trace: services.trace).client
 		} catch {
@@ -398,6 +405,18 @@ private final class ScriptRun {
 				throw SyncFailure.bank(BankMessage(text: error.message))
 			}
 			switch interaction {
+			case let .allowHost(host):
+				guard case let .host(decision) = try await session.ask(.allowHost(HostPermissionRequest(extensionName: connector.package.name, host: host))) else {
+					throw CancellationError()
+				}
+				try await connector.services.saveDecision(decision, host)
+				guard decision == .allowed else {
+					hosts.deny(host)
+					throw SyncFailure.bank(BankMessage(text: "The login page \(host) is not a host that the extension may contact."))
+				}
+				hosts.insert(host)
+				// The same table, now with the host allowed, opens the browser window.
+				pending = value
 			case let .answer(request, increment):
 				guard case let .tan(secret) = try await session.ask(.secondFactor(request)) else { throw CancellationError() }
 				credentials = [.string(secret.value), .string(ExtensionConnector.cancelMessage)]
@@ -563,18 +582,24 @@ private final class EndLimit: Sendable {
 }
 
 /// The hosts that a browser login or a captcha page of one run may use: those of the manifest, or
-/// those the user allowed, also during the run.
+/// those the user allowed, also during the run. `denied` keeps the hosts the user refused, so the app
+/// does not ask for them again: the host process keeps its own copy of a "Deny" for the whole run.
 private final class AllowedHosts: Sendable {
-	private let hosts: Mutex<Set<String>>
+	private let hosts: Mutex<(allowed: Set<String>, denied: Set<String>)>
 
-	init(_ hosts: some Sequence<String>) {
-		self.hosts = Mutex(Set(hosts))
+	init(_ hosts: some Sequence<String>, denied: some Sequence<String>) {
+		self.hosts = Mutex((Set(hosts), Set(denied)))
 	}
 
-	var current: Set<String> { hosts.withLock { $0 } }
+	var current: Set<String> { hosts.withLock { $0.allowed } }
+	var denied: Set<String> { hosts.withLock { $0.denied } }
 
 	func insert(_ host: String) {
-		hosts.withLock { _ = $0.insert(host) }
+		hosts.withLock { _ = $0.allowed.insert(host) }
+	}
+
+	func deny(_ host: String) {
+		hosts.withLock { _ = $0.denied.insert(host) }
 	}
 }
 
