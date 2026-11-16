@@ -22,15 +22,15 @@ struct SidebarView: View {
 			Section("Accounts") {
 				AccountTree(parent: nil)
 			}
+			if !model.savedSearches.isEmpty {
+				Section("Searches") {
+					ForEach(model.savedSearches) { SavedSearchRow(search: $0).tag(SidebarSelection.search($0.id)) }
+				}
+			}
 			Section("Categories") {
 				CategoryTree(parent: nil, amounts: amounts)
 				if let d = model.ledger.defaultCategory {
 					CategoryRow(category: d, amount: amounts[d.id]).tag(SidebarSelection.category(d.id))
-				}
-			}
-			if !model.savedSearches.isEmpty {
-				Section("Searches") {
-					ForEach(model.savedSearches) { SavedSearchRow(search: $0).tag(SidebarSelection.search($0.id)) }
 				}
 			}
 		}
