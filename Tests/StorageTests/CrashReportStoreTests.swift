@@ -90,10 +90,10 @@ struct CrashReportStoreTests {
 		let diagnostic = CrashDiagnostic(appVersion: "0.1.0", macOSVersion: "15.2", exceptionType: 6, signal: 6, frames: [])
 		var declined = state
 		declined.decide(.decline)
-		declined.receive(diagnostic, at: Date(timeIntervalSince1970: 1_150), since: Date(timeIntervalSince1970: 1_000))
+		declined.receive(diagnostic, at: Date(timeIntervalSince1970: 1_150), since: Date(timeIntervalSince1970: 1_001))
 		#expect(declined.pending == nil)
 		#expect(declined.latest == Date(timeIntervalSince1970: 1_150))
-		state.receive(diagnostic, at: Date(timeIntervalSince1970: 1_150), since: Date(timeIntervalSince1970: 1_000))
+		state.receive(diagnostic, at: Date(timeIntervalSince1970: 1_150), since: Date(timeIntervalSince1970: 1_001))
 		#expect(state.pending?.diagnostic.signal == 6)
 		#expect(state.pending?.date == Date(timeIntervalSince1970: 1_150))
 		state.start(.init(start: Date(timeIntervalSince1970: 1_400), appVersion: "0.1.1", macOSVersion: "15.3"), files: [("Moneten-new.ips", Date(timeIntervalSince1970: 1_100))])
@@ -137,7 +137,7 @@ struct CrashReportStoreTests {
 		#expect(pending?.report == "Moneten crash report\nApp version: 0.1.0\nmacOS: 15.2\nCrash time: 1970-01-01T00:18:20Z\nNo details were available.")
 		#expect(try upgraded.decide(.decline) == nil)
 		let diagnostic = CrashDiagnostic(appVersion: "0.1.0", macOSVersion: "15.2", exceptionType: 6, signal: 6, frames: [])
-		#expect(try CrashReportStore(folder: folder).receive(diagnostic, at: Date(timeIntervalSince1970: 1_150), since: Date(timeIntervalSince1970: 1_000)) == nil)
+		#expect(try CrashReportStore(folder: folder).receive(diagnostic, at: Date(timeIntervalSince1970: 1_150), since: Date(timeIntervalSince1970: 1_001)) == nil)
 	}
 
 	@Test("A decision for an older crash does not suppress details for a newer pending crash")
@@ -148,9 +148,9 @@ struct CrashReportStoreTests {
 		state.decide(.decline)
 		state.start(.init(start: Date(timeIntervalSince1970: 1_400), appVersion: "0.1.0", macOSVersion: "15.2"), files: [("Moneten-second.ips", Date(timeIntervalSince1970: 1_300))])
 		let diagnostic = CrashDiagnostic(appVersion: "0.1.0", macOSVersion: "15.2", exceptionType: 6, signal: 6, frames: [])
-		state.receive(diagnostic, at: Date(timeIntervalSince1970: 1_350), since: Date(timeIntervalSince1970: 1_000))
+		state.receive(diagnostic, at: Date(timeIntervalSince1970: 1_350), since: Date(timeIntervalSince1970: 1_201))
 		#expect(state.pending?.diagnostic.signal == 6)
-		#expect(state.pending?.fallbackDate == nil)
+		#expect(state.pending?.fallback?.date == nil)
 		#expect(state.pending?.date == Date(timeIntervalSince1970: 1_350))
 	}
 
@@ -164,14 +164,14 @@ struct CrashReportStoreTests {
 			state.start(.init(start: Date(timeIntervalSince1970: 1_400), appVersion: "0.1.0", macOSVersion: "15.2"), files: [("Moneten-second.ips", Date(timeIntervalSince1970: 1_300))])
 			state.decide(decision)
 			let diagnostic = CrashDiagnostic(appVersion: "0.1.0", macOSVersion: "15.2", exceptionType: 6, signal: 6, frames: [])
-			state.receive(diagnostic, at: Date(timeIntervalSince1970: 1_150), since: Date(timeIntervalSince1970: 1_000))
+			state.receive(diagnostic, at: Date(timeIntervalSince1970: 1_150), since: Date(timeIntervalSince1970: 1_001))
 			#expect(state.pending == nil)
 			state.receive(diagnostic, at: Date(timeIntervalSince1970: 1_350), since: Date(timeIntervalSince1970: 1_200))
 			#expect(state.pending == nil)
 			state.start(.init(start: Date(timeIntervalSince1970: 1_600), appVersion: "0.1.0", macOSVersion: "15.2"), files: [("Moneten-third.ips", Date(timeIntervalSince1970: 1_500))])
-			state.receive(diagnostic, at: Date(timeIntervalSince1970: 1_550), since: Date(timeIntervalSince1970: 1_400))
+			state.receive(diagnostic, at: Date(timeIntervalSince1970: 1_550), since: Date(timeIntervalSince1970: 1_401))
 			#expect(state.pending?.diagnostic.signal == 6)
-			#expect(state.pending?.fallbackDate == nil)
+			#expect(state.pending?.fallback?.date == nil)
 		}
 	}
 
@@ -194,7 +194,7 @@ struct CrashReportStoreTests {
 			let pending = try CrashReportStore(folder: folder).receive(diagnostic, at: Date(timeIntervalSince1970: 1_100), since: Date(timeIntervalSince1970: 1_100))
 			#expect(pending?.date == Date(timeIntervalSince1970: 1_100))
 			#expect(pending?.diagnostic.signal == 6)
-			#expect(pending?.fallbackDate == nil)
+			#expect(pending?.fallback?.date == nil)
 		}
 		_ = try store.decide(.decline)
 		#expect(try store.receive(diagnostic, at: Date(timeIntervalSince1970: 1_100), since: Date(timeIntervalSince1970: 1_100)) == nil)
@@ -217,7 +217,7 @@ struct CrashReportStoreTests {
 		let pending = try CrashReportStore(folder: folder).receive(diagnostic, at: Date(timeIntervalSince1970: 1_300), since: Date(timeIntervalSince1970: start))
 		if start > 1_000 && start <= 1_163 {
 			#expect(pending?.diagnostic.signal == 6)
-			#expect(pending?.fallbackDate == nil)
+			#expect(pending?.fallback?.date == nil)
 		} else {
 			#expect(pending?.date == Date(timeIntervalSince1970: 1_103))
 			#expect(pending?.diagnostic.signal == nil)
@@ -234,6 +234,7 @@ struct CrashReportStoreTests {
 	@Test("An unclassified read error also preserves the pending report")
 	func unknownAccess() throws {
 		try retryAfterAccessFailure(CocoaError(.fileReadUnknown))
+		try retryAfterAccessFailure(CocoaError(.fileReadNoPermission))
 		try retryAfterAccessFailure(CryptoKitError.incorrectKeySize)
 	}
 
@@ -300,6 +301,26 @@ struct CrashReportStoreTests {
 		#expect(!FileManager.default.fileExists(atPath: file.path))
 		#expect(try store.receive(diagnostic, at: Date(timeIntervalSince1970: 1_300))?.date == Date(timeIntervalSince1970: 1_300))
 		#expect(try CrashReportStore(folder: folder).load()?.pending?.diagnostic.signal == 6)
+	}
+
+
+	@Test("A matching late payload bypasses an already saved replay time",
+		arguments: [1_099.0, 1_100, 1_150])
+	func latePayloadReplay(latest: TimeInterval) {
+		for decision in [PendingCrashReport.Decision.decline, .copy, .github] {
+			var state = CrashReportStore.State()
+			state.start(.init(start: Date(timeIntervalSince1970: 1_000), appVersion: "0.1.0", macOSVersion: "15.2"), files: [])
+			state.start(.init(start: Date(timeIntervalSince1970: 1_200), appVersion: "0.1.1", macOSVersion: "15.3"), files: [("Moneten-a.ips", Date(timeIntervalSince1970: 1_103))])
+			state.latest = Date(timeIntervalSince1970: latest)
+			let diagnostic = CrashDiagnostic(appVersion: "0.1.0", macOSVersion: "15.2", exceptionType: 6, signal: 6, frames: [])
+			state.receive(diagnostic, at: Date(timeIntervalSince1970: 1_100), since: Date(timeIntervalSince1970: 1_100))
+			#expect(state.pending?.date == Date(timeIntervalSince1970: 1_100))
+			#expect(state.pending?.diagnostic.signal == 6)
+			#expect(state.pending?.fallback == nil)
+			state.decide(decision)
+			state.receive(diagnostic, at: Date(timeIntervalSince1970: 1_100), since: Date(timeIntervalSince1970: 1_100))
+			#expect(state.pending == nil)
+		}
 	}
 
 }

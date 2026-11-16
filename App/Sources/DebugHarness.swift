@@ -99,7 +99,7 @@ final class DebugHarness {
 			log("crash inject frames=\(diagnostic.frames.count) pending=\(model.crashes.pending != nil) timeMatches=\(model.crashes.pending?.date == date)")
 		#if DEBUG || PERF_HARNESS
 		case "crashstatus":
-			log("crash status pending=\(model.crashes.pending != nil) fallback=\(model.crashes.pending?.fallbackDate != nil) received=\(model.crashes.receivedCount) failures=\(model.crashes.failureCount)")
+			log("crash status pending=\(model.crashes.pending != nil) fallback=\(model.crashes.pending?.fallback != nil) received=\(model.crashes.receivedCount) failures=\(model.crashes.failureCount)")
 		#endif
 		case "crashdecision":
 			guard let pending = model.crashes.pending else { return log("crash decision pending=false") }

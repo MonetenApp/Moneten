@@ -5,16 +5,21 @@ import Foundation
 public struct PendingCrashReport: Codable, Equatable, Sendable {
 	public let date: Date
 	public let diagnostic: CrashDiagnostic
-	public let fallbackDate: Date?
+	public let fallback: Fallback?
 
-	public var report: String { crashReport(diagnostic, crashTime: fallbackDate) }
+	public struct Fallback: Codable, Equatable, Sendable {
+		public let date: Date
+		let launchStart: Date
+	}
+
+	public var report: String { crashReport(diagnostic, crashTime: fallback?.date) }
 	public var githubURL: URL { bugReportURL(version: diagnostic.appVersion, macOS: diagnostic.macOSVersion, report: report) }
 	public enum Decision { case github, copy, decline }
 
-	public init(date: Date, diagnostic: CrashDiagnostic, fallbackDate: Date? = nil) {
+	public init(date: Date, diagnostic: CrashDiagnostic, fallback: Fallback? = nil) {
 		self.date = date
 		self.diagnostic = diagnostic
-		self.fallbackDate = fallbackDate
+		self.fallback = fallback
 	}
 }
 
@@ -51,17 +56,24 @@ public struct CrashReportStore {
 				crash.date > (pending?.date ?? .distantPast) {
 				let diagnostic = CrashDiagnostic(appVersion: previous.appVersion, macOSVersion: previous.macOSVersion,
 					exceptionType: nil, signal: nil, frames: [])
-				pending = PendingCrashReport(date: crash.date, diagnostic: diagnostic, fallbackDate: crash.date)
+				pending = PendingCrashReport(date: crash.date, diagnostic: diagnostic, fallback: .init(date: crash.date, launchStart: previous.start))
 			}
 			self.launch = launch
 		}
 
 		mutating func receive(_ diagnostic: CrashDiagnostic, at date: Date, since start: Date) {
-			guard date > (latest ?? .distantPast) else { return }
-			latest = date
+			let replacesFallback: Bool
+			if let fallback = pending?.fallback {
+				guard start > fallback.launchStart, start <= fallback.date.addingTimeInterval(60) else { return }
+				replacesFallback = true
+			} else {
+				replacesFallback = false
+			}
+			guard replacesFallback || date > (latest ?? .distantPast) else { return }
+			latest = max(latest ?? .distantPast, date)
 			if let declinedFallback, start <= declinedFallback && declinedFallback <= date,
-				(pending?.fallbackDate ?? .distantPast) <= declinedFallback { return }
-			guard date >= (pending?.date ?? .distantPast) else { return }
+				(pending?.fallback?.date ?? .distantPast) <= declinedFallback { return }
+			guard replacesFallback || date >= (pending?.date ?? .distantPast) else { return }
 			pending = PendingCrashReport(date: date, diagnostic: diagnostic)
 		}
 
@@ -69,7 +81,7 @@ public struct CrashReportStore {
 			guard let pending else { return }
 			if decision == .github,
 				URLComponents(url: pending.githubURL, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "expected" })?.value != pending.report { return }
-			if let date = pending.fallbackDate {
+			if let date = pending.fallback?.date {
 				declinedFallback = date
 				latest = max(latest ?? .distantPast, date)
 			}
@@ -110,30 +122,62 @@ public struct CrashReportStore {
 		return state.pending
 	}
 
+	private enum LoadResult {
+		case noFile
+		case state(State)
+		case unreadable
+		case unavailable(any Error)
+	}
+
 	func load() throws -> State? {
-		guard FileManager.default.fileExists(atPath: file.path) else { return nil }
-		let data = try Data(contentsOf: file)
-		do {
-			let box = try AES.GCM.SealedBox(combined: data)
-			return try JSONDecoder().decode(State.self, from: AES.GCM.open(box, using: key(create: false)))
-		} catch {
+		switch readState() {
+		case .noFile: return nil
+		case .state(let state): return state
+		case .unreadable:
 			try FileManager.default.removeItem(at: file)
 			return nil
+		case .unavailable(let error): throw error
+		}
+	}
+
+	private func readState() -> LoadResult {
+		let data: Data
+		do { data = try Data(contentsOf: file) }
+		catch let error as CocoaError where error.code == .fileReadNoSuchFile { return .noFile }
+		catch { return .unavailable(error) }
+
+		let key: SymmetricKey
+		do {
+			guard let encoded = try keychain.read(account: folder.keychainAccount),
+				let bytes = Data(base64Encoded: encoded), bytes.count == 32 else { return .unreadable }
+			key = SymmetricKey(data: bytes)
+		} catch { return .unavailable(error) }
+
+		do {
+			let box = try AES.GCM.SealedBox(combined: data)
+			return .state(try JSONDecoder().decode(State.self, from: AES.GCM.open(box, using: key)))
+		} catch CryptoKitError.authenticationFailure {
+			return .unreadable
+		} catch CryptoKitError.incorrectParameterSize {
+			return .unreadable
+		} catch is DecodingError {
+			return .unreadable
+		} catch {
+			return .unavailable(error)
 		}
 	}
 
 	private func write(_ state: State) throws {
 		try folder.createFolders()
-		let data = try AES.GCM.seal(JSONEncoder().encode(state), using: key(create: true)).combined!
+		let data = try AES.GCM.seal(JSONEncoder().encode(state), using: key()).combined!
 		try data.write(to: file, options: .atomic)
 		try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
 	}
 
-	private func key(create: Bool) throws -> SymmetricKey {
+	private func key() throws -> SymmetricKey {
 		if let encoded = try keychain.read(account: folder.keychainAccount), let data = Data(base64Encoded: encoded), data.count == 32 {
 			return SymmetricKey(data: data)
 		}
-		guard create else { throw CocoaError(.fileReadNoPermission) }
 		let key = SymmetricKey(size: .bits256)
 		try keychain.write(key.withUnsafeBytes { Data($0).base64EncodedString() }, account: folder.keychainAccount)
 		return key
