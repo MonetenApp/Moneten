@@ -148,4 +148,25 @@ struct SplitStoreTests {
 		#expect(throws: RecordError.self) { try store.replaceParts(of: UUID(), with: before) }
 		#expect(try store.loadLedger().parts(of: t.id) == before)
 	}
+	@Test("Saving a part changes only its category and its comment")
+	func savePart() throws {
+		let t = original()
+		let store = try store(with: t)
+		defer { try? store.close() }
+		let ps = parts(of: t.id)
+		try store.replaceParts(of: t.id, with: ps)
+		var changed = ps[0]
+		changed.categoryID = household.id; changed.comment = "Detergent"; changed.amountMinor = -3000
+		try store.save([], parts: [changed])
+		let l = try store.loadLedger()
+		#expect(l.parts(of: t.id).map(\.amountMinor) == [-2500, -5500])
+		#expect(l.parts(of: t.id).map(\.categoryID) == [household.id, nil])
+		#expect(l.parts(of: t.id).map(\.comment) == ["Detergent", nil])
+		#expect(l.transactions == [t])
+		var missing = changed; missing.id = UUID()
+		var marked = t; marked.isChecked = true
+		#expect(throws: RecordError.self) { try store.save([marked], parts: [missing]) }
+		#expect(try store.loadLedger().transactions == [t])
+	}
+
 }

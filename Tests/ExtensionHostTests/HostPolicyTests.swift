@@ -119,6 +119,21 @@ import Testing
 		#expect(run.sent.isEmpty)
 	}
 
+	/// Scripts copy the HTTP/2 fields that a browser shows, such as `:path:`, with the headers of a request.
+	@Test func fieldsCopiedFromABrowserAreLeftOut() {
+		let run = Run(demo("""
+			WebBanking{version = 1}
+			function Check()
+				return Connection():request("POST", "https://api.bank.example/", "a=1", "application/x-www-form-urlencoded",
+					{[":authority:"] = "api.bank.example", [":method:"] = "POST", [":path:"] = "/", [":scheme:"] = "https", Accept = "text/html"})
+			end
+			""", hosts: ["api.bank.example"]), exchanges: [("POST", "https://api.bank.example/", 200, ["Content-Type": "text/html"], "ok")])
+		#expect(run.call("Check") == .string("ok"))
+		#expect(run.sent == ["POST https://api.bank.example/"])
+		#expect(run.requests.first?.headers["Accept"] == "text/html")
+		#expect(run.requests.first?.headers.keys.contains { $0.hasPrefix(":") } == false)
+	}
+
 	@Test(arguments: ["a\\r\\nHost: evil.example", "a\\nHost: evil.example", "a\\rb", "a\\0b"])
 	func headerValueWithALineBreak(value: String) {
 		let run = Run(demo("""
