@@ -170,9 +170,8 @@ extension Ledger {
 			if var account = existing, connected.insert(account.id).inserted {
 				account.source = .bank
 				// The account keeps its history and its initial balance. Until its first refresh it shows the
-				// computed balance, not the balance of the source. The kept value counts as entered, so no manual row moves it.
+				// computed balance, not the balance of the source.
 				account.initialBalanceIsSet = true
-				account.initialBalanceIsDerived = false
 				account.bankBalanceMinor = nil
 				account.bankBalanceDate = nil
 				account.accessID = candidate.accessID

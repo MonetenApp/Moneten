@@ -305,6 +305,18 @@ struct ReconcileTests {
 		#expect(!account.initialBalanceIsDerived)
 	}
 
+	@Test("A file row whose name the user changed still pairs with the booking of the next refresh, with or without an IBAN")
+	func renamedFileRowPairs() {
+		let bank = Account(position: 0, name: "Giro", kind: .giro, source: .bank)
+		for iban in [nil, "DE02120300000000202051"] {
+			var renamed = merge(.file([row(3, -1_200, "KIOSK", "Kartenzahlung", iban: iban)]), into: bank).added[0]
+			renamed.name = "Groceries"
+			let r = merge(refresh([row(3, -1_200, "KIOSK", "Kartenzahlung", sourceID: "TX-7", iban: iban)]), into: bank, stored: [renamed])
+			#expect(r.added.isEmpty)
+			#expect(r.updated.map(\.id) == [renamed.id])
+		}
+	}
+
 	@Test("The first refresh derives the initial balance with the manual rows, so the computed balance meets the bank balance")
 	func firstRefreshCountsManualRows() {
 		let bank = Account(position: 0, name: "Festgeld", kind: .fixedTermDeposit, source: .bank)
