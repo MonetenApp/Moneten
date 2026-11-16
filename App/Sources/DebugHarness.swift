@@ -404,6 +404,19 @@ final class DebugHarness {
 		case "usd": Task { await DemoData.usdAccount(model, currency: argument.isEmpty ? "USD" : argument); log("usd done") }
 		case "review": Task { await DemoData.review(model); log("review done") }
 		case "fetch": DemoData.fetch(model, argument)
+		// "<name>|<purpose>" gives the newest row with that name the purpose, as "Edit Transaction..." saves it.
+		// "check <name>|<purpose>" logs how many rows have the name and whether each has the purpose.
+		case "edit":
+			let check = argument.hasPrefix("check ")
+			let parts = argument.dropFirst(check ? 6 : 0).components(separatedBy: "|")
+			guard parts.count == 2 else { return log("edit refused", ("needs", .word("name|purpose"))) }
+			let rows = model.ledger.transactions.filter { $0.name == parts[0] }
+			if check { return log("edit check", ("rows", .count(rows.count)), ("kept", .flag(rows.allSatisfy { $0.purpose == parts[1] }))) }
+			guard var t = rows.max(by: { $0.bookingDate < $1.bookingDate }) else { return log("edit refused", ("rows", .count(0))) }
+			t.edit(OriginalValues(bookingDate: t.bookingDate, valueDate: t.valueDate, amountMinor: t.amountMinor, name: t.name, purpose: parts[1]))
+			model.save(transaction: t, adding: false)
+			model.sheet = .transaction(t.id)
+			log("edit done", ("original", .flag(t.original != nil)))
 		case "deleterows":
 			if let giro = model.ledger.accounts.first(where: { $0.name == "Girokonto" }) {
 				model.delete(transactions: Set(model.ledger.transactions(ofAccount: giro.id).filter { $0.name == argument }.map(\.id)))
