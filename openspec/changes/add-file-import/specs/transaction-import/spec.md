@@ -921,6 +921,25 @@ The app SHALL report a file that it cannot read with the file name, the line or 
 - **WHEN** a CAMT file is not well-formed XML
 - **THEN** the app reports the file and the position of the first error
 
+### Requirement: Amount limit of a file
+
+The app SHALL refuse a file with an amount of more than 1,000,000,000,000 in the smallest unit of its currency, which is 10.000.000.000,00 € for the euro. The limit applies to CSV, CAMT, and MT940 files. The app names the line of the amount and imports nothing from the file.
+
+#### Scenario: Absurd amounts in a CSV file
+
+- **WHEN** a CSV file has the header "Datum;Betrag" and the rows "01.11.2026;50.000.000.000.000.000,00" and "02.11.2026;50.000.000.000.000.000,00"
+- **THEN** the app imports nothing and says that the amount in line 2 is too large
+
+#### Scenario: Amount at the limit
+
+- **WHEN** a CSV file has the header "Datum;Betrag" and the row "01.11.2026;-10.000.000.000,00"
+- **THEN** the app reads a withdrawal of 10.000.000.000,00 €
+
+#### Scenario: Amount one cent above the limit
+
+- **WHEN** line 5 of an MT940 file has a transaction of 10.000.000.000,01 €
+- **THEN** the app imports nothing and says that the amount in line 5 is too large
+
 ### Requirement: Warnings for a file
 
 The app SHALL import a file that has values it can read around, and list them as warnings with the file name after the import. Examples are an unknown currency code that falls back to the account currency and a value date that is not a date.

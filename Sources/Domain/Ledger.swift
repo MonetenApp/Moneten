@@ -371,7 +371,7 @@ public struct Ledger: Sendable {
 		var sum = account.initialBalanceMinor
 		for t in transactions where t.accountID == account.id && account.isInBalance(t) {
 			if let day, t.bookingDate > day { continue }
-			sum += t.amountMinor
+			sum.addClamped(t.amountMinor)
 		}
 		return Money(minorUnits: sum, currency: account.currency)
 	}
@@ -390,15 +390,15 @@ public struct Ledger: Sendable {
 			!refresh.mayLackRows(of: account.id),
 			let meeting = account.initialBalanceMeetingBankBalance(of: transactions.lazy.filter { $0.accountID == account.id }, calendar: calendar),
 			meeting != account.initialBalanceMinor else { return nil }
-		let difference = meeting - account.initialBalanceMinor
+		let difference = meeting.subtractingClamped(account.initialBalanceMinor)
 		return CalibrationProposal(difference: Money(minorUnits: difference, currency: account.currency),
-			balanceToday: Money(minorUnits: computedBalance(of: account, through: today).minorUnits + difference, currency: account.currency))
+			balanceToday: Money(minorUnits: computedBalance(of: account, through: today).minorUnits.addingClamped(difference), currency: account.currency))
 	}
 
 	/// The initial balance at which the computed balance at the end of `today` is `balanceToday`. Every computed
 	/// balance moves by the same difference.
 	public func calibratedInitialBalance(of account: Account, balanceToday: Int64, today: Day) -> Int64 {
-		account.initialBalanceMinor + balanceToday - computedBalance(of: account, through: today).minorUnits
+		account.initialBalanceMinor.addingClamped(balanceToday).subtractingClamped(computedBalance(of: account, through: today).minorUnits)
 	}
 
 	public func sum(ofGroup group: UUID) -> MoneySums {
@@ -436,7 +436,7 @@ public struct Ledger: Sendable {
 			guard let id = t.categoryID ?? defaultID, let i = index.position(of: id) else { return }
 			let day = t.bookingDate.rawValue
 			for target in targets[chains[i]] where target.from <= day && day <= target.through && t.isInSum(of: target.currency) {
-				sums[target.category] += t.amountMinor
+				sums[target.category].addClamped(t.amountMinor)
 			}
 		}
 		for t in transactions {

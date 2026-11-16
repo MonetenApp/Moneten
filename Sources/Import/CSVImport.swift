@@ -463,8 +463,9 @@ public struct CSVFile: Sendable {
 				if day == nil { result.warnings.append(.unreadableValueDate(line: line, cell: cell)) }
 				return day
 			}
+			guard let money = Money(limited: amount, currency: cur) else { throw TransactionFileImporter.Failure.line(line, TransactionFileImporter.tooLarge) }
 			var t = Transaction(accountID: placeholder, bookingDate: day, valueDate: valueDate,
-				amountMinor: Money(amount, currency: cur).minorUnits, currency: cur,
+				amountMinor: money.minorUnits, currency: cur,
 				name: Self.cell(row, nameColumn) ?? "", purpose: Self.cell(row, purposeColumn) ?? "", counterpartyIBAN: Self.cell(row, ibanColumn), counterpartyBIC: Self.cell(row, bicColumn),
 				bookingText: Self.cell(row, bookingTextColumn), endToEndReference: Self.cell(row, endToEndReferenceColumn), mandateReference: Self.cell(row, mandateReferenceColumn),
 				creditorID: Self.cell(row, creditorIDColumn), comment: Self.cell(row, commentColumn))

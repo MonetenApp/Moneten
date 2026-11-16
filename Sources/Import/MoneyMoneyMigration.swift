@@ -42,10 +42,13 @@ public struct MoneyMoneyMigration: Sendable {
 
 	public enum Failure: Error, CustomStringConvertible {
 		case unreadable(String)
+		/// An amount above `Money.maxMinorUnits`, named by what holds it, such as "The amount of transaction 4711".
+		case tooLarge(String)
 
 		public var description: String {
 			switch self {
 			case let .unreadable(what): "The export of \(what) could not be read."
+			case let .tooLarge(what): "\(what) is too large."
 			}
 		}
 	}
@@ -75,7 +78,7 @@ public struct MoneyMoneyMigration: Sendable {
 
 		var plan = Plan()
 		var accountMap: [String: UUID] = [:]
-		mapAccounts(rawAccounts, ledger: ledger, plan: &plan, map: &accountMap)
+		try mapAccounts(rawAccounts, ledger: ledger, plan: &plan, map: &accountMap)
 		var categoryMap: [String: UUID?] = [:]
 		mapCategories(rawCategories, ledger: ledger, plan: &plan, map: &categoryMap)
 
@@ -85,7 +88,9 @@ public struct MoneyMoneyMigration: Sendable {
 			guard let accountSource = raw["accountUuid"] as? String, let accountID = accountMap[accountSource] else { continue }
 			let id = (raw["id"] as? Int).map { "\(Transaction.migrationIDPrefix)\($0)" }
 			let currency = (raw["currency"] as? String) ?? "EUR"
-			let amount = Money(Decimal((raw["amount"] as? Double) ?? 0), currency: currency)
+			guard let amount = Money(limited: Decimal((raw["amount"] as? Double) ?? 0), currency: currency) else {
+				throw Failure.tooLarge((raw["id"] as? Int).map { "The amount of transaction \($0)" } ?? "The amount of a transaction")
+			}
 			let booking = (raw["bookingDate"] as? Date).map { Day($0, calendar: calendar) } ?? Day.today(calendar: calendar)
 			let pending = !((raw["booked"] as? Bool) ?? true)
 			var categoryID: UUID?
@@ -248,11 +253,11 @@ public struct MoneyMoneyMigration: Sendable {
 			var a = k.map { plan.updatedAccounts[$0] } ?? old
 			guard let balance = a.bankBalanceMinor else { continue }
 			let before = stored[old.id] ?? []
-			let deletedBefore = tombstones.filter { isCounted($0) && $0.currency == old.currency }.reduce(0) { $0 + $1.amountMinor }
-			let deletedAfter = after.filter { isCounted($0) && $0.currency == old.currency }.reduce(0) { $0 + $1.amountMinor }
-			let target = initialBalance(balance, of: a, rows: before.map { changed[$0.id] ?? $0 } + (added[old.id] ?? [])) - deletedAfter
+			let deletedBefore = tombstones.filter { isCounted($0) && $0.currency == old.currency }.reduce(Int64(0)) { $0.addingClamped($1.amountMinor) }
+			let deletedAfter = after.filter { isCounted($0) && $0.currency == old.currency }.reduce(Int64(0)) { $0.addingClamped($1.amountMinor) }
+			let target = initialBalance(balance, of: a, rows: before.map { changed[$0.id] ?? $0 } + (added[old.id] ?? [])).subtractingClamped(deletedAfter)
 			a.initialBalanceMinor = old.bankBalanceMinor.map {
-				old.initialBalanceMinor + target - (initialBalance($0, of: old, rows: before) - deletedBefore)
+				old.initialBalanceMinor.addingClamped(target).subtractingClamped(initialBalance($0, of: old, rows: before).subtractingClamped(deletedBefore))
 			} ?? target
 			if let k {
 				plan.updatedAccounts[k] = a
@@ -268,7 +273,7 @@ public struct MoneyMoneyMigration: Sendable {
 	/// values by the same rule, so this filter is spelled out here and in its SQL.
 	private static func initialBalance(_ balance: Int64, of account: Account, rows: [Transaction]) -> Int64 {
 		rows.reduce(balance) { sum, t in
-			!t.isPending && t.currency == account.currency && isOfSource(t.sourceID) ? sum - t.amountMinor : sum
+			!t.isPending && t.currency == account.currency && isOfSource(t.sourceID) ? sum.subtractingClamped(t.amountMinor) : sum
 		}
 	}
 
@@ -280,7 +285,7 @@ public struct MoneyMoneyMigration: Sendable {
 		!deleted.isPending && isOfSource(deleted.sourceID)
 	}
 
-	private func mapAccounts(_ raw: [[String: Any]], ledger: Ledger, plan: inout Plan, map: inout [String: UUID]) {
+	private func mapAccounts(_ raw: [[String: Any]], ledger: Ledger, plan: inout Plan, map: inout [String: UUID]) throws {
 		var parents: [Int: UUID] = [:]
 		var positions: [UUID?: Int] = [:]
 		for item in raw {
@@ -310,7 +315,8 @@ public struct MoneyMoneyMigration: Sendable {
 			if let balance = item["balance"] as? [[Any]], let first = balance.first, first.count >= 2,
 				let amount = first[0] as? Double, let c = first[1] as? String {
 				currency = c
-				balanceMinor = Money(Decimal(amount), currency: c).minorUnits
+				guard let money = Money(limited: Decimal(amount), currency: c) else { throw Failure.tooLarge("The balance of the account \"\(name)\"") }
+				balanceMinor = money.minorUnits
 			}
 			let balanceDate = (item["balanceDate"] as? Date) ?? (item["refreshTimestamp"] as? Date)
 			let color = (item["icon"] as? Data).flatMap(Self.iconColor)

@@ -64,7 +64,7 @@ public struct MoneySums: Hashable, Sendable {
 	}
 
 	public mutating func add(_ money: Money) {
-		byCurrency[money.currency, default: 0] += money.minorUnits
+		byCurrency[money.currency, default: 0].addClamped(money.minorUnits)
 	}
 
 	public var amounts: [Money] {

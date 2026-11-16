@@ -676,6 +676,14 @@ struct FinTSConnectorTests {
 			HelperFailure.unreadable),
 		(#"{"type":"result","account":"DE02120300000000202051","balance":{"amount":"1","currency":"EUR"},"errors":[],"securities":true,"holdings":[{"name":"Gold"}]}"#,
 			HelperFailure.unreadable),
+		// An amount above 10.000.000.000,00 € fails its account, so no sum of stored amounts can overflow (issue #324).
+		(#"{"type":"result","account":"DE02120300000000202051","balance":{"amount":"50000000000000000.00","currency":"EUR"},"errors":[]}"#, HelperFailure.tooLarge),
+		(#"{"type":"result","account":"DE02120300000000202051","transactions":{"rows":[{"booked":"2026-11-02","amount":"-10000000000.01","pending":false}]},"errors":[]}"#,
+			HelperFailure.tooLarge),
+		(#"{"type":"result","account":"DE02120300000000202051","balance":{"amount":"1","currency":"EUR"},"errors":[],"securities":true,"holdings":[{"name":"Gold","quantity":"1","value":{"amount":"1e20","currency":"EUR"}}]}"#,
+			HelperFailure.unreadable),
+		(#"{"type":"result","account":"DE02120300000000202051","balance":{"amount":"1","currency":"EUR"},"errors":[],"securities":true,"holdings":[{"name":"Gold","quantity":"1","value":{"amount":"20000000000","currency":"EUR"}}]}"#,
+			HelperFailure.tooLarge),
 	] + ["12.3.4", "1-2", "-", ".", "--5", "1.", ".5", "-0.5.1"].flatMap { number in [
 		// A number that reads only in part fails its account, in a quantity, a price, and a balance alike.
 		(#"{"type":"result","account":"DE02120300000000202051","balance":{"amount":"1","currency":"EUR"},"errors":[],"securities":true,"holdings":[{"name":"Gold","quantity":"\#(number)"}]}"#,

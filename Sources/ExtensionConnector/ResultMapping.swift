@@ -98,7 +98,7 @@ enum ResultMapping {
 				}
 				let value = try money(amount, account.currency, "The value of security \(index + 1)")
 				let (sum, overflow) = total.minorUnits.addingReportingOverflow(value.minorUnits)
-				guard !overflow, abs(sum) <= maxMinorUnits else { throw MappingError("The securities add up to more than Moneten can hold.") }
+				guard !overflow, abs(sum) <= Money.maxMinorUnits else { throw MappingError("The securities add up to more than Moneten can hold.") }
 				total.minorUnits = sum
 			}
 			return RefreshResult(balance: total, transactions: nil)
@@ -112,15 +112,10 @@ enum ResultMapping {
 		return RefreshResult(balance: balance, transactions: FetchedTransactions(rows: mapped, from: since))
 	}
 
-	/// The largest amount in minor units that the app takes from a script: 10 trillion euros. Sums of
-	/// many such amounts still fit an `Int64`.
-	static let maxMinorUnits: Int64 = 1_000_000_000_000_000
-
-	/// An amount in the minor units of `currency`, or an error that names `what` when it is out of range.
+	/// An amount in the minor units of `currency`, or an error that names `what` when it is above `Money.maxMinorUnits`.
 	private static func money(_ decimal: Decimal, _ currency: String, _ what: String) throws(MappingError) -> Money {
-		let limit = Money(minorUnits: maxMinorUnits, currency: currency).decimal
-		guard decimal.isFinite, decimal <= limit, decimal >= -limit else { throw MappingError("\(what) is out of range.") }
-		return Money(decimal, currency: currency)
+		guard let money = Money(limited: decimal, currency: currency) else { throw MappingError("\(what) is out of range.") }
+		return money
 	}
 
 	/// `balance`, or the amount of the account's currency in `balances`, a list of pairs of amount and currency.

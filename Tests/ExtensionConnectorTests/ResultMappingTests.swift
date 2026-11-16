@@ -143,6 +143,21 @@ import Testing
 		}
 	}
 
+	/// Each row of 1e13 euros passed an older limit, and 9,224 of them added up beyond an `Int64` (issue #324).
+	@Test func manyLargeAmounts() {
+		let row = LuaValue.object(["bookingDate": .integer(1794182400), "amount": .number(1e13)])
+		#expect(throws: MappingError("The amount of transaction 1 is out of range.")) {
+			try result(["balance": .integer(0), "transactions": .array(Array(repeating: row, count: 9_224))])
+		}
+	}
+
+	@Test(arguments: [(LuaValue.number(1e10), Int64(1_000_000_000_000)), (.number(-1e10), -1_000_000_000_000)])
+	func amountAtTheLimit(amount: LuaValue, minor: Int64) throws {
+		#expect(try result(["balance": amount, "transactions": .array([.object(["bookingDate": .integer(1794182400), "amount": amount])])])
+			.transactions?.rows.first?.amountMinor == minor)
+		#expect(throws: MappingError("The balance is out of range.")) { try result(["balance": .number(10_000_000_000.01), "transactions": .array([])]) }
+	}
+
 	@Test func bookingDateOutOfRange() {
 		#expect(throws: MappingError("The booking date of transaction 1 is not a date.")) {
 			try result(["balance": .integer(0), "transactions": .array([.object(["bookingDate": .number(1e300), "amount": .integer(1)])])])
@@ -151,7 +166,7 @@ import Testing
 
 	@Test func securitiesThatAddUpBeyondTheRange() {
 		let depot = ListedAccount(.object(["accountNumber": .string("D-1"), "portfolio": .boolean(true)]))!
-		let big = LuaValue.object(["name": .string("Muster AG"), "amount": .number(9e12)])
+		let big = LuaValue.object(["name": .string("Muster AG"), "amount": .number(9e9)])
 		#expect(throws: MappingError("The value of security 1 is out of range.")) {
 			try result(["securities": .array([.object(["amount": .number(9e16)])])], of: depot)
 		}

@@ -317,8 +317,10 @@ struct AccountResult: Decodable {
 		return (.fetched(result), transactionFailure == nil ? notices : [])
 	}
 
+	/// An amount above `Money.maxMinorUnits` fails the account, so that no sum of stored amounts can overflow.
 	static func money(_ amount: String, _ currency: String) throws -> Money {
-		Money(try decimal(amount), currency: currency)
+		guard let money = Money(limited: try decimal(amount), currency: currency) else { throw HelperFailure.tooLarge }
+		return money
 	}
 
 	/// A plain decimal text of the helper, as `BigDecimal.toPlainString` writes it, with every decimal place. The
@@ -418,6 +420,7 @@ enum HelperFailure {
 	static let noProductID = SyncFailure.unsupported("This build of Moneten has no FinTS product ID, and banks accept only registered apps.")
 	static let insecure = SyncFailure.unsupported("The bank offers no encrypted FinTS address.")
 	static let noBookingDate = SyncFailure.unsupported("The bank sent a transaction without a booking date, so nothing of this account was stored.")
+	static let tooLarge = SyncFailure.unsupported("The bank sent an amount that is too large, so nothing of this account was stored.")
 	static let clash = SyncFailure.unsupported("Two accounts of this access are the same account at the bank.")
 	static let timeout = SyncFailure.network("The connection to the FinTS server of the bank timed out. Try again later.")
 
