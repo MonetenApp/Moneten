@@ -18,7 +18,7 @@ Version 0.1 has the tabs "General" and "Security", in this order. It has no paym
 
 `UserDefaults.set` never fails. macOS keeps another value when a configuration profile forces the key or a launch argument overrides it. The check sees what the defaults of the process read back, not whether the value reaches the disk. `UserDefaults.storeSetting(_:forKey:inDomain:)` in `Storage` writes a value and reads it back, and the window reports a value that does not read back. A switch reads the value in effect now. "Language" reads the defaults of the app, because macOS takes `AppleLanguages` from there at the next start, and the arguments of the run can hold another language. The message appears below the setting, and the control shows the value that applies.
 
-The unlock settings write to the Keychain. Turning on the first one stores the password before the switch turns on. Turning off the last one deletes the password before the switch turns off, so a Keychain error leaves the switch on with the error below it. "Lock when main window is closed" and "Lock after inactivity" still write to the user defaults without the check. Pull request #269 of `add-app-lock` moves them into the database with a check of its own, so this change leaves them alone.
+Every setting of the "Security" tab changes through `AppModel.changeSecurity` of `add-app-lock`, after the database password. The lock settings write through `Store`, and the unlock settings write or delete their Keychain entry. A failed write shows the error below the unlock settings, and each control shows the value that the database and the Keychain hold.
 
 ### Settings need an unlocked app
 

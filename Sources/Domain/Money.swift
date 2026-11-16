@@ -21,15 +21,15 @@ public struct Money: Hashable, Sendable, Codable, Comparable {
 		self.currency = currency
 	}
 
-	/// An amount that a file, a bank, or the user gives, rounded like `init(_:currency:)`. Nil when its minor units
-	/// do not fit into `Int64` with room for the opposite sign: the plain initializer wraps such an amount around,
-	/// and `Int64.min` has no magnitude, which the amount field of a transaction and a pie chart show.
+	/// An amount that a file, a bank, an extension, a migration, or the user gives, rounded like `init(_:currency:)`.
+	/// Nil when it is not a number or its minor units are above `maxMinorUnits`: the plain initializer wraps an amount
+	/// beyond `Int64` around, and an absurd amount fails at the edge with its line.
 	public init?(fitting decimal: Decimal, currency: String) {
 		let scale = Decimal(sign: .plus, exponent: Currency.exponent(of: currency), significand: 1)
 		var scaled = decimal * scale
 		var rounded = Decimal()
 		NSDecimalRound(&rounded, &scaled, 0, .plain)
-		guard rounded.isFinite, rounded <= Decimal(Int64.max), rounded >= -Decimal(Int64.max) else { return nil }
+		guard rounded.isFinite, rounded.magnitude <= Decimal(Self.maxMinorUnits) else { return nil }
 		self.init(minorUnits: NSDecimalNumber(decimal: rounded).int64Value, currency: currency)
 	}
 
@@ -59,7 +59,11 @@ enum Currency {
 
 /// Sums of amounts per currency. A group of accounts in several currencies has one sum per currency.
 public struct MoneySums: Hashable, Sendable {
-	public private(set) var byCurrency: [String: Int64] = [:]
+	/// The exact sums, so that rows that cancel out give the same sum in every order.
+	private var exact: [String: Int128] = [:]
+
+	/// The sums, held at the bounds of `Int64`.
+	public var byCurrency: [String: Int64] { exact.mapValues(Int64.init(clampingSum:)) }
 
 	public init() {}
 
@@ -76,14 +80,19 @@ public struct MoneySums: Hashable, Sendable {
 	}
 
 	public mutating func add(_ money: Money) {
-		byCurrency[money.currency, default: 0] += money.minorUnits
+		add(exact: Int128(money.minorUnits), currency: money.currency)
+	}
+
+	/// Adds a sum that is still exact, such as the computed balance of an account before it holds at the bounds.
+	mutating func add(exact amount: Int128, currency: String) {
+		exact[currency, default: 0] += amount
 	}
 
 	public var amounts: [Money] {
-		byCurrency.keys.sorted().map { Money(minorUnits: byCurrency[$0]!, currency: $0) }
+		exact.keys.sorted().map { Money(minorUnits: Int64(clampingSum: exact[$0]!), currency: $0) }
 	}
 
-	public var isEmpty: Bool { byCurrency.isEmpty }
+	public var isEmpty: Bool { exact.isEmpty }
 
 	/// The amounts that the status line of a list shows: one per currency, or 0 when no row counts.
 	///
@@ -91,7 +100,23 @@ public struct MoneySums: Hashable, Sendable {
 	/// because a row that counts in no sum, such as a pending row under review, must not decide the currency.
 	/// A view without a currency of its own, such as an account group, takes the currency of its first row, then the euro.
 	public func shownAmounts(viewCurrency: String?, rows: [Transaction]) -> [Money] {
-		isEmpty ? [Money(minorUnits: 0, currency: viewCurrency ?? rows.first?.currency ?? "EUR")] : amounts
+		shownAmounts(viewCurrency: viewCurrency, firstRowCurrency: rows.first?.currency)
+	}
+
+	/// The same rule for rows that are not transactions, such as the positions of a portfolio, whose currency
+	/// is that of their portfolio.
+	public func shownAmounts(viewCurrency: String?, firstRowCurrency: String?) -> [Money] {
+		isEmpty ? [Money(minorUnits: 0, currency: viewCurrency ?? firstRowCurrency ?? "EUR")] : amounts
+	}
+
+	/// The text that "Copy Sum" of the status line puts on the pasteboard for the `amounts` that the status line
+	/// shows (`shownAmounts`): the amount with the decimal mark of `locale`, a plain minus, and no thousands
+	/// separators or currency symbol, so that a spreadsheet reads it as a number. Several currencies give one
+	/// line each, with the currency code.
+	public static func copyText(_ amounts: [Money], locale: Locale) -> String {
+		let mark = locale.decimalSeparator ?? "."
+		func number(_ m: Money) -> String { AmountText.text(m.minorUnits, m.currency).replacingOccurrences(of: ".", with: mark) }
+		return amounts.count == 1 ? number(amounts[0]) : amounts.map { "\(number($0)) \($0.currency)" }.joined(separator: "\n")
 	}
 }
 

@@ -131,6 +131,36 @@ import Testing
 		#expect(session.printed.last == "EndSession")
 	}
 
+	static let tokens = Self.calls + """
+		function ListAccounts() return {{name = "Krypto", accountNumber = "A", portfolio = true}} end
+		function RefreshAccount(account)
+			if not account.portfolio then return {balance = 1, transactions = {}} end
+			return {securities = {{name = "Token A", quantity = 10, price = 2}, {name = "Token B", quantity = 10, price = 110, currencyOfPrice = "USDC"}}}
+		end
+		"""
+	static let tokenNotice = "The balance leaves out Token B, because its price is in USDC and the extension gives no exchange rate."
+
+	/// The balance and the other positions arrived, so the account refreshed, and a notice names the left out position.
+	@Test func positionWithoutARateIsANoticeAndTheAccountRefreshes() async throws {
+		let session = TestSession()
+		var state = ExtensionState(nil)
+		state.accounts = ["A EUR": .object(["accountNumber": .string("A"), "name": .string("Krypto"), "portfolio": .boolean(true)]),
+			"B EUR": .object(["accountNumber": .string("B"), "name": .string("Giro B")])]
+		let (report, ids) = try await Self.refresh(session.connector(demo(Self.tokens)), session, state: state)
+		#expect(report.notices == [BankMessage(text: Self.tokenNotice, accountName: "Giro A")])
+		guard case let .fetched(result)? = report.outcomes[ids[0]] else { Issue.record("The portfolio was not fetched."); return }
+		#expect(result.balance == Money(minorUnits: 2000, currency: "EUR"))
+		#expect(result.transactionFailure == nil)
+		#expect(report.outcomes[ids[1]]?.balance == 100)
+	}
+
+	@Test func setupKeepsTheNoticeOfAPositionWithoutARate() async throws {
+		let session = TestSession()
+		let setup = try await session.connector(demo(Self.tokens)).setUp(Self.access, session)
+		#expect(setup.accounts.first?.outcome.balance == 2000)
+		#expect(setup.notices == [BankMessage(text: Self.tokenNotice, accountName: "Krypto")])
+	}
+
 	@Test func errorAfterAChallengeEndsTheSession() async throws {
 		let session = TestSession([.login([Secret("erika"), Secret("geheim")]), .tan(Secret("123456"))])
 		let (report, ids) = try await Self.refresh(session.connector(demo(Self.calls + """

@@ -23,7 +23,7 @@ The app SHALL open a split window with "Split Transaction" and then "Split Amoun
 
 ### Requirement: The parts add up to the original amount
 
-The app SHALL compute the remainder so that all parts of a split add up to the amount of the original transaction. The split window shows the resulting remainder before the user confirms. The app refuses an amount of zero and text that is not a number.
+The app SHALL compute the remainder so that all parts of a split add up to the amount of the original transaction. The split window shows the resulting remainder before the user confirms. The app refuses an amount of zero, text that is not a number, and an amount of more than 10.000.000.000.000,00 € or the same digits in another currency.
 
 #### Scenario: Remainder is shown
 
@@ -34,6 +34,11 @@ The app SHALL compute the remainder so that all parts of a split add up to the a
 #### Scenario: Amount of zero
 
 - **WHEN** the user enters 0,00 and confirms
+- **THEN** the app does not split and marks the amount field
+
+#### Scenario: Amount above the limit
+
+- **WHEN** the user enters 10.000.000.000.000,01 and confirms
 - **THEN** the app does not split and marks the amount field
 
 #### Scenario: Whole amount
@@ -216,6 +221,20 @@ The app SHALL start with the rates 19 and 7 percent and let the user add, change
 
 - **WHEN** the user removes all rates
 - **THEN** the submenu contains no tax entries and still contains "Split Amount..."
+
+#### Scenario: Change a rate without changing the order
+
+- **GIVEN** the list contains 19, 7, and 20 percent in that order
+- **WHEN** the user changes 7 to 8,1
+- **THEN** the settings show 19%, 8.1%, and 20% in that order
+- **AND** the submenu shows the same order after the app restarts
+
+#### Scenario: Refuse an unreadable rate
+
+- **GIVEN** the list contains 19 and 7 percent
+- **WHEN** the user enters "7,125" and saves the rate
+- **THEN** the settings say "Enter a rate above zero with up to two decimal places."
+- **AND** the list stays at 19 and 7 percent
 
 ### Requirement: Only booked transactions can be split
 

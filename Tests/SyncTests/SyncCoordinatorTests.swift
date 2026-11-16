@@ -797,7 +797,7 @@ struct SyncCoordinatorTests {
 	@Test("The notices of the bank reach the app when a refresh ends, and a canceled refresh brings none")
 	func notices() async throws {
 		var noticed: [String] = []
-		coordinator.noticed = { access, messages in noticed += messages.map { "\(access.uuidString) \($0.text)" } }
+		coordinator.noticed = { access, messages in noticed += messages.map { "\(access.id.uuidString) \($0.text)" } }
 		let bank = Self.access("Musterbank")
 		coordinator.refresh(RefreshRequest(access: bank, accounts: [Self.giro]), with: Notifying(delay: .zero), attended: true)
 		await until { !coordinator.isRefreshing }

@@ -92,6 +92,9 @@ public struct Reconciliation: Sendable, Equatable {
 	/// The positions that replace those of the account, with the IDs of the stored positions of the same
 	/// securities. Nil when the delivery brought none.
 	public internal(set) var holdings: Holdings?
+	/// Set when the balance of a refresh gives an initial balance above `Money.maxMinorUnits`. `account` then keeps the
+	/// old initial balance, and the store refuses the whole delivery, so the account keeps its last state and shows why.
+	public internal(set) var refusal: InitialBalanceTooLarge?
 
 	public init() {}
 
@@ -233,7 +236,7 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored: [Tran
 			if a.derivesInitialBalance, result.transactionFailure == nil {
 				// Dropped and marked rows are pending and do not count.
 				let changed = Dictionary(uniqueKeysWithValues: (r.booked + r.updated).map { ($0.id, $0) })
-				a.deriveInitialBalance(from: stored.map { changed[$0.id] ?? $0 } + r.added)
+				if !a.deriveInitialBalance(from: stored.map { changed[$0.id] ?? $0 } + r.added) { r.refusal = InitialBalanceTooLarge(accountName: account.name) }
 			}
 			r.account = a
 		} else if a != account {
@@ -241,7 +244,9 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored: [Tran
 		}
 	}
 	if case let .refresh(result) = delivery, let delivered = result.holdings {
-		r.holdings = Reconciliation.Holdings(accountID: account.id, holdings: Holding.identify(delivered, stored: holdings))
+		// A connector need not know the account, as a setup fetches the positions before their account exists.
+		let owned = delivered.map { var holding = $0; holding.accountID = account.id; return holding }
+		r.holdings = Reconciliation.Holdings(accountID: account.id, holdings: Holding.identify(owned, stored: holdings))
 	}
 	return r
 }

@@ -89,6 +89,9 @@ struct AppCommands: Commands {
 	var unlocked: Bool { model.phase == .unlocked && !model.isApplyingRule }
 
 	var body: some Commands {
+		CommandGroup(replacing: .appInfo) {
+			Button("About Moneten") { Self.showAbout() }
+		}
 		// The settings need the open database, so the item waits for the unlock.
 		CommandGroup(replacing: .appSettings) {
 			SettingsLink { Text("Settings...") }
@@ -140,6 +143,11 @@ struct AppCommands: Commands {
 			.pickerStyle(.inline)
 			.disabled(!unlocked)
 			Divider()
+			Toggle("Daily Balance", isOn: Binding(get: { model.showsDailyBalance }, set: { model.showsDailyBalance = $0 }))
+				.disabled(!unlocked || model.selectedAccount == nil)
+			Toggle("Checkmarks", isOn: Binding(get: { model.showsCheckmarks }, set: { model.showsCheckmarks = $0 }))
+				.disabled(!unlocked)
+			Divider()
 		}
 		CommandMenu("Account") {
 			Button("Add Account...") { model.addAccount() }.disabled(!unlocked)
@@ -187,10 +195,29 @@ struct AppCommands: Commands {
 		}
 		CommandGroup(replacing: .help) {
 			Button("Show Database in Finder...") { NSWorkspace.shared.activateFileViewerSelecting([model.vault.folder.root]) }
+			Button("Help and FAQ...") { NSWorkspace.shared.open(Self.helpPage) }
+				.keyboardShortcut("?")
 			Button("Supported Banks...") { openWindow(id: "supportedBanks") }
 			Button("Moneten on GitHub...") { NSWorkspace.shared.open(URL(string: "https://github.com/MonetenApp/Moneten")!) }
 			Button("Report an Issue...") { NSWorkspace.shared.open(bugReportURL(version: CrashReportController.appVersion, macOS: CrashReports.macOSVersion())) }
 		}
+	}
+}
+
+extension AppCommands {
+	/// The page of "Help and FAQ...". The project has no help pages of its own yet, so it is the README.
+	static let helpPage = URL(string: "https://github.com/MonetenApp/Moneten#readme")!
+
+	/// The standard About panel: the version, the license from `NSHumanReadableCopyright` in Info.plist, and a
+	/// link to the source code.
+	static func showAbout() {
+		let credits = NSMutableAttributedString(string: String(localized: "Source code:") + " ",
+			attributes: [.font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize), .foregroundColor: NSColor.labelColor])
+		credits.append(NSAttributedString(string: "github.com/MonetenApp/Moneten",
+			attributes: [.font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize), .link: URL(string: "https://github.com/MonetenApp/Moneten")!]))
+		credits.setAlignment(.center, range: NSRange(location: 0, length: credits.length))
+		NSApp.orderFrontStandardAboutPanel(options: [.credits: credits])
+		NSApp.activate()
 	}
 }
 

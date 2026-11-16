@@ -1317,6 +1317,16 @@
         }
       }
     },
+    "About Moneten" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Über Moneten"
+          }
+        }
+      }
+    },
     "Access number" : {
       "localizations" : {
         "de" : {
@@ -1497,6 +1507,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Aktiv"
+          }
+        }
+      }
+    },
+    "Add" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hinzufügen"
           }
         }
       }
@@ -1750,6 +1770,17 @@
           }
         }
       }
+    },
+    "amount" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Betrag"
+          }
+        }
+      },
+      "extractionState" : "manual"
     },
     "Amount to split off" : {
       "localizations" : {
@@ -2127,6 +2158,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Saldo am %@"
+          }
+        }
+      }
+    },
+    "Balance at the end of %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saldo am Ende des %@"
           }
         }
       }
@@ -2567,6 +2608,16 @@
         }
       }
     },
+    "Change" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ändern"
+          }
+        }
+      }
+    },
     "Change Database Password" : {
       "localizations" : {
         "de" : {
@@ -2587,12 +2638,32 @@
         }
       }
     },
+    "Change VAT rate at position %lld" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MwSt.-Satz an Position %lld ändern"
+          }
+        }
+      }
+    },
     "Changed" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Geändert"
+          }
+        }
+      }
+    },
+    "Changing a security setting needs the database password." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Ändern einer Sicherheitseinstellung erfordert das Datenbankpasswort."
           }
         }
       }
@@ -2638,6 +2709,16 @@
       }
     },
     "Checkmark" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Häkchen"
+          }
+        }
+      }
+    },
+    "Checkmarks" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -2885,6 +2966,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Bericht kopieren"
+          }
+        }
+      }
+    },
+    "Copy Sum" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Summe kopieren"
           }
         }
       }
@@ -3477,6 +3568,16 @@
         }
       }
     },
+    "Daily Balance" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tagessaldo"
+          }
+        }
+      }
+    },
     "Data folder" : {
       "localizations" : {
         "de" : {
@@ -3972,6 +4073,16 @@
         }
       }
     },
+    "Enter a rate above zero with up to two decimal places." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Geben Sie einen Satz über null mit höchstens zwei Nachkommastellen ein."
+          }
+        }
+      }
+    },
     "Enter Database Password" : {
       "localizations" : {
         "de" : {
@@ -4074,6 +4185,17 @@
           }
         }
       }
+    },
+    "exchange rate" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wechselkurs"
+          }
+        }
+      },
+      "extractionState" : "manual"
     },
     "Export" : {
       "localizations" : {
@@ -4526,6 +4648,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Hilfe"
+          }
+        }
+      }
+    },
+    "Help and FAQ..." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hilfe und FAQ..."
           }
         }
       }
@@ -6989,6 +7121,17 @@
         }
       }
     },
+    "price" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kurs"
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "Profile" : {
       "localizations" : {
         "de" : {
@@ -7039,6 +7182,17 @@
         }
       }
     },
+    "purchase price" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kaufpreis"
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "Purpose" : {
       "localizations" : {
         "de" : {
@@ -7078,6 +7232,17 @@
           }
         }
       }
+    },
+    "quantity" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anzahl"
+          }
+        }
+      },
+      "extractionState" : "manual"
     },
     "Quarterly view" : {
       "localizations" : {
@@ -7329,6 +7494,16 @@
         }
       }
     },
+    "Remove VAT rate at position %lld" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MwSt.-Satz an Position %lld entfernen"
+          }
+        }
+      }
+    },
     "Remove..." : {
       "localizations" : {
         "de" : {
@@ -7540,6 +7715,16 @@
         }
       }
     },
+    "Save" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Speichern"
+          }
+        }
+      }
+    },
     "Save %@" : {
       "localizations" : {
         "de" : {
@@ -7702,12 +7887,12 @@
         }
       }
     },
-    "Security %lld has no amount." : {
+    "Security %lld is not a table." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Wertpapier %lld hat keinen Betrag."
+            "value" : "Wertpapier %lld ist keine Tabelle."
           }
         }
       },
@@ -8100,6 +8285,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Quellcode"
+          }
+        }
+      }
+    },
+    "Source code:" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quellcode:"
           }
         }
       }
@@ -8692,6 +8887,17 @@
       },
       "extractionState" : "manual"
     },
+    "The %@ of security %lld is not a number." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Feld „%1$@“ von Wertpapier %2$lld ist keine Zahl."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "The %@ of transaction %lld is not a date." : {
       "localizations" : {
         "de" : {
@@ -8796,12 +9002,56 @@
         }
       }
     },
+    "The amount of a transaction cannot be read." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Betrag eines Umsatzes kann nicht gelesen werden."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The amount of a transaction is too large." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Betrag eines Umsatzes ist zu groß."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "The amount of the entry cannot be read." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Der Betrag des Eintrags kann nicht gelesen werden."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The amount of transaction %@ cannot be read." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Betrag von Umsatz %@ kann nicht gelesen werden."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The amount of transaction %@ is too large." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Betrag von Umsatz %@ ist zu groß."
           }
         }
       },
@@ -8867,6 +9117,61 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Der Saldo ist keine Zahl."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The balance leaves out %@, because its price is in %@ and the extension gives no exchange rate." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Saldo enthält %1$@ nicht, weil der Kurs in %2$@ angegeben ist und die Erweiterung keinen Wechselkurs liefert."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The balance of the account \"%@\" cannot be read." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Saldo des Kontos „%@“ kann nicht gelesen werden."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The balance of the account \"%@\" is too large." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Saldo des Kontos „%@“ ist zu groß."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The balance of the group \"%@\" cannot be read." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Saldo der Gruppe „%@“ kann nicht gelesen werden."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The balance of the group \"%@\" is too large." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Saldo der Gruppe „%@“ ist zu groß."
           }
         }
       },
@@ -9017,6 +9322,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Die Bank hat einen Umsatz ohne Buchungsdatum gesendet, daher wurde für dieses Konto nichts gespeichert."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The bank sent an amount that is too large, so nothing of this account was stored." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Bank hat einen zu großen Betrag gesendet, daher wurde für dieses Konto nichts gespeichert."
           }
         }
       },
@@ -9822,6 +10138,17 @@
       },
       "extractionState" : "manual"
     },
+    "The FinTS helper sent a message larger than %lld MiB, which Moneten does not read." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der FinTS-Helfer hat eine Nachricht größer als %lld MiB gesendet, die Moneten nicht liest."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "The FinTS helper stopped unexpectedly (signal %d)." : {
       "localizations" : {
         "de" : {
@@ -10009,6 +10336,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Der Index nennt keine Erweiterungen."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The initial balance of the account \"%@\" is too large." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Anfangssaldo des Kontos „%@“ ist zu groß."
           }
         }
       },
@@ -10695,6 +11033,28 @@
       },
       "extractionState" : "manual"
     },
+    "The value of security %lld at its price" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Wert von Wertpapier %lld zu seinem Kurs"
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The value of security %lld at its purchase price" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Wert von Wertpapier %lld zu seinem Kaufpreis"
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "The VAT split would leave a part of zero." : {
       "localizations" : {
         "de" : {
@@ -11014,6 +11374,17 @@
         }
       }
     },
+    "trade time" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Handelszeitpunkt"
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "Train" : {
       "localizations" : {
         "de" : {
@@ -11271,6 +11642,16 @@
         }
       }
     },
+    "Unlock Moneten to change this setting." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Entsperren Sie Moneten, um diese Einstellung zu ändern."
+          }
+        }
+      }
+    },
     "Unlock Moneten to manage its extensions." : {
       "localizations" : {
         "de" : {
@@ -11463,6 +11844,26 @@
         }
       },
       "extractionState" : "manual"
+    },
+    "VAT rate (%)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MwSt.-Satz (%)"
+          }
+        }
+      }
+    },
+    "VAT rates" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MwSt.-Sätze"
+          }
+        }
+      }
     },
     "Version" : {
       "localizations" : {

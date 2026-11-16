@@ -72,6 +72,7 @@ import javax.net.ssl.SSLSocket;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509ExtendedTrustManager;
 
+import org.kapott.hbci.GV.GVKreditkartenUmsatz;
 import org.kapott.hbci.GV.HBCIJob;
 import org.kapott.hbci.GV.HBCIJobImpl;
 import org.kapott.hbci.GV_Result.GVRKUms;
@@ -89,6 +90,7 @@ import org.kapott.hbci.exceptions.ProcessException;
 import org.kapott.hbci.manager.BankInfo;
 import org.kapott.hbci.manager.HBCIHandler;
 import org.kapott.hbci.manager.HBCIUtils;
+import org.kapott.hbci.manager.HBCIUtilsInternal;
 import org.kapott.hbci.manager.HBCIVersion;
 import org.kapott.hbci.manager.HHDVersion;
 import org.kapott.hbci.manager.MatrixCode;
@@ -105,6 +107,7 @@ import org.kapott.hbci.status.HBCIStatus;
 import org.kapott.hbci.structures.BigDecimalValue;
 import org.kapott.hbci.structures.Konto;
 import org.kapott.hbci.structures.Value;
+import org.kapott.hbci.tools.StringUtil;
 
 public class FinTSHelper {
 	/// The lines to the app. The self-test reads them here in place of the pipe.
@@ -1045,13 +1048,29 @@ public class FinTSHelper {
 		return allowed != null && !allowed.isEmpty() && allowed.stream().allMatch("999"::equals);
 	}
 
-	/// Whether an order goes with HKTAN ("J") or without ("N"), by bank code, for banks whose bank
-	/// parameters say otherwise. Consorsbank answers HKSAL and HKKAZ without HKTAN with 9075, although
-	/// its parameters say that they need no TAN, and HKWPD with HKTAN with 9160 (hbci4j/hbci4java#155).
-	static final Map<String, Map<String, String>> TAN_RULES = Map.of("76030080", Map.of("HKSAL", "J", "HKKAZ", "J", "HKCAZ", "J", "HKWPD", "N"));
+	/// Whether an order goes with HKTAN ("J") or without ("N") on the FinTS server of Consorsbank, whose bank
+	/// parameters say otherwise. The server answers HKSAL and HKKAZ without HKTAN with 9075, although its
+	/// parameters say that they need no TAN, and HKWPD with HKTAN with 9160 (hbci4j/hbci4java#155).
+	static final Map<String, String> CONSORSBANK_TAN_RULES = Map.of("HKSAL", "J", "HKKAZ", "J", "HKCAZ", "J", "HKWPD", "N");
 
-	static void applyTanRules(String bankCode, Properties bpd) {
-		Map<String, String> rules = TAN_RULES.get(bankCode);
+	/// The FinTS server of Consorsbank. DAB BNP Paribas uses it too.
+	static final String CONSORSBANK_SERVER = "brokerage-hbci.consorsbank.de";
+
+	/// The rules of the server at `host`, as hbci4java keeps it with its path, or null. Consorsbank and DAB BNP
+	/// Paribas share one server, so the server decides and not the Bankleitzahl. Only that server gets the rules,
+	/// so the name must match in full: another server of the same domain keeps the parameters of its bank.
+	static Map<String, String> tanRules(String host) {
+		if (host == null) return null;
+		String name = host.trim().toLowerCase(java.util.Locale.ROOT);
+		for (char end : new char[] { '/', '?', ':' }) {
+			int at = name.indexOf(end);
+			if (at >= 0) name = name.substring(0, at);
+		}
+		return name.equals(CONSORSBANK_SERVER) ? CONSORSBANK_TAN_RULES : null;
+	}
+
+	static void applyTanRules(String host, Properties bpd) {
+		Map<String, String> rules = tanRules(host);
 		if (rules == null) return;
 		for (String key : bpd.stringPropertyNames()) {
 			if (!key.contains(".ParPinTan.PinTanGV") || !key.endsWith(".segcode")) continue;
@@ -1085,7 +1104,8 @@ public class FinTSHelper {
 		}
 
 		public HBCIJob newJob(String name) {
-			return handle.newJob(name);
+			// The card statement reads its rows itself (cardRows), so hbci4java must not.
+			return name.equals("KreditkartenUmsatz") ? new CardJob(handle) : handle.newJob(name);
 		}
 
 		public HBCIExecStatus execute() {
@@ -1127,14 +1147,38 @@ public class FinTSHelper {
 	}
 
 	/// The jobs that a refresh sends for an account: the custody account balance of a securities account
-	/// that allows it, or else the balance and the transactions, in CAMT when the account allows it.
+	/// that allows it, or else the balance and the transactions, in CAMT when the account allows it. A credit
+	/// card that allows no transaction list but the card statement DKKKU, which DKB and other banks offer for
+	/// their cards, gets only the card statement, which brings the balance and the transactions in one answer.
 	static List<String> jobs(HBCIHandler handle, Konto k) {
 		if (securities(k) && allows(handle, k, "HKWPD", "WPDepotList")) return List.of("WPDepotList");
+		String statements = allows(handle, k, "HKCAZ", "KUmsAllCamt") ? "KUmsAllCamt" : allows(handle, k, "HKKAZ", "KUmsAll") ? "KUmsAll" : null;
+		if (statements == null && allows(handle, k, "DKKKU", "KreditkartenUmsatz")) return List.of("KreditkartenUmsatz");
 		List<String> jobs = new ArrayList<>();
 		if (allows(handle, k, "HKSAL", "SaldoReq")) jobs.add("SaldoReq");
-		if (allows(handle, k, "HKCAZ", "KUmsAllCamt")) jobs.add("KUmsAllCamt");
-		else if (allows(handle, k, "HKKAZ", "KUmsAll")) jobs.add("KUmsAll");
+		if (statements != null) jobs.add(statements);
 		return jobs;
+	}
+
+	/// Sets the parameters of the job `name` for the account `k`: the account, the start day `from` of the
+	/// transactions, and the card number of a card statement, which is the account number of the card.
+	static void prepare(HBCIJob job, String name, Konto k, String from) {
+		job.setParam("my", k);
+		if (name.equals("KreditkartenUmsatz")) job.setParam("cardnumber", k.number);
+		if (from != null && List.of("KUmsAll", "KUmsAllCamt", "KreditkartenUmsatz").contains(name)) job.setParam("startdate", date(from));
+	}
+
+	/// The card statement DKKKU without the rows that hbci4java reads from its answer. hbci4java 4.1.17 drops the
+	/// field "finalized" of each row, and fails the whole dialog on a row that it cannot read, as on an original
+	/// amount with three decimals, so `cardRows` reads the rows from the raw data of the job.
+	static final class CardJob extends GVKreditkartenUmsatz {
+		CardJob(HBCIHandler handle) {
+			super(handle);
+		}
+
+		@Override
+		protected void extractResults(HBCIMsgStatus status, String header, int index) {
+		}
 	}
 
 	/// The diagnostic of an account that allows none of the jobs: its account type and the jobs that the
@@ -1151,9 +1195,9 @@ public class FinTSHelper {
 			: "The FinTS server of the bank offers neither the balance nor the transactions of this account.");
 	}
 
-	/// The jobs of one account: the balance and the transactions, or the holdings of a securities account
-	/// in the currency of the account.
-	record Jobs(String id, String from, String currency, HBCIJob balance, HBCIJob statements, HBCIJob holdings) { }
+	/// The jobs of one account: the balance and the transactions, the card statement, or the holdings of a
+	/// securities account in the currency of the account.
+	record Jobs(String id, String from, String currency, HBCIJob balance, HBCIJob statements, HBCIJob card, HBCIJob holdings) { }
 
 	/// The first day of the transactions of an account, or null for the full history. After the user canceled the
 	/// challenge for older transactions, the full history becomes the last 90 days, as a normal refresh asks.
@@ -1163,7 +1207,7 @@ public class FinTSHelper {
 	}
 
 	static void refresh(Orders handle, HBCIPassport passport, Konto[] accounts, List<?> requested, Callback callback) {
-		applyTanRules(passport.getBLZ(), passport.getBPD());
+		applyTanRules(passport.getHost(), passport.getBPD());
 		List<Jobs> all = new ArrayList<>();
 		for (Object o : requested) {
 			Map<?, ?> request = (Map<?, ?>) o;
@@ -1179,22 +1223,20 @@ public class FinTSHelper {
 				send(nothingAllowed(id, k));
 				continue;
 			}
-			HBCIJob balance = null, statements = null, holdings = null;
+			HBCIJob balance = null, statements = null, card = null, holdings = null;
 			for (String name : names) {
 				HBCIJob job = handle.newJob(name);
-				job.setParam("my", k);
+				prepare(job, name, k, from);
 				switch (name) {
 					case "SaldoReq" -> balance = job;
 					case "WPDepotList" -> holdings = job;
-					default -> {
-						if (from != null) job.setParam("startdate", date(from));
-						statements = job;
-					}
+					case "KreditkartenUmsatz" -> card = job;
+					default -> statements = job;
 				}
 				job.addToQueue();
 				callback.jobs.put(job, all.size());
 			}
-			all.add(new Jobs(id, from, text(k.curr), balance, statements, holdings));
+			all.add(new Jobs(id, from, text(k.curr), balance, statements, card, holdings));
 		}
 		callback.jobCount = all.size();
 		callback.fullHistory = all.stream().anyMatch(j -> j.statements() != null && j.from() == null);
@@ -1207,7 +1249,11 @@ public class FinTSHelper {
 		callback.checkSwitch();
 		requireLogin(status);
 		for (Jobs jobs : all) {
-			HBCIJob statements = jobs.statements(), holdings = jobs.holdings();
+			HBCIJob statements = jobs.statements(), card = jobs.card(), holdings = jobs.holdings();
+			if (card != null) {
+				send(alone(jobs.id(), () -> card(jobs.id(), jobs.from(), card.getJobResult(), ((HBCIJobImpl) card).redo() != null, jobs.currency())));
+				continue;
+			}
 			if (holdings != null) {
 				send(alone(jobs.id(), () -> value(jobs.id(), (GVRWPDepotList) holdings.getJobResult(), ((HBCIJobImpl) holdings).redo() != null, jobs.currency())));
 				continue;
@@ -1325,6 +1371,133 @@ public class FinTSHelper {
 			}
 		}
 		return message("result", "account", id, "balance", balance, "transactions", transactions, "errors", errors);
+	}
+
+	/// The result of the card statement DKKKU from its answer DIKKU, which hbci4java keeps as raw data: the
+	/// transactions of the card and its balance. A row that does not read fails this card and leaves the other
+	/// accounts of the login.
+	static Map<String, Object> card(String id, String from, HBCIJobResult statement, boolean incomplete, String currency) {
+		if (incomplete) throw new Failure(null, "3040", "The bank sent only part of the transactions, so nothing of this account was stored.");
+		if (!statement.isOK()) return message("result", "account", id, "errors", List.of(problem(statement)));
+		Properties data = statement.getResultData();
+		Map<String, Object> result = message("result", "account", id, "balance", cardBalance(data, currency),
+			"transactions", message("transactions", "from", from, "rows", cardRows(data)), "errors", List.of());
+		diagnostic(cardSummary(data));
+		return result;
+	}
+
+	/// What the bank test of the card statement records, as counts without any data of a row: the values of
+	/// "finalized", and whether the references of the rows are unique, which decides whether a reference can
+	/// identify a row.
+	static String cardSummary(Properties data) {
+		Map<String, Integer> finalized = new java.util.TreeMap<>();
+		List<String> references = new ArrayList<>();
+		for (String row : cardRowKeys(data)) {
+			String value = StringUtil.normalize(data.getProperty(row + ".finalized"));
+			finalized.merge(value == null ? "none" : value.length() == 1 ? value.toUpperCase(java.util.Locale.ROOT) : "other", 1, Integer::sum);
+			String reference = StringUtil.normalize(data.getProperty(row + ".reference"));
+			if (reference != null) references.add(reference);
+		}
+		return "FinTSHelper: card statement finalized " + finalized + " references=" + references.size() + " distinct=" + new java.util.HashSet<>(references).size();
+	}
+
+	static final String CARD_ROW_UNREADABLE = "The bank sent a card transaction that does not read, so nothing of this card was stored.";
+
+	/// The parts of the answer in their order. hbci4java keeps the first part as "content" and part n as "content_n".
+	static List<String> cardParts(Properties data) {
+		java.util.SortedSet<Integer> parts = new java.util.TreeSet<>();
+		for (String key : data.stringPropertyNames()) {
+			Matcher m = CARD_PART.matcher(key);
+			if (m.matches()) parts.add(m.group(1) == null ? 1 : Integer.parseInt(m.group(1)));
+		}
+		return parts.stream().map(n -> n == 1 ? "content" : "content_" + n).toList();
+	}
+
+	static final Pattern CARD_PART = Pattern.compile("content(?:_([0-9]+))?\\..*");
+
+	/// The rows of all parts, in the order of the answer. The merchant text of a row is also its name, because the
+	/// card statement has no other field for the other party, and a pending row pairs with its booked version only
+	/// by a name or an IBAN. A row that the bank marks with "finalized" N is not final,
+	/// such as the reservation of a hotel, so it is pending. The original amount of a converted row stays out until
+	/// the app stores it (task 1.18), so its precision cannot fail the row.
+	static List<Object> cardRows(Properties data) {
+		return cardRowKeys(data).stream().map(row -> (Object) cardRow(data, row)).toList();
+	}
+
+	/// The key of each row, such as "content_2.transactions_3", in the order of the answer.
+	static List<String> cardRowKeys(Properties data) {
+		List<String> rows = new ArrayList<>();
+		for (String part : cardParts(data)) {
+			for (int i = 0; data.getProperty(HBCIUtilsInternal.withCounter(part + ".transactions", i) + ".cardnumber") != null; i++) {
+				rows.add(HBCIUtilsInternal.withCounter(part + ".transactions", i));
+			}
+		}
+		return rows;
+	}
+
+	static Map<String, Object> cardRow(Properties data, String row) {
+		String booked = cardDay(data.getProperty(row + ".bookingdate")), value = cardDay(data.getProperty(row + ".valuedate"));
+		BigDecimal amount = signed(data.getProperty(row + ".value"), data.getProperty(row + ".creditdebit"));
+		if (amount == null || (booked == null && value == null)) throw new Failure("unsupported", null, CARD_ROW_UNREADABLE);
+		return message("row", "booked", booked != null ? booked : value, "value", value, "amount", amount.toPlainString(),
+			"currency", StringUtil.normalize(data.getProperty(row + ".currency")), "name", StringUtil.normalize(data.getProperty(row + ".purpose")),
+			"purpose", StringUtil.joinDescription(data.getProperty(row + ".purpose"), data.getProperty(row + ".location")),
+			"bookingText", "Kreditkartenzahlung", "pending", "N".equalsIgnoreCase(StringUtil.normalize(data.getProperty(row + ".finalized"))));
+	}
+
+	/// A day of a row, null when the bank sent none. A day that does not read fails the row.
+	static String cardDay(String text) {
+		String day = day(text);
+		if (day == null && StringUtil.normalize(text) != null) throw new Failure("unsupported", null, CARD_ROW_UNREADABLE);
+		return day;
+	}
+
+	/// A day of the raw data of hbci4java, which keeps dates as yyyy-mm-dd, or as the bank sent it, yyyymmdd. Null
+	/// when it does not read.
+	static String day(String text) {
+		String day = StringUtil.normalize(text);
+		if (day == null) return null;
+		if (day.matches("[0-9]{8}")) day = day.substring(0, 4) + "-" + day.substring(4, 6) + "-" + day.substring(6);
+		try {
+			return java.time.LocalDate.parse(day).toString();
+		} catch (java.time.format.DateTimeParseException e) {
+			return null;
+		}
+	}
+
+	/// An amount of the card statement, which may come with a sign and with a decimal comma, with the sign of its
+	/// mark C or D. Null when it is missing or does not read. It keeps every decimal place.
+	static BigDecimal signed(String value, String creditDebit) {
+		String text = StringUtil.normalize(value);
+		if (text == null) return null;
+		BigDecimal amount;
+		try {
+			amount = new BigDecimal(StringUtil.normalizeDecimal(text));
+		} catch (NumberFormatException e) {
+			return null;
+		}
+		String mark = StringUtil.normalize(creditDebit);
+		if ("D".equalsIgnoreCase(mark)) return amount.abs().negate();
+		if ("C".equalsIgnoreCase(mark)) return amount.abs();
+		return amount;
+	}
+
+	/// The balance of the first part of the answer that has one, which is the amount that the user owes on the card
+	/// when it is negative.
+	static Map<String, Object> cardBalance(Properties data, String currency) {
+		for (String part : cardParts(data)) {
+			String prefix = part + ".balance.";
+			if (data.getProperty(prefix + "value") == null) continue;
+			BigDecimal amount = signed(data.getProperty(prefix + "value"), data.getProperty(prefix + "CreditDebit"));
+			if (amount == null) {
+				diagnostic("FinTSHelper: the balance of a card statement does not read, keeping its transactions");
+				return null;
+			}
+			String curr = text(data.getProperty(prefix + "curr"));
+			return message("balance", "amount", amount.toPlainString(), "currency", curr != null ? curr : present(currency) ? currency.trim() : "EUR",
+				"date", day(data.getProperty(prefix + "date")));
+		}
+		return null;
 	}
 
 	static void run(Map<?, ?> command) throws IOException {
