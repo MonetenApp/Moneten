@@ -330,6 +330,8 @@ private struct AccountEntry: Codable {
 	var owner: String?
 	var bankBalance: String?
 	var bankBalanceDate: Date?
+	var otherBankBalances: [AmountEntry]?
+	var bonusPoints: Int64?
 	var initialBalance: String
 	var initialBalanceIsSet: Bool
 	var isClosed: Bool
@@ -360,6 +362,8 @@ private struct AccountEntry: Codable {
 		owner = a.owner
 		bankBalance = a.bankBalanceMinor.map { AmountText.text($0, a.currency) }
 		bankBalanceDate = a.bankBalanceDate
+		otherBankBalances = a.otherBankBalances.isEmpty ? nil : a.otherBankBalances.map(AmountEntry.init)
+		bonusPoints = a.bonusPoints
 		initialBalance = AmountText.text(a.initialBalanceMinor, a.currency)
 		initialBalanceIsSet = a.initialBalanceIsSet
 		isClosed = a.isClosed
@@ -376,12 +380,18 @@ private struct AccountEntry: Codable {
 
 	func account() throws -> Account {
 		try currencyCode(currency)
+		let others = try (otherBankBalances ?? []).map { try $0.money() }
+		// A balance in the account currency would count twice in the sum of a group, and a repeated currency would show twice.
+		guard Set(others.map(\.currency) + [currency]).count == others.count + 1 else {
+			throw AllData.ReadError.damaged("the other balances of an account repeat a currency or hold the currency of the account")
+		}
 		return Account(id: id, groupID: groupID, position: position, name: name, kind: kind, source: source, currency: currency, iban: iban, bic: bic,
 			accountNumber: accountNumber, bankCode: bankCode, bankName: bankName, owner: owner,
 			bankBalanceMinor: try bankBalance.map { try AmountText.minorUnits($0, currency) }, bankBalanceDate: bankBalanceDate,
 			initialBalanceMinor: try AmountText.minorUnits(initialBalance, currency), initialBalanceIsSet: initialBalanceIsSet, isClosed: isClosed,
 			comment: comment, sourceID: sourceID, color: color, accessID: accessID, remoteID: remoteID, refreshedAt: refreshedAt,
-			refreshError: refreshError, refreshInterval: refreshInterval, missesOlderTransactions: missesOlderTransactions ?? false)
+			refreshError: refreshError, refreshInterval: refreshInterval, missesOlderTransactions: missesOlderTransactions ?? false,
+			otherBankBalances: others, bonusPoints: bonusPoints)
 	}
 }
 
@@ -595,7 +605,10 @@ private struct AmountEntry: Codable {
 		currency = m.currency
 	}
 
-	func money() throws -> Money { Money(minorUnits: try AmountText.minorUnits(amount, currency), currency: currency) }
+	func money() throws -> Money {
+		try currencyCode(currency)
+		return Money(minorUnits: try AmountText.minorUnits(amount, currency), currency: currency)
+	}
 }
 
 private struct QuoteEntry: Codable {

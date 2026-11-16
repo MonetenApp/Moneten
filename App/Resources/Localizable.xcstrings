@@ -2324,6 +2324,16 @@
         }
       }
     },
+    "Bonus points: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bonuspunkte: %@"
+          }
+        }
+      }
+    },
     "Booked %lld pending transactions." : {
       "localizations" : {
         "de" : {
@@ -9111,6 +9121,17 @@
       },
       "extractionState" : "manual"
     },
+    "The balance in %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Saldo in %@"
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "The balance is not a number." : {
       "localizations" : {
         "de" : {
@@ -9172,6 +9193,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Der Saldo der Gruppe „%@“ ist zu groß."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The balances add up to more than Moneten can hold." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Salden ergeben zusammen mehr, als Moneten speichern kann."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The balances are not a list of pairs of amount and currency." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Salden sind keine Liste von Paaren aus Betrag und Währung."
           }
         }
       },
@@ -9379,6 +9422,17 @@
           }
         }
       }
+    },
+    "The bonus points are not a number." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Bonuspunkte sind keine Zahl."
+          }
+        }
+      },
+      "extractionState" : "manual"
     },
     "The booked transactions up to the day of the bank balance do not add up to it. Calibrate moves the initial balance by the difference." : {
       "localizations" : {
