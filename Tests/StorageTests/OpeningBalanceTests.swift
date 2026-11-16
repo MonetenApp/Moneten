@@ -143,7 +143,7 @@ struct OpeningBalanceTests {
 		#expect(paused.initialBalanceIsSet)
 	}
 
-	@Test("v22 moves a mark that a debug build kept in the state of a FinTS access into the account, once")
+	@Test("v21 moves a mark that a debug build kept in the state of a FinTS access into the account, once")
 	func markMovesFromState() throws {
 		let queue = try DatabaseQueue()
 		try Schema.migrator.migrate(queue, upTo: "v20")
@@ -158,7 +158,7 @@ struct OpeningBalanceTests {
 		try queue.write { db in
 			try fints.insert(db)
 			try plain.insert(db)
-			// The columns of v20: v22 adds the mark, which the record type would write.
+			// The columns of v20: v21 adds the mark, which the record type would write.
 			for (id, access, remoteID) in [(marked, fints.id, "DE02120300000000202051"), (savings, fints.id, "1234567890"), (other, plain.id, "DE02120300000000202051")] {
 				try db.execute(sql: """
 					INSERT INTO account (id, position, name, kind, source, currency, initialBalanceMinor, isClosed, accessID, remoteID)
