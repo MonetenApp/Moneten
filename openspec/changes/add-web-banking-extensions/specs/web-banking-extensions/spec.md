@@ -877,6 +877,20 @@ The app SHALL add four fields to the account table that `RefreshAccount` receive
 - **WHEN** the app calls `RefreshAccount` during the setup of an access
 - **THEN** `account.balance` is 0 and `account.comment` is ""
 
+### Requirement: Securities only with the portfolio field
+
+The app SHALL read `securities` from the results of an account only when its `portfolio` field holds a value other than `false` or nil, and SHALL read `balance` and `transactions` otherwise, whatever its `type` is.
+
+#### Scenario: Securities account with transactions
+
+- **WHEN** `ListAccounts` returns `{accountNumber="D-1", portfolio=false, type=AccountTypePortfolio}` and `RefreshAccount` returns `{balance=100.00, transactions={{bookingDate=1794182400, amount=100.00, purpose="Kauf"}}}`
+- **THEN** the account has the type of a securities account, the balance 100,00 €, and one transaction
+
+#### Scenario: Type without the field
+
+- **WHEN** `ListAccounts` returns `{accountNumber="D-2", type=AccountTypePortfolio}` and `RefreshAccount` returns a balance and transactions
+- **THEN** the app reads the balance and the transactions and does not ask for `securities`
+
 ### Requirement: Account type when the script gives none
 
 The app SHALL derive the account type from the account number and the name when `type` is missing. An account number with 16 characters or with masked digits counts as a credit card. A given type is taken as it is. The app sets the type only when it creates the account and does not change it at a refresh.

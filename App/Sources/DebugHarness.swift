@@ -28,6 +28,8 @@ final class DebugHarness {
 	/// replaces the table. The address of a table is no help, because a new table can get the address of the old one.
 	private let tableNumbers = NSMapTable<NSTableView, NSNumber>.weakToStrongObjects()
 	private var nextTableNumber = 1
+	/// Set by "menuexport": answers the save panel of an export with a path and logs the panel.
+	var savePanelAnswer: ((NSSavePanel) -> URL?)?
 
 	/// The debug folder of this run, or nil in a release build and in a run without `MONETEN_DEBUG_DIR`.
 	private static var requestedPath: String? {
@@ -560,6 +562,10 @@ final class DebugHarness {
 			let rows = model.rowsToExport(of: .account(account.id))
 			model.export(rows, to: URL(filePath: argument))
 			log("exportcontextcsv", ("rows", .count(rows.count)))
+		// "<menu>|<path>" chooses "Export Transactions..." in a real menu: "account" for the Account menu, "sidebar <n>"
+		// for the context menu of sidebar row n, "row <n> [<count>]" for the context menu of table row n, with the first
+		// <count> rows selected. The save panel answers <path>.
+		case "menuexport": menuExport(argument)
 		case "exportstatus": log("exportstatus", ("running", .flag(model.exportTask != nil)), ("sheet", .state(model.sheet)))
 		case "cancelexport": model.cancelExport()
 		case "sheet":
@@ -1056,24 +1062,10 @@ final class DebugHarness {
 	/// an item that the Option key shows in place of the item before it.
 	private func logContextMenus(_ argument: String) {
 		let choice = argument.split(separator: "|").compactMap { Int($0) }
-		func outlines(in view: NSView) -> [NSOutlineView] { ((view as? NSOutlineView).map { [$0] } ?? []) + view.subviews.flatMap(outlines) }
-		guard let window = NSApp.windows.first(where: { $0.isVisible && $0.identifier?.rawValue.hasPrefix("main") == true }),
-			let content = window.contentView else { return log("contextmenu no window") }
-		// The sidebar is the leftmost list. The transaction table is a list too.
-		guard let list = outlines(in: content).min(by: { $0.convert($0.bounds, to: nil).minX < $1.convert($1.bounds, to: nil).minX }) else {
-			return log("contextmenu no list")
-		}
+		guard NSApp.windows.contains(where: { $0.isVisible && $0.identifier?.rawValue.hasPrefix("main") == true }) else { return log("contextmenu no window") }
+		guard let list = sidebarList() else { return log("contextmenu no list") }
 		for index in 0..<list.numberOfRows {
-			let row = list.rect(ofRow: index)
-			let point = list.convert(NSPoint(x: row.midX, y: row.midY), to: nil)
-			guard let event = NSEvent.mouseEvent(with: .rightMouseDown, location: point, modifierFlags: .option, timestamp: 0,
-				windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1) else { continue }
-			var view = content.hitTest(content.convert(point, from: nil))
-			var menu: NSMenu?
-			while let v = view, menu == nil {
-				menu = v.menu(for: event)
-				view = v.superview
-			}
+			let menu = contextMenu(row: index, sidebar: true, modifiers: .option)
 			// Each item by the hash of its title, because an item can name an account, a group, or a category.
 			log("contextmenu row", ("", .position(index)), ("items", .list((menu?.items ?? []).map { .hash(($0.isAlternate ? "alt:" : "") + $0.title) })))
 			if choice.count == 2, choice[0] == index,
@@ -1087,6 +1079,75 @@ final class DebugHarness {
 				return
 			}
 		}
+	}
+
+	private func menuExport(_ argument: String) {
+		let parts = argument.components(separatedBy: "|")
+		guard parts.count == 2 else { return log("menuexport needs <menu>|<path>") }
+		// The menu action runs at once. When it opens no panel, the answer must not wait for a later export.
+		defer { savePanelAnswer = nil }
+		savePanelAnswer = { [weak self] panel in
+			let formats = panel.accessoryView?.subviews.compactMap { $0 as? NSPopUpButton }.first?.itemTitles ?? []
+			let label = panel.accessoryView?.subviews.compactMap { ($0 as? NSTextField)?.stringValue }.first ?? ""
+			// Every text by its hash: the suggested file name holds the name of the account or category.
+			self?.log("menuexport panel", ("title", .hash(panel.title ?? "")), ("label", .hash(label)), ("format", .list(formats.map { .hash($0) })),
+				("types", .list(panel.allowedContentTypes.map { .hash($0.identifier) })), ("name", .hash(panel.nameFieldStringValue)))
+			return URL(filePath: parts[1])
+		}
+		let place = parts[0].split(separator: " ")
+		let menu: NSMenu? = switch place.first {
+		case "account": NSApp.mainMenu?.item(withTitle: "Account")?.submenu
+		case "sidebar": place.count == 2 ? Int(place[1]).flatMap { contextMenu(row: $0, sidebar: true) } : nil
+		case "row":
+			// "row <n> <count>" selects the first <count> rows before the right click.
+			place.count >= 2 ? Int(place[1]).flatMap { row in
+				if place.count == 3, let count = Int(place[2]) {
+					transactionTables().first?.selectRowIndexes(IndexSet(0..<count), byExtendingSelection: false)
+				}
+				return contextMenu(row: row, sidebar: false)
+			} : nil
+		default: nil
+		}
+		menu?.update()
+		guard let menu, let index = menu.items.firstIndex(where: { $0.title.hasPrefix("Export Transaction") }) else { return log("menuexport no item") }
+		guard menu.items[index].isEnabled else {
+			// SwiftUI enables the commands of the Account menu only while the app is active, which a locked Mac does
+			// not allow. When the conditions of the item hold, the check runs its action, `exportTransactions()`.
+			guard place.first == "account", let model, model.phase == .unlocked, model.selection != nil, !model.isTransferringTransactions else {
+				return log("menuexport disabled")
+			}
+			log("menuexport account action, app not active")
+			return model.exportTransactions()
+		}
+		log("menuexport item", ("title", .hash(menu.items[index].title)))
+		menu.performActionForItem(at: index)
+	}
+
+	/// The sidebar: the leftmost list of the main window. The transaction table is a list too.
+	private func sidebarList() -> NSOutlineView? {
+		guard let content = NSApp.windows.first(where: { $0.isVisible && $0.identifier?.rawValue.hasPrefix("main") == true })?.contentView else { return nil }
+		func outlines(in view: NSView) -> [NSOutlineView] { ((view as? NSOutlineView).map { [$0] } ?? []) + view.subviews.flatMap(outlines) }
+		return outlines(in: content).min { $0.convert($0.bounds, to: nil).minX < $1.convert($1.bounds, to: nil).minX }
+	}
+
+	/// The context menu of a row of the sidebar or of the transaction table, as a right click builds it. "Option" shows
+	/// the items that the Option key shows.
+	private func contextMenu(row index: Int, sidebar: Bool, modifiers: NSEvent.ModifierFlags = []) -> NSMenu? {
+		guard let window = NSApp.windows.first(where: { $0.isVisible && $0.identifier?.rawValue.hasPrefix("main") == true }),
+			let content = window.contentView else { return nil }
+		let list: NSTableView? = sidebar ? sidebarList() : transactionTables().first
+		guard let list, index < list.numberOfRows else { return nil }
+		list.scrollRowToVisible(index)
+		let row = list.rect(ofRow: index)
+		let point = list.convert(NSPoint(x: row.midX, y: row.midY), to: nil)
+		guard let event = NSEvent.mouseEvent(with: .rightMouseDown, location: point, modifierFlags: modifiers, timestamp: 0,
+			windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1) else { return nil }
+		var view = content.hitTest(content.convert(point, from: nil))
+		while let v = view {
+			if let menu = v.menu(for: event) { return menu }
+			view = v.superview
+		}
+		return nil
 	}
 
 	/// A category by its position in sidebar order from 0, or "default", because the user types category names.
