@@ -21,7 +21,7 @@ extension SchemaTests {
 		let id = UUID()
 		let payload = Data(#"{"opaque":true}"#.utf8)
 		try old.write { db in
-			try account.insert(db)
+			try account.insertOld(db)
 			try db.execute(sql: """
 				INSERT INTO bankTransaction (id, accountID, bookingDate, amountMinor, currency, name, purpose, isChecked, isPending,
 					categorizedBy, isNew, needsReview, isFetched, createdAt)
@@ -37,7 +37,7 @@ extension SchemaTests {
 		let opened = try DatabaseQueue(path: path)
 		defer { try? opened.close() }
 		try Schema.migrator.migrate(opened)
-		#expect(try opened.read { try String.fetchAll($0, sql: "SELECT identifier FROM grdb_migrations ORDER BY rowid") } == mainVersions + ["v18", "v20", "v24", "v22"])
+		#expect(try opened.read { try String.fetchAll($0, sql: "SELECT identifier FROM grdb_migrations ORDER BY rowid") } == mainVersions + ["v18", "v20", "v24", "v21", "v22"])
 		let store = Store(queue: opened)
 		let rows = try store.loadLedger().transactions
 		#expect(rows.map(\.id) == [id])
@@ -78,7 +78,7 @@ extension SchemaTests {
 		let account = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
 		let id = UUID()
 		try old.write { db in
-			try account.insert(db)
+			try account.insertOld(db)
 			try db.execute(sql: """
 				INSERT INTO bankTransaction (id, accountID, bookingDate, amountMinor, currency, name, purpose, isChecked, isPending,
 					categorizedBy, isNew, needsReview, isFetched, createdAt)

@@ -174,7 +174,7 @@ struct SchemaTests {
 		let t = Transaction(accountID: account.id, bookingDate: Day(year: 2026, month: 11, day: 3), amountMinor: -8000,
 			name: "Beispiel Markt", comment: "Weekly shop", review: .unclearBooking, createdAt: Date(timeIntervalSince1970: 1793664000), returnReason: "AC04")
 		try queue.write { db in
-			try account.insert(db)
+			try account.insertOld(db)
 			try db.execute(sql: """
 				INSERT INTO bankTransaction (id, accountID, bookingDate, amountMinor, currency, name, purpose, comment, isChecked, isPending,
 					categorizedBy, isNew, needsReview, isFetched, createdAt, returnReason)
