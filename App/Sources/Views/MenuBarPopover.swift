@@ -7,10 +7,10 @@ struct MenuBarIcon: View {
 	let model: AppModel
 
 	var body: some View {
-		Image(systemName: symbol)
+		Image(systemName: Self.symbol(of: model).description)
 	}
 
-	private var symbol: String {
+	static func symbol(of model: AppModel) -> StaticString {
 		guard model.phase == .unlocked else { return "banknote" }
 		if model.sync.isRefreshing { return "arrow.triangle.2.circlepath" }
 		if model.ledger.accounts.contains(where: { !$0.isClosed && $0.refreshError != nil }) { return "exclamationmark.triangle" }

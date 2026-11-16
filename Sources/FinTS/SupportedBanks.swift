@@ -4,7 +4,7 @@ import Foundation
 /// ("List of supported banks"). It reads the bank directory and the services of the installed extensions.
 public struct SupportedBanks: Sendable {
 	/// The access method of every bank of the bank directory that has a FinTS address.
-	public static let fintsMethod = "FinTS/HBCI with TAN method"
+	public static var fintsMethod: String { String(localized: "FinTS/HBCI with TAN method") }
 
 	/// A service that an installed extension declares. Its access method is the name of the extension.
 	public struct Service: Sendable, Equatable, Identifiable {
