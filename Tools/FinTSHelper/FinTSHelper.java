@@ -1116,9 +1116,7 @@ public class FinTSHelper {
 
 		public HBCIJob newJob(String name) {
 			// The card statement reads its rows itself (cardRows), so hbci4java must not.
-			if (name.equals("KreditkartenUmsatz")) return new CardJob(handle);
-			if (name.equals("KUmsAll") && SavingsBanks.direkt1822(passport.getHost())) return new SavingsBanks.StatementJob(handle);
-			return handle.newJob(name);
+			return name.equals("KreditkartenUmsatz") ? new CardJob(handle) : handle.newJob(name);
 		}
 
 		public HBCIExecStatus execute() {

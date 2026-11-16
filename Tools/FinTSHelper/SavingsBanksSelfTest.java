@@ -1,13 +1,9 @@
-import java.util.List;
 import java.util.Map;
-import java.util.Properties;
-import org.kapott.hbci.GV_Result.GVRKUms;
-import org.kapott.hbci.status.HBCIMsgStatus;
-import org.kapott.hbci.status.HBCIRetVal;
 
-/// The checks of the rules of the savings banks and 1822direkt (issue #240), with made-up answers of the bank.
+/// The checks of the rules of the savings banks (issue #240), with made-up answers of the bank.
 final class SavingsBanksSelfTest {
 	static final String SPARKASSE = "banking-hs6.s-fints-pt-hs.de/fints30";
+	/// A server of another bank group, which is no server of the savings banks.
 	static final String DIREKT = "fints.1822direkt.com/fints/hbci";
 	static final String MUSTERBANK = "fints.musterbank.example/fints";
 	static final String DEACTIVATED = "Kundenprodukt wurde vom Benutzer deaktiviert";
@@ -15,7 +11,6 @@ final class SavingsBanksSelfTest {
 	static void run() {
 		hosts();
 		appBlocked();
-		statements();
 	}
 
 	static void hosts() {
@@ -29,13 +24,6 @@ final class SavingsBanksSelfTest {
 			+ SavingsBanks.savingsBank("fints.example.com/s-fints-pt-hs.de") + " " + SavingsBanks.savingsBank(null) + " "
 			+ SavingsBanks.savingsBank("banking.s-fints-pt-hs.de.evil.example./fints30") + " " + SavingsBanks.savingsBank("banking.s-fints-pt-hs.de../fints30"),
 			"false false false false false false false false");
-		SelfTest.expect("hosts of 1822direkt", SavingsBanks.direkt1822(DIREKT) + " " + SavingsBanks.direkt1822("1822direkt.com/fints") + " "
-			+ SavingsBanks.direkt1822("FINTS.1822DIREKT.COM/fints/hbci") + " " + SavingsBanks.direkt1822("fints.1822direkt.com./fints/hbci") + " "
-			+ SavingsBanks.direkt1822("FINTS.1822DIREKT.COM.:443/fints/hbci"), "true true true true true");
-		SelfTest.expect("hosts that are not of 1822direkt", SavingsBanks.direkt1822("fints.my1822direkt.com/fints") + " "
-			+ SavingsBanks.direkt1822("fints.1822direkt.com.example/fints") + " " + SavingsBanks.direkt1822(SPARKASSE) + " " + SavingsBanks.direkt1822(null) + " "
-			+ SavingsBanks.direkt1822("fints.1822direkt.com.evil.example./fints") + " " + SavingsBanks.direkt1822("fints.1822direkt.com:443.evil.example/fints"),
-			"false false false false false false");
 	}
 
 	/// The app that the user blocked under "Kontozugriffe" in the online banking of a Sparkasse.
@@ -55,7 +43,8 @@ final class SavingsBanksSelfTest {
 				SavingsBanks.appBlocked(SPARKASSE, "Die Kreditkarte wurde vom Benutzer gesperrt") + " "
 				+ SavingsBanks.appBlocked(SPARKASSE, "pushTAN wurde vom Kunden deaktiviert") + " " + SavingsBanks.appBlocked(SPARKASSE, "Zugang wurde vom Kunden gesperrt") + " "
 				+ SavingsBanks.appBlocked(SPARKASSE, "Die Anwendung wurde VOM NUTZER DEAKTIVIERT.") + " " + SavingsBanks.appBlocked(SPARKASSE, "Software vom Benutzer gesperrt") + " "
-				+ SavingsBanks.appBlocked(SPARKASSE, "Kundenprodukt gesperrt. Zugang vom Benutzer deaktiviert"), "false false false false false false");
+				+ SavingsBanks.appBlocked(SPARKASSE, "Kundenprodukt gesperrt. Zugang vom Benutzer deaktiviert") + " "
+				+ SavingsBanks.appBlocked(SPARKASSE, "Das Produkt wurde vom Benutzer deaktiviert"), "false false false false false false false");
 			SelfTest.expect("a blocked access and a wrong PIN keep their codes beside a card that the user blocked", SelfTest.failed(SelfTest.status("9942", "PIN falsch",
 				"9930", "PIN gesperrt", "9010", "Die Kreditkarte wurde vom Benutzer gesperrt")) + " " + SelfTest.failed(SelfTest.status("9942", "PIN falsch",
 				"9010", "pushTAN wurde vom Kunden deaktiviert")), "{\"type\":\"failed\",\"code\":\"9930\",\"text\":\"PIN gesperrt\"} "
@@ -81,119 +70,5 @@ final class SavingsBanksSelfTest {
 		} finally {
 			FinTSHelper.Callback.server = before;
 		}
-	}
-
-	/// An MT940 statement of 1822direkt whose booking tag follows the purpose of the booking before it.
-	static void statements() {
-		String broken = String.join("\r\n", ":20:STARTUMS", ":25:50050222/0000202051", ":28C:00000/001", ":60F:C261114EUR1000,00",
-			":61:2611141114C120,00NTRFNONREF", ":86:166?00GUTSCHRIFT?20Miete November:61:2611151115D12,50NTRFNONREF",
-			":86:105?00LASTSCHRIFT?20Strom Oktober:62F:C261115EUR1107,50", "-") + "\r\n";
-		SelfTest.expect("a tag inside a line starts a new line, and no character is lost", SavingsBanks.tagsOnOwnLines(broken),
-			broken.replace("November:61:", "November\r\n:61:").replace("Oktober:62F:", "Oktober\r\n:62F:"));
-		String whole = String.join("\r\n", ":20:STARTUMS", ":61:2611151115D12,50NTRFNONREF", ":86:105?20Strom", ":62F:C261115EUR1107,50", "-") + "\r\n";
-		SelfTest.expect("a statement whose tags start their lines stays as it is", SavingsBanks.tagsOnOwnLines(whole), whole);
-		SelfTest.expect("a tag at the very start, after a bare line feed, and a tag that only looks like one", SavingsBanks.tagsOnOwnLines(":61:x\n:62F:y z:610:w :62M:v"),
-			":61:x\n:62F:y z:610:w :62M:v");
-		SelfTest.expect("an empty statement", SavingsBanks.tagsOnOwnLines(""), "");
-
-		HBCIMsgStatus answer = new HBCIMsgStatus();
-		String pending = ":20:STARTUMS\r\n:86:?20Kartenzahlung:61:2611161116D8,00NTRFNONREF\r\n-\r\n";
-		answer.getData().setProperty("GVRes.KUmsZeitRes7.booked", broken);
-		answer.getData().setProperty("GVRes.KUmsZeitRes7.notbooked", pending);
-		answer.getData().setProperty("GVRes.KUmsZeitRes8.booked", broken);
-		SavingsBanks.StatementJob.repair(answer.getData(), "GVRes.KUmsZeitRes7");
-		SelfTest.expect("the job repairs the booked part of its own answer, and the pending part, which has no balances, stays",
-			answer.getData().getProperty("GVRes.KUmsZeitRes7.booked").contains("November\r\n:61:") + " "
-			+ answer.getData().getProperty("GVRes.KUmsZeitRes7.notbooked").equals(pending) + " "
-			+ answer.getData().getProperty("GVRes.KUmsZeitRes8.booked").equals(broken), "true true true");
-		Properties none = new Properties();
-		SavingsBanks.StatementJob.repair(none, "GVRes.KUmsZeitRes7");
-		SelfTest.expect("an answer without statements", none.isEmpty(), true);
-
-		SelfTest.expect("the repaired statement of 1822direkt", rows(SavingsBanks.tagsOnOwnLines(broken)),
-			"2026-11-14 120 Miete November | 2026-11-15 -12.5 Strom Oktober");
-		SelfTest.expect("the same statement unrepaired loses the booking", rows(broken),
-			"2026-11-14 120 Miete November:61:2611151115D12,50NTRFNONREF");
-
-		// Purposes that hold text like a tag, in statements that add up as the bank sent them.
-		for (String purpose : new String[] {"Ref :61: xyz", "Ref :61:2611151115D12,50NTRFNONREF", "Ref:62F:C261115EUR1107,50"}) {
-			String statement = day(":86:166?00GUTSCHRIFT?20" + purpose, ":62F:C261114EUR1120,00");
-			SelfTest.expect("a purpose \"" + purpose + "\" stays one booking and adds no debit", SavingsBanks.tagsOnOwnLines(statement).equals(statement) + " "
-				+ rows(SavingsBanks.tagsOnOwnLines(statement)), "true 2026-11-14 120 " + purpose);
-		}
-		String fakeAndReal = day(":86:166?00GUTSCHRIFT?20Ref :61:2611151115D5,00NTRFNONREF", ":61:2611151115D12,50NTRFNONREF",
-			":86:105?00LASTSCHRIFT?20Strom Oktober:62F:C261115EUR1107,50");
-		SelfTest.expect("a purpose like a booking beside a missing break: only the break that adds up goes in", rows(SavingsBanks.tagsOnOwnLines(fakeAndReal)),
-			"2026-11-14 120 Ref :61:2611151115D5,00NTRFNONREF | 2026-11-15 -12.5 Strom Oktober");
-		String twoWays = day(":86:166?00GUTSCHRIFT?20Ref :61:2611151115D12,50NTRFNONREF:61:2611151115D12,50NTRFNONREF", ":86:105?20Strom",
-			":62F:C261115EUR1107,50");
-		SelfTest.expect("a statement that adds up with breaks at two different sets of places stays as the bank sent it", SavingsBanks.tagsOnOwnLines(twoWays), twoWays);
-		String unbalanced = day(":86:166?00GUTSCHRIFT?20Ref :61:2611151115D5,00NTRFNONREF", ":62F:C261115EUR1000,00");
-		SelfTest.expect("a statement that adds up with no set of breaks stays as the bank sent it", SavingsBanks.tagsOnOwnLines(unbalanced), unbalanced);
-		String reversals = String.join("\r\n", ":20:STARTUMS", ":60F:C261114EUR1000,00", ":61:2611141114RC20,00NTRFNONREF",
-			":86:?20Storno:61:2611141114RD5,00NTRFNONREF", ":61:2611141114CR1,00NTRFNONREF", ":62F:C261114EUR986,00");
-		SelfTest.expect("a reversal of a credit (RC) counts as a debit, of a debit (RD) as a credit, and a funds code R fits EUR",
-			SavingsBanks.tagsOnOwnLines(reversals), reversals.replace("Storno:61:", "Storno\r\n:61:"));
-		String debits = String.join("\r\n", ":20:STARTUMS", ":60M:D261114EUR10,", ":86:?20A:61:2611141114D5,NTRFNONREF", ":62M:D261114EUR15,00");
-		SelfTest.expect("debit balances and amounts without decimals after the comma", SavingsBanks.tagsOnOwnLines(debits), debits.replace("A:61:", "A\r\n:61:"));
-
-		// Evidence that does not read in full, or in another currency, repairs nothing.
-		String usdClosing = day(":86:166?00GUTSCHRIFT?20Miete November:61:2611151115D12,50NTRFNONREF", ":62F:C261115USD1107,50");
-		SelfTest.expect("a EUR opening and a USD closing authorize no debit", SavingsBanks.tagsOnOwnLines(usdClosing).equals(usdClosing) + " " + SavingsBanks.lastKept,
-			"true FinTSHelper: a statement of 1822direkt with 1 places for a line break stays as sent, because it has a balance or a booking in another currency");
-		String usdPlace = day(":86:166?00GUTSCHRIFT?20Miete November:61:2611151115D12,50NTRFNONREF", ":86:?20Strom:62F:C261115USD1107,50");
-		SelfTest.expect("a closing balance in USD inside a line authorizes nothing", SavingsBanks.tagsOnOwnLines(usdPlace), usdPlace);
-		String otherFunds = day(":86:166?00GUTSCHRIFT?20Miete November:61:2611151115DD12,50NTRFNONREF", ":62F:C261115EUR1107,50");
-		SelfTest.expect("a booking with the funds code of another currency authorizes nothing", SavingsBanks.tagsOnOwnLines(otherFunds), otherFunds);
-		String pointClosing = day(":86:166?00GUTSCHRIFT?20Miete November:61:2611151115D12,00NTRFNONREF", ":62F:C261115EUR1108.50");
-		SelfTest.expect("a closing balance of EUR1108.50 does not read as 1108 and authorizes no split",
-			SavingsBanks.tagsOnOwnLines(pointClosing).equals(pointClosing) + " " + SavingsBanks.lastKept,
-			"true FinTSHelper: a statement of 1822direkt stays as sent, because it has a balance or a booking that does not read");
-		String pointPlace = day(":86:166?00GUTSCHRIFT?20Miete November:61:2611151115D12.50NTRFNONREF", ":62F:C261115EUR1107,50");
-		SelfTest.expect("a booking amount with a point inside a line is no place", SavingsBanks.tagsOnOwnLines(pointPlace), pointPlace);
-
-		// The limits of the work.
-		StringBuilder systematic = new StringBuilder(day().replaceAll("\r\n-\r\n$", ""));
-		for (int i = 1; i <= 11; i++) systematic.append("\r\n:86:105?20Posten ").append(i).append(":61:2611151115D1,00NTRFNONREF");
-		systematic.append("\r\n:86:105?20Posten 12:62F:C261115EUR1109,00\r\n-\r\n");
-		String repaired = SavingsBanks.tagsOnOwnLines(systematic.toString());
-		SelfTest.expect("a statement that left out all 12 of its breaks gets all of them in one try",
-			repaired.split(":61:", -1).length - 1 + " " + repaired.contains("Posten 12\r\n:62F:") + " " + repaired.contains("1:61:"), "12 true false");
-		StringBuilder tooMany = new StringBuilder(day().replaceAll("\r\n-\r\n$", ""));
-		for (int i = 1; i <= 11; i++) tooMany.append("\r\n:86:105?20Posten ").append(i).append(":61:2611151115D1,00NTRFNONREF");
-		tooMany.append("\r\n:62F:C261115EUR1110,00\r\n-\r\n");
-		SelfTest.expect("11 places that do not all add up stay as sent, without a try of each set",
-			SavingsBanks.tagsOnOwnLines(tooMany.toString()).equals(tooMany.toString()) + " " + SavingsBanks.lastKept,
-			"true FinTSHelper: a statement of 1822direkt with 11 places for a line break stays as sent, because it has more than 10 places, and not all of them add up");
-		StringBuilder large = new StringBuilder(day().replaceAll("\r\n-\r\n$", ""));
-		while (large.length() < SavingsBanks.MOST_CHARACTERS - 2000) large.append("\r\n:86:105?20").append("x".repeat(60));
-		for (int i = 1; i <= 10; i++) large.append("\r\n:86:105?20Posten ").append(i).append(":61:2611151115D1,00NTRFNONREF");
-		large.append("\r\n:62F:C261115EUR1119,50\r\n-\r\n");
-		long started = System.nanoTime();
-		String largeOut = SavingsBanks.tagsOnOwnLines(large.toString());
-		long millis = (System.nanoTime() - started) / 1_000_000;
-		SelfTest.expect("a statement of almost 1 MiB with 10 places and no answer stays as sent within 2 seconds",
-			largeOut.equals(large.toString()) + " " + (millis < 2000) + " " + SavingsBanks.lastKept,
-			"true true FinTSHelper: a statement of 1822direkt with 10 places for a line break stays as sent, because it adds up with no set of places");
-		large.insert(large.length() - 5, "x".repeat(4000));
-		SelfTest.expect("a statement longer than 1 MiB stays as sent", SavingsBanks.tagsOnOwnLines(large.toString()).equals(large.toString()) + " " + SavingsBanks.lastKept,
-			"true FinTSHelper: a statement of 1822direkt stays as sent, because it is longer than 1048576 characters");
-	}
-
-	/// A statement of 1822direkt with the opening balance 1000,00 EUR and a credit of 120,00 EUR on 2026-11-14, then `lines`.
-	static String day(String... lines) {
-		return String.join("\r\n", ":20:STARTUMS", ":25:50050222/0000202051", ":28C:00000/001", ":60F:C261114EUR1000,00",
-			":61:2611141114C120,00NTRFNONREF") + "\r\n" + String.join("\r\n", lines) + "\r\n-\r\n";
-	}
-
-	/// The booked rows that the helper sends for an MT940 statement, as day, amount, and purpose.
-	static String rows(String mt940) {
-		GVRKUms result = new GVRKUms();
-		result.jobStatus.addRetVal(new HBCIRetVal(null, null, null, "0020", "ok", null));
-		result.appendMT940Data(mt940);
-		Map<String, Object> message = FinTSHelper.result("DE02500502220000202051", null, null, result, false);
-		@SuppressWarnings("unchecked")
-		List<Map<String, Object>> rows = (List<Map<String, Object>>) ((Map<String, Object>) message.get("transactions")).get("rows");
-		return String.join(" | ", rows.stream().map(r -> r.get("booked") + " " + r.get("amount") + " " + r.get("purpose")).toList());
 	}
 }
