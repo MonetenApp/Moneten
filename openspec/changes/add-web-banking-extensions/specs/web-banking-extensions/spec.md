@@ -1032,6 +1032,20 @@ The app SHALL offer `Connection()` and `connection:request(method, url, postCont
 - **WHEN** a script requests `http://bank.example/`
 - **THEN** the request is not sent and the script stops with an error
 
+### Requirement: Header names of a script
+
+The app SHALL stop the script with an error that names the header when a header name of the script is not a token of HTTP, and SHALL leave out a header whose name starts with a colon, such as `:path:`, which a browser shows for its own HTTP/2 fields, and send the request without it.
+
+#### Scenario: Name with a line break
+
+- **WHEN** a script sends a request with the header name "X-Id\r\nHost"
+- **THEN** no request is sent and the script stops with an error that names the header
+
+#### Scenario: Fields copied from a browser
+
+- **WHEN** a script sends a POST to `https://sso.bank.example/login` with the headers `:authority:` "sso.bank.example", `:method:` "POST", `:path:` "/login", and `Accept: text/html`
+- **THEN** the app sends the POST with `Accept: text/html` and without the four names that start with a colon
+
 ### Requirement: HTTP errors
 
 The app SHALL stop the script and show an error when the server answers a request with an HTTP error status. When the request header `Accept` is `application/json`, the app returns the response to the script and does not stop it.
