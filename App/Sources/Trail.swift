@@ -35,6 +35,7 @@ extension SidebarSelection {
 		case .account: "account"
 		case .group: "group"
 		case .category: "category"
+		case .search: "search"
 		}
 	}
 }
