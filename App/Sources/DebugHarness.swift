@@ -274,7 +274,7 @@ final class DebugHarness {
 			Task {
 				guard let notice = await Notices.delivered().first else { return self.log("noticeclick none") }
 				model.notices.onOpen(notice.accounts)
-				self.log("noticeclick accounts=\(notice.accounts.count) phase=\(model.phase.trailName)")
+				self.log("noticeclick", ("accounts", .count(notice.accounts.count)), ("phase", .state(model.phase)))
 			}
 		#endif
 		// The delivered notifications of this app in the Notification Center, with their titles and the number of their accounts.
@@ -1025,7 +1025,8 @@ final class DebugHarness {
 		}
 		let popover = { NSApp.windows.first { $0.isVisible && $0.className.contains("MenuBarExtra") } }
 		let report: @MainActor () -> Void = { [weak self] in
-			self?.log("menubar icon=\(icon() != nil) symbol=\(MenuBarIcon.symbol(of: model)) popover=\(popover() != nil) main=\(NSApp.windows.contains { $0.isVisible && $0.identifier?.rawValue.hasPrefix("main") == true }) selection=\(model.selectedAccount.map { "\($0.kind)" } ?? "-")")
+			self?.log("menubar", ("icon", .flag(icon() != nil)), ("symbol", .word(MenuBarIcon.symbol(of: model))), ("popover", .flag(popover() != nil)),
+				("main", .flag(NSApp.windows.contains { $0.isVisible && $0.identifier?.rawValue.hasPrefix("main") == true })), ("selected", .state(model.selectedAccount?.kind)))
 		}
 		switch parts.first ?? "" {
 		case "click":
@@ -1046,13 +1047,13 @@ final class DebugHarness {
 				}
 				guard let window = popover(), let view = window.contentView else { self?.log("menubar no popover"); return }
 				let all = controls(in: view)
-				guard let n = number, all.indices.contains(n) else { self?.log("menubar controls=\(all.count)"); return }
+				guard let n = number, all.indices.contains(n) else { self?.log("menubar", ("controls", .count(all.count))); return }
 				let point = all[n].convert(NSPoint(x: all[n].bounds.midX, y: all[n].bounds.midY), to: nil)
 				for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
 					if let event = NSEvent.mouseEvent(with: type, location: point, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
 						windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1) { window.sendEvent(event) }
 				}
-				self?.log("menubar pressed \(n) of \(all.count)")
+				self?.log("menubar pressed", ("control", .position(n)), ("controls", .count(all.count)))
 				try? await Task.sleep(for: .milliseconds(500))
 				report()
 			}
