@@ -128,7 +128,7 @@ class ReleaseNotesTests(unittest.TestCase):
 	def test_section_of_unknown_version_fails(self):
 		self.assertNotEqual(self.run_script("section", "9.9.9").returncode, 0)
 
-	# appcast, remove, and check-release
+	# appcast and check-release
 
 	def appcast(self, version, build, out, feed=None, url=None):
 		source = ["--feed", str(feed)] if feed else ["--first-release"]
@@ -152,10 +152,6 @@ class ReleaseNotesTests(unittest.TestCase):
 		self.assertIn("sig-0.1.4==", text)
 		self.assertLess(text.index("<title>0.1.4</title>"), text.index("<title>0.1.3</title>"))
 		self.assertIn("Fixed the balance of a credit card.", text)
-
-		removed = self.dir / "removed.xml"
-		self.assertEqual(self.run_script("remove", "0.1.4", "--feed", str(second), "--out", str(removed)).returncode, 0)
-		self.assertEqual(removed.read_bytes(), first.read_bytes())
 
 	def test_appcast_rewrites_notes_from_changelog_and_escapes_them(self):
 		feed = self.dir / "feed.xml"
@@ -245,10 +241,14 @@ class ReleaseNotesTests(unittest.TestCase):
 		"""Writes a feed and appends the signature block of sign_update, as Sparkle does."""
 		feed = self.dir / "feed.xml"
 		self.assertEqual(self.appcast("0.1.3", 100, feed).returncode, 0)
-		data = feed.read_bytes()
 		if url:
 			# appcast refuses such a URL, so the test puts it in afterwards.
-			data = data.replace(b"https://github.com/MonetenApp/Moneten/releases/download/v0.1.3/Moneten-0.1.3.dmg", url.encode())
+			feed.write_bytes(feed.read_bytes().replace(
+				b"https://github.com/MonetenApp/Moneten/releases/download/v0.1.3/Moneten-0.1.3.dmg", url.encode()))
+		return self.sign(feed, private, signed_length)
+
+	def sign(self, feed, private, signed_length=None):
+		data = feed.read_bytes()
 		signed = data[:signed_length] if signed_length is not None else data
 		(self.dir / "data").write_bytes(signed)
 		signature = subprocess.run([self.openssl(), "pkeyutl", "-sign", "-rawin", "-inkey", str(private), "-in", str(self.dir / "data")],
@@ -296,6 +296,52 @@ class ReleaseNotesTests(unittest.TestCase):
 				"https://example.com/MonetenApp/Moneten/releases/download/v0.1.3/Moneten-0.1.3.dmg"):
 			result = self.check_feed(self.signed_feed(private, url=url), public)
 			self.assertIn("has a disk image outside", result.stderr, url)
+
+	# remove
+
+	def two_versions(self):
+		"""An unsigned feed with 0.1.3 alone, and one with 0.1.3 and 0.1.4."""
+		self.changelog.write_text(GOOD.replace("## Unreleased\n\n- **Moneten now needs macOS 15 or later.**\n",
+			"## Unreleased\n\n## 0.1.4 (2026-11-27)\n\n- Fixed the balance of a credit card.\n"))
+		first, second = self.dir / "first.xml", self.dir / "second.xml"
+		self.assertEqual(self.appcast("0.1.3", 100, first).returncode, 0)
+		self.assertEqual(self.appcast("0.1.4", 105, second, feed=first).returncode, 0)
+		return first, second
+
+	def remove(self, feed, public, version="0.1.4"):
+		return self.run_script("remove", version, "--feed", str(feed), "--public-key", public, "--out", str(self.dir / "removed.xml"))
+
+	def test_remove_takes_a_version_out_of_a_checked_feed(self):
+		private, public = self.key_pair("update")
+		first, second = self.two_versions()
+		result = self.remove(self.sign(second, private), public)
+		self.assertEqual(result.returncode, 0, result.stderr)
+		self.assertEqual((self.dir / "removed.xml").read_bytes(), first.read_bytes())
+
+	def test_remove_refuses_an_unsigned_feed(self):
+		_, public = self.key_pair("update")
+		_, second = self.two_versions()
+		self.assertIn("has no signature", self.remove(second, public).stderr)
+		self.assertFalse((self.dir / "removed.xml").exists())
+
+	def test_remove_refuses_a_feed_of_another_key(self):
+		private, _ = self.key_pair("update")
+		_, other = self.key_pair("other")
+		_, second = self.two_versions()
+		self.assertIn("did not sign the feed", self.remove(self.sign(second, private), other).stderr)
+		self.assertFalse((self.dir / "removed.xml").exists())
+
+	def test_remove_refuses_a_forged_disk_image(self):
+		"""Without the check, remove would keep the forged item, and the owner would sign it."""
+		private, public = self.key_pair("update")
+		_, second = self.two_versions()
+		second.write_bytes(second.read_bytes().replace(b"https://github.com/MonetenApp/Moneten/releases/download/v0.1.3/",
+			b"https://example.com/v0.1.3/"))
+		for feed in (second, self.sign(second, private)):
+			result = self.remove(feed, public)
+			self.assertNotEqual(result.returncode, 0)
+			self.assertFalse((self.dir / "removed.xml").exists())
+		self.assertIn("has a disk image outside", result.stderr)
 
 
 if __name__ == "__main__":

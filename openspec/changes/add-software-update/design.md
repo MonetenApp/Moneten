@@ -74,7 +74,7 @@ A script, `scripts/release-notes.py`, owns the format. It has six commands, and 
 - `cut <version>` renames "Unreleased" to the version with the date of today and opens a new empty "Unreleased" section. For a stable version, it also moves the entries of its pre-releases (for 0.2.0, those of 0.2.0-beta.1 and 0.2.0-beta.2) into the new section, without duplicates, and leaves the pre-release sections as they are. So the notes of a stable version list everything since the last stable version.
 - `section <version>` prints the entries of one version. The release workflow uses it as the text of the GitHub release.
 - `appcast` writes the update feed, as described below.
-- `remove <version>` takes the item of a version out of the feed, to withdraw it.
+- `remove <version>` takes the item of a version out of the feed, to withdraw it. It first runs the checks of `check-feed` with the public update key, because the owner signs the result, and a new signature must never cover a forged item. `scripts/release.sh withdraw` runs it, signs the result, checks it again, and only then uploads it.
 - `check-release <version>` runs the checks of step 1 of the release workflow: a section for the version, and a build number and a version above every item of the current feed.
 
 Alternatives: notes that GitHub generates from the titles of pull requests, which are written for developers. Notes typed into the release page, which no review sees and which drift from the feed. Both rejected.
@@ -160,7 +160,7 @@ A new workflow, `.github/workflows/release.yml`, runs on a pushed tag. Each step
 
 Publishing is a command of the owner and not a step of the workflow, so that a person opens the notarized disk image before any user can get it.
 
-A pull request that changes the packaging and a run by hand make a dry run, `scripts/release.sh dry-run`, which needs no secret: the app signed to run locally, an unsigned disk image with the same checks, and a feed signed with the test update key, which a Debug build reads. The check of step 5 must accept that feed and refuse it after one changed byte, under another key, and with a disk image over http. A run by hand with the input "notarize" also signs and notarizes with the environment `build`. A dry run signs nothing with the update key and publishes nothing. Only a tag hands its disk image to the job of step 5, as an artifact of the run that GitHub keeps for one day, so no build that was never released lies in the artifacts.
+A pull request that changes the packaging and a run by hand make a dry run, `scripts/release.sh dry-run`, which needs no secret: the app signed to run locally, an unsigned disk image with the same checks, and a feed signed with the test update key, which a Debug build reads. The check of step 5 must accept that feed and refuse it after one changed byte, under another key, and with a disk image over http. The path of a withdrawal must refuse an unsigned feed and a signed feed with a disk image over http. A run by hand with the input "notarize" also signs and notarizes with the environment `build`. A dry run signs nothing with the update key and publishes nothing. Only a tag hands its disk image to the job of step 5, as an artifact of the run that GitHub keeps for one day, so no build that was never released lies in the artifacts.
 
 The secrets live in two GitHub environments. `build` holds the Developer ID certificate as a `.p12` file with its password, the App Store Connect API key for `notarytool`, and the FinTS product ID, and allows `main` and `v*` tags. `release` holds the EdDSA key, allows only `v*` tags, and needs the approval of the owner. The `v*` tags are protected. Third-party actions are pinned by commit. Only the owner of the repository can set the secrets. [docs/releasing.md](../../../docs/releasing.md) lists them, how the owner creates each one, and the steps for a release.
 
@@ -180,7 +180,7 @@ The bank list and the BIC directory are assets of a release with the fixed tag `
 
 ## Migration Plan
 
-Builds before the first release have no Sparkle and update by hand. The first notarized release is v0.1.0, and every later version updates itself. To withdraw a version, remove its item from the feed and publish a fixed version with a higher build number.
+Builds before the first release have no Sparkle and update by hand. The first notarized release is v0.1.0, and every later version updates itself. To withdraw a version, `scripts/release.sh withdraw` removes its item from the checked feed, and the owner publishes a fixed version with a higher build number.
 
 ## Open Questions
 

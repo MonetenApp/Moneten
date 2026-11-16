@@ -10,8 +10,9 @@
                                    (--feed FILE | --first-release) --out FILE
                                              add or replace the item of a version, and rewrite the notes
                                              of every item from CHANGELOG.md
-  release-notes.py remove <version> --feed FILE --out FILE
-                                             take the item of a version out of the feed
+  release-notes.py remove <version> --feed FILE --public-key KEY --out FILE
+                                             take the item of a version out of the feed, after the
+                                             checks of check-feed
   release-notes.py stale-releases            read the releases of GitHub as JSON lines {"tag", "body"} and
                                              print the tag of each one whose text differs from its section
   release-notes.py check-feed --feed FILE --public-key KEY
@@ -350,6 +351,7 @@ def main():
 	command = commands.add_parser("remove")
 	command.add_argument("version")
 	command.add_argument("--feed", required=True)
+	command.add_argument("--public-key", required=True)
 	command.add_argument("--out", required=True)
 	commands.add_parser("stale-releases")
 	commands.add_parser("openssl")
@@ -380,6 +382,8 @@ def main():
 			})
 			write_feed(args.out, items, sections)
 		elif args.command == "remove":
+			# The owner signs the result, so a forged item of an unchecked feed would get a valid signature.
+			check_feed(args.feed, args.public_key)
 			items = read_feed(args.feed)
 			left = [i for i in items if i["version"] != args.version]
 			if len(left) == len(items):

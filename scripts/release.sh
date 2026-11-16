@@ -16,6 +16,9 @@
 #                                           update key, publishes the draft, moves the feed
 #                                           of a pre-release to the newest stable release, and updates
 #                                           the text of earlier releases from CHANGELOG.md
+#   scripts/release.sh withdraw <version>   run by the owner with the update key in the login Keychain:
+#                                           checks the current feed, takes the version out of it, signs
+#                                           and checks the result, and replaces the feed with it
 # Signing needs the Developer ID certificate in the Keychain and MONETEN_TEAM_ID. Notarization needs
 # MONETEN_NOTARY_KEY (the path of the .p8 file), MONETEN_NOTARY_KEY_ID, and MONETEN_NOTARY_ISSUER.
 # The feed needs MONETEN_UPDATE_KEY_FILE, the file with the private EdDSA key. A release needs the
@@ -38,7 +41,7 @@ TEST_KEY_FILE=Fixtures/update/test-update.key
 # The public key of the private EdDSA key in the file $1: Sparkle keeps the 32 byte seed, which
 # becomes an Ed25519 key in PKCS#8 for openssl. The key never appears in an argument or a log.
 public_key() {
-	OPENSSL=${OPENSSL:-$(notes openssl)} || exit 1
+	OPENSSL=$(notes openssl) || exit 1
 	{ printf '\060\056\002\001\000\060\005\006\003\053\145\160\004\042\004\040'; base64 -d < "$1" | head -c 32; } \
 		| "$OPENSSL" pkey -inform DER -pubout -outform DER | tail -c 32 | base64
 }
@@ -230,6 +233,32 @@ feed() {
 	echo "Wrote the signed feed $OUT/appcast.xml."
 }
 
+# Writes $WORK/withdrawn/appcast.xml: the current feed without version $1. remove checks first that
+# the public update key $2 signed the current feed, so the new signature never covers a forged item.
+# sign_update signs the result with the private key in the file $3, or without $3 with the key in the
+# login Keychain, and the result passes the same check before anything uploads it.
+withdrawn_feed() {
+	current_feed
+	[ "$FEED_ARGS" != --first-release ] || fail "No stable release carries a feed yet."
+	mkdir -p "$WORK/withdrawn"
+	notes remove "$1" --feed "$WORK/current.xml" --public-key "$2" --out "$WORK/withdrawn/appcast.xml" \
+		|| fail "The current feed at $FEED_URL failed its check, so nothing was signed."
+	"$(scripts/sparkle-tools.sh)/sign_update" ${3:+--ed-key-file "$3"} "$WORK/withdrawn/appcast.xml" >/dev/null
+	check_feed "$WORK/withdrawn/appcast.xml" "$2" || fail "The feed without $1 failed its check, so nothing was uploaded."
+}
+
+withdraw() {
+	KEY=$("$(scripts/sparkle-tools.sh)/generate_keys" -p) || fail "No update key in the login Keychain. docs/releasing.md explains it."
+	withdrawn_feed "$1" "$KEY"
+	STABLE=$(gh api "repos/$REPO/releases/latest" -q .tag_name)
+	gh release upload "$STABLE" --repo "$REPO" --clobber "$WORK/withdrawn/appcast.xml"
+	curl -fsSL -o "$WORK/published.xml" "$FEED_URL" || fail "The feed at $FEED_URL cannot be read."
+	check_feed "$WORK/published.xml" "$KEY" || fail "The feed at $FEED_URL failed its check."
+	! grep -q "<sparkle:shortVersionString>$1</sparkle:shortVersionString>" "$WORK/published.xml" \
+		|| fail "The feed at $FEED_URL still lists $1."
+	echo "Took $1 out of the feed at $FEED_URL. Mark its release page as withdrawn, and release the fixed version."
+}
+
 heading() { grep -m1 "^## $1 (" "$CHANGELOG" | sed 's/^## //'; }
 
 draft() {
@@ -290,34 +319,38 @@ publish() {
 	echo "Published v$1. The feed at $FEED_URL lists it, signed with the update key."
 }
 
-# The checks that guard the current feed, run on the new feed $OUT/appcast.xml that the private
-# update key in the file $1 signed. A release reads its current feed through the same check.
+# The paths of a release and of a withdrawal of version $2 with the new feed $OUT/appcast.xml, which
+# the private update key in the file $1 signed, in place of the current feed on GitHub.
+# scripts/test-release-notes.py tests each refusal of check-feed and remove on its own. The dry run
+# checks that Sparkle and check-feed agree on the signature, and that both paths stop at a feed
+# that fails the check.
 check_feeds() {
-	# check_feed must refuse the feed $1 for the key $2 with the reason $3, or the dry run fails with $4.
-	refused() { check_feed "$1" "$2" 2>&1 | grep -qF "$3" || fail "$4"; }
 	SPARKLE=$(scripts/sparkle-tools.sh)
 	KEY=$(public_key "$1")
-	check_feed "$OUT/appcast.xml" "$KEY" || fail "The new feed failed the check of a current feed."
-	# One changed byte must break the signature, for Sparkle and for the check.
+	check_feed "$OUT/appcast.xml" "$KEY" || fail "check-feed refused the feed that Sparkle signed."
 	sed 's/Moneten/Monetem/' "$OUT/appcast.xml" > "$WORK/changed.xml"
 	if "$SPARKLE/sign_update" --verify --ed-key-file "$1" "$WORK/changed.xml" >/dev/null 2>&1; then
-		fail "The changed feed passed the signature check of Sparkle."
+		fail "A changed feed passed the signature check of Sparkle."
 	fi
-	refused "$WORK/changed.xml" "$KEY" "did not sign" "The changed feed passed the check of a current feed."
-	# Another key must not pass.
-	"$(notes openssl)" genpkey -algorithm ed25519 -outform DER -out "$WORK/other.der"
-	tail -c 32 "$WORK/other.der" | base64 > "$WORK/other.key"
-	refused "$OUT/appcast.xml" "$(public_key "$WORK/other.key")" "did not sign" "A feed of another key passed the check of a current feed."
-	# A disk image over http must not pass, even in a feed that the update key signed.
+	# A feed with a disk image over http that the update key signed, and the unsigned feed.
 	sed 's#url="https://#url="http://#' "$OUT/appcast.xml" > "$WORK/http.xml"
 	"$SPARKLE/sign_update" --ed-key-file "$1" "$WORK/http.xml" >/dev/null
 	"$SPARKLE/sign_update" --verify --ed-key-file "$1" "$WORK/http.xml" || fail "Sparkle did not sign the feed with the http disk image."
-	refused "$WORK/http.xml" "$KEY" "has a disk image outside" "A feed with an http disk image passed the check of a current feed."
-	# The path of a release, with the new feed in place of the download from GitHub.
-	current_feed() { cp "$OUT/appcast.xml" "$WORK/current.xml"; FEED_ARGS="--feed $WORK/current.xml"; }
+	sed '/<!-- sparkle-signatures:/,$d' "$OUT/appcast.xml" > "$WORK/unsigned.xml"
+	"$(notes openssl)" genpkey -algorithm ed25519 -outform DER -out "$WORK/other.der"
+	tail -c 32 "$WORK/other.der" | base64 > "$WORK/other.key"
+	CURRENT="$OUT/appcast.xml"
+	current_feed() { cp "$CURRENT" "$WORK/current.xml"; FEED_ARGS="--feed $WORK/current.xml"; }
 	checked_current_feed "$KEY"
-	(checked_current_feed "$(public_key "$WORK/other.key")") 2>/dev/null && fail "checked_current_feed accepted a feed of another key."
-	echo "The check of a current feed refuses a changed feed, another key, and an http disk image."
+	(checked_current_feed "$(public_key "$WORK/other.key")") 2>/dev/null && fail "A release accepted a current feed of another key."
+	withdrawn_feed "$2" "$KEY" "$1"
+	! grep -q "<sparkle:shortVersionString>$2<" "$WORK/withdrawn/appcast.xml" || fail "The withdrawn feed still lists $2."
+	for CURRENT in "$WORK/unsigned.xml" "$WORK/http.xml"; do
+		rm -rf "$WORK/withdrawn"
+		(withdrawn_feed "$2" "$KEY" "$1") 2>/dev/null && fail "A withdrawal accepted the current feed $(basename "$CURRENT")."
+		[ ! -e "$WORK/withdrawn/appcast.xml" ] || fail "A withdrawal wrote a feed from the current feed $(basename "$CURRENT")."
+	done
+	echo "A release refuses a current feed of another key, and a withdrawal refuses an unsigned feed and a forged disk image."
 }
 
 # The update keys of App/project.yml: a Debug build trusts the test key of Fixtures/update, and the
@@ -353,14 +386,14 @@ dry_run() {
 	check_keys
 	# The test key, so a Debug build can read this feed (Fixtures/update/README.md).
 	MONETEN_UPDATE_KEY_FILE="$TEST_KEY_FILE" feed "$VERSION" first
-	check_feeds "$TEST_KEY_FILE"
+	check_feeds "$TEST_KEY_FILE" "$VERSION"
 	echo "Dry run of $VERSION passed: $(ls "$OUT" | tr '\n' ' ')"
 }
 
 case "$1" in
 	dry-run) dry_run "$2" ;;
-	preflight|package|feed|draft|publish)
+	preflight|package|feed|draft|publish|withdraw)
 		[ -n "$2" ] || fail "usage: scripts/release.sh $1 <version>"
 		"$1" "$2" ;;
-	*) fail "usage: scripts/release.sh dry-run [version] | preflight | package | feed | draft | publish <version>" ;;
+	*) fail "usage: scripts/release.sh dry-run [version] | preflight | package | feed | draft | publish | withdraw <version>" ;;
 esac
