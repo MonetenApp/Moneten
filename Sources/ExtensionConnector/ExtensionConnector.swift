@@ -336,7 +336,7 @@ private final class ScriptRun {
 	func refreshAccount(_ account: ListedAccount, since: Day?, known: [String: LuaValue]) async throws -> (result: AccountOutcome, endsSession: Bool) {
 		var calendar = Calendar(identifier: .gregorian)
 		calendar.timeZone = connector.timeZone
-		let seconds = account.kind == .portfolio ? 0 : since.map { Int64($0.date(in: calendar).timeIntervalSince1970) } ?? 0
+		let seconds = account.holdsSecurities ? 0 : since.map { Int64($0.date(in: calendar).timeIntervalSince1970) } ?? 0
 		let answer: (value: LuaValue, challenged: Bool)
 		do {
 			answer = try await resolve(credentials: [], purpose: .download) { [session] step, credentials in
