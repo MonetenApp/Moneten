@@ -245,6 +245,10 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored all: [
 			fresh.bankBalanceMinor = balance.minorUnits
 			fresh.bankBalanceDate = result.balanceDate ?? now
 			if result.isPortfolio { fresh.kind = .portfolio }
+			// A portfolio shows only its value. Every other account takes what this refresh reports, so a currency or
+			// bonus points that the source no longer reports disappear.
+			fresh.otherBankBalances = fresh.kind == .portfolio ? [] : result.otherBalances
+			fresh.bonusPoints = fresh.kind == .portfolio ? nil : result.bonusPoints
 			// A new day that passes a manual row sets a derived value with the rows up to that day. Without them the
 			// crossing would be used up, and the refresh that brings them would leave the value: a planned -50,00 €
 			// and its booking would both count. So the account keeps its balance until a refresh brings the rows.

@@ -141,6 +141,16 @@ public struct MoneySums: Hashable, Sendable {
 	public func shownAmounts(viewCurrency: String?, firstRowCurrency: String?) -> [Money] {
 		isEmpty ? [Money(minorUnits: 0, currency: viewCurrency ?? firstRowCurrency ?? "EUR")] : amounts
 	}
+
+	/// The text that "Copy Sum" of the status line puts on the pasteboard for the `amounts` that the status line
+	/// shows (`shownAmounts`): the amount with the decimal mark of `locale`, a plain minus, and no thousands
+	/// separators or currency symbol, so that a spreadsheet reads it as a number. Several currencies give one
+	/// line each, with the currency code.
+	public static func copyText(_ amounts: [Money], locale: Locale) -> String {
+		let mark = locale.decimalSeparator ?? "."
+		func number(_ m: Money) -> String { AmountText.text(m.minorUnits, m.currency).replacingOccurrences(of: ".", with: mark) }
+		return amounts.count == 1 ? number(amounts[0]) : amounts.map { "\(number($0)) \($0.currency)" }.joined(separator: "\n")
+	}
 }
 
 /// The character that separates the whole units of an amount from its fraction.

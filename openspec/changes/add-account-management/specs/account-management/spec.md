@@ -29,12 +29,64 @@ The app SHALL give every account one of the types "Giro account", "Savings accou
 
 ### Requirement: Derive a missing account type
 
-The app SHALL derive the type of a new account from its number and its name when the source reports no type. An account number with 16 characters, or with masked digits, makes the account a "Credit card". An account that gives no hint gets the type "Other".
+The app SHALL derive the type of a new account from its number and its name when an extension reports no type. The number decides first. Then the name decides, in lowercase, by the tests of the scenarios in their order, and the first test that matches wins. An account that matches no test gets the type "Other". A FinTS account whose bank reports no type gets the type "Other" as well.
 
 #### Scenario: Masked card number
 
 - **WHEN** an extension reports an account with the number "4111 xxxx xxxx 1111" and no type
 - **THEN** the new account has the type "Credit card"
+- **AND** an "X" or an "*" in the number has the same effect
+
+#### Scenario: The number decides before the name
+
+- **WHEN** an extension reports an account with the number "1234567890123456", the name "Tagesgeld", and no type
+- **THEN** the new account has the type "Credit card", because the number has exactly 16 characters
+
+#### Scenario: Card number with spaces
+
+- **WHEN** an extension reports an account with the number "1234 5678 9012 3456", the name "Wallet", and no type
+- **THEN** the new account has the type "Other", because spaces count as characters
+
+#### Scenario: First test of the name
+
+- **WHEN** the name contains "giro", "kontokorrent", "sichteinlage", or "gehalt"
+- **THEN** the new account has the type "Giro account"
+
+#### Scenario: Second test of the name
+
+- **WHEN** the name contains "karte", "card", or "visa"
+- **AND** it contains neither "spar" outside "sparkasse" and "sparda", nor "konto" outside "kartenkonto", nor "zins", nor " mit " with a space on each side
+- **THEN** the new account has the type "Credit card"
+
+#### Scenario: Third test of the name
+
+- **WHEN** the name contains "festgeld", "festzins", "termingeld", "termineinlage", "sparbrief", "schatzbrief", or "sparkassenbrief", or ends with "brief"
+- **THEN** the new account has the type "Fixed term deposit"
+
+#### Scenario: Fourth test of the name
+
+- **WHEN** the name contains "darlehen", "darlehn", "konsumentenkredit", "privatkredit", "gewerbekredit", or "baufinanzierung", or ends with "kredit"
+- **THEN** the new account has the type "Loan account"
+
+#### Scenario: Fifth test of the name
+
+- **WHEN** the name contains "spar" outside "sparkasse" and "sparda", or contains "sparkassenbuch", "geld", "cash", "zins", "anlage", "verrechnung", or "anteil"
+- **THEN** the new account has the type "Savings account"
+
+#### Scenario: Sixth test of the name
+
+- **WHEN** the name contains "konto" and one of "geschäfts", "geschaefts", "firmen", "verein", "privat", or "direkt"
+- **THEN** the new account has the type "Giro account"
+
+#### Scenario: Type from the name
+
+- **WHEN** an extension reports an account with the number "DE02120300000000202051", the name "Tagesgeld Plus", and no type
+- **THEN** the new account has the type "Savings account"
+
+#### Scenario: A card name with "mit"
+
+- **WHEN** an extension reports an account with the number "DE02120300000000202051", the name "Girocard mit Bonus", and no type
+- **THEN** the new account has the type "Giro account", because the first test matches
 
 #### Scenario: No hint
 
@@ -162,17 +214,41 @@ The app SHALL show for a portfolio and for each account of a bank access the bal
 
 ### Requirement: Several balances and bonus points
 
-The app SHALL show every balance when a source reports several balances in different currencies for one account, and it SHALL show the number of bonus points under "Bonus points" when a source reports one.
+The app SHALL show every balance when a source reports several balances in different currencies for one account, and it SHALL show the number of bonus points under "Bonus points" in the account view when a source reports one. The sidebar row, the account view, and the sum of the group show the balance in the account currency first and then each other balance. Each refresh replaces the balances and the bonus points of the account.
 
 #### Scenario: Wallet with two currencies
 
 - **WHEN** a source reports the balances 120,00 € and 35,00 US dollars for one account
-- **THEN** the account view shows both balances
+- **THEN** the account view and the sidebar row show both balances
+- **AND** the sum of its group holds 120,00 € and 35,00 US dollars
 
 #### Scenario: Card with a bonus program
 
-- **WHEN** a source reports 12,400 bonus points for a credit card
-- **THEN** the account view shows "Bonus points" with 12,400
+- **WHEN** a source reports 12400 bonus points for a credit card
+- **THEN** the account view shows "Bonus points: 12.400", a whole number with grouping separators
+- **AND** the sidebar row shows only the balance
+
+#### Scenario: Account currency missing
+
+- **GIVEN** an account in euros
+- **WHEN** a source reports only the balances 35,00 US dollars and 0,00 British pounds
+- **THEN** the account shows the balances 0,00 € and 35,00 US dollars
+
+#### Scenario: Two balances in one currency
+
+- **WHEN** a source reports the balances 10,00 € and 2,50 € for an account in euros
+- **THEN** the account shows the balance 12,50 €
+
+#### Scenario: A currency disappears
+
+- **GIVEN** an account shows the balances 120,00 € and 35,00 US dollars and 12.400 bonus points
+- **WHEN** the next refresh reports only the balance 80,00 €
+- **THEN** the account shows only 80,00 € and no bonus points
+
+#### Scenario: Portfolio
+
+- **WHEN** a source reports the value 1.000,00 € and 50 bonus points for a portfolio
+- **THEN** the portfolio shows only its value 1.000,00 €
 
 ### Requirement: Initial balance
 

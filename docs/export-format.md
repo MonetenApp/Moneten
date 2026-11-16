@@ -90,6 +90,8 @@ The period has a `kind` and, for some kinds, days. `all`, `days30`, `days90`, an
 | `owner` | Owner of the account |
 | `bankBalance` | The last balance that the bank or the source app reported, an amount in the currency of the account |
 | `bankBalanceDate` | The time of that balance |
+| `otherBankBalances` | Optional list of the balances in other currencies that the bank reported with `bankBalance`, each with `amount` and `currency` |
+| `bonusPoints` | Optional whole number of bonus points that the bank reported with `bankBalance` |
 | `initialBalance` | The balance before the first transaction, an amount in the currency of the account |
 | `initialBalanceIsSet` | Whether the initial balance is set, by the user or by the first refresh |
 | `initialBalanceIsDerived` | Optional `true` while the initial balance is the value that a refresh derived, so a manual row in the bank balance moves it. Missing means a value that the user entered or that came from the source. |

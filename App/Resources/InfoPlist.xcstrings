@@ -58,13 +58,13 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Moneten ist freie Software unter der GNU GPL v3.0 oder später."
+            "value" : "Moneten ist freie Software unter der GNU General Public License, Version 3 oder später."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Moneten is free software under the GNU GPL v3.0 or later."
+            "value" : "Moneten is free software under the GNU General Public License, version 3 or later."
           }
         }
       }
