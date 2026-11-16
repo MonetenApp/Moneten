@@ -89,13 +89,16 @@ When the rules of several categories match a transaction, the first category in 
 | `needsReview` | `Bool` | Set by a merge when more than one row could be the booked version of a pending row. Cleared when the user checks a booked row. A checked pending row keeps it. A merge drops a pending row that has it only after the user checked it, and a new review clears that checkmark. |
 | `isFetched` | `Bool` | A refresh delivered or matched the row. A file import does not bring back a deleted row that has it. |
 | `sourceID` | `String?` | The identifier that the source gave, for example `moneymoney:<id>` or the ID of an extension. A second migration skips known identifiers, and a merge matches a row by it first. A source with IDs of its own replaces a `moneymoney:` identifier when it links the row by its fingerprint. |
+| `fileIdentity` | `String?` | Original file fingerprint, set only by file import. Bank takeover, booking, and deletion preserve it. NULL means no file identity. Different file fingerprints can pair for a verified pending-to-booked transition. Conflicting real source IDs or references never pair. |
 | `createdAt` | `Date` | |
 
-Refreshes and file imports go through `reconcile`, which recognizes a stored row by its source ID or by a fingerprint of booking day, amount, counterparty IBAN, end-to-end reference, and purpose. [Architecture](architecture.md#transactions-need-an-identity-the-bank-does-not-give) has the rules.
+Refreshes and file imports go through `reconcile`, which recognizes a stored row by its source ID or by a fingerprint of booking day, amount and currency, counterparty IBAN, end-to-end reference, and purpose. [Architecture](architecture.md#transactions-need-an-identity-the-bank-does-not-give) has the rules.
 
 | Type | Fields | Rules |
 |---|---|---|
-| `DeletedTransaction` | `accountID`, `sourceID?`, `bookingDate`, `amountMinor`, `currency`, `isPending`, `purpose`, `counterpartyIBAN?`, `endToEndReference?`, `wasFetched`, `deletedAt` | One record for each transaction that the user deleted, with the raw fields of its fingerprint. A refresh does not add the transaction again. A file adds it again only when `wasFetched` is false. The records go with their account. |
+| `DeletedTransaction` | `accountID`, `sourceID?`, `fileIdentity?`, `bookingDate`, `amountMinor`, `currency`, `isPending`, `purpose`, `counterpartyIBAN?`, `endToEndReference?`, `wasFetched`, `deletedAt` | One record for each transaction that the user deleted, with the raw fields of its fingerprint. A refresh does not add the transaction again. A file adds it again only when `wasFetched` is false. The records go with their account. |
+
+Lists and sums by category read `Ledger.rows(in:filter:)`, which returns `TransactionSearchResult` with part rows and the search failure flag. Balances read the stored originals in `Ledger.transactions`.
 
 ## Splits
 
@@ -116,6 +119,7 @@ Refreshes and file imports go through `reconcile`, which recognizes a stored row
 | `accountGroup` | `AccountGroup` |
 | `account` | `Account` |
 | `category` | `Category` |
+| `csvProfile` | A profile name, JSON version, and payload containing `CSVProfile`. Unreadable versions or payloads remain stored when another profile changes. |
 | `bankTransaction` | `Transaction` |
 | `splitPart` | `SplitPart`, with `vat` as JSON. Parts go with their transaction and become uncategorized when their category is removed. |
 | `portfolioValue` | `PortfolioValue`, with the primary key `accountID` and `day` |
@@ -138,3 +142,5 @@ Migration `v1` creates the tables. It also creates the table `setting`, which no
 | Type | Arrives with | Purpose |
 |---|---|---|
 | `PaymentOrder`, `PaymentState` | v0.2 | SEPA transfers with the payee check. See [architecture](architecture.md#payments-are-a-separate-state-machine). |
+
+Migration `v19` stores CSV profiles. Migration `v18` is registered after `v19`, preserving main's append-only migration order. It adds one nullable TEXT `fileIdentity` column to `bankTransaction` and `deletedTransaction`. Existing rows retain NULL and their prior matching behavior. The original versioned file fingerprint includes booking day, amount, currency, folded purpose, counterparty, source ID, and end-to-end reference. Its length-prefixed encoding excludes pending state and user fields. The operator accepted this migration in the #203 gate.

@@ -271,11 +271,18 @@ final class DebugHarness {
 				model.save(group: g)
 			}
 		// Imports the files at the paths, separated by "|", into the selected account, as "Import Transactions..." does after the open panel.
+		// A leading "preview:" turns on "Show the preview also for CSV files with a profile".
 		case "importfile":
 			guard let account = model.selectedAccount else { return log("importfile no account") }
-			let urls = argument.split(separator: "|").map { URL(filePath: String($0)) }
-			Task { await model.importFiles(urls, into: account); log("importfile done") }
+			let alwaysPreview = argument.hasPrefix("preview:")
+			let urls = argument.dropFirst(alwaysPreview ? 8 : 0).split(separator: "|").map { URL(filePath: String($0)) }
+			Task { await model.importFiles(urls, into: account, alwaysPreview: alwaysPreview); log("importfile done") }
 		// "selected" or "named" answers the question about the account of a file, an empty argument logs it.
+		case "cancelimport": model.fileImport?.cancel()
+		case "importstate":
+			let run = model.fileImport
+			log("importstate", ("phase", .word(run == nil ? "none" : run?.storing == nil ? "reading" : "storing")), ("canceled", .flag(run?.isCanceled ?? false)))
+
 		case "importanswer":
 			guard let question = model.fileImport?.question else { return log("importanswer no question") }
 			switch argument {
@@ -285,6 +292,37 @@ final class DebugHarness {
 				log("importanswer", ("kind", .state(question.named)), ("fileIndex", .position(model.fileImport?.index)), ("selectedPosition", .position(question.selected.position)),
 					("otherPosition", .position(question.other?.position)))
 			}
+		case "csvhandoff":
+			switch argument {
+			case "prepare":
+				guard !model.ledger.accounts.contains(where: { $0.accountNumber == "88776655" }) else { return log("csvhandoff prepared") }
+				var account = Account(position: model.ledger.nextTreePosition(in: nil), name: "Handoff Synthetic", kind: .giro, source: .offline, currency: "JPY")
+				account.accountNumber = "88776655"
+				model.save(account: account)
+				log("csvhandoff prepared")
+#if DEBUG
+			case "confirm": model.fileImport?.confirm(named: .number(bankCode: nil, account: "88776655"))
+#endif
+			// "state <sum of amounts> <sum of days>": whether the stored rows have these sums, "ok" or "differs",
+			// so the log never holds an amount.
+			default:
+				do {
+					guard let store = model.store else { return log("csvhandoff error=locked") }
+					let stored = try store.loadLedger()
+					let accounts = stored.accounts.filter { $0.accountNumber == "88776655" && $0.currency == "JPY" }
+					let rows = accounts.flatMap { stored.transactions(ofAccount: $0.id) }
+					let expected = argument.split(separator: " ").dropFirst().map { Int64($0) } + [nil, nil]
+					let amounts = rows.reduce(Int64(0)) { $0 + $1.amountMinor }
+					let days = Int64(rows.reduce(0) { $0 + $1.bookingDate.rawValue })
+					log("csvhandoff", ("accounts", .count(accounts.count)), ("count", .count(rows.count)),
+						("amounts", .word(expected[0] == amounts ? "ok" : "differs")), ("days", .word(expected[1] == days ? "ok" : "differs")))
+				} catch { log("csvhandoff error=store") }
+			}
+		// Changes the CSV preview on screen: "column <n>=<field or none>", "date <order>", "encoding <name>",
+		// "decimal comma|point|detect", "skip", "profile <name>" to apply a saved profile, "name <name>" to
+		// save the settings under that name, "delete" to delete the applied profile, "state", which logs the settings and
+		// counts of the preview, or "rows", which logs the count and the days of its first rows.
+		case "csv": csvPreview(argument)
 		// "[<currency>]": the credit card in US dollars, or in another currency such as JPY.
 		case "usd": Task { await DemoData.usdAccount(model, currency: argument.isEmpty ? "USD" : argument); log("usd done") }
 		case "review": Task { await DemoData.review(model); log("review done") }
@@ -395,7 +433,7 @@ final class DebugHarness {
 		case "balance": model.balanceMode = BalanceMode(rawValue: argument) ?? .daily
 		case "search":
 			model.filter.searchText = argument
-			if model.transactions(for: model.tableKey).gaveUp { log("gave up") }
+			if model.rows(for: model.tableKey).gaveUp { log("gave up") }
 		// "<min> <max>" as typed into "Custom..." of the amount filter, with "-" for an empty field.
 		case "amount", "amountsnapshot":
 			let ends = argument.split(separator: " ").map { $0 == "-" ? "" : String($0) } + ["", ""]
@@ -536,10 +574,13 @@ final class DebugHarness {
 		// "account <name>", "custom <yyyymmdd> <yyyymmdd>", or "pin on" and "pin off".
 		case "filterbar": filterBar(argument)
 		case "state":
+			let savedFilter = UserDefaults.standard.data(forKey: Preference.savedFilterBar).flatMap(SavedFilterBar.init(data:))
 			log("", ("phase", .state(model.phase)), ("accounts", .count(model.ledger.accounts.count)), ("transactions", .count(model.ledger.transactions.count)),
 				("visible", .count(model.visibleTransactions.count)), ("selection", .state(model.selection)), ("selected", .state(model.selectedAccount?.kind)))
+			// The case of the amount filter, without the ends of a custom range.
 			log(LogLine("", values: [("pin", .flag(model.isFilterBarPinned)), ("period", .state(model.period)), ("status", .state(model.filter.status)),
-				("filter", .list(model.filter.activeKinds.map { .word($0) }))] + Self.filterTargets(model)))
+				("amount", .state(model.filter.amount)), ("filter", .list(model.filter.activeKinds.map { .word($0) }))] + Self.filterTargets(model)
+				+ [("saved", .flag(savedFilter == SavedFilterBar(period: model.period, filter: model.filter)))]))
 			logChart()
 		// Whether the selected account proposes a calibration, without amounts.
 		case "calibration":
@@ -860,6 +901,49 @@ final class DebugHarness {
 		log(LogLine("filterbar", values: [("", .choice(parts.first ?? "", of: ["status", "amount", "category", "account", "custom", "pin"]))] + Self.filterTargets(model)))
 	}
 
+	private func csvPreview(_ argument: String) {
+		guard let preview = model?.fileImport?.preview else { return log("csv no preview") }
+		let parts = argument.split(separator: " ", maxSplits: 1).map(String.init)
+		let value = parts.count == 2 ? parts[1] : ""
+		switch parts.first {
+		case "column":
+			let assignment = value.split(separator: "=").map(String.init)
+			guard assignment.count == 2, let column = Int(assignment[0]) else { return log("csv error=column needs <n>=<field>") }
+			preview.layout.assign(column, to: CSVField(rawValue: assignment[1]))
+		case "date": preview.layout.dateOrder = DateOrder(rawValue: value) ?? preview.layout.dateOrder
+		case "encoding": preview.layout.encoding = CSVEncoding(rawValue: value) ?? preview.layout.encoding
+		case "decimal": preview.layout.decimalMark = value == "comma" ? .comma : value == "point" ? .point : nil
+		case "skip": model?.fileImport?.skip()
+		case "profile": preview.apply(value.isEmpty ? nil : value)
+		case "name": preview.profileName = value
+		case "delete": preview.deleteProfile()
+		case "createcategories": preview.layout.createsCategories = value == "on"
+		// A row of the file holds a name, a purpose, and an amount, so the log holds only the count and the days of the first rows.
+		case "rows":
+			let rows = preview.preview?.transactions.prefix(10) ?? []
+			log("csv rows", ("count", .count(rows.count)), ("days", .list(rows.map { .day($0.bookingDate) })))
+		default:
+			// The field of each column from 0, or "-" for a column without one.
+			let fields = Dictionary(preview.layout.columns.map { ($1, $0) }, uniquingKeysWith: { first, _ in first })
+			let columns = fields.keys.max().map { last in (0...last).map { LogValue.state(fields[$0] as Any) } } ?? []
+			let (problem, line): (StaticString, Int?) = switch preview.preview?.problem {
+			case let .line(n, _): ("line", n)
+			case .empty: ("empty", nil)
+			case .unsupported: ("unsupported", nil)
+			case .noHeader: ("noHeader", nil)
+			case .severalAccounts: ("severalAccounts", nil)
+			case .encoding: ("encoding", nil)
+			case nil: (preview.problem == nil ? "-" : "encoding", nil)
+			}
+			log("csv state", ("columns", .list(columns)), ("date", .state(preview.layout.dateOrder)), ("uncertain", .flag(preview.isDateOrderUncertain)),
+				("encoding", .state(preview.layout.encoding)), ("missing", .list(preview.layout.missing.map { .state($0) })),
+				("count", preview.preview.map { .count($0.transactions.count) } ?? .word("-")), ("canImport", .flag(preview.chosen != nil)), ("problem", .word(problem)),
+				("line", line.map { .count($0) } ?? .word("-")), ("profile", .word(preview.profile == nil ? "none" : "applied")),
+				("name", .word(preview.profileName.isEmpty ? "empty" : "typed")), ("createsCategories", .flag(preview.layout.createsCategories)),
+				("profiles", .count(preview.profiles.count)))
+		}
+	}
+
 	/// Selects the account, group, or category with this name.
 	func select(_ name: String) {
 		guard let model else { return }
@@ -917,7 +1001,7 @@ final class DebugHarness {
 		let ledger = model.ledger
 		guard let c = ledger.category(id) else { return [("position", .word("none"))] }
 		return [("position", sidebarPosition(id, in: ledger)), ("parent", c.parentID.map { sidebarPosition($0, in: ledger) } ?? .word("top")),
-			("index", .position(ledger.childCategories(of: c.parentID).firstIndex { $0.id == id })), ("rows", .count(ledger.transactions(in: .category(id)).rows.count)),
+			("index", .position(ledger.childCategories(of: c.parentID).firstIndex { $0.id == id })), ("rows", .count(ledger.rows(in: .category(id)).rows.count)),
 			("visible", .count(model.visibleTransactions.count))]
 	}
 

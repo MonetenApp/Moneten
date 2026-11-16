@@ -121,6 +121,7 @@ final class AppModel {
 	private(set) var store: Store?
 	private(set) var ledger = Ledger() {
 		didSet {
+			ledgerRevision += 1
 			// While locked the ledger is empty, which says nothing about the notifications of the database.
 			if store != nil { notices.update(newCounts: ledger.newTransactionCounts) }
 			// The count of the last line, not `oldValue`: reading `oldValue` would copy the ledger on every change.
@@ -136,6 +137,7 @@ final class AppModel {
 	}
 	/// The kind of the next change of `ledger`, for the trail.
 	@ObservationIgnored var ledgerChange = "edit"
+	@ObservationIgnored private var ledgerRevision = 0
 	var exportTask: Task<Void, Never>?
 	var isTransferringTransactions: Bool { fileImport != nil || exportTask != nil }
 	@ObservationIgnored private var trailRows = 0
@@ -297,9 +299,9 @@ final class AppModel {
 		didSet {
 			guard sheet != oldValue else { return }
 			Trail.log("sheet \(sheet?.trailName ?? "none")")
-			// A menu command can open another sheet over the question of an import, which then would wait
+			// A menu command can open another sheet over the question or preview of an import, which then would wait
 			// for an answer that never comes.
-			if case let .fileImport(run) = oldValue, run.question != nil { run.cancel() }
+			if case let .fileImport(run) = oldValue, (run.question != nil || run.preview != nil) { run.cancel() }
 		}
 	}
 	var settingsTab = SettingsTab.security
@@ -578,16 +580,16 @@ final class AppModel {
 	}
 
 	/// The rows of the transaction table, for the view and the filters of `tableKey`.
-	var visibleTransactions: [Transaction] { transactions(for: tableKey).rows }
+	var visibleTransactions: [Transaction] { rows(for: tableKey).rows }
 
 	/// The selected rows that the table shows. A search keeps the selection of the rows that it hides.
 	/// It filters the rows, so a menu reads it in its action and not in its `disabled` check.
 	var visibleSelection: Set<UUID> { selectedTransactions.intersection(visibleTransactions.map(\.id)) }
 
 	/// The rows of a transaction table with the view and the filters of `key`.
-	func transactions(for key: TableKey) -> TransactionSearchResult {
+	func rows(for key: TableKey) -> TransactionSearchResult {
 		guard let selection = key.selection else { return TransactionSearchResult(rows: [], gaveUp: false) }
-		return ledger.transactions(in: selection.scope, filter: key.filter)
+		return ledger.rows(in: selection.scope, filter: key.filter)
 	}
 
 	/// The transactions of the bar charts: the filters of the list, but over the period of the charts.
@@ -595,7 +597,7 @@ final class AppModel {
 		guard let selection else { return [] }
 		var f = filter
 		f.period = chartRange
-		return ledger.transactions(in: selection.scope, filter: f).rows
+		return ledger.rows(in: selection.scope, filter: f).rows
 	}
 
 	/// New transactions count as seen when the user opens their account.
@@ -1180,12 +1182,7 @@ final class AppModel {
 			let removed = ledger.categoryIDs(inTree: id)
 			try store.deleteCategory(id)
 			await replacingTable {
-				let transactions = ledger.transactions.map { t -> Transaction in
-					var t = t
-					if let c = t.categoryID, removed.contains(c) { t.categoryID = nil; t.categorizedBy = .none }
-					return t
-				}
-				ledger.replace(categories: ledger.categories.filter { !removed.contains($0.id) }, transactions: transactions)
+				ledger.remove(category: id)
 				filter.dropMissing(in: ledger)
 				if case let .category(sel) = selection, removed.contains(sel) { selection = nil }
 			}
@@ -1287,6 +1284,18 @@ final class AppModel {
 		return result
 	}
 
+	func reloadFileImport(from store: Store) async throws {
+		while self.store === store {
+			let revision = ledgerRevision
+			let updated = try await Task.detached(priority: .userInitiated) { try store.loadLedger() }.value
+			guard self.store === store else { return }
+			guard ledgerRevision == revision else { continue }
+			ledgerChange = "file"
+			ledger = updated
+			return
+		}
+	}
+
 	/// A refresh changes the rows of the open table in place, also a first refresh that brings the whole
 	/// history (perf scenario "refresh-into-open-view"). When it can remove shown rows, pending rows or a sold
 	/// position, the table starts over instead: removing shown rows in place stopped the app in
@@ -1320,7 +1329,7 @@ final class AppModel {
 	/// next one. Bumping the table id a drawing after the change instead let the old table insert every new
 	/// row first, and the app hung (863ac4b).
 	@discardableResult
-	func replacingTable<T>(_ change: () throws -> T) async rethrows -> T {
+	func replacingTable<T>(_ change: @MainActor () async throws -> T) async rethrows -> T {
 		// A change of the rows that SwiftUI has not drawn yet, such as the refresh of another account of the
 		// same run, must not meet the removal of the table.
 		while tableHolds == 0 && rowsUndrawn { await drawn() }
@@ -1334,7 +1343,7 @@ final class AppModel {
 			tableGeneration += 1
 			Trail.log("table new generation=\(tableGeneration)")
 		}
-		return try change()
+		return try await change()
 	}
 
 	/// The view or the filters changed. The table follows at once, or after SwiftUI drew a change of the

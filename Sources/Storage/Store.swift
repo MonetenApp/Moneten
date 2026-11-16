@@ -69,9 +69,9 @@ public final class Store: SavedPINStore {
 				try db.execute(sql: """
 					UPDATE deletedTransaction SET sourceID = ? WHERE rowid = (SELECT rowid FROM deletedTransaction WHERE accountID = ?
 						AND sourceID IS ? AND bookingDate = ? AND amountMinor = ? AND currency = ? AND isPending = ? AND purpose = ?
-						AND counterpartyIBAN IS ? AND endToEndReference IS ? AND wasFetched = ? LIMIT 1)
+						AND counterpartyIBAN IS ? AND endToEndReference IS ? AND wasFetched = ? AND fileIdentity IS ? LIMIT 1)
 					""", arguments: [r.sourceID, d.accountID, d.sourceID, d.bookingDate.rawValue, d.amountMinor, d.currency, d.isPending, d.purpose,
-						d.counterpartyIBAN, d.endToEndReference, d.wasFetched])
+						d.counterpartyIBAN, d.endToEndReference, d.wasFetched, d.fileIdentity])
 			}
 		}
 	}
@@ -90,31 +90,33 @@ public final class Store: SavedPINStore {
 	/// transaction, so the result is exactly what was written, and `Ledger.apply` can take it over. An
 	/// account that no longer exists, such as one removed during its refresh, gets nothing.
 	public func merge(_ delivery: Delivery, into accountID: UUID, now: Date = Date()) throws -> Reconciliation {
-		try queue.write { db in
-			guard let account = try Account.fetchOne(db, key: accountID) else { return Reconciliation() }
-			let rules = Categorizer(ledger: Ledger(groups: try AccountGroup.fetchAll(db), accounts: try Account.fetchAll(db),
-				categories: try Domain.Category.fetchAll(db)))
-			let stored = try Transaction.filter(Column("accountID") == accountID).fetchAll(db)
-			let deleted = try DeletedTransaction.filter(Column("accountID") == accountID).fetchAll(db)
-			// Only a refresh with positions reads the stored ones. A file or a migration never touches them.
-			var holdings: [Holding] = []
-			if case let .refresh(result) = delivery, result.holdings != nil {
-				holdings = try HoldingRecord.filter(Column("accountID") == accountID).fetchAll(db).compactMap(\.holding)
-			}
-			let r = reconcile(delivery, into: account, stored: stored, deleted: deleted, holdings: holdings, rules: rules, now: now)
-			for t in r.added { try t.insert(db) }
-			for t in r.booked + r.updated + r.marked { try t.update(db) }
-			_ = try Transaction.deleteAll(db, keys: r.dropped)
-			if let a = r.account {
-				try a.update(db)
-				try a.portfolioValue()?.save(db)
-			}
-			if let h = r.holdings {
-				_ = try HoldingRecord.filter(Column("accountID") == h.accountID).deleteAll(db)
-				for holding in h.holdings { try HoldingRecord(holding).insert(db) }
-			}
-			return r
+		try queue.write { db in try merge(delivery, into: accountID, now: now, in: db) }
+	}
+
+	func merge(_ delivery: Delivery, into accountID: UUID, now: Date, in db: Database) throws -> Reconciliation {
+		guard let account = try Account.fetchOne(db, key: accountID) else { return Reconciliation() }
+		let rules = Categorizer(ledger: Ledger(groups: try AccountGroup.fetchAll(db), accounts: try Account.fetchAll(db),
+			categories: try Domain.Category.fetchAll(db)))
+		let stored = try Transaction.filter(Column("accountID") == accountID).fetchAll(db)
+		let deleted = try DeletedTransaction.filter(Column("accountID") == accountID).fetchAll(db)
+		// Only a refresh with positions reads the stored ones. A file or a migration never touches them.
+		var holdings: [Holding] = []
+		if case let .refresh(result) = delivery, result.holdings != nil {
+			holdings = try HoldingRecord.filter(Column("accountID") == accountID).fetchAll(db).compactMap(\.holding)
 		}
+		let r = reconcile(delivery, into: account, stored: stored, deleted: deleted, holdings: holdings, rules: rules, now: now)
+		for t in r.added { try t.insert(db) }
+		for t in r.booked + r.updated + r.marked { try t.update(db) }
+		_ = try Transaction.deleteAll(db, keys: r.dropped)
+		if let a = r.account {
+			try a.update(db)
+			try a.portfolioValue()?.save(db)
+		}
+		if let h = r.holdings {
+			_ = try HoldingRecord.filter(Column("accountID") == h.accountID).deleteAll(db)
+			for holding in h.holdings { try HoldingRecord(holding).insert(db) }
+		}
+		return r
 	}
 
 	/// The bank accesses. Their states stay in the database until a refresh reads them.

@@ -320,6 +320,18 @@ enum Schema {
 				t.uniqueKey(["transactionID", "position"])
 			}
 		}
+		m.registerMigration("v19") { db in
+			try db.create(table: "csvProfile") { t in
+				t.column("name", .text).primaryKey()
+				t.column("version", .integer).notNull()
+				t.column("payload", .blob).notNull()
+			}
+		}
+		m.registerMigration("v18") { db in
+			for table in ["bankTransaction", "deletedTransaction"] {
+				try db.alter(table: table) { t in t.add(column: "fileIdentity", .text) }
+			}
+		}
 		return m
 	}
 }

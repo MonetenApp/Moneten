@@ -285,12 +285,13 @@ public struct Transaction: Identifiable, Hashable, Sendable, Codable {
 	/// A refresh delivered this row. Once the user deletes it, a file import does not add it again.
 	public var isFetched: Bool
 	public var sourceID: String?
+	public var fileIdentity: String?
 	public var createdAt: Date
 
 	public init(id: UUID = UUID(), accountID: UUID, bookingDate: Day, valueDate: Day? = nil, amountMinor: Int64, currency: String = "EUR", name: String, purpose: String = "",
 		counterpartyIBAN: String? = nil, counterpartyBIC: String? = nil, bookingText: String? = nil, endToEndReference: String? = nil, mandateReference: String? = nil,
 		creditorID: String? = nil, comment: String? = nil, isChecked: Bool = false, isPending: Bool = false, categoryID: UUID? = nil, categorizedBy: Categorization = .none,
-		isNew: Bool = false, needsReview: Bool = false, isFetched: Bool = false, sourceID: String? = nil, createdAt: Date = Date(), returnReason: String? = nil) {
+		isNew: Bool = false, needsReview: Bool = false, isFetched: Bool = false, sourceID: String? = nil, createdAt: Date = Date(), returnReason: String? = nil, fileIdentity: String? = nil) {
 		self.id = id
 		self.accountID = accountID
 		self.bookingDate = bookingDate
@@ -315,6 +316,7 @@ public struct Transaction: Identifiable, Hashable, Sendable, Codable {
 		self.needsReview = needsReview
 		self.isFetched = isFetched
 		self.sourceID = sourceID
+		self.fileIdentity = fileIdentity
 		self.createdAt = createdAt
 	}
 

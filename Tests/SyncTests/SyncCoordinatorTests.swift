@@ -291,8 +291,12 @@ struct SyncCoordinatorTests {
 	@Test("The approval dialog closes when the connector withdraws its request")
 	func approvalCloses() async {
 		let bank = Self.access("Musterbank")
-		_ = refresh(bank, [.approve(Self.approval(), after: .milliseconds(200)), .progress(.fetching(done: 0, of: 1)), .fetched(Self.giro.accountID)])
+		// The connector withdraws the request only after the test saw the dialog.
+		let (approved, approve) = AsyncStream.makeStream(of: Void.self)
+		_ = refresh(bank, [.approve(Self.approval(), until: { for await _ in approved { return } }), .progress(.fetching(done: 0, of: 1)),
+			.fetched(Self.giro.accountID)])
 		await until { broker.current != nil }
+		approve.finish()
 		await until { broker.current == nil }
 		await until { finished(bank) != nil }
 		#expect(finished(bank)?.fetched == [Self.giro.accountID])
@@ -301,7 +305,7 @@ struct SyncCoordinatorTests {
 	@Test("Canceling a waiting approval stops the refresh")
 	func approvalCanceled() async {
 		let bank = Self.access("Musterbank")
-		_ = refresh(bank, [.approve(Self.approval(), after: .seconds(60)), .fetched(Self.giro.accountID)])
+		_ = refresh(bank, [.approve(Self.approval(), until: { try await Task.sleep(for: .seconds(60)) }), .fetched(Self.giro.accountID)])
 		await until { broker.current != nil }
 		cancelOnScreen()
 		await until { !coordinator.isRefreshing }

@@ -19,7 +19,7 @@
 # "Fondsdepot", which the bank does not offer through FinTS.
 # The login "langtext" lists only "Tagesgeld". Its refresh sends the transactions of "Tagesgeld" with the
 # error 9210 of the balance request, and then a notice of 100 lines. The refresh of the login "wartung" sends a
-# notice about maintenance and then fails the login with 9800.
+# notice about maintenance and then fails the login with 9800. The login "setupwartung" does the same in the setup.
 # The bank directory has two branches of Musterbank, the bank without a FinTS server Neobank Muster
 # (99999999), a made-up Sparkasse, and Consorsbank (76030080) and DAB BNP Paribas (70120400) with
 # their real FinTS address, so the setup shows the login hint of Consorsbank and none for DAB.
@@ -57,6 +57,11 @@ case "$cmd" in
 		answer
 		exit 0
 	fi
+	case "$cmd" in *'"user":"setupwartung"'*)
+		echo '{"type":"notice","text":"Wegen Wartungsarbeiten ist das Online-Banking bis 5 Uhr nicht erreichbar."}'
+		echo '{"type":"failed","code":"9800","text":"Dialog abgebrochen"}'
+		exit 0
+	;; esac
 	echo '{"type":"ask","id":2,"kind":"tan","purpose":"login","prompt":"Bitte geben Sie die TAN aus Ihrer pushTAN-App ein.","current":"921","methods":[{"id":"921","name":"pushTAN","delivery":"push"},{"id":"901","name":"mobileTAN","medium":true,"delivery":"sms"}]}'
 	answer
 	if [ "$method" = 901 ]; then

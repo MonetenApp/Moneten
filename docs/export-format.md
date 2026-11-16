@@ -10,6 +10,7 @@
 - An identifier is a UUID as text. Objects refer to each other by these identifiers.
 - An optional key without a value is left out, and a reader takes a missing optional key as empty. Every other key is always written, also an empty list or an empty text such as `purpose`.
 - A currency code has exactly three uppercase ASCII letters, `[A-Z]{3}`. This also applies to optional currencies of holdings and both currencies of an exchange rate.
+- Adding an optional key does not change format version 1. A reader treats a missing `csvProfiles` key as an empty list.
 - The lists keep the order of the database.
 - A category or account group cannot contain itself, directly or through its parents. The reader refuses a loop and names its position.
 - The complete export is written atomically with mode 0600, so only its owner can read or write it. An unreadable stored holding fails the export instead of being omitted.
@@ -29,6 +30,17 @@
 | `deletedTransactions` | List of deleted transactions, so that a refresh or a migration does not add them again |
 | `portfolioValues` | List of daily values of portfolios |
 | `holdings` | List of positions of portfolios |
+| `csvProfiles` | Optional list of saved CSV profiles, including unreadable versions. Left out when there are none. |
+
+## CSV profile
+
+| Key | Content |
+|---|---|
+| `name` | Saved profile name |
+| `version` | Version of the profile payload, currently `1`, separate from the export format version |
+| `payload` | Base64 of the exact stored JSON bytes. The complete export preserves unreadable profiles and unknown fields without interpreting them. |
+
+A version-1 payload contains `name`, `header`, `delimiter`, and `layout`. The header is a list of column titles, and the optional delimiter is the saved field separator. The layout contains `encoding`, `columns`, `dateOrder`, optional `decimalMark`, and `createsCategories`. The columns object maps the field names of `CSVField` in [the CSV reader](../Sources/Import/CSVImport.swift) to zero-based column positions. The other settings use the raw values of `CSVEncoding`, `DateOrder`, and `DecimalMark` from the reader. A profile save updates known fields and preserves unknown fields, including unknown column mappings. A profile with a negative known column position is unreadable and is not applied. Its raw payload remains stored and exported.
 
 ## Account group
 
@@ -125,6 +137,7 @@ An access is a login at a bank. The file never holds its PIN or the data that it
 | `isNew` | Whether the transaction is marked as new |
 | `needsReview` | Whether the transaction is marked for review, because the app could not tell which pending transaction it books |
 | `isFetched` | Whether a refresh delivered the transaction |
+| `fileIdentity` | Original file fingerprint, if a file import recorded one; absent or null means no file identity |
 | `sourceID` | Identifier of the transaction at its bank or source, such as `moneymoney:<id>` |
 | `createdAt` | Time when the app stored the transaction |
 
@@ -135,6 +148,7 @@ What the app keeps of a transaction that the user deleted, so that no refresh, f
 | Key | Content |
 |---|---|
 | `accountID` | The account |
+| `fileIdentity` | Original file fingerprint, if a file import recorded one; absent or null means no file identity |
 | `sourceID` | Identifier of the transaction at its bank or source |
 | `bookingDate` | Booking day |
 | `amount`, `currency` | Amount and its currency |

@@ -281,10 +281,10 @@ public final class SyncCoordinator {
 				event = .finish(Self.summary(of: fetched, for: job.request, notSaved: notSaved))
 			} catch {
 				let withState = error as? FailureWithState
-				let withNotices = error as? FailureWithNotices
-				let error = withState?.failure ?? withNotices?.failure ?? error
+				let split = FailureWithNotices.split(error)
+				let error = withState?.failure ?? split.failure
 				if let withState { failedState = withState.state }
-				notices = withNotices?.notices ?? []
+				notices = split.notices
 				// A rejection or a block forgets the PIN also when the refresh was canceled meanwhile.
 				if (error as? SyncFailure)?.rejectsPIN == true { broker.forgetRejectedPIN(of: access.id) }
 				event = Task.isCancelled || error is CancellationError ? .cancel : .fail(Self.failure(error))

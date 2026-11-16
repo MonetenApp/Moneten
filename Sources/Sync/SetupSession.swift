@@ -55,9 +55,11 @@ public struct SetupSession: SyncSession {
 				task.cancel()
 				Task { @MainActor in broker.endRequest(of: access) }
 			}
-		} catch let failure as SyncFailure where failure.rejectsPIN {
-			broker.forgetRejectedPIN(of: replacing)
-			throw failure
+		} catch {
+			// A rejection or a block can come after notices of the bank, inside `FailureWithNotices`.
+			let failure = FailureWithNotices.split(error).failure
+			if (failure as? SyncFailure)?.rejectsPIN == true { broker.forgetRejectedPIN(of: replacing) }
+			throw error
 		}
 	}
 
