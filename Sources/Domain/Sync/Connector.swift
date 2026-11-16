@@ -220,18 +220,21 @@ public struct RefreshResult: Sendable {
 		otherBalances: [Money] = [], bonusPoints: Int64? = nil) {
 		self.missesOlder = missesOlder
 		// One entry per currency, so the sidebar row lists each currency once and the sum of a group counts it once.
-		var balance = balance
-		var combined: [Money] = []
+		// The sums run in Int128 and stop at the bounds of Int64 only at the end, so amounts that cancel out
+		// give their exact sum in any order.
+		var main = balance.map { Int128($0.minorUnits) }
+		var sums: [(currency: String, minorUnits: Int128)] = []
 		for money in otherBalances {
 			if let current = balance, money.currency == current.currency {
-				balance = Money(minorUnits: Self.add(current.minorUnits, money.minorUnits), currency: current.currency)
-			} else if let index = combined.firstIndex(where: { $0.currency == money.currency }) {
-				combined[index].minorUnits = Self.add(combined[index].minorUnits, money.minorUnits)
+				main = (main ?? 0) + Int128(money.minorUnits)
+			} else if let index = sums.firstIndex(where: { $0.currency == money.currency }) {
+				sums[index].minorUnits += Int128(money.minorUnits)
 			} else {
-				combined.append(money)
+				sums.append((money.currency, Int128(money.minorUnits)))
 			}
 		}
-		self.balance = balance
+		let combined = sums.map { Money(minorUnits: Self.clamped($0.minorUnits), currency: $0.currency) }
+		self.balance = balance.map { Money(minorUnits: Self.clamped(main ?? 0), currency: $0.currency) }
 		self.balanceDate = balanceDate
 		self.transactions = transactions
 		self.isComplete = isComplete
@@ -242,10 +245,9 @@ public struct RefreshResult: Sendable {
 		self.bonusPoints = bonusPoints
 	}
 
-	/// A sum that stops at the bounds of `Int64`. A connector keeps each amount far below them.
-	private static func add(_ a: Int64, _ b: Int64) -> Int64 {
-		let (sum, overflow) = a.addingReportingOverflow(b)
-		return overflow ? (b < 0 ? .min : .max) : sum
+	/// A sum within the bounds of `Int64`, which a connector keeps each amount far below.
+	private static func clamped(_ sum: Int128) -> Int64 {
+		Int64(clamping: sum)
 	}
 }
 

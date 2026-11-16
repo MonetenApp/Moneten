@@ -19,6 +19,15 @@ struct SeveralBalancesTests {
 		reconcile(.refresh(result), into: account, stored: [], deleted: [], rules: Categorizer(ledger: Ledger(accounts: [account])), now: now).account
 	}
 
+	@Test("Balances that cancel out sum to their exact total in any order, also past the bounds of Int64 on the way")
+	func cancellingBalancesSumExactly() {
+		let big: Int64 = 1_000_000_000_000_000
+		let up = Array(repeating: usd(big), count: 9_224), down = Array(repeating: usd(-big), count: 9_224)
+		#expect(RefreshResult(balance: eur(0), transactions: nil, otherBalances: up + down).otherBalances.isEmpty)
+		let main = Array(repeating: eur(big), count: 9_224) + Array(repeating: eur(-big), count: 9_224) + [eur(500)]
+		#expect(RefreshResult(balance: eur(0), transactions: nil, otherBalances: main).balance == eur(500))
+	}
+
 	@Test("A refresh stores the balances in other currencies and the bonus points beside the balance")
 	func refreshStoresThem() throws {
 		let merged = try #require(merge(RefreshResult(balance: eur(12_000), transactions: FetchedTransactions(rows: [], from: nil),
