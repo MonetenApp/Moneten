@@ -1147,9 +1147,10 @@ The app SHALL create an original file identity only on file import and preserve 
 
 #### Scenario: A booked file repeat after a bank purpose change
 
-- **GIVEN** a booked file row that the bank later delivers with a different purpose
-- **WHEN** the original booked file row is imported again without an agreeing source ID
-- **THEN** it is added again, as on main, because booked fingerprints include the purpose
+- **GIVEN** a pre-existing booked rent of -800,00 € on 7 December 2026 without an original file identity
+- **AND** a matching booked file was skipped while its purpose was "FILE RENT"
+- **WHEN** the bank changes the purpose to "BANK RENT" and the original file is imported again without an agreeing source ID
+- **THEN** it is added again, as on main, because the older row matches by its booked fingerprint, which includes the purpose
 
 #### Scenario: A recurring reference does not hide the next rent
 
