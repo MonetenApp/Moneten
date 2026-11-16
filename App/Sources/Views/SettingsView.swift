@@ -1,3 +1,4 @@
+import Domain
 import Sync
 import SwiftUI
 
@@ -112,19 +113,24 @@ struct SecuritySettings: View {
 				askPasswordFor = key
 			} else {
 				value.wrappedValue = false
-				if !unlockAutomatically && !unlockWithTouchID && !unlockWithAppleWatch { try? model.vault.removeStoredPassword() }
+				guard !unlockAutomatically && !unlockWithTouchID && !unlockWithAppleWatch else { return }
+				do {
+					try model.vault.removeStoredPassword()
+				} catch {
+					message = String(localized: "The setting is off, but the database password could not be removed from the Keychain. \(String(describing: error))")
+				}
 			}
 		})
 	}
 
 	/// Returns an error for the prompt, or nil when the setting is on.
 	private func enable(_ key: String, password: String) -> String? {
-		guard model.vault.verify(password: password) else { return "Incorrect password!" }
+		guard model.vault.verify(password: password) else { return String(localized: "Incorrect password!") }
 		do {
 			try model.vault.storePassword(password)
 			UserDefaults.standard.set(true, forKey: key)
 		} catch {
-			message = "The database password could not be stored in the Keychain. \(error)"
+			message = String(localized: "The database password could not be stored in the Keychain. \(String(describing: error))")
 		}
 		return nil
 	}
@@ -169,10 +175,12 @@ struct GeneralSettings: View {
 	@AppStorage(RefreshSettings.showsBannerKey) private var showsBanner = true
 	@AppStorage(RefreshSettings.playsSoundKey) private var playsSound = false
 	@State private var notificationsDenied = false
+	/// Nil while the app follows macOS.
+	@State private var language = AppLanguage.stored
 
 	private var version: String {
 		let info = Bundle.main.infoDictionary
-		guard let short = info?["CFBundleShortVersionString"] as? String else { return "Development build" }
+		guard let short = info?["CFBundleShortVersionString"] as? String else { return String(localized: "Development build") }
 		return info?["CFBundleVersion"].map { "\(short) (\($0))" } ?? short
 	}
 
@@ -190,6 +198,20 @@ struct GeneralSettings: View {
 				Toggle("Play sound on new transactions", isOn: askingPermission($playsSound))
 				if notificationsDenied {
 					Button("Open Notification Settings...") { NSWorkspace.shared.open(Self.notificationSettings) }
+				}
+			}
+			Section("VAT rates") {
+				VATRateSettings()
+			}
+			Section {
+				Picker("Language", selection: $language) {
+					Text("System").tag(AppLanguage?.none)
+					ForEach(AppLanguage.allCases, id: \.self) { Text(verbatim: $0.name).tag(Optional($0)) }
+				}
+				.onChange(of: language) { _, new in AppLanguage.store(new) }
+			} footer: {
+				if (language ?? AppLanguage.system) != AppLanguage.current {
+					Text("Moneten uses the new language after a restart.").foregroundStyle(.secondary)
 				}
 			}
 			Section {
@@ -216,6 +238,7 @@ struct GeneralSettings: View {
 					.foregroundStyle(.secondary)
 			}
 		}
+		.environment(\.sheetHasScrollAreas, true)
 		.task { await checkPermission() }
 		// The user may have allowed the notifications in the System Settings meanwhile.
 		.onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
@@ -239,5 +262,74 @@ struct GeneralSettings: View {
 
 	private func checkPermission() async {
 		notificationsDenied = await model.notices.isDenied()
+	}
+}
+
+struct VATRateSettings: View {
+	@State private var rates = Preference.rates
+	@State private var text = ""
+	@State private var editing: Int?
+	@State private var invalid = false
+
+	var body: some View {
+		if !rates.isEmpty {
+			ScrollView {
+				VStack(spacing: 8) {
+					ForEach(rates.indices, id: \.self) { index in
+						HStack {
+							Text(rates[index].text).monospacedDigit()
+							Spacer()
+							Button("Change") {
+								editing = index
+								text = String(rates[index].text.dropLast())
+								invalid = false
+							}
+							.accessibilityLabel("Change VAT rate at position \(index + 1)")
+							.accessibilityIdentifier("vat-change-\(index)")
+							Button(role: .destructive) {
+								rates.remove(at: index)
+								persist()
+								reset()
+							} label: { Image(systemName: "minus.circle") }
+							.accessibilityLabel("Remove VAT rate at position \(index + 1)")
+							.accessibilityIdentifier("vat-remove-\(index)")
+						}
+					}
+				}
+			}
+			.frame(height: min(CGFloat(rates.count) * 32, 128))
+		}
+		HStack {
+			TextField("VAT rate (%)", text: $text)
+				.accessibilityIdentifier("vat-input")
+				.onSubmit(save)
+			Button(editing == nil ? "Add" : "Save", action: save)
+				.accessibilityIdentifier("vat-save")
+			if editing != nil {
+				Button("Cancel", action: reset).accessibilityIdentifier("vat-cancel")
+			}
+		}
+		if invalid {
+			Text("Enter a rate above zero with up to two decimal places.")
+				.foregroundStyle(Palette.red)
+				.accessibilityIdentifier("vat-error")
+		}
+	}
+
+	private func save() {
+		guard let rate = VATRate(text: text) else { invalid = true; return }
+		if let editing { rates[editing] = rate } else { rates.append(rate) }
+		persist()
+		reset()
+	}
+
+	private func persist() {
+		UserDefaults.standard.set(rates.map(\.hundredths), forKey: Preference.vatRates)
+	}
+
+	private func reset() {
+		text = ""
+		editing = nil
+		invalid = false
 	}
 }

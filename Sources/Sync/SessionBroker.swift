@@ -151,9 +151,14 @@ public final class SessionBroker {
 		close(id, with: .success(answer), event: .answered)
 	}
 
-	/// The user canceled the dialog `id`. The refresh of its access stops.
+	/// The user canceled the dialog `id`. The refresh of its access stops, unless the bank asked for older
+	/// transactions: then only the request ends, and the refresh goes on with the last 90 days.
 	public func cancel(_ id: UUID) {
 		guard let current, current.id == id else { return }
+		if case let .secondFactor(request) = current.request, request.olderTransactions {
+			close(id, with: .failure(OlderTransactionsSkipped()), event: .answered)
+			return
+		}
 		close(id, with: .failure(CancellationError()), event: nil)
 		onUserCancel(current.access.id)
 	}
@@ -371,15 +376,15 @@ public struct SavedPINFailure: Error {
 
 	public var title: String {
 		switch kind {
-		case .notSaved: "Could not save the PIN."
-		case .rejectedNotRemoved: "Could not remove the rejected PIN."
+		case .notSaved: String(localized: "Could not save the PIN.")
+		case .rejectedNotRemoved: String(localized: "Could not remove the rejected PIN.")
 		}
 	}
 
 	public var message: String {
 		switch kind {
 		case .notSaved: reason
-		case .rejectedNotRemoved: "Moneten does not send it again and removes it at the next unlock. \(reason)"
+		case .rejectedNotRemoved: String(localized: "Moneten does not send it again and removes it at the next unlock. \(reason)")
 		}
 	}
 }

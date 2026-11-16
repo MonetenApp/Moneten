@@ -200,11 +200,16 @@ struct TerminalSession: SyncSession {
 		}
 	}
 
+	/// Writes only an image that passed the check of `ChallengeImage`, as the app shows only those.
 	private func show(_ image: ChallengeImage) throws {
+		guard let picture = image.picture else {
+			Terminal.error("The challenge image is not a PNG or JPEG within \(ChallengeImage.maximumBytes) bytes and \(ChallengeImage.maximumSide) by \(ChallengeImage.maximumSide) pixels, so the app does not show it.")
+			return
+		}
 		try FileManager.default.createDirectory(at: imageFolder, withIntermediateDirectories: true)
-		let suffix = image.data.starts(with: [0xFF, 0xD8]) ? "jpg" : "png"
+		let suffix = picture.format == .jpeg ? "jpg" : "png"
 		let file = imageFolder.appending(path: "challenge-\(UUID().uuidString.prefix(8)).\(suffix)")
-		try image.data.write(to: file)
+		try picture.data.write(to: file)
 		Terminal.error("The challenge image is in \(file.path)")
 	}
 }

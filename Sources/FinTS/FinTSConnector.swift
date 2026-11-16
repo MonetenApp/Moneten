@@ -10,6 +10,12 @@ public struct FinTSBank: Sendable, Equatable {
 	/// The PIN/TAN address. Nil when the bank has none. The connector refuses any address that is
 	/// not https.
 	public let url: URL?
+
+	public init(name: String, bic: String?, url: URL?) {
+		self.name = name
+		self.bic = bic
+		self.url = url
+	}
 }
 
 /// An account of a login, as the bank lists it.
@@ -153,7 +159,8 @@ public struct FinTSConnector: BankConnector {
 		}
 	}
 
-	/// Fetches all requested accounts in one dialog with the bank.
+	/// Fetches all requested accounts in one dialog with the bank. Each result says whether its transactions may
+	/// miss older ones, and the merge keeps that mark with the account.
 	public func refresh(_ request: RefreshRequest, _ session: SyncSession) async throws -> ConnectorReport {
 		let today = Day.today()
 		var command = try command("refresh", request.access, request.state)
@@ -195,13 +202,14 @@ public struct FinTSConnector: BankConnector {
 	}
 
 	/// The first day to ask the bank for. A first and an enforced refresh ask for the full history.
-	/// Any other asks for no more than 90 days, so that the bank needs no TAN for older transactions.
+	/// Any other asks for no more than 90 days, so that the bank needs no TAN for older transactions. The
+	/// helper asks for the same 90 days when the user cancels a challenge for older transactions.
 	static func firstDay(_ since: Day?, today: Day) -> Day? {
 		since.map { max($0, today.adding(days: -90)) }
 	}
 
 	private func command(_ type: String, _ access: Access, _ state: AccessState?) throws -> Command {
-		guard case let .fints(bankCode, url) = access.source else { throw SyncFailure.unsupported("The access does not use FinTS.") }
+		guard case let .fints(bankCode, url) = access.source else { throw SyncFailure.unsupported(String(localized: "The access does not use FinTS.")) }
 		guard url.scheme?.lowercased() == "https", url.host() != nil else { throw HelperFailure.insecure }
 		guard let productID, !productID.isEmpty else { throw HelperFailure.noProductID }
 		return Command(type: type, bankCode: bankCode, url: url.absoluteString, user: CooperativeBanks.loginName(access.loginName, server: url),
@@ -250,6 +258,8 @@ public struct FinTSConnector: BankConnector {
 								do {
 									// The user changed the TAN method while the dialog waited for the approval.
 									if case let .tanMethod(method) = try await task.value { process.send(Answer(id: id, method: method)) }
+								} catch is OlderTransactionsSkipped {
+									process.send(Answer(id: id, skip: true))
 								} catch where !task.isCancelled { process.fail(error) } catch {}
 							}
 							continue
@@ -260,6 +270,9 @@ public struct FinTSConnector: BankConnector {
 						} catch is CancellationError where asks.closed && !Task.isCancelled {
 							helperLeft = true
 							break reading
+						} catch is OlderTransactionsSkipped {
+							process.send(Answer(id: id, skip: true))
+							continue
 						}
 						if ask.kind != "tanMethod", case let .tanMethod(method) = answer {
 							process.send(Answer(id: id, method: method))
@@ -300,6 +313,9 @@ public struct FinTSConnector: BankConnector {
 		do { try await process.ended() } catch { stopped = error }
 		await rejections.reported()
 		try Task.checkCancellation()
+		// A helper that ends in the middle of a line, killed or crashed, leaves a cut-off line that does
+		// not read. How it stopped says more, unless the app ended it.
+		if let stopped, process.firstFailure as? SyncFailure == HelperFailure.unreadable, !process.wasSignaled { throw stopped }
 		if let error = process.firstFailure ?? stopped ?? (helperLeft ? HelperFailure.noAnswer : nil) { throw error }
 	}
 }
@@ -317,8 +333,8 @@ extension FinTSConnector {
 			let trust, SecTrustEvaluateWithError(trust, &error) {
 			return "trusted"
 		}
-		let reason = error.map { CFErrorCopyDescription($0) as String } ?? "The server sent a certificate that does not read."
-		return "The certificate of the bank's server \(host) is not valid: \(reason)"
+		let reason = error.map { CFErrorCopyDescription($0) as String } ?? String(localized: "The server sent a certificate that does not read.")
+		return String(localized: "The certificate of the bank's server \(host) is not valid: \(reason)")
 	}
 }
 

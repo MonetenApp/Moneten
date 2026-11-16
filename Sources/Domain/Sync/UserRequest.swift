@@ -76,7 +76,7 @@ public struct LoginRequest: Sendable, Equatable {
 	}
 
 	/// The fields without a manifest.
-	public static let defaultFields = [Field(label: "Username", isSecret: false), Field(label: "Password", isSecret: true)]
+	public static let defaultFields = [Field(label: String(localized: "Username"), isSecret: false), Field(label: String(localized: "Password"), isSecret: true)]
 
 	public init(service: String, fields: [Field] = defaultFields, rejected: Bool = false) {
 		self.service = service
@@ -139,15 +139,26 @@ public struct PINRules: Sendable, Equatable {
 
 	/// The text that names the first rule that `pin` breaks, or nil when it breaks none.
 	public func check(_ pin: String, secretName: String = "PIN") -> String? {
-		let unit = digitsOnly ? "digits" : "characters"
-		if digitsOnly, !pin.allSatisfy({ $0.isASCII && $0.isNumber }) { return "The \(secretName) must be numeric." }
+		if digitsOnly, !pin.allSatisfy({ $0.isASCII && $0.isNumber }) { return String(localized: "The \(secretName) must be numeric.") }
 		if let refusedLength, let minLength, refusedLength < minLength, pin.count == refusedLength {
-			return "The FinTS server of the bank no longer accepts a \(secretName) of \(refusedLength) characters. Set a longer \(secretName) in the online banking of the bank first."
+			return String(localized: "The FinTS server of the bank no longer accepts a \(secretName) of \(refusedLength) characters. Set a longer \(secretName) in the online banking of the bank first.")
 		}
-		if let minLength, pin.count < minLength { return "The \(secretName) is too short. The minimum is \(minLength) \(unit)." }
-		if let maxLength, pin.count > maxLength { return "The \(secretName) is too long. The maximum is \(maxLength) \(unit)." }
+		if let minLength, pin.count < minLength {
+			return digitsOnly ? String(localized: "The \(secretName) is too short. The minimum is \(minLength) digits.")
+				: String(localized: "The \(secretName) is too short. The minimum is \(minLength) characters.")
+		}
+		if let maxLength, pin.count > maxLength {
+			return digitsOnly ? String(localized: "The \(secretName) is too long. The maximum is \(maxLength) digits.")
+				: String(localized: "The \(secretName) is too long. The maximum is \(maxLength) characters.")
+		}
 		return nil
 	}
+}
+
+/// The user canceled a second factor that the bank asked for transactions older than 90 days. The refresh
+/// goes on with the last 90 days in place of the full history.
+public struct OlderTransactionsSkipped: Error, Equatable {
+	public init() {}
 }
 
 public struct SecondFactorRequest: Sendable, Equatable {
@@ -167,12 +178,18 @@ public struct SecondFactorRequest: Sendable, Equatable {
 	public let field: TANField
 	/// The title of the confirm button, "Continue" or, when an extension asks for it, "Next".
 	public let confirmTitle: String
+	/// The bank may ask because the refresh requests transactions older than 90 days. "Cancel" then ends
+	/// only this request with `OlderTransactionsSkipped`, and the refresh fetches the last 90 days ("The
+	/// first refresh asks for the full history").
+	public let olderTransactions: Bool
 
 	public init(purpose: Purpose, system: System, loginOnly: Bool = false, challenge: Challenge, validity: Duration = .seconds(300),
-		methods: [TANMethod] = [], method: TANMethod.ID? = nil, field: TANField = TANField(), confirmTitle: String = "Continue") {
+		methods: [TANMethod] = [], method: TANMethod.ID? = nil, field: TANField = TANField(), confirmTitle: String = String(localized: "Continue"),
+		olderTransactions: Bool = false) {
 		self.purpose = purpose
 		self.system = system
 		self.loginOnly = loginOnly
+		self.olderTransactions = olderTransactions
 		self.challenge = challenge
 		self.validity = validity
 		self.methods = methods
@@ -369,21 +386,21 @@ public struct BrowserApproval: Sendable, Equatable {
 		default: false
 		}
 		if isFinal {
-			guard isMainFrame else { return .refuse("Only the page of the login may end it.") }
+			guard isMainFrame else { return .refuse(String(localized: "Only the page of the login may end it.")) }
 			var parameters: [String: String] = [:]
 			for part in [target.query, target.fragment].compactMap({ $0 }) {
 				for item in URLComponents(string: "?" + part)?.queryItems ?? [] where parameters[item.name] == nil {
 					parameters[item.name] = item.value
 				}
 			}
-			guard parameters["state"] == state else { return .fail("The login returned another state than the app sent. The login was not accepted.") }
+			guard parameters["state"] == state else { return .fail(String(localized: "The login returned another state than the app sent. The login was not accepted.")) }
 			let code = Self.codeParameters.lazy.compactMap { parameters[$0] }.first
 				?? parameters.first { $0.key.lowercased().hasSuffix("code") || $0.key.lowercased().hasSuffix("token") }?.value
-			guard let code, !code.isEmpty else { return .fail("The login ended without a code.") }
+			guard let code, !code.isEmpty else { return .fail(String(localized: "The login ended without a code.")) }
 			return .finish(code: code)
 		}
 		guard scheme == "https", target.port == nil, hosts.contains(host) else {
-			return .refuse("The login window may not open \(host.isEmpty || scheme != "https" && scheme != "http" ? "\(scheme)://\(host)" : host).")
+			return .refuse(String(localized: "The login window may not open \(host.isEmpty || scheme != "https" && scheme != "http" ? "\(scheme)://\(host)" : host)."))
 		}
 		return .load
 	}
@@ -414,12 +431,87 @@ public struct CaptchaRequest: Sendable, Equatable {
 	}
 }
 
-/// A photoTAN or QR code image as the bank sends it, in PNG or JPEG.
+/// A photoTAN or QR code image as the bank sends it. The bytes come from the bank, the FinTS helper, or
+/// an extension, and the image decoders of macOS have had exploited memory bugs. So the image keeps its
+/// bytes only when they pass the check of `Picture`: a PNG or JPEG signature, at most `maximumBytes`, and at
+/// most `maximumSide` pixels on each side as the header states. Real photoTAN images and QR codes have
+/// a few kilobytes and a few hundred pixels. An image that fails keeps nothing, and the dialog says
+/// that it cannot be shown.
 public struct ChallengeImage: Sendable, Equatable {
-	public let data: Data
+	public static let maximumBytes = 1_048_576
+	public static let maximumSide = 2048
+
+	public enum Format: Sendable, Equatable {
+		case png, jpeg
+	}
+
+	/// Bytes that passed the check, with the format and the size that their header states.
+	public struct Picture: Sendable, Equatable {
+		public let data: Data
+		public let format: Format
+		public let width: Int
+		public let height: Int
+
+		/// Reads only the signature and the header, never the image data.
+		init?(checking data: Data) {
+			guard data.count <= ChallengeImage.maximumBytes else { return nil }
+			let bytes = [UInt8](data)
+			let header: (Format, Int, Int)?
+			if bytes.starts(with: [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]) {
+				header = Self.pngSize(bytes).map { (.png, $0.width, $0.height) }
+			} else if bytes.starts(with: [0xFF, 0xD8, 0xFF]) {
+				header = Self.jpegSize(bytes).map { (.jpeg, $0.width, $0.height) }
+			} else {
+				header = nil
+			}
+			guard let (format, width, height) = header, (1...ChallengeImage.maximumSide).contains(width),
+				(1...ChallengeImage.maximumSide).contains(height) else { return nil }
+			self.data = data
+			self.format = format
+			self.width = width
+			self.height = height
+		}
+
+		/// The IHDR chunk, which a PNG must have first: its length 13, its name, the width, and the height.
+		private static func pngSize(_ bytes: [UInt8]) -> (width: Int, height: Int)? {
+			guard bytes.count >= 24, bytes[8..<16].elementsEqual([0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52]) else { return nil }
+			return (bigEndian(bytes, at: 16, count: 4), bigEndian(bytes, at: 20, count: 4))
+		}
+
+		/// The first frame header (SOF0 to SOF15 without DHT, JPG, and DAC), found by walking the segments.
+		/// A scan or the end of the image before it fails the check.
+		private static func jpegSize(_ bytes: [UInt8]) -> (width: Int, height: Int)? {
+			var index = 2
+			while index < bytes.count {
+				guard bytes[index] == 0xFF else { return nil }
+				index += 1
+				while index < bytes.count, bytes[index] == 0xFF { index += 1 }
+				guard index < bytes.count else { return nil }
+				let marker = bytes[index]
+				index += 1
+				if marker == 0x01 || (0xD0...0xD7).contains(marker) { continue }
+				guard marker != 0xD9, marker != 0xDA, index + 2 <= bytes.count else { return nil }
+				let length = bigEndian(bytes, at: index, count: 2)
+				guard length >= 2 else { return nil }
+				if (0xC0...0xCF).contains(marker), ![0xC4, 0xC8, 0xCC].contains(marker) {
+					guard length >= 7, index + 7 <= bytes.count else { return nil }
+					return (bigEndian(bytes, at: index + 5, count: 2), bigEndian(bytes, at: index + 3, count: 2))
+				}
+				index += length
+			}
+			return nil
+		}
+
+		private static func bigEndian(_ bytes: [UInt8], at index: Int, count: Int) -> Int {
+			bytes[index..<index + count].reduce(0) { $0 << 8 | Int($1) }
+		}
+	}
+
+	/// The checked bytes, or nil when they failed the check.
+	public let picture: Picture?
 
 	public init(_ data: Data) {
-		self.data = data
+		picture = Picture(checking: data)
 	}
 }
 

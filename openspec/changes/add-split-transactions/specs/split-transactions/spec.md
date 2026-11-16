@@ -71,6 +71,29 @@ The app SHALL split the remainder again when the user clicks "Next Split" in the
 - **WHEN** the user enters 25,00, clicks "Next Split", enters 15,00, and confirms
 - **THEN** the list shows parts of -25,00 €, -15,00 €, and -40,00 €
 
+#### Scenario: Confirm after keeping an amount
+
+- **GIVEN** a transaction of -89,00 €
+- **WHEN** the user enters 25,00, clicks "Next Split", and confirms with the amount field empty
+- **THEN** the list shows parts of -25,00 € and -64,00 €
+
+#### Scenario: An empty first amount
+
+- **WHEN** the user opens the split window and leaves the amount field empty
+- **THEN** the confirm button is disabled
+
+#### Scenario: An unsigned next amount follows the remainder
+
+- **GIVEN** a transaction of -80,00 €
+- **WHEN** the user enters 100,00, clicks "Next Split", enters 5,00, and confirms
+- **THEN** the list shows parts of -100,00 €, 5,00 €, and 15,00 €
+
+#### Scenario: An explicit next sign stays
+
+- **GIVEN** a transaction of -80,00 €
+- **WHEN** the user enters 100,00, clicks "Next Split", enters -5,00, and confirms
+- **THEN** the list shows parts of -100,00 €, -5,00 €, and 25,00 €
+
 #### Scenario: Split a part again
 
 - **GIVEN** the parts -25,00 € and -55,00 € of a transaction of -80,00 €
@@ -193,6 +216,20 @@ The app SHALL start with the rates 19 and 7 percent and let the user add, change
 
 - **WHEN** the user removes all rates
 - **THEN** the submenu contains no tax entries and still contains "Split Amount..."
+
+#### Scenario: Change a rate without changing the order
+
+- **GIVEN** the list contains 19, 7, and 20 percent in that order
+- **WHEN** the user changes 7 to 8,1
+- **THEN** the settings show 19%, 8.1%, and 20% in that order
+- **AND** the submenu shows the same order after the app restarts
+
+#### Scenario: Refuse an unreadable rate
+
+- **GIVEN** the list contains 19 and 7 percent
+- **WHEN** the user enters "7,125" and saves the rate
+- **THEN** the settings say "Enter a rate above zero with up to two decimal places."
+- **AND** the list stays at 19 and 7 percent
 
 ### Requirement: Only booked transactions can be split
 

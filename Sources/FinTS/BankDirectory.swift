@@ -11,16 +11,29 @@ public struct BankDirectory: Sendable {
 
 		public var id: String { code }
 
+		public init(code: String, city: String, bank: FinTSBank) {
+			self.code = code
+			self.city = city
+			self.bank = bank
+		}
+
 		/// The entry under the name of its brand, such as "VR-Bank Altenburger Land / Skatbank".
 		var branded: Entry {
 			guard let name = CooperativeBanks.brandNames[code] else { return self }
 			return Entry(code: code, city: city, bank: FinTSBank(name: name, bic: bank.bic, url: bank.url))
 		}
 
-		/// The directory keeps the Bankleitzahl of a merged bank as "Sparkasse Bonn -alt-".
-		var isObsolete: Bool {
+		/// The directory marks the entry of a merged bank as "Sparkasse Bonn -alt-", and once as "-alt". The
+		/// mark does not say that the Bankleitzahl is outdated: during a merger a bank may keep two in one
+		/// place, and the mark only tells them apart.
+		var isOfMergedBank: Bool {
 			let name = bank.name.trimmingCharacters(in: .whitespaces)
 			return name.hasSuffix("-alt-") || name.hasSuffix("-alt")
+		}
+
+		/// The note of the first step of "Add Account" and of "Supported Banks" for the entry of a merged bank.
+		public var mergerNote: String? {
+			isOfMergedBank ? String(localized: "This Bankleitzahl belongs to a bank that merged. If the login fails, ask your bank which Bankleitzahl it uses for online banking now.") : nil
 		}
 	}
 
@@ -41,6 +54,7 @@ public struct BankDirectory: Sendable {
 
 	public init(_ entries: [Entry]) {
 		let entries = entries.map(\.branded)
+		// Sorted once by name, so that the list without a search needs no sort.
 		self.entries = entries.map { entry in
 			let hint = entry.loginHint
 			let common = hint?.bankName ?? CooperativeBanks.knownNames[entry.code] ?? ""
@@ -48,6 +62,7 @@ public struct BankDirectory: Sendable {
 			return Indexed(entry: entry, start: start, words: Self.words(entry.bank.name) + Self.words(entry.city) + Self.words(common), hinted: hint != nil,
 				sortKey: Self.sortKey(entry))
 		}
+		.sorted { $0.sortKey < $1.sortKey }
 		byCode = Dictionary(entries.map { ($0.code, $0) }, uniquingKeysWith: { first, _ in first })
 	}
 
@@ -55,18 +70,28 @@ public struct BankDirectory: Sendable {
 		byCode[code]
 	}
 
+	/// The banks that the app reaches through FinTS: those with a FinTS address. Without a query they come
+	/// in the order of their names, and with one in the order of `search(_:)`.
+	public func reachable(_ query: String) -> [Entry] {
+		let found = query.contains(where: { $0.isLetter || $0.isNumber }) ? search(query) : entries.map(\.entry)
+		return found.filter { $0.bank.url != nil }
+	}
+
 	/// The banks whose name or place has every word of the query, or whose Bankleitzahl starts with
-	/// it. Banks with a FinTS address that are not old entries come first. Among them, a bank whose name starts with the query
+	/// it. The start of a Bankleitzahl is one word also when it is typed in groups, such as "760 30". Banks
+	/// with a FinTS address that are not entries of a merged bank come first. Among them, a bank whose name starts with the query
 	/// comes first, then a bank where each word starts a word of the name or place, and last a bank
 	/// where a word only appears inside a word, such as "sparkasse" in "Stadtsparkasse". Banks of the
 	/// same name are in the order of their places.
 	public func search(_ query: String) -> [Entry] {
-		let terms = query.split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map { Set(Self.spellings(String($0))) }
+		let digits = query.filter { !$0.isWhitespace }
+		let words = !digits.isEmpty && digits.allSatisfy(\.isNumber) ? [digits] : query.split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init)
+		let terms = words.map { Set(Self.spellings($0)) }
 		guard !terms.isEmpty else { return [] }
 		var found: [(rank: Int, indexed: Indexed)] = []
 		for indexed in entries {
 			guard let rank = Self.rank(indexed, terms) else { continue }
-			found.append((indexed.entry.bank.url == nil || indexed.entry.isObsolete ? rank + 3 : rank, indexed))
+			found.append((indexed.entry.bank.url == nil || indexed.entry.isOfMergedBank ? rank + 3 : rank, indexed))
 		}
 		return found.sorted { ($0.rank, $0.indexed.hinted ? 0 : 1, $0.indexed.sortKey) < ($1.rank, $1.indexed.hinted ? 0 : 1, $1.indexed.sortKey) }
 			.map(\.indexed.entry)
@@ -88,7 +113,7 @@ public struct BankDirectory: Sendable {
 	}
 
 	/// "München" as "muenchen" and as "munchen", and "Société" as "société" and "societe".
-	private static func spellings(_ word: String) -> [String] {
+	static func spellings(_ word: String) -> [String] {
 		let spelledOut = TextFolding.fold(word)
 		let stripped = word.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil).lowercased()
 		return spelledOut == stripped ? [stripped] : [spelledOut, stripped]

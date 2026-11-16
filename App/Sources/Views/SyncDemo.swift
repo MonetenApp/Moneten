@@ -38,6 +38,7 @@ enum SyncDemo {
 		("tan", secondFactor(.enterTAN(prompt: "Bitte geben Sie die TAN für den Auftrag vom 09.11.2026 ein", image: nil))),
 		("smstan", secondFactor(.enterTAN(prompt: "Bitte geben Sie die TAN aus der SMS an Handy Firma ein.", image: nil), purpose: .login, method: "901")),
 		("phototan", secondFactor(.enterTAN(prompt: "Bitte scannen Sie die Grafik mit Ihrer photoTAN-App.", image: qrCode("Moneten photoTAN demo")), method: "913")),
+		("badphototan", secondFactor(.enterTAN(prompt: "Bitte scannen Sie die Grafik mit Ihrer photoTAN-App.", image: ChallengeImage(hugePNG)), method: "913")),
 		("flicker", secondFactor(.flickerCode(prompt: "Halten Sie den TAN-Generator vor die Grafik.", code: FlickerCode(hex: "1784011049304330363034353930")!), method: "912")),
 		("approve", secondFactor(.approveInApp(prompt: "Bitte bestätigen Sie den Vorgang in Ihrer pushTAN-App.", app: "pushTAN", image: nil, step: nil), purpose: .login,
 			method: "922")),
@@ -65,6 +66,10 @@ enum SyncDemo {
 		let connector = ScriptedConnector(asks + [.progress(.fetching(done: 0, of: 2)), .wait(.seconds(1))] + accounts.map { .fetched($0.accountID) })
 		coordinator.refresh(RefreshRequest(access: access, accounts: accounts), with: connector, attended: true)
 	}
+
+	/// The header of a PNG that states 50000 by 50000 pixels, which the dialog must not decode.
+	private static let hugePNG = Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,
+		0x00, 0x00, 0xC3, 0x50, 0x00, 0x00, 0xC3, 0x50, 0x08, 0x06, 0x00, 0x00, 0x00]) + Data(count: 871)
 
 	/// A QR code as PNG data, in place of the image of a bank.
 	private static func qrCode(_ text: String) -> ChallengeImage? {
@@ -101,6 +106,7 @@ private struct SyncDemoPreview: View {
 #Preview("No list of TAN media") { SyncDemoPreview(name: "nomedia") }
 #Preview("Enter TAN") { SyncDemoPreview(name: "tan") }
 #Preview("photoTAN") { SyncDemoPreview(name: "phototan") }
+#Preview("photoTAN image that cannot be shown") { SyncDemoPreview(name: "badphototan") }
 #Preview("Flicker code") { SyncDemoPreview(name: "flicker") }
 #Preview("Approve in app") { SyncDemoPreview(name: "approve") }
 #Preview("QR code in app") { SyncDemoPreview(name: "qrapprove") }

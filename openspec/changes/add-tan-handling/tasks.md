@@ -5,7 +5,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 ## 1. Requirements
 
 - [ ] 1.1 One dialog for every source. Built for FinTS, verified by FinTSConnectorTests "Asks for the TAN method, the TAN medium, and TANs with a flicker code or an image" and the debug app check. Extensions come with E6.
-- [x] 1.2 State the purpose and the system. Verified by the debug app check, which shows "The FinTS server of “Musterbank” needs a confirmation to allow the download of transactions." and "... to allow the login.", and the website for the QR code that is confirmed in an app.
+- [x] 1.2 State the purpose and the system. Verified by the debug app check, which shows "The FinTS server of “Musterbank” needs a confirmation to allow the download of transactions." and "... to allow the login.", and the website for the QR code that is confirmed in an app. A challenge of the dialog start that hbci4java sends in `execute` is for the login, and only a challenge after the orders (`DialogEvent.JOBS_CREATED`) is for the download, verified by FinTSHelper self-test "a challenge before the orders is for the login, also in a refresh of the full history" (#264).
 - [ ] 1.3 Mark a TAN that covers only the login. Built in the dialog and shown by the `SyncDemo` request "order". Orders come with v0.2.
 - [x] 1.4 Choose the TAN method. Verified by FinTSConnectorTests "Asks for the TAN method, the TAN medium, and TANs..." and the debug app check of "Choose TAN method". One method shows as its name without a menu.
 - [ ] 1.5 Remember the TAN method. Built: the state of the access keeps the method, and hbci4java asks again when the bank no longer offers it. Check with a real bank.
@@ -32,6 +32,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [x] 1.26 One dialog at a time. Verified by SyncCoordinatorTests "Two accesses that ask at the same time get one dialog after the other" and TANDialogTests "While the progress of one access shows, the dialog of another waits...".
 - [x] 1.27 Cancel the dialog. Verified by SyncCoordinatorTests "Canceling the dialog stops only its access".
 - [ ] 1.28 No dialog when no TAN is needed. Built by hbci4java, which asks only when the bank sends a challenge. Check with a real bank.
+- [x] 1.29 Checked challenge images. Verified by ChallengeImageTests, which accept a PNG and a JPEG and reject a TIFF, a HEIC, a GIF, a file over 1 MB, and a PNG that states 50000 by 50000 pixels, ChallengePictureTests, which decode only the checked type, and the debug app check of the `SyncDemo` request "badphototan" (#325).
 
 ## 2. Build
 

@@ -132,7 +132,7 @@ The app SHALL fetch transactions in the CAMT format when the bank offers it for 
 
 ### Requirement: A normal refresh asks for at most 90 days
 
-The app SHALL ask in a normal refresh for the transactions since the last successful fetch of the account with an overlap of 14 days, or from its oldest pending transaction when that is earlier, and for no more than the last 90 days. The bank then needs no TAN for older transactions, and the refresh can remove a pending transaction that the bank dropped.
+The app SHALL ask in a normal refresh for the transactions since the last successful fetch of the account with an overlap of 14 days, or from its oldest pending transaction when that is earlier, and for no more than the last 90 days. The bank then needs no TAN for older transactions, and the refresh can remove a pending transaction that the bank dropped. Only when the 90 days start after the day of the last successful fetch does the account view say that older transactions may be missing.
 
 #### Scenario: Daily use
 
@@ -153,9 +153,23 @@ The app SHALL ask in a normal refresh for the transactions since the last succes
 - **THEN** the app asks for the last 90 days
 - **AND** the account view says that older transactions may be missing and names "Refresh Account (enforced)"
 
+#### Scenario: Pause shorter than 90 days
+
+- **GIVEN** today is 16.11.2026 and the last successful fetch of "Giro" was 80 days ago, on 28.08.2026
+- **WHEN** a normal refresh runs
+- **THEN** the app asks for the transactions from 18.08.2026 on, 90 days ago
+- **AND** the account view says nothing about missing older transactions
+
+#### Scenario: Pending transaction older than 90 days
+
+- **GIVEN** the last successful fetch of "Giro" was yesterday and "Giro" has a pending transaction of -500,00 € from 120 days ago
+- **WHEN** a normal refresh runs
+- **THEN** the app asks for the last 90 days
+- **AND** the account view says nothing about missing older transactions
+
 ### Requirement: The first refresh asks for the full history
 
-The app SHALL ask in the first refresh of a new account for all transactions that the bank keeps. When the bank asks for a TAN for transactions older than 90 days and the user cancels that TAN, the app fetches the last 90 days.
+The app SHALL ask in the first refresh of a new account for all transactions that the bank keeps. When the bank asks for a TAN or a confirmation for transactions older than 90 days and the user cancels it, the app fetches the last 90 days. The account view then says that older transactions may be missing, until a refresh brings the full history of the account. The note stays with the account.
 
 #### Scenario: Bank keeps 450 days
 
@@ -168,6 +182,33 @@ The app SHALL ask in the first refresh of a new account for all transactions tha
 - **WHEN** the bank asks for a TAN for transactions older than 90 days and the user cancels
 - **THEN** the list of "Giro" contains the last 90 days
 - **AND** the account shows no error
+- **AND** the account view says "Older transactions may be missing. Choose “Refresh Account (enforced)” with the Option key to fetch them."
+
+#### Scenario: Confirmation for older transactions canceled before the bank answers
+
+- **GIVEN** the bank asks for a confirmation in the banking app for transactions older than 90 days
+- **WHEN** the user rejects the request in the banking app and clicks "Cancel" in the app before the app asks the bank about the confirmation again
+- **THEN** the list of "Giro" contains the last 90 days
+- **AND** the account shows no error
+
+#### Scenario: The note stays after a lock
+
+- **GIVEN** the account view of "Giro" says that older transactions may be missing
+- **WHEN** the user locks the app and unlocks it, or quits the app and starts it again
+- **THEN** the account view of "Giro" still says that older transactions may be missing
+
+#### Scenario: The note stays after an export and an import
+
+- **GIVEN** the account view of "Giro" says that older transactions may be missing
+- **WHEN** the user chooses "Export All Data..." and imports the file with "Import All Data..." into an empty database
+- **THEN** the account view of "Giro" says that older transactions may be missing
+
+#### Scenario: Enforced refresh after the canceled TAN
+
+- **GIVEN** the first refresh of "Giro" brought the last 90 days after the user canceled the TAN for older transactions, and the bank balance and the computed balance of "Giro" are 10.000,00 €
+- **WHEN** the user chooses "Refresh Account (enforced)", enters the TAN, and the bank delivers older transactions that add up to -500,00 € with a bank balance of 10.000,00 €
+- **THEN** the computed balance of "Giro" is 10.000,00 €, not 9.500,00 €
+- **AND** the account view no longer says that older transactions may be missing
 
 ### Requirement: Enforced refresh
 
@@ -313,6 +354,72 @@ The app SHALL ask for the name of the apoTAN device in a text field that may sta
 - **WHEN** the dialog opens
 - **THEN** the dialog asks for the name of the TAN medium, and "Continue" stays disabled while the field is empty
 
+### Requirement: Fetch a credit card through its card statement
+
+The app SHALL fetch the transactions and the balance of a credit card from its card statement when the bank allows the card statement for the card and no transaction list.
+
+#### Scenario: Card with only the card statement
+
+- **GIVEN** the bank allows only the card statement for the credit card "Visa" with the card number 1234567890123456
+- **AND** the card statement reports the debit 19,90 with the mark "D", booked on 09.11.2026 with the value date 08.11.2026, for "Streaming Beispiel" in "Musterstadt"
+- **WHEN** the user refreshes "Visa" from 01.10.2026
+- **THEN** the app asks the bank for the card statement of the card number 1234567890123456 from 01.10.2026
+- **AND** the list shows -19,90 € with the name "Streaming Beispiel" and the purpose "Streaming Beispiel / Musterstadt", booked on 09.11.2026 with the value date 08.11.2026
+
+#### Scenario: Card with the balance and the card statement
+
+- **GIVEN** the bank allows the balance and the card statement for "Visa", and no transaction list
+- **WHEN** the user refreshes "Visa"
+- **THEN** the app fetches the card statement, which brings the balance and the transactions of "Visa"
+- **AND** the account view does not say that the bank provides no transactions for this account
+
+#### Scenario: Sign of a credit
+
+- **WHEN** the card statement reports the amount 25,00 with the mark "C"
+- **THEN** the list shows +25,00 €
+
+#### Scenario: Balance of the card
+
+- **WHEN** the card statement reports the balance 1.234,56 with the mark "D" on 12.11.2026
+- **THEN** "Visa" shows the balance -1.234,56 € on 12.11.2026, the amount that the user owes on the card
+
+#### Scenario: Balance in two parts of the answer
+
+- **WHEN** the first part of the card statement reports the balance -80,10 € and the second part -95,00 €
+- **THEN** "Visa" shows the balance -80,10 €
+
+#### Scenario: Repeated fetch
+
+- **GIVEN** "Visa" has the payment of -19,90 € from 09.11.2026 from the last refresh
+- **WHEN** the next refresh brings the same payment again
+- **THEN** the list shows the payment once
+
+#### Scenario: Payment that is not final
+
+- **GIVEN** the card statement reports a hotel reservation of -150,00 € as not final
+- **WHEN** the refresh ends
+- **THEN** the list shows the reservation as a pending transaction
+- **AND** when a later refresh no longer reports the reservation, the list no longer shows it
+
+#### Scenario: Reservation that gets booked
+
+- **GIVEN** "Visa" shows the pending reservation of -150,00 € for "Hotel Beispiel" from 10.11.2026, with the comment "Trip", the category "Travel", and a checkmark
+- **WHEN** the next refresh reports the same payment as final, booked on 12.11.2026
+- **THEN** the list shows one transaction of -150,00 € for "Hotel Beispiel", booked on 12.11.2026 and no longer pending
+- **AND** the transaction keeps the comment "Trip", the category "Travel", and the checkmark
+
+#### Scenario: Original amount with three decimals
+
+- **WHEN** the card statement reports a payment of -3,69 € with the original amount 1,234 Kuwaiti dinar
+- **THEN** the list shows the payment with -3,69 €
+
+#### Scenario: A row that does not read
+
+- **GIVEN** the login "erika77" has the giro account "Giro" and the credit card "Visa"
+- **WHEN** the card statement of "Visa" has a row without an amount
+- **THEN** "Visa" fails with "The bank sent a card transaction that does not read, so nothing of this card was stored." and keeps its transactions
+- **AND** "Giro" gets its balance and its transactions
+
 ### Requirement: Read the value of a securities account
 
 The app SHALL fetch the value of a securities account through the custody account balance (HKWPD) in place of its balance and transactions when the bank allows it, and store it with the date of the statement as the value of the portfolio on that day. The value sums the totals of all pages of the statement, or the values and accrued interest of the holdings of a page without a total. When the app cannot read a value, the account says why.
@@ -367,6 +474,18 @@ The app SHALL fetch the value of a securities account through the custody accoun
 - **GIVEN** a login at Consorsbank, whose bank parameters say that no order needs a TAN
 - **WHEN** the app refreshes a giro account and a securities account of the login
 - **THEN** the balance and the transactions go with HKTAN, and the custody account balance goes without HKTAN
+
+#### Scenario: DAB BNP Paribas on the server of Consorsbank
+
+- **GIVEN** a login at DAB BNP Paribas, whose FinTS server is brokerage-hbci.consorsbank.de
+- **WHEN** the app refreshes a giro account and a securities account of the login
+- **THEN** the balance and the transactions go with HKTAN, and the custody account balance goes without HKTAN
+
+#### Scenario: Another server with a similar name
+
+- **GIVEN** a login whose FinTS server is brokerage-hbci-other.consorsbank.de or brokerage-hbci.other.consorsbank.de
+- **WHEN** the app refreshes a giro account and a securities account of the login
+- **THEN** every order goes with or without HKTAN as the bank parameters say
 
 ### Requirement: Recognize a securities account by its jobs
 

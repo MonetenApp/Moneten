@@ -51,7 +51,7 @@ public final class SyncCoordinator {
 	/// Runs on the main actor when the refresh of an access ended, before `ended`, with the notices that its
 	/// bank sent, such as planned maintenance, also when the access failed after them (`FailureWithNotices`).
 	/// A canceled refresh brings none.
-	@ObservationIgnored public var noticed: @MainActor (UUID, [BankMessage]) -> Void = { _, _ in }
+	@ObservationIgnored public var noticed: @MainActor (Access, [BankMessage]) -> Void = { _, _ in }
 	/// Runs on the main actor when a run ended: the first refresh started it, the refreshes that started
 	/// while it went joined it, and the last one ended. The notification about new transactions comes once per run.
 	@ObservationIgnored public var runEnded: @MainActor () -> Void = {}
@@ -326,7 +326,7 @@ public final class SyncCoordinator {
 				afterRun[access.id] = afterRun[access.id].map { $0.attended ? again.adding($0) : again } ?? again
 			}
 			// The cancel can also come while `deliver` waits, after the connector returned its report.
-			if !Task.isCancelled, !notices.isEmpty { noticed(access.id, notices) }
+			if !Task.isCancelled, !notices.isEmpty { noticed(access, notices) }
 			if let state { storeState(access.id, state, attendance.isOn) }
 			ended(access.id, end.accountRefreshes(of: accountIDs, notices: notices, at: Date()), attendance.isOn)
 			if var next = afterRun.removeValue(forKey: access.id) {

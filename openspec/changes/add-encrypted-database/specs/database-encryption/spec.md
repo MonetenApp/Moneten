@@ -72,7 +72,7 @@ The app SHALL, while no database password is set, encrypt the database with a ra
 
 ### Requirement: Set a password later
 
-The app SHALL offer "Set Database Password..." in the application menu and in the "Security" settings while no password is set. Setting a password encrypts the database with the new key and removes the random key from the Keychain.
+The app SHALL offer "Set Database Password..." in the application menu and in the "Security" settings while no password is set. Setting a password encrypts the database and the copies that the app keeps in the database folder with the new key, and then removes the random key from the Keychain. When a copy cannot be encrypted again, the app keeps the random key, so the copy still opens, and names the copy.
 
 #### Scenario: Set after some weeks of use
 
@@ -81,6 +81,20 @@ The app SHALL offer "Set Database Password..." in the application menu and in th
 - **THEN** all 3 accounts and their transactions are still present
 - **AND** the hint in the sidebar is gone
 - **AND** the Keychain no longer holds a key for the database
+
+#### Scenario: Copies follow the first password
+
+- **GIVEN** a database without a password and an automatic backup copy from the last upgrade
+- **WHEN** the user sets the password "korrekt-pferd-batterie"
+- **THEN** "korrekt-pferd-batterie" opens the automatic backup copy
+- **AND** the Keychain no longer holds a key for the database
+
+#### Scenario: A copy cannot be encrypted again
+
+- **GIVEN** a database without a password and a write-protected automatic backup copy
+- **WHEN** the user sets the password "korrekt-pferd-batterie"
+- **THEN** the app shows that the password has been set and names the path of the backup copy
+- **AND** the random key in the Keychain still opens the backup copy
 
 ### Requirement: The new password is entered twice
 
@@ -141,6 +155,60 @@ The app SHALL offer "Change Database Password..." while a password is set. The s
 
 - **WHEN** the user enters the current password as the new password
 - **THEN** the app shows that the new password must not be identical to the old password
+
+### Requirement: Copies in the database folder follow a password change
+
+The app SHALL encrypt the copies that it keeps in the database folder, the automatic backup copy and the copies of a damaged file, with the new password when the password changes. It removes a copy that the old password opened and that it cannot encrypt again. When it cannot read a copy, it names the copy and keeps the old password. A change that stops halfway is finished at the next start.
+
+#### Scenario: Copies in the database folder follow the change
+
+- **GIVEN** a database with the password "alt-und-lang-genug", an automatic backup copy from the last upgrade, and a copy of a damaged file in the database folder
+- **WHEN** the user changes the password to "neu-und-noch-laenger"
+- **THEN** "neu-und-noch-laenger" opens the automatic backup copy and "alt-und-lang-genug" does not
+- **AND** "alt-und-lang-genug" opens no file in the database folder
+
+#### Scenario: The Mac stops during the change
+
+- **GIVEN** a database with the password "alt-und-lang-genug" and an automatic backup copy
+- **WHEN** the Mac stops after the database took the password "neu-und-noch-laenger" and before the backup copy did
+- **THEN** at the next start "neu-und-noch-laenger" opens the database
+- **AND** "alt-und-lang-genug" opens no file in the database folder
+
+#### Scenario: A copy is in use
+
+- **GIVEN** a database with the password "alt-und-lang-genug" and a copy of a damaged file that another program has locked
+- **WHEN** the user changes the password to "neu-und-noch-laenger"
+- **THEN** the app names the path of the copy that it could not read
+- **AND** "alt-und-lang-genug" still opens the database and the copy
+
+### Requirement: A copy in use stops the first password
+
+The app SHALL set no first password while it cannot read a copy that it keeps in the database folder. It names the copy, and the random key still opens the database and every copy.
+
+#### Scenario: A copy is in use
+
+- **GIVEN** a database without a password and an automatic backup copy that another program has locked
+- **WHEN** the user sets the password "korrekt-pferd-batterie"
+- **THEN** the app names the path of the backup copy
+- **AND** the database and the backup copy still open without a password
+
+### Requirement: Work files go before a password change
+
+The app SHALL remove the work files that an interrupted upgrade or repair left in the database folder before it sets or changes the database password. When it cannot remove one, it names the file and changes no key.
+
+#### Scenario: A work file stops the change
+
+- **GIVEN** a database with the password "alt-und-lang-genug" and a work file of an interrupted upgrade that the app cannot remove
+- **WHEN** the user changes the password to "neu-und-noch-laenger"
+- **THEN** the app names the path of the work file
+- **AND** "alt-und-lang-genug" still opens the database and the work file
+
+#### Scenario: A work file stops the first password
+
+- **GIVEN** a database without a password and a work file of an interrupted upgrade that the app cannot remove
+- **WHEN** the user sets the password "korrekt-pferd-batterie"
+- **THEN** the app names the path of the work file
+- **AND** the database still opens without a password
 
 ### Requirement: A failed password change leaves the database usable
 
@@ -211,6 +279,35 @@ The app SHALL, when an update of the app needs a new database layout, first save
 - **THEN** the app shows that it could not upgrade the database
 - **AND** the database of version 0.1 is unchanged and still opens with version 0.1
 
+#### Scenario: Last change before an unexpected stop
+
+- **GIVEN** a database from version 0.1 and the account "Tagesgeld", which version 0.1 saved right before the Mac stopped
+- **WHEN** the user starts version 0.2
+- **THEN** the backup copy and the upgraded database both hold "Tagesgeld"
+
+#### Scenario: Another program uses the database
+
+- **GIVEN** a database from version 0.1 that another program is reading or writing
+- **WHEN** the user starts version 0.2
+- **THEN** the app shows that it could not upgrade the database
+- **AND** the database of version 0.1 is unchanged
+
+### Requirement: Deleted data leaves no trace in the database file
+
+The app SHALL overwrite deleted data in the database file with zeros, also in pages that become free. A copy of the database, such as the automatic backup copy or a "Back Up", then holds no deleted data either.
+
+#### Scenario: Remove a saved PIN
+
+- **GIVEN** an access with the saved PIN "48151"
+- **WHEN** the user clicks "Remove saved PIN" and clicks "OK"
+- **THEN** no page of the database file holds "48151", also when a person decrypts every page with the database password
+
+#### Scenario: PIN removed before an update
+
+- **GIVEN** a database from version 0.1 in which the user removed the saved PIN "48151"
+- **WHEN** the user starts version 0.2, which upgrades the database, and then chooses "Back Up"
+- **THEN** no decrypted page of the database file, of the automatic backup copy, or of the backup holds "48151"
+
 ### Requirement: Refuse a database from a newer version
 
 The app SHALL refuse to open a database that a newer version of the app has upgraded. The message names the lowest version that can open the database and the version that is running. The app does not change the file.
@@ -221,6 +318,13 @@ The app SHALL refuse to open a database that a newer version of the app has upgr
 - **WHEN** the user starts version 0.2
 - **THEN** the app shows that at least version 0.3 is needed and that version 0.2 is running
 - **AND** the database file is unchanged
+
+#### Scenario: Newer database waiting for a repair
+
+- **GIVEN** a database that version 0.3 has upgraded and that waits for a repair at the next start
+- **WHEN** the user starts version 0.2
+- **THEN** the app shows that at least version 0.3 is needed
+- **AND** the database file is unchanged and no copy of it is made
 
 ### Requirement: Only one running copy uses the database
 
@@ -246,7 +350,7 @@ The app SHALL notice when the database file was replaced or changed outside the 
 
 ### Requirement: Explain every problem with the database file
 
-The app SHALL show a separate message for each of these cases, with the path of the file and what the user can do. The database file has no content. The path of the database file is a folder. The file is write-protected. The user account has no write permission for the database folder. The app starts a new database only when the database folder holds no files.
+The app SHALL show a separate message for each of these cases, with the path of the file and what the user can do. The database file has no content. The path of the database file is a folder. The file is write-protected. The user account has no write permission for the database folder. The database file is missing. The app starts a new database only when the database folder holds no files.
 
 #### Scenario: Write-protected file
 
@@ -254,6 +358,13 @@ The app SHALL show a separate message for each of these cases, with the path of 
 - **WHEN** the user starts the app
 - **THEN** the app shows that the database file is write-protected, with its path
 - **AND** the app does not start with an empty database
+
+#### Scenario: File moved away while the app is locked
+
+- **GIVEN** a locked app and a database with a password
+- **WHEN** the user moves "Moneten.sqlite" out of the database folder and enters the password
+- **THEN** the app shows that the database file is missing, with its path
+- **AND** the database folder holds no new "Moneten.sqlite"
 
 #### Scenario: File without content
 

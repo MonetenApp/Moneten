@@ -35,6 +35,7 @@ extension SidebarSelection {
 		case .account: "account"
 		case .group: "group"
 		case .category: "category"
+		case .search: "search"
 		}
 	}
 }
@@ -58,7 +59,7 @@ extension TransactionFilter {
 	/// The kinds of the active filters, without their values. The trail and `debug.log` both use them.
 	var activeKinds: [StaticString] {
 		let kinds: [(Bool, StaticString)] = [(!searchText.isEmpty, "search"), (period != .all, "period"), (status != .all, "status"), (amount != .all, "amount"),
-			(categoryID != nil, "category"), (accountID != nil, "account")]
+			(categoryID != nil, "category"), (account != nil, "account")]
 		return kinds.filter(\.0).map(\.1)
 	}
 

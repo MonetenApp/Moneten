@@ -22,11 +22,13 @@ struct Command: Encodable {
 
 /// The answer of the user to a request of the helper. `method` in place of `value` changes the TAN
 /// method of a challenge on screen, and the helper then requests a new challenge with that method.
+/// `skip` cancels a challenge for older transactions, and the helper then fetches the last 90 days.
 struct Answer: Encodable {
 	var type = "answer"
 	let id: Int
 	var value: String?
 	var method: String?
+	var skip: Bool?
 }
 
 /// A line from the helper.
@@ -122,6 +124,9 @@ struct Ask: Decodable {
 	let image: Data?
 	/// The flicker code as hbci4java renders it from the HHDuc of the bank.
 	let flicker: String?
+	/// The challenge comes while the refresh asks for the full history of an account, so the bank may ask
+	/// for it because of transactions older than 90 days.
+	let history: Bool?
 
 	struct Rules: Decodable {
 		let minLength: Int?
@@ -181,7 +186,7 @@ struct Ask: Decodable {
 
 	private func secondFactor(_ challenge: Challenge, methods: [TANMethod]) -> UserRequest {
 		.secondFactor(SecondFactorRequest(purpose: purpose == "login" ? .login : .download, system: .fintsServer, challenge: challenge, methods: methods,
-			method: current))
+			method: current, olderTransactions: history == true))
 	}
 }
 
@@ -306,16 +311,21 @@ struct AccountResult: Decodable {
 
 	func outcome(of account: AccountRequest) throws -> (AccountOutcome, [BankMessage]) {
 		guard balance != nil || transactions != nil else {
-			return (.failed(shownError?.failure ?? .bank(BankMessage(text: "The bank sent nothing for this account."))), [])
+			return (.failed(shownError?.failure ?? .bank(BankMessage(text: String(localized: "The bank sent nothing for this account.")))), [])
 		}
 		let money = try balance.map { try Self.money($0.amount, $0.currency) }
 		let fetched = try transactions.map { t in
 			FetchedTransactions(rows: try t.rows.map { try $0.transaction(of: account) }, from: try t.from.map(Self.day))
 		}
 		let transactionFailure = shownError?.failure
+		// Older transactions may be missing when the answer starts after the last successful fetch: the 90 days of a
+		// normal refresh after a long pause, or a canceled challenge for older transactions. The start that the
+		// request asked for is no measure, because it reaches 14 days or a pending row back. A mark from before
+		// is the account's own, and the merge keeps it until a full history.
+		let missesOlder = fetched?.from.map { from in account.lastFetched.map { $0 < from } ?? true } ?? false
 		let result = RefreshResult(balance: money, balanceDate: try balance?.date.map { try Self.day($0).date() }, transactions: fetched,
 			isComplete: transactions != nil && transactions?.from == nil, transactionFailure: transactionFailure, isPortfolio: securities == true,
-			holdings: try holdings?.map { try $0.holding(of: account) })
+			holdings: try holdings?.map { try $0.holding(of: account) }, missesOlder: missesOlder)
 		let notices = errors.map { BankMessage(code: $0.code, text: $0.text, accountName: account.name) }
 		return (.fetched(result), transactionFailure == nil ? notices : [])
 	}
@@ -417,19 +427,21 @@ private struct AccountLine: Decodable {
 
 /// Failures of the helper itself, as the app shows them.
 enum HelperFailure {
-	static let unreadable = SyncFailure.network("The FinTS helper sent a line that Moneten cannot read.")
-	static let noAnswer = SyncFailure.network("The FinTS helper ended without an answer.")
-	static let noProductID = SyncFailure.unsupported("This build of Moneten has no FinTS product ID, and banks accept only registered apps.")
-	static let insecure = SyncFailure.unsupported("The bank offers no encrypted FinTS address.")
-	static let noBookingDate = SyncFailure.unsupported("The bank sent a transaction without a booking date, so nothing of this account was stored.")
-	static let clash = SyncFailure.unsupported("Two accounts of this access are the same account at the bank.")
-	static let timeout = SyncFailure.network("The connection to the FinTS server of the bank timed out. Try again later.")
+	static let unreadable = SyncFailure.network(String(localized: "The FinTS helper sent a line that Moneten cannot read."))
+	static let noAnswer = SyncFailure.network(String(localized: "The FinTS helper ended without an answer."))
+	static let noProductID = SyncFailure.unsupported(String(localized: "This build of Moneten has no FinTS product ID, and banks accept only registered apps."))
+	static let insecure = SyncFailure.unsupported(String(localized: "The bank offers no encrypted FinTS address."))
+	static let noBookingDate = SyncFailure.unsupported(String(localized: "The bank sent a transaction without a booking date, so nothing of this account was stored."))
+	static let clash = SyncFailure.unsupported(String(localized: "Two accounts of this access are the same account at the bank."))
+	static let timeout = SyncFailure.network(String(localized: "The connection to the FinTS server of the bank timed out. Try again later."))
+	static let lineTooLong = SyncFailure.network(String(localized: "The FinTS helper sent a message larger than \(HelperProcess.lineLimit >> 20) MiB, which Moneten does not read."))
 
 	static func stopped(_ status: Int32, signal: Bool) -> SyncFailure {
-		.network("The FinTS helper stopped unexpectedly (\(signal ? "signal" : "status") \(status)).")
+		.network(signal ? String(localized: "The FinTS helper stopped unexpectedly (signal \(status)).")
+			: String(localized: "The FinTS helper stopped unexpectedly (status \(status))."))
 	}
 
 	static func notStarted(_ error: Error) -> SyncFailure {
-		.network("The FinTS helper could not start: \(error.localizedDescription)")
+		.network(String(localized: "The FinTS helper could not start: \(error.localizedDescription)"))
 	}
 }

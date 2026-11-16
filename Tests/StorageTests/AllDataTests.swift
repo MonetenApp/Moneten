@@ -206,7 +206,7 @@ struct AllDataTests {
 		let giro = Account(groupID: privat.id, position: 2, name: "Girokonto", kind: .giro, source: .bank, iban: "DE02120300000000202051", bankBalanceMinor: 250_000,
 			refreshedAt: Date(timeIntervalSince1970: 1_794_650_000.5),
 			refreshError: RefreshError(message: "Die PIN ist falsch.", code: "9931", date: Date(timeIntervalSince1970: 1_794_660_000), notices: ["Wartung am Sonntag"]),
-			refreshInterval: .onceADay)
+			refreshInterval: .onceADay, missesOlderTransactions: true)
 		let linked = try store.add(access, state: AccessState(Data("bank parameters".utf8)), accounts: [giro])
 		try store.savePIN(Secret("24680"), for: linked.access.id)
 		let bank = try #require(linked.accounts.first)
@@ -234,6 +234,17 @@ struct AllDataTests {
 				marketValue: Money(minorUnits: 100_241, currency: "EUR"), purchasePrice: Quote(amount: 70, currency: "EUR"),
 				exchangeRate: ExchangeRate(base: "EUR", quoted: "USD", rate: Decimal(string: "1.0832")!))).insert(db)
 		}
+		var power = TransactionFilter()
+		power.searchText = "name:Stadtwerke"
+		power.status = .checked
+		power.amount = .range(min: -2_000, max: Decimal(string: "-0.5"))
+		power.categoryID = pets.id
+		power.account = .account(migrated.id)
+		_ = try store.appendSavedSearch(name: "Strom", period: .custom(Day(year: 2026, month: 10, day: 1), Day(year: 2026, month: 11, day: 30)), filter: power)
+		var recent = TransactionFilter()
+		recent.amount = .withdrawals
+		recent.account = .group(household.id)
+		_ = try store.appendSavedSearch(name: "Last 30 days", period: .days30, filter: recent)
 		return store
 	}
 
@@ -266,6 +277,59 @@ struct AllDataTests {
 		let depot = try #require(before.accounts.first { $0.name == "Depot" })
 		#expect(after.portfolioValues(of: depot.id) == before.portfolioValues(of: depot.id))
 		#expect(Set(try target.deletedTransactions()) == Set(try source.deletedTransactions()))
+		#expect(try target.savedSearches() == source.savedSearches())
+		#expect(try target.savedSearches().map(\.name) == ["Strom", "Last 30 days"])
+	}
+
+	@Test("A saved search keeps its period, its filters, and the ends of its amount range as decimal text")
+	func savedSearchFields() throws {
+		let text = String(decoding: try filledStore().exportAllData(at: exportedAt).json(), as: UTF8.self)
+		#expect(text.contains(#""searchText" : "name:Stadtwerke""#))
+		#expect(text.contains(#""start" : "2026-10-01""#) && text.contains(#""end" : "2026-11-30""#) && text.contains(#""kind" : "days30""#))
+		#expect(text.contains(#""min" : "-2000""#) && text.contains(#""max" : "-0.5""#) && text.contains(#""status" : "checked""#))
+		let json = try JSONSerialization.jsonObject(with: Data(text.utf8)) as! [String: Any]
+		let searches = json["savedSearches"] as! [[String: Any]]
+		#expect(searches[0]["accountID"] is String && searches[0]["accountGroupID"] == nil)
+		#expect(searches[1]["accountGroupID"] is String && searches[1]["accountID"] == nil)
+	}
+
+	@Test("A saved search with both an account and an account group is refused with its place")
+	func savedSearchWithAccountAndGroup() throws {
+		var json = try JSONSerialization.jsonObject(with: try filledStore().exportAllData(at: exportedAt).json()) as! [String: Any]
+		var searches = json["savedSearches"] as! [[String: Any]]
+		searches[1]["accountID"] = UUID().uuidString
+		json["savedSearches"] = searches
+		#expect(throws: AllData.ReadError.damaged("at savedSearches[1], the saved search has both an account and an account group")) {
+			try AllData(json: try JSONSerialization.data(withJSONObject: json))
+		}
+	}
+
+	@Test("The complete import numbers the saved searches from 0 in their order, so the next saved search goes last")
+	func savedSearchPositions() throws {
+		var json = try JSONSerialization.jsonObject(with: try filledStore().exportAllData(at: exportedAt).json()) as! [String: Any]
+		var searches = json["savedSearches"] as! [[String: Any]]
+		searches[0]["position"] = Int.max
+		searches[1]["position"] = 5
+		json["savedSearches"] = searches
+		let target = try emptyStore("target")
+		try target.importAllData(try AllData(json: try JSONSerialization.data(withJSONObject: json)))
+		try #require(try target.savedSearches().map(\.position) == [0, 1])
+		#expect(try target.savedSearches().map(\.name) == ["Last 30 days", "Strom"])
+		var f = TransactionFilter()
+		f.searchText = "Miete"
+		let rent = try target.appendSavedSearch(name: "Rent", period: .all, filter: f)
+		#expect(rent.position == 2)
+		#expect(try target.savedSearches().map(\.name) == ["Last 30 days", "Strom", "Rent"])
+	}
+
+	@Test("A saved search with an unknown period or an empty amount range is refused with its place", arguments: ["period", "amount"])
+	func damagedSavedSearch(_ field: String) throws {
+		var json = try JSONSerialization.jsonObject(with: try filledStore().exportAllData(at: exportedAt).json()) as! [String: Any]
+		var searches = json["savedSearches"] as! [[String: Any]]
+		searches[1][field] = field == "period" ? ["kind": "decade"] : ["kind": "range"]
+		json["savedSearches"] = searches
+		let expected = field == "period" ? "at savedSearches[1], \"decade\" is not a period" : "at savedSearches[1], the amount range has no end or its minimum lies above its maximum"
+		#expect(throws: AllData.ReadError.damaged(expected)) { try AllData(json: try JSONSerialization.data(withJSONObject: json)) }
 	}
 
 	@Test("An export without returnReason imports its transactions with no return reason")
@@ -279,6 +343,27 @@ struct AllDataTests {
 		let imported = try target.loadLedger().transactions
 		#expect(imported.count == 3)
 		#expect(imported.allSatisfy { $0.returnReason == nil })
+	}
+
+	@Test("The mark of missing older transactions goes with the account, and a file without it imports the account without the mark")
+	func missingOlderTransactionsMark() throws {
+		let exported = try filledStore().exportAllData(at: exportedAt).json()
+		var json = try #require(try JSONSerialization.jsonObject(with: exported) as? [String: Any])
+		var accounts = try #require(json["accounts"] as? [[String: Any]])
+		// Every account carries the key, and only the giro account is marked.
+		let marks = accounts.map { $0["missesOlderTransactions"] as? Bool }
+		#expect(marks.allSatisfy { $0 != nil })
+		#expect(marks.filter { $0 == true }.count == 1)
+		let marked = try emptyStore("marked")
+		try marked.importAllData(try AllData(json: exported))
+		#expect(try marked.loadLedger().accounts.filter(\.missesOlderTransactions).map(\.name) == ["Girokonto"])
+		for i in accounts.indices { accounts[i].removeValue(forKey: "missesOlderTransactions") }
+		json["accounts"] = accounts
+		let older = try emptyStore("older")
+		try older.importAllData(try AllData(json: try JSONSerialization.data(withJSONObject: json)))
+		let imported = try older.loadLedger().accounts
+		#expect(imported.count == 4)
+		#expect(imported.allSatisfy { !$0.missesOlderTransactions })
 	}
 
 	@Test("Amounts are decimal text with a currency, and nothing is rounded")
@@ -318,6 +403,13 @@ struct AllDataTests {
 		try used.save(Account(position: 0, name: "Giro", kind: .giro, source: .offline))
 		#expect(throws: Store.ImportRefusal.notEmpty) { try used.importAllData(data) }
 		#expect(try used.loadLedger().accounts.map(\.name) == ["Giro"])
+
+		let searched = try emptyStore("searched")
+		var f = TransactionFilter()
+		f.searchText = "Miete"
+		_ = try searched.appendSavedSearch(name: "Rent", period: .all, filter: f)
+		#expect(throws: Store.ImportRefusal.notEmpty) { try searched.importAllData(data) }
+		#expect(try searched.savedSearches().map(\.name) == ["Rent"])
 
 		let starter = Domain.Category(position: 0, name: "Groceries")
 		let fresh = try emptyStore("fresh")

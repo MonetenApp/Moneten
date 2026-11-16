@@ -106,52 +106,52 @@ public enum SyncFailure: Error, Sendable, Equatable {
 	/// hint of the bank for it.
 	public func messageAtFirstLogin(userIDHelp: String?) -> String {
 		guard case let .pinRejected(m) = self else { return message }
-		return "The bank did not accept the PIN or the user ID: \(m.text)\nMany banks give this answer also for a wrong user ID, so check the user ID as well."
-			+ (userIDHelp.map { " \($0)" } ?? "") + "\nMore wrong attempts can block the access."
+		return String(localized: "The bank did not accept the PIN or the user ID: \(m.text)\nMany banks give this answer also for a wrong user ID, so check the user ID as well.")
+			+ (userIDHelp.map { " \($0)" } ?? "") + "\n" + String(localized: "More wrong attempts can block the access.")
 	}
 
 	/// The text that the app shows on the account and in the error popover.
 	public var message: String {
 		switch self {
 		case .needsUser(.pin):
-			"The PIN is needed. Choose “Refresh Account” to enter it."
+			String(localized: "The PIN is needed. Choose “Refresh Account” to enter it.")
 		case .needsUser(.secondFactor):
-			"An authorization is needed. Choose “Refresh Account” to give it."
+			String(localized: "An authorization is needed. Choose “Refresh Account” to give it.")
 		case .needsUser(.allowHost):
-			"An extension asks to contact a new host. Choose “Refresh Account” to answer."
+			String(localized: "An extension asks to contact a new host. Choose “Refresh Account” to answer.")
 		case .needsUser(.login):
-			"The login data is needed. Choose “Refresh Account” to enter it."
+			String(localized: "The login data is needed. Choose “Refresh Account” to enter it.")
 		case .loginRejected:
-			"The login failed. The service did not accept the login data. Choose “Refresh Account” to enter it again."
+			String(localized: "The login failed. The service did not accept the login data. Choose “Refresh Account” to enter it again.")
 		case let .pinRejected(m):
-			"The bank did not accept the PIN: \(m.text)\nMore wrong attempts can block the access."
+			String(localized: "The bank did not accept the PIN: \(m.text)\nMore wrong attempts can block the access.")
 		case let .accessBlocked(m):
-			"The bank blocked the access: \(m.text)\nAsk the bank to unblock it."
+			String(localized: "The bank blocked the access: \(m.text)\nAsk the bank to unblock it.")
 		case let .tanRejected(m):
-			"The bank did not accept the entered TAN: \(m.text)"
+			String(localized: "The bank did not accept the entered TAN: \(m.text)")
 		case let .approvalDeclined(m):
-			"The required authorization was not carried out." + (m.map { " \($0.text)" } ?? "")
+			String(localized: "The required authorization was not carried out.") + (m.map { " \($0.text)" } ?? "")
 		case .challengeExpired:
-			"The two-factor authentication timed out."
+			String(localized: "The two-factor authentication timed out.")
 		case .invalidChallenge:
-			"The bank responded with an invalid challenge."
+			String(localized: "The bank responded with an invalid challenge.")
 		case .notRegistered:
-			"The bank does not know Moneten yet. Banks take some weeks to accept a new app. Try again later."
+			String(localized: "The bank does not know Moneten yet. Banks take some weeks to accept a new app. Try again later.")
 		case let .noTANMethod(m):
-			"There are no available TAN methods" + (m.map { ": \($0.text)" } ?? ".")
-				+ "\nSet up a TAN method on the website of the bank, then choose “Edit Login Data...”."
+			(m.map { String(localized: "There are no available TAN methods: \($0.text)") } ?? String(localized: "There are no available TAN methods."))
+				+ "\n" + String(localized: "Set up a TAN method on the website of the bank, then choose “Edit Login Data...”.")
 		case .notFetched:
-			"Canceled because of the previous error."
+			String(localized: "Canceled because of the previous error.")
 		case let .bank(m):
 			m.text
 		case .offline:
-			"There is no Internet connection."
+			String(localized: "There is no Internet connection.")
 		case let .network(text):
-			"The bank could not be reached: \(text)"
+			String(localized: "The bank could not be reached: \(text)")
 		case let .unsupported(text):
 			text
 		case let .notSaved(text):
-			"The fetched transactions could not be saved: \(text)"
+			String(localized: "The fetched transactions could not be saved: \(text)")
 		}
 	}
 }

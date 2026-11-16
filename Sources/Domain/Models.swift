@@ -5,14 +5,14 @@ public enum AccountKind: String, Codable, Sendable, CaseIterable {
 
 	public var title: String {
 		switch self {
-		case .giro: "Giro account"
-		case .savings: "Savings account"
-		case .fixedTermDeposit: "Fixed term deposit"
-		case .loan: "Loan account"
-		case .creditCard: "Credit card"
-		case .portfolio: "Portfolio"
-		case .cash: "Cash"
-		case .other: "Other"
+		case .giro: String(localized: "Giro account")
+		case .savings: String(localized: "Savings account")
+		case .fixedTermDeposit: String(localized: "Fixed term deposit")
+		case .loan: String(localized: "Loan account")
+		case .creditCard: String(localized: "Credit card")
+		case .portfolio: String(localized: "Portfolio")
+		case .cash: String(localized: "Cash")
+		case .other: String(localized: "Other")
 		}
 	}
 
@@ -94,12 +94,18 @@ public struct Account: Identifiable, Hashable, Sendable, Codable {
 	public var refreshError: RefreshError?
 	/// "Refresh" in the account settings: how often the automatic refresh fetches the account.
 	public var refreshInterval: RefreshInterval
+	/// Older transactions of the account may be missing in the app, because a refresh fetched
+	/// less than the time since its last successful fetch, such as after a canceled TAN for older transactions.
+	/// It goes with the account, so a lock, a restart, and an export and import keep it, and `Store.merge` writes it
+	/// in the same transaction as the rows of the refresh. While it is set, each refresh derives the initial balance
+	/// again, and the refresh that brings the full history clears it.
+	public var missesOlderTransactions: Bool
 
 	public init(id: UUID = UUID(), groupID: UUID? = nil, position: Int, name: String, kind: AccountKind, source: AccountSource, currency: String = "EUR",
 		iban: String? = nil, bic: String? = nil, accountNumber: String? = nil, bankCode: String? = nil, bankName: String? = nil, owner: String? = nil,
 		bankBalanceMinor: Int64? = nil, bankBalanceDate: Date? = nil, initialBalanceMinor: Int64 = 0, initialBalanceIsSet: Bool = false, isClosed: Bool = false, comment: String? = nil, sourceID: String? = nil,
 		color: String? = nil, accessID: UUID? = nil, remoteID: String? = nil, refreshedAt: Date? = nil, refreshError: RefreshError? = nil,
-		refreshInterval: RefreshInterval = .everyTwoHours) {
+		refreshInterval: RefreshInterval = .everyTwoHours, missesOlderTransactions: Bool = false) {
 		self.id = id
 		self.groupID = groupID
 		self.position = position
@@ -126,6 +132,7 @@ public struct Account: Identifiable, Hashable, Sendable, Codable {
 		self.refreshedAt = refreshedAt
 		self.refreshError = refreshError
 		self.refreshInterval = refreshInterval
+		self.missesOlderTransactions = missesOlderTransactions
 	}
 
 	public var isOffline: Bool { source == .offline }
@@ -168,11 +175,12 @@ public struct Account: Identifiable, Hashable, Sendable, Codable {
 		bankBalanceMinor.map { $0 - bookedSum(of: rows, through: Day(bankBalanceDate ?? Date(), calendar: calendar)) }
 	}
 
-	/// Sets the initial balance once, so that the computed balance meets the bank balance.
+	/// Sets the initial balance, so that the computed balance meets the bank balance. It is set for good unless
+	/// `missesOlderTransactions`: then the next refresh derives it again, and the one that brings the full history sets it.
 	mutating func deriveInitialBalance(from rows: [Transaction], calendar: Calendar = .current) {
 		guard derivesInitialBalance, let value = initialBalanceMeetingBankBalance(of: rows, calendar: calendar) else { return }
 		initialBalanceMinor = value
-		initialBalanceIsSet = true
+		initialBalanceIsSet = !missesOlderTransactions
 	}
 }
 
@@ -197,11 +205,11 @@ public enum SidebarAmount: String, Codable, Sendable, CaseIterable {
 
 	public var title: String {
 		switch self {
-		case .none: "No amount"
-		case .currentMonth: "Current month"
-		case .currentQuarter: "Current quarter"
-		case .currentYear: "Current year"
-		case .totalSum: "Total sum"
+		case .none: String(localized: "No amount")
+		case .currentMonth: String(localized: "Current month")
+		case .currentQuarter: String(localized: "Current quarter")
+		case .currentYear: String(localized: "Current year")
+		case .totalSum: String(localized: "Total sum")
 		}
 	}
 }
@@ -258,8 +266,8 @@ public enum ReviewReason: String, Codable, Sendable {
 
 	public var note: String {
 		switch self {
-		case .unclearBooking: "Several transactions could belong together. Check the rows and delete the ones you don't need."
-		case .splitUndone: "The bank changed the amount; the split was undone."
+		case .unclearBooking: String(localized: "Several transactions could belong together. Check the rows and delete the ones you don't need.")
+		case .splitUndone: String(localized: "The bank changed the amount; the split was undone.")
 		}
 	}
 }
@@ -338,6 +346,10 @@ public struct Transaction: Identifiable, Hashable, Sendable, Codable {
 
 	/// The editable fields as the source delivered them: `original` after an edit, otherwise the fields themselves.
 	public var sourceValues: OriginalValues { original ?? OriginalValues(self) }
+	/// The day and the amount that the source delivered, without building `sourceValues`, which copies the name and
+	/// the purpose: the merge reads them for every stored row of an account.
+	public var sourceBookingDate: Day { original?.bookingDate ?? bookingDate }
+	public var sourceAmountMinor: Int64 { original?.amountMinor ?? amountMinor }
 
 	/// What "Edit Transaction..." writes. The first change of a row from a source keeps the delivered values in
 	/// `original`, so that a later refresh still finds the row and does not add it again. Values equal to the

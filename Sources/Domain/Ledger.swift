@@ -1,7 +1,9 @@
 import Foundation
 
-/// What the content view shows: everything, one account, one account group, or one category.
+/// What the content view shows: the transactions of every account, one account, one account group, or one category.
 public enum LedgerScope: Hashable, Sendable {
+	/// Every account, the scope of a saved search.
+	case all
 	case account(UUID)
 	case accountGroup(UUID)
 	case category(UUID)
@@ -180,7 +182,7 @@ public struct Ledger: Sendable {
 		switch scope {
 		case let .account(id): ids = [id]
 		case let .accountGroup(id): ids = accountIDs(inGroupTree: id)
-		case .category: return nil
+		case .all, .category: return nil
 		}
 		let found = ids.compactMap(account).sorted { $0.position < $1.position }
 		guard !found.isEmpty, found.allSatisfy({ $0.kind == .portfolio && !accountsWithTransactions.contains($0.id) }) else { return nil }
@@ -233,6 +235,37 @@ public struct Ledger: Sendable {
 		var ids = Set(accounts(inGroup: group).map(\.id))
 		for child in childGroups(of: group) { ids.formUnion(accountIDs(inGroupTree: child.id)) }
 		return ids
+	}
+
+	/// The accounts whose rows the account filter shows: the account, or the accounts of the group tree, as the
+	/// sum of the group in the sidebar counts them.
+	public func accountIDs(of filter: TransactionFilter.AccountFilter) -> Set<UUID> {
+		switch filter {
+		case let .account(id): [id]
+		case let .group(id): accountIDs(inGroupTree: id)
+		}
+	}
+
+	/// The name of the account or the account group that the "Account" menu shows, or nil when the ledger no longer has it.
+	public func name(of filter: TransactionFilter.AccountFilter) -> String? {
+		switch filter {
+		case let .account(id): account(id)?.name
+		case let .group(id): group(id)?.name
+		}
+	}
+
+	/// The groups and accounts of the "Account" menu of the filter bar, in the order of the sidebar, each with
+	/// the number of groups above it, so the menu indents the rows of a group as the sidebar does.
+	public var accountTreeInSidebarOrder: [(item: AccountTreeItem, depth: Int)] {
+		var result: [(item: AccountTreeItem, depth: Int)] = []
+		func walk(_ parent: UUID?, depth: Int) {
+			for item in accountTree(in: parent) {
+				result.append((item, depth))
+				if case let .group(g) = item { walk(g.id, depth: depth + 1) }
+			}
+		}
+		walk(nil, depth: 0)
+		return result
 	}
 
 	public func childCategories(of parent: UUID?) -> [Category] {
@@ -470,6 +503,8 @@ public struct Ledger: Sendable {
 		// One pass over the rows, because copying 50,000 rows into a list of the view first cost as much as the search.
 		let inScope: (Transaction) -> Bool
 		switch scope {
+		case .all:
+			inScope = { _ in true }
 		case let .account(id):
 			inScope = { $0.accountID == id }
 		case let .accountGroup(id):
@@ -484,6 +519,7 @@ public struct Ledger: Sendable {
 		let accountsByID = query.readsFields ? Dictionary(uniqueKeysWithValues: accounts.map { ($0.id, $0) }) : [:]
 		let names = query.readsFields ? categoryNames : [:]
 		let categoryFilter = filter.categoryID.map { categoryIDs(inTree: $0) }
+		let accountFilter = filter.account.map(accountIDs(of:))
 		let defaultID = defaultCategory?.id ?? UUID()
 		var amountBounds: [Int: MinorBounds] = [:]
 		func matches(_ t: Transaction) -> Bool {
@@ -504,7 +540,7 @@ public struct Ledger: Sendable {
 				if t.amountMinor < bounds.min || t.amountMinor > bounds.max { return false }
 			}
 			if let categoryFilter, !categoryFilter.contains(t.categoryID ?? defaultID) { return false }
-			if let a = filter.accountID, t.accountID != a { return false }
+			if let accountFilter, !accountFilter.contains(t.accountID) { return false }
 			if query.isEmpty { return true }
 			return query.matches(t, searchText: searchText[t.id] ?? "", account: { accountsByID[t.accountID] }, categoryName: { names[t.categoryID] })
 		}
@@ -614,6 +650,35 @@ public struct Ledger: Sendable {
 		countNew()
 	}
 
+	public func splitting(row rowID: UUID, off amounts: [Money]) throws -> [SplitPart] {
+		guard let row = row(rowID) else { throw SplitError.unbalanced }
+		guard !row.isPending else { throw SplitError.pending }
+		return try splitting(row: row, amounts: Split.amounts(of: row.amount, off: amounts))
+	}
+
+	public func splittingVAT(row rowID: UUID, rate: VATRate) throws -> [SplitPart] {
+		guard let row = row(rowID) else { throw SplitError.unbalanced }
+		guard !row.isPending else { throw SplitError.pending }
+		return try splitting(row: row, amounts: rate.split(row.amount), rate: rate)
+	}
+
+	private func splitting(row: Transaction, amounts: [Money], rate: VATRate? = nil) throws -> [SplitPart] {
+		let originalID = part(row.id)?.transactionID ?? row.id
+		let new = amounts.enumerated().map { index, amount in
+			SplitPart(transactionID: originalID, position: index, amountMinor: amount.minorUnits,
+				categoryID: row.categoryID, comment: row.comment,
+				vat: rate.map { VATShare(role: index == 0 ? .net : .tax, rate: $0) })
+		}
+		var result = parts(of: originalID)
+		if let index = result.firstIndex(where: { $0.id == row.id }) {
+			result.replaceSubrange(index...index, with: new)
+		} else {
+			result = new
+		}
+		for i in result.indices { result[i].position = i }
+		return result
+	}
+
 	public mutating func replaceParts(of transactionID: UUID, with parts: [SplitPart]) {
 		guard let original = transaction(transactionID) else { return }
 		partsByTransaction[transactionID] = parts.isEmpty ? nil : parts.map { part in
@@ -721,34 +786,46 @@ public struct TransactionFilter: Hashable, Sendable {
 		}
 	}
 
+	/// An entry of the "Account" menu: one account, or an account group with the accounts of its subgroups.
+	public enum AccountFilter: Hashable, Sendable {
+		case account(UUID)
+		case group(UUID)
+	}
+
 	public var searchText = ""
 	public var period = DayRange.all
 	public var status = Status.all
 	public var amount = AmountFilter.all
 	public var categoryID: UUID?
-	public var accountID: UUID?
+	/// Nil for "Show All".
+	public var account: AccountFilter?
 
 	public init() {}
 
 	public var isActive: Bool {
-		period != .all || status != .all || amount != .all || categoryID != nil || accountID != nil
+		period != .all || status != .all || amount != .all || categoryID != nil || account != nil
 	}
 
 	/// Sets the filter that the filter bar of `scope` has no menu for to "Show All": the account filter in an
 	/// account or a group, the category filter in a category. The list applies both filters in every view, so a
-	/// kept filter without its menu would hide rows with no control to clear it.
+	/// kept filter without its menu would hide rows with no control to clear it. A saved search shows both menus.
 	public mutating func resetHidden(in scope: LedgerScope) {
 		switch scope {
-		case .account, .accountGroup: accountID = nil
+		case .all: break
+		case .account, .accountGroup: account = nil
 		case .category: categoryID = nil
 		}
 	}
 
-	/// A filter on a category or an account that `ledger` no longer has goes back to "Show All", so the list does
-	/// not stay empty after a removal.
+	/// A filter on a category, an account, or an account group that `ledger` no longer has goes back to "Show All",
+	/// so the list does not stay empty after a removal.
 	public mutating func dropMissing(in ledger: Ledger) {
 		categoryID = categoryID.flatMap { ledger.category($0)?.id }
-		accountID = accountID.flatMap { ledger.account($0)?.id }
+		switch account {
+		case let .account(id) where ledger.account(id) == nil: account = nil
+		case let .group(id) where ledger.group(id) == nil: account = nil
+		default: break
+		}
 	}
 }
 

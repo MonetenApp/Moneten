@@ -16,10 +16,10 @@ enum CooperativeBanks {
 	}
 
 	// The page of the Volksbanken Raiffeisenbanken names the VR-NetKey and the alias that replaces it.
-	static let hint = LoginHint(bankName: nil, bankCodes: [], label: "VR-NetKey or alias",
-		help: "A Volksbank or Raiffeisenbank expects the VR-NetKey or the alias of its online banking.",
+	static let hint = LoginHint(bankName: nil, bankCodes: [], label: String(localized: "VR-NetKey or alias"),
+		help: String(localized: "A Volksbank or Raiffeisenbank expects the VR-NetKey or the alias of its online banking."),
 		source: URL(string: "https://www.vr.de/privatkunden/produkte/konten-karten/online-banking/faq-online-banking.html")!,
-		sourceTitle: "Help page of the Volksbanken Raiffeisenbanken")
+		sourceTitle: String(localized: "Help page of the Volksbanken Raiffeisenbanken"))
 
 	/// The name of a bank that its customers know, which the bank directory does not use, by its
 	/// Bankleitzahl. Skatbank and Ordensbank are brands of the bank that holds the Bankleitzahl.
@@ -66,7 +66,7 @@ extension BankDirectory.Entry {
 	/// What makes the login name unusable at this bank before any connection, or nil.
 	public func loginNameProblem(_ name: String) -> String? {
 		guard CooperativeBanks.isAtruvia(bank.url), name.count > CooperativeBanks.maxLoginLength else { return nil }
-		return "The FinTS server of the bank accepts no alias longer than \(CooperativeBanks.maxLoginLength) characters. Change the alias in the online banking of the bank first."
+		return String(localized: "The FinTS server of the bank accepts no alias longer than \(CooperativeBanks.maxLoginLength) characters. Change the alias in the online banking of the bank first.")
 	}
 
 	/// The hint of a cooperative bank on the servers of Atruvia. A Sparda-Bank on the same servers calls
@@ -80,6 +80,6 @@ extension BankDirectory.Entry {
 extension TANMediumName {
 	/// apoBank asks for the TAN medium of apoTAN and lists none. It needs the name only when the bank
 	/// reports an error without it.
-	public static let apoTANDevice = TANMediumName(label: "apoTAN device name",
-		help: "Leave the field empty, unless the bank reports an error in the next step. Then enter the name exactly as the website of apoBank shows it under Benutzereinstellungen > apoTAN verwalten.")
+	public static let apoTANDevice = TANMediumName(label: String(localized: "apoTAN device name"),
+		help: String(localized: "Leave the field empty, unless the bank reports an error in the next step. Then enter the name exactly as the website of apoBank shows it under Benutzereinstellungen > apoTAN verwalten."))
 }
