@@ -425,16 +425,30 @@ final class AppModel {
 					phase = .locked
 				}
 			}
+		} catch is OpenOvertaken {
+			// Another step, such as an unlock with the password, decided what the window shows.
 		} catch {
 			phase = .failed(vault.explanation(of: error))
 		}
+	}
+
+	/// An opening whose result arrived after the app had moved on, for example to a new database.
+	private struct OpenOvertaken: Error {}
+
+	enum UnlockResult {
+		case unlocked
+		case incorrectPassword
+		/// Another unlock is still opening the database, or finished first. The password was not tried.
+		case busy
 	}
 
 	private static let staleKeychainNotice =
 		"The password in the Keychain does not open this database, for example after a backup was put in its place. Enter the database password. Moneten then stores it in the Keychain again."
 
 	/// Opens the database away from the main thread, so that the window can show what happens.
+	/// When the app moved on while the database opened, the new store is closed and nothing is unlocked.
 	private func openAway(_ opener: @escaping @Sendable (Vault, @escaping @Sendable () -> Void) throws -> Store) async throws {
+		let phaseBefore = phase
 		opening = "Opening database..."
 		defer { opening = nil }
 		let vault = vault
@@ -445,6 +459,10 @@ final class AppModel {
 				}
 			}
 		}.value
+		guard phase == phaseBefore, self.store == nil else {
+			try? store.close()
+			throw OpenOvertaken()
+		}
 		try open(store)
 	}
 
@@ -462,18 +480,21 @@ final class AppModel {
 		}
 	}
 
-	/// Returns false for a wrong password. A different password in the Keychain, such as the newer one of a
-	/// database that the user replaced with a backup, is replaced after the unlock.
+	/// A different password in the Keychain, such as the newer one of a database that the user replaced with
+	/// a backup, is replaced after the unlock. A second unlock while one runs returns `.busy`, so the lock
+	/// screen keeps the typed password.
 	@discardableResult
-	func unlock(password: String) async -> Bool {
-		guard opening == nil else { return true }
+	func unlock(password: String) async -> UnlockResult {
+		guard opening == nil, phase == .locked else { return phase == .unlocked ? .unlocked : .busy }
 		do {
 			try await openAway { vault, upgrading in try vault.open(password: password, upgrading: upgrading) }
 		} catch Vault.Failure.incorrectPassword {
-			return false
+			return .incorrectPassword
+		} catch is OpenOvertaken {
+			return phase == .unlocked ? .unlocked : .busy
 		} catch {
 			phase = .failed(vault.explanation(of: error))
-			return true
+			return .unlocked
 		}
 		lockNotice = nil
 		do {
@@ -481,7 +502,7 @@ final class AppModel {
 		} catch {
 			alert = AlertMessage(title: "The database password could not be stored in the Keychain.", message: String(describing: error))
 		}
-		return true
+		return .unlocked
 	}
 
 	/// The unlock methods whose setting is on. They need the database password in the Keychain.
@@ -504,7 +525,7 @@ final class AppModel {
 				guard ok else { return }
 				do {
 					guard let pw = try self.vault.storedPassword() else { return }
-					if !(await self.unlock(password: pw)) { self.lockNotice = Self.staleKeychainNotice }
+					if await self.unlock(password: pw) == .incorrectPassword { self.lockNotice = Self.staleKeychainNotice }
 				} catch {
 					self.lockNotice = String(describing: error)
 				}

@@ -63,6 +63,8 @@ struct LockView: View {
 	@Environment(AppModel.self) private var model
 	@State private var password = ""
 	@State private var wrong = false
+	/// The typed password was not tried, because another unlock was opening the database.
+	@State private var busy = false
 	@State private var showHelp = false
 	/// The unlock methods that are on and that macOS can use now, and why the others cannot.
 	@State private var available: [UnlockMethod] = []
@@ -84,6 +86,9 @@ struct LockView: View {
 				.onSubmit(submit)
 			if wrong {
 				Text("Incorrect password!").foregroundStyle(Palette.red)
+			}
+			if busy {
+				Text("Moneten was already opening the database. Press Return to try the password.").font(.callout).foregroundStyle(.secondary)
 			}
 			if let notice = model.lockNotice {
 				Text(notice).font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 360)
@@ -115,7 +120,10 @@ struct LockView: View {
 				refreshAvailability()
 			}
 		}
-		.onChange(of: password) { _, _ in wrong = false }
+		.onChange(of: password) { _, _ in
+			wrong = false
+			busy = false
+		}
 		.task(id: password) {
 			// A typed password that is not submitted disappears after five minutes.
 			try? await Task.sleep(for: .seconds(300))
@@ -157,9 +165,12 @@ struct LockView: View {
 		guard !password.isEmpty else { return }
 		let typed = password
 		Task {
-			if !(await model.unlock(password: typed)) {
+			switch await model.unlock(password: typed) {
+			case .incorrectPassword:
 				wrong = true
 				password = ""
+			case .busy: busy = true
+			case .unlocked: break
 			}
 		}
 	}
