@@ -317,12 +317,41 @@ struct SplitLedgerTests {
 		#expect(checked.parts.isEmpty)
 		let added = Transaction(accountID: account.id, bookingDate: day, amountMinor: -3000, name: "Made-up purchase")
 		let changes = l.changes(from: [added])
-		#expect(changes.transactions == [added])
-		#expect(changes.transactions.first?.amountMinor == -3000)
+		#expect(changes.transactions.isEmpty)
 		#expect(changes.parts.isEmpty)
 		#expect(l.row(original.id) == nil)
 		#expect(l.changes(from: [original]).transactions.isEmpty)
 		#expect(l.changes(from: [original]).parts.isEmpty)
+	}
+
+	@Test("Stale parts and deleted rows never become new transactions")
+	func staleRows() throws {
+		var (ledger, original, parts) = editableSplit()
+		var stale = try #require(ledger.row(parts[0].id))
+		stale.comment = "Old edit"
+		ledger.replaceParts(of: original.id, with: [])
+		let ordinary = Transaction(accountID: account.id, bookingDate: day, amountMinor: -3000, name: "Made-up purchase")
+		ledger.update([ordinary])
+		ledger.remove(transactionIDs: [ordinary.id])
+		for row in [stale, ordinary] {
+			let changes = ledger.changes(from: [row])
+			#expect(changes.transactions.isEmpty)
+			#expect(changes.parts.isEmpty)
+		}
+		#expect(ledger.transactions.count == 1)
+		#expect(ledger.transaction(original.id)?.amountMinor == -8000)
+	}
+
+	@Test("An unchanged uncategorized editor gives no transaction to categorize")
+	func unchangedEditor() {
+		let transaction = Transaction(accountID: account.id, bookingDate: day, amountMinor: -3000, name: "REWE Markt GmbH")
+		let drinks = Domain.Category(position: 0, name: "Drinks", rule: "REWE")
+		let ledger = Ledger(accounts: [account], categories: [drinks], transactions: [transaction])
+		#expect(Categorizer(ledger: ledger).category(for: transaction) == drinks.id)
+		let changes = ledger.changes(from: [transaction])
+		#expect(changes.transactions.isEmpty)
+		#expect(changes.parts.isEmpty)
+		#expect(ledger.transaction(transaction.id)?.categoryID == nil)
 	}
 
 	@Test("The category picker keeps account restrictions for selected parts")
