@@ -94,3 +94,24 @@ public struct BankDirectory: Sendable {
 			.joined(separator: "\u{1}") + "\u{1}" + entry.code
 	}
 }
+
+extension BankDirectory {
+	/// The bank of a FinTS access, for "Look for New Accounts..." and "Edit Login Data...", which log in to the
+	/// bank of the access without a search: the entry of its Bankleitzahl, with its BIC for the new accounts and
+	/// its place, under the name and at the address of the access. A Bankleitzahl that the directory does not
+	/// list gives `Entry(access:)`. Nil for an access of another source.
+	public func bank(of access: Access) -> Entry? {
+		guard case let .fints(code, url) = access.source else { return nil }
+		guard let entry = bank(code: code) else { return Entry(access: access) }
+		return Entry(code: code, city: entry.city, bank: FinTSBank(name: access.bankName, bic: entry.bank.bic, url: url))
+	}
+}
+
+extension BankDirectory.Entry {
+	/// The bank that a FinTS access names, without BIC and place, until the bank directory is there.
+	/// Nil for an access of another source.
+	public init?(access: Access) {
+		guard case let .fints(code, url) = access.source else { return nil }
+		self.init(code: code, city: "", bank: FinTSBank(name: access.bankName, bic: nil, url: url))
+	}
+}

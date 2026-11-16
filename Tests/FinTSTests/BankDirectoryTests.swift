@@ -1,3 +1,4 @@
+import Domain
 import Foundation
 import Testing
 @testable import FinTS
@@ -150,6 +151,24 @@ struct LoginHintTests {
 		#expect(Self.bank("12030000", "Musterbank", "https://fints.musterbank.example/fints").loginHint?.label == "Login name")
 		#expect(Self.bank("12030001", "Musterbank", "https://fints.musterbank.example/fints").loginHint == nil)
 		#expect(Self.bank("10010424", "Aareal Bank", nil).loginHint == nil)
+	}
+
+	@Test("The bank of a FinTS access is its entry in the directory, with its BIC and place, at the address of the access")
+	func bankOfAccess() throws {
+		let url = URL(string: "https://banking.dkb.de/fints")!
+		let directory = BankDirectory([BankDirectory.Entry(code: "12030000", city: "Berlin",
+			bank: FinTSBank(name: "Deutsche Kreditbank Berlin", bic: "BYLADEM1001", url: URL(string: "https://fints.dkb.de/fints")))])
+		let entry = try #require(directory.bank(of: Access(source: .fints(bankCode: "12030000", url: url), bankName: "DKB", loginName: "erika77")))
+		#expect(entry == BankDirectory.Entry(code: "12030000", city: "Berlin", bank: FinTSBank(name: "DKB", bic: "BYLADEM1001", url: url)))
+		#expect(entry.loginHint?.label == "Login name")
+		#expect(directory.bank(of: Access(source: .extension(id: "Example"), bankName: "Example Bank", loginName: "")) == nil)
+	}
+
+	@Test("A Bankleitzahl that the directory does not list gives the bank that the access names, without BIC and place")
+	func bankOfUnlistedAccess() throws {
+		let url = URL(string: "https://fints.example.com/")!
+		let access = Access(source: .fints(bankCode: "76030080", url: url), bankName: "Consorsbank", loginName: "erika77")
+		#expect(BankDirectory([]).bank(of: access) == BankDirectory.Entry(code: "76030080", city: "", bank: FinTSBank(name: "Consorsbank", bic: nil, url: url)))
 	}
 
 	@Test("Every hint names a public page of the bank as its source")

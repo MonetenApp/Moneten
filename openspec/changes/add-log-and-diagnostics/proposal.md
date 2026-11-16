@@ -30,7 +30,7 @@ None.
 - Issues: none yet
 - Modules: `App` owns the log window and the commands. Every connector writes to the log through one interface that removes secrets.
 - Depends on the change `add-main-window`.
-- The app writes a log file from the first release on, and the rules about secrets in [architecture](../../../docs/architecture.md) and [SECURITY.md](../../../SECURITY.md) apply from then. This change adds the window, the commands, and the full rule set as a spec.
+- The app does not yet write a persisted log file. This later change adds the file, the window, the commands, and the full rule set. The rules about secrets in [architecture](../../../docs/architecture.md) and [SECURITY.md](../../../SECURITY.md) already apply. Crash reports for v0.1 are specified in [add-crash-reports](../add-crash-reports/proposal.md).
 - Decisions: [ADR 0002](../../../docs/decisions/0002-local-first-no-server.md).
 
 ## Reference behavior

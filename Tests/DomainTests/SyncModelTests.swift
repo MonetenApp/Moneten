@@ -86,6 +86,27 @@ struct SyncModelTests {
 		#expect(SyncFailure.notFetched.message == "Canceled because of the previous error.")
 		#expect(SyncFailure.notSaved("disk I/O error").message == "The fetched transactions could not be saved: disk I/O error")
 		#expect(SyncFailure.notRegistered.message.contains("does not know Moneten"))
+		#expect(SyncFailure.accessBlocked(BankMessage(code: "9930", text: "PIN gesperrt")).message == "The bank blocked the access: PIN gesperrt\nAsk the bank to unblock it.")
+		#expect(SyncFailure.noTANMethod(nil).message
+			== "There are no available TAN methods.\nSet up a TAN method on the website of the bank, then choose “Edit Login Data...”.")
+		let noTANMethod = SyncFailure.noTANMethod(BankMessage(code: "9955", text: "Ein-Schritt-TAN-Verfahren nicht zugelassen"))
+		#expect(noTANMethod.message == """
+			There are no available TAN methods: Ein-Schritt-TAN-Verfahren nicht zugelassen
+			Set up a TAN method on the website of the bank, then choose “Edit Login Data...”.
+			""")
+		#expect(noTANMethod.bankMessage?.code == "9955")
+		#expect(SyncFailure.approvalDeclined(BankMessage(code: "9941", text: "Freigabe abgelehnt")).message
+			== "The required authorization was not carried out. Freigabe abgelehnt")
+	}
+
+	@Test("A blocked access and a missing TAN method wait for the user, and no dialog of a refresh resolves them")
+	func noDialogResolves() {
+		let blocked = SyncFailure.accessBlocked(BankMessage(code: "9930", text: "PIN gesperrt"))
+		#expect(blocked.waitsForUser && !blocked.dialogResolves)
+		#expect(SyncFailure.noTANMethod(nil).waitsForUser && !SyncFailure.noTANMethod(nil).dialogResolves)
+		#expect(SyncFailure.needsUser(.secondFactor).dialogResolves)
+		#expect(SyncFailure.pinRejected(BankMessage(code: "9942", text: "PIN falsch")).dialogResolves)
+		#expect(!SyncFailure.tanRejected(BankMessage(code: "9941", text: "TAN ungültig")).dialogResolves)
 	}
 
 	@Test("At the first login of a setup a rejected PIN also names the user ID and its hint, and keeps the block warning")
@@ -103,7 +124,8 @@ struct SyncModelTests {
 			""")
 		#expect(rejected.message == "The bank did not accept the PIN: PIN ungültig\nMore wrong attempts can block the access.")
 		let blocked = SyncFailure.accessBlocked(BankMessage(text: "Zugang gesperrt"))
-		#expect(blocked.messageAtFirstLogin(userIDHelp: "Consorsbank expects the account number followed by 001.") == "The bank blocked the access: Zugang gesperrt")
+		#expect(blocked.messageAtFirstLogin(userIDHelp: "Consorsbank expects the account number followed by 001.")
+			== "The bank blocked the access: Zugang gesperrt\nAsk the bank to unblock it.")
 	}
 
 	@Test("A flicker code starts with the sync pattern and swaps the half bytes")
