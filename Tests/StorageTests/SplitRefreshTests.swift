@@ -87,7 +87,7 @@ extension MergeTests {
 		#expect(l.computedBalance(of: saved).minorUnits == 91500)
 		let daily = l.dailyBalances(accountIDs: [a.id])
 		#expect(daily.map(\.day) == [Day(year: 2026, month: 11, day: 3)])
-		#expect(daily.map(\.minorUnits) == [91500])
+		#expect(daily.map(\.balance) == [91500])
 		let points = l.balanceBars(accountIDs: [a.id], range: DayRange(start: Day(year: 2026, month: 11, day: 2), end: Day(year: 2026, month: 11, day: 3)))
 		#expect(points.map(\.minorUnits) == [100000, 91500])
 		#expect(l.transaction(t.id)?.amountMinor == -8500)

@@ -6,6 +6,12 @@ public struct BalancePoint: Hashable, Sendable, Identifiable {
 	public var id: Int { day.rawValue }
 }
 
+/// The exact balance at the end of a day, before it holds at the bounds of `Int64`.
+public struct DayBalance: Hashable, Sendable {
+	public let day: Day
+	public let balance: Int128
+}
+
 /// One bar of the balance chart: the average end-of-day balance from `start` up to `end`, which is
 /// the first day after the bar.
 public struct BalanceBar: Hashable, Sendable, Identifiable {
@@ -73,14 +79,10 @@ extension Ledger {
 	/// row in another currency adds nothing but keeps its day, so the chart still starts there. A
 	/// portfolio gets its value from the bank and not from transactions, so it counts with its last
 	/// recorded value and with nothing before its first record.
-	public func dailyBalances(accountIDs: Set<UUID>, range: DayRange = .all) -> [BalancePoint] {
-		exactDailyBalances(accountIDs: accountIDs).filter { range.contains($0.day) }.map { BalancePoint(day: $0.day, minorUnits: Int64(clampingSum: $0.balance)) }
-	}
-
-	/// The balance at the end of each day with a transaction or a portfolio record, before it holds at the bounds of
-	/// `Int64`. The balances add up in Int128, so that rows that cancel out give the same balance in every order, and
-	/// a monthly average adds the exact balances of its days.
-	private func exactDailyBalances(accountIDs: Set<UUID>) -> [(day: Day, balance: Int128)] {
+	///
+	/// The balances add up exactly in Int128, so that rows that cancel out give the same balance in every order, and a
+	/// monthly average adds the exact balances of its days. A bar or a point holds at the bounds of `Int64` only when shown.
+	public func dailyBalances(accountIDs: Set<UUID>) -> [DayBalance] {
 		let portfolios = Set(accountIDs.filter { account($0)?.kind == .portfolio })
 		let others = Dictionary(uniqueKeysWithValues: accountIDs.subtracting(portfolios).compactMap { account($0) }.map { ($0.id, $0) })
 		var balance = initialBalance(of: accountIDs)
@@ -96,10 +98,10 @@ extension Ledger {
 				previous = Int128(v.minorUnits)
 			}
 		}
-		var points: [(day: Day, balance: Int128)] = []
+		var points: [DayBalance] = []
 		for day in byDay.keys.sorted() {
 			balance += byDay[day]!
-			points.append((day, balance))
+			points.append(DayBalance(day: day, balance: balance))
 		}
 		return points
 	}
@@ -108,7 +110,7 @@ extension Ledger {
 	/// transaction or portfolio record. Days before the first transaction show the initial balance.
 	/// Every day keeps its own bar, as in MoneyMoney: a long history scrolls instead of sharing bars.
 	public func balanceBars(accountIDs: Set<UUID>, range: DayRange = .all, calendar: Calendar = .current) -> [BalanceBar] {
-		let daily = exactDailyBalances(accountIDs: accountIDs)
+		let daily = dailyBalances(accountIDs: accountIDs)
 		guard let first = daily.first?.day else { return [] }
 		let today = Day.today(calendar: calendar)
 		let start = chartStart(range.start ?? first, first: first, accountIDs: accountIDs)
@@ -120,7 +122,7 @@ extension Ledger {
 	/// "Show All" starts with the month of the oldest transaction or portfolio record. Days before
 	/// the first transaction count with the initial balance, as in `balanceBars`.
 	public func monthlyAverageBalances(accountIDs: Set<UUID>, range: DayRange = .all, calendar: Calendar = .current) -> [BalancePoint] {
-		let daily = exactDailyBalances(accountIDs: accountIDs)
+		let daily = dailyBalances(accountIDs: accountIDs)
 		guard let first = daily.first?.day else { return [] }
 		let today = Day.today(calendar: calendar)
 		let lastDay = range.end.map { $0.firstOfMonth.adding(months: 1, calendar: calendar).adding(days: -1, calendar: calendar) } ?? today
@@ -149,9 +151,8 @@ extension Ledger {
 
 	/// The balance at the end of each day from `start` through `end`. Days before the first
 	/// transaction carry the initial balances of the accounts.
-	private func endOfDayBalances(_ daily: [(day: Day, balance: Int128)], accountIDs: Set<UUID>, from start: Day, through end: Day,
-		calendar: Calendar) -> [(day: Day, balance: Int128)] {
-		var result: [(day: Day, balance: Int128)] = []
+	private func endOfDayBalances(_ daily: [DayBalance], accountIDs: Set<UUID>, from start: Day, through end: Day, calendar: Calendar) -> [DayBalance] {
+		var result: [DayBalance] = []
 		var index = 0
 		var current = initialBalance(of: accountIDs)
 		var day = start
@@ -160,7 +161,7 @@ extension Ledger {
 				current = daily[index].balance
 				index += 1
 			}
-			result.append((day, current))
+			result.append(DayBalance(day: day, balance: current))
 			day = day.adding(days: 1, calendar: calendar)
 		}
 		return result

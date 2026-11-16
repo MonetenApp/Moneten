@@ -48,7 +48,7 @@ struct AmountOverflowTests {
 		#expect(MoneySums(of: l.transactions).amounts == euros)
 		#expect(l.sidebarAmounts(today: Self.day.adding(days: 5))[food.id]?.minorUnits == 100)
 		#expect(l.categoryTotals(of: l.transactions).map(\.minorUnits) == [100])
-		#expect(l.dailyBalances(accountIDs: [giro.id]).last?.minorUnits == 100)
+		#expect(l.dailyBalances(accountIDs: [giro.id]).last?.balance == 100)
 		var sums = MoneySums()
 		for t in l.transactions { sums.add(t.amount) }
 		#expect(sums.amounts == euros)
@@ -87,7 +87,7 @@ struct AmountOverflowTests {
 		let h = Self.huge
 		let l = ledger([h, h, -h, -h, -h, -h])
 		let range = DayRange(start: Self.day, end: Self.day.adding(days: 5))
-		#expect(l.dailyBalances(accountIDs: [giro.id]).map(\.minorUnits) == [h, .max, h, 0, -h, -.max])
+		#expect(l.dailyBalances(accountIDs: [giro.id]).map(\.balance) == [1, 2, 1, 0, -1, -2].map { $0 * Int128(h) })
 		#expect(l.balanceBars(accountIDs: [giro.id], range: range).map(\.minorUnits) == [h, .max, h, 0, -h, -.max])
 		#expect(l.monthlyAverageBalances(accountIDs: [giro.id], range: range).count == 1)
 		let sums = l.periodSums(of: l.transactions, period: .month)

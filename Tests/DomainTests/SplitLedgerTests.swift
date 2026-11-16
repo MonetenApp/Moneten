@@ -48,7 +48,7 @@ struct SplitLedgerTests {
 		var l = ledger([t])
 		let before = l.dailyBalances(accountIDs: [account.id])
 		#expect(l.computedBalance(of: account).minorUnits == 92000)
-		#expect(before.map(\.minorUnits) == [92000])
+		#expect(before.map(\.balance) == [92000])
 		#expect(before.map(\.day) == [day])
 		l.replaceParts(of: t.id, with: parts(t))
 		#expect(l.computedBalance(of: account).minorUnits == 92000)
