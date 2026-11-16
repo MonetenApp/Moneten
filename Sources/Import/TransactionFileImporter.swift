@@ -421,7 +421,7 @@ final class CAMTParser: NSObject, XMLParserDelegate {
 			bookingText: entry["bookingText"],
 			endToEndReference: ofOneParty("e2e").flatMap { $0 == "NOTPROVIDED" ? nil : $0 },
 			mandateReference: ofOneParty("mandate"), creditorID: ofOneParty("creditor"),
-			isPending: entry["status"] == "PDNG", returnReason: common("returnReason"))
+			isPending: entry["status"] == "PDNG" || entry["status"] == "FUTR", returnReason: common("returnReason"))
 		if result.transactions.isEmpty { result.declaredCurrency = entry["currency"] }
 		result.transactions.append(t)
 	}

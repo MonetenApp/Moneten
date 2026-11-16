@@ -187,7 +187,7 @@ Migration `v17` in `Sources/Storage/Schema.swift` adds the table `splitPart`. It
 
 The foreign key refuses parts of a transaction that the database no longer holds. A refused call leaves the parts as they were.
 
-Migration `v18` of group 5 adds the column `review` to `bankTransaction`, sets it to "unclearBooking" on every row whose `needsReview` is true, and drops `needsReview`. It is the next migration after `v17`.
+Migration `v20` of group 5 adds the column `review` to `bankTransaction`, sets it to "unclearBooking" on every row whose `needsReview` is true, and drops `needsReview`. PR #203 uses v18 for file identity and PR #219 uses v19.
 
 ### The commands in `App`
 
@@ -226,4 +226,6 @@ Group 3 makes the list read the rows, and group 4 makes the changes write parts.
 
 ## Migration Plan
 
-`v17` creates an empty table and rewrites no row. Undoing every split empties the table again. `v18` turns `needsReview` into `review` and keeps the mark of every row that has it. No release has shipped, so no database has a `v17` or a `v18` from another build.
+`v17` creates an empty table and rewrites no row. Undoing every split empties the table again. `v20` turns `needsReview` into `review` and keeps the mark of every row that has it. No release has shipped, so no database has a `v17` or a `v20` from another build.
+
+PR #203 uses v18 for file identity and PR #219 uses v19 for CSV profiles. v20 is the next free number after v18 and v19, so split review reasons use v20.

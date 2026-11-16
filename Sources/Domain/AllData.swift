@@ -380,6 +380,7 @@ private struct TransactionEntry: Codable {
 	var needsReview: Bool
 	var isFetched: Bool
 	var sourceID: String?
+	var fileIdentity: String?
 	var createdAt: Date
 
 	init(_ t: Transaction) {
@@ -407,6 +408,7 @@ private struct TransactionEntry: Codable {
 		needsReview = t.needsReview
 		isFetched = t.isFetched
 		sourceID = t.sourceID
+		fileIdentity = t.fileIdentity
 		createdAt = t.createdAt
 	}
 
@@ -417,11 +419,12 @@ private struct TransactionEntry: Codable {
 			counterpartyIBAN: counterpartyIBAN, counterpartyBIC: counterpartyBIC, bookingText: bookingText, endToEndReference: endToEndReference,
 			mandateReference: mandateReference, creditorID: creditorID, comment: comment, isChecked: isChecked, isPending: isPending,
 			categoryID: categoryID, categorizedBy: categorizedBy, isNew: isNew, needsReview: needsReview, isFetched: isFetched, sourceID: sourceID,
-			createdAt: createdAt, returnReason: returnReason)
+			createdAt: createdAt, returnReason: returnReason, fileIdentity: fileIdentity)
 	}
 }
 
 private struct DeletedEntry: Codable {
+	var fileIdentity: String?
 	var accountID: UUID
 	var sourceID: String?
 	var bookingDate: String
@@ -435,6 +438,7 @@ private struct DeletedEntry: Codable {
 	var deletedAt: Date
 
 	init(_ d: DeletedTransaction) {
+		fileIdentity = d.fileIdentity
 		accountID = d.accountID
 		sourceID = d.sourceID
 		bookingDate = d.bookingDate.description
@@ -452,7 +456,7 @@ private struct DeletedEntry: Codable {
 		try currencyCode(currency)
 		let row = Transaction(accountID: accountID, bookingDate: try day(bookingDate), amountMinor: try AmountText.minorUnits(amount, currency),
 			currency: currency, name: "", purpose: purpose, counterpartyIBAN: counterpartyIBAN, endToEndReference: endToEndReference, isPending: isPending,
-			isFetched: wasFetched, sourceID: sourceID)
+			isFetched: wasFetched, sourceID: sourceID, fileIdentity: fileIdentity)
 		return DeletedTransaction(row, deletedAt: deletedAt)
 	}
 }

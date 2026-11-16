@@ -535,7 +535,7 @@ The app SHALL import a CAMT entry with the status PDNG or FUTR as a pending tran
 
 ### Requirement: Future pending transactions from a file
 
-The app SHALL keep a pending transaction from a file that no refresh has delivered when a successful refresh does not deliver it and its booking date is today or later. Once its booking date has passed, such a refresh removes it like any pending transaction that the bank dropped.
+The app SHALL keep a pending transaction from a file that no refresh has delivered while its booking date is today or later and no free delivered pending transaction pairs with it. Each delivered transaction takes one unpaired file transaction at most. A file transaction that only an already paired delivered transaction fits stays. After its booking date, a refresh that does not deliver it removes it.
 
 #### Scenario: Scheduled rent before its date
 
@@ -549,9 +549,39 @@ The app SHALL keep a pending transaction from a file that no refresh has deliver
 - **WHEN** a successful refresh on 5 December 2026 delivers neither the pending entry nor a booked one for it
 - **THEN** the pending transaction is gone from the list
 
+#### Scenario: One delivered rent row for two file rows
+
+- **GIVEN** one file imported two pending transactions of -800,00 € to "Vermieter A", each with the IBAN DE02120300000000202051, the purpose "Miete Dezember", and the booking date 1 December 2026
+- **WHEN** a successful refresh on 20 November 2026 delivers one pending transaction of -800,00 € to "Vermieter A" with the same IBAN, the purpose "MIETE DEZEMBER WHG 3 DAUERAUFTRAG", and the booking date 1 December 2026
+- **THEN** one file transaction takes the bank's fields and counts as fetched
+- **AND** the other stays pending and unfetched with the purpose "Miete Dezember"
+- **AND** no transaction is removed
+
+#### Scenario: Repeated refresh keeps the unpaired rent
+
+- **GIVEN** the two file transactions from "One delivered rent row for two file rows" after one has taken the bank's fields
+- **WHEN** the same refresh runs again on 21 November 2026
+- **THEN** both transactions stay, totaling -1.600,00 €
+- **AND** the unpaired file transaction keeps its fields and stays unfetched
+
+#### Scenario: A later file does not make a payment fetched
+
+- **GIVEN** a pending file transaction of -800,00 € to "Vermieter A" on 1 December 2026 with the purpose "Miete Dezember", from an older import without a retained original file identity
+- **WHEN** a later file delivers the payment on the same day with the purpose "Miete Dezember Wohnung 3"
+- **THEN** the file transaction is skipped, and one pending unfetched transaction stays
+- **AND** a refresh on 20 November 2026 that delivers neither version keeps it
+
+#### Scenario: Separate dates remain separate payments
+
+- **GIVEN** a camt.052 file imported FUTR entries of -800,00 € to "Vermieter A" in the order 8 December, then 1 December 2026
+- **WHEN** a refresh on 20 November 2026 delivers only the pending payment of 1 December with another purpose
+- **THEN** both transactions stay, and only the transaction of 1 December counts as fetched
+- **AND** the 8 December transaction keeps its date and fields
+- **AND** the same holds for file transactions on 1 and 3 December 2026 in either stored order
+
 ### Requirement: The bank's version of a future pending transaction from a file
 
-The app SHALL count a payment once when a successful refresh delivers a pending transaction with the same amount and the same counterparty, at most seven days apart from a future pending transaction from a file. A delivered transaction that the account does not hold yet and that the user did not delete takes the place of the one from the file. A delivered transaction that the account holds already counts there, so the app removes the one from the file.
+The app SHALL pair each free delivered pending transaction with at most one free future file transaction with the same amount and counterparty, at most seven days apart. The shared pending pairing rule chooses the partner. The file transaction keeps its identity and user fields and takes the bank's fields.
 
 #### Scenario: The bank reports the scheduled rent as pending
 
@@ -559,12 +589,198 @@ The app SHALL count a payment once when a successful refresh delivers a pending 
 - **WHEN** a successful refresh on 20 November 2026 delivers a pending transaction of -800,00 € to "Vermieter A" with the IBAN DE02120300000000202051, the purpose "MIETE DEZEMBER WHG 3 DAUERAUFTRAG", and the booking date 1 December 2026
 - **THEN** the account has one pending transaction of -800,00 €, with the purpose "MIETE DEZEMBER WHG 3 DAUERAUFTRAG"
 
+### Requirement: Pending file transactions already stored
+
+The app SHALL skip a pending file transaction when one free stored pending row fits PendingMatch within seven days. Conflicting explicit identities never pair. The closest day wins; tied candidates use stable delivered booking day, creation time and UUID, then stored position. Each stored row absorbs one file row. Stored bank fields and fetched status stay. A relaxed file match fills empty user fields; identified repeats preserve cleared fields.
+
+#### Scenario: The bank pending rent is one day earlier
+
+- **GIVEN** a fetched pending row of -800,00 € to "Vermieter A" stored on 30 November 2026
+- **WHEN** a camt.052 imports the same pending rent on 1 December
+- **THEN** the file row is skipped and the stored 30 November row stays
+- **AND** the planned balance counts -800,00 € once
+
+#### Scenario: A weekly file uses a stored bank row once
+
+- **GIVEN** one fetched pending rent of -800,00 € to "Vermieter A" on 1 December 2026
+- **WHEN** a file brings the rents on 1 and 8 December
+- **THEN** 1 December is skipped and 8 December is imported, totaling -1.600,00 €
+- **AND** the result is the same in either delivery order
+
+#### Scenario: Equidistant imported rents use stable booking-day order
+
+- **GIVEN** one fetched pending rent of -800,00 € to "Vermieter A" on 1 December 2026
+- **WHEN** a file brings pending rents on 30 November and 2 December, each one day away
+- **THEN** the stable delivered booking-day key pairs 30 November first, so that row is skipped and 2 December is imported
+- **AND** the stored bank row stays on 1 December and the total is -1.600,00 €, in every delivery and storage order
+
 #### Scenario: The bank reported the scheduled rent before the import
 
-- **GIVEN** a successful refresh on 18 November 2026 stored a pending transaction of -800,00 € to "Vermieter A" with the IBAN DE02120300000000202051, the purpose "MIETE DEZEMBER WHG 3 DAUERAUFTRAG", and the booking date 1 December 2026
-- **AND** on 19 November 2026 the user imported a camt.052 file with an entry of -800,00 € to "Vermieter A" with the IBAN DE02120300000000202051 and the purpose "Miete Dezember", in the status FUTR with the booking date 1 December 2026, so the account shows -1.600,00 € of pending transactions
-- **WHEN** a successful refresh on 20 November 2026 delivers the pending transaction of 18 November 2026 again
-- **THEN** the account has one pending transaction of -800,00 €, with the purpose "MIETE DEZEMBER WHG 3 DAUERAUFTRAG"
+- **GIVEN** a refresh on 18 November 2026 stored a pending transaction of -800,00 € to "Vermieter A" with the IBAN DE02120300000000202051, the purpose "MIETE DEZEMBER WHG 3 DAUERAUFTRAG", and the booking date 1 December 2026
+- **WHEN** on 19 November 2026 the user imports a camt.052 FUTR entry of -800,00 € to "Vermieter A" with the same IBAN and booking day and the purpose "Miete Dezember"
+- **THEN** the file entry is skipped, and the account has one pending transaction totaling -800,00 €
+- **AND** a refresh on 20 November 2026 that delivers the bank transaction again keeps that one transaction
+
+#### Scenario: A daily file repeats a payment after the bank takeover
+
+- **GIVEN** the bank took over the FUTR transaction from "The bank reports the scheduled rent as pending" on 20 November 2026
+- **WHEN** a daily camt.052 file on 21 November 2026 delivers that FUTR entry again with the purpose "Miete Dezember"
+- **THEN** the file entry is skipped, and the account has one pending transaction totaling -800,00 €
+- **AND** the next refresh keeps that one transaction
+
+#### Scenario: Two file rows pair with one stored bank row
+
+- **GIVEN** a fetched pending transaction of -800,00 € to "Vermieter A" on 1 December 2026 with the purpose "MIETE DEZEMBER WHG 3 DAUERAUFTRAG"
+- **WHEN** a file delivers two pending transactions of -800,00 € to "Vermieter A" on 1 December 2026 with the purpose "Miete Dezember"
+- **THEN** one file transaction is skipped and one is added, totaling -1.600,00 €
+- **AND** two refreshes that each deliver the bank transaction keep both rows
+
+#### Scenario: Keep the file transaction's user fields
+
+- **GIVEN** the file transaction from "The bank reported the scheduled rent before the import" has the comment "Shared rent", the category "Housing" assigned by hand, and a checkmark
+- **WHEN** the import skips that transaction in favor of the stored pending transaction
+- **THEN** the stored transaction takes the comment when its own comment is empty, the category when it is uncategorized, and the checkmark when it is unchecked
+- **AND** an existing comment "Bank note", category "Bills", or checkmark stays
+
+### Requirement: Order-independent pending pairing
+
+The app SHALL pair pending or stored-file-identified rows one to one in this order:
+
+1. Original file identity or source ID.
+2. Exact, then compatible booked fingerprint, including pending repeats.
+3. Delivered pending row's end-to-end reference with equal amount and currency.
+4. Fitting fetched pending or honored deleted row within seven days.
+5. Nearest fitting unfetched pending file row within seven days.
+
+Booked rows without file identity keep the existing booked-only rule.
+
+#### Scenario: Candidate eligibility and ties
+
+- **GIVEN** free delivered and stored candidates at the same level
+- **WHEN** the app chooses a pair
+- **THEN** current versions precede pending repeats of booked versions.
+- **AND** identity matches prefer live rows to tombstones. Fingerprints rank exact, compatible, absent, then an equal IBAN with conflicting known names. Remaining ties use day distance, stable delivered position, then stable stored position. Live positions use booking day, creation time, and UUID. Scoped positions retain their absolute ranks in the full input history when competing with legacy raw positions. Tombstone positions use persisted identity fields, optional-value presence, fetched flag, and deletion time as a tuple. Candidates are consumed greedily only when both sides are free. Legacy booked edges keep main's input positions and remain available until the shared rule chooses a pair.
+
+- **AND** different real source IDs or nonempty end-to-end references never pair. Agreeing source IDs retain bank corrections and their existing date behavior. Different pending file fingerprints still stay separate.
+- **AND** a pending-to-booked transition within seven days ignores different file fingerprints when amount and currency agree and either the reference agrees or the counterparty fits. A booked repeat can use its current fingerprint even when it differs from the retained original file fingerprint.
+- **AND** pending fallback checks known counterparties by IBAN, otherwise by name. A file import bounds pending-to-pending pairs to seven days and uses nearest-day choice across fetched and unfetched rows outside the same-day fetched level.
+- **AND** a refresh ranks fetched pending rows within seven days before unfetched rows. Unfetched refresh candidates must have a covered date today or later and no review mark.
+- **AND** reference-only fallback excludes migration deliveries. Only a pending file delivery can find a historical booked version by reference alone. Booked fingerprint matches compare IBANs, not name order.
+- **AND** a pending tombstone cannot block a booking. A source arriving booked reserves its pending tombstone against unrelated look-alikes.
+
+- **AND** an original file fingerprint does not select a unique occurrence. A fingerprint-only pending-to-booked transition uses the booking ambiguity rule.
+- **AND** booking considers pending rows on or before the booked day, and a fetched pending row of a later day only when none of those fits, first prefers agreeing identities, then narrows to the nearest day before preferring a unique fetched pending row. An unresolved tie marks those rows and the delivery for review.
+
+#### Scenario: Global nearest choice
+
+- **GIVEN** file rents of -800,00 € to "Vermieter A" on 1 and 8 December 2026
+- **WHEN** a refresh on 20 November delivers pending rents on 7 and 15 December in either order
+- **THEN** the 8 December row takes the 7 December bank fields, the 1 December row stays unfetched, and 15 December is added
+- **AND** three rows total -2.400,00 € in either stored order
+- **AND** for file days 1 and 5 and bank days 4 and 10, day 4 takes day 5 and three rows remain
+
+#### Scenario: Explicit identities disagree
+
+- **GIVEN** a pending rent of -800,00 € on 1 December 2026 with end-to-end reference "RENT-A"
+- **WHEN** a file imports an otherwise equal rent with reference "RENT-B"
+- **THEN** both rows stay and total -1.600,00 €
+- **AND** the same protection applies to a refresh and to different source IDs
+
+#### Scenario: File identity survives a takeover and deletion
+
+- **GIVEN** a FUTR rent of -800,00 € on 1 December 2026 with reference "RENT-A"
+- **AND** a refresh takes it over with another purpose and no reference
+- **WHEN** the user deletes it and the original file arrives again
+- **THEN** the honored deleted row absorbs the file entry and no rent is added
+- **AND** if the bank first books the rent, the reference stays and the original pending file entry is skipped without undoing the booking
+
+#### Scenario: A changed bank purpose keeps its partner
+
+- **GIVEN** file rents of -800,00 € on 1 and 8 December 2026 and the bank has taken over 1 December
+- **WHEN** the bank delivers 1 December with a new purpose on 21 November
+- **THEN** the fetched row takes the new purpose and 8 December stays unfetched
+- **AND** the account still has two rows totaling -1.600,00 € in every input order
+
+#### Scenario: Booking prefers the fetched pending row
+
+- **GIVEN** file rents of -800,00 € on 1 and 8 December 2026 and the bank has taken over 1 December
+- **WHEN** the booked rent arrives on 2 December
+- **THEN** only the fetched row becomes booked and 8 December stays pending
+- **AND** neither row is marked for review, in every input order
+
+#### Scenario: An exact repeat preserves a cleared comment
+
+- **GIVEN** an imported pending rent of -800,00 € on 1 December 2026 whose file comment was "Shared rent"
+- **AND** the user clears the comment
+- **WHEN** the exact same entry is imported again
+- **THEN** the comment stays empty
+
+#### Scenario: A bank-first import retains the file reference
+
+- **GIVEN** a pending bank rent of -800,00 € on 1 December 2026 with purpose "BANK" and no reference
+- **WHEN** the file rent with reference "RENT-A" is skipped on the same day
+- **THEN** the stored row retains "RENT-A", also after booking and deletion
+- **AND** a second file rent with reference "RENT-B" stays separate
+
+#### Scenario: An identified booked repeat has another date
+
+- **GIVEN** a pending file rent of -800,00 € on 1 December 2026 with reference "RENT-A" that the bank books on 2 December
+- **WHEN** the original pending file rent arrives again
+- **THEN** the agreeing identity finds the booked row and the payment counts once, still booked
+- **AND** its booked tombstone also absorbs the original file
+- **AND** the identity still finds the booked row if successive bank dates move it from 1 to 8 to 15 December
+- **AND** pending-to-pending file pairs more than seven days apart still stay separate
+
+#### Scenario: A booked payment does not absorb a different pending payment
+
+- **GIVEN** a booked bank payment of -800,00 € on 1 December 2026 with purpose "BANK"
+- **WHEN** a file delivers a pending rent on that day with purpose "Miete Dezember" and no agreeing identity
+- **THEN** the new pending rent is added
+- **AND** the same holds when the booked payment is a tombstone
+
+#### Scenario: An agreeing identity preserves cleared user fields
+
+- **GIVEN** a pending bank rent with reference "RENT-A", purpose "BANK", and cleared comment, category and checkmark
+- **WHEN** the file repeats "RENT-A" with purpose "Miete Dezember", comment "Shared rent", category "Housing" and a checkmark
+- **THEN** the stored comment, category and checkmark stay cleared
+
+#### Scenario: Exact fingerprints keep their partners
+
+- **GIVEN** two pending rents of -800,00 € to "Vermieter A" on 1 December 2026 with the same purpose but IBANs DE02120300000000202051 and DE89370400440532013000
+- **WHEN** one delivered rent omits its IBAN and another retains the first IBAN
+- **THEN** the exact fingerprint pairs first and the IBAN-less rent pairs with the other stored row
+- **AND** both stored IDs and IBANs remain, with no added or dropped payment in any delivery or storage order
+- **AND** this holds for fetched rows, file rows, file imports and refreshes
+
+#### Scenario: A pending tombstone does not consume a booked correction
+
+- **GIVEN** a deleted pending rent of -800,00 € on 1 December 2026 and a live booked rent on 2 December with source ID "BANK-X"
+- **WHEN** the bank corrects the booked rent to 1 December
+- **THEN** the live row is updated and one booked payment of -800,00 € remains
+- **AND** a live source-ID partner also wins over a booked tombstone with that source ID
+- **AND** an accompanying pending echo uses the tombstone without consuming the live booked correction
+
+#### Scenario: A source ID wins before a shared reference
+
+- **GIVEN** two fetched pending rents of -800,00 € on 1 December 2026 with source IDs "BANK-A" and "BANK-B" and reference "RECURRING-RENT"
+- **WHEN** one delivered rent omits its source ID and the other retains "BANK-A"
+- **THEN** the source-ID match pairs first and the other rent pairs with "BANK-B"
+- **AND** both original rows remain in every input order
+
+#### Scenario: A shared reference keeps counterparties and user fields separate
+
+- **GIVEN** two pending rents of -800,00 € on 1 December 2026 with reference "RECURRING-RENT" but different known IBANs and comments "USER-A" and "USER-B"
+- **WHEN** both rents arrive in either order
+- **THEN** each stored row retains its own IBAN and comment
+- **AND** exact fingerprints still win when both IBANs are absent but the purposes differ
+- **AND** different known names keep their own comments when both purposes change
+
+#### Scenario: A booked fingerprint stays available for its booked repeat
+
+- **GIVEN** one pending and one booked rent of -800,00 € on 1 December 2026, with reference "RECURRING-RENT" only on the booked row
+- **WHEN** a file delivers both forms with that reference
+- **THEN** the exact booked fingerprint pairs first and the pending form uses the pending row
+- **AND** one pending and one booked row remain
 
 ### Requirement: MT940 import
 
@@ -787,3 +1003,158 @@ The app SHALL show progress while it imports and let the user cancel. Cancellati
 - **THEN** no transaction or new category of the first file remains
 - **AND** the second file is not stored
 - **AND** the result starts with "Import canceled. 0 files were imported before."
+
+### Requirement: Persist the original file identity
+
+The app SHALL create an original file identity only on file import and preserve it through takeover, booking, deletion, and complete export/import. Agreeing file identities find booked versions on another day. Different fingerprints follow the pending pairing rule's transition and repeat exceptions. Migration v18 adds nullable fileIdentity columns to transactions and tombstones. Existing NULL identities keep prior behavior.
+
+#### Scenario: An unidentified file survives booking and deletion
+
+- **GIVEN** a FUTR rent of -800,00 € on 1 December 2026 without a source ID or end-to-end reference
+- **AND** the bank takes it over with purpose "BANK" and books it on 2 December
+- **WHEN** the original file is imported again
+- **THEN** its original file identity finds the booked rent and no row is added
+- **AND** after deletion its honored tombstone skips that same file
+- **AND** an unrelated bank payment with the same bank fields and NULL file identity does not absorb the file
+
+#### Scenario: Different file fingerprints are different identities
+
+- **GIVEN** an imported pending rent of -800,00 € on 1 December 2026 with purpose "Rent A"
+- **WHEN** a file imports another rent on that day with purpose "Rent B"
+- **THEN** their file identities differ and both rows stay, totaling -1.600,00 €
+- **AND** matching source IDs or end-to-end references do not override this disagreement
+
+#### Scenario: Open an existing v17 database
+
+- **GIVEN** a v17 database with a transaction and a tombstone
+- **WHEN** the database opens with v18
+- **THEN** both rows retain their fields and have NULL fileIdentity
+- **AND** a later reopen retains file identities that file imports have stored
+
+#### Scenario: Fingerprint fields stay independent of user edits
+
+- **GIVEN** an imported row with booking day, amount, currency, purpose, counterparty, source ID, and end-to-end reference
+- **THEN** its versioned length-prefixed fingerprint includes those original fields, with folded purpose and normalized counterparty
+- **WHEN** its pending state, local UUID, creation time, comment, checkmark, or category changes
+- **THEN** its original file identity stays unchanged
+- **AND** a refresh or migration cannot create a file identity
+
+#### Scenario: Known names conflict despite an exact fingerprint
+
+- **GIVEN** an unfetched pending rent of -800,00 € on 1 December 2026 to "Vermieter A", with purpose "RENT", reference "SHARED", and no IBAN
+- **WHEN** a file or refresh delivers the same day, amount, purpose and reference for "Vermieter B", also without an IBAN
+- **THEN** their known names conflict and the exact fingerprint cannot pair them
+- **AND** both rows remain, totaling -1.600,00 €
+
+#### Scenario: The fingerprint also checks the currency
+
+- **GIVEN** a pending or booked payment of -800,00 USD on 1 December 2026
+- **WHEN** a file or refresh delivers a pending payment of -800,00 EUR with the same day, purpose, and counterparty but no agreeing explicit identity
+- **THEN** the currency mismatch prevents pairing, including exact fingerprint fallback
+- **AND** both currency amounts remain separate
+
+#### Scenario: A missing reference does not give away a current booked partner
+
+- **GIVEN** fetched pending "PENDING" with comment "USER-A" and fetched booked "BOOKED" with comment "USER-B" and reference "SHARED", each -800,00 € on 1 December 2026
+- **WHEN** a file delivers pending "CHANGED" with "SHARED" and the booked "BOOKED" repeat without its reference
+- **THEN** the compatible current booked fingerprint pairs before the historical pending-to-booked reference lookup
+- **AND** the other pending row remains pending, both comments stay, and two rows total -1.600,00 € in every input order
+
+#### Scenario: No reference does not excuse a known name conflict
+
+- **GIVEN** pending "RENT" of -800,00 € on 1 December 2026 for "Vermieter A", without an IBAN or end-to-end reference
+- **WHEN** a file or refresh delivers the same fields for "Vermieter B"
+- **THEN** their known counterparty conflict invalidates every weaker fingerprint and both rows stay
+- **AND** unknown counterparties keep the existing fingerprint behavior
+
+#### Scenario: A file booking changes its date or purpose
+
+- **GIVEN** a CAMT PDNG rent of -800,00 € to "Vermieter A" on 1 December 2026 with reference "RENT-A"
+- **WHEN** a CAMT BOOK rent arrives on 2 December with that reference, also with a changed purpose
+- **THEN** one booked row remains and totals -800,00 €
+- **AND** the original pending file and booked file are skipped on re-import and after deletion of the fetched booked row
+- **AND** the same transition works without a reference when payee and amount fit within seven days
+- **AND** conflicting explicit references or source IDs still keep payments separate
+
+#### Scenario: A booked name changes its order
+
+- **GIVEN** a booked payment of -49,99 € on 10 November 2026 named "MUSTERMANN, MAX", purpose "Kartenzahlung 1234", with no IBAN or file identity
+- **WHEN** a file or refresh delivers that payment named "Max Mustermann"
+- **THEN** the delivery is skipped as under the existing booked rule
+
+#### Scenario: The bank moves its pending rent by one day
+
+- **GIVEN** file rents of -800,00 € on 1 and 8 December 2026 and the bank has taken over 1 December
+- **WHEN** the next refresh delivers the pending rent on 2 December
+- **THEN** the fetched row moves to 2 December and the 8 December file row stays
+- **AND** two rents total -1.600,00 € in every delivery and storage order
+
+#### Scenario: A booking leaves later file rents alone
+
+- **GIVEN** FUTR file rents of -800,00 € on 7 and 14 December 2026
+- **WHEN** only the booked 7 December rent arrives
+- **THEN** the 7 December row becomes booked and the 14 December row stays pending without a review mark
+- **AND** two indistinguishable 7 December file rows cause only those two and the booked delivery to need review
+
+#### Scenario: A bank pending echo does not undo a booking
+
+- **GIVEN** a fetched booked rent of -800,00 € on 2 December 2026 with reference "RENT-A" and purpose "BOOKED RENT"
+- **WHEN** a refresh delivers pending rent on 1 December with that reference and purpose "PENDING RENT"
+- **THEN** the booked row stays booked with its date and purpose
+- **AND** the pending delivery follows the existing add rule because a reference-only refresh cannot take a booked partner
+- **AND** a file repeat with that reference is skipped without changing the booking, while a migration follows the existing add rule
+
+#### Scenario: An imported booked name changes its order
+
+- **GIVEN** a booked file payment of -49,99 € on 10 November 2026 named "MUSTERMANN, MAX", purpose "Kartenzahlung 1234", without an IBAN
+- **WHEN** a file or refresh delivers that booked payment named "Max Mustermann"
+- **THEN** the current booked fingerprint skips the repeat and one payment remains
+
+#### Scenario: A pending source echo leaves the legacy booked alternative free
+
+- **GIVEN** two fetched booked rents of -800,00 € on 2 December 2026 with purpose "BOOKED RENT", one with source ID "BANK-X" and one without
+- **WHEN** a refresh delivers a booked repeat without a source ID and a pending "BANK-X" on 1 December with purpose "PENDING RENT"
+- **THEN** each delivery has a free partner and two booked rows total -1.600,00 € in either delivery or storage order
+
+#### Scenario: A live pending row precedes a booked tombstone
+
+- **GIVEN** a fetched pending rent of -800,00 € on 1 December 2026 and an honored booked tombstone on 2 December, both with source ID "BANK-X"
+- **WHEN** the booked "BANK-X" arrives on 2 December
+- **THEN** the live pending row becomes booked and stays in the history
+- **AND** the tombstone cannot suppress that booking or cause the live row to be dropped
+
+#### Scenario: Identical pending occurrences need booking review
+
+- **GIVEN** two identical pending file rents of -800,00 € on 7 December 2026 with purpose "FILE" and comments "FIRST" and "SECOND"
+- **WHEN** one otherwise identical BOOK entry arrives
+- **THEN** the shared fingerprint cannot identify which pending occurrence was booked
+- **AND** both pending rows keep their comments and need review, and the new booked row also needs review
+- **AND** with only one pending occurrence, that row books and keeps "FIRST"
+
+#### Scenario: A file booking keeps a pending migration replay at 40 euros
+
+- **GIVEN** a migrated account with source balance 50,00 € and one pending source payment of -10,00 € named "Kiosk" with purpose "CARD"
+- **WHEN** a file repeats the pending payment and then books the same fields
+- **THEN** the account has one booked payment and a computed balance of 40,00 €
+- **AND** replaying the still-pending source keeps the initial balance at 50,00 € and the computed balance at 40,00 €
+
+#### Scenario: A booking leaves a later fetched rent alone
+
+- **GIVEN** an unfetched FUTR file rent of -800,00 € on 7 December 2026 and a fetched pending rent of -800,00 € on 14 December
+- **WHEN** a file brings the booked 7 December rent
+- **THEN** the 7 December file row becomes booked and the 14 December fetched row stays pending
+- **AND** this holds in every stored and delivered order
+
+#### Scenario: A booked file repeat after a bank purpose change
+
+- **GIVEN** a pre-existing booked rent of -800,00 € on 7 December 2026 without an original file identity
+- **AND** a matching booked file was skipped while its purpose was "FILE RENT"
+- **WHEN** the bank changes the purpose to "BANK RENT" and the original file is imported again without an agreeing source ID
+- **THEN** it is added again, as on main, because the older row matches by its booked fingerprint, which includes the purpose
+
+#### Scenario: A recurring reference does not hide the next rent
+
+- **GIVEN** a fetched booked rent of -800,00 € on 7 December 2026 with reference "RECURRING-RENT"
+- **WHEN** a file brings a pending rent of -800,00 € on 8 December or 7 January 2027 with the same reference and payee but a different file identity
+- **THEN** the later rent is added as a separate pending payment
+- **AND** a deleted version of the earlier booked rent does not keep it out

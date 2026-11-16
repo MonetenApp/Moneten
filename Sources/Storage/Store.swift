@@ -69,9 +69,9 @@ public final class Store: SavedPINStore {
 				try db.execute(sql: """
 					UPDATE deletedTransaction SET sourceID = ? WHERE rowid = (SELECT rowid FROM deletedTransaction WHERE accountID = ?
 						AND sourceID IS ? AND bookingDate = ? AND amountMinor = ? AND currency = ? AND isPending = ? AND purpose = ?
-						AND counterpartyIBAN IS ? AND endToEndReference IS ? AND wasFetched = ? LIMIT 1)
+						AND counterpartyIBAN IS ? AND endToEndReference IS ? AND wasFetched = ? AND fileIdentity IS ? LIMIT 1)
 					""", arguments: [r.sourceID, d.accountID, d.sourceID, d.bookingDate.rawValue, d.amountMinor, d.currency, d.isPending, d.purpose,
-						d.counterpartyIBAN, d.endToEndReference, d.wasFetched])
+						d.counterpartyIBAN, d.endToEndReference, d.wasFetched, d.fileIdentity])
 			}
 		}
 	}

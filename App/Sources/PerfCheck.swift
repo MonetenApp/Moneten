@@ -108,7 +108,7 @@ struct PerfScenario {
 				await c.select("Account 1")
 				guard let account = c.model.ledger.accounts.first(where: { $0.name == "Account 1" }) else { return }
 				let pending = (0..<20).map { i in
-					Transaction(accountID: account.id, bookingDate: Day.today(), amountMinor: -Int64(500 + i), name: "Card Payment", purpose: "Pending \(i)", isPending: true)
+					Transaction(accountID: account.id, bookingDate: Day.today().adding(days: -1), amountMinor: -Int64(500 + i), name: "Card Payment", purpose: "Pending \(i)", isPending: true)
 				}
 				await c.model.replacingTable { _ = try? c.model.merge(.file(pending), into: account.id) }
 				await c.settle()
@@ -116,7 +116,7 @@ struct PerfScenario {
 			run: { c in
 				guard let account = c.model.ledger.accounts.first(where: { $0.name == "Account 1" }) else { return }
 				let table = c.harness.transactionTables().first
-				let result = RefreshResult(balance: nil, transactions: FetchedTransactions(rows: [], from: Day.today().adding(days: -1)))
+				let result = RefreshResult(balance: nil, transactions: FetchedTransactions(rows: [], from: Day.today().adding(days: -2)))
 				try? await c.model.sync.deliver(account.id, result)
 				await c.settle()
 				if c.model.ledger.transactions(ofAccount: account.id).contains(where: \.isPending) { c.fail("the refresh dropped no pending row") }
@@ -323,6 +323,29 @@ struct PerfScenario {
 				c.harness.run("alert", "")
 				if model.ledger.transactions.count - before != importedRows { c.fail("the category import did not store every row") }
 				if model.ledger.categories.count - categories != 1_000 { c.fail("the category creation limit did not hold") }
+			}),
+		PerfScenario(name: "refresh-booked-file-history", budget: halfSecond,
+			setUp: { c in
+				let account = Account(position: c.model.ledger.accounts.count, name: "Booked file history", kind: .giro, source: .offline)
+				c.model.save(account: account)
+				let rows = (0..<50_000).map { i in
+					Transaction(accountID: account.id, bookingDate: Day.today().adding(days: -(i % 2_000)), amountMinor: -Int64(i + 1),
+						name: "Shop", purpose: "File history \(i)")
+				}
+				do { _ = try c.model.merge(.file(rows), into: account.id) }
+				catch { c.fail("file history setup failed") }
+				await c.select("Booked file history")
+			},
+			run: { c in
+				guard let account = c.model.ledger.accounts.first(where: { $0.name == "Booked file history" }) else { return c.fail("no history account") }
+				let stored = c.model.ledger.transactions(ofAccount: account.id)
+				let rows = Array(stored.filter { $0.fileIdentity != nil }.prefix(300))
+				if stored.filter({ $0.fileIdentity != nil }).count != 50_000 || rows.count != 300 { c.fail("file history has wrong row count") }
+				do {
+					let result = try c.model.merge(.refresh(RefreshResult(balance: nil, transactions: FetchedTransactions(rows: rows, from: Day.today().adding(days: -2_000)))), into: account.id)
+					if result.skipped != 300 || !result.added.isEmpty || !result.dropped.isEmpty { c.fail("booked refresh changed history") }
+				} catch { c.fail("booked file refresh failed") }
+				if c.model.ledger.transactions(ofAccount: account.id).count != stored.count { c.fail("booked file refresh changed row count") }
 			}),
 	]
 
