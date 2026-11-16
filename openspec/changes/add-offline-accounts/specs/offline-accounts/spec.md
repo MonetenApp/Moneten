@@ -367,7 +367,7 @@ The app SHALL mark every transaction that the user adds with "Add Transaction...
 
 ### Requirement: A manual transaction is part of the bank balance
 
-The app SHALL count a manual transaction that no file and no migration matched in an account with bank access as part of the bank balance when its booking date is not after the day of that balance. While the initial balance is the value that a refresh derived, the app moves it against each such manual transaction that the user adds, changes, or deletes, so the computed balance keeps ending at the bank balance. An initial balance that the user entered stays.
+The app SHALL count a manual transaction in an account with bank access as part of the bank balance when its booking date is not after the day of that balance. While a refresh derived the initial balance, the app computes it again by the rule of the capability `charts` when the user adds, changes, or deletes a manual transaction, so the computed balance keeps ending at the bank balance. An initial balance that the user entered stays.
 
 #### Scenario: Deposit after the first refresh
 
@@ -384,9 +384,9 @@ The app SHALL count a manual transaction that no file and no migration matched i
 
 #### Scenario: Manual transaction that a file matched
 
-- **GIVEN** a giro account whose first refresh derived the initial balance, and a manual transaction of -12,00 € "Kiosk" on 03.10.2026 that a CSV file with -12,00 € "KIOSK" on 03.10.2026 matched
+- **GIVEN** a giro account whose first refresh derived the initial balance from the bank balance of 1.000,00 € on 10.10.2026 and no transactions, and a manual transaction of -12,00 € "Kiosk" on 03.10.2026 that a CSV file with -12,00 € "KIOSK" on 03.10.2026 matched
 - **WHEN** the user deletes the manual transaction
-- **THEN** the initial balance stays, as for any deleted transaction of a file
+- **THEN** the initial balance is 1.000,00 € and the computed balance on 10.10.2026 is 1.000,00 €
 
 #### Scenario: Entered initial balance
 
@@ -403,7 +403,7 @@ The app SHALL count a manual transaction that no file and no migration matched i
 
 ### Requirement: A planned manual transaction joins the bank balance later
 
-The app SHALL count a manual transaction after the day of the bank balance on top of that balance until a refresh reports a balance of a later day. Then the app moves the initial balance against it, as for a manual transaction before that day, while the initial balance is the value that a refresh derived. An initial balance that the user entered stays.
+The app SHALL count a manual transaction after the day of the bank balance on top of that balance until a refresh reports a balance of its day or a later day. From then on the bank balance holds it, whether the refresh delivered a matching booking or not, and an initial balance that a refresh derived is computed again by the rule of the capability `charts`. An initial balance that the user entered stays.
 
 #### Scenario: Refresh after a planned payment
 
@@ -411,6 +411,12 @@ The app SHALL count a manual transaction after the day of the bank balance on to
 - **WHEN** a refresh on 10.11.2026 delivers the booking of -50,00 € on 05.11.2026 and the balance 50,00 €
 - **THEN** the computed balance on 10.11.2026 is 50,00 €
 - **AND** after the user deletes the manual transaction, the computed balance on 10.11.2026 is still 50,00 €
+
+#### Scenario: Refresh of a bank that reports only a balance
+
+- **GIVEN** a credit card whose first refresh derived the initial balance, whose bank reported the balance 100,00 € on 01.11.2026 and no transactions, and a manual transaction of -50,00 € "Hotel Beispiel" on 05.11.2026
+- **WHEN** a refresh on 10.11.2026 reports the balance 50,00 € and no transactions
+- **THEN** the computed balance on 10.11.2026 is 50,00 €
 
 #### Scenario: Refresh after a planned payment with an entered initial balance
 

@@ -85,9 +85,9 @@ public struct Reconciliation: Sendable, Equatable {
 	/// Deleted rows that keep out a row of a migration and take its source ID, so the balance of a migrated account
 	/// counts them as rows of the source while the source has them. Only a migration fills it.
 	public internal(set) var relinked: [DeletedTransaction.Relink] = []
-	/// The account with the balance and the date of this refresh, and, on its first refresh with a
-	/// balance, the initial balance that follows from them. Nil for a file, and when the refresh brought
-	/// no balance in the currency of the account.
+	/// The account with the balance and the date of this refresh, and the initial balance that follows from them
+	/// on its first refresh with a balance and while that value is the derived one. A file or a refresh without a
+	/// balance in the currency of the account gives it only when it changes a derived initial balance.
 	public internal(set) var account: Account?
 	/// The positions that replace those of the account, with the IDs of the stored positions of the same
 	/// securities. Nil when the delivery brought none.
@@ -227,26 +227,24 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored all: [
 			if delivery.covers(pending.sourceValues.bookingDate), pending.review == nil || pending.isChecked { r.dropped.append(pending.id) }
 		}
 	}
-	if case let .refresh(result) = delivery, let balance = result.balance, balance.currency == account.currency {
-		var a = account
-		let balanceDate = result.balanceDate ?? now
-		a.bankBalanceMinor = balance.minorUnits
-		a.bankBalanceDate = balanceDate
-		if result.isPortfolio { a.kind = .portfolio }
-		// A balance whose transactions failed would set the value without the rows that the next refresh brings.
-		if a.derivesInitialBalance, result.transactionFailure == nil {
-			// Dropped and marked rows are pending and do not count.
-			let changed = Dictionary(uniqueKeysWithValues: (r.booked + r.updated).map { ($0.id, $0) })
-			a.deriveInitialBalance(from: all.map { changed[$0.id] ?? $0 } + r.added)
-		} else if a.initialBalanceIsDerived, let before = account.bankBalanceDate.map({ Day($0) }) {
-			// A derived initial balance holds the manual rows up to the day of the bank balance. A new day moves the rows
-			// that it passes into the bank balance, so a later change of such a row moves the initial balance back.
-			// A value that the user entered stays. A manual row that a file matched is a booking of the file, which the
-			// bank balance holds like any other row, so it does not move the value.
-			let manual = all.filter(\.isOnlyManual)
-			a.initialBalanceMinor += a.bookedSum(of: manual, through: before) - a.bookedSum(of: manual, through: Day(balanceDate))
+	// A balance whose transactions failed would set the value without the rows that the next refresh brings.
+	var rowsFailed = false
+	var a = account
+	if case let .refresh(result) = delivery {
+		rowsFailed = result.transactionFailure != nil
+		if let balance = result.balance, balance.currency == account.currency {
+			a.bankBalanceMinor = balance.minorUnits
+			a.bankBalanceDate = result.balanceDate ?? now
+			if result.isPortfolio { a.kind = .portfolio }
+			r.account = a
 		}
-		r.account = a
+	}
+	if !rowsFailed, (a.derivesInitialBalance && r.account != nil) || a.followsBankBalance {
+		// The first refresh with a balance derives the initial balance, and a derived one follows every later refresh
+		// and file. Dropped and marked rows are pending and do not count.
+		let changed = Dictionary(uniqueKeysWithValues: (r.booked + r.updated).map { ($0.id, $0) })
+		a.deriveInitialBalance(from: all.map { changed[$0.id] ?? $0 } + r.added)
+		if r.account != nil || a.initialBalanceMinor != account.initialBalanceMinor { r.account = a }
 	}
 	if case let .refresh(result) = delivery, let delivered = result.holdings {
 		r.holdings = Reconciliation.Holdings(accountID: account.id, holdings: Holding.identify(delivered, stored: holdings))

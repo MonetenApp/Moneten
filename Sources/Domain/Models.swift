@@ -78,8 +78,8 @@ public struct Account: Identifiable, Hashable, Sendable, Codable {
 	/// The first refresh with a bank balance or the user set the initial balance, so the app never
 	/// derives it again. The user changes it from then on, with "Calibrate" or by hand.
 	public var initialBalanceIsSet: Bool
-	/// A refresh derived the initial balance, and the user has not entered one since. Only then does a manual row
-	/// move it to keep the bank balance. A value that the user enters stays as the user entered it.
+	/// A refresh derived the initial balance, and the user has not entered one since. Only then does the app keep it
+	/// at the bank balance less the booked rows up to its day. A value that the user enters stays as the user entered it.
 	public var initialBalanceIsDerived: Bool
 	public var isClosed: Bool
 	public var comment: String?
@@ -162,6 +162,11 @@ public struct Account: Identifiable, Hashable, Sendable, Codable {
 	/// history from its recorded values instead.
 	var derivesInitialBalance: Bool { source == .bank && kind != .portfolio && !initialBalanceIsSet }
 
+	/// A refresh derived the initial balance and the user entered none since, so every change of the rows and every
+	/// refresh computes it again. One rule instead of moves by the changed rows: a move needs the history of each row,
+	/// and a row that changed its source or a refresh without a booking moved it wrongly.
+	public var followsBankBalance: Bool { source == .bank && kind != .portfolio && initialBalanceIsDerived }
+
 	/// The rows that a bank balance for the end of `day` holds: booked rows in the account currency up to that
 	/// day. Pending rows are not in it, with or without review, because a bank reports its booked balance.
 	func bookedSum(of rows: some Sequence<Transaction>, through day: Day) -> Int64 {
@@ -177,16 +182,17 @@ public struct Account: Identifiable, Hashable, Sendable, Codable {
 	}
 
 	/// The initial balance that the user enters in the account settings or with "Calibrate". It stays, so no refresh
-	/// derives it again and no manual row moves it.
+	/// and no change of the rows derives it again.
 	public mutating func enterInitialBalance(_ minor: Int64) {
 		initialBalanceMinor = minor
 		initialBalanceIsSet = true
 		initialBalanceIsDerived = false
 	}
 
-	/// Sets the initial balance once, so that the computed balance meets the bank balance.
-	mutating func deriveInitialBalance(from rows: [Transaction], calendar: Calendar = .current) {
-		guard derivesInitialBalance, let value = initialBalanceMeetingBankBalance(of: rows, calendar: calendar) else { return }
+	/// Sets the initial balance, so that the computed balance meets the bank balance: at the first refresh with a
+	/// bank balance, and again while the value is the derived one. `rows` are all live rows of the account.
+	mutating func deriveInitialBalance(from rows: some Sequence<Transaction>, calendar: Calendar = .current) {
+		guard derivesInitialBalance || followsBankBalance, let value = initialBalanceMeetingBankBalance(of: rows, calendar: calendar) else { return }
 		initialBalanceMinor = value
 		initialBalanceIsSet = true
 		initialBalanceIsDerived = true

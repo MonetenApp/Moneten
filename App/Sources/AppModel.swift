@@ -631,12 +631,13 @@ final class AppModel {
 
 	// MARK: Changing transactions
 
-	/// Saves the rows, with the accounts whose initial balance they move, and returns whether they are saved.
+	/// Saves the rows, with the accounts whose derived initial balance they change, and returns whether they are saved.
 	/// A locked app has no database and saves nothing.
 	@discardableResult
-	private func commit(_ changed: (transactions: [Transaction], parts: [SplitPart]), accounts: [Account] = []) -> Bool {
+	private func commit(_ changed: (transactions: [Transaction], parts: [SplitPart])) -> Bool {
 		guard let store else { return false }
 		guard !changed.transactions.isEmpty || !changed.parts.isEmpty else { return true }
+		let accounts = ledger.followingBankBalance(saving: changed.transactions)
 		do {
 			try store.save(changed.transactions, parts: changed.parts, accounts: accounts)
 			ledgerChange = "commit rows=\(changed.transactions.count) parts=\(changed.parts.count)"
@@ -817,8 +818,7 @@ final class AppModel {
 		for i in changed.transactions.indices where changed.transactions[i].categoryID == nil && changed.transactions[i].categorizedBy != .manual {
 			categorizer.categorize(&changed.transactions[i])
 		}
-		let before = changed.transactions.compactMap { ledger.transaction($0.id) }
-		commit(changed, accounts: ledger.keepingBankBalance(replacing: before, with: changed.transactions))
+		commit(changed)
 	}
 
 	@discardableResult
@@ -853,7 +853,7 @@ final class AppModel {
 
 	func delete(transactions ids: Set<UUID>) {
 		guard let store else { return }
-		let accounts = ledger.keepingBankBalance(replacing: ids.compactMap { ledger.transaction($0) }, with: [])
+		let accounts = ledger.followingBankBalance(saving: [], deleting: ids)
 		do {
 			try store.deleteTransactions(Array(ids), accounts: accounts)
 			ledgerChange = "delete rows=\(ids.count)"

@@ -400,24 +400,24 @@ public struct Ledger: Sendable {
 			balanceToday: Money(minorUnits: computedBalance(of: account, through: today).minorUnits + difference, currency: account.currency))
 	}
 
-	/// The accounts whose initial balance moves when the manual rows `old` become `new`, as an addition, a change, or
-	/// a deletion does. In an account with bank access, a manual row that no source matched and that is booked by the
-	/// day of the bank balance is part of that balance. A manual row that a file or a migration matched is a row of
-	/// that source, so it moves nothing, as no other row of a source does. While the initial balance is the value that a refresh derived, it moves against such a row, so the
-	/// computed balance keeps ending at the bank balance and the row only shapes the history before it. Before that, the
-	/// first refresh derives the initial balance with the manual rows. A value that the user entered stays. A manual row
-	/// after the day of the bank balance counts on top of it.
-	public func keepingBankBalance(replacing old: [Transaction], with new: [Transaction], calendar: Calendar = .current) -> [Account] {
-		let ids = Set((old + new).filter(\.isOnlyManual).map(\.accountID))
+	/// The accounts whose derived initial balance changes when the app saves the rows `saved` and deletes the rows
+	/// `deleted`, as an addition, an edit, an offsetting entry, or a deletion does. The caller stores them in the same
+	/// write as the rows. While a refresh derived the initial balance (`Account.followsBankBalance`), it is the bank
+	/// balance less the booked rows of the account up to the day of that balance, manual rows and rows of a source
+	/// alike, so the computed balance keeps ending at the bank balance and a row before that day only shapes the
+	/// history before it. A value that the user entered stays.
+	public func followingBankBalance(saving saved: [Transaction], deleting deleted: Set<UUID> = [], calendar: Calendar = .current) -> [Account] {
+		// Marking 50,000 rows as checked commits them all, so a ledger without a derived value skips the sets.
+		guard accounts.contains(where: \.followsBankBalance) else { return [] }
+		let replaced = Set(saved.map(\.id)).union(deleted)
+		let ids = Set(saved.map(\.accountID) + replaced.compactMap { transaction($0)?.accountID })
 		return ids.sorted { $0.uuidString < $1.uuidString }.compactMap { id -> Account? in
-			guard var a = account(id), a.source == .bank, a.kind != .portfolio, a.initialBalanceIsDerived, a.bankBalanceMinor != nil,
-				let date = a.bankBalanceDate else { return nil }
-			let day = Day(date, calendar: calendar)
-			let shift = a.bookedSum(of: old.lazy.filter { $0.isOnlyManual && $0.accountID == id }, through: day)
-				- a.bookedSum(of: new.lazy.filter { $0.isOnlyManual && $0.accountID == id }, through: day)
-			guard shift != 0 else { return nil }
-			a.initialBalanceMinor += shift
-			return a
+			// The scan of the rows comes after the guard, so a change in any other account costs nothing.
+			guard var a = account(id), a.followsBankBalance, a.bankBalanceDate != nil else { return nil }
+			let before = a.initialBalanceMinor
+			let kept = transactions.lazy.filter { $0.accountID == id && !replaced.contains($0.id) }
+			a.deriveInitialBalance(from: [AnySequence(kept), AnySequence(saved.lazy.filter { $0.accountID == id })].joined(), calendar: calendar)
+			return a.initialBalanceMinor == before ? nil : a
 		}
 	}
 

@@ -117,35 +117,60 @@ struct OpeningBalanceTests {
 		#expect(bars(stored, of: depot).last == 2_000_000)
 	}
 
-	@Test("A later refresh with an older row keeps the opening balance, so the last bar differs from the bank balance by that row")
+	@Test("A later refresh with an older row computes a derived opening balance again, so the last bar meets the bank balance")
 	func laterRefresh() throws {
 		let store = try makeStore([giro])
 		_ = try store.merge(refresh(quarter, balance: 120_000), into: giro.id)
+		_ = try store.merge(refresh([row(0, -40_000, "Card"), row(100, -7_000, "Old fee")], balance: 80_000), into: giro.id)
+		let stored = try store.loadLedger()
+		#expect(stored.account(giro.id)?.initialBalanceMinor == 262_000)
+		#expect(bars(stored).last == 80_000)
+	}
+
+	@Test("A later refresh with an older row keeps a typed opening balance, so the last bar differs from the bank balance by that row")
+	func laterRefreshWithTypedValue() throws {
+		let store = try makeStore([giro])
+		_ = try store.merge(refresh(quarter, balance: 120_000), into: giro.id)
+		try type(255_001, into: giro.id, of: store)
+		try type(255_000, into: giro.id, of: store)
 		_ = try store.merge(refresh([row(0, -40_000, "Card"), row(100, -7_000, "Old fee")], balance: 80_000), into: giro.id)
 		let stored = try store.loadLedger()
 		#expect(stored.account(giro.id)?.initialBalanceMinor == 255_000)
 		#expect(bars(stored).last == 73_000)
 	}
 
-	@Test("Deleting a fetched row keeps the opening balance")
+	@Test("Deleting a fetched row moves a derived opening balance in the same write and keeps a typed one")
 	func deletion() throws {
-		let store = try makeStore([giro])
+		let savings = Account(position: 1, name: "Savings", kind: .savings, source: .bank)
+		let store = try makeStore([giro, savings])
 		let rows = quarter
+		let savingsRows = quarter.map { var t = $0; t.id = UUID(); t.accountID = savings.id; return t }
 		_ = try store.merge(refresh(rows, balance: 120_000), into: giro.id)
-		try store.deleteTransactions([rows[3].id])
+		_ = try store.merge(refresh(savingsRows, balance: 120_000), into: savings.id)
+		try type(255_001, into: savings.id, of: store)
+		try type(255_000, into: savings.id, of: store)
+		let ledger = try store.loadLedger()
+		let deleted: Set<UUID> = [rows[3].id, savingsRows[3].id]
+		try store.deleteTransactions(Array(deleted), accounts: ledger.followingBankBalance(saving: [], deleting: deleted))
 		let stored = try store.loadLedger()
-		#expect(stored.account(giro.id)?.initialBalanceMinor == 255_000)
-		#expect(bars(stored).last == 215_000)
+		#expect(stored.account(giro.id)?.initialBalanceMinor == 160_000)
+		#expect(bars(stored).last == 120_000)
+		#expect(stored.account(savings.id)?.initialBalanceMinor == 255_000)
+		#expect(bars(stored, of: savings).last == 215_000)
 	}
 
-	@Test("Older rows from a file keep the opening balance")
+	@Test("Older rows from a file move a derived opening balance in the same write, so the last bar stays at the bank balance, and keep a typed one")
 	func fileIntoFetchedAccount() throws {
-		let store = try makeStore([giro])
-		_ = try store.merge(refresh(quarter, balance: 120_000), into: giro.id)
-		_ = try store.merge(.file([row(100, -5_000, "Old fee")]), into: giro.id)
+		let savings = Account(position: 1, name: "Savings", kind: .savings, source: .bank)
+		let store = try makeStore([giro, savings])
+		for account in [giro, savings] { _ = try store.merge(refresh(quarter.map { var t = $0; t.accountID = account.id; return t }, balance: 120_000), into: account.id) }
+		try type(300_000, into: savings.id, of: store)
+		for account in [giro, savings] { _ = try store.merge(.file([row(100, -5_000, "Old fee", in: account)]), into: account.id) }
 		let stored = try store.loadLedger()
-		#expect(stored.account(giro.id)?.initialBalanceMinor == 255_000)
-		#expect(bars(stored).last == 115_000)
+		#expect(stored.account(giro.id)?.initialBalanceMinor == 260_000)
+		#expect(bars(stored).last == 120_000)
+		#expect(stored.account(savings.id)?.initialBalanceMinor == 300_000)
+		#expect(bars(stored, of: savings).last == 160_000)
 	}
 
 	/// What "OK" in the account settings stores after the user typed `minor` under "Initial balance".
@@ -217,7 +242,8 @@ struct OpeningBalanceTests {
 		_ = try store.merge(refresh([], balance: 100_000), into: typed)
 		_ = try store.merge(refresh([], balance: 100_000), into: migrated)
 		let stored = try store.loadLedger()
-		#expect(stored.account(old)?.initialBalanceMinor == 130_000)
+		// From then on the value is derived and meets the bank balance with the older row.
+		#expect(stored.account(old)?.initialBalanceMinor == 137_000)
 		#expect(stored.account(typed)?.initialBalanceMinor == 50_000)
 		#expect(stored.account(migrated)?.initialBalanceMinor == 0)
 	}
