@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 
 /// An amount of money in the smallest unit of its currency, for example cents for EUR.
 ///
@@ -66,12 +67,26 @@ enum Currency {
 
 	/// `text` without the code and the symbol of the currency, such as "USD" and "$", so "12.50 $" reads as an amount.
 	static func removingSigns(of code: String, from text: String) -> String {
-		let formatter = NumberFormatter()
-		formatter.locale = Locale(identifier: "en_US_POSIX")
-		formatter.currencyCode = code
 		var s = text.replacingOccurrences(of: code, with: "", options: .caseInsensitive)
-		if let symbol = formatter.currencySymbol, !symbol.isEmpty { s = s.replacingOccurrences(of: symbol, with: "") }
+		let symbol = symbol(of: code)
+		if !symbol.isEmpty { s = s.replacingOccurrences(of: symbol, with: "") }
 		return s
+	}
+
+	/// The symbols found so far, by currency code. The amount field checks its text on every key, and making a
+	/// `NumberFormatter` each time cost more than reading the amount.
+	private static let symbols = Mutex<[String: String]>([:])
+
+	private static func symbol(of code: String) -> String {
+		symbols.withLock { found in
+			if let symbol = found[code] { return symbol }
+			let formatter = NumberFormatter()
+			formatter.locale = Locale(identifier: "en_US_POSIX")
+			formatter.currencyCode = code
+			let symbol = formatter.currencySymbol ?? ""
+			found[code] = symbol
+			return symbol
+		}
 	}
 }
 

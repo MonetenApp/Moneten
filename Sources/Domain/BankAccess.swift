@@ -345,12 +345,13 @@ extension Account {
 	/// it. The balance and the status of a refresh that ended while the settings were open stay. The type
 	/// changes only when the user changed it from the type of `opened`, the account as the settings
 	/// opened, to one of the `AccountKind.choices` of the current type. A portfolio stays a portfolio, also
-	/// one that a refresh made while the settings were open.
+	/// one that a refresh made while the settings were open. The initial balance, too, counts as entered only
+	/// when the user changed it from that of `opened`, so a derived value that a refresh set meanwhile stays.
 	public mutating func takeSettings(from edited: Account, opened: Account) {
 		name = edited.name
 		if edited.kind != opened.kind, kind.choices?.contains(edited.kind) == true { kind = edited.kind }
 		isClosed = edited.isClosed
-		if edited.initialBalanceMinor != initialBalanceMinor { enterInitialBalance(edited.initialBalanceMinor) }
+		if edited.initialBalanceMinor != opened.initialBalanceMinor { enterInitialBalance(edited.initialBalanceMinor) }
 		color = edited.color
 		refreshInterval = edited.refreshInterval
 	}

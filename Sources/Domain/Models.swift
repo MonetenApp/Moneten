@@ -75,8 +75,9 @@ public struct Account: Identifiable, Hashable, Sendable, Codable {
 	public var bankBalanceDate: Date?
 	/// The balance before the oldest transaction. Charts start from it.
 	public var initialBalanceMinor: Int64
-	/// The first refresh with a bank balance or the user set the initial balance, so the app never
-	/// derives it again. The user changes it from then on, with "Calibrate" or by hand.
+	/// The first refresh with a bank balance and the full history, or the user, set the initial balance, so no
+	/// later refresh derives it from scratch. A derived value still follows manual rows (`initialBalanceIsDerived`).
+	/// The user changes it with "Calibrate" or by hand.
 	public var initialBalanceIsSet: Bool
 	/// A refresh derived the initial balance, and the user has not entered one since. Only then does a manual row in the
 	/// bank balance move it. A value that the user enters stays as the user entered it.
