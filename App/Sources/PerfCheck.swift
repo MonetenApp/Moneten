@@ -390,7 +390,10 @@ struct PerfScenario {
 		// "Supported Banks..." on a directory of 2,700 banks, as many as the bank directory of the helper has with a
 		// FinTS address. The window used a `List`, and its rows are now a lazy stack (add-account-setup, task 1.21).
 		PerfScenario(name: "open-supported-banks", budget: halfSecond,
-			setUp: { _ in SupportedBanksPerf.directory = SupportedBanksPerf.load() },
+			setUp: { _ in
+				SupportedBanksPerf.directory = SupportedBanksPerf.load()
+				SupportedBanksList.lastShown = nil
+			},
 			run: { c in
 				guard let directory = SupportedBanksPerf.directory else { return }
 				let window = NSWindow(contentViewController: NSHostingController(rootView: SupportedBanksList(directory: .success(directory)).environment(c.model)))
@@ -399,17 +402,22 @@ struct PerfScenario {
 				window.isReleasedWhenClosed = false
 				window.makeKeyAndOrderFront(nil)
 				SupportedBanksPerf.window = window
+				await SupportedBanksPerf.expect(c, "open", banks: 2_700, first: "Musterbank Altstadt 1028")
 			}),
 		PerfScenario(name: "search-supported-banks", budget: halfSecond,
 			run: { c in
 				guard let field = SupportedBanksPerf.field else { return c.fail("the search field has no focus") }
+				SupportedBanksList.lastShown = nil
 				field.insertText("Sparkasse", replacementRange: NSRange(location: NSNotFound, length: 0))
+				await SupportedBanksPerf.expect(c, "search", banks: 540, first: "Sparkasse Beispielstadt 1015")
 			}),
 		PerfScenario(name: "clear-supported-banks-search", budget: halfSecond,
 			run: { c in
 				guard let field = SupportedBanksPerf.field else { return c.fail("the search field has no focus") }
+				SupportedBanksList.lastShown = nil
 				field.selectAll(nil)
 				field.deleteBackward(nil)
+				await SupportedBanksPerf.expect(c, "clear", banks: 2_700, first: "Musterbank Altstadt 1028")
 				await c.settle()
 				SupportedBanksPerf.window?.close()
 				SupportedBanksPerf.window = nil
@@ -457,6 +465,16 @@ enum SupportedBanksPerf {
 	static var window: NSWindow?
 
 	static var field: NSTextView? { window?.firstResponder as? NSTextView }
+
+	/// Waits up to five seconds for the rows of the next search and compares them with the rows that `step`
+	/// expects: `banks` banks match, the list shows at most 500 of them, and `first` is the first bank.
+	static func expect(_ c: PerfContext, _ step: String, banks: Int, first: String) async {
+		for _ in 0..<100 where SupportedBanksList.lastShown == nil { try? await Task.sleep(for: .milliseconds(50)) }
+		guard let shown = SupportedBanksList.lastShown else { return c.fail("\(step): the list showed no rows") }
+		if shown.bankCount != banks || shown.banks.count != min(banks, 500) || shown.banks.first?.name != first {
+			c.fail("\(step): \(shown.bankCount) banks, \(shown.banks.count) shown, first \(shown.banks.first?.name ?? "-")")
+		}
+	}
 
 	/// 2,700 made-up banks, as many as the bank directory of the FinTS helper has with a FinTS address, one in
 	/// ten of a merged bank.

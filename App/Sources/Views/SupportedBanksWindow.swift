@@ -42,6 +42,11 @@ struct SupportedBanksList: View {
 	/// The rows that Page Down moves, one less than the scroll view shows.
 	@State private var page = 10
 
+	#if DEBUG || PERF_HARNESS
+	/// The rows of the last search, which the perf check compares with the rows it expects.
+	static var lastShown: Shown?
+	#endif
+
 	private enum Focus: Hashable {
 		case search, rows
 	}
@@ -89,7 +94,7 @@ struct SupportedBanksList: View {
 					.textFieldStyle(.roundedBorder)
 					.focused($focus, equals: .search)
 					.accessibilityLabel("Search Banks")
-					.onKeyPress(.downArrow) { move(.downArrow, proxy) }
+					.onKeyPress(keys: [.downArrow]) { move($0, proxy) }
 					.padding(10)
 				content(proxy)
 					.frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -140,7 +145,7 @@ struct SupportedBanksList: View {
 					// Tab leads here from the search field, also without keyboard navigation in the settings of macOS.
 					.focusable(interactions: .edit)
 					.focused($focus, equals: .rows)
-					.onKeyPress(keys: [.downArrow, .upArrow, .pageDown, .pageUp, .home, .end]) { move($0.key, proxy) }
+					.onKeyPress(keys: [.downArrow, .upArrow, .pageDown, .pageUp, .home, .end]) { move($0, proxy) }
 					.accessibilityElement(children: .contain)
 					.accessibilityLabel("Supported Banks")
 				}
@@ -193,30 +198,40 @@ struct SupportedBanksList: View {
 		.accessibilityAddTraits(isSelected ? [.isStaticText, .isSelected] : .isStaticText)
 	}
 
-	/// Moves the selection by `key` and scrolls it into view. Down Arrow in the search field selects the
-	/// first row, and Up Arrow on the first row goes back to the search field.
-	private func move(_ key: KeyEquivalent, _ proxy: ScrollViewProxy) -> KeyPress.Result {
-		guard let shown else { return .ignored }
+	/// Moves the selection by the key and scrolls it into view, as `SupportedBanksKeys` decides. A key with
+	/// Command, Option, Control, or Shift goes to the system, so Command-Down moves the text cursor.
+	private func move(_ press: KeyPress, _ proxy: ScrollViewProxy) -> KeyPress.Result {
+		guard let shown, let key = Self.key(press.key) else { return .ignored }
 		let ids = shown.services.map(\.id) + shown.banks.map(\.id)
-		guard !ids.isEmpty else { return .ignored }
-		let current = focus == .rows ? selected.flatMap(ids.firstIndex) : nil
-		if key == .upArrow, current == 0 {
+		var modifiers = SupportedBanksKeys.Modifiers()
+		if press.modifiers.contains(.command) { modifiers.insert(.command) }
+		if press.modifiers.contains(.option) { modifiers.insert(.option) }
+		if press.modifiers.contains(.control) { modifiers.insert(.control) }
+		if press.modifiers.contains(.shift) { modifiers.insert(.shift) }
+		let place: SupportedBanksKeys.Focus = focus == .rows ? .rows(selected: selected.flatMap(ids.firstIndex)) : .search
+		switch SupportedBanksKeys.action(for: key, modifiers: modifiers, focus: place, count: ids.count, page: page) {
+		case .ignore:
+			return .ignored
+		case .focusSearch:
 			focus = .search
-			return .handled
+		case let .select(position):
+			selected = ids[position]
+			focus = .rows
+			proxy.scrollTo(ids[position])
 		}
-		let target = switch key {
-		case .downArrow: current.map { $0 + 1 } ?? 0
-		case .upArrow: (current ?? 1) - 1
-		case .pageDown: (current ?? 0) + page
-		case .pageUp: (current ?? 0) - page
-		case .end: ids.count - 1
-		default: 0
-		}
-		let id = ids[min(max(target, 0), ids.count - 1)]
-		selected = id
-		focus = .rows
-		proxy.scrollTo(id)
 		return .handled
+	}
+
+	private static func key(_ key: KeyEquivalent) -> SupportedBanksKeys.Key? {
+		switch key {
+		case .upArrow: .up
+		case .downArrow: .down
+		case .pageUp: .pageUp
+		case .pageDown: .pageDown
+		case .home: .home
+		case .end: .end
+		default: nil
+		}
 	}
 
 	/// The services of the extensions that may run, named after their extension.
@@ -237,6 +252,9 @@ struct SupportedBanksList: View {
 		}.value
 		guard !Task.isCancelled else { return }
 		shown = found
+		#if DEBUG || PERF_HARNESS
+		Self.lastShown = found
+		#endif
 		selected = nil
 		result += 1
 	}

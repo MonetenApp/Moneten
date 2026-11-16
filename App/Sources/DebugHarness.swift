@@ -291,8 +291,8 @@ final class DebugHarness {
 		case "extensions": openExtensionsWindow()
 		// Opens "Supported Banks..." of the Help menu. "type" then types into its search field.
 		case "supportedbanks": openMenuItem("Supported Banks...")
-		// "down", "up", "pagedown", "pageup", "home", "end", or "tab" to the window "Supported Banks", as the keyboard sends it.
-		// Then it logs whether the window is key and which view has the focus.
+		// "down", "up", "pagedown", "pageup", "home", "end", or "tab" to the window "Supported Banks", as the keyboard sends it,
+		// also with "command-" in front, such as "command-down". It never activates the app. Then it logs which view has the focus.
 		case "supportedkey": supportedBanksKey(argument)
 		// An app in the background shows every item of the menu bar disabled, so this reads the condition of the commands.
 		case "menucommands": log("menucommands enabled=\(AppCommands(model: model).unlocked)")
@@ -945,17 +945,23 @@ final class DebugHarness {
 		guard let window = NSApp.windows.first(where: { $0.title == "Supported Banks" && $0.isVisible }) else { return log("supportedkey no window") }
 		let keys: [String: (Int, UInt16)] = ["down": (NSDownArrowFunctionKey, 125), "up": (NSUpArrowFunctionKey, 126), "pagedown": (NSPageDownFunctionKey, 121),
 			"pageup": (NSPageUpFunctionKey, 116), "home": (NSHomeFunctionKey, 115), "end": (NSEndFunctionKey, 119), "tab": (9, 48)]
-		guard let key = keys[name], let scalar = UnicodeScalar(key.0) else { return log("supportedkey unknown \(name)") }
-		// Only the active app has a key window, and SwiftUI moves the focus only in the key window.
-		NSApp.activate()
+		// "command-down" and the like send the key with Command, which the window leaves to the system.
+		let withCommand = name.hasPrefix("command-")
+		let base = withCommand ? String(name.dropFirst("command-".count)) : name
+		guard let key = keys[base], let scalar = UnicodeScalar(key.0) else { return log("supportedkey unknown \(name)") }
+		// A harness run stays in the background (#291), so this never activates the app. The window becomes the
+		// key window of the app, which it is once the app is active, and gets the key as the keyboard sends it.
 		window.makeKeyAndOrderFront(nil)
 		let characters = String(Character(scalar))
-		if let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: name == "tab" ? [] : [.numericPad, .function], timestamp: 0,
+		var modifiers: NSEvent.ModifierFlags = base == "tab" ? [] : [.numericPad, .function]
+		if withCommand { modifiers.insert(.command) }
+		if let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: modifiers, timestamp: 0,
 			windowNumber: window.windowNumber, context: nil, characters: characters, charactersIgnoringModifiers: characters, isARepeat: false, keyCode: key.1) {
 			window.sendEvent(event)
 		}
 		DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-			self?.log("supportedkey \(name) key=\(NSApp.keyWindow === window) responder=\(window.firstResponder.map { String(describing: type(of: $0)) } ?? "-")")
+			let cursor = (window.firstResponder as? NSTextView).map { "\($0.selectedRange().location)" } ?? "-"
+			self?.log("supportedkey \(name) key=\(NSApp.keyWindow === window) responder=\(window.firstResponder.map { String(describing: type(of: $0)) } ?? "-") cursor=\(cursor)")
 		}
 	}
 

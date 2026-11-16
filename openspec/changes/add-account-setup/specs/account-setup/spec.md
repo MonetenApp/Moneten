@@ -529,6 +529,13 @@ The app SHALL show a list of the banks and services it can reach, with a search 
 - **THEN** the first entry of the list is selected and the search field keeps its text
 - **AND** Down Arrow, Up Arrow, Page Down, Page Up, Home, and End move the selection and scroll the list so that the selected entry is visible
 
+#### Scenario: An arrow key with a modifier key stays with the system
+
+- **GIVEN** the search field has the text "Muster" and the cursor after "Mu"
+- **WHEN** the user presses Command-Down Arrow
+- **THEN** the cursor moves to the end of "Muster", the search field keeps the focus, and no entry is selected
+- **AND** an arrow, page, Home, or End key with Command, Option, Control, or Shift in the list leaves the selection unchanged
+
 #### Scenario: Each entry is one element for assistive technologies
 
 - **WHEN** VoiceOver reads the list
