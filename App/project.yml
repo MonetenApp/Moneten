@@ -6,6 +6,8 @@ options:
   deploymentTarget:
     macOS: "15.0"
   createIntermediateGroups: true
+  # English is the language of the code. App/Resources/Localizable.xcstrings holds German as well.
+  developmentLanguage: en
   generateEmptyDirectories: false
 # Perf is optimized like Release and contains the debug harness, for scripts/perf-check.sh.
 configs:
@@ -70,6 +72,8 @@ targets:
       base:
         MARKETING_VERSION: 0.0.1
         CURRENT_PROJECT_VERSION: 1
+        # The part of the version after the hyphen, such as beta.1. scripts/build-app.sh sets it from MONETEN_VERSION.
+        MONETEN_PRE_RELEASE: ""
         PRODUCT_BUNDLE_IDENTIFIER: io.github.alexander-schneider.Moneten
         PRODUCT_NAME: Moneten
         GENERATE_INFOPLIST_FILE: NO
@@ -78,6 +82,9 @@ targets:
         # A muted slate blue for selections and controls, calmer than the system blue.
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         ENABLE_HARDENED_RUNTIME: $(MONETEN_HARDENED_RUNTIME)
+        # The compiler writes the key of each looked-up literal, which Xcode adds to the catalog.
+        SWIFT_EMIT_LOC_STRINGS: YES
+        LOCALIZATION_PREFERS_STRING_CATALOGS: YES
       configs:
         Perf:
           SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) PERF_HARNESS

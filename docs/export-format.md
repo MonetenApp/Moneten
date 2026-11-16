@@ -10,7 +10,7 @@
 - An identifier is a UUID as text. Objects refer to each other by these identifiers.
 - An optional key without a value is left out, and a reader takes a missing optional key as empty. Every other key is always written, also an empty list or an empty text such as `purpose`.
 - A currency code has exactly three uppercase ASCII letters, `[A-Z]{3}`. This also applies to optional currencies of holdings and both currencies of an exchange rate.
-- Adding an optional key does not change the format version. A reader treats a missing `csvProfiles` key as an empty list.
+- Adding an optional key does not change the format version. A reader treats a missing `csvProfiles` or `savedSearches` key as an empty list.
 - The lists keep the order of the database.
 - A category or account group cannot contain itself, directly or through its parents. The reader refuses a loop and names its position.
 - The complete export is written atomically with mode 0600, so only its owner can read or write it. An unreadable stored holding fails the export instead of being omitted.
@@ -32,6 +32,7 @@
 | `portfolioValues` | List of daily values of portfolios |
 | `holdings` | List of positions of portfolios |
 | `csvProfiles` | Optional list of saved CSV profiles, including unreadable versions. Left out when there are none. |
+| `savedSearches` | Optional list of saved searches of the sidebar section "Searches". Left out when there are none. |
 
 ## CSV profile
 
@@ -42,6 +43,22 @@
 | `payload` | Base64 of the exact stored JSON bytes. The complete export preserves unreadable profiles and unknown fields without interpreting them. |
 
 A version-1 payload contains `name`, `header`, `delimiter`, and `layout`. The header is a list of column titles, and the optional delimiter is the saved field separator. The layout contains `encoding`, `columns`, `dateOrder`, optional `decimalMark`, and `createsCategories`. The columns object maps the field names of `CSVField` in [the CSV reader](../Sources/Import/CSVImport.swift) to zero-based column positions. The other settings use the raw values of `CSVEncoding`, `DateOrder`, and `DecimalMark` from the reader. A profile save updates known fields and preserves unknown fields, including unknown column mappings. A profile with a negative known column position is unreadable and is not applied. Its raw payload remains stored and exported.
+
+## Saved search
+
+| Key | Content |
+|---|---|
+| `id` | Identifier |
+| `name` | Name in the sidebar |
+| `position` | Order in the sidebar section "Searches", a number. The import keeps the order and numbers the saved searches from 0. |
+| `searchText` | The text of the search field, possibly empty |
+| `period` | The period choice, see below |
+| `status` | `all`, `checked`, or `unchecked` |
+| `amount` | The amount filter, see below |
+| `categoryID` | The category of the "Category" menu. Left out for "Show All". |
+| `accountID` | The account of the "Account" menu. Left out for "Show All". |
+
+The period has a `kind` and, for some kinds, days. `all`, `days30`, `days90`, and `months12` have no days, and the last three count back from the day the user selects the search. `month`, `quarter`, and `year` have the first day of that month, quarter, or year in `start`. `custom` has `start` and `end`, both included. The amount filter has a `kind` of `all`, `deposits`, `withdrawals`, or `range`. A range has at least one of `min` and `max` as decimal text without a currency, such as `"-500"` and `"-99.99"`, because each row compares them in its own currency. A missing end leaves the range open. The reader refuses an unknown kind, a missing day, and a range without an end or with its minimum above its maximum. A category or an account that the file does not contain comes back as "Show All" when the user selects the search.
 
 ## Account group
 

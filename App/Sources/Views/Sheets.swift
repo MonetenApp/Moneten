@@ -5,9 +5,9 @@ import SwiftUI
 /// at the bottom. A destructive action such as "Remove..." goes on the leading side.
 struct SheetFrame<Content: View, Leading: View>: View {
 	@Environment(\.dismiss) private var dismiss
-	var title: String
-	var confirmTitle: String?
-	var cancelTitle: String?
+	var title: LocalizedStringKey
+	var confirmTitle: LocalizedStringKey?
+	var cancelTitle: LocalizedStringKey?
 	var canConfirm: Bool
 	var canCancel: Bool
 	var width: CGFloat
@@ -16,7 +16,7 @@ struct SheetFrame<Content: View, Leading: View>: View {
 	var leading: Leading
 	var content: Content
 
-	init(title: String, confirmTitle: String? = "OK", cancelTitle: String? = "Cancel", canConfirm: Bool = true, canCancel: Bool = true,
+	init(title: LocalizedStringKey, confirmTitle: LocalizedStringKey? = "OK", cancelTitle: LocalizedStringKey? = "Cancel", canConfirm: Bool = true, canCancel: Bool = true,
 		width: CGFloat = 460, onCancel: @escaping () -> Void = {}, onConfirm: @escaping () -> Bool,
 		@ViewBuilder leading: () -> Leading, @ViewBuilder content: () -> Content) {
 		self.title = title
@@ -56,7 +56,7 @@ struct SheetFrame<Content: View, Leading: View>: View {
 }
 
 extension SheetFrame where Leading == EmptyView {
-	init(title: String, confirmTitle: String? = "OK", cancelTitle: String? = "Cancel", canConfirm: Bool = true, width: CGFloat = 460,
+	init(title: LocalizedStringKey, confirmTitle: LocalizedStringKey? = "OK", cancelTitle: LocalizedStringKey? = "Cancel", canConfirm: Bool = true, width: CGFloat = 460,
 		onCancel: @escaping () -> Void = {}, onConfirm: @escaping () -> Bool, @ViewBuilder content: () -> Content) {
 		self.init(title: title, confirmTitle: confirmTitle, cancelTitle: cancelTitle, canConfirm: canConfirm, width: width,
 			onCancel: onCancel, onConfirm: onConfirm, leading: { EmptyView() }, content: content)
@@ -95,10 +95,11 @@ struct SheetButtons<Content: View>: View {
 }
 
 struct NameSheet: View {
-	var title: String
-	var placeholder: String
+	var title: LocalizedStringKey
+	var placeholder: LocalizedStringKey
+	/// The name the field starts with, such as the current name for a rename.
+	@State var name = ""
 	var onSave: (String) -> Void
-	@State private var name = ""
 
 	var body: some View {
 		SheetFrame(title: title, canConfirm: !name.trimmingCharacters(in: .whitespaces).isEmpty, onConfirm: {
@@ -398,7 +399,7 @@ struct TransactionSheet: View {
 			}
 			Section {
 				Picker("Category", selection: $draft.categoryID) {
-					Text(model.ledger.defaultCategory?.name ?? "Uncategorized").tag(UUID?.none)
+					Text(model.ledger.defaultCategory?.name ?? String(localized: "Uncategorized")).tag(UUID?.none)
 					ForEach(model.ledger.categoriesInSidebarOrder.filter { !$0.isGroup && !$0.isDefault }) { Text(model.ledger.categoryPath($0.id)).tag(UUID?.some($0.id)) }
 				}
 				TextField("Comment", text: $comment, prompt: Text("Optional"), axis: .vertical).lineLimit(1...4)
@@ -477,7 +478,7 @@ struct ChangePasswordSheet: View {
 	var body: some View {
 		SheetFrame(title: "Change Database Password", canConfirm: !current.isEmpty && !new.isEmpty && new == repeated, onConfirm: {
 			if new == current {
-				error = "The new password must not be identical to the old password."
+				error = String(localized: "The new password must not be identical to the old password.")
 				return false
 			}
 			error = model.changePassword(current: current, new: new)

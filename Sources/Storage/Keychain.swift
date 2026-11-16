@@ -12,7 +12,7 @@ struct Keychain: Sendable {
 	struct Failure: Error, CustomStringConvertible {
 		let status: OSStatus
 		var description: String {
-			(SecCopyErrorMessageString(status, nil) as String?) ?? "Keychain error \(status)"
+			(SecCopyErrorMessageString(status, nil) as String?) ?? String(localized: "Keychain error \(status)")
 		}
 	}
 

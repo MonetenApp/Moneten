@@ -5,14 +5,14 @@ public enum AccountKind: String, Codable, Sendable, CaseIterable {
 
 	public var title: String {
 		switch self {
-		case .giro: "Giro account"
-		case .savings: "Savings account"
-		case .fixedTermDeposit: "Fixed term deposit"
-		case .loan: "Loan account"
-		case .creditCard: "Credit card"
-		case .portfolio: "Portfolio"
-		case .cash: "Cash"
-		case .other: "Other"
+		case .giro: String(localized: "Giro account")
+		case .savings: String(localized: "Savings account")
+		case .fixedTermDeposit: String(localized: "Fixed term deposit")
+		case .loan: String(localized: "Loan account")
+		case .creditCard: String(localized: "Credit card")
+		case .portfolio: String(localized: "Portfolio")
+		case .cash: String(localized: "Cash")
+		case .other: String(localized: "Other")
 		}
 	}
 
@@ -245,11 +245,11 @@ public enum SidebarAmount: String, Codable, Sendable, CaseIterable {
 
 	public var title: String {
 		switch self {
-		case .none: "No amount"
-		case .currentMonth: "Current month"
-		case .currentQuarter: "Current quarter"
-		case .currentYear: "Current year"
-		case .totalSum: "Total sum"
+		case .none: String(localized: "No amount")
+		case .currentMonth: String(localized: "Current month")
+		case .currentQuarter: String(localized: "Current quarter")
+		case .currentYear: String(localized: "Current year")
+		case .totalSum: String(localized: "Total sum")
 		}
 	}
 }
@@ -306,8 +306,8 @@ public enum ReviewReason: String, Codable, Sendable {
 
 	public var note: String {
 		switch self {
-		case .unclearBooking: "Several transactions could belong together. Check the rows and delete the ones you don't need."
-		case .splitUndone: "The bank changed the amount; the split was undone."
+		case .unclearBooking: String(localized: "Several transactions could belong together. Check the rows and delete the ones you don't need.")
+		case .splitUndone: String(localized: "The bank changed the amount; the split was undone.")
 		}
 	}
 }

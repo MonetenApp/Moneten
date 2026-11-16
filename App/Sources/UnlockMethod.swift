@@ -32,24 +32,24 @@ enum UnlockMethod: CaseIterable {
 		let code = error.flatMap { LAError.Code(rawValue: $0.code) }
 		switch (self, code) {
 		case (.touchID, .biometryNotEnrolled):
-			return "Touch ID is not set up. Add a fingerprint in System Settings → Touch ID & Password first."
+			return String(localized: "Touch ID is not set up. Add a fingerprint in System Settings → Touch ID & Password first.")
 		case (.touchID, .biometryLockout):
-			return place == .settings ? nil : "macOS has locked Touch ID after too many failed attempts. Enter the database password."
+			return place == .settings ? nil : String(localized: "macOS has locked Touch ID after too many failed attempts. Enter the database password.")
 		case (.touchID, .biometryDisconnected):
-			return place == .settings ? nil : "Touch ID is not available while the lid is closed."
+			return place == .settings ? nil : String(localized: "Touch ID is not available while the lid is closed.")
 		case (.touchID, .biometryNotAvailable):
 			// With the lid closed, a Mac with a sensor can report the sensor as missing.
-			if context.biometryType != .touchID { return "This Mac has no Touch ID sensor." }
-			return place == .settings ? nil : "Touch ID is not available right now, for example while the lid is closed."
+			if context.biometryType != .touchID { return String(localized: "This Mac has no Touch ID sensor.") }
+			return place == .settings ? nil : String(localized: "Touch ID is not available right now, for example while the lid is closed.")
 		case (.appleWatch, .companionNotAvailable):
 			// macOS reports a watch that is not set up and one that is out of range the same way.
 			return place == .settings
-				? "No Apple Watch can unlock this Mac right now. Turn it on in System Settings → Touch ID & Password, and keep the watch nearby."
-				: "No Apple Watch was detected nearby."
+				? String(localized: "No Apple Watch can unlock this Mac right now. Turn it on in System Settings → Touch ID & Password, and keep the watch nearby.")
+				: String(localized: "No Apple Watch was detected nearby.")
 		case (_, .passcodeNotSet):
-			return "Your Mac user account has no login password."
+			return String(localized: "Your Mac user account has no login password.")
 		default:
-			return "\(name) is not available. \(error?.localizedDescription ?? "")"
+			return String(localized: "\(name) is not available. \(error?.localizedDescription ?? "")")
 		}
 	}
 
@@ -62,7 +62,7 @@ enum UnlockMethod: CaseIterable {
 
 	/// "Touch ID", "Apple Watch", or "Touch ID or Apple Watch".
 	static func names(_ methods: [UnlockMethod]) -> String {
-		methods.map(\.name).joined(separator: " or ")
+		methods.map(\.name).formatted(.list(type: .or))
 	}
 
 	/// Asks macOS to confirm with the given methods and reports whether the user did.
@@ -74,6 +74,6 @@ enum UnlockMethod: CaseIterable {
 		case (false, true): policy = .deviceOwnerAuthenticationWithCompanion
 		case (false, false): return
 		}
-		LAContext().evaluatePolicy(policy, localizedReason: "open the Moneten database") { ok, _ in reply(ok) }
+		LAContext().evaluatePolicy(policy, localizedReason: String(localized: "open the Moneten database")) { ok, _ in reply(ok) }
 	}
 }

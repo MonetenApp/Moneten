@@ -17,9 +17,11 @@ public struct AllData: Sendable, Equatable {
 	public var portfolioValues: [PortfolioValue]
 	public var holdings: [Holding]
 	public var csvProfiles: [CSVProfileData]
+	public var savedSearches: [SavedSearch]
 
 	public init(exportedAt: Date = Date(), groups: [AccountGroup] = [], accounts: [Account] = [], accesses: [Access] = [], categories: [Category] = [],
-		transactions: [Transaction] = [], deletedTransactions: [DeletedTransaction] = [], portfolioValues: [PortfolioValue] = [], holdings: [Holding] = [], csvProfiles: [CSVProfileData] = [], splitParts: [SplitPart] = []) {
+		transactions: [Transaction] = [], deletedTransactions: [DeletedTransaction] = [], portfolioValues: [PortfolioValue] = [], holdings: [Holding] = [], csvProfiles: [CSVProfileData] = [], splitParts: [SplitPart] = [],
+		savedSearches: [SavedSearch] = []) {
 		self.exportedAt = exportedAt
 		self.groups = groups
 		self.accounts = accounts
@@ -31,6 +33,7 @@ public struct AllData: Sendable, Equatable {
 		self.portfolioValues = portfolioValues
 		self.holdings = holdings
 		self.csvProfiles = csvProfiles
+		self.savedSearches = savedSearches
 	}
 
 	public enum ReadError: Error, Equatable, CustomStringConvertible {
@@ -42,11 +45,11 @@ public struct AllData: Sendable, Equatable {
 
 		public var description: String {
 			switch self {
-			case .notAnExport: "The file is not a complete export of Moneten."
+			case .notAnExport: String(localized: "The file is not a complete export of Moneten.")
 			case let .newerVersion(v):
-				"The file has format version \(v), and this version of Moneten reads up to version \(AllData.formatVersion). Install a newer version of Moneten to import it."
-			case let .damaged(place): "The file is damaged or incomplete: \(place)."
-			case let .unreadableDatabase(place): "The database contains unreadable data: \(place)."
+				String(localized: "The file has format version \(v), and this version of Moneten reads up to version \(AllData.formatVersion). Install a newer version of Moneten to import it.")
+			case let .damaged(place): String(localized: "The file is damaged or incomplete: \(place).")
+			case let .unreadableDatabase(place): String(localized: "The database contains unreadable data: \(place).")
 			}
 		}
 	}
@@ -205,6 +208,7 @@ private struct File: Codable {
 	var portfolioValues: [PortfolioValueEntry]
 	var holdings: [HoldingEntry]
 	var csvProfiles: [CSVProfileData]?
+	var savedSearches: [SavedSearchEntry]?
 
 	init(_ d: AllData) {
 		exportedAt = d.exportedAt
@@ -220,6 +224,7 @@ private struct File: Codable {
 		portfolioValues = d.portfolioValues.map { PortfolioValueEntry($0, currency: currencies[$0.accountID] ?? "") }
 		holdings = d.holdings.map(HoldingEntry.init)
 		csvProfiles = d.csvProfiles.isEmpty ? nil : d.csvProfiles
+		savedSearches = d.savedSearches.isEmpty ? nil : d.savedSearches.map(SavedSearchEntry.init)
 	}
 
 	func allData() throws -> AllData {
@@ -241,7 +246,8 @@ private struct File: Codable {
 			splitParts: version == 1 ? [] : try each("splitParts", splitParts ?? []) { entry in
 				guard let original = originals[entry.transactionID] else { throw AllData.ReadError.damaged("the original is missing") }
 				return try entry.part(currency: original.currency)
-			})
+			},
+			savedSearches: try each("savedSearches", savedSearches ?? []) { try $0.savedSearch() })
 	}
 
 	/// Converts the entries of one list and names the entry of the first value that cannot be read.
@@ -674,5 +680,107 @@ private struct HoldingEntry: Codable {
 			quantity: try AmountText.decimal(quantity), isNominal: isNominal, nominalCurrency: nominalCurrency, quote: try price?.quote(),
 			marketValue: try marketValue?.money(), accruedInterest: try accruedInterest?.money(), purchasePrice: try purchasePrice?.quote(),
 			exchangeRate: try exchangeRate?.exchangeRate())
+	}
+}
+
+/// A saved search with its period, status, and amount filter as named kinds, and the ends of an amount range as
+/// decimal text without a currency, because each row compares them in its own currency.
+private struct SavedSearchEntry: Codable {
+	struct Period: Codable {
+		var kind: String
+		var start: String?
+		var end: String?
+	}
+
+	struct Amount: Codable {
+		var kind: String
+		var min: String?
+		var max: String?
+	}
+
+	var id: UUID
+	var name: String
+	var position: Int
+	var searchText: String
+	var period: Period
+	var status: String
+	var amount: Amount
+	var categoryID: UUID?
+	var accountID: UUID?
+
+	init(_ s: SavedSearch) {
+		id = s.id
+		name = s.name
+		position = s.position
+		searchText = s.searchText
+		switch s.bar.period {
+		case .all: period = Period(kind: "all")
+		case .days30: period = Period(kind: "days30")
+		case .days90: period = Period(kind: "days90")
+		case .months12: period = Period(kind: "months12")
+		case let .month(d): period = Period(kind: "month", start: d.description)
+		case let .quarter(d): period = Period(kind: "quarter", start: d.description)
+		case let .year(d): period = Period(kind: "year", start: d.description)
+		case let .custom(a, b): period = Period(kind: "custom", start: a.description, end: b.description)
+		}
+		switch s.bar.status {
+		case .all: status = "all"
+		case .checked: status = "checked"
+		case .unchecked: status = "unchecked"
+		}
+		switch s.bar.amount {
+		case .all: amount = Amount(kind: "all")
+		case .deposits: amount = Amount(kind: "deposits")
+		case .withdrawals: amount = Amount(kind: "withdrawals")
+		case let .range(min, max): amount = Amount(kind: "range", min: min.map { "\($0)" }, max: max.map { "\($0)" })
+		}
+		categoryID = s.bar.categoryID
+		accountID = s.bar.accountID
+	}
+
+	func savedSearch() throws -> SavedSearch {
+		var f = TransactionFilter()
+		f.searchText = searchText
+		switch status {
+		case "all": f.status = .all
+		case "checked": f.status = .checked
+		case "unchecked": f.status = .unchecked
+		default: throw AllData.ReadError.damaged("\"\(status)\" is not a status")
+		}
+		switch amount.kind {
+		case "all": f.amount = .all
+		case "deposits": f.amount = .deposits
+		case "withdrawals": f.amount = .withdrawals
+		case "range":
+			let min = try amount.min.map(AmountText.decimal), max = try amount.max.map(AmountText.decimal)
+			guard let range = TransactionFilter.AmountFilter.custom(min: min, max: max), range != .all else {
+				throw AllData.ReadError.damaged("the amount range has no end or its minimum lies above its maximum")
+			}
+			f.amount = range
+		default: throw AllData.ReadError.damaged("\"\(amount.kind)\" is not an amount filter")
+		}
+		f.categoryID = categoryID
+		f.accountID = accountID
+		return SavedSearch(id: id, name: name, position: position, period: try choice(), filter: f)
+	}
+
+	private func choice() throws -> PeriodChoice {
+		func start() throws -> Day {
+			guard let text = period.start else { throw AllData.ReadError.damaged("the period \(period.kind) has no start") }
+			return try day(text)
+		}
+		switch period.kind {
+		case "all": return .all
+		case "days30": return .days30
+		case "days90": return .days90
+		case "months12": return .months12
+		case "month": return .month(try start())
+		case "quarter": return .quarter(try start())
+		case "year": return .year(try start())
+		case "custom":
+			guard let end = period.end else { throw AllData.ReadError.damaged("the period custom has no end") }
+			return .custom(try start(), try day(end))
+		default: throw AllData.ReadError.damaged("\"\(period.kind)\" is not a period")
+		}
 	}
 }

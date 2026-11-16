@@ -54,12 +54,12 @@ public enum BankEntryError: Error, Equatable, Sendable {
 
 	public var message: String {
 		switch self {
-		case .empty: "Enter the name of the bank, an IBAN, or a Bankleitzahl."
-		case .bankCodeDigits: "A Bankleitzahl has 8 digits."
-		case .country: "The IBAN starts with an unexpected country code."
-		case let .length(country, characters): "An IBAN with the country code \(country) has \(characters) characters."
-		case .checksum: "The checksum of the IBAN is invalid. Look for typing errors."
-		case .notGermany: "Moneten finds banks only by a German IBAN or Bankleitzahl so far."
+		case .empty: String(localized: "Enter the name of the bank, an IBAN, or a Bankleitzahl.")
+		case .bankCodeDigits: String(localized: "A Bankleitzahl has 8 digits.")
+		case .country: String(localized: "The IBAN starts with an unexpected country code.")
+		case let .length(country, characters): String(localized: "An IBAN with the country code \(country) has \(characters) characters.")
+		case .checksum: String(localized: "The checksum of the IBAN is invalid. Look for typing errors.")
+		case .notGermany: String(localized: "Moneten finds banks only by a German IBAN or Bankleitzahl so far.")
 		}
 	}
 }
@@ -208,12 +208,12 @@ public enum RefreshInterval: String, Codable, CaseIterable, Sendable {
 
 	public var title: String {
 		switch self {
-		case .everyTwoHours: "every two hours"
-		case .fourTimesADay: "four times a day"
-		case .onceADay: "once a day"
-		case .onceAWeek: "once a week"
-		case .onlyManually: "only manually"
-		case .never: "never"
+		case .everyTwoHours: String(localized: "every two hours")
+		case .fourTimesADay: String(localized: "four times a day")
+		case .onceADay: String(localized: "once a day")
+		case .onceAWeek: String(localized: "once a week")
+		case .onlyManually: String(localized: "only manually")
+		case .never: String(localized: "never")
 		}
 	}
 

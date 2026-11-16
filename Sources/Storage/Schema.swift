@@ -361,8 +361,20 @@ enum Schema {
 				try db.execute(sql: "UPDATE access SET state = ? WHERE id = ?", arguments: [marked.passport, access])
 			}
 		}
-		// The mark of a row that the user added with "Add Transaction..." (add-offline-accounts). It comes after v24 and
-		// v21 in the list, because GRDB applies the migrations in the order of registration and both shipped first.
+		// Saved searches (add-transaction-search-and-filters, task 1.20). The filter bar is the JSON of
+		// `SavedFilterBar`, as the pin keeps it. Registered after the migrations
+		// that landed before it.
+		m.registerMigration("v25") { db in
+			try db.create(table: "savedSearch") { t in
+				t.column("id", .blob).primaryKey()
+				t.column("name", .text).notNull()
+				t.column("position", .integer).notNull()
+				t.column("searchText", .text).notNull()
+				t.column("filterBar", .blob).notNull()
+			}
+		}
+		// The mark of a row that the user added with "Add Transaction..." (add-offline-accounts). It comes after v24, v21,
+		// and v25 in the list, because GRDB applies the migrations in the order of registration and they shipped first.
 		m.registerMigration("v23") { db in
 			try db.alter(table: "bankTransaction") { t in t.add(column: "isManual", .boolean).notNull().defaults(to: false) }
 			// The database does not tell a derived value from one that the user entered, so every stored value stays as it is.
