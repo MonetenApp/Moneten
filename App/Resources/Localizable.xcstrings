@@ -1317,6 +1317,16 @@
         }
       }
     },
+    "About Moneten" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Über Moneten"
+          }
+        }
+      }
+    },
     "Access number" : {
       "localizations" : {
         "de" : {
@@ -2885,6 +2895,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Bericht kopieren"
+          }
+        }
+      }
+    },
+    "Copy Sum" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Summe kopieren"
           }
         }
       }
@@ -4526,6 +4546,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Hilfe"
+          }
+        }
+      }
+    },
+    "Help and FAQ..." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hilfe und FAQ..."
           }
         }
       }
@@ -8080,6 +8110,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Quellcode"
+          }
+        }
+      }
+    },
+    "Source code:" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quellcode:"
           }
         }
       }

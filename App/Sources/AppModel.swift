@@ -33,17 +33,19 @@ enum SidebarSelection: Hashable {
 		case let .account(id): "account:\(id.uuidString)"
 		case let .group(id): "group:\(id.uuidString)"
 		case let .category(id): "category:\(id.uuidString)"
+		case let .search(id): "search:\(id.uuidString)"
 		}
 	}
 
-	/// The stored row, or nil when it no longer exists in `ledger`.
-	init?(preferenceValue: String, in ledger: Ledger) {
+	/// The stored row, or nil when it no longer exists in `ledger` or in `searches`.
+	init?(preferenceValue: String, in ledger: Ledger, searches: [SavedSearch]) {
 		let parts = preferenceValue.split(separator: ":", maxSplits: 1).map(String.init)
 		guard parts.count == 2, let id = UUID(uuidString: parts[1]) else { return nil }
 		switch parts[0] {
 		case "account" where ledger.account(id) != nil: self = .account(id)
 		case "group" where ledger.group(id) != nil: self = .group(id)
 		case "category" where ledger.category(id) != nil: self = .category(id)
+		case "search" where searches.contains(where: { $0.id == id }): self = .search(id)
 		default: return nil
 		}
 	}
@@ -578,7 +580,7 @@ final class AppModel {
 		if selection == nil {
 			restoreFilterBar()
 			// The row of the last session, or the first row when it no longer exists.
-			selection = UserDefaults.standard.string(forKey: Preference.selectedRow).flatMap { SidebarSelection(preferenceValue: $0, in: ledger) }
+			selection = UserDefaults.standard.string(forKey: Preference.selectedRow).flatMap { SidebarSelection(preferenceValue: $0, in: ledger, searches: savedSearches) }
 				?? firstSidebarRow
 		}
 		lastActivity = Date()

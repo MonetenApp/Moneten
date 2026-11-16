@@ -198,7 +198,7 @@ extension AppCommands {
 	/// The standard About panel: the version, the license from `NSHumanReadableCopyright` in Info.plist, and a
 	/// link to the source code.
 	static func showAbout() {
-		let credits = NSMutableAttributedString(string: "Source code: ",
+		let credits = NSMutableAttributedString(string: String(localized: "Source code:") + " ",
 			attributes: [.font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize), .foregroundColor: NSColor.labelColor])
 		credits.append(NSAttributedString(string: "github.com/MonetenApp/Moneten",
 			attributes: [.font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize), .link: URL(string: "https://github.com/MonetenApp/Moneten")!]))
