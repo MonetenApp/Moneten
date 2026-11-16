@@ -22,6 +22,8 @@
 # the sums the check expects, so the log says "ok" or "differs" and never holds an amount.
 # The app runs with a temporary data folder and a password, so it never opens the real database and
 # leaves no Keychain item, and as a copy under its own bundle ID, so it leaves an installed Moneten alone.
+# Each run has a bundle ID of its own, whose settings the end of the run deletes, so runs from several
+# worktrees at once never share the saved filter bar or another setting.
 set -e
 cd "$(dirname "$0")/.."
 BUILT=dist/Moneten.app
@@ -44,11 +46,19 @@ if [ ! -x "$NOTIFY" ] || [ scripts/check-debug-log.sh -nt "$NOTIFY" ]; then
 fi
 
 WORK="$(mktemp -d "$PWD/.build/check-debug-log.XXXXXX")"
+BUNDLE_ID="$BUNDLE_ID.${WORK##*.}"
 finish() {
-	if [ -n "$PID" ]; then kill "$PID" 2>/dev/null || true; fi
+	if [ -n "$PID" ]; then
+		kill "$PID" 2>/dev/null || true
+		wait "$PID" 2>/dev/null || true
+	fi
+	scripts/forget-bundle.sh "$BUNDLE_ID" "$APP"
 	[ -n "$KEEP" ] && echo "The log stays in $WORK/debug." || rm -rf "$WORK"
 }
 trap finish EXIT
+# Without a banner, the app never asks for the permission to notify, so a run leaves no entry in the
+# Notifications settings. The end of the run deletes the domain again.
+defaults write "$BUNDLE_ID" showBannerNotificationOnNewTransactions -bool NO
 LOG="$WORK/debug/debug.log"
 APP="$WORK/Moneten.app"
 DATA="$WORK/Erika Mustermann"
