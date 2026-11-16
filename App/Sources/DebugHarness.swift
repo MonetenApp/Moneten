@@ -252,11 +252,18 @@ final class DebugHarness {
 				model.save(group: g)
 			}
 		// Imports the files at the paths, separated by "|", into the selected account, as "Import Transactions..." does after the open panel.
+		// A leading "preview:" turns on "Show the preview also for CSV files with a profile".
 		case "importfile":
 			guard let account = model.selectedAccount else { return log("importfile no account") }
-			let urls = argument.split(separator: "|").map { URL(filePath: String($0)) }
-			Task { await model.importFiles(urls, into: account); log("importfile done") }
+			let alwaysPreview = argument.hasPrefix("preview:")
+			let urls = argument.dropFirst(alwaysPreview ? 8 : 0).split(separator: "|").map { URL(filePath: String($0)) }
+			Task { await model.importFiles(urls, into: account, alwaysPreview: alwaysPreview); log("importfile done") }
 		// "selected" or "named" answers the question about the account of a file, an empty argument logs it.
+		case "cancelimport": model.fileImport?.cancel()
+		case "importstate":
+			let run = model.fileImport
+			log("importstate phase=\(run == nil ? "none" : run?.storing == nil ? "reading" : "storing") canceled=\(run?.isCanceled ?? false)")
+
 		case "importanswer":
 			guard let question = model.fileImport?.question else { return log("importanswer no question") }
 			switch argument {
@@ -287,8 +294,9 @@ final class DebugHarness {
 				} catch { log("csvhandoff error=store") }
 			}
 		// Changes the CSV preview on screen: "column <n>=<field or none>", "date <order>", "encoding <name>",
-		// "decimal comma|point|detect", "skip" as "Skip File" does, "state", which logs the settings and counts of
-		// the preview, or "rows", which logs its first rows.
+		// "decimal comma|point|detect", "skip", "profile <name>" to apply a saved profile, "name <name>" to
+		// save the settings under that name, "delete" to delete the applied profile, "state", which logs the settings and
+		// counts of the preview, or "rows", which logs its first rows.
 		case "csv": csvPreview(argument)
 		// "[<currency>]": the credit card in US dollars, or in another currency such as JPY.
 		case "usd": Task { await DemoData.usdAccount(model, currency: argument.isEmpty ? "USD" : argument); log("usd done") }
@@ -862,6 +870,10 @@ final class DebugHarness {
 		case "encoding": preview.layout.encoding = CSVEncoding(rawValue: value) ?? preview.layout.encoding
 		case "decimal": preview.layout.decimalMark = value == "comma" ? .comma : value == "point" ? .point : nil
 		case "skip": model?.fileImport?.skip()
+		case "profile": preview.apply(value.isEmpty ? nil : value)
+		case "name": preview.profileName = value
+		case "delete": preview.deleteProfile()
+		case "createcategories": preview.layout.createsCategories = value == "on"
 		// The log holds kinds, counts, and positions, never a name or a purpose (#159), so a row is its day and amount.
 		case "rows":
 			let rows = preview.preview?.transactions.prefix(10).map { "\($0.bookingDate) \($0.amountMinor)" }.joined(separator: ";") ?? "-"
@@ -878,7 +890,9 @@ final class DebugHarness {
 			case nil: preview.problem == nil ? "-" : "encoding"
 			}
 			log("csv state columns=\(columns) date=\(preview.layout.dateOrder.rawValue) uncertain=\(preview.isDateOrderUncertain) encoding=\(preview.layout.encoding.rawValue)"
-				+ " missing=\(preview.layout.missing.map(\.rawValue)) count=\(preview.preview?.transactions.count ?? -1) canImport=\(preview.chosen != nil) problem=\(problem)")
+				+ " missing=\(preview.layout.missing.map(\.rawValue)) count=\(preview.preview?.transactions.count ?? -1) canImport=\(preview.chosen != nil) problem=\(problem)"
+				+ " profile=\(preview.profile == nil ? "none" : "applied") name=\(preview.profileName.isEmpty ? "empty" : "typed")"
+				+ " createsCategories=\(preview.layout.createsCategories) profiles=\(preview.profiles.count)")
 		}
 	}
 

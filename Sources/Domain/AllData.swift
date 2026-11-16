@@ -15,9 +15,10 @@ public struct AllData: Sendable, Equatable {
 	public var deletedTransactions: [DeletedTransaction]
 	public var portfolioValues: [PortfolioValue]
 	public var holdings: [Holding]
+	public var csvProfiles: [CSVProfileData]
 
 	public init(exportedAt: Date = Date(), groups: [AccountGroup] = [], accounts: [Account] = [], accesses: [Access] = [], categories: [Category] = [],
-		transactions: [Transaction] = [], deletedTransactions: [DeletedTransaction] = [], portfolioValues: [PortfolioValue] = [], holdings: [Holding] = []) {
+		transactions: [Transaction] = [], deletedTransactions: [DeletedTransaction] = [], portfolioValues: [PortfolioValue] = [], holdings: [Holding] = [], csvProfiles: [CSVProfileData] = []) {
 		self.exportedAt = exportedAt
 		self.groups = groups
 		self.accounts = accounts
@@ -27,6 +28,7 @@ public struct AllData: Sendable, Equatable {
 		self.deletedTransactions = deletedTransactions
 		self.portfolioValues = portfolioValues
 		self.holdings = holdings
+		self.csvProfiles = csvProfiles
 	}
 
 	public enum ReadError: Error, Equatable, CustomStringConvertible {
@@ -140,6 +142,19 @@ public struct AllData: Sendable, Equatable {
 	}
 }
 
+/// Keeps future profile versions and fields intact without a dependency on the CSV reader.
+public struct CSVProfileData: Sendable, Equatable, Codable {
+	public var name: String
+	public var version: Int
+	public var payload: Data
+
+	public init(name: String, version: Int, payload: Data) {
+		self.name = name
+		self.version = version
+		self.payload = payload
+	}
+}
+
 /// Optional, so that another JSON file counts as no export rather than as a damaged one.
 private struct Header: Decodable {
 	var format: String?
@@ -161,6 +176,7 @@ private struct File: Codable {
 	var deletedTransactions: [DeletedEntry]
 	var portfolioValues: [PortfolioValueEntry]
 	var holdings: [HoldingEntry]
+	var csvProfiles: [CSVProfileData]?
 
 	init(_ d: AllData) {
 		exportedAt = d.exportedAt
@@ -173,6 +189,7 @@ private struct File: Codable {
 		let currencies = Dictionary(d.accounts.map { ($0.id, $0.currency) }, uniquingKeysWith: { a, _ in a })
 		portfolioValues = d.portfolioValues.map { PortfolioValueEntry($0, currency: currencies[$0.accountID] ?? "") }
 		holdings = d.holdings.map(HoldingEntry.init)
+		csvProfiles = d.csvProfiles.isEmpty ? nil : d.csvProfiles
 	}
 
 	func allData() throws -> AllData {
@@ -187,7 +204,7 @@ private struct File: Codable {
 				}
 				return value
 			},
-			holdings: try each("holdings", holdings) { try $0.holding() })
+			holdings: try each("holdings", holdings) { try $0.holding() }, csvProfiles: csvProfiles ?? [])
 	}
 
 	/// Converts the entries of one list and names the entry of the first value that cannot be read.

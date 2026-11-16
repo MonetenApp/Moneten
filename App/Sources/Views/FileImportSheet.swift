@@ -1,9 +1,8 @@
 import Domain
 import Import
 import SwiftUI
+import Synchronization
 
-/// A running import of files, which the import sheet shows. The files are read one after the other, and
-/// "Cancel" stops at the file being read: what that file holds is never stored.
 @MainActor @Observable
 final class FileImport {
 	let names: [String]
@@ -11,7 +10,8 @@ final class FileImport {
 	var index = 0
 	/// The number of transactions being stored, once all files are read.
 	var storing: Int?
-	private(set) var isCanceled = false
+	@ObservationIgnored nonisolated private let canceled = Mutex(false)
+	nonisolated var isCanceled: Bool { canceled.withLock { $0 } }
 	/// The file that names another account, which the sheet asks about instead of showing the progress.
 	private(set) var question: AccountQuestion?
 	@ObservationIgnored var isPresented = false
@@ -34,6 +34,11 @@ final class FileImport {
 			waiting = continuation
 			self.question = question
 		}
+	}
+
+	func beginStoring(_ count: Int, resumingAfterCancel: Bool) {
+		if resumingAfterCancel { canceled.withLock { $0 = false } }
+		storing = count
 	}
 
 	func waitForDismissal() async {
@@ -64,7 +69,8 @@ final class FileImport {
 	}
 
 	func confirm() {
-		guard let chosen = preview?.chosen else { return }
+		guard let preview, let chosen = preview.chosen else { return }
+		guard preview.saveProfile() else { return }
 		end(chosen)
 	}
 
@@ -82,7 +88,7 @@ final class FileImport {
 	}
 
 	func cancel() {
-		isCanceled = true
+		canceled.withLock { $0 = true }
 		answer(nil)
 		end(nil)
 		onCancel()

@@ -349,7 +349,7 @@ The app SHALL show a preview before it imports a CSV file. The preview shows the
 
 ### Requirement: CSV profiles
 
-The app SHALL let the user save the settings of the preview as a named profile. When a later file has the same header row, the app applies the profile and imports without showing the preview first. The user can still open the preview, and can rename and delete profiles.
+The app SHALL let the user save the settings of the preview as a named profile. When a later file has the same header row, delimiter and detected date order, the app applies the profile and imports without showing the preview first. The user can still open the preview, and can rename and delete profiles.
 
 #### Scenario: Second file of the same bank
 
@@ -361,6 +361,58 @@ The app SHALL let the user save the settings of the preview as a named profile. 
 
 - **WHEN** the bank adds a column and the header row no longer matches the profile
 - **THEN** the app shows the preview again with the profile as the starting point
+
+#### Scenario: Repeated amount titles move
+
+- **GIVEN** a profile maps the two "Betrag" columns of "Datum;Betrag;Betrag" to debit and credit
+- **WHEN** the header becomes "Datum;Extra;Betrag;Betrag" and the row is "01.11.2026;Note;10,00;0,00"
+- **THEN** the preview maps debit to column 2 and credit to column 3, counting from zero, and reads -1000 minor units
+- **AND** a changed number of repeated titles leaves the file without a suggested profile
+
+#### Scenario: A profile meets a different text encoding
+
+- **GIVEN** a Windows-1252 profile with ASCII titles and mapped date, name, purpose, amount and category columns
+- **WHEN** a UTF-8 file with the same titles contains "Bäckerei", "Frühstück", "Büro" and -4,20
+- **THEN** quiet import opens the preview, which uses UTF-8 and retains the profile's mappings, date order, decimal mark and category option
+- **AND** the preview reads those texts unchanged and the amount as -420 minor units
+- **AND** a moved header and a profile picked in the preview preserve the detected encoding in the same way
+- **AND** ASCII rows such as "Datum;Name;Betrag" and "02.11.2026;Kiosk;-2,00" still import quietly with that profile, while a requested preview shows UTF-8
+
+#### Scenario: Profile signature differs
+
+- **GIVEN** a month-first profile for "Date;Name;Amount"
+- **WHEN** the file is "Date,Name,Amount" with the row "03/11/2026,Kiosk,-4.20"
+- **THEN** the preview opens with the detected day-first order and reads 3 November 2026
+- **AND** a different detected date order also opens the preview when the delimiter stays the same
+- **AND** a legacy profile without a saved delimiter opens the preview before reuse
+
+#### Scenario: Empty titles do not count as repeated titles
+
+- **GIVEN** a profile for "Datum;Name;Betrag;"
+- **WHEN** the header changes to "Datum;;Name;Betrag;"
+- **THEN** the preview starts from the profile with name at column 2 and amount at column 3
+
+#### Scenario: Profiles belong to the encrypted database
+
+- **GIVEN** a profile whose header includes the made-up IBAN DE02120300000000202051
+- **WHEN** it is saved, renamed or deleted
+- **THEN** only the open encrypted database changes
+- **AND** another database has none of its profiles
+
+#### Scenario: A newer profile is kept by an older reader
+
+- **GIVEN** one saved profile lacks "createsCategories", another has an unknown column field, and a third cannot be decoded
+- **WHEN** the profiles are loaded and a readable profile is saved or deleted
+- **THEN** the missing category option defaults to off and the unknown column field is ignored
+- **AND** the unreadable profile stays stored unchanged
+- **AND** a profile with a negative known column position, such as -1, stays stored but is not applied
+- **AND** saving or renaming a readable profile preserves unknown fields, including "futureField" with the value 7 and unknown column mappings
+
+#### Scenario: Result describes the confirmed settings
+
+- **WHEN** a preview saves a new profile "Broker CSV" during an import
+- **THEN** the result says the file "used the settings saved as profile" "Broker CSV"
+- **AND** the same wording applies when an existing profile was changed before import
 
 ### Requirement: Categories from a CSV file
 
@@ -376,6 +428,57 @@ The app SHALL assign the category from a category column to each imported transa
 
 - **WHEN** the same file is imported with the option off
 - **THEN** the "Pets" rows pass the categorization rules like any new transaction
+
+#### Scenario: Category path from a Moneten CSV export
+
+- **GIVEN** the category "Food" is under the group "Living"
+- **WHEN** a Moneten CSV export names it "Living - Food" and is imported again
+- **THEN** the row receives the existing "Food" category with either setting of "Auto-create categories"
+- **AND** if "Pets" is missing, "Living - Pets" with auto-create on creates "Pets" under "Living"
+- **AND** an existing category whose literal name is "Living - Food" takes precedence over interpreting that text as a path
+- **AND** a group whose literal name is "Living - Food" cannot mask the assignable category at that exported path
+- **AND** explicit paths "Long - Term › Pets" and "Long - Term\\Pets" keep "Long - Term" as one group name with either auto-create setting
+- **AND** auto-create of the exported path "Long - Term - Pets" reuses the existing "Long - Term" group instead of creating extra groups
+
+#### Scenario: Imported category is restricted to another account
+
+- **GIVEN** "Office" is restricted to "Business" or its "Work" account group
+- **WHEN** a row of -420 minor units names "Office" while being imported into "Private"
+- **THEN** the row stays without a category and passes the rules
+- **AND** importing into "Business" assigns "Office" as set by hand
+- **AND** a category that could not be saved leaves the row without that category
+
+#### Scenario: Bounded category creation
+
+- **WHEN** a file names 2,000 or 50,000 distinct missing categories with "Auto-create categories" on
+- **THEN** it creates at most 1,000 categories, counting groups
+- **AND** existing categories still match after the limit is reached
+- **AND** rows beyond the limit pass the rules without a file category
+- **AND** the result says "Auto-create categories is limited to 1,000 new categories per file. Remaining unknown categories were left to the rules."
+- **AND** a path is created only when all its missing levels fit within the remaining limit
+
+#### Scenario: Bounded paths that cannot be created
+
+- **GIVEN** "Food" is a category and a file names "Food › X0" through "Food › X299999"
+- **WHEN** the user imports it with "Auto-create categories" on
+- **THEN** the first 1,000 blocked paths use the category creation budget
+- **AND** the result lists only "Food › X0" through "Food › X9", then "and 990 more."
+- **AND** it reports the 1,000 limit and creates no category
+
+#### Scenario: Skipped rows and failed storage leave no new categories
+
+- **GIVEN** rows whose category cells name new categories
+- **WHEN** every row is skipped as already imported
+- **THEN** the result reports 0 new categories and no new category remains
+- **AND** a failed transaction merge leaves no new category or transaction from that file
+
+#### Scenario: Dash paths and duplicate leaf names
+
+- **WHEN** "Miete - Nebenkosten" is imported with auto-create on and neither category exists
+- **THEN** it creates the group "Miete" and its category "Nebenkosten"
+- **AND** when "Other" exists under "Work" and "Living", a bare "Other" chooses the case-folded full path that sorts first, "Living › Other", regardless of load order
+- **AND** a top-level category "Other" takes precedence over either nested "Other"
+- **AND** equal case-folded paths choose the lowest UUID string, with assignable categories before groups
 
 ### Requirement: CAMT import
 
@@ -662,9 +765,25 @@ The app SHALL recompute the balance of an offline account and the balance histor
 
 ### Requirement: Progress and cancel
 
-The app SHALL show progress while it imports and let the user cancel. A canceled import leaves no transaction of the file that was being read.
+The app SHALL show progress while it imports and let the user cancel. Cancellation during reading or storing leaves no transaction or new category of the current file. Files stored before cancellation stay. The app stops the following files and reports "Import canceled. N files were imported before.", with N replaced by the number of files stored.
 
 #### Scenario: Cancel a large file
 
 - **WHEN** the user cancels while the app reads the third of five files
 - **THEN** the transactions of the first two files stay, and nothing of the third file is stored
+
+#### Scenario: Cancel during category storage
+
+- **GIVEN** the first file was imported and the second file has 2,000 transactions with 1,000 new categories
+- **WHEN** the user cancels during category work for the second file
+- **THEN** none of its transactions or new categories remain
+- **AND** the third file is not stored
+- **AND** the result starts with "Import canceled. 1 files were imported before."
+
+#### Scenario: Cancel reading, then cancel storing
+
+- **GIVEN** the first two files were read and the third file is still being read
+- **WHEN** the user cancels reading and then cancels while the first file is stored
+- **THEN** no transaction or new category of the first file remains
+- **AND** the second file is not stored
+- **AND** the result starts with "Import canceled. 0 files were imported before."

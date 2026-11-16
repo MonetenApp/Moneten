@@ -23,3 +23,8 @@ Tasks marked as built in part may differ from the spec in the way their note say
 - A batch entry stays one row, so a rule or a search does not see each payment of the batch on its own. Splitting it waits for the change that also matches the parts against a total, because split parts next to a refresh that brings the total would count the same payment twice.
 - A pending batch entry to several counterparties has no name and no IBAN, so its booked version does not book it. After a later file, both rows stay until the user deletes the pending one. A refresh drops the pending row as it drops any pending row that it does not deliver.
 - A pending row that the bank never books stays pending until the user deletes it, or until a refresh of the account after its booking date no longer delivers it.
+
+- `Storage` stores each CSV profile as versioned JSON in the encrypted database. Independent records keep unreadable profiles unchanged when another is saved or deleted. `Import` decodes known column fields and defaults a missing category option to false. Legacy profiles without a delimiter require preview confirmation.
+- `Domain` indexes category names and full paths once per file. `Storage` creates, assigns, merges and removes unused file categories in one database transaction, so a failed merge rolls back categories too.
+
+- Cancellation shares a thread-safe flag between the import sheet and the storage transaction. Storage checks it during category writes and before commit. Complete exports carry versioned profile payloads, including unreadable entries, without decoding them.

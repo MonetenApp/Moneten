@@ -282,26 +282,33 @@ struct CategoryRow: View {
 			}
 		}
 		.onDrop(of: [.monetenTransactions, .monetenCategory], delegate: CategoryDrop(model: model, category: category))
-		.contextMenu {
-			Button("Add Category") { model.sheet = .newCategory(isGroup: false) }
-			Button("Add Category Group") { model.sheet = .newCategory(isGroup: true) }
+		.contextMenu { CategoryContextMenu(category: category) }
+	}
+}
+
+private struct CategoryContextMenu: View {
+	@Environment(AppModel.self) private var model
+	let category: Domain.Category
+
+	var body: some View {
+		Button("Add Category") { model.sheet = .newCategory(isGroup: false) }
+		Button("Add Category Group") { model.sheet = .newCategory(isGroup: true) }
+		Divider()
+		Button("Export Transactions...") { model.exportTransactions(of: .category(category.id)) }
+			.disabled(model.isTransferringTransactions)
+		if !category.isDefault {
 			Divider()
-			Button("Export Transactions...") { model.exportTransactions(of: .category(category.id)) }
-				.disabled(model.isTransferringTransactions)
-			if !category.isDefault {
-				Divider()
-				Menu("Move to Group") {
-					Button("No group") { model.move(category: category.id, into: nil, at: model.ledger.childCategories(of: nil).count) }
-						.disabled(model.ledger.move(category: category.id, into: nil, at: model.ledger.childCategories(of: nil).count).isEmpty)
-					ForEach(model.ledger.destinationGroups(forCategory: category.id)) { g in
-						Button(g.name) { model.move(category: category.id, into: g.id, at: model.ledger.childCategories(of: g.id).count) }
-					}
+			Menu("Move to Group") {
+				Button("No group") { model.move(category: category.id, into: nil, at: model.ledger.childCategories(of: nil).count) }
+					.disabled(model.ledger.move(category: category.id, into: nil, at: model.ledger.childCategories(of: nil).count).isEmpty)
+				ForEach(model.ledger.destinationGroups(forCategory: category.id)) { g in
+					Button(g.name) { model.move(category: category.id, into: g.id, at: model.ledger.childCategories(of: g.id).count) }
 				}
-				Button("Remove...") { model.sheet = .categorySettings(category.id) }
 			}
-			Divider()
-			Button("Settings...") { model.sheet = .categorySettings(category.id) }
+			Button("Remove...") { model.sheet = .categorySettings(category.id) }
 		}
+		Divider()
+		Button("Settings...") { model.sheet = .categorySettings(category.id) }
 	}
 }
 

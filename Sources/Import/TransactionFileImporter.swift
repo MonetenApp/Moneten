@@ -65,6 +65,8 @@ public enum TransactionFileImporter {
 		public var account: FileAccount?
 		/// The first transaction currency written in the file, or nil when the account supplies it.
 		public var declaredCurrency: String?
+		/// The text of the category cell of each transaction of a CSV file that has one.
+		public var categories: [UUID: String] = [:]
 	}
 
 	public static func accountDecision(_ names: [FileAccount?], selected: Account? = nil, accounts: [Account] = [], currency: String = "") throws
