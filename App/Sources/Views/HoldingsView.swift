@@ -118,6 +118,8 @@ struct HoldingsStatusLine: View {
 		let sums = shown.reduce(into: MoneySums()) { sums, h in
 			if let value = h.value(in: model.ledger.account(h.accountID)?.currency ?? "EUR") { sums.add(value) }
 		}
+		// An empty sum takes the currency of the portfolio, as the status line of the transactions does.
+		let firstRowCurrency = shown.first.flatMap { model.ledger.account($0.accountID)?.currency }
 		HStack(spacing: 12) {
 			Group {
 				if let status = model.refreshStatus {
@@ -134,7 +136,7 @@ struct HoldingsStatusLine: View {
 			HStack(spacing: 12) {
 				Text(selected.count > 1 ? "\(selected.count) of \(rows.count) Portfolio Items" : (rows.count == 1 ? "1 Portfolio Item" : "\(rows.count) Portfolio Items"))
 					.foregroundStyle(Palette.detail)
-				Text("Sum: \(sums.isEmpty ? Format.money(0, "EUR") : Format.sums(sums))")
+				Text("Sum: \(Format.sums(sums.shownAmounts(viewCurrency: model.selectedCurrency, firstRowCurrency: firstRowCurrency)))")
 					.monospacedDigit()
 					.textSelection(.enabled)
 			}
