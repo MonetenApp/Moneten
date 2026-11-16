@@ -139,6 +139,19 @@ final class DebugHarness {
 		case "unlock": log("unlock", ("", .flag(model.unlock(password: argument))))
 		case "lock": model.lock()
 		case "appearance": NSApp.appearance = NSAppearance(named: argument == "dark" ? .darkAqua : .aqua)
+		// Sets the width of the sidebar to a number of points, as a drag of the divider does, and logs the width and
+		// the frame of the main window.
+		case "sidebarwidth":
+			func splits(in view: NSView) -> [NSSplitView] { ((view as? NSSplitView).map { [$0] } ?? []) + view.subviews.flatMap(splits) }
+			guard let window = NSApp.windows.first(where: { $0.isVisible && $0.identifier?.rawValue.hasPrefix("main") == true }),
+				let split = window.contentView.flatMap({ splits(in: $0).first { $0.isVertical && $0.arrangedSubviews.count > 1 } }) else {
+				return log("sidebarwidth no split view")
+			}
+			if let width = Double(argument) { split.setPosition(width, ofDividerAt: 0) }
+			DispatchQueue.main.async { [weak self] in
+				self?.log("sidebarwidth", ("", .count(Int(split.arrangedSubviews[0].frame.width))), ("window", .count(Int(window.frame.width))),
+					("height", .count(Int(window.frame.height))), ("mode", .state(model.viewMode)))
+			}
 		// "<name>": the import sheet while it reads the second of two made-up files, and while it stores their rows.
 		case "importsheetsnapshot":
 			let reading = FileImport(names: ["umsaetze-januar.csv", "umsaetze-februar.csv"])
@@ -505,19 +518,6 @@ final class DebugHarness {
 		case "scrolltable": scrollTables { argument == "end" ? $0 - 1 : min(Int(argument) ?? 0, $0 - 1) }
 		case "select": if argument.isEmpty { model.selection = nil } else { select(argument) }
 		case "contextmenus": logContextMenus(argument)
-		// Sets the width of the sidebar to a number of points, as a drag of the divider does, and logs the width and
-		// the frame of the main window.
-		case "sidebarwidth":
-			func splits(in view: NSView) -> [NSSplitView] { ((view as? NSSplitView).map { [$0] } ?? []) + view.subviews.flatMap(splits) }
-			guard let window = NSApp.windows.first(where: { $0.isVisible && $0.identifier?.rawValue.hasPrefix("main") == true }),
-				let split = window.contentView.flatMap({ splits(in: $0).first { $0.isVertical && $0.arrangedSubviews.count > 1 } }) else {
-				return log("sidebarwidth no split view")
-			}
-			if let width = Double(argument) { split.setPosition(width, ofDividerAt: 0) }
-			DispatchQueue.main.async { [weak self] in
-				self?.log("sidebarwidth", ("", .count(Int(split.arrangedSubviews[0].frame.width))), ("window", .count(Int(window.frame.width))),
-					("height", .count(Int(window.frame.height))), ("mode", .state(model.viewMode)))
-			}
 		#if DEBUG || PERF_HARNESS
 		case "perf": Task { await runPerf() }
 		#endif
