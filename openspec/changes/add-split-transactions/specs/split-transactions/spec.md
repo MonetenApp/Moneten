@@ -82,6 +82,18 @@ The app SHALL split the remainder again when the user clicks "Next Split" in the
 - **WHEN** the user opens the split window and leaves the amount field empty
 - **THEN** the confirm button is disabled
 
+#### Scenario: An unsigned next amount follows the remainder
+
+- **GIVEN** a transaction of -80,00 €
+- **WHEN** the user enters 100,00, clicks "Next Split", enters 5,00, and confirms
+- **THEN** the list shows parts of -100,00 €, 5,00 €, and 15,00 €
+
+#### Scenario: An explicit next sign stays
+
+- **GIVEN** a transaction of -80,00 €
+- **WHEN** the user enters 100,00, clicks "Next Split", enters -5,00, and confirms
+- **THEN** the list shows parts of -100,00 €, -5,00 €, and 25,00 €
+
 #### Scenario: Split a part again
 
 - **GIVEN** the parts -25,00 € and -55,00 € of a transaction of -80,00 €

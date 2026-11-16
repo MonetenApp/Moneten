@@ -9,8 +9,9 @@ struct SplitSheet: View {
 	@FocusState private var amountFocused: Bool
 
 	private var empty: Bool { text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+	private var remaining: Money { (try? Split.amounts(of: row.amount, off: kept))?.last ?? row.amount }
 	private var entered: Money? {
-		Split.amount(from: text, on: row.amount, decimalMark: Locale.current.decimalSeparator == "," ? .comma : .point)
+		Split.amount(from: text, on: remaining, decimalMark: Locale.current.decimalSeparator == "," ? .comma : .point)
 	}
 	private var amounts: [Money]? {
 		if empty { return kept.isEmpty ? nil : try? Split.amounts(of: row.amount, off: kept) }
@@ -41,7 +42,7 @@ struct SplitSheet: View {
 					Text("Enter a nonzero amount that leaves a nonzero remainder.")
 						.font(.callout).foregroundStyle(Palette.red)
 				}
-				LabeledContent("Remainder", value: amounts?.last.map(Format.money) ?? Format.money(row.amount))
+				LabeledContent("Remainder", value: amounts?.last.map(Format.money) ?? Format.money(remaining))
 				if !kept.isEmpty { LabeledContent("Kept splits", value: "\(kept.count)") }
 			}
 		}
