@@ -876,6 +876,9 @@ final class SelfTest {
 
 		Map<String, Object> command = Map.of("accounts", requested);
 		FinTSHelper.Callback dialogs = new FinTSHelper.Callback(Map.of());
+		// As connect() sets them, so that hbci4java asks nothing on the console.
+		dialogs.host = "fints.example.com/fints";
+		dialogs.port = 443;
 		List<Boolean> ended = new ArrayList<>();
 		List<String> startdates = new ArrayList<>();
 		java.util.function.Function<FinTSHelper.Passport, FinTSHelper.Orders> open = p -> new MadeUpBank(dialogs, startdates, new ArrayList<>(), () -> {
