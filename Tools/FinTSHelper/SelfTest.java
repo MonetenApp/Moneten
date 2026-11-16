@@ -590,7 +590,15 @@ final class SelfTest {
 
 	/// The warning 3938 in the answer to a dialog initialization, which hbci4java counts as a successful login.
 	static void blockedLogin() {
-		FinTSHelper.Passport passport = passport();
+		Properties upd = new Properties();
+		upd.setProperty("KInfo.KTV.number", "0000202051");
+		upd.setProperty("KInfo.KTV.KIK.country", "DE");
+		upd.setProperty("KInfo.KTV.KIK.blz", "12030000");
+		upd.setProperty("KInfo.iban", "DE02120300000000202051");
+		upd.setProperty("KInfo.customerid", "erika77");
+		upd.setProperty("KInfo.cur", "EUR");
+		upd.setProperty("KInfo.konto", "Girokonto");
+		FinTSHelper.Passport passport = passport(upd);
 		HBCIMsgStatus answer = status();
 		answer.globStatus.addRetVal(new HBCIRetVal(null, null, null, "0020", "Dialoginitialisierung erfolgreich", null));
 		answer.segStatus.addRetVal(new HBCIRetVal(null, null, null, "3938", "Ihr Zugang ist vorläufig gesperrt - Bitte PIN-Sperre aufheben.", null));
@@ -609,6 +617,33 @@ final class SelfTest {
 		expect("no further message after the warning of a PIN block", json(thrown(() -> passport.onDialogEvent(DialogEvent.MSG_CREATE, login))), blocked);
 		expect("the setup login after the warning of a PIN block", json(thrown(passport::requireUnblocked)), blocked);
 		expect("a passport without the warning lets the setup go on", thrown(passport()::requireUnblocked), null);
+
+		// hbci4java keeps the failed request of the TAN media to itself, so HBCIHandler returns, and the setup goes on.
+		expect("the setup after a login whose request of the TAN media got the warning of a PIN block fails and lists no accounts",
+			loggedIn("accounts", passport), blocked + " sent nothing");
+		expect("the setup after a login without the warning lists the accounts", loggedIn("accounts", passport(upd)).replaceAll("\"data\":\"[^\"]*\"", "\"data\":…"),
+			"nothing thrown sent {\"type\":\"accounts\",\"accounts\":[{\"type\":\"account\",\"number\":\"0000202051\",\"iban\":\"DE02120300000000202051\","
+				+ "\"bic\":\"BYLADEM1001\",\"product\":\"Girokonto\",\"currency\":\"EUR\"}]}\n{\"type\":\"state\",\"data\":…}");
+	}
+
+	/// The failure of the rest of a dialog after the login, and the lines that it sent to the app.
+	static String loggedIn(String type, FinTSHelper.Passport passport) {
+		PrintStream pipe = FinTSHelper.out;
+		ByteArrayOutputStream lines = new ByteArrayOutputStream();
+		FinTSHelper.out = new PrintStream(lines, true, StandardCharsets.UTF_8);
+		try {
+			Throwable failure = thrown(() -> {
+				try {
+					FinTSHelper.loggedIn(type, Map.of(), new FinTSHelper.Callback(Map.of()), null, passport);
+				} catch (IOException e) {
+					throw new java.io.UncheckedIOException(e);
+				}
+			});
+			String sent = lines.toString(StandardCharsets.UTF_8).trim();
+			return json(failure) + " sent " + (sent.isEmpty() ? "nothing" : sent);
+		} finally {
+			FinTSHelper.out = pipe;
+		}
 	}
 
 	static String json(Throwable e) {
@@ -671,6 +706,11 @@ final class SelfTest {
 	/// A passport with made-up bank parameters: a PIN of 5 to 10 characters, and the methods pushTAN 2.0
 	/// (an approval in the app), chipTAN QR, and mobileTAN with a TAN medium, all three allowed for the user.
 	static FinTSHelper.Passport passport() {
+		return passport(null);
+	}
+
+	/// A passport with the parameters of a made-up bank, and with the accounts of `upd` when it is not null.
+	static FinTSHelper.Passport passport(Properties upd) {
 		Properties bpd = new Properties();
 		bpd.setProperty("Params_1.PinTanPar1.ParPinTan.pinlen_min", "5");
 		bpd.setProperty("Params_1.PinTanPar1.ParPinTan.pinlen_max", "10");
@@ -693,6 +733,7 @@ final class SelfTest {
 		d.filter = "Base64";
 		d.hbciVersion = "300";
 		d.bpd = bpd;
+		d.upd = upd;
 		d.twostepMechs = new ArrayList<>(List.of("901", "913", "922"));
 		d.tanMethod = "922";
 		FinTSHelper.Passport.loaded = d;

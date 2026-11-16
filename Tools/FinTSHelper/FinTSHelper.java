@@ -104,7 +104,8 @@ import org.kapott.hbci.structures.Konto;
 import org.kapott.hbci.structures.Value;
 
 public class FinTSHelper {
-	static final PrintStream out = new PrintStream(new FileOutputStream(FileDescriptor.out), true, StandardCharsets.UTF_8);
+	/// The lines to the app. The self-test reads them here in place of the pipe.
+	static PrintStream out = new PrintStream(new FileOutputStream(FileDescriptor.out), true, StandardCharsets.UTF_8);
 	static final PrintStream err = new PrintStream(new FileOutputStream(FileDescriptor.err), true, StandardCharsets.UTF_8);
 
 	/// A failure that the helper reports as it is: kind "network", "unsupported", or null for the bank.
@@ -1250,22 +1251,7 @@ public class FinTSHelper {
 			passport.setHost(callback.host);
 			passport.setPort(callback.port);
 			handle = new HBCIHandler(HBCIVersion.HBCI_300.getId(), passport);
-			passport.requireUnblocked();
-			callback.withdrawApproval();
-			callback.checkSwitch();
-			Konto[] accounts = passport.getAccounts() == null ? new Konto[0] : passport.getAccounts();
-			BankInfo bank = HBCIUtils.getBankInfo(passport.getBLZ());
-			for (Konto k : accounts) {
-				if (!present(k.bic) && bank != null && present(bank.getBic())) k.bic = bank.getBic();
-			}
-			if ("accounts".equals(type)) {
-				List<Object> list = new ArrayList<>();
-				for (Konto k : accounts) list.add(account(k));
-				send(message("accounts", "accounts", list));
-			} else {
-				refresh(handle, passport, accounts, (List<?>) command.get("accounts"), callback);
-			}
-			send(message("state", "data", Base64.getEncoder().encodeToString(passport.state(callback.tanMedium))));
+			loggedIn(type, command, callback, handle, passport);
 			return true;
 		} catch (RuntimeException e) {
 			if (callback.switchTo == null) {
@@ -1284,6 +1270,28 @@ public class FinTSHelper {
 				diagnostic("FinTSHelper: closing the dialog failed: " + e.getMessage());
 			}
 		}
+	}
+
+	/// The rest of a dialog after `HBCIHandler` logged in: the accounts of the setup, or the refresh, and then
+	/// the state. It fails at once when a dialog of the login carried the warning 3938, which hbci4java keeps to
+	/// itself for the request of the TAN media, so that the setup lists no accounts of a blocked access.
+	static void loggedIn(String type, Map<?, ?> command, Callback callback, HBCIHandler handle, Passport passport) throws IOException {
+		passport.requireUnblocked();
+		callback.withdrawApproval();
+		callback.checkSwitch();
+		Konto[] accounts = passport.getAccounts() == null ? new Konto[0] : passport.getAccounts();
+		BankInfo bank = HBCIUtils.getBankInfo(passport.getBLZ());
+		for (Konto k : accounts) {
+			if (!present(k.bic) && bank != null && present(bank.getBic())) k.bic = bank.getBic();
+		}
+		if ("accounts".equals(type)) {
+			List<Object> list = new ArrayList<>();
+			for (Konto k : accounts) list.add(account(k));
+			send(message("accounts", "accounts", list));
+		} else {
+			refresh(handle, passport, accounts, (List<?>) command.get("accounts"), callback);
+		}
+		send(message("state", "data", Base64.getEncoder().encodeToString(passport.state(callback.tanMedium))));
 	}
 
 	/// The codes with which a bank refuses the one-step method 999 for a login: 9075 "Starke Kundenauthentifizierung
