@@ -28,6 +28,17 @@ struct FinTSConnectorTests {
 		}
 	}
 
+	/// The line that a script writes into `record` when SIGTERM ends it, with the time by the clock of
+	/// the helper, in seconds since 1970.
+	static let terminatedTrap = #"trap 'echo "{\"type\":\"terminated\",\"at\":$(date +%s)}" >> "$R"; exit 1' TERM"#
+
+	/// The seconds from `start` until the trap of `terminatedTrap` ran. A test of a timeout measures
+	/// this instead of the end of the run: the run also waits for a thread of Swift concurrency, and on
+	/// a runner of CI the CPU-bound tests of other suites hold those threads for more than 30 seconds.
+	func secondsToTermination(since start: Date) -> Double? {
+		recorded.first { $0["type"] == "terminated" }?["at"].flatMap(Double.init).map { $0 - start.timeIntervalSince1970 }
+	}
+
 	/// A connector whose helper is `/bin/sh -c script`. `$R` in the script is the file `record`.
 	func connector(_ script: String, productID: String? = "TESTPRODUCT", inactivity: TimeInterval = 30, grace: TimeInterval = 5) -> FinTSConnector {
 		FinTSConnector(helper: .init(executable: URL(filePath: "/bin/sh"), arguments: ["-c", "R='\(record.path)'\n" + script]), productID: productID, version: "0.0.1",
@@ -377,19 +388,19 @@ struct FinTSConnectorTests {
 	func timeoutAfterLine() async throws {
 		// The line counts until the run has handled it. Afterwards the silence must time out, as when
 		// the helper reported that it sent a message and the bank never answers.
-		let start = ContinuousClock.now
+		let start = Date.now
 		await #expect(throws: SyncFailure.network("The connection to the FinTS server of the bank timed out. Try again later.")) {
 			try await connector("""
 				read cmd
-				trap 'echo "{\\"type\\":\\"terminated\\"}" >> "$R"; exit 1' TERM
+				\(Self.terminatedTrap)
 				echo '{"type":"alive"}'
 				read line; printf '%s\\n' "$line" >> "$R"
 				sleep 60 & wait
 				""", inactivity: 1, grace: 1).refresh(RefreshRequest(access: Self.access, accounts: [Self.giro]), Session())
 		}
 		#expect(recorded.map { $0["type"] } == ["cancel", "terminated"])
-		// The helper would end on its own after 60 seconds.
-		#expect(ContinuousClock.now - start < .seconds(30))
+		// The helper would end on its own after 60 seconds; termination ends it after about 2.
+		#expect(try #require(secondsToTermination(since: start)) < 30)
 	}
 
 	@Test("A helper that closes its output but keeps running gets the cancel and ends", .timeLimit(.minutes(1)))
@@ -416,12 +427,16 @@ struct FinTSConnectorTests {
 	@Test("A helper that does not read a large state fails with a timeout")
 	func timeoutBlockedWrite() async throws {
 		let state = AccessState(Data(repeating: 7, count: 1_000_000))
-		let start = ContinuousClock.now
+		let start = Date.now
 		await #expect(throws: SyncFailure.network("The connection to the FinTS server of the bank timed out. Try again later.")) {
-			try await connector("exec sleep 60", inactivity: 1, grace: 1).listAccounts(of: Self.access, state: state, session: Session())
+			// The helper never reads its input, so the write of the command blocks.
+			try await connector("""
+				\(Self.terminatedTrap)
+				sleep 60 & wait
+				""", inactivity: 1, grace: 1).listAccounts(of: Self.access, state: state, session: Session())
 		}
 		// The helper would end on its own after 60 seconds; termination ends it after about 2.
-		#expect(ContinuousClock.now - start < .seconds(30))
+		#expect(try #require(secondsToTermination(since: start)) < 30)
 	}
 
 	@Test("Each line restarts the timeout, and a request for the user pauses it")
