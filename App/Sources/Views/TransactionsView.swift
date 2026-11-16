@@ -330,24 +330,27 @@ struct FilterBar: View {
 struct CustomPeriodView: View {
 	@Environment(AppModel.self) private var model
 	@Environment(\.dismiss) private var dismiss
-	@State private var from = Calendar.current.date(byAdding: .month, value: -1, to: Date())!
-	@State private var to = Date()
+	/// Nil while the field holds a text that is not a date.
+	@State private var from: Day? = Day.today().adding(months: -1)
+	@State private var to: Day? = Day.today()
 
 	var body: some View {
 		VStack(spacing: 0) {
 			SheetForm {
 				Section {
-					DatePicker("From", selection: $from, displayedComponents: .date)
-					DatePicker("To", selection: $to, displayedComponents: .date)
+					DateField(title: "From", day: $from, identifier: "from")
+					DateField(title: "To", day: $to, identifier: "to")
 				}
 			}
 			SheetButtons {
 				Spacer()
 				Button("Apply") {
-					model.choose(period: .custom(Day(from), Day(to)))
+					guard let from, let to else { return }
+					model.choose(period: .custom(from, to))
 					dismiss()
 				}
 				.keyboardShortcut(.defaultAction)
+				.disabled(from == nil || to == nil)
 			}
 		}
 		.frame(width: 300)

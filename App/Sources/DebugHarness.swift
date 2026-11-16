@@ -185,6 +185,11 @@ final class DebugHarness {
 				("error", .flag(controls.contains { ($0 as AnyObject).accessibilityIdentifier?() == "vat-error" })))
 		case "vatclose":
 			if let sheet = topSheet { sheet.sheetParent?.endSheet(sheet); sheet.orderOut(nil) }
+		// "open" shows the custom period and a field that expects a future date in a sheet, "calendar <from|to|scheduled>"
+		// opens the calendar of a field, "pick <yyyymmdd>" clicks that day in the open calendar, and "state" logs the
+		// date that each field reads and whether it has the focus. "close" ends the sheet as "vatclose" does, and
+		// "calendarsnapshot <name>" draws the calendar alone.
+		case "datefield": dateField(argument)
 		case "storepassword":
 			do { try model.vault.storePassword(argument); log("storepassword", ("", .flag(true))) } catch { log("storepassword", ("failed", .type(of: error))) }
 		case "removepassword":
@@ -1014,6 +1019,48 @@ final class DebugHarness {
 		}
 	}
 
+	private func dateField(_ argument: String) {
+		let parts = argument.split(separator: " ").map(String.init)
+		func fields(in view: NSView) -> [NSTextField] {
+			if let field = view as? NSTextField, field.isEditable { return [field] }
+			return view.subviews.flatMap(fields)
+		}
+		switch parts.first ?? "" {
+		case "open":
+			guard let main = NSApp.windows.first(where: { $0.identifier?.rawValue.hasPrefix("main") == true }), main.attachedSheet == nil else { return }
+			let host = NSHostingView(rootView: DateFieldHarnessView().environment(model).frame(width: 300))
+			let window = NSWindow(contentRect: NSRect(origin: .zero, size: host.fittingSize), styleMask: [.titled], backing: .buffered, defer: false)
+			window.contentView = host
+			main.beginSheet(window)
+			log("datefield opened")
+		case "calendar" where parts.count == 2:
+			let control = sheetAccessibility().first { ($0 as AnyObject).accessibilityIdentifier?() == "\(parts[1])-calendar" }
+			log("datefield calendar", ("handled", .flag(control.map { ($0 as AnyObject).accessibilityPerformPress?() ?? false } ?? false)))
+		case "pick" where parts.count == 2:
+			func pickers(in view: NSView) -> [NSDatePicker] { (view as? NSDatePicker).map { [$0] } ?? view.subviews.flatMap(pickers) }
+			let picker = NSApp.windows.filter(\.isVisible).compactMap(\.contentView).flatMap(pickers).first { $0.datePickerStyle == .clockAndCalendar }
+			guard let picker, let raw = Int(parts[1]) else { return log("datefield pick", ("picker", .flag(false))) }
+			// What a click on a day does: the picker takes the date and sends its action.
+			picker.dateValue = Day(year: raw / 10_000, month: raw / 100 % 100, day: raw % 100).date()
+			picker.sendAction(picker.action, to: picker.target)
+			log("datefield pick", ("picker", .flag(true)))
+		case "state":
+			let editable = topSheet?.contentView.map(fields) ?? []
+			let editor = topSheet?.firstResponder as? NSTextView
+			for (i, field) in editable.enumerated() {
+				let read = Day(typed: field.stringValue, today: .today(), order: DateOrder(locale: .current))
+				log("datefield state", ("", .position(i)), ("day", .day(read)), ("focused", .flag(editor?.delegate === field)))
+			}
+		case "close":
+			if let sheet = topSheet { sheet.sheetParent?.endSheet(sheet); sheet.orderOut(nil) }
+		// The calendar at 15 December 2026, drawn outside a popover, whose glass a snapshot does not draw.
+		case "calendarsnapshot" where parts.count == 2:
+			let name = parts[1]
+			offscreenSnapshot(DateFieldCalendar(title: LocalizedStringKey(name), shown: Day(year: 2026, month: 12, day: 15)) { _, _ in }, width: 200, name: name, kind: "calendar")
+		default: log("datefield rejected")
+		}
+	}
+
 	private func sheetAccessibility() -> [NSObject] {
 		// SwiftUI builds its accessibility nodes only after a client requests the enhanced interface.
 		NSApp.accessibilitySetValue(true, forAttribute: NSAccessibility.Attribute(rawValue: "AXEnhancedUserInterface"))
@@ -1775,3 +1822,22 @@ extension NSApplication {
 	}
 }
 #endif
+
+/// The custom period and a field that expects a future date, for the checks of the date field in the debug harness.
+/// No window of the app has a field that expects a future date yet, so the harness shows one with an English label.
+private struct DateFieldHarnessView: View {
+	// periphery:ignore - read only through the binding of the field, whose date the harness reads from the text.
+	@State private var scheduled: Day? = .today()
+	private let label = "Scheduled date"
+
+	var body: some View {
+		VStack(spacing: 0) {
+			SheetForm {
+				Section {
+					DateField(title: LocalizedStringKey(label), day: $scheduled, expectsFuture: true, identifier: "scheduled")
+				}
+			}
+			CustomPeriodView()
+		}
+	}
+}

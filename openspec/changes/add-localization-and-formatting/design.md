@@ -71,13 +71,35 @@ Alternative: store an empty name and word it at display. Every view, the export,
 
 ### A pure completion function in `Domain`
 
-The completion is a function in `Domain`. It takes the typed text, today as a `Day`, the order of day, month, and year from the region, and whether the field expects a future date. It returns a `Day`, or nothing when the text is not a date. The date field in `App` calls it when the user leaves the field. A pure function lets the tests set today to 9 November 2026 or 15 February 2027 without a clock.
+The completion is a function in `Domain`. It takes the typed text, today as a `Day`, the order of day, month, and year from the region, and whether the field expects a future date. It returns a `Day`, or nothing when the text is not a date. The date field in `App` calls it while the user types and when the user leaves the field. A pure function lets the tests set today to 9 November 2026 or 15 February 2027 without a clock. It is `Day(typed:today:order:expectsFuture:)` in `Sources/Domain/DateCompletion.swift`, and `DateOrder(locale:)` gives the order of a region.
 
 Alternative: complete the date inside the view. The rule then has no tests outside the running app, and the two kinds of field could drift apart.
 
 ### The kind of field is a property of the field
 
 Each date field states whether it expects a future date. The default is no. Only the fields that set it use the forward rules of the two requirements for a field that expects a future date.
+
+These fields expect a future date:
+
+- The execution date of a transfer, an instant payment, and a foreign currency transfer, when "Schedule" is set to "Set date".
+- The first and the last execution date of a standing order, and the date of a change to a standing order.
+- The due date of a direct debit and of a batch direct debit.
+
+Each of them is an order that the bank carries out later, and a bank refuses an order for a day in the past. Every other date field is ordinary: the booking date and the value date of a transaction, the ends of a custom period, and the dates of a report and of an export. These record or select something that has already happened. Today the app has only ordinary fields. The windows for payments set the kind when they are built.
+
+### Reading the typed text
+
+The completion reads the text in the order of the numeric date of the region, which `Format.day` shows: day, month, and year in Germany, and month, day, and year in the United States. A day and a month without a year keep that order, so "12/20" is 20 December in the United States. A first part of four digits is always the year of an ISO date, such as 2026-11-09.
+
+The parts are separated by ".", "/", "-", ",", or a space, and a separator at the end is ignored, so "20.12." reads as "20.12". A day and a month have one or two digits. A year has two or four digits, and a two-digit year reads as `Day(string:)` reads it in a file: below 70 in the 2000s, else in the 1900s. A text of digits only reads as a day, so "2012" is not a date. Letters, an empty part, more than three parts, and a day or a month out of range make the text unreadable.
+
+### The date field of the app
+
+`DateField` in `App/Sources/Views/DateField.swift` is a text field with a button for the calendar. It binds an optional `Day`, which follows the text while the user types. So a click on a button of the sheet uses the completed date even though the field still has the focus. The day is nil while the text is not a date, and the sheet does not confirm then. When the user leaves the field with Tab, Return, or a click elsewhere, the field shows the full date in the format of the region. When the text is not a date, the field shows it in red with a red frame, takes the focus back, and leaves the bound day as nil, so the sheet stores no date until the user corrects the text.
+
+The calendar is the graphical date picker of the system in a popover. It starts at the date of the field, or at today while the field holds no date. Every date that the picker sets goes into the field and ends the mark. The picker also sets its date when the user moves to another month, and whether its arrows do so is not documented. So a date in the month on show, which is a click on a day, also closes the popover, and a date in another month leaves the popover open.
+
+The custom period of the transaction list uses the field. The sheet for a transaction keeps the date picker of the system until the open change for manual transactions, which rewrites that sheet, is merged. Its booking date and value date then move to the field.
 
 ### The rule for an ordinary field
 
@@ -100,4 +122,4 @@ The completion works on the numbers of the day and the month and checks the date
 
 ## Open Questions
 
-- Which date fields expect a future date. The spec names the scheduled date of a payment. The forward rules for these fields are the two requirements for a field that expects a future date. Confirm the list of fields and this rule before the windows for transfers, direct debits, and standing orders are built. The rule for an ordinary field does not depend on this answer.
+None. The list of fields that expect a future date is in the decision "The kind of field is a property of the field".
