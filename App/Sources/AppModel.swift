@@ -573,6 +573,8 @@ final class AppModel {
 
 	func select(_ s: SidebarSelection?) {
 		guard s != selection else { return }
+		// Back and Forward can still hold a saved search that the user removed.
+		if case let .search(id) = s, !savedSearches.contains(where: { $0.id == id }) { return }
 		Trail.log("view change from=\(tableKey.trailKind) selected=\(tableKey.portfolios == nil ? selectedTransactions.count : selectedPositions)")
 		selection = s
 		// The rows change after SwiftUI drew the new view: changing them while the list handles the
