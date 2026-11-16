@@ -59,11 +59,15 @@ struct MonetenApp: App {
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
+	func applicationWillFinishLaunching(_ notification: Notification) {
+		// A run of the debug harness opens behind the app the developer works in, so that it does not take the focus.
+		DebugHarness.keepBehindIfRequested()
+	}
+
 	func applicationDidFinishLaunching(_ notification: Notification) {
 		// A build that runs straight from `swift run` has no bundle and starts in the background.
 		NSApp.setActivationPolicy(.regular)
-		// A run of the debug harness opens behind the app the developer works in, so that it does not take the focus.
-		if !DebugHarness.isRequested { NSApp.activate(ignoringOtherApps: true) }
+		NSApp.activate(ignoringOtherApps: true)
 	}
 
 	func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
