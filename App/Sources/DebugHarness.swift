@@ -7,6 +7,7 @@ import Foundation
 import Sync
 import SyncTesting
 import SwiftUI
+import Storage
 
 /// Lets a developer drive the app and capture its windows as images, for checks without a screen.
 ///
@@ -81,6 +82,48 @@ final class DebugHarness {
 	func run(_ command: String, _ argument: String) {
 		guard let model else { return }
 		switch command {
+		case "crashinject":
+			let parts = argument.split(separator: "|", omittingEmptySubsequences: false)
+			let mode = parts.first.map(String.init) ?? ""
+			let date: Date
+			if parts.count == 2 {
+				guard let seconds = TimeInterval(parts[1]), seconds.isFinite else { return log("crash inject invalid-date") }
+				date = Date(timeIntervalSince1970: seconds)
+			} else { date = Date() }
+			let personal = "DE02120300000000202051 Erika Mustermann /Users/erika"
+			let diagnostic = CrashDiagnostic(appVersion: mode == "private" ? personal : CrashReportController.appVersion,
+				macOSVersion: mode == "private" ? personal : CrashReports.macOSVersion(), exceptionType: 6, signal: 6,
+				frames: mode == "private" ? [.init(binaryName: personal, binaryUUID: personal, offset: 42)] :
+					(0..<(mode == "long" ? 500 : 3)).map { .init(binaryName: "Moneten", binaryUUID: "70B89F27-1634-3580-A695-57CDB41D7743", offset: UInt64(4096 + $0 * 16)) })
+			model.crashes.receive(.init(date: date, diagnostic: diagnostic))
+			log("crash inject frames=\(diagnostic.frames.count) pending=\(model.crashes.pending != nil) timeMatches=\(model.crashes.pending?.date == date)")
+		#if DEBUG || PERF_HARNESS
+		case "crashstatus":
+			log("crash status pending=\(model.crashes.pending != nil) fallback=\(model.crashes.pending?.fallback != nil) received=\(model.crashes.receivedCount) failures=\(model.crashes.failureCount)")
+		#endif
+		case "crashdecision":
+			guard let pending = model.crashes.pending else { return log("crash decision pending=false") }
+			let decision: PendingCrashReport.Decision
+			switch argument {
+			case "copy": decision = .copy
+			case "decline": decision = .decline
+			default: return
+			}
+			let expected = pending.report
+			model.crashes.decide(decision)
+			log("crash decision pending=\(model.crashes.pending != nil) copied=\(decision == .copy && NSPasteboard.general.string(forType: .string) == expected)")
+		case "crashurl":
+			guard let pending = model.crashes.pending else { return }
+			let report = pending.report
+			let url = pending.githubURL
+			do {
+				try url.absoluteString.write(to: folder.appendingPathComponent("crash-url.txt"), atomically: true, encoding: .utf8)
+				try report.write(to: folder.appendingPathComponent("crash-report.txt"), atomically: true, encoding: .utf8)
+				log("crash url characters=\(url.absoluteString.count) frames=\(pending.diagnostic.frames.count)")
+			} catch { log("crash url failed") }
+		case "crash":
+			log("crash intentional")
+			intentionalCrash()
 		case "snapshot": snapshot(argument)
 		case "sidebarsnapshot": sidebarSnapshot(argument)
 		case "setpassword": model.setPassword(argument)
@@ -1044,6 +1087,9 @@ final class DebugHarness {
 			self.log("snapshot \(name) \(Int(host.bounds.width))x\(Int(host.bounds.height))")
 		}
 	}
+
+	@inline(never)
+	private func intentionalCrash() { fatalError("Synthetic crash check") }
 
 	/// A web view draws in another process, so the window image gets its picture from WebKit first.
 	private func snapshot(_ name: String) {
