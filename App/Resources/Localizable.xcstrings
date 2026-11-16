@@ -3955,12 +3955,12 @@
         }
       }
     },
-    "Each of these settings keeps the database password in the Keychain of this Mac." : {
+    "Each of these settings keeps the database password in the Keychain of this Mac. With \"Unlock automatically at application start\", anyone who uses your user account on this Mac can open Moneten without the password." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Jede dieser Einstellungen bewahrt das Datenbankpasswort im Schlüsselbund dieses Macs auf."
+            "value" : "Jede dieser Einstellungen bewahrt das Datenbankpasswort im Schlüsselbund dieses Macs auf. Mit „Beim Programmstart automatisch entsperren“ kann jeder, der Ihr Benutzerkonto auf diesem Mac verwendet, Moneten ohne das Passwort öffnen."
           }
         }
       }
@@ -5569,6 +5569,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "macOS blockiert die Mitteilungen von Moneten. Erlauben Sie sie in den Systemeinstellungen unter „Mitteilungen“, „Moneten“."
+          }
+        }
+      }
+    },
+    "macOS did not keep this change. The setting shows the value that applies." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "macOS hat diese Änderung nicht übernommen. Die Einstellung zeigt den Wert, der gilt."
           }
         }
       }
@@ -7444,6 +7454,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Alle Konten aktualisieren"
+          }
+        }
+      }
+    },
+    "Refreshes each account as often as \"Refresh\" in its account settings says, while Moneten runs and is unlocked." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktualisiert jedes Konto so oft, wie „Aktualisierung“ in seinen Kontoeinstellungen festlegt, solange Moneten läuft und entsperrt ist."
           }
         }
       }

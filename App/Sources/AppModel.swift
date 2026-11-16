@@ -336,7 +336,7 @@ final class AppModel {
 			if case let .fileImport(run) = oldValue, (run.question != nil || run.preview != nil) { run.cancel() }
 		}
 	}
-	var settingsTab = SettingsTab.security
+	var settingsTab = SettingsTab.general
 	/// The number of transaction tables that `replacingTable` started, for the trail.
 	@ObservationIgnored private(set) var tableGeneration = 0
 	/// The changes of `replacingTable` that wait for their new table. While there is one, a placeholder
