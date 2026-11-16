@@ -136,7 +136,7 @@ final class DebugHarness {
 		case "sidebarsnapshot": sidebarSnapshot(argument)
 		case "setpassword": model.setPassword(argument)
 		case "create": model.createDatabase(password: argument.isEmpty ? nil : argument)
-		case "unlock": log("unlock", ("", .flag(model.unlock(password: argument))))
+		case "unlock": Task { log("unlock", ("", .flag(await model.unlock(password: argument) == .unlocked))) }
 		case "lock": model.lock()
 		case "appearance": NSApp.appearance = NSAppearance(named: argument == "dark" ? .darkAqua : .aqua)
 		// "<name>": the import sheet while it reads the second of two made-up files, and while it stores their rows.
@@ -150,8 +150,10 @@ final class DebugHarness {
 		case "settingssnapshot":
 			offscreenSnapshot(SecuritySettings().environment(model), width: 500, name: argument, kind: "security")
 			offscreenSnapshot(GeneralSettings().environment(model), width: 500, name: argument, kind: "general")
-		case "storepassword": log("storepassword", ("", .flag((try? model.vault.storePassword(argument)) != nil)))
-		case "removepassword": try? model.vault.removeStoredPassword()
+		case "storepassword":
+			do { try model.vault.storePassword(argument); log("storepassword", ("", .flag(true))) } catch { log("storepassword", ("failed", .type(of: error))) }
+		case "removepassword":
+			do { try model.vault.removeStoredPassword() } catch { log("removepassword", ("failed", .type(of: error))) }
 		case "seed": Task { await DemoData.seed(model); log("seed done") }
 		// "<name>" starts a made-up refresh that shows one dialog of SyncDemo.requests.
 		case "syncdemo": SyncDemo.start(argument, in: model.sync)
