@@ -256,7 +256,8 @@ struct AllDataTests {
 		let before = try source.loadLedger()
 		let after = try target.loadLedger()
 		#expect(after.transactions.first { $0.sourceID == "moneymoney:1" }?.returnReason == "AC04")
-		#expect(after.transactions.first { $0.sourceID == "bank-4711" }?.original?.purpose == "")
+		#expect(after.transactions.first { $0.sourceID == "bank-4711" }?.original == OriginalValues(bookingDate: Day(year: 2026, month: 11, day: 5),
+			valueDate: nil, amountMinor: -2_000, name: "Diner New York", purpose: ""))
 		#expect(Set(after.accounts) == Set(before.accounts))
 		#expect(Set(after.groups) == Set(before.groups))
 		#expect(Set(after.categories) == Set(before.categories))

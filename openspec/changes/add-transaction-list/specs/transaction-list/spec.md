@@ -304,6 +304,26 @@ The app SHALL let the user change the booking date, the value date, the counterp
 - **THEN** the row shows -24,95 € on 05.11.2026, and the balance counts -24,95 €
 - **AND** the next refresh adds no second row
 
+#### Scenario: The bank books an edited pending transaction
+
+- **GIVEN** a pending transaction of -49,90 € on 03.11.2026 whose amount the user changed to -24,95 €
+- **WHEN** the next refresh delivers the booked transaction of -49,90 € on 04.11.2026
+- **THEN** the row is booked and shows -24,95 €
+- **AND** the account has one row for the transaction
+
+#### Scenario: A part of a split transaction
+
+- **GIVEN** a transaction of -80,00 € split into parts of -25,00 € and -55,00 €
+- **WHEN** the user chooses "Edit Transaction..." for the part of -25,00 €
+- **THEN** the window offers the category and the comment of the part, and no date, name, purpose, or amount
+- **AND** the parts still add up to -80,00 €
+
+#### Scenario: An amount the field cannot show
+
+- **GIVEN** an imported transaction whose amount is the smallest amount the app stores
+- **WHEN** the user chooses "Edit Transaction..."
+- **THEN** the window shows the amount without a field and keeps it when the user confirms
+
 #### Scenario: Cancel
 
 - **WHEN** the user cancels the edit window

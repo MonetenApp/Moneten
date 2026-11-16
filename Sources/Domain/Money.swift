@@ -27,6 +27,10 @@ public struct Money: Hashable, Sendable, Codable, Comparable {
 
 	public var isNegative: Bool { minorUnits < 0 }
 
+	/// The amount without its sign, as the amount field of "Edit Transaction..." shows it next to the type. Nil
+	/// for `Int64.min`, which a complete import accepts and whose magnitude does not fit into `Int64`.
+	public var magnitude: Money? { minorUnits == .min ? nil : Money(minorUnits: abs(minorUnits), currency: currency) }
+
 	/// The number of decimal places of the currency, such as 2 for EUR.
 	public var decimalPlaces: Int { Currency.exponent(of: currency) }
 

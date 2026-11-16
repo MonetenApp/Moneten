@@ -335,6 +335,8 @@ struct TransactionSheet: View {
 	@State private var purpose = ""
 	@State private var amount = ""
 	@State private var isDeposit = false
+	/// False for the one amount without a magnitude, which the sheet shows without a field and keeps.
+	@State private var editsAmount = true
 	@State private var categoryID: UUID?
 	@State private var comment = ""
 
@@ -342,10 +344,10 @@ struct TransactionSheet: View {
 	private var account: Account? { existing.flatMap { model.ledger.account($0.accountID) } ?? model.selectedAccount }
 	/// A new row only goes into an offline account. "Edit Transaction..." changes every row but a part of a split
 	/// (add-transaction-list, task 1.16).
-	private var editable: Bool { transactionID.flatMap { model.ledger.part($0) } == nil && (existing != nil || account?.isOffline == true) }
+	private var editable: Bool { transactionID.map(model.ledger.editsFields) ?? (account?.isOffline == true) }
 
 	var body: some View {
-		SheetFrame(title: transactionID == nil ? "New Transaction" : "Edit Transaction", canConfirm: !editable || AmountParser.decimal(from: amount) != nil, width: 500, onConfirm: save) {
+		SheetFrame(title: transactionID == nil ? "New Transaction" : "Edit Transaction", canConfirm: !editable || !editsAmount || AmountParser.decimal(from: amount) != nil, width: 500, onConfirm: save) {
 			if let review = existing?.review {
 				Section { Label(review.note, systemImage: "exclamationmark.circle").foregroundStyle(.orange) }
 			}
@@ -365,15 +367,19 @@ struct TransactionSheet: View {
 						}
 					}
 					TextField("Name", text: $name)
-					Picker("Type", selection: $isDeposit) {
-						Text("Withdrawal").tag(false)
-						Text("Deposit").tag(true)
+					if editsAmount {
+						Picker("Type", selection: $isDeposit) {
+							Text("Withdrawal").tag(false)
+							Text("Deposit").tag(true)
+						}
+						.pickerStyle(.segmented)
+						TextField("Amount", text: $amount, prompt: Text("0,00"))
+							.multilineTextAlignment(.trailing)
+							.marksUnreadableAmount(amount)
+							.monospacedDigit()
+					} else if let t = existing {
+						LabeledContent("Amount") { AmountText(money: t.amount) }
 					}
-					.pickerStyle(.segmented)
-					TextField("Amount", text: $amount, prompt: Text("0,00"))
-						.multilineTextAlignment(.trailing)
-						.marksUnreadableAmount(amount)
-						.monospacedDigit()
 					TextField("Purpose", text: $purpose, prompt: Text("Optional"), axis: .vertical).lineLimit(1...4)
 				}
 			}
@@ -407,7 +413,9 @@ struct TransactionSheet: View {
 		name = t.name
 		purpose = t.purpose
 		isDeposit = t.amountMinor > 0
-		if editable { amount = Format.editableAmount(abs(t.amountMinor), t.currency) }
+		if editable {
+			if let magnitude = t.amount.magnitude { amount = Format.editableAmount(magnitude.minorUnits, t.currency) } else { editsAmount = false }
+		}
 		categoryID = t.categoryID
 		comment = t.comment ?? ""
 	}
@@ -417,8 +425,13 @@ struct TransactionSheet: View {
 		guard let account else { return true }
 		var t = existing ?? Transaction(accountID: account.id, bookingDate: Day(date), amountMinor: 0, currency: account.currency, name: "")
 		if editable {
-			guard let value = AmountParser.decimal(from: amount) else { return false }
-			let minor = Money(abs(value), currency: t.currency).minorUnits * (isDeposit ? 1 : -1)
+			let minor: Int64
+			if editsAmount {
+				guard let value = AmountParser.decimal(from: amount) else { return false }
+				minor = Money(abs(value), currency: t.currency).minorUnits * (isDeposit ? 1 : -1)
+			} else {
+				minor = t.amountMinor
+			}
 			if existing != nil {
 				// The first change keeps the values of the source, so that a refresh does not add the row again.
 				t.edit(OriginalValues(bookingDate: Day(date), valueDate: valueDate.map { Day($0) }, amountMinor: minor, name: name, purpose: purpose))

@@ -149,7 +149,8 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored: [Tran
 				if delivered.isPending && !live.isPending { break }
 				next = live.takingBankFields(of: delivered)
 				if split.contains(live.id) {
-					if next.amount != live.amount {
+					// An edited amount stays, so the amount that the source delivered tells whether the bank changed it.
+					if next.amount != live.amount || next.sourceValues.amountMinor != live.sourceValues.amountMinor {
 						next.review = .splitUndone
 						r.unsplit.append(live.id)
 						rules.categorize(&next)
@@ -346,7 +347,8 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 			|| fileIdentity.map { fileIDs.contains($0) } == true
 			|| reference.map { references.contains($0) } == true
 	}
-	let live = stored.indices.filter { relevant(day: stored[$0].bookingDate, amount: stored[$0].amountMinor, sourceID: stored[$0].sourceID, fileIdentity: stored[$0].fileIdentity, reference: stored[$0].endToEndReference) }
+	// An edited row is found by the values of its source.
+	let live = stored.indices.filter { relevant(day: stored[$0].sourceValues.bookingDate, amount: stored[$0].sourceValues.amountMinor, sourceID: stored[$0].sourceID, fileIdentity: stored[$0].fileIdentity, reference: stored[$0].endToEndReference) }
 	let dead = deleted.indices.filter { relevant(day: deleted[$0].bookingDate, amount: deleted[$0].amountMinor, sourceID: deleted[$0].sourceID, fileIdentity: deleted[$0].fileIdentity, reference: deleted[$0].endToEndReference) }
 	if rows.allSatisfy({ !$0.isPending }), stored.allSatisfy({ !$0.isPending }), deleted.allSatisfy({ !$0.isPending }),
 		live.allSatisfy({ stored[$0].fileIdentity == nil }), dead.allSatisfy({ deleted[$0].fileIdentity == nil }) {
