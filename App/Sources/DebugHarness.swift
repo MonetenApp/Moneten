@@ -4,6 +4,7 @@ import ExtensionHost
 import FinTS
 import Import
 import Foundation
+import Storage
 import Sync
 import SyncTesting
 import SwiftUI
@@ -167,6 +168,10 @@ final class DebugHarness {
 		case "settingssnapshot":
 			offscreenSnapshot(SecuritySettings().environment(model), width: 500, name: argument, kind: "security")
 			offscreenSnapshot(GeneralSettings().environment(model), width: 500, name: argument, kind: "general")
+			offscreenSnapshot(PasswordPromptSheet(storesPassword: false) { _ in nil }.environment(model), width: 400, name: argument, kind: "prompt")
+		// "<setting> <value> <password>" changes a setting of the Security tab as its password prompt does. The setting is
+		// lockOnClose, lockAfter, or the key of an unlock setting; the value is on, off, or minutes. The log never holds the password.
+		case "security": security(argument)
 		case "vatsettings":
 			guard let main = NSApp.windows.first(where: { $0.identifier?.rawValue.hasPrefix("main") == true }), main.attachedSheet == nil else { return }
 			let host = NSHostingView(rootView: GeneralSettings().environment(model).frame(width: 500))
@@ -185,10 +190,22 @@ final class DebugHarness {
 				("error", .flag(controls.contains { ($0 as AnyObject).accessibilityIdentifier?() == "vat-error" })))
 		case "vatclose":
 			if let sheet = topSheet { sheet.sheetParent?.endSheet(sheet); sheet.orderOut(nil) }
+		// "<setting> <password>" turns an unlock setting on as the Security tab does, after the password check.
 		case "storepassword":
-			do { try model.vault.storePassword(argument); log("storepassword", ("", .flag(true))) } catch { log("storepassword", ("failed", .type(of: error))) }
+			let parts = argument.split(separator: " ", maxSplits: 1).map(String.init)
+			guard parts.count == 2, let entry = Vault.PasswordEntry(rawValue: parts[0]) else { return log("storepassword", ("", .word("rejected"))) }
+			do {
+				let changed = try model.changeSecurity(.unlock(entry, true), password: parts[1])
+				log("storepassword", ("", .flag(changed)))
+			} catch {
+				log("storepassword", ("failed", .type(of: error)))
+			}
 		case "removepassword":
-			do { try model.vault.removeStoredPassword() } catch { log("removepassword", ("failed", .type(of: error))) }
+			for entry in Vault.PasswordEntry.allCases {
+				do { try model.vault.removeStoredPassword(for: entry) } catch { log("removepassword", ("failed", .type(of: error))) }
+			}
+			do { try model.vault.removeSharedEntry() } catch { log("removepassword", ("failed", .type(of: error))) }
+			do { try model.loadUnlockSettings() } catch { log("removepassword", ("failed", .type(of: error))) }
 		case "seed": Task { await DemoData.seed(model); log("seed done") }
 		// "<name>" starts a made-up refresh that shows one dialog of SyncDemo.requests.
 		case "syncdemo": SyncDemo.start(argument, in: model.sync)
@@ -303,11 +320,12 @@ final class DebugHarness {
 		case "menubar": menuBar(argument)
 		// "<key> on" or "<key> off" writes the default of a switch directly, for example "showMenuBarIcon on". It skips what
 		// the toggle does besides, such as asking macOS for the notification permission. Only the switches of the checks of
-		// the notifications and the menu bar are allowed. The security settings stay out, because their toggles check the
-		// password and store it in the Keychain first. The line logs the position of the key in the list and the new value.
+		// the notifications and the menu bar are allowed. The security settings stay out, because they live in the database or
+		// the Keychain and change only with the password, through "security". The line logs the position of the key in the
+		// list and the new value.
 		case "setting":
 			let keys = [Preference.showMenuBarIcon, RefreshSettings.automaticRefreshKey, RefreshSettings.showsBannerKey,
-				RefreshSettings.playsSoundKey, Preference.lockOnClose]
+				RefreshSettings.playsSoundKey]
 			let parts = argument.split(separator: " ").map(String.init)
 			guard parts.count == 2, let key = keys.firstIndex(of: parts[0]), ["on", "off"].contains(parts[1]) else { return log("setting rejected") }
 			UserDefaults.standard.set(parts[1] == "on", forKey: keys[key])
@@ -636,6 +654,9 @@ final class DebugHarness {
 		case "perf": Task { await runPerf() }
 		#endif
 		case "view": model.viewMode = ViewMode(rawValue: argument) ?? .list
+		case "selectall": transactionTables().first?.selectAll(nil)
+		case "checkmarks": model.showsCheckmarks = argument != "off"
+		case "dailybalance": model.showsDailyBalance = argument != "off"
 		case "balance": model.balanceMode = BalanceMode(rawValue: argument) ?? .daily
 		case "search":
 			model.filter.searchText = argument
@@ -1518,6 +1539,30 @@ final class DebugHarness {
 
 	@inline(never)
 	private func intentionalCrash() { fatalError("Synthetic crash check") }
+
+	/// Changes a setting of the Security tab as its password prompt does, and logs every setting and entry after it.
+	private func security(_ argument: String) {
+		let parts = argument.split(separator: " ", maxSplits: 2).map(String.init)
+		guard let model, parts.count == 3 else { return }
+		let change: SecurityChange
+		switch parts[0] {
+		case "lockOnClose": change = .lockOnClose(parts[1] == "on")
+		case "lockAfter": change = .lockAfter(Int(parts[1]) ?? 0)
+		default:
+			guard let entry = Vault.PasswordEntry(rawValue: parts[0]) else { return log("security", ("", .word("rejected"))) }
+			change = .unlock(entry, parts[1] == "on")
+		}
+		let result: LogValue
+		do { result = try model.changeSecurity(change, password: parts[2]) ? .word("changed") : .word("incorrectPassword") } catch { result = .word("failed") }
+		let on = model.unlockSettings
+		func stored(_ entry: Vault.PasswordEntry) -> LogValue { .flag((try? model.vault.storedPassword(for: entry)).map { $0 != nil } ?? false) }
+		log("security",
+			("setting", .choice(parts[0], of: ["lockOnClose", "lockAfter", "unlockAutomatically", "unlockWithTouchID", "unlockWithAppleWatch"])),
+			("result", result),
+			("lockOnClose", .flag(model.lockSettings.lockOnClose)), ("lockAfter", .count(model.lockSettings.lockAfterMinutes)),
+			("automatic", .flag(on.contains(.automaticUnlock))), ("touchID", .flag(on.contains(.touchID))), ("watch", .flag(on.contains(.appleWatch))),
+			("keychainAutomatic", stored(.automaticUnlock)), ("keychainTouchID", stored(.touchID)), ("keychainWatch", stored(.appleWatch)))
+	}
 
 	/// A web view draws in another process, so the window image gets its picture from WebKit first.
 	private func snapshot(_ name: String) {

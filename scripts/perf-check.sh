@@ -35,8 +35,8 @@ defaults write "$BUNDLE_ID" showBannerNotificationOnNewTransactions -bool NO
 ditto "$BUILT" "$APP"
 /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $BUNDLE_ID" "$APP/Contents/Info.plist"
 codesign --force --sign - --entitlements App/Moneten.entitlements "$APP"
-MONETEN_DATA_DIR="$WORK/data" MONETEN_DEBUG_DIR="$WORK/debug" "$APP/Contents/MacOS/Moneten" \
-	-viewMode barChart -lockAfterInactivity NO -ApplePersistenceIgnoreState YES >"$WORK/app.log" 2>&1 &
+MONETEN_DATA_DIR="$WORK/data" MONETEN_DEBUG_DIR="$WORK/debug" MONETEN_DEBUG_NO_IDLE_LOCK=1 "$APP/Contents/MacOS/Moneten" \
+	-viewMode barChart -ApplePersistenceIgnoreState YES >"$WORK/app.log" 2>&1 &
 PID=$!
 
 report() {
@@ -44,7 +44,6 @@ report() {
 		/^perf .* stall_ms=/ { printf "%-30s %9s %10s %13s  %s\n", $2, $4, $6, $8, $10; next } /^perf / { print }' "$LOG"
 	kill $PID 2>/dev/null || true
 	wait $PID 2>/dev/null || true
-	security delete-generic-password -s "Moneten crash report key" -a "$WORK/data/Database/Moneten.sqlite" >/dev/null 2>&1 || true
 	scripts/forget-bundle.sh "$BUNDLE_ID" "$APP"
 	rm -rf "$WORK"
 }

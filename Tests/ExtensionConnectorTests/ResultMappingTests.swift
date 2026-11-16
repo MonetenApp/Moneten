@@ -175,6 +175,13 @@ import Testing
 		}
 	}
 
+	/// The value and the purchase value fit, but the profit, their difference, is beyond the limit.
+	@Test func profitOutOfRange() {
+		#expect(throws: MappingError("The value of security 1 at its purchase price is out of range.")) {
+			try result(["securities": .array([.object(["quantity": .integer(1), "amount": .number(9e12), "purchasePrice": .number(-9e12)])])], of: depot)
+		}
+	}
+
 	@Test func nominalAmountIsValuedAtAPercentage() throws {
 		let bond = try result(["securities": .array([.object(["name": .string("Anleihe Musterland"), "quantity": .integer(5000),
 			"currencyOfQuantity": .string("EUR"), "price": .number(98.5), "purchasePrice": .number(97)])])], of: depot)
@@ -271,6 +278,24 @@ import Testing
 		#expect(throws: MappingError("The amount of transaction 1 is out of range.")) {
 			try result(["balance": .integer(0), "transactions": .array([.object(["bookingDate": .integer(1794182400), "amount": .number(9e16)])])])
 		}
+	}
+
+	/// The shared limit of `Money.maxMinorUnits` applies to every row; their sum adds up exactly in the ledger (issue #324).
+	@Test(arguments: [(LuaValue.number(1e13), Int64(1_000_000_000_000_000)), (.number(-1e13), -1_000_000_000_000_000)])
+	func amountAtTheLimit(amount: LuaValue, minor: Int64) throws {
+		#expect(try result(["balance": amount, "transactions": .array([.object(["bookingDate": .integer(1794182400), "amount": amount])])])
+			.transactions?.rows.first?.amountMinor == minor)
+		#expect(throws: MappingError("The balance is out of range.")) { try result(["balance": .number(10_000_000_000_000.01), "transactions": .array([])]) }
+		#expect(throws: MappingError("The amount of transaction 1 is out of range.")) {
+			try result(["balance": .integer(0), "transactions": .array([.object(["bookingDate": .integer(1794182400), "amount": .number(1e14)])])])
+		}
+	}
+
+	/// The securities add up exactly and only their total must fit, so their order does not matter (issue #324).
+	@Test(arguments: [[9e12, 9e12, -9e12], [9e12, -9e12, 9e12], [-9e12, 9e12, 9e12]])
+	func securitiesInAnyOrder(amounts: [Double]) throws {
+		let securities = amounts.map { LuaValue.object(["name": .string("Muster AG"), "amount": .number($0)]) }
+		#expect(try result(["securities": .array(securities)], of: depot).balance?.minorUnits == 900_000_000_000_000)
 	}
 
 	@Test func bookingDateOutOfRange() {
