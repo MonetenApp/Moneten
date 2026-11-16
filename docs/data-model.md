@@ -111,6 +111,13 @@ Lists and sums by category read `Ledger.rows(in:filter:)`, which returns `Transa
 | `SplitError` | `pending`, `zeroPart`, `onePart`, `unbalanced` | A refused split leaves the stored parts unchanged. |
 | `Split` | Amount parsing and split arithmetic | An unsigned amount takes the sign of the row. An explicit sign stays. Amounts must fit the decimals of the row's currency. |
 
+## Saved searches
+
+| Type | Fields | Rules |
+|---|---|---|
+| `SavedFilterBar` | `period`, `status`, `amount`, `categoryID?`, `accountID?` | The filter bar without the search text. The pin keeps one in `UserDefaults`. `period` is a `PeriodChoice`, so "30 Days" counts from the day it is read. A category or an account that the ledger no longer has comes back as "Show All". |
+| `SavedSearch` | `id`, `name`, `position`, `searchText`, `bar` | An entry of the sidebar section "Searches". It holds no rows. Selecting it puts its search text and its `SavedFilterBar` into the search field and the filter bar, and the list shows `LedgerScope.all`, the rows of every account. |
+
 ## Tables
 
 `Sources/Storage/Schema.swift` holds the migrations of the encrypted database. Each table stores one type with the same field names:
@@ -121,6 +128,7 @@ Lists and sums by category read `Ledger.rows(in:filter:)`, which returns `Transa
 | `account` | `Account` |
 | `category` | `Category` |
 | `csvProfile` | A profile name, JSON version, and payload containing `CSVProfile`. Unreadable versions or payloads remain stored when another profile changes. |
+| `savedSearch` | `SavedSearch`, with its `bar` as the JSON of `SavedFilterBar` that the pin also writes. A filter bar that cannot be read comes back as "Show All". |
 | `bankTransaction` | `Transaction` |
 | `splitPart` | `SplitPart`, with `vat` as JSON. Parts go with their transaction and become uncategorized when their category is removed. |
 | `portfolioValue` | `PortfolioValue`, with the primary key `accountID` and `day` |
