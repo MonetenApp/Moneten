@@ -587,6 +587,19 @@ struct CategorizerTests {
 		#expect(spent < spentAlone * 1.5)
 	}
 
+	@Test("A precomposed and a decomposed letter are two texts for a regular expression, in either order", arguments: [false, true])
+	func rawTextsInResults(precomposedFirst: Bool) {
+		let cafe = Domain.Category(position: 0, name: "Café", rule: "purpose:/^Caf\u{00E9}$/")
+		let rules = Categorizer(ledger: ledger([cafe]))
+		let day = Day(year: 2026, month: 11, day: 3)
+		let precomposed = Transaction(accountID: giro.id, bookingDate: day, amountMinor: -350, name: "Kiosk", purpose: "Caf\u{00E9}")
+		let decomposed = Transaction(accountID: giro.id, bookingDate: day, amountMinor: -350, name: "Kiosk", purpose: "Cafe\u{0301}")
+		let rows = precomposedFirst ? [precomposed, decomposed] : [decomposed, precomposed]
+		let sorted = rules.allOrNothing { rows.map { var t = $0; rules.categorize(&t); return t } }
+		#expect(sorted.map { $0.purpose.unicodeScalars.count == 4 ? $0.categoryID : nil } == rows.map { $0.purpose.unicodeScalars.count == 4 ? cafe.id : nil })
+		#expect(sorted.filter { $0.categoryID == cafe.id }.map { Array($0.purpose.unicodeScalars) } == [Array(precomposed.purpose.unicodeScalars)])
+	}
+
 	@Test("The rules of one batch stop together when they spend 3 seconds in all", .timeLimit(.minutes(1)))
 	func batchLimit() {
 		// Forty rules that each hang for about 100 ms before they stop.

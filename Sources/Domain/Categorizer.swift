@@ -31,43 +31,63 @@ public struct Categorizer: Sendable {
 		}
 	}
 
+	/// A text as its bytes. Swift compares strings by canonical equivalence, so "é" and "e" with a combining accent are
+	/// equal, but a regular expression reads the code points and can tell them apart.
+	private struct Raw: Hashable {
+		let text: String?
+
+		static func == (a: Raw, b: Raw) -> Bool {
+			switch (a.text, b.text) {
+			case (nil, nil): true
+			case let (x?, y?): x.utf8.elementsEqual(y.utf8)
+			default: false
+			}
+		}
+
+		func hash(into hasher: inout Hasher) {
+			guard var text else { return hasher.combine(-1) }
+			hasher.combine(text.utf8.count)
+			text.withUTF8 { hasher.combine(bytes: UnsafeRawBufferPointer($0)) }
+		}
+	}
+
 	/// The fields of a row that a rule reads. Two rows with the same fields give every rule the same result. The synthesized
 	/// Hashable conformance reads the fields, which Periphery cannot see.
 	private struct Texts: Hashable {
 		// periphery:ignore
 		let accountID: UUID
 		// periphery:ignore
-		let name: String
+		let name: Raw
 		// periphery:ignore
-		let purpose: String
+		let purpose: Raw
 		// periphery:ignore
-		let bookingText: String?
+		let bookingText: Raw
 		// periphery:ignore
-		let endToEndReference: String?
+		let endToEndReference: Raw
 		// periphery:ignore
-		let mandateReference: String?
+		let mandateReference: Raw
 		// periphery:ignore
-		let creditorID: String?
+		let creditorID: Raw
 		// periphery:ignore
-		let comment: String?
+		let comment: Raw
 		// periphery:ignore
-		let counterpartyIBAN: String?
+		let counterpartyIBAN: Raw
 		// periphery:ignore
-		let currency: String
+		let currency: Raw
 		// periphery:ignore
 		let amountMinor: Int64
 
 		init(_ t: Transaction) {
 			accountID = t.accountID
-			name = t.name
-			purpose = t.purpose
-			bookingText = t.bookingText
-			endToEndReference = t.endToEndReference
-			mandateReference = t.mandateReference
-			creditorID = t.creditorID
-			comment = t.comment
-			counterpartyIBAN = t.counterpartyIBAN
-			currency = t.currency
+			name = Raw(text: t.name)
+			purpose = Raw(text: t.purpose)
+			bookingText = Raw(text: t.bookingText)
+			endToEndReference = Raw(text: t.endToEndReference)
+			mandateReference = Raw(text: t.mandateReference)
+			creditorID = Raw(text: t.creditorID)
+			comment = Raw(text: t.comment)
+			counterpartyIBAN = Raw(text: t.counterpartyIBAN)
+			currency = Raw(text: t.currency)
 			amountMinor = t.amountMinor
 		}
 	}
