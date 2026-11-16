@@ -28,6 +28,19 @@ final class DebugHarness {
 	private let tableNumbers = NSMapTable<NSTableView, NSNumber>.weakToStrongObjects()
 	private var nextTableNumber = 1
 
+	/// The debug folder of this run, or nil in a release build and in a run without `MONETEN_DEBUG_DIR`.
+	private static var requestedPath: String? {
+		#if DEBUG || PERF_HARNESS
+		ProcessInfo.processInfo.environment["MONETEN_DEBUG_DIR"].flatMap { $0.isEmpty ? nil : $0 }
+		#else
+		nil
+		#endif
+	}
+
+	/// Whether the harness drives this run. Such a run does not bring the app to the front, because the
+	/// developer keeps working in another app. Only "mainkey table" and "securefield" ask for the focus.
+	static var isRequested: Bool { requestedPath != nil }
+
 	static func installIfRequested(model: AppModel) {
 		#if DEBUG || PERF_HARNESS
 		install(model: model)
@@ -35,7 +48,7 @@ final class DebugHarness {
 	}
 
 	private static func install(model: AppModel) {
-		guard shared == nil, let path = ProcessInfo.processInfo.environment["MONETEN_DEBUG_DIR"], !path.isEmpty else { return }
+		guard shared == nil, let path = requestedPath else { return }
 		let harness = DebugHarness(folder: URL(fileURLWithPath: path), model: model)
 		shared = harness
 		model.extensions.log = { [weak harness] in harness?.log($0) }
@@ -654,6 +667,7 @@ final class DebugHarness {
 			(view as? NSSecureTextField).map { [$0] } ?? view.subviews.flatMap(fields)
 		}
 		guard let sheet = topSheet, let field = sheet.contentView.flatMap(fields)?.first else { return log("securefield none") }
+		// AutoFill offers itself only in the active app. macOS grants this only when the app in front gives up the focus, which the log shows.
 		NSApp.activate()
 		sheet.makeFirstResponder(field)
 		DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
@@ -691,6 +705,7 @@ final class DebugHarness {
 			"return": ("\r", 36), "escape": ("\u{1b}", 53), "cmd+k": ("k", 40)]
 		var handledBy = "-"
 		if name == "table" {
+			// Only the active app has a key window. macOS grants this only when the app in front gives up the focus, which "key=" shows.
 			NSApp.activate()
 			main.makeKeyAndOrderFront(nil)
 			main.makeFirstResponder(table)
