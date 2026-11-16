@@ -917,7 +917,7 @@ struct LedgerTests {
 		#expect(ledger.computedBalance(of: account, through: balanceDay) == Money(minorUnits: 100_000, currency: "EUR"))
 	}
 
-	@Test("A derived initial balance is the bank balance less every booked row in the account currency up to its day, and only a derived one changes")
+	@Test("Only a manual row in the bank balance sets a derived initial balance to the bank balance less every booked row up to its day")
 	func rowsThatADerivedInitialBalanceCounts() {
 		let calendar = Calendar(identifier: .gregorian)
 		let balanceDay = Day(year: 2026, month: 11, day: 1)
@@ -936,8 +936,8 @@ struct LedgerTests {
 				fileIdentity: manual ? nil : "csv:1", isManual: manual)
 		}
 		#expect(l.followingBankBalance(saving: [row(derived, balanceDay)], calendar: calendar).map(\.initialBalanceMinor) == [51_200])
-		// A row of a file counts as a manual row does.
-		#expect(l.followingBankBalance(saving: [row(derived, balanceDay, manual: false)], calendar: calendar).map(\.initialBalanceMinor) == [51_200])
+		// A row of a file or of the bank leaves the value for the calibration proposal.
+		#expect(l.followingBankBalance(saving: [row(derived, balanceDay, manual: false)], calendar: calendar) == [])
 		#expect(l.followingBankBalance(saving: [row(derived, balanceDay.adding(days: 1))], calendar: calendar) == [])
 		#expect(l.followingBankBalance(saving: [row(derived, balanceDay, pending: true)], calendar: calendar) == [])
 		#expect(l.followingBankBalance(saving: [row(derived, balanceDay, currency: "USD")], calendar: calendar) == [])

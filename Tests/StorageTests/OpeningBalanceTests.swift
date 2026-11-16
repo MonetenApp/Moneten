@@ -26,6 +26,11 @@ struct OpeningBalanceTests {
 			transactions: FetchedTransactions(rows: rows, from: today.adding(days: -90))))
 	}
 
+	/// The calibration that the header of `giro` proposes today.
+	func proposal(_ ledger: Ledger) throws -> CalibrationProposal? {
+		ledger.proposedCalibration(of: try #require(ledger.account(giro.id)), today: today, refresh: .idle)
+	}
+
 	/// The daily bars of the last 120 days.
 	func bars(_ ledger: Ledger, of account: Account? = nil) -> [Int64] {
 		ledger.balanceBars(accountIDs: [(account ?? giro).id], range: DayRange(start: today.adding(days: -120), end: today)).map(\.minorUnits)
@@ -117,60 +122,43 @@ struct OpeningBalanceTests {
 		#expect(bars(stored, of: depot).last == 2_000_000)
 	}
 
-	@Test("A later refresh with an older row computes a derived opening balance again, so the last bar meets the bank balance")
+	@Test("A later refresh with an older row keeps a derived opening balance, so the last bar differs from the bank balance by that row and the app proposes a calibration")
 	func laterRefresh() throws {
 		let store = try makeStore([giro])
 		_ = try store.merge(refresh(quarter, balance: 120_000), into: giro.id)
 		_ = try store.merge(refresh([row(0, -40_000, "Card"), row(100, -7_000, "Old fee")], balance: 80_000), into: giro.id)
 		let stored = try store.loadLedger()
-		#expect(stored.account(giro.id)?.initialBalanceMinor == 262_000)
-		#expect(bars(stored).last == 80_000)
-	}
-
-	@Test("A later refresh with an older row keeps a typed opening balance, so the last bar differs from the bank balance by that row")
-	func laterRefreshWithTypedValue() throws {
-		let store = try makeStore([giro])
-		_ = try store.merge(refresh(quarter, balance: 120_000), into: giro.id)
-		try type(255_001, into: giro.id, of: store)
-		try type(255_000, into: giro.id, of: store)
-		_ = try store.merge(refresh([row(0, -40_000, "Card"), row(100, -7_000, "Old fee")], balance: 80_000), into: giro.id)
-		let stored = try store.loadLedger()
 		#expect(stored.account(giro.id)?.initialBalanceMinor == 255_000)
 		#expect(bars(stored).last == 73_000)
+		let proposed = try #require(try proposal(stored))
+		#expect(proposed.difference == Money(minorUnits: 7_000, currency: "EUR") && proposed.balanceToday == Money(minorUnits: 80_000, currency: "EUR"))
 	}
 
-	@Test("Deleting a fetched row moves a derived opening balance in the same write and keeps a typed one")
+	@Test("Deleting a fetched row keeps a derived opening balance, and the app proposes a calibration")
 	func deletion() throws {
-		let savings = Account(position: 1, name: "Savings", kind: .savings, source: .bank)
-		let store = try makeStore([giro, savings])
+		let store = try makeStore([giro])
 		let rows = quarter
-		let savingsRows = quarter.map { var t = $0; t.id = UUID(); t.accountID = savings.id; return t }
 		_ = try store.merge(refresh(rows, balance: 120_000), into: giro.id)
-		_ = try store.merge(refresh(savingsRows, balance: 120_000), into: savings.id)
-		try type(255_001, into: savings.id, of: store)
-		try type(255_000, into: savings.id, of: store)
 		let ledger = try store.loadLedger()
-		let deleted: Set<UUID> = [rows[3].id, savingsRows[3].id]
-		try store.deleteTransactions(Array(deleted), accounts: ledger.followingBankBalance(saving: [], deleting: deleted))
+		let accounts = ledger.followingBankBalance(saving: [], deleting: [rows[3].id])
+		#expect(accounts.isEmpty)
+		try store.deleteTransactions([rows[3].id], accounts: accounts)
 		let stored = try store.loadLedger()
-		#expect(stored.account(giro.id)?.initialBalanceMinor == 160_000)
-		#expect(bars(stored).last == 120_000)
-		#expect(stored.account(savings.id)?.initialBalanceMinor == 255_000)
-		#expect(bars(stored, of: savings).last == 215_000)
+		#expect(stored.account(giro.id)?.initialBalanceMinor == 255_000)
+		#expect(bars(stored).last == 215_000)
+		#expect(try proposal(stored)?.balanceToday == Money(minorUnits: 120_000, currency: "EUR"))
 	}
 
-	@Test("Older rows from a file move a derived opening balance in the same write, so the last bar stays at the bank balance, and keep a typed one")
+	@Test("Older rows from a file keep a derived opening balance, and the calibration proposal shows the difference")
 	func fileIntoFetchedAccount() throws {
-		let savings = Account(position: 1, name: "Savings", kind: .savings, source: .bank)
-		let store = try makeStore([giro, savings])
-		for account in [giro, savings] { _ = try store.merge(refresh(quarter.map { var t = $0; t.accountID = account.id; return t }, balance: 120_000), into: account.id) }
-		try type(300_000, into: savings.id, of: store)
-		for account in [giro, savings] { _ = try store.merge(.file([row(100, -5_000, "Old fee", in: account)]), into: account.id) }
+		let store = try makeStore([giro])
+		_ = try store.merge(refresh(quarter, balance: 120_000), into: giro.id)
+		_ = try store.merge(.file([row(100, -5_000, "Old fee")]), into: giro.id)
 		let stored = try store.loadLedger()
-		#expect(stored.account(giro.id)?.initialBalanceMinor == 260_000)
-		#expect(bars(stored).last == 120_000)
-		#expect(stored.account(savings.id)?.initialBalanceMinor == 300_000)
-		#expect(bars(stored, of: savings).last == 160_000)
+		#expect(stored.account(giro.id)?.initialBalanceMinor == 255_000)
+		#expect(stored.account(giro.id)?.initialBalanceIsDerived == true)
+		#expect(bars(stored).last == 115_000)
+		#expect(try proposal(stored)?.balanceToday == Money(minorUnits: 120_000, currency: "EUR"))
 	}
 
 	/// What "OK" in the account settings stores after the user typed `minor` under "Initial balance".
@@ -242,8 +230,7 @@ struct OpeningBalanceTests {
 		_ = try store.merge(refresh([], balance: 100_000), into: typed)
 		_ = try store.merge(refresh([], balance: 100_000), into: migrated)
 		let stored = try store.loadLedger()
-		// From then on the value is derived and meets the bank balance with the older row.
-		#expect(stored.account(old)?.initialBalanceMinor == 137_000)
+		#expect(stored.account(old)?.initialBalanceMinor == 130_000)
 		#expect(stored.account(typed)?.initialBalanceMinor == 50_000)
 		#expect(stored.account(migrated)?.initialBalanceMinor == 0)
 	}

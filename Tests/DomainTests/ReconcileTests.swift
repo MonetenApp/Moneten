@@ -345,7 +345,7 @@ struct ReconcileTests {
 		#expect(try #require(r.account).initialBalanceMinor == 300_000)
 	}
 
-	@Test("A later refresh with an older booked row computes a derived initial balance again, so the last day meets the bank balance")
+	@Test("A later refresh with an older booked row keeps a derived initial balance, and the app proposes a calibration")
 	func laterRefreshComputesDerivedValue() throws {
 		let bank = Account(position: 0, name: "Giro", kind: .giro, source: .bank, bankBalanceMinor: 120_000, bankBalanceDate: day(1).date(in: .current),
 			initialBalanceMinor: 255_000, initialBalanceIsSet: true, initialBalanceIsDerived: true)
@@ -356,7 +356,11 @@ struct ReconcileTests {
 		stored.accountID = bank.id
 		let r = merge(refresh(delivered, from: day(1, month: 8), balance: Money(minorUnits: 80_000, currency: "EUR"), balanceDate: day(10).date(in: .current)),
 			into: bank, stored: [stored], at: day(10).date(in: .current))
-		#expect(try #require(r.account).initialBalanceMinor == 262_000)
+		let account = try #require(r.account)
+		#expect(account.initialBalanceMinor == 255_000)
+		var ledger = Ledger(accounts: [bank], transactions: [stored])
+		ledger.apply(r)
+		#expect(ledger.proposedCalibration(of: account, today: day(10), refresh: .idle)?.difference == Money(minorUnits: 7_000, currency: "EUR"))
 	}
 
 	@Test("A refresh whose transactions failed leaves a derived initial balance, because the rows of the bank balance are missing")
@@ -368,16 +372,23 @@ struct ReconcileTests {
 		#expect(account.bankBalanceMinor == 5_000 && account.initialBalanceMinor == 10_000)
 	}
 
-	@Test("A file import computes a derived initial balance again, and leaves one that the user entered")
-	func fileImportComputesDerivedValue() throws {
-		let card = derivedCard
-		let fee = Transaction(accountID: card.id, bookingDate: day(1, month: 10), amountMinor: -700, name: "Old fee", fileIdentity: "csv:1")
-		#expect(try #require(merge(.file([fee]), into: card).account).initialBalanceMinor == 10_700)
-		var entered = card
-		entered.enterInitialBalance(300_000)
-		#expect(merge(.file([fee]), into: entered).account == nil)
-		// A file row after the day of the bank balance is not in it.
-		#expect(merge(.file([Transaction(accountID: card.id, bookingDate: day(5), amountMinor: -700, name: "Fee", fileIdentity: "csv:2")]), into: card).account == nil)
+	@Test("A file of older rows leaves a derived initial balance for the calibration proposal")
+	func fileImportLeavesDerivedValue() {
+		let fee = Transaction(accountID: derivedCard.id, bookingDate: day(1, month: 10), amountMinor: -700, name: "Old fee", fileIdentity: "csv:1")
+		#expect(merge(.file([fee]), into: derivedCard).account == nil)
+	}
+
+	@Test("A file that matches a manual row in the bank balance sets a derived initial balance by the rule, and leaves one that the user entered")
+	func fileMatchingManualRowSetsDerivedValue() throws {
+		var card = derivedCard
+		// The value from before the fix: the manual row of -12,00 € on 01.10 never moved it.
+		let kiosk = Transaction(accountID: card.id, bookingDate: day(1, month: 10), amountMinor: -1_200, name: "Kiosk", purpose: "Kartenzahlung", isManual: true)
+		let file = Transaction(accountID: card.id, bookingDate: kiosk.bookingDate, amountMinor: -1_200, name: "KIOSK", purpose: "Kartenzahlung", fileIdentity: "csv:1")
+		let r = merge(.file([file]), into: card, stored: [kiosk])
+		#expect(r.updated.map(\.id) == [kiosk.id])
+		#expect(try #require(r.account).initialBalanceMinor == 11_200)
+		card.enterInitialBalance(300_000)
+		#expect(merge(.file([file]), into: card, stored: [kiosk]).account == nil)
 	}
 
 	@Test("A refresh that moves the day of the bank balance past a manual row leaves an initial balance that the user entered")

@@ -85,9 +85,9 @@ public struct Reconciliation: Sendable, Equatable {
 	/// Deleted rows that keep out a row of a migration and take its source ID, so the balance of a migrated account
 	/// counts them as rows of the source while the source has them. Only a migration fills it.
 	public internal(set) var relinked: [DeletedTransaction.Relink] = []
-	/// The account with the balance and the date of this refresh, and the initial balance that follows from them
-	/// on its first refresh with a balance and while that value is the derived one. A file or a refresh without a
-	/// balance in the currency of the account gives it only when it changes a derived initial balance.
+	/// The account with the balance and the date of this refresh, and the initial balance that follows from them on
+	/// its first refresh with a balance, or when the day of the balance passes a manual row of a derived value. A file
+	/// gives it only when it matches a manual row and that changes a derived initial balance.
 	public internal(set) var account: Account?
 	/// The positions that replace those of the account, with the IDs of the stored positions of the same
 	/// securities. Nil when the delivery brought none.
@@ -239,9 +239,11 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored all: [
 			r.account = a
 		}
 	}
-	if !rowsFailed, (a.derivesInitialBalance && r.account != nil) || a.followsBankBalance {
-		// The first refresh with a balance derives the initial balance, and a derived one follows every later refresh
-		// and file. Dropped and marked rows are pending and do not count.
+	if !rowsFailed, (a.derivesInitialBalance && r.account != nil) || a.followsBankBalance && passesManualRow(of: all, from: account, to: a, in: delivery, r) {
+		// The first refresh with a balance derives the initial balance. A derived one follows a manual row: a new
+		// day of the bank balance that passes one, whether the bank booked it or not, or a file that matched one.
+		// A row of the bank or of a file alone leaves it for the calibration proposal.
+		// Dropped and marked rows are pending and do not count.
 		let changed = Dictionary(uniqueKeysWithValues: (r.booked + r.updated).map { ($0.id, $0) })
 		a.deriveInitialBalance(from: all.map { changed[$0.id] ?? $0 } + r.added)
 		if r.account != nil || a.initialBalanceMinor != account.initialBalanceMinor { r.account = a }
@@ -869,5 +871,24 @@ extension Transaction {
 			t.edit(kept)
 		}
 		return t
+	}
+}
+
+/// A refresh whose bank balance moved to a later day that passes a manual row, or a file that matched a manual row
+/// that the bank balance holds. `before` is the account before the delivery and `after` the account with its new
+/// bank balance.
+private func passesManualRow(of rows: [Transaction], from before: Account, to after: Account, in delivery: Delivery, _ r: Reconciliation) -> Bool {
+	guard let date = before.bankBalanceDate else { return false }
+	let day = Day(date)
+	switch delivery {
+	case .refresh:
+		guard let newDate = after.bankBalanceDate, newDate != date else { return false }
+		let newDay = Day(newDate)
+		return rows.contains { $0.isManual && after.bankBalance(through: newDay, holds: $0) && !before.bankBalance(through: day, holds: $0) }
+	case .file:
+		let unmatched = Set(rows.lazy.filter(\.isOnlyManual).map(\.id))
+		return (r.updated + r.booked).contains { unmatched.contains($0.id) && !$0.isOnlyManual && before.bankBalance(through: day, holds: $0) }
+	case .migration:
+		return false
 	}
 }

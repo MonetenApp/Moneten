@@ -151,13 +151,14 @@ The app SHALL set the initial balance of an account that a bank refreshes to the
 
 ### Requirement: The initial balance stays
 
-The app SHALL keep an initial balance that the user entered, in the account settings or with "Calibrate", or that the account had before the app recorded derived values. Later refreshes, imports, deletions, and a later bank balance do not change it, and the calibration resolves a difference that appears later. A refresh whose transactions failed does not set the initial balance. A derived value follows the requirement "A derived initial balance meets the bank balance".
+The app SHALL set the initial balance of a refreshed account only once, at the first refresh that brings a bank balance. A refresh whose transactions failed does not set it. Later refreshes, imports, and deletions do not change it, and neither does a later bank balance. Only a manual transaction changes a derived value. A value that the user enters stays. A difference between the computed balance and the bank balance that appears later is for the calibration to resolve.
 
 #### Scenario: Later refresh with an older transaction
 
-- **GIVEN** an account with an initial balance of 2.550,00 € that the user entered and a bank balance of 1.200,00 €
+- **GIVEN** an account whose first refresh set an initial balance of 2.550,00 € with a bank balance of 1.200,00 €
 - **WHEN** a refresh brings a bank balance of 800,00 € and booked transactions of -400,00 € today and of -70,00 € from before the first refresh
 - **THEN** the initial balance stays 2.550,00 € and the last bar shows 730,00 €
+- **AND** the app proposes a calibration that fills in 800,00 €
 
 #### Scenario: Refresh whose transactions failed
 
@@ -168,9 +169,10 @@ The app SHALL keep an initial balance that the user entered, in the account sett
 
 #### Scenario: Deleted transaction
 
-- **GIVEN** an account with a bank balance of 1.200,00 € and an initial balance of 2.550,00 € that the user entered
+- **GIVEN** an account with a bank balance of 1.200,00 € and an initial balance of 2.550,00 €
 - **WHEN** the user deletes a transaction of -950,00 €
 - **THEN** the initial balance stays 2.550,00 € and the last bar shows 2.150,00 €
+- **AND** the app proposes a calibration that fills in 1.200,00 €
 
 #### Scenario: Entered initial balance
 
@@ -178,17 +180,23 @@ The app SHALL keep an initial balance that the user entered, in the account sett
 - **WHEN** the user enters 3.000,00 under "Initial balance" and the next refresh ends
 - **THEN** the initial balance is 3.000,00 €
 
-### Requirement: A derived initial balance meets the bank balance
+### Requirement: Manual transactions and the initial balance
 
-The app SHALL keep an initial balance that a refresh derived equal to the last bank balance less the booked transactions of the account in its currency up to the end of the day of that balance, manual transactions and transactions from a file included. Pending transactions do not count. So the computed balance at the end of that day is always the bank balance, and a transaction before that day only shapes the history before it. A value that the user enters ends this and stays.
+The app SHALL count manual transactions when it derives the initial balance of a refreshed account. While the initial balance is derived, the app sets it to the last bank balance less the booked transactions in the account currency up to the end of the day of that balance when a manual transaction booked up to that day is added, changed, deleted, or matched by a file, and when a refresh reports a balance whose day passes a manual transaction. A value that the user enters stays.
 
 #### Scenario: Bank that reports only a balance
 
-- **GIVEN** a credit card whose first refresh derived the initial balance from the bank balance of 100,00 € on 01.11.2026, and a manual transaction of -50,00 € on 05.11.2026
+- **GIVEN** a credit card whose first refresh derived an initial balance of 100,00 € with the bank balance of 100,00 € on 01.11.2026, and a manual transaction of -50,00 € on 05.11.2026
 - **WHEN** a refresh on 10.11.2026 reports the balance 50,00 € and no transactions
-- **THEN** the initial balance is 100,00 € and the computed balance on 10.11.2026 is 50,00 €
+- **THEN** the initial balance stays 100,00 € and the computed balance on 10.11.2026 is 50,00 €
 
-#### Scenario: Matched manual transaction deleted
+#### Scenario: Derived value and a planned manual transaction
+
+- **GIVEN** a credit card whose first refresh derived an initial balance of 100,00 € with the bank balance of 100,00 € on 01.11.2026, and a manual transaction of -50,00 € on 05.11.2026
+- **WHEN** a refresh on 10.11.2026 brings the booking of -50,00 € on 05.11.2026 and the balance 50,00 €
+- **THEN** the initial balance is 150,00 € and the computed balance on 10.11.2026 is 50,00 €
+
+#### Scenario: Manual transaction that a file matched, then deleted
 
 - **GIVEN** a giro account whose first refresh derived the initial balance from the bank balance of 1.000,00 € on 10.10.2026 and no transactions, and a manual transaction of -12,00 € "Kiosk" on 03.10.2026 that a CSV file with -12,00 € "KIOSK" on 03.10.2026 matched
 - **WHEN** the user deletes the manual transaction
@@ -200,33 +208,11 @@ The app SHALL keep an initial balance that a refresh derived equal to the last b
 - **WHEN** the user adds a manual transaction of 4.000,00 € on 01.03.2026
 - **THEN** the initial balance is 6.000,00 € and the computed balance on 01.11.2026 is 10.000,00 €
 
-#### Scenario: Entered value
+#### Scenario: Entered value and a planned manual transaction
 
 - **GIVEN** a credit card with an initial balance of 3.000,00 € that the user entered, a bank balance of 100,00 € on 01.11.2026, and a manual transaction of -50,00 € on 05.11.2026
 - **WHEN** a refresh on 10.11.2026 reports the balance 50,00 € and no transactions
 - **THEN** the initial balance stays 3.000,00 €
-
-### Requirement: When a derived initial balance is computed again
-
-The app SHALL compute a derived initial balance again after every refresh whose transactions did not fail and after every change to the transactions of the account: adding, changing, or deleting a transaction, a file import, and an offsetting entry. It stores the value in the same write as the change.
-
-#### Scenario: Later refresh with an older transaction
-
-- **GIVEN** an account whose first refresh derived an initial balance of 2.550,00 € with a bank balance of 1.200,00 €
-- **WHEN** a refresh brings a bank balance of 800,00 € and booked transactions of -400,00 € today and of -70,00 € from before the first refresh
-- **THEN** the initial balance is 2.620,00 € and the last bar shows 800,00 €
-
-#### Scenario: File import with an older transaction
-
-- **GIVEN** an account whose first refresh derived an initial balance of 2.550,00 € with a bank balance of 1.200,00 €
-- **WHEN** the user imports a CSV file with a transaction of -50,00 € from before the first refresh
-- **THEN** the initial balance is 2.600,00 € and the last bar shows 1.200,00 €
-
-#### Scenario: Refresh whose transactions failed after the first one
-
-- **GIVEN** a credit card whose first refresh derived an initial balance of 100,00 € with the bank balance of 100,00 €
-- **WHEN** a refresh reports the balance 50,00 € and the bank refuses its transactions
-- **THEN** the initial balance stays 100,00 €
 
 ### Requirement: Initial balance of an account from before
 
@@ -236,7 +222,7 @@ The app SHALL set the initial balance once, at the next refresh, for an account 
 
 - **GIVEN** an account that a bank refreshed before the app set initial balances, with an initial balance of 0,00 €, a bank balance of 1.000,00 €, and booked transactions of -300,00 €
 - **WHEN** its next refresh ends with a bank balance of 1.000,00 €
-- **THEN** the initial balance is 1.300,00 €, and from then on it meets the bank balance as a derived initial balance does
+- **THEN** the initial balance is 1.300,00 €, and the refreshes after it do not change it
 
 ### Requirement: Daily balance or monthly average balance
 
@@ -335,11 +321,11 @@ The app SHALL open a calibration window from "Calibrate" in the account settings
 
 ### Requirement: Propose a calibration
 
-The app SHALL propose a calibration when the balance that the bank reports differs from the initial balance plus the booked transactions in the account currency up to the end of the day of that bank balance. Neither a pending transaction nor a transaction booked after that day leads to a proposal. A derived initial balance meets the bank balance and gets none. Accepting the proposal opens the calibration window with the computed balance of today plus the difference filled in.
+The app SHALL propose a calibration when the balance that the bank reports differs from the initial balance plus the booked transactions in the account currency up to the end of the day of that bank balance. The bank reports its balance for that day and without pending transactions, so neither a pending transaction nor a transaction booked after that day leads to a proposal. Accepting the proposal opens the calibration window with the computed balance of today plus the difference filled in.
 
 #### Scenario: Unexplained difference
 
-- **GIVEN** an initial balance that the user entered, the bank reports 1.200,00 € for today, the computed balance of today is 1.250,00 €, and there are no pending transactions
+- **GIVEN** the bank reports 1.200,00 € for today, the computed balance of today is 1.250,00 €, and there are no pending transactions
 - **WHEN** a refresh ends
 - **THEN** the app proposes to calibrate the account
 
@@ -351,13 +337,13 @@ The app SHALL propose a calibration when the balance that the bank reports diffe
 
 #### Scenario: Transactions after the day of the bank balance
 
-- **GIVEN** today is 12.11.2026, the initial balance is 700,00 € and the user entered it, and the account has booked transactions of -200,00 € on 01.11.2026 and of -30,00 € on 12.11.2026
+- **GIVEN** today is 12.11.2026, the initial balance is 700,00 €, and the account has booked transactions of -200,00 € on 01.11.2026 and of -30,00 € on 12.11.2026
 - **WHEN** a refresh ends that reports a balance of 500,00 € for 10.11.2026
 - **THEN** the app makes no proposal, although the computed balance of today is 470,00 €
 
 #### Scenario: The proposal fills in the balance of today
 
-- **GIVEN** today is 12.11.2026, the initial balance is 700,00 € and the user entered it, and the account has booked transactions of -200,00 € on 01.11.2026 and of -30,00 € on 12.11.2026
+- **GIVEN** today is 12.11.2026, the initial balance is 700,00 €, and the account has booked transactions of -200,00 € on 01.11.2026 and of -30,00 € on 12.11.2026
 - **WHEN** a refresh ends that reports a balance of 450,00 € for 10.11.2026, and the user accepts the proposal
 - **THEN** the calibration window shows 420,00 €
 - **AND** confirming it sets the initial balance to 650,00 €
