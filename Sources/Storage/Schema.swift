@@ -373,8 +373,17 @@ enum Schema {
 				t.column("filterBar", .blob).notNull()
 			}
 		}
+		// The lock settings (add-app-lock): one row in the encrypted database, so a program that writes the settings
+		// file of the app cannot weaken the lock. Without the row the defaults apply. It is registered after v25.
+		m.registerMigration("v22") { db in
+			try db.create(table: "lockSetting") { t in
+				t.column("id", .integer).primaryKey().check { $0 == 1 }
+				t.column("lockOnClose", .boolean).notNull()
+				t.column("lockAfterMinutes", .integer).notNull()
+			}
+		}
 		// The mark of a row that the user added with "Add Transaction..." (add-offline-accounts). It comes after v24, v21,
-		// and v25 in the list, because GRDB applies the migrations in the order of registration and they shipped first.
+		// v25, and v22 in the list, because GRDB applies the migrations in the order of registration and they shipped first.
 		m.registerMigration("v23") { db in
 			try db.alter(table: "bankTransaction") { t in t.add(column: "isManual", .boolean).notNull().defaults(to: false) }
 			// The database does not tell a derived value from one that the user entered, so every stored value stays as it is.

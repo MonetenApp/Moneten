@@ -152,11 +152,20 @@ struct AccountSettingsSheet: View {
 	@State private var color = Color.accentColor
 	@State private var originalColor = Color.accentColor
 
+	/// The typed initial balance, nil while it is empty, cannot be read, or is above `Money.maxMinorUnits`.
+	private func typedInitialBalance(in currency: String) -> Money? {
+		AmountParser.decimal(from: initialBalance).flatMap { Money(fitting: $0, currency: currency) }
+	}
+
 	var body: some View {
 		if let original = model.ledger.account(accountID) {
-			SheetFrame(title: "Settings for \(original.name)", canConfirm: Format.isReadableAmount(initialBalance), width: 500, onConfirm: {
+			// An initial balance above the limit, which an older version may have stored, keeps OK disabled even when the
+			// user changes another field: saving would store the text of the field, and that amount must not pass again.
+			SheetFrame(title: "Settings for \(original.name)", canConfirm: initialBalance.isEmpty || typedInitialBalance(in: original.currency) != nil, width: 500, onConfirm: {
 				guard var edited = account, let opened, var a = model.ledger.account(accountID) else { return true }
-				if let d = AmountParser.decimal(from: initialBalance) { edited.initialBalanceMinor = Money(d, currency: a.currency).minorUnits }
+				if let typed = typedInitialBalance(in: a.currency) { edited.initialBalanceMinor = typed.minorUnits }
+				// A refresh that ended while the settings were open may have set a new initial balance.
+				if edited.initialBalanceMinor == account?.initialBalanceMinor { edited.initialBalanceMinor = a.initialBalanceMinor }
 				// An account keeps the color of its bank or kind until the user picks one.
 				if color.hex != originalColor.hex { edited.color = color.hex }
 				a.takeSettings(from: edited, opened: opened)
@@ -241,11 +250,21 @@ struct CalibrationSheet: View {
 	let accountID: UUID
 	@State private var balance = ""
 
+	/// The typed balance, nil while it cannot be read or is above `Money.maxMinorUnits`.
+	private func typedBalance(in currency: String) -> Money? {
+		AmountParser.decimal(from: balance).flatMap { Money(fitting: $0, currency: currency) }
+	}
+
+	/// The initial balance that the typed balance gives, nil while there is none or it is above `Money.maxMinorUnits`.
+	private func calibrated(_ account: Account) -> Int64? {
+		typedBalance(in: account.currency).flatMap { model.ledger.calibratedInitialBalance(of: account, balanceToday: $0.minorUnits, today: .today()) }
+	}
+
 	var body: some View {
 		if let account = model.ledger.account(accountID) {
-			SheetFrame(title: "Calibrate \(account.name)", canConfirm: AmountParser.decimal(from: balance) != nil, onConfirm: {
-				guard let d = AmountParser.decimal(from: balance), var a = model.ledger.account(accountID) else { return true }
-				a.enterInitialBalance(model.ledger.calibratedInitialBalance(of: a, balanceToday: Money(d, currency: a.currency).minorUnits, today: .today()))
+			SheetFrame(title: "Calibrate \(account.name)", canConfirm: calibrated(account) != nil, onConfirm: {
+				guard var a = model.ledger.account(accountID), let value = calibrated(a) else { return true }
+				a.enterInitialBalance(value)
 				model.save(account: a)
 				return true
 			}) {
@@ -258,6 +277,12 @@ struct CalibrationSheet: View {
 							.marksUnreadableAmount(balance)
 							.multilineTextAlignment(.trailing)
 							.monospacedDigit()
+					}
+					// The transactions add up to so much that no initial balance within the limit meets the typed balance.
+					if typedBalance(in: account.currency) != nil, calibrated(account) == nil {
+						Text(InitialBalanceTooLarge(accountName: account.name).description)
+							.foregroundStyle(Palette.red)
+							.fixedSize(horizontal: false, vertical: true)
 					}
 				}
 			}

@@ -30,6 +30,13 @@ struct PortfolioHoldingsTests {
 			security: more.security, quantity: 45, marketValue: more.marketValue)]))
 	}
 
+	@Test("The positions of a setup, fetched before the account existed, belong to the account they merge into")
+	func positionsTakeTheAccount() {
+		let fetched = Holding(accountID: UUID(), security: Security(name: "Bitcoin"), quantity: 1)
+		let r = reconcile(RefreshResult(balance: Money(minorUnits: 0, currency: "EUR"), transactions: nil, isPortfolio: true, holdings: [fetched]), stored: [])
+		#expect(r.holdings?.holdings.map(\.accountID) == [depot.id])
+	}
+
 	@Test("A refresh without positions, as from a source that sends none, keeps the stored ones")
 	func noPositionsKeepsThem() {
 		let r = reconcile(RefreshResult(balance: Money(minorUnits: 100_000, currency: "EUR"), transactions: nil, isPortfolio: true), stored: [position("Gold")])

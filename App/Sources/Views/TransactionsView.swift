@@ -250,13 +250,24 @@ struct FilterBar: View {
 			if case .search = model.selection { separator }
 			switch model.selection {
 			case .category, .search:
-				filterMenu("Account:", title: model.filter.accountID.flatMap { model.ledger.account($0)?.name } ?? String(localized: "Show All")) {
-					Button("Show All") { model.filter.accountID = nil }
+				filterMenu("Account:", title: model.filter.account.flatMap { model.ledger.name(of: $0) } ?? String(localized: "Show All")) {
+					Button("Show All") { model.filter.account = nil }
 					Divider()
-					ForEach(model.ledger.accounts.sorted { $0.name < $1.name }) { a in Button(a.name) { model.filter.accountID = a.id } }
+					// The groups and accounts in the order of the sidebar. A menu item has no indentation of its own,
+					// so em spaces indent the rows of a group.
+					ForEach(model.ledger.accountTreeInSidebarOrder, id: \.item.id) { entry in
+						Button(String(repeating: "\u{2003}", count: entry.depth) + entry.item.name) { model.filter.account = entry.item.accountFilter }
+					}
 				}
 			default:
 				EmptyView()
+			}
+			// Only a single account has one balance for each day.
+			if case .account = model.selection {
+				separator
+				Toggle("Daily balance", isOn: $model.showsDailyBalance)
+					.toggleStyle(.checkbox)
+					.hoverHighlight()
 			}
 			Spacer()
 			// An icon like the pin, because a saved search already fills the bar with five menus.
@@ -429,6 +440,8 @@ struct TransactionTable: View {
 			// A pending transaction is hatched.
 			// Amounts omit the currency only when the whole view has one. A mixed group keeps it on every row.
 			let currency = rows.first.flatMap { first in rows.allSatisfy { $0.currency == first.currency } ? first.currency : nil }
+			let balances = dayEndBalances
+			let checkmarks = model.showsCheckmarks
 			// The rows go in as a collection and carry no modifier. A ForEach of rows, and even more a
 			// modifier on a row such as .draggable or .itemProvider, makes SwiftUI build a view graph for
 			// every one of 50,000 rows on each change of the view, which took most of a second. The cells
@@ -442,7 +455,7 @@ struct TransactionTable: View {
 					// with this option pays for it: about 2.3 seconds to open a group of 50,000 rows on an
 					// M-series Mac (perf scenario "group-by-account"), against half a second without it.
 					Table(of: Transaction.self, selection: guardedSelection, columnCustomization: $model.transactionColumns) {
-						columns(currency: currency)
+						columns(currency: currency, balances: balances, checkmarks: checkmarks)
 					} rows: {
 						ForEach(sections, id: \.account.id) { section in
 							Section(section.account.name) {
@@ -452,7 +465,7 @@ struct TransactionTable: View {
 					}
 				} else {
 					Table(rows, selection: guardedSelection, columnCustomization: $model.transactionColumns) {
-						columns(currency: currency)
+						columns(currency: currency, balances: balances, checkmarks: checkmarks)
 					}
 				}
 			}
@@ -474,7 +487,7 @@ struct TransactionTable: View {
 	}
 
 	@TableColumnBuilder<Transaction, Never>
-	private func columns(currency: String?) -> some TableColumnContent<Transaction, Never> {
+	private func columns(currency: String?, balances: [UUID: Money], checkmarks: Bool) -> some TableColumnContent<Transaction, Never> {
 			TableColumn("Date") { (t: Transaction) in
 				DateCell(transaction: t, model: model).rowChrome(t).draggable(draggedIDs(for: t))
 			}
@@ -492,10 +505,21 @@ struct TransactionTable: View {
 			// The checkmark sits 11 points right of the amount, as in MoneyMoney.
 			TableColumn("Amount") { (t: Transaction) in
 				HStack(spacing: 5) {
-					AmountText(money: t.amount, showsCurrency: t.currency != currency)
-						.font(.system(size: 18))
-						.modifier(PendingValue(pending: t.isPending))
-					CheckBox(isOn: t.isChecked) { model.toggleChecked(t.id) }
+					VStack(alignment: .trailing, spacing: 1) {
+						AmountText(money: t.amount, showsCurrency: t.currency != currency)
+							.font(.system(size: 18))
+							.modifier(PendingValue(pending: t.isPending))
+						if let balance = balances[t.id] {
+							Text(Format.money(balance))
+								.font(.system(size: 11))
+								.monospacedDigit()
+								.foregroundStyle(Palette.detail)
+								.help("Balance at the end of \(Format.day(t.bookingDate))")
+						}
+					}
+					if checkmarks {
+						CheckBox(isOn: t.isChecked) { model.toggleChecked(t.id) }
+					}
 				}
 				.padding(.trailing, 2)
 				// "Pending" goes on the amount only: on the cell it would replace the state of the checkbox.
@@ -505,6 +529,13 @@ struct TransactionTable: View {
 			.width(min: 120, ideal: 150)
 			.alignment(.trailing)
 			.customizationID("amount")
+	}
+
+	/// "Daily balance": the balance at the end of each day, on the top row of the day. Empty when it is off or
+	/// the view is not a single account.
+	private var dayEndBalances: [UUID: Money] {
+		guard model.showsDailyBalance, case let .account(id) = key.selection, let account = model.ledger.account(id) else { return [:] }
+		return model.ledger.dayEndBalances(of: account, rows: rows)
 	}
 
 	/// The selection, as long as the model shows this table: see `AppModel.shows(_:)`.

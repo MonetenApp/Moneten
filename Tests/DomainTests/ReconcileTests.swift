@@ -68,6 +68,42 @@ struct ReconcileTests {
 		#expect(history(known, after: r).count == 43)
 	}
 
+	@Test("A card payment of the card statement fetched again adds nothing, and a reservation that is not final goes when the bank no longer reports it")
+	func cardStatementAgain() {
+		// Rows of the card statement have no IBAN and no reference. Their name is the merchant text of the bank.
+		let payment = row(9, -1_990, "Streaming Beispiel", "Streaming Beispiel / Musterstadt")
+		let reservation = row(10, -15_000, "Hotel Beispiel", "Hotel Beispiel / Musterstadt", pending: true)
+		let first = merge(refresh([payment, reservation]))
+		#expect(first.added.map(\.isPending) == [false, true])
+		let all = history([], after: first)
+		let again = merge(refresh([fresh(payment)]), stored: all)
+		#expect(again.added == [])
+		#expect(again.skipped == 1)
+		#expect(again.dropped == all.filter(\.isPending).map(\.id))
+		#expect(history(all, after: again).map(\.purpose) == ["Streaming Beispiel / Musterstadt"])
+	}
+
+	@Test("A booked card payment of the card statement keeps the pending reservation with its comment, category, and checkmark")
+	func cardReservationGetsBooked() {
+		let travel = Domain.Category(position: 0, name: "Travel")
+		var reservation = stored(row(10, -15_000, "Hotel Beispiel", "Hotel Beispiel / Musterstadt", pending: true))
+		reservation.comment = "Trip"
+		reservation.categoryID = travel.id
+		reservation.categorizedBy = .manual
+		reservation.isChecked = true
+		let r = merge(refresh([row(12, -15_000, "Hotel Beispiel", "Hotel Beispiel / Musterstadt")]), stored: [reservation], categories: [travel])
+		#expect(r.added == [])
+		#expect(r.dropped == [])
+		#expect(r.booked.map(\.id) == [reservation.id])
+		let after = history([reservation], after: r)
+		#expect(after.map(\.id) == [reservation.id])
+		#expect(after.map(\.isPending) == [false])
+		#expect(after.map(\.bookingDate) == [day(12)])
+		#expect(after.map(\.comment) == ["Trip"])
+		#expect(after.map(\.categoryID) == [travel.id])
+		#expect(after.map(\.isChecked) == [true])
+	}
+
 	@Test("A purpose with other case and spacing is the same transaction, another purpose is not")
 	func purposeSpacing() {
 		let invoice = stored(row(5, -4_711, "Versand", "Rechnung 1001  Kundennr 4711"))

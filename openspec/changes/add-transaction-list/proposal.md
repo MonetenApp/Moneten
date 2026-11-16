@@ -61,3 +61,4 @@ None.
 - "Edit Transaction..." changes the booking date, the value date, the counterparty name, the purpose, and the amount. An edited transaction keeps the user's values after later refreshes. MoneyMoney offers the command for fetched transactions, but its fields were not observed.
 - The option "Group transactions by account" sits in the settings of the account group. Its place in MoneyMoney was not observed.
 - The list must stay fluid with 50,000 transactions. This target comes from issue #5.
+- The balance at the end of a day stands below the amount of the top row of that day, so every row keeps its height and the table needs no rows of another kind. How MoneyMoney draws the daily balance inside the list was not observed.

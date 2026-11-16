@@ -64,7 +64,7 @@ The app SHALL open a window for a new transaction with "Add Transaction..." or t
 
 ### Requirement: Manual transactions are validated
 
-The app SHALL refuse a manual transaction with an amount of zero, with text in the amount field that is not a number, or with no date. The window stays open and names the field to correct.
+The app SHALL refuse a manual transaction with an amount of zero, with text in the amount field that is not a number, with an amount of more than 10.000.000.000.000,00 € or the same digits in another currency, or with no date. The window stays open and names the field to correct.
 
 #### Scenario: Amount of zero
 
@@ -76,6 +76,11 @@ The app SHALL refuse a manual transaction with an amount of zero, with text in t
 - **GIVEN** the offline account "Wallet" in euros
 - **WHEN** the user enters the amount 4,8051 and confirms
 - **THEN** the app says that the amount has more decimal places than its currency and stores nothing
+
+#### Scenario: Amount above the limit
+
+- **WHEN** the user enters the amount 92.233.720.368.547.758,07 for a new transaction
+- **THEN** the app does not accept the amount and stores nothing
 
 ### Requirement: Reading a typed amount
 

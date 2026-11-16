@@ -112,6 +112,7 @@ public final class Store: SavedPINStore {
 			JOIN bankTransaction ON bankTransaction.id = splitPart.transactionID WHERE bankTransaction.accountID = ?
 			""", arguments: [accountID]))
 		let r = reconcile(delivery, into: account, stored: stored, deleted: deleted, holdings: holdings, split: split, rules: rules, now: now)
+		if let refusal = r.refusal { throw refusal }
 		_ = try SplitPart.filter(r.unsplit.contains(Column("transactionID"))).deleteAll(db)
 		for t in r.added { try t.insert(db) }
 		for t in r.booked + r.updated + r.marked { try t.update(db) }
@@ -250,6 +251,21 @@ public final class Store: SavedPINStore {
 		}
 	}
 
+	public func lockSettings() throws -> LockSettings {
+		try queue.read { db in
+			try Row.fetchOne(db, sql: "SELECT lockOnClose, lockAfterMinutes FROM lockSetting WHERE id = 1").map {
+				LockSettings(lockOnClose: $0["lockOnClose"], lockAfterMinutes: $0["lockAfterMinutes"])
+			} ?? LockSettings()
+		}
+	}
+
+	public func saveLockSettings(_ settings: LockSettings) throws {
+		try queue.write { db in
+			try db.execute(sql: "INSERT OR REPLACE INTO lockSetting (id, lockOnClose, lockAfterMinutes) VALUES (1, ?, ?)",
+				arguments: [settings.lockOnClose, settings.lockAfterMinutes])
+		}
+	}
+
 	public func installedExtensions() throws -> [InstalledExtension] {
 		try queue.read { db in
 			// An origin that this version does not know counts as the catalog, the origin with the stricter rules.
@@ -334,6 +350,23 @@ public struct StoredCatalog: Sendable, Equatable {
 		self.index = index
 		self.signature = signature
 		self.floors = floors
+	}
+}
+
+/// "Lock when main window is closed" and "Lock after inactivity". They live in the encrypted database, because
+/// the settings file of the app is open to every program of the user.
+public struct LockSettings: Sendable, Equatable {
+	/// The app locks after 10 minutes without activity unless the user turns it off. MoneyMoney has
+	/// this off and suggests 5 minutes; the owner chose on with 10 minutes.
+	public static let defaultLockAfterMinutes = 10
+
+	public var lockOnClose: Bool
+	/// 0 is "Never".
+	public var lockAfterMinutes: Int
+
+	public init(lockOnClose: Bool = false, lockAfterMinutes: Int = Self.defaultLockAfterMinutes) {
+		self.lockOnClose = lockOnClose
+		self.lockAfterMinutes = lockAfterMinutes
 	}
 }
 

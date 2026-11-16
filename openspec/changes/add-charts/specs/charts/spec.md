@@ -362,6 +362,18 @@ The app SHALL open a calibration window from "Calibrate" in the account settings
 - **WHEN** the user opens "Calibrate", enters 1.200,00, and confirms
 - **THEN** the initial balance is 250,00 € and every bar is 50,00 € lower
 
+#### Scenario: Balance above the limit
+
+- **WHEN** the user opens "Calibrate" and enters 10.000.000.000.000,01
+- **THEN** the button to confirm stays disabled and the initial balance stays as it was
+
+#### Scenario: Initial balance beyond the limit
+
+- **GIVEN** the account "Giro" holds two transactions of 10.000.000.000.000,00 €
+- **WHEN** the user opens "Calibrate" and enters 0,00
+- **THEN** the window says that the initial balance of the account "Giro" is too large
+- **AND** the button to confirm stays disabled and the initial balance stays as it was
+
 #### Scenario: Set the initial balance directly
 
 - **WHEN** the user changes "Initial balance" in the account settings from 300,00 to 0,00

@@ -1,3 +1,5 @@
+import Domain
+import Storage
 import Sync
 import SwiftUI
 
@@ -21,13 +23,8 @@ struct SettingsView: View {
 
 struct SecuritySettings: View {
 	@Environment(AppModel.self) private var model
-	@AppStorage(Preference.lockOnClose) private var lockOnClose = false
-	@AppStorage(Preference.lockAfterEnabled) private var lockAfterEnabled = true
-	@AppStorage(Preference.lockAfterMinutes) private var lockAfterMinutes = Preference.defaultLockAfterMinutes
-	@AppStorage(Preference.unlockAutomatically) private var unlockAutomatically = false
-	@AppStorage(Preference.unlockWithTouchID) private var unlockWithTouchID = false
-	@AppStorage(Preference.unlockWithAppleWatch) private var unlockWithAppleWatch = false
-	@State private var askPasswordFor: String?
+	/// The change that waits for the database password, and why the last change failed.
+	@State private var pending: SecurityChange?
 	@State private var message: String?
 
 	var body: some View {
@@ -48,7 +45,7 @@ struct SecuritySettings: View {
 				}
 			}
 			Section("Lock") {
-				Toggle("Lock when main window is closed", isOn: $lockOnClose)
+				Toggle("Lock when main window is closed", isOn: Binding(get: { model.lockSettings.lockOnClose }, set: { ask(.lockOnClose($0)) }))
 				Picker("Lock after inactivity", selection: lockAfter) {
 					Text("Never").tag(0)
 					ForEach(lockAfterChoices, id: \.self) { minutes in
@@ -56,11 +53,12 @@ struct SecuritySettings: View {
 					}
 				}
 			}
-			.disabled(!model.hasPassword)
+			// The lock settings live in the database, so they change only while it is open.
+			.disabled(!model.hasPassword || model.phase != .unlocked)
 			Section {
-				Toggle("Unlock automatically at application start", isOn: keychainToggle(Preference.unlockAutomatically, $unlockAutomatically))
-				Toggle("Unlock with Touch ID", isOn: keychainToggle(Preference.unlockWithTouchID, $unlockWithTouchID))
-				Toggle("Unlock with Apple Watch", isOn: keychainToggle(Preference.unlockWithAppleWatch, $unlockWithAppleWatch))
+				Toggle("Unlock automatically at application start", isOn: unlockToggle(.automaticUnlock))
+				Toggle("Unlock with Touch ID", isOn: unlockToggle(.touchID))
+				Toggle("Unlock with Apple Watch", isOn: unlockToggle(.appleWatch))
 			} header: {
 				Text("Unlock")
 			} footer: {
@@ -75,68 +73,52 @@ struct SecuritySettings: View {
 			}
 			.disabled(!model.hasPassword)
 		}
-		.sheet(item: Binding(get: { askPasswordFor.map(Identified.init) }, set: { askPasswordFor = $0?.value })) { key in
-			PasswordPromptSheet { password in enable(key.value, password: password) }
+		.sheet(item: $pending) { change in
+			PasswordPromptSheet(storesPassword: change.storesPassword) { password in apply(change, password: password) }
 		}
 	}
 
-	/// The minutes that the picker offers. A value from an earlier version stays selectable.
+	/// The minutes that the picker offers. A stored value outside them stays selectable.
 	private var lockAfterChoices: [Int] {
-		let choices = [1, 2, 5, 10, 15, 30, 60]
-		return lockAfterEnabled && !choices.contains(storedMinutes) ? (choices + [storedMinutes]).sorted() : choices
+		let choices = [1, 2, 5, 10, 15, 30, 60], stored = model.lockSettings.lockAfterMinutes
+		return stored > 0 && !choices.contains(stored) ? (choices + [stored]).sorted() : choices
 	}
-
-	/// The minutes after which the app locks, read as `AppModel` reads them: a stored 0 from the old
-	/// number field means the default of 10 and anything below 1 means 1, so the picker shows what
-	/// the app does.
-	private var storedMinutes: Int { max(1, lockAfterMinutes == 0 ? Preference.defaultLockAfterMinutes : lockAfterMinutes) }
 
 	/// 0 is "Never". Any other value turns the inactivity lock on with that number of minutes.
 	private var lockAfter: Binding<Int> {
-		Binding(get: { lockAfterEnabled ? storedMinutes : 0 }, set: { minutes in
-			lockAfterEnabled = minutes > 0
-			if minutes > 0 { lockAfterMinutes = minutes }
-		})
+		Binding(get: { model.lockSettings.lockAfterMinutes }, set: { ask(.lockAfter($0)) })
 	}
 
-	/// Turning on an unlock setting stores the password in the Keychain. Turning off the last one deletes it.
-	private func keychainToggle(_ key: String, _ value: Binding<Bool>) -> Binding<Bool> {
-		Binding(get: { value.wrappedValue }, set: { on in
-			message = nil
-			if on {
-				if let method = UnlockMethod.allCases.first(where: { $0.preference == key }),
-				   let reason = method.unavailableReason(for: .settings) {
-					message = reason
-					return
-				}
-				askPasswordFor = key
-			} else {
-				value.wrappedValue = false
-				guard !unlockAutomatically && !unlockWithTouchID && !unlockWithAppleWatch else { return }
-				do {
-					try model.vault.removeStoredPassword()
-				} catch {
-					message = String(localized: "The setting is off, but the database password could not be removed from the Keychain. \(String(describing: error))")
-				}
-			}
-		})
+	/// A toggle shows whether the entry of its setting exists for this database.
+	private func unlockToggle(_ entry: Vault.PasswordEntry) -> Binding<Bool> {
+		Binding(get: { model.unlockSettings.contains(entry) }, set: { ask(.unlock(entry, $0)) })
 	}
 
-	/// Returns an error for the prompt, or nil when the setting is on.
-	private func enable(_ key: String, password: String) -> String? {
-		guard model.vault.verify(password: password) else { return String(localized: "Incorrect password!") }
+	/// Every change on this tab waits for the database password. A method that macOS cannot use is refused first.
+	private func ask(_ change: SecurityChange) {
+		message = nil
+		if case let .unlock(entry, true) = change, let method = UnlockMethod.allCases.first(where: { $0.entry == entry }),
+		   let reason = method.unavailableReason(for: .settings) {
+			message = reason
+			return
+		}
+		pending = change
+	}
+
+	/// Returns an error for the prompt, or nil when the prompt closes.
+	private func apply(_ change: SecurityChange, password: String) -> String? {
 		do {
-			try model.vault.storePassword(password)
-			UserDefaults.standard.set(true, forKey: key)
+			guard try model.changeSecurity(change, password: password) else { return String(localized: "Incorrect password!") }
 		} catch {
-			message = String(localized: "The database password could not be stored in the Keychain. \(String(describing: error))")
+			message = String(describing: error)
 		}
 		return nil
 	}
 }
 
-/// Asks for the database password before an unlock setting stores it in the Keychain.
+/// Asks for the database password before a security setting changes.
 struct PasswordPromptSheet: View {
+	var storesPassword: Bool
 	var onConfirm: (String) -> String?
 	@State private var password = ""
 	@State private var error: String?
@@ -153,17 +135,13 @@ struct PasswordPromptSheet: View {
 				if let error {
 					Text(error).foregroundStyle(Palette.red)
 				} else {
-					Text("The password is stored in the Keychain of this Mac.").foregroundStyle(.secondary)
+					Text(storesPassword ? "The password is stored in the Keychain of this Mac." : "Changing a security setting needs the database password.")
+						.foregroundStyle(.secondary)
 				}
 			}
 		}
 		.onChange(of: password) { _, _ in if !password.isEmpty { error = nil } }
 	}
-}
-
-struct Identified: Identifiable {
-	let value: String
-	var id: String { value }
 }
 
 /// The settings of the refresh and the notifications, in the order of MoneyMoney, and the facts about the app.
@@ -198,6 +176,9 @@ struct GeneralSettings: View {
 				if notificationsDenied {
 					Button("Open Notification Settings...") { NSWorkspace.shared.open(Self.notificationSettings) }
 				}
+			}
+			Section("VAT rates") {
+				VATRateSettings()
 			}
 			Section {
 				Picker("Language", selection: $language) {
@@ -234,6 +215,7 @@ struct GeneralSettings: View {
 					.foregroundStyle(.secondary)
 			}
 		}
+		.environment(\.sheetHasScrollAreas, true)
 		.task { await checkPermission() }
 		// The user may have allowed the notifications in the System Settings meanwhile.
 		.onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
@@ -257,5 +239,74 @@ struct GeneralSettings: View {
 
 	private func checkPermission() async {
 		notificationsDenied = await model.notices.isDenied()
+	}
+}
+
+struct VATRateSettings: View {
+	@State private var rates = Preference.rates
+	@State private var text = ""
+	@State private var editing: Int?
+	@State private var invalid = false
+
+	var body: some View {
+		if !rates.isEmpty {
+			ScrollView {
+				VStack(spacing: 8) {
+					ForEach(rates.indices, id: \.self) { index in
+						HStack {
+							Text(rates[index].text).monospacedDigit()
+							Spacer()
+							Button("Change") {
+								editing = index
+								text = String(rates[index].text.dropLast())
+								invalid = false
+							}
+							.accessibilityLabel("Change VAT rate at position \(index + 1)")
+							.accessibilityIdentifier("vat-change-\(index)")
+							Button(role: .destructive) {
+								rates.remove(at: index)
+								persist()
+								reset()
+							} label: { Image(systemName: "minus.circle") }
+							.accessibilityLabel("Remove VAT rate at position \(index + 1)")
+							.accessibilityIdentifier("vat-remove-\(index)")
+						}
+					}
+				}
+			}
+			.frame(height: min(CGFloat(rates.count) * 32, 128))
+		}
+		HStack {
+			TextField("VAT rate (%)", text: $text)
+				.accessibilityIdentifier("vat-input")
+				.onSubmit(save)
+			Button(editing == nil ? "Add" : "Save", action: save)
+				.accessibilityIdentifier("vat-save")
+			if editing != nil {
+				Button("Cancel", action: reset).accessibilityIdentifier("vat-cancel")
+			}
+		}
+		if invalid {
+			Text("Enter a rate above zero with up to two decimal places.")
+				.foregroundStyle(Palette.red)
+				.accessibilityIdentifier("vat-error")
+		}
+	}
+
+	private func save() {
+		guard let rate = VATRate(text: text) else { invalid = true; return }
+		if let editing { rates[editing] = rate } else { rates.append(rate) }
+		persist()
+		reset()
+	}
+
+	private func persist() {
+		UserDefaults.standard.set(rates.map(\.hundredths), forKey: Preference.vatRates)
+	}
+
+	private func reset() {
+		text = ""
+		editing = nil
+		invalid = false
 	}
 }

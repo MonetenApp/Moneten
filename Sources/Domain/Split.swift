@@ -40,6 +40,16 @@ public struct VATRate: Hashable, Sendable, Codable {
 		self.hundredths = hundredths
 	}
 
+	public init?(text: String) {
+		let parts = text.trimmingCharacters(in: .whitespacesAndNewlines)
+			.replacingOccurrences(of: ",", with: ".").split(separator: ".", omittingEmptySubsequences: false)
+		guard (1...2).contains(parts.count), parts.allSatisfy({ !$0.isEmpty && $0.allSatisfy({ $0 >= "0" && $0 <= "9" }) }) else { return nil }
+		let fraction = parts.count == 2 ? String(parts[1]) : ""
+		guard fraction.count <= 2,
+			let value = Int64(String(parts[0]) + fraction + String(repeating: "0", count: 2 - fraction.count)), value > 0 else { return nil }
+		self.init(hundredths: value)
+	}
+
 	public init(from decoder: any Decoder) throws {
 		let values = try decoder.container(keyedBy: CodingKeys.self)
 		let value = try values.decode(Int64.self, forKey: .hundredths)
@@ -78,7 +88,7 @@ public enum Split {
 		var scaled = value * Decimal(sign: .plus, exponent: row.decimalPlaces, significand: 1)
 		var whole = Decimal()
 		NSDecimalRound(&whole, &scaled, 0, .plain)
-		guard whole == scaled, scaled >= Decimal(Int64.min), scaled <= Decimal(Int64.max) else { return nil }
+		guard whole == scaled, scaled.magnitude <= Decimal(Money.maxMinorUnits) else { return nil }
 		return Money(minorUnits: NSDecimalNumber(decimal: scaled).int64Value, currency: row.currency)
 	}
 
