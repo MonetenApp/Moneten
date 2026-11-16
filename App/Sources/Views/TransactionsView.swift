@@ -86,8 +86,10 @@ struct HeaderView: View {
 					Group {
 						switch model.bankHistories[account.id] {
 						case .noTransactions where account.kind != .portfolio: Text("The bank provides no transactions for this account.")
+						// The mark is stored with the account, so the note stays through a lock, a restart, and an import.
+						case _ where account.missesOlderTransactions:
+							Text("Older transactions may be missing. Choose “Refresh Account (enforced)” with the Option key to fetch them.")
 						case let .startsAt(start): Text("The bank provides no transactions before \(Format.day(start)).")
-						case .olderMayBeMissing: Text("Older transactions may be missing. Choose “Refresh Account (enforced)” with the Option key to fetch them.")
 						default: EmptyView()
 						}
 					}

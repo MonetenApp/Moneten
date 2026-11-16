@@ -306,8 +306,7 @@ struct AccountResult: Decodable {
 		return errors.first { $0.failure.rejectsPIN } ?? errors.first
 	}
 
-	/// `missedOlder` says that older transactions of the account were missing before this refresh.
-	func outcome(of account: AccountRequest, missedOlder: Bool) throws -> (AccountOutcome, [BankMessage]) {
+	func outcome(of account: AccountRequest) throws -> (AccountOutcome, [BankMessage]) {
 		guard balance != nil || transactions != nil else {
 			return (.failed(shownError?.failure ?? .bank(BankMessage(text: "The bank sent nothing for this account."))), [])
 		}
@@ -316,13 +315,11 @@ struct AccountResult: Decodable {
 			FetchedTransactions(rows: try t.rows.map { try $0.transaction(of: account) }, from: try t.from.map(Self.day))
 		}
 		let transactionFailure = shownError?.failure
-		// Older transactions are missing when the answer starts after the last successful fetch: the 90 days of a
+		// Older transactions may be missing when the answer starts after the last successful fetch: the 90 days of a
 		// normal refresh after a long pause, or a canceled challenge for older transactions. The start that the
-		// request asked for is no measure, because it reaches 14 days or a pending row back. Only a full history
-		// ends a gap from before, and an answer without transactions keeps it.
-		let missesOlder = fetched.map { fetched in
-			fetched.from.map { from in missedOlder || account.lastFetched.map { $0 < from } ?? true } ?? false
-		} ?? missedOlder
+		// request asked for is no measure, because it reaches 14 days or a pending row back. A mark from before
+		// is the account's own, and the merge keeps it until a full history.
+		let missesOlder = fetched?.from.map { from in account.lastFetched.map { $0 < from } ?? true } ?? false
 		let result = RefreshResult(balance: money, balanceDate: try balance?.date.map { try Self.day($0).date() }, transactions: fetched,
 			isComplete: transactions != nil && transactions?.from == nil, transactionFailure: transactionFailure, isPortfolio: securities == true,
 			holdings: try holdings?.map { try $0.holding(of: account) }, missesOlder: missesOlder)

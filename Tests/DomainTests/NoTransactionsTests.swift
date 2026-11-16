@@ -52,16 +52,16 @@ struct BankHistoryTests {
 		#expect(Self.dated.bankHistory(after: nil, of: .savings) == nil)
 	}
 
-	@Test("A refresh that fetched less than the account asked for says that older transactions may be missing, until a full history")
-	func olderMayBeMissing() {
-		let start = Day(year: 2024, month: 3, day: 1)
+	@Test("An answer that misses older transactions sets the mark of the account, an answer without transactions keeps it, and only a full history ends it")
+	func missesOlder() {
 		let short = RefreshResult(balance: Self.balance, transactions: FetchedTransactions(rows: [], from: Day(year: 2026, month: 8, day: 17)), missesOlder: true)
-		#expect(short.bankHistory(after: nil, of: .giro) == .olderMayBeMissing)
-		#expect(short.bankHistory(after: .startsAt(start), of: .giro) == .olderMayBeMissing)
-		// The connector keeps the mark until a full history, so a refresh without it has no gap left.
-		#expect(Self.dated.bankHistory(after: .olderMayBeMissing, of: .giro) == nil)
-		#expect(Self.full.bankHistory(after: .olderMayBeMissing, of: .giro) == .startsAt(start))
+		#expect(short.missesOlder(after: false) == true)
+		// A normal refresh covers the days since the last fetch, and the gap from before stays.
+		#expect(Self.dated.missesOlder(after: true) == true)
+		#expect(Self.dated.missesOlder(after: false) == false)
+		#expect(Self.balanceOnly.missesOlder(after: true) == true)
 		let empty = RefreshResult(balance: Self.balance, transactions: FetchedTransactions(rows: [], from: nil), isComplete: true)
-		#expect(empty.bankHistory(after: .olderMayBeMissing, of: .giro) == nil)
+		#expect(empty.missesOlder(after: true) == false)
+		#expect(Self.full.missesOlder(after: true) == false)
 	}
 }

@@ -447,7 +447,6 @@ final class AppModel {
 		ledgerChange = "load"
 		ledger = loaded
 		accesses = Dictionary(uniqueKeysWithValues: try store.accesses().map { ($0.id, $0) })
-		try restoreOlderMayBeMissing(from: store)
 		// The saved PINs live only in the database, so a refresh after a restart or an unlock does not ask.
 		try sync.broker.open(store)
 		if selection == nil {
@@ -467,18 +466,6 @@ final class AppModel {
 			select(notified: notified)
 		}
 		autoRefresh.isUnlocked = true
-	}
-
-	/// The note about missing older transactions, which the state of each FinTS access keeps, so that it stays
-	/// through a lock and a restart.
-	private func restoreOlderMayBeMissing(from store: Store) throws {
-		for access in accesses.values {
-			guard case .fints = access.source else { continue }
-			let marked = FinTSConnector.accountsMissingOlder(in: try store.state(of: access.id))
-			for account in ledger.accounts where account.accessID == access.id && account.remoteID.map(marked.contains) == true {
-				bankHistories[account.id] = .olderMayBeMissing
-			}
-		}
 	}
 
 	func lock() {
@@ -901,10 +888,8 @@ final class AppModel {
 	/// no saved PIN when it is off, in one transaction. The broker takes the PIN into memory and follows the
 	/// database, and each refresh of the access that waits runs with the new login. Throws the error of the database, which the assistant shows, and
 	/// then nothing changed.
-	func updateLogin(_ access: Access, state new: AccessState?, pin: Secret, savePIN: Bool) throws {
+	func updateLogin(_ access: Access, state: AccessState?, pin: Secret, savePIN: Bool) throws {
 		guard let store else { throw CancellationError() }
-		// The accounts stay, and so does the note about their missing older transactions.
-		let state = FinTSConnector.state(new, keepingMarksOf: try store.state(of: access.id))
 		try store.updateLogin(of: access.id, loginName: access.loginName, state: state, savedPIN: savePIN ? pin : nil)
 		accesses[access.id] = access
 		sync.update(access, state: state)

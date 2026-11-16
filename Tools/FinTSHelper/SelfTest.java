@@ -567,6 +567,7 @@ final class SelfTest {
 			"9075", "Starke Kundenauthentifizierung notwendig")), "{\"type\":\"failed\",\"kind\":\"noTANMethod\",\"code\":\"9955\","
 			+ "\"text\":\"Ein-Schritt-TAN-Verfahren nicht zugelassen\"} {\"type\":\"failed\",\"kind\":\"noTANMethod\",\"code\":\"9075\","
 			+ "\"text\":\"Starke Kundenauthentifizierung notwendig\"}");
+		expect("a dialog whose login the bank refuses for the one-step method fails with no TAN method", oneStepDialog(), "noTANMethod 9955");
 		passport.setAllowedTwostepMechanisms(new ArrayList<>(List.of("999", "922")));
 		expect("a user with pushTAN has a TAN method", FinTSHelper.withoutTanMethod(passport) + " " + refused(passport, status("9955", "Ein-Schritt-TAN-Verfahren nicht zugelassen")),
 			"false false");
@@ -578,6 +579,30 @@ final class SelfTest {
 		expect("a new dialog after a change of the method starts without the approval", FinTSHelper.Callback.approvalAsked, false);
 
 		blockedLogin();
+	}
+
+	/// The kind and the code of the failure of a dialog whose login the bank refuses with 9955 for a user whom it
+	/// allows only the one-step method, as `dialog` maps it in its catch path.
+	static String oneStepDialog() {
+		FinTSHelper.Callback callback = new FinTSHelper.Callback(Map.of());
+		// As connect() sets them, so that hbci4java asks nothing on the console.
+		callback.host = "fints.example.com/fints";
+		callback.port = 443;
+		PassportData data = passportData();
+		data.twostepMechs = new ArrayList<>(List.of("999"));
+		FinTSHelper.Passport.loaded = data;
+		try {
+			FinTSHelper.dialog("refresh", Map.of("accounts", List.of()), callback, p -> {
+				throw new ProcessException("init", status("9955", "Ein-Schritt-TAN-Verfahren nicht zugelassen"));
+			});
+			return "no failure";
+		} catch (FinTSHelper.Failure f) {
+			return f.kind + " " + f.code;
+		} catch (IOException | RuntimeException e) {
+			return e.getClass().getSimpleName();
+		} finally {
+			FinTSHelper.Passport.loaded = null;
+		}
 	}
 
 	static boolean refused(FinTSHelper.Passport passport, HBCIMsgStatus status) {

@@ -82,18 +82,6 @@ public protocol BankConnector: Sendable {
 	/// Fetches the balances and transactions of the requested accounts of one access, in one session.
 	/// Throws a `SyncFailure` when the whole access fails, and `CancellationError` when the refresh is canceled.
 	func refresh(_ request: RefreshRequest, _ session: SyncSession) async throws -> ConnectorReport
-
-	/// The state to store when the app could not store what the refresh fetched for `unsaved`, after a failed
-	/// write or a cancel. A connector that keeps something about each account in the state keeps what `previous`
-	/// said about these accounts, because their history in the app did not change.
-	func state(_ state: AccessState, keepingUnsaved unsaved: [AccountRequest], from previous: AccessState?) -> AccessState
-}
-
-extension BankConnector {
-	/// Keeps nothing about single accounts in the state.
-	public func state(_ state: AccessState, keepingUnsaved unsaved: [AccountRequest], from previous: AccessState?) -> AccessState {
-		state
-	}
 }
 
 public struct RefreshRequest: Sendable {
@@ -180,10 +168,9 @@ public struct RefreshResult: Sendable {
 	/// The positions of a portfolio, which replace the stored ones. Nil when the source sent none, as an
 	/// extension today, so the stored positions stay.
 	public let holdings: [Holding]?
-	/// Older transactions of the account may be missing after this refresh. An answer that starts after the last
-	/// successful fetch sets it: a normal refresh asks for no more than 90 days, and the user may cancel the second
-	/// factor for older transactions. It stays set until a refresh brings the full history, and until then the
-	/// initial balance of the account follows the bank balance. The connector keeps it in the state of the access.
+	/// This answer may miss older transactions of the account: it starts after the last successful fetch, because a
+	/// normal refresh asks for no more than 90 days, or because the user canceled the second factor for older
+	/// transactions. The merge turns it into `Account.missesOlderTransactions`, which stays until a full history.
 	public let missesOlder: Bool
 
 	/// The bank sent the balance without a transaction list, because it provides none for the account. A
@@ -200,14 +187,17 @@ public struct RefreshResult: Sendable {
 
 	/// What the account view says about the history at the bank after this refresh, given what it said
 	/// before. A refresh that is neither balance-only nor a full history keeps the start of the history.
-	/// `missesOlder` alone decides about the note on missing older transactions.
 	public func bankHistory(after previous: BankHistory?, of kind: AccountKind) -> BankHistory? {
 		if providesNoTransactions(for: kind) { return .noTransactions }
 		if let historyStart { return .startsAt(historyStart) }
-		if missesOlder { return .olderMayBeMissing }
-		// A full history without rows ends a note about missing older transactions too.
-		if isComplete { return nil }
-		return previous == .noTransactions || previous == .olderMayBeMissing ? nil : previous
+		return previous == .noTransactions ? nil : previous
+	}
+
+	/// Whether older transactions of the account may be missing after this refresh, given `previous`, the mark
+	/// before it. Only a full history ends the mark, and an answer without transactions keeps it.
+	public func missesOlder(after previous: Bool) -> Bool {
+		guard transactions != nil else { return previous }
+		return isComplete ? false : previous || missesOlder
 	}
 
 	public init(balance: Money?, balanceDate: Date? = nil, transactions: FetchedTransactions?, isComplete: Bool = false,
@@ -229,9 +219,6 @@ public enum BankHistory: Equatable, Sendable {
 	case noTransactions
 	/// "The bank provides no transactions before" this day.
 	case startsAt(Day)
-	/// "Older transactions may be missing." An answer started after the last successful fetch, and only a
-	/// refresh of the full history closes the gap.
-	case olderMayBeMissing
 }
 
 /// The transactions of one account as the bank answered, and the days that the answer covers.

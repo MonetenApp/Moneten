@@ -137,7 +137,7 @@ The app SHALL ask in a normal refresh for the transactions since the last succes
 
 ### Requirement: The first refresh asks for the full history
 
-The app SHALL ask in the first refresh of a new account for all transactions that the bank keeps. When the bank asks for a TAN or a confirmation for transactions older than 90 days and the user cancels it, the app fetches the last 90 days, also when the user cancels a confirmation in the banking app before the bank answers it. The account view then says that older transactions may be missing, until a refresh brings the full history of the account. The note stays when the app locks or quits.
+The app SHALL ask in the first refresh of a new account for all transactions that the bank keeps. When the bank asks for a TAN or a confirmation for transactions older than 90 days and the user cancels it, the app fetches the last 90 days. The account view then says that older transactions may be missing, until a refresh brings the full history of the account. The note stays with the account.
 
 #### Scenario: Bank keeps 450 days
 
@@ -164,6 +164,12 @@ The app SHALL ask in the first refresh of a new account for all transactions tha
 - **GIVEN** the account view of "Giro" says that older transactions may be missing
 - **WHEN** the user locks the app and unlocks it, or quits the app and starts it again
 - **THEN** the account view of "Giro" still says that older transactions may be missing
+
+#### Scenario: The note stays after an export and an import
+
+- **GIVEN** the account view of "Giro" says that older transactions may be missing
+- **WHEN** the user chooses "Export All Data..." and imports the file with "Import All Data..." into an empty database
+- **THEN** the account view of "Giro" says that older transactions may be missing
 
 #### Scenario: Enforced refresh after the canceled TAN
 

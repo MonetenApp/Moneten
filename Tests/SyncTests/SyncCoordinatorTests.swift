@@ -636,26 +636,6 @@ struct SyncCoordinatorTests {
 		#expect(second.answers.all == [.pin(Secret("12345"))])
 	}
 
-	@Test("The state keeps what the last one said about an account whose results the app did not store, after a failed write and after a cancel")
-	func stateOfUnsavedAccounts() async {
-		struct DiskFull: Error {}
-		let stored = Mutex<[AccessState]>([])
-		coordinator.storeState = { _, state, _ in stored.withLock { $0.append(state) } }
-		coordinator.deliver = { id, _ in if id == Self.savings.accountID { throw DiskFull() } }
-		let bank = Self.access("Musterbank")
-		let previous = AccessState(Data([1]))
-		coordinator.refresh(RefreshRequest(access: bank, state: previous, accounts: [Self.giro, Self.savings]), with: Marking(delay: .zero), attended: true)
-		await until { !coordinator.isRefreshing }
-		// Marking writes the remote IDs of the unsaved accounts after the byte of the previous state.
-		#expect(stored.withLock { $0 } == [AccessState(Data([1]) + Data("5678".utf8))])
-
-		coordinator.deliver = { _, _ in }
-		coordinator.refresh(RefreshRequest(access: bank, state: previous, accounts: [Self.giro, Self.savings]), with: Marking(delay: .milliseconds(200)), attended: true)
-		coordinator.cancelAll()
-		await until { !coordinator.isRefreshing }
-		#expect(stored.withLock { $0.last } == AccessState(Data([1]) + Data("1234".utf8) + Data("5678".utf8)))
-	}
-
 	@Test("A canceled access delivers nothing, even when its connector returns")
 	func canceledDeliversNothing() async {
 		var delivered = 0
@@ -876,21 +856,5 @@ struct Notifying: BankConnector {
 		try? await Task.sleep(for: delay)
 		return ConnectorReport(outcomes: Dictionary(uniqueKeysWithValues: refresh.accounts.map { ($0.accountID, .fetched(RefreshResult(balance: nil, transactions: nil))) }),
 			notices: [BankMessage(text: "Wartungsarbeiten am 14.11.2026 von 1 bis 5 Uhr")])
-	}
-}
-
-/// Fetches every requested account after `delay`, also when the refresh was canceled, with the new state [2]. For the
-/// accounts that the app did not store it returns the previous state followed by their remote IDs.
-struct Marking: BankConnector {
-	let delay: Duration
-
-	func refresh(_ refresh: RefreshRequest, _ session: SyncSession) async throws -> ConnectorReport {
-		try? await Task.sleep(for: delay)
-		return ConnectorReport(outcomes: Dictionary(uniqueKeysWithValues: refresh.accounts.map { ($0.accountID, .fetched(RefreshResult(balance: nil, transactions: nil))) }),
-			state: AccessState(Data([2])))
-	}
-
-	func state(_ state: AccessState, keepingUnsaved unsaved: [AccountRequest], from previous: AccessState?) -> AccessState {
-		AccessState((previous?.data ?? Data()) + unsaved.map { Data($0.remoteID.utf8) }.reduce(Data(), +))
 	}
 }

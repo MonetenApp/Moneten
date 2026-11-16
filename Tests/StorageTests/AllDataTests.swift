@@ -206,7 +206,7 @@ struct AllDataTests {
 		let giro = Account(groupID: privat.id, position: 2, name: "Girokonto", kind: .giro, source: .bank, iban: "DE02120300000000202051", bankBalanceMinor: 250_000,
 			refreshedAt: Date(timeIntervalSince1970: 1_794_650_000.5),
 			refreshError: RefreshError(message: "Die PIN ist falsch.", code: "9931", date: Date(timeIntervalSince1970: 1_794_660_000), notices: ["Wartung am Sonntag"]),
-			refreshInterval: .onceADay)
+			refreshInterval: .onceADay, missesOlderTransactions: true)
 		let linked = try store.add(access, state: AccessState(Data("bank parameters".utf8)), accounts: [giro])
 		try store.savePIN(Secret("24680"), for: linked.access.id)
 		let bank = try #require(linked.accounts.first)
@@ -272,6 +272,27 @@ struct AllDataTests {
 		let imported = try target.loadLedger().transactions
 		#expect(imported.count == 3)
 		#expect(imported.allSatisfy { $0.returnReason == nil })
+	}
+
+	@Test("The mark of missing older transactions goes with the account, and a file without it imports the account without the mark")
+	func missingOlderTransactionsMark() throws {
+		let exported = try filledStore().exportAllData(at: exportedAt).json()
+		var json = try #require(try JSONSerialization.jsonObject(with: exported) as? [String: Any])
+		var accounts = try #require(json["accounts"] as? [[String: Any]])
+		// Every account carries the key, and only the giro account is marked.
+		let marks = accounts.map { $0["missesOlderTransactions"] as? Bool }
+		#expect(marks.allSatisfy { $0 != nil })
+		#expect(marks.filter { $0 == true }.count == 1)
+		let marked = try emptyStore("marked")
+		try marked.importAllData(try AllData(json: exported))
+		#expect(try marked.loadLedger().accounts.filter(\.missesOlderTransactions).map(\.name) == ["Girokonto"])
+		for i in accounts.indices { accounts[i].removeValue(forKey: "missesOlderTransactions") }
+		json["accounts"] = accounts
+		let older = try emptyStore("older")
+		try older.importAllData(try AllData(json: try JSONSerialization.data(withJSONObject: json)))
+		let imported = try older.loadLedger().accounts
+		#expect(imported.count == 4)
+		#expect(imported.allSatisfy { !$0.missesOlderTransactions })
 	}
 
 	@Test("Amounts are decimal text with a currency, and nothing is rounded")
