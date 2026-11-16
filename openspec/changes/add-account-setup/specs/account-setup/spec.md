@@ -119,18 +119,44 @@ The app SHALL check an IBAN for its country code, its length for that country, a
 
 ### Requirement: Check the Bankleitzahl
 
-The app SHALL reject a Bankleitzahl that is not in the bank directory, and it SHALL tell the user when a Bankleitzahl is outdated, also when it is part of an IBAN.
+The app SHALL reject a Bankleitzahl that is not in the bank directory, also when it is part of an IBAN, and SHALL never say that a Bankleitzahl in the bank directory is outdated.
 
 #### Scenario: Unknown Bankleitzahl
 
 - **WHEN** the user enters "00000000"
 - **THEN** the app says that the Bankleitzahl is invalid
 
-#### Scenario: Outdated Bankleitzahl after a bank merger
+#### Scenario: Bankleitzahl of a merged bank is not called outdated
 
-- **GIVEN** the bank directory marks the Bankleitzahl 10010010 as replaced
-- **WHEN** the user enters an IBAN that contains 10010010
-- **THEN** the app says that the IBAN contains an outdated Bankleitzahl and asks for the current IBAN
+- **GIVEN** the bank directory lists 21099999 as "Sparkasse Altstadt -alt-" with a FinTS address
+- **WHEN** the user enters an IBAN that contains 21099999
+- **THEN** the app does not say that the IBAN or the Bankleitzahl is outdated
+- **AND** the app does not ask for another IBAN
+
+### Requirement: Note for the Bankleitzahl of a merged bank
+
+The app SHALL accept a Bankleitzahl that the bank directory lists for a bank that merged, as it accepts any Bankleitzahl with a FinTS address, and SHALL show a note in the first step that the bank merged and the login may need another Bankleitzahl.
+
+#### Scenario: IBAN of a merged bank
+
+- **GIVEN** the bank directory lists 21099999 as "Sparkasse Altstadt -alt-" with a FinTS address
+- **WHEN** the user enters "DE07 2109 9999 0000 2020 51"
+- **THEN** the app shows "Sparkasse Altstadt -alt-" and the note "This Bankleitzahl belongs to a bank that merged. If the login fails, ask your bank which Bankleitzahl it uses for online banking now."
+- **AND** "Next" leads to the login data
+
+#### Scenario: Merged bank entered or chosen
+
+- **GIVEN** the bank directory lists 21099999 as "Sparkasse Altstadt -alt-" and 21099990 as "Raiffeisenbank Altdorf -alt", both with a FinTS address
+- **WHEN** the user enters "21099990", or chooses "Sparkasse Altstadt -alt-" among the matches for "Altstadt"
+- **THEN** the app shows the bank with the same note
+- **AND** "Next" leads to the login data
+
+#### Scenario: Merged bank without a FinTS server
+
+- **GIVEN** the bank directory lists 21099999 as "Sparkasse Altstadt -alt-" without a FinTS address
+- **WHEN** the user enters "21099999"
+- **THEN** the app says that this bank does not provide a FinTS/HBCI server and shows no note
+- **AND** the assistant stays on the first step
 
 ### Requirement: Country menu
 
@@ -477,3 +503,40 @@ The app SHALL show a list of the banks and services it can reach, with a search 
 - **GIVEN** an installed extension declares the service "Musterbroker"
 - **WHEN** the user opens the list
 - **THEN** the list contains "Musterbroker" with the name of the extension as its access method
+
+#### Scenario: Bank that the app cannot reach
+
+- **GIVEN** the bank directory lists "Neobank Muster" without a FinTS address
+- **WHEN** the user opens the list and types "Muster"
+- **THEN** the list does not show "Neobank Muster"
+
+#### Scenario: Merged bank in the list
+
+- **GIVEN** the bank directory lists 21099999 as "Sparkasse Altstadt -alt-" with a FinTS address
+- **WHEN** the user opens the list and types "Altstadt"
+- **THEN** the list shows "Sparkasse Altstadt -alt-" with "FinTS/HBCI with TAN method" and the note of a merged bank
+
+#### Scenario: Bank directory that does not load
+
+- **GIVEN** an installed extension declares the service "Musterbroker", and the bank directory fails to load
+- **WHEN** the user opens the list
+- **THEN** the list says that the bank directory could not be loaded and still shows "Musterbroker"
+
+#### Scenario: Move through the list with the keyboard
+
+- **GIVEN** the list shows 500 banks
+- **WHEN** the user types in the search field and presses Down Arrow
+- **THEN** the first entry of the list is selected and the search field keeps its text
+- **AND** Down Arrow, Up Arrow, Page Down, Page Up, Home, and End move the selection and scroll the list so that the selected entry is visible
+
+#### Scenario: An arrow key with a modifier key stays with the system
+
+- **GIVEN** the search field has the text "Muster" and the cursor after "Mu"
+- **WHEN** the user presses Command-Down Arrow
+- **THEN** the cursor moves to the end of "Muster", the search field keeps the focus, and no entry is selected
+- **AND** an arrow, page, Home, or End key with Command, Option, Control, or Shift in the list leaves the selection unchanged
+
+#### Scenario: Each entry is one element for assistive technologies
+
+- **WHEN** VoiceOver reads the list
+- **THEN** each bank is one element with its name, its place and Bankleitzahl, its access method, and its whole note
