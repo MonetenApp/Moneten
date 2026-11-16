@@ -338,7 +338,10 @@ final class AccountSetup {
 			} catch {
 				guard !Task.isCancelled else { return }
 				isListing = false
+				// The notices of the bank before the error show under it and count as shown, as at the setup.
+				let (error, shown) = model.bankNotices.setupFailed(error, from: access.bankName)
 				if error is CancellationError { return }
+				notices = shown
 				listingMessage = (error as? SyncFailure)?.message ?? String(describing: error)
 			}
 		}
