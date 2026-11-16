@@ -175,8 +175,8 @@ public struct RefreshResult: Sendable {
 	/// The balance is the value of a securities account, so the account is a portfolio. A merge makes an
 	/// account of another kind a portfolio, such as a depot whose bank gave no account type at the setup.
 	public let isPortfolio: Bool
-	/// The positions of a portfolio, which replace the stored ones. Nil when the source sent none, as an
-	/// extension today, so the stored positions stay.
+	/// The positions of a portfolio, which replace the stored ones. Nil when the source sent none, so the
+	/// stored positions stay.
 	public let holdings: [Holding]?
 	/// This answer may miss older transactions of the account: it starts after the last successful fetch, because a
 	/// normal refresh asks for no more than 90 days, or because the user canceled the second factor for older

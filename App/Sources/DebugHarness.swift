@@ -167,6 +167,24 @@ final class DebugHarness {
 		case "settingssnapshot":
 			offscreenSnapshot(SecuritySettings().environment(model), width: 500, name: argument, kind: "security")
 			offscreenSnapshot(GeneralSettings().environment(model), width: 500, name: argument, kind: "general")
+		case "vatsettings":
+			guard let main = NSApp.windows.first(where: { $0.identifier?.rawValue.hasPrefix("main") == true }), main.attachedSheet == nil else { return }
+			let host = NSHostingView(rootView: GeneralSettings().environment(model).frame(width: 500))
+			let window = NSWindow(contentRect: NSRect(origin: .zero, size: host.fittingSize), styleMask: [.titled], backing: .buffered, defer: false)
+			window.contentView = host
+			main.beginSheet(window)
+			log("vatsettings opened")
+		case "vatbutton":
+			let control = sheetAccessibility().first { ($0 as AnyObject).accessibilityIdentifier?() == "vat-\(argument)" }
+			log("vatbutton", ("handled", .flag(control.map { ($0 as AnyObject).accessibilityPerformPress?() ?? false } ?? false)))
+		case "vatstate":
+			let controls = sheetAccessibility()
+			let expected = argument.split(separator: ",").compactMap { Int64($0) }
+			log("vatstate", ("rates", .count(Preference.rates.count)),
+				("matches", .flag(Preference.rates.map(\.hundredths) == expected)),
+				("error", .flag(controls.contains { ($0 as AnyObject).accessibilityIdentifier?() == "vat-error" })))
+		case "vatclose":
+			if let sheet = topSheet { sheet.sheetParent?.endSheet(sheet); sheet.orderOut(nil) }
 		case "storepassword":
 			do { try model.vault.storePassword(argument); log("storepassword", ("", .flag(true))) } catch { log("storepassword", ("failed", .type(of: error))) }
 		case "removepassword":
@@ -729,7 +747,7 @@ final class DebugHarness {
 			let originalID = model.ledger.part(row.id)?.transactionID ?? row.id
 			Task {
 				let saved: Bool
-				if let rate = VATRate.standard.first(where: { $0.text == argument }) {
+				if let rate = Preference.rates.first(where: { $0.text == argument }) {
 					saved = await model.splitVAT(row: row.id, rate: rate)
 				} else if let amount = Split.amount(from: argument, on: row.amount, decimalMark: .comma) {
 					saved = await model.split(row: row.id, off: [amount])
