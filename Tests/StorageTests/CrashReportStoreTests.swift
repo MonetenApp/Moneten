@@ -323,4 +323,44 @@ struct CrashReportStoreTests {
 		}
 	}
 
+
+	@Test("A fallback decision suppresses the same bounded-start window",
+		arguments: [999.0, 1_000, 1_001, 1_100, 1_103, 1_104, 1_162, 1_163, 1_164])
+	func decidedFallbackTiming(start: TimeInterval) {
+		for decision in [PendingCrashReport.Decision.decline, .copy, .github] {
+			for end in [start, 1_300] {
+				var state = CrashReportStore.State()
+				state.start(.init(start: Date(timeIntervalSince1970: 1_000), appVersion: "0.1.0", macOSVersion: "15.2"), files: [])
+				state.start(.init(start: Date(timeIntervalSince1970: 1_200), appVersion: "0.1.1", macOSVersion: "15.3"), files: [("Moneten-a.ips", Date(timeIntervalSince1970: 1_103))])
+				state.decide(decision)
+				let diagnostic = CrashDiagnostic(appVersion: "0.1.0", macOSVersion: "15.2", exceptionType: 6, signal: 6, frames: [])
+				state.receive(diagnostic, at: Date(timeIntervalSince1970: end), since: Date(timeIntervalSince1970: start))
+				if start <= 1_163 {
+					#expect(state.pending == nil)
+				} else {
+					#expect(state.pending?.date == Date(timeIntervalSince1970: end))
+					#expect(state.pending?.diagnostic.signal == 6)
+				}
+			}
+		}
+	}
+
+	@Test("The latest fallback decision also suppresses broad payloads from older decisions")
+	func decidedFallbackIntervals() {
+		for decision in [PendingCrashReport.Decision.decline, .copy, .github] {
+			var state = CrashReportStore.State()
+			state.start(.init(start: Date(timeIntervalSince1970: 1_000), appVersion: "0.1.0", macOSVersion: "15.2"), files: [])
+			state.start(.init(start: Date(timeIntervalSince1970: 1_200), appVersion: "0.1.1", macOSVersion: "15.3"), files: [("Moneten-a.ips", Date(timeIntervalSince1970: 1_103))])
+			state.decide(decision)
+			state.start(.init(start: Date(timeIntervalSince1970: 1_400), appVersion: "0.1.1", macOSVersion: "15.3"), files: [("Moneten-b.ips", Date(timeIntervalSince1970: 1_303))])
+			state.decide(decision)
+			let diagnostic = CrashDiagnostic(appVersion: "0.1.0", macOSVersion: "15.2", exceptionType: 6, signal: 6, frames: [])
+			for start in [1_162.0, 1_362, 1_363] {
+				var replay = state
+				replay.receive(diagnostic, at: Date(timeIntervalSince1970: 1_500), since: Date(timeIntervalSince1970: start))
+				#expect(replay.pending == nil)
+			}
+		}
+	}
+
 }
