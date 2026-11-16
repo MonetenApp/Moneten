@@ -5222,12 +5222,12 @@
         }
       }
     },
-    "Leave the field empty, unless the bank reports an error in the next step. Then enter the name exactly as the website of apoBank shows it under Benutzereinstellungen > apoTAN verwalten." : {
+    "Leave the field empty, unless the bank reports an error in the next step. Then enter the name exactly as the website of apoBank shows it under Benutzereinstellungen > apoTAN verwalten. When a later refresh reports that error, enter the name with “Edit Login Data...”." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Lassen Sie das Feld leer, außer die Bank meldet im nächsten Schritt einen Fehler. Geben Sie dann den Namen genau so ein, wie ihn die Website der apoBank unter Benutzereinstellungen > apoTAN verwalten zeigt."
+            "value" : "Lassen Sie das Feld leer, außer die Bank meldet im nächsten Schritt einen Fehler. Geben Sie dann den Namen genau so ein, wie ihn die Website der apoBank unter Benutzereinstellungen > apoTAN verwalten zeigt. Meldet eine spätere Aktualisierung diesen Fehler, geben Sie den Namen mit „Zugangsdaten bearbeiten...“ ein."
           }
         }
       },

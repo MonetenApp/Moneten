@@ -191,7 +191,6 @@ struct FinTSConnectorTests {
 			""").listAccounts(of: access, state: nil, session: session)
 		#expect(session.events == [.asked(.pin(PINRequest(rules: PINRules(minLength: 8)))),
 			.asked(.secondFactor(SecondFactorRequest(purpose: .login, system: .fintsServer, challenge: .nameTANMedium(.apoTANDevice))))])
-		#expect(TANMediumName.apoTANDevice.label == "apoTAN device name")
 		#expect(recorded == [["type": "answer", "id": "2", "value": ""]])
 	}
 

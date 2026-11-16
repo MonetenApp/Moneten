@@ -307,7 +307,7 @@ The app SHALL check each login field against the format that the bank directory 
 
 ### Requirement: Send the login name in the form that the bank expects
 
-The app SHALL send and store a VR-Kennung in capitals and without spaces when the FinTS address of the bank is on a host that ends in `.atruvia.de` or `.bankenit.de`, or on the host `fints.apobank.de`. A VR-Kennung is a login name that starts with "VRK" in any case and has only digits after it once the spaces are removed. Any other login name stays as the user typed it.
+The app SHALL send and store a VR-Kennung in capitals and without spaces when the FinTS address of the bank is on a host that ends in `.atruvia.de` or `.bankenit.de`, or on the host `fints.apobank.de`. A VR-Kennung is a login name that starts with "VRK" in any case and has only digits after it once the spaces are removed. Any other login name stays as the user typed it. Two login names that agree in this form are the same login.
 
 #### Scenario: VR-Kennung in lower case
 
@@ -333,6 +333,12 @@ The app SHALL send and store a VR-Kennung in capitals and without spaces when th
 - **GIVEN** an access to a bank on `fints1.atruvia.de` stores the login name "vrk12345678"
 - **WHEN** the app refreshes the access
 - **THEN** the app sends "VRK12345678" to the bank
+
+#### Scenario: Same login in another case
+
+- **GIVEN** an access to Wiesbadener Volksbank on `fints2.atruvia.de` stores the login name "vrk12345678"
+- **WHEN** the user adds an account of the same bank with the login name "VRK12345678"
+- **THEN** the setup joins the access that the app has, and the app keeps one access with the login name "VRK12345678"
 
 ### Requirement: Show what the bank requires before the first login
 

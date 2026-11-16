@@ -212,7 +212,7 @@ public struct FinTSConnector: BankConnector {
 		guard case let .fints(bankCode, url) = access.source else { throw SyncFailure.unsupported(String(localized: "The access does not use FinTS.")) }
 		guard url.scheme?.lowercased() == "https", url.host() != nil else { throw HelperFailure.insecure }
 		guard let productID, !productID.isEmpty else { throw HelperFailure.noProductID }
-		return Command(type: type, bankCode: bankCode, url: url.absoluteString, user: CooperativeBanks.loginName(access.loginName, server: url),
+		return Command(type: type, bankCode: bankCode, url: url.absoluteString, user: FinTSServer.loginName(access.loginName, server: url),
 			product: productID, version: version, state: state?.data.base64EncodedString())
 	}
 

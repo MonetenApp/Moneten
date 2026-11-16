@@ -363,6 +363,11 @@ The app SHALL ask for the name of the apoTAN device in a text field that may sta
 - **WHEN** the next refresh of the access asks for a TAN medium and the bank lists none
 - **THEN** the app sends the empty name again and shows no dialog for it
 
+#### Scenario: Name needed after the setup
+
+- **WHEN** the dialog shows the field "apoTAN device name"
+- **THEN** the hint also says that the user enters the name with "Edit Login Data..." when a later refresh reports the error
+
 #### Scenario: Other bank without a list
 
 - **GIVEN** a bank on another FinTS server asks for a TAN medium and lists none

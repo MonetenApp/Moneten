@@ -170,7 +170,7 @@ struct Ask: Decodable {
 		case "tanMethod": return secondFactor(.chooseTANMethod(offered, current: nil), methods: [])
 		case "tanMedium":
 			let media = media ?? []
-			challenge = media.isEmpty && CooperativeBanks.isApoBank(server) ? .nameTANMedium(.apoTANDevice) : .chooseTANMedium(media)
+			challenge = media.isEmpty && FinTSServer.isApoBank(server) ? .nameTANMedium(.apoTANDevice) : .chooseTANMedium(media)
 		case "tan":
 			if let flicker {
 				guard let code = FlickerCode(hex: flicker) else { throw SyncFailure.invalidChallenge }

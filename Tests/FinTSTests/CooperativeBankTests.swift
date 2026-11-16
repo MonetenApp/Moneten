@@ -20,6 +20,8 @@ struct CooperativeBankTests {
 		#expect(hint.source.scheme == "https")
 		#expect(Self.bank("29265747", "Volksbank Bremen-Nord", "https://fints1.bankenit.de/fints").loginHint?.label == "VR-NetKey or alias")
 		#expect(Self.bank("60090800", "Sparda-Bank Baden-Württemberg eG", Self.atruvia).loginHint == nil)
+		#expect(Self.bank("70012600", "Südtiroler Sparkasse AG", Self.atruvia).loginHint == nil)
+		#expect(Self.bank("80093784", "Volksbank Musterstadt Sparkassenweg", Self.atruvia).loginHint?.label == "VR-NetKey or alias")
 		#expect(Self.bank("99999999", "Volksbank Musterstadt", "https://fints.atruvia.example/").loginHint == nil)
 		#expect(Self.bank("30060601", "Deutsche Apotheker- und Ärztebank eG", "https://fints.apobank.de/FinTs30PinTanHttpGate").loginHint == nil)
 	}

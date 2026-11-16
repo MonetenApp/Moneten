@@ -279,7 +279,6 @@ public enum ChallengeProgress: Sendable, Equatable {
 	case challenge(TANMethod.Delivery)
 }
 
-/// What the entry field of a TAN or code accepts.
 /// The field for the name of a TAN medium that may stay empty, with the hint of the bank when to fill it in.
 public struct TANMediumName: Sendable, Equatable {
 	public let label: String
@@ -291,6 +290,7 @@ public struct TANMediumName: Sendable, Equatable {
 	}
 }
 
+/// What the entry field of a TAN or code accepts.
 public struct TANField: Sendable, Equatable {
 	public let label: String
 	/// The allowed number of characters, or nil for any text.

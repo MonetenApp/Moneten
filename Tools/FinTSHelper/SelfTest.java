@@ -177,6 +177,9 @@ final class SelfTest {
 		expect("TAN medium asked once in a run", medium(null, "Handy|Karte 1", "Handy|Karte 1"), "Karte 1 Karte 1, asked 1");
 		expect("TAN medium of the last refresh", medium("Handy", "Handy|Karte 1"), "Handy, asked 0");
 		expect("TAN medium that the bank no longer offers", medium("Alte Karte", "Handy|Karte 1"), "Karte 1, asked 1");
+		expect("login name of the command replaces the stored one", restoredLogin("vrk12345678", "vrk12345678", "VRK12345678"), "VRK12345678 VRK12345678");
+		expect("customer ID of its own stays", restoredLogin("vrk12345678", "4711", "VRK12345678"), "VRK12345678 4711");
+		expect("stored login name without one in the command", restoredLogin("erika77", "erika77", null), "erika77 erika77");
 		expect("TAN medium without a list asked once in a run", medium(null, "", ""), "Karte 1 Karte 1, asked 1");
 		expect("TAN medium without a list from the last refresh", medium("Karte 1", ""), "Karte 1, asked 0");
 		expect("empty TAN medium without a list from the last refresh", medium("", ""), ", asked 0");
@@ -964,6 +967,20 @@ final class SelfTest {
 		FinTSHelper.Passport passport = new FinTSHelper.Passport();
 		FinTSHelper.Passport.loaded = null;
 		return passport;
+	}
+
+	/// The user ID and the customer ID of a passport from a state with `userId` and `customerId`, for a
+	/// command with the login name `user`.
+	static String restoredLogin(String userId, String customerId, String user) {
+		PassportData d = passportData();
+		d.userId = userId;
+		d.customerId = customerId;
+		FinTSHelper.Passport.loaded = d;
+		FinTSHelper.Passport.user = user;
+		FinTSHelper.Passport passport = new FinTSHelper.Passport();
+		FinTSHelper.Passport.loaded = null;
+		FinTSHelper.Passport.user = null;
+		return passport.getUserId() + " " + passport.getCustomerId();
 	}
 
 	/// The data of the passport of a made-up bank.

@@ -407,6 +407,10 @@ public class FinTSHelper {
 	/// state, which hbci4java reads in its constructor, before the fields of a subclass exist.
 	static final class Passport extends HBCIPassportPinTan {
 		static PassportData loaded;
+		/// The login name of the command, which replaces the user ID of the state, so that a login name that
+		/// the app sends in another form, such as a VR-Kennung in capitals, reaches the bank. A customer ID
+		/// that was the user ID follows it.
+		static String user;
 
 		record State(PassportData data, String tanMedium) { }
 
@@ -426,12 +430,13 @@ public class FinTSHelper {
 			setBLZ(d.blz);
 			setHost(d.host);
 			setPort(d.port);
-			setUserId(d.userId);
+			boolean replaced = present(user);
+			setUserId(replaced ? user : d.userId);
 			setSysId(d.sysId);
 			setBPD(d.bpd);
 			setUPD(d.upd);
 			setHBCIVersion(d.hbciVersion);
-			setCustomerId(d.customerId);
+			setCustomerId(replaced && (d.customerId == null || d.customerId.equalsIgnoreCase(d.userId)) ? user : d.customerId);
 			setFilterType(d.filter);
 			setAllowedTwostepMechanisms(d.twostepMechs);
 			setCurrentTANMethod(d.tanMethod);
@@ -1535,6 +1540,7 @@ public class FinTSHelper {
 			String state = string(command, "state");
 			Passport.State loaded = state == null ? null : Passport.deserialize(Base64.getDecoder().decode(state));
 			Passport.loaded = loaded == null ? null : loaded.data();
+			Passport.user = string(command, "user");
 			callback.tanMedium = loaded == null ? null : loaded.tanMedium();
 			while (!dialog(type, command, callback, Bank::new)) {
 				diagnostic("FinTSHelper: starting a new dialog after a change of the TAN method or a canceled challenge for older transactions");
