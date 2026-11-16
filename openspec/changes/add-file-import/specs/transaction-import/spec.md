@@ -424,6 +424,14 @@ The app SHALL let the user save the settings of the preview as a named profile. 
 - **AND** a profile with a negative known column position, such as -1, stays stored but is not applied
 - **AND** saving or renaming a readable profile preserves unknown fields, including "futureField" with the value 7 and unknown column mappings
 
+#### Scenario: A name held by an unreadable profile
+
+- **GIVEN** the profile "Future CSV" is stored with a payload version that this version of the app cannot read
+- **WHEN** the user types "Future CSV" as the profile name in the preview
+- **THEN** the preview says that a profile of this name cannot be read by this version and asks for another name
+- **AND** "Import" stays disabled until the user changes or clears the name
+- **AND** saving or renaming a readable profile to "Future CSV" fails and leaves the stored profile unchanged
+
 #### Scenario: Result describes the confirmed settings
 
 - **WHEN** a preview saves a new profile "Broker CSV" during an import
@@ -931,6 +939,13 @@ The app SHALL report a file that it cannot read with the file name, the line or 
 - **WHEN** line 17 of `umsaetze.csv` has the text "abc" in the amount column
 - **THEN** the app reports an error in the file `umsaetze.csv`, line 17, with the reason that the amount cannot be read
 - **AND** the account has no new transaction from this file
+
+#### Scenario: A quotation mark that is never closed
+
+- **GIVEN** a CSV file with the lines "Datum;Name;Betrag", "01.11.2026;Kiosk;-1,50", "02.11.2026;\"Shop;-2,00" and "03.11.2026;Bakery;-3,00"
+- **WHEN** the user imports the file
+- **THEN** the app imports nothing and reports "Line 3: A closing quotation mark is missing."
+- **AND** a quoted field "Miete\nNovember" that opens in line 2 and closes in line 3 reads as one field with a line break
 
 #### Scenario: Broken XML
 

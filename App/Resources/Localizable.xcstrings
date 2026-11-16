@@ -1209,6 +1209,16 @@
         }
       }
     },
+    "A saved profile named “%@” cannot be read by this version of Moneten. Choose another name." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein gespeichertes Profil namens „%@“ kann von dieser Version von Moneten nicht gelesen werden. Wählen Sie einen anderen Namen."
+          }
+        }
+      }
+    },
     "A search term is missing after %@%@." : {
       "localizations" : {
         "de" : {
