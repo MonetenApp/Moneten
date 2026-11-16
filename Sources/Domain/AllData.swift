@@ -700,6 +700,7 @@ private struct SavedSearchEntry: Codable {
 	var amount: Amount
 	var categoryID: UUID?
 	var accountID: UUID?
+	var accountGroupID: UUID?
 
 	init(_ s: SavedSearch) {
 		id = s.id
@@ -729,6 +730,7 @@ private struct SavedSearchEntry: Codable {
 		}
 		categoryID = s.bar.categoryID
 		accountID = s.bar.accountID
+		accountGroupID = s.bar.accountGroupID
 	}
 
 	func savedSearch() throws -> SavedSearch {
@@ -753,7 +755,12 @@ private struct SavedSearchEntry: Codable {
 		default: throw AllData.ReadError.damaged("\"\(amount.kind)\" is not an amount filter")
 		}
 		f.categoryID = categoryID
-		f.accountID = accountID
+		switch (accountID, accountGroupID) {
+		case let (id?, nil): f.account = .account(id)
+		case let (nil, id?): f.account = .group(id)
+		case (nil, nil): break
+		case (.some, .some): throw AllData.ReadError.damaged("the saved search has both an account and an account group")
+		}
 		return SavedSearch(id: id, name: name, position: position, period: try choice(), filter: f)
 	}
 

@@ -250,10 +250,14 @@ struct FilterBar: View {
 			if case .search = model.selection { separator }
 			switch model.selection {
 			case .category, .search:
-				filterMenu("Account:", title: model.filter.accountID.flatMap { model.ledger.account($0)?.name } ?? "Show All") {
-					Button("Show All") { model.filter.accountID = nil }
+				filterMenu("Account:", title: model.filter.account.flatMap { model.ledger.name(of: $0) } ?? "Show All") {
+					Button("Show All") { model.filter.account = nil }
 					Divider()
-					ForEach(model.ledger.accounts.sorted { $0.name < $1.name }) { a in Button(a.name) { model.filter.accountID = a.id } }
+					// The groups and accounts in the order of the sidebar. A menu item has no indentation of its own,
+					// so em spaces indent the rows of a group.
+					ForEach(model.ledger.accountTreeInSidebarOrder, id: \.item.id) { entry in
+						Button(String(repeating: "\u{2003}", count: entry.depth) + entry.item.name) { model.filter.account = entry.item.accountFilter }
+					}
 				}
 			default:
 				EmptyView()

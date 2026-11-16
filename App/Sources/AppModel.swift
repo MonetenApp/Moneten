@@ -1176,6 +1176,7 @@ final class AppModel {
 				let groups = ledger.groups.filter { $0.id != id }.map { g -> AccountGroup in var g = g; if g.parentID == id { g.parentID = nil }; return g }
 				let accounts = ledger.accounts.map { a -> Account in var a = a; if a.groupID == id { a.groupID = nil }; return a }
 				ledger.replace(groups: groups, accounts: accounts)
+				filter.dropMissing(in: ledger)
 				if selection == .group(id) { selection = nil }
 			}
 		} catch {

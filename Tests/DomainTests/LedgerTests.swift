@@ -36,6 +36,20 @@ struct LedgerTests {
 		#expect(l.nextTreePosition(in: sub.id) == 0)
 	}
 
+	@Test("The Account menu lists the groups and accounts in sidebar order, each with the number of groups above it")
+	func accountMenuOrder() {
+		let top = AccountGroup(name: "Private", position: 1)
+		let sub = AccountGroup(name: "Old banks", parentID: top.id, position: 1)
+		let cash = Account(position: 0, name: "Cash", kind: .cash, source: .offline)
+		let first = Account(groupID: top.id, position: 0, name: "Giro", kind: .giro, source: .offline)
+		let inSub = Account(groupID: sub.id, position: 0, name: "Savings", kind: .savings, source: .offline)
+		let last = Account(groupID: top.id, position: 2, name: "Card", kind: .creditCard, source: .offline)
+		let l = Ledger(groups: [sub, top], accounts: [last, inSub, first, cash])
+		let entries = l.accountTreeInSidebarOrder
+		#expect(entries.map(\.item.id) == [cash.id, top.id, first.id, sub.id, inSub.id, last.id])
+		#expect(entries.map(\.depth) == [0, 0, 1, 1, 2, 1])
+	}
+
 	@Test("A migrated or offline account follows its transactions, and an account with a bank access shows the bank balance")
 	func balanceSource() {
 		let wallet = Account(position: 0, name: "Wallet", kind: .other, source: .migrated, bankBalanceMinor: 13_320, initialBalanceMinor: 13_320)
@@ -662,17 +676,25 @@ struct LedgerTests {
 	@Test("A filter on a category or an account that the ledger no longer has goes back to Show All")
 	func dropMissingFilters() {
 		let card = Account(position: 1, name: "Credit card", kind: .creditCard, source: .offline)
+		let group = AccountGroup(name: "Private", position: 0)
 		var f = TransactionFilter()
 		f.categoryID = food.id
-		f.accountID = card.id
+		f.account = .account(card.id)
 		f.status = .unchecked
 		var kept = f
 		kept.dropMissing(in: Ledger(accounts: [giro, card], categories: [food]))
 		#expect(kept == f)
 		f.dropMissing(in: Ledger(accounts: [giro], categories: []))
 		#expect(f.categoryID == nil)
-		#expect(f.accountID == nil)
+		#expect(f.account == nil)
 		#expect(f.status == .unchecked)
+		f.account = .group(group.id)
+		f.dropMissing(in: Ledger(groups: [group], accounts: [giro]))
+		#expect(f.account == .group(group.id))
+		// A group with the identifier of an account is not that account.
+		f.account = .group(giro.id)
+		f.dropMissing(in: Ledger(groups: [group], accounts: [giro]))
+		#expect(f.account == nil)
 	}
 
 	@Test("Uncategorized holds every transaction without a category")
@@ -1003,13 +1025,13 @@ struct LedgerTests {
 		let twelveMonths = DayRange(start: Day(year: 2025, month: 11, day: 10), end: Day(year: 2026, month: 11, day: 9))
 		var f = TransactionFilter()
 		f.categoryID = groceries.id
-		f.accountID = card.id
+		f.account = .account(card.id)
 		f.status = .unchecked
 		f.period = twelveMonths
 		for scope in [LedgerScope.account(giro.id), .accountGroup(UUID())] {
 			var reset = f
 			reset.resetHidden(in: scope)
-			#expect(reset.accountID == nil)
+			#expect(reset.account == nil)
 			#expect(reset.categoryID == groceries.id)
 			#expect(reset.status == .unchecked)
 			#expect(reset.period == twelveMonths)
@@ -1017,7 +1039,7 @@ struct LedgerTests {
 		var reset = f
 		reset.resetHidden(in: .category(food.id))
 		#expect(reset.categoryID == nil)
-		#expect(reset.accountID == card.id)
+		#expect(reset.account == .account(card.id))
 		#expect(reset.status == .unchecked)
 		#expect(reset.period == twelveMonths)
 	}
@@ -1031,7 +1053,7 @@ struct LedgerTests {
 		f.status = .unchecked
 		f.amount = .range(min: -500, max: -100)
 		f.categoryID = food.id
-		f.accountID = giro.id
+		f.account = .account(giro.id)
 		let data = SavedFilterBar(period: .custom(start, end), filter: f).data
 		let saved = try #require(SavedFilterBar(data: data))
 		#expect(saved.period == .custom(start, end))
@@ -1058,7 +1080,7 @@ struct LedgerTests {
 		var f = TransactionFilter()
 		f.status = .checked
 		f.categoryID = UUID()
-		f.accountID = UUID()
+		f.account = .account(UUID())
 		let saved = try #require(SavedFilterBar(data: SavedFilterBar(period: .all, filter: f).data))
 		var expected = TransactionFilter()
 		expected.status = .checked
