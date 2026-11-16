@@ -17,11 +17,13 @@ final class CrashReportController: NSObject, MXMetricManagerSubscriber {
 
 	static var appVersion: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Unknown" }
 
-	init(folder: DataFolder) {
+	/// `writes` is false in a second running copy of the app, which leaves the files of the data folder alone.
+	init(folder: DataFolder, writes: Bool) {
 		// Only a run with its own data folder keeps the key there, so the real crash reports keep theirs in the
 		// Keychain also when the debug harness drives the real data folder.
 		store = CrashReportStore(folder: folder, keyInFolder: DataFolder.requestedPath != nil)
 		super.init()
+		guard writes else { return }
 		do {
 			let start = Date()
 			let directory = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/DiagnosticReports")

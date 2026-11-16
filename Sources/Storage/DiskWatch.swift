@@ -20,8 +20,6 @@ final class DiskWatch: TransactionObserver, Sendable {
 		/// `PRAGMA data_version` when the store opened.
 		var otherCommits = 0
 		var changed = false
-		/// A re-key that fails makes SQLite drop its cache, which moves `PRAGMA data_version` too.
-		var paused = false
 	}
 
 	/// The device and the inode of the file at a path. A file put in its place has another inode.
@@ -69,19 +67,6 @@ final class DiskWatch: TransactionObserver, Sendable {
 		if try isChanged(db) { throw DatabaseChangedOnDisk(path: path) }
 	}
 
-	/// Runs `body` without the watch, and takes the version afterwards as the store's own.
-	func paused<T>(_ queue: DatabaseQueue, _ body: () throws -> T) throws -> T {
-		state.withLock { $0.paused = true }
-		defer {
-			let otherCommits = try? queue.read { db in try Self.otherCommits(db) }
-			state.withLock {
-				if let otherCommits { $0.otherCommits = otherCommits }
-				$0.paused = false
-			}
-		}
-		return try body()
-	}
-
 	/// Refuses every write from now on, for a connection whose keys no longer match the file.
 	func refuseWrites() {
 		state.withLock { $0.changed = true }
@@ -97,7 +82,7 @@ final class DiskWatch: TransactionObserver, Sendable {
 		let otherCommits = try Self.otherCommits(db)
 		let identity = FileIdentity(path: path)
 		return state.withLock { state in
-			if !state.paused, otherCommits != state.otherCommits || identity != state.identity { state.changed = true }
+			if otherCommits != state.otherCommits || identity != state.identity { state.changed = true }
 			return state.changed
 		}
 	}
@@ -105,8 +90,8 @@ final class DiskWatch: TransactionObserver, Sendable {
 	@discardableResult
 	private func markChanged() -> Bool {
 		state.withLock { state in
-			if !state.paused { state.changed = true }
-			return state.changed
+			state.changed = true
+			return true
 		}
 	}
 
@@ -119,7 +104,7 @@ final class DiskWatch: TransactionObserver, Sendable {
 
 	/// A write that bypassed `Store.write`, such as one that a test makes, still lands in no other file.
 	func databaseWillCommit() throws {
-		let replaced = state.withLock { !$0.paused && ($0.changed || FileIdentity(path: path) != $0.identity) }
+		let replaced = state.withLock { $0.changed || FileIdentity(path: path) != $0.identity }
 		if replaced {
 			markChanged()
 			throw DatabaseChangedOnDisk(path: path)

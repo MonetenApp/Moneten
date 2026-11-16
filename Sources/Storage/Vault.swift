@@ -268,21 +268,18 @@ public struct Vault: Sendable {
 	/// password too. The random key stays in the Keychain while a copy still needs it. See "Set the first
 	/// password" in the design of add-encrypted-database.
 	public func setPassword(_ password: String, on store: Store) throws {
-		let randomKey = try keychain { try read(keyKeychain, legacy: legacyKeyKeychain) }
+		// Without the random key a failed re-key could not be undone, so nothing changes.
+		guard let randomKey = try keychain({ try read(keyKeychain, legacy: legacyKeyKeychain) }) else { throw Failure.keyNotInKeychain(nil) }
 		try removeWorkFilesFirst()
-		var kept: [String] = []
-		if let randomKey {
-			let plan = try planRekey(from: randomKey)
-			// A copy that is not listed could later not be told apart from a backup of a renamed database.
-			guard plan.unreadable.isEmpty else { throw Failure.copiesUnreadable(plan.unreadable) }
-			let earlier = try rekeyList()
-			try writeRekeyList(plan.toRekey + earlier)
-			try rekeyDatabase(store, from: randomKey, to: password, restoringList: earlier)
-			kept = rekeyCopies(plan.toRekey, from: randomKey, to: password, removingFailures: false)
-		} else {
-			// Without the random key the vault cannot check the file afterwards, so the re-key only stays out of the watch.
-			try store.diskWatch.paused(store.queue) { try store.queue.write { db in try db.changePassphrase(password) } }
-		}
+		let plan = try planRekey(from: randomKey)
+		// A copy that is not listed could later not be told apart from a backup of a renamed database.
+		guard plan.unreadable.isEmpty else { throw Failure.copiesUnreadable(plan.unreadable) }
+		// A file that changed outside the app is not re-keyed, and no copy is listed for it.
+		if store.isChangedOnDisk() { throw DatabaseChangedOnDisk(path: folder.databaseFile.path) }
+		let earlier = try rekeyList()
+		try writeRekeyList(plan.toRekey + earlier)
+		try rekeyDatabase(store, from: randomKey, to: password, restoringList: earlier)
+		let kept = rekeyCopies(plan.toRekey, from: randomKey, to: password, removingFailures: false)
 		do {
 			if FileManager.default.fileExists(atPath: noPasswordMarker.path) { try FileManager.default.removeItem(at: noPasswordMarker) }
 			if kept.isEmpty { try deleteRandomKey() }
@@ -302,6 +299,7 @@ public struct Vault: Sendable {
 		let plan = try planRekey(from: current)
 		// Nobody could tell later whether a copy that cannot be read now still opens with the current password.
 		guard plan.unreadable.isEmpty else { throw Failure.copiesUnreadable(plan.unreadable) }
+		if store.isChangedOnDisk() { throw DatabaseChangedOnDisk(path: folder.databaseFile.path) }
 		let earlier = try rekeyList()
 		try writeRekeyList(plan.toRekey + earlier)
 		try rekeyDatabase(store, from: current, to: new, restoringList: earlier)
@@ -314,46 +312,77 @@ public struct Vault: Sendable {
 		if !notUpdated.isEmpty { throw Failure.copiesNotUpdated(notUpdated) }
 	}
 
-	/// Gives the database the new key, or leaves it with the old one. SQLCipher keeps writing with the new key
-	/// when a re-key fails before its commit, for example on a full disk, while the file keeps the old key. The
-	/// next save would then mix both keys in one file, which neither opens. So a fresh connection checks which
-	/// key the file has, and the open connection goes back to the old key when the change did not happen.
-	/// When the commit itself fails, SQLCipher also reads with the new key, and nothing brings the connection
-	/// back. The exclusive lock keeps other programs from failing the commit: one that reads the database stops
-	/// the change before SQLCipher touches a key.
-	private func rekeyDatabase(_ store: Store, from old: String, to new: String, restoringList earlier: [String]) throws {
-		// A file that changed outside the app is not re-keyed, so the app loads it again first.
-		if store.isChangedOnDisk() { throw DatabaseChangedOnDisk(path: folder.databaseFile.path) }
+	private enum RekeyOutcome {
+		case done
+		/// The database and the connection have the old key.
+		case unchanged(String)
+		case changedOnDisk(DatabaseChangedOnDisk)
+		/// No fresh connection could tell which key the file has. The store refuses every write.
+		case unknown(String)
+	}
+
+	/// Gives the database the new key, or leaves it with the old one. See "Re-key the database" in the design of
+	/// add-encrypted-database. SQLCipher keeps writing with the new key when a re-key fails before its commit, for
+	/// example on a full disk, while the file keeps the old key, and a failed commit makes it read with the new key
+	/// too. The next save would then mix both keys in one file, which neither opens. So the re-key runs under an
+	/// exclusive lock in the rollback journal, a fresh connection checks which key the file has, the open
+	/// connection goes back to the old key only when the file proves to have it, and every other result refuses
+	/// all writes of the store.
+	func rekeyDatabase(_ store: Store, from old: String, to new: String, restoringList earlier: [String]) throws {
 		// One access to the queue for the re-key and its recovery, so that no other write of the store, such as a
 		// refresh that waits, runs while the connection reads with one key and writes with the other.
-		let detail: String? = try store.diskWatch.paused(store.queue) {
-			try store.queue.inDatabase { db in
-				var failure: (any Error)?
-				do {
-					try db.inTransaction(.exclusive) {
-						try db.changePassphrase(new)
-						return .commit
-					}
-				} catch {
-					failure = error
-				}
-				if verify(password: new) { return nil }
-				// Only a file that still has the old key gets the connection back to it. A re-key to the key that the
-				// file has rewrites every page with it, and even when that fails, both keys of the connection are the old one.
-				guard verify(password: old) else { throw Failure.unreadable(failure.map { String(describing: $0) } ?? "") }
-				try? db.inTransaction {
-					try db.changePassphrase(old)
+		let outcome: RekeyOutcome = store.queue.inDatabase { db in
+			// In WAL a reader of another program does not stop BEGIN EXCLUSIVE. Leaving WAL needs every other
+			// connection closed, so a program that has the file open in WAL stops the change here.
+			let mode: String?
+			do { mode = try String.fetchOne(db, sql: "PRAGMA journal_mode = DELETE") } catch { return .unchanged(String(describing: error)) }
+			guard mode == "delete" else { return .unchanged(String(localized: "Another program has the database open.")) }
+			var started = false
+			var failure: (any Error)?
+			do {
+				try db.inTransaction(.exclusive) {
+					// Under the exclusive lock no other program commits until the re-key ends.
+					try store.diskWatch.checkBeforeWrite(db)
+					started = true
+					try db.changePassphrase(new)
 					return .commit
 				}
-				// After a failed commit SQLCipher reads with the new key, and nothing brings the connection back. It then
-				// reads nothing, and the store refuses every write until the app opens the database again.
-				if (try? Int.fetchOne(db, sql: "SELECT count(*) FROM sqlite_master")) == nil { store.diskWatch.refuseWrites() }
-				return failure.map { String(describing: $0) } ?? String(localized: "The database did not take the new password.")
+			} catch let changed as DatabaseChangedOnDisk {
+				return .changedOnDisk(changed)
+			} catch {
+				failure = error
 			}
+			let detail = failure.map { String(describing: $0) } ?? String(localized: "The database did not take the new password.")
+			// SQLCipher touched no key when the transaction did not start, for example while another program reads.
+			guard started else { return .unchanged(detail) }
+			if verify(password: new) { return .done }
+			guard verify(password: old) else {
+				store.diskWatch.refuseWrites()
+				return .unknown(detail)
+			}
+			// A re-key to the key that the file has sets the writing key back to it. Even when that re-key fails
+			// before its commit, both keys of the connection are the old one.
+			try? db.inTransaction {
+				try db.changePassphrase(old)
+				return .commit
+			}
+			// After a failed commit SQLCipher reads with the new key, and nothing brings the connection back. It then
+			// reads nothing, and the store refuses every write until the app opens the database again.
+			if (try? Int.fetchOne(db, sql: "SELECT count(*) FROM sqlite_master")) == nil { store.diskWatch.refuseWrites() }
+			return .unchanged(detail)
 		}
-		guard let detail else { return }
-		try? writeRekeyList(earlier)
-		throw Failure.passwordNotChanged(detail)
+		switch outcome {
+		case .done: return
+		case let .changedOnDisk(changed):
+			try? writeRekeyList(earlier)
+			throw changed
+		case let .unchanged(detail):
+			try? writeRekeyList(earlier)
+			throw Failure.passwordNotChanged(detail)
+		case let .unknown(detail):
+			// The list stays, so the next open settles the copies with whichever key the database has.
+			throw Failure.unreadable(detail)
+		}
 	}
 
 	/// Checks a password without keeping the database open.

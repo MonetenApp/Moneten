@@ -120,7 +120,7 @@ final class AppModel {
 	}
 
 	let vault = Vault(folder: .current)
-	let crashes = CrashReportController(folder: .current)
+	let crashes: CrashReportController
 	/// The refreshes of the bank accesses and their dialogs.
 	let sync = SyncCoordinator(broker: SessionBroker(defaults: .standard, scope: DataFolder.current.databaseFile.path))
 	/// The FinTS connector of the setup and of every refresh.
@@ -358,6 +358,11 @@ final class AppModel {
 	private var idleTimer: Timer?
 
 	init() {
+		// The lock of the data folder comes before every service that writes into it, such as the crash reports, so a
+		// second running copy changes no file there.
+		let lock = try? DataFolderLock(folder: .current)
+		crashes = CrashReportController(folder: .current, writes: lock != nil)
+		folderLock = lock
 		Preference.registerDefaults()
 		autoRefresh = AutoRefresh(settings: refreshSettings, now: Self.refreshClock)
 		announcer = NewTransactionsAnnouncer(settings: refreshSettings, center: notices)
@@ -692,17 +697,11 @@ final class AppModel {
 		} catch let failure as Vault.Failure where failure.passwordChanged {
 			alert = AlertMessage(title: String(localized: "The password has been changed."), message: String(describing: failure))
 			return nil
-		} catch let failure as Vault.Failure {
-			if case .passwordNotChanged = failure {
-				// A store that refuses writes after a failed re-key needs the database loaded again.
-				checkDisk()
-				return failure.description
-			}
-			return String(localized: "Could not change password of database. \(String(describing: failure))")
-		} catch let failure as DatabaseChangedOnDisk {
-			checkDisk()
-			return failure.description
 		} catch {
+			// A store that refuses writes after a failed re-key, or a file that changed, needs the database loaded again.
+			checkDisk()
+			if case .passwordNotChanged? = error as? Vault.Failure { return String(describing: error) }
+			if error is DatabaseChangedOnDisk { return String(describing: error) }
 			return String(localized: "Could not change password of database. \(String(describing: error))")
 		}
 	}

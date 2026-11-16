@@ -42,7 +42,7 @@ public final class DataFolderLock: Sendable {
 		public var description: String {
 			switch self {
 			case let .inUse(path):
-				String(localized: "The database is in use by another application. Quit the other copy of Moneten and start Moneten again.\n\n\(path)")
+				String(localized: "The database is in use by another application. Quit the other copy of Moneten, then click Try Again.\n\n\(path)")
 			case let .notLocked(detail):
 				String(localized: "Could not open database.\n\n\(detail)")
 			}

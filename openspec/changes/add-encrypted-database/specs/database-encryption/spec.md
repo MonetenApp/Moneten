@@ -96,6 +96,13 @@ The app SHALL offer "Set Database Password..." in the application menu and in th
 - **THEN** the app shows that the password has been set and names the path of the backup copy
 - **AND** the random key in the Keychain still opens the backup copy
 
+#### Scenario: The random key is gone from the Keychain
+
+- **GIVEN** a database without a password whose random key another program removed from the Keychain while the app runs
+- **WHEN** the user sets the password "korrekt-pferd-batterie"
+- **THEN** the app shows that the key of the database could not be read from the Keychain
+- **AND** the database keeps the random key and every later save opens with it
+
 ### Requirement: The new password is entered twice
 
 The app SHALL ask for a new password in the fields "New password" and "Repeat new password" and accept it only when both fields hold the same text. Any text that is not empty is a valid password.

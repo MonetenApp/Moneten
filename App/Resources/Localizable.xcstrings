@@ -9679,12 +9679,12 @@
       },
       "extractionState" : "manual"
     },
-    "The database is in use by another application. Quit the other copy of Moneten and start Moneten again.\n\n%@" : {
+    "The database is in use by another application. Quit the other copy of Moneten, then click Try Again.\n\n%@" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Die Datenbank wird von einem anderen Programm verwendet. Beenden Sie die andere Kopie von Moneten und starten Sie Moneten erneut.\n\n%@"
+            "value" : "Die Datenbank wird von einem anderen Programm verwendet. Beenden Sie die andere Kopie von Moneten und klicken Sie dann auf „Erneut versuchen“.\n\n%@"
           }
         }
       },

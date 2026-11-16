@@ -180,6 +180,29 @@ struct DatabaseGuardTests {
 		#expect(vault.verify(password: "alt-und-lang-genug"))
 	}
 
+	@Test("A commit of another program right before the re-key stops it, and the commit stays")
+	func foreignCommitBeforeRekey() throws {
+		let vault = Vault(folder: folder)
+		let store = try vault.create(password: "alt-und-lang-genug", starterCategories: [])
+		try store.save(account("Giro"))
+		// The commit lands after the checks of the password change and before its exclusive lock.
+		var config = Configuration()
+		config.prepareDatabase { db in try db.usePassphrase("alt-und-lang-genug") }
+		let other = try DatabaseQueue(path: folder.databaseFile.path, configuration: config)
+		try other.write { db in try db.execute(sql: "UPDATE account SET name = 'Fremd'") }
+		try other.close()
+
+		#expect(throws: DatabaseChangedOnDisk.self) {
+			try vault.rekeyDatabase(store, from: "alt-und-lang-genug", to: "neu-und-noch-laenger", restoringList: [])
+		}
+		#expect(store.isChangedOnDisk())
+		try store.close()
+		#expect(!vault.verify(password: "neu-und-noch-laenger"))
+		let reopened = try vault.open(password: "alt-und-lang-genug")
+		#expect(try reopened.loadLedger().accounts.map(\.name) == ["Fremd"])
+		try reopened.close()
+	}
+
 	@Test("Loading the database again gives a store that writes into the new file")
 	func loadAgain() throws {
 		let vault = Vault(folder: folder)
