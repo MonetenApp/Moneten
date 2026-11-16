@@ -44,7 +44,8 @@ final class Notices: NSObject, NoticeCenter, UNUserNotificationCenterDelegate {
 	}
 
 	func play(_ tone: NewTransactionsNotice.Tone) {
-		NSSound(named: tone.rawValue)?.play()
+		let played = NSSound(named: tone.rawValue)?.play() ?? false
+		DebugHarness.shared?.log("sound \(tone.rawValue) played=\(played)")
 	}
 
 	static func soundFile(_ tone: NewTransactionsNotice.Tone) -> String { "\(tone.rawValue).wav" }

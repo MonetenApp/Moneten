@@ -10,6 +10,7 @@
 # refreshes: the second refresh fails "Tagesgeld" with an error of the bank, and the others succeed.
 # The login and every refresh send the notice of the bank about maintenance.
 # A refresh of the full history, the first one and an enforced one, brings one more "Girokonto" row from 30 days ago.
+# The login "neu" brings one more "Girokonto" row with each refresh, a deposit on even runs and a withdrawal on odd ones.
 # The login "unterkonten" lists two subaccounts of the account number 9 in place of these accounts.
 # The login "depot" lists "Girokonto" and three securities accounts: "Depot", whose refresh brings its value
 # and four positions (a share with a purchase price, a fund without one, a share in US dollars with an
@@ -145,7 +146,13 @@ case "$cmd" in
 		*'"from":"'*) from="\"$(day 90)\""; oldest= ;;
 		*) from=null; oldest="{\"booked\":\"$(day 30)\",\"value\":\"$(day 30)\",\"amount\":\"-9.90\",\"currency\":\"EUR\",\"name\":\"Musterbank\",\"purpose\":\"Kontoführung\",\"pending\":false}," ;;
 		esac
-		echo "{\"type\":\"result\",\"account\":\"DE02120300000000202051\",\"balance\":{\"amount\":\"2340.15\",\"currency\":\"EUR\",\"date\":\"$(day 0)\"},\"transactions\":{\"from\":$from,\"rows\":[$oldest{\"booked\":\"$(day 9)\",\"value\":\"$(day 9)\",\"amount\":\"3200.00\",\"currency\":\"EUR\",\"name\":\"Beispiel GmbH\",\"iban\":\"DE02120300000000202051\",\"purpose\":\"Gehalt November\",\"bookingText\":\"GUTSCHRIFT\",\"pending\":false},{\"booked\":\"$(day 4)\",\"value\":\"$(day 4)\",\"amount\":\"-950.00\",\"currency\":\"EUR\",\"name\":\"Wohnbau Musterstadt eG\",\"purpose\":\"Miete\",\"endToEnd\":\"MIETE-2026-11\",\"bookingText\":\"DAUERAUFTRAG\",\"pending\":false},{\"booked\":\"$(day 1)\",\"value\":\"$(day 1)\",\"amount\":\"-42.50\",\"currency\":\"EUR\",\"name\":\"Tankstelle Beispiel\",\"purpose\":\"Kartenzahlung\",\"pending\":true}]},\"errors\":[]}"
+		# The login "neu" gets one more row booked today with each refresh: a deposit on even runs, a withdrawal on odd ones.
+		extra=
+		case "$cmd" in *'"user":"neu"'*)
+			sign=; [ $(( ${runs:-0} % 2 )) = 1 ] && sign=-
+			extra=",{\"booked\":\"$(day 0)\",\"value\":\"$(day 0)\",\"amount\":\"${sign}25.00\",\"currency\":\"EUR\",\"name\":\"Max Mustermann\",\"purpose\":\"Umbuchung ${runs:-0}\",\"pending\":false}"
+		;; esac
+		echo "{\"type\":\"result\",\"account\":\"DE02120300000000202051\",\"balance\":{\"amount\":\"2340.15\",\"currency\":\"EUR\",\"date\":\"$(day 0)\"},\"transactions\":{\"from\":$from,\"rows\":[$oldest{\"booked\":\"$(day 9)\",\"value\":\"$(day 9)\",\"amount\":\"3200.00\",\"currency\":\"EUR\",\"name\":\"Beispiel GmbH\",\"iban\":\"DE02120300000000202051\",\"purpose\":\"Gehalt November\",\"bookingText\":\"GUTSCHRIFT\",\"pending\":false},{\"booked\":\"$(day 4)\",\"value\":\"$(day 4)\",\"amount\":\"-950.00\",\"currency\":\"EUR\",\"name\":\"Wohnbau Musterstadt eG\",\"purpose\":\"Miete\",\"endToEnd\":\"MIETE-2026-11\",\"bookingText\":\"DAUERAUFTRAG\",\"pending\":false},{\"booked\":\"$(day 1)\",\"value\":\"$(day 1)\",\"amount\":\"-42.50\",\"currency\":\"EUR\",\"name\":\"Tankstelle Beispiel\",\"purpose\":\"Kartenzahlung\",\"pending\":true}$extra]},\"errors\":[]}"
 	;; esac
 	echo '{"type":"progress","done":1,"of":3}'
 	case "$cmd" in *'"id":"1234567890"'*)
