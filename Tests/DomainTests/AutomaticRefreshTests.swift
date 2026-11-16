@@ -88,18 +88,20 @@ struct AutomaticRefreshTests {
 		#expect(ledger.refreshAccounts(.account(giro.id)).mapValues { $0.map(\.name) } == [Self.access: ["Giro"]])
 	}
 
+	/// A failure, whether it waits for a manual refresh, and whether its error names "Edit Login Data...".
 	@Test("Only failures that the user must resolve wait for a manual refresh", arguments: [
-		(SyncFailure.needsUser(.pin), true), (.needsUser(.secondFactor), true), (.needsUser(.login), true), (.needsUser(.allowHost), true),
-		(.pinRejected(BankMessage(code: "9942", text: "PIN falsch")), true), (.loginRejected, true),
-		(.accessBlocked(BankMessage(code: "9931", text: "Zugang gesperrt")), true),
-		(.network("timeout"), false), (.bank(BankMessage(code: "9010", text: "Zugang vorübergehend gesperrt")), false), (.notFetched, false),
-		(.tanRejected(BankMessage(text: "TAN falsch")), false), (.challengeExpired, false), (.offline, false),
+		(SyncFailure.needsUser(.pin), true, false), (.needsUser(.secondFactor), true, false), (.needsUser(.login), true, false),
+		(.needsUser(.allowHost), true, false), (.pinRejected(BankMessage(code: "9942", text: "PIN falsch")), true, false), (.loginRejected, true, false),
+		(.accessBlocked(BankMessage(code: "9931", text: "Zugang gesperrt")), true, false),
+		(.network("timeout"), false, false), (.bank(BankMessage(code: "9010", text: "Zugang vorübergehend gesperrt")), false, true), (.notFetched, false, false),
+		(.tanRejected(BankMessage(text: "TAN falsch")), false, false), (.challengeExpired, false, true), (.offline, false, false),
 	])
-	func failureWaitsForUser(failure: SyncFailure, waits: Bool) {
+	func failureWaitsForUser(failure: SyncFailure, waits: Bool, suggestsEditLoginData: Bool) {
 		let at = Self.eight
 		let id = UUID()
 		let refreshes = SyncState.failed(failure).accountRefreshes(of: [id], notices: [], at: at)
-		#expect(refreshes == [id: .failed(RefreshError(message: failure.message, code: failure.bankMessage?.code, date: at, waitsForUser: waits))])
+		#expect(refreshes == [id: .failed(RefreshError(message: failure.message, code: failure.bankMessage?.code, date: at, waitsForUser: waits,
+			suggestsEditLoginData: suggestsEditLoginData))])
 	}
 
 	@Test("An error stored before the mark existed does not wait for the user")

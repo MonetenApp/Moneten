@@ -197,6 +197,16 @@ public final class SessionBroker {
 		if save || savedPINs.contains(access) { try writeSavedPIN(pin, of: access) }
 	}
 
+	/// Keeps the PIN of a login that "Edit Login Data..." just stored, together with the saved PIN of the
+	/// access, in the database: `saved` says whether that saved the PIN or deleted the saved one. Nothing is
+	/// written here, so the marks in memory always follow the database, and a later rejection deletes a saved PIN.
+	public func adopt(_ pin: Secret, for access: UUID, saved: Bool) {
+		pins[access] = pin
+		toSave.remove(access)
+		undeleted.remove(access)
+		if saved { savedPINs.insert(access) } else { savedPINs.remove(access) }
+	}
+
 	/// "Remove saved PIN": deletes the saved PIN of an access, for all its accounts, and forgets it, so the
 	/// next refresh asks.
 	public func removeSavedPIN(of access: UUID) throws {
@@ -233,6 +243,12 @@ public final class SessionBroker {
 			if !savedPINs.contains(access) { pins[access] = nil }
 			loginData[access] = nil
 		}
+	}
+
+	/// A login with the PIN of the access outside a refresh ended, such as "Look for New Accounts...": the PIN
+	/// in memory and a saved PIN follow the same rules as at the end of a refresh.
+	func loginEnded(_ access: UUID, succeeded: Bool) {
+		refreshEnded(access, with: succeeded ? .finish(SyncSummary(finishedAt: Date(), fetched: [], failures: [:])) : .cancel)
 	}
 
 	/// The access went on or ended, so its dialog no longer waits for a challenge.

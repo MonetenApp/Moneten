@@ -113,6 +113,11 @@ final class DebugHarness {
 		case "synccancel": model.sync.cancelAll()
 		// "<field> <value>" drives the "Add Account" assistant: entry, choose, login, pin, save, other, group, next, back, toggle, connect, cancel.
 		case "setup": setup(argument)
+		// "<account name>": "Look for New Accounts..." and "Edit Login Data..." on the account with a bank access, which "setup" then drives.
+		case "lookfornew", "editlogin":
+			guard let account = model.ledger.accounts.first(where: { $0.name == argument && $0.accessID != nil }) else { return log("", ("", .choice(command, of: ["lookfornew", "editlogin"])), ("", .word("no account"))) }
+			if command == "lookfornew" { model.lookForNewAccounts(account: account.id) } else { model.editLoginData(account: account.id) }
+			log("", ("", .choice(command, of: ["lookfornew", "editlogin"])), ("setup", .flag(model.setup != nil)))
 		// "<name>": a migrated giro account without an access, with the test IBAN of the made-up bank.
 		case "migrated":
 			model.save(account: Account(position: model.ledger.nextTreePosition(in: nil), name: argument, kind: .giro, source: .migrated,
@@ -199,7 +204,8 @@ final class DebugHarness {
 			// By the position and the kind of the account, as in "status", never by its name.
 			let accounts = model.ledger.accounts.filter { $0.accessID != nil }
 			if let position = accounts.firstIndex(where: { $0.name == argument }), let error = accounts[position].refreshError {
-				offscreenSnapshot(RefreshErrorPopover(account: accounts[position], error: error), width: 352, name: "\(position)", kind: "error",
+				let edit: (() -> Void)? = error.suggestsEditLoginData && model.fintsAccess(of: accounts[position].id) != nil ? {} : nil
+				offscreenSnapshot(RefreshErrorPopover(account: accounts[position], error: error, editLoginData: edit), width: 352, name: "\(position)", kind: "error",
 					("account", .position(position)), ("kind", .state(accounts[position].kind)))
 			}
 		case "extrun": runExtension(argument)
@@ -369,6 +375,8 @@ final class DebugHarness {
 			}
 		case "symbolsnapshot":
 			offscreenSnapshot(SymbolGrid(selection: "cart.fill", color: .green, isGroup: false) { _ in }, width: 360, name: argument, kind: "symbols")
+		// "<name>": the help of the bank step of "Add Account", drawn offscreen.
+		case "bankstephelpsnapshot": offscreenSnapshot(BankStepHelp(), width: 332, name: argument, kind: "bankstephelp")
 		case "rulehelpsnapshot":
 			offscreenSnapshot(RuleHelp(), width: 420, name: argument, kind: "rulehelp")
 			offscreenSnapshot(RuleHelp().defaultScrollAnchor(.bottom), width: 420, name: argument, kind: "rulehelp-end")
@@ -679,6 +687,7 @@ final class DebugHarness {
 		// The service of an extension by its hash, because an extension names its services.
 		log("setup", ("service", setup.service.map { .hash($0.title) } ?? .presence(false)), ("other", .count(setup.otherServices.count)),
 			("error", .presence(setup.serviceError != nil)))
+		log("setup", ("purpose", .state(setup.purpose)), ("listing", .flag(setup.isListing)), ("message", .presence(setup.listingMessage != nil)))
 		log(LogLine("setup", values: [("step", .state(setup.step)), ("entry", .flag(!setup.entry.isEmpty)), ("login", .flag(!setup.loginName.isEmpty)),
 			("highlighted", .position(setup.highlighted))] + Self.lookup(setup.lookup.state) + [("error", .presence(setup.loginError != nil)),
 			("saveError", .presence(setup.saveError != nil)), ("dialog", .flag(model.sync.broker.current != nil)), ("candidates", .count(setup.candidates.count)),

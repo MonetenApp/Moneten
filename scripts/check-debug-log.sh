@@ -335,6 +335,10 @@ poll "visible=[1-9]" state
 poll "^mainkey rejected$" mainkey "Erika Mustermann"
 poll "^filterbar rejected$" filterbar "Mustermann Erika"
 poll "^migrationfailure: unknown failure$" migrationfailure "$MIGRATION_UNKNOWN"
+# "Look for New Accounts..." on an account named in the argument: the log names neither the account nor the access.
+poll "^lookfornew setup=true$" lookfornew Girokonto
+poll "^setup purpose=newAccounts " setup ""
+send setup cancel
 send quit
 
 found=0

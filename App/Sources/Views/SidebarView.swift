@@ -205,6 +205,12 @@ struct AccountRow: View {
 						Button("Refresh Account (enforced)") { model.refresh(.account(account.id), enforced: true) }
 					}
 					.disabled(!model.canRefresh(.account(account.id)))
+				// An extension asks for its login data in its own dialog, and its setup adds only new accounts.
+				let isFinTS = model.fintsAccess(of: account.id) != nil
+				Button("Edit Login Data...") { model.editLoginData(account: account.id) }
+					.disabled(!isFinTS)
+				Button("Look for New Accounts...") { model.lookForNewAccounts(account: account.id) }
+					.disabled(!isFinTS)
 				Divider()
 			}
 			if account.isOffline {
