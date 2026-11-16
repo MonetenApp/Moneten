@@ -10,6 +10,7 @@ import Observation
 import Storage
 import Sync
 import SwiftUI
+import Synchronization
 
 enum SidebarSelection: Hashable {
 	case account(UUID)
@@ -139,6 +140,7 @@ final class AppModel {
 	/// The kind of the next change of `ledger`, for the trail.
 	@ObservationIgnored var ledgerChange = "edit"
 	@ObservationIgnored private var ledgerRevision = 0
+	@ObservationIgnored var migrationTask: Task<Void, Never>?
 	var exportTask: Task<Void, Never>?
 	var isTransferringTransactions: Bool { fileImport != nil || exportTask != nil }
 	@ObservationIgnored private var trailRows = 0
@@ -474,6 +476,7 @@ final class AppModel {
 		// The announcer locks first, because the cancel below can end the run at once.
 		announcer.lock(keeping: ledger)
 		fileImport?.cancel()
+		migrationTask?.cancel()
 		exportTask?.cancel()
 		if let result = importResult { result.window.sheetParent?.endSheet(result.window) }
 		autoRefresh.isUnlocked = false
@@ -1259,12 +1262,15 @@ final class AppModel {
 
 	// MARK: Migration
 
-	func runMigration(plan: MoneyMoneyMigration.Plan) async throws {
-		guard let store else { return }
-		let starters = replaceableStarterCategories
-		try store.save(groups: plan.groups, accounts: plan.accounts + plan.updatedAccounts, categories: plan.categories + plan.updatedCategories,
-			transactions: plan.transactions + plan.updatedTransactions, relinking: plan.relinkedDeletedRows)
-		for c in starters { try? store.deleteCategory(c.id) }
+	func runMigration(plan: MoneyMoneyMigration.Plan, progress: @escaping @Sendable (MoneyMoneyMigration.Progress) -> Void) async throws {
+		guard let store else { throw CancellationError() }
+		let starters = replaceableStarterCategories.map(\.id)
+		let canceled = Mutex(false)
+		try await withTaskCancellationHandler {
+			try Task.checkCancellation()
+			try await store.importMigration(plan, replacing: starters, isCanceled: { canceled.withLock { $0 } }, progress: progress)
+		} onCancel: { canceled.withLock { $0 = true } }
+		progress(.init(step: .finishing))
 		try await reloadAfterImport()
 	}
 
@@ -1272,18 +1278,26 @@ final class AppModel {
 	/// selects the first group when the selection is gone.
 	func reloadAfterImport() async throws {
 		guard let store else { return }
-		try await replacingTable {
-			let loaded = try store.loadLedger()
-			ledgerChange = "load"
-			ledger = loaded
-			accesses = Dictionary(uniqueKeysWithValues: try store.accesses().map { ($0.id, $0) })
-			filter.dropMissing(in: ledger)
-			if case let .category(id) = selection, ledger.category(id) == nil { selection = nil }
-			// A complete import replaces the account groups.
-			if case let .group(id) = selection, ledger.group(id) == nil { selection = nil }
-			if selection == nil {
-				selection = ledger.childGroups(of: nil).first.map { .group($0.id) } ?? ledger.accounts(inGroup: nil).first.map { .account($0.id) }
+		while true {
+			let revision = ledgerRevision
+			let (loaded, loadedAccesses) = try await Task.detached {
+				(try store.loadLedger(), try store.accesses())
+			}.value
+			guard self.store === store else { return }
+			let applied = await replacingTable {
+				guard ledgerRevision == revision else { return false }
+				ledgerChange = "load"
+				ledger = loaded
+				accesses = Dictionary(uniqueKeysWithValues: loadedAccesses.map { ($0.id, $0) })
+				filter.dropMissing(in: ledger)
+				if case let .category(id) = selection, ledger.category(id) == nil { selection = nil }
+				if case let .group(id) = selection, ledger.group(id) == nil { selection = nil }
+				if selection == nil {
+					selection = ledger.childGroups(of: nil).first.map { .group($0.id) } ?? ledger.accounts(inGroup: nil).first.map { .account($0.id) }
+				}
+				return true
 			}
+			if applied { return }
 		}
 	}
 

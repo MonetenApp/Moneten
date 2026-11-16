@@ -58,23 +58,36 @@ public final class Store: SavedPINStore {
 	public func save(groups: [AccountGroup] = [], accounts: [Account] = [], categories: [Domain.Category] = [], transactions: [Transaction] = [],
 		relinking relinks: [DeletedTransaction.Relink] = []) throws {
 		try queue.write { db in
-			for g in groups { try g.save(db) }
-			for a in accounts {
-				try a.save(db)
-				try a.portfolioValue()?.save(db)
-			}
-			for c in categories { try c.save(db) }
-			for t in transactions { try t.save(db) }
-			for r in relinks {
-				let d = r.row
-				try db.execute(sql: """
-					UPDATE deletedTransaction SET sourceID = ? WHERE rowid = (SELECT rowid FROM deletedTransaction WHERE accountID = ?
-						AND sourceID IS ? AND bookingDate = ? AND amountMinor = ? AND currency = ? AND isPending = ? AND purpose = ?
-						AND counterpartyIBAN IS ? AND endToEndReference IS ? AND wasFetched = ? AND fileIdentity IS ? LIMIT 1)
-					""", arguments: [r.sourceID, d.accountID, d.sourceID, d.bookingDate.rawValue, d.amountMinor, d.currency, d.isPending, d.purpose,
-						d.counterpartyIBAN, d.endToEndReference, d.wasFetched, d.fileIdentity])
-			}
+			try Self.save(groups: groups, accounts: accounts, categories: categories, transactions: transactions, relinking: relinks, in: db)
 		}
+	}
+
+	static func save(groups: [AccountGroup], accounts: [Account], categories: [Domain.Category], transactions: [Transaction],
+		relinking relinks: [DeletedTransaction.Relink], in db: Database, check: () throws -> Void = {}, progress: (Int, UUID?) -> Void = { _, _ in }) throws {
+		for g in groups { try check(); try g.save(db) }
+		for a in accounts {
+			try check()
+			try a.save(db)
+			try a.portfolioValue()?.save(db)
+		}
+		for c in categories { try check(); try c.save(db) }
+		progress(0, nil)
+		for (index, t) in transactions.enumerated() {
+			try check()
+			try t.save(db)
+			progress(index + 1, t.accountID)
+		}
+		for r in relinks {
+			try check()
+			let d = r.row
+			try db.execute(sql: """
+				UPDATE deletedTransaction SET sourceID = ? WHERE rowid = (SELECT rowid FROM deletedTransaction WHERE accountID = ?
+					AND sourceID IS ? AND bookingDate = ? AND amountMinor = ? AND currency = ? AND isPending = ? AND purpose = ?
+					AND counterpartyIBAN IS ? AND endToEndReference IS ? AND wasFetched = ? AND fileIdentity IS ? LIMIT 1)
+				""", arguments: [r.sourceID, d.accountID, d.sourceID, d.bookingDate.rawValue, d.amountMinor, d.currency, d.isPending, d.purpose,
+					d.counterpartyIBAN, d.endToEndReference, d.wasFetched, d.fileIdentity])
+		}
+		try check()
 	}
 
 	/// Clears the "new" mark of every transaction of an account in one statement. Saving each

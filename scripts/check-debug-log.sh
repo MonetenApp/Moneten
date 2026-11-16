@@ -18,7 +18,7 @@ set -e
 cd "$(dirname "$0")/.."
 BUILT=dist/Moneten.app
 [ -d "$BUILT" ] || { echo "No $BUILT. Run scripts/build-app.sh debug first." >&2; exit 1; }
-BUNDLE_ID=io.github.alexander-schneider.Moneten.check-debug-log
+BUNDLE_ID=io.github.alexander-schneider.Moneten.check-debug-log.$$
 LOGIN=emuster42
 PIN=97314
 MIGRATION_UNKNOWN=MigrationSyntheticArgument9271
@@ -266,6 +266,12 @@ poll "^ext access Check Bank state=failed" extstate
 send extrun "$WORK/Check.lua|Result|"
 poll "^ext result" state
 poll "^migrationfailure: unknown failure$" migrationfailure "$MIGRATION_UNKNOWN"
+poll "^alert " alert
+send migrationfixture "$PWD/Fixtures/moneymoney"
+sleep 0.5
+poll "^migration step=4 completed=5 total=5$" key return
+poll "^migration step=5 completed=5 total=5$" key return
+send key return
 poll "^crash inject frames=1 pending=true" crashinject private
 poll "^crash url characters=" crashurl
 for value in DE02120300000000202051 "Erika Mustermann" /Users/erika; do
@@ -283,7 +289,7 @@ send quit
 
 found=0
 for value in "25,00" "20,00" "30,00" "Synthetic extra" DE02120300000000202051 "DE02 1203" 202051 1234567890 0099887766 "99 88 77 66" 4711 5550001 "$LOGIN" "$PIN" "$MIGRATION_UNKNOWN" 123456 1800000000 check-debug-log \
-	"Baumarkt Beispiel" "Weekly shop" "REWE SAGT DANKE" "REWE receipt" "Receipt" "demo-split" "Handoff Synthetic" 88776655 Kiosk Girokonto Tagesgeld Kreditkarte Extrakonto "Erika Mustermann" /Users/erika "Beispiel GmbH" "Wohnbau Musterstadt" "Tankstelle Beispiel" \
+	"Private" "Giro" "Savings" "Depot" "Household" "Food" "Pets" "Salary" "Sonstiges" "REWE Markt" "KARTENZAHLUNG" "Wocheneinkauf" "Stadtwerke Musterstadt" "Abschlag" "E2E-1" "M-1" "DE98ZZZ09999999999" "Gehalt Oktober" "Zinsen" "Synthetic migration" "Baumarkt Beispiel" "Weekly shop" "REWE SAGT DANKE" "REWE receipt" "Receipt" "demo-split" "Handoff Synthetic" 88776655 Kiosk Girokonto Tagesgeld Kreditkarte Extrakonto "Erika Mustermann" /Users/erika "Beispiel GmbH" "Wohnbau Musterstadt" "Tankstelle Beispiel" \
 	"Gehalt November" Miete Kartenzahlung Sparen Haushaltskasse MIETE-2026-11 GUTSCHRIFT DAUERAUFTRAG \
 	"Zugang vorübergehend gesperrt" "PIN falsch" Wartungsarbeiten pushTAN-App "currency:/^+?49/"; do
 	if grep -n -w -F -- "$value" "$LOG" >&2; then

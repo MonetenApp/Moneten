@@ -26,6 +26,14 @@ The app keeps all accounts, categories, and transactions of the open database in
 - Migrated categories count as assigned by hand.
 - When the database has no transactions yet, the plan leaves out the starter categories, and they are removed after the user confirms the import. Categories the user made stay.
 
+## Progress and portfolio exports
+
+`Import` owns a typed progress value with a step, completed count, optional total, and optional account name. Its publication decision is a pure function of the previous value and elapsed time. Row loops check cancellation and report at least once per second, on a step change, and on completion. The app consumes these updates on the main actor. Parsing, reconciliation, saving, ledger loading, and report building run in background work. Cancellation propagates to that work. The storage transaction checks cancellation between writes and before commit and includes starter category replacement.
+
+The source returns each complete export in one Apple event. It provides no intermediate counts. The assistant shows a waiting message until it can read the total. It does not infer progress from file size or elapsed time. The debug harness logs step codes and integer counts only.
+
+The research documents `export portfolio` with account and asset class parameters and a property-list result. Neither the research nor `Fixtures/moneymoney` records its root shape, position key names, account link, units, price currency, or purchase-price encoding. The extension fixtures describe a different interface and are not evidence of AppleScript export keys. This PR does not invent a parser or request that export. The existing account balance and portfolio history come over. Each exported portfolio gets an explicit not-migrated note on every run, even when it matches an existing account. Existing bank positions stay unchanged. Task 1.15 records the operator step required before position import can be built.
+
 ## Risks / Trade-offs
 
 - The tests use synthetic exports with the structure of the real export. No real names or amounts are in the repository.

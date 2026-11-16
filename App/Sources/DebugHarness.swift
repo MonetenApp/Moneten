@@ -79,6 +79,10 @@ final class DebugHarness {
 		}
 	}
 
+	func logMigration(_ progress: MoneyMoneyMigration.Progress) {
+		log("migration step=\(progress.step.rawValue) completed=\(progress.completed) total=\(progress.total ?? -1)")
+	}
+
 	func run(_ command: String, _ argument: String) {
 		guard let model else { return }
 		switch command {

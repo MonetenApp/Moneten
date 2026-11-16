@@ -61,7 +61,8 @@ public struct MoneyMoneyMigration: Sendable {
 	/// a refresh stored or whose ID a source took over is not added twice. `deleted` are all deleted rows,
 	/// and none of them comes back, except the booked version of a deleted pending row.
 	public func plan(accounts accountsData: Data, categories categoriesData: Data, transactions transactionsData: Data, into ledger: Ledger,
-		deleted: [DeletedTransaction] = []) throws -> Plan {
+		deleted: [DeletedTransaction] = [], progress: @escaping (Progress) -> Void = { _ in }) throws -> Plan {
+		try Task.checkCancellation()
 		guard let rawAccounts = try PropertyListSerialization.propertyList(from: accountsData, format: nil) as? [[String: Any]] else {
 			throw Failure.unreadable("accounts")
 		}
@@ -73,15 +74,21 @@ public struct MoneyMoneyMigration: Sendable {
 			throw Failure.unreadable("transactions")
 		}
 
+		var reporter = MigrationProgressReporter(progress)
 		var plan = Plan()
 		var accountMap: [String: UUID] = [:]
-		mapAccounts(rawAccounts, ledger: ledger, plan: &plan, map: &accountMap)
+		try mapAccounts(rawAccounts, ledger: ledger, plan: &plan, map: &accountMap)
 		var categoryMap: [String: UUID?] = [:]
-		mapCategories(rawCategories, ledger: ledger, plan: &plan, map: &categoryMap)
+		try mapCategories(rawCategories, ledger: ledger, plan: &plan, map: &categoryMap)
 
 		var rows: [Transaction] = []
 		var sourceRows: [String: [Transaction]] = [:]
-		for raw in rawTransactions {
+		let names = Dictionary(accountMap.compactMap { source, id in
+			(ledger.account(id) ?? plan.accounts.first { $0.id == id }).map { (source, $0.name) } }, uniquingKeysWith: { first, _ in first })
+		reporter.send(.init(step: .transactions, total: rawTransactions.count))
+		for (index, raw) in rawTransactions.enumerated() {
+			try Task.checkCancellation()
+			defer { reporter.send(.init(step: .transactions, completed: index + 1, total: rawTransactions.count, account: (raw["accountUuid"] as? String).flatMap { names[$0] })) }
 			guard let accountSource = raw["accountUuid"] as? String, let accountID = accountMap[accountSource] else { continue }
 			let id = (raw["id"] as? Int).map { "\(Transaction.migrationIDPrefix)\($0)" }
 			let currency = (raw["currency"] as? String) ?? "EUR"
@@ -113,7 +120,11 @@ public struct MoneyMoneyMigration: Sendable {
 		let rules = Categorizer(ledger: ledger)
 		var added: [UUID: ReviewReason?] = [:]
 		var relinked: [UUID: [DeletedTransaction.Relink]] = [:]
+		var compared = 0
+		let totalTransactions = rows.count
+		reporter.send(.init(step: .reconciling, total: totalTransactions))
 		for account in ledger.accounts + plan.accounts {
+			try Task.checkCancellation()
 			guard let rows = delivered[account.id] else { continue }
 			let r = reconcile(.migration(rows), into: account, stored: stored[account.id] ?? [], deleted: tombstones[account.id] ?? [],
 				rules: rules, now: Date())
@@ -121,8 +132,11 @@ public struct MoneyMoneyMigration: Sendable {
 			plan.updatedTransactions += r.booked + r.updated + r.marked
 			plan.skippedTransactions += r.skipped
 			relinked[account.id] = r.relinked
+			compared += rows.count
+			reporter.send(.init(step: .reconciling, completed: compared, total: totalTransactions, account: account.name))
 		}
 		for var t in rows {
+			try Task.checkCancellation()
 			guard let review = added[t.id] else { continue }
 			t.review = review
 			plan.transactions.append(t)
@@ -143,14 +157,15 @@ public struct MoneyMoneyMigration: Sendable {
 			return exportedRules[source] == c.rule
 		}
 		for c in plan.categories + unchangedCategories {
+			try Task.checkCancellation()
 			if let error = c.ruleError {
 				plan.notes.append("The rule of \"\(c.name)\" cannot be read at position \(error.position + 1): \(error.message) \"\(c.name)\" receives no transaction through its rule until you correct the rule in its settings.")
 			}
 			plan.notes += Self.ruleNotes(c, accountNumbers: accountNumbers)
 		}
 		plan.notes += Self.groupSumNotes(rawAccounts)
-		if !plan.portfolioAccounts.isEmpty {
-			plan.notes.append("Portfolio accounts were taken over with their balance. Their positions follow when securities accounts are supported.")
+		for name in plan.portfolioAccounts {
+			plan.notes.append("The positions of \"\(name)\" were not migrated, because the portfolio export format is not verified. Connect the portfolio to its bank to fetch its positions.")
 		}
 		plan.notes += Self.notMigratedNotes
 		let budgets = rawCategories.filter(Self.hasBudget).count
@@ -162,6 +177,7 @@ public struct MoneyMoneyMigration: Sendable {
 		if (rawAccounts + rawCategories).contains(where: { $0["icon"] is Data }) {
 			plan.notes.append("Moneten takes the color of each icon of MoneyMoney and shows its own icons instead of the pictures.")
 		}
+		try Task.checkCancellation()
 		return plan
 	}
 
@@ -280,10 +296,11 @@ public struct MoneyMoneyMigration: Sendable {
 		!deleted.isPending && isOfSource(deleted.sourceID)
 	}
 
-	private func mapAccounts(_ raw: [[String: Any]], ledger: Ledger, plan: inout Plan, map: inout [String: UUID]) {
+	private func mapAccounts(_ raw: [[String: Any]], ledger: Ledger, plan: inout Plan, map: inout [String: UUID]) throws {
 		var parents: [Int: UUID] = [:]
 		var positions: [UUID?: Int] = [:]
 		for item in raw {
+			try Task.checkCancellation()
 			guard let source = item["uuid"] as? String, let name = item["name"] as? String else { continue }
 			let indentation = (item["indentation"] as? Int) ?? 0
 			let parent = indentation > 0 ? parents[indentation - 1] : nil
@@ -300,6 +317,8 @@ public struct MoneyMoneyMigration: Sendable {
 				}
 				continue
 			}
+			let isPortfolio = (item["portfolio"] as? Bool) == true || Self.kind(item["type"] as? String) == .portfolio
+			if isPortfolio { plan.portfolioAccounts.append(name) }
 			// MoneyMoney puts the IBAN into `accountNumber` and the BIC into `bankCode`.
 			let number = Self.string(item["accountNumber"])
 			let bankCode = Self.string(item["bankCode"])
@@ -338,8 +357,6 @@ public struct MoneyMoneyMigration: Sendable {
 				if changed { plan.updatedAccounts.append(existing) }
 				continue
 			}
-			let isPortfolio = (item["portfolio"] as? Bool) == true
-			if isPortfolio { plan.portfolioAccounts.append(name) }
 			let account = Account(groupID: parent, position: position, name: name,
 				kind: isPortfolio ? .portfolio : Self.kind(item["type"] as? String),
 				source: .migrated, currency: currency, iban: iban, bic: bic,
@@ -351,11 +368,12 @@ public struct MoneyMoneyMigration: Sendable {
 		}
 	}
 
-	private func mapCategories(_ raw: [[String: Any]], ledger: Ledger, plan: inout Plan, map: inout [String: UUID?]) {
+	private func mapCategories(_ raw: [[String: Any]], ledger: Ledger, plan: inout Plan, map: inout [String: UUID?]) throws {
 		var parents: [Int: UUID] = [:]
 		var positions: [UUID?: Int] = [:]
 		let known = ledger.categories + plan.categories
 		for item in raw {
+			try Task.checkCancellation()
 			guard let source = item["uuid"] as? String, let name = item["name"] as? String else { continue }
 			if (item["default"] as? Bool) == true {
 				// The default category of MoneyMoney maps to the default category: its transactions get no category.

@@ -81,6 +81,21 @@ struct MoneyMoneyMigrationTests {
 		#expect(p.portfolioAccounts == ["Depot"])
 	}
 
+	@Test("An unverified portfolio export names missing positions on first and repeated runs")
+	func missingPortfolioPositions() throws {
+		let first = try plan()
+		let note = "The positions of \"Depot\" were not migrated, because the portfolio export format is not verified. Connect the portfolio to its bank to fetch its positions."
+		#expect(first.notes.contains(note))
+		let depot = try #require(first.accounts.first { $0.kind == .portfolio })
+		#expect(depot.bankBalanceMinor == 1_000_000)
+		#expect(depot.portfolioValue()?.minorUnits == 1_000_000)
+		let ledger = Ledger(groups: first.groups, accounts: first.accounts, categories: first.categories, transactions: first.transactions)
+		let second = try plan(into: ledger)
+		#expect(second.notes.contains(note))
+		#expect(second.portfolioAccounts == ["Depot"])
+		#expect(second.accounts.isEmpty)
+	}
+
 	@Test("The computed balance ends at the balance of the source plus its pending rows")
 	func initialBalance() throws {
 		let p = try plan()
@@ -1124,7 +1139,7 @@ struct MoneyMoneyMigrationTests {
 			Depot: 0 transactions, balance 10,000.00 EUR. MoneyMoney: 0 transactions, balance 10,000.00 EUR. Matches.
 
 			Notes
-			Portfolio accounts were taken over with their balance.
+			The positions of "Depot" were not migrated, because the portfolio export format is not verified.
 			"""))
 		#expect(text.hasSuffix("Statements were not migrated, because the AppleScript export of MoneyMoney does not contain them. Use \"Show in Finder...\" on \"Statements\" in MoneyMoney to find the statement files and copy them to keep them.\n"))
 	}

@@ -323,12 +323,36 @@ The app SHALL store the result of a migration run completely or not at all. When
 
 ### Requirement: Progress
 
-The app SHALL show progress during reading and importing with the current account and the number of transactions done, and offer "Cancel" at every point.
+The app SHALL show the current step, the current account when known, and completed and total transaction counts during reading and importing. Counts never decrease within a step and update at least once per second while rows are processed. Until an export returns its total, the assistant shows a waiting message without an invented count. "Cancel" stays available until the database transaction commits.
 
 #### Scenario: Large source
 
-- **WHEN** the source has 150,000 transactions
-- **THEN** the assistant shows a line such as "Giro, 20,000 of 150,000 transactions" and stays responsive
+- **GIVEN** the source has 150,000 transactions
+- **WHEN** the assistant processes transaction 20,000 of "Giro"
+- **THEN** it shows "Transactions: 20,000 of 150,000" and "Giro"
+- **AND** the assistant stays responsive
+
+#### Scenario: Progress decision
+
+- **GIVEN** the assistant last showed 1,200 of 5,000 transactions at second 10
+- **WHEN** 1,234 transactions have been processed at second 11
+- **THEN** it shows "Transactions: 1,234 of 5,000"
+- **AND** a later update with 1,200 does not replace that count
+- **AND** completion shows 5,000 of 5,000 even before the next second
+
+#### Scenario: Waiting for the source
+
+- **WHEN** the assistant waits for the transaction export
+- **THEN** it shows "Waiting for transactions..."
+- **AND** it shows no total until the export returns
+- **AND** "Cancel" closes the assistant without storing anything
+
+#### Scenario: Cancel during import
+
+- **GIVEN** the assistant has written 1,234 of 5,000 transactions in its database transaction
+- **WHEN** the user chooses "Cancel" before the transaction commits
+- **THEN** the transaction rolls back, including new accounts, categories, and replaced starter categories
+- **AND** no background result reopens the assistant
 
 ### Requirement: Repeated runs add only what is new
 
@@ -429,11 +453,21 @@ The app SHALL let the user choose the account to connect when more than one open
 
 The app SHALL create portfolio accounts of the source as accounts and, when securities accounts are available in the app, their current positions with name, ISIN, quantity, price, and purchase price. Without that feature the report lists the positions as not migrated.
 
-#### Scenario: Version without securities
+#### Scenario: Positions in a verified export
 
-- **GIVEN** a version of the app without securities accounts and a source with one portfolio
+- **GIVEN** a verified securities export describes 12.5 units of "Example Fund", ISIN "DE000A0SYN01", a quote of 80.25 EUR, and a purchase price of 70.10 EUR
+- **WHEN** the export keys and their types are documented and supported
+- **THEN** the portfolio shows those values without rounding the quantity or the prices
+- **AND** a repeated run creates no duplicate position
+
+#### Scenario: Position keys are not verified
+
+- **GIVEN** the source exports "Depot" with a balance of 10,000.00 EUR and no verified position fields
 - **WHEN** the migration finishes
-- **THEN** the portfolio exists as an account and the report says that its positions were not migrated
+- **THEN** "Depot" exists with a balance of 10,000.00 EUR and its first portfolio history record
+- **AND** the report names "Depot" and says its positions were not migrated because the portfolio export format is not verified
+- **AND** the report says to connect the portfolio to its bank to fetch positions
+- **AND** a repeated run keeps this note and any positions already fetched from the bank
 
 ### Requirement: Report
 
