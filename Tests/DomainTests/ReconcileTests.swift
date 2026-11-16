@@ -333,15 +333,15 @@ struct ReconcileTests {
 		withMax.comment = "with Max"
 		let other = stored(row(9, -320, "Café Beispiel", "Kartenzahlung", pending: true))
 		let r = merge(refresh([row(10, -320, "Café Beispiel", "Kartenzahlung")]), stored: [withMax, other])
-		#expect(r.added.map(\.needsReview) == [true])
+		#expect(r.added.map(\.review) == [.unclearBooking])
 		#expect(r.added.map(\.comment) == [nil])
 		#expect(Set(r.marked.map(\.id)) == [withMax.id, other.id])
-		#expect(r.marked.map(\.needsReview) == [true, true])
+		#expect(r.marked.map(\.review) == [.unclearBooking, .unclearBooking])
 		#expect(r.marked.compactMap(\.comment) == ["with Max"])
 		#expect(r.booked == [])
 		#expect(r.dropped == [])
 		let after = history([withMax, other], after: r)
-		#expect(after.map(\.needsReview) == [true, true, true])
+		#expect(after.map(\.review) == [.unclearBooking, .unclearBooking, .unclearBooking])
 		#expect(after.map(\.isPending) == [false, true, true])
 	}
 
@@ -350,7 +350,7 @@ struct ReconcileTests {
 		let first = stored(row(9, -320, "Café Beispiel", "Kartenzahlung", pending: true))
 		let second = stored(row(9, -320, "Café Beispiel", "Kartenzahlung", pending: true))
 		let r = merge(refresh([row(10, -320, "Café Beispiel", "Kartenzahlung")]), stored: [first, second])
-		#expect(r.added.map(\.needsReview) == [true])
+		#expect(r.added.map(\.review) == [.unclearBooking])
 		#expect(Set(r.marked.map(\.id)) == [first.id, second.id])
 		#expect(r.booked == [])
 		#expect(r.dropped == [])
@@ -360,11 +360,11 @@ struct ReconcileTests {
 	func reviewRowsStay() {
 		var withMax = stored(row(9, -320, "Café Beispiel", "Kartenzahlung", pending: true))
 		withMax.comment = "with Max"
-		withMax.needsReview = true
+		withMax.review = .unclearBooking
 		var other = stored(row(9, -320, "Café Beispiel", "Kartenzahlung", pending: true))
-		other.needsReview = true
+		other.review = .unclearBooking
 		var booked = stored(row(10, -320, "Café Beispiel", "Kartenzahlung"))
-		booked.needsReview = true
+		booked.review = .unclearBooking
 		let r = merge(refresh([fresh(booked)]), stored: [withMax, other, booked])
 		#expect(r.dropped == [])
 		#expect(r.added == [])
@@ -375,10 +375,10 @@ struct ReconcileTests {
 	@Test("A checked pending row under review leaves when the bank drops it")
 	func checkedReviewRowLeaves() {
 		var pending = stored(row(9, -320, "Café Beispiel", "Kartenzahlung", pending: true))
-		pending.needsReview = true
+		pending.review = .unclearBooking
 		pending.isChecked = true
 		var booked = stored(row(10, -320, "Café Beispiel", "Kartenzahlung"))
-		booked.needsReview = true
+		booked.review = .unclearBooking
 		#expect(merge(refresh([fresh(booked)]), stored: [pending, booked]).dropped == [pending.id])
 	}
 
@@ -387,10 +387,10 @@ struct ReconcileTests {
 		for hadReview in [false, true] {
 			var pending = stored(row(9, -320, "Café Beispiel", "Kartenzahlung", pending: true))
 			pending.isChecked = true
-			pending.needsReview = hadReview
+			pending.review = hadReview ? .unclearBooking : nil
 			let first = merge(refresh([row(10, -320, "Café Beispiel", "Kartenzahlung"), row(11, -320, "Café Beispiel", "Kartenzahlung")]), stored: [pending])
 			#expect(first.marked.map(\.id) == [pending.id])
-			#expect(first.marked.map(\.needsReview) == [true])
+			#expect(first.marked.map(\.review) == [.unclearBooking])
 			#expect(first.marked.map(\.isChecked) == [false])
 			let second = merge(refresh(first.added.map(fresh)), stored: first.marked + first.added.map(stored))
 			#expect(second.dropped == [])
@@ -403,7 +403,7 @@ struct ReconcileTests {
 		withMax.comment = "with Max"
 		let booked = row(10, -320, "Café Beispiel", "Kartenzahlung")
 		let r = merge(refresh([booked, fresh(booked)]), stored: [withMax])
-		#expect(r.added.map(\.needsReview) == [true, true])
+		#expect(r.added.map(\.review) == [.unclearBooking, .unclearBooking])
 		#expect(r.marked.map(\.id) == [withMax.id])
 		#expect(r.booked == [])
 	}
@@ -500,17 +500,17 @@ struct ReconcileTests {
 	@Test("Checking a booked row clears its review mark, and checking a pending row keeps it")
 	func checkingClearsReviewOfBookedRows() {
 		var booked = row(10, -320, "Café Beispiel", "Kartenzahlung")
-		booked.needsReview = true
+		booked.review = .unclearBooking
 		booked.isNew = true
 		booked.markChecked()
-		#expect(booked.needsReview == false)
+		#expect(booked.review == nil)
 		#expect(booked.isNew == false)
 		var pending = row(10, -320, "Café Beispiel", "Kartenzahlung", pending: true)
-		pending.needsReview = true
+		pending.review = .unclearBooking
 		pending.isNew = true
 		#expect(pending.changesWhenChecked)
 		pending.markChecked()
-		#expect(pending.needsReview == true)
+		#expect(pending.review == .unclearBooking)
 		#expect(pending.isNew == false)
 		#expect(pending.isChecked == true)
 		#expect(pending.changesWhenChecked == false)
@@ -616,7 +616,7 @@ struct ReconcileTests {
 
 		let second = merge(refresh([rent(2, purpose: bankPurpose, pending: false)]), stored: afterFirst, at: noon(2, month: 12))
 		#expect(second.booked.map(\.id) == [fileRow.id])
-		#expect(second.booked.map(\.needsReview) == [false])
+		#expect(second.booked.map(\.review) == [nil])
 		#expect(second.added == [])
 		#expect(second.marked == [])
 		#expect(second.dropped == [])

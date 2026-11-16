@@ -332,6 +332,11 @@ enum Schema {
 				try db.alter(table: table) { t in t.add(column: "fileIdentity", .text) }
 			}
 		}
+		m.registerMigration("v20") { db in
+			try db.alter(table: "bankTransaction") { t in t.add(column: "review", .text) }
+			try db.execute(sql: "UPDATE bankTransaction SET review = 'unclearBooking' WHERE needsReview = 1")
+			try db.alter(table: "bankTransaction") { t in t.drop(column: "needsReview") }
+		}
 		return m
 	}
 }

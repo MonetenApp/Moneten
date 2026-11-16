@@ -105,7 +105,12 @@ public final class Store: SavedPINStore {
 		if case let .refresh(result) = delivery, result.holdings != nil {
 			holdings = try HoldingRecord.filter(Column("accountID") == accountID).fetchAll(db).compactMap(\.holding)
 		}
-		let r = reconcile(delivery, into: account, stored: stored, deleted: deleted, holdings: holdings, rules: rules, now: now)
+		let split = Set(try UUID.fetchAll(db, sql: """
+			SELECT DISTINCT splitPart.transactionID FROM splitPart
+			JOIN bankTransaction ON bankTransaction.id = splitPart.transactionID WHERE bankTransaction.accountID = ?
+			""", arguments: [accountID]))
+		let r = reconcile(delivery, into: account, stored: stored, deleted: deleted, holdings: holdings, split: split, rules: rules, now: now)
+		_ = try SplitPart.filter(r.unsplit.contains(Column("transactionID"))).deleteAll(db)
 		for t in r.added { try t.insert(db) }
 		for t in r.booked + r.updated + r.marked { try t.update(db) }
 		_ = try Transaction.deleteAll(db, keys: r.dropped)

@@ -58,11 +58,11 @@ public struct DeletedTransaction: Hashable, Sendable, Codable {
 	}
 }
 
-/// What a merge changes. The lists are disjoint, and every row in them belongs to the merged account.
+/// What a merge changes. Every row belongs to the merged account. Only `unsplit` overlaps `updated`.
 /// `Store.merge` writes it in one transaction, and `Ledger.apply` takes it over.
 public struct Reconciliation: Sendable, Equatable {
 	/// New rows, in the order of the delivery: marked new, categorized by the rules, without a checkmark.
-	/// A booked row whose pending version is unclear also carries `needsReview`.
+	/// A booked row whose pending version is unclear also carries `review`.
 	public internal(set) var added: [Transaction] = []
 	/// Stored pending rows that took the bank fields of their booked version. Each keeps its ID,
 	/// comment, checkmark, hand-set category, and new mark. The rules ran again on it.
@@ -70,11 +70,13 @@ public struct Reconciliation: Sendable, Equatable {
 	/// Stored rows that a source with IDs delivered with changed bank fields, that took over the source
 	/// ID of the delivered row, or that a refresh delivered for the first time. User fields kept.
 	public internal(set) var updated: [Transaction] = []
-	/// Stored pending rows that now carry `needsReview` and no checkmark, because more than one row could be their
+	/// Stored pending rows that now carry `review` and no checkmark, because more than one row could be their
 	/// booked version. A row that had the mark already and the checkmark of the user loses the checkmark.
 	public internal(set) var marked: [Transaction] = []
 	/// Stored pending rows that the bank dropped. Never a booked row.
 	public internal(set) var dropped: [UUID] = []
+	/// Corrected originals in `updated` whose split parts must be removed.
+	public internal(set) var unsplit: [UUID] = []
 	/// Delivered rows that were stored already, or that the user deleted. A stored row that such a delivered
 	/// row changed is in `updated` as well.
 	public internal(set) var skipped = 0
@@ -105,7 +107,7 @@ public struct Reconciliation: Sendable, Equatable {
 /// its deleted rows, and `holdings` all its stored positions. Delivered rows are read for their bank fields
 /// and, from a file, the comment and a category set by hand.
 public func reconcile(_ delivery: Delivery, into account: Account, stored: [Transaction], deleted: [DeletedTransaction],
-	holdings: [Holding] = [], rules: Categorizer, now: Date) -> Reconciliation {
+	holdings: [Holding] = [], split: Set<UUID> = [], rules: Categorizer, now: Date) -> Reconciliation {
 	let rows = delivery.rows
 	let fetched = delivery.isFetched
 	let honored = deleted.filter(delivery.honors)
@@ -117,7 +119,7 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored: [Tran
 	let released = stored.indices.filter { stored[$0].isPending && !taken.contains($0) }
 	let fresh = rows.indices.filter { partners[$0] == nil && !rows[$0].isPending }
 	let bookings = Bookings(pending: released.map { ($0, stored[$0]) }, booked: fresh.map { ($0, rows[$0]) })
-	let future = Set(released.filter { !stored[$0].isFetched && stored[$0].bookingDate >= today && !stored[$0].needsReview })
+	let future = Set(released.filter { !stored[$0].isFetched && stored[$0].bookingDate >= today && stored[$0].review == nil })
 
 	var r = Reconciliation()
 	for (i, delivered) in rows.enumerated() {
@@ -144,7 +146,13 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored: [Tran
 				}
 				if delivered.isPending && !live.isPending { break }
 				next = live.takingBankFields(of: delivered)
-				if next != live { rules.categorize(&next) }
+				if split.contains(live.id) {
+					if next.amount != live.amount {
+						next.review = .splitUndone
+						r.unsplit.append(live.id)
+						rules.categorize(&next)
+					}
+				} else if next != live { rules.categorize(&next) }
 			case .pending:
 				next = live.takingBankFields(of: delivered)
 				if next != live { rules.categorize(&next) }
@@ -188,7 +196,7 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored: [Tran
 			r.booked.append(next)
 		} else {
 			var t = Transaction(arriving: delivered, in: account.id, fetched: fetched)
-			t.needsReview = bookings.ofBooked[i] == .review
+			t.review = bookings.ofBooked[i] == .review ? .unclearBooking : nil
 			rules.categorize(&t)
 			r.added.append(t)
 		}
@@ -198,15 +206,15 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored: [Tran
 		switch bookings.ofPending[j] {
 		case .pair: break
 		case .review:
-			if !pending.needsReview || pending.isChecked {
+			if pending.review == nil || pending.isChecked {
 				var t = pending
-				t.needsReview = true
+				t.review = .unclearBooking
 				t.isChecked = false
 				r.marked.append(t)
 			}
 		case nil where future.contains(j): break
 		case nil:
-			if delivery.covers(pending.bookingDate), !pending.needsReview || pending.isChecked { r.dropped.append(pending.id) }
+			if delivery.covers(pending.bookingDate), pending.review == nil || pending.isChecked { r.dropped.append(pending.id) }
 		}
 	}
 	if case let .refresh(result) = delivery, let balance = result.balance, balance.currency == account.currency {
@@ -407,7 +415,7 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 				identity = liveMatches[j]!.identity
 				match = liveMatches[j]!
 				fetched = stored[j].isFetched
-				future = !stored[j].isFetched && !stored[j].needsReview && stored[j].bookingDate >= today && delivery.covers(stored[j].bookingDate)
+				future = !stored[j].isFetched && stored[j].review == nil && stored[j].bookingDate >= today && delivery.covers(stored[j].bookingDate)
 			case let .deleted(k):
 				identity = deadMatches[k]!.identity
 				match = deadMatches[k]!

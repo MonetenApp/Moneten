@@ -525,9 +525,9 @@ struct TransactionCell: View {
 				if let comment = transaction.comment {
 					Image(systemName: "note.text").foregroundStyle(.yellow).help(comment)
 				}
-				if transaction.needsReview {
+				if let review = transaction.review {
 					Image(systemName: "exclamationmark.circle").foregroundStyle(.orange)
-						.help("Several transactions could belong together. Check the rows and delete the ones you don't need.")
+						.help(review.note)
 				}
 				// MoneyMoney adds a third line, which made the selected row taller and moved the rows
 				// below it. At the end of the first line the row keeps its height.
