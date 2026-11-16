@@ -774,6 +774,10 @@ struct FinTSConnectorTests {
 		("Noch 2 Versuche verbleibend. Danach wird die PIN gesperrt.", false),
 		("Die Sperrung wurde durchgeführt.", true),
 		("Ihre PIN ist gesperrt worden.", true),
+		("Bei der nächsten falschen Eingabe ist Ihr Zugang gesperrt.", false),
+		("Bei der nächsten Fehleingabe wird eine Sperre durchgeführt.", false),
+		("PIN falsch. Bei weiterer Fehleingabe droht die Sperrung des Kontos.", false),
+		("Ihr Zugang ist gesperrt und wird durch Ihre Bank entsperrt.", true),
 	])
 	func reads9931(text: String, blocked: Bool) {
 		#expect(HelperError.reportsBlock(text) == blocked)

@@ -227,10 +227,10 @@ struct HelperError: Decodable, Equatable {
 	private static let noFinishedBlock = [
 		#"noch (\d+|ein|einen|zwei|drei) (fehl)?versuch"#,
 		#"verbleibend"#,
-		#"weitere[nr]? fehlversuch"#,
+		#"\b(weitere[nr]?|nächste[nrm]?|erneute[nrm]?) (falsche[nrm]? )?(fehl|eingabe|versuch)"#,
 		#"bis zur sperr"#,
 		#"(führt|führen) zur sperr"#,
-		#"\bwird\b[^.!?]*\b(gesperrt|blockiert)\b"#,
+		#"\b(wird|werden|droht|drohen)\b[^.!?]*(gesperrt|blockiert|\bsperr)"#,
 		#"nicht (gesperrt|blockiert)"#,
 		#"\bkein\p{L}* (gesperrt|sperr)"#,
 	]
