@@ -106,7 +106,8 @@ import org.kapott.hbci.structures.Konto;
 import org.kapott.hbci.structures.Value;
 
 public class FinTSHelper {
-	static final PrintStream out = new PrintStream(new FileOutputStream(FileDescriptor.out), true, StandardCharsets.UTF_8);
+	/// The lines to the app. The self-test reads them in place of the app.
+	static PrintStream out = new PrintStream(new FileOutputStream(FileDescriptor.out), true, StandardCharsets.UTF_8);
 	static final PrintStream err = new PrintStream(new FileOutputStream(FileDescriptor.err), true, StandardCharsets.UTF_8);
 
 	/// A failure that the helper reports as it is: kind "network", "unsupported", or null for the bank.
@@ -453,7 +454,8 @@ public class FinTSHelper {
 		boolean jobsSent;
 
 		/// The dialog whose last message the bank answered, until it ends. After a change of the TAN
-		/// method hbci4java leaves it open at the bank, where a challenge of the login may still wait.
+		/// method or a canceled challenge for older transactions hbci4java leaves it open at the bank, where a
+		/// challenge may still wait.
 		DialogContext open;
 
 		@Override
@@ -464,8 +466,9 @@ public class FinTSHelper {
 			super.onDialogEvent(event, ctx);
 		}
 
-		/// Ends the open dialog at the bank after a change of the TAN method, so that its challenge does
-		/// not wait there while the next dialog requests the challenge of the new method.
+		/// Ends the open dialog at the bank after a change of the TAN method or a canceled challenge for older
+		/// transactions, so that its challenge does not wait there while the next dialog requests the challenge
+		/// of the new method or asks for 90 days.
 		void endOpenDialog() {
 			DialogContext dialog = open;
 			open = null;
@@ -473,7 +476,8 @@ public class FinTSHelper {
 			try {
 				new HBCIDialogEnd(HBCIDialogEnd.Flag.ACCEPT_ERROR).execute(dialog);
 			} catch (RuntimeException e) {
-				diagnostic("FinTSHelper: ending the dialog after the change of the TAN method failed: " + e.getMessage());
+				diagnostic("FinTSHelper: ending the dialog after a change of the TAN method or a canceled challenge for older transactions failed: "
+					+ e.getMessage());
 			}
 		}
 
@@ -551,7 +555,11 @@ public class FinTSHelper {
 		/// The next dialog asks for the last 90 days in place of the full history.
 		boolean narrowed;
 		int lastID;
+		/// The decoupled approval that waits for the bank, until hbci4java goes on.
 		Integer approval;
+		/// The last decoupled approval of the dialog, also after hbci4java went on: the user may cancel it for
+		/// older transactions while the answer of the bank is on its way.
+		Integer lastApproval;
 		Map<String, Object> rejectedPIN;
 		Map<String, Object> pinError;
 		/// The PIN of this run. A new dialog after a change of the TAN method uses it again, unless the
@@ -597,8 +605,8 @@ public class FinTSHelper {
 			}
 		}
 
-		/// Ends the dialog when the user changed the TAN method, also when hbci4java kept the exception
-		/// of the callback in a status instead of throwing it.
+		/// Ends the dialog when the user changed the TAN method or canceled the challenge for older transactions,
+		/// also when hbci4java kept the exception of the callback in a status instead of throwing it.
 		void checkSwitch() {
 			if (switchTo != null) throw new SwitchMethod(switchTo);
 			if (skipHistory) throw new SkipHistory();
@@ -610,23 +618,35 @@ public class FinTSHelper {
 			return switchTo != null || skipHistory;
 		}
 
-		/// Prepares the next dialog after a change of the TAN method.
+		/// Prepares the next dialog after a change of the TAN method or a canceled challenge for older
+		/// transactions. After the cancel the next dialog asks for 90 days, and nothing of the old dialog asks the
+		/// user again.
 		void restart() {
+			withdrawApproval();
 			switchTo = null;
 			if (skipHistory) narrowed = true;
 			skipHistory = false;
 			fullHistory = false;
+			lastApproval = null;
 			jobs.clear();
 			jobCount = 0;
 			lastProgress = -1;
-			withdrawApproval();
 		}
 
-		/// hbci4java went on after a decoupled approval, so the bank has it.
+		/// hbci4java went on after a decoupled approval, so the bank has it. A cancel of the user for older
+		/// transactions that came before counts, also when the bank answered first, as when the user rejected
+		/// the approval in the banking app and canceled it in Moneten before the next check.
 		void withdrawApproval() {
+			takeSkip();
 			if (approval == null) return;
 			send(message("withdraw", "id", approval));
 			approval = null;
+		}
+
+		/// Takes a cancel of the user for the last approval from the inbox: the dialog then ends for a new one
+		/// that asks for 90 days. A refusal of the bank without that cancel fails as before.
+		void takeSkip() {
+			if (Inbox.skipped(lastApproval)) skipHistory = true;
 		}
 
 		/// A challenge before hbci4java sends the orders is for the login, also the one of the dialog start
@@ -711,6 +731,7 @@ public class FinTSHelper {
 				case NEED_PT_DECOUPLED -> {
 					if (passport instanceof Passport p) p.takeHHDuc();
 					approval = ++lastID;
+					lastApproval = approval;
 					send(choices(passport, message("ask", "id", approval, "kind", "approve", "purpose", purpose(passport), "prompt", challenge(msg), "method", firstLine(msg),
 						"history", history(passport))));
 				}
@@ -743,8 +764,8 @@ public class FinTSHelper {
 			send(message("progress", "done", index, "of", jobCount));
 		}
 
-		/// The requests that end the dialog once the user changed the TAN method, so that the old dialog
-		/// asks the user nothing more. A new connection is allowed, because the end of the old dialog
+		/// The requests that end the dialog once the user changed the TAN method or canceled the challenge for
+		/// older transactions, so that the old dialog asks the user nothing more. A new connection is allowed, because the end of the old dialog
 		/// (`Passport.endOpenDialog`) may need one.
 		static final Set<Integer> AFTER_SWITCH = Set.of(NEED_PT_PIN, NEED_PT_SECMECH, NEED_PT_TANMEDIA, NEED_PT_TAN, NEED_PT_PHOTOTAN, NEED_PT_QRTAN,
 			NEED_PT_DECOUPLED, NEED_PT_DECOUPLED_RETRY);
@@ -984,6 +1005,43 @@ public class FinTSHelper {
 		}
 	}
 
+	/// The bank side of one dialog: the accounts of the login, the jobs that the bank allows for an account, and
+	/// the run of the orders. `Bank` is hbci4java, and the self-test runs a dialog against a made-up one.
+	interface Orders {
+		Konto[] accounts();
+		List<String> jobs(Konto k);
+		HBCIJob newJob(String name);
+		HBCIExecStatus execute();
+		void close();
+	}
+
+	/// The orders of a dialog through hbci4java. Its handler starts the dialog with the bank.
+	record Bank(HBCIHandler handle, HBCIPassport passport) implements Orders {
+		Bank(HBCIPassport passport) {
+			this(new HBCIHandler(HBCIVersion.HBCI_300.getId(), passport), passport);
+		}
+
+		public Konto[] accounts() {
+			return passport.getAccounts() == null ? new Konto[0] : passport.getAccounts();
+		}
+
+		public List<String> jobs(Konto k) {
+			return FinTSHelper.jobs(handle, k);
+		}
+
+		public HBCIJob newJob(String name) {
+			return handle.newJob(name);
+		}
+
+		public HBCIExecStatus execute() {
+			return handle.execute();
+		}
+
+		public void close() {
+			handle.close();
+		}
+	}
+
 	static boolean allows(HBCIHandler handle, Konto k, String code, String job) {
 		if (k.allowedGVs != null && !k.allowedGVs.isEmpty()) return k.allowedGVs.contains(code);
 		return handle.isSupported(job);
@@ -1049,7 +1107,7 @@ public class FinTSHelper {
 		return from == null && narrowed ? today.minusDays(90).toString() : from;
 	}
 
-	static void refresh(HBCIHandler handle, HBCIPassport passport, Konto[] accounts, List<?> requested, Callback callback) {
+	static void refresh(Orders handle, HBCIPassport passport, Konto[] accounts, List<?> requested, Callback callback) {
 		applyTanRules(passport.getBLZ(), passport.getBPD());
 		List<Jobs> all = new ArrayList<>();
 		for (Object o : requested) {
@@ -1060,7 +1118,7 @@ public class FinTSHelper {
 				send(message("accountFailed", "account", id, "kind", "unsupported", "text", "The bank does not list this account for the login."));
 				continue;
 			}
-			List<String> names = jobs(handle, k);
+			List<String> names = handle.jobs(k);
 			if (names.isEmpty()) {
 				diagnostic(withoutJobs(k));
 				send(nothingAllowed(id, k));
@@ -1089,6 +1147,7 @@ public class FinTSHelper {
 		callback.lastProgress = 0;
 		send(message("progress", "done", 0, "of", all.size()));
 		HBCIExecStatus status = handle.execute();
+		// Also takes a cancel for older transactions that crossed the answer of the bank, before any result counts.
 		callback.withdrawApproval();
 		callback.checkSwitch();
 		requireLogin(status);
@@ -1246,7 +1305,7 @@ public class FinTSHelper {
 			Passport.State loaded = state == null ? null : Passport.deserialize(Base64.getDecoder().decode(state));
 			Passport.loaded = loaded == null ? null : loaded.data();
 			callback.tanMedium = loaded == null ? null : loaded.tanMedium();
-			while (!dialog(type, command, callback)) {
+			while (!dialog(type, command, callback, Bank::new)) {
 				diagnostic("FinTSHelper: starting a new dialog after a change of the TAN method or a canceled challenge for older transactions");
 			}
 		} finally {
@@ -1255,18 +1314,19 @@ public class FinTSHelper {
 	}
 
 	/// One dialog with the bank. It returns false when the user changed the TAN method during it, or canceled
-	/// the challenge for older transactions. The passport then keeps its data, with the new method, for the next
-	/// dialog, which requests a new challenge, or asks for the last 90 days in place of the full history.
-	static boolean dialog(String type, Map<?, ?> command, Callback callback) throws IOException {
-		HBCIHandler handle = null;
+	/// the challenge for older transactions, also when the bank answered the approval before the cancel came.
+	/// The passport then keeps its data, with the new method, for the next dialog, which requests a new
+	/// challenge, or asks for the last 90 days in place of the full history. `open` starts the dialog.
+	static boolean dialog(String type, Map<?, ?> command, Callback callback, java.util.function.Function<Passport, Orders> open) throws IOException {
+		Orders handle = null;
 		Passport passport = new Passport();
 		try {
 			passport.setHost(callback.host);
 			passport.setPort(callback.port);
-			handle = new HBCIHandler(HBCIVersion.HBCI_300.getId(), passport);
+			handle = open.apply(passport);
 			callback.withdrawApproval();
 			callback.checkSwitch();
-			Konto[] accounts = passport.getAccounts() == null ? new Konto[0] : passport.getAccounts();
+			Konto[] accounts = handle.accounts();
 			BankInfo bank = HBCIUtils.getBankInfo(passport.getBLZ());
 			for (Konto k : accounts) {
 				if (!present(k.bic) && bank != null && present(bank.getBic())) k.bic = bank.getBic();
@@ -1281,6 +1341,8 @@ public class FinTSHelper {
 			send(message("state", "data", Base64.getEncoder().encodeToString(passport.state(callback.tanMedium))));
 			return true;
 		} catch (RuntimeException e) {
+			// A cancel for older transactions that crossed a refusal of the bank ends the dialog for one of 90 days.
+			callback.takeSkip();
 			if (!callback.restarts()) throw e;
 			passport.endOpenDialog();
 			Passport.loaded = passport.data();

@@ -240,6 +240,7 @@ final class SelfTest {
 			expect("bank without a FinTS address in the directory refused", refusal(() -> new FinTSHelper.Callback(
 				Map.of("bankCode", "10010424", "url", "https://fints.musterbank.example/fints")).connect()), "unsupported: The bank offers no FinTS address.");
 			pinTan();
+			historyDialog();
 		} finally {
 			HBCIUtils.done();
 		}
@@ -550,6 +551,13 @@ final class SelfTest {
 	/// A passport with made-up bank parameters: a PIN of 5 to 10 characters, and the methods pushTAN 2.0
 	/// (an approval in the app), chipTAN QR, and mobileTAN with a TAN medium, all three allowed for the user.
 	static FinTSHelper.Passport passport() {
+		FinTSHelper.Passport.loaded = passportData();
+		FinTSHelper.Passport passport = new FinTSHelper.Passport();
+		FinTSHelper.Passport.loaded = null;
+		return passport;
+	}
+
+	static PassportData passportData() {
 		Properties bpd = new Properties();
 		bpd.setProperty("Params_1.PinTanPar1.ParPinTan.pinlen_min", "5");
 		bpd.setProperty("Params_1.PinTanPar1.ParPinTan.pinlen_max", "10");
@@ -574,10 +582,7 @@ final class SelfTest {
 		d.bpd = bpd;
 		d.twostepMechs = new ArrayList<>(List.of("901", "913", "922"));
 		d.tanMethod = "922";
-		FinTSHelper.Passport.loaded = d;
-		FinTSHelper.Passport passport = new FinTSHelper.Passport();
-		FinTSHelper.Passport.loaded = null;
-		return passport;
+		return d;
 	}
 
 	/// The requests of the callbacks for the PIN and the TAN, with made-up answers.
@@ -662,6 +667,15 @@ final class SelfTest {
 	/// The purpose of a challenge, the mark of a challenge that may be for older transactions, and the 90 days
 	/// after the user canceled it (task 1.9 of add-fints-banking).
 	static void history(FinTSHelper.Passport passport, FinTSHelper.Callback callback, List<String> asked, List<String> answers) {
+		FinTSHelper.Passport sending = passport();
+		try {
+			DialogContext dialog = DialogContext.create(null, sending);
+			thrown(() -> sending.onDialogEvent(DialogEvent.JOBS_CREATED, dialog));
+		} catch (RuntimeException e) {
+			failures.add("dialog context: " + e);
+		}
+		expect("hbci4java sent the orders, so a challenge from then on is for the download", sending.jobsSent + " " + FinTSHelper.Callback.purpose(sending),
+			"true download");
 		callback.fullHistory = true;
 		asked.clear();
 		answers.add("482915");
@@ -758,5 +772,131 @@ final class SelfTest {
 		} catch (FinTSHelper.Failure f) {
 			return f.kind + ": " + f.getMessage();
 		}
+	}
+
+	/// The lines that the helper sends to the app while `run` runs.
+	static List<String> sent(Runnable run) {
+		java.io.PrintStream app = FinTSHelper.out;
+		ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+		FinTSHelper.out = new java.io.PrintStream(bytes, true, StandardCharsets.UTF_8);
+		try {
+			run.run();
+		} finally {
+			FinTSHelper.out = app;
+		}
+		String text = bytes.toString(StandardCharsets.UTF_8);
+		return text.isEmpty() ? List.of() : List.of(text.split("\n"));
+	}
+
+	/// An order that records the first day it asks for.
+	static org.kapott.hbci.GV.HBCIJob job(List<String> startdates) {
+		return (org.kapott.hbci.GV.HBCIJob) java.lang.reflect.Proxy.newProxyInstance(SelfTest.class.getClassLoader(),
+			new Class<?>[] {org.kapott.hbci.GV.HBCIJob.class}, (proxy, method, args) -> {
+				if (method.getName().equals("setParam") && "startdate".equals(args[0])) startdates.add(FinTSHelper.day((java.util.Date) args[1]));
+				return null;
+			});
+	}
+
+	/// A made-up bank with the account "Girokonto" for a dialog without a network. `during` runs while the bank
+	/// answers the orders.
+	record MadeUpBank(FinTSHelper.Callback callback, List<String> startdates, List<Boolean> fullHistory, Runnable during) implements FinTSHelper.Orders {
+		public Konto[] accounts() {
+			Konto giro = new Konto();
+			giro.iban = "DE02120300000000202051";
+			giro.curr = "EUR";
+			return new Konto[] {giro};
+		}
+
+		public List<String> jobs(Konto k) {
+			return List.of("SaldoReq", "KUmsAll");
+		}
+
+		public org.kapott.hbci.GV.HBCIJob newJob(String name) {
+			return job(startdates);
+		}
+
+		public HBCIExecStatus execute() {
+			fullHistory.add(callback.fullHistory);
+			during.run();
+			return new HBCIExecStatus();
+		}
+
+		public void close() {
+		}
+	}
+
+	/// A refresh of the full history in a dialog with a made-up bank: what it asks for, and how a cancel of the
+	/// challenge for older transactions ends the dialog for one of 90 days (task 1.9 of add-fints-banking).
+	static void historyDialog() {
+		String ninety = java.time.LocalDate.now().minusDays(90).toString();
+		List<Map<String, Object>> requested = List.of(Map.of("id", "DE02120300000000202051"));
+		FinTSHelper.Passport passport = passport();
+
+		FinTSHelper.Callback full = new FinTSHelper.Callback(Map.of());
+		MadeUpBank bank = new MadeUpBank(full, new ArrayList<>(), new ArrayList<>(), () -> { });
+		List<String> lines = sent(() -> FinTSHelper.refresh(bank, passport, bank.accounts(), requested, full));
+		expect("a refresh of the full history marks its challenges, and asks from no first day", bank.fullHistory() + " " + bank.startdates(), "[true] []");
+		expect("a refresh without a cancel ends with the result of the account", lines.get(lines.size() - 1).contains("\"account\":\"DE02120300000000202051\""), true);
+
+		FinTSHelper.Callback narrowed = new FinTSHelper.Callback(Map.of());
+		narrowed.narrowed = true;
+		MadeUpBank ninetyDays = new MadeUpBank(narrowed, new ArrayList<>(), new ArrayList<>(), () -> { });
+		sent(() -> FinTSHelper.refresh(ninetyDays, passport, ninetyDays.accounts(), requested, narrowed));
+		expect("after a canceled challenge for older transactions the refresh asks for 90 days", ninetyDays.fullHistory() + " " + ninetyDays.startdates(),
+			"[false] [" + ninety + "]");
+
+		// The bank asks for an approval of older transactions. The user rejects it in the banking app and cancels it
+		// in Moneten, and the answer of the bank arrives before hbci4java checks the approval again.
+		for (boolean crossed : new boolean[] {false, true}) {
+			FinTSHelper.Callback racing = new FinTSHelper.Callback(Map.of());
+			MadeUpBank refused = new MadeUpBank(racing, new ArrayList<>(), new ArrayList<>(), () -> {
+				passport.jobsSent = true;
+				racing.callback(passport, FinTSHelper.Callback.NEED_PT_DECOUPLED, "pushTAN 2.0\n\nBitte bestätigen Sie den Abruf.", 0, new StringBuffer());
+				// hbci4java went on and withdrew the approval before the cancel reached the helper.
+				if (crossed) racing.withdrawApproval();
+				FinTSHelper.Inbox.queue.add(new java.util.HashMap<>(Map.of("type", "answer", "id", String.valueOf(racing.lastApproval), "skip", true)));
+			});
+			Throwable[] ended = new Throwable[1];
+			List<String> racingLines = sent(() -> ended[0] = thrown(() -> FinTSHelper.refresh(refused, passport, refused.accounts(), requested, racing)));
+			passport.jobsSent = false;
+			FinTSHelper.Inbox.queue.clear();
+			expect("a cancel for older transactions that " + (crossed ? "crossed the withdrawal" : "came before the answer of the bank")
+				+ " ends the dialog before any result", (ended[0] instanceof FinTSHelper.SkipHistory) + " " + racingLines.stream().anyMatch(l -> l.contains("\"account\"")),
+				"true false");
+		}
+		FinTSHelper.Callback unasked = new FinTSHelper.Callback(Map.of());
+		MadeUpBank refusal = new MadeUpBank(unasked, new ArrayList<>(), new ArrayList<>(), () -> {
+			passport.jobsSent = true;
+			unasked.callback(passport, FinTSHelper.Callback.NEED_PT_DECOUPLED, "pushTAN 2.0\n\nBitte bestätigen Sie den Abruf.", 0, new StringBuffer());
+		});
+		Throwable[] refusedAlone = new Throwable[1];
+		sent(() -> refusedAlone[0] = thrown(() -> FinTSHelper.refresh(refusal, passport, refusal.accounts(), requested, unasked)));
+		passport.jobsSent = false;
+		expect("a refusal of the bank without a cancel goes on to the results as before", refusedAlone[0] + " " + unasked.restarts(), "null false");
+
+		Map<String, Object> command = Map.of("accounts", requested);
+		FinTSHelper.Callback dialogs = new FinTSHelper.Callback(Map.of());
+		List<Boolean> ended = new ArrayList<>();
+		List<String> startdates = new ArrayList<>();
+		java.util.function.Function<FinTSHelper.Passport, FinTSHelper.Orders> open = p -> new MadeUpBank(dialogs, startdates, new ArrayList<>(), () -> {
+			if (dialogs.narrowed) return;
+			p.jobsSent = true;
+			dialogs.callback(p, FinTSHelper.Callback.NEED_PT_DECOUPLED, "pushTAN 2.0\n\nBitte bestätigen Sie den Abruf.", 0, new StringBuffer());
+			FinTSHelper.Inbox.queue.add(new java.util.HashMap<>(Map.of("type", "answer", "id", String.valueOf(dialogs.lastApproval), "skip", true)));
+			// hbci4java fails on the refusal of the bank, which the user caused with the cancel.
+			throw new HBCI_Exception("the approval was refused");
+		});
+		FinTSHelper.Passport.loaded = passportData();
+		List<String> dialogLines = sent(() -> {
+			try {
+				ended.add(FinTSHelper.dialog("refresh", command, dialogs, open));
+				ended.add(FinTSHelper.dialog("refresh", command, dialogs, open));
+			} catch (IOException | RuntimeException e) {
+				failures.add("a dialog after a canceled approval for older transactions failed: " + e);
+			}
+		});
+		FinTSHelper.Passport.loaded = null;
+		expect("a dialog whose approval for older transactions the user canceled and the bank refused ends, and the next one asks for 90 days",
+			ended + " " + startdates + " " + dialogLines.get(dialogLines.size() - 1).startsWith("{\"type\":\"state\""), "[false, true] [" + ninety + "] true");
 	}
 }
