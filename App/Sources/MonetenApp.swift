@@ -87,6 +87,12 @@ struct AppCommands: Commands {
 	var unlocked: Bool { model.phase == .unlocked && !model.isApplyingRule }
 
 	var body: some Commands {
+		// The settings need the open database, so the item waits for the unlock.
+		CommandGroup(replacing: .appSettings) {
+			SettingsLink { Text("Settings...") }
+				.keyboardShortcut(",")
+				.disabled(model.phase != .unlocked)
+		}
 		CommandGroup(after: .appSettings) {
 			Divider()
 			Button(model.hasPassword ? "Change Database Password..." : "Set Database Password...") {

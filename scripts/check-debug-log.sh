@@ -139,6 +139,15 @@ poll "^phase=failed" state
 rmdir "$DATA/Database/Moneten.sqlite"
 send create check-debug-log
 poll "phase=unlocked" state
+# ⌘, opens the settings while the app is unlocked, and a lock closes them. While the app is locked, ⌘, opens nothing.
+poll "^settings window=true tab=general " settings open
+send lock
+poll "^settings window=false " settings state
+send settings open
+sleep 2
+poll "^settings window=false " settings state
+send unlock check-debug-log
+poll "phase=unlocked" state
 cat >"$DATA/export.json" <<-'EOF'
 	{"format": "moneten-export", "version": 1, "exportedAt": "2026-11-14T23:46:40.000Z", "accountGroups": [], "accounts": [],
 	"accesses": [], "categories": [], "transactions": [], "deletedTransactions": [], "holdings": [],

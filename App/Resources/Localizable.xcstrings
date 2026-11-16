@@ -3812,12 +3812,12 @@
         }
       }
     },
-    "Each of these settings keeps the database password in the Keychain of this Mac." : {
+    "Each of these settings keeps the database password in the Keychain of this Mac. With \"Unlock automatically at application start\", anyone who uses your user account on this Mac can open Moneten without the password." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Jede dieser Einstellungen bewahrt das Datenbankpasswort im Schlüsselbund dieses Macs auf."
+            "value" : "Jede dieser Einstellungen bewahrt das Datenbankpasswort im Schlüsselbund dieses Macs auf. Mit „Beim Programmstart automatisch entsperren“ kann jeder, der Ihr Benutzerkonto auf diesem Mac verwendet, Moneten ohne das Passwort öffnen."
           }
         }
       }
@@ -5373,6 +5373,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "macOS blockiert die Mitteilungen von Moneten. Erlauben Sie sie in den Systemeinstellungen unter „Mitteilungen“, „Moneten“."
+          }
+        }
+      }
+    },
+    "macOS did not store this setting. It keeps its earlier value." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "macOS hat diese Einstellung nicht gespeichert. Sie behält ihren bisherigen Wert."
           }
         }
       }
@@ -7215,6 +7225,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Alle Konten aktualisieren"
+          }
+        }
+      }
+    },
+    "Refreshes each account as often as \"Refresh\" in its account settings says, while Moneten runs and is unlocked." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktualisiert jedes Konto so oft, wie „Aktualisierung“ in seinen Kontoeinstellungen festlegt, solange Moneten läuft und entsperrt ist."
           }
         }
       }
@@ -9280,6 +9300,16 @@
         }
       }
     },
+    "The database password could not be deleted from the Keychain, so the setting stays on. %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Datenbankpasswort konnte nicht aus dem Schlüsselbund gelöscht werden, daher bleibt die Einstellung an. %@"
+          }
+        }
+      }
+    },
     "The database password could not be stored in the Keychain." : {
       "localizations" : {
         "de" : {
@@ -10553,16 +10583,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Der Dienst hat die letzten Zugangsdaten nicht angenommen. Prüfen Sie sie und geben Sie sie erneut ein."
-          }
-        }
-      }
-    },
-    "The setting is off, but the database password could not be removed from the Keychain. %@" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Die Einstellung ist aus, aber das Datenbankpasswort konnte nicht aus dem Schlüsselbund entfernt werden. %@"
           }
         }
       }

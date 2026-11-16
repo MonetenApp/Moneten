@@ -1,21 +1,28 @@
 import Sync
 import SwiftUI
 
+/// The tabs of this version. A tab comes with its first setting: this version has no payments and no subscription,
+/// so it has no "Payments" and no "Subscription" tab.
 enum SettingsTab: Hashable {
-	case security
 	case general
+	case security
 }
 
 struct SettingsView: View {
 	@Environment(AppModel.self) private var model
+	@Environment(\.dismiss) private var dismiss
 
 	var body: some View {
 		@Bindable var model = model
 		TabView(selection: $model.settingsTab) {
-			Tab("Security", systemImage: "lock", value: SettingsTab.security) { SecuritySettings() }
 			Tab("General", systemImage: "gearshape", value: SettingsTab.general) { GeneralSettings() }
+			Tab("Security", systemImage: "lock", value: SettingsTab.security) { SecuritySettings() }
 		}
 		.frame(width: 500)
+		// The settings change the open database and the Keychain entry of its password, so a lock closes them.
+		.onChange(of: model.phase) { _, phase in
+			if phase != .unlocked { dismiss() }
+		}
 	}
 }
 
@@ -68,7 +75,7 @@ struct SecuritySettings: View {
 					Text(message).foregroundStyle(Palette.red)
 				} else {
 					Text(model.hasPassword
-						? "Each of these settings keeps the database password in the Keychain of this Mac."
+						? "Each of these settings keeps the database password in the Keychain of this Mac. With \"Unlock automatically at application start\", anyone who uses your user account on this Mac can open Moneten without the password."
 						: "The lock and unlock settings need a database password.")
 						.foregroundStyle(.secondary)
 				}
@@ -111,13 +118,19 @@ struct SecuritySettings: View {
 				}
 				askPasswordFor = key
 			} else {
-				value.wrappedValue = false
-				guard !unlockAutomatically && !unlockWithTouchID && !unlockWithAppleWatch else { return }
-				do {
-					try model.vault.removeStoredPassword()
-				} catch {
-					message = String(localized: "The setting is off, but the database password could not be removed from the Keychain. \(String(describing: error))")
+				// The last setting deletes the password from the Keychain first. When that fails, the setting stays on,
+				// because the password is still there.
+				let others = [(Preference.unlockAutomatically, unlockAutomatically), (Preference.unlockWithTouchID, unlockWithTouchID),
+					(Preference.unlockWithAppleWatch, unlockWithAppleWatch)].contains { $0.0 != key && $0.1 }
+				if !others {
+					do {
+						try model.vault.removeStoredPassword()
+					} catch {
+						message = String(localized: "The database password could not be deleted from the Keychain, so the setting stays on. \(String(describing: error))")
+						return
+					}
 				}
+				value.wrappedValue = false
 			}
 		})
 	}
@@ -176,6 +189,8 @@ struct GeneralSettings: View {
 	@State private var notificationsDenied = false
 	/// Nil while the app follows macOS.
 	@State private var language = AppLanguage.stored
+	/// The key of the setting whose last change macOS did not keep. Its control shows the stored value and this message.
+	@State private var refused: String?
 
 	private var version: String {
 		let info = Bundle.main.infoDictionary
@@ -186,27 +201,39 @@ struct GeneralSettings: View {
 	var body: some View {
 		SheetForm {
 			Section {
-				Toggle("Show Moneten icon in menu bar", isOn: $showMenuBarIcon)
-				Toggle("Automatically refresh accounts", isOn: $automaticRefresh)
-				Toggle(isOn: askingPermission($showsBanner)) {
+				Toggle(isOn: stored(Preference.showMenuBarIcon, $showMenuBarIcon)) {
+					Text("Show Moneten icon in menu bar")
+					refusal(of: Preference.showMenuBarIcon)
+				}
+				Toggle(isOn: stored(RefreshSettings.automaticRefreshKey, $automaticRefresh)) {
+					Text("Automatically refresh accounts")
+					Text("Refreshes each account as often as \"Refresh\" in its account settings says, while Moneten runs and is unlocked.")
+					refusal(of: RefreshSettings.automaticRefreshKey)
+				}
+				Toggle(isOn: askingPermission(RefreshSettings.showsBannerKey, $showsBanner)) {
 					Text("Show banner notification on new transactions")
 					if notificationsDenied {
 						Text("macOS blocks the notifications of Moneten. Allow them in System Settings, Notifications, Moneten.")
 					}
+					refusal(of: RefreshSettings.showsBannerKey)
 				}
-				Toggle("Play sound on new transactions", isOn: askingPermission($playsSound))
+				Toggle(isOn: askingPermission(RefreshSettings.playsSoundKey, $playsSound)) {
+					Text("Play sound on new transactions")
+					refusal(of: RefreshSettings.playsSoundKey)
+				}
 				if notificationsDenied {
 					Button("Open Notification Settings...") { NSWorkspace.shared.open(Self.notificationSettings) }
 				}
 			}
 			Section {
-				Picker("Language", selection: $language) {
+				Picker("Language", selection: storedLanguage) {
 					Text("System").tag(AppLanguage?.none)
 					ForEach(AppLanguage.allCases, id: \.self) { Text(verbatim: $0.name).tag(Optional($0)) }
 				}
-				.onChange(of: language) { _, new in AppLanguage.store(new) }
 			} footer: {
-				if (language ?? AppLanguage.system) != AppLanguage.current {
+				if refused == Self.languageKey {
+					refusal(of: Self.languageKey)
+				} else if (language ?? AppLanguage.system) != AppLanguage.current {
 					Text("Moneten uses the new language after a restart.").foregroundStyle(.secondary)
 				}
 			}
@@ -243,11 +270,42 @@ struct GeneralSettings: View {
 
 	private static let notificationSettings = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension?id=\(Bundle.main.bundleIdentifier ?? "")")!
 
+	/// The language has no key of its own in `refused`: macOS reads it from `AppleLanguages`.
+	private static let languageKey = "AppleLanguages"
+
+	/// A switch writes its setting and reads it back. When macOS keeps another value, the switch shows that value
+	/// and the message below it, and the change has no effect. Returns whether the value is in effect.
+	private func stored(_ key: String, _ value: Binding<Bool>) -> Binding<Bool> {
+		Binding(get: { value.wrappedValue }, set: { on in store(on, forKey: key) })
+	}
+
+	@discardableResult
+	private func store(_ value: Any?, forKey key: String) -> Bool {
+		let kept = Preference.store(value, forKey: key)
+		refused = kept ? nil : key
+		return kept
+	}
+
+	/// The picker keeps the earlier language when macOS does not store the new one.
+	private var storedLanguage: Binding<AppLanguage?> {
+		Binding(get: { language }, set: { new in
+			let kept = AppLanguage.store(new)
+			refused = kept ? nil : Self.languageKey
+			if kept { language = new }
+		})
+	}
+
+	@ViewBuilder
+	private func refusal(of key: String) -> some View {
+		if refused == key {
+			Text("macOS did not store this setting. It keeps its earlier value.").foregroundStyle(Palette.red)
+		}
+	}
+
 	/// macOS asks for the permission when the user turns on the banner or the sound, not at the launch.
-	private func askingPermission(_ value: Binding<Bool>) -> Binding<Bool> {
+	private func askingPermission(_ key: String, _ value: Binding<Bool>) -> Binding<Bool> {
 		Binding(get: { value.wrappedValue }, set: { on in
-			value.wrappedValue = on
-			guard on else { return }
+			guard store(on, forKey: key), on else { return }
 			Task {
 				await model.notices.requestPermission()
 				await checkPermission()

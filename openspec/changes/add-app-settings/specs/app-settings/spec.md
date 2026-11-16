@@ -105,3 +105,9 @@ The app SHALL NOT open the settings window while the app is locked, and it SHALL
 - **GIVEN** the app is locked
 - **WHEN** the user presses ⌘,
 - **THEN** no settings window opens
+
+#### Scenario: Lock while the settings are open
+
+- **GIVEN** the settings window is open on the "Security" tab
+- **WHEN** the user locks the app with ⌃⌘L
+- **THEN** the settings window closes
