@@ -12,7 +12,7 @@ The dry run needs no secrets and contacts no service. It builds the app signed t
 scripts/release.sh dry-run           # version 0.0.0-beta.1, on a copy of CHANGELOG.md
 ```
 
-The dry run takes XcodeGen and the JDK from `scripts/build-tools.sh`, as a release does, and checks that the check of the current feed refuses a changed feed, a feed of another key, and a disk image over http.
+The dry run takes XcodeGen and the JDK from `scripts/build-tools.sh`, as a release does, and checks that Sparkle and the check of a feed agree on its signature, that a release refuses a current feed of another key, and that a withdrawal refuses an unsigned feed and a feed with a disk image over http.
 
 The workflow runs the same dry run on each pull request that changes the packaging. A run by hand under Actions, "Release", "Run workflow", does it too. With "notarize" checked, the run by hand also signs and notarizes with the secrets of the environment `build`. It signs nothing with the update key and publishes nothing.
 
@@ -103,7 +103,7 @@ To start over after a failed run, delete the draft and run the workflow again on
 
 Sparkle never offers an older build, so a withdrawn version needs a fixed version with a higher build number.
 
-1. Take the item out of the feed: download `appcast.xml` of the newest stable release, run `python3 scripts/release-notes.py remove 0.1.3 --feed appcast.xml --out appcast.xml`, sign it with `"$(scripts/sparkle-tools.sh)/sign_update" appcast.xml`, which reads the update key from the login Keychain, and upload it to the same release with `gh release upload <tag> appcast.xml --clobber`.
+1. Run `scripts/release.sh withdraw 0.1.3` on the Mac that holds the update key in its login Keychain, with the GitHub CLI logged in as the owner and OpenSSL 3 or later installed. It downloads `appcast.xml` of the newest stable release and stops unless the update key signed it and every disk image in it lies in a release of the repository, because the new signature would also cover a forged item. Then it takes the item out, signs the feed with `sign_update`, checks the result in the same way, replaces `appcast.xml` on the newest stable release, and checks that the feed URL no longer lists the version. Never sign or upload a feed by hand: `scripts/release-notes.py remove` also refuses a feed that fails the check, but only the script checks the signed result before the upload.
 2. Mark the release page as withdrawn in its text.
 3. Release the fixed version as usual.
 
