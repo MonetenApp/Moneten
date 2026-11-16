@@ -29,6 +29,19 @@ struct SeveralBalancesTests {
 		#expect(merged.reportedBalances == [eur(12_000), usd(3_500)])
 	}
 
+	/// Every connector hands its balances through `RefreshResult`, so a repeated currency adds up into one entry, a part in
+	/// the currency of the balance goes to the balance, and a zero is left out. A refresh never stores a duplicate.
+	@Test("A refresh adds up repeated currencies and moves the part in the account currency to the balance")
+	func refreshCombinesCurrencies() throws {
+		let result = RefreshResult(balance: eur(10_000), transactions: nil,
+			otherBalances: [usd(1_000), eur(500), usd(250), Money(minorUnits: 0, currency: "GBP"), Money(minorUnits: 700, currency: "CHF"), usd(-1_250)])
+		#expect(result.balance == eur(10_500))
+		#expect(result.otherBalances == [Money(minorUnits: 700, currency: "CHF")])
+		let merged = try #require(merge(result, into: wallet()))
+		#expect(merged.bankBalanceMinor == 10_500)
+		#expect(merged.otherBankBalances == [Money(minorUnits: 700, currency: "CHF")])
+	}
+
 	@Test("The next refresh replaces the balances and the bonus points, so what it no longer reports disappears")
 	func nextRefreshReplacesThem() throws {
 		var account = wallet()

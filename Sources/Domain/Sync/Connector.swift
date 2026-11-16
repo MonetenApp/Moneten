@@ -182,7 +182,8 @@ public struct RefreshResult: Sendable {
 	/// normal refresh asks for no more than 90 days, or because the user canceled the second factor for older
 	/// transactions. The merge turns it into `Account.missesOlderTransactions`, which stays until a full history.
 	public let missesOlder: Bool
-	/// The balances in other currencies than `balance`, without a zero, such as the dollars of a wallet in euros.
+	/// The balances in other currencies than `balance`, one per currency in the order of the source, without a zero, such
+	/// as the dollars of a wallet in euros.
 	public let otherBalances: [Money]
 	/// The bonus points of the account, or nil when the source reported none.
 	public let bonusPoints: Int64?
@@ -218,6 +219,18 @@ public struct RefreshResult: Sendable {
 		transactionFailure: SyncFailure? = nil, isPortfolio: Bool = false, holdings: [Holding]? = nil, missesOlder: Bool = false,
 		otherBalances: [Money] = [], bonusPoints: Int64? = nil) {
 		self.missesOlder = missesOlder
+		// One entry per currency, so the sidebar row lists each currency once and the sum of a group counts it once.
+		var balance = balance
+		var combined: [Money] = []
+		for money in otherBalances {
+			if let current = balance, money.currency == current.currency {
+				balance = Money(minorUnits: Self.add(current.minorUnits, money.minorUnits), currency: current.currency)
+			} else if let index = combined.firstIndex(where: { $0.currency == money.currency }) {
+				combined[index].minorUnits = Self.add(combined[index].minorUnits, money.minorUnits)
+			} else {
+				combined.append(money)
+			}
+		}
 		self.balance = balance
 		self.balanceDate = balanceDate
 		self.transactions = transactions
@@ -225,8 +238,14 @@ public struct RefreshResult: Sendable {
 		self.transactionFailure = transactionFailure
 		self.isPortfolio = isPortfolio
 		self.holdings = holdings
-		self.otherBalances = otherBalances
+		self.otherBalances = combined.filter { $0.minorUnits != 0 }
 		self.bonusPoints = bonusPoints
+	}
+
+	/// A sum that stops at the bounds of `Int64`. A connector keeps each amount far below them.
+	private static func add(_ a: Int64, _ b: Int64) -> Int64 {
+		let (sum, overflow) = a.addingReportingOverflow(b)
+		return overflow ? (b < 0 ? .min : .max) : sum
 	}
 }
 

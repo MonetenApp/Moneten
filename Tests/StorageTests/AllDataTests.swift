@@ -625,6 +625,33 @@ struct AllDataTests {
 		#expect(imported.holdings[0].quantity.description == text)
 	}
 
+	/// A balance in the account currency would count twice in the sum of a group, and a repeated currency would show twice
+	/// in the sidebar row. A code that is not three letters is no currency.
+	@Test("An import refuses other balances in the account currency, a repeated currency, or a code that is no currency", arguments: [
+		[["amount": "120.00", "currency": "EUR"]],
+		[["amount": "35.00", "currency": "USD"], ["amount": "1.00", "currency": "USD"]],
+		[["amount": "35.00", "currency": "US$"]],
+		[["amount": "35.00", "currency": "usd"]],
+	])
+	func refusedOtherBalances(_ balances: [[String: String]]) throws {
+		var json = try JSONSerialization.jsonObject(with: try filledStore().exportAllData().json()) as! [String: Any]
+		var accounts = json["accounts"] as! [[String: Any]]
+		let index = try #require(accounts.firstIndex { $0["otherBankBalances"] != nil })
+		#expect(accounts[index]["currency"] as? String == "EUR")
+		accounts[index]["otherBankBalances"] = balances
+		json["accounts"] = accounts
+		#expect(throws: AllData.ReadError.self) { try AllData(json: JSONSerialization.data(withJSONObject: json)) }
+	}
+
+	@Test("An import refuses a holding value in a code that is no currency")
+	func refusedHoldingCurrency() throws {
+		var json = try JSONSerialization.jsonObject(with: try filledStore().exportAllData().json()) as! [String: Any]
+		var rows = json["holdings"] as! [[String: Any]]
+		rows[0]["marketValue"] = ["amount": "1.00", "currency": "US$"]
+		json["holdings"] = rows
+		#expect(throws: AllData.ReadError.self) { try AllData(json: JSONSerialization.data(withJSONObject: json)) }
+	}
+
 	@Test("Insignificant zeros and negative zero do not change decimal values", arguments: [
 		("0001.2300", "1.23"), ("-0001.2300", "-1.23"), ("-000.000", "0"), ("000", "0")
 	])

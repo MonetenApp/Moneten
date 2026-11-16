@@ -169,16 +169,50 @@ import Testing
 		}
 	}
 
+	/// A currency is three letters after trimming and uppercasing. Anything else would be stored and then refused by the
+	/// import of the complete export.
+	@Test(arguments: ["US$", "EU", "EURO", "", "  ", "U5D", "€"])
+	func balancesWithoutACurrencyCode(code: String) {
+		#expect(throws: MappingError("An entry of balances is not a pair of amount and currency.")) {
+			try result(["balances": .array([pair(120.00, "EUR"), pair(35.00, code)]), "transactions": .array([])])
+		}
+	}
+
+	/// Spaces around a code and lowercase letters name the same currency, so the amount adds to that currency.
+	@Test func currencyCodesAreTrimmed() throws {
+		let dollars = ListedAccount(.object(["accountNumber": .string("W-1"), "currency": .string("USD")]))!
+		let own = try result(["balances": .array([pair(35.00, " USD")]), "transactions": .array([])], of: dollars)
+		#expect(own.balance == Money(minorUnits: 3500, currency: "USD"))
+		#expect(own.otherBalances.isEmpty)
+		let other = try result(["balances": .array([pair(120.00, "EUR"), pair(35.00, "usd "), pair(1.00, "USD")]), "transactions": .array([])])
+		#expect(other.otherBalances == [Money(minorUnits: 3600, currency: "USD")])
+	}
+
+	/// `balances` that is not a list fails, so a broken script never clears the stored balances in other currencies.
+	/// Only a missing or empty list falls back to `balance`.
+	@Test(arguments: [LuaValue.string("broken"), .integer(3), .object(["EUR": .number(80)])])
+	func balancesThatAreNoList(value: LuaValue) {
+		#expect(throws: MappingError("The balances are not a list of pairs of amount and currency.")) {
+			try result(["balance": .number(80.00), "balances": value, "transactions": .array([])])
+		}
+	}
+
+	@Test func nullBalancesReadsBalance() throws {
+		#expect(try result(["balance": .number(80.00), "balances": .null, "transactions": .array([])]).balance == Money(minorUnits: 8000, currency: "EUR"))
+	}
+
 	/// The whole part of `bonusPoints`. A missing value, an empty text, and 0 mean no points.
 	@Test(arguments: [(LuaValue?.some(.integer(12400)), Int64?.some(12400)), (.some(.number(1200.75)), 1200), (.some(.number(-3.9)), -3),
-		(.some(.string("500")), 500), (.some(.string("")), nil), (.some(.integer(0)), nil), (nil, nil)])
+		(.some(.string("500")), 500), (.some(.string("")), nil), (.some(.integer(0)), nil), (nil, nil),
+		(.some(.string("12400.9999999999999999")), 12400), (.some(.string("-12400.9999999999999999")), -12400),
+		(.some(.string("9007199254740993")), 9_007_199_254_740_993), (.some(.integer(.max)), .max), (.some(.integer(.min)), .min)])
 	func bonusPoints(value: LuaValue?, points: Int64?) throws {
 		var fields: [String: LuaValue] = ["balance": .number(1), "transactions": .array([])]
 		fields["bonusPoints"] = value
 		#expect(try result(fields).bonusPoints == points)
 	}
 
-	@Test(arguments: [LuaValue.string("many"), .boolean(true), .number(1e30)])
+	@Test(arguments: [LuaValue.string("many"), .boolean(true), .number(1e30), .string("9223372036854775808"), .string("-9223372036854775809")])
 	func bonusPointsThatAreNoWholeNumber(value: LuaValue) {
 		#expect(throws: MappingError("The bonus points are not a number.")) {
 			try result(["balance": .number(1), "transactions": .array([]), "bonusPoints": value])

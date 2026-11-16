@@ -939,6 +939,18 @@ The app SHALL read the fields `balance`, `balances`, `pendingBalance`, `transact
 - **WHEN** the function returns `balances={{25.50, "USD"}}` for an account in EUR
 - **THEN** the account shows the balances 0,00 € and 25,50 US dollars
 
+#### Scenario: Currency codes of the pairs
+
+- **WHEN** the function returns `balances={{120.00, "EUR"}, {35.00, " usd"}}` for an account in EUR
+- **THEN** the account shows the balances 120,00 € and 35,00 US dollars
+- **AND** a pair with the currency "US$" fails the account with the message that an entry of balances is not a pair of amount and currency
+
+#### Scenario: Balances that are no list
+
+- **WHEN** the function returns `balance=80.00` and `balances="broken"`
+- **THEN** the account fails with the message that the balances are not a list of pairs of amount and currency
+- **AND** the stored balances stay as they were
+
 #### Scenario: Whole bonus points
 
 - **WHEN** the function returns `bonusPoints=1200.75`

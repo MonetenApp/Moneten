@@ -23,7 +23,9 @@ The first build follows the spec where the task list marks a task as checked. Op
 
 `RefreshResult` carries `otherBalances` and `bonusPoints`. The extension connector reads them from `balances` and `bonusPoints`. `reconcile` sets both fields whenever it stores the balance in the account currency, so each refresh replaces them, and a portfolio gets neither. `Account.reportedBalances` returns the reported balance and the other balances, and `Ledger.balances(of:)` returns what the sidebar row and the header show. `Ledger.sum(ofGroup:)` adds every balance, each in its currency. An account that shows a computed balance has no other balances, so a migrated or offline account shows one balance.
 
-An empty `balances` array counts as a missing one, so `balance` is read then. This keeps a result with an empty array from failing with "The balance could not be fetched."
+An empty `balances` array counts as a missing one, so `balance` is read then. This keeps a result with an empty array from failing with "The balance could not be fetched." A `balances` that is not an array fails the account, so a broken script never clears the stored balances. A currency of a pair must be three letters A to Z after trimming and uppercasing, because the import of the complete export refuses any other code.
+
+`RefreshResult` combines what a connector hands it: a repeated currency adds up into one entry, a part in the currency of the balance goes to the balance, and a zero is left out. So every connector stores one entry per currency. The import of the complete export refuses other balances in the account currency or with a repeated currency, because the sum of a group would count them twice.
 
 ## Risks / Trade-offs
 

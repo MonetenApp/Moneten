@@ -164,20 +164,27 @@ enum ResultMapping {
 
 	/// The balance in the account currency and the balances in other currencies. `balances`, a list of pairs of amount
 	/// and currency, takes the place of `balance` when it holds a pair. Pairs in one currency add up, a missing account
-	/// currency has the balance 0, and a zero in another currency is left out.
+	/// currency has the balance 0, and a zero in another currency is left out. A `balances` that is not a list fails, so
+	/// that a broken script never clears the stored balances in other currencies.
 	private static func balances(_ fields: [String: LuaValue], currency: String) throws(MappingError) -> (Money, [Money])? {
-		guard case let .array(pairs)? = fields["balances"], !pairs.isEmpty else {
+		let pairs: [LuaValue]
+		switch fields["balances"] {
+		case nil, .null: pairs = []
+		case let .array(list): pairs = list
+		default: throw MappingError("The balances are not a list of pairs of amount and currency.")
+		}
+		guard !pairs.isEmpty else {
 			guard let amount = fields["balance"] else { return nil }
 			guard let decimal = amount.decimal else { throw MappingError("The balance is not a number.") }
 			return (try money(decimal, currency, "The balance"), [])
 		}
 		var sums: [Money] = [Money(minorUnits: 0, currency: currency)]
 		for pair in pairs {
-			guard case let .array(parts) = pair, parts.count == 2, let decimal = parts[0].decimal, case let .string(code) = parts[1],
-				!code.isEmpty else {
+			guard case let .array(parts) = pair, parts.count == 2, let decimal = parts[0].decimal, case let .string(text) = parts[1],
+				let code = currencyCode(text) else {
 				throw MappingError("An entry of balances is not a pair of amount and currency.")
 			}
-			let value = try money(decimal, code.uppercased(), "The balance in \(code.uppercased())")
+			let value = try money(decimal, code, "The balance in \(code)")
 			let index = sums.firstIndex { $0.currency == value.currency } ?? { sums.append(Money(minorUnits: 0, currency: value.currency)); return sums.count - 1 }()
 			let (sum, overflow) = sums[index].minorUnits.addingReportingOverflow(value.minorUnits)
 			guard !overflow, abs(sum) <= maxMinorUnits else { throw MappingError("The balances add up to more than Moneten can hold.") }
@@ -186,14 +193,22 @@ enum ResultMapping {
 		return (sums[0], sums.dropFirst().filter { $0.minorUnits != 0 })
 	}
 
+	/// An ISO 4217 code, three letters A to Z after trimming and uppercasing, or nil. A code such as "US$" would reach the
+	/// complete export, whose import refuses it.
+	private static func currencyCode(_ text: String) -> String? {
+		let code = text.trimmingCharacters(in: .whitespaces).uppercased()
+		return code.wholeMatch(of: /[A-Z]{3}/) != nil ? code : nil
+	}
+
 	/// The whole part of `bonusPoints`, or nil for a missing value, an empty text, or 0.
 	private static func bonusPoints(_ value: LuaValue?) throws(MappingError) -> Int64? {
 		guard let value, value != .null, value != .string("") else { return nil }
-		// A whole number of points fits a double exactly up to 2^53, far beyond any bonus program.
-		guard let number = value.decimal.map({ NSDecimalNumber(decimal: $0).doubleValue }), abs(number) < 0x1p53 else {
-			throw MappingError("The bonus points are not a number.")
-		}
-		let points = Int64(number.rounded(.towardZero))
+		guard var magnitude = value.decimal.map(abs) else { throw MappingError("The bonus points are not a number.") }
+		// The decimal stays exact, where a double would round 12400.9999999999999999 up to 12401.
+		var whole = Decimal()
+		NSDecimalRound(&whole, &magnitude, 0, .down)
+		let negative = value.decimal.map { $0 < 0 } ?? false
+		guard let points = Int64((negative ? -whole : whole).description) else { throw MappingError("The bonus points are not a number.") }
 		return points == 0 ? nil : points
 	}
 
