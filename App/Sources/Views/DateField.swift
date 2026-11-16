@@ -25,6 +25,17 @@ struct DateField: View {
 	@State private var showsCalendar = false
 	@FocusState private var hasFocus: Bool
 
+	/// The calendar of the field: Gregorian with the first weekday of the user, in GMT. The rules of the completion
+	/// count Gregorian days, months, and years, so a field shows 2026 and reads it back even on a Mac that shows the
+	/// Buddhist year 2569 elsewhere.
+	static var calendar: Calendar {
+		var gregorian = Calendar(identifier: .gregorian)
+		gregorian.locale = Calendar.current.locale
+		gregorian.firstWeekday = Calendar.current.firstWeekday
+		gregorian.minimumDaysInFirstWeek = Calendar.current.minimumDaysInFirstWeek
+		return Day.calendar(like: gregorian)
+	}
+
 	private func completed(_ text: String) -> Day? {
 		Day(typed: text, today: .today(), order: DateOrder(locale: .current), expectsFuture: expectsFuture)
 	}
@@ -77,7 +88,7 @@ struct DateField: View {
 
 	private func show(_ day: Day?) {
 		shownDay = day
-		shown = day.map(Format.day) ?? ""
+		shown = day.map { Format.day($0, calendar: Self.calendar) } ?? ""
 		text = shown
 	}
 
@@ -106,8 +117,8 @@ struct DateField: View {
 }
 
 /// The calendar of a date field. It starts at the date of the field, or at today while the field holds no date. It
-/// shows the days of the calendar of the user in GMT and gets each day as its noon GMT, so a day that has no local
-/// midnight, such as 30 December 2011 in Samoa, still shows and picks as itself.
+/// shows the days of `DateField.calendar` and gets each day as its noon GMT, so a day that has no local midnight,
+/// such as 30 December 2011 in Samoa, still shows and picks as itself.
 struct DateFieldCalendar: View {
 	var title: LocalizedStringKey
 	@State var shown: Day
@@ -125,8 +136,8 @@ struct DateFieldCalendar: View {
 		}), displayedComponents: .date)
 		.datePickerStyle(.graphical)
 		.labelsHidden()
-		.environment(\.calendar, Day.calendar(like: .current))
-		.environment(\.timeZone, Day.calendar(like: .current).timeZone)
+		.environment(\.calendar, DateField.calendar)
+		.environment(\.timeZone, DateField.calendar.timeZone)
 		.padding(8)
 	}
 }

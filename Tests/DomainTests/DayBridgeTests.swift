@@ -34,6 +34,18 @@ struct DayBridgeTests {
 		#expect(Day(noon: skipped.noon) == skipped)
 	}
 
+	@Test("A day is Gregorian even when the calendar of the Mac is another kind", arguments: [Calendar.Identifier.buddhist, .japanese, .islamicUmmAlQura, .hebrew])
+	func gregorianDay(kind: Calendar.Identifier) throws {
+		var mac = Calendar(identifier: kind)
+		mac.timeZone = try #require(TimeZone(identifier: "Europe/Berlin"))
+		let day = Day(year: 2026, month: 11, day: 9)
+		// Noon GMT is 13:00 in Berlin on the same day, which `Day.today()` reads the same way.
+		#expect(Day(day.noon, calendar: mac) == day)
+		#expect(Day(day.date(in: mac), calendar: mac) == day)
+		#expect(day.adding(days: 30, calendar: mac) == Day(year: 2026, month: 12, day: 9))
+		#expect(day.adding(months: -1, calendar: mac) == Day(year: 2026, month: 10, day: 9))
+	}
+
 	@Test("A calendar of another kind keeps its kind and shows the day in GMT")
 	func otherCalendar() throws {
 		var buddhist = Calendar(identifier: .buddhist)
