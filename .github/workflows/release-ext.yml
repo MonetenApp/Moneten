@@ -15,6 +15,7 @@ on:
       - scripts/release-ext.sh
       - Package.swift
       - Package.resolved
+      - Sources/**
       - Tools/ext/**
 
 permissions:
@@ -42,6 +43,8 @@ jobs:
     # The Developer ID certificate and the notary key live only in the environment build, which must
     # allow the tags ext-v* as well as the tags v* of the app release.
     environment: build
+    outputs:
+      sha256: ${{ steps.hash.outputs.sha256 }}
     steps:
       - name: Check the secrets
         env:
@@ -111,6 +114,10 @@ jobs:
           MONETEN_NOTARY_KEY_ID: ${{ secrets.NOTARY_API_KEY_ID }}
           MONETEN_NOTARY_ISSUER: ${{ secrets.NOTARY_API_ISSUER_ID }}
         run: MONETEN_NOTARY_KEY="$RUNNER_TEMP/notary.p8" scripts/release-ext.sh package "${GITHUB_REF_NAME#ext-v}"
+      # The SHA-256 of the zip that the step above notarized and checked, for the job publish.
+      - name: Hand over the SHA-256
+        id: hash
+        run: echo "sha256=$(cut -d' ' -f1 "dist/ext/ext-${GITHUB_REF_NAME#ext-v}-macos.zip.sha256")" >> "$GITHUB_OUTPUT"
       - name: Remove the signing keychain
         if: always()
         run: |
@@ -141,10 +148,16 @@ jobs:
       - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
+          EXPECTED: ${{ needs.package.outputs.sha256 }}
         run: |
           VERSION="${GITHUB_REF_NAME#ext-v}"
+          ZIP="ext-$VERSION-macos.zip"
           cd dist/ext
-          sha256sum -c "ext-$VERSION-macos.zip.sha256"
+          # The job package hands over the SHA-256 of the zip that it notarized and checked, outside
+          # the artifact. The zip and its .sha256 file must both match it, so a changed artifact stops here.
+          echo "$EXPECTED" | grep -Eqx '[0-9a-f]{64}' || { echo "::error::The job package handed over no SHA-256."; exit 1; }
+          echo "$EXPECTED  $ZIP" | sha256sum -c
+          [ "$(cat "$ZIP.sha256")" = "$EXPECTED  $ZIP" ] || { echo "::error::$ZIP.sha256 does not name the SHA-256 of the job package."; exit 1; }
           # Never the latest release: the update feed of the app lives on the latest release.
-          gh release create "$GITHUB_REF_NAME" "ext-$VERSION-macos.zip" "ext-$VERSION-macos.zip.sha256" \
+          gh release create "$GITHUB_REF_NAME" "$ZIP" "$ZIP.sha256" \
             --repo "$GITHUB_REPOSITORY" --verify-tag --latest=false --title "ext $VERSION" --notes-file notes.md
