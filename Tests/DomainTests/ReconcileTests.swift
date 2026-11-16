@@ -268,6 +268,29 @@ struct ReconcileTests {
 		#expect(again.added == [] && again.skipped == 1)
 	}
 
+	@Test("A refresh that moves the day of the bank balance past a manual row moves the initial balance against it, so a later delete keeps the balance")
+	func refreshPassesManualRow() throws {
+		let calendar = Calendar.current
+		let bank = Account(position: 0, name: "Kreditkarte", kind: .creditCard, source: .bank, bankBalanceMinor: 10_000,
+			bankBalanceDate: day(1).date(in: calendar), initialBalanceMinor: 10_000, initialBalanceIsSet: true)
+		let planned = Transaction(accountID: bank.id, bookingDate: day(5), amountMinor: -5_000, name: "Hotel Beispiel", isManual: true)
+		var ledger = Ledger(accounts: [bank], transactions: [planned])
+		#expect(ledger.keepingBankBalance(replacing: [], with: [planned], calendar: calendar) == [])
+		// The bank books the hotel on 05.11 and reports the balance of 10.11.
+		let booked = Transaction(accountID: bank.id, bookingDate: day(5), amountMinor: -5_000, name: "HOTEL BEISPIEL", purpose: "Kartenzahlung", sourceID: "TX-9")
+		let r = merge(refresh([booked], balance: Money(minorUnits: 5_000, currency: "EUR"), balanceDate: day(10).date(in: calendar)),
+			into: bank, stored: [planned], at: day(10).date(in: calendar))
+		let account = try #require(r.account)
+		#expect(account.initialBalanceMinor == 15_000)
+		ledger.apply(r)
+		#expect(ledger.computedBalance(of: account, through: day(10)) == Money(minorUnits: 5_000, currency: "EUR"))
+		// Deleting the manual copy keeps the computed balance at the bank balance.
+		let moved = try #require(ledger.keepingBankBalance(replacing: [planned], with: [], calendar: calendar).first)
+		ledger.upsert(moved)
+		ledger.remove(transactionIDs: [planned.id])
+		#expect(ledger.computedBalance(of: moved, through: day(10)) == Money(minorUnits: 5_000, currency: "EUR"))
+	}
+
 	@Test("The first refresh derives the initial balance with the manual rows, so the computed balance meets the bank balance")
 	func firstRefreshCountsManualRows() {
 		let bank = Account(position: 0, name: "Festgeld", kind: .fixedTermDeposit, source: .bank)

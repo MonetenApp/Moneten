@@ -329,7 +329,7 @@ The app SHALL mark every transaction that the user adds with "Add Transaction...
 
 ### Requirement: A manual transaction is part of the bank balance
 
-The app SHALL count a manual transaction in an account with bank access as part of the balance that the bank reports when its booking date is not after the day of that balance. Once a refresh set the initial balance, the app moves the initial balance against each such manual transaction that the user adds, changes, or deletes, so the computed balance keeps ending at the bank balance. A manual transaction after the day of the bank balance counts on top of it.
+The app SHALL count a manual transaction in an account with bank access as part of the balance that the bank reports when its booking date is not after the day of that balance. Once a refresh set the initial balance, the app moves the initial balance against each such manual transaction that the user adds, changes, or deletes, so the computed balance keeps ending at the bank balance.
 
 #### Scenario: Deposit after the first refresh
 
@@ -350,6 +350,17 @@ The app SHALL count a manual transaction in an account with bank access as part 
 - **WHEN** the first refresh delivers the balance 10.000,00 € and no transactions
 - **THEN** the computed balance on 01.11.2026 is 10.000,00 €
 - **AND** the computed balance on 28.02.2026 is 6.000,00 €
+
+### Requirement: A planned manual transaction joins the bank balance later
+
+The app SHALL count a manual transaction after the day of the bank balance on top of that balance until a refresh reports a balance of a later day. Then the app moves the initial balance against it, as for a manual transaction before that day.
+
+#### Scenario: Refresh after a planned payment
+
+- **GIVEN** a credit card whose bank reported the balance 100,00 € on 01.11.2026, and a manual transaction of -50,00 € "Hotel Beispiel" on 05.11.2026
+- **WHEN** a refresh on 10.11.2026 delivers the booking of -50,00 € on 05.11.2026 and the balance 50,00 €
+- **THEN** the computed balance on 10.11.2026 is 50,00 €
+- **AND** after the user deletes the manual transaction, the computed balance on 10.11.2026 is still 50,00 €
 
 ### Requirement: What a transaction in an account with bank access can change
 

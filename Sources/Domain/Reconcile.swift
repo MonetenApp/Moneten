@@ -231,6 +231,12 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored all: [
 			// Dropped and marked rows are pending and do not count.
 			let changed = Dictionary(uniqueKeysWithValues: (r.booked + r.updated).map { ($0.id, $0) })
 			a.deriveInitialBalance(from: all.map { changed[$0.id] ?? $0 } + r.added)
+		} else if a.initialBalanceIsSet, let before = account.bankBalanceDate.map({ Day($0) }) {
+			// The initial balance holds the manual rows up to the day of the bank balance. A new day moves the rows
+			// that it passes into the bank balance, so a later change of such a row moves the initial balance back.
+			let manual = all.filter(\.isManual)
+			let after = Day(a.bankBalanceDate ?? now)
+			a.initialBalanceMinor += a.bookedSum(of: manual, through: before) - a.bookedSum(of: manual, through: after)
 		}
 		r.account = a
 	}
