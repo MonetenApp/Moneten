@@ -151,7 +151,7 @@ The app SHALL set the initial balance of an account that a bank refreshes to the
 
 ### Requirement: The initial balance stays
 
-The app SHALL set the initial balance of a refreshed account only once, at the first refresh that brings a bank balance. A refresh whose transactions failed does not set it. Later refreshes, imports, and deletions do not change it, and neither does a later bank balance. A value that the user enters stays. A difference between the computed balance and the bank balance that appears later is for the calibration to resolve.
+The app SHALL set the initial balance of a refreshed account only once, at the first refresh that brings a bank balance and the full history. A refresh whose transactions failed does not set it. Later refreshes, imports, and deletions do not change it, and neither does a later bank balance. A value that the user enters stays. A difference between the computed balance and the bank balance that appears later is for the calibration to resolve.
 
 #### Scenario: Later refresh with an older transaction
 
@@ -177,6 +177,17 @@ The app SHALL set the initial balance of a refreshed account only once, at the f
 - **GIVEN** an account whose first refresh set an initial balance of 2.550,00 €
 - **WHEN** the user enters 3.000,00 under "Initial balance" and the next refresh ends
 - **THEN** the initial balance is 3.000,00 €
+
+### Requirement: The initial balance follows the bank balance while older transactions may be missing
+
+The app SHALL derive the initial balance of a refreshed account again at each refresh that brings a bank balance, while older transactions of the account may be missing because the user canceled the TAN for them. The computed balance then meets the bank balance. The first refresh that brings the full history of the account sets the initial balance.
+
+#### Scenario: Older transactions after a canceled TAN
+
+- **GIVEN** the first refresh of "Giro" brought a bank balance of 10.000,00 € and the booked transactions of the last 90 days, because the user canceled the TAN for older transactions
+- **WHEN** a later refresh brings the full history with older booked transactions that add up to -500,00 € and a bank balance of 10.000,00 €
+- **THEN** the initial balance falls by 500,00 €, and the last bar shows 10.000,00 €, not 9.500,00 €
+- **AND** a refresh after it brings booked transactions of -70,00 € from before the first refresh and a bank balance of 9.930,00 €, and the initial balance stays
 
 ### Requirement: Initial balance of an account from before
 
