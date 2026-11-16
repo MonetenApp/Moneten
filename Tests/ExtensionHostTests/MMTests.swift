@@ -189,7 +189,15 @@ let german = HostEnvironment(productVersion: "2.0", productBuild: 42, variant: .
 
 	@Test func environmentValues() {
 		#expect(mm("{MM.productName, MM.productVersion, MM.productBuild, MM.apiVersion, MM.language, MM.deviceUuid}", environment: german)
-			== .array([.string("Moneten"), .string("2.0"), .integer(42), .integer(1), .string("de"), .string("6f1c0e0a-3b7e-4c1a-9d2e-0a1b2c3d4e5f")]))
+			== .array([.string("Moneten"), .string("2.0.0"), .integer(42), .integer(1), .string("de"), .string("6f1c0e0a-3b7e-4c1a-9d2e-0a1b2c3d4e5f")]))
+	}
+
+	/// A published script compares the version with "2.3.4" field by field and stops when the counts differ.
+	@Test(arguments: [("0.1", "0.1.0"), ("1", "1.0.0"), ("0.0.1", "0.0.1"), ("1.2.3.4", "1.2.3"), ("0.1-beta", "0.1.0")])
+	func versionHasThreeNumbers(version: String, shown: String) {
+		var environment = german
+		environment.productVersion = version
+		#expect(mm("MM.productVersion", environment: environment) == .string(shown))
 	}
 
 	@Test func stableDeviceIdentifier() {
