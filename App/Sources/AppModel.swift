@@ -911,9 +911,11 @@ final class AppModel {
 
 	@discardableResult
 	func replaceParts(of transactionID: UUID, with parts: [SplitPart]) async -> Bool {
-		guard let store else { return false }
+		guard let store, let original = ledger.transaction(transactionID) else { return false }
+		let previous = ledger.parts(of: transactionID)
 		return await replacingTable {
-			guard self.store === store else { return false }
+			guard self.store === store, ledger.transaction(transactionID)?.amount == original.amount,
+				ledger.parts(of: transactionID) == previous else { return false }
 			do {
 				try store.replaceParts(of: transactionID, with: parts)
 				ledgerChange = "split parts=\(parts.count)"
@@ -940,6 +942,7 @@ final class AppModel {
 	}
 
 	func delete(transactions ids: Set<UUID>) {
+		guard !refusePartDeletion(in: ids) else { return }
 		guard let store else { return }
 		do {
 			try store.deleteTransactions(Array(ids))
@@ -1637,6 +1640,8 @@ enum SheetKind: Identifiable, Equatable {
 	case groupSettings(UUID)
 	case categorySettings(UUID)
 	case transaction(UUID?)
+	case split(Transaction)
+	case undoSplit(UUID)
 	case comment(Set<UUID>)
 	case migration
 	case exportAllData
