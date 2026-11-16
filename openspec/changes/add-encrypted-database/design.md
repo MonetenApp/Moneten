@@ -112,13 +112,13 @@ So `rekeyDatabase` does this, all in one access to the queue of the store, so th
 6. The old key: re-key the open connection to the old key. That sets its writing key back to the key that it reads with and that the file has, even when the re-key itself fails again. A failed commit of the disk in step 4 can still have left the connection reading with the new key. Then it reads nothing, and the store refuses every write, so the app has to open the database again. Then restore `RekeyCopies` and throw `passwordNotChanged`.
 7. Neither key, for example while another program holds a lock: the result is unknown. The store refuses every write, `RekeyCopies` stays, so the next open settles the copies with whichever key the database has, and the vault throws `unreadable`.
 
-The connection goes back only to a key that a fresh connection proved. Every other result refuses all writes of the store.
+The connection goes back only to a key that a fresh connection proved. Every other result refuses all writes of the store. The app then closes the database and shows "The password change could not be completed." with "Load Database Again", because Moneten itself, and not another program, left the store unable to write.
 
 A stop of the Mac during the re-key leaves the journal of the transaction, which holds the pages with the old key. The next open plays it back, so the old password opens the database.
 
 ## One running copy
 
-`DataFolderLock` takes `flock(LOCK_EX | LOCK_NB)` on the data folder itself. The app takes it first in `AppModel.init`, before any service that writes into the data folder: the crash reports write only when the copy holds the lock. The lock adds no file, so the rules of the database folder stay as they are. The system releases the lock when the process ends in any way, also after a crash. A lock belongs to its open file, so two locks in one process exclude each other, which the tests use. A second copy of the app gets `inUse` and shows "The database is in use by another application. Quit the other copy of Moneten, then click Try Again." with "Try Again". It opens, creates, and writes nothing. The lock does not wait.
+`DataFolderLock` takes `flock(LOCK_EX | LOCK_NB)` on the data folder itself. The app takes it first in `AppModel.init`, before any service that writes into the data folder. The crash reports start once per run, when the copy first holds the lock: at the launch, or later through "Try Again". The lock adds no file, so the rules of the database folder stay as they are. The system releases the lock when the process ends in any way, also after a crash. A lock belongs to its open file, so two locks in one process exclude each other, which the tests use. A second copy of the app gets `inUse` and shows "The database is in use by another application. Quit the other copy of Moneten, then click Try Again." with "Try Again". It opens, creates, and writes nothing. The lock does not wait.
 
 Each data folder has its own lock, so a debug build with `MONETEN_DATA_DIR` never blocks the real database.
 

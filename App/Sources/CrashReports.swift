@@ -17,13 +17,21 @@ final class CrashReportController: NSObject, MXMetricManagerSubscriber {
 
 	static var appVersion: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Unknown" }
 
-	/// `writes` is false in a second running copy of the app, which leaves the files of the data folder alone.
-	init(folder: DataFolder, writes: Bool) {
+	/// True once `start()` ran. A second running copy of the app starts only after it got the lock of the data folder.
+	private(set) var started = false
+
+	init(folder: DataFolder) {
 		// Only a run with its own data folder keeps the key there, so the real crash reports keep theirs in the
 		// Keychain also when the debug harness drives the real data folder.
 		store = CrashReportStore(folder: folder, keyInFolder: DataFolder.requestedPath != nil)
 		super.init()
-		guard writes else { return }
+	}
+
+	/// Records the launch, offers a saved report, and listens for the reports of macOS. It writes into the data
+	/// folder, so the app calls it only while it holds the lock of the folder, once per run.
+	func start() {
+		guard !started else { return }
+		started = true
 		do {
 			let start = Date()
 			let directory = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/DiagnosticReports")

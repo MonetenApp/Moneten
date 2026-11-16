@@ -5817,6 +5817,16 @@
         }
       }
     },
+    "Moneten has written nothing to the database since then. Load the database again. When it asks for the database password, enter the new password, and when that does not open it, the earlier one." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Moneten hat seitdem nichts in die Datenbank geschrieben. Laden Sie die Datenbank erneut. Wenn sie nach dem Datenbankpasswort fragt, geben Sie das neue Passwort ein, und wenn es die Datenbank nicht öffnet, das bisherige."
+          }
+        }
+      }
+    },
     "Moneten is free software. It sends data only to the banks that you add." : {
       "localizations" : {
         "de" : {
@@ -6382,12 +6392,12 @@
       },
       "extractionState" : "manual"
     },
-    "No database password is set, and the key of the database could not be read from the Keychain. This happens when a new build of the app has a different signature than the build that created the database. Open the database with that build and set a database password." : {
+    "No database password is set, and the key of the database could not be read from the Keychain. Another program may have removed the entry, or a new build of the app may have a different signature than the build that created the database. In the second case, open the database with that build and set a database password." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Es ist kein Datenbankpasswort gesetzt, und der Schlüssel der Datenbank konnte nicht aus dem Schlüsselbund gelesen werden. Das passiert, wenn eine neue Version der App eine andere Signatur hat als die Version, die die Datenbank angelegt hat. Öffnen Sie die Datenbank mit dieser Version und setzen Sie ein Datenbankpasswort."
+            "value" : "Es ist kein Datenbankpasswort gesetzt, und der Schlüssel der Datenbank konnte nicht aus dem Schlüsselbund gelesen werden. Vielleicht hat ein anderes Programm den Eintrag entfernt, oder eine neue Version der App hat eine andere Signatur als die Version, die die Datenbank angelegt hat. Im zweiten Fall öffnen Sie die Datenbank mit dieser Version und setzen ein Datenbankpasswort."
           }
         }
       },
@@ -10763,6 +10773,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Die neuen Passwörter stimmen nicht überein."
+          }
+        }
+      }
+    },
+    "The password change could not be completed." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Passwortänderung konnte nicht abgeschlossen werden."
           }
         }
       }

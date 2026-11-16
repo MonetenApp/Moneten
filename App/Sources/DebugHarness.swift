@@ -125,7 +125,7 @@ final class DebugHarness {
 			log("crash inject", ("frames", .count(diagnostic.frames.count)), ("pending", .flag(model.crashes.pending != nil)), ("timeMatches", .flag(model.crashes.pending?.date == date)))
 		#if DEBUG || PERF_HARNESS
 		case "crashstatus":
-			log("crash status", ("pending", .flag(model.crashes.pending != nil)), ("fallback", .flag(model.crashes.pending?.fallback != nil)), ("received", .count(model.crashes.receivedCount)), ("failures", .count(model.crashes.failureCount)))
+			log("crash status", ("started", .flag(model.crashes.started)), ("pending", .flag(model.crashes.pending != nil)), ("fallback", .flag(model.crashes.pending?.fallback != nil)), ("received", .count(model.crashes.receivedCount)), ("failures", .count(model.crashes.failureCount)))
 		#endif
 		case "crashdecision":
 			guard let pending = model.crashes.pending else { return log("crash decision", ("pending", .flag(false))) }
@@ -156,6 +156,16 @@ final class DebugHarness {
 		case "create": model.createDatabase(password: argument.isEmpty ? nil : argument)
 		case "unlock": Task { log("unlock", ("", .flag(await model.unlock(password: argument) == .unlocked))) }
 		case "lock": model.lock()
+		// "Try Again" of the window that shows why the database did not open.
+		case "tryagain":
+			log("tryagain", ("phase", .state(model.phase)))
+			model.start()
+		// Closes the open database as a password change does that left the connection unable to write, for the
+		// snapshots of that window. OpeningTests drive the real cause, which needs the random key in the Keychain.
+		case "passwordunfinished":
+			guard model.phase == .unlocked else { return }
+			model.closeDatabase(then: .passwordChangeUnfinished)
+			log("passwordunfinished", ("phase", .state(model.phase)))
 		// "Load Database Again" of the window that a change of the database file on disk shows.
 		case "loadagain":
 			log("loadagain", ("phase", .state(model.phase)))

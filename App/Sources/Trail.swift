@@ -26,6 +26,7 @@ extension AppModel.Phase {
 		case .unlocked: "unlocked"
 		case .failed: "failed"
 		case .changedOnDisk: "changedOnDisk"
+		case .passwordChangeUnfinished: "passwordChangeUnfinished"
 		}
 	}
 }

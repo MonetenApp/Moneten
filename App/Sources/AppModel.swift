@@ -117,6 +117,9 @@ final class AppModel {
 		/// The database file changed outside the app while it was open. The store is closed, and the window
 		/// offers to load the database again.
 		case changedOnDisk
+		/// A password change left the open connection unable to write safely. The store is closed, and the window
+		/// offers to load the database again.
+		case passwordChangeUnfinished
 	}
 
 	let vault = Vault(folder: .current)
@@ -361,7 +364,8 @@ final class AppModel {
 		// The lock of the data folder comes before every service that writes into it, such as the crash reports, so a
 		// second running copy changes no file there.
 		let lock = try? DataFolderLock(folder: .current)
-		crashes = CrashReportController(folder: .current, writes: lock != nil)
+		crashes = CrashReportController(folder: .current)
+		if lock != nil { crashes.start() }
 		folderLock = lock
 		Preference.registerDefaults()
 		autoRefresh = AutoRefresh(settings: refreshSettings, now: Self.refreshClock)
@@ -448,6 +452,8 @@ final class AppModel {
 				phase = .failed(String(describing: error))
 				return
 			}
+			// A copy that got the lock only now, through "Try Again", starts its crash reports now.
+			crashes.start()
 		}
 		do {
 			switch try vault.state() {
@@ -680,8 +686,7 @@ final class AppModel {
 			alert = AlertMessage(title: String(localized: "The password has been changed."), message: String(describing: failure))
 		} catch {
 			alert = AlertMessage(title: String(localized: "Could not change password of database."), message: String(describing: error))
-			// A store that refuses writes after a failed re-key, or a file that changed, needs the database loaded again.
-			checkDisk()
+			closeIfPasswordChangeLeftNoWrites(error)
 		}
 	}
 
@@ -698,8 +703,7 @@ final class AppModel {
 			alert = AlertMessage(title: String(localized: "The password has been changed."), message: String(describing: failure))
 			return nil
 		} catch {
-			// A store that refuses writes after a failed re-key, or a file that changed, needs the database loaded again.
-			checkDisk()
+			closeIfPasswordChangeLeftNoWrites(error)
 			if case .passwordNotChanged? = error as? Vault.Failure { return String(describing: error) }
 			if error is DatabaseChangedOnDisk { return String(describing: error) }
 			return String(localized: "Could not change password of database. \(String(describing: error))")

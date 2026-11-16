@@ -46,9 +46,18 @@ extension AppModel {
 		openedDatabaseFile = true
 	}
 
+	/// A store that refuses writes after a failed password change needs the database loaded again. A file that
+	/// changed on disk during the change says so. Otherwise Moneten itself left the connection unable to write.
+	func closeIfPasswordChangeLeftNoWrites(_ error: any Error) {
+		if error is DatabaseChangedOnDisk { return checkDisk() }
+		guard phase == .unlocked, let store, store.isChangedOnDisk() else { return }
+		Trail.log("password change left no writes")
+		closeDatabase(then: .passwordChangeUnfinished)
+	}
+
 	/// Opens the database again as at the start, with the password when one is set.
 	func loadDatabaseAgain() {
-		guard phase == .changedOnDisk else { return }
+		guard phase == .changedOnDisk || phase == .passwordChangeUnfinished else { return }
 		start()
 	}
 }

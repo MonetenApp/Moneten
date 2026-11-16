@@ -88,7 +88,7 @@ public struct Vault: Sendable {
 				String(localized: "Could not upgrade the database. The database is unchanged and still opens with the earlier version of Moneten.\n\n\(detail)")
 			case let .unreadable(detail): String(localized: "Could not open database.\n\n\(detail)")
 			case let .keyNotInKeychain(detail):
-				String(localized: "No database password is set, and the key of the database could not be read from the Keychain. This happens when a new build of the app has a different signature than the build that created the database. Open the database with that build and set a database password.")
+				String(localized: "No database password is set, and the key of the database could not be read from the Keychain. Another program may have removed the entry, or a new build of the app may have a different signature than the build that created the database. In the second case, open the database with that build and set a database password.")
 					+ (detail.map { "\n\n" + String(localized: "Keychain: \($0)") } ?? "")
 			case let .keychain(detail): String(localized: "The Keychain reported an error: \(detail)")
 			case let .passwordSetWithLeftover(detail):
