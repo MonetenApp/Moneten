@@ -242,37 +242,54 @@ struct SetupSessionTests {
 		#expect(broker.savedPINs == [Self.access.id])
 	}
 
-	/// Starts a refresh of the access, and then Look for New Accounts with the PIN of the access, which waits
-	/// for the refresh and is canceled before it gets the access.
-	func cancelWaitingLogin(behind steps: [ScriptedConnector.Step], whileRefreshing: () async throws -> Void = {}) async throws {
-		coordinator.refresh(RefreshRequest(access: Self.access, accounts: []), with: ScriptedConnector(steps), attended: true)
+	struct HeldRefresh: BankConnector {
+		let request: UserRequest
+		let gate: FailureWithStateTests.Gate
+
+		func refresh(_ request: RefreshRequest, _ session: SyncSession) async throws -> ConnectorReport {
+			_ = try await session.ask(self.request)
+			await gate.wait()
+			return ConnectorReport(outcomes: [:])
+		}
+	}
+
+	func cancelWaitingLogin(asking request: UserRequest, whileRefreshing: () async throws -> Void = {}) async throws {
+		let gate = FailureWithStateTests.Gate()
+		coordinator.refresh(RefreshRequest(access: Self.access, accounts: []), with: HeldRefresh(request: request, gate: gate), attended: true)
+		defer { coordinator.cancelAll(); gate.open() }
 		try await whileRefreshing()
+		for _ in 0..<200 where !gate.isWaiting { try await Task.sleep(for: .milliseconds(10)) }
+		try #require(gate.isWaiting)
+		let progress = broker.requesting
 		let session = SetupSession(broker: broker, access: Self.access, pin: nil)
-		let login = Task { try await session.logIn(holding: coordinator) { _ in 1 } }
-		try await Task.sleep(for: .milliseconds(50))
+		let (started, start) = AsyncStream.makeStream(of: Void.self)
+		let login = Task {
+			start.finish()
+			return try await session.logIn(holding: coordinator) { _ in 1 }
+		}
+		for await _ in started {}
 		login.cancel()
-		try await Task.sleep(for: .milliseconds(50))
+		await Task { @MainActor in }.value
+		#expect(broker.requesting == progress)
+		#expect(coordinator.isRefreshing)
+		gate.open()
+		await #expect(throws: CancellationError.self) { try await login.value }
 	}
 
 	@Test("Canceling Look for New Accounts while it waits for a refresh of the access keeps the TAN progress of the refresh")
 	func canceledWaitKeepsProgress() async throws {
-		// The refresh holds the access until `cancelAll`, also when an expectation fails first. A wait of a fixed
-		// time ran out on a loaded runner of CI before the test looked, and the end of the refresh closed the progress.
-		defer { coordinator.cancelAll() }
-		try await cancelWaitingLogin(behind: [.ask(Self.chooseMethod), .wait(.seconds(600))]) {
+		try await cancelWaitingLogin(asking: Self.chooseMethod) {
 			for _ in 0..<200 where broker.current == nil { try await Task.sleep(for: .milliseconds(10)) }
 			broker.answer(.tanMethod("922"), to: try #require(broker.current).id)
 			#expect(broker.requesting?.access == Self.access)
 		}
-		#expect(broker.requesting?.access == Self.access)
 	}
 
 	@Test("Canceling Look for New Accounts while it waits for a refresh of the access keeps the PIN that the bank accepted")
 	func canceledWaitKeepsPIN() async throws {
 		try broker.remember(Secret("12345"), for: Self.access.id, save: false)
-		try await cancelWaitingLogin(behind: [.ask(.pin(PINRequest())), .wait(.milliseconds(200))])
+		try await cancelWaitingLogin(asking: .pin(PINRequest()))
 		for _ in 0..<200 where coordinator.isRefreshing { try await Task.sleep(for: .milliseconds(10)) }
-		try await Task.sleep(for: .milliseconds(50))
 		#expect(try await broker.ask(.pin(PINRequest()), for: Self.access, accountNames: [], attended: false) == .pin(Secret("12345")))
 	}
 }

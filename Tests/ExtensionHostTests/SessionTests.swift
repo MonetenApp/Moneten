@@ -143,7 +143,7 @@ import Testing
 			var path = [CChar](repeating: 0, count: Int(MAXPATHLEN))
 			while ContinuousClock.now < deadline {
 				if kill(host, 0) == -1 && errno == ESRCH { return true }
-				if proc_pidpath(host, &path, UInt32(path.count)) > 0, String(cString: path).hasSuffix("/MonetenExtensionHost") { return true }
+				if proc_pidpath(host, &path, UInt32(path.count)) > 0, String(decoding: path.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }, as: UTF8.self).hasSuffix("/MonetenExtensionHost") { return true }
 				try await Task.sleep(for: .milliseconds(10))
 			}
 			return false

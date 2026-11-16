@@ -1,0 +1,47 @@
+name: CI dependencies
+description: Restore source dependencies and verified tool downloads, never compiled products.
+inputs:
+  xcodegen:
+    default: 'false'
+    description: Install XcodeGen
+  java:
+    default: 'false'
+    description: Install Java 17 and cache locked jars
+runs:
+  using: composite
+  steps:
+    - id: versions
+      shell: bash
+      run: |
+        echo "swift=$( { swift --version; xcodebuild -version; } | shasum -a 256 | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+        if [[ '${{ inputs.xcodegen }}' == true ]]; then
+          echo "xcodegen=$(brew info --json=v2 xcodegen | shasum -a 256 | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+        fi
+    - uses: actions/cache@v5
+      with:
+        path: |
+          .build/repositories
+          .build/checkouts
+          .build/xcode/SourcePackages/repositories
+          .build/xcode/SourcePackages/checkouts
+        key: spm-source-v2-${{ runner.os }}-${{ runner.arch }}-${{ steps.versions.outputs.swift }}-${{ hashFiles('Package.resolved') }}
+    - if: inputs.xcodegen == 'true'
+      uses: actions/cache@v5
+      with:
+        path: ~/Library/Caches/Homebrew/downloads/*--xcodegen*
+        key: xcodegen-${{ runner.os }}-${{ runner.arch }}-${{ steps.versions.outputs.xcodegen }}
+    - if: inputs.xcodegen == 'true'
+      shell: bash
+      env:
+        HOMEBREW_NO_AUTO_UPDATE: '1'
+      run: brew list xcodegen >/dev/null 2>&1 || brew install xcodegen
+    - if: inputs.java == 'true'
+      uses: actions/setup-java@v5
+      with:
+        distribution: temurin
+        java-version: '17'
+    - if: inputs.java == 'true'
+      uses: actions/cache@v5
+      with:
+        path: .build/hbci4java/lib
+        key: hbci4java-${{ hashFiles('Tools/FinTSProbeJava/dependencies.lock') }}

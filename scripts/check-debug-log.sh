@@ -1,6 +1,6 @@
 #!/bin/sh
-# Checks that the debug log holds no personal data. It drives the debug build of dist/Moneten.app
-# (scripts/build-app.sh debug) through the debug harness against scripts/fake-fints-helper.sh: a start that
+# Checks that the debug log holds no personal data. It drives the Debug or Perf build of dist/Moneten.app
+# through the debug harness against scripts/fake-fints-helper.sh: a start that
 # fails on a data folder whose path holds a name, a login with a wrong PIN, the setup of the made-up bank
 # with its TAN dialog, two refreshes (the second fails an account with an error of the bank), a refresh of
 # one account that fails the access with a return code that holds a name, the transactions, the status, the
@@ -25,7 +25,7 @@
 set -e
 cd "$(dirname "$0")/.."
 BUILT=dist/Moneten.app
-[ -d "$BUILT" ] || { echo "No $BUILT. Run scripts/build-app.sh debug first." >&2; exit 1; }
+[ -d "$BUILT" ] || { echo "No $BUILT. Run scripts/build-app.sh debug or perf first." >&2; exit 1; }
 BUNDLE_ID=io.github.alexander-schneider.Moneten.check-debug-log
 LOGIN=emuster42
 PIN=97314

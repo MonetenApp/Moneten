@@ -19,10 +19,6 @@ final class ExtensionLibrary {
 		static let lowestIndexVersion = 1
 
 		static func standard() -> Configuration {
-			#if PERF_HARNESS
-			// The performance check shows a made-up index and never contacts the catalog.
-			return Configuration(source: CatalogSource(base: URL(filePath: "/dev/null")), keys: nil)
-			#else
 			#if DEBUG
 			let environment = ProcessInfo.processInfo.environment
 			// Debug builds only: the live checks sign a local index with throwaway keys and serve it themselves.
@@ -35,6 +31,9 @@ final class ExtensionLibrary {
 			#endif
 			let pems = ["current", "next"].compactMap { Bundle.main.url(forResource: $0, withExtension: "pub").flatMap { try? String(contentsOf: $0, encoding: .utf8) } }
 			let keys = pems.count == 2 ? try? CatalogKeys(currentPEM: pems[0], nextPEM: pems[1], lowestVersion: lowestIndexVersion) : nil
+			#if PERF_HARNESS
+			return Configuration(source: CatalogSource(base: URL(filePath: "/dev/null")), keys: keys)
+			#else
 			NSLog("Catalog keys %@", keys == nil ? "missing" : "loaded")
 			return Configuration(source: CatalogSource(base: URL(string: "https://extensions.monetenapp.com/")!), keys: keys)
 			#endif
@@ -166,7 +165,7 @@ final class ExtensionLibrary {
 		problem = nil
 	}
 
-	#if DEBUG
+	#if DEBUG || PERF_HARNESS
 	/// Points the catalog at a local test index, for the live checks of the debug harness.
 	func useCatalog(_ base: URL) {
 		configuration = Configuration(source: CatalogSource(base: base), keys: configuration.keys)

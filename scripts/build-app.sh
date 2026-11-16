@@ -2,6 +2,7 @@
 # Builds dist/Moneten.app with Xcode.
 #   scripts/build-app.sh                 release build, signed with the team in App/Local.xcconfig
 #   scripts/build-app.sh debug           debug build
+#   scripts/build-app.sh perf            native optimized build with the debug harness
 #   scripts/build-app.sh developer-id    release build, archived and signed with the Developer ID
 #                                        Application certificate in the Keychain, with the hardened
 #                                        runtime and a secure timestamp, for notarization (ADR 0016)
@@ -20,8 +21,9 @@ CONFIG=Release
 case "$1" in
 	"") ;;
 	debug) CONFIG=Debug ;;
+	perf) CONFIG=Perf ;;
 	developer-id) ARCHIVE=.build/xcode/Moneten.xcarchive ;;
-	*) echo "usage: scripts/build-app.sh [debug | developer-id]" >&2; exit 2 ;;
+	*) echo "usage: scripts/build-app.sh [debug | perf | developer-id]" >&2; exit 2 ;;
 esac
 BUILD="$(git rev-list --count HEAD 2>/dev/null || echo 1)"
 VERSION_SETTINGS=""
@@ -105,7 +107,12 @@ if entitlements != {"com.apple.security.app-sandbox": True, "com.apple.security.
 scripts/generate-project.sh
 XCODEBUILD="xcodebuild -project App/Moneten.xcodeproj -scheme Moneten -configuration $CONFIG -derivedDataPath .build/xcode -disableAutomaticPackageResolution -quiet"
 if [ -z "$ARCHIVE" ]; then
-	$XCODEBUILD CURRENT_PROJECT_VERSION="$BUILD" $VERSION_SETTINGS build
+	if [ "$CONFIG" = Perf ]; then
+		scripts/perf-check.sh --build-only
+		BUILD=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' .build/xcode/Build/Products/Perf/Moneten.app/Contents/Info.plist)
+	else
+		$XCODEBUILD CURRENT_PROJECT_VERSION="$BUILD" $VERSION_SETTINGS build
+	fi
 	PRODUCT=".build/xcode/Build/Products/$CONFIG/Moneten.app"
 else
 	TEAM="$MONETEN_TEAM_ID"

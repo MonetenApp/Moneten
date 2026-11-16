@@ -370,7 +370,7 @@ final class DebugHarness {
 			log("menu", ("", .choice(argument, of: names)), ("items", .list(items.map { .hash($0.title) })),
 				("enabled", .list(items.map { .flag($0.isEnabled) })))
 		case "menucommands": log("menucommands", ("enabled", .flag(AppCommands(model: model).unlocked)))
-		#if DEBUG
+		#if DEBUG || PERF_HARNESS
 		case "extcatalog":
 			guard let url = URL(string: argument) else { return log("ext error=extcatalog needs a URL") }
 			model.extensions.useCatalog(url)
@@ -440,7 +440,7 @@ final class DebugHarness {
 				account.accountNumber = "88776655"
 				model.save(account: account)
 				log("csvhandoff prepared")
-#if DEBUG
+#if DEBUG || PERF_HARNESS
 			case "confirm": model.fileImport?.confirm(named: .number(bankCode: nil, account: "88776655"))
 #endif
 			// "state <sum of amounts> <sum of days>": whether the stored rows have these sums, "ok" or "differs",
@@ -614,7 +614,7 @@ final class DebugHarness {
 			g.isExpanded = parts.last != "off"
 			model.save(group: g)
 		#if DEBUG || PERF_HARNESS
-		case "perf": Task { await runPerf() }
+		case "perf": Task { await runPerf(argument) }
 		#endif
 		case "view": model.viewMode = ViewMode(rawValue: argument) ?? .list
 		case "balance": model.balanceMode = BalanceMode(rawValue: argument) ?? .daily
@@ -1155,8 +1155,8 @@ final class DebugHarness {
 		case .pin: log("ext prompt pin")
 		case let .secondFactor(request):
 			switch request.challenge {
-			case let .enterTAN(text, image): log("ext prompt tan", ("label", .presence(request.field.label != nil)), ("text", .presence(text != nil)), ("image", .flag(image != nil)))
-			case let .approveInApp(text, app, image, _): log("ext prompt approve", ("app", .presence(app != nil)), ("text", .presence(text != nil)), ("image", .flag(image != nil)))
+			case let .enterTAN(_, image): log("ext prompt tan", ("label", .presence(true)), ("text", .presence(true)), ("image", .flag(image != nil)))
+			case let .approveInApp(_, app, image, _): log("ext prompt approve", ("app", .presence(app != nil)), ("text", .presence(true)), ("image", .flag(image != nil)))
 			case let .chooseTANMethod(methods, current): log("ext prompt methods", ("count", .count(methods.count)), ("unavailable", .count(methods.filter { $0.unavailable != nil }.count)),
 					("current", .position(current.flatMap { id in methods.firstIndex { $0.id == id } })))
 			case let .openBrowser(approval): log("ext prompt browser", ("host", .hash(approval.url.host() ?? "")))

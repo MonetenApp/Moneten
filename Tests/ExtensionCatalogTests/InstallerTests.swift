@@ -164,7 +164,7 @@ import Testing
 		new.version = "1.1"
 		new.script += "-- 1.1\n"
 		server.publish(new)
-		let window = await Window()
+		let window = Window()
 		let available = try entry(new).manifest.get()
 		await MainActor.run {
 			window.updates.record(.waitsForUser, of: "example", for: available)

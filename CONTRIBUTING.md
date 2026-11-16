@@ -27,6 +27,32 @@ Run `scripts/check.sh` before you open a pull request. It checks the links and p
 
 CI also runs `scripts/perf-check.sh`. It starts the optimized `Perf` build, which contains the debug harness, with a temporary data folder and 50,000 made-up transactions in 10 accounts, and runs the scenarios in [App/Sources/PerfCheck.swift](App/Sources/PerfCheck.swift), such as switching from a scrolled account to its group. It prints the longest main-thread stall and the memory of each scenario. A stall over the half second of the spec is reported as slow. The check fails when a stall exceeds 10 seconds, when the table misses rows of the view, or when the app crashes. Find the cause with `sample` while the scenario runs. Keep modifiers off the rows of a `Table`: a modifier on a row, such as `.draggable`, makes SwiftUI build a view graph for every row on each change of the view, while a modifier in a cell costs only for the visible rows. Add a scenario for every slow path you fix. The app window appears on the screen while the check runs. The check runs a copy of the app under its own bundle ID, so it leaves the settings and window frames of an installed Moneten alone.
 
+## CI checks and runner use
+
+The Ubuntu `changes` job selects checks from every changed path, including deletions and both sides of a rename. Only the allowed documentation and issue-template paths without macOS consumers skip macOS; unknown paths run the full plan. Files read only by Ubuntu's `check-docs.py`, `check-ui.py`, and OpenSpec checks can still skip macOS because `specs` runs on every PR. Main pushes and manual runs select all checks.
+
+| Event or changed paths | Specs | All macOS checks |
+|---|---|---|
+| PR only in the allowed documentation paths and extensions in ci-plan.py, excluding macOS inputs | Yes | No |
+| Any macOS input or other path | Yes | Yes |
+| Push to main or manual run | Yes | Yes |
+
+`scripts/ci-plan.py` lists macOS runtime inputs in `MACOS_INPUTS`. They include docs/export-format.md, extension fixtures, and example extensions. The tests scan document and fixture path literals in Tests/, App/Sources/, and the macOS scripts. Package.swift, Package.resolved, Tools/, .periphery.yml, App/project.yml, and workflow changes run the full plan, including strict Periphery, privacy, and UI checks.
+
+One unit job builds Debug tests once and runs all non-performance suites except the Lua memory-limit suite. FinTS runs after the other tests, so their CPU work cannot delay its helper timers. Its second invocation uses only this job's test bundle. Performance suites and the Lua memory-limit suite run once, serially in release. Both Debug and Release run the host-consent test. Every memory limit, assertion, iteration count, and all 3,000 pairing-fuzz seeds remain. The memory fixture labels its 8 MB response as binary, so these allocation tests do not repeatedly parse it as HTML. FinTS timeout tests use existing parameters and retain the default five-second grace test.
+
+The app job runs `scripts/build-app.sh perf` to build Perf for the runner's architecture once, bundle and self-test the FinTS runtime, verify the exact extension-host entitlements and matching signers, and verify the complete app signature. The unchanged privacy scenarios run against that bundle, including the CSV handoff helper enabled in both Debug and Perf. Periphery and ext reuse the Perf index and compiled modules. The production Release build still excludes the debug harness, and the Perf extension host retains Release host-consent behavior. The SwiftPM release test build has a separate build graph and does not reuse Xcode app modules.
+
+The validated dist/Moneten.app bundle is uploaded as a run-local artifact with one-day retention. Two downstream runners download it and run `scripts/perf-check.sh --skip-build --shard 1/2` and `scripts/perf-check.sh --skip-build --shard 2/2`. The portfolio scenarios stay together because they share setup. Use `scripts/perf-check.sh --build-only` to build without starting an app. The default command builds and runs every scenario.
+
+Three macOS jobs can start together. The two UI jobs start after app finishes, so at most four macOS jobs overlap. Each performance measurement owns its runner. The goals are at most ten minutes elapsed and twenty macOS job minutes. Queue time depends on other pull requests in the organization.
+
+Only `specs` may be required by a branch rule. Documentation-only PRs skip `unit`, `performance`, `app`, `ui (1/2)`, and `ui (2/2)`. The old `test` job no longer exists. The `changes` job selects the plan; `specs` is the check that validates every PR.
+
+Caches use exact keys for the Swift and Xcode versions and Package.resolved, Periphery's version and SHA-256, hbci4java's dependencies.lock, and Homebrew's XcodeGen formula. Downloads keep their checksum checks. The SwiftPM cache contains only source checkouts and repositories. Binary artifact folders are excluded because they contain extracted xcframeworks rather than the original checksum-verifiable zip. SwiftPM downloads the binary from the locked dependency and verifies its manifest checksum on each fresh runner. No object files, index stores, or test results are cached. Built app artifacts come only from the same run. No compiled build cache can supply a stale pass.
+
+`scripts/ci-run.sh` preserves command failures and rejects compiler warnings whose source location is under App/, Sources/, Tests/, or Tools/. Downloaded dependencies and expected error text from Lua tests do not match that rule. Run `python3 scripts/test-ci.py` for the path and warning-gate checks.
+
 The app writes a trail of the events that can replace the transaction table or change its rows to stderr, one line per event: the view, the filter kinds, changes of the ledger with their row counts, refreshes, sheets, dialogs, the lock, and the unlock. The lines hold kinds and counts only, no names, IBANs, amounts, purposes, or account numbers. When SwiftUI stops the app in a table update, the crash report has no frame of the app, and the last lines of the trail show what changed before. Start the app with stderr in a file to keep them, for example `open --stderr app.log /Applications/Moneten.app`.
 
 ## Propose a change

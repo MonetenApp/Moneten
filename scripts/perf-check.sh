@@ -6,9 +6,29 @@
 # its own bundle ID, so it leaves the settings and window frames of an installed Moneten alone.
 set -e
 cd "$(dirname "$0")/.."
+BUILD_ONLY=""
+SKIP_BUILD=""
+SHARD=""
+while [ "$#" -gt 0 ]; do
+	case "$1" in
+		--build-only) BUILD_ONLY=1 ;;
+		--skip-build) SKIP_BUILD=1 ;;
+		--shard)
+			shift
+			case "$1" in 1/2 | 2/2) SHARD="$1" ;; *) echo "Expected --shard 1/2 or 2/2." >&2; exit 2 ;; esac ;;
+		--help) echo "usage: scripts/perf-check.sh [--build-only | --skip-build] [--shard 1/2 | 2/2]"; exit 0 ;;
+		*) echo "Unknown argument: $1" >&2; exit 2 ;;
+	esac
+	shift
+done
+[ -z "$BUILD_ONLY" ] || [ -z "$SKIP_BUILD" ] || { echo "Choose --build-only or --skip-build." >&2; exit 2; }
+if [ -z "$SKIP_BUILD" ]; then
 scripts/generate-project.sh
 xcodebuild -project App/Moneten.xcodeproj -scheme Moneten -configuration Perf -derivedDataPath .build/xcode \
-	-disableAutomaticPackageResolution -quiet build
+	-destination "platform=macOS,arch=$(uname -m)" -disableAutomaticPackageResolution -quiet build \
+	ONLY_ACTIVE_ARCH=YES OTHER_SWIFT_FLAGS="\$(inherited) -D PERF_HARNESS -index-store-path \"$PWD/.build/xcode/Index.noindex/DataStore\""
+fi
+[ -z "$BUILD_ONLY" ] || exit 0
 BUILT=.build/xcode/Build/Products/Perf/Moneten.app
 # Its settings stay in a domain of their own, which each run uses again.
 BUNDLE_ID=io.github.alexander-schneider.Moneten.perf-check
@@ -24,7 +44,7 @@ if [ ! -x "$NOTIFY" ] || [ scripts/perf-check.sh -nt "$NOTIFY" ]; then
 	swiftc -o "$NOTIFY" "$NOTIFY.swift"
 fi
 
-WORK="$(mktemp -d)"
+WORK="$(mktemp -d "$PWD/.build/perf-check.XXXXXX")"
 LOG="$WORK/debug/debug.log"
 APP="$WORK/Moneten.app"
 ditto "$BUILT" "$APP"
@@ -83,7 +103,7 @@ done
 send create perf-check
 send state
 wait_for "phase=unlocked" 30
-send perf
+send perf "$SHARD"
 wait_for "^perf done" 900
 send quit
 for _ in 1 2 3 4 5 6 7 8 9 10; do alive || break; sleep 0.5; done

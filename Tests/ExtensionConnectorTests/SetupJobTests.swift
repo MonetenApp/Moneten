@@ -81,12 +81,12 @@ import Testing
 	@Test func connectorIsBuiltWhenTheSessionStarts() async throws {
 		let states = KeptSetupStates()
 		let session = TestSession([.login([Secret("erika"), Secret("geheim")])])
-		var installed = Self.source(failing: false, sleep: 0)
+		let installed = Mutex(Self.source(failing: false, sleep: 0))
 		let names = Mutex<[String]>([])
-		let job = ExtensionSetupJob(connector: { session.connector(demo(installed)) }, states: states) { setup in
+		let job = ExtensionSetupJob(connector: { session.connector(demo(installed.withLock { $0 })) }, states: states) { setup in
 			names.withLock { $0 = setup.accounts.map(\.name) }
 		}
-		installed = installed.replacingOccurrences(of: "name = \"Konto\"", with: "name = \"Konto 1.1\"")
+		installed.withLock { $0 = $0.replacingOccurrences(of: "name = \"Konto\"", with: "name = \"Konto 1.1\"") }
 		_ = try await job.refresh(RefreshRequest(access: Self.access, accounts: []), session)
 		#expect(names.withLock { $0 } == ["Konto 1.1"])
 	}

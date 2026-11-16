@@ -89,7 +89,7 @@ struct LogValue: Sendable {
 	///
 	/// A type that writes its own description or mirror can put any runtime text there, even a name, so its
 	/// value is "invalid" too. Only the case names that the compiler takes from the source remain.
-	static func state(_ value: Any) -> LogValue {
+	static func state<Value>(_ value: Value) -> LogValue {
 		let mirror = Mirror(reflecting: value)
 		if mirror.displayStyle == .optional { return mirror.children.first.map { state($0.value) } ?? LogValue("-") }
 		if value is CustomStringConvertible || value is CustomDebugStringConvertible || value is CustomReflectable {

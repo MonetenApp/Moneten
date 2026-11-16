@@ -128,7 +128,8 @@ struct PerfScenario {
 					Transaction(accountID: account.id, bookingDate: today.adding(days: -(i % 400)), amountMinor: -Int64(1_000 + i), name: "Card Payment", purpose: "Refresh \(i)")
 				}
 				let result = RefreshResult(balance: nil, transactions: FetchedTransactions(rows: rows, from: today.adding(days: -400)))
-				try? c.model.merge(.refresh(result), into: account.id)
+				do { _ = try c.model.merge(.refresh(result), into: account.id) }
+				catch { c.fail("refresh failed") }
 				await c.settle()
 				if c.harness.transactionTables().first.map(ObjectIdentifier.init) != table.map(ObjectIdentifier.init) {
 					c.fail("the refresh replaced the transaction table")
@@ -613,8 +614,16 @@ struct PerfContext {
 }
 
 extension DebugHarness {
-	func runPerf() async {
+	func runPerf(_ shard: String) async {
 		guard let model else { return }
+		let split = PerfScenario.all.firstIndex { $0.name.description == "refresh-drops-shown-position" }!
+		let scenarios: ArraySlice<PerfScenario>
+		switch shard {
+		case "": scenarios = PerfScenario.all[...]
+		case "1/2": scenarios = PerfScenario.all[..<split]
+		case "2/2": scenarios = PerfScenario.all[split...]
+		default: log("perf done failures=1 slow=0"); return
+		}
 		let context = PerfContext(model: model, harness: self, watchdog: MainThreadWatchdog())
 		if !model.ledger.groups.contains(where: { $0.name == "Bulk" }) {
 			await DemoData.bulk(model, count: PerfScenario.transactions, newAccounts: PerfScenario.accounts)
@@ -622,7 +631,7 @@ extension DebugHarness {
 		await context.settle()
 		var failures = 0
 		var slow = 0
-		for scenario in PerfScenario.all {
+		for scenario in scenarios {
 			await scenario.setUp(context)
 			context.watchdog.reset()
 			await scenario.run(context)

@@ -74,7 +74,7 @@ final class FileImport {
 		end(chosen)
 	}
 
-#if DEBUG
+#if DEBUG || PERF_HARNESS
 	func confirm(named account: FileAccount) {
 		guard var chosen = preview?.chosen else { return }
 		chosen.account = account

@@ -7,6 +7,7 @@ python3 scripts/check-docs.py
 python3 scripts/check-ui.py
 python3 scripts/release-notes.py check
 python3 scripts/test-release-notes.py
+python3 scripts/test-ci.py
 openspec validate --all --strict --no-interactive
 scripts/generate-project.sh
 # Periphery's own build folder is named after the project, not the checkout, so all worktrees would

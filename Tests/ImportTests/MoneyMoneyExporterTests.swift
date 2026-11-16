@@ -5,7 +5,8 @@ import Synchronization
 import Testing
 @testable import Import
 
-@Suite("Migration source lifecycle")
+@MainActor
+@Suite("Migration source lifecycle", .serialized)
 struct MoneyMoneyExporterTests {
 	@Test("Export addresses a renamed running source by PID and never sends after it quits")
 	func lifecycle() async throws {
@@ -53,10 +54,12 @@ struct MoneyMoneyExporterTests {
 			if process.isRunning { process.terminate(); process.waitUntilExit() }
 		}
 		let deadline = ContinuousClock.now + .seconds(10)
-		while NSRunningApplication.runningApplications(withBundleIdentifier: identifier).isEmpty && .now < deadline {
+		while NSRunningApplication(processIdentifier: process.processIdentifier)?.isFinishedLaunching != true && .now < deadline {
 			try await Task.sleep(for: .milliseconds(20))
 		}
-		let running = try #require(NSRunningApplication.runningApplications(withBundleIdentifier: identifier).first)
+		let running = try #require(NSRunningApplication.runningApplications(withBundleIdentifier: identifier).first(where: {
+			$0.processIdentifier == process.processIdentifier && $0.isFinishedLaunching && !$0.isTerminated
+		}))
 		#expect(running.processIdentifier == process.processIdentifier)
 		let pid = process.processIdentifier
 		for command in [MoneyMoneyExporter.Command.accounts, .categories, .transactions] {

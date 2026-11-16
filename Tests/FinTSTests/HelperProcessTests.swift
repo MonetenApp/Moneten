@@ -43,7 +43,7 @@ struct HelperProcessTests {
 		let runs = (0..<ProcessInfo.processInfo.activeProcessorCount + 2).map { _ in
 			Task { () -> (any Error)? in
 				do {
-					_ = try await connector(script, inactivity: 1, grace: 10).listAccounts(of: Self.access, state: state, session: Session())
+					_ = try await connector(script, inactivity: 0.5, grace: 0.5).listAccounts(of: Self.access, state: state, session: Session())
 					return nil
 				} catch {
 					return error
@@ -51,7 +51,7 @@ struct HelperProcessTests {
 			}
 		}
 		// A starved pool would run this task only after the helpers end on their own, 60 seconds after
-		// their start. The bound lies between that and the timeout of the helpers (11 seconds), because
+		// their start. The bound lies between that and the timeout of the helpers (1 second), because
 		// a loaded runner of CI ran this task only after 12 seconds.
 		try await Task.sleep(for: .milliseconds(500))
 		await Task.detached { }.value
@@ -59,7 +59,7 @@ struct HelperProcessTests {
 		for run in runs {
 			#expect(await run.value as? SyncFailure == .network("The connection to the FinTS server of the bank timed out. Try again later."))
 		}
-		// Each helper ends by termination after about 11 seconds, by the clock of the helpers, before the
+		// Each helper ends by termination after about 1 second, by the clock of the helpers, before the
 		// 60 seconds after which it would end on its own. The end of the runs would also count the wait
 		// for a thread of Swift concurrency, which takes up to 40 seconds on CI.
 		let times = ((try? String(contentsOf: record, encoding: .utf8)) ?? "").split(separator: "\n").compactMap { line in

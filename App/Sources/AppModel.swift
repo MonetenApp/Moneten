@@ -1188,7 +1188,7 @@ final class AppModel {
 	/// The connector of the app, or in a debug build the fake helper that `MONETEN_FINTS_HELPER` names,
 	/// so that the setup and the refresh run without a bank.
 	private static func makeFinTSConnector() -> FinTSConnector {
-		#if DEBUG
+		#if DEBUG || PERF_HARNESS
 		if let path = ProcessInfo.processInfo.environment["MONETEN_FINTS_HELPER"], !path.isEmpty { return FinTSConnector(debugHelper: path) }
 		#endif
 		return FinTSConnector()
