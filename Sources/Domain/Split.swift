@@ -88,7 +88,7 @@ public enum Split {
 		var scaled = value * Decimal(sign: .plus, exponent: row.decimalPlaces, significand: 1)
 		var whole = Decimal()
 		NSDecimalRound(&whole, &scaled, 0, .plain)
-		guard whole == scaled, scaled >= Decimal(Int64.min), scaled <= Decimal(Int64.max) else { return nil }
+		guard whole == scaled, scaled.magnitude <= Decimal(Money.maxMinorUnits) else { return nil }
 		return Money(minorUnits: NSDecimalNumber(decimal: scaled).int64Value, currency: row.currency)
 	}
 

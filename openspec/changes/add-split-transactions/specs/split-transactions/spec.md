@@ -23,7 +23,7 @@ The app SHALL open a split window with "Split Transaction" and then "Split Amoun
 
 ### Requirement: The parts add up to the original amount
 
-The app SHALL compute the remainder so that all parts of a split add up to the amount of the original transaction. The split window shows the resulting remainder before the user confirms. The app refuses an amount of zero and text that is not a number.
+The app SHALL compute the remainder so that all parts of a split add up to the amount of the original transaction. The split window shows the resulting remainder before the user confirms. The app refuses an amount of zero, text that is not a number, and an amount of more than 10.000.000.000.000,00 € or the same digits in another currency.
 
 #### Scenario: Remainder is shown
 
@@ -34,6 +34,11 @@ The app SHALL compute the remainder so that all parts of a split add up to the a
 #### Scenario: Amount of zero
 
 - **WHEN** the user enters 0,00 and confirms
+- **THEN** the app does not split and marks the amount field
+
+#### Scenario: Amount above the limit
+
+- **WHEN** the user enters 10.000.000.000.000,01 and confirms
 - **THEN** the app does not split and marks the amount field
 
 #### Scenario: Whole amount

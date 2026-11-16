@@ -41,8 +41,9 @@ public struct NewTransactionsNotice: Sendable, Equatable {
 			accounts = rows.map(\.accountID).filter { seen.insert($0).inserted }
 			accountNames = []
 		}
-		var sums: [String: Int64] = [:]
-		for t in rows { sums[t.currency, default: 0] += t.amountMinor }
+		// Int128 keeps the sign exact for any number of stored rows.
+		var sums: [String: Int128] = [:]
+		for t in rows { sums[t.currency, default: 0] += Int128(t.amountMinor) }
 		let signs = Set(sums.values.map { $0.signum() })
 		if signs.contains(1), !signs.contains(-1) {
 			tone = .positive
