@@ -61,6 +61,14 @@ The formats of dates and numbers follow the region of macOS and not the language
 
 The migration from MoneyMoney and "Import All Data" replace an untouched starter set. They recognize the set in either language, because a database created in English can open with a German interface and the other way round, and a database of an earlier English-only build has the English set. The name of the default category tells the language of the set, "Uncategorized" or "Unkategorisiert". When the user renamed it, the language of the interface decides. Only that one set counts, so an empty group of the user named like a group of the other set stays.
 
+### A generated account name is a default, not data
+
+"Create offline account" in the import of a file names the new account by its formatted IBAN, or by `Account %@` with the account number when the file has no IBAN. The app writes that name in the language of the interface into the account, as it writes the starter categories. The name is a default that the user sees and may rename. No code finds an account by its name: the import matches by IBAN and account number, and the sync by the identity of the account. So a later change of the language does not rename the account, and a German database may hold an English default name, as it may hold an English starter category.
+
+A localized text is never data otherwise. A key, a value that the app compares, and a text that a process sends to another one stay language-neutral. The host process of an extension finds a refusal of its policy by the English text that the script sees, never by the text that the app shows, and the debug harness chooses a menu item by its place in the menu, never by its title, because SwiftUI gives a menu item no identifier.
+
+Alternative: store an empty name and word it at display. Every view, the export, and the search would then need the rule, for one name that the user can change in one step.
+
 ### A pure completion function in `Domain`
 
 The completion is a function in `Domain`. It takes the typed text, today as a `Day`, the order of day, month, and year from the region, and whether the field expects a future date. It returns a `Day`, or nothing when the text is not a date. The date field in `App` calls it when the user leaves the field. A pure function lets the tests set today to 9 November 2026 or 15 February 2027 without a clock.

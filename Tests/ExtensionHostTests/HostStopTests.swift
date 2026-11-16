@@ -15,6 +15,16 @@ import Testing
 		#expect(stop.message == error.message)
 	}
 
+	@Test("The host finds the refusal by its script text, which the language of the interface does not change")
+	func refusalByScriptText() {
+		let error = ScriptError("Demo.lua:3: " + listed.scriptText)
+		let event = HostStop.event(for: error, lastRefusal: listed)
+		guard case let .stopped(stop) = event else { Issue.record("\(event)"); return }
+		#expect(stop == .refused(listed, position: "Demo.lua:3: "))
+		#expect("\(listed)" == listed.scriptText)
+		#expect(stop.message == "Demo.lua:3: " + listed.message)
+	}
+
 	@Test("A script that caught the refusal and failed otherwise keeps its message")
 	func caughtRefusal() {
 		let event = HostStop.event(for: ScriptError("Demo.lua:9: attempt to index a nil value"), lastRefusal: listed)

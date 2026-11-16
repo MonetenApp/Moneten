@@ -145,16 +145,17 @@ enum HostStop: Sendable, Codable, Equatable {
 		case let .memory(name): String(localized: "\(name) needs more memory than Moneten allows, so Moneten stopped it.")
 		case let .memoryLimit(megabytes): String(localized: "The extension needs more than \(megabytes) MB of memory.")
 		case .processorLimitUnavailable: String(localized: "The extension host cannot limit its processor time.")
-		case let .refused(refusal, position): position + refusal.description
+		case let .refused(refusal, position): position + refusal.message
 		}
 	}
 
-	/// The event for a call that failed with `error`. A message that ends with the last refusal of the host
-	/// policy is that refusal. A script that caught the refusal and then failed for another reason keeps its message.
+	/// The event for a call that failed with `error`. A message that ends with the script text of the last
+	/// refusal of the host policy is that refusal. The script text is never localized, so the match holds in
+	/// every language. A script that caught the refusal and then failed for another reason keeps its message.
 	static func event(for error: ScriptError, lastRefusal: HostRefusal?) -> HostEvent {
 		if let stop = error.stop { return .stopped(stop) }
-		guard let refusal = lastRefusal, error.message.hasSuffix(refusal.description) else { return .failed(error.message) }
-		return .stopped(.refused(refusal, position: String(error.message.dropLast(refusal.description.count))))
+		guard let refusal = lastRefusal, error.message.hasSuffix(refusal.scriptText) else { return .failed(error.message) }
+		return .stopped(.refused(refusal, position: String(error.message.dropLast(refusal.scriptText.count))))
 	}
 }
 

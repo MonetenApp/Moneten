@@ -973,11 +973,16 @@ final class DebugHarness {
 		}
 	}
 
-	/// Chooses "Extensions" in the Window menu, as the user does.
+	/// Chooses "Extensions" in the Window menu, as the user does. SwiftUI gives a menu item no identifier,
+	/// and its title follows the language, so the harness finds the item by its place: right after
+	/// "Main Window", the only item with the key equivalent Command-0.
 	func openExtensionsWindow() {
-		let item = NSApp.mainMenu?.items.compactMap(\.submenu).flatMap(\.items).first { $0.title == String(localized: "Extensions") }
-		guard let item, let menu = item.menu else { return log("extensions no menu item") }
-		menu.performActionForItem(at: menu.index(of: item))
+		let isMainWindow = { (item: NSMenuItem) in item.keyEquivalent == "0" && item.keyEquivalentModifierMask == .command }
+		let menu = NSApp.mainMenu?.items.compactMap(\.submenu).first { $0.items.contains(where: isMainWindow) }
+		guard let menu, let main = menu.items.firstIndex(where: isMainWindow), menu.items.indices.contains(main + 1) else {
+			return log("extensions no menu item")
+		}
+		menu.performActionForItem(at: main + 1)
 		log("extensions opened")
 	}
 
@@ -1076,7 +1081,8 @@ final class DebugHarness {
 			// Each item by the hash of its title, because an item can name an account, a group, or a category.
 			log("contextmenu row", ("", .position(index)), ("items", .list((menu?.items ?? []).map { .hash(($0.isAlternate ? "alt:" : "") + $0.title) })))
 			if choice.count == 2, choice[0] == index,
-				let submenu = menu?.items.first(where: { $0.title == String(localized: "Move to Group") })?.submenu {
+				// "Move to Group" is the only submenu of a row, and its title follows the language.
+				let submenu = menu?.items.first(where: \.hasSubmenu)?.submenu {
 				submenu.update()
 				guard submenu.items.indices.contains(choice[1]), submenu.items[choice[1]].isEnabled else {
 					return log("contextmenu move refused")

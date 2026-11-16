@@ -6,7 +6,9 @@ to a .stringsdata file when the build sets SWIFT_EMIT_LOC_STRINGS=YES. scripts/c
 scripts/build-app.sh set it. This script reads these files below the derived data folder of that
 build and compares their keys with App/Resources/Localizable.xcstrings. It fails for a key that the
 catalog lacks, for an entry without a German value, for an entry that no code uses, for a value
-whose placeholders differ from those of its key, and for a plural without "one" and "other".
+whose placeholders differ from those of its key, and for a plural without a text in "one" and "other".
+It also checks that App/Resources/InfoPlist.xcstrings gives each key of the Info.plist an English and a
+German value.
 
     python3 scripts/check-localization.py .build/periphery           check
     python3 scripts/check-localization.py .build/periphery --update  add missing entries, remove unused ones
@@ -19,17 +21,21 @@ of App/Resources/Localizable.xcstrings, for example a copy to try a change of th
 
 A value may put the placeholders of its key in another order with positions such as %2$@, but each
 position keeps the type of the key. Only a plural variation, such as the "one" form of
-"%lld transactions", may leave out a placeholder.
+"%lld transactions", may leave out a placeholder. A form of a substitution writes its number as %arg
+and may name another placeholder of the key only by its position, such as %1$@.
 """
 import glob
 import json
 import os
+import plistlib
 import re
 import sys
 
 # The real path, so that a checkout reached through a symbolic link matches the paths of the compiler.
 ROOT = os.path.realpath(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 CATALOG = os.path.join(ROOT, "App", "Resources", "Localizable.xcstrings")
+INFO_PLIST = os.path.join(ROOT, "App", "Info.plist")
+INFO_CATALOG = os.path.join(ROOT, "App", "Resources", "InfoPlist.xcstrings")
 # The debug harness and the perf check write only to their log, so their texts stay English.
 IGNORED = {"App/Sources/DebugHarness.swift", "App/Sources/PerfCheck.swift"}
 # A printf placeholder: an optional position, flags, width, precision, length, and the conversion.
@@ -130,16 +136,26 @@ def format_problems(key, entry):
 		for plural in plurals(localization):
 			if not {"one", "other"} <= plural.keys():
 				problems.append(f"Plural needs \"one\" and \"other\" in {name}: {key!r} has {sorted(plural)}")
+			for form in ("one", "other"):
+				found = list(units(plural[form])) if form in plural else None
+				if found is not None and not (found and all(u.get("value") for _, u, _ in found)):
+					problems.append(f"Plural form {form!r} has no text in {name}: {key!r}")
 		substitutions = localization.get("substitutions", {})
 		for label, unit, in_plural in units(localization):
-			# The forms of a substitution count only the substituted number, not the placeholders of the key.
-			if "substitution" in label:
-				continue
 			value = unit.get("value", "")
 			if not value:
 				continue
-			found = placeholders(value, substitutions)
 			where = f" ({label})" if label else ""
+			# A form of a substitution writes the substituted number as %arg. Any other placeholder in it
+			# needs the position of a placeholder of the key, such as %1$@, with the type of that placeholder.
+			if "substitution" in label:
+				rest = value.replace("%arg", "")
+				matches = [m for m in PLACEHOLDER.finditer(rest) if m.group(0) != "%%"]
+				if any(m.group("position") is None or expected.get(int(m.group("position"))) != m.group("type") for m in matches):
+					problems.append(f"Placeholders differ in {name} for {key!r}{where}: a form of a substitution holds only %arg "
+						f"and positions of the key ({describe(expected)}), not {', '.join(m.group(0) for m in matches)} in {value!r}")
+				continue
+			found = placeholders(value, substitutions)
 			if isinstance(found, str):
 				problems.append(f"Placeholders differ in {name} for {key!r}{where}: {found} in {value!r}")
 				continue
@@ -161,6 +177,30 @@ def plurals(node):
 			yield from plurals(form)
 	for substitution in node.get("substitutions", {}).values():
 		yield from plurals(substitution)
+
+
+def info_plist_problems():
+	"""Lists each key of InfoPlist.xcstrings without a translated English and German value.
+
+	A key without an English value makes the bundle show the key itself, such as
+	NSHumanReadableCopyright, so the English value must be the text of App/Info.plist: the value of a
+	top-level key, or the key itself for a nested text such as the description of a type.
+	"""
+	with open(INFO_PLIST, "rb") as f:
+		plist = plistlib.load(f)
+	with open(INFO_CATALOG, encoding="utf-8") as f:
+		strings = json.load(f)["strings"]
+	problems = []
+	for key, entry in sorted(strings.items()):
+		for language, name in LANGUAGES.items():
+			unit = entry.get("localizations", {}).get(language, {}).get("stringUnit", {})
+			if unit.get("state") != "translated" or not unit.get("value"):
+				problems.append(f"No {name} value in InfoPlist.xcstrings: {key!r}")
+		english = entry.get("localizations", {}).get("en", {}).get("stringUnit", {}).get("value")
+		expected = plist[key] if isinstance(plist.get(key), str) else key
+		if english and english != expected:
+			problems.append(f"The English value of {key!r} in InfoPlist.xcstrings is {english!r}, but App/Info.plist has {expected!r}")
+	return problems
 
 
 def main():
@@ -202,19 +242,22 @@ def main():
 		missing, unused = [], []
 	untranslated = sorted(k for k in keys if k in strings and not is_translated(strings[k]))
 	formats = [p for k in sorted(keys) if k in strings for p in format_problems(k, strings[k])]
+	info = info_plist_problems()
 	for key in missing:
 		print(f"Missing in the catalog: {key!r}")
 	for key in unused:
 		print(f"Not used by any code: {key!r}")
 	for key in untranslated:
 		print(f"No German translation: {key!r}")
-	for problem in formats:
+	for problem in formats + info:
 		print(problem)
 	if missing or unused or untranslated:
 		print("Run scripts/check-localization.py with --update, then write the German values. CONTRIBUTING.md explains it.")
 	if formats:
 		print("Give each value the placeholders of its key, and each plural the forms \"one\" and \"other\".")
-	if missing or unused or untranslated or formats:
+	if info:
+		print("Give each key of App/Resources/InfoPlist.xcstrings the English text of App/Info.plist and a German value.")
+	if missing or unused or untranslated or formats or info:
 		sys.exit(1)
 	print(f"All {len(keys)} texts of the interface have a German translation.")
 
