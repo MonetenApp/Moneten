@@ -68,6 +68,21 @@ struct ReconcileTests {
 		#expect(history(known, after: r).count == 43)
 	}
 
+	@Test("A card payment of the card statement fetched again adds nothing, and a reservation that is not final goes when the bank no longer reports it")
+	func cardStatementAgain() {
+		// Rows of the card statement have no name, IBAN, or reference, only the day, the amount, and the purpose.
+		let payment = row(9, -1_990, "", "Streaming Beispiel / Musterstadt")
+		let reservation = row(10, -15_000, "", "Hotel Beispiel / Musterstadt", pending: true)
+		let first = merge(refresh([payment, reservation]))
+		#expect(first.added.map(\.isPending) == [false, true])
+		let all = history([], after: first)
+		let again = merge(refresh([fresh(payment)]), stored: all)
+		#expect(again.added == [])
+		#expect(again.skipped == 1)
+		#expect(again.dropped == all.filter(\.isPending).map(\.id))
+		#expect(history(all, after: again).map(\.purpose) == ["Streaming Beispiel / Musterstadt"])
+	}
+
 	@Test("A purpose with other case and spacing is the same transaction, another purpose is not")
 	func purposeSpacing() {
 		let invoice = stored(row(5, -4_711, "Versand", "Rechnung 1001  Kundennr 4711"))
