@@ -7,7 +7,7 @@ struct MenuBarIcon: View {
 	let model: AppModel
 
 	var body: some View {
-		Image(systemName: "\(Self.symbol(of: model))")
+		Image(systemName: Self.symbol(of: model).description)
 	}
 
 	static func symbol(of model: AppModel) -> StaticString {

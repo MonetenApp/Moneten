@@ -264,11 +264,17 @@ final class DebugHarness {
 		// rows, then "Refresh All Accounts" and "Open Moneten", or "Unlock..." while locked. Each logs the icon, its symbol,
 		// the popover, and the main window, after the app has drawn the change.
 		case "menubar": menuBar(argument)
-		// "<key> on" or "<key> off" sets a setting of the "General" tab by its key, as its toggle does, for example
-		// "showMenuBarIcon on" or "playSoundOnNewTransactions off".
+		// "<key> on" or "<key> off" writes the default of a switch directly, for example "showMenuBarIcon on". It skips what
+		// the toggle does besides, such as asking macOS for the notification permission. Only the switches of the checks of
+		// the notifications and the menu bar are allowed. The security settings stay out, because their toggles check the
+		// password and store it in the Keychain first. The line logs the position of the key in the list and the new value.
 		case "setting":
+			let keys = [Preference.showMenuBarIcon, RefreshSettings.automaticRefreshKey, RefreshSettings.showsBannerKey,
+				RefreshSettings.playsSoundKey, Preference.lockOnClose]
 			let parts = argument.split(separator: " ").map(String.init)
-			if parts.count == 2 { UserDefaults.standard.set(parts[1] == "on", forKey: parts[0]) }
+			guard parts.count == 2, let key = keys.firstIndex(of: parts[0]), ["on", "off"].contains(parts[1]) else { return log("setting rejected") }
+			UserDefaults.standard.set(parts[1] == "on", forKey: keys[key])
+			log("setting", ("key", .position(key)), ("value", .flag(UserDefaults.standard.bool(forKey: keys[key]))))
 		// Clicks the first notification of the app that the Notification Center lists: the app does what it does when macOS reports a click.
 		case "noticeclick":
 			Task {

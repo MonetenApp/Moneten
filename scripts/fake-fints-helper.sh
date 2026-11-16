@@ -174,7 +174,6 @@ case "$cmd" in
 		*'"from":"'*) from="\"$(day 90)\""; oldest= ;;
 		*) from=null; oldest="{\"booked\":\"$(day 30)\",\"value\":\"$(day 30)\",\"amount\":\"-9.90\",\"currency\":\"EUR\",\"name\":\"Musterbank\",\"purpose\":\"Kontoführung\",\"pending\":false}," ;;
 		esac
-		# The login "neu" gets one more row booked today with each refresh: a deposit on even runs, a withdrawal on odd ones.
 		extra=
 		case "$cmd" in *'"user":"neu"'*)
 			sign=; [ $(( ${runs:-0} % 2 )) = 1 ] && sign=-
