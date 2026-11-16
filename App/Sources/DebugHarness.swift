@@ -280,6 +280,30 @@ final class DebugHarness {
 		case "present": model.autoRefresh.isUserPresent = argument != "off"
 		// The popover of the menu bar icon, drawn offscreen.
 		case "menubarsnapshot": offscreenSnapshot(MenuBarPopover().environment(model), width: 340, name: argument, kind: "menubar")
+		#if DEBUG || PERF_HARNESS
+		// "click" clicks the menu bar icon, and "press <n>" clicks control number n of the popover, counted from 0: the account
+		// rows, then "Refresh All Accounts" and "Open Moneten", or "Unlock..." while locked. Each logs the icon, its symbol,
+		// the popover, and the main window, after the app has drawn the change.
+		case "menubar": menuBar(argument)
+		// "<key> on" or "<key> off" writes the default of a switch directly, for example "showMenuBarIcon on". It skips what
+		// the toggle does besides, such as asking macOS for the notification permission. Only the switches of the checks of
+		// the notifications and the menu bar are allowed. The security settings stay out, because their toggles check the
+		// password and store it in the Keychain first. The line logs the position of the key in the list and the new value.
+		case "setting":
+			let keys = [Preference.showMenuBarIcon, RefreshSettings.automaticRefreshKey, RefreshSettings.showsBannerKey,
+				RefreshSettings.playsSoundKey, Preference.lockOnClose]
+			let parts = argument.split(separator: " ").map(String.init)
+			guard parts.count == 2, let key = keys.firstIndex(of: parts[0]), ["on", "off"].contains(parts[1]) else { return log("setting rejected") }
+			UserDefaults.standard.set(parts[1] == "on", forKey: keys[key])
+			log("setting", ("key", .position(key)), ("value", .flag(UserDefaults.standard.bool(forKey: keys[key]))))
+		// Clicks the first notification of the app that the Notification Center lists: the app does what it does when macOS reports a click.
+		case "noticeclick":
+			Task {
+				guard let notice = await Notices.delivered().first else { return self.log("noticeclick none") }
+				model.notices.onOpen(notice.accounts)
+				self.log("noticeclick", ("accounts", .count(notice.accounts.count)), ("phase", .state(model.phase)))
+			}
+		#endif
 		// The delivered notifications of this app in the Notification Center, with their titles and the number of their accounts.
 		case "notices": logNotices()
 		// What the button "OK" of the window "Notice" does.
@@ -791,6 +815,9 @@ final class DebugHarness {
 		// What the menus and the pin of the filter bar do: "status unchecked", "amount withdrawals", "category <name>",
 		// "account <name>", "custom <yyyymmdd> <yyyymmdd>", or "pin on" and "pin off".
 		case "filterbar": filterBar(argument)
+		// The sidebar section "Searches": "save <name>", "open <name>", "rename <old>|<new>", "remove <name>", "sheet"
+		// for the sheet of "Save Search...", or "back" and "forward" as the toolbar buttons.
+		case "savedsearch": savedSearch(argument)
 		case "state":
 			let savedFilter = UserDefaults.standard.data(forKey: Preference.savedFilterBar).flatMap(SavedFilterBar.init(data:))
 			log("", ("phase", .state(model.phase)), ("accounts", .count(model.ledger.accounts.count)), ("transactions", .count(model.ledger.transactions.count)),
@@ -1053,6 +1080,57 @@ final class DebugHarness {
 		}
 	}
 
+	#if DEBUG || PERF_HARNESS
+	private func menuBar(_ argument: String) {
+		guard let model else { return }
+		let parts = argument.split(separator: " ", maxSplits: 1).map(String.init)
+		let number = parts.count > 1 ? Int(parts[1]) : nil
+		// The button of the icon in the menu bar of one of the displays. A removed icon keeps its window, which macOS no longer shows.
+		func button(in view: NSView) -> NSButton? { view as? NSButton ?? view.subviews.lazy.compactMap(button).first }
+		let icon = {
+			NSApp.windows.lazy.filter { $0.className == "NSStatusBarWindow" && $0.occlusionState.contains(.visible) }.compactMap { $0.contentView.flatMap(button) }.first
+		}
+		let popover = { NSApp.windows.first { $0.isVisible && $0.className.contains("MenuBarExtra") } }
+		let report: @MainActor () -> Void = { [weak self] in
+			self?.log("menubar", ("icon", .flag(icon() != nil)), ("symbol", .word(MenuBarIcon.symbol(of: model))), ("popover", .flag(popover() != nil)),
+				("main", .flag(NSApp.windows.contains { $0.isVisible && $0.identifier?.rawValue.hasPrefix("main") == true })), ("selected", .state(model.selectedAccount?.kind)))
+		}
+		switch parts.first ?? "" {
+		case "click":
+			guard let icon = icon() else { return log("menubar no icon") }
+			icon.performClick(nil)
+		case "press":
+			// The popover closes while another app is in front, so the press opens it first when it is closed.
+			if popover() == nil {
+				guard let icon = icon() else { return log("menubar no icon") }
+				icon.performClick(nil)
+			}
+			Task { @MainActor [weak self] in
+				try? await Task.sleep(for: .milliseconds(500))
+				// SwiftUI gives the controls of the popover no accessibility elements until an assistive app asks, but a
+				// focus ring view for each, in the order of the view. The press is a click in the middle of control number n.
+				@MainActor func controls(in view: NSView) -> [NSView] {
+					String(describing: type(of: view)) == "_FocusRingView" ? [view] : view.subviews.flatMap(controls)
+				}
+				guard let window = popover(), let view = window.contentView else { self?.log("menubar no popover"); return }
+				let all = controls(in: view)
+				guard let n = number, all.indices.contains(n) else { self?.log("menubar", ("controls", .count(all.count))); return }
+				let point = all[n].convert(NSPoint(x: all[n].bounds.midX, y: all[n].bounds.midY), to: nil)
+				for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+					if let event = NSEvent.mouseEvent(with: type, location: point, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+						windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1) { window.sendEvent(event) }
+				}
+				self?.log("menubar pressed", ("control", .position(n)), ("controls", .count(all.count)))
+				try? await Task.sleep(for: .milliseconds(500))
+				report()
+			}
+			return
+		default: break
+		}
+		DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { report() }
+	}
+	#endif
+
 	private func answer(_ make: () -> UserAnswer) {
 		guard let model, let prompt = model.sync.broker.current else { return log("ext no dialog") }
 		model.sync.broker.answer(make(), to: prompt.id)
@@ -1163,6 +1241,34 @@ final class DebugHarness {
 		default: return log("filterbar rejected")
 		}
 		log(LogLine("filterbar", values: [("", .choice(parts.first ?? "", of: ["status", "amount", "category", "account", "custom", "pin"]))] + Self.filterTargets(model)))
+	}
+
+	private func savedSearch(_ argument: String) {
+		guard let model else { return }
+		let parts = argument.split(separator: " ", maxSplits: 1).map(String.init)
+		let value = parts.count == 2 ? parts[1] : ""
+		func named(_ name: String) -> UUID? { model.savedSearches.first { $0.name == name }?.id }
+		switch parts.first {
+		case "save": model.saveSearch(name: value)
+		case "open": if let id = named(value) { model.navigate(to: .search(id)) }
+		case "rename":
+			let names = value.split(separator: "|", maxSplits: 1).map(String.init)
+			if names.count == 2, let id = named(names[0]) { model.rename(search: id, to: names[1]) }
+		case "remove": if let id = named(value) { model.remove(search: id) }
+		case "sheet": model.sheet = .saveSearch
+		case "back": model.goBack()
+		case "forward": model.goForward()
+		default: return log("savedsearch rejected")
+		}
+		let selected: Int? = if case let .search(id) = model.selection { model.savedSearches.firstIndex { $0.id == id } } else { nil }
+		// In parts, so the compiler of the CI runner type-checks it in time.
+		let command: LogValue = .choice(parts.first ?? "", of: ["save", "open", "rename", "remove", "sheet", "back", "forward"])
+		let view: LogValue = .choice(model.selection?.trailName ?? "none", of: ["account", "group", "category", "search", "none"])
+		let filters: LogValue = .list(model.filter.activeKinds.map { LogValue.word($0) })
+		var values: [(StaticString, LogValue)] = [("", command), ("searches", .count(model.savedSearches.count)), ("selected", .position(selected)), ("view", view)]
+		values += [("canBack", .flag(model.canGoBack)), ("canForward", .flag(model.canGoForward)), ("visible", .count(model.visibleTransactions.count))]
+		values += [("filters", filters), ("period", .state(model.period))]
+		log(LogLine("savedsearch", values: values + Self.filterTargets(model)))
 	}
 
 	private func csvPreview(_ argument: String) {
@@ -1348,7 +1454,7 @@ final class DebugHarness {
 	/// window uses a material that only the window server draws.
 	private func sidebarSnapshot(_ name: String) {
 		guard let model else { return }
-		offscreenSnapshot(SidebarView().environment(model).frame(height: 900), width: 340, name: name, kind: "sidebar")
+		offscreenSnapshot(SidebarView().environment(model).frame(height: 1200), width: 340, name: name, kind: "sidebar")
 	}
 
 	/// Draws a view in a window outside the screen, as tall as the view wants to be, into the file

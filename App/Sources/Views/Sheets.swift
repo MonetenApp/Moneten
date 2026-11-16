@@ -97,8 +97,9 @@ struct SheetButtons<Content: View>: View {
 struct NameSheet: View {
 	var title: String
 	var placeholder: String
+	/// The name the field starts with, such as the current name for a rename.
+	@State var name = ""
 	var onSave: (String) -> Void
-	@State private var name = ""
 
 	var body: some View {
 		SheetFrame(title: title, canConfirm: !name.trimmingCharacters(in: .whitespaces).isEmpty, onConfirm: {
