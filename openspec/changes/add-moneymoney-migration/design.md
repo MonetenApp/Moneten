@@ -28,9 +28,11 @@ The app keeps all accounts, categories, and transactions of the open database in
 
 ## Refreshes during migration
 
-`Sync` pauses new refreshes and waits for the running refreshes, including their final state and account writes, before the migration transaction starts. The app defers new automatic or manual refresh starts asynchronously until the migration task ends. The coordinator awaits its final account callback before releasing an access. Queued refreshes resume after the pause. This keeps synchronous bank writes from waiting behind the migration writer on the main actor.
+`Sync` pauses new refreshes and waits for the running refreshes, including their final state and account writes, before the migration transaction starts. The app disables new manual refresh commands while storage runs. Due automatic accounts stay due for the next tick. No untracked task can restart a command after "Cancel Refresh". The coordinator awaits its final account callback before releasing an access. Queued refreshes resume after the pause. This keeps synchronous bank writes from waiting behind the migration writer on the main actor.
 
-The shared `Domain` reconciliation keeps its full-account matching scope and accepts a throwing checkpoint. Matching index construction publishes a zero completed count and checks cancellation. Row reconciliation then publishes completed counts. Existing callers use its nonthrowing entry point.
+The preview retains the cached exports and calendar. Inside its write transaction, `Storage` reads the current ledger and deleted rows and rebuilds the plan with `Import` before saving anything. The assistant reports this rebuilt plan, so a refresh after the preview cannot add a duplicate or lose newer bank fields or user edits. The same cancellation flag covers rebuilding and writing. When the app locks during storage, it cancels first and closes that store in background work so a database read or rollback cannot block the lock screen.
+
+The shared `Domain` reconciliation keeps its full-account matching scope and accepts a throwing checkpoint. Stored and deleted fingerprint indexes check it too. Matching index construction publishes a zero completed count and checks cancellation. Row reconciliation then publishes completed counts. Existing callers use its nonthrowing entry point.
 
 ## Progress and portfolio exports
 

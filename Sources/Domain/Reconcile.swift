@@ -313,7 +313,7 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 		for (i, t) in rows.enumerated() {
 		try checkpoint()
 			guard let id = t.sourceID, let slots = byID[id] else { continue }
-			let free = slots.filter { !taken.contains($0) }
+			let free = try slots.filter { try checkpoint(); return !taken.contains($0) }
 			if let slot = free.first(where: { t.isPending || !isDeletedPending($0) }) {
 				taken.insert(slot)
 				result[i] = Partner(slot: slot, evidence: .sourceID)
@@ -327,10 +327,12 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 	let days = Set(rows.map(\.bookingDate))
 	var candidates: [Identity.Key: [(slot: Slot, identity: Identity)]] = [:]
 	for (j, t) in stored.enumerated() where days.contains(t.bookingDate) && !taken.contains(.live(j)) {
+		try checkpoint()
 		let identity = Identity(t)
 		candidates[identity.key, default: []].append((.live(j), identity))
 	}
 	for (k, d) in deleted.enumerated() where days.contains(d.bookingDate) && !taken.contains(.deleted(k)) {
+		try checkpoint()
 		let identity = Identity(d)
 		candidates[identity.key, default: []].append((.deleted(k), identity))
 	}
@@ -339,7 +341,7 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 		for i in rows.indices where result[i] == nil {
 			try checkpoint()
 			let delivered = identities[i]
-			guard let match = candidates[delivered.key]?.first(where: { !taken.contains($0.slot) && step.accepts(delivered, $0.identity) }) else { continue }
+			guard let match = try candidates[delivered.key]?.first(where: { try checkpoint(); return !taken.contains($0.slot) && step.accepts(delivered, $0.identity) }) else { continue }
 			taken.insert(match.slot)
 			result[i] = Partner(slot: match.slot, evidence: .fingerprint)
 		}
@@ -362,8 +364,8 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 			|| fileIdentity.map { fileIDs.contains($0) } == true
 			|| reference.map { references.contains($0) } == true
 	}
-	let live = stored.indices.filter { relevant(day: stored[$0].bookingDate, amount: stored[$0].amountMinor, sourceID: stored[$0].sourceID, fileIdentity: stored[$0].fileIdentity, reference: stored[$0].endToEndReference) }
-	let dead = deleted.indices.filter { relevant(day: deleted[$0].bookingDate, amount: deleted[$0].amountMinor, sourceID: deleted[$0].sourceID, fileIdentity: deleted[$0].fileIdentity, reference: deleted[$0].endToEndReference) }
+	let live = try stored.indices.filter { try checkpoint(); return relevant(day: stored[$0].bookingDate, amount: stored[$0].amountMinor, sourceID: stored[$0].sourceID, fileIdentity: stored[$0].fileIdentity, reference: stored[$0].endToEndReference) }
+	let dead = try deleted.indices.filter { try checkpoint(); return relevant(day: deleted[$0].bookingDate, amount: deleted[$0].amountMinor, sourceID: deleted[$0].sourceID, fileIdentity: deleted[$0].fileIdentity, reference: deleted[$0].endToEndReference) }
 	if rows.allSatisfy({ !$0.isPending }), stored.allSatisfy({ !$0.isPending }), deleted.allSatisfy({ !$0.isPending }),
 		live.allSatisfy({ stored[$0].fileIdentity == nil }), dead.allSatisfy({ deleted[$0].fileIdentity == nil }) {
 		return try partners(of: rows, stored: stored, deleted: deleted, checkpoint: checkpoint)
@@ -532,8 +534,9 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 		})
 	}
 	func positions(_ ts: [Transaction], indices: Set<Int>, checkpoint: () throws -> Void) rethrows -> [Int: Int] {
-		let keys = Dictionary(uniqueKeysWithValues: indices.map { i in
-			(i, (ts[i].bookingDate, ts[i].createdAt, ts[i].id.uuidString))
+		let keys = Dictionary(uniqueKeysWithValues: try indices.map { i in
+			try checkpoint()
+			return (i, (ts[i].bookingDate, ts[i].createdAt, ts[i].id.uuidString))
 		})
 		let sorted = try indices.sorted { try checkpoint(); return keys[$0]! < keys[$1]! }
 		return try ranks(sorted, count: ts.count, checkpoint: checkpoint) { i, j in
@@ -564,7 +567,7 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 		let fields: DeadFieldsKey = (d.purpose, iban, pending, fetched, d.deletedAt)
 		return (identity, fields)
 	}
-	let deadKeys = Dictionary(uniqueKeysWithValues: deadCandidates.map { ($0, deadKey(deleted[$0])) })
+	let deadKeys = Dictionary(uniqueKeysWithValues: try deadCandidates.map { try checkpoint(); return ($0, deadKey(deleted[$0])) })
 	let deadOrder: [Int] = try deadCandidates.sorted { (left: Int, right: Int) -> Bool in
 		try checkpoint()
 		let lhs: DeadKey = deadKeys[left]!

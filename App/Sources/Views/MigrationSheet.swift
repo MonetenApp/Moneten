@@ -288,15 +288,15 @@ struct MigrationSheet: View {
 	}
 
 	private func commit(_ plan: MoneyMoneyMigration.Plan) {
-		step = .working(.init(step: .importing, total: plan.transactions.count + plan.updatedTransactions.count))
+		step = .working(.init(step: .accounts))
 		model.migrationTask = Task {
 			do {
-				try await withProgress { publish in try await model.runMigration(plan: plan, progress: publish) }
+				let imported = try await withProgress { publish in try await model.runMigration(plan: plan, progress: publish) }
 				step = .working(.init(step: .finishing))
 				let ledger = model.ledger
-				let report = await Task.detached { plan.report(after: ledger) }.value
+				let report = await Task.detached { imported.report(after: ledger) }.value
 				try Task.checkCancellation()
-				step = .done(plan, report)
+				step = .done(imported, report)
 			} catch is CancellationError {
 			} catch {
 				step = .failed("The migration could not finish. \(error)")

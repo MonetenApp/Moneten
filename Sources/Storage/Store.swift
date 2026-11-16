@@ -17,15 +17,7 @@ public final class Store: SavedPINStore {
 	/// Reads everything into memory. A portfolio whose value of its balance day is missing or
 	/// differs gets that value recorded first, such as one saved before the history existed.
 	public func loadLedger() throws -> Ledger {
-		var ledger = try queue.read { db in
-			Ledger(groups: try AccountGroup.fetchAll(db),
-				accounts: try Account.fetchAll(db),
-				categories: try Domain.Category.fetchAll(db),
-				transactions: try Transaction.fetchAll(db),
-				portfolioValues: try PortfolioValue.order(Column("day")).fetchAll(db),
-				holdings: try HoldingRecord.fetchAll(db).compactMap(\.holding),
-				parts: try SplitPart.fetchAll(db))
-		}
+		var ledger = try queue.read { db in try Self.loadLedger(in: db) }
 		let missing = ledger.missingPortfolioValues
 		if !missing.isEmpty {
 			try queue.write { db in
@@ -34,6 +26,16 @@ public final class Store: SavedPINStore {
 			for v in missing { ledger.record(v) }
 		}
 		return ledger
+	}
+
+	static func loadLedger(in db: Database) throws -> Ledger {
+		Ledger(groups: try AccountGroup.fetchAll(db),
+			accounts: try Account.fetchAll(db),
+			categories: try Domain.Category.fetchAll(db),
+			transactions: try Transaction.fetchAll(db),
+			portfolioValues: try PortfolioValue.order(Column("day")).fetchAll(db),
+			holdings: try HoldingRecord.fetchAll(db).compactMap(\.holding),
+			parts: try SplitPart.fetchAll(db))
 	}
 
 	public func save(_ group: AccountGroup) throws { try queue.write { db in try group.save(db) } }

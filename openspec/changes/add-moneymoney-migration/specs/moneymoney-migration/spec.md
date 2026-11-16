@@ -347,6 +347,15 @@ The app SHALL show the current step, the current account when known, and complet
 - **THEN** it publishes the current count at least once per second, including a count of zero while it builds the matching index
 - **AND** Cancel stops at a comparison checkpoint without returning a partial plan
 
+#### Scenario: Preview becomes outdated
+
+- **GIVEN** the preview includes one new transaction of 1.00 EUR
+- **AND** a bank refresh stores that transaction with another identifier before the import starts
+- **WHEN** the user imports the preview
+- **THEN** the assistant compares the cached export with the current database in its write transaction and stores no duplicate
+- **AND** a transaction deleted since the preview stays deleted
+- **AND** a bank booking corrected to 2.00 EUR keeps its corrected value and the user's comment
+
 #### Scenario: Bank refreshes during storage
 
 - **GIVEN** a bank refresh is already running and another refresh becomes due
@@ -354,7 +363,14 @@ The app SHALL show the current step, the current account when known, and complet
 - **THEN** storage waits for the running refresh and its final state and account writes
 - **AND** no new refresh starts during migration storage
 - **AND** progress and Cancel remain responsive
-- **AND** queued refreshes resume after storage and ledger loading finish
+- **AND** refreshes already queued resume after storage and ledger loading finish
+
+#### Scenario: Cancel a bank refresh while migration waits
+
+- **GIVEN** migration waits for a bank refresh to finish
+- **WHEN** the user chooses "Cancel Refresh"
+- **THEN** no deferred command starts another bank refresh after migration ends
+- **AND** new manual refresh commands stay disabled during migration storage
 
 #### Scenario: Waiting for the source
 

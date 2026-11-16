@@ -80,7 +80,7 @@ struct AppCommands: Commands {
 		}
 		CommandGroup(replacing: .newItem) {
 			Button("Import from MoneyMoney...") { model.sheet = .migration }
-				.disabled(!unlocked)
+				.disabled(!unlocked || model.isTransferringTransactions)
 			Button("Import All Data...") { Task { await model.importAllData() } }
 				.disabled(!unlocked)
 			Button("Export All Data...") { model.sheet = .exportAllData }

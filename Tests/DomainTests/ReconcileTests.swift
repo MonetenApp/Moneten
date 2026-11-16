@@ -43,6 +43,20 @@ struct ReconcileTests {
 		return ledger.transactions(ofAccount: giro.id)
 	}
 
+	@Test("Comparison can stop while indexing stored or deleted fingerprints", arguments: [false, true])
+	func cancelFingerprintIndex(deleted: Bool) {
+		let rows = (0..<1000).map { _ in row(1, 100, "Synthetic", "Synthetic payment reference and SEPA purpose") }
+		let tombstones = deleted ? rows.map { DeletedTransaction($0, deletedAt: now) } : []
+		var checks = 0
+		#expect(throws: CancellationError.self) {
+			_ = try reconcile(.migration([rows[0]]), into: giro, stored: deleted ? [] : rows, deleted: tombstones,
+				rules: Categorizer(ledger: Ledger()), now: now, checkpoint: { completed in
+					if completed == 0 { checks += 1 }
+					if checks == 500 { throw CancellationError() }
+				})
+		}
+	}
+
 	@Test("Comparison checkpoints expose intermediate counts and can stop the whole result")
 	func comparisonCheckpoints() throws {
 		let rows = [row(1, 100, "One"), row(2, 200, "Two"), row(3, 300, "Three")]

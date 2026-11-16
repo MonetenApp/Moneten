@@ -483,7 +483,11 @@ final class AppModel {
 		setup = nil
 		ruleRun?.cancel()
 		extensions.close()
-		try? store?.close()
+		if migrationStoring, let store {
+			Task.detached { try? store.close() }
+		} else {
+			try? store?.close()
+		}
 		store = nil
 		accesses = [:]
 		bankNotices = BankNotices()
@@ -1129,20 +1133,13 @@ final class AppModel {
 	}
 
 	func canRefresh(_ scope: RefreshScope) -> Bool {
-		phase == .unlocked && !ledger.refreshAccounts(scope).isEmpty
+		phase == .unlocked && !migrationStoring && !ledger.refreshAccounts(scope).isEmpty
 	}
 
 	/// Starts one refresh per access, with the state its connector returned last. Only a refresh that the
 	/// user started shows an alert.
 	func refresh(_ plan: [UUID: [AccountRequest]], attended: Bool = true, enforced: Bool = false) {
-		if migrationStoring, let migrationTask {
-			Task {
-				await migrationTask.value
-				refresh(plan, attended: attended, enforced: enforced)
-			}
-			return
-		}
-		guard let store else { return }
+		guard !migrationStoring, let store else { return }
 		let requests = plan.compactMap { id, accounts in accesses[id].map { ($0, accounts) } }.sorted { $0.0.bankName < $1.0.bankName }
 		for (access, accounts) in requests {
 			guard let connector = connector(for: access.source) else {
@@ -1265,21 +1262,22 @@ final class AppModel {
 
 	// MARK: Migration
 
-	func runMigration(plan: MoneyMoneyMigration.Plan, progress: @escaping @Sendable (MoneyMoneyMigration.Progress) -> Void) async throws {
+	func runMigration(plan: MoneyMoneyMigration.Plan, progress: @escaping @Sendable (MoneyMoneyMigration.Progress) -> Void) async throws -> MoneyMoneyMigration.Plan {
 		guard let store else { throw CancellationError() }
 		guard !isTransferringTransactions else { throw CancellationError() }
 		migrationStoring = true
 		defer { migrationStoring = false }
-		try await sync.withRefreshesPaused {
+		return try await sync.withRefreshesPaused {
 			guard self.store === store else { throw CancellationError() }
 			let starters = replaceableStarterCategories.map(\.id)
 			let canceled = Mutex(false)
-			try await withTaskCancellationHandler {
+			let imported = try await withTaskCancellationHandler {
 				try Task.checkCancellation()
-				try await store.importMigration(plan, replacing: starters, isCanceled: { canceled.withLock { $0 } }, progress: progress)
+				return try await store.importMigration(plan, replacing: starters, isCanceled: { canceled.withLock { $0 } }, progress: progress)
 			} onCancel: { canceled.withLock { $0 = true } }
 			progress(.init(step: .finishing))
 			try await reloadAfterImport()
+			return imported
 		}
 	}
 
