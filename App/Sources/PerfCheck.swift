@@ -2,7 +2,6 @@
 import AppKit
 import Domain
 import ExtensionCatalog
-import FinTS
 import Foundation
 import Synchronization
 
@@ -321,11 +320,7 @@ struct PerfScenario {
 		// more than 100 MB with the Java runtime, so it must run away from the main thread.
 		PerfScenario(name: "seal-check-at-launch", budget: halfSecond,
 			setUp: { await $0.settle() },
-			run: { c in
-				let start = ContinuousClock.now
-				if await !AppSeal.check() { c.fail("the seal check of the app failed") }
-				c.harness.log("perf seal", ("check_ms", .count(Int(((ContinuousClock.now - start) / .milliseconds(1)).rounded()))))
-			}),
+			run: { await checkSeal($0) }),
 		// Opens the Extensions window on a catalog of 200 packages, through the menu item.
 		PerfScenario(name: "open-extensions-window", budget: halfSecond,
 			setUp: { c in
@@ -396,6 +391,13 @@ struct PerfScenario {
 				if c.model.ledger.transactions(ofAccount: account.id).count != stored.count { c.fail("booked file refresh changed row count") }
 			}),
 	]
+
+	/// Runs the seal check of the launch again and logs how long it took.
+	@MainActor static func checkSeal(_ c: PerfContext) async {
+		let start = ContinuousClock.now
+		if await !LaunchChecks.sealIsIntactNow() { c.fail("the seal check of the app failed") }
+		c.harness.log("perf seal", ("check_ms", .count(Int(((ContinuousClock.now - start) / .milliseconds(1)).rounded()))))
+	}
 
 	/// A CSV file waits in the preview, which reads it away from the main actor, until "Import".
 	@MainActor static func confirmPreview(_ model: AppModel, creatingCategories: Bool = false) async {

@@ -10,6 +10,11 @@ enum LaunchChecks {
 		get async { await AppSeal.isIntact ? nil : "The application file of Moneten is damaged. Move Moneten to the Trash, then download and install it again. Your accounts stay, because Moneten keeps its data in another place." }
 	}
 
+	#if DEBUG || PERF_HARNESS
+	/// The seal check again, not the result of the launch, for the scenario of `PerfCheck`.
+	static func sealIsIntactNow() async -> Bool { await AppSeal.check() }
+	#endif
+
 	/// Runs the checks after the first, shows their messages in the update window, and starts the updater.
 	static func run(updater: AppUpdater) {
 		let untested = untestedMacOS
