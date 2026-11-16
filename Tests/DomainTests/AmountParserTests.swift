@@ -39,7 +39,7 @@ struct AmountParserTests {
 
 	@Test("Names the decimal mark that a text shows without doubt", arguments: [
 		("-89,00", DecimalMark?.some(.comma)), ("1.250.000", .comma), ("4.50", .point), ("1,250.00", .point),
-		("89", nil), ("1,234", nil), ("1.23,45", nil),
+		("89", nil), ("1,234", nil), ("1.23,45", nil), ("0,500", .comma),
 	])
 	func shownMark(text: String, mark: DecimalMark?) {
 		#expect(AmountParser.decimalMark(of: text) == mark)

@@ -165,7 +165,7 @@ extension SchemaTests {
 		let a = Account(position: 0, name: "Girokonto", kind: .giro, source: .offline)
 		let ids = [UUID(), UUID()]
 		try queue.write { db in
-			try a.insert(db)
+			try a.insertAtOlderVersion(db)
 			for (i, id) in ids.enumerated() {
 				try db.execute(sql: """
 					INSERT INTO bankTransaction (id, accountID, bookingDate, amountMinor, currency, name, purpose,

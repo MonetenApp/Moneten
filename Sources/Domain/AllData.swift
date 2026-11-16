@@ -326,6 +326,8 @@ private struct AccountEntry: Codable {
 	var bankBalanceDate: Date?
 	var initialBalance: String
 	var initialBalanceIsSet: Bool
+	/// Written only when true, so a reader before it reads the file, and the format version stays.
+	var initialBalanceIsDerived: Bool?
 	var isClosed: Bool
 	var comment: String?
 	var sourceID: String?
@@ -354,6 +356,7 @@ private struct AccountEntry: Codable {
 		bankBalanceDate = a.bankBalanceDate
 		initialBalance = AmountText.text(a.initialBalanceMinor, a.currency)
 		initialBalanceIsSet = a.initialBalanceIsSet
+		initialBalanceIsDerived = a.initialBalanceIsDerived ? true : nil
 		isClosed = a.isClosed
 		comment = a.comment
 		sourceID = a.sourceID
@@ -370,7 +373,8 @@ private struct AccountEntry: Codable {
 		return Account(id: id, groupID: groupID, position: position, name: name, kind: kind, source: source, currency: currency, iban: iban, bic: bic,
 			accountNumber: accountNumber, bankCode: bankCode, bankName: bankName, owner: owner,
 			bankBalanceMinor: try bankBalance.map { try AmountText.minorUnits($0, currency) }, bankBalanceDate: bankBalanceDate,
-			initialBalanceMinor: try AmountText.minorUnits(initialBalance, currency), initialBalanceIsSet: initialBalanceIsSet, isClosed: isClosed,
+			initialBalanceMinor: try AmountText.minorUnits(initialBalance, currency), initialBalanceIsSet: initialBalanceIsSet,
+			initialBalanceIsDerived: initialBalanceIsDerived == true, isClosed: isClosed,
 			comment: comment, sourceID: sourceID, color: color, accessID: accessID, remoteID: remoteID, refreshedAt: refreshedAt,
 			refreshError: refreshError, refreshInterval: refreshInterval)
 	}

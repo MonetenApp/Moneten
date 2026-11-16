@@ -51,19 +51,55 @@ struct ManualMarkTests {
 		#expect(r.added.map(\.sourceID) == ["TX-7"])
 	}
 
-	@Test("A manual row that a file or a migration matched keeps its record when the user deletes it")
-	func matchedManualRowKeepsRecord() throws {
+	/// The CSV export of the bank: the booking of the manual row "Kiosk".
+	var csvRow: Transaction { Transaction(accountID: giro.id, bookingDate: day, amountMinor: -1_200, name: "KIOSK", purpose: "Kartenzahlung") }
+
+	@Test("A manual row that a file matched takes the file identity, so after a delete the refresh keeps the booking out")
+	func fileMatchedManualRow() throws {
 		defer { try? FileManager.default.removeItem(at: folder.root) }
 		let store = try makeStore()
-		var migrated = kiosk
-		migrated.sourceID = "moneymoney:42"
-		var filed = kiosk
-		filed.id = UUID()
-		filed.fileIdentity = "file:1:kiosk"
-		try store.save([migrated, filed])
-		try store.deleteTransactions([migrated.id, filed.id])
-		#expect(Set(try store.deletedTransactions().map(\.sourceID)) == ["moneymoney:42", nil])
+		let manual = kiosk
+		try store.save([manual])
+		#expect(try store.merge(.file([csvRow]), into: giro.id).added.isEmpty)
+		let matched = try #require(try store.loadLedger().transactions(ofAccount: giro.id).first)
+		#expect(matched.id == manual.id && matched.isManual && matched.name == "Kiosk")
+		let identity = try #require(matched.fileIdentity)
+		#expect(try store.merge(.file([csvRow]), into: giro.id).added.isEmpty)
+
+		try store.deleteTransactions([manual.id])
+		#expect(try store.deletedTransactions().map(\.fileIdentity) == [identity])
+		let refreshed = try store.merge(delivered(), into: giro.id)
+		#expect(refreshed.added.isEmpty && refreshed.skipped == 1)
+		#expect(try store.loadLedger().transactions(ofAccount: giro.id).isEmpty)
+	}
+
+	@Test("A file brings back a deleted manual row that it matched, as it brings back any deleted file row that no refresh delivered")
+	func fileMatchedManualRowImportedAgain() throws {
+		defer { try? FileManager.default.removeItem(at: folder.root) }
+		let store = try makeStore()
+		let plain = Transaction(accountID: giro.id, bookingDate: day, amountMinor: -3_000, name: "Bäckerei Gutbrot", purpose: "Brot")
+		try store.save([kiosk])
+		_ = try store.merge(.file([csvRow, plain]), into: giro.id)
+		try store.deleteTransactions(try store.loadLedger().transactions(ofAccount: giro.id).map(\.id))
 		#expect(try store.deletedTransactions().count == 2)
+		let again = try store.merge(.file([csvRow, plain]), into: giro.id)
+		#expect(again.added.map(\.name) == ["KIOSK", "Bäckerei Gutbrot"])
+		#expect(try store.merge(.file([csvRow, plain]), into: giro.id).added.isEmpty)
+		#expect(try store.loadLedger().transactions(ofAccount: giro.id).count == 2)
+	}
+
+	@Test("A manual row that a migration matched takes the migration ID and keeps its record when the user deletes it")
+	func migrationMatchedManualRow() throws {
+		defer { try? FileManager.default.removeItem(at: folder.root) }
+		let store = try makeStore()
+		let manual = kiosk
+		try store.save([manual])
+		var source = csvRow
+		source.sourceID = "moneymoney:42"
+		#expect(try store.merge(.migration([source]), into: giro.id).added.isEmpty)
+		#expect(try store.loadLedger().transactions(ofAccount: giro.id).map(\.sourceID) == ["moneymoney:42"])
+		try store.deleteTransactions([manual.id])
+		#expect(try store.deletedTransactions().map(\.sourceID) == ["moneymoney:42"])
 	}
 
 	@Test("A row and the account whose initial balance it moves are stored in one write, also on delete")
@@ -96,8 +132,29 @@ struct ManualMarkTests {
 	}
 }
 
+extension ManualMarkTests {
+	@Test("A complete export writes initialBalanceIsDerived only for a derived initial balance, and the import keeps it")
+	func derivedInitialBalanceRoundTrip() throws {
+		defer { try? FileManager.default.removeItem(at: folder.root) }
+		let source = try makeStore()
+		var derived = giro
+		derived.initialBalanceMinor = 120_000
+		derived.initialBalanceIsSet = true
+		derived.initialBalanceIsDerived = true
+		let wallet = Account(position: 1, name: "Wallet", kind: .cash, source: .offline, initialBalanceIsSet: true)
+		try source.save(accounts: [derived, wallet])
+		#expect(try source.loadLedger().account(giro.id)?.initialBalanceIsDerived == true)
+		let file = try source.exportAllData(at: Date(timeIntervalSince1970: 1_794_700_000)).json()
+		let json = try #require(try JSONSerialization.jsonObject(with: file) as? [String: Any])
+		let accounts = try #require(json["accounts"] as? [[String: Any]])
+		#expect(accounts.compactMap { $0["initialBalanceIsDerived"] as? Bool } == [true])
+		let imported = try AllData(json: file)
+		#expect(imported.accounts.filter(\.initialBalanceIsDerived).map(\.name) == ["Giro"])
+	}
+}
+
 extension SchemaTests {
-	@Test("v23 adds isManual, false for every stored row")
+	@Test("v23 adds isManual, false for every stored row, and initialBalanceIsDerived, false for every account")
 	func manualMarkMigration() throws {
 		let queue = try DatabaseQueue()
 		defer { try? queue.close() }
@@ -105,7 +162,7 @@ extension SchemaTests {
 		let a = Account(position: 0, name: "Girokonto", kind: .giro, source: .offline)
 		let id = UUID()
 		try queue.write { db in
-			try a.insert(db)
+			try a.insertAtOlderVersion(db)
 			try db.execute(sql: """
 				INSERT INTO bankTransaction (id, accountID, bookingDate, amountMinor, currency, name, purpose,
 					isChecked, isPending, categorizedBy, isNew, isFetched, createdAt)
@@ -116,5 +173,6 @@ extension SchemaTests {
 		let rows = try Store(queue: queue).loadLedger().transactions
 		#expect(rows.map(\.id) == [id])
 		#expect(rows.map(\.isManual) == [false])
+		#expect(try Store(queue: queue).loadLedger().accounts.map(\.initialBalanceIsDerived) == [false])
 	}
 }

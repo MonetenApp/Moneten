@@ -74,6 +74,7 @@ A version-1 payload contains `name`, `header`, `delimiter`, and `layout`. The he
 | `bankBalanceDate` | The time of that balance |
 | `initialBalance` | The balance before the first transaction, an amount in the currency of the account |
 | `initialBalanceIsSet` | Whether the initial balance is set, by the user or by the first refresh |
+| `initialBalanceIsDerived` | Optional `true` while the initial balance is the value that a refresh derived, so manual transactions move it. Missing means a value that the user entered or that came from the source. |
 | `isClosed` | Whether the account is closed |
 | `comment` | Comment |
 | `sourceID` | Identifier of the account in the source it came from, such as `moneymoney:<uuid>` |

@@ -157,6 +157,26 @@ struct OpeningBalanceTests {
 		try store.save(account)
 	}
 
+	@Test("A refresh that passes a planned manual row moves a derived initial balance and leaves a typed one")
+	func plannedManualRow() throws {
+		let savings = Account(position: 1, name: "Savings", kind: .savings, source: .bank)
+		let store = try makeStore([giro, savings])
+		for account in [giro, savings] { _ = try store.merge(refresh([], balance: 120_000, daysAgo: 10), into: account.id) }
+		try type(300_000, into: savings.id, of: store)
+		func hotel(_ account: Account, manual: Bool) -> Transaction {
+			Transaction(accountID: account.id, bookingDate: today.adding(days: -5), amountMinor: -5_000, name: manual ? "Hotel Beispiel" : "HOTEL BEISPIEL",
+				sourceID: manual ? nil : "TX-9-\(account.name)", isManual: manual)
+		}
+		try store.save([hotel(giro, manual: true), hotel(savings, manual: true)])
+		for account in [giro, savings] { _ = try store.merge(refresh([hotel(account, manual: false)], balance: 115_000), into: account.id) }
+		let stored = try store.loadLedger()
+		let derived = try #require(stored.account(giro.id))
+		#expect(derived.initialBalanceMinor == 125_000 && derived.initialBalanceIsDerived)
+		#expect(stored.computedBalance(of: derived, through: today) == Money(minorUnits: 115_000, currency: "EUR"))
+		let typed = try #require(stored.account(savings.id))
+		#expect(typed.initialBalanceMinor == 300_000 && !typed.initialBalanceIsDerived)
+	}
+
 	@Test("A typed initial balance survives later refreshes, also one typed before the first refresh")
 	func typedValue() throws {
 		let savings = Account(position: 1, name: "Savings", kind: .savings, source: .bank)
@@ -243,7 +263,7 @@ struct OpeningBalanceTests {
 		let cash = Account(position: 3, name: "Cash", kind: .cash, source: .offline, initialBalanceMinor: 7_000)
 		let fetched = Account(position: 4, name: "Giro", kind: .giro, source: .bank, bankBalanceMinor: 30_000, initialBalanceMinor: 25_000)
 		let depot = Account(position: 5, name: "Depot", kind: .portfolio, source: .migrated, bankBalanceMinor: 1_000_000, initialBalanceMinor: 900_000)
-		try store.save(accounts: [travel, wallet, household, cash, fetched, depot])
+		try insertOldAccounts(queue, [travel, wallet, household, cash, fetched, depot])
 		try insertOldRows(queue, [
 			Transaction(accountID: travel.id, bookingDate: day, amountMinor: -2_000, currency: "USD", name: "Diner New York", sourceID: "moneymoney:1"),
 			Transaction(accountID: household.id, bookingDate: day, amountMinor: -480, name: "Bäckerei Gutbrot"),
@@ -268,7 +288,7 @@ struct OpeningBalanceTests {
 		let store = Store(queue: queue)
 		let day = Day(year: 2026, month: 11, day: 2)
 		let wallet = Account(position: 0, name: "Wallet", kind: .cash, source: .migrated, bankBalanceMinor: 50_000, initialBalanceMinor: 50_000)
-		try store.save(accounts: [wallet])
+		try insertOldAccounts(queue, [wallet])
 		// The migrated pending row "moneymoney:9" as a file import leaves it when it books the row.
 		try insertOldRows(queue, [Transaction(accountID: wallet.id, bookingDate: day, amountMinor: -300, name: "Kiosk", sourceID: "moneymoney-booked:9")])
 		try Schema.migrator.migrate(queue)
@@ -293,7 +313,7 @@ struct OpeningBalanceTests {
 		try Schema.migrator.migrate(queue, upTo: "v14")
 		let store = Store(queue: queue)
 		let travel = Account(position: 0, name: "Travel", kind: .creditCard, source: .migrated, currency: "CHF")
-		try store.save(accounts: [travel])
+		try insertOldAccounts(queue, [travel])
 		try insertDeletedRow(queue, accountID: travel.id, sourceID: "moneymoney:1", amountMinor: -2_000)
 		try Schema.migrator.migrate(queue)
 		#expect(try store.deletedTransactions().map(\.currency) == ["CHF"])
@@ -302,13 +322,13 @@ struct OpeningBalanceTests {
 	/// Rows as a database at an older version stores them, with only the columns that its table has.
 	func insertOldRows(_ queue: DatabaseQueue, _ rows: [Transaction]) throws {
 		try queue.write { db in
-			let columns = Set(try db.columns(in: "bankTransaction").map(\.name))
-			for row in rows {
-				let values = try row.databaseDictionary.filter { columns.contains($0.key) }
-				let names = values.keys.map { "\"\($0)\"" }.joined(separator: ", ")
-				let marks = Array(repeating: "?", count: values.count).joined(separator: ", ")
-				try db.execute(sql: "INSERT INTO bankTransaction (\(names)) VALUES (\(marks))", arguments: StatementArguments(Array(values.values)))
-			}
+			for row in rows { try row.insertAtOlderVersion(db) }
+		}
+	}
+
+	func insertOldAccounts(_ queue: DatabaseQueue, _ accounts: [Account]) throws {
+		try queue.write { db in
+			for a in accounts { try a.insertAtOlderVersion(db) }
 		}
 	}
 

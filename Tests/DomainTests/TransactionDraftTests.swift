@@ -205,6 +205,22 @@ struct TransactionDraftTests {
 		#expect(pasted.purpose == "")
 	}
 
+	@Test("A chosen suggestion one character longer than the name counts as typing and fills nothing, a longer one fills")
+	func suggestionOneCharacterLonger() {
+		let seven = Transaction(accountID: wallet.id, bookingDate: Day(year: 2026, month: 10, day: 7), amountMinor: -700, name: "Kiosk 7", purpose: "Zeitung",
+			categoryID: leisure.id, categorizedBy: .manual)
+		let l = Ledger(accounts: [wallet], categories: [groceries, leisure], transactions: [seven])
+		var oneLonger = TransactionDraft()
+		oneLonger.name = "Kiosk "
+		oneLonger.enterName("Kiosk 7", offered: l.nameSuggestions(for: "Kiosk "), for: wallet.id, in: l)
+		#expect(oneLonger.name == "Kiosk 7")
+		#expect(oneLonger.purpose == "" && oneLonger.categoryID == nil)
+		var twoLonger = TransactionDraft()
+		twoLonger.name = "Kiosk"
+		twoLonger.enterName("Kiosk 7", offered: l.nameSuggestions(for: "Kiosk"), for: wallet.id, in: l)
+		#expect(twoLonger.purpose == "Zeitung" && twoLonger.categoryID == leisure.id)
+	}
+
 	@Test("A chosen suggestion fills the name, and the purpose and the category while they are empty")
 	func takeSuggestion() {
 		let earlier = Transaction(accountID: wallet.id, bookingDate: Day(year: 2026, month: 10, day: 2), amountMinor: -480, name: "Bäckerei Gutbrot",

@@ -330,6 +330,27 @@ struct BankAccessTests {
 		#expect(current.refreshError == nil)
 	}
 
+	@Test("An initial balance that the user enters in the account settings ends the derived value, so no manual row moves it")
+	func enteredInitialBalanceIsNotDerived() {
+		var opened = Self.bankAccount("Giro")
+		opened.initialBalanceMinor = 250_000
+		opened.initialBalanceIsSet = true
+		opened.initialBalanceIsDerived = true
+		var renamed = opened
+		renamed.name = "Haushalt"
+		var kept = opened
+		kept.takeSettings(from: renamed, opened: opened)
+		#expect(kept.initialBalanceIsDerived)
+		var typed = opened
+		typed.initialBalanceMinor = 300_000
+		var current = opened
+		current.takeSettings(from: typed, opened: opened)
+		#expect(current.initialBalanceMinor == 300_000 && current.initialBalanceIsSet && !current.initialBalanceIsDerived)
+		var calibrated = opened
+		calibrated.enterInitialBalance(260_000)
+		#expect(calibrated.initialBalanceMinor == 260_000 && calibrated.initialBalanceIsSet && !calibrated.initialBalanceIsDerived)
+	}
+
 	@Test("Saving the account settings keeps the portfolio type that a refresh set while they were open, also when the user chose another type")
 	func settingsAfterPortfolioRefresh() {
 		var opened = Self.bankAccount("Depot")

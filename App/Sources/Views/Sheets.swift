@@ -257,8 +257,7 @@ struct CalibrationSheet: View {
 		if let account = model.ledger.account(accountID) {
 			SheetFrame(title: "Calibrate \(account.name)", canConfirm: AmountParser.decimal(from: balance) != nil, onConfirm: {
 				guard let d = AmountParser.decimal(from: balance), var a = model.ledger.account(accountID) else { return true }
-				a.initialBalanceMinor = model.ledger.calibratedInitialBalance(of: a, balanceToday: Money(d, currency: a.currency).minorUnits, today: .today())
-				a.initialBalanceIsSet = true
+				a.enterInitialBalance(model.ledger.calibratedInitialBalance(of: a, balanceToday: Money(d, currency: a.currency).minorUnits, today: .today()))
 				model.save(account: a)
 				return true
 			}) {

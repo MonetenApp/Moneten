@@ -151,7 +151,7 @@ The app SHALL set the initial balance of an account that a bank refreshes to the
 
 ### Requirement: The initial balance stays
 
-The app SHALL set the initial balance of a refreshed account only once, at the first refresh that brings a bank balance. A refresh whose transactions failed does not set it. Later refreshes, imports, and deletions do not change it, and neither does a later bank balance. A value that the user enters stays. A difference between the computed balance and the bank balance that appears later is for the calibration to resolve.
+The app SHALL set the initial balance of a refreshed account only once, at the first refresh that brings a bank balance. A refresh whose transactions failed does not set it. Later refreshes, imports, and deletions do not change it, and neither does a later bank balance. Only a manual transaction moves a derived value. A value that the user enters stays. A difference between the computed balance and the bank balance that appears later is for the calibration to resolve.
 
 #### Scenario: Later refresh with an older transaction
 
@@ -177,6 +177,22 @@ The app SHALL set the initial balance of a refreshed account only once, at the f
 - **GIVEN** an account whose first refresh set an initial balance of 2.550,00 €
 - **WHEN** the user enters 3.000,00 under "Initial balance" and the next refresh ends
 - **THEN** the initial balance is 3.000,00 €
+
+### Requirement: Manual transactions and the initial balance
+
+The app SHALL count manual transactions when it derives the initial balance of a refreshed account. While the initial balance is the value that a refresh derived, a manual transaction booked by the day of the bank balance moves it, as the capability `offline-accounts` states, so the computed balance keeps ending at the bank balance. A value that the user enters, in the account settings or with "Calibrate", stays.
+
+#### Scenario: Derived value and a planned manual transaction
+
+- **GIVEN** a credit card whose first refresh derived an initial balance of 100,00 € with the bank balance of 100,00 € on 01.11.2026, and a manual transaction of -50,00 € on 05.11.2026
+- **WHEN** a refresh on 10.11.2026 brings the booking of -50,00 € on 05.11.2026 and the balance 50,00 €
+- **THEN** the initial balance is 150,00 € and the computed balance on 10.11.2026 is 50,00 €
+
+#### Scenario: Entered value and a planned manual transaction
+
+- **GIVEN** a credit card with an initial balance of 3.000,00 € that the user entered, a bank balance of 100,00 € on 01.11.2026, and a manual transaction of -50,00 € on 05.11.2026
+- **WHEN** a refresh on 10.11.2026 brings the booking of -50,00 € on 05.11.2026 and the balance 50,00 €
+- **THEN** the initial balance stays 3.000,00 €
 
 ### Requirement: Initial balance of an account from before
 

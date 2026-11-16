@@ -312,7 +312,7 @@ The app SHALL also offer "Add Transaction..." in the view of a single account wi
 
 ### Requirement: A refresh never takes a manual transaction
 
-The app SHALL mark every transaction that the user adds with "Add Transaction..." as manual and SHALL keep the mark in the database and in a complete export. A refresh never pairs a delivered transaction with a manual one, and deleting a manual transaction keeps out no delivered one.
+The app SHALL mark every transaction that the user adds with "Add Transaction..." as manual and SHALL keep the mark in the database and in a complete export. A refresh never pairs a delivered transaction with a manual one, and deleting a manual transaction keeps out no delivered one. A manual transaction that a file import or a migration matched counts as a transaction of that source: deleting it keeps out the same booking from a refresh, as for any deleted transaction of a file or a migration.
 
 #### Scenario: Same day and amount
 
@@ -327,9 +327,16 @@ The app SHALL mark every transaction that the user adds with "Add Transaction...
 - **WHEN** the user deletes it, and a refresh then delivers a transaction of -12,00 € "KIOSK" on 03.11.2026
 - **THEN** the account has the delivered transaction
 
+#### Scenario: Deleted manual transaction that a file matched
+
+- **GIVEN** an account with bank access and a manual transaction of -12,00 € "Kiosk" on 03.11.2026, and a CSV file with a transaction of -12,00 € "KIOSK" on 03.11.2026 whose import added no transaction
+- **WHEN** the user deletes the manual transaction, and a refresh then delivers a transaction of -12,00 € "KIOSK" on 03.11.2026
+- **THEN** the account has no transaction on 03.11.2026
+- **AND** importing the CSV file again adds "KIOSK" once, as it adds any deleted transaction of a file that no refresh delivered
+
 ### Requirement: A manual transaction is part of the bank balance
 
-The app SHALL count a manual transaction in an account with bank access as part of the balance that the bank reports when its booking date is not after the day of that balance. Once a refresh set the initial balance, the app moves the initial balance against each such manual transaction that the user adds, changes, or deletes, so the computed balance keeps ending at the bank balance.
+The app SHALL count a manual transaction in an account with bank access as part of the balance that the bank reports when its booking date is not after the day of that balance. While the initial balance is the value that a refresh derived, the app moves it against each such manual transaction that the user adds, changes, or deletes, so the computed balance keeps ending at the bank balance. An initial balance that the user entered, in the account settings or with "Calibrate", stays.
 
 #### Scenario: Deposit after the first refresh
 
@@ -344,6 +351,12 @@ The app SHALL count a manual transaction in an account with bank access as part 
 - **WHEN** the user deletes the manual transaction
 - **THEN** the computed balance on 01.11.2026 is 10.000,00 €
 
+#### Scenario: Entered initial balance
+
+- **GIVEN** a fixed term deposit with the bank balance 10.000,00 € on 01.11.2026 and an initial balance of 3.000,00 € that the user entered
+- **WHEN** the user adds a manual transaction of 4.000,00 € on 01.03.2026
+- **THEN** the initial balance stays 3.000,00 €
+
 #### Scenario: Before the first refresh
 
 - **GIVEN** an account with bank access without a refresh and a manual transaction of 4.000,00 € on 01.03.2026
@@ -353,14 +366,20 @@ The app SHALL count a manual transaction in an account with bank access as part 
 
 ### Requirement: A planned manual transaction joins the bank balance later
 
-The app SHALL count a manual transaction after the day of the bank balance on top of that balance until a refresh reports a balance of a later day. Then the app moves the initial balance against it, as for a manual transaction before that day.
+The app SHALL count a manual transaction after the day of the bank balance on top of that balance until a refresh reports a balance of a later day. Then the app moves the initial balance against it, as for a manual transaction before that day, while the initial balance is the value that a refresh derived. An initial balance that the user entered stays.
 
 #### Scenario: Refresh after a planned payment
 
-- **GIVEN** a credit card whose bank reported the balance 100,00 € on 01.11.2026, and a manual transaction of -50,00 € "Hotel Beispiel" on 05.11.2026
+- **GIVEN** a credit card whose first refresh derived the initial balance, whose bank reported the balance 100,00 € on 01.11.2026, and a manual transaction of -50,00 € "Hotel Beispiel" on 05.11.2026
 - **WHEN** a refresh on 10.11.2026 delivers the booking of -50,00 € on 05.11.2026 and the balance 50,00 €
 - **THEN** the computed balance on 10.11.2026 is 50,00 €
 - **AND** after the user deletes the manual transaction, the computed balance on 10.11.2026 is still 50,00 €
+
+#### Scenario: Refresh after a planned payment with an entered initial balance
+
+- **GIVEN** a credit card with an initial balance of 3.000,00 € that the user entered, whose bank reported the balance 100,00 € on 01.11.2026, and a manual transaction of -50,00 € "Hotel Beispiel" on 05.11.2026
+- **WHEN** a refresh on 10.11.2026 delivers the booking of -50,00 € on 05.11.2026 and the balance 50,00 €
+- **THEN** the initial balance stays 3.000,00 €
 
 ### Requirement: What a transaction in an account with bank access can change
 

@@ -78,6 +78,9 @@ public struct Account: Identifiable, Hashable, Sendable, Codable {
 	/// The first refresh with a bank balance or the user set the initial balance, so the app never
 	/// derives it again. The user changes it from then on, with "Calibrate" or by hand.
 	public var initialBalanceIsSet: Bool
+	/// A refresh derived the initial balance, and the user has not entered one since. Only then does a manual row
+	/// move it to keep the bank balance. A value that the user enters stays as the user entered it.
+	public var initialBalanceIsDerived: Bool
 	public var isClosed: Bool
 	public var comment: String?
 	/// The identifier of the account in the program it came from.
@@ -97,7 +100,7 @@ public struct Account: Identifiable, Hashable, Sendable, Codable {
 
 	public init(id: UUID = UUID(), groupID: UUID? = nil, position: Int, name: String, kind: AccountKind, source: AccountSource, currency: String = "EUR",
 		iban: String? = nil, bic: String? = nil, accountNumber: String? = nil, bankCode: String? = nil, bankName: String? = nil, owner: String? = nil,
-		bankBalanceMinor: Int64? = nil, bankBalanceDate: Date? = nil, initialBalanceMinor: Int64 = 0, initialBalanceIsSet: Bool = false, isClosed: Bool = false, comment: String? = nil, sourceID: String? = nil,
+		bankBalanceMinor: Int64? = nil, bankBalanceDate: Date? = nil, initialBalanceMinor: Int64 = 0, initialBalanceIsSet: Bool = false, initialBalanceIsDerived: Bool = false, isClosed: Bool = false, comment: String? = nil, sourceID: String? = nil,
 		color: String? = nil, accessID: UUID? = nil, remoteID: String? = nil, refreshedAt: Date? = nil, refreshError: RefreshError? = nil,
 		refreshInterval: RefreshInterval = .everyTwoHours) {
 		self.id = id
@@ -117,6 +120,7 @@ public struct Account: Identifiable, Hashable, Sendable, Codable {
 		self.bankBalanceDate = bankBalanceDate
 		self.initialBalanceMinor = initialBalanceMinor
 		self.initialBalanceIsSet = initialBalanceIsSet
+		self.initialBalanceIsDerived = initialBalanceIsDerived
 		self.isClosed = isClosed
 		self.comment = comment
 		self.sourceID = sourceID
@@ -172,11 +176,20 @@ public struct Account: Identifiable, Hashable, Sendable, Codable {
 		bankBalanceMinor.map { $0 - bookedSum(of: rows, through: Day(bankBalanceDate ?? Date(), calendar: calendar)) }
 	}
 
+	/// The initial balance that the user enters in the account settings or with "Calibrate". It stays, so no refresh
+	/// derives it again and no manual row moves it.
+	public mutating func enterInitialBalance(_ minor: Int64) {
+		initialBalanceMinor = minor
+		initialBalanceIsSet = true
+		initialBalanceIsDerived = false
+	}
+
 	/// Sets the initial balance once, so that the computed balance meets the bank balance.
 	mutating func deriveInitialBalance(from rows: [Transaction], calendar: Calendar = .current) {
 		guard derivesInitialBalance, let value = initialBalanceMeetingBankBalance(of: rows, calendar: calendar) else { return }
 		initialBalanceMinor = value
 		initialBalanceIsSet = true
+		initialBalanceIsDerived = true
 	}
 }
 

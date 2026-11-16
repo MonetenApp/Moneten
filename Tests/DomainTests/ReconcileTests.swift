@@ -272,7 +272,7 @@ struct ReconcileTests {
 	func refreshPassesManualRow() throws {
 		let calendar = Calendar.current
 		let bank = Account(position: 0, name: "Kreditkarte", kind: .creditCard, source: .bank, bankBalanceMinor: 10_000,
-			bankBalanceDate: day(1).date(in: calendar), initialBalanceMinor: 10_000, initialBalanceIsSet: true)
+			bankBalanceDate: day(1).date(in: calendar), initialBalanceMinor: 10_000, initialBalanceIsSet: true, initialBalanceIsDerived: true)
 		let planned = Transaction(accountID: bank.id, bookingDate: day(5), amountMinor: -5_000, name: "Hotel Beispiel", isManual: true)
 		var ledger = Ledger(accounts: [bank], transactions: [planned])
 		#expect(ledger.keepingBankBalance(replacing: [], with: [planned], calendar: calendar) == [])
@@ -291,6 +291,20 @@ struct ReconcileTests {
 		#expect(ledger.computedBalance(of: moved, through: day(10)) == Money(minorUnits: 5_000, currency: "EUR"))
 	}
 
+	@Test("A refresh that moves the day of the bank balance past a manual row leaves an initial balance that the user entered")
+	func refreshPassesManualRowWithEnteredValue() throws {
+		let calendar = Calendar.current
+		let bank = Account(position: 0, name: "Kreditkarte", kind: .creditCard, source: .bank, bankBalanceMinor: 10_000,
+			bankBalanceDate: day(1).date(in: calendar), initialBalanceMinor: 300_000, initialBalanceIsSet: true)
+		let planned = Transaction(accountID: bank.id, bookingDate: day(5), amountMinor: -5_000, name: "Hotel Beispiel", isManual: true)
+		let booked = Transaction(accountID: bank.id, bookingDate: day(5), amountMinor: -5_000, name: "HOTEL BEISPIEL", purpose: "Kartenzahlung", sourceID: "TX-9")
+		let r = merge(refresh([booked], balance: Money(minorUnits: 5_000, currency: "EUR"), balanceDate: day(10).date(in: calendar)),
+			into: bank, stored: [planned], at: day(10).date(in: calendar))
+		let account = try #require(r.account)
+		#expect(account.initialBalanceMinor == 300_000)
+		#expect(!account.initialBalanceIsDerived)
+	}
+
 	@Test("The first refresh derives the initial balance with the manual rows, so the computed balance meets the bank balance")
 	func firstRefreshCountsManualRows() {
 		let bank = Account(position: 0, name: "Festgeld", kind: .fixedTermDeposit, source: .bank)
@@ -298,6 +312,7 @@ struct ReconcileTests {
 		let r = merge(refresh([], balance: Money(minorUnits: 1_000_000, currency: "EUR"), balanceDate: now), into: bank, stored: [deposit])
 		#expect(r.account?.initialBalanceMinor == 600_000)
 		#expect(r.account?.initialBalanceIsSet == true)
+		#expect(r.account?.initialBalanceIsDerived == true)
 	}
 
 	@Test("A booked row with a return reason books a pending row and keeps the reason")

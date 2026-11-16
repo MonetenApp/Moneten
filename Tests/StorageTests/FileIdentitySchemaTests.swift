@@ -21,7 +21,7 @@ extension SchemaTests {
 		let id = UUID()
 		let payload = Data(#"{"opaque":true}"#.utf8)
 		try old.write { db in
-			try account.insert(db)
+			try account.insertAtOlderVersion(db)
 			try db.execute(sql: """
 				INSERT INTO bankTransaction (id, accountID, bookingDate, amountMinor, currency, name, purpose, isChecked, isPending,
 					categorizedBy, isNew, needsReview, isFetched, createdAt)
@@ -78,7 +78,7 @@ extension SchemaTests {
 		let account = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
 		let id = UUID()
 		try old.write { db in
-			try account.insert(db)
+			try account.insertAtOlderVersion(db)
 			try db.execute(sql: """
 				INSERT INTO bankTransaction (id, accountID, bookingDate, amountMinor, currency, name, purpose, isChecked, isPending,
 					categorizedBy, isNew, needsReview, isFetched, createdAt)

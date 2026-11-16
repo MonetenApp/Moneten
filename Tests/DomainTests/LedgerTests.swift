@@ -864,7 +864,7 @@ struct LedgerTests {
 			transactions: FetchedTransactions(rows: [], from: nil))), into: fixed, stored: [], deleted: [], rules: Categorizer(ledger: ledger), now: balanceDay.date(in: calendar))
 		ledger.apply(first)
 		var account = try #require(ledger.account(fixed.id))
-		#expect(account.initialBalanceIsSet && account.initialBalanceMinor == 1_000_000)
+		#expect(account.initialBalanceIsSet && account.initialBalanceIsDerived && account.initialBalanceMinor == 1_000_000)
 
 		let deposit = Transaction(accountID: fixed.id, bookingDate: Day(year: 2026, month: 3, day: 1), amountMinor: 400_000, name: "Anlage", isManual: true)
 		let moved = ledger.keepingBankBalance(replacing: [], with: [deposit], calendar: calendar)
@@ -884,15 +884,20 @@ struct LedgerTests {
 		#expect(ledger.keepingBankBalance(replacing: [deposit], with: [], calendar: calendar).map(\.initialBalanceMinor) == [1_000_000])
 	}
 
-	@Test("Only a manual row booked by the day of the bank balance, in an account whose initial balance a refresh set, moves the initial balance")
+	@Test("Only a manual row booked by the day of the bank balance, in an account whose initial balance a refresh derived, moves the initial balance")
 	func manualRowsThatKeepTheBankBalance() {
 		let calendar = Calendar(identifier: .gregorian)
 		let balanceDay = Day(year: 2026, month: 11, day: 1)
 		let set = Account(position: 0, name: "Giro", kind: .giro, source: .bank, bankBalanceMinor: 50_000, bankBalanceDate: balanceDay.date(in: calendar),
-			initialBalanceMinor: 50_000, initialBalanceIsSet: true)
+			initialBalanceMinor: 50_000, initialBalanceIsSet: true, initialBalanceIsDerived: true)
 		let unset = Account(position: 1, name: "New", kind: .giro, source: .bank, bankBalanceMinor: 50_000, bankBalanceDate: balanceDay.date(in: calendar))
 		let wallet = Account(position: 2, name: "Wallet", kind: .cash, source: .offline)
-		let l = Ledger(accounts: [set, unset, wallet])
+		// The user typed 3.000,00 € in the account settings, so the value stays.
+		let entered = Account(position: 3, name: "Entered", kind: .giro, source: .bank, bankBalanceMinor: 50_000, bankBalanceDate: balanceDay.date(in: calendar),
+			initialBalanceMinor: 300_000, initialBalanceIsSet: true)
+		let noBalanceDay = Account(position: 4, name: "No day", kind: .giro, source: .bank, bankBalanceMinor: 50_000,
+			initialBalanceMinor: 50_000, initialBalanceIsSet: true, initialBalanceIsDerived: true)
+		let l = Ledger(accounts: [set, unset, wallet, entered, noBalanceDay])
 		func row(_ account: Account, _ day: Day, manual: Bool = true, currency: String = "EUR") -> Transaction {
 			Transaction(accountID: account.id, bookingDate: day, amountMinor: -1_200, currency: currency, name: "Kiosk", isManual: manual)
 		}
@@ -902,6 +907,8 @@ struct LedgerTests {
 		#expect(l.keepingBankBalance(replacing: [], with: [row(set, balanceDay, currency: "USD")], calendar: calendar) == [])
 		#expect(l.keepingBankBalance(replacing: [], with: [row(unset, balanceDay)], calendar: calendar) == [])
 		#expect(l.keepingBankBalance(replacing: [], with: [row(wallet, balanceDay)], calendar: calendar) == [])
+		#expect(l.keepingBankBalance(replacing: [], with: [row(entered, balanceDay)], calendar: calendar) == [])
+		#expect(l.keepingBankBalance(replacing: [], with: [row(noBalanceDay, balanceDay)], calendar: calendar) == [])
 	}
 
 	@Test("Mixed currencies: the sidebar sums the category currency, and the rows of the category add up per currency")

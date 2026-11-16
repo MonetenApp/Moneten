@@ -167,7 +167,8 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored all: [
 				}
 			}
 			if fetched { next.isFetched = true }
-			if case .file = delivery, next.fileIdentity == nil, live.isPending || delivered.isPending { next.fileIdentity = delivered.fileIdentity }
+			// A manual row that a file matched is a booking of that file from now on, so its deletion keeps a record.
+			if case .file = delivery, next.fileIdentity == nil, live.isPending || delivered.isPending || live.isManual { next.fileIdentity = delivered.fileIdentity }
 			if case .file = delivery, delivered.isPending, Identity(next).endToEnd == nil {
 				next.endToEndReference = Identity(delivered).endToEnd
 			}
@@ -223,20 +224,21 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored all: [
 	}
 	if case let .refresh(result) = delivery, let balance = result.balance, balance.currency == account.currency {
 		var a = account
+		let balanceDate = result.balanceDate ?? now
 		a.bankBalanceMinor = balance.minorUnits
-		a.bankBalanceDate = result.balanceDate ?? now
+		a.bankBalanceDate = balanceDate
 		if result.isPortfolio { a.kind = .portfolio }
 		// A balance whose transactions failed would set the value without the rows that the next refresh brings.
 		if a.derivesInitialBalance, result.transactionFailure == nil {
 			// Dropped and marked rows are pending and do not count.
 			let changed = Dictionary(uniqueKeysWithValues: (r.booked + r.updated).map { ($0.id, $0) })
 			a.deriveInitialBalance(from: all.map { changed[$0.id] ?? $0 } + r.added)
-		} else if a.initialBalanceIsSet, let before = account.bankBalanceDate.map({ Day($0) }) {
-			// The initial balance holds the manual rows up to the day of the bank balance. A new day moves the rows
+		} else if a.initialBalanceIsDerived, let before = account.bankBalanceDate.map({ Day($0) }) {
+			// A derived initial balance holds the manual rows up to the day of the bank balance. A new day moves the rows
 			// that it passes into the bank balance, so a later change of such a row moves the initial balance back.
+			// A value that the user entered stays.
 			let manual = all.filter(\.isManual)
-			let after = Day(a.bankBalanceDate ?? now)
-			a.initialBalanceMinor += a.bookedSum(of: manual, through: before) - a.bookedSum(of: manual, through: after)
+			a.initialBalanceMinor += a.bookedSum(of: manual, through: before) - a.bookedSum(of: manual, through: Day(balanceDate))
 		}
 		r.account = a
 	}
