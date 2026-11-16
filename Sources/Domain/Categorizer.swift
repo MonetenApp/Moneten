@@ -62,6 +62,8 @@ public struct Categorizer: Sendable {
 		}
 	}
 
+	// The synthesized Hashable conformance reads the fields, which Periphery cannot see.
+	// periphery:ignore
 	private struct ResultKey: Hashable {
 		let entry: Int
 		let texts: Texts

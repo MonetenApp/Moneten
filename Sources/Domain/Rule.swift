@@ -138,24 +138,20 @@ public struct RegexBox: @unchecked Sendable {
 	}
 }
 
-/// The position of the first regular expression of one parsed rule that ran too long, the processor time that its
-/// regular expressions spent, and the number of their calls. The categorizer can test one rule on more than one
-/// thread, so all are atomic.
+/// The position of the first regular expression of one parsed rule that ran too long, and the processor time that its
+/// regular expressions spent. The categorizer can test one rule on more than one thread, so all are atomic.
 private final class RegexStop: Sendable {
 	private let stopped = Atomic<Int>(-1)
 	private let nanoseconds = Atomic<UInt64>(0)
 	private let slowNanoseconds = Atomic<UInt64>(0)
-	private let count = Atomic<UInt64>(0)
 
 	var spent: UInt64 { nanoseconds.load(ordering: .relaxed) }
 	/// The time of the calls that took `Rule.slowCall` or more each.
 	var slow: UInt64 { slowNanoseconds.load(ordering: .relaxed) }
-	var calls: UInt64 { count.load(ordering: .relaxed) }
 
 	func add(_ elapsed: UInt64) {
 		nanoseconds.wrappingAdd(elapsed, ordering: .relaxed)
 		if elapsed >= Rule.slowCall { slowNanoseconds.wrappingAdd(elapsed, ordering: .relaxed) }
-		count.wrappingAdd(1, ordering: .relaxed)
 	}
 
 	var position: Int? {
@@ -218,9 +214,8 @@ public struct Rule: Sendable {
 	/// The rule has a regular expression, so it can stop.
 	var hasRegex: Bool { stop != nil }
 
-	/// The processor time that the regular expressions of this parsed rule spent, and the number of their calls.
+	/// The processor time that the regular expressions of this parsed rule spent.
 	var regexSpent: UInt64 { stop?.spent ?? 0 }
-	var regexCalls: UInt64 { stop?.calls ?? 0 }
 
 	/// Stops the rule at its first regular expression, when the rules of one batch together ran too long.
 	func stopAtFirstRegex() {

@@ -556,13 +556,16 @@ struct CategorizerTests {
 		let traders = Domain.Category(position: 20, name: "Haendler", rule: "/Haendler1/")
 		let rest = Domain.Category(position: 21, name: "Rest", rule: "true")
 		let day = Day(year: 2026, month: 11, day: 3)
-		let rows = (0..<2_000).map { i in Transaction(accountID: giro.id, bookingDate: day, amountMinor: -Int64(i), name: "Haendler\(i % 70) Musterstadt", purpose: "Rechnung \(i)") }
+		// Long purposes, so the normal rule spends enough time to compare.
+		let filler = String(repeating: "Kundennummer 4711 Vertrag 0815 ", count: 20)
+		let rows = (0..<2_000).map { i in Transaction(accountID: giro.id, bookingDate: day, amountMinor: -Int64(i), name: "Haendler\(i % 70) Musterstadt", purpose: "Rechnung \(i) " + filler) }
 			// Different amounts, so each row is a text of its own, which the results of the batch do not repeat.
 			+ (0..<4).map { i in Transaction(accountID: giro.id, bookingDate: day, amountMinor: -10_000 - Int64(i), name: "Kiosk", purpose: String(repeating: "a", count: 18) + "!") }
 		func run(_ categories: [Domain.Category]) -> (rows: [Transaction], rules: Categorizer) {
 			let rules = Categorizer(ledger: ledger(categories))
 			return (rules.allOrNothing { rows.map { var t = $0; rules.categorize(&t); return t } }, rules)
 		}
+		_ = run([traders, rest])
 		let alone = run([traders, rest])
 		let start = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)
 		let mixed = run(slow + [traders, rest])
@@ -575,9 +578,13 @@ struct CategorizerTests {
 		let rules = Dictionary(uniqueKeysWithValues: mixed.rules.entries.map { ($0.categoryID, $0.rule) })
 		#expect(slow.allSatisfy { rules[$0.id]?.stoppedRegexPosition != nil })
 		#expect(rules[traders.id]?.stoppedRegexPosition == nil)
-		// The repeat after the stops reads the results of the normal rule, so it runs as often as without the slow rules.
+		// The repeat after the stops reads the results of the normal rule, so it spends what it spends without the slow
+		// rules, and not twice that.
 		let aloneRules = Dictionary(uniqueKeysWithValues: alone.rules.entries.map { ($0.categoryID, $0.rule) })
-		#expect(rules[traders.id]?.regexCalls == aloneRules[traders.id]?.regexCalls)
+		let spent = Double(rules[traders.id]?.regexSpent ?? 0)
+		let spentAlone = Double(aloneRules[traders.id]?.regexSpent ?? 0)
+		print("normal rule: \(spent / 1e6) ms with the slow rules, \(spentAlone / 1e6) ms alone")
+		#expect(spent < spentAlone * 1.5)
 	}
 
 	@Test("The rules of one batch stop together when they spend 3 seconds in all", .timeLimit(.minutes(1)))
@@ -604,7 +611,7 @@ struct CategorizerTests {
 		let task = Task.detached { RuleApplier.matchCount(category: phone, rule: rule, ledger: l) }
 		task.cancel()
 		#expect(await task.value == 0)
-		#expect(rule.regexCalls == 0)
+		#expect(rule.regexSpent == 0)
 	}
 
 	@Test("A rule that a row changed during the run stops saves nothing", .timeLimit(.minutes(1)))
