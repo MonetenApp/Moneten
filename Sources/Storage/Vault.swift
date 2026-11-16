@@ -535,7 +535,9 @@ public struct Vault: Sendable {
 		config.label = "Moneten"
 		config.prepareDatabase { db in
 			try db.usePassphrase(key)
-			// Overwrites deleted rows with zeros, so a removed saved PIN does not stay in a free page (issue #327).
+			// Overwrites deleted rows and freed pages with zeros, so a removed saved PIN does not stay in the file (issue #327).
+			// SQLCipher already turns this on for every connection with a key (sqlcipherCodecAttach in src/sqlcipher.c), so a
+			// database from before #327 holds no deleted PIN either (#335). The pragma keeps it on if that default changes.
 			try db.execute(sql: "PRAGMA secure_delete = ON")
 		}
 		return config
