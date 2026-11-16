@@ -466,14 +466,17 @@ enum SupportedBanksPerf {
 
 	static var field: NSTextView? { window?.firstResponder as? NSTextView }
 
-	/// Waits up to five seconds for the rows of the next search and compares them with the rows that `step`
-	/// expects: `banks` banks match, the list shows at most 500 of them, and `first` is the first bank.
+	/// Waits up to five seconds for the rows that `step` expects: `banks` banks match, the list shows at most
+	/// 500 of them, and `first` is the first bank. A search that the list starts again for other reasons can
+	/// end first, so this waits for the expected rows and reports the last rows only when they never come.
 	static func expect(_ c: PerfContext, _ step: String, banks: Int, first: String) async {
-		for _ in 0..<100 where SupportedBanksList.lastShown == nil { try? await Task.sleep(for: .milliseconds(50)) }
-		guard let shown = SupportedBanksList.lastShown else { return c.fail("\(step): the list showed no rows") }
-		if shown.bankCount != banks || shown.banks.count != min(banks, 500) || shown.banks.first?.name != first {
-			c.fail("\(step): \(shown.bankCount) banks, \(shown.banks.count) shown, first \(shown.banks.first?.name ?? "-")")
+		for _ in 0..<100 {
+			if let shown = SupportedBanksList.lastShown, shown.bankCount == banks, shown.banks.count == min(banks, 500),
+				shown.banks.first?.name == first { return }
+			try? await Task.sleep(for: .milliseconds(50))
 		}
+		let shown = SupportedBanksList.lastShown
+		c.fail("\(step): \(shown.map { "\($0.bankCount) banks, \($0.banks.count) shown, first \($0.banks.first?.name ?? "-")" } ?? "no rows")")
 	}
 
 	/// 2,700 made-up banks, as many as the bank directory of the FinTS helper has with a FinTS address, one in
