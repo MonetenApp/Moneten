@@ -278,7 +278,7 @@ extension AppModel {
 					}
 				}
 				do { try await reloadFileImport(from: store) }
-				catch { problems.append(String(localized: "The imported transactions could not be loaded: \(error)")) }
+				catch { problems.append(String(localized: "The imported transactions could not be loaded: \(String(describing: error))")) }
 			}
 		}
 		if sheet == .fileImport(run) { sheet = nil }

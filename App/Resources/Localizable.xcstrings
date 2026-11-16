@@ -2825,6 +2825,16 @@
         }
       }
     },
+    "Could not delete the CSV profile. %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das CSV-Profil konnte nicht gelöscht werden. %@"
+          }
+        }
+      }
+    },
     "Could not delete the transactions." : {
       "localizations" : {
         "de" : {
@@ -3023,6 +3033,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Der Absturzbericht konnte auf diesem Mac nicht gespeichert werden."
+          }
+        }
+      }
+    },
+    "Could not save the CSV profile. %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das CSV-Profil konnte nicht gesichert werden. %@"
           }
         }
       }
@@ -9238,6 +9258,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Der Import wurde abgebrochen. %@ wurde nicht importiert."
+          }
+        }
+      }
+    },
+    "The imported transactions could not be loaded: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die importierten Umsätze konnten nicht geladen werden: %@"
           }
         }
       }

@@ -88,7 +88,7 @@ final class CSVPreviewModel {
 			profiles.removeAll { $0.name == profile }
 			self.profile = nil
 			profileName = ""
-		} catch { problem = String(localized: "Could not delete the CSV profile. \(error)") }
+		} catch { problem = String(localized: "Could not delete the CSV profile. \(String(describing: error))") }
 	}
 
 	func saveProfile() -> Bool {
@@ -99,7 +99,7 @@ final class CSVPreviewModel {
 			profiles.save(saved, matched: matched, applied: profile)
 			return true
 		} catch {
-			problem = String(localized: "Could not save the CSV profile. \(error)")
+			problem = String(localized: "Could not save the CSV profile. \(String(describing: error))")
 			return false
 		}
 	}
