@@ -24,6 +24,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [x] 1.18 Explain every problem with the database file. Verified by OpeningTests "Each problem with the database file has its own message with the path": an empty file, a folder, a write-protected file, a folder without write permission, and a folder with files but no database, which starts no new database (#266).
 - [x] 1.19 Mention the automatic backup copy when the database cannot be opened. Verified by OpeningTests "A failure to open names the automatic backup copy and how to restore it" (#266).
 - [ ] 1.20 Do not open a database file from the Finder. Build it and verify it with a test or in the app.
+- [ ] 1.21 Copies in the database folder follow a password change. Build it and verify it with a test.
 
 ## 2. Integration
 
