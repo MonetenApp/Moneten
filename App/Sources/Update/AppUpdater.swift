@@ -24,6 +24,8 @@ final class AppUpdater: NSObject {
 	/// The feed that Sparkle loaded last is older than one the app read before (spec: "Check the
 	/// update feed"), so no update from it may proceed.
 	@ObservationIgnored private var refusedFeed: (newest: Int, floor: Int)?
+	/// The floor of a Debug build, which reads test feeds with any builds and so keeps it only until it quits.
+	@ObservationIgnored private var debugFloor: Int?
 	/// Mirrors `canCheckForUpdates` of Sparkle for the menu command.
 	private(set) var canCheck = false
 
@@ -57,6 +59,14 @@ final class AppUpdater: NSObject {
 	private static let betaKey = "offerPreReleaseVersions"
 	/// The newest build of the feeds that the app read, the floor of `FeedFloor`.
 	private static let feedFloorKey = "newestFeedBuild"
+
+	/// The floor of `FeedFloor`: in the user defaults for the feed of a release, in memory for a test feed.
+	private var feedFloor: Int? {
+		get { Self.debugFeed == nil ? UserDefaults.standard.object(forKey: Self.feedFloorKey) as? Int : debugFloor }
+		set {
+			if Self.debugFeed == nil { UserDefaults.standard.set(newValue, forKey: Self.feedFloorKey) } else { debugFloor = newValue }
+		}
+	}
 
 	/// The feed URL of a Debug build: `MONETEN_FEED_URL`. A Debug build checks no other feed, because
 	/// it trusts the public test key of Fixtures/update.
@@ -142,12 +152,11 @@ extension AppUpdater: SPUUpdaterDelegate {
 
 	/// Sparkle calls this only for a feed whose signature it checked, with every item of every channel.
 	func updater(_ updater: SPUUpdater, didFinishLoading appcast: SUAppcast) {
-		let defaults = UserDefaults.standard
-		let floor = defaults.object(forKey: Self.feedFloorKey) as? Int
+		let floor = feedFloor
 		switch FeedFloor.check(builds: appcast.items.compactMap { Int($0.versionString) }, floor: floor) {
 		case let .accepted(newFloor):
 			refusedFeed = nil
-			if let newFloor, newFloor != floor { defaults.set(newFloor, forKey: Self.feedFloorKey) }
+			if newFloor != floor { feedFloor = newFloor }
 			feed = appcast.items.compactMap(ReleaseNoteItem.init)
 			UpdateLog.write("update feed loaded", ("items", .count(feed.count)))
 		case let .refused(newest, floor):
