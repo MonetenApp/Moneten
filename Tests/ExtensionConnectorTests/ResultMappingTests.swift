@@ -36,6 +36,28 @@ import Testing
 		#expect(ListedAccount(.object(["accountNumber": .string("D-1"), "portfolio": .boolean(true), "type": .string("AccountTypePortfolio")]))?.kind == .portfolio)
 	}
 
+	/// Only `portfolio` decides whether the results hold securities. A securities account with `portfolio=false`
+	/// keeps its type and has a balance and transactions.
+	@Test(arguments: [(LuaValue?.some(.boolean(false)), false), (nil, false), (.some(.boolean(true)), true), (.some(.integer(0)), true)])
+	func portfolioFieldDecidesAboutSecurities(portfolio: LuaValue?, holdsSecurities: Bool) throws {
+		var fields: [String: LuaValue] = ["accountNumber": .string("D-1"), "type": .string("AccountTypePortfolio")]
+		fields["portfolio"] = portfolio
+		let account = try #require(ListedAccount(.object(fields)))
+		#expect(account.kind == .portfolio)
+		#expect(account.holdsSecurities == holdsSecurities)
+		let transactions = try? result(["balance": .number(100), "transactions": .array([.object(["bookingDate": .integer(1794182400), "amount": .number(100),
+			"purpose": .string("Kauf")])])], of: account)
+		#expect((transactions?.transactions?.rows.count == 1) == !holdsSecurities)
+	}
+
+	/// The number 0 asks for securities, as any value but `false` does, and leaves the kind and the remote ID of a giro account.
+	@Test func portfolioZeroKeepsTheKind() throws {
+		let account = try #require(ListedAccount(.object(["accountNumber": .string("G-1"), "type": .string("AccountTypeGiro"), "portfolio": .integer(0)])))
+		#expect(account.holdsSecurities)
+		#expect(account.kind == .giro)
+		#expect(account.remoteID == "G-1 EUR")
+	}
+
 	@Test func subAccountIsPartOfTheRemoteID() {
 		#expect(ListedAccount(.object(["accountNumber": .string("1234"), "subAccount": .string("01")]))?.remoteID == "1234/01 EUR")
 	}
