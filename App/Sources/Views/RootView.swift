@@ -29,9 +29,12 @@ struct RootView: View {
 			if active { model.showNotices() }
 		}
 		.onDisappear { model.mainWindowClosed() }
+		.sheet(isPresented: Binding(get: { model.crashes.pending != nil }, set: { _ in })) {
+			CrashReportSheet(reports: model.crashes)
+		}
 		// The PIN sheet and the dialog "Two-Factor Authentication". The broker opens and closes them.
 		// While another sheet is open, that sheet shows them on top of itself (MainView).
-		.sheet(item: Binding(get: { model.sheet == nil ? model.sync.broker.sheet : nil }, set: { _ in })) { sheet in
+		.sheet(item: Binding(get: { model.sheet == nil && model.crashes.pending == nil ? model.sync.broker.sheet : nil }, set: { _ in })) { sheet in
 			SyncDialog(broker: model.sync.broker, sheet: sheet)
 				.interactiveDismissDisabled()
 		}
@@ -60,6 +63,8 @@ struct LockView: View {
 	@Environment(AppModel.self) private var model
 	@State private var password = ""
 	@State private var wrong = false
+	/// The typed password was not tried, because another unlock was opening the database.
+	@State private var busy = false
 	@State private var showHelp = false
 	/// The unlock methods that are on and that macOS can use now, and why the others cannot.
 	@State private var available: [UnlockMethod] = []
@@ -72,7 +77,7 @@ struct LockView: View {
 
 	var body: some View {
 		VStack(spacing: 18) {
-			Image(systemName: "lock.fill").font(.system(size: 44)).foregroundStyle(.secondary)
+			AppLogo(locked: true)
 			Text("Locked database").font(.title2)
 			SecureField("Database password", text: $password)
 				.textFieldStyle(.roundedBorder)
@@ -81,6 +86,9 @@ struct LockView: View {
 				.onSubmit(submit)
 			if wrong {
 				Text("Incorrect password!").foregroundStyle(Palette.red)
+			}
+			if busy {
+				Text("Moneten was already opening the database. Press Return to try the password.").font(.callout).foregroundStyle(.secondary)
 			}
 			if let notice = model.lockNotice {
 				Text(notice).font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 360)
@@ -112,7 +120,10 @@ struct LockView: View {
 				refreshAvailability()
 			}
 		}
-		.onChange(of: password) { _, _ in wrong = false }
+		.onChange(of: password) { _, _ in
+			wrong = false
+			busy = false
+		}
 		.task(id: password) {
 			// A typed password that is not submitted disappears after five minutes.
 			try? await Task.sleep(for: .seconds(300))
@@ -154,9 +165,12 @@ struct LockView: View {
 		guard !password.isEmpty else { return }
 		let typed = password
 		Task {
-			if !(await model.unlock(password: typed)) {
+			switch await model.unlock(password: typed) {
+			case .incorrectPassword:
 				wrong = true
 				password = ""
+			case .busy: busy = true
+			case .unlocked: break
 			}
 		}
 	}
@@ -167,7 +181,7 @@ struct FirstLaunchView: View {
 
 	var body: some View {
 		VStack(spacing: 20) {
-			Image(systemName: "eurosign.circle.fill").font(.system(size: 56)).foregroundStyle(.tint)
+			AppLogo()
 			Text("Welcome to Moneten").font(.largeTitle)
 			Text("Moneten keeps your accounts, transactions, and categories in an encrypted database on this Mac. A database password protects it.")
 				.multilineTextAlignment(.center)
@@ -180,6 +194,32 @@ struct FirstLaunchView: View {
 				.buttonStyle(.link)
 		}
 		.padding(40)
+	}
+}
+
+/// The app icon on the start screens. It reads the icon of the bundle, so the logo has one source,
+/// and the icon file holds sizes up to 1024 pixels, so it stays sharp on a Retina display.
+struct AppLogo: View {
+	/// Adds a lock badge, so the lock screen says that the database is locked without words.
+	var locked = false
+
+	var body: some View {
+		Image(nsImage: NSApp.applicationIconImage)
+			.resizable()
+			.frame(width: 128, height: 128)
+			.overlay(alignment: .bottomTrailing) {
+				if locked {
+					Image(systemName: "lock.fill")
+						.font(.system(size: 17, weight: .semibold))
+						.foregroundStyle(.white)
+						.frame(width: 38, height: 38)
+						.background(.gray, in: Circle())
+						.overlay(Circle().strokeBorder(.white, lineWidth: 2))
+						.shadow(color: .black.opacity(0.25), radius: 2, y: 1)
+						.offset(x: -8, y: -8)
+				}
+			}
+			.accessibilityHidden(true)
 	}
 }
 

@@ -39,7 +39,7 @@ final class Notices: NSObject, NoticeCenter, UNUserNotificationCenterDelegate {
 			// so a lock cannot come between them.
 			let notice = notice()
 			Self.submit(notice, sound: sound ? Self.soundFile(notice.tone) : nil)
-			DebugHarness.shared?.log("notice \(notice.title) accounts=\(notice.accounts.count) sound=\(sound ? notice.tone.rawValue : "-")")
+			DebugHarness.shared?.log("notice", ("transactions", .count(notice.count)), ("accounts", .count(notice.accounts.count)), ("sound", sound ? .state(notice.tone) : .presence(false)))
 		}
 	}
 

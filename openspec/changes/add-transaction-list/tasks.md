@@ -25,6 +25,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [x] 1.19 Empty states. Verified by the debug harness snapshot in the first build.
 - [ ] 1.20 The list stays fluid with a large history. Build it and verify it with a test or in the app.
 - [x] 1.21 Row layout. Verified by the snapshots of the debug harness commands `seed` and `history` in light and dark mode, with two rows selected.
+- [x] 1.22 A sum of zero has the currency of the view. Verified by `MoneySums.shownAmounts` and the LedgerTests test "A sum of zero has the currency of the view, also when every row is under review or the list is empty" (issue #213).
 
 ## 2. Integration
 

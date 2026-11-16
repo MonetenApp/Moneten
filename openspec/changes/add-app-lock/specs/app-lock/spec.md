@@ -170,7 +170,7 @@ The app SHALL accept the database password on the lock screen in every state, al
 
 ### Requirement: Unlock settings keep the password in the Keychain
 
-The app SHALL store the database password in the Keychain of the user when an unlock setting is turned on, and it SHALL delete the password from the Keychain when no setting needs it any more. "Unlock automatically at application start" has an entry of its own, which only the launch reads. "Unlock with Touch ID" and "Unlock with Apple Watch" share a second entry, which the app deletes when both are off. The entries stay on this Mac and are not synced to other devices.
+The app SHALL store the database password in a Keychain entry of its own for each unlock setting that is turned on, and it SHALL delete exactly that entry when the setting is turned off. A setting unlocks only with its own entry, and only the launch reads the entry of "Unlock automatically at application start". The entries stay on this Mac and are not synced to other devices.
 
 #### Scenario: Turn on the first setting
 
@@ -191,6 +191,13 @@ The app SHALL store the database password in the Keychain of the user when an un
 - **WHEN** the user turns off "Unlock automatically at application start"
 - **THEN** the next launch asks for the password or Touch ID
 - **AND** Touch ID still unlocks the app
+
+#### Scenario: Settings file changed after a setting was turned off
+
+- **GIVEN** "Unlock with Apple Watch" is on and the user turned off "Unlock with Touch ID"
+- **WHEN** a program changes the settings file of the app outside the app to turn on "Unlock with Touch ID"
+- **THEN** the lock screen offers only the Apple Watch
+- **AND** the confirmation on the watch unlocks the app with the entry of the Apple Watch
 
 ### Requirement: Report a Keychain failure
 

@@ -1,3 +1,4 @@
+import Storage
 import Sync
 import SwiftUI
 
@@ -57,9 +58,9 @@ struct SecuritySettings: View {
 			// The lock settings live in the database, so they change only while it is open.
 			.disabled(!model.hasPassword || model.phase != .unlocked)
 			Section {
-				Toggle("Unlock automatically at application start", isOn: unlockToggle(Preference.unlockAutomatically, unlockAutomatically))
-				Toggle("Unlock with Touch ID", isOn: unlockToggle(Preference.unlockWithTouchID, unlockWithTouchID))
-				Toggle("Unlock with Apple Watch", isOn: unlockToggle(Preference.unlockWithAppleWatch, unlockWithAppleWatch))
+				Toggle("Unlock automatically at application start", isOn: unlockToggle(.automaticUnlock, unlockAutomatically))
+				Toggle("Unlock with Touch ID", isOn: unlockToggle(.touchID, unlockWithTouchID))
+				Toggle("Unlock with Apple Watch", isOn: unlockToggle(.appleWatch, unlockWithAppleWatch))
 			} header: {
 				Text("Unlock")
 			} footer: {
@@ -90,14 +91,14 @@ struct SecuritySettings: View {
 		Binding(get: { model.lockSettings.lockAfterMinutes }, set: { ask(.lockAfter($0)) })
 	}
 
-	private func unlockToggle(_ key: String, _ value: Bool) -> Binding<Bool> {
-		Binding(get: { value }, set: { ask(.unlock(key, $0)) })
+	private func unlockToggle(_ entry: Vault.PasswordEntry, _ value: Bool) -> Binding<Bool> {
+		Binding(get: { value }, set: { ask(.unlock(entry, $0)) })
 	}
 
 	/// Every change on this tab waits for the database password. A method that macOS cannot use is refused first.
 	private func ask(_ change: SecurityChange) {
 		message = nil
-		if case let .unlock(key, true) = change, let method = UnlockMethod.allCases.first(where: { $0.preference == key }),
+		if case let .unlock(entry, true) = change, let method = UnlockMethod.allCases.first(where: { $0.entry == entry }),
 		   let reason = method.unavailableReason(for: .settings) {
 			message = reason
 			return
