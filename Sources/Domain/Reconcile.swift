@@ -93,8 +93,9 @@ public struct Reconciliation: Sendable, Equatable {
 	/// The positions that replace those of the account, with the IDs of the stored positions of the same
 	/// securities. Nil when the delivery brought none.
 	public internal(set) var holdings: Holdings?
-	/// Set when the balance of a refresh gives an initial balance above `Money.maxMinorUnits`. `account` then keeps the
-	/// old initial balance, and the store refuses the whole delivery, so the account keeps its last state and shows why.
+	/// Set when the balance of a refresh, or a manual row that a refresh passes or a file matches, gives an initial balance
+	/// above `Money.maxMinorUnits`. `account` then keeps the old initial balance, and the store refuses the whole
+	/// delivery, so the account keeps its last state and shows why.
 	public internal(set) var refusal: InitialBalanceTooLarge?
 
 	public init() {}
@@ -260,15 +261,15 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored all: [
 		// balance is the truth, so this also takes in a difference that an older bank row left. A row of the bank
 		// alone leaves the value for the calibration proposal. Dropped and marked rows are pending and do not count.
 		let changed = Dictionary(uniqueKeysWithValues: (r.booked + r.updated).map { ($0.id, $0) })
-		let first = a.derivesInitialBalance
-		if !a.deriveInitialBalance(from: all.map { changed[$0.id] ?? $0 } + r.added), first { r.refusal = InitialBalanceTooLarge(accountName: account.name) }
+		if !a.deriveInitialBalance(from: all.map { changed[$0.id] ?? $0 } + r.added) { r.refusal = InitialBalanceTooLarge(accountName: account.name) }
 		r.account = a
 	} else if case .file = delivery, a.followsBankBalance, let date = a.bankBalanceDate {
 		// A manual row that the file matched moves the value only by its own change, as an edit does.
 		let manual = Dictionary(uniqueKeysWithValues: all.lazy.filter(\.isManual).map { ($0.id, $0) })
 		let move = a.moveForManualRows((r.updated + r.booked).compactMap { new in manual[new.id].map { (old: $0, new: new) } }, through: Day(date))
 		if move != 0 {
-			a.initialBalanceMinor += move
+			// The move is exact, so an initial balance beyond the limit is refused and the account keeps the old one.
+			if let value = Int64(limitedAmount: Int128(a.initialBalanceMinor) + move) { a.initialBalanceMinor = value } else { r.refusal = InitialBalanceTooLarge(accountName: account.name) }
 			r.account = a
 		}
 	}

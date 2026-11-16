@@ -189,11 +189,12 @@ public struct Account: Identifiable, Hashable, Sendable, Codable {
 	/// keeps ending at a bank balance for the end of `day`: by the booked amount that each manual row of the account
 	/// had in that balance before, less what it has after. Only the row's own change counts, so a difference that a
 	/// bank row left stays for the calibration proposal. A row keeps `isManual` when a file matches it, so its later
-	/// deletion still moves the value back. A nil side is a row that is added or deleted.
-	func moveForManualRows(_ changes: some Sequence<(old: Transaction?, new: Transaction?)>, through day: Day) -> Int64 {
-		func share(_ t: Transaction?) -> Int64 {
+	/// deletion still moves the value back. A nil side is a row that is added or deleted. The move is exact, so that
+	/// the caller can refuse an initial balance above `Money.maxMinorUnits` instead of storing a wrapped one.
+	func moveForManualRows(_ changes: some Sequence<(old: Transaction?, new: Transaction?)>, through day: Day) -> Int128 {
+		func share(_ t: Transaction?) -> Int128 {
 			guard let t, t.isManual, t.accountID == id, bankBalance(through: day, holds: t) else { return 0 }
-			return t.amountMinor
+			return Int128(t.amountMinor)
 		}
 		return changes.reduce(0) { $0 + share($1.old) - share($1.new) }
 	}

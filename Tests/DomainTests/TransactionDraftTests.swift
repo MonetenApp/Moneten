@@ -23,7 +23,7 @@ struct TransactionDraftTests {
 		#expect(draft(amount: "-1.250,00 €").amountMinor(in: "EUR", region: .comma) == .success(-125_000))
 	}
 
-	@Test("An amount of zero, text that is not a number, an empty field, and an amount beyond the minor units are refused")
+	@Test("An amount of zero, text that is not a number, an empty field, and an amount beyond the limit are refused")
 	func refusedAmounts() {
 		#expect(draft(amount: "0,00").amountMinor(in: "EUR", region: .comma) == .failure(.zero))
 		#expect(draft(amount: "-0,00").amountMinor(in: "EUR", region: .comma) == .failure(.zero))
@@ -33,7 +33,11 @@ struct TransactionDraftTests {
 		#expect(draft(amount: " ").amountMinor(in: "EUR", region: .comma) == .failure(.missing))
 		#expect(draft(amount: "100000000000000000000").amountMinor(in: "EUR", region: .comma) == .failure(.tooLarge))
 		#expect(draft(amount: "-92233720368547758,08").amountMinor(in: "EUR", region: .comma) == .failure(.tooLarge))
-		#expect(draft(amount: "-92233720368547758,07").amountMinor(in: "EUR", region: .comma) == .success(-9_223_372_036_854_775_807))
+		// One amount holds at most 10.000.000.000.000,00 € (issue #324), so the sums of the app cannot overflow.
+		#expect(draft(amount: "92.233.720.368.547.758,07").amountMinor(in: "EUR", region: .comma) == .failure(.tooLarge))
+		#expect(draft(amount: "10000000000000,01").amountMinor(in: "EUR", region: .comma) == .failure(.tooLarge))
+		#expect(draft(amount: "-10000000000000,00").amountMinor(in: "EUR", region: .comma) == .success(-1_000_000_000_000_000))
+		#expect(draft(amount: "10000000000000000").amountMinor(in: "JPY", region: .comma) == .failure(.tooLarge))
 		#expect(AmountProblem.zero.message == "The amount should not be zero.")
 	}
 

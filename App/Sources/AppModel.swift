@@ -763,8 +763,8 @@ final class AppModel {
 	private func commit(_ changed: (transactions: [Transaction], parts: [SplitPart])) -> Bool {
 		guard let store else { return false }
 		guard !changed.transactions.isEmpty || !changed.parts.isEmpty else { return true }
-		let accounts = ledger.followingBankBalance(saving: changed.transactions)
 		do {
+			let accounts = try ledger.followingBankBalance(saving: changed.transactions)
 			try store.save(changed.transactions, parts: changed.parts, accounts: accounts)
 			ledgerChange = "commit rows=\(changed.transactions.count) parts=\(changed.parts.count)"
 			for a in accounts { ledger.upsert(a) }
@@ -982,8 +982,8 @@ final class AppModel {
 	func delete(transactions ids: Set<UUID>) {
 		guard !refusePartDeletion(in: ids) else { return }
 		guard let store else { return }
-		let accounts = ledger.followingBankBalance(saving: [], deleting: ids)
 		do {
+			let accounts = try ledger.followingBankBalance(saving: [], deleting: ids)
 			try store.deleteTransactions(Array(ids), accounts: accounts)
 			ledgerChange = "delete rows=\(ids.count)"
 			for a in accounts { ledger.upsert(a) }

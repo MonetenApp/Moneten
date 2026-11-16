@@ -36,10 +36,8 @@ public struct TransactionDraft: Hashable, Sendable {
 		let fitting = readings.filter { Currency.fits($0.value, currency) }
 		guard let value = fitting.count == 2 && fitting[0].value != fitting[1].value
 			? fitting.first(where: { $0.mark == region })?.value : fitting.first?.value else { return .failure(.tooManyDecimals) }
-		// Beyond the range of minor units, the conversion would store another amount.
-		let limit = Money(minorUnits: .max, currency: currency).decimal
-		guard -limit <= value, value <= limit else { return .failure(.tooLarge) }
-		let minor = Money(value, currency: currency).minorUnits
+		// One amount holds at most `Money.maxMinorUnits`, so that no sum of stored amounts can overflow.
+		guard let minor = Money(fitting: value, currency: currency)?.minorUnits else { return .failure(.tooLarge) }
 		return minor == 0 && !allowsZero ? .failure(.zero) : .success(minor)
 	}
 

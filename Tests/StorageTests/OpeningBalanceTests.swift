@@ -265,7 +265,7 @@ struct OpeningBalanceTests {
 		let rows = quarter
 		_ = try store.merge(refresh(rows, balance: 120_000), into: giro.id)
 		let ledger = try store.loadLedger()
-		let accounts = ledger.followingBankBalance(saving: [], deleting: [rows[3].id])
+		let accounts = try ledger.followingBankBalance(saving: [], deleting: [rows[3].id])
 		#expect(accounts.isEmpty)
 		try store.deleteTransactions([rows[3].id], accounts: accounts)
 		let stored = try store.loadLedger()

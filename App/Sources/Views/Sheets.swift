@@ -255,16 +255,16 @@ struct CalibrationSheet: View {
 		AmountParser.decimal(from: balance).flatMap { Money(fitting: $0, currency: currency) }
 	}
 
-	/// The initial balance that the typed balance gives, nil while there is none or it is above `Money.maxMinorUnits`.
-	private func calibrated(_ account: Account) -> Int64? {
-		typedBalance(in: account.currency).flatMap { model.ledger.calibratedInitialBalance(of: account, balanceToday: $0.minorUnits, today: .today()) }
+	/// The account with the initial balance that the typed balance gives, nil while there is none or it is above
+	/// `Money.maxMinorUnits`. Then OK stays disabled, the sheet says why, and nothing is written.
+	private func calibrated(_ account: Account) -> Account? {
+		typedBalance(in: account.currency).flatMap { try? model.ledger.calibrated(account, balanceToday: $0.minorUnits, today: .today()) }
 	}
 
 	var body: some View {
 		if let account = model.ledger.account(accountID) {
 			SheetFrame(title: "Calibrate \(account.name)", canConfirm: calibrated(account) != nil, onConfirm: {
-				guard var a = model.ledger.account(accountID), let value = calibrated(a) else { return true }
-				a.enterInitialBalance(value)
+				guard let current = model.ledger.account(accountID), let a = calibrated(current) else { return true }
 				model.save(account: a)
 				return true
 			}) {

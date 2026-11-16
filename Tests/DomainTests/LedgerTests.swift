@@ -897,8 +897,8 @@ struct LedgerTests {
 	}
 
 	/// What the app does when it saves or deletes rows: the accounts first, then the rows.
-	func commit(_ saved: [Transaction], deleting deleted: Set<UUID> = [], in ledger: inout Ledger, calendar: Calendar) {
-		for a in ledger.followingBankBalance(saving: saved, deleting: deleted, calendar: calendar) { ledger.upsert(a) }
+	func commit(_ saved: [Transaction], deleting deleted: Set<UUID> = [], in ledger: inout Ledger, calendar: Calendar) throws {
+		for a in try ledger.followingBankBalance(saving: saved, deleting: deleted, calendar: calendar) { ledger.upsert(a) }
 		ledger.remove(transactionIDs: deleted)
 		ledger.update(saved)
 	}
@@ -913,7 +913,7 @@ struct LedgerTests {
 		#expect(account.initialBalanceIsSet && account.initialBalanceIsDerived && account.initialBalanceMinor == 1_000_000)
 
 		let deposit = Transaction(accountID: fixed.id, bookingDate: Day(year: 2026, month: 3, day: 1), amountMinor: 400_000, name: "Anlage", isManual: true)
-		commit([deposit], in: &ledger, calendar: calendar)
+		try commit([deposit], in: &ledger, calendar: calendar)
 		account = try #require(ledger.account(fixed.id))
 		#expect(account.initialBalanceMinor == 600_000)
 		#expect(ledger.computedBalance(of: account, through: balanceDay) == Money(minorUnits: 1_000_000, currency: "EUR"))
@@ -925,11 +925,11 @@ struct LedgerTests {
 		var edited = deposit
 		edited.edit(OriginalValues(bookingDate: deposit.bookingDate, valueDate: nil, amountMinor: 450_000, name: "Anlage", purpose: "Festgeld"))
 		#expect(edited.isOnlyManual && edited.original == nil)
-		commit([edited], in: &ledger, calendar: calendar)
+		try commit([edited], in: &ledger, calendar: calendar)
 		#expect(ledger.account(fixed.id)?.initialBalanceMinor == 550_000)
-		commit([], deleting: [deposit.id], in: &ledger, calendar: calendar)
+		try commit([], deleting: [deposit.id], in: &ledger, calendar: calendar)
 		#expect(ledger.account(fixed.id)?.initialBalanceMinor == 1_000_000)
-		#expect(ledger.followingBankBalance(saving: [], deleting: [deposit.id], calendar: calendar) == [])
+		#expect(try ledger.followingBankBalance(saving: [], deleting: [deposit.id], calendar: calendar) == [])
 	}
 
 	@Test("A calibration difference that an older bank row left stays when the user adds, edits, and deletes a manual row")
@@ -945,14 +945,14 @@ struct LedgerTests {
 		}
 		#expect(try difference() == Money(minorUnits: 700, currency: "EUR"))
 		var kiosk = Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 10, day: 3), amountMinor: -1_200, name: "Kiosk", isManual: true)
-		commit([kiosk], in: &ledger, calendar: calendar)
+		try commit([kiosk], in: &ledger, calendar: calendar)
 		#expect(ledger.account(giro.id)?.initialBalanceMinor == 101_200)
 		#expect(try difference() == Money(minorUnits: 700, currency: "EUR"))
 		kiosk.amountMinor = -2_000
-		commit([kiosk], in: &ledger, calendar: calendar)
+		try commit([kiosk], in: &ledger, calendar: calendar)
 		#expect(ledger.account(giro.id)?.initialBalanceMinor == 102_000)
 		#expect(try difference() == Money(minorUnits: 700, currency: "EUR"))
-		commit([], deleting: [kiosk.id], in: &ledger, calendar: calendar)
+		try commit([], deleting: [kiosk.id], in: &ledger, calendar: calendar)
 		#expect(ledger.account(giro.id)?.initialBalanceMinor == 100_000)
 		#expect(try difference() == Money(minorUnits: 700, currency: "EUR"))
 	}
@@ -964,20 +964,20 @@ struct LedgerTests {
 		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .bank)
 		var ledger = afterFirstRefresh(giro, balanceMinor: 100_000, on: balanceDay, calendar: calendar)
 		let kiosk = Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 10, day: 3), amountMinor: -1_200, name: "Kiosk", isManual: true)
-		commit([kiosk], in: &ledger, calendar: calendar)
+		try commit([kiosk], in: &ledger, calendar: calendar)
 		#expect(ledger.account(giro.id)?.initialBalanceMinor == 101_200)
 		let file = reconcile(.file([Transaction(accountID: giro.id, bookingDate: kiosk.bookingDate, amountMinor: -1_200, name: "KIOSK", fileIdentity: "csv:1")]),
 			into: try #require(ledger.account(giro.id)), stored: ledger.transactions(ofAccount: giro.id), deleted: [], rules: Categorizer(ledger: ledger), now: Date())
 		ledger.apply(file)
 		#expect(ledger.transaction(kiosk.id)?.isOnlyManual == false)
-		commit([], deleting: [kiosk.id], in: &ledger, calendar: calendar)
+		try commit([], deleting: [kiosk.id], in: &ledger, calendar: calendar)
 		let account = try #require(ledger.account(giro.id))
 		#expect(account.initialBalanceMinor == 100_000)
 		#expect(ledger.computedBalance(of: account, through: balanceDay) == Money(minorUnits: 100_000, currency: "EUR"))
 	}
 
 	@Test("Only a manual row in the bank balance moves a derived initial balance, by its own booked amount")
-	func rowsThatADerivedInitialBalanceCounts() {
+	func rowsThatADerivedInitialBalanceCounts() throws {
 		let calendar = Calendar(identifier: .gregorian)
 		let balanceDay = Day(year: 2026, month: 11, day: 1)
 		let derived = Account(position: 0, name: "Giro", kind: .giro, source: .bank, bankBalanceMinor: 50_000, bankBalanceDate: balanceDay.date(in: calendar),
@@ -994,16 +994,16 @@ struct LedgerTests {
 			Transaction(accountID: account.id, bookingDate: day, amountMinor: -1_200, currency: currency, name: "Kiosk", isPending: pending,
 				fileIdentity: manual ? nil : "csv:1", isManual: manual)
 		}
-		#expect(l.followingBankBalance(saving: [row(derived, balanceDay)], calendar: calendar).map(\.initialBalanceMinor) == [51_200])
+		#expect(try l.followingBankBalance(saving: [row(derived, balanceDay)], calendar: calendar).map(\.initialBalanceMinor) == [51_200])
 		// A row of a file or of the bank leaves the value for the calibration proposal.
-		#expect(l.followingBankBalance(saving: [row(derived, balanceDay, manual: false)], calendar: calendar) == [])
-		#expect(l.followingBankBalance(saving: [row(derived, balanceDay.adding(days: 1))], calendar: calendar) == [])
-		#expect(l.followingBankBalance(saving: [row(derived, balanceDay, pending: true)], calendar: calendar) == [])
-		#expect(l.followingBankBalance(saving: [row(derived, balanceDay, currency: "USD")], calendar: calendar) == [])
-		#expect(l.followingBankBalance(saving: [row(unset, balanceDay)], calendar: calendar) == [])
-		#expect(l.followingBankBalance(saving: [row(wallet, balanceDay)], calendar: calendar) == [])
-		#expect(l.followingBankBalance(saving: [row(entered, balanceDay)], calendar: calendar) == [])
-		#expect(l.followingBankBalance(saving: [row(noBalanceDay, balanceDay)], calendar: calendar) == [])
+		#expect(try l.followingBankBalance(saving: [row(derived, balanceDay, manual: false)], calendar: calendar) == [])
+		#expect(try l.followingBankBalance(saving: [row(derived, balanceDay.adding(days: 1))], calendar: calendar) == [])
+		#expect(try l.followingBankBalance(saving: [row(derived, balanceDay, pending: true)], calendar: calendar) == [])
+		#expect(try l.followingBankBalance(saving: [row(derived, balanceDay, currency: "USD")], calendar: calendar) == [])
+		#expect(try l.followingBankBalance(saving: [row(unset, balanceDay)], calendar: calendar) == [])
+		#expect(try l.followingBankBalance(saving: [row(wallet, balanceDay)], calendar: calendar) == [])
+		#expect(try l.followingBankBalance(saving: [row(entered, balanceDay)], calendar: calendar) == [])
+		#expect(try l.followingBankBalance(saving: [row(noBalanceDay, balanceDay)], calendar: calendar) == [])
 	}
 
 	@Test("Mixed currencies: the sidebar sums the category currency, and the rows of the category add up per currency")

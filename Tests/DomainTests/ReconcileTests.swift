@@ -311,7 +311,7 @@ struct ReconcileTests {
 			bankBalanceDate: day(1).date(in: calendar), initialBalanceMinor: 10_000, initialBalanceIsSet: true, initialBalanceIsDerived: true)
 		let planned = Transaction(accountID: bank.id, bookingDate: day(5), amountMinor: -5_000, name: "Hotel Beispiel", isManual: true)
 		var ledger = Ledger(accounts: [bank], transactions: [planned])
-		#expect(ledger.followingBankBalance(saving: [planned], calendar: calendar) == [])
+		#expect(try ledger.followingBankBalance(saving: [planned], calendar: calendar) == [])
 		// The bank books the hotel on 05.11 and reports the balance of 10.11.
 		let booked = Transaction(accountID: bank.id, bookingDate: day(5), amountMinor: -5_000, name: "HOTEL BEISPIEL", purpose: "Kartenzahlung", sourceID: "TX-9")
 		let r = merge(refresh([booked], balance: Money(minorUnits: 5_000, currency: "EUR"), balanceDate: day(10).date(in: calendar)),
@@ -321,7 +321,7 @@ struct ReconcileTests {
 		ledger.apply(r)
 		#expect(ledger.computedBalance(of: account, through: day(10)) == Money(minorUnits: 5_000, currency: "EUR"))
 		// Deleting the manual copy keeps the computed balance at the bank balance.
-		let moved = try #require(ledger.followingBankBalance(saving: [], deleting: [planned.id], calendar: calendar).first)
+		let moved = try #require(try ledger.followingBankBalance(saving: [], deleting: [planned.id], calendar: calendar).first)
 		#expect(moved.initialBalanceMinor == 10_000)
 		ledger.upsert(moved)
 		ledger.remove(transactionIDs: [planned.id])
@@ -346,7 +346,7 @@ struct ReconcileTests {
 		#expect(account.initialBalanceMinor == 10_000)
 		ledger.apply(r)
 		#expect(ledger.computedBalance(of: account, through: day(10)) == Money(minorUnits: 5_000, currency: "EUR"))
-		let deleted = try #require(ledger.followingBankBalance(saving: [], deleting: [matched.id], calendar: calendar).first)
+		let deleted = try #require(try ledger.followingBankBalance(saving: [], deleting: [matched.id], calendar: calendar).first)
 		ledger.upsert(deleted)
 		ledger.remove(transactionIDs: [matched.id])
 		#expect(ledger.computedBalance(of: deleted, through: day(10)) == Money(minorUnits: 5_000, currency: "EUR"))
