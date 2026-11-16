@@ -302,6 +302,11 @@ The app SHALL open a calibration window from "Calibrate" in the account settings
 - **WHEN** the user opens "Calibrate", enters 1.200,00, and confirms
 - **THEN** the initial balance is 250,00 € and every bar is 50,00 € lower
 
+#### Scenario: Balance above the limit
+
+- **WHEN** the user opens "Calibrate" and enters 10.000.000.000.000,01
+- **THEN** the button to confirm stays disabled and the initial balance stays as it was
+
 #### Scenario: Set the initial balance directly
 
 - **WHEN** the user changes "Initial balance" in the account settings from 300,00 to 0,00

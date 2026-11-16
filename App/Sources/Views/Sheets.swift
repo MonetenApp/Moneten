@@ -151,11 +151,16 @@ struct AccountSettingsSheet: View {
 	@State private var color = Color.accentColor
 	@State private var originalColor = Color.accentColor
 
+	/// The typed initial balance, nil while it is empty, cannot be read, or is above `Money.maxMinorUnits`.
+	private func typedInitialBalance(in currency: String) -> Money? {
+		AmountParser.decimal(from: initialBalance).flatMap { Money(fitting: $0, currency: currency) }
+	}
+
 	var body: some View {
 		if let original = model.ledger.account(accountID) {
-			SheetFrame(title: "Settings for \(original.name)", canConfirm: Format.isReadableAmount(initialBalance), width: 500, onConfirm: {
+			SheetFrame(title: "Settings for \(original.name)", canConfirm: initialBalance.isEmpty || typedInitialBalance(in: original.currency) != nil, width: 500, onConfirm: {
 				guard var edited = account, let opened, var a = model.ledger.account(accountID) else { return true }
-				if let d = AmountParser.decimal(from: initialBalance) { edited.initialBalanceMinor = Money(d, currency: a.currency).minorUnits }
+				if let typed = typedInitialBalance(in: a.currency) { edited.initialBalanceMinor = typed.minorUnits }
 				// A refresh that ended while the settings were open may have set a new initial balance.
 				if edited.initialBalanceMinor == account?.initialBalanceMinor { edited.initialBalanceMinor = a.initialBalanceMinor }
 				// An account keeps the color of its bank or kind until the user picks one.
@@ -242,11 +247,16 @@ struct CalibrationSheet: View {
 	let accountID: UUID
 	@State private var balance = ""
 
+	/// The typed balance, nil while it cannot be read or is above `Money.maxMinorUnits`.
+	private func typedBalance(in currency: String) -> Money? {
+		AmountParser.decimal(from: balance).flatMap { Money(fitting: $0, currency: currency) }
+	}
+
 	var body: some View {
 		if let account = model.ledger.account(accountID) {
-			SheetFrame(title: "Calibrate \(account.name)", canConfirm: AmountParser.decimal(from: balance) != nil, onConfirm: {
-				guard let d = AmountParser.decimal(from: balance), var a = model.ledger.account(accountID) else { return true }
-				a.initialBalanceMinor = model.ledger.calibratedInitialBalance(of: a, balanceToday: Money(d, currency: a.currency).minorUnits, today: .today())
+			SheetFrame(title: "Calibrate \(account.name)", canConfirm: typedBalance(in: account.currency) != nil, onConfirm: {
+				guard var a = model.ledger.account(accountID), let typed = typedBalance(in: a.currency) else { return true }
+				a.initialBalanceMinor = model.ledger.calibratedInitialBalance(of: a, balanceToday: typed.minorUnits, today: .today())
 				a.initialBalanceIsSet = true
 				model.save(account: a)
 				return true

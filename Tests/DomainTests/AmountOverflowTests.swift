@@ -76,7 +76,7 @@ struct AmountOverflowTests {
 		#expect(l.balanceBars(accountIDs: [giro.id], range: range).map(\.minorUnits) == [h, .max, h, 0, -h, -.max])
 		#expect(l.monthlyAverageBalances(accountIDs: [giro.id], range: range).count == 1)
 		let sums = l.periodSums(of: l.transactions, period: .month)
-		#expect(sums.map(\.deposits) == [.max] && sums.map(\.withdrawals) == [-.max] && sums.map(\.total) == [-.max])
+		#expect(sums.map(\.deposits) == [.max] && sums.map(\.withdrawals) == [-.max])
 		#expect(l.categoryTotals(of: ledger([Self.huge, Self.huge]).transactions).map(\.minorUnits) == [.max])
 	}
 

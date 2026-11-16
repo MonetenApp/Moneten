@@ -201,6 +201,11 @@ The app SHALL keep an "Initial balance" for each account. The first refresh that
 - **WHEN** the user enters 800,00 under "Initial balance" and clicks "OK"
 - **THEN** the app stores 800,00 € as the initial balance of the account
 
+#### Scenario: Initial balance above the limit
+
+- **WHEN** the user enters 10.000.000.000.000,01 under "Initial balance"
+- **THEN** "OK" stays disabled and the initial balance stays as it was
+
 ### Requirement: Mark an account as closed
 
 The app SHALL offer the option "The account has been closed" in the account settings. A closed account keeps its transactions, is left out of every refresh, and is left out of the dashboard and of the sum of its group. The sidebar still lists it, without its balance.
