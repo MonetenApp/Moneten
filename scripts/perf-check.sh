@@ -10,7 +10,8 @@ scripts/generate-project.sh
 xcodebuild -project App/Moneten.xcodeproj -scheme Moneten -configuration Perf -derivedDataPath .build/xcode \
 	-disableAutomaticPackageResolution -quiet build
 BUILT=.build/xcode/Build/Products/Perf/Moneten.app
-# Its settings stay in a domain of their own, which each run uses again.
+# Each run has a bundle ID of its own, whose settings the end of the run deletes, so runs from several
+# worktrees at once never share settings.
 BUNDLE_ID=io.github.alexander-schneider.Moneten.perf-check
 
 NOTIFY=.build/perf-notify
@@ -27,6 +28,7 @@ fi
 WORK="$(mktemp -d)"
 LOG="$WORK/debug/debug.log"
 APP="$WORK/Moneten.app"
+BUNDLE_ID="$BUNDLE_ID.${WORK##*.}"
 ditto "$BUILT" "$APP"
 /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $BUNDLE_ID" "$APP/Contents/Info.plist"
 codesign --force --sign - --entitlements App/Moneten.entitlements "$APP"
@@ -38,7 +40,9 @@ report() {
 	[ -f "$LOG" ] && awk -F '[ =]' 'BEGIN { printf "%-30s %9s %10s %13s  %s\n", "scenario", "stall_ms", "budget_ms", "footprint_mb", "result" }
 		/^perf .* stall_ms=/ { printf "%-30s %9s %10s %13s  %s\n", $2, $4, $6, $8, $10; next } /^perf / { print }' "$LOG"
 	kill $PID 2>/dev/null || true
+	wait $PID 2>/dev/null || true
 	security delete-generic-password -s "Moneten crash report key" -a "$WORK/data/Database/Moneten.sqlite" >/dev/null 2>&1 || true
+	scripts/forget-bundle.sh "$BUNDLE_ID" "$APP"
 	rm -rf "$WORK"
 }
 trap report EXIT
