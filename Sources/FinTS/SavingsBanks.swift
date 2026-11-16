@@ -5,11 +5,13 @@ import Foundation
 /// the bank by the same host test, in `Tools/FinTSHelper/SavingsBanks.java`.
 extension BankDirectory.Entry {
 	/// Whether the FinTS address of the bank is on the servers of the savings banks: the label of its host before
-	/// ".de" starts with "s-fints-pt-", as in "banking-hs6.s-fints-pt-hs.de", or is "s-hbci".
+	/// ".de" starts with "s-fints-pt-", as in "banking-hs6.s-fints-pt-hs.de", or is "s-hbci". The host counts in lower
+	/// case and without one trailing dot, as `SavingsBanks.name` of the helper reads it.
 	public var isOnSavingsBankServer: Bool {
-		guard let host = bank.url?.host()?.lowercased() else { return false }
-		let labels = host.split(separator: ".")
-		guard labels.count >= 2, labels[labels.count - 1] == "de" else { return false }
+		guard var host = bank.url?.host()?.lowercased() else { return false }
+		if host.hasSuffix(".") { host.removeLast() }
+		let labels = host.split(separator: ".", omittingEmptySubsequences: false)
+		guard labels.count >= 2, !labels.contains(where: \.isEmpty), labels[labels.count - 1] == "de" else { return false }
 		let label = labels[labels.count - 2]
 		return label.hasPrefix("s-fints-pt-") || label == "s-hbci"
 	}

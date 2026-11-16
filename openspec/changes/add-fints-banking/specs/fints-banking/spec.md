@@ -100,7 +100,7 @@ The app SHALL fetch transactions in the CAMT format when the bank offers it for 
 
 ### Requirement: Read statement tags of 1822direkt that start inside a line
 
-The app SHALL read a ":61:" or ":62F:" tag that follows other text on the same line of an MT940 statement as the start of a new line, when the FinTS host of the bank is "1822direkt.com" or ends with ".1822direkt.com". No character of the statement is lost. The statements of other hosts stay as the bank sent them.
+The app SHALL read a booking tag (":61:" with its day and C or D) or a closing balance tag (":62F:") that follows other text on a line of an MT940 statement from a host "1822direkt.com" or "*.1822direkt.com" as the start of a new line, but only where the statement then adds up: opening balance and bookings give the closing balance. A statement that adds up as sent, or with no or more than one such set of places, stays as sent.
 
 #### Scenario: Booking that starts inside a line
 
@@ -109,6 +109,20 @@ The app SHALL read a ":61:" or ":62F:" tag that follows other text on the same l
 - **WHEN** the statement has the line "?20Miete November:61:2611151115D12,50NTRFNONREF"
 - **THEN** the app stores a booking of -12.50 EUR on 15.11.2026
 - **AND** the purpose of the booking before it ends with "Miete November"
+
+#### Scenario: Purpose that holds text like a booking tag
+
+- **GIVEN** an account at 1822direkt with the FinTS address "https://fints.1822direkt.com/fints/hbci"
+- **AND** a statement with the opening balance 1,000.00 EUR, one booking of 120.00 EUR with the purpose "Ref :61:2611151115D12,50NTRFNONREF", and the closing balance 1,120.00 EUR
+- **WHEN** the app reads the statement
+- **THEN** it stores one booking of 120.00 EUR with the purpose "Ref :61:2611151115D12,50NTRFNONREF"
+- **AND** it stores no booking of -12.50 EUR
+
+#### Scenario: Purpose with a tag name only
+
+- **GIVEN** an account at 1822direkt with the FinTS address "https://fints.1822direkt.com/fints/hbci"
+- **WHEN** a booking of 120.00 EUR has the purpose "Ref :61: xyz"
+- **THEN** the app stores that booking with the purpose "Ref :61: xyz"
 
 #### Scenario: Same line from another bank
 
@@ -659,7 +673,7 @@ The app SHALL stop when the bank reports that the PIN or the access is blocked, 
 
 ### Requirement: Say how to unblock the app at a savings bank
 
-The app SHALL stop when a bank on the FinTS servers of the savings banks answers that the user deactivated the app, and tell the user to unblock it under "Kontozugriffe" in the online banking of the Sparkasse. A bank is on these servers when the part of its FinTS host before ".de" starts with "s-fints-pt-" or is "s-hbci". The app forgets the PIN, asks for no new PIN, and logs in again only when the user starts a refresh by hand.
+The app SHALL stop when a bank on the FinTS servers of the savings banks answers that the user deactivated the app ("Kundenprodukt" or "Kontozugriff" with "vom Benutzer deaktiviert"), and tell the user to unblock it under "Kontozugriffe" in the online banking. A bank is on these servers when its host label before ".de" starts with "s-fints-pt-" or is "s-hbci". The app forgets the PIN and asks for no new PIN until a refresh by hand.
 
 #### Scenario: App deactivated in the online banking
 
@@ -674,6 +688,13 @@ The app SHALL stop when a bank on the FinTS servers of the savings banks answers
 - **GIVEN** the assistant "Add Account" logs in to a Sparkasse with the FinTS address "https://banking-hs6.s-fints-pt-hs.de/fints30"
 - **WHEN** the bank answers the login with the code 9010 "Kundenprodukt wurde vom Benutzer deaktiviert"
 - **THEN** the assistant lists no accounts and says where the user unblocks Moneten
+
+#### Scenario: Card or TAN method blocked by the user
+
+- **GIVEN** a refresh of "Giro" at a Sparkasse with the FinTS address "https://banking-hs6.s-fints-pt-hs.de/fints30"
+- **WHEN** the bank answers the login with the code 9942 "PIN falsch" and the code 9010 "pushTAN wurde vom Kunden deaktiviert"
+- **THEN** the PIN sheet opens again with "PIN falsch"
+- **AND** the app names no "Kontozugriffe"
 
 #### Scenario: Same text from another bank
 

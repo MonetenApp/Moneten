@@ -54,7 +54,7 @@ Many banks answer an unknown login name with a PIN error. Only at the first logi
 
 ### Rules of the savings banks and 1822direkt
 
-`Sources/FinTS/SavingsBanks.swift` holds the rules of the savings banks for the assistant, apart from `LoginHints.swift`, so that the rules of another bank group change no line of it. A bank is on the FinTS servers of the savings banks when the label of its host before ".de" starts with "s-fints-pt-" or is "s-hbci" (`BankDirectory.Entry.isOnSavingsBankServer`). The login hint of a savings bank uses the same test.
+`Sources/FinTS/SavingsBanks.swift` holds the rules of the savings banks for the assistant, apart from `LoginHints.swift`, so that the rules of another bank group change no line of it. A bank is on the FinTS servers of the savings banks when the label of its host before ".de" starts with "s-fints-pt-" or is "s-hbci" (`BankDirectory.Entry.isOnSavingsBankServer`). The host counts in lower case and without one trailing dot, as in the helper, and a host with an empty label counts as none. The login hint of a savings bank uses the same test.
 
 - A savings bank may give a login name of 17 digits, and its FinTS server accepts the first 16. `BankDirectory.Entry.loginName(_:)` cuts a login name of exactly 17 ASCII digits to 16 for such a bank, and the assistant uses the result for the login and for the access that it stores, also in "Edit Login Data...". Any other login name stays as typed, after the spaces at both ends are removed.
 - The login hint of a savings bank has a note above the fields: the user logs in with the login name and the PIN of the online banking and sets up a TAN method such as pushTAN or chipTAN there before the first login. `LoginHint.note` carries it, and a hint without a note shows none.
